@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import { Camera, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -8,6 +9,8 @@ import { cn } from "@/lib/utils"
 import { useUpload } from "@/lib/use-upload"
 
 type Props = {
+  /** Server URL (useUpload returns data.url) - never blob/data URI:
+   *  next/image optimization requirement. */
   currentUrl?: string | null
   onUploaded: (url: string) => void
   type?: string
@@ -47,7 +50,7 @@ export function PhotoUpload({ currentUrl, onUploaded, type = "avatar", className
         )}
       >
         {currentUrl ? (
-          <img src={currentUrl} alt="" width={imageDim} height={imageDim} className="size-full object-cover" />
+          <Image src={currentUrl} alt="" width={imageDim} height={imageDim} className="size-full object-cover" />
         ) : (
           <Camera className="size-5 text-muted-foreground" />
         )}

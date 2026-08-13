@@ -8,7 +8,7 @@
 
 ```
 ┌──────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│   Navegador   │     │   Next.js (App)   │     │  Redis (Cache)    │
+│   Navegador   │     │   Next.js (App)   │     │  Valkey (Cache)   │
 │  Service      │◄────│  ┌──────────────┐ │     │  ┌────────────┐  │
 │  Worker       │     │  │ push.ts      │ │     │  │ push-store  │  │
 │  (sw.js)     │     │  │ sendPush...   │ │     │  │ (payloads)  │  │
@@ -91,7 +91,7 @@ await sendPushToMany(userIds, title, body, url?, opts?)
 Quando o payload excede **3072 bytes** (limite seguro de 4KB com overhead de criptografia):
 
 ```
-1. storePayload(payload) → armazena no Redis (5min TTL) ou memória
+1. storePayload(payload) → armazena no Valkey (5min TTL) ou memória
 2. Envia apenas { _signal: true, payloadId, title, body(resumido), url }
 3. Service worker recebe o sinal → GET /api/push/payload/:id
 4. Recupera payload completo → exibe notificação rica
@@ -101,7 +101,7 @@ Quando o payload excede **3072 bytes** (limite seguro de 4KB com overhead de cri
 
 | Storage | Prioridade | TTL |
 |---------|:----------:|:---:|
-| Redis | 1ª | 5 min |
+| Valkey | 1ª | 5 min |
 | In-memory Map | Fallback | 5 min |
 
 ### 5. Botões de Ação (Action Buttons)
@@ -240,7 +240,7 @@ O service worker é servido em `/sw.js` e registrado no `layout.tsx`:
 
 | Cenário | Comportamento |
 |---------|---------------|
-| Redis indisponível | Payload store → memória. Rate limit → in-memory token bucket |
+| Valkey indisponível | Payload store → memória. Rate limit → in-memory token bucket |
 | RabbitMQ indisponível | Envio direto sem fila (directPushCount no log) |
 | Push service retorna 410 | Subscription removida automaticamente |
 | Push service retorna 5xx | Retry com backoff (max 3 tentativas) |

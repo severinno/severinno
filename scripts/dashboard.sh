@@ -149,8 +149,14 @@ render_dashboard() {
     redis_container=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -iE "redis|valkey" | head -1 || true)
 
     if [ -n "$redis_container" ]; then
-        local redis_cmd="redis-cli"
-        echo "$redis_container" | grep -qi "valkey" && redis_cmd="valkey-cli"
+        # Detecta o binario real no container (o servico continua "redis",
+        # mas a imagem e valkey - nome de container nao identifica).
+        local redis_cmd
+        if docker exec "$redis_container" sh -c 'command -v valkey-cli >/dev/null 2>&1' 2>/dev/null; then
+            redis_cmd="valkey-cli"
+        else
+            redis_cmd="redis-cli"
+        fi
         if docker exec "$redis_container" $redis_cmd ping 2>/dev/null | grep -q "PONG"; then
             echo "  $(status_icon ok)  Redis/Valkey  | ${GREEN}PONG${RESET}"
             pass=$((pass + 1))

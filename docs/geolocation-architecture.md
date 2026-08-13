@@ -95,9 +95,9 @@ O Severinno usa geolocalização como seu principal diferencial: busca por proxi
 
 | Rota | Serviço | Cache | Rate Limit | Descrição |
 |------|---------|-------|------------|-----------|
-| `GET /api/geo/search` | Nominatim Search | Redis 24h | 1 req/s (compartilhado) | Forward geocode: free-form (`?q=...`) ou estruturado (`?street=&city=`) |
-| `GET /api/geo/reverse` | Nominatim Reverse | Redis 1h | 1 req/s (compartilhado) | Reverse geocode: lat/lng → endereço |
-| `GET /api/geo/cep` | ViaCEP | Redis 24h | rate limit geo | CEP brasileiro → endereço |
+| `GET /api/geo/search` | Nominatim Search | Valkey 24h | 1 req/s (compartilhado) | Forward geocode: free-form (`?q=...`) ou estruturado (`?street=&city=`) |
+| `GET /api/geo/reverse` | Nominatim Reverse | Valkey 1h | 1 req/s (compartilhado) | Reverse geocode: lat/lng → endereço |
+| `GET /api/geo/cep` | ViaCEP | Valkey 24h | rate limit geo | CEP brasileiro → endereço |
 
 ### 2.3. Rate Limiter Compartilhado
 
@@ -221,7 +221,7 @@ Quando PostGIS está disponível e o raio do usuário retorna 0 provedores:
 | URL base | `https://nominatim.openstreetmap.org` |
 | Rate limit | 1 req/s (compartilhado via `rateLimitedNominatim`) |
 | User-Agent | `SeverinnoMarketplace/1.0 (admin@severinno.com)` |
-| Cache Redis | search: 24h, reverse: 1h |
+| Cache Valkey | search: 24h, reverse: 1h |
 | Endpoints | `/search` (forward), `/reverse` (reverse) |
 
 ### 5.2. ViaCEP

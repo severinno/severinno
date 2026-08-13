@@ -40,7 +40,7 @@ Remediado no working tree (já aplicado):
 |---|---|---|
 | `DB_PASSWORD` / `POSTGRES_PASSWORD` | Postgres (dev + prod) | Nova senha do banco; atualizar `DATABASE_URL`/`DIRECT_URL` |
 | `DATABASE_URL` / `DIRECT_URL` | Prisma | Regenerar URL completa com a nova senha (a URL antiga embute a senha vazada) |
-| `REDIS_URL` | Redis | Se embutir senha — trocar credencial + URL |
+| `REDIS_URL` | Valkey | Se embutir senha — trocar credencial + URL |
 | `RABBITMQ_PASS` / `RABBITMQ_URL` | RabbitMQ | Nova senha do broker + URL |
 | `OPENSEARCH_PASSWORD` / `OPENSEARCH_URL` | OpenSearch | Nova senha do cluster; se a URL embutir `user:pass`, regenerar a URL completa |
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | S3/MinIO (uploads) | Par de chaves novo (IAM/MinIO) |
@@ -71,7 +71,7 @@ Remediado no working tree (já aplicado):
 1. **Banco de dados primeiro** (maior risco de exfiltração): nova senha
    Postgres → atualizar `DATABASE_URL`/`DIRECT_URL`/`DB_PASSWORD` no
    `.env.production` (no servidor) e no secret store do CI.
-2. **Redis/RabbitMQ/OpenSearch**: trocar credenciais + URLs.
+2. **Valkey/RabbitMQ/OpenSearch**: trocar credenciais + URLs.
 3. **S3/MinIO**: rotacionar par de chaves (operação reversível, testar uploads).
 4. **Integrações externas** (Lytex, SMTP, Groq, WhatsApp/Evolução, GlitchTip/Sentry):
    regenerar em cada painel de fornecedor.
@@ -120,7 +120,7 @@ Remediado no working tree (já aplicado):
 | `POSTGRES_PASSWORD` | Postgres | ❌ IGUAL | `e2151e3c` | `e2151e3c` |
 | `DATABASE_URL` | Prisma (Postgres) | ❌ IGUAL | `208c0f99` | `208c0f99` |
 | `DIRECT_URL` | Prisma (Postgres) | ❌ IGUAL | `6c78e5f0` | `6c78e5f0` |
-| `REDIS_URL` | Redis | ❌ IGUAL | `ad61ff0e` | `ad61ff0e` |
+| `REDIS_URL` | Valkey | ❌ IGUAL | `ad61ff0e` | `ad61ff0e` |
 | `RABBITMQ_PASS` | RabbitMQ | ❌ IGUAL | `e2151e3c` | `e2151e3c` |
 | `RABBITMQ_URL` | RabbitMQ | ❌ IGUAL | `9eb79c31` | `9eb79c31` |
 | `OPENSEARCH_PASSWORD` | OpenSearch | ⚠️ VAZIO | `e3b0c442` | `e3b0c442` |
@@ -170,7 +170,7 @@ Remediado no working tree (já aplicado):
       hashes no servidor; rotacionar senha + regenerar URLs.
 - [ ] **Grupo reuso `e2151e3c`** (Postgres pw, RabbitMQ, S3, CRON, Webhook,
       Lytex, SMTP): rotacionar os 8 com valores independentes.
-- [ ] **Redis/OpenSearch** (`ad61ff0e`, `19603ec9`, `9eb79c31`): rotacionar
+- [ ] **Valkey/OpenSearch** (`ad61ff0e`, `19603ec9`, `9eb79c31`): rotacionar
       credenciais + URLs completas.
 - [ ] **Auth/Push** (`364c2800` SESSION_SECRET, `b4dce5e3` VAPID): rotacionar
       → logout geral + re-registrar push subscriptions.

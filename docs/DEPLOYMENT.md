@@ -1,7 +1,7 @@
 # Deployment Guide — Severinno Marketplace
 
 > Guia completo para deploy em produção do Severinno Marketplace.
-> Stack: Docker Compose + Caddy (SSL automático) + PostgreSQL + Redis + RabbitMQ.
+> Stack: Docker Compose + Caddy (SSL automático) + PostgreSQL + Valkey (Redis-compatível) + RabbitMQ.
 > Última atualização: 2026-07-28 | Versão: v0.3.0-cache-mvp
 
 ## Pré-requisitos
@@ -245,11 +245,11 @@ O docker-compose.prod.yml inclui um perfil `backup` que executa backups diários
 docker compose --profile backup up -d pgbackup
 ```
 
-### Redis
+### Valkey (Redis-compatível)
 
 ```bash
 # Backup (RDB snapshot)
-docker exec severinno-redis-1 redis-cli SAVE
+docker exec severinno-redis-1 valkey-cli SAVE
 cp /volume/redis_data/dump.rdb ./backup_redis_$(date +%Y%m%d).rdb
 ```
 

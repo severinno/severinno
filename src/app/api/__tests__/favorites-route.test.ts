@@ -53,6 +53,7 @@ const { mockFavorites } = vi.hoisted(() => ({
 
 const mockDb = vi.hoisted(() => ({
   favorite: { findMany: vi.fn() },
+  $queryRawUnsafe: vi.fn(),
 }))
 
 vi.mock("@/lib/db", () => ({ default: mockDb, db: mockDb }))
@@ -106,20 +107,30 @@ describe("GET /api/favorites", () => {
     expect(data[0]).not.toHaveProperty("reviewsReceived")
   })
 
-  it("computes distanceKm when lat/lng params are provided", async () => {
+  it("computes distanceKm from the DB (ST_Distance) when lat/lng params are provided", async () => {
     mockDb.favorite.findMany.mockResolvedValue(mockFavorites)
+    // DB returns distances that DIFFER from what Haversine would compute for
+    // these coordinates — the response must use the DB values (DB-first).
+    mockDb.$queryRawUnsafe.mockResolvedValue([
+      { id: "prov-1", distance_km: 7.7 },
+      { id: "prov-2", distance_km: 12.3 },
+    ])
     const response = await GET(createMockRequest({ searchParams: { lat: "-23.5", lng: "-46.6" } }))
     const data = await response.json()
-    expect(data[0]).toHaveProperty("distanceKm")
-    expect(typeof data[0].distanceKm).toBe("number")
+    expect(data[0]).toHaveProperty("distanceKm", 7.7)
+    expect(data[1]).toHaveProperty("distanceKm", 12.3)
+    // The distance came from a single PostGIS batch query (DB-first)
+    const sql = mockDb.$queryRawUnsafe.mock.calls[0]?.[0] as string
+    expect(sql).toContain("ST_Distance")
   })
 
-  it("returns null distanceKm when no geo params", async () => {
+  it("returns null distanceKm when no geo params (no DB distance query)", async () => {
     mockDb.favorite.findMany.mockResolvedValue(mockFavorites)
     const response = await GET(createMockRequest())
     const data = await response.json()
-    // First provider is at -23.5,-46.6, same as the no-geo, so distance is 0
+    // No geo -> distances are null and the DB distance query is never issued
     expect(data[0]).toHaveProperty("distanceKm", null)
+    expect(mockDb.$queryRawUnsafe).not.toHaveBeenCalled()
   })
 
   it("returns rating 0 when provider has no reviews", async () => {

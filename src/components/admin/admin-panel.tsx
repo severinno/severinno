@@ -49,7 +49,8 @@ import {
   type NavItem,
   type Breadcrumb,
 } from "@/components/shared/dashboard-shell"
-import { useAuthStore, useViewStore } from "@/store"
+import { useAuthStore } from "@/store/auth"
+import { useViewStore } from "@/store/view"
 import { Button } from "@/components/ui/button"
 import {
   Card,

@@ -102,6 +102,26 @@ for (let i = 0; i < expected.length; i++) {
 }
 ```
 
+### Fail-Closed: SESSION_SECRET ausente (item crítico #2 do parecer)
+
+O middleware é **fail-closed em produção**: se `SESSION_SECRET` estiver ausente,
+as rotas protegidas (`/api/admin/*`, `/api/provider/*`, `/dashboard`,
+`/settings`) respondem **500** — **nunca** passam sem verificação.
+Misconfiguration é fatal por desenho, não degradação silenciosa.
+
+Em desenvolvimento (`NODE_ENV !== "production"`), o fail-open histórico é
+preservado para dev local sem config — mas em produção a ausência do secret
+bloqueia as rotas protegidas antes de qualquer decisão de autorização.
+
+Contrato validado por `src/middleware.test.ts`:
+- produção + secret ausente + rota/página protegida → **500**
+- produção + secret ausente + rota pública → **200** (não depende do secret)
+- dev + secret ausente → fail-open histórico (200)
+- produção + secret presente + sem cookie → 401 · cookie inválido/role errada → 401/403
+
+> Datado: 2026-08-13 — fechado o item crítico #2 do parecer técnico
+> (middleware fail-closed).
+
 ---
 
 ## 4. Password Storage
@@ -139,7 +159,7 @@ return timingSafeEqual(computed, hash)
 - **Limite:** 60 requisições por IP
 - **Headers:** `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
 
-### Redis + In-Memory (Rotas Específicas)
+### Valkey + In-Memory (Rotas Específicas)
 
 | Rota | Limite | Janela | Propósito |
 |:-----|:------:|:------:|:----------|
@@ -159,7 +179,7 @@ return timingSafeEqual(computed, hash)
 
 ### Fallback
 
-Se Redis estiver indisponível, o rate limiting fallback para um Map in-memory
+Se Valkey estiver indisponível, o rate limiting fallback para um Map in-memory
 com cleanup periódico a cada 60s.
 
 ---
@@ -253,7 +273,7 @@ cap_add:
 | Serviço | read_only | tmpfs | Exceções |
 |:--------|:---------:|:-----:|:---------|
 | Caddy | ✅ | /tmp | /data + /config (volumes) |
-| Redis | ✅ | /tmp:64M | /data (volume) |
+| Valkey | ✅ | /tmp:64M | /data (volume) |
 | RabbitMQ | ✅ | /tmp + /var/log (RAM) | /var/lib/rabbitmq (volume) |
 | Realtime | ✅ | /tmp:64M | — |
 | PgBouncer | ❌ | /tmp:16M | userlist.txt (entrypoint) |

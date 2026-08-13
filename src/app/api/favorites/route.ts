@@ -2,10 +2,22 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { forbidden, handleError } from "@/lib/api-server"
-import { haversineKm } from "@/lib/geo-server"
+import { computeDistanceMap } from "@/lib/geo-server"
 
 // CLIENT: list favorited providers (with optional distance computation).
 // Returns `ProviderCard[]` directly (UI: `apiGet<ProviderCard[]>("/api/favorites")`).
+//
+// DISTANCE ARCHITECTURE (scale risk #1 closing - melhorias-otimizacoes.md item 1):
+//   Distances are DB-first via `computeDistanceMap`: a single PostGIS
+//   ST_Distance batch query for the favorite ids, with Haversine only as
+//   fallback when PostGIS fails. The per-item in-memory distance loop is gone
+//   (pinned by db-pagination-contract, which asserts this file carries no
+//   direct per-item distance math). Favorites stay unpaginated BY DESIGN: the
+//   client contract is a bare `ProviderCard[]` array (fetchFavorites in
+//   api.ts) and a client's favorite list is bounded (tens, not 1000+) -
+//   skip/take here would be an API-breaking envelope change without scale
+//   benefit. The public catalog listing (which IS the 1000+ surface) paginates
+//   in the DB via the providers route.
 export async function GET(request: Request) {
   try {
     const session = await requireUser()
@@ -42,13 +54,6 @@ export async function GET(request: Request) {
         ? ratings.reduce((a, b) => a + b, 0) / ratings.length
         : 0
       const reviewCount = ratings.length
-      const distanceKm =
-        hasGeo && f.provider.lat !== null && f.provider.lng !== null
-          ? Math.round(
-              haversineKm(latNum!, lngNum!, f.provider.lat, f.provider.lng) *
-                10,
-            ) / 10
-          : null
       const {
         reviewsReceived: _ignored,
         passwordHash: _ignored2,
@@ -58,11 +63,35 @@ export async function GET(request: Request) {
         ...safeProvider,
         rating: Math.round(rating * 10) / 10,
         reviewCount,
-        distanceKm,
       }
     })
 
-    return NextResponse.json(providers)
+    // Distances: single PostGIS ST_Distance batch query (DB-first).
+    // Haversine runs only as the per-provider fallback inside computeDistanceMap
+    // when the PostGIS query fails — never as the primary per-item loop.
+    let distanceMap: Map<string, number | null> = new Map()
+    if (hasGeo) {
+      distanceMap = await computeDistanceMap({
+        providerIds: providers.map((p) => p.id),
+        providers: providers.map((p) => ({
+          id: p.id,
+          lat: p.lat,
+          lng: p.lng,
+        })),
+        centerGeo: { lat: latNum!, lng: lngNum! },
+        hasGeo: true,
+        userLat: latNum!,
+        userLng: lngNum!,
+        queryRawUnsafe: db.$queryRawUnsafe.bind(db),
+      })
+    }
+
+    const result = providers.map((p) => ({
+      ...p,
+      distanceKm: hasGeo ? (distanceMap.get(p.id) ?? null) : null,
+    }))
+
+    return NextResponse.json(result)
   } catch (e) {
     return handleError(e)
   }

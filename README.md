@@ -29,7 +29,7 @@
 | **Frontend** | Next.js 16 (App Router, Turbopack), React 19, Tailwind v4, shadcn/ui, Motion, XState |
 | **Backend** | Next.js API routes, Prisma ORM, Zod validation |
 | **Database** | PostgreSQL 16 + PostGIS 3.4 |
-| **Cache** | Redis 7 (geo cache, rate limiting, session) |
+| **Cache** | Valkey 7.2 (geo cache, rate limiting, session) |
 | **Queue** | RabbitMQ 4 (notifications, email) |
 | **Routing** | OSRM (fallback Haversine) |
 | **Realtime** | Socket.io (tracking, chat, notifications) |
@@ -78,7 +78,7 @@ bun run dev
                                         │ +PostGIS │    │
                                         └──────────┘    │
                     ┌──────────────┐     ┌──────────────┐
-                    │    Redis     │     │   RabbitMQ   │
+                    │    Valkey    │     │   RabbitMQ   │
                     │ (cache/rate) │     │ (queue/email) │
                     └──────────────┘     └──────────────┘
 ```
@@ -205,7 +205,7 @@ Requer download de dados OSRM do Brasil (~600MB). Veja [documentação OSRM](htt
 - `GET|POST /api/admin/settings` — platform settings
 
 ### Health
-- `GET  /api/health` — DB + Redis + RabbitMQ status
+- `GET  /api/health` — DB + Valkey + RabbitMQ status
 
 ## Environment Variables
 
@@ -282,7 +282,7 @@ Scripts de diagnóstico da infraestrutura Docker, localizados em `scripts/`.
 |--------|-----------|----------------|
 | `diagnose-docker.ps1` | Windows | Port bindings, healthchecks, redes, Hyper-V, conflitos de porta, recursos Docker |
 | `diagnose-docker.sh` | Linux / Mac | Mesmo que o .ps1, exceto Hyper-V (Windows-only) |
-| `diagnose-completo.sh` | Linux / Mac | Tudo do `diagnose-docker.sh` + workers (RabbitMQ), filas, PostgreSQL, Redis, E2E |
+| `diagnose-completo.sh` | Linux / Mac | Tudo do `diagnose-docker.sh` + workers (RabbitMQ), filas, PostgreSQL, Valkey, E2E |
 
 ### diagnose-docker (Windows / Linux / Mac)
 
@@ -320,7 +320,7 @@ Diagnóstico completo da stack, incluindo workers e serviços:
 | 1-5 | (mesmo do básico) | Portas, containers, bindings, redes |
 | 6 | **Workers** | email-worker + notification-worker: estado, logs, restart count |
 | 7 | **RabbitMQ** | Conectividade, filas, consumidores, exchange (`rabbitmqctl`) |
-| 8 | **DB & Redis** | PostgreSQL (`pg_isready`), Redis (`PING`) via `docker exec` |
+| 8 | **DB & Valkey** | PostgreSQL (`pg_isready`), Valkey (`PING` via `valkey-cli`) |
 | 9 | Healthcheck | Realtime + Next.js `/api/health` com parsing de serviços |
 | 10 | **E2E Filas** | Publica mensagem via `rabbitmqctl publish`, verifica consumo before/after |
 | 11 | Docker Resources | `docker system df` |

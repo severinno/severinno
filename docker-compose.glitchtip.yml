@@ -56,16 +56,16 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Redis (caching, task queue, sessions) ───────────────────────────────
+  # ── Valkey (caching, task queue, sessions) — Redis-compativel, BSD-3 ──
   glitchtip-redis:
-    image: redis:7-alpine
+    image: valkey/valkey:7.2-alpine
     restart: unless-stopped
     ports:
       - "${GLITCHTIP_REDIS_PORT:-6380}:6379"
     volumes:
       - glitchtip_redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5

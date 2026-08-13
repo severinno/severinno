@@ -1,8 +1,9 @@
 # Cache Strategy — Severinno Marketplace
 
 > **Three layers of caching** working together to deliver fast responses while
-> keeping data fresh: Redis (server-side compute cache), HTTP Cache-Control
-> (CDN/edge), and Browser cache (private per-user state).
+> keeping data fresh: Valkey (server-side compute cache — the Redis-compatible
+> BSD-3 fork), HTTP Cache-Control (CDN/edge), and Browser cache (private
+> per-user state).
 
 ## Overview
 
@@ -28,7 +29,7 @@
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────┐
-│              Redis Cache (withCache)                     │
+│              Valkey Cache (withCache)                    │
 │   ┌──────────┬───────────┬────────────┬──────────┐      │
 │   │ PostGIS  │  Category │ User Auth  │ Distance │      │
 │   │ ~60s TTL │ ~600s TTL │  ~300s TTL │  ~60s TTL│      │
@@ -38,14 +39,16 @@
 
 ---
 
-## Layer 1: Redis (Server-Side Compute Cache)
+## Layer 1: Valkey (Server-Side Compute Cache)
 
-**File:** `src/lib/redis.ts`
+**File:** `src/lib/redis.ts` (o nome do modulo e mantido — o cliente ioredis
+fala RESP, compativel com Valkey sem mudanca de codigo)
 
-Redis caches the **result of expensive computations** (spatial queries, category
-tree traversal, user auth lookups) so the same DB query is not repeated within
-the TTL window. Redis is **optional** — all operations fail silent if Redis is
-unavailable, and the app falls back to direct DB queries.
+Valkey (o fork BSD-3 do Redis, 100% open source) caches the **result of
+expensive computations** (spatial queries, category tree traversal, user auth
+lookups) so the same DB query is not repeated within the TTL window. Valkey is
+**optional** — all operations fail silent if Valkey is unavailable, and the app
+falls back to direct DB queries.
 
 ### Cache Patterns
 
@@ -68,7 +71,7 @@ unavailable, and the app falls back to direct DB queries.
 
 ### Graceful Degradation
 
-If Redis is down or unreachable:
+If Valkey is down or unreachable:
 - `cacheGet` returns `null` (cache miss)
 - `cacheSet` / `cacheInvalidate` silently no-op
 - The app continues to work — responses are computed fresh from PostgreSQL
@@ -371,7 +374,7 @@ Trigger: PR/push touching
   - .github/workflows/e2e-cache.yml
 
 Pipeline:
-  1. Start PostgreSQL (PostGIS) + Redis as service containers
+  1. Start PostgreSQL (PostGIS) + Valkey as service containers
   2. Push Prisma schema
   3. ⭐ Validate cache manifest (scripts/validate-cache-manifest.ts) — fast gate
   4. Build + start Next.js (production mode)
@@ -479,14 +482,14 @@ the CDN from serving a response cached for one origin to another. Today it's a
 no-op (single origin), but adding it now avoids a cache-invalidation headache
 later.
 
-### Why Redis cache TTLs are relatively short (60s)?
+### Why Valkey cache TTLs are relatively short (60s)?
 
-The Redis cache layer is a **performance optimization**, not a correctness
+The Valkey cache layer is a **performance optimization**, not a correctness
 requirement. Short TTLs ensure:
 - Stale data is served for at most 60 seconds
 - High-traffic areas (provider searches) avoid repeated PostGIS queries
 - Fast-changing data (user active status, location lookups) stays reasonably fresh
-- If Redis goes down, the app seamlessly falls through to PostgreSQL
+- If Valkey goes down, the app seamlessly falls through to PostgreSQL
 
 ---
 

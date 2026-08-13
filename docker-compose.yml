@@ -1,7 +1,7 @@
 # =============================================================================
 # docker-compose.yml — Severinno Marketplace (Desenvolvimento + Produção)
 #
-# Serviços essenciais: PostgreSQL 16 + Redis 7 + MinIO + RabbitMQ + Realtime.
+# Serviços essenciais: PostgreSQL 16 + Valkey 7 (Redis-compatível, BSD-3) + MinIO + RabbitMQ + Realtime.
 # Workers são iniciados com --profile workers:
 #   docker compose --profile workers up -d
 #
@@ -30,16 +30,18 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-  # ── Redis ───────────────────────────────────────────────────────────────
+  # ── Valkey (Redis-compatível — BSD-3, o fork 100% open source) ──────────
+  # O serviço mantém o nome "redis" e o env REDIS_URL (protocolo RESP
+  # compatível — drop-in, sem mudança de código).
   redis:
-    image: redis:7-alpine
+    image: valkey/valkey:7.2-alpine
     restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5

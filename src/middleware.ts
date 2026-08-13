@@ -238,7 +238,18 @@ export async function middleware(request: NextRequest) {
 
   // --- Verify session cookie ---
   const sessionSecret = process.env.SESSION_SECRET
-  if (!sessionSecret) return response // fail open in dev if misconfigured
+  if (!sessionSecret) {
+    // Fail-closed (item critico #2 do parecer): sem SESSION_SECRET, rotas
+    // protegidas NAO podem passar sem verificacao. Em producao -> 500.
+    // Em dev, preserva o fail-open historico (dev local sem config).
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        { error: "Servidor mal configurado (SESSION_SECRET ausente)" },
+        { status: 500 },
+      )
+    }
+    return response // fail open in dev (historico)
+  }
 
   const cookie = request.cookies.get(COOKIE_NAME)?.value
   if (!cookie) {

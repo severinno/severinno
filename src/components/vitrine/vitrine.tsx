@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Vitrine — orchestrator of the public storefront.
+ * Vitrine - orchestrator of the public storefront.
  *
  * Composes: Topbar, Hero, CategoryShowcase, VitrineResults, HowItWorks, Footer.
  *
@@ -18,9 +18,12 @@
  */
 
 import * as React from "react"
+import dynamic from "next/dynamic"
 import { useQuery, keepPreviousData } from "@tanstack/react-query"
 
-import { useAuthStore, useGeoStore, useUIStore } from "@/store"
+import { useAuthStore } from "@/store/auth"
+import { useGeoStore } from "@/store/geo"
+import { useUIStore } from "@/store/ui"
 import {
   fetchCategories,
   fetchFavorites,
@@ -30,24 +33,74 @@ import {
 
 import Topbar from "./topbar"
 import Hero from "./hero"
-import SocialProofTicker from "./social-proof-ticker"
 import CategoryShowcase from "./category-showcase"
 import VitrineResults from "./vitrine-results"
-import HowItWorks from "./how-it-works"
-import QuickQuoteCalculator from "./quick-quote-calculator"
-import PartnersTrust from "./partners-trust"
-import Testimonials from "./testimonials"
-import FAQ from "./faq"
-import WhySeverinno from "./why-severinno"
-import CtaBanner from "./cta-banner"
-import ProviderSpotlight from "./provider-spotlight"
-import { RecentlyViewed } from "./recently-viewed"
-import CompareBar from "./compare-bar"
-import CompareModal from "./compare-modal"
-import BackToTop from "./back-to-top"
-import Footer from "../shared/footer"
-import AIChatWidget from "../shared/ai-chat-widget"
-import CookieConsent from "../shared/cookie-consent"
+import { SectionSkeleton } from "./section-skeleton"
+
+// Below-the-fold / floating sections - code-split via next/dynamic.
+// ssr:true keeps the SSR HTML (SEO) while the JS chunk loads in
+// parallel, shrinking the initial vitrine bundle (P1-1 perf).
+// Every dynamic gets a loading fallback (SectionSkeleton) so SPA view
+// switches never flash null: in-flow sections keep their height, floating
+// widgets keep their slot. Pinned by section-skeleton.test.tsx.
+//
+// Note: next/dynamic types the fallback as (loadingProps) => ReactNode, so
+// the component must be wrapped in a zero-arg function (a bare component
+// reference is not assignable).
+const sectionLoading = () => <SectionSkeleton />
+const SocialProofTicker = dynamic(() => import("./social-proof-ticker"), {
+  loading: sectionLoading,
+})
+const HowItWorks = dynamic(() => import("./how-it-works"), {
+  loading: sectionLoading,
+})
+const QuickQuoteCalculator = dynamic(() => import("./quick-quote-calculator"), {
+  loading: sectionLoading,
+})
+const PartnersTrust = dynamic(() => import("./partners-trust"), {
+  loading: sectionLoading,
+})
+const Testimonials = dynamic(() => import("./testimonials"), {
+  loading: sectionLoading,
+})
+const FAQ = dynamic(() => import("./faq"), {
+  loading: sectionLoading,
+})
+const WhySeverinno = dynamic(() => import("./why-severinno"), {
+  loading: sectionLoading,
+})
+const CtaBanner = dynamic(() => import("./cta-banner"), {
+  loading: sectionLoading,
+})
+const ProviderSpotlight = dynamic(() => import("./provider-spotlight"), {
+  loading: sectionLoading,
+})
+const RecentlyViewed = dynamic(
+  () =>
+    import("./recently-viewed").then((m) => ({ default: m.RecentlyViewed })),
+  { loading: sectionLoading },
+)
+const CompareBar = dynamic(() => import("./compare-bar"), {
+  loading: () => <SectionSkeleton variant="bar" />,
+})
+// CompareModal is a Radix Dialog that renders nothing when closed - a
+// skeleton fallback would be a phantom in-flow block (or worse, an overlay).
+// Null is the correct fallback: there is no visible content to flash.
+const CompareModal = dynamic(() => import("./compare-modal"), {
+  loading: () => null,
+})
+const BackToTop = dynamic(() => import("./back-to-top"), {
+  loading: () => <SectionSkeleton variant="pill" />,
+})
+const Footer = dynamic(() => import("../shared/footer"), {
+  loading: sectionLoading,
+})
+const AIChatWidget = dynamic(() => import("../shared/ai-chat-widget"), {
+  loading: () => <SectionSkeleton variant="widget" />,
+})
+const CookieConsent = dynamic(() => import("../shared/cookie-consent"), {
+  loading: () => <SectionSkeleton variant="banner" />,
+})
 import {
   DEFAULT_FILTERS,
   type FiltersState,
@@ -58,7 +111,7 @@ const RESULTS_ANCHOR_ID = "vitrine-resultados"
 // hydration cost. 6 cards = 2 rows of 3 on xl, still paginated below.
 const PAGE_LIMIT = 6
 
-// ── Combined state (filters + debouncedQ + page) via reducer ─────────────
+// -- Combined state (filters + debouncedQ + page) via reducer -------------
 // Using useReducer so that filter changes atomically reset the page,
 // avoiding the need for a separate sync effect (which would trigger
 // the react-hooks/set-state-in-effect lint rule).
@@ -202,7 +255,7 @@ export default function Vitrine() {
       />
 
       <main className="flex-1">
-        {/* 1. Hero — trust engine, search, CTA */}
+        {/* 1. Hero - trust engine, search, CTA */}
         <Hero
           query={filters.q}
           onQueryChange={(q) => dispatch({ type: 'SET_FILTERS', filters: { ...filters, q } })}
@@ -216,10 +269,10 @@ export default function Vitrine() {
           }}
         />
 
-        {/* 2. SocialProofTicker — H1/H6: live activity, immediate trust */}
+        {/* 2. SocialProofTicker - H1/H6: live activity, immediate trust */}
         <SocialProofTicker />
 
-        {/* 3. CategoryShowcase — browse by category */}
+        {/* 3. CategoryShowcase - browse by category */}
         <CategoryShowcase
           categories={categories}
           activeId={filters.categoryId}
@@ -229,7 +282,7 @@ export default function Vitrine() {
 
         <RecentlyViewed />
 
-        {/* 4. VitrineResults — provider listings */}
+        {/* 4. VitrineResults - provider listings */}
         <VitrineResults
           providers={providersQuery.data?.items ?? []}
           total={providersQuery.data?.total ?? 0}
@@ -252,42 +305,42 @@ export default function Vitrine() {
           expandedRadius={providersQuery.data?.expandedRadius}
         />
 
-        {/* 5. HowItWorks — process explanation */}
+        {/* 5. HowItWorks - process explanation */}
         <HowItWorks />
 
-        {/* 5b. QuickQuoteCalculator — instant price estimate */}
+        {/* 5b. QuickQuoteCalculator - instant price estimate */}
         <QuickQuoteCalculator />
 
-        {/* 6. PartnersTrust — H6/H9: press logos, trust signals */}
+        {/* 6. PartnersTrust - H6/H9: press logos, trust signals */}
         <PartnersTrust />
 
-        {/* 7. Testimonials — social proof from real users */}
+        {/* 7. Testimonials - social proof from real users */}
         <Testimonials />
 
-        {/* 8. WhySeverinno — value proposition */}
+        {/* 8. WhySeverinno - value proposition */}
         <WhySeverinno />
 
-        {/* 9. ProviderSpotlight — featured provider */}
+        {/* 9. ProviderSpotlight - featured provider */}
         <ProviderSpotlight />
 
-        {/* 10. FAQ — common questions */}
+        {/* 10. FAQ - common questions */}
         <FAQ />
 
-        {/* 11. CtaBanner — final conversion CTA */}
+        {/* 11. CtaBanner - final conversion CTA */}
         <CtaBanner />
       </main>
 
       <Footer />
 
-      {/* Floating UI — compare bar + back-to-top + AI chat */}
+      {/* Floating UI - compare bar + back-to-top + AI chat */}
       <CompareBar />
       <BackToTop />
       <AIChatWidget />
 
-      {/* Compare modal — portal-mounted by Radix */}
+      {/* Compare modal - portal-mounted by Radix */}
       <CompareModal />
 
-      {/* Cookie consent banner — LGPD compliance */}
+      {/* Cookie consent banner - LGPD compliance */}
       <CookieConsent />
     </div>
   )

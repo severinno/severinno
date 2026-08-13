@@ -407,10 +407,13 @@ with open('$file', 'wb') as f:
     redis_container=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -iE "redis|valkey" | head -1 || true)
 
     if [ -n "$redis_container" ]; then
-        local redis_cmd="redis-cli"
-        # Check if it's valkey
-        if echo "$redis_container" | grep -qi "valkey"; then
+        # Detecta o binario real no container (Valkey 7.2 mantem o servico
+        # chamado "redis" - nome de container nao identifica a imagem).
+        local redis_cmd
+        if docker exec "$redis_container" sh -c 'command -v valkey-cli >/dev/null 2>&1' 2>/dev/null; then
             redis_cmd="valkey-cli"
+        else
+            redis_cmd="redis-cli"
         fi
 
         if docker exec "$redis_container" $redis_cmd ping 2>/dev/null | grep -q "PONG"; then

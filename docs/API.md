@@ -353,7 +353,7 @@ Recebe notificações de pagamento da Lytex (PIX confirmado, cartão aprovado).
 
 ### GET /api/health
 
-Healthcheck básico (DB + Redis).
+Healthcheck básico (DB + Valkey).
 
 ### GET /api/health/detailed
 

@@ -19,17 +19,27 @@ O projeto tem **arquitetura sólida** e boa engenharia. As recomendações abaix
 **Risco:** Com 1000+ providers, cada request consome memória e CPU linearmente. O `haversineKm` roda em JS para cada item.
 **Solução:** Migrar para paginação via Prisma (`skip`/`take`) + filtrar por distância no DB (PostGIS `ST_DWithin`).
 
+> **✅ Resolvido (2026-08-13)** — re-avaliação da classe:
+> - **Listing público (`GET /api/providers`)** já migrado (commits `f084c21`/`1dc893a`, camada de geolocalização): query de 2 fases com `ST_DWithin` + `LIMIT/OFFSET` (`skip/take` de `parsePagination`) + ordenação `ST_Distance` no SQL + expansão progressiva de raio. Sem fetch-all, sem filtro em memória.
+> - **Favorites (`GET /api/favorites`)** — fechado neste delta: o loop `haversineKm` por item foi substituído por `computeDistanceMap` (batch `ST_Distance` no DB, Haversine só como fallback). Permanece sem paginação **por decisão documentada**: o contrato do client é um array `ProviderCard[]` e a lista por cliente é limitada (dezenas, não 1000+) — envelope paginado seria breaking sem ganho de escala.
+> - **Coverage (`getProvidersInCoverage`)** — fechado neste delta: fetch-all + filtro Haversine em memória virou UMA query `ST_DWithin` (raio do próprio provider) + ordenação `ST_Distance`.
+> - **Pinos**: `db-pagination-contract.test.ts` (forma das 3 superfícies — ST_DWithin/LIMIT-OFFSET/computeDistanceMap, sem `haversineKm` em listing), `favorites-db-distance-contract.test.ts` (comportamento DB-first + fallback), `coverage.test.ts` (comportamento ST_DWithin).
+
 ### 2. Middleware Fail-Open
 
 **Onde:** `src/middleware.ts:124`
 **Problema:** Se `SESSION_SECRET` não está definida, o middleware passa todas as requisições sem autenticação.
 **Solução:** Falhar com 500 em produção se a chave estiver ausente.
 
+> **✅ Resolvido (2026-08-13)**: fail-closed implementado em `src/middleware.ts` — `SESSION_SECRET` ausente → 500 em produção (fail-open preservado só em dev) + contrato em `src/middleware.test.ts` (8 testes) + registro na sec 3 da SECURITY.md.
+
 ### 3. Redis Indisponível
 
 **Onde:** `dev.out.log` — `ECONNREFUSED 127.0.0.1:6379`
 **Problema:** Redis não está rodando. Toda chamada a `cacheGet`/`cacheSet` adiciona ~3s de latência (timeout de conexão) antes de cair no fallback silencioso.
 **Solução:** Subir Valkey/Redis via Docker Compose. Ou tratar o erro com timeout mais agressivo.
+
+> **✅ Resolvido (2026-08-13)**: Redis→Valkey em toda a stack (`valkey/valkey:7.2-alpine` + `valkey-cli` nos composes/healthchecks/docs; serviço `redis`/`REDIS_URL` mantidos por compatibilidade RESP) — a única dependência não-OSI fechada.
 
 ### 4. Schema Drift: `Booking.reminderSentAt`
 

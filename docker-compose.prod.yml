@@ -156,7 +156,7 @@ services:
       realtime:
         condition: service_healthy
     # start_period aumentado para 120s porque o Caddy depende de app + realtime
-    # saudaveis, que por sua vez dependem de PostgreSQL, Redis, MinIO e RabbitMQ.
+    # saudaveis, que por sua vez dependem de PostgreSQL, Valkey, MinIO e RabbitMQ.
     # Com start_period baixo, o Caddy entra em ciclo de restart se o app demorar.
     healthcheck:
       start_period: 120s
@@ -235,13 +235,15 @@ services:
           cpus: "0.25"
           memory: "256M"
 
-  # ── Redis (Cache + Rate Limiting) ─────────────────────────────────────
+  # ── Valkey (Cache + Rate Limiting) — Redis-compatível, BSD-3 (100% open source) ──
   # Hardening: read-only filesystem + tmpfs para /tmp, capacidades minimas.
-  # Redis so escreve em /data (volume persistente) e /tmp (temporario).
+  # Valkey so escreve em /data (volume persistente) e /tmp (temporario).
+  # O servico mantem o nome "redis" e o env REDIS_URL (protocolo RESP
+  # compativel — drop-in, sem mudanca de codigo).
   redis:
-    image: redis:7-alpine
+    image: valkey/valkey:7.2-alpine
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    command: valkey-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -258,7 +260,7 @@ services:
     networks:
       - backend
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -484,7 +486,7 @@ services:
           memory: "64M"
 
   # ── Realtime WebSocket (Socket.io) ─────────────────────────────────────
-  # Hardening: read-only + tmpfs. Servico stateless — estado via Redis.
+  # Hardening: read-only + tmpfs. Servico stateless — estado via Valkey.
   realtime:
     build:
       context: ./mini-services/realtime
@@ -978,9 +980,9 @@ services:
           cpus: "0.1"
           memory: "64M"
 
-  # ── GlitchTip: Redis ──────────────────────────────────────────────────
+  # ── GlitchTip: Valkey (Redis-compativel) ───────────────────────────────
   glitchtip-redis:
-    image: redis:7-alpine
+    image: valkey/valkey:7.2-alpine
     restart: unless-stopped
     profiles:
       - glitchtip
@@ -1000,7 +1002,7 @@ services:
     networks:
       - backend
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5

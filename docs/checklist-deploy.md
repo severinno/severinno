@@ -423,7 +423,7 @@ logrotate -f /etc/logrotate.d/caddy
 └──────┬──────┴──────┬───────┴───────┬────────┴───────┬───────┘
        │             │               │                │
 ┌──────┴──────┐ ┌────┴────┐ ┌───────┴───────┐ ┌──────┴──────┐
-│  RabbitMQ   │ │  Redis  │ │   PgBouncer    │ │   MinIO     │
+│  RabbitMQ   │ │  Valkey │ │   PgBouncer    │ │   MinIO     │
 │  :5672      │ │ :6379   │ │   :6432        │ │  :9000      │
 └──────┬──────┘ └─────────┘ └───────┬───────┘ └─────────────┘
        │                            │
@@ -442,7 +442,7 @@ logrotate -f /etc/logrotate.d/caddy
 | Caddy | 0.5 | 256 MB | ~1 GB (logs) |
 | PostgreSQL | 1.0 | 1 GB | Dados + backup |
 | PgBouncer | 0.5 | 256 MB | — |
-| Redis | 0.5 | 256 MB | — |
+| Valkey | 0.5 | 256 MB | — |
 | RabbitMQ | 0.5 | 512 MB | — |
 | MinIO | 0.5 | 512 MB | ~5 GB (S3) |
 | App (Next.js) | 1.0 | 1 GB | — |
