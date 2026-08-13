@@ -18,7 +18,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     if (!category) return {}
     return {
       title: `${category.name} — Profissionais em ${category.name} — Severinno`,
-      description: category.description ?? `Encontre os melhores profissionais de ${category.name}. Agende serviços online com facilidade.`,
+      description:
+        category.description ??
+        `Encontre os melhores profissionais de ${category.name}. Agende serviços online com facilidade.`,
       openGraph: {
         title: `${category.name} — Severinno`,
         description: category.description ?? `Encontre profissionais de ${category.name}.`,
@@ -40,6 +42,22 @@ export default async function Page({ params }: Props) {
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://severinno.com.br"
 
+  const categoryJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Service",
+    name: category.name,
+    description: category.description ?? `Encontre profissionais de ${category.name} no Severinno.`,
+    provider: {
+      "@type": "Organization",
+      name: "Severinno Marketplace",
+      url: baseUrl,
+    },
+    areaServed: {
+      "@type": "Country",
+      name: "Brasil",
+    },
+  }
+
   return (
     <>
       <BreadcrumbJsonLd
@@ -47,6 +65,10 @@ export default async function Page({ params }: Props) {
           { name: "Início", url: baseUrl },
           { name: category.name, url: `${baseUrl}/categoria/${slug}` },
         ]}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(categoryJsonLd) }}
       />
       <CategoryPage category={category} />
     </>

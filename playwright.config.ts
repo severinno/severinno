@@ -46,13 +46,11 @@ export default defineConfig({
       use: { ...devices["iPhone 16"] },
     },
   ],
-  // Auto-start the dev server in CI (assumes `bun run dev` in background for local)
-  webServer: process.env.CI
-    ? {
-        command: "bun run dev",
-        url: "http://localhost:3000",
-        reuseExistingServer: false,
-        timeout: 120_000,
-      }
-    : undefined,
+  // Auto-start the dev server in CI or when not running
+  webServer: {
+    command: "bun run start",
+    url: "http://localhost:3000",
+    reuseExistingServer: true,
+    timeout: 120_000,
+  },
 })

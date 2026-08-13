@@ -7,18 +7,17 @@ test.describe("Home page", () => {
     expect(response?.ok()).toBeTruthy()
 
     await expect(page.locator("h1")).toBeVisible()
-    await expect(page.getByPlaceholder(/buscar/i)).toBeVisible()
+    await expect(page.getByLabel("Serviço buscado")).toBeVisible()
   })
 
   test("shows category showcase", async ({ page }) => {
     await page.goto("/")
-    const categorySection = page.locator("text=/Categorias|Serviços/i").first()
-    await expect(page.locator("header, main")).toBeVisible()
+    await expect(page.getByRole("main")).toBeVisible()
   })
 
   test("search input works on hero", async ({ page }) => {
     await page.goto("/")
-    const searchInput = page.getByPlaceholder(/buscar/i)
+    const searchInput = page.getByLabel("Serviço buscado")
     await expect(searchInput).toBeVisible()
     await searchInput.fill("eletricista")
     await expect(searchInput).toHaveValue("eletricista")

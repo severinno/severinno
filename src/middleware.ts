@@ -8,7 +8,7 @@ import type { NextRequest } from "next/server"
 // ---------------------------------------------------------------------------
 
 const RATE_LIMIT_WINDOW_MS = 60 * 1000 // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 60      // max requests per window
+const RATE_LIMIT_MAX_REQUESTS = 60 // max requests per window
 
 // Global rate-limit store (Edge Runtime: shared across requests on the same worker)
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
@@ -28,17 +28,24 @@ function checkRateLimit(ip: string): { allowed: boolean; remaining: number; rese
   }
 
   entry.count++
-  return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - entry.count, resetIn: entry.resetAt - now }
+  return {
+    allowed: true,
+    remaining: RATE_LIMIT_MAX_REQUESTS - entry.count,
+    resetIn: entry.resetAt - now,
+  }
 }
 
 // Periodically clean up stale entries (every 5 minutes)
 if (typeof setInterval !== "undefined") {
-  setInterval(() => {
-    const now = Date.now()
-    for (const [key, val] of rateLimitStore) {
-      if (now > val.resetAt) rateLimitStore.delete(key)
-    }
-  }, 5 * 60 * 1000)
+  setInterval(
+    () => {
+      const now = Date.now()
+      for (const [key, val] of rateLimitStore) {
+        if (now > val.resetAt) rateLimitStore.delete(key)
+      }
+    },
+    5 * 60 * 1000,
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -97,9 +104,7 @@ async function verifySession(
 // navegação top-level por links GET.
 
 // Origem permitida para CORS — deve ser configurada via env var
-const ALLOWED_ORIGINS = process.env.NEXT_PUBLIC_APP_URL
-  ? [process.env.NEXT_PUBLIC_APP_URL]
-  : []  // Sem fallback — CORS só funciona com NEXT_PUBLIC_APP_URL configurada
+const ALLOWED_ORIGINS = process.env.NEXT_PUBLIC_APP_URL ? [process.env.NEXT_PUBLIC_APP_URL] : [] // Sem fallback — CORS só funciona com NEXT_PUBLIC_APP_URL configurada
 
 function addCorsHeaders(response: NextResponse, origin: string | null): void {
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
@@ -175,7 +180,7 @@ export async function middleware(request: NextRequest) {
 
   // --- Security headers (applied to ALL responses) ---
   response.headers.set("X-DNS-Prefetch-Control", "on")
-  response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+  response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
   response.headers.set("X-Content-Type-Options", "nosniff")
   response.headers.set("X-Frame-Options", "DENY")
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -194,9 +199,10 @@ export async function middleware(request: NextRequest) {
 
   // --- Rate limiting (API routes only, exempt cron) ---
   if (pathname.startsWith("/api/") && !pathname.startsWith("/api/cron/")) {
-    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
-            ?? request.headers.get("x-real-ip")
-            ?? "127.0.0.1"
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      request.headers.get("x-real-ip") ??
+      "127.0.0.1"
     const { allowed, remaining, resetIn } = checkRateLimit(ip)
 
     // Always include rate-limit headers
@@ -289,9 +295,5 @@ export async function middleware(request: NextRequest) {
 // Match config — only run on API routes and protected pages
 // ---------------------------------------------------------------------------
 export const config = {
-  matcher: [
-    "/api/:path*",
-    "/dashboard/:path*",
-    "/settings/:path*",
-  ],
+  matcher: ["/api/:path*", "/dashboard/:path*", "/settings/:path*"],
 }
