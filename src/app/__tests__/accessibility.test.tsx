@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
-import { render, fireEvent, cleanup } from "@testing-library/react"
+import { render, fireEvent, cleanup } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---- Mock lucide-react icons (not-found.tsx + error.tsx) ---------------------
 vi.mock("lucide-react", () => {
-  const MockIcon = (props: Record<string, unknown>) =>
+  const MockIcon = (props: Record<string, unknown>) => (
     <svg aria-hidden="true" data-testid="mock-icon" {...props} />
+  )
   return {
     Search: MockIcon,
     Home: MockIcon,
@@ -98,27 +99,21 @@ describe("ErrorComponent (ErrorBoundary) — accessibility", () => {
 
   it("should have no accessibility violations with generic error", async () => {
     const error = new Error("Something went wrong")
-    const { container } = render(
-      <ErrorComponent error={error} reset={mockReset} />,
-    )
+    const { container } = render(<ErrorComponent error={error} reset={mockReset} />)
     const results = await axe(container)
     expect(results.violations).toHaveLength(0)
   })
 
   it("should have no accessibility violations with not-found error", async () => {
     const error = new Error("Resource not found")
-    const { container } = render(
-      <ErrorComponent error={error} reset={mockReset} />,
-    )
+    const { container } = render(<ErrorComponent error={error} reset={mockReset} />)
     const results = await axe(container)
     expect(results.violations).toHaveLength(0)
   })
 
   it("should have no accessibility violations with network error", async () => {
     const error = new Error("Network request failed")
-    const { container } = render(
-      <ErrorComponent error={error} reset={mockReset} />,
-    )
+    const { container } = render(<ErrorComponent error={error} reset={mockReset} />)
     const results = await axe(container)
     expect(results.violations).toHaveLength(0)
   })
@@ -126,19 +121,14 @@ describe("ErrorComponent (ErrorBoundary) — accessibility", () => {
   it("should have no accessibility violations with error digest", async () => {
     const error = new Error("Database timeout") as Error & { digest: string }
     error.digest = "abc123def456"
-    const { container } = render(
-      <ErrorComponent error={error} reset={mockReset} />,
-    )
+    const { container } = render(<ErrorComponent error={error} reset={mockReset} />)
     const results = await axe(container)
     expect(results.violations).toHaveLength(0)
   })
 
   it("renders correct heading for generic server error", () => {
     const { container } = render(
-      <ErrorComponent
-        error={new Error("Server error")}
-        reset={mockReset}
-      />,
+      <ErrorComponent error={new Error("Server error")} reset={mockReset} />,
     )
     const h1 = container.querySelector("h1")
     expect(h1).toBeInTheDocument()
@@ -147,10 +137,7 @@ describe("ErrorComponent (ErrorBoundary) — accessibility", () => {
 
   it("renders correct heading for not-found error", () => {
     const { container } = render(
-      <ErrorComponent
-        error={new Error("not found")}
-        reset={mockReset}
-      />,
+      <ErrorComponent error={new Error("not found")} reset={mockReset} />,
     )
     const h1 = container.querySelector("h1")
     expect(h1).toBeInTheDocument()
@@ -159,10 +146,7 @@ describe("ErrorComponent (ErrorBoundary) — accessibility", () => {
 
   it("renders correct heading for network error", () => {
     const { container } = render(
-      <ErrorComponent
-        error={new Error("Network timeout")}
-        reset={mockReset}
-      />,
+      <ErrorComponent error={new Error("Network timeout")} reset={mockReset} />,
     )
     const h1 = container.querySelector("h1")
     expect(h1).toBeInTheDocument()
@@ -171,10 +155,7 @@ describe("ErrorComponent (ErrorBoundary) — accessibility", () => {
 
   it("has reset button with accessible text", () => {
     const { container } = render(
-      <ErrorComponent
-        error={new Error("Server error")}
-        reset={mockReset}
-      />,
+      <ErrorComponent error={new Error("Server error")} reset={mockReset} />,
     )
     const buttons = container.querySelectorAll("button")
     expect(buttons.length).toBe(1)
@@ -183,10 +164,7 @@ describe("ErrorComponent (ErrorBoundary) — accessibility", () => {
 
   it("has home link with accessible text and correct href", () => {
     const { container } = render(
-      <ErrorComponent
-        error={new Error("Server error")}
-        reset={mockReset}
-      />,
+      <ErrorComponent error={new Error("Server error")} reset={mockReset} />,
     )
     const links = container.querySelectorAll("a")
     expect(links.length).toBe(1)
@@ -197,18 +175,13 @@ describe("ErrorComponent (ErrorBoundary) — accessibility", () => {
   it("shows error digest when available", () => {
     const error = new Error("Server error") as Error & { digest: string }
     error.digest = "test-digest-123"
-    const { container } = render(
-      <ErrorComponent error={error} reset={mockReset} />,
-    )
+    const { container } = render(<ErrorComponent error={error} reset={mockReset} />)
     expect(container.textContent).toContain("test-digest-123")
   })
 
   it("does not show digest section when digest is absent", () => {
     const { container } = render(
-      <ErrorComponent
-        error={new Error("Server error")}
-        reset={mockReset}
-      />,
+      <ErrorComponent error={new Error("Server error")} reset={mockReset} />,
     )
     expect(container.textContent).not.toContain("Ref:")
   })
@@ -216,10 +189,7 @@ describe("ErrorComponent (ErrorBoundary) — accessibility", () => {
   it("reset button schedules recovery on click", () => {
     vi.useFakeTimers()
     const { container } = render(
-      <ErrorComponent
-        error={new Error("Server error")}
-        reset={mockReset}
-      />,
+      <ErrorComponent error={new Error("Server error")} reset={mockReset} />,
     )
     const button = container.querySelector("button")
     expect(button).toBeInTheDocument()
@@ -233,6 +203,5 @@ describe("ErrorComponent (ErrorBoundary) — accessibility", () => {
     // Advance time past the 600ms timeout
     vi.advanceTimersByTime(600)
     expect(mockReset).toHaveBeenCalledTimes(1)
-
   })
 })

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect } from "vitest"
 import { pct, arrow, computeDiff } from "../benchmark-diff.mjs"
 import type { BenchmarkJson } from "../benchmark-diff"
@@ -8,7 +7,13 @@ import type { BenchmarkJson } from "../benchmark-diff"
 // ---------------------------------------------------------------------------
 
 const baselineFixture: BenchmarkJson = {
-  meta: { cpuItersPerMs: 1000, platform: "linux", arch: "x64", nodeVersion: "v22", timestamp: "2026-07-01T00:00:00.000Z" },
+  meta: {
+    cpuItersPerMs: 1000,
+    platform: "linux",
+    arch: "x64",
+    nodeVersion: "v22",
+    timestamp: "2026-07-01T00:00:00.000Z",
+  },
   benchmarks: [
     { name: "bench A", label: "bench_a", mean: 100, min: 90, max: 110, opsPerSec: 10000 },
     { name: "bench B", label: "bench_b", mean: 200, min: 180, max: 220, opsPerSec: 5000 },
@@ -16,7 +21,13 @@ const baselineFixture: BenchmarkJson = {
 }
 
 const currentFixture: BenchmarkJson = {
-  meta: { cpuItersPerMs: 1000, platform: "linux", arch: "x64", nodeVersion: "v22", timestamp: "2026-07-26T00:00:00.000Z" },
+  meta: {
+    cpuItersPerMs: 1000,
+    platform: "linux",
+    arch: "x64",
+    nodeVersion: "v22",
+    timestamp: "2026-07-26T00:00:00.000Z",
+  },
   benchmarks: [
     { name: "bench A", label: "bench_a", mean: 110, min: 95, max: 125, opsPerSec: 9000 },
     { name: "bench B", label: "bench_b", mean: 150, min: 140, max: 160, opsPerSec: 6667 },

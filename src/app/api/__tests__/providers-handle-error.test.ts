@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * providers-handle-error.test.ts
  *
@@ -69,9 +68,7 @@ vi.mock("@/lib/api-server", async () => {
   // Pull in real implementations for the functions that need to work
   // (cacheControlPublic, getCategoryDescendants, parsePagination)
   // but provide a spy for handleError so we can verify calls.
-  const actual = await vi.importActual<typeof import("@/lib/api-server")>(
-    "@/lib/api-server",
-  )
+  const actual = await vi.importActual<typeof import("@/lib/api-server")>("@/lib/api-server")
   return {
     ...actual,
     handleError: mockHandleError,
@@ -131,9 +128,7 @@ describe("GET /api/providers — handleError delegation", () => {
     vi.clearAllMocks()
 
     // Default: withCache invokes the factory (cache miss)
-    mockWithCache.mockImplementation(
-      async (_key: string, fn: () => unknown) => fn(),
-    )
+    mockWithCache.mockImplementation(async (_key: string, fn: () => unknown) => fn())
 
     // Default: mockHandleError returns a 500-style response so the
     // route doesn't crash on the return value.
@@ -142,9 +137,7 @@ describe("GET /api/providers — handleError delegation", () => {
     )
 
     // Default category tree
-    vi.mocked(db.category.findMany as any).mockResolvedValue([
-      { id: "cat-1", parentId: null },
-    ])
+    vi.mocked(db.category.findMany as any).mockResolvedValue([{ id: "cat-1", parentId: null }])
   })
 
   // -----------------------------------------------------------------------
@@ -153,8 +146,7 @@ describe("GET /api/providers — handleError delegation", () => {
 
   it("calls handleError when service.findMany rejects in Phase 2", async () => {
     // Phase 1 succeeds: COUNT → 3 IDs, IDs → [prov-1]
-    // @ts-expect-error DeepMockProxy $queryRawUnsafe type quirk
-    vi.mocked(db.$queryRawUnsafe).mockImplementation((sql: string) => {
+    ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
       if (sql.includes("COUNT")) return Promise.resolve([{ total: BigInt(3) }])
       if (sql.includes("ST_Distance")) return Promise.resolve([{ id: "prov-1", distance_km: 2.5 }])
       return Promise.resolve([{ id: "prov-1" }])
@@ -165,11 +157,10 @@ describe("GET /api/providers — handleError delegation", () => {
     vi.mocked(db.service.findMany as any).mockRejectedValue(phase2Error)
 
     // Other Phase 2 mocks — won't be reached because Promise.all rejects fast
-    vi.mocked(db.booking.groupBy).mockResolvedValue([
+    ;(vi.mocked(db.booking.groupBy) as any).mockResolvedValue([
       { providerId: "prov-1", _count: { id: 3 } },
     ])
-    // @ts-expect-error DeepMockProxy PrismaPromise mock edge case
-    (vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider])
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
@@ -189,8 +180,7 @@ describe("GET /api/providers — handleError delegation", () => {
   // -----------------------------------------------------------------------
 
   it("calls handleError when booking.groupBy rejects in Phase 2", async () => {
-    // @ts-expect-error DeepMockProxy $queryRawUnsafe type quirk
-    vi.mocked(db.$queryRawUnsafe).mockImplementation((sql: string) => {
+    ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
       if (sql.includes("COUNT")) return Promise.resolve([{ total: BigInt(3) }])
       if (sql.includes("ST_Distance")) return Promise.resolve([{ id: "prov-1", distance_km: 2.5 }])
       return Promise.resolve([{ id: "prov-1" }])
@@ -211,9 +201,8 @@ describe("GET /api/providers — handleError delegation", () => {
       },
     ])
     const phase2Error = new Error("Bookings DB connection lost")
-    vi.mocked(db.booking.groupBy).mockRejectedValue(phase2Error)
-    // @ts-expect-error DeepMockProxy PrismaPromise mock edge case
-    (vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
+    ;(vi.mocked(db.booking.groupBy) as any).mockRejectedValue(phase2Error)
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider])
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
@@ -231,8 +220,7 @@ describe("GET /api/providers — handleError delegation", () => {
   // -----------------------------------------------------------------------
 
   it("does not call handleError on a successful request", async () => {
-    // @ts-expect-error DeepMockProxy $queryRawUnsafe type quirk
-    vi.mocked(db.$queryRawUnsafe).mockImplementation((sql: string) => {
+    ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
       if (sql.includes("COUNT")) return Promise.resolve([{ total: BigInt(1) }])
       return Promise.resolve([{ id: "prov-1" }])
     })
@@ -249,11 +237,10 @@ describe("GET /api/providers — handleError delegation", () => {
         category: { id: "cat-1", name: "Elétrica" },
       },
     ])
-    vi.mocked(db.booking.groupBy).mockResolvedValue([
+    ;(vi.mocked(db.booking.groupBy) as any).mockResolvedValue([
       { providerId: "prov-1", _count: { id: 3 } },
     ])
-    // @ts-expect-error DeepMockProxy PrismaPromise mock edge case
-    (vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider])
 
     const req = createMockRequest({
       // No lat/lng — goes through non-PostGIS path, no error
@@ -271,8 +258,7 @@ describe("GET /api/providers — handleError delegation", () => {
   // -----------------------------------------------------------------------
 
   it("passes the original error to handleError (not a wrapper)", async () => {
-    // @ts-expect-error DeepMockProxy $queryRawUnsafe type quirk
-    vi.mocked(db.$queryRawUnsafe).mockImplementation((sql: string) => {
+    ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
       if (sql.includes("COUNT")) return Promise.resolve([{ total: BigInt(3) }])
       if (sql.includes("ST_Distance")) return Promise.resolve([{ id: "prov-1", distance_km: 2.5 }])
       return Promise.resolve([{ id: "prov-1" }])
@@ -280,11 +266,10 @@ describe("GET /api/providers — handleError delegation", () => {
 
     const phase2Error = new Error("Phase 2 database timeout")
     vi.mocked(db.service.findMany as any).mockRejectedValue(phase2Error)
-    vi.mocked(db.booking.groupBy).mockResolvedValue([
+    ;(vi.mocked(db.booking.groupBy) as any).mockResolvedValue([
       { providerId: "prov-1", _count: { id: 3 } },
     ])
-    // @ts-expect-error DeepMockProxy PrismaPromise mock edge case
-    (vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
+    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider])
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },

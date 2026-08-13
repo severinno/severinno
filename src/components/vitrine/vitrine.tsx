@@ -20,7 +20,9 @@
 import * as React from "react"
 import { useQuery, keepPreviousData } from "@tanstack/react-query"
 
-import { useAuthStore, useGeoStore, useUIStore } from "@/store"
+import { useAuthStore } from "@/store/auth"
+import { useGeoStore } from "@/store/geo"
+import { useUIStore } from "@/store/ui"
 import { fetchCategories, fetchFavorites, fetchProviders, type Category } from "@/lib/api"
 
 import Topbar from "./topbar"

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET, POST } from "../reviews/route"
 import { GET as GET_RECENT } from "../reviews/recent/route"
@@ -93,14 +92,13 @@ vi.mock("@/lib/validators", () => ({
 
 vi.mock("@/lib/rate-limit", () => ({
   assertRateLimit: vi.fn().mockResolvedValue(undefined),
-  RATE_LIMITS: { reviews: { prefix: 'reviews', max: 10, windowMs: 60000 } },
+  RATE_LIMITS: { reviews: { prefix: "reviews", max: 10, windowMs: 60000 } },
 }))
 
 vi.mock("@/lib/redis", () => ({
   withCache: vi.fn((_key: string, fn: () => Promise<unknown>) => fn()),
   cacheInvalidate: vi.fn(),
 }))
-
 
 vi.mock("@/lib/api-server", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
@@ -290,27 +288,21 @@ describe("GET /api/reviews/recent", () => {
     const req = createMockRequest({ searchParams: { limit: "3" } })
     await GET_RECENT(req)
 
-    expect(mockDb.review.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 3 }),
-    )
+    expect(mockDb.review.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 3 }))
   })
 
   it("caps limit at 12", async () => {
     const req = createMockRequest({ searchParams: { limit: "100" } })
     await GET_RECENT(req)
 
-    expect(mockDb.review.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 12 }),
-    )
+    expect(mockDb.review.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 12 }))
   })
 
   it("uses default limit of 6 when not specified", async () => {
     const req = createMockRequest()
     await GET_RECENT(req)
 
-    expect(mockDb.review.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ take: 6 }),
-    )
+    expect(mockDb.review.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 6 }))
   })
 
   it("returns 0 total and avgRating when there are no reviews", async () => {

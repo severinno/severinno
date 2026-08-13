@@ -17,10 +17,11 @@
 
 import { db } from "@/lib/db"
 import { withCache } from "@/lib/redis"
+import { trackGeoLatency } from "./geo-metrics"
 
 // Cache TTL values
-const PROXIMITY_CACHE_TTL = 60   // 60 seconds for proximity queries
-const DISTANCE_CACHE_TTL = 60     // 60 seconds for user-to-user distance
+const PROXIMITY_CACHE_TTL = 60 // 60 seconds for proximity queries
+const DISTANCE_CACHE_TTL = 60 // 60 seconds for user-to-user distance
 const POSTGIS_CHECK_CACHE_TTL = 300 // 5 minutes for PostGIS availability check
 
 /**
@@ -58,7 +59,23 @@ export type ProximityResult = {
  * Returns an empty array if PostGIS is not available or the query fails
  * (caller should fall back to Haversine JS calculation).
  */
-export async function findProvidersWithinRadius(
+/** Wraps findProvidersWithinRadius with PostGIS latency tracking. */
+export function findProvidersWithinRadiusWithMetrics(
+  lat: number,
+  lng: number,
+  radiusKm: number,
+): Promise<ProximityResult[]> {
+  return trackGeoLatency("postgis", () => _findProvidersWithinRadius(lat, lng, radiusKm))
+}
+
+// ── Re-export original names as instrumented wrappers ─────────────────────
+// Existing callers get automatic latency tracking without changes.
+
+export const findProvidersWithinRadius = findProvidersWithinRadiusWithMetrics
+export const getDistanceBetween = getDistanceBetweenWithMetrics
+
+/** @internal use findProvidersWithinRadiusWithMetrics for latency tracking. */
+async function _findProvidersWithinRadius(
   lat: number,
   lng: number,
   radiusKm: number,
@@ -105,10 +122,16 @@ export async function findProvidersWithinRadius(
  * Results are cached in Redis for 60 seconds (DISTANCE_CACHE_TTL) to
  * avoid repeated distance lookups between the same user pair.
  */
-export async function getDistanceBetween(
+/** Wraps getDistanceBetween with PostGIS latency tracking. */
+export function getDistanceBetweenWithMetrics(
   userId1: string,
   userId2: string,
 ): Promise<number | null> {
+  return trackGeoLatency("postgis", () => _getDistanceBetween(userId1, userId2))
+}
+
+/** @internal use getDistanceBetweenWithMetrics for latency tracking. */
+async function _getDistanceBetween(userId1: string, userId2: string): Promise<number | null> {
   try {
     // Sort IDs so distance:A:B and distance:B:A share the same cache entry
     const [a, b] = [userId1, userId2].sort()

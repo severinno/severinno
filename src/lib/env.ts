@@ -88,6 +88,12 @@ const envSchema = z.object({
 
   // Docker
   DB_PASSWORD: z.string().optional(),
+
+  // Global Rate Limit
+  GLOBAL_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
+  GLOBAL_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1_000).default(60_000),
+  GLOBAL_RATE_LIMIT_BYPASS_IPS: z.string().default(""),
+  GLOBAL_RATE_LIMIT_WHITELIST: z.string().default(""),
 })
 
 const parsed = envSchema.safeParse(process.env)

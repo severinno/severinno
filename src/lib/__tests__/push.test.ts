@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
@@ -136,7 +135,7 @@ describe("sendPushNotification", () => {
     await sendPushNotification("user-1", "Título", "Corpo", "/?view=test")
 
     const [, payload] = vi.mocked(webpush.sendNotification).mock.calls[0]
-    const parsed = JSON.parse(payload)
+    const parsed = JSON.parse(payload as string)
     expect(parsed.url).toBe("/?view=test")
     expect(parsed.title).toBe("Título")
     expect(parsed.body).toBe("Corpo")
@@ -149,7 +148,7 @@ describe("sendPushNotification", () => {
     await sendPushNotification("user-1", "Título", "Corpo")
 
     const [, payload] = vi.mocked(webpush.sendNotification).mock.calls[0]
-    const parsed = JSON.parse(payload)
+    const parsed = JSON.parse(payload as string)
     expect(parsed.timestamp).toBeDefined()
     expect(() => new Date(parsed.timestamp)).not.toThrow()
   })
@@ -203,9 +202,7 @@ describe("sendPushNotification", () => {
     vi.mocked(webpush.sendNotification).mockRejectedValueOnce(pushError)
 
     // Should not throw despite the error (fire-and-forget style)
-    await expect(
-      sendPushNotification("user-1", "Título", "Corpo"),
-    ).resolves.not.toThrow()
+    await expect(sendPushNotification("user-1", "Título", "Corpo")).resolves.not.toThrow()
 
     // Should NOT delete the subscription
     expect(mockDb.pushSubscription.delete).not.toHaveBeenCalled()
@@ -221,9 +218,7 @@ describe("sendPushNotification", () => {
     // Delete fails
     mockDb.pushSubscription.delete.mockRejectedValueOnce(new Error("DB error"))
 
-    await expect(
-      sendPushNotification("user-1", "Título", "Corpo"),
-    ).resolves.not.toThrow()
+    await expect(sendPushNotification("user-1", "Título", "Corpo")).resolves.not.toThrow()
   })
 
   it("envia notificação mesmo quando body é string vazia", async () => {
@@ -233,7 +228,7 @@ describe("sendPushNotification", () => {
     await sendPushNotification("user-1", "Título", "")
 
     const [, payload] = vi.mocked(webpush.sendNotification).mock.calls[0]
-    const parsed = JSON.parse(payload)
+    const parsed = JSON.parse(payload as string)
     expect(parsed.body).toBe("")
   })
 })
@@ -266,9 +261,7 @@ describe("sendPushToMany", () => {
     vi.mocked(webpush.sendNotification).mockResolvedValue(undefined as any)
 
     // Não deve lançar exceção
-    await expect(
-      sendPushToMany(["user-1", "user-2"], "Título", "Corpo"),
-    ).resolves.not.toThrow()
+    await expect(sendPushToMany(["user-1", "user-2"], "Título", "Corpo")).resolves.not.toThrow()
 
     // Pelo menos uma tentativa de envio deve ter ocorrido
     expect(webpush.sendNotification).toHaveBeenCalled()
@@ -288,7 +281,7 @@ describe("sendPushToMany", () => {
     await sendPushToMany(["user-1"], "Título", "Corpo", "/?view=test")
 
     const [, payload] = vi.mocked(webpush.sendNotification).mock.calls[0]
-    const parsed = JSON.parse(payload)
+    const parsed = JSON.parse(payload as string)
     expect(parsed.url).toBe("/?view=test")
   })
 })

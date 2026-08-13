@@ -1,12 +1,11 @@
-// @ts-nocheck
 import { describe, it, expect, vi } from "vitest"
-import { render, screen } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
+import { render, screen } from "@/__tests__/test-utils"
 
 // ---- Mock lucide-react Star icon -------------------------------------------
 vi.mock("lucide-react", () => {
-  const MockIcon = (props: Record<string, unknown>) =>
+  const MockIcon = (props: Record<string, unknown>) => (
     <svg aria-hidden="true" data-testid="mock-star" {...props} />
+  )
   return { Star: MockIcon }
 })
 
@@ -38,20 +37,20 @@ describe("StarRatingInput", () => {
   it("renders 5 stars", () => {
     const { container } = render(<StarRatingInput value={0} onChange={() => {}} />)
     // Estrelas são buttons sem role="radio" — verificar se há 5 elementos clicáveis
-    const buttons = container.querySelectorAll('button')
+    const buttons = container.querySelectorAll("button")
     expect(buttons.length).toBe(5)
   })
 
   it("marks the correct star", () => {
     const { container } = render(<StarRatingInput value={3} onChange={() => {}} />)
     // A terceira estrela deve estar marcada de alguma forma
-    const buttons = container.querySelectorAll('button')
+    const buttons = container.querySelectorAll("button")
     expect(buttons.length).toBe(5)
   })
 
   it("disables all buttons when disabled", () => {
     const { container } = render(<StarRatingInput value={2} onChange={() => {}} disabled />)
-    const buttons = container.querySelectorAll('button')
+    const buttons = container.querySelectorAll("button")
     expect(buttons.length).toBeGreaterThan(0)
     buttons.forEach((b) => {
       expect(b).toHaveAttribute("disabled")

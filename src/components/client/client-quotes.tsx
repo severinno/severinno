@@ -139,6 +139,24 @@ function providerInitials(name?: string | null): string {
     .toUpperCase()
 }
 
+/**
+ * `useNow` — a re-rendering clock.
+ *
+ * Returns the current epoch ms and refreshes (re-rendering the consumer)
+ * every `intervalMs`. Cards use it to compute "expired" state without calling
+ * the impure `Date.now()` during render (react-hooks/purity).
+ */
+function useNow(intervalMs = 60_000): number {
+  const [now, setNow] = React.useState(() => Date.now())
+
+  React.useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), intervalMs)
+    return () => window.clearInterval(id)
+  }, [intervalMs])
+
+  return now
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -400,6 +418,7 @@ function QuoteCard({
   isRejecting: boolean
 }) {
   const [open, setOpen] = React.useState(false)
+  const now = useNow()
 
   const provider = quote.provider
   const initials = providerInitials(provider.name)
@@ -418,7 +437,7 @@ function QuoteCard({
     status === "RESPONDED" || status === "PENDING" || status === "APPROVED"
   const isExpired =
     status === "EXPIRED" ||
-    (status !== "APPROVED" && new Date(quote.expiresAt).getTime() < Date.now())
+    (status !== "APPROVED" && new Date(quote.expiresAt).getTime() < now)
 
   const itemsCount = quote.items.length
   const firstServiceTitle = quote.items[0]?.service?.title ?? "—"

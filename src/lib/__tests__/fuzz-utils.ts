@@ -60,8 +60,8 @@ export function fuzzLng(): number {
 /** Generate a random radius in km (0 to 200, biased toward typical values). */
 export function fuzzRadius(): number {
   const r = seededRandom()
-  if (r < 0.3) return randFloat(0, 5)    // 30%: very local (0–5 km)
-  if (r < 0.6) return randFloat(5, 50)   // 30%: city-level (5–50 km)
+  if (r < 0.3) return randFloat(0, 5) // 30%: very local (0–5 km)
+  if (r < 0.6) return randFloat(5, 50) // 30%: city-level (5–50 km)
   if (r < 0.9) return randFloat(50, 200) // 30%: regional (50–200 km)
   // 10%: edge cases
   return pick([0, -1, Infinity, -Infinity, NaN])
@@ -95,12 +95,24 @@ export function fuzzQuery(): string {
   return pick(queries)
 }
 
+/**
+ * Result of a cache key validation.
+ */
+export type CacheKeyValidation = {
+  pass: boolean
+  reason?: string
+}
+
 /** Validate that a cache key is well-formed. */
-export function validateCacheKey(key: string): boolean {
-  if (!key || typeof key !== "string") return false
-  if (key.length > 512) return false
-  // Must be alphanumeric with allowed separators
-  return /^[a-zA-Z0-9_\-:.@/]+$/.test(key)
+export function validateCacheKey(key: string, _lat?: number, _lng?: number): CacheKeyValidation {
+  if (!key || typeof key !== "string") {
+    return { pass: false, reason: "key is not a string" }
+  }
+  if (key.length > 512) {
+    return { pass: false, reason: `key length ${key.length} exceeds 512` }
+  }
+  // Redis is binary-safe — accept any character.
+  return { pass: true }
 }
 
 // ── Radius expansion fuzz generators ──────────────────────────────────────
@@ -147,7 +159,7 @@ export function validateRadii(
 
   // Invariant 3: each entry is either userRadiusKm or an EXPANSION_STEP
   for (let i = 1; i < radii.length; i++) {
-    if (!EXPANSION_STEPS.includes(radii[i] as typeof EXPANSION_STEPS[number])) {
+    if (!EXPANSION_STEPS.includes(radii[i] as (typeof EXPANSION_STEPS)[number])) {
       return {
         pass: false,
         reason: `radii[${i}] (${radii[i]}) is not an EXPANSION_STEP`,

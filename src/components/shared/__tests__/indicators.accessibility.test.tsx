@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from "vitest"
-import { render, cleanup } from "@testing-library/react"
+import { render, cleanup } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---- Mocks -----------------------------------------------------------------

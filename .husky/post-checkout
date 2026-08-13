@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+set -euo pipefail
+
+# post-checkout hook
+# $1 = previous HEAD SHA, $2 = new HEAD SHA, $3 = 1 (branch) or 0 (file)
+#
+# Instala dependências automaticamente quando package.json ou o lockfile
+# mudam entre checkouts (troca de branch, git pull, etc.).
+
+if [ "$3" = "1" ]; then
+  CHANGED=$(git diff --name-only "$1" "$2" 2>/dev/null || echo "")
+
+  if echo "$CHANGED" | grep -qE "^package\.json$|^pnpm-lock\.yaml$|^bun\.lockb$"; then
+    echo "📦 Dependências alteradas — executando bun install..."
+    bun install
+    echo "✅ bun install concluído"
+  fi
+fi

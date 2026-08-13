@@ -92,21 +92,20 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 import {
   ActiveBadge,
+  AdminGeoFilter,
   ConfirmDialog,
   ConfirmToggleDialog,
+  DEFAULT_GEO_FILTER,
   EmptyState,
   ErrorState,
   errMsg,
   FilterBar,
+  type GeoFilterState,
   initials,
   PageSectionHeader,
   Pagination,
@@ -115,7 +114,7 @@ import {
   SavingPill,
   SearchInput,
   TableSkeleton,
-} from "./admin-shared"
+} from "./_shared"
 
 // ---------------------------------------------------------------------------
 // Types — definidos IDÊNTICOS em admin-providers.tsx (H4 consistência).
@@ -171,6 +170,7 @@ export function AdminUsers() {
   const [role, setRole] = React.useState<RoleFilter>("ALL")
   const [q, setQ] = React.useState("")
   const [debouncedQ, setDebouncedQ] = React.useState("")
+  const [geoFilter, setGeoFilter] = React.useState<GeoFilterState>(DEFAULT_GEO_FILTER)
   const [verified, setVerified] = React.useState<VerifiedFilter>("ALL")
   const [active, setActive] = React.useState<ActiveFilter>("ALL")
   const [page, setPage] = React.useState(1)
@@ -201,28 +201,25 @@ export function AdminUsers() {
   })
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["admin", "users", { role, debouncedQ, verified, active, page, limit }],
+    queryKey: ["admin", "users", { role, debouncedQ, verified, active, page, limit, geoFilter }],
     queryFn: () =>
       apiGet<AdminUsersResponse>("/api/admin/users", {
         ...(role !== "ALL" ? { role } : {}),
         ...(debouncedQ ? { q: debouncedQ } : {}),
+        ...(geoFilter.lat != null ? { lat: String(geoFilter.lat) } : {}),
+        ...(geoFilter.lng != null ? { lng: String(geoFilter.lng) } : {}),
+        ...(geoFilter.radiusKm ? { radius: String(geoFilter.radiusKm) } : {}),
         page,
         limit,
       }),
     staleTime: 15_000,
   })
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: ["admin", "users"] })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["admin", "users"] })
 
   const patchMutation = useMutation({
-    mutationFn: ({
-      id,
-      patch,
-    }: {
-      id: string
-      patch: Partial<AdminUser>
-    }) => apiPatch<{ user: AdminUser }>(`/api/admin/users/${id}`, patch),
+    mutationFn: ({ id, patch }: { id: string; patch: Partial<AdminUser> }) =>
+      apiPatch<{ user: AdminUser }>(`/api/admin/users/${id}`, patch),
   })
 
   const deleteMutation = useMutation({
@@ -261,6 +258,7 @@ export function AdminUsers() {
   const activeFilterCount =
     (role !== "ALL" ? 1 : 0) +
     (debouncedQ ? 1 : 0) +
+    (geoFilter.city || geoFilter.lat != null ? 1 : 0) +
     (verified !== "ALL" ? 1 : 0) +
     (active !== "ALL" ? 1 : 0)
 
@@ -268,6 +266,7 @@ export function AdminUsers() {
     setRole("ALL")
     setQ("")
     setDebouncedQ("")
+    setGeoFilter(DEFAULT_GEO_FILTER)
     setVerified("ALL")
     setActive("ALL")
     setSort(null)
@@ -285,8 +284,7 @@ export function AdminUsers() {
   const roleCounts = React.useMemo(() => {
     const byRole = stats?.usersByRole ?? {}
     return {
-      ALL:
-        (byRole.CLIENT ?? 0) + (byRole.PROVIDER ?? 0) + (byRole.ADMIN ?? 0),
+      ALL: (byRole.CLIENT ?? 0) + (byRole.PROVIDER ?? 0) + (byRole.ADMIN ?? 0),
       CLIENT: byRole.CLIENT ?? 0,
       PROVIDER: byRole.PROVIDER ?? 0,
       ADMIN: byRole.ADMIN ?? 0,
@@ -310,8 +308,8 @@ export function AdminUsers() {
                 ? "Verificação removida."
                 : "Usuário marcado como verificado."
               : currentValue
-              ? "Usuário desativado."
-              : "Usuário ativado.",
+                ? "Usuário desativado."
+                : "Usuário ativado.",
           )
           setPendingToggle(null)
           setPatchingId(null)
@@ -368,7 +366,7 @@ export function AdminUsers() {
       type="button"
       onClick={() => toggleSort(sortKey)}
       className={cn(
-        "inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground",
+        "text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-[11px] font-semibold tracking-wider uppercase transition-colors",
         sort?.key === sortKey && "text-foreground",
       )}
     >
@@ -400,7 +398,7 @@ export function AdminUsers() {
           setPage(1)
         }}
       >
-        <TabsList className="h-auto flex-wrap gap-1 bg-card p-1">
+        <TabsList className="bg-card h-auto flex-wrap gap-1 p-1">
           {(
             [
               { value: "ALL", label: "Todos", icon: Users },
@@ -412,7 +410,7 @@ export function AdminUsers() {
             <TabsTrigger
               key={t.value}
               value={t.value}
-              className="h-8 gap-1.5 rounded-md px-3 text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground h-8 gap-1.5 rounded-md px-3 text-sm"
             >
               <t.icon className="size-3.5" />
               {t.label}
@@ -441,7 +439,7 @@ export function AdminUsers() {
             type="button"
             onClick={() => setErrorBanner(null)}
             aria-label="Dispensar aviso"
-            className="absolute right-3 top-3 rounded-md p-1 text-current/70 transition-colors hover:text-current"
+            className="absolute top-3 right-3 rounded-md p-1 text-current/70 transition-colors hover:text-current"
           >
             <X className="size-3.5" />
           </button>
@@ -449,15 +447,19 @@ export function AdminUsers() {
       ) : null}
 
       {/* Filter bar */}
-      <FilterBar
-        onClear={clearFilters}
-        activeCount={activeFilterCount}
-      >
+      <FilterBar onClear={clearFilters} activeCount={activeFilterCount}>
         <SearchInput
           value={q}
           onChange={setQ}
           placeholder="Buscar por nome, e-mail ou cidade"
           className="min-w-[200px] flex-1"
+        />
+        <AdminGeoFilter
+          value={geoFilter}
+          onChange={(next) => {
+            setGeoFilter(next)
+            setPage(1)
+          }}
         />
         <Select
           value={verified}
@@ -517,12 +519,7 @@ export function AdminUsers() {
           description="Ajuste os filtros de busca ou cadastre um novo usuário."
           action={
             activeFilterCount > 0 ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={clearFilters}
-                className="gap-1.5"
-              >
+              <Button variant="outline" size="sm" onClick={clearFilters} className="gap-1.5">
                 <X className="size-3.5" />
                 Limpar filtros
               </Button>
@@ -530,65 +527,56 @@ export function AdminUsers() {
           }
         />
       ) : (
-        <Card className="rounded-xl border border-border/50 bg-card overflow-hidden">
+        <Card className="border-border/50 bg-card overflow-hidden rounded-xl border">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/30 h-10 hover:bg-muted/30">
+                  <TableRow className="bg-muted/30 hover:bg-muted/30 h-10">
                     <TableHead>{renderSortHeader("Usuário", "name")}</TableHead>
-                    <TableHead className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
                       Perfil
                     </TableHead>
-                    <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground md:table-cell">
+                    <TableHead className="text-muted-foreground hidden text-[11px] font-semibold tracking-wider uppercase md:table-cell">
                       Contato
                     </TableHead>
-                    <TableHead className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground lg:table-cell">
+                    <TableHead className="text-muted-foreground hidden text-[11px] font-semibold tracking-wider uppercase lg:table-cell">
                       Cidade
                     </TableHead>
-                    <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-center text-[11px] font-semibold tracking-wider uppercase">
                       Verificado
                     </TableHead>
-                    <TableHead className="text-center text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-center text-[11px] font-semibold tracking-wider uppercase">
                       Status
                     </TableHead>
                     <TableHead className="hidden sm:table-cell">
                       {renderSortHeader("Criado em", "createdAt")}
                     </TableHead>
-                    <TableHead className="text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <TableHead className="text-muted-foreground text-right text-[11px] font-semibold tracking-wider uppercase">
                       Ações
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {items.map((u) => {
-                    const isPatchingThis =
-                      patchingId === u.id && patchMutation.isPending
-                    const patchingField = isPatchingThis
-                      ? pendingToggle?.field ?? null
-                      : null
+                    const isPatchingThis = patchingId === u.id && patchMutation.isPending
+                    const patchingField = isPatchingThis ? (pendingToggle?.field ?? null) : null
                     return (
                       <TableRow
                         key={u.id}
-                        className="h-12 border-b border-border/50 transition-colors last:border-0 hover:bg-muted/20"
+                        className="border-border/50 hover:bg-muted/20 h-12 border-b transition-colors last:border-0"
                       >
                         <TableCell className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
                             <Avatar className="size-8 shrink-0">
-                              {u.avatarUrl ? (
-                                <AvatarImage src={u.avatarUrl} alt={u.name} />
-                              ) : null}
-                              <AvatarFallback className="bg-primary/10 text-[10px] font-semibold text-primary">
+                              {u.avatarUrl ? <AvatarImage src={u.avatarUrl} alt={u.name} /> : null}
+                              <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-semibold">
                                 {initials(u.name)}
                               </AvatarFallback>
                             </Avatar>
                             <div className="min-w-0">
-                              <p className="truncate text-sm font-medium">
-                                {u.name}
-                              </p>
-                              <p className="truncate text-xs text-muted-foreground">
-                                {u.email}
-                              </p>
+                              <p className="truncate text-sm font-medium">{u.name}</p>
+                              <p className="text-muted-foreground truncate text-xs">{u.email}</p>
                             </div>
                           </div>
                         </TableCell>
@@ -598,22 +586,18 @@ export function AdminUsers() {
                         <TableCell className="hidden px-4 py-3 md:table-cell">
                           <div className="flex flex-col text-xs">
                             {u.whatsapp ? (
-                              <span className="text-foreground/80">
-                                {u.whatsapp}
-                              </span>
+                              <span className="text-foreground/80">{u.whatsapp}</span>
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
                             {u.cpfCnpj ? (
-                              <span className="font-mono text-muted-foreground">
-                                {u.cpfCnpj}
-                              </span>
+                              <span className="text-muted-foreground font-mono">{u.cpfCnpj}</span>
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="hidden px-4 py-3 text-xs text-muted-foreground lg:table-cell">
+                        <TableCell className="text-muted-foreground hidden px-4 py-3 text-xs lg:table-cell">
                           {u.city ? (
                             <span className="text-foreground/80">
                               {u.city}
@@ -659,7 +643,7 @@ export function AdminUsers() {
                             <ActiveBadge active={u.active} />
                           )}
                         </TableCell>
-                        <TableCell className="hidden px-4 py-3 text-xs text-muted-foreground tabular-nums sm:table-cell">
+                        <TableCell className="text-muted-foreground hidden px-4 py-3 text-xs tabular-nums sm:table-cell">
                           {formatDate(u.createdAt)}
                         </TableCell>
                         <TableCell className="px-4 py-3 text-right">
@@ -715,9 +699,7 @@ export function AdminUsers() {
                                   ) : (
                                     <ShieldCheck className="size-3.5" />
                                   )}
-                                  {u.verified
-                                    ? "Remover verificação"
-                                    : "Marcar verificado"}
+                                  {u.verified ? "Remover verificação" : "Marcar verificado"}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() =>
@@ -759,11 +741,7 @@ export function AdminUsers() {
       {!isError && !isLoading && items.length > 0 ? (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <ResultCount page={page} limit={limit} total={total} label="usuários" />
-          <Pagination
-            page={page}
-            totalPages={totalPages}
-            onPageChange={setPage}
-          />
+          <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
         </div>
       ) : null}
 
@@ -783,10 +761,9 @@ export function AdminUsers() {
         description={
           <>
             Você está prestes a excluir{" "}
-            <strong className="text-foreground">{deleteTarget?.name}</strong> (
-            {deleteTarget?.email}). Esta ação removerá todos os dados
-            relacionados (serviços, agendamentos, mensagens, avaliações) e não
-            pode ser desfeita.
+            <strong className="text-foreground">{deleteTarget?.name}</strong> ({deleteTarget?.email}
+            ). Esta ação removerá todos os dados relacionados (serviços, agendamentos, mensagens,
+            avaliações) e não pode ser desfeita.
           </>
         }
         confirmLabel="Excluir"
@@ -821,33 +798,24 @@ function EditUserDialog({
   submitting: boolean
   onSubmit: (patch: Partial<AdminUser>) => void
 }) {
-  const [name, setName] = React.useState("")
-  const [role, setRole] = React.useState<UserRole>("CLIENT")
-  const [whatsapp, setWhatsapp] = React.useState("")
-  const [city, setCity] = React.useState("")
-  const [state, setState] = React.useState("")
-
-  React.useEffect(() => {
-    if (user) {
-      setName(user.name)
-      setRole(user.role)
-      setWhatsapp(user.whatsapp ?? "")
-      setCity(user.city ?? "")
-      setState(user.state ?? "")
-    }
-  }, [user])
+  // Derive initial values from user prop; Dialog key forces re-mount on change
+  const [name, setName] = React.useState(user?.name ?? "")
+  const [role, setRole] = React.useState<UserRole>(user?.role ?? "CLIENT")
+  const [whatsapp, setWhatsapp] = React.useState(user?.whatsapp ?? "")
+  const [city, setCity] = React.useState(user?.city ?? "")
+  const [state, setState] = React.useState(user?.state ?? "")
 
   // H5: warning when demoting from ADMIN
   const demotingFromAdmin = user?.role === "ADMIN" && role !== "ADMIN"
 
   return (
     <Dialog open={!!user} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent key={user?.id ?? "closed"} className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold">Editar usuário</DialogTitle>
           <DialogDescription>
-            Edição administrativa limitada aos campos abaixo. Para alterar a
-            senha, o usuário deve usar o fluxo de recuperação.
+            Edição administrativa limitada aos campos abaixo. Para alterar a senha, o usuário deve
+            usar o fluxo de recuperação.
           </DialogDescription>
         </DialogHeader>
 
@@ -866,13 +834,13 @@ function EditUserDialog({
               onChange={(e) => setName(e.target.value)}
               required
               minLength={2}
-              className="h-9 rounded-lg border-input/60"
+              className="border-input/60 h-9 rounded-lg"
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="u-role">Perfil</Label>
             <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
-              <SelectTrigger id="u-role" className="h-9 rounded-lg border-input/60">
+              <SelectTrigger id="u-role" className="border-input/60 h-9 rounded-lg">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -889,8 +857,8 @@ function EditUserDialog({
               <AlertTriangle className="size-4" />
               <AlertTitle>Remover privilégios de administrador?</AlertTitle>
               <AlertDescription>
-                Este usuário perderá acesso ao painel admin. Ação destrutiva —
-                confirme antes de salvar.
+                Este usuário perderá acesso ao painel admin. Ação destrutiva — confirme antes de
+                salvar.
               </AlertDescription>
             </Alert>
           ) : null}
@@ -903,7 +871,7 @@ function EditUserDialog({
                 value={whatsapp}
                 onChange={(e) => setWhatsapp(e.target.value)}
                 placeholder="(11) 99999-9999"
-                className="h-9 rounded-lg border-input/60"
+                className="border-input/60 h-9 rounded-lg"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -914,7 +882,7 @@ function EditUserDialog({
                 onChange={(e) => setState(e.target.value.toUpperCase().slice(0, 2))}
                 maxLength={2}
                 placeholder="SP"
-                className="h-9 rounded-lg border-input/60"
+                className="border-input/60 h-9 rounded-lg"
               />
             </div>
           </div>
@@ -925,7 +893,7 @@ function EditUserDialog({
               value={city}
               onChange={(e) => setCity(e.target.value)}
               placeholder="São Paulo"
-              className="h-9 rounded-lg border-input/60"
+              className="border-input/60 h-9 rounded-lg"
             />
           </div>
 
@@ -939,9 +907,7 @@ function EditUserDialog({
               Cancelar
             </Button>
             <Button type="submit" disabled={submitting} className="gap-1.5">
-              {submitting ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : null}
+              {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
               Salvar
             </Button>
           </DialogFooter>

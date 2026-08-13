@@ -6,12 +6,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen } from "@/__tests__/test-utils"
 
 // ---- Mock lucide-react Smartphone icon --------------------------------------
 vi.mock("lucide-react", () => {
-  const MockSvg = (props: Record<string, unknown>) =>
+  const MockSvg = (props: Record<string, unknown>) => (
     <svg aria-hidden="true" className="lucide-smartphone" {...props} />
+  )
   return { Smartphone: MockSvg }
 })
 
@@ -71,10 +72,7 @@ describe("VibrationIndicator", () => {
 
   it("has aria-live='polite' for screen reader announcements", () => {
     render(<VibrationIndicator />)
-    expect(screen.getByTitle("Vibração ativada")).toHaveAttribute(
-      "aria-live",
-      "polite",
-    )
+    expect(screen.getByTitle("Vibração ativada")).toHaveAttribute("aria-live", "polite")
   })
 
   it("does NOT show label text when showLabel is not passed", () => {
@@ -95,9 +93,7 @@ describe("VibrationIndicator", () => {
   })
 
   it("forwards className to the wrapper span", () => {
-    const { container } = render(
-      <VibrationIndicator className="custom-class" />,
-    )
+    const { container } = render(<VibrationIndicator className="custom-class" />)
     // The wrapper is a span directly rendered
     const span = container.querySelector("span")
     expect(span?.className).toContain("custom-class")

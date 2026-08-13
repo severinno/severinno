@@ -1,0 +1,26 @@
+root = true
+
+[*]
+indent_style = space
+indent_size = 2
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+max_line_length = 100
+
+[*.md]
+trim_trailing_whitespace = false
+
+# Shell scripts are sensitive to line endings and indentation
+[*.{sh,bash,zsh}]
+end_of_line = lf
+indent_size = 2
+
+# Makefile requires tabs
+[Makefile]
+indent_style = tab
+
+# Batch files on Windows require CRLF
+[*.{bat,cmd}]
+end_of_line = crlf

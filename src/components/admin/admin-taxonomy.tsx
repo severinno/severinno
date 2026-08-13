@@ -100,7 +100,7 @@ import {
   type StatusTone,
   errMsg,
   slugify,
-} from "@/components/admin/admin-shared"
+} from "./_shared"
 
 // ---------------------------------------------------------------------------
 // Types

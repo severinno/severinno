@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen, fireEvent } from "@testing-library/react"
+import { cleanup, render, screen, fireEvent } from "@/__tests__/test-utils"
 
 vi.mock("@/store/auth", () => ({
   useAuthStore: vi.fn((selector) => {
@@ -114,9 +114,7 @@ describe("ProviderOnboarding", () => {
     render(<ProviderOnboarding onComplete={onComplete} />)
 
     expect(screen.getByText("Sons do painel")).toBeDefined()
-    expect(
-      screen.getByLabelText("Ativar sons do painel"),
-    ).toBeDefined()
+    expect(screen.getByLabelText("Ativar sons do painel")).toBeDefined()
   })
 
   it("renders vibration preference toggle on step 0", async () => {
@@ -131,12 +129,8 @@ describe("ProviderOnboarding", () => {
     const { ProviderOnboarding } = await import("../provider-onboarding")
     render(<ProviderOnboarding onComplete={onComplete} />)
 
-    expect(
-      screen.getByTitle("Prévia do som"),
-    ).toBeDefined()
-    expect(
-      screen.getByTitle("Prévia da vibração"),
-    ).toBeDefined()
+    expect(screen.getByTitle("Prévia do som")).toBeDefined()
+    expect(screen.getByTitle("Prévia da vibração")).toBeDefined()
   })
 
   it("includes soundEnabled and vibrateEnabled when clicking Próximo", async () => {

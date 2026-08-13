@@ -28,7 +28,11 @@ import {
 import { useQuery } from "@tanstack/react-query"
 
 import { cn } from "@/lib/utils"
-import { useAuthStore, useGeoStore, useUIStore, useViewStore, useCompareStore } from "@/store"
+import { useAuthStore } from "@/store/auth"
+import { useGeoStore } from "@/store/geo"
+import { useUIStore } from "@/store/ui"
+import { useViewStore } from "@/store/view"
+import { useCompareStore } from "@/store/compare"
 import AddressAutocomplete from "@/components/vitrine/address-autocomplete"
 import { apiGet, type Category } from "@/lib/api"
 import { Button } from "@/components/ui/button"

@@ -45,21 +45,13 @@ import {
 import { apiGet } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { ErrorState } from "@/components/admin/admin-shared"
+import { ErrorState, MetricCard } from "./_shared"
+import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 import type { ErrorTrendsData } from "@/app/api/admin/errors/route"
 
-// ── Tooltip ───────────────────────────────────────────────────────────────
 
-const TOOLTIP_STYLE: React.CSSProperties = {
-  borderRadius: 8,
-  border: "1px solid hsl(var(--border))",
-  background: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
-  padding: "8px 10px",
-}
+// ── Tooltip ───────────────────────────────────────────────────────────────
 
 // ── Colors ────────────────────────────────────────────────────────────────
 
@@ -73,9 +65,9 @@ const TREND_COLORS: Record<string, string> = {
 // ── Period options ───────────────────────────────────────────────────────
 
 const PERIOD_OPTIONS = [
-  { value: "1h",  label: "1h" },
+  { value: "1h", label: "1h" },
   { value: "24h", label: "24h" },
-  { value: "7d",  label: "7d" },
+  { value: "7d", label: "7d" },
   { value: "30d", label: "30d" },
 ]
 
@@ -123,10 +115,10 @@ export function AdminErrorTrends() {
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
+          <h1 className="text-foreground text-xl font-bold tracking-tight">
             Monitoramento de Erros
           </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
+          <p className="text-muted-foreground mt-0.5 text-sm">
             Tendências de erro por endpoint, usuário e versão
           </p>
         </div>
@@ -134,7 +126,7 @@ export function AdminErrorTrends() {
         <div className="flex items-center gap-3">
           {/* Filtro por endpoint */}
           <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
             <input
               type="text"
               value={searchText}
@@ -144,11 +136,11 @@ export function AdminErrorTrends() {
                 debounceRef.current = setTimeout(() => setEndpointFilter(e.target.value), 300)
               }}
               placeholder="Filtrar por endpoint..."
-              className="h-8 w-44 rounded-lg border bg-muted/50 pl-8 pr-3 text-xs outline-none placeholder:text-muted-foreground/60 focus:border-primary/50 focus:bg-background"
+              className="bg-muted/50 placeholder:text-muted-foreground/60 focus:border-primary/50 focus:bg-background h-8 w-44 rounded-lg border pr-3 pl-8 text-xs outline-none"
             />
           </div>
 
-          <div className="inline-flex h-8 items-center rounded-lg border bg-muted/50 p-0.5">
+          <div className="bg-muted/50 inline-flex h-8 items-center rounded-lg border p-0.5">
             {PERIOD_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
@@ -199,12 +191,10 @@ export function AdminErrorTrends() {
 
       {/* ── Timeline Chart ──────────────────────────────────────────── */}
       <section>
-        <div className="rounded-xl border border-border/50 bg-card">
+        <div className="border-border/50 bg-card rounded-xl border">
           <div className="flex items-center gap-2 border-b px-5 py-4">
-            <TrendingUp className="size-4 text-primary" />
-            <h2 className="text-sm font-semibold text-foreground">
-              Timeline de Erros (24h)
-            </h2>
+            <TrendingUp className="text-primary size-4" />
+            <h2 className="text-foreground text-sm font-semibold">Timeline de Erros (24h)</h2>
           </div>
           <div className="p-4">
             <div className="h-[200px]">
@@ -294,13 +284,13 @@ export function AdminErrorTrends() {
             {data.topErrors.slice(0, 6).map((err) => (
               <div
                 key={err.message}
-                className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2"
+                className="bg-muted/30 flex items-center justify-between rounded-lg px-3 py-2"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-foreground" title={err.message}>
+                  <p className="text-foreground truncate text-xs font-medium" title={err.message}>
                     {err.message}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-muted-foreground text-[10px]">
                     {err.type} · {err.users} usuários · HTTP {err.statusCode}
                   </p>
                 </div>
@@ -319,22 +309,21 @@ export function AdminErrorTrends() {
         <MetricCard icon={Users} title="Usuários com Mais Erros">
           <div className="divide-y">
             {data.byUser.slice(0, 6).map((u) => (
-              <div key={u.userId} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
+              <div
+                key={u.userId}
+                className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0"
+              >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-foreground">
-                    {u.userName}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-foreground truncate text-xs font-medium">{u.userName}</p>
+                  <p className="text-muted-foreground text-[10px]">
                     {u.userRole} · {u.uniqueEndpoints} endpoints · {u.lastEndpoint}
                   </p>
                 </div>
                 <div className="ml-3 flex items-center gap-2">
-                  <span className="text-xs font-medium tabular-nums text-red-500">
+                  <span className="text-xs font-medium text-red-500 tabular-nums">
                     {u.errorCount}
                   </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    erros
-                  </span>
+                  <span className="text-muted-foreground text-[10px]">erros</span>
                 </div>
               </div>
             ))}
@@ -345,10 +334,13 @@ export function AdminErrorTrends() {
         <MetricCard icon={Server} title="Erros por Versão">
           <div className="divide-y">
             {data.byVersion.map((v) => (
-              <div key={v.version} className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0">
+              <div
+                key={v.version}
+                className="flex items-center justify-between py-2.5 first:pt-0 last:pb-0"
+              >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-foreground">{v.version}</span>
+                    <span className="text-foreground text-xs font-medium">{v.version}</span>
                     <span
                       className={cn(
                         "rounded-full px-1.5 py-0.5 text-[9px] font-medium",
@@ -362,13 +354,11 @@ export function AdminErrorTrends() {
                       {v.status === "stable" ? "✅" : v.status === "monitoring" ? "🔍" : "🔙"}
                     </span>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-muted-foreground text-[10px]">
                     {v.newErrors} novos · {v.resolvedErrors} resolvidos · top: {v.topEndpoint}
                   </p>
                 </div>
-                <span className="ml-3 text-xs font-medium tabular-nums">
-                  {v.count}
-                </span>
+                <span className="ml-3 text-xs font-medium tabular-nums">{v.count}</span>
               </div>
             ))}
           </div>
@@ -381,7 +371,7 @@ export function AdminErrorTrends() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="h-8 border-b text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                <tr className="text-muted-foreground h-8 border-b text-[10px] font-medium tracking-wider uppercase">
                   <th className="px-2 font-medium">Endpoint</th>
                   <th className="px-2 font-medium">Method</th>
                   <th className="px-2 text-right font-medium">Erros</th>
@@ -394,8 +384,8 @@ export function AdminErrorTrends() {
               </thead>
               <tbody className="divide-y">
                 {topEndpoints.map((e) => (
-                  <tr key={e.path} className="h-9 transition-colors hover:bg-muted/20">
-                    <td className="max-w-[160px] truncate px-2 font-medium text-foreground">
+                  <tr key={e.path} className="hover:bg-muted/20 h-9 transition-colors">
+                    <td className="text-foreground max-w-[160px] truncate px-2 font-medium">
                       {e.path}
                     </td>
                     <td className="px-2">
@@ -411,25 +401,26 @@ export function AdminErrorTrends() {
                       </span>
                     </td>
                     <td className="px-2 text-right font-medium tabular-nums">{e.count}</td>
-                    <td className="px-2 text-right tabular-nums text-red-500">{e.status5xx}</td>
-                    <td className="px-2 text-right tabular-nums text-amber-500">{e.status4xx}</td>
+                    <td className="px-2 text-right text-red-500 tabular-nums">{e.status5xx}</td>
+                    <td className="px-2 text-right text-amber-500 tabular-nums">{e.status4xx}</td>
                     <td className="px-2 text-right tabular-nums">{e.uniqueUsers}</td>
                     <td className="px-2">
                       {e.trend === "up" ? (
                         <span className="inline-flex items-center gap-0.5 text-red-500">
-                          <ArrowUp className="size-3" /> {e.pctChange > 0 ? "+" : ""}{e.pctChange}%
+                          <ArrowUp className="size-3" /> {e.pctChange > 0 ? "+" : ""}
+                          {e.pctChange}%
                         </span>
                       ) : e.trend === "down" ? (
                         <span className="inline-flex items-center gap-0.5 text-emerald-500">
                           <ArrowDown className="size-3" /> {e.pctChange}%
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-0.5 text-muted-foreground">
+                        <span className="text-muted-foreground inline-flex items-center gap-0.5">
                           <Minus className="size-3" />
                         </span>
                       )}
                     </td>
-                    <td className="max-w-[140px] truncate px-2 text-muted-foreground">
+                    <td className="text-muted-foreground max-w-[140px] truncate px-2">
                       {e.lastError}
                     </td>
                   </tr>
@@ -472,9 +463,9 @@ function KpiCard({
   subtitle?: string
 }) {
   return (
-    <div className="rounded-xl border border-border/50 bg-card p-5 transition-colors hover:border-primary/20">
+    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
       <div className="flex items-start justify-between">
-        <span className="flex size-10 items-center justify-center rounded-lg bg-primary/8 text-primary">
+        <span className="bg-primary/8 text-primary flex size-10 items-center justify-center rounded-lg">
           <Icon className="size-5" />
         </span>
         {trend ? (
@@ -486,33 +477,11 @@ function KpiCard({
         ) : null}
       </div>
       <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-      <p className="mt-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      {trendLabel && (
-        <p className="mt-0.5 text-[10px] text-muted-foreground">{trendLabel}</p>
-      )}
-      {subtitle && (
-        <p className="mt-0.5 text-[10px] text-muted-foreground">{subtitle}</p>
-      )}
-    </div>
-  )
-}
-
-function MetricCard({
-  icon: Icon,
-  title,
-  children,
-}: {
-  icon: React.ElementType
-  title: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="rounded-xl border border-border/50 bg-card">
-      <div className="flex items-center gap-2 border-b px-5 py-4">
-        <Icon className="size-4 text-primary" />
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-      </div>
-      <div className="p-4">{children}</div>
+      <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
+        {label}
+      </p>
+      {trendLabel && <p className="text-muted-foreground mt-0.5 text-[10px]">{trendLabel}</p>}
+      {subtitle && <p className="text-muted-foreground mt-0.5 text-[10px]">{subtitle}</p>}
     </div>
   )
 }
@@ -532,7 +501,7 @@ function ErrorsSkeleton() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="rounded-xl border bg-card p-5">
+          <div key={i} className="bg-card rounded-xl border p-5">
             <Skeleton className="size-10 rounded-lg" />
             <Skeleton className="mt-3 h-7 w-20" />
             <Skeleton className="mt-1 h-3 w-16" />
@@ -540,7 +509,7 @@ function ErrorsSkeleton() {
         ))}
       </div>
 
-      <div className="rounded-xl border bg-card">
+      <div className="bg-card rounded-xl border">
         <div className="border-b px-5 py-4">
           <Skeleton className="h-4 w-40" />
         </div>
@@ -551,7 +520,7 @@ function ErrorsSkeleton() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {Array.from({ length: 2 }).map((_, i) => (
-          <div key={i} className="rounded-xl border bg-card">
+          <div key={i} className="bg-card rounded-xl border">
             <div className="border-b px-5 py-4">
               <Skeleton className="h-4 w-40" />
             </div>

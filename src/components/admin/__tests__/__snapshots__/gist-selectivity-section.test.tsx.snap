@@ -1,0 +1,6086 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`GiSTSelectivitySection > renders full section without errors (snapshot) > gist-selectivity-section 1`] = `
+<DocumentFragment>
+  <section
+    aria-label="Seletividade GiST vs Custo"
+    class="space-y-6"
+  >
+    <div
+      class="flex items-center gap-2"
+    >
+      <span
+        data-class="size-5 text-sky-500"
+        data-testid="lucide-icon"
+      />
+      <h2
+        class="text-foreground text-lg font-semibold"
+      >
+        Curva de Seletividade — GiST Index vs Haversine
+      </h2>
+      <input
+        accept=".json"
+        aria-hidden="true"
+        class="hidden"
+        type="file"
+      />
+      <button
+        aria-label="Importar simulação de arquivo JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Importar
+      </button>
+      <button
+        aria-label="Exportar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Exportar
+      </button>
+      <button
+        aria-label="Copiar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Copiar
+      </button>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Selecionar Raio de Busca
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="flex flex-col gap-4"
+        >
+          <div
+            class="flex items-center gap-4"
+          >
+            <span
+              class="text-muted-foreground w-14 text-right text-xs font-medium"
+            >
+              15
+               km
+            </span>
+            <input
+              aria-label="Raio de busca em km"
+              class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-sky-300 via-amber-300 to-red-300"
+              max="50"
+              min="1"
+              type="range"
+              value="15"
+            />
+          </div>
+          <div
+            class="flex flex-wrap gap-2"
+          >
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              5
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+              type="button"
+            >
+              15
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              30
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              50
+               km
+            </button>
+          </div>
+          <div
+            class="border-t pt-3"
+          >
+            <div
+              class="mb-2 flex items-center justify-between"
+            >
+              <span
+                class="text-muted-foreground text-[10px] font-medium"
+              >
+                Densidade: 
+                São Paulo (~10/km²)
+              </span>
+              <span
+                class="text-muted-foreground text-[10px]"
+              >
+                ~
+                7.069
+                 providers na área
+              </span>
+            </div>
+            <div
+              class="flex items-center gap-4"
+            >
+              <span
+                class="text-muted-foreground w-10 text-right text-[10px] font-medium"
+              >
+                10
+                /km²
+              </span>
+              <input
+                aria-label="Densidade de providers por km²"
+                class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-emerald-300 via-sky-300 to-violet-300"
+                max="50"
+                min="2"
+                type="range"
+                value="10"
+              />
+            </div>
+            <div
+              class="mt-1.5 flex gap-2"
+            >
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                Interior
+                 
+                2
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                RJ
+                 
+                8
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+                type="button"
+              >
+                SP
+                 
+                10
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                Metrópole
+                 
+                30
+                /km²
+              </button>
+            </div>
+          </div>
+          <div
+            class="flex items-center gap-3 rounded-lg border bg-blue-50 px-3 py-2 text-xs dark:bg-blue-950/10"
+          >
+            <span
+              class="text-foreground font-semibold"
+            >
+              9
+              %
+            </span>
+            <span
+              class="text-muted-foreground"
+            >
+              dos providers em 
+              <strong>
+                15
+                 km
+              </strong>
+               · 
+              seletividade equivalente a
+               
+              <strong>
+                15 km
+              </strong>
+            </span>
+          </div>
+        </div>
+        <div
+          class="border-t pt-4"
+        >
+          <div
+            class="mb-2 flex items-center justify-between"
+          >
+            <span
+              class="text-muted-foreground text-[10px] font-medium"
+            >
+              Tamanho do banco
+            </span>
+            <span
+              class="text-foreground text-xs font-semibold tabular-nums"
+            >
+              10.000
+               providers
+            </span>
+          </div>
+          <div
+            class="flex items-center gap-4"
+          >
+            <span
+              class="text-muted-foreground w-8 text-right text-[10px] font-medium"
+            >
+              100
+            </span>
+            <input
+              aria-label="Total de providers no banco"
+              class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-violet-300 via-sky-300 to-emerald-300"
+              max="100000"
+              min="100"
+              step="100"
+              type="range"
+              value="10000"
+            />
+            <span
+              class="text-muted-foreground w-10 text-left text-[10px] font-medium"
+            >
+              100k
+            </span>
+          </div>
+          <div
+            class="mt-1.5 flex gap-2"
+          >
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Pequeno
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Médio
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+              type="button"
+            >
+              Grande
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Mega
+            </button>
+          </div>
+          <p
+            class="text-muted-foreground mt-2 text-[10px]"
+          >
+            As curvas se ajustam automaticamente para 
+            <strong>
+              5
+               escalas
+            </strong>
+             
+            (
+             
+            100 → 300 → 1k → 3k → 10k
+             
+            )
+          </p>
+        </div>
+      </div>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Custo por Seletividade (ms)
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="flex items-center justify-end gap-2 px-1 pb-3"
+        >
+          <span
+            class="text-muted-foreground text-[10px]"
+          >
+            Escala: 
+            Log
+          </span>
+          <button
+            aria-checked="true"
+            aria-label="Alternar escala Log/Linear"
+            class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors bg-primary border-primary"
+            role="switch"
+            type="button"
+          >
+            <span
+              class="inline-block size-3.5 rounded-full bg-white shadow-sm transition-transform translate-x-[18px]"
+            />
+          </button>
+        </div>
+        <div
+          class="h-[400px]"
+        >
+          <div
+            data-testid="recharts-container"
+          >
+            <div
+              data-testid="line-chart"
+            >
+              <div
+                data-testid="cartesian-grid"
+              />
+              <div
+                data-datakey="selectivity"
+                data-testid="xaxis"
+              />
+              <div
+                data-testid="yaxis"
+              />
+              <div
+                data-testid="recharts-tooltip"
+              />
+              <div
+                data-testid="legend"
+              />
+              <div
+                data-datakey="pg_100"
+                data-name="PostGIS filtrado (100)"
+                data-stroke="hsl(200, 70%, 50%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_300"
+                data-name="PostGIS filtrado (300)"
+                data-stroke="hsl(230, 70%, 55%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_1000"
+                data-name="PostGIS filtrado (1k)"
+                data-stroke="hsl(260, 70%, 60%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_3000"
+                data-name="PostGIS filtrado (3k)"
+                data-stroke="hsl(290, 70%, 65%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_10000"
+                data-name="PostGIS filtrado (10k)"
+                data-stroke="hsl(320, 70%, 70%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_100"
+                data-name="Haversine (100)"
+                data-stroke="hsl(140, 50%, 45%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_300"
+                data-name="Haversine (300)"
+                data-stroke="hsl(150, 50%, 50%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_1000"
+                data-name="Haversine (1k)"
+                data-stroke="hsl(160, 50%, 55%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_3000"
+                data-name="Haversine (3k)"
+                data-stroke="hsl(170, 50%, 60%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_10000"
+                data-name="Haversine (10k)"
+                data-stroke="hsl(180, 50%, 65%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_100"
+                data-name="PostGIS medido (100)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_1000"
+                data-name="PostGIS medido (1k)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_10000"
+                data-name="PostGIS medido (10k)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-testid="reference-area"
+                data-y1="11"
+                data-y2="15"
+              />
+              <div
+                data-testid="reference-line"
+                data-y="13"
+              />
+              <div
+                data-testid="reference-line"
+                data-y="14.414213562373096"
+              />
+              <div
+                data-testid="reference-line"
+                data-y="11.585786437626904"
+              />
+              <div
+                data-label="2× baseline PostGIS (60ms)"
+                data-testid="reference-line"
+                data-y="60"
+              />
+              <div
+                data-label="15km · 9%"
+                data-testid="reference-line"
+                data-x="10%"
+              />
+              <div
+                data-testid="customized"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Custo Estimado em 15km (seletividade 9%)
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="space-y-3"
+        >
+          <div
+            class="text-muted-foreground grid grid-cols-5 gap-2 text-[10px] font-medium"
+          >
+            <div>
+              Providers
+            </div>
+            <div
+              class="text-right"
+            >
+              PostGIS (ms)
+            </div>
+            <div
+              class="text-right"
+            >
+              Haversine (ms)
+            </div>
+            <div
+              class="text-right"
+            >
+              Razão
+            </div>
+            <div
+              class="text-right"
+            >
+              Regime
+            </div>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              100
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              2.2
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.05
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              44.2
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              300
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              2.6
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.15
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              17.4
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              1k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              4.0
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.50
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              8
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              3k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              7.9
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              1.5
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              5.3
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              10k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              21.8
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              5.0
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              4.4
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="text-muted-foreground flex items-center gap-3 border-t pt-2 text-[10px]"
+          >
+            <span
+              class="rounded-full px-2 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground"
+            >
+              GiST vence em 
+              0
+               de 
+              5
+               escalas
+            </span>
+            <span
+              class="rounded-full px-2 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+            >
+              Haversine vence em 
+              5
+               de 
+              5
+               escalas
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="grid grid-cols-1 gap-6 lg:grid-cols-3"
+    >
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Pontos de Crossover
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="space-y-3"
+          >
+            <table
+              class="w-full text-left text-xs"
+            >
+              <thead>
+                <tr
+                  class="text-muted-foreground border-b"
+                >
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    Providers
+                  </th>
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    Raio equivalente*
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Seletividade
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    10.000
+                  </td>
+                  <td
+                    class="text-muted-foreground py-2 pr-3"
+                  >
+                    &lt; 5 km
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums"
+                  >
+                    1
+                    %
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p
+              class="text-muted-foreground text-[10px] leading-relaxed"
+            >
+              * Raio estimado para densidade de 
+              <strong>
+                10
+                 providers/km²
+              </strong>
+               · Área de cobertura: ~
+              707
+               km²
+            </p>
+          </div>
+        </div>
+      </div>
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Modelo vs Medição (Full Scan)
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="space-y-3"
+          >
+            <table
+              class="w-full text-left text-xs"
+            >
+              <thead>
+                <tr
+                  class="text-muted-foreground border-b"
+                >
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    N
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Modelo (ms)
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Medido (ms)
+                  </th>
+                  <th
+                    class="pb-2 text-right font-medium"
+                  >
+                    Δ
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    100
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    4.2
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    4.2
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    1.000
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    24.0
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    24.0
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    10.000
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    222.0
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    222.0
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Interpretação
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="text-muted-foreground space-y-3 text-xs"
+          >
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Regime GiST (verde):
+              </span>
+               Seletividade baixa (&lt;20%) — o índice filtra a maioria dos providers antes de computar distância. Ideal para buscas de vizinhança (5–15 km).
+            </p>
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Regime Haversine (linhas tracejadas):
+              </span>
+              Seletividade alta (&gt;60%) — o filtro GiST é pouco seletivo e o overhead fixo (~2ms) domina. Haversine puro é mais rápido.
+            </p>
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Crossover:
+              </span>
+               O ponto onde as linhas se cruzam indica a seletividade máxima para qual o GiST é vantajoso. Para 1k providers em SP, o GiST vence até ~15–30 km de raio.
+            </p>
+            <p
+              class="border-t pt-2 text-[10px]"
+            >
+              Modelo: T(N, s) = 
+              2
+              ms +
+               
+              0.022
+              ms × N × s
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</DocumentFragment>
+`;
+
+exports[`GiSTSelectivitySection > renders snapshot at 5 km radius preset > radius-5km 1`] = `
+<DocumentFragment>
+  <section
+    aria-label="Seletividade GiST vs Custo"
+    class="space-y-6"
+  >
+    <div
+      class="flex items-center gap-2"
+    >
+      <span
+        data-class="size-5 text-sky-500"
+        data-testid="lucide-icon"
+      />
+      <h2
+        class="text-foreground text-lg font-semibold"
+      >
+        Curva de Seletividade — GiST Index vs Haversine
+      </h2>
+      <input
+        accept=".json"
+        aria-hidden="true"
+        class="hidden"
+        type="file"
+      />
+      <button
+        aria-label="Importar simulação de arquivo JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Importar
+      </button>
+      <button
+        aria-label="Exportar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Exportar
+      </button>
+      <button
+        aria-label="Copiar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Copiar
+      </button>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Selecionar Raio de Busca
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="flex flex-col gap-4"
+        >
+          <div
+            class="flex items-center gap-4"
+          >
+            <span
+              class="text-muted-foreground w-14 text-right text-xs font-medium"
+            >
+              5
+               km
+            </span>
+            <input
+              aria-label="Raio de busca em km"
+              class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-sky-300 via-amber-300 to-red-300"
+              max="50"
+              min="1"
+              type="range"
+              value="5"
+            />
+          </div>
+          <div
+            class="flex flex-wrap gap-2"
+          >
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+              type="button"
+            >
+              5
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              15
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              30
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              50
+               km
+            </button>
+          </div>
+          <div
+            class="border-t pt-3"
+          >
+            <div
+              class="mb-2 flex items-center justify-between"
+            >
+              <span
+                class="text-muted-foreground text-[10px] font-medium"
+              >
+                Densidade: 
+                São Paulo (~10/km²)
+              </span>
+              <span
+                class="text-muted-foreground text-[10px]"
+              >
+                ~
+                785
+                 providers na área
+              </span>
+            </div>
+            <div
+              class="flex items-center gap-4"
+            >
+              <span
+                class="text-muted-foreground w-10 text-right text-[10px] font-medium"
+              >
+                10
+                /km²
+              </span>
+              <input
+                aria-label="Densidade de providers por km²"
+                class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-emerald-300 via-sky-300 to-violet-300"
+                max="50"
+                min="2"
+                type="range"
+                value="10"
+              />
+            </div>
+            <div
+              class="mt-1.5 flex gap-2"
+            >
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                Interior
+                 
+                2
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                RJ
+                 
+                8
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+                type="button"
+              >
+                SP
+                 
+                10
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                Metrópole
+                 
+                30
+                /km²
+              </button>
+            </div>
+          </div>
+          <div
+            class="flex items-center gap-3 rounded-lg border bg-blue-50 px-3 py-2 text-xs dark:bg-blue-950/10"
+          >
+            <span
+              class="text-foreground font-semibold"
+            >
+              1
+              %
+            </span>
+            <span
+              class="text-muted-foreground"
+            >
+              dos providers em 
+              <strong>
+                5
+                 km
+              </strong>
+               · 
+              seletividade equivalente a
+               
+              <strong>
+                5 km
+              </strong>
+            </span>
+          </div>
+        </div>
+        <div
+          class="border-t pt-4"
+        >
+          <div
+            class="mb-2 flex items-center justify-between"
+          >
+            <span
+              class="text-muted-foreground text-[10px] font-medium"
+            >
+              Tamanho do banco
+            </span>
+            <span
+              class="text-foreground text-xs font-semibold tabular-nums"
+            >
+              10.000
+               providers
+            </span>
+          </div>
+          <div
+            class="flex items-center gap-4"
+          >
+            <span
+              class="text-muted-foreground w-8 text-right text-[10px] font-medium"
+            >
+              100
+            </span>
+            <input
+              aria-label="Total de providers no banco"
+              class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-violet-300 via-sky-300 to-emerald-300"
+              max="100000"
+              min="100"
+              step="100"
+              type="range"
+              value="10000"
+            />
+            <span
+              class="text-muted-foreground w-10 text-left text-[10px] font-medium"
+            >
+              100k
+            </span>
+          </div>
+          <div
+            class="mt-1.5 flex gap-2"
+          >
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Pequeno
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Médio
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+              type="button"
+            >
+              Grande
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Mega
+            </button>
+          </div>
+          <p
+            class="text-muted-foreground mt-2 text-[10px]"
+          >
+            As curvas se ajustam automaticamente para 
+            <strong>
+              5
+               escalas
+            </strong>
+             
+            (
+             
+            100 → 300 → 1k → 3k → 10k
+             
+            )
+          </p>
+        </div>
+      </div>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Custo por Seletividade (ms)
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="flex items-center justify-end gap-2 px-1 pb-3"
+        >
+          <span
+            class="text-muted-foreground text-[10px]"
+          >
+            Escala: 
+            Log
+          </span>
+          <button
+            aria-checked="true"
+            aria-label="Alternar escala Log/Linear"
+            class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors bg-primary border-primary"
+            role="switch"
+            type="button"
+          >
+            <span
+              class="inline-block size-3.5 rounded-full bg-white shadow-sm transition-transform translate-x-[18px]"
+            />
+          </button>
+        </div>
+        <div
+          class="h-[400px]"
+        >
+          <div
+            data-testid="recharts-container"
+          >
+            <div
+              data-testid="line-chart"
+            >
+              <div
+                data-testid="cartesian-grid"
+              />
+              <div
+                data-datakey="selectivity"
+                data-testid="xaxis"
+              />
+              <div
+                data-testid="yaxis"
+              />
+              <div
+                data-testid="recharts-tooltip"
+              />
+              <div
+                data-testid="legend"
+              />
+              <div
+                data-datakey="pg_100"
+                data-name="PostGIS filtrado (100)"
+                data-stroke="hsl(200, 70%, 50%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_300"
+                data-name="PostGIS filtrado (300)"
+                data-stroke="hsl(230, 70%, 55%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_1000"
+                data-name="PostGIS filtrado (1k)"
+                data-stroke="hsl(260, 70%, 60%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_3000"
+                data-name="PostGIS filtrado (3k)"
+                data-stroke="hsl(290, 70%, 65%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_10000"
+                data-name="PostGIS filtrado (10k)"
+                data-stroke="hsl(320, 70%, 70%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_100"
+                data-name="Haversine (100)"
+                data-stroke="hsl(140, 50%, 45%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_300"
+                data-name="Haversine (300)"
+                data-stroke="hsl(150, 50%, 50%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_1000"
+                data-name="Haversine (1k)"
+                data-stroke="hsl(160, 50%, 55%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_3000"
+                data-name="Haversine (3k)"
+                data-stroke="hsl(170, 50%, 60%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_10000"
+                data-name="Haversine (10k)"
+                data-stroke="hsl(180, 50%, 65%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_100"
+                data-name="PostGIS medido (100)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_1000"
+                data-name="PostGIS medido (1k)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_10000"
+                data-name="PostGIS medido (10k)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-testid="reference-area"
+                data-y1="11"
+                data-y2="15"
+              />
+              <div
+                data-testid="reference-line"
+                data-y="13"
+              />
+              <div
+                data-testid="reference-line"
+                data-y="14.414213562373096"
+              />
+              <div
+                data-testid="reference-line"
+                data-y="11.585786437626904"
+              />
+              <div
+                data-label="2× baseline PostGIS (60ms)"
+                data-testid="reference-line"
+                data-y="60"
+              />
+              <div
+                data-label="5km · 1%"
+                data-testid="reference-line"
+                data-x="0%"
+              />
+              <div
+                data-testid="customized"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Custo Estimado em 5km (seletividade 1%)
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="space-y-3"
+        >
+          <div
+            class="text-muted-foreground grid grid-cols-5 gap-2 text-[10px] font-medium"
+          >
+            <div>
+              Providers
+            </div>
+            <div
+              class="text-right"
+            >
+              PostGIS (ms)
+            </div>
+            <div
+              class="text-right"
+            >
+              Haversine (ms)
+            </div>
+            <div
+              class="text-right"
+            >
+              Razão
+            </div>
+            <div
+              class="text-right"
+            >
+              Regime
+            </div>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              100
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              2.0
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.05
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              40.6
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              300
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              2.1
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.15
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              13.8
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              1k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              2.2
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.50
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              4.5
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              3k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              2.7
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              1.5
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              1.8
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-emerald-200 bg-emerald-50 dark:border-emerald-900/30 dark:bg-emerald-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              10k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              4.2
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              5.0
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              0.8
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-emerald-600 dark:text-emerald-400"
+            >
+              ✓ GiST
+            </span>
+          </div>
+          <div
+            class="text-muted-foreground flex items-center gap-3 border-t pt-2 text-[10px]"
+          >
+            <span
+              class="rounded-full px-2 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground"
+            >
+              GiST vence em 
+              1
+               de 
+              5
+               escalas
+            </span>
+            <span
+              class="rounded-full px-2 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+            >
+              Haversine vence em 
+              4
+               de 
+              5
+               escalas
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="grid grid-cols-1 gap-6 lg:grid-cols-3"
+    >
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Pontos de Crossover
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="space-y-3"
+          >
+            <table
+              class="w-full text-left text-xs"
+            >
+              <thead>
+                <tr
+                  class="text-muted-foreground border-b"
+                >
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    Providers
+                  </th>
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    Raio equivalente*
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Seletividade
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    10.000
+                  </td>
+                  <td
+                    class="text-muted-foreground py-2 pr-3"
+                  >
+                    &lt; 5 km
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums"
+                  >
+                    1
+                    %
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p
+              class="text-muted-foreground text-[10px] leading-relaxed"
+            >
+              * Raio estimado para densidade de 
+              <strong>
+                10
+                 providers/km²
+              </strong>
+               · Área de cobertura: ~
+              79
+               km²
+            </p>
+          </div>
+        </div>
+      </div>
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Modelo vs Medição (Full Scan)
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="space-y-3"
+          >
+            <table
+              class="w-full text-left text-xs"
+            >
+              <thead>
+                <tr
+                  class="text-muted-foreground border-b"
+                >
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    N
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Modelo (ms)
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Medido (ms)
+                  </th>
+                  <th
+                    class="pb-2 text-right font-medium"
+                  >
+                    Δ
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    100
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    4.2
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    4.2
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    1.000
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    24.0
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    24.0
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    10.000
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    222.0
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    222.0
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Interpretação
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="text-muted-foreground space-y-3 text-xs"
+          >
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Regime GiST (verde):
+              </span>
+               Seletividade baixa (&lt;20%) — o índice filtra a maioria dos providers antes de computar distância. Ideal para buscas de vizinhança (5–15 km).
+            </p>
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Regime Haversine (linhas tracejadas):
+              </span>
+              Seletividade alta (&gt;60%) — o filtro GiST é pouco seletivo e o overhead fixo (~2ms) domina. Haversine puro é mais rápido.
+            </p>
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Crossover:
+              </span>
+               O ponto onde as linhas se cruzam indica a seletividade máxima para qual o GiST é vantajoso. Para 1k providers em SP, o GiST vence até ~15–30 km de raio.
+            </p>
+            <p
+              class="border-t pt-2 text-[10px]"
+            >
+              Modelo: T(N, s) = 
+              2
+              ms +
+               
+              0.022
+              ms × N × s
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</DocumentFragment>
+`;
+
+exports[`GiSTSelectivitySection > renders snapshot at 15 km radius preset > radius-15km 1`] = `
+<DocumentFragment>
+  <section
+    aria-label="Seletividade GiST vs Custo"
+    class="space-y-6"
+  >
+    <div
+      class="flex items-center gap-2"
+    >
+      <span
+        data-class="size-5 text-sky-500"
+        data-testid="lucide-icon"
+      />
+      <h2
+        class="text-foreground text-lg font-semibold"
+      >
+        Curva de Seletividade — GiST Index vs Haversine
+      </h2>
+      <input
+        accept=".json"
+        aria-hidden="true"
+        class="hidden"
+        type="file"
+      />
+      <button
+        aria-label="Importar simulação de arquivo JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Importar
+      </button>
+      <button
+        aria-label="Exportar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Exportar
+      </button>
+      <button
+        aria-label="Copiar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Copiar
+      </button>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Selecionar Raio de Busca
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="flex flex-col gap-4"
+        >
+          <div
+            class="flex items-center gap-4"
+          >
+            <span
+              class="text-muted-foreground w-14 text-right text-xs font-medium"
+            >
+              15
+               km
+            </span>
+            <input
+              aria-label="Raio de busca em km"
+              class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-sky-300 via-amber-300 to-red-300"
+              max="50"
+              min="1"
+              type="range"
+              value="15"
+            />
+          </div>
+          <div
+            class="flex flex-wrap gap-2"
+          >
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              5
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+              type="button"
+            >
+              15
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              30
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              50
+               km
+            </button>
+          </div>
+          <div
+            class="border-t pt-3"
+          >
+            <div
+              class="mb-2 flex items-center justify-between"
+            >
+              <span
+                class="text-muted-foreground text-[10px] font-medium"
+              >
+                Densidade: 
+                São Paulo (~10/km²)
+              </span>
+              <span
+                class="text-muted-foreground text-[10px]"
+              >
+                ~
+                7.069
+                 providers na área
+              </span>
+            </div>
+            <div
+              class="flex items-center gap-4"
+            >
+              <span
+                class="text-muted-foreground w-10 text-right text-[10px] font-medium"
+              >
+                10
+                /km²
+              </span>
+              <input
+                aria-label="Densidade de providers por km²"
+                class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-emerald-300 via-sky-300 to-violet-300"
+                max="50"
+                min="2"
+                type="range"
+                value="10"
+              />
+            </div>
+            <div
+              class="mt-1.5 flex gap-2"
+            >
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                Interior
+                 
+                2
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                RJ
+                 
+                8
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+                type="button"
+              >
+                SP
+                 
+                10
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                Metrópole
+                 
+                30
+                /km²
+              </button>
+            </div>
+          </div>
+          <div
+            class="flex items-center gap-3 rounded-lg border bg-blue-50 px-3 py-2 text-xs dark:bg-blue-950/10"
+          >
+            <span
+              class="text-foreground font-semibold"
+            >
+              9
+              %
+            </span>
+            <span
+              class="text-muted-foreground"
+            >
+              dos providers em 
+              <strong>
+                15
+                 km
+              </strong>
+               · 
+              seletividade equivalente a
+               
+              <strong>
+                15 km
+              </strong>
+            </span>
+          </div>
+        </div>
+        <div
+          class="border-t pt-4"
+        >
+          <div
+            class="mb-2 flex items-center justify-between"
+          >
+            <span
+              class="text-muted-foreground text-[10px] font-medium"
+            >
+              Tamanho do banco
+            </span>
+            <span
+              class="text-foreground text-xs font-semibold tabular-nums"
+            >
+              10.000
+               providers
+            </span>
+          </div>
+          <div
+            class="flex items-center gap-4"
+          >
+            <span
+              class="text-muted-foreground w-8 text-right text-[10px] font-medium"
+            >
+              100
+            </span>
+            <input
+              aria-label="Total de providers no banco"
+              class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-violet-300 via-sky-300 to-emerald-300"
+              max="100000"
+              min="100"
+              step="100"
+              type="range"
+              value="10000"
+            />
+            <span
+              class="text-muted-foreground w-10 text-left text-[10px] font-medium"
+            >
+              100k
+            </span>
+          </div>
+          <div
+            class="mt-1.5 flex gap-2"
+          >
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Pequeno
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Médio
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+              type="button"
+            >
+              Grande
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Mega
+            </button>
+          </div>
+          <p
+            class="text-muted-foreground mt-2 text-[10px]"
+          >
+            As curvas se ajustam automaticamente para 
+            <strong>
+              5
+               escalas
+            </strong>
+             
+            (
+             
+            100 → 300 → 1k → 3k → 10k
+             
+            )
+          </p>
+        </div>
+      </div>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Custo por Seletividade (ms)
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="flex items-center justify-end gap-2 px-1 pb-3"
+        >
+          <span
+            class="text-muted-foreground text-[10px]"
+          >
+            Escala: 
+            Log
+          </span>
+          <button
+            aria-checked="true"
+            aria-label="Alternar escala Log/Linear"
+            class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors bg-primary border-primary"
+            role="switch"
+            type="button"
+          >
+            <span
+              class="inline-block size-3.5 rounded-full bg-white shadow-sm transition-transform translate-x-[18px]"
+            />
+          </button>
+        </div>
+        <div
+          class="h-[400px]"
+        >
+          <div
+            data-testid="recharts-container"
+          >
+            <div
+              data-testid="line-chart"
+            >
+              <div
+                data-testid="cartesian-grid"
+              />
+              <div
+                data-datakey="selectivity"
+                data-testid="xaxis"
+              />
+              <div
+                data-testid="yaxis"
+              />
+              <div
+                data-testid="recharts-tooltip"
+              />
+              <div
+                data-testid="legend"
+              />
+              <div
+                data-datakey="pg_100"
+                data-name="PostGIS filtrado (100)"
+                data-stroke="hsl(200, 70%, 50%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_300"
+                data-name="PostGIS filtrado (300)"
+                data-stroke="hsl(230, 70%, 55%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_1000"
+                data-name="PostGIS filtrado (1k)"
+                data-stroke="hsl(260, 70%, 60%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_3000"
+                data-name="PostGIS filtrado (3k)"
+                data-stroke="hsl(290, 70%, 65%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_10000"
+                data-name="PostGIS filtrado (10k)"
+                data-stroke="hsl(320, 70%, 70%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_100"
+                data-name="Haversine (100)"
+                data-stroke="hsl(140, 50%, 45%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_300"
+                data-name="Haversine (300)"
+                data-stroke="hsl(150, 50%, 50%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_1000"
+                data-name="Haversine (1k)"
+                data-stroke="hsl(160, 50%, 55%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_3000"
+                data-name="Haversine (3k)"
+                data-stroke="hsl(170, 50%, 60%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_10000"
+                data-name="Haversine (10k)"
+                data-stroke="hsl(180, 50%, 65%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_100"
+                data-name="PostGIS medido (100)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_1000"
+                data-name="PostGIS medido (1k)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_10000"
+                data-name="PostGIS medido (10k)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-testid="reference-area"
+                data-y1="11"
+                data-y2="15"
+              />
+              <div
+                data-testid="reference-line"
+                data-y="13"
+              />
+              <div
+                data-testid="reference-line"
+                data-y="14.414213562373096"
+              />
+              <div
+                data-testid="reference-line"
+                data-y="11.585786437626904"
+              />
+              <div
+                data-label="2× baseline PostGIS (60ms)"
+                data-testid="reference-line"
+                data-y="60"
+              />
+              <div
+                data-label="15km · 9%"
+                data-testid="reference-line"
+                data-x="10%"
+              />
+              <div
+                data-testid="customized"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Custo Estimado em 15km (seletividade 9%)
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="space-y-3"
+        >
+          <div
+            class="text-muted-foreground grid grid-cols-5 gap-2 text-[10px] font-medium"
+          >
+            <div>
+              Providers
+            </div>
+            <div
+              class="text-right"
+            >
+              PostGIS (ms)
+            </div>
+            <div
+              class="text-right"
+            >
+              Haversine (ms)
+            </div>
+            <div
+              class="text-right"
+            >
+              Razão
+            </div>
+            <div
+              class="text-right"
+            >
+              Regime
+            </div>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              100
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              2.2
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.05
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              44.2
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              300
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              2.6
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.15
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              17.4
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              1k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              4.0
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.50
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              8
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              3k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              7.9
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              1.5
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              5.3
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              10k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              21.8
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              5.0
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              4.4
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="text-muted-foreground flex items-center gap-3 border-t pt-2 text-[10px]"
+          >
+            <span
+              class="rounded-full px-2 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground"
+            >
+              GiST vence em 
+              0
+               de 
+              5
+               escalas
+            </span>
+            <span
+              class="rounded-full px-2 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+            >
+              Haversine vence em 
+              5
+               de 
+              5
+               escalas
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="grid grid-cols-1 gap-6 lg:grid-cols-3"
+    >
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Pontos de Crossover
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="space-y-3"
+          >
+            <table
+              class="w-full text-left text-xs"
+            >
+              <thead>
+                <tr
+                  class="text-muted-foreground border-b"
+                >
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    Providers
+                  </th>
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    Raio equivalente*
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Seletividade
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    10.000
+                  </td>
+                  <td
+                    class="text-muted-foreground py-2 pr-3"
+                  >
+                    &lt; 5 km
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums"
+                  >
+                    1
+                    %
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p
+              class="text-muted-foreground text-[10px] leading-relaxed"
+            >
+              * Raio estimado para densidade de 
+              <strong>
+                10
+                 providers/km²
+              </strong>
+               · Área de cobertura: ~
+              707
+               km²
+            </p>
+          </div>
+        </div>
+      </div>
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Modelo vs Medição (Full Scan)
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="space-y-3"
+          >
+            <table
+              class="w-full text-left text-xs"
+            >
+              <thead>
+                <tr
+                  class="text-muted-foreground border-b"
+                >
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    N
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Modelo (ms)
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Medido (ms)
+                  </th>
+                  <th
+                    class="pb-2 text-right font-medium"
+                  >
+                    Δ
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    100
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    4.2
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    4.2
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    1.000
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    24.0
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    24.0
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    10.000
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    222.0
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    222.0
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Interpretação
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="text-muted-foreground space-y-3 text-xs"
+          >
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Regime GiST (verde):
+              </span>
+               Seletividade baixa (&lt;20%) — o índice filtra a maioria dos providers antes de computar distância. Ideal para buscas de vizinhança (5–15 km).
+            </p>
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Regime Haversine (linhas tracejadas):
+              </span>
+              Seletividade alta (&gt;60%) — o filtro GiST é pouco seletivo e o overhead fixo (~2ms) domina. Haversine puro é mais rápido.
+            </p>
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Crossover:
+              </span>
+               O ponto onde as linhas se cruzam indica a seletividade máxima para qual o GiST é vantajoso. Para 1k providers em SP, o GiST vence até ~15–30 km de raio.
+            </p>
+            <p
+              class="border-t pt-2 text-[10px]"
+            >
+              Modelo: T(N, s) = 
+              2
+              ms +
+               
+              0.022
+              ms × N × s
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</DocumentFragment>
+`;
+
+exports[`GiSTSelectivitySection > renders snapshot at 30 km radius preset > radius-30km 1`] = `
+<DocumentFragment>
+  <section
+    aria-label="Seletividade GiST vs Custo"
+    class="space-y-6"
+  >
+    <div
+      class="flex items-center gap-2"
+    >
+      <span
+        data-class="size-5 text-sky-500"
+        data-testid="lucide-icon"
+      />
+      <h2
+        class="text-foreground text-lg font-semibold"
+      >
+        Curva de Seletividade — GiST Index vs Haversine
+      </h2>
+      <input
+        accept=".json"
+        aria-hidden="true"
+        class="hidden"
+        type="file"
+      />
+      <button
+        aria-label="Importar simulação de arquivo JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Importar
+      </button>
+      <button
+        aria-label="Exportar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Exportar
+      </button>
+      <button
+        aria-label="Copiar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Copiar
+      </button>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Selecionar Raio de Busca
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="flex flex-col gap-4"
+        >
+          <div
+            class="flex items-center gap-4"
+          >
+            <span
+              class="text-muted-foreground w-14 text-right text-xs font-medium"
+            >
+              30
+               km
+            </span>
+            <input
+              aria-label="Raio de busca em km"
+              class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-sky-300 via-amber-300 to-red-300"
+              max="50"
+              min="1"
+              type="range"
+              value="30"
+            />
+          </div>
+          <div
+            class="flex flex-wrap gap-2"
+          >
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              5
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              15
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+              type="button"
+            >
+              30
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              50
+               km
+            </button>
+          </div>
+          <div
+            class="border-t pt-3"
+          >
+            <div
+              class="mb-2 flex items-center justify-between"
+            >
+              <span
+                class="text-muted-foreground text-[10px] font-medium"
+              >
+                Densidade: 
+                São Paulo (~10/km²)
+              </span>
+              <span
+                class="text-muted-foreground text-[10px]"
+              >
+                ~
+                28.274
+                 providers na área
+              </span>
+            </div>
+            <div
+              class="flex items-center gap-4"
+            >
+              <span
+                class="text-muted-foreground w-10 text-right text-[10px] font-medium"
+              >
+                10
+                /km²
+              </span>
+              <input
+                aria-label="Densidade de providers por km²"
+                class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-emerald-300 via-sky-300 to-violet-300"
+                max="50"
+                min="2"
+                type="range"
+                value="10"
+              />
+            </div>
+            <div
+              class="mt-1.5 flex gap-2"
+            >
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                Interior
+                 
+                2
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                RJ
+                 
+                8
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+                type="button"
+              >
+                SP
+                 
+                10
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                Metrópole
+                 
+                30
+                /km²
+              </button>
+            </div>
+          </div>
+          <div
+            class="flex items-center gap-3 rounded-lg border bg-blue-50 px-3 py-2 text-xs dark:bg-blue-950/10"
+          >
+            <span
+              class="text-foreground font-semibold"
+            >
+              36
+              %
+            </span>
+            <span
+              class="text-muted-foreground"
+            >
+              dos providers em 
+              <strong>
+                30
+                 km
+              </strong>
+               · 
+              seletividade equivalente a
+               
+              <strong>
+                30 km
+              </strong>
+            </span>
+          </div>
+        </div>
+        <div
+          class="border-t pt-4"
+        >
+          <div
+            class="mb-2 flex items-center justify-between"
+          >
+            <span
+              class="text-muted-foreground text-[10px] font-medium"
+            >
+              Tamanho do banco
+            </span>
+            <span
+              class="text-foreground text-xs font-semibold tabular-nums"
+            >
+              10.000
+               providers
+            </span>
+          </div>
+          <div
+            class="flex items-center gap-4"
+          >
+            <span
+              class="text-muted-foreground w-8 text-right text-[10px] font-medium"
+            >
+              100
+            </span>
+            <input
+              aria-label="Total de providers no banco"
+              class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-violet-300 via-sky-300 to-emerald-300"
+              max="100000"
+              min="100"
+              step="100"
+              type="range"
+              value="10000"
+            />
+            <span
+              class="text-muted-foreground w-10 text-left text-[10px] font-medium"
+            >
+              100k
+            </span>
+          </div>
+          <div
+            class="mt-1.5 flex gap-2"
+          >
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Pequeno
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Médio
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+              type="button"
+            >
+              Grande
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Mega
+            </button>
+          </div>
+          <p
+            class="text-muted-foreground mt-2 text-[10px]"
+          >
+            As curvas se ajustam automaticamente para 
+            <strong>
+              5
+               escalas
+            </strong>
+             
+            (
+             
+            100 → 300 → 1k → 3k → 10k
+             
+            )
+          </p>
+        </div>
+      </div>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Custo por Seletividade (ms)
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="flex items-center justify-end gap-2 px-1 pb-3"
+        >
+          <span
+            class="text-muted-foreground text-[10px]"
+          >
+            Escala: 
+            Log
+          </span>
+          <button
+            aria-checked="true"
+            aria-label="Alternar escala Log/Linear"
+            class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors bg-primary border-primary"
+            role="switch"
+            type="button"
+          >
+            <span
+              class="inline-block size-3.5 rounded-full bg-white shadow-sm transition-transform translate-x-[18px]"
+            />
+          </button>
+        </div>
+        <div
+          class="h-[400px]"
+        >
+          <div
+            data-testid="recharts-container"
+          >
+            <div
+              data-testid="line-chart"
+            >
+              <div
+                data-testid="cartesian-grid"
+              />
+              <div
+                data-datakey="selectivity"
+                data-testid="xaxis"
+              />
+              <div
+                data-testid="yaxis"
+              />
+              <div
+                data-testid="recharts-tooltip"
+              />
+              <div
+                data-testid="legend"
+              />
+              <div
+                data-datakey="pg_100"
+                data-name="PostGIS filtrado (100)"
+                data-stroke="hsl(200, 70%, 50%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_300"
+                data-name="PostGIS filtrado (300)"
+                data-stroke="hsl(230, 70%, 55%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_1000"
+                data-name="PostGIS filtrado (1k)"
+                data-stroke="hsl(260, 70%, 60%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_3000"
+                data-name="PostGIS filtrado (3k)"
+                data-stroke="hsl(290, 70%, 65%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_10000"
+                data-name="PostGIS filtrado (10k)"
+                data-stroke="hsl(320, 70%, 70%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_100"
+                data-name="Haversine (100)"
+                data-stroke="hsl(140, 50%, 45%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_300"
+                data-name="Haversine (300)"
+                data-stroke="hsl(150, 50%, 50%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_1000"
+                data-name="Haversine (1k)"
+                data-stroke="hsl(160, 50%, 55%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_3000"
+                data-name="Haversine (3k)"
+                data-stroke="hsl(170, 50%, 60%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_10000"
+                data-name="Haversine (10k)"
+                data-stroke="hsl(180, 50%, 65%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_100"
+                data-name="PostGIS medido (100)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_1000"
+                data-name="PostGIS medido (1k)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_10000"
+                data-name="PostGIS medido (10k)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-testid="reference-area"
+                data-y1="11"
+                data-y2="15"
+              />
+              <div
+                data-testid="reference-line"
+                data-y="13"
+              />
+              <div
+                data-testid="reference-line"
+                data-y="14.414213562373096"
+              />
+              <div
+                data-testid="reference-line"
+                data-y="11.585786437626904"
+              />
+              <div
+                data-label="2× baseline PostGIS (60ms)"
+                data-testid="reference-line"
+                data-y="60"
+              />
+              <div
+                data-label="30km · 36%"
+                data-testid="reference-line"
+                data-x="35%"
+              />
+              <div
+                data-testid="customized"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Custo Estimado em 30km (seletividade 36%)
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="space-y-3"
+        >
+          <div
+            class="text-muted-foreground grid grid-cols-5 gap-2 text-[10px] font-medium"
+          >
+            <div>
+              Providers
+            </div>
+            <div
+              class="text-right"
+            >
+              PostGIS (ms)
+            </div>
+            <div
+              class="text-right"
+            >
+              Haversine (ms)
+            </div>
+            <div
+              class="text-right"
+            >
+              Razão
+            </div>
+            <div
+              class="text-right"
+            >
+              Regime
+            </div>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              100
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              2.8
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.05
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              56.1
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              300
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              4.4
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.15
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              29.3
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              1k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              9.9
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.50
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              19.9
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              3k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              25.8
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              1.5
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              17.2
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              10k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              81.2
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              5.0
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              16.3
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="text-muted-foreground flex items-center gap-3 border-t pt-2 text-[10px]"
+          >
+            <span
+              class="rounded-full px-2 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground"
+            >
+              GiST vence em 
+              0
+               de 
+              5
+               escalas
+            </span>
+            <span
+              class="rounded-full px-2 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+            >
+              Haversine vence em 
+              5
+               de 
+              5
+               escalas
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="grid grid-cols-1 gap-6 lg:grid-cols-3"
+    >
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Pontos de Crossover
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="space-y-3"
+          >
+            <table
+              class="w-full text-left text-xs"
+            >
+              <thead>
+                <tr
+                  class="text-muted-foreground border-b"
+                >
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    Providers
+                  </th>
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    Raio equivalente*
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Seletividade
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    10.000
+                  </td>
+                  <td
+                    class="text-muted-foreground py-2 pr-3"
+                  >
+                    &lt; 5 km
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums"
+                  >
+                    1
+                    %
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p
+              class="text-muted-foreground text-[10px] leading-relaxed"
+            >
+              * Raio estimado para densidade de 
+              <strong>
+                10
+                 providers/km²
+              </strong>
+               · Área de cobertura: ~
+              2.827
+               km²
+            </p>
+          </div>
+        </div>
+      </div>
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Modelo vs Medição (Full Scan)
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="space-y-3"
+          >
+            <table
+              class="w-full text-left text-xs"
+            >
+              <thead>
+                <tr
+                  class="text-muted-foreground border-b"
+                >
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    N
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Modelo (ms)
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Medido (ms)
+                  </th>
+                  <th
+                    class="pb-2 text-right font-medium"
+                  >
+                    Δ
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    100
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    4.2
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    4.2
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    1.000
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    24.0
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    24.0
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    10.000
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    222.0
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    222.0
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Interpretação
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="text-muted-foreground space-y-3 text-xs"
+          >
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Regime GiST (verde):
+              </span>
+               Seletividade baixa (&lt;20%) — o índice filtra a maioria dos providers antes de computar distância. Ideal para buscas de vizinhança (5–15 km).
+            </p>
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Regime Haversine (linhas tracejadas):
+              </span>
+              Seletividade alta (&gt;60%) — o filtro GiST é pouco seletivo e o overhead fixo (~2ms) domina. Haversine puro é mais rápido.
+            </p>
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Crossover:
+              </span>
+               O ponto onde as linhas se cruzam indica a seletividade máxima para qual o GiST é vantajoso. Para 1k providers em SP, o GiST vence até ~15–30 km de raio.
+            </p>
+            <p
+              class="border-t pt-2 text-[10px]"
+            >
+              Modelo: T(N, s) = 
+              2
+              ms +
+               
+              0.022
+              ms × N × s
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</DocumentFragment>
+`;
+
+exports[`GiSTSelectivitySection > renders snapshot at 50 km radius preset > radius-50km 1`] = `
+<DocumentFragment>
+  <section
+    aria-label="Seletividade GiST vs Custo"
+    class="space-y-6"
+  >
+    <div
+      class="flex items-center gap-2"
+    >
+      <span
+        data-class="size-5 text-sky-500"
+        data-testid="lucide-icon"
+      />
+      <h2
+        class="text-foreground text-lg font-semibold"
+      >
+        Curva de Seletividade — GiST Index vs Haversine
+      </h2>
+      <input
+        accept=".json"
+        aria-hidden="true"
+        class="hidden"
+        type="file"
+      />
+      <button
+        aria-label="Importar simulação de arquivo JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Importar
+      </button>
+      <button
+        aria-label="Exportar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Exportar
+      </button>
+      <button
+        aria-label="Copiar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Copiar
+      </button>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Selecionar Raio de Busca
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="flex flex-col gap-4"
+        >
+          <div
+            class="flex items-center gap-4"
+          >
+            <span
+              class="text-muted-foreground w-14 text-right text-xs font-medium"
+            >
+              50
+               km
+            </span>
+            <input
+              aria-label="Raio de busca em km"
+              class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-sky-300 via-amber-300 to-red-300"
+              max="50"
+              min="1"
+              type="range"
+              value="50"
+            />
+          </div>
+          <div
+            class="flex flex-wrap gap-2"
+          >
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              5
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              15
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              30
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+              type="button"
+            >
+              50
+               km
+            </button>
+          </div>
+          <div
+            class="border-t pt-3"
+          >
+            <div
+              class="mb-2 flex items-center justify-between"
+            >
+              <span
+                class="text-muted-foreground text-[10px] font-medium"
+              >
+                Densidade: 
+                São Paulo (~10/km²)
+              </span>
+              <span
+                class="text-muted-foreground text-[10px]"
+              >
+                ~
+                78.540
+                 providers na área
+              </span>
+            </div>
+            <div
+              class="flex items-center gap-4"
+            >
+              <span
+                class="text-muted-foreground w-10 text-right text-[10px] font-medium"
+              >
+                10
+                /km²
+              </span>
+              <input
+                aria-label="Densidade de providers por km²"
+                class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-emerald-300 via-sky-300 to-violet-300"
+                max="50"
+                min="2"
+                type="range"
+                value="10"
+              />
+            </div>
+            <div
+              class="mt-1.5 flex gap-2"
+            >
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                Interior
+                 
+                2
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                RJ
+                 
+                8
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+                type="button"
+              >
+                SP
+                 
+                10
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                Metrópole
+                 
+                30
+                /km²
+              </button>
+            </div>
+          </div>
+          <div
+            class="flex items-center gap-3 rounded-lg border bg-blue-50 px-3 py-2 text-xs dark:bg-blue-950/10"
+          >
+            <span
+              class="text-foreground font-semibold"
+            >
+              100
+              %
+            </span>
+            <span
+              class="text-muted-foreground"
+            >
+              dos providers em 
+              <strong>
+                50
+                 km
+              </strong>
+               · 
+              seletividade equivalente a
+               
+              <strong>
+                50 km
+              </strong>
+            </span>
+          </div>
+        </div>
+        <div
+          class="border-t pt-4"
+        >
+          <div
+            class="mb-2 flex items-center justify-between"
+          >
+            <span
+              class="text-muted-foreground text-[10px] font-medium"
+            >
+              Tamanho do banco
+            </span>
+            <span
+              class="text-foreground text-xs font-semibold tabular-nums"
+            >
+              10.000
+               providers
+            </span>
+          </div>
+          <div
+            class="flex items-center gap-4"
+          >
+            <span
+              class="text-muted-foreground w-8 text-right text-[10px] font-medium"
+            >
+              100
+            </span>
+            <input
+              aria-label="Total de providers no banco"
+              class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-violet-300 via-sky-300 to-emerald-300"
+              max="100000"
+              min="100"
+              step="100"
+              type="range"
+              value="10000"
+            />
+            <span
+              class="text-muted-foreground w-10 text-left text-[10px] font-medium"
+            >
+              100k
+            </span>
+          </div>
+          <div
+            class="mt-1.5 flex gap-2"
+          >
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Pequeno
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Médio
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+              type="button"
+            >
+              Grande
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Mega
+            </button>
+          </div>
+          <p
+            class="text-muted-foreground mt-2 text-[10px]"
+          >
+            As curvas se ajustam automaticamente para 
+            <strong>
+              5
+               escalas
+            </strong>
+             
+            (
+             
+            100 → 300 → 1k → 3k → 10k
+             
+            )
+          </p>
+        </div>
+      </div>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Custo por Seletividade (ms)
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="flex items-center justify-end gap-2 px-1 pb-3"
+        >
+          <span
+            class="text-muted-foreground text-[10px]"
+          >
+            Escala: 
+            Log
+          </span>
+          <button
+            aria-checked="true"
+            aria-label="Alternar escala Log/Linear"
+            class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors bg-primary border-primary"
+            role="switch"
+            type="button"
+          >
+            <span
+              class="inline-block size-3.5 rounded-full bg-white shadow-sm transition-transform translate-x-[18px]"
+            />
+          </button>
+        </div>
+        <div
+          class="h-[400px]"
+        >
+          <div
+            data-testid="recharts-container"
+          >
+            <div
+              data-testid="line-chart"
+            >
+              <div
+                data-testid="cartesian-grid"
+              />
+              <div
+                data-datakey="selectivity"
+                data-testid="xaxis"
+              />
+              <div
+                data-testid="yaxis"
+              />
+              <div
+                data-testid="recharts-tooltip"
+              />
+              <div
+                data-testid="legend"
+              />
+              <div
+                data-datakey="pg_100"
+                data-name="PostGIS filtrado (100)"
+                data-stroke="hsl(200, 70%, 50%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_300"
+                data-name="PostGIS filtrado (300)"
+                data-stroke="hsl(230, 70%, 55%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_1000"
+                data-name="PostGIS filtrado (1k)"
+                data-stroke="hsl(260, 70%, 60%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_3000"
+                data-name="PostGIS filtrado (3k)"
+                data-stroke="hsl(290, 70%, 65%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_10000"
+                data-name="PostGIS filtrado (10k)"
+                data-stroke="hsl(320, 70%, 70%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_100"
+                data-name="Haversine (100)"
+                data-stroke="hsl(140, 50%, 45%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_300"
+                data-name="Haversine (300)"
+                data-stroke="hsl(150, 50%, 50%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_1000"
+                data-name="Haversine (1k)"
+                data-stroke="hsl(160, 50%, 55%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_3000"
+                data-name="Haversine (3k)"
+                data-stroke="hsl(170, 50%, 60%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_10000"
+                data-name="Haversine (10k)"
+                data-stroke="hsl(180, 50%, 65%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_100"
+                data-name="PostGIS medido (100)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_1000"
+                data-name="PostGIS medido (1k)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_10000"
+                data-name="PostGIS medido (10k)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-testid="reference-area"
+                data-y1="11"
+                data-y2="15"
+              />
+              <div
+                data-testid="reference-line"
+                data-y="13"
+              />
+              <div
+                data-testid="reference-line"
+                data-y="14.414213562373096"
+              />
+              <div
+                data-testid="reference-line"
+                data-y="11.585786437626904"
+              />
+              <div
+                data-label="2× baseline PostGIS (60ms)"
+                data-testid="reference-line"
+                data-y="60"
+              />
+              <div
+                data-label="50km · 100%"
+                data-testid="reference-line"
+                data-x="100%"
+              />
+              <div
+                data-testid="customized"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Custo Estimado em 50km (seletividade 100%)
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="space-y-3"
+        >
+          <div
+            class="text-muted-foreground grid grid-cols-5 gap-2 text-[10px] font-medium"
+          >
+            <div>
+              Providers
+            </div>
+            <div
+              class="text-right"
+            >
+              PostGIS (ms)
+            </div>
+            <div
+              class="text-right"
+            >
+              Haversine (ms)
+            </div>
+            <div
+              class="text-right"
+            >
+              Razão
+            </div>
+            <div
+              class="text-right"
+            >
+              Regime
+            </div>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              100
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              4.2
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.05
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              84.4
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              300
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              8.6
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.15
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              57.6
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              1k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              24.0
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.50
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              48.2
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              3k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              68.0
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              1.5
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              45.5
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              10k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              222.0
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              5.0
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              44.6
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="text-muted-foreground flex items-center gap-3 border-t pt-2 text-[10px]"
+          >
+            <span
+              class="rounded-full px-2 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground"
+            >
+              GiST vence em 
+              0
+               de 
+              5
+               escalas
+            </span>
+            <span
+              class="rounded-full px-2 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+            >
+              Haversine vence em 
+              5
+               de 
+              5
+               escalas
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="grid grid-cols-1 gap-6 lg:grid-cols-3"
+    >
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Pontos de Crossover
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="space-y-3"
+          >
+            <table
+              class="w-full text-left text-xs"
+            >
+              <thead>
+                <tr
+                  class="text-muted-foreground border-b"
+                >
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    Providers
+                  </th>
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    Raio equivalente*
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Seletividade
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    10.000
+                  </td>
+                  <td
+                    class="text-muted-foreground py-2 pr-3"
+                  >
+                    &lt; 5 km
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums"
+                  >
+                    1
+                    %
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p
+              class="text-muted-foreground text-[10px] leading-relaxed"
+            >
+              * Raio estimado para densidade de 
+              <strong>
+                10
+                 providers/km²
+              </strong>
+               · Área de cobertura: ~
+              7.854
+               km²
+            </p>
+          </div>
+        </div>
+      </div>
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Modelo vs Medição (Full Scan)
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="space-y-3"
+          >
+            <table
+              class="w-full text-left text-xs"
+            >
+              <thead>
+                <tr
+                  class="text-muted-foreground border-b"
+                >
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    N
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Modelo (ms)
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Medido (ms)
+                  </th>
+                  <th
+                    class="pb-2 text-right font-medium"
+                  >
+                    Δ
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    100
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    4.2
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    4.2
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    1.000
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    24.0
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    24.0
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    10.000
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    222.0
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    222.0
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Interpretação
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="text-muted-foreground space-y-3 text-xs"
+          >
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Regime GiST (verde):
+              </span>
+               Seletividade baixa (&lt;20%) — o índice filtra a maioria dos providers antes de computar distância. Ideal para buscas de vizinhança (5–15 km).
+            </p>
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Regime Haversine (linhas tracejadas):
+              </span>
+              Seletividade alta (&gt;60%) — o filtro GiST é pouco seletivo e o overhead fixo (~2ms) domina. Haversine puro é mais rápido.
+            </p>
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Crossover:
+              </span>
+               O ponto onde as linhas se cruzam indica a seletividade máxima para qual o GiST é vantajoso. Para 1k providers em SP, o GiST vence até ~15–30 km de raio.
+            </p>
+            <p
+              class="border-t pt-2 text-[10px]"
+            >
+              Modelo: T(N, s) = 
+              2
+              ms +
+               
+              0.022
+              ms × N × s
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</DocumentFragment>
+`;
+
+exports[`GiSTSelectivitySection > renders without errors when history is null (no P95 band) > no-history 1`] = `
+<DocumentFragment>
+  <section
+    aria-label="Seletividade GiST vs Custo"
+    class="space-y-6"
+  >
+    <div
+      class="flex items-center gap-2"
+    >
+      <span
+        data-class="size-5 text-sky-500"
+        data-testid="lucide-icon"
+      />
+      <h2
+        class="text-foreground text-lg font-semibold"
+      >
+        Curva de Seletividade — GiST Index vs Haversine
+      </h2>
+      <input
+        accept=".json"
+        aria-hidden="true"
+        class="hidden"
+        type="file"
+      />
+      <button
+        aria-label="Importar simulação de arquivo JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Importar
+      </button>
+      <button
+        aria-label="Exportar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Exportar
+      </button>
+      <button
+        aria-label="Copiar simulação como JSON"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        Copiar
+      </button>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Selecionar Raio de Busca
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="flex flex-col gap-4"
+        >
+          <div
+            class="flex items-center gap-4"
+          >
+            <span
+              class="text-muted-foreground w-14 text-right text-xs font-medium"
+            >
+              15
+               km
+            </span>
+            <input
+              aria-label="Raio de busca em km"
+              class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-sky-300 via-amber-300 to-red-300"
+              max="50"
+              min="1"
+              type="range"
+              value="15"
+            />
+          </div>
+          <div
+            class="flex flex-wrap gap-2"
+          >
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              5
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+              type="button"
+            >
+              15
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              30
+               km
+            </button>
+            <button
+              class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              50
+               km
+            </button>
+          </div>
+          <div
+            class="border-t pt-3"
+          >
+            <div
+              class="mb-2 flex items-center justify-between"
+            >
+              <span
+                class="text-muted-foreground text-[10px] font-medium"
+              >
+                Densidade: 
+                São Paulo (~10/km²)
+              </span>
+              <span
+                class="text-muted-foreground text-[10px]"
+              >
+                ~
+                7.069
+                 providers na área
+              </span>
+            </div>
+            <div
+              class="flex items-center gap-4"
+            >
+              <span
+                class="text-muted-foreground w-10 text-right text-[10px] font-medium"
+              >
+                10
+                /km²
+              </span>
+              <input
+                aria-label="Densidade de providers por km²"
+                class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-emerald-300 via-sky-300 to-violet-300"
+                max="50"
+                min="2"
+                type="range"
+                value="10"
+              />
+            </div>
+            <div
+              class="mt-1.5 flex gap-2"
+            >
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                Interior
+                 
+                2
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                RJ
+                 
+                8
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+                type="button"
+              >
+                SP
+                 
+                10
+                /km²
+              </button>
+              <button
+                class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+                type="button"
+              >
+                Metrópole
+                 
+                30
+                /km²
+              </button>
+            </div>
+          </div>
+          <div
+            class="flex items-center gap-3 rounded-lg border bg-blue-50 px-3 py-2 text-xs dark:bg-blue-950/10"
+          >
+            <span
+              class="text-foreground font-semibold"
+            >
+              9
+              %
+            </span>
+            <span
+              class="text-muted-foreground"
+            >
+              dos providers em 
+              <strong>
+                15
+                 km
+              </strong>
+               · 
+              seletividade equivalente a
+               
+              <strong>
+                15 km
+              </strong>
+            </span>
+          </div>
+        </div>
+        <div
+          class="border-t pt-4"
+        >
+          <div
+            class="mb-2 flex items-center justify-between"
+          >
+            <span
+              class="text-muted-foreground text-[10px] font-medium"
+            >
+              Tamanho do banco
+            </span>
+            <span
+              class="text-foreground text-xs font-semibold tabular-nums"
+            >
+              10.000
+               providers
+            </span>
+          </div>
+          <div
+            class="flex items-center gap-4"
+          >
+            <span
+              class="text-muted-foreground w-8 text-right text-[10px] font-medium"
+            >
+              100
+            </span>
+            <input
+              aria-label="Total de providers no banco"
+              class="accent-primary h-2 w-full cursor-pointer appearance-none rounded-full bg-gradient-to-r from-violet-300 via-sky-300 to-emerald-300"
+              max="100000"
+              min="100"
+              step="100"
+              type="range"
+              value="10000"
+            />
+            <span
+              class="text-muted-foreground w-10 text-left text-[10px] font-medium"
+            >
+              100k
+            </span>
+          </div>
+          <div
+            class="mt-1.5 flex gap-2"
+          >
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Pequeno
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Médio
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-primary text-primary-foreground shadow-sm"
+              type="button"
+            >
+              Grande
+            </button>
+            <button
+              class="rounded-lg px-2.5 py-1 text-[10px] font-medium transition-all bg-muted text-muted-foreground hover:bg-muted/70"
+              type="button"
+            >
+              Mega
+            </button>
+          </div>
+          <p
+            class="text-muted-foreground mt-2 text-[10px]"
+          >
+            As curvas se ajustam automaticamente para 
+            <strong>
+              5
+               escalas
+            </strong>
+             
+            (
+             
+            100 → 300 → 1k → 3k → 10k
+             
+            )
+          </p>
+        </div>
+      </div>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Custo por Seletividade (ms)
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="flex items-center justify-end gap-2 px-1 pb-3"
+        >
+          <span
+            class="text-muted-foreground text-[10px]"
+          >
+            Escala: 
+            Log
+          </span>
+          <button
+            aria-checked="true"
+            aria-label="Alternar escala Log/Linear"
+            class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors bg-primary border-primary"
+            role="switch"
+            type="button"
+          >
+            <span
+              class="inline-block size-3.5 rounded-full bg-white shadow-sm transition-transform translate-x-[18px]"
+            />
+          </button>
+        </div>
+        <div
+          class="h-[400px]"
+        >
+          <div
+            data-testid="recharts-container"
+          >
+            <div
+              data-testid="line-chart"
+            >
+              <div
+                data-testid="cartesian-grid"
+              />
+              <div
+                data-datakey="selectivity"
+                data-testid="xaxis"
+              />
+              <div
+                data-testid="yaxis"
+              />
+              <div
+                data-testid="recharts-tooltip"
+              />
+              <div
+                data-testid="legend"
+              />
+              <div
+                data-datakey="pg_100"
+                data-name="PostGIS filtrado (100)"
+                data-stroke="hsl(200, 70%, 50%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_300"
+                data-name="PostGIS filtrado (300)"
+                data-stroke="hsl(230, 70%, 55%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_1000"
+                data-name="PostGIS filtrado (1k)"
+                data-stroke="hsl(260, 70%, 60%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_3000"
+                data-name="PostGIS filtrado (3k)"
+                data-stroke="hsl(290, 70%, 65%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="pg_10000"
+                data-name="PostGIS filtrado (10k)"
+                data-stroke="hsl(320, 70%, 70%)"
+                data-strokewidth="2"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_100"
+                data-name="Haversine (100)"
+                data-stroke="hsl(140, 50%, 45%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_300"
+                data-name="Haversine (300)"
+                data-stroke="hsl(150, 50%, 50%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_1000"
+                data-name="Haversine (1k)"
+                data-stroke="hsl(160, 50%, 55%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_3000"
+                data-name="Haversine (3k)"
+                data-stroke="hsl(170, 50%, 60%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="hav_10000"
+                data-name="Haversine (10k)"
+                data-stroke="hsl(180, 50%, 65%)"
+                data-strokewidth="1.5"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_100"
+                data-name="PostGIS medido (100)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_1000"
+                data-name="PostGIS medido (1k)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-datakey="bench_pg_10000"
+                data-name="PostGIS medido (10k)"
+                data-stroke="hsl(0, 0%, 50%)"
+                data-strokewidth="1"
+                data-testid="chart-line"
+              />
+              <div
+                data-label="2× baseline PostGIS (60ms)"
+                data-testid="reference-line"
+                data-y="60"
+              />
+              <div
+                data-label="15km · 9%"
+                data-testid="reference-line"
+                data-x="10%"
+              />
+              <div
+                data-testid="customized"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="border-border/50 bg-card rounded-xl border"
+    >
+      <div
+        class="flex items-center gap-2 border-b px-5 py-4"
+      >
+        <span
+          data-class="text-primary size-4"
+          data-testid="lucide-icon"
+        />
+        <h2
+          class="text-foreground text-sm font-semibold"
+        >
+          Custo Estimado em 15km (seletividade 9%)
+        </h2>
+      </div>
+      <div
+        class="p-4"
+      >
+        <div
+          class="space-y-3"
+        >
+          <div
+            class="text-muted-foreground grid grid-cols-5 gap-2 text-[10px] font-medium"
+          >
+            <div>
+              Providers
+            </div>
+            <div
+              class="text-right"
+            >
+              PostGIS (ms)
+            </div>
+            <div
+              class="text-right"
+            >
+              Haversine (ms)
+            </div>
+            <div
+              class="text-right"
+            >
+              Razão
+            </div>
+            <div
+              class="text-right"
+            >
+              Regime
+            </div>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              100
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              2.2
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.05
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              44.2
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              300
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              2.6
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.15
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              17.4
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              1k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              4.0
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              0.50
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              8
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              3k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              7.9
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              1.5
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              5.3
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="grid grid-cols-5 gap-2 rounded-md border px-3 py-2 text-xs border-amber-200 bg-amber-50 dark:border-amber-900/30 dark:bg-amber-950/10"
+          >
+            <span
+              class="font-medium tabular-nums"
+            >
+              10k
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              21.8
+            </span>
+            <span
+              class="text-right font-mono text-[11px] tabular-nums"
+            >
+              5.0
+            </span>
+            <span
+              class="text-right font-medium tabular-nums"
+            >
+              4.4
+              :1
+            </span>
+            <span
+              class="text-right text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              ✓ Haversine
+            </span>
+          </div>
+          <div
+            class="text-muted-foreground flex items-center gap-3 border-t pt-2 text-[10px]"
+          >
+            <span
+              class="rounded-full px-2 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground"
+            >
+              GiST vence em 
+              0
+               de 
+              5
+               escalas
+            </span>
+            <span
+              class="rounded-full px-2 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+            >
+              Haversine vence em 
+              5
+               de 
+              5
+               escalas
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+      class="grid grid-cols-1 gap-6 lg:grid-cols-3"
+    >
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Pontos de Crossover
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="space-y-3"
+          >
+            <table
+              class="w-full text-left text-xs"
+            >
+              <thead>
+                <tr
+                  class="text-muted-foreground border-b"
+                >
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    Providers
+                  </th>
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    Raio equivalente*
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Seletividade
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    10.000
+                  </td>
+                  <td
+                    class="text-muted-foreground py-2 pr-3"
+                  >
+                    &lt; 5 km
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums"
+                  >
+                    1
+                    %
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p
+              class="text-muted-foreground text-[10px] leading-relaxed"
+            >
+              * Raio estimado para densidade de 
+              <strong>
+                10
+                 providers/km²
+              </strong>
+               · Área de cobertura: ~
+              707
+               km²
+            </p>
+          </div>
+        </div>
+      </div>
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Modelo vs Medição (Full Scan)
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="space-y-3"
+          >
+            <table
+              class="w-full text-left text-xs"
+            >
+              <thead>
+                <tr
+                  class="text-muted-foreground border-b"
+                >
+                  <th
+                    class="pr-3 pb-2 font-medium"
+                  >
+                    N
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Modelo (ms)
+                  </th>
+                  <th
+                    class="pr-3 pb-2 text-right font-medium"
+                  >
+                    Medido (ms)
+                  </th>
+                  <th
+                    class="pb-2 text-right font-medium"
+                  >
+                    Δ
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    100
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    4.2
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    4.2
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    1.000
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    24.0
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    24.0
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+                <tr
+                  class="border-b last:border-0"
+                >
+                  <td
+                    class="py-2 pr-3 font-medium tabular-nums"
+                  >
+                    10.000
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    222.0
+                  </td>
+                  <td
+                    class="py-2 pr-3 text-right tabular-nums"
+                  >
+                    222.0
+                  </td>
+                  <td
+                    class="py-2 text-right font-medium tabular-nums text-muted-foreground"
+                  >
+                    0.0
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Interpretação
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="text-muted-foreground space-y-3 text-xs"
+          >
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Regime GiST (verde):
+              </span>
+               Seletividade baixa (&lt;20%) — o índice filtra a maioria dos providers antes de computar distância. Ideal para buscas de vizinhança (5–15 km).
+            </p>
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Regime Haversine (linhas tracejadas):
+              </span>
+              Seletividade alta (&gt;60%) — o filtro GiST é pouco seletivo e o overhead fixo (~2ms) domina. Haversine puro é mais rápido.
+            </p>
+            <p>
+              <span
+                class="text-foreground font-medium"
+              >
+                Crossover:
+              </span>
+               O ponto onde as linhas se cruzam indica a seletividade máxima para qual o GiST é vantajoso. Para 1k providers em SP, o GiST vence até ~15–30 km de raio.
+            </p>
+            <p
+              class="border-t pt-2 text-[10px]"
+            >
+              Modelo: T(N, s) = 
+              2
+              ms +
+               
+              0.022
+              ms × N × s
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</DocumentFragment>
+`;

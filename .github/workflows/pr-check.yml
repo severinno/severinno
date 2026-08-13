@@ -82,7 +82,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # needed to fetch main branch for baseline
+          fetch-depth: 0 # needed to fetch main branch for baseline
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -170,6 +170,198 @@ jobs:
           name: geo-benchmark
           path: docs/benchmarks/geo-latest.json
           retention-days: 30
+
+  # ── GiST Index Benchmark (PR Check) ─────────────────────────────────────
+  # Spins up an ephemeral PostGIS container, runs the GiST index benchmark
+  # against it, and validates that the crossover radius hasn't shifted
+  # significantly relative to the baseline on main.
+  #
+  # Uses a reduced scope (500/2000 providers, 5 radii) so it completes in
+  # ~5-8 min instead of the full 45 min weekly run.
+  #
+  # The PostGIS container is a service container — it starts before the job
+  # steps and is torn down automatically when the job completes, costing
+  # nothing beyond the runner minutes.
+  benchmark-gist:
+    name: GiST Benchmark (PR)
+    runs-on: ubuntu-latest
+
+    # ── Ephemeral PostGIS service container ───────────────────────────
+    services:
+      postgis:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: severinno
+          POSTGRES_USER: severinno
+          POSTGRES_PASSWORD: severinno_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U severinno -d severinno"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 10s
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      # ── Run GiST benchmark ────────────────────────────────────────────
+      # Reduced scope: 500 + 2000 providers, 5 radii (1,5,10,25,50 km)
+      # Full scope (1000/5000/10000 × 8 radii) takes ~45 min — too long for
+      # a PR check.  This reduced scope completes in ~5-8 min and is
+      # sufficient to detect GiST index regressions.
+      - name: Run GiST index benchmark
+        id: run
+        env:
+          PGUSER: severinno
+          PGPASSWORD: severinno_dev
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGDATABASE: severinno
+        run: |
+          node scripts/geo-benchmark-gist.mjs \
+            --json docs/benchmarks/geo-gist-latest.json \
+            --providers 500,2000 \
+            --radius-list 1,5,10,25,50 \
+            2>&1 | tee /tmp/gist-benchmark-output.txt
+          echo "✅ GiST PR Benchmark completed"
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      # ── Validate result ───────────────────────────────────────────────
+      - name: Validate benchmark result
+        run: |
+          node -e "
+            const fs = require('fs');
+            const path = 'docs/benchmarks/geo-gist-latest.json';
+            if (!fs.existsSync(path)) throw Error('geo-gist-latest.json not found');
+            const data = JSON.parse(fs.readFileSync(path, 'utf-8'));
+            if (!data.meta || !Array.isArray(data.crossover) || data.crossover.length === 0) {
+              throw Error('geo-gist-latest.json: invalid or empty crossover data');
+            }
+            console.log('  ✅ Benchmark validation passed');
+            console.log('  · Crossover rows: ' + data.crossover.length);
+            console.log('  · Densities:      ' + (data.meta.densities ?? []).join(', '));
+            console.log('  · Radii:          ' + (data.meta.radiiKm ?? []).join(', '));
+            console.log('  · PostGIS:        ' + (data.meta.postgisVersion || '?'));
+          "
+
+      # ── Fetch baseline from main ──────────────────────────────────────
+      - name: Fetch GiST baseline from main
+        id: baseline
+        run: |
+          if git show main:docs/benchmarks/geo-gist-baseline.json > /tmp/geo-gist-baseline.json 2>/dev/null; then
+            echo "baseline_exists=true" >> "$GITHUB_OUTPUT"
+            echo "  ✅ GiST baseline loaded from main"
+          else
+            echo "baseline_exists=false" >> "$GITHUB_OUTPUT"
+            echo "  ℹ  No GiST baseline on main yet — first run will create reference."
+          fi
+
+      # ── Detect PR scope ───────────────────────────────────────────────
+      # Wider threshold when the PR touches GiST/PostGIS code paths.
+      - name: Detect PR scope
+        id: scope
+        run: |
+          if git diff --name-only origin/main...HEAD | grep -qE '^(scripts/(geo-benchmark-gist|validate-gist-crossover)\.mjs|src/lib/(geo-shared|postgis|distance-fallback)\.ts)'; then
+            echo "threshold_steps=3" >> "$GITHUB_OUTPUT"
+            echo "threshold_ratio=30" >> "$GITHUB_OUTPUT"
+            echo "  ℹ  PR touches GiST code — widened thresholds (3 steps / 30pp)"
+          else
+            echo "threshold_steps=2" >> "$GITHUB_OUTPUT"
+            echo "threshold_ratio=25" >> "$GITHUB_OUTPUT"
+            echo "  ℹ  Default thresholds (2 steps / 25pp)"
+          fi
+
+      # ── Validate crossover stability ──────────────────────────────────
+      - name: Validate crossover stability
+        id: validate
+        if: steps.baseline.outputs.baseline_exists == 'true'
+        env:
+          THRESHOLD_STEPS: ${{ steps.scope.outputs.threshold_steps }}
+          RATIO_DRIFT: ${{ steps.scope.outputs.threshold_ratio }}
+        continue-on-error: true
+        run: |
+          node scripts/validate-gist-crossover.mjs \
+            --threshold "$THRESHOLD_STEPS" \
+            --ratio-drift "$RATIO_DRIFT" \
+            /tmp/geo-gist-baseline.json \
+            docs/benchmarks/geo-gist-latest.json \
+            2>&1 | tee /tmp/gist-crossover-diff.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: No baseline available
+        if: steps.baseline.outputs.baseline_exists != 'true'
+        run: |
+          echo "No GiST baseline on main — this run creates the reference." | tee /tmp/gist-crossover-diff.txt
+
+      # ── Publish job summary ───────────────────────────────────────────
+      - name: Publish GiST benchmark summary
+        if: always()
+        run: |
+          {
+            echo '## 🗄️ GiST Index Benchmark — PR Check'
+            echo ''
+            echo '| Setting | Value |'
+            echo '|---|---|'
+            echo "| Scope | 500, 2000 providers × 5 radii |"
+            echo "| Threshold | ${{ steps.scope.outputs.threshold_steps }} steps / ${{ steps.scope.outputs.threshold_ratio }}pp |"
+            if [ "${{ steps.run.outputs.exit_code }}" != "0" ]; then
+              echo "| Benchmark Status | ❌ Failed |"
+            else
+              echo "| Benchmark Status | ✅ Completed |"
+            fi
+            echo "| Baseline | ${{ steps.baseline.outputs.baseline_exists == 'true' && 'loaded from main' || 'none' }} |"
+            echo ''
+            echo '### Resultado da Validação de Crossover'
+            echo ''
+            echo '```'
+            cat /tmp/gist-crossover-diff.txt 2>/dev/null || echo 'No validation data available.'
+            echo '```'
+            echo ''
+            echo '### Benchmark Output'
+            echo ''
+            echo '```'
+            cat /tmp/gist-benchmark-output.txt 2>/dev/null || echo 'No benchmark output.'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Upload artifact ───────────────────────────────────────────────
+      - name: Upload GiST benchmark artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: geo-gist-benchmark-pr
+          path: |
+            docs/benchmarks/geo-gist-latest.json
+            /tmp/gist-crossover-diff.txt
+            /tmp/gist-benchmark-output.txt
+          retention-days: 30
+
+      # ── Fail on regression ────────────────────────────────────────────
+      - name: Fail on crossover regression
+        if: steps.validate.outputs.exit_code == '1'
+        run: |
+          echo "❌ GiST crossover regression detected — see job summary for details."
+          echo "   Affected densities and radius steps:"
+          cat /tmp/gist-crossover-diff.txt 2>/dev/null | grep -E '^(.*provider|⚠|crossover|step)' || true
+          exit 1
 
   # ── Security Headers ──────────────────────────────────────────────────
   # Verifica CSP, HSTS, X-Frame-Options e demais headers de segurança

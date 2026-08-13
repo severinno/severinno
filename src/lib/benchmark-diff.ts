@@ -101,7 +101,10 @@ export interface DiffOptions {
 // Import from .mjs implementation
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+import { createRequire } from "node:module"
+
+const require = createRequire(import.meta.url)
+
 const impl = require("./benchmark-diff.mjs") as {
   pct: (a: number, b: number) => number
   arrow: (pctChange: number) => string

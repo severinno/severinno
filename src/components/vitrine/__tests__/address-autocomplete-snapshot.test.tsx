@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import React from "react"
-import { render, screen, fireEvent, act } from "@testing-library/react"
+import { render, screen, fireEvent, act } from "@/__tests__/test-utils"
 import AddressAutocomplete from "../address-autocomplete"
 
 import {
@@ -94,12 +94,10 @@ describe("AddressAutocomplete — snapshot", () => {
   })
 
   it("reverse geocode error: shows raw coords input, clear button visible, no dropdown, GPS icon after GPS locate fails", async () => {
-    mockGeoStore.setFromGPS = vi
-      .fn()
-      .mockImplementation(async () => {
-        mockGeoStore.lat = -23.5505
-        mockGeoStore.lng = -46.6333
-      })
+    mockGeoStore.setFromGPS = vi.fn().mockImplementation(async () => {
+      mockGeoStore.lat = -23.5505
+      mockGeoStore.lng = -46.6333
+    })
     mockFetchReverseGeo.mockRejectedValue(new Error("Reverse geocode failed"))
 
     const { asFragment } = render(<AddressAutocomplete />)

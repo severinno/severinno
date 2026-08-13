@@ -13,28 +13,14 @@
 
 import * as React from "react"
 import dynamic from "next/dynamic"
-import {
-  List,
-  MapIcon,
-  MapPin,
-  SlidersHorizontal,
-  SearchX,
-  X,
-  Loader2,
-} from "lucide-react"
+import { List, MapIcon, MapPin, SlidersHorizontal, SearchX, X, Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import type { Category, ProviderCard as ProviderCardType } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import {
   Pagination,
   PaginationContent,
@@ -43,18 +29,15 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination"
 
-import Filters, {
-  DEFAULT_FILTERS,
-  type FiltersState,
-} from "./filters"
+import Filters, { DEFAULT_FILTERS, type FiltersState } from "./filters"
 import ProviderCard, { ProviderCardSkeleton } from "./provider-card"
 
 // MapLibre is client-only — dynamic import with ssr:false to be safe
 const ProvidersMap = dynamic(() => import("./providers-map"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-[400px] items-center justify-center rounded-xl border bg-muted">
-      <Loader2 className="size-6 animate-spin text-muted-foreground" />
+    <div className="bg-muted flex h-[400px] items-center justify-center rounded-xl border">
+      <Loader2 className="text-muted-foreground size-6 animate-spin" />
     </div>
   ),
 })
@@ -73,6 +56,8 @@ export type VitrineResultsProps = {
   favorites: Set<string>
   userLat?: number | null
   userLng?: number | null
+  /** Whether the user has shared their location — used to disable distance sort. */
+  hasGeo?: boolean
   onQuote?: (id: string) => void
   onBook?: (id: string, serviceId?: string) => void
   onView?: (id: string) => void
@@ -99,6 +84,7 @@ export default function VitrineResults({
   favorites,
   userLat,
   userLng,
+  hasGeo,
   onQuote,
   onBook,
   onView,
@@ -138,21 +124,19 @@ export default function VitrineResults({
   return (
     <section
       id={resultsAnchorId}
-      className={cn(
-        "mx-auto w-full max-w-7xl scroll-mt-32 px-4 py-8 sm:px-6 lg:px-8",
-        className,
-      )}
+      className={cn("mx-auto w-full max-w-7xl scroll-mt-32 px-4 py-8 sm:px-6 lg:px-8", className)}
       aria-label="Resultados da busca"
     >
       <div className="lg:grid lg:grid-cols-[260px_1fr] lg:gap-8">
         {/* Sidebar (desktop) */}
         <aside className="hidden lg:block">
-          <div className="sticky top-32 max-h-[calc(100vh-9rem)] overflow-y-auto rounded-xl border bg-card p-4 shadow-sm">
+          <div className="bg-card sticky top-32 max-h-[calc(100vh-9rem)] overflow-y-auto rounded-xl border p-4 shadow-sm">
             <Filters
               value={filters}
               onChange={onFiltersChange}
               categories={categories}
               total={total}
+              hasGeo={hasGeo}
             />
           </div>
         </aside>
@@ -175,7 +159,7 @@ export default function VitrineResults({
                     </>
                   )}
                 </h2>
-                <p className="mt-0.5 text-xs text-muted-foreground">
+                <p className="text-muted-foreground mt-0.5 text-xs">
                   Exibindo {showingFrom}–{showingTo} de {total}
                 </p>
               </div>
@@ -205,13 +189,11 @@ export default function VitrineResults({
                           onFiltersChange(v)
                         }}
                         categories={categories}
+                        hasGeo={hasGeo}
                       />
                     </div>
                     <div className="border-t p-3">
-                      <Button
-                        className="w-full"
-                        onClick={() => setMobileFiltersOpen(false)}
-                      >
+                      <Button className="w-full" onClick={() => setMobileFiltersOpen(false)}>
                         Ver {total} resultados
                       </Button>
                     </div>
@@ -219,16 +201,16 @@ export default function VitrineResults({
                 </Sheet>
 
                 {/* View toggle (segmented control) + sort indicator */}
-                <span className="hidden items-center gap-1 rounded-full border bg-card px-2.5 py-1 text-[11px] text-muted-foreground sm:inline-flex">
+                <span className="bg-card text-muted-foreground hidden items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] sm:inline-flex">
                   Ordenado por:{" "}
-                  <span className="font-medium text-foreground">
+                  <span className="text-foreground font-medium">
                     {filters.sort === "distance" ? "Mais próximos" : "Melhor avaliação"}
                   </span>
                 </span>
                 <div
                   role="tablist"
                   aria-label="Visualização"
-                  className="inline-flex items-center rounded-lg border bg-card p-0.5 shadow-sm"
+                  className="bg-card inline-flex items-center rounded-lg border p-0.5 shadow-sm"
                 >
                   <ViewToggle
                     active={view === "list"}
@@ -237,11 +219,7 @@ export default function VitrineResults({
                   >
                     <List className="size-4" />
                   </ViewToggle>
-                  <ViewToggle
-                    active={view === "map"}
-                    onClick={() => setView("map")}
-                    label="Mapa"
-                  >
+                  <ViewToggle active={view === "map"} onClick={() => setView("map")} label="Mapa">
                     <MapIcon className="size-4" />
                   </ViewToggle>
                 </div>
@@ -270,7 +248,7 @@ export default function VitrineResults({
                   <button
                     type="button"
                     onClick={() => onFiltersChange({ ...DEFAULT_FILTERS, q: filters.q })}
-                    className="text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
+                    className="text-muted-foreground hover:text-foreground text-xs underline-offset-2 transition-colors hover:underline"
                   >
                     Limpar tudo
                   </button>
@@ -282,7 +260,11 @@ export default function VitrineResults({
           </div>
 
           {/* Radius expanded notice — mostra quando o raio foi automaticamente expandido */}
-          {expandedRadius !== undefined && expandedRadius !== null && !isLoading && !error && providers.length > 0 ? (
+          {expandedRadius !== undefined &&
+          expandedRadius !== null &&
+          !isLoading &&
+          !error &&
+          providers.length > 0 ? (
             <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
               <MapPin className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
               <div className="min-w-0 flex-1">
@@ -292,7 +274,8 @@ export default function VitrineResults({
                       Nenhum prestador encontrado num raio de até 100 km
                     </p>
                     <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                      Mostrando todos os prestadores disponíveis. Aumente o raio de busca ou ajuste sua localização para ver resultados mais próximos.
+                      Mostrando todos os prestadores disponíveis. Aumente o raio de busca ou ajuste
+                      sua localização para ver resultados mais próximos.
                     </p>
                   </>
                 ) : (
@@ -301,7 +284,8 @@ export default function VitrineResults({
                       Nenhum prestador encontrado no raio de {filters.radius} km
                     </p>
                     <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                      Busca expandida automaticamente para <strong>{expandedRadius} km</strong>. Aumente o raio na barra de filtros para refinar ou ajuste sua localização.
+                      Busca expandida automaticamente para <strong>{expandedRadius} km</strong>.
+                      Aumente o raio na barra de filtros para refinar ou ajuste sua localização.
                     </p>
                   </>
                 )}
@@ -312,9 +296,7 @@ export default function VitrineResults({
           {/* Content */}
           <div className="mt-4">
             {error ? (
-              <ErrorState
-                onRetry={() => onFiltersChange({ ...filters })}
-              />
+              <ErrorState onRetry={() => onFiltersChange({ ...filters })} />
             ) : isLoading ? (
               <ResultsGrid>
                 {Array.from({ length: 6 }).map((_, i) => (
@@ -324,9 +306,7 @@ export default function VitrineResults({
             ) : providers.length === 0 ? (
               <EmptyState
                 hasFilters={activeChips.length > 0}
-                onClear={() =>
-                  onFiltersChange({ ...DEFAULT_FILTERS, q: filters.q })
-                }
+                onClear={() => onFiltersChange({ ...DEFAULT_FILTERS, q: filters.q })}
               />
             ) : view === "list" ? (
               <ResultsGrid>
@@ -359,7 +339,7 @@ export default function VitrineResults({
 
             {/* Subtle refetching indicator */}
             {isFetching && !isLoading && providers.length > 0 ? (
-              <div className="mt-3 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+              <div className="text-muted-foreground mt-3 flex items-center justify-center gap-2 text-xs">
                 <Loader2 className="size-3.5 animate-spin" />
                 Atualizando…
               </div>
@@ -394,9 +374,7 @@ export default function VitrineResults({
                       if (page < totalPages) onPageChange?.(page + 1)
                     }}
                     aria-disabled={page >= totalPages}
-                    className={cn(
-                      page >= totalPages && "pointer-events-none opacity-50",
-                    )}
+                    className={cn(page >= totalPages && "pointer-events-none opacity-50")}
                   />
                 </PaginationItem>
               </PaginationContent>
@@ -413,11 +391,7 @@ export default function VitrineResults({
 // ---------------------------------------------------------------------------
 
 function ResultsGrid({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-      {children}
-    </div>
-  )
+  return <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">{children}</div>
 }
 
 function ViewToggle({
@@ -439,7 +413,7 @@ function ViewToggle({
       onClick={onClick}
       title={label}
       className={cn(
-        "flex h-9 items-center gap-1.5 rounded-md px-3.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "focus-visible:ring-ring flex h-9 items-center gap-1.5 rounded-md px-3.5 text-xs font-medium transition-colors outline-none focus-visible:ring-2",
         active
           ? "bg-primary text-primary-foreground shadow-sm"
           : "text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -479,7 +453,7 @@ function MapView({
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_400px]">
       {/* Map */}
-      <div className="order-1 h-[500px] overflow-hidden rounded-xl lg:order-2 lg:h-[calc(100vh-12rem)] lg:sticky lg:top-32">
+      <div className="order-1 h-[500px] overflow-hidden rounded-xl lg:sticky lg:top-32 lg:order-2 lg:h-[calc(100vh-12rem)]">
         <ProvidersMap
           providers={providers}
           userLat={userLat}
@@ -493,7 +467,7 @@ function MapView({
 
       {/* List */}
       <div className="order-2 lg:order-1">
-        <p className="mb-2 text-xs text-muted-foreground">
+        <p className="text-muted-foreground mb-2 text-xs">
           Toque em um marcador para destacar o prestador.
         </p>
         <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1 lg:max-h-[calc(100vh-12rem)]">
@@ -505,8 +479,8 @@ function MapView({
               className={cn(
                 "cursor-pointer rounded-xl transition-all",
                 selectedId === p.id
-                  ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
-                  : "ring-1 ring-transparent hover:ring-border",
+                  ? "ring-primary ring-offset-background ring-2 ring-offset-2"
+                  : "hover:ring-border ring-1 ring-transparent",
               )}
             >
               <ProviderCard
@@ -524,22 +498,14 @@ function MapView({
   )
 }
 
-function EmptyState({
-  hasFilters,
-  onClear,
-}: {
-  hasFilters: boolean
-  onClear: () => void
-}) {
+function EmptyState({ hasFilters, onClear }: { hasFilters: boolean; onClear: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed bg-card px-6 py-16 text-center shadow-sm">
+    <div className="bg-card flex flex-col items-center justify-center rounded-xl border border-dashed px-6 py-16 text-center shadow-sm">
       <div className="flex size-16 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
         <SearchX className="size-8" />
       </div>
-      <h3 className="mt-4 text-base font-semibold tracking-tight">
-        Nenhum prestador encontrado
-      </h3>
-      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+      <h3 className="mt-4 text-base font-semibold tracking-tight">Nenhum prestador encontrado</h3>
+      <p className="text-muted-foreground mt-1 max-w-sm text-sm">
         {hasFilters
           ? "Tente ajustar os filtros ou aumentar o raio de busca para ver mais resultados."
           : "Compartilhe sua localização ou busque por uma categoria para começar."}
@@ -548,7 +514,7 @@ function EmptyState({
         <Button
           variant="outline"
           size="sm"
-          className="mt-4 border-primary/30 text-primary hover:border-primary hover:bg-primary/10 hover:text-primary"
+          className="border-primary/30 text-primary hover:border-primary hover:bg-primary/10 hover:text-primary mt-4"
           onClick={onClear}
         >
           Limpar filtros
@@ -560,16 +526,13 @@ function EmptyState({
 
 function ErrorState({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-destructive/30 bg-destructive/5 px-6 py-16 text-center">
-      <div className="flex size-14 items-center justify-center rounded-full bg-destructive/10">
-        <X className="size-7 text-destructive" />
+    <div className="border-destructive/30 bg-destructive/5 flex flex-col items-center justify-center rounded-xl border px-6 py-16 text-center">
+      <div className="bg-destructive/10 flex size-14 items-center justify-center rounded-full">
+        <X className="text-destructive size-7" />
       </div>
-      <h3 className="mt-4 text-base font-semibold tracking-tight">
-        Algo deu errado
-      </h3>
-      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-        Não foi possível carregar os prestadores. Verifique sua conexão e tente
-        novamente.
+      <h3 className="mt-4 text-base font-semibold tracking-tight">Algo deu errado</h3>
+      <p className="text-muted-foreground mt-1 max-w-sm text-sm">
+        Não foi possível carregar os prestadores. Verifique sua conexão e tente novamente.
       </p>
       <Button variant="outline" size="sm" className="mt-4" onClick={onRetry}>
         Tentar novamente
@@ -584,10 +547,7 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 
 type Chip = { key: keyof FiltersState; label: string }
 
-function buildChips(
-  filters: FiltersState,
-  categories: Category[],
-): Chip[] {
+function buildChips(filters: FiltersState, categories: Category[]): Chip[] {
   const chips: Chip[] = []
   if (filters.q.trim()) {
     chips.push({ key: "q", label: `“${filters.q.trim()}”` })
@@ -614,10 +574,7 @@ function buildChips(
   return chips
 }
 
-function resolveCategoryName(
-  id: string,
-  categories: Category[],
-): string | null {
+function resolveCategoryName(id: string, categories: Category[]): string | null {
   for (const c of categories) {
     if (c.id === id) return c.name
     if (c.children?.length) {

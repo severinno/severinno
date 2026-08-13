@@ -9,12 +9,13 @@
  *    colour checks always pass vacuously.
  * 2. `button-name`: lucide icons are mocked as <svg aria-hidden="true">,
  *    so icon-only buttons rely on their aria-label for accessible names.
- * 3. `@testing-library/jest-dom` matchers are not available in this
- *    worktree, so we use getAttribute() + toBe() / toBeNull() instead.
+ * 3. jest-dom matchers are available globally via vitest.d.ts + vitest.setup.ts,
+ *    but this file intentionally uses getAttribute() for low-level attribute
+ *    assertions rather than wrapper matchers (e.g. toHaveAttribute()).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import React from "react"
-import { render, screen, fireEvent, act } from "@testing-library/react"
+import { render, screen, fireEvent, act } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 import AddressAutocomplete from "../address-autocomplete"
 
@@ -34,9 +35,7 @@ import {
 // ---------------------------------------------------------------------------
 
 vi.mock("lucide-react", () => {
-  const Svg = (p: any) => (
-    <svg aria-hidden="true" data-testid="lucide-icon" {...p} />
-  )
+  const Svg = (p: any) => <svg aria-hidden="true" data-testid="lucide-icon" {...p} />
   Svg.displayName = "LucideIcon"
   return {
     MapPin: Svg,

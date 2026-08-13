@@ -59,7 +59,7 @@ import {
   EmptyState,
   PageSectionHeader,
   StatusBadge,
-} from "@/components/admin/admin-shared"
+} from "./_shared"
 
 // ---------------------------------------------------------------------------
 // Types

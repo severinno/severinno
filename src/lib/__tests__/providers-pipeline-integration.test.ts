@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * providers-pipeline-integration.test.ts
  *
@@ -34,13 +33,13 @@ const USER_LNG = -46.6333
 // ---------------------------------------------------------------------------
 
 /** Haversine distance from user (computed offline for assertions). */
-const HAVERSINE_P2 = 1.5  // ~1.508 km → rounded to 1 decimal
-const HAVERSINE_P3 = 7.3  // ~7.258 km → rounded to 1 decimal
+const HAVERSINE_P2 = 1.5 // ~1.508 km → rounded to 1 decimal
+const HAVERSINE_P3 = 7.3 // ~7.258 km → rounded to 1 decimal
 
 const providers: ProviderGeo[] = [
-  { id: "p1", lat: USER_LAT, lng: USER_LNG },        // 0 km from user
-  { id: "p2", lat: -23.5605, lng: -46.6433 },         // ~1.508 km
-  { id: "p3", lat: -23.6000, lng: -46.6800 },         // ~7.258 km
+  { id: "p1", lat: USER_LAT, lng: USER_LNG }, // 0 km from user
+  { id: "p2", lat: -23.5605, lng: -46.6433 }, // ~1.508 km
+  { id: "p3", lat: -23.6, lng: -46.68 }, // ~7.258 km
 ]
 
 const providerIds = ["p1", "p2", "p3"]
@@ -167,9 +166,7 @@ async function runPipeline(opts: {
   // Phase 1b: resolve provider IDs at the effective radius
   const centerGeo = { lat: USER_LAT, lng: USER_LNG, radiusKm: effectiveRadius }
   const [idWhere] = buildProviderWhereClause({ centerGeo })
-  const idResult = await (queryRaw as any)(
-    `SELECT u.id FROM "User" u WHERE ${idWhere}`,
-  )
+  const idResult = await (queryRaw as any)(`SELECT u.id FROM "User" u WHERE ${idWhere}`)
   const resolvedIds = idResult.map((r: { id: string }) => r.id)
 
   // Only keep providers that were actually returned by Phase 1b

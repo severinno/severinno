@@ -150,7 +150,8 @@ describe("geocodeSearch", () => {
     {
       lat: "-23.5505",
       lon: "-46.6333",
-      display_name: "Avenida Paulista, Bela Vista, São Paulo, Região Imediata de São Paulo, Região Metropolitana de São Paulo, São Paulo, Região Sudeste, 01310-100, Brasil",
+      display_name:
+        "Avenida Paulista, Bela Vista, São Paulo, Região Imediata de São Paulo, Região Metropolitana de São Paulo, São Paulo, Região Sudeste, 01310-100, Brasil",
       category: "highway",
       type: "secondary",
       importance: "0.654",
@@ -165,7 +166,8 @@ describe("geocodeSearch", () => {
     {
       lat: "-23.5515",
       lon: "-46.6343",
-      display_name: "Rua Augusta, Consolação, São Paulo, Região Imediata de São Paulo, Região Metropolitana de São Paulo, São Paulo, Região Sudeste, 01310-100, Brasil",
+      display_name:
+        "Rua Augusta, Consolação, São Paulo, Região Imediata de São Paulo, Região Metropolitana de São Paulo, São Paulo, Região Sudeste, 01310-100, Brasil",
       category: "highway",
       type: "residential",
       importance: "0.502",
@@ -218,7 +220,7 @@ describe("geocodeSearch", () => {
     expect(results).toEqual([])
   })
 
-  it("throws on HTTP error from Nominatim", async () => {
+  it("returns empty array on HTTP error (falls back to local DB)", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
       ok: false,
       status: 429,
@@ -227,14 +229,18 @@ describe("geocodeSearch", () => {
     } as Response)
 
     const { geocodeSearch } = await import("../geo")
-    await expect(geocodeSearch("São Paulo")).rejects.toThrow("Nominatim HTTP 429")
+    const results = await geocodeSearch("São Paulo")
+    // Now gracefully falls back to local DB (which also fails) → returns []
+    expect(results).toEqual([])
   })
 
-  it("throws on network error", async () => {
+  it("returns empty array on network error (falls back to local DB)", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("Network failure"))
 
     const { geocodeSearch } = await import("../geo")
-    await expect(geocodeSearch("São Paulo")).rejects.toThrow("Network failure")
+    const results = await geocodeSearch("São Paulo")
+    // Now gracefully falls back to local DB (which also fails) → returns []
+    expect(results).toEqual([])
   })
 
   it("clamps limit to minimum 1", async () => {
@@ -401,7 +407,7 @@ describe("geocodeSearchStructured", () => {
     await geocodeSearchStructured({ city: "São Paulo", limit: 0 })
   })
 
-  it("throws on Nominatim HTTP error", async () => {
+  it("returns empty array on Nominatim HTTP error (falls back to local DB)", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
       ok: false,
       status: 502,
@@ -409,9 +415,9 @@ describe("geocodeSearchStructured", () => {
     } as Response)
 
     const { geocodeSearchStructured } = await import("../geo")
-    await expect(
-      geocodeSearchStructured({ city: "São Paulo" }),
-    ).rejects.toThrow("Nominatim structured HTTP 502")
+    const results = await geocodeSearchStructured({ city: "São Paulo" })
+    // Now gracefully falls back to local DB (which also fails) → returns []
+    expect(results).toEqual([])
   })
 
   it("trims whitespace from all fields", async () => {

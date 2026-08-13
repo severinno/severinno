@@ -42,7 +42,7 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { ErrorState } from "@/components/admin/admin-shared"
+import { ErrorState } from "./_shared"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

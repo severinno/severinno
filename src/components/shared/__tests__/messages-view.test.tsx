@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen } from "@/__tests__/test-utils"
 
 vi.mock("lucide-react", () => ({
   Send: () => <svg />,
@@ -51,12 +51,7 @@ describe("MessagesView", () => {
 
   it("renders with custom empty title and description", async () => {
     const { MessagesView } = await import("../messages-view")
-    render(
-      <MessagesView
-        emptyTitle="Suas conversas"
-        emptyDescription="Test description"
-      />,
-    )
+    render(<MessagesView emptyTitle="Suas conversas" emptyDescription="Test description" />)
     expect(screen.getByText("Suas conversas")).toBeDefined()
     expect(screen.getByText("Test description")).toBeDefined()
   })

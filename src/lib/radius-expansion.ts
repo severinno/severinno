@@ -23,8 +23,25 @@
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Progressive radius expansion steps (km). */
-export const EXPANSION_STEPS = [5, 10, 25, 50, 100] as const
+/**
+ * Progressive radius expansion steps (km).
+ *
+ * Default: [5, 10, 25, 50, 100]
+ *
+ * Can be overridden via the EXPANSION_STEPS environment variable
+ * (comma-separated, e.g. "3,8,15,30,60,120").
+ */
+export const EXPANSION_STEPS: readonly number[] = (() => {
+  const env = process.env.EXPANSION_STEPS
+  if (env) {
+    const parsed = env
+      .split(",")
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isFinite(n) && n > 0)
+    if (parsed.length > 0) return parsed
+  }
+  return [5, 10, 25, 50, 100]
+})()
 
 /** Default TTL for Redis-cached radius count queries (seconds). */
 export const DEFAULT_COUNT_CACHE_TTL = 120

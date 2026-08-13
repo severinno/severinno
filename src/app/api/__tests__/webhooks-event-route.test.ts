@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
 
@@ -63,10 +62,10 @@ describe("GET /api/admin/push/webhooks", () => {
     const { status, body } = await parseResponse(res)
 
     expect(status).toBe(200)
-    expect(body!.ok).toBe(true)
-    expect(body!.webhooks).toHaveLength(1)
-    expect(body!.webhooks[0].title).toBe("Novo agendamento")
-    expect(body!.webhooks[0].event).toBe("booking.created")
+    expect((body as any).ok).toBe(true)
+    expect((body as any).webhooks).toHaveLength(1)
+    expect((body as any).webhooks[0].title).toBe("Novo agendamento")
+    expect((body as any).webhooks[0].event).toBe("booking.created")
   })
 
   it("returns empty array when no webhooks exist", async () => {
@@ -98,10 +97,12 @@ describe("POST /api/admin/push/webhooks", () => {
   }
 
   it("creates a webhook with valid data", async () => {
-    vi.mocked(db.eventWebhook.create).mockResolvedValue(mockWebhook({
-      title: "Novo agendamento de {{clientName}}",
-      body: "{{clientName}} agendou {{serviceName}}",
-    }))
+    vi.mocked(db.eventWebhook.create).mockResolvedValue(
+      mockWebhook({
+        title: "Novo agendamento de {{clientName}}",
+        body: "{{clientName}} agendou {{serviceName}}",
+      }),
+    )
 
     const req = createMockRequest({ method: "POST", body: validPayload })
     const res = await POST(req)
@@ -109,7 +110,7 @@ describe("POST /api/admin/push/webhooks", () => {
 
     expect(status).toBe(201)
     expect(body!.ok).toBe(true)
-    expect(body!.webhook.title).toBe("Novo agendamento de {{clientName}}")
+    expect((body as any).webhook.title).toBe("Novo agendamento de {{clientName}}")
   })
 
   it("rejects invalid event type", async () => {
@@ -121,7 +122,7 @@ describe("POST /api/admin/push/webhooks", () => {
     const { status, body } = await parseResponse(res)
 
     expect(status).toBe(400)
-    expect(body!.error).toContain("event invalido")
+    expect((body as any).error).toContain("event invalido")
   })
 
   it("rejects missing title", async () => {
@@ -176,7 +177,7 @@ describe("POST /api/admin/push/webhooks", () => {
     const { status, body } = await parseResponse(res)
 
     expect(status).toBe(400)
-    expect(body!.error).toContain("Ja existe uma regra")
+    expect((body as any).error).toContain("Ja existe uma regra")
   })
 
   it("rejects body exceeding 500 characters", async () => {
@@ -203,9 +204,16 @@ describe("POST /api/admin/push/webhooks", () => {
 
   it("accepts all valid event types", async () => {
     const validEvents = [
-      "booking.created", "booking.confirmed", "booking.cancelled", "booking.completed",
-      "review.created", "quote.received", "quote.responded",
-      "payment.confirmed", "message.sent", "provider.registered",
+      "booking.created",
+      "booking.confirmed",
+      "booking.cancelled",
+      "booking.completed",
+      "review.created",
+      "quote.received",
+      "quote.responded",
+      "payment.confirmed",
+      "message.sent",
+      "provider.registered",
     ]
 
     for (const event of validEvents) {
@@ -230,10 +238,12 @@ describe("PATCH /api/admin/push/webhooks/[id]", () => {
 
   it("updates webhook fields partially", async () => {
     vi.mocked(db.eventWebhook.findUnique).mockResolvedValue(mockWebhook())
-    vi.mocked(db.eventWebhook.update).mockResolvedValue(mockWebhook({
-      title: "Título atualizado",
-      body: "Corpo atualizado",
-    }))
+    vi.mocked(db.eventWebhook.update).mockResolvedValue(
+      mockWebhook({
+        title: "Título atualizado",
+        body: "Corpo atualizado",
+      }),
+    )
 
     const req = createMockRequest({
       method: "PATCH",
@@ -243,7 +253,7 @@ describe("PATCH /api/admin/push/webhooks/[id]", () => {
     const { status, body } = await parseResponse(res)
 
     expect(status).toBe(200)
-    expect(body!.webhook.title).toBe("Título atualizado")
+    expect((body as any).webhook.title).toBe("Título atualizado")
   })
 
   it("returns 404 when webhook does not exist", async () => {
@@ -305,7 +315,7 @@ describe("PATCH /api/admin/push/webhooks/[id]", () => {
     const { status, body } = await parseResponse(res)
 
     expect(status).toBe(200)
-    expect(body!.webhook.active).toBe(false)
+    expect((body as any).webhook.active).toBe(false)
   })
 })
 
@@ -325,7 +335,7 @@ describe("DELETE /api/admin/push/webhooks/[id]", () => {
     const { status, body } = await parseResponse(res)
 
     expect(status).toBe(200)
-    expect(body!.ok).toBe(true)
+    expect((body as any).ok).toBe(true)
     expect(db.eventWebhook.delete).toHaveBeenCalledWith({ where: { id: "wh-1" } })
   })
 

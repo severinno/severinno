@@ -1,0 +1,480 @@
+# =============================================================================
+# Benchmark All Weekly — Severinno Marketplace
+#
+# Runs all 6 benchmark types every Monday at 06:00 UTC, compares results
+# against committed baselines, posts a performance summary as a comment on
+# the most recently merged PR from the previous week, and dispatches a
+# Sentry alert when any benchmark regresses more than 10 %.
+#
+# The 6 benchmarks (defined in scripts/run-benchmark.mjs):
+#   1. geo      — Haversine JS vs modelled PostGIS ST_Distance  (CPU model)
+#   2. cache    — Modelled Redis SET/GET/DEL/SETEX/pipeline     (CPU model)
+#   3. search   — Modelled OpenSearch exact/fulltext/geo/agg    (CPU model)
+#   4. real     — Real PostGIS ST_Distance/ST_DWithin against
+#                 staging database (requires STAGING_* secrets)
+#   5. gist     — Real GiST index benchmark against staging DB  (requires creds)
+#   6. pipeline — Modelled combined PostGIS pipeline
+#                 (ST_DWithin + ST_Distance) vs Haversine full-scan
+#
+# Benchmarks that require a staging database (real, gist) are skipped
+# when --skip-db is used (default in scheduled runs when no staging
+# credentials are available).
+#
+# Output:
+#   - docs/benchmarks/<type>-latest.json  — results from this run
+#   - PR comment on last week's most recent merged PR
+#   - Sentry warning event on >10 % regression across any benchmark
+# =============================================================================
+
+name: Benchmark All Weekly
+
+on:
+  schedule:
+    # Monday 06:00 UTC — offset from the individual geo benchmarks
+    # (geo-real on Sunday 03:00, geo-gist on Monday 04:00)
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      threshold:
+        description: "Regression threshold percentage (default: 10)"
+        required: false
+        default: 10
+        type: number
+      skip-db:
+        description: "Skip benchmarks that require a staging database (real, gist)"
+        required: false
+        default: false
+        type: boolean
+      providers:
+        description: "Custom provider count for real/gist benchmarks (optional)"
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: benchmark-all-weekly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_ENV: development
+  # Staging database — optional, only used for real/gist benchmarks
+  PGUSER: ${{ secrets.STAGING_PGUSER || '' }}
+  PGPASSWORD: ${{ secrets.STAGING_PGPASSWORD || '' }}
+  PGHOST: ${{ secrets.STAGING_PGHOST || '' }}
+  PGPORT: ${{ secrets.STAGING_PGPORT || '' }}
+  PGDATABASE: ${{ secrets.STAGING_PGDATABASE || '' }}
+
+jobs:
+  # ── Smoke Check ─────────────────────────────────────────────────────────
+  # Fast pre-flight: verifies benchmark scripts, output directory, and
+  # staging credentials are in place before the main job starts.
+  smoke:
+    name: Smoke Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Check all benchmark scripts exist
+        run: |
+          MISSING=false
+          EXPECTED_SCRIPTS=(
+            scripts/run-benchmark.mjs
+            scripts/compare-benchmarks.mjs
+            scripts/geo-benchmark.mjs
+            scripts/cache-benchmark.mjs
+            scripts/search-benchmark.mjs
+            scripts/geo-benchmark-real.mjs
+            scripts/geo-benchmark-gist.mjs
+            scripts/geo-pipeline-benchmark.mjs
+          )
+          for script in "${EXPECTED_SCRIPTS[@]}"; do
+            if [ ! -f "$script" ]; then
+              echo "  ❌ Missing: $script"
+              MISSING=true
+            else
+              echo "  ✅ Found:   $script"
+            fi
+          done
+          if [ "$MISSING" = true ]; then
+            exit 1
+          fi
+
+      - name: Check output directory
+        run: |
+          if [ ! -d "docs/benchmarks" ]; then
+            mkdir -p docs/benchmarks
+            echo "  ✅ Created output directory: docs/benchmarks/"
+          else
+            echo "  ✅ Output directory: docs/benchmarks/"
+          fi
+
+
+
+  # ── Benchmark All ───────────────────────────────────────────────────────
+  benchmark-all:
+    name: Benchmark All Types
+    runs-on: ubuntu-latest
+    needs: smoke
+    timeout-minutes: 60
+
+    outputs:
+      summary: ${{ steps.summary.outputs.text }}
+      has_regressions: ${{ steps.sentry-alert.outputs.has_regressions }}
+      pr_number: ${{ steps.find-pr.outputs.pr_number }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # ── Determine benchmark flags ──────────────────────────────────
+      - name: Determine benchmark flags
+        id: flags
+        run: |
+          FLAGS="--type all --json"
+
+          # Auto-skip DB benchmarks when no staging credentials
+          STAGING_AVAILABLE="${{ secrets.STAGING_PGHOST != '' && secrets.STAGING_PGPASSWORD != '' }}"
+          if [ "$STAGING_AVAILABLE" = "false" ] || [ "${{ github.event.inputs.skip-db }}" = "true" ]; then
+            FLAGS="$FLAGS --skip-db"
+            echo "  ℹ  --skip-db: real/gist benchmarks will be skipped (no staging DB)."
+          else
+            echo "  ℹ  Staging credentials available — all 6 benchmarks will run."
+          fi
+
+          echo "flags=$FLAGS" >> "$GITHUB_OUTPUT"
+
+      # ── Run all 6 benchmarks ─────────────────────────────────────────────
+      - name: Run all benchmarks
+        id: run
+        continue-on-error: true
+        run: |
+          node scripts/run-benchmark.mjs ${{ steps.flags.outputs.flags }} 2>&1 | tee /tmp/benchmark-run.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      # ── Validate output files exist ──────────────────────────────────────
+      - name: Validate benchmark output files
+        id: validate
+        run: |
+          TYPES=("geo" "cache" "search" "real" "gist" "pipeline")
+          MISSING=()
+          for type in "${TYPES[@]}"; do
+            FILE="docs/benchmarks/${type}-latest.json"
+            if [ -f "$FILE" ]; then
+              SIZE=$(stat -c%s "$FILE" 2>/dev/null || stat -f%z "$FILE" 2>/dev/null || echo 0)
+              if [ "$SIZE" -gt 100 ]; then
+                echo "  ✅ $FILE  ($(echo "scale=1; $SIZE/1024" | bc) KB)"
+              else
+                echo "  ℹ  $FILE  (empty or too small — skipped)"
+              fi
+            else
+              echo "  ⏭  $FILE  (not generated — probably skipped)"
+              MISSING+=("$type")
+            fi
+          done
+          echo "missing=${MISSING[*]}" >> "$GITHUB_OUTPUT"
+          echo "total=$((6 - ${#MISSING[@]}))" >> "$GITHUB_OUTPUT"
+
+      # ── Compare each type against its baseline ───────────────────────────
+      - name: Compare against baselines
+        id: compare
+        continue-on-error: true
+        run: |
+          TYPES=("geo" "cache" "search" "real" "gist" "pipeline")
+          BASELINES=(
+            "docs/benchmarks/geo-baseline.json"
+            "docs/benchmarks/cache-baseline.json"
+            "docs/benchmarks/search-baseline.json"
+            "docs/benchmarks/geo-real-baseline.json"
+            "docs/benchmarks/geo-gist-baseline.json"
+            "docs/benchmarks/pipeline-baseline.json"
+          )
+          FILTERS=("" "--filter cache" "--filter search" "" "" "")
+          THRESHOLD=${{ github.event.inputs.threshold || 10 }}
+          REGRESSIONS=()
+          ALL_OUTPUT=""
+
+          for i in "${!TYPES[@]}"; do
+            TYPE="${TYPES[$i]}"
+            LATEST="docs/benchmarks/${TYPE}-latest.json"
+            BASELINE="${BASELINES[$i]}"
+            FILTER="${FILTERS[$i]}"
+
+            if [ ! -f "$LATEST" ]; then
+              ALL_OUTPUT+="\n### $TYPE — no results (skipped)\n"
+              continue
+            fi
+
+            if [ ! -f "$BASELINE" ]; then
+              ALL_OUTPUT+="\n### $TYPE — no baseline (first run)\n\`\`\`\nLatest results saved as \`$LATEST\`.\nRun 'node scripts/run-benchmark.mjs --type $TYPE --baseline' to commit as baseline.\n\`\`\`\n"
+              continue
+            fi
+
+            # Run comparison (exit code 1 = regression detected)
+            CMD="node scripts/compare-benchmarks.mjs --threshold $THRESHOLD $FILTER \"$BASELINE\" \"$LATEST\""
+            echo ""
+            echo "────────────────────────────────────────────────────────────────"
+            echo "  Comparing $TYPE..."
+            echo "────────────────────────────────────────────────────────────────"
+            eval "$CMD" 2>&1 | tee /tmp/compare-${TYPE}.txt
+            COMPARE_EXIT=${PIPESTATUS[0]}
+
+            # Capture the diff output
+            DIFF=$(cat /tmp/compare-${TYPE}.txt 2>/dev/null || echo "No diff output.")
+            ALL_OUTPUT+="\n### $TYPE\n\`\`\`\n${DIFF:0:2000}\n\`\`\`\n"
+
+            if [ "$COMPARE_EXIT" = "1" ]; then
+              REGRESSIONS+=("$TYPE")
+            fi
+          done
+
+          echo "all_output<<EOF" >> "$GITHUB_OUTPUT"
+          printf "%b" "$ALL_OUTPUT" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+          if [ ${#REGRESSIONS[@]} -gt 0 ]; then
+            echo "regressions=${REGRESSIONS[*]}" >> "$GITHUB_OUTPUT"
+            echo "has_regressions=true" >> "$GITHUB_OUTPUT"
+            echo "  ⚠  Regressions detected in: ${REGRESSIONS[*]}"
+          else
+            echo "regressions=" >> "$GITHUB_OUTPUT"
+            echo "has_regressions=false" >> "$GITHUB_OUTPUT"
+            echo "  ✅ No regressions detected."
+          fi
+
+      # ── Build summary text ──────────────────────────────────────────────
+      - name: Build summary
+        id: summary
+        run: |
+          THRESHOLD=${{ github.event.inputs.threshold || 10 }}
+          REGRESSIONS="${{ steps.compare.outputs.regressions }}"
+          HAS_REGRESSIONS="${{ steps.compare.outputs.has_regressions }}"
+          DATE_STR=$(date -u)
+
+          SUMMARY="## 📊 Benchmark Semanal — Todos os 6 Tipos
+          
+**Executado em:** ${DATE_STR}
+**Threshold:** ${THRESHOLD}%
+**Regressões:** $([ "$HAS_REGRESSIONS" = "true" ] && echo \"⚠ Sim — ${REGRESSIONS}\" || echo \"✅ Nenhuma\")
+
+### Resultados por Tipo
+
+$(cat /tmp/benchmark-run.txt 2>/dev/null | head -30 || echo "Sem resultados.")
+
+### Comparação com Baseline
+
+${{ steps.compare.outputs.all_output }}
+
+---
+
+*Gerado automaticamente por Benchmark All Weekly — ${DATE_STR}*"
+
+          echo "text<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$SUMMARY" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      # ── Publish job summary ──────────────────────────────────────────────
+      - name: Publish job summary
+        if: always()
+        run: |
+          echo "${{ steps.summary.outputs.text }}" >> "$GITHUB_STEP_SUMMARY"
+
+      # ── Find most recent PR from last week ──────────────────────────────
+      - name: Find most recent merged PR (last 7 days)
+        id: find-pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+
+            // Fetch merged PRs sorted by updated date (most recent first)
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed',
+              sort: 'updated',
+              direction: 'desc',
+              per_page: 20,
+              base: 'main',
+            });
+
+            // Filter: only merged PRs merged within the last 7 days
+            const recentMerged = prs.filter(pr =>
+              pr.merged_at && new Date(pr.merged_at) >= oneWeekAgo
+            );
+
+            if (recentMerged.length === 0) {
+              console.log('ℹ  No merged PRs found in the last 7 days.');
+              core.setOutput('pr_number', '0');
+              core.setOutput('pr_title', '');
+              return;
+            }
+
+            // Pick the MOST recently merged
+            const latest = recentMerged.reduce((a, b) =>
+              new Date(a.merged_at) > new Date(b.merged_at) ? a : b
+            );
+
+            console.log(`✅ Found PR #${latest.number}: "${latest.title}" (merged ${latest.merged_at})`);
+            core.setOutput('pr_number', String(latest.number));
+            core.setOutput('pr_title', latest.title);
+
+      # ── Post comment on the PR ──────────────────────────────────────────
+      - name: Post summary comment on PR
+        if: steps.find-pr.outputs.pr_number != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = parseInt('${{ steps.find-pr.outputs.pr_number }}', 10);
+            const summary = `${{ steps.summary.outputs.text }}`;
+
+            // Find and remove previous benchmark comments from this workflow
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const botComments = comments.filter(c =>
+              c.user.type === 'Bot' &&
+              (c.body?.startsWith('## 📊 Benchmark Semanal — Todos os 6 Tipos') ||
+               c.body?.startsWith('## 📊 Benchmark Semanal'))
+            );
+
+            for (const c of botComments) {
+              await github.rest.issues.deleteComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: c.id,
+              });
+            }
+
+            // Post fresh comment
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: summary,
+            });
+
+            console.log(`✅ Posted benchmark summary on PR #${prNumber}`);
+
+      # ── Sentry alert on regression ──────────────────────────────────────
+      - name: Sentry alert on regression
+        id: sentry-alert
+        if: steps.compare.outputs.has_regressions == 'true'
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          REGRESSIONS="${{ steps.compare.outputs.regressions }}"
+          THRESHOLD=${{ github.event.inputs.threshold || 10 }}
+          PR_NUMBER="${{ steps.find-pr.outputs.pr_number }}"
+          TIMESTAMP=$(date -u "+%Y-%m-%dT%H:%M:%SZ")
+
+          echo "has_regressions=true" >> "$GITHUB_OUTPUT"
+
+          # Build regression detail text from comparison outputs
+          DETAIL=""
+          IFS=' ' read -ra TYPES <<< "$REGRESSIONS"
+          for type in "${TYPES[@]}"; do
+            if [ -f "/tmp/compare-${type}.txt" ]; then
+              DIFF=$(head -40 "/tmp/compare-${type}.txt" | tr '\n' '\t' | sed 's/\t/\\n/g')
+              DETAIL="${DETAIL}${type}: ${DIFF}\n"
+            fi
+          done
+
+          echo "🔔 Regression(s) >= ${THRESHOLD}% detected in: ${REGRESSIONS}"
+
+          # Send Sentry event via HTTP API (Envelope endpoint)
+          if [ -n "$SENTRY_DSN" ]; then
+            echo "  Sending alert to Sentry..."
+
+            # Parse DSN to get project ID and public key
+            # Format: https://<key>@<host>/<project_id>
+            DSN_URL=$(echo "$SENTRY_DSN" | sed 's/^\(https\?:\/\/\)\([^@]*\)@\([^/]*\)\(.*\)/\1\3\4/')
+            DSN_KEY=$(echo "$SENTRY_DSN" | sed 's/^\(https\?:\/\/\)\([^@]*\)@\([^/]*\)\(.*\)/\2/')
+            PROJECT_ID=$(echo "$SENTRY_DSN" | sed 's/.*\/\([0-9]*\)$/\1/')
+
+            SENTRY_HOST=$(echo "$DSN_URL" | sed 's|https\?://||' | sed 's|/.*||')
+
+            # Build a minimal Sentry envelope JSON
+            EVENT_JSON=$(cat <<EOF | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d))" 2>/dev/null || echo "{}"
+            {
+              "event_id": "$(node -e "process.stdout.write(require('crypto').randomUUID().replace(/-/g,''))")",
+              "message": "[Benchmark] Performance regression detected in: ${REGRESSIONS}",
+              "level": "warning",
+              "logger": "benchmark-all-weekly",
+              "culprit": "benchmark-all-weekly",
+              "timestamp": "$(date -u +%s)",
+              "tags": {
+                "workflow": "benchmark-all-weekly",
+                "threshold": "${THRESHOLD}%",
+                "regression_types": "${REGRESSIONS}",
+                "pr_number": "${PR_NUMBER}"
+              },
+              "extra": {
+                "regression_detail": "${DETAIL}",
+                "run_url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              }
+            }
+            EOF
+            )
+
+            # Send via curl to Sentry's Store endpoint
+            AUTH_HEADER="X-Sentry-Auth: Sentry sentry_version=7, sentry_client=benchmark-ci/0.1.0, sentry_key=${DSN_KEY}"
+
+            curl -s -o /dev/null -w "  Sentry HTTP status: %{http_code}\n" \
+              --connect-timeout 5 --max-time 10 \
+              -X POST \
+              -H "$AUTH_HEADER" \
+              -H "Content-Type: application/json" \
+              -d "$EVENT_JSON" \
+              "https://${SENTRY_HOST}/api/${PROJECT_ID}/store/" \
+              2>/dev/null || echo "  ⚠  Failed to send Sentry alert (DSN may point to unreachable host)"
+          else
+            echo "  ℹ  No SENTRY_DSN configured — skipping Sentry alert."
+            echo "     Set SENTRY_DSN in GitHub Secrets to enable regression alerts."
+          fi
+
+      # ── Upload benchmark artifacts ──────────────────────────────────────
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-benchmarks
+          path: |
+            docs/benchmarks/*-latest.json
+            /tmp/compare-*.txt
+            /tmp/benchmark-run.txt
+          retention-days: 90
+
+      # ── Fail workflow on regression ─────────────────────────────────────
+      - name: Fail on regression
+        if: steps.compare.outputs.has_regressions == 'true'
+        run: |
+          echo "❌ Performance regression(s) >= ${{ github.event.inputs.threshold || 10 }}% detected."
+          echo "   Affected types: ${{ steps.compare.outputs.regressions }}"
+          echo "   See workflow summary and PR #${{ steps.find-pr.outputs.pr_number }} for details."
+          exit 1

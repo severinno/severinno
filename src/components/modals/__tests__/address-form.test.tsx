@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import React from "react"
-import { render, screen, fireEvent, act, cleanup } from "@testing-library/react"
+import { render, screen, fireEvent, act, cleanup } from "@/__tests__/test-utils"
 import { AddressForm, type AddressFormValue } from "../address-form"
 
 // ---------------------------------------------------------------------------
@@ -117,9 +117,7 @@ function StatefulHarness(props: {
   [key: string]: any
 }) {
   const { initialValue, onChange, ...rest } = props
-  const [value, setValue] = React.useState<AddressFormValue>(
-    initialValue ?? defaultAddress,
-  )
+  const [value, setValue] = React.useState<AddressFormValue>(initialValue ?? defaultAddress)
   return (
     <AddressForm
       value={value}
@@ -132,7 +130,9 @@ function StatefulHarness(props: {
   )
 }
 
-function renderForm(props: Partial<Parameters<typeof AddressForm>[0]> & { initialValue?: AddressFormValue } = {}) {
+function renderForm(
+  props: Partial<Parameters<typeof AddressForm>[0]> & { initialValue?: AddressFormValue } = {},
+) {
   const onChange = vi.fn()
   const result = render(
     <StatefulHarness initialValue={props.initialValue} onChange={onChange} {...props} />,
@@ -187,9 +187,7 @@ describe("AddressForm — rendering", () => {
       city: "São Paulo",
       state: "SP",
     }
-    render(
-      <StatefulHarness initialValue={value} />,
-    )
+    render(<StatefulHarness initialValue={value} />)
     const streetInput = screen.getByLabelText("Rua / Avenida") as HTMLInputElement
     const numberInput = screen.getByLabelText("Número") as HTMLInputElement
     const cityInput = screen.getByLabelText("Cidade") as HTMLInputElement
@@ -338,7 +336,9 @@ describe("AddressForm — CEP lookup", () => {
       await new Promise((r) => setTimeout(r, 0))
     })
 
-    expect(screen.getByText("CEP não encontrado. Preencha o endereço manualmente.")).toBeInTheDocument()
+    expect(
+      screen.getByText("CEP não encontrado. Preencha o endereço manualmente."),
+    ).toBeInTheDocument()
   })
 })
 
@@ -442,9 +442,7 @@ describe("AddressForm — validation errors", () => {
       city: "Cidade é obrigatória",
       state: "Selecione um estado",
     }
-    render(
-      <AddressForm value={defaultAddress} onChange={vi.fn()} errors={errors} />,
-    )
+    render(<AddressForm value={defaultAddress} onChange={vi.fn()} errors={errors} />)
 
     expect(screen.getByText("CEP inválido")).toBeInTheDocument()
     expect(screen.getByText("Rua é obrigatória")).toBeInTheDocument()
@@ -454,9 +452,7 @@ describe("AddressForm — validation errors", () => {
 
   it("marks invalid fields with aria-invalid", () => {
     const errors = { cep: "Erro", street: "Erro" }
-    render(
-      <AddressForm value={defaultAddress} onChange={vi.fn()} errors={errors} />,
-    )
+    render(<AddressForm value={defaultAddress} onChange={vi.fn()} errors={errors} />)
 
     const cepInput = screen.getByLabelText("CEP") as HTMLInputElement
     expect(cepInput.getAttribute("aria-invalid")).toBe("true")
@@ -466,9 +462,7 @@ describe("AddressForm — validation errors", () => {
   })
 
   it("does not set aria-invalid on fields without errors", () => {
-    render(
-      <AddressForm value={defaultAddress} onChange={vi.fn()} errors={{}} />,
-    )
+    render(<AddressForm value={defaultAddress} onChange={vi.fn()} errors={{}} />)
 
     const complementInput = screen.getByLabelText("Complemento") as HTMLInputElement
     expect(complementInput.getAttribute("aria-invalid")).not.toBe("true")
