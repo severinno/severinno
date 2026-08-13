@@ -82,6 +82,7 @@ data/
 
 # Playwright test artifacts — generated on every E2E run
 test-results/
+playwright-report/
 
 # AI agent skills and configurations
 .agents/
