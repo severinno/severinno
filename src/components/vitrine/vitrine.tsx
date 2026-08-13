@@ -21,12 +21,7 @@ import * as React from "react"
 import { useQuery, keepPreviousData } from "@tanstack/react-query"
 
 import { useAuthStore, useGeoStore, useUIStore } from "@/store"
-import {
-  fetchCategories,
-  fetchFavorites,
-  fetchProviders,
-  type Category,
-} from "@/lib/api"
+import { fetchCategories, fetchFavorites, fetchProviders, type Category } from "@/lib/api"
 
 import Topbar from "./topbar"
 import Hero from "./hero"
@@ -42,16 +37,15 @@ import WhySeverinno from "./why-severinno"
 import CtaBanner from "./cta-banner"
 import ProviderSpotlight from "./provider-spotlight"
 import { RecentlyViewed } from "./recently-viewed"
+import NearbyProviders from "./nearby-providers"
+import ProviderSpotlightGeo from "./provider-spotlight-geo"
 import CompareBar from "./compare-bar"
 import CompareModal from "./compare-modal"
 import BackToTop from "./back-to-top"
 import Footer from "../shared/footer"
 import AIChatWidget from "../shared/ai-chat-widget"
 import CookieConsent from "../shared/cookie-consent"
-import {
-  DEFAULT_FILTERS,
-  type FiltersState,
-} from "./filters"
+import { DEFAULT_FILTERS, type FiltersState } from "./filters"
 
 const RESULTS_ANCHOR_ID = "vitrine-resultados"
 const PAGE_LIMIT = 9
@@ -68,19 +62,20 @@ type VitrineState = {
 }
 
 type VitrineAction =
-  | { type: 'SET_FILTERS'; filters: FiltersState }
-  | { type: 'SET_CATEGORY'; id: string | null }
-  | { type: 'SET_PAGE'; page: number }
-  | { type: 'DEBOUNCE_Q'; q: string }
+  | { type: "SET_FILTERS"; filters: FiltersState }
+  | { type: "SET_CATEGORY"; id: string | null }
+  | { type: "SET_PAGE"; page: number }
+  | { type: "DEBOUNCE_Q"; q: string }
 
 function vitrineReducer(state: VitrineState, action: VitrineAction): VitrineState {
-  switch (action.type) {        case 'SET_FILTERS':
+  switch (action.type) {
+    case "SET_FILTERS":
       return { ...state, filters: action.filters, page: 1 }
-    case 'SET_CATEGORY':
+    case "SET_CATEGORY":
       return { ...state, filters: { ...state.filters, categoryId: action.id }, page: 1 }
-    case 'SET_PAGE':
+    case "SET_PAGE":
       return { ...state, page: action.page }
-    case 'DEBOUNCE_Q':
+    case "DEBOUNCE_Q":
       return { ...state, debouncedQ: action.q }
   }
 }
@@ -93,16 +88,17 @@ export default function Vitrine() {
   const openProvider = useUIStore((s) => s.openProvider)
 
   // ---------------------------------------------------------------- state --
-  const [{ filters, page, debouncedQ }, dispatch] = React.useReducer(
-    vitrineReducer,
-    { filters: DEFAULT_FILTERS, page: 1, debouncedQ: '' },
-  )
+  const [{ filters, page, debouncedQ }, dispatch] = React.useReducer(vitrineReducer, {
+    filters: DEFAULT_FILTERS,
+    page: 1,
+    debouncedQ: "",
+  })
 
   // Debounce the free-text query so we don't fire one request per keystroke.
   // Note: the reducer does NOT reset page on debounce because SET_FILTERS
   // already reset it when the user typed (q is part of filters).
   React.useEffect(() => {
-    const t = window.setTimeout(() => dispatch({ type: 'DEBOUNCE_Q', q: filters.q }), 350)
+    const t = window.setTimeout(() => dispatch({ type: "DEBOUNCE_Q", q: filters.q }), 350)
     return () => window.clearTimeout(t)
   }, [filters.q])
 
@@ -131,7 +127,8 @@ export default function Vitrine() {
         limit: PAGE_LIMIT,
       },
     ],
-    queryFn: () =>        fetchProviders({
+    queryFn: () =>
+      fetchProviders({
         q: debouncedQ || undefined,
         categoryId: filters.categoryId ?? undefined,
         radius: filters.radius,
@@ -142,7 +139,7 @@ export default function Vitrine() {
         lng,
         page,
         limit: PAGE_LIMIT,
-      } as any),
+      }),
     placeholderData: keepPreviousData,
     staleTime: 30 * 1000,
   })
@@ -160,53 +157,45 @@ export default function Vitrine() {
   )
 
   // --------------------------------------------------------- card actions --
-  const handleQuote = React.useCallback(
-    (id: string) => openQuote({ providerId: id }),
-    [openQuote],
-  )
+  const handleQuote = React.useCallback((id: string) => openQuote({ providerId: id }), [openQuote])
   const handleBook = React.useCallback(
-    (id: string, serviceId?: string) =>
-      openBooking({ providerId: id, serviceId }),
+    (id: string, serviceId?: string) => openBooking({ providerId: id, serviceId }),
     [openBooking],
   )
-  const handleView = React.useCallback(
-    (id: string) => openProvider(id),
-    [openProvider],
-  )
+  const handleView = React.useCallback((id: string) => openProvider(id), [openProvider])
 
   // ---------------------------------------------------- category handlers --
-  const handleCategorySelect = React.useCallback(
-    (id: string | null) => {
-      dispatch({ type: 'SET_CATEGORY', id })
-    },
-    [],
-  )
+  const handleCategorySelect = React.useCallback((id: string | null) => {
+    dispatch({ type: "SET_CATEGORY", id })
+  }, [])
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="bg-background flex min-h-screen flex-col">
       <Topbar
         query={filters.q}
-        onQueryChange={(q) => dispatch({ type: 'SET_FILTERS', filters: { ...filters, q } })}
+        onQueryChange={(q: string) => dispatch({ type: "SET_FILTERS", filters: { ...filters, q } })}
         categories={categories}
         activeCategoryId={filters.categoryId}
         onCategorySelect={handleCategorySelect}
         onSearchSubmit={() => {
-          dispatch({ type: 'DEBOUNCE_Q', q: filters.q })
+          dispatch({ type: "DEBOUNCE_Q", q: filters.q })
           if (typeof window !== "undefined") {
             const el = document.getElementById(RESULTS_ANCHOR_ID)
             if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
           }
         }}
+        sort={filters.sort}
+        hasGeo={lat != null && lng != null}
       />
 
       <main className="flex-1">
         {/* 1. Hero — trust engine, search, CTA */}
         <Hero
           query={filters.q}
-          onQueryChange={(q) => dispatch({ type: 'SET_FILTERS', filters: { ...filters, q } })}
+          onQueryChange={(q) => dispatch({ type: "SET_FILTERS", filters: { ...filters, q } })}
           resultsAnchorId={RESULTS_ANCHOR_ID}
           onSearchSubmit={() => {
-            dispatch({ type: 'DEBOUNCE_Q', q: filters.q })
+            dispatch({ type: "DEBOUNCE_Q", q: filters.q })
             if (typeof window !== "undefined") {
               const el = document.getElementById(RESULTS_ANCHOR_ID)
               if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
@@ -227,6 +216,12 @@ export default function Vitrine() {
 
         <RecentlyViewed />
 
+        {/* 3b. NearbyProviders — Perto de você (geo-aware) */}
+        <NearbyProviders />
+
+        {/* 3c. ProviderSpotlightGeo — prestadores próximos em destaque */}
+        <ProviderSpotlightGeo onQuote={handleQuote} onBook={handleBook} onView={handleView} />
+
         {/* 4. VitrineResults — provider listings */}
         <VitrineResults
           providers={providersQuery.data?.items ?? []}
@@ -237,15 +232,22 @@ export default function Vitrine() {
           isFetching={providersQuery.isFetching}
           error={providersQuery.error}
           filters={filters}
-          onFiltersChange={(next) => dispatch({ type: 'SET_FILTERS', filters: next })}
+          onFiltersChange={(next) => {
+            const safe =
+              next.sort === "distance" && lat == null && lng == null
+                ? { ...next, sort: "rating" as const }
+                : next
+            dispatch({ type: "SET_FILTERS", filters: safe })
+          }}
           categories={categories}
           favorites={favorites}
           userLat={lat}
           userLng={lng}
+          hasGeo={lat != null && lng != null}
           onQuote={handleQuote}
           onBook={handleBook}
           onView={handleView}
-          onPageChange={(p) => dispatch({ type: 'SET_PAGE', page: p })}
+          onPageChange={(p) => dispatch({ type: "SET_PAGE", page: p })}
           resultsAnchorId={RESULTS_ANCHOR_ID}
           expandedRadius={providersQuery.data?.expandedRadius}
         />
