@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * E2E test for PostGIS spatial queries.
  *
@@ -93,10 +94,7 @@ async function testPostGIS() {
     )
 
     // Cleanup — soft-delete is on, so we use direct update
-    await db.$executeRawUnsafe(
-      `DELETE FROM "User" WHERE email = $1`,
-      testEmail,
-    )
+    await db.$executeRawUnsafe(`DELETE FROM "User" WHERE email = $1`, testEmail)
 
     console.log("✅ Trigger sync invoked (INSERT with lat/lng)")
     passed++
@@ -152,10 +150,14 @@ async function testPostGIS() {
         if (pgDist !== undefined && Number.isFinite(pgDist)) {
           const diff = Math.abs(pgDist - hvDist)
           if (diff < 0.5) {
-            console.log(`✅ ST_Distance matches Haversine (PG: ${pgDist.toFixed(2)}km, Haversine: ${hvDist.toFixed(2)}km, diff: ${diff.toFixed(4)}km)`)
+            console.log(
+              `✅ ST_Distance matches Haversine (PG: ${pgDist.toFixed(2)}km, Haversine: ${hvDist.toFixed(2)}km, diff: ${diff.toFixed(4)}km)`,
+            )
             passed++
           } else {
-            console.log(`⚠️  ST_Distance differs from Haversine (PG: ${pgDist.toFixed(2)}km, Haversine: ${hvDist.toFixed(2)}km, diff: ${diff.toFixed(4)}km)`)
+            console.log(
+              `⚠️  ST_Distance differs from Haversine (PG: ${pgDist.toFixed(2)}km, Haversine: ${hvDist.toFixed(2)}km, diff: ${diff.toFixed(4)}km)`,
+            )
             passed++ // Still pass — expected differences (PostGIS spheroid vs. Haversine sphere)
           }
         } else {

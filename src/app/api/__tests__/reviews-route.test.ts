@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET, POST } from "../reviews/route"
 import { GET as GET_RECENT } from "../reviews/recent/route"

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 /**
@@ -40,12 +41,8 @@ export function RegisterPageClient() {
   const [role, setRole] = useState<"CLIENT" | "PROVIDER">("CLIENT")
 
   const registerMutation = useMutation({
-    mutationFn: (data: {
-      name: string
-      email: string
-      password: string
-      role: string
-    }) => apiPost("/api/auth/register", data),
+    mutationFn: (data: { name: string; email: string; password: string; role: string }) =>
+      apiPost("/api/auth/register", data),
     onSuccess: (data: any) => {
       if (data?.user) {
         setUser(data.user)
@@ -62,9 +59,7 @@ export function RegisterPageClient() {
       if (message.includes("já")) {
         toast.error("Este e-mail já está cadastrado. Faça login.")
       } else {
-        toast.error(
-          "Não foi possível criar sua conta. Verifique os dados e tente novamente.",
-        )
+        toast.error("Não foi possível criar sua conta. Verifique os dados e tente novamente.")
       }
     },
   })
@@ -94,21 +89,19 @@ export function RegisterPageClient() {
         <CardHeader className="text-center">
           <Link
             href="/"
-            className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground mb-4 inline-flex items-center gap-1 text-sm"
           >
             <ArrowLeft className="size-4" />
             Voltar ao início
           </Link>
           <CardTitle className="text-2xl font-bold">Criar conta</CardTitle>
-          <CardDescription>
-            Cadastre-se como cliente ou prestador de serviços
-          </CardDescription>
+          <CardDescription>Cadastre-se como cliente ou prestador de serviços</CardDescription>
         </CardHeader>
 
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             {/* Role toggle */}
-            <div className="flex rounded-lg border bg-muted p-1">
+            <div className="bg-muted flex rounded-lg border p-1">
               <button
                 type="button"
                 role="tab"
@@ -179,14 +172,10 @@ export function RegisterPageClient() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2"
                   aria-label={showPassword ? "Esconder senha" : "Mostrar senha"}
                 >
-                  {showPassword ? (
-                    <EyeOff className="size-4" />
-                  ) : (
-                    <Eye className="size-4" />
-                  )}
+                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
               </div>
             </div>
@@ -233,7 +222,7 @@ export function RegisterPageClient() {
         </form>
 
         <CardFooter className="flex flex-col gap-3 text-center">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Já tem conta?{" "}
             <Link
               href="/login"

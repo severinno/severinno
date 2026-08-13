@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 /// <reference types="vitest/globals" />
 // Type augmentation for jest-dom matchers lives in ./types/vitest.d.ts
 // Runtime: extend vitest expect with jest-dom matchers

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for geo-query-log.ts — persistent query frequency tracker.
  *

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET } from "../services/route"
 import { GET as GET_DETAIL } from "../services/[id]/route"
@@ -15,7 +16,14 @@ const { mockServices, mockServiceDetail } = vi.hoisted(() => ({
       providerId: "prov-1",
       createdAt: new Date("2026-07-01"),
       category: { id: "cat-1", name: "Doméstico", slug: "domestico" },
-      provider: { id: "prov-1", name: "Maria", avatarUrl: null, city: "São Paulo", state: "SP", verified: true },
+      provider: {
+        id: "prov-1",
+        name: "Maria",
+        avatarUrl: null,
+        city: "São Paulo",
+        state: "SP",
+        verified: true,
+      },
     },
     {
       id: "svc-2",
@@ -27,7 +35,14 @@ const { mockServices, mockServiceDetail } = vi.hoisted(() => ({
       providerId: "prov-2",
       createdAt: new Date("2026-06-15"),
       category: { id: "cat-2", name: "Reforma", slug: "reforma" },
-      provider: { id: "prov-2", name: "João", avatarUrl: null, city: "São Paulo", state: "SP", verified: true },
+      provider: {
+        id: "prov-2",
+        name: "João",
+        avatarUrl: null,
+        city: "São Paulo",
+        state: "SP",
+        verified: true,
+      },
     },
   ],
   mockServiceDetail: {
@@ -39,7 +54,15 @@ const { mockServices, mockServiceDetail } = vi.hoisted(() => ({
     categoryId: "cat-1",
     providerId: "prov-1",
     category: { id: "cat-1", name: "Doméstico", slug: "domestico" },
-    provider: { id: "prov-1", name: "Maria", avatarUrl: null, city: "São Paulo", state: "SP", verified: true, whatsapp: "11999999999" },
+    provider: {
+      id: "prov-1",
+      name: "Maria",
+      avatarUrl: null,
+      city: "São Paulo",
+      state: "SP",
+      verified: true,
+      whatsapp: "11999999999",
+    },
   },
 }))
 
@@ -64,7 +87,10 @@ vi.mock("@/lib/api-server", async (importOriginal) => {
 vi.mock("@/lib/db", () => ({ default: mockDb, db: mockDb }))
 vi.mock("@/lib/auth", () => ({ requireUser: vi.fn() }))
 vi.mock("@/lib/validators", () => ({ serviceSchema: { parse: vi.fn() } }))
-vi.mock("@/lib/logger", () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() }, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() } }))
+vi.mock("@/lib/logger", () => ({
+  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() },
+}))
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -108,10 +134,7 @@ describe("GET /api/services (list)", () => {
     expect(mockDb.service.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          OR: [
-            { title: { contains: "limpeza" } },
-            { description: { contains: "limpeza" } },
-          ],
+          OR: [{ title: { contains: "limpeza" } }, { description: { contains: "limpeza" } }],
         }),
       }),
     )
@@ -137,7 +160,9 @@ describe("GET /api/services (list)", () => {
 describe("GET /api/services/[id] (detail)", () => {
   it("returns service detail with provider info", async () => {
     mockDb.service.findUnique.mockResolvedValue(mockServiceDetail)
-    const response = await GET_DETAIL(createMockRequest(), { params: Promise.resolve({ id: "svc-1" }) })
+    const response = await GET_DETAIL(createMockRequest(), {
+      params: Promise.resolve({ id: "svc-1" }),
+    })
     const data = await response.json()
     expect(response.status).toBe(200)
     // Route returns { service } wrapper
@@ -147,7 +172,9 @@ describe("GET /api/services/[id] (detail)", () => {
 
   it("returns 404 for non-existent service", async () => {
     mockDb.service.findUnique.mockResolvedValue(null)
-    const response = await GET_DETAIL(createMockRequest(), { params: Promise.resolve({ id: "not-found" }) })
+    const response = await GET_DETAIL(createMockRequest(), {
+      params: Promise.resolve({ id: "not-found" }),
+    })
     expect(response.status).toBe(404)
   })
 })

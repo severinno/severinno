@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 vi.mock("../logger", () => ({
@@ -34,9 +35,23 @@ vi.mock("next/headers", () => ({
   headers: () => new Headers(),
 }))
 
-import { createSession, getSession, destroySession, requireUser, requireRole, getOptionalSession } from "../auth"
+import {
+  createSession,
+  getSession,
+  destroySession,
+  requireUser,
+  requireRole,
+  getOptionalSession,
+} from "../auth"
 
-const VALID_USER = { id: "user-1", email: "test@test.com", name: "Test User", role: "CLIENT", active: true, verified: true }
+const VALID_USER = {
+  id: "user-1",
+  email: "test@test.com",
+  name: "Test User",
+  role: "CLIENT",
+  active: true,
+  verified: true,
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -86,7 +101,9 @@ describe("getSession", () => {
     await createSession("user-1", "CLIENT")
     const existing = cookieStore.get("severinno_session")
     if (existing) {
-      cookieStore.set("severinno_session", { value: existing.value.split(".").slice(0, 3).join(".") + ".BAD" })
+      cookieStore.set("severinno_session", {
+        value: existing.value.split(".").slice(0, 3).join(".") + ".BAD",
+      })
     }
     expect(await getSession()).toBeNull()
   })

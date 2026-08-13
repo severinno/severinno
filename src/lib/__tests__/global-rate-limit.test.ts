@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for global-rate-limit.ts — Edge-compatible sliding window rate limiter
  * with Upstash Redis fallback chain (Upstash → in-memory).
@@ -82,7 +83,7 @@ describe("checkGlobalRateLimit — in-memory fallback", () => {
 
     expect(result.allowed).toBe(true)
     expect(result.remaining).toBe(TEST_MAX - 1) // 4
-    expect(result.limit).toBe(TEST_MAX)          // 5
+    expect(result.limit).toBe(TEST_MAX) // 5
     expect(result.reset).toBeGreaterThan(Date.now())
   })
 

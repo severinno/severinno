@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for GET /api/provider/lytex — provider wallet view.
  *
@@ -43,23 +44,38 @@ import { GET } from "../provider/lytex/route"
 
 const mockBookings = [
   {
-    id: "booking-1", amount: 200, status: "COMPLETED", paymentStatus: "PAID",
+    id: "booking-1",
+    amount: 200,
+    status: "COMPLETED",
+    paymentStatus: "PAID",
     createdAt: new Date("2025-01-15"),
   },
   {
-    id: "booking-2", amount: 350, status: "COMPLETED", paymentStatus: "PAID",
+    id: "booking-2",
+    amount: 350,
+    status: "COMPLETED",
+    paymentStatus: "PAID",
     createdAt: new Date("2025-02-10"),
   },
   {
-    id: "booking-3", amount: 150, status: "CONFIRMED", paymentStatus: "PAID",
+    id: "booking-3",
+    amount: 150,
+    status: "CONFIRMED",
+    paymentStatus: "PAID",
     createdAt: new Date("2025-03-01"),
   },
   {
-    id: "booking-4", amount: 100, status: "IN_PROGRESS", paymentStatus: "PAID",
+    id: "booking-4",
+    amount: 100,
+    status: "IN_PROGRESS",
+    paymentStatus: "PAID",
     createdAt: new Date("2025-03-05"),
   },
   {
-    id: "booking-5", amount: 500, status: "PENDING", paymentStatus: "PENDING",
+    id: "booking-5",
+    amount: 500,
+    status: "PENDING",
+    paymentStatus: "PENDING",
     createdAt: new Date("2025-03-10"),
   },
 ]

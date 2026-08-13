@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 /**
@@ -19,13 +20,9 @@ import {
   Pause,
   Play,
   Archive,
-  Trash2,
   Clock,
   CalendarClock,
-  Users,
-  Bell,
   Loader2,
-  AlertTriangle,
   Info,
 } from "lucide-react"
 
@@ -33,13 +30,7 @@ import { apiGet, apiPost, apiPatch, apiDelete } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import {
   Select,
   SelectContent,
@@ -48,7 +39,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Dialog,
@@ -102,7 +92,7 @@ type RecurringResponse = {
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const FREQUENCY_LABELS: Record<string, string> = {
+const _FREQUENCY_LABELS: Record<string, string> = {
   daily: "Diário",
   weekly: "Semanal",
   monthly: "Mensal",
@@ -114,9 +104,7 @@ const FREQUENCY_ICONS: Record<string, React.ElementType> = {
   monthly: CalendarClock,
 }
 
-const DAY_NAMES = [
-  "Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado",
-]
+const DAY_NAMES = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"]
 
 const TARGET_ROLE_OPTIONS = [
   { value: "CLIENT", label: "Clientes" },
@@ -175,7 +163,13 @@ function StatusBadge({ status }: { status: string }) {
   }
   const c = cfg[status] ?? { label: status, fg: "text-muted-foreground", bg: "bg-muted" }
   return (
-    <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium", c.bg, c.fg)}>
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+        c.bg,
+        c.fg,
+      )}
+    >
       {c.label}
     </span>
   )
@@ -193,7 +187,9 @@ export function AdminPushRecurring() {
 
   // Confirmation dialogs
   const [confirmActionId, setConfirmActionId] = React.useState<string | null>(null)
-  const [confirmActionType, setConfirmActionType] = React.useState<"archive" | "pause" | "activate" | null>(null)
+  const [confirmActionType, setConfirmActionType] = React.useState<
+    "archive" | "pause" | "activate" | null
+  >(null)
   const [confirmTitle, setConfirmTitle] = React.useState("")
 
   // ── Query ────────────────────────────────────────────────────────────────
@@ -213,7 +209,11 @@ export function AdminPushRecurring() {
   // ── Mutations ────────────────────────────────────────────────────────────
   const saveMutation = useMutation({
     mutationFn: () => {
-      const body: Record<string, unknown> = { ...form, body: form.body || null, filterCity: form.filterCity || null }
+      const body: Record<string, unknown> = {
+        ...form,
+        body: form.body || null,
+        filterCity: form.filterCity || null,
+      }
       if (form.frequency !== "weekly") body.dayOfWeek = null
       if (form.frequency !== "monthly") body.dayOfMonth = null
       if (editId) return apiPatch("/api/admin/push/recurring", { id: editId, ...body })
@@ -297,10 +297,8 @@ export function AdminPushRecurring() {
     setForm(EMPTY_FORM)
   }
 
-  const updateField = <K extends keyof RecurringFormData>(
-    key: K,
-    value: RecurringFormData[K],
-  ) => setForm((prev) => ({ ...prev, [key]: value }))
+  const updateField = <K extends keyof RecurringFormData>(key: K, value: RecurringFormData[K]) =>
+    setForm((prev) => ({ ...prev, [key]: value }))
 
   const toggleRole = (role: string) => {
     setForm((prev) => ({
@@ -317,15 +315,21 @@ export function AdminPushRecurring() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
+          <h1 className="text-foreground text-xl font-bold tracking-tight">
             Notificações Recorrentes
           </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
+          <p className="text-muted-foreground mt-0.5 text-sm">
             Agende notificações push que disparam automaticamente todo dia, semana ou mês.
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1) }}>
+          <Select
+            value={statusFilter}
+            onValueChange={(v) => {
+              setStatusFilter(v)
+              setPage(1)
+            }}
+          >
             <SelectTrigger className="h-8 w-[130px] text-xs">
               <SelectValue placeholder="Filtrar status" />
             </SelectTrigger>
@@ -336,7 +340,13 @@ export function AdminPushRecurring() {
               <SelectItem value="all">Todos</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="ghost" size="icon" className="size-8" onClick={() => void refetch()} disabled={isFetching}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-8"
+            onClick={() => void refetch()}
+            disabled={isFetching}
+          >
             <RotateCw className={cn("size-4", isFetching && "animate-spin")} />
           </Button>
           <Button size="sm" onClick={openNewForm}>
@@ -367,9 +377,10 @@ export function AdminPushRecurring() {
       {!isLoading && !isError && data && data.items.length === 0 && (
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
-            <CalendarClock className="size-10 text-muted-foreground/40" />
-            <p className="text-sm text-muted-foreground">
-              Nenhum agendamento recorrente {statusFilter !== "all" ? statusFilter.toLowerCase() : ""} encontrado.
+            <CalendarClock className="text-muted-foreground/40 size-10" />
+            <p className="text-muted-foreground text-sm">
+              Nenhum agendamento recorrente{" "}
+              {statusFilter !== "all" ? statusFilter.toLowerCase() : ""} encontrado.
             </p>
             <Button size="sm" onClick={openNewForm}>
               <Plus className="mr-1.5 size-4" />
@@ -388,11 +399,11 @@ export function AdminPushRecurring() {
               <Card key={item.id} className="relative">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <Icon className="size-4 shrink-0 text-muted-foreground" />
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <Icon className="text-muted-foreground size-4 shrink-0" />
                       <div className="min-w-0">
-                        <CardTitle className="text-sm truncate">{item.title}</CardTitle>
-                        <CardDescription className="text-xs truncate">
+                        <CardTitle className="truncate text-sm">{item.title}</CardTitle>
+                        <CardDescription className="truncate text-xs">
                           {describeSchedule(item)}
                         </CardDescription>
                       </div>
@@ -402,53 +413,80 @@ export function AdminPushRecurring() {
                 </CardHeader>
                 <CardContent className="space-y-2 pt-0">
                   {item.body && (
-                    <p className="text-xs text-muted-foreground line-clamp-2">{item.body}</p>
+                    <p className="text-muted-foreground line-clamp-2 text-xs">{item.body}</p>
                   )}
 
                   <div className="flex flex-wrap gap-1">
                     {(item.targetRoles as string[]).map((r) => (
-                      <Badge key={r} variant="secondary" className="text-[9px] px-1.5 py-0">
+                      <Badge key={r} variant="secondary" className="px-1.5 py-0 text-[9px]">
                         {r === "CLIENT" ? "Clientes" : r === "PROVIDER" ? "Prest." : r}
                       </Badge>
                     ))}
                     {item.filterCity && (
-                      <Badge variant="outline" className="text-[9px] px-1.5 py-0">
+                      <Badge variant="outline" className="px-1.5 py-0 text-[9px]">
                         {item.filterCity}
                       </Badge>
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t">
+                  <div className="text-muted-foreground flex items-center justify-between border-t pt-1 text-[10px]">
                     <span>Total: {item.totalSent} envios</span>
                     {item.lastSentAt && (
-                      <span>Último: {new Date(item.lastSentAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
+                      <span>
+                        Último:{" "}
+                        {new Date(item.lastSentAt).toLocaleDateString("pt-BR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                        })}
+                      </span>
                     )}
                   </div>
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 pt-1">
-                    <Button variant="ghost" size="icon" className="size-7" onClick={() => openEditForm(item)} title="Editar">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7"
+                      onClick={() => openEditForm(item)}
+                      title="Editar"
+                    >
                       <Pencil className="size-3.5" />
                     </Button>
 
                     {item.status === "ACTIVE" ? (
-                      <Button variant="ghost" size="icon" className="size-7 text-amber-500 hover:text-amber-600"
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 text-amber-500 hover:text-amber-600"
                         onClick={() => openConfirm(item.id, "pause", item.title)}
-                        disabled={toggleStatusMutation.isPending} title="Pausar">
+                        disabled={toggleStatusMutation.isPending}
+                        title="Pausar"
+                      >
                         <Pause className="size-3.5" />
                       </Button>
                     ) : item.status === "PAUSED" ? (
-                      <Button variant="ghost" size="icon" className="size-7 text-emerald-500 hover:text-emerald-600"
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 text-emerald-500 hover:text-emerald-600"
                         onClick={() => openConfirm(item.id, "activate", item.title)}
-                        disabled={toggleStatusMutation.isPending} title="Ativar">
+                        disabled={toggleStatusMutation.isPending}
+                        title="Ativar"
+                      >
                         <Play className="size-3.5" />
                       </Button>
                     ) : null}
 
                     {item.status !== "ARCHIVED" && (
-                      <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive"
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-muted-foreground hover:text-destructive size-7"
                         onClick={() => openConfirm(item.id, "archive", item.title)}
-                        disabled={archiveMutation.isPending} title="Arquivar">
+                        disabled={archiveMutation.isPending}
+                        title="Arquivar"
+                      >
                         <Archive className="size-3.5" />
                       </Button>
                     )}
@@ -463,14 +501,25 @@ export function AdminPushRecurring() {
       {/* Pagination */}
       {data && data.pagination.totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            {data.pagination.total} registro(s) · página {data.pagination.page} de {data.pagination.totalPages}
+          <p className="text-muted-foreground text-xs">
+            {data.pagination.total} registro(s) · página {data.pagination.page} de{" "}
+            {data.pagination.totalPages}
           </p>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
               Anterior
             </Button>
-            <Button variant="outline" size="sm" disabled={page >= data.pagination.totalPages} onClick={() => setPage((p) => p + 1)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= data.pagination.totalPages}
+              onClick={() => setPage((p) => p + 1)}
+            >
               Próximo
             </Button>
           </div>
@@ -480,19 +529,28 @@ export function AdminPushRecurring() {
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {/*  Create/Edit Dialog                                             */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <Dialog open={showForm} onOpenChange={(open) => { if (!open) closeForm() }}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <Dialog
+        open={showForm}
+        onOpenChange={(open) => {
+          if (!open) closeForm()
+        }}
+      >
+        <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editId ? "Editar agendamento" : "Novo agendamento recorrente"}</DialogTitle>
+            <DialogTitle>
+              {editId ? "Editar agendamento" : "Novo agendamento recorrente"}
+            </DialogTitle>
             <DialogDescription>
-              {editId ? "Atualize os campos do agendamento." : "Configure uma notificação push automática e recorrente."}
+              {editId
+                ? "Atualize os campos do agendamento."
+                : "Configure uma notificação push automática e recorrente."}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             {/* Frequency */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-foreground">Frequência</label>
+              <label className="text-foreground text-xs font-medium">Frequência</label>
               <Select value={form.frequency} onValueChange={(v) => updateField("frequency", v)}>
                 <SelectTrigger>
                   <SelectValue />
@@ -507,22 +565,32 @@ export function AdminPushRecurring() {
 
             {/* Time */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-foreground">Horário <span className="text-destructive">*</span></label>
-              <Input type="time" value={form.time} onChange={(e) => updateField("time", e.target.value)} />
-              <p className="text-[10px] text-muted-foreground">Horário local (America/Sao_Paulo)</p>
+              <label className="text-foreground text-xs font-medium">
+                Horário <span className="text-destructive">*</span>
+              </label>
+              <Input
+                type="time"
+                value={form.time}
+                onChange={(e) => updateField("time", e.target.value)}
+              />
+              <p className="text-muted-foreground text-[10px]">Horário local (America/Sao_Paulo)</p>
             </div>
 
             {/* Day of week (weekly) */}
             {form.frequency === "weekly" && (
               <div className="space-y-2">
-                <label className="text-xs font-medium text-foreground">Dia da semana <span className="text-destructive">*</span></label>
+                <label className="text-foreground text-xs font-medium">
+                  Dia da semana <span className="text-destructive">*</span>
+                </label>
                 <Select value={form.dayOfWeek} onValueChange={(v) => updateField("dayOfWeek", v)}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {DAY_NAMES.map((name, idx) => (
-                      <SelectItem key={idx} value={String(idx)}>{name}</SelectItem>
+                      <SelectItem key={idx} value={String(idx)}>
+                        {name}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -532,74 +600,117 @@ export function AdminPushRecurring() {
             {/* Day of month (monthly) */}
             {form.frequency === "monthly" && (
               <div className="space-y-2">
-                <label className="text-xs font-medium text-foreground">Dia do mês <span className="text-destructive">*</span></label>
-                <Input type="number" min={1} max={31} value={form.dayOfMonth}
-                  onChange={(e) => updateField("dayOfMonth", e.target.value)} />
-                <p className="text-[10px] text-muted-foreground">Entre 1 e 31. Se o mês tiver menos dias, dispara no último dia.</p>
+                <label className="text-foreground text-xs font-medium">
+                  Dia do mês <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={form.dayOfMonth}
+                  onChange={(e) => updateField("dayOfMonth", e.target.value)}
+                />
+                <p className="text-muted-foreground text-[10px]">
+                  Entre 1 e 31. Se o mês tiver menos dias, dispara no último dia.
+                </p>
               </div>
             )}
 
             {/* Title */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-foreground">Título <span className="text-destructive">*</span></label>
-              <Input placeholder="Ex: Bom dia! Confira os prestadores perto de você"
-                value={form.title} onChange={(e) => updateField("title", e.target.value.slice(0, 200))} maxLength={200} />
-              <p className="text-right text-[10px] text-muted-foreground">{form.title.length}/200</p>
+              <label className="text-foreground text-xs font-medium">
+                Título <span className="text-destructive">*</span>
+              </label>
+              <Input
+                placeholder="Ex: Bom dia! Confira os prestadores perto de você"
+                value={form.title}
+                onChange={(e) => updateField("title", e.target.value.slice(0, 200))}
+                maxLength={200}
+              />
+              <p className="text-muted-foreground text-right text-[10px]">
+                {form.title.length}/200
+              </p>
             </div>
 
             {/* Body */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-foreground">Corpo da mensagem</label>
-              <Textarea placeholder="Ex: Novos prestadores cadastrados na sua região..."
-                value={form.body} onChange={(e) => updateField("body", e.target.value.slice(0, 500))} maxLength={500} rows={2} />
-              <p className="text-right text-[10px] text-muted-foreground">{form.body.length}/500</p>
+              <label className="text-foreground text-xs font-medium">Corpo da mensagem</label>
+              <Textarea
+                placeholder="Ex: Novos prestadores cadastrados na sua região..."
+                value={form.body}
+                onChange={(e) => updateField("body", e.target.value.slice(0, 500))}
+                maxLength={500}
+                rows={2}
+              />
+              <p className="text-muted-foreground text-right text-[10px]">{form.body.length}/500</p>
             </div>
 
             {/* Push URL */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-foreground">URL de destino</label>
-              <Input placeholder="/" value={form.pushUrl} onChange={(e) => updateField("pushUrl", e.target.value)} />
+              <label className="text-foreground text-xs font-medium">URL de destino</label>
+              <Input
+                placeholder="/"
+                value={form.pushUrl}
+                onChange={(e) => updateField("pushUrl", e.target.value)}
+              />
             </div>
 
             {/* Target roles */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-foreground">Quem recebe?</label>
+              <label className="text-foreground text-xs font-medium">Quem recebe?</label>
               <div className="flex flex-wrap gap-2">
                 {TARGET_ROLE_OPTIONS.map((opt) => (
-                  <Button key={opt.value} type="button"
-                    variant={form.targetRoles.includes(opt.value) ? "default" : "outline"} size="sm"
+                  <Button
+                    key={opt.value}
+                    type="button"
+                    variant={form.targetRoles.includes(opt.value) ? "default" : "outline"}
+                    size="sm"
                     onClick={() => toggleRole(opt.value)}
-                    className="h-8 text-xs">
+                    className="h-8 text-xs"
+                  >
                     {opt.label}
                   </Button>
                 ))}
               </div>
-              <p className="text-[10px] text-muted-foreground">
-                Selecione quais tipos de usuário recebem a notificação. O envio é feito apenas para usuários com push subscription ativa.
+              <p className="text-muted-foreground text-[10px]">
+                Selecione quais tipos de usuário recebem a notificação. O envio é feito apenas para
+                usuários com push subscription ativa.
               </p>
             </div>
 
             {/* City filter */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-foreground">Filtrar por cidade (opcional)</label>
-              <Input placeholder="Ex: São Paulo" value={form.filterCity}
-                onChange={(e) => updateField("filterCity", e.target.value)} />
-              <p className="text-[10px] text-muted-foreground">Deixe vazio para enviar para todos.</p>
+              <label className="text-foreground text-xs font-medium">
+                Filtrar por cidade (opcional)
+              </label>
+              <Input
+                placeholder="Ex: São Paulo"
+                value={form.filterCity}
+                onChange={(e) => updateField("filterCity", e.target.value)}
+              />
+              <p className="text-muted-foreground text-[10px]">
+                Deixe vazio para enviar para todos.
+              </p>
             </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={closeForm}>Cancelar</Button>
-            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !form.title.trim()}>
+            <Button variant="outline" onClick={closeForm}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending || !form.title.trim()}
+            >
               {saveMutation.isPending && <Loader2 className="mr-1.5 size-4 animate-spin" />}
               {editId ? "Salvar alterações" : "Criar agendamento"}
             </Button>
           </div>
 
-          <div className="rounded-lg bg-muted/50 p-3 text-[10px] text-muted-foreground">
-            <Info className="mr-1 inline size-3 align-text-top" />
-            O cron job verifica a cada minuto se há agendamentos para disparar.
-            O schedule é processado no fuso horário America/Sao_Paulo.
+          <div className="bg-muted/50 text-muted-foreground rounded-lg p-3 text-[10px]">
+            <Info className="mr-1 inline size-3 align-text-top" />O cron job verifica a cada minuto
+            se há agendamentos para disparar. O schedule é processado no fuso horário
+            America/Sao_Paulo.
           </div>
         </DialogContent>
       </Dialog>
@@ -609,13 +720,18 @@ export function AdminPushRecurring() {
       {/* ═══════════════════════════════════════════════════════════════════ */}
       <AlertDialog
         open={confirmActionId !== null && confirmActionType !== null}
-        onOpenChange={(open) => { if (!open) { setConfirmActionId(null); setConfirmActionType(null) } }}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmActionId(null)
+            setConfirmActionType(null)
+          }
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               {confirmActionType === "archive" ? (
-                <Archive className="size-5 text-muted-foreground" />
+                <Archive className="text-muted-foreground size-5" />
               ) : confirmActionType === "pause" ? (
                 <Pause className="size-5 text-amber-500" />
               ) : (
@@ -629,18 +745,32 @@ export function AdminPushRecurring() {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirmActionType === "archive" && (
-                <>O agendamento <strong>"{confirmTitle}"</strong> será arquivado e não disparará mais notificações. É possível criar um novo posteriormente.</>
+                <>
+                  O agendamento <strong>"{confirmTitle}"</strong> será arquivado e não disparará
+                  mais notificações. É possível criar um novo posteriormente.
+                </>
               )}
               {confirmActionType === "pause" && (
-                <>O agendamento <strong>"{confirmTitle}"</strong> será pausado. Notificações programadas não serão enviadas até que seja reativado.</>
+                <>
+                  O agendamento <strong>"{confirmTitle}"</strong> será pausado. Notificações
+                  programadas não serão enviadas até que seja reativado.
+                </>
               )}
               {confirmActionType === "activate" && (
-                <>O agendamento <strong>"{confirmTitle}"</strong> será reativado e voltará a disparar notificações conforme a programação.</>
+                <>
+                  O agendamento <strong>"{confirmTitle}"</strong> será reativado e voltará a
+                  disparar notificações conforme a programação.
+                </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => { setConfirmActionId(null); setConfirmActionType(null) }}>
+            <AlertDialogCancel
+              onClick={() => {
+                setConfirmActionId(null)
+                setConfirmActionType(null)
+              }}
+            >
               Voltar
             </AlertDialogCancel>
             <AlertDialogAction
@@ -651,11 +781,17 @@ export function AdminPushRecurring() {
               )}
             >
               {confirmActionType === "archive" ? (
-                <><Archive className="size-4" /> Arquivar</>
+                <>
+                  <Archive className="size-4" /> Arquivar
+                </>
               ) : confirmActionType === "pause" ? (
-                <><Pause className="size-4" /> Pausar</>
+                <>
+                  <Pause className="size-4" /> Pausar
+                </>
               ) : (
-                <><Play className="size-4" /> Reativar</>
+                <>
+                  <Play className="size-4" /> Reativar
+                </>
               )}
             </AlertDialogAction>
           </AlertDialogFooter>

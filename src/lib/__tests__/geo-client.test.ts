@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from "vitest"
 import { haversineKm, formatDistance } from "../geo-client"
 
@@ -32,15 +33,15 @@ describe("geo-client formatDistance", () => {
     expect(formatDistance(NaN)).toBe("—")
   })
 
-  it('formats <1km as meters', () => {
+  it("formats <1km as meters", () => {
     expect(formatDistance(0.85)).toBe("850 m")
   })
 
-  it('formats <10km with one decimal', () => {
+  it("formats <10km with one decimal", () => {
     expect(formatDistance(5.3)).toBe("5,3 km")
   })
 
-  it('formats >=10km as integer', () => {
+  it("formats >=10km as integer", () => {
     expect(formatDistance(15)).toBe("15 km")
   })
 })

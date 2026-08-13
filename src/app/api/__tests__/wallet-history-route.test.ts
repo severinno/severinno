@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
@@ -82,9 +83,7 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const req = new Request(
-      "http://localhost/api/provider/wallet/history?page=1&limit=2",
-    )
+    const req = new Request("http://localhost/api/provider/wallet/history?page=1&limit=2")
     const res = await GET(req)
     const data = await res.json()
 
@@ -99,9 +98,7 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const req = new Request(
-      "http://localhost/api/provider/wallet/history?page=2&limit=2",
-    )
+    const req = new Request("http://localhost/api/provider/wallet/history?page=2&limit=2")
     const res = await GET(req)
     const data = await res.json()
 
@@ -153,9 +150,7 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const req = new Request(
-      "http://localhost/api/provider/wallet/history?type=paid",
-    )
+    const req = new Request("http://localhost/api/provider/wallet/history?type=paid")
     const res = await GET(req)
     const data = await res.json()
 
@@ -170,9 +165,7 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const req = new Request(
-      "http://localhost/api/provider/wallet/history?type=pending",
-    )
+    const req = new Request("http://localhost/api/provider/wallet/history?type=pending")
     const res = await GET(req)
     const data = await res.json()
 
@@ -193,9 +186,7 @@ describe("GET /api/provider/wallet/history", () => {
       },
     ])
 
-    const req = new Request(
-      "http://localhost/api/provider/wallet/history?type=withdrawn",
-    )
+    const req = new Request("http://localhost/api/provider/wallet/history?type=withdrawn")
     const res = await GET(req)
     const data = await res.json()
 
@@ -208,9 +199,7 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
-    const req = new Request(
-      "http://localhost/api/provider/wallet/history?type=invalid",
-    )
+    const req = new Request("http://localhost/api/provider/wallet/history?type=invalid")
     const res = await GET(req)
     const data = await res.json()
 
@@ -222,18 +211,22 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
     // Only bookings on or after 2025-01-20
-    const req = new Request(
-      "http://localhost/api/provider/wallet/history?dateStart=2025-01-20",
-    )
+    const req = new Request("http://localhost/api/provider/wallet/history?dateStart=2025-01-20")
     const res = await GET(req)
     const data = await res.json()
 
     // booking-1 is 2025-01-15 → excluded, booking-2 is 2025-01-20 → included
     // booking-3 is 2025-02-01 → included
     expect(data.total).toBe(2)
-    expect(data.items.find((t: { description: string }) => t.description.includes("Limpeza"))).toBeUndefined()
-    expect(data.items.find((t: { description: string }) => t.description.includes("Pintura"))).toBeDefined()
-    expect(data.items.find((t: { description: string }) => t.description.includes("Reparo"))).toBeDefined()
+    expect(
+      data.items.find((t: { description: string }) => t.description.includes("Limpeza")),
+    ).toBeUndefined()
+    expect(
+      data.items.find((t: { description: string }) => t.description.includes("Pintura")),
+    ).toBeDefined()
+    expect(
+      data.items.find((t: { description: string }) => t.description.includes("Reparo")),
+    ).toBeDefined()
   })
 
   it("filters by date range (dateEnd only)", async () => {
@@ -241,16 +234,20 @@ describe("GET /api/provider/wallet/history", () => {
     mockDb.walletTransaction.findMany.mockResolvedValue([])
 
     // Only bookings on or before 2025-01-20
-    const req = new Request(
-      "http://localhost/api/provider/wallet/history?dateEnd=2025-01-20",
-    )
+    const req = new Request("http://localhost/api/provider/wallet/history?dateEnd=2025-01-20")
     const res = await GET(req)
     const data = await res.json()
 
     expect(data.total).toBe(2)
-    expect(data.items.find((t: { description: string }) => t.description.includes("Limpeza"))).toBeDefined()
-    expect(data.items.find((t: { description: string }) => t.description.includes("Pintura"))).toBeDefined()
-    expect(data.items.find((t: { description: string }) => t.description.includes("Reparo"))).toBeUndefined()
+    expect(
+      data.items.find((t: { description: string }) => t.description.includes("Limpeza")),
+    ).toBeDefined()
+    expect(
+      data.items.find((t: { description: string }) => t.description.includes("Pintura")),
+    ).toBeDefined()
+    expect(
+      data.items.find((t: { description: string }) => t.description.includes("Reparo")),
+    ).toBeUndefined()
   })
 
   it("filters by full date range", async () => {

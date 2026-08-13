@@ -1,3 +1,4 @@
+/* eslint-disable no-console, @typescript-eslint/no-explicit-any  */
 /**
  * Script de migração: SQLite → PostgreSQL + PostGIS
  *
@@ -46,7 +47,9 @@ const PG_URL = process.env.DATABASE_URL_PG
 
 if (!PG_URL) {
   console.error("❌ DATABASE_URL_PG is required")
-  console.error("   Ex: DATABASE_URL_PG=\"postgresql://severinno:severinno@localhost:5432/severinno\"")
+  console.error(
+    '   Ex: DATABASE_URL_PG="postgresql://severinno:severinno@localhost:5432/severinno"',
+  )
   process.exit(1)
 }
 
@@ -64,12 +67,14 @@ async function migrate() {
   try {
     execSync(
       `PGPASSWORD=severinno psql -h localhost -U severinno -d severinno ` +
-      `-f prisma/migrations/XX_add_postgis/migration.sql`,
+        `-f prisma/migrations/XX_add_postgis/migration.sql`,
       { stdio: "inherit" },
     )
   } catch {
     console.log("   ⚠️  psql not available — PostGIS migration must be run manually")
-    console.log("       Run: psql -h localhost -U severinno -d severinno -f prisma/migrations/XX_add_postgis/migration.sql")
+    console.log(
+      "       Run: psql -h localhost -U severinno -d severinno -f prisma/migrations/XX_add_postgis/migration.sql",
+    )
   }
 
   // Step 3: Connect to PostgreSQL

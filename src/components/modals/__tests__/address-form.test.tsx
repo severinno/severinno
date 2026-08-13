@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import React from "react"
 import { render, screen, fireEvent, act, cleanup } from "@/__tests__/test-utils"

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
 
@@ -29,8 +30,9 @@ describe("POST /api/newsletter", () => {
   })
 
   it("subscribes a new email successfully", async () => {
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.setting.create) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.setting.findUnique) as any)
+      .mockResolvedValue(null)(vi.mocked(db.setting.create) as any)
+      .mockResolvedValue({} as any)
 
     const req = createMockRequest({
       method: "POST",
@@ -50,11 +52,12 @@ describe("POST /api/newsletter", () => {
   })
 
   it("returns already subscribed when email exists", async () => {
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
-      key: "newsletter:user@example.com",
-      value: JSON.stringify({ email: "user@example.com" }),
-    } as any)
-    (vi.mocked(db.setting.create) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.setting.findUnique) as any)
+      .mockResolvedValue({
+        key: "newsletter:user@example.com",
+        value: JSON.stringify({ email: "user@example.com" }),
+      } as any)(vi.mocked(db.setting.create) as any)
+      .mockResolvedValue({} as any)
 
     const req = createMockRequest({
       method: "POST",
@@ -96,8 +99,9 @@ describe("POST /api/newsletter", () => {
   })
 
   it("normalizes email to lowercase", async () => {
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.setting.create) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.setting.findUnique) as any)
+      .mockResolvedValue(null)(vi.mocked(db.setting.create) as any)
+      .mockResolvedValue({} as any)
 
     const req = createMockRequest({
       method: "POST",
@@ -113,8 +117,9 @@ describe("POST /api/newsletter", () => {
   })
 
   it("trims whitespace from email", async () => {
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
-    (vi.mocked(db.setting.create) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.setting.findUnique) as any)
+      .mockResolvedValue(null)(vi.mocked(db.setting.create) as any)
+      .mockResolvedValue({} as any)
 
     const req = createMockRequest({
       method: "POST",

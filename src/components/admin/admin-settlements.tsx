@@ -17,8 +17,6 @@ import {
   Calendar,
   CheckCircle2,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   ChevronUp,
   DollarSign,
   Handshake,
@@ -41,10 +39,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
@@ -54,12 +49,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { toast } from "sonner"
-import {
-  ErrorState,
-  EmptyState,
-  PageSectionHeader,
-  StatusBadge,
-} from "./_shared"
+import { ErrorState, EmptyState, PageSectionHeader, StatusBadge } from "./_shared"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -124,16 +114,13 @@ const PERIOD_TYPE_OPTIONS: { value: PeriodType; label: string }[] = [
   { value: "WEEKLY", label: "Semanal" },
 ]
 
-const SETTLEMENT_STATUS_STYLES: Record<PeriodStatus, string> = {
-  PENDING:
-    "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-  FINALIZED:
-    "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+const _SETTLEMENT_STATUS_STYLES: Record<PeriodStatus, string> = {
+  PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  FINALIZED: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
 }
 
 const PROVIDER_STATUS_STYLES: Record<ProviderSettStatus, string> = {
-  PENDING:
-    "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
   PAID: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
 }
 
@@ -169,20 +156,14 @@ export function AdminSettlements() {
       queryClient.invalidateQueries({ queryKey: ["admin", "settlements"] })
     },
     onError: (e: unknown) => {
-      const msg =
-        e instanceof Error
-          ? e.message
-          : "Não foi possível gerar o período de repasse."
+      const msg = e instanceof Error ? e.message : "Não foi possível gerar o período de repasse."
       toast.error(msg)
     },
   })
 
   const finalizeMutation = useMutation({
     mutationFn: (periodId: string) =>
-      apiPost<{ period: SettlementPeriodItem }>(
-        `/api/admin/settlements/${periodId}/finalize`,
-        {},
-      ),
+      apiPost<{ period: SettlementPeriodItem }>(`/api/admin/settlements/${periodId}/finalize`, {}),
     onSuccess: () => {
       toast.success("Período finalizado com sucesso!")
       queryClient.invalidateQueries({ queryKey: ["admin", "settlements"] })
@@ -191,13 +172,7 @@ export function AdminSettlements() {
   })
 
   const payMutation = useMutation({
-    mutationFn: ({
-      periodId,
-      providerId,
-    }: {
-      periodId: string
-      providerId: string
-    }) =>
+    mutationFn: ({ periodId, providerId }: { periodId: string; providerId: string }) =>
       apiPost<{ settlement: ProviderSettlement }>(
         `/api/admin/settlements/${periodId}/pay/${providerId}`,
         {},
@@ -227,11 +202,7 @@ export function AdminSettlements() {
         title="Repasses"
         description="Períodos de repasse automáticos — gere, finalize e marque como pago."
         action={
-          <Button
-            size="sm"
-            className="gap-1.5"
-            onClick={() => setGenerateOpen(true)}
-          >
+          <Button size="sm" className="gap-1.5" onClick={() => setGenerateOpen(true)}>
             <Plus className="size-4" />
             Gerar novo período
           </Button>
@@ -246,11 +217,7 @@ export function AdminSettlements() {
           title="Nenhum período de repasse"
           description="Gere o primeiro período de repasse para começar."
           action={
-            <Button
-              size="sm"
-              className="gap-1.5"
-              onClick={() => setGenerateOpen(true)}
-            >
+            <Button size="sm" className="gap-1.5" onClick={() => setGenerateOpen(true)}>
               <Plus className="size-4" />
               Gerar primeiro período
             </Button>
@@ -260,25 +227,16 @@ export function AdminSettlements() {
         <div className="flex flex-col gap-4">
           {periods.map((period) => {
             const isExpanded = expandedPeriod === period.id
-            const paidCount = period.providers.filter(
-              (p) => p.status === "PAID",
-            ).length
-            const pendingCount = period.providers.filter(
-              (p) => p.status === "PENDING",
-            ).length
+            const paidCount = period.providers.filter((p) => p.status === "PAID").length
+            const pendingCount = period.providers.filter((p) => p.status === "PENDING").length
 
             return (
-              <Card
-                key={period.id}
-                className="overflow-hidden rounded-xl border border-border/50"
-              >
+              <Card key={period.id} className="border-border/50 overflow-hidden rounded-xl border">
                 {/* Period header — clickable */}
                 <button
                   type="button"
-                  onClick={() =>
-                    setExpandedPeriod(isExpanded ? null : period.id)
-                  }
-                  className="flex w-full items-center justify-between px-5 py-4 text-left transition-colors hover:bg-muted/20"
+                  onClick={() => setExpandedPeriod(isExpanded ? null : period.id)}
+                  className="hover:bg-muted/20 flex w-full items-center justify-between px-5 py-4 text-left transition-colors"
                 >
                   <div className="flex items-center gap-3">
                     <span
@@ -297,17 +255,12 @@ export function AdminSettlements() {
                     </span>
                     <div>
                       <p className="text-sm font-semibold">
-                        {formatPeriodLabel(
-                          period.startDate,
-                          period.endDate,
-                          period.type,
-                        )}
+                        {formatPeriodLabel(period.startDate, period.endDate, period.type)}
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        {PERIOD_TYPE_LABELS[period.type]} ·{" "}
-                        {period.providerCount} prestador
-                        {period.providerCount !== 1 ? "es" : ""} ·{" "}
-                        {period.transactionCount} transação
+                      <p className="text-muted-foreground text-xs">
+                        {PERIOD_TYPE_LABELS[period.type]} · {period.providerCount} prestador
+                        {period.providerCount !== 1 ? "es" : ""} · {period.transactionCount}{" "}
+                        transação
                         {period.transactionCount !== 1 ? "ões" : ""}
                       </p>
                     </div>
@@ -316,44 +269,36 @@ export function AdminSettlements() {
                   <div className="flex items-center gap-4">
                     <div className="hidden items-center gap-3 text-right sm:flex">
                       <div>
-                        <p className="text-xs text-muted-foreground">
-                          Repasse total
-                        </p>
-                        <p className="text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                        <p className="text-muted-foreground text-xs">Repasse total</p>
+                        <p className="text-sm font-semibold text-emerald-600 tabular-nums dark:text-emerald-400">
                           {formatBRL(period.totalNet)}
                         </p>
                       </div>
                       <div>
-                        <p className="text-xs text-muted-foreground">
-                          Comissão
-                        </p>
-                        <p className="text-sm font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+                        <p className="text-muted-foreground text-xs">Comissão</p>
+                        <p className="text-sm font-semibold text-amber-600 tabular-nums dark:text-amber-400">
                           {formatBRL(period.totalCommission)}
                         </p>
                       </div>
                     </div>
-                    <StatusBadge
-                      tone={
-                        period.status === "FINALIZED" ? "emerald" : "amber"
-                      }
-                    >
+                    <StatusBadge tone={period.status === "FINALIZED" ? "emerald" : "amber"}>
                       {period.status === "FINALIZED" ? "Finalizado" : "Pendente"}
                     </StatusBadge>
                     {isExpanded ? (
-                      <ChevronUp className="size-4 text-muted-foreground" />
+                      <ChevronUp className="text-muted-foreground size-4" />
                     ) : (
-                      <ChevronDown className="size-4 text-muted-foreground" />
+                      <ChevronDown className="text-muted-foreground size-4" />
                     )}
                   </div>
                 </button>
 
                 {/* Expanded detail */}
                 {isExpanded && (
-                  <div className="border-t border-border/50">
+                  <div className="border-border/50 border-t">
                     {/* Period summary bar */}
-                    <div className="grid grid-cols-2 gap-4 border-b border-border/30 bg-muted/20 px-5 py-3 sm:grid-cols-4">
+                    <div className="border-border/30 bg-muted/20 grid grid-cols-2 gap-4 border-b px-5 py-3 sm:grid-cols-4">
                       <div>
-                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
                           Total recebido
                         </p>
                         <p className="text-sm font-semibold tabular-nums">
@@ -361,39 +306,31 @@ export function AdminSettlements() {
                         </p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
                           Comissão
                         </p>
-                        <p className="text-sm font-semibold tabular-nums text-amber-600 dark:text-amber-400">
+                        <p className="text-sm font-semibold text-amber-600 tabular-nums dark:text-amber-400">
                           {formatBRL(period.totalCommission)}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
                           Repasse líquido
                         </p>
-                        <p className="text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                        <p className="text-sm font-semibold text-emerald-600 tabular-nums dark:text-emerald-400">
                           {formatBRL(period.totalNet)}
                         </p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <p className="text-muted-foreground text-[10px] tracking-wide uppercase">
                           Status
                         </p>
                         <div className="mt-0.5 flex items-center gap-1">
-                          <StatusBadge
-                            tone={
-                              period.status === "FINALIZED"
-                                ? "emerald"
-                                : "amber"
-                            }
-                          >
-                            {period.status === "FINALIZED"
-                              ? "Finalizado"
-                              : "Pendente"}
+                          <StatusBadge tone={period.status === "FINALIZED" ? "emerald" : "amber"}>
+                            {period.status === "FINALIZED" ? "Finalizado" : "Pendente"}
                           </StatusBadge>
                           {pendingCount > 0 && period.status === "FINALIZED" && (
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-muted-foreground text-[10px]">
                               {paidCount}/{period.providers.length} pagos
                             </span>
                           )}
@@ -403,14 +340,12 @@ export function AdminSettlements() {
 
                     {/* Action buttons */}
                     {period.status === "PENDING" && (
-                      <div className="flex items-center justify-end gap-2 border-b border-border/30 px-5 py-2">
+                      <div className="border-border/30 flex items-center justify-end gap-2 border-b px-5 py-2">
                         <Button
                           variant="outline"
                           size="sm"
                           className="h-7 text-xs"
-                          onClick={() =>
-                            finalizeMutation.mutate(period.id)
-                          }
+                          onClick={() => finalizeMutation.mutate(period.id)}
                           disabled={finalizeMutation.isPending}
                         >
                           {finalizeMutation.isPending ? (
@@ -425,27 +360,27 @@ export function AdminSettlements() {
                     <div className="overflow-x-auto">
                       <Table>
                         <TableHeader>
-                          <TableRow className="h-10 bg-muted/30 hover:bg-muted/30">
-                            <TableHead className="px-4 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          <TableRow className="bg-muted/30 hover:bg-muted/30 h-10">
+                            <TableHead className="text-muted-foreground px-4 text-[10px] font-semibold tracking-wide uppercase">
                               Prestador
                             </TableHead>
-                            <TableHead className="px-4 text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <TableHead className="text-muted-foreground px-4 text-right text-[10px] font-semibold tracking-wide uppercase">
                               Transações
                             </TableHead>
-                            <TableHead className="px-4 text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <TableHead className="text-muted-foreground px-4 text-right text-[10px] font-semibold tracking-wide uppercase">
                               Total
                             </TableHead>
-                            <TableHead className="px-4 text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <TableHead className="text-muted-foreground px-4 text-right text-[10px] font-semibold tracking-wide uppercase">
                               Comissão
                             </TableHead>
-                            <TableHead className="px-4 text-right text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <TableHead className="text-muted-foreground px-4 text-right text-[10px] font-semibold tracking-wide uppercase">
                               Repasse
                             </TableHead>
-                            <TableHead className="px-4 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <TableHead className="text-muted-foreground px-4 text-[10px] font-semibold tracking-wide uppercase">
                               Status
                             </TableHead>
                             {period.status === "FINALIZED" && (
-                              <TableHead className="px-4 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              <TableHead className="text-muted-foreground px-4 text-[10px] font-semibold tracking-wide uppercase">
                                 Ação
                               </TableHead>
                             )}
@@ -455,18 +390,18 @@ export function AdminSettlements() {
                           {period.providers.map((ps) => (
                             <TableRow
                               key={ps.id}
-                              className="h-12 transition-colors hover:bg-muted/20"
+                              className="hover:bg-muted/20 h-12 transition-colors"
                             >
                               <TableCell className="px-4">
                                 <div className="flex items-center gap-2">
-                                  <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                  <div className="bg-primary/10 text-primary flex size-7 shrink-0 items-center justify-center rounded-full">
                                     <UserCircle className="size-4" />
                                   </div>
                                   <div className="min-w-0">
                                     <p className="truncate text-xs font-medium">
                                       {ps.provider.name}
                                     </p>
-                                    <p className="truncate text-[10px] text-muted-foreground">
+                                    <p className="text-muted-foreground truncate text-[10px]">
                                       {ps.provider.email}
                                     </p>
                                   </div>
@@ -478,10 +413,10 @@ export function AdminSettlements() {
                               <TableCell className="px-4 text-right text-xs font-semibold tabular-nums">
                                 {formatBRL(ps.totalAmount)}
                               </TableCell>
-                              <TableCell className="px-4 text-right text-xs tabular-nums text-amber-600 dark:text-amber-400">
+                              <TableCell className="px-4 text-right text-xs text-amber-600 tabular-nums dark:text-amber-400">
                                 -{formatBRL(ps.commission)}
                               </TableCell>
-                              <TableCell className="px-4 text-right text-xs font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
+                              <TableCell className="px-4 text-right text-xs font-semibold text-emerald-600 tabular-nums dark:text-emerald-400">
                                 {formatBRL(ps.netAmount)}
                               </TableCell>
                               <TableCell className="px-4">
@@ -514,9 +449,7 @@ export function AdminSettlements() {
                                     </Button>
                                   ) : (
                                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
-                                      {ps.paidAt
-                                        ? formatDateShort(ps.paidAt)
-                                        : "Pago"}
+                                      {ps.paidAt ? formatDateShort(ps.paidAt) : "Pago"}
                                     </span>
                                   )}
                                 </TableCell>
@@ -540,16 +473,14 @@ export function AdminSettlements() {
           <DialogHeader>
             <DialogTitle>Gerar período de repasse</DialogTitle>
             <DialogDescription>
-              Cria um novo período de repasse com todos os pagamentos
-              confirmados do período selecionado.
+              Cria um novo período de repasse com todos os pagamentos confirmados do período
+              selecionado.
             </DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col gap-3 py-2">
-            <label className="text-xs font-medium text-muted-foreground">
-              Tipo de período
-            </label>
-            <div className="inline-flex h-9 items-center rounded-lg border bg-muted/50 p-0.5">
+            <label className="text-muted-foreground text-xs font-medium">Tipo de período</label>
+            <div className="bg-muted/50 inline-flex h-9 items-center rounded-lg border p-0.5">
               {PERIOD_TYPE_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
@@ -601,11 +532,7 @@ export function AdminSettlements() {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatPeriodLabel(
-  startIso: string,
-  endIso: string,
-  type: PeriodType,
-): string {
+function formatPeriodLabel(startIso: string, endIso: string, type: PeriodType): string {
   try {
     const start = new Date(startIso)
     const end = new Date(endIso)

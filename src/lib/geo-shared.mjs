@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * geo-shared.mjs — ESM shim for src/lib/geo-shared.ts
  *

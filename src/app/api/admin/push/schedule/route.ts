@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
@@ -60,13 +61,16 @@ export async function POST(request: Request) {
     const notificationBody = messageBody?.trim() || null
     const notificationUrl = pushUrl || "/"
 
-    logger.info({
-      adminId: session.userId,
-      userIds: userIds.length,
-      title: notificationTitle,
-      type: notificationType,
-      scheduledAt: scheduleDate.toISOString(),
-    }, "admin scheduling push notification")
+    logger.info(
+      {
+        adminId: session.userId,
+        userIds: userIds.length,
+        title: notificationTitle,
+        type: notificationType,
+        scheduledAt: scheduleDate.toISOString(),
+      },
+      "admin scheduling push notification",
+    )
 
     const scheduled = await db.scheduledPushNotification.create({
       data: {
@@ -81,39 +85,44 @@ export async function POST(request: Request) {
     })
 
     // ── Audit log ────────────────────────────────────────────────────
-    db.pushSendLog.create({
-      data: {
-        adminId: session.userId,
-        action: "manual_schedule",
-        title: notificationTitle,
-        body: notificationBody,
-        pushUrl: notificationUrl,
-        notificationType,
-        recipientCount: (userIds as string[]).length,
-        sentCount: 0,
-        errorCount: 0,
-        directPushCount: 0,
-        metadata: {
-          scheduleId: scheduled.id,
-          scheduledAt: scheduleDate.toISOString(),
-          sampleUserIds: (userIds as string[]).slice(0, 5),
+    db.pushSendLog
+      .create({
+        data: {
+          adminId: session.userId,
+          action: "manual_schedule",
+          title: notificationTitle,
+          body: notificationBody,
+          pushUrl: notificationUrl,
+          notificationType,
+          recipientCount: (userIds as string[]).length,
+          sentCount: 0,
+          errorCount: 0,
+          directPushCount: 0,
+          metadata: {
+            scheduleId: scheduled.id,
+            scheduledAt: scheduleDate.toISOString(),
+            sampleUserIds: (userIds as string[]).slice(0, 5),
+          },
+        },
+      })
+      .catch((err) => logger.error({ err }, "failed to create push audit log"))
+
+    return NextResponse.json(
+      {
+        ok: true,
+        scheduled: {
+          id: scheduled.id,
+          scheduledAt: scheduled.scheduledAt.toISOString(),
+          title: scheduled.title,
+          body: scheduled.body,
+          pushUrl: scheduled.pushUrl,
+          type: scheduled.type,
+          userIdsCount: (userIds as string[]).length,
+          status: scheduled.status,
         },
       },
-    }).catch((err) => logger.error({ err }, "failed to create push audit log"))
-
-    return NextResponse.json({
-      ok: true,
-      scheduled: {
-        id: scheduled.id,
-        scheduledAt: scheduled.scheduledAt.toISOString(),
-        title: scheduled.title,
-        body: scheduled.body,
-        pushUrl: scheduled.pushUrl,
-        type: scheduled.type,
-        userIdsCount: (userIds as string[]).length,
-        status: scheduled.status,
-      },
-    }, { status: 201 })
+      { status: 201 },
+    )
   } catch (e) {
     return handleError(e)
   }

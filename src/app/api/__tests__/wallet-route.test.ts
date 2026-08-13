@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
@@ -196,8 +197,20 @@ describe("GET /api/provider/wallet", () => {
   it("subtracts withdrawals from balance", async () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([
-      { id: "wth-1", amount: 100, description: "Saque de R$ 100,00", createdAt: new Date("2025-03-15"), status: "completed" },
-      { id: "wth-2", amount: 50, description: "Saque de R$ 50,00", createdAt: new Date("2025-03-20"), status: "completed" },
+      {
+        id: "wth-1",
+        amount: 100,
+        description: "Saque de R$ 100,00",
+        createdAt: new Date("2025-03-15"),
+        status: "completed",
+      },
+      {
+        id: "wth-2",
+        amount: 50,
+        description: "Saque de R$ 50,00",
+        createdAt: new Date("2025-03-20"),
+        status: "completed",
+      },
     ])
 
     const res = await GET(new Request("http://localhost/api/provider/wallet"))
@@ -207,14 +220,22 @@ describe("GET /api/provider/wallet", () => {
     expect(data.balance).toBe(317.5)
     expect(data.totalWithdrawn).toBe(150)
     // Should include withdrawal transactions
-    const withdrawnTxns = data.transactions.filter((t: { status: string }) => t.status === "withdrawn")
+    const withdrawnTxns = data.transactions.filter(
+      (t: { status: string }) => t.status === "withdrawn",
+    )
     expect(withdrawnTxns).toHaveLength(2)
   })
 
   it("does not allow negative balance", async () => {
     mockDb.booking.findMany.mockResolvedValue(mockBookings)
     mockDb.walletTransaction.findMany.mockResolvedValue([
-      { id: "wth-1", amount: 999999, description: "Saque gigante", createdAt: new Date("2025-03-15"), status: "completed" },
+      {
+        id: "wth-1",
+        amount: 999999,
+        description: "Saque gigante",
+        createdAt: new Date("2025-03-15"),
+        status: "completed",
+      },
     ])
 
     const res = await GET(new Request("http://localhost/api/provider/wallet"))
@@ -227,9 +248,7 @@ describe("GET /api/provider/wallet", () => {
 
   it("throws 401 when user is not authenticated", async () => {
     const { requireUser } = await import("@/lib/auth")
-    vi.mocked(requireUser).mockRejectedValueOnce(
-      new Error("UNAUTHORIZED"),
-    )
+    vi.mocked(requireUser).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
     mockDb.booking.findMany.mockResolvedValue([])
 

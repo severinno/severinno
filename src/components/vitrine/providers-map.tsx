@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 /**
@@ -20,7 +21,7 @@ import { useEffect, useRef, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
 import { formatDistance } from "@/lib/geo-client"
-import { createRadiusGeoJSON, syncRadiusCircle, removeRadiusCircle, RADIUS_SOURCE_ID, type MapLike } from "@/lib/geo-circle"
+import { syncRadiusCircle, removeRadiusCircle, type MapLike } from "@/lib/geo-circle"
 import { Slider } from "@/components/ui/slider"
 import type { ProviderCard } from "@/lib/api"
 
@@ -131,10 +132,7 @@ export default function ProvidersMap({
         attributionControl: { compact: true },
       })
 
-      map.addControl(
-        new maplibregl.NavigationControl({ visualizePitch: false }),
-        "top-right",
-      )
+      map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right")
       map.addControl(
         new maplibregl.GeolocateControl({
           positionOptions: { enableHighAccuracy: true },
@@ -178,17 +176,22 @@ export default function ProvidersMap({
     if (!map) return
     map.on("click", "clusters", clusterClickHandler)
     map.on("mouseenter", "clusters", clusterMouseHandler)
-    map.on("mouseleave", "clusters", () => { map.getCanvas().style.cursor = "" })
+    map.on("mouseleave", "clusters", () => {
+      map.getCanvas().style.cursor = ""
+    })
     map.on("click", "unclustered-point", (e: any) => {
       if (!e.features?.length) return
       const id = e.features[0].properties?.id
       if (id) selectRef.current?.(id)
     })
     return () => {
-      (map.off as any)("click", "clusters", clusterClickHandler)
-      (map.off as any)("mouseenter", "clusters", clusterMouseHandler)
-      (map.off as any)("mouseleave", "clusters", () => { map.getCanvas().style.cursor = "" })
-      (map.off as any)("click", "unclustered-point")
+      ;(map.off as any)("click", "clusters", clusterClickHandler)(map.off as any)(
+        "mouseenter",
+        "clusters",
+        clusterMouseHandler,
+      )(map.off as any)("mouseleave", "clusters", () => {
+        map.getCanvas().style.cursor = ""
+      })(map.off as any)("click", "unclustered-point")
     }
   }, [clusterClickHandler, clusterMouseHandler])
 
@@ -202,16 +205,30 @@ export default function ProvidersMap({
       if (cancelled) return
       const useClustering = providers.length > 20
       if (useClustering) {
-        syncClusterSource(map, maplibregl, providers, onSelectProvider, markersRef, clusterSourceAdded)
+        syncClusterSource(
+          map,
+          maplibregl,
+          providers,
+          onSelectProvider,
+          markersRef,
+          clusterSourceAdded,
+        )
       } else {
         removeClusterSource(map, clusterSourceAdded)
         syncProviderMarkers({
-          map, maplibregl, providers, selectedId, onSelectProvider, markersRef,
+          map,
+          maplibregl,
+          providers,
+          selectedId,
+          onSelectProvider,
+          markersRef,
         })
       }
       fitToBounds(map, providers, userLat, userLng)
     })()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [providers, selectedId])
 
   // ---- Sync user location marker + radius circle --------------------------
@@ -230,13 +247,15 @@ export default function ProvidersMap({
         removeRadiusCircle(map as unknown as MapLike)
       }
     })()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [userLat, userLng, radius])
 
   return (
     <div
       className={cn(
-        "relative w-full overflow-hidden rounded-xl border bg-muted",
+        "bg-muted relative w-full overflow-hidden rounded-xl border",
         "h-[400px] md:h-full",
         className,
       )}
@@ -248,8 +267,8 @@ export default function ProvidersMap({
       {/* Radius slider overlay — only when user has location and onRadiusChange is provided */}
       {hasUserLocation && typeof radius === "number" && onRadiusChange ? (
         <div className="absolute bottom-3 left-1/2 z-30 w-[calc(100%-24px)] max-w-xs -translate-x-1/2">
-          <div className="flex items-center gap-3 rounded-xl border bg-background/95 px-4 py-2.5 shadow-lg backdrop-blur-sm">
-            <span className="shrink-0 text-[11px] font-semibold tabular-nums text-muted-foreground">
+          <div className="bg-background/95 flex items-center gap-3 rounded-xl border px-4 py-2.5 shadow-lg backdrop-blur-sm">
+            <span className="text-muted-foreground shrink-0 text-[11px] font-semibold tabular-nums">
               {radius} km
             </span>
             <Slider
@@ -321,16 +340,22 @@ function syncClusterSource(
     filter: ["has", "point_count"],
     paint: {
       "circle-color": [
-        "step", ["get", "point_count"],
-        "rgba(16, 185, 129, 0.85)",  // emerald/500 - <10
-        10, "rgba(5, 150, 105, 0.9)",  // emerald/600 - 10-50
-        50, "rgba(4, 120, 87, 0.95)",  // emerald/700 - 50+
+        "step",
+        ["get", "point_count"],
+        "rgba(16, 185, 129, 0.85)", // emerald/500 - <10
+        10,
+        "rgba(5, 150, 105, 0.9)", // emerald/600 - 10-50
+        50,
+        "rgba(4, 120, 87, 0.95)", // emerald/700 - 50+
       ],
       "circle-radius": [
-        "step", ["get", "point_count"],
-        22,  // <10 providers
-        10, 30,
-        50, 38,
+        "step",
+        ["get", "point_count"],
+        22, // <10 providers
+        10,
+        30,
+        50,
+        38,
       ],
       "circle-stroke-width": 2,
       "circle-stroke-color": "#fff",
@@ -368,14 +393,19 @@ function syncClusterSource(
   clusterSourceAdded.current = true
 }
 
-function removeClusterSource(map: MapLibreMap, clusterSourceAdded: React.MutableRefObject<boolean>) {
+function removeClusterSource(
+  map: MapLibreMap,
+  clusterSourceAdded: React.MutableRefObject<boolean>,
+) {
   if (!clusterSourceAdded.current) return
   try {
     if (map.getLayer("unclustered-point")) map.removeLayer("unclustered-point")
     if (map.getLayer("cluster-count")) map.removeLayer("cluster-count")
     if (map.getLayer("clusters")) map.removeLayer("clusters")
     if (map.getSource("providers")) map.removeSource("providers")
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   clusterSourceAdded.current = false
 }
 
@@ -421,7 +451,9 @@ function fitToBounds(
   ]
   try {
     map.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 600 })
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 type MarkerRef = { marker: MarkerInstance; popup: PopupInstance }
@@ -497,11 +529,19 @@ function syncProviderMarkers(opts: {
       e.stopPropagation()
       onSelectProvider?.(provider.id)
     })
-    el.addEventListener("mouseenter", () => { el.style.transform = "translate(-50%, -100%) scale(1.06)" })
-    el.addEventListener("mouseleave", () => { el.style.transform = "translate(-50%, -100%) scale(1)" })
+    el.addEventListener("mouseenter", () => {
+      el.style.transform = "translate(-50%, -100%) scale(1.06)"
+    })
+    el.addEventListener("mouseleave", () => {
+      el.style.transform = "translate(-50%, -100%) scale(1)"
+    })
 
     const popup = new maplibregl.Popup({
-      closeButton: false, closeOnClick: false, offset: 18, className: "map-popup", maxWidth: "260px",
+      closeButton: false,
+      closeOnClick: false,
+      offset: 18,
+      className: "map-popup",
+      maxWidth: "260px",
     }).setHTML(
       `<div class="p-3 text-sm">
         <div class="font-semibold leading-tight">${escapeHtml(provider.name)}</div>
@@ -536,7 +576,10 @@ function syncUserMarker(opts: {
   userMarkerRef: React.RefObject<MarkerInstance | null>
 }) {
   const { map, maplibregl, lat, lng, userMarkerRef } = opts
-  if (userMarkerRef.current) { userMarkerRef.current.remove(); userMarkerRef.current = null }
+  if (userMarkerRef.current) {
+    userMarkerRef.current.remove()
+    userMarkerRef.current = null
+  }
   if (typeof lat !== "number" || typeof lng !== "number") return
 
   const el = document.createElement("div")
@@ -565,7 +608,12 @@ function syncUserMarker(opts: {
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;")
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
 }
 
 if (typeof document !== "undefined") {

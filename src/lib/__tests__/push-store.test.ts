@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 // ── Hoisted mocks ─────────────────────────────────────────────────────────
@@ -25,13 +26,15 @@ const { mockRedisClient, resetStore } = vi.hoisted(() => {
         return 1
       }),
     },
-    resetStore: () => { store = new Map() },
+    resetStore: () => {
+      store = new Map()
+    },
   }
 })
 
 let mockRedisAvailable = true
 vi.mock("@/lib/redis", () => ({
-  getClient: vi.fn(() => mockRedisAvailable ? mockRedisClient : null),
+  getClient: vi.fn(() => (mockRedisAvailable ? mockRedisClient : null)),
   cacheSet: vi.fn(),
   cacheGet: vi.fn(),
 }))

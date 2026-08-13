@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * gist-reindex-button-snapshot.test.tsx
  *

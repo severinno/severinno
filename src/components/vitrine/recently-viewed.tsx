@@ -18,10 +18,8 @@ import Image from "next/image"
 import { useRecentlyViewedStore } from "@/store/recently-viewed"
 import { useUIStore } from "@/store/ui"
 import { formatBRL } from "@/lib/format"
-import { SERVICE_UNIT_SHORT } from "@/lib/constants"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,17 +48,16 @@ export function RecentlyViewed() {
               <History className="size-4" />
             </div>
             <div>
-              <CardTitle className="text-sm font-semibold">
-                Vistos recentemente
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                {items.length} {items.length === 1 ? "prestador" : "prestadores"} que você visualizou
+              <CardTitle className="text-sm font-semibold">Vistos recentemente</CardTitle>
+              <p className="text-muted-foreground text-xs">
+                {items.length} {items.length === 1 ? "prestador" : "prestadores"} que você
+                visualizou
               </p>
             </div>
           </div>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="text-xs text-muted-foreground">
+              <Button variant="ghost" size="sm" className="text-muted-foreground text-xs">
                 <X className="size-3.5" />
                 Limpar
               </Button>
@@ -69,8 +66,8 @@ export function RecentlyViewed() {
               <AlertDialogHeader>
                 <AlertDialogTitle>Limpar histórico?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Isso vai remover todos os prestadores vistos recentemente. Você
-                  não pode desfazer esta ação.
+                  Isso vai remover todos os prestadores vistos recentemente. Você não pode desfazer
+                  esta ação.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -87,7 +84,7 @@ export function RecentlyViewed() {
         </CardHeader>
         <CardContent className="pt-0">
           {/* Horizontal scroll on mobile, grid on desktop */}
-          <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:thin] sm:grid sm:grid-cols-2 sm:overflow-visible lg:grid-cols-4 sm:pb-0">
+          <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:thin] sm:grid sm:grid-cols-2 sm:overflow-visible sm:pb-0 lg:grid-cols-4">
             {items.map((p) => {
               const firstService = p.services?.[0]
               return (
@@ -95,7 +92,7 @@ export function RecentlyViewed() {
                   key={p.id}
                   type="button"
                   onClick={() => openProvider(p.id)}
-                  className="group flex min-w-[220px] flex-col rounded-xl border border-slate-200 bg-card p-3 text-left transition-all hover:border-emerald-300 hover:shadow-md dark:border-slate-800 dark:hover:border-emerald-800 sm:min-w-0"
+                  className="group bg-card flex min-w-[220px] flex-col rounded-xl border border-slate-200 p-3 text-left transition-all hover:border-emerald-300 hover:shadow-md sm:min-w-0 dark:border-slate-800 dark:hover:border-emerald-800"
                 >
                   {/* Header: avatar + name + rating */}
                   <div className="flex items-center gap-2.5">
@@ -113,14 +110,10 @@ export function RecentlyViewed() {
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium leading-tight">
-                        {p.name}
-                      </p>
-                      <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                      <p className="truncate text-sm leading-tight font-medium">{p.name}</p>
+                      <div className="text-muted-foreground mt-0.5 flex items-center gap-1 text-xs">
                         <Star className="size-3 fill-amber-400 text-amber-400" />
-                        <span className="font-medium text-foreground">
-                          {p.rating.toFixed(1)}
-                        </span>
+                        <span className="text-foreground font-medium">{p.rating.toFixed(1)}</span>
                         <span>·</span>
                         <span>{p.reviewCount} aval.</span>
                       </div>
@@ -128,7 +121,7 @@ export function RecentlyViewed() {
                   </div>
 
                   {/* Distance / city */}
-                  <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
+                  <div className="text-muted-foreground mt-2 flex items-center gap-1 text-xs">
                     <MapPin className="size-3" />
                     <span className="truncate">
                       {p.distanceKm != null
@@ -140,7 +133,7 @@ export function RecentlyViewed() {
                   {/* First service price */}
                   {firstService && (
                     <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2 dark:border-slate-800">
-                      <span className="truncate text-xs text-muted-foreground">
+                      <span className="text-muted-foreground truncate text-xs">
                         {firstService.title}
                       </span>
                       <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">

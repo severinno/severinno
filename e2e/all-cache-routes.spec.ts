@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * E2E integration tests for ALL cached API routes.
  *
@@ -37,11 +38,11 @@ type RouteConfig = {
 }
 
 const ROUTE_CONFIGS: Record<string, RouteConfig> = {
-  "/api/categories":       { queryString: "" },
-  "/api/geo/cep":          { queryString: "?cep=01310100" },
-  "/api/geo/reverse":      { queryString: "?lat=-23.55&lng=-46.63" },
-  "/api/providers":        { queryString: "?page=1&limit=5" },
-  "/api/providers/[id]":   {
+  "/api/categories": { queryString: "" },
+  "/api/geo/cep": { queryString: "?cep=01310100" },
+  "/api/geo/reverse": { queryString: "?lat=-23.55&lng=-46.63" },
+  "/api/providers": { queryString: "?page=1&limit=5" },
+  "/api/providers/[id]": {
     queryString: "",
     expectsPrivate: true,
     dynamicId: {
@@ -49,12 +50,12 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
       extractId: (item) => item.id as string,
     },
   },
-  "/api/reviews/recent":   { queryString: "?limit=4" },
-  "/api/search":           { queryString: "?q=encanador" },
+  "/api/reviews/recent": { queryString: "?limit=4" },
+  "/api/search": { queryString: "?q=encanador" },
   "/api/search/providers": { queryString: "?q=encanador" },
-  "/api/search/services":  { queryString: "?q=instalação" },
-  "/api/services":         { queryString: "" },
-  "/api/stats/public":     { queryString: "" },
+  "/api/search/services": { queryString: "?q=instalação" },
+  "/api/services": { queryString: "" },
+  "/api/stats/public": { queryString: "" },
 }
 
 // -------------------------------------------------------------------------
@@ -64,10 +65,7 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
 type RouteEntry = (typeof CACHED_ROUTES)[number]
 
 /** Resolve a route config to a fully-qualified URL (replacing [id] params). */
-async function resolveUrl(
-  request: APIRequestContext,
-  entry: RouteEntry,
-): Promise<string> {
+async function resolveUrl(request: APIRequestContext, entry: RouteEntry): Promise<string> {
   const config = ROUTE_CONFIGS[entry.path]
   if (!config) {
     throw new Error(`No route config for ${entry.path}`)
@@ -79,15 +77,13 @@ async function resolveUrl(
     if (!listResp.ok()) {
       throw new Error(
         `Failed to fetch list endpoint ${config.dynamicId.listPath} ` +
-        `for resolving ${entry.path}: ${listResp.status()}`,
+          `for resolving ${entry.path}: ${listResp.status()}`,
       )
     }
     const listBody = (await listResp.json()) as { items?: Record<string, unknown>[] }
     const item = listBody.items?.[0]
     if (!item) {
-      throw new Error(
-        `No items found at ${config.dynamicId.listPath} for resolving ${entry.path}`,
-      )
+      throw new Error(`No items found at ${config.dynamicId.listPath} for resolving ${entry.path}`)
     }
     const id = config.dynamicId.extractId(item)
     return entry.path.replace("[id]", id) + config.queryString
@@ -118,7 +114,9 @@ test.describe("GET all cached routes — HTTP cache headers", () => {
       const vary = headers["vary"]
 
       // Log for debugging
-      console.log(`  ${entry.path} → ${response.status()} | CC: ${cc} | Vary: ${vary ? vary.slice(0, 40) : "MISSING"}...`)
+      console.log(
+        `  ${entry.path} → ${response.status()} | CC: ${cc} | Vary: ${vary ? vary.slice(0, 40) : "MISSING"}...`,
+      )
 
       // Expect 200 OK
       expect(response.ok()).toBeTruthy()

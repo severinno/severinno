@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * GET /api/cron/push-scheduled
  *
@@ -59,11 +60,21 @@ export async function GET(request: Request) {
           where: { id: item.id },
           data: { status: "FAILED", errorCount: 0, sentCount: 0, sentAt: now },
         })
-        results.push({ id: item.id, title: item.title, totalUsers: 0, sentCount: 0, errorCount: 0, status: "FAILED" })
+        results.push({
+          id: item.id,
+          title: item.title,
+          totalUsers: 0,
+          sentCount: 0,
+          errorCount: 0,
+          status: "FAILED",
+        })
         continue
       }
 
-      logger.info({ scheduledId: item.id, title: item.title, users: userIds.length }, "cron: dispatching scheduled push")
+      logger.info(
+        { scheduledId: item.id, title: item.title, users: userIds.length },
+        "cron: dispatching scheduled push",
+      )
 
       let sentCount = 0
       let errorCount = 0
@@ -75,7 +86,10 @@ export async function GET(request: Request) {
         sentCount = userIds.length
       } catch (err) {
         errorCount = userIds.length
-        logger.error({ err: (err as Error).message, scheduledId: item.id }, "cron: scheduled push send failed")
+        logger.error(
+          { err: (err as Error).message, scheduledId: item.id },
+          "cron: scheduled push send failed",
+        )
       }
 
       const finalStatus = sentCount > 0 ? "SENT" : "FAILED"
@@ -84,7 +98,14 @@ export async function GET(request: Request) {
         data: { status: finalStatus, sentCount, errorCount, sentAt: now },
       })
 
-      results.push({ id: item.id, title: item.title, totalUsers: userIds.length, sentCount, errorCount, status: finalStatus })
+      results.push({
+        id: item.id,
+        title: item.title,
+        totalUsers: userIds.length,
+        sentCount,
+        errorCount,
+        status: finalStatus,
+      })
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -97,7 +118,7 @@ export async function GET(request: Request) {
     const nowBrazil = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }))
     const currentHour = nowBrazil.getHours()
     const currentMinute = nowBrazil.getMinutes()
-    const currentDayOfWeek = nowBrazil.getDay()   // 0=Sun .. 6=Sat
+    const currentDayOfWeek = nowBrazil.getDay() // 0=Sun .. 6=Sat
     const currentDayOfMonth = nowBrazil.getDate() // 1..31
 
     for (const rule of recurring) {
@@ -126,11 +147,14 @@ export async function GET(request: Request) {
       if (!shouldFire) continue
 
       // Avoid double-fire: check if we already sent within the last 5 minutes
-      if (rule.lastSentAt && (now.getTime() - rule.lastSentAt.getTime()) < 5 * 60 * 1000) {
+      if (rule.lastSentAt && now.getTime() - rule.lastSentAt.getTime() < 5 * 60 * 1000) {
         continue
       }
 
-      logger.info({ recurringId: rule.id, title: rule.title, freq: rule.frequency }, "cron: firing recurring push")
+      logger.info(
+        { recurringId: rule.id, title: rule.title, freq: rule.frequency },
+        "cron: firing recurring push",
+      )
 
       // ── Resolve target users ─────────────────────────────────────────
       const targetRoles = Array.isArray(rule.targetRoles) ? (rule.targetRoles as string[]) : []
@@ -177,7 +201,10 @@ export async function GET(request: Request) {
             })
             sent = targetUserIds.length
           } catch (err) {
-            logger.error({ err: (err as Error).message, recurringId: rule.id }, "cron: recurring push send failed")
+            logger.error(
+              { err: (err as Error).message, recurringId: rule.id },
+              "cron: recurring push send failed",
+            )
           }
 
           // Update the recurring rule
@@ -201,7 +228,13 @@ export async function GET(request: Request) {
       }
     }
 
-    logger.info({ processedScheduled: scheduled.length, processedRecurring: results.filter((r) => r.id.startsWith("recurring:")).length }, "cron push-scheduled: done")
+    logger.info(
+      {
+        processedScheduled: scheduled.length,
+        processedRecurring: results.filter((r) => r.id.startsWith("recurring:")).length,
+      },
+      "cron push-scheduled: done",
+    )
 
     return NextResponse.json({
       ok: true,

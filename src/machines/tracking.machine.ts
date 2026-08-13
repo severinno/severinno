@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { setup } from "xstate"
 
 export type TrackingContext = {
@@ -14,7 +15,10 @@ export type TrackingContext = {
 }
 
 export type TrackingEvent =
-  | { type: "ASSIGN"; data: { bookingId: string; providerId: string; clientId: string; scheduledAt: string } }
+  | {
+      type: "ASSIGN"
+      data: { bookingId: string; providerId: string; clientId: string; scheduledAt: string }
+    }
   | { type: "PROVIDER_LOCATION"; data: { lat: number; lng: number } }
   | { type: "SERVICE_LOCATION"; data: { lat: number; lng: number } }
   | { type: "EN_ROUTE"; data: { etdMin: number } }

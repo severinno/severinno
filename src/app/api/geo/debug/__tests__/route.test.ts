@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for GET /api/geo/debug — internal geo state debug endpoint.
  *

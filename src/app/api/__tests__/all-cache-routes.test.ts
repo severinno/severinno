@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Comprehensive Vitest test for ALL cache-controlled API routes.
  *
@@ -13,17 +14,8 @@
 
 import { describe, it, expect, vi } from "vitest"
 import { NextResponse } from "next/server"
-import {
-  cacheControlPublic,
-  cacheControlPrivate,
-  handleError,
-} from "@/lib/api-server"
-import {
-  CACHED_ROUTES,
-  TOTAL_COUNT,
-  PUBLIC_COUNT,
-  PRIVATE_COUNT,
-} from "@/lib/cache-manifest"
+import { cacheControlPublic, cacheControlPrivate, handleError } from "@/lib/api-server"
+import { CACHED_ROUTES, TOTAL_COUNT, PUBLIC_COUNT, PRIVATE_COUNT } from "@/lib/cache-manifest"
 
 type CachedRoute = (typeof CACHED_ROUTES)[number]
 
@@ -91,8 +83,7 @@ describe("cache route manifest integrity", () => {
 
 describe("cacheControlPublic — all TTL combos used in routes", () => {
   const publicConfigs = CACHED_ROUTES.filter(
-    (r): r is CachedRoute & { type: "public"; sMaxage: number } =>
-      r.type === "public",
+    (r): r is CachedRoute & { type: "public"; sMaxage: number } => r.type === "public",
   )
 
   it.each(publicConfigs)(
@@ -128,9 +119,7 @@ describe("cacheControlPrivate — all TTL combos used in routes", () => {
     ({ maxAge, vary }) => {
       const res = new NextResponse()
       cacheControlPrivate(res, maxAge)
-      expect(res.headers.get("Cache-Control")).toBe(
-        `private, max-age=${maxAge}`,
-      )
+      expect(res.headers.get("Cache-Control")).toBe(`private, max-age=${maxAge}`)
       expect(res.headers.get("Vary")).toBe(vary)
       expect(res.headers.get("Cache-Control")).not.toContain("s-maxage")
     },
@@ -203,16 +192,12 @@ describe("edge case cache configurations", () => {
   it("cacheControlPublic with different s-maxage than max-age", () => {
     const res = new NextResponse()
     cacheControlPublic(res, 30, 300)
-    expect(res.headers.get("Cache-Control")).toBe(
-      "public, max-age=30, s-maxage=300",
-    )
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=30, s-maxage=300")
   })
 
   it("cacheControlPublic with default s-maxage (no second arg)", () => {
     const res = new NextResponse()
     cacheControlPublic(res, 60)
-    expect(res.headers.get("Cache-Control")).toBe(
-      "public, max-age=60, s-maxage=60",
-    )
+    expect(res.headers.get("Cache-Control")).toBe("public, max-age=60, s-maxage=60")
   })
 })

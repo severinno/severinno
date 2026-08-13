@@ -22,7 +22,14 @@
 import webpush from "web-push"
 import { PrismaClient } from "@prisma/client"
 
-type Subscription = { endpoint: string; p256dh: string; auth: string; userId: string; userEmail?: string; userName?: string }
+type Subscription = {
+  endpoint: string
+  p256dh: string
+  auth: string
+  userId: string
+  userEmail?: string
+  userName?: string
+}
 
 // ── Colors ────────────────────────────────────────────────────────────────
 const PASS = "\x1b[32m✓\x1b[0m"
@@ -66,17 +73,19 @@ async function main() {
     try {
       const parsed = JSON.parse(subscriptionJson)
       if (!parsed.endpoint) throw new Error("endpoint é obrigatório")
-      subscriptions = [{
-        endpoint: parsed.endpoint,
-        p256dh: parsed.keys?.p256dh ?? parsed.p256dh,
-        auth: parsed.keys?.auth ?? parsed.auth,
-        userId: parsed.userId ?? "manual-test",
-        userEmail: parsed.email ?? "test@severinno.com",
-        userName: parsed.name ?? "Usuário Teste",
-      }]
+      subscriptions = [
+        {
+          endpoint: parsed.endpoint,
+          p256dh: parsed.keys?.p256dh ?? parsed.p256dh,
+          auth: parsed.keys?.auth ?? parsed.auth,
+          userId: parsed.userId ?? "manual-test",
+          userEmail: parsed.email ?? "test@severinno.com",
+          userName: parsed.name ?? "Usuário Teste",
+        },
+      ]
     } catch (parseErr) {
       console.log(`  ${FAIL} JSON inválido. Use o formato:`)
-      console.log(`     {\"endpoint\":\"...\",\"keys\":{\"p256dh\":\"...\",\"auth\":\"...\"}}`)
+      console.log(`     {"endpoint":"...","keys":{"p256dh":"...","auth":"..."}}`)
       console.log(`  Erro: ${(parseErr as Error).message}`)
       process.exit(1)
     }
@@ -117,7 +126,9 @@ async function main() {
 
   console.log(`  ${PASS} ${subscriptions.length} subscription(ns) encontrada(s):`)
   for (const sub of subscriptions) {
-    console.log(`     • ${sub.userName} <${sub.userEmail}> — endpoint: ${sub.endpoint.slice(0, 40)}...`)
+    console.log(
+      `     • ${sub.userName} <${sub.userEmail}> — endpoint: ${sub.endpoint.slice(0, 40)}...`,
+    )
   }
 
   // ── Step 3: Build payload ─────────────────────────────────────────────
@@ -161,7 +172,9 @@ async function main() {
   const payloadStr = JSON.stringify(payload)
   const payloadBytes = new TextEncoder().encode(payloadStr).length
   const payloadSizeKb = (payloadBytes / 1024).toFixed(1)
-  console.log(`  ${INFO} Tamanho do payload: ${payloadSizeKb}KB (${payloadBytes} bytes, limite: ~4KB)`)
+  console.log(
+    `  ${INFO} Tamanho do payload: ${payloadSizeKb}KB (${payloadBytes} bytes, limite: ~4KB)`,
+  )
 
   let sent = 0
   let failed = 0
@@ -175,7 +188,9 @@ async function main() {
         { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
         payloadStr,
       )
-      console.log(`  ${PASS} [${idx}/${total}] Enviado para ${sub.userName}: HTTP ${result.statusCode}`)
+      console.log(
+        `  ${PASS} [${idx}/${total}] Enviado para ${sub.userName}: HTTP ${result.statusCode}`,
+      )
       sent++
     } catch (err: any) {
       console.log(`  ${FAIL} [${idx}/${total}] Falha para ${sub.userName}: ${err.message || err}`)

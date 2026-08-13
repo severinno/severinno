@@ -7,8 +7,12 @@
  *   3. Payment confirmation, split calculation (85% provider / 15% platform)
  *   4. Booking state transition & financial settlement validation
  *
- * Run with:
+ * Usage:
  *   bun scripts/test-lytex-sandbox-e2e.ts
+ *
+ * Exit codes:
+ *   0 — success
+ *   1 — failure
  */
 
 import { createHmac } from "crypto"
@@ -19,7 +23,6 @@ import {
   type PixChargeRequest,
 } from "../src/lib/lytex"
 
-const WEBHOOK_SECRET = process.env.LYTEX_WEBHOOK_SECRET || "test-lytex-webhook-secret-32-chars-ok"
 const PLATFORM_FEE_PERCENTAGE = 0.15 // 15%
 const PROVIDER_SPLIT_PERCENTAGE = 0.85 // 85%
 
@@ -48,7 +51,7 @@ async function runLytexE2E() {
   console.log("=======================================================\n")
 
   const testBookingId = "bk_test_" + Date.now()
-  const testAmount = 200.00 // R$ 200,00
+  const testAmount = 200.0 // R$ 200,00
 
   // ── Step 1: Charge Generation ─────────────────────────────────────────────
   console.log("Step 1: Gerando payload de cobrança PIX...")
@@ -62,19 +65,20 @@ async function runLytexE2E() {
       phone: "11999998888",
     },
     description: "Serviço de Instalação Elétrica",
-    expiresInSeconds: 3600,
   }
 
-  const { type, id } = parseExternalReference(chargeRequest.externalReference)
+  const parsedRef = parseExternalReference(chargeRequest.externalReference)
+  const refType = parsedRef?.type
+  const refId = parsedRef?.id
   assert(
     "1. External Reference Parsing",
-    type === "booking" && id === testBookingId,
-    `Resolved type '${type}' and id '${id}' correctly`,
+    refType === "booking" && refId === testBookingId,
+    `Resolved type '${refType}' and id '${refId}' correctly`,
   )
 
   // ── Step 2: Webhook Signature & Dispatch ──────────────────────────────────
   console.log("\nStep 2: Construindo e assinando webhook da Lytex...")
-  const webhookBody: LytexWebhookPayload = {
+  const webhookBody = {
     event: "charge.paid",
     data: {
       id: "lytex_ch_" + Math.random().toString(36).substring(7),
@@ -90,23 +94,21 @@ async function runLytexE2E() {
     },
   }
 
-  const { signature: _ignored, ...payloadWithoutSignature } = webhookBody
+  const { signature: _ignored, ...payloadWithoutSignature } = webhookBody as any
   const rawBody = JSON.stringify(payloadWithoutSignature)
   const clientSecret = process.env.LYTEX_CLIENT_SECRET || "lytex-client-secret-test-32-chars-long"
 
-  const validSignature = createHmac("sha256", clientSecret)
-    .update(rawBody)
-    .digest("hex")
+  const validSignature = createHmac("sha256", clientSecret).update(rawBody).digest("hex")
 
-  const signedWebhookPayload: LytexWebhookPayload = {
+  const signedWebhookPayload = {
     ...webhookBody,
     signature: validSignature,
-  }
+  } as unknown as LytexWebhookPayload
 
-  const tamperedWebhookPayload: LytexWebhookPayload = {
+  const tamperedWebhookPayload = {
     ...webhookBody,
     signature: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-  }
+  } as unknown as LytexWebhookPayload
 
   const isValidSignature = verifyWebhookSignature(signedWebhookPayload)
   assert(
@@ -130,13 +132,13 @@ async function runLytexE2E() {
 
   assert(
     "3a. Platform Commission",
-    platformFee === 30.00,
+    platformFee === 30.0,
     `Platform fee (15%): R$ ${platformFee.toFixed(2)}`,
   )
 
   assert(
     "3b. Provider Net Payout",
-    providerNet === 170.00,
+    providerNet === 170.0,
     `Provider net split (85%): R$ ${providerNet.toFixed(2)}`,
   )
 
@@ -173,7 +175,9 @@ async function runLytexE2E() {
   const total = results.length
   const passed = results.filter((r) => r.status === "PASS").length
   console.log(`Total de verificações: ${total} | Aprovados: ${passed} | Falhas: ${total - passed}`)
-  console.log(passed === total ? "✅ TODOS OS TESTES PASSARAM COM SUCESSO!\n" : "❌ HOUVE FALHAS NO TESTE.\n")
+  console.log(
+    passed === total ? "✅ TODOS OS TESTES PASSARAM COM SUCESSO!\n" : "❌ HOUVE FALHAS NO TESTE.\n",
+  )
 }
 
 runLytexE2E().catch((err) => {

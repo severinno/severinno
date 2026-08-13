@@ -138,7 +138,7 @@ function getHeadSha() {
 function sanitizeSha(sha) {
   if (!sha) return ""
   // Allow full SHA (40 hex), short SHA (7+ hex), or ref names with alphanumeric, ., -, /
-  return sha.replace(/[^a-fA-F0-9._\-\/]/g, "")
+  return sha.replace(/[^a-fA-F0-9._/-]/g, "")
 }
 
 function getShortSha(sha) {

@@ -1,16 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import * as React from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import {
-  ArrowDownLeft,
-  Banknote,
-  Clock,
-  History,
-  Loader2,
-  TrendingUp,
-  Wallet,
-} from "lucide-react"
+import { ArrowDownLeft, Banknote, Clock, History, Loader2, TrendingUp, Wallet } from "lucide-react"
 
 import { apiGet, apiPost } from "@/lib/api"
 import { formatBRL } from "@/lib/format"
@@ -94,17 +87,11 @@ function WalletStatCard({
             <Icon className="size-6" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <p className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
               {label}
             </p>
-            <p className="truncate text-2xl font-bold tabular-nums tracking-tight">
-              {value}
-            </p>
-            {subtitle && (
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {subtitle}
-              </p>
-            )}
+            <p className="truncate text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+            {subtitle && <p className="text-muted-foreground mt-0.5 text-xs">{subtitle}</p>}
           </div>
         </div>
         {/* Accent bar */}
@@ -141,8 +128,7 @@ function WithdrawDialog({
   const [error, setError] = React.useState<string | null>(null)
 
   const mutation = useMutation({
-    mutationFn: (value: number) =>
-      apiPost("/api/provider/wallet/withdraw", { amount: value }),
+    mutationFn: (value: number) => apiPost("/api/provider/wallet/withdraw", { amount: value }),
     onSuccess: () => {
       toast.success("Saque realizado com sucesso!")
       setAmount("")
@@ -183,8 +169,8 @@ function WithdrawDialog({
             Simular Saque
           </DialogTitle>
           <DialogDescription>
-            Digite o valor que deseja sacar da sua carteira virtual.
-            Saldo disponível: <strong>{formatBRL(balance)}</strong>
+            Digite o valor que deseja sacar da sua carteira virtual. Saldo disponível:{" "}
+            <strong>{formatBRL(balance)}</strong>
           </DialogDescription>
         </DialogHeader>
 
@@ -218,7 +204,7 @@ function WithdrawDialog({
           <div className="space-y-1.5">
             <Label htmlFor="withdraw-amount">Valor do saque</Label>
             <div className="relative">
-              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-muted-foreground">
+              <span className="text-muted-foreground pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm">
                 R$
               </span>
               <Input
@@ -235,9 +221,7 @@ function WithdrawDialog({
                 autoFocus
               />
             </div>
-            {error && (
-              <p className="text-xs text-red-500 dark:text-red-400">{error}</p>
-            )}
+            {error && <p className="text-xs text-red-500 dark:text-red-400">{error}</p>}
           </div>
         </div>
 
@@ -249,10 +233,7 @@ function WithdrawDialog({
           >
             Cancelar
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!isValid || mutation.isPending}
-          >
+          <Button onClick={handleSubmit} disabled={!isValid || mutation.isPending}>
             {mutation.isPending ? (
               <>
                 <Loader2 className="mr-2 size-4 animate-spin" />
@@ -313,10 +294,8 @@ export function ProviderWallet() {
             <Wallet className="size-5" />
           </div>
           <div>
-            <h3 className="text-lg font-bold tracking-tight">
-              Carteira Virtual
-            </h3>
-            <p className="text-sm text-muted-foreground">
+            <h3 className="text-lg font-bold tracking-tight">Carteira Virtual</h3>
+            <p className="text-muted-foreground text-sm">
               Saldo simulado baseado em serviços realizados
             </p>
           </div>
@@ -339,7 +318,11 @@ export function ProviderWallet() {
           value={formatBRL(data.balance)}
           icon={Wallet}
           accent="emerald"
-          subtitle={data.totalWithdrawn > 0 ? `Total sacado: ${formatBRL(data.totalWithdrawn)}` : "Disponível para saque"}
+          subtitle={
+            data.totalWithdrawn > 0
+              ? `Total sacado: ${formatBRL(data.totalWithdrawn)}`
+              : "Disponível para saque"
+          }
         />
         <WalletStatCard
           label="A receber"
@@ -369,14 +352,14 @@ export function ProviderWallet() {
         <CardHeader className="border-b py-3">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-sm">
-              <Clock className="size-4 text-muted-foreground" />
+              <Clock className="text-muted-foreground size-4" />
               Últimas transações
             </CardTitle>
             {data.transactions.length > 8 && (
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 gap-1 px-2 text-xs text-primary hover:text-primary"
+                className="text-primary hover:text-primary h-7 gap-1 px-2 text-xs"
                 onClick={() => setHistoryOpen(true)}
               >
                 <History className="size-3" />
@@ -388,13 +371,11 @@ export function ProviderWallet() {
         <CardContent className="p-3">
           {recentTransactions.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-8 text-center">
-              <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <div className="bg-muted text-muted-foreground flex size-10 items-center justify-center rounded-full">
                 <Wallet className="size-5" />
               </div>
-              <p className="text-sm text-muted-foreground">
-                Nenhuma transação ainda.
-              </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-muted-foreground text-sm">Nenhuma transação ainda.</p>
+              <p className="text-muted-foreground text-xs">
                 Complete um agendamento para ver seu saldo.
               </p>
             </div>
@@ -417,10 +398,7 @@ export function ProviderWallet() {
       />
 
       {/* Transaction history dialog */}
-      <TransactionHistory
-        open={historyOpen}
-        onOpenChange={setHistoryOpen}
-      />
+      <TransactionHistory open={historyOpen} onOpenChange={setHistoryOpen} />
     </div>
   )
 }

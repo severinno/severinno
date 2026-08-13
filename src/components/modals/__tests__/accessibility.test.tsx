@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, @next/next/no-img-element, jsx-a11y/alt-text  */
 /**
  * Accessibility (axe-core) tests for the three modal components:
  *   AuthModal, BookingModal, QuoteModal

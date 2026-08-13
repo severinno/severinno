@@ -39,8 +39,12 @@ import { fileURLToPath } from "node:url"
 // ---------------------------------------------------------------------------
 
 const BENCHMARKS = {
-  geo:   { script: "geo-benchmark.mjs",   latest: "geo-latest.json",   baseline: "geo-baseline.json"   },
-  cache: { script: "cache-benchmark.mjs", latest: "cache-latest.json", baseline: "cache-baseline.json" },
+  geo: { script: "geo-benchmark.mjs", latest: "geo-latest.json", baseline: "geo-baseline.json" },
+  cache: {
+    script: "cache-benchmark.mjs",
+    latest: "cache-latest.json",
+    baseline: "cache-baseline.json",
+  },
 }
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url))
@@ -53,9 +57,10 @@ const OUT_DIR = join(SCRIPTS_DIR, "..", "docs", "benchmarks")
 const args = process.argv.slice(2)
 
 const typeIndex = args.indexOf("--type")
-const type = (typeIndex !== -1 && args[typeIndex + 1] && !args[typeIndex + 1].startsWith("--"))
-  ? args[typeIndex + 1]
-  : null
+const type =
+  typeIndex !== -1 && args[typeIndex + 1] && !args[typeIndex + 1].startsWith("--")
+    ? args[typeIndex + 1]
+    : null
 
 const baselineIndex = args.indexOf("--baseline")
 let customBaseline = null
@@ -71,7 +76,11 @@ if (filterIndex !== -1 && args[filterIndex + 1] && !args[filterIndex + 1].starts
 
 const thresholdIndex = args.indexOf("--threshold")
 let thresholdArg = null
-if (thresholdIndex !== -1 && args[thresholdIndex + 1] && !args[thresholdIndex + 1].startsWith("--")) {
+if (
+  thresholdIndex !== -1 &&
+  args[thresholdIndex + 1] &&
+  !args[thresholdIndex + 1].startsWith("--")
+) {
   thresholdArg = args[thresholdIndex + 1]
 }
 
@@ -80,7 +89,9 @@ if (thresholdIndex !== -1 && args[thresholdIndex + 1] && !args[thresholdIndex + 
 // ---------------------------------------------------------------------------
 
 if (!type || !BENCHMARKS[type]) {
-  console.error("❌ Usage: node scripts/benchmark-watch.mjs --type geo|cache [--baseline <f>] [--filter <str>] [--threshold <n>]")
+  console.error(
+    "❌ Usage: node scripts/benchmark-watch.mjs --type geo|cache [--baseline <f>] [--filter <str>] [--threshold <n>]",
+  )
   console.error(`   Available types: ${Object.keys(BENCHMARKS).join(", ")}`)
   process.exit(2)
 }
@@ -153,13 +164,10 @@ if (!existsSync(baselinePath)) {
 // ---------------------------------------------------------------------------
 
 function enterWatchMode() {
-  let compareArgs = [
-    `"${join(SCRIPTS_DIR, "compare-benchmarks.mjs")}"`,
-    "--watch",
-  ]
+  const compareArgs = [`"${join(SCRIPTS_DIR, "compare-benchmarks.mjs")}"`, "--watch"]
 
-  if (filterPrefix)  compareArgs.push(`--filter "${filterPrefix}"`)
-  if (thresholdArg)  compareArgs.push(`--threshold ${thresholdArg}`)
+  if (filterPrefix) compareArgs.push(`--filter "${filterPrefix}"`)
+  if (thresholdArg) compareArgs.push(`--threshold ${thresholdArg}`)
 
   compareArgs.push(`"${baselinePath}"`, `"${latestPath}"`)
 

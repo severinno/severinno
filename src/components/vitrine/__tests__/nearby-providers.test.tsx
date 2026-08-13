@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for NearbyProviders — "Perto de você" section in the vitrine.
  *

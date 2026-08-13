@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
 
@@ -38,9 +39,11 @@ vi.mock("@/lib/logger", () => ({
 }))
 
 vi.mock("@/lib/mail", () => ({
-  sendMail: vi.fn().mockImplementation(async (payload: { to: string; subject: string; html: string }) => {
-    sentEmails.push(payload)
-  }),
+  sendMail: vi
+    .fn()
+    .mockImplementation(async (payload: { to: string; subject: string; html: string }) => {
+      sentEmails.push(payload)
+    }),
   passwordResetHtml: vi.fn().mockImplementation((opts: { userName: string; resetLink: string }) => {
     return `<html><body>${opts.userName} - ${opts.resetLink}</body></html>`
   }),
@@ -185,10 +188,12 @@ describe("POST /api/auth/forgot-password", () => {
       return { id: "new-token" }
     })
 
-    await forgotPassword(createMockRequest({
-      method: "POST",
-      body: { email: "joao@example.com" },
-    }))
+    await forgotPassword(
+      createMockRequest({
+        method: "POST",
+        body: { email: "joao@example.com" },
+      }),
+    )
 
     expect(savedToken.length).toBe(64)
     expect(savedToken).toMatch(/^[a-f0-9]{64}$/)
@@ -204,10 +209,12 @@ describe("POST /api/auth/forgot-password", () => {
       return { id: "new-token" }
     })
 
-    await forgotPassword(createMockRequest({
-      method: "POST",
-      body: { email: "joao@example.com" },
-    }))
+    await forgotPassword(
+      createMockRequest({
+        method: "POST",
+        body: { email: "joao@example.com" },
+      }),
+    )
 
     expect(savedExpiresAt).not.toBeNull()
     const diffMs = savedExpiresAt!.getTime() - Date.now()
@@ -220,10 +227,12 @@ describe("POST /api/auth/forgot-password", () => {
     mockDb.resetToken.create.mockResolvedValue({ id: "new-token" })
     mockDb.resetToken.updateMany.mockResolvedValue({ count: 1 })
 
-    await forgotPassword(createMockRequest({
-      method: "POST",
-      body: { email: "JOAO@EXEMPLO.COM" },
-    }))
+    await forgotPassword(
+      createMockRequest({
+        method: "POST",
+        body: { email: "JOAO@EXEMPLO.COM" },
+      }),
+    )
 
     expect(mockDb.user.findUnique).toHaveBeenCalledWith({
       where: { email: "joao@exemplo.com" },
@@ -231,10 +240,12 @@ describe("POST /api/auth/forgot-password", () => {
   })
 
   it("retorna 200 com email vazio (não quebra)", async () => {
-    const res = await forgotPassword(createMockRequest({
-      method: "POST",
-      body: { email: "" },
-    }))
+    const res = await forgotPassword(
+      createMockRequest({
+        method: "POST",
+        body: { email: "" },
+      }),
+    )
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(200)
     expect(parsed.body!.ok).toBe(true)
@@ -242,10 +253,12 @@ describe("POST /api/auth/forgot-password", () => {
   })
 
   it("retorna 200 sem body (graceful handling)", async () => {
-    const res = await forgotPassword(createMockRequest({
-      method: "POST",
-      body: {},
-    }))
+    const res = await forgotPassword(
+      createMockRequest({
+        method: "POST",
+        body: {},
+      }),
+    )
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(200)
     expect(parsed.body!.ok).toBe(true)
@@ -262,10 +275,12 @@ describe("POST /api/auth/forgot-password", () => {
       return { id: "new-token" }
     })
 
-    await forgotPassword(createMockRequest({
-      method: "POST",
-      body: { email: "joao@example.com" },
-    }))
+    await forgotPassword(
+      createMockRequest({
+        method: "POST",
+        body: { email: "joao@example.com" },
+      }),
+    )
 
     expect(sentEmails[0].html).toContain(`/auth/reset-password/${savedToken}`)
     expect(sentEmails[0].html).not.toContain("?token=")
@@ -291,10 +306,12 @@ describe("POST /api/auth/reset-password", () => {
     mockDb.resetToken.findUnique.mockResolvedValue(mockResetToken)
     mockDb.$transaction.mockResolvedValue([{ id: "user-1" }, { id: "token-1", used: true }])
 
-    const res = await resetPassword(createMockRequest({
-      method: "POST",
-      body: { token: "valid-token-abc-123", password: "novaSenha123" },
-    }))
+    const res = await resetPassword(
+      createMockRequest({
+        method: "POST",
+        body: { token: "valid-token-abc-123", password: "novaSenha123" },
+      }),
+    )
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -307,10 +324,12 @@ describe("POST /api/auth/reset-password", () => {
     mockDb.resetToken.findUnique.mockResolvedValue(mockResetToken)
     mockDb.$transaction.mockResolvedValue([{ id: "user-1" }, { id: "token-1", used: true }])
 
-    await resetPassword(createMockRequest({
-      method: "POST",
-      body: { token: "valid-token-abc-123", password: "novaSenha123" },
-    }))
+    await resetPassword(
+      createMockRequest({
+        method: "POST",
+        body: { token: "valid-token-abc-123", password: "novaSenha123" },
+      }),
+    )
 
     const txArgs = mockDb.$transaction.mock.calls[0][0]
     expect(Array.isArray(txArgs)).toBe(true)
@@ -324,10 +343,12 @@ describe("POST /api/auth/reset-password", () => {
     }
     mockDb.resetToken.findUnique.mockResolvedValue(expiredToken)
 
-    const res = await resetPassword(createMockRequest({
-      method: "POST",
-      body: { token: "expired-token", password: "novaSenha123" },
-    }))
+    const res = await resetPassword(
+      createMockRequest({
+        method: "POST",
+        body: { token: "expired-token", password: "novaSenha123" },
+      }),
+    )
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
@@ -337,10 +358,12 @@ describe("POST /api/auth/reset-password", () => {
   it("rejeita token já utilizado", async () => {
     mockDb.resetToken.findUnique.mockResolvedValue({ ...mockResetToken, used: true })
 
-    const res = await resetPassword(createMockRequest({
-      method: "POST",
-      body: { token: "used-token", password: "novaSenha123" },
-    }))
+    const res = await resetPassword(
+      createMockRequest({
+        method: "POST",
+        body: { token: "used-token", password: "novaSenha123" },
+      }),
+    )
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
@@ -350,10 +373,12 @@ describe("POST /api/auth/reset-password", () => {
   it("rejeita token inválido (não encontrado)", async () => {
     mockDb.resetToken.findUnique.mockResolvedValue(null)
 
-    const res = await resetPassword(createMockRequest({
-      method: "POST",
-      body: { token: "invalid-token", password: "novaSenha123" },
-    }))
+    const res = await resetPassword(
+      createMockRequest({
+        method: "POST",
+        body: { token: "invalid-token", password: "novaSenha123" },
+      }),
+    )
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
@@ -361,10 +386,12 @@ describe("POST /api/auth/reset-password", () => {
   })
 
   it("rejeita senha muito curta (< 6 caracteres)", async () => {
-    const res = await resetPassword(createMockRequest({
-      method: "POST",
-      body: { token: "valid-token", password: "123" },
-    }))
+    const res = await resetPassword(
+      createMockRequest({
+        method: "POST",
+        body: { token: "valid-token", password: "123" },
+      }),
+    )
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
@@ -372,10 +399,12 @@ describe("POST /api/auth/reset-password", () => {
   })
 
   it("rejeita requisição sem token", async () => {
-    const res = await resetPassword(createMockRequest({
-      method: "POST",
-      body: { password: "novaSenha123" },
-    }))
+    const res = await resetPassword(
+      createMockRequest({
+        method: "POST",
+        body: { password: "novaSenha123" },
+      }),
+    )
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
@@ -383,10 +412,12 @@ describe("POST /api/auth/reset-password", () => {
   })
 
   it("rejeita requisição sem senha", async () => {
-    const res = await resetPassword(createMockRequest({
-      method: "POST",
-      body: { token: "valid-token" },
-    }))
+    const res = await resetPassword(
+      createMockRequest({
+        method: "POST",
+        body: { token: "valid-token" },
+      }),
+    )
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
@@ -399,10 +430,12 @@ describe("POST /api/auth/reset-password", () => {
       user: { id: "user-1", active: false },
     })
 
-    const res = await resetPassword(createMockRequest({
-      method: "POST",
-      body: { token: "valid-token", password: "novaSenha123" },
-    }))
+    const res = await resetPassword(
+      createMockRequest({
+        method: "POST",
+        body: { token: "valid-token", password: "novaSenha123" },
+      }),
+    )
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
@@ -410,10 +443,12 @@ describe("POST /api/auth/reset-password", () => {
   })
 
   it("rejeita token vazio (string vazia)", async () => {
-    const res = await resetPassword(createMockRequest({
-      method: "POST",
-      body: { token: "", password: "novaSenha123" },
-    }))
+    const res = await resetPassword(
+      createMockRequest({
+        method: "POST",
+        body: { token: "", password: "novaSenha123" },
+      }),
+    )
     expect(res.status).toBe(400)
   })
 })

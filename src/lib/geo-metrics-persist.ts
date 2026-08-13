@@ -29,7 +29,7 @@ import {
   existsSync,
   mkdirSync,
 } from "node:fs"
-import { join, basename } from "node:path"
+import { join } from "node:path"
 import { cacheGet, cacheSet, cacheInvalidate } from "./redis"
 import logger from "./logger"
 import type { GeoServiceName } from "./geo-metrics"

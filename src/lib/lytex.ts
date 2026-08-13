@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Lytex Pagamentos — HTTP Client
  *
@@ -85,13 +86,7 @@ export type CardChargeRequest = {
 }
 
 export type LytexChargeStatus =
-  | "pending"
-  | "waitingPayment"
-  | "paid"
-  | "canceled"
-  | "refunded"
-  | "expired"
-  | "failed"
+  "pending" | "waitingPayment" | "paid" | "canceled" | "refunded" | "expired" | "failed"
 
 export type PixChargeResponse = {
   id: string
@@ -212,9 +207,7 @@ function getConfig() {
   const env = (process.env.LYTEX_ENV ?? "sandbox") as LytexEnv
 
   if (!clientId || !clientSecret) {
-    throw new Error(
-      "Lytex não configurado. Defina LYTEX_CLIENT_ID e LYTEX_CLIENT_SECRET no .env",
-    )
+    throw new Error("Lytex não configurado. Defina LYTEX_CLIENT_ID e LYTEX_CLIENT_SECRET no .env")
   }
 
   const baseUrl =
@@ -229,11 +222,7 @@ function getConfig() {
 // HTTP helpers
 // ---------------------------------------------------------------------------
 
-async function lytexRequest<T>(
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<T> {
+async function lytexRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
   const { clientId, clientSecret, baseUrl } = getConfig()
   const url = `${baseUrl}${path}`
   const credentials = btoa(`${clientId}:${clientSecret}`)
@@ -257,12 +246,11 @@ async function lytexRequest<T>(
   if (!res.ok) {
     const message =
       (parsed &&
-        typeof parsed === "object" &&
-        "message" in parsed &&
-        typeof (parsed as { message?: unknown }).message === "string"
+      typeof parsed === "object" &&
+      "message" in parsed &&
+      typeof (parsed as { message?: unknown }).message === "string"
         ? (parsed as { message: string }).message
-        : undefined) ??
-      `Lytex API error: ${res.status} ${res.statusText}`
+        : undefined) ?? `Lytex API error: ${res.status} ${res.statusText}`
     const code =
       parsed && typeof parsed === "object" && "error" in parsed
         ? String((parsed as { error?: unknown }).error ?? "")
@@ -281,9 +269,7 @@ async function lytexRequest<T>(
  * Criar cobrança PIX.
  * Retorna QR code para o cliente pagar escaneando.
  */
-export async function createPixCharge(
-  req: PixChargeRequest,
-): Promise<PixChargeResponse> {
+export async function createPixCharge(req: PixChargeRequest): Promise<PixChargeResponse> {
   const body = {
     external_reference: req.externalReference,
     amount: req.amount,
@@ -308,9 +294,7 @@ export async function createPixCharge(
  * Criar cobrança no Cartão de Crédito.
  * Pode retornar status "waitingPayment" se o processamento for assíncrono.
  */
-export async function createCardCharge(
-  req: CardChargeRequest,
-): Promise<CardChargeResponse> {
+export async function createCardCharge(req: CardChargeRequest): Promise<CardChargeResponse> {
   const body = {
     external_reference: req.externalReference,
     amount: req.amount,
@@ -403,9 +387,7 @@ export async function getChargeByExternalReference(
  *
  * @returns true se a assinatura é válida
  */
-export function verifyWebhookSignature(
-  payload: LytexWebhookPayload,
-): boolean {
+export function verifyWebhookSignature(payload: LytexWebhookPayload): boolean {
   const { clientSecret } = getConfig()
 
   // A assinatura esperada é HMAC-SHA256 do JSON do payload (sem o campo signature)
@@ -414,9 +396,7 @@ export function verifyWebhookSignature(
   const payloadStr = JSON.stringify(payloadWithoutSignature)
 
   // HMAC via crypto.createHmac (Node.js) — importado no topo do módulo
-  const expected = createHmac("sha256", clientSecret)
-    .update(payloadStr)
-    .digest("hex")
+  const expected = createHmac("sha256", clientSecret).update(payloadStr).digest("hex")
 
   if (!payload.signature || typeof payload.signature !== "string") {
     return false
@@ -453,9 +433,7 @@ export function parseExternalReference(
 /**
  * Mapa de status Lytex → nosso sistema
  */
-export function mapLytexStatus(
-  lytexStatus: string,
-): "PENDING" | "PAID" | "REFUNDED" {
+export function mapLytexStatus(lytexStatus: string): "PENDING" | "PAID" | "REFUNDED" {
   switch (lytexStatus) {
     case "paid":
       return "PAID"
@@ -522,9 +500,7 @@ export type LytexSplit = {
  * @param recipientId - Lytex recipient ID (stored in User.lytexRecipientId)
  * @returns Wallet balance information
  */
-export async function getWallet(
-  recipientId: string,
-): Promise<LytexWallet> {
+export async function getWallet(recipientId: string): Promise<LytexWallet> {
   return lytexRequest<LytexWallet>("GET", `/recipients/${encodeURIComponent(recipientId)}/wallet`)
 }
 
@@ -535,10 +511,7 @@ export async function getWallet(
  * @param limit - Max results (default 50)
  * @returns Array of splits/transfers
  */
-export async function listSplits(
-  recipientId: string,
-  limit = 50,
-): Promise<LytexSplit[]> {
+export async function listSplits(recipientId: string, limit = 50): Promise<LytexSplit[]> {
   return lytexRequest<LytexSplit[]>(
     "GET",
     `/recipients/${encodeURIComponent(recipientId)}/splits?limit=${limit}`,

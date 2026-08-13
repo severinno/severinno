@@ -1,3 +1,4 @@
+/* eslint-disable no-console, @typescript-eslint/no-explicit-any  */
 /**
  * Severinno Marketplace — seed push subscriptions for testing
  *
@@ -15,8 +16,20 @@ const db = new PrismaClient()
 function fakeSubscription() {
   return {
     endpoint: `https://fcm.googleapis.com/fcm/send/test-${crypto.randomUUID().slice(0, 8)}`,
-    p256dh: Array.from({ length: 43 }, () => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"[Math.floor(Math.random() * 64)]).join(""),
-    auth: Array.from({ length: 22 }, () => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"[Math.floor(Math.random() * 64)]).join(""),
+    p256dh: Array.from(
+      { length: 43 },
+      () =>
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"[
+          Math.floor(Math.random() * 64)
+        ],
+    ).join(""),
+    auth: Array.from(
+      { length: 22 },
+      () =>
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"[
+          Math.floor(Math.random() * 64)
+        ],
+    ).join(""),
   }
 }
 
@@ -74,8 +87,18 @@ async function main() {
         data: {
           userId: user.id,
           type,
-          title: type === "BOOKING_CONFIRMED" ? "Serviço confirmado!" : type === "QUOTE_RECEIVED" ? "Novo orçamento recebido" : type === "MESSAGE" ? "Nova mensagem" : "Oferta especial",
-          body: type === "PROMOTION" ? "Confira os novos profissionais na sua região!" : "Clique para mais detalhes.",
+          title:
+            type === "BOOKING_CONFIRMED"
+              ? "Serviço confirmado!"
+              : type === "QUOTE_RECEIVED"
+                ? "Novo orçamento recebido"
+                : type === "MESSAGE"
+                  ? "Nova mensagem"
+                  : "Oferta especial",
+          body:
+            type === "PROMOTION"
+              ? "Confira os novos profissionais na sua região!"
+              : "Clique para mais detalhes.",
           read: Math.random() > 0.5,
         },
       })

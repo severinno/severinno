@@ -105,9 +105,9 @@ const HEADER_EXTENSIONS = new Set([".mjs", ".ts", ".sh", ".py", ".ps1"])
 
 /** Files to skip in the header check (generated, vendor, or non-script). */
 let HEADER_SKIP = [
-  "barrel-lint.mjs",           // itself (has header)
-  "_coverage_analysis.py",     // underscore-prefixed = internal helper
-  "_update_workflows.py",      // underscore-prefixed = internal helper
+  "barrel-lint.mjs", // itself (has header)
+  "_coverage_analysis.py", // underscore-prefixed = internal helper
+  "_update_workflows.py", // underscore-prefixed = internal helper
 ]
 
 // ── Load .barrel-lint-ignore (if it exists) ────────────────────────────────
@@ -169,8 +169,7 @@ function hasViolation(line) {
     const pattern = `from "${mod}"`
     const importPattern = `import("${mod}")`
     return (
-      (line.includes(pattern) || line.includes(importPattern)) &&
-      !line.trimStart().startsWith("//")
+      (line.includes(pattern) || line.includes(importPattern)) && !line.trimStart().startsWith("//")
     )
   })
 }
@@ -183,10 +182,7 @@ function collectFiles(dir) {
     const fullPath = join(dir, entry.name)
     if (entry.isDirectory()) {
       results.push(...collectFiles(fullPath))
-    } else if (
-      entry.isFile() &&
-      (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx"))
-    ) {
+    } else if (entry.isFile() && (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx"))) {
       results.push(fullPath)
     }
   }
@@ -205,7 +201,7 @@ try {
   }
 
   const files = collectFiles(SRC)
-  let violations = []
+  const violations = []
 
   for (const file of files) {
     const relPath = relative(ROOT, file)
@@ -289,8 +285,8 @@ try {
     console.log(`  ─── ${headerViolations.length} violation(s) found ───`)
     console.log("")
     console.log("  Fix: add a JSDoc/comment block at the top with at least:")
-    console.log('    // Usage:\n    //   node scripts/<name>')
-    console.log('    //\n    // Exit codes:\n    //   0 — success\n    //   1 — failure')
+    console.log("    // Usage:\n    //   node scripts/<name>")
+    console.log("    //\n    // Exit codes:\n    //   0 — success\n    //   1 — failure")
   }
 
   // ── Final exit code ─────────────────────────────────────────────────

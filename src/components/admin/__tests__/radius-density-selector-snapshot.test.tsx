@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * radius-density-selector-snapshot.test.tsx
  *
@@ -61,9 +62,7 @@ describe("RadiusDensitySelector — snapshot dos 4 estados visuais", () => {
   // ── 1. Default ──────────────────────────────────────────────────────
 
   it("1. estado default — 15km, São Paulo (~10/km²), 15%, ~7k providers", () => {
-    const { asFragment } = render(
-      <RadiusDensitySelector {...FIXTURE_RADIUS_DENSITY_PROPS} />,
-    )
+    const { asFragment } = render(<RadiusDensitySelector {...FIXTURE_RADIUS_DENSITY_PROPS} />)
 
     // Sanity: valores default renderizados
     // "15 km" aparece em 3 lugares (label do slider, botão preset ativo e
@@ -83,9 +82,7 @@ describe("RadiusDensitySelector — snapshot dos 4 estados visuais", () => {
   // ── 2. Raio 5km ────────────────────────────────────────────────────
 
   it("2. raio 5km — após clicar no preset '5 km', seletividade recalculada", () => {
-    const { asFragment } = render(
-      <RadiusDensitySelector {...FIXTURE_RADIUS_DENSITY_PROPS} />,
-    )
+    const { asFragment } = render(<RadiusDensitySelector {...FIXTURE_RADIUS_DENSITY_PROPS} />)
 
     // Clicar no preset 5 km
     fireEvent.click(screen.getByRole("button", { name: "5 km" }))
@@ -106,9 +103,7 @@ describe("RadiusDensitySelector — snapshot dos 4 estados visuais", () => {
   // ── 3. Interior (densidade 2/km²) ──────────────────────────────────
 
   it("3. densidade Interior — após clicar no preset 'Interior 2/km²'", () => {
-    const { asFragment } = render(
-      <RadiusDensitySelector {...FIXTURE_RADIUS_DENSITY_PROPS} />,
-    )
+    const { asFragment } = render(<RadiusDensitySelector {...FIXTURE_RADIUS_DENSITY_PROPS} />)
 
     // Clicar no preset Interior
     fireEvent.click(screen.getByRole("button", { name: /Interior/ }))

@@ -20,7 +20,6 @@ import {
   sendNewMessageNotification,
   formatPhone,
   isValidWhatsApp,
-  evolutionLogger,
 } from "./evolution"
 import { sendPushNotification } from "./push"
 import { fireEvent } from "./event-hub"
@@ -64,10 +63,7 @@ async function createInAppNotification(
       data: { userId, type, title, body: body ?? null, read: false },
     })
   } catch (e) {
-    notificationLogger.error(
-      { err: e, userId, type },
-      "Erro ao criar notificação in-app",
-    )
+    notificationLogger.error({ err: e, userId, type }, "Erro ao criar notificação in-app")
   }
 }
 
@@ -82,10 +78,7 @@ async function sendWhatsApp(
   try {
     const whatsapp = await getUserWhatsApp(userId)
     if (!whatsapp) {
-      notificationLogger.debug(
-        { userId, context },
-        "WhatsApp não configurado para usuário",
-      )
+      notificationLogger.debug({ userId, context }, "WhatsApp não configurado para usuário")
       return
     }
 
@@ -96,10 +89,7 @@ async function sendWhatsApp(
     )
   } catch (e) {
     // Não-propagar erro — notificação WhatsApp é best-effort
-    notificationLogger.warn(
-      { err: e, userId, context },
-      "Falha ao enviar WhatsApp",
-    )
+    notificationLogger.warn({ err: e, userId, context }, "Falha ao enviar WhatsApp")
   }
 }
 
@@ -119,7 +109,11 @@ export async function notifyNewBooking(
   scheduledAt: Date,
   clientName: string,
 ): Promise<void> {
-  const dateStr = scheduledAt.toLocaleDateString("pt-BR", { day: "numeric", month: "long", weekday: "short" })
+  const dateStr = scheduledAt.toLocaleDateString("pt-BR", {
+    day: "numeric",
+    month: "long",
+    weekday: "short",
+  })
   const timeStr = scheduledAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
   const title = `📅 Novo agendamento: ${serviceName}`
   const body = `${clientName} agendou para ${dateStr} às ${timeStr}`
@@ -138,19 +132,22 @@ export async function notifyNewBooking(
   // WhatsApp para o provider
   await sendWhatsApp(
     providerId,
-    (to) =>
-      sendNewBookingNotification(to, clientName, serviceName, scheduledAt, bookingId),
+    (to) => sendNewBookingNotification(to, clientName, serviceName, scheduledAt, bookingId),
     `booking:${bookingId}:new`,
   )
 
   // 🔔 Fire event webhook — admin pode criar regras que disparam push automaticamente
   // Scoped to providerId so the rule only notifies the affected provider, not ALL providers
-  await fireEvent("booking.created", {
-    clientName,
-    serviceName,
-    providerName: "",
-    date: `${dateStr} às ${timeStr}`,
-  }, { scopedUserIds: [providerId] }).catch(() => {})
+  await fireEvent(
+    "booking.created",
+    {
+      clientName,
+      serviceName,
+      providerName: "",
+      date: `${dateStr} às ${timeStr}`,
+    },
+    { scopedUserIds: [providerId] },
+  ).catch(() => {})
 }
 
 /**
@@ -192,17 +189,22 @@ export async function notifyBookingStatus(
   )
 
   // 🔔 Fire event webhook — scoped to the affected user (the one whose booking status changed)
-  const eventMap: Record<string, "booking.confirmed" | "booking.cancelled" | "booking.completed"> = {
-    CONFIRMED: "booking.confirmed",
-    CANCELLED: "booking.cancelled",
-    COMPLETED: "booking.completed",
-  }
+  const eventMap: Record<string, "booking.confirmed" | "booking.cancelled" | "booking.completed"> =
+    {
+      CONFIRMED: "booking.confirmed",
+      CANCELLED: "booking.cancelled",
+      COMPLETED: "booking.completed",
+    }
   const event = eventMap[status]
   if (event) {
-    await fireEvent(event, {
-      serviceName,
-      date: new Date().toLocaleString("pt-BR"),
-    }, { scopedUserIds: [userId] }).catch(() => {})
+    await fireEvent(
+      event,
+      {
+        serviceName,
+        date: new Date().toLocaleString("pt-BR"),
+      },
+      { scopedUserIds: [userId] },
+    ).catch(() => {})
   }
 }
 
@@ -239,12 +241,16 @@ export async function notifyNewQuote(
   )
 
   // 🔔 Fire event webhook — scoped to the affected provider
-  await fireEvent("quote.received", {
-    clientName,
-    providerName: "",
-    serviceName: "",
-    itemsCount: String(itemsCount),
-  }, { scopedUserIds: [providerId] }).catch(() => {})
+  await fireEvent(
+    "quote.received",
+    {
+      clientName,
+      providerName: "",
+      serviceName: "",
+      itemsCount: String(itemsCount),
+    },
+    { scopedUserIds: [providerId] },
+  ).catch(() => {})
 }
 
 /**
@@ -275,12 +281,16 @@ export async function notifyQuoteResponse(
   )
 
   // 🔔 Fire event webhook — scoped to the affected client
-  await fireEvent("quote.responded", {
-    providerName,
-    clientName: "",
-    serviceName: "",
-    amount: String(total),
-  }, { scopedUserIds: [clientId] }).catch(() => {})
+  await fireEvent(
+    "quote.responded",
+    {
+      providerName,
+      clientName: "",
+      serviceName: "",
+      amount: String(total),
+    },
+    { scopedUserIds: [clientId] },
+  ).catch(() => {})
 }
 
 // ---------------------------------------------------------------------------
@@ -315,11 +325,15 @@ export async function notifyNewMessage(
   )
 
   // 🔔 Fire event webhook — scoped to the recipient
-  await fireEvent("message.sent", {
-    fromName,
-    toName: "",
-    content: content.slice(0, 100),
-  }, { scopedUserIds: [toId] }).catch(() => {})
+  await fireEvent(
+    "message.sent",
+    {
+      fromName,
+      toName: "",
+      content: content.slice(0, 100),
+    },
+    { scopedUserIds: [toId] },
+  ).catch(() => {})
 }
 
 // ---------------------------------------------------------------------------
@@ -357,11 +371,15 @@ export async function notifyPaymentConfirmed(
   )
 
   // 🔔 Fire event webhook — scoped to the affected provider
-  await fireEvent("payment.confirmed", {
-    providerName: "",
-    clientName: "",
-    amount: String(amount),
-  }, { scopedUserIds: [providerId] }).catch(() => {})
+  await fireEvent(
+    "payment.confirmed",
+    {
+      providerName: "",
+      clientName: "",
+      amount: String(amount),
+    },
+    { scopedUserIds: [providerId] },
+  ).catch(() => {})
 }
 
 export { notificationLogger }

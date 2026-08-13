@@ -1,3 +1,4 @@
+/* eslint-disable no-console, @typescript-eslint/no-explicit-any  */
 // @ts-nocheck
 /**
  * Lytex Pagamentos — Integration test
@@ -67,10 +68,20 @@ async function testPix() {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
     body: JSON.stringify({
-      client: { name: "Test PIX", email: "pix@test.com", cpfCnpj: TEST_CPF, type: "pf", cellphone: "11999999999" },
+      client: {
+        name: "Test PIX",
+        email: "pix@test.com",
+        cpfCnpj: TEST_CPF,
+        type: "pf",
+        cellphone: "11999999999",
+      },
       items: [{ name: "Serviço de teste", quantity: 1, value: 1990 }],
       dueDate,
-      paymentMethods: { pix: { enable: true }, boleto: { enable: false }, creditCard: { enable: false } },
+      paymentMethods: {
+        pix: { enable: true },
+        boleto: { enable: false },
+        creditCard: { enable: false },
+      },
       referenceId,
     }),
   })
@@ -138,10 +149,20 @@ async function testCard() {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
     body: JSON.stringify({
-      client: { name: "Test Card", email: "card@test.com", cpfCnpj: TEST_CPF, type: "pf", cellphone: "11999999999" },
+      client: {
+        name: "Test Card",
+        email: "card@test.com",
+        cpfCnpj: TEST_CPF,
+        type: "pf",
+        cellphone: "11999999999",
+      },
       items: [{ name: "Serviço de teste cartão", quantity: 1, value: 5000 }],
       dueDate,
-      paymentMethods: { pix: { enable: false }, boleto: { enable: false }, creditCard: { enable: true } },
+      paymentMethods: {
+        pix: { enable: false },
+        boleto: { enable: false },
+        creditCard: { enable: true },
+      },
       referenceId,
     }),
   })
@@ -169,7 +190,12 @@ async function testCard() {
     if (tokenRes.status === 201) {
       const data = await tokenRes.json()
       assert(true, `${brand}: tokenized → ${data.cardToken.slice(0, 8)}...`)
-      assert(data.brand.toLowerCase().includes(brand === "master" ? "master" : brand === "visa" ? "visa" : brand), `brand: ${data.brand}`)
+      assert(
+        data.brand
+          .toLowerCase()
+          .includes(brand === "master" ? "master" : brand === "visa" ? "visa" : brand),
+        `brand: ${data.brand}`,
+      )
       assert(data.status === "valid", `status: ${data.status}`)
       assert(data.cardNumber.endsWith(number.slice(-4)), `masked: ${data.cardNumber}`)
     } else {
@@ -244,7 +270,7 @@ async function testSplit() {
   console.log(`\n1️⃣  Creating PIX charge with split`)
   console.log(`   recipient: ${recipientId}`)
   console.log(`   amount: R$${amount.toFixed(2)}`)
-  console.log(`   split: ${(feePercent * 100)}% → R$${(splitValue / 100).toFixed(2)}`)
+  console.log(`   split: ${feePercent * 100}% → R$${(splitValue / 100).toFixed(2)}`)
 
   const result = await createPixCharge({
     amount,
@@ -252,9 +278,7 @@ async function testSplit() {
     payer: { name: "Test Split", cpfCnpj: TEST_CPF, email: "split@test.com" },
     description: "Teste split PIX",
     split: {
-      recipients: [
-        { _recipientId: recipientId, value: splitValue },
-      ],
+      recipients: [{ _recipientId: recipientId, value: splitValue }],
     },
   } as any)
 
@@ -265,7 +289,10 @@ async function testSplit() {
   console.log(`   amount: R$${result.amount.toFixed(2)}`)
   console.log(`   txId: ${(result as any).txId}`)
   console.log(`   checkout: ${(result as any).checkoutUrl}`)
-  console.log(`   split recipients:`, JSON.stringify([{ _recipientId: recipientId, value: splitValue }], null, 2))
+  console.log(
+    `   split recipients:`,
+    JSON.stringify([{ _recipientId: recipientId, value: splitValue }], null, 2),
+  )
 
   console.log("")
 }

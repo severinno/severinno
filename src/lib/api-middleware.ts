@@ -61,7 +61,7 @@
  */
 
 import { NextResponse } from "next/server"
-import { z, ZodError } from "zod"
+import { z } from "zod"
 import { handleError } from "@/lib/api-server"
 
 // ---------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * haversine-throughput.test.ts
  *
@@ -49,10 +50,7 @@ const WARMUP = 3
 // Helpers
 // ---------------------------------------------------------------------------
 
-function generateProviders(
-  count: number,
-  spreadKm = 50,
-): Array<{ lat: number; lng: number }> {
+function generateProviders(count: number, spreadKm = 50): Array<{ lat: number; lng: number }> {
   const degPerKm = { lat: 1 / 111, lng: 1 / 102 }
   const out: Array<{ lat: number; lng: number }> = []
   for (let i = 0; i < count; i++) {
@@ -107,7 +105,12 @@ describe("haversineKm throughput guard", () => {
       // Single call per iteration (baseline latency)
       const t0 = performance.now()
       for (let j = 0; j < 1000; j++) {
-        grandTotal += haversineKm(CENTER_LAT, CENTER_LNG, -23.5605 + j * 0.0001, -46.6433 + j * 0.0001)
+        grandTotal += haversineKm(
+          CENTER_LAT,
+          CENTER_LNG,
+          -23.5605 + j * 0.0001,
+          -46.6433 + j * 0.0001,
+        )
       }
       const t1 = performance.now()
       samples.push(t1 - t0)
@@ -115,8 +118,7 @@ describe("haversineKm throughput guard", () => {
 
     expect(grandTotal).toBeGreaterThan(0)
 
-    const meanMs =
-      samples.reduce((s, v) => s + v, 0) / samples.length
+    const meanMs = samples.reduce((s, v) => s + v, 0) / samples.length
     const opsPerSec = 1000 / (meanMs / 1000) // 1000 calls per iteration
 
     expect(opsPerSec).toBeGreaterThan(MIN_THROUGHPUT)

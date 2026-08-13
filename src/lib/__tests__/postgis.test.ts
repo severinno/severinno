@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for src/lib/postgis.ts
  *
@@ -52,9 +53,7 @@ describe("findProvidersWithinRadius", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Default: withCache invokes factory (cache miss)
-    mockWithCache.mockImplementation(
-      async (_key: string, fn: () => unknown) => fn(),
-    )
+    mockWithCache.mockImplementation(async (_key: string, fn: () => unknown) => fn())
   })
 
   // ---- Happy path -------------------------------------------------------
@@ -104,7 +103,7 @@ describe("findProvidersWithinRadius", () => {
     // Floating-point toFixed(3) may round -23.5505 to "-23.551" or "-23.550"
     // depending on internal representation — accept either.
     expect(cacheKey).toMatch(/-\d+\.\d{3}:-\d+\.\d{3}/)
-    expect(cacheKey).toContain(":10")      // radius
+    expect(cacheKey).toContain(":10") // radius
   })
 
   it("calls $queryRaw on cache miss, returns cached result on cache hit", async () => {
@@ -133,11 +132,7 @@ describe("findProvidersWithinRadius", () => {
 
     await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
 
-    expect(mockWithCache).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(Function),
-      60,
-    )
+    expect(mockWithCache).toHaveBeenCalledWith(expect.any(String), expect.any(Function), 60)
   })
 
   // ---- Error handling ---------------------------------------------------
@@ -193,9 +188,7 @@ describe("findProvidersWithinRadius", () => {
 describe("getDistanceBetween", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockWithCache.mockImplementation(
-      async (_key: string, fn: () => unknown) => fn(),
-    )
+    mockWithCache.mockImplementation(async (_key: string, fn: () => unknown) => fn())
   })
 
   it("returns the distance between two users", async () => {
@@ -229,9 +222,7 @@ describe("getDistanceBetween", () => {
     const keyBA = mockWithCache.mock.calls[0][0] as string
 
     vi.clearAllMocks()
-    mockWithCache.mockImplementation(
-      async (_key: string, fn: () => unknown) => fn(),
-    )
+    mockWithCache.mockImplementation(async (_key: string, fn: () => unknown) => fn())
     mockQueryRaw.mockResolvedValue([{ distance_km: 10 }])
 
     await getDistanceBetween("user-a", "user-b")
@@ -257,11 +248,7 @@ describe("getDistanceBetween", () => {
 
     await getDistanceBetween("user-a", "user-b")
 
-    expect(mockWithCache).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(Function),
-      60,
-    )
+    expect(mockWithCache).toHaveBeenCalledWith(expect.any(String), expect.any(Function), 60)
   })
 })
 
@@ -272,9 +259,7 @@ describe("getDistanceBetween", () => {
 describe("isPostGISAvailable", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockWithCache.mockImplementation(
-      async (_key: string, fn: () => unknown) => fn(),
-    )
+    mockWithCache.mockImplementation(async (_key: string, fn: () => unknown) => fn())
   })
 
   it("returns true when PostGIS extension is installed", async () => {
@@ -306,11 +291,7 @@ describe("isPostGISAvailable", () => {
 
     await isPostGISAvailable()
 
-    expect(mockWithCache).toHaveBeenCalledWith(
-      "postgis:available",
-      expect.any(Function),
-      300,
-    )
+    expect(mockWithCache).toHaveBeenCalledWith("postgis:available", expect.any(Function), 300)
   })
 
   it("returns cached result on second call without querying DB", async () => {
@@ -321,9 +302,7 @@ describe("isPostGISAvailable", () => {
 
     // Second call: simulated cache hit
     vi.clearAllMocks()
-    mockWithCache.mockImplementation(
-      async (_key: string, _fn: () => unknown, _ttl: number) => true,
-    )
+    mockWithCache.mockImplementation(async (_key: string, _fn: () => unknown, _ttl: number) => true)
 
     const result2 = await isPostGISAvailable()
     expect(result2).toBe(true)

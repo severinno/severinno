@@ -1,11 +1,14 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-const { mockConsume, mockClose, mockSetupGracefulShutdown, mockHandleNotification } = vi.hoisted(() => ({
-  mockConsume: vi.fn().mockResolvedValue(undefined),
-  mockClose: vi.fn().mockResolvedValue(undefined),
-  mockSetupGracefulShutdown: vi.fn(),
-  mockHandleNotification: vi.fn(),
-}))
+const { mockConsume, mockClose, mockSetupGracefulShutdown, mockHandleNotification } = vi.hoisted(
+  () => ({
+    mockConsume: vi.fn().mockResolvedValue(undefined),
+    mockClose: vi.fn().mockResolvedValue(undefined),
+    mockSetupGracefulShutdown: vi.fn(),
+    mockHandleNotification: vi.fn(),
+  }),
+)
 
 vi.mock("../../lib/logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },

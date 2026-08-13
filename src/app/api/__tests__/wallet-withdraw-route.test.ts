@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
@@ -45,10 +46,7 @@ describe("POST /api/provider/wallet/withdraw", () => {
 
   it("creates a withdrawal and returns success", async () => {
     // 2 COMPLETED bookings = balance 467.5
-    mockDb.booking.findMany.mockResolvedValue([
-      { amount: 200 },
-      { amount: 350 },
-    ])
+    mockDb.booking.findMany.mockResolvedValue([{ amount: 200 }, { amount: 350 }])
     mockDb.walletTransaction.findMany.mockResolvedValue([])
     mockDb.walletTransaction.create.mockResolvedValue({
       id: "wth-new-1",
@@ -113,9 +111,7 @@ describe("POST /api/provider/wallet/withdraw", () => {
     // Balance from bookings: 200 * 0.85 = 170
     mockDb.booking.findMany.mockResolvedValue([{ amount: 200 }])
     // Already withdrew 50
-    mockDb.walletTransaction.findMany.mockResolvedValue([
-      { amount: 50, status: "completed" },
-    ])
+    mockDb.walletTransaction.findMany.mockResolvedValue([{ amount: 50, status: "completed" }])
     mockDb.walletTransaction.create.mockResolvedValue({
       id: "wth-new-2",
       amount: 30,
@@ -133,9 +129,7 @@ describe("POST /api/provider/wallet/withdraw", () => {
 
   it("throws 401 when user is not authenticated", async () => {
     const { requireUser } = await import("@/lib/auth")
-    vi.mocked(requireUser).mockRejectedValueOnce(
-      new Error("UNAUTHORIZED"),
-    )
+    vi.mocked(requireUser).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
     const res = await POST(mockRequest({ amount: 100 }))
     expect(res.status).toBe(401)

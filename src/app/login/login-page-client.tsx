@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 /**
@@ -19,7 +20,14 @@ import { useAuthStore } from "@/store/auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 
 export function LoginPageClient() {
   const router = useRouter()
@@ -59,21 +67,19 @@ export function LoginPageClient() {
         <CardHeader className="text-center">
           <Link
             href="/"
-            className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground mb-4 inline-flex items-center gap-1 text-sm"
           >
             <ArrowLeft className="size-4" />
             Voltar ao início
           </Link>
           <CardTitle className="text-2xl font-bold">Entrar</CardTitle>
-          <CardDescription>
-            Acesse sua conta Severinno
-          </CardDescription>
+          <CardDescription>Acesse sua conta Severinno</CardDescription>
         </CardHeader>
 
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             {/* Role toggle */}
-            <div className="flex rounded-lg border bg-muted p-1">
+            <div className="bg-muted flex rounded-lg border p-1">
               <button
                 type="button"
                 role="tab"
@@ -138,7 +144,7 @@ export function LoginPageClient() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="text-muted-foreground hover:text-foreground absolute top-1/2 right-3 -translate-y-1/2"
                   aria-label={showPassword ? "Esconder senha" : "Mostrar senha"}
                 >
                   {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -168,7 +174,7 @@ export function LoginPageClient() {
         </form>
 
         <CardFooter className="flex flex-col gap-3 text-center">
-          <p className="text-sm text-muted-foreground">
+          <p className="text-muted-foreground text-sm">
             Não tem conta?{" "}
             <Link
               href="/register"

@@ -11,13 +11,7 @@
  */
 
 import * as React from "react"
-import {
-  BarChart3,
-  FileJson,
-  GitCompareArrows,
-  Microscope,
-  Zap,
-} from "lucide-react"
+import { BarChart3, FileJson, GitCompareArrows, Microscope, Zap } from "lucide-react"
 import {
   Bar,
   BarChart,
@@ -42,7 +36,7 @@ import {
 } from "@/lib/benchmark-data"
 
 import type { GeoMetricsResponse } from "@/app/api/admin/geo-metrics/route"
-import { COLOR_P50, COLOR_P95, COLOR_P99, TOOLTIP_STYLE } from "./admin-chart-theme"
+import { COLOR_P50, COLOR_P99, TOOLTIP_STYLE } from "./admin-chart-theme"
 
 // ── Chart tooltip style ──────────────────────────────────────────────────
 

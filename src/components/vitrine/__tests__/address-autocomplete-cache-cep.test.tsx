@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for AddressAutocomplete CEP detection and in-memory cache logic.
  *

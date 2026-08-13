@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import { useEffect, useState, useRef, useCallback } from "react"
@@ -87,11 +88,11 @@ export default function Error({
   }, [reset])
 
   return (
-    <div className="relative flex min-h-screen flex-col bg-gradient-to-b from-background via-background to-muted/30">
+    <div className="from-background via-background to-muted/30 relative flex min-h-screen flex-col bg-gradient-to-b">
       {/* Decorative blobs */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-40 -top-40 size-80 rounded-full bg-red-500/5 blur-3xl dark:bg-red-400/5" />
-        <div className="absolute -bottom-40 -right-40 size-96 rounded-full bg-amber-500/5 blur-3xl dark:bg-amber-400/5" />
+        <div className="absolute -top-40 -left-40 size-80 rounded-full bg-red-500/5 blur-3xl dark:bg-red-400/5" />
+        <div className="absolute -right-40 -bottom-40 size-96 rounded-full bg-amber-500/5 blur-3xl dark:bg-amber-400/5" />
       </div>
 
       {/* ── Main content ────────────────────────────────────────────────── */}
@@ -103,11 +104,7 @@ export default function Error({
           className="flex w-full max-w-md flex-col items-center text-center"
         >
           {/* Animated icon */}
-          <motion.div
-            variants={iconVariants}
-            animate="show"
-            className="mb-2"
-          >
+          <motion.div variants={iconVariants} animate="show" className="mb-2">
             <div className="relative">
               <div className="absolute inset-0 animate-ping rounded-full bg-red-500/15 dark:bg-red-400/10" />
               <div className="relative flex size-20 items-center justify-center rounded-full bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/30 dark:to-red-900/20">
@@ -125,35 +122,28 @@ export default function Error({
 
           {/* Title */}
           <motion.div variants={item}>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
-              {title}
-            </h1>
+            <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">{title}</h1>
           </motion.div>
 
           {/* Description */}
           <motion.div variants={item}>
-            <p className="mt-3 max-w-sm text-muted-foreground">{description}</p>
+            <p className="text-muted-foreground mt-3 max-w-sm">{description}</p>
           </motion.div>
 
           {/* Action buttons */}
-          <motion.div
-            variants={item}
-            className="mt-8 flex flex-col items-center gap-3 sm:flex-row"
-          >
+          <motion.div variants={item} className="mt-8 flex flex-col items-center gap-3 sm:flex-row">
             <button
               onClick={handleReset}
               disabled={isResetting}
               className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-6 text-sm font-medium text-white shadow-lg shadow-emerald-600/20 transition-all hover:bg-emerald-700 hover:shadow-emerald-600/30 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              <RefreshCw
-                className={`size-4 ${isResetting ? "animate-spin" : ""}`}
-              />
+              <RefreshCw className={`size-4 ${isResetting ? "animate-spin" : ""}`} />
               {isResetting ? "Tentando…" : "Tentar novamente"}
             </button>
 
             <Link
               href="/"
-              className="inline-flex h-11 items-center gap-2 rounded-xl border border-border bg-card px-5 text-sm font-medium text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-[0.97]"
+              className="border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground inline-flex h-11 items-center gap-2 rounded-xl border px-5 text-sm font-medium transition-all active:scale-[0.97]"
             >
               <Home className="size-4" />
               Voltar ao início
@@ -162,14 +152,9 @@ export default function Error({
 
           {/* Error digest (dev support) */}
           {error.digest && (
-            <motion.div
-              variants={item}
-              className="mt-12 flex items-center gap-1.5"
-            >
-              <Bug className="size-3 text-muted-foreground/50" />
-              <span className="text-xs text-muted-foreground/50">
-                Ref: {error.digest}
-              </span>
+            <motion.div variants={item} className="mt-12 flex items-center gap-1.5">
+              <Bug className="text-muted-foreground/50 size-3" />
+              <span className="text-muted-foreground/50 text-xs">Ref: {error.digest}</span>
             </motion.div>
           )}
         </motion.div>
@@ -180,11 +165,10 @@ export default function Error({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.8, duration: 0.5 }}
-        className="relative border-t bg-muted/20 px-4 py-6"
+        className="bg-muted/20 relative border-t px-4 py-6"
       >
-        <p className="text-center text-xs text-muted-foreground/60">
-          &copy; {new Date().getFullYear()} Severinno. Todos os direitos
-          reservados.
+        <p className="text-muted-foreground/60 text-center text-xs">
+          &copy; {new Date().getFullYear()} Severinno. Todos os direitos reservados.
         </p>
       </motion.footer>
     </div>

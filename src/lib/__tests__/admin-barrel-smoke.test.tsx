@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * admin-barrel-smoke.test.tsx
  *
@@ -71,10 +72,9 @@ describe("admin barrel — page namespaces", () => {
     for (const [ns, mainExport] of Object.entries(namespaces)) {
       const mod = barrel[ns]
       expect(mod, `namespace ${ns} missing`).toBeDefined()
-      expect(
-        typeof mod?.[mainExport],
-        `${ns}.${mainExport} should be a component function`,
-      ).toBe("function")
+      expect(typeof mod?.[mainExport], `${ns}.${mainExport} should be a component function`).toBe(
+        "function",
+      )
     }
   })
 

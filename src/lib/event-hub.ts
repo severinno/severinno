@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import "server-only"
 import { db } from "@/lib/db"
 import logger from "@/lib/logger"
@@ -117,7 +118,17 @@ export async function fireEvent(
         })
 
         if (users.length === 0) {
-          await logExecution(rule, event, ctx, 0, 0, 0, "success", Date.now() - ruleStart, "no eligible users found")
+          await logExecution(
+            rule,
+            event,
+            ctx,
+            0,
+            0,
+            0,
+            "success",
+            Date.now() - ruleStart,
+            "no eligible users found",
+          )
           continue
         }
 
@@ -129,7 +140,10 @@ export async function fireEvent(
         const results = await Promise.allSettled(
           users.map((u) =>
             sendPushNotification(u.id, title, body, pushUrl).catch((err: Error) => {
-              logger.error({ err, userId: u.id, event, ruleId: rule.id }, "event-webhook push failed")
+              logger.error(
+                { err, userId: u.id, event, ruleId: rule.id },
+                "event-webhook push failed",
+              )
               throw err
             }),
           ),
@@ -150,16 +164,44 @@ export async function fireEvent(
         const status = usersFailed === 0 ? "success" : usersSent === 0 ? "failed" : "partial"
 
         logger.info(
-          { event, ruleId: rule.id, title, usersSent, usersFailed, status, executionMs: Date.now() - ruleStart },
+          {
+            event,
+            ruleId: rule.id,
+            title,
+            usersSent,
+            usersFailed,
+            status,
+            executionMs: Date.now() - ruleStart,
+          },
           "event-webhook processed",
         )
 
         // Create audit log
-        await logExecution(rule, event, ctx, users.length, usersSent, usersFailed, status, Date.now() - ruleStart, firstError)
+        await logExecution(
+          rule,
+          event,
+          ctx,
+          users.length,
+          usersSent,
+          usersFailed,
+          status,
+          Date.now() - ruleStart,
+          firstError,
+        )
       } catch (ruleErr) {
         const executionMs = Date.now() - ruleStart
         logger.error({ err: ruleErr, ruleId: rule.id, event }, "event-webhook rule failed")
-        await logExecution(rule, event, ctx, 0, 0, 1, "failed", executionMs, (ruleErr as Error)?.message ?? "unknown error")
+        await logExecution(
+          rule,
+          event,
+          ctx,
+          0,
+          0,
+          1,
+          "failed",
+          executionMs,
+          (ruleErr as Error)?.message ?? "unknown error",
+        )
       }
     }
   } catch (err) {

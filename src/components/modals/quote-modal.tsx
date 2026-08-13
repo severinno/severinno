@@ -9,7 +9,6 @@ import {
   Check,
   ChevronDown,
   Clock,
-  Loader2,
   LogIn,
   MapPin,
   Pencil,
@@ -46,11 +45,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
   Command,
   CommandEmpty,
@@ -59,11 +54,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command"
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import {
   apiGet,
@@ -73,23 +64,14 @@ import {
   type PagedResult,
   type ServiceUnit,
 } from "@/lib/api"
-import {
-  SERVICE_UNITS,
-  SERVICE_UNIT_LABELS,
-  SERVICE_UNIT_SHORT,
-} from "@/lib/constants"
+import { SERVICE_UNITS, SERVICE_UNIT_LABELS, SERVICE_UNIT_SHORT } from "@/lib/constants"
 import { useUIStore } from "@/store/ui"
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { GeoAddressForm, type AddressFormValue } from "@/components/forms/geo-address-form"
 import { FilePhotos } from "./file-photos"
-import {
-  StepWizard,
-  StepHeader,
-  InfoCard,
-  type StepDef,
-} from "./step-wizard"
+import { StepWizard, StepHeader, InfoCard, type StepDef } from "./step-wizard"
 
 // ---------------------------------------------------------------------------
 // Step definitions — 5 steps for better UX (Nielsen #8: minimalist design)
@@ -125,17 +107,9 @@ const quoteFormSchema = z.object({
       z.object({
         providerId: z.string().min(1, "Selecione um prestador"),
         serviceId: z.string().min(1, "Selecione um serviço"),
-        description: z
-          .string()
-          .min(10, "Descreva com ao menos 10 caracteres")
-          .max(400),
+        description: z.string().min(10, "Descreva com ao menos 10 caracteres").max(400),
         quantity: z.coerce.number().min(0.01, "Quantidade inválida"),
-        unit: z.enum([
-          "UNIDADE",
-          "METRO_LINEAR",
-          "METRO_QUADRADO",
-          "METRO_CUBICO",
-        ]),
+        unit: z.enum(["UNIDADE", "METRO_LINEAR", "METRO_QUADRADO", "METRO_CUBICO"]),
         photos: z.array(z.string()).max(4).default([]),
       }),
     )
@@ -222,15 +196,18 @@ export function QuoteModal() {
   const address = form.watch("address")
   const errors = form.formState.errors
   const item0 = items[0]
-  const item0Errors = errors.items?.[0]
+  const _item0Errors = errors.items?.[0]
 
   const step1Valid = !!item0?.providerId
   const step2Valid = !!item0?.serviceId
-  const step3Valid =
-    !!item0?.description && item0.description.length >= 10 && item0?.quantity > 0
+  const step3Valid = !!item0?.description && item0.description.length >= 10 && item0?.quantity > 0
   const step4Valid =
-    !!address.cep && address.cep.replace(/\D/g, "").length >= 8 &&
-    !!address.street && !!address.number && !!address.city && !!address.state
+    !!address.cep &&
+    address.cep.replace(/\D/g, "").length >= 8 &&
+    !!address.street &&
+    !!address.number &&
+    !!address.city &&
+    !!address.state
 
   const validSteps: Record<number, boolean> = {
     1: step1Valid,
@@ -378,7 +355,7 @@ export function QuoteModal() {
             type="button"
             size="sm"
             onClick={() => openAuth("register", "CLIENT")}
-            className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white h-8"
+            className="h-8 shrink-0 bg-amber-600 text-white hover:bg-amber-700"
           >
             Entrar
           </Button>
@@ -393,10 +370,10 @@ export function QuoteModal() {
       <Sheet open={open} onOpenChange={(o) => !o && close()}>
         <SheetContent
           side="bottom"
-          className="h-[100dvh] max-h-[100dvh] w-full p-0 sm:max-w-full gap-0 flex flex-col"
+          className="flex h-[100dvh] max-h-[100dvh] w-full flex-col gap-0 p-0 sm:max-w-full"
           onInteractOutside={(e) => e.preventDefault()}
         >
-          <SheetHeader className="px-4 pt-4 pb-2 shrink-0">
+          <SheetHeader className="shrink-0 px-4 pt-4 pb-2">
             <SheetTitle className="flex items-center gap-2 text-base">
               <Wrench className="size-4 text-emerald-600" />
               Pedir orçamento
@@ -413,9 +390,12 @@ export function QuoteModal() {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
-      <DialogContent className="sm:max-w-2xl p-0 gap-0 overflow-hidden" onInteractOutside={(e) => e.preventDefault()}>
+      <DialogContent
+        className="gap-0 overflow-hidden p-0 sm:max-w-2xl"
+        onInteractOutside={(e) => e.preventDefault()}
+      >
         {/* Nielsen #3: User control — prevent accidental close during wizard */}
-        <DialogHeader className="px-5 pt-5 pb-2 shrink-0 border-b">
+        <DialogHeader className="shrink-0 border-b px-5 pt-5 pb-2">
           <DialogTitle className="flex items-center gap-2 text-base">
             <Wrench className="size-4 text-emerald-600" />
             Pedir orçamento
@@ -468,8 +448,7 @@ function Step1Provider({ form }: { form: UseFormReturn<QuoteFormValues> }) {
 function SelectedProviderCard({ providerId }: { providerId: string }) {
   const { data } = useQuery({
     queryKey: ["providers-options", ""],
-    queryFn: () =>
-      apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 50 }),
+    queryFn: () => apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 50 }),
     staleTime: 30 * 1000,
   })
 
@@ -480,22 +459,23 @@ function SelectedProviderCard({ providerId }: { providerId: string }) {
     <InfoCard variant="emerald">
       <div className="flex items-center gap-3">
         <Avatar className="size-10 rounded-md">
-          {provider.avatarUrl ? (
-            <AvatarImage src={provider.avatarUrl} alt={provider.name} />
-          ) : null}
-          <AvatarFallback className="rounded-md bg-emerald-100 text-emerald-700 text-sm dark:bg-emerald-950 dark:text-emerald-300">
+          {provider.avatarUrl ? <AvatarImage src={provider.avatarUrl} alt={provider.name} /> : null}
+          <AvatarFallback className="rounded-md bg-emerald-100 text-sm text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
             {provider.name?.[0]?.toUpperCase() ?? "?"}
           </AvatarFallback>
         </Avatar>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{provider.name}</p>
-          <p className="text-xs text-muted-foreground truncate">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{provider.name}</p>
+          <p className="text-muted-foreground truncate text-xs">
             {provider.city ?? "—"}
             {provider.verified && " · Verificado ✓"}
           </p>
         </div>
         {provider.verified && (
-          <Badge variant="outline" className="border-emerald-500 text-emerald-700 text-[10px] shrink-0">
+          <Badge
+            variant="outline"
+            className="shrink-0 border-emerald-500 text-[10px] text-emerald-700"
+          >
             Verificado
           </Badge>
         )}
@@ -539,7 +519,9 @@ function Step2Service({ form }: { form: UseFormReturn<QuoteFormValues> }) {
       />
 
       {/* Selected service info — Nielsen #1: visibility of system status */}
-      {item?.serviceId && <ServiceInfoCard providerId={item.providerId ?? ""} serviceId={item.serviceId} />}
+      {item?.serviceId && (
+        <ServiceInfoCard providerId={item.providerId ?? ""} serviceId={item.serviceId} />
+      )}
     </div>
   )
 }
@@ -547,8 +529,7 @@ function Step2Service({ form }: { form: UseFormReturn<QuoteFormValues> }) {
 function ServiceInfoCard({ providerId, serviceId }: { providerId: string; serviceId: string }) {
   const { data: services } = useQuery({
     queryKey: ["services-by-provider", providerId],
-    queryFn: () =>
-      apiGet<ProviderService[]>("/api/services", { providerId }),
+    queryFn: () => apiGet<ProviderService[]>("/api/services", { providerId }),
     enabled: !!providerId,
     staleTime: 30 * 1000,
   })
@@ -560,16 +541,16 @@ function ServiceInfoCard({ providerId, serviceId }: { providerId: string; servic
     <InfoCard variant="emerald">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300 truncate">
+          <p className="truncate text-sm font-medium text-emerald-800 dark:text-emerald-300">
             {selected.title}
           </p>
           {selected.description && (
-            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+            <p className="text-muted-foreground mt-0.5 line-clamp-2 text-xs">
               {selected.description}
             </p>
           )}
         </div>
-        <Badge variant="outline" className="shrink-0 border-emerald-500 text-emerald-700 text-xs">
+        <Badge variant="outline" className="shrink-0 border-emerald-500 text-xs text-emerald-700">
           {selected.basePrice.toLocaleString("pt-BR", {
             style: "currency",
             currency: "BRL",
@@ -604,10 +585,12 @@ function Step3Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
       <div className="grid gap-1.5">
         <div className="flex items-center justify-between">
           <Label htmlFor="item-0-desc">Descrição do serviço</Label>
-          <span className={cn(
-            "text-xs tabular-nums",
-            descLen < 10 ? "text-destructive" : "text-muted-foreground",
-          )}>
+          <span
+            className={cn(
+              "text-xs tabular-nums",
+              descLen < 10 ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
             {descLen}/400
           </span>
         </div>
@@ -626,7 +609,7 @@ function Step3Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
           aria-invalid={!!error?.description}
         />
         {error?.description && (
-          <p className="text-xs text-destructive">{error.description.message}</p>
+          <p className="text-destructive text-xs">{error.description.message}</p>
         )}
       </div>
 
@@ -649,9 +632,7 @@ function Step3Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
             }
             aria-invalid={!!error?.quantity}
           />
-          {error?.quantity && (
-            <p className="text-xs text-destructive">{error.quantity.message}</p>
-          )}
+          {error?.quantity && <p className="text-destructive text-xs">{error.quantity.message}</p>}
         </div>
 
         <div className="grid gap-1.5">
@@ -681,9 +662,7 @@ function Step3Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
       {/* Photos — Nielsen #7: flexibility — optional but helpful */}
       <FilePhotos
         value={item?.photos ?? []}
-        onChange={(photos) =>
-          form.setValue("items.0.photos", photos, { shouldDirty: true })
-        }
+        onChange={(photos) => form.setValue("items.0.photos", photos, { shouldDirty: true })}
         max={4}
         label="Fotos do serviço"
         hint="Envie até 4 imagens para ajudar o prestador a entender o serviço."
@@ -745,15 +724,13 @@ function Step5Review({
 
   const { data: providerData } = useQuery({
     queryKey: ["providers-options", ""],
-    queryFn: () =>
-      apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 50 }),
+    queryFn: () => apiGet<PagedResult<ProviderCard>>("/api/providers", { limit: 50 }),
     staleTime: 30 * 1000,
   })
 
   const { data: services } = useQuery({
     queryKey: ["services-by-provider", item?.providerId],
-    queryFn: () =>
-      apiGet<ProviderService[]>("/api/services", { providerId: item?.providerId }),
+    queryFn: () => apiGet<ProviderService[]>("/api/services", { providerId: item?.providerId }),
     enabled: !!item?.providerId,
     staleTime: 30 * 1000,
   })
@@ -770,18 +747,12 @@ function Step5Review({
       />
 
       {/* Provider section */}
-      <ReviewSection
-        label="Prestador"
-        onEdit={() => goToStep(1)}
-      >
+      <ReviewSection label="Prestador" onEdit={() => goToStep(1)}>
         <p className="text-sm font-medium">{providerName}</p>
       </ReviewSection>
 
       {/* Service section */}
-      <ReviewSection
-        label="Serviço"
-        onEdit={() => goToStep(2)}
-      >
+      <ReviewSection label="Serviço" onEdit={() => goToStep(2)}>
         <p className="text-sm font-medium">{serviceTitle}</p>
         <Badge variant="secondary" className="mt-1">
           {item?.quantity ?? 0} {item?.unit ? SERVICE_UNIT_SHORT[item.unit] : "un"}
@@ -789,20 +760,12 @@ function Step5Review({
       </ReviewSection>
 
       {/* Details section */}
-      <ReviewSection
-        label="Detalhes"
-        onEdit={() => goToStep(3)}
-      >
-        <p className="text-sm text-muted-foreground line-clamp-3">
-          {item?.description || "—"}
-        </p>
+      <ReviewSection label="Detalhes" onEdit={() => goToStep(3)}>
+        <p className="text-muted-foreground line-clamp-3 text-sm">{item?.description || "—"}</p>
         {item?.photos && item.photos.length > 0 && (
-          <div className="flex gap-2 mt-2">
+          <div className="mt-2 flex gap-2">
             {item.photos.map((url, i) => (
-              <div
-                key={url + i}
-                className="size-12 overflow-hidden rounded-md border bg-muted"
-              >
+              <div key={url + i} className="bg-muted size-12 overflow-hidden rounded-md border">
                 <img
                   src={url}
                   alt={`Foto ${i + 1}`}
@@ -816,12 +779,9 @@ function Step5Review({
       </ReviewSection>
 
       {/* Address section */}
-      <ReviewSection
-        label="Endereço"
-        onEdit={() => goToStep(4)}
-      >
+      <ReviewSection label="Endereço" onEdit={() => goToStep(4)}>
         <div className="flex items-start gap-2 text-sm">
-          <MapPin className="size-4 mt-0.5 shrink-0 text-emerald-600" />
+          <MapPin className="mt-0.5 size-4 shrink-0 text-emerald-600" />
           <span className="text-muted-foreground">
             {address.street
               ? `${address.street}, ${address.number}${
@@ -835,9 +795,8 @@ function Step5Review({
 
       {/* "What happens next?" — Nielsen #10: help & documentation */}
       <InfoCard variant="emerald" className="mt-1">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 mb-3 flex items-center gap-1.5">
-          <Clock className="size-3.5" />
-          O que acontece agora?
+        <h4 className="mb-3 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-emerald-700 uppercase dark:text-emerald-400">
+          <Clock className="size-3.5" />O que acontece agora?
         </h4>
         <div className="grid gap-2.5">
           {[
@@ -847,14 +806,14 @@ function Step5Review({
             { label: "Agende", desc: "Combine data e horário" },
           ].map((step, i) => (
             <div key={i} className="flex items-start gap-2.5">
-              <span className="inline-flex size-5 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white shrink-0 mt-0.5">
+              <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">
                 {i + 1}
               </span>
               <div>
                 <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
                   {step.label}
                 </p>
-                <p className="text-[11px] text-muted-foreground">{step.desc}</p>
+                <p className="text-muted-foreground text-[11px]">{step.desc}</p>
               </div>
             </div>
           ))}
@@ -862,7 +821,7 @@ function Step5Review({
       </InfoCard>
 
       {/* Security note */}
-      <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+      <div className="text-muted-foreground flex items-center justify-center gap-1.5 text-[11px]">
         <ShieldCheck className="size-3.5 text-emerald-600" />
         Seus dados estão protegidos
       </div>
@@ -886,14 +845,14 @@ function ReviewSection({
 }) {
   return (
     <div className="rounded-lg border p-3">
-      <div className="flex items-center justify-between mb-1.5">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="mb-1.5 flex items-center justify-between">
+        <h4 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
           {label}
         </h4>
         <button
           type="button"
           onClick={onEdit}
-          className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300 font-medium transition-colors"
+          className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 transition-colors hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300"
         >
           <Pencil className="size-3" />
           Editar
@@ -945,7 +904,7 @@ function ProviderCombobox({
             role="combobox"
             aria-expanded={open}
             className={cn(
-              "w-full justify-between font-normal h-10",
+              "h-10 w-full justify-between font-normal",
               !value && "text-muted-foreground",
               error && "border-destructive",
             )}
@@ -957,13 +916,16 @@ function ProviderCombobox({
                     {selected.avatarUrl ? (
                       <AvatarImage src={selected.avatarUrl} alt={selected.name} />
                     ) : null}
-                    <AvatarFallback className="rounded-sm bg-emerald-100 text-emerald-700 text-[10px] dark:bg-emerald-950 dark:text-emerald-300">
+                    <AvatarFallback className="rounded-sm bg-emerald-100 text-[10px] text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                       {selected.name?.[0]?.toUpperCase() ?? "?"}
                     </AvatarFallback>
                   </Avatar>
                   <span className="truncate">{selected.name}</span>
                   {selected.verified && (
-                    <Badge variant="outline" className="border-emerald-500 text-emerald-700 text-[10px]">
+                    <Badge
+                      variant="outline"
+                      className="border-emerald-500 text-[10px] text-emerald-700"
+                    >
                       Verificado
                     </Badge>
                   )}
@@ -1004,26 +966,22 @@ function ProviderCombobox({
                       )}
                     />
                     <Avatar className="size-7 rounded-sm">
-                      {p.avatarUrl ? (
-                        <AvatarImage src={p.avatarUrl} alt={p.name} />
-                      ) : null}
-                      <AvatarFallback className="rounded-sm bg-emerald-100 text-emerald-700 text-[10px] dark:bg-emerald-950 dark:text-emerald-300">
+                      {p.avatarUrl ? <AvatarImage src={p.avatarUrl} alt={p.name} /> : null}
+                      <AvatarFallback className="rounded-sm bg-emerald-100 text-[10px] text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                         {p.name?.[0]?.toUpperCase() ?? "?"}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm truncate">{p.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm">{p.name}</p>
+                      <p className="text-muted-foreground truncate text-xs">
                         {p.city ?? "—"}
-                        {p.services?.[0]?.title
-                          ? ` · ${p.services[0].title}`
-                          : ""}
+                        {p.services?.[0]?.title ? ` · ${p.services[0].title}` : ""}
                       </p>
                     </div>
                     {p.verified && (
                       <Badge
                         variant="outline"
-                        className="border-emerald-500 text-emerald-700 text-[10px] ml-2 shrink-0"
+                        className="ml-2 shrink-0 border-emerald-500 text-[10px] text-emerald-700"
                       >
                         ✓
                       </Badge>
@@ -1035,7 +993,7 @@ function ProviderCombobox({
           </Command>
         </PopoverContent>
       </Popover>
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && <p className="text-destructive text-xs">{error}</p>}
     </div>
   )
 }
@@ -1057,8 +1015,7 @@ function ServiceSelect({
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ["services-by-provider", providerId],
-    queryFn: () =>
-      apiGet<ProviderService[]>("/api/services", { providerId }),
+    queryFn: () => apiGet<ProviderService[]>("/api/services", { providerId }),
     enabled: !!providerId,
     staleTime: 30 * 1000,
   })
@@ -1077,7 +1034,7 @@ function ServiceSelect({
         }}
         disabled={!providerId}
       >
-        <SelectTrigger className={cn("w-full h-10", error && "border-destructive")}>
+        <SelectTrigger className={cn("h-10 w-full", error && "border-destructive")}>
           <SelectValue
             placeholder={
               !providerId
@@ -1090,15 +1047,15 @@ function ServiceSelect({
         </SelectTrigger>
         <SelectContent>
           {services.length === 0 && !isLoading && (
-            <div className="px-2 py-3 text-center text-xs text-muted-foreground">
+            <div className="text-muted-foreground px-2 py-3 text-center text-xs">
               Nenhum serviço disponível.
             </div>
           )}
           {services.map((s) => (
             <SelectItem key={s.id} value={s.id}>
-              <span className="flex items-center justify-between gap-2 w-full">
+              <span className="flex w-full items-center justify-between gap-2">
                 <span className="truncate">{s.title}</span>
-                <span className="text-xs text-muted-foreground tabular-nums">
+                <span className="text-muted-foreground text-xs tabular-nums">
                   {s.basePrice.toLocaleString("pt-BR", {
                     style: "currency",
                     currency: "BRL",
@@ -1111,11 +1068,9 @@ function ServiceSelect({
         </SelectContent>
       </Select>
       {selected && (
-        <p className="text-xs text-muted-foreground line-clamp-2">
-          {selected.description ?? "—"}
-        </p>
+        <p className="text-muted-foreground line-clamp-2 text-xs">{selected.description ?? "—"}</p>
       )}
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && <p className="text-destructive text-xs">{error}</p>}
     </div>
   )
 }

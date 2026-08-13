@@ -1,12 +1,37 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET, POST } from "../messages/route"
 import { createMockRequest } from "@/lib/__tests__/helpers/api-test-utils"
 
 const { mockMessages, mockPeer } = vi.hoisted(() => ({
   mockMessages: [
-    { id: "msg-1", fromId: "client-1", toId: "prov-1", content: "Olá, gostaria de agendar", read: true, bookingId: null, createdAt: new Date("2026-07-20T10:00:00Z") },
-    { id: "msg-2", fromId: "prov-1", toId: "client-1", content: "Claro! Qual dia?", read: false, bookingId: null, createdAt: new Date("2026-07-20T10:05:00Z") },
-    { id: "msg-3", fromId: "client-1", toId: "prov-1", content: "Segunda-feira às 14h", read: true, bookingId: null, createdAt: new Date("2026-07-20T10:10:00Z") },
+    {
+      id: "msg-1",
+      fromId: "client-1",
+      toId: "prov-1",
+      content: "Olá, gostaria de agendar",
+      read: true,
+      bookingId: null,
+      createdAt: new Date("2026-07-20T10:00:00Z"),
+    },
+    {
+      id: "msg-2",
+      fromId: "prov-1",
+      toId: "client-1",
+      content: "Claro! Qual dia?",
+      read: false,
+      bookingId: null,
+      createdAt: new Date("2026-07-20T10:05:00Z"),
+    },
+    {
+      id: "msg-3",
+      fromId: "client-1",
+      toId: "prov-1",
+      content: "Segunda-feira às 14h",
+      read: true,
+      bookingId: null,
+      createdAt: new Date("2026-07-20T10:10:00Z"),
+    },
   ],
   mockPeer: { id: "prov-1", name: "Maria Souza", avatarUrl: null, role: "PROVIDER" as const },
 }))
@@ -22,7 +47,10 @@ vi.mock("@/lib/auth", () => ({ requireUser: vi.fn() }))
 vi.mock("@/lib/validators", () => ({
   messageSchema: { parse: vi.fn() },
 }))
-vi.mock("@/lib/logger", () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
+vi.mock("@/lib/logger", () => ({
+  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}))
 
 import { requireUser } from "@/lib/auth"
 import { messageSchema } from "@/lib/validators"
@@ -68,11 +96,26 @@ describe("GET /api/messages", () => {
     beforeEach(() => {
       mockDb.message.findMany
         .mockResolvedValueOnce([
-          { toId: "prov-1", content: "Olá", createdAt: new Date("2026-07-20T10:10:00Z"), read: true },
-          { toId: "prov-2", content: "Teste", createdAt: new Date("2026-07-19T09:00:00Z"), read: true },
+          {
+            toId: "prov-1",
+            content: "Olá",
+            createdAt: new Date("2026-07-20T10:10:00Z"),
+            read: true,
+          },
+          {
+            toId: "prov-2",
+            content: "Teste",
+            createdAt: new Date("2026-07-19T09:00:00Z"),
+            read: true,
+          },
         ])
         .mockResolvedValueOnce([
-          { fromId: "prov-1", content: "Oi", createdAt: new Date("2026-07-20T10:05:00Z"), read: false },
+          {
+            fromId: "prov-1",
+            content: "Oi",
+            createdAt: new Date("2026-07-20T10:05:00Z"),
+            read: false,
+          },
         ])
       mockDb.user.findMany.mockResolvedValue([mockPeer])
     })
@@ -99,7 +142,14 @@ describe("POST /api/messages", () => {
   beforeEach(() => {
     vi.mocked(messageSchema.parse).mockReturnValue(validMessage)
     mockDb.user.findUnique.mockResolvedValue({ id: "prov-1", active: true })
-    mockDb.message.create.mockResolvedValue({ id: "msg-new", ...validMessage, fromId: "client-1", read: false, bookingId: null, createdAt: new Date() })
+    mockDb.message.create.mockResolvedValue({
+      id: "msg-new",
+      ...validMessage,
+      fromId: "client-1",
+      read: false,
+      bookingId: null,
+      createdAt: new Date(),
+    })
   })
 
   it("sends a message and creates notification", async () => {
@@ -114,7 +164,9 @@ describe("POST /api/messages", () => {
   it("throws 400 when sending to self", async () => {
     vi.mocked(messageSchema.parse).mockReturnValueOnce({ toId: "client-1", content: "test" })
     mockDb.notification.create.mockResolvedValue({})
-    const response = await POST(createMockRequest({ method: "POST", body: { toId: "client-1", content: "test" } }))
+    const response = await POST(
+      createMockRequest({ method: "POST", body: { toId: "client-1", content: "test" } }),
+    )
     expect(response.status).toBe(400)
   })
 
@@ -133,7 +185,14 @@ describe("POST /api/messages", () => {
   it("truncates long content in notification body to 80 chars", async () => {
     const longMsg = { toId: "prov-1", content: "a".repeat(100) }
     vi.mocked(messageSchema.parse).mockReturnValue(longMsg)
-    mockDb.message.create.mockResolvedValue({ id: "msg-new", ...longMsg, fromId: "client-1", read: false, bookingId: null, createdAt: new Date() })
+    mockDb.message.create.mockResolvedValue({
+      id: "msg-new",
+      ...longMsg,
+      fromId: "client-1",
+      read: false,
+      bookingId: null,
+      createdAt: new Date(),
+    })
 
     await POST(createMockRequest({ method: "POST", body: longMsg }))
     expect(mockDb.notification.create).toHaveBeenCalledWith(

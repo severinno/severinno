@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 /**
  * Tests for evaluateGeoHealth() — geo service degradation monitor.
  *
@@ -265,8 +266,8 @@ describe("evaluateGeoHealth — PostGIS critical severity", () => {
     expect(result.alertsSent).toBe(1)
 
     // PostGIS should use "error" severity via notifyGeoAlert
-    const criticalCall = mockNotifyGeoAlert.mock.calls.find(
-      (call: any[]) => call[0]?.title?.includes("PostGIS"),
+    const criticalCall = mockNotifyGeoAlert.mock.calls.find((call: any[]) =>
+      call[0]?.title?.includes("PostGIS"),
     )
 
     expect(criticalCall).toBeTruthy()
@@ -281,8 +282,8 @@ describe("evaluateGeoHealth — PostGIS critical severity", () => {
     expect(result.alertsSent).toBe(1)
 
     // Nominatim should use "warn" severity via notifyGeoAlert
-    const warnCall = mockNotifyGeoAlert.mock.calls.find(
-      (call: any[]) => call[0]?.title?.includes("Nominatim"),
+    const warnCall = mockNotifyGeoAlert.mock.calls.find((call: any[]) =>
+      call[0]?.title?.includes("Nominatim"),
     )
 
     expect(warnCall).toBeTruthy()

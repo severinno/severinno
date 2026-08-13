@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 /**
@@ -113,27 +114,22 @@ export function SearchPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="bg-background min-h-screen">
       {/* Hero compacto da busca */}
       <div className="bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 text-white">
         <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
-          <h1 className="text-center text-2xl font-bold sm:text-3xl">
-            O que você precisa?
-          </h1>
+          <h1 className="text-center text-2xl font-bold sm:text-3xl">O que você precisa?</h1>
           <p className="mt-2 text-center text-sm text-emerald-100/80">
             Encontre profissionais verificados perto de você
           </p>
-          <form
-            onSubmit={handleSearch}
-            className="mx-auto mt-6 flex max-w-2xl gap-2"
-          >
+          <form onSubmit={handleSearch} className="mx-auto mt-6 flex max-w-2xl gap-2">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
+              <Search className="text-muted-foreground absolute top-1/2 left-3 size-5 -translate-y-1/2" />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="O que você precisa? Ex.: encanador, pintura…"
-                className="h-12 border-0 bg-white pl-11 text-foreground shadow-lg focus-visible:ring-2 focus-visible:ring-emerald-300"
+                className="text-foreground h-12 border-0 bg-white pl-11 shadow-lg focus-visible:ring-2 focus-visible:ring-emerald-300"
                 aria-label="Serviço buscado"
               />
             </div>
@@ -157,15 +153,13 @@ export function SearchPage() {
             <div className="flex size-20 items-center justify-center rounded-full bg-emerald-50">
               <Search className="size-10 text-emerald-600" />
             </div>
-            <h2 className="mt-6 text-xl font-semibold">
-              Digite o que você está procurando acima
-            </h2>
-            <p className="mt-2 max-w-md text-muted-foreground">
-              Digite o que você está procurando acima para encontrar os melhores
-              profissionais perto de você.
+            <h2 className="mt-6 text-xl font-semibold">Digite o que você está procurando acima</h2>
+            <p className="text-muted-foreground mt-2 max-w-md">
+              Digite o que você está procurando acima para encontrar os melhores profissionais perto
+              de você.
             </p>
             <div className="mt-8">
-              <p className="mb-3 text-sm font-medium text-muted-foreground">
+              <p className="text-muted-foreground mb-3 text-sm font-medium">
                 Serviços mais buscados:
               </p>
               <div className="flex flex-wrap justify-center gap-2">
@@ -174,7 +168,7 @@ export function SearchPage() {
                     key={s.label}
                     type="button"
                     onClick={() => handlePopularClick(s.label)}
-                    className="inline-flex items-center gap-1.5 rounded-full border bg-card px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-700"
+                    className="bg-card inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
                   >
                     <span aria-hidden>{s.emoji}</span>
                     {s.label}
@@ -198,14 +192,13 @@ export function SearchPage() {
           </div>
         ) : searchQuery.error ? (
           /* Estado de erro */
-          <div className="flex flex-col items-center rounded-xl border border-destructive/30 bg-destructive/5 px-6 py-16 text-center">
-            <div className="flex size-14 items-center justify-center rounded-full bg-destructive/10">
-              <Loader2 className="size-7 text-destructive" />
+          <div className="border-destructive/30 bg-destructive/5 flex flex-col items-center rounded-xl border px-6 py-16 text-center">
+            <div className="bg-destructive/10 flex size-14 items-center justify-center rounded-full">
+              <Loader2 className="text-destructive size-7" />
             </div>
             <h2 className="mt-4 text-lg font-semibold">Algo deu errado</h2>
-            <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-              Não foi possível carregar os resultados. Verifique sua conexão e
-              tente novamente.
+            <p className="text-muted-foreground mt-2 max-w-sm text-sm">
+              Não foi possível carregar os resultados. Verifique sua conexão e tente novamente.
             </p>
             <Button
               variant="outline"
@@ -222,24 +215,20 @@ export function SearchPage() {
             <div className="flex size-20 items-center justify-center rounded-full bg-amber-50">
               <SearchX className="size-10 text-amber-600" />
             </div>
-            <h2 className="mt-6 text-xl font-semibold">
-              Nenhum resultado encontrado
-            </h2>
-            <p className="mt-2 max-w-md text-muted-foreground">
-              Nenhum resultado encontrado para &ldquo;{debouncedQ}&rdquo;. Tente
-              buscar por outro termo ou categoria.
+            <h2 className="mt-6 text-xl font-semibold">Nenhum resultado encontrado</h2>
+            <p className="text-muted-foreground mt-2 max-w-md">
+              Nenhum resultado encontrado para &ldquo;{debouncedQ}&rdquo;. Tente buscar por outro
+              termo ou categoria.
             </p>
             <div className="mt-8">
-              <p className="mb-3 text-sm font-medium text-muted-foreground">
-                Sugestões de busca:
-              </p>
+              <p className="text-muted-foreground mb-3 text-sm font-medium">Sugestões de busca:</p>
               <div className="flex flex-wrap justify-center gap-2">
                 {POPULAR_SERVICES.map((s) => (
                   <button
                     key={s.label}
                     type="button"
                     onClick={() => handlePopularClick(s.label)}
-                    className="inline-flex items-center gap-1.5 rounded-full border bg-card px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-700"
+                    className="bg-card inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700"
                   >
                     <span aria-hidden>{s.emoji}</span>
                     {s.label}
@@ -262,7 +251,7 @@ export function SearchPage() {
                   {total === 1 ? "resultado encontrado" : "resultados encontrados"}
                 </span>
               </h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">
+              <p className="text-muted-foreground mt-0.5 text-sm">
                 Resultados para &ldquo;{debouncedQ}&rdquo;
               </p>
             </div>
@@ -292,9 +281,7 @@ export function SearchPage() {
                         if (page > 1) setPage((p) => p - 1)
                       }}
                       aria-disabled={page <= 1}
-                      className={cn(
-                        page <= 1 && "pointer-events-none opacity-50",
-                      )}
+                      className={cn(page <= 1 && "pointer-events-none opacity-50")}
                     />
                   </PaginationItem>
                   <PaginationItem>
@@ -310,9 +297,7 @@ export function SearchPage() {
                         if (page < totalPages) setPage((p) => p + 1)
                       }}
                       aria-disabled={page >= totalPages}
-                      className={cn(
-                        page >= totalPages && "pointer-events-none opacity-50",
-                      )}
+                      className={cn(page >= totalPages && "pointer-events-none opacity-50")}
                     />
                   </PaginationItem>
                 </PaginationContent>
