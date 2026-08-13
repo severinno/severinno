@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect, type Page } from "@playwright/test"
 import { waitForVitrine, registerUser } from "./helpers"
 import { setupApiMocks } from "./mocks"
@@ -30,9 +31,7 @@ async function navigateToQuotesPanel(page: Page) {
   }
 
   // Fallback: busca por texto visível (sidebar expandida)
-  const visibleBtn = page.locator(
-    'button:has-text("Orçamentos")',
-  ).first()
+  const visibleBtn = page.locator('button:has-text("Orçamentos")').first()
   await visibleBtn.click().catch(() => {})
   await page.waitForTimeout(1000)
 }
@@ -50,9 +49,9 @@ async function fillPrice(page: Page, price: string) {
  * Preenche a nota do provider.
  */
 async function fillNote(page: Page, note: string) {
-  const noteTextarea = page.locator(
-    'textarea[placeholder*="Material" i], textarea[placeholder*="Ex." i]',
-  ).first()
+  const noteTextarea = page
+    .locator('textarea[placeholder*="Material" i], textarea[placeholder*="Ex." i]')
+    .first()
   if (await noteTextarea.isVisible().catch(() => false)) {
     await noteTextarea.fill(note)
     await page.waitForTimeout(200)
@@ -63,9 +62,7 @@ async function fillNote(page: Page, note: string) {
  * Clica em "Enviar orçamento" no card do provider.
  */
 async function clickSendQuote(page: Page) {
-  const sendBtn = page.locator(
-    'button:has-text("Enviar orçamento")',
-  ).first()
+  const sendBtn = page.locator('button:has-text("Enviar orçamento")').first()
   await sendBtn.click()
   await page.waitForTimeout(1500)
 }
@@ -75,9 +72,7 @@ async function clickSendQuote(page: Page) {
  * NOTA: botão fica na div de ações (fora do CollapsibleContent), sempre visível.
  */
 async function clickApproveQuote(page: Page) {
-  const approveBtn = page.locator(
-    'button:has-text("Aprovar orçamento")',
-  ).first()
+  const approveBtn = page.locator('button:has-text("Aprovar orçamento")').first()
   await approveBtn.click()
   await page.waitForTimeout(1500)
 }
@@ -86,9 +81,7 @@ async function clickApproveQuote(page: Page) {
  * Expande os itens do orçamento no card do cliente (para ver preços).
  */
 async function expandQuoteItems(page: Page) {
-  const expandBtn = page.locator(
-    'button:has-text(/Ver \\d+ itens|Ocultar itens/)',
-  ).first()
+  const expandBtn = page.locator("button:has-text(/Ver \\d+ itens|Ocultar itens/)").first()
   if (await expandBtn.isVisible().catch(() => false)) {
     const text = await expandBtn.textContent().catch(() => "")
     if (text?.includes("Ver")) {
@@ -123,9 +116,11 @@ test.describe("Quote Response — Provider responde orçamento", () => {
     await navigateToQuotesPanel(page)
 
     // Verifica que a tela de orçamentos carregou
-    const pageTitle = page.locator(
-      'h1:has-text("Orçamentos"), text=/Solicitações de orçamento|Responda às solicitações/i',
-    ).first()
+    const pageTitle = page
+      .locator(
+        'h1:has-text("Orçamentos"), text=/Solicitações de orçamento|Responda às solicitações/i',
+      )
+      .first()
     const titleVisible = await pageTitle.isVisible({ timeout: 8000 }).catch(() => false)
 
     if (titleVisible) {
@@ -133,9 +128,7 @@ test.describe("Quote Response — Provider responde orçamento", () => {
     }
 
     // Verifica que há um card de orçamento pendente
-    const pendingBadge = page.locator(
-      'text=/Pendente|1 pendente/i',
-    ).first()
+    const pendingBadge = page.locator("text=/Pendente|1 pendente/i").first()
     const badgeVisible = await pendingBadge.isVisible({ timeout: 8000 }).catch(() => false)
     if (badgeVisible) {
       await expect(pendingBadge).toBeVisible()
@@ -164,9 +157,7 @@ test.describe("Quote Response — Provider responde orçamento", () => {
       await clickSendQuote(page)
 
       // Verifica resultado — toast ou mudança na UI
-      const successToast = page.locator(
-        'text=/enviado|sucesso|Orçamento enviado/i',
-      ).first()
+      const successToast = page.locator("text=/enviado|sucesso|Orçamento enviado/i").first()
       const successVisible = await successToast.isVisible({ timeout: 5000 }).catch(() => false)
 
       if (successVisible) {
@@ -193,9 +184,7 @@ test.describe("Quote Response — Provider responde orçamento", () => {
     await navigateToQuotesPanel(page)
     await page.waitForTimeout(1000)
 
-    const sendBtn = page.locator(
-      'button:has-text("Enviar orçamento")',
-    ).first()
+    const sendBtn = page.locator('button:has-text("Enviar orçamento")').first()
     const btnVisible = await sendBtn.isVisible({ timeout: 8000 }).catch(() => false)
 
     if (btnVisible) {
@@ -250,7 +239,7 @@ test.describe("Quote Response — Cliente aprova orcamento respondido", () => {
     await page.waitForTimeout(1000)
 
     // Verifica que o card do orçamento respondido apareceu
-    const providerName = page.locator('text=/Maria Silva/i').first()
+    const providerName = page.locator("text=/Maria Silva/i").first()
     const providerVisible = await providerName.isVisible({ timeout: 8000 }).catch(() => false)
 
     if (providerVisible) {
@@ -259,9 +248,7 @@ test.describe("Quote Response — Cliente aprova orcamento respondido", () => {
     }
 
     // Verifica que o badge de status "Respondido" aparece
-    const respondedBadge = page.locator(
-      'text=/Respondido|Aguardando aprovacao/i',
-    ).first()
+    const respondedBadge = page.locator("text=/Respondido|Aguardando aprovacao/i").first()
     const badgeVisible = await respondedBadge.isVisible({ timeout: 5000 }).catch(() => false)
     if (badgeVisible) {
       console.log("Status Respondido visivel")
@@ -282,9 +269,7 @@ test.describe("Quote Response — Cliente aprova orcamento respondido", () => {
     await page.waitForTimeout(500)
 
     // Verifica que o preço enviado pelo provider aparece
-    const quotedPrice = page.locator(
-      'text=/R$ 150|150,00|Total orcado/i',
-    ).first()
+    const quotedPrice = page.locator("text=/R$ 150|150,00|Total orcado/i").first()
     const priceVisible = await quotedPrice.isVisible({ timeout: 5000 }).catch(() => false)
     if (priceVisible) {
       console.log("Preco orcado visivel no card")
@@ -292,9 +277,7 @@ test.describe("Quote Response — Cliente aprova orcamento respondido", () => {
 
     // Verifica que o botão "Aprovar orçamento" existe
     // NOTA: botão está na div de ações (fora do CollapsibleContent), sempre visível
-    const approveBtn = page.locator(
-      'button:has-text("Aprovar orçamento")',
-    ).first()
+    const approveBtn = page.locator('button:has-text("Aprovar orçamento")').first()
     const canApprove = await approveBtn.isVisible({ timeout: 5000 }).catch(() => false)
 
     if (canApprove) {
@@ -302,9 +285,7 @@ test.describe("Quote Response — Cliente aprova orcamento respondido", () => {
       await clickApproveQuote(page)
 
       // Verifica resultado — toast
-      const successToast = page.locator(
-        'text=/aprovado|sucesso|Orcamento aprovado/i',
-      ).first()
+      const successToast = page.locator("text=/aprovado|sucesso|Orcamento aprovado/i").first()
       const successVisible = await successToast.isVisible({ timeout: 5000 }).catch(() => false)
       if (successVisible) {
         await expect(successToast).toBeVisible()
@@ -327,17 +308,10 @@ test.describe("Quote Response — Cliente aprova orcamento respondido", () => {
     await page.waitForTimeout(1000)
 
     // Verifica botões de ação no card
-    const actionSelectors = [
-      "Ver prestador",
-      "Mensagem",
-      "Rejeitar",
-      "Aprovar orçamento",
-    ]
+    const actionSelectors = ["Ver prestador", "Mensagem", "Rejeitar", "Aprovar orçamento"]
 
     for (const label of actionSelectors) {
-      const btn = page.locator(
-        `button:has-text("${label}")`,
-      ).first()
+      const btn = page.locator(`button:has-text("${label}")`).first()
       const visible = await btn.isVisible({ timeout: 3000 }).catch(() => false)
       if (visible) {
         console.log(`Botao "${label}" visivel`)
@@ -356,10 +330,9 @@ test.describe("Quote Response — Health Check API", () => {
   })
 
   test("8. PATCH /api/quotes/:id/items/:itemId rejeita sem autenticacao", async ({ request }) => {
-    const res = await request.patch(
-      "/api/quotes/quote-mock-1/items/qitem-mock-1",
-      { data: { price: 150, status: "QUOTED" } },
-    )
+    const res = await request.patch("/api/quotes/quote-mock-1/items/qitem-mock-1", {
+      data: { price: 150, status: "QUOTED" },
+    })
     expect(res.status()).toBe(401)
   })
 })

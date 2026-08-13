@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * CRUD /api/admin/push/recurring
  *
@@ -79,7 +80,19 @@ export async function POST(request: Request) {
     const session = await requireRole("ADMIN")
 
     const body = await request.json()
-    const { frequency, time, dayOfWeek, dayOfMonth, title, body: pushBody, pushUrl, type, targetRoles, filterCity, timezone } = body
+    const {
+      frequency,
+      time,
+      dayOfWeek,
+      dayOfMonth,
+      title,
+      body: pushBody,
+      pushUrl,
+      type,
+      targetRoles,
+      filterCity,
+      timezone,
+    } = body
 
     // ── Validation ──────────────────────────────────────────────────────
     if (!frequency || !["daily", "weekly", "monthly"].includes(frequency)) {
@@ -161,7 +174,20 @@ export async function PATCH(request: Request) {
     await requireRole("ADMIN")
 
     const body = await request.json()
-    const { id, status, frequency, time, dayOfWeek, dayOfMonth, title, body: pushBody, pushUrl, type, targetRoles, filterCity } = body
+    const {
+      id,
+      status,
+      frequency,
+      time,
+      dayOfWeek,
+      dayOfMonth,
+      title,
+      body: pushBody,
+      pushUrl,
+      type,
+      targetRoles,
+      filterCity,
+    } = body
 
     if (!id) throw badRequest("id is required")
 
@@ -204,7 +230,10 @@ export async function PATCH(request: Request) {
       data: updateData as any,
     })
 
-    logger.info({ recurringId: updated.id, status: updated.status }, "recurring push schedule updated")
+    logger.info(
+      { recurringId: updated.id, status: updated.status },
+      "recurring push schedule updated",
+    )
 
     return NextResponse.json({
       ok: true,

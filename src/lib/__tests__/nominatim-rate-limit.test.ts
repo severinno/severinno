@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for src/lib/nominatim-rate-limit.ts
  *

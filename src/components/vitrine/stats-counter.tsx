@@ -14,18 +14,11 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import {
-  Users,
-  Wrench,
-  CheckCircle2,
-  Star,
-  type LucideIcon,
-} from "lucide-react"
+import { Users, Wrench, CheckCircle2, Star, type LucideIcon } from "lucide-react"
 import { motion } from "framer-motion"
 
 import { apiGet } from "@/lib/api"
 import { useCountUp, useScrollReveal } from "@/hooks/use-animation"
-import { cn } from "@/lib/utils"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -119,13 +112,10 @@ export default function StatsCounter() {
       {/* Decorative mesh blobs */}
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <div className="absolute top-0 left-1/4 size-64 rounded-full bg-white/5 blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 size-56 rounded-full bg-teal-400/10 blur-3xl" />
+        <div className="absolute right-1/4 bottom-0 size-56 rounded-full bg-teal-400/10 blur-3xl" />
       </div>
 
-      <div
-        ref={ref}
-        className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8"
-      >
+      <div ref={ref} className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8">
         <div className="grid grid-cols-2 gap-6 sm:gap-8 lg:grid-cols-4">
           {items.map((item, idx) => {
             const Icon = item.icon
@@ -151,9 +141,7 @@ export default function StatsCounter() {
                     />
                   )}
                 </div>
-                <p className="text-xs font-medium text-emerald-100 sm:text-sm">
-                  {item.label}
-                </p>
+                <p className="text-xs font-medium text-emerald-100 sm:text-sm">{item.label}</p>
               </motion.div>
             )
           })}

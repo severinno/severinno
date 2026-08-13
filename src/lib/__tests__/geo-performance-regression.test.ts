@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * geo-performance-regression.test.ts
  *
@@ -48,10 +49,7 @@ const WARMUP = 3
 // Helpers
 // ---------------------------------------------------------------------------
 
-function generateProviders(
-  count: number,
-  spreadKm = 50,
-): Array<{ lat: number; lng: number }> {
+function generateProviders(count: number, spreadKm = 50): Array<{ lat: number; lng: number }> {
   const degPerKm = { lat: 1 / 111, lng: 1 / 102 }
   const out: Array<{ lat: number; lng: number }> = []
   for (let i = 0; i < count; i++) {

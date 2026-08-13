@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET } from "../notifications/route"
 import { PATCH } from "../notifications/[id]/read/route"
@@ -5,9 +6,33 @@ import { createMockRequest } from "@/lib/__tests__/helpers/api-test-utils"
 
 const { mockNotifications } = vi.hoisted(() => ({
   mockNotifications: [
-    { id: "notif-1", userId: "client-1", type: "BOOKING_CONFIRMED", title: "Serviço confirmado", body: "Seu agendamento foi confirmado", read: false, createdAt: new Date("2026-07-20") },
-    { id: "notif-2", userId: "client-1", type: "MESSAGE", title: "Nova mensagem", body: "Olá, tudo bem?", read: false, createdAt: new Date("2026-07-19") },
-    { id: "notif-3", userId: "client-1", type: "BOOKING_REMINDER", title: "Lembrete", body: "Seu serviço é amanhã", read: true, createdAt: new Date("2026-07-18") },
+    {
+      id: "notif-1",
+      userId: "client-1",
+      type: "BOOKING_CONFIRMED",
+      title: "Serviço confirmado",
+      body: "Seu agendamento foi confirmado",
+      read: false,
+      createdAt: new Date("2026-07-20"),
+    },
+    {
+      id: "notif-2",
+      userId: "client-1",
+      type: "MESSAGE",
+      title: "Nova mensagem",
+      body: "Olá, tudo bem?",
+      read: false,
+      createdAt: new Date("2026-07-19"),
+    },
+    {
+      id: "notif-3",
+      userId: "client-1",
+      type: "BOOKING_REMINDER",
+      title: "Lembrete",
+      body: "Seu serviço é amanhã",
+      read: true,
+      createdAt: new Date("2026-07-18"),
+    },
   ],
 }))
 
@@ -22,7 +47,10 @@ const mockDb = vi.hoisted(() => ({
 
 vi.mock("@/lib/db", () => ({ default: mockDb, db: mockDb }))
 vi.mock("@/lib/auth", () => ({ requireUser: vi.fn() }))
-vi.mock("@/lib/logger", () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
+vi.mock("@/lib/logger", () => ({
+  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}))
 
 import { requireUser } from "@/lib/auth"
 
@@ -48,8 +76,8 @@ describe("GET /api/notifications", () => {
   it("includes unreadCount in response", async () => {
     mockDb.notification.findMany.mockResolvedValue(mockNotifications)
     mockDb.notification.count
-      .mockResolvedValueOnce(3)  // total
-      .mockResolvedValueOnce(2)  // unreadCount
+      .mockResolvedValueOnce(3) // total
+      .mockResolvedValueOnce(2) // unreadCount
     const response = await GET(createMockRequest())
     const data = await response.json()
     expect(data.unreadCount).toBe(2)
@@ -58,8 +86,8 @@ describe("GET /api/notifications", () => {
   it("filters by unread=1", async () => {
     mockDb.notification.findMany.mockResolvedValue(mockNotifications.slice(0, 2))
     mockDb.notification.count
-      .mockResolvedValueOnce(2)  // total (unread only)
-      .mockResolvedValueOnce(2)  // unreadCount (always all)
+      .mockResolvedValueOnce(2) // total (unread only)
+      .mockResolvedValueOnce(2) // unreadCount (always all)
     const response = await GET(createMockRequest({ searchParams: { unread: "1" } }))
     expect(response.status).toBe(200)
     expect(mockDb.notification.findMany).toHaveBeenCalledWith(
@@ -92,7 +120,9 @@ describe("PATCH /api/notifications/[id]/read", () => {
     mockDb.notification.findUnique.mockResolvedValue({ id: "notif-1", userId: "client-1" })
     mockDb.notification.update.mockResolvedValue({ ...mockNotifications[0], read: true })
 
-    const response = await PATCH(createMockRequest(), { params: Promise.resolve({ id: "notif-1" }) })
+    const response = await PATCH(createMockRequest(), {
+      params: Promise.resolve({ id: "notif-1" }),
+    })
     const data = await response.json()
     expect(response.status).toBe(200)
     expect(data.notification.read).toBe(true)
@@ -100,13 +130,17 @@ describe("PATCH /api/notifications/[id]/read", () => {
 
   it("returns 404 when notification not found", async () => {
     mockDb.notification.findUnique.mockResolvedValue(null)
-    const response = await PATCH(createMockRequest(), { params: Promise.resolve({ id: "not-found" }) })
+    const response = await PATCH(createMockRequest(), {
+      params: Promise.resolve({ id: "not-found" }),
+    })
     expect(response.status).toBe(404)
   })
 
   it("returns 403 when notification belongs to another user", async () => {
     mockDb.notification.findUnique.mockResolvedValue({ id: "notif-1", userId: "other-user" })
-    const response = await PATCH(createMockRequest(), { params: Promise.resolve({ id: "notif-1" }) })
+    const response = await PATCH(createMockRequest(), {
+      params: Promise.resolve({ id: "notif-1" }),
+    })
     expect(response.status).toBe(403)
   })
 
@@ -115,7 +149,9 @@ describe("PATCH /api/notifications/[id]/read", () => {
     mockDb.notification.findUnique.mockResolvedValue({ id: "notif-1", userId: "client-1" })
     mockDb.notification.update.mockResolvedValue({ ...mockNotifications[0], read: true })
 
-    const response = await PATCH(createMockRequest(), { params: Promise.resolve({ id: "notif-1" }) })
+    const response = await PATCH(createMockRequest(), {
+      params: Promise.resolve({ id: "notif-1" }),
+    })
     expect(response.status).toBe(200)
   })
 })

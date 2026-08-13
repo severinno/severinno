@@ -1,10 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import {
-  syncRadiusCircle,
-  removeRadiusCircle,
-  RADIUS_SOURCE_ID,
-  type MapLike,
-} from "../geo-circle"
+import { syncRadiusCircle, removeRadiusCircle, RADIUS_SOURCE_ID, type MapLike } from "../geo-circle"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -27,9 +23,12 @@ function createMockMap(): MapLike & { setDataCalls: unknown[] } {
     },
 
     addSource(id: string, source: Record<string, unknown>) {
-      sourceStore.set(id, { setData: vi.fn((data: unknown) => {
-        this.setDataCalls.push(data)
-      }), type: source.type as string })
+      sourceStore.set(id, {
+        setData: vi.fn((data: unknown) => {
+          this.setDataCalls.push(data)
+        }),
+        type: source.type as string,
+      })
     },
 
     getLayer(id: string) {

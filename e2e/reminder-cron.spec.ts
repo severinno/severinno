@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test"
 
 test("GET /api/cron/reminders returns 401 without auth", async ({ request }) => {

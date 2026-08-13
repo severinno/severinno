@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { haversineKm } from "./geo-shared"
 
 /**

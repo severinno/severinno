@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import {
@@ -56,10 +57,7 @@ export async function GET(request: Request) {
     const latNum = lat ? Number(lat) : null
     const lngNum = lng ? Number(lng) : null
     const hasGeo =
-      latNum !== null &&
-      lngNum !== null &&
-      Number.isFinite(latNum) &&
-      Number.isFinite(lngNum)
+      latNum !== null && lngNum !== null && Number.isFinite(latNum) && Number.isFinite(lngNum)
     const radiusKm = radius ? Number(radius) : null
 
     // Validate sort=distance requires coordinates
@@ -115,10 +113,7 @@ export async function GET(request: Request) {
         buildWhereClause: buildProviderWhereClause,
       })
 
-      const { effectiveRadius, matchCount } = await findEffectiveRadius(
-        radiusKm!,
-        countFn,
-      )
+      const { effectiveRadius, matchCount } = await findEffectiveRadius(radiusKm!, countFn)
 
       if (effectiveRadius !== null) {
         // Providers found at the effective radius
@@ -171,22 +166,22 @@ export async function GET(request: Request) {
           // Providers exist but beyond 100km — return unrestricted with expandedRadius = -1
           const unrestrictedResult = await fetchUnrestrictedResults(
             { fbWhere, fbParams, take, skip, hasGeo, latNum, lngNum },
-      {
-        serviceFindMany: db.service.findMany.bind(db) as any,
-        bookingGroupBy: db.booking.groupBy.bind(db) as any,
-        userFindMany: db.user.findMany.bind(db) as any,
-        queryRawUnsafe: db.$queryRawUnsafe.bind(db),
-      },
-    )
-    return cacheControlPublic(
-      NextResponse.json({
-        ...unrestrictedResult,
-        page,
-        limit,
-      }),
-      60,
-    )
-  }
+            {
+              serviceFindMany: db.service.findMany.bind(db) as any,
+              bookingGroupBy: db.booking.groupBy.bind(db) as any,
+              userFindMany: db.user.findMany.bind(db) as any,
+              queryRawUnsafe: db.$queryRawUnsafe.bind(db),
+            },
+          )
+          return cacheControlPublic(
+            NextResponse.json({
+              ...unrestrictedResult,
+              page,
+              limit,
+            }),
+            60,
+          )
+        }
 
         // No providers at all
         return NextResponse.json({
@@ -264,12 +259,8 @@ export async function GET(request: Request) {
       },
     )
 
-    return cacheControlPublic(
-      NextResponse.json({ items, total, page, limit, expandedRadius }),
-      60,
-    )
+    return cacheControlPublic(NextResponse.json({ items, total, page, limit, expandedRadius }), 60)
   } catch (e) {
     return handleError(e)
   }
 }
-

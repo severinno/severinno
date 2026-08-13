@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 /**
  * sql-builder.test.ts
  *
@@ -254,11 +255,11 @@ describe("buildProviderWhereClause — combined filters", () => {
     expect(sql).toContain("to_tsquery('portuguese', $3)")
     expect(sql).toContain("IN ($4,$5)")
 
-    expect(params[0]).toBe(-46.63)  // $1 = lng
-    expect(params[1]).toBe(-23.55)  // $2 = lat
-    expect(params[2]).toBe("pintor:*")  // $3 = search
-    expect(params[3]).toBe("cat-a")  // $4
-    expect(params[4]).toBe("cat-b")  // $5
+    expect(params[0]).toBe(-46.63) // $1 = lng
+    expect(params[1]).toBe(-23.55) // $2 = lat
+    expect(params[2]).toBe("pintor:*") // $3 = search
+    expect(params[3]).toBe("cat-a") // $4
+    expect(params[4]).toBe("cat-b") // $5
   })
 
   it("combines radius + search (no category)", () => {

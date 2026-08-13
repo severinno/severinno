@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, afterEach } from "vitest"
 import { getRoute, getMultiRoute, clearRouteCache } from "../routing"
 
@@ -38,10 +39,7 @@ describe("getRoute", () => {
   })
 
   it("works with { lat, lng } objects", async () => {
-    const route = await getRoute(
-      { lat: -23.55, lng: -46.63 },
-      { lat: -23.56, lng: -46.64 },
-    )
+    const route = await getRoute({ lat: -23.55, lng: -46.63 }, { lat: -23.56, lng: -46.64 })
 
     expect(route.distanceKm).toBeGreaterThan(0)
   })

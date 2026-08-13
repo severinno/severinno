@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Severinno Marketplace — seed script (Fase 1 / MVP)
  * Run with: bun run db:seed  (or: bun prisma/seed.ts)
@@ -226,11 +227,20 @@ async function main() {
         lat: jitter(SP_LAT, 0.03),
         lng: jitter(SP_LNG, 0.03),
         radiusKm: p.radiusKm,
-        whatsapp: "(11) 9" + Math.floor(1000 + Math.random() * 8999) + "-" +
+        whatsapp:
+          "(11) 9" +
+          Math.floor(1000 + Math.random() * 8999) +
+          "-" +
           Math.floor(1000 + Math.random() * 8999),
-        phone: "(11) 3" + Math.floor(1000 + Math.random() * 8999) + "-" +
+        phone:
+          "(11) 3" +
+          Math.floor(1000 + Math.random() * 8999) +
+          "-" +
           Math.floor(1000 + Math.random() * 8999),
-        cpfCnpj: "0" + String(Math.floor(100000000 + Math.random() * 89999999)) + "-" +
+        cpfCnpj:
+          "0" +
+          String(Math.floor(100000000 + Math.random() * 89999999)) +
+          "-" +
           String(Math.floor(10 + Math.random() * 89)),
       },
     })
@@ -446,8 +456,7 @@ async function main() {
       providerKey: "Pedreiro",
       subCat: "Contrapiso",
       title: "Execução de contrapiso",
-      description:
-        "Preparo e execução de contrapiso nivelado para posterior assentamento de piso.",
+      description: "Preparo e execução de contrapiso nivelado para posterior assentamento de piso.",
       basePrice: 60,
       unit: "METRO_QUADRADO",
       photoSeed: "service-13",
@@ -484,12 +493,8 @@ async function main() {
   console.log("   • creating bookings + reviews...")
   const encanador = providers["Encanador"]
   const eletricista = providers["Eletricista"]
-  const encanadorServices = createdServices.filter(
-    (s) => s.providerId === encanador.id,
-  )
-  const eletricistaServices = createdServices.filter(
-    (s) => s.providerId === eletricista.id,
-  )
+  const encanadorServices = createdServices.filter((s) => s.providerId === encanador.id)
+  const eletricistaServices = createdServices.filter((s) => s.providerId === eletricista.id)
 
   const now = Date.now()
   const daysAgo = (n: number) => new Date(now - n * 24 * 60 * 60 * 1000)
@@ -502,7 +507,8 @@ async function main() {
       scheduledAt: daysAgo(20),
       amount: 120,
       rating: 5,
-      comment: "Excelente trabalho! Resolveu o vazamento rapidamente e ainda me deu dicas de manutenção.",
+      comment:
+        "Excelente trabalho! Resolveu o vazamento rapidamente e ainda me deu dicas de manutenção.",
     },
     {
       client: client2,

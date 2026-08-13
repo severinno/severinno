@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for pure functions in geo-benchmark-model.ts.
  *

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Integration tests for progressive radius expansion in GET /api/providers.
  *

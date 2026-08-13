@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // @ts-nocheck
 /**
  * Playwright Visual Regression — AddressAutocomplete
@@ -123,10 +124,7 @@ async function typeAndWait(page: import("@playwright/test").Page, text: string) 
  * combobox input.  The `..` locator walks up one DOM level, which
  * is the outermost div rendered by AddressAutocomplete.
  */
-async function screenshot(
-  page: import("@playwright/test").Page,
-  name: string,
-) {
+async function screenshot(page: import("@playwright/test").Page, name: string) {
   // Ensure the screenshots directory exists
   mkdirSync(SCREENSHOT_DIR, { recursive: true })
 
@@ -306,9 +304,7 @@ test.describe("AddressAutocomplete — Visual Regression", () => {
     await firstOption.click()
 
     const input = page.getByRole("combobox")
-    await expect(input).toHaveValue(
-      "Avenida Paulista, Bela Vista, São Paulo - SP, Brasil",
-    )
+    await expect(input).toHaveValue("Avenida Paulista, Bela Vista, São Paulo - SP, Brasil")
     await expect(page.getByRole("listbox")).not.toBeAttached()
 
     await screenshot(page, "input-filled")

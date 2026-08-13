@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 // Mock ioredis so tests can control Redis behavior
@@ -104,7 +105,7 @@ describe("checkRateLimit", () => {
     })
 
     expect(result.allowed).toBe(true) // exactly at limit is allowed
-    expect(result.remaining).toBe(0)  // max(0, 30 - 30)
+    expect(result.remaining).toBe(0) // max(0, 30 - 30)
   })
 
   it("sets TTL on first request in the window", async () => {
@@ -151,9 +152,7 @@ describe("checkRateLimit", () => {
       identifier: "custom-user-123",
     })
 
-    expect(client.incr).toHaveBeenCalledWith(
-      expect.stringContaining("custom-user-123"),
-    )
+    expect(client.incr).toHaveBeenCalledWith(expect.stringContaining("custom-user-123"))
   })
 
   it("uses different keys for different prefixes", async () => {

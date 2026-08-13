@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import logger from "./lib/logger"
 
 const WARM_DISABLED = process.env.GEO_STARTUP_WARM_DISABLED === "true"

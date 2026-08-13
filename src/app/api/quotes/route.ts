@@ -1,14 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { quoteSchema } from "@/lib/validators"
-import {
-  badRequest,
-  forbidden,
-  handleError,
-  notFound,
-  parsePagination,
-} from "@/lib/api-server"
+import { badRequest, forbidden, handleError, notFound, parsePagination } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { notifyNewQuote } from "@/lib/notifications"
 
@@ -42,9 +37,7 @@ export async function POST(request: Request) {
       const svc = services.find((s) => s.id === item.serviceId)
       if (!svc) throw badRequest(`Serviço ${item.serviceId} não encontrado`)
       if (svc.providerId !== data.providerId) {
-        throw badRequest(
-          `Serviço ${item.serviceId} não pertence ao prestador informado`,
-        )
+        throw badRequest(`Serviço ${item.serviceId} não pertence ao prestador informado`)
       }
     }
 
@@ -105,10 +98,7 @@ export async function GET(request: Request) {
     await assertRateLimit(request, RATE_LIMITS.quotes)
     const session = await requireUser()
     const { searchParams } = new URL(request.url)
-    const role = (searchParams.get("role") || session.role) as
-      | "CLIENT"
-      | "PROVIDER"
-      | "ADMIN"
+    const role = (searchParams.get("role") || session.role) as "CLIENT" | "PROVIDER" | "ADMIN"
     const status = searchParams.get("status") as any
     const { page, limit, skip, take } = parsePagination(searchParams)
 

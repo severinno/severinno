@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, @next/next/no-img-element, jsx-a11y/alt-text  */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen } from "@/__tests__/test-utils"
 import { ProviderProfileModal } from "../provider-profile-modal"

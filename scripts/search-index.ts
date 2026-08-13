@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Severinno — OpenSearch Indexer
  *
@@ -15,13 +16,7 @@
  */
 
 import { PrismaClient } from "@prisma/client"
-import {
-  getClient,
-  ensureIndices,
-  deleteIndices,
-  bulkIndex,
-  INDICES,
-} from "../src/lib/search"
+import { getClient, ensureIndices, deleteIndices, bulkIndex, INDICES } from "../src/lib/search"
 import logger from "../src/lib/logger"
 
 const db = new PrismaClient()

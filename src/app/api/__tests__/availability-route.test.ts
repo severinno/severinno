@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET, POST } from "../availability/route"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
@@ -41,9 +42,30 @@ vi.mock("@/lib/logger", () => ({
 import { requireUser } from "@/lib/auth"
 
 const mockAvailability = [
-  { id: "av-1", providerId: "prov-1", dayOfWeek: 1, startTime: "08:00", endTime: "12:00", active: true },
-  { id: "av-2", providerId: "prov-1", dayOfWeek: 1, startTime: "13:00", endTime: "18:00", active: true },
-  { id: "av-3", providerId: "prov-1", dayOfWeek: 3, startTime: "08:00", endTime: "12:00", active: true },
+  {
+    id: "av-1",
+    providerId: "prov-1",
+    dayOfWeek: 1,
+    startTime: "08:00",
+    endTime: "12:00",
+    active: true,
+  },
+  {
+    id: "av-2",
+    providerId: "prov-1",
+    dayOfWeek: 1,
+    startTime: "13:00",
+    endTime: "18:00",
+    active: true,
+  },
+  {
+    id: "av-3",
+    providerId: "prov-1",
+    dayOfWeek: 3,
+    startTime: "08:00",
+    endTime: "12:00",
+    active: true,
+  },
 ]
 
 beforeEach(() => {
@@ -101,7 +123,14 @@ describe("POST /api/availability", () => {
   it("upserts availability for the provider", async () => {
     mockDb.$transaction.mockResolvedValue([])
     mockDb.providerAvailability.findMany.mockResolvedValue([
-      { id: "new-1", providerId: "prov-1", dayOfWeek: 1, startTime: "08:00", endTime: "12:00", active: true },
+      {
+        id: "new-1",
+        providerId: "prov-1",
+        dayOfWeek: 1,
+        startTime: "08:00",
+        endTime: "12:00",
+        active: true,
+      },
     ])
 
     const req = createMockRequest({ method: "POST", body: { items: validItems } })

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for src/lib/realtime-client.ts
  *
@@ -68,10 +69,7 @@ describe("emitRealtime", () => {
 
     await emitRealtime("test:event", {})
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      "http://realtime.internal:4000/emit",
-      expect.anything(),
-    )
+    expect(mockFetch).toHaveBeenCalledWith("http://realtime.internal:4000/emit", expect.anything())
 
     vi.unstubAllEnvs()
   })

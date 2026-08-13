@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * cpu-calibrate-consistency.test.ts
  *
@@ -30,9 +31,7 @@ import { describe, it, expect, vi } from "vitest"
  * `calibrated` flag is cleared so both implementations run the full
  * ~10 ms calibration loop fresh.
  */
-async function getFreshCalibrators(): Promise<
-  [() => number, () => number]
-> {
+async function getFreshCalibrators(): Promise<[() => number, () => number]> {
   vi.resetModules()
   const tsMod = import("../cpu-calibrate")
   const mjsMod = import("../cpu-calibrate.mjs")
@@ -45,9 +44,7 @@ async function getFreshCalibrators(): Promise<
 /**
  * Import both busyWait functions from fresh module instances.
  */
-async function getFreshBusyWait(): Promise<
-  [(ms: number) => void, (ms: number) => void]
-> {
+async function getFreshBusyWait(): Promise<[(ms: number) => void, (ms: number) => void]> {
   vi.resetModules()
   const { busyWait: busyWaitTs } = await import("../cpu-calibrate")
   vi.resetModules()

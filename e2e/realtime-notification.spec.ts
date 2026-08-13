@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect, type Page } from "@playwright/test"
 
 // =========================================================================
@@ -107,9 +108,7 @@ test.describe.serial("Notificações em Tempo Real", () => {
     }
   })
 
-  test("2. toast aparece automaticamente via WebSocket sem recarregar", async ({
-    browser,
-  }) => {
+  test("2. toast aparece automaticamente via WebSocket sem recarregar", async ({ browser }) => {
     test.skip(!createdBookingId, "Booking anterior não foi criado")
 
     // ── Contextos simultâneos: provider aberto enquanto cliente cria booking ──
@@ -130,9 +129,7 @@ test.describe.serial("Notificações em Tempo Real", () => {
       await providerPage.waitForTimeout(3000)
 
       // Verificar que o sonner Toaster está montado (onde o toast aparecerá)
-      await expect(
-        providerPage.locator("[data-sonner-toaster]"),
-      ).toBeVisible({ timeout: 5000 })
+      await expect(providerPage.locator("[data-sonner-toaster]")).toBeVisible({ timeout: 5000 })
       console.log("✅ sonner Toaster montado — aguardando toast via WebSocket...")
 
       // ── Cliente: login + criar booking ──────────────────────────────
@@ -168,9 +165,7 @@ test.describe.serial("Notificações em Tempo Real", () => {
       // faz POST para http://localhost:3003/emit. O realtime server
       // emite "booking:updated" para a sala user:{providerId}.
       // O RealtimeProvider recebe e chama toast().
-      const toastEl = providerPage.locator(
-        '[data-sonner-toaster] [role="status"]',
-      ).first()
+      const toastEl = providerPage.locator('[data-sonner-toaster] [role="status"]').first()
 
       let toastApareceu = false
       try {
@@ -204,12 +199,11 @@ test.describe.serial("Notificações em Tempo Real", () => {
       }
 
       // ── Verificar também via dropdown do sino ────────────────────────
-      const bell = providerPage.locator(
-        'button[aria-label*="notifica"], button:has(svg.lucide-bell)',
-      ).first()
+      const bell = providerPage
+        .locator('button[aria-label*="notifica"], button:has(svg.lucide-bell)')
+        .first()
       await expect(bell).toBeVisible({ timeout: 3000 })
       console.log("✅ Sino de notificações visível")
-
     } finally {
       await providerCtx.close()
       await clientCtx.close()
@@ -230,9 +224,7 @@ test.describe.serial("Notificações em Tempo Real", () => {
       expect(data.items).toBeDefined()
       expect(data.total).toBeGreaterThanOrEqual(1)
 
-      const bookingNotifs = data.items.filter(
-        (n: { type: string }) => n.type === "BOOKING_REQUEST",
-      )
+      const bookingNotifs = data.items.filter((n: { type: string }) => n.type === "BOOKING_REQUEST")
       console.log(`📊 Total: ${data.total}, Booking: ${bookingNotifs.length}`)
       expect(bookingNotifs.length).toBeGreaterThanOrEqual(1)
     } finally {
@@ -240,9 +232,7 @@ test.describe.serial("Notificações em Tempo Real", () => {
     }
   })
 
-  test("4. sonner Toaster está montado no provider dashboard", async ({
-    browser,
-  }) => {
+  test("4. sonner Toaster está montado no provider dashboard", async ({ browser }) => {
     const ctx = await browser.newContext()
     const page = await ctx.newPage()
 

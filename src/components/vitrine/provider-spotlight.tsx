@@ -30,7 +30,7 @@ import {
   ChevronUp,
   MessageCircle,
 } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 
 import { fetchProviders, type ProviderCard, type ProviderService } from "@/lib/api"
 import { useScrollReveal } from "@/hooks/use-animation"
@@ -107,7 +107,7 @@ export default function ProviderSpotlight() {
   const provider: ProviderCard | undefined = providerQuery.data?.items?.[0]
 
   return (
-    <section className="relative overflow-hidden bg-gradient-to-b from-muted/30 to-background py-16 sm:py-20">
+    <section className="from-muted/30 to-background relative overflow-hidden bg-gradient-to-b py-16 sm:py-20">
       {/* Decorative mesh blobs */}
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <div className="absolute -top-20 -right-20 size-80 rounded-full bg-emerald-100/40 blur-3xl dark:bg-emerald-900/20" />
@@ -127,10 +127,9 @@ export default function ProviderSpotlight() {
             Destaque da semana
           </span>
           <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">
-            Profissional em{" "}
-            <span className="text-emerald-600 dark:text-emerald-400">destaque</span>
+            Profissional em <span className="text-emerald-600 dark:text-emerald-400">destaque</span>
           </h2>
-          <p className="mt-1.5 text-sm text-muted-foreground">
+          <p className="text-muted-foreground mt-1.5 text-sm">
             Conheça um dos nossos prestadores mais bem avaliados.
           </p>
         </motion.div>
@@ -150,13 +149,13 @@ export default function ProviderSpotlight() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={visible ? { opacity: 1 } : {}}
-            className="mx-auto max-w-md rounded-2xl border border-dashed bg-muted/20 p-8 text-center"
+            className="bg-muted/20 mx-auto max-w-md rounded-2xl border border-dashed p-8 text-center"
           >
-            <User className="mx-auto size-10 text-muted-foreground/50" />
-            <p className="mt-3 text-sm text-muted-foreground">
+            <User className="text-muted-foreground/50 mx-auto size-10" />
+            <p className="text-muted-foreground mt-3 text-sm">
               Nenhum prestador em destaque no momento.
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-xs">
               Cadastre-se como prestador e apareça aqui!
             </p>
           </motion.div>
@@ -193,7 +192,7 @@ function SpotlightCard({
       <motion.div
         whileHover={{ y: -4 }}
         transition={{ type: "spring", stiffness: 300, damping: 20 }}
-        className="group relative overflow-hidden rounded-2xl border bg-card shadow-lg transition-shadow duration-300 hover:shadow-2xl"
+        className="group bg-card relative overflow-hidden rounded-2xl border shadow-lg transition-shadow duration-300 hover:shadow-2xl"
       >
         {/* Gradient accent bar — taller & more prominent */}
         <div className="h-2 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600" />
@@ -203,8 +202,7 @@ function SpotlightCard({
           aria-hidden
           className="pointer-events-none absolute inset-0 top-2 opacity-[0.03] dark:opacity-[0.05]"
           style={{
-            backgroundImage:
-              "radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)",
+            backgroundImage: "radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0)",
             backgroundSize: "20px 20px",
           }}
         />
@@ -223,10 +221,13 @@ function SpotlightCard({
             className="flex flex-col gap-6 sm:flex-row sm:items-start"
           >
             {/* Avatar — larger with decorative ring */}
-            <motion.div variants={itemVariants} className="relative shrink-0 self-center sm:self-start">
+            <motion.div
+              variants={itemVariants}
+              className="relative shrink-0 self-center sm:self-start"
+            >
               {/* Decorative ring */}
               <div className="absolute -inset-1.5 rounded-full bg-gradient-to-br from-emerald-400 via-teal-400 to-emerald-500 opacity-60 blur-[2px] transition-opacity group-hover:opacity-80" />
-              <div className="relative flex size-24 items-center justify-center rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-600 sm:size-28 dark:from-emerald-950/40 dark:to-teal-950/40 dark:text-emerald-400 ring-4 ring-background">
+              <div className="ring-background relative flex size-24 items-center justify-center rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 text-emerald-600 ring-4 sm:size-28 dark:from-emerald-950/40 dark:to-teal-950/40 dark:text-emerald-400">
                 {provider.avatarUrl ? (
                   <Image
                     src={provider.avatarUrl}
@@ -241,7 +242,7 @@ function SpotlightCard({
               </div>
               {/* Verified badge — overlaid on avatar ring */}
               {provider.verified && (
-                <div className="absolute -bottom-0.5 -right-0.5 flex size-8 items-center justify-center rounded-full bg-white shadow-md ring-3 ring-emerald-400 dark:bg-slate-900 dark:ring-emerald-500">
+                <div className="absolute -right-0.5 -bottom-0.5 flex size-8 items-center justify-center rounded-full bg-white shadow-md ring-3 ring-emerald-400 dark:bg-slate-900 dark:ring-emerald-500">
                   <BadgeCheck className="size-5 text-emerald-600 dark:text-emerald-400" />
                 </div>
               )}
@@ -259,7 +260,7 @@ function SpotlightCard({
               {/* Name & Location */}
               <motion.div variants={itemVariants}>
                 <h3 className="text-xl font-bold">{provider.name}</h3>
-                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                   {provider.city && (
                     <span className="flex items-center gap-1">
                       <MapPin className="size-3.5" />
@@ -268,9 +269,7 @@ function SpotlightCard({
                   )}
                   {provider.distanceKm != null && (
                     <span className="text-xs">
-                      {provider.distanceKm < 1
-                        ? "< 1 km"
-                        : `${Math.round(provider.distanceKm)} km`}
+                      {provider.distanceKm < 1 ? "< 1 km" : `${Math.round(provider.distanceKm)} km`}
                     </span>
                   )}
                   {provider.memberSince && (
@@ -286,20 +285,19 @@ function SpotlightCard({
               <motion.div variants={itemVariants} className="flex items-center gap-3">
                 <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1 dark:bg-amber-950/30">
                   <Star className="size-5 fill-amber-400 text-amber-400" />
-                  <span className="text-base font-bold tabular-nums text-amber-700 dark:text-amber-300">
+                  <span className="text-base font-bold text-amber-700 tabular-nums dark:text-amber-300">
                     {provider.rating.toFixed(1)}
                   </span>
                 </div>
-                <span className="text-xs text-muted-foreground">
-                  ({provider.reviewCount}{" "}
-                  {provider.reviewCount === 1 ? "avaliação" : "avaliações"})
+                <span className="text-muted-foreground text-xs">
+                  ({provider.reviewCount} {provider.reviewCount === 1 ? "avaliação" : "avaliações"})
                 </span>
               </motion.div>
 
               {/* Meta row: completed bookings + response time */}
               <motion.div variants={itemVariants} className="flex flex-wrap items-center gap-2">
                 {provider.completedBookings != null && provider.completedBookings > 0 && (
-                  <Badge className="gap-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60 border-0">
+                  <Badge className="gap-1 border-0 bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/60">
                     <Sparkles className="size-3" />
                     {provider.completedBookings} serviços concluídos
                   </Badge>
@@ -313,7 +311,7 @@ function SpotlightCard({
               {/* Services with prices */}
               {provider.services.length > 0 && (
                 <motion.div variants={itemVariants} className="space-y-1.5">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <p className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
                     Serviços
                   </p>
                   <div className="space-y-1">
@@ -321,7 +319,7 @@ function SpotlightCard({
                       <ServicePriceRow key={svc.id} service={svc} />
                     ))}
                     {provider.services.length > 3 && (
-                      <p className="pl-1 text-xs text-muted-foreground">
+                      <p className="text-muted-foreground pl-1 text-xs">
                         +{provider.services.length - 3} outros serviços
                       </p>
                     )}
@@ -334,8 +332,8 @@ function SpotlightCard({
                 <motion.div variants={itemVariants}>
                   <p
                     className={cn(
-                      "text-sm text-muted-foreground transition-all duration-300",
-                      !bioExpanded && "line-clamp-2"
+                      "text-muted-foreground text-sm transition-all duration-300",
+                      !bioExpanded && "line-clamp-2",
                     )}
                   >
                     {provider.bio}
@@ -367,7 +365,7 @@ function SpotlightCard({
                   {FAKE_CLIENT_AVATARS.map((client, i) => (
                     <div
                       key={i}
-                      className="flex size-7 items-center justify-center rounded-full border-2 border-background text-[10px] font-bold text-white"
+                      className="border-background flex size-7 items-center justify-center rounded-full border-2 text-[10px] font-bold text-white"
                       style={{ backgroundColor: `hsl(${client.hue}, 60%, 45%)` }}
                       title={client.name}
                     >
@@ -375,9 +373,7 @@ function SpotlightCard({
                     </div>
                   ))}
                 </div>
-                <span className="text-xs text-muted-foreground">
-                  Clientes recentes
-                </span>
+                <span className="text-muted-foreground text-xs">Clientes recentes</span>
               </motion.div>
             </motion.div>
           </motion.div>
@@ -389,10 +385,13 @@ function SpotlightCard({
             animate={visible ? "visible" : "hidden"}
             className="mt-6 flex flex-col gap-2 border-t pt-5 sm:flex-row sm:items-center"
           >
-            <motion.div variants={itemVariants} className="flex flex-col gap-2 sm:flex-row sm:flex-1">
+            <motion.div
+              variants={itemVariants}
+              className="flex flex-col gap-2 sm:flex-1 sm:flex-row"
+            >
               {/* Primary CTA — Pedir orçamento */}
               <Button
-                className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+                className="gap-1.5 bg-emerald-600 transition-all duration-200 hover:scale-[1.02] hover:bg-emerald-700 active:scale-[0.98] dark:bg-emerald-700 dark:hover:bg-emerald-600"
                 onClick={() => openQuote({ providerId: provider.id })}
               >
                 <MessageSquareQuote className="size-4" />
@@ -413,10 +412,10 @@ function SpotlightCard({
             <motion.div variants={itemVariants}>
               <Button
                 variant="ghost"
-                className="gap-1.5 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-300 transition-all duration-200"
+                className="gap-1.5 text-emerald-700 transition-all duration-200 hover:bg-emerald-50 hover:text-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-300"
                 onClick={() => {
                   const msg = encodeURIComponent(
-                    `Olá! Vi seu perfil no Severinno e gostaria de saber mais sobre seus serviços.`
+                    `Olá! Vi seu perfil no Severinno e gostaria de saber mais sobre seus serviços.`,
                   )
                   const whatsappUrl = `https://wa.me/?text=${msg}`
                   window.open(whatsappUrl, "_blank", "noopener")
@@ -439,8 +438,8 @@ function SpotlightCard({
 
 function ServicePriceRow({ service }: { service: ProviderService }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 hover:bg-muted/50 transition-colors">
-      <span className="text-sm truncate">{service.title}</span>
+    <div className="hover:bg-muted/50 flex items-center justify-between gap-3 rounded-md px-2 py-1.5 transition-colors">
+      <span className="truncate text-sm">{service.title}</span>
       <span className="shrink-0 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
         {formatBRL(service.basePrice)}
       </span>
@@ -454,7 +453,7 @@ function ServicePriceRow({ service }: { service: ProviderService }) {
 
 function SpotlightSkeleton() {
   return (
-    <div className="mx-auto max-w-2xl overflow-hidden rounded-2xl border bg-card shadow-lg">
+    <div className="bg-card mx-auto max-w-2xl overflow-hidden rounded-2xl border shadow-lg">
       <Skeleton className="h-2 w-full" />
       <div className="relative p-6 sm:p-8">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start">

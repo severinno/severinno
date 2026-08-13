@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 /**
  * client-geo-cache.test.ts
  *
@@ -36,10 +37,14 @@ function createMockStorage(throwOnAccess = false): Storage {
   const store: Record<string, string> = {}
   let keys: string[] = []
 
-  const updateKeys = () => { keys = Object.keys(store) }
+  const updateKeys = () => {
+    keys = Object.keys(store)
+  }
 
   return {
-    get length() { return keys.length },
+    get length() {
+      return keys.length
+    },
     key: (index: number) => keys[index] ?? null,
     getItem: (key: string) => {
       if (throwOnAccess) throw new DOMException("localStorage not available", "QuotaExceededError")
@@ -317,7 +322,14 @@ describe("FIFO eviction", () => {
     storeNCities(100)
     // Re-set the first entry — moves it to back
     mod.setCachedGeo("City-000", [
-      { lat: 0, lng: 0, displayName: "City-000 (refreshed)", type: "city", category: "place", importance: 0.5 },
+      {
+        lat: 0,
+        lng: 0,
+        displayName: "City-000 (refreshed)",
+        type: "city",
+        category: "place",
+        importance: 0.5,
+      },
     ])
 
     // Confirms re-set moves City-000 to the back of the queue order

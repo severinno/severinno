@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { describe, it, expect } from "vitest"
 import { render, screen } from "@/__tests__/test-utils"
 import { ProviderCardSkeleton } from "../provider-card"

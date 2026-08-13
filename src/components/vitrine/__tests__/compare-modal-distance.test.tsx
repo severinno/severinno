@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for CompareModal — distance and "Mais próximo" badge.
  *

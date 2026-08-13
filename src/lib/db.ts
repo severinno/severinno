@@ -1,22 +1,21 @@
-import { PrismaClient } from '@prisma/client'
-import { SOFT_DELETE_MODELS } from './soft-delete'
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { PrismaClient } from "@prisma/client"
+import { SOFT_DELETE_MODELS } from "./soft-delete"
 
 // ── Type helper for $extends query interceptor args ───────────────────────
-type QueryArgs = { args: Record<string, unknown>; query: (args: Record<string, unknown>) => Promise<unknown> }
+type QueryArgs = {
+  args: Record<string, unknown>
+  query: (args: Record<string, unknown>) => Promise<unknown>
+}
 
 // Prisma model names in the JS API are camelCase (user, service, booking)
-const SOFT_DELETE_MODEL_KEYS = SOFT_DELETE_MODELS.map(
-  (m) => m.charAt(0).toLowerCase() + m.slice(1),
-)
+const SOFT_DELETE_MODEL_KEYS = SOFT_DELETE_MODELS.map((m) => m.charAt(0).toLowerCase() + m.slice(1))
 
 // Only operations that accept arbitrary WHERE clauses.
 // findUnique / findUniqueOrThrow are excluded because Prisma does not allow
 // non-unique fields (like deletedAt) in their `where` — those ops use unique
 // constraints and would throw "Unknown arg `deletedAt`" at runtime.
-const READ_OPS = [
-  'findMany', 'findFirst', 'findFirstOrThrow',
-  'count', 'aggregate', 'groupBy',
-]
+const READ_OPS = ["findMany", "findFirst", "findFirstOrThrow", "count", "aggregate", "groupBy"]
 
 /**
  * Build per-model query extensions for soft-delete.
@@ -36,7 +35,7 @@ function buildSoftDeleteQueries() {
     for (const op of READ_OPS) {
       queries[model][op] = async ({ args, query }: QueryArgs) => {
         if (!(args.where as Record<string, unknown> | undefined)?.deletedAt) {
-          args.where = { ...(args.where as Record<string, unknown> ?? {}), deletedAt: null }
+          args.where = { ...((args.where as Record<string, unknown>) ?? {}), deletedAt: null }
         }
         return query(args)
       }
@@ -46,13 +45,13 @@ function buildSoftDeleteQueries() {
     queries[model].delete = async ({ args: _a, query: _q }: QueryArgs) => {
       throw new Error(
         `[soft-delete] Cannot hard-delete a '${modelName}' record. ` +
-        `Use db.${model}.update({ where, data: { deletedAt: new Date() } }) instead.`,
+          `Use db.${model}.update({ where, data: { deletedAt: new Date() } }) instead.`,
       )
     }
     queries[model].deleteMany = async ({ args: _a, query: _q }: QueryArgs) => {
       throw new Error(
         `[soft-delete] Cannot hard-delete '${modelName}' records. ` +
-        `Use db.${model}.updateMany({ where, data: { deletedAt: new Date() } }) instead.`,
+          `Use db.${model}.updateMany({ where, data: { deletedAt: new Date() } }) instead.`,
       )
     }
   }
@@ -67,11 +66,11 @@ type ExtendedPrismaClient = ReturnType<typeof createPrismaClient>
 
 function createPrismaClient() {
   const base = new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query'] : [],
+    log: process.env.NODE_ENV === "development" ? ["query"] : [],
   })
 
   return base.$extends({
-    name: 'soft-delete',
+    name: "soft-delete",
     query: buildSoftDeleteQueries() as any,
   })
 }
@@ -82,4 +81,4 @@ const globalForPrisma = globalThis as unknown as {
 
 export const db = globalForPrisma.prisma ?? createPrismaClient()
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
+if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db

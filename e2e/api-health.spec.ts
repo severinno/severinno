@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test"
 
 test("GET /api/providers returns paginated providers", async ({ request }) => {

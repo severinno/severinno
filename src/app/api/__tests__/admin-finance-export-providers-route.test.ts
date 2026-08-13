@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for GET /api/admin/finance/export-providers — per-provider CSV export.
  *
@@ -55,7 +56,10 @@ describe("GET /api/admin/finance/export-providers", () => {
   })
 
   it("returns CSV with correct provider headers", async () => {
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "10" } as any)
+    ;(vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
+      key: "PLATFORM_COMMISSION_PERCENT",
+      value: "10",
+    } as any)
     vi.mocked(db.payment.findMany).mockResolvedValue([] as any)
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")
@@ -73,7 +77,10 @@ describe("GET /api/admin/finance/export-providers", () => {
   })
 
   it("uses semicolon as delimiter", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "10" } as any)
+    vi.mocked(db.setting.findUnique).mockResolvedValue({
+      key: "PLATFORM_COMMISSION_PERCENT",
+      value: "10",
+    } as any)
     vi.mocked(db.payment.findMany).mockResolvedValue([] as any)
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")
@@ -85,11 +92,25 @@ describe("GET /api/admin/finance/export-providers", () => {
   })
 
   it("aggregates payments by provider with commission", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "10" } as any)
+    vi.mocked(db.setting.findUnique).mockResolvedValue({
+      key: "PLATFORM_COMMISSION_PERCENT",
+      value: "10",
+    } as any)
     vi.mocked(db.payment.findMany).mockResolvedValue([
-      { amount: 50000, booking: { provider: { id: "prov-1", name: "Paulo Prestador", email: "paulo@test.com" } } },
-      { amount: 30000, booking: { provider: { id: "prov-2", name: "Maria Profissional", email: "maria@test.com" } } },
-      { amount: 15000, booking: { provider: { id: "prov-1", name: "Paulo Prestador", email: "paulo@test.com" } } },
+      {
+        amount: 50000,
+        booking: { provider: { id: "prov-1", name: "Paulo Prestador", email: "paulo@test.com" } },
+      },
+      {
+        amount: 30000,
+        booking: {
+          provider: { id: "prov-2", name: "Maria Profissional", email: "maria@test.com" },
+        },
+      },
+      {
+        amount: 15000,
+        booking: { provider: { id: "prov-1", name: "Paulo Prestador", email: "paulo@test.com" } },
+      },
     ] as any)
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")
@@ -117,10 +138,19 @@ describe("GET /api/admin/finance/export-providers", () => {
   })
 
   it("includes a totals row at the bottom", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "10" } as any)
+    vi.mocked(db.setting.findUnique).mockResolvedValue({
+      key: "PLATFORM_COMMISSION_PERCENT",
+      value: "10",
+    } as any)
     vi.mocked(db.payment.findMany).mockResolvedValue([
-      { amount: 50000, booking: { provider: { id: "prov-1", name: "Paulo", email: "paulo@test.com" } } },
-      { amount: 30000, booking: { provider: { id: "prov-2", name: "Maria", email: "maria@test.com" } } },
+      {
+        amount: 50000,
+        booking: { provider: { id: "prov-1", name: "Paulo", email: "paulo@test.com" } },
+      },
+      {
+        amount: 30000,
+        booking: { provider: { id: "prov-2", name: "Maria", email: "maria@test.com" } },
+      },
     ] as any)
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")
@@ -129,7 +159,7 @@ describe("GET /api/admin/finance/export-providers", () => {
 
     const lines = text.trim().split("\n")
     // Header + 2 providers + 1 totals + empty trailing = exactly 4 non-empty
-    const dataRows = lines.filter(l => l.length > 0)
+    const dataRows = lines.filter((l) => l.length > 0)
 
     const totalsRow = dataRows[dataRows.length - 1]
     expect(totalsRow).toContain("TOTAL")
@@ -143,9 +173,15 @@ describe("GET /api/admin/finance/export-providers", () => {
   })
 
   it("reads commission from settings", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({ key: "PLATFORM_COMMISSION_PERCENT", value: "15" } as any)
+    vi.mocked(db.setting.findUnique).mockResolvedValue({
+      key: "PLATFORM_COMMISSION_PERCENT",
+      value: "15",
+    } as any)
     vi.mocked(db.payment.findMany).mockResolvedValue([
-      { amount: 100000, booking: { provider: { id: "prov-1", name: "Paulo", email: "paulo@test.com" } } },
+      {
+        amount: 100000,
+        booking: { provider: { id: "prov-1", name: "Paulo", email: "paulo@test.com" } },
+      },
     ] as any)
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")
@@ -163,7 +199,10 @@ describe("GET /api/admin/finance/export-providers", () => {
   it("uses default 10% commission when setting not found", async () => {
     vi.mocked(db.setting.findUnique).mockResolvedValue(null)
     vi.mocked(db.payment.findMany).mockResolvedValue([
-      { amount: 100000, booking: { provider: { id: "prov-1", name: "Paulo", email: "paulo@test.com" } } },
+      {
+        amount: 100000,
+        booking: { provider: { id: "prov-1", name: "Paulo", email: "paulo@test.com" } },
+      },
     ] as any)
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")

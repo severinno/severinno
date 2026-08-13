@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test"
 import { setupApiMocks } from "./mocks"
 import { waitForVitrine } from "./helpers"
@@ -249,7 +250,9 @@ test.describe("Cenários de Erro", () => {
     await page.locator('button[type="submit"]:has-text("Redefinir")').click()
 
     // Deve mostrar mensagem de erro
-    await expect(page.locator("text=/inválido|erro|Token inválido/i")).toBeVisible({ timeout: 10000 })
+    await expect(page.locator("text=/inválido|erro|Token inválido/i")).toBeVisible({
+      timeout: 10000,
+    })
   })
 
   test("pode tentar novamente após erro no reset", async ({ page }) => {

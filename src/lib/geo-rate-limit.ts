@@ -33,7 +33,6 @@
  * Fallback: in-memory Map when Redis is unavailable. Degraded but functional.
  */
 
-import { NextResponse } from "next/server"
 import { getClient, isRedisAvailable } from "@/lib/redis"
 import { type Redis, type Cluster } from "ioredis"
 import { HttpError } from "@/lib/api-server"

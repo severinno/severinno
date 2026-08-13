@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 vi.mock("../logger", () => ({
@@ -44,9 +45,7 @@ describe("getBusinessMetrics", () => {
       { role: "PROVIDER", _count: { id: 20 } },
       { role: "ADMIN", _count: { id: 2 } },
     ])
-    mockDb.user.count
-      .mockResolvedValueOnce(5)
-      .mockResolvedValueOnce(15)
+    mockDb.user.count.mockResolvedValueOnce(5).mockResolvedValueOnce(15)
 
     mockDb.booking.count.mockResolvedValue(30)
     mockDb.booking.groupBy.mockResolvedValue([
@@ -93,7 +92,7 @@ describe("getBusinessMetrics", () => {
     expect(result.quotes.conversionToBooking).toBe(0.75)
 
     expect(result.reviews.total).toBe(50)
-    expect(result.reviews.avgRating).toBe(4.50)
+    expect(result.reviews.avgRating).toBe(4.5)
 
     expect(result.revenue.total).toBe(500000)
     expect(result.revenue.paid).toBe(25)
@@ -135,7 +134,10 @@ describe("getBusinessMetrics", () => {
   })
 
   it("handles no verified providers", async () => {
-    mockDb.user.groupBy.mockResolvedValue([{ role: "CLIENT", _count: { id: 1 } }, { role: "PROVIDER", _count: { id: 1 } }])
+    mockDb.user.groupBy.mockResolvedValue([
+      { role: "CLIENT", _count: { id: 1 } },
+      { role: "PROVIDER", _count: { id: 1 } },
+    ])
     mockDb.user.count.mockResolvedValue(0)
     mockDb.booking.count.mockResolvedValue(0)
     mockDb.booking.groupBy.mockResolvedValue([])

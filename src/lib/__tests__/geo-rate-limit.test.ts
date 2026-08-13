@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 /**
  * Tests for geo-rate-limit.ts — sliding-window rate limiter for geo APIs.
  *

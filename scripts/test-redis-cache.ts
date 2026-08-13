@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * E2E test for Redis caching of PostGIS proximity queries.
  *
@@ -30,9 +31,7 @@ import { execSync } from "child_process"
 // ---------------------------------------------------------------------------
 
 if (!process.env.DATABASE_URL) {
-  console.error(
-    "  DATABASE_URL not set. See usage comment at the top of this script.",
-  )
+  console.error("  DATABASE_URL not set. See usage comment at the top of this script.")
   process.exit(1)
 }
 
@@ -123,7 +122,7 @@ async function seedTestData(db: PrismaClient) {
   const providers = [
     { name: "Cache Test Provider A", lat: CENTER_LAT + 0.05, lng: CENTER_LNG + 0.03 },
     { name: "Cache Test Provider B", lat: CENTER_LAT - 0.07, lng: CENTER_LNG - 0.04 },
-    { name: "Cache Test Provider C", lat: CENTER_LAT + 0.15, lng: CENTER_LNG - 0.10 },
+    { name: "Cache Test Provider C", lat: CENTER_LAT + 0.15, lng: CENTER_LNG - 0.1 },
   ]
 
   for (const p of providers) {
@@ -381,9 +380,7 @@ async function testRedisCache() {
   let healthy = false
   for (let i = 0; i < 15; i++) {
     try {
-      const status = dockerCmd(
-        `ps --filter "name=redis" --format "{{.Status}}"`,
-      )
+      const status = dockerCmd(`ps --filter "name=redis" --format "{{.Status}}"`)
       if (status.includes("healthy") || status.includes("up")) {
         healthy = true
         break

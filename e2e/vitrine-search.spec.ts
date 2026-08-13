@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Vitrine — Integration Tests: Search → Filters → Pagination
  *
@@ -19,22 +20,24 @@ const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000"
 
 async function waitForResults(page: import("@playwright/test").Page) {
   // Wait for either provider cards or the empty state to render
-  await page.waitForFunction(() => {
-    const grid = document.querySelector('[aria-label="Resultados da busca"]')
-    if (!grid) return false
-    // At least one card or the empty state message
-    return (
-      grid.querySelector('[data-provider-id]') !== null ||
-      grid.textContent?.includes("Nenhum prestador") ||
-      grid.textContent?.includes("prestador encontrado")
-    )
-  }, { timeout: 15_000 })
+  await page.waitForFunction(
+    () => {
+      const grid = document.querySelector('[aria-label="Resultados da busca"]')
+      if (!grid) return false
+      // At least one card or the empty state message
+      return (
+        grid.querySelector("[data-provider-id]") !== null ||
+        grid.textContent?.includes("Nenhum prestador") ||
+        grid.textContent?.includes("prestador encontrado")
+      )
+    },
+    { timeout: 15_000 },
+  )
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 test.describe("Vitrine — Search & Filter", () => {
-
   test("page loads and displays results header", async ({ page }) => {
     await page.goto(BASE_URL)
 
@@ -76,7 +79,9 @@ test.describe("Vitrine — Search & Filter", () => {
     await page.goto(BASE_URL)
     await waitForResults(page)
 
-    const searchInput = page.locator('input[type="search"], input[placeholder*="buscar" i], input[placeholder*="Search" i]')
+    const searchInput = page.locator(
+      'input[type="search"], input[placeholder*="buscar" i], input[placeholder*="Search" i]',
+    )
     const inputVisible = await searchInput.isVisible().catch(() => false)
 
     test.skip(!inputVisible, "No visible search input on this layout")
@@ -92,7 +97,6 @@ test.describe("Vitrine — Search & Filter", () => {
 })
 
 test.describe("Vitrine — Pagination", () => {
-
   test('"Carregar mais" loads more results', async ({ page }) => {
     await page.goto(BASE_URL)
     await waitForResults(page)
@@ -110,11 +114,9 @@ test.describe("Vitrine — Pagination", () => {
     await loadMore.click()
 
     // Wait for more cards to appear
-    await page.waitForFunction(
-      (sel) => document.querySelectorAll(sel).length > 0,
-      cardSelector,
-      { timeout: 10_000 },
-    )
+    await page.waitForFunction((sel) => document.querySelectorAll(sel).length > 0, cardSelector, {
+      timeout: 10_000,
+    })
     await page.waitForTimeout(500)
 
     const newCount = await page.locator(cardSelector).count()
@@ -146,13 +148,14 @@ test.describe("Vitrine — Pagination", () => {
 })
 
 test.describe("Vitrine — View Toggle", () => {
-
   test("switching to map view shows map container", async ({ page }) => {
     await page.goto(BASE_URL)
     await waitForResults(page)
 
     const mapTab = page.getByRole("tab", { name: /mapa/i })
-    await mapTab.isVisible({ timeout: 5_000 }).catch(() => { test.skip() })
+    await mapTab.isVisible({ timeout: 5_000 }).catch(() => {
+      test.skip()
+    })
 
     await mapTab.click()
     await page.waitForTimeout(1000)
@@ -188,12 +191,13 @@ test.describe("Vitrine — View Toggle", () => {
 })
 
 test.describe("Vitrine — Empty & Error States", () => {
-
   test("unrealistic search term shows empty state", async ({ page }) => {
     await page.goto(BASE_URL)
     await waitForResults(page)
 
-    const searchInput = page.locator('input[type="search"], input[placeholder*="buscar" i], input[placeholder*="Search" i]')
+    const searchInput = page.locator(
+      'input[type="search"], input[placeholder*="buscar" i], input[placeholder*="Search" i]',
+    )
     const inputVisible = await searchInput.isVisible().catch(() => false)
 
     test.skip(!inputVisible, "No visible search input")

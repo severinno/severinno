@@ -69,12 +69,10 @@ export type ServiceWhereClauseBuilder = (
  * })
  * ```
  */
-export function buildServiceWhereClause(
-  opts: BuildServiceWhereClauseOptions,
-): [string, unknown[]] {
+export function buildServiceWhereClause(opts: BuildServiceWhereClauseOptions): [string, unknown[]] {
   const { providerId, categoryId, q, active, minPrice, maxPrice } = opts
 
-  const conditions: string[] = [`s.\"deletedAt\" IS NULL`]
+  const conditions: string[] = [`s."deletedAt" IS NULL`]
   const params: unknown[] = []
   let idx = 0
 
@@ -85,37 +83,33 @@ export function buildServiceWhereClause(
 
   // Provider filter
   if (providerId) {
-    conditions.push(`s.\"providerId\" = $${++idx}`)
+    conditions.push(`s."providerId" = $${++idx}`)
     params.push(providerId)
   }
 
   // Category filter
   if (categoryId) {
-    conditions.push(`s.\"categoryId\" = $${++idx}`)
+    conditions.push(`s."categoryId" = $${++idx}`)
     params.push(categoryId)
   }
 
   // Full-text search on title and description
   if (q) {
-    const sanitized = q
-      .replace(/[^\w\sÀ-ÿ]/g, " ")
-      .trim()
+    const sanitized = q.replace(/[^\w\sÀ-ÿ]/g, " ").trim()
     if (sanitized) {
       const likePattern = `%${sanitized}%`
-      conditions.push(
-        `(s.title ILIKE $${++idx} OR s.description ILIKE $${idx})`,
-      )
+      conditions.push(`(s.title ILIKE $${++idx} OR s.description ILIKE $${idx})`)
       params.push(likePattern)
     }
   }
 
   // Price range
   if (minPrice !== undefined && Number.isFinite(minPrice)) {
-    conditions.push(`s.\"basePrice\" >= $${++idx}`)
+    conditions.push(`s."basePrice" >= $${++idx}`)
     params.push(minPrice)
   }
   if (maxPrice !== undefined && Number.isFinite(maxPrice)) {
-    conditions.push(`s.\"basePrice\" <= $${++idx}`)
+    conditions.push(`s."basePrice" <= $${++idx}`)
     params.push(maxPrice)
   }
 

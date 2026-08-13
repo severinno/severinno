@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * gist-reindex-button.test.tsx
  *
@@ -282,8 +283,10 @@ describe("GistReindexButton", () => {
   // Extraídos para helper compartilhado — usado também em
   // gist-degradation-panel.test.tsx para evitar duplicação.
 
-  describeVisualStates(
-    (overrides) => renderButton(overrides),
-    { setMockFetchResponse: (fn) => { mockFetchResponse = fn as FetchResponseFn }, clickExecuteReindex },
-  )
+  describeVisualStates((overrides) => renderButton(overrides), {
+    setMockFetchResponse: (fn) => {
+      mockFetchResponse = fn as FetchResponseFn
+    },
+    clickExecuteReindex,
+  })
 })

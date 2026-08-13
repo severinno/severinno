@@ -29,7 +29,6 @@ import {
   Square,
   SprayCan,
   Home,
-  ChevronRight,
   ChevronLeft,
   Calculator,
   AlertTriangle,
@@ -115,7 +114,7 @@ function PriceBarChart({ categoryKey }: { categoryKey: string }) {
 
   return (
     <div className="mt-6 space-y-3">
-      <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+      <p className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
         Comparativo de preços médios
       </p>
       <div className="space-y-2.5">
@@ -128,12 +127,12 @@ function PriceBarChart({ categoryKey }: { categoryKey: string }) {
           return (
             <div key={scope} className="space-y-1">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-medium text-muted-foreground">{scopeLabel}</span>
-                <span className="font-semibold text-foreground">
+                <span className="text-muted-foreground font-medium">{scopeLabel}</span>
+                <span className="text-foreground font-semibold">
                   R$ {min} – R$ {max}
                 </span>
               </div>
-              <div className="relative h-3 w-full overflow-hidden rounded-full bg-muted/50">
+              <div className="bg-muted/50 relative h-3 w-full overflow-hidden rounded-full">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${widthMax}%` }}
@@ -147,7 +146,7 @@ function PriceBarChart({ categoryKey }: { categoryKey: string }) {
                   initial={{ width: 0 }}
                   animate={{ width: `${widthMin}%` }}
                   transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
-                  className="absolute inset-y-0 left-0 rounded-full bg-background/30"
+                  className="bg-background/30 absolute inset-y-0 left-0 rounded-full"
                   style={{ width: `${widthMin}%` }}
                 />
               </div>
@@ -171,10 +170,10 @@ function AnimatedPrice({ value, label }: { value: number; label: string }) {
 
   return (
     <div className="text-center">
-      <span ref={ref} className="text-3xl font-extrabold tabular-nums text-primary sm:text-4xl">
+      <span ref={ref} className="text-primary text-3xl font-extrabold tabular-nums sm:text-4xl">
         R$ {animated.toLocaleString("pt-BR")}
       </span>
-      <p className="mt-1 text-xs text-muted-foreground">{label}</p>
+      <p className="text-muted-foreground mt-1 text-xs">{label}</p>
     </div>
   )
 }
@@ -183,13 +182,7 @@ function AnimatedPrice({ value, label }: { value: number; label: string }) {
 // Step indicator
 // ---------------------------------------------------------------------------
 
-function StepIndicator({
-  currentStep,
-  totalSteps,
-}: {
-  currentStep: number
-  totalSteps: number
-}) {
+function StepIndicator({ currentStep, totalSteps }: { currentStep: number; totalSteps: number }) {
   return (
     <div className="flex items-center justify-center gap-2">
       {Array.from({ length: totalSteps }, (_, i) => (
@@ -198,9 +191,9 @@ function StepIndicator({
             className={cn(
               "flex size-8 items-center justify-center rounded-full text-xs font-bold transition-all duration-300",
               i < currentStep
-                ? "bg-gradient-to-r from-primary to-emerald-600 text-white shadow-md shadow-primary/20"
+                ? "from-primary shadow-primary/20 bg-gradient-to-r to-emerald-600 text-white shadow-md"
                 : i === currentStep
-                  ? "border-2 border-primary bg-primary/10 text-primary"
+                  ? "border-primary bg-primary/10 text-primary border-2"
                   : "bg-muted text-muted-foreground",
             )}
           >
@@ -280,7 +273,7 @@ export default function QuickQuoteCalculator() {
     <section
       id="simulador"
       ref={sectionRef}
-      className="relative overflow-hidden bg-gradient-to-b from-muted/30 to-background py-16 sm:py-24"
+      className="from-muted/30 to-background relative overflow-hidden bg-gradient-to-b py-16 sm:py-24"
     >
       {/* Background decoration */}
       <div
@@ -309,11 +302,11 @@ export default function QuickQuoteCalculator() {
           </Badge>
           <h2 className="text-2xl font-extrabold tracking-tight sm:text-3xl lg:text-4xl">
             Quanto custa?{" "}
-            <span className="bg-gradient-to-r from-primary to-teal-500 bg-clip-text text-transparent">
+            <span className="from-primary bg-gradient-to-r to-teal-500 bg-clip-text text-transparent">
               Simule agora
             </span>
           </h2>
-          <p className="mx-auto mt-3 max-w-xl text-sm text-muted-foreground sm:text-base">
+          <p className="text-muted-foreground mx-auto mt-3 max-w-xl text-sm sm:text-base">
             Estime o valor do serviço em 3 passos rápidos. Sem compromisso, sem cadastro.
           </p>
         </motion.div>
@@ -322,7 +315,7 @@ export default function QuickQuoteCalculator() {
         <StepIndicator currentStep={step} totalSteps={3} />
 
         {/* ── Steps content ──────────────────────────────────────────────── */}
-        <Card className="mt-8 overflow-hidden border-0 shadow-xl shadow-primary/5">
+        <Card className="shadow-primary/5 mt-8 overflow-hidden border-0 shadow-xl">
           <CardContent className="p-0">
             <AnimatePresence mode="wait">
               {/* ── Step 1: Select service type ───────────────────────────── */}
@@ -335,10 +328,8 @@ export default function QuickQuoteCalculator() {
                   transition={{ duration: 0.3, ease: "easeInOut" }}
                   className="p-6 sm:p-8"
                 >
-                  <h3 className="mb-1 text-lg font-bold">
-                    1. Qual serviço você precisa?
-                  </h3>
-                  <p className="mb-6 text-sm text-muted-foreground">
+                  <h3 className="mb-1 text-lg font-bold">1. Qual serviço você precisa?</h3>
+                  <p className="text-muted-foreground mb-6 text-sm">
                     Selecione a categoria do serviço
                   </p>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -355,29 +346,33 @@ export default function QuickQuoteCalculator() {
                           className={cn(
                             "group flex flex-col items-center gap-2.5 rounded-2xl border-2 p-4 text-center transition-all duration-200",
                             isActive
-                              ? "border-primary bg-primary/5 shadow-md shadow-primary/10"
-                              : "border-transparent bg-muted/30 hover:border-primary/30 hover:bg-primary/5 hover:shadow-sm",
+                              ? "border-primary bg-primary/5 shadow-primary/10 shadow-md"
+                              : "bg-muted/30 hover:border-primary/30 hover:bg-primary/5 border-transparent hover:shadow-sm",
                           )}
                         >
                           <span
                             className={cn(
                               "flex size-12 items-center justify-center rounded-xl transition-all duration-200",
                               isActive
-                                ? "bg-gradient-to-br from-primary to-emerald-600 shadow-md shadow-primary/20"
+                                ? "from-primary shadow-primary/20 bg-gradient-to-br to-emerald-600 shadow-md"
                                 : "bg-muted group-hover:bg-primary/10",
                             )}
                           >
                             <Icon
                               className={cn(
                                 "size-6 transition-colors",
-                                isActive ? "text-white" : "text-muted-foreground group-hover:text-primary",
+                                isActive
+                                  ? "text-white"
+                                  : "text-muted-foreground group-hover:text-primary",
                               )}
                             />
                           </span>
                           <span
                             className={cn(
                               "text-sm font-semibold transition-colors",
-                              isActive ? "text-primary" : "text-foreground/70 group-hover:text-foreground",
+                              isActive
+                                ? "text-primary"
+                                : "text-foreground/70 group-hover:text-foreground",
                             )}
                           >
                             {cat.label}
@@ -404,18 +399,16 @@ export default function QuickQuoteCalculator() {
                       variant="ghost"
                       size="sm"
                       onClick={handleBack}
-                      className="gap-1 text-muted-foreground"
+                      className="text-muted-foreground gap-1"
                       aria-label="Voltar ao passo anterior"
                     >
                       <ChevronLeft className="size-4" />
                       Voltar
                     </Button>
                   </div>
-                  <h3 className="mb-1 text-lg font-bold">
-                    2. Qual o tamanho do serviço?
-                  </h3>
-                  <p className="mb-6 text-sm text-muted-foreground">
-                    <span className="font-medium text-primary">
+                  <h3 className="mb-1 text-lg font-bold">2. Qual o tamanho do serviço?</h3>
+                  <p className="text-muted-foreground mb-6 text-sm">
+                    <span className="text-primary font-medium">
                       {selectedCategoryConfig?.label}
                     </span>{" "}
                     — selecione o escopo
@@ -433,26 +426,26 @@ export default function QuickQuoteCalculator() {
                           className={cn(
                             "group relative flex flex-col items-center gap-3 rounded-2xl border-2 p-6 text-center transition-all duration-200",
                             isActive
-                              ? "border-primary bg-primary/5 shadow-md shadow-primary/10"
-                              : "border-transparent bg-muted/30 hover:border-primary/30 hover:bg-primary/5 hover:shadow-sm",
+                              ? "border-primary bg-primary/5 shadow-primary/10 shadow-md"
+                              : "bg-muted/30 hover:border-primary/30 hover:bg-primary/5 border-transparent hover:shadow-sm",
                           )}
                         >
                           <span className="text-2xl">{scope.emoji}</span>
                           <span
                             className={cn(
                               "text-base font-bold transition-colors",
-                              isActive ? "text-primary" : "text-foreground/80 group-hover:text-foreground",
+                              isActive
+                                ? "text-primary"
+                                : "text-foreground/80 group-hover:text-foreground",
                             )}
                           >
                             {scope.label}
                           </span>
-                          <span className="text-xs text-muted-foreground">
-                            {scope.description}
-                          </span>
+                          <span className="text-muted-foreground text-xs">{scope.description}</span>
                           {isActive && (
                             <motion.div
                               layoutId="scope-indicator"
-                              className="absolute inset-0 rounded-2xl border-2 border-primary"
+                              className="border-primary absolute inset-0 rounded-2xl border-2"
                               transition={{ type: "spring", stiffness: 400, damping: 30 }}
                             />
                           )}
@@ -478,22 +471,20 @@ export default function QuickQuoteCalculator() {
                       variant="ghost"
                       size="sm"
                       onClick={handleBack}
-                      className="gap-1 text-muted-foreground"
+                      className="text-muted-foreground gap-1"
                       aria-label="Voltar ao passo anterior"
                     >
                       <ChevronLeft className="size-4" />
                       Voltar
                     </Button>
                   </div>
-                  <h3 className="mb-1 text-lg font-bold">
-                    3. Estimativa de preço
-                  </h3>
-                  <p className="mb-6 text-sm text-muted-foreground">
-                    <span className="font-medium text-primary">
+                  <h3 className="mb-1 text-lg font-bold">3. Estimativa de preço</h3>
+                  <p className="text-muted-foreground mb-6 text-sm">
+                    <span className="text-primary font-medium">
                       {selectedCategoryConfig?.label}
                     </span>{" "}
                     •{" "}
-                    <span className="font-medium text-primary">
+                    <span className="text-primary font-medium">
                       {SCOPES.find((s) => s.key === selectedScope)?.label}
                     </span>
                   </p>
@@ -504,7 +495,7 @@ export default function QuickQuoteCalculator() {
                       <div key={`min-${priceKey}`}>
                         <AnimatedPrice value={priceRange[0]} label="Valor mínimo estimado" />
                       </div>
-                      <span className="text-2xl font-light text-muted-foreground">—</span>
+                      <span className="text-muted-foreground text-2xl font-light">—</span>
                       <div key={`max-${priceKey}`}>
                         <AnimatedPrice value={priceRange[1]} label="Valor máximo estimado" />
                       </div>
@@ -529,7 +520,7 @@ export default function QuickQuoteCalculator() {
                     <Button
                       size="lg"
                       onClick={handleRequestQuote}
-                      className="gap-2 rounded-xl bg-gradient-to-r from-primary to-emerald-600 px-8 font-bold shadow-lg shadow-primary/20 transition-all hover:shadow-xl hover:shadow-primary/30 hover:brightness-110"
+                      className="from-primary shadow-primary/20 hover:shadow-primary/30 gap-2 rounded-xl bg-gradient-to-r to-emerald-600 px-8 font-bold shadow-lg transition-all hover:shadow-xl hover:brightness-110"
                     >
                       Pedir orçamento real
                       <ArrowRight className="size-4" />

@@ -20,23 +20,16 @@ import {
   Camera,
   IdCard,
   Loader2,
-  Phone,
   Play,
   Save,
   Smartphone,
-  Speaker,
   User as UserIcon,
   Volume2,
 } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiGet, apiPatch } from "@/lib/api"
-import {
-  playCoinSound,
-  playCompletionSound,
-  playReviewSound,
-  tryVibrate,
-} from "@/lib/sounds"
+import { playCoinSound, playCompletionSound, playReviewSound, tryVibrate } from "@/lib/sounds"
 import { ROLE_LABELS, type UserRole } from "@/lib/constants"
 import { useAuthStore } from "@/store/auth"
 
@@ -48,13 +41,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Switch } from "@/components/ui/switch"
-import {
-  AddressForm,
-  type AddressFormValue,
-} from "@/components/modals/address-form"
-import {
-  PageHeader,
-} from "@/components/client/client-shared"
+import { AddressForm, type AddressFormValue } from "@/components/modals/address-form"
+import { PageHeader } from "@/components/client/client-shared"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -208,9 +196,7 @@ export function ClientProfile() {
       setAvatarUrl(data.url as string)
       toast.success("Imagem enviada. Salve para confirmar.")
     } catch (e) {
-      toast.error(
-        e instanceof Error ? e.message : "Falha ao enviar imagem.",
-      )
+      toast.error(e instanceof Error ? e.message : "Falha ao enviar imagem.")
     } finally {
       setUploadingAvatar(false)
     }
@@ -233,13 +219,13 @@ export function ClientProfile() {
       />
 
       {meQuery.isLoading ? (
-        <div className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
+        <div className="text-muted-foreground flex items-center justify-center gap-2 p-10 text-sm">
           <Loader2 className="size-5 animate-spin" />
           Carregando perfil…
         </div>
       ) : !u ? (
         <Card>
-          <CardContent className="py-6 text-center text-sm text-muted-foreground">
+          <CardContent className="text-muted-foreground py-6 text-center text-sm">
             Não foi possível carregar seu perfil.
           </CardContent>
         </Card>
@@ -256,16 +242,14 @@ export function ClientProfile() {
             <CardContent className="space-y-4">
               <div className="flex flex-col items-center gap-3">
                 <div className="relative">
-                  <Avatar className="size-24 border-4 border-background shadow-md">
-                    {avatarUrl ? (
-                      <AvatarImage src={avatarUrl} alt={name} />
-                    ) : null}
-                    <AvatarFallback className="bg-primary text-xl font-semibold text-primary-foreground">
+                  <Avatar className="border-background size-24 border-4 shadow-md">
+                    {avatarUrl ? <AvatarImage src={avatarUrl} alt={name} /> : null}
+                    <AvatarFallback className="bg-primary text-primary-foreground text-xl font-semibold">
                       {initials || "U"}
                     </AvatarFallback>
                   </Avatar>
                   <label
-                    className="absolute -right-1 -bottom-1 flex size-9 cursor-pointer items-center justify-center rounded-full border bg-background text-foreground shadow-md transition hover:bg-accent"
+                    className="bg-background text-foreground hover:bg-accent absolute -right-1 -bottom-1 flex size-9 cursor-pointer items-center justify-center rounded-full border shadow-md transition"
                     title="Trocar foto"
                     aria-label="Trocar foto"
                   >
@@ -289,16 +273,13 @@ export function ClientProfile() {
                 </div>
                 <div className="text-center">
                   <p className="text-sm font-semibold">{name || u.name}</p>
-                  <p className="text-xs text-muted-foreground">{u.email}</p>
+                  <p className="text-muted-foreground text-xs">{u.email}</p>
                   <div className="mt-1 flex items-center justify-center gap-1.5">
                     <Badge variant="secondary" className="text-[10px]">
                       {ROLE_LABELS[u.role]}
                     </Badge>
                     {u.verified ? (
-                      <Badge
-                        variant="outline"
-                        className="gap-1 text-[10px] text-emerald-600"
-                      >
+                      <Badge variant="outline" className="gap-1 text-[10px] text-emerald-600">
                         <BadgeCheck className="size-3" />
                         Verificado
                       </Badge>
@@ -308,26 +289,13 @@ export function ClientProfile() {
               </div>
 
               <div className="space-y-2 border-t pt-3 text-sm">
-                <ReadonlyRow
-                  icon={AtSign}
-                  label="E-mail"
-                  value={u.email}
-                />
-                <ReadonlyRow
-                  icon={UserIcon}
-                  label="Tipo de conta"
-                  value={ROLE_LABELS[u.role]}
-                />
-                <ReadonlyRow
-                  icon={IdCard}
-                  label="CPF/CNPJ"
-                  value={u.cpfCnpj || "—"}
-                />
+                <ReadonlyRow icon={AtSign} label="E-mail" value={u.email} />
+                <ReadonlyRow icon={UserIcon} label="Tipo de conta" value={ROLE_LABELS[u.role]} />
+                <ReadonlyRow icon={IdCard} label="CPF/CNPJ" value={u.cpfCnpj || "—"} />
               </div>
-              <p className="text-xs text-muted-foreground">
-                E-mail, CPF/CNPJ e tipo de conta não podem ser alterados
-                diretamente. Em caso de divergência, entre em contato com o
-                suporte.
+              <p className="text-muted-foreground text-xs">
+                E-mail, CPF/CNPJ e tipo de conta não podem ser alterados diretamente. Em caso de
+                divergência, entre em contato com o suporte.
               </p>
             </CardContent>
           </Card>
@@ -359,11 +327,7 @@ export function ClientProfile() {
                     maxLength={20}
                   />
                 </Field>
-                <Field
-                  label="Telefone fixo"
-                  htmlFor="profile-phone"
-                  hint="Opcional"
-                >
+                <Field label="Telefone fixo" htmlFor="profile-phone" hint="Opcional">
                   <Input
                     id="profile-phone"
                     inputMode="tel"
@@ -388,123 +352,113 @@ export function ClientProfile() {
                   maxLength={600}
                   placeholder="Ex.: Morador de São Paulo, busco serviços de qualidade para minha casa…"
                 />
-                <p className="text-right text-xs text-muted-foreground tabular-nums">
+                <p className="text-muted-foreground text-right text-xs tabular-nums">
                   {bio.length}/600
                 </p>
               </Field>
 
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <Building2 className="size-4 text-primary" />
+                  <Building2 className="text-primary size-4" />
                   <p className="text-sm font-semibold">Endereço</p>
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-muted-foreground text-xs">
                   Usado para calcular a distância dos prestadores.
                 </p>
-                <AddressForm
-                  value={address}
-                  onChange={setAddress}
-                  idPrefix="profile"
-                />
+                <AddressForm value={address} onChange={setAddress} idPrefix="profile" />
               </div>
 
               {/* Sound preference */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-start gap-3">
-                  <Volume2 className="mt-0.5 size-5 text-primary" />
-                  <div>
-                    <p className="text-sm font-medium">Sons do painel</p>
-                    <p className="text-xs text-muted-foreground">
-                      Toque um som quando novas transações ou confirmações
-                      chegarem.
-                    </p>
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-start gap-3">
+                      <Volume2 className="text-primary mt-0.5 size-5" />
+                      <div>
+                        <p className="text-sm font-medium">Sons do painel</p>
+                        <p className="text-muted-foreground text-xs">
+                          Toque um som quando novas transações ou confirmações chegarem.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playCoinSound()
+                          setTimeout(playCompletionSound, 300)
+                          setTimeout(playReviewSound, 750)
+                        }}
+                        className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex size-8 items-center justify-center rounded-full border transition"
+                        title="Prévia dos sons (moeda → sino → estrela)"
+                        aria-label="Ouvir prévia dos sons do painel"
+                      >
+                        <Play className="size-3.5" />
+                      </button>
+                      <Switch
+                        checked={soundEnabled}
+                        onCheckedChange={(v) => {
+                          setSoundEnabled(v)
+                          // Auto-save the preference
+                          apiPatch("/api/users/me", { soundEnabled: v }).then(() => {
+                            qc.invalidateQueries({ queryKey: ["users", "me"] })
+                            if (authUser) {
+                              setUser({ ...authUser, soundEnabled: v })
+                            }
+                          })
+                        }}
+                        aria-label="Ativar sons do painel"
+                      />
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      playCoinSound()
-                      setTimeout(playCompletionSound, 300)
-                      setTimeout(playReviewSound, 750)
-                    }}
-                    className="inline-flex size-8 items-center justify-center rounded-full border text-muted-foreground transition hover:bg-accent hover:text-foreground"
-                    title="Prévia dos sons (moeda → sino → estrela)"
-                    aria-label="Ouvir prévia dos sons do painel"
-                  >
-                    <Play className="size-3.5" />
-                  </button>
-                  <Switch
-                    checked={soundEnabled}
-                    onCheckedChange={(v) => {
-                      setSoundEnabled(v)
-                      // Auto-save the preference
-                      apiPatch("/api/users/me", { soundEnabled: v }).then(
-                        () => {
-                          qc.invalidateQueries({ queryKey: ["users", "me"] })
-                          if (authUser) {
-                            setUser({ ...authUser, soundEnabled: v })
-                          }
-                        },
-                      )
-                    }}
-                    aria-label="Ativar sons do painel"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
 
-          {/* Vibration preference */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-start gap-3">
-                  <Smartphone className="mt-0.5 size-5 text-primary" />
-                  <div>
-                    <p className="text-sm font-medium">Vibração</p>
-                    <p className="text-xs text-muted-foreground">
-                      Vibração sutil em dispositivos móveis quando notificações
-                      chegarem.
-                    </p>
+              {/* Vibration preference */}
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-start gap-3">
+                      <Smartphone className="text-primary mt-0.5 size-5" />
+                      <div>
+                        <p className="text-sm font-medium">Vibração</p>
+                        <p className="text-muted-foreground text-xs">
+                          Vibração sutil em dispositivos móveis quando notificações chegarem.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          tryVibrate([30, 50, 30, 50, 30])
+                        }}
+                        className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex size-8 items-center justify-center rounded-full border transition"
+                        title="Prévia da vibração"
+                        aria-label="Ouvir prévia da vibração"
+                      >
+                        <Play className="size-3.5" />
+                      </button>
+                      <Switch
+                        checked={vibrateEnabled}
+                        onCheckedChange={(v) => {
+                          setVibrateEnabled(v)
+                          // Auto-save the preference
+                          apiPatch("/api/users/me", { vibrateEnabled: v }).then(() => {
+                            qc.invalidateQueries({ queryKey: ["users", "me"] })
+                            if (authUser) {
+                              setUser({ ...authUser, vibrateEnabled: v })
+                            }
+                          })
+                        }}
+                        aria-label="Ativar vibração"
+                      />
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      tryVibrate([30, 50, 30, 50, 30])
-                    }}
-                    className="inline-flex size-8 items-center justify-center rounded-full border text-muted-foreground transition hover:bg-accent hover:text-foreground"
-                    title="Prévia da vibração"
-                    aria-label="Ouvir prévia da vibração"
-                  >
-                    <Play className="size-3.5" />
-                  </button>
-                  <Switch
-                    checked={vibrateEnabled}
-                    onCheckedChange={(v) => {
-                      setVibrateEnabled(v)
-                      // Auto-save the preference
-                      apiPatch("/api/users/me", { vibrateEnabled: v }).then(
-                        () => {
-                          qc.invalidateQueries({ queryKey: ["users", "me"] })
-                          if (authUser) {
-                            setUser({ ...authUser, vibrateEnabled: v })
-                          }
-                        },
-                      )
-                    }}
-                    aria-label="Ativar vibração"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
 
-          <div className="flex items-center justify-end gap-2 border-t pt-3">
+              <div className="flex items-center justify-end gap-2 border-t pt-3">
                 <Button
                   type="button"
                   variant="outline"
@@ -537,7 +491,7 @@ export function ClientProfile() {
                 <Button
                   type="submit"
                   disabled={saveMutation.isPending || !name.trim()}
-                  className="gap-2 bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 shadow-sm"
                 >
                   {saveMutation.isPending ? (
                     <Loader2 className="size-4 animate-spin" />
@@ -574,9 +528,7 @@ function Field({
     <div className="space-y-1.5">
       <Label htmlFor={htmlFor}>{label}</Label>
       {children}
-      {hint ? (
-        <p className="text-xs text-muted-foreground">{hint}</p>
-      ) : null}
+      {hint ? <p className="text-muted-foreground text-xs">{hint}</p> : null}
     </div>
   )
 }
@@ -592,9 +544,9 @@ function ReadonlyRow({
 }) {
   return (
     <div className="flex items-center gap-2">
-      <Icon className="size-4 shrink-0 text-muted-foreground" />
+      <Icon className="text-muted-foreground size-4 shrink-0" />
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] text-muted-foreground">{label}</p>
+        <p className="text-muted-foreground text-[10px]">{label}</p>
         <p className="truncate text-sm font-medium">{value}</p>
       </div>
     </div>

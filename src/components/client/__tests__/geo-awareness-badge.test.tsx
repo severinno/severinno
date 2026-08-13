@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for GeoAwarenessBadge — "prestadores perto de você" card on dashboard.
  *

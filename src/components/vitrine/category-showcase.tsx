@@ -57,15 +57,8 @@ import { useScrollReveal, useCountUp } from "@/hooks/use-animation"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent,
-} from "@/components/ui/tooltip"
-import {
-  ScrollArea,
-  ScrollBar,
-} from "@/components/ui/scroll-area"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 
 // ---------------------------------------------------------------------------
 // Color tint system — each category gets a unique subtle background tint
@@ -203,7 +196,7 @@ const TINTS: Record<string, CategoryTint> = {
 
 const TINT_KEYS = Object.keys(TINTS)
 
-function getTint(slug: string): CategoryTint {
+function _getTint(slug: string): CategoryTint {
   let hash = 0
   for (let i = 0; i < slug.length; i++) {
     hash = (hash * 31 + slug.charCodeAt(i)) | 0
@@ -460,10 +453,7 @@ const chipVariants = {
 
 function DecorativeDots() {
   return (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute -top-4 right-0 hidden lg:block"
-    >
+    <div aria-hidden className="pointer-events-none absolute -top-4 right-0 hidden lg:block">
       <svg width="120" height="80" fill="none" className="opacity-[0.07] dark:opacity-[0.05]">
         {Array.from({ length: 24 }).map((_, i) => (
           <circle
@@ -497,18 +487,18 @@ export default function CategoryShowcase({
   const [canScrollLeft, setCanScrollLeft] = React.useState(false)
   const [canScrollRight, setCanScrollRight] = React.useState(false)
   const [showAll, setShowAll] = React.useState(false)
-  const [focusIndex, setFocusIndex] = React.useState(-1)
+  const [_focusIndex, setFocusIndex] = React.useState(-1)
 
   const POPULAR_LIMIT = 8
   const GRID_LIMIT = 12
-  const popularCategories = categories.filter((c) => {
-    const meta = resolveMeta(c)
-    return meta?.popular
-  }).slice(0, POPULAR_LIMIT)
+  const popularCategories = categories
+    .filter((c) => {
+      const meta = resolveMeta(c)
+      return meta?.popular
+    })
+    .slice(0, POPULAR_LIMIT)
 
-  const visibleCategories = showAll
-    ? categories
-    : categories.slice(0, GRID_LIMIT)
+  const visibleCategories = showAll ? categories : categories.slice(0, GRID_LIMIT)
 
   const { ref: countRef, value: countValue } = useCountUp(categories.length, {
     duration: 1200,
@@ -538,21 +528,25 @@ export default function CategoryShowcase({
   }, [updateScrollButtons, categories, showAll])
 
   // Keyboard navigation for scroll
-  const handleKeyDown = React.useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "ArrowRight") {
-        scrollRef.current?.scrollBy({ left: 200, behavior: "smooth" })
-      } else if (e.key === "ArrowLeft") {
-        scrollRef.current?.scrollBy({ left: -200, behavior: "smooth" })
-      }
-    },
-    [],
-  )
+  const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "ArrowRight") {
+      scrollRef.current?.scrollBy({ left: 200, behavior: "smooth" })
+    } else if (e.key === "ArrowLeft") {
+      scrollRef.current?.scrollBy({ left: -200, behavior: "smooth" })
+    }
+  }, [])
 
   // Grid keyboard navigation
   const handleGridKeyDown = React.useCallback(
     (e: React.KeyboardEvent, idx: number) => {
-      const cols = typeof window !== "undefined" && window.innerWidth >= 1024 ? 6 : window.innerWidth >= 768 ? 4 : window.innerWidth >= 640 ? 3 : 2
+      const cols =
+        typeof window !== "undefined" && window.innerWidth >= 1024
+          ? 6
+          : window.innerWidth >= 768
+            ? 4
+            : window.innerWidth >= 640
+              ? 3
+              : 2
       let nextIdx = idx
       if (e.key === "ArrowRight") nextIdx = idx + 1
       else if (e.key === "ArrowLeft") nextIdx = idx - 1
@@ -589,7 +583,7 @@ export default function CategoryShowcase({
       aria-label="Categorias de serviços"
       className={cn(
         "relative w-full",
-        "bg-gradient-to-b from-white to-slate-50/80 dark:from-background dark:to-background",
+        "dark:from-background dark:to-background bg-gradient-to-b from-white to-slate-50/80",
         className,
       )}
     >
@@ -619,7 +613,7 @@ export default function CategoryShowcase({
             <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">
               Encontre o serviço ideal
             </h2>
-            <p className="mt-1.5 text-sm text-muted-foreground sm:text-base">
+            <p className="text-muted-foreground mt-1.5 text-sm sm:text-base">
               Serviços verificados perto de você —{" "}
               <span ref={countRef} className="font-semibold text-emerald-600 dark:text-emerald-400">
                 {isLoading ? "…" : countValue}
@@ -641,10 +635,9 @@ export default function CategoryShowcase({
                 <div className="relative">
                   <Badge
                     variant="secondary"
-                    className="gap-1.5 rounded-full bg-emerald-50 pl-3 pr-1.5 py-1 text-sm text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50"
+                    className="gap-1.5 rounded-full bg-emerald-50 py-1 pr-1.5 pl-3 text-sm text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800/50"
                   >
-                    {resolveMeta(activeCategory)?.emoji ?? ""}{" "}
-                    {activeCategory.name}
+                    {resolveMeta(activeCategory)?.emoji ?? ""} {activeCategory.name}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -664,7 +657,7 @@ export default function CategoryShowcase({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 gap-1.5 rounded-full text-xs text-muted-foreground hover:text-emerald-700 dark:hover:text-emerald-300"
+                  className="text-muted-foreground h-8 gap-1.5 rounded-full text-xs hover:text-emerald-700 dark:hover:text-emerald-300"
                   onClick={() => onSelect?.(null)}
                   aria-label="Limpar todos os filtros"
                 >
@@ -684,10 +677,7 @@ export default function CategoryShowcase({
               <Skeleton className="mb-3 h-5 w-40" />
               <div className="flex gap-2 overflow-hidden">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <Skeleton
-                    key={i}
-                    className="h-9 w-28 shrink-0 rounded-full"
-                  />
+                  <Skeleton key={i} className="h-9 w-28 shrink-0 rounded-full" />
                 ))}
               </div>
             </div>
@@ -696,7 +686,7 @@ export default function CategoryShowcase({
               {Array.from({ length: 6 }).map((_, i) => (
                 <div
                   key={i}
-                  className="flex flex-col items-center gap-3 rounded-2xl border bg-card p-5"
+                  className="bg-card flex flex-col items-center gap-3 rounded-2xl border p-5"
                 >
                   <Skeleton className="size-14 rounded-xl" />
                   <Skeleton className="h-4 w-20" />
@@ -709,16 +699,14 @@ export default function CategoryShowcase({
         ) : categories.length === 0 ? (
           /* ── Empty state (H5 + H9) ──────────────────────────────── */
           <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed py-20 text-center">
-            <div className="flex size-20 items-center justify-center rounded-2xl bg-muted">
-              <Search className="size-9 text-muted-foreground" />
+            <div className="bg-muted flex size-20 items-center justify-center rounded-2xl">
+              <Search className="text-muted-foreground size-9" />
             </div>
             <div>
-              <p className="text-lg font-semibold">
-                Nenhuma categoria disponível
-              </p>
-              <p className="mt-1.5 max-w-sm text-sm text-muted-foreground">
-                As categorias aparecerão aqui assim que estiverem disponíveis.
-                Tente recarregar a página.
+              <p className="text-lg font-semibold">Nenhuma categoria disponível</p>
+              <p className="text-muted-foreground mt-1.5 max-w-sm text-sm">
+                As categorias aparecerão aqui assim que estiverem disponíveis. Tente recarregar a
+                página.
               </p>
             </div>
             <Button
@@ -744,9 +732,7 @@ export default function CategoryShowcase({
               >
                 <div className="mb-3 flex items-center gap-2">
                   <TrendingUp className="size-4 text-emerald-600 dark:text-emerald-400" />
-                  <span className="text-sm font-medium text-muted-foreground">
-                    Mais buscadas
-                  </span>
+                  <span className="text-muted-foreground text-sm font-medium">Mais buscadas</span>
                 </div>
 
                 {/* Desktop: horizontal scroll with arrows */}
@@ -755,16 +741,13 @@ export default function CategoryShowcase({
                     <button
                       aria-label="Rolar categorias populares à esquerda"
                       onClick={() => scrollPopularBy("left")}
-                      className="absolute -left-3 top-1/2 z-10 flex size-8 -translate-y-1/2 items-center justify-center rounded-full border bg-card shadow-lg transition-all hover:bg-emerald-50 hover:shadow-xl dark:hover:bg-emerald-950/40"
+                      className="bg-card absolute top-1/2 -left-3 z-10 flex size-8 -translate-y-1/2 items-center justify-center rounded-full border shadow-lg transition-all hover:bg-emerald-50 hover:shadow-xl dark:hover:bg-emerald-950/40"
                     >
                       <ChevronLeft className="size-3.5 text-emerald-600 dark:text-emerald-400" />
                     </button>
                   )}
                   <ScrollArea className="w-full" type="scroll">
-                    <div
-                      ref={popularRef}
-                      className="flex gap-2 pb-1"
-                    >
+                    <div ref={popularRef} className="flex gap-2 pb-1">
                       {popularCategories.map((c, idx) => (
                         <PopularChip
                           key={c.id}
@@ -772,9 +755,7 @@ export default function CategoryShowcase({
                           active={activeId === c.id}
                           index={idx}
                           visible={visible}
-                          onSelect={() =>
-                            onSelect?.(activeId === c.id ? null : c.id)
-                          }
+                          onSelect={() => onSelect?.(activeId === c.id ? null : c.id)}
                         />
                       ))}
                     </div>
@@ -783,7 +764,7 @@ export default function CategoryShowcase({
                 </div>
 
                 {/* Mobile: compact chip row */}
-                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin sm:hidden">
+                <div className="scrollbar-thin flex gap-2 overflow-x-auto pb-1 sm:hidden">
                   {popularCategories.map((c, idx) => (
                     <PopularChip
                       key={c.id}
@@ -791,9 +772,7 @@ export default function CategoryShowcase({
                       active={activeId === c.id}
                       index={idx}
                       visible={visible}
-                      onSelect={() =>
-                        onSelect?.(activeId === c.id ? null : c.id)
-                      }
+                      onSelect={() => onSelect?.(activeId === c.id ? null : c.id)}
                     />
                   ))}
                 </div>
@@ -812,7 +791,7 @@ export default function CategoryShowcase({
                 <button
                   aria-label="Rolar categorias à esquerda"
                   onClick={() => scrollBy("left")}
-                  className="absolute -left-3 top-1/2 z-10 hidden size-9 -translate-y-1/2 items-center justify-center rounded-full border bg-card shadow-lg transition-all hover:bg-emerald-50 hover:shadow-xl lg:flex dark:hover:bg-emerald-950/40"
+                  className="bg-card absolute top-1/2 -left-3 z-10 hidden size-9 -translate-y-1/2 items-center justify-center rounded-full border shadow-lg transition-all hover:bg-emerald-50 hover:shadow-xl lg:flex dark:hover:bg-emerald-950/40"
                 >
                   <ChevronLeft className="size-4 text-emerald-600 dark:text-emerald-400" />
                 </button>
@@ -821,7 +800,7 @@ export default function CategoryShowcase({
                 <button
                   aria-label="Rolar categorias à direita"
                   onClick={() => scrollBy("right")}
-                  className="absolute -right-3 top-1/2 z-10 hidden size-9 -translate-y-1/2 items-center justify-center rounded-full border bg-card shadow-lg transition-all hover:bg-emerald-50 hover:shadow-xl lg:flex dark:hover:bg-emerald-950/40"
+                  className="bg-card absolute top-1/2 -right-3 z-10 hidden size-9 -translate-y-1/2 items-center justify-center rounded-full border shadow-lg transition-all hover:bg-emerald-50 hover:shadow-xl lg:flex dark:hover:bg-emerald-950/40"
                 >
                   <ChevronRight className="size-4 text-emerald-600 dark:text-emerald-400" />
                 </button>
@@ -830,7 +809,7 @@ export default function CategoryShowcase({
               {/* Mobile: horizontal scroll chips */}
               <div
                 ref={scrollRef}
-                className="flex gap-3 overflow-x-auto pb-3 scrollbar-thin sm:hidden"
+                className="scrollbar-thin flex gap-3 overflow-x-auto pb-3 sm:hidden"
               >
                 {categories.map((c, idx) => (
                   <MobileCategoryChip
@@ -839,9 +818,7 @@ export default function CategoryShowcase({
                     active={activeId === c.id}
                     visible={visible}
                     index={idx}
-                    onSelect={() =>
-                      onSelect?.(activeId === c.id ? null : c.id)
-                    }
+                    onSelect={() => onSelect?.(activeId === c.id ? null : c.id)}
                   />
                 ))}
               </div>
@@ -851,7 +828,7 @@ export default function CategoryShowcase({
                 variants={containerVariants}
                 initial="hidden"
                 animate={visible ? "visible" : "hidden"}
-                className="hidden sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 sm:gap-4"
+                className="hidden sm:grid sm:grid-cols-3 sm:gap-4 md:grid-cols-4 lg:grid-cols-6"
               >
                 {visibleCategories.map((c, idx) => (
                   <CategoryCard
@@ -860,9 +837,7 @@ export default function CategoryShowcase({
                     category={c}
                     active={activeId === c.id}
                     index={idx}
-                    onSelect={() =>
-                      onSelect?.(activeId === c.id ? null : c.id)
-                    }
+                    onSelect={() => onSelect?.(activeId === c.id ? null : c.id)}
                     onKeyDown={(e) => handleGridKeyDown(e, idx)}
                   />
                 ))}
@@ -881,11 +856,7 @@ export default function CategoryShowcase({
                     size="default"
                     className="gap-2 rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-800/50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
                     onClick={() => setShowAll((prev) => !prev)}
-                    aria-label={
-                      showAll
-                        ? "Ver menos categorias"
-                        : "Ver todas as categorias"
-                    }
+                    aria-label={showAll ? "Ver menos categorias" : "Ver todas as categorias"}
                   >
                     {showAll ? (
                       <>
@@ -948,10 +919,10 @@ function PopularChip({
       }
       className={cn(
         "inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-all duration-200",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2",
+        "focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-none",
         active
-          ? `${tint.bgActive} ${tint.darkBgActive} ${tint.ring} ${tint.darkRing} ring-2 border-transparent shadow-sm`
-          : `bg-card border-border/60 ${tint.hoverBorder} hover:shadow-sm dark:hover:border-opacity-60`,
+          ? `${tint.bgActive} ${tint.darkBgActive} ${tint.ring} ${tint.darkRing} border-transparent shadow-sm ring-2`
+          : `bg-card border-border/60 ${tint.hoverBorder} dark:hover:border-opacity-60 hover:shadow-sm`,
         active ? `${tint.text} ${tint.darkText}` : "text-foreground",
       )}
     >
@@ -1016,10 +987,10 @@ function MobileCategoryChip({
           }
           className={cn(
             "relative flex min-w-[110px] shrink-0 flex-col items-center gap-1.5 rounded-2xl border px-3 py-3.5 text-center transition-all duration-200",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2",
+            "focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-none",
             active
-              ? `${tint.bgActive} ${tint.darkBgActive} ${tint.ring} ${tint.darkRing} ring-2 border-transparent shadow-md`
-              : "bg-card border-border/60 hover:border-emerald-300 dark:hover:border-emerald-700 hover:shadow-sm",
+              ? `${tint.bgActive} ${tint.darkBgActive} ${tint.ring} ${tint.darkRing} border-transparent shadow-md ring-2`
+              : "bg-card border-border/60 hover:border-emerald-300 hover:shadow-sm dark:hover:border-emerald-700",
           )}
         >
           {/* Active checkmark badge */}
@@ -1045,23 +1016,18 @@ function MobileCategoryChip({
             )}
           >
             <Icon className="size-4.5" />
-            <span
-              className="absolute -top-1 -right-1 text-xs leading-none"
-              aria-hidden
-            >
+            <span className="absolute -top-1 -right-1 text-xs leading-none" aria-hidden>
               {emoji}
             </span>
           </span>
 
           {/* Category name */}
-          <span className="text-xs font-medium leading-tight">
-            {category.name}
-          </span>
+          <span className="text-xs leading-tight font-medium">{category.name}</span>
 
           {/* Provider count */}
           <span
             className={cn(
-              "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-medium leading-none",
+              "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] leading-none font-medium",
               active
                 ? `${tint.bg} ${tint.text} ${tint.darkBg} ${tint.darkText}`
                 : "bg-muted text-muted-foreground",
@@ -1071,10 +1037,7 @@ function MobileCategoryChip({
           </span>
         </motion.button>
       </TooltipTrigger>
-      <TooltipContent
-        side="bottom"
-        className="max-w-[200px] text-center text-xs"
-      >
+      <TooltipContent side="bottom" className="max-w-[200px] text-center text-xs">
         {tooltip}
       </TooltipContent>
     </Tooltip>
@@ -1089,7 +1052,7 @@ function CategoryCard({
   id,
   category,
   active,
-  index,
+  index: _index,
   onSelect,
   onKeyDown,
 }: {
@@ -1133,11 +1096,11 @@ function CategoryCard({
               : `${category.name} — ${providerCount} prestadores`
           }
           className={cn(
-            "group relative flex flex-col items-center gap-3 rounded-2xl border bg-card p-5 text-center transition-all duration-200 cursor-pointer select-none",
+            "group bg-card relative flex cursor-pointer flex-col items-center gap-3 rounded-2xl border p-5 text-center transition-all duration-200 select-none",
             "hover:-translate-y-1 hover:shadow-lg",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2",
+            "focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:outline-none",
             active
-              ? `${tint.ring} ${tint.darkRing} ring-2 ${tint.bgActive} ${tint.darkBgActive} border-transparent shadow-lg -translate-y-1`
+              ? `${tint.ring} ${tint.darkRing} ring-2 ${tint.bgActive} ${tint.darkBgActive} -translate-y-1 border-transparent shadow-lg`
               : `border-border/50 ${tint.hoverBorder} dark:hover:border-opacity-60`,
           )}
         >
@@ -1170,23 +1133,18 @@ function CategoryCard({
             )}
           >
             <Icon className="size-6" />
-            <span
-              className="absolute -top-1.5 -right-1.5 text-sm leading-none"
-              aria-hidden
-            >
+            <span className="absolute -top-1.5 -right-1.5 text-sm leading-none" aria-hidden>
               {emoji}
             </span>
           </span>
 
           {/* Category name */}
-          <span className="text-sm font-semibold leading-tight">
-            {category.name}
-          </span>
+          <span className="text-sm leading-tight font-semibold">{category.name}</span>
 
           {/* Provider count pill (H2 + H6) */}
           <span
             className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-medium leading-none transition-colors",
+              "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] leading-none font-medium transition-colors",
               active
                 ? `${tint.bg} ${tint.text} ${tint.darkBg} ${tint.darkText}`
                 : "bg-muted text-muted-foreground",
@@ -1197,7 +1155,7 @@ function CategoryCard({
 
           {/* Service examples (H2 + H6) */}
           {examples && (
-            <span className="mt-0.5 text-[10px] leading-snug text-muted-foreground/80 line-clamp-2 min-h-[2.5em]">
+            <span className="text-muted-foreground/80 mt-0.5 line-clamp-2 min-h-[2.5em] text-[10px] leading-snug">
               {examples}
             </span>
           )}
@@ -1215,10 +1173,7 @@ function CategoryCard({
           </span>
         </motion.div>
       </TooltipTrigger>
-      <TooltipContent
-        side="bottom"
-        className="max-w-[220px] text-center text-xs"
-      >
+      <TooltipContent side="bottom" className="max-w-[220px] text-center text-xs">
         <span className="font-medium">{category.name}</span>
         <br />
         {tooltip}

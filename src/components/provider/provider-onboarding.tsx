@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import * as React from "react"
@@ -7,7 +8,14 @@ import { useAuthStore } from "@/store/auth"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -59,19 +67,15 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
       active: i < 5,
       start: "08:00",
       end: "18:00",
-    }))
+    })),
   )
 
   const updateSlot = (index: number, field: string, value: boolean | string) => {
-    setSlots((prev) =>
-      prev.map((s, i) => (i === index ? { ...s, [field]: value } : s))
-    )
+    setSlots((prev) => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)))
   }
 
   const copyWeekdays = () => {
-    setSlots((prev) =>
-      prev.map((s, i) => (i < 5 ? { ...prev[0] } : s))
-    )
+    setSlots((prev) => prev.map((s, i) => (i < 5 ? { ...prev[0] } : s)))
   }
 
   const updateProfile = useMutation({
@@ -156,20 +160,35 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
           <div className="flex items-center justify-between">
             {STEPS.map((s, i) => (
               <div key={s} className="flex items-center gap-1">
-                <div className={cn(
-                  "flex size-8 items-center justify-center rounded-full text-xs font-bold",
-                  i < step ? "bg-primary text-primary-foreground" : i === step ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground",
-                )}>
+                <div
+                  className={cn(
+                    "flex size-8 items-center justify-center rounded-full text-xs font-bold",
+                    i < step
+                      ? "bg-primary text-primary-foreground"
+                      : i === step
+                        ? "bg-primary/20 text-primary"
+                        : "bg-muted text-muted-foreground",
+                  )}
+                >
                   {i < step ? <Check className="size-4" /> : i + 1}
                 </div>
-                <span className={cn("hidden text-xs sm:inline", i === step ? "font-semibold" : "text-muted-foreground")}>
+                <span
+                  className={cn(
+                    "hidden text-xs sm:inline",
+                    i === step ? "font-semibold" : "text-muted-foreground",
+                  )}
+                >
                   {s}
                 </span>
               </div>
             ))}
           </div>
           <CardTitle className="mt-4">
-            {["Complete seu perfil", "Onde você atende?", "Seus horários", "Seu primeiro serviço"][step]}
+            {
+              ["Complete seu perfil", "Onde você atende?", "Seus horários", "Seu primeiro serviço"][
+                step
+              ]
+            }
           </CardTitle>
           <CardDescription>
             {["Nome e foto", "Endereço", "Disponibilidade", "Preço e duração"][step]}
@@ -180,15 +199,26 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
             <div className="grid gap-4">
               <div className="grid gap-2">
                 <Label>Nome</Label>
-                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                <Input
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
               </div>
               <div className="grid gap-2">
                 <Label>Bio</Label>
-                <Textarea value={form.bio} onChange={(e) => setForm({ ...form, bio: e.target.value })} placeholder="Conte um pouco sobre você..." />
+                <Textarea
+                  value={form.bio}
+                  onChange={(e) => setForm({ ...form, bio: e.target.value })}
+                  placeholder="Conte um pouco sobre você..."
+                />
               </div>
               <div className="grid gap-2">
                 <Label>WhatsApp</Label>
-                <Input value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} placeholder="(11) 99999-9999" />
+                <Input
+                  value={form.whatsapp}
+                  onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
+                  placeholder="(11) 99999-9999"
+                />
               </div>
 
               {/* Sound & vibration preferences */}
@@ -204,30 +234,48 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
               <div className="grid grid-cols-2 gap-3">
                 <div className="grid gap-2">
                   <Label>Cidade</Label>
-                  <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+                  <Input
+                    value={form.city}
+                    onChange={(e) => setForm({ ...form, city: e.target.value })}
+                  />
                 </div>
                 <div className="grid gap-2">
                   <Label>Estado</Label>
-                  <Input value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value })} placeholder="SP" maxLength={2} />
+                  <Input
+                    value={form.state}
+                    onChange={(e) => setForm({ ...form, state: e.target.value })}
+                    placeholder="SP"
+                    maxLength={2}
+                  />
                 </div>
               </div>
               <div className="grid gap-2">
                 <Label>CEP</Label>
-                <Input value={form.cep} onChange={(e) => setForm({ ...form, cep: e.target.value })} placeholder="00000-000" />
+                <Input
+                  value={form.cep}
+                  onChange={(e) => setForm({ ...form, cep: e.target.value })}
+                  placeholder="00000-000"
+                />
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2 grid gap-2">
                   <Label>Rua</Label>
-                  <Input value={form.street} onChange={(e) => setForm({ ...form, street: e.target.value })} />
+                  <Input
+                    value={form.street}
+                    onChange={(e) => setForm({ ...form, street: e.target.value })}
+                  />
                 </div>
                 <div className="grid gap-2">
                   <Label>Número</Label>
-                  <Input value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} />
+                  <Input
+                    value={form.number}
+                    onChange={(e) => setForm({ ...form, number: e.target.value })}
+                  />
                 </div>
               </div>
 
               {/* Radius preview map */}
-              <div className="rounded-lg border bg-card p-3">
+              <div className="bg-card rounded-lg border p-3">
                 <div className="mb-2 flex items-center gap-2">
                   <MapPin className="size-4 text-emerald-600" />
                   <p className="text-sm font-medium">Raio de atendimento</p>
@@ -251,20 +299,34 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
           )}
           {step === 2 && (
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-muted-foreground text-sm">
                 Defina seus horários de atendimento padrão:
               </p>
               {WEEKDAYS.map((day, i) => (
                 <div key={i} className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 text-sm font-medium w-24">
-                    <input type="checkbox" checked={slots[i].active} onChange={(e) => updateSlot(i, "active", e.target.checked)} />
+                  <label className="flex w-24 items-center gap-2 text-sm font-medium">
+                    <input
+                      type="checkbox"
+                      checked={slots[i].active}
+                      onChange={(e) => updateSlot(i, "active", e.target.checked)}
+                    />
                     {day}
                   </label>
                   {slots[i].active && (
                     <>
-                      <input type="time" value={slots[i].start} onChange={(e) => updateSlot(i, "start", e.target.value)} className="h-9 rounded-md border px-2 text-sm" />
+                      <input
+                        type="time"
+                        value={slots[i].start}
+                        onChange={(e) => updateSlot(i, "start", e.target.value)}
+                        className="h-9 rounded-md border px-2 text-sm"
+                      />
                       <span className="text-muted-foreground">às</span>
-                      <input type="time" value={slots[i].end} onChange={(e) => updateSlot(i, "end", e.target.value)} className="h-9 rounded-md border px-2 text-sm" />
+                      <input
+                        type="time"
+                        value={slots[i].end}
+                        onChange={(e) => updateSlot(i, "end", e.target.value)}
+                        className="h-9 rounded-md border px-2 text-sm"
+                      />
                     </>
                   )}
                 </div>
@@ -278,16 +340,30 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
             <div className="grid gap-4">
               <div className="grid gap-2">
                 <Label>Nome do serviço</Label>
-                <Input value={form.serviceTitle} onChange={(e) => setForm({ ...form, serviceTitle: e.target.value })} placeholder="Ex: Corte de cabelo masculino" />
+                <Input
+                  value={form.serviceTitle}
+                  onChange={(e) => setForm({ ...form, serviceTitle: e.target.value })}
+                  placeholder="Ex: Corte de cabelo masculino"
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="grid gap-2">
                   <Label>Preço (R$)</Label>
-                  <Input type="number" value={form.servicePrice} onChange={(e) => setForm({ ...form, servicePrice: e.target.value })} placeholder="99,90" />
+                  <Input
+                    type="number"
+                    value={form.servicePrice}
+                    onChange={(e) => setForm({ ...form, servicePrice: e.target.value })}
+                    placeholder="99,90"
+                  />
                 </div>
                 <div className="grid gap-2">
                   <Label>Duração (min)</Label>
-                  <Input type="number" value={form.serviceDuration} onChange={(e) => setForm({ ...form, serviceDuration: e.target.value })} placeholder="60" />
+                  <Input
+                    type="number"
+                    value={form.serviceDuration}
+                    onChange={(e) => setForm({ ...form, serviceDuration: e.target.value })}
+                    placeholder="60"
+                  />
                 </div>
               </div>
             </div>
@@ -299,7 +375,8 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
           </Button>
           {step < STEPS.length - 1 ? (
             <Button onClick={handleNext} disabled={updateProfile.isPending}>
-              {updateProfile.isPending ? "Salvando..." : "Próximo"} <ChevronRight className="ml-1 size-4" />
+              {updateProfile.isPending ? "Salvando..." : "Próximo"}{" "}
+              <ChevronRight className="ml-1 size-4" />
             </Button>
           ) : (
             <Button onClick={handleFinish}>

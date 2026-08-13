@@ -1,17 +1,16 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeAll } from "vitest"
 
 // Mock $queryRaw — inline factory (vi.mock is hoisted, so no outer vars allowed)
 vi.mock("@/lib/db", () => {
-  const raw = vi.fn().mockImplementation(
-    async (strings: TemplateStringsArray) => {
-      const sql = Array.isArray(strings) ? strings.join("") : ""
-      // Handle PostGIS extension check query
-      if (sql.includes("pg_extension")) {
-        return [{ available: true }]
-      }
-      return [{ 1: 1 }]
-    },
-  )
+  const raw = vi.fn().mockImplementation(async (strings: TemplateStringsArray) => {
+    const sql = Array.isArray(strings) ? strings.join("") : ""
+    // Handle PostGIS extension check query
+    if (sql.includes("pg_extension")) {
+      return [{ available: true }]
+    }
+    return [{ 1: 1 }]
+  })
   return { db: { $queryRaw: raw } }
 })
 
@@ -41,7 +40,12 @@ beforeAll(() => {
     // ViaCEP check — return OK
     if (href.includes("viacep.com.br/ws/01310100")) {
       return new Response(
-        JSON.stringify({ cep: "01310100", logradouro: "Rua Augusta", localidade: "São Paulo", uf: "SP" }),
+        JSON.stringify({
+          cep: "01310100",
+          logradouro: "Rua Augusta",
+          localidade: "São Paulo",
+          uf: "SP",
+        }),
         { status: 200, headers: { "content-type": "application/json" } },
       )
     }

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for src/lib/distance-fallback.ts — computeDistanceMap
  *

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for POST /api/admin/geo-reindex — REINDEX INDEX on PostGIS spatial
  * indexes when GiST degradation is detected.

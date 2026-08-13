@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 /**
@@ -49,7 +50,6 @@ import type { GeoMetricsResponse } from "@/app/api/admin/geo-metrics/route"
 import {
   POSTGIS_FIXED_US,
   POSTGIS_PER_ROW_US,
-  PROVIDER_COUNTS,
   computeProviderCounts,
   computeSelectivityPoints,
   computeCrossovers,

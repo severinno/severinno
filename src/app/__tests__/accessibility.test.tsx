@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { render, fireEvent, cleanup } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"

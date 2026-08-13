@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for src/lib/radius-expansion.ts
  *
@@ -14,11 +15,7 @@
  */
 
 import { describe, it, expect } from "vitest"
-import {
-  EXPANSION_STEPS,
-  buildRadiiToTry,
-  findEffectiveRadius,
-} from "../radius-expansion"
+import { EXPANSION_STEPS, buildRadiiToTry, findEffectiveRadius } from "../radius-expansion"
 
 // ---------------------------------------------------------------------------
 // EXPANSION_STEPS

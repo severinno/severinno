@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /**
  * geo-benchmark.bench.ts
  *
@@ -100,8 +101,8 @@ function busyWait(ms: number): void {
  * (see providers/route.ts Phase 2).
  */
 function simulatedPostgisDistance(count: number): number[] {
-  const baseOverhead = 2     // ms (network + planning)
-  const perRowCost = 0.022   // ms (ST_Distance + serialise)
+  const baseOverhead = 2 // ms (network + planning)
+  const perRowCost = 0.022 // ms (ST_Distance + serialise)
 
   busyWait(baseOverhead + perRowCost * count)
 
@@ -117,10 +118,7 @@ function haversineAll(
   const distances: number[] = new Array(providers.length)
   for (let i = 0; i < providers.length; i++) {
     distances[i] =
-      Math.round(
-        haversineKm(center.lat, center.lng, providers[i].lat, providers[i].lng) *
-          10,
-      ) / 10
+      Math.round(haversineKm(center.lat, center.lng, providers[i].lat, providers[i].lng) * 10) / 10
   }
   return distances
 }

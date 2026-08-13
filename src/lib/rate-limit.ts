@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Rate limiter for Severinno Marketplace API routes.
  *

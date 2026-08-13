@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 /**
  * gist-degradation-panel.test.tsx
  *
@@ -86,11 +87,7 @@ vi.mock("@/lib/geo-benchmark-model", () => ({
 // ===========================================================================
 
 import type { FetchResponseFn } from "./mocks"
-import {
-  buildReindexSuccessResponse,
-  buildReindexSlowResponse,
-  clickExecuteReindex,
-} from "./mocks"
+import { buildReindexSuccessResponse, buildReindexSlowResponse, clickExecuteReindex } from "./mocks"
 
 let mockFetchResponse: FetchResponseFn
 
@@ -264,7 +261,12 @@ describe("GistDegradationPanel", () => {
     (overrides) => {
       render(<GistDegradationPanel {...DEFAULT_PROPS} {...(overrides as any)} />)
     },
-    { setMockFetchResponse: (fn) => { mockFetchResponse = fn as FetchResponseFn }, clickExecuteReindex },
+    {
+      setMockFetchResponse: (fn) => {
+        mockFetchResponse = fn as FetchResponseFn
+      },
+      clickExecuteReindex,
+    },
     { panelContext: true },
   )
 
@@ -335,6 +337,4 @@ describe("GistDegradationPanel", () => {
 
     expect(screen.getByText(/0.1×/)).toBeInTheDocument()
   })
-
-
 })

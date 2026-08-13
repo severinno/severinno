@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Redis caching layer for the Severinno Marketplace.
  *

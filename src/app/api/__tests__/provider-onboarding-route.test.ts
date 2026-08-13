@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
 
@@ -35,7 +36,7 @@ describe("GET /api/provider/onboarding", () => {
   })
 
   it("returns step 0 when no onboarding data exists", async () => {
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
+    ;(vi.mocked(db.setting.findUnique) as any).mockResolvedValue(null)
 
     const req = createMockRequest({ method: "GET" })
     const res = await GET()
@@ -47,7 +48,7 @@ describe("GET /api/provider/onboarding", () => {
   })
 
   it("returns saved step when onboarding data exists", async () => {
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
+    ;(vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
       key: "onboarding:user-1",
       value: JSON.stringify({ step: 3, done: false }),
     })
@@ -61,7 +62,7 @@ describe("GET /api/provider/onboarding", () => {
   })
 
   it("returns done=true when onboarding is complete", async () => {
-    (vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
+    ;(vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
       key: "onboarding:user-1",
       value: JSON.stringify({ step: 5, done: true }),
     })

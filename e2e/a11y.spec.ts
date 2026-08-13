@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test"
 import AxeBuilder from "@axe-core/playwright"
 
@@ -100,9 +101,9 @@ async function collectErrors(
     const url = request.url()
     // Ignore known non-actionable failures
     if (
-      url.includes("favicon.ico") ||           // Next.js dev-mode favicon
-      url.endsWith(".map") ||                    // Source maps
-      url.includes("sockjs-node")              // Webpack HMR
+      url.includes("favicon.ico") || // Next.js dev-mode favicon
+      url.endsWith(".map") || // Source maps
+      url.includes("sockjs-node") // Webpack HMR
     ) {
       return
     }
@@ -119,10 +120,7 @@ function expectNoErrors(
   errors: { consoleErrors: string[]; failedRequests: string[] },
   pageName: string,
 ) {
-  expect(
-    errors.consoleErrors,
-    `${pageName}: console errors found`,
-  ).toHaveLength(0)
+  expect(errors.consoleErrors, `${pageName}: console errors found`).toHaveLength(0)
   expect(
     errors.failedRequests,
     `${pageName}: failed network requests found: ${errors.failedRequests.join(", ")}`,
@@ -288,12 +286,12 @@ test.describe("WCAG Compliance Report", () => {
       .flat()
       .filter((v) => v.impact === "critical" || v.impact === "serious").length
 
-    expect(totalCritical, `Found ${totalCritical} critical/serious WCAG violations across all pages`).toBe(0)
+    expect(
+      totalCritical,
+      `Found ${totalCritical} critical/serious WCAG violations across all pages`,
+    ).toBe(0)
 
     // Also fail if there are unexpected console/network errors
-    expect(
-      allErrors,
-      `Found ${allErrors.length} pages with errors`,
-    ).toHaveLength(0)
+    expect(allErrors, `Found ${allErrors.length} pages with errors`).toHaveLength(0)
   })
 })

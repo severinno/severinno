@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for ProviderGeoAwarenessBadge — "solicitações ativas na região"
  * card on the provider dashboard.

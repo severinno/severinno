@@ -87,9 +87,7 @@ export function MessagesView({
 }: MessagesViewProps) {
   const qc = useQueryClient()
   const user = useAuthStore((s) => s.user)
-  const [selectedPeerId, setSelectedPeerId] = React.useState<string | undefined>(
-    initialPeerId,
-  )
+  const [selectedPeerId, setSelectedPeerId] = React.useState<string | undefined>(initialPeerId)
   const [draft, setDraft] = React.useState("")
   const [sending, setSending] = React.useState(false)
   const scrollRef = React.useRef<HTMLDivElement>(null)
@@ -128,11 +126,7 @@ export function MessagesView({
 
   // Auto-select first conversation on first load
   React.useEffect(() => {
-    if (
-      !selectedPeerId &&
-      conversationsQuery.data &&
-      conversationsQuery.data.length > 0
-    ) {
+    if (!selectedPeerId && conversationsQuery.data && conversationsQuery.data.length > 0) {
       setSelectedPeerId(conversationsQuery.data[0].peerId)
     }
   }, [conversationsQuery.data, selectedPeerId])
@@ -142,10 +136,9 @@ export function MessagesView({
     queryKey: ["messages", "thread", selectedPeerId],
     queryFn: async () => {
       if (!selectedPeerId) throw new Error("no peer")
-      return apiGet<{ peer: ConversationPeer; items: Message[] }>(
-        "/api/messages",
-        { with: selectedPeerId },
-      )
+      return apiGet<{ peer: ConversationPeer; items: Message[] }>("/api/messages", {
+        with: selectedPeerId,
+      })
     },
     enabled: !!selectedPeerId,
     refetchInterval: 10_000,
@@ -171,7 +164,7 @@ export function MessagesView({
         queryKey: ["messages", "thread", selectedPeerId],
       })
       qc.invalidateQueries({ queryKey: ["messages", "conversations"] })
-    } catch (e) {
+    } catch {
       toast.error("Não foi possível enviar a mensagem. Tente novamente.")
     } finally {
       setSending(false)
@@ -185,25 +178,25 @@ export function MessagesView({
   return (
     <div
       className={cn(
-        "grid h-[calc(100vh-12rem)] min-h-[480px] grid-cols-1 overflow-hidden rounded-xl border bg-card md:grid-cols-[320px_1fr]",
+        "bg-card grid h-[calc(100vh-12rem)] min-h-[480px] grid-cols-1 overflow-hidden rounded-xl border md:grid-cols-[320px_1fr]",
         className,
       )}
     >
       {/* Conversations list */}
-      <aside className="flex flex-col border-b md:border-b-0 md:border-r">
+      <aside className="flex flex-col border-b md:border-r md:border-b-0">
         <div className="border-b p-3">
           <h2 className="text-sm font-semibold">Conversas</h2>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">
             {conversations.length} conversa{conversations.length === 1 ? "" : "s"}
           </p>
         </div>
         <ScrollArea className="flex-1">
           {conversationsQuery.isLoading ? (
-            <div className="flex items-center justify-center p-6 text-sm text-muted-foreground">
+            <div className="text-muted-foreground flex items-center justify-center p-6 text-sm">
               <Loader2 className="mr-2 size-4 animate-spin" /> Carregando…
             </div>
           ) : conversations.length === 0 ? (
-            <div className="p-6 text-center text-sm text-muted-foreground">
+            <div className="text-muted-foreground p-6 text-center text-sm">
               Nenhuma conversa ainda.
             </div>
           ) : (
@@ -216,16 +209,13 @@ export function MessagesView({
                       type="button"
                       onClick={() => setSelectedPeerId(c.peerId)}
                       className={cn(
-                        "flex w-full items-start gap-3 p-3 text-left transition-colors hover:bg-accent/50",
+                        "hover:bg-accent/50 flex w-full items-start gap-3 p-3 text-left transition-colors",
                         active && "bg-emerald-50/60 dark:bg-emerald-950/20",
                       )}
                     >
                       <Avatar className="size-9 border">
                         {c.peer?.avatarUrl && (
-                          <AvatarImage
-                            src={c.peer.avatarUrl}
-                            alt={c.peer.name}
-                          />
+                          <AvatarImage src={c.peer.avatarUrl} alt={c.peer.name} />
                         )}
                         <AvatarFallback className="bg-emerald-600 text-xs text-white">
                           {initials(c.peer?.name)}
@@ -236,13 +226,11 @@ export function MessagesView({
                           <p className="truncate text-sm font-medium">
                             {c.peer?.name ?? "Usuário"}
                           </p>
-                          <span className="shrink-0 text-[10px] text-muted-foreground">
+                          <span className="text-muted-foreground shrink-0 text-[10px]">
                             {formatRelative(c.lastAt)}
                           </span>
                         </div>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {c.lastMessage}
-                        </p>
+                        <p className="text-muted-foreground truncate text-xs">{c.lastMessage}</p>
                       </div>
                       {c.unreadCount > 0 && (
                         <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1 text-[10px] font-bold text-white">
@@ -267,41 +255,37 @@ export function MessagesView({
             </div>
             <div>
               <p className="text-sm font-semibold">{emptyTitle}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {emptyDescription}
-              </p>
+              <p className="text-muted-foreground mt-1 text-xs">{emptyDescription}</p>
             </div>
           </div>
         ) : (
           <>
             <header className="flex items-center gap-3 border-b p-3">
               <Avatar className="size-9 border">
-                {peer.avatarUrl && (
-                  <AvatarImage src={peer.avatarUrl} alt={peer.name} />
-                )}
+                {peer.avatarUrl && <AvatarImage src={peer.avatarUrl} alt={peer.name} />}
                 <AvatarFallback className="bg-emerald-600 text-xs text-white">
                   {initials(peer.name)}
                 </AvatarFallback>
               </Avatar>
               <div>
                 <p className="text-sm font-semibold">{peer.name}</p>
-                <p className="text-[10px] text-muted-foreground">
+                <p className="text-muted-foreground text-[10px]">
                   {peer.role === "PROVIDER"
                     ? "Prestador"
                     : peer.role === "CLIENT"
                       ? "Cliente"
-                      : peer.role ?? ""}
+                      : (peer.role ?? "")}
                 </p>
               </div>
             </header>
 
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
               {threadQuery.isLoading ? (
-                <div className="flex items-center justify-center p-6 text-sm text-muted-foreground">
+                <div className="text-muted-foreground flex items-center justify-center p-6 text-sm">
                   <Loader2 className="mr-2 size-4 animate-spin" /> Carregando…
                 </div>
               ) : thread.length === 0 ? (
-                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                <div className="text-muted-foreground flex h-full items-center justify-center text-sm">
                   Nenhuma mensagem ainda. Diga olá!
                 </div>
               ) : (
@@ -311,22 +295,17 @@ export function MessagesView({
                     return (
                       <li
                         key={m.id}
-                        className={cn(
-                          "flex flex-col gap-0.5",
-                          mine ? "items-end" : "items-start",
-                        )}
+                        className={cn("flex flex-col gap-0.5", mine ? "items-end" : "items-start")}
                       >
                         <div
                           className={cn(
                             "max-w-[80%] rounded-2xl px-3 py-2 text-sm",
-                            mine
-                              ? "bg-emerald-600 text-white"
-                              : "bg-muted text-foreground",
+                            mine ? "bg-emerald-600 text-white" : "bg-muted text-foreground",
                           )}
                         >
                           {m.content}
                         </div>
-                        <span className="px-2 text-[10px] text-muted-foreground">
+                        <span className="text-muted-foreground px-2 text-[10px]">
                           {new Date(m.createdAt).toLocaleString("pt-BR", {
                             day: "2-digit",
                             month: "2-digit",

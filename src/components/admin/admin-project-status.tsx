@@ -65,7 +65,8 @@ const LAYERS: LayerInfo[] = [
     darkBg: "dark:bg-emerald-950/20",
     lightBorder: "border-emerald-200",
     darkBorder: "dark:border-emerald-800/30",
-    description: "Docker Compose, Caddy + SSL, PgBouncer, RabbitMQ, workers, healthchecks, Docker secrets, fail2ban",
+    description:
+      "Docker Compose, Caddy + SSL, PgBouncer, RabbitMQ, workers, healthchecks, Docker secrets, fail2ban",
     findings: [
       { status: "ok", text: "Docker Compose produção com 16 serviços" },
       { status: "ok", text: "Caddy + SSL automático (Let's Encrypt/ZeroSSL)" },
@@ -88,7 +89,8 @@ const LAYERS: LayerInfo[] = [
     darkBg: "dark:bg-emerald-950/20",
     lightBorder: "border-emerald-200",
     darkBorder: "dark:border-emerald-800/30",
-    description: "Next.js App Router, Prisma ORM, Zod validation, auth HMAC, webhooks, push notifications, cache 3 camadas, metrics Prometheus, gateway dashboard",
+    description:
+      "Next.js App Router, Prisma ORM, Zod validation, auth HMAC, webhooks, push notifications, cache 3 camadas, metrics Prometheus, gateway dashboard",
     findings: [
       { status: "ok", text: "50+ rotas de API REST com Zod validation" },
       { status: "ok", text: "Auth HMAC-SHA256 + session rotation" },
@@ -111,7 +113,8 @@ const LAYERS: LayerInfo[] = [
     darkBg: "dark:bg-emerald-950/20",
     lightBorder: "border-emerald-200",
     darkBorder: "dark:border-emerald-800/30",
-    description: "React 19 + shadcn/ui, dashboard admin completo, PWA com service worker, mapa MapLibre, notificações push",
+    description:
+      "React 19 + shadcn/ui, dashboard admin completo, PWA com service worker, mapa MapLibre, notificações push",
     findings: [
       { status: "ok", text: "Dashboard admin com 20+ seções" },
       { status: "ok", text: "Service worker (sw.ts) com push + cache" },
@@ -134,7 +137,8 @@ const LAYERS: LayerInfo[] = [
     darkBg: "dark:bg-emerald-950/20",
     lightBorder: "border-emerald-200",
     darkBorder: "dark:border-emerald-800/30",
-    description: "PostgreSQL + PostGIS, Prisma ORM, 30+ modelos, índices, migrations, PgBouncer pool, Replicação",
+    description:
+      "PostgreSQL + PostGIS, Prisma ORM, 30+ modelos, índices, migrations, PgBouncer pool, Replicação",
     findings: [
       { status: "ok", text: "30+ modelos com relações e índices" },
       { status: "ok", text: "PostGIS para geolocalização espacial" },
@@ -157,7 +161,8 @@ const LAYERS: LayerInfo[] = [
     darkBg: "dark:bg-amber-950/20",
     lightBorder: "border-amber-200",
     darkBorder: "dark:border-amber-800/30",
-    description: "Vitest, testes unitários, testes de API, Playwright E2E, code review automatizado, testes de gateway",
+    description:
+      "Vitest, testes unitários, testes de API, Playwright E2E, code review automatizado, testes de gateway",
     findings: [
       { status: "ok", text: "1.703 testes totais — 95.6% passando" },
       { status: "ok", text: "4 arquivos com falha corrigidos (~50 testes recuperados)" },
@@ -183,7 +188,8 @@ const LAYERS: LayerInfo[] = [
     darkBg: "dark:bg-emerald-950/20",
     lightBorder: "border-emerald-200",
     darkBorder: "dark:border-emerald-800/30",
-    description: "HSTS, CSP restritivo, Scrypt password hashing, HMAC sessions, Docker secrets, rate limiting financeiro",
+    description:
+      "HSTS, CSP restritivo, Scrypt password hashing, HMAC sessions, Docker secrets, rate limiting financeiro",
     findings: [
       { status: "ok", text: "HSTS + CSP + Security headers (defense-in-depth)" },
       { status: "ok", text: "Scrypt (N=16384) + timingSafeEqual" },
@@ -206,7 +212,8 @@ const LAYERS: LayerInfo[] = [
     darkBg: "dark:bg-emerald-950/20",
     lightBorder: "border-emerald-200",
     darkBorder: "dark:border-emerald-800/30",
-    description: "README, CHANGELOG, API.md, PUSH_NOTIFICATIONS.md, SECURITY.md, DEPLOYMENT.md, docs de cache e testes",
+    description:
+      "README, CHANGELOG, API.md, PUSH_NOTIFICATIONS.md, SECURITY.md, DEPLOYMENT.md, docs de cache e testes",
     findings: [
       { status: "ok", text: "9 documentos de documentação ativos" },
       { status: "ok", text: "API.md com 50+ endpoints documentados" },
@@ -236,13 +243,13 @@ function getGradeColor(grade: number): string {
   return "text-red-500"
 }
 
-function getGradeBg(grade: number): string {
+function _getGradeBg(grade: number): string {
   if (grade >= 9) return "bg-emerald-50 dark:bg-emerald-950/20"
   if (grade >= 7) return "bg-amber-50 dark:bg-amber-950/20"
   return "bg-red-50 dark:bg-red-950/20"
 }
 
-function getGradeBorder(grade: number): string {
+function _getGradeBorder(grade: number): string {
   if (grade >= 9) return "border-emerald-200 dark:border-emerald-800/30"
   if (grade >= 7) return "border-amber-200 dark:border-amber-800/30"
   return "border-red-200 dark:border-red-800/30"
@@ -271,10 +278,8 @@ export function AdminProjectStatus() {
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Status do Projeto
-          </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
+          <h1 className="text-foreground text-xl font-bold tracking-tight">Status do Projeto</h1>
+          <p className="text-muted-foreground mt-0.5 text-sm">
             Análise completa de 7 camadas — notas, descobertas e ações pendentes para produção
           </p>
         </div>
@@ -282,10 +287,10 @@ export function AdminProjectStatus() {
 
       {/* ── Overall Score Hero ───────────────────────────────────────── */}
       <section aria-label="Nota geral do projeto">
-        <div className="relative overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50/60 via-background to-background p-6 dark:border-emerald-900/30 dark:from-emerald-950/10">
+        <div className="via-background to-background relative overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50/60 p-6 dark:border-emerald-900/30 dark:from-emerald-950/10">
           {/* Background decoration */}
           <div className="pointer-events-none absolute -top-20 -right-20 size-48 rounded-full bg-emerald-500/5 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-20 -left-20 size-48 rounded-full bg-primary/5 blur-3xl" />
+          <div className="bg-primary/5 pointer-events-none absolute -bottom-20 -left-20 size-48 rounded-full blur-3xl" />
 
           <div className="relative flex flex-col items-center gap-6 sm:flex-row">
             {/* Big grade circle */}
@@ -293,14 +298,18 @@ export function AdminProjectStatus() {
               {/* Ring background */}
               <svg className="absolute inset-0 size-28 -rotate-90" viewBox="0 0 120 120">
                 <circle
-                  cx="60" cy="60" r="52"
+                  cx="60"
+                  cy="60"
+                  r="52"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="8"
                   className="text-muted/30"
                 />
                 <circle
-                  cx="60" cy="60" r="52"
+                  cx="60"
+                  cy="60"
+                  r="52"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="8"
@@ -310,28 +319,24 @@ export function AdminProjectStatus() {
                 />
               </svg>
               <div className="flex flex-col items-center">
-                <span className="text-3xl font-bold tabular-nums tracking-tight text-foreground">
+                <span className="text-foreground text-3xl font-bold tracking-tight tabular-nums">
                   {overallGrade.toFixed(1)}
                 </span>
-                <span className="text-[10px] font-medium text-muted-foreground">
-                  / 10
-                </span>
+                <span className="text-muted-foreground text-[10px] font-medium">/ 10</span>
               </div>
             </div>
 
             <div className="min-w-0 flex-1 text-center sm:text-left">
               <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
-                <h2 className="text-lg font-bold text-foreground">
-                  Projeto Severinno
-                </h2>
+                <h2 className="text-foreground text-lg font-bold">Projeto Severinno</h2>
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
                   <Sparkles className="size-2.5" />
                   {overallStatusLabel(overallGrade)}
                 </span>
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {layersCompleted} de 7 camadas completas ({completionPct}%) ·{" "}
-                {layersPartial} parcial · {actionsRemaining} ações pendentes
+              <p className="text-muted-foreground mt-1 text-sm">
+                {layersCompleted} de 7 camadas completas ({completionPct}%) · {layersPartial}{" "}
+                parcial · {actionsRemaining} ações pendentes
                 {overallGrade >= 9.5
                   ? " · Quase pronto para produção! 🚀"
                   : overallGrade >= 8
@@ -340,7 +345,7 @@ export function AdminProjectStatus() {
               </p>
 
               {/* Progress bar */}
-              <div className="mt-3 flex h-2.5 gap-0.5 overflow-hidden rounded-full bg-muted">
+              <div className="bg-muted mt-3 flex h-2.5 gap-0.5 overflow-hidden rounded-full">
                 {LAYERS.map((layer) => (
                   <div
                     key={layer.id}
@@ -357,9 +362,13 @@ export function AdminProjectStatus() {
                   />
                 ))}
               </div>
-              <div className="mt-1 flex justify-between text-[9px] text-muted-foreground">
+              <div className="text-muted-foreground mt-1 flex justify-between text-[9px]">
                 {LAYERS.map((layer) => (
-                  <span key={layer.id} className="truncate px-0.5" style={{ width: `${(1 / 7) * 100}%` }}>
+                  <span
+                    key={layer.id}
+                    className="truncate px-0.5"
+                    style={{ width: `${(1 / 7) * 100}%` }}
+                  >
                     {layer.grade.toFixed(1)}
                   </span>
                 ))}
@@ -370,22 +379,22 @@ export function AdminProjectStatus() {
             <div className="hidden shrink-0 text-right lg:block">
               <div className="flex items-center gap-4">
                 <div className="text-center">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  <p className="text-muted-foreground text-[10px] font-medium tracking-wider uppercase">
                     Completas
                   </p>
-                  <p className="text-2xl font-bold tabular-nums text-emerald-500">
+                  <p className="text-2xl font-bold text-emerald-500 tabular-nums">
                     {layersCompleted}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">/ 7</p>
+                  <p className="text-muted-foreground text-[10px]">/ 7</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  <p className="text-muted-foreground text-[10px] font-medium tracking-wider uppercase">
                     Pendentes
                   </p>
-                  <p className="text-2xl font-bold tabular-nums text-amber-500">
+                  <p className="text-2xl font-bold text-amber-500 tabular-nums">
                     {actionsRemaining}
                   </p>
-                  <p className="text-[10px] text-muted-foreground">ações</p>
+                  <p className="text-muted-foreground text-[10px]">ações</p>
                 </div>
               </div>
             </div>
@@ -394,7 +403,10 @@ export function AdminProjectStatus() {
       </section>
 
       {/* ── KPI Cards ───────────────────────────────────────────────── */}
-      <section aria-label="Indicadores do projeto" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <section
+        aria-label="Indicadores do projeto"
+        className="grid grid-cols-2 gap-4 lg:grid-cols-4"
+      >
         <KpiCard
           icon={TrendingUp}
           label="Nota Geral"
@@ -428,10 +440,8 @@ export function AdminProjectStatus() {
       {/* ── Layers Grid ─────────────────────────────────────────────── */}
       <section>
         <div className="mb-4 flex items-center gap-2">
-          <Activity className="size-4 text-primary" />
-          <h2 className="text-sm font-semibold text-foreground">
-            Análise por Camada
-          </h2>
+          <Activity className="text-primary size-4" />
+          <h2 className="text-foreground text-sm font-semibold">Análise por Camada</h2>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {LAYERS.map((layer) => (
@@ -445,9 +455,7 @@ export function AdminProjectStatus() {
         <section>
           <div className="mb-4 flex items-center gap-2">
             <Target className="size-4 text-amber-500" />
-            <h2 className="text-sm font-semibold text-foreground">
-              Ações Recomendadas
-            </h2>
+            <h2 className="text-foreground text-sm font-semibold">Ações Recomendadas</h2>
           </div>
           <div className="grid gap-3">
             {LAYERS.filter((l) => l.todo.length > 0).map((layer) => (
@@ -462,18 +470,15 @@ export function AdminProjectStatus() {
                 )}
               >
                 <div className="flex items-center gap-2">
-                  <layer.icon className="size-4 shrink-0 text-foreground" />
-                  <h3 className="font-semibold text-sm text-foreground">{layer.label}</h3>
-                  <span className={cn(
-                    "ml-auto text-xs font-medium",
-                    getGradeColor(layer.grade),
-                  )}>
+                  <layer.icon className="text-foreground size-4 shrink-0" />
+                  <h3 className="text-foreground text-sm font-semibold">{layer.label}</h3>
+                  <span className={cn("ml-auto text-xs font-medium", getGradeColor(layer.grade))}>
                     {layer.grade}/{layer.maxGrade}
                   </span>
                 </div>
                 <ul className="mt-2 space-y-1.5">
                   {layer.todo.map((item, idx) => (
-                    <li key={idx} className="flex items-start gap-2 text-xs text-muted-foreground">
+                    <li key={idx} className="text-muted-foreground flex items-start gap-2 text-xs">
                       <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-amber-400" />
                       {item}
                     </li>
@@ -486,7 +491,7 @@ export function AdminProjectStatus() {
       )}
 
       {/* ── Legend / Footer ─────────────────────────────────────────── */}
-      <div className="rounded-lg border border-border/50 bg-muted/30 px-4 py-3 text-[10px] text-muted-foreground">
+      <div className="border-border/50 bg-muted/30 text-muted-foreground rounded-lg border px-4 py-3 text-[10px]">
         <div className="flex flex-wrap items-center gap-4">
           <span className="flex items-center gap-1">
             <span className="size-2 rounded-full bg-emerald-500" /> Completo (10/10)
@@ -497,9 +502,7 @@ export function AdminProjectStatus() {
           <span className="flex items-center gap-1">
             <span className="size-2 rounded-full bg-red-500" /> Crítico (&lt;7)
           </span>
-          <span className="ml-auto">
-            Análise estática · Última atualização: Julho 2026
-          </span>
+          <span className="ml-auto">Análise estática · Última atualização: Julho 2026</span>
         </div>
       </div>
     </div>
@@ -530,9 +533,9 @@ function KpiCard({
   trend?: "up" | "warn" | "down"
 }) {
   return (
-    <div className="rounded-xl border border-border/50 bg-card p-5 transition-colors hover:border-primary/20">
+    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
       <div className="flex items-start justify-between">
-        <span className="flex size-10 items-center justify-center rounded-lg bg-primary/8 text-primary">
+        <span className="bg-primary/8 text-primary flex size-10 items-center justify-center rounded-lg">
           <Icon className="size-5" />
         </span>
         {trend ? (
@@ -545,15 +548,11 @@ function KpiCard({
           )
         ) : null}
       </div>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">
-        {value}
-      </p>
-      <p className="mt-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+      <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
         {label}
       </p>
-      {subtitle ? (
-        <p className="mt-0.5 text-[10px] text-muted-foreground">{subtitle}</p>
-      ) : null}
+      {subtitle ? <p className="text-muted-foreground mt-0.5 text-[10px]">{subtitle}</p> : null}
     </div>
   )
 }
@@ -566,7 +565,7 @@ function LayerCard({ layer }: { layer: LayerInfo }) {
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-xl border bg-card p-5 transition-all hover:shadow-sm",
+        "bg-card relative overflow-hidden rounded-xl border p-5 transition-all hover:shadow-sm",
         layer.lightBorder,
         layer.darkBorder,
       )}
@@ -574,18 +573,18 @@ function LayerCard({ layer }: { layer: LayerInfo }) {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2.5">
-          <span className={cn(
-            "flex size-10 items-center justify-center rounded-xl",
-            layer.lightBg,
-            layer.darkBg,
-          )}>
+          <span
+            className={cn(
+              "flex size-10 items-center justify-center rounded-xl",
+              layer.lightBg,
+              layer.darkBg,
+            )}
+          >
             <Icon className={cn("size-5", getGradeColor(layer.grade))} />
           </span>
           <div>
-            <h3 className="text-sm font-semibold text-foreground leading-tight">
-              {layer.label}
-            </h3>
-            <p className="text-[10px] text-muted-foreground">{layer.description}</p>
+            <h3 className="text-foreground text-sm leading-tight font-semibold">{layer.label}</h3>
+            <p className="text-muted-foreground text-[10px]">{layer.description}</p>
           </div>
         </div>
       </div>
@@ -598,13 +597,10 @@ function LayerCard({ layer }: { layer: LayerInfo }) {
           ) : (
             <AlertTriangle className={cn("size-4", getGradeColor(layer.grade))} />
           )}
-          <span className={cn(
-            "text-lg font-bold tabular-nums",
-            getGradeColor(layer.grade),
-          )}>
+          <span className={cn("text-lg font-bold tabular-nums", getGradeColor(layer.grade))}>
             {layer.grade}
           </span>
-          <span className="text-[10px] text-muted-foreground">/{layer.maxGrade}</span>
+          <span className="text-muted-foreground text-[10px]">/{layer.maxGrade}</span>
         </div>
         {hasActions && (
           <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
@@ -615,7 +611,7 @@ function LayerCard({ layer }: { layer: LayerInfo }) {
       </div>
 
       {/* Progress bar */}
-      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+      <div className="bg-muted mt-2 h-1.5 w-full overflow-hidden rounded-full">
         <div
           className={cn(
             "h-full rounded-full transition-all duration-700",
@@ -636,13 +632,13 @@ function LayerCard({ layer }: { layer: LayerInfo }) {
             ) : (
               <AlertTriangle className="mt-0.5 size-3 shrink-0 text-red-500" />
             )}
-            <span className="text-[10px] leading-relaxed text-muted-foreground">
+            <span className="text-muted-foreground text-[10px] leading-relaxed">
               {finding.text}
             </span>
           </div>
         ))}
         {layer.findings.length > 4 && (
-          <p className="text-[9px] text-muted-foreground/60 pl-5">
+          <p className="text-muted-foreground/60 pl-5 text-[9px]">
             +{layer.findings.length - 4} mais
           </p>
         )}

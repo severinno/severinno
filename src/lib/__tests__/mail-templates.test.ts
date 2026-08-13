@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from "vitest"
 import { passwordChangedHtml, bookingCompletedHtml } from "../mail"
 
@@ -228,5 +229,3 @@ describe("bookingCompletedHtml", () => {
     expect(html).not.toContain("undefined")
   })
 })
-
-

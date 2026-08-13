@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for useBalancePulse — tracks balance increases and triggers a
  * temporary "pulsing" flag + optional onIncrease callback.

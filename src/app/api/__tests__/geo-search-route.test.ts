@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
 
@@ -34,9 +35,7 @@ describe("GET /api/geo/search", () => {
   })
 
   it("returns search results for a free-form query", async () => {
-    const mockResults = [
-      { lat: "-23.5505", lon: "-46.6333", display_name: "São Paulo, Brazil" },
-    ]
+    const mockResults = [{ lat: "-23.5505", lon: "-46.6333", display_name: "São Paulo, Brazil" }]
     vi.mocked(geocodeSearch).mockResolvedValue(mockResults as any)
 
     const req = createMockRequest({
