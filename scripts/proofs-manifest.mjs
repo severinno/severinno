@@ -28,7 +28,7 @@
  *     workflows do net) e checkWiredSurface() falha se um guard wired
  *     nao tiver classe no PROOF_CLASSES nem entrada no WIRED_ALLOWLIST
  *     (o padrao TARGET_DIRS aplicado ao registry - medido 2026-08-12:
- *     20 wired = 12 classes + 8 allowlist: o scan-proof-helpers da sec
+ *     21 wired = 13 classes + 8 allowlist: o scan-proof-helpers da sec
  *     11.93 entrou no allowlist em 2026-08-12 e o scan-unit-config (sec
  *     11.96) GRADUOU do allowlist para classe com a Prova 49 (sec 8.44 -
  *     a prova viva da nota SERIALIZED POOL removida do config real). A direcao registry -> wired
@@ -175,6 +175,11 @@ export const PROOF_CLASSES = [
       { prova: 20, section: "11.20", run: "31442006152", what: "--only-jobs EARLY-EXIT" },
       { prova: 32, section: "8.27", run: "31511149307", what: "--stash-uncommitted positivo" },
       { prova: 48, section: "8.43", run: null, what: "MUTATION do guard 11.72 ao vivo: docblock Exit codes mutado no ci-proof-run real (suite falha com o path exato - o irmao da Prova 44 no lado ci)" },
+      { prova: 52, section: "8.47", run: null, what: "prova viva LOCAL do guard 11.102 (par das Provas 44/50): gate de um uso do stashLeftNote no ci-proof-run.mjs real hardcodado num scratch -> a suite 11.102 falha com a linha 633 exata (true ? stashLeftNote); revertido" },
+      { prova: 53, section: "8.48", run: null, what: "prova viva LOCAL do guard 11.105 (par das Provas 48/52): citacao do fail (673) mutada de ${opts.mutateSelfDelete} para ${selfDel} no ci-proof-run.mjs real num scratch -> a suite 11.105 falha com a entrada 673:opts.mutateSelfDelete exata no ABS PIN (1 teste em 92); revertido" },
+      { prova: 54, section: "8.49", run: null, what: "prova agregada viva do PAR da 11.102 (gate stashedDelta + logPath): AMBAS as citacoes mutadas de uma vez no ci-proof-run.mjs real (633 gate hardcoded + 899 DONE literal) num scratch -> 6 testes da 11.102 falham (3 gate + 3 logPath) + CITED REALITY 11.106 + DERIVED PIN 11.107; 11.70/11.105/E2Es verdes; revertido" },
+      { prova: 55, section: "8.50", run: null, what: "prova viva LOCAL do guard 11.107 (par das Provas 44/50): gate fake novoDelta ? stashLeftNote injetado no ci-proof-run.mjs real (linha 965) num scratch -> DERIVED PIN (expected [4] toEqual [3] com + novoDelta) + COMPLETENESS (o gate ci-proof-run:novoDelta primeiro uso 965 sem entrada no CONSUMED_FACTS) falham; 30 passed incl. MUTATIONs + FRONTIER 11.111; revertido byte-identical" },
+      { prova: 57, section: "8.52", run: null, what: "prova viva LOCAL da FRONTIER 11.110 (par das Provas 44/50): a derivada compartilhada fail-input-cites mutada num scratch (scan target fail( -> steps.push() -> as citacoes caem nas linhas do plano) -> 3 testes do ci falham incl. o FRONTIER com a linha exata 335 (b (alias de opts.branch)); o irmao 11.115 do hook falha com a 342 (opts.safetyDiff); revertido byte-identical" },
     ],
   },
   {
@@ -237,6 +242,27 @@ export const PROOF_CLASSES = [
     module: "scripts/scan-unit-config.mjs",
     proofs: [
       { prova: 49, section: "8.44", run: null, what: "nota SERIALIZED POOL removida do config real -> suite 11.80/11.95 falha com o path (graduacao do allowlist para classe)" },
+    ],
+  },
+  {
+    class: "scan-derived-inventory",
+    module: "scripts/scan-derived-inventory.mjs",
+    proofs: [
+      { prova: 56, section: "8.51", run: null, what: "prova viva LOCAL do ANCHOR da 11.109 (par das Provas 44/50): 'linha 625' reintroduzida na fact safetyDiff do CONSUMED_FACTS real num scratch -> 5 testes falham incl. o ANCHOR com a fact exata + CONFINEMENT 11.114 no CLI; revertido byte-identical (graduacao do allowlist para classe, o padrao da Prova 49)" },
+    ],
+  },
+  {
+    class: "wired-guards-contract",
+    module: "scripts/__tests__/wired-guards-contract.test.ts",
+    proofs: [
+      { prova: 58, section: "8.53", run: null, what: "prova viva LOCAL do sweep inverso da 11.117 (par das Provas 44/57): nota datada (2026-08-13) com modulo fake citado na sec 11.119 real num scratch -> os 4 testes do describe 11.117 falham (REAL-REPO 9 vs 8) com o path exato no diff; revertido byte-identical (a classe nasce da suite, o padrao da scan-surfaces-contract)" },
+    ],
+  },
+  {
+    class: "proof-helpers-contract",
+    module: "scripts/__tests__/proof-helpers-contract.test.ts",
+    proofs: [
+      { prova: 59, section: "8.54", run: null, what: "prova viva LOCAL do ABS PIN da 11.118 (par das Provas 44/50): nota datada (2026-08-13) com o scripts/guard-remeasure.mjs (um helper real SEM entrada no PROOF_HELPERS, coberto so pela exclusao) citado na sec 11.121 real -> o REAL-REPO da 11.118 falha (deriveHelperEvidenceCited [] vs [guard-remeasure]) com o path exato no diff + 5 colaterais na suite do guard (REAL-REPO CONTRACT, MUTATION 11.117, CLI exit 1, FRONTEIRAS C e D); revertido byte-identical (a classe nasce da suite, o padrao da scan-surfaces-contract)" },
     ],
   },
 ]
@@ -328,7 +354,7 @@ export function checkProofs(docPath = DOC) {
 }
 
 /**
- * WIRED_ALLOWLIST - as 8 excecoes deliberadas da direcao wired -> registry
+ * WIRED_ALLOWLIST - as 9 excecoes deliberadas da direcao wired -> registry
  * (2026-08-12, sec 11.60): guards wired na superficie viva SEM classe no
  * PROOF_CLASSES porque NAO tem Prova viva dedicada - seus contratos vivem
  * nas proprias suites (suite-pinned), nao em um evento de Prova. Um guard
@@ -342,6 +368,10 @@ export function checkProofs(docPath = DOC) {
  *   - check-push-deletion.mjs: atalho de delecao pura do pre-push (sec
  *     11.21), contrato pinado pela suite, sem Prova dedicada.
  *   - scan-timeouts.mjs: step do net (sec 11.31), suite-pinned.
+ *   - scan-evidence-sweep.mjs: guard do batch (sec 11.120, 2026-08-13), o
+ *     contrato dos DOIS sweeps de evidencia datada (sec 11.117/11.118)
+ *     suite-pinned - a fronteira e as derivadas vivem no guard (a regra
+ *     dos 2 usos que as suites importam).
  *   - scan-lucide-icons.mjs: guard de geracao (HOOK_ALLOWLIST da sec
  *     11.16), sem Prova dedicada.
  *   - check-docs-encoding.sh: auditoria informativa de docs (nunca
@@ -351,6 +381,13 @@ export function checkProofs(docPath = DOC) {
  *     no pre-commit; o contrato e pinado pela propria suite
  *     (proof-helpers-contract.test.ts, a fonte unica dos regexes/derivada
  *     da 11.79), sem Prova dedicada - o padrao do scan-batch-coverage.
+ *   - O scan-derived-inventory GRADUOU do allowlist para CLASSE no
+ *     PROOF_CLASSES com a Prova 56 (sec 8.51, 2026-08-13: o ANCHOR da
+ *     sec 11.109 provado ao vivo - 'linha 625' reintroduzida na fact
+ *     safetyDiff do CONSUMED_FACTS real -> a suite 11.109/11.113/11.114
+ *     falha com a fact exata + a CONFINEMENT no CLI do guard) - o MESMO
+ *     padrao do scan-unit-config: o allowlist so mantem guard SEM Prova
+ *     dedicada.
  *   - O scan-unit-config GRADUOU do allowlist para CLASSE no PROOF_CLASSES
  *     com a Prova 49 (sec 8.44, a prova viva: nota SERIALIZED POOL removida
  *     do vitest.config.unit.ts real -> a suite da 11.80/11.95 falha com o
@@ -360,6 +397,7 @@ export const WIRED_ALLOWLIST = [
   "check-docs-encoding.sh",
   "check-push-deletion.mjs",
   "scan-batch-coverage.mjs",
+  "scan-evidence-sweep.mjs",
   "scan-fuzz-precommit.mjs",
   "scan-lint-staged-loader.mjs",
   "scan-lucide-icons.mjs",

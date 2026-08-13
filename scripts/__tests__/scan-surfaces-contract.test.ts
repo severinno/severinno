@@ -319,7 +319,8 @@ function typeDText(doc: string): string {
   const i = doc.indexOf("### Type D")
   if (i === -1) throw new Error(`scan-surfaces.md: header "### Type D" not found - update this extractor`)
   const j = doc.indexOf("### Type E", i)
-  return j === -1 ? doc.slice(i) : doc.slice(i, j)
+  if (j === -1) throw new Error(`scan-surfaces.md: header "### Type E" not found after "### Type D" - update this extractor`)
+  return doc.slice(i, j)
 }
 
 /** Type E section text (throws if the header moved - same rule as sectionBetween). */
@@ -327,7 +328,8 @@ function typeEText(doc: string): string {
   const i = doc.indexOf("### Type E")
   if (i === -1) throw new Error(`scan-surfaces.md: header "### Type E" not found - update this extractor`)
   const j = doc.indexOf("### Type F", i)
-  return j === -1 ? doc.slice(i) : doc.slice(i, j)
+  if (j === -1) throw new Error(`scan-surfaces.md: header "### Type F" not found after "### Type E" - update this extractor`)
+  return doc.slice(i, j)
 }
 
 /** Type F section text (throws if the header moved - same rule as sectionBetween). */

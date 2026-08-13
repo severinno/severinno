@@ -265,6 +265,13 @@ export const EXIT_CLAIMS = [
     pin: { file: "scripts/__tests__/run-precommit-guards.test.ts", marker: "11.93" },
     ref: "gates-proofs.md sec 11.93 (decisao 2026-08-12) - a 29a claim: o guard novo do contrato 11.72 (o pedido 'quando os helpers mudarem' supersedido pela invariante da 11.42: guard barato roda incondicional)",
   },
+  {
+    section: "11.120",
+    claim: "scan-evidence-sweep (o 12o guard do batch, sec 11.120): o check dos DOIS sweeps de evidencia datada (11.117 nos guards + 11.118 nos helpers) roda no pre-commit - doc real sem violacoes -> exit code 0; nota datada nova citando modulo sem classe/allowlist/exclusao -> exit code 1 com o caminho; usage errado -> exit code 2",
+    kind: "current",
+    pin: { file: "scripts/__tests__/scan-evidence-sweep.test.ts", marker: "11.120" },
+    ref: "gates-proofs.md sec 11.120 (decisao 2026-08-13) - a 30a claim: o guard do sweep (a sec 11.119 previu a forma-guard exatamente quando o check rodasse no batch; a fronteira e as derivadas movidas do evidence-sweep.ts para o guard, a regra dos 2 usos)",
+  },
 ]
 
 /** Exit codes que o contrato reconhece como claims (0-3, o padrao do repo).

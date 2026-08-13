@@ -65,6 +65,14 @@
 | 48 | scan-unit-config — **a nota SERIALIZED POOL removida do config real → a suite da 11.80 falha com o path exato** (Prova 49, sec 8.44) | O pin da nota do singleFork (sec 11.80 poolNotePresent) e o pin da citação da planura (sec 11.95) tinham prova hermética (MUTATIONs sobre strings do config), mas sem prova viva — faltava confirmar que a suite da 11.80 lê o vitest.config.unit.ts REAL e falha quando a nota SOME (o cenário que o 10º guard do batch, scan-unit-config da sec 11.96, protege no pre-commit) | `cp vitest.config.unit.ts /tmp/prova49-vitest.bak && node -e "...remover do índice de '// SERIALIZED POOL' até a linha 'Pinned by scripts/__tests__/unit-surface-contract.test.ts.'..." && npx vitest run scripts/__tests__/unit-surface-contract.test.ts --config vitest.config.unit.ts` (a remoção do bloco = o MESMO alvo do MUTATION da 11.80, com o singleFork: true real intacto) | **Local** — mutação do config real + suite real, sem rede | ✅ suite **exit 1** — **4 testes falham** (REAL-REPO 11.80 + REAL-REPO 11.95 + 2 MUTATIONs da 11.95 em cascata) com o path `scripts/__tests__/unit-surface-contract.test.ts`; CLI `scan-unit-config: 1 violacao` com `vitest.config.unit.ts: o bloco '// SERIALIZED POOL' da nota (sec 11.80) ausente` + CURE; revert → sha1 `508929d5` byte-identical, CLI clean exit 0 |
 | 49 | hook-proof-run — **revert-fail apply ao vivo com delta.patch do backup INTEGRO (sem knob): poison commit no branch original -> apply-fail exit 3; `git apply <backup>/delta.patch` (nivel 1) recupera byte-identical** (Prova 50, sec 8.45) | A CURE em 2 níveis da sec 11.75 (o nível 1 = `git apply <backup>/delta.patch` quando o patch é íntegro) só tinha pin hermético + a Prova 47 provou o caminho do patch CORROMPIDO (o nível 2) — faltava o pipeline real do nível 1: um revert-fail de apply com o delta.patch do backup INTEGRO (a injeção por conflito de árvore real, sem o knob hermético) e a recuperação via `git apply` | `node scripts/hook-proof-run.mjs --branch ci-proof/* --safety-diff /tmp/prova50-safety.diff --mutate ...` (a mutação commitou o poison `df9792d` na branch original — `scan-exit-claims.mjs` reduzido a `// POISON-L1`, um dos 16 arquivos do delta.patch) + recuperação: `git reset --hard 373bd74` + `git apply /tmp/hook-proof-RsCDqA/delta.patch` | **Local** — ciclo real via o helper (hook real passou via stdin; o revert falhou no apply com o patch íntegro; a recuperação nível 1 executada nesta continuação) | ✅ `git apply <backup>/delta.patch` → `APPLY_L1_OK`; `git status --porcelain` == snapshot (21 linhas = 16 M + 5 untracked); `git diff` sha256 == safety diff (`44c23838…`) — o delta recuperado byte-identical |
 | 50 | hook-proof-run — **prova viva do irmao CI do status-divergente (sec 11.98): ciclo hook-proof-run --mutate-untracked no guard-gates real, run 31642157987 - exit 3 + CURE do snapshot no log do job** (Prova 51, sec 8.46) | o sinal do status-divergente (exit 3 + CURE do snapshot) so tinha prova LOCAL (Prova 46) - faltava o irmao CI | step inserido no guard-gates.yml logo apos o checkout (antes do setup-bun): `node scripts/hook-proof-run.mjs --branch ci-proof/hpr-statusdiv-ci51 --mutate-untracked stray.tmp` | **CI real** — dispatch do guard-gates no branch ci-proof/hpr-status-ci, run 31642157987 | ✅ job **failure** — `hook-proof-run: git status divergiu do snapshot pre-ciclo` + CURE com `status-before.txt` no log + `##[error]Process completed with exit code 3.` — o MESMO sinal da Prova 46 observado no pipeline |
+| 51 | ci-proof-run — **prova viva LOCAL do guard 11.102 (par das Provas 44/50): gate de um uso do stashLeftNote no ci-proof-run.mjs real hardcodado num scratch -> a suite 11.102 falha com a linha 633 exata (true ? stashLeftNote); revertido** (Prova 52, sec 8.47) | o guard de forma da 11.102 (o gate stashedDelta VARIAVEL nos 8 usos) | hardcode `true ? stashLeftNote` na linha 633 do ci-proof-run.mjs real | **local** — scratch ci-proof/prova52-gate-11.102 (run null, sem rede) | ✅ suite 11.102 **failure** — `linha 633 (uso do stashLeftNote) deve passar o gate stashedDelta VARIAVEL` + `true ? stashLeftNote` (3 testes falharam) — o par vivo das Provas 44/50 |
+| 52 | ci-proof-run — **prova viva LOCAL do guard 11.105 (par das Provas 48/52): citacao do fail (673) mutada de ${opts.mutateSelfDelete} para ${selfDel} no ci-proof-run.mjs real num scratch -> a suite 11.105 falha com a entrada 673:opts.mutateSelfDelete exata no ABS PIN (1 teste em 92); revertido** (Prova 53, sec 8.48) | o guard de forma da 11.105 (o ABS PIN das citacoes de input em mensagens de fail) — a classe que o RECUSADO da 11.102 deixou documentada-sem-pin e o guard posterior fechou no lado MENSAGEM | a citacao do fail (673) trocada de `${opts.mutateSelfDelete}` para `${selfDel}` (o resolved-uma-vez) no ci-proof-run.mjs real | **local** — scratch ci-proof/prova53-selfdel-3d (run null, sem rede, revertido) | ✅ suite 11.105 **failure** — 1 teste em 92: ABS PIN diverge com `673:opts.mutateSelfDelete` exata (a premissa "nenhuma suite falha" FALSIFICADA); os outros 91 passam — nenhum contrato de corretude quebra |
+| 53 | ci-proof-run — **prova agregada viva do PAR da 11.102 (gate stashedDelta + logPath): AMBAS as citacoes mutadas de uma vez no ci-proof-run.mjs real (633 gate hardcoded + 899 DONE literal) num scratch -> 6 testes da 11.102 falham (3 gate + 3 logPath) + CITED REALITY 11.106 + DERIVED PIN 11.107; 11.70/11.105/E2Es verdes; revertido** (Prova 54, sec 8.49) | o par de fatos consumidos da 11.102 — o gate stashedDelta VARIAVEL nos 8 usos + o logPath resolvido-uma-vez citado por variavel; os fatos COMPARTILHADOS com 11.70 (gate) e 11.106/11.107 (logPath) | AMBAS as citacoes de uma vez no arquivo real: gate 633 hardcoded (`true ? stashLeftNote`) + DONE 899 literal (`log=/tmp/ci-proof-literal.log`) | **local** — scratch ci-proof/prova54-agg-11.102 (run null, sem rede, revertido) | ✅ **6 testes da 11.102 falham** (3 gate + 3 logPath, com as linhas 633/899 exatas) + **CITED REALITY 11.106** + **DERIVED PIN 11.107** no proof-helpers-contract; 11.70/11.105/E2Es VERDES (87+28 passam) — o mapa guard<->fato com o compartilhamento revelado |
+| 54 | ci-proof-run — **prova viva LOCAL do guard 11.107 (par das Provas 44/50): gate fake novoDelta ? stashLeftNote injetado no ci-proof-run.mjs real (linha 965) num scratch -> DERIVED PIN (expected [4] toEqual [3] com + novoDelta) + COMPLETENESS (o gate ci-proof-run:novoDelta primeiro uso 965 sem entrada no CONSUMED_FACTS) falham; 30 passed incl. MUTATIONs + FRONTIER 11.111; revertido byte-identical** (Prova 55, sec 8.50) | o guard de forma da 11.107 (o DERIVED INVENTORY — a completude do registry fechada pelo source: uma nota/gate novo no source diverge o DERIVED PIN + a COMPLETENESS) | o gate fake `novoDelta ? stashLeftNote` na linha 965 do ci-proof-run.mjs real (o mesmo dente da MUTATION hermetica, agora no arquivo REAL) | **local** — scratch ci-proof/prova55-11.107 (run null, sem rede, revertido byte-identical) | ✅ **2 testes da 11.107 falham** — DERIVED PIN `expected [4] toEqual [3]` com `+ "novoDelta"` + COMPLETENESS `o gate ci-proof-run:novoDelta (primeiro uso 965) sem entrada no CONSUMED_FACTS`; 30 passed (MUTATIONs + FRONTIER 11.111 verdes) — o par vivo/hermético fechado |
+| 55 | scan-derived-inventory — **prova viva LOCAL do ANCHOR da 11.109 (par das Provas 44/50): 'linha 625' reintroduzida na fact safetyDiff do CONSUMED_FACTS real (linha 69) num scratch -> 5 testes falham incl. o ANCHOR com a fact exata + a CONFINEMENT 11.114 no CLI; revertido byte-identical — a graduacao do allowlist para classe (o padrao da Prova 49)** (Prova 56, sec 8.51) | o ANCHOR da 11.109 (a fronteira do número de linha nas fact strings do CONSUMED_FACTS — a classe que a 11.113 travou hermeticamente e a 11.114 moveu para o guard) | `, linha 625` reintroduzida na fact `safetyDiff (o path resolvido-uma-vez)` do CONSUMED_FACTS real (o defLine 625 pertence ao RESOLVED_PATHS, nao a fact — a classe exata que a 11.109 removeu) | **local** — scratch scratch/prova56-anchor-11.109 (run null, sem rede, revertido byte-identical) | ✅ **5 testes falham** — o ANCHOR (sec 11.109) com a fact EXATA `hook-proof-run:safetyDiff (o path resolvido-uma-vez, linha 625)` + as CONFINEMENTs da 11.113/11.114 + o CLI do guard flagrando `o campo fact de CONSUMED_FACTS:hook-proof-run:safetyDiff (o path resolvido-uma-vez, linha 625) embute numero de linha`; revertido byte-identical (CMP_OK) |
+| 56 | ci-proof-run — **prova viva LOCAL da FRONTIER 11.110 (par das Provas 44/50): a derivada compartilhada fail-input-cites mutada num scratch (scan target fail( -> steps.push() -> as citacoes caem nas linhas do plano) -> 3 testes do ci falham incl. o FRONTIER com a linha exata 335 (b (alias de opts.branch)); o irmao 11.115 do hook falha com a 342 (opts.safetyDiff); revertido byte-identical** (Prova 57, sec 8.52) | o FRONTIER da 11.110/11.115 (a fronteira do escopo da derivada de citacoes de input — o FAIL, nunca plan/log) | o scan target da derivada compartilhada trocado de `fail(` para `steps.push(` (a derivada passaria a varrer as linhas do plano) | **local** — scratch scratch/prova57-frontier-11.110 (run null, sem rede, revertido byte-identical) | ✅ **3 testes do ci falham** — ABS PIN (22 vs 17) + MUTATION typo + FRONTIER com a linha EXATA `a citacao 335 (b (alias de opts.branch)) nao pode ser plan/log`; o irmao 11.115 do hook tambem falha com `a citacao 342 (opts.safetyDiff)` — a fonte unica da sec 11.115 provada ao vivo nos DOIS helpers |
+| 57 | wired-guards-contract — **prova viva LOCAL do sweep inverso da 11.117 (par das Provas 44/57): a nota datada real com o modulo fake citado na sec 11.119 do gates-proofs.md -> os 4 testes do describe 11.117 falham com o path exato no diff; revertido byte-identical; a classe nasce no registry** (Prova 58, sec 8.53) | o ABS PIN da 11.117 (o sweep inverso da 11.78 — evidencia datada -> registry) | a nota datada real `**nota datada (2026-08-13)**: a prova viva citou o `scripts/scan-fake-evidence-58.mjs` e o guard pegou.` inserida no fim da sec 11.119 do doc real (linha 10590, antes do `## 12.`) | **local** — worktree com delta nao-commitado, sem branch switch, backup byte-copy (run null, sem rede, revertido byte-identical) | ✅ **4 testes falham** — o REAL-REPO (ABS PIN 9 vs 8) com a linha EXATA `+ "scripts/scan-fake-evidence-58.mjs"` + os 3 MUTATIONs (colateral do doc real como base); revertido byte-identical (CMP_OK) |
+| 58 | proof-helpers-contract — **prova viva LOCAL do ABS PIN da 11.118 (par das Provas 44/50): a nota datada real com um helper sem entrada (scripts/guard-remeasure.mjs) citado na sec 11.121 -> o REAL-REPO da 11.118 falha com o path exato; revertido byte-identical; a classe proof-helpers-contract nasce no registry** (Prova 59, sec 8.54) | o ABS PIN da 11.118 (o sweep irmao do registry de helpers — evidencia datada -> PROOF_HELPERS derivado ou exclusao) | a nota datada real citando o scripts/guard-remeasure.mjs (um helper SEM entrada no PROOF_HELPERS, coberto so pela exclusao) no fim da sec 11.121 (a linha antes do ## 12.) | **local** — worktree com delta nao-commitado, sem branch switch, backup byte-copy (run null, sem rede, revertido byte-identical) | ✅ **1 teste falha** — o REAL-REPO da 11.118 (`expected [ 'scripts/guard-remeasure.mjs' ] to deeply equal []`, diff com a linha `+ "scripts/guard-remeasure.mjs"`) + 5 colaterais na suite do guard (REAL-REPO CONTRACT, MUTATION 11.117, CLI exit 1, FRONTEIRAS C e D); revertido byte-identical (CMP_OK) |
 
 ## 2. Prova 1 — utf8-byte (run 31298436074)
 
@@ -3035,6 +3043,8 @@ seção. Registro de evento 8.x — sem entrada no EXIT_CLAIMS (fronteira da
 sec 11.51, detector 11.x-only por desenho).
 
 
+**Re-validação (2026-08-13, 30 claims)**: o EXIT_CLAIMS cresceu de 29 para 30 — a claim da sec 11.120 (o scan-evidence-sweep, o 12o guard do batch: o check dos DOIS sweeps de evidencia datada no pre-commit). Re-validado no estado atual: CLI `clean (30 claims registradas em 27 current + 1 superseded + 2 measurement - sec 11.42)` exit 0 no repo real (verbatim) + a suite hermetica do par verde — o par CURE+stale segue calibrado por claims novas, sem drift de secao.
+
 ## 8.35 Prova 40 — o CONTRASTE CURE + 0 stale via `hook-proof-run --mutate-doc-renumber`, o irmão automatizado da Prova 39 (2026-08-11)
 
 Prova viva da sec 11.59 (o `--mutate-doc-renumber <sec> --to <nova>` do
@@ -3096,6 +3106,8 @@ a suite hermetica do par verde. Registro de evento 8.x — sem entrada no
 EXIT_CLAIMS (fronteira da sec 11.51, detector 11.x-only por desenho).
 
 
+**Re-validação (2026-08-13, 30 claims)**: a 30a claim (a sec 11.120, o 12o guard do batch — a sec 8.35 citava `clean (29 claims)` e o count subiu para 30). Re-validado no estado atual: CLI `clean (30 claims registradas em 27 current + 1 superseded + 2 measurement - sec 11.42)` exit 0 no repo real (verbatim) — o par CURE+stale segue calibrado.
+
 ## 8.36 Prova 41 — a COLISÃO de target fail-loud no repo REAL via `hook-proof-run` (2026-08-11)
 
 Prova viva da sec 11.59 (a colisão de target do `renumberDocSection`) — o
@@ -3144,6 +3156,8 @@ hook-proof-run, Prova 41).
 
 **Re-validação (2026-08-12, 29 claims)**: re-rodou o CLI real no estado atual → `clean (29 claims registradas em 26 current + 1 superseded + 2 measurement - sec 11.42)` exit 0 (verbatim) — `--check` continua clean (0 unregistered + 0 stale): o par CURE+stale segue calibrado por claims novas, sem drift de seção. Registro de evento 8.x — sem entrada no EXIT_CLAIMS (fronteira da sec 11.51, detector 11.x-only por desenho).
 
+
+**Re-validação (2026-08-13, 30 claims)**: re-rodou o CLI real no estado atual → `clean (30 claims registradas em 27 current + 1 superseded + 2 measurement - sec 11.42)` exit 0 — a claim da sec 11.120 registrada e a reval calibrada.
 
 ## 8.37 Prova 42 — o caminho de ESCRITA real do doc-revalidate: upsert datado + idempotência do mesmo dia (2026-08-11)
 
@@ -3194,6 +3208,8 @@ doc-revalidate — a classe NOVA do registry — Prova 42).
 
 **Re-validação (2026-08-12, 29 claims)**: re-rodou o CLI real no estado atual → `clean (29 claims registradas em 26 current + 1 superseded + 2 measurement - sec 11.42)` exit 0 (verbatim) — `--check` continua clean (0 unregistered + 0 stale): o par CURE+stale segue calibrado por claims novas, sem drift de seção. Registro de evento 8.x — sem entrada no EXIT_CLAIMS (fronteira da sec 11.51, detector 11.x-only por desenho).
 
+
+**Re-validação (2026-08-13, 30 claims)**: re-rodou o CLI real no estado atual → `clean (30 claims registradas em 27 current + 1 superseded + 2 measurement - sec 11.42)` exit 0 — a claim da sec 11.120 registrada e a reval calibrada.
 
 ## 8.38 Prova 43 — o REVERT-FAIL do hook-proof-run no repo REAL: patch corrompido injetado → exit 3 fail-loud com o backup apontado (2026-08-12)
 
@@ -3557,6 +3573,355 @@ vitest das suites tocadas + `node scripts/proofs-manifest.mjs --check` +
 todos verdes.
 
 **Registro de evento**: Prova 51 (classe hook-proof-run, sec 8.46, run 31642157987).
+
+## 8.47 Prova 52 — prova viva LOCAL do guard 11.102 (par das Provas 44/50): gate de um uso do stashLeftNote no ci-proof-run.mjs real hardcodado num scratch -> a suite 11.102 falha com a linha 633 exata (true ? stashLeftNote); revertido (2026-08-12, local, sem rede)
+
+**O pedido**: o guard irmao da sec 11.102 (o gate stashedDelta VARIAVEL nos 8
+usos do stashLeftNote + o logPath resolvido-uma-vez) tinha prova hermEtica
+(as MUTATIONs sobre copias) + real-repo local, mas sem prova viva - faltava
+o par das Provas 44/50. O pedido: mutar o gate de UM uso real do
+stashLeftNote no ci-proof-run.mjs num scratch e confirmar que a suite da
+11.102 falha com o caminho exato.
+
+**O veredito**: ADOTADO - a prova viva local confirmou o sinal com o caminho
+exato: a suite 11.102 falhou com `linha 633 (uso do stashLeftNote) deve
+passar o gate stashedDelta VARIAVEL` + o texto injetado `true ?
+stashLeftNote` (3 testes falharam: o invariante do gate + os 2 MUTATIONs,
+que passaram a achar 2 offenders - o hardcode real na 633 + o hardcode
+injetado). O par vivo/hermetico fechado: o que a MUTATION faz em memoria, a
+prova fez no arquivo real.
+
+**A execucao** (ciclo local, sem rede, run null):
+1. `git checkout -b ci-proof/prova52-gate-11.102` (scratch) - a working tree
+   so com as mudancas pre-existentes (o ci-proof-run.mjs estava limpo).
+2. `sed -i '633s/stashedDelta ? stashLeftNote/true ? stashLeftNote/'
+   scripts/ci-proof-run.mjs` - hardcodou o gate do 1o uso (a linha 633 do
+   checkout-fail), o MESMO shape da MUTATION 1 hermEtica da 11.102.
+3. `npx vitest run scripts/__tests__/ci-proof-run.test.ts -t 'sec 11.102'
+   --config vitest.config.unit.ts` -> exit 1 com 3 failed; o invariante
+   listou a linha 633 e o texto `true ? stashLeftNote` (o caminho exato).
+4. `git checkout -- scripts/ci-proof-run.mjs` (revert da mutacao) + `git
+   checkout` para a branch de origem + `git branch -D
+   ci-proof/prova52-gate-11.102` - scratch removido; a linha 633 restaurada
+   para `stashedDelta ? stashLeftNote`.
+
+**A fronteira honesta**: a prova cobriu a dimensao (a) da 11.102 (o gate); o
+logPath (dimensao (b)) NAO foi mutado ao vivo - o sinal da classe (o guard de
+forma pega a divergencia no arquivo real com o path:line) e o mesmo, e a
+dimensao (b) tem as 2 MUTATIONs hermEticas + o DONE real exercitado pelos
+E2Es. Um ciclo com as 2 mutacoes numa prova so ficaria mais longo sem fechar
+classe nova.
+
+**Controle pos-ciclo**: registracao via proof-register (Prova 52) + `node
+scripts/proofs-manifest.mjs --check` (clean 20 classes / 52 provas) + vitest
+das suites tocadas + `node scripts/scan-exit-claims.mjs --check` (clean 29
+claims).
+
+**Registro de evento**: Prova 52 (classe ci-proof-run, sec 8.47, local, sem rede).
+
+## 8.48 Prova 53 — prova viva LOCAL do guard 11.105 (par das Provas 48/52): citacao do fail (673) mutada de ${opts.mutateSelfDelete} para ${selfDel} no ci-proof-run.mjs real num scratch -> a suite 11.105 falha com a entrada 673:opts.mutateSelfDelete exata no ABS PIN (1 teste em 92); revertido (2026-08-12, local, sem rede)
+
+**O pedido**: a prova viva da sec 11.102 (o RECUSADO da 3a dimensao do
+selfDel) mostrou que o guard 11.105 PEGA a mutacao da citacao do fail —
+mas a evidencia vivia so como nota datada na sec 11.102, SEM entrada no
+manifest PROOF_CLASSES. O pedido: avaliar registrar a evidencia como Prova
+formal (o padrao das Provas 48/52 — os irmaos 11.72/11.102 da mesma
+classe, que TINHAM prova viva registrada) ou documentar por que a nota
+claim-free basta ("nao fechou classe nova — a 11.105 ja a fechava").
+
+**O veredito**: ADOTADO — registrar como Prova 53. A evidencia: (1) o
+registry (sec 11.60) existe para o "avalie uma prova" do futuro consultar
+ANTES de propor — a classe 11.105 nao tinha NENHUMA entrada (grep vazio no
+manifest e no ABS PIN), enquanto os irmaos 11.72 (Prova 48) e 11.102
+(Prova 52) tinham; uma prova futura da classe seria re-proposta. (2) O
+contra-argumento "nao fechou classe nova" confunde COBERTURA com REGISTRO:
+as Provas 48/52 tambem foram registradas para guards que JA tinham pin
+hermetico — o registro mapeia classe-de-guard → prova viva, e a 11.105 era
+a unica do trio sem. (3) A prova em si foi substantiva: a premissa
+"nenhuma suite falha" foi FALSIFICADA (1 teste em 92 falha com a entrada
+exata 673:opts.mutateSelfDelete) — a evidencia de que o guard le o arquivo
+real, o mesmo valor das Provas 48/52.
+
+**A execucao** (ciclo local, sem rede, run null — da nota da sec 11.102):
+1. scratch `ci-proof/prova53-selfdel-3d` (branch nomeada ja prevendo a
+   numeracao) + working tree com o delta da thread.
+2. Mutou a linha 673 do ci-proof-run.mjs REAL: a citacao do fail trocada
+   de `${opts.mutateSelfDelete}` para `${selfDel}` (o resolved-uma-vez em
+   escopo, linhas 659/665/674; as citacoes de plan 341 e log 677 intactas).
+3. `npx vitest run scripts/__tests__/ci-proof-run.test.ts --config
+   vitest.config.unit.ts` -> exit 1: **1 teste em 92 falha** — o ABS PIN da
+   sec 11.105 diverge com a entrada exata `673:opts.mutateSelfDelete` (a
+   mutacao remove a citacao da derivada de 17). Os outros 91 passam —
+   incluindo os E2Es e o guard 11.102: nenhum contrato de CORRETUDE quebra
+   (o absolutizar realmente nomeia o mesmo arquivo, como o RECUSADO afirmou).
+4. Revert: working tree restaurada + scratch removido.
+
+**A fronteira honesta**: o registro NAO adiciona cobertura — a classe 11.105
+ja era pinada hermeticamente (o ABS PIN + as MUTATIONs da sec 11.105); o
+valor da entrada e de REGISTRO: a classe vira consultavel no PROOF_CLASSES
+(descobrivel pelo "avalie uma prova" do futuro). O lado operacional
+(rmSync/selfDel) segue sem pin — sem write-cite pair, documentado na sec
+11.102 (a fronteira da 3a dimensao intacta).
+
+**Controle pos-ciclo**: registracao via proof-register (Prova 53, sec 8.48)
++ `node scripts/proofs-manifest.mjs --check` (clean 20 classes / 53 provas)
++ vitest das suites tocadas + `node scripts/scan-exit-claims.mjs --check`
+(clean 29 claims).
+
+**Registro de evento**: Prova 53 (classe ci-proof-run, sec 8.48, local, sem rede).
+
+## 8.49 Prova 54 — prova agregada viva do PAR da 11.102 (gate stashedDelta + logPath): AMBAS as citacoes mutadas de uma vez no ci-proof-run.mjs real (633 gate hardcoded + 899 DONE literal) num scratch -> 6 testes da 11.102 falham (3 gate + 3 logPath) + CITED REALITY 11.106 + DERIVED PIN 11.107; 11.70/11.105/E2Es verdes; revertido (2026-08-12, local, sem rede)
+
+**O pedido**: o mesmo padrao de prova viva (mutar a citacao de um fato
+consumido e observar qual guard pega) serviu para os singles (Prova 52:
+gate; Prova 53: selfDel) — o pedido propoe a prova AGREGADA: mutar as
+DUAS citacoes do par da 11.102 de uma vez (gate stashedDelta na linha 633
++ logPath no DONE 899) e confirmar que SO os guards certos disparam —
+fechando o mapa guard<->fato com evidencia viva.
+
+**O veredito**: ADOTADO — a prova agregada revela o que os singles nao
+mostram: os fatos do par sao COMPARTILHADOS entre guards de camadas
+diferentes. O gate e consumido pela 11.102 (dimensao a) E pela 11.70
+(placement); o logPath e consumido pela 11.102 (dimensao b) E pela 11.106
+(CITED REALITY) E pela 11.107 (DERIVED PIN). O firing set observado
+confirma a fronteira da 11.110: nenhuma citacao de plan/log (o logPath
+citado em console.log/DONE e OUTRO fato, pinado por 11.106/11.107, nao
+pela 11.105 — que segue verde).
+
+**A execucao** (ciclo local, sem rede, run null):
+1. scratch `ci-proof/prova54-agg-11.102`; ci-proof-run.mjs limpo vs HEAD.
+2. Duas mutacoes no arquivo REAL:
+   `sed -i '633s/stashedDelta ? stashLeftNote/true ? stashLeftNote/'` (gate
+   hardcoded do 1o uso) + `sed -i '899s|log=${logPath}|log=/tmp/ci-proof-literal.log|'`
+   (literal no DONE).
+3. `npx vitest run scripts/__tests__/ci-proof-run.test.ts` -> exit 1: **6
+   testes falham** — exatamente os 6 da describe 11.102: os 3 da dimensao
+   gate (invariant: 633 nao gated; 2 MUTATIONs que passam a achar 2
+   offenders — o hardcode real + o injetado) + os 3 da dimensao logPath
+   (invariant: 899 sem ${logPath}; 2 MUTATIONs com replace sem alvo).
+   87 passam — 11.70, 11.105, E2Es, ABS PINs VERDES.
+4. `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts` ->
+   exit 1: **2 testes falham** — CITED REALITY (11.106: a citacao 899
+   perdeu o ${logPath} e diverge do citedAt [827, 899]) + DERIVED PIN
+   (11.107: a projecao derivada do logPath mudou). 28 passam.
+5. Revert: `git checkout -- scripts/ci-proof-run.mjs` + checkout da
+   branch original + `git branch -D` — byte-identical (o sed 633 volta a
+   `stashedDelta ? stashLeftNote`).
+
+**A fronteira honesta**: a nuanca observada — a 11.70 NAO tripou com o
+hardcode do gate na 633 (o span multi-linha da 11.70, linha + 5, inclui a
+637 que segue INTACTA com o gate) — e uma propriedade do span de 5
+linhas, nao uma fraqueza: mutar AMBOS os usos dentro da janela do span
+faria a 11.70 tripar. A prova agregada cobre o PAR da 11.102; a interacao
+11.70 x hardcode multiplo nao foi exercitada (custo/beneficio: a 11.70 ja
+tem 2 MUTATIONs hermeticas + a fronteira do placement documentada na sec
+11.70).
+
+**Controle pos-ciclo**: registracao via proof-register (Prova 54, sec 8.49)
++ `node scripts/proofs-manifest.mjs --check` (clean 20 classes / 54 provas)
++ vitest das suites tocadas + `node scripts/scan-exit-claims.mjs --check`
+(clean 29 claims).
+
+**Registro de evento**: Prova 54 (classe ci-proof-run, sec 8.49, local, sem rede).
+
+## 8.50 Prova 55 — prova viva LOCAL do guard 11.107 (par das Provas 44/50): gate fake novoDelta ? stashLeftNote injetado no ci-proof-run.mjs real (linha 965) num scratch -> DERIVED PIN (expected [4] toEqual [3] com + novoDelta) + COMPLETENESS (o gate ci-proof-run:novoDelta primeiro uso 965 sem entrada no CONSUMED_FACTS) falham; 30 passed incl. MUTATIONs + FRONTIER 11.111; revertido byte-identical (2026-08-13, local, sem rede)
+
+**O pedido**: a sec 11.107 (o DERIVED INVENTORY — a completude do
+registry fechada pelo source, no padrao TARGET_DIRS consumido) tem prova
+hermetica (as MUTATIONs sobre copias), mas sem prova viva. Fazer uma
+Prova no padrao das Provas 44/50: num scratch, adicionar um gate fake
+`novoDelta ? stashLeftNote` no ci-proof-run.mjs real e confirmar que a
+suite da 11.107 falha com o caminho exato — registrando como Prova.
+
+**O veredito: ADOTADO** — a prova viva fechou o lado do pipeline da
+derivacao (o mesmo contrato que a Prova 54 ja havia tocado como efeito
+colateral da agregacao da 11.102 — agora com o gate como a MUTACAO
+PRIMARIA, o teste-alvo exato da 11.107).
+
+**A execucao** (ciclo local real, scratch `ci-proof/prova55-11.107`,
+revertido byte-identical):
+1. `printf` anexa o gate fake ao fim do arquivo real (`>> scripts/ci-proof-run.mjs`):
+   a linha `if (x) return fail(3, ...)` com o ternario `novoDelta ? stashLeftNote` -
+   o gate entra na linha 965 (o `
+` inicial do printf cria a 964 em branco; a 965 carrega o gate).
+2. `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts`
+   -> exit 1: **2 testes falham | 30 passam (32)** — o firing set exato
+   da describe 11.107:
+   - **DERIVED PIN**: `expected [ …(4) ] to deeply equal [ …(3) ]` com
+     `+ "novoDelta"` na projecao (o growth contract do lado da derivacao
+     divergiu — o gate novo entrou na derivada).
+   - **COMPLETENESS**: `o gate ci-proof-run:novoDelta (primeiro uso 965)
+     derivado do source nao tem entrada no CONSUMED_FACTS` — a mensagem
+     com o path:line EXATO (helper:gate + a linha 965 da injecao).
+3. Os controles ficaram VERDES: as MUTATIONs (que usam copias, nao o
+   arquivo real), a FRONTIER da 11.111 (os 3 irmaos utilitarios seguem
+   derivando vazio) e as demais describes.
+4. Revert: `git checkout -- scripts/ci-proof-run.mjs` — byte-identical
+   vs HEAD (o delta da thread intacto; `ci-proof-run.mjs` nao fazia
+   parte dele).
+
+**A fronteira honesta**: a prova mutou o ci-proof-run.mjs real, mas o
+firing set observado cobre so o guard 11.107 (DERIVED PIN + COMPLETENESS)
+— a FRONTIER 11.111 e as 3 partes da 11.72 nao tripam (nao consomem
+novoDelta). O par vivo/hermetico fecha nos DOIS lados: a MUTATION
+hermetica (`um gate NOVO numa copia do ci-proof-run entra na derivada`)
+provava o dente em copia; esta Prova provou o dente no arquivo REAL com
+as linhas exatas no diff do vitest.
+
+**Controle pos-ciclo**: `git checkout -- scripts/ci-proof-run.mjs` +
+`git diff HEAD --stat -- scripts/ci-proof-run.mjs` = vazio (byte-identical
+vs HEAD) + branch scratch deletada (`git branch -D ci-proof/prova55-11.107`)
++ a suite 11.107 verde no repo real apos o registro (provas-manifest +
+proof-register + proof-helpers-contract, 30+ verdes) — a evidencia da
+prova nao deixou rastro no tree.
+
+**Registro de evento**: Prova 55 (classe ci-proof-run, sec 8.50, local, sem rede).
+
+## 8.51 Prova 56 — prova viva LOCAL do ANCHOR da 11.109 (par das Provas 44/50): 'linha 625' reintroduzida na fact safetyDiff do CONSUMED_FACTS real num scratch -> 5 testes falham incl. o ANCHOR com a fact exata + CONFINEMENT 11.114 no CLI; revertido byte-identical — a graduacao do allowlist para classe (2026-08-13, local, sem rede)
+
+**O pedido**: a sec 11.109 (o ANCHOR — as fact strings do CONSUMED_FACTS
+usam âncora estável, nunca número de linha) tem prova hermética (o ANCHOR
+test sobre o registry), mas sem prova viva. Fazer uma Prova no padrão das
+Provas 44/50: num scratch, reintroduzir 'linha 625' numa fact string do
+CONSUMED_FACTS real e confirmar que o ANCHOR test falha com a fact exata
+— registrando como Prova no gates-proofs.md.
+
+**O veredito: ADOTADO** — a prova viva fechou o lado do pipeline do
+ANCHOR. A execução revelou a decisão estrutural: o guard que hospeda o
+CONSUMED_FACTS (scan-derived-inventory.mjs, o 11º guard do batch desde a
+sec 11.112) vivia no WIRED_ALLOWLIST com a nota "sem Prova dedicada" — o
+precedente documentado (o scan-unit-config GRADUOU do allowlist para
+classe com a Prova 49, sec 8.44) manda que a PRIMEIRA Prova da classe a
+gradua. A Prova 56 é a 1ª do scan-derived-inventory -> a graduação
+allowlist→classe é a consequência, e o proof-register (que fail-loud
+recusa classe inexistente) registra a Prova — a classe entra no
+PROOF_CLASSES com a entrada inline, no formato exato do helper.
+
+**A execucao** (ciclo local real, scratch `scratch/prova56-anchor-11.109`,
+revertido byte-identical):
+1. Backup byte-copy (o guard é UNTRACKED — o revert via `cp`, não git
+   checkout): `cp scripts/scan-derived-inventory.mjs /tmp/prova56-sdi-backup.mjs`.
+2. Branch scratch + `sed` na linha 69 do guard: a fact `safetyDiff (o path
+   resolvido-uma-vez)` ganha `, linha 625` — 625 é o defLine REAL do
+   safetyDiff no RESOLVED_PATHS (a classe exata que a 11.109 removeu: o
+   número pertence ao registry do defLine, não à fact string). Outras
+   facts intactas (67/70/72 sem 'linha 625').
+3. `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts`
+   -> exit 1: **5 testes falham** — o ANCHOR (sec 11.109) com a fact
+   EXATA `hook-proof-run:safetyDiff (o path resolvido-uma-vez, linha
+   625) - a fact string nao pode embutir numero de linha (o numero do
+   defLine pertence ao RESOLVED_PATHS)` + as CONFINEMENTs da 11.113.
+4. O CLI do guard (a CONFINEMENT da 11.114 executada no batch) flagra a
+   MESMA violação: `o campo fact de CONSUMED_FACTS:hook-proof-run:
+   safetyDiff (o path resolvido-uma-vez, linha 625) embute numero de
+   linha` — o guard executa a fronteira, não só a suite.
+5. Revert: `cp /tmp/prova56-sdi-backup.mjs scripts/scan-derived-inventory.mjs`
+   + `cmp` byte-identical (CMP_OK) + `git branch -D
+   scratch/prova56-anchor-11.109` — linha 69 restaurada sem o 'linha 625'.
+
+**A fronteira honesta**: a prova mutou a fact do CONSUMED_FACTS REAL (não
+uma cópia) e observou o firing set nos DOIS canais (a suite hermética do
+ANCHOR + o CLI do guard 11.114). O que a prova não fez: exercitar a
+CONFINEMENT do RESOLVED_PATHS (o lado do defLine/citedAt, que tem
+realidade mecânica própria — a fronteira da 11.113 deixa os números dos
+DOIS campos numéricos com derivada) — a classe descrita pelo pedido era a
+fact string, e o ANCHOR a travou.
+
+**Controle pos-ciclo**: `cmp` byte-identical vs backup (CMP_OK) + branch
+scratch deletada + o guard untracked restaurado (o diff da thread
+intacto) + a suite 11.107/11.113/11.114 verde no repo real após o registro
+(proofs-manifest + proof-helpers-contract + CLIs clean) — a evidência da
+prova não deixou rastro no tree.
+
+**Registro de evento**: Prova 56 (classe scan-derived-inventory, sec 8.51, local, sem rede).
+
+## 8.52 Prova 57 — prova viva LOCAL da FRONTIER 11.110 (par das Provas 44/50): a derivada compartilhada fail-input-cites mutada num scratch (scan target fail( -> steps.push() -> as citacoes caem nas linhas do plano) -> 3 testes do ci falham incl. o FRONTIER com a linha exata 335 (b (alias de opts.branch)); o irmao 11.115 do hook falha com a 342 (opts.safetyDiff); revertido byte-identical (2026-08-13, local, sem rede)
+
+**O pedido**: o FRONTIER da sec 11.110 pina a classe hermeneuticamente (a
+ derivada real do ci contra o source — nenhuma citacao de input cai em
+ linha de steps.push/console.log), mas sem prova viva. Fazer uma Prova no
+ padrao das Provas 44/50: num scratch, estender o failMsgInputCites (agora
+ a fonte unica compartilhada da sec 11.115, scripts/__tests__/fail-input-cites.ts)
+ para incluir uma linha de steps.push e confirmar que o FRONTIER test
+ falha com a linha exata.
+
+**O veredito: ADOTADO** — a prova viva fechou o lado do pipeline do
+FRONTIER. A mutacao revelou o valor da fonte unica: UM dente na derivada
+compartilhada faz o FRONTIER do ci (11.110) E o irmao do hook (11.115)
+falharem — os dois helpers provados ao vivo de uma vez (a regra dos 2 usos
+nao e so de forma, e de alcance de guard).
+
+**A execucao**: ciclo local (sem rede): backup byte-copy
+`/tmp/prova57-fic-backup.ts` (o modulo e untracked, revert via cp) + branch
+`scratch/prova57-frontier-11.110` + sed na linha 37 do fail-input-cites.ts
+trocando o scan target `src.indexOf("fail(", from)` por
+`src.indexOf("steps.push(", from)` (a derivada passa a varrer as linhas do
+plano em vez dos fails). A suite do ci rodou com 3 falhas: o ABS PIN
+(22 recebidas vs 17 esperadas), a MUTATION typo e o FRONTIER com a linha
+EXATA `a citacao 335 (b (alias de opts.branch)) nao pode ser plan/log` —
+a linha 335 do ci-proof-run.mjs e um steps.push do plano (o stash step,
+`stash push -u -m "ci-proof: ${b}..."`, sec 11.44). A suite do hook rodou
+com a mesma arma: o FRONTIER 11.115 falhou com `a citacao 342
+(opts.safetyDiff) nao pode ser plan/log`. Revert via cp + CMP_OK
+(byte-identical) + branch -D.
+
+**A fronteira honesta**: a mutacao trocou o alvo de varredura POR INTEIRO
+(nao acrescentou um passo ao lado do fail) — isso e o que torna a
+FRONTIER observavel: a classe pinada e que a derivada NUNCA pode varrer
+plan/log, e a prova mostra exatamente o custo de alguem estender o escopo
+(22 citacoes no lugar de 17, todas em linhas de steps.push). A prova e
+local (sem rede) — o CI real nao rodou; a suite verde apos o revert
+(ci 93/93, hook 111/111) e o registro via proof-register fecham o
+controle.
+
+**Controle pos-ciclo**: apos o revert, a suite verde no repo real (ci
+93/93 + hook 111/111 isolados — o run paralelo crashou com 0xC0000142, um
+spawn-resource do Windows que atingiu ate suites intocadas, nao uma
+regressao) + tsc 0 + CLIs clean (claims 29, manifest, derived) + registro
+via proof-register (56 -> 57 provas, sec 8.52).
+
+**Registro de evento**: Prova 57 (classe ci-proof-run, sec 8.52, local, sem rede).
+
+## 8.53 Prova 58 — prova viva LOCAL do sweep inverso da 11.117 (par das Provas 44/57): nota datada real com modulo fake citado na sec 11.119 do gates-proofs.md -> os 4 testes do describe 11.117 falham com o path exato no diff; revertido byte-identical; a classe wired-guards-contract nasce no registry (2026-08-13, local, sem rede)
+
+**O pedido**: a sec 11.117 provou que a hipotese do pedido original era FALSA (as notas de evidencia das 11.49/11.80 ja tinham classe no PROOF_CLASSES) — o valor ficou no pin da classe, mas sem prova viva. Fazer uma Prova no padrao das Provas 44/57: num scratch, adicionar uma nota datada real citando um modulo fake numa secao 11.x do gates-proofs.md e confirmar que a suite da 11.117 falha com o path exato.
+
+**O veredito: ADOTADO** — a prova viva fechou o lado do pipeline do ABS PIN da 11.117. O probe hermeneutico (a derivada do doc real) ganhou evidencia viva: UMA nota datada com um modulo fake em backticks basta para quebrar os 4 testes do describe — o REAL-REPO (9 vs 8) e os 3 MUTATIONs, que leem o doc real como base (o colateral e um fato do desenho da derivada, nao uma regressao).
+
+**A execucao**: ciclo local (sem rede; worktree com delta nao-commitado -> sem branch switch, backup byte-copy):
+  1. `cp docs/gates-proofs.md /tmp/prova58-doc.bak`
+  2. Inserida via node (CRLF preservado) no fim da sec 11.119, antes do `## 12. Referencias` (linha 10590): `**nota datada (2026-08-13)**: a prova viva citou o `scripts/scan-fake-evidence-58.mjs` e o guard pegou.`
+  3. `npx vitest run scripts/__tests__/wired-guards-contract.test.ts` (isolado, config unit) -> **exit 1, 4 testes falham** (os 4 do describe 11.117); o REAL-REPO mostra `expected [ …(9) ] to deeply equal [ …(8) ]` com a linha EXATA `+ "scripts/scan-fake-evidence-58.mjs"` (linha 40 do log)
+  4. Restauracao byte-identical: `cp /tmp/prova58-doc.bak docs/gates-proofs.md` + `cmp` OK + `grep -c scan-fake-evidence-58` = 0
+  5. Re-run da suite -> **16/16 verde** (o revert e limpo)
+  6. Registro: classe `wired-guards-contract` criada no PROOF_CLASSES (module = a propria suite, o padrao da classe scan-surfaces-contract; sai da derivacao wired por shape .test.ts — os pins 21 wired / 5 exclusoes intactos) + Prova 58 / sec 8.53 + snapshot + counts 22 classes / 58 provas.
+
+**A fronteira honesta**: a prova e LOCAL (run null) — o ABS PIN da 11.117 tambem roda no CI do pr-check, mas nao foi disparado um run real; e o colateral dos 3 MUTATIONs (falham juntos porque usam o doc real como base) e um fato do desenho da derivada, nao uma regressao.
+
+**Controle pos-ciclo**: `npx vitest run scripts/__tests__/proofs-manifest.test.ts scripts/__tests__/wired-guards-contract.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts` (verde) + `npx tsc --noEmit` (0) + CLIs clean (claims 30, manifest 22/58, derived) + UTF-8 do doc OK + ASCII do .mjs/.ts OK + ordering 11.119 -> 12 monotono.
+
+**Registro de evento**: Prova 58 (classe wired-guards-contract, sec 8.53, local, sem rede).
+
+## 8.54 Prova 59 — prova viva LOCAL do ABS PIN da 11.118 (par das Provas 44/50): a nota datada real com um helper sem entrada (scripts/guard-remeasure.mjs) citado na sec 11.121 do gates-proofs.md -> o REAL-REPO da 11.118 falha com o path exato no diff; revertido byte-identical; a classe proof-helpers-contract nasce no registry (2026-08-13, local, sem rede)
+
+**O pedido**: a sec 11.118 tem prova hermEtica (os MUTATIONs sobre copias) mas sem prova viva. Fazer uma Prova no padrao das Provas 44/50: num scratch, adicionar uma nota datada citando um helper sem entrada no doc real e confirmar que a suite da 11.118 falha com o caminho exato.
+
+**O veredito: ADOTADO** — a prova viva fechou o lado do pipeline do ABS PIN da 11.118. O detalhe de desenho que a prova expos: o sweep irmao so governa o UNIVERSO de helpers (o PROOF_HELPERS derivado + as HELPER_EVIDENCE_EXCLUSIONS) — um modulo fake fora do universo e filtrado por desenho (a fronteira documentada na 11.120). A citacao que quebra o pin precisa ser um helper REAL do universo com home: o guard-remeasure (sem entrada no PROOF_HELPERS, coberto SO pela exclusao) e o candidato perfeito — a nota datada real citando-o faz o deriveHelperEvidenceCited sair de [] para [scripts/guard-remeasure.mjs], e o REAL-REPO da 11.118 (o ABS PIN da superficie: 0 citacoes de helper em evidencia) falha com o path exato.
+
+**A execucao**: ciclo local (sem rede; worktree com delta nao-commitado -> sem branch switch, backup byte-copy):
+  1. `cp docs/gates-proofs.md /tmp/gates-proofs.prova59.bak.md` (826164 bytes)
+  2. Inserida via node (CRLF preservado) no fim da sec 11.121, antes do `## 12. Referencias`: `**nota datada (2026-08-13)**: a prova viva citou o `scripts/guard-remeasure.mjs` num registro de evidencia e a suite da 11.118 respondeu.`
+  3. `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts` (isolado, config unit) -> **exit 1, 1 teste falha** (o REAL-REPO do describe 11.118): `AssertionError: expected [ 'scripts/guard-remeasure.mjs' ] to deeply equal []` com a linha EXATA `+ "scripts/guard-remeasure.mjs"` no diff; os 42 restantes passam (os MUTATIONs da 11.118 sao invariantes a citacao coberta)
+  4. Colateral capturado na suite do guard: `npx vitest run scripts/__tests__/scan-evidence-sweep.test.ts` -> **5 testes falham** — o REAL-REPO CONTRACT (o sweep 11.117 flagra o guard-remeasure fora das EVIDENCE_EXCLUSIONS: `expected [ Array(1) ] to deeply equal []`), o MUTATION 11.117 (2 vs 1), o CLI REAL (exit 1), e os FRONTEIRAS C e D da 11.121 (`expected [ …(9) ] to not include 'scripts/guard-remeasure.mjs'` — a distribuicao viva driftou)
+  5. Restauracao byte-identical: `cp /tmp/gates-proofs.prova59.bak.md docs/gates-proofs.md` + `cmp` OK + `grep -c guard-remeasure.mjs.*respondeu` = 0
+  6. Re-run das 2 suites -> **53/53 verde** (o revert e limpo)
+  7. Registro: classe `proof-helpers-contract` criada no PROOF_CLASSES (module = a propria suite, o padrao da classe scan-surfaces-contract; sai da derivacao wired por shape .test.ts — os pins 22 wired / 5 exclusoes intactos) + Prova 59 / sec 8.54 + snapshot + counts 23 classes / 59 provas.
+
+**A fronteira honesta**: a prova e LOCAL (run null) — o ABS PIN da 11.118 tambem roda no CI do pr-check, mas nao foi disparado um run real; e o colateral dos 5 testes na suite do guard (o 11.117 flagra a citacao de um helper nao-exclusao + os FRONTEIRAS da 11.121) e um fato do desenho da derivada (a mesma mutacao move as duas superficies), nao uma regressao.
+
+**Controle pos-ciclo**: `npx vitest run scripts/__tests__/proofs-manifest.test.ts scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/scan-evidence-sweep.test.ts scripts/__tests__/wired-guards-contract.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts` (verde) + `npx tsc --noEmit` (0) + CLIs clean (claims 30, manifest 23 classes / 59 provas / 22 wired, evidence-sweep clean) + UTF-8 do doc OK + ASCII do .mjs/.ts OK + ordering 8.53 -> 8.54 -> 9 monotono.
+
+**Registro de evento**: Prova 59 (classe proof-helpers-contract, sec 8.54, local, sem rede).
 
 ## 9. Observação transversal — o mascaramento que motivou o reorder do check job
 
@@ -7913,6 +8278,8 @@ file OK.
 
 A re-validação da sec 8.34 (2026-08-11, o par 27→28 claims) foi manual: rodar o CLI, rodar a suite, editar a doc — o ciclo que o próximo dev re-derivaria a cada claim nova. O helper `scripts/doc-revalidate.mjs` (o espelho do hook-proof-run para os registros de evento) automatiza o ciclo em 1 invocação, no padrão das Provas/controles 8.x:
 
+**ACHADO datado 2026-08-13**: o gate do passo 1 (o CLI real) falha enquanto QUALQUER reval de 8.x estiver stale — o helper nao pode curar o estado multi-secao que ele proprio detecta (o CLI sai em falha, com as secoes listadas, e o helper morre antes do upsert). Quando o EXIT_CLAIMS cresce com N secoes stale, a reval MANUAL e o caminho (o padrao pre-helper, como na 30a claim da sec 11.120): editar as linhas **Re-validação (DATE, N claims)** das secoes afetadas. Um --force (pular o gate quando o estado ja esta stale) e a melhoria pendente.
+
 1. **CLI real**: spawna `node scripts/scan-exit-claims.mjs --check` (com `EXIT_CLAIMS_DOC` apontando o `--doc`) e captura o count verbatim do stdout (`clean (28 claims registradas em ...)`).
 2. **Suite hermética do par**: spawna o vitest de `scan-exit-claims.test.ts` (as MUTATIONs da sec 11.42/11.55) e confirma o verde — `--no-suite` pula (o caminho rápido do dry-run).
 3. **Upsert datado**: monta a linha do template UTF-8 `scripts/doc-revalidate-line.txt` (fora do gate ASCII dos `scripts/*.mjs` — o MJS_GATE_PATTERNS) e faz o upsert idempotente na seção alvo (`--section`, default `8.34`): mesma data = REPLACE da entrada automática, nunca duplicata; datas diferentes coexistem; a linha manual `**Re-validação datada (` nunca colide com a automática (o marcador não tem o "datada").
@@ -9507,7 +9874,9 @@ path em si - um dev que mude o prefixo do mkdtempSync na linha 621
 continua livre (o lugar UNICO de criacao e a decisao do backup step); o
 que o guard trava e a CLASSE de divergencia: mais de uma criacao ou um
 literal no call site. A criacao unica e o contrato; o prefixo gerado e
-decisao. Claim-free: nenhum exit code novo (count 29 intacto).
+decisao. **Supersession (2026-08-13)**: a sec 11.120 (o 12o guard do batch) materializou EXATAMENTE a condicao que este veredito condicionou ("SE o sweep ganhar um consumidor batch") — a fronteira e as derivadas migraram do evidence-sweep.ts (deletado) para o guard scan-evidence-sweep (a sec 11.120), e as suites das secs 11.117/11.118 importam DAQUELE guard (o padrao EXIT_CODES_RE da sec 11.93). O estado documentado aqui (home .ts) foi superseded; a sec 11.120 e o home atual.
+
+Claim-free: nenhum exit code novo (count 29 intacto).
 
 **Re-validação**: `npx vitest run scripts/__tests__/hook-proof-run.test.ts
 scripts/__tests__/scan-exit-claims.test.ts
@@ -9516,6 +9885,800 @@ vitest.config.unit.ts` + `npx tsc --noEmit` + `node
 scripts/scan-exit-claims.mjs --check` (clean 29 claims) + UTF-8 do doc +
 ASCII do .mjs + ordering 11.100 -> 11.101 -> 12 monotono (a comparacao e
 por tupla [11, 101] > [11, 100]).
+
+## 11.102 O guard irmao do fato consumido no ci-proof-run: todo uso do stashLeftNote passa o gate stashedDelta VARIAVEL + o logPath resolvido-uma-vez citado por variavel
+
+**Classe**: o trio das secs 11.84/11.100/11.101 pina os args do
+revertLeftNote (hook-proof-run), mas o irmao CI (ci-proof-run.mjs) usa o
+stashLeftNote com o mesmo padrao de resolved-once sem pin analogo. A
+avaliacao honesta: o stashLeftNote do ci-proof-run e uma CONST string
+(linha 612), NAO uma funcao com args de path como o revertLeftNote - o
+padrao args[N] do trio nao mapeia 1:1. Os fatos consumidos do lado CI sao
+DOIS: (a) o gate `stashedDelta` (a variavel setada UMA vez pelo stash
+step, que decide se a nota e honesta - uma nota incondicional mentiria
+num ciclo de arvore limpa) em CADA um dos 8 usos; e (b) o `logPath`
+(linha 822, resolvido UMA vez via path.join(os.tmpdir()) e citado no DONE
+`log=${logPath}` e no 'log capturado em ${logPath}') - o verdadeiro
+analogo do backupDir/safetyDiff (o path citado em output que precisa ser
+o MESMO da gravacao).
+
+**Veredito: ADOTADO** - o guard irmao no ci-proof-run.test.ts com 2
+dimensoes no padrao da 11.84/11.100/11.101. A divisao com a 11.70: a
+11.70 pina o PLACEMENT (quais fail sites levam a nota + o shape
+condicional no subset pos-stash pre-revert); a 11.102 pina o FATO
+CONSUMIDO (o gate VARIAVEL em TODOS os 8 usos + o logPath resolvido-
+uma-vez) - complementares, nao sobrepostos:
+1. os 8 usos do stashLeftNote passam o gate stashedDelta VARIAVEL (nunca
+   um literal `true ?` nem incondicional), com 2 MUTATIONs hermeticas
+   (hardcodar o gate do 1o uso -> 1 offender com o literal; remover o gate
+   -> 1 offender incondicional);
+2. o logPath resolvido-uma-vez citado por variavel (${logPath} /
+   writeFileSync(logPath)), com 2 MUTATIONs (segunda path.join no DONE ->
+   flagra; literal /tmp/ no DONE -> flagra - o drift do path citado).
+
+**A fronteira**: o pin cobre a VARIAVEL, nao o valor - mudar o texto do
+stashLeftNote na linha 612 ou o prefixo do logPath na linha 822 continua
+livre (os lugares UNICOS de resolucao sao as decisoes das secs 11.41 e
+11.20); o que o guard trava e a CLASSE de divergencia: literal ou segunda
+resolucao nos call sites. A resolucao unica e o contrato; o texto/prefixo
+e decisao.
+
+**A 3a dimensão avaliada — o `--mutate-self-delete` (RECUSADO, a fronteira
+basta)**: o mesmo padrão resolved-once existe no `selfDel` (linha 659,
+`path.resolve(process.cwd(), opts.mutateSelfDelete)`), mas a avaliação
+honesta prova que ele NÃO ganha a 3a dimensão: o path resolvido é usado SÓ
+internamente (lstatSync linha 665 + rmSync linha 674 — o `selfDel` aparece
+3x no source, todas internas) e NENHUMA das 3 citações (plan 341, fail 673,
+log 677) usa o resolved — todas citam deliberadamente o RAW
+`opts.mutateSelfDelete` (o path como o usuário digitou, reconhecível na
+mensagem). A classe que a dimensão fecharia é a do logPath — o PAR
+escrita-citação (`writeFileSync(logPath)` + DONE `log=${logPath}`: um
+literal ou uma segunda resolução no output citaria um arquivo DIFERENTE do
+gravado); no selfDel esse par não existe — as operações são internas e a
+citação é do INPUT, não da resolução (e `path.resolve(cwd, raw)` é
+determinístico: uma segunda resolução ou um literal no rm nomearia o MESMO
+arquivo). Irmãos conferidos na mesma varredura: linha 544 (o path do
+run-precommit-guards — argumento de spawn interno, não citado em output),
+linha 822 (o logPath — já pinado) e linha 959 (o guard IS_MAIN — não é
+resolução para output). A fronteira documentada cobre paths citados em
+output que precisam ser o mesmo da operação; o selfDel não é citado —
+registro aqui para o futuro não re-propor a dimensão (o lesson do
+registry, sec 11.60). Claim-free: nenhum exit code novo (count 29
+intacto).
+
+**Prova viva do RECUSADO (2026-08-12, scratch `ci-proof/prova53-selfdel-3d`,
+revertido)**: mutou a linha 673 do ci-proof-run.mjs real trocando a citação
+do fail de `${opts.mutateSelfDelete}` para `${selfDel}` (o resolved-uma-vez
+em escopo, linhas 659/665/674; as citações de plan 341 e log 677 intactas;
+working tree restaurada após o ciclo). **Resultado observado: a premissa
+"nenhuma suite falha" é FALSIFICADA** — 1 teste em 92 falha na suite do
+ci-proof-run: o ABS PIN da sec 11.105, que pina `673:opts.mutateSelfDelete`
+na lista de 17 citações (a mutação remove a citação da derivada e o pin
+diverge com a entrada exata). Os outros 91 testes passam — incluindo os
+E2Es e o guard 11.102: nenhum contrato de CORRETUDE quebra (o absolutizar
+realmente nomeia o mesmo arquivo, como o RECUSADO afirmou). A leitura
+honesta: o RECUSADO foi feito ANTES da 11.105; o guard novo (o fato "inputs
+citados", sec 11.105) passou a pinar a FORMA da citação em mensagens de
+fail à variável do parseArgs — o `${selfDel}` não é `opts.X` nem o alias
+`b`, então a classe que o RECUSADO deixou documentada-sem-pin foi FECHADA
+pelo guard posterior no lado das MENSAGENS. O lado do path-OPERACIONAL
+(rmSync/selfDel) segue sem pin — sem write-cite pair, como registrado. O
+futuro não precisa re-propor a dimensão: o lado mensagem está pinado por
+11.105, o lado operacional segue documentado.
+
+**Registro formal**: a evidência desta prova viva foi registrada como
+**Prova 53 (sec 8.48)** no PROOF_CLASSES — a classe 11.105 ganhou a entrada
+de prova viva que faltava (o par das Provas 48/52 na classe ci-proof-run).
+O valor da entrada é de REGISTRO (descobrível pelo "avalie uma prova" do
+futuro), não de cobertura nova — a fronteira da 3a dimensão intacta.
+
+**Prova agregada (Prova 54, sec 8.49, 2026-08-12)**: o PAR da 11.102 (gate
+stashedDelta + logPath) ganhou prova viva agregada — AMBAS as citações
+mutadas de uma vez num scratch confirmaram os fatos COMPARTILHADOS: o
+gate é consumido pela 11.102 (dimensão a) e pela 11.70 (placement); o
+logPath é consumido pela 11.102 (dimensão b) e pela 11.106 (CITED
+REALITY) e pela 11.107 (DERIVED PIN) — 6 testes da 11.102 + 2 do
+proof-helpers-contract falham, 11.70/11.105/E2Es verdes (a fronteira da
+11.110 confirmada: o logPath citado em console.log/DONE não é input — a
+11.105 não o cobre).
+
+**Re-validação**: `npx vitest run scripts/__tests__/ci-proof-run.test.ts
+scripts/__tests__/hook-proof-run.test.ts
+scripts/__tests__/scan-exit-claims.test.ts
+scripts/__tests__/gates-proofs-ordering.test.ts --config
+vitest.config.unit.ts` + `npx tsc --noEmit` + `node
+scripts/scan-exit-claims.mjs --check` (clean 29 claims) + UTF-8 do doc +
+ASCII do .mjs + ordering 11.101 -> 11.102 -> 12 monotono (a comparacao e
+por tupla [11, 102] > [11, 101]).
+
+## 11.103 O guard irmão do slice fail-loud: TODO slice indexOf-fed do repo é fail-loud ou fronteira documentada (a classe Prova 17 travada estruturalmente)
+
+**A avaliação** (o pedido pedia o irmão da sec 11.84 — que fatia o fonte do
+helper por marcadores `export function revertCycle`..`export function main` e
+depende dos asserts fail-loud dos marcadores para nunca passar vago): o
+terreno revelou que a classe 'guard que passa vago quando o alvo some'
+(Prova 17 ACHADO, sec 8.14) está quase fechada no repo, com **2 gaps reais** —
+(1) o `typeDText`/`typeEText` do scan-surfaces-contract tolerava `j === -1`
+(`return j === -1 ? doc.slice(i) : doc.slice(i, j)`), fatiando silenciosamente
+até o fim do doc e contradizendo o próprio doc-comment ('same rule as
+sectionBetween'); (2) o `rotas = md.slice(md.indexOf("## Rotas..."))` do
+bundle-report-gate sem assert de marcador — e `md.slice(-1)` devolve o ÚLTIMO
+caractere quando o marcador some (o vacuo exato da classe). O ACHADO irmão: o
+próprio guard 11.84 e a prova da sec 8.38 usam `expect(start)
+.toBeGreaterThanOrEqual(0)` + `expect(end).toBeGreaterThan(start)` — formas
+fail-loud legítimas que o classificador precisou reconhecer (nesses sites a
+classe nunca foi vaga; era o formato que faltava no guard).
+
+**Veredito: ADOTADO** — a classe vira contrato estrutural:
+
+1. **Os 2 gaps fechados no código**: `typeDText`/`typeEText` agora THROW no `j`
+   (o mesmo template do sectionBetween); o `rotas` ganhou `rotasIdx` +
+   `expect(rotasIdx).not.toBe(-1)` antes do slice; o `idx12` do teste do
+   injectDocClaim idem (era `out.slice(-1)` num `## 12.` movido).
+2. **A suite `source-slices-contract` (nova, test:unit)**: deriva TODOS os
+   sites indexOf-fed (scripts/*.mjs + scripts/__tests__/*.ts) por 2 padrões
+   (var atribuída `const x = ...indexOf(` e inline `slice(indexOf(` — a forma
+   inline é offender POR CONSTRUÇÃO: não há var para carregar o check; a
+   única forma de ser fail-loud é atribuir a var primeiro); mascara strings
+   (a cultura de masking dos detectores — prosa/fixtures que apenas
+   MENCIONAM as formas nunca registram site); exige que a var alimente um
+   `.slice()`/`.substring()` DIRETO (exclui o parsing argv/args dos
+   benchmarks); classifica fail-loud pelas formas aceitas (throw `=== -1`,
+   throw `< 0`, `continue < 0` do parser scan-timeouts — o count de
+   call-sites é baseline-pinned, um drop silencioso falha o REAL-REPO
+   CONTRACT —, `not.toBe(-1)`, `toBeGreaterThan(0)`,
+   `toBeGreaterThanOrEqual(0)` e `toBeGreaterThan` var-para-var). ABS PIN de
+   17 sites + 3 MUTATIONs herméticas (remover o throw do `j` do typeDText →
+   offender com file:line:var; remover o expect do `rotasIdx` → offender; o
+   `idx` do injectDocClaim some → a fronteira documentada vira órfã).
+3. **A fronteira documentada**: o append-fallback do `injectDocClaim` (o `idx`
+   do hook-proof-run) — a mutação NUNCA quebra o ciclo de prova (o claim é
+   inserido no fim mesmo sem o anchor); o comportamento é pinado pelo teste
+   'doc sem ## 12.' da suite hook-proof-run (sec 11.98). O par
+   stale-boundary (reviewer): uma entrada documentada cujo site virou
+   fail-loud é STALE e falha a suite — as duas direções do crescimento
+   fechadas (o mesmo par do manifest vs wired).
+4. **A fronteira de escopo**: só vars que alimentam slice DIRETO são sites —
+   o `start` do `extractChartData` (check-js-budget) alimenta o slice
+   transitivamente via `i` e fica fora do scan (é fail-loud de qualquer
+   forma, sec 8.2); o parse do scan-timeouts que encadeia indexOf em indexOf
+   (posições, não slices) também fica fora.
+
+Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Re-validação**: `npx vitest run scripts/__tests__/source-slices-contract.test.ts
+scripts/__tests__/scan-surfaces-contract.test.ts
+scripts/__tests__/bundle-report-gate.test.ts
+scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/scan-exit-claims.test.ts
+scripts/__tests__/gates-proofs-ordering.test.ts --config
+vitest.config.unit.ts` + `npx tsc --noEmit` + `node
+scripts/scan-exit-claims.mjs --check` (clean 29 claims) + UTF-8 do doc +
+ASCII do .mjs + ordering 11.102 -> 11.103 -> 12 monotono (a comparacao e
+por tupla [11, 103] > [11, 102]).
+
+## 11.104 O registro de fatos consumidos (CONSUMED_FACTS): todo fato consumido dos helpers de prova tem guard irmão pinado - o guard dos guards de fatos consumidos
+
+**A avaliação** (o pedido: o proof-helpers-contract já deriva os 2 helpers do
+package.json e pina as 3 partes do fail-loud — deveria também pinar que TODOS
+os fatos consumidos dos helpers têm guard irmão?): a 11.102 fechou o par nos
+DOIS helpers, mas cada guard de fato consumido deriva do source do SEU helper
+(11.65 scratchLeftNote, 11.84 stage, 11.100 safetyDiff, 11.101 backupDir no
+hook-proof-run; 11.70 stashLeftNote, 11.102 gate+logPath no ci-proof-run) —
+sem NENHUM registro único. A classe de drift: (1) um guard removido da SUA
+suite (enquanto a secção do doc permanece — o ordering/claims não pegam)
+some silenciosamente; (2) o "avalie se o fato X merece guard" do futuro não
+tem registry para consultar (o lesson da sec 11.60: o PROOFS nasceu do mesmo
+re-pedido duplicado).
+
+**Veredito: ADOTADO** — o registry CONSUMED_FACTS no proof-helpers-contract
+(o lar natural: já deriva os 2 helpers e pina as 3 partes):
+1. **9 entradas**: 8 pins (scratchLeftNote 11.65, stage 11.84, safetyDiff
+   11.100, backupDir 11.101, stashLeftNote 11.70, stashedDelta 11.102, logPath
+   11.102, inputs citados 11.105) + 1 fronteira (selfDel 11.102 — o RECUSADO
+   do addendum, guard ''
+   por desenho: o pin cobre a findabilidade, não um guard).
+2. **Os invariantes**: todo fato 'pin' tem o guard REAL no source da suite (o
+   marcador é o título do describe ou o nome da função-guard — identidades
+   estáveis); toda fronteira tem guard '' E a secção documentada no doc (o
+   RECUSADO nunca some).
+3. **HELPERS COBERTOS**: todo helper da derivada (package.json *-proof:run)
+   tem >= 1 fato registrado — um 3º helper sem fatos diverge.
+4. **ABS PIN** do registro (growth: um fato novo exige edição consciente) +
+   2 MUTATIONs (remover o guard do stage da suite → flagra o fato; a
+   fronteira selfDel perde a secção no doc → flagra).
+
+**A fronteira**: os fatos consumidos são SEMÂNTICOS (gates, notes, paths
+resolvidos citados em output) — o registry é curado (como o PROOF_CLASSES),
+não derivado; um fato AUSENTE do registro não é pego mecanicamente (a
+direção da completude é o HELPERS COBERTOS + o ABS PIN: fatos novos exigem
+registro consciente). O que o registro trava: o guard que some da sua suite
+e a fronteira que perde a documentação.
+
+Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Re-validação**: `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts
+scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/ci-proof-run.test.ts
+scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts
+--config vitest.config.unit.ts` + `npx tsc --noEmit` + `node
+scripts/scan-exit-claims.mjs --check` (clean 29 claims) + UTF-8 do doc +
+ASCII do .mjs + ordering 11.103 -> 11.104 -> 12 monotono (a comparacao e
+por tupla [11, 104] > [11, 103]).
+
+## 11.105 O guard irmão do INPUT citado: toda citação de input em mensagens usa a VARIÁVEL do parseArgs (opts.X ou o alias b resolvido-uma-vez), nunca um literal
+
+**A avaliação** (o pedido: a 11.102 fechou o lado dos paths
+resolvidos-uma-vez citados em output — logPath — mas os INPUTS raw citados
+nas mensagens (opts.mutateSelfDelete, opts.mutate, opts.branch,
+opts.workflow) não têm guard de forma análogo — um literal hardcoded num
+fail citaria um path DIFERENTE do parseado?): o probe (2026-08-12) derivou
+as 55 citações de input do source inteiro do ci-proof-run.mjs — TODAS via
+`${opts.X}` ou o alias `b` (o `const b = opts.branch` da linha 319, o
+resolved-once do lado CI, análogo do backupDir/safetyDiff/logPath).
+Nenhum literal hoje. A classe que o guard trava tem DOIS lados: (1) um
+literal hardcoded numa mensagem de fail (citaria outra branch/workflow);
+(2) a typo de key (opts.brnach) e o alias re-resolvido ou literal — os
+inputs citados são o espelho dos paths citados da 11.102.
+
+**Veredito: ADOTADO** — o guard de forma na suite do ci-proof-run (sec
+11.105, no padrão da 11.102):
+1. **failMsgInputCites(src)**: deriva as citações `${opts.X}` / `${b}`
+   DENTRO de mensagens de fail (fatia cada `fail(` até o backtick de
+   fechamento — multi-linha incluído) com a linha física exata.
+2. **ABS PIN de 17 citações em 9 mensagens** (566/633/637/673/713/728/786/
+   796x3/800x4/804x3): o growth contract — um literal num fail SOME da
+   derivada e diverge; uma citação nova exige edição consciente.
+3. **INVARIANT de keys reais**: toda key citada existe no parseArgs (as
+   `out.X =` do body) — a typo opts.brnach diverge fail-loud.
+4. **INVARIANT do alias**: o `const b = opts.branch` (linha 319) é o
+   resolved-once — nunca vira literal nem segunda resolução.
+5. **3 MUTATIONs**: literal da branch no fail (633 some), typo da key
+   (brnach), alias literal (const b = "main").
+
+A fronteira documentada: o guard cobre as MENSAGENS (fail + plan + logs —
+as 55 citações); os args de COMMANDO (git([...])) que citam inputs via
+`${opts.X}` seguem o mesmo fato consumido por construção (são inputs
+operacionais, não mensagens — o guard deriva por mensagem, o que é a
+superfície que o pedido nomeia). O fato "inputs citados" entrou no registry
+CONSUMED_FACTS (9 entradas, o guard 11.105 pinado).
+
+RESIDUAL FECHADO (nit do reviewer, 2026-08-12): a primeira versão do
+failMsgInputCites fatiava só a PRIMEIRA parte do template — numa mensagem
+concatenada (`fail(N, \`parte1\` + \`parte2\`)`, como o fail de 563-566 e o
+de 726-730), uma citação `${opts.X}` acrescentada a uma parte POSTERIOR
+escaparia silenciosamente do ABS PIN e do INVARIANT (sem fail-loud). O
+reviewer confirmou que o fechamento é barato (as expressões ${...} do
+source usam aspas duplas, sem backtick aninhado) — o derivador agora caminha
+as continuações `+ \`...\`` do MESMO `fail(` até o fim da cadeia (a parte2
+passa a ser varrida). O ABS PIN segue em 17 (as partes2 atuais só têm
+${CI_PROOF_NAMESPACE}/${DANGER_REFS...}/${wf.stderr} — não-inputs).
+Fronteira honesta: o walk cobre o padrão `+ \`...\`` presente hoje; uma
+cadeia com expressão não-template no meio (`\`a\` + someExpr + \`b\``)
+quebraria o walk — padrão que não existe no source e que, se aparecesse com
+um `${opts.X}` na parte não-varrida, o ABS PIN não pegaria (sem fail-loud).
+
+Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Re-validação**: `npx vitest run scripts/__tests__/ci-proof-run.test.ts
+scripts/__tests__/proof-helpers-contract.test.ts
+scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts
+--config vitest.config.unit.ts` + `npx tsc --noEmit` + `node
+scripts/scan-exit-claims.mjs --check` (clean 29 claims) + UTF-8 do doc +
+ASCII do .mjs + ordering 11.104 -> 11.105 -> 12 monotono (a comparacao e
+por tupla [11, 105] > [11, 104]).
+
+## 11.106 O inventario RESOLVED_PATHS: os paths resolvidos-uma-vez citados em output em TODOS os helpers de prova (a varredura ampla, 2026-08-12)
+
+**WHY**: a varredura dos irmaos (sec 11.102) foi SO no ci-proof-run.mjs - o
+logPath dele era o UNICO path resolvido-uma-vez citado em output com guard de
+forma (logUses). A varredura ampla derivou todos os `const X = path-API`
+(path.resolve/path.join/fs.mkdtempSync) dos 5 helpers de prova (hook-proof-run,
+ci-proof-run, guard-remeasure, doc-revalidate, proof-register - os 2 derivados
++ os 3 irmaos com suite) e cruzou com as citacoes em output (fail/notes/DONE/
+logs). **Veredito: ADOTADO** - o inventario completo tem 12 pins + 1 boundary
+(o selfDel do RECUSADO da 11.102), fechado num registry RESOLVED_PATHS no
+proof-helpers-contract.test.ts (o guard dos guards de paths).
+
+**O inventario** (helper, var, defLine, citacoes pinadas):
+- hook-proof-run.mjs: docPath (619, citado 715/719), backupDir (621, citado
+  419/510/512/515/551/553/567/570/594/704 - ja pinado pelo backupDirFromVar,
+  sec 11.101), safetyDiff (625, citado 484/567/644 - ja pinado pelo
+  safetyDiffFromVar, sec 11.100), safetyBackup (628, citado 694), logPath
+  (768, citado 770/797).
+- ci-proof-run.mjs: logPath (822, citado 827/899 - ja pinado pelo logUses,
+  sec 11.102), selfDel (659 - BOUNDARY: resolvido-uma-vez mas NAO citado em
+  output, o RECUSADO da 11.102).
+- guard-remeasure.mjs: logPath x2 (282 citado 283; 303 citado 304 - a def
+  303 e a forma CURADA done.log.replace, sem path-API na linha, nao
+  derivavel mecanicamente).
+- doc-revalidate.mjs: docPath (284, citado 269/285/335/341).
+- proof-register.mjs: manifestPath (365), testPath (366), docPath (367) -
+  todas citadas na linha 437 (o summary); a forma CURADA env||DEFAULT (sem
+  path-API na linha, nao derivavel mecanicamente).
+
+**As invariantes** (o guard do registro): DEF REALITY (a defLine pinada
+contem 'const X =' - nunca uma linha fantasma), CITED REALITY (as citacoes
+derivadas de ${var} == citedAt por helper+var - um literal numa fail REMOVE a
+citacao da derivada e diverge), COMPLETENESS (todo path-API derivado COM
+citacao em output esta no registro como pin - um path novo citado sem entrada
+diverge, a varredura fechada), GUARD REALITY (todo pin tem guard real: os 3
+pre-pinados nas suites dos helpers, os 9 gaps no proprio registro), BOUNDARY
+(o selfDel tem guard '' + secao documentada + ZERO citacoes derivadas - se
+ganhar citacao, a fronteira quebra) + ABS PIN (o snapshot completo, 13
+entradas - o growth contract) + 3 MUTATIONs (literal no docPath, def do
+logPath removida, path novo citado).
+
+**A fronteira da derivacao**: o derivador mecanico cobre as formas path-API
+diretas; as formas CURADAS (o done.log.replace do guard-remeasure 303 e o
+env||DEFAULT do proof-register 365-367) sao registradas explicitamente - um
+path novo na forma CURADA exige edicao consciente do registro (nao ha
+derivacao que o pegue sozinho, o mesmo espirito do frontier do 11.105).
+
+Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Re-validação**: `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts
+scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts
+--config vitest.config.unit.ts` + `npx tsc --noEmit` + `node
+scripts/scan-exit-claims.mjs --check` (clean 29 claims) + UTF-8 do doc +
+ASCII do .mjs + ordering 11.105 -> 11.106 -> 12 monotono.
+
+## 11.107 O inventário derivado do source (a completude do registry fechada)
+
+**O ACHADO**: o CONSUMED_FACTS (sec 11.104) é CURADO - um fato novo num
+helper sem registro não é pego mecanicamente: a lista só cresce quando
+alguém a edita. O RESOLVED_PATHS (sec 11.106) fechou o lado do PATH com
+varredura ampla (a derivada mecânica), mas o lado do FATO consumido
+(notas/gates) seguia dependente da curadoria manual - o mesmo gap que a
+11.79 fechou no PROOF_HELPERS (a fonte única elimina a lista manual).
+
+**A decisão (ADOTADO)**: derivar o inventário do SOURCE com o padrão
+TARGET_DIRS consumido. As derivações mecânicas - deriveNotes (consts
+`\w+LeftNote =`), deriveGates (os ternários `\w+Delta ? \w+LeftNote` - o
+gate VARIAVEL que decide se a nota entra no fail), derivePathDefs/citesOf
+(as da 11.106, os paths resolvidos-uma-vez citados em output) - são a fonte
+única nos 2 helpers (hook-proof-run + ci-proof-run). O registro curado é
+verificado CONTRA a derivada: um fato novo no source sem registro diverge.
+
+**O registro hoisted**: o CONSUMED_FACTS (11.104) e o RESOLVED_PATHS
+(11.106) foram HOISTED ao nível do módulo (viviam dentro dos describes) -
+a sec 11.107 consome os DOIS em conjunto (nota/gate -> 11.104, path ->
+11.106); a derivada da completude cruza os dois registries com a mesma
+filosofia dos TARGET_DIRS (o fato derivado nunca é uma cópia).
+
+**As invariantes**: DERIVED PIN (a projeção [helper, kind, var, linha] das
+derivadas - o growth contract do lado da DERIVAÇÃO: uma nota/gate novo no
+source diverge do snapshot), COMPLETENESS (todo fato derivado - notas +
+gates + paths citados em output - tem entrada no registry correspondente;
+um fato novo sem registro diverge fail-loud) + 3 MUTATIONs (nota nova
+`novoLeftNote`, gate novo `novoDelta ? stashLeftNote`, path novo citado em
+output - os 3 entram na derivada mas não no registro e a COMPLETENESS
+divergiria).
+
+**A fronteira honesta**: os status vars do hook (stDelta 705, stMut 744)
+NÃO são gates - são leituras de `git status`, nunca ternários que decidem a
+nota; a classe mecânica do gate é o `\w+Delta ? \w+LeftNote` (o par que a
+11.102 pina no stashedDelta do ci). O deriveGates exige a forma ternária
+com a nota para não capturar nomes de variável casuais.Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Prova viva (Prova 55, sec 8.50)**: o gate fake `novoDelta ?
+stashLeftNote` injetado na linha 965 do ci-proof-run.mjs REAL num scratch
+(ci-proof/prova55-11.107) fez a describe 11.107 falhar com o caminho
+exato — DERIVED PIN `expected [4] toEqual [3]` com `+ "novoDelta"` e
+COMPLETENESS `o gate ci-proof-run:novoDelta (primeiro uso 965) sem
+entrada no CONSUMED_FACTS` (2 testes falharam, 30 passaram incl.
+MUTATIONs + FRONTIER 11.111); revertido byte-identical. O par
+vivo/hermético do guard fechado (o mesmo dente da MUTATION, agora no
+arquivo real com as linhas no diff do vitest).
+
+**Re-validação**: `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts
+scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts
+--config vitest.config.unit.ts` + `npx tsc --noEmit` + `node
+scripts/scan-exit-claims.mjs --check` (clean 29 claims) + UTF-8 do doc +
+ASCII do .mjs + ordering 11.106 -> 11.107 -> 12 monotono.
+
+## 11.108 O CONSUMED_FACTS NÃO se estende à classe de guards wired
+(RECUSADO — a 11.78 + o import direto já cobrem)
+
+**O ACHADO**: o pedido avaliou estender o CONSUMED_FACTS (sec 11.104, os
+fatos consumidos dos 2 helpers de prova) à classe de guards wired —
+scan-exit-claims, scan-proof-helpers e scan-unit-config também consomem
+fatos (doc paths, manifests). O probe (2026-08-12) derivou os fatos
+consumidos dos 3 guards e cruzou com os pins existentes.
+
+**A evidência** (fato consumido → pin real já existente):
+- scan-exit-claims: `DOC = process.env.EXIT_CLAIMS_DOC ||
+  path.join(process.cwd(), "docs", "gates-proofs.md")` (linha 54) — pinado
+  pelo REAL-REPO CONTRACT do CLI com EXIT_CLAIMS_DOC (secs 11.66/11.67) e
+  pelo DOC COVERAGE; o manifest `EXIT_CLAIMS` — pinado pelo ABS PIN de
+  CONTENT (sec 11.50, a suite importa o EXIT_CLAIMS direto do guard); a
+  CURE — pinada pelo scan-cures-contract (sec 11.54, o import direto).
+- scan-proof-helpers: `ROOT` (linha 50) e `deriveProofHelpers` — pinados
+  pelo PROOF_HELPERS_PIN (sec 11.79, a suite importa o derivador direto do
+  guard) + o REAL-REPO CONTRACT do CLI (sec 11.93).
+- scan-unit-config: `ROOT` (53)/`UNIT_CONFIG` (56)/`DOC` (59) + os
+  extratores (poolNotePresent, sec81Text, noteCalibration,
+  docCalibration) — pinados pelo unit-surface-contract (a suite importa os
+  extratores direto do guard, sec 11.96) + os REAL-REPO do config e da
+  nota (sec 11.80/11.95).
+
+**A decisão (RECUSADO)**: a assimetria que JUSTIFICOU o CONSUMED_FACTS nos
+helpers não existe na classe de guards. Nos helpers, os fatos (notas,
+gates, paths) são consumidos por form guards que vivem na PRÓPRIA suite e
+são achados por marcador de texto — o registry existiu para PROVAR o
+mapeamento fato → guard. Nos guards wired, os fatos são consumidos pelas
+SUITES DELES via IMPORT DIRETO do guard (a suite importa o export e pina o
+conteúdo) — o import É o pin, mais forte que o registry (a fonte única dos
+TARGET_DIRS consumidos). E a 11.78 já garante ESTRUTURALMENTE as 3 partes
+por guard wired (entrada no manifest + suite no test:guard/test:unit +
+nota na sec 11.x) — um guard wired NOVO sem suite falha na hora. Estender
+o CONSUMED_FACTS aos guards seria duplicar o pin do import com um registry
+curado mais fraco.
+
+**A fronteira documentada**: a varredura do RESOLVED_PATHS (sec 11.106)
+cobre os 5 HELPERS de prova — os guards wired ficam FORA por desenho. Os
+paths dos guards (DOC/ROOT/UNIT_CONFIG) são INPUTS (alvos de readFileSync),
+não citações de output — com UMA exceção honesta: o `ROOT` do
+scan-unit-config é citado em output nas mensagens "ausente em ${ROOT}"
+(linhas 139/153, o único path citado em output ENTRE os guards avaliados). Essa
+citação fica como fronteira DOCUMENTADA da classe (o sweep da 11.106
+escopou aos helpers; um path de guard citado em output ganharia entrada no
+registry só com a decisão inversa) — pinada por teste: nenhum helper do
+RESOLVED_PATHS é guard wired (deriveWiredGuards).
+
+Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Re-validação**: `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts
+scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts
+--config vitest.config.unit.ts` + `npx tsc --noEmit` + `node
+scripts/scan-exit-claims.mjs --check` (clean 29 claims) + UTF-8 do doc +
+ASCII do .mjs + ordering 11.107 -> 11.108 -> 12 monotono.
+
+## 11.109 As fact strings do CONSUMED_FACTS usam âncora estável (nome do
+const), nunca número de linha (ADOTADO — a fonte da linha é o RESOLVED_PATHS)
+
+**O ACHADO**: o nit do reviewer flagrou a superfície mais frágil do ABS PIN
+da sec 11.104: as fact strings embutiam números de linha literais
+("safetyDiff ..., linha 625", "backupDir ..., linha 621", "logPath ...,
+linha 822", "selfDel ..., 659"). O probe confirmou o risco: o ABS PIN
+compara const vs snapshot — AMBOS texto estático do test file. Uma edição
+nos helpers que desloque uma linha NÃO falha NENHUM teste (o DEF REALITY
+pina a defLine do RESOLVED_PATHS, mas a fact string do CONSUMED_FACTS não
+tem realidade mecânica própria) — o número embutido envelhece em silêncio
+até o próximo bump consciente, e o bump é fricção pura sem ganho de guard.
+
+**A decisão (ADOTADO)**: trocar os números de linha embutidos por âncoras
+estáveis — o NOME DO CONST (a identidade que o guard pina) + a SEÇÃO (o
+campo já existente da fact). A linha exata continua vivendo no
+RESOLVED_PATHS (defLine + DEF REALITY + CITED REALITY), que é o lugar
+MECÂNICO do número — a fact string descreve o FATO (qual const/seção), não
+a posição física (sujeita a drift). Editar um helper agora exige bump só
+quando o FATO muda, nunca quando uma linha desloca.
+
+**As 4 fact strings novas**: "safetyDiff (o path resolvido-uma-vez)",
+"backupDir (o path criado-uma-vez)", "logPath (resolvido-uma-vez)",
+"selfDel (resolvido-uma-vez - nao citado em output)" — const + seção nos
+campos (11.100/11.101/11.102), sem linha literal.
+
+**O pin da decisão**: o novo ANCHOR test (na suite da 11.104) pina que
+NENHUMA fact string embute número de linha (regex `linha \d+` ou `, \d{3} -`)
+— a classe 'linha na fact string' morre estruturalmente: reintroduzir a
+forma frágil diverge na hora.
+
+**Prova viva (Prova 56, sec 8.51, 2026-08-13)**: o ANCHOR provado ao vivo
+no CONSUMED_FACTS real — ', linha 625' reintroduzida na fact safetyDiff
+(a linha 69 do scan-derived-inventory.mjs) num scratch -> 5 testes falham
+incl. o ANCHOR com a fact EXATA `hook-proof-run:safetyDiff (o path
+resolvido-uma-vez, linha 625)` + a CONFINEMENT 11.114 no CLI do guard;
+revertido byte-identical. A Prova GRADUOU o scan-derived-inventory do
+WIRED_ALLOWLIST para classe no PROOF_CLASSES (o padrão da Prova 49).
+
+**A fronteira honesta**: o DOC narrativo (secs 11.100/11.101/11.102) segue
+citando linhas em prosa — isso é documentação do guard descrevendo o path
+pinado (o defLine do RESOLVED_PATHS), não um pin; a prosa pode envelhecer
+sem quebrar contrato (o mesmo espírito da fronteira citação-verbatim vs
+prosa-narrativa da sec 11.62).
+
+Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Re-validação**: `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts
+scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts
+--config vitest.config.unit.ts` + `npx tsc --noEmit` + `node
+scripts/scan-exit-claims.mjs --check` (clean 29 claims) + UTF-8 do doc +
+ASCII do .mjs + ordering 11.108 -> 11.109 -> 12 monotono.
+
+## 11.110 O escopo do guard 11.105 é o FAIL — plan/log ficam fora por desenho
+(RECUSADO, fronteira pinada)
+
+**O ACHADO**: o pedido apontou que o guard 11.105 pina só as mensagens de
+FAIL — as citações de plan (`steps.push`, 341: o self-delete do plano) e de
+log (`console.log`, 677: a narração da remoção) do selfDel ficam fora do
+ABS PIN (17 citações em 9 mensagens de fail). O pedido avaliou estender a
+derivada `failMsgInputCites` às mensagens de plan e log.
+
+**A evidência do probe (2026-08-12)**: o plano (steps.push) é impresso só
+no `--dry-run` (linha 578, DENTRO do `if (opts.dryRun)` — o run realNUNCA imprime o plano, só o executa); o log (console.log 677) é narração de
+sucesso DEPOIS da operação já ter usado o selfDel resolvido; e os inputs
+citados em plan/log são os mesmos já derivados (b/opts.mutate/opts.workflow
+/opts.onlyJobs/opts.expect — o plan tem 16 linhas steps.push com citação,
+335/337/339/341/346/353/354/355/357/358/360/363/365/375/378/383, e o log
+2 console.log, 577/677).
+
+**A decisão (RECUSADO)**: o escopo FAIL basta. O usuário vê o FAIL — é o
+contrato de erro: um literal num fail citaria um path DIFERENTE do
+parseado e quebraria a CURE (o recover). O PLAN é informativo (dry-run, o
+dev olha antes de rodar — um literal ali é um preview errado, não um
+contrato de recuperação); o LOG é narrativo (sucesso, o que JÁ aconteceu
+com o path resolvido). Estender a derivada a plan/log quase triplicaria o
+ABS PIN (17 → ~41 citações: ~21 no plan + 3 no log, 577 com 2 e 677 com 1)
+para pinar texto informativo — a fricção de bump consciente a cada edição
+de plan sem ganho de guard (a mesma classe que a 11.109 removeu das fact
+strings do CONSUMED_FACTS).
+
+**O pin da fronteira**: novo teste na suite do ci-proof-run (na describe da
+11.105) — nenhuma citação da derivada `failMsgInputCites` cai em linha de
+`steps.push` nem `console.log`: se a derivada crescer para plan/log no
+futuro, o pin diverge e exige a decisão inversa documentada (o padrão do
+pin da 11.108 — a fronteira nunca some silenciosamente).
+
+Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Re-validação**: `npx vitest run scripts/__tests__/ci-proof-run.test.ts
+scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts
+--config vitest.config.unit.ts` + `npx tsc --noEmit` + `node
+scripts/scan-exit-claims.mjs --check` (clean 29 claims) + UTF-8 do doc +
+ASCII do .mjs + ordering 11.109 -> 11.110 -> 12 monotono.
+
+**Nota (2026-08-13)**: o pin irmão do hook nasceu na sec 11.115 — a derivada
+corrigida virou o módulo compartilhado `scripts/__tests__/fail-input-cites.ts`
+(a regra dos 2 usos: a suite do ci e a do hook importam da MESMA fonte) e o
+hook ganhou o ABS PIN de 31 citações + FRONTIER, fechando o dualismo
+fail-vs-plan/log nos DOIS helpers de prova.
+
+**Prova 57 (sec 8.52, 2026-08-13)**: o FRONTIER provado AO VIVO — o scan
+target da derivada compartilhada trocado de `fail(` para `steps.push(` num
+scratch (a derivada passa a varrer as linhas do plano) -> 3 testes do ci
+falham incl. o FRONTIER com a linha exata `a citacao 335 (b (alias de
+opts.branch)) nao pode ser plan/log`; o irmao 11.115 do hook tambem falha
+com `a citacao 342 (opts.safetyDiff)` — a fonte única provada nos DOIS
+helpers; revertido byte-identical.
+
+## 11.111 O DERIVED INVENTORY estendido aos 5 helpers: os irmãos utilitários derivam vazio por desenho (ADOTADO, fronteira pinada)
+
+**A avaliação** (o pedido): a sec 11.107 deriva a completude do registry
+só nos 2 helpers do PROOF_HELPERS (hook + ci, os `*-proof:run`), mas o
+RESOLVED_PATHS da 11.106 já varre os 5 (hook, ci, guard-remeasure,
+doc-revalidate, proof-register). O pedido: estender o deriveNotes/
+deriveGates aos 3 irmãos — ou documentar por que o escopo dos 2 basta
+(os irmãos não têm nota de limpeza nem gate de nota por desenho).
+
+**A evidência** (probe 2026-08-12): a hipótese do pedido está CONFIRMADA
+no source — os 3 irmãos têm ZERO `\w+LeftNote` e ZERO gates
+`\w+Delta ? \w+LeftNote` (guard-remeasure 0/0, doc-revalidate 0/0,
+proof-register 0/0), vs 18/9 nos 2 helpers. E a razão é estrutural: a
+derivação nasce do package.json (`*-proof:run` — só ci e hook existem
+como script de ciclo de prova); os irmãos são UTILITÁRIOS (re-medição,
+edição de doc, registro), não rodam ciclo scratch/stash — a classe
+nota-de-limpeza/gate é do CICLO (a nota protege o delta do ciclo, secs
+11.65/11.70/11.102), que eles não têm.
+
+**O veredito: ADOTADO** — com a nuance que o pedido não previa: a
+assimetria não era só de escopo dos irmãos, era de FONTE da derivação. O
+loop da 11.107 iterava `deriveProofHelpers` (os 2 `*-proof:run`); a
+correção: a derivação agora itera a UNIÃO derivada — os stems do
+package.json + os helpers do RESOLVED_PATHS (o padrão TARGET_DIRS
+consumido, sem lista hardcoded). Como os 3 irmãos derivam VAZIO (0 notas,
+0 gates — confirmado no source), o DERIVED PIN (3 tuplas) fica intacto;
+a COMPLETENESS de paths passa a cobrir os 5 (o logPath do
+guard-remeasure 282/303 e o docPath do doc-revalidate 284 entram no
+check source→registry — o fechamento do lado path dos irmãos).
+
+**O pin da fronteira**: novo FRONTIER test na describe da 11.107 — os 3
+irmãos derivam ZERO notas e ZERO gates (a ausência é o desenho, não
+cegueira do derivador), com MUTATION provando que um LeftNote sintético
+num irmão ENTRA na derivada e divergiria o DERIVED PIN fail-loud (o
+growth contract cobre os 5 agora, não só os 2). Se um irmão ganhar nota/
+gate no futuro, o pin diverge e exige a decisão inversa documentada (o
+padrão dos pins 11.108/11.110).
+
+**A fronteira residual (o lado curado da UNIÃO)**: a UNIÃO deriva os 2 do
+ciclo do package.json (estrutural), mas os 3 irmãos do RESOLVED_PATHS
+(o registro curado da 11.106) — um 4º utilitário futuro só entra no loop
+da completude DEPOIS de ser registrado no RESOLVED_PATHS (e o FRONTIER
+pina os 3 nomes exatos, então o nascimento de um 4º exige edição
+consciente do pin de qualquer forma). O único ponto cego residual: um
+utilitário novo SEM nenhum path citado seria invisível até ganhar uma
+entrada no registry — a fronteira honesta do lado curado, documentada
+(um utilitário sem path é uma classe sem superfície de output).
+
+Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Re-validação**: `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts
+scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/gates-proofs-ordering.test.ts
+--config vitest.config.unit.ts` + `npx tsc --noEmit` + `node
+scripts/scan-exit-claims.mjs --check` (clean 29 claims) + UTF-8 do doc +
+ASCII do .mjs + ordering 11.110 -> 11.111 -> 12 monotono.
+
+## 11.112 A completude da 11.107 executada no batch: o 11º guard
+scan-derived-inventory (ADOTADO, incondicional por design)
+
+**A avaliação** (o pedido): a derivada da 11.107 (o DERIVED INVENTORY —
+todo fato derivado mecanicamente dos helpers de prova, notas `\w+LeftNote`
++ gates `\w+Delta ? \w+LeftNote` + paths citados em output, tem entrada no
+registry CONSUMED_FACTS 11.104 / RESOLVED_PATHS 11.106) vivia só na suite
+proof-helpers-contract (test:unit, no CI/push). A edição acidental de um
+helper .mjs (uma nota nova esquecida no registry) passava o commit local.
+O pedido: um guard no padrão do scan-proof-helpers (o 9º guard do batch)
+rodando o check quando hook-proof-run.mjs/ci-proof-run.mjs mudarem — a
+falha antes do commit.
+
+**O veredito: ADOTADO** — com a premissa da CONDIÇÃO supersedida: o
+docblock do 9º guard (sec 11.93) já documentava o mesmo racional — a
+invariante da sec 11.42 manda guards baratos rodarem INCONDICIONALMENTE
+(a condição por diff seria furável: a edição acidental não avisa o hook de
+nada, e quebraria o determinismo da agregação — uma falha nunca esconde
+as demais). O guard novo roda SEMPRE no batch (custo ~15-25ms de fs +
+regex, boot compartilhado), não condicionado a arquivo.
+
+**A implementação**: novo `scripts/scan-derived-inventory.mjs` (o 11º
+guard do batch, sec 11.16): os registries CONSUMED_FACTS/RESOLVED_PATHS e
+as derivadas (deriveNotes/deriveGates/derivePathDefs/citesOf/
+deriveHelperStems) foram MOVIDOS da suite para o guard — a FONTE ÚNICA (a
+regra dos 2 usos, o mesmo padrão do EXIT_CLAIMS e dos regexes do
+scan-proof-helpers): a suite da sec 11.107 importa DAQUI, nunca os
+redefine. O `checkDerivedInventory` executa a completude nos DOIS lados
+(COMPLETENESS: todo fato derivado tem registro; FRONTIER da sec 11.111:
+os 3 irmãos utilitários derivam vazio) e o CLI roda no batch. Os ABS PINs
+da suite pinam o CONTENT importado (um fato novo no guard diverge o pin).
+
+**Os pins do wire**: run-precommit-guards.mjs ganha o 11º import (o
+DERIVATION PIN do batch-coverage sobe 10 → 11); o wired-guards-contract
+ganha a 5ª exceção do GUARD_SUITE_VALUES (scan-derived-inventory.mjs →
+proof-helpers-contract.test.ts — a suite onde o contrato mora, o mesmo
+padrão do 9º guard) e o count wired sobe 20 → 21; o WIRED_ALLOWLIST do
+proofs-manifest ganha a 9ª exceção (suite-pinned, sem Prova dedicada — o
+padrão do scan-proof-helpers); o REAL-REPO CONTRACT do CLI (clean no
+repo real) prova o guard verde no estado atual.
+
+Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Re-validação**: `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts
+scripts/__tests__/proofs-manifest.test.ts scripts/__tests__/scan-batch-coverage.test.ts
+scripts/__tests__/wired-guards-contract.test.ts scripts/__tests__/scan-exit-claims.test.ts
+scripts/__tests__/gates-proofs-ordering.test.ts --config vitest.config.unit.ts` +
+`npx tsc --noEmit` + `node scripts/scan-derived-inventory.mjs --check`
+(clean) + `node scripts/scan-exit-claims.mjs --check` (clean 29 claims) +
+`node scripts/proofs-manifest.mjs --check` (clean 20 classes / 55 provas /
+21 guards wired) + UTF-8 do doc + ASCII dos .mjs + ordering 11.111 ->
+11.112 -> 12 monotono.
+
+## 11.113 A fronteira do número embutido nos registries: todo número tem derivada mecânica (ADOTADO, o par fechado com a 11.107)
+
+O pedido: a sec 11.109 removeu as linhas das fact strings do CONSUMED_FACTS, mas o mesmo ABS PIN do RESOLVED_PATHS embute defLine/citedAt (que TEM realidade mecânica via DEF REALITY/CITED REALITY) - avaliar um teste de contrato que pince a fronteira: todo número embutido num ABS PIN de registry TEM derivada mecânica correspondente, fechando a classe 'número fantasma sem derivada' nos dois registries.
+
+**A avaliação**: a fronteira é de desenho, e o teste a pina como comportamento: números só entram num ABS PIN de registry quando a derivada mecânica os respalda. O CONSUMED_FACTS não tem derivada numérica (a 11.109 removeu os números das fact strings) - a AUSÊNCIA é o desenho, agora pinada em TODOS os campos (helper/fact/guard/section/kind), não só na fact. O RESOLVED_PATHS mantém defLine/citedAt PORQUE DEF REALITY (a linha contém 'const X =') e CITED REALITY (citesOf produz as citações) os verificam contra o source - os números confinados aos DOIS campos com derivada.
+
+**O veredito (ADOTADO)**: novo describe REGISTRY NUMBERS frontier na suite da sec 11.107 (proof-helpers-contract.test.ts) com 4 testes:
+1. CONFINEMENT do CONSUMED_FACTS: nenhum campo embute número de linha (o ANCHOR da 11.109 generalizado ao registro inteiro - o regex LINE_NUM_RE hoisted ao nível do módulo, a regra dos 2 usos: a MESMA forma usada pelo ANCHOR e pelos CONFINEMENTs, nunca duas cópias);
+2. CONFINEMENT do RESOLVED_PATHS: os números confinados a defLine/citedAt (os campos isentos pelo predicado lineNumField);
+3. BACKSTOP: cada defLine embutido é verificado pela derivada (derivePathDefs produz (varName, defLine) nas formas path-API) OU pela DEF REALITY (as formas CURADAS done.log.replace do guard-remeasure 303 e env||DEFAULT do proof-register 365-367, sec 11.106 - a linha contém 'const X ='); cada citedAt é produzido por citesOf (o membro da CITED REALITY) - o número fantasma (nem a derivada nem a linha real) diverge;
+4. MUTATION: um número de linha injetado num campo string (ex.: 'linha 999' no guard) diverge a CONFINEMENT - o dente do predicado, não só o estado atual.
+
+O par fechado com a 11.107: a COMPLETENESS da 11.107 prova derivada -> registry (todo fato derivado do source tem registro); esta fronteira prova registry -> derivada (todo número embutido tem a derivada que o respalda) - o número fantasma fica impossível nos dois sentidos.
+
+**Nota (2026-08-13)**: a forma migrou para o guard na sec 11.114 (a CONFINEMENT agora roda no batch) - esta seção permanece como o registro da decisão da fronteira; a execução vive na 11.114.
+
+Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Re-validação**: `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-derived-inventory.mjs --check` (clean) + `node scripts/scan-exit-claims.mjs --check` (clean 29 claims) + `node scripts/proofs-manifest.mjs --check` (clean 20 classes / 55 provas / 21 guards wired) + UTF-8 do doc + ASCII dos .mjs + ordering 11.112 -> 11.113 -> 12 monotono.
+
+## 11.114 A forma do número embutido migrada ao guard: a CONFINEMENT roda no batch (ADOTADO, a regra dos 2 usos no padrão EXIT_CODES_RE)
+
+O pedido: o ANCHOR test da 11.109 pina a classe nas fact strings do CONSUMED_FACTS, mas o guard de forma usa um regex hardcoded no teste - avaliar se o regex deveria viver num guard (o padrão dos EXIT_CODES_RE do scan-proof-helpers) para a regra dos 2 usos, ou documentar por que o uso único basta.
+
+**A avaliação**: a forma LINE_NUM_RE tinha 2 usos dentro da MESMA suite (o ANCHOR da 11.109 e os CONFINEMENTs da 11.113), mas o padrão da casa para a regra dos 2 usos é guard + suite: o guard EXECUTA o check no batch e a suite importa a fonte única (o EXIT_CODES_RE do scan-proof-helpers, sec 11.93). O fator decisivo: os registries que a forma valida (CONSUMED_FACTS/RESOLVED_PATHS) JÁ vivem no guard scan-derived-inventory.mjs (a fonte única da 11.112) - e o guard não executava a CONFINEMENT. Um número fantasma injetado num registry passava o commit local e só falhava no push (a suite é test:unit) - a MESMA classe que a 11.112 fechou para a completude. A regra dos 2 usos, portanto, não era só de FORMA: era de EXECUÇÃO.
+
+**O veredito (ADOTADO)**: LINE_NUM_RE (a forma) e lineNumField (o predicado) migraram para o scan-derived-inventory.mjs - o guard agora os EXECUTA: o checkDerivedInventory ganhou a CONFINEMENT (para cada entrada dos DOIS registries, o campo string com número de linha diverge; os campos numéricos por desenho defLine/citedAt isentos - a fonte mecânica da 11.106). O CLI do 11º guard roda completude (11.107/11.112) + confinamento (11.113/11.114) no MESMO --check; a suite da 11.113 importa DAQUI (a regra dos 2 usos, o mesmo padrão do EXIT_CODES_RE importado pela suite da 11.72). A suite ganhou o REAL-REPO CONTRACT do wire: o slice do checkDerivedInventory DEVE invocar lineNumField sobre os DOIS registries (a classe do ACHADO Prova 17 - o guard não pode sumir vago).
+
+Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Re-validação**: `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-derived-inventory.mjs --check` (clean) + `node scripts/scan-exit-claims.mjs --check` (clean 29 claims) + `node scripts/proofs-manifest.mjs --check` (clean 20 classes / 55 provas / 21 guards wired) + UTF-8 do doc + ASCII dos .mjs + ordering 11.113 -> 11.114 -> 12 monotono.
+
+## 11.115 O pin irmão do INPUT citado no hook: a derivada compartilhada fecha o dualismo fail-vs-plan/log nos DOIS helpers (ADOTADO, a regra dos 2 usos com fonte única)
+
+O pedido: a sec 11.110 fechou a fronteira fail-vs-plan/log no ci-proof-run, mas o hook-proof-run tem o MESMO dualismo (steps/plan informativos + fails de contrato) sem guard análogo — avaliar um pin irmão no hook: nenhuma citação derivada de input (o padrão do 11.105) cai em linha de steps.push/console.log, fechando a classe nos DOIS helpers de prova.
+
+**A avaliação**: o probe (2026-08-13) revelou um fato decisivo: a derivada original do ci NÃO era portável para o hook — o regex do ci (`${opts.X}|${b}`) só pega a forma simples, e o hook usa ternários (`${opts.cleanupOnFail ? ...}`) e args de função (`opts.branch,` dentro do cleanupOnFailSuffix(...)); além disso, o fail sem-template do hook (fail(1, check.message), linha 796) faria a derivada original agarrar o backtick errado — um console.log da linha 797 como falso-positivo. A derivada CORRIGIDA (regex AMPLO `opts.X` + o alias `${b}` + skip do fail sem-template via paren-matching: o template abre DENTRO do fail(...)) reproduz EXATAMENTE as mesmas 17 citações do ci (o ABS PIN da 11.105 intacto — comparado byte-a-byte contra os dois sources) e produz 31 no hook com 0 offenders em plan/log. A regra dos 2 usos real: UMA derivada, dois helpers — a suite do ci (11.105) e a suite do hook (11.115) importam da MESMA fonte, nunca uma cópia que pudesse driftar.
+
+**O veredito (ADOTADO)**: a derivada corrigida virou o módulo compartilhado `scripts/__tests__/fail-input-cites.ts` (o padrão do golden-copy-utils.ts — a fonte única da regra dos 2 usos). A suite do ci importa DAQUI (as definições locais removidas, o ABS PIN 17 intacto) e a suite do hook ganhou o pin irmão completo: ABS PIN de 31 citações (606/704/709x4/715x4/719x4/724x4/729x4/740x4/748x4/792 — os ternários do cleanupOnFailSuffix citam cleanupOnFail+branch+applySafetyDiffOnFail+branch por linha), INVARIANT (toda key é key real do parseArgs — a typo diverge), MUTATION (literal da branch no fail 704 some da derivada) e FRONTIER (nenhuma citação cai em linha de steps.push/console.log — o dualismo da 11.110 fechado nos DOIS helpers; se a derivada crescer para plan/log, este pin diverge e exige a decisão inversa documentada).
+
+Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Re-validação**: `npx vitest run scripts/__tests__/ci-proof-run.test.ts scripts/__tests__/hook-proof-run.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-exit-claims.mjs --check` (clean 29 claims) + `node scripts/proofs-manifest.mjs --check` + `node scripts/scan-derived-inventory.mjs --check` + UTF-8 do doc + ASCII dos .ts/.mjs + ordering 11.114 -> 11.115 -> 12 monotono.
+
+## 11.116 Os FATOS da fronteira 11.110 pinados estruturalmente: o plano só imprime dentro do if (opts.dryRun) e o log 677 nunca cita antes do fs.rmSync (ADOTADO, as premissas travadas)
+
+O pedido: o RECUSADO da 11.110 documenta que o plan é dry-run-only e o log é narração — mas a fronteira vive só em prosa + um pin de forma (o FRONTIER, que pina o OUTPUT da derivada: nenhuma citação em plan/log). Avaliar um teste de contrato que pince os FATOS da fronteira: o plano nunca é impresso fora do `if (opts.dryRun)` e o log 677 nunca cita antes do `rmSync` — travando as premissas da decisão estruturalmente.
+
+**A avaliação**: o probe (2026-08-13) confirmou os dois fatos no source real. O plano: o `if (opts.dryRun) {` (576) abre o bloco que contém o `console.log PLAN (dry-run)` (577) e o `for (const s of planSteps(...))` (578) — o `return 0` (579) logo após e o fechamento `}` (580) — e o run real nunca passa por ele. O log: o `console.log` 677 (`--mutate-self-delete: removido`) vem DEPOIS do `fs.rmSync(selfDel, ...)` (676) na ordem do source — a narração nunca cita antes da operação que narra. O fato decisivo para o desenho do pin: o FRONTIER da 11.110 pina o output da derivada (fail-scoped), então um print de plano fora do bloco NÃO seria pego por ele — a derivada nunca varre linhas de steps.push; a classe dos FATOS é fechada por este pin, não pelo FRONTIER (a divisão de camadas: o FRONTIER pina o alcance da derivada, o FATO pina as premissas da decisão).
+
+**O veredito (ADOTADO)**: novo describe na suite do ci (na describe da 11.105, o mesmo lar do FRONTIER) com 4 testes: FATO 1 (o PLAN + o for de planSteps vivem DENTRO do bloco `if (opts.dryRun)` — via walker de blocos que ignora interpolações `${...}`; nada de print de plano fora), MUTATION (duplicar o print FORA do guard: a derivada fail-scoped continua verde — o FRONTIER não pega — mas o FATO 1 diverge, provando que a classe é deste pin), FATO 2 (o log 677 vem depois do `fs.rmSync` na ordem do source) e MUTATION (o log antes do rmSync diverge). O walker `findBlockClose` é local ao describe, com asserts fail-loud (o guard `if (opts.dryRun) {` deve existir; o bloco deve fechar).
+
+Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Re-validação**: `npx vitest run scripts/__tests__/ci-proof-run.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-exit-claims.mjs --check` (clean 29 claims) + UTF-8 do doc + ASCII do .mjs/.ts + ordering 11.115 -> 11.116 -> 12 monotono.
+
+## 11.117 O sweep inverso da 11.78: evidência datada → registry — toda citação de módulo em seção 11.x com prova viva/nota datada tem classe, allowlist ou exclusão documentada (ADOTADO, a completude do lado inverso)
+
+O pedido: a Prova 53 fechou o trio da classe ci-proof-run, mas outras notas datadas de prova (ex.: a do guard 11.49 no scan-exit-claims, a da 11.80 no scan-unit-config) podiam seguir sem entrada no PROOF_CLASSES. Avaliar uma varredura que cruze as notas 'Prova viva do ...' das seções 11.x com o registry e liste as classes com evidência mas nenhuma entrada — o sweep da completude do lado inverso da 11.78.
+
+**A avaliação**: o probe (2026-08-13) derivou as citações de módulo (`scripts/*.mjs|sh` + `.github/workflows/*.yml` em backticks) nas seções 11.x COM marcador de evidência DATADA (prova viva / nota datada / probe datado / parêntese datado) e cruzou contra classes + allowlist. O FATO decisivo do desenho: o marcador datado é a FRONTEIRA — a nota de PROVA viva, não a menção narrativa de 'Prova N' (seções de decisão como a 11.27/11.28 citam o script de mutação temporário da Prova 22 — deletado após a prova — em prosa histórica sem ser nota datada; o sweep amplo achava 15, as 7 extras eram ruído de cross-reference). Com o marcador datado o doc real produz **8 citações** — e a hipótese do pedido se provou **FALSA**: a nota da 11.49 é a classe `check-exit-claims-push` (Provas 37/38) e a da 11.80 é a `scan-unit-config` (Prova 49) — ambas com entrada; das 8, 5 são classes e 3 são exclusões documentáveis (sub-módulos/não-guards). 0 gaps reais.
+
+**O veredito (ADOTADO)**: novo describe na wired-guards-contract.test.ts (o mesmo lar da 11.78) com a derivada `deriveEvidenceCited` (a fronteira explícita: **marcador datado + citação em backticks** — menção em prosa sem backticks escapa do sweep por desenho, a limitação documentada) + `EVIDENCE_EXCLUSIONS` (as 3 não-guards com rationale: `eslintd-shim.sh` sub-módulo do scan-lint-staged-loader, `fuzz-targets.mjs` dados dos fuzz guards, `proofs-manifest.mjs` o próprio registry/self-reference) e 4 testes: REAL-REPO (as 8 citações = 5 classes + 3 exclusões, 0 violações — o ABS PIN da superfície), MUTATION crescimento inverso (módulo fake em seção de evidência sintética → flagra sem classe/allowlist/exclusão), MUTATION exclusão load-bearing (remover uma exclusão → a citação correspondente flagra) e MUTATION exclusão órfã (a direção B da 11.90 aplicada: uma exclusão cujo módulo não é citado em nenhuma seção de evidência → flagra 'exclusão órfã' — a lista não acumula lixo). O valor: uma nota datada de prova nova citando um módulo sem registro falha na hora — o lado inverso da 11.78 fechado estruturalmente nos DOIS sentidos (citação sem home + home sem citação), não por prosa.
+
+Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Re-validação**: `npx vitest run scripts/__tests__/wired-guards-contract.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/proofs-manifest.mjs --check` (21 classes / 57 provas / 21 wired) + UTF-8 do doc + ASCII do .ts + ordering 11.116 -> 11.117 -> 12 monotono.
+
+## 11.118 O sweep irmão da 11.117 no registry de helpers: a fronteira datada aplicada ao PROOF_HELPERS — toda citação de helper em seção de evidência tem entrada no PROOF_HELPERS ou exclusão documentada (ADOTADO, o par fechado nos DOIS registries)
+
+O pedido: o sweep da 11.117 pina a evidência datada → registry na classe de guards wired, mas os helpers de prova (hook-proof-run, ci-proof-run, doc-revalidate, guard-remeasure, proof-register) também são citados em seções de evidência. Avaliar um pin irmão no PROOF_HELPERS: a fronteira datada aplicada aos helpers — toda citação de helper em seção de evidência tem entrada no PROOF_HELPERS ou exclusão documentada, fechando o sweep nos DOIS registries.
+
+**A avaliação**: o probe (2026-08-13) replicou a derivada da 11.117 (a mesma fronteira: marcador datado + citação em backticks sobre as seções 11.x) e filtrou pelo universo de helpers (o PROOF_HELPERS derivado do package.json + as exclusões documentadas). O FATO decisivo: **0 citações de helper em seções de evidência** — as 5 citações de helper do doc (hook-proof-run em 11.58/11.77, doc-revalidate em 11.61, guard-remeasure em 11.81, proof-register em 11.94) vivem em seções de DECISÃO (evidencia=nao), não em notas datadas. A hipótese do pedido se provou **FALSA** na superfície atual — igual à 11.117 — mas a classe merece pin: uma nota datada nova citando um helper sem entrada no PROOF_HELPERS nem exclusão documentada falha na hora.
+
+**O veredito (ADOTADO)**: a fronteira foi EXTRAÍDA para o `evidence-sweep.ts` compartilhado (o padrão do fail-input-cites.ts da 11.115 — a regra dos 2 usos: as suites da 11.117 e da 11.118 importam DAQUI a mesma derivada, nunca uma cópia que pudesse driftar; o wired-guards-contract refatorado para consumir a fonte única). Novo describe na proof-helpers-contract.test.ts (o lar do PROOF_HELPERS) com `deriveHelperEvidenceCited` (as citações de evidência filtradas ao universo de helpers) + `HELPER_EVIDENCE_EXCLUSIONS` (os 2 suite-pinned sem classe/allowlist: `guard-remeasure` sec 11.81 e `proof-register` sec 11.94 — o mesmo racional do WIRED_ALLOWLIST da 11.60: contrato nas próprias suites, não evento de Prova) + `helperEvidenceViolations` (a direção citacao -> home: helper citado sem entrada no PROOF_HELPERS nem exclusão flagra; e a direção órfã da 11.90-B: exclusão nunca citada em NENHUMA seção 11.x flagra — a fronteira da órfã aqui é o home ADOTADO 11.81/11.94, não só evidência). 4 testes: REAL-REPO (0 citações de helper em evidência + 0 violações — o ABS PIN da superfície), MUTATION o derivado é o home (ci-proof-run citado em evidência sintética resolve SEM exclusão — a entrada do package.json basta), MUTATION exclusão load-bearing (guard-remeasure citado resolve COM a exclusão e flagra SEM), MUTATION exclusão órfã (exclusão fake nunca citada → flagra). O valor: o par evidência → registry agora cobre os DOIS registries — um helper novo citado em nota datada sem registro falha no lado do PROOF_HELPERS, não só no dos guards.
+
+Claim-free: nenhum exit code novo (count 29 intacto).
+
+**Re-validação**: `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/wired-guards-contract.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/proofs-manifest.mjs --check` (21 classes / 57 provas / 21 wired) + UTF-8 do doc + ASCII dos .ts + ordering 11.117 -> 11.118 -> 12 monotono.
+
+## 11.119 O EVIDENCE_MARK_RE nasce no teste (uso único) — por que a regra dos 2 usos NÃO exige guard para o marcador (avaliação, claim-free)
+
+O pedido: o marcador datado EVIDENCE_MARK_RE da 11.117 nasce no teste (uso único). Avaliar a regra dos 2 usos aplicada: extrair o marcador para um guard (padrão do scan-proof-helpers com EXIT_CODES_RE) quando o sweep ganhar um 2º consumidor — ou documentar por que o uso único basta enquanto a fronteira não for reutilizada.
+
+**A avaliação (probe 2026-08-13)**: o sweep GANHOU o 2º consumidor na 11.118 (o sweep irmão dos helpers) — mas a resposta correta NÃO foi migrar o marcador para um guard: foi extrair a DERIVADA para o `evidence-sweep.ts` (a fonte única compartilhada, o padrão do fail-input-cites.ts da 11.115 — um módulo .ts em __tests__, não um guard .mjs). O FATO decisivo do desenho: o padrão EXIT_CODES_RE do scan-proof-helpers existe porque o GUARD EXECUTA o check no batch (o 9º guard do pre-commit roda a verificação); a suite importa DAQUELE guard a fonte única. O sweep de evidência NÃO tem consumidor batch: nenhum guard .mjs, hook ou workflow roda a derivação (grep 2026-08-13: zero referências a evidence-sweep / EVIDENCE_MARK_RE / MODULE_CITE_RE fora das suites). E o marcador EVIDENCE_MARK_RE tem UM único consumidor direto (deriveEvidenceCited) — a regra dos 2 usos é sobre NÃO DUPLICAR a fonte entre consumidores; as 2 suites (11.117/11.118) importam a MESMA função derivada do evidence-sweep.ts, nunca uma cópia — o drift surface é zero por construção.
+
+**O veredito (ADOTADO o estado atual — RECUSADO o guard prematuro)**: migrar o marcador para um guard sem consumidor batch criaria a classe inversa que o repo rejeita (o export órfão — o espelho da direção-B da 11.90: um regex exportado que ninguém executa é lixo silencioso). A fronteira documentada: ENQUANTO o sweep for suite-only (test:unit), o evidence-sweep.ts é o home correto da fronteira (o precedente fail-input-cites.ts da 11.115, também .ts compartilhado com 2 suites e sem guard). SE o sweep ganhar um consumidor batch (o 11º guard do batch rodando o check no pre-commit — a proposta em aberto), AÍ o marcador migra para o guard no padrão EXIT_CODES_RE (o guard executa e a suite importa DAQUI). A regra dos 2 usos foi aplicada no nível certo: a DERIVADA compartilhada, não o regex.
+
+Claim-free: nenhum exit code novo (count 29 intacto). A sec 11.119 e evidence-bearing (contem o probe datado) — a re-validacao confirma o ABS PIN da 11.117 em 8 citacoes intacto (a unica citacao em backticks da secao e o proofs-manifest.mjs, ja no pin via Set dedup).
+
+**Re-validação**: `npx vitest run scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/wired-guards-contract.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/proofs-manifest.mjs --check` (21 classes / 57 provas / 21 wired) + UTF-8 do doc + ASCII dos .ts + ordering 11.118 -> 11.119 -> 12 monotono.
+
+## 11.120 scan-evidence-sweep — o check dos DOIS sweeps de evidencia datada (sec 11.117 nos guards + sec 11.118 nos helpers) rodando no batch do pre-commit (ADOTADO, 2026-08-13)
+
+O pedido: a fronteira deriveEvidenceCited vivia no evidence-sweep.ts compartilhado, mas so rodava como suite via test:unit (no CI/push) — uma nota datada nova no gates-proofs.md citando um modulo fake passava o commit local e so falharia no push. Avaliar um guard no padrao do scan-proof-helpers (o 9o guard do batch) que rode o check dos DOIS sweeps (11.117 + 11.118) no pre-commit — a falha antes do commit.
+
+**O veredito: ADOTADO** — a sec 11.119 (a avaliacao da regra dos 2 usos) previu EXATAMENTE esta classe: "SE o sweep ganhar um consumidor batch, AI o marcador migra para o guard no padrao EXIT_CODES_RE". Este guard e o canal executavel que a 11.119 condicionou: a fronteira (MODULE_CITE_RE + EVIDENCE_MARK_RE + section11Bodies) e as derivadas (deriveEvidenceCited / derive11xCited / evidenceCitedViolations + HELPER_EVIDENCE_EXCLUSIONS / deriveHelperEvidenceCited / helperEvidenceViolations) migraram do evidence-sweep.ts (deletado) para o guard — a fonte unica que as suites das secs 11.117/11.118 importam (a regra dos 2 usos, o padrao do scan-proof-helpers da sec 11.93). Roda INCONDICIONAL (a invariante da sec 11.42: guard barato, ~15-25ms de fs + regex, boot compartilhado; a condicao por arquivo do pedido supersedida, o mesmo racional da 11.93).
+
+Exit codes do CLI (a 30a claim): doc real sem violacoes nos DOIS sweeps -> exit code 0; nota datada nova citando modulo sem classe/allowlist/exclusao -> exit code 1 com o caminho no stderr (com a CURE); usage errado -> exit code 2.
+
+A fronteira honesta: o guard roda a derivada em fs + regex puros (nao spawna as suites) — o custo e ~15-25ms no boot compartilhado do batch; e esta secao cita o guard por stem (sem o prefixo scripts/) para o ABS PIN das 8 citacoes da sec 11.117 permanecer intacto (a citacao por stem satisfaz a nota da sec 11.78 sem entrar na derivada de MODULE_CITE_RE).
+
+**Re-validação**: `node scripts/scan-evidence-sweep.mjs --check` (clean) + `npx vitest run scripts/__tests__/scan-evidence-sweep.test.ts scripts/__tests__/wired-guards-contract.test.ts scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/scan-exit-claims.test.ts scripts/__tests__/scan-batch-coverage.test.ts scripts/__tests__/proofs-manifest.test.ts scripts/__tests__/gates-proofs-ordering.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/proofs-manifest.mjs --check` (22 classes / 58 provas / 22 wired) + `node scripts/scan-exit-claims.mjs --check` (clean 30 claims) + UTF-8 do doc + ASCII do .mjs/.ts + ordering 11.119 -> 11.120 -> 12 monotono.
+
+## 11.121 A assimetria das fronteiras pinada como decisao: a orfa da 11.118 usa o home ADOTADO (qualquer secao 11.x), a 11.117 so evidencia (ADOTADO, 2026-08-13)
+
+O pedido: a direcao orfa da 11.118 usa a citacao em QUALQUER secao 11.x (o home ADOTADO 11.81/11.94), enquanto a 11.117 usa so evidencia — uma assimetria documentada mas nao pinada. Avaliar um teste de contrato que pince a fronteira de cada registro (evidencia vs ADOTADO) como decisao explicita, travando que um leitor nao 'corrija' a assimetria por engano.
+
+**A avaliacao**: as duas derivadas do guard da sec 11.120 ja codificam a fronteira (deriveEvidenceCited filtra pelo marcador datado — a superficie da 11.117; derive11xCited conta qualquer secao 11.x — o home da orfa da 11.118), mas nada pinava a DISSIMETRIA como decisao: um leitor podia 'simplificar' a orfa da 11.118 para evidencia-only (ou alargar a 11.117 para tudo) sem nenhuma suite reclamar. A assimetria e justificada pela distribuicao viva: as 3 EVIDENCE_EXCLUSIONS vivem em secoes de evidencia (a orfa da 11.117 pode exigir evidencia sem virar lixo), enquanto as 2 HELPER_EVIDENCE_EXCLUSIONS vivem em secoes de DECISAO (a 11.81 e a 11.94 — a orfa da 11.118 precisa do home ADOTADO para nao flagrar o proprio home).
+
+**O veredito (ADOTADO)**: novo describe FRONTEIRAS na suite do guard (sec 11.120) com 4 camadas: (A) o contraste das derivadas — a MESMA citacao sem marcador sai do conjunto da 11.117 e entra no da orfa da 11.118 (com marcador entra nas duas — a assimetria so existe na ausencia do marcador); (B) a direcao citacao->home da 11.118 herda a fronteira da evidencia (um helper citado em prosa nao entra no deriveHelperEvidenceCited); (C) o contraste comportamental das orfas — uma exclusao de guard citada so fora da evidencia e ORFA (11.117), a mesma shape de exclusao de helper NAO e (11.118), o mesmo doc sintetico com veredito oposto; (D) REAL-REPO — a distribuicao viva do doc que justifica a decisao: as EVIDENCE_EXCLUSIONS estao no conjunto de evidencia, as HELPER fora dele mas dentro do qualquer-11.x. Se a distribuicao driftar (ex.: uma nota de evidencia nova citar um helper), a camada D falha na hora — a decisao precisa ser re-tomada explicitamente, nunca 'consertada' em silencio.
+
+Claim-free: nenhum exit code novo (count 30 intacto). O corpo nao tem marcador de evidencia nem citacoes backticked com prefixo scripts/ — o ABS PIN das 8 citacoes da sec 11.117 permanece intacto.
+
+**Re-validação**: `npx vitest run scripts/__tests__/scan-evidence-sweep.test.ts scripts/__tests__/wired-guards-contract.test.ts scripts/__tests__/proof-helpers-contract.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-evidence-sweep.mjs --check` (clean) + `node scripts/scan-exit-claims.mjs --check` (clean 30 claims) + UTF-8 do doc + ASCII do .ts + ordering 11.120 -> 11.121 -> 12 monotono.
+
+## 11.122 O tripwire da fronteira compartilhada dos sweeps (11.117/11.118): staging do scan-evidence-sweep roda as 2 suites dependentes ANTES do commit (ADOTADO, 2026-08-13)
+
+O pedido: o evidence-sweep.ts e a fronteira compartilhada das 11.117/11.118, mas a edicao acidental so seria pega no push/CI (o sweep vive no test:unit). Avaliar um tripwire no padrao do scan-proof-helpers: rodar as suites 11.117/11.118 no pre-commit quando evidence-sweep.ts ou os dois contratos mudarem — a falha antes do commit.
+
+**A avaliacao**: a premissa do pedido ja mudou — o evidence-sweep.ts foi DELETADO na sec 11.120 (a regra dos 2 usos): a fronteira agora vive NO GUARD scan-evidence-sweep.mjs, que ja e o 12o guard do batch do pre-commit (incondicional, ~15-25ms, rodando as derivadas em fs+regex puros contra a doc real). E o mecanismo de testes direcionados do hook (pre-commit-tests.mjs, o --scope cached) ja cobre parte do pedido: (1) editar as 2 suites de contrato (wired-guards-contract com o ABS PIN das 8 citacoes da 11.117; proof-helpers-contract com o ABS PIN das 0 citacoes de helper da 11.118) as roda no pre-commit (um teste staged roda as-is); (2) editar o FONTE da fronteira roda a suite co-localizada dele (scan-evidence-sweep.test.ts, via a convencao __tests__/). O RESIDUO real: as 2 suites DEPENDENTES nao rodam quando SO o fonte da fronteira muda — um edit que mude o conjunto derivado com a doc ainda limpa (ex.: um marcador novo que faca uma secao de decisao virar evidencia com citacoes ja cobertas) quebraria so os ABS PINs das dependentes, no push/CI.
+
+**O veredito (ADOTADO)**: tripwire no pre-commit-tests.mjs (o canal que ja roda os testes direcionados do hook — o mesmo espirito do scan-proof-helpers, sem um guard novo): o mapa FRONTIER_DEPENDENT_SUITES (o pin explicito, o padrao do GUARD_SUITE_MAP da 11.78) mapeia a fronteira para as 2 suites dependentes, e o collectTestFiles adiciona as dependentes ao conjunto quando a fronteira esta entre os arquivos staged. Custo: zero no caso comum (a regra so dispara com a fronteira staged); ~40s quando a fronteira muda — o custo deliberado de tocar a fronteira compartilhada, exatamente o que o pedido pediu. Ripple ZERO: batch 12 guards, wired 22, allowlist 9, claims 30, registry 23 classes / 59 provas — nenhum guard novo, nenhum count novo.
+
+A fronteira honesta: o tripwire cobre a classe "edit no fonte da fronteira que o guard do batch (doc-sensitive) e a suite co-localizada nao pegam" — os ABS PINs das dependentes sao os que pegam esse edit; e os testes staged das proprias suites dependentes continuam cobrindo a classe "edit na suite que a quebra".
+
+Claim-free: nenhum exit code novo (count 30 intacto). O corpo nao tem marcador de evidencia nem citacoes backticked com prefixo scripts/ — o ABS PIN das 8 citacoes da sec 11.117 permanece intacto.
+
+**Re-validação**: `npx vitest run scripts/__tests__/pre-commit-tests.test.ts scripts/__tests__/scan-evidence-sweep.test.ts scripts/__tests__/wired-guards-contract.test.ts scripts/__tests__/proof-helpers-contract.test.ts scripts/__tests__/gates-proofs-ordering.test.ts scripts/__tests__/scan-exit-claims.test.ts --config vitest.config.unit.ts` + `npx tsc --noEmit` + `node scripts/scan-evidence-sweep.mjs --check` (clean) + `node scripts/proofs-manifest.mjs --check` (23 classes / 59 provas) + `node scripts/scan-exit-claims.mjs --check` (clean 30 claims) + UTF-8 do doc + ASCII do .mjs/.ts + ordering 11.121 -> 11.122 -> 12 monotono.
 
 ## 12. Referências
 

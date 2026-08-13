@@ -28,6 +28,7 @@ import path from "node:path"
 import { cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
 import { CI_PROOF_NAMESPACE, CI_PROOF_PROBE, DANGER_REFS } from "../workflow-contracts.mjs"
 import { findStashRef, isCiProofBranch, parseArgs, planSteps, scanLogWarnings, verifyCleanLog, verifyOutcome, verifyParseReject } from "../ci-proof-run.mjs"
+import { failMsgInputCites, parseArgsKeys } from "./fail-input-cites"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "ci-proof-run.mjs")
 const FAKE = path.resolve(process.cwd(), "scripts", "__tests__", "fixtures", "ci-proof-fake-bins.mjs")
@@ -1210,6 +1211,319 @@ describe("ci-proof-run.mjs - ciclo prova-CI num comando (Type E + Prova 7 travad
       const offenders = pre.filter((s) => span(s, lines).includes("stashLeftNote"))
       expect(offenders.length).toBe(1)
       expect(offenders[0].text).toContain("git rev-parse")
+    }, 60000)
+  })
+
+  describe("o guard irmao do fato consumido no ci-proof-run (sec 11.102): todo uso do stashLeftNote passa o gate stashedDelta VARIAVEL + o logPath resolvido-uma-vez citado por variavel", () => {
+    // O pedido: o trio da 11.84/11.100/11.101 pina os args do revertLeftNote
+    // (hook-proof-run), mas o irmao CI (ci-proof-run.mjs) usa o stashLeftNote
+    // com o mesmo padrao de resolved-once sem pin analogo. A avaliacao
+    // honesta: o stashLeftNote do ci-proof-run e uma CONST string (linha
+    // 612), NAO uma funcao com args de path como o revertLeftNote - o padrao
+    // args[N] do trio nao mapeia 1:1. Os fatos consumidos do lado CI sao
+    // DOIS: (a) o gate `stashedDelta` (a variavel setada UMA vez pelo stash
+    // step, linha ~620, que decide se a nota e honesta - uma nota
+    // incondicional mentiria num ciclo de arvore limpa) em CADA um dos 8
+    // usos; e (b) o `logPath` (linha 822, resolvido UMA vez via
+    // path.join(os.tmpdir()) e citado no DONE `log=${logPath}` e no 'log
+    // capturado em ${logPath}') - o verdadeiro analogo do
+    // backupDir/safetyDiff (o path citado em output que precisa ser o MESMO
+    // da gravacao).
+    const NOTE_DEF_RE = /const stashLeftNote =/
+
+    function noteUses(src: string) {
+      const lines = src.split("\n")
+      return lines
+        .map((l, i) => ({ line: i + 1, text: l }))
+        .filter((s) => s.text.includes("stashLeftNote") && !NOTE_DEF_RE.test(s.text))
+    }
+
+    // O gate: a interpolacao `${stashedDelta ? stashLeftNote : ""}` - a nota
+    // so vale quando o stash foi tomado (arvore suja + --stash-uncommitted).
+    // Um literal `true ?` ou a nota incondicional travaria a honestidade
+    // (mentiria em ciclo de arvore limpa).
+    const gatedOnVar = (s: { text: string }) => s.text.includes("stashedDelta ? stashLeftNote")
+
+    it("os 8 usos do stashLeftNote passam o gate stashedDelta VARIAVEL (o fato consumido do stash step), nunca um literal nem incondicional", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const uses = noteUses(src)
+      // 8 usos: checkout, checkout -b, mutate, self-delete, local-block
+      // ENOENT, local-block no-trip, commit, push
+      expect(uses.length).toBe(8)
+      for (const s of uses) {
+        expect(gatedOnVar(s), `linha ${s.line} (uso do stashLeftNote) deve passar o gate stashedDelta VARIAVEL - nao um literal que travaria a honestidade`).toBe(true)
+      }
+    }, 60000)
+
+    it("MUTATION: hardcodar o gate do 1o uso (stashedDelta -> true) -> o guard flagra (a nota mentiria em ciclo de arvore limpa)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const mutated = src.replace("${stashedDelta ? stashLeftNote : \"\"}", "${true ? stashLeftNote : \"\"}")
+      expect(mutated).not.toBe(src)
+      const offenders = noteUses(mutated).filter((s) => !gatedOnVar(s))
+      expect(offenders.length).toBe(1)
+      expect(offenders[0].text).toContain("true ? stashLeftNote")
+    }, 60000)
+
+    it("MUTATION: tornar a nota INCONDICIONAL num fail (remover o gate) -> o guard flagra", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const mutated = src.replace("${stashedDelta ? stashLeftNote : \"\"}", "${stashLeftNote}")
+      expect(mutated).not.toBe(src)
+      const offenders = noteUses(mutated).filter((s) => !gatedOnVar(s))
+      expect(offenders.length).toBe(1)
+      expect(offenders[0].text).toContain("${stashLeftNote}")
+    }, 60000)
+
+    // O segundo fato consumido: o logPath (linha 822) resolvido UMA vez e
+    // citado nos outputs (DONE `log=${logPath}` + 'log capturado em
+    // ${logPath}') - o analogo do backupDir/safetyDiff. Uma segunda
+    // resolucao (path.join de novo) ou um literal no output citaria um path
+    // DIFERENTE do que a gravacao usou (o resolved-once vira fato
+    // consumido).
+    const LOG_DEF_RE = /const logPath = path\.join\(/
+    const LOG_USE_RE = /\$\{logPath\}|writeFileSync\(logPath/
+
+    function logUses(src: string) {
+      const lines = src.split("\n")
+      return lines
+        .map((l, i) => ({ line: i + 1, text: l }))
+        .filter((s) => s.text.includes("logPath") && !LOG_DEF_RE.test(s.text))
+    }
+
+    function doneLine(src: string): string {
+      const lines = src.split("\n")
+      const idx = lines.findIndex((l) => /ci-proof-run: DONE run=/.test(l))
+      if (idx < 0) throw new Error("linha DONE nao encontrada no source - o guard de forma ficou cego")
+      return lines[idx]
+    }
+
+    // ASSIMETRIA DELIBERADA (reviewer nit, sec 11.102): o noteUses usa pin
+    // EXATO (toBe(8) - um 9o uso legitimo com gate DEVE ser revisado
+    // conscientemente), mas o logUses usa PISO (>= 3 - um uso novo legitimo
+    // com a variavel DEVE passar; o que trava e o INVARIANTE por uso, nao a
+    // contagem). Nao igualar um ao outro.
+    it("os usos do logPath citam a VARIAVEL (${logPath} / writeFileSync(logPath)), nunca um literal nem uma segunda resolucao", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const uses = logUses(src)
+      // 3 usos: o writeFileSync(logPath), o 'log capturado em ${logPath}' e o DONE log=${logPath}
+      expect(uses.length).toBeGreaterThanOrEqual(3)
+      for (const s of uses) {
+        expect(LOG_USE_RE.test(s.text), `linha ${s.line} (uso do logPath) deve citar a VARIAVEL - nao um literal nem uma segunda resolucao`).toBe(true)
+      }
+    }, 60000)
+
+    it("MUTATION: segunda resolucao do logPath no DONE (path.join de novo) -> o guard flagra (o drift do path citado)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const mutated = src.replace("log=${logPath}", "log=${path.join(os.tmpdir(), 'ci-proof-literal.log')}")
+      expect(mutated).not.toBe(src)
+      expect(doneLine(mutated)).not.toContain("log=${logPath}")
+      expect(doneLine(mutated)).toContain("path.join(os.tmpdir()")
+    }, 60000)
+
+    it("MUTATION: literal do logPath no DONE (log=/tmp/...) -> o guard flagra (a citacao viraria um path diferente do gravado)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const mutated = src.replace("log=${logPath}", "log=/tmp/ci-proof-literal.log")
+      expect(mutated).not.toBe(src)
+      expect(doneLine(mutated)).not.toContain("log=${logPath}")
+      expect(doneLine(mutated)).toContain("/tmp/ci-proof-literal.log")
+    }, 60000)
+  })
+
+  describe("o guard irmao do INPUT citado (sec 11.105): toda citacao de input em mensagens usa a VARIAVEL do parseArgs (opts.X ou o alias b resolvido-uma-vez), nunca um literal", () => {
+    // O pedido: a 11.102 fechou o lado dos paths resolvidos-uma-vez citados
+    // em output (logPath), mas os INPUTS raw citados nas mensagens
+    // (opts.mutateSelfDelete, opts.mutate, opts.branch, opts.workflow) nao
+    // tem guard de forma analogo - um literal hardcoded num fail citaria um
+    // path DIFERENTE do parseado. A avaliacao honesta (probe 2026-08-12):
+    // 55 citacoes de input no source inteiro, TODAS via ${opts.X} ou o alias
+    // b (`const b = opts.branch`, linha 319 - o resolved-once do lado CI,
+    // analogo do backupDir/safetyDiff/logPath). As 17 citacoes DENTRO de
+    // mensagens de fail (a superficie que o pedido nomeia: 566, 633, 637,
+    // 673, 713, 728, 786, 796x3, 800x4, 804x3) sao o ABS PIN abaixo. Uma
+    // typo de key (opts.brnach) e o alias literal (const b = "main")
+    // divergem do parseArgs e do def - o guard trava a classe dos DOIS
+    // lados.
+    const ALIAS_DEF_RE = /const b = opts\.branch/
+
+    // As derivadas failMsgInputCites + parseArgsKeys vivem no modulo
+    // compartilhado ./fail-input-cites (a regra dos 2 usos da sec 11.115):
+    // a suite do ci e a do hook importam a MESMA fonte corrigida - nunca
+    // uma copia que pudesse driftar. A derivada corrigida (regex AMPLO
+    // opts.X + alias ${b} + skip do fail sem-template via paren-matching)
+    // reproduz EXATAMENTE as 17 citacoes abaixo (comparado 2026-08-13).
+
+    it("ABS PIN: as 17 citacoes de input em mensagens de fail citam a VARIAVEL do parseArgs (o growth contract: um literal num fail some da derivada e diverge)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const cites = failMsgInputCites(src)
+      // 17 citacoes em 9 mensagens (566/633/637/673/713/728/786/796/800/804)
+      expect(cites.map((c) => `${c.line}:${c.key}`)).toEqual([
+        "566:opts.branch",
+        "633:opts.branch",
+        "637:opts.branch",
+        "673:opts.mutateSelfDelete",
+        "713:opts.branch",
+        "728:opts.workflow",
+        "786:opts.onlyJobs",
+        "796:opts.timeout",
+        "796:opts.workflow",
+        "796:opts.branch",
+        "800:opts.timeout",
+        "800:opts.onlyJobs",
+        "800:opts.workflow",
+        "800:opts.branch",
+        "804:opts.timeout",
+        "804:opts.workflow",
+        "804:opts.branch",
+      ])
+    }, 60000)
+
+    it("INVARIANT: toda key citada em mensagens de fail e uma key REAL do parseArgs (a typo opts.brnach divergiria)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const keys = parseArgsKeys(src)
+      for (const c of failMsgInputCites(src)) {
+        const key = c.key === "b (alias de opts.branch)" ? "branch" : c.key.replace("opts.", "")
+        expect(keys, `linha ${c.line}: key '${c.key}' nao e uma key do parseArgs (${keys.join(", ")})`).toContain(key)
+      }
+    }, 60000)
+
+    it("INVARIANT: o alias b = opts.branch (linha 319) e o resolved-once do input - a def nunca vira literal nem segunda resolucao", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const defLine = src.split("\n").findIndex((l) => ALIAS_DEF_RE.test(l)) + 1
+      expect(defLine, "a def 'const b = opts.branch' deve existir").toBeGreaterThan(0)
+      expect(src.split("\n")[defLine - 1].trim()).toBe("const b = opts.branch")
+    }, 60000)
+
+    it("MUTATION: literal da branch num fail (git checkout main falhou) -> a citacao 633 SOME da derivada e o ABS PIN diverge", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const mutated = src.replace("git checkout ${opts.branch} falhou", "git checkout main falhou")
+      expect(mutated).not.toBe(src)
+      const cites = failMsgInputCites(mutated)
+      expect(cites.some((c) => c.line === 633 && c.key === "opts.branch")).toBe(false)
+    }, 60000)
+
+    it("MUTATION: typo da key num fail (opts.brnach) -> o INVARIANT de keys reais flagra o offender", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const mutated = src.replace("${opts.branch}", "${opts.brnach}")
+      expect(mutated).not.toBe(src)
+      const keys = parseArgsKeys(mutated)
+      const offenders = failMsgInputCites(mutated).filter((c) => {
+        const key = c.key === "b (alias de opts.branch)" ? "branch" : c.key.replace("opts.", "")
+        return !keys.includes(key)
+      })
+      expect(offenders.length).toBeGreaterThan(0)
+      expect(offenders[0].key).toBe("opts.brnach")
+    }, 60000)
+
+    it("MUTATION: o alias vira literal (const b = \"main\") -> a def do resolved-once diverge", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const mutated = src.replace("const b = opts.branch", "const b = \"main\"")
+      expect(mutated).not.toBe(src)
+      expect(mutated.split("\n").some((l) => ALIAS_DEF_RE.test(l))).toBe(false)
+    }, 60000)
+
+    it("FRONTIER (sec 11.110): o escopo do 11.105 e o FAIL - nenhuma citacao da derivada cai em linha de steps.push (o plano) nem console.log (o log): o plano so imprime no --dry-run (578, dentro do if (opts.dryRun) - o run real NUNCA imprime o plano) e o log e narracao de sucesso (677: a remocao real usou o selfDel resolvido) - a classe e informativa, nao contrato de erro; se a derivada crescer para plan/log, este pin diverge e exige a decisao inversa documentada", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const lines = src.split("\n")
+      for (const c of failMsgInputCites(src)) {
+        const line = lines[c.line - 1] ?? ""
+        expect(
+          !line.includes("steps.push") && !line.includes("console.log"),
+          `a citacao ${c.line} (${c.key}) nao pode ser plan/log - o 11.105 cobre so o fail (a classe informativa e a fronteira documentada da 11.110)`,
+        ).toBe(true)
+      }
+    }, 60000)
+  })
+
+  describe("os FATOS da fronteira 11.110 (sec 11.116): o plano so e impresso DENTRO do if (opts.dryRun) e o log 677 nunca cita antes do fs.rmSync - as premissas do RECUSADO travadas estruturalmente (nao so em prosa)", () => {
+    // O RECUSADO da 11.110 documenta: o plan e dry-run-only (o run real NUNCA
+    // imprime o plano, so o executa) e o log e narracao de sucesso pos-
+    // operacao. O FRONTIER (11.110/11.115) pina o OUTPUT da derivada
+    // (nenhuma citacao em plan/log) - mas nao pina os FATOS que sustentam a
+    // decisao. Estes pins derivam o source: o plano vive DENTRO do bloco if
+    // (opts.dryRun) e o log 677 vem DEPOIS do fs.rmSync na ordem do source
+    // (= ordem de execucao). O walker ignora as interpolacoes ${...} (elas
+    // tem { e } que nao fecham o bloco).
+
+    /** Fecha o bloco aberto no { apontado por openIdx, pulando ${...}. */
+    function findBlockClose(src: string, openIdx: number): number {
+      let depth = 0
+      for (let i = openIdx; i < src.length; i++) {
+        const ch = src[i]
+        if (ch === "{") {
+          if (src[i - 1] === "$") {
+            const close = src.indexOf("}", i)
+            if (close === -1) return -1
+            i = close
+            continue
+          }
+          depth++
+        } else if (ch === "}") {
+          depth--
+          if (depth === 0) return i
+        }
+      }
+      return -1
+    }
+
+    it("FATO 1: o plano (console.log PLAN + o for de planSteps, 577-578) vive DENTRO do bloco if (opts.dryRun) - o run real NUNCA imprime o plano (a premissa da 11.110); fora do bloco nao ha print do plano", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const dryOpen = src.indexOf("if (opts.dryRun) {")
+      expect(dryOpen, "o guard 'if (opts.dryRun) {' deve existir no source").toBeGreaterThan(-1)
+      const dryClose = findBlockClose(src, dryOpen)
+      expect(dryClose, "o bloco do dry-run deve fechar").toBeGreaterThan(dryOpen)
+      const body = src.slice(dryOpen, dryClose + 1)
+      expect(body).toContain("ci-proof-run: PLAN (dry-run)")
+      expect(body).toContain("for (const s of planSteps(")
+      const outside = src.slice(dryClose + 1)
+      expect(outside, "fora do bloco dry-run nao pode haver print do plano (o run real nunca o imprime - a premissa da 11.110)").not.toContain("ci-proof-run: PLAN (dry-run)")
+      expect(outside, "fora do bloco nao pode haver o loop de print do plano").not.toContain("for (const s of planSteps(")
+    }, 60000)
+
+    it("MUTATION (a divisao de camadas): duplicar o print do plano FORA do guard NAO muda a derivada fail-scoped (o FRONTIER da 11.110 continua verde - ela nunca ve a linha nova) MAS o FATO 1 diverge - a classe dos FATOS e fechada por este pin, nao pelo FRONTIER", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const mutated = src.replace(
+        "  }\n\n  // PROVA 16 (2026-08): --no-verify",
+        "  }\n  console.log(`ci-proof-run: PLAN (dry-run) branch=${opts.branch} (fora do bloco - MUTATION)`)\n\n  // PROVA 16 (2026-08): --no-verify",
+      )
+      expect(mutated).not.toBe(src)
+      // O FRONTIER (a derivada fail-scoped) nao pega: a nova linha nao e um
+      // fail, a derivada nunca a ve (a camada do FATO 1 e a que fecha).
+      const cites = failMsgInputCites(mutated)
+      const lines = mutated.split("\n")
+      const offenders = cites.filter((c) => {
+        const l = lines[c.line - 1] ?? ""
+        return l.includes("steps.push") || l.includes("console.log")
+      })
+      expect(offenders, "a derivada nao ve o print do plano (o FRONTIER segue verde - a classe e dos FATOS, sec 11.116)").toEqual([])
+      // O FATO 1 diverge: fora do bloco agora ha print do plano.
+      const dryOpen = mutated.indexOf("if (opts.dryRun) {")
+      const dryClose = findBlockClose(mutated, dryOpen)
+      const outside = mutated.slice(dryClose + 1)
+      expect(outside).toContain("ci-proof-run: PLAN (dry-run)")
+    }, 60000)
+
+    it("FATO 2: o log da remocao (console.log 677) vem DEPOIS do fs.rmSync(selfDel) na ordem do source - a narracao nunca cita antes da operacao que narra (a premissa da 11.110: o log e narracao de sucesso pos-operacao)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const rmIdx = src.indexOf("fs.rmSync(selfDel")
+      // O needle especifico do LOG (nao o generico --mutate-self-delete:
+      // removido, que tambem aparece no TEXTO do plano, linha 341 - o
+      // steps.push do self-delete): o prefixo ci-proof-run: so existe na
+      // narracao do console.log 677.
+      const logIdx = src.indexOf("ci-proof-run: --mutate-self-delete: removido")
+      expect(rmIdx, "o fs.rmSync(selfDel deve existir (o self-delete do runner, Prova 22/sec 8.17)").toBeGreaterThan(-1)
+      expect(logIdx, "o console.log da remocao deve existir").toBeGreaterThan(-1)
+      expect(logIdx, "o log da remocao NUNCA pode citar antes do rmSync - a narracao vem apos a operacao (ordem do source = ordem de execucao)").toBeGreaterThan(rmIdx)
+    }, 60000)
+
+    it("MUTATION: o console.log da remocao ANTES do fs.rmSync -> o FATO 2 diverge (a narracao citaria o path resolvido antes da operacao)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "ci-proof-run.mjs"), "utf8")
+      const mutated = src.replace(
+        "fs.rmSync(selfDel, { force: true })",
+        "console.log(`ci-proof-run: --mutate-self-delete: removido ${opts.mutateSelfDelete} (MUTATION antes do rmSync)`)\n      fs.rmSync(selfDel, { force: true })",
+      )
+      expect(mutated).not.toBe(src)
+      const rmIdx = mutated.indexOf("fs.rmSync(selfDel")
+      const logIdx = mutated.indexOf("ci-proof-run: --mutate-self-delete: removido")
+      expect(logIdx, "o log mutado agora vem antes do rmSync - o FATO 2 diverge").toBeLessThan(rmIdx)
     }, 60000)
   })
 })

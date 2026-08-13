@@ -37,6 +37,7 @@ import { describe, expect, it } from "vitest"
 import fs from "node:fs"
 import path from "node:path"
 import { deriveWiredGuards, PROOF_CLASSES, WIRED_ALLOWLIST } from "../proofs-manifest.mjs"
+import { EVIDENCE_EXCLUSIONS, deriveEvidenceCited, evidenceCitedViolations, section11Bodies } from "../scan-evidence-sweep.mjs"
 import { cleanupTempDirs, createTempDir } from "./golden-copy-utils"
 
 const ROOT = process.cwd()
@@ -75,7 +76,14 @@ function guardStem(g: string): string {
  *     unit-surface-contract.test.ts (a suite da sec 11.80/11.95 que
  *     importa a fonte unica dos extratores do guard) - NAO um
  *     scan-unit-config.test.ts convencional.
- * Um 5o guard wired com suite fora da convencao ENTRA em derivedMapKeys
+ *   - scan-derived-inventory.mjs -> proof-helpers-contract.test.ts (sec
+ *     11.112, a 5a excecao, 2026-08-13): o 11o guard do batch roda o
+ *     contrato da COMPLETUDE do registry (sec 11.107, CONSUMED_FACTS
+ *     11.104 / RESOLVED_PATHS 11.106), e a suite onde o contrato mora e a
+ *     proof-helpers-contract.test.ts (a suite da sec 11.107 que importa a
+ *     fonte unica do guard - registries + derivadas, a regra dos 2 usos) -
+ *     NAO um scan-derived-inventory.test.ts convencional.
+ * Um 6o guard wired com suite fora da convencao ENTRA em derivedMapKeys
  * automaticamente e a direcao D do mapContractViolations flagra a falta de
  * entrada (a lista nao existe para esquecer de editar - o padrao 11.79).
  */
@@ -83,6 +91,7 @@ const GUARD_SUITE_VALUES: Record<string, string> = {
   "run-mapped-fuzz.mjs": "fuzz-mapped.test.ts",
   "scan-lucide-icons.mjs": "scan-batch-coverage.test.ts",
   "scan-proof-helpers.mjs": "proof-helpers-contract.test.ts",
+  "scan-derived-inventory.mjs": "proof-helpers-contract.test.ts",
   "scan-unit-config.mjs": "unit-surface-contract.test.ts",
 }
 
@@ -148,31 +157,10 @@ function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${esc}$`)
 }
 
-/**
- * O corpo das secoes 11.x do doc, na ordem do doc. Fecha o corpo corrente em
- * QUALQUER header numerado de topo (`## N` - inclusive `## 12.` e `## 8.x`,
- * nao so o proximo `## 11.N`): a secao 11.x nao pode absorver o que vem
- * depois do ultimo header 11.x (um guard citado so em `## 12.` nao teria
- * nota 11.x - o reviewer flagrou a forma anterior). `### 11.x.y` NAO fecha
- * (e subsecao da corrente, `^## ` nao casa `###`).
- */
-function section11Bodies(docText: string): string[] {
-  const out: string[] = []
-  const lines = docText.split(/\r?\n/)
-  let cur: string[] | null = null
-  for (const line of lines) {
-    if (/^## \d/.test(line)) {
-      if (cur) out.push(cur.join("\n"))
-      cur = /^## 11\.\d+/.test(line) ? [] : null
-    } else if (cur) {
-      cur.push(line)
-    }
-  }
-  if (cur) out.push(cur.join("\n"))
-  return out
-}
-
-/** Parte 3: o stem aparece no corpo de alguma secao 11.x? */
+/** Parte 3: o stem aparece no corpo de alguma secao 11.x? (o corpo das
+ * secoes vive no scan-evidence-sweep.mjs compartilhado - a fronteira do
+ * guard da sec 11.120, a regra dos 2 usos; o evidence-sweep.ts foi
+ * deletado quando a fronteira migrou para o guard). */
 function nota11x(stem: string, docText: string): boolean {
   const re = new RegExp(`\\b${stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`)
   return section11Bodies(docText).some((body) => re.test(body))
@@ -270,9 +258,9 @@ function mapContractViolations(opts: {
 }
 
 describe("wired-guards-contract - as 3 partes em TODO guard wired (sec 11.78)", () => {
-  it("REAL-REPO: os 20 guards wired derivados dos hooks reais tem as 3 partes - entrada no manifest, suite no test:guard/test:unit e nota na sec 11.x", () => {
+  it("REAL-REPO: os 21 guards wired derivados dos hooks reais tem as 3 partes - entrada no manifest, suite no test:guard/test:unit e nota na sec 11.x", () => {
     const wired = deriveWiredGuards()
-    expect(new Set(wired).size).toBe(20)
+    expect(new Set(wired).size).toBe(22)
     const docText = fs.readFileSync(DOC, "utf8")
     expect(contractViolations({ wired, docText })).toEqual([])
   }, 60000)
@@ -343,10 +331,11 @@ describe("o mapa das excecoes da convencao fechado - suite existe + sem entrada 
     expect(mapContractViolations({ wired })).toEqual([])
   }, 60000)
 
-  it("o ABS PIN da INVERSAO (sec 11.92): as chaves do mapa == as chaves DERIVADAS do fs (derivedMapKeys = os 4 guards wired sem suite convencional, incl. o scan-unit-config da sec 11.96) - a lista de excecoes nasce do fs real, nao de uma copia editada a mao", () => {
+  it("o ABS PIN da INVERSAO (sec 11.92): as chaves do mapa == as chaves DERIVADAS do fs (derivedMapKeys = os 5 guards wired sem suite convencional, incl. o scan-unit-config da sec 11.96 e o scan-derived-inventory da sec 11.112) - a lista de excecoes nasce do fs real, nao de uma copia editada a mao", () => {
     const derived = derivedMapKeys(deriveWiredGuards())
     expect(derived).toEqual([
       "run-mapped-fuzz.mjs",
+      "scan-derived-inventory.mjs",
       "scan-lucide-icons.mjs",
       "scan-proof-helpers.mjs",
       "scan-unit-config.mjs",
@@ -408,5 +397,72 @@ describe("o mapa das excecoes da convencao fechado - suite existe + sem entrada 
     expect(viol).toHaveLength(1)
     expect(viol[0][0]).toBe("scan-batch-coverage.mjs")
     expect(viol[0][1]).toEqual(["entrada desnecessaria (a suite convencional existe)"])
+  }, 60000)
+})
+
+/**
+ * O sweep inverso da 11.78 (sec 11.117): a completude evidencia -> registry.
+ * A 11.78 pina wired -> registry (todo guard wired tem classe/allowlist); o
+ * lado inverso: toda citacao de modulo em secao 11.x COM evidencia DATADA
+ * (prova viva / nota datada / probe datado / parentese datado) precisa ter
+ * classe no PROOF_CLASSES, entrada no WIRED_ALLOWLIST ou estar na
+ * EVIDENCE_EXCLUSIONS (os nao-guards documentados) - nunca silencio.
+ *
+ * A derivada (probe 2026-08-13): o marcador datado e a FRONTEIRA - a nota
+ * de PROVA viva, nao a mencao narrativa de 'Prova N' (secoes de decisao
+ * como a 11.27/11.28 citam `scripts/prova22-mutate.mjs` em prosa historica
+ * sem ser nota datada; o sweep amplo achava 15, as 7 extras eram ruido de
+ * cross-reference). Com o marcador datado o doc real produz 8 citacoes:
+ * 5 classes (check-exit-claims-push, run-mapped-fuzz, scan-prepush-batch,
+ * scan-push-full-suite, scan-unit-config) + 3 exclusoes documentadas. A
+ * hipotese do pedido (notas datadas de 11.49/11.80 sem entrada) se provou
+ * FALSA: a 11.49 e a classe check-exit-claims-push (Provas 37/38) e a
+ * 11.80 e a scan-unit-config (Prova 49) - ambas com entrada. O valor do
+ * sweep e o PIN da classe: uma nota datada nova citando um modulo sem
+ * classe/allowlist/exclusao falha na hora.
+ */
+
+describe("o sweep inverso da 11.78 (sec 11.117): toda citacao de modulo em secao 11.x com evidencia datada tem classe, allowlist ou exclusao documentada", () => {
+  it("REAL-REPO: as 8 citacoes de evidencia do doc real = 5 classes + 3 exclusoes - nenhuma violacao (o ABS PIN da superficie; o probe 2026-08-13 mediu 8, nao 15 - o marcador datado exclui as cross-references de prosa)", () => {
+    const docText = fs.readFileSync(DOC, "utf8")
+    const cited = deriveEvidenceCited(docText)
+    expect(cited).toEqual([
+      "scripts/check-exit-claims-push.mjs",
+      "scripts/eslintd-shim.sh",
+      "scripts/fuzz-targets.mjs",
+      "scripts/proofs-manifest.mjs",
+      "scripts/run-mapped-fuzz.mjs",
+      "scripts/scan-prepush-batch.mjs",
+      "scripts/scan-push-full-suite.mjs",
+      "scripts/scan-unit-config.mjs",
+    ])
+    expect(evidenceCitedViolations({ docText })).toEqual([])
+  }, 60000)
+
+  it("MUTATION (o crescimento inverso): um modulo fake citado numa secao de evidencia sintetica -> flagra sem classe/allowlist/exclusao (a nota datada de prova nova exige registro)", () => {
+    const docText = fs.readFileSync(DOC, "utf8")
+    const mutated = docText + "\n## 11.999 placeholder (2026-08-13)\n**prova viva (2026-08-13)**: o `scripts/fake-evidence-mod.mjs` rodou e o guard pegou.\n"
+    expect(mutated).not.toBe(docText)
+    const viol = evidenceCitedViolations({ docText: mutated })
+    expect(viol).toHaveLength(1)
+    expect(viol[0][0]).toBe("scripts/fake-evidence-mod.mjs")
+    expect(viol[0][1]).toEqual(["classe no PROOF_CLASSES nem allowlist nem exclusao documentada"])
+  }, 60000)
+
+  it("MUTATION (a exclusao e load-bearing): remover uma exclusao do mapa -> a citacao correspondente flagra (a lista nao pode morrer em silencio)", () => {
+    const docText = fs.readFileSync(DOC, "utf8")
+    const { ["scripts/eslintd-shim.sh"]: _dropped, ...exclusions } = EVIDENCE_EXCLUSIONS
+    const viol = evidenceCitedViolations({ docText, exclusions })
+    expect(viol).toHaveLength(1)
+    expect(viol[0][0]).toBe("scripts/eslintd-shim.sh")
+  }, 60000)
+
+  it("MUTATION (a exclusao orfa, a direcao B da 11.90 aplicada): uma exclusao cujo modulo NAO e citado em nenhuma secao de evidencia -> flagra 'exclusao orfa' (a lista nao pode acumular lixo em silencio)", () => {
+    const docText = fs.readFileSync(DOC, "utf8")
+    const exclusions = { ...EVIDENCE_EXCLUSIONS, "scripts/fake-orphan.mjs": "lixo de teste" }
+    const viol = evidenceCitedViolations({ docText, exclusions })
+    expect(viol).toHaveLength(1)
+    expect(viol[0][0]).toBe("scripts/fake-orphan.mjs")
+    expect(viol[0][1]).toEqual(["exclusao orfa (o modulo nao e citado em secao de evidencia)"])
   }, 60000)
 })

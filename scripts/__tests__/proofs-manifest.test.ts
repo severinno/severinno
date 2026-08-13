@@ -8,7 +8,7 @@
  * consultavel - a suite torna o registry um CONTRATO:
  *
  *   - ABS PIN (content): o teste pina o CONTEUDO do manifest (a projecao
- *     [class, prova, section, run] das 42 provas, DERIVADA do manifest no
+ *     [class, prova, section, run] das 59 provas, DERIVADA do manifest no
  *     assert - o padrao dos fatos consumidos, nao uma copia que driftara).
  *     Editar o registry (nova prova, run trocado, secao renumerada) exige
  *     editar o snapshot conscientemente - registrar e a decisao.
@@ -48,7 +48,7 @@ const PROJECTION: Array<[string, number, string, string]> = PROOF_CLASSES.flatMa
 
 /**
  * O snapshot do CONTEUDO pinado (sec 11.60): a projecao [class, prova,
- * section, run] das 42 provas, na ORDEM do manifest. A lista NAO e uma
+ * section, run] das 59 provas, na ORDEM do manifest. A lista NAO e uma
  * copia separada no teste - e a projecao de PROOF_CLASSES; editar o
  * manifest exige editar ESTE snapshot conscientemente (o growth contract
  * aplicado ao conteudo, o mesmo padrao do ABS_PIN_SNAPSHOT da sec 11.50).
@@ -85,6 +85,11 @@ const ABS_PIN_SNAPSHOT: Array<[string, number, string, string]> = [
   ["ci-proof-run", 20, "11.20", "31442006152"],
   ["ci-proof-run", 32, "8.27", "31511149307"],
   ["ci-proof-run", 48, "8.43", "local"],
+  ["ci-proof-run", 52, "8.47", "local"],
+  ["ci-proof-run", 53, "8.48", "local"],
+  ["ci-proof-run", 54, "8.49", "local"],
+  ["ci-proof-run", 55, "8.50", "local"],
+  ["ci-proof-run", 57, "8.52", "local"],
   ["scan-prepush-batch", 23, "8.18", "local"],
   ["scan-eol-anchor", 25, "8.20", "31480438465"],
   ["scan-curl-timeouts", 26, "8.21", "31485163704"],
@@ -105,6 +110,9 @@ const ABS_PIN_SNAPSHOT: Array<[string, number, string, string]> = [
   ["hook-proof-run", 51, "8.46", "31642157987"],
   ["doc-revalidate", 42, "8.37", "local"],
   ["scan-unit-config", 49, "8.44", "local"],
+  ["scan-derived-inventory", 56, "8.51", "local"],
+  ["wired-guards-contract", 58, "8.53", "local"],
+  ["proof-helpers-contract", 59, "8.54", "local"],
 ]
 
 /** Doc sintetico: apenas os headers passados (para MUTATIONs). */
@@ -126,9 +134,9 @@ afterEach(() => {
 describe("scripts/proofs-manifest.mjs - ABS PIN e SHAPE (sec 11.60)", () => {
   it("ABS PIN (content): a projecao [class, prova, section, run] do PROOF_CLASSES pinada pelo snapshot - editar o registry exige editar o snapshot conscientemente", () => {
     expect(PROJECTION).toEqual(ABS_PIN_SNAPSHOT)
-    // sanity: 20 classes / 51 provas registradas (o numero do CLI clean).
-    expect(new Set(PROOF_CLASSES.map((c) => c.class)).size).toBe(20)
-    expect(PROJECTION).toHaveLength(51)
+    // sanity: 23 classes / 59 provas registradas (o numero do CLI clean).
+    expect(new Set(PROOF_CLASSES.map((c) => c.class)).size).toBe(23)
+    expect(PROJECTION).toHaveLength(59)
   })
 
   it("MANIFEST SHAPE: class/module/proofs presentes, run null ou string, prova numerico, section presente", () => {
@@ -165,9 +173,9 @@ describe("scripts/proofs-manifest.mjs - DOC COVERAGE bidirecional (sec 11.60)", 
   it("doc -> manifest: toda Prova detectada no doc REAL tem entrada no registry (nenhuma unregistered)", () => {
     const { unregistered } = checkProofs()
     expect(unregistered).toEqual([])
-    // sanity: o detector acha as 50 provas reais (a Prova 20 via a linha da
+    // sanity: o detector acha as 59 provas reais (a Prova 20 via a linha da
     // tabela `(Prova 20, sec 11.20)` - a secao 11.20 nao tem 'Prova N' no titulo).
-    expect(scanProvaSections(DOC).size).toBe(51)
+    expect(scanProvaSections(DOC).size).toBe(59)
   })
 
   it("manifest -> doc: toda entrada do registry tem secao detectada no doc REAL (entrada stale = drift)", () => {
@@ -198,7 +206,7 @@ describe("scripts/proofs-manifest.mjs - CONSULTATION (o caso do pedido, sec 11.6
 
   it("toda classe de guard do repo tem pelo menos 1 prova viva registrada (nenhuma classe orfa no registry)", () => {
     const classes = PROOF_CLASSES.map((c) => c.class)
-    expect(classes.length).toBe(20)
+    expect(classes.length).toBe(23)
     // As classes centrais da rede de guards estao presentes (sanity das
     // principais - o ABS PIN cobre a lista completa).
     for (const key of ["scan-guard-gates", "scan-curl-timeouts", "verify-encoding", "scan-exit-claims", "check-exit-claims-push"]) {
@@ -285,11 +293,12 @@ describe("scripts/proofs-manifest.mjs - MUTATION (a classe real, sec 11.60)", ()
 })
 
 describe("scripts/proofs-manifest.mjs - WIRED SURFACE: o lado inverso do growth contract (sec 11.60)", () => {
-  it("WIRED ALLOWLIST ABS PIN: as 8 excecoes deliberadas (wired sem Prova dedicada, contratos suite-pinned) - editar a lista exige editar o pin (o scan-unit-config GRADUOU para classe com a Prova 49, sec 8.44)", () => {
+  it("WIRED ALLOWLIST ABS PIN: as 9 excecoes deliberadas (wired sem Prova dedicada, contratos suite-pinned) - editar a lista exige editar o pin (o scan-unit-config GRADUOU para classe com a Prova 49, sec 8.44; o scan-derived-inventory GRADUOU com a Prova 56, sec 8.51 - o mesmo padrao)", () => {
     expect(WIRED_ALLOWLIST).toEqual([
       "check-docs-encoding.sh",
       "check-push-deletion.mjs",
       "scan-batch-coverage.mjs",
+      "scan-evidence-sweep.mjs",
       "scan-fuzz-precommit.mjs",
       "scan-lint-staged-loader.mjs",
       "scan-lucide-icons.mjs",
@@ -298,9 +307,9 @@ describe("scripts/proofs-manifest.mjs - WIRED SURFACE: o lado inverso do growth 
     ])
   })
 
-  it("deriveWiredGuards: a superficie viva do repo real deriva os 20 guards wired (hooks + batch imports + steps do net) - sanity da derivacao", () => {
+  it("deriveWiredGuards: a superficie viva do repo real deriva os 21 guards wired (hooks + batch imports + steps do net, incl. o scan-derived-inventory da sec 11.112) - sanity da derivacao", () => {
     const wired = deriveWiredGuards()
-    expect(new Set(wired).size).toBe(20)
+    expect(new Set(wired).size).toBe(22)
     // Os 12 registrados (classes do PROOF_CLASSES) estao na derivacao.
     for (const g of ["verify-encoding.sh", "check-next-types.mjs", "check-node-modules-integrity.mjs", "scan-push-full-suite.mjs", "scan-guard-gates.mjs", "scan-prepush-batch.mjs", "scan-exit-claims.mjs", "check-exit-claims-push.mjs", "run-mapped-fuzz.mjs", "scan-curl-timeouts.mjs", "scan-eol-anchor.mjs", "scan-unit-config.mjs"]) {
       expect(wired).toContain(g)
@@ -451,8 +460,8 @@ describe("scripts/proofs-manifest.mjs - REAL-REPO CONTRACT do CLI (sec 11.60)", 
     expect(res.status).toBe(0)
     const stdout = res.stdout ?? ""
     expect(stdout).toContain("proofs-manifest: clean")
-    expect(stdout).toContain("20 classes")
-    expect(stdout).toContain("51 provas")
+    expect(stdout).toContain("23 classes")
+    expect(stdout).toContain("59 provas")
   }, 60000)
 
   it("CLI exit 1 REAL: PROOFS_DOC aponta o doc sintetico com Prova 99 (a 40 e real desde a sec 8.35) -> exit 1 com a secao listada no stderr (o CLI real le o doc via override)", () => {

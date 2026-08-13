@@ -1,10 +1,10 @@
 /**
- * Unit tests for scripts/pre-commit-tests.mjs — the targeted-tests runner
+ * Unit tests for scripts/pre-commit-tests.mjs - the targeted-tests runner
  * used by the pre-commit hook (--scope cached, git-staged files) and the
  * pre-push Gate 3 (--scope push, staged + HEAD + pushed-commit range).
  *
  * collectTestFiles is exported pure (entry-point guarded), so it is tested
- * directly with a synthetic fixture tree — no git, no vitest subprocess
+ * directly with a synthetic fixture tree - no git, no vitest subprocess
  * needed for the mapping logic itself.
  *
  * Covered scenarios (cached scope):
@@ -17,13 +17,19 @@
  *   7. Dedup: two sources sharing one test produce one entry
  *   8. Only existing test files are returned (missing candidate skipped)
  *   9. Staged source DELETION (diff-filter D) maps to its still-existing test
- *  10. Staged DELETED test file (not on disk) is skipped — nothing to run
+ *  10. Staged DELETED test file (not on disk) is skipped - nothing to run
+ *  11. FRONTIER TRIPWIRE (sec 11.122): a staged frontier source
+ *     (scripts/scan-evidence-sweep.mjs) also adds the 2 dependent suites
+ *     (wired-guards-contract + proof-helpers-contract, the ABS PINs das
+ *     11.117/11.118); non-frontier sources never trigger it; deps not on
+ *     disk are skipped (same rule as co-located candidates)
  */
 import { describe, it, expect, afterEach } from "vitest"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import {
+  FRONTIER_DEPENDENT_SUITES,
   collectTestFiles,
   isTestFile,
   isSourceFile,
@@ -124,7 +130,7 @@ describe("scripts/pre-commit-tests.mjs mapping", () => {
     f.write("src/lib/foo.ts")
     f.write("src/lib/foo.test.ts")
     // foo.ts maps to foo.test.ts (same-dir sibling) AND foo.test.ts is staged
-    // as-is — the Set must collapse them into one entry.
+    // as-is - the Set must collapse them into one entry.
     const got = collectTestFiles(["src/lib/foo.ts", "src/lib/foo.test.ts"], f.dir)
     expect(got).toEqual(["src/lib/foo.test.ts"])
   })
@@ -132,7 +138,7 @@ describe("scripts/pre-commit-tests.mjs mapping", () => {
   it("skips test candidates that do not exist on disk", () => {
     const f = makeFixture()
     f.write("src/lib/foo.ts")
-    // No foo.test.ts exists — the missing candidate must be skipped, not thrown.
+    // No foo.test.ts exists - the missing candidate must be skipped, not thrown.
     const got = collectTestFiles(["src/lib/foo.ts"], f.dir)
     expect(got).toEqual([])
   })
@@ -140,13 +146,13 @@ describe("scripts/pre-commit-tests.mjs mapping", () => {
   it("maps a staged source DELETION (diff-filter D) to its still-existing test", () => {
     const f = makeFixture()
     // Source was removed from disk, but its co-located test remains staged
-    // history — the test must still run (it fails loudly on the missing import).
+    // history - the test must still run (it fails loudly on the missing import).
     f.write("src/lib/foo.test.ts")
     const got = collectTestFiles(["src/lib/foo.ts"], f.dir)
     expect(got).toEqual(["src/lib/foo.test.ts"])
   })
 
-  it("skips a staged DELETED test file (not on disk — nothing to run)", () => {
+  it("skips a staged DELETED test file (not on disk - nothing to run)", () => {
     const f = makeFixture()
     // The test itself was removed: passing its path to vitest would error,
     // so the mapping must drop it entirely.
@@ -161,6 +167,59 @@ describe("scripts/pre-commit-tests.mjs mapping", () => {
     expect(isSourceFile("scripts/foo.mjs")).toBe(true)
     expect(isSourceFile("src/lib/foo.test.ts")).toBe(false)
     expect(isSourceFile("README.md")).toBe(false)
+  })
+
+  it("FRONTIER_DEPENDENT_SUITES (sec 11.122): o mapa do tripwire pina a fronteira compartilhada -> as 2 suites dependentes (os ABS PINs das 11.117/11.118)", () => {
+    expect(FRONTIER_DEPENDENT_SUITES).toEqual({
+      "scripts/scan-evidence-sweep.mjs": [
+        "scripts/__tests__/wired-guards-contract.test.ts",
+        "scripts/__tests__/proof-helpers-contract.test.ts",
+      ],
+    })
+  })
+
+  it("PIN REALITY (sec 11.122): a chave do mapa existe no disco (o registro nunca aponta para o vazio - o padrao do proofs-manifest; um rename da fronteira deixaria a entrada morta em silencio)", () => {
+    for (const src of Object.keys(FRONTIER_DEPENDENT_SUITES)) {
+      expect(fs.existsSync(path.join(process.cwd(), src)), `${src} nao existe`).toBe(true)
+    }
+  })
+
+  it("staging a frontier source adds the co-located suite AND the 2 dependent suites (o tripwire da sec 11.122 - um edit no fonte que mude o conjunto derivado quebra os ABS PINs das dependentes ANTES do commit)", () => {
+    const f = makeFixture()
+    f.write("scripts/scan-evidence-sweep.mjs")
+    f.write("scripts/__tests__/scan-evidence-sweep.test.ts")
+    f.write("scripts/__tests__/wired-guards-contract.test.ts")
+    f.write("scripts/__tests__/proof-helpers-contract.test.ts")
+    const got = collectTestFiles(["scripts/scan-evidence-sweep.mjs"], f.dir)
+    expect(got).toEqual([
+      "scripts/__tests__/scan-evidence-sweep.test.ts",
+      "scripts/__tests__/wired-guards-contract.test.ts",
+      "scripts/__tests__/proof-helpers-contract.test.ts",
+    ])
+  })
+
+  it("staging a NON-frontier source never adds dependent suites (o tripwire nao explode a superficie)", () => {
+    const f = makeFixture()
+    f.write("scripts/scan-exit-claims.mjs")
+    f.write("scripts/__tests__/scan-exit-claims.test.ts")
+    f.write("scripts/__tests__/wired-guards-contract.test.ts")
+    const got = collectTestFiles(["scripts/scan-exit-claims.mjs"], f.dir)
+    expect(got).toEqual(["scripts/__tests__/scan-exit-claims.test.ts"])
+  })
+
+  it("the tripwire skips dependent suites not on disk (a mesma regra dos candidatos co-localizados - so o que existe roda)", () => {
+    const f = makeFixture()
+    f.write("scripts/scan-evidence-sweep.mjs")
+    f.write("scripts/__tests__/scan-evidence-sweep.test.ts")
+    const got = collectTestFiles(["scripts/scan-evidence-sweep.mjs"], f.dir)
+    expect(got).toEqual(["scripts/__tests__/scan-evidence-sweep.test.ts"])
+  })
+
+  it("REAL-REPO (sec 11.122): staging a frontier source on the real repo adds the 2 dependent suites that exist", () => {
+    const got = collectTestFiles(["scripts/scan-evidence-sweep.mjs"], process.cwd())
+    expect(got).toContain("scripts/__tests__/scan-evidence-sweep.test.ts")
+    expect(got).toContain("scripts/__tests__/wired-guards-contract.test.ts")
+    expect(got).toContain("scripts/__tests__/proof-helpers-contract.test.ts")
   })
 })
 
@@ -180,7 +239,7 @@ describe("scripts/pre-commit-tests.mjs push scope (pre-push Gate 3)", () => {
     expect(parseArgs(["--scope", "bogus"])).toEqual({ scope: "cached", since: null })
   })
 
-  it("parseArgs: explicit empty --since (from the hook's :- expansion) yields empty string — which isValidSince rejects (honest skip)", () => {
+  it("parseArgs: explicit empty --since (from the hook's :- expansion) yields empty string - which isValidSince rejects (honest skip)", () => {
     expect(parseArgs(["--scope", "push", "--since", ""])).toEqual({ scope: "push", since: "" })
     expect(isValidSince("")).toBe(false)
   })

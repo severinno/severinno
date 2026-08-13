@@ -25,6 +25,7 @@ import path from "node:path"
 import { EXIT_CLAIMS_CURE } from "../scan-exit-claims.mjs"
 import { injectDocClaim, isManualDocRenameCmd, parseArgs, patchAppliesClean, planSteps, renumberDocSection, revertLeftNote, untrackedFlip, verifyLocalHook } from "../hook-proof-run.mjs"
 import { cleanupTempDirs, createTempDir, runSubprocess } from "./golden-copy-utils"
+import { failMsgInputCites, parseArgsKeys } from "./fail-input-cites"
 
 const SCRIPT = path.resolve(process.cwd(), "scripts", "hook-proof-run.mjs")
 const FAKE_BINS = path.resolve(process.cwd(), "scripts", "__tests__", "fixtures", "hook-proof-fake-bins.mjs")
@@ -229,6 +230,7 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       // a claim fica ANTES do ## 12. e o restante do doc e preservado
       const idxClaim = out.indexOf("## 11.99")
       const idx12 = out.indexOf("## 12.")
+      expect(idx12).not.toBe(-1) // fail-loud (sec 11.103): a moved "## 12." must not become out.slice(-1)
       expect(idxClaim).toBeGreaterThan(0)
       expect(idxClaim).toBeLessThan(idx12)
       expect(out.slice(idx12)).toContain("## 12. Referências")
@@ -1853,6 +1855,81 @@ describe("hook-proof-run.mjs - ciclo de prova de hook local num comando (sec 11.
       )
       expect(r.status).toBe(3)
       expect(r.stderr).toContain("safety backup nao gravavel")
+    }, 60000)
+  })
+
+  describe("o pin irmao do INPUT citado no hook (sec 11.115): a derivada COMPARTILHADA do 11.105/11.110 (fail-input-cites) aplicada ao hook - toda citacao de input em mensagens de fail usa a VARIAVEL do parseArgs e NENHUMA cai em linha de steps.push/console.log (o dualismo fail-vs-plan/log fechado nos DOIS helpers)", () => {
+    it("ABS PIN: as 31 citacoes de input em mensagens de fail do hook citam a VARIAVEL do parseArgs (o growth contract do hook: um literal num fail some da derivada e diverge)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "hook-proof-run.mjs"), "utf8")
+      const cites = failMsgInputCites(src)
+      // 31 citacoes em 10 mensagens (606/704/709x4/715x4/719x4/724x4/729x4/
+      // 740x4/748x4/792) - os ternarios do cleanupOnFailSuffix citam
+      // cleanupOnFail+branch+applySafetyDiffOnFail+branch por linha (o
+      // hook usa a forma que o regex do ci NAO pega: o ternario ${opts.X ?
+      // e o arg de funcao opts.X, - a sec 11.115 fecha com a derivada
+      // corrigida, comparada byte-a-byte contra as 17 do ci 2026-08-13).
+      expect(cites.map((c) => `${c.line}:${c.key}`)).toEqual([
+        "606:opts.branch",
+        "704:opts.branch",
+        "709:opts.cleanupOnFail",
+        "709:opts.branch",
+        "709:opts.applySafetyDiffOnFail",
+        "709:opts.branch",
+        "715:opts.cleanupOnFail",
+        "715:opts.branch",
+        "715:opts.applySafetyDiffOnFail",
+        "715:opts.branch",
+        "719:opts.cleanupOnFail",
+        "719:opts.branch",
+        "719:opts.applySafetyDiffOnFail",
+        "719:opts.branch",
+        "724:opts.cleanupOnFail",
+        "724:opts.branch",
+        "724:opts.applySafetyDiffOnFail",
+        "724:opts.branch",
+        "729:opts.cleanupOnFail",
+        "729:opts.branch",
+        "729:opts.applySafetyDiffOnFail",
+        "729:opts.branch",
+        "740:opts.cleanupOnFail",
+        "740:opts.branch",
+        "740:opts.applySafetyDiffOnFail",
+        "740:opts.branch",
+        "748:opts.cleanupOnFail",
+        "748:opts.branch",
+        "748:opts.applySafetyDiffOnFail",
+        "748:opts.branch",
+        "792:opts.branch",
+      ])
+    }, 60000)
+
+    it("INVARIANT: toda key citada em mensagens de fail do hook e uma key REAL do parseArgs (a typo opts.brnach divergiria)", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "hook-proof-run.mjs"), "utf8")
+      const keys = parseArgsKeys(src)
+      for (const c of failMsgInputCites(src)) {
+        const key = c.key === "b (alias de opts.branch)" ? "branch" : c.key.replace("opts.", "")
+        expect(keys, `linha ${c.line}: key '${c.key}' nao e uma key do parseArgs (${keys.join(", ")})`).toContain(key)
+      }
+    }, 60000)
+
+    it("MUTATION: literal da branch num fail do hook (git checkout -b scratch/foo falhou) -> a citacao 704 SOME da derivada e o ABS PIN diverge", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "hook-proof-run.mjs"), "utf8")
+      const mutated = src.replace("git checkout -b ${opts.branch} falhou", "git checkout -b scratch/foo falhou")
+      expect(mutated).not.toBe(src)
+      const cites = failMsgInputCites(mutated)
+      expect(cites.some((c) => c.line === 704 && c.key === "opts.branch")).toBe(false)
+    }, 60000)
+
+    it("FRONTIER (sec 11.115): o escopo do pin irmao e o FAIL - nenhuma citacao da derivada cai em linha de steps.push (o plano) nem console.log (o log): o hook tem ${opts.X} em steps.push (342-370) e console.log (614/797) - a classe e informativa, nao contrato de erro (o mesmo dualismo que a 11.110 travou no ci, agora no hook); se a derivada crescer para plan/log, este pin diverge e exige a decisao inversa documentada", () => {
+      const src = fs.readFileSync(path.join(process.cwd(), "scripts", "hook-proof-run.mjs"), "utf8")
+      const lines = src.split("\n")
+      for (const c of failMsgInputCites(src)) {
+        const line = lines[c.line - 1] ?? ""
+        expect(
+          !line.includes("steps.push") && !line.includes("console.log"),
+          `a citacao ${c.line} (${c.key}) nao pode ser plan/log - a sec 11.115 cobre so o fail (a classe informativa e a fronteira documentada da 11.110, agora nos DOIS helpers)`,
+        ).toBe(true)
+      }
     }, 60000)
   })
 })

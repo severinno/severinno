@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * run-precommit-guards.mjs - batch runner dos 10 guards node do pre-commit
- * (2026-08, secao 11.13/11.16): uma UNICA invocacao node em vez de 10 spawns.
+ * run-precommit-guards.mjs - batch runner dos 12 guards node do pre-commit
+ * (2026-08, secao 11.13/11.16): uma UNICA invocacao node em vez de 12 spawns.
  *
  * WHY: o boot do node (~0.14s) dominava cada guard isolado (0.14-0.63s
  * medido); os spawns sequenciais do hook custavam ~0.54-0.81s por commit.
@@ -57,7 +57,17 @@
  *      invariante da sec 11.42 supersede a premisa da condicao por
  *      arquivo do pedido: guards baratos nao ganham condicao; ~15-25ms de
  *      fs + regex, boot compartilhado).
- *  10. scan-unit-config.mjs               (sec 11.96, 2026-08-12 - o 10o
+ *  10. scan-derived-inventory.mjs          (sec 11.112, 2026-08-13 - o 11o
+ *      guard): o CONTRATO da COMPLETUDE do registry dos fatos consumidos
+ *      (sec 11.107, CONSUMED_FACTS 11.104 / RESOLVED_PATHS 11.106)
+ *      executado no batch - a suite da 11.107 so rodava via test:unit (no
+ *      CI/push), entao uma nota/gate/path novo num helper .mjs esquecido
+ *      no registry passava o commit local. Roda INCONDICIONAL (a mesma
+ *      invariante da sec 11.42, o padrao do 9o guard - ~15-25ms de fs +
+ *      regex, boot compartilhado); os registries e as derivadas vivem NO
+ *      GUARD (a fonte unica que a suite da sec 11.107 importa, a regra
+ *      dos 2 usos).
+ *  11. scan-unit-config.mjs               (sec 11.96, 2026-08-12 - o 10o
  *      guard): o CONTRATO da nota SERIALIZED POOL do vitest.config.unit.ts
  *      (sec 11.80 poolNotePresent + sec 11.95 a citacao da planura vs a
  *      sec 8.1) executado no batch - a suite da 11.80/11.95 so rodava via
@@ -67,10 +77,21 @@
  *      invariante - ~10-20ms de fs + regex, boot compartilhado); as 4
  *      funcoes extratoras vivem NO GUARD (a fonte unica que a suite da
  *      sec 11.80/11.95 importa, a regra dos 2 usos).
+ *  12. scan-evidence-sweep.mjs             (sec 11.120, 2026-08-13 - o 12o
+ *      guard): o CHECK dos DOIS sweeps de evidencia datada (sec 11.117 nos
+ *      guards + sec 11.118 nos helpers) executado no batch - a suite dos
+ *      sweeps so rodava via test:unit (no CI/push), entao uma nota datada
+ *      nova no gates-proofs.md citando um modulo sem classe/allowlist/
+ *      exclusao passava o commit local e so falharia no push. A sec 11.119
+ *      (a avaliacao da regra dos 2 usos) previu a forma-guard exatamente
+ *      quando o check rodasse no batch. Roda INCONDICIONAL (a mesma
+ *      invariante - ~15-25ms de fs + regex, boot compartilhado); a fronteira
+ *      e as derivadas vivem NO GUARD (a fonte unica que as suites das secs
+ *      11.117/11.118 importam, a regra dos 2 usos).
  * O scan-guard-gates main() e ASYNC (override WORKFLOW_CONTRACTS_MODULE via
  * import dinamico) - o runner o aguarda antes de agregar.
  *
- * Exit: 0 = todos os 10 limpos; 1 = pelo menos um falhou (worst-exit - os
+ * Exit: 0 = todos os 12 limpos; 1 = pelo menos um falhou (worst-exit - os
  * exit codes dos guards sao 0/1 puros, entao o agregado e o OR logico).
  * Env overrides dos guards sao herdados (PUSH_SUITE_SCAN_ROOT,
  * LINT_LOADER_SCAN_ROOT, GUARD_GATES_SCAN_ROOT, NODE_MODULES_ROOT) - os
@@ -95,7 +116,9 @@ import { main as batchCoverageMain } from "./scan-batch-coverage.mjs"
 import { main as prepushBatchMain } from "./scan-prepush-batch.mjs"
 import { main as exitClaimsMain } from "./scan-exit-claims.mjs"
 import { main as proofHelpersMain } from "./scan-proof-helpers.mjs"
+import { main as derivedInventoryMain } from "./scan-derived-inventory.mjs"
 import { main as unitConfigMain } from "./scan-unit-config.mjs"
+import { main as evidenceSweepMain } from "./scan-evidence-sweep.mjs"
 
 /**
  * Run the 10 guards in hook order and aggregate the exit codes. Every guard
@@ -117,7 +140,9 @@ async function runPrecommitGuards() {
     prepushBatchMain(),
     exitClaimsMain(),
     proofHelpersMain(),
+    derivedInventoryMain(),
     unitConfigMain(),
+    evidenceSweepMain(),
   ]
   const worst = codes.some((c) => c !== 0) ? 1 : 0
   process.exitCode = worst

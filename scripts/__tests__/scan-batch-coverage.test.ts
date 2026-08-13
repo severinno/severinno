@@ -188,7 +188,7 @@ describe("scan-batch-coverage.mjs - contrato de crescimento do batch (sec 11.16)
     expect(r.stdout).toContain("BATCH RUNNER MISSING in .husky/pre-commit")
   }, 60000)
 
-  it("DERIVATION PIN: o runner REAL deriva exatamente os 10 guards (8 + o proprio batch-coverage + o exit-claims + o proof-helpers + o unit-config) na ordem dos imports", () => {
+  it("DERIVATION PIN: o runner REAL deriva exatamente os 12 guards (8 + o proprio batch-coverage + o exit-claims + o proof-helpers + o derived-inventory + o unit-config + o evidence-sweep) na ordem dos imports", () => {
     const src = fs.readFileSync(RUNNER, "utf8")
     expect(deriveBatchGuards(src)).toEqual([
       "check-node-modules-integrity.mjs",
@@ -200,7 +200,9 @@ describe("scan-batch-coverage.mjs - contrato de crescimento do batch (sec 11.16)
       "scan-prepush-batch.mjs",
       "scan-exit-claims.mjs",
       "scan-proof-helpers.mjs",
+      "scan-derived-inventory.mjs",
       "scan-unit-config.mjs",
+      "scan-evidence-sweep.mjs",
     ])
   })
 

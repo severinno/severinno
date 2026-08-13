@@ -107,6 +107,7 @@ const ABS_PIN_SNAPSHOT: Array<[string, string, string]> = [
   ["11.49", "current", "check-exit-claims-push (o guard git-based do doc commitado): doc commitado com claim nao-registrada -> exit code 1 com as secoes; doc commitado limpo (ou apenas claims pre-existentes no base) -> exit code 0; git show HEAD falhou -> exit code 3"],
   ["11.58", "current", "hook-proof-run (o ciclo de prova de hook local num comando): esperado observado + revertido -> exit code 0; exit code divergiu (revert mesmo assim) -> exit code 1; usage errado -> exit code 2; infra (checkout/commit/doc ausente/revert incompleto) -> exit code 3"],
   ["11.93", "current", "scan-proof-helpers (o 9o guard do batch, sec 11.93): o contrato 11.72 roda no pre-commit - todos os helpers com as 3 partes -> exit code 0; violacao no bloco 'Exit codes:' de um helper -> exit code 1 com o caminho; usage errado -> exit code 2"],
+  ["11.120", "current", "scan-evidence-sweep (o 12o guard do batch, sec 11.120): o check dos DOIS sweeps de evidencia datada (11.117 nos guards + 11.118 nos helpers) roda no pre-commit - doc real sem violacoes -> exit code 0; nota datada nova citando modulo sem classe/allowlist/exclusao -> exit code 1 com o caminho; usage errado -> exit code 2"],
 ]
 
 afterEach(() => {

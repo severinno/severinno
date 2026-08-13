@@ -23,6 +23,11 @@
  *     test still exists on disk, so it runs and fails loudly on the missing
  *     import - exactly what you want when a source is removed without its test;
  *   - anything else (docs, workflow YAML, e2e specs, ...) maps to nothing.
+ *   - FRONTIER TRIPWIRE (sec 11.122): a staged `scripts/scan-evidence-sweep.mjs`
+ *     (a fronteira compartilhada dos sweeps das 11.117/11.118) roda TAMBEM as
+ *     suites dependentes (wired-guards-contract + proof-helpers-contract) - a
+ *     regra de co-localizacao acharia so a suite do proprio fonte; os ABS PINs
+ *     das 11.117/11.118 vivem nas suites dependentes.
  * When no unit tests map to the staged files, it prints a skip line and exits 0
  * (fast path for doc-only commits - the pre-commit hook must not block those).
  *
@@ -58,6 +63,23 @@ export function isSourceFile(rel) {
 }
 
 /**
+ * FRONTIER_DEPENDENT_SUITES (sec 11.122) - o mapa do tripwire: a fronteira
+ * compartilhada dos sweeps de evidencia datada (scan-evidence-sweep.mjs, sec
+ * 11.120) e importada por DUAS suites alem da sua (wired-guards-contract com
+ * o ABS PIN das 8 citacoes da 11.117; proof-helpers-contract com o ABS PIN
+ * das 0 citacoes de helper da 11.118). A regra de co-localizacao mapearia o
+ * fonte so para a suite dele - um edit no fonte que mude o conjunto derivado
+ * com a doc ainda limpa quebraria so os ABS PINs das dependentes, no push/CI.
+ * O mapa e o pin explicito (o padrao do GUARD_SUITE_MAP da sec 11.78).
+ */
+export const FRONTIER_DEPENDENT_SUITES = {
+  "scripts/scan-evidence-sweep.mjs": [
+    "scripts/__tests__/wired-guards-contract.test.ts",
+    "scripts/__tests__/proof-helpers-contract.test.ts",
+  ],
+}
+
+/**
  * Map a list of staged file paths (relative to `root`) to the deduped unit
  * test files that cover them. Only files that EXIST on disk are returned.
  */
@@ -84,6 +106,16 @@ export function collectTestFiles(staged, root = process.cwd()) {
       path.posix.join(dir, "__tests__", `${base}.test.tsx`),
     ]) {
       if (fs.existsSync(path.join(root, cand))) out.add(cand)
+    }
+  }
+  // O tripwire da sec 11.122: um fonte da fronteira compartilhada staged roda
+  // TAMBEM as suites dependentes (so os ABS PINs delas pegam um edit que mude
+  // o conjunto derivado com a doc ainda limpa). Deps inexistentes sao pulados
+  // (a mesma regra dos candidatos co-localizados - so o que existe no disco).
+  for (const [src, deps] of Object.entries(FRONTIER_DEPENDENT_SUITES)) {
+    if (!staged.includes(src)) continue
+    for (const dep of deps) {
+      if (fs.existsSync(path.join(root, dep))) out.add(dep)
     }
   }
   return [...out]

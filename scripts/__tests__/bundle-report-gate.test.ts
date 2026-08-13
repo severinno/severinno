@@ -573,7 +573,9 @@ describe("scripts/bundle-report.mjs anti-regression gate", () => {
     // Pin to the ## Rotas section (the only version with a block there is the
     // run's own v0.4.3 — the baseline has none): the /busca row must live in
     // THAT block, so a stale row from a future fixture can't false-pass.
-    const rotas = md.slice(md.indexOf("## Rotas (real transfer"))
+    const rotasIdx = md.indexOf("## Rotas (real transfer")
+    expect(rotasIdx).not.toBe(-1) // fail-loud (sec 11.103): a moved marker must not become md.slice(-1)
+    const rotas = md.slice(rotasIdx)
     expect(rotas).toContain("### v0.4.3")
     expect(rotas).toContain("| /busca |")
     // Baseline row survives the regeneration (round-trip, no data loss).

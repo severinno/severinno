@@ -379,9 +379,24 @@ describe("proof-register - REAL-REPO CONTRACT (dry-run on the real files, nothin
     // existem (o scan-unit-config graduou com a Prova 49) e a Prova 50/sec
     // 8.45 agora e REAL (o revert-fail apply com patch integro, registrada
     // em 2026-08-12) e a Prova 51/sec 8.46 e REAL desde 2026-08-12 (o
-    // irmao CI do status-divergente, run 31642157987) - o dry-run usaria
-    // 52/8.47 para nao esbarrar no "Prova N ja existe".
-    code = main(["--class", "hook-proof-run", "--prova", "52", "--section", "8.47", "--what", "o registro de prova local num comando", "--dry-run", "--no-suite"])
+    // irmao CI do status-divergente, run 31642157987) e a Prova 52/sec 8.47
+    // e REAL desde 2026-08-12 (a prova viva LOCAL do guard 11.102) e a
+    // Prova 53/sec 8.48 e REAL desde 2026-08-12 (a prova viva LOCAL do
+    // guard 11.105, o registro da sec 11.102) e a Prova 54/sec 8.49 e REAL
+    // desde 2026-08-12 (a prova agregada viva do PAR da 11.102, gate +
+    // logPath) e a Prova 55/sec 8.50 e REAL desde 2026-08-13 (a prova viva
+    // LOCAL do guard 11.107, o gate fake novoDelta no ci-proof-run real) e
+    // a Prova 56/sec 8.51 e REAL desde 2026-08-13 (o ANCHOR da 11.109 ao
+    // vivo, a graduacao do scan-derived-inventory do allowlist para classe)
+    // e a Prova 57/sec 8.52 e REAL desde 2026-08-13 (o FRONTIER 11.110 ao
+    // vivo, a derivada compartilhada fail-input-cites mutada num scratch)
+    // e a Prova 58/sec 8.53 e REAL desde 2026-08-13 (o helper proof-register
+    // graduou com a Prova 58, a prova viva LOCAL do scanner de superficie da
+    // 11.117 no wired) e a Prova 59/sec 8.54 e REAL desde 2026-08-13 (a
+    // prova viva LOCAL do sweep da 11.118 no proof-helpers-contract)
+    // - o dry-run usaria 60/8.55
+    // para nao esbarrar no "Prova N ja existe".
+    code = main(["--class", "hook-proof-run", "--prova", "60", "--section", "8.55", "--what", "o registro de prova local num comando", "--dry-run", "--no-suite"])
     } finally {
       console.log = origLog
       delete process.env.PROOF_REGISTER_MANIFEST
@@ -390,7 +405,7 @@ describe("proof-register - REAL-REPO CONTRACT (dry-run on the real files, nothin
     }
     expect(code).toBe(0)
     const joined = out.join("\n")
-    expect(joined).toContain("classe hook-proof-run / Prova 52 / secao 8.47")
+    expect(joined).toContain("classe hook-proof-run / Prova 60 / secao 8.55")
     expect(joined).toContain("provas")
     expect(joined).toContain("NADA FOI ESCRITO (dry-run)")
     const after = [fs.readFileSync(REAL_MANIFEST, "utf8"), fs.readFileSync(REAL_TEST, "utf8"), fs.readFileSync(REAL_DOC, "utf8")]
