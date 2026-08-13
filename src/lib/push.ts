@@ -11,7 +11,11 @@ const subject = process.env.VAPID_SUBJECT ?? "mailto:admin@severinno.com.br"
 // Only configure web-push when VAPID keys are available (production).
 // In dev/test, push notifications are silently skipped.
 if (publicKey && privateKey) {
-  webpush.setVapidDetails(subject, publicKey, privateKey)
+  try {
+    webpush.setVapidDetails(subject, publicKey, privateKey)
+  } catch (e) {
+    logger.warn({ err: e }, "Invalid VAPID keys — push notifications disabled")
+  }
 } else {
   logger.warn("VAPID keys not configured — push notifications disabled")
 }

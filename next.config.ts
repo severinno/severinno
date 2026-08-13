@@ -1,12 +1,14 @@
-import type { NextConfig } from "next";
-import withBundleAnalyzer from "@next/bundle-analyzer";
+import type { NextConfig } from "next"
+import withBundleAnalyzer from "@next/bundle-analyzer"
 
 // CSP is set dynamically in middleware.ts with strict directives.
 // Static security headers here apply to pre-rendered responses.
 // See src/middleware.ts for the dynamic CSP header.
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  ...(process.env.BUILD_STANDALONE === "true" || process.env.DOCKER_BUILD === "true"
+    ? { output: "standalone" }
+    : {}),
   reactStrictMode: true,
   poweredByHeader: false,
   generateEtags: true,
@@ -29,7 +31,7 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
         ],
       },
-    ];
+    ]
   },
 
   // Image optimization
@@ -67,7 +69,7 @@ const nextConfig: NextConfig = {
       "sonner",
     ],
   },
-};
+}
 
 const withBundleAnalyzerFn = withBundleAnalyzer({
   enabled: process.env.ANALYZE === "true",
