@@ -30,6 +30,13 @@ export interface BuildBookingWhereClauseOptions {
   createdAtAfter?: Date | string
   /** Only bookings created at or before this date/time. */
   createdAtBefore?: Date | string
+  /**
+   * When set, a PostGIS ST_DWithin radius filter is appended on the
+   * booking's `location` geography column (backed by the GiST index
+   * `idx_booking_location_gist`).
+   * When null/undefined, no spatial filter is applied.
+   */
+  centerGeo?: { lat: number; lng: number; radiusKm: number } | null
 }
 
 /**
@@ -83,6 +90,7 @@ export function buildBookingWhereClause(
     scheduledBefore,
     createdAtAfter,
     createdAtBefore,
+    centerGeo,
   } = opts
 
   const conditions: string[] = [`b.\"deletedAt\" IS NULL`]
@@ -125,6 +133,15 @@ export function buildBookingWhereClause(
   if (createdAtBefore) {
     conditions.push(`b.\"createdAt\" <= $${++idx}::timestamptz`)
     params.push(createdAtBefore)
+  }
+
+  // PostGIS radius filter (uses idx_booking_location_gist)
+  if (centerGeo) {
+    conditions.push(
+      `b.location IS NOT NULL`,
+      `ST_DWithin(b.location, ST_SetSRID(ST_MakePoint($${++idx}, $${++idx}), 4326)::geography, ${centerGeo.radiusKm * 1000})`,
+    )
+    params.push(centerGeo.lng, centerGeo.lat)
   }
 
   return [conditions.join(" AND "), params]

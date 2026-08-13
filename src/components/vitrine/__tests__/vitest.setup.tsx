@@ -98,6 +98,7 @@ vi.mock("lucide-react", () => {
     MapPin: () => <span data-testid="icon-mappin" />,
     LocateFixed: () => <span data-testid="icon-locate" />,
     Loader2: () => <span data-testid="icon-loading" />,
+    Maximize2: () => <span data-testid="icon-maximize" />,
     X: () => <span data-testid="icon-x" />,
   }
 })

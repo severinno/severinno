@@ -62,7 +62,9 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 
 import { useUIStore } from "@/store/ui"
 import { useRecentlyViewedStore } from "@/store/recently-viewed"
+import { useGeoStore } from "@/store/geo"
 import { useIsMobile } from "@/hooks/use-mobile"
+import ProviderMiniMap from "@/components/shared/provider-mini-map"
 import { apiGet, type ProviderDetail, type ProviderService } from "@/lib/api"
 import { formatBRL } from "@/lib/format"
 import {
@@ -556,6 +558,9 @@ function ServiceCard({
 // ---------------------------------------------------------------------------
 
 function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: boolean }) {
+  const userLat = useGeoStore((s) => s.lat)
+  const userLng = useGeoStore((s) => s.lng)
+
   if (loading) {
     return (
       <div className="space-y-2">
@@ -566,6 +571,8 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
   }
 
   const radius = provider?.radiusKm
+  const hasCoords =
+    typeof provider?.lat === "number" && typeof provider?.lng === "number"
 
   return (
     <div className="space-y-4 text-sm">
@@ -613,6 +620,24 @@ function AboutTab({ provider, loading }: { provider?: ProviderDetail; loading: b
           </div>
         </div>
       </div>
+
+      {/* Location mini map */}
+      {hasCoords && provider ? (
+        <>
+          <Separator />
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">Localização</p>
+            <ProviderMiniMap
+              providerLat={provider.lat as number}
+              providerLng={provider.lng as number}
+              providerName={provider.name}
+              userLat={userLat}
+              userLng={userLng}
+              height={180}
+            />
+          </div>
+        </>
+      ) : null}
 
       {/* Contact */}
       {provider?.whatsapp && (

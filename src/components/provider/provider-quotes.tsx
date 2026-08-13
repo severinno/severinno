@@ -45,6 +45,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { useViewStore } from "@/store/view"
 import { cn } from "@/lib/utils"
+import ProviderMiniMap from "@/components/shared/provider-mini-map"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -332,7 +333,6 @@ function QuoteRequestCard({ request }: { request: QuoteRequest }) {
 
   const pendingItems = request.items.filter((i) => i.status === "PENDING")
   const urgent = isUrgent(request.createdAt, request.status)
-  const mapsUrl = `https://www.openstreetmap.org/?mlat=${request.lat}&mlon=${request.lng}#map=16/${request.lat}/${request.lng}`
 
   return (
     <Card
@@ -390,22 +390,25 @@ function QuoteRequestCard({ request }: { request: QuoteRequest }) {
             <div className="grid gap-2 rounded-lg border p-3 text-sm">
               <div className="flex items-start gap-2">
                 <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="text-xs text-muted-foreground">Endereço</p>
                   <p className="font-medium">{request.address}</p>
                   <p className="text-xs text-muted-foreground">
                     CEP: {request.cep}
                   </p>
-                  <a
-                    href={mapsUrl}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                    className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                  >
-                    <MapPin className="size-3" /> Abrir no mapa
-                  </a>
                 </div>
               </div>
+              {Number.isFinite(request.lat) &&
+              Number.isFinite(request.lng) &&
+              !(request.lat === 0 && request.lng === 0) ? (
+                <ProviderMiniMap
+                  providerLat={request.lat}
+                  providerLng={request.lng}
+                  providerName={request.address || "Endereço do serviço"}
+                  height={160}
+                  className="mt-1 border-0"
+                />
+              ) : null}
             </div>
 
             <div className="grid gap-2">

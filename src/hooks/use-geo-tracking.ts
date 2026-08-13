@@ -12,6 +12,15 @@ export function useGeoTracking() {
   const watchIdRef = useRef<number | null>(null)
   const lastEmitTimeRef = useRef<number>(0)
   const trackingDataRef = useRef<{ bookingId: string; clientId: string } | null>(null)
+  // Keep the latest connection state in a ref so the geolocation success
+  // callback (registered once per startTracking) always sees the current
+  // value — otherwise emissions would stop forever if the socket drops
+  // and reconnects while a watch is active. Updated inside an effect
+  // (never during render — react-hooks lint).
+  const isConnectedRef = useRef(isConnected)
+  useEffect(() => {
+    isConnectedRef.current = isConnected
+  }, [isConnected])
 
   const stopTracking = useCallback(() => {
     if (watchIdRef.current !== null) {
@@ -40,7 +49,7 @@ export function useGeoTracking() {
       const now = Date.now()
       // Throttle emission to once every 5 seconds
       if (now - lastEmitTimeRef.current >= 5000) {
-        if (trackingDataRef.current && isConnected) {
+        if (trackingDataRef.current && isConnectedRef.current) {
           sendTrackingPosition({
             bookingId: trackingDataRef.current.bookingId,
             clientId: trackingDataRef.current.clientId,
@@ -74,7 +83,7 @@ export function useGeoTracking() {
         maximumAge: 0,
       }
     )
-  }, [sendTrackingPosition, isConnected, stopTracking])
+  }, [sendTrackingPosition, stopTracking])
 
   useEffect(() => {
     return () => {

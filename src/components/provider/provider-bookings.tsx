@@ -13,6 +13,8 @@ import {
   MessageSquare,
   MoreVertical,
   Play,
+  Radio,
+  Square,
   X,
   Info,
 } from "lucide-react"
@@ -64,6 +66,10 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useViewStore } from "@/store/view"
 import { cn } from "@/lib/utils"
+import { useRealtime } from "@/hooks/use-realtime"
+import { useGeoTracking } from "@/hooks/use-geo-tracking"
+import ProviderMiniMap from "@/components/shared/provider-mini-map"
+import { ProviderTrackingPanel } from "./provider-tracking"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -174,14 +180,22 @@ function BookingDetailsDialog({
   open,
   onOpenChange,
   onMessage,
+  tracking,
 }: {
   booking: Booking | null
   open: boolean
   onOpenChange: (v: boolean) => void
   onMessage: (clientId: string) => void
+  tracking?: {
+    isTracking: boolean
+    isConnected: boolean
+    currentPosition: [number, number] | null
+    error: string | null
+    onStart: () => void
+    onStop: () => void
+  }
 }) {
   if (!booking) return null
-  const mapsUrl = `https://www.openstreetmap.org/?mlat=${booking.lat}&mlon=${booking.lng}#map=16/${booking.lat}/${booking.lng}`
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
@@ -254,22 +268,25 @@ function BookingDetailsDialog({
           <div className="grid gap-2 rounded-lg border p-3 text-sm">
             <div className="flex items-start gap-2">
               <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-xs text-muted-foreground">Endereço</p>
                 <p className="font-medium">{booking.address}</p>
                 <p className="text-xs text-muted-foreground">
                   CEP: {booking.cep}
                 </p>
-                <a
-                  href={mapsUrl}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                >
-                  <MapPin className="size-3" /> Abrir no mapa
-                </a>
               </div>
             </div>
+            {Number.isFinite(booking.lat) &&
+            Number.isFinite(booking.lng) &&
+            !(booking.lat === 0 && booking.lng === 0) ? (
+              <ProviderMiniMap
+                providerLat={booking.lat}
+                providerLng={booking.lng}
+                providerName={booking.address || "Endereço do serviço"}
+                height={160}
+                className="mt-1 border-0"
+              />
+            ) : null}
           </div>
 
           {booking.notes && (
@@ -280,6 +297,20 @@ function BookingDetailsDialog({
               <p className="text-foreground">{booking.notes}</p>
             </div>
           )}
+
+          {/* Live tracking — only for in-progress bookings */}
+          {booking.status === "IN_PROGRESS" && tracking ? (
+            <ProviderTrackingPanel
+              bookingId={booking.id}
+              clientName={booking.client.name}
+              isTracking={tracking.isTracking}
+              isConnected={tracking.isConnected}
+              currentPosition={tracking.currentPosition}
+              error={tracking.error}
+              onStart={tracking.onStart}
+              onStop={tracking.onStop}
+            />
+          ) : null}
 
           {booking.status === "CONFIRMED" && (
             <p className="text-xs text-muted-foreground">
@@ -315,6 +346,13 @@ export function ProviderBookings() {
   const [detail, setDetail] = React.useState<Booking | null>(null)
   const [detailOpen, setDetailOpen] = React.useState(false)
   const [actioningId, setActioningId] = React.useState<string | null>(null)
+
+  // Live tracking — one geolocation watch shared across IN_PROGRESS rows
+  const tracking = useGeoTracking()
+  const { isConnected } = useRealtime()
+  const [trackingBookingId, setTrackingBookingId] = React.useState<
+    string | null
+  >(null)
 
   // Fetch all bookings once for tab counts + table data
   const allQuery = useQuery<{ items: Booking[]; total: number }>({
@@ -368,6 +406,11 @@ export function ProviderBookings() {
     try {
       await apiPatch(`/api/bookings/${booking.id}`, { status: next })
       toast.success(`Agendamento ${label.toLowerCase()}.`)
+      // Stop live tracking when the booking leaves IN_PROGRESS
+      if (trackingBookingId === booking.id && next !== "IN_PROGRESS") {
+        setTrackingBookingId(null)
+        tracking.stopTracking()
+      }
       qc.invalidateQueries({ queryKey: ["provider", "bookings"] })
       qc.invalidateQueries({ queryKey: ["provider", "dashboard"] })
     } catch (e) {
@@ -588,6 +631,22 @@ export function ProviderBookings() {
         open={detailOpen}
         onOpenChange={setDetailOpen}
         onMessage={messageClient}
+        tracking={{
+          isTracking:
+            tracking.isTracking && trackingBookingId === detail?.id,
+          isConnected,
+          currentPosition: tracking.currentPosition,
+          error: tracking.error,
+          onStart: () => {
+            if (!detail) return
+            setTrackingBookingId(detail.id)
+            tracking.startTracking(detail.id, detail.clientId)
+          },
+          onStop: () => {
+            setTrackingBookingId(null)
+            tracking.stopTracking()
+          },
+        }}
       />
     </div>
   )

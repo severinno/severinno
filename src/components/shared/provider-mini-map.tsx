@@ -22,6 +22,11 @@ type Props = {
   providerName: string
   userLat?: number | null
   userLng?: number | null
+  /** Live provider position (WebSocket tracking:position) — [lat, lng]. */
+  liveLat?: number | null
+  liveLng?: number | null
+  /** Label shown next to the live marker (e.g. the provider's name). */
+  liveLabel?: string
   /** Height in px. Default 200. */
   height?: number
   className?: string
@@ -44,14 +49,30 @@ export default function ProviderMiniMap({
   providerName,
   userLat,
   userLng,
+  liveLat,
+  liveLng,
+  liveLabel,
   height = 200,
   className,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const liveMarkerRef = useRef<{
+    setLngLat: (c: [number, number]) => void
+    show: () => void
+    hide: () => void
+  } | null>(null)
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading")
 
+  // Defensive guard: coords that are null/NaN/Infinity, or the placeholder
+  // (0, 0), render a placeholder instead of a map centered on the Gulf of
+  // Guinea. Callers already filter these, but direct usage stays safe.
+  const hasValidCoords =
+    Number.isFinite(providerLat) &&
+    Number.isFinite(providerLng) &&
+    !(providerLat === 0 && providerLng === 0)
+
   useEffect(() => {
-    if (!containerRef.current) return
+    if (!containerRef.current || !hasValidCoords) return
 
     let cancelled = false
     let mapInstance: unknown = null
@@ -137,6 +158,33 @@ export default function ProviderMiniMap({
             .addTo(map)
         }
 
+        // Add live-tracking marker — ALWAYS created (hidden until the first
+        // fix arrives); moved via setLngLat by the effect below so position
+        // updates never recreate the map.
+        const liveEl = document.createElement("div")
+        liveEl.setAttribute("aria-label", liveLabel ?? "Prestador ao vivo")
+        liveEl.className = "animate-pulse"
+        liveEl.style.cssText = `
+          width: 22px; height: 22px;
+          border-radius: 50%;
+          background: #059669;
+          border: 3px solid white;
+          box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.35);
+        `
+        liveEl.style.display = "none"
+        const liveMarker = new maplibregl.Marker({ element: liveEl })
+          .setLngLat([providerLng, providerLat])
+          .addTo(map)
+        liveMarkerRef.current = {
+          setLngLat: (c: [number, number]) => liveMarker.setLngLat(c),
+          show: () => {
+            liveEl.style.display = ""
+          },
+          hide: () => {
+            liveEl.style.display = "none"
+          },
+        }
+
         mapInstance = map
 
         cleanup = () => {
@@ -152,7 +200,19 @@ export default function ProviderMiniMap({
       cancelled = true
       cleanup?.()
     }
-  }, [providerLat, providerLng, providerName, userLat, userLng])
+  }, [providerLat, providerLng, providerName, userLat, userLng, liveLabel, hasValidCoords])
+
+  // Move + reveal the live marker without recreating the map
+  useEffect(() => {
+    const m = liveMarkerRef.current
+    if (!m) return
+    if (typeof liveLat === "number" && typeof liveLng === "number") {
+      m.setLngLat([liveLng, liveLat])
+      m.show()
+    } else {
+      m.hide()
+    }
+  }, [liveLat, liveLng])
 
   const openInOSM = () => {
     window.open(
@@ -162,14 +222,35 @@ export default function ProviderMiniMap({
     )
   }
 
+  // Invalid coordinates — no map to render
+  if (!hasValidCoords) {
+    return (
+      <div
+        data-testid="mini-map-placeholder"
+        className={cn(
+          "relative flex flex-col items-center justify-center gap-1.5 overflow-hidden rounded-xl border bg-muted text-muted-foreground",
+          className,
+        )}
+        style={{ height }}
+      >
+        <MapPin className="size-4" />
+        <p className="text-[11px] font-medium">Localização indisponível</p>
+      </div>
+    )
+  }
+
   return (
     <div
+      data-testid="provider-mini-map"
       className={cn("relative overflow-hidden rounded-xl border bg-muted", className)}
       style={{ height }}
     >
       {/* Loading state */}
       {status === "loading" && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted/80">
+        <div
+          data-testid="mini-map-loading"
+          className="absolute inset-0 z-10 flex items-center justify-center bg-muted/80"
+        >
           <Loader2 className="size-5 animate-spin text-muted-foreground" />
         </div>
       )}
@@ -179,8 +260,12 @@ export default function ProviderMiniMap({
 
       {/* Fallback static image (if MapLibre failed) */}
       {status === "error" && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-muted">
+        <div
+          data-testid="mini-map-fallback"
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-muted"
+        >
           <img
+            data-testid="mini-map-fallback-image"
             src={staticMapUrl(providerLat, providerLng, 14, 400, height)}
             alt={`Mapa de ${providerName}`}
             className="size-full object-cover"
@@ -192,7 +277,10 @@ export default function ProviderMiniMap({
       )}
 
       {/* Provider location badge */}
-      <div className="absolute bottom-2 left-2 z-20 flex items-center gap-1 rounded-full bg-background/90 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm backdrop-blur-sm">
+      <div
+        data-testid="mini-map-badge"
+        className="absolute bottom-2 left-2 z-20 flex items-center gap-1 rounded-full bg-background/90 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm backdrop-blur-sm"
+      >
         <MapPin className="size-3 text-primary" />
         <span className="truncate max-w-[120px]">{providerName}</span>
       </div>
@@ -201,6 +289,7 @@ export default function ProviderMiniMap({
       <button
         type="button"
         onClick={openInOSM}
+        data-testid="mini-map-expand"
         className="absolute top-2 right-2 z-20 flex size-7 items-center justify-center rounded-full bg-background/90 shadow-sm backdrop-blur-sm transition-colors hover:bg-background"
         aria-label="Abrir no OpenStreetMap"
         title="Abrir no OpenStreetMap"
