@@ -207,10 +207,7 @@ async function getRedisClient(): Promise<import("ioredis").Redis | null> {
  *
  *   await assertRateLimit(request, { prefix: "login", max: 10, windowMs: 60_000 })
  */
-export async function assertRateLimit(
-  request: Request,
-  options: RateLimitOptions,
-): Promise<void> {
+export async function assertRateLimit(request: Request, options: RateLimitOptions): Promise<void> {
   const result = await checkRateLimit(request, options)
   if (!result.allowed) {
     const err = new HttpError(429, "Muitas requisições. Tente novamente em alguns segundos.")
@@ -224,8 +221,8 @@ export async function assertRateLimit(
 // ---------------------------------------------------------------------------
 
 export const RATE_LIMITS = {
-  /** Login: 10 attempts per minute per IP */
-  login: { prefix: "login", max: 10, windowMs: 60_000 },
+  /** Login: 5 attempts per minute per IP (strict protection against brute-force) */
+  login: { prefix: "login", max: 5, windowMs: 60_000 },
   /** Register: 5 attempts per minute per IP */
   register: { prefix: "register", max: 5, windowMs: 60_000 },
   /** Password recovery: 3 attempts per 10 min per IP */
