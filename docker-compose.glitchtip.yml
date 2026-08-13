@@ -58,7 +58,7 @@ services:
 
   # ── Valkey (caching, task queue, sessions) — Redis-compativel, BSD-3 ──
   glitchtip-redis:
-    image: valkey/valkey:7.2-alpine
+    image: valkey/valkey:8-alpine
     restart: unless-stopped
     ports:
       - "${GLITCHTIP_REDIS_PORT:-6380}:6379"

@@ -7,6 +7,13 @@
  *     verificacao - misconfiguration e fatal)
  *   - dev      -> fail-open historico preservado (dev local sem config)
  *
+ * CRON_SECRET ausente (o mesmo padrao, sec 3 da SECURITY.md):
+ *   - producao -> 500 (rotas /api/cron/* NUNCA rodam sem verificacao)
+ *   - dev      -> fail-open historico preservado
+ *
+ * Com CRON_SECRET presente: sem Authorization -> 401, Bearer correto -> 200,
+ * Bearer errado -> 401.
+ *
  * Com SESSION_SECRET presente, o guard segue ativo: sem cookie -> 401,
  * cookie valido -> 200 com x-user-id/x-user-role, role errada -> 403.
  */
@@ -124,5 +131,64 @@ describe("middleware fail-closed (SESSION_SECRET)", () => {
       makeRequest("/api/admin/dashboard", `severinno_session=${cookie}`),
     )
     expect(res.status).toBe(403)
+  })
+
+describe("middleware fail-closed (CRON_SECRET)", () => {
+  afterAll(() => {
+    vi.unstubAllEnvs()
+  })
+  it("producao + cron secret ausente + rota cron -> 500 (misconfiguration fatal)", async () => {
+    vi.stubEnv("NODE_ENV", "production")
+    vi.stubEnv("CRON_SECRET", "")
+    const res = await middleware(makeRequest("/api/cron/settlements"))
+    expect(res.status).toBe(500)
+    const body = await res.json()
+    expect(body.error).toContain("CRON_SECRET")
+  })
+
+  it("dev + cron secret ausente + rota cron -> fail-open historico (200)", async () => {
+    vi.stubEnv("NODE_ENV", "development")
+    vi.stubEnv("CRON_SECRET", "")
+    const res = await middleware(makeRequest("/api/cron/settlements"))
+    expect(res.status).toBe(200)
+  })
+
+  it("producao + cron secret presente + sem Authorization -> 401", async () => {
+    vi.stubEnv("NODE_ENV", "production")
+    vi.stubEnv("CRON_SECRET", "cron-secret-123")
+    const res = await middleware(makeRequest("/api/cron/settlements"))
+    expect(res.status).toBe(401)
+  })
+
+  it("producao + cron secret presente + Authorization errado -> 401", async () => {
+    vi.stubEnv("NODE_ENV", "production")
+    vi.stubEnv("CRON_SECRET", "cron-secret-123")
+    const req = new NextRequest(
+      new Request("http://localhost/api/cron/settlements", {
+        headers: { authorization: "Bearer wrong" },
+      }),
+    )
+    const res = await middleware(req)
+    expect(res.status).toBe(401)
+  })
+
+  it("producao + cron secret presente + Bearer correto -> 200", async () => {
+    vi.stubEnv("NODE_ENV", "production")
+    vi.stubEnv("CRON_SECRET", "cron-secret-123")
+    const req = new NextRequest(
+      new Request("http://localhost/api/cron/settlements", {
+        headers: { authorization: "Bearer cron-secret-123" },
+      }),
+    )
+    const res = await middleware(req)
+    expect(res.status).toBe(200)
+  })
+})
+
+  it("producao + cron secret ausente + rota publica -> 200 (publica nao depende do secret)", async () => {
+    vi.stubEnv("NODE_ENV", "production")
+    vi.stubEnv("CRON_SECRET", "")
+    const res = await middleware(makeRequest("/api/health"))
+    expect(res.status).toBe(200)
   })
 })

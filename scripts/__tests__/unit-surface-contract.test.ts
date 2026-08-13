@@ -19,7 +19,8 @@
  * vitrine kinds by suffix: fuzz (real timers + axe), a11y (axe-core),
  * accessibility (axe-core) and snapshot (golden). The resulting included
  * set is exactly the DETERMINISTIC vitrine tests - today
- * address-autocomplete.test.tsx (32) and provider-card.test.tsx (3), both
+ * address-autocomplete.test.tsx (32), provider-card.test.tsx (3) and
+ * section-skeleton.test.tsx (the SectionSkeleton fallback contract), all
  * fast and fake-timer/pure-render. A NEW plain vitrine test auto-joins
  * test:unit by construction (the growth contract pinned below); a new
  * fuzz/a11y/accessibility/snapshot variant stays out.
@@ -66,7 +67,8 @@ const COMPONENTS_DIR = path.join(ROOT, "src", "components")
 /** The deterministic vitrine suites that MUST run in test:unit today. */
 const DETERMINISTIC = "src/components/vitrine/__tests__/address-autocomplete.test.tsx"
 const PROVIDER_CARD = "src/components/vitrine/__tests__/provider-card.test.tsx"
-const EXPECTED_INCLUDED = [DETERMINISTIC, PROVIDER_CARD].sort()
+const SECTION_SKELETON = "src/components/vitrine/__tests__/section-skeleton.test.tsx"
+const EXPECTED_INCLUDED = [DETERMINISTIC, PROVIDER_CARD, SECTION_SKELETON].sort()
 
 /**
  * The pinned component-exclusion contract. The config's exclude block MUST
@@ -184,6 +186,10 @@ describe("unit surface - real component tree", () => {
     const pc = fs.readFileSync(path.join(ROOT, PROVIDER_CARD), "utf8")
     expect(pc).toContain("ProviderCardSkeleton")
     expect(pc).toContain("renders without crashing")
+
+    const ss = fs.readFileSync(path.join(ROOT, SECTION_SKELETON), "utf8")
+    expect(ss).toContain('describe("SectionSkeleton')
+    expect(ss).toContain("render(<SectionSkeleton")
   })
 })
 

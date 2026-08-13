@@ -336,9 +336,9 @@ describe("RESOLVED PATHS (sec 11.106): o inventario completo dos paths resolvido
       ["guard-remeasure", "logPath", 282, [283], "RESOLVED PATHS (sec 11.106)", "11.106", "pin"],
       ["guard-remeasure", "logPath", 303, [304], "RESOLVED PATHS (sec 11.106)", "11.106", "pin"],
       ["doc-revalidate", "docPath", 284, [269, 285, 335, 341], "RESOLVED PATHS (sec 11.106)", "11.106", "pin"],
-      ["proof-register", "manifestPath", 365, [437], "RESOLVED PATHS (sec 11.106)", "11.106", "pin"],
-      ["proof-register", "testPath", 366, [437], "RESOLVED PATHS (sec 11.106)", "11.106", "pin"],
-      ["proof-register", "docPath", 367, [437], "RESOLVED PATHS (sec 11.106)", "11.106", "pin"],
+      ["proof-register", "manifestPath", 374, [446], "RESOLVED PATHS (sec 11.106)", "11.106", "pin"],
+      ["proof-register", "testPath", 375, [446], "RESOLVED PATHS (sec 11.106)", "11.106", "pin"],
+      ["proof-register", "docPath", 376, [446], "RESOLVED PATHS (sec 11.106)", "11.106", "pin"],
     ])
   }, 60000)
 

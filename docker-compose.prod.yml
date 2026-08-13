@@ -241,7 +241,7 @@ services:
   # O servico mantem o nome "redis" e o env REDIS_URL (protocolo RESP
   # compativel — drop-in, sem mudanca de codigo).
   redis:
-    image: valkey/valkey:7.2-alpine
+    image: valkey/valkey:8-alpine
     restart: unless-stopped
     command: valkey-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     security_opt:
@@ -982,7 +982,7 @@ services:
 
   # ── GlitchTip: Valkey (Redis-compativel) ───────────────────────────────
   glitchtip-redis:
-    image: valkey/valkey:7.2-alpine
+    image: valkey/valkey:8-alpine
     restart: unless-stopped
     profiles:
       - glitchtip

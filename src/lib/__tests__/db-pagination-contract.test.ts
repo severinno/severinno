@@ -7,11 +7,12 @@ import path from "node:path"
  *
  * Shape-guard contract pin of the scale-risk #1 closing
  * (melhorias-otimizacoes.md item 1): every provider LISTING surface filters
- * and paginates in the DB (PostGIS ST_DWithin + LIMIT/OFFSET), and distances
- * come from the DB (ST_Distance batch) — never re-introducing the old
+ * and paginates SERVER-SIDE — in the DB (PostGIS ST_DWithin + LIMIT/OFFSET,
+ * ST_Distance batch) or in the OpenSearch engine (geo_distance + from/size)
+ * — never re-introducing the old
  * "fetch-all + per-item in-memory Haversine" pattern.
  *
- * Reads the SOURCE of the 3 listing surfaces (house shape-guard style,
+ * Reads the SOURCE of the 4 listing surfaces (3 SQL + 1 OpenSearch; house shape-guard style,
  * mirroring scan-exit-claims / source-slices-contract). A refactor that
  * reverts any surface to the in-memory pattern fails here with the exact
  * surface named.
@@ -24,6 +25,7 @@ const sqlBuilder = read("src/lib/sql-builder.ts")
 const providersRoute = read("src/app/api/providers/route.ts")
 const favoritesRoute = read("src/app/api/favorites/route.ts")
 const coverage = read("src/lib/coverage.ts")
+const searchLib = read("src/lib/search.ts")
 
 describe("DB pagination contract — scale risk #1", () => {
   // -----------------------------------------------------------------------
@@ -68,5 +70,33 @@ describe("DB pagination contract — scale risk #1", () => {
     expect(fn).not.toContain("findMany")
     expect(fn).toContain("ST_DWithin")
     expect(fn).toContain("ST_Distance")
+  })
+
+  // -----------------------------------------------------------------------
+  // OpenSearch provider search (GET /api/search/providers) - the 4th surface
+  // -----------------------------------------------------------------------
+
+  it("search providers filters the radius via OpenSearch geo_distance (engine-side, not in-memory)", () => {
+    // The geo filter lives in the engine query (geo_distance filter array) -
+    // the OpenSearch counterpart of ST_DWithin on the SQL side. A refactor
+    // that reverts to a JS-side radius loop fails here.
+    expect(searchLib).toContain("geo_distance")
+  })
+
+  it("search providers paginates via from/size in the engine call (no fetch-all + in-memory slice)", () => {
+    // Marker fail-loud asserts: if the function is renamed the slice target
+    // vanishes and this fails with the marker, not a confusing empty diff.
+    expect(searchLib).toContain("export async function searchProviders")
+    expect(searchLib).toContain("export async function searchServices")
+    const fn = searchLib.slice(
+      searchLib.indexOf("export async function searchProviders"),
+      searchLib.indexOf("export async function searchServices"),
+    )
+    // Engine-side pagination: offset derived from the page + limit passed to
+    // the client.search call. No fetch-all + hits.slice in this surface.
+    expect(fn).toContain("const from = (page - 1) * limit")
+    expect(fn).toContain("size: limit")
+    expect(fn).not.toContain(".slice(")
+    expect(fn).not.toContain("haversine")
   })
 })

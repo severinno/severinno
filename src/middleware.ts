@@ -232,7 +232,19 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith("/api/cron/")) {
     const cronSecret = process.env.CRON_SECRET
     const authHeader = request.headers.get("authorization")
-    if (cronSecret && authHeader === `Bearer ${cronSecret}`) return response
+    if (!cronSecret) {
+      // Fail-closed (o mesmo padrao do SESSION_SECRET): sem CRON_SECRET,
+      // rotas de cron NAO podem rodar sem verificacao. Em producao -> 500.
+      // Em dev, fail-open (o mesmo padrao do SESSION_SECRET - dev local sem config).
+      if (process.env.NODE_ENV === "production") {
+        return NextResponse.json(
+          { error: "Servidor mal configurado (CRON_SECRET ausente)" },
+          { status: 500 },
+        )
+      }
+      return response // fail open in dev (o padrao do SESSION_SECRET)
+    }
+    if (authHeader === `Bearer ${cronSecret}`) return response
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
   }
 

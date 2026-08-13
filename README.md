@@ -29,7 +29,7 @@
 | **Frontend** | Next.js 16 (App Router, Turbopack), React 19, Tailwind v4, shadcn/ui, Motion, XState |
 | **Backend** | Next.js API routes, Prisma ORM, Zod validation |
 | **Database** | PostgreSQL 16 + PostGIS 3.4 |
-| **Cache** | Valkey 7.2 (geo cache, rate limiting, session) |
+| **Cache** | Valkey 8 (geo cache, rate limiting, session) |
 | **Queue** | RabbitMQ 4 (notifications, email) |
 | **Routing** | OSRM (fallback Haversine) |
 | **Realtime** | Socket.io (tracking, chat, notifications) |

@@ -101,9 +101,12 @@ export const RESOLVED_PATHS = [
   // doc-revalidate.mjs - 1 pin
   { helper: "doc-revalidate", varName: "docPath", defLine: 284, citedAt: [269, 285, 335, 341], guard: "RESOLVED PATHS (sec 11.106)", section: "11.106", kind: "pin" },
   // proof-register.mjs - 3 pins (a forma CURADA env||DEFAULT)
-  { helper: "proof-register", varName: "manifestPath", defLine: 365, citedAt: [437], guard: "RESOLVED PATHS (sec 11.106)", section: "11.106", kind: "pin" },
-  { helper: "proof-register", varName: "testPath", defLine: 366, citedAt: [437], guard: "RESOLVED PATHS (sec 11.106)", section: "11.106", kind: "pin" },
-  { helper: "proof-register", varName: "docPath", defLine: 367, citedAt: [437], guard: "RESOLVED PATHS (sec 11.106)", section: "11.106", kind: "pin" },
+  // (re-bumped 2026-08-13: o docblock do helper cresceu ~9 linhas no recipe
+  // das Provas 59-61, deslocando as defs 365-367 -> 374-376 e a citacao
+  // 437 -> 446; o ABS PIN da sec 11.106 exige o bump consciente)
+  { helper: "proof-register", varName: "manifestPath", defLine: 374, citedAt: [446], guard: "RESOLVED PATHS (sec 11.106)", section: "11.106", kind: "pin" },
+  { helper: "proof-register", varName: "testPath", defLine: 375, citedAt: [446], guard: "RESOLVED PATHS (sec 11.106)", section: "11.106", kind: "pin" },
+  { helper: "proof-register", varName: "docPath", defLine: 376, citedAt: [446], guard: "RESOLVED PATHS (sec 11.106)", section: "11.106", kind: "pin" },
 ]
 
 /**

@@ -30,7 +30,7 @@ services:
 
   # ── Valkey (100% FOSS, in-memory cache & rate-limit) ───────────────────
   redis:
-    image: valkey/valkey:7.2-alpine
+    image: valkey/valkey:8-alpine
     ports:
       - "127.0.0.1:6380:6379"  # 6380 host → 6379 container (porta 6379 pode estar reservada pelo Hyper-V)
     volumes:

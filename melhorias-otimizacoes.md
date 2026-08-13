@@ -150,6 +150,25 @@ Provider-card.tsx adiciona mousemove listener por card. Em grids grandes (>20), 
 
 16 arquivos de teste em `src/lib/__tests__/`. Cobertura de componentes próxima de zero. Expandir cobertura gradualmente.
 
+### 21. ACHADO (Valkey 8 smoke, 2026-08-13): race lazyConnect no `getClient()` do Redis
+
+**Descoberto** durante a prova de fumaça do upgrade Valkey 7.2→8
+(`scripts/test-redis-cache.ts`, STEP 5 — re-cache após restart): o cliente
+criado por `src/lib/redis.ts` (`lazyConnect: true` + `enableOfflineQueue:
+false`) lança **"Stream isn't writeable" no PRIMEIRO comando** de um cliente
+recém-criado — o comando corre contra o connect e, quando perde, o `cacheSet`
+falha silencioso (degradação documentada da app). Após um restart do Valkey em
+produção, o recheck de 30s zera o singleton (`client = null`) e o próximo
+cliente novo perde a raça de novo — a app pode ficar com o cache Redis morto
+até o próximo recheck bem-sucedido. **Independente da versão do servidor**
+(provado por diagnóstico com 7.2 e 8: bare `setex` e `get`-depois-`setex`
+ambos lançam em cliente novo; pre-connect resolve).
+
+**Cura recomendada:** `connect()` explícito (ou eager) no `getClient()` — o
+padrão que o pre-connect do STEP 5 do smoke provou funcionar (chave escrita
+via módulo real). Fix de ~5 linhas em `src/lib/redis.ts` + teste unitário do
+primeiro comando em cliente fresco.
+
 ---
 
 ## 📊 Métricas Atuais

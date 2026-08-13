@@ -132,8 +132,8 @@ async function seedTestData(db: PrismaClient) {
     const id = `cache-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
     await db.$executeRawUnsafe(
-      `INSERT INTO "User" (id, email, "passwordHash", name, role, lat, lng, active, verified)
-       VALUES ($1, $2, 'test-hash', $3, 'PROVIDER', $4, $5, true, true)`,
+      `INSERT INTO "User" (id, email, "passwordHash", name, role, lat, lng, active, verified, "updatedAt")
+       VALUES ($1, $2, 'test-hash', $3, 'PROVIDER', $4, $5, true, true, CURRENT_TIMESTAMP)`,
       id,
       email,
       p.name,
@@ -144,9 +144,11 @@ async function seedTestData(db: PrismaClient) {
   }
 
   // Verify the trigger synced location
+  // Tagged template do Prisma: valores interpolados viram parametros — o
+  // array de emails como text[] (padrao da casa; $1 sem interpolação falha).
   const count = await db.$queryRaw<Array<{ cnt: bigint }>>`
     SELECT COUNT(*)::bigint AS cnt FROM "User"
-    WHERE email = ANY($1::text[]) AND location IS NOT NULL
+    WHERE email = ANY(${seededEmails}::text[]) AND location IS NOT NULL
   `
   const synced = Number(count[0]?.cnt ?? 0)
   if (synced === providers.length) {
@@ -213,6 +215,9 @@ async function testRedisCache() {
     lazyConnect: true,
     enableOfflineQueue: false,
   })
+  // lazyConnect + comando imediato = race "Stream isn't writeable".
+  // connect() aguarda o socket writable antes do scan (cliente 1/3).
+  await verifyRedis.connect()
 
   try {
     // SCAN with COUNT 1000 — sufficient for our few keys
@@ -377,14 +382,17 @@ async function testRedisCache() {
   log("DOCKER", "Starting Redis container...")
   dockerCmd("start redis")
 
-  // Wait for healthcheck (up to 30s)
+  // Wait for healthcheck (up to 30s). Requer "healthy" de fato — o status
+  // "Up (health: starting)" inclui "up" mas o Redis ainda nao aceita
+  // conexoes (a query seguinte falharia silenciosamente e o cache nao
+  // repopularia, deixando o SCAN vazio).
   let healthy = false
   for (let i = 0; i < 15; i++) {
     try {
       const status = dockerCmd(
-        `ps --filter "name=redis" --format "{{.Status}}"`,
+        `ps redis --format "{{.Status}}"`,
       )
-      if (status.includes("healthy") || status.includes("up")) {
+      if (status.includes("healthy")) {
         healthy = true
         break
       }
@@ -401,6 +409,38 @@ async function testRedisCache() {
     fail("Redis did not become healthy in time")
     failed++
     log("WARN", "Skipping re-cache verification...")
+  }
+
+  // A app reconecta ao Redis pelo recheck periodico (REDIS_RECHECK_MS =
+  // 30s em src/lib/redis.ts): apos o restart, o flag isRedisAvailable so
+  // volta a true no proximo tick. Aguarda esse flag (ate ~40s) ANTES da
+  // query de repopulacao — caso contrario o cacheSet pula o Redis (fail
+  // silencioso) e o SCAN nunca acha a chave.
+  const redisModule = await import("../src/lib/redis")
+  let appBack = false
+  for (let i = 0; i < 20 && !appBack; i++) {
+    appBack = redisModule.isRedisAvailable === true
+    if (!appBack) await sleep(2000)
+  }
+  if (appBack) {
+    pass("App reconectou ao Redis (isRedisAvailable = true)")
+    passed++
+  } else {
+    fail("App nao reconectou ao Redis na janela de recheck (30s)")
+    failed++
+  }
+
+  // Pre-connect do cliente recem-criado da app (lazyConnect + offlineQueue
+  // false): o primeiro comando pos-criacao corre contra o connect e, quando
+  // perde, o cacheSet falha silencioso (Stream isn't writeable) e o SCAN
+  // nunca acha a chave. connect() resolve a raca (diag4-Y provou a escrita).
+  const appClient = redisModule.getClient()
+  if (appClient) {
+    try {
+      await appClient.connect()
+    } catch {
+      // ja conectando/conectado — ok
+    }
   }
 
   // Fresh query — should re-populate cache
@@ -421,10 +461,17 @@ async function testRedisCache() {
     lazyConnect: true,
     enableOfflineQueue: false,
   })
+  // Mesmo race do cliente 1 — connect() antes do scan (cliente 3/3).
+  await verifyRedis2.connect()
 
   try {
-    const [, keys2] = await verifyRedis2.scan(0, "MATCH", "proximity:*", "COUNT", "1000")
-    const cacheKeys2 = keys2.filter((k) => k.startsWith("proximity:"))
+    // Poll do SCAN ate 45s (a repopulacao acontece apos o recheck).
+    let cacheKeys2: string[] = []
+    for (let i = 0; i < 15 && cacheKeys2.length === 0; i++) {
+      const [, keys2] = await verifyRedis2.scan(0, "MATCH", "proximity:*", "COUNT", "1000")
+      cacheKeys2 = keys2.filter((k) => k.startsWith("proximity:"))
+      if (cacheKeys2.length === 0) await sleep(3000)
+    }
 
     if (cacheKeys2.length > 0) {
       pass(`Cache re-populated: ${cacheKeys2.join(", ")}`)
@@ -469,7 +516,9 @@ async function testRedisCache() {
 /** Wait for a container to be healthy by checking its status in docker ps. */
 async function waitForHealthy(containerName: string, maxRetries = 15): Promise<boolean> {
   for (let i = 0; i < maxRetries; i++) {
-    const status = dockerCmd(`ps --filter "name=${containerName}" --format "{{.Status}}"`)
+    // Sintaxe posicional (service name) — o filtro --filter "name=" nao e
+    // suportado no docker compose ps moderno ("unknown filter name").
+    const status = dockerCmd(`ps ${containerName} --format "{{.Status}}"`)
     if (status.includes("healthy") || status.includes("up")) return true
     await sleep(2000)
   }
@@ -501,6 +550,8 @@ async function main() {
       lazyConnect: true,
       enableOfflineQueue: false,
     })
+    // Mesmo race do cliente 1 — connect() antes do flushall (cliente 2/3).
+    await cleanupRedis.connect()
     try {
       await cleanupRedis.flushall()
       log("REDIS", "Flushed all keys (clean state)")
@@ -532,6 +583,11 @@ async function main() {
     await cleanupTestData(db)
     await db.$disconnect()
   }
+
+  // O cliente ioredis pre-conectado da app (STEP 5) segura o event loop —
+  // o processo nao sai naturalmente apos o sucesso. Exit explicito,
+  // espelhando o process.exit(1) do caminho de falha.
+  process.exit(0)
 }
 
 main()

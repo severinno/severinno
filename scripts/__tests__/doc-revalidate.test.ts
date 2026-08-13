@@ -362,10 +362,11 @@ describe("scripts/doc-revalidate.mjs - REAL-REPO CONTRACT (sec 11.61)", () => {
     const r = runCli(["--dry-run", "--no-suite"])
     expect(r.status).toBe(0)
     expect(r.stdout).toContain("dry-run")
-    // o pin do count ATUAL (29): a cada claim nova no EXIT_CLAIMS, este
+    // o pin do count ATUAL (30): a cada claim nova no EXIT_CLAIMS, este
     // assert muda de proposito (o mesmo padrao do ABS PIN) - a 29a (sec
-    // 11.93, 2026-08-12) exigiu a atualizacao deste pin
-    expect(r.stdout).toContain("clean (29 claims")
+    // 11.93, 2026-08-12) e a 30a (a re-validacao datada da 8.34, 2026-08-13)
+    // exigiram a atualizacao deste pin
+    expect(r.stdout).toContain("clean (30 claims")
     expect(r.stdout).toContain("**Re-validação (")
   }, 60000)
 })

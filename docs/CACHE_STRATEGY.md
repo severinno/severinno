@@ -77,6 +77,47 @@ If Valkey is down or unreachable:
 - The app continues to work — responses are computed fresh from PostgreSQL
 - No error propagation to the API response
 
+### Valkey 8.0 (upgrade coordenado, 2026-08-13)
+
+**Imagem:** `valkey/valkey:7.2-alpine` → `valkey/valkey:8-alpine` em toda a
+stack — `docker-compose.yml`, `docker-compose.dev.yml`,
+`docker-compose.test.yml`, `docker-compose.glitchtip.yml` e as 2 ocorrencias de
+`docker-compose.prod.yml` (redis + glitchtip-redis), mais os service containers
+de `e2e-cache.yml` e `lighthouse-ci.yml`. Nome do servico (`redis`), env
+(`REDIS_URL`) e protocolo (RESP) inalterados — drop-in, sem mudanca de codigo.
+
+**Prova de fumaça do RESP:** `bun scripts/test-redis-cache.ts` verde
+(**15/15**) contra o container `valkey/valkey:8-alpine` (v8.1.9) real no
+`docker-compose.test.yml` — cache miss → PostGIS, SCAN + GET da chave
+`proximity:*`, cache hit, degradacao graciosa com Redis offline (fallback
+PostGIS) e re-cache apos restart. O cliente ioredis 5.6.1 da app fala RESP
+2 sem mudanca. Nenhum flag do compose precisou mudar (`valkey-cli ping` no
+healthcheck, `--maxmemory`, `--appendonly` validos na 8.x).
+
+**Diferencas comportamentais da 8.0 relevantes para esta stack (auditadas):**
+
+| Mudanca na 8.0 | Impacto aqui |
+|---|---|
+| Nested `MULTI`/`WATCH` dentro de transacao agora abortam (7.2 ignorava silenciosamente) | N/A — a app nao usa transacoes Redis (sem `.multi(`/`.pipeline(`/`.watch(` no codigo) |
+| `SCAN` nao retorna mais chaves expiradas-lazy | Positivo — o smoke SCANa `proximity:*` e so ve chaves vivas; nenhum codigo dependia de ver chaves mortas |
+| `BITCOUNT`/`BITPOS` com args invalidos agora dao erro (7.2 retornava 0) | N/A — nao usa bitops |
+| Mensagens de erro sem a marca "Redis" | N/A — nenhum codigo faz parse de mensagem de erro (so checa `err` de conexao) |
+| `repl-backlog-size` default 1MB → 10MB; replicacao dual-channel | N/A — deploy de no unico, sem replica |
+| Novo modelo de I/O threading (perf ate 3-4x em alguns workloads) | Transparente ao cliente RESP; medir CPU/memoria do container apos o deploy (`docker stats`/monitoracao, nao o guard-remeasure — que mede o job CI da sec 8.1) |
+| Streams: +8 bytes/entry na representacao interna | N/A — filas usam RabbitMQ, nao Redis streams |
+
+**ACHADO da prova de fumaça:** o smoke expoe 5 bugs pre-existentes em
+`scripts/test-redis-cache.ts` (nenhum relacionado a versao do servidor), todos
+corrigidos nesta rodada — (1) `docker compose ps --filter "name="` nao existe
+no compose moderno (virou sintaxe posicional); (2) o INSERT do seed nao
+provia `updatedAt` (NOT NULL sem default sob `prisma db push`); (3) o tagged
+template do Prisma usava `$1` sem interpolacao (virou interpolacao do array de
+emails); (4) clientes `lazyConnect: true` + `enableOfflineQueue: false` lancam
+"Stream isn't writeable" no primeiro comando pos-criacao (race) — corrigido
+com `await connect()` e, no STEP 5, com pre-connect do singleton da app apos o
+recheck de 30s do `src/lib/redis.ts`; (5) o wait de health do STEP 5 aceitava
+"Up (health: starting)" como saudavel (agora exige "healthy" real).
+
 ---
 
 ## Layer 2: HTTP Cache-Control (CDN / Edge)

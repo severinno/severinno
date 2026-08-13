@@ -221,6 +221,16 @@ describe("scripts/pre-commit-tests.mjs mapping", () => {
     expect(got).toContain("scripts/__tests__/wired-guards-contract.test.ts")
     expect(got).toContain("scripts/__tests__/proof-helpers-contract.test.ts")
   })
+
+  it("REAL-REPO (SECURITY.md sec 3, 2026-08-13): staging src/middleware.ts maps to the co-located src/middleware.test.ts - o contrato fail-closed (SESSION_SECRET/CRON_SECRET) roda no pre-commit via o mapper, NENHUM guard batch necessario (a classe 11.93/11.96 existe para contratos em suites cross-cutting nao co-localizadas, nao para source com suite irma) - o pin impede a re-proposta", () => {
+    const got = collectTestFiles(["src/middleware.ts"], process.cwd())
+    expect(got).toContain("src/middleware.test.ts")
+  })
+
+  it("REAL-REPO (sec 11.123, 2026-08-13): staging src/lib/env.schema.ts maps to the co-located src/lib/__tests__/env.schema.test.ts - o guard de forma das secrets obrigatorias (derivacao + ABS PIN do boot fail-closed) roda no pre-commit via o mapper (a suite co-localizada criada na sec 11.123 fecha o gap do schema edit), NENHUM guard batch necessario - o pin impede a re-proposta", () => {
+    const got = collectTestFiles(["src/lib/env.schema.ts"], process.cwd())
+    expect(got).toContain("src/lib/__tests__/env.schema.test.ts")
+  })
 })
 
 describe("scripts/pre-commit-tests.mjs push scope (pre-push Gate 3)", () => {

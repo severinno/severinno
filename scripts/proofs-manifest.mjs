@@ -265,6 +265,27 @@ export const PROOF_CLASSES = [
       { prova: 59, section: "8.54", run: null, what: "prova viva LOCAL do ABS PIN da 11.118 (par das Provas 44/50): nota datada (2026-08-13) com o scripts/guard-remeasure.mjs (um helper real SEM entrada no PROOF_HELPERS, coberto so pela exclusao) citado na sec 11.121 real -> o REAL-REPO da 11.118 falha (deriveHelperEvidenceCited [] vs [guard-remeasure]) com o path exato no diff + 5 colaterais na suite do guard (REAL-REPO CONTRACT, MUTATION 11.117, CLI exit 1, FRONTEIRAS C e D); revertido byte-identical (a classe nasce da suite, o padrao da scan-surfaces-contract)" },
     ],
   },
+  {
+    class: "compose-valkey",
+    module: "docker-compose.yml",
+    proofs: [
+      { prova: 60, section: "8.55", run: null, what: "prova viva LOCAL do healthcheck Valkey 8 (classe compose-valkey): docker compose up do docker-compose.yml real -> valkey 8.1.9 healthy via 'valkey-cli ping' + scripts/check-health.sh exit 0 com '[PASS] Redis/Valkey: PONG' no step 7" },
+    ],
+  },
+  {
+    class: "middleware",
+    module: "src/middleware.ts",
+    proofs: [
+      { prova: 61, section: "8.56", run: null, what: "prova viva LOCAL do contrato fail-closed do middleware (classe middleware): backup byte-copy + remocao dos 2 blocos fail-closed do src/middleware.ts real (os 500 de producao do SESSION_SECRET e do CRON_SECRET virarem fail-open) -> a suite src/middleware.test.ts falha com os 4 caminhos exatos (3x SESSION_SECRET 500 + 1x CRON_SECRET 500); revertido byte-identical + re-run 14/14 verde" },
+    ],
+  },
+  {
+    class: "db-pagination-contract",
+    module: "src/lib/__tests__/db-pagination-contract.test.ts",
+    proofs: [
+      { prova: 62, section: "8.57", run: null, what: "prova viva LOCAL do pin favorites do db-pagination-contract (o 2o do trio do risco de escala #1, classe db-pagination-contract): backup byte-copy + loop per-item haversineKm reintroduzido no src/app/api/favorites/route.ts real -> a suite falha com o caminho exato (o teste favorites distances are DB-first via computeDistanceMap, o .not.toContain(haversineKm) com o diff mostrando as linhas injetadas); revertido byte-identical + re-run 7/7 verde" },
+    ],
+  },
 ]
 
 /**

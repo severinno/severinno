@@ -32,6 +32,15 @@
  *     --section 8.44 --what "..." [--run <run>] [--date YYYY-MM-DD]
  *     [--dry-run] [--no-suite]
  *   --class <id>: a classe do PROOF_CLASSES (obrigatorio, precisa existir).
+ *     CLASSE NOVA (a 1a prova da classe): o helper nao cria classe - o
+ *     gate verde bloqueia a classe vazia (o SHAPE proofs.length>0) e o
+ *     bumpCounts so cobre counts de PROVAS, nao de CLASSES. O recipe da
+ *     casa (Provas 59 e 60, 2026-08-13): (1) adicionar o skeleton da classe
+ *     no manifest no formato MULTI-LINHA (proofs: [ ] nas proprias linhas -
+ *     o insertManifestEntry procura a linha '],' isolada), (2) rodar este
+ *     helper com --no-suite (o scaffold da entry + snapshot + sec 8.x + os
+ *     bumps de provas), (3) bump manual dos 3 pins de classe no teste
+ *     (toBe(N) x2 + toContain('N classes')).
  *   --prova N: o numero da Prova nova (obrigatorio, nao pode ja existir na
  *     classe).
  *   --section 8.N: a secao da Prova no doc (obrigatorio, 8.x - a fronteira

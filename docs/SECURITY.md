@@ -120,6 +120,49 @@ Contrato validado por `src/middleware.test.ts`:
 - produção + secret presente + sem cookie → 401 · cookie inválido/role errada → 401/403
 
 > Datado: 2026-08-13 — fechado o item crítico #2 do parecer técnico
+
+### Fail-Closed: CRON_SECRET ausente (o mesmo padrão do SESSION_SECRET)
+
+As rotas de cron (`/api/cron/*`) são protegidas no middleware por
+`Authorization: Bearer CRON_SECRET` — o mesmo padrão fail-closed do
+SESSION_SECRET: se `CRON_SECRET` estiver ausente, **produção responde
+500** (misconfiguration é fatal — o cron nunca roda sem autenticação);
+em dev o fail-open histórico é preservado.
+
+Defesa em profundidade: cada rota de cron revalida o `Bearer` no próprio
+handler (401 se inválido) — o middleware é a primeira camada, as rotas a
+segunda. Fronteira documentada: health-monitor e settlements têm fail-open
+próprio quando o secret é vazio; o middleware é o gate de produção.
+
+Contrato validado por `src/middleware.test.ts` (describe CRON_SECRET):
+- produção + CRON_SECRET ausente + rota cron → **500**
+- dev + CRON_SECRET ausente + rota cron → fail-open (200)
+- produção + CRON_SECRET presente + sem Authorization → **401**
+- produção + CRON_SECRET presente + Bearer errado → **401**
+- produção + CRON_SECRET presente + Bearer correto → **200**
+
+> Datado: 2026-08-13 — CRON_SECRET fail-closed no middleware (o mesmo
+> padrão do item crítico #2 aplicado ao canal de cron).
+
+### Cobertura pre-commit do contrato (avaliado 2026-08-13 — RECUSADO o guard batch)
+
+Avaliou-se adicionar um guard no padrão do scan-proof-helpers (sec 11.93)
+para rodar a suite do middleware no pre-commit quando src/middleware.ts
+mudar. **Hipótese FALSA**: o mapper do pre-commit:test
+(scripts/pre-commit-tests.mjs, a regra de co-localização) já mapeia
+src/middleware.ts → src/middleware.test.ts — uma edição staged roda a
+suite do contrato no pre-commit, antes do commit. Os guards 9-12 do batch
+(scan-proof-helpers, scan-unit-config, ...) existem porque os contratos
+deles vivem em suites CROSS-CUTTING não co-localizadas com o arquivo
+guarded (proof-helpers-contract.test.ts; o vitest.config sem suite), o que
+não é o caso do middleware (suite irmã co-localizada).
+
+Pin: REAL-REPO test em scripts/__tests__/pre-commit-tests.test.ts — "REAL-REPO
+(SECURITY.md sec 3, 2026-08-13): staging src/middleware.ts maps to the
+co-located src/middleware.test.ts" (staging src/middleware.ts → contém
+src/middleware.test.ts) — a re-proposta do guard consulta o pin antes de
+propor (o padrão do registry; a referência é bidirecional: o teste cita esta
+seção e esta seção cita o teste).
 > (middleware fail-closed).
 
 ---

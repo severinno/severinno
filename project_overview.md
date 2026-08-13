@@ -13,7 +13,7 @@ O **Severinno Marketplace** é uma plataforma SaaS residencial para contrataçã
 | **Gerenciamento de Estado** | Zustand + XState | Zustand para estados globais (auth, geo, view, UI) e XState para fluxos complexos (Checkout e Rastreamento). |
 | **Banco de Dados** | PostgreSQL 16 + Extensão PostGIS 3.4 | Capacidades geoespaciais nativas (armazenamento e consultas geográficas rápidas). ORM Prisma (v6.11.1). |
 | **Mensageria e Filas** | RabbitMQ 4 | Consumers em background rodando de forma assíncrona para e-mails e notificações. |
-| **Cache & Sessão** | Valkey 7.2 (Redis-compatível, BSD-3) | Controle de taxa (Rate Limiting) e cache geográfico de alta velocidade. |
+| **Cache & Sessão** | Valkey 8 (Redis-compatível, BSD-3) | Controle de taxa (Rate Limiting) e cache geográfico de alta velocidade. |
 | **Comunicação Realtime** | WebSocket (Socket.io 4) | Mini-serviço rodando na porta `3003` para chat, notificações e tracking ao vivo. |
 | **Roteamento de Distância** | OSRM (Open Source Routing Machine) | Cálculo de rotas e distâncias de transporte reais (com fallback matemático via fórmula de Haversine). |
 | **Autenticação** | Session-based (cookie httpOnly) | Token customizado assinado via HMAC-SHA256 (`severinno_session`). |
