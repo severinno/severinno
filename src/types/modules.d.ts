@@ -39,11 +39,7 @@ declare module "web-push" {
     options?: PushOptions,
   ): Promise<SendResult>
 
-  function setVapidDetails(
-    subject: string,
-    publicKey: string,
-    privateKey: string,
-  ): void
+  function setVapidDetails(subject: string, publicKey: string, privateKey: string): void
 
   function generateVAPIDKeys(): {
     publicKey: string

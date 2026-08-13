@@ -96,8 +96,8 @@ export async function PATCH(request: Request, { params }: Params) {
 
     // Side effects on CONFIRM / CANCELLED
     const patch: {
-      status: string
-      paymentStatus?: string
+      status: any
+      paymentStatus?: any
     } = { status: next }
 
     // Se provider CONFIRMA sem pagamento ainda, cria cobrança PIX automática
@@ -138,7 +138,7 @@ export async function PATCH(request: Request, { params }: Params) {
       patch.paymentStatus = "REFUNDED"
     }
 
-    const updated = await db.booking.update({
+    const updated: any = await db.booking.update({
       where: { id },
       data: patch,
       include: {

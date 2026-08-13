@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import { ZodError } from "zod"
 import { db } from "@/lib/db"
 import { withCache, cacheInvalidate } from "@/lib/redis"
+import { AuthError } from "./auth"
+import { BookingError, PaymentError } from "./domain-errors"
 import logger from "./logger"
 
 /**
@@ -53,31 +55,55 @@ export function publicUser<T extends { passwordHash?: string }>(
 // ---------------------------------------------------------------------------
 export class HttpError extends Error {
   status: number
+  code?: string
   /** Optional custom response headers (e.g. RateLimit headers). */
   headers?: Record<string, string>
-  constructor(status: number, message: string, headers?: Record<string, string>) {
+  constructor(status: number, message: string, headers?: Record<string, string>, code?: string) {
     super(message)
     this.status = status
     this.headers = headers
+    this.code = code
   }
 }
-export const badRequest = (msg = "Requisição inválida") => new HttpError(400, msg)
-export const unauthorized = (msg = "Não autorizado") => new HttpError(401, msg)
-export const forbidden = (msg = "Acesso proibido") => new HttpError(403, msg)
-export const notFound = (msg = "Recurso não encontrado") =>
-  new HttpError(404, msg)
-export const conflict = (msg = "Conflito de estado") => new HttpError(409, msg)
+export const badRequest = (msg = "Requisição inválida", code = "BAD_REQUEST") =>
+  new HttpError(400, msg, undefined, code)
+export const unauthorized = (msg = "Não autorizado", code = "UNAUTHORIZED") =>
+  new HttpError(401, msg, undefined, code)
+export const forbidden = (msg = "Acesso proibido", code = "FORBIDDEN") =>
+  new HttpError(403, msg, undefined, code)
+export const notFound = (msg = "Recurso não encontrado", code = "NOT_FOUND") =>
+  new HttpError(404, msg, undefined, code)
+export const conflict = (msg = "Conflito de estado", code = "CONFLICT") =>
+  new HttpError(409, msg, undefined, code)
 
 /**
  * Map any thrown error to a JSON response. Auth errors thrown by
- * `requireUser`/`requireRole` (`UNAUTHORIZED` / `FORBIDDEN` strings) are
+ * `requireUser`/`requireRole` (AuthError instances or typed code) are
  * mapped to 401/403. Zod errors → 400 with issue details.
  */
 export function handleError(e: unknown) {
   if (e instanceof HttpError) {
     return NextResponse.json(
-      { error: e.message },
+      { error: e.message, ...(e.code ? { code: e.code } : {}) },
       { status: e.status, headers: e.headers },
+    )
+  }
+  if (e instanceof AuthError) {
+    return NextResponse.json(
+      { error: e.message, code: e.code },
+      { status: e.status },
+    )
+  }
+  if (e instanceof BookingError) {
+    return NextResponse.json(
+      { error: e.message, code: e.code },
+      { status: e.status },
+    )
+  }
+  if (e instanceof PaymentError) {
+    return NextResponse.json(
+      { error: e.message, code: e.code },
+      { status: e.status },
     )
   }
   if (e instanceof ZodError) {
@@ -86,6 +112,17 @@ export function handleError(e: unknown) {
       { status: 400 },
     )
   }
+  // Check typed error code (e.g. custom objects with code)
+  if (typeof e === "object" && e !== null && "code" in e) {
+    const code = (e as { code: unknown }).code
+    if (code === "UNAUTHORIZED" || code === "INACTIVE_USER") {
+      return NextResponse.json({ error: "Não autorizado", code }, { status: 401 })
+    }
+    if (code === "FORBIDDEN") {
+      return NextResponse.json({ error: "Acesso proibido", code }, { status: 403 })
+    }
+  }
+  // Fallback for legacy string matching
   if (e instanceof Error) {
     if (e.message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 })

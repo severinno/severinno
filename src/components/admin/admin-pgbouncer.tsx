@@ -37,7 +37,7 @@ import {
 import { apiGet } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { ErrorState, FreshnessLabel } from "@/components/admin/admin-shared"
+import { ErrorState, FreshnessLabel } from "./_shared"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

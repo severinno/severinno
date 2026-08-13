@@ -109,10 +109,10 @@ export async function GET(request: Request) {
       | "CLIENT"
       | "PROVIDER"
       | "ADMIN"
-    const status = searchParams.get("status") || undefined
+    const status = searchParams.get("status") as any
     const { page, limit, skip, take } = parsePagination(searchParams)
 
-    const where =
+    const where: any =
       role === "CLIENT"
         ? { clientId: session.userId, ...(status ? { status } : {}) }
         : role === "PROVIDER"

@@ -29,45 +29,107 @@ type ViewState = {
 }
 
 const DEFAULT_VIEW = "vitrine"
+const MAX_HISTORY = 25
+
+function syncUrlWithView(view: string, params: ViewParams = {}, replace = false): void {
+  if (typeof window === "undefined" || !window.history) return
+
+  try {
+    const url = new URL(window.location.href)
+    if (view === DEFAULT_VIEW && Object.keys(params).length === 0) {
+      url.searchParams.delete("view")
+    } else {
+      url.searchParams.set("view", view)
+    }
+
+    const stateObj = { view, params }
+    if (replace) {
+      window.history.replaceState(stateObj, "", url.toString())
+    } else {
+      window.history.pushState(stateObj, "", url.toString())
+    }
+  } catch {
+    // Silent fail in restrictive sandboxes
+  }
+}
+
+function getInitialView(): { view: string; params: ViewParams } {
+  if (typeof window === "undefined") {
+    return { view: DEFAULT_VIEW, params: {} }
+  }
+
+  try {
+    const url = new URL(window.location.href)
+    const viewFromUrl = url.searchParams.get("view")
+    if (viewFromUrl) {
+      return { view: viewFromUrl, params: {} }
+    }
+  } catch {
+    // Fallback
+  }
+
+  return { view: DEFAULT_VIEW, params: {} }
+}
 
 export const useViewStore = create<ViewState>()(
   persist(
-    (set, get) => ({
-      view: DEFAULT_VIEW,
-      params: {},
-      history: [],
-
-      navigate: (view, params = {}) => {
-        const current = get()
-        set({
-          view,
-          params,
-          history: [...current.history, { view: current.view, params: current.params }],
+    (set, get) => {
+      // Wire up popstate listener in browser
+      if (typeof window !== "undefined") {
+        window.addEventListener("popstate", (event) => {
+          const state = event.state as { view?: string; params?: ViewParams } | null
+          if (state?.view) {
+            set({ view: state.view, params: state.params ?? {} })
+          } else {
+            const initial = getInitialView()
+            set({ view: initial.view, params: initial.params })
+          }
         })
-      },
+      }
 
-      back: () => {
-        const history = get().history
-        if (history.length === 0) return
-        const last = history[history.length - 1]
-        set({
-          view: last.view,
-          params: last.params,
-          history: history.slice(0, -1),
-        })
-      },
+      return {
+        view: DEFAULT_VIEW,
+        params: {},
+        history: [],
 
-      reset: (view = DEFAULT_VIEW, params = {}) => {
-        set({ view, params, history: [] })
-      },
+        navigate: (view, params = {}) => {
+          const current = get()
+          syncUrlWithView(view, params, false)
+          const newHistory = [
+            ...current.history,
+            { view: current.view, params: current.params },
+          ].slice(-MAX_HISTORY)
 
-      canGoBack: () => get().history.length > 0,
-    }),
+          set({
+            view,
+            params,
+            history: newHistory,
+          })
+        },
+
+        back: () => {
+          const history = get().history
+          if (history.length === 0) return
+          const last = history[history.length - 1]
+          syncUrlWithView(last.view, last.params, true)
+          set({
+            view: last.view,
+            params: last.params,
+            history: history.slice(0, -1),
+          })
+        },
+
+        reset: (view = DEFAULT_VIEW, params = {}) => {
+          syncUrlWithView(view, params, true)
+          set({ view, params, history: [] })
+        },
+
+        canGoBack: () => get().history.length > 0,
+      }
+    },
     {
       name: "severinno:view",
       storage: createJSONStorage(() => localStorage),
-      // Persist only the top-level view (not the entire history) so a
-      // refreshed user lands back on a sensible page without the back stack.
       partialize: (s) => ({ view: s.view, params: s.params }),
     },
   ),

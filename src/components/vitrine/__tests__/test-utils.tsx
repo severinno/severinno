@@ -10,7 +10,9 @@ import type { GeoSearchResult } from "@/lib/api"
 export {
   mockGeoStore,
   mockFetchGeoSearch,
+  mockFetchGeoSearchStructured,
   mockFetchReverseGeo,
+  mockFetchCep,
   getMockToast,
   resetCommonMocks,
 } from "./vitest.setup"

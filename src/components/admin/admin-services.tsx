@@ -99,7 +99,7 @@ import {
   StatusBadge,
   TableSkeleton,
   type StatusTone,
-} from "./admin-shared"
+} from "./_shared"
 
 // ---------------------------------------------------------------------------
 // Types

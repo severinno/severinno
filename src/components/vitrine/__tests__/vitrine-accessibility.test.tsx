@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Accessibility (axe-core) tests for vitrine sections.
  *
@@ -12,7 +11,7 @@
 import "./vitrine-a11y-setup"
 
 import { describe, it, expect, afterEach, vi } from "vitest"
-import { render, cleanup } from "@testing-library/react"
+import { render, cleanup } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 import * as React from "react"
 
@@ -153,7 +152,13 @@ vi.mock("@/store/auth", () => ({
 
 vi.mock("@/store/compare", () => ({
   useCompareStore: vi.fn((selector: any) => {
-    const state = { ids: mockCompareIds, toggle: vi.fn(), clear: vi.fn(), remove: vi.fn(), openCompare: vi.fn() }
+    const state = {
+      ids: mockCompareIds,
+      toggle: vi.fn(),
+      clear: vi.fn(),
+      remove: vi.fn(),
+      openCompare: vi.fn(),
+    }
     return selector ? selector(state) : state
   }),
   MAX_COMPARE: 4,
@@ -204,7 +209,9 @@ vi.mock("@/components/ui/badge", () => ({
 
 vi.mock("@/components/ui/card", () => ({
   Card: ({ children, className, ...p }: any) => (
-    <div data-testid="card" className={className} {...p}>{children}</div>
+    <div data-testid="card" className={className} {...p}>
+      {children}
+    </div>
   ),
   CardContent: ({ children, className }: any) => <div className={className}>{children}</div>,
   CardFooter: ({ children, className }: any) => <div className={className}>{children}</div>,
@@ -266,14 +273,18 @@ vi.mock("@/components/ui/select", () => ({
   SelectTrigger: ({ children, ...p }: any) => <button {...p}>{children}</button>,
   SelectContent: ({ children }: any) => <>{children}</>,
   SelectItem: ({ children, value, ...p }: any) => (
-    <option value={value} {...p}>{children}</option>
+    <option value={value} {...p}>
+      {children}
+    </option>
   ),
   SelectValue: ({ placeholder }: any) => <span>{placeholder}</span>,
 }))
 
 vi.mock("@/components/ui/radio-group", () => ({
   RadioGroup: ({ children, value, ...p }: any) => (
-    <div role="radiogroup" {...p}>{children}</div>
+    <div role="radiogroup" {...p}>
+      {children}
+    </div>
   ),
   RadioGroupItem: (p: any) => <input type="radio" {...p} />,
 }))
@@ -283,7 +294,9 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
   DropdownMenuTrigger: ({ children }: any) => <>{children}</>,
   DropdownMenuContent: ({ children }: any) => <>{children}</>,
   DropdownMenuItem: ({ children, onSelect, ...p }: any) => (
-    <button type="button" onClick={onSelect} {...p}>{children}</button>
+    <button type="button" onClick={onSelect} {...p}>
+      {children}
+    </button>
   ),
   DropdownMenuLabel: ({ children }: any) => <div>{children}</div>,
   DropdownMenuSeparator: () => <hr />,
@@ -317,7 +330,9 @@ vi.mock("@/components/ui/command", () => ({
     </fieldset>
   ),
   CommandItem: ({ children, onSelect, ...p }: any) => (
-    <button type="button" onClick={onSelect} {...p}>{children}</button>
+    <button type="button" onClick={onSelect} {...p}>
+      {children}
+    </button>
   ),
 }))
 
@@ -330,7 +345,9 @@ vi.mock("@/components/ui/alert-dialog", () => ({
   AlertDialogTitle: ({ children }: any) => <h3>{children}</h3>,
   AlertDialogDescription: ({ children }: any) => <p>{children}</p>,
   AlertDialogAction: ({ children, onClick, ...p }: any) => (
-    <button type="button" onClick={onClick} {...p}>{children}</button>
+    <button type="button" onClick={onClick} {...p}>
+      {children}
+    </button>
   ),
   AlertDialogCancel: ({ children }: any) => <button type="button">{children}</button>,
 }))
@@ -451,9 +468,7 @@ const sampleProvider = {
 describe("Hero — accessibility", () => {
   it.skip("has no axe violations", async () => {
     const Hero = (await import("../hero")).default
-    const { container } = render(
-      <Hero query="" onQueryChange={vi.fn()} />,
-    )
+    const { container } = render(<Hero query="" onQueryChange={vi.fn()} />)
     const results = await axe(container)
     expect(results.violations).toHaveLength(0)
   }, 15_000)

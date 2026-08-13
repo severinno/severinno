@@ -1,0 +1,273 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`BenchmarkSection > matches snapshot > benchmark-section 1`] = `
+<DocumentFragment>
+  <section
+    aria-label="Comparação de benchmark"
+    class="space-y-6"
+  >
+    <div
+      class="flex items-center gap-2"
+    >
+      <span
+        data-class="size-5 text-purple-500"
+        data-testid="lucide-icon"
+      />
+      <h2
+        class="text-foreground text-lg font-semibold"
+      >
+        Benchmark Real — Haversine JS vs PostGIS
+      </h2>
+    </div>
+    <div
+      class="flex items-center justify-end gap-2"
+    >
+      <button
+        aria-label="Exportar CSV"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        CSV
+      </button>
+      <button
+        aria-label="Exportar PDF"
+        class="bg-muted/50 text-muted-foreground hover:text-foreground inline-flex h-7 items-center gap-1 rounded-lg border px-2.5 text-[10px] font-medium transition-colors"
+        type="button"
+      >
+        <span
+          data-class="size-3"
+          data-testid="lucide-icon"
+        />
+        PDF
+      </button>
+      <span
+        class="text-muted-foreground text-[10px]"
+      >
+        Gráficos: 
+        Linear
+      </span>
+      <button
+        aria-checked="false"
+        aria-label="Alternar escala Log/Linear nos gráficos de benchmark"
+        class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors bg-muted border-border"
+        role="switch"
+        type="button"
+      >
+        <span
+          class="inline-block size-3.5 rounded-full bg-white shadow-sm transition-transform translate-x-[2px]"
+        />
+      </button>
+    </div>
+    <div
+      class="grid grid-cols-1 gap-6 lg:grid-cols-3"
+    >
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Latência Média (µs) — Escala Linear
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="h-[260px]"
+          >
+            <div
+              data-testid="recharts-container"
+            >
+              <div
+                data-testid="bar-chart"
+              >
+                <div
+                  data-testid="cartesian-grid"
+                />
+                <div
+                  data-scale="linear"
+                  data-testid="xaxis"
+                />
+                <div
+                  data-testid="yaxis"
+                />
+                <div
+                  data-testid="recharts-tooltip"
+                />
+                <div
+                  data-testid="legend"
+                />
+                <div
+                  data-datakey="haversine"
+                  data-fill="hsl(160, 84%, 39%)"
+                  data-name="Haversine JS"
+                  data-testid="chart-bar"
+                />
+                <div
+                  data-datakey="postgis"
+                  data-fill="hsl(0, 72%, 51%)"
+                  data-name="PostGIS"
+                  data-testid="chart-bar"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Throughput (ops/sec)
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="h-[260px]"
+          >
+            <div
+              data-testid="recharts-container"
+            >
+              <div
+                data-testid="bar-chart"
+              >
+                <div
+                  data-testid="cartesian-grid"
+                />
+                <div
+                  data-scale="linear"
+                  data-testid="xaxis"
+                />
+                <div
+                  data-testid="yaxis"
+                />
+                <div
+                  data-testid="recharts-tooltip"
+                />
+                <div
+                  data-testid="legend"
+                />
+                <div
+                  data-datakey="haversine_ops"
+                  data-fill="hsl(160, 84%, 39%)"
+                  data-name="Haversine JS"
+                  data-testid="chart-bar"
+                />
+                <div
+                  data-datakey="postgis_ops"
+                  data-fill="hsl(0, 72%, 51%)"
+                  data-name="PostGIS"
+                  data-testid="chart-bar"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div
+        class="border-border/50 bg-card rounded-xl border"
+      >
+        <div
+          class="flex items-center gap-2 border-b px-5 py-4"
+        >
+          <span
+            data-class="text-primary size-4"
+            data-testid="lucide-icon"
+          />
+          <h2
+            class="text-foreground text-sm font-semibold"
+          >
+            Razão PostGIS / Haversine
+          </h2>
+        </div>
+        <div
+          class="p-4"
+        >
+          <div
+            class="h-[260px]"
+          >
+            <div
+              data-testid="recharts-container"
+            >
+              <div
+                data-testid="bar-chart"
+              >
+                <div
+                  data-testid="cartesian-grid"
+                />
+                <div
+                  data-testid="xaxis"
+                />
+                <div
+                  data-testid="yaxis"
+                />
+                <div
+                  data-testid="recharts-tooltip"
+                />
+                <div
+                  data-datakey="ratio"
+                  data-name="Razão"
+                  data-testid="chart-bar"
+                />
+              </div>
+            </div>
+          </div>
+          <div
+            class="border-border/50 bg-muted/20 mt-3 rounded-lg border p-3"
+          >
+            <p
+              class="text-muted-foreground text-xs"
+            >
+              <span
+                class="text-foreground font-medium"
+              >
+                Análise:
+              </span>
+               
+              Haversine JS é significativamente mais rápido que PostGIS para buscas de providers em São Paulo.
+            </p>
+            <p
+              class="text-muted-foreground mt-1 text-[10px]"
+            >
+              Benchmark executado em 
+              win32
+               (
+              v22.14.0
+              ) —
+               
+              centro em 
+              -23.5505, -46.6333
+               —
+               
+              12/04/2026
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</DocumentFragment>
+`;

@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen, fireEvent } from "@testing-library/react"
+import { cleanup, render, screen, fireEvent } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---- Builders -------------------------------------------------------------
@@ -108,14 +108,13 @@ vi.mock("@/lib/api", () => ({
 }))
 
 vi.mock("@/lib/format", () => ({
-  formatBRL: vi.fn((v: number) =>
-    `R$ ${(v / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+  formatBRL: vi.fn(
+    (v: number) => `R$ ${(v / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
   ),
 }))
 
 vi.mock("@/lib/utils", () => ({
-  cn: (...inputs: (string | undefined | null | false)[]) =>
-    inputs.filter(Boolean).join(" "),
+  cn: (...inputs: (string | undefined | null | false)[]) => inputs.filter(Boolean).join(" "),
 }))
 
 vi.mock("@/components/ui/skeleton", () => ({
@@ -145,24 +144,56 @@ vi.mock("@/components/ui/button", () => ({
 vi.mock("@/components/ui/table", () => ({
   Table: ({ children }: { children: React.ReactNode }) => <table>{children}</table>,
   TableBody: ({ children }: { children: React.ReactNode }) => <tbody>{children}</tbody>,
-  TableCell: ({ children, colSpan, className }: { children?: React.ReactNode; colSpan?: number; className?: string }) => (
-    <td colSpan={colSpan} className={className}>{children}</td>
+  TableCell: ({
+    children,
+    colSpan,
+    className,
+  }: {
+    children?: React.ReactNode
+    colSpan?: number
+    className?: string
+  }) => (
+    <td colSpan={colSpan} className={className}>
+      {children}
+    </td>
   ),
   TableHead: ({ children, className }: { children?: React.ReactNode; className?: string }) => (
     <th className={className}>{children}</th>
   ),
   TableHeader: ({ children }: { children: React.ReactNode }) => <thead>{children}</thead>,
-  TableRow: ({ children, onClick, className }: { children?: React.ReactNode; onClick?: () => void; className?: string }) => (
-    <tr onClick={onClick} className={className}>{children}</tr>
+  TableRow: ({
+    children,
+    onClick,
+    className,
+  }: {
+    children?: React.ReactNode
+    onClick?: () => void
+    className?: string
+  }) => (
+    <tr onClick={onClick} className={className}>
+      {children}
+    </tr>
   ),
 }))
 
 vi.mock("@/components/admin/admin-shared", () => ({
-  ErrorState: ({ title, description, onRetry }: { title: string; description?: string; onRetry?: () => void }) => (
+  ErrorState: ({
+    title,
+    description,
+    onRetry,
+  }: {
+    title: string
+    description?: string
+    onRetry?: () => void
+  }) => (
     <div data-testid="error-state">
       <h2>{title}</h2>
       {description && <p>{description}</p>}
-      {onRetry && <button type="button" onClick={onRetry} data-testid="retry-btn">Tentar novamente</button>}
+      {onRetry && (
+        <button type="button" onClick={onRetry} data-testid="retry-btn">
+          Tentar novamente
+        </button>
+      )}
     </div>
   ),
 }))
@@ -187,6 +218,7 @@ vi.mock("lucide-react", () => ({
   Loader2: () => <svg />,
   QrCode: () => <svg />,
   Receipt: () => <svg />,
+  RefreshCw: () => <svg />,
   RotateCw: () => <svg />,
   Ticket: () => <svg />,
   TrendingDown: () => <svg />,
@@ -203,6 +235,14 @@ vi.stubGlobal(
     disconnect: vi.fn(),
   })),
 )
+
+// Recharts is not SVG-capable under JSDOM (React 19 + recharts 2.x hooks crash
+// with "Cannot read properties of null (reading 'useRef')"). Shared mock —
+// pass-through placeholders; chart titles/data render outside the SVG.
+vi.mock("recharts", async () => {
+  const { createRechartsMock } = await import("./mocks")
+  return createRechartsMock()
+})
 
 // ---- SUT import -----------------------------------------------------------
 

@@ -124,6 +124,25 @@ async function verifyUserActive(userId: string): Promise<boolean> {
   return active
 }
 
+// ---------------------------------------------------------------------------
+// Typed Auth Errors
+// ---------------------------------------------------------------------------
+
+export type AuthErrorCode = "UNAUTHORIZED" | "FORBIDDEN" | "INACTIVE_USER"
+
+export class AuthError extends Error {
+  readonly code: AuthErrorCode
+  readonly status: number
+
+  constructor(code: AuthErrorCode, message?: string) {
+    super(message ?? code)
+    this.name = "AuthError"
+    this.code = code
+    this.status = code === "FORBIDDEN" ? 403 : 401
+    Object.setPrototypeOf(this, AuthError.prototype)
+  }
+}
+
 /**
  * Require an authenticated user. Throws a Next.js-friendly error if absent.
  * Uses Redis cache (5min TTL) to avoid hitting PostgreSQL on every request.
@@ -131,11 +150,11 @@ async function verifyUserActive(userId: string): Promise<boolean> {
 export async function requireUser(): Promise<SessionPayload> {
   const session = await getSession()
   if (!session) {
-    throw new Error("UNAUTHORIZED")
+    throw new AuthError("UNAUTHORIZED")
   }
 
   const active = await verifyUserActive(session.userId)
-  if (!active) throw new Error("UNAUTHORIZED")
+  if (!active) throw new AuthError("UNAUTHORIZED")
 
   return session
 }
@@ -153,7 +172,7 @@ export async function invalidateUserCache(userId: string): Promise<void> {
 export async function requireRole(role: SessionPayload["role"]): Promise<SessionPayload> {
   const session = await requireUser()
   if (session.role !== role) {
-    throw new Error("FORBIDDEN")
+    throw new AuthError("FORBIDDEN")
   }
   return session
 }

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 // ── Mocks ─────────────────────────────────────────────────────────────────
@@ -25,7 +24,7 @@ vi.mock("@sentry/nextjs", () => ({
 // ── Imports ───────────────────────────────────────────────────────────────
 
 import { startSpan, startSpanSync, logPerformance } from "../performance"
-import { logger } from "@/lib/logger"
+import logger from "@/lib/logger"
 
 // ===========================================================================
 // startSpan
@@ -48,18 +47,14 @@ describe("startSpan", () => {
 
   it("propaga erro da função interna", async () => {
     await expect(
-      startSpan(
-        { op: "test.error" },
-        async () => { throw new Error("test error") },
-      ),
+      startSpan({ op: "test.error" }, async () => {
+        throw new Error("test error")
+      }),
     ).rejects.toThrow("test error")
   })
 
   it("usa op como description quando description não é fornecida", async () => {
-    const result = await startSpan(
-      { op: "test.only-op" },
-      async () => 42,
-    )
+    const result = await startSpan({ op: "test.only-op" }, async () => 42)
 
     expect(result.data).toBe(42)
   })
@@ -75,10 +70,7 @@ describe("startSpanSync", () => {
   })
 
   it("executa função síncrona e retorna resultado com duração", () => {
-    const result = startSpanSync(
-      { op: "sync.test" },
-      () => "sync result",
-    )
+    const result = startSpanSync({ op: "sync.test" }, () => "sync result")
 
     expect(result.data).toBe("sync result")
     expect(result.durationMs).toBeGreaterThanOrEqual(0)
@@ -86,10 +78,9 @@ describe("startSpanSync", () => {
 
   it("propaga erro de função síncrona", () => {
     expect(() =>
-      startSpanSync(
-        { op: "sync.error" },
-        () => { throw new Error("sync error") },
-      ),
+      startSpanSync({ op: "sync.error" }, () => {
+        throw new Error("sync error")
+      }),
     ).toThrow("sync error")
   })
 })

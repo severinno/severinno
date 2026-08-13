@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { render, screen, fireEvent, act, waitFor, cleanup } from "@testing-library/react"
+import { render, screen, fireEvent, act, waitFor, cleanup } from "@/__tests__/test-utils"
 import { FilePhotos } from "../file-photos"
 
 // ---------------------------------------------------------------------------
@@ -24,20 +24,26 @@ vi.mock("lucide-react", () => {
 // Globals
 // ---------------------------------------------------------------------------
 
-let mockResponse: { ok: boolean; url?: string; status?: number } = { ok: true, url: "https://example.com/photo.jpg" }
+let mockResponse: { ok: boolean; url?: string; status?: number } = {
+  ok: true,
+  url: "https://example.com/photo.jpg",
+}
 let createObjectURLSpy: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   vi.clearAllMocks()
   mockResponse = { ok: true, url: "https://example.com/photo.jpg" }
 
-  vi.stubGlobal("fetch", vi.fn().mockImplementation(() =>
-    Promise.resolve({
-      ok: mockResponse.ok,
-      status: mockResponse.status ?? 200,
-      json: () => Promise.resolve(mockResponse.ok ? { url: mockResponse.url } : null),
-    }),
-  ))
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation(() =>
+      Promise.resolve({
+        ok: mockResponse.ok,
+        status: mockResponse.status ?? 200,
+        json: () => Promise.resolve(mockResponse.ok ? { url: mockResponse.url } : null),
+      }),
+    ),
+  )
 
   createObjectURLSpy = vi.fn((_file: File) => "blob:local-preview")
   vi.stubGlobal("URL", { createObjectURL: createObjectURLSpy })
@@ -70,9 +76,7 @@ function findFileInput(root: HTMLElement): HTMLInputElement {
 
 function renderPhotos(props: Partial<Parameters<typeof FilePhotos>[0]> = {}) {
   const onChange = vi.fn()
-  const result = render(
-    <FilePhotos value={[]} onChange={onChange} {...props} />,
-  )
+  const result = render(<FilePhotos value={[]} onChange={onChange} {...props} />)
   return { onChange, result }
 }
 
@@ -160,10 +164,13 @@ describe("FilePhotos — upload flow", () => {
       await new Promise((r) => setTimeout(r, 10))
     })
 
-    expect(fetch).toHaveBeenCalledWith("/api/upload", expect.objectContaining({
-      method: "POST",
-      credentials: "same-origin",
-    }))
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/upload",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "same-origin",
+      }),
+    )
     expect(onChange).toHaveBeenCalledWith(["https://example.com/photo.jpg"])
   })
 
@@ -203,7 +210,15 @@ describe("FilePhotos — upload flow", () => {
 
   it("shows loading state during upload", async () => {
     let resolveFetch!: (v: any) => void
-    vi.stubGlobal("fetch", vi.fn(() => new Promise((resolve) => { resolveFetch = resolve })))
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise((resolve) => {
+            resolveFetch = resolve
+          }),
+      ),
+    )
 
     renderPhotos()
     const input = document.querySelector('input[type="file"]') as HTMLInputElement

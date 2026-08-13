@@ -4,31 +4,25 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, renderHook, screen } from "@testing-library/react"
+import { cleanup, render, renderHook, screen } from "@/__tests__/test-utils"
 
 // ---- Dynamic auth mock — same pattern as use-coin-sound.test.ts -----------
 let mockSoundEnabled: boolean | undefined = true
 
 vi.mock("@/store/auth", () => ({
-  useAuthStore: vi.fn(
-    (selector?: (s: { user: { soundEnabled?: boolean } | null }) => unknown) => {
-      const state = {
-        user: mockSoundEnabled === undefined ? null : { soundEnabled: mockSoundEnabled },
-      }
-      return selector ? selector(state) : state
-    },
-  ),
+  useAuthStore: vi.fn((selector?: (s: { user: { soundEnabled?: boolean } | null }) => unknown) => {
+    const state = {
+      user: mockSoundEnabled === undefined ? null : { soundEnabled: mockSoundEnabled },
+    }
+    return selector ? selector(state) : state
+  }),
 }))
 
 // ---------------------------------------------------------------------------
 // SUT import (must be after vi.mock)
 // ---------------------------------------------------------------------------
 
-import {
-  useSoundEnabled,
-  useSoundEnabledPreference,
-  SoundProvider,
-} from "../sound-context"
+import { useSoundEnabled, useSoundEnabledPreference, SoundProvider } from "../sound-context"
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -67,9 +61,7 @@ describe("useSoundEnabledPreference", () => {
   it("SoundProvider overrides auth store when enabled=false", () => {
     mockSoundEnabled = true
     const { result } = renderHook(() => useSoundEnabledPreference(), {
-      wrapper: ({ children }) => (
-        <SoundProvider enabled={false}>{children}</SoundProvider>
-      ),
+      wrapper: ({ children }) => <SoundProvider enabled={false}>{children}</SoundProvider>,
     })
     expect(result.current).toBe(false)
   })
@@ -77,9 +69,7 @@ describe("useSoundEnabledPreference", () => {
   it("SoundProvider overrides auth store when enabled=true", () => {
     mockSoundEnabled = false
     const { result } = renderHook(() => useSoundEnabledPreference(), {
-      wrapper: ({ children }) => (
-        <SoundProvider enabled={true}>{children}</SoundProvider>
-      ),
+      wrapper: ({ children }) => <SoundProvider enabled={true}>{children}</SoundProvider>,
     })
     expect(result.current).toBe(true)
   })
@@ -87,9 +77,7 @@ describe("useSoundEnabledPreference", () => {
   it("SoundProvider without enabled prop falls back to auth store", () => {
     mockSoundEnabled = false
     const { result } = renderHook(() => useSoundEnabledPreference(), {
-      wrapper: ({ children }) => (
-        <SoundProvider>{children}</SoundProvider>
-      ),
+      wrapper: ({ children }) => <SoundProvider>{children}</SoundProvider>,
     })
     // enabled is undefined, so contextOverride is undefined → falls back to auth store
     expect(result.current).toBe(false)
@@ -101,9 +89,7 @@ describe("useSoundEnabledPreference", () => {
     const { result } = renderHook(() => useSoundEnabledPreference(), {
       wrapper: ({ children }) => (
         <SoundProvider enabled={false}>
-          <SoundProvider enabled={true}>
-            {children}
-          </SoundProvider>
+          <SoundProvider enabled={true}>{children}</SoundProvider>
         </SoundProvider>
       ),
     })
@@ -129,27 +115,21 @@ describe("useSoundEnabled", () => {
 
   it("returns false when SoundProvider enabled=false", () => {
     const { result } = renderHook(() => useSoundEnabled(), {
-      wrapper: ({ children }) => (
-        <SoundProvider enabled={false}>{children}</SoundProvider>
-      ),
+      wrapper: ({ children }) => <SoundProvider enabled={false}>{children}</SoundProvider>,
     })
     expect(result.current).toBe(false)
   })
 
   it("returns true when SoundProvider enabled=true", () => {
     const { result } = renderHook(() => useSoundEnabled(), {
-      wrapper: ({ children }) => (
-        <SoundProvider enabled={true}>{children}</SoundProvider>
-      ),
+      wrapper: ({ children }) => <SoundProvider enabled={true}>{children}</SoundProvider>,
     })
     expect(result.current).toBe(true)
   })
 
   it("returns undefined when SoundProvider has no enabled prop", () => {
     const { result } = renderHook(() => useSoundEnabled(), {
-      wrapper: ({ children }) => (
-        <SoundProvider>{children}</SoundProvider>
-      ),
+      wrapper: ({ children }) => <SoundProvider>{children}</SoundProvider>,
     })
     expect(result.current).toBeUndefined()
   })
@@ -158,9 +138,7 @@ describe("useSoundEnabled", () => {
     const { result } = renderHook(() => useSoundEnabled(), {
       wrapper: ({ children }) => (
         <SoundProvider enabled={false}>
-          <SoundProvider enabled={true}>
-            {children}
-          </SoundProvider>
+          <SoundProvider enabled={true}>{children}</SoundProvider>
         </SoundProvider>
       ),
     })

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * DashboardShell — notification sound integration tests.
  *
@@ -12,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---------------------------------------------------------------------------
@@ -64,8 +63,9 @@ vi.mock("@/components/ui/sidebar", () => ({
 // ---- lucide-react icons (dashboard-shell + subcomponentes) ---------------
 vi.mock("lucide-react", () => {
   // Retorna um SVG simples para cada ícone — evita resolver o módulo real
-  const MockIcon = (props: Record<string, unknown>) =>
+  const MockIcon = (props: Record<string, unknown>) => (
     <svg aria-hidden="true" data-testid="mock-icon" {...props} />
+  )
   return {
     // dashboard-shell
     Bell: MockIcon,
@@ -92,16 +92,12 @@ vi.mock("lucide-react", () => {
 // ---- framer-motion: motion.div renders as a plain div --------------------
 vi.mock("framer-motion", () => ({
   motion: {
-    div: ({ children, ..._props }: { children: React.ReactNode }) => (
-      <div>{children}</div>
-    ),
+    div: ({ children, ..._props }: { children: React.ReactNode }) => <div>{children}</div>,
     button: ({ children, ..._props }: { children: React.ReactNode }) => (
       <button type="button">{children}</button>
     ),
   },
-  AnimatePresence: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
+  AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }))
 
 // ---- Hooks under test -----------------------------------------------------
@@ -236,9 +232,14 @@ import { DashboardShell, type DashboardShellProps, type NavItem } from "../dashb
 // Fixtures
 // ---------------------------------------------------------------------------
 
+// Helper: creates a mock LucideIcon-compatible element for nav items
+function mockIcon() {
+  return (() => null) as unknown as NonNullable<NavItem["icon"]>
+}
+
 const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", icon: () => null, view: "client.dashboard" },
-  { label: "Serviços", icon: () => null, view: "client.services" },
+  { label: "Dashboard", icon: mockIcon(), view: "client.dashboard" },
+  { label: "Serviços", icon: mockIcon(), view: "client.services" },
 ]
 
 const DEFAULT_PROPS: DashboardShellProps = {
@@ -246,7 +247,7 @@ const DEFAULT_PROPS: DashboardShellProps = {
   currentView: "client.dashboard",
   title: "Meu Painel",
   panelLabel: "Painel do Cliente",
-  panelIcon: (() => null) as unknown as DashboardShellProps["panelIcon"],
+  panelIcon: mockIcon(),
   user: null,
   onNavigate: vi.fn(),
   children: <div>Conteúdo</div>,
@@ -271,7 +272,9 @@ afterEach(cleanup)
 
 describe("DashboardShell — accessibility", () => {
   it("has no axe violations with CLIENT role", async () => {
-    const { container } = renderShell({ user: { role: "CLIENT", name: "Maria", email: "maria@test.com" } })
+    const { container } = renderShell({
+      user: { role: "CLIENT", name: "Maria", email: "maria@test.com" },
+    })
     const results = await axe(container)
     expect(results.violations).toHaveLength(0)
   })
@@ -281,13 +284,17 @@ describe("DashboardShell — accessibility", () => {
       data: { balance: 150, pendingBalance: 50 },
       isLoading: false,
     }
-    const { container } = renderShell({ user: { role: "PROVIDER", name: "João", email: "joao@test.com" } })
+    const { container } = renderShell({
+      user: { role: "PROVIDER", name: "João", email: "joao@test.com" },
+    })
     const results = await axe(container)
     expect(results.violations).toHaveLength(0)
   })
 
   it("has no axe violations with ADMIN role", async () => {
-    const { container } = renderShell({ user: { role: "ADMIN", name: "Admin", email: "admin@test.com" } })
+    const { container } = renderShell({
+      user: { role: "ADMIN", name: "Admin", email: "admin@test.com" },
+    })
     const results = await axe(container)
     expect(results.violations).toHaveLength(0)
   })
@@ -310,16 +317,25 @@ describe("DashboardShell — notification sound integration", () => {
     mockNotificationsQuery = { data: undefined, isLoading: false }
     renderShell({ user: { role: "CLIENT" } })
 
-    expect(mockUseTransactionNotificationSound).toHaveBeenCalledWith(
-      [],
-      "CLIENT",
-    )
+    expect(mockUseTransactionNotificationSound).toHaveBeenCalledWith([], "CLIENT")
   })
 
   it("calls useTransactionNotificationSound with notification items from query", () => {
     const items = [
-      { id: "1", type: "BOOKING_CONFIRMED", title: "Nova reserva", read: false, createdAt: new Date().toISOString() },
-      { id: "2", type: "MESSAGE", title: "Nova mensagem", read: true, createdAt: new Date().toISOString() },
+      {
+        id: "1",
+        type: "BOOKING_CONFIRMED",
+        title: "Nova reserva",
+        read: false,
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: "2",
+        type: "MESSAGE",
+        title: "Nova mensagem",
+        read: true,
+        createdAt: new Date().toISOString(),
+      },
     ]
     mockNotificationsQuery = {
       data: { items, total: 2, page: 1, limit: 10, unreadCount: 1 },
@@ -327,10 +343,7 @@ describe("DashboardShell — notification sound integration", () => {
     }
     renderShell({ user: { role: "PROVIDER" } })
 
-    expect(mockUseTransactionNotificationSound).toHaveBeenCalledWith(
-      items,
-      "PROVIDER",
-    )
+    expect(mockUseTransactionNotificationSound).toHaveBeenCalledWith(items, "PROVIDER")
   })
 
   it("calls useTransactionNotificationSound with undefined role when user is null", () => {
@@ -349,7 +362,13 @@ describe("DashboardShell — notification sound integration", () => {
 
   it("updates useTransactionNotificationSound when new notifications arrive", () => {
     // Initial: no items, CLIENT role
-    const items1: Array<{ id: string; type: string; title: string; read: boolean; createdAt: string }> = []
+    const items1: Array<{
+      id: string
+      type: string
+      title: string
+      read: boolean
+      createdAt: string
+    }> = []
     mockNotificationsQuery = {
       data: { items: items1, total: 0, page: 1, limit: 10, unreadCount: 0 },
       isLoading: false,
@@ -365,7 +384,13 @@ describe("DashboardShell — notification sound integration", () => {
 
     // New notification arrives
     const items2 = [
-      { id: "10", type: "BOOKING_COMPLETED", title: "Serviço concluído", read: false, createdAt: new Date().toISOString() },
+      {
+        id: "10",
+        type: "BOOKING_COMPLETED",
+        title: "Serviço concluído",
+        read: false,
+        createdAt: new Date().toISOString(),
+      },
     ]
     mockNotificationsQuery = {
       data: { items: items2, total: 1, page: 1, limit: 10, unreadCount: 1 },
@@ -385,7 +410,13 @@ describe("DashboardShell — notification sound integration", () => {
 
   it("renders unread count badge when there are unread notifications", () => {
     const items = [
-      { id: "1", type: "BOOKING_CONFIRMED", title: "Reserva", read: false, createdAt: new Date().toISOString() },
+      {
+        id: "1",
+        type: "BOOKING_CONFIRMED",
+        title: "Reserva",
+        read: false,
+        createdAt: new Date().toISOString(),
+      },
     ]
     mockNotificationsQuery = {
       data: { items, total: 1, page: 1, limit: 10, unreadCount: 1 },
@@ -430,10 +461,7 @@ describe("DashboardShell — notification sound integration", () => {
 
   it("renders breadcrumbs when provided", () => {
     renderShell({
-      breadcrumbs: [
-        { label: "Home", onClick: vi.fn() },
-        { label: "Dashboard" },
-      ],
+      breadcrumbs: [{ label: "Home", onClick: vi.fn() }, { label: "Dashboard" }],
     })
     // "Dashboard" also appears as a nav-item label — use getAllByText
     const breadcrumbDashboards = screen.getAllByText("Dashboard")
@@ -554,8 +582,8 @@ describe("DashboardShell — WalletBalancePill (provider wallet)", () => {
 describe("DashboardShell — nav item badges", () => {
   it("renders badge on nav items when badge is provided", () => {
     const itemsWithBadge: NavItem[] = [
-      { label: "Mensagens", icon: () => null, view: "client.messages", badge: 3 },
-      { label: "Dashboard", icon: () => null, view: "client.dashboard" },
+      { label: "Mensagens", icon: mockIcon(), view: "client.messages", badge: 3 },
+      { label: "Dashboard", icon: mockIcon(), view: "client.dashboard" },
     ]
     renderShell({
       navItems: itemsWithBadge,
@@ -582,9 +610,7 @@ describe("DashboardShell — nav item badges", () => {
 describe("DashboardShell — edge cases", () => {
   it("handles null notifications data gracefully (no crash)", () => {
     mockNotificationsQuery = { data: null, isLoading: false }
-    expect(() =>
-      renderShell({ user: { role: "CLIENT" } }),
-    ).not.toThrow()
+    expect(() => renderShell({ user: { role: "CLIENT" } })).not.toThrow()
   })
 
   it("handles undefined user gracefully (no crash)", () => {
@@ -592,8 +618,6 @@ describe("DashboardShell — edge cases", () => {
   })
 
   it("handles empty nav items without crashing", () => {
-    expect(() =>
-      renderShell({ navItems: [], user: { role: "ADMIN" } }),
-    ).not.toThrow()
+    expect(() => renderShell({ navItems: [], user: { role: "ADMIN" } })).not.toThrow()
   })
 })

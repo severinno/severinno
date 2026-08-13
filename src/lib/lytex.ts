@@ -418,6 +418,10 @@ export function verifyWebhookSignature(
     .update(payloadStr)
     .digest("hex")
 
+  if (!payload.signature || typeof payload.signature !== "string") {
+    return false
+  }
+
   // Timing-safe comparison
   const a = Buffer.from(payload.signature, "hex")
   const b = Buffer.from(expected, "hex")

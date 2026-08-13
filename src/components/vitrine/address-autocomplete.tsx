@@ -1,23 +1,92 @@
 "use client"
 
 /**
- * AddressAutocomplete — search-as-you-type address field powered by Nominatim.
+ * AddressAutocomplete — search-as-you-type address field powered by Nominatim
+ * and ViaCEP.
  *
- * Debounces input by 300 ms, calls fetchGeoSearch, and shows a dropdown of
- * results. On selection, updates the geo store (lat/lng) and calls onSelect.
+ * Detects CEP input (8 digits) and uses ViaCEP for precise address data.
+ * Otherwise debounces input by 300 ms and calls fetchGeoSearch (Nominatim).
+ * Results are cached in-memory (5min TTL) to reduce API calls.
  *
+ * On selection, updates the geo store (lat/lng) and calls onSelect.
  * Keyboard: ArrowUp/Down to navigate, Enter to select, Escape to close.
  */
 
 import * as React from "react"
 import { motion } from "framer-motion"
-import { MapPin, LocateFixed, Loader2, X } from "lucide-react"
+import { MapPin, LocateFixed, Loader2, Mailbox, X } from "lucide-react"
 import { toast } from "sonner"
 
-import { fetchGeoSearch, type GeoSearchResult } from "@/lib/api"
+import {
+  fetchGeoSearch,
+  fetchGeoSearchStructured,
+  fetchCep,
+  type GeoSearchResult,
+  type CepResult,
+} from "@/lib/api"
 import { useGeoStore } from "@/store/geo"
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
+import { getCachedCep, setCachedCep, subscribeCepUpdates } from "@/lib/client-cep-cache"
+import { getCachedGeo, setCachedGeo, subscribeGeoUpdates } from "@/lib/client-geo-cache"
+
+// ---------------------------------------------------------------------------
+// In-memory LRU cache for geocoding results (5 min TTL)
+// ---------------------------------------------------------------------------
+
+interface CacheEntry {
+  results: GeoSearchResult[]
+  ts: number // timestamp
+}
+
+const GLOBAL_CACHE = new Map<string, CacheEntry>()
+const CACHE_MAX = 50
+const CACHE_TTL_MS = 5 * 60 * 1000
+
+function cacheGet(key: string): GeoSearchResult[] | null {
+  const entry = GLOBAL_CACHE.get(key)
+  if (!entry) return null
+  if (Date.now() - entry.ts > CACHE_TTL_MS) {
+    GLOBAL_CACHE.delete(key)
+    return null
+  }
+  return entry.results
+}
+
+function cacheSet(key: string, results: GeoSearchResult[]): void {
+  if (GLOBAL_CACHE.size >= CACHE_MAX) {
+    // Evict oldest entry
+    const oldest = GLOBAL_CACHE.keys().next().value
+    if (oldest !== undefined) GLOBAL_CACHE.delete(oldest)
+  }
+  GLOBAL_CACHE.set(key, { results, ts: Date.now() })
+}
+
+// ---------------------------------------------------------------------------
+// CEP helpers
+// ---------------------------------------------------------------------------
+
+function isCEP(input: string): boolean {
+  return input.replace(/\D/g, "").length === 8
+}
+
+function cepToResult(cep: string, addr: CepResult, lat?: number, lng?: number): GeoSearchResult {
+  return {
+    lat: lat ?? 0,
+    lng: lng ?? 0,
+    displayName:
+      [addr.street, addr.district, addr.city, addr.state].filter(Boolean).join(", ") ||
+      `CEP ${cep}`,
+    street: addr.street ?? null,
+    district: addr.district ?? null,
+    city: addr.city ?? null,
+    state: addr.state ?? null,
+    cep: cep.replace(/\D/g, ""),
+    type: "postcode",
+    category: "address",
+    importance: 0,
+  }
+}
 
 type Props = {
   /** Placeholder text */
@@ -67,29 +136,119 @@ export default function AddressAutocomplete({
   const debouncedInput = useDebounce(input, 300)
 
   // Fetch results when debounced input changes
+  // Checks cache first, then decides CEP vs Nominatim based on input.
+  // Cleanup for short/empty inputs is handled in the onChange handler to
+  // avoid calling setState inside useEffect (React anti-pattern).
   React.useEffect(() => {
     if (!debouncedInput || debouncedInput.length < 3) {
-      setResults([])
-      setOpen(false)
       return
     }
+
+    // Check cache first
+    const cached = cacheGet(debouncedInput.trim().toLowerCase())
+    if (cached) {
+      setResults(cached)
+      setOpen(cached.length > 0)
+      setSelectedIdx(-1)
+      return
+    }
+
     let cancelled = false
     setLoading(true)
 
-    fetchGeoSearch(debouncedInput, 5)
-      .then((data) => {
+    const fetchData = async () => {
+      // CEP detection — use ViaCEP + try Nominatim for coordinates
+      if (isCEP(debouncedInput)) {
+        try {
+          const clean = debouncedInput.replace(/\D/g, "")
+
+          // Try client-side cache first (localStorage, 7-day TTL)
+          const cached = getCachedCep(clean)
+          if (cached && !cancelled) {
+            const result = cepToResult(clean, cached)
+            const arr = [result]
+            cacheSet(debouncedInput.trim().toLowerCase(), arr)
+            setResults(arr)
+            setOpen(true)
+            setSelectedIdx(-1)
+            setLoading(false)
+            return
+          }
+
+          const addr = await fetchCep(clean)
+          // Cache the successful result client-side
+          setCachedCep(clean, addr)
+          if (cancelled) return
+
+          // Try Nominatim structured search with postcode to get lat/lng
+          let lat: number | undefined
+          let lng: number | undefined
+          if (addr.city) {
+            try {
+              const geoResults = await fetchGeoSearchStructured({
+                postcode: clean,
+                city: addr.city,
+                state: addr.state || undefined,
+                limit: 1,
+              })
+              if (!cancelled && geoResults.length > 0) {
+                const first = geoResults[0]
+                if (first.lat && first.lng) {
+                  lat = first.lat
+                  lng = first.lng
+                }
+              }
+            } catch {
+              // Nominatim failed — keep lat/lng undefined (ViaCEP data only)
+            }
+          }
+          if (cancelled) return
+
+          const result = cepToResult(clean, addr, lat, lng)
+          const arr = [result]
+          cacheSet(debouncedInput.trim().toLowerCase(), arr)
+          setResults(arr)
+          setOpen(true)
+          setSelectedIdx(-1)
+        } catch {
+          if (cancelled) return
+          setResults([])
+        } finally {
+          if (!cancelled) setLoading(false)
+        }
+        return
+      }
+
+      // Default: Nominatim search
+      // Check localStorage cache before hitting the API
+      const cachedGeo = getCachedGeo(debouncedInput)
+      if (cachedGeo && !cancelled) {
+        cacheSet(debouncedInput.trim().toLowerCase(), cachedGeo)
+        setResults(cachedGeo)
+        setOpen(cachedGeo.length > 0)
+        setSelectedIdx(-1)
+        setLoading(false)
+        return
+      }
+
+      try {
+        const data = await fetchGeoSearch(debouncedInput, 5)
         if (cancelled) return
+        // Cache in both localStorage (1h TTL) and in-memory (5min TTL)
+        setCachedGeo(debouncedInput, data)
+        cacheSet(debouncedInput.trim().toLowerCase(), data)
         setResults(data)
         setOpen(data.length > 0)
         setSelectedIdx(-1)
-      })
-      .catch(() => {
+      } catch {
         if (cancelled) return
         setResults([])
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false)
-      })
+      }
+    }
+
+    fetchData()
 
     return () => {
       cancelled = true
@@ -103,8 +262,30 @@ export default function AddressAutocomplete({
       setInput(result.displayName)
       setOpen(false)
       setResults([])
-      setFromCoords(result.lat, result.lng, result.displayName)
-      onSelect?.(result.lat, result.lng, result.displayName)
+      // Discriminate by type: "postcode" = CEP result (may have lat/lng from Nominatim)
+      if (result.type === "postcode" && result.cep) {
+        const hasCoords = result.lat !== 0 && result.lng !== 0
+        if (hasCoords) {
+          // CEP with real coordinates (Nominatim enhanced) — full geo data
+          setFromCoords(result.lat, result.lng, result.displayName)
+          onSelect?.(result.lat, result.lng, result.displayName)
+        } else {
+          onSelect?.(0, 0, result.displayName)
+        }
+        // Store ViaCEP address fields directly (no extra network call)
+        useGeoStore.setState({
+          cep: result.cep,
+          district: result.district ?? null,
+          city: result.city ?? null,
+          state: result.state ?? null,
+          status: "ready",
+          updatedAt: new Date().toISOString(),
+        })
+      } else {
+        // Non-CEP result (Nominatim) — has real lat/lng
+        setFromCoords(result.lat, result.lng, result.displayName)
+        onSelect?.(result.lat, result.lng, result.displayName)
+      }
     },
     [setFromCoords, onSelect],
   )
@@ -157,6 +338,26 @@ export default function AddressAutocomplete({
     }
   }, [locating, setFromGPS, setFromCoords, onSelect])
 
+  // Listen for cache updates from other tabs (CEP + geo)
+  React.useEffect(() => {
+    const unsubCep = subscribeCepUpdates(({ cep, data }) => {
+      // Another tab cached this CEP — warm up the in-memory cache
+      const key = cep.replace(/\D/g, "")
+      const result = cepToResult(key, data)
+      cacheSet(key, [result])
+    })
+
+    const unsubGeo = subscribeGeoUpdates(({ query, results }) => {
+      // Another tab searched this query — warm up the in-memory cache
+      cacheSet(query, results)
+    })
+
+    return () => {
+      unsubCep()
+      unsubGeo()
+    }
+  }, [])
+
   // Click outside to close
   React.useEffect(() => {
     if (!open) return
@@ -187,19 +388,25 @@ export default function AddressAutocomplete({
 
   return (
     <div className={cn("relative", className)}>
-      <MapPin className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
+      <MapPin className="text-muted-foreground pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2" />
       <Input
         ref={inputRef}
         value={input}
         onChange={(e) => {
-          setInput(e.target.value)
+          const val = e.target.value
+          setInput(val)
+          // Close dropdown and clear stale results immediately when cleared
+          if (!val || val.trim().length < 3) {
+            setResults([])
+            setOpen(false)
+          }
         }}
         onFocus={() => {
           if (results.length > 0) setOpen(true)
         }}
         onKeyDown={handleKeyDown}
         placeholder={derivedPlaceholder}
-        className="h-12 border-0 bg-transparent pl-10 pr-16 text-left shadow-none focus-visible:ring-0"
+        className="h-12 border-0 bg-transparent pr-16 pl-10 text-left shadow-none focus-visible:ring-0"
         aria-label="Localização"
         aria-expanded={open}
         aria-autocomplete="list"
@@ -209,13 +416,13 @@ export default function AddressAutocomplete({
       />
 
       {/* Right icons: GPS locate | loading spinner | clear button */}
-      <span className="absolute top-1/2 right-2.5 flex items-center gap-0.5 -translate-y-1/2">
+      <span className="absolute top-1/2 right-2.5 flex -translate-y-1/2 items-center gap-0.5">
         {/* GPS locate */}
         <button
           type="button"
           onClick={handleLocate}
           disabled={locating}
-          className="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+          className="text-muted-foreground hover:bg-primary/10 hover:text-primary flex size-6 items-center justify-center rounded-full transition-colors"
           aria-label="Usar localização atual"
           title="Usar localização atual"
         >
@@ -236,13 +443,13 @@ export default function AddressAutocomplete({
         </button>
         {/* Loading spinner from Nominatim search */}
         {loading ? (
-          <Loader2 className="size-4 animate-spin text-muted-foreground" />
+          <Loader2 className="text-muted-foreground size-4 animate-spin" />
         ) : input ? (
           /* Clear button when input has text */
           <button
             type="button"
             onClick={handleClear}
-            className="flex size-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="text-muted-foreground hover:bg-muted hover:text-foreground flex size-5 items-center justify-center rounded-full transition-colors"
             aria-label="Limpar localização"
           >
             <X className="size-3.5" />
@@ -256,39 +463,47 @@ export default function AddressAutocomplete({
           ref={listRef}
           id="address-suggestions"
           role="listbox"
-          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border bg-background p-1 shadow-lg"
+          className="bg-background absolute top-full right-0 left-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border p-1 shadow-lg"
         >
-          {results.map((result, idx) => (
-            <button
-              key={`${result.lat}-${result.lng}-${idx}`}
-              type="button"
-              role="option"
-              aria-selected={idx === selectedIdx}
-              onMouseEnter={() => setSelectedIdx(idx)}
-              onClick={() => selectResult(result)}
-              className={cn(
-                "flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
-                idx === selectedIdx
-                  ? "bg-primary/10 text-primary"
-                  : "hover:bg-muted",
-              )}
-            >
-              <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{result.displayName}</p>
-                {result.city && (
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {[result.city, result.state].filter(Boolean).join(", ")}
-                  </p>
+          {results.map((result, idx) => {
+            const isCep = result.type === "postcode"
+            return (
+              <button
+                key={`${result.lat}-${result.lng}-${idx}`}
+                type="button"
+                role="option"
+                aria-selected={idx === selectedIdx}
+                onMouseEnter={() => setSelectedIdx(idx)}
+                onClick={() => selectResult(result)}
+                className={cn(
+                  "flex w-full items-start gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                  idx === selectedIdx ? "bg-primary/10 text-primary" : "hover:bg-muted",
                 )}
-              </div>
-              {result.importance > 0.5 ? (
-                <span className="shrink-0 self-center text-[11px] text-amber-500" aria-label="Alta relevância">
-                  ★
-                </span>
-              ) : null}
-            </button>
-          ))}
+              >
+                {isCep ? (
+                  <Mailbox className="text-muted-foreground mt-0.5 size-4 shrink-0" />
+                ) : (
+                  <MapPin className="text-muted-foreground mt-0.5 size-4 shrink-0" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{result.displayName}</p>
+                  {result.city ? (
+                    <p className="text-muted-foreground mt-0.5 text-xs">
+                      {isCep && result.cep ? `CEP ${result.cep} · ` : ""}
+                      {[result.city, result.state].filter(Boolean).join(", ")}
+                    </p>
+                  ) : isCep && result.cep ? (
+                    <p className="text-muted-foreground mt-0.5 text-xs">CEP {result.cep}</p>
+                  ) : null}
+                </div>
+                {isCep ? (
+                  <span className="shrink-0 self-center text-[10px] font-medium text-emerald-600">
+                    ViaCEP
+                  </span>
+                ) : null}
+              </button>
+            )
+          })}
         </div>
       ) : null}
     </div>

@@ -47,7 +47,8 @@ import {
 import { apiGet } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { ErrorState, TableSkeleton } from "@/components/admin/admin-shared"
+import { ErrorState, TableSkeleton } from "./_shared"
+import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -108,16 +109,6 @@ const PERIOD_OPTIONS: { value: Period; label: string }[] = [
   { value: "12m", label: "12 meses" },
   { value: "all", label: "Todo período" },
 ]
-
-const TOOLTIP_STYLE: React.CSSProperties = {
-  borderRadius: 8,
-  border: "1px solid hsl(var(--border))",
-  background: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
-  padding: "8px 10px",
-}
 
 const STATUS_PIE_COLORS: Record<string, string> = {
   paid: "hsl(160, 84%, 39%)",

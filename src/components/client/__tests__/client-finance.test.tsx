@@ -3,19 +3,22 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---- Builder --------------------------------------------------------------
 
-function buildBooking(id: string, overrides: Partial<{
-  amount: number
-  paymentMethod: string
-  paymentStatus: string
-  providerName: string
-  serviceTitle: string
-  scheduledAt: string
-}> = {}) {
+function buildBooking(
+  id: string,
+  overrides: Partial<{
+    amount: number
+    paymentMethod: string
+    paymentStatus: string
+    providerName: string
+    serviceTitle: string
+    scheduledAt: string
+  }> = {},
+) {
   const now = new Date()
   return {
     id,
@@ -47,15 +50,14 @@ vi.mock("@/lib/api", () => ({
 }))
 
 vi.mock("@/lib/format", () => ({
-  formatBRL: vi.fn((v: number) =>
-    `R$ ${(v / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
+  formatBRL: vi.fn(
+    (v: number) => `R$ ${(v / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`,
   ),
   formatDate: vi.fn(() => "15/03/2025"),
 }))
 
 vi.mock("@/lib/utils", () => ({
-  cn: (...inputs: (string | undefined | null | false)[]) =>
-    inputs.filter(Boolean).join(" "),
+  cn: (...inputs: (string | undefined | null | false)[]) => inputs.filter(Boolean).join(" "),
 }))
 
 vi.mock("@/lib/constants", () => ({
@@ -64,8 +66,12 @@ vi.mock("@/lib/constants", () => ({
 }))
 
 vi.mock("@/components/ui/card", () => ({
-  Card: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={className}>{children}</div>,
-  CardContent: ({ children, className }: { children: React.ReactNode; className?: string }) => <div className={className}>{children}</div>,
+  Card: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+    <div className={className}>{children}</div>
+  ),
+  CardContent: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+    <div className={className}>{children}</div>
+  ),
 }))
 
 vi.mock("@/components/ui/avatar", () => ({
@@ -76,35 +82,71 @@ vi.mock("@/components/ui/avatar", () => ({
 vi.mock("@/components/ui/table", () => ({
   Table: ({ children }: { children: React.ReactNode }) => <table>{children}</table>,
   TableBody: ({ children }: { children: React.ReactNode }) => <tbody>{children}</tbody>,
-  TableCell: ({ children, className }: { children?: React.ReactNode; className?: string }) => <td className={className}>{children}</td>,
-  TableHead: ({ children, className }: { children?: React.ReactNode; className?: string }) => <th className={className}>{children}</th>,
+  TableCell: ({ children, className }: { children?: React.ReactNode; className?: string }) => (
+    <td className={className}>{children}</td>
+  ),
+  TableHead: ({ children, className }: { children?: React.ReactNode; className?: string }) => (
+    <th className={className}>{children}</th>
+  ),
   TableHeader: ({ children }: { children: React.ReactNode }) => <thead>{children}</thead>,
-  TableRow: ({ children, className }: { children?: React.ReactNode; className?: string }) => <tr className={className}>{children}</tr>,
+  TableRow: ({ children, className }: { children?: React.ReactNode; className?: string }) => (
+    <tr className={className}>{children}</tr>
+  ),
 }))
 
 vi.mock("@/components/ui/tabs", () => ({
-  Tabs: ({ children, value, onValueChange }: { children: React.ReactNode; value?: string; onValueChange?: (v: string) => void }) => (
-    <div data-value={value}>{children}</div>
-  ),
+  Tabs: ({
+    children,
+    value,
+    onValueChange,
+  }: {
+    children: React.ReactNode
+    value?: string
+    onValueChange?: (v: string) => void
+  }) => <div data-value={value}>{children}</div>,
   TabsList: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   TabsTrigger: ({ children, value }: { children: React.ReactNode; value?: string }) => (
-    <button type="button" data-value={value}>{children}</button>
+    <button type="button" data-value={value}>
+      {children}
+    </button>
   ),
 }))
 
 vi.mock("@/components/ui/select", () => ({
   Select: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectTrigger: ({ children, className, ...props }: { children?: React.ReactNode; className?: string; [key: string]: unknown }) => (
-    <button type="button" className={className} {...props}>{children}</button>
+  SelectTrigger: ({
+    children,
+    className,
+    ...props
+  }: {
+    children?: React.ReactNode
+    className?: string
+    [key: string]: unknown
+  }) => (
+    <button type="button" className={className} {...props}>
+      {children}
+    </button>
   ),
   SelectValue: () => <span>Valor</span>,
   SelectContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectItem: ({ children, value }: { children: React.ReactNode; value?: string }) => <div data-value={value}>{children}</div>,
+  SelectItem: ({ children, value }: { children: React.ReactNode; value?: string }) => (
+    <div data-value={value}>{children}</div>
+  ),
 }))
 
 vi.mock("@/components/ui/button", () => ({
-  Button: ({ children, onClick, ...props }: { children?: React.ReactNode; onClick?: () => void; [key: string]: unknown }) => (
-    <button type="button" onClick={onClick} {...props}>{children}</button>
+  Button: ({
+    children,
+    onClick,
+    ...props
+  }: {
+    children?: React.ReactNode
+    onClick?: () => void
+    [key: string]: unknown
+  }) => (
+    <button type="button" onClick={onClick} {...props}>
+      {children}
+    </button>
   ),
 }))
 
@@ -119,20 +161,45 @@ vi.mock("lucide-react", () => ({
 
 vi.mock("@/components/shared/dashboard-shell", () => ({
   EmptyState: ({ title, description }: { title: string; description?: string }) => (
-    <div data-testid="empty-state"><h3>{title}</h3>{description && <p>{description}</p>}</div>
+    <div data-testid="empty-state">
+      <h3>{title}</h3>
+      {description && <p>{description}</p>}
+    </div>
   ),
-  StatCard: ({ label, value, hint }: { label?: string; value?: string; tone?: string; hint?: string }) => (
-    <div data-testid="stat-card"><p>{label}</p><p>{value}</p>{hint && <p>{hint}</p>}</div>
+  StatCard: ({
+    label,
+    value,
+    hint,
+  }: {
+    label?: string
+    value?: string
+    tone?: string
+    hint?: string
+  }) => (
+    <div data-testid="stat-card">
+      <p>{label}</p>
+      <p>{value}</p>
+      {hint && <p>{hint}</p>}
+    </div>
   ),
 }))
 
 vi.mock("@/components/client/client-shared", () => ({
   PageHeader: ({ title, subtitle }: { title: string; subtitle?: string }) => (
-    <div data-testid="page-header"><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div>
+    <div data-testid="page-header">
+      <h1>{title}</h1>
+      {subtitle && <p>{subtitle}</p>}
+    </div>
   ),
-  StatusBadge: ({ children, tone, icon }: { children?: React.ReactNode; tone?: string; icon?: React.ComponentType }) => (
-    <span data-tone={tone}>{children}</span>
-  ),
+  StatusBadge: ({
+    children,
+    tone,
+    icon,
+  }: {
+    children?: React.ReactNode
+    tone?: string
+    icon?: React.ComponentType
+  }) => <span data-tone={tone}>{children}</span>,
   paymentIcon: vi.fn(() => null),
   paymentTone: vi.fn(() => "zinc" as const),
 }))
@@ -195,9 +262,8 @@ describe("ClientFinance — data rendering", () => {
     mockUseQueries().mockReturnValue(
       [1, 2, 3, 4].map((p) => ({
         data: {
-          items: p === 1
-            ? [buildBooking("b-1"), buildBooking("b-2", { paymentStatus: "PENDING" })]
-            : [],
+          items:
+            p === 1 ? [buildBooking("b-1"), buildBooking("b-2", { paymentStatus: "PENDING" })] : [],
           total: 2,
           page: p,
           limit: 50,
@@ -273,9 +339,8 @@ describe("ClientFinance — accessibility", () => {
     mockUseQueries().mockReturnValue(
       [1, 2, 3, 4].map((p) => ({
         data: {
-          items: p === 1
-            ? [buildBooking("b-1"), buildBooking("b-2", { paymentStatus: "PENDING" })]
-            : [],
+          items:
+            p === 1 ? [buildBooking("b-1"), buildBooking("b-2", { paymentStatus: "PENDING" })] : [],
           total: 2,
           page: p,
           limit: 50,

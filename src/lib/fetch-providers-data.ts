@@ -100,6 +100,7 @@ export interface ProviderDataItem {
   rating: number | null
   reviewCount: number
   favoriteCount: number
+  radiusKm: number | null
   completedBookings: number
   memberSince: string
   distanceKm: number | null
@@ -206,8 +207,7 @@ export async function fetchProvidersData(
   // Sort providers to match the original ID order
   const idOrder = new Map(providerIds.map((id, idx) => [id, idx]))
   providers.sort(
-    (a: ProviderRow, b: ProviderRow) =>
-      (idOrder.get(a.id) ?? 0) - (idOrder.get(b.id) ?? 0),
+    (a: ProviderRow, b: ProviderRow) => (idOrder.get(a.id) ?? 0) - (idOrder.get(b.id) ?? 0),
   )
 
   // Compute distance via PostGIS → Haversine → null fallback chain
@@ -238,6 +238,7 @@ export async function fetchProvidersData(
       rating: p.avgRating,
       reviewCount: p.reviewCount,
       favoriteCount: p.favoriteCount,
+      radiusKm: p.radiusKm,
       completedBookings: completedMap.get(p.id) ?? 0,
       memberSince: p.createdAt.toISOString(),
       distanceKm,

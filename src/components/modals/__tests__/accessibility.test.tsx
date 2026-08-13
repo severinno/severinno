@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Accessibility (axe-core) tests for the three modal components:
  *   AuthModal, BookingModal, QuoteModal
@@ -15,16 +14,12 @@
  *    so color checks are always incomplete.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { render, cleanup } from "@testing-library/react"
+import { render, cleanup } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 import { AuthModal } from "../auth-modal"
 import { BookingModal } from "../booking-modal"
 import { QuoteModal } from "../quote-modal"
-import {
-  createMockAuthStore,
-  createMockUIStore,
-  createMockViewStore,
-} from "./test-utils"
+import { createMockAuthStore, createMockUIStore, createMockViewStore } from "./test-utils"
 import * as React from "react"
 
 // -----------------------------------------------------------------------
@@ -46,30 +41,26 @@ const mockApiPost = vi.hoisted(() => vi.fn())
 // ── Stores ──
 
 vi.mock("@/store/ui", () => ({
-  useUIStore: Object.assign(
-    (selector: (s: any) => unknown) => selector(mockUIStore),
-    { getState: () => mockUIStore },
-  ),
+  useUIStore: Object.assign((selector: (s: any) => unknown) => selector(mockUIStore), {
+    getState: () => mockUIStore,
+  }),
 }))
 
 vi.mock("@/store/auth", () => ({
-  useAuthStore: Object.assign(
-    (selector: (s: any) => unknown) => selector(mockAuthStore),
-    { getState: () => mockAuthStore },
-  ),
+  useAuthStore: Object.assign((selector: (s: any) => unknown) => selector(mockAuthStore), {
+    getState: () => mockAuthStore,
+  }),
 }))
 
 vi.mock("@/store/view", () => ({
-  useViewStore: Object.assign(
-    (selector: (s: any) => unknown) => selector(mockViewStore),
-    { getState: () => mockViewStore },
-  ),
+  useViewStore: Object.assign((selector: (s: any) => unknown) => selector(mockViewStore), {
+    getState: () => mockViewStore,
+  }),
 }))
 
 vi.mock("@/store/geo", () => ({
   useGeoStore: Object.assign(
-    (selector: (s: any) => unknown) =>
-      selector({ setFromGPS: vi.fn(), lat: null, lng: null }),
+    (selector: (s: any) => unknown) => selector({ setFromGPS: vi.fn(), lat: null, lng: null }),
     { getState: () => ({ lat: null, lng: null }) },
   ),
 }))
@@ -116,18 +107,36 @@ vi.mock("@/hooks/use-mobile", () => ({
 
 vi.mock("@/components/ui/dialog", () => ({
   Dialog: ({ children, open }: any) =>
-    open ? <div role="dialog" aria-modal="true" aria-label="Dialog" data-testid="dialog">{children}</div> : null,
+    open ? (
+      <div role="dialog" aria-modal="true" aria-label="Dialog" data-testid="dialog">
+        {children}
+      </div>
+    ) : null,
   DialogContent: ({ children, className }: any) => (
-    <div data-testid="dialog-content" className={className}>{children}</div>
+    <div data-testid="dialog-content" className={className}>
+      {children}
+    </div>
   ),
   DialogHeader: ({ children }: any) => <>{children}</>,
-  DialogTitle: ({ children }: any) => <h2 id="dialog-title-id" data-testid="dialog-title">{children}</h2>,
-  DialogDescription: ({ children }: any) => <p id="dialog-desc-id" data-testid="dialog-desc">{children}</p>,
+  DialogTitle: ({ children }: any) => (
+    <h2 id="dialog-title-id" data-testid="dialog-title">
+      {children}
+    </h2>
+  ),
+  DialogDescription: ({ children }: any) => (
+    <p id="dialog-desc-id" data-testid="dialog-desc">
+      {children}
+    </p>
+  ),
 }))
 
 vi.mock("@/components/ui/sheet", () => ({
   Sheet: ({ children, open }: any) =>
-    open ? <div role="dialog" aria-label="Bottom sheet" data-testid="sheet">{children}</div> : null,
+    open ? (
+      <div role="dialog" aria-label="Bottom sheet" data-testid="sheet">
+        {children}
+      </div>
+    ) : null,
   SheetContent: ({ children }: any) => <div>{children}</div>,
   SheetHeader: ({ children }: any) => <>{children}</>,
   SheetTitle: ({ children }: any) => <h2>{children}</h2>,
@@ -137,7 +146,11 @@ vi.mock("@/components/ui/sheet", () => ({
 // ── Tabs ──
 
 vi.mock("@/components/ui/tabs", () => ({
-  Tabs: ({ children, value }: any) => <div data-testid="tabs" data-value={value}>{children}</div>,
+  Tabs: ({ children, value }: any) => (
+    <div data-testid="tabs" data-value={value}>
+      {children}
+    </div>
+  ),
   TabsList: ({ children }: any) => <div>{children}</div>,
   TabsTrigger: ({ children, value }: any) => <button data-value={value}>{children}</button>,
   TabsContent: ({ children, value }: any) => <div data-tab-content={value}>{children}</div>,
@@ -146,12 +159,10 @@ vi.mock("@/components/ui/tabs", () => ({
 // ── Form ──
 
 const formValues: Record<string, any> = {}
-const mockHandleSubmit = vi.fn(
-  (fn: (v: any) => void) => async (e?: any) => {
-    e?.preventDefault?.()
-    await fn(formValues)
-  },
-)
+const mockHandleSubmit = vi.fn((fn: (v: any) => void) => async (e?: any) => {
+  e?.preventDefault?.()
+  await fn(formValues)
+})
 
 let fieldIdCounter = 0
 vi.mock("@/components/ui/form", () => ({
@@ -160,7 +171,9 @@ vi.mock("@/components/ui/form", () => ({
     const fieldId = `field-${name}-${++fieldIdCounter}`
     const mockField = {
       value: formValues[name] ?? "",
-      onChange: (v: any) => { formValues[name] = v?.target?.value ?? v },
+      onChange: (v: any) => {
+        formValues[name] = v?.target?.value ?? v
+      },
       onBlur: () => {},
       name,
       ref: () => {},
@@ -174,8 +187,13 @@ vi.mock("@/components/ui/form", () => ({
   },
   FormItem: ({ children }: any) => <>{children}</>,
   FormLabel: ({ children, ...p }: any) => <label {...p}>{children}</label>,
-  FormControl: ({ children, ...p }: any) => <div data-testid="form-control" {...p}>{children}</div>,
-  FormMessage: ({ children }: any) => children ? <span data-testid="form-message">{children}</span> : null,
+  FormControl: ({ children, ...p }: any) => (
+    <div data-testid="form-control" {...p}>
+      {children}
+    </div>
+  ),
+  FormMessage: ({ children }: any) =>
+    children ? <span data-testid="form-message">{children}</span> : null,
   FormDescription: ({ children }: any) => <p data-testid="form-description">{children}</p>,
 }))
 
@@ -185,7 +203,9 @@ vi.mock("react-hook-form", () => ({
   useForm: () => ({
     control: {},
     handleSubmit: mockHandleSubmit,
-    setValue: vi.fn((name, value) => { formValues[name] = value }),
+    setValue: vi.fn((name, value) => {
+      formValues[name] = value
+    }),
     getValues: () => ({ ...formValues }),
     watch: () => ({}),
     trigger: vi.fn(),
@@ -224,10 +244,14 @@ vi.mock("@/components/ui/button", () => ({
   },
 }))
 vi.mock("@/components/ui/input", () => ({ Input: (p: any) => <input {...p} /> }))
-vi.mock("@/components/ui/label", () => ({ Label: ({ children, ...p }: any) => <label {...p}>{children}</label> }))
+vi.mock("@/components/ui/label", () => ({
+  Label: ({ children, ...p }: any) => <label {...p}>{children}</label>,
+}))
 vi.mock("@/components/ui/separator", () => ({ Separator: () => <hr /> }))
 vi.mock("@/components/ui/textarea", () => ({ Textarea: (p: any) => <textarea {...p} /> }))
-vi.mock("@/components/ui/badge", () => ({ Badge: ({ children, ...p }: any) => <span {...p}>{children}</span> }))
+vi.mock("@/components/ui/badge", () => ({
+  Badge: ({ children, ...p }: any) => <span {...p}>{children}</span>,
+}))
 
 vi.mock("@/components/ui/radio-group", () => ({
   RadioGroup: ({ children, value, onValueChange }: any) => (
@@ -257,7 +281,11 @@ vi.mock("@/components/ui/avatar", () => ({
 }))
 
 vi.mock("@/components/ui/scroll-area", () => ({
-  ScrollArea: ({ children, ...p }: any) => <div data-testid="scroll-area" {...p}>{children}</div>,
+  ScrollArea: ({ children, ...p }: any) => (
+    <div data-testid="scroll-area" {...p}>
+      {children}
+    </div>
+  ),
 }))
 
 vi.mock("@/components/ui/calendar", () => ({
@@ -276,7 +304,10 @@ vi.mock("@/components/ui/select", () => ({
   Select: ({ children, value, onValueChange }: any) => (
     <div data-testid="select" data-value={value}>
       {React.Children.map(children, (child: any) => {
-        if (child?.type?.displayName === "SelectTrigger" || child?.type?.displayName === "SelectContent") {
+        if (
+          child?.type?.displayName === "SelectTrigger" ||
+          child?.type?.displayName === "SelectContent"
+        ) {
           return React.cloneElement(child, { onValueChange })
         }
         return child
@@ -284,13 +315,21 @@ vi.mock("@/components/ui/select", () => ({
     </div>
   ),
   SelectTrigger: ({ children, ...p }: any) => {
-    const Trigger = (props: any) => <button data-testid="select-trigger" {...props}>{props.children}</button>
+    const Trigger = (props: any) => (
+      <button data-testid="select-trigger" {...props}>
+        {props.children}
+      </button>
+    )
     Trigger.displayName = "SelectTrigger"
     return <Trigger {...p}>{children}</Trigger>
   },
   SelectContent: ({ children }: any) => <div data-testid="select-content">{children}</div>,
   SelectItem: ({ value, children }: any) => {
-    const Item = (props: any) => <button data-testid="select-item" data-value={props.value}>{props.children}</button>
+    const Item = (props: any) => (
+      <button data-testid="select-item" data-value={props.value}>
+        {props.children}
+      </button>
+    )
     Item.displayName = "SelectItem"
     return <Item value={value}>{children}</Item>
   },
@@ -306,7 +345,11 @@ vi.mock("@/components/ui/popover", () => ({
     if (asChild && React.isValidElement(children)) {
       return React.cloneElement(children, { ...p })
     }
-    return <span data-testid="popover-trigger" {...p}>{children}</span>
+    return (
+      <span data-testid="popover-trigger" {...p}>
+        {children}
+      </span>
+    )
   },
   PopoverContent: ({ children }: any) => <div data-testid="popover-content">{children}</div>,
 }))
@@ -316,7 +359,11 @@ vi.mock("@/components/ui/command", () => ({
   CommandEmpty: ({ children }: any) => <div data-testid="command-empty">{children}</div>,
   CommandGroup: ({ children }: any) => <div>{children}</div>,
   CommandInput: (p: any) => <input data-testid="command-input" {...p} />,
-  CommandItem: ({ children, ...p }: any) => <button data-testid="command-item" {...p}>{children}</button>,
+  CommandItem: ({ children, ...p }: any) => (
+    <button data-testid="command-item" {...p}>
+      {children}
+    </button>
+  ),
   CommandList: ({ children }: any) => <div>{children}</div>,
 }))
 
@@ -325,10 +372,12 @@ vi.mock("@/components/ui/command", () => ({
 vi.mock("../address-form", () => ({
   AddressForm: ({ value, onChange }: any) => (
     <div data-testid="address-form">
-      <input data-testid="address-cep"
+      <input
+        data-testid="address-cep"
         value={value?.cep ?? ""}
         onChange={(e) => onChange?.({ ...value, cep: e.target.value })}
-        placeholder="CEP" />
+        placeholder="CEP"
+      />
     </div>
   ),
 }))
@@ -338,12 +387,26 @@ vi.mock("../file-photos", () => ({
 }))
 
 vi.mock("../step-wizard", () => ({
-  StepWizard: ({ children, currentStep, steps, onStepClick, submitting, currentStepValid, submitLabel }: any) => (
+  StepWizard: ({
+    children,
+    currentStep,
+    steps,
+    onStepClick,
+    submitting,
+    currentStepValid,
+    submitLabel,
+  }: any) => (
     <div data-testid="step-wizard" data-step={currentStep}>
       <div data-testid="step-indicator">
         {steps.map((s: any) => (
-          <button key={s.id} data-testid="step-btn" data-active={currentStep === s.id}
-            onClick={() => onStepClick?.(s.id)}>{s.shortLabel ?? s.label}</button>
+          <button
+            key={s.id}
+            data-testid="step-btn"
+            data-active={currentStep === s.id}
+            onClick={() => onStepClick?.(s.id)}
+          >
+            {s.shortLabel ?? s.label}
+          </button>
         ))}
       </div>
       {children}
@@ -362,9 +425,16 @@ vi.mock("../step-wizard", () => ({
     </div>
   ),
   StepHeader: ({ title, description, icon: Icon }: any) => (
-    <div data-testid="step-header">{title && <h3>{title}</h3>}{description && <p>{description}</p>}</div>
+    <div data-testid="step-header">
+      {title && <h3>{title}</h3>}
+      {description && <p>{description}</p>}
+    </div>
   ),
-  InfoCard: ({ children, variant }: any) => <div data-testid="info-card" data-variant={variant}>{children}</div>,
+  InfoCard: ({ children, variant }: any) => (
+    <div data-testid="info-card" data-variant={variant}>
+      {children}
+    </div>
+  ),
 }))
 
 // ── API ──
@@ -378,7 +448,13 @@ vi.mock("@/lib/api", () => ({
 
 vi.mock("@/lib/constants", () => ({
   SERVICE_UNITS: ["UNIDADE", "METRO_LINEAR"],
-  SERVICE_UNIT_LABELS: { UNIT: "unidade", HOUR: "hora", KG: "kg", UNIDADE: "Unidade", METRO_LINEAR: "Metro Linear" },
+  SERVICE_UNIT_LABELS: {
+    UNIT: "unidade",
+    HOUR: "hora",
+    KG: "kg",
+    UNIDADE: "Unidade",
+    METRO_LINEAR: "Metro Linear",
+  },
   SERVICE_UNIT_SHORT: { UNIT: "un", HOUR: "h", KG: "kg", UNIDADE: "un", METRO_LINEAR: "m" },
   WEEKDAYS_SHORT: ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"],
 }))
@@ -399,17 +475,46 @@ vi.mock("date-fns/locale", () => ({ ptBR: {} }))
 // ── Lucide React ──
 
 vi.mock("lucide-react", () => {
-  const Icon = (p: any) => <span data-testid="lucide-icon" data-name={p?.className}>{p?.children}</span>
+  const Icon = (p: any) => (
+    <span data-testid="lucide-icon" data-name={p?.className}>
+      {p?.children}
+    </span>
+  )
   Icon.displayName = "LucideIcon"
   return {
-    CalendarDays: Icon, CalendarOff: Icon, Check: Icon, CheckCircle2: Icon,
-    ChevronLeft: Icon, ChevronRight: Icon, Clock: Icon, CreditCard: Icon,
-    Loader2: Icon, LogIn: Icon, MapPin: Icon, Moon: Icon, Pencil: Icon,
-    QrCode: Icon, RefreshCw: Icon, Send: Icon, ShieldCheck: Icon, Sun: Icon,
-    Wallet: Icon, XCircle: Icon, User: Icon, Wrench: Icon,
-    Mail: Icon, Lock: Icon, Eye: Icon, EyeOff: Icon,
-    UserRound: Icon, ChevronDown: Icon, Copy: Icon, BadgeCheck: Icon,
-    AlertTriangle: Icon, Home: Icon, Bug: Icon,
+    CalendarDays: Icon,
+    CalendarOff: Icon,
+    Check: Icon,
+    CheckCircle2: Icon,
+    ChevronLeft: Icon,
+    ChevronRight: Icon,
+    Clock: Icon,
+    CreditCard: Icon,
+    Loader2: Icon,
+    LogIn: Icon,
+    MapPin: Icon,
+    Moon: Icon,
+    Pencil: Icon,
+    QrCode: Icon,
+    RefreshCw: Icon,
+    Send: Icon,
+    ShieldCheck: Icon,
+    Sun: Icon,
+    Wallet: Icon,
+    XCircle: Icon,
+    User: Icon,
+    Wrench: Icon,
+    Mail: Icon,
+    Lock: Icon,
+    Eye: Icon,
+    EyeOff: Icon,
+    UserRound: Icon,
+    ChevronDown: Icon,
+    Copy: Icon,
+    BadgeCheck: Icon,
+    AlertTriangle: Icon,
+    Home: Icon,
+    Bug: Icon,
   }
 })
 
@@ -459,7 +564,14 @@ const mockProvider = {
 }
 
 const mockServices = [
-  { id: "svc-1", title: "Instalação Elétrica", basePrice: 150, unit: "UNIDADE" as const, providerId: "prov-1", description: "Descrição do serviço" },
+  {
+    id: "svc-1",
+    title: "Instalação Elétrica",
+    basePrice: 150,
+    unit: "UNIDADE" as const,
+    providerId: "prov-1",
+    description: "Descrição do serviço",
+  },
 ]
 
 const mockProvidersList = { items: [mockProvider], total: 1 }
@@ -572,7 +684,7 @@ describe("BookingModal — accessibility", () => {
     expect(results.violations).toHaveLength(0)
   })
 
-    it("has no axe violations when open on step 1 (Agenda)", async () => {
+  it("has no axe violations when open on step 1 (Agenda)", async () => {
     mockUIStore.bookingModal = { open: true, providerId: "prov-1", serviceId: "svc-1" }
     const { container } = render(<BookingModal />)
     const results = await axe(container)

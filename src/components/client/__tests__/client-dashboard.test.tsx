@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen, fireEvent } from "@testing-library/react"
+import { cleanup, render, screen, fireEvent } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---- Hoisted shared state (avoids vi.mock hoisting TDZ) --------------------
@@ -21,7 +21,11 @@ const { mockApiPatch, mockPlayCoinSound, mockTryVibrate } = vi.hoisted(() => {
 
 vi.mock("@/store/auth", () => ({
   useAuthStore: vi.fn(
-    (selector?: (s: { user: { id: string; name: string; soundEnabled?: boolean; vibrateEnabled?: boolean } | null }) => unknown) => {
+    (
+      selector?: (s: {
+        user: { id: string; name: string; soundEnabled?: boolean; vibrateEnabled?: boolean } | null
+      }) => unknown,
+    ) => {
       const state = {
         user: { id: "user-1", name: "Maria", soundEnabled: true, vibrateEnabled: true },
       }
@@ -31,47 +35,41 @@ vi.mock("@/store/auth", () => ({
 }))
 
 vi.mock("@/store/view", () => ({
-  useViewStore: vi.fn(
-    (selector?: (s: { navigate: ReturnType<typeof vi.fn> }) => unknown) => {
-      const state = { navigate: vi.fn() }
-      return selector ? selector(state) : state
-    },
-  ),
+  useViewStore: vi.fn((selector?: (s: { navigate: ReturnType<typeof vi.fn> }) => unknown) => {
+    const state = { navigate: vi.fn() }
+    return selector ? selector(state) : state
+  }),
 }))
 
 vi.mock("@/store/ui", () => ({
-  useUIStore: vi.fn(
-    (selector?: (s: { openQuote: ReturnType<typeof vi.fn> }) => unknown) => {
-      const state = { openQuote: vi.fn() }
-      return selector ? selector(state) : state
-    },
-  ),
+  useUIStore: vi.fn((selector?: (s: { openQuote: ReturnType<typeof vi.fn> }) => unknown) => {
+    const state = { openQuote: vi.fn() }
+    return selector ? selector(state) : state
+  }),
 }))
 
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: vi.fn(
-    (opts?: { queryKey?: string[] }) => {
-      const key = opts?.queryKey?.[0] ?? ""
-      // Make OnboardingChecklist see a complete profile so it returns null
-      if (key === "onboarding-profile") {
-        return {
-          data: {
-            name: "Maria",
-            avatarUrl: "/avatar.jpg",
-            whatsapp: "11999999999",
-            cep: "01001000",
-            street: "Rua A",
-            number: "123",
-          },
-          isLoading: false,
-        }
-      }
+  useQuery: vi.fn((opts?: { queryKey?: string[] }) => {
+    const key = opts?.queryKey?.[0] ?? ""
+    // Make OnboardingChecklist see a complete profile so it returns null
+    if (key === "onboarding-profile") {
       return {
-        data: { items: [], total: 0 },
+        data: {
+          name: "Maria",
+          avatarUrl: "/avatar.jpg",
+          whatsapp: "11999999999",
+          cep: "01001000",
+          street: "Rua A",
+          number: "123",
+        },
         isLoading: false,
       }
-    },
-  ),
+    }
+    return {
+      data: { items: [], total: 0 },
+      isLoading: false,
+    }
+  }),
   useQueryClient: vi.fn(() => ({
     invalidateQueries: vi.fn(),
   })),

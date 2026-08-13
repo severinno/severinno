@@ -13,6 +13,60 @@ datasource db {
 }
 
 // ============================================================================
+// ENUMS (PostgreSQL Native)
+// ============================================================================
+
+enum Role {
+  CLIENT
+  PROVIDER
+  ADMIN
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CARD
+  PIX
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  PAID
+  REFUNDED
+  FAILED
+}
+
+enum QuoteStatus {
+  PENDING
+  RESPONDED
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum QuoteItemStatus {
+  PENDING
+  QUOTED
+  ACCEPTED
+  REJECTED
+}
+
+enum ServiceUnit {
+  UNIDADE
+  METRO_LINEAR
+  METRO_QUADRADO
+  METRO_CUBICO
+  HORA
+}
+
+// ============================================================================
 // USER — base account for CLIENT | PROVIDER | ADMIN
 // ============================================================================
 model User {
@@ -20,8 +74,7 @@ model User {
   email        String   @unique
   passwordHash String
   name         String
-  // role: "CLIENT" | "PROVIDER" | "ADMIN"
-  role         String   @default("CLIENT")
+  role         Role     @default(CLIENT)
   cpfCnpj      String?
   whatsapp     String?
   phone        String?
@@ -124,9 +177,8 @@ model Service {
   title       String
   description String
   basePrice   Float
-  // unit: "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO"
-  unit        String   @default("UNIDADE")
-  // photos: JSON array of url strings (max 4) — SQLite-safe
+  unit        ServiceUnit @default(UNIDADE)
+  // photos: JSON array of url strings (max 4)
   photos      Json     @default("[]")
   // duration in minutes (e.g. 60, 120, 180)
   duration    Int?
@@ -174,8 +226,7 @@ model QuoteRequest {
   id         String   @id @default(cuid())
   clientId   String
   providerId String   // primary provider
-  // status: "PENDING" | "RESPONDED" | "APPROVED" | "REJECTED" | "EXPIRED"
-  status     String   @default("PENDING")
+  status     QuoteStatus @default(PENDING)
   address    String
   cep        String
   lat        Float
@@ -204,13 +255,11 @@ model QuoteItem {
   serviceId    String
   description  String
   quantity     Float
-  // unit: "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO"
-  unit         String   @default("UNIDADE")
+  unit         ServiceUnit @default(UNIDADE)
   photos       Json     @default("[]")
   price        Float?   // provider's offer
   providerNote String?
-  // status: "PENDING" | "QUOTED" | "ACCEPTED" | "REJECTED"
-  status       String   @default("PENDING")
+  status       QuoteItemStatus @default(PENDING)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -232,8 +281,7 @@ model Booking {
   providerId    String
   serviceId     String
   scheduledAt   DateTime
-  // status: "PENDING" | "CONFIRMED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"
-  status        String   @default("PENDING")
+  status        BookingStatus @default(PENDING)
   address       String
   cep           String
   lat           Float
@@ -242,10 +290,8 @@ model Booking {
   // READ-ONLY via Prisma: all spatial access uses $queryRaw (see src/lib/postgis.ts)
   location     Unsupported("geography(Point, 4326)")?
   amount        Float
-  // paymentMethod: "CARD" | "PIX"
-  paymentMethod String   @default("PIX")
-  // paymentStatus: "PENDING" | "PAID" | "REFUNDED"
-  paymentStatus String   @default("PENDING")
+  paymentMethod PaymentMethod @default(PIX)
+  paymentStatus PaymentStatus @default(PENDING)
   notes         String?
   // Quote request that originated this booking
   quoteId       String?  @unique
@@ -366,10 +412,8 @@ model Payment {
   id            String   @id @default(cuid())
   bookingId     String   @unique
   amount        Float
-  // method: "CARD" | "PIX"
-  method        String   @default("PIX")
-  // status: "PENDING" | "PAID" | "REFUNDED"
-  status        String   @default("PENDING")
+  method        PaymentMethod @default(PIX)
+  status        PaymentStatus @default(PENDING)
   transactionId String?
   // Lytex Pagamentos integration fields
   lytexId       String?  @unique // ID da cobrança no Lytex

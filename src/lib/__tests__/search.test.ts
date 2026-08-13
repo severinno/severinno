@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 vi.mock("../logger", () => ({
@@ -200,9 +199,7 @@ describe("searchServices", () => {
 
     const searchCall = mocks.mockSearch.mock.calls[0][0]
     expect(searchCall.index).toBe("severinno-services")
-    expect(searchCall.body.query.bool.must).toContainEqual(
-      { term: { active: true } },
-    )
+    expect(searchCall.body.query.bool.must).toContainEqual({ term: { active: true } })
 
     Object.assign(process.env, { NODE_ENV: prevEnv })
     delete process.env.OPENSEARCH_URL
@@ -230,9 +227,7 @@ describe("deleteIndices", () => {
 describe("indexDocument", () => {
   it("does not throw when client is unavailable", async () => {
     vi.spyOn(searchModule, "getClient").mockReturnValue(null as any)
-    await expect(
-      indexDocument("test-index", "doc-1", { title: "test" }),
-    ).resolves.toBeUndefined()
+    await expect(indexDocument("test-index", "doc-1", { title: "test" })).resolves.toBeUndefined()
   })
 })
 
@@ -248,8 +243,6 @@ describe("bulkIndex", () => {
 describe("deleteDocument", () => {
   it("does not throw when client is unavailable", async () => {
     vi.spyOn(searchModule, "getClient").mockReturnValue(null as any)
-    await expect(
-      deleteDocument("test-index", "doc-1"),
-    ).resolves.toBeUndefined()
+    await expect(deleteDocument("test-index", "doc-1")).resolves.toBeUndefined()
   })
 })

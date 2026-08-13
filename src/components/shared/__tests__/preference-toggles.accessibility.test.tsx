@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from "vitest"
-import { render, cleanup } from "@testing-library/react"
+import { render, cleanup } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---- Minimal mocks (only what PreferenceToggles needs to render without crashing)
@@ -51,11 +51,11 @@ vi.mock("@/components/ui/switch", () => ({
 
 vi.mock("@/components/ui/card", () => ({
   Card: ({ children }: { children?: React.ReactNode }) => (
-    <div role="region" aria-label="Preferências">{children}</div>
+    <div role="region" aria-label="Preferências">
+      {children}
+    </div>
   ),
-  CardContent: ({ children }: { children?: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
+  CardContent: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
 }))
 
 vi.mock("@/components/ui/separator", () => ({
@@ -79,17 +79,13 @@ describe("PreferenceToggles — accessibility (card variant)", () => {
   })
 
   it("has no axe violations with all toggles off", async () => {
-    const { container } = render(
-      <PreferenceToggles soundEnabled={false} vibrateEnabled={false} />,
-    )
+    const { container } = render(<PreferenceToggles soundEnabled={false} vibrateEnabled={false} />)
     const results = await axe(container)
     expect(results.violations).toHaveLength(0)
   })
 
   it("has no axe violations with mixed values", async () => {
-    const { container } = render(
-      <PreferenceToggles soundEnabled={true} vibrateEnabled={false} />,
-    )
+    const { container } = render(<PreferenceToggles soundEnabled={true} vibrateEnabled={false} />)
     const results = await axe(container)
     expect(results.violations).toHaveLength(0)
   })
@@ -108,11 +104,7 @@ describe("PreferenceToggles — accessibility (compact variant)", () => {
 
   it("has no axe violations with all toggles off", async () => {
     const { container } = render(
-      <PreferenceToggles
-        variant="compact"
-        soundEnabled={false}
-        vibrateEnabled={false}
-      />,
+      <PreferenceToggles variant="compact" soundEnabled={false} vibrateEnabled={false} />,
     )
     const results = await axe(container)
     expect(results.violations).toHaveLength(0)

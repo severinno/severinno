@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen } from "@/__tests__/test-utils"
 
 // Import shared mocks BEFORE the component
 import "./test-setup"
@@ -15,11 +15,7 @@ describe("RegisterPage (/register)", () => {
   it("renders the register form with title", () => {
     render(<RegisterPageClient />)
     expect(screen.getByText("Criar conta")).toBeDefined()
-    expect(
-      screen.getByText(
-        "Cadastre-se como cliente ou prestador de serviços",
-      ),
-    ).toBeDefined()
+    expect(screen.getByText("Cadastre-se como cliente ou prestador de serviços")).toBeDefined()
   })
 
   it("has name, email, password and confirm password fields", () => {

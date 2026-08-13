@@ -160,7 +160,7 @@ export async function GET(request: Request) {
           where: {
             id: { in: userIdsWithPush },
             active: true,
-            ...(targetRoles.length > 0 ? { role: { in: targetRoles } } : {}),
+            ...(targetRoles.length > 0 ? { role: { in: targetRoles as any } } : {}),
             ...(rule.filterCity ? { city: rule.filterCity } : {}),
           },
           select: { id: true },

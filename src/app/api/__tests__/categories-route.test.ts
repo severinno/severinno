@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET } from "../categories/route"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
@@ -74,7 +73,7 @@ beforeEach(() => {
 
 describe("GET /api/categories", () => {
   it("returns all active categories as a flat array", async () => {
-    (vi.mocked(db.category.findMany) as any).mockResolvedValue(mockCategories)
+    ;(vi.mocked(db.category.findMany) as any).mockResolvedValue(mockCategories)
 
     const req = createMockRequest()
     const response = await GET(req)
@@ -87,7 +86,7 @@ describe("GET /api/categories", () => {
   })
 
   it("filters by level", async () => {
-    (vi.mocked(db.category.findMany) as any).mockResolvedValue(
+    ;(vi.mocked(db.category.findMany) as any).mockResolvedValue(
       mockCategories.filter((c) => c.level === 0),
     )
 
@@ -101,7 +100,7 @@ describe("GET /api/categories", () => {
   })
 
   it("filters by parentId", async () => {
-    (vi.mocked(db.category.findMany) as any).mockResolvedValue(
+    ;(vi.mocked(db.category.findMany) as any).mockResolvedValue(
       mockCategories.filter((c) => c.parentId === "cat-1"),
     )
 
@@ -116,7 +115,7 @@ describe("GET /api/categories", () => {
   })
 
   it("returns empty array when no categories exist", async () => {
-    (vi.mocked(db.category.findMany) as any).mockResolvedValue([])
+    ;(vi.mocked(db.category.findMany) as any).mockResolvedValue([])
 
     const req = createMockRequest()
     const response = await GET(req)
@@ -127,7 +126,7 @@ describe("GET /api/categories", () => {
   })
 
   it("passes correct Prisma query parameters", async () => {
-    (vi.mocked(db.category.findMany) as any).mockResolvedValue([])
+    ;(vi.mocked(db.category.findMany) as any).mockResolvedValue([])
 
     const req = createMockRequest({ searchParams: { level: "1" } })
     await GET(req)

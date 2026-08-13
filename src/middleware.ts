@@ -237,7 +237,22 @@ export async function middleware(request: NextRequest) {
 
   // --- Verify session cookie ---
   const sessionSecret = process.env.SESSION_SECRET
-  if (!sessionSecret) return response // fail open in dev if misconfigured
+  if (!sessionSecret) {
+    if (process.env.NODE_ENV === "production") {
+      if (isProtectedPage) {
+        return NextResponse.redirect(new URL("/", request.url))
+      }
+      return NextResponse.json(
+        { error: "Erro de configuração de segurança do servidor" },
+        { status: 500 },
+      )
+    }
+    // Fail open in development with explicit warning
+    console.warn(
+      "[middleware] SESSION_SECRET ausente. Em produção, requisições protegidas retornarão 500.",
+    )
+    return response
+  }
 
   const cookie = request.cookies.get(COOKIE_NAME)?.value
   if (!cookie) {

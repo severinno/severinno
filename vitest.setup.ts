@@ -1,8 +1,10 @@
 /// <reference types="vitest/globals" />
-// Make jest-dom matchers available globally
-// vitest --globals ensures vi, expect, describe, it are in scope
-// jest-dom matchers for Vitest — using standard import with globals: true
-import "@testing-library/jest-dom"
+// Type augmentation for jest-dom matchers lives in ./types/vitest.d.ts
+// Runtime: extend vitest expect with jest-dom matchers
+import { expect } from "vitest"
+import * as matchers from "@testing-library/jest-dom/matchers"
+
+expect.extend(matchers)
 
 // ── Mock ioredis globally (prevents "Unhandled error event" in tests) ─────
 // Rate-limit and Redis modules may try to connect to a real Redis instance

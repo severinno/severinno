@@ -79,7 +79,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-import { ErrorState, FreshnessLabel, initials } from "@/components/admin/admin-shared"
+import { ErrorState, FreshnessLabel, initials } from "./_shared"
+import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 // ---------------------------------------------------------------------------
 // Colors
@@ -88,16 +89,6 @@ import { ErrorState, FreshnessLabel, initials } from "@/components/admin/admin-s
 const COLORS = {
   commission: "hsl(38, 92%, 50%)",
   providerNet: "hsl(160, 84%, 39%)",
-}
-
-const TOOLTIP_STYLE: React.CSSProperties = {
-  borderRadius: 8,
-  border: "1px solid hsl(var(--border))",
-  background: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
-  padding: "8px 10px",
 }
 
 // ---------------------------------------------------------------------------

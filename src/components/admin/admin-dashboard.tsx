@@ -55,7 +55,8 @@ import {
   ErrorState,
   FreshnessLabel,
   initials,
-} from "@/components/admin/admin-shared"
+} from "./_shared"
+import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 // ---------------------------------------------------------------------------
 // Types — mirrors /api/admin/stats response
@@ -117,16 +118,6 @@ const PIE_COLORS: Record<PaymentStatus, string> = {
   PAID: "hsl(160, 84%, 39%)",       // emerald-500
   PENDING: "hsl(38, 92%, 50%)",     // amber-500
   REFUNDED: "hsl(240, 6%, 50%)",    // zinc-500
-}
-
-const TOOLTIP_STYLE: React.CSSProperties = {
-  borderRadius: 8,
-  border: "1px solid hsl(var(--border))",
-  background: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
-  padding: "8px 10px",
 }
 
 // ---------------------------------------------------------------------------

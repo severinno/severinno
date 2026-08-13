@@ -4,7 +4,7 @@
  * Quick throughput guard-rail for the Haversine distance function.
  *
  * Measures how many times haversineKm can execute per second and
- * fails if throughput drops below 500 000 ops/sec.  This catches
+ * fails if throughput drops below 500 000 ops/sec.  This catches
  * accidental performance regressions (e.g. an extra trig call, a
  * heavier abstraction wrapper) without needing to run the full
  * geo-benchmark pipeline.
@@ -29,8 +29,8 @@ const CENTER_LNG = -46.6333
 /**
  * Minimum acceptable throughput in operations per second.
  *
- * Baseline on Node 22, win32 x64: ~20 M ops/sec for a single call.
- * At 500 k ops/sec the function would need to be ~40× slower.
+ * Baseline on Node 22, win32 x64: ~20 M ops/sec for a single call.
+ * At 500 k ops/sec the function would need to be ~40× slower.
  * This threshold is deliberately generous to avoid flakiness on
  * shared CI runners while still catching catastrophic regressions.
  */

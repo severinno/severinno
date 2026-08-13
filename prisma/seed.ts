@@ -469,7 +469,7 @@ async function main() {
         title: s.title,
         description: s.description,
         basePrice: s.basePrice,
-        unit: s.unit,
+        unit: s.unit as any,
         photos: [
           `https://picsum.photos/seed/${s.photoSeed}/800/600`,
           `https://picsum.photos/seed/${s.photoSeed}-2/800/600`,

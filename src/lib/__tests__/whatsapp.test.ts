@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
@@ -152,7 +151,11 @@ describe("sendWhatsApp", () => {
 
   it("loga warning quando Evolution API retorna erro", async () => {
     mockDb.user.findUnique.mockResolvedValue({ whatsapp: "11999999999" })
-    globalThis.fetch = mockFetch({ ok: false, status: 401, text: vi.fn().mockResolvedValue("Unauthorized") })
+    globalThis.fetch = mockFetch({
+      ok: false,
+      status: 401,
+      text: vi.fn().mockResolvedValue("Unauthorized"),
+    })
 
     await sendWhatsApp({ userId: "user-1", title: "Teste" })
 

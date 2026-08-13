@@ -80,7 +80,7 @@ import {
   EmptyState,
   errMsg,
   type StatusTone,
-} from "@/components/admin/admin-shared"
+} from "./_shared"
 
 // ---------------------------------------------------------------------------
 // Types

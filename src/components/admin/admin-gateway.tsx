@@ -32,7 +32,7 @@ import {
   ResultCount,
   SearchInput,
   TableSkeleton,
-} from "./admin-shared"
+} from "./_shared"
 
 type LytexInvoice = {
   _id: string

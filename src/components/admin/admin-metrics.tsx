@@ -15,7 +15,7 @@ import { apiGet } from "@/lib/api"
 import { formatBRL } from "@/lib/format"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ErrorState } from "@/components/admin/admin-shared"
+import { ErrorState } from "./_shared"
 import { cn } from "@/lib/utils"
 
 type BusinessMetrics = {

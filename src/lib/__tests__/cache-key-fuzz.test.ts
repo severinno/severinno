@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * cache-key-fuzz.test.ts
  *
@@ -22,7 +21,15 @@
 
 import { describe, it, expect } from "vitest"
 import { radiusCountCacheKey } from "../radius-expansion"
-import { setSeed, fuzzLat, fuzzLng, fuzzRadius, fuzzCategoryIds, fuzzQuery, validateCacheKey } from "@/lib/__tests__"
+import {
+  setSeed,
+  fuzzLat,
+  fuzzLng,
+  fuzzRadius,
+  fuzzCategoryIds,
+  fuzzQuery,
+  validateCacheKey,
+} from "@/lib/__tests__"
 
 // ---------------------------------------------------------------------------
 // Constants

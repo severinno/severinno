@@ -45,21 +45,13 @@ import {
 import { apiGet } from "@/lib/api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { ErrorState } from "@/components/admin/admin-shared"
+import { ErrorState, MetricCard } from "./_shared"
+import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 import type { PerformanceMetrics } from "@/app/api/admin/performance/route"
 
-// ── Chart tooltip style ──────────────────────────────────────────────────
 
-const TOOLTIP_STYLE: React.CSSProperties = {
-  borderRadius: 8,
-  border: "1px solid hsl(var(--border))",
-  background: "hsl(var(--popover))",
-  color: "hsl(var(--popover-foreground))",
-  fontSize: 12,
-  boxShadow: "0 4px 16px -4px rgb(0 0 0 / 0.1)",
-  padding: "8px 10px",
-}
+// ── Chart tooltip style ──────────────────────────────────────────────────
 
 // ── Color palette ────────────────────────────────────────────────────────
 
@@ -73,16 +65,20 @@ const CHART_COLORS = {
 }
 
 function barColor(value: number, threshold: number): string {
-  return value > threshold ? CHART_COLORS.error : value > threshold * 0.5 ? CHART_COLORS.slow : CHART_COLORS.healthy
+  return value > threshold
+    ? CHART_COLORS.error
+    : value > threshold * 0.5
+      ? CHART_COLORS.slow
+      : CHART_COLORS.healthy
 }
 
 // ── Period options ───────────────────────────────────────────────────────
 
 const PERIOD_OPTIONS = [
-  { value: "1h",  label: "1h" },
-  { value: "6h",  label: "6h" },
+  { value: "1h", label: "1h" },
+  { value: "6h", label: "6h" },
   { value: "24h", label: "24h" },
-  { value: "7d",  label: "7d" },
+  { value: "7d", label: "7d" },
 ]
 
 // ── Main component ───────────────────────────────────────────────────────
@@ -112,9 +108,7 @@ export function AdminPerformanceDashboard() {
   }
 
   // Top endpoints by P95 (sorted desc)
-  const slowestEndpoints = [...data.endpoints]
-    .sort((a, b) => b.p95Ms - a.p95Ms)
-    .slice(0, 8)
+  const slowestEndpoints = [...data.endpoints].sort((a, b) => b.p95Ms - a.p95Ms).slice(0, 8)
 
   // Endpoints with highest error rate
   const errorProneEndpoints = [...data.endpoints]
@@ -123,31 +117,29 @@ export function AdminPerformanceDashboard() {
     .slice(0, 6)
 
   // Slowest DB queries
-  const slowestQueries = [...data.dbQueries]
-    .sort((a, b) => b.avgMs - a.avgMs)
-    .slice(0, 6)
+  const slowestQueries = [...data.dbQueries].sort((a, b) => b.avgMs - a.avgMs).slice(0, 6)
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-8">
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground">
+          <h1 className="text-foreground text-xl font-bold tracking-tight">
             Performance Monitoring
           </h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
+          <p className="text-muted-foreground mt-0.5 text-sm">
             Métricas de tempo de resposta, banco de dados e serviços externos
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           {dataUpdatedAt ? (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-muted-foreground text-xs">
               Atualizado {new Date(dataUpdatedAt).toLocaleTimeString("pt-BR")}
             </span>
           ) : null}
 
-          <div className="inline-flex h-8 items-center rounded-lg border bg-muted/50 p-0.5">
+          <div className="bg-muted/50 inline-flex h-8 items-center rounded-lg border p-0.5">
             {PERIOD_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
@@ -173,38 +165,35 @@ export function AdminPerformanceDashboard() {
           icon={Timer}
           label="P95 Geral"
           value={`${Math.round(data.endpoints.reduce((a, e) => Math.max(a, e.p95Ms), 0))}ms`}
-          trend={data.endpoints.some((e) => e.p95Ms > 500) ? "up" : "down"}
+          trend={data.endpoints.some((e) => e.p95Ms > 500) ? "down" : "up"}
         />
         <KpiCard
           icon={AlertTriangle}
           label="Taxa de Erro"
           value={`${data.errorSummary.total5xx + data.errorSummary.total4xx}`}
           subtitle={`${data.errorSummary.total5xx} 5xx · ${data.errorSummary.total4xx} 4xx`}
-          trend={data.errorSummary.total5xx > 10 ? "up" : "down"}
+          trend={data.errorSummary.total5xx > 10 ? "down" : "up"}
         />
         <KpiCard
           icon={Database}
           label="DB Slow Queries"
           value={`${data.dbQueries.reduce((a, q) => a + q.slowCount, 0)}`}
           subtitle={`${data.dbQueries.reduce((a, q) => a + q.calls, 0).toLocaleString()} chamadas`}
-          trend={data.dbQueries.some((q) => q.slowCount > 5) ? "up" : "down"}
+          trend={data.dbQueries.some((q) => q.slowCount > 5) ? "down" : "up"}
         />
         <KpiCard
           icon={Server}
           label="Memória"
           value={`${data.systemHealth.memoryUsageMb}MB`}
           subtitle={`Uptime: ${Math.round(data.systemHealth.uptime / 60)}min`}
-          trend={data.systemHealth.memoryUsageMb > 300 ? "up" : "down"}
+          trend={data.systemHealth.memoryUsageMb > 300 ? "down" : "up"}
         />
       </section>
 
       {/* ── Charts row ──────────────────────────────────────────────── */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Bar: P50 / P95 / P99 por endpoint */}
-        <MetricCard
-          icon={BarChart3}
-          title="Tempos de Resposta por Endpoint (ms)"
-        >
+        <MetricCard icon={BarChart3} title="Tempos de Resposta por Endpoint (ms)">
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
@@ -243,10 +232,7 @@ export function AdminPerformanceDashboard() {
         </MetricCard>
 
         {/* Bar: Top endpoints com erro */}
-        <MetricCard
-          icon={AlertTriangle}
-          title="Taxa de Erro por Endpoint (%)"
-        >
+        <MetricCard icon={AlertTriangle} title="Taxa de Erro por Endpoint (%)">
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
@@ -296,16 +282,14 @@ export function AdminPerformanceDashboard() {
             {slowestQueries.map((q) => (
               <div key={q.query} className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-foreground">
-                    {q.query}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-foreground truncate text-xs font-medium">{q.query}</p>
+                  <p className="text-muted-foreground text-[10px]">
                     {q.calls.toLocaleString()} chamadas · {q.slowCount} lentas
                   </p>
                 </div>
                 <div className="ml-3 flex items-center gap-2">
                   <div
-                    className="h-2 w-16 rounded-full bg-muted"
+                    className="bg-muted h-2 w-16 rounded-full"
                     title={`avg: ${q.avgMs}ms, max: ${q.maxMs}ms`}
                   >
                     <div
@@ -319,7 +303,11 @@ export function AdminPerformanceDashboard() {
                   <span
                     className={cn(
                       "w-12 text-right text-xs font-medium tabular-nums",
-                      q.avgMs > 50 ? "text-red-500" : q.avgMs > 20 ? "text-amber-500" : "text-emerald-500",
+                      q.avgMs > 50
+                        ? "text-red-500"
+                        : q.avgMs > 20
+                          ? "text-amber-500"
+                          : "text-emerald-500",
                     )}
                   >
                     {q.avgMs}ms
@@ -336,10 +324,8 @@ export function AdminPerformanceDashboard() {
             {data.externalCalls.map((s) => (
               <div key={s.service} className="flex items-center justify-between">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-foreground">
-                    {s.service}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-foreground truncate text-xs font-medium">{s.service}</p>
+                  <p className="text-muted-foreground text-[10px]">
                     {s.calls.toLocaleString()} chamadas
                   </p>
                 </div>
@@ -347,14 +333,16 @@ export function AdminPerformanceDashboard() {
                   <span
                     className={cn(
                       "text-xs font-medium tabular-nums",
-                      s.avgMs > 500 ? "text-red-500" : s.avgMs > 200 ? "text-amber-500" : "text-emerald-500",
+                      s.avgMs > 500
+                        ? "text-red-500"
+                        : s.avgMs > 200
+                          ? "text-amber-500"
+                          : "text-emerald-500",
                     )}
                   >
                     {s.avgMs}ms
                   </span>
-                  {s.errorRate > 1 ? (
-                    <AlertTriangle className="size-3 text-red-500" />
-                  ) : null}
+                  {s.errorRate > 1 ? <AlertTriangle className="size-3 text-red-500" /> : null}
                 </div>
               </div>
             ))}
@@ -366,9 +354,7 @@ export function AdminPerformanceDashboard() {
           <div className="space-y-4">
             {/* Sentry */}
             <div>
-              <p className="mb-2 text-xs font-semibold text-foreground">
-                Sentry / GlitchTip
-              </p>
+              <p className="text-foreground mb-2 text-xs font-semibold">Sentry / GlitchTip</p>
               <div className="space-y-1.5">
                 <StatusRow
                   label="DSN"
@@ -382,9 +368,7 @@ export function AdminPerformanceDashboard() {
             </div>
 
             <div className="border-t pt-3">
-              <p className="mb-2 text-xs font-semibold text-foreground">
-                Conexões
-              </p>
+              <p className="text-foreground mb-2 text-xs font-semibold">Conexões</p>
               <div className="space-y-1.5">
                 <StatusRow
                   label="PostgreSQL"
@@ -403,9 +387,7 @@ export function AdminPerformanceDashboard() {
             </div>
 
             <div className="border-t pt-3">
-              <p className="mb-2 text-xs font-semibold text-foreground">
-                Recursos
-              </p>
+              <p className="text-foreground mb-2 text-xs font-semibold">Recursos</p>
               <div className="space-y-1.5">
                 <StatusRow
                   label="Memória"
@@ -424,13 +406,11 @@ export function AdminPerformanceDashboard() {
 
       {/* ── Top Errors Table ─────────────────────────────────────────── */}
       <section>
-        <div className="overflow-hidden rounded-xl border border-border/50 bg-card">
+        <div className="border-border/50 bg-card overflow-hidden rounded-xl border">
           <div className="border-b px-5 py-4">
             <div className="flex items-center gap-2">
               <AlertTriangle className="size-4 text-red-500" />
-              <h2 className="text-sm font-semibold text-foreground">
-                Top Erros
-              </h2>
+              <h2 className="text-foreground text-sm font-semibold">Top Erros</h2>
               <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:bg-red-900/30 dark:text-red-400">
                 {data.errorSummary.total5xx + data.errorSummary.total4xx} total
               </span>
@@ -438,7 +418,7 @@ export function AdminPerformanceDashboard() {
           </div>
           <div className="p-4">
             {data.errorSummary.topErrors.length === 0 ? (
-              <div className="py-8 text-center text-sm text-muted-foreground">
+              <div className="text-muted-foreground py-8 text-center text-sm">
                 Nenhum erro crítico no período. 🎉
               </div>
             ) : (
@@ -446,9 +426,9 @@ export function AdminPerformanceDashboard() {
                 {data.errorSummary.topErrors.map((err) => (
                   <div
                     key={err.message}
-                    className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2"
+                    className="bg-muted/30 flex items-center justify-between rounded-lg px-3 py-2"
                   >
-                    <p className="flex-1 truncate text-xs font-medium text-foreground">
+                    <p className="text-foreground flex-1 truncate text-xs font-medium">
                       {err.message}
                     </p>
                     <span className="ml-3 shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:bg-red-900/30 dark:text-red-400">
@@ -466,9 +446,9 @@ export function AdminPerformanceDashboard() {
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-800/30 dark:bg-amber-950/20 dark:text-amber-300">
         <p className="font-medium">📊 Nota sobre os dados</p>
         <p className="mt-1">
-          Os dados de performance são coletados localmente via logger e métricas
-          do processo. Com o Sentry/GlitchTip configurado e o profiling ativo,
-          este dashboard mostrará dados reais de transações e spans.
+          Os dados de performance são coletados localmente via logger e métricas do processo. Com o
+          Sentry/GlitchTip configurado e o profiling ativo, este dashboard mostrará dados reais de
+          transações e spans.
           {data.sentryStatus.configured
             ? " O DSN está configurado — as transações estão sendo enviadas para o GlitchTip."
             : " Configure SENTRY_DSN no .env para habilitar tracing real."}
@@ -494,9 +474,9 @@ function KpiCard({
   trend?: "up" | "down"
 }) {
   return (
-    <div className="rounded-xl border border-border/50 bg-card p-5 transition-colors hover:border-primary/20">
+    <div className="border-border/50 bg-card hover:border-primary/20 rounded-xl border p-5 transition-colors">
       <div className="flex items-start justify-between">
-        <span className="flex size-10 items-center justify-center rounded-lg bg-primary/8 text-primary">
+        <span className="bg-primary/8 text-primary flex size-10 items-center justify-center rounded-lg">
           <Icon className="size-5" />
         </span>
         {trend ? (
@@ -507,35 +487,11 @@ function KpiCard({
           )
         ) : null}
       </div>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">
-        {value}
-      </p>
-      <p className="mt-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+      <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wider uppercase">
         {label}
       </p>
-      {subtitle ? (
-        <p className="mt-0.5 text-[10px] text-muted-foreground">{subtitle}</p>
-      ) : null}
-    </div>
-  )
-}
-
-function MetricCard({
-  icon: Icon,
-  title,
-  children,
-}: {
-  icon: React.ElementType
-  title: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="rounded-xl border border-border/50 bg-card">
-      <div className="flex items-center gap-2 border-b px-5 py-4">
-        <Icon className="size-4 text-primary" />
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-      </div>
-      <div className="p-4">{children}</div>
+      {subtitle ? <p className="text-muted-foreground mt-0.5 text-[10px]">{subtitle}</p> : null}
     </div>
   )
 }
@@ -551,7 +507,7 @@ function StatusRow({
 }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-muted-foreground text-xs">{label}</span>
       <span
         className={cn(
           "text-xs font-medium tabular-nums",
@@ -581,7 +537,7 @@ function PerformanceSkeleton() {
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="rounded-xl border bg-card p-5">
+          <div key={i} className="bg-card rounded-xl border p-5">
             <Skeleton className="size-10 rounded-lg" />
             <Skeleton className="mt-3 h-7 w-20" />
             <Skeleton className="mt-1 h-3 w-16" />
@@ -591,7 +547,7 @@ function PerformanceSkeleton() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {Array.from({ length: 2 }).map((_, i) => (
-          <div key={i} className="rounded-xl border bg-card">
+          <div key={i} className="bg-card rounded-xl border">
             <div className="border-b px-5 py-4">
               <Skeleton className="h-4 w-48" />
             </div>

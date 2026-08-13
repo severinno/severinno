@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen, fireEvent } from "@testing-library/react"
+import { cleanup, render, screen, fireEvent } from "@/__tests__/test-utils"
 import * as React from "react"
 
 // ---- Hoisted shared state (avoids vi.mock hoisting TDZ) --------------------
@@ -49,10 +49,14 @@ vi.mock("@/components/ui/switch", () => ({
 
 vi.mock("@/components/ui/card", () => ({
   Card: ({ children, className }: { children?: React.ReactNode; className?: string }) => (
-    <div data-testid="card" className={className}>{children}</div>
+    <div data-testid="card" className={className}>
+      {children}
+    </div>
   ),
   CardContent: ({ children, className }: { children?: React.ReactNode; className?: string }) => (
-    <div data-testid="card-content" className={className}>{children}</div>
+    <div data-testid="card-content" className={className}>
+      {children}
+    </div>
   ),
 }))
 
@@ -273,16 +277,12 @@ describe("PreferenceToggles — props change after mount", () => {
   })
 
   it("updates both when both props change simultaneously", () => {
-    const { rerender } = render(
-      <PreferenceToggles soundEnabled={true} vibrateEnabled={true} />,
-    )
+    const { rerender } = render(<PreferenceToggles soundEnabled={true} vibrateEnabled={true} />)
     const switches = screen.getAllByRole("switch")
     expect(switches[0].getAttribute("aria-checked")).toBe("true")
     expect(switches[1].getAttribute("aria-checked")).toBe("true")
 
-    rerender(
-      <PreferenceToggles soundEnabled={false} vibrateEnabled={false} />,
-    )
+    rerender(<PreferenceToggles soundEnabled={false} vibrateEnabled={false} />)
 
     expect(switches[0].getAttribute("aria-checked")).toBe("false")
     expect(switches[1].getAttribute("aria-checked")).toBe("false")
@@ -304,9 +304,7 @@ describe("PreferenceToggles — props change after mount", () => {
   })
 
   it("does NOT reset user toggle when parent re-renders with different unrelated prop", () => {
-    const { rerender } = render(
-      <PreferenceToggles soundEnabled={true} vibrateEnabled={true} />,
-    )
+    const { rerender } = render(<PreferenceToggles soundEnabled={true} vibrateEnabled={true} />)
 
     // User toggles sound off
     fireEvent.click(screen.getByLabelText("Ativar sons do painel"))
@@ -314,9 +312,7 @@ describe("PreferenceToggles — props change after mount", () => {
     expect(switches[0].getAttribute("aria-checked")).toBe("false")
 
     // Parent re-renders with only vibrate changing
-    rerender(
-      <PreferenceToggles soundEnabled={true} vibrateEnabled={false} />,
-    )
+    rerender(<PreferenceToggles soundEnabled={true} vibrateEnabled={false} />)
 
     // Sound toggle should be preserved (user interacted with it)
     expect(switches[0].getAttribute("aria-checked")).toBe("false")

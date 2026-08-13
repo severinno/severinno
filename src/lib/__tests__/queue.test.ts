@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 vi.mock("../logger", () => ({
@@ -83,16 +82,24 @@ describe("publish", () => {
   })
 
   it("allows optional persistent flag", async () => {
-    const opts: PublishOptions = { routingKey: "test.event", payload: { data: "test" }, persistent: false }
+    const opts: PublishOptions = {
+      routingKey: "test.event",
+      payload: { data: "test" },
+      persistent: false,
+    }
     await publish(opts)
     expect(mockChannel.publish).toHaveBeenCalledWith(
-      expect.any(String), expect.any(String), expect.any(Buffer),
+      expect.any(String),
+      expect.any(String),
+      expect.any(Buffer),
       expect.objectContaining({ persistent: false }),
     )
   })
 
   it("does not throw when publish fails (logged internally)", async () => {
-    mockChannel.publish.mockImplementation(() => { throw new Error("Channel closed") })
+    mockChannel.publish.mockImplementation(() => {
+      throw new Error("Channel closed")
+    })
     await expect(publish({ routingKey: "test", payload: { data: "x" } })).resolves.toBeUndefined()
   })
 })
@@ -133,7 +140,10 @@ describe("consume", () => {
     await consume({ queue: "test-queue", routingKey: "test", handler })
 
     const consumeCallback = mockChannel.consume.mock.calls[0][1]
-    const fakeMessage = { content: Buffer.from(JSON.stringify({ data: "bad" })), properties: { headers: {} } }
+    const fakeMessage = {
+      content: Buffer.from(JSON.stringify({ data: "bad" })),
+      properties: { headers: {} },
+    }
     await consumeCallback(fakeMessage)
 
     expect(mockChannel.nack).toHaveBeenCalledWith(fakeMessage, false, true)
@@ -170,13 +180,25 @@ describe("dispatch.findBestProvider", () => {
   })
 
   it("returns null when provider has no location data", async () => {
-    mockDb.service.findUnique.mockResolvedValue({ provider: { active: true, lat: null, lng: null, radiusKm: null } })
+    mockDb.service.findUnique.mockResolvedValue({
+      provider: { active: true, lat: null, lng: null, radiusKm: null },
+    })
     expect(await findBestProvider("service-1", -23.5, -46.6)).toBeNull()
   })
 
   it("returns null when provider is outside radius", async () => {
     mockDb.service.findUnique.mockResolvedValue({
-      provider: { active: true, lat: -23.5, lng: -46.6, radiusKm: 10, reviewsReceived: [], availability: [], _count: { bookingsAsProvider: 0 }, id: "prov-1", name: "P1" },
+      provider: {
+        active: true,
+        lat: -23.5,
+        lng: -46.6,
+        radiusKm: 10,
+        reviewsReceived: [],
+        availability: [],
+        _count: { bookingsAsProvider: 0 },
+        id: "prov-1",
+        name: "P1",
+      },
     })
     vi.mocked(getRoute).mockResolvedValue({ distanceKm: 50, durationMin: 60 } as any)
     expect(await findBestProvider("service-1", -23.5, -46.6)).toBeNull()
@@ -184,7 +206,17 @@ describe("dispatch.findBestProvider", () => {
 
   it("returns provider data when within radius", async () => {
     mockDb.service.findUnique.mockResolvedValue({
-      provider: { id: "prov-1", name: "Maria", active: true, lat: -23.5, lng: -46.6, radiusKm: 50, reviewsReceived: [{ rating: 5 }, { rating: 4 }], availability: [], _count: { bookingsAsProvider: 0 } },
+      provider: {
+        id: "prov-1",
+        name: "Maria",
+        active: true,
+        lat: -23.5,
+        lng: -46.6,
+        radiusKm: 50,
+        reviewsReceived: [{ rating: 5 }, { rating: 4 }],
+        availability: [],
+        _count: { bookingsAsProvider: 0 },
+      },
     })
     vi.mocked(getRoute).mockResolvedValue({ distanceKm: 5, durationMin: 15 } as any)
 
@@ -196,7 +228,17 @@ describe("dispatch.findBestProvider", () => {
 
   it("calculates rating as 0 when no reviews", async () => {
     mockDb.service.findUnique.mockResolvedValue({
-      provider: { id: "prov-1", name: "No Reviews", active: true, lat: -23.5, lng: -46.6, radiusKm: 50, reviewsReceived: [], availability: [], _count: { bookingsAsProvider: 0 } },
+      provider: {
+        id: "prov-1",
+        name: "No Reviews",
+        active: true,
+        lat: -23.5,
+        lng: -46.6,
+        radiusKm: 50,
+        reviewsReceived: [],
+        availability: [],
+        _count: { bookingsAsProvider: 0 },
+      },
     })
     vi.mocked(getRoute).mockResolvedValue({ distanceKm: 3, durationMin: 10 } as any)
     expect((await findBestProvider("service-1", -23.5, -46.6))!.rating).toBe(0)
@@ -210,11 +252,33 @@ describe("dispatch.findBestProviders", () => {
   })
 
   it("filters and scores providers correctly", async () => {
-    mockDb.service.findUnique.mockResolvedValue({ id: "service-1", categoryId: "cat-1", provider: { active: true } })
+    mockDb.service.findUnique.mockResolvedValue({
+      id: "service-1",
+      categoryId: "cat-1",
+      provider: { active: true },
+    })
     mockDb.$queryRaw.mockResolvedValue([{ id: "prov-1" }, { id: "prov-2" }])
     mockDb.user.findMany.mockResolvedValue([
-      { id: "prov-1", name: "P1", active: true, lat: -23.5, lng: -46.6, radiusKm: 50, reviewsReceived: [{ rating: 5 }], _count: { bookingsAsProvider: 0 } },
-      { id: "prov-2", name: "P2", active: true, lat: -23.55, lng: -46.65, radiusKm: 30, reviewsReceived: [{ rating: 4 }], _count: { bookingsAsProvider: 0 } },
+      {
+        id: "prov-1",
+        name: "P1",
+        active: true,
+        lat: -23.5,
+        lng: -46.6,
+        radiusKm: 50,
+        reviewsReceived: [{ rating: 5 }],
+        _count: { bookingsAsProvider: 0 },
+      },
+      {
+        id: "prov-2",
+        name: "P2",
+        active: true,
+        lat: -23.55,
+        lng: -46.65,
+        radiusKm: 30,
+        reviewsReceived: [{ rating: 4 }],
+        _count: { bookingsAsProvider: 0 },
+      },
     ])
     vi.mocked(getMultiRoute).mockResolvedValue([
       { distanceKm: 5, durationMin: 15 },
@@ -228,13 +292,44 @@ describe("dispatch.findBestProviders", () => {
   })
 
   it("respects limit parameter", async () => {
-    mockDb.service.findUnique.mockResolvedValue({ id: "service-1", categoryId: "cat-1", provider: { active: true } })
+    mockDb.service.findUnique.mockResolvedValue({
+      id: "service-1",
+      categoryId: "cat-1",
+      provider: { active: true },
+    })
     mockDb.$queryRaw.mockResolvedValue([{ id: "p1" }, { id: "p2" }, { id: "p3" }])
     // lat/lng must be truthy (positive non-zero) to pass the !p.lat guard
     mockDb.user.findMany.mockResolvedValue([
-      { id: "p1", name: "P1", active: true, lat: 1, lng: 1, radiusKm: 100, reviewsReceived: [], _count: { bookingsAsProvider: 0 } },
-      { id: "p2", name: "P2", active: true, lat: 1, lng: 1, radiusKm: 100, reviewsReceived: [], _count: { bookingsAsProvider: 0 } },
-      { id: "p3", name: "P3", active: true, lat: 1, lng: 1, radiusKm: 100, reviewsReceived: [], _count: { bookingsAsProvider: 0 } },
+      {
+        id: "p1",
+        name: "P1",
+        active: true,
+        lat: 1,
+        lng: 1,
+        radiusKm: 100,
+        reviewsReceived: [],
+        _count: { bookingsAsProvider: 0 },
+      },
+      {
+        id: "p2",
+        name: "P2",
+        active: true,
+        lat: 1,
+        lng: 1,
+        radiusKm: 100,
+        reviewsReceived: [],
+        _count: { bookingsAsProvider: 0 },
+      },
+      {
+        id: "p3",
+        name: "P3",
+        active: true,
+        lat: 1,
+        lng: 1,
+        radiusKm: 100,
+        reviewsReceived: [],
+        _count: { bookingsAsProvider: 0 },
+      },
     ])
     vi.mocked(getMultiRoute).mockResolvedValue([
       { distanceKm: 1, durationMin: 5 },
@@ -248,16 +343,23 @@ describe("dispatch.findBestProviders", () => {
 describe("dispatchBooking", () => {
   it("queues notifications for both client and provider", async () => {
     mockDb.booking.findUnique.mockResolvedValue({
-      id: "book-1", providerId: "prov-1", clientId: "client-1",
+      id: "book-1",
+      providerId: "prov-1",
+      clientId: "client-1",
       scheduledAt: new Date("2026-07-20T14:00:00Z"),
-      provider: { name: "Maria Souza" }, client: { name: "João Silva" },
+      provider: { name: "Maria Souza" },
+      client: { name: "João Silva" },
     })
 
     await dispatchBooking("book-1")
 
     expect(saveAndQueueNotification).toHaveBeenCalledTimes(2)
-    expect(saveAndQueueNotification).toHaveBeenCalledWith(expect.objectContaining({ userId: "prov-1", type: "BOOKING_ASSIGNED" }))
-    expect(saveAndQueueNotification).toHaveBeenCalledWith(expect.objectContaining({ userId: "client-1", type: "BOOKING_CONFIRMED" }))
+    expect(saveAndQueueNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "prov-1", type: "BOOKING_ASSIGNED" }),
+    )
+    expect(saveAndQueueNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "client-1", type: "BOOKING_CONFIRMED" }),
+    )
   })
 
   it("does nothing when booking not found", async () => {

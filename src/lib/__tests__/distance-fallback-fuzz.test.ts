@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * distance-fallback-fuzz.test.ts
  *
@@ -33,9 +32,9 @@ const MAX_PROVIDERS = 50
 /** Generate a random provider count (biased toward edge cases). */
 function randomProviderCount(): number {
   const r = seededRandom()
-  if (r < 0.1) return 0       // 10%: empty
-  if (r < 0.2) return 1       // 10%: single
-  return randInt(2, MAX_PROVIDERS)  // 80%: 2–50
+  if (r < 0.1) return 0 // 10%: empty
+  if (r < 0.2) return 1 // 10%: single
+  return randInt(2, MAX_PROVIDERS) // 80%: 2–50
 }
 
 /**
@@ -110,16 +109,11 @@ async function runOneFuzz(): Promise<string> {
 
   // Decide PostGIS behavior
   const behavior = pick(["success-subset", "success-empty", "throw", "success-all"]) as
-    | "success-subset"
-    | "success-empty"
-    | "throw"
-    | "success-all"
+    "success-subset" | "success-empty" | "throw" | "success-all"
 
   // Decide centerGeo — 30% chance null, 70% random coords
   const centerGeo =
-    seededRandom() < 0.3
-      ? null
-      : { lat: randFloat(-90, 90), lng: randFloat(-180, 180) }
+    seededRandom() < 0.3 ? null : { lat: randFloat(-90, 90), lng: randFloat(-180, 180) }
 
   // Decide hasGeo — 20% false, 80% true
   const hasGeo = seededRandom() >= 0.2
@@ -183,7 +177,7 @@ describe("computeDistanceMap fuzzing", () => {
     if (failures.length > 0) {
       throw new Error(
         `computeDistanceMap failed size invariant in ${failures.length}/${FUZZ_ITERATIONS} fuzz cases:\n` +
-        failures.join("\n"),
+          failures.join("\n"),
       )
     }
   })
