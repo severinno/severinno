@@ -105,13 +105,24 @@ export interface TrackingPositionEvent {
 // Only build it in the browser. SSR returns null.
 let socketRef: Socket | null = null
 
+/**
+ * Resolve the Socket.io server URL:
+ *  - NEXT_PUBLIC_REALTIME_URL set (dev/e2e) → connect directly to the
+ *    realtime mini-service (e.g. http://localhost:3003).
+ *  - otherwise → Caddy gateway picks the upstream from `XTransformPort`.
+ *    The path MUST be "/" (see Caddyfile + examples/websocket/*).
+ */
+function getSocketUrl(): string {
+  const explicit = process.env.NEXT_PUBLIC_REALTIME_URL
+  if (explicit) return explicit
+  return "/?XTransformPort=3003"
+}
+
 function getSocket(): Socket | null {
   if (typeof window === "undefined") return null
   if (socketRef) return socketRef
 
-  // Caddy gateway picks the upstream port from the `XTransformPort` query param.
-  // The path MUST be "/" (see Caddyfile + examples/websocket/*).
-  socketRef = io("/?XTransformPort=3003", {
+  socketRef = io(getSocketUrl(), {
     transports: ["websocket", "polling"],
     forceNew: true,
     reconnection: true,
