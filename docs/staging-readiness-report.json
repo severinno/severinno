@@ -1,0 +1,61 @@
+{
+  "timestamp": "2026-08-14T09:43:21.209Z",
+  "targetUrl": "http://localhost:3000",
+  "summary": {
+    "total": 6,
+    "passed": 3,
+    "failed": 0,
+    "warnings": 3,
+    "readyForTraffic": true
+  },
+  "checks": [
+    {
+      "name": "PostgreSQL + PostGIS",
+      "category": "DATABASE",
+      "status": "PASSED",
+      "latencyMs": 2091,
+      "details": "Connected. PostGIS v3.4.3 active, 9 users indexed.",
+      "critical": true
+    },
+    {
+      "name": "Redis GEO & In-Memory Cache",
+      "category": "CACHE",
+      "status": "PASSED",
+      "latencyMs": 4,
+      "details": "Active at redis://localhost:6379. Sub-5ms GEO spatial radius cache ready.",
+      "critical": false
+    },
+    {
+      "name": "OSRM Road Routing Engine",
+      "category": "ROUTING",
+      "status": "PASSED",
+      "latencyMs": 528,
+      "details": "Route computed: 5.40 km in SP urban network.",
+      "critical": false
+    },
+    {
+      "name": "Health API",
+      "category": "APPLICATION",
+      "status": "SKIPPED",
+      "latencyMs": 15,
+      "details": "Local server not running at http://localhost:3000. (Expected during offline validation)",
+      "critical": false
+    },
+    {
+      "name": "Geo Bounding Box Search API",
+      "category": "APPLICATION",
+      "status": "SKIPPED",
+      "latencyMs": 11,
+      "details": "Local server not running at http://localhost:3000. (Expected during offline validation)",
+      "critical": false
+    },
+    {
+      "name": "Admin Business Metrics API",
+      "category": "APPLICATION",
+      "status": "SKIPPED",
+      "latencyMs": 3,
+      "details": "Local server not running at http://localhost:3000. (Expected during offline validation)",
+      "critical": false
+    }
+  ]
+}

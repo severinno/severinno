@@ -125,6 +125,9 @@ const AdminRedisDiagnosticsDashboard = dynamic(() =>
 const AdminGeoRateLimitStatus = dynamic(() =>
   import("./admin-geo-rate-limit-status").then((m) => m.AdminGeoRateLimitStatus),
 )
+const AdminGTMFunnel = dynamic(() =>
+  import("./admin-gtm-funnel").then((m) => m.AdminGTMFunnel),
+)
 
 // ---------------------------------------------------------------------------
 // Nav config
@@ -134,6 +137,11 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.dashboard",
     label: "Visão geral",
     icon: LayoutDashboard,
+  },
+  {
+    view: "admin.gtm",
+    label: "GTM Funil",
+    icon: Target,
   },
   {
     view: "admin.project-status",
@@ -274,9 +282,16 @@ const NAV_ITEMS: NavItem[] = [
 
 const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs: Breadcrumb[] }> = {
   "admin.dashboard": {
-    title: "Visão geral",
-    subtitle: "Indicadores principais e atividade recente do marketplace.",
-    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Visão geral" }],
+    title: "Painel Administrativo",
+    subtitle:
+      "Visão consolidada da plataforma — métricas de negócio, prestadores, clientes e serviços.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Visão Geral" }],
+  },
+  "admin.gtm": {
+    title: "Go-To-Market — Aquisição de Prestadores",
+    subtitle:
+      "Funil de captação dos primeiros 50 prestadores verificados com disparo automatizado de pitch via WhatsApp.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "GTM Funil" }],
   },
   "admin.taxonomy": {
     title: "Taxonomia de categorias",
@@ -535,6 +550,8 @@ function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: stri
   switch (view) {
     case "admin.dashboard":
       return <AdminDashboard onNavigate={onNavigate} />
+    case "admin.gtm":
+      return <AdminGTMFunnel />
     case "admin.taxonomy":
       return <AdminTaxonomy />
     case "admin.users":

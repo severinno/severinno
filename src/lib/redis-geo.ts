@@ -99,3 +99,17 @@ export function seedGeoIndex(
   }
   return count
 }
+
+export const RedisGeoCache = {
+  async getStats() {
+    return {
+      cachedLocations: inMemoryGeoIndex.size,
+      engine: inMemoryGeoIndex.size > 0 ? "in-memory-grid" : "redis-geo-ready",
+    }
+  },
+  indexProviderLocation,
+  removeProviderFromGeoIndex,
+  searchNearbyProvidersFast,
+  seedGeoIndex,
+}
+
