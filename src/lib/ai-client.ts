@@ -1,4 +1,3 @@
-import "server-only"
 import logger from "@/lib/logger"
 
 const aiLogger = logger.child({ module: "ai-client" })

@@ -28,6 +28,8 @@ import {
   Star,
   Wallet,
   XCircle,
+  BadgeCheck,
+  ShieldAlert,
 } from "lucide-react"
 import {
   eachDayOfInterval,
@@ -56,6 +58,7 @@ import { StarRatingDisplay } from "@/components/modals/star-rating"
 import { PreferenceToggles } from "@/components/shared/preference-toggles"
 import { StatCard } from "@/components/shared/dashboard-shell"
 import ProviderGeoAwarenessBadge from "@/components/provider/provider-geo-awareness-badge"
+import { ProviderKycDialog } from "@/components/provider/provider-kyc-dialog"
 
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 8,
@@ -280,6 +283,7 @@ export function ProviderDashboard() {
   const latestReviews = reviews.slice(0, 3)
 
   const loading = bookingsQuery.isLoading || quotesQuery.isLoading || reviewsQuery.isLoading
+  const [kycOpen, setKycOpen] = React.useState(false)
 
   return (
     <div className="space-y-6">
@@ -315,6 +319,33 @@ export function ProviderDashboard() {
           </Button>
         </div>
       </div>
+
+      {/* KYC Verification Banner */}
+      {!user?.verified && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/80 p-4 dark:border-amber-900/60 dark:bg-amber-950/30">
+          <div className="flex items-start gap-3">
+            <div className="rounded-lg bg-amber-100 p-2 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 shrink-0">
+              <ShieldAlert className="size-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-amber-950 dark:text-amber-200">
+                Seu perfil ainda não é Verificado
+              </h3>
+              <p className="text-xs text-amber-800/90 dark:text-amber-300/80 mt-0.5">
+                Envie seu documento e selfie para ganhar o selo oficial de verificação e ter destaque prioritário nas buscas.
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => setKycOpen(true)}
+            className="shrink-0 gap-1.5 bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
+          >
+            <BadgeCheck className="size-4" />
+            Verificar Perfil Agora
+          </Button>
+        </div>
+      )}
 
       {/* Wallet balance card */}
       <div className="rounded-xl border bg-gradient-to-br from-emerald-50 to-emerald-100/60 p-5 dark:from-emerald-950/40 dark:to-emerald-900/20">
@@ -723,6 +754,12 @@ export function ProviderDashboard() {
           </div>
         </>
       )}
+      {/* KYC Dialog */}
+      <ProviderKycDialog
+        open={kycOpen}
+        onOpenChange={setKycOpen}
+        isVerified={user?.verified}
+      />
     </div>
   )
 }

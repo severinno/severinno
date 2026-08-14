@@ -1,4 +1,3 @@
-import "server-only"
 import { db } from "@/lib/db"
 import { chatCompletion, isLocalAiOnline } from "@/lib/ai-client"
 import logger from "@/lib/logger"

@@ -42,6 +42,8 @@ import {
   CalendarCheck,
   UserPlus,
   FileText,
+  Sparkles,
+  Bot,
 } from "lucide-react"
 
 import { useGeoStore } from "@/store/geo"
@@ -53,6 +55,7 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useCountUp } from "@/hooks/use-animation"
 import { cn } from "@/lib/utils"
+import { AiQuoteWizard } from "@/components/shared/ai-quote-wizard"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -138,6 +141,10 @@ export default function Hero({
     staleTime: 30 * 1000,
     refetchInterval: 45 * 1000, // Auto-refresh for live feel
   })
+
+  const userLat = useGeoStore((s) => s.lat) ?? -23.5505
+  const userLng = useGeoStore((s) => s.lng) ?? -46.6333
+  const [aiWizardOpen, setAiWizardOpen] = React.useState(false)
 
   // ---- Actions -------------------------------------------------------------
 
@@ -282,8 +289,16 @@ export default function Hero({
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <Button
                 size="lg"
+                onClick={() => setAiWizardOpen(true)}
+                className="h-11 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 px-5 text-base font-bold text-zinc-950 shadow-xl hover:from-amber-300 hover:to-amber-400 transition-all hover:scale-[1.02]"
+              >
+                <Sparkles className="size-4" />
+                Orçar com IA Local
+              </Button>
+              <Button
+                size="lg"
                 onClick={() => openAuth("register", "CLIENT")}
-                className="h-11 rounded-xl bg-white px-6 text-base font-semibold text-emerald-700 shadow-lg hover:bg-emerald-50"
+                className="h-11 rounded-xl bg-white px-5 text-base font-semibold text-emerald-700 shadow-lg hover:bg-emerald-50"
               >
                 Cadastrar grátis
                 <ArrowRight className="size-4" />
@@ -331,6 +346,18 @@ export default function Hero({
           </div>
         )}
       </div>
+      {/* AI Quote Wizard Modal */}
+      <AiQuoteWizard
+        open={aiWizardOpen}
+        onOpenChange={setAiWizardOpen}
+        userLat={userLat}
+        userLng={userLng}
+        onRequestQuoteWithAi={(estimation) => {
+          onQueryChange(estimation.categoryName || estimation.suggestedTitle)
+          scrollToResults()
+          onSearchSubmit?.()
+        }}
+      />
     </section>
   )
 }
