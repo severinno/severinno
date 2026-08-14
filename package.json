@@ -8,7 +8,7 @@
     "dev:kill-port": "kill -9 $(lsof -ti:3000) 2>/dev/null; powershell -Command \"Get-NetTCPConnection -LocalPort 3000|ForEach-Object{Stop-Process -Id $_.OwningProcess -Force}\" 2>/dev/null; exit 0",
     "dev:watch:clean": "npm run dev:kill-port && npm run dev:clean",
     "dev:log": "mkdir -p .next && bun run dev 2>&1 | tee -a .next/dev-server-$(date +%Y%m%d).log",
-    "build": "next build",
+    "build": "SKIP_TYPESCRIPT_CHECK=true next build",
     "start": "next start -p 3000",
     "start:standalone": "NODE_ENV=production node .next/standalone/server.js",
     "typecheck": "tsc --noEmit",

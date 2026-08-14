@@ -1,11 +1,11 @@
 {
-  "timestamp": "2026-08-14T09:43:21.209Z",
+  "timestamp": "2026-08-14T11:26:17.856Z",
   "targetUrl": "http://localhost:3000",
   "summary": {
     "total": 6,
-    "passed": 3,
+    "passed": 4,
     "failed": 0,
-    "warnings": 3,
+    "warnings": 2,
     "readyForTraffic": true
   },
   "checks": [
@@ -13,15 +13,15 @@
       "name": "PostgreSQL + PostGIS",
       "category": "DATABASE",
       "status": "PASSED",
-      "latencyMs": 2091,
-      "details": "Connected. PostGIS v3.4.3 active, 9 users indexed.",
+      "latencyMs": 266,
+      "details": "Connected. PostGIS v3.4.3 active, 16 users indexed.",
       "critical": true
     },
     {
       "name": "Redis GEO & In-Memory Cache",
       "category": "CACHE",
       "status": "PASSED",
-      "latencyMs": 4,
+      "latencyMs": 6,
       "details": "Active at redis://localhost:6379. Sub-5ms GEO spatial radius cache ready.",
       "critical": false
     },
@@ -29,31 +29,31 @@
       "name": "OSRM Road Routing Engine",
       "category": "ROUTING",
       "status": "PASSED",
-      "latencyMs": 528,
+      "latencyMs": 598,
       "details": "Route computed: 5.40 km in SP urban network.",
       "critical": false
     },
     {
       "name": "Health API",
       "category": "APPLICATION",
-      "status": "SKIPPED",
-      "latencyMs": 15,
-      "details": "Local server not running at http://localhost:3000. (Expected during offline validation)",
-      "critical": false
+      "status": "PASSED",
+      "latencyMs": 1221,
+      "details": "Responded with HTTP 200 in 1221ms",
+      "critical": true
     },
     {
       "name": "Geo Bounding Box Search API",
       "category": "APPLICATION",
-      "status": "SKIPPED",
-      "latencyMs": 11,
-      "details": "Local server not running at http://localhost:3000. (Expected during offline validation)",
+      "status": "WARNING",
+      "latencyMs": 125,
+      "details": "Responded with HTTP 400",
       "critical": false
     },
     {
       "name": "Admin Business Metrics API",
       "category": "APPLICATION",
       "status": "SKIPPED",
-      "latencyMs": 3,
+      "latencyMs": 4022,
       "details": "Local server not running at http://localhost:3000. (Expected during offline validation)",
       "critical": false
     }
