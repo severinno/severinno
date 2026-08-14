@@ -186,3 +186,33 @@ export async function isPostGISAvailable(): Promise<boolean> {
     return false
   }
 }
+
+/**
+ * Find provider geographic IDs located inside a bounding box (e.g. current map viewport)
+ * using PostGIS ST_MakeEnvelope and spatial index.
+ */
+export async function findProvidersWithinBounds(
+  minLat: number,
+  minLng: number,
+  maxLat: number,
+  maxLng: number,
+  limit: number = 50,
+): Promise<string[]> {
+  try {
+    const rows = await db.$queryRaw<Array<{ id: string }>>`
+      SELECT id
+      FROM "User"
+      WHERE
+        role = 'PROVIDER'
+        AND active = true
+        AND "deletedAt" IS NULL
+        AND location IS NOT NULL
+        AND location && ST_MakeEnvelope(${minLng}, ${minLat}, ${maxLng}, ${maxLat}, 4326)::geography
+      LIMIT ${limit}
+    `
+    return rows.map((r) => r.id)
+  } catch {
+    return []
+  }
+}
+
