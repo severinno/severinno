@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "model": "CPU-modelled local OpenSearch 2.x (loopback, warm page cache)",
+    "cpuItersPerMs": 366,
+    "platform": "win32",
+    "arch": "x64",
+    "nodeVersion": "v22.23.1",
+    "timestamp": "2026-08-14T12:17:46.314Z"
+  },
+  "benchmarks": [
+    {
+      "name": "Exact-match (term)     1",
+      "label": "search_exact_match",
+      "mean": 47.2,
+      "min": 3.1,
+      "max": 767.8,
+      "opsPerSec": 21175
+    },
+    {
+      "name": "Full-text (match)      1",
+      "label": "search_fulltext",
+      "mean": 26.1,
+      "min": 5.7,
+      "max": 964.1,
+      "opsPerSec": 38349
+    },
+    {
+      "name": "Geo-distance query     1",
+      "label": "search_geo_distance",
+      "mean": 4.7,
+      "min": 4.4,
+      "max": 11.8,
+      "opsPerSec": 213038
+    },
+    {
+      "name": "Combined (text + geo)  1",
+      "label": "search_combined",
+      "mean": 8.1,
+      "min": 7,
+      "max": 33.2,
+      "opsPerSec": 123244
+    },
+    {
+      "name": "Aggregation (faceted)  1",
+      "label": "search_aggregation",
+      "mean": 33.4,
+      "min": 8.2,
+      "max": 1027.1,
+      "opsPerSec": 29935
+    },
+    {
+      "name": "Bulk index           100",
+      "label": "search_bulk_100",
+      "mean": 187.7,
+      "min": 94.3,
+      "max": 491.9,
+      "opsPerSec": 5327
+    }
+  ],
+  "analysis": {
+    "note": "CPU-modelled estimate of local OpenSearch operations. Real-world performance depends on shard count, index size, query complexity, and hardware.",
+    "modelParams": {
+      "exactMatchUs": 2200,
+      "fulltextUs": 4200,
+      "geoDistanceUs": 3200,
+      "combinedUs": 5200,
+      "aggregationUs": 6200,
+      "bulk100Us": 70000
+    }
+  }
+}
