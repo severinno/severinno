@@ -11,6 +11,10 @@
  * Usage:
  *   bun scripts/staging-verify.ts
  *   bun scripts/staging-verify.ts --url http://staging.severinno.com.br --json
+ *
+ * Exit codes:
+ *   0 — all checks passed
+ *   1 — critical failure or fatal error
  */
 
 import { PrismaClient } from "@prisma/client"
@@ -109,9 +113,12 @@ async function verifyOSRM(): Promise<ServiceCheckResult> {
   const osrmUrl = process.env.OSRM_URL || "http://router.project-osrm.org"
 
   try {
-    const res = await fetch(`${osrmUrl}/route/v1/driving/-46.6565,-23.5615;-46.6855,-23.5670?overview=false`, {
-      signal: AbortSignal.timeout(3000),
-    })
+    const res = await fetch(
+      `${osrmUrl}/route/v1/driving/-46.6565,-23.5615;-46.6855,-23.5670?overview=false`,
+      {
+        signal: AbortSignal.timeout(3000),
+      },
+    )
 
     const elapsed = Math.round(performance.now() - start)
     if (res.ok) {
@@ -238,11 +245,15 @@ export async function runStagingVerification(): Promise<boolean> {
 
   // Print Summary Table
   console.log("\n📋 DETAILED RESULTS:")
-  console.log("-------------------------------------------------------------------------------------------------")
   console.log(
-    `| ${"Service / Component".padEnd(35)} | ${"Category".padEnd(12)} | ${"Status".padEnd(9)} | ${"Latency".padEnd(8)} | ${"Details".padEnd(30)} |`
+    "-------------------------------------------------------------------------------------------------",
   )
-  console.log("-------------------------------------------------------------------------------------------------")
+  console.log(
+    `| ${"Service / Component".padEnd(35)} | ${"Category".padEnd(12)} | ${"Status".padEnd(9)} | ${"Latency".padEnd(8)} | ${"Details".padEnd(30)} |`,
+  )
+  console.log(
+    "-------------------------------------------------------------------------------------------------",
+  )
 
   let passedCount = 0
   let failedCount = 0
@@ -256,10 +267,12 @@ export async function runStagingVerification(): Promise<boolean> {
     const statusBadge =
       c.status === "PASSED" ? "✅ PASS" : c.status === "FAILED" ? "❌ FAIL" : "⚠️ WARN"
     console.log(
-      `| ${c.name.padEnd(35)} | ${c.category.padEnd(12)} | ${statusBadge.padEnd(9)} | ${(c.latencyMs + "ms").padEnd(8)} | ${c.details.slice(0, 30).padEnd(30)} |`
+      `| ${c.name.padEnd(35)} | ${c.category.padEnd(12)} | ${statusBadge.padEnd(9)} | ${(c.latencyMs + "ms").padEnd(8)} | ${c.details.slice(0, 30).padEnd(30)} |`,
     )
   }
-  console.log("-------------------------------------------------------------------------------------------------")
+  console.log(
+    "-------------------------------------------------------------------------------------------------",
+  )
 
   // Generate JSON report
   const report = {
@@ -293,7 +306,10 @@ export async function runStagingVerification(): Promise<boolean> {
 }
 
 // Auto-run if executed directly
-if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.includes("staging-verify")) {
+if (
+  import.meta.url === `file://${process.argv[1]}` ||
+  process.argv[1]?.includes("staging-verify")
+) {
   runStagingVerification().catch((err) => {
     console.error("Fatal error during staging verification:", err)
     process.exit(1)

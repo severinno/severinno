@@ -1,76 +1,76 @@
 {
   "meta": {
     "model": "CPU-modelled local Redis 7 (loopback, no persistence)",
-    "cpuItersPerMs": 595,
+    "cpuItersPerMs": 746,
     "platform": "win32",
     "arch": "x64",
     "nodeVersion": "v22.23.1",
-    "timestamp": "2026-07-26T23:06:59.157Z"
+    "timestamp": "2026-08-14T12:17:45.800Z"
   },
   "benchmarks": [
     {
       "name": "SET  × 1",
       "label": "cache_set_single",
-      "mean": 31.3,
-      "min": 1.5,
-      "max": 1386.9,
-      "opsPerSec": 31928
+      "mean": 20.1,
+      "min": 1.1,
+      "max": 1059.1,
+      "opsPerSec": 49791
     },
     {
       "name": "GET  × 1",
       "label": "cache_get_single",
-      "mean": 1.4,
-      "min": 1.2,
-      "max": 7.8,
-      "opsPerSec": 702247
+      "mean": 1.7,
+      "min": 0.9,
+      "max": 43.3,
+      "opsPerSec": 595948
     },
     {
       "name": "DEL  × 1",
       "label": "cache_del_single",
-      "mean": 1,
-      "min": 0.9,
-      "max": 6.4,
-      "opsPerSec": 987167
+      "mean": 1.2,
+      "min": 0.7,
+      "max": 45.8,
+      "opsPerSec": 823045
     },
     {
       "name": "SETEX × 1",
       "label": "cache_setex_single",
       "mean": 1.8,
-      "min": 1.8,
+      "min": 1.7,
       "max": 4.9,
-      "opsPerSec": 545703
+      "opsPerSec": 557103
     },
     {
       "name": "Pipeline 3 ops",
       "label": "cache_pipeline_3",
-      "mean": 2.1,
-      "min": 2,
-      "max": 4.3,
-      "opsPerSec": 473821
+      "mean": 2.6,
+      "min": 1.7,
+      "max": 50.9,
+      "opsPerSec": 379363
     },
     {
       "name": "Batch SET 100",
       "label": "cache_set_batch_100",
-      "mean": 117.1,
-      "min": 113.3,
-      "max": 136.8,
-      "opsPerSec": 8538
+      "mean": 133.6,
+      "min": 91.2,
+      "max": 200.5,
+      "opsPerSec": 7486
     },
     {
       "name": "Batch GET 100",
       "label": "cache_get_batch_100",
-      "mean": 89.8,
-      "min": 85,
-      "max": 135.9,
-      "opsPerSec": 11130
+      "mean": 103.4,
+      "min": 68.4,
+      "max": 235.5,
+      "opsPerSec": 9669
     },
     {
       "name": "Batch DEL 100",
       "label": "cache_del_batch_100",
-      "mean": 59.7,
-      "min": 56.8,
-      "max": 79.3,
-      "opsPerSec": 16738
+      "mean": 57.2,
+      "min": 45.6,
+      "max": 125.1,
+      "opsPerSec": 17476
     }
   ],
   "analysis": {

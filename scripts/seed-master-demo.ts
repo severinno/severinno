@@ -14,6 +14,10 @@
  *
  * Usage:
  *   bun scripts/seed-master-demo.ts
+ *
+ * Exit codes:
+ *   0 — success
+ *   1 — failure (DB connection or seed error)
  */
 
 import { PrismaClient } from "@prisma/client"
@@ -260,7 +264,8 @@ async function main() {
         providerId: roberto.id,
         categoryId: catEletrica.id,
         title: "Substituição & Modernização de Quadro de Distribuição (QGBT)",
-        description: "Troca completa de disjuntores antigos por padrão DIN com DPS e DR de proteção contra choques e raios.",
+        description:
+          "Troca completa de disjuntores antigos por padrão DIN com DPS e DR de proteção contra choques e raios.",
         basePrice: 480.0,
         duration: 240,
         unit: "UNIDADE",
@@ -279,7 +284,8 @@ async function main() {
         providerId: claudio.id,
         categoryId: catHidraulica.id,
         title: "Detecção Eletrônica de Vazamento com Geofone Ultrassônico",
-        description: "Localização precisa do ponto de vazamento em paredes e pisos sem quebra desnecessária.",
+        description:
+          "Localização precisa do ponto de vazamento em paredes e pisos sem quebra desnecessária.",
         basePrice: 320.0,
         duration: 120,
         unit: "UNIDADE",
@@ -333,7 +339,8 @@ async function main() {
         clientId: client1.id,
         providerId: roberto.id,
         rating: 5,
-        comment: "Excelente profissional! O Roberto identificou que nosso quadro antigo não tinha DR e substituiu tudo em menos de 3 horas. Organizado e pontual.",
+        comment:
+          "Excelente profissional! O Roberto identificou que nosso quadro antigo não tinha DR e substituiu tudo em menos de 3 horas. Organizado e pontual.",
       },
     })
 
@@ -350,7 +357,8 @@ async function main() {
           fromId: roberto.id,
           toId: client1.id,
           bookingId: booking1.id,
-          content: "Boa tarde Marcelo! Sim, levo todo o material padrão Siemens homologado. Chego às 14h pontualmente.",
+          content:
+            "Boa tarde Marcelo! Sim, levo todo o material padrão Siemens homologado. Chego às 14h pontualmente.",
         },
       ],
     })

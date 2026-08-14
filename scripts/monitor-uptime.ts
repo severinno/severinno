@@ -14,6 +14,10 @@
  * Usage:
  *   bun scripts/monitor-uptime.ts --dry-run
  *   bun scripts/monitor-uptime.ts --interval=30 --url=http://localhost:3000
+ *
+ * Exit codes:
+ *   0 — all probes within SLA
+ *   1 — one or more SLA breaches detected
  */
 
 import { AlertingService } from "../src/lib/alerting-service"
@@ -67,13 +71,15 @@ async function probeEndpoint(baseUrl: string, probe: EndpointProbe) {
       console.log(`❌ [FAIL] ${probe.name.padEnd(38)} HTTP ${res.status} (${elapsed}ms)`)
       await AlertingService.reportOutage(
         probe.name,
-        `Endpoint ${probe.path} retornou status HTTP ${res.status} em ${elapsed}ms.`
+        `Endpoint ${probe.path} retornou status HTTP ${res.status} em ${elapsed}ms.`,
       )
       return { success: false, latency: elapsed, status: res.status }
     }
 
     if (elapsed > probe.maxLatencyMs) {
-      console.log(`⚠️ [SLOW] ${probe.name.padEnd(38)} HTTP ${res.status} (${elapsed}ms > SLA ${probe.maxLatencyMs}ms)`)
+      console.log(
+        `⚠️ [SLOW] ${probe.name.padEnd(38)} HTTP ${res.status} (${elapsed}ms > SLA ${probe.maxLatencyMs}ms)`,
+      )
       await AlertingService.reportLatencySpike(probe.path, elapsed, probe.maxLatencyMs)
       return { success: true, latency: elapsed, status: res.status, slaBreach: true }
     }
@@ -83,7 +89,9 @@ async function probeEndpoint(baseUrl: string, probe: EndpointProbe) {
   } catch (error) {
     const elapsed = Math.round(performance.now() - start)
     const msg = error instanceof Error ? error.message : String(error)
-    console.log(`❌ [ERR]  ${probe.name.padEnd(38)} Connection Timeout/Error (${elapsed}ms) — ${msg}`)
+    console.log(
+      `❌ [ERR]  ${probe.name.padEnd(38)} Connection Timeout/Error (${elapsed}ms) — ${msg}`,
+    )
 
     if (probe.critical) {
       await AlertingService.reportOutage(probe.name, `Falha de rede ao conectar em ${url}: ${msg}`)
@@ -93,8 +101,12 @@ async function probeEndpoint(baseUrl: string, probe: EndpointProbe) {
 }
 
 export async function runMonitoringCycle(baseUrl: string) {
-  console.log(`\n🩺 [MONITOR] Probing ${PROBES.length} platform endpoints at ${baseUrl} — ${new Date().toLocaleTimeString()}...`)
-  console.log("-------------------------------------------------------------------------------------------------")
+  console.log(
+    `\n🩺 [MONITOR] Probing ${PROBES.length} platform endpoints at ${baseUrl} — ${new Date().toLocaleTimeString()}...`,
+  )
+  console.log(
+    "-------------------------------------------------------------------------------------------------",
+  )
 
   let passed = 0
   let failed = 0
@@ -105,7 +117,9 @@ export async function runMonitoringCycle(baseUrl: string) {
     else failed++
   }
 
-  console.log("-------------------------------------------------------------------------------------------------")
+  console.log(
+    "-------------------------------------------------------------------------------------------------",
+  )
   console.log(`📊 Result: ${passed}/${PROBES.length} passed | ${failed} failed\n`)
   return { passed, failed }
 }
@@ -114,7 +128,9 @@ async function main() {
   const args = process.argv.slice(2)
   const isDryRun = args.includes("--dry-run")
   const urlArg = args.find((a) => a.startsWith("--url="))
-  const baseUrl = urlArg ? urlArg.split("=")[1] : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+  const baseUrl = urlArg
+    ? urlArg.split("=")[1]
+    : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
 
   console.log("=================================================================")
   console.log("  ⚡ SEVERINNO UPTIME & SLA HEALTH PROBER")
@@ -131,7 +147,9 @@ async function main() {
   const intervalArg = args.find((a) => a.startsWith("--interval="))
   const intervalSec = intervalArg ? parseInt(intervalArg.split("=")[1], 10) : 30
 
-  console.log(`⏱️ Running continuous probe every ${intervalSec} seconds... (Press Ctrl+C to stop)\n`)
+  console.log(
+    `⏱️ Running continuous probe every ${intervalSec} seconds... (Press Ctrl+C to stop)\n`,
+  )
 
   await runMonitoringCycle(baseUrl)
   setInterval(async () => {
@@ -139,7 +157,10 @@ async function main() {
   }, intervalSec * 1000)
 }
 
-if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.includes("monitor-uptime")) {
+if (
+  import.meta.url === `file://${process.argv[1]}` ||
+  process.argv[1]?.includes("monitor-uptime")
+) {
   main().catch((e) => {
     console.error("Monitor error:", e)
     process.exit(1)
