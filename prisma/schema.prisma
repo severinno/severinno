@@ -38,6 +38,7 @@ enum PaymentMethod {
 enum PaymentStatus {
   PENDING
   AUTHORIZED
+  HELD
   PAID
   REFUNDED
   FAILED
@@ -107,6 +108,11 @@ model User {
   favoriteCount Int     @default(0)
   // Lytex Pagamentos recipient ID for split payments
   lytexRecipientId String?
+  // Identity verification (KYC)
+  identityDocUrl    String?
+  identitySelfieUrl String?
+  identityVerifiedAt DateTime?
+  identityStatus    String?  // "pending" | "approved" | "rejected"
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -299,6 +305,13 @@ model Booking {
   completionPin String?
   // Timestamp for automated reminders
   reminderSentAt DateTime?
+  // Escrow & custody release
+  escrowReleasedAt DateTime?
+  escrowDisputeReason String?
+  // Before / After photos for job proof
+  beforePhotos  Json     @default("[]")
+  afterPhotos   Json     @default("[]")
+  completionNote String?
   deletedAt     DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -309,15 +322,35 @@ model Booking {
   quote    QuoteRequest? @relation("BookingQuote", fields: [quoteId], references: [id], onDelete: SetNull)
   reviews  Review[]
   payment  Payment?
+  disputes Dispute[]
   pushAnalytics PushAnalytics[]
 
   @@index([clientId])
   @@index([providerId])
   @@index([serviceId])
   @@index([status])
+  @@index([paymentStatus])
   @@index([scheduledAt])
   @@index([providerId, status, scheduledAt])
   @@index([clientId, status, scheduledAt])
+}
+
+// ============================================================================
+// DISPUTE — transaction mediation between client and provider
+// ============================================================================
+model Dispute {
+  id          String   @id @default(cuid())
+  bookingId   String
+  reason      String
+  status      String   @default("OPEN") // "OPEN" | "RESOLVED" | "REJECTED"
+  resolution  String?
+  createdAt   DateTime @default(now())
+  resolvedAt  DateTime?
+
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([status])
 }
 
 // ============================================================================

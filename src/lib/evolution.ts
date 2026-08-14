@@ -329,6 +329,57 @@ export async function sendNewMessageNotification(
   return sendText(to, text)
 }
 
+/**
+ * Enviar lembrete de pagamento PIX pendente.
+ */
+export async function sendPaymentReminderMessage(
+  to: string,
+  bookingId: string,
+  amount: number,
+  qrCode?: string,
+): Promise<{ key: { id: string } } | null> {
+  const text =
+    `⏰ *Lembrete de Pagamento - Severinno*\n\n` +
+    `📋 Agendamento: #${bookingId.slice(0, 8)}\n` +
+    `💰 Valor pendente: R$ ${amount.toFixed(2)}\n\n` +
+    (qrCode ? `📱 *Código PIX (copia e cola):*\n\`\`\`${qrCode}\`\`\`\n\n` : "") +
+    `Garanta seu horário realizando o pagamento via PIX no app!`
+
+  return sendText(to, text)
+}
+
+/**
+ * Enviar solicitação de confirmação de conclusão do serviço para o cliente.
+ */
+export async function sendServiceCompletionRequest(
+  to: string,
+  bookingId: string,
+  providerName: string,
+): Promise<{ key: { id: string } } | null> {
+  const text =
+    `🔧 *Confirmação de Serviço - Severinno*\n\n` +
+    `O prestador *${providerName}* marcou o serviço #${bookingId.slice(0, 8)} como concluído.\n\n` +
+    `Por favor, acesse o app Severinno para confirmar a entrega e liberar o pagamento!`
+
+  return sendText(to, text)
+}
+
+/**
+ * Enviar solicitação de avaliação (review) para o cliente.
+ */
+export async function sendReviewRequest(
+  to: string,
+  bookingId: string,
+  providerName: string,
+): Promise<{ key: { id: string } } | null> {
+  const text =
+    `⭐ *Como foi o atendimento com ${providerName}?*\n\n` +
+    `Sua opinião ajuda outros clientes a escolherem os melhores profissionais.\n` +
+    `Avalie o serviço #${bookingId.slice(0, 8)} no app Severinno em menos de 1 minuto! ✨`
+
+  return sendText(to, text)
+}
+
 // ---------------------------------------------------------------------------
 // Instance management
 // ---------------------------------------------------------------------------
