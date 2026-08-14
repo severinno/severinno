@@ -21,6 +21,9 @@ export async function GET(request: Request) {
     if (e instanceof ZodError) {
       return NextResponse.json({ error: "CEP inválido", details: e.issues }, { status: 400 })
     }
+    if (e instanceof Error) {
+      return NextResponse.json({ error: e.message || "Erro ao consultar CEP" }, { status: 400 })
+    }
     return handleError(e)
   }
 }

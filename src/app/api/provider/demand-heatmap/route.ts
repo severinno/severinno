@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { forbidden, handleError } from "@/lib/api-server"
-import { haversineKm } from "@/lib/geo-shared"
+import { haversineKm } from "@/lib/geo-server"
 
 export type HeatmapPoint = {
   lat: number
@@ -74,7 +74,7 @@ export async function GET() {
       const offsets = [
         { dLat: 0.012, dLng: 0.015, count: 8, label: "Encanamento e Elétrica" },
         { dLat: -0.018, dLng: -0.012, count: 14, label: "Pintura e Reformas" },
-        { dLat: 0.025, dLng: -0.020, count: 19, label: "Limpeza e Diaristas" },
+        { dLat: 0.025, dLng: -0.02, count: 19, label: "Limpeza e Diaristas" },
         { dLat: -0.008, dLng: 0.022, count: 11, label: "Montagem de Móveis" },
         { dLat: 0.005, dLng: -0.005, count: 25, label: "Consertos Rápidos" },
       ]

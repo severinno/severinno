@@ -9,7 +9,7 @@
  * Cost: $0 — Pure algorithmic (Haversine + crypto.randomInt)
  */
 
-import { haversineKm } from "@/lib/geo-shared"
+import { haversineKm } from "@/lib/geo-server"
 
 export interface CheckinAttempt {
   bookingId: string
@@ -58,7 +58,7 @@ export function validateGeoCheckin(attempt: CheckinAttempt): CheckinResult {
     attempt.providerLat,
     attempt.providerLng,
     attempt.clientAddressLat,
-    attempt.clientAddressLng
+    attempt.clientAddressLng,
   )
   const distanceMeters = Math.round(distanceKm * 1000)
 
@@ -117,7 +117,7 @@ export function generateEscrowPIN(bookingId: string): EscrowPIN {
 export function validateEscrowRelease(
   bookingId: string,
   inputPin: string,
-  escrowAmount: number
+  escrowAmount: number,
 ): EscrowReleaseResult {
   const stored = activePins.get(bookingId)
 
