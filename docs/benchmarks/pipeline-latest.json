@@ -1,0 +1,216 @@
+{
+  "meta": {
+    "center": {
+      "lat": -23.5505,
+      "lng": -46.6333
+    },
+    "centerLabel": "São Paulo",
+    "spreadKm": 100,
+    "cpuItersPerMs": 1064,
+    "platform": "win32",
+    "arch": "x64",
+    "nodeVersion": "v22.23.1",
+    "timestamp": "2026-08-14T12:17:55.161Z"
+  },
+  "model": {
+    "postgisFixedUs": 2000,
+    "postgisPerRowUs": 22,
+    "haversinePerCallUs": 0.3,
+    "transferPerRowUs": 20,
+    "note": "PostGIS pipeline = ST_DWithin filter + ST_Distance in one query. Haversine pipeline = fetch all + JS filter + JS distance."
+  },
+  "scenarios": [
+    {
+      "scenario": {
+        "name": "500 ×   5 km",
+        "label": "pipeline_500_5km",
+        "N": 500,
+        "radius": 5
+      },
+      "selectivity": 0.0025,
+      "filteredCount": 1,
+      "postgis": {
+        "mean": 10146.6,
+        "min": 10111.2,
+        "max": 10303.7,
+        "opsPerSec": 99
+      },
+      "haversine": {
+        "mean": 10518,
+        "min": 10297.6,
+        "max": 11567.9,
+        "opsPerSec": 95
+      },
+      "winner": "PostGIS",
+      "speedup": 1.04
+    },
+    {
+      "scenario": {
+        "name": "500 ×  10 km",
+        "label": "pipeline_500_10km",
+        "N": 500,
+        "radius": 10
+      },
+      "selectivity": 0.01,
+      "filteredCount": 5,
+      "postgis": {
+        "mean": 10344.2,
+        "min": 10117.7,
+        "max": 13066,
+        "opsPerSec": 97
+      },
+      "haversine": {
+        "mean": 10395,
+        "min": 10309.6,
+        "max": 10534.8,
+        "opsPerSec": 96
+      },
+      "winner": "PostGIS",
+      "speedup": 1
+    },
+    {
+      "scenario": {
+        "name": "500 ×  25 km",
+        "label": "pipeline_500_25km",
+        "N": 500,
+        "radius": 25
+      },
+      "selectivity": 0.0625,
+      "filteredCount": 31,
+      "postgis": {
+        "mean": 10152.7,
+        "min": 10105.8,
+        "max": 10346.4,
+        "opsPerSec": 98
+      },
+      "haversine": {
+        "mean": 10405.5,
+        "min": 10348.1,
+        "max": 10610.9,
+        "opsPerSec": 96
+      },
+      "winner": "PostGIS",
+      "speedup": 1.02
+    },
+    {
+      "scenario": {
+        "name": "2000 × 10 km",
+        "label": "pipeline_2000_10km",
+        "N": 2000,
+        "radius": 10
+      },
+      "selectivity": 0.01,
+      "filteredCount": 20,
+      "postgis": {
+        "mean": 10140,
+        "min": 10081.3,
+        "max": 10640.6,
+        "opsPerSec": 99
+      },
+      "haversine": {
+        "mean": 11378.8,
+        "min": 10837.8,
+        "max": 12337.8,
+        "opsPerSec": 88
+      },
+      "winner": "PostGIS",
+      "speedup": 1.12
+    },
+    {
+      "scenario": {
+        "name": "2000 × 25 km",
+        "label": "pipeline_2000_25km",
+        "N": 2000,
+        "radius": 25
+      },
+      "selectivity": 0.0625,
+      "filteredCount": 125,
+      "postgis": {
+        "mean": 10208,
+        "min": 10092.9,
+        "max": 10692.1,
+        "opsPerSec": 98
+      },
+      "haversine": {
+        "mean": 11240.8,
+        "min": 10919.9,
+        "max": 11852.2,
+        "opsPerSec": 89
+      },
+      "winner": "PostGIS",
+      "speedup": 1.1
+    },
+    {
+      "scenario": {
+        "name": "10000× 10 km",
+        "label": "pipeline_10000_10km",
+        "N": 10000,
+        "radius": 10
+      },
+      "selectivity": 0.01,
+      "filteredCount": 100,
+      "postgis": {
+        "mean": 10137.2,
+        "min": 10111.4,
+        "max": 10149.8,
+        "opsPerSec": 99
+      },
+      "haversine": {
+        "mean": 16136.9,
+        "min": 14390.2,
+        "max": 18411.4,
+        "opsPerSec": 62
+      },
+      "winner": "PostGIS",
+      "speedup": 1.59
+    },
+    {
+      "scenario": {
+        "name": "10000× 50 km",
+        "label": "pipeline_10000_50km",
+        "N": 10000,
+        "radius": 50
+      },
+      "selectivity": 0.25,
+      "filteredCount": 2500,
+      "postgis": {
+        "mean": 11709.7,
+        "min": 11172.8,
+        "max": 12280.3,
+        "opsPerSec": 85
+      },
+      "haversine": {
+        "mean": 16764.7,
+        "min": 15990.3,
+        "max": 19527.3,
+        "opsPerSec": 60
+      },
+      "winner": "PostGIS",
+      "speedup": 1.43
+    },
+    {
+      "scenario": {
+        "name": "10000×100 km",
+        "label": "pipeline_10000_100km",
+        "N": 10000,
+        "radius": 100
+      },
+      "selectivity": 1,
+      "filteredCount": 10000,
+      "postgis": {
+        "mean": 16352.6,
+        "min": 14294.1,
+        "max": 19946.7,
+        "opsPerSec": 61
+      },
+      "haversine": {
+        "mean": 16914.8,
+        "min": 15601.1,
+        "max": 20289.8,
+        "opsPerSec": 59
+      },
+      "winner": "PostGIS",
+      "speedup": 1.03
+    }
+  ]
+}

@@ -84,7 +84,7 @@ describe("GET /api/tracking/[id]", () => {
     const parsed = await parseResponse(res)
 
     expect(res.status).toBe(404)
-    expect(parsed.body).toEqual({ error: "Agendamento não encontrado" })
+    expect(parsed.body).toEqual({ error: "Agendamento não encontrado", code: "NOT_FOUND" })
   })
 
   it("returns cancelled booking data (tracking shows all statuses)", async () => {
