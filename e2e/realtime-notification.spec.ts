@@ -1,4 +1,3 @@
- 
 import { test, expect, type Page } from "@playwright/test"
 
 // =========================================================================
@@ -10,8 +9,8 @@ const CLIENT_EMAIL = "cliente@severinno.com"
 const CLIENT_PASSWORD = "cliente123"
 const PROVIDER_EMAIL = "carlos@severinno.com"
 const PROVIDER_PASSWORD = "provider123"
-const PROVIDER_ID = "cmss20qr10003aa30fwv28c4a" // Carlos Encanador
-const SERVICE_ID = "cmss20rak003saa3040zjb89n" // Desentupimento de ralo e pia
+const PROVIDER_ID = "cmstju8kv0003aa389q7wo9g7" // Carlos Encanador (seed da linha release)
+const SERVICE_ID = "cmstju935003saa38o4pqfm8y" // Desentupimento de ralo e pia
 
 // =========================================================================
 // Helpers
@@ -28,12 +27,26 @@ async function login(page: Page, email: string, password: string) {
 }
 
 /**
- * Marca onboarding do provider como concluído no localStorage.
+ * Marca onboarding do provider como concluído via API (a linha release
+ * persiste o progresso server-side em /api/provider/onboarding — o flag
+ * localStorage provider_onboarding_done não é mais lido).
+ *
+ * Usa fetch do navegador (não page.request): o proxy dev do Next desyncroniza
+ * o body em conexões keep-alive reutilizadas após o POST de bookings
+ * (SyntaxError: Unexpected end of JSON input), e o fetch do browser segue o
+ * mesmo caminho de rede do UI real.
  */
 async function skipOnboarding(page: Page) {
-  await page.evaluate(() => {
-    localStorage.setItem("provider_onboarding_done", "true")
+  const ok = await page.evaluate(async () => {
+    const res = await fetch("/api/provider/onboarding", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ step: 4, done: true }),
+    })
+    return res.ok
   })
+  if (!ok) console.log(`❌ skipOnboarding falhou (fetch do browser)`)
+  expect(ok).toBeTruthy()
 }
 
 // =========================================================================
