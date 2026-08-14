@@ -59,6 +59,12 @@ import { PreferenceToggles } from "@/components/shared/preference-toggles"
 import { StatCard } from "@/components/shared/dashboard-shell"
 import ProviderGeoAwarenessBadge from "@/components/provider/provider-geo-awareness-badge"
 import { ProviderKycDialog } from "@/components/provider/provider-kyc-dialog"
+import { ProviderTierCard } from "@/components/provider/provider-tier-card"
+import { ProviderFinancialHub } from "@/components/provider/provider-financial-hub"
+import { ProviderServiceZoneEditor } from "@/components/provider/provider-service-zone-editor"
+import { ProviderDemandHeatmap } from "@/components/provider/provider-demand-heatmap"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { LayoutDashboard, Receipt, Trophy, Map } from "lucide-react"
 
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 8,
@@ -346,6 +352,29 @@ export function ProviderDashboard() {
           </Button>
         </div>
       )}
+
+      {/* Main Navigation Hub Tabs */}
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-4 h-auto p-1 bg-muted/60 rounded-xl gap-1">
+          <TabsTrigger value="overview" className="gap-1.5 py-2 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg">
+            <LayoutDashboard className="size-3.5" />
+            Visão Geral
+          </TabsTrigger>
+          <TabsTrigger value="finance" className="gap-1.5 py-2 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg">
+            <Receipt className="size-3.5" />
+            Financeiro & Recibos
+          </TabsTrigger>
+          <TabsTrigger value="pro" className="gap-1.5 py-2 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg">
+            <Trophy className="size-3.5" />
+            Severinno Pro
+          </TabsTrigger>
+          <TabsTrigger value="zones" className="gap-1.5 py-2 text-xs font-semibold data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-lg">
+            <Map className="size-3.5" />
+            Zonas de Atendimento
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6 mt-0">
 
       {/* Wallet balance card */}
       <div className="rounded-xl border bg-gradient-to-br from-emerald-50 to-emerald-100/60 p-5 dark:from-emerald-950/40 dark:to-emerald-900/20">
@@ -752,8 +781,26 @@ export function ProviderDashboard() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Regional Demand Heatmap */}
+          <ProviderDemandHeatmap />
         </>
       )}
+        </TabsContent>
+
+        <TabsContent value="finance" className="mt-0">
+          <ProviderFinancialHub />
+        </TabsContent>
+
+        <TabsContent value="pro" className="mt-0">
+          <ProviderTierCard />
+        </TabsContent>
+
+        <TabsContent value="zones" className="mt-0">
+          <ProviderServiceZoneEditor />
+        </TabsContent>
+      </Tabs>
+
       {/* KYC Dialog */}
       <ProviderKycDialog
         open={kycOpen}
