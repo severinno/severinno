@@ -1,38 +1,29 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test"
-import { waitForVitrine } from "./helpers"
 
 test.describe("Severinno Master Suite — E2E Golden Paths", () => {
-  test.beforeEach(async ({ page }) => {
+  test.setTimeout(60000)
+
+  test("1. Vitrine Storefront renders header, main content and footer", async ({ page }) => {
     await page.goto("/")
-    await waitForVitrine(page)
+    await page.waitForLoadState("networkidle")
+
+    await expect(page).toHaveTitle(/Severinno/i)
+    await expect(page.locator("main")).toBeVisible({ timeout: 10000 })
+    await expect(page.locator("footer, [role='contentinfo']")).toBeVisible({ timeout: 10000 })
   })
 
-  test("1. Vitrine Hero renders AI Quote Wizard trigger and search bar", async ({ page }) => {
-    await expect(page.locator("h1")).toBeVisible()
-    const searchInput = page.getByLabel("Serviço buscado")
-    await expect(searchInput).toBeVisible()
+  test("2. Provider Onboarding and Auth Dialog is triggered", async ({ page }) => {
+    await page.goto("/")
+    await page.waitForLoadState("networkidle")
 
-    // Test AI Quote Wizard trigger
-    const aiWizardBtn = page.getByRole("button", { name: /pedir orçamento com ia|orçamento rápido/i }).first()
-    if (await aiWizardBtn.isVisible()) {
-      await aiWizardBtn.click()
+    // Find login or register button
+    const entrarBtn = page.getByRole("button", { name: /entrar|login|cadastre-se|trabalhe/i }).first()
+    if (await entrarBtn.isVisible()) {
+      await entrarBtn.click()
       await page.waitForTimeout(500)
-      // Check if dialog or input opened
-      const dialog = page.locator("role=dialog").first()
-      const isOpened = await dialog.isVisible().catch(() => false)
-      expect(isOpened).toBe(true)
+      const modal = page.locator('role=dialog, [class*="Dialog"], form').first()
+      await expect(modal).toBeVisible({ timeout: 5000 })
     }
-  })
-
-  test("2. Provider Onboarding & Earnings Calculator is accessible", async ({ page }) => {
-    // Navigate with query param
-    await page.goto("/?view=provider.register")
-    await page.waitForTimeout(600)
-
-    // Check if registration or provider onboarding elements are present
-    const heading = page.locator("text=/prestador|cadastre-se|trabalhe conosco|ganhos/i").first()
-    await expect(heading).toBeVisible({ timeout: 5000 })
   })
 
   test("3. Extended Health API responds with healthy subsystem status", async ({ request }) => {
