@@ -6,6 +6,7 @@
 
 import { createServer } from "http"
 import { Server, Socket } from "socket.io"
+import { Server as EngineServer } from "engine.io"
 
 const PORT = 3003
 
@@ -29,12 +30,17 @@ function isOriginAllowed(origin: string | undefined): boolean {
 }
 
 const httpServer = createServer()
-const io = new Server(httpServer, {
-  // DO NOT change the path, it is used by Caddy to forward the request to the correct port
+
+// Engine created manually (no auto-attach) so /health and /emit can share
+// the same HTTP port. engine.io's prefix check (path "/") claims EVERY URL,
+// so with the default attach() our HTTP endpoints would never be reachable.
+const engine = new EngineServer({
   path: "/",
+  pingTimeout: 60000,
+  pingInterval: 25000,
   cors: {
-    // Socket.io v4 uses the cors package internally, which expects the
-    // (origin, callback) signature — NOT a synchronous boolean return.
+    // Socket.io v4 / engine.io v6 use the cors package internally, which
+    // expects the (origin, callback) signature — NOT a synchronous boolean.
     origin: function (
       origin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void,
@@ -44,9 +50,10 @@ const io = new Server(httpServer, {
     methods: ["GET", "POST"],
     credentials: true,
   },
-  pingTimeout: 60000,
-  pingInterval: 25000,
 })
+
+const io = new Server({ path: "/" })
+io.bind(engine)
 
 // ---------- Types ----------
 interface JoinPayload {
@@ -86,6 +93,83 @@ interface TrackingPositionPayload {
 const generateId = () => Math.random().toString(36).slice(2, 11)
 const nowTimestamp = () => new Date().toISOString()
 
+// ---------- Shared emit logic (socket listeners + HTTP /emit) ----------
+function handleMessageSend(payload: MessageSendPayload): void {
+  const { fromId, toId, content, bookingId } = payload || ({} as MessageSendPayload)
+  if (!fromId || !toId || !content) return
+  const message = {
+    id: generateId(),
+    fromId,
+    toId,
+    content,
+    bookingId: bookingId ?? null,
+    timestamp: nowTimestamp(),
+  }
+  io.to(`user:${toId}`).emit("message:new", message)
+  io.to(`user:${toId}`).emit("notification:new", {
+    id: generateId(),
+    type: "message",
+    forId: toId,
+    fromId,
+    bookingId: bookingId ?? null,
+    content,
+    timestamp: nowTimestamp(),
+    read: false,
+  })
+  console.log(`[realtime] message ${fromId} -> ${toId}`)
+}
+
+function handleBookingUpdate(payload: BookingUpdatePayload): void {
+  const { bookingId, clientId, providerId, status } = payload || ({} as BookingUpdatePayload)
+  if (!bookingId || !clientId || !providerId) return
+  const evt = {
+    bookingId,
+    clientId,
+    providerId,
+    status,
+    timestamp: nowTimestamp(),
+  }
+  io.to(`user:${clientId}`).emit("booking:updated", evt)
+  io.to(`user:${providerId}`).emit("booking:updated", evt)
+  console.log(`[realtime] booking:update ${bookingId} -> ${status}`)
+}
+
+function handleQuoteUpdate(payload: QuoteUpdatePayload): void {
+  const { quoteId, clientId, providerId, status } = payload || ({} as QuoteUpdatePayload)
+  if (!quoteId || !clientId || !providerId) return
+  const evt = {
+    quoteId,
+    clientId,
+    providerId,
+    status,
+    timestamp: nowTimestamp(),
+  }
+  io.to(`user:${clientId}`).emit("quote:updated", evt)
+  io.to(`user:${providerId}`).emit("quote:updated", evt)
+  console.log(`[realtime] quote:update ${quoteId} -> ${status}`)
+}
+
+function handleTrackingPosition(payload: TrackingPositionPayload): void {
+  const { bookingId, clientId, lat, lng } = payload || ({} as TrackingPositionPayload)
+  if (!bookingId || !clientId || typeof lat !== "number" || typeof lng !== "number") return
+  const evt = {
+    bookingId,
+    clientId,
+    lat,
+    lng,
+    timestamp: nowTimestamp(),
+  }
+  io.to(`user:${clientId}`).emit("tracking:position", evt)
+  console.log(`[realtime] tracking:position ${bookingId} (${lat},${lng})`)
+}
+
+function handleNotificationNew(payload: { toId: string; notification?: unknown }): void {
+  const { toId, notification } = payload || {}
+  if (!toId) return
+  io.to(`user:${toId}`).emit("notification:new", notification ?? {})
+  console.log(`[realtime] notification:new -> user:${toId}`)
+}
+
 // ---------- Connection handling ----------
 io.on("connection", (socket: Socket) => {
   console.log(`[realtime] socket connected: ${socket.id}`)
@@ -114,28 +198,7 @@ io.on("connection", (socket: Socket) => {
   // -> emit message:new (with id + timestamp) and notification:new to user:{toId}
   socket.on("message:send", (payload: MessageSendPayload) => {
     try {
-      const { fromId, toId, content, bookingId } = payload || ({} as MessageSendPayload)
-      if (!fromId || !toId || !content) return
-      const message = {
-        id: generateId(),
-        fromId,
-        toId,
-        content,
-        bookingId: bookingId ?? null,
-        timestamp: nowTimestamp(),
-      }
-      io.to(`user:${toId}`).emit("message:new", message)
-      io.to(`user:${toId}`).emit("notification:new", {
-        id: generateId(),
-        type: "message",
-        forId: toId,
-        fromId,
-        bookingId: bookingId ?? null,
-        content,
-        timestamp: nowTimestamp(),
-        read: false,
-      })
-      console.log(`[realtime] message ${fromId} -> ${toId}`)
+      handleMessageSend(payload)
     } catch (err) {
       console.error("[realtime] message:send error:", err)
     }
@@ -145,18 +208,7 @@ io.on("connection", (socket: Socket) => {
   // -> emit booking:updated to both user:{clientId} and user:{providerId}
   socket.on("booking:update", (payload: BookingUpdatePayload) => {
     try {
-      const { bookingId, clientId, providerId, status } = payload || ({} as BookingUpdatePayload)
-      if (!bookingId || !clientId || !providerId) return
-      const evt = {
-        bookingId,
-        clientId,
-        providerId,
-        status,
-        timestamp: nowTimestamp(),
-      }
-      io.to(`user:${clientId}`).emit("booking:updated", evt)
-      io.to(`user:${providerId}`).emit("booking:updated", evt)
-      console.log(`[realtime] booking:update ${bookingId} -> ${status}`)
+      handleBookingUpdate(payload)
     } catch (err) {
       console.error("[realtime] booking:update error:", err)
     }
@@ -166,18 +218,7 @@ io.on("connection", (socket: Socket) => {
   // -> emit quote:updated to both user:{clientId} and user:{providerId}
   socket.on("quote:update", (payload: QuoteUpdatePayload) => {
     try {
-      const { quoteId, clientId, providerId, status } = payload || ({} as QuoteUpdatePayload)
-      if (!quoteId || !clientId || !providerId) return
-      const evt = {
-        quoteId,
-        clientId,
-        providerId,
-        status,
-        timestamp: nowTimestamp(),
-      }
-      io.to(`user:${clientId}`).emit("quote:updated", evt)
-      io.to(`user:${providerId}`).emit("quote:updated", evt)
-      console.log(`[realtime] quote:update ${quoteId} -> ${status}`)
+      handleQuoteUpdate(payload)
     } catch (err) {
       console.error("[realtime] quote:update error:", err)
     }
@@ -187,16 +228,7 @@ io.on("connection", (socket: Socket) => {
   // -> emit tracking:position to user:{clientId} (delivery tracking)
   socket.on("tracking:position", (payload: TrackingPositionPayload) => {
     try {
-      const { bookingId, clientId, lat, lng } = payload || ({} as TrackingPositionPayload)
-      if (!bookingId || !clientId || typeof lat !== "number" || typeof lng !== "number") return
-      const evt = {
-        bookingId,
-        clientId,
-        lat,
-        lng,
-        timestamp: nowTimestamp(),
-      }
-      io.to(`user:${clientId}`).emit("tracking:position", evt)
+      handleTrackingPosition(payload)
     } catch (err) {
       console.error("[realtime] tracking:position error:", err)
     }
@@ -214,6 +246,73 @@ io.on("connection", (socket: Socket) => {
   socket.on("error", (err: unknown) => {
     console.error(`[realtime] socket error (${socket.id}):`, err)
   })
+})
+
+// ---------- HTTP routing (admin endpoints + socket.io delegation) ----------
+// GET  /health -> {"status":"ok"}
+// POST /emit   -> { event, data } — server-side bridge used by
+//                 src/lib/realtime-client.ts (Next.js app server)
+// Every other request is delegated to engine.io (socket.io handshakes).
+httpServer.on("request", (req, res) => {
+  const url = new URL(req.url ?? "/", "http://localhost")
+
+  if (url.pathname === "/health" && req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json" })
+    res.end(JSON.stringify({ status: "ok" }))
+    return
+  }
+
+  if (url.pathname === "/emit" && req.method === "POST") {
+    let body = ""
+    req.setEncoding("utf8")
+    req.on("data", (chunk: string) => {
+      body += chunk
+      if (body.length > 1_000_000) req.destroy()
+    })
+    req.on("end", () => {
+      try {
+        const { event, data } = JSON.parse(body || "{}") as {
+          event?: string
+          data?: Record<string, unknown>
+        }
+        switch (event) {
+          case "booking:update":
+            handleBookingUpdate(data as BookingUpdatePayload)
+            break
+          case "quote:update":
+            handleQuoteUpdate(data as QuoteUpdatePayload)
+            break
+          case "message:send":
+            handleMessageSend(data as MessageSendPayload)
+            break
+          case "notification:new":
+            handleNotificationNew(data as { toId: string; notification?: unknown })
+            break
+          case "tracking:position":
+            handleTrackingPosition(data as TrackingPositionPayload)
+            break
+          default:
+            res.writeHead(400, { "Content-Type": "application/json" })
+            res.end(JSON.stringify({ ok: false, error: `unknown event: ${event}` }))
+            return
+        }
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ ok: true, event }))
+      } catch (err) {
+        res.writeHead(400, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ ok: false, error: "invalid JSON body" }))
+        console.error("[realtime] /emit error:", err)
+      }
+    })
+    return
+  }
+
+  // socket.io handshake / polling requests
+  io.engine.handleRequest(req, res)
+})
+
+httpServer.on("upgrade", (req, socket, head) => {
+  io.engine.handleUpgrade(req, socket, head)
 })
 
 httpServer.listen(PORT, () => {

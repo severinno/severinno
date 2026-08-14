@@ -25,6 +25,7 @@ import {
   isValidWhatsApp,
 } from "./evolution"
 import { sendPushNotification } from "./push"
+import { emitRealtime } from "./realtime-client"
 import { fireEvent } from "./event-hub"
 
 const notificationLogger = logger.child({ module: "notifications" })
@@ -54,19 +55,23 @@ async function getUserWhatsApp(userId: string): Promise<string | null> {
 
 /**
  * Criar notificação in-app para um usuário.
+ * Retorna o registro criado (ou null em erro) para permitir
+ * dispatch realtime com o id da notificação.
  */
 async function createInAppNotification(
   userId: string,
   type: string,
   title: string,
   body?: string,
-): Promise<void> {
+): Promise<{ id: string; createdAt: Date } | null> {
   try {
-    await db.notification.create({
+    return await db.notification.create({
       data: { userId, type, title, body: body ?? null, read: false },
+      select: { id: true, createdAt: true },
     })
   } catch (e) {
     notificationLogger.error({ err: e, userId, type }, "Erro ao criar notificação in-app")
+    return null
   }
 }
 
@@ -123,7 +128,23 @@ export async function notifyNewBooking(
   const pushUrl = `/dashboard?tab=bookings&booking=${bookingId}`
 
   // In-app para o provider
-  await createInAppNotification(providerId, "BOOKING_CREATED", title, body)
+  const created = await createInAppNotification(providerId, "BOOKING_CREATED", title, body)
+
+  // 🔔 Realtime (WebSocket) para o provider — toast + invalidação de queries.
+  // Best-effort: falha de rede não deve derrubar a criação do booking.
+  if (created) {
+    emitRealtime("notification:new", {
+      toId: providerId,
+      notification: {
+        id: created.id,
+        type: "BOOKING_CREATED",
+        title,
+        body,
+        read: false,
+        createdAt: created.createdAt.toISOString(),
+      },
+    }).catch(() => {})
+  }
 
   // Push notification com botões Aceitar/Recusar
   await sendPushNotification(providerId, title, body, pushUrl, {

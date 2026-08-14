@@ -10,8 +10,8 @@ const CLIENT_EMAIL = "cliente@severinno.com"
 const CLIENT_PASSWORD = "cliente123"
 const PROVIDER_EMAIL = "carlos@severinno.com"
 const PROVIDER_PASSWORD = "provider123"
-const PROVIDER_ID = "cmrton38k0003aa2g2hibaq86" // Carlos Encanador
-const SERVICE_ID = "cmrton48g003saa2gfltl86ro" // Desentupimento de ralo e pia
+const PROVIDER_ID = "cmss20qr10003aa30fwv28c4a" // Carlos Encanador
+const SERVICE_ID = "cmss20rak003saa3040zjb89n" // Desentupimento de ralo e pia
 
 // =========================================================================
 // Helpers
@@ -94,11 +94,11 @@ test.describe.serial("Notificações em Tempo Real", () => {
 
       const bookingNotif = notifData.items?.find(
         (n: { type: string; title: string }) =>
-          n.type === "BOOKING_REQUEST" && n.title === "Novo agendamento",
+          n.type === "BOOKING_CREATED" && n.title.includes("Novo agendamento"),
       )
       expect(bookingNotif).toBeDefined()
       expect(bookingNotif.read).toBe(false)
-      expect(bookingNotif.body).toContain("Desentupimento")
+      expect(bookingNotif.title).toContain("Desentupimento")
       expect(bookingNotif.body).toContain("João Cliente")
       console.log(`✅ Notificação: "${bookingNotif.title}" — ${bookingNotif.body}`)
 
@@ -125,11 +125,16 @@ test.describe.serial("Notificações em Tempo Real", () => {
 
       // Navegar para o dashboard — isso monta o RealtimeProvider que
       // conecta o Socket.io e entra na sala user:{providerId}
-      await providerPage.goto("/?view=provider.dashboard")
+      await providerPage.goto("/dashboard")
       await providerPage.waitForTimeout(3000)
 
-      // Verificar que o sonner Toaster está montado (onde o toast aparecerá)
-      await expect(providerPage.locator("[data-sonner-toaster]")).toBeVisible({ timeout: 5000 })
+      // Verificar que o sonner Toaster está montado (onde o toast aparecerá).
+      // Obs: sonner 2.x só renderiza <ol data-sonner-toaster> quando há toast
+      // ativo; a <section aria-label="Notifications alt+T"> existe sempre,
+      // mas fica vazia (0x0) e "hidden" até o primeiro toast.
+      await expect(providerPage.locator('[aria-label="Notifications alt+T"]')).toBeAttached({
+        timeout: 5000,
+      })
       console.log("✅ sonner Toaster montado — aguardando toast via WebSocket...")
 
       // ── Cliente: login + criar booking ──────────────────────────────
@@ -161,11 +166,13 @@ test.describe.serial("Notificações em Tempo Real", () => {
       console.log(`✅ Booking criado: ${novoBookingId}`)
 
       // ── Provider: aguardar toast automático via WebSocket ────────────
-      // O booking route chama emitRealtime("booking:update",...), que
+      // O booking route chama emitRealtime("notification:new",...), que
       // faz POST para http://localhost:3003/emit. O realtime server
-      // emite "booking:updated" para a sala user:{providerId}.
+      // emite "notification:new" para a sala user:{providerId}.
       // O RealtimeProvider recebe e chama toast().
-      const toastEl = providerPage.locator('[data-sonner-toaster] [role="status"]').first()
+      // Obs: sonner 2.x renderiza o toast como <li data-sonner-toast>
+      // dentro de <ol data-sonner-toaster> (sem role="status").
+      const toastEl = providerPage.locator("[data-sonner-toast]").first()
 
       let toastApareceu = false
       try {
@@ -191,16 +198,17 @@ test.describe.serial("Notificações em Tempo Real", () => {
         const notifData = await notifRes.json()
         const bookingNotif = notifData.items?.find(
           (n: { type: string; title: string }) =>
-            n.type === "BOOKING_REQUEST" && n.title === "Novo agendamento",
+            n.type === "BOOKING_CREATED" && n.title.includes("Novo agendamento"),
         )
         expect(bookingNotif).toBeDefined()
-        expect(bookingNotif.body).toContain("Desentupimento")
+        expect(bookingNotif.title).toContain("Desentupimento")
         console.log(`✅ Notificação confirmada via API: "${bookingNotif.title}"`)
       }
 
       // ── Verificar também via dropdown do sino ────────────────────────
+      // aria-label="Notificações" — seletor com flag i (case-insensitive)
       const bell = providerPage
-        .locator('button[aria-label*="notifica"], button:has(svg.lucide-bell)')
+        .locator('button[aria-label*="notifica" i], button:has(svg.lucide-bell)')
         .first()
       await expect(bell).toBeVisible({ timeout: 3000 })
       console.log("✅ Sino de notificações visível")
@@ -224,7 +232,7 @@ test.describe.serial("Notificações em Tempo Real", () => {
       expect(data.items).toBeDefined()
       expect(data.total).toBeGreaterThanOrEqual(1)
 
-      const bookingNotifs = data.items.filter((n: { type: string }) => n.type === "BOOKING_REQUEST")
+      const bookingNotifs = data.items.filter((n: { type: string }) => n.type === "BOOKING_CREATED")
       console.log(`📊 Total: ${data.total}, Booking: ${bookingNotifs.length}`)
       expect(bookingNotifs.length).toBeGreaterThanOrEqual(1)
     } finally {
@@ -240,14 +248,14 @@ test.describe.serial("Notificações em Tempo Real", () => {
       await page.goto("/")
       await login(page, PROVIDER_EMAIL, PROVIDER_PASSWORD)
       await skipOnboarding(page)
-      await page.goto("/?view=provider.dashboard")
+      await page.goto("/dashboard")
       await page.waitForTimeout(2000)
 
-      // O componente <Toaster /> do sonner renderiza uma <ol> com
-      // o atributo data-sonner-toaster. O RealtimeProvider depende
-      // deste container para exibir toasts de notificação.
-      const toaster = page.locator("[data-sonner-toaster]")
-      await expect(toaster).toBeVisible({ timeout: 5000 })
+      // O <Toaster /> do sonner renderiza uma <section> vazia (0x0) com
+      // aria-label "Notifications alt+T"; o <ol data-sonner-toaster> e os
+      // <li role="status"> só aparecem quando há toast ativo.
+      const toaster = page.locator('[aria-label="Notifications alt+T"]')
+      await expect(toaster).toBeAttached({ timeout: 5000 })
       console.log("✅ sonner Toaster montado — pronto para exibir toasts")
     } finally {
       await ctx.close()
