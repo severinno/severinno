@@ -33,11 +33,14 @@ import {
   Navigation,
   Star,
   XCircle,
+  Camera,
+  Check,
+  AlertCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 
 import { cn } from "@/lib/utils"
-import { apiGet, apiPatch } from "@/lib/api"
+import { apiGet, apiPatch, apiPost } from "@/lib/api"
 import {
   BOOKING_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
@@ -744,6 +747,71 @@ function BookingDetailsDialog({
               value={<span className="font-semibold tabular-nums">{formatBRL(b.amount)}</span>}
             />
             {b.notes ? <Row label="Observações" value={b.notes} /> : null}
+
+            {/* Before / After Photos Gallery */}
+            {((b as any).beforePhotos?.length > 0 || (b as any).afterPhotos?.length > 0) && (
+              <div className="mt-3 rounded-lg border p-3 bg-muted/20 space-y-2">
+                <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Camera className="size-3.5 text-emerald-600" />
+                  Fotos do Serviço (Comprovação)
+                </span>
+                <div className="grid grid-cols-2 gap-2">
+                  {(b as any).beforePhotos?.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-muted-foreground font-semibold">Antes:</span>
+                      <div className="flex gap-1.5 overflow-x-auto pb-1">
+                        {((b as any).beforePhotos as string[]).map((url, i) => (
+                          <a key={i} href={url} target="_blank" rel="noreferrer" className="shrink-0 rounded border overflow-hidden">
+                            <img src={url} alt={`Antes ${i + 1}`} className="size-16 object-cover hover:scale-105 transition-transform" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {(b as any).afterPhotos?.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-emerald-600 font-semibold">Depois:</span>
+                      <div className="flex gap-1.5 overflow-x-auto pb-1">
+                        {((b as any).afterPhotos as string[]).map((url, i) => (
+                          <a key={i} href={url} target="_blank" rel="noreferrer" className="shrink-0 rounded border overflow-hidden">
+                            <img src={url} alt={`Depois ${i + 1}`} className="size-16 object-cover hover:scale-105 transition-transform" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Escrow Custody Release Action */}
+            {(b.paymentStatus as any) === "HELD" && (
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <AlertCircle className="size-4 text-amber-600" />
+                  Pagamento retido em custódia (Escrow)
+                </div>
+                <p className="mt-1 text-[11px]">
+                  O prestador concluiu o atendimento. Confirme se o serviço foi entregue com qualidade para liberar o pagamento.
+                </p>
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      await apiPost(`/api/bookings/${bookingId}/confirm-completion`)
+                      toast.success("Conclusão confirmada e pagamento liberado!")
+                      query.refetch()
+                    } catch (e: any) {
+                      toast.error(e?.message || "Erro ao confirmar conclusão")
+                    }
+                  }}
+                  className="mt-2.5 w-full gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  <Check className="size-4" />
+                  Confirmar Serviço OK & Liberar Pagamento
+                </Button>
+              </div>
+            )}
 
             {/* Flow transparency — "what happens now" timeline */}
             <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50/50 p-4 dark:border-emerald-900 dark:bg-emerald-950/20">

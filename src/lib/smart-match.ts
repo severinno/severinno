@@ -1,4 +1,3 @@
-import "server-only"
 import { db } from "@/lib/db"
 import { findProvidersWithinRadius, type ProximityResult } from "@/lib/postgis"
 import { haversineKm } from "@/lib/geo"
