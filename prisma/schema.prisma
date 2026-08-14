@@ -113,6 +113,9 @@ model User {
   identitySelfieUrl String?
   identityVerifiedAt DateTime?
   identityStatus    String?  // "pending" | "approved" | "rejected"
+  // Advanced Geolocation: custom polygon area and travel fee policy
+  servicePolygon    Json?
+  travelFeePolicy   Json?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -305,6 +308,8 @@ model Booking {
   completionPin String?
   // Timestamp for automated reminders
   reminderSentAt DateTime?
+  // Timestamp for automated proximity geofence alert (within 1km / 5min)
+  geofenceAlertSentAt DateTime?
   // Escrow & custody release
   escrowReleasedAt DateTime?
   escrowDisputeReason String?
