@@ -18,6 +18,9 @@ import {
   sendNewQuoteNotification,
   sendQuoteResponseNotification,
   sendNewMessageNotification,
+  sendPaymentReminderMessage,
+  sendServiceCompletionRequest,
+  sendReviewRequest,
   formatPhone,
   isValidWhatsApp,
 } from "./evolution"
@@ -380,6 +383,77 @@ export async function notifyPaymentConfirmed(
     },
     { scopedUserIds: [providerId] },
   ).catch(() => {})
+}
+
+// ---------------------------------------------------------------------------
+// Extended Lifecycle Notifications
+// ---------------------------------------------------------------------------
+
+/**
+ * Notificar cliente sobre pagamento PIX pendente.
+ * Canais: in-app + WhatsApp + Push
+ */
+export async function notifyPaymentReminder(
+  clientId: string,
+  bookingId: string,
+  amount: number,
+  qrCode?: string,
+): Promise<void> {
+  const title = "⏰ Lembrete de Pagamento"
+  const body = `O pagamento de R$ ${amount.toFixed(2)} do agendamento #${bookingId.slice(0, 8)} está pendente.`
+  const pushUrl = `/dashboard?tab=bookings&booking=${bookingId}`
+
+  await createInAppNotification(clientId, "PAYMENT_REMINDER", title, body)
+  await sendPushNotification(clientId, title, body, pushUrl).catch(() => {})
+  await sendWhatsApp(
+    clientId,
+    (to) => sendPaymentReminderMessage(to, bookingId, amount, qrCode),
+    `payment:${bookingId}:reminder`,
+  )
+}
+
+/**
+ * Notificar cliente solicitando confirmação de conclusão do serviço.
+ * Canais: in-app + WhatsApp + Push
+ */
+export async function notifyCompletionRequest(
+  clientId: string,
+  bookingId: string,
+  providerName: string,
+): Promise<void> {
+  const title = "🔧 Confirmar Conclusão do Serviço"
+  const body = `${providerName} finalizou o atendimento. Confirme no app para liberar o pagamento!`
+  const pushUrl = `/dashboard?tab=bookings&booking=${bookingId}`
+
+  await createInAppNotification(clientId, "SERVICE_COMPLETION_REQUEST", title, body)
+  await sendPushNotification(clientId, title, body, pushUrl).catch(() => {})
+  await sendWhatsApp(
+    clientId,
+    (to) => sendServiceCompletionRequest(to, bookingId, providerName),
+    `booking:${bookingId}:completion-request`,
+  )
+}
+
+/**
+ * Notificar cliente solicitando avaliação do serviço.
+ * Canais: in-app + WhatsApp + Push
+ */
+export async function notifyReviewRequest(
+  clientId: string,
+  bookingId: string,
+  providerName: string,
+): Promise<void> {
+  const title = "⭐ Avalie seu atendimento"
+  const body = `Como foi o serviço prestado por ${providerName}? Deixe sua nota e comentário!`
+  const pushUrl = `/dashboard?tab=bookings&booking=${bookingId}`
+
+  await createInAppNotification(clientId, "REVIEW_REQUEST", title, body)
+  await sendPushNotification(clientId, title, body, pushUrl).catch(() => {})
+  await sendWhatsApp(
+    clientId,
+    (to) => sendReviewRequest(to, bookingId, providerName),
+    `booking:${bookingId}:review-request`,
+  )
 }
 
 export { notificationLogger }
