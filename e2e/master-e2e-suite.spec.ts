@@ -21,7 +21,7 @@ test.describe("Severinno Master Suite — E2E Golden Paths", () => {
     if (await entrarBtn.isVisible()) {
       await entrarBtn.click()
       await page.waitForTimeout(500)
-      const modal = page.locator('role=dialog, [class*="Dialog"], form').first()
+      const modal = page.locator('[role="dialog"], form').first()
       await expect(modal).toBeVisible({ timeout: 5000 })
     }
   })
