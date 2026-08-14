@@ -216,3 +216,28 @@ export async function findProvidersWithinBounds(
   }
 }
 
+/**
+ * Check if a geographic point (client location) falls inside a provider's
+ * custom service zone polygon stored as GeoJSON.
+ *
+ * Uses PostGIS ST_Contains with ST_GeomFromGeoJSON for polygon and ST_Point for the point.
+ */
+export async function isPointInServiceZone(
+  lat: number,
+  lng: number,
+  polygonGeoJson: string,
+): Promise<boolean> {
+  try {
+    const rows = await db.$queryRaw<Array<{ inside: boolean }>>`
+      SELECT ST_Contains(
+        ST_GeomFromGeoJSON(${polygonGeoJson}),
+        ST_SetSRID(ST_Point(${lng}, ${lat}), 4326)
+      ) AS inside
+    `
+    return rows[0]?.inside === true
+  } catch {
+    return false
+  }
+}
+
+
