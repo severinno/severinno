@@ -10,10 +10,19 @@ import { Loader2 } from "lucide-react"
 
 export function DashboardPageClient() {
   const status = useAuthStore((s) => s.status)
+  const initialized = useAuthStore((s) => s.initialized)
   const user = useAuthStore((s) => s.user)
+  const fetchMe = useAuthStore((s) => s.fetchMe)
   const navigate = useViewStore((s) => s.navigate)
 
+  // Initial auth check — important: the persisted status may be stale
+  // ("unauthenticated") from a previous visit; only trust it after fetchMe.
   useEffect(() => {
+    void fetchMe()
+  }, [fetchMe])
+
+  useEffect(() => {
+    if (!initialized) return
     if (status === "unauthenticated") {
       window.location.href = "/?login"
       return
@@ -27,9 +36,9 @@ export function DashboardPageClient() {
             : "client.dashboard"
       navigate(view)
     }
-  }, [status, user, navigate])
+  }, [initialized, status, user, navigate])
 
-  if (status === "loading" || !user) {
+  if (!initialized || status === "loading" || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="text-muted-foreground size-8 animate-spin" />
