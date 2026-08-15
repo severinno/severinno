@@ -120,11 +120,6 @@ export function GiSTSelectivitySection({
       ? benchmark.analysis.avgHaversinePerProvider
       : 0.1323 // fallback hardcoded
 
-  // ── Degradation history buffer — prevents alert flickering when P95
-  //     oscillates near the threshold. Only flags degraded when the
-  //     majority of the last N polls agree.
-  const degHistoryRef = React.useRef<boolean[]>([])
-
   // ── Radius + Density state ────────────────────────────────────────
   const [radiusKm, setRadiusKm] = React.useState(15)
   // ── Density determines providers per area — declared before scaledCounts ──
@@ -260,11 +255,21 @@ export function GiSTSelectivitySection({
   )
 
   // ── Smooth degradation via history buffer — prevent flickering ────
-  const degHistory = degHistoryRef.current
-  degHistory.push(degradation.gistDegraded)
-  if (degHistory.length > GIST_DEGRADATION_HISTORY_SIZE) {
-    degHistory.shift()
-  }
+  // Buffer lives in state (refs must not be read/mutated during render);
+  // one sample is appended per dashboard poll (a poll = new history /
+  // benchmark props). Sampling on value CHANGE alone would miss
+  // consecutive identical polls, so the deps track the poll sources.
+  const [degHistory, setDegHistory] = React.useState<boolean[]>([])
+
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- rolling poll buffer: one sample per dashboard poll (new history/benchmark props); render-phase adjust cannot sample consecutive identical polls
+    setDegHistory((prev) => {
+      const next = [...prev, degradation.gistDegraded]
+      if (next.length > GIST_DEGRADATION_HISTORY_SIZE) next.shift()
+      return next
+    })
+  }, [degradation.gistDegraded, history, benchmark])
+
   const degradedCount = degHistory.filter(Boolean).length
   const smoothedDegraded =
     degHistory.length >= GIST_DEGRADATION_HISTORY_SIZE && degradedCount >= GIST_DEGRADATION_MAJORITY
@@ -278,41 +283,37 @@ export function GiSTSelectivitySection({
   // Uses a ref to debounce — fires only once per degradation episode.
   const sentryAlertedRef = React.useRef(false)
 
-  // Reset debounce flag when the index recovers
-  if (!gistDegraded && sentryAlertedRef.current) {
-    sentryAlertedRef.current = false
-  }
-
-  // Fire when smoothed degraded AND all 5 history slots are degraded
+  // Fire when smoothed degraded AND all 5 history slots are degraded;
+  // reset the debounce flag in the same effect when the index recovers.
   React.useEffect(() => {
-    if (
-      gistDegraded &&
-      degradedCount === GIST_DEGRADATION_HISTORY_SIZE &&
-      !sentryAlertedRef.current
-    ) {
-      sentryAlertedRef.current = true
+    if (gistDegraded) {
+      if (degradedCount === GIST_DEGRADATION_HISTORY_SIZE && !sentryAlertedRef.current) {
+        sentryAlertedRef.current = true
 
-      import("@sentry/nextjs")
-        .then((Sentry) => {
-          Sentry.captureMessage("🛑 Índice GiST degradado — 5 polls consecutivos", {
-            level: "warning" as const,
-            tags: { source: "gist-degradation-live" },
-            extra: {
-              p95MeanMs: Math.round(p95Mean),
-              radiusKm,
-              selectivityPct: snapPct,
-              maxModelAtSelectivityMs: Math.round(maxModelAtSelectivity * 10) / 10,
-              exceedingScales: exceedingCount,
-              totalScales: scaledCounts.length,
-              p95Ratio: Number((p95Mean / maxModelAtSelectivity).toFixed(1)),
-              historyBufferSize: GIST_DEGRADATION_HISTORY_SIZE,
-              degradedSlots: degradedCount,
-            },
+        import("@sentry/nextjs")
+          .then((Sentry) => {
+            Sentry.captureMessage("🛑 Índice GiST degradado — 5 polls consecutivos", {
+              level: "warning" as const,
+              tags: { source: "gist-degradation-live" },
+              extra: {
+                p95MeanMs: Math.round(p95Mean),
+                radiusKm,
+                selectivityPct: snapPct,
+                maxModelAtSelectivityMs: Math.round(maxModelAtSelectivity * 10) / 10,
+                exceedingScales: exceedingCount,
+                totalScales: scaledCounts.length,
+                p95Ratio: Number((p95Mean / maxModelAtSelectivity).toFixed(1)),
+                historyBufferSize: GIST_DEGRADATION_HISTORY_SIZE,
+                degradedSlots: degradedCount,
+              },
+            })
           })
-        })
-        .catch(() => {
-          // @sentry/nextjs not available — dev without SDK
-        })
+          .catch(() => {
+            // @sentry/nextjs not available — dev without SDK
+          })
+      } // closes sustained-degradation branch
+    } else if (!gistDegraded && sentryAlertedRef.current) {
+      sentryAlertedRef.current = false
     }
   }, [
     gistDegraded,
@@ -1091,6 +1092,11 @@ export function GiSTSelectivitySection({
 /**
  * Custom Recharts Tooltip content for the GiST selectivity chart.
  */
+function prefersDark(): boolean {
+  if (typeof window === "undefined") return false
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+}
+
 function GiSTCostTooltip({
   active,
   payload,
@@ -1111,11 +1117,11 @@ function GiSTCostTooltip({
   p95Mean: number
 }) {
   // ── Dark mode detection via prefers-color-scheme ────────────────────
-  const [isDark, setIsDark] = React.useState(false)
+  // Lazy initializer — prefersDark() is SSR-safe.
+  const [isDark, setIsDark] = React.useState(prefersDark)
 
   React.useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)")
-    setIsDark(mq.matches)
     const handler = (e: MediaQueryListEvent) => setIsDark(e.matches)
     mq.addEventListener("change", handler)
     return () => mq.removeEventListener("change", handler)

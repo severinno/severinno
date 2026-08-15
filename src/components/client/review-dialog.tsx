@@ -44,13 +44,15 @@ export function ReviewDialog({ open, onOpenChange, booking, onSubmitted }: Revie
   const [rating, setRating] = React.useState(0)
   const [comment, setComment] = React.useState("")
 
-  // Reset when the dialog reopens for a different booking
-  React.useEffect(() => {
-    if (open) {
-      setRating(0)
-      setComment("")
-    }
-  }, [open, booking?.id])
+  // Reset when the dialog reopens or the booking changes (adjust state during render)
+  const [prevOpen, setPrevOpen] = React.useState(open)
+  const [prevBookingId, setPrevBookingId] = React.useState(booking?.id ?? null)
+  if (open && (prevOpen !== open || prevBookingId !== (booking?.id ?? null))) {
+    setPrevOpen(open)
+    setPrevBookingId(booking?.id ?? null)
+    setRating(0)
+    setComment("")
+  }
 
   const submit = useMutation({
     mutationFn: () =>

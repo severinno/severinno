@@ -236,12 +236,10 @@ export function AdminTaxonomy() {
 
   // Service count por categoria — enriquecido via includeCount=true no backend
 
-  // Auto-expand all level-0 nodes on first load
-  React.useEffect(() => {
-    if (tree.length && expanded.size === 0) {
-      setExpanded(new Set(tree.map((n) => n.id)))
-    }
-  }, [tree, expanded.size])
+  // Auto-expand all level-0 nodes on first load (adjust state during render)
+  if (tree.length > 0 && expanded.size === 0) {
+    setExpanded(new Set(tree.map((n) => n.id)))
+  }
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["categories"] })
 
@@ -741,9 +739,10 @@ function CategoryDialog({
   const [order, setOrder] = React.useState(0)
   const [active, setActive] = React.useState(true)
 
-  // Reset form when opening
-  React.useEffect(() => {
-    if (!open) return
+  // Reset form when opening (adjust state during render)
+  const [prevOpenKey, setPrevOpenKey] = React.useState(open ? initial : null)
+  if (open && prevOpenKey !== initial) {
+    setPrevOpenKey(initial)
     if (initial) {
       setName(initial.name)
       setSlug(initial.slug)
@@ -761,12 +760,10 @@ function CategoryDialog({
       setOrder(0)
       setActive(true)
     }
-  }, [open, initial])
+  }
 
-  // Auto-generate slug from name unless user edited it manually
-  React.useEffect(() => {
-    if (!slugTouched) setSlug(slugify(name))
-  }, [name, slugTouched])
+  // Auto-generate slug from name unless user edited it manually (derived)
+  const effectiveSlug = slugTouched ? slug : slugify(name)
 
   // Determine the level from the chosen parent
   const parent = allCategories.find((c) => c.id === parentId)
@@ -776,7 +773,10 @@ function CategoryDialog({
   const parentCandidates = allCategories.filter((c) => c.level < 2 && c.id !== initial?.id)
 
   const canSubmit =
-    name.trim().length >= 2 && /^[a-z0-9-]+$/.test(slug) && slug.length >= 2 && !submitting
+    name.trim().length >= 2 &&
+    /^[a-z0-9-]+$/.test(effectiveSlug) &&
+    effectiveSlug.length >= 2 &&
+    !submitting
 
   // H6 — nome/preview do ícone atual
   const currentIconName = icon === "__none__" ? "" : icon
@@ -788,7 +788,7 @@ function CategoryDialog({
     if (!canSubmit) return
     onSubmit({
       name: name.trim(),
-      slug,
+      slug: effectiveSlug,
       parentId: parentId === "__none__" ? null : parentId,
       level,
       icon: currentIconName,
@@ -844,7 +844,7 @@ function CategoryDialog({
               </div>
               <Input
                 id="cat-slug"
-                value={slug}
+                value={effectiveSlug}
                 onChange={(e) => {
                   setSlug(e.target.value)
                   setSlugTouched(true)

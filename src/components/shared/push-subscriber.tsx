@@ -5,7 +5,7 @@ import { Bell, BellOff, Loader2, BellRing } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuthStore } from "@/store/auth"
 import { toast } from "sonner"
-import { useMobileOS, useStandaloneMode } from "@/components/shared/pwa-setup"
+import { useMobileOS, useStandaloneMode, isPushSupported } from "@/components/shared/pwa-setup"
 import { cn } from "@/lib/utils"
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""
@@ -19,7 +19,6 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 
 export function PushToggle() {
   const user = useAuthStore((s) => s.user)
-  const [supported, setSupported] = React.useState(false)
   const [subscribed, setSubscribed] = React.useState(false)
   const [loading, setLoading] = React.useState(false)
   const os = useMobileOS()
@@ -32,14 +31,15 @@ export function PushToggle() {
   // Without it, the component gracefully hides.
   const vapidConfigured = VAPID_PUBLIC_KEY.length > 0
 
+  // Derived capability check — no state, no effect needed
+  const supported = vapidConfigured && isPushSupported()
+
   React.useEffect(() => {
-    if (!vapidConfigured) return
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return
-    setSupported(true)
+    if (!supported) return
     navigator.serviceWorker.ready.then((reg) =>
       reg.pushManager.getSubscription().then((sub) => setSubscribed(!!sub)),
     )
-  }, [vapidConfigured])
+  }, [supported])
 
   const toggle = async () => {
     if (loading || !user) return

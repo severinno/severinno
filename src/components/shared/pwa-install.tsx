@@ -46,6 +46,10 @@ export function PWAInstallBanner() {
   const [dismissed, setDismissed] = React.useState(isDismissed)
   const [isInstallable, setIsInstallable] = React.useState(false)
 
+  // Standalone (already installed) is derived from the beforeinstallprompt
+  // event never firing plus the focus re-check below; the initial value
+  // stays false and the mount-time matchMedia check was redundant.
+
   React.useEffect(() => {
     // Listen for the beforeinstallprompt event (Chrome Android)
     const handler = (e: Event) => {
@@ -55,11 +59,6 @@ export function PWAInstallBanner() {
     }
 
     window.addEventListener("beforeinstallprompt", handler)
-
-    // Check if already installed (display-mode: standalone)
-    if (window.matchMedia("(display-mode: standalone)").matches) {
-      setIsInstallable(false)
-    }
 
     return () => window.removeEventListener("beforeinstallprompt", handler)
   }, [])
@@ -126,61 +125,5 @@ export function PWAInstallBanner() {
         </div>
       </div>
     </div>
-  )
-}
-
-/**
- * iOS PWA Install Guide — mostra instruções específicas para iOS Safari,
- * já que o iOS não dispara o evento beforeinstallprompt.
- *
- * Exibe um card com o passo a passo: Compartilhar → Adicionar à Tela de Início.
- */
-export function IOSInstallGuide() {
-  const [showGuide, setShowGuide] = React.useState(false)
-  const [isIOS, setIsIOS] = React.useState(false)
-  const [isStandalone, setIsStandalone] = React.useState(false)
-
-  React.useEffect(() => {
-    const ua = navigator.userAgent
-    const iOS = /iPad|iPhone|iPod/.test(ua)
-    setIsIOS(iOS)
-
-    const standalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (window.navigator as Navigator & { standalone?: boolean }).standalone === true
-    setIsStandalone(standalone)
-  }, [])
-
-  if (!isIOS || isStandalone) return null
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setShowGuide(!showGuide)}
-        className="text-xs text-emerald-600 underline underline-offset-2 hover:text-emerald-700"
-      >
-        {showGuide ? "Fechar" : "Como instalar no iPhone/iPad?"}
-      </button>
-
-      {showGuide && (
-        <div className="bg-muted/50 text-muted-foreground mt-2 space-y-1 rounded-lg border p-3 text-xs">
-          <p>📱 Para instalar no iPhone/iPad:</p>
-          <ol className="list-decimal space-y-1 pl-4">
-            <li>Abra o Safari</li>
-            <li>
-              Toque no ícone <strong>Compartilhar</strong> (📤)
-            </li>
-            <li>
-              Role para baixo e toque em <strong>Adicionar à Tela de Início</strong>
-            </li>
-            <li>
-              Toque em <strong>Adicionar</strong> (canto superior direito)
-            </li>
-          </ol>
-          <p className="pt-1">Após instalar, você pode ativar as notificações push no app.</p>
-        </div>
-      )}
-    </>
   )
 }

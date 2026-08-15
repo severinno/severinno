@@ -124,12 +124,17 @@ export function MessagesView({
     refetchInterval: 15_000,
   })
 
-  // Auto-select first conversation on first load
-  React.useEffect(() => {
-    if (!selectedPeerId && conversationsQuery.data && conversationsQuery.data.length > 0) {
-      setSelectedPeerId(conversationsQuery.data[0].peerId)
-    }
-  }, [conversationsQuery.data, selectedPeerId])
+  // Auto-select first conversation on first load (adjust state during render)
+  const [prevConversations, setPrevConversations] = React.useState(conversationsQuery.data)
+  if (
+    !selectedPeerId &&
+    conversationsQuery.data &&
+    conversationsQuery.data.length > 0 &&
+    prevConversations !== conversationsQuery.data
+  ) {
+    setPrevConversations(conversationsQuery.data)
+    setSelectedPeerId(conversationsQuery.data[0].peerId)
+  }
 
   // --- Thread ---
   const threadQuery = useQuery<{ peer: ConversationPeer; items: Message[] }>({

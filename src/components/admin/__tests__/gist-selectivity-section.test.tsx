@@ -356,22 +356,23 @@ describe("GiSTSelectivitySection", () => {
   })
 
   it("shows full degradation alert when P95 exceeds all model curves", () => {
-    // The GiSTSelectivitySection uses a useRef buffer (size=5) that needs 5
-    // consecutive renders before the degradation alert appears.  First render
-    // only has 1 entry, so we re-render 4 more times to fill the buffer.
+    // The GiSTSelectivitySection keeps a rolling degradation buffer (size=5)
+    // and samples it once per dashboard poll (a poll = new props).  We
+    // simulate 5 consecutive degraded polls by re-rendering with fresh
+    // history arrays of increasing size (each new array = one poll).
     const { rerender } = renderGiST({ history: FIXTURE_DEGRADED_HISTORY })
 
-    const rerenderSame = () => {
+    const nextPoll = (i: number) => {
       rerender(
         <GiSTSelectivitySection
           benchmark={FIXTURE_BENCHMARK}
-          history={FIXTURE_DEGRADED_HISTORY}
+          history={FIXTURE_DEGRADED_HISTORY.slice(0, i)}
           baselines={FIXTURE_BASELINES}
         />,
       )
     }
 
-    for (let i = 0; i < 4; i++) rerenderSame()
+    for (let i = 1; i <= 4; i++) nextPoll(i)
 
     // Alert section heading
     expect(screen.getByText(/Índice GiST degradado/)).toBeInTheDocument()
@@ -382,18 +383,18 @@ describe("GiSTSelectivitySection", () => {
   it("degradation alert shows exact P95 value (250ms) in message", () => {
     const { rerender } = renderGiST({ history: FIXTURE_DEGRADED_HISTORY })
 
-    // Fill the 5-entry degradation buffer
-    const rerenderSame = () => {
+    // Fill the 5-entry degradation buffer with 4 more degraded polls
+    const nextPoll = (i: number) => {
       rerender(
         <GiSTSelectivitySection
           benchmark={FIXTURE_BENCHMARK}
-          history={FIXTURE_DEGRADED_HISTORY}
+          history={FIXTURE_DEGRADED_HISTORY.slice(0, i)}
           baselines={FIXTURE_BASELINES}
         />,
       )
     }
 
-    for (let i = 0; i < 4; i++) rerenderSame()
+    for (let i = 1; i <= 4; i++) nextPoll(i)
 
     // Verify the P95 value is mentioned by checking text across all elements
     const allEls = screen.getAllByText(/250ms|250 ms/)

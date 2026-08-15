@@ -161,8 +161,6 @@ export function AdminSettings() {
   const [revealedKeys, setRevealedKeys] = React.useState<Set<string>>(new Set())
   // H7 — busca por chave
   const [query, setQuery] = React.useState("")
-  // H1 — última atualização
-  const [lastFetched, setLastFetched] = React.useState<Date | null>(null)
 
   const { data, isLoading, isError, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["admin", "settings"],
@@ -170,10 +168,8 @@ export function AdminSettings() {
     staleTime: 30_000,
   })
 
-  // H1 — sincroniza freshness label
-  React.useEffect(() => {
-    if (dataUpdatedAt) setLastFetched(new Date(dataUpdatedAt))
-  }, [dataUpdatedAt])
+  // H1 — freshness label derives from last successful fetch
+  const lastFetched = dataUpdatedAt ? new Date(dataUpdatedAt) : null
 
   const items = React.useMemo(() => data?.items ?? [], [data?.items])
 
@@ -202,17 +198,19 @@ export function AdminSettings() {
     return items.filter((s) => s.key.toLowerCase().includes(q))
   }, [items, query])
 
-  // Initialize draft when items arrive
-  React.useEffect(() => {
-    if (items.length === 0) return
-    setDraft((prev) => {
-      const next: Record<string, string> = { ...prev }
-      for (const s of items) {
-        if (!(s.key in next)) next[s.key] = s.value
-      }
-      return next
-    })
-  }, [items])
+  // Initialize draft when items arrive (adjust state during render)
+  const [appliedItems, setAppliedItems] = React.useState(items)
+  if (appliedItems !== items) {
+    setAppliedItems(items)
+    if (items.length > 0)
+      setDraft((prev) => {
+        const next: Record<string, string> = { ...prev }
+        for (const s of items) {
+          if (!(s.key in next)) next[s.key] = s.value
+        }
+        return next
+      })
+  }
 
   const upsertMutation = useMutation({
     mutationFn: (settings: Array<{ key: string; value: string }>) =>
@@ -723,12 +721,13 @@ function CreateSettingDialog({
   const [key, setKey] = React.useState("")
   const [value, setValue] = React.useState("")
 
-  React.useEffect(() => {
-    if (open) {
-      setKey("")
-      setValue("")
-    }
-  }, [open])
+  // Reset draft fields each time the dialog opens (adjust state during render)
+  const [prevOpen, setPrevOpen] = React.useState(open)
+  if (open && prevOpen !== open) {
+    setPrevOpen(open)
+    setKey("")
+    setValue("")
+  }
 
   const keyValid = /^[A-Z0-9_]+$/.test(key) && key.length >= 1
   const dupe = existingKeys.includes(key.toUpperCase())

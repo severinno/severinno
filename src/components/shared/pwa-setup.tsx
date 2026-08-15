@@ -23,11 +23,10 @@ function getStandaloneMode(): "standalone" | "browser" | "unknown" {
 }
 
 export function useStandaloneMode() {
-  const [mode, setMode] = React.useState<ReturnType<typeof getStandaloneMode>>("unknown")
+  // Lazy init — getStandaloneMode() is SSR-safe (returns "unknown" pre-hydration)
+  const [mode, setMode] = React.useState<ReturnType<typeof getStandaloneMode>>(getStandaloneMode)
 
   React.useEffect(() => {
-    setMode(getStandaloneMode())
-
     const mql = window.matchMedia("(display-mode: standalone)")
     const handler = () => setMode(getStandaloneMode())
     mql.addEventListener("change", handler)

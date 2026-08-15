@@ -166,10 +166,13 @@ export function AdminPushAudit() {
   const [actionFilter, setActionFilter] = React.useState("all")
   const [typeFilter, setTypeFilter] = React.useState("")
 
-  // Reset page when filters change
-  React.useEffect(() => {
+  // Reset page when filters change (adjust state during render)
+  const filtersKey = JSON.stringify([days, actionFilter, typeFilter])
+  const [prevFiltersKey, setPrevFiltersKey] = React.useState(filtersKey)
+  if (prevFiltersKey !== filtersKey) {
+    setPrevFiltersKey(filtersKey)
     setPage(1)
-  }, [days, actionFilter, typeFilter])
+  }
 
   const { data, isLoading, isError, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["admin", "push", "audit", page, days, actionFilter, typeFilter],

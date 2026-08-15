@@ -93,6 +93,10 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api) return
+    // Initial sync is REQUIRED here: embla fires 'init'/'reInit' during its
+    // own creation effect, before this effect subscribes — the event would
+    // be missed, leaving the scroll buttons in the wrong initial state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- embla init event precedes subscription
     onSelect(api)
     api.on("reInit", onSelect)
     api.on("select", onSelect)

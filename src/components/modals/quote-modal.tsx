@@ -182,13 +182,24 @@ export function QuoteModal() {
   const [submitting, setSubmitting] = React.useState(false)
 
   // Reset when modal opens
+  // Reset step when modal opens/preset changes (adjust state during render).
+  // form.reset stays in the effect below: react-hook-form is an external
+  // store, and calling its reset() from the render phase would update a
+  // different component's store (React warns against that).
+  const [prevOpen, setPrevOpen] = React.useState(open)
+  const [prevPresets, setPrevPresets] = React.useState(`${providerIdPreset}|${serviceIdPreset}`)
+  if (open && (prevOpen !== open || prevPresets !== `${providerIdPreset}|${serviceIdPreset}`)) {
+    setPrevOpen(open)
+    setPrevPresets(`${providerIdPreset}|${serviceIdPreset}`)
+    setStep(1)
+  }
+
   React.useEffect(() => {
     if (open) {
       form.reset({
         items: [emptyItem(providerIdPreset, serviceIdPreset)],
         address: emptyAddress,
       })
-      setStep(1)
     }
   }, [open, providerIdPreset, serviceIdPreset, form])
 

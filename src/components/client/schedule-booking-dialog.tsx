@@ -37,12 +37,15 @@ export function ScheduleBookingDialog({ open, onOpenChange, quote }: ScheduleDia
   const [scheduledAt, setScheduledAt] = React.useState("")
   const [address, setAddress] = React.useState("")
 
-  React.useEffect(() => {
-    if (open && quote) {
-      setAddress(quote.address)
-      setScheduledAt("")
-    }
-  }, [open, quote])
+  // Seed address when opening (adjust state during render)
+  const [prevOpen, setPrevOpen] = React.useState(open)
+  const [prevQuote, setPrevQuote] = React.useState(quote)
+  if (open && (prevOpen !== open || prevQuote !== quote)) {
+    setPrevOpen(open)
+    setPrevQuote(quote)
+    setAddress(quote?.address ?? "")
+    setScheduledAt("")
+  }
 
   const bookMutation = useMutation({
     mutationFn: () =>
