@@ -18,6 +18,7 @@ import { execFileSync, spawnSync } from "node:child_process"
 import { mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
+import { resolveBash } from "@/lib/__tests__/helpers/bash-resolver"
 
 const NORMALIZER = resolve(process.cwd(), "scripts/normalize-crlf.sh")
 
@@ -35,7 +36,7 @@ function makeRepo(): string {
 }
 
 function run(repoDir: string, args: string[] = []) {
-  return spawnSync("bash", [NORMALIZER, ...args], {
+  return spawnSync(resolveBash(), [NORMALIZER, ...args], {
     cwd: repoDir,
     encoding: "utf8",
     env: { ...process.env, CHECK_CRLF_ROOT: repoDir },
@@ -148,7 +149,7 @@ describe("normalize-crlf.sh (dry-run / edge)", () => {
     execFileSync("git", ["add", "."], { cwd: dir })
     execFileSync("git", ["commit", "-qm", "init"], { cwd: dir })
 
-    const res = spawnSync("bash", [NORMALIZER], {
+    const res = spawnSync(resolveBash(), [NORMALIZER], {
       cwd: dir,
       encoding: "utf8",
       env: { ...process.env, CHECK_CRLF_ROOT: dir, NORMALIZE_CRLF_EXTS: ".yml" },

@@ -14,8 +14,8 @@
  *     sem host; template {owner}/{repo} exento; data: URI exenta; scheme
  *     não suportado (mailto:) → violação
  *   - checkImages: agrega violações com linha + reason
- *   - Regressão REAL do README: os 7 badges <img> atuais resolvem (ground
- *     truth — 4 URLs válidas + 3 placeholders {owner}/{repo} exentos)
+ *   - Regressão REAL do README: os 6 badges <img> atuais resolvem (ground
+ *     truth — 6 URLs válidas; o badge de coverage estático foi removido)
  */
 
 import { describe, it, expect } from "vitest"
@@ -149,14 +149,14 @@ describe("checkImages", () => {
 // ── Regressão REAL do README ──────────────────────────────────────────────
 
 describe("regressão real do README", () => {
-  it("os 7 badges <img> atuais resolvem (URLs válidas + placeholders exentos)", () => {
+  it("os 6 badges <img> atuais resolvem (URLs válidas)", () => {
     const readmePath = join(process.cwd(), "README.md")
     if (!existsSync(readmePath)) return // ambiente sem o README — pula
     const readme = readFileSync(readmePath, "utf8")
     // pin do COUNT de extração: se uma regressão do regex DERRUBAR uma imagem
     // da varredura, o toEqual([]) abaixo passaria mesmo assim — o count trava
     // o ground truth (espelha a filosofia do check-e2e-counts)
-    expect(extractImages(readme).length).toBe(7)
+    expect(extractImages(readme).length).toBe(6)
     const violations = checkImages(readme, join(process.cwd(), "README.md", ".."))
     expect(violations, JSON.stringify(violations)).toEqual([])
   })

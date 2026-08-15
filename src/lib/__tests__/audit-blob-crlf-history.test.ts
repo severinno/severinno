@@ -39,6 +39,7 @@
 import { describe, it, expect, afterEach } from "vitest"
 import { spawnSync } from "node:child_process"
 import { resolve } from "node:path"
+import { resolveBash } from "@/lib/__tests__/helpers/bash-resolver"
 import {
   makeRepo,
   commitCrlfFile,
@@ -50,7 +51,7 @@ import {
 const AUDIT = resolve(process.cwd(), "scripts/audit-blob-crlf-history.sh")
 
 function run(repoDir: string, args: string[] = []) {
-  return spawnSync("bash", [AUDIT, ...args], {
+  return spawnSync(resolveBash(), [AUDIT, ...args], {
     cwd: repoDir,
     encoding: "utf8",
     env: { ...process.env, CHECK_CRLF_ROOT: repoDir },

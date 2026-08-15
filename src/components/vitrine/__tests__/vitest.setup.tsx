@@ -138,8 +138,12 @@ import { clearCepCache } from "@/lib/client-cep-cache"
 
 // ── Mock client-geo-cache ─────────────────────────────────────────────────
 // The address-autocomplete component now uses localStorage geo cache.
-// By default, return null (cache miss) so tests exercise the API path.
-// Individual tests can override with mockGetCachedGeo.mockReturnValue(...)
+// By default, return null (cache miss) so component tests exercise the API
+// path. The mock ALSO isolates tests from each other: with the real module,
+// values written by one test would leak through jsdom localStorage into the
+// next test in the same file.
+// The real module's own test file opts out via vi.doUnmock (see
+// src/lib/__tests__/client-geo-cache.test.ts).
 
 const mockGetCachedGeo = vi.fn().mockReturnValue(null)
 const mockSetCachedGeo = vi.fn()

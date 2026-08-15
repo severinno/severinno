@@ -30,6 +30,7 @@ import { execFileSync, spawnSync } from "node:child_process"
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
+import { resolveBash } from "@/lib/__tests__/helpers/bash-resolver"
 
 const GUARD = resolve(process.cwd(), "scripts/check-blob-crlf.sh")
 
@@ -47,7 +48,7 @@ function makeRepo(autocrlf = "false"): string {
 }
 
 function run(repoDir: string, args: string[] = ["--ci"]) {
-  return spawnSync("bash", [GUARD, ...args], {
+  return spawnSync(resolveBash(), [GUARD, ...args], {
     cwd: repoDir,
     encoding: "utf8",
     env: { ...process.env, CHECK_CRLF_ROOT: repoDir },

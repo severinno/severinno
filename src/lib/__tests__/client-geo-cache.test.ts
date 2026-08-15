@@ -19,6 +19,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import type { GeoSearchResult } from "@/lib/api"
 
+// The vitrine setup file mocks @/lib/client-geo-cache globally (to isolate
+// component tests from localStorage leakage). This file tests the REAL module,
+// so opt out before the dynamic imports below resolve.
+vi.doUnmock("@/lib/client-geo-cache")
+
 // ---------------------------------------------------------------------------
 // Use fake timers for deterministic TTL tests.
 // ---------------------------------------------------------------------------
