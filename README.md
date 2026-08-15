@@ -40,18 +40,24 @@
 # 1. Install dependencies
 bun install
 
-# 2. Start infrastructure
+# 2. Start infrastructure (postgis, redis, rabbitmq)
 docker compose up -d postgis redis rabbitmq
 
-# 3. Setup database
-bunx prisma migrate dev
+# 3. Setup database (db push — a linha usa schema sync, não migrações)
+bunx prisma db push
 
 # 4. Seed data
-bun run seed
+bun run db:seed
 
 # 5. Start dev server
 bun run dev
 ```
+
+> **DATABASE_URL:** o compose expõe o PostGIS na porta `5432` com DB `severinno`
+> (usuário/senha `severinno`/`severinno_dev`) e a imagem `postgis` já habilita
+> a extensão no DB criado por ela. Para um DB criado manualmente, rode
+> `CREATE EXTENSION postgis;` antes do `db push` (senão: `type "geography"
+does not exist`). Ajustes locais vão em `.env.local` (gitignored).
 
 > **Seed test hook (`SEED_SPEC_PATCH`):** os seeds aceitam um patch temporário
 > do spec de categorias para validar convergência de update/rename nos E2Es —
