@@ -147,10 +147,12 @@ export default function Testimonials({ className }: { className?: string }) {
     }
   }, [])
 
-  // Carousel state sync — setState is called inside async event handlers,
-  // NOT synchronously within the effect body.
+  // Carousel state sync — initial read is REQUIRED because embla fires
+  // 'init'/'reInit' during its own creation effect, before the subscriptions
+  // below attach; subsequent updates flow through the async event callbacks.
   React.useEffect(() => {
     if (!api) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- embla init event precedes subscription
     setCount(api.scrollSnapList().length)
     setCurrent(api.selectedScrollSnap())
     const onSelect = () => setCurrent(api.selectedScrollSnap())

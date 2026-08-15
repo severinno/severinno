@@ -128,7 +128,12 @@ export function ClientServices() {
   const [tab, setTab] = React.useState("COMPLETED")
   const [page, setPage] = React.useState(1)
 
-  React.useEffect(() => setPage(1), [tab])
+  // Reset to page 1 on tab change (adjust state during render)
+  const [prevTab, setPrevTab] = React.useState(tab)
+  if (prevTab !== tab) {
+    setPrevTab(tab)
+    setPage(1)
+  }
 
   // Fetch completed + cancelled in parallel so we can show counts + the
   // "Todos" tab without server-side filter juggling.

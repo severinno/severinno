@@ -162,10 +162,13 @@ export function AdminWebhookAudit() {
   const [statusFilter, setStatusFilter] = React.useState("")
   const [webhookIdFilter, setWebhookIdFilter] = React.useState("")
 
-  // Reset page when filters change
-  React.useEffect(() => {
+  // Reset page when filters change (adjust state during render)
+  const filtersKey = JSON.stringify([days, eventFilter, statusFilter, webhookIdFilter])
+  const [prevFiltersKey, setPrevFiltersKey] = React.useState(filtersKey)
+  if (prevFiltersKey !== filtersKey) {
+    setPrevFiltersKey(filtersKey)
     setPage(1)
-  }, [days, eventFilter, statusFilter, webhookIdFilter])
+  }
 
   const { data, isLoading, isError, refetch, dataUpdatedAt } = useQuery({
     queryKey: [

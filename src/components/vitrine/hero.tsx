@@ -393,10 +393,16 @@ function LiveActivityPanel({
   const [toastIndex, setToastIndex] = React.useState(0)
   const [visibleActivities, setVisibleActivities] = React.useState<ActivityItem[]>([])
 
-  // Stagger-reveal activities
+  // Stagger-reveal activities — reset synchronous via adjust-state-during-render,
+  // then fill asynchronously (async timeouts are outside the effect body).
+  const [prevActivities, setPrevActivities] = React.useState(activities)
+  if (prevActivities !== activities) {
+    setPrevActivities(activities)
+    setVisibleActivities([])
+  }
+
   React.useEffect(() => {
     if (activities.length === 0) return
-    setVisibleActivities([])
     activities.forEach((_, i) => {
       setTimeout(() => {
         setVisibleActivities((prev) => [...prev, activities[i]])
@@ -435,7 +441,7 @@ function LiveActivityPanel({
         </div>
 
         {/* Activity list */}
-        <div className="scrollbar-thin max-h-[400px] space-y-2.5 overflow-y-auto pr-1">
+        <div className="max-h-[400px] scrollbar-thin space-y-2.5 overflow-y-auto pr-1">
           {isLoading ? (
             // Skeleton loading
             Array.from({ length: 5 }).map((_, i) => (

@@ -152,9 +152,12 @@ function ServiceFormDialog({
     },
   })
 
-  // Hydrate form when editing
-  React.useEffect(() => {
-    if (!open) return
+  // Hydrate form when editing (adjust state during render)
+  const [prevOpen, setPrevOpen] = React.useState(open)
+  const [prevService, setPrevService] = React.useState(service)
+  if (open && (prevOpen !== open || prevService !== service)) {
+    setPrevOpen(open)
+    setPrevService(service)
     if (service) {
       // Find category and walk up to determine pai → filha → sub
       const sub = categories.find((c) => c.id === service.categoryId)
@@ -165,31 +168,40 @@ function ServiceFormDialog({
       setChildCatId(filha?.id ?? "")
       setSubCatId(sub?.id ?? service.categoryId)
       setPhotos(service.photos ?? [])
-      form.reset({
-        title: service.title,
-        description: service.description,
-        categoryId: service.categoryId,
-        basePrice: service.basePrice,
-        unit: service.unit as ServiceUnit,
-        photos: service.photos ?? [],
-        active: service.active,
-      })
     } else {
       setParentCatId("")
       setChildCatId("")
       setSubCatId("")
       setPhotos([])
-      form.reset({
-        title: "",
-        description: "",
-        categoryId: "",
-        basePrice: 0,
-        unit: "UNIDADE",
-        photos: [],
-        active: true,
-      })
     }
-  }, [open, service, categories, form])
+  }
+
+  // form.reset stays in an effect: react-hook-form is an external store and
+  // its reset() must not run during the render phase.
+  React.useEffect(() => {
+    if (!open) return
+    form.reset(
+      service
+        ? {
+            title: service.title,
+            description: service.description,
+            categoryId: service.categoryId,
+            basePrice: service.basePrice,
+            unit: service.unit as ServiceUnit,
+            photos: service.photos ?? [],
+            active: service.active,
+          }
+        : {
+            title: "",
+            description: "",
+            categoryId: "",
+            basePrice: 0,
+            unit: "UNIDADE",
+            photos: [],
+            active: true,
+          },
+    )
+  }, [open, service, form])
 
   // Keep form's categoryId in sync with subCatId
   React.useEffect(() => {

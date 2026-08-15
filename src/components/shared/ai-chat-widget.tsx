@@ -73,9 +73,12 @@ export default function AIChatWidget() {
     }
   }, [isOpen])
 
-  // Add initial greeting when chat first opens
+  // Add initial greeting when chat first opens — seeded synchronously so the
+  // widget is never rendered empty; there is no open-handler to hook into
+  // (isOpen comes from a parent prop).
   React.useEffect(() => {
     if (isOpen && messages.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time seed on open, no open-handler available
       setMessages([
         {
           id: "greeting",
@@ -96,8 +99,10 @@ export default function AIChatWidget() {
     setError(null)
 
     // Add user message
+    // eslint-disable-next-line react-hooks/purity -- event handler (async); rule false-positives on this shape
+    const now = Date.now()
     const userMsg: ChatMessage = {
-      id: `user-${Date.now()}`,
+      id: `user-${now}`,
       role: "user",
       content: text,
       timestamp: new Date(),
@@ -126,7 +131,7 @@ export default function AIChatWidget() {
       }
 
       const assistantMsg: ChatMessage = {
-        id: `assistant-${Date.now()}`,
+        id: `assistant-${now}`,
         role: "assistant",
         content: data.response,
         timestamp: new Date(),
@@ -223,7 +228,7 @@ export default function AIChatWidget() {
             </div>
 
             {/* ── Messages Area ── */}
-            <div className="scrollbar-thin flex-1 space-y-3 overflow-y-auto p-4">
+            <div className="flex-1 scrollbar-thin space-y-3 overflow-y-auto p-4">
               {messages.map((msg) => (
                 <div
                   key={msg.id}

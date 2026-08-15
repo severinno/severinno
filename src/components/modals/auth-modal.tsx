@@ -70,15 +70,20 @@ export function AuthModal() {
   const openAuth = useUIStore((s) => s.openAuth)
 
   // Local mode synced with the store (lets users toggle inside the modal).
+  // Adopt store values when opening/changing (adjust state during render).
   const [localMode, setLocalMode] = React.useState<AuthModalMode>(mode)
   const [localRole, setLocalRole] = React.useState<AuthModalRole>(role)
 
-  React.useEffect(() => {
-    if (open) {
-      setLocalMode(mode)
-      setLocalRole(role)
-    }
-  }, [open, mode, role])
+  const [prevOpen, setPrevOpen] = React.useState(open)
+  const [prevMode, setPrevMode] = React.useState(mode)
+  const [prevRole, setPrevRole] = React.useState(role)
+  if (open && (prevOpen !== open || prevMode !== mode || prevRole !== role)) {
+    setPrevOpen(open)
+    setPrevMode(mode)
+    setPrevRole(role)
+    setLocalMode(mode)
+    setLocalRole(role)
+  }
 
   return (
     <Dialog open={open} onOpenChange={(o) => (o ? null : closeAuth())}>

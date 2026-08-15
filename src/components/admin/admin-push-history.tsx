@@ -248,10 +248,13 @@ export function AdminPushHistory() {
     }
   }, [search])
 
-  // Reset page when filters change
-  React.useEffect(() => {
+  // Reset page when filters change (adjust state during render)
+  const filtersKey = JSON.stringify([days, statusFilter, typeFilter, sourceFilter, actionFilter])
+  const [prevFiltersKey, setPrevFiltersKey] = React.useState(filtersKey)
+  if (prevFiltersKey !== filtersKey) {
+    setPrevFiltersKey(filtersKey)
     setPage(1)
-  }, [days, statusFilter, typeFilter, sourceFilter, actionFilter])
+  }
 
   const { data, isLoading, isError, refetch, dataUpdatedAt } = useQuery({
     queryKey: [

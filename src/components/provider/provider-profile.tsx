@@ -246,6 +246,13 @@ export function ProviderProfile() {
     },
   })
 
+  // Hoisted watch() results — react-hooks/incompatible-library bans calling
+  // watch() inline in JSX (cannot be memoized safely).
+  const coverUrl = form.watch("coverUrl")
+  const avatarUrl = form.watch("avatarUrl")
+  const lat = form.watch("lat")
+  const lng = form.watch("lng")
+
   // Hydrate
   React.useEffect(() => {
     if (profile) {
@@ -352,19 +359,13 @@ export function ProviderProfile() {
         <Card className="py-0">
           <CardContent className="p-4">
             <div className="relative h-32 w-full overflow-hidden rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-700 sm:h-40">
-              {form.watch("coverUrl") && (
+              {coverUrl && (
                 // eslint-disable-next-line @next/next/no-img-element -- URL runtime (upload/blob)
-                <img
-                  src={form.watch("coverUrl") ?? ""}
-                  alt="Capa"
-                  className="size-full object-cover"
-                />
+                <img src={coverUrl ?? ""} alt="Capa" className="size-full object-cover" />
               )}
               <div className="absolute -bottom-8 left-4 flex items-end gap-3">
                 <Avatar className="border-background size-16 border-4 sm:size-20">
-                  {form.watch("avatarUrl") ? (
-                    <AvatarImage src={form.watch("avatarUrl") ?? ""} alt={profile.name} />
-                  ) : null}
+                  {avatarUrl ? <AvatarImage src={avatarUrl ?? ""} alt={profile.name} /> : null}
                   <AvatarFallback className="bg-primary text-primary-foreground text-lg">
                     {profile.name
                       ?.split(" ")
@@ -386,13 +387,13 @@ export function ProviderProfile() {
             <div className="mt-10 grid gap-4 sm:grid-cols-2">
               <SinglePhoto
                 label="Foto de perfil"
-                value={form.watch("avatarUrl")}
+                value={avatarUrl}
                 onChange={(url) => form.setValue("avatarUrl", url ?? "", { shouldDirty: true })}
                 aspect="square"
               />
               <SinglePhoto
                 label="Capa do perfil"
-                value={form.watch("coverUrl")}
+                value={coverUrl}
                 onChange={(url) => form.setValue("coverUrl", url ?? "", { shouldDirty: true })}
                 aspect="wide"
               />
@@ -647,9 +648,9 @@ export function ProviderProfile() {
               )}
             />
 
-            {form.watch("lat") != null && form.watch("lng") != null && (
+            {lat != null && lng != null && (
               <p className="text-muted-foreground text-xs">
-                Localização: {form.watch("lat")?.toFixed(5)}, {form.watch("lng")?.toFixed(5)}
+                Localização: {lat?.toFixed(5)}, {lng?.toFixed(5)}
               </p>
             )}
           </CardContent>

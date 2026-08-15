@@ -69,17 +69,21 @@ export default function ProvidersMap({
   const maplibreglRef = useRef<typeof import("maplibre-gl") | null>(null)
 
   const selectRef = useRef(onSelectProvider)
-  selectRef.current = onSelectProvider
 
   // Refs para o fit inicial — o effect de init do mapa roda UMA vez (deps []);
   // ler providers/coords via ref evita recriar o mapa quando o query refetch
   // entrega um array novo (o sync de markers abaixo é quem acompanha updates).
+  // Updated in an effect (not during render) to satisfy react-hooks/refs.
   const providersRef = useRef(providers)
-  providersRef.current = providers
   const userLatRef = useRef(userLat)
-  userLatRef.current = userLat
   const userLngRef = useRef(userLng)
-  userLngRef.current = userLng
+
+  useEffect(() => {
+    selectRef.current = onSelectProvider
+    providersRef.current = providers
+    userLatRef.current = userLat
+    userLngRef.current = userLng
+  })
 
   const hasUserLocation = typeof userLat === "number" && typeof userLng === "number"
 

@@ -171,14 +171,14 @@ export function BookingModal() {
   const [submitting, setSubmitting] = React.useState(false)
   const [touched, setTouched] = React.useState<Set<string>>(new Set())
 
-  // Reset when modal opens
-  React.useEffect(() => {
-    if (open) {
-      setStep(1)
-      setState(initialState())
-      setTouched(new Set())
-    }
-  }, [open])
+  // Reset when modal opens (adjust state during render)
+  const [prevOpen, setPrevOpen] = React.useState(open)
+  if (open && prevOpen !== open) {
+    setPrevOpen(open)
+    setStep(1)
+    setState(initialState())
+    setTouched(new Set())
+  }
 
   // Fetch provider + services
   const providerQuery = useQuery({
@@ -199,11 +199,12 @@ export function BookingModal() {
   const services = servicesQuery.data ?? []
   const selectedService = services.find((s) => s.id === serviceIdPreset) ?? services[0]
 
-  React.useEffect(() => {
-    if (open && selectedService) {
-      setState((s) => ({ ...s, quantity: 1 }))
-    }
-  }, [open, selectedService])
+  // Ensure qty=1 when a service becomes available (adjust state during render)
+  const [prevSelectedService, setPrevSelectedService] = React.useState(selectedService)
+  if (open && prevSelectedService !== selectedService) {
+    setPrevSelectedService(selectedService)
+    if (selectedService) setState((s) => ({ ...s, quantity: 1 }))
+  }
 
   const set = <K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) =>
     setState((s) => ({ ...s, [key]: value }))
