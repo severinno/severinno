@@ -1,20 +1,18 @@
 # Severinno Marketplace
 
 <p align="center">
-  <em>Substitua <code>{owner}/{repo}</code> pelo seu repositório GitHub para ativar as badges dinâmicas.</em><br>
-  <a href="https://github.com/{owner}/{repo}/actions/workflows/ci.yml">
-    <img src="https://github.com/{owner}/{repo}/actions/workflows/ci.yml/badge.svg" alt="CI/CD">
+  <a href="https://github.com/severinno/severinno/actions/workflows/ci.yml">
+    <img src="https://github.com/severinno/severinno/actions/workflows/ci.yml/badge.svg" alt="CI/CD">
   </a>
-  <a href="https://github.com/{owner}/{repo}/actions/workflows/pr-check.yml">
-    <img src="https://github.com/{owner}/{repo}/actions/workflows/pr-check.yml/badge.svg" alt="PR Check">
+  <a href="https://github.com/severinno/severinno/actions/workflows/pr-check.yml">
+    <img src="https://github.com/severinno/severinno/actions/workflows/pr-check.yml/badge.svg" alt="PR Check">
   </a>
-  <a href="https://github.com/{owner}/{repo}/actions/workflows/e2e-cache.yml">
-    <img src="https://github.com/{owner}/{repo}/actions/workflows/e2e-cache.yml/badge.svg" alt="E2E Cache">
+  <a href="https://github.com/severinno/severinno/actions/workflows/e2e-cache.yml">
+    <img src="https://github.com/severinno/severinno/actions/workflows/e2e-cache.yml/badge.svg" alt="E2E Cache">
   </a>
   <img src="https://img.shields.io/badge/utf8--check-748%20files%20%E2%9C%85-2ea44f" alt="UTF-8: 748 files">
-  <img src="https://img.shields.io/badge/tests-74%20unit%20%7C%20160%20e2e%20%E2%9C%85-2ea44f" alt="Tests: 74 unit | 160 E2E">
+  <img src="https://img.shields.io/badge/tests-3.527%20unit%20%7C%20realtime%20e2e%204%2F4%20%E2%9C%85-2ea44f" alt="Tests: 3.527 unit | realtime E2E 4/4">
   <img src="https://img.shields.io/badge/encoding%20guards-8%2F8%20active%20%E2%9C%85-2ea44f" alt="Encoding guards: 8/8 active">
-  <img src="https://img.shields.io/badge/coverage-57%25%20(45%2F79)-bfa100" alt="Coverage: 57%">
 </p>
 
 > Marketplace de serviços com geolocalização — encontre prestadores verificados próximos a você.
