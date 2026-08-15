@@ -45,6 +45,7 @@
 import { describe, it, expect, afterEach } from "vitest"
 import { spawnSync } from "node:child_process"
 import { resolve } from "node:path"
+import { resolveBash } from "@/lib/__tests__/helpers/bash-resolver"
 import {
   makeRepo,
   commitCrlfFile,
@@ -68,7 +69,7 @@ const SENTINEL = "com CRLF"
 
 /** Roda o wrapper real --all-text contra o fixture via CHECK_CRLF_ROOT. */
 function runReport(repoDir: string) {
-  return spawnSync("bash", [AUDIT, "--all-text"], {
+  return spawnSync(resolveBash(), [AUDIT, "--all-text"], {
     cwd: repoDir,
     encoding: "utf8",
     env: { ...process.env, CHECK_CRLF_ROOT: repoDir },

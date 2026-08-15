@@ -27,6 +27,7 @@ import { execFileSync, spawnSync } from "node:child_process"
 import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
+import { resolveBash } from "@/lib/__tests__/helpers/bash-resolver"
 
 const GUARD = resolve(process.cwd(), "scripts/check-crlf.sh")
 const PY_DETECTOR = resolve(process.cwd(), "scripts/check_crlf.py")
@@ -43,7 +44,7 @@ function makeRepo(): string {
 }
 
 function runGuard(repoDir: string, args: string[] = ["--ci"]) {
-  return spawnSync("bash", [GUARD, ...args], {
+  return spawnSync(resolveBash(), [GUARD, ...args], {
     cwd: repoDir,
     encoding: "utf8",
     env: { ...process.env, CHECK_CRLF_ROOT: repoDir },
