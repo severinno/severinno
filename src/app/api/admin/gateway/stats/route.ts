@@ -3,15 +3,16 @@ import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import logger from "@/lib/logger"
+import { resolveTimeoutMs } from "@/lib/fetch-timeout"
 
 const LY_BASE = process.env.LYTEX_BASE_URL ?? "https://api-pay.lytex.com.br"
 const MAX_INVOICES = 500 // safety limit per aggregation
 // Timeout (ms) dos fetches para a API v2 Lytex. Um gateway que aceita o TCP
 // mas nunca responde deixaria o request pendurado — travando o GET admin e
-// o loop de paginação do fetchAllInvoices. AbortSignal.timeout() aborta após
-// o prazo (TimeoutError → handleError). Guarda contra valores inválidos:
-// NaN → default; negativo/zero → Math.max(1).
-const LYTEX_GATEWAY_TIMEOUT_MS = Math.max(1, Number(process.env.LYTEX_TIMEOUT_MS) || 10_000)
+// o loop de paginação do fetchAllInvoices. Helper compartilhado
+// (fetch-timeout.ts): guarda contra valores inválidos. Usado em 2 fetches
+// (auth + paginação) — resolve via resolveTimeoutMs.
+const LYTEX_GATEWAY_TIMEOUT_MS = resolveTimeoutMs("LYTEX_TIMEOUT_MS", 10_000)
 
 let cachedToken: { token: string; expiresAt: number } | null = null
 

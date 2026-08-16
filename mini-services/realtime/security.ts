@@ -86,6 +86,55 @@ export interface DatedSessionSocketLike<TData extends object = object> {
  *
  * Returns [] when the user is within the limit (or maxSessions < 1).
  */
+// ---------------------------------------------------------------------------
+// Per-role session limits (REALTIME_MAX_SESSIONS_PER_ROLE)
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse the structured `REALTIME_MAX_SESSIONS_PER_ROLE` env into a
+ * role → max-sessions map. Accepts JSON: `{"CLIENT":1,"PROVIDER":2,"ADMIN":5}`
+ * (also tolerates quoted numbers). Invalid entries are dropped; unset/empty
+ * or all-invalid input returns undefined (caller falls back to the global
+ * default). Roles are normalized to UPPERCASE for a stable lookup.
+ */
+export function parseMaxSessionsPerRole(
+  raw: string | undefined,
+): Record<string, number> | undefined {
+  if (!raw) return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined
+  const out: Record<string, number> = {}
+  for (const [role, value] of Object.entries(parsed as Record<string, unknown>)) {
+    const n = typeof value === "number" ? value : Number(value)
+    if (Number.isFinite(n) && n >= 1) out[role.toUpperCase()] = Math.floor(n)
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/**
+ * Resolve the max simultaneous sockets for a role: the per-role override when
+ * present (case-insensitive on the role), otherwise the global fallback.
+ * Always ≥ 1 — a misconfigured value can never disable the limit.
+ */
+export function resolveMaxSessionsPerRole(
+  role: string | undefined,
+  perRole: Record<string, number> | undefined,
+  fallback: number,
+): number {
+  if (perRole && role) {
+    const n = perRole[role.toUpperCase()]
+    if (typeof n === "number" && n >= 1) return n
+  }
+  // Math.max(1, NaN) é NaN — um fallback não-finito nunca pode desabilitar o
+  // limite (misconfig → default 1).
+  return Number.isFinite(fallback) ? Math.max(1, fallback) : 1
+}
+
 export function selectSocketsToKickForSessionLimit<T extends DatedSessionSocketLike>(
   sockets: readonly T[],
   userId: string,
@@ -394,6 +443,63 @@ export function summarizeActiveSessions(sessions: readonly SessionMetaLike[]): S
     if (count > maxSocketsPerUser) maxSocketsPerUser = count
   }
   return { total: sessions.length, byRole, usersWithMultipleSockets, maxSocketsPerUser }
+}
+
+// ---------------------------------------------------------------------------
+// Kick audit (admin "last kick reason" display)
+// ---------------------------------------------------------------------------
+
+/** Why a user's sockets were force-closed — surfaced in the admin panel. */
+export type KickReason = "session_limit" | "session_expired" | "revoke"
+
+export interface KickAuditEntry {
+  reason: KickReason
+  at: string
+  socketId: string
+  count: number
+}
+
+export type KickAuditMap = Map<string, KickAuditEntry>
+
+/** JSON-safe snapshot of the kick audit (userId → last kick + total count). */
+export type KickAuditSnapshot = Record<string, { reason: KickReason; at: string; count: number }>
+
+/** Cap of tracked users — keeps memory bounded (evicts oldest by insertion). */
+export const KICK_AUDIT_MAX = 500
+
+/**
+ * Record one kick for a user in the audit map. Pure mutator on the Map:
+ * keeps the LATEST entry per user plus a running count (the admin panel
+ * shows the most recent reason), and evicts the oldest user when the cap
+ * is exceeded so memory stays bounded. Never throws.
+ */
+export function recordKickAudit(
+  audit: KickAuditMap,
+  userId: string,
+  reason: KickReason,
+  socketId: string,
+  at: string,
+  max = KICK_AUDIT_MAX,
+): void {
+  if (!userId) return
+  const prev = audit.get(userId)
+  audit.set(userId, { reason, at, socketId, count: (prev?.count ?? 0) + 1 })
+  if (audit.size > max) {
+    const oldest = audit.keys().next().value
+    if (oldest !== undefined) audit.delete(oldest)
+  }
+}
+
+/**
+ * Snapshot the audit as a plain object (JSON-safe for GET /sessions).
+ * Drops the socketId (a debugging detail; the API layer doesn't need it).
+ */
+export function snapshotKickAudit(audit: KickAuditMap): KickAuditSnapshot {
+  const out: KickAuditSnapshot = {}
+  for (const [userId, e] of audit) {
+    out[userId] = { reason: e.reason, at: e.at, count: e.count }
+  }
+  return out
 }
 
 /**

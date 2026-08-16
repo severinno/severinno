@@ -22,6 +22,11 @@ import type { WebSocket as PlaywrightWebSocket } from "playwright"
 // (fullyParallel) e o realtime casa sockets por userId — com o limite
 // REALTIME_MAX_SESSIONS_PER_USER (default 1), sockets do MESMO usuário se
 // derrubam entre si. Mapa de isolamento:
+//
+// ⚠️ FOOTGUN: este spec assume PROVIDER limit = 1 (default). Se o ambiente
+// dev setar REALTIME_MAX_SESSIONS_PER_ROLE com PROVIDER > 1 (ex.: JSON
+// '{"PROVIDER":2}'), a 2ª aba NÃO derruba a 1ª e o spec quebra. Só rode com
+// o limite por role = 1 para PROVIDER (ou sem override).
 //   realtime-notification → carlos (provider) + cliente (client)
 //   session-revocation    → ricardo (provider) + cliente (client)
 //   session-limit         → fernanda (provider) + maria (client, 2º client

@@ -137,6 +137,37 @@ describe("GET /api/admin/gateway/invoices — query params", () => {
   })
 })
 
+// ── Signal presence (AbortSignal.timeout via fetch-timeout helper) ────────
+
+describe("GET /api/admin/gateway/invoices — signal presence", () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+    vi.unstubAllGlobals()
+    _mockRole = "ADMIN"
+    setEnv()
+    mockFetchSequence([
+      { status: 200, body: TOKEN_RESP },
+      { status: 200, body: INVOICES },
+    ])
+  })
+  afterEach(clearEnv)
+
+  it("passa AbortSignal.timeout como signal em TODOS os fetches (auth + list)", async () => {
+    const { GET } = await import("../admin/gateway/invoices/route")
+    const req = new Request("http://localhost/api/admin/gateway/invoices")
+    const res = await GET(req)
+
+    expect(res.status).toBe(200)
+    const calls = vi.mocked(fetch).mock.calls
+    expect(calls.length).toBe(2) // token + listagem
+    for (const [, init] of calls as Array<[string, RequestInit]>) {
+      expect(init.signal).toBeInstanceOf(AbortSignal)
+      expect(init.signal!.aborted).toBe(false)
+    }
+  })
+})
+
 // ── Error handling ─────────────────────────────────────────────────────────
 
 describe("GET /api/admin/gateway/invoices — errors", () => {

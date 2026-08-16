@@ -12,7 +12,10 @@
  */
 
 export interface PoolLike {
-  query(text: string, values?: unknown[]): Promise<{ rowCount: number | null }>
+  query(
+    text: string,
+    values?: unknown[],
+  ): Promise<{ rowCount: number | null; rows?: Array<Record<string, unknown>> }>
 }
 
 export type PoolLoader = () => PoolLike | null | Promise<PoolLike | null>

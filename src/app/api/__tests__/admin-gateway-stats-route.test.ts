@@ -225,6 +225,34 @@ describe("GET /api/admin/gateway/stats — period filtering", () => {
   })
 })
 
+describe("GET /api/admin/gateway/stats — signal presence", () => {
+  beforeEach(() => {
+    vi.mocked(requireRole).mockResolvedValue(MOCK_SESSION)
+  })
+
+  it("passa AbortSignal.timeout como signal em TODOS os fetches (auth + paginação)", async () => {
+    // O cachedToken da rota é escopo do módulo e fica QUENTE dos describes
+    // anteriores (expiresAt ~58min) — sem resetModules o fetch de token seria
+    // pulado e só sobraria 1 chamada. Módulo fresco → cache frio → 2 fetches.
+    vi.resetModules()
+    mockFetch([buildInvoice({ status: "paid", totalValue: 10000 })])
+
+    // Import dinâmico após resetModules: o mock fresco de @/lib/auth vem com
+    // o resolved default (ADMIN) do factory — suficiente para o requireRole.
+    const { GET: FreshGET } = await import("../admin/gateway/stats/route")
+    const req = buildRequest("http://localhost:3000/api/admin/gateway/stats?period=all")
+    const res = await FreshGET(req)
+
+    expect(res.status).toBe(200)
+    const calls = mockFetchFn.mock.calls
+    expect(calls.length).toBe(2) // token (cache frio) + 1 página
+    for (const [, init] of calls as Array<[string, RequestInit]>) {
+      expect(init.signal).toBeInstanceOf(AbortSignal)
+      expect(init.signal!.aborted).toBe(false)
+    }
+  })
+})
+
 describe("GET /api/admin/gateway/stats — method distribution", () => {
   beforeEach(() => {
     vi.mocked(requireRole).mockResolvedValue(MOCK_SESSION)

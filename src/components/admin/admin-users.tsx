@@ -54,7 +54,7 @@ import { toast } from "sonner"
 
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { type UserRole } from "@/lib/constants"
-import { formatDate } from "@/lib/format"
+import { formatDate, formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -149,9 +149,23 @@ type AdminUsersResponse = {
 /** Sessões ativas por usuário (GET /api/admin/realtime/sessions). */
 type RealtimeSessionsResponse = {
   ok: boolean
-  sessions: Record<string, Array<{ userId: string; role: string; socketId: string }>>
+  sessions: Record<
+    string,
+    Array<{
+      userId: string
+      role: string
+      socketId: string
+      connectedAt: string
+      joinedAt: string | null
+    }>
+  >
   totalSockets: number
   onlineUsers: number
+  /** Motivo do último kick por usuário (conflito de sessão vs revoke). */
+  kicks: Record<
+    string,
+    { reason: "session_limit" | "session_expired" | "revoke"; at: string; count: number }
+  >
 }
 
 type StatsResponse = {
@@ -256,16 +270,25 @@ export function AdminUsers() {
     mutationFn: (id: string) => apiDelete(`/api/admin/users/${id}`),
   })
 
-  // userId → online (sessão ativa com join na sala user:{id}). O backend
+  // userId → sessões ativas (sockets com join na sala user:{id}). O backend
   // só retorna sockets com sessão verificada E joined — o indicador reflete
   // quem está USANDO a plataforma agora, não apenas quem tem cookie válido.
-  const onlineByUser = React.useMemo(() => {
-    const map = new Map<string, boolean>()
+  // O contador por usuário + o último kick alimentam o badge de conflito.
+  const sessionsByUser = React.useMemo(() => {
+    const map = new Map<string, RealtimeSessionsResponse["sessions"][string]>()
     for (const [userId, sockets] of Object.entries(sessionsData?.sessions ?? {})) {
-      map.set(userId, sockets.length > 0)
+      map.set(userId, sockets)
     }
     return map
   }, [sessionsData])
+
+  const onlineByUser = React.useMemo(() => {
+    const map = new Map<string, boolean>()
+    for (const [userId, sockets] of sessionsByUser) {
+      map.set(userId, sockets.length > 0)
+    }
+    return map
+  }, [sessionsByUser])
 
   const handleRevokeSessions = (u: AdminUser) => {
     revokeMutation.mutate(u.id, {
@@ -456,11 +479,12 @@ export function AdminUsers() {
           icon={Wifi}
           label="Usuários online"
           value={String(sessionsData?.onlineUsers ?? 0)}
-          subtitle={
-            sessionsData?.ok === false
-              ? "Realtime indisponível"
-              : `${sessionsData?.totalSockets ?? 0} sockets ativos`
-          }
+          subtitle={(() => {
+            if (sessionsData?.ok === false) return "Realtime indisponível"
+            const conflicts = [...sessionsByUser.values()].filter((s) => s.length > 1).length
+            const base = `${sessionsData?.totalSockets ?? 0} sockets ativos`
+            return conflicts > 0 ? `${base} · ${conflicts} conflito(s)` : base
+          })()}
         />
       </div>
 
@@ -737,20 +761,16 @@ export function AdminUsers() {
                         </TableCell>
                         <TableCell className="px-4 py-3 text-center">
                           {/* H1 — visibilidade do status: quem está online agora,
-                              antes de o admin desativar a conta. */}
+                              antes de o admin desativar a conta. O contador de
+                              sessões por usuário + o último kick aparecem aqui:
+                              >1 socket simultâneo = conflito (limite do realtime
+                              é 1 por usuário) → badge âmbar + tooltip detalhado. */}
                           {onlineByUser.get(u.id) ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/60 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium whitespace-nowrap text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300">
-                                  <Wifi className="size-3 animate-pulse" />
-                                  Online
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                Sessão ativa no realtime — pode ser desconectada com "Revogar
-                                sessões" antes de desativar
-                              </TooltipContent>
-                            </Tooltip>
+                            <OnlineSessionsCell
+                              userId={u.id}
+                              sessionsByUser={sessionsByUser}
+                              kicks={sessionsData?.kicks ?? {}}
+                            />
                           ) : (
                             <span className="text-muted-foreground/50 text-[11px]">—</span>
                           )}
@@ -904,6 +924,77 @@ export function AdminUsers() {
         onConfirm={handleToggleConfirm}
       />
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// OnlineSessionsCell — badge de sessão ativa com contador por usuário,
+// indicador de CONFLITO (>1 socket simultâneo = limite do realtime) e o
+// motivo do último kick no tooltip (session_limit vs revoke vs expired).
+// ---------------------------------------------------------------------------
+function OnlineSessionsCell({
+  userId,
+  sessionsByUser,
+  kicks,
+}: {
+  userId: string
+  sessionsByUser: Map<string, RealtimeSessionsResponse["sessions"][string]>
+  kicks: RealtimeSessionsResponse["kicks"]
+}) {
+  const sockets = sessionsByUser.get(userId) ?? []
+  const count = sockets.length
+  const kick = kicks[userId]
+  const conflict = count > 1
+
+  const kickLabel = kick
+    ? {
+        session_limit: "limite de sessões (2ª aba derrubou a 1ª)",
+        session_expired: "sessão expirada (TTL)",
+        revoke: "revogada (logout ou ação do admin)",
+      }[kick.reason]
+    : null
+
+  const detail = (
+    <>
+      <p className="font-medium">
+        {count} {count === 1 ? "sessão ativa" : "sessões ativas"} no realtime
+      </p>
+      {conflict ? (
+        <p className="text-amber-500">
+          Conflito: o limite do realtime é 1 socket por usuário — a mais antiga será derrubada a
+          cada novo join.
+        </p>
+      ) : null}
+      {kick ? (
+        <p className="text-muted-foreground">
+          Último kick: {kickLabel ?? kick.reason} · {formatRelative(kick.at)} ({kick.count}×)
+        </p>
+      ) : (
+        <p className="text-muted-foreground">Sem kicks registrados.</p>
+      )}
+      <p className="text-muted-foreground">
+        Pode ser desconectada com "Revogar sessões" antes de desativar.
+      </p>
+    </>
+  )
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {conflict ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/70 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap text-amber-700 dark:border-amber-700/40 dark:bg-amber-950/40 dark:text-amber-300">
+            <AlertTriangle className="size-3" />
+            {count} sessões
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/60 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium whitespace-nowrap text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300">
+            <Wifi className="size-3 animate-pulse" />
+            Online · {count}
+          </span>
+        )}
+      </TooltipTrigger>
+      <TooltipContent className="max-w-64 space-y-1">{detail}</TooltipContent>
+    </Tooltip>
   )
 }
 

@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client"
 import { SOFT_DELETE_MODELS } from "./soft-delete"
+import { buildPrismaDatasourceUrl } from "./prisma-timeout"
 
 // The `query` option type Prisma's `$extends` accepts for per-model operation
 // interceptors — extracted from the generated client's extension signature so
@@ -72,8 +73,17 @@ function buildSoftDeleteQueries() {
 type ExtendedPrismaClient = ReturnType<typeof createPrismaClient>
 
 function createPrismaClient() {
+  // Timeouts do pool via connection string (statement_timeout/connect_timeout/
+  // pool_timeout/connection_limit) — Prisma 6.x removeu query_timeout do
+  // construtor; sem statement_timeout, uma query travada no Postgres pendura o
+  // request indefinidamente. Helper: src/lib/prisma-timeout.ts
+  const datasourceUrl = process.env.DATABASE_URL
+    ? buildPrismaDatasourceUrl(process.env.DATABASE_URL)
+    : undefined
+
   const base = new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["query"] : [],
+    ...(datasourceUrl ? { datasourceUrl } : {}),
   })
 
   // Prisma's $extends query option is a per-model operation map. The outer

@@ -49,6 +49,7 @@ vi.mock("@/lib/logger", () => ({
 // ── Imports ────────────────────────────────────────────────────────────────
 
 import { PATCH, DELETE } from "../admin/users/[id]/route"
+import { POST as POST_REVOKE } from "../admin/users/[id]/revoke-sessions/route"
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -138,6 +139,50 @@ describe("PATCH /api/admin/users/[id] — desativação", () => {
 
     expect(res.status).toBe(404)
     expect(mockInvalidateUserCache).not.toHaveBeenCalled()
+    expect(mockRevokeUserSessions).not.toHaveBeenCalled()
+  })
+})
+
+describe("POST /api/admin/users/[id]/revoke-sessions — revogar sem desativar", () => {
+  it("revoga sockets realtime SEM desativar (não toca user.update)", async () => {
+    const res = await POST_REVOKE(
+      new Request("http://localhost/api/admin/users/user-1/revoke-sessions"),
+      {
+        params: Promise.resolve({ id: "user-1" }),
+      },
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { ok?: boolean; revoked?: boolean }
+    expect(body).toEqual({ ok: true, revoked: true })
+    // Sem desativar: NENHUM update no banco — só revogação de sockets.
+    expect(mockDb.user.update).not.toHaveBeenCalled()
+    expect(mockRevokeUserSessions).toHaveBeenCalledWith("user-1")
+  })
+
+  it("não-autenticado → 401 e NENHUM revoke", async () => {
+    _mockRole = null
+    const res = await POST_REVOKE(
+      new Request("http://localhost/api/admin/users/user-1/revoke-sessions"),
+      {
+        params: Promise.resolve({ id: "user-1" }),
+      },
+    )
+
+    expect(res.status).toBe(401)
+    expect(mockRevokeUserSessions).not.toHaveBeenCalled()
+  })
+
+  it("usuário inexistente → 404 e NENHUM revoke", async () => {
+    mockDb.user.findUnique.mockResolvedValue(null)
+    const res = await POST_REVOKE(
+      new Request("http://localhost/api/admin/users/user-1/revoke-sessions"),
+      {
+        params: Promise.resolve({ id: "user-1" }),
+      },
+    )
+
+    expect(res.status).toBe(404)
     expect(mockRevokeUserSessions).not.toHaveBeenCalled()
   })
 })

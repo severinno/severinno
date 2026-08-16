@@ -16,10 +16,21 @@ import {
   selectExpiredSessionSockets,
   extractEmitEventInfo,
   summarizeActiveSessions,
+  recordKickAudit,
+  snapshotKickAudit,
+  parseMaxSessionsPerRole,
+  resolveMaxSessionsPerRole,
+  type KickAuditMap,
   type VerifiedSession,
   type BookingParticipantChecker,
 } from "./security"
 import { createBookingParticipantChecker, type PoolLike } from "./booking-participant"
+import {
+  createSessionLimitNotifier,
+  SESSION_LIMIT_TYPE,
+  SESSION_LIMIT_TITLE,
+  SESSION_LIMIT_BODY,
+} from "./session-notification"
 
 const PORT = 3003
 
@@ -42,12 +53,25 @@ if (!EMIT_TOKEN) {
 }
 
 // ── Session concurrency limit (max simultaneous sockets per user) ─────────
-// When a user joins with more sockets than MAX_SESSIONS_PER_USER, only the
+// When a user joins with more sockets than their role's limit, only the
 // newest ones stay — older sockets are kicked with reason "session_limit"
 // (same fetchSockets sweep as session:revoke, via the pure selector).
-// Default 1 = one active session per user; configurable via env (0/negative
-// are clamped to 1; NaN falls back to 1).
-const MAX_SESSIONS_PER_USER = Math.max(1, Number(process.env.REALTIME_MAX_SESSIONS_PER_USER) || 1)
+//
+// Default 1 = one active session per user. Configuração por ENV estruturado:
+//   REALTIME_MAX_SESSIONS_PER_USER       → fallback global (número simples;
+//                                          0/negativo clamped a 1; NaN → 1)
+//   REALTIME_MAX_SESSIONS_PER_ROLE       → override POR ROLE (JSON):
+//                                          '{"CLIENT":1,"PROVIDER":2,"ADMIN":5}'
+//                                          Roles sem override usam o fallback
+//                                          global; JSON inválido → fallback.
+const DEFAULT_MAX_SESSIONS_PER_USER = Math.max(
+  1,
+  Number(process.env.REALTIME_MAX_SESSIONS_PER_USER) || 1,
+)
+const MAX_SESSIONS_PER_ROLE = parseMaxSessionsPerRole(process.env.REALTIME_MAX_SESSIONS_PER_ROLE)
+if (process.env.REALTIME_MAX_SESSIONS_PER_ROLE && !MAX_SESSIONS_PER_ROLE) {
+  console.warn("[realtime] ⚠️ REALTIME_MAX_SESSIONS_PER_ROLE inválido — usando o default global")
+}
 
 // ── Booking participant checker (message:send full-flow validation) ───────
 // Lazy pg.Pool over DATABASE_URL (docker-secret aware). Fail-closed: without
@@ -78,6 +102,14 @@ const loadBookingPool: () => Promise<PoolLike | null> = () => {
 }
 const isBookingParticipant: BookingParticipantChecker =
   createBookingParticipantChecker(loadBookingPool)
+
+// ── Session-limit in-app notification ───────────────────────────────────────
+// Quando o limite de sessões derruba um socket antigo, persiste uma notificação
+// in-app (type SESSION_LIMIT — lida pelo sino do app via /api/notifications) e
+// emite notification:new para a sala user:{id}, onde o socket NOVO (ainda
+// conectado) mostra o toast e invalida a query do sino. Mesmo pool lazy do
+// booking check; fail-open (kick nunca quebra se o insert falhar).
+const notifySessionLimit = createSessionLimitNotifier(loadBookingPool)
 
 // Allowed CORS origins — restrict to known domains
 const ALLOWED_ORIGINS = [
@@ -261,6 +293,15 @@ const recentEmits: Array<{
   event: string
 }> = []
 
+// ── Kick audit (admin "last kick reason" display) ─────────────────────────
+// Tracks WHY a user's sockets were force-closed (session_limit vs revoke vs
+// session_expired) + the last timestamp + a running count. Pure helpers in
+// security.ts (recordKickAudit/snapshotKickAudit, unit-tested); exposed via
+// GET /sessions (Bearer-protected) so the admin panel can show the reason of
+// the last kick per user — e.g. why a dashboard tab dropped right after
+// opening a second one (session_limit) or after an admin revoke.
+const kickAudit: KickAuditMap = new Map()
+
 function bumpEmitCounter(event: string): void {
   emitCounters.set(event, (emitCounters.get(event) ?? 0) + 1)
 }
@@ -343,21 +384,55 @@ const REVOKE_CLOSE_DELAY_MS = 500
  * reason "session_limit" (event `session:limit` + delayed force-close so the
  * packet flushes — same pattern as session:revoke).
  */
-async function enforceSessionLimit(userId: string, justJoinedSocketId: string): Promise<void> {
+async function enforceSessionLimit(
+  userId: string,
+  role: string,
+  justJoinedSocketId: string,
+): Promise<void> {
   try {
+    // Limite POR ROLE: override estruturado quando presente, senão o default
+    // global. Ex.: clientes 1, providers 2, admins 5 (via JSON no env).
+    const maxSessions = resolveMaxSessionsPerRole(
+      role,
+      MAX_SESSIONS_PER_ROLE,
+      DEFAULT_MAX_SESSIONS_PER_USER,
+    )
     const sockets = await io.fetchSockets()
     const toKick = selectSocketsToKickForSessionLimit(
       sockets,
       userId,
-      MAX_SESSIONS_PER_USER,
+      maxSessions,
       justJoinedSocketId,
     )
     for (const s of toKick) {
-      s.emit("session:limit", { userId, reason: "session_limit" })
+      // Payload inclui o limite por role aplicado (max) — o client/painel
+      // admin pode exibir "limite N" sem conhecer a config do servidor.
+      s.emit("session:limit", { userId, reason: "session_limit", max: maxSessions })
       setTimeout(() => s.disconnect(true), REVOKE_CLOSE_DELAY_MS).unref()
+      recordKickAudit(kickAudit, userId, "session_limit", s.id, new Date().toISOString())
       console.log(
-        `[realtime] session limit: kicked socket ${s.id} for user:${userId} (max ${MAX_SESSIONS_PER_USER})`,
+        `[realtime] session limit: kicked socket ${s.id} for user:${userId} role:${role} (max ${maxSessions})`,
       )
+    }
+
+    // Notificação in-app (1 por evento de kick, não por socket): o usuário vê
+    // "Sua sessão foi encerrada em outro dispositivo" no sino. Best-effort —
+    // sem DB ou erro no insert → apenas log, o kick já aconteceu.
+    if (toKick.length > 0) {
+      const created = await notifySessionLimit(userId)
+      if (created) {
+        // O socket NOVO (que causou o kick) está na sala user:{userId} — recebe
+        // notification:new → toast + invalidação da query do sino no app.
+        io.to(`user:${userId}`).emit("notification:new", {
+          id: created.id,
+          type: SESSION_LIMIT_TYPE,
+          title: SESSION_LIMIT_TITLE,
+          body: SESSION_LIMIT_BODY,
+          read: false,
+          createdAt: created.createdAt,
+        })
+        console.log(`[realtime] session_limit notification created for user:${userId}`)
+      }
     }
   } catch (err) {
     console.error("[realtime] session limit error (best-effort):", err)
@@ -383,6 +458,7 @@ const ttlSweep = setInterval(async () => {
       const userId = s.data.session?.userId ?? "unknown"
       s.emit("session:revoked", { userId, reason: "session_expired" })
       setTimeout(() => s.disconnect(true), REVOKE_CLOSE_DELAY_MS).unref()
+      recordKickAudit(kickAudit, userId, "session_expired", s.id, new Date().toISOString())
       console.log(
         `[realtime] TTL sweep: session expired for user:${userId} — closing socket ${s.id}`,
       )
@@ -415,6 +491,19 @@ function handleSessionRevoke(payload: { userId?: string }): void {
       // ones already got it; a second event is a harmless no-op for the
       // client's idempotent handler).
       for (const s of revocable) s.emit("session:revoked", { userId })
+      // Kick audit: revoke can hit many sockets at once — record ONE entry
+      // per revoke event (count tracks revokes, not sockets). Only record
+      // when a socket was actually force-closed — repo principle: the audit
+      // reflects real events, not attempts.
+      if (revocable.length > 0) {
+        recordKickAudit(
+          kickAudit,
+          userId,
+          "revoke",
+          revocable[0]?.id ?? "",
+          new Date().toISOString(),
+        )
+      }
       // The force-close is DELAYED: engine.io discards buffered packets when
       // a polling transport closes immediately, which would drop the
       // revocation event and leave the client reconnecting with a stale
@@ -490,7 +579,7 @@ io.on("connection", (socket: Socket) => {
         // Session concurrency limit (best-effort, never blocks the join ack).
         // Kicks OLDER sockets of the same user (reason session_limit) keeping
         // only the newest MAX_SESSIONS_PER_USER.
-        enforceSessionLimit(userId, socket.id).catch((err) => {
+        enforceSessionLimit(userId, sess.role, socket.id).catch((err) => {
           console.error("[realtime] session limit enforcement error:", err)
         })
       } catch (err) {
@@ -696,7 +785,16 @@ httpServer.on("request", (req, res) => {
     getActiveSessions()
       .then((sessions) => {
         res.writeHead(200, { "Content-Type": "application/json" })
-        res.end(JSON.stringify({ ok: true, sessions, total: sessions.length }))
+        res.end(
+          JSON.stringify({
+            ok: true,
+            sessions,
+            total: sessions.length,
+            // Motivo do último kick por usuário (session_limit/revoke/expired)
+            // + contagem — consumido pelo painel admin (Bearer-protected).
+            kicks: snapshotKickAudit(kickAudit),
+          }),
+        )
       })
       .catch((err) => {
         console.error("[realtime] /sessions error:", err)

@@ -19,12 +19,14 @@ const mocks = vi.hoisted(() => ({
   mockIndicesExists: vi.fn(),
   mockIndicesCreate: vi.fn(),
   mockIndicesDelete: vi.fn(),
+  clientOptions: [] as unknown[],
 }))
 
 vi.mock("@opensearch-project/opensearch", () => ({
   Client: class {
-    constructor() {
-      // noop
+    constructor(opts?: unknown) {
+      // Captura as options para os testes de timeout do client
+      mocks.clientOptions.push(opts)
     }
     ping = mocks.mockPing
     search = mocks.mockSearch
@@ -90,6 +92,36 @@ beforeEach(() => {
   mocks.mockIndicesExists.mockResolvedValue({ body: false })
   mocks.mockIndicesCreate.mockResolvedValue({ body: { acknowledged: true } })
   mocks.mockIndicesDelete.mockResolvedValue({ body: { acknowledged: true } })
+})
+
+// ===========================================================================
+// Client timeouts (auditoria DATA-TIMEOUTS-AUDIT)
+// ===========================================================================
+
+describe("createClient", () => {
+  beforeEach(() => {
+    mocks.clientOptions.length = 0
+  })
+
+  it("usa requestTimeout 10s + maxRetries 1 (nunca pendura indefinidamente)", () => {
+    const prevEnv = process.env.NODE_ENV
+    ;(process.env as any).NODE_ENV = "production"
+    process.env.OPENSEARCH_URL = "http://localhost:9200"
+
+    const client = searchModule.getClient()
+    expect(client).not.toBeNull()
+
+    const opts = mocks.clientOptions[0] as { requestTimeout?: number; maxRetries?: number }
+    expect(opts).toBeDefined()
+    // connectionTimeout NÃO existe nas ClientOptions do opensearch-js v3.6 —
+    // o requestTimeout cobre a fase de connect (socket timeout do Node setado
+    // antes de conectar). O que se garante aqui é o limite total do request.
+    expect(opts.requestTimeout).toBe(10_000)
+    expect(opts.maxRetries).toBe(1)
+
+    Object.assign(process.env, { NODE_ENV: prevEnv })
+    delete process.env.OPENSEARCH_URL
+  })
 })
 
 // ===========================================================================

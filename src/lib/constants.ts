@@ -142,6 +142,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   MESSAGE: "Nova mensagem",
   REVIEW_RECEIVED: "Nova avaliação",
   WELCOME: "Bem-vindo ao Severinno",
+  SESSION_LIMIT: "Sessão encerrada em outro dispositivo",
 }
 
 // ---------------------------------------------------------------------------

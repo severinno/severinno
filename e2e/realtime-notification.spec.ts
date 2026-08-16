@@ -76,9 +76,10 @@ test.describe.serial("Notificações em Tempo Real", () => {
     // ── Serviço por título ────────────────────────────────────────────
     // Obs: /api/services tem cache Redis de 30s (withCache). A janela de
     // staleness pós-re-seed é FECHADA pelo próprio seed: prisma/seed.ts
-    // invalida "services:*" ao final (invalidateServicesCache, best-effort).
-    // Se o Redis estiver fora no momento do seed, a janela persiste — nesse
-    // caso, espere ~30s antes de rodar o spec.
+    // invalida os padrões do catálogo ao final (invalidateCachePatterns —
+    // services/providers:count/proximity/categories/cat:desc/reviews:recent,
+    // best-effort). Se o Redis estiver fora no momento do seed, a janela
+    // persiste — nesse caso, espere ~30s antes de rodar o spec.
     const servicesRes = await request.get(`/api/services?q=${encodeURIComponent(SERVICE_TITLE)}`)
     expect(servicesRes.ok()).toBeTruthy()
     const services = (await servicesRes.json()) as Array<{

@@ -1,15 +1,14 @@
 import "server-only"
 import logger from "./logger"
+import { envTimeoutSignal } from "./fetch-timeout"
 
 const REALTIME_URL = process.env.REALTIME_URL ?? "http://localhost:3003"
 const EMIT_TOKEN = process.env.REALTIME_EMIT_TOKEN
 // Timeout (ms) do POST /emit. Um realtime que aceita o TCP mas nunca
 // responde (processo travado / sem handler) deixaria o fetch pendurado —
 // travando o logout (destroySession aguarda emitRealtime) e outros fluxos.
-// AbortSignal.timeout() aborta o fetch após o prazo (rejeita com
-// TimeoutError, capturado pelo catch). Guarda contra valores inválidos:
-// Number() → NaN → || 3000 cai no default; negativo/zero → Math.max(1, …).
-const EMIT_TIMEOUT_MS = Math.max(1, Number(process.env.REALTIME_EMIT_TIMEOUT_MS) || 3000)
+// Helper compartilhado (fetch-timeout.ts): AbortSignal.timeout() + guarda
+// contra valores inválidos (NaN → default; zero/negativo → clamp).
 
 export async function emitRealtime<T = Record<string, unknown>>(
   event: string,
@@ -24,7 +23,7 @@ export async function emitRealtime<T = Record<string, unknown>>(
         ...(EMIT_TOKEN ? { Authorization: `Bearer ${EMIT_TOKEN}` } : {}),
       },
       body: JSON.stringify({ event, data }),
-      signal: AbortSignal.timeout(EMIT_TIMEOUT_MS),
+      signal: envTimeoutSignal("REALTIME_EMIT_TIMEOUT_MS", 3000),
     })
   } catch (err) {
     logger.warn({ err, event }, "realtime emit failed")

@@ -33,6 +33,13 @@ type RealtimeSession = {
   joinedAt: string | null
 }
 
+/** Último kick por usuário (session_limit vs revoke vs session_expired). */
+export type RealtimeKickInfo = {
+  reason: "session_limit" | "session_expired" | "revoke"
+  at: string
+  count: number
+}
+
 export type AdminRealtimeSessionsResponse = {
   ok: boolean
   /** userId → sockets ativos (sessões revogáveis). */
@@ -40,6 +47,17 @@ export type AdminRealtimeSessionsResponse = {
   /** Soma de sockets ativos (presença única de usuários online). */
   totalSockets: number
   onlineUsers: number
+  /** Motivo do último kick por usuário (ex.: conflito de sessão). */
+  kicks: Record<string, RealtimeKickInfo>
+}
+
+/** Resposta vazia de degradação graciosa (realtime fora do ar / sem token). */
+const EMPTY: AdminRealtimeSessionsResponse = {
+  ok: false,
+  sessions: {},
+  totalSockets: 0,
+  onlineUsers: 0,
+  kicks: {},
 }
 
 export async function GET(): Promise<NextResponse<AdminRealtimeSessionsResponse>> {
@@ -49,7 +67,7 @@ export async function GET(): Promise<NextResponse<AdminRealtimeSessionsResponse>
     if (!EMIT_TOKEN) {
       // Fail-closed no mini-service: sem token não há como consultar. A tabela
       // admin segue sem indicador (degradação graciosa), nunca quebra.
-      return NextResponse.json({ ok: false, sessions: {}, totalSockets: 0, onlineUsers: 0 })
+      return NextResponse.json(EMPTY)
     }
 
     const res = await fetch(`${REALTIME_URL}/sessions`, {
@@ -59,13 +77,14 @@ export async function GET(): Promise<NextResponse<AdminRealtimeSessionsResponse>
     })
 
     if (!res.ok) {
-      return NextResponse.json({ ok: false, sessions: {}, totalSockets: 0, onlineUsers: 0 })
+      return NextResponse.json(EMPTY)
     }
 
     const data = (await res.json()) as {
       ok?: boolean
       sessions?: RealtimeSession[]
       total?: number
+      kicks?: Record<string, RealtimeKickInfo>
     }
     const list = data.sessions ?? []
 
@@ -76,11 +95,17 @@ export async function GET(): Promise<NextResponse<AdminRealtimeSessionsResponse>
     }
     const onlineUsers = Object.keys(sessions).length
 
-    return NextResponse.json({ ok: true, sessions, totalSockets: list.length, onlineUsers })
+    return NextResponse.json({
+      ok: true,
+      sessions,
+      totalSockets: list.length,
+      onlineUsers,
+      kicks: data.kicks ?? {},
+    })
   } catch (e) {
     // Degradação graciosa: realtime fora do ar → sem indicador, sem erro 500.
     if (e instanceof Error && e.name === "TimeoutError") {
-      return NextResponse.json({ ok: false, sessions: {}, totalSockets: 0, onlineUsers: 0 })
+      return NextResponse.json(EMPTY)
     }
     const err = handleError(e) as NextResponse<unknown>
     return err as NextResponse<AdminRealtimeSessionsResponse>

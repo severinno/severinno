@@ -55,29 +55,6 @@ export async function PATCH(request: Request, { params }: Params) {
   }
 }
 
-// ADMIN: revoke the user's realtime sessions WITHOUT deactivating the
-// account. Same mechanism as logout/deactivation (emitRealtime
-// session:revoke → the mini-service force-closes the user's sockets) but
-// the user stays active — useful before an admin deactivates an account
-// to check who would be affected, or to force a re-login.
-export async function POST(_request: Request, { params }: Params) {
-  try {
-    await requireRole("ADMIN")
-    const { id } = await params
-
-    const user = await db.user.findUnique({
-      where: { id },
-      select: { id: true, role: true },
-    })
-    if (!user) throw notFound("Usuário não encontrado")
-
-    await revokeUserSessions(id)
-    return NextResponse.json({ ok: true, revoked: true })
-  } catch (e) {
-    return handleError(e)
-  }
-}
-
 // ADMIN: delete user (cascade per schema)
 export async function DELETE(_request: Request, { params }: Params) {
   try {

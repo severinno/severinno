@@ -24,7 +24,19 @@ declare const globalThis: { __opensearch?: Client }
 function createClient(): Client {
   return new Client({
     node: OPENSEARCH_URL,
+    // Timeout total do request (10s). Cobre TAMBÉM a fase de connect: o
+    // opensearch-js v3.6 NÃO possui a option `connectionTimeout` (verificado
+    // nas ClientOptions instaladas — só requestTimeout/maxRetries/agent); o
+    // Transport repassa o timeout ao http.request do Node, que seta o socket
+    // timeout ANTES de conectar. Um OpenSearch que aceita o TCP mas nunca
+    // responde (ou um connect pendurado) dispara TimeoutError em 10s.
     requestTimeout: 10_000,
+    // Retry explícito (default 3): limitado — pior caso ~20s, nunca infinito.
+    // O search falha aberto (devolve itens vazios); o consumer de reindex usa a
+    // mesma fila one-shot (linhas processadas são deletadas, sem requeue), então
+    // retry 1 cobre blips transitórios sem multiplicar a latência de um serviço
+    // travado — o meio-termo entre resiliência e fail-fast.
+    maxRetries: 1,
     // Single-node dev mode — no auth by default
     ...(process.env.OPENSEARCH_USERNAME
       ? {

@@ -25,6 +25,12 @@ import {
   selectExpiredSessionSockets,
   extractEmitEventInfo,
   summarizeActiveSessions,
+  recordKickAudit,
+  snapshotKickAudit,
+  KICK_AUDIT_MAX,
+  parseMaxSessionsPerRole,
+  resolveMaxSessionsPerRole,
+  type KickAuditMap,
   type BookingParticipantChecker,
   type VerifiedSession,
 } from "../../../mini-services/realtime/security"
@@ -518,6 +524,126 @@ describe("selectSocketsToKickForSessionLimit", () => {
     const [kicked] = selectSocketsToKickForSessionLimit([older, newer], "user-1", 1)
     kicked.disconnect(true)
     expect(older.disconnect).toHaveBeenCalledWith(true)
+  })
+})
+
+describe("per-role session limits (parseMaxSessionsPerRole + resolveMaxSessionsPerRole)", () => {
+  it("parses a structured JSON env into a role → limit map (normalized UPPERCASE)", () => {
+    const map = parseMaxSessionsPerRole('{"CLIENT":1,"provider":2,"Admin":5}')
+    expect(map).toEqual({ CLIENT: 1, PROVIDER: 2, ADMIN: 5 })
+  })
+
+  it("tolerates string numbers and floors fractional values", () => {
+    const map = parseMaxSessionsPerRole('{"CLIENT":"3","PROVIDER":2.9}')
+    expect(map).toEqual({ CLIENT: 3, PROVIDER: 2 })
+  })
+
+  it("returns undefined for unset/empty/whitespace", () => {
+    expect(parseMaxSessionsPerRole(undefined)).toBeUndefined()
+    expect(parseMaxSessionsPerRole("")).toBeUndefined()
+    expect(parseMaxSessionsPerRole("   ")).toBeUndefined()
+  })
+
+  it("returns undefined for invalid JSON / non-object / arrays", () => {
+    expect(parseMaxSessionsPerRole("not json")).toBeUndefined()
+    expect(parseMaxSessionsPerRole("[1,2]")).toBeUndefined()
+    expect(parseMaxSessionsPerRole("42")).toBeUndefined()
+  })
+
+  it("drops invalid entries (≤ 0, NaN, unknown types) — all-invalid → undefined", () => {
+    expect(parseMaxSessionsPerRole('{"CLIENT":0,"PROVIDER":-2}')).toBeUndefined()
+    expect(parseMaxSessionsPerRole('{"CLIENT":1,"PROVIDER":0}')).toEqual({ CLIENT: 1 })
+    expect(parseMaxSessionsPerRole('{"CLIENT":null}')).toBeUndefined()
+    expect(parseMaxSessionsPerRole('{"CLIENT":"abc"}')).toBeUndefined()
+  })
+
+  it("resolves the per-role override, falling back to the global default", () => {
+    const perRole = { CLIENT: 1, PROVIDER: 2, ADMIN: 5 }
+    expect(resolveMaxSessionsPerRole("PROVIDER", perRole, 1)).toBe(2)
+    expect(resolveMaxSessionsPerRole("provider", perRole, 1)).toBe(2) // case-insensitive
+    expect(resolveMaxSessionsPerRole("ADMIN", perRole, 1)).toBe(5)
+    // Role sem override → fallback global.
+    expect(resolveMaxSessionsPerRole("MODERATOR", perRole, 1)).toBe(1)
+  })
+
+  it("falls back when no per-role map, role missing, or map has no entry", () => {
+    expect(resolveMaxSessionsPerRole("CLIENT", undefined, 3)).toBe(3)
+    expect(resolveMaxSessionsPerRole(undefined, { CLIENT: 1 }, 3)).toBe(3)
+    expect(resolveMaxSessionsPerRole("CLIENT", {}, 3)).toBe(3)
+  })
+
+  it("clamps the fallback to ≥ 1 (misconfig can never disable the limit)", () => {
+    expect(resolveMaxSessionsPerRole("CLIENT", undefined, 0)).toBe(1)
+    expect(resolveMaxSessionsPerRole("CLIENT", undefined, -5)).toBe(1)
+    expect(resolveMaxSessionsPerRole("CLIENT", undefined, NaN)).toBe(1)
+  })
+})
+
+describe("kick audit (recordKickAudit + snapshotKickAudit)", () => {
+  it("records the latest reason per user with a running count", () => {
+    const audit: KickAuditMap = new Map()
+    recordKickAudit(audit, "u1", "session_limit", "sock-1", "2026-08-16T10:00:00.000Z")
+    recordKickAudit(audit, "u1", "revoke", "sock-2", "2026-08-16T10:05:00.000Z")
+
+    expect(audit.get("u1")).toEqual({
+      reason: "revoke",
+      at: "2026-08-16T10:05:00.000Z",
+      socketId: "sock-2",
+      count: 2,
+    })
+    expect(snapshotKickAudit(audit)).toEqual({
+      u1: { reason: "revoke", at: "2026-08-16T10:05:00.000Z", count: 2 },
+    })
+  })
+
+  it("keeps the most recent reason (session_limit after revoke, etc.)", () => {
+    const audit: KickAuditMap = new Map()
+    recordKickAudit(audit, "u2", "session_expired", "sock-3", "2026-08-16T09:00:00.000Z")
+    recordKickAudit(audit, "u2", "session_limit", "sock-4", "2026-08-16T09:01:00.000Z")
+
+    const snapshot = snapshotKickAudit(audit)
+    expect(snapshot.u2?.reason).toBe("session_limit")
+    expect(snapshot.u2?.count).toBe(2)
+    // O snapshot NÃO expõe o socketId (detalhe de debug interno).
+    expect("socketId" in (snapshot.u2 ?? {})).toBe(false)
+  })
+
+  it("ignores empty/unknown userIds", () => {
+    const audit: KickAuditMap = new Map()
+    recordKickAudit(audit, "", "revoke", "sock-5", "2026-08-16T10:00:00.000Z")
+    expect(audit.size).toBe(0)
+  })
+
+  it("evicts the oldest user when the cap is exceeded", () => {
+    const audit: KickAuditMap = new Map()
+    // Cap pequeno (3) para o teste não depender do default (500).
+    for (let i = 1; i <= 4; i++) {
+      recordKickAudit(audit, `u${i}`, "session_limit", `s-${i}`, "2026-08-16T10:00:00.000Z", 3)
+    }
+    expect(audit.size).toBe(3)
+    // O mais antigo (u1) foi evictado; os 3 últimos permanecem.
+    expect(audit.has("u1")).toBe(false)
+    expect(audit.has("u2")).toBe(true)
+    expect(audit.has("u3")).toBe(true)
+    expect(audit.has("u4")).toBe(true)
+    // Re-inserting u1 evicts u2 (FIFO: Map.set em chave NOVA insere no fim;
+    // set em chave existente NÃO move a ordem — eviction é por primeira
+    // inserção, não por último uso).
+    recordKickAudit(audit, "u1", "revoke", "s-1", "2026-08-16T10:01:00.000Z", 3)
+    expect(audit.has("u2")).toBe(false)
+    expect(audit.has("u1")).toBe(true)
+    expect(KICK_AUDIT_MAX).toBe(500)
+  })
+
+  it("counts per user independently", () => {
+    const audit: KickAuditMap = new Map()
+    recordKickAudit(audit, "u-a", "revoke", "s-a", "2026-08-16T10:00:00.000Z")
+    recordKickAudit(audit, "u-b", "session_expired", "s-b", "2026-08-16T10:00:00.000Z")
+    recordKickAudit(audit, "u-a", "revoke", "s-a2", "2026-08-16T10:01:00.000Z")
+    const snapshot = snapshotKickAudit(audit)
+    expect(snapshot["u-a"]?.count).toBe(2)
+    expect(snapshot["u-b"]?.count).toBe(1)
+    expect(snapshot["u-b"]?.reason).toBe("session_expired")
   })
 })
 

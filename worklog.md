@@ -1839,3 +1839,40 @@ Work Log:
 Stage Summary:
 
 - **Alterado**: worklog.md (registro de auditoria do diagnóstico + decisão).
+
+## SEED-CACHE-PATTERNS — invalidação pós-seed de TODOS os caches do catálogo
+
+Task: Estender a invalidação pós-seed aos demais prefixes de cache que ficam
+stale após um re-seed (providers:* da vitrine, proximidade geo, categorias) —
+mapear todas as chaves withCache e adicioná-las à invalidação do seed como um
+padrão genérico invalidateCachePatterns().
+
+- Mapeamento completo das chaves withCache do app:
+  - **STALE pós-seed (incluídos)**: services:* (30s TTL), providers:count:*
+    (radius-expansion, 120s), proximity:* (postgis, 60s), categories:*
+    (categorias da vitrine), cat:desc:* (descendentes de categoria, 10min),
+    reviews:recent:* (depoimentos, 60s).
+  - **Excluídos de propósito (documentado no seed)**: geo:* (cep/search/
+    reverse — cacheiam API EXTERNA ViaCEP/Nominatim, não dados do seed;
+    edge conhecido: fallback local fica stale mas auto-expira 7d/24h),
+    user:active:/realtime:revoked:/push:payload:/cron:cooldown:/
+    geo:metrics: (estado de sessão/push/ops — IDs órfãos inofensivos).
+- prisma/seed.ts: invalidateServicesCache() → invalidateCachePatterns(patterns[])
+  genérico + constante CACHE_PATTERNS (6 padrões, readonly). Mesmo motor
+  cluster-aware (SCAN por master + DEL, evitando CROSSSLOT) e standalone
+  (KEYS + DEL) via ioredis puro — o seed standalone NÃO pode importar
+  @/lib/redis (cadeia server-only). Best-effort: Redis fora → loga aviso e
+  não falha o seed. Nit aplicado: cluster.nodes("master") hoisted para fora
+  do loop de padrões.
+- e2e/realtime-notification.spec.ts: comentário atualizado (referência ao
+  nome novo e aos 6 padrões).
+- Smoke real (Redis 6380): semeou 1 chave fake em cada um dos 6 padrões
+  (PRE_EXIST=6) → rodou bun prisma/seed.ts → os 6 padrões invalidados
+  (1 chave cada) e POST_EXIST=0.
+- Gap pré-existente de ambiente descoberto no smoke: a tabela
+  search_reindex_queue (migration custom 20260724140000_auto_reindex_triggers)
+  nunca tinha sido aplicada ao banco dev (criado via db push) — o wipe do
+  seed falhava com P2021. Corrigido com `prisma db execute` da migration
+  (fora do escopo do delta).
+- Validação: typecheck 0, prettier 0, eslint 0, reviewer 2 rodadas aprovado
+  (nits de hoist + edge geo:* documentado, ambos aplicados).

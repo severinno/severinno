@@ -15,8 +15,15 @@
 import { PrismaClient } from "@prisma/client"
 import { getClient, indexDocument, deleteDocument, INDICES } from "../lib/search"
 import logger from "../lib/logger"
+import { buildPrismaDatasourceUrl } from "../lib/prisma-timeout"
 
-const db = new PrismaClient()
+// Timeouts do pool via connection string (statement_timeout etc.) — sem eles,
+// uma query travada no Postgres pendura o poll do worker indefinidamente.
+const db = new PrismaClient({
+  ...(process.env.DATABASE_URL
+    ? { datasourceUrl: buildPrismaDatasourceUrl(process.env.DATABASE_URL) }
+    : {}),
+})
 const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS) || 5_000
 const BATCH_SIZE = Number(process.env.BATCH_SIZE) || 50
 

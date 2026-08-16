@@ -79,6 +79,9 @@ services:
       REALTIME_EMIT_TOKEN: ${REALTIME_EMIT_TOKEN:-}
       # Limite de sessoes simultaneas por usuario (0/negativo = 1; NaN = 1).
       REALTIME_MAX_SESSIONS_PER_USER: ${REALTIME_MAX_SESSIONS_PER_USER:-1}
+      # Override POR ROLE (JSON): {"CLIENT":1,"PROVIDER":2,"ADMIN":5}.
+      # Roles sem override usam o default global acima; JSON invalido → default.
+      REALTIME_MAX_SESSIONS_PER_ROLE: ${REALTIME_MAX_SESSIONS_PER_ROLE:-}
       DATABASE_URL: ${DATABASE_URL:-postgresql://severinno:severinno@postgis:5432/severinno}
     command: bun --hot index.ts
     depends_on:

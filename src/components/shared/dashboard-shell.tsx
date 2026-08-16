@@ -156,6 +156,7 @@ const NOTIFICATION_ROUTES: Record<string, string> = {
   PROMOTION: "vitrine",
   REMINDER: "client.bookings",
   UPDATE: "client.dashboard",
+  SESSION_LIMIT: "client.dashboard",
 }
 
 /** Agrupa notificações por período: Hoje, Ontem, Esta semana, Este mês, Anterior */

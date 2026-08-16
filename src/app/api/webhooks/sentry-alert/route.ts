@@ -34,6 +34,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import logger from "@/lib/logger"
+import { resolveTimeoutMs } from "@/lib/fetch-timeout"
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -169,10 +170,10 @@ function formatMessage(payload: SentryWebhookPayload, projectName: string): Aler
 // ── Timeout dos fetches de alerta ────────────────────────────────────────
 // Um Discord/Telegram que aceita o TCP mas nunca responde deixaria o
 // request pendurado — atrasando o 200 ao GlitchTip (o POST do webhook só
-// responde após Promise.allSettled). AbortSignal.timeout() aborta após o
-// prazo (rejeição capturada no allSettled). Guarda contra valores inválidos:
-// NaN → default; negativo/zero → Math.max(1).
-const ALERT_TIMEOUT_MS = Math.max(1, Number(process.env.ALERT_WEBHOOK_TIMEOUT_MS) || 5_000)
+// responde após Promise.allSettled). Helper compartilhado (fetch-timeout.ts):
+// guarda contra valores inválidos (NaN → default; zero/negativo → clamp).
+// Usado em 2 fetches (Discord + Telegram) — resolve via resolveTimeoutMs.
+const ALERT_TIMEOUT_MS = resolveTimeoutMs("ALERT_WEBHOOK_TIMEOUT_MS", 5_000)
 
 async function sendDiscord(msg: AlertMessage): Promise<void> {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL
