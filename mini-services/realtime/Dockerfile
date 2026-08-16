@@ -16,7 +16,7 @@ COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production
 
 # Copy source
-COPY index.ts ./
+COPY index.ts security.ts booking-participant.ts ./
 
 EXPOSE 3003
 

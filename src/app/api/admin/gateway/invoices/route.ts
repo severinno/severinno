@@ -5,6 +5,11 @@ import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import logger from "@/lib/logger"
 
 const LY_BASE = process.env.LYTEX_BASE_URL ?? "https://api-pay.lytex.com.br"
+// Timeout (ms) dos fetches para a API v2 Lytex. Um gateway que aceita o TCP
+// mas nunca responde deixaria o request pendurado — travando o GET admin.
+// AbortSignal.timeout() aborta após o prazo (TimeoutError → handleError).
+// Guarda contra valores inválidos: NaN → default; negativo/zero → Math.max(1).
+const LYTEX_GATEWAY_TIMEOUT_MS = Math.max(1, Number(process.env.LYTEX_TIMEOUT_MS) || 10_000)
 
 let cachedToken: { token: string; expiresAt: number } | null = null
 
@@ -18,6 +23,7 @@ async function getToken(): Promise<string> {
       clientId: process.env.LYTEX_CLIENT_ID ?? "",
       clientSecret: process.env.LYTEX_CLIENT_SECRET ?? "",
     }),
+    signal: AbortSignal.timeout(LYTEX_GATEWAY_TIMEOUT_MS),
   })
 
   if (!res.ok) throw new Error(`Lytex auth error: ${res.status}`)
@@ -41,6 +47,7 @@ export async function GET(request: Request) {
 
     const res = await fetch(`${LY_BASE}/v2/invoices?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(LYTEX_GATEWAY_TIMEOUT_MS),
     })
 
     if (!res.ok) {

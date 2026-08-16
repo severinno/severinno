@@ -130,6 +130,9 @@ function getSocket(): Socket | null {
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
     timeout: 10000,
+    // Envia o cookie httpOnly severinno_session no handshake para que o
+    // realtime mini-service valide a sessão (join/eventos).
+    withCredentials: true,
   })
   return socketRef
 }
@@ -179,6 +182,15 @@ export function useRealtime(): UseRealtimeResult {
       setIsConnected(true)
       setStatus("connected")
     }
+    // Server-side session revocation (logout via destroySession in any tab):
+    // terminate this socket and reset the singleton so it does not keep
+    // reconnecting with a stale (deleted) session cookie.
+    const onSessionRevoked = () => {
+      if (socketRef === s) socketRef = null
+      s.disconnect()
+      setIsConnected(false)
+      setStatus("disconnected")
+    }
     // Sync component state with the singleton socket's current status
     // (e.g. when reused across mounts / hot reload). Wrapped in a function so
     // the sync isn't a direct setState call in the effect body.
@@ -196,6 +208,7 @@ export function useRealtime(): UseRealtimeResult {
     s.on("connect_error", onConnectError)
     s.on("reconnect_attempt", onReconnectAttempt)
     s.on("reconnect", onReconnect)
+    s.on("session:revoked", onSessionRevoked)
 
     syncFromSocket()
 
@@ -205,6 +218,7 @@ export function useRealtime(): UseRealtimeResult {
       s.off("connect_error", onConnectError)
       s.off("reconnect_attempt", onReconnectAttempt)
       s.off("reconnect", onReconnect)
+      s.off("session:revoked", onSessionRevoked)
     }
   }, [])
 

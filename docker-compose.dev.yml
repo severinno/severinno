@@ -70,6 +70,14 @@ services:
     volumes:
       - ./mini-services/realtime:/app
       - /app/node_modules
+    environment:
+      # Seguranca: SESSION_SECRET valida o cookie HMAC no join e
+      # REALTIME_EMIT_TOKEN protege o POST /emit (fail closed sem ambos).
+      # DATABASE_URL habilita a validacao de participante real do booking
+      # no message:send (fail closed sem ela).
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      REALTIME_EMIT_TOKEN: ${REALTIME_EMIT_TOKEN:-}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://severinno:severinno@postgis:5432/severinno}
     command: bun --hot index.ts
     depends_on:
       redis:
@@ -77,7 +85,7 @@ services:
 
   # ── OpenSearch (Full-text search — Apache 2.0) ──────────────────────────
   opensearch:
-    image: opensearchproject/opensearch:2.19
+    image: opensearchproject/opensearch:2.19.0
     environment:
       discovery.type: single-node
       DISABLE_INSTALL_DEMO_CONFIG: "true"

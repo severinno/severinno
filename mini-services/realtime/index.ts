@@ -1,4 +1,3 @@
- 
 // Severinno Marketplace SaaS — Realtime Mini-Service (Fase 1 / MVP)
 // Socket.io server on port 3003, path "/" (required by Caddy gateway).
 // The gateway selects this service via the `?XTransformPort=3003` query
@@ -7,8 +6,66 @@
 import { createServer } from "http"
 import { Server, Socket } from "socket.io"
 import { Server as EngineServer } from "engine.io"
+import {
+  readSecret,
+  verifySessionCookie,
+  verifyEmitToken,
+  authorizeClientEvent,
+  filterSocketsBySessionUserId,
+  type VerifiedSession,
+  type BookingParticipantChecker,
+} from "./security"
+import { createBookingParticipantChecker, type PoolLike } from "./booking-participant"
 
 const PORT = 3003
+
+// ── Security env (fail closed when missing) ─────────────────────────────
+// SESSION_SECRET       — verifies the HMAC-signed session cookie (same
+//                        secret used by src/lib/auth.ts in the Next.js app)
+// REALTIME_EMIT_TOKEN  — Bearer token required on POST /emit (server→server
+//                        bridge used by src/lib/realtime-client.ts)
+const SESSION_SECRET = readSecret("SESSION_SECRET")
+const EMIT_TOKEN = readSecret("REALTIME_EMIT_TOKEN")
+if (!SESSION_SECRET) {
+  console.warn(
+    "[realtime] ⚠️ SESSION_SECRET not configured — all joins will be rejected (fail closed)",
+  )
+}
+if (!EMIT_TOKEN) {
+  console.warn(
+    "[realtime] ⚠️ REALTIME_EMIT_TOKEN not configured — POST /emit will be rejected (fail closed)",
+  )
+}
+
+// ── Booking participant checker (message:send full-flow validation) ───────
+// Lazy pg.Pool over DATABASE_URL (docker-secret aware). Fail-closed: without
+// DATABASE_URL, messages carrying a bookingId are DENIED (can't verify real
+// participation — the booking membership is the security boundary, not the
+// self-declared fromId). PoolLoader is duck-typed so this module has zero
+// pg imports (unit-tested in isolation via injected fake pool).
+// Promise-memoized so concurrent booking-scoped messages share one lazy pool.
+let bookingPoolPromise: Promise<PoolLike | null> | null = null
+const loadBookingPool: () => Promise<PoolLike | null> = () => {
+  bookingPoolPromise ??= (async () => {
+    const url = readSecret("DATABASE_URL")
+    if (!url) {
+      console.warn(
+        "[realtime] ⚠️ DATABASE_URL not configured — message:send with bookingId will be DENIED (fail closed)",
+      )
+      return null
+    }
+    try {
+      const { Pool } = await import("pg")
+      return new Pool({ connectionString: url, max: 2 })
+    } catch (err) {
+      console.error("[realtime] could not load pg for booking checks:", err)
+      return null
+    }
+  })()
+  return bookingPoolPromise
+}
+const isBookingParticipant: BookingParticipantChecker =
+  createBookingParticipantChecker(loadBookingPool)
 
 // Allowed CORS origins — restrict to known domains
 const ALLOWED_ORIGINS = [
@@ -170,35 +227,196 @@ function handleNotificationNew(payload: { toId: string; notification?: unknown }
   console.log(`[realtime] notification:new -> user:${toId}`)
 }
 
+// ── Active-session tracking (admin "who is online" indicator) ─────────────
+// Session presence is derived live from the sockets' verified handshake
+// session (socket.data.session — fixed at connect time, matching the
+// revocation sweep) AND the join timestamp captured when the client joins
+// user:{id}. A socket connected with a valid cookie but never joined is NOT
+// counted: the indicator reflects who is actually in the user:{id} room
+// (i.e. using the platform), not merely who holds a session cookie.
+// No separate registry to keep in sync: fetchSockets() is the source of
+// truth, so a socket that died without a clean disconnect is excluded.
+interface SessionSocketMeta {
+  userId: string
+  role: string
+  socketId: string
+  connectedAt: string
+  joinedAt: string
+}
+
+/**
+ * Snapshot of all active sessions (sockets with a verified session AND a
+ * join in user:{id}). Purely derived — no mutable registry.
+ */
+async function getActiveSessions(): Promise<SessionSocketMeta[]> {
+  const sockets = await io.fetchSockets()
+  const out: SessionSocketMeta[] = []
+  for (const s of sockets) {
+    const session = s.data?.session as VerifiedSession | null
+    const joinedAt = s.data?.joinedAt as string | null | undefined
+    if (!session || !joinedAt) continue // not verified OR not joined → offline
+    out.push({
+      userId: session.userId,
+      role: session.role,
+      socketId: s.id,
+      connectedAt: (s.handshake?.time as string | undefined) ?? new Date().toISOString(),
+      joinedAt,
+    })
+  }
+  return out
+}
+
+const REVOKE_CLOSE_DELAY_MS = 500
+
+function handleSessionRevoke(payload: { userId?: string }): void {
+  const { userId } = payload || {}
+  if (!userId) return
+  const room = `user:${userId}`
+  // Server-side session revocation (logout via destroySession). Notify the
+  // user's sockets so clients can reset their local state, then force-close
+  // them so a stale socket can't keep receiving room events after logout.
+  io.to(room).emit("session:revoked", { userId })
+  // Hardened: the room broadcast only reaches sockets that JOINED. A socket
+  // connected with a valid cookie but never joined (or between connect and
+  // join) has NO room membership — sweep ALL connected sockets via
+  // io.fetchSockets() and match by the verified session fixed at handshake
+  // (socket.data.session), so every socket of the revoked user is notified
+  // AND force-closed, not just the joined ones.
+  io.fetchSockets()
+    .then((sockets) => {
+      const revocable = filterSocketsBySessionUserId(sockets, userId)
+      // Direct notify for sockets the room broadcast can't reach (joined
+      // ones already got it; a second event is a harmless no-op for the
+      // client's idempotent handler).
+      for (const s of revocable) s.emit("session:revoked", { userId })
+      // The force-close is DELAYED: engine.io discards buffered packets when
+      // a polling transport closes immediately, which would drop the
+      // revocation event and leave the client reconnecting with a stale
+      // session. Waiting a beat lets the packet flush to every transport
+      // first (fail-safe: the client's own disconnect on session:revoked
+      // makes this a no-op otherwise).
+      setTimeout(() => {
+        for (const s of revocable) s.disconnect(true)
+      }, REVOKE_CLOSE_DELAY_MS).unref()
+      console.log(
+        `[realtime] session revoked for user:${userId} — ${revocable.length} socket(s) matched via fetchSockets (incl. non-joined)`,
+      )
+    })
+    .catch((err) => {
+      console.error("[realtime] session:revoke fetchSockets error:", err)
+      // Fallback: room-based disconnect still covers the joined sockets even
+      // if the sweep fails (e.g. adapter without fetchSockets support).
+      setTimeout(() => {
+        io.in(room).disconnectSockets(true)
+      }, REVOKE_CLOSE_DELAY_MS).unref()
+    })
+}
+
 // ---------- Connection handling ----------
 io.on("connection", (socket: Socket) => {
   console.log(`[realtime] socket connected: ${socket.id}`)
 
+  // Verify the HMAC-signed session cookie once, at handshake time. The
+  // httpOnly cookie is sent by the browser with the handshake (withCredentials
+  // on the client + credentials CORS), so the session is fixed per socket.
+  const session: VerifiedSession | null = verifySessionCookie(
+    socket.handshake.headers.cookie,
+    SESSION_SECRET,
+  )
+  socket.data.session = session
+  if (session) {
+    console.log(
+      `[realtime] ${socket.id} verified session for user:${session.userId} role:${session.role}`,
+    )
+  } else {
+    console.warn(
+      `[realtime] ${socket.id} has no valid session — join and client events will be rejected`,
+    )
+  }
+
+  // Require a verified session matching the join payload. Prevents any client
+  // from subscribing to another user's rooms (user:{userId} / role:{role}).
   // join { userId, role } -> join rooms user:{userId} and role:{role}
-  socket.on("join", (payload: JoinPayload, ack?: (res: { ok: boolean }) => void) => {
-    try {
-      const { userId, role } = payload || ({} as JoinPayload)
-      if (!userId || !role) {
-        ack?.({ ok: false } as any)
-        return
+  socket.on(
+    "join",
+    (payload: JoinPayload, ack?: (res: { ok: boolean; error?: string }) => void) => {
+      try {
+        const { userId, role } = payload || ({} as JoinPayload)
+        if (!userId || !role) {
+          ack?.({ ok: false, error: "invalid payload" } as any)
+          return
+        }
+        const sess = socket.data.session as VerifiedSession | null
+        if (!sess || sess.userId !== userId || sess.role.toLowerCase() !== role.toLowerCase()) {
+          console.warn(
+            `[realtime] join DENIED for ${socket.id}: userId=${userId} role=${role} (session: ${sess ? sess.userId + "/" + sess.role : "none"})`,
+          )
+          ack?.({ ok: false, error: "UNAUTHORIZED" } as any)
+          return
+        }
+        socket.join(`user:${userId}`)
+        socket.join(`role:${role}`)
+        socket.data.userId = userId
+        socket.data.role = role
+        socket.data.joinedAt = new Date().toISOString()
+        console.log(`[realtime] ${socket.id} joined user:${userId} role:${role}`)
+        ack?.({ ok: true })
+      } catch (err) {
+        console.error("[realtime] join error:", err)
+        ack?.({ ok: false, error: "internal" } as any)
       }
-      socket.join(`user:${userId}`)
-      socket.join(`role:${role}`)
-      socket.data.userId = userId
-      socket.data.role = role
-      console.log(`[realtime] ${socket.id} joined user:${userId} role:${role}`)
-      ack?.({ ok: true })
+    },
+  )
+
+  // Client-emitted broadcast events are gated via the extracted pure
+  // authorizeClientEvent (security.ts): verified session + identity match
+  // (fromIds). message:send additionally validates REAL booking membership
+  // (bookingId participant) via the injected pg-backed checker — a client
+  // cannot claim a booking it doesn't belong to. The server-side /emit bridge
+  // is the trusted path (Bearer-protected) and skips client auth.
+  const requireSession = async (
+    event: string,
+    fromIds: string[],
+    bookingId?: string,
+    toId?: string,
+  ): Promise<boolean> => {
+    try {
+      const result = await authorizeClientEvent({
+        session: socket.data.session as VerifiedSession | null,
+        fromIds,
+        bookingId: bookingId || undefined,
+        toId: toId || undefined,
+        // authorizeClientEvent only consults the resolver when bookingId is
+        // present, so passing it unconditionally is safe (no extra DB hit).
+        isBookingParticipant,
+      })
+      if (!result.ok) {
+        console.warn(
+          `[realtime] ${event} DENIED for ${socket.id} (${result.reason}): userId=${
+            (socket.data.session as VerifiedSession | null)?.userId ?? "none"
+          } bookingId=${bookingId ?? "-"}`,
+        )
+      }
+      return result.ok
     } catch (err) {
-      console.error("[realtime] join error:", err)
-      ack?.({ ok: false } as any)
+      // Nunca deixa uma rejeição escapar sem handler (fail-closed): um resolver
+      // de participante com bug vira deny silencioso em vez de unhandled rejection.
+      console.error(`[realtime] ${event} auth error for ${socket.id}:`, err)
+      return false
     }
-  })
+  }
 
   // message:send { fromId, toId, content, bookingId? }
   // -> emit message:new (with id + timestamp) and notification:new to user:{toId}
-  socket.on("message:send", (payload: MessageSendPayload) => {
+  // Full-flow validation: session + fromId + (bookingId ⇒ real participant).
+  socket.on("message:send", async (payload: MessageSendPayload) => {
     try {
-      handleMessageSend(payload)
+      const p = payload || ({} as MessageSendPayload)
+      // Full-flow validation: session + fromId + (bookingId ⇒ remetente E
+      // destinatário são participantes reais do booking).
+      if (await requireSession("message:send", p.fromId ? [p.fromId] : [], p.bookingId, p.toId)) {
+        handleMessageSend(p)
+      }
     } catch (err) {
       console.error("[realtime] message:send error:", err)
     }
@@ -206,9 +424,12 @@ io.on("connection", (socket: Socket) => {
 
   // booking:update { bookingId, clientId, providerId, status }
   // -> emit booking:updated to both user:{clientId} and user:{providerId}
-  socket.on("booking:update", (payload: BookingUpdatePayload) => {
+  socket.on("booking:update", async (payload: BookingUpdatePayload) => {
     try {
-      handleBookingUpdate(payload)
+      const p = payload || ({} as BookingUpdatePayload)
+      if (await requireSession("booking:update", [p.clientId, p.providerId].filter(Boolean))) {
+        handleBookingUpdate(p)
+      }
     } catch (err) {
       console.error("[realtime] booking:update error:", err)
     }
@@ -216,9 +437,12 @@ io.on("connection", (socket: Socket) => {
 
   // quote:update { quoteId, clientId, providerId, status }
   // -> emit quote:updated to both user:{clientId} and user:{providerId}
-  socket.on("quote:update", (payload: QuoteUpdatePayload) => {
+  socket.on("quote:update", async (payload: QuoteUpdatePayload) => {
     try {
-      handleQuoteUpdate(payload)
+      const p = payload || ({} as QuoteUpdatePayload)
+      if (await requireSession("quote:update", [p.clientId, p.providerId].filter(Boolean))) {
+        handleQuoteUpdate(p)
+      }
     } catch (err) {
       console.error("[realtime] quote:update error:", err)
     }
@@ -226,9 +450,12 @@ io.on("connection", (socket: Socket) => {
 
   // tracking:position { bookingId, clientId, lat, lng }
   // -> emit tracking:position to user:{clientId} (delivery tracking)
-  socket.on("tracking:position", (payload: TrackingPositionPayload) => {
+  socket.on("tracking:position", async (payload: TrackingPositionPayload) => {
     try {
-      handleTrackingPosition(payload)
+      const p = payload || ({} as TrackingPositionPayload)
+      if (await requireSession("tracking:position", p.clientId ? [p.clientId] : [])) {
+        handleTrackingPosition(p)
+      }
     } catch (err) {
       console.error("[realtime] tracking:position error:", err)
     }
@@ -262,7 +489,38 @@ httpServer.on("request", (req, res) => {
     return
   }
 
+  // GET /sessions -> active sessions (sockets with a verified session AND
+  // a join in user:{id} — the "who is online" snapshot for the admin panel).
+  // Same Bearer protection as POST /emit: this endpoint reveals who is
+  // online, so it must never be reachable by unauthenticated clients.
+  if (url.pathname === "/sessions" && req.method === "GET") {
+    if (!verifyEmitToken(req.headers.authorization, EMIT_TOKEN)) {
+      res.writeHead(401, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ ok: false, error: "UNAUTHORIZED" }))
+      return
+    }
+    getActiveSessions()
+      .then((sessions) => {
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ ok: true, sessions, total: sessions.length }))
+      })
+      .catch((err) => {
+        console.error("[realtime] /sessions error:", err)
+        res.writeHead(500, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ ok: false, error: "internal" }))
+      })
+    return
+  }
+
   if (url.pathname === "/emit" && req.method === "POST") {
+    // Require Authorization: Bearer <REALTIME_EMIT_TOKEN> (timing-safe,
+    // fail closed). This endpoint broadcasts events to arbitrary user rooms,
+    // so it must never be reachable by unauthenticated clients.
+    if (!verifyEmitToken(req.headers.authorization, EMIT_TOKEN)) {
+      res.writeHead(401, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ ok: false, error: "UNAUTHORIZED" }))
+      return
+    }
     let body = ""
     req.setEncoding("utf8")
     req.on("data", (chunk: string) => {
@@ -290,6 +548,9 @@ httpServer.on("request", (req, res) => {
             break
           case "tracking:position":
             handleTrackingPosition(data as TrackingPositionPayload)
+            break
+          case "session:revoke":
+            handleSessionRevoke(data as { userId?: string })
             break
           default:
             res.writeHead(400, { "Content-Type": "application/json" })

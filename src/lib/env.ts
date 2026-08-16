@@ -29,6 +29,11 @@ const envSchema = z.object({
 
   // Realtime
   REALTIME_URL: z.string().url().default("http://localhost:3003"),
+  // Bearer token para o POST /emit do realtime mini-service (fail closed).
+  REALTIME_EMIT_TOKEN: z.string().optional(),
+  // Timeout (ms) do POST /emit — um realtime que aceita o TCP mas nunca
+  // responde não deve travar fluxos que aguardam o emit (ex.: logout).
+  REALTIME_EMIT_TIMEOUT_MS: z.coerce.number().int().positive().default(3000),
 
   // OpenSearch (full-text search)
   OPENSEARCH_URL: z.string().default("http://localhost:9200"),

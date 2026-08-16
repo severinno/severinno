@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { requireRole, invalidateUserCache } from "@/lib/auth"
+import { requireRole, invalidateUserCache, revokeUserSessions } from "@/lib/auth"
 import { badRequest, handleError, notFound, USER_PUBLIC_SELECT } from "@/lib/api-server"
 
 type Params = { params: Promise<{ id: string }> }
@@ -42,7 +42,37 @@ export async function PATCH(request: Request, { params }: Params) {
       select: USER_PUBLIC_SELECT,
     })
     await invalidateUserCache(id)
+    // Desativação imediata: além de invalidar o cache (bloqueia novas requests),
+    // revoga os sockets realtime AGORA — o usuário não fica conectado até o
+    // próximo logout. O check espelha a coerção do write (Boolean(body.active)):
+    // qualquer payload que o DB trate como desativação (false, 0, null) revoga.
+    if (body.active !== undefined && Boolean(body.active) === false) {
+      await revokeUserSessions(id)
+    }
     return NextResponse.json({ user: updated })
+  } catch (e) {
+    return handleError(e)
+  }
+}
+
+// ADMIN: revoke the user's realtime sessions WITHOUT deactivating the
+// account. Same mechanism as logout/deactivation (emitRealtime
+// session:revoke → the mini-service force-closes the user's sockets) but
+// the user stays active — useful before an admin deactivates an account
+// to check who would be affected, or to force a re-login.
+export async function POST(_request: Request, { params }: Params) {
+  try {
+    await requireRole("ADMIN")
+    const { id } = await params
+
+    const user = await db.user.findUnique({
+      where: { id },
+      select: { id: true, role: true },
+    })
+    if (!user) throw notFound("Usuário não encontrado")
+
+    await revokeUserSessions(id)
+    return NextResponse.json({ ok: true, revoked: true })
   } catch (e) {
     return handleError(e)
   }
@@ -62,6 +92,8 @@ export async function DELETE(_request: Request, { params }: Params) {
 
     await db.user.update({ where: { id }, data: { deletedAt: new Date() } })
     await invalidateUserCache(id)
+    // Usuário deletado também é desconectado dos sockets imediatamente.
+    await revokeUserSessions(id)
     return NextResponse.json({ ok: true })
   } catch (e) {
     return handleError(e)

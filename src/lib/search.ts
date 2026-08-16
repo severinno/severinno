@@ -54,7 +54,8 @@ export function getClient(): Client | null {
  * Brazilian Portuguese + synonym analyzer for full-text search.
  * Uses the synonym file at scripts/synonyms.txt mounted at /etc/opensearch/synonyms.txt.
  */
-const SHARED_ANALYSIS = {
+// Exportado para testes de regressão (estrutura dos analyzers do OpenSearch).
+export const SHARED_ANALYSIS = {
   analyzer: {
     severinno_search: {
       type: "custom",
@@ -67,16 +68,13 @@ const SHARED_ANALYSIS = {
         "severinno_synonyms",
       ],
     },
+    // SEM severinno_synonyms: o filtro synonym não pode rodar em index time
+    // no OpenSearch ("not allowed to run in index time mode") — é aplicado
+    // apenas via search_analyzer no momento da busca.
     severinno_index: {
       type: "custom",
       tokenizer: "standard",
-      filter: [
-        "lowercase",
-        "asciifolding",
-        "brazilian_stop",
-        "brazilian_stemmer",
-        "severinno_synonyms",
-      ],
+      filter: ["lowercase", "asciifolding", "brazilian_stop", "brazilian_stemmer"],
     },
   },
   filter: {
@@ -94,6 +92,16 @@ const SHARED_ANALYSIS = {
       // The file is mounted at config/analysis/synonyms.txt in docker-compose.
       synonyms_path: "analysis/synonyms.txt",
       updateable: true,
+      // lenient: pula regras inválidas em vez de falhar a criação do índice.
+      // Motivo: o parser chain-aware do OpenSearch analisa as regras com a
+      // cadeia SEM o filtro de sinônimos — o brazilian_stop remove stopwords no
+      // meio de termos multi-palavra (ex.: "orçamento sem compromisso" → "sem"),
+      // criando gap de position que o Lucene rejeita ("position increment != 1").
+      // O parâmetro analyzer do filtro é IGNORADO pelo OpenSearch 2.19 com
+      // synonyms_path (verificado empiricamente), então a correção é: (1) manter
+      // regras sem stopword no meio no arquivo; (2) lenient como rede de segurança
+      // para regras futuras com problema não derrubarem o build dos índices.
+      lenient: true,
     },
   },
   normalizer: {

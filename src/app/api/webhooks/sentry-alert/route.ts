@@ -166,7 +166,13 @@ function formatMessage(payload: SentryWebhookPayload, projectName: string): Aler
   }
 }
 
-// ── Discord ───────────────────────────────────────────────────────────────
+// ── Timeout dos fetches de alerta ────────────────────────────────────────
+// Um Discord/Telegram que aceita o TCP mas nunca responde deixaria o
+// request pendurado — atrasando o 200 ao GlitchTip (o POST do webhook só
+// responde após Promise.allSettled). AbortSignal.timeout() aborta após o
+// prazo (rejeição capturada no allSettled). Guarda contra valores inválidos:
+// NaN → default; negativo/zero → Math.max(1).
+const ALERT_TIMEOUT_MS = Math.max(1, Number(process.env.ALERT_WEBHOOK_TIMEOUT_MS) || 5_000)
 
 async function sendDiscord(msg: AlertMessage): Promise<void> {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL
@@ -222,6 +228,7 @@ async function sendDiscord(msg: AlertMessage): Promise<void> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(ALERT_TIMEOUT_MS),
   })
 
   if (!res.ok) {
@@ -276,6 +283,7 @@ async function sendTelegram(msg: AlertMessage): Promise<void> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(ALERT_TIMEOUT_MS),
   })
 
   if (!res.ok) {

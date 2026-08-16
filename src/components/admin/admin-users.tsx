@@ -39,18 +39,20 @@ import {
   MoreHorizontal,
   Pencil,
   Power,
+  RefreshCcw,
   SearchX,
   ShieldCheck,
   ShieldQuestion,
   ShieldX,
   Trash2,
   Users,
+  Wifi,
   X,
 } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { apiDelete, apiGet, apiPatch } from "@/lib/api"
+import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api"
 import { type UserRole } from "@/lib/constants"
 import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -143,6 +145,14 @@ type AdminUsersResponse = {
   limit: number
 }
 
+/** Sessões ativas por usuário (GET /api/admin/realtime/sessions). */
+type RealtimeSessionsResponse = {
+  ok: boolean
+  sessions: Record<string, Array<{ userId: string; role: string; socketId: string }>>
+  totalSockets: number
+  onlineUsers: number
+}
+
 type StatsResponse = {
   usersByRole: Record<string, number>
 }
@@ -215,6 +225,21 @@ export function AdminUsers() {
     staleTime: 15_000,
   })
 
+  // ── Sessões realtime ativas (quem está online) ──────────────────────
+  // Refetch a cada 30s (staleTime 15s) para o indicador ficar razoavelmente
+  // fresco; degrada graciosamente se o realtime estiver fora do ar.
+  const { data: sessionsData } = useQuery({
+    queryKey: ["admin", "realtime", "sessions"],
+    queryFn: () => apiGet<RealtimeSessionsResponse>("/api/admin/realtime/sessions"),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  })
+
+  const revokeMutation = useMutation({
+    mutationFn: (userId: string) =>
+      apiPost<{ ok: boolean }>(`/api/admin/users/${userId}/revoke-sessions`),
+  })
+
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["admin", "users"] })
 
   const patchMutation = useMutation({
@@ -225,6 +250,34 @@ export function AdminUsers() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => apiDelete(`/api/admin/users/${id}`),
   })
+
+  // userId → online (sessão ativa com join na sala user:{id}). O backend
+  // só retorna sockets com sessão verificada E joined — o indicador reflete
+  // quem está USANDO a plataforma agora, não apenas quem tem cookie válido.
+  const onlineByUser = React.useMemo(() => {
+    const map = new Map<string, boolean>()
+    for (const [userId, sockets] of Object.entries(sessionsData?.sessions ?? {})) {
+      map.set(userId, sockets.length > 0)
+    }
+    return map
+  }, [sessionsData])
+
+  const handleRevokeSessions = (u: AdminUser) => {
+    revokeMutation.mutate(u.id, {
+      onSuccess: () => {
+        toast.success(
+          `Sessões de ${u.name} revogadas. O usuário foi desconectado — a conta continua ativa.`,
+        )
+        invalidate()
+        queryClient.invalidateQueries({ queryKey: ["admin", "realtime", "sessions"] })
+      },
+      onError: (e: unknown) => {
+        const msg = errMsg(e, "Não foi possível revogar as sessões.")
+        setErrorBanner(msg)
+        toast.error(msg)
+      },
+    })
+  }
 
   // Client-side filter for verified/active (API does not support these yet — H2)
   const rawItems = React.useMemo(() => data?.items ?? [], [data?.items])
@@ -549,6 +602,9 @@ export function AdminUsers() {
                     <TableHead className="text-muted-foreground text-center text-[11px] font-semibold tracking-wider uppercase">
                       Status
                     </TableHead>
+                    <TableHead className="text-muted-foreground text-center text-[11px] font-semibold tracking-wider uppercase">
+                      Online
+                    </TableHead>
                     <TableHead className="hidden sm:table-cell">
                       {renderSortHeader("Criado em", "createdAt")}
                     </TableHead>
@@ -643,6 +699,26 @@ export function AdminUsers() {
                             <ActiveBadge active={u.active} />
                           )}
                         </TableCell>
+                        <TableCell className="px-4 py-3 text-center">
+                          {/* H1 — visibilidade do status: quem está online agora,
+                              antes de o admin desativar a conta. */}
+                          {onlineByUser.get(u.id) ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/60 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium whitespace-nowrap text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300">
+                                  <Wifi className="size-3 animate-pulse" />
+                                  Online
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                Sessão ativa no realtime — pode ser desconectada com "Revogar
+                                sessões" antes de desativar
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <span className="text-muted-foreground/50 text-[11px]">—</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-muted-foreground hidden px-4 py-3 text-xs tabular-nums sm:table-cell">
                           {formatDate(u.createdAt)}
                         </TableCell>
@@ -714,6 +790,17 @@ export function AdminUsers() {
                                 >
                                   <Power className="size-3.5" />
                                   {u.active ? "Desativar" : "Ativar"}
+                                </DropdownMenuItem>
+                                {/* H1 — revogar sessões SEM desativar: desconecta os
+                                    sockets realtime (o usuário precisa re-logar),
+                                    mas a conta continua ativa. */}
+                                <DropdownMenuItem
+                                  onClick={() => handleRevokeSessions(u)}
+                                  disabled={!onlineByUser.get(u.id) || revokeMutation.isPending}
+                                  className="gap-2"
+                                >
+                                  <RefreshCcw className="size-3.5" />
+                                  Revogar sessões
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem

@@ -57,3 +57,6 @@ Dockerfile* text eol=lf
 
 # Dados OSRM (routing) — binários, nunca normalizar
 osrm-data/** binary
+
+# OpenSearch synonym file — SEMPRE LF: o parser SolrSynonymParser quebra com CRLF (\r no fim das linhas).
+scripts/synonyms.txt text eol=lf

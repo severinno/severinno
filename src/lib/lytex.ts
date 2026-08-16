@@ -221,6 +221,14 @@ function getConfig() {
 // HTTP helpers
 // ---------------------------------------------------------------------------
 
+// Timeout (ms) do fetch para a API Lytex. Um gateway que aceita o TCP mas
+// nunca responde deixaria o request pendurado — travando o fluxo de booking
+// (createPixCharge/createCardCharge aguardam o fetch). AbortSignal.timeout()
+// aborta após o prazo (rejeita com TimeoutError, propagado ao chamador).
+// Guarda contra valores inválidos: Number() → NaN → || 10_000 cai no default;
+// negativo/zero → Math.max(1, …).
+const LYTEX_TIMEOUT_MS = Math.max(1, Number(process.env.LYTEX_TIMEOUT_MS) || 10_000)
+
 async function lytexRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
   const { clientId, clientSecret, baseUrl } = getConfig()
   const url = `${baseUrl}${path}`
@@ -234,6 +242,7 @@ async function lytexRequest<T>(method: string, path: string, body?: unknown): Pr
       Authorization: `Basic ${credentials}`,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(LYTEX_TIMEOUT_MS),
   })
 
   const contentType = res.headers.get("content-type") ?? ""

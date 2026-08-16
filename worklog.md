@@ -1219,3 +1219,83 @@ O que foi feito:
 
 Validação: vitest 62/62 (4 suites de rate limit) · tsc 0 erros · prettier limpo ·
 guards (no-leaked-imports, workflow-refs, unused-deps, barrel-lint) exit 0.
+
+---
+
+Task ID: DEPLOY-PATH-MIGRATE
+Agent: auditoria (camada 3 — verificar caminho de deploy p/ gap de triggers/GIST)
+Task: Confirmar se produção usa `prisma migrate deploy` (gap era só dev) ou `db push`
+(bug de produção) e registrar a conclusão.
+
+Contexto: no banco dev (criado via `prisma db push` + seed), os triggers de sync
+(avgRating/reviewCount/favoriteCount/location) e os índices GIST do PostGIS NÃO
+existiam — o `db push` sincroniza só o schema declarado em schema.prisma e não
+roda o SQL arbitrário das migrations customizadas. Ficou a dúvida: e em produção?
+
+Work Log (evidência lida no código):
+
+- **`.github/workflows/deploy.yml` (job `migrate`, linhas 166-182)**: primário
+  `bunx prisma migrate deploy` → fallback `db push --accept-data-loss`.
+- **`.github/workflows/release-deploy.yml` (job `migrate`, linhas 191-208)**: mesmo
+  padrão (`migrate deploy` → fallback `db push`).
+- **`scripts/deploy.sh` (linhas 316-332)**: passo 3 "Database migrations" roda
+  `bunx prisma migrate deploy`; `db push --accept-data-loss` só como fallback.
+- **`scripts/entrypoint.sh` (linhas 58-61)**: `bunx prisma migrate deploy` →
+  fallback `db push` — usado como ENTRYPOINT dos workers (Dockerfile.worker);
+  o server mode não é o caminho do compose prod. O `docker-entrypoint.sh` usado
+  no compose prod (app/workers) só lê secrets e monta URLs — não roda migrations.
+- **`Makefile` (db-migrate) e `package.json` (db:migrate)**: `prisma migrate deploy`.
+- **Postgres de prod**: `postgis/postgis:16-3.4-alpine` (PG 16) — OK p/
+  `CREATE OR REPLACE TRIGGER` (requer PG 14+).
+
+Conclusão:
+
+- **Produção usa `prisma migrate deploy` como caminho PRIMÁRIO** em todos os
+  fluxos (CI/CD, deploy.sh, entrypoint.sh, Makefile). Isso APLICA as migrations
+  SQL customizadas (XX_add_postgis → GIST indexes + sync location;
+  20260726130000 → triggers de rating/favorite + backfill;
+  20260724140000 → notify_search_reindex). → **O gap era SÓ dev, não prod.**
+- **Ressalva importante**: o fallback `db push --accept-data-loss` NÃO aplica SQL
+  customizado (triggers/GIST). Se em algum deploy o `migrate deploy` falhar e o
+  fallback disparar num banco que nunca teve as SQLs customizadas, os triggers
+  ficariam de fora. Cenário de risco: banco prod inicializado com `db push`
+  (migrations base conflitariam no `migrate deploy`). Validar no primeiro deploy
+  real que `_prisma_migrations` registre as SQLs customizadas.
+- A correção aplicada no dev (rodar as migrations SQL + backfill) reproduz o que
+  o `migrate deploy` de prod já faz — estado dev agora consistente com prod.
+
+Validação: leitura de 7 fontes (2 workflows, deploy.sh, 2 entrypoints, Makefile,
+package.json) · versão PG de prod 16 (>= 14) · nenhuma mudança de código.
+
+---
+
+Task ID: CRON-REVOKE-INACTIVE
+Agent: orchestrator (job agendado de revogação de sessões inativas)
+Task: Webhook/job agendado que revoga sockets realtime de usuários inativos automaticamente.
+
+Work Log:
+
+- Nova rota `GET /api/cron/revoke-inactive-sessions` (src/app/api/cron/revoke-inactive-sessions/route.ts):
+  - Varre em lote (páginas de 100, cursor por id) usuários com `active=false` há mais de
+    INACTIVE_DAYS (padrão 7, usa `updatedAt` como proxy do momento da desativação — o PATCH
+    admin de desativação atualiza updatedAt) OU `deletedAt` há mais de DELETED_DAYS (padrão 7,
+    cobre soft-deletes antigos anteriores à revogação no DELETE).
+  - Para cada usuário chama `revokeUserSessions(id)` (emitRealtime session:revoke → o realtime
+    mini-service força o close dos sockets da sala user:{id} + sweep via fetchSockets).
+  - Pool de concorrência limitada (5 workers) para não sobrecarregar o /emit do realtime;
+    `revokeUserSessions` nunca lança (emitRealtime captura erros) — realtime fora do ar degrada
+    a varredura, não a quebra.
+  - Autenticação: Bearer CRON_SECRET (mesmo padrão dos outros crons). Cooldown Redis de 23h
+    (isCooldownElapsed/markCompleted de src/lib/cron-cooldown.ts). Dry-run via `?dryRun=1`.
+  - Auditoria: summary via captureMessage (Sentry/GlitchTip) com scanned/revoked/failed/elapsed.
+- Como agendar (cron-job.org / systemd timer / docker):
+  URL: https://severinno.com.br/api/cron/revoke-inactive-sessions
+  Header: Authorization: Bearer <CRON_SECRET>
+  Period: diário (1x/dia é suficiente — cooldown de 23h impede execuções repetidas).
+  Teste manual: `curl -H "Authorization: Bearer $CRON_SECRET" "http://localhost:3000/api/cron/revoke-inactive-sessions?dryRun=1"`
+
+Stage Summary:
+
+- **Novo**: src/app/api/cron/revoke-inactive-sessions/route.ts (+ revokeInactiveSessionsBatch
+  exportado para teste unitário com db/revoke mockados).
+- **Audit**: esta entrada no worklog.md (documentação da rota, critérios e agendamento).

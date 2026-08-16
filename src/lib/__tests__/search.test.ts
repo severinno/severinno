@@ -49,7 +49,38 @@ const {
   indexDocument,
   bulkIndex,
   deleteDocument,
+  SHARED_ANALYSIS,
 } = searchModule
+
+// ===========================================================================
+// SHARED_ANALYSIS (regressões do fluxo OpenSearch)
+// ===========================================================================
+
+// Protege contra a recorrência de dois bugs que quebraram a criação dos índices:
+//  (1) filtro synonym em index time — o OpenSearch 2.19 rejeita com
+//      "analyzer [severinno_index] contains filters [severinno_synonyms] that
+//      are not allowed to run in index time mode";
+//  (2) sem lenient — uma regra de sinônimo com stopword no meio de termo
+//      multi-palavra ("orçamento sem compromisso") falhava o build inteiro com
+//      "Failed to build synonyms".
+describe("SHARED_ANALYSIS", () => {
+  it("severinno_index NÃO contém o filtro severinno_synonyms (index time)", () => {
+    const indexFilters = SHARED_ANALYSIS.analyzer.severinno_index.filter
+    expect(indexFilters).not.toContain("severinno_synonyms")
+  })
+
+  it("severinno_search contém o filtro severinno_synonyms (search time)", () => {
+    const searchFilters = SHARED_ANALYSIS.analyzer.severinno_search.filter
+    expect(searchFilters).toContain("severinno_synonyms")
+  })
+
+  it("filtro severinno_synonyms é lenient (rede de segurança vs regras inválidas)", () => {
+    const filter = SHARED_ANALYSIS.filter.severinno_synonyms
+    expect(filter.type).toBe("synonym")
+    expect(filter.lenient).toBe(true)
+    expect(filter.updateable).toBe(true)
+  })
+})
 
 beforeEach(() => {
   vi.clearAllMocks()

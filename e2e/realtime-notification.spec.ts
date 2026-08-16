@@ -1,16 +1,20 @@
 import { test, expect, type Page } from "@playwright/test"
 
 // =========================================================================
-// Constantes — IDs do seed atual (prisma/seed.ts)
-// Se o banco for resetado, execute `npx prisma db seed` e atualize abaixo.
+// Constantes — credenciais do seed (prisma/seed.ts). Emails/passwords/título
+// são estáveis entre re-seeds; os IDS (PROVIDER_ID/SERVICE_ID) são resolvidos
+// DINAMICAMENTE no beforeAll via API — nada a atualizar após re-seed.
 // =========================================================================
 
 const CLIENT_EMAIL = "cliente@severinno.com"
 const CLIENT_PASSWORD = "cliente123"
 const PROVIDER_EMAIL = "carlos@severinno.com"
 const PROVIDER_PASSWORD = "provider123"
-const PROVIDER_ID = "cmstju8kv0003aa389q7wo9g7" // Carlos Encanador (seed da linha release)
-const SERVICE_ID = "cmstju935003saa38o4pqfm8y" // Desentupimento de ralo e pia
+const SERVICE_TITLE = "Desentupimento de ralo e pia"
+
+// Preenchidos no beforeAll (não são mais constantes hardcoded).
+let PROVIDER_ID = ""
+let SERVICE_ID = ""
 
 // =========================================================================
 // Helpers
@@ -55,6 +59,42 @@ async function skipOnboarding(page: Page) {
 
 test.describe.serial("Notificações em Tempo Real", () => {
   let createdBookingId: string | null = null
+
+  // Resolve os IDs dinamicamente em vez de hardcoded: o provider é buscado
+  // por email (login + /api/auth/me) e o serviço por título (/api/services,
+  // público). Assim um re-seed não quebra o spec nem exige editar IDs.
+  test.beforeAll(async ({ request }) => {
+    // ── Provider por email ────────────────────────────────────────────
+    const loginRes = await request.post("/api/auth/login", {
+      data: { email: PROVIDER_EMAIL, password: PROVIDER_PASSWORD },
+    })
+    expect(loginRes.ok(), `login do provider ${PROVIDER_EMAIL} falhou`).toBeTruthy()
+    const me = (await (await request.get("/api/auth/me")).json()) as { user?: { id?: string } }
+    PROVIDER_ID = me.user?.id ?? ""
+    expect(PROVIDER_ID, `provider ${PROVIDER_EMAIL} não encontrado via /api/auth/me`).toBeTruthy()
+
+    // ── Serviço por título ────────────────────────────────────────────
+    // Obs: /api/services tem cache Redis de 30s (withCache). A janela de
+    // staleness pós-re-seed é FECHADA pelo próprio seed: prisma/seed.ts
+    // invalida "services:*" ao final (invalidateServicesCache, best-effort).
+    // Se o Redis estiver fora no momento do seed, a janela persiste — nesse
+    // caso, espere ~30s antes de rodar o spec.
+    const servicesRes = await request.get(`/api/services?q=${encodeURIComponent(SERVICE_TITLE)}`)
+    expect(servicesRes.ok()).toBeTruthy()
+    const services = (await servicesRes.json()) as Array<{
+      id: string
+      title: string
+      provider?: { id?: string } | null
+    }>
+    const service = services.find((s) => s.title === SERVICE_TITLE)
+    expect(service, `serviço "${SERVICE_TITLE}" não encontrado via /api/services`).toBeDefined()
+    SERVICE_ID = service!.id
+    // Sanity check: o serviço pertence ao provider resolvido (mesmo seed).
+    if (service!.provider?.id) {
+      expect(service!.provider.id).toBe(PROVIDER_ID)
+    }
+    console.log(`✅ Fixtures dinâmicas: provider=${PROVIDER_ID} service=${SERVICE_ID}`)
+  })
 
   test("1. criar booking → notificação salva no banco", async ({ browser }) => {
     const clientCtx = await browser.newContext()

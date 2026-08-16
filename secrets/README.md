@@ -65,10 +65,10 @@ docker stack deploy -c docker-compose.prod.yml severinno
 
 | Serviço | Secrets montados |
 |---------|-----------------|
-| app | postgres_password, rabbitmq_pass, s3_secret_key, session_secret, vapid_private_key, smtp_pass, cron_secret, lytex_client_secret |
+| app | postgres_password, rabbitmq_pass, s3_secret_key, session_secret, vapid_private_key, smtp_pass, cron_secret, lytex_client_secret, realtime_emit_token |
 | email-worker | postgres_password, rabbitmq_pass, smtp_pass |
 | notification-worker | postgres_password, rabbitmq_pass, vapid_private_key |
-| search-index-worker | postgres_password |
+| realtime | session_secret, realtime_emit_token (via `_FILE`) |
 
 ### Serviços com suporte nativo a `_FILE`
 
@@ -107,6 +107,7 @@ Isso é uma limitação conhecida. A longo prazo, podemos:
 | `smtp_pass` | app, email-worker | `smtp_pass.secret.example` |
 | `lytex_client_secret` | app | `lytex_client_secret.secret.example` |
 | `cron_secret` | app | `cron_secret.secret.example` |
+| `realtime_emit_token` | app, realtime | `realtime_emit_token.secret.example` |
 | `rabbitmq_pass` | rabbitmq, app, workers | `rabbitmq_pass.secret.example` |
 | `evolution_api_key` | notification-worker | `evolution_api_key.secret.example` |
 | `glitchtip_db_password` | glitchtip-db | `glitchtip_db_password.secret.example` |

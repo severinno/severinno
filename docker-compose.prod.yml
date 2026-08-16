@@ -100,6 +100,10 @@ secrets:
     file: ./secrets/cron_secret.secret
   lytex_client_secret:
     file: ./secrets/lytex_client_secret.secret
+  # Token Bearer exigido pelo POST /emit do realtime mini-service
+  # (bridge servidor→servidor usado por src/lib/realtime-client.ts)
+  realtime_emit_token:
+    file: ./secrets/realtime_emit_token.secret
 
   # ── GlitchTip ───────────────────────────────────────────────────────
   glitchtip_s3_secret_key:
@@ -507,6 +511,16 @@ services:
       PORT: 3003
       REDIS_URL: redis://redis:6379
       CORS_ORIGIN: ${NEXT_PUBLIC_APP_URL}
+      # Seguranca do realtime (fail closed): SESSION_SECRET valida o cookie
+      # HMAC no join; REALTIME_EMIT_TOKEN protege o POST /emit.
+      # DATABASE_URL valida participante real do booking no message:send
+      # (via postgres, mesma rede backend; fail closed sem ela).
+      SESSION_SECRET_FILE: /run/secrets/session_secret
+      REALTIME_EMIT_TOKEN_FILE: /run/secrets/realtime_emit_token
+      DATABASE_URL: postgresql://${POSTGRES_USER:-severinno}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-severinno}
+    secrets:
+      - session_secret
+      - realtime_emit_token
     networks:
       - backend
     depends_on:
@@ -581,6 +595,7 @@ services:
       - smtp_pass
       - cron_secret
       - lytex_client_secret
+      - realtime_emit_token
     volumes:
       - ./scripts/docker-entrypoint.sh:/app/scripts/docker-entrypoint.sh:ro
     environment:

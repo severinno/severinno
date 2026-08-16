@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "crypto"
 import { db } from "@/lib/db"
 import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/redis"
 import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
+import { emitRealtime } from "@/lib/realtime-client"
 
 /**
  * Lightweight HMAC-signed session cookie (no JWT lib).
@@ -98,11 +99,27 @@ export async function getSession(): Promise<SessionPayload | null> {
 }
 
 /**
- * Clear the session cookie (logout).
+ * Revoke a user's realtime sockets (logout in any tab, or an admin
+ * deactivation/delete). Server-side bridge (Bearer-protected). Non-blocking:
+ * emitRealtime catches network errors, so a down realtime service never
+ * breaks the calling flow.
+ */
+export async function revokeUserSessions(userId: string): Promise<void> {
+  await emitRealtime("session:revoke", { userId })
+}
+
+/**
+ * Clear the session cookie (logout) and revoke the user's realtime sockets.
+ * The userId is captured from the session BEFORE the cookie is deleted so
+ * the realtime mini-service can disconnect active sockets in user:{id}.
  */
 export async function destroySession() {
   const store = await cookies()
+  const session = await getSession()
   store.delete(COOKIE_NAME)
+  if (session?.userId) {
+    await revokeUserSessions(session.userId)
+  }
 }
 
 /**

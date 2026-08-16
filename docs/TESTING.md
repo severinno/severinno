@@ -216,7 +216,8 @@ npx tsx scripts/coverage-gaps.ts --verbose
 npx tsx scripts/coverage-gaps.ts --ci
 
 # E2E (requer dev server em :3000)
-npx playwright test e2e/providers-cache.spec.ts --project=chromium
+# Runner oficial: bunx (npx quebra no Windows — ver README Troubleshooting)
+bunx playwright test e2e/providers-cache.spec.ts --project=chromium
 ```
 
 ---

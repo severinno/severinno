@@ -7,7 +7,7 @@
 
 # ── General service terms ──────────────────────────────────────────────────
 serviço, serviço doméstico, prestador, profissional, autônomo
-orçamento, orçar, cotar, orçamento grátis, orçamento sem compromisso
+orçamento, orçar, cotar, orçamento grátis, orçamento compromisso
 agendar, contratar, marcar, reservar
 emergência, urgência, 24h, urgente
 
@@ -15,24 +15,24 @@ emergência, urgência, 24h, urgente
 encanador, bombeiro hidráulico, bombeiro, hidráulico, instalações hidráulicas, reparos hidráulicos
 caça vazamento, caça-vazamento, vazamento, vazar, cano estourado, tubo estourado
 desentupir, desentupimento, desentupidora, entupido, ralo entupido, vaso entupido, pia entupida
-troca de descarga, caixa de descarga, descarga, válvula de descarga
+troca descarga, caixa descarga, descarga, válvula descarga
 torreira, torneira, metais, louças, pia, cuba, tanque
 filtro, purificador, bebedouro
 
 # ── Eletricista / Electrical ────────────────────────────────────────────────
 eletricista, eletricista residencial, eletricista predial, elétrica
-curto circuito, curto-circuito, desarme, disjuntor, queda de energia, sem energia
+curto circuito, curto-circuito, desarme, disjuntor, queda energia, sem energia
 tomada, interruptor, ponto elétrico, instalação elétrica, fiação, rebaixamento
-quadro elétrico, quadro de distribuição, distribuição elétrica, padrão de entrada
-iluminação, lustre, plafon, spot, led, fita de led, painel de led, luminária
+quadro elétrico, quadro distribuição, distribuição elétrica, padrão entrada
+iluminação, lustre, plafon, spot, led, fita led, painel led, luminária
 carro elétrico, wallbox, carregador veicular, recarga elétrica
 solar, painel solar, fotovoltaico, energia solar, placa solar
 
 # ── Pintor / Painting ──────────────────────────────────────────────────────
 pintor, pintura, pintar
-pintura interna, pintura externa, pintura de parede, pintura residencial
+pintura interna, pintura externa, pintura parede, pintura residencial
 massa corrida, massa acrílica, textura, grafiato, efeito decorativo, revestimento texturizado
-fachada, pintura de fachada, pintura externa predial
+fachada, pintura fachada, pintura externa predial
 
 # ── Pedreiro / Masonry ──────────────────────────────────────────────────────
 pedreiro, quebra quebra, quebra-quebra, alvenaria, obra, reforma, construção
@@ -60,50 +60,50 @@ irrigação, aspersor, gotejamento, sprinkler
 
 # ── Marcenaria / Carpentry ────────────────────────────────────────────────
 marceneiro, marceneira, marcenaria, moveleiro, carpinteiro
-móvel planejado, móvel sob medida, armário planejado, guarda-roupa, cozinha planejada
-montador de móveis, montagem, montar, desmontar, iKEA, mobly, madeiramadeira
+móvel planejado, móvel medida, armário planejado, guarda-roupa, cozinha planejada
+montador móveis, montagem, montar, desmontar, iKEA, mobly, madeiramadeira
 restaurar móvel, laquear, recuperar, reformar móvel
 porta, janela, batente, guarnição, marco
 
 # ── Chaveiro / Locksmith ──────────────────────────────────────────────────
 chaveiro, chave, fechadura, cadeado, abrir porta
-cópia de chave, chave codificada, chave canhão
+cópia chave, chave codificada, chave canhão
 
 # ── Vidraçaria / Glass ────────────────────────────────────────────────────
-vidraceiro, vidraçaria, vidro, box, box de banheiro, espelho
-fechamento de sacada, varanda de vidro, guarda-corpo de vidro
-rede de proteção, tela mosquiteira, mosquiteiro
+vidraceiro, vidraçaria, vidro, box, box banheiro, espelho
+fechamento sacada, varanda vidro, guarda-corpo vidro
+rede proteção, tela mosquiteira, mosquiteiro
 
 # ── Telhado / Roofing ──────────────────────────────────────────────────────
 telhadista, telhado, laje, cobertura, calha, rufo
 goteira, infiltração, caça infiltração, impermeabilização, manta asfáltica
-pergolado, toldo, cobertura de policarbonato
+pergolado, toldo, cobertura policarbonato
 
 # ── Serralheria / Metalwork ────────────────────────────────────────────────
 serralheiro, serralheria, soldador, solda, grade, portão, corrimão
 esquadria metálica, alumínio, ferro, aço
 
 # ── Gesso / Drywall ─────────────────────────────────────────────────────────
-gesseiro, gesso, drywall, forro de gesso, sanca, moldura, cortineiro
-isolamento acústico, isolamento térmico, la de vidro, la de rocha
+gesseiro, gesso, drywall, forro gesso, sanca, moldura, cortineiro
+isolamento acústico, isolamento térmico, la vidro, la rocha
 
 # ── Segurança / Security ──────────────────────────────────────────────────
-câmera, cftv, câmera de segurança, alarme, sensor, cerca elétrica, concertina
+câmera, cftv, câmera segurança, alarme, sensor, cerca elétrica, concertina
 interfone, videoporteiro, porteiro eletrônico
 smart home, casa inteligente, automação, alexa, google home
 
 # ── TI / Networks ────────────────────────────────────────────────────────────
 rede, wi-fi, mesh, internet, cabeamento, rack, servidor, computador
-home office, teletrabalho, escritório em casa
+home office, teletrabalho, escritório casa
 
 # ── Climatização / HVAC ────────────────────────────────────────────────────
 ar condicionado, ar-condicionado, split, climatização, refrigeração, hvac
-instalar ar, manutenção de ar, limpeza de ar, higienização de ar
-exaustor, ventilador de teto, ventilação
+instalar ar, manutenção ar, limpeza ar, higienização ar
+exaustor, ventilador teto, ventilação
 
 # ── Gás / Gas ────────────────────────────────────────────────────────────────
-gás, rede de gás, instalação de gás, gás encanado, gás natural, gn, glp
-aquecedor, boiler, aquecedor a gás
+gás, rede gás, instalação gás, gás encanado, gás natural, gn, glp
+aquecedor, boiler, aquecedor gás
 
 # ── Dedetização / Pest Control ────────────────────────────────────────────
 dedetização, dedetizadora, dedetizar, descupinização, cupim, descupinizar
@@ -117,14 +117,14 @@ lavar cortina, cortina, persiana
 impermeabilizar estofado, reformar estofado
 
 # ── Piscina / Pool ──────────────────────────────────────────────────────────
-piscina, limpeza de piscina, piscineiro, tratamento de piscina, bomba de piscina
+piscina, limpeza piscina, piscineiro, tratamento piscina, bomba piscina
 
 # ── Mudança / Moving ────────────────────────────────────────────────────────
 mudança, mudança residencial, transportadora, fretes, carreto, carreto, mudancista
 embalar, caixa, desmontar, içar, guincho
 
 # ── Marido de aluguel / Handyman ──────────────────────────────────────────
-marido de aluguel, faz tudo, faz-tudo, bricoleiro, bricolagem, pequenos reparos, reparos domésticos, manutenção residencial
+marido aluguel, faz tudo, faz-tudo, bricoleiro, bricolagem, pequenos reparos, reparos domésticos, manutenção residencial
 fixar quadro, pendurar, instalar, montar, ajustar
 silicone, vedar, vedação, calafetar, calafetação
 
@@ -135,4 +135,4 @@ pós mudança, pós-mudança, organização pós-mudança
 
 # ── Piscina ──────────────────────────────────────────────────────────────────
 piscineiro, piscina
-bomba de piscina, filtro de piscina
+bomba piscina, filtro piscina

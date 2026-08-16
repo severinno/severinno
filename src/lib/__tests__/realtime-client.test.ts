@@ -59,6 +59,34 @@ describe("emitRealtime", () => {
     })
   })
 
+  it("envia Authorization Bearer quando REALTIME_EMIT_TOKEN está definido", async () => {
+    vi.stubEnv("REALTIME_EMIT_TOKEN", "emit-token-0123456789abcdef")
+    const mockFetch = vi.mocked(fetch)
+    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }))
+
+    const { emitRealtime } = await import("@/lib/realtime-client")
+
+    await emitRealtime("booking:update", { bookingId: "b-1" })
+
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    const headers = mockFetch.mock.calls[0]![1]!.headers as Record<string, string>
+    expect(headers.Authorization).toBe("Bearer emit-token-0123456789abcdef")
+
+    vi.unstubAllEnvs()
+  })
+
+  it("não envia Authorization quando REALTIME_EMIT_TOKEN não está definido", async () => {
+    const mockFetch = vi.mocked(fetch)
+    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }))
+
+    const { emitRealtime } = await import("@/lib/realtime-client")
+
+    await emitRealtime("test:event", {})
+
+    const headers = mockFetch.mock.calls[0]![1]!.headers as Record<string, string>
+    expect(headers.Authorization).toBeUndefined()
+  })
+
   it("usa REALTIME_URL do env quando definido", async () => {
     vi.stubEnv("REALTIME_URL", "http://realtime.internal:4000")
     const mockFetch = vi.mocked(fetch)
@@ -88,6 +116,51 @@ describe("emitRealtime", () => {
       { err: networkError, event: "test:fail" },
       "realtime emit failed",
     )
+  })
+
+  it("passa AbortSignal.timeout como signal do fetch", async () => {
+    const mockFetch = vi.mocked(fetch)
+    mockFetch.mockResolvedValueOnce(new Response(null, { status: 200 }))
+
+    const { emitRealtime } = await import("@/lib/realtime-client")
+
+    await emitRealtime("test:event", {})
+
+    const signal = mockFetch.mock.calls[0]![1]!.signal
+    expect(signal).toBeInstanceOf(AbortSignal)
+    expect(signal!.aborted).toBe(false)
+  })
+
+  it("não trava quando o realtime aceita o TCP mas nunca responde (timeout aborta o fetch)", async () => {
+    vi.stubEnv("REALTIME_EMIT_TIMEOUT_MS", "50")
+    const mockFetch = vi.mocked(fetch)
+    // Simula um realtime que aceita a conexão mas nunca responde: o fetch só
+    // rejeita quando o signal do AbortSignal.timeout abortar (TimeoutError).
+    mockFetch.mockImplementationOnce(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal as AbortSignal | undefined
+          if (!signal) {
+            reject(new Error("expected an AbortSignal from AbortSignal.timeout"))
+            return
+          }
+          signal.addEventListener("abort", () => reject(signal.reason), { once: true })
+        }),
+    )
+
+    const { emitRealtime } = await import("@/lib/realtime-client")
+
+    const started = Date.now()
+    await expect(emitRealtime("test:hang", {})).resolves.toBeUndefined()
+    const elapsed = Date.now() - started
+
+    expect(elapsed).toBeLessThan(2000) // não esperou para sempre
+    expect(mockLoggerWarn).toHaveBeenCalledTimes(1)
+    const warnCall = mockLoggerWarn.mock.calls[0]![0] as { err: unknown; event: string }
+    expect(warnCall.event).toBe("test:hang")
+    expect((warnCall.err as Error).name).toBe("TimeoutError")
+
+    vi.unstubAllEnvs()
   })
 })
 

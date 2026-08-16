@@ -136,6 +136,33 @@ curl -X POST http://localhost:3003/emit \
 - **Desenvolvimento:** Conecta direto em `http://localhost:3003` (via `NEXT_PUBLIC_REALTIME_URL` no `.env`)
 - **Produção:** Conecta via Caddy em `/?XTransformPort=3003` (que roteia para o container `realtime:3003`)
 
+#### Limitações conhecidas (Realtime)
+
+- **Sessão verificada só no handshake.** O cookie `severinno_session` é
+  validado (HMAC-SHA256) **uma única vez, no handshake** — a identidade do
+  socket fica fixada na conexão e eventos posteriores (`join`,
+  `message:send`, …) são gateados na sessão já verificada, nunca revalidada.
+  O logout (`destroySession`) dispara `session:revoke`, que notifica e
+  desconecta **todos** os sockets com a sessão revogada — via sala
+  `user:{id}` **e** via varredura `io.fetchSockets()` sobre a sessão fixada
+  no handshake (`socket.data.session`), cobrindo também sockets conectados
+  mas ainda não joined. Só ficam stale sessões cuja invalidação **não**
+  passa pelo logout (ex.: admin desativando usuário sem revogar), e a
+  verificação da sessão em si continua sendo única no handshake.
+- **`SESSION_SECRET` compartilhado app ↔ realtime.** O realtime revalida o
+  cookie assinado pelo app usando **o mesmo** `SESSION_SECRET`. Se os
+  secrets divergirem entre os dois processos, **todos os joins são
+  rejeitados (fail closed)** — o realtime fica inoperante de forma
+  silenciosa. Em produção ambos leem o mesmo secret Docker
+  (`session_secret`); em dev, o mesmo `.env.local`.
+- **Fail-closed do compose dev sem exports.** O `docker-compose.dev.yml`
+  injeta `${SESSION_SECRET:-}` / `${REALTIME_EMIT_TOKEN:-}` no serviço
+  `realtime`. Subir `docker compose up realtime` sem as variáveis exportadas
+  no shell nega **todos** os joins e emits (`/emit` com Bearer) — fail
+  closed por design, consistente com o app (que também exige
+  `SESSION_SECRET`). Para o dev via compose, exporte o env antes:
+  `set -a && source .env.local && set +a && docker compose up realtime`.
+
 #### Workers (RabbitMQ Consumers)
 
 Processam filas de email e notificações em background.
@@ -252,11 +279,12 @@ bun vitest run src/lib/__tests__/api-server.test.ts
 bun vitest run src/lib/__tests__/routing.test.ts
 
 # E2E cache headers via HTTP (requer servidor em :3000)
-npx playwright test e2e/all-cache-routes.spec.ts --project=chromium
-npx playwright test e2e/providers-cache.spec.ts --project=chromium
+# Runner oficial: bunx (NUNCA npx — ver troubleshooting abaixo)
+bunx playwright test e2e/all-cache-routes.spec.ts --project=chromium
+bunx playwright test e2e/providers-cache.spec.ts --project=chromium
 
 # Todos os testes de cache de uma vez
-npx playwright test e2e/providers-cache.spec.ts e2e/all-cache-routes.spec.ts --project=chromium
+bunx playwright test e2e/providers-cache.spec.ts e2e/all-cache-routes.spec.ts --project=chromium
 ```
 
 ### Geral
@@ -264,8 +292,30 @@ npx playwright test e2e/providers-cache.spec.ts e2e/all-cache-routes.spec.ts --p
 ```bash
 bun run vitest     # Run all unit tests
 bun run e2e        # Run full Playwright E2E suite (all browsers)
-npx playwright install  # Install Playwright browsers (first time only)
+bunx playwright install  # Install Playwright browsers (first time only)
 ```
+
+### Troubleshooting — `npx playwright` quebra no Windows
+
+> **Runner oficial: `bunx playwright` (ou `bun run e2e`).** Em projetos
+> instalados com **bun**, `node_modules/.bin` contém shims **do bun**
+> (`playwright.EXE` / `playwright.bunx`), e **não** os shims `.cmd`/shell do
+> npm. No Windows, o `npx` invoca o shim via `cmd.exe`, cujo re-quoting
+> quebra os argumentos de caminho dos specs — o runner acaba carregando os
+> arquivos num contexto errado e falha com:
+>
+> ```text
+> Error: Playwright Test did not expect test.describe() to be called here.
+> ```
+>
+> (ou `did not expect test() to be called here` / `No tests found`).
+> `bunx` executa o mesmo binário **sem a camada do cmd.exe** e funciona. Em
+> Linux/Mac o `npx` costuma funcionar (shim shell), mas o runner documentado
+> é o `bunx` para consistência.
+>
+> Sempre que um comando deste README mostrar `npx playwright`, substitua por
+> `bunx playwright`. Os scripts do `package.json` (`e2e`, `e2e:ui`) já usam
+> `bunx`; o Makefile (`make test-e2e`) delega para `bun run e2e`.
 
 ## Docker
 
@@ -457,7 +507,8 @@ bun vitest
 bun run test:snapshot-update
 
 # E2E (requires built app + Playwright browsers)
-npx playwright install
+# Runner oficial: bunx (npx quebra no Windows — ver Troubleshooting acima)
+bunx playwright install
 bun run e2e
 ```
 

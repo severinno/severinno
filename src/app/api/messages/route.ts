@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { messageSchema } from "@/lib/validators"
-import { badRequest, handleError, notFound } from "@/lib/api-server"
+import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // Authenticated: list messages
@@ -131,6 +131,25 @@ export async function POST(request: Request) {
     })
     if (!recipient || !recipient.active) {
       throw notFound("Destinatário não encontrado")
+    }
+
+    // Full-flow validation: quando a mensagem referencia um booking, o
+    // remetente E o destinatário DEVEM ser participantes reais (clientId ou
+    // providerId) dele — uma mensagem de booking só trafega entre os dois.
+    if (data.bookingId) {
+      const booking = await db.booking.findUnique({
+        where: { id: data.bookingId },
+        select: { id: true, clientId: true, providerId: true },
+      })
+      if (!booking) throw notFound("Agendamento não encontrado")
+      const isParticipant =
+        booking.clientId === session.userId || booking.providerId === session.userId
+      if (!isParticipant) {
+        throw forbidden("Você não participa deste agendamento")
+      }
+      if (booking.clientId !== data.toId && booking.providerId !== data.toId) {
+        throw forbidden("O destinatário não participa deste agendamento")
+      }
     }
 
     const message = await db.message.create({

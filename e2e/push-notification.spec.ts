@@ -10,6 +10,12 @@ const CLIENT_EMAIL = "cliente@severinno.com"
 const CLIENT_PASSWORD = "cliente123"
 const PROVIDER_EMAIL = "carlos@severinno.com"
 const PROVIDER_PASSWORD = "provider123"
+const SERVICE_TITLE = "Desentupimento de ralo e pia"
+
+// Preenchidos no beforeAll (não são mais constantes hardcoded — um re-seed
+// não quebra o spec nem exige editar IDs).
+let PROVIDER_ID = ""
+let SERVICE_ID = ""
 
 /**
  * VAPID key de teste (65 bytes, base64). Válida para PushManager.subscribe()
@@ -177,6 +183,35 @@ async function mockAdminPushSend(page: any) {
 // =========================================================================
 
 test.describe("Push Notifications — E2E", () => {
+  // Resolve os IDs dinamicamente no beforeAll (mesmo padrão do
+  // realtime-notification.spec.ts): provider por email (login + /api/auth/me)
+  // e serviço por título (/api/services, público). Sanity check: o serviço
+  // pertence ao provider resolvido (mesmo seed).
+  test.beforeAll(async ({ request }) => {
+    const loginRes = await request.post("/api/auth/login", {
+      data: { email: PROVIDER_EMAIL, password: PROVIDER_PASSWORD },
+    })
+    expect(loginRes.ok(), `login do provider ${PROVIDER_EMAIL} falhou`).toBeTruthy()
+    const me = (await (await request.get("/api/auth/me")).json()) as { user?: { id?: string } }
+    PROVIDER_ID = me.user?.id ?? ""
+    expect(PROVIDER_ID, `provider ${PROVIDER_EMAIL} não encontrado via /api/auth/me`).toBeTruthy()
+
+    const servicesRes = await request.get(`/api/services?q=${encodeURIComponent(SERVICE_TITLE)}`)
+    expect(servicesRes.ok()).toBeTruthy()
+    const services = (await servicesRes.json()) as Array<{
+      id: string
+      title: string
+      provider?: { id?: string } | null
+    }>
+    const service = services.find((s) => s.title === SERVICE_TITLE)
+    expect(service, `serviço "${SERVICE_TITLE}" não encontrado via /api/services`).toBeDefined()
+    SERVICE_ID = service!.id
+    if (service!.provider?.id) {
+      expect(service!.provider.id).toBe(PROVIDER_ID)
+    }
+    console.log(`✅ Fixtures dinâmicas: provider=${PROVIDER_ID} service=${SERVICE_ID}`)
+  })
+
   // =====================================================================
   // 1. Inscrição (Subscribe / Unsubscribe)
   // =====================================================================
@@ -502,8 +537,8 @@ test.describe("Push Notifications — E2E", () => {
 
         const bookingRes = await cPage.request.post("/api/bookings", {
           data: {
-            providerId: "prov-e2e-1",
-            serviceId: "svc-e2e-1",
+            providerId: PROVIDER_ID,
+            serviceId: SERVICE_ID,
             scheduledAt: tomorrow.toISOString(),
             address: "Av. Paulista, 1000",
             cep: "01310-100",

@@ -113,6 +113,14 @@ function getConfig() {
 // HTTP helpers
 // ---------------------------------------------------------------------------
 
+// Timeout (ms) do fetch para a Evolution API. Um servidor que aceita o TCP
+// mas nunca responde deixaria o request pendurado — travando envios de
+// WhatsApp (sendText e derivados) que aguardam o fetch. AbortSignal.timeout()
+// aborta após o prazo (rejeita com TimeoutError, propagado ao chamador).
+// Guarda contra valores inválidos: Number() → NaN → || 10_000 cai no default;
+// negativo/zero → Math.max(1, …).
+const EVOLUTION_TIMEOUT_MS = Math.max(1, Number(process.env.EVOLUTION_TIMEOUT_MS) || 10_000)
+
 async function evolutionRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
   const { baseUrl, apiKey } = getConfig()
   const url = `${baseUrl}${path}`
@@ -125,6 +133,7 @@ async function evolutionRequest<T>(method: string, path: string, body?: unknown)
       apikey: apiKey,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(EVOLUTION_TIMEOUT_MS),
   })
 
   const contentType = res.headers.get("content-type") ?? ""

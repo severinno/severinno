@@ -34,14 +34,22 @@ vi.mock("next/headers", () => ({
   headers: () => new Headers(),
 }))
 
+// destroySession now emits a realtime revocation (logout → disconnect
+// sockets). Mock the bridge so unit tests never hit the network.
+vi.mock("../realtime-client", () => ({
+  emitRealtime: vi.fn(),
+}))
+
 import {
   createSession,
   getSession,
   destroySession,
+  revokeUserSessions,
   requireUser,
   requireRole,
   getOptionalSession,
 } from "../auth"
+import { emitRealtime } from "../realtime-client"
 
 const VALID_USER = {
   id: "user-1",
@@ -131,6 +139,40 @@ describe("destroySession", () => {
     expect(await getSession()).not.toBeNull()
     await destroySession()
     expect(await getSession()).toBeNull()
+  })
+
+  it("emits session:revoke with the logged-in userId (logout → realtime disconnect)", async () => {
+    await createSession("user-1", "CLIENT")
+    await destroySession()
+    expect(emitRealtime).toHaveBeenCalledTimes(1)
+    expect(emitRealtime).toHaveBeenCalledWith("session:revoke", { userId: "user-1" })
+  })
+
+  it("does not emit session:revoke when there is no active session", async () => {
+    await destroySession()
+    expect(emitRealtime).not.toHaveBeenCalled()
+  })
+
+  it("does not emit session:revoke when the cookie was tampered", async () => {
+    cookieStore.set("severinno_session", { value: "tampered.value.here.bad" })
+    await destroySession()
+    expect(emitRealtime).not.toHaveBeenCalled()
+  })
+})
+
+describe("revokeUserSessions", () => {
+  it("emits session:revoke for the given userId (admin deactivation/delete)", async () => {
+    await revokeUserSessions("user-42")
+    expect(emitRealtime).toHaveBeenCalledTimes(1)
+    expect(emitRealtime).toHaveBeenCalledWith("session:revoke", { userId: "user-42" })
+  })
+
+  it("emits for any user without needing a session cookie (admin flow)", async () => {
+    await revokeUserSessions("some-other-user")
+    expect(emitRealtime).toHaveBeenCalledTimes(1)
+    expect(emitRealtime).toHaveBeenCalledWith("session:revoke", {
+      userId: "some-other-user",
+    })
   })
 })
 

@@ -39,6 +39,7 @@ const mockDb = vi.hoisted(() => ({
   user: { findUnique: vi.fn(), findMany: vi.fn() },
   message: { findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
   notification: { create: vi.fn() },
+  booking: { findUnique: vi.fn() },
 }))
 
 vi.mock("@/lib/db", () => ({ default: mockDb, db: mockDb }))
@@ -173,6 +174,106 @@ describe("POST /api/messages", () => {
     mockDb.user.findUnique.mockResolvedValue(null)
     const response = await POST(createMockRequest({ method: "POST", body: validMessage }))
     expect(response.status).toBe(404)
+  })
+
+  it("allows message with bookingId when sender is the booking client", async () => {
+    vi.mocked(messageSchema.parse).mockReturnValue({ ...validMessage, bookingId: "bk-1" })
+    mockDb.booking.findUnique.mockResolvedValue({
+      id: "bk-1",
+      clientId: "client-1",
+      providerId: "prov-1",
+    })
+    mockDb.message.create.mockResolvedValue({
+      id: "msg-new",
+      ...validMessage,
+      fromId: "client-1",
+      read: false,
+      bookingId: "bk-1",
+      createdAt: new Date(),
+    })
+    mockDb.notification.create.mockResolvedValue({})
+
+    const response = await POST(
+      createMockRequest({ method: "POST", body: { ...validMessage, bookingId: "bk-1" } }),
+    )
+    expect(response.status).toBe(201)
+    expect(mockDb.booking.findUnique).toHaveBeenCalledWith({
+      where: { id: "bk-1" },
+      select: { id: true, clientId: true, providerId: true },
+    })
+  })
+
+  it("allows message with bookingId when sender is the booking provider", async () => {
+    vi.mocked(requireUser).mockResolvedValue({ userId: "prov-1", role: "PROVIDER" })
+    vi.mocked(messageSchema.parse).mockReturnValue({
+      toId: "client-1",
+      content: "ok",
+      bookingId: "bk-1",
+    })
+    mockDb.user.findUnique.mockResolvedValue({ id: "client-1", active: true })
+    mockDb.booking.findUnique.mockResolvedValue({
+      id: "bk-1",
+      clientId: "client-1",
+      providerId: "prov-1",
+    })
+    mockDb.message.create.mockResolvedValue({
+      id: "msg-new",
+      toId: "client-1",
+      content: "ok",
+      fromId: "prov-1",
+      read: false,
+      bookingId: "bk-1",
+      createdAt: new Date(),
+    })
+    mockDb.notification.create.mockResolvedValue({})
+
+    const response = await POST(
+      createMockRequest({
+        method: "POST",
+        body: { toId: "client-1", content: "ok", bookingId: "bk-1" },
+      }),
+    )
+    expect(response.status).toBe(201)
+  })
+
+  it("forbids message with bookingId when sender is NOT a participant", async () => {
+    vi.mocked(messageSchema.parse).mockReturnValue({ ...validMessage, bookingId: "bk-1" })
+    mockDb.booking.findUnique.mockResolvedValue({
+      id: "bk-1",
+      clientId: "other-client",
+      providerId: "other-provider",
+    })
+    const response = await POST(
+      createMockRequest({ method: "POST", body: { ...validMessage, bookingId: "bk-1" } }),
+    )
+    expect(response.status).toBe(403)
+    expect(mockDb.message.create).not.toHaveBeenCalled()
+  })
+
+  it("returns 404 when the bookingId does not exist", async () => {
+    vi.mocked(messageSchema.parse).mockReturnValue({ ...validMessage, bookingId: "bk-missing" })
+    mockDb.booking.findUnique.mockResolvedValue(null)
+    const response = await POST(
+      createMockRequest({ method: "POST", body: { ...validMessage, bookingId: "bk-missing" } }),
+    )
+    expect(response.status).toBe(404)
+    expect(mockDb.message.create).not.toHaveBeenCalled()
+  })
+
+  it("forbids message when the recipient is NOT a booking participant", async () => {
+    vi.mocked(messageSchema.parse).mockReturnValue({ ...validMessage, bookingId: "bk-1" })
+    // Sender (client-1) participa, mas o destinatário (prov-1) não está no
+    // booking bk-1 (clientId=client-1, providerId=other-provider) → 403
+    mockDb.booking.findUnique.mockResolvedValue({
+      id: "bk-1",
+      clientId: "client-1",
+      providerId: "other-provider",
+    })
+    const response = await POST(
+      createMockRequest({ method: "POST", body: { ...validMessage, bookingId: "bk-1" } }),
+    )
+    expect(response.status).toBe(403)
+    expect(mockDb.message.create).not.toHaveBeenCalled()
   })
 
   it("throws 404 when recipient is inactive", async () => {

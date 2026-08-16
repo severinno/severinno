@@ -31,7 +31,10 @@ fi
 if [ "${WORKER_TYPE:-}" = "search-index" ]; then
     echo " Mode: Search Index Worker"
     echo " Starting search index consumer..."
-    exec bun src/queue/search-index-consumer.ts
+    # --conditions react-server: resolve o stub 'server-only' (usado por
+    # src/lib/search.ts) que o bundler do Next resolve via condicao, mas o
+    # bun puro nao — sem isso o worker cai com "Cannot import from Client Component".
+    exec bun --conditions react-server src/queue/search-index-consumer.ts
 fi
 
 # ── Graceful shutdown handler ──────────────────────────────────────────────

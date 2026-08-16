@@ -8,6 +8,7 @@
  */
 
 import { PrismaClient } from "@prisma/client"
+import { Redis, Cluster } from "ioredis"
 import { hashPassword } from "../src/lib/crypto"
 import { isDemoAccountsEnabled } from "../src/lib/demo-accounts"
 import {
@@ -41,6 +42,85 @@ const SP_LNG = -46.63
 
 function jitter(base: number, delta: number): number {
   return Number((base + (Math.random() * 2 - 1) * delta).toFixed(5))
+}
+
+/**
+ * Invalida o cache Redis do catálogo público (`/api/services` cacheia com
+ * `withCache("services:…", 30s)` — a janela de staleness documentada no spec
+ * E2E). O seed roda como processo standalone (bun prisma/seed.ts) e NÃO pode
+ * importar `@/lib/redis`: a cadeia redis.ts → sentry.ts → "server-only" lança
+ * fora do runtime do Next.js. Este helper replica o padrão cluster-aware do
+ * `scanKeys` do redis.ts usando apenas ioredis (já é dependência):
+ *   - standalone → KEYS + DEL
+ *   - cluster     → SCAN em cada master + DEL (evita CROSSSLOT)
+ *
+ * Best-effort: se o Redis estiver fora do ar, loga um aviso e NÃO falha o
+ * seed (o re-seed continua válido; a janela de 30s apenas persiste).
+ */
+async function invalidateServicesCache(): Promise<void> {
+  const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379"
+  const CLUSTER_MODE = process.env.REDIS_CLUSTER_MODE === "true"
+  const CLUSTER_NODES = process.env.REDIS_CLUSTER_NODES || "localhost:6379"
+  const PATTERN = "services:*"
+
+  let client: Redis | Cluster | null = null
+  try {
+    if (CLUSTER_MODE) {
+      const nodes = CLUSTER_NODES.split(",").map((s) => {
+        const [host, portStr] = s.trim().split(":")
+        return { host: host || "localhost", port: Number(portStr) || 6379 }
+      })
+      const cluster = new Cluster(nodes, {
+        enableOfflineQueue: false,
+        clusterRetryStrategy: () => null, // fail fast — best-effort
+        redisOptions: { lazyConnect: true, connectTimeout: 3_000, maxRetriesPerRequest: 1 },
+      })
+      client = cluster
+      await cluster.connect()
+
+      // SCAN cada master (cluster-safe — KEYS geraria CROSSSLOT)
+      const masters = cluster.nodes("master")
+      const keysByNode = await Promise.all(
+        masters.map(async (node) => {
+          const keys: string[] = []
+          let cursor = 0
+          do {
+            const [next, batch] = await node.scan(cursor, "MATCH", PATTERN)
+            cursor = Number(next)
+            for (const k of batch) if (!keys.includes(k)) keys.push(k)
+          } while (cursor !== 0)
+          return keys
+        }),
+      )
+      const keys = keysByNode.flat()
+      if (keys.length > 0) await cluster.del(...keys)
+      console.log(`   🧹 cache services:* invalidado (cluster, ${keys.length} chave(s))`)
+    } else {
+      const redis = new Redis(REDIS_URL, {
+        enableOfflineQueue: false,
+        maxRetriesPerRequest: 1,
+        retryStrategy: () => null, // fail fast — best-effort
+        lazyConnect: true,
+        connectTimeout: 3_000,
+      })
+      client = redis
+      await redis.connect()
+
+      const keys = await redis.keys(PATTERN)
+      if (keys.length > 0) await redis.del(...keys)
+      console.log(`   🧹 cache services:* invalidado (${keys.length} chave(s))`)
+    }
+  } catch (err) {
+    console.log(
+      `   ⚠️  cache services:* NÃO invalidado (Redis indisponível) — janela de 30s persiste: ${(err as Error).message}`,
+    )
+  } finally {
+    try {
+      await client?.disconnect()
+    } catch {
+      /* ignore */
+    }
+  }
 }
 
 async function main() {
@@ -636,6 +716,15 @@ async function main() {
     // PostGIS may not be available (e.g. SQLite) — non-fatal
     console.log("   ⚠️  PostGIS sync skipped (extension not available)")
   }
+
+  // ── Invalida o cache Redis do catálogo público (fecha a janela de 30s) ──
+  // O /api/services cacheia com withCache("services:…", 30s); sem esta
+  // invalidação, um re-seed deixaria o servidor dev servindo IDs ANTIGOS
+  // (stale) por até 30s — exatamente a janela documentada no spec E2E
+  // (e2e/realtime-notification.spec.ts). Best-effort: se o Redis estiver
+  // fora, o seed conclui normalmente e apenas loga o aviso.
+  console.log("   • invalidating public services cache...")
+  await invalidateServicesCache()
 
   console.log("")
   console.log("✅ Seed completed successfully!")
