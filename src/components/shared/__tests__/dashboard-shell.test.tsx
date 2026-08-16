@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, render, screen } from "@/__tests__/test-utils"
+import { cleanup, fireEvent, render, screen } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---------------------------------------------------------------------------
@@ -79,6 +79,10 @@ vi.mock("lucide-react", () => {
     Menu: MockIcon,
     Moon: MockIcon,
     Sun: MockIcon,
+    // SessionExpiryBanner
+    CalendarClock: MockIcon,
+    RefreshCw: MockIcon,
+    X: MockIcon,
     // MuteIndicator
     Volume2: MockIcon,
     VolumeX: MockIcon,
@@ -127,10 +131,20 @@ vi.mock("@/lib/use-balance-pulse", () => ({
 
 // ---- Shared mutable auth user (allows tests to change preferences) --------
 const mockAuthUser = vi.hoisted(() => ({ current: null as Record<string, unknown> | null }))
+// sessionExpiresAt (unix seconds) — controlável por teste p/ o banner de sessão.
+const mockSessionExpiry = vi.hoisted(() => ({ current: null as number | null }))
+const mockFetchMe = vi.hoisted(() => vi.fn())
+const mockRenewSession = vi.hoisted(() => vi.fn())
 
 vi.mock("@/store/auth", () => ({
   useAuthStore: vi.fn((selector?: (s: Record<string, unknown>) => unknown) => {
-    const state = { user: mockAuthUser.current, logout: vi.fn(), fetchMe: vi.fn() }
+    const state = {
+      user: mockAuthUser.current,
+      logout: vi.fn(),
+      fetchMe: mockFetchMe,
+      renewSession: mockRenewSession,
+      sessionExpiresAt: mockSessionExpiry.current,
+    }
     return selector ? selector(state) : state
   }),
 }))
@@ -260,8 +274,11 @@ function renderShell(props: Partial<DashboardShellProps> = {}) {
 beforeEach(() => {
   vi.clearAllMocks()
   mockAuthUser.current = null
+  mockSessionExpiry.current = null
   mockNotificationsQuery = { data: undefined, isLoading: false }
   mockWalletQuery = { data: undefined, isLoading: false }
+  // Isolamento defensivo: garante estado de sessão limpo entre testes.
+  window.localStorage.clear()
 })
 
 afterEach(cleanup)
@@ -515,6 +532,113 @@ describe("DashboardShell — MuteIndicator & VibrationIndicator", () => {
     mockAuthUser.current = { vibrateEnabled: true }
     renderShell()
     expect(screen.getByTitle("Vibração ativada")).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SessionExpiryBanner tests (countdown + renovação proativa)
+// ---------------------------------------------------------------------------
+
+describe("DashboardShell — SessionExpiryBanner", () => {
+  const DAY = 24 * 60 * 60
+  const now = Math.floor(Date.now() / 1000)
+
+  it("mostra o countdown quando a sessão expira em ≤ 7 dias", () => {
+    mockSessionExpiry.current = now + 3 * DAY
+    renderShell({ user: { role: "CLIENT" } })
+    expect(screen.getByText(/Sua sessão expira em/)).toBeDefined()
+    // Banner E pill podem renderizar o countdown juntos — getAllByText.
+    expect(screen.getAllByText("3 dias").length).toBeGreaterThanOrEqual(1)
+  })
+
+  it("mostra '1 dia' no singular", () => {
+    mockSessionExpiry.current = now + 1 * DAY
+    renderShell({ user: { role: "CLIENT" } })
+    expect(screen.getAllByText("1 dia").length).toBeGreaterThanOrEqual(1)
+  })
+
+  it("NÃO mostra o banner quando a sessão expira além de 7 dias", () => {
+    mockSessionExpiry.current = now + 20 * DAY
+    renderShell({ user: { role: "CLIENT" } })
+    expect(screen.queryByText(/Sua sessão expira em/)).toBeNull()
+  })
+
+  it("NÃO mostra o banner sem sessão autenticada (sem expiresAt)", () => {
+    mockSessionExpiry.current = null
+    renderShell({ user: { role: "CLIENT" } })
+    // A pill do dropdown também some sem sessão.
+    expect(screen.queryByText(/Sua sessão expira em/)).toBeNull()
+    expect(screen.queryByTestId("session-expiry-info")).toBeNull()
+  })
+
+  it("NÃO mostra o banner quando o cookie já expirou (days = 0)", () => {
+    mockSessionExpiry.current = now - 60 // já passou
+    renderShell({ user: { role: "CLIENT" } })
+    expect(screen.queryByText(/Sua sessão expira em/)).toBeNull()
+  })
+
+  it("o botão Renovar chama renewSession (renovação proativa NÃO-destrutiva)", () => {
+    mockSessionExpiry.current = now + 2 * DAY
+    renderShell({ user: { role: "CLIENT" } })
+    fireEvent.click(screen.getByRole("button", { name: /Renovar/ }))
+    // Renew reusa a ação dedicada do store — NUNCA fetchMe (que em erro de
+    // rede marca unauthenticated e derruba o usuário para o login).
+    expect(mockRenewSession).toHaveBeenCalledTimes(1)
+    expect(mockFetchMe).not.toHaveBeenCalled()
+  })
+
+  it("o botão dispensar esconde o banner (dismiss local)", () => {
+    mockSessionExpiry.current = now + 4 * DAY
+    renderShell({ user: { role: "CLIENT" } })
+    expect(screen.getByText(/Sua sessão expira em/)).toBeDefined()
+    fireEvent.click(screen.getByRole("button", { name: "Dispensar aviso" }))
+    expect(screen.queryByText(/Sua sessão expira em/)).toBeNull()
+  })
+
+  it("o banner é acessível (role=status com o texto do countdown)", () => {
+    mockSessionExpiry.current = now + 5 * DAY
+    renderShell({ user: { role: "CLIENT" } })
+    // Há vários role="status" no shell (indicadores etc.) — escopa pelo
+    // conteúdo do banner em vez de assumir que é o único.
+    const statuses = screen.getAllByRole("status")
+    expect(statuses.some((el) => el.textContent?.includes("Sua sessão expira em"))).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SessionExpiryInfo tests (pill sempre visível no dropdown do usuário)
+// ---------------------------------------------------------------------------
+
+describe("DashboardShell — SessionExpiryInfo (pill do dropdown)", () => {
+  const DAY = 24 * 60 * 60
+  const now = Math.floor(Date.now() / 1000)
+
+  it("mostra o countdown na pill quando há sessão (15–30d — operação normal)", () => {
+    // A rotação deslizante mantém o expiry entre 15–30d; a pill mostra SEMPRE
+    // (diferente do banner, que só aparece ≤7d).
+    mockSessionExpiry.current = now + 20 * DAY
+    renderShell({ user: { role: "CLIENT" } })
+    const pill = screen.getByTestId("session-expiry-info")
+    expect(pill.textContent).toContain("Sessão expira em")
+    expect(pill.textContent).toContain("20 dias")
+  })
+
+  it("mostra '1 dia' na pill no singular", () => {
+    mockSessionExpiry.current = now + 1 * DAY
+    renderShell({ user: { role: "CLIENT" } })
+    expect(screen.getByTestId("session-expiry-info").textContent).toContain("1 dia")
+  })
+
+  it("NÃO mostra a pill sem sessão autenticada", () => {
+    mockSessionExpiry.current = null
+    renderShell({ user: { role: "CLIENT" } })
+    expect(screen.queryByTestId("session-expiry-info")).toBeNull()
+  })
+
+  it("NÃO mostra a pill quando o cookie já expirou", () => {
+    mockSessionExpiry.current = now - 60
+    renderShell({ user: { role: "CLIENT" } })
+    expect(screen.queryByTestId("session-expiry-info")).toBeNull()
   })
 })
 

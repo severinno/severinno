@@ -522,6 +522,18 @@ services:
       # Override POR ROLE (JSON): {"CLIENT":1,"PROVIDER":2,"ADMIN":5}.
       # Roles sem override usam o default global acima; JSON invalido → default.
       REALTIME_MAX_SESSIONS_PER_ROLE: ${REALTIME_MAX_SESSIONS_PER_ROLE:-}
+      # Intervalo do sweep de TTL do cookie (ms; default 60000; clamp >= 1000).
+      # Baixo em dev/CI acelera o spec e2e/realtime-ttl-sweep.spec.ts.
+      REALTIME_TTL_SWEEP_MS: ${REALTIME_TTL_SWEEP_MS:-}
+      # Persistencia de telemetria (emitCounters + sockets orfaos) no Redis:
+      # REDIS_URL (mesmo do app) + intervalo do timer (ms; default 30000).
+      REALTIME_TELEMETRY_INTERVAL_MS: ${REALTIME_TELEMETRY_INTERVAL_MS:-30000}
+      # Alerta operacional de sockets orfaos (usersWithMultipleSockets >
+      # threshold) via webhook Sentry/GlitchTip (envelope raw, fail-open).
+      GLITCHTIP_DSN: ${GLITCHTIP_DSN:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      REALTIME_ORPHAN_ALERT_THRESHOLD: ${REALTIME_ORPHAN_ALERT_THRESHOLD:-0}
+      REALTIME_ORPHAN_ALERT_COOLDOWN_MS: ${REALTIME_ORPHAN_ALERT_COOLDOWN_MS:-900000}
       DATABASE_URL: postgresql://${POSTGRES_USER:-severinno}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-severinno}
     secrets:
       - session_secret

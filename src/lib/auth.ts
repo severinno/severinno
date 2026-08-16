@@ -11,8 +11,34 @@ import { emitRealtime } from "@/lib/realtime-client"
  */
 
 const COOKIE_NAME = "severinno_session"
-const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30 // 30 days
-const ROTATION_THRESHOLD_SECONDS = COOKIE_MAX_AGE_SECONDS / 2 // 15 days
+
+/** Default do TTL do cookie de sessão: 30 dias. */
+const DEFAULT_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
+
+/**
+ * Resolve o TTL do cookie de sessão (segundos) a partir da env
+ * `SESSION_COOKIE_MAX_AGE_SECONDS`. Guard pattern do repo (`Math.max(1,
+ * Number(env) || default)`):
+ *   - missing/empty/non-numeric (NaN) → default 30d
+ *   - "0" (falsy) → default 30d
+ *   - < 60s → clamped a 60s (um cookie de <1min quebraria login/renderização;
+ *     o spec E2E de TTL usa cookie FORJADO com TTL curto, então o env do app
+ *     não precisa ser curto para testar o sweep do realtime)
+ * Pura — o módulo chama no boot (COOKIE_MAX_AGE_SECONDS) e os unit tests
+ * exercitam a função diretamente com valores arbitrários.
+ */
+export function resolveCookieMaxAgeSeconds(
+  envValue: string | undefined = process.env.SESSION_COOKIE_MAX_AGE_SECONDS,
+): number {
+  const n = Number(envValue)
+  // Não-finito (ex.: "1e309" → Infinity quebraria o maxAge do cookie) ou
+  // "0" (falsy — cookie sem TTL) → default 30d.
+  if (!Number.isFinite(n) || n === 0) return DEFAULT_COOKIE_MAX_AGE_SECONDS
+  return Math.max(60, n)
+}
+
+const COOKIE_MAX_AGE_SECONDS = resolveCookieMaxAgeSeconds()
+const ROTATION_THRESHOLD_SECONDS = COOKIE_MAX_AGE_SECONDS / 2 // metade do TTL
 
 function getSecret(): string {
   const secret = process.env.SESSION_SECRET
@@ -27,6 +53,10 @@ function sign(payload: string): string {
 export type SessionPayload = {
   userId: string
   role: "CLIENT" | "PROVIDER" | "ADMIN"
+  /** Unix seconds — expiry EFETIVO do cookie (o NOVO quando reemitido).
+   *  Exposto ao client via /api/auth/me para exibir "sessão expira em X dias"
+   *  e disparar renovação proativa (qualquer request já reemite <15d). */
+  expiresAt?: number
 }
 
 /**
@@ -53,9 +83,11 @@ export async function createSession(userId: string, role: SessionPayload["role"]
 /**
  * Reissue the session cookie with a new expiry (sliding extension).
  * Used when the session is past the rotation threshold.
+ * Returns the newly-issued session (incl. the fresh expiresAt) so callers
+ * can propagate the new expiry to the realtime mini-service.
  */
 async function reissueSession(userId: string, role: SessionPayload["role"]) {
-  await createSession(userId, role)
+  return createSession(userId, role)
 }
 
 /**
@@ -94,13 +126,22 @@ export async function getSession(): Promise<SessionPayload | null> {
     }
 
     const remaining = expiresAt - Math.floor(Date.now() / 1000)
+    let effectiveExpiresAt = expiresAt
     if (remaining < ROTATION_THRESHOLD_SECONDS) {
-      await reissueSession(userId, role as SessionPayload["role"])
+      // Rotação do cookie (janela <15d): o novo expiresAt precisa chegar ao
+      // realtime — os sockets fixam expiresAt no HANDSHAKE, então sem isso o
+      // sweep de TTL fecharia a sessão reemitida VÁLIDA quando o expiry
+      // ORIGINAL passar. Best-effort, deduplicado, NUNCA bloqueia o request.
+      const renewed = await reissueSession(userId, role as SessionPayload["role"])
+      effectiveExpiresAt = renewed.expiresAt
+      void propagateSessionRenewal(userId, renewed.expiresAt)
     }
 
     return {
       userId,
       role: role as SessionPayload["role"],
+      // Expiry efetivo (pós-rotação) — o client usa para o countdown da sessão.
+      expiresAt: effectiveExpiresAt,
     }
   } catch {
     return null
@@ -155,6 +196,53 @@ async function revokeExpiredSessionSockets(userId: string): Promise<void> {
   } catch {
     // Best-effort: a função é consumida com `void` (fire-and-forget) — nunca
     // pode rejeitar (unhandled rejection). A revogação é idempotente.
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cookie-rotation realtime propagation (reissue <15d → session:renew)
+// ---------------------------------------------------------------------------
+// Quando o getSession reemite o cookie (rotação deslizante, janela <15d), o
+// NOVO expiresAt é propagado ao realtime via bridge /emit (session:renew,
+// Bearer-protected) para o sweep de TTL nunca fechar uma sessão reemitida
+// VÁLIDA (os sockets fixam expiresAt no handshake). Deduplicado em duas
+// camadas — Map 1h + chave Redis `realtime:renewed:expired:{userId}` TTL 1h
+// — porque o getSession roda em TODO request passado o threshold: sem dedupe,
+// cada request martelaria o bridge /emit com o mesmo renew.
+const RENEW_DEDUPE_WINDOW_MS = 60 * 60 * 1000 // 1h
+const RENEW_DEDUPE_KEY_TTL_S = 60 * 60 // 1h (segundos)
+const sessionRenewedAt = new Map<string, number>()
+
+async function propagateSessionRenewal(userId: string, expiresAt: number): Promise<void> {
+  const now = Date.now()
+  // Poda oportunística idêntica à do revoke por TTL.
+  if (sessionRenewedAt.size > 1000) {
+    for (const [id, t] of sessionRenewedAt) {
+      if (now - t > RENEW_DEDUPE_WINDOW_MS) sessionRenewedAt.delete(id)
+    }
+  }
+  const last = sessionRenewedAt.get(userId)
+  if (last !== undefined && now - last < RENEW_DEDUPE_WINDOW_MS) return
+  sessionRenewedAt.set(userId, now)
+
+  let alreadyRenewed = false
+  try {
+    const dedupeKey = `realtime:renewed:${userId}`
+    const cached = await cacheGet<number>(dedupeKey)
+    if (cached) {
+      alreadyRenewed = true
+    } else {
+      await cacheSet(dedupeKey, now, RENEW_DEDUPE_KEY_TTL_S)
+    }
+  } catch {
+    // Redis/cache indisponível → emite mesmo assim (renew é idempotente e
+    // EXTEND-ONLY no realtime — um renew repetido é no-op). Não bloqueia.
+  }
+  if (alreadyRenewed) return
+  try {
+    await emitRealtime("session:renew", { userId, expiresAt })
+  } catch {
+    // Best-effort: consumido com `void` — nunca pode rejeitar.
   }
 }
 

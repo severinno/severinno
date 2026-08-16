@@ -14,7 +14,12 @@ import {
   filterSocketsBySessionUserId,
   selectSocketsToKickForSessionLimit,
   selectExpiredSessionSockets,
+  renewSessionSockets,
+  parseSweepIntervalMs,
+  parseTelemetryIntervalMs,
   extractEmitEventInfo,
+  toPublicRecentEmits,
+  type RecentEmitEntry,
   summarizeActiveSessions,
   recordKickAudit,
   snapshotKickAudit,
@@ -24,6 +29,20 @@ import {
   type VerifiedSession,
   type BookingParticipantChecker,
 } from "./security"
+import {
+  createRedisLoader,
+  createTelemetryPersister,
+  readTelemetryWindow,
+  DEFAULT_METRICS_MINUTES,
+  MAX_METRICS_MINUTES,
+  type TelemetrySessionsSnapshot,
+} from "./redis-telemetry"
+import {
+  createOrphanAlert,
+  parseOrphanAlertThreshold,
+  parseOrphanAlertCooldownMs,
+  resolveAlertDsn,
+} from "./ops-alert"
 import { createBookingParticipantChecker, type PoolLike } from "./booking-participant"
 import {
   createSessionLimitNotifier,
@@ -287,11 +306,11 @@ function auditSocketEvent<T>(event: string, payload: T): void {
 // /health exposes the totals + a short ring buffer of recent emits.
 const emitCounters = new Map<string, number>()
 const RECENT_EMITS_MAX = 20
-const recentEmits: Array<{
-  t: string
-  source: "emit" | "socket"
-  event: string
-}> = []
+// Ring COMPLETO: carrega userId/rooms/relatedIds (presença de usuários). O
+// GET /health (SEM auth) recebe a forma pública via toPublicRecentEmits(); o
+// GET /health/detailed (Bearer) expõe a entrada completa para debugging do
+// socket órfão.
+const recentEmits: Array<RecentEmitEntry> = []
 
 // ── Kick audit (admin "last kick reason" display) ─────────────────────────
 // Tracks WHY a user's sockets were force-closed (session_limit vs revoke vs
@@ -310,10 +329,11 @@ function bumpEmitCounter(event: string): void {
  * Audit one emitted event (source="emit" = POST /emit bridge; source="socket"
  * = client-emitted handler). Best-effort: never throws into the caller.
  *
- * NOTA (segurança): o ring buffer e o log de console carregam rooms/userId
- * para debugging de operação, mas o /health (endpoint SEM auth) NÃO expõe
- * esses campos — só event/source/t — para não vazar presença de usuários
- * (mesmo dado que motivou proteger /sessions com Bearer).
+ * NOTA (segurança): o ring buffer carrega rooms/userId para debugging de
+ * operação, mas o /health (endpoint SEM auth) NÃO expõe esses campos — só
+ * event/source/t (toPublicRecentEmits) — para não vazar presença de
+ * usuários (mesmo dado que motivou proteger /sessions com Bearer). O
+ * /health/detailed (Bearer) expõe a entrada completa.
  */
 function auditEmit(
   source: "emit" | "socket",
@@ -327,6 +347,9 @@ function auditEmit(
       t: new Date().toISOString(),
       source,
       event,
+      userId: info.userId,
+      rooms: info.rooms,
+      relatedIds: info.relatedIds,
     })
     if (recentEmits.length > RECENT_EMITS_MAX) recentEmits.shift()
     console.log(
@@ -440,15 +463,20 @@ async function enforceSessionLimit(
 }
 
 // ── Periodic TTL sweep ─────────────────────────────────────────────────────
-// Sessions expire by cookie TTL (30d) without an explicit logout. The app
-// (src/lib/auth.ts getSession) fires session:revoke when it sees the expired
+// Sessions expire by cookie TTL (default 30d) without an explicit logout. The
+// app (src/lib/auth.ts getSession) fires session:revoke when it sees the expired
 // cookie on the next request, but a socket with NO further traffic (idle
 // dashboard/tab open for months) would never trigger that path. This sweep
 // closes the gap server-side: every SWEEP_INTERVAL_MS, force-close sockets
 // whose verified session (fixed at handshake, incl. expiresAt) has passed its
 // TTL — same event+delayed-close pattern as session:revoke so the client
 // resets its singleton instead of reconnecting with the stale cookie.
-const TTL_SWEEP_INTERVAL_MS = 60_000 // 1min
+//
+// Intervalo configurável via env REALTIME_TTL_SWEEP_MS (ms; default 60s;
+// clamp >= 1s — parseSweepIntervalMs em security.ts, unit-tested). Um valor
+// baixo (ex.: 2000) em dev/CI acelera a validação do sweep de TTL (spec
+// e2e/realtime-ttl-sweep.spec.ts) sem tocar em produção.
+const TTL_SWEEP_INTERVAL_MS = parseSweepIntervalMs(process.env.REALTIME_TTL_SWEEP_MS)
 
 const ttlSweep = setInterval(async () => {
   try {
@@ -469,6 +497,98 @@ const ttlSweep = setInterval(async () => {
 }, TTL_SWEEP_INTERVAL_MS)
 // Não segura o processo aberto por causa do timer.
 ttlSweep.unref()
+
+// ── Telemetry persist (Redis, janela deslizante) ──────────────────────────
+// Persiste a telemetria (emitCounters + o sinal de sockets órfãos
+// usersWithMultipleSockets) em Redis a cada REALTIME_TELEMETRY_INTERVAL_MS
+// (default 30s; env via parseTelemetryIntervalMs) para dashboards de operação
+// e alertas — o admin route do app (GET /api/admin/realtime/telemetry) lê os
+// buckets de minuto + a flag. Fail-open: sem REDIS_URL ou Redis fora → loga
+// (deduplicado) e segue; telemetria nunca quebra o realtime. O snapshot vem
+// do MESMO getHealthSnapshot() exposto no /health (fetchSockets é a fonte da
+// verdade — sem registro separado para manter em sync).
+const TELEMETRY_INTERVAL_MS = parseTelemetryIntervalMs(process.env.REALTIME_TELEMETRY_INTERVAL_MS)
+// Loader compartilhado: o persister escreve e o GET /metrics lê o MESMO client
+// lazy (um único ioredis, docker-secret aware, memoizado).
+const telemetryLoadClient = createRedisLoader()
+const telemetry = createTelemetryPersister({
+  loadClient: telemetryLoadClient,
+  // Flag de órfãos: TTL ≈ 2× o intervalo — a flag self-clears quando a
+  // condição deixa de ser observada (janela deslizante do "agora").
+  flagTtlS: Math.max(60, Math.ceil((2 * TELEMETRY_INTERVAL_MS) / 1000)),
+})
+
+// ── Orphan-socket operational alert (Sentry/GlitchTip webhook) ─────────────
+// Alerta quando usersWithMultipleSockets cruza o threshold (default 0 = qualquer
+// órfão — o sintoma do HMR leak em staging antes de chegar à produção). O mesmo
+// snapshot do /health alimenta o alerta; cooldown por direção (default 15min) e
+// recovery notice quando cai de volta (padrão do geo-health-alert). Fail-open:
+// sem DSN ou webhook fora → log dedup e segue. Envs:
+//   GLITCHTIP_DSN | SENTRY_DSN            — ingest (docker-secret aware)
+//   REALTIME_ORPHAN_ALERT_THRESHOLD        — default 0 (usuários multi-socket)
+//   REALTIME_ORPHAN_ALERT_COOLDOWN_MS      — default 15min (clamp >= 60s)
+// ⚠️ Per-processo: cada instância do realtime vê só os próprios sockets (o
+// mesmo escopo da revogação/TTL/limite de sessões) — o threshold é por
+// instância, não global entre réplicas.
+const orphanAlertDsn = resolveAlertDsn()
+if (!orphanAlertDsn) {
+  console.warn(
+    "[realtime] ⚠️ orphan-socket alert DISABLED — no GLITCHTIP_DSN/SENTRY_DSN configured (fail-open by design; set it to detect HMR leaks in staging)",
+  )
+}
+const orphanAlert = createOrphanAlert({
+  dsn: orphanAlertDsn,
+  threshold: parseOrphanAlertThreshold(process.env.REALTIME_ORPHAN_ALERT_THRESHOLD),
+  cooldownMs: parseOrphanAlertCooldownMs(process.env.REALTIME_ORPHAN_ALERT_COOLDOWN_MS),
+})
+
+let telemetryPersisting = false
+const telemetryTimer = setInterval(async () => {
+  // Guard de overlap: se um ciclo (fetchSockets + persist) demorar mais que o
+  // intervalo, pula o próximo em vez de empilhar execuções assíncronas.
+  if (telemetryPersisting) return
+  telemetryPersisting = true
+  try {
+    const snapshot = await getHealthSnapshot()
+    await telemetry.persist(
+      snapshot.emitCounters as Record<string, number>,
+      snapshot.sessions as unknown as TelemetrySessionsSnapshot,
+    )
+    // Alerta operacional sobre o MESMO snapshot do /health (fail-open interno).
+    await orphanAlert.evaluate(snapshot.sessions as unknown as TelemetrySessionsSnapshot)
+  } catch (err) {
+    // Best-effort: nunca pode rejeitar (unhandled rejection) — o persister e o
+    // alerta já são fail-open; este catch cobre erros do snapshot em si.
+    console.error("[realtime] telemetry timer error (best-effort):", err)
+  } finally {
+    telemetryPersisting = false
+  }
+}, TELEMETRY_INTERVAL_MS)
+telemetryTimer.unref()
+
+// ── Session renewal (cookie rotation) ─────────────────────────────────────
+// The app's getSession reissues the cookie past the rotation threshold (<15d
+// remaining, src/lib/auth.ts) and propagates the NEW expiry via the
+// Bearer-protected /emit bridge (event session:renew). Sockets fix expiresAt
+// at HANDSHAKE time, so without this the TTL sweep would close a still-valid
+// re-issued session when the ORIGINAL expiry passes. renewSessionSockets is
+// EXTEND-ONLY: a stale/out-of-order renewal is a no-op (never shortens).
+// Same fetchSockets sweep as session:revoke, so connected-but-not-joined
+// sockets are covered too.
+function handleSessionRenew(payload: { userId?: string; expiresAt?: number }): void {
+  const { userId, expiresAt } = payload || {}
+  if (!userId || typeof expiresAt !== "number" || !Number.isFinite(expiresAt)) return
+  io.fetchSockets()
+    .then((sockets) => {
+      const updated = renewSessionSockets(sockets, userId, expiresAt)
+      console.log(
+        `[realtime] session renewed for user:${userId} — ${updated} socket(s) re-expired to ${expiresAt}`,
+      )
+    })
+    .catch((err) => {
+      console.error("[realtime] session:renew fetchSockets error:", err)
+    })
+}
 
 function handleSessionRevoke(payload: { userId?: string }): void {
   const { userId } = payload || {}
@@ -737,7 +857,9 @@ async function getHealthSnapshot(): Promise<Record<string, unknown>> {
     sockets: { total: socketsCount, verified: verifiedCount, joined: joinedCount },
     sessions: metrics,
     emitCounters: Object.fromEntries(emitCounters),
-    recentEmits: recentEmits.slice(-10),
+    // Fronteira de privacidade: o /health é SEM auth — só a forma pública
+    // (sem userId/rooms). O detalhe completo vive no /health/detailed (Bearer).
+    recentEmits: toPublicRecentEmits(recentEmits.slice(-10)),
   }
 }
 
@@ -748,12 +870,51 @@ type SessionMetaLike = {
 }
 
 // ---------- HTTP routing (admin endpoints + socket.io delegation) ----------
-// GET  /health -> { status, sockets, sessions, emitCounters, recentEmits }
-// POST /emit   -> { event, data } — server-side bridge used by
-//                 src/lib/realtime-client.ts (Next.js app server)
+// GET  /health          -> público: { status, sockets, sessions, emitCounters,
+//                           recentEmits } — SEM userId/rooms (privacidade)
+// GET  /health/detailed -> Bearer: snapshot + recentEmits COMPLETO (userId/
+//                           rooms) + kick audit — debugging do socket órfão
+// GET  /sessions        -> Bearer: sessões ativas + kicks
+// GET  /metrics         -> Bearer: telemetria persistida no Redis (emitCounters
+//                           por minuto + histórico usersWithMultipleSockets +
+//                           flag órfã) — dashboards de operação
+// POST /emit            -> Bearer: bridge server→server usado pelo app
 // Every other request is delegated to engine.io (socket.io handshakes).
 httpServer.on("request", (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost")
+
+  // GET /health/detailed (Bearer) — o detalhe que o /health público omite:
+  // recentEmits COMPLETO com userId/rooms/relatedIds (rastreio de quem emitiu
+  // o quê para qual sala — o diagnóstico do socket órfão do HMR) + o kick
+  // audit. Mesma proteção do /sessions: expõe presença de usuários, então
+  // nunca pode ser reachable sem Bearer.
+  if (url.pathname === "/health/detailed" && req.method === "GET") {
+    if (!verifyEmitToken(req.headers.authorization, EMIT_TOKEN)) {
+      res.writeHead(401, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ ok: false, error: "UNAUTHORIZED" }))
+      return
+    }
+    getHealthSnapshot()
+      .then((snapshot) => {
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(
+          JSON.stringify({
+            ok: true,
+            ...snapshot,
+            // Sobrescreve o recentEmits já stripped pelo snapshot com a forma
+            // COMPLETA (ring inteiro, não só os últimos 10 do /health).
+            recentEmits: recentEmits.slice(-RECENT_EMITS_MAX),
+            kicks: snapshotKickAudit(kickAudit),
+          }),
+        )
+      })
+      .catch((err) => {
+        console.error("[realtime] /health/detailed error:", err)
+        res.writeHead(500, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ ok: false, error: "internal" }))
+      })
+    return
+  }
 
   if (url.pathname === "/health" && req.method === "GET") {
     // Richer health: status ok + aggregated session/socket metrics. Best-effort:
@@ -804,6 +965,42 @@ httpServer.on("request", (req, res) => {
     return
   }
 
+  // GET /metrics -> telemetria persistida no Redis (janela deslizante por
+  // minuto, TTL 24h): emitCounters agregados + histórico do sinal de sockets
+  // órfãos (usersWithMultipleSockets) + a flag "órfãos agora". Mesma proteção
+  // Bearer do /sessions e /health/detailed: é dado operacional do serviço.
+  // Redis fora → `{ ok: false, available: false }` (degradação graciosa, o
+  // dashboard mostra a telemetria como offline — nunca 500).
+  if (url.pathname === "/metrics" && req.method === "GET") {
+    if (!verifyEmitToken(req.headers.authorization, EMIT_TOKEN)) {
+      res.writeHead(401, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ ok: false, error: "UNAUTHORIZED" }))
+      return
+    }
+    const rawMinutes = Number(url.searchParams.get("minutes") ?? DEFAULT_METRICS_MINUTES)
+    ;(async () => {
+      const client = await telemetryLoadClient()
+      if (!client) {
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ ok: false, available: false }))
+        return
+      }
+      const window = await readTelemetryWindow(client, rawMinutes, Date.now())
+      if (!window) {
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ ok: false, available: false }))
+        return
+      }
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ ok: true, ...window }))
+    })().catch((err) => {
+      console.error("[realtime] /metrics error:", err)
+      res.writeHead(500, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ ok: false, error: "internal" }))
+    })
+    return
+  }
+
   if (url.pathname === "/emit" && req.method === "POST") {
     // Require Authorization: Bearer <REALTIME_EMIT_TOKEN> (timing-safe,
     // fail closed). This endpoint broadcasts events to arbitrary user rooms,
@@ -843,6 +1040,9 @@ httpServer.on("request", (req, res) => {
             break
           case "session:revoke":
             handleSessionRevoke(data as { userId?: string })
+            break
+          case "session:renew":
+            handleSessionRenew(data as { userId?: string; expiresAt?: number })
             break
           default:
             // Sinal de misconfiguration para o operador: evento desconhecido

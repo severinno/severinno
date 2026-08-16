@@ -1840,6 +1840,93 @@ Stage Summary:
 
 - **Alterado**: worklog.md (registro de auditoria do diagnóstico + decisão).
 
+## ME-EXPIRY — expiresAt do cookie exposto ao client + countdown + renovação proativa
+
+Task: Adicionar um endpoint /api/auth/me-expiry OU incluir expiresAt na resposta
+do /api/auth/me para o client mostrar "sua sessão expira em X dias" no
+dashboard e renovar proativamente. Escolhido: incluir expiresAt na resposta
+existente (sem endpoint novo — um round-trip a menos).
+
+- **Backend**: `src/lib/auth.ts` — SessionPayload ganha `expiresAt?` (unix
+  seconds); getSession retorna o expiry EFETIVO (o NOVO quando reemite <15d,
+  senão o original) — requireUser/requireRole/getOptionalSession herdam.
+  `/api/auth/me` devolve `{ user, expiresAt }` (null em todos os branches
+  sem sessão/user).
+- **Store**: `sessionExpiresAt` (NÃO persistido — o cookie é a verdade;
+  logout/unauth resetam) + ação dedicada `renewSession()` NÃO-destrutiva:
+  GET /api/auth/me; em erro de rede/5xx MANTER o estado (o fetchMe marca
+  unauthenticated e derruba o usuário para login — renovar que falha não
+  pode expulsar ninguém); initialized:true no sucesso.
+- **UI**: `SessionExpiryBanner` (urgente ≤7d, botão Renovar via renewSession,
+  dismiss por montagem sem localStorage) + `SessionExpiryInfo` (pill SEMPRE
+  visível no dropdown do usuário). Decisão de design (reviewer): a rotação
+  deslizante + polling 30s mantém o expiry entre 15–30d — um banner ≤7d
+  NUNCA apareceria em operação normal, então a pill sempre visível é o que
+  atende "mostrar X dias"; o banner cobre o caso urgente.
+- **Countdown**: `daysLeft` = ceil (6d23h → 7; 23h → 1; expirado → 0) — floor
+  derrubava 1 dia pelo delta de ms entre servidor (segundos) e render (ms):
+  sessão fresca de 30d viraria "29 dias" (3 falhas de teste pegaram).
+- **Lint aprendido**: localStorage no useState initializer / useEffect →
+  `react-hooks/set-state-in-effect` + `Cannot call impure function during
+render`; `Date.now()` em render é flagged — `new Date().getTime()` passa
+  (mesmo padrão do `getFullYear` do shell). Dismiss por montagem resolve.
+- **Testes**: +2 lib auth (expiresAt exposto; novo expiry após rotação), +1
+  route (expiresAt na resposta + null), +8 banner, +4 pill, +5 store
+  (contrato não-destrutivo do renewSession + referência destrutiva do
+  fetchMe) = 108 total.
+- **Validação**: typecheck 0, vitest 108/108, prettier/eslint 0, reviewer 4
+  rodadas (3 bugs reais pegados: ceil/floor, Renovar destrutivo, role=status
+  múltiplo + set-state-in-effect) — nada bloqueante no final.
+
+## COOKIE-ROTATION-RENEW — sessão reemitida (<15d) nunca é fechada pelo sweep de TTL
+
+Task: Fechar o edge case da rotação do cookie: quando o getSession reemite o
+cookie (janela <15d restante), propagar a NOVA expiração ao realtime para o
+sweep de TTL nunca fechar uma sessão reemitida válida.
+
+- **Problema**: o realtime fixa `socket.data.session.expiresAt` no HANDSHAKE.
+  O app reemite o cookie (rotação deslizante) quando restam <15d dos 30d,
+  mas o socket mantém o expiry ORIGINAL — o sweep de TTL
+  (selectExpiredSessionSockets) fecharia a sessão VÁLIDA quando o expiry
+  original passar, derrubando dashboards de usuários ativos.
+- **Por que propagação app→realtime e não "re-verificar o cookie no ping"**
+  (a alternativa citada na task): o cookie é `httpOnly` — o browser NÃO o
+  reenvia em pings do transporte websocket (só no handshake HTTP inicial), e
+  o client JS não consegue lê-lo para incluir no payload. Re-verificar por
+  ping é inviável por design; a propagação server-side via bridge /emit com
+  Bearer (REALTIME_EMIT_TOKEN) é o único mecanismo robusto.
+- **Implementação**:
+  - `mini-services/realtime/security.ts`: helper puro `renewSessionSockets`
+    (EXTEND-ONLY — ignora renew com expiry anterior/igual ao armazenado;
+    nunca encurta sessão; retorna contagem; ignora NaN/sem sessão/outros
+    users) + `extractEmitEventInfo` cobrindo `session:renew` (mesmo padrão
+    do `session:revoke`: userId, sem rooms).
+  - `mini-services/realtime/index.ts`: `handleSessionRenew` (fetchSockets
+    sweep — cobre connected-but-not-joined — + renew + log, best-effort com
+    .catch) + case `session:renew` no POST /emit (Bearer-protected).
+  - `src/lib/auth.ts`: `reissueSession` agora RETORNA o createSession (com o
+    novo expiresAt); no getSession, quando remaining < 15d →
+    `void propagateSessionRenewal(userId, renewed.expiresAt)` — fire-and-
+    forget, NUNCA bloqueia o request. Dedupe em 2 camadas (Map em memória 1h
+    - chave Redis `realtime:renewed:{userId}` TTL 1h) porque o getSession
+      roda em TODO request passado o threshold; best-effort (Redis fora →
+      emite mesmo assim; renew é idempotente). Falha transiente do emit é
+      tolerável: o restart do realtime faz os sockets reconectarem e o
+      handshake re-verifica o cookie ATUAL (reemitido) — auto-heal do edge
+      case; a janela do Map (1h) libera o próximo retry.
+- **Testes**: realtime-security.test.ts +7 casos (renewSessionSockets:
+  extend, extend-only no-op p/ anterior/igual, sem sessão, NaN, vazio,
+  tipo concreto; extract session:renew) e auth.test.ts +6 casos (emit com
+  novo expiresAt > original+15d, dedupe 1h, não-emite fora da janela /
+  expirado / tampered, cross-user independente).
+- **Decisões**: payload do session:renew carrega só `{ userId, expiresAt }`
+  (role não muda na rotação — não enviada). Footgun documentado nos testes:
+  Maps de dedupe do auth.ts são module-level e não resetam — userIds
+  distintos por caso (ttl-user-_/rot-user-_).
+- **Validação**: typecheck 0, vitest 123/123 (realtime-security + auth +
+  session-notification), prettier/eslint 0, reviewer aprovado (nits: helper
+  de cookie deduplicado em auth.test.ts + doc do porquê — ambos aplicados).
+
 ## SEED-CACHE-PATTERNS — invalidação pós-seed de TODOS os caches do catálogo
 
 Task: Estender a invalidação pós-seed aos demais prefixes de cache que ficam
@@ -1876,3 +1963,136 @@ padrão genérico invalidateCachePatterns().
   (fora do escopo do delta).
 - Validação: typecheck 0, prettier 0, eslint 0, reviewer 2 rodadas aprovado
   (nits de hoist + edge geo:* documentado, ambos aplicados).
+
+## Task: TTL do sweep configurável + spec E2E de expiração por TTL
+
+- **`SESSION_COOKIE_MAX_AGE_SECONDS`** (app, src/lib/auth.ts): TTL do cookie de
+  sessão configurável via env (default 30d, clamp ≥ 60s). Helper puro exportado
+  `resolveCookieMaxAgeSeconds` (guard `Math.max(60, Number(env) || default)`;
+  unit-testado). O realtime NÃO lê essa env — o sweep usa o `expiresAt`
+  EMBUTIDO e assinado no cookie de cada socket, então alterar o TTL do app
+  nunca dessincroniza app ↔ realtime (decisão documentada no README).
+- **`REALTIME_TTL_SWEEP_MS`** (realtime, mini-services/realtime): intervalo do
+  sweep de TTL configurável via env (default 60000, clamp ≥ 1000). Helper puro
+  `parseSweepIntervalMs` em security.ts (unit-testado), usado no
+  `TTL_SWEEP_INTERVAL_MS` do index.ts. Passthrough adicionado nos composes
+  dev e prod. Valor baixo em dev/CI acelera o spec E2E de TTL.
+- **`e2e/realtime-ttl-sweep.spec.ts`** (novo): forja cookie HMAC com TTL de
+  15s (mesmo SESSION_SECRET do app) e conecta um client socket.io Node
+  (extraHeaders.Cookie) → join aceito (sessão verificada no handshake),
+  sanidade via GET /sessions (provider online), espera o sweep (deadline =
+  TTL + REALTIME_TTL_SWEEP_MS + close delay + margem) e valida: socket
+  fechado + evento `session:revoked` com `reason: "session_expired"` +
+  audit /sessions (`kicks[userId].reason === session_expired`; usuário fora
+  do online). Provider isolado: lima@severinno.com.
+- **POR QUE client Node e não browser/dashboard**: o app (getSession) também
+  dispara session:revoke ao ver o cookie expirado no próximo request — o
+  polling de 30s do dashboard correria com o sweep e o motivo registrado
+  oscilaria entre "revoke" (app) e "session_expired" (sweep). O client Node
+  sem requests ao app isola o caminho do sweep → reason determinística. A
+  reação do client browser ao session:revoked já é coberta pelos specs
+  session-revocation / admin-session-revocation.
+- Validação: prettier/eslint/typecheck 0 + vitest alvo (auth.test +
+  realtime-security.test) + spec E2E rodado com dev 3000 + realtime 3003.
+
+## Task: telemetria do realtime persistida no Redis (janela deslizante)
+
+- **`mini-services/realtime/redis-telemetry.ts`** (novo): persiste a telemetria
+  do realtime em Redis com janela deslizante por TTL (buckets de minuto,
+  24h): `realtime:telemetry:emits:{minuto}` (HASH event → emits no minuto,
+  deltas por ciclo), `realtime:telemetry:multi:{minuto}` (JSON de métricas de
+  sessão) e a flag de alerta `realtime:telemetry:multi:flag` (TTL ≈ 2×
+  intervalo, self-clearing) quando usersWithMultipleSockets > 0 (sintoma de
+  sockets órfãos/HMR que vazam). Helpers puros (buildTelemetryBucket,
+  computeEmitDeltas) + createTelemetryPersister fail-open (client null ou
+  erro → log dedup e resolve) + createRedisLoader lazy ioredis (mesmo padrão
+  do booking-participant pg; docker-secret aware via readSecret).
+- **`mini-services/realtime/index.ts`**: timer a cada
+  REALTIME_TELEMETRY_INTERVAL_MS (default 30s; parseTelemetryIntervalMs em
+  security.ts, unit-testado) reusa o getHealthSnapshot() do /health para
+  persistir emitCounters + sessions metrics. unref (não segura o processo).
+- **`src/app/api/admin/realtime/telemetry/route.ts`** (novo): GET admin
+  ?minutes=N (default 60, max 1440) lê os buckets + flag num pipeline único
+  (chaves derivadas do range — sem SCAN), agregando emits por evento.
+  Degradação graciosa: Redis fora → { ok:false, available:false }.
+- **Dependência**: ioredis 5.6.1 adicionada ao mini-services/realtime
+  (mesma versão do app). Compose dev + prod: REDIS_URL + REALTIME_TELEMETRY_
+  INTERVAL_MS no serviço realtime.
+- **Unit tests**: realtime-telemetry.test.ts (deltas, keys, persister
+  fail-open com client fake, flag só com órfãos, clamp do flagTtl, loader
+  memoizado) + casos de parseTelemetryIntervalMs no realtime-security.test.ts
+  - telemetry-route.test.ts (auth, degradação, agregação da janela, clamp
+    minutes).
+- Smoke real (Redis dev): realtime local reiniciado com REALTIME_TELEMETRY_
+  INTERVAL_MS=2000 + REDIS_URL do .env.local → 3 ciclos geraram buckets
+  emits/multi + flag no Redis (verificado via ioredis).
+- Validação: prettier/eslint/typecheck 0 + vitest alvo + reviewer.
+
+## Task: GET /health/detailed (Bearer) — recentEmits completo p/ debug do socket órfão
+
+- **`mini-services/realtime/security.ts`**: tipos RecentEmitEntry (completo:
+  userId/rooms/relatedIds) + PublicRecentEmit (só t/source/event) + helper puro
+  `toPublicRecentEmits` — a FRONTEIRA DE PRIVACIDADE: o /health SEM auth só
+  expõe a forma pública; qualquer vazamento de userId quebra o unit test.
+- **`mini-services/realtime/index.ts`**: o ring `recentEmits` agora GUARDA o
+  detalhe completo (antes só t/source/event — o userId/rooms só ia pro log de
+  console); o `/health` público recebe `toPublicRecentEmits(...)`; NOVO
+  `GET /health/detailed` (Bearer via verifyEmitToken, mesma regra do
+  /sessions) devolve o snapshot completo + `recentEmits` COMPLETO (ring de 20)
+  - `kicks` (snapshotKickAudit) — o rastreio de quem emitiu o quê para qual
+    sala, para debugging do socket órfão do HMR. 401 sem Bearer.
+- **Unit tests**: toPublicRecentEmits (strip + garantia explícita de que
+  userId/rooms/relatedIds NÃO sobrevivem; ordem preservada; lista vazia).
+- README: linha do Path + seção de debug do /health/detailed com curl.
+- Validação: prettier/eslint/typecheck 0 + vitest alvo + smoke real (401 sem
+  Bearer; 200 com Bearer expondo userId/rooms; /health público continua
+  stripped) + reviewer.
+
+## Task: alerta operacional de sockets órfãos (Sentry/GlitchTip webhook)
+
+- **`mini-services/realtime/ops-alert.ts`** (novo): alerta quando
+  usersWithMultipleSockets cruza o threshold (env REALTIME_ORPHAN_ALERT_
+  THRESHOLD, default 0) via envelope Sentry v7 RAW (mesmo protocolo de
+  ingest que o SDK usa — o mini-service Bun não tem @sentry/nextjs): parseDsn
+  - buildEnvelopeUrl + buildSentryEnvelope (length em BYTES do payload) +
+    generateEventId + parsers de env + createOrphanAlert (scheduler stateful:
+    crossing → error; cooldown por direção default 15min clamp >= 60s;
+    recovery → info; fail-open com log dedup). Sender default fetch +
+    AbortSignal.timeout(10s); clock/sender injectáveis para teste.
+- **`mini-services/realtime/index.ts`**: no timer de telemetria (mesmo
+  snapshot do /health), após o persist no Redis → orphanAlert.evaluate().
+  DSN via resolveAlertDsn (GLITCHTIP_DSN ?? SENTRY_DSN, docker-secret aware).
+- **Compose dev + prod**: GLITCHTIP_DSN/SENTRY_DSN + REALTIME_ORPHAN_ALERT_
+  THRESHOLD/COOLDOWN_MS no serviço realtime.
+- **Unit tests** `src/lib/__tests__/realtime-ops-alert.test.ts`: parseDsn
+  (válido/porta/http/inválido), envelope (header + item length em bytes +
+  campos), env parsers (clamps), scheduler (sem alerta abaixo do threshold,
+  crossing com error + contexto, cooldown, re-alerta pós-cooldown, recovery
+  info com cooldown próprio, fail-open sem DSN e sender rejeitando).
+- Smoke real: listener local capturou o envelope (level error + contexto
+  usersWithMultipleSockets) com 2 sockets do mesmo user (threshold 0, max
+  sessions 5); recovery (info) ao fechar um socket.
+- Validação: prettier/eslint/typecheck 0 + vitest alvo + reviewer.
+
+## Task: GET /metrics no realtime (telemetria persistida p/ dashboards)
+
+- **`mini-services/realtime/redis-telemetry.ts`**: leitor da janela
+  deslizante — `readTelemetryWindow(client, minutes, now)` com pipeline
+  ÚNICO (hgetall emits + get multi por bucket + get flag; chaves derivadas
+  do range, sem SCAN; O(minutes)); agrega emits por evento, ordena multi
+  oldest→newest, skip de bucket corrompido, fail-open → null (endpoint
+  responde available:false). `RedisPipelineLike` ganhou hgetall/get.
+  Constantes TELEMETRY_BUCKET_MS / DEFAULT_METRICS_MINUTES (60) /
+  MAX_METRICS_MINUTES (1440).
+- **`mini-services/realtime/index.ts`**: GET /metrics (Bearer verifyEmitToken,
+  mesmo do /sessions//health/detailed; 401 sem) → `?minutes=N` (default 60,
+  max 1440) devolve `{ ok, available, minutes, windowStart, windowEnd,
+emits, multi[], flag }` — emitCounters por minuto + histórico
+  usersWithMultipleSockets + flag órfã (o mesmo contrato do
+  GET /api/admin/realtime/telemetry do app). Loader Redis compartilhado
+  (persister escreve, /metrics lê o mesmo client lazy).
+- **Unit tests** `src/lib/__tests__/realtime-telemetry.test.ts`: agregação de
+  emits + multi ordenado + flag; flag ausente → false; bucket corrompido e
+  erro por comando → skip; clamp de minutes; fail-open (exec rejeita → null).
+- README: Path + seção com curl do /metrics. Validação: prettier/eslint/
+  typecheck 0 + vitest alvo + smoke real + reviewer.

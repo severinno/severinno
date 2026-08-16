@@ -49,6 +49,7 @@ import {
   requireUser,
   requireRole,
   getOptionalSession,
+  resolveCookieMaxAgeSeconds,
 } from "../auth"
 import { emitRealtime } from "../realtime-client"
 
@@ -61,6 +62,19 @@ const VALID_USER = {
   verified: true,
 }
 
+/**
+ * Assina um cookie de sessão com o MESMO HMAC do app (formato real
+ * `${userId}.${role}.${expiresAt}.${signatureHex}`) para cenários de
+ * TTL expirado / janela de rotação. expiresAtSec default = 0 (expirado).
+ */
+function signValidCookie(userId: string, role: string, expiresAtSec = 0): string {
+  const secret = process.env.SESSION_SECRET
+  if (!secret) throw new Error("SESSION_SECRET não configurado no env de teste")
+  const payload = `${userId}.${role}.${expiresAtSec}`
+  const signature = createHmac("sha256", secret).update(payload).digest("hex")
+  return `${payload}.${signature}`
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   cookieStore.clear()
@@ -68,6 +82,37 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs()
+})
+
+describe("resolveCookieMaxAgeSeconds (env SESSION_COOKIE_MAX_AGE_SECONDS)", () => {
+  const THIRTY_DAYS = 60 * 60 * 24 * 30
+
+  it("returns the configured TTL when valid (>= 60s)", () => {
+    expect(resolveCookieMaxAgeSeconds("120")).toBe(120)
+    expect(resolveCookieMaxAgeSeconds("604800")).toBe(604800) // 7 dias
+    expect(resolveCookieMaxAgeSeconds("3600")).toBe(3600)
+  })
+
+  it("uses the 30d default for missing/empty/non-numeric", () => {
+    expect(resolveCookieMaxAgeSeconds(undefined)).toBe(THIRTY_DAYS)
+    expect(resolveCookieMaxAgeSeconds("")).toBe(THIRTY_DAYS)
+    expect(resolveCookieMaxAgeSeconds("abc")).toBe(THIRTY_DAYS)
+    expect(resolveCookieMaxAgeSeconds("2d")).toBe(THIRTY_DAYS)
+  })
+
+  it("uses the default for '0' (falsy) — um cookie sem TTL quebraria a sessão", () => {
+    expect(resolveCookieMaxAgeSeconds("0")).toBe(THIRTY_DAYS)
+  })
+
+  it("uses the default for non-finite values (Infinity quebraria o maxAge do cookie)", () => {
+    expect(resolveCookieMaxAgeSeconds("1e309")).toBe(THIRTY_DAYS)
+  })
+
+  it("clamps sub-minute values to 60s (TTL < 1min é patológico)", () => {
+    expect(resolveCookieMaxAgeSeconds("15")).toBe(60)
+    expect(resolveCookieMaxAgeSeconds("-10")).toBe(60)
+    expect(resolveCookieMaxAgeSeconds("1")).toBe(60)
+  })
 })
 
 describe("createSession", () => {
@@ -109,6 +154,23 @@ describe("getSession", () => {
     expect(session!.role).toBe("CLIENT")
   })
 
+  it("exposes the cookie expiresAt (for the dashboard countdown)", async () => {
+    const before = Math.floor(Date.now() / 1000) + 20 * 24 * 60 * 60 // 20d restantes
+    cookieStore.set("severinno_session", { value: signValidCookie("exp-user-1", "CLIENT", before) })
+    const session = await getSession()
+    expect(session).not.toBeNull()
+    expect(session!.expiresAt).toBe(before)
+  })
+
+  it("exposes the NEW expiresAt after rotation (reissue <15d)", async () => {
+    const old = Math.floor(Date.now() / 1000) + 10 * 24 * 60 * 60 // 10d restantes < 15d
+    cookieStore.set("severinno_session", { value: signValidCookie("exp-user-2", "CLIENT", old) })
+    const session = await getSession()
+    expect(session).not.toBeNull()
+    // O expiry efetivo é o NOVO (30d do momento da reemissão), não o antigo.
+    expect(session!.expiresAt).toBeGreaterThan(old + 15 * 24 * 60 * 60)
+  })
+
   it("returns null for tampered cookie", async () => {
     await createSession("user-1", "CLIENT")
     const existing = cookieStore.get("severinno_session")
@@ -135,18 +197,12 @@ describe("getSession", () => {
 })
 
 describe("getSession — TTL-expiry realtime revocation", () => {
-  // Constrói um cookie com assinatura VÁLIDA (mesmo HMAC do app) mas com
-  // expiresAt no passado — o cenário "sessão expirou por TTL sem logout".
-  function signExpiredCookie(userId: string, role: string, expiresAtSec = 0): string {
-    const secret = process.env.SESSION_SECRET
-    if (!secret) throw new Error("SESSION_SECRET não configurado no env de teste")
-    const payload = `${userId}.${role}.${expiresAtSec}`
-    const signature = createHmac("sha256", secret).update(payload).digest("hex")
-    return `${payload}.${signature}`
-  }
-
+  // ATENÇÃO (footgun): os Maps de dedupe do auth.ts (expiredRevokeEmittedAt /
+  // sessionRenewedAt) são module-level e NÃO resetam no beforeEach — cada
+  // teste precisa de userIds DISTINTOS (ttl-user-* / rot-user-*), senão a
+  // janela de 1h suprime o emit silenciosamente.
   it("emits session:revoke when a validly-signed cookie expired by TTL", async () => {
-    cookieStore.set("severinno_session", { value: signExpiredCookie("ttl-user-1", "CLIENT") })
+    cookieStore.set("severinno_session", { value: signValidCookie("ttl-user-1", "CLIENT") })
     expect(await getSession()).toBeNull()
     // Fire-and-forget (void) — aguarda a cadeia assíncrona completar.
     await vi.waitFor(() => {
@@ -156,7 +212,7 @@ describe("getSession — TTL-expiry realtime revocation", () => {
   })
 
   it("dedupes repeated getSession with the same expired cookie (1 emit/hour)", async () => {
-    cookieStore.set("severinno_session", { value: signExpiredCookie("ttl-user-2", "CLIENT") })
+    cookieStore.set("severinno_session", { value: signValidCookie("ttl-user-2", "CLIENT") })
     await getSession()
     await getSession()
     await vi.waitFor(() => {
@@ -178,10 +234,96 @@ describe("getSession — TTL-expiry realtime revocation", () => {
   })
 
   it("emits independently per userId (no cross-user suppression)", async () => {
-    cookieStore.set("severinno_session", { value: signExpiredCookie("ttl-user-5", "CLIENT") })
+    cookieStore.set("severinno_session", { value: signValidCookie("ttl-user-5", "CLIENT") })
     await getSession()
     await vi.waitFor(() => {
       expect(emitRealtime).toHaveBeenCalledWith("session:revoke", { userId: "ttl-user-5" })
+    })
+  })
+})
+
+describe("getSession — rotação de cookie (<15d) → session:renew", () => {
+  // Constrói um cookie com assinatura VÁLIDA (mesmo HMAC do app) mas com
+  // expiresAt DENTRO da janela de rotação (menos de 15d restantes) — o
+  // cenário "cookie reemitido" que precisa propagar o novo expiry ao realtime
+  // para o sweep de TTL não fechar uma sessão reemitida válida.
+  // userIds DISTINTOS (rot-user-*) por teste: Map module-level não reseta.
+  const TEN_DAYS = 10 * 24 * 60 * 60 // 10d restantes < threshold de 15d
+
+  it("emits session:renew com o NOVO expiresAt quando o cookie é reemitido (<15d restantes)", async () => {
+    const nowSec = Math.floor(Date.now() / 1000)
+    const oldExpiresAt = nowSec + TEN_DAYS
+    cookieStore.set("severinno_session", {
+      value: signValidCookie("rot-user-1", "CLIENT", oldExpiresAt),
+    })
+    expect(await getSession()).not.toBeNull()
+    // Fire-and-forget (void) — aguarda a cadeia assíncrona completar.
+    await vi.waitFor(() => {
+      expect(emitRealtime).toHaveBeenCalledTimes(1)
+      expect(emitRealtime).toHaveBeenCalledWith("session:renew", {
+        userId: "rot-user-1",
+        expiresAt: expect.any(Number),
+      })
+    })
+    // O novo expiresAt é um refresh de 30d — muito além do expiry original
+    // (10d restantes): a sessão reemitida NÃO pode ser fechada pelo sweep.
+    const payload = vi.mocked(emitRealtime).mock.calls[0]![1] as { expiresAt: number }
+    expect(payload.expiresAt).toBeGreaterThan(oldExpiresAt + 15 * 24 * 60 * 60)
+  })
+
+  it("dedupe: getSession repetido com cookie reemitível → 1 emit session:renew (janela 1h)", async () => {
+    const nowSec = Math.floor(Date.now() / 1000)
+    cookieStore.set("severinno_session", {
+      value: signValidCookie("rot-user-2", "CLIENT", nowSec + TEN_DAYS),
+    })
+    await getSession()
+    await getSession()
+    await vi.waitFor(() => {
+      const renewCalls = vi
+        .mocked(emitRealtime)
+        .mock.calls.filter(([event]) => event === "session:renew")
+      expect(renewCalls).toHaveLength(1)
+    })
+  })
+
+  it("não emite session:renew para cookie com >15d restantes (fora da janela de rotação)", async () => {
+    await createSession("rot-user-3", "CLIENT") // 30d restantes
+    expect(await getSession()).not.toBeNull()
+    expect(emitRealtime).not.toHaveBeenCalled()
+  })
+
+  it("não emite session:renew para cookie expirado (esse caminho emite session:revoke)", async () => {
+    cookieStore.set("severinno_session", {
+      value: signValidCookie("rot-user-4", "CLIENT", 0),
+    })
+    expect(await getSession()).toBeNull()
+    await vi.waitFor(() => {
+      expect(emitRealtime).toHaveBeenCalledWith("session:revoke", { userId: "rot-user-4" })
+    })
+    // NUNCA session:renew no caminho de expiração (só revoke).
+    const renewCalls = vi
+      .mocked(emitRealtime)
+      .mock.calls.filter(([event]) => event === "session:renew")
+    expect(renewCalls).toHaveLength(0)
+  })
+
+  it("não emite session:renew para cookie com assinatura inválida (tampered)", async () => {
+    cookieStore.set("severinno_session", { value: "rot-user-5.CLIENT.999999.deadbeef" })
+    expect(await getSession()).toBeNull()
+    expect(emitRealtime).not.toHaveBeenCalled()
+  })
+
+  it("emite independentemente por userId (sem supressão cross-user)", async () => {
+    const nowSec = Math.floor(Date.now() / 1000)
+    cookieStore.set("severinno_session", {
+      value: signValidCookie("rot-user-6", "CLIENT", nowSec + TEN_DAYS),
+    })
+    expect(await getSession()).not.toBeNull()
+    await vi.waitFor(() => {
+      expect(emitRealtime).toHaveBeenCalledWith("session:renew", {
+        userId: "rot-user-6",
+        expiresAt: expect.any(Number),
+      })
     })
   })
 })

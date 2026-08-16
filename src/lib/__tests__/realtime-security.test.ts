@@ -23,6 +23,7 @@ import {
   filterSocketsBySessionUserId,
   selectSocketsToKickForSessionLimit,
   selectExpiredSessionSockets,
+  renewSessionSockets,
   extractEmitEventInfo,
   summarizeActiveSessions,
   recordKickAudit,
@@ -30,6 +31,9 @@ import {
   KICK_AUDIT_MAX,
   parseMaxSessionsPerRole,
   resolveMaxSessionsPerRole,
+  parseSweepIntervalMs,
+  parseTelemetryIntervalMs,
+  toPublicRecentEmits,
   type KickAuditMap,
   type BookingParticipantChecker,
   type VerifiedSession,
@@ -99,6 +103,100 @@ describe("verifySessionCookie", () => {
   })
 })
 
+describe("parseSweepIntervalMs (env REALTIME_TTL_SWEEP_MS)", () => {
+  it("returns the configured interval when valid (>= 1s)", () => {
+    expect(parseSweepIntervalMs("2000")).toBe(2000)
+    expect(parseSweepIntervalMs("5000", 10_000)).toBe(5000)
+  })
+
+  it("uses the fallback for missing/empty/whitespace", () => {
+    expect(parseSweepIntervalMs(undefined)).toBe(60_000)
+    expect(parseSweepIntervalMs("")).toBe(60_000)
+    expect(parseSweepIntervalMs("   ")).toBe(60_000)
+    expect(parseSweepIntervalMs(undefined, 10_000)).toBe(10_000)
+  })
+
+  it("uses the fallback for non-numeric values (NaN)", () => {
+    expect(parseSweepIntervalMs("abc")).toBe(60_000)
+    expect(parseSweepIntervalMs("1min")).toBe(60_000)
+  })
+
+  it("uses the fallback for '0' (falsy) — um sweep a cada 0ms é patológico", () => {
+    expect(parseSweepIntervalMs("0")).toBe(60_000)
+  })
+
+  it("uses the fallback for non-finite values (Infinity viraria um setInterval imediato)", () => {
+    expect(parseSweepIntervalMs("1e309")).toBe(60_000)
+  })
+
+  it("clamps sub-second values to 1000ms (nunca martela fetchSockets)", () => {
+    expect(parseSweepIntervalMs("500")).toBe(1_000)
+    expect(parseSweepIntervalMs("-5000")).toBe(1_000)
+    expect(parseSweepIntervalMs("1")).toBe(1_000)
+  })
+})
+
+describe("toPublicRecentEmits (strip de privacidade do /health)", () => {
+  it("remove userId/rooms/relatedIds mantendo t/source/event (fronteira pública)", () => {
+    const full = [
+      {
+        t: "2026-08-16T10:00:00.000Z",
+        source: "emit" as const,
+        event: "notification:new",
+        userId: "user-1",
+        rooms: ["user:user-1"],
+        relatedIds: [],
+      },
+      {
+        t: "2026-08-16T10:01:00.000Z",
+        source: "socket" as const,
+        event: "message:send",
+        userId: "user-2",
+        rooms: ["user:user-3"],
+        relatedIds: ["user-2"],
+      },
+    ]
+    expect(toPublicRecentEmits(full)).toEqual([
+      { t: "2026-08-16T10:00:00.000Z", source: "emit", event: "notification:new" },
+      { t: "2026-08-16T10:01:00.000Z", source: "socket", event: "message:send" },
+    ])
+    // Garantia explícita: NENHUM campo de presença sobrevive ao strip.
+    const stripped = toPublicRecentEmits(full)
+    for (const entry of stripped) {
+      expect("userId" in entry).toBe(false)
+      expect("rooms" in entry).toBe(false)
+      expect("relatedIds" in entry).toBe(false)
+    }
+  })
+
+  it("preserva a ordem e lida com lista vazia", () => {
+    expect(toPublicRecentEmits([])).toEqual([])
+    const one = [{ t: "t", source: "emit" as const, event: "e", rooms: ["user:x"], relatedIds: [] }]
+    expect(toPublicRecentEmits(one)).toEqual([{ t: "t", source: "emit", event: "e" }])
+  })
+})
+
+describe("parseTelemetryIntervalMs (env REALTIME_TELEMETRY_INTERVAL_MS)", () => {
+  it("returns the configured interval when valid (>= 1s)", () => {
+    expect(parseTelemetryIntervalMs("5000")).toBe(5000)
+    expect(parseTelemetryIntervalMs("15000", 10_000)).toBe(15_000)
+  })
+
+  it("uses the fallback (30s) for missing/empty/whitespace/non-numeric/'0'/Infinity", () => {
+    expect(parseTelemetryIntervalMs(undefined)).toBe(30_000)
+    expect(parseTelemetryIntervalMs("")).toBe(30_000)
+    expect(parseTelemetryIntervalMs("abc")).toBe(30_000)
+    expect(parseTelemetryIntervalMs("0")).toBe(30_000)
+    expect(parseTelemetryIntervalMs("1e309")).toBe(30_000)
+    expect(parseTelemetryIntervalMs(undefined, 10_000)).toBe(10_000)
+  })
+
+  it("clamps sub-second values to 1000ms", () => {
+    expect(parseTelemetryIntervalMs("500")).toBe(1_000)
+    expect(parseTelemetryIntervalMs("-1")).toBe(1_000)
+  })
+})
+
 describe("selectExpiredSessionSockets (TTL sweep)", () => {
   const now = Date.now()
   const future = Math.floor(now / 1000) + 3600
@@ -133,6 +231,62 @@ describe("selectExpiredSessionSockets (TTL sweep)", () => {
       },
     ]
     expect(selectExpiredSessionSockets(sockets, now)).toEqual([])
+  })
+})
+
+describe("renewSessionSockets (rotação de cookie → session:renew)", () => {
+  const sock = (session: VerifiedSession | null, id = "sock-1") => ({ id, data: { session } })
+
+  it("estende expiresAt nos sockets do userId (retorna a contagem)", () => {
+    const sockets = [
+      sock({ userId: "u1", role: "CLIENT", expiresAt: 1000 }, "a"),
+      sock({ userId: "u1", role: "PROVIDER", expiresAt: 1000 }, "b"),
+      sock({ userId: "u2", role: "CLIENT", expiresAt: 1000 }, "c"),
+    ]
+    const updated = renewSessionSockets(sockets, "u1", 2000)
+    expect(updated).toBe(2)
+    expect(sockets[0].data.session?.expiresAt).toBe(2000)
+    expect(sockets[1].data.session?.expiresAt).toBe(2000)
+    // Outro usuário não é tocado.
+    expect(sockets[2].data.session?.expiresAt).toBe(1000)
+  })
+
+  it("é EXTEND-ONLY: ignora renew com expiry ANTES do armazenado (nunca encurta)", () => {
+    const sockets = [sock({ userId: "u1", role: "CLIENT", expiresAt: 3000 }, "a")]
+    expect(renewSessionSockets(sockets, "u1", 2000)).toBe(0)
+    expect(sockets[0].data.session?.expiresAt).toBe(3000)
+  })
+
+  it("expiry IGUAL também é no-op (extend-only)", () => {
+    const sockets = [sock({ userId: "u1", role: "CLIENT", expiresAt: 2000 }, "a")]
+    expect(renewSessionSockets(sockets, "u1", 2000)).toBe(0)
+  })
+
+  it("ignora sockets sem sessão verificada (null/undefined)", () => {
+    const sockets = [
+      sock(null, "no-session"),
+      sock({ userId: "u1", role: "CLIENT", expiresAt: 1000 }, "a"),
+    ]
+    expect(renewSessionSockets(sockets, "u1", 2000)).toBe(1)
+  })
+
+  it("retorna 0 para expiresAt inválido (NaN/não-finito)", () => {
+    const sockets = [sock({ userId: "u1", role: "CLIENT", expiresAt: 1000 }, "a")]
+    expect(renewSessionSockets(sockets, "u1", NaN)).toBe(0)
+    expect(sockets[0].data.session?.expiresAt).toBe(1000)
+  })
+
+  it("retorna 0 para lista vazia", () => {
+    expect(renewSessionSockets([], "u1", 2000)).toBe(0)
+  })
+
+  it("preserva o tipo concreto do socket (callers podem emit/disconnect)", () => {
+    const socketLike = {
+      data: { session: { userId: "u1", role: "CLIENT", expiresAt: 1000 } },
+      disconnect: vi.fn(),
+    }
+    expect(renewSessionSockets([socketLike], "u1", 2000)).toBe(1)
+    expect(socketLike.data.session?.expiresAt).toBe(2000)
   })
 })
 
@@ -195,6 +349,16 @@ describe("extractEmitEventInfo (auditoria do POST /emit)", () => {
     const info = extractEmitEventInfo("session:revoke", { userId: "user-9" })
     expect(info.userId).toBe("user-9")
     expect(info.rooms).toEqual([])
+  })
+
+  it("session:renew → mesmo padrão do revoke (userId, sem rooms)", () => {
+    const info = extractEmitEventInfo("session:renew", {
+      userId: "user-9",
+      expiresAt: 1_800_000_000,
+    })
+    expect(info.userId).toBe("user-9")
+    expect(info.rooms).toEqual([])
+    expect(info.relatedIds).toEqual([])
   })
 
   it("evento desconhecido → rooms vazios, sem throw", () => {

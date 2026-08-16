@@ -48,6 +48,7 @@ import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 import { MuteIndicator } from "@/components/shared/mute-indicator"
 import { VibrationIndicator } from "@/components/shared/vibration-indicator"
+import { SessionExpiryBanner, SessionExpiryInfo } from "@/components/shared/session-expiry-banner"
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -654,6 +655,9 @@ export function DashboardShell({
                           {ROLE_LABELS[user.role]}
                         </Badge>
                       ) : null}
+                      {/* Countdown sempre visível da sessão (15–30d na operação
+                          normal; o banner ≤7d é o caso urgente). */}
+                      <SessionExpiryInfo />
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -684,7 +688,11 @@ export function DashboardShell({
 
             {/* Main scroll area */}
             <main className="flex-1 overflow-y-auto">
-              <div className="mx-auto w-full max-w-7xl p-6 lg:p-8">{children}</div>
+              <div className="mx-auto w-full max-w-7xl p-6 lg:p-8">
+                {/* Aviso de expiração da sessão (countdown + renovação proativa) */}
+                <SessionExpiryBanner />
+                {children}
+              </div>
 
               {/* Thin copyright bar */}
               <footer className="border-border/50 mt-auto border-t">

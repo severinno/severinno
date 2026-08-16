@@ -26,12 +26,17 @@ type AuthState = {
   status: AuthStatus
   error: string | null
   initialized: boolean
+  /** Expiry EFETIVO do cookie de sessão (unix seconds) — do /api/auth/me.
+   *  Usado pelo countdown "sessão expira em X dias" no dashboard. */
+  sessionExpiresAt: number | null
 
   // actions
   login: (payload: LoginPayload) => Promise<{ ok: boolean; error?: string }>
   register: (payload: RegisterPayload) => Promise<{ ok: boolean; error?: string }>
   logout: () => Promise<void>
   fetchMe: () => Promise<void>
+  /** Renovação PROATIVA da sessão (não-destrutiva) — ver implementação. */
+  renewSession: () => Promise<void>
   setUser: (user: AuthUser | null) => void
   clearError: () => void
 }
@@ -43,6 +48,7 @@ export const useAuthStore = create<AuthState>()(
       status: "idle",
       error: null,
       initialized: false,
+      sessionExpiresAt: null,
 
       setUser: (user) =>
         set({
@@ -114,24 +120,51 @@ export const useAuthStore = create<AuthState>()(
         } catch {
           // ignore network errors on logout
         } finally {
-          set({ user: null, status: "unauthenticated", error: null })
+          set({ user: null, status: "unauthenticated", error: null, sessionExpiresAt: null })
         }
       },
 
-      fetchMe: async () => {
+      // Renovação proativa do cookie (botão "Renovar" do aviso de sessão):
+      // GET /api/auth/me dispara o getSession server-side, que REEMITE o
+      // cookie na janela <15d e devolve o novo expiresAt. Diferente do
+      // fetchMe (que em erro de rede marca unauthenticated e derruba o
+      // usuário para o login), esta ação é NÃO-DESTRUTIVA: em erro, apenas
+      // mantém o estado atual — um renew que falha não pode expulsar o user.
+      renewSession: async () => {
         try {
-          const data = await apiGet<{ user: AuthUser }>("/api/auth/me")
+          const data = await apiGet<{ user: AuthUser; expiresAt?: number | null }>("/api/auth/me")
+          // Sem user na resposta (cookie inválido/expirado) → mantém o estado
+          // atual; o próximo fetchMe/guarda de rota resolve a expulsão.
           if (data?.user) {
             set({
               user: data.user as AuthUser,
               status: "authenticated",
               initialized: true,
+              sessionExpiresAt: data.expiresAt ?? null,
+            })
+          }
+        } catch {
+          // Best-effort: falha de rede/5xx NUNCA derruba o usuário logado.
+        }
+      },
+
+      fetchMe: async () => {
+        try {
+          const data = await apiGet<{ user: AuthUser; expiresAt?: number | null }>("/api/auth/me")
+          if (data?.user) {
+            set({
+              user: data.user as AuthUser,
+              status: "authenticated",
+              initialized: true,
+              // expiresAt efetivo do cookie (unix seconds) — countdown da sessão.
+              sessionExpiresAt: data.expiresAt ?? null,
             })
           } else {
             set({
               user: null,
               status: "unauthenticated",
               initialized: true,
+              sessionExpiresAt: null,
             })
           }
         } catch {
@@ -139,6 +172,7 @@ export const useAuthStore = create<AuthState>()(
             user: null,
             status: "unauthenticated",
             initialized: true,
+            sessionExpiresAt: null,
           })
         }
       },

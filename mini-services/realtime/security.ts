@@ -308,6 +308,38 @@ export function verifySessionCookie(
 }
 
 /**
+ * Resolve the TTL sweep interval (ms) from env `REALTIME_TTL_SWEEP_MS`.
+ * Guard pattern do repo (`Math.max(1, Number(env) || default)`):
+ *   - missing/empty/non-numeric (NaN) → `fallback` (default 60s)
+ *   - "0" (falsy) → `fallback`
+ *   - < 1s → clamped a 1s (um sweep mais rápido que 1s é patológico e só
+ *     martelaria `io.fetchSockets()` a cada request)
+ * Um valor baixo (ex.: 2000) em dev/CI acelera a validação do sweep de TTL
+ * (spec e2e/realtime-ttl-sweep.spec.ts) sem tocar em produção. Pura — o
+ * serviço chama com `process.env.REALTIME_TTL_SWEEP_MS` no boot.
+ */
+export function parseSweepIntervalMs(raw: string | undefined, fallback = 60_000): number {
+  const n = Number(raw)
+  // Não-finito (ex.: "1e309" → Infinity viraria um setInterval que dispara
+  // imediatamente em Node) ou "0" (falsy — sweep a cada 0ms é patológico) →
+  // fallback. Valores válidos são clampados a >= 1s.
+  if (!Number.isFinite(n) || n === 0) return fallback
+  return Math.max(1_000, n)
+}
+
+/**
+ * Resolve the telemetry persist interval (ms) from env
+ * `REALTIME_TELEMETRY_INTERVAL_MS`. Mesmo guard do parseSweepIntervalMs:
+ * missing/empty/NaN/'0' → `fallback` (default 30s); não-finito (Infinity) →
+ * fallback; < 1s → clamped a 1s. Pura — o serviço chama no boot.
+ */
+export function parseTelemetryIntervalMs(raw: string | undefined, fallback = 30_000): number {
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n === 0) return fallback
+  return Math.max(1_000, n)
+}
+
+/**
  * Select sockets whose verified session has expired by TTL (cookie
  * `expiresAt` in the past). Pure + generic (preserves the concrete socket
  * type so callers can `.emit()`/`.disconnect()`). Sockets without a session
@@ -323,6 +355,43 @@ export function selectExpiredSessionSockets<T extends SessionSocketLike>(
     const expiresAt = s.data.session?.expiresAt
     return typeof expiresAt === "number" && Number.isFinite(expiresAt) && expiresAt * 1000 < nowMs
   })
+}
+
+// ---------------------------------------------------------------------------
+// Session renewal (cookie rotation / reissue)
+//
+// The app's getSession REISSUES the session cookie when less than half the
+// TTL remains (rotation threshold — src/lib/auth.ts): the cookie gets a
+// fresh 30-day expiry. But sockets fix `expiresAt` at HANDSHAKE time, so the
+// TTL sweep above would close a still-valid re-issued session when the
+// ORIGINAL expiry passes. The app propagates the new expiry via the
+// Bearer-protected /emit bridge (event `session:renew`); this helper applies
+// it to the user's sockets — EXTEND-ONLY (an out-of-order / older renewal is
+// a no-op and can never shorten a session). Pure + generic, mirrors
+// filterSocketsBySessionUserId / selectExpiredSessionSockets.
+// ---------------------------------------------------------------------------
+
+/**
+ * Renew (extend) the session expiry of every socket whose verified session
+ * matches the given userId. Returns the number of sockets updated. An
+ * `expiresAt` that is earlier than (or equal to) the socket's stored expiry
+ * is ignored — renewal only ever extends, never shortens a session.
+ */
+export function renewSessionSockets<T extends SessionSocketLike>(
+  sockets: readonly T[],
+  userId: string,
+  expiresAt: number,
+): number {
+  if (!Number.isFinite(expiresAt)) return 0
+  let updated = 0
+  for (const s of sockets) {
+    const sess = s.data.session
+    if (!sess || sess.userId !== userId) continue
+    if (typeof sess.expiresAt === "number" && sess.expiresAt >= expiresAt) continue
+    sess.expiresAt = expiresAt
+    updated += 1
+  }
+  return updated
 }
 
 // ---------------------------------------------------------------------------
@@ -393,8 +462,9 @@ export function extractEmitEventInfo(
       userId = clientId
       break
     }
-    case "session:revoke": {
-      // Revoke is NOT a room broadcast (fetchSockets sweep) — userId only.
+    case "session:revoke":
+    case "session:renew": {
+      // Revoke/renew are NOT room broadcasts (fetchSockets sweep) — userId only.
       userId = str(d.userId)
       break
     }
@@ -402,6 +472,39 @@ export function extractEmitEventInfo(
       break
   }
   return { event, userId, rooms, relatedIds }
+}
+
+// ---------------------------------------------------------------------------
+// Recent-emits privacy strip (público × detalhado)
+// ---------------------------------------------------------------------------
+
+/** Entrada COMPLETA do ring de audit — carrega userId/rooms/relatedIds
+ *  (dados de presença de usuários). PRIVADA: só endpoints Bearer-protected
+ *  (GET /health/detailed) expõem. */
+export interface RecentEmitEntry {
+  t: string
+  source: "emit" | "socket"
+  event: string
+  userId?: string
+  rooms: string[]
+  relatedIds: string[]
+}
+
+/** Forma PÚBLICA (sem userId/rooms) — o que o GET /health SEM auth expõe. */
+export interface PublicRecentEmit {
+  t: string
+  source: "emit" | "socket"
+  event: string
+}
+
+/**
+ * Strip da forma pública: remove userId/rooms/relatedIds (presença de
+ * usuários — o mesmo dado que motivou proteger /sessions com Bearer). Pure e
+ * unit-testado: é a fronteira de privacidade — qualquer mudança que vaze
+ * userId no /health público quebra o teste de regressão.
+ */
+export function toPublicRecentEmits(entries: readonly RecentEmitEntry[]): PublicRecentEmit[] {
+  return entries.map(({ t, source, event }) => ({ t, source, event }))
 }
 
 // ---------------------------------------------------------------------------

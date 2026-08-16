@@ -94,16 +94,42 @@ Cada um pode ser executado individualmente para desenvolvimento ou debug.
 
 Servidor WebSocket para notificações em tempo real, chat e tracking.
 
-| Propriedade          | Valor                                                            |
-| -------------------- | ---------------------------------------------------------------- |
-| **Porta**            | `3003`                                                           |
-| **Path**             | `/ws` (Socket.io) — `/health` (healthcheck), `/emit` (HTTP emit) |
-| **Stack**            | Socket.io 4, Bun                                                 |
-| **Docker**           | `docker compose up -d realtime`                                  |
-| **Manual**           | `cd mini-services/realtime && bun index.ts`                      |
-| **Dev (hot-reload)** | `cd mini-services/realtime && bun --hot index.ts`                |
+| Propriedade          | Valor                                                                                                                                           |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Porta**            | `3003`                                                                                                                                          |
+| **Path**             | `/ws` (Socket.io) — `/health` (healthcheck, SEM auth), `/health/detailed` (Bearer), `/sessions` (Bearer), `/metrics` (Bearer), `/emit` (Bearer) |
+| **Stack**            | Socket.io 4, Bun                                                                                                                                |
+| **Docker**           | `docker compose up -d realtime`                                                                                                                 |
+| **Manual**           | `cd mini-services/realtime && bun index.ts`                                                                                                     |
+| **Dev (hot-reload)** | `cd mini-services/realtime && bun --hot index.ts`                                                                                               |
 
 **Healthcheck:** `curl http://localhost:3003/health` → `{"status":"ok"}`
+
+**Debug do socket órfão (`/health/detailed`, Bearer):** o `/health` público
+omite `userId`/`rooms` por privacidade; o `/health/detailed` (mesmo Bearer do
+`/emit`) expõe o `recentEmits` **completo** (quem emitiu o quê para qual sala)
+
+- o kick audit — o diagnóstico do HMR-orphan:
+
+```bash
+TOKEN=$(grep REALTIME_EMIT_TOKEN .env.local | cut -d= -f2- | tr -d '"')
+curl -H "Authorization: Bearer $TOKEN" http://localhost:3003/health/detailed
+```
+
+**Telemetria persistida (`/metrics`, Bearer):** o realtime grava em Redis a
+cada `REALTIME_TELEMETRY_INTERVAL_MS` (default 30s) os `emitCounters` por
+minuto (buckets `realtime:telemetry:emits:{minuto}`, deltas por ciclo) e o
+histórico do sinal de sockets órfãos (`realtime:telemetry:multi:{minuto}`,
+TTL 24h — janela deslizante) + a flag `realtime:telemetry:multi:flag`
+(órfãos agora). O `GET /metrics?minutes=N` (mesmo Bearer do `/emit`,
+default 60, max 1440) expõe a janela para dashboards de operação — o
+endpoint admin do app (`GET /api/admin/realtime/telemetry`) lê o mesmo
+contrato no painel:
+
+```bash
+TOKEN=$(grep REALTIME_EMIT_TOKEN .env.local | cut -d= -f2- | tr -d '"')
+curl -H "Authorization: Bearer $TOKEN" "http://localhost:3003/metrics?minutes=60"
+```
 
 **Envio manual de evento (debug):**
 
@@ -162,6 +188,47 @@ curl -X POST http://localhost:3003/emit \
   closed por design, consistente com o app (que também exige
   `SESSION_SECRET`). Para o dev via compose, exporte o env antes:
   `set -a && source .env.local && set +a && docker compose up realtime`.
+- **Sweep de TTL configurável (`REALTIME_TTL_SWEEP_MS`).** O realtime
+  encerra sockets cuja sessão passou do `expiresAt` (cookie expirado sem
+  logout) a cada `REALTIME_TTL_SWEEP_MS` (default `60000`, clamp ≥ `1000`,
+  configurado também nos composes dev/prod). Valor baixo (ex.: `2000`) em
+  dev/CI acelera o spec `e2e/realtime-ttl-sweep.spec.ts`, que deriva a
+  espera dessa env. O motivo do kick fica no audit do `GET /sessions`
+  (`reason: "session_expired"`).
+- **TTL do cookie do app configurável (`SESSION_COOKIE_MAX_AGE_SECONDS`).**
+  O app assina o cookie de sessão com esse TTL (default 30d, clamp ≥ `60`).
+  O realtime NÃO lê essa env — o sweep usa o `expiresAt` **embutido e
+  assinado** no cookie de cada socket, então alterar o TTL do app nunca
+  dessincroniza os dois lados (e o spec de TTL forja o cookie diretamente
+  com TTL curto, sem precisar encurtar o env do app).
+- **Telemetria persistida no Redis (janela deslizante).** A cada
+  `REALTIME_TELEMETRY_INTERVAL_MS` (default `30000`, clamp ≥ `1000`) o
+  realtime grava em Redis (mesmo `REDIS_URL` do app) os `emitCounters` e o
+  sinal de **sockets órfãos** (`usersWithMultipleSockets` — o sintoma do HMR
+  e de sessões stale que vazam): buckets de minuto
+  `realtime:telemetry:emits:{minuto}` (hash event → emits) e
+  `realtime:telemetry:multi:{minuto}` (JSON das métricas de sessão) com TTL
+  de 24h, mais a flag de alerta `realtime:telemetry:multi:flag` (TTL ≈ 2×
+  intervalo — self-clearing). Leitura para dashboards/alertas via
+  `GET /api/admin/realtime/telemetry?minutes=N` (admin only). Fail-open:
+  sem `REDIS_URL` ou Redis fora, a telemetria é logada (dedup) e descartada
+  — nunca quebra o realtime.
+- **Alerta operacional de sockets órfãos (Sentry/GlitchTip).** No mesmo
+  timer, quando `usersWithMultipleSockets` cruza o threshold
+  (`REALTIME_ORPHAN_ALERT_THRESHOLD`, default `0` = qualquer órfão) o
+  realtime envia um **envelope Sentry v7** (protocolo raw do SDK — o
+  mini-service não usa o SDK do Next) para `GLITCHTIP_DSN` (ou `SENTRY_DSN`;
+  docker-secret aware). Cooldown por direção (`REALTIME_ORPHAN_ALERT_COOLDOWN_MS`,
+  default 15min, clamp ≥ 60s — padrão do geo-health-alert) + recovery notice
+  (level info) quando cai de volta. Fail-open: sem DSN ou webhook fora → log
+  dedup e segue. ⚠️ **Escopo por-processo:** cada instância do realtime vê só
+  os próprios sockets (mesmo escopo da revogação/TTL/limite de sessões) — o
+  threshold é por instância, não global entre réplicas; com N réplicas o
+  operador deve considerar o alerta por instância. Sem DSN configurado o
+  alerta nasce desligado com aviso no boot (fail-open explícito, não
+  silencioso). Em staging mantenha o threshold em 0 para pegar o leak do
+  HMR antes da produção; ajuste para acima do limite de sessões por role se
+  multi-tab for legítimo.
 
 #### Workers (RabbitMQ Consumers)
 

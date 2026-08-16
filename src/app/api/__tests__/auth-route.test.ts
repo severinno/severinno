@@ -425,12 +425,31 @@ describe("GET /api/auth/me", () => {
     expect((parsed.body as any).user.id).toBe("user-1")
   })
 
+  it("includes expiresAt na resposta para o countdown do dashboard", async () => {
+    const expiresAt = Math.floor(Date.now() / 1000) + 20 * 24 * 60 * 60
+    _mockSession = { userId: "user-1", role: "CLIENT", expiresAt } as any
+    ;(vi.mocked(db.user.findUnique) as any).mockResolvedValue({
+      id: "user-1",
+      name: "João Silva",
+      email: "joao@example.com",
+      role: "CLIENT",
+      avatarUrl: null,
+    } as any)
+
+    const res = await me()
+    const parsed = await parseResponse(res)
+
+    expect(parsed.status).toBe(200)
+    expect((parsed.body as any).expiresAt).toBe(expiresAt)
+  })
+
   it("returns null user when not authenticated", async () => {
     const res = await me()
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
     expect((parsed.body as any).user).toBeNull()
+    expect((parsed.body as any).expiresAt).toBeNull()
   })
 
   it("returns null user when session user not found in db", async () => {
@@ -442,5 +461,6 @@ describe("GET /api/auth/me", () => {
 
     expect(parsed.status).toBe(200)
     expect((parsed.body as any).user).toBeNull()
+    expect((parsed.body as any).expiresAt).toBeNull()
   })
 })
