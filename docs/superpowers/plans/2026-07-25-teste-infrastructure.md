@@ -405,7 +405,7 @@ jobs:
           path: coverage/
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: bunx playwright install --with-deps chromium
 
       - name: Run E2E tests (Chromium only)
         run: bun run e2e --project=chromium

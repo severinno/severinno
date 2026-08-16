@@ -295,23 +295,28 @@ bun run e2e        # Run full Playwright E2E suite (all browsers)
 bunx playwright install  # Install Playwright browsers (first time only)
 ```
 
-### Troubleshooting — `npx playwright` quebra no Windows
+### Troubleshooting — o `npx` e o runner oficial do Playwright
 
 > **Runner oficial: `bunx playwright` (ou `bun run e2e`).** Em projetos
 > instalados com **bun**, `node_modules/.bin` contém shims **do bun**
-> (`playwright.EXE` / `playwright.bunx`), e **não** os shims `.cmd`/shell do
-> npm. No Windows, o `npx` invoca o shim via `cmd.exe`, cujo re-quoting
-> quebra os argumentos de caminho dos specs — o runner acaba carregando os
-> arquivos num contexto errado e falha com:
+> (`playwright.EXE` + ponteiro `playwright.bunx`) e **não** os shims
+> `.cmd`/`.ps1` do npm. No Windows, o `npx` executa o shim `.EXE` do bun via
+> `cmd.exe` e o runner resolve uma instância DIFERENTE de `@playwright/test`
+> no grafo de módulos — a coleta de testes falha com `No tests found` (ou
+> `Playwright Test did not expect test.describe() to be called here`).
+> `bunx` lê o ponteiro `.bunx` e resolve o mesmo grafo do bun — funciona.
 >
-> ```text
-> Error: Playwright Test did not expect test.describe() to be called here.
-> ```
->
-> (ou `did not expect test() to be called here` / `No tests found`).
-> `bunx` executa o mesmo binário **sem a camada do cmd.exe** e funciona. Em
-> Linux/Mac o `npx` costuma funcionar (shim shell), mas o runner documentado
-> é o `bunx` para consistência.
+> **Workaround (npx funcionando de verdade):** gere os shims do npm no
+> worktree com `npm install --no-save --no-package-lock @playwright/test@<versão do bun.lock>`
+> — o npm cria `playwright.cmd`/`playwright.ps1`/`playwright` em
+> `node_modules/.bin` e a sua própria cópia do pacote, e o `npx` passa a
+> resolver o shim do npm com grafo único. Validado no Windows (08/2026):
+> listagem e execução real de specs via npx passam; o `bunx` continua
+> funcionando (os shims do bun permanecem). ⚠️ Sem `--no-save --no-package-lock`
+> o npm criaria `package-lock.json`, proibido pelo guard `check-bun-mirror`
+> (só `bun.lock`). O guard `check-no-npx-playwright` continua exigindo `bunx`
+> em docs/scripts/package.json — o npx com shims é um ajuste LOCAL de
+> `node_modules` (gitignored), não o padrão do repo.
 >
 > Sempre que um comando deste README mostrar `npx playwright`, substitua por
 > `bunx playwright`. Os scripts do `package.json` (`e2e`, `e2e:ui`) já usam
@@ -778,6 +783,7 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 | Contrato mutation-coord staged (`check-mutation-timing-contract.mjs --staged`) |     ✅     |       —       |
 | Format + lint (lint-staged: prettier + eslint --fix)                           |     ✅     |       —       |
 | Imports diretos (check:direct-rtl-import + barrel-lint)                        |     ✅     |       —       |
+| Runner oficial (bunx — `check-no-npx-playwright.mjs`)                          |     ✅     |       —       |
 | Barrel lint (`barrel-lint`)                                                    |     ✅     |       —       |
 | Typecheck (`tsc --noEmit`)                                                     |     ✅     |       —       |
 | Snapshots (quando `.snap`/snapshot tests alterados)                            |  ✅ cond.  |       —       |

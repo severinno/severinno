@@ -64,6 +64,10 @@ bun x lint-staged
 # em arquivos .test.* (devem usar @/__tests__/test-utils)
 bun run check:direct-rtl-import
 
+# Runner oficial E2E — impede reintrodução de `npx playwright` em
+# docs/scripts/package.json (npx quebra no Windows; use bunx playwright)
+bun run check:no-npx-playwright
+
 # Type check — rejeita commit se houver erros de tipo no projeto
 bun run typecheck
 

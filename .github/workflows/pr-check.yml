@@ -228,6 +228,28 @@ jobs:
       - name: Summary
         run: echo "✅ All workflows use ./.github/actions/setup-bun (cached)."
 
+  # ── No npx playwright Guard (runner oficial) ────────────────────────
+  # Falha se alguém reintroduzir `npx playwright` em docs/scripts/package.json
+  # (runner oficial: bunx playwright). No Windows o npx resolve uma instância
+  # DIFERENTE de @playwright/test no grafo de módulos (shims .cmd do npm vs
+  # symlinks do bun) e TODOS os specs E2E falham com 'did not expect
+  # test.describe() to be called here'. O job roda o mutation test (prova que
+  # o guard detecta a reintrodução) + o guard real.
+  no-npx-playwright-guard:
+    name: No npx playwright Guard (runner oficial)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mutation test — guard detecta a reintrodução
+        run: bash scripts/test-mutation-no-npx-playwright.sh
+
+      - name: Check docs/scripts/package.json no npx playwright
+        run: node scripts/check-no-npx-playwright.mjs
+
+      - name: Summary
+        run: echo "✅ No 'npx playwright' in docs/scripts/package.json — use bunx playwright."
+
   # ── Bun Mirror Guard ─────────────────────────────────────────────────
   # Fast gate (node puro, <1s): falha o PR se a FONTE ÚNICA da versão do
   # Bun for violada. A versão vive APENAS na repository variable

@@ -108,6 +108,7 @@ export const DESCRIPTIVE_ROW_EXCEPTIONS = [
 const HOOK_KEY_BY_CMD = {
   "bun run typecheck": "typecheck",
   "bun run check:direct-rtl-import": "check-direct-rtl-import",
+  "bun run check:no-npx-playwright": "check-no-npx-playwright.mjs",
   "bun run barrel-lint": "barrel-lint",
   "bun x lint-staged": "lint-staged",
   "bun run test:unit": "test:unit",

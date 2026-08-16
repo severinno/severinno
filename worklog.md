@@ -1748,3 +1748,94 @@ Fix (rodada 3 — validação):
   para `if (!dryRun)` (length > 0 garantido dentro do loop).
 - Prettier: .prisma/.sql não têm parser no prettier do repo — o check roda
   só em ts/tsx/md.
+
+## NO-NPX-PLAYWRIGHT-GUARD — guard do runner oficial E2E
+
+Task: Adicionar um guard (check-*.mjs) que falha se alguém reintroduzir
+`npx playwright` em docs/scripts/package.json, apontando para o bunx como
+runner oficial — no padrão dos guards existentes de README/escopo.
+
+- scripts/check-no-npx-playwright.mjs (NOVO): Node puro, funções puras
+  exportadas (findNpxPlaywrightRefs/scanNpxPlaywright) + IS_DIRECT_RUN, exit
+  0/1/2, --root para fixtures. Escopo: README.md + docs/**/_.md (só posição de
+  comando: linha iniciando com `npx playwright` ou com subcomando/flag —
+  prosa do Troubleshooting isenta), scripts/_.sh/_.bash (fora comentário/echo;
+  test-mutation-_ excluídos de propósito), package.json.
+- src/lib/**tests**/check-no-npx-playwright-cli.test.ts (NOVO): 6 testes CLI
+  (spawn real com --root): fixture limpo pass, .sh/docs/package.json com
+  mutação fail citando o arquivo, prosa exenta pass, test-mutation-* excluído.
+- scripts/test-mutation-no-npx-playwright.sh (NOVO): controle (limpo) + 3
+  mutações (.sh, docs, package.json) que DEVEM falhar citando o arquivo +
+  prosa documental que DEVE passar.
+- Wiring: package.json (check:no-npx-playwright), .husky/pre-commit (fast
+  gate), check-hooks-symmetry.mjs (HOOK_KEY_BY_CMD), pr-check.yml
+  (job no-npx-playwright-guard: mutation test + guard real — cobertura direta
+  do check-mutation-jobs), README (tabela Git Hooks), docs/GUARDS.md (família
+  13 Runner oficial).
+- Por que existe: npx resolve instância DIFERENTE de @playwright/test no
+  Windows (shims .cmd vs symlinks do bun) e TODOS os specs falham com
+  'did not expect test.describe() to be called here'; bunx é o runner oficial
+  (README Troubleshooting).
+
+## NPX-SHIMS-WINDOWS — fazer o npx FUNCIONAR de verdade no Windows
+
+Task: Gerar os shims .cmd/.ps1 do npm no worktree (`npm install --no-save`)
+para que o npx não dependa do re-quoting do cmd.exe sobre o .EXE do bun, e
+documentar o resultado.
+
+- Diagnóstico (causa raiz REAL, diferente da hipótese original): o bun cria
+  `node_modules/.bin/playwright.exe` (shim .exe de ~15KB) + ponteiro
+  `playwright.bunx`, SEM .cmd/.ps1. Quando o npx executa o .exe via cmd.exe,
+  o runner resolve uma instância DIFERENTE de @playwright/test no grafo de
+  módulos (bun install vs layout npm) — `npx playwright test --list` retornava
+  `No tests found` (0 arquivos, exit 0) enquanto o bunx achava os testes.
+  `--config` explícito NÃO resolve (não é problema de config/CWD — é o grafo
+  duplicado: o shim .exe spawna o cli.js via node, e o require('@playwright/test')
+  do config/runner resolve na instância do npm, não na do cli).
+- Fix aplicado: `npm install --no-save --no-package-lock @playwright/test@<versão
+do bun.lock>` no worktree — o npm criou `playwright.cmd`/`playwright.ps1`/
+  `playwright` ao lado dos shims do bun + sua própria cópia do pacote, e o
+  npx passou a resolver o shim do npm com grafo único. Sem package-lock.json
+  (guard check-bun-mirror: só bun.lock). Gitignored — ajuste LOCAL de
+  node_modules, não padrão do repo.
+- Prova de ponta a ponta (Windows): `npx playwright test --list` → 253 testes
+  em 23 arquivos (exit 0); `npx playwright test e2e/health.spec.ts` → 3 passed
+  (4.1s); regressão do bunx → 3 passed (1.4s) — ambos os runners funcionando.
+- Sanity do repo: typecheck 0 e git status limpo após o npm install (o tooling
+  bun não foi afetado pelo layout npm).
+- Documentação: README Troubleshooting reescrito com a causa raiz real (grafo
+  duplicado, não re-quoting) + workaround dos shims com os flags corretos e o
+  aviso do guard check-bun-mirror; mensagem do guard check-no-npx-playwright
+  atualizada para o mecanismo real (sem literal proibido pelo próprio guard).
+  O guard continua exigindo bunx em docs/scripts/package.json — o npx com
+  shims é workaround local de node_modules, não o padrão documentado.
+
+Task ID: NPX-RUNNER-DIAG
+Agent: orchestrator (diagnóstico do runner oficial E2E no Windows)
+Task: Registrar no worklog o trecho do diagnóstico (npx vs bunx, shim .EXE,
+reprodução via cmd.exe) e a decisão de runner oficial, para auditoria futura.
+
+Work Log:
+
+- Contexto: em projeto instalado com bun, `node_modules/.bin` contém o shim
+  `playwright.EXE` (~15KB) + ponteiro `playwright.bunx` — SEM os shims
+  `.cmd`/`.ps1` do npm.
+- Reprodução (Windows, via cmd.exe): `npx playwright test <spec> --list` →
+  0 arquivos / `No tests found` (exit 0) enquanto `bunx playwright test
+<spec> --list` achava os testes; `--config` explícito NÃO resolveu.
+- Causa raiz: o shim `.EXE` do bun spawna o cli.js via node, e o
+  `require('@playwright/test')` do config/runner resolve numa instância
+  DIFERENTE da do cli (bun install vs layout npm) — grafo de módulos
+  duplicado. Não é (apenas) re-quoting do cmd.exe como se suspeitava a
+  princípio; a hipótese inicial foi descartada por evidência (`--config` não
+  muda nada e o `--list` via npx acha 0 vs bunx 253).
+- Decisão registrada: **runner oficial do repo é `bunx playwright`** (ou
+  `bun run e2e`). O guard `check-no-npx-playwright` trava a reintrodução de
+  `npx playwright` em docs/scripts/package.json (ver seção
+  NO-NPX-PLAYWRIGHT-GUARD). npx com shims npm (`npm install --no-save
+--no-package-lock`) é workaround LOCAL de node_modules (gitignored), não
+  padrão do repo (ver seção NPX-SHIMS-WINDOWS).
+
+Stage Summary:
+
+- **Alterado**: worklog.md (registro de auditoria do diagnóstico + decisão).

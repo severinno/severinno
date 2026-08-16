@@ -280,6 +280,40 @@ fonte única, sem duplicação neste catálogo para não driftar.
 
 ---
 
+## 13. Runner oficial — `check-no-npx-playwright`
+
+**O que protege:** zero `npx playwright` em docs/README.md, `docs/**/*.md`,
+`scripts/*.sh`/`*.bash` e package.json (escopo travado; workflows/Makefile
+fora por decisão). Runner oficial do Playwright é `bunx playwright` (ou
+`bun run e2e`).
+
+**Por que existe:** no Windows, o `npx` resolve uma instância DIFERENTE de
+@playwright/test no grafo de módulos (shim `.EXE` do bun sem `.cmd`/`.ps1` vs
+o layout do npm) e rodar os specs E2E via `npx` fazia TODOS eles falharem com
+'No tests found' (ou 'did not expect test.describe() to be called here') —
+enquanto `bunx` (que lê o ponteiro `.bunx` e resolve o grafo do bun)
+funcionava. Workaround local documentado no README Troubleshooting: gerar os
+shims `.cmd`/`.ps1` do npm no worktree com `npm install --no-save
+--no-package-lock`; o guard trava a decisão de manter `bunx` como runner
+oficial em docs/scripts/package.json.
+O Troubleshooting do README documenta a regressão; este guard trava a decisão
+no código: reintroduzir `npx playwright` em docs/scripts/package.json falha o
+PR com a orientação do bunx. Menções em PROSA (o próprio Troubleshooting) são
+isentas por padrão — o guard detecta o padrão em POSIÇÃO DE COMANDO (linha
+iniciando com `npx playwright` ou seguida de subcomando/flag: test, install,
+list, codegen, open, show, --*). `test-mutation-*.sh` são excluídos do scan de
+scripts/ de propósito (mutation tests introduzem o padrão em fixtures para
+provar a detecção).
+
+**Onde roda:** pre-commit (fast gate), job `no-npx-playwright-guard` do
+pr-check.yml (mutation test + guard real).
+
+**Como testar:** `bun run check:no-npx-playwright`; vitest
+`check-no-npx-playwright-cli.test.ts` (via `test:guards`); mutation
+`bash scripts/test-mutation-no-npx-playwright.sh`.
+
+---
+
 ## Regra de ouro para guards novos
 
 1. **Cabe numa família existente?** Se sim, estenda a família (com teste +

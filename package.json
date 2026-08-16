@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "check:direct-rtl-import": "node scripts/check-direct-rtl-import.mjs",
+    "check:no-npx-playwright": "node scripts/check-no-npx-playwright.mjs",
     "check:ts-nocheck": "node scripts/check-ts-nocheck.mjs",
     "check:seed-hooks": "node scripts/check-seed-hooks.mjs",
     "check:workflow-refs": "node scripts/check-workflow-refs.mjs",
