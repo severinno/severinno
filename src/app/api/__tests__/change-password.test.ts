@@ -114,10 +114,15 @@ describe("POST /api/auth/change-password", () => {
     // Hash da nova senha
     expect(hashPassword).toHaveBeenCalledWith(NEW_PASSWORD)
 
-    // Atualiza no banco
+    // Atualiza no banco (passwordChangedAt alimenta o cron de revogação e
+    // revokedByCronAt: null limpa o marcador once-only para re-varredura)
     expect(mockDb.user.update).toHaveBeenCalledWith({
       where: { id: "user-1" },
-      data: { passwordHash: "mocked-salt:mocked-hash" },
+      data: {
+        passwordHash: "mocked-salt:mocked-hash",
+        passwordChangedAt: expect.any(Date),
+        revokedByCronAt: null,
+      },
     })
 
     // Push notification de segurança

@@ -1415,3 +1415,336 @@ Stage Summary:
 
 - **Alterado**: mini-services/realtime/security.ts, mini-services/realtime/index.ts,
   src/lib/**tests**/realtime-security.test.ts, worklog.md.
+
+Task ID: FETCH-TIMEOUT-HELPER
+Agent: orchestrator (helper compartilhado de fetch timeout)
+Task: Extrair o guard `Math.max(1, Number(env) || default)` + `AbortSignal.timeout()` em um helper compartilhado src/lib/fetch-timeout.ts, eliminando a duplicação em 7 arquivos.
+
+Work Log:
+
+- Novo src/lib/fetch-timeout.ts com 2 funções:
+  - `resolveTimeoutMs(envName, fallbackMs)` — guarda `Math.max(1, Number(env) || default)`:
+    env ausente/vazia/NaN → fallback; "0" (falsy) → fallback; negativo → clamp 1.
+  - `envTimeoutSignal(envName, fallbackMs)` — AbortSignal.timeout() com o guard aplicado.
+- Refatorados 7 arquivos (o pedido dizia 6; o grep revelou 7 com o padrão combinado):
+  - inline `envTimeoutSignal(...)` (uso único): src/lib/realtime-client.ts
+    (REALTIME_EMIT_TIMEOUT_MS/3000), src/lib/lytex.ts (LYTEX_TIMEOUT_MS/10_000),
+    src/lib/evolution.ts (EVOLUTION_TIMEOUT_MS/10_000), src/app/api/sentry/route.ts
+    (GLITCHTIP_TIMEOUT_MS/5_000).
+  - `resolveTimeoutMs(...)` em const (uso em 2 fetches): src/app/api/webhooks/sentry-alert/route.ts
+    (ALERT_WEBHOOK_TIMEOUT_MS/5_000), src/app/api/admin/gateway/invoices/route.ts e
+    src/app/api/admin/gateway/stats/route.ts (LYTEX_TIMEOUT_MS/10_000).
+- FORA do escopo (não são timeouts): paginação `Math.max(1, Number(searchParams page/limit))`
+  em api-server.ts e rotas de busca (clamp de paginação, não fetch timeout); e o
+  `MAX_SESSIONS_PER_USER` do mini-services (contagem de sessão num runtime standalone que
+  não importa src/lib).
+- Testes: novo src/lib/**tests**/fetch-timeout.test.ts (7 casos resolveTimeoutMs: fallback
+  ausente/vazio, valor válido, NaN, "0" falsy, negativo clamp 1, decimal; 2 casos
+  envTimeoutSignal: instância AbortSignal + guard aplicado sem throw).
+- Como testar: `bunx vitest run src/lib/__tests__/fetch-timeout.test.ts`.
+
+Stage Summary:
+
+- **Alterado**: src/lib/fetch-timeout.ts (novo), src/lib/**tests**/fetch-timeout.test.ts (novo),
+  src/lib/realtime-client.ts, src/lib/lytex.ts, src/lib/evolution.ts,
+  src/app/api/sentry/route.ts, src/app/api/webhooks/sentry-alert/route.ts,
+  src/app/api/admin/gateway/invoices/route.ts, src/app/api/admin/gateway/stats/route.ts,
+  worklog.md.
+
+Task ID: FETCH-TIMEOUT-TESTS
+Agent: orchestrator (testes de hang/AbortSignal dos helpers e rotas refatoradas)
+Task: Adicionar testes de 'não trava quando o serviço aceita TCP mas nunca responde' (simulação de hang com AbortSignal) para os helpers lytexRequest e evolutionRequest, seguindo o padrão do realtime-client.test.ts, e teste de presença do signal nos fetches das rotas gateway e sentry.
+
+Work Log:
+
+- Novos src/lib/**tests**/lytex-timeout.test.ts e evolution-timeout.test.ts — testam o módulo
+  REAL (complementam o lytex.test.ts auto-contido, que replica a lógica sem importar o módulo):
+  - Presença de signal: o fetch carrega AbortSignal (instância, aborted=false) via
+    envTimeoutSignal(LYTEX_TIMEOUT_MS / EVOLUTION_TIMEOUT_MS).
+  - Hang: com a env de timeout em 50ms e um fetch que só rejeita quando o signal abortar,
+    o request rejeita com TimeoutError em <2s (não pendura o fluxo de booking/WhatsApp).
+  - Padrão copiado de realtime-client.test.ts (stub de fetch + logger mockado com child()).
+- Estendidos os testes das rotas gateway:
+  - admin-gateway-invoices-route.test.ts: novo describe 'signal presence' — TODOS os fetches
+    (auth token + listagem) carregam AbortSignal.
+  - admin-gateway-stats-route.test.ts: idem para auth + paginação do fetchAllInvoices.
+- Novos src/app/api/**tests**/sentry-route.test.ts e sentry-alert-route.test.ts:
+  - Tunnel /api/sentry: fetch do GlitchTip com AbortSignal no URL
+    http://glitchtip-web:8000/api/42/envelope/ (dsn projeto 42) + fail-closed 200 com
+    ECONNREFUSED.
+  - Webhook /api/webhooks/sentry-alert: fetches de Discord E Telegram carregam AbortSignal
+    (com DISCORD_WEBHOOK_URL + TELEGRAM_* stubbed e SENTRY_ALERT_SECRET vazio → authorized).
+- Como testar: bunx vitest run src/lib/**tests**/lytex-timeout.test.ts
+  src/lib/**tests**/evolution-timeout.test.ts src/app/api/**tests**/sentry-route.test.ts
+  src/app/api/**tests**/sentry-alert-route.test.ts src/app/api/**tests**/admin-gateway-invoices-route.test.ts
+  src/app/api/**tests**/admin-gateway-stats-route.test.ts
+
+Stage Summary:
+
+- **Alterado**: src/lib/**tests**/lytex-timeout.test.ts (novo), src/lib/**tests**/evolution-timeout.test.ts (novo),
+  src/app/api/**tests**/sentry-route.test.ts (novo), src/app/api/**tests**/sentry-alert-route.test.ts (novo),
+  src/app/api/**tests**/admin-gateway-invoices-route.test.ts, src/app/api/**tests**/admin-gateway-stats-route.test.ts,
+  worklog.md.
+
+Task ID: DATA-TIMEOUTS-AUDIT
+Agent: orchestrator (auditoria de timeouts dos clientes de dados)
+Task: Auditar os timeouts do client OpenSearch (requestTimeout 10s existe, connectionTimeout não explícito) e do Prisma (query_timeout/connection_limit) para garantir que nenhum serviço de dados pendure requests indefinidamente, documentando a conclusão.
+
+Work Log:
+
+- AUDITORIA OpenSearch (src/lib/search.ts):
+  - Verificado nas ClientOptions instaladas (@opensearch-project/opensearch v3.6.0):
+    a opção `connectionTimeout` NÃO EXISTE — só requestTimeout/maxRetries/agent.
+  - O Transport repassa o requestTimeout ao http.request do Node, que seta o
+    socket timeout ANTES de conectar — logo o requestTimeout: 10_000 cobre
+    TAMBÉM a fase de connect (OpenSearch que aceita TCP mas nunca responde →
+    TimeoutError em 10s). Sem gap real de conexão.
+  - Hardening aplicado: `maxRetries: 1` explícito (default era 3, implícito) —
+    pior caso ~20s, nunca infinito; search falha aberto (itens vazios) e o
+    consumer de reindex tem a própria fila. Comentário no código documenta tudo.
+- AUDITORIA Prisma (src/lib/db.ts + src/queue/search-index-consumer.ts):
+  - Verificado no PrismaClientOptions gerado (Prisma 6.19.3): `query_timeout` e
+    `connection_limit` FORAM REMOVIDOS das options do construtor. O mecanismo
+    suportado são params na connection string (engine clássico):
+    connection_limit (int), connect_timeout (seg), pool_timeout (seg),
+    statement_timeout (ms — default 0 = DESABILITADO: sem ele, uma query
+    travada no Postgres pendura o request INDEFINIDAMENTE — gap real fechado).
+  - Novo src/lib/prisma-timeout.ts: `buildPrismaDatasourceUrl(url)` aplica os 4
+    params (só os ausentes, nunca duplica os explícitos) com defaults
+    connection_limit=10 / connect_timeout=10s / pool_timeout=10s /
+    statement_timeout=10_000ms e override via env (PRISMA_CONNECTION_LIMIT,
+    PRISMA_CONNECT_TIMEOUT_SEC, PRISMA_POOL_TIMEOUT_SEC,
+    PRISMA_STATEMENT_TIMEOUT_MS) com o guard do padrão (NaN/0/vazio → default;
+    negativo → 1).
+  - Aplicado via `datasourceUrl` no construtor do app client (db.ts) e do
+    worker search-index-consumer (consumer que faz $queryRawUnsafe no poll).
+    Seeds/scripts que criam PrismaClient próprio ficam FORA (tooling dev, não
+    servem requests) — podem adotar o helper se desejado.
+- Testes:
+  - Novo src/lib/**tests**/prisma-timeout.test.ts (5 casos): defaults aplicados,
+    não-duplicação de params existentes, override via env, clamp negativo,
+    statement_timeout nunca fica 0.
+  - src/lib/**tests**/search.test.ts: mock do Client agora captura as options;
+    novo caso 'createClient' garante requestTimeout=10_000 e maxRetries=1.
+- Como testar: bunx vitest run src/lib/**tests**/prisma-timeout.test.ts
+  src/lib/**tests**/search.test.ts
+
+Stage Summary:
+
+- **Alterado**: src/lib/prisma-timeout.ts (novo), src/lib/**tests**/prisma-timeout.test.ts (novo),
+  src/lib/db.ts, src/queue/search-index-consumer.ts, src/lib/search.ts,
+  src/lib/**tests**/search.test.ts, worklog.md.
+
+---
+
+Task ID: ADMIN-ONLINE-CARD
+Agent: general-purpose (admin panel)
+Task: Exibir o total de usuários online como card/contador no topo da lista de usuários do painel admin, com refresh manual ao lado da coluna Online.
+
+Work Log:
+
+- src/components/admin/admin-users.tsx: a query de sessões realtime
+  (`GET /api/admin/realtime/sessions`, queryKey `admin/realtime/sessions`)
+  agora expõe `refetch` e `isFetching` — antes só o `data` era consumido.
+- Novo card KpiCard "Usuários online" no topo da lista (após o
+  PageSectionHeader, antes das tabs de role): usa `onlineUsers` da resposta
+  (contagem de usuários com sessão verificada E joined no realtime), com
+  subtitle exibindo `totalSockets` sockets ativos ou "Realtime indisponível"
+  quando `ok === false` (degradação graciosa — realtime fora do ar não quebra
+  o painel). Consome o KpiCard do _shared (design system consistente).
+- Refresh manual: botão de ícone RefreshCcw ao lado do label "Online" no
+  TableHead — chama `refetchSessions()` (mesma query do card, atualiza ambos),
+  com animate-spin durante isRefetching (só refetches posteriores, não o mount
+  inicial) e aria-label de acessibilidade. O card segue com refetchInterval de
+  30s automático.
+
+Stage Summary:
+
+- **Alterado**: src/components/admin/admin-users.tsx, worklog.md.
+- **Sem mudança de API**: a rota /api/admin/realtime/sessions já retornava
+  `onlineUsers` e `totalSockets` — só o consumo no frontend mudou.
+
+---
+
+Task ID: ADMIN-ONLINE-PROVIDERS
+Agent: general-purpose (admin panel)
+Task: Estender o indicador de usuários online e a ação "Revogar sessões" do AdminUsers para o AdminProviders (admin-providers.tsx), seguindo o mesmo padrão.
+
+Work Log:
+
+- src/components/admin/admin-providers.tsx:
+  - Query de sessões realtime (`GET /api/admin/realtime/sessions`, queryKey
+    `admin/realtime/sessions`, staleTime 15s, refetchInterval 30s) expondo
+    `refetch: refetchSessions` e `isRefetching: isSessionsRefetching` — mesma
+    queryKey do AdminUsers, então o cache é compartilhado entre as duas listas.
+  - Novo KpiCard "Usuários online" no topo (após o PageSectionHeader): usa
+    `onlineUsers` da resposta, subtitle com `totalSockets` ou "Realtime
+    indisponível" quando `ok === false` (degradação graciosa).
+  - Nova coluna "Online" entre Status e Desde: badge emerald "Online" (Wifi com
+    animate-pulse) por prestador com sessão joined + botão de refresh manual
+    (RefreshCcw, isRefetching → animate-spin/disabled, aria-label).
+  - Novo item "Revogar sessões" no dropdown ⋮ (ícone RefreshCcw): chama
+    POST /api/admin/users/[id]/revoke-sessions sem desativar a conta, com
+    toast de sucesso, invalidação da query de sessões e error banner/toast em
+    falha; desabilitado quando o prestador não está online ou já revogando.
+  - onlineByUser memo derivado de sessionsData (userId → online).
+- Consistência: tipo RealtimeSessionsResponse e padrões (badge, tooltip,
+  refresh) replicam o AdminUsers — a queryKey compartilhada evita fetch duplicado.
+
+Stage Summary:
+
+- **Alterado**: src/components/admin/admin-providers.tsx, worklog.md.
+- **Sem mudança de API**: reusa GET /api/admin/realtime/sessions e
+  POST /api/admin/users/[id]/revoke-sessions já existentes.
+
+---
+
+Task ID: CRON-REVOKE-INACTIVE-TEST
+Agent: general-purpose (testes de cron)
+Task: Adicionar teste unitário do cron revoke-inactive-sessions (GET /api/cron/revoke-inactive-sessions) no padrão do cron-settlements-route.test.ts.
+
+Work Log:
+
+- Novo src/app/api/**tests**/cron-revoke-inactive-sessions-route.test.ts:
+  - Mocks hoisted: @/lib/auth (revokeUserSessions), @/lib/cron-cooldown
+    (isCooldownElapsed default true + markCompleted), @/lib/sentry
+    (captureMessage), @/lib/logger (default). db.user.findMany resetável
+    via (db.user as any) no beforeEach — mesmo padrão do settlements.
+  - revokeInactiveSessionsBatch (função pura exportada pela rota) — 3 casos:
+    pool de concorrência (max in-flight <= 5 com 12 usuários e revoke com
+    delay de 5ms; >1 prova que a concorrência é realmente usada), falhas
+    contadas separadamente quando revoke lança, dryRun conta sem chamar
+    revoke.
+  - GET — 7 casos: varredura multi-página (100+100+50 = 250, cursor na 2ª/3ª
+    chamada via skip:1 + cursor:{id}), página vazia encerra sem emitir, dryRun
+    via query param reporta sem emitir, cooldown ativo → skip sem varrer nem
+    emitir nem marcar completed, 401 Bearer ausente/errado, acesso liberado com
+    CRON_SECRET vazio, 500 com mensagem em erro interno.
+- Como testar: bunx vitest run src/app/api/**tests**/cron-revoke-inactive-sessions-route.test.ts
+
+Stage Summary:
+
+- **Adicionado**: src/app/api/**tests**/cron-revoke-inactive-sessions-route.test.ts,
+  worklog.md.
+- **Sem mudança de produção**: só teste novo do cron existente.
+
+---
+
+Task ID: ADMIN-REVOKE-AUDIT
+Agent: general-purpose (admin panel + cron)
+Task: Endpoint admin de audit trail dos runs do cron de revogação de sessões inativas + botão "Executar varredura agora" com dry-run por padrão no painel.
+
+Work Log:
+
+- src/lib/revoke-run-audit.ts (NOVO): audit trail Redis dos runs do cron de
+  revogação. Chave `cron:revoke-inactive:runs` (array JSON, bounded em 50,
+  TTL 30d, mais recente primeiro). `recordRevokeRun(entry)` (best-effort,
+  nunca lança) e `listRevokeRuns(limit=50)`. Usa a camada tier-aware
+  (cacheGet/cacheSet) — degrada para a store em memória sem quebrar a varredura.
+- src/lib/revoke-inactive-scan.ts (NOVO): motor compartilhado da varredura,
+  extraído da rota cron. `revokeInactiveSessionsBatch` (pool de concorrência
+  5, puro) + `runRevokeInactiveScan({ dryRun, source: 'cron'|'admin',
+bypassCooldown })`: cooldown Redis (23h, bypassável), lote com cursor,
+  markCompleted, logger/Sentry e registro do run no audit trail
+  (status completed/skipped/error).
+- src/app/api/cron/revoke-inactive-sessions/route.ts: refatorada para usar o
+  motor compartilhado (GET mantém auth Bearer CRON_SECRET + ?dryRun=1; re-exporta
+  o batch puro para os testes existentes).
+- Rotas admin (NOVAS):
+  - GET /api/admin/cron/revoke-inactive/runs — audit trail (ADMIN-only),
+    degrada para { runs: [] }.
+  - POST /api/admin/cron/revoke-inactive/run — executa AGORA com DRY-RUN POR
+    PADRÃO (dryRun default true; ?dryRun=0 para revogar de verdade),
+    bypassCooldown=true (o admin pediu explicitamente), source="admin",
+    ADMIN-only.
+- src/components/admin/admin-revoke-inactive.tsx (NOVO): página no painel com
+  select Dry-run (padrão) / Revogar de verdade (com ConfirmDialog destrutivo
+  H5), botão "Executar agora" e tabela do audit trail (quando, origem,
+  status, modo, varridos, revogados, falhas, duração) + skeleton/empty/error.
+- admin-panel.tsx: nova view "admin.revoke-inactive" (nav + meta + switch).
+  index.ts: barrel `RevokeInactive`.
+- Testes: revoke-run-audit.test.ts (6 casos), admin-revoke-inactive-run-route
+  (5 casos: dryRun default, dryRun=0 real, bypassCooldown, skipped, 401),
+  admin-revoke-inactive-runs-route (4 casos: 200, vazio, 401, 403);
+  cron-revoke-inactive-sessions-route.test.ts ganhou mock do audit.
+
+Stage Summary:
+
+- **Adicionado**: src/lib/revoke-run-audit.ts, src/lib/revoke-inactive-scan.ts,
+  rotas admin (runs + run), admin-revoke-inactive.tsx, 3 arquivos de teste.
+- **Alterado**: rota cron (usa motor compartilhado), admin-panel.tsx,
+  index.ts, cron-revoke-inactive-sessions-route.test.ts, worklog.md.
+- **Sem breaking change**: respostas do cron GET preservadas; batch puro
+  re-exportado.
+
+---
+
+Task ID: CRON-PASSWORD-CHANGE-REVOKE
+Agent: general-purpose (cron + auth)
+Task: Estender o cron revoke-inactive-sessions para também revogar sessões de usuários que trocaram a senha há N dias (defesa extra pós-vazamento), reutilizando a mesma varredura em lote.
+
+Work Log:
+
+- prisma/schema.prisma: novo campo `passwordChangedAt DateTime?` no model User
+  (comentário explicando o uso no cron).
+- prisma/migrations/20260816100000_add_password_changed_at/migration.sql (NOVO):
+  ALTER TABLE "User" ADD COLUMN "passwordChangedAt" TIMESTAMP(3).
+- src/app/api/auth/change-password/route.ts e reset-password/route.ts: o update
+  de senha agora grava `passwordChangedAt: new Date()` junto do novo hash —
+  alimenta o critério do cron (sem isso o campo nunca seria populado).
+- src/lib/revoke-inactive-scan.ts: nova condição no WHERE OR da varredura —
+  `{ passwordChangedAt: { lte: agora - PASSWORD_CHANGE_DAYS } }` (default 30,
+  env PASSWORD_CHANGE_DAYS). Threshold da resposta/audit agora inclui
+  `passwordChangedSince`. Logger/Sentry passam a incluir passwordChangeDays.
+- src/lib/revoke-run-audit.ts + admin-revoke-inactive.tsx: tipo threshold
+  sincronizado com o novo campo passwordChangedSince.
+- Testes: change-password.test.ts (data do update com passwordChangedAt),
+  cron-revoke-inactive-sessions-route.test.ts (where com as 3 condições +
+  threshold.passwordChangedSince), fixtures dos testes admin atualizados.
+
+Stage Summary:
+
+- **Adicionado**: migration + campo passwordChangedAt; condição de varredura
+  por troca de senha.
+- **Alterado**: 2 rotas de auth, motor do cron, audit trail, página admin,
+  4 arquivos de teste, worklog.md.
+- **Como aplicar no banco**: prisma migrate deploy (prod) ou db push (dev).
+
+Fix (rodada 2 — once-only marker `revokedByCronAt`):
+
+- BUG detectado no review: com `lte` (troca há MAIS de N dias), um usuário
+  ativo que trocou a senha seria re-revogado TODO dia para sempre — o
+  passwordChangedAt não muda no login (expulsão forçada diária + flooding do
+  audit trail). Correção com marcador once-only:
+- prisma/schema.prisma: novo campo `revokedByCronAt DateTime?` no model User.
+- Migration 20260816100000_add_password_changed_at/migration.sql: agora cria
+  as DUAS colunas (passwordChangedAt + revokedByCronAt) — migration ainda não
+  aplicada em nenhum banco.
+- rotas change-password/reset-password: além de gravar passwordChangedAt,
+  limpam `revokedByCronAt: null` (nova troca de senha reabilita a varredura).
+- revoke-inactive-scan.ts: condição de senha agora exige `revokedByCronAt:
+null`; após cada página (non-dryRun) grava `revokedByCronAt` via
+  db.user.updateMany nos revogados (marcar todos da página é seguro — o
+  marcador só é consultado junto da condição de senha).
+- Testes: cron test (condição com revokedByCronAt null + updateMany 3x com
+  marcador; dry-run e página vazia NÃO gravam), change-password test (data do
+  update com revokedByCronAt: null).
+
+Fix (rodada 3 — validação):
+
+- Assert do cron test corrigido: o where real é `{ deletedAt: { lte: Date } }` /
+  `{ passwordChangedAt: { lte: Date }, revokedByCronAt: null }` — o assert usava
+  `expect.any(Date)` onde deveria ser `expect.objectContaining({ lte: ... })`.
+- `prisma generate --no-engine` usado para o typecheck (o generate padrão
+  falhava com EPERM no rename da query engine DLL — lock do dev server da 3000
+  rodando desta worktree). Depois, com o dev server parado (taskkill PID),
+  `prisma generate` completo foi rodado para restaurar o client COM engine
+  (o app usa PrismaClient sem driver adapter — client no-engine quebraria o
+  próximo start) e o dev server da 3000 foi reiniciado e verificado
+  (200 em /api/services, que toca o banco via Prisma).
+- revoke-run-audit.test.ts: fixture makeEntry ganhou `passwordChangedSince`
+  no threshold (campo obrigatório no tipo RevokeRunEntry).
+- revoke-inactive-scan.ts: `if (!dryRun && page.length > 0)` simplificado
+  para `if (!dryRun)` (length > 0 garantido dentro do loop).
+- Prettier: .prisma/.sql não têm parser no prettier do repo — o check roda
+  só em ts/tsx/md.

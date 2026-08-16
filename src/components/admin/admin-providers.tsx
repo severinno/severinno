@@ -39,15 +39,17 @@ import {
   MoreHorizontal,
   Navigation,
   Power,
+  RefreshCcw,
   ShieldCheck,
   ShieldQuestion,
   ShieldX,
+  Wifi,
   X,
 } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { apiGet, apiPatch } from "@/lib/api"
+import { apiGet, apiPatch, apiPost } from "@/lib/api"
 import { type UserRole } from "@/lib/constants"
 import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -92,6 +94,7 @@ import {
   FilterBar,
   type GeoFilterState,
   initials,
+  KpiCard,
   PageSectionHeader,
   Pagination,
   ResultCount,
@@ -129,6 +132,15 @@ type AdminUsersResponse = {
   total: number
   page: number
   limit: number
+}
+
+/** Sessões ativas por usuário (GET /api/admin/realtime/sessions).
+ *  Definido IDÊNTICO em admin-users.tsx (H4 consistência) — mantenha sync. */
+type RealtimeSessionsResponse = {
+  ok: boolean
+  sessions: Record<string, Array<{ userId: string; role: string; socketId: string }>>
+  totalSockets: number
+  onlineUsers: number
 }
 
 type VerifiedFilter = "ALL" | "true" | "false"
@@ -197,6 +209,34 @@ export function AdminProviders() {
     mutationFn: ({ id, patch }: { id: string; patch: { verified?: boolean; active?: boolean } }) =>
       apiPatch<{ user: AdminUser }>(`/api/admin/users/${id}`, patch),
   })
+
+  // ── Sessões realtime ativas (quem está online) ──────────────────────
+  // Mesma fonte do AdminUsers (GET /api/admin/realtime/sessions): refetch a
+  // cada 30s, degrada graciosamente se o realtime estiver fora do ar.
+  const {
+    data: sessionsData,
+    refetch: refetchSessions,
+    isRefetching: isSessionsRefetching,
+  } = useQuery({
+    queryKey: ["admin", "realtime", "sessions"],
+    queryFn: () => apiGet<RealtimeSessionsResponse>("/api/admin/realtime/sessions"),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  })
+
+  const revokeMutation = useMutation({
+    mutationFn: (userId: string) =>
+      apiPost<{ ok: boolean }>(`/api/admin/users/${userId}/revoke-sessions`),
+  })
+
+  // userId → online (sessão ativa com join na sala user:{id}).
+  const onlineByUser = React.useMemo(() => {
+    const map = new Map<string, boolean>()
+    for (const [userId, sockets] of Object.entries(sessionsData?.sessions ?? {})) {
+      map.set(userId, sockets.length > 0)
+    }
+    return map
+  }, [sessionsData])
 
   const rawItems = React.useMemo(() => data?.items ?? [], [data?.items])
   const filteredItems = React.useMemo(() => {
@@ -310,6 +350,22 @@ export function AdminProviders() {
         title="Prestadores"
         description="Gerencie prestadores de serviços, verificação e status."
       />
+
+      {/* Usuários online — contador de sessões realtime ativas
+          (GET /api/admin/realtime/sessions). Atualiza sozinho a cada 30s;
+          o refresh manual fica na coluna "Online" da tabela. */}
+      <div className="max-w-xs">
+        <KpiCard
+          icon={Wifi}
+          label="Usuários online"
+          value={String(sessionsData?.onlineUsers ?? 0)}
+          subtitle={
+            sessionsData?.ok === false
+              ? "Realtime indisponível"
+              : `${sessionsData?.totalSockets ?? 0} sockets ativos`
+          }
+        />
+      </div>
 
       {/* Error banner (dismissible) — H9 */}
       {errorBanner ? (
@@ -436,6 +492,24 @@ export function AdminProviders() {
                     <TableHead className="text-muted-foreground text-center text-[11px] font-semibold tracking-wider uppercase">
                       Status
                     </TableHead>
+                    <TableHead className="text-center">
+                      <span className="text-muted-foreground inline-flex items-center gap-1 text-[11px] font-semibold tracking-wider uppercase">
+                        Online
+                        {/* Refresh manual do indicador — atualiza o contador
+                            do card e os badges de sessão imediatamente. */}
+                        <button
+                          type="button"
+                          onClick={() => void refetchSessions()}
+                          disabled={isSessionsRefetching}
+                          aria-label="Atualizar status online"
+                          className="text-muted-foreground hover:text-foreground inline-flex size-5 items-center justify-center rounded transition-colors disabled:opacity-50"
+                        >
+                          <RefreshCcw
+                            className={cn("size-3", isSessionsRefetching && "animate-spin")}
+                          />
+                        </button>
+                      </span>
+                    </TableHead>
                     <TableHead className="hidden sm:table-cell">
                       {renderSortHeader("Desde", "createdAt")}
                     </TableHead>
@@ -529,6 +603,26 @@ export function AdminProviders() {
                             <ActiveBadge active={p.active} />
                           )}
                         </TableCell>
+                        <TableCell className="px-4 py-3 text-center">
+                          {/* H1 — visibilidade do status: quem está online agora,
+                              antes de o admin desativar a conta. */}
+                          {onlineByUser.get(p.id) ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200/60 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium whitespace-nowrap text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300">
+                                  <Wifi className="size-3 animate-pulse" />
+                                  Online
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                Sessão ativa no realtime — pode ser desconectada com "Revogar
+                                sessões" antes de desativar
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <span className="text-muted-foreground/50 text-[11px]">—</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-muted-foreground hidden px-4 py-3 text-xs tabular-nums sm:table-cell">
                           {formatDate(p.createdAt)}
                         </TableCell>
@@ -601,6 +695,36 @@ export function AdminProviders() {
                                 >
                                   <Power className="size-3.5" />
                                   {p.active ? "Desativar" : "Ativar"}
+                                </DropdownMenuItem>
+                                {/* H1 — revogar sessões SEM desativar: desconecta os
+                                    sockets realtime (o usuário precisa re-logar),
+                                    mas a conta continua ativa. */}
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    revokeMutation.mutate(p.id, {
+                                      onSuccess: () => {
+                                        toast.success(
+                                          `Sessões de ${p.name} revogadas. O usuário foi desconectado — a conta continua ativa.`,
+                                        )
+                                        queryClient.invalidateQueries({
+                                          queryKey: ["admin", "realtime", "sessions"],
+                                        })
+                                      },
+                                      onError: (e: unknown) => {
+                                        const msg = errMsg(
+                                          e,
+                                          "Não foi possível revogar as sessões.",
+                                        )
+                                        setErrorBanner(msg)
+                                        toast.error(msg)
+                                      },
+                                    })
+                                  }}
+                                  disabled={!onlineByUser.get(p.id) || revokeMutation.isPending}
+                                  className="gap-2"
+                                >
+                                  <RefreshCcw className="size-3.5" />
+                                  Revogar sessões
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>

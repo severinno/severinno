@@ -46,6 +46,7 @@ import {
   Webhook,
   Shield,
   ShieldAlert,
+  RefreshCcw,
 } from "lucide-react"
 
 import { DashboardShell, type NavItem, type Breadcrumb } from "@/components/shared/dashboard-shell"
@@ -73,6 +74,7 @@ import { AdminPushMetrics } from "./admin-push-metrics"
 import { AdminProjectStatus } from "./admin-project-status"
 import { AdminPushAudit } from "./admin-push-audit"
 import { AdminWebhookAudit } from "./admin-webhook-audit"
+import { AdminRevokeInactive } from "./admin-revoke-inactive"
 import { AdminGatewayDashboard } from "./admin-gateway-dashboard"
 import { AdminPgBouncer } from "./admin-pgbouncer"
 import { AdminGeoMetricsDashboard } from "./admin-geo-metrics-dashboard"
@@ -161,6 +163,11 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.webhook-audit",
     label: "Webhooks",
     icon: Webhook,
+  },
+  {
+    view: "admin.revoke-inactive",
+    label: "Revogação Inativa",
+    icon: RefreshCcw,
   },
   {
     view: "admin.gateway",
@@ -304,6 +311,12 @@ const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs:
     subtitle:
       "Histórico de execuções de regras de webhook de eventos: quando cada regra foi executada, quantos usuários notificou e quais erros ocorreram.",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Webhooks" }],
+  },
+  "admin.revoke-inactive": {
+    title: "Revogação de sessões inativas",
+    subtitle:
+      "Audit trail das execuções do cron de revogação e disparo manual com dry-run por padrão.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Revogação Inativa" }],
   },
   "admin.push": {
     title: "Notificações Push",
@@ -518,6 +531,8 @@ function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: stri
       return <AdminPushAudit />
     case "admin.webhook-audit":
       return <AdminWebhookAudit />
+    case "admin.revoke-inactive":
+      return <AdminRevokeInactive />
     case "admin.project-status":
       return <AdminProjectStatus />
     case "admin.gateway":

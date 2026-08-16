@@ -19,6 +19,15 @@ model User {
   id           String   @id @default(cuid())
   email        String   @unique
   passwordHash String
+  // Última troca de senha (change-password / reset-password). O cron
+  // revoke-inactive-sessions usa isso para revogar sockets antigos de
+  // usuários que trocaram a senha há N dias (defesa pós-vazamento).
+  passwordChangedAt DateTime?
+  // Marcador once-only gravado pelo cron revoke-inactive-sessions ao revogar
+  // sockets por troca de senha: impede que um usuário ativo que trocou a
+  // senha seja re-revogado todo dia (passwordChangedAt não muda no login).
+  // Limpo na próxima troca de senha (rotas change/reset-password).
+  revokedByCronAt DateTime?
   name         String
   // role: "CLIENT" | "PROVIDER" | "ADMIN"
   role         String   @default("CLIENT")

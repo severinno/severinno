@@ -68,13 +68,20 @@ export const POST = withRateLimit(async (request: Request) => {
       )
     }
 
-    // Hash the new password and update the user
+    // Hash the new password and update the user. passwordChangedAt alimenta o
+    // cron revoke-inactive-sessions (revoga sockets antigos pós-troca de senha).
     const passwordHash = hashPassword(password)
 
     await db.$transaction([
       db.user.update({
         where: { id: resetToken.userId },
-        data: { passwordHash },
+        data: {
+          passwordHash,
+          passwordChangedAt: new Date(),
+          // Nova troca de senha limpa o marcador once-only do cron de
+          // revogação (mesma semântica do change-password).
+          revokedByCronAt: null,
+        },
       }),
       db.resetToken.update({
         where: { id: resetToken.id },

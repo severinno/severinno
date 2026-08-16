@@ -109,6 +109,7 @@ import {
   FilterBar,
   type GeoFilterState,
   initials,
+  KpiCard,
   PageSectionHeader,
   Pagination,
   ResultCount,
@@ -228,7 +229,11 @@ export function AdminUsers() {
   // ── Sessões realtime ativas (quem está online) ──────────────────────
   // Refetch a cada 30s (staleTime 15s) para o indicador ficar razoavelmente
   // fresco; degrada graciosamente se o realtime estiver fora do ar.
-  const { data: sessionsData } = useQuery({
+  const {
+    data: sessionsData,
+    refetch: refetchSessions,
+    isRefetching: isSessionsRefetching,
+  } = useQuery({
     queryKey: ["admin", "realtime", "sessions"],
     queryFn: () => apiGet<RealtimeSessionsResponse>("/api/admin/realtime/sessions"),
     staleTime: 15_000,
@@ -443,6 +448,22 @@ export function AdminUsers() {
         description="Gerencie clientes, prestadores e administradores da plataforma."
       />
 
+      {/* Usuários online — contador de sessões realtime ativas
+          (GET /api/admin/realtime/sessions). Atualiza sozinho a cada 30s;
+          o refresh manual fica na coluna "Online" da tabela. */}
+      <div className="max-w-xs">
+        <KpiCard
+          icon={Wifi}
+          label="Usuários online"
+          value={String(sessionsData?.onlineUsers ?? 0)}
+          subtitle={
+            sessionsData?.ok === false
+              ? "Realtime indisponível"
+              : `${sessionsData?.totalSockets ?? 0} sockets ativos`
+          }
+        />
+      </div>
+
       {/* Role tabs with counts */}
       <Tabs
         value={role}
@@ -602,8 +623,23 @@ export function AdminUsers() {
                     <TableHead className="text-muted-foreground text-center text-[11px] font-semibold tracking-wider uppercase">
                       Status
                     </TableHead>
-                    <TableHead className="text-muted-foreground text-center text-[11px] font-semibold tracking-wider uppercase">
-                      Online
+                    <TableHead className="text-center">
+                      <span className="text-muted-foreground inline-flex items-center gap-1 text-[11px] font-semibold tracking-wider uppercase">
+                        Online
+                        {/* Refresh manual do indicador — atualiza o contador
+                            do card e os badges de sessão imediatamente. */}
+                        <button
+                          type="button"
+                          onClick={() => void refetchSessions()}
+                          disabled={isSessionsRefetching}
+                          aria-label="Atualizar status online"
+                          className="text-muted-foreground hover:text-foreground inline-flex size-5 items-center justify-center rounded transition-colors disabled:opacity-50"
+                        >
+                          <RefreshCcw
+                            className={cn("size-3", isSessionsRefetching && "animate-spin")}
+                          />
+                        </button>
+                      </span>
                     </TableHead>
                     <TableHead className="hidden sm:table-cell">
                       {renderSortHeader("Criado em", "createdAt")}

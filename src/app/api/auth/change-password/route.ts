@@ -43,11 +43,20 @@ export const POST = withRateLimit(async (request: Request) => {
       throw badRequest("Senha atual incorreta.")
     }
 
-    // Hash and save new password
+    // Hash and save new password. passwordChangedAt alimenta o cron
+    // revoke-inactive-sessions: sockets antigos de quem trocou a senha há N
+    // dias são revogados (defesa extra pós-vazamento).
     const newHash = hashPassword(newPassword)
     await db.user.update({
       where: { id: user.id },
-      data: { passwordHash: newHash },
+      data: {
+        passwordHash: newHash,
+        passwordChangedAt: new Date(),
+        // Nova troca de senha limpa o marcador once-only do cron de
+        // revogação: após PASSWORD_CHANGE_DAYS, os sockets desta nova era
+        // de senha voltam a ser varridos (defesa pós-vazamento).
+        revokedByCronAt: null,
+      },
     })
 
     // Send push notification as security alert
