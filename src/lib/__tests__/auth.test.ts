@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { createHmac } from "node:crypto"
 
 vi.mock("../logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -130,6 +131,58 @@ describe("getSession", () => {
       }
     }
     expect(await getSession()).toBeNull()
+  })
+})
+
+describe("getSession — TTL-expiry realtime revocation", () => {
+  // Constrói um cookie com assinatura VÁLIDA (mesmo HMAC do app) mas com
+  // expiresAt no passado — o cenário "sessão expirou por TTL sem logout".
+  function signExpiredCookie(userId: string, role: string, expiresAtSec = 0): string {
+    const secret = process.env.SESSION_SECRET
+    if (!secret) throw new Error("SESSION_SECRET não configurado no env de teste")
+    const payload = `${userId}.${role}.${expiresAtSec}`
+    const signature = createHmac("sha256", secret).update(payload).digest("hex")
+    return `${payload}.${signature}`
+  }
+
+  it("emits session:revoke when a validly-signed cookie expired by TTL", async () => {
+    cookieStore.set("severinno_session", { value: signExpiredCookie("ttl-user-1", "CLIENT") })
+    expect(await getSession()).toBeNull()
+    // Fire-and-forget (void) — aguarda a cadeia assíncrona completar.
+    await vi.waitFor(() => {
+      expect(emitRealtime).toHaveBeenCalledTimes(1)
+      expect(emitRealtime).toHaveBeenCalledWith("session:revoke", { userId: "ttl-user-1" })
+    })
+  })
+
+  it("dedupes repeated getSession with the same expired cookie (1 emit/hour)", async () => {
+    cookieStore.set("severinno_session", { value: signExpiredCookie("ttl-user-2", "CLIENT") })
+    await getSession()
+    await getSession()
+    await vi.waitFor(() => {
+      expect(emitRealtime).toHaveBeenCalledTimes(1)
+      expect(emitRealtime).toHaveBeenCalledWith("session:revoke", { userId: "ttl-user-2" })
+    })
+  })
+
+  it("does not emit session:revoke for a valid (non-expired) cookie", async () => {
+    await createSession("ttl-user-3", "CLIENT")
+    expect(await getSession()).not.toBeNull()
+    expect(emitRealtime).not.toHaveBeenCalled()
+  })
+
+  it("does not emit session:revoke for a tampered cookie (signature mismatch)", async () => {
+    cookieStore.set("severinno_session", { value: "ttl-user-4.CLIENT.0.deadbeef" })
+    expect(await getSession()).toBeNull()
+    expect(emitRealtime).not.toHaveBeenCalled()
+  })
+
+  it("emits independently per userId (no cross-user suppression)", async () => {
+    cookieStore.set("severinno_session", { value: signExpiredCookie("ttl-user-5", "CLIENT") })
+    await getSession()
+    await vi.waitFor(() => {
+      expect(emitRealtime).toHaveBeenCalledWith("session:revoke", { userId: "ttl-user-5" })
+    })
   })
 })
 

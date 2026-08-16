@@ -21,7 +21,12 @@ import {
   verifyEmitToken,
   authorizeClientEvent,
   filterSocketsBySessionUserId,
+  selectSocketsToKickForSessionLimit,
+  selectExpiredSessionSockets,
+  extractEmitEventInfo,
+  summarizeActiveSessions,
   type BookingParticipantChecker,
+  type VerifiedSession,
 } from "../../../mini-services/realtime/security"
 
 const SECRET = "test-session-secret-min-32-chars-long!!"
@@ -53,10 +58,10 @@ describe("verifySessionCookie", () => {
   const future = Math.floor(Date.now() / 1000) + 3600
   const past = Math.floor(Date.now() / 1000) - 10
 
-  it("returns the session payload for a valid signed cookie", () => {
+  it("returns the session payload (incl. expiresAt) for a valid signed cookie", () => {
     const cookie = signSession("user-1", "PROVIDER", future)
     const session = verifySessionCookie(`${SESSION_COOKIE_NAME}=${cookie}`, SECRET)
-    expect(session).toEqual({ userId: "user-1", role: "PROVIDER" })
+    expect(session).toEqual({ userId: "user-1", role: "PROVIDER", expiresAt: future })
   })
 
   it("returns null when the signature is tampered", () => {
@@ -85,6 +90,153 @@ describe("verifySessionCookie", () => {
   it("returns null when the secret is not configured (fail closed)", () => {
     const cookie = signSession("user-1", "PROVIDER", future)
     expect(verifySessionCookie(`${SESSION_COOKIE_NAME}=${cookie}`, undefined)).toBeNull()
+  })
+})
+
+describe("selectExpiredSessionSockets (TTL sweep)", () => {
+  const now = Date.now()
+  const future = Math.floor(now / 1000) + 3600
+  const past = Math.floor(now / 1000) - 60
+  const sock = (session: VerifiedSession | null, id = "sock-1") => ({ id, data: { session } })
+
+  it("selects sockets whose session expiresAt is in the past", () => {
+    const sockets = [
+      sock({ userId: "u1", role: "CLIENT", expiresAt: past }, "old"),
+      sock({ userId: "u2", role: "CLIENT", expiresAt: future }, "fresh"),
+    ]
+    expect(selectExpiredSessionSockets(sockets, now).map((s) => s.id)).toEqual(["old"])
+  })
+
+  it("ignores sockets without a session or without expiresAt", () => {
+    const sockets = [sock(null, "no-session"), sock({ userId: "u3", role: "CLIENT" }, "no-expiry")]
+    expect(selectExpiredSessionSockets(sockets, now)).toEqual([])
+  })
+
+  it("returns [] when nothing has expired", () => {
+    const sockets = [sock({ userId: "u4", role: "CLIENT", expiresAt: future }, "fresh")]
+    expect(selectExpiredSessionSockets(sockets, now)).toEqual([])
+  })
+
+  it("ignores a non-numeric expiresAt (malformed metadata)", () => {
+    const sockets = [
+      {
+        id: "bad",
+        data: {
+          session: { userId: "u5", role: "CLIENT", expiresAt: "not-a-number" as unknown as number },
+        },
+      },
+    ]
+    expect(selectExpiredSessionSockets(sockets, now)).toEqual([])
+  })
+})
+
+describe("extractEmitEventInfo (auditoria do POST /emit)", () => {
+  it("booking:update → rooms do client e provider + userId do client", () => {
+    const info = extractEmitEventInfo("booking:update", {
+      bookingId: "b1",
+      clientId: "client-1",
+      providerId: "prov-1",
+      status: "PENDING",
+    })
+    expect(info.event).toBe("booking:update")
+    expect(info.rooms).toEqual(["user:client-1", "user:prov-1"])
+    expect(info.userId).toBe("client-1")
+    expect(info.relatedIds).toEqual(["prov-1"])
+  })
+
+  it("quote:update → mesmo padrão do booking:update", () => {
+    const info = extractEmitEventInfo("quote:update", {
+      quoteId: "q1",
+      clientId: "client-1",
+      providerId: "prov-1",
+      status: "ACCEPTED",
+    })
+    expect(info.rooms).toEqual(["user:client-1", "user:prov-1"])
+    expect(info.userId).toBe("client-1")
+    expect(info.relatedIds).toEqual(["prov-1"])
+  })
+
+  it("message:send → room user:{toId}, userId = destinatário, relatedIds = remetente", () => {
+    const info = extractEmitEventInfo("message:send", {
+      fromId: "client-1",
+      toId: "prov-1",
+      content: "oi",
+      bookingId: "b1",
+    })
+    expect(info.rooms).toEqual(["user:prov-1"])
+    expect(info.userId).toBe("prov-1")
+    expect(info.relatedIds).toEqual(["client-1"])
+  })
+
+  it("notification:new → room user:{toId}", () => {
+    const info = extractEmitEventInfo("notification:new", { toId: "prov-1" })
+    expect(info.rooms).toEqual(["user:prov-1"])
+    expect(info.userId).toBe("prov-1")
+  })
+
+  it("tracking:position → room user:{clientId}", () => {
+    const info = extractEmitEventInfo("tracking:position", {
+      bookingId: "b1",
+      clientId: "client-1",
+      lat: -23.5,
+      lng: -46.6,
+    })
+    expect(info.rooms).toEqual(["user:client-1"])
+    expect(info.userId).toBe("client-1")
+  })
+
+  it("session:revoke → userId mas NENHUMA room (fetchSockets sweep, não broadcast)", () => {
+    const info = extractEmitEventInfo("session:revoke", { userId: "user-9" })
+    expect(info.userId).toBe("user-9")
+    expect(info.rooms).toEqual([])
+  })
+
+  it("evento desconhecido → rooms vazios, sem throw", () => {
+    expect(extractEmitEventInfo("custom:event", { a: 1 }).rooms).toEqual([])
+    expect(extractEmitEventInfo("custom:event", undefined).rooms).toEqual([])
+  })
+
+  it("payload sem os campos esperados → degrada sem throw", () => {
+    const info = extractEmitEventInfo("booking:update", {})
+    expect(info.rooms).toEqual([])
+    expect(info.userId).toBeUndefined()
+    expect(info.relatedIds).toEqual([])
+  })
+})
+
+describe("summarizeActiveSessions (métricas do /health)", () => {
+  const sess = (userId: string, role: string, socketId: string) => ({ userId, role, socketId })
+
+  it("agrega total + byRole", () => {
+    const m = summarizeActiveSessions([
+      sess("u1", "PROVIDER", "s1"),
+      sess("u2", "CLIENT", "s2"),
+      sess("u1", "PROVIDER", "s3"),
+    ])
+    expect(m.total).toBe(3)
+    expect(m.byRole).toEqual({ PROVIDER: 2, CLIENT: 1 })
+  })
+
+  it("detecta usuário com múltiplos sockets (sinal de socket órfão do HMR)", () => {
+    const m = summarizeActiveSessions([
+      sess("u1", "PROVIDER", "s1"),
+      sess("u1", "PROVIDER", "s2"),
+      sess("u1", "PROVIDER", "s3"),
+      sess("u2", "CLIENT", "s4"),
+    ])
+    expect(m.usersWithMultipleSockets).toBe(1)
+    expect(m.maxSocketsPerUser).toBe(3)
+  })
+
+  it("lista vazia → zeros", () => {
+    const m = summarizeActiveSessions([])
+    expect(m).toEqual({ total: 0, byRole: {}, usersWithMultipleSockets: 0, maxSocketsPerUser: 0 })
+  })
+
+  it("todos com 1 socket → zero multi-sockets", () => {
+    const m = summarizeActiveSessions([sess("u1", "CLIENT", "s1"), sess("u2", "PROVIDER", "s2")])
+    expect(m.usersWithMultipleSockets).toBe(0)
+    expect(m.maxSocketsPerUser).toBe(1)
   })
 })
 
@@ -277,6 +429,95 @@ describe("filterSocketsBySessionUserId", () => {
     const [matched] = filterSocketsBySessionUserId([socketLike], "user-1")
     matched.disconnect(true)
     expect(socketLike.disconnect).toHaveBeenCalledWith(true)
+  })
+})
+
+describe("selectSocketsToKickForSessionLimit", () => {
+  const sock = (id: string, userId: string, joinedAt: string | null) => ({
+    id,
+    data: {
+      session: { userId, role: "CLIENT" },
+      joinedAt,
+    },
+  })
+
+  it("keeps the newest sockets and kicks the older ones (limit 1)", () => {
+    const sockets = [
+      sock("oldest", "user-1", "2026-08-16T10:00:00.000Z"),
+      sock("newest", "user-1", "2026-08-16T10:05:00.000Z"),
+    ]
+    const toKick = selectSocketsToKickForSessionLimit(sockets, "user-1", 1)
+    expect(toKick.map((s) => s.id)).toEqual(["oldest"])
+  })
+
+  it("keeps the two newest when limit is 2 (three sockets)", () => {
+    const sockets = [
+      sock("a", "user-1", "2026-08-16T10:00:00.000Z"),
+      sock("b", "user-1", "2026-08-16T10:01:00.000Z"),
+      sock("c", "user-1", "2026-08-16T10:02:00.000Z"),
+    ]
+    const toKick = selectSocketsToKickForSessionLimit(sockets, "user-1", 2)
+    expect(toKick.map((s) => s.id)).toEqual(["a"])
+  })
+
+  it("returns [] when the user is within the limit", () => {
+    const sockets = [sock("a", "user-1", "2026-08-16T10:00:00.000Z")]
+    expect(selectSocketsToKickForSessionLimit(sockets, "user-1", 1)).toEqual([])
+    expect(selectSocketsToKickForSessionLimit([], "user-1", 1)).toEqual([])
+  })
+
+  it("ignores sockets of OTHER users", () => {
+    const sockets = [
+      sock("mine-old", "user-1", "2026-08-16T10:00:00.000Z"),
+      sock("mine-new", "user-1", "2026-08-16T10:05:00.000Z"),
+      sock("other", "user-2", "2026-08-16T09:00:00.000Z"),
+    ]
+    const toKick = selectSocketsToKickForSessionLimit(sockets, "user-1", 1)
+    expect(toKick.map((s) => s.id)).toEqual(["mine-old"])
+  })
+
+  it("sorts a connected-but-never-joined socket as the oldest (straggler first)", () => {
+    // 3 sockets do mesmo user com limite 1 → 2 devem ser derrubados; o
+    // straggler (sem joinedAt → epoch 0) é o MAIS antigo e vem primeiro.
+    const sockets = [
+      sock("straggler", "user-1", null), // connected, never joined
+      sock("joined", "user-1", "2026-08-16T10:00:00.000Z"),
+      sock("joined-new", "user-1", "2026-08-16T10:05:00.000Z"),
+    ]
+    const toKick = selectSocketsToKickForSessionLimit(sockets, "user-1", 1)
+    expect(toKick.map((s) => s.id)).toEqual(["straggler", "joined"])
+  })
+
+  it("never kicks the just-joined socket (excludeSocketId), even on equal timestamps", () => {
+    const t = "2026-08-16T10:00:00.000Z"
+    const sockets = [sock("older", "user-1", t), sock("justJoined", "user-1", t)]
+    const toKick = selectSocketsToKickForSessionLimit(sockets, "user-1", 1, "justJoined")
+    expect(toKick.map((s) => s.id)).toEqual(["older"])
+  })
+
+  it("returns [] when maxSessions < 1 (misconfiguration guard)", () => {
+    const sockets = [
+      sock("a", "user-1", "2026-08-16T10:00:00.000Z"),
+      sock("b", "user-1", "2026-08-16T10:05:00.000Z"),
+    ]
+    expect(selectSocketsToKickForSessionLimit(sockets, "user-1", 0)).toEqual([])
+    expect(selectSocketsToKickForSessionLimit(sockets, "user-1", -1)).toEqual([])
+  })
+
+  it("preserves the concrete socket type (callers can emit/disconnect)", () => {
+    const older = {
+      id: "older",
+      data: { session: { userId: "user-1", role: "CLIENT" }, joinedAt: "2026-08-16T10:00:00.000Z" },
+      disconnect: vi.fn(),
+    }
+    const newer = {
+      id: "newer",
+      data: { session: { userId: "user-1", role: "CLIENT" }, joinedAt: "2026-08-16T10:05:00.000Z" },
+      disconnect: vi.fn(),
+    }
+    const [kicked] = selectSocketsToKickForSessionLimit([older, newer], "user-1", 1)
+    kicked.disconnect(true)
+    expect(older.disconnect).toHaveBeenCalledWith(true)
   })
 })
 

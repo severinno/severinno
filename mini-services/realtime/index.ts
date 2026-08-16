@@ -12,6 +12,10 @@ import {
   verifyEmitToken,
   authorizeClientEvent,
   filterSocketsBySessionUserId,
+  selectSocketsToKickForSessionLimit,
+  selectExpiredSessionSockets,
+  extractEmitEventInfo,
+  summarizeActiveSessions,
   type VerifiedSession,
   type BookingParticipantChecker,
 } from "./security"
@@ -36,6 +40,14 @@ if (!EMIT_TOKEN) {
     "[realtime] ⚠️ REALTIME_EMIT_TOKEN not configured — POST /emit will be rejected (fail closed)",
   )
 }
+
+// ── Session concurrency limit (max simultaneous sockets per user) ─────────
+// When a user joins with more sockets than MAX_SESSIONS_PER_USER, only the
+// newest ones stay — older sockets are kicked with reason "session_limit"
+// (same fetchSockets sweep as session:revoke, via the pure selector).
+// Default 1 = one active session per user; configurable via env (0/negative
+// are clamped to 1; NaN falls back to 1).
+const MAX_SESSIONS_PER_USER = Math.max(1, Number(process.env.REALTIME_MAX_SESSIONS_PER_USER) || 1)
 
 // ── Booking participant checker (message:send full-flow validation) ───────
 // Lazy pg.Pool over DATABASE_URL (docker-secret aware). Fail-closed: without
@@ -227,6 +239,63 @@ function handleNotificationNew(payload: { toId: string; notification?: unknown }
   console.log(`[realtime] notification:new -> user:${toId}`)
 }
 
+// Helper: audita um evento de socket SÓ DEPOIS de autorizado (dentro do
+// if (await requireSession(...))). Eventos DENIED não entram nos contadores
+// nem no log — audit reflete emissões reais, não tentativas.
+function auditSocketEvent<T>(event: string, payload: T): void {
+  auditEmit("socket", event, payload as unknown as Record<string, unknown>)
+}
+
+// ── Telemetry: emit audit + in-memory counters ────────────────────────────
+// Audit every POST /emit (server→server bridge) AND client-emitted events
+// with structured context — event, target rooms, userId, source — so ops can
+// trace "who emitted what to which room" (e.g. the HMR orphan-socket
+// scenario: a notification:new to user:{id} that nobody receives because the
+// room has multiple stale sockets). Counters are in-memory per process;
+// /health exposes the totals + a short ring buffer of recent emits.
+const emitCounters = new Map<string, number>()
+const RECENT_EMITS_MAX = 20
+const recentEmits: Array<{
+  t: string
+  source: "emit" | "socket"
+  event: string
+}> = []
+
+function bumpEmitCounter(event: string): void {
+  emitCounters.set(event, (emitCounters.get(event) ?? 0) + 1)
+}
+
+/**
+ * Audit one emitted event (source="emit" = POST /emit bridge; source="socket"
+ * = client-emitted handler). Best-effort: never throws into the caller.
+ *
+ * NOTA (segurança): o ring buffer e o log de console carregam rooms/userId
+ * para debugging de operação, mas o /health (endpoint SEM auth) NÃO expõe
+ * esses campos — só event/source/t — para não vazar presença de usuários
+ * (mesmo dado que motivou proteger /sessions com Bearer).
+ */
+function auditEmit(
+  source: "emit" | "socket",
+  event: string,
+  data: Record<string, unknown> | undefined,
+): void {
+  try {
+    const info = extractEmitEventInfo(event, data)
+    bumpEmitCounter(event)
+    recentEmits.push({
+      t: new Date().toISOString(),
+      source,
+      event,
+    })
+    if (recentEmits.length > RECENT_EMITS_MAX) recentEmits.shift()
+    console.log(
+      `[realtime] audit ${source} event=${event} rooms=[${info.rooms.join(",")}] userId=${info.userId ?? "-"}`,
+    )
+  } catch {
+    // Auditoria nunca pode quebrar o fluxo do evento.
+  }
+}
+
 // ── Active-session tracking (admin "who is online" indicator) ─────────────
 // Session presence is derived live from the sockets' verified handshake
 // session (socket.data.session — fixed at connect time, matching the
@@ -267,6 +336,63 @@ async function getActiveSessions(): Promise<SessionSocketMeta[]> {
 }
 
 const REVOKE_CLOSE_DELAY_MS = 500
+
+/**
+ * Enforce the per-user session limit after a join. Keeps the newest
+ * MAX_SESSIONS_PER_USER sockets of the user and kicks the older ones with
+ * reason "session_limit" (event `session:limit` + delayed force-close so the
+ * packet flushes — same pattern as session:revoke).
+ */
+async function enforceSessionLimit(userId: string, justJoinedSocketId: string): Promise<void> {
+  try {
+    const sockets = await io.fetchSockets()
+    const toKick = selectSocketsToKickForSessionLimit(
+      sockets,
+      userId,
+      MAX_SESSIONS_PER_USER,
+      justJoinedSocketId,
+    )
+    for (const s of toKick) {
+      s.emit("session:limit", { userId, reason: "session_limit" })
+      setTimeout(() => s.disconnect(true), REVOKE_CLOSE_DELAY_MS).unref()
+      console.log(
+        `[realtime] session limit: kicked socket ${s.id} for user:${userId} (max ${MAX_SESSIONS_PER_USER})`,
+      )
+    }
+  } catch (err) {
+    console.error("[realtime] session limit error (best-effort):", err)
+  }
+}
+
+// ── Periodic TTL sweep ─────────────────────────────────────────────────────
+// Sessions expire by cookie TTL (30d) without an explicit logout. The app
+// (src/lib/auth.ts getSession) fires session:revoke when it sees the expired
+// cookie on the next request, but a socket with NO further traffic (idle
+// dashboard/tab open for months) would never trigger that path. This sweep
+// closes the gap server-side: every SWEEP_INTERVAL_MS, force-close sockets
+// whose verified session (fixed at handshake, incl. expiresAt) has passed its
+// TTL — same event+delayed-close pattern as session:revoke so the client
+// resets its singleton instead of reconnecting with the stale cookie.
+const TTL_SWEEP_INTERVAL_MS = 60_000 // 1min
+
+const ttlSweep = setInterval(async () => {
+  try {
+    const sockets = await io.fetchSockets()
+    const expired = selectExpiredSessionSockets(sockets, Date.now())
+    for (const s of expired) {
+      const userId = s.data.session?.userId ?? "unknown"
+      s.emit("session:revoked", { userId, reason: "session_expired" })
+      setTimeout(() => s.disconnect(true), REVOKE_CLOSE_DELAY_MS).unref()
+      console.log(
+        `[realtime] TTL sweep: session expired for user:${userId} — closing socket ${s.id}`,
+      )
+    }
+  } catch (err) {
+    console.error("[realtime] TTL sweep error (best-effort):", err)
+  }
+}, TTL_SWEEP_INTERVAL_MS)
+// Não segura o processo aberto por causa do timer.
+ttlSweep.unref()
 
 function handleSessionRevoke(payload: { userId?: string }): void {
   const { userId } = payload || {}
@@ -361,6 +487,12 @@ io.on("connection", (socket: Socket) => {
         socket.data.joinedAt = new Date().toISOString()
         console.log(`[realtime] ${socket.id} joined user:${userId} role:${role}`)
         ack?.({ ok: true })
+        // Session concurrency limit (best-effort, never blocks the join ack).
+        // Kicks OLDER sockets of the same user (reason session_limit) keeping
+        // only the newest MAX_SESSIONS_PER_USER.
+        enforceSessionLimit(userId, socket.id).catch((err) => {
+          console.error("[realtime] session limit enforcement error:", err)
+        })
       } catch (err) {
         console.error("[realtime] join error:", err)
         ack?.({ ok: false, error: "internal" } as any)
@@ -415,6 +547,7 @@ io.on("connection", (socket: Socket) => {
       // Full-flow validation: session + fromId + (bookingId ⇒ remetente E
       // destinatário são participantes reais do booking).
       if (await requireSession("message:send", p.fromId ? [p.fromId] : [], p.bookingId, p.toId)) {
+        auditSocketEvent("message:send", p)
         handleMessageSend(p)
       }
     } catch (err) {
@@ -428,6 +561,7 @@ io.on("connection", (socket: Socket) => {
     try {
       const p = payload || ({} as BookingUpdatePayload)
       if (await requireSession("booking:update", [p.clientId, p.providerId].filter(Boolean))) {
+        auditSocketEvent("booking:update", p)
         handleBookingUpdate(p)
       }
     } catch (err) {
@@ -441,6 +575,7 @@ io.on("connection", (socket: Socket) => {
     try {
       const p = payload || ({} as QuoteUpdatePayload)
       if (await requireSession("quote:update", [p.clientId, p.providerId].filter(Boolean))) {
+        auditSocketEvent("quote:update", p)
         handleQuoteUpdate(p)
       }
     } catch (err) {
@@ -454,6 +589,7 @@ io.on("connection", (socket: Socket) => {
     try {
       const p = payload || ({} as TrackingPositionPayload)
       if (await requireSession("tracking:position", p.clientId ? [p.clientId] : [])) {
+        auditSocketEvent("tracking:position", p)
         handleTrackingPosition(p)
       }
     } catch (err) {
@@ -475,8 +611,55 @@ io.on("connection", (socket: Socket) => {
   })
 })
 
+// ---------- Health snapshot (aggregated session/socket metrics) ------------
+// Exposes for ops: total connected sockets (all), verified (valid session),
+// joined (in a user:{id} room) + the per-user aggregation. `usersWithMultiple
+// Sockets` is the HMR-orphan signal: a dev reload leaves stale sockets behind
+// (Next dev resets the module singleton on navigation); a user holding >1
+// socket is exactly that symptom. Counters + recent emits come from the audit
+// ring above.
+async function getHealthSnapshot(): Promise<Record<string, unknown>> {
+  let socketsCount = 0
+  let verifiedCount = 0
+  let joinedCount = 0
+  const sessions: SessionMetaLike[] = []
+  try {
+    const sockets = await io.fetchSockets()
+    socketsCount = sockets.length
+    for (const s of sockets) {
+      const session = s.data?.session as VerifiedSession | null
+      if (session) verifiedCount += 1
+      if (s.data?.joinedAt) {
+        joinedCount += 1
+        sessions.push({
+          userId: session?.userId ?? "unknown",
+          role: session?.role ?? "unknown",
+          socketId: s.id,
+        })
+      }
+    }
+  } catch (err) {
+    // fetchSockets falhou (adapter indisponível) — metrics parciais/zero.
+    console.error("[realtime] /health fetchSockets error:", err)
+  }
+  const metrics = summarizeActiveSessions(sessions)
+  return {
+    uptimeSeconds: Math.floor(process.uptime()),
+    sockets: { total: socketsCount, verified: verifiedCount, joined: joinedCount },
+    sessions: metrics,
+    emitCounters: Object.fromEntries(emitCounters),
+    recentEmits: recentEmits.slice(-10),
+  }
+}
+
+type SessionMetaLike = {
+  userId: string
+  role: string
+  socketId: string
+}
+
 // ---------- HTTP routing (admin endpoints + socket.io delegation) ----------
-// GET  /health -> {"status":"ok"}
+// GET  /health -> { status, sockets, sessions, emitCounters, recentEmits }
 // POST /emit   -> { event, data } — server-side bridge used by
 //                 src/lib/realtime-client.ts (Next.js app server)
 // Every other request is delegated to engine.io (socket.io handshakes).
@@ -484,8 +667,19 @@ httpServer.on("request", (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost")
 
   if (url.pathname === "/health" && req.method === "GET") {
-    res.writeHead(200, { "Content-Type": "application/json" })
-    res.end(JSON.stringify({ status: "ok" }))
+    // Richer health: status ok + aggregated session/socket metrics. Best-effort:
+    // if fetchSockets fails the endpoint still answers 200 with the error flag
+    // (the docker healthcheck only requires HTTP 200).
+    getHealthSnapshot()
+      .then((snapshot) => {
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ status: "ok", ...snapshot }))
+      })
+      .catch((err) => {
+        console.error("[realtime] /health snapshot error:", err)
+        res.writeHead(200, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ status: "ok", metricsError: (err as Error).message }))
+      })
     return
   }
 
@@ -553,10 +747,17 @@ httpServer.on("request", (req, res) => {
             handleSessionRevoke(data as { userId?: string })
             break
           default:
+            // Sinal de misconfiguration para o operador: evento desconhecido
+            // NÃO é contado como emitido (auditoria reflete emissões reais).
+            console.warn(`[realtime] audit emit event=unknown (${String(event)}) — 400`)
             res.writeHead(400, { "Content-Type": "application/json" })
             res.end(JSON.stringify({ ok: false, error: `unknown event: ${event}` }))
             return
         }
+        // Telemetria: audita SOMENTE eventos aceitos (source=emit) — userId/
+        // rooms extraídos do payload, best-effort, nunca lança. Consistente com
+        // o caminho socket (audit pós-autorização): contador = emissões reais.
+        auditEmit("emit", event ?? "unknown", data)
         res.writeHead(200, { "Content-Type": "application/json" })
         res.end(JSON.stringify({ ok: true, event }))
       } catch (err) {

@@ -82,7 +82,16 @@ export async function getSession(): Promise<SessionPayload | null> {
 
     const expiresAt = Number(expiresAtStr)
     if (!Number.isFinite(expiresAt)) return null
-    if (expiresAt * 1000 < Date.now()) return null
+    if (expiresAt * 1000 < Date.now()) {
+      // Sessão expirou por TTL (sem logout explícito): os sockets realtime do
+      // usuário ficariam vivos até o próximo logout. Dispara a revogação a
+      // partir da própria checagem de expiração do cookie — best-effort,
+      // deduplicado e NUNCA bloqueia o request (fire-and-forget). O sweep de
+      // TTL no realtime (selectExpiredSessionSockets) cobre o gap de sockets
+      // ociosos que nunca disparam outro request pelo app.
+      void revokeExpiredSessionSockets(userId)
+      return null
+    }
 
     const remaining = expiresAt - Math.floor(Date.now() / 1000)
     if (remaining < ROTATION_THRESHOLD_SECONDS) {
@@ -95,6 +104,57 @@ export async function getSession(): Promise<SessionPayload | null> {
     }
   } catch {
     return null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// TTL-expiry realtime revocation (sessão expirou, sem logout explícito)
+// ---------------------------------------------------------------------------
+// Quando o cookie expira por TTL (assinatura VÁLIDA, prazo passado), o
+// getSession acima dispara session:revoke para o userId — sockets antigos
+// morrem mesmo sem ação do usuário. Deduplicado em duas camadas para o
+// navegador não martelar o bridge /emit a cada request com o mesmo cookie
+// expirado:
+//   - Map em memória (por processo): janela de 1h; com poda para não crescer
+//     sem limite;
+//   - chave Redis `realtime:revoked:expired:{userId}` (TTL 1h): dedupe
+//     cross-instância quando o app roda em múltiplas réplicas.
+const EXPIRED_REVOKE_DEDUPE_WINDOW_MS = 60 * 60 * 1000 // 1h
+const EXPIRED_REVOKE_DEDUPE_KEY_TTL_S = 60 * 60 // 1h (segundos)
+const expiredRevokeEmittedAt = new Map<string, number>()
+
+async function revokeExpiredSessionSockets(userId: string): Promise<void> {
+  const now = Date.now()
+  // Poda oportunística: remove entradas antigas quando o Map cresce
+  // (bound no tamanho — uma entrada por usuário expirado por janela).
+  if (expiredRevokeEmittedAt.size > 1000) {
+    for (const [id, t] of expiredRevokeEmittedAt) {
+      if (now - t > EXPIRED_REVOKE_DEDUPE_WINDOW_MS) expiredRevokeEmittedAt.delete(id)
+    }
+  }
+  const last = expiredRevokeEmittedAt.get(userId)
+  if (last !== undefined && now - last < EXPIRED_REVOKE_DEDUPE_WINDOW_MS) return
+  expiredRevokeEmittedAt.set(userId, now)
+
+  let alreadyRevoked = false
+  try {
+    const dedupeKey = `realtime:revoked:expired:${userId}`
+    const cached = await cacheGet<number>(dedupeKey)
+    if (cached) {
+      alreadyRevoked = true
+    } else {
+      await cacheSet(dedupeKey, now, EXPIRED_REVOKE_DEDUPE_KEY_TTL_S)
+    }
+  } catch {
+    // Redis/cache indisponível → cai para o emit mesmo assim (a revogação é
+    // idempotente: sockets já mortos são no-op). Nunca bloqueia o request.
+  }
+  if (alreadyRevoked) return
+  try {
+    await revokeUserSessions(userId)
+  } catch {
+    // Best-effort: a função é consumida com `void` (fire-and-forget) — nunca
+    // pode rejeitar (unhandled rejection). A revogação é idempotente.
   }
 }
 

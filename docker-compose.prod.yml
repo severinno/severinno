@@ -517,6 +517,8 @@ services:
       # (via postgres, mesma rede backend; fail closed sem ela).
       SESSION_SECRET_FILE: /run/secrets/session_secret
       REALTIME_EMIT_TOKEN_FILE: /run/secrets/realtime_emit_token
+      # Limite de sessoes simultaneas por usuario (0/negativo = 1; NaN = 1).
+      REALTIME_MAX_SESSIONS_PER_USER: ${REALTIME_MAX_SESSIONS_PER_USER:-1}
       DATABASE_URL: postgresql://${POSTGRES_USER:-severinno}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-severinno}
     secrets:
       - session_secret

@@ -191,6 +191,17 @@ export function useRealtime(): UseRealtimeResult {
       setIsConnected(false)
       setStatus("disconnected")
     }
+    // Session concurrency limit (a NEWER socket for the same user took over):
+    // the server kicked this socket with reason "session_limit". Same
+    // treatment as revocation — reset the singleton and disconnect, so the
+    // client does not auto-reconnect (reconnection: true would otherwise loop
+    // joining → kicked → reconnecting forever).
+    const onSessionLimited = () => {
+      if (socketRef === s) socketRef = null
+      s.disconnect()
+      setIsConnected(false)
+      setStatus("disconnected")
+    }
     // Sync component state with the singleton socket's current status
     // (e.g. when reused across mounts / hot reload). Wrapped in a function so
     // the sync isn't a direct setState call in the effect body.
@@ -209,6 +220,7 @@ export function useRealtime(): UseRealtimeResult {
     s.on("reconnect_attempt", onReconnectAttempt)
     s.on("reconnect", onReconnect)
     s.on("session:revoked", onSessionRevoked)
+    s.on("session:limit", onSessionLimited)
 
     syncFromSocket()
 
@@ -219,6 +231,7 @@ export function useRealtime(): UseRealtimeResult {
       s.off("reconnect_attempt", onReconnectAttempt)
       s.off("reconnect", onReconnect)
       s.off("session:revoked", onSessionRevoked)
+      s.off("session:limit", onSessionLimited)
     }
   }, [])
 

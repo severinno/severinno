@@ -1299,3 +1299,119 @@ Stage Summary:
 - **Novo**: src/app/api/cron/revoke-inactive-sessions/route.ts (+ revokeInactiveSessionsBatch
   exportado para teste unitário com db/revoke mockados).
 - **Audit**: esta entrada no worklog.md (documentação da rota, critérios e agendamento).
+
+---
+
+Task ID: RT-SESSION-LIMIT
+Agent: orchestrator (limite de sessões simultâneas no realtime)
+Task: Manter apenas o socket mais recente por usuário no realtime, derrubando os antigos com motivo "session_limit".
+
+Work Log:
+
+- Novo `REALTIME_MAX_SESSIONS_PER_USER` (default 1; 0/negativo clampado para 1; NaN → 1)
+  em mini-services/realtime/index.ts e docker-compose.dev.yml/prod.yml.
+- `enforceSessionLimit(userId, justJoinedSocketId)` roda no join (best-effort, não bloqueia o ack):
+  sweep `io.fetchSockets()` + função pura `selectSocketsToKickForSessionLimit` (security.ts,
+  reusa `filterSocketsBySessionUserId`; ordena por `joinedAt` ascendente — socket conectado
+  mas nunca joined (sem joinedAt) ordena como o mais antigo, então o straggler é derrubado
+  primeiro; `excludeSocketId` = socket que acabou de dar join, nunca é derrubado mesmo com
+  timestamp igual em ms). Para cada antigo: emite `session:limit` { userId, reason:
+  "session_limit" } + force-close atrasado (mesmo flush-delay do session:revoke).
+- Client (src/hooks/use-realtime.ts): novo handler `session:limit` espelhando o
+  `session:revoked` — reseta o singleton (socketRef = null) e desconecta, evitando o loop de
+  reconexão automática (reconnection: true faria join→kick→rejoin infinito).
+- Testes: unitários em src/lib/**tests**/realtime-security.test.ts (7 casos da função pura:
+  mantém mais recente, limite 2, dentro do limite, ignora outros usuários, straggler sem
+  joinedAt, excludeSocketId em empate de ms, maxSessions<1, tipo concreto preservado) + spec
+  E2E e2e/realtime-session-limit.spec.ts (provider próprio fernanda@severinno.com — cada spec
+  de realtime usa um provider distinto para rodar em paralelo sem interferir por userId):
+  aba A assume, aba B assume → socket A cai (session_limit), socket B permanece e recebe o
+  toast de um novo booking; nenhum toast na aba A.
+- Como testar: `bunx vitest run src/lib/__tests__/realtime-security.test.ts` e
+  `bunx playwright test e2e/realtime-session-limit.spec.ts --project=chromium`.
+- Nota de operação: default 1 = uma sessão ativa por usuário. Para permitir múltiplas abas
+  simultâneas, suba o env (ex.: REALTIME_MAX_SESSIONS_PER_USER=3).
+
+Stage Summary:
+
+- **Alterado**: mini-services/realtime/security.ts, mini-services/realtime/index.ts,
+  src/hooks/use-realtime.ts, docker-compose.dev.yml, docker-compose.prod.yml,
+  src/lib/**tests**/realtime-security.test.ts, e2e/realtime-session-limit.spec.ts (novo),
+  worklog.md.
+
+Task ID: RT-TTL-REVOKE
+Agent: orchestrator (revogação realtime por TTL da sessão)
+Task: Disparar session:revoke quando a sessão expira por TTL (não só no logout explícito), garantindo que sockets antigos morram mesmo sem ação do usuário.
+
+Work Log:
+
+- App (src/lib/auth.ts, getSession): quando o cookie tem assinatura VÁLIDA mas o expiresAt
+  passou (expiração por TTL, sem logout), dispara `revokeExpiredSessionSockets(userId)` —
+  fire-and-forget (nunca bloqueia o request), deduplicado em 2 camadas:
+  (a) Map em memória por processo com janela de 1h (com poda quando >1000 entradas);
+  (b) chave Redis `realtime:revoked:expired:{userId}` com TTL 1h (dedupe cross-instância).
+  Se o cache falhar, cai para o emit mesmo assim (revogação é idempotente).
+- Realtime (mini-services/realtime/security.ts): `VerifiedSession` ganha `expiresAt`
+  (Unix seconds — já era verificado no handshake, agora é retornado) e nova função pura
+  `selectExpiredSessionSockets(sockets, nowMs)` — seleciona sockets cuja sessão passou do
+  TTL; sockets sem sessão ou sem expiresAt nunca são selecionados.
+- Realtime (mini-services/realtime/index.ts): sweep periódico (setInterval 60s, .unref())
+  que roda `selectExpiredSessionSockets` sobre `io.fetchSockets()` e, para cada socket
+  expirado, emite `session:revoked` { userId, reason: "session_expired" } + force-close
+  atrasado (mesmo padrão do session:revoke). Fecha o gap de sockets OCIOSOS (dashboard/
+  tab aberta por meses) que nunca disparam outro request pelo app — sem o sweep, só o
+  próximo request com cookie expirado revogaria (ou nunca, sem tráfego).
+- Testes: src/lib/**tests**/auth.test.ts (cookie válido-assinado mas expirado → emite
+  session:revoke 1x; dedupe na 2ª chamada; cookie válido → não emite; tamperado → não
+  emite; userIds independentes não se suprimem) e src/lib/**tests**/realtime-security.test.ts
+  (selectExpiredSessionSockets: passado selecionado, futuro ignorado, sem sessão/expiresAt
+  ignorado, expiresAt não-numérico ignorado; verifySessionCookie retorna expiresAt).
+- Como testar: `bunx vitest run src/lib/__tests__/auth.test.ts src/lib/__tests__/realtime-security.test.ts`.
+- Nota de operação: o sweep do realtime é independente do app — mesmo com o Next.js fora,
+  sockets com sessão expirada são fechados em até ~60s pelo mini-service.
+
+Stage Summary:
+
+- **Alterado**: src/lib/auth.ts, mini-services/realtime/security.ts,
+  mini-services/realtime/index.ts, src/lib/**tests**/auth.test.ts,
+  src/lib/**tests**/realtime-security.test.ts, worklog.md.
+- Edge case documentado (rotação do cookie): o sweep usa `session.expiresAt` capturado no
+  handshake. Com a rotação do getSession (reissue em <15d, novo cookie +30d), um socket
+  conectado no dia 0 carrega expiresAt = dia 30 e o sweep pode fechá-lo no dia 30 mesmo com
+  cookie reemitido válido até o dia 45; o client não reconecta automaticamente (onSessionRevoked
+  zera o singleton). Raríssimo (tab ociosa >30d) e a alternativa (reconectar) criaria loop com
+  sessão genuinamente expirada — escolha atual é a mais segura, apenas documentada.
+
+Task ID: RT-TELEMETRY
+Agent: orchestrator (telemetria/auditoria do realtime)
+Task: Auditoria estruturada no POST /emit (userId, rooms, source) + métricas de sessão ativa por usuário no /health, para operação e debugging (ex.: socket órfão do HMR).
+
+Work Log:
+
+- Realtime security (mini-services/realtime/security.ts), funções puras testáveis:
+  - `extractEmitEventInfo(event, data)` — extrai userId + rooms + relatedIds de cada payload
+    de evento: booking:update/quote:update → rooms [user:{clientId}, user:{providerId}];
+    message:send/notification:new → room user:{toId}; tracking:position → user:{clientId};
+    session:revoke → userId sem room (fetchSockets sweep, não broadcast); evento desconhecido
+    ou payload malformado → degrade sem throw (rooms []).
+  - `summarizeActiveSessions(sessions)` — agrega total, byRole, usersWithMultipleSockets
+    (sinal do socket órfão do HMR: usuário com >1 socket simultâneo) e maxSocketsPerUser.
+- Realtime index (mini-services/realtime/index.ts):
+  - Auditoria: `auditEmit(source, event, data)` — contadores em memória por evento
+    (emitCounters) + ring buffer recentEmits (máx 20, expõe últimos 10) + log estruturado
+    `audit emit|socket event=... rooms=[...] userId=...`. Chamado no POST /emit (source="emit")
+    e nos handlers de socket via wrapper `withAudit` (source="socket") — mesma telemetria nas
+    duas vias. Best-effort (try/catch): auditoria nunca quebra o fluxo do evento.
+  - /health enriquecido (mantém 200 p/ healthcheck do compose): { status:"ok", uptimeSeconds,
+    sockets: { total, verified, joined }, sessions: metrics, emitCounters, recentEmits }.
+    Best-effort: se fetchSockets falhar, responde 200 com metricsError (healthcheck só exige 200).
+- Testes: src/lib/**tests**/realtime-security.test.ts — 12 novos casos (8 extractEmitEventInfo:
+  booking/quote/message/notification/tracking/revoke/desconhecido/malformado + 4
+  summarizeActiveSessions: total+byRole, multi-sockets, vazio, 1-socket-por-user).
+- Como testar: `bunx vitest run src/lib/__tests__/realtime-security.test.ts`; smoke:
+  `curl -s localhost:3003/health` e `curl -s localhost:3003/sessions` (Bearer).
+
+Stage Summary:
+
+- **Alterado**: mini-services/realtime/security.ts, mini-services/realtime/index.ts,
+  src/lib/**tests**/realtime-security.test.ts, worklog.md.
