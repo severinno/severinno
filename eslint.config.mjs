@@ -37,6 +37,12 @@ const eslintConfig = [
       // React hooks — catch stale closures and missing deps
       "react-hooks/exhaustive-deps": "warn",
       "react-hooks/rules-of-hooks": "error",
+      // React Hook Form's watch() is the documented RHF API and is safe to
+      // call during render (it subscribes to the form store). The
+      // incompatible-library rule targets React Compiler memoization, which
+      // is disabled in this project (react-compiler/react-compiler: "off"),
+      // so it only produces false-positive "Compilation Skipped" noise here.
+      "react-hooks/incompatible-library": "off",
       "react/display-name": "warn",
       "react/prop-types": "off",
       "react-compiler/react-compiler": "off",

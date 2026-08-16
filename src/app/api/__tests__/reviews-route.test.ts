@@ -46,6 +46,16 @@ const { mockDb, mockReviews, validReviewData, completedBooking, recentReviews } 
     booking: {
       findUnique: vi.fn(),
     },
+    // fireEvent (event-hub) consulta essas tabelas ao disparar regras de webhook
+    eventWebhook: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    user: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    webhookExecutionLog: {
+      create: vi.fn(),
+    },
   }
 
   const _completedBooking = {

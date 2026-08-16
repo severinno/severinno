@@ -144,9 +144,9 @@ export default function Loading() {
                   <S className="size-4" />
                   <S className="h-4 w-32" />
                 </div>
-                <p className="text-muted-foreground text-xs">
+                <div className="text-muted-foreground text-xs">
                   <S className="h-3 w-64" />
-                </p>
+                </div>
                 <div className="space-y-1.5">
                   <S className="h-3.5 w-28" />
                   <S className="h-10 w-full rounded-lg sm:w-80" />

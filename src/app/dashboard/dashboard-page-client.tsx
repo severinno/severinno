@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 import { ClientPanel } from "@/components/client/client-panel"
@@ -9,6 +10,7 @@ import { AdminPanel } from "@/components/admin/admin-panel"
 import { Loader2 } from "lucide-react"
 
 export function DashboardPageClient() {
+  const router = useRouter()
   const status = useAuthStore((s) => s.status)
   const initialized = useAuthStore((s) => s.initialized)
   const user = useAuthStore((s) => s.user)
@@ -24,7 +26,7 @@ export function DashboardPageClient() {
   useEffect(() => {
     if (!initialized) return
     if (status === "unauthenticated") {
-      window.location.href = "/?login"
+      router.push("/?login")
       return
     }
     if (user && status === "authenticated") {
@@ -36,7 +38,7 @@ export function DashboardPageClient() {
             : "client.dashboard"
       navigate(view)
     }
-  }, [initialized, status, user, navigate])
+  }, [initialized, status, user, navigate, router])
 
   if (!initialized || status === "loading" || !user) {
     return (
