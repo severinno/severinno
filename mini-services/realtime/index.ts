@@ -1,4 +1,3 @@
- 
 // Severinno Marketplace SaaS — Realtime Mini-Service (Fase 1 / MVP)
 // Socket.io server on port 3003, path "/" (required by Caddy gateway).
 // The gateway selects this service via the `?XTransformPort=3003` query
@@ -7,6 +6,8 @@
 import { createServer } from "http"
 import { Server, Socket } from "socket.io"
 import { Server as EngineServer } from "engine.io"
+import { createAdapter } from "@socket.io/redis-adapter"
+import { Redis } from "ioredis"
 
 const PORT = 3003
 
@@ -54,6 +55,19 @@ const engine = new EngineServer({
 
 const io = new Server({ path: "/" })
 io.bind(engine)
+
+// Redis pub/sub adapter — enables horizontal scaling across replicas.
+// REDIS_URL is already injected by docker-compose (base + prod).
+const REDIS_URL = process.env.REDIS_URL ?? "redis://localhost:6379"
+
+const pubClient = new Redis(REDIS_URL, { maxRetriesPerRequest: null })
+const subClient = pubClient.duplicate()
+
+io.adapter(createAdapter(pubClient, subClient))
+
+pubClient.on("ready", () => console.log("[realtime] redis adapter connected"))
+pubClient.on("error", (err) => console.error("[realtime] redis adapter error:", err))
+subClient.on("error", (err) => console.error("[realtime] redis sub error:", err))
 
 // ---------- Types ----------
 interface JoinPayload {
@@ -329,6 +343,8 @@ const shutdown = (signal: string) => {
   io.disconnectSockets(true)
   io.close(() => {
     httpServer.close(() => {
+      pubClient.disconnect()
+      subClient.disconnect()
       console.log("[realtime] server closed")
       process.exit(0)
     })
