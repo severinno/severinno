@@ -173,13 +173,14 @@ max-age=60                  staleTime: 30s
 
 ## Cached Routes Manifest
 
-### Public Routes (10) — `cacheControlPublic`
+### Public Routes (11) — `cacheControlPublic`
 
 | Route                       | max-age  | s-maxage |               Vary                |
 | --------------------------- | :------: | :------: | :-------------------------------: |
 | `GET /api/categories`       | **120s** | **600s** | `Accept-Encoding, Accept, Origin` |
 | `GET /api/geo/cep`          | **60s**  | **60s**  | `Accept-Encoding, Accept, Origin` |
 | `GET /api/geo/reverse`      | **60s**  | **60s**  | `Accept-Encoding, Accept, Origin` |
+| `GET /api/geo/search`       | **60s**  | **60s**  | `Accept-Encoding, Accept, Origin` |
 | `GET /api/providers`        | **60s**  | **60s**  | `Accept-Encoding, Accept, Origin` |
 | `GET /api/reviews/recent`   | **60s**  | **300s** | `Accept-Encoding, Accept, Origin` |
 | `GET /api/search`           | **30s**  | **30s**  | `Accept-Encoding, Accept, Origin` |
@@ -201,6 +202,7 @@ max-age=60                  staleTime: 30s
 | `/api/categories`       | Category tree changes rarely (admins only). Highest TTL.                          | 404 on empty tree — no cache                     |
 | `/api/geo/cep`          | CEP → address is stable. Conservative 60s.                                        | 404 on unknown CEP — no cache                    |
 | `/api/geo/reverse`      | lat/lng → address via external API. 60s absorbs repeated lookups.                 | 400/502 errors — no cache                        |
+| `/api/geo/search`       | Geolocated search (bounding box + categories). Same TTL as other geo lookups.     | All errors via `handleError`                     |
 | `/api/providers`        | Provider listing with geo + filters. 60s is a good balance.                       | 400 on `sort=distance` without coords — no cache |
 | `/api/providers/[id]`   | **Private** — contains `favorited` flag per user. Vary:Cookie separates sessions. | 404 — no cache                                   |
 | `/api/reviews/recent`   | Reviews change slowly. s-maxage=300s for CDN resilience.                          | —                                                |

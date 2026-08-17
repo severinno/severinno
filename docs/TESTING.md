@@ -12,14 +12,14 @@
 | **Acessibilidade** | `vitest-axe`                     | Componentes de UI                       |
 
 ```
-Total: 155 unitários | 32 E2E
+Total: 4.564 unitários | 207 E2E
 ```
 
 ## Estrutura de Arquivos
 
 ```
 src/
-  app/api/__tests__/          ← 27 test files for 80 API routes
+  app/api/__tests__/          ← 55 test files for 124 API route files (148 handlers)
   components/*/__tests__/      ← Co-located with components
   lib/__tests__/               ← Tests for utility modules
   lib/__tests__/helpers/       ← Shared test utilities (createMockRequest, parseResponse)
@@ -32,7 +32,7 @@ e2e/                           ← Playwright E2E specs
 
 ### 1. `vi.clearAllMocks()` RESETA `mockResolvedValue`/`mockReturnValue`
 
-**Comportamento observado no `vitest@3.1.1`:** (versão atual do projeto — reavaliar após upgrade)
+**Comportamento observado no `vitest@3.2.7`:** (versão atual do projeto — reavaliar após upgrade)
 
 A documentação do Vitest diz que `vi.clearAllMocks()` equivale a `mockClear()` (que só limpa call history, não implementações). **Na prática, ele também reseta `mockResolvedValue` e `mockReturnValue`**, fazendo os mocks retornarem `undefined`.
 
@@ -401,12 +401,16 @@ rm -rf "$FIX"   # cleanup
 O projeto usa **snapshot tests** do Vitest (`toMatchSnapshot`) para capturar
 a saída renderizada de componentes em diferentes estados visuais.
 
-Atualmente há 8 snapshot tests em `src/components/admin/__tests__/`:
+Atualmente há 23 snapshot tests em 5 arquivos de `src/components/admin/__tests__/`
+(+ 8 em 1 arquivo de `src/components/vitrine/__tests__/`):
 
-| Arquivo                                    | Componente             |                  Snapshots                   |
-| :----------------------------------------- | :--------------------- | :------------------------------------------: |
-| `gist-reindex-button-snapshot.test.tsx`    | `GistReindexButton`    | 4 (initial, reindexing, success, refetching) |
-| `gist-degradation-panel-snapshot.test.tsx` | `GistDegradationPanel` | 4 (initial, reindexing, success, refetching) |
+| Arquivo                                      | Componente               |                          Snapshots                           |
+| :------------------------------------------- | :----------------------- | :----------------------------------------------------------: |
+| `radius-density-selector-snapshot.test.tsx`  | `RadiusDensitySelector`  | 4 (default, raio 5km, densidade Interior, sliders alterados) |
+| `indicador-de-atualizacao-snapshot.test.tsx` | `IndicadorDeAtualizacao` |       5 (null, refetching, reindexing, success, error)       |
+| `gist-reindex-button-snapshot.test.tsx`      | `GistReindexButton`      |       4 (inicial, reindexando, sucesso, isRefetching)        |
+| `gist-degradation-panel-snapshot.test.tsx`   | `GistDegradationPanel`   |                    2 (inicial, expandido)                    |
+| `benchmark-section-snapshot.test.tsx`        | `BenchmarkSection`       |    8 (title, export, métricas, metadata, scale, snapshot)    |
 
 ### Workflow
 

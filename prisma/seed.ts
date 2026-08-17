@@ -628,7 +628,8 @@ async function main() {
     `)
     console.log("   ✅ PostGIS locations synced")
   } catch (_e) {
-    // PostGIS may not be available (e.g. SQLite) — non-fatal
+    // PostGIS is required (production stack) — keep going so the rest of the
+    // seed completes; the sync can be re-run afterwards once the extension exists.
     console.log("   ⚠️  PostGIS sync skipped (extension not available)")
   }
 

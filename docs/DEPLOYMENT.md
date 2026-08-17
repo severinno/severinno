@@ -2,7 +2,7 @@
 
 > Guia completo para deploy em produção do Severinno Marketplace.
 > Stack: Docker Compose + Caddy (SSL automático) + PostgreSQL + Redis + RabbitMQ.
-> Última atualização: 2026-07-28 | Versão: v0.3.0-cache-mvp
+> Última atualização: 2026-07-28 | Versão: v0.4.0
 
 ## Pré-requisitos
 

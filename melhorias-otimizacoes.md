@@ -1,6 +1,6 @@
 # Análise de Melhorias e Otimizações — Severinno Marketplace
 
-> Data: 22/07/2026 | Stack: Next.js 16 + Prisma + SQLite/PostGIS + Tailwind v4 + shadcn/ui
+> Data: 22/07/2026 | Stack: Next.js 16 + Prisma + PostgreSQL 16 + PostGIS + Tailwind v4 + shadcn/ui
 
 ---
 

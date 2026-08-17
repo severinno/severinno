@@ -1,8 +1,8 @@
 # Severinno Marketplace SaaS — Worklog (Fase 1 / MVP)
 
 Projeto: Marketplace de serviços com geolocalização (Clientes ↔ Prestadores verificados).
-Stack adaptada ao ambiente: Next.js 16 + Prisma (SQLite) + MapLibre + shadcn/ui + WebSocket (mini-service porta 3003).
-Arquitetura-alvo (PostGIS/RabbitMQ/OSRM) referenciada na doc arquitetural; MVP entrega funcionalidade equivalente nesta stack.
+Stack: Next.js 16 + Prisma (PostgreSQL 16 + PostGIS) + MapLibre + shadcn/ui + WebSocket (mini-service porta 3003).
+Stack final inclui RabbitMQ (filas) e OSRM (routing); as entradas históricas abaixo refletem a fase MVP (SQLite → Postgres na migração `scripts/migrate-sqlite-to-postgres.ts`).
 
 Convenções:
 

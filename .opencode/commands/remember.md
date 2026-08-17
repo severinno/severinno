@@ -1,7 +1,9 @@
 ---
 description: Save to persistent memory
 ---
+
 ---
+
 description: Save information to persistent memory for cross-session recall. Stores preferences, conventions, decisions, and context.
 ---
 
@@ -64,8 +66,7 @@ This will be available in future sessions.
 
 ```
 /remember I prefer using bun instead of npm
-/remember Our API uses JWT with httpOnly cookies
+/remember Our API uses an HMAC-SHA256 session cookie (severinno_session), not JWT
 /remember The production server is at api.example.com:8080
 /remember I like concise responses with tables
 ```
-
