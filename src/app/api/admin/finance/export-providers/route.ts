@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { FEE_RATE } from "@/lib/constants"
 
 type Period = "7d" | "30d" | "90d" | "12m" | "all"
 
@@ -42,25 +43,20 @@ export async function GET(request: Request) {
 
     const paymentWhere = dateFilter ? { createdAt: { gte: dateFilter } } : {}
 
-    // Commission: read from settings or use default 10%
-    const [commissionSetting, payments] = await Promise.all([
-      db.setting.findUnique({ where: { key: "PLATFORM_COMMISSION_PERCENT" } }),
-      db.payment.findMany({
-        where: { ...paymentWhere, status: "PAID" },
-        select: {
-          amount: true,
-          booking: {
-            select: {
-              provider: {
-                select: { id: true, name: true, email: true },
-              },
+    const payments = await db.payment.findMany({
+      where: { ...paymentWhere, status: "PAID" },
+      select: {
+        amount: true,
+        booking: {
+          select: {
+            provider: {
+              select: { id: true, name: true, email: true },
             },
           },
         },
-      }),
-    ])
+      },
+    })
 
-    const commissionPercent = Number(commissionSetting?.value ?? 10)
     const ROUND2 = (v: number) => Math.round(v * 100) / 100
 
     // Aggregate by provider
@@ -81,7 +77,7 @@ export async function GET(request: Request) {
       }
       existing.total += p.amount
       existing.count += 1
-      const fee = Math.round(p.amount * (commissionPercent / 100))
+      const fee = Math.round(p.amount * FEE_RATE * 100) / 100
       existing.commission += fee
       existing.net += p.amount - fee
       providerMap.set(prov.id, existing)

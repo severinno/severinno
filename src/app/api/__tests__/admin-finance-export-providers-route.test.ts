@@ -55,10 +55,6 @@ describe("GET /api/admin/finance/export-providers", () => {
   })
 
   it("returns CSV with correct provider headers", async () => {
-    ;(vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
-      key: "PLATFORM_COMMISSION_PERCENT",
-      value: "10",
-    } as any)
     vi.mocked(db.payment.findMany).mockResolvedValue([] as any)
 
     const req = new Request("http://localhost/api/admin/finance/export-providers?period=30d")
@@ -91,10 +87,6 @@ describe("GET /api/admin/finance/export-providers", () => {
   })
 
   it("aggregates payments by provider with commission", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({
-      key: "PLATFORM_COMMISSION_PERCENT",
-      value: "10",
-    } as any)
     vi.mocked(db.payment.findMany).mockResolvedValue([
       {
         amount: 50000,
@@ -126,21 +118,17 @@ describe("GET /api/admin/finance/export-providers", () => {
     expect(row1).toContain("paulo@test.com")
     expect(row1).toContain("2") // 2 transactions
     expect(row1).toContain("650,00") // 65000/100 = R$ 650,00
-    expect(row1).toContain("65,00") // 10% commission = R$ 65,00
-    expect(row1).toContain("585,00") // net = R$ 585,00
+    expect(row1).toContain("97,50") // 15% commission = R$ 97,50
+    expect(row1).toContain("552,50") // net = R$ 552,50
 
     const row2 = lines[2]
     expect(row2).toContain("Maria Profissional")
     expect(row2).toContain("300,00") // 30000/100 = R$ 300,00
-    expect(row2).toContain("30,00") // commission
-    expect(row2).toContain("270,00") // net
+    expect(row2).toContain("45,00") // commission
+    expect(row2).toContain("255,00") // net
   })
 
   it("includes a totals row at the bottom", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({
-      key: "PLATFORM_COMMISSION_PERCENT",
-      value: "10",
-    } as any)
     vi.mocked(db.payment.findMany).mockResolvedValue([
       {
         amount: 50000,
@@ -165,17 +153,13 @@ describe("GET /api/admin/finance/export-providers", () => {
     expect(totalsRow).toContain("2") // total transactions
     // total = (50000 + 30000) / 100 = 800,00
     expect(totalsRow).toContain("800,00")
-    // commission = 8000 / 100 = 80,00
-    expect(totalsRow).toContain("80,00")
-    // net = 72000 / 100 = 720,00
-    expect(totalsRow).toContain("720,00")
+    // commission = 12000 / 100 = 120,00
+    expect(totalsRow).toContain("120,00")
+    // net = 68000 / 100 = 680,00
+    expect(totalsRow).toContain("680,00")
   })
 
-  it("reads commission from settings", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({
-      key: "PLATFORM_COMMISSION_PERCENT",
-      value: "15",
-    } as any)
+  it("computes commission using FEE_RATE (15%)", async () => {
     vi.mocked(db.payment.findMany).mockResolvedValue([
       {
         amount: 100000,
@@ -195,8 +179,7 @@ describe("GET /api/admin/finance/export-providers", () => {
     expect(row).toContain("850,00")
   })
 
-  it("uses default 10% commission when setting not found", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue(null)
+  it("uses fixed 15% commission when no settings exist", async () => {
     vi.mocked(db.payment.findMany).mockResolvedValue([
       {
         amount: 100000,
@@ -210,8 +193,8 @@ describe("GET /api/admin/finance/export-providers", () => {
 
     const lines = text.trim().split("\n")
     const row = lines[1]
-    // 10% default → R$ 100,00 commission
-    expect(row).toContain("100,00")
+    // 15% → R$ 150,00 commission
+    expect(row).toContain("150,00")
   })
 
   it("sets correct Content-Type and Content-Disposition headers", async () => {

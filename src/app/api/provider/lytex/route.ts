@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { FEE_RATE } from "@/lib/constants"
 
 function isLytexConfigured(): boolean {
   return !!(process.env.LYTEX_CLIENT_ID && process.env.LYTEX_CLIENT_SECRET)
@@ -35,7 +36,7 @@ export async function GET() {
       let pendingBalance = 0
 
       for (const b of bookings) {
-        const earned = b.amount * 0.85
+        const earned = b.amount * (1 - FEE_RATE)
         if (b.status === "COMPLETED") {
           balance += earned
         } else if (b.status === "CONFIRMED" || b.status === "IN_PROGRESS") {
@@ -54,7 +55,7 @@ export async function GET() {
         .map((b) => ({
           _id: `SIM-SPLIT-${b.id.slice(0, 8).toUpperCase()}`,
           _invoiceId: `SIM-INV-${b.id.slice(0, 8).toUpperCase()}`,
-          value: b.amount * 0.85,
+          value: b.amount * (1 - FEE_RATE),
           status: "paid",
           createdAt: b.createdAt.toISOString(),
         }))
@@ -79,7 +80,7 @@ export async function GET() {
 
     let balance = 0
     for (const b of bookingsForWallet) {
-      const earned = b.amount * 0.85
+      const earned = b.amount * (1 - FEE_RATE)
       if (b.status === "COMPLETED") {
         balance += earned
       }
@@ -96,7 +97,7 @@ export async function GET() {
       .map((b) => ({
         _id: `SIM-SPLIT-${b.id.slice(0, 8).toUpperCase()}`,
         _invoiceId: `SIM-INV-${b.id.slice(0, 8).toUpperCase()}`,
-        value: b.amount * 0.85,
+        value: b.amount * (1 - FEE_RATE),
         status: "paid",
         createdAt: b.createdAt.toISOString(),
       }))

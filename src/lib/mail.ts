@@ -1,6 +1,7 @@
 import "server-only"
 import nodemailer from "nodemailer"
 import logger from "./logger"
+import { FEE_RATE } from "./constants"
 
 const HOST = process.env.SMTP_HOST ?? ""
 const PORT = Number(process.env.SMTP_PORT ?? "587")
@@ -523,7 +524,7 @@ export function commissionReportHtml(data: CommissionReportData): string {
         </td>
         <td style="width:25%;padding:4px" valign="top">
           <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px;text-align:center">
-            <p style="margin:0;font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:600">Comissão (15%)</p>
+            <p style="margin:0;font-size:11px;color:#6b7280;text-transform:uppercase;font-weight:600">Comissão (${FEE_RATE * 100}%)</p>
             <p style="margin:4px 0 0;font-size:16px;font-weight:700;color:#d97706">R$ ${data.platformCommission.toFixed(2)}</p>
           </div>
         </td>

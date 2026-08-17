@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { requireUser } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { computeBaseBalance, getWithdrawals } from "@/lib/wallet"
+import { computeBaseBalance, getWithdrawals, FEE_RATE } from "@/lib/wallet"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -115,9 +115,15 @@ export async function GET(request: Request) {
     // Transaction list
     rows.push("=== TRANSAÇÕES ===")
     rows.push(
-      ["Data", "Descrição", "Cliente", "Valor Bruto", "Taxa (15%)", "Valor Líquido", "Status"].join(
-        ",",
-      ),
+      [
+        "Data",
+        "Descrição",
+        "Cliente",
+        "Valor Bruto",
+        `Taxa (${FEE_RATE * 100}%)`,
+        "Valor Líquido",
+        "Status",
+      ].join(","),
     )
 
     for (const t of filtered) {

@@ -143,10 +143,6 @@ describe("POST /api/admin/settlements — generate period", () => {
   })
 
   it("generates monthly settlement from PAID payments", async () => {
-    ;(vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
-      key: "PLATFORM_COMMISSION_PERCENT",
-      value: "10",
-    } as any)
     ;(vi.mocked(db.settlementPeriod.findFirst) as any).mockResolvedValue(null)
     ;(vi.mocked(db.payment.findMany) as any).mockResolvedValue([
       {

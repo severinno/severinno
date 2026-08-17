@@ -328,7 +328,7 @@ export function AdminCommissions() {
           )}
           {/* Legend */}
           <div className="mt-3 flex flex-wrap items-center justify-center gap-6">
-            <LegendItem color={COLORS.commission} label="Comissão (15%)" />
+            <LegendItem color={COLORS.commission} label={`Comissão (${FEE_RATE * 100}%)`} />
             <LegendItem color={COLORS.providerNet} label="Repassado ao prestador" />
           </div>
         </div>
