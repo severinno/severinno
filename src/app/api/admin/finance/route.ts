@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { FEE_RATE } from "@/lib/constants"
 
 type Period = "7d" | "30d" | "90d" | "12m" | "all"
 
@@ -60,11 +61,8 @@ export async function GET(request: Request) {
     const mrrPreviousStart = new Date(mrrCurrentStart)
     mrrPreviousStart.setMonth(mrrPreviousStart.getMonth() - 3)
 
-    // Commission: read from settings or use default 10%
-    const commissionSetting = await db.setting.findUnique({
-      where: { key: "PLATFORM_COMMISSION_PERCENT" },
-    })
-    const commissionPercent = Number(commissionSetting?.value ?? 10)
+    // Commission: platform fee is fixed (FEE_RATE)
+    const commissionPercent = FEE_RATE * 100
 
     const [
       summary,
@@ -333,7 +331,7 @@ export async function GET(request: Request) {
       }
       existing.total += p.amount
       existing.count += 1
-      const fee = Math.round(p.amount * (commissionPercent / 100))
+      const fee = Math.round(p.amount * FEE_RATE * 100) / 100
       existing.commission += fee
       existing.net += p.amount - fee
       providerMap.set(provider.id, existing)

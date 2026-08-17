@@ -1325,7 +1325,6 @@ async function main() {
     { key: "nominatim_enabled", value: "true" },
     { key: "viacep_enabled", value: "true" },
     { key: "default_search_radius_km", value: "15" },
-    { key: "platform_fee_percent", value: "10" },
     { key: "quote_default_expiry_hours", value: "72" },
   ]
   for (const s of settings) {

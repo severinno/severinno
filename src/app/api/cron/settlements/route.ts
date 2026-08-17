@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { FEE_RATE } from "@/lib/constants"
 
 /**
  * Cron job to auto-generate a settlement period.
@@ -21,10 +22,6 @@ export async function GET(request: Request) {
     }
 
     const type = (searchParams.get("type") ?? "MONTHLY") as "WEEKLY" | "MONTHLY"
-    const commissionSetting = await db.setting.findUnique({
-      where: { key: "PLATFORM_COMMISSION_PERCENT" },
-    })
-    const commissionPercent = Number(commissionSetting?.value ?? 10)
     const ROUND2 = (v: number) => Math.round(v * 100) / 100
 
     const now = new Date()
@@ -106,7 +103,7 @@ export async function GET(request: Request) {
       }
       existing.totalAmount += p.amount
       existing.count += 1
-      const fee = Math.round(p.amount * (commissionPercent / 100))
+      const fee = Math.round(p.amount * FEE_RATE * 100) / 100
       existing.commission += fee
       existing.netAmount += p.amount - fee
       providerMap.set(providerId, existing)

@@ -91,11 +91,6 @@ describe("GET /api/admin/finance/provider-transactions", () => {
     // Route uses orderBy: { createdAt: "desc" }, but mock returns array as-is.
     // Return mockTx2 first (feb) then mockTx (jan) to match descending order.
     ;(vi.mocked(db.payment.findMany) as any).mockResolvedValue([mockTx2, mockTx] as any)
-    ;(vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
-      key: "PLATFORM_COMMISSION_PERCENT",
-      value: "10",
-    } as any)
-
     const req = new Request(
       "http://localhost/api/admin/finance/provider-transactions?providerId=prov-1&period=all",
     )
@@ -117,10 +112,6 @@ describe("GET /api/admin/finance/provider-transactions", () => {
 
   it("computes summary totals with commission", async () => {
     ;(vi.mocked(db.payment.findMany) as any).mockResolvedValue([mockTx, mockTx2] as any)
-    ;(vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
-      key: "PLATFORM_COMMISSION_PERCENT",
-      value: "10",
-    } as any)
 
     const req = new Request(
       "http://localhost/api/admin/finance/provider-transactions?providerId=prov-1&period=all",
@@ -129,12 +120,12 @@ describe("GET /api/admin/finance/provider-transactions", () => {
     const data = await res.json()
 
     // total = 50000 + 30000 = 80000
-    // commission = 80000 * 0.10 = 8000
-    // net = 80000 - 8000 = 72000
+    // commission = 80000 * 0.15 = 12000
+    // net = 80000 - 12000 = 68000
     expect(data.summary.transactions).toBe(2)
     expect(data.summary.total).toBe(80000)
-    expect(data.summary.commission).toBe(8000)
-    expect(data.summary.net).toBe(72000)
+    expect(data.summary.commission).toBe(12000)
+    expect(data.summary.net).toBe(68000)
   })
 
   it("returns 400 when providerId is missing", async () => {
@@ -148,11 +139,6 @@ describe("GET /api/admin/finance/provider-transactions", () => {
 
   it("returns empty state when provider has no transactions", async () => {
     ;(vi.mocked(db.payment.findMany) as any).mockResolvedValue([] as any)
-    ;(vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
-      key: "PLATFORM_COMMISSION_PERCENT",
-      value: "10",
-    } as any)
-
     const req = new Request(
       "http://localhost/api/admin/finance/provider-transactions?providerId=prov-99&period=all",
     )
@@ -179,11 +165,6 @@ describe("GET /api/admin/finance/provider-transactions", () => {
 
   it("accepts period parameter and filters by date", async () => {
     ;(vi.mocked(db.payment.findMany) as any).mockResolvedValue([mockTx] as any)
-    ;(vi.mocked(db.setting.findUnique) as any).mockResolvedValue({
-      key: "PLATFORM_COMMISSION_PERCENT",
-      value: "10",
-    } as any)
-
     const req = new Request(
       "http://localhost/api/admin/finance/provider-transactions?providerId=prov-1&period=90d",
     )

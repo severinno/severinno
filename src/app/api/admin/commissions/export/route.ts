@@ -142,8 +142,14 @@ export async function GET(request: Request) {
     rows.push("=== RESUMO ===")
     rows.push(["Ano", esc(selectedYear)].join(","))
     rows.push(["Receita Bruta", esc(fmtBRL(grossRevenue))].join(","))
-    rows.push(["Comissão da Plataforma (15%)", esc(fmtBRL(platformCommission))].join(","))
-    rows.push(["Repassado aos Prestadores (85%)", esc(fmtBRL(providerEarnings))].join(","))
+    rows.push(
+      [`Comissão da Plataforma (${FEE_RATE * 100}%)`, esc(fmtBRL(platformCommission))].join(","),
+    )
+    rows.push(
+      [`Repassado aos Prestadores (${(1 - FEE_RATE) * 100}%)`, esc(fmtBRL(providerEarnings))].join(
+        ",",
+      ),
+    )
     rows.push(["Bookings PAID", esc(bookings.length)].join(","))
     rows.push(["Bookings Completos", esc(completedCount)].join(","))
     rows.push("")
@@ -170,9 +176,14 @@ export async function GET(request: Request) {
     // ── Per-provider breakdown ──────────────────────────────────────────
     rows.push("=== REPASSES POR PRESTADOR ===")
     rows.push(
-      ["Prestador", "Agendamentos", "Completos", "Bruto", "Comissão (15%)", "Líquido (85%)"].join(
-        ",",
-      ),
+      [
+        "Prestador",
+        "Agendamentos",
+        "Completos",
+        "Bruto",
+        `Comissão (${FEE_RATE * 100}%)`,
+        `Líquido (${(1 - FEE_RATE) * 100}%)`,
+      ].join(","),
     )
     for (const p of sortedProviders) {
       const gross = Math.round(p.grossRevenue * 100) / 100

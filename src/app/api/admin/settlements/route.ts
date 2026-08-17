@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { FEE_RATE } from "@/lib/constants"
 
 type PeriodType = "WEEKLY" | "MONTHLY"
 
@@ -58,10 +59,6 @@ export async function POST(request: Request) {
       type?: PeriodType
     }
     const type: PeriodType = body.type === "WEEKLY" ? "WEEKLY" : "MONTHLY"
-    const commissionSetting = await db.setting.findUnique({
-      where: { key: "PLATFORM_COMMISSION_PERCENT" },
-    })
-    const commissionPercent = Number(commissionSetting?.value ?? 10)
     const ROUND2 = (v: number) => Math.round(v * 100) / 100
 
     const now = new Date()
@@ -148,7 +145,7 @@ export async function POST(request: Request) {
       }
       existing.totalAmount += p.amount
       existing.count += 1
-      const fee = Math.round(p.amount * (commissionPercent / 100))
+      const fee = Math.round(p.amount * FEE_RATE * 100) / 100
       existing.commission += fee
       existing.netAmount += p.amount - fee
       providerMap.set(providerId, existing)

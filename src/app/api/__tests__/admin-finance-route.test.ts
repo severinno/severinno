@@ -126,10 +126,6 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("returns summary by payment status (PAID/PENDING/REFUNDED)", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({
-      key: "PLATFORM_COMMISSION_PERCENT",
-      value: "10",
-    } as any)
     // groupBy: 1st call = summary, 2nd call = method stats
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([
@@ -229,10 +225,6 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("calculates average ticket from paid payments", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({
-      key: "PLATFORM_COMMISSION_PERCENT",
-      value: "10",
-    } as any)
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([
         { status: "PAID", _sum: { amount: 90000 }, _count: { _all: 3 } },
@@ -254,10 +246,6 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("returns per-provider aggregation with commission", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({
-      key: "PLATFORM_COMMISSION_PERCENT",
-      value: "10",
-    } as any)
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([
         { status: "PAID", _sum: { amount: 95000 }, _count: { _all: 3 } },
@@ -313,19 +301,15 @@ describe("GET /api/admin/finance", () => {
     expect(data.providerStats).toHaveLength(2)
     expect(data.providerStats[0].name).toBe("Paulo Prestador")
     expect(data.providerStats[0].total).toBe(65000)
-    expect(data.providerStats[0].commission).toBe(6500)
-    expect(data.providerStats[0].net).toBe(58500)
+    expect(data.providerStats[0].commission).toBe(9750)
+    expect(data.providerStats[0].net).toBe(55250)
     expect(data.providerStats[1].name).toBe("Maria Profissional")
     expect(data.providerStats[1].total).toBe(30000)
-    expect(data.providerStats[1].commission).toBe(3000)
-    expect(data.providerStats[1].net).toBe(27000)
+    expect(data.providerStats[1].commission).toBe(4500)
+    expect(data.providerStats[1].net).toBe(25500)
   })
 
   it("returns payment method stats", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({
-      key: "PLATFORM_COMMISSION_PERCENT",
-      value: "10",
-    } as any)
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([
         { status: "PAID", _sum: { amount: 95000 }, _count: { _all: 3 } },
@@ -352,11 +336,7 @@ describe("GET /api/admin/finance", () => {
     expect(pix.count).toBe(2)
   })
 
-  it("reads commission percent from settings", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue({
-      key: "PLATFORM_COMMISSION_PERCENT",
-      value: "15",
-    } as any)
+  it("returns fixed commission percent (FEE_RATE)", async () => {
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([
         { status: "PAID", _sum: { amount: 95000 }, _count: { _all: 3 } },
@@ -377,8 +357,7 @@ describe("GET /api/admin/finance", () => {
     expect(data.commissionPercent).toBe(15)
   })
 
-  it("uses default commission of 10% when setting not found", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue(null)
+  it("returns fixed 15% commission when no settings exist", async () => {
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([
         { status: "PAID", _sum: { amount: 100000 }, _count: { _all: 2 } },
@@ -396,7 +375,7 @@ describe("GET /api/admin/finance", () => {
     const res = await GET(req)
     const data = await res.json()
 
-    expect(data.commissionPercent).toBe(10)
+    expect(data.commissionPercent).toBe(15)
   })
 
   it("returns 403 when user is not ADMIN", async () => {

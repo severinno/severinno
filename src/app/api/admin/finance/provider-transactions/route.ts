@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { FEE_RATE } from "@/lib/constants"
 
 type Period = "7d" | "30d" | "90d" | "12m" | "all"
 
@@ -70,13 +71,9 @@ export async function GET(request: Request) {
 
     // Compute totals for this provider
     const totalAmount = transactions.reduce((sum, t) => sum + t.amount, 0)
-    const commissionSetting = await db.setting.findUnique({
-      where: { key: "PLATFORM_COMMISSION_PERCENT" },
-    })
-    const commissionPercent = Number(commissionSetting?.value ?? 10)
     const ROUND2 = (v: number) => Math.round(v * 100) / 100
 
-    const totalCommission = ROUND2(totalAmount * (commissionPercent / 100))
+    const totalCommission = ROUND2(totalAmount * FEE_RATE)
     const totalNet = ROUND2(totalAmount - totalCommission)
 
     return NextResponse.json({
