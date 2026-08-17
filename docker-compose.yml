@@ -153,6 +153,10 @@ services:
       S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
       S3_BUCKET: ${S3_BUCKET:-severinno-uploads}
       SESSION_SECRET: ${SESSION_SECRET}
+      # TTL do cookie de sessao por role (JSON de segundos; sem override o
+      # app usa SESSION_COOKIE_MAX_AGE_SECONDS). O realtime NAO le estas
+      # envs — o sweep usa o expiresAt embutido no cookie de cada socket.
+      SESSION_COOKIE_MAX_AGE_PER_ROLE: ${SESSION_COOKIE_MAX_AGE_PER_ROLE:-}
       CRON_SECRET: ${CRON_SECRET:-dev-cron-secret}
       REALTIME_URL: http://realtime:${REALTIME_PORT:-3003}
       SENTRY_DSN: ${SENTRY_DSN:-}

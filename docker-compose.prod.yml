@@ -626,6 +626,10 @@ services:
       HOST: "0.0.0.0"
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # TTL do cookie de sessao por role (JSON de segundos; sem override o
+      # app usa SESSION_COOKIE_MAX_AGE_SECONDS). O realtime NAO le estas
+      # envs — o sweep usa o expiresAt embutido no cookie de cada socket.
+      SESSION_COOKIE_MAX_AGE_PER_ROLE: ${SESSION_COOKIE_MAX_AGE_PER_ROLE:-}
 
       # ── Database (via PgBouncer pool) — password via secret ─────────
       DATABASE_URL: postgresql://${POSTGRES_USER:-severinno}:${POSTGRES_PASSWORD}@pgbouncer:6432/${POSTGRES_DB:-severinno}

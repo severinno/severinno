@@ -18,6 +18,9 @@ import {
   selectOrphanSockets,
   renewSessionSockets,
   countRenewedSockets,
+  bumpMinuteWindow,
+  parseExpiredSpikeThreshold,
+  computeExpiredSweepMetrics,
   parseSweepIntervalMs,
   parseTelemetryIntervalMs,
   parseRealtimePort,
@@ -372,33 +375,34 @@ const emitCounters = new Map<string, number>()
 // A contagem reflete sockets EFETIVAMENTE estendidos (renewSessionSockets
 // EXTEND-ONLY devolve quantos atualizou) — um renew atrasado que não estende
 // nada não incrementa.
+// Janela de 1h (60 buckets) compartilhada pelos contadores por minuto do
+// /health (renew e TTL-sweep) — a poda e a chave vivem em security.ts
+// (minuteWindowKey / bumpMinuteWindow), fonte única da semântica da janela.
+const MINUTE_WINDOW_MAX = 60
+
 const renewCounters = new Map<string, number>()
-/** Buckets de minuto retidos (janela deslizante de 1h em memória). */
-const RENEW_BUCKETS_MAX = 60
 
-/** Chave do bucket de minuto (UTC "YYYY-MM-DDTHH:mm"). */
-function renewBucketKey(tsMs: number): string {
-  const d = new Date(tsMs)
-  const p = (n: number) => String(n).padStart(2, "0")
-  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}T${p(
-    d.getUTCHours(),
-  )}:${p(d.getUTCMinutes())}`
-}
-
-/** Incrementa o bucket do minuto atual e poda a janela (1h). */
-function bumpRenewCounter(updated: number): void {
-  if (updated <= 0) return
-  const key = renewBucketKey(Date.now())
-  renewCounters.set(key, (renewCounters.get(key) ?? 0) + updated)
-  // Poda pelo MÍNIMO da janela: Map preserva ORDEM DE INSERÇÃO (não
-  // lexicográfica) — os buckets só entram com Date.now() (cronológico) e
-  // set em chave EXISTENTE não move a ordem, então o primeiro a sair é
-  // sempre o mais antigo. Não re-inserir buckets fora de ordem aqui (ex.:
-  // replay histórico) ou a poda apagaria o bucket errado silenciosamente.
-  if (renewCounters.size > RENEW_BUCKETS_MAX) {
-    const oldest = renewCounters.keys().next().value
-    if (oldest !== undefined) renewCounters.delete(oldest)
-  }
+// ── TTL-sweep telemetry (sockets fechados com session_expired) ────────────
+// Contador de sockets ENCERRADOS pelo sweep de TTL (e pela varredura manual
+// /revoke-orphans quando o motivo é TTL expirado) — buckets por minuto
+// (janela deslizante de 1h em memória, MESMO helper do renew) expostos no
+// /health. O flag de SPIKE acende quando um único minuto passa de
+// REALTIME_EXPIRED_SPIKE_THRESHOLD expirações: sinal de ataque de sessões
+// stale (lote de cookies vencendo juntos) ou bug de rotatividade
+// (session:renew não propagando → expirações em massa). Dados agregados —
+// sem userIds — então o /health público (SEM auth) pode expor.
+const expiredCounters = new Map<string, number>()
+const RAW_SPIKE_THRESHOLD = process.env.REALTIME_EXPIRED_SPIKE_THRESHOLD
+const EXPIRED_SPIKE_THRESHOLD = parseExpiredSpikeThreshold(RAW_SPIKE_THRESHOLD)
+// Warn consistente com a semântica do parser (security.ts): o fallback é
+// usado para missing/empty/NaN/'0' — a condição espelha exatamente o parser
+// para o operador nunca ver um default silencioso (negativo clampa a 1 com
+// intenção e não gera warn).
+if (
+  RAW_SPIKE_THRESHOLD !== undefined &&
+  (!Number.isFinite(Number(RAW_SPIKE_THRESHOLD)) || Number(RAW_SPIKE_THRESHOLD) === 0)
+) {
+  console.warn("[realtime] ⚠️ REALTIME_EXPIRED_SPIKE_THRESHOLD inválido — usando o default")
 }
 
 const RECENT_EMITS_MAX = 20
@@ -607,6 +611,10 @@ const ttlSweep = setInterval(async () => {
         `[realtime] TTL sweep: session expired for user:${userId} — closing socket ${s.id}`,
       )
     }
+    // Telemetria do TTL sweep: contabiliza os sockets ENCERRADOS (expired.
+    // length) no bucket do minuto — /health expõe a janela de 1h + spike
+    // (sinal de ataque de sessões stale / bug de rotatividade).
+    bumpMinuteWindow(expiredCounters, expired.length, MINUTE_WINDOW_MAX)
   } catch (err) {
     console.error("[realtime] TTL sweep error (best-effort):", err)
   }
@@ -699,7 +707,7 @@ function handleSessionRenew(payload: { userId?: string; expiresAt?: number }): v
       const updated = renewSessionSockets(sockets, userId, expiresAt)
       // Telemetria: contabiliza a renovação APLICADA (sockets efetivamente
       // estendidos) no bucket do minuto — ops vê renews/min no /health.
-      bumpRenewCounter(updated)
+      bumpMinuteWindow(renewCounters, updated, MINUTE_WINDOW_MAX)
       console.log(
         `[realtime] session renewed for user:${userId} — ${updated} socket(s) re-expired to ${expiresAt}`,
       )
@@ -970,6 +978,10 @@ async function getHealthSnapshot(): Promise<Record<string, unknown>> {
     console.error("[realtime] /health fetchSockets error:", err)
   }
   const metrics = summarizeActiveSessions(sessions)
+  // fromEntries calculado UMA vez por snapshot (usado em perMinute E nas
+  // métricas) — evita duplicar o trabalho em cada chamada do /health,
+  // timer de telemetria ou alerta de órfãos.
+  const expiredPerMinute = Object.fromEntries(expiredCounters)
   return {
     uptimeSeconds: Math.floor(process.uptime()),
     sockets: { total: socketsCount, verified: verifiedCount, joined: joinedCount },
@@ -984,6 +996,17 @@ async function getHealthSnapshot(): Promise<Record<string, unknown>> {
     renews: {
       perMinute: Object.fromEntries(renewCounters),
       socketsWithExtendedExpiry: extendedExpirySockets,
+    },
+    // Telemetria do TTL sweep: sockets encerrados com session_expired na
+    // janela de 1h (perMinute + lastHourTotal + maxPerMinute) e o flag de
+    // SPIKE (maxPerMinute > REALTIME_EXPIRED_SPIKE_THRESHOLD) — sinal de
+    // ataque de sessões stale (lote de cookies vencendo juntos) ou bug de
+    // rotatividade (session:renew não propagando → expirações em massa).
+    // Dados AGREGADOS (sem userIds) — o /health público (SEM auth) expõe.
+    ttlSweep: {
+      perMinute: expiredPerMinute,
+      ...computeExpiredSweepMetrics(expiredPerMinute, EXPIRED_SPIKE_THRESHOLD),
+      spikeThreshold: EXPIRED_SPIKE_THRESHOLD,
     },
     // Fronteira de privacidade: o /health é SEM auth — só a forma pública
     // (sem userId/rooms). O detalhe completo vive no /health/detailed (Bearer).
@@ -1185,6 +1208,11 @@ httpServer.on("request", (req, res) => {
         )
         console.log(`[realtime] revoke-orphans: closing ${s.id} for user:${userId} (${reason})`)
       }
+
+      // Telemetria do TTL sweep: os sockets fechados por TTL expirado nesta
+      // varredura manual também entram na MESMA janela do /health (spike
+      // reflete o volume real de expirações, não só o sweep periódico).
+      bumpMinuteWindow(expiredCounters, expired.length, MINUTE_WINDOW_MAX)
 
       console.log(
         `[realtime] revoke-orphans: ${toRevoke.length} sockets revogados (${expired.length} TTL expirado, ${missingUser.length} usuário inexistente; ${userIdsToCheck.length} userIds checados)`,

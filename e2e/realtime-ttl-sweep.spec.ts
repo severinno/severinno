@@ -232,6 +232,47 @@ async function fetchSessions(): Promise<{
   }
 }
 
+/** GET /health do realtime (SEM auth) — telemetria do TTL sweep exposta por
+ *  ops: perMinute (janela de 1h) + lastHourTotal + maxPerMinute + o flag de
+ *  spike (maxPerMinute > REALTIME_EXPIRED_SPIKE_THRESHOLD). Dados AGREGADOS
+ *  (sem userIds) — o endpoint público pode expor por design. */
+async function fetchHealthPublic(): Promise<{
+  ttlSweep?: {
+    perMinute: Record<string, number>
+    lastHourTotal: number
+    maxPerMinute: number
+    spike: boolean
+    spikeThreshold: number
+  }
+}> {
+  const res = await fetch(`http://localhost:${realtimePort()}/health`)
+  expect(res.ok, "GET /health deve responder 2xx sem auth").toBeTruthy()
+  return (await res.json()) as {
+    ttlSweep?: {
+      perMinute: Record<string, number>
+      lastHourTotal: number
+      maxPerMinute: number
+      spike: boolean
+      spikeThreshold: number
+    }
+  }
+}
+
+/** Aguarda a telemetria do TTL sweep registrar a expiração do cenário 1 no
+ *  /health (lastHourTotal >= 1). O bump acontece no MESMO ciclo do sweep que
+ *  fecha o socket (bumpMinuteWindow logo após o for de fechamento), mas o
+ *  poll cobre o timing de rede do disconnect observado pelo client. */
+async function waitForExpiredTelemetry(timeoutMs = 10_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    const health = await fetchHealthPublic()
+    const ttlSweep = health.ttlSweep
+    if (ttlSweep && ttlSweep.lastHourTotal >= 1) return true
+    await new Promise((r) => setTimeout(r, 400))
+  }
+  return false
+}
+
 // =========================================================================
 // Teste (serial: fases dependem umas das outras)
 // =========================================================================
@@ -358,6 +399,37 @@ test.describe.serial("TTL Sweep — sessão com TTL curto expira e o socket morr
     )
     console.log(
       `✅ Audit /sessions: kicks[${PROVIDER_ID}].reason=session_expired (count=${after.kicks[PROVIDER_ID]?.count})`,
+    )
+
+    // ── Telemetria do TTL sweep no /health (ops: ataque de sessões stale /
+    //    bug de rotatividade — exposto SEM auth, dados agregados) ────────
+    // O bump do bucket do minuto roda no MESMO ciclo do sweep que fechou o
+    // socket — o poll só cobre o timing de rede do disconnect observado.
+    const expiredTelemetry = await waitForExpiredTelemetry(10_000)
+    expect(
+      expiredTelemetry,
+      "/health deve expor ttlSweep.lastHourTotal >= 1 após o sweep encerrar a sessão expirada",
+    ).toBe(true)
+    const health = await fetchHealthPublic()
+    const ttlSweep = health.ttlSweep
+    expect(ttlSweep, "/health deve expor o bloco ttlSweep").toBeDefined()
+    expect(
+      ttlSweep?.maxPerMinute,
+      "maxPerMinute deve refletir a expiração registrada",
+    ).toBeGreaterThanOrEqual(1)
+    expect(typeof ttlSweep?.spike, "spike deve ser boolean (flag de pico)").toBe("boolean")
+    expect(
+      typeof ttlSweep?.spikeThreshold,
+      "spikeThreshold deve ser o número do env REALTIME_EXPIRED_SPIKE_THRESHOLD (default 50)",
+    ).toBe("number")
+    expect(
+      ttlSweep?.spikeThreshold ?? 0,
+      "threshold default 50/min — 1 expiração nunca acende o spike por acidente",
+    ).toBeGreaterThanOrEqual(1)
+    console.log(
+      `✅ Telemetria /health: ttlSweep.lastHourTotal=${ttlSweep?.lastHourTotal} ` +
+        `maxPerMinute=${ttlSweep?.maxPerMinute} spike=${ttlSweep?.spike} ` +
+        `threshold=${ttlSweep?.spikeThreshold}`,
     )
 
     socket.close()

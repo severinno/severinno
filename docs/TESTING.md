@@ -220,6 +220,39 @@ npx tsx scripts/coverage-gaps.ts --ci
 bunx playwright test e2e/providers-cache.spec.ts --project=chromium
 ```
 
+### E2E TTL sweep do realtime (`make e2e-ttl`)
+
+A suíte `e2e/realtime-ttl-sweep.spec.ts` valida o sweep de TTL do realtime
+(sessão expira por TTL sem logout → socket fechado com `session_expired`) e a
+interação renew × sweep. O spec forja cookies com TTL curto (15s) e adapta a
+espera ao intervalo do sweep — mas com o default de **60s** o socket expirado
+só cai no próximo tick do sweep: até ~75s por cenário (~1.5min na suíte).
+
+O alvo do Makefile sobe o realtime dev com **`REALTIME_TTL_SWEEP_MS=2000`**
+numa **porta dedicada (3199 — não toca o realtime dev da 3003)** e roda a
+suíte — cada cenário cai em ~17s (TTL 15s + 1 tick de 2s + close delay 0.5s),
+suíte inteira ~40s:
+
+```bash
+make e2e-ttl
+
+# Flags do script:
+#   --skip-cleanup  — mantém o realtime da porta dedicada de pé (reuso)
+#   -- --grep "..." — args extras ao Playwright
+bash scripts/test-e2e-ttl-sweep.sh --skip-cleanup
+```
+
+O script exporta os secrets (`SESSION_SECRET` + `REALTIME_EMIT_TOKEN`) do
+`.env.local` — o realtime é fail-closed sem eles (joins rejeitados e o
+POST /emit do cenário 2 recusado). Boot manual equivalente (o comando exato):
+
+```bash
+cd mini-services/realtime
+REALTIME_PORT=3199 REALTIME_TTL_SWEEP_MS=2000 \
+  SESSION_SECRET="$SESSION_SECRET" REALTIME_EMIT_TOKEN="$REALTIME_EMIT_TOKEN" \
+  bun --hot index.ts
+```
+
 ---
 
 ## Seed E2Es (PostGIS efêmero)

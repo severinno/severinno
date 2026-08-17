@@ -16,6 +16,7 @@ import {
   emitBucketKey,
   multiBucketKey,
   computeEmitDeltas,
+  shouldPersistMultiSnapshot,
   createRedisLoader,
   createTelemetryPersister,
   readTelemetryWindow,
@@ -40,6 +41,39 @@ describe("buildTelemetryBucket / keys (janela deslizante por minuto)", () => {
     expect(multiBucketKey(42)).toBe("realtime:telemetry:multi:42")
     expect(MULTI_FLAG_KEY).toBe("realtime:telemetry:multi:flag")
     expect(TELEMETRY_BUCKET_TTL_S).toBe(86_400) // 24h
+  })
+})
+
+describe("shouldPersistMultiSnapshot — MAX por minuto (GET+compare+SET)", () => {
+  const rawOf = (orphans: number) =>
+    JSON.stringify({
+      total: 4,
+      byRole: { PROVIDER: 4 },
+      usersWithMultipleSockets: orphans,
+      maxSocketsPerUser: 2,
+    })
+
+  it("bucket ausente (primeiro write do minuto) → escreve", () => {
+    expect(shouldPersistMultiSnapshot(null, 0)).toBe(true)
+    expect(shouldPersistMultiSnapshot(undefined, 0)).toBe(true)
+  })
+
+  it("JSON corrompido → trata como ausente e escreve por cima", () => {
+    expect(shouldPersistMultiSnapshot("{corrompido", 0)).toBe(true)
+  })
+
+  it("pico maior que o existente → escreve", () => {
+    expect(shouldPersistMultiSnapshot(rawOf(2), 3)).toBe(true)
+  })
+
+  it("igual ou menor que o existente → mantém o bucket atual (pico preservado)", () => {
+    expect(shouldPersistMultiSnapshot(rawOf(3), 3)).toBe(false) // igual
+    expect(shouldPersistMultiSnapshot(rawOf(3), 1)).toBe(false) // caiu
+    expect(shouldPersistMultiSnapshot(rawOf(3), 0)).toBe(false)
+  })
+
+  it("valor ausente no JSON existente → tratado como 0", () => {
+    expect(shouldPersistMultiSnapshot(JSON.stringify({ total: 4 }), 1)).toBe(true)
   })
 })
 
@@ -151,6 +185,54 @@ function fakeClient(pipeline: RedisPipelineLike & { calls: unknown[] }) {
   return { multi: vi.fn(() => pipeline) }
 }
 
+/** Fake ESTATEFUL: espelha o Redis real para o GET+compare+SET do persist.
+ *  - get(multiBucket) devolve o valor atualmente gravado no store;
+ *  - setex grava no store (o write do pico vira o valor do próximo GET);
+ *  - exec() monta resultados por comando na ordem (get → store, resto → null).
+ *  Permite provar que o bucket mantém o MÁXIMO intra-minuto de verdade.
+ *
+ *  INVARIANTE: o exec() mapeia TODOS os calls acumulados do objeto pipeline
+ *  único — por isso os testes stateful usam `{}` de emits (entries.length=0 →
+ *  multiGetIndex=0, o primeiro call É o get do multiKey) e o store.get é lido
+ *  no momento do exec. NÃO adicionar deltas a estes testes sem dar calls
+ *  frescos por multi() (o índice desalinharia contra persists anteriores). */
+function fakeStatefulClient() {
+  const store = new Map<string, string>()
+  const calls: Array<[string, unknown[]]> = []
+  const pipeline = {
+    hincrby(key: string, field: string, by: number) {
+      calls.push(["hincrby", [key, field, by]])
+      return pipeline
+    },
+    expire(key: string, seconds: number) {
+      calls.push(["expire", [key, seconds]])
+      return pipeline
+    },
+    setex(key: string, seconds: number, value: string) {
+      calls.push(["setex", [key, seconds, value]])
+      store.set(key, value)
+      return pipeline
+    },
+    get(key: string) {
+      calls.push(["get", [key]])
+      return pipeline
+    },
+    hgetall(key: string) {
+      calls.push(["hgetall", [key]])
+      return pipeline
+    },
+    async exec(): Promise<Array<[Error | null, unknown]>> {
+      // Cada comando vira [err, result]: get → store atual, demais → null.
+      return calls.map(([cmd, args]) => {
+        if (cmd === "get") return [null, store.get(args[0] as string) ?? null]
+        return [null, null]
+      })
+    },
+  }
+  const client = { multi: vi.fn(() => pipeline) }
+  return { client, store, calls }
+}
+
 const SESSIONS_FLAT = {
   total: 1,
   byRole: { CLIENT: 1 },
@@ -165,7 +247,7 @@ const SESSIONS_ORPHAN = {
 }
 
 describe("createTelemetryPersister", () => {
-  it("persists emit deltas (hincrby+expire) and the multi snapshot (setex) in one pipeline", async () => {
+  it("persists emit deltas (hincrby+expire) e o GET do multi bucket no pipeline; setex do snapshot só quando o bucket muda (primeiro write)", async () => {
     const pipe = fakePipeline()
     const client = fakeClient(pipe)
     const persister = createTelemetryPersister({ loadClient: async () => client as never })
@@ -174,6 +256,7 @@ describe("createTelemetryPersister", () => {
 
     const hincr = pipe.calls.filter(([c]) => c === "hincrby")
     const expires = pipe.calls.filter(([c]) => c === "expire")
+    const gets = pipe.calls.filter(([c]) => c === "get")
     const setexs = pipe.calls.filter(([c]) => c === "setex")
     const bucket = buildTelemetryBucket(Date.now())
 
@@ -181,9 +264,67 @@ describe("createTelemetryPersister", () => {
     expect(hincr[0]![1][0]).toBe(`realtime:telemetry:emits:${bucket}`)
     expect(expires).toHaveLength(2)
     expect(expires.every(([, a]) => a[1] === TELEMETRY_BUCKET_TTL_S)).toBe(true)
+    // GET+compare+SET: o pipeline lê o bucket multi ANTES de decidir o write.
+    expect(gets).toHaveLength(1)
+    expect(gets[0]![1][0]).toBe(`realtime:telemetry:multi:${bucket}`)
+    // Sem bucket existente (primeiro write do minuto) → setex é emitido.
     expect(setexs).toHaveLength(1)
     expect(setexs[0]![1][0]).toBe(`realtime:telemetry:multi:${bucket}`)
     expect(JSON.parse(setexs[0]![1][2] as string)).toEqual(SESSIONS_FLAT)
+  })
+
+  it("bucket multi mantém o MÁXIMO de usersWithMultipleSockets no MESMO minuto (intervalo < 60s): picos 0→3→1 preservam 3 com só 2 writes", async () => {
+    const { client, store, calls } = fakeStatefulClient()
+    const persister = createTelemetryPersister({ loadClient: async () => client as never })
+    const bucket = buildTelemetryBucket(Date.now())
+    const multiKey = multiBucketKey(bucket)
+    const snap = (orphans: number, total = 4) => ({
+      total,
+      byRole: { PROVIDER: total },
+      usersWithMultipleSockets: orphans,
+      maxSocketsPerUser: orphans > 0 ? 2 : 1,
+    })
+
+    // 1º persist (mesmo minuto): bucket ausente → escreve 0.
+    await persister.persist({}, snap(0))
+    // 2º persist: pico 3 > 0 → sobrescreve para 3.
+    await persister.persist({}, snap(3))
+    // 3º persist: caiu para 1 ≤ 3 → NÃO sobrescreve (pico preservado).
+    await persister.persist({}, snap(1))
+
+    const finalRaw = store.get(multiKey)
+    expect(finalRaw).toBeDefined()
+    const finalSnap = JSON.parse(finalRaw!) as { usersWithMultipleSockets: number }
+    // O bucket guarda o PICO do minuto — a timeline não perde o sintoma.
+    expect(finalSnap.usersWithMultipleSockets).toBe(3)
+
+    // Só 2 writes no bucket multi: o primeiro (ausente) + o pico.
+    const multiWrites = calls.filter(([cmd, args]) => cmd === "setex" && args[0] === multiKey)
+    expect(multiWrites).toHaveLength(2)
+    // A flag de alerta é emitida em todos os ciclos com órfãos (> 0).
+    const flagWrites = calls.filter(([, args]) => args[0] === MULTI_FLAG_KEY)
+    expect(flagWrites).toHaveLength(2) // ciclos com 3 e com 1
+  })
+
+  it("GET+compare+SET: pico anterior (3) NÃO é rebaixado por persist posterior menor (1)", async () => {
+    const { client, store, calls } = fakeStatefulClient()
+    const persister = createTelemetryPersister({ loadClient: async () => client as never })
+    const bucket = buildTelemetryBucket(Date.now())
+    const multiKey = multiBucketKey(bucket)
+    const snap = (orphans: number) => ({
+      total: 4,
+      byRole: { PROVIDER: 4 },
+      usersWithMultipleSockets: orphans,
+      maxSocketsPerUser: 2,
+    })
+
+    await persister.persist({}, snap(3)) // primeiro write: 3
+    await persister.persist({}, snap(1)) // caiu: mantém 3
+    await persister.persist({}, snap(0)) // zerou: mantém 3 (pico do minuto)
+
+    expect(JSON.parse(store.get(multiKey)!).usersWithMultipleSockets).toBe(3)
+    const multiWrites = calls.filter(([cmd, args]) => cmd === "setex" && args[0] === multiKey)
+    expect(multiWrites).toHaveLength(1) // só o primeiro write
   })
 
   it("deltas: a second persist only writes the new emits since the last cycle", async () => {

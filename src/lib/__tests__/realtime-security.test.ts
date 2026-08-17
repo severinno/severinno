@@ -37,6 +37,10 @@ import {
   resolveMaxSessionsForUser,
   parseSweepIntervalMs,
   parseTelemetryIntervalMs,
+  minuteWindowKey,
+  bumpMinuteWindow,
+  parseExpiredSpikeThreshold,
+  computeExpiredSweepMetrics,
   parseRealtimePort,
   toPublicRecentEmits,
   type KickAuditMap,
@@ -299,6 +303,97 @@ describe("parseTelemetryIntervalMs (env REALTIME_TELEMETRY_INTERVAL_MS)", () => 
   it("clamps sub-second values to 1000ms", () => {
     expect(parseTelemetryIntervalMs("500")).toBe(1_000)
     expect(parseTelemetryIntervalMs("-1")).toBe(1_000)
+  })
+})
+
+describe("minuteWindowKey / bumpMinuteWindow (janela por minuto do /health)", () => {
+  it("minuteWindowKey formata UTC YYYY-MM-DDTHH:mm", () => {
+    const ts = Date.UTC(2026, 7, 17, 10, 26, 45)
+    expect(minuteWindowKey(ts)).toBe("2026-08-17T10:26")
+  })
+
+  it("bumpMinuteWindow incrementa o bucket do minuto atual", () => {
+    const counters = new Map<string, number>()
+    bumpMinuteWindow(counters, 2)
+    const key = minuteWindowKey(Date.now())
+    expect(counters.get(key)).toBe(2)
+    bumpMinuteWindow(counters, 3)
+    expect(counters.get(key)).toBe(5)
+    expect(counters.size).toBe(1)
+  })
+
+  it("ignora count <= 0 (sweep vazio / renew no-op não incrementa)", () => {
+    const counters = new Map<string, number>()
+    bumpMinuteWindow(counters, 0)
+    bumpMinuteWindow(counters, -3)
+    expect(counters.size).toBe(0)
+  })
+
+  it("poda o bucket mais antigo quando excede maxBuckets (FIFO por inserção)", () => {
+    const now = Date.now()
+    const counters = new Map<string, number>()
+    const inserted: string[] = []
+    // 60 buckets PASSADOS (now-60min .. now-1min) — nunca colidem com o
+    // bucket atual que o bump vai inserir (a poda tem 1 a remover de fato).
+    for (let i = 60; i >= 1; i--) {
+      const k = minuteWindowKey(now - i * 60_000)
+      counters.set(k, 1)
+      inserted.push(k)
+    }
+    expect(counters.size).toBe(60)
+    bumpMinuteWindow(counters, 1, 60)
+    expect(counters.size).toBe(60) // 60 antigos + atual = 61 → poda 1
+    expect(counters.has(inserted[0])).toBe(false) // o mais antigo saiu
+    expect(counters.has(minuteWindowKey(now))).toBe(true) // o atual entrou
+  })
+})
+
+describe("parseExpiredSpikeThreshold (env REALTIME_EXPIRED_SPIKE_THRESHOLD)", () => {
+  it("returns the configured threshold when valid (>= 1)", () => {
+    expect(parseExpiredSpikeThreshold("10")).toBe(10)
+    expect(parseExpiredSpikeThreshold("500", 50)).toBe(500)
+  })
+
+  it("uses the fallback (50) for missing/empty/whitespace/NaN/'0'", () => {
+    expect(parseExpiredSpikeThreshold(undefined)).toBe(50)
+    expect(parseExpiredSpikeThreshold("")).toBe(50)
+    expect(parseExpiredSpikeThreshold("abc")).toBe(50)
+    expect(parseExpiredSpikeThreshold("0")).toBe(50)
+    expect(parseExpiredSpikeThreshold(undefined, 10)).toBe(10)
+  })
+
+  it("clamps negative values to 1 (qualquer expiração acende o spike)", () => {
+    expect(parseExpiredSpikeThreshold("-5")).toBe(1)
+  })
+
+  it("floors fractional values", () => {
+    expect(parseExpiredSpikeThreshold("10.9")).toBe(10)
+  })
+})
+
+describe("computeExpiredSweepMetrics (janela do TTL sweep no /health)", () => {
+  it("soma o total + pico por minuto e acende o spike quando pico > threshold", () => {
+    const m = computeExpiredSweepMetrics(
+      { "2026-08-17T10:00": 3, "2026-08-17T10:01": 7, "2026-08-17T10:02": 2 },
+      5,
+    )
+    expect(m.lastHourTotal).toBe(12)
+    expect(m.maxPerMinute).toBe(7)
+    expect(m.spike).toBe(true) // 7 > 5
+  })
+
+  it("não acende o spike quando o pico ≤ threshold", () => {
+    const m = computeExpiredSweepMetrics({ "2026-08-17T10:00": 5 }, 5)
+    expect(m.maxPerMinute).toBe(5)
+    expect(m.spike).toBe(false)
+  })
+
+  it("janela vazia → zeros + sem spike", () => {
+    expect(computeExpiredSweepMetrics({}, 5)).toEqual({
+      lastHourTotal: 0,
+      maxPerMinute: 0,
+      spike: false,
+    })
   })
 })
 

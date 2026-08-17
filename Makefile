@@ -5,7 +5,7 @@
 # ============================================================================
 
 .PHONY: help infra infra-full infra-down build deploy backup backup-s3 restore \
-        dlq-monitor logs db-studio db-migrate db-seed test test-e2e lint clean \
+        dlq-monitor logs db-studio db-migrate db-seed test test-e2e e2e-ttl lint clean \
         setup health workers
 
 # ── Cores ──────────────────────────────────────────────────────────────────
@@ -52,6 +52,7 @@ help:
 	@echo "$(GREEN)Testes & Qualidade:$(NC)"
 	@echo "  make test           Testes unitarios (Vitest)"
 	@echo "  make test-e2e       Testes E2E (Playwright)"
+	@echo "  make e2e-ttl        E2E TTL sweep do realtime (REALTIME_TTL_SWEEP_MS=2000)"
 	@echo "  make lint           ESLint + TypeScript check"
 	@echo ""
 	@echo "$(GREEN)Manutencao:$(NC)"
@@ -150,6 +151,19 @@ test:
 test-e2e:
 	@echo "$(CYAN)[..] Rodando testes E2E...$(NC)"
 	bun run e2e
+
+# E2E TTL sweep — sobe o realtime dev numa porta DEDICADA (3199, nao toca o
+# da 3003) com REALTIME_TTL_SWEEP_MS=2000 (default 60s) e roda a suite
+# e2e/realtime-ttl-sweep.spec.ts. Com o sweep curto o socket expirado cai em
+# ~17s por cenario em vez de ~75s — a suite inteira ~40s em vez de ~1.5min.
+# Boot exato (documentado no header do script):
+#   cd mini-services/realtime
+#   REALTIME_PORT=3199 REALTIME_TTL_SWEEP_MS=2000 \
+#     SESSION_SECRET=... REALTIME_EMIT_TOKEN=... bun --hot index.ts
+# O script exporta os secrets do .env.local; o spec conecta em REALTIME_PORT.
+e2e-ttl:
+	@echo "$(CYAN)[..] Rodando E2E TTL sweep (realtime com REALTIME_TTL_SWEEP_MS=2000)...$(NC)"
+	bash scripts/test-e2e-ttl-sweep.sh
 
 lint:
 	@echo "$(CYAN)[..] Rodando linter + typecheck...$(NC)"

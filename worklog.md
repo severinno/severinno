@@ -13,6 +13,7 @@ Convenções:
 
 ## Índice de Task IDs
 
+- [TELEMETRY-E2E](#telemetry-e2e) — Spec E2E do fluxo completo da telemetria do realtime: admin autenticado chama GET /api/admin/realtime/telemetry com socket real + emit disparado, conferindo emits > 0 na janela e o sinal multi (usersWithMultipleSockets + flag) no Redis.
 - [CRLF-NORM](#crlf-norm) — Normalizar o working tree deste checkout — converter os 415 .ts/.tsx com w/crlf para LF. O artefato…
 - [2](#2) — Set up WebSocket mini-service (port 3003, path /) with socket.io for realtime messaging/booking/quo…
 - [1](#1) — Construir a fundação do Severinno Marketplace SaaS — Prisma schema (SQLite, sem enum nativo), seed…
@@ -74,6 +75,12 @@ Convenções:
 - [SESSION-EXPIRY-E2E](#session-expiry-e2e) — Spec E2E do fluxo de expiração de sessão no browser: provider isolado registrado via API → login real → GET /api/auth/me devolve expiresAt (~30d sessão fresca) → pill do countdown visível no dropdown (data-testid=session-expiry-info) → e cenário do Renovar com cookie FORJADO de 2 dias (<15d, mesmo HMAC do app): o /api/auth/me (mesmo request do renewSession) reemite o cookie (Set-Cookie novo + expiresAt ~30d).
 - [PILL-RENEW-8-15D](#pill-renew-8-15d) — Fechar a janela 8–15 dias: botão "Renovar" na pill SessionExpiryInfo quando days ≤ SESSION_EXPIRY_RENEW_DAYS (15) — o servidor JÁ reemite o cookie em qualquer request <15d, mas a ação explícita dá controle ao usuário antes da rotação proativa; acima de 15d a pill não oferece o botão (renovar seria no-op). Unit tests da janela (12d mostra, boundary 15/16, >15 esconde, click chama renewSession NUNCA fetchMe) + assert negativo no E2E (sessão fresca >15d sem botão).
 - [TTL-SWEEP-RENEW-E2E](#ttl-sweep-renew-e2e) — Segundo cenário no realtime-ttl-sweep.spec.ts provando o gap da rotação deslizante (renovação) ponta-a-ponta: par renovado/controle com cookies forjados de TTL 15s — o renovado recebe session:renew via POST /emit (Bearer, mesmo bridge do app) ANTES do expiry e SOBREVIVE ao sweep (EXTEND-ONLY do renewSessionSockets, hoje só unit test), enquanto o controle (sem renew) cai com session_expired provando o sweep ativo. Gate via recentEmits do /health/detailed + cross-check /sessions. Providers isolados registrados via API.
+- [MAKE-E2E-TTL](#make-e2e-ttl) — Target no Makefile (make e2e-ttl) que sobe o realtime dev com REALTIME_TTL_SWEEP_MS=2000 numa porta DEDICADA (3199, não toca o realtime da 3003) via scripts/test-e2e-ttl-sweep.sh e roda a suíte realtime-ttl-sweep em ~40s (piso do TTL forjado de 15s do spec) em vez de ~1.5min com o sweep de 60s; documenta o comando exato de boot com o env (SESSION_SECRET + REALTIME_EMIT_TOKEN exportados do .env.local, fail-closed) no header do script + Makefile + docs/TESTING.md.
+- [TTL-SWEEP-TELEMETRY](#ttl-sweep-telemetry) — Métrica no /health do realtime: contagem de sockets encerrados por session_expired na janela de 1h (perMinute + lastHourTotal + maxPerMinute) e flag de SPIKE (> REALTIME_EXPIRED_SPIKE_THRESHOLD/min) — sinal de ataque de sessões stale ou bug de rotatividade (session:renew não propagando → expirações em massa). Helpers puros no security.ts (minuteWindowKey/bumpMinuteWindow compartilhados com o renew — janela única de 1h; parseExpiredSpikeThreshold; computeExpiredSweepMetrics), bump no TTL sweep + revoke-orphans, exposição agregada (sem userIds — /health é sem auth) no snapshot; assert E2E no realtime-ttl-sweep (cenário 1).
+- [COOKIE-TTL-PER-ROLE](#cookie-ttl-per-role) — TTL do cookie de sessão POR ROLE no app: env estruturada SESSION_COOKIE_MAX_AGE_PER_ROLE (JSON de segundos, ex.: CLIENT 15d / PROVIDER 30d / ADMIN 7d) com fallback ao global SESSION_COOKIE_MAX_AGE_SECONDS. Helpers puros parseCookieMaxAgePerRole + resolveCookieMaxAgeForRole (clamp >= 60, UPPERCASE, entradas inválidas descartadas); createSession assina o expiresAt com o TTL da role; rotação deslizante por role (threshold = metade do TTL EFETIVO da role — CLIENT 15d roda a 7.5d) no getSession + espelho SSR no getSessionExpiresAt. O realtime NÃO muda: o sweep respeita o expiresAt embutido no cookie de cada socket. Docs (README/.env.example/composes) + testes unitários (parse/resolve puros + integração com vi.resetModules).
+- [ADMIN-REALTIME-TELEMETRY](#admin-realtime-telemetry) — Fechamento do loop do dashboard: nova view admin.realtime-telemetry (admin-realtime-telemetry.tsx) que renderiza o gráfico de emits por evento (Recharts bar chart horizontal) e o sinal de sockets órfãos (area chart do multi[] → usersWithMultipleSockets por bucket) lendo GET /api/admin/realtime/telemetry com poll de 15s, seletor de janela (30min/1h/6h/24h → ?minutes), cards de resumo (emits totais, órfãos agora, multi-socket, máx/usuário), badge/banner de ALERTA quando a flag está ativa, top-5 de eventos como fallback acessível e degradação graciosa (ok:false → EmptyState). Registrada no admin-panel (NAV_ITEMS + VIEW_META + switch + ícone RadioTower) e coberta por admin-realtime-telemetry.test.tsx (estados, dados, flag on/off, janela, refresh, axe).
+- [ORPHAN-ALERT-JOB](#orphan-alert-job) — Job de alerta operacional (GET /api/cron/realtime-orphan-alert, Bearer CRON_SECRET, a cada ~5min) que lê a flag realtime:telemetry:multi:flag + os N buckets de minuto do realtime e notifica (GlitchTip/Sentry + email ADMIN_EMAIL) quando sockets órfãos PERSISTIREM por N minutos seguidos — evita falso-positivo de pico transitório. Cooldown Redis (ORPHAN_ALERT_COOLDOWN_MS, marcado SÓ em alertas reais) + dry-run ?dryRun=1 no padrão do revoke-inactive-sessions; fail-open em Redis fora/leitura/notificação (nunca 500). Engine src/lib/realtime-orphan-alert.ts + rota + 18 testes unitários (persistência pura, env guards, rota com fake timers p/ determinismo).
+- [MULTI-BUCKET-MAX](#multi-bucket-max) — Fechar o tradeoff do bucket multi quando REALTIME_TELEMETRY_INTERVAL_MS < 60s: com vários persists no MESMO bucket de minuto, o último write sobrescrevia o pico intra-minuto de usersWithMultipleSockets (a timeline do dashboard perdia o sintoma). Fix: GET+compare+SET no persist — helper puro shouldPersistMultiSnapshot (ausente/corrompido → escreve; novo > existente → escreve; igual/menor → mantém o pico) + get do bucket no pipeline antes do setex condicional; teste de pico 0→3→1 com fake stateful prova o bucket final = 3 com só 2 writes.
 
 ---
 
@@ -2946,3 +2953,215 @@ Stage Summary:
 - e2e/realtime-ttl-sweep.spec.ts (cenário 2 + helpers).
 - Worklog: Task ID TTL-SWEEP-RENEW-E2E + TOC.
 - Validação: prettier, eslint, typecheck, guards + execução do spec no chromium com dev 3000 + realtime 3003 no ar + code-reviewer.
+
+---
+
+Task ID: MAKE-E2E-TTL
+<a id="make-e2e-ttl"></a>
+Agent: orchestrator
+Task: Criar um target no Makefile (ex.: e2e-ttl) que sobe o realtime dev com REALTIME_TTL_SWEEP_MS=2000 e roda a suíte realtime-ttl-sweep em ~40s (piso: FORGED_TTL_SECONDS=15 hardcoded no spec) em vez de ~1.5min com o sweep de 60s, documentando o comando exato de boot com o env.
+
+Work Log:
+
+- scripts/test-e2e-ttl-sweep.sh (novo): pipeline E2E TTL sweep. Sobe o realtime dev numa PORTA DEDICADA (REALTIME_PORT, default 3199 — NÃO toca o realtime dev da 3003) com REALTIME_TTL_SWEEP_MS=2000 (default 60s), espera o /health, roda e2e/realtime-ttl-sweep.spec.ts (chromium) com REALTIME_PORT exportado (o spec conecta via realtimePort(), sem hardcode) e derruba o realtime no exit (trap; --skip-cleanup mantém de pé).
+- Comando de boot documentado no header do script: cd mini-services/realtime && REALTIME_PORT=3199 REALTIME_TTL_SWEEP_MS=2000 SESSION_SECRET=... REALTIME_EMIT_TOKEN=... bun --hot index.ts. O script exporta SESSION_SECRET + REALTIME_EMIT_TOKEN do .env.local (fail-closed do realtime: sem eles os joins são rejeitados e o POST /emit do cenário 2 recusado) e verifica o app na :3000 antes (o spec registra providers via API no beforeAll).
+- Por que acelera: com o sweep de 60s, o socket expirado (cookie forjado TTL 15s) só cai no próximo tick — até ~75s por cenário (~1.5min na suíte). Com 2000ms, cai em ~17s por cenário (TTL 15s + 1 tick de 2s + close delay 0.5s) — suíte inteira ~40s. O deadline do spec é só um limite superior (clamp no fallback de 60s); o loop termina cedo no disconnect, então o tempo real acompanha o sweep do servidor.
+- Makefile: target e2e-ttl + .PHONY + linha no help, com o boot exato comentado acima do alvo.
+- docs/TESTING.md: seção "E2E TTL sweep do realtime (make e2e-ttl)" com o comando de boot manual equivalente.
+
+Resultado da varredura:
+
+- O alvo encapsula o requisito de config do spec (REALTIME_TTL_SWEEP_MS baixo em dev/CI) num único comando, sem exigir conhecimento do boot do realtime nem tocar o processo da 3003 (porta dedicada).
+
+Stage Summary:
+
+- scripts/test-e2e-ttl-sweep.sh (novo).
+- Makefile: target e2e-ttl + .PHONY + help.
+- docs/TESTING.md: seção do TTL sweep.
+- Worklog: Task ID MAKE-E2E-TTL + TOC.
+- Validação: bash -n, guards (crlf/utf8/worklog/toc), execução real do target com dev 3000 + realtime dedicado na 3199 + code-reviewer.
+
+---
+
+Task ID: TTL-SWEEP-TELEMETRY
+<a id="ttl-sweep-telemetry"></a>
+Agent: orchestrator
+Task: Adicionar métrica no /health do realtime: contagem de sockets encerrados por session_expired na última janela (ex.: 1h) e um flag de spike (ex.: >N por minuto) — sinal de ataque de sessões stale ou bug de rotatividade — expondo a telemetria do TTL sweep para ops.
+
+Work Log:
+
+- mini-services/realtime/security.ts (helpers PUROS, unit-testáveis): minuteWindowKey (chave UTC "YYYY-MM-DDTHH:mm" do bucket) + bumpMinuteWindow (incrementa o bucket do minuto e poda a janela de 1h = 60 buckets pelo MÍNIMO da inserção — Map preserva ordem de inserção; count <= 0 é ignorado) — MESMA janela já usada pelo renew (fonte única da semântica, sem duplicação); parseExpiredSpikeThreshold (env REALTIME_EXPIRED_SPIKE_THRESHOLD, default 50/min; 0/NaN → default; negativo → clamp 1); computeExpiredSweepMetrics (lastHourTotal + maxPerMinute + spike = maxPerMinute > threshold — agregado, sem userIds).
+- mini-services/realtime/index.ts: expiredCounters (Map por minuto, janela deslizante de 1h em memória) + EXPIRED_SPIKE_THRESHOLD lido no boot (warn se env inválida); bumpMinuteWindow(expiredCounters, expired.length) no TTL sweep periódico E no POST /revoke-orphans (expired.length — a varredura manual também entra na janela, spike reflete o volume real de expirações); snapshot getHealthSnapshot expõe ttlSweep { perMinute, lastHourTotal, maxPerMinute, spike, spikeThreshold } — dados AGREGADOS (sem userIds) porque o /health é SEM auth por design.
+- Docs: .env.example (linha REALTIME_EXPIRED_SPIKE_THRESHOLD=) + docker-compose.dev.yml (pass-through ${REALTIME_EXPIRED_SPIKE_THRESHOLD:-}).
+- src/lib/**tests**/realtime-security.test.ts: describes de minuteWindowKey/bumpMinuteWindow (janela + poda + count<=0), parseExpiredSpikeThreshold (default/0/NaN/negativo/valor válido) e computeExpiredSweepMetrics (soma, pico, spike ligado/desligado).
+- e2e/realtime-ttl-sweep.spec.ts (cenário 1): helper fetchHealthPublic (GET /health sem auth) + waitForExpiredTelemetry (poll até lastHourTotal >= 1 — o bump roda no MESMO ciclo do sweep que fecha o socket; o poll cobre o timing de rede do disconnect) + asserts do shape (perMinute, maxPerMinute >= 1, spike boolean, spikeThreshold número >= 1 — 1 expiração nunca acende o spike por acidente com o default 50).
+
+Resultado da varredura:
+
+- Ops agora vê no /health (sem auth) a janela de expirações por TTL do realtime: lastHourTotal (volume), maxPerMinute (pico), perMinute (distribuição) e o flag spike — sinal de ataque de sessões stale (lote de cookies vencendo juntos) ou bug de rotatividade (session:renew não propagando → expirações em massa).
+- A janela por minuto é COMPARTILHADA com o renew (bumpMinuteWindow/minuteWindowKey em security.ts) — uma única semântica de janela no serviço, sem duplicação.
+- Nenhum teste/spec asserta o shape exato do /health (varredura prévia): adicionar campos não quebra igualdade.
+
+Stage Summary:
+
+- mini-services/realtime/security.ts + index.ts: telemetria ttlSweep + spike.
+- .env.example + docker-compose.dev.yml: REALTIME_EXPIRED_SPIKE_THRESHOLD.
+- src/lib/**tests**/realtime-security.test.ts: 3 describes novos.
+- e2e/realtime-ttl-sweep.spec.ts: assert de telemetria no cenário 1.
+- Worklog: Task ID TTL-SWEEP-TELEMETRY + TOC.
+- Validação: prettier + eslint + typecheck + vitest (realtime-security) + guards (worklog/toc) + E2E (make e2e-ttl) + code-reviewer.
+
+---
+
+Task ID: COOKIE-TTL-PER-ROLE
+<a id="cookie-ttl-per-role"></a>
+Agent: orchestrator
+Task: Estender o SESSION_COOKIE_MAX_AGE_SECONDS para suportar TTLs distintos por role (ex.: clientes 15d, providers 30d, admins 7d) — o app assina o expiresAt no cookie e o sweep do realtime já respeita o valor embutido por socket, então a mudança fica só no app.
+
+Work Log:
+
+- src/lib/auth.ts: helpers puros parseCookieMaxAgePerRole (env estruturada SESSION_COOKIE_MAX_AGE_PER_ROLE — JSON de segundos; roles UPPERCASE; entradas inválidas descartadas; clamp >= 60; JSON inválido/vazio/{} → undefined) + resolveCookieMaxAgeForRole (override por role case-insensitive → fallback global; sempre >= 60s — misconfig nunca quebra a sessão). Constantes de boot: COOKIE_MAX_AGE_PER_ROLE (warn se env setada mas inválida) + cookieMaxAgeForRole + rotationThresholdSeconds(role) = metade do TTL EFETIVO da role (substitui o ROTATION_THRESHOLD_SECONDS global).
+- createSession: assina o expiresAt com o TTL da role (maxAge = cookieMaxAgeForRole(role)) — o valor embutido no cookie é o que o realtime respeita no sweep, então nenhuma mudança no mini-service.
+- getSession: rotação deslizante POR ROLE (remaining < rotationThresholdSeconds(role)) — CLIENT com TTL 15d roda a 7.5d, PROVIDER com 30d a 15d; o renewSession propagado via bridge /emit leva o novo expiresAt (TTL da role) ao realtime.
+- getSessionExpiresAt (SSR/RSC-safe): espelho da rotação com o TTL da role (now + cookieMaxAgeForRole(role)) — o countdown SSR não salta; sem reemitir cookie.
+- Docs: README (bullet do TTL atualizado com a env por role), .env.example (bloco SESSION_COOKIE_MAX_AGE_SECONDS + SESSION_COOKIE_MAX_AGE_PER_ROLE com exemplo JSON), docker-compose.yml (app) + docker-compose.prod.yml (app) com pass-through ${SESSION_COOKIE_MAX_AGE_PER_ROLE:-}.
+- src/lib/**tests**/auth.test.ts: describes puros de parseCookieMaxAgePerRole (JSON válido, UPPERCASE, entradas inválidas, clamp 60s, undefined) + resolveCookieMaxAgeForRole (override, case-insensitive, fallback, override <60 ignorado, clamp do fallback); describe de INTEGRAÇÃO no padrão do env.test.ts (vi.resetModules + process.env setado + import dinâmico — instância fresca do módulo por teste): createSession CLIENT 15d / PROVIDER 30d / ADMIN 7d; rotação por role (CLIENT 10d restantes NÃO roda — threshold 7.5d; PROVIDER 10d restantes RODA — threshold 15d, refresh ~30d); getSessionExpiresAt espelha +30d para PROVIDER. A instância dinâmica usa os mocks hoisted (cookieStore/mockCacheStore compartilhados); o import estático do topo continua na instância ORIGINAL (env sem per-role → 30d) — describes existentes não afetados.
+
+Resultado da varredura:
+
+- O TTL do cookie agora é configurável POR ROLE com fallback ao global — o expiresAt assinado no cookie carrega o TTL da role e o sweep/renew do realtime seguem o valor embutido (EXTEND-ONLY), sem mudança no mini-service.
+- A rotação deslizante é consistente com o TTL: a janela de renovação é metade do TTL EFETIVO da role (não uma constante global), e o espelho SSR usa o mesmo TTL — o countdown e o renew sempre casam com o que o getSession reemite.
+- Default preservado: sem a env por role, tudo cai no comportamento anterior (global 30d, threshold 15d) — zero quebra para quem não configurar.
+
+Stage Summary:
+
+- src/lib/auth.ts: parseCookieMaxAgePerRole + resolveCookieMaxAgeForRole + createSession/getSession/getSessionExpiresAt role-aware.
+- Docs: README.md, .env.example, docker-compose.yml, docker-compose.prod.yml.
+- src/lib/**tests**/auth.test.ts: 2 describes puros + 1 describe de integração (4 testes).
+- Worklog: Task ID COOKIE-TTL-PER-ROLE + TOC.
+- Validação: prettier + eslint + typecheck + vitest (auth.test.ts) + guards (worklog/toc) + code-reviewer.
+
+---
+
+Task ID: ADMIN-REALTIME-TELEMETRY
+<a id="admin-realtime-telemetry"></a>
+Agent: orchestrator
+Task: Fechar o loop do dashboard: adicionar uma view no painel admin (ex.: admin.realtimeTelemetry) que renderiza o gráfico de emits por evento e o sinal de sockets órfãos lendo GET /api/admin/realtime/telemetry, com badge de alerta quando a flag estiver ativa.
+
+Work Log:
+
+- src/components/admin/admin-realtime-telemetry.tsx (nova view): poll de GET /api/admin/realtime/telemetry?minutes=N a cada 15s (persist do realtime = 30s por default; 15s de leitura mantém flag/último bucket frescos sem martelar o proxy) via useQuery (refetchInterval 15000, staleTime 7500).
+- Seletor de janela segmented (30 min / 1 h / 6 h / 24 h → ?minutes da rota; buttons com aria-pressed, sem aria-controls órfão — mesmo padrão do filtro de role do AdminActiveSessions).
+- Cards de resumo (grid 4): emits totais na janela (soma do map), órfãos AGORA (ATIVO/OK com destaque âmbar quando flag=true), usuários multi-socket (último bucket + pico no período), máx. sockets/usuário (último bucket + pico).
+- Bar chart de emits POR EVENTO (Recharts, layout="vertical" — nomes de evento longos; barras horizontais, fill primary, tooltip TOOLTIP_STYLE do admin-chart-theme) + top-5 de eventos como fallback acessível (H7 — leitura além do chart, também assertável no teste com o mock pass-through do recharts).
+- Area chart do sinal de órfãos: multi[] → { ts, label (formatRelative), orphans, total } com gradiente âmbar; badge flag ativo/ok no header do card.
+- Banner de ALERTA (role="alert", âmbar) quando flag=true — o sintoma do socket órfão do HMR/multi-abas (mesmo contrato do SessionConflictAlert); ausente quando flag=false.
+- Degradação graciosa: isError → ErrorState com retry; ok:false/available:false → EmptyState "Telemetria indisponível"; sem emits E sem multi → EmptyState "Sem telemetria na janela" (nunca quebra o painel).
+- admin-panel.tsx: import + NAV_ITEMS (view "admin.realtime-telemetry", label "Telemetria Realtime", ícone RadioTower — após Sessões Ativas) + VIEW_META (título/subtítulo/breadcrumbs) + case no switch.
+- src/components/admin/**tests**/admin-realtime-telemetry.test.tsx (novo, no padrão do admin-active-sessions.test.tsx): mocks de useQuery/apiGet/format/lucide/recharts (createRechartsMock do mocks.tsx) + 9 testes: skeleton no loading; ErrorState com retry; EmptyState de degradação (ok:false); EmptyState sem telemetria; cards de resumo com valores somados (54 emits); banner+badge de alerta com flag=true; sem banner com flag=false (flag ok / OK); top-5 de eventos; seletor de janela refaz a query com ?minutes=360; refresh chama refetch; axe sem violações.
+
+Resultado da varredura:
+
+- O loop do dashboard fecha: o admin vê no MESMO painel a telemetria que o realtime persiste (emits por evento + sinal de órfãos com alerta), sem depender de logs — o badge flag ativo destaca o sintoma do HMR antes de virar incidente.
+- O shape da rota (emits agregados + multi[] por minuto + flag) já era o contrato persistido no Redis — a view é 100% consumidora, zero mudança no backend/realtime.
+- Recharts já era dependência do repo (16+ views admin) — o padrão visual (TOOLTIP_STYLE, fill primary, grid tracejado) segue admin-chart-theme, e o mock pass-through do recharts no JSDOM já existia em mocks.tsx.
+
+Stage Summary:
+
+- src/components/admin/admin-realtime-telemetry.tsx (nova view).
+- src/components/admin/admin-panel.tsx: registro da view + NAV_ITEMS + VIEW_META.
+- src/components/admin/**tests**/admin-realtime-telemetry.test.tsx (novo, 9 testes).
+- Worklog: Task ID ADMIN-REALTIME-TELEMETRY + TOC.
+- Validação: prettier + eslint + typecheck + vitest (novo teste + admin-panel) + guards (worklog/toc) + code-reviewer.
+
+---
+
+Task ID: ORPHAN-ALERT-JOB
+<a id="orphan-alert-job"></a>
+Agent: orchestrator (alerta operacional de sockets órfãos persistidos)
+Task: Job de alerta (cron) que lê a flag realtime:telemetry:multi:flag e notifica quando sockets órfãos PERSISTIREM por N minutos seguidos em produção — GlitchTip/Sentry + email, com cooldown e dry-run no padrão do revoke-inactive-sessions.
+
+Work Log:
+
+- Mapeou o contrato: o realtime grava a flag `realtime:telemetry:multi:flag` (STRING "1", TTL curto ≈ 2× persist interval) sempre que usersWithMultipleSockets > 0, e buckets por minuto `realtime:telemetry:multi:{minuteBucket}` (JSON total/byRole/usersWithMultipleSockets/maxSocketsPerUser, TTL 24h). A flag sozinha não prova persistência (TTL curto = "agora"); os buckets provam o histórico.
+- Criou src/lib/realtime-orphan-alert.ts (engine, espelha revoke-inactive-scan.ts):
+  - Puros: MULTI_FLAG_KEY, buildMultiBucketKey (mesmo cálculo do mini-service), parseOrphanAlertMinutes (env, default 5, clamp 1..1440), parseOrphanAlertCooldownMs (env, default 60min, clamp >= 60s), readOrphanPersistence (lê os N buckets do minuto atual para trás; persisted = TODOS os N confirmam órfãos; bucket ausente/JSON corrompido/usersWithMultipleSockets=0 = NÃO confirmado — fail-closed na evidência).
+  - Notificação: buildOrphanAlertHtml (email branded inline) + defaultNotify (captureMessage → GlitchTip/Sentry sempre + sendMail para ADMIN_EMAIL se setado). Injetável para testes.
+  - runRealtimeOrphanAlert: cooldown Redis primeiro (isCooldownElapsed/markCompleted do cron-cooldown) → leitura fail-open (client null → completed sem alerta, nunca 500) → flag ativa AGORA E persistência comprovada → alerta real (notify + markCompleted) ou dry-run (reporta sem notificar, NÃO marca cooldown).
+- Decisão de design: cooldown marcado SÓ em alertas reais (não em runs limpos nem dry-run) — um monitor precisa re-checar a cada intervalo para pegar um NOVO episódio dentro da janela; a supressão anti-storm é por alerta, não por run (divergência consciente do revoke-inactive, que marca em todo run completado por ser job diário).
+- Criou src/app/api/cron/realtime-orphan-alert/route.ts (GET, Bearer CRON_SECRET com warn-skip se vazio, ?dryRun=1, runtime nodejs, re-export dos puros para testes) — mesmo padrão do cron-revoke-inactive-sessions.
+- Criou src/app/api/**tests**/cron-realtime-orphan-alert-route.test.ts (18 testes): readOrphanPersistence puro (N confirmam / ausente / corrompido / 0 quebra a cadeia — com nowMs explícito), env guards (incl. empty-string → fallback, bug real do Number("")=0), flag ausente → completed sem notify, flag + 5 buckets → alerted com captureMessage+sendMail+markCompleted, persistência insuficiente (2/5) → not-persisted, dryRun reporta sem notificar nem marcar, cooldown → skipped sem ler Redis, client null → fail-open com reason redis-unavailable + available:false, leitura falha (get rejeita) → idem, 401 Bearer falta/errado, acesso sem CRON_SECRET, clock injetável now (engine direto com notify espião). Fake timers (vi.useFakeTimers({now})) nos testes de rota: o GET() chama a engine sem now → Date.now() interno precisa bater com as chaves fixas do mapa (flake de virada de minuto eliminado).
+- Docs: .env.example (ORPHAN_ALERT_MINUTES/COOLDOWN_MS/ADMIN_EMAIL com comentários), worklog TOC + Task ID.
+
+Resultado da varredura:
+
+- O alerta fecha o loop operacional do socket órfão: o realtime PERSISTE a flag, o admin VE o sinal (view telemetria), e agora a equipe é NOTIFICADA proativamente quando a condição dura N minutos — sem depender de alguém olhando o dashboard.
+- Fail-open em 3 pontos (Redis fora, leitura falha, notificação falha) garante que o job nunca quebra o cron nem 500a; fail-closed na evidência evita falso-positivo com dados incompletos.
+
+Stage Summary:
+
+- src/lib/realtime-orphan-alert.ts (engine + notificação + email HTML).
+- src/app/api/cron/realtime-orphan-alert/route.ts (rota cron).
+- src/app/api/**tests**/cron-realtime-orphan-alert-route.test.ts (novo, 18 testes).
+- .env.example: ORPHAN_ALERT_MINUTES/COOLDOWN_MS/ADMIN_EMAIL.
+- Worklog: Task ID ORPHAN-ALERT-JOB + TOC.
+- Validação: prettier + eslint + typecheck + vitest (novo teste) + guards (worklog/toc) + code-reviewer.
+
+---
+
+Task ID: MULTI-BUCKET-MAX
+<a id="multi-bucket-max"></a>
+Agent: orchestrator (persistência de telemetria do realtime)
+Task: Fechar o tradeoff do bucket multi quando REALTIME_TELEMETRY_INTERVAL_MS < 60s — manter o MÁXIMO de usersWithMultipleSockets por minuto (GET+compare+SET no persist) para a timeline do dashboard não perder picos intra-minuto, com teste unitário do comportamento.
+
+Work Log:
+
+- Diagnóstico: com o intervalo de persistência < 60s (ex.: 30s), DOIS OU MAIS persists caem no MESMO bucket de minuto. O persist() antigo fazia setex incondicional do snapshot — o ÚLTIMO write do minuto sobrescrevia o pico intra-minuto (ex.: 3 órfãos no segundo 10 → 0 no segundo 40: o bucket ficava 0 e a timeline do dashboard perdia o sintoma). Os emits já eram DELTA (acumulam), mas o multi era substituído.
+- Fix em mini-services/realtime/redis-telemetry.ts:
+  - Novo helper puro shouldPersistMultiSnapshot(raw, newOrphans): bucket ausente (primeiro write do minuto) ou JSON corrompido → escreve (não há base de comparação); novo valor > existente → escreve (pico maior); igual ou menor → mantém o bucket atual (o pico já está gravado).
+  - persist() agora emite `get(multiBucketKey(bucket))` no pipeline (índice conhecido = entries.length*2, sem SCAN) e só faz o setex do snapshot quando shouldPersistMultiSnapshot decide que o bucket muda — write separado (não engorda o pipeline principal).
+  - Design notes do header atualizados (bucket multi = PEAK do minuto).
+- Testes em src/lib/**tests**/realtime-telemetry.test.ts:
+  - Novo describe shouldPersistMultiSnapshot (5 casos puros: ausente → true, corrompido → true, pico maior → true, igual/menor → false, campo ausente → 0).
+  - Teste de pico intra-minuto com fake ESTATEFUL (get devolve o store; setex grava no store): 3 persists no mesmo minuto 0→3→1 → bucket final = 3 (pico preservado) com SÓ 2 writes (primeiro + pico) e flag emitida nos ciclos com órfãos.
+  - Teste GET+compare+SET: pico 3 seguido de 1 e 0 → mantém 3 com só 1 write.
+  - Teste existente do pipeline atualizado: agora verifica o get do multi bucket antes do setex condicional.
+
+Resultado da varredura:
+
+- A timeline do dashboard (area chart do multi[] → usersWithMultipleSockets por bucket) agora mostra o PICO de cada minuto, não o último snapshot — com intervalo < 60s o sintoma do socket órfão não some mais do gráfico.
+- O ORPHAN-ALERT-JOB se beneficia indiretamente: bucket com pico > 0 confirma persistência mesmo que o snapshot do fim do minuto seja 0 (a cadeia de N minutos não quebra por um pico transitório a menos).
+- Tradeoff documentado: o setex agora é condicional (1 write por pico, não 1 por ciclo) — custo extra de 1 GET por persist no pipeline, desprezível (chave derivada, sem SCAN).
+
+Stage Summary:
+
+- mini-services/realtime/redis-telemetry.ts: shouldPersistMultiSnapshot (puro) + get no pipeline + setex condicional + design notes.
+- src/lib/**tests**/realtime-telemetry.test.ts: 2 describes novos (helper puro + pico intra-minuto com fake stateful) + teste do pipeline atualizado.
+- Worklog: Task ID MULTI-BUCKET-MAX + TOC.
+- Validação: prettier + eslint + typecheck + vitest (realtime-telemetry + realtime-security) + guards + code-reviewer.
+
+---
+
+Task ID: TELEMETRY-E2E
+<a id="telemetry-e2e"></a>
+Agent: orchestrator (E2E da telemetria do realtime)
+Task: Adicionar um spec E2E (Playwright) que valida o fluxo completo da telemetria: admin autenticado chama GET /api/admin/realtime/telemetry com um socket real conectado e um emit disparado, conferindo emits > 0 na janela e o sinal multi (usersWithMultipleSockets + flag) no Redis.
+
+Work Log:
+
+- Spec novo e2e/admin-realtime-telemetry.spec.ts (describe.serial, 180s, provider isolado registrado via API no beforeAll com email único por run — zero interferência com os 6 providers do seed em fullyParallel):
+  - C1 — Emits > 0 na janela: provider abre o dashboard (socket real + join em user:{id} via RealtimeProvider), o spec dispara POST /emit (notification:new) pela bridge server→server (Bearer REALTIME_EMIT_TOKEN, helper e2e/realtime-emit.ts) e o admin logado faz poll em GET /api/admin/realtime/telemetry?minutes=60 até emits[notification:new] >= 1. O poll (150s, step 3s) cobre o atraso do persist do realtime (REALTIME_TELEMETRY_INTERVAL_MS, default 30s) e viradas de minuto.
+  - C2 — Sinal multi no Redis: o provider abre o dashboard em DUAS abas do mesmo context (2 sockets simultâneos dentro do limite PROVIDER=2 — o antigo NÃO é derrubado) e o admin faz poll até `multi` ter bucket com usersWithMultipleSockets >= 1 E `flag === true` (a flag realtime:telemetry:multi:flag, TTL ≈ 2× intervalo, self-clears quando a condição deixa de ser observada).
+  - Requisitos de config documentados no header: realtime 3003 com REDIS_URL (sem Redis a rota responde { ok:false, available:false }), REALTIME_MAX_SESSIONS_PER_ROLE='{"CLIENT":1,"PROVIDER":2,"ADMIN":5}' (mesmo do admin-session-conflict) e REALTIME_EMIT_TOKEN no .env.local.
+  - FLAKINESS tratada: emits asserido como >= 1 (nunca igualdade exata — outros specs em fullyParallel também emitem notification:new); o sinal multi casa por USER (usersWithMultipleSockets), imune aos demais specs.
+
+Resultado da varredura:
+
+- O spec prova ponta a ponta a cadeia emit → persist em Redis (buckets de minuto + flag) → leitura pela rota admin: o C1 garante que um emit real aparece nos emitCounters persistidos; o C2 reproduz o sintoma do socket órfão (HMR leak) de forma controlada e o vê refletido no dashboard de telemetria.
+- O poll tolerante (150s) absorve o intervalo de persistência sem flake de virada de minuto; o diagnóstico no timeout imprime o último snapshot (emits/multi/flag) para debugging.
+
+Stage Summary:
+
+- e2e/admin-realtime-telemetry.spec.ts: spec novo (C1 emits > 0 + C2 sinal multi + flag) com provider isolado via API.
+- Worklog: Task ID TELEMETRY-E2E + TOC.
+- Validação: prettier + eslint + typecheck + run do spec com dev 3000 + realtime 3003 no ar + code-reviewer.

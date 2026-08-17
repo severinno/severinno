@@ -669,6 +669,93 @@ export function computeSocketAgeMs(connectedAt: string | undefined, nowMs: numbe
 }
 
 // ---------------------------------------------------------------------------
+// Minute-window telemetry counters (TTL sweep + renew — /health)
+//
+// Shared sliding-window minute buckets used by the realtime service's /health
+// to expose per-minute rates over a 1h window. Pure (Map-based, no service
+// imports) so they're unit-tested in isolation. Two consumers:
+//   - renew telemetry (session:renew applied — cookie rotation flowing)
+//   - TTL-sweep telemetry (sockets closed with session_expired — stale-session
+//     attack / rotation-bug signal)
+// ---------------------------------------------------------------------------
+
+/** Chave do bucket de minuto (UTC "YYYY-MM-DDTHH:mm"). */
+export function minuteWindowKey(tsMs: number): string {
+  const d = new Date(tsMs)
+  const p = (n: number) => String(n).padStart(2, "0")
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}T${p(
+    d.getUTCHours(),
+  )}:${p(d.getUTCMinutes())}`
+}
+
+/**
+ * Incrementa o bucket do minuto atual de um contador de janela e poda os
+ * buckets mais antigos quando `maxBuckets` (1h = 60) é excedido. Poda pelo
+ * MÍNIMO da janela: Map preserva ORDEM DE INSERÇÃO (não lexicográfica) — os
+ * buckets só entram com Date.now() (cronológico) e set em chave EXISTENTE não
+ * move a ordem, então o primeiro a sair é sempre o mais antigo. Não
+ * re-inserir buckets fora de ordem aqui (ex.: replay histórico) ou a poda
+ * apagaria o bucket errado silenciosamente. `count <= 0` é ignorado (um
+ * renew atrasado que não estende nada / um sweep vazio não incrementa).
+ */
+export function bumpMinuteWindow(
+  counters: Map<string, number>,
+  count: number,
+  maxBuckets = 60,
+): void {
+  if (count <= 0) return
+  const key = minuteWindowKey(Date.now())
+  counters.set(key, (counters.get(key) ?? 0) + count)
+  if (counters.size > maxBuckets) {
+    const oldest = counters.keys().next().value
+    if (oldest !== undefined) counters.delete(oldest)
+  }
+}
+
+/**
+ * Parse do threshold de spike do TTL sweep (env
+ * `REALTIME_EXPIRED_SPIKE_THRESHOLD`): número de sockets encerrados com
+ * session_expired POR MINUTO que acende o flag de spike — sinal de ataque de
+ * sessões stale (lote de cookies vencendo juntos) ou bug de rotatividade
+ * (session:renew não propagando → expirações em massa). Missing/empty/NaN/'0'
+ * → `fallback` (default 50/min); negativo → clamp a 1 (qualquer expiração
+ * acende). Pura — o serviço chama com `process.env.REALTIME_EXPIRED_SPIKE_THRESHOLD`.
+ */
+export function parseExpiredSpikeThreshold(raw: string | undefined, fallback = 50): number {
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n === 0) return fallback
+  return Math.max(1, Math.floor(n))
+}
+
+/** Métricas agregadas do TTL sweep para o /health (janela de 1h em memória). */
+export interface ExpiredSweepMetrics {
+  /** Total de sockets encerrados com session_expired na janela (1h). */
+  lastHourTotal: number
+  /** Maior contagem em um único minuto da janela (base do spike). */
+  maxPerMinute: number
+  /** Spike ativo: maxPerMinute > threshold (sinal de ataque/bug de rotação). */
+  spike: boolean
+}
+
+/**
+ * Resumo da janela de expirações para o /health: soma total + pico por
+ * minuto + flag de spike (pico > threshold). Pure e AGREGADO — sem userIds,
+ * então o /health público (SEM auth) pode expor com segurança.
+ */
+export function computeExpiredSweepMetrics(
+  perMinute: Record<string, number>,
+  threshold: number,
+): ExpiredSweepMetrics {
+  let lastHourTotal = 0
+  let maxPerMinute = 0
+  for (const count of Object.values(perMinute)) {
+    lastHourTotal += count
+    if (count > maxPerMinute) maxPerMinute = count
+  }
+  return { lastHourTotal, maxPerMinute, spike: maxPerMinute > threshold }
+}
+
+// ---------------------------------------------------------------------------
 // Session metrics (aggregated — for /health)
 // ---------------------------------------------------------------------------
 

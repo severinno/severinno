@@ -24,6 +24,11 @@
  * Design notes:
  *   - Bucket value for emits is a DELTA (per persist cycle), so the hash
  *     accumulates the true per-minute rate even when the interval is < 60s.
+ *   - Bucket value for multi keeps the MAX of usersWithMultipleSockets per
+ *     minute (GET+compare+SET in persist): with interval < 60s several
+ *     persists land in the SAME minute bucket, and the last write would
+ *     overwrite the intra-minute peak — the dashboard timeline would lose the
+ *     symptom. The bucket therefore holds the PEAK snapshot of the minute.
  *   - Fail-open everywhere: without REDIS_URL or with Redis down, persist()
  *     logs (deduped) and resolves — telemetry never breaks the realtime.
  *   - Lazy ioredis (same pattern as booking-participant's lazy pg Pool):
@@ -88,6 +93,34 @@ export function computeEmitDeltas(
     if (delta > 0) deltas[event] = delta
   }
   return deltas
+}
+
+/**
+ * Decide se o bucket multi deve ser SOBRESCRITO no persist — mantém o MÁXIMO
+ * de usersWithMultipleSockets por minuto (GET+compare+SET).
+ *
+ * Com REALTIME_TELEMETRY_INTERVAL_MS < 60s, vários persists caem no MESMO
+ * bucket de minuto; sem a comparação, o último write sobrescreveria o pico
+ * intra-minuto e a timeline do dashboard perderia o sintoma (um pico de 3
+ * órfãos que cai a 0 antes do próximo ciclo sumiria do bucket).
+ *
+ * Regra:
+ *   - raw ausente (primeiro write do minuto) ou JSON corrompido → escreve
+ *     (não há base de comparação — trata como 0);
+ *   - novo valor > existente → escreve (pico maior);
+ *   - igual ou menor → mantém o bucket atual (o pico já está gravado).
+ *
+ * Puro — unit-testável sem Redis.
+ */
+export function shouldPersistMultiSnapshot(raw: unknown, newOrphans: number): boolean {
+  if (raw == null || typeof raw !== "string") return true
+  try {
+    const existing =
+      (JSON.parse(raw) as { usersWithMultipleSockets?: number }).usersWithMultipleSockets ?? 0
+    return newOrphans > existing
+  } catch {
+    return true // corrompido → trata como ausente (escreve por cima)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -333,18 +366,35 @@ export function createTelemetryPersister(opts: TelemetryPersisterOptions): Telem
         for (const [event, count] of Object.entries(emits)) lastCounts.set(event, count)
 
         const bucket = buildTelemetryBucket(Date.now())
+        const entries = Object.entries(deltas)
         const pipeline = client.multi()
-        for (const [event, delta] of Object.entries(deltas)) {
+        for (const [event, delta] of entries) {
           pipeline.hincrby(emitBucketKey(bucket), event, delta)
           pipeline.expire(emitBucketKey(bucket), TELEMETRY_BUCKET_TTL_S)
         }
-        pipeline.setex(multiBucketKey(bucket), TELEMETRY_BUCKET_TTL_S, JSON.stringify(sessions))
+        // GET do bucket multi atual ANTES de decidir o SETEX — o bucket guarda
+        // o MÁXIMO de usersWithMultipleSockets do minuto. Com intervalo < 60s,
+        // vários persists caem no MESMO bucket; sem a comparação o último write
+        // sobrescreveria o pico intra-minuto (a timeline perderia o sintoma).
+        // O get é o comando logo após os pares hincrby+expire (índice
+        // conhecido = entries.length * 2 — sem SCAN, custo fixo).
+        pipeline.get(multiBucketKey(bucket))
         // Sinal de alerta: TTL curto — a flag some sozinha quando a condição
         // deixa de ser observada (janela deslizante do "agora").
         if (sessions.usersWithMultipleSockets > 0) {
           pipeline.setex(MULTI_FLAG_KEY, flagTtlS, "1")
         }
-        await pipeline.exec()
+        const results = (await pipeline.exec()) as Array<[Error | null, unknown]>
+        const multiGetIndex = entries.length * 2
+        const raw = results[multiGetIndex]?.[1]
+        if (shouldPersistMultiSnapshot(raw, sessions.usersWithMultipleSockets)) {
+          // Write separado (só quando o bucket muda — pico maior ou primeiro
+          // write do minuto): o persist do minuto não reescreve snapshot
+          // igual/inferior, preservando o pico para a timeline.
+          const write = client.multi()
+          write.setex(multiBucketKey(bucket), TELEMETRY_BUCKET_TTL_S, JSON.stringify(sessions))
+          await write.exec()
+        }
         warned = false
       } catch (err) {
         // Log deduplicado: enquanto o Redis estiver fora, um aviso por ciclo

@@ -95,6 +95,8 @@ import {
   requireRole,
   getOptionalSession,
   resolveCookieMaxAgeSeconds,
+  parseCookieMaxAgePerRole,
+  resolveCookieMaxAgeForRole,
 } from "../auth"
 import { emitRealtime } from "../realtime-client"
 import { cacheGet, cacheSet } from "../redis"
@@ -159,6 +161,65 @@ describe("resolveCookieMaxAgeSeconds (env SESSION_COOKIE_MAX_AGE_SECONDS)", () =
     expect(resolveCookieMaxAgeSeconds("15")).toBe(60)
     expect(resolveCookieMaxAgeSeconds("-10")).toBe(60)
     expect(resolveCookieMaxAgeSeconds("1")).toBe(60)
+  })
+})
+
+describe("parseCookieMaxAgePerRole (env SESSION_COOKIE_MAX_AGE_PER_ROLE)", () => {
+  it("parses a valid JSON map of role → TTL seconds", () => {
+    expect(
+      parseCookieMaxAgePerRole('{"CLIENT":1296000,"PROVIDER":2592000,"ADMIN":604800}'),
+    ).toEqual({ CLIENT: 1296000, PROVIDER: 2592000, ADMIN: 604800 })
+  })
+
+  it("normalizes roles to UPPERCASE and tolerates quoted numbers", () => {
+    expect(parseCookieMaxAgePerRole('{"client":"1296000","provider":"2592000"}')).toEqual({
+      CLIENT: 1296000,
+      PROVIDER: 2592000,
+    })
+  })
+
+  it("drops invalid entries (non-numeric, <= 0, non-finite)", () => {
+    expect(
+      parseCookieMaxAgePerRole('{"CLIENT":1296000,"PROVIDER":"abc","ADMIN":0,"X":-5}'),
+    ).toEqual({ CLIENT: 1296000 })
+  })
+
+  it("clamps sub-minute values to 60s", () => {
+    expect(parseCookieMaxAgePerRole('{"CLIENT":15}')).toEqual({ CLIENT: 60 })
+  })
+
+  it("returns undefined for missing/empty/invalid JSON or {} (fallback ao global)", () => {
+    expect(parseCookieMaxAgePerRole(undefined)).toBeUndefined()
+    expect(parseCookieMaxAgePerRole("")).toBeUndefined()
+    expect(parseCookieMaxAgePerRole("not-json")).toBeUndefined()
+    expect(parseCookieMaxAgePerRole("{}")).toBeUndefined()
+  })
+})
+
+describe("resolveCookieMaxAgeForRole (override por role → fallback global)", () => {
+  const perRole = { CLIENT: 1296000, PROVIDER: 2592000, ADMIN: 604800 }
+  const fallback = 60 * 60 * 24 * 30
+
+  it("uses the role override when present (case-insensitive)", () => {
+    expect(resolveCookieMaxAgeForRole("CLIENT", perRole, fallback)).toBe(1296000)
+    expect(resolveCookieMaxAgeForRole("provider", perRole, fallback)).toBe(2592000)
+  })
+
+  it("falls back to the global TTL when the role has no override", () => {
+    expect(resolveCookieMaxAgeForRole("SUPPORT", perRole, fallback)).toBe(fallback)
+    expect(resolveCookieMaxAgeForRole(undefined, perRole, fallback)).toBe(fallback)
+  })
+
+  it("falls back when perRole is undefined (env ausente)", () => {
+    expect(resolveCookieMaxAgeForRole("CLIENT", undefined, fallback)).toBe(fallback)
+  })
+
+  it("ignores per-role overrides below 60s (fallback ao global)", () => {
+    expect(resolveCookieMaxAgeForRole("CLIENT", { CLIENT: 15 }, fallback)).toBe(fallback)
+  })
+
+  it("clamps the fallback to >= 60s (misconfig nunca quebra a sessão)", () => {
+    expect(resolveCookieMaxAgeForRole("SUPPORT", perRole, 15)).toBe(60)
   })
 })
 
@@ -656,5 +717,107 @@ describe("getOptionalSession", () => {
   it("returns null without throwing when cookie is invalid", async () => {
     cookieStore.set("severinno_session", { value: "bad.format.data" })
     expect(await getOptionalSession()).toBeNull()
+  })
+})
+
+// =========================================================================
+// TTLs por role (env estruturada SESSION_COOKIE_MAX_AGE_PER_ROLE)
+//
+// O módulo auth.ts lê COOKIE_MAX_AGE_PER_ROLE no BOOT (process.env), então a
+// integração usa o padrão do env.test.ts: vi.resetModules() + process.env
+// setado + import dinâmico — cada teste ganha uma instância FRESCA do módulo
+// com o env desejado (CLIENT 15d / PROVIDER 30d / ADMIN 7d). Os mocks do
+// arquivo (vi.mock hoisted) reaplicam no re-import; a instância dinâmica usa
+// os MESMOS cookieStore/mockCacheStore hoisted, então os dedupe por Map e a
+// rotação funcionam como nos describes estáticos. O import estático do topo
+// continua apontando para a instância ORIGINAL (env sem per-role → global
+// 30d) — os describes existentes não são afetados.
+// =========================================================================
+describe("TTL por role — createSession/getSession/getSessionExpiresAt (env estruturada)", () => {
+  const DAY = 24 * 60 * 60
+  const ORIG_ENV = { ...process.env }
+
+  beforeEach(() => {
+    vi.resetModules()
+    process.env = {
+      ...ORIG_ENV,
+      SESSION_COOKIE_MAX_AGE_PER_ROLE: JSON.stringify({
+        CLIENT: 15 * DAY, // 15d
+        PROVIDER: 30 * DAY, // 30d
+        ADMIN: 7 * DAY, // 7d
+      }),
+    }
+  })
+
+  afterEach(() => {
+    process.env = { ...ORIG_ENV }
+  })
+
+  it("createSession assina o expiresAt com o TTL da role (CLIENT 15d, PROVIDER 30d, ADMIN 7d)", async () => {
+    const mod = await import("../auth")
+    const nowSec = Math.floor(Date.now() / 1000)
+
+    const client = await mod.createSession("role-client-1", "CLIENT")
+    const provider = await mod.createSession("role-prov-1", "PROVIDER")
+    const admin = await mod.createSession("role-admin-1", "ADMIN")
+
+    // Deltas: ~15d / ~30d / ~7d (o expiresAt é agora + TTL da role).
+    expect(client.expiresAt! - nowSec).toBeGreaterThan(14 * DAY)
+    expect(client.expiresAt! - nowSec).toBeLessThanOrEqual(15 * DAY + 2)
+    expect(provider.expiresAt! - nowSec).toBeGreaterThan(29 * DAY)
+    expect(provider.expiresAt! - nowSec).toBeLessThanOrEqual(30 * DAY + 2)
+    expect(admin.expiresAt! - nowSec).toBeGreaterThan(6 * DAY)
+    expect(admin.expiresAt! - nowSec).toBeLessThanOrEqual(7 * DAY + 2)
+  })
+
+  it("rotação por role: CLIENT com 10d restantes NÃO rotaciona (TTL 15d → threshold 7.5d)", async () => {
+    const mod = await import("../auth")
+    // A instância DINÂMICA usa o mock fresh do realtime-client (o import
+    // estático do topo aponta para o mock ORIGINAL — não pode ser usado aqui).
+    const rt = await import("../realtime-client")
+    const nowSec = Math.floor(Date.now() / 1000)
+    cookieStore.set("severinno_session", {
+      value: signValidCookie("role-rot-1", "CLIENT", nowSec + 10 * DAY),
+    })
+    expect(await mod.getSession()).not.toBeNull()
+    // 10d > 7.5d (metade do TTL CLIENT 15d) → NENHUMA rotação disparada.
+    const renewCalls = vi.mocked(rt.emitRealtime).mock.calls.filter(([e]) => e === "session:renew")
+    expect(renewCalls).toHaveLength(0)
+  })
+
+  it("rotação por role: PROVIDER com 10d restantes rotaciona (TTL 30d → threshold 15d)", async () => {
+    const mod = await import("../auth")
+    const rt = await import("../realtime-client")
+    const nowSec = Math.floor(Date.now() / 1000)
+    cookieStore.set("severinno_session", {
+      value: signValidCookie("role-rot-2", "PROVIDER", nowSec + 10 * DAY),
+    })
+    expect(await mod.getSession()).not.toBeNull()
+    // 10d < 15d (metade do TTL PROVIDER 30d) → rotaciona com o refresh do
+    // TTL da role (30d), não do global.
+    await vi.waitFor(() => {
+      expect(rt.emitRealtime).toHaveBeenCalledWith("session:renew", {
+        userId: "role-rot-2",
+        expiresAt: expect.any(Number),
+      })
+    })
+    const payload = vi
+      .mocked(rt.emitRealtime)
+      .mock.calls.find(([e]) => e === "session:renew")?.[1] as { expiresAt: number }
+    expect(payload.expiresAt).toBeGreaterThan(nowSec + 25 * DAY)
+    expect(payload.expiresAt).toBeLessThanOrEqual(nowSec + 30 * DAY + 2)
+  })
+
+  it("getSessionExpiresAt espelha o refresh com o TTL da role (PROVIDER 10d → +30d)", async () => {
+    const mod = await import("../auth")
+    const nowSec = Math.floor(Date.now() / 1000)
+    cookieStore.set("severinno_session", {
+      value: signValidCookie("role-ssr-1", "PROVIDER", nowSec + 10 * DAY),
+    })
+    const value = await mod.getSessionExpiresAt()
+    expect(value).not.toBeNull()
+    // Espelho SSR: now + TTL da role (30d), sem reemitir cookie (RSC-safe).
+    expect(value!).toBeGreaterThan(nowSec + 25 * DAY)
+    expect(value!).toBeLessThanOrEqual(nowSec + 30 * DAY + 2)
   })
 })

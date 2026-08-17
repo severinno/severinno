@@ -220,12 +220,17 @@ curl -X POST http://localhost:3003/emit \
   dev/CI acelera o spec `e2e/realtime-ttl-sweep.spec.ts`, que deriva a
   espera dessa env. O motivo do kick fica no audit do `GET /sessions`
   (`reason: "session_expired"`).
-- **TTL do cookie do app configurável (`SESSION_COOKIE_MAX_AGE_SECONDS`).**
-  O app assina o cookie de sessão com esse TTL (default 30d, clamp ≥ `60`).
-  O realtime NÃO lê essa env — o sweep usa o `expiresAt` **embutido e
-  assinado** no cookie de cada socket, então alterar o TTL do app nunca
-  dessincroniza os dois lados (e o spec de TTL forja o cookie diretamente
-  com TTL curto, sem precisar encurtar o env do app).
+- **TTL do cookie do app configurável (`SESSION_COOKIE_MAX_AGE_SECONDS`) e
+  por role (`SESSION_COOKIE_MAX_AGE_PER_ROLE`).** O app assina o cookie de
+  sessão com o TTL global (default 30d, clamp ≥ `60`) ou — quando a env
+  estruturada está setada — o TTL POR ROLE (JSON de segundos, ex.:
+  `'{"CLIENT":1296000,"PROVIDER":2592000,"ADMIN":604800}'` para
+  15d/30d/7d; role sem override cai no global). A rotação deslizante também
+  é por role (metade do TTL efetivo da role). O realtime NÃO lê essas envs
+  — o sweep usa o `expiresAt` **embutido e assinado** no cookie de cada
+  socket, então variar o TTL por role nunca dessincroniza os dois lados (e
+  o spec de TTL forja o cookie diretamente com TTL curto, sem precisar
+  encurtar o env do app).
 - **Telemetria persistida no Redis (janela deslizante).** A cada
   `REALTIME_TELEMETRY_INTERVAL_MS` (default `30000`, clamp ≥ `1000`) o
   realtime grava em Redis (mesmo `REDIS_URL` do app) os `emitCounters` e o

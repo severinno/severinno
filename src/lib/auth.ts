@@ -15,6 +15,9 @@ const COOKIE_NAME = "severinno_session"
 /** Default do TTL do cookie de sessão: 30 dias. */
 const DEFAULT_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
 
+/** Clamp mínimo do TTL do cookie (1 minuto). */
+const MIN_COOKIE_MAX_AGE_SECONDS = 60
+
 /**
  * Resolve o TTL do cookie de sessão (segundos) a partir da env
  * `SESSION_COOKIE_MAX_AGE_SECONDS`. Guard pattern do repo (`Math.max(1,
@@ -34,11 +37,88 @@ export function resolveCookieMaxAgeSeconds(
   // Não-finito (ex.: "1e309" → Infinity quebraria o maxAge do cookie) ou
   // "0" (falsy — cookie sem TTL) → default 30d.
   if (!Number.isFinite(n) || n === 0) return DEFAULT_COOKIE_MAX_AGE_SECONDS
-  return Math.max(60, n)
+  return Math.max(MIN_COOKIE_MAX_AGE_SECONDS, n)
+}
+
+/**
+ * Parse do TTL do cookie POR ROLE (env estruturada `SESSION_COOKIE_MAX_AGE_PER_ROLE`,
+ * JSON de segundos — ex.: `{"CLIENT":1296000,"PROVIDER":2592000,"ADMIN":604800}`
+ * para 15d/30d/7d). Mesmo padrão do parseMaxSessionsPerRole do realtime
+ * (mini-services/realtime/security.ts): roles normalizadas UPPERCASE, entradas
+ * inválidas descartadas (não-finito/'0'/negativo), valores clampados a >= 60s;
+ * JSON inválido/vazio/{} → undefined (o caller cai no TTL global). Pura — o
+ * módulo chama no boot (COOKIE_MAX_AGE_PER_ROLE) e os unit tests exercitam
+ * diretamente com valores arbitrários.
+ */
+export function parseCookieMaxAgePerRole(
+  raw: string | undefined,
+): Record<string, number> | undefined {
+  if (!raw) return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return undefined
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return undefined
+  const out: Record<string, number> = {}
+  for (const [role, value] of Object.entries(parsed as Record<string, unknown>)) {
+    const n = typeof value === "number" ? value : Number(value)
+    if (!Number.isFinite(n) || n <= 0) continue
+    out[role.toUpperCase()] = Math.max(MIN_COOKIE_MAX_AGE_SECONDS, n)
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/**
+ * Resolve o TTL do cookie (segundos) para uma role: o override por role quando
+ * presente (case-insensitive), senão o fallback global (SESSION_COOKIE_MAX_AGE_SECONDS).
+ * Sempre >= 60s — uma misconfig nunca quebra a sessão. Pura.
+ *
+ * NOTA (semântica de overrides < 60s): o parser (parseCookieMaxAgePerRole)
+ * CLAMPA valores sub-minute para 60s, então um mapa vindo do env nunca
+ * carrega < 60; aqui, porém, um override < 60 construído à mão é tratado como
+ * AUSENTE (cai no fallback global) — divergência defensiva: quem setar um TTL
+ * menor que 1 minuto provavelmente errou, e o cookie global seguro vence.
+ */
+export function resolveCookieMaxAgeForRole(
+  role: string | undefined,
+  perRole: Record<string, number> | undefined,
+  fallback: number,
+): number {
+  if (perRole && role) {
+    const n = perRole[role.toUpperCase()]
+    if (typeof n === "number" && n >= MIN_COOKIE_MAX_AGE_SECONDS) return n
+  }
+  return Number.isFinite(fallback)
+    ? Math.max(MIN_COOKIE_MAX_AGE_SECONDS, fallback)
+    : DEFAULT_COOKIE_MAX_AGE_SECONDS
 }
 
 const COOKIE_MAX_AGE_SECONDS = resolveCookieMaxAgeSeconds()
-const ROTATION_THRESHOLD_SECONDS = COOKIE_MAX_AGE_SECONDS / 2 // metade do TTL
+// TTLs distintos por role (ex.: clientes 15d, providers 30d, admins 7d) via
+// env estruturada; role sem override (ou env inválida) cai no global acima.
+// O realtime NÃO lê estas envs — o sweep de TTL respeita o expiresAt EMBUTIDO
+// e assinado no cookie de cada socket, então variar o TTL por role nunca
+// dessincroniza os dois lados.
+const COOKIE_MAX_AGE_PER_ROLE = parseCookieMaxAgePerRole(
+  process.env.SESSION_COOKIE_MAX_AGE_PER_ROLE,
+)
+if (process.env.SESSION_COOKIE_MAX_AGE_PER_ROLE && !COOKIE_MAX_AGE_PER_ROLE) {
+  console.warn("[auth] ⚠️ SESSION_COOKIE_MAX_AGE_PER_ROLE inválido — usando o TTL global")
+}
+
+/** TTL efetivo do cookie para uma role (override por role → fallback global). */
+function cookieMaxAgeForRole(role: string | undefined): number {
+  return resolveCookieMaxAgeForRole(role, COOKIE_MAX_AGE_PER_ROLE, COOKIE_MAX_AGE_SECONDS)
+}
+
+/** Threshold de rotação do cookie para uma role — metade do TTL EFETIVO da
+ *  role (o cookie carrega a role, então o getSession sabe qual threshold usar;
+ *  um CLIENT com TTL 15d roda a 7.5d, um PROVIDER com 30d roda a 15d). */
+function rotationThresholdSeconds(role: string | undefined): number {
+  return cookieMaxAgeForRole(role) / 2
+}
 
 function getSecret(): string {
   const secret = process.env.SESSION_SECRET
@@ -63,7 +143,10 @@ export type SessionPayload = {
  * Create a signed session cookie and set it on the response.
  */
 export async function createSession(userId: string, role: SessionPayload["role"]) {
-  const expiresAt = Math.floor(Date.now() / 1000) + COOKIE_MAX_AGE_SECONDS
+  // TTL POR ROLE (override do env estruturado; sem override → global): o
+  // expiresAt assinado no cookie é o que o realtime respeita no sweep.
+  const maxAge = cookieMaxAgeForRole(role)
+  const expiresAt = Math.floor(Date.now() / 1000) + maxAge
   const payload = `${userId}.${role}.${expiresAt}`
   const signature = sign(payload)
   const value = `${payload}.${signature}`
@@ -74,7 +157,7 @@ export async function createSession(userId: string, role: SessionPayload["role"]
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: COOKIE_MAX_AGE_SECONDS,
+    maxAge,
   })
 
   return { userId, role, expiresAt }
@@ -147,11 +230,15 @@ export async function getSession(): Promise<SessionPayload | null> {
 
     const remaining = expiresAt - Math.floor(Date.now() / 1000)
     let effectiveExpiresAt = expiresAt
-    if (remaining < ROTATION_THRESHOLD_SECONDS) {
-      // Rotação do cookie (janela <15d): o novo expiresAt precisa chegar ao
-      // realtime — os sockets fixam expiresAt no HANDSHAKE, então sem isso o
-      // sweep de TTL fecharia a sessão reemitida VÁLIDA quando o expiry
-      // ORIGINAL passar. Best-effort, deduplicado, NUNCA bloqueia o request.
+    // Threshold de rotação POR ROLE (metade do TTL efetivo da role) — um
+    // cookie de CLIENT com TTL 15d roda a 7.5d, de ADMIN com 7d a 3.5d.
+    if (remaining < rotationThresholdSeconds(role)) {
+      // Rotação do cookie (janela = metade do TTL EFETIVO da role — 15d no
+      // default global 30d; menos para roles com TTL menor): o novo expiresAt
+      // precisa chegar ao realtime — os sockets fixam expiresAt no HANDSHAKE,
+      // então sem isso o sweep de TTL fecharia a sessão reemitida VÁLIDA
+      // quando o expiry ORIGINAL passar. Best-effort, deduplicado, NUNCA
+      // bloqueia o request.
       const renewed = await reissueSession(userId, role as SessionPayload["role"])
       effectiveExpiresAt = renewed.expiresAt
       void propagateSessionRenewal(userId, renewed.expiresAt)
@@ -194,11 +281,11 @@ export async function getSessionExpiresAt(): Promise<number | null> {
     if (parsed.expiresAt * 1000 < Date.now()) return null
 
     const remaining = parsed.expiresAt - Math.floor(Date.now() / 1000)
-    if (remaining < ROTATION_THRESHOLD_SECONDS) {
+    if (remaining < rotationThresholdSeconds(parsed.role)) {
       // Espelho da rotação: sem reemitir o cookie (RSC), o valor inicial já
-      // é o refresh de COOKIE_MAX_AGE — igual ao que o getSession devolveria
-      // ao reemitir na janela <15d.
-      return Math.floor(Date.now() / 1000) + COOKIE_MAX_AGE_SECONDS
+      // é o refresh do TTL DA ROLE — igual ao que o getSession devolveria ao
+      // reemitir na janela de rotação (o countdown SSR nunca salta).
+      return Math.floor(Date.now() / 1000) + cookieMaxAgeForRole(parsed.role)
     }
     return parsed.expiresAt
   } catch {

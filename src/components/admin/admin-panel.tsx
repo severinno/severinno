@@ -48,6 +48,7 @@ import {
   ShieldAlert,
   RefreshCcw,
   Radio,
+  RadioTower,
 } from "lucide-react"
 
 import { DashboardShell, type NavItem, type Breadcrumb } from "@/components/shared/dashboard-shell"
@@ -77,6 +78,7 @@ import { AdminPushAudit } from "./admin-push-audit"
 import { AdminWebhookAudit } from "./admin-webhook-audit"
 import { AdminRevokeInactive } from "./admin-revoke-inactive"
 import { AdminActiveSessions } from "./admin-active-sessions"
+import { AdminRealtimeTelemetry } from "./admin-realtime-telemetry"
 import { AdminGatewayDashboard } from "./admin-gateway-dashboard"
 import { AdminPgBouncer } from "./admin-pgbouncer"
 import { AdminGeoMetricsDashboard } from "./admin-geo-metrics-dashboard"
@@ -175,6 +177,11 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.sessions",
     label: "Sessões Ativas",
     icon: Radio,
+  },
+  {
+    view: "admin.realtime-telemetry",
+    label: "Telemetria Realtime",
+    icon: RadioTower,
   },
   {
     view: "admin.gateway",
@@ -330,6 +337,12 @@ const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs:
     subtitle:
       "Quem está online agora no realtime — usuário, perfil, joinedAt e motivo do último kick, com poll de 5s, filtro por perfil e busca por e-mail.",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Sessões Ativas" }],
+  },
+  "admin.realtime-telemetry": {
+    title: "Telemetria do Realtime",
+    subtitle:
+      "Emits por evento e o sinal de sockets órfãos (usuários com múltiplos sockets simultâneos) na janela selecionada, com poll de 15s e badge de alerta quando o flag está ativo.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Telemetria Realtime" }],
   },
   "admin.push": {
     title: "Notificações Push",
@@ -548,6 +561,8 @@ function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: stri
       return <AdminRevokeInactive />
     case "admin.sessions":
       return <AdminActiveSessions />
+    case "admin.realtime-telemetry":
+      return <AdminRealtimeTelemetry />
     case "admin.project-status":
       return <AdminProjectStatus />
     case "admin.gateway":
