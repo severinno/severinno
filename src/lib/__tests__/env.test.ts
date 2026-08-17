@@ -45,6 +45,57 @@ describe("env validation", () => {
     expect(_env.env!.REALTIME_URL).toBe("http://localhost:3003")
   })
 
+  it("deriva a REALTIME_URL default da REALTIME_PORT (isolation)", async () => {
+    process.env = {
+      ...ORIG_ENV,
+      NODE_ENV: "test",
+      NEXT_PUBLIC_APP_URL: "https://severinno.com.br",
+      SESSION_SECRET: "a".repeat(32),
+      DATABASE_URL: "postgresql://localhost:5432/test",
+      REDIS_URL: "redis://localhost:6379",
+      RABBITMQ_URL: "amqp://localhost:5672",
+      // Porta alternativa → a URL default do realtime deve segui-la.
+      REALTIME_PORT: "3199",
+    }
+
+    const _env = await import("../env")
+    expect(_env.env!.REALTIME_URL).toBe("http://localhost:3199")
+  })
+
+  it("REALTIME_PORT com typo NÃO derruba o app (fail-open → default 3003)", async () => {
+    process.env = {
+      ...ORIG_ENV,
+      NODE_ENV: "test",
+      NEXT_PUBLIC_APP_URL: "https://severinno.com.br",
+      SESSION_SECRET: "a".repeat(32),
+      DATABASE_URL: "postgresql://localhost:5432/test",
+      REDIS_URL: "redis://localhost:6379",
+      RABBITMQ_URL: "amqp://localhost:5672",
+      // Typo (não-numérico) — o guard parseRealtimePort degrada para 3003.
+      REALTIME_PORT: "oops",
+    }
+
+    const _env = await import("../env")
+    expect(_env.env!.REALTIME_URL).toBe("http://localhost:3003")
+  })
+
+  it("aceita REALTIME_PORT explícita e REALTIME_URL setada manualmente", async () => {
+    process.env = {
+      ...ORIG_ENV,
+      NODE_ENV: "test",
+      NEXT_PUBLIC_APP_URL: "https://severinno.com.br",
+      SESSION_SECRET: "a".repeat(32),
+      DATABASE_URL: "postgresql://localhost:5432/test",
+      REDIS_URL: "redis://localhost:6379",
+      RABBITMQ_URL: "amqp://localhost:5672",
+      REALTIME_PORT: "3199",
+      REALTIME_URL: "http://realtime:4000",
+    }
+
+    const _env = await import("../env")
+    expect(_env.env!.REALTIME_URL).toBe("http://realtime:4000")
+  })
+
   it("rejects short SESSION_SECRET returning undefined env", async () => {
     process.env = {
       ...ORIG_ENV,

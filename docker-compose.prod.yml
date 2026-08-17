@@ -522,6 +522,10 @@ services:
       # Override POR ROLE (JSON): {"CLIENT":1,"PROVIDER":2,"ADMIN":5}.
       # Roles sem override usam o default global acima; JSON invalido → default.
       REALTIME_MAX_SESSIONS_PER_ROLE: ${REALTIME_MAX_SESSIONS_PER_ROLE:-}
+      # Override POR PLANO/TENANT (JSON): {"FREE":1,"PREMIUM":5}. O plano do
+      # usuario e lido do banco no join (coluna User.plan, fail-open) — planos
+      # sem override usam o per-role acima; JSON invalido → per-role.
+      REALTIME_MAX_SESSIONS_PER_PLAN: ${REALTIME_MAX_SESSIONS_PER_PLAN:-}
       # Intervalo do sweep de TTL do cookie (ms; default 60000; clamp >= 1000).
       # Baixo em dev/CI acelera o spec e2e/realtime-ttl-sweep.spec.ts.
       REALTIME_TTL_SWEEP_MS: ${REALTIME_TTL_SWEEP_MS:-}

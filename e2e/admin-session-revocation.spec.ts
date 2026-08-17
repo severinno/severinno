@@ -1,7 +1,6 @@
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test"
 import type { WebSocket as PlaywrightWebSocket } from "playwright"
+import { emitNotificationToRoom, realtimePort } from "./realtime-emit"
 
 // =========================================================================
 // Revogação pelo Admin — E2E (Realtime)
@@ -186,7 +185,7 @@ async function expectActiveSocketClosed(
   label: string,
 ): Promise<void> {
   const realtimeWs = wsList.filter(
-    (w) => w.url.includes(":3003") || w.url.includes("XTransformPort"),
+    (w) => w.url.includes(`:${realtimePort()}`) || w.url.includes("XTransformPort"),
   )
   if (realtimeWs.length === 0) {
     console.log(`ℹ️ [${label}] Nenhum websocket realtime observado — assert de close pulado`)
@@ -222,55 +221,6 @@ async function ensureProviderActive(adminPage: Page, providerId: string) {
   })
   if (!res.ok()) console.log(`⚠️ ensureProviderActive: PATCH active:true falhou (${res.status()})`)
   return res.ok()
-}
-
-/**
- * Lê o REALTIME_EMIT_TOKEN (env ou .env.local) — usado pelo emit direto
- * na sala do C1. O backend usa o MESMO token no POST /emit (src/lib/
- * realtime-client.ts); aqui o spec reproduz o caminho server→server.
- */
-function readEmitToken(): string {
-  const fromEnv = process.env.REALTIME_EMIT_TOKEN
-  if (fromEnv) return fromEnv
-  try {
-    const content = readFileSync(join(process.cwd(), ".env.local"), "utf8")
-    const match = content.match(/^REALTIME_EMIT_TOKEN=(.+)$/m)
-    if (match) return match[1].replace(/^"|"$/g, "")
-  } catch {
-    /* sem .env.local — CI injeta via env */
-  }
-  throw new Error("REALTIME_EMIT_TOKEN não encontrado (env ou .env.local)")
-}
-
-/**
- * Emite notification:new DIRETO na sala user:{providerId} via POST /emit
- * do realtime (Bearer REALTIME_EMIT_TOKEN). Independe do provider estar
- * ativo — se a sala tiver socket vivo, o dashboard mostra o toast.
- */
-async function emitNotificationToRoom(providerId: string): Promise<boolean> {
-  const token = readEmitToken()
-  const res = await fetch("http://localhost:3003/emit", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      event: "notification:new",
-      data: {
-        toId: providerId,
-        notification: {
-          id: `emit-${Date.now()}`,
-          type: "BOOKING_CREATED",
-          title: "📅 Novo agendamento: E2E",
-          body: "E2E admin revocation test",
-          read: false,
-          createdAt: new Date().toISOString(),
-        },
-      },
-    }),
-  })
-  return res.ok
 }
 
 /** Resolve provider por email (login + /api/auth/me) e serviço por título. */

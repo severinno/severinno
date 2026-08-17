@@ -56,10 +56,15 @@ function daysAgoIso(days: number): string {
  */
 export async function revokeInactiveSessionsBatch(
   users: Array<{ id: string }>,
-  opts: { dryRun: boolean; revoke: (userId: string) => Promise<void> },
-): Promise<{ revoked: number; failed: number }> {
+  opts: { dryRun: boolean; revoke: (userId: string) => Promise<boolean> },
+): Promise<{ revoked: number; failed: number; confirmedIds: string[] }> {
   let revoked = 0
   let failed = 0
+  // IDs cuja entrega foi CONFIRMADA no bridge /emit — o caller só grava o
+  // once-only marker (revokedByCronAt) para ESTES. Entregas falhas ficam
+  // sem marker → a condição (revokedByCronAt: null) as re-vasculha no
+  // próximo run: o socket vivo delas não é esquecido.
+  const confirmedIds: string[] = []
   const queue = [...users]
 
   const worker = async () => {
@@ -70,8 +75,20 @@ export async function revokeInactiveSessionsBatch(
         continue
       }
       try {
-        await opts.revoke(user.id)
-        revoked++
+        // revokeUserSessions retorna Promise<boolean> = ENTREGA CONFIRMADA no
+        // bridge /emit (false quando o realtime falha/timeout/não-2xx — não
+        // lança). Contar false como revogado seria a mesma classe de bug que
+        // o fix do auth.ts: marcar como feito sem entrega confirmada — com o
+        // realtime fora, o marker revokedByCronAt seria gravado mesmo sem a
+        // entrega, impedindo a re-varredura dos sockets que continuam vivos.
+        // Entrega não-confirmada entra em `failed` e NÃO é marcada.
+        const delivered = await opts.revoke(user.id)
+        if (delivered) {
+          revoked++
+          confirmedIds.push(user.id)
+        } else {
+          failed++
+        }
       } catch {
         failed++
       }
@@ -80,7 +97,7 @@ export async function revokeInactiveSessionsBatch(
 
   const workers = Array.from({ length: Math.min(CONCURRENCY, Math.max(1, users.length)) }, worker)
   await Promise.all(workers)
-  return { revoked, failed }
+  return { revoked, failed, confirmedIds }
 }
 
 export type RevokeScanResult =
@@ -181,15 +198,18 @@ export async function runRevokeInactiveScan(opts: {
       revokedTotal += result.revoked
       failedTotal += result.failed
 
-      // Once-only marker: grava revokedByCronAt nos revogados para a condição
-      // de troca de senha não os pegar de novo amanhã (passwordChangedAt não
-      // muda no login → re-revogação diária). Marcar todos da página é seguro
-      // porque o marcador só é consultado junto da condição de senha; quem
-      // entrou por inativo/deletado não é afetado, e a próxima troca de senha
-      // o limpa (rotas change/reset-password). Dry-run não grava nada.
-      if (!dryRun) {
+      // Once-only marker: grava revokedByCronAt SOMENTE nos IDs com entrega
+      // CONFIRMADA (result.confirmedIds) — a condição de troca de senha exige
+      // revokedByCronAt: null, então marcar é o que impede a re-revogação
+      // diária (passwordChangedAt não muda no login). Entregas falhas ficam
+      // sem marker → re-vasculhadas no próximo run: o socket vivo delas não
+      // pode ser esquecido por um realtime que estava fora no momento do
+      // emit. Quem entrou por inativo/deletado não consulta o marker (não é
+      // afetado), e a próxima troca de senha o limpa (rotas
+      // change/reset-password). Dry-run não grava nada.
+      if (!dryRun && result.confirmedIds.length > 0) {
         await db.user.updateMany({
-          where: { id: { in: page.map((u) => u.id) } },
+          where: { id: { in: result.confirmedIds } },
           data: { revokedByCronAt: new Date() },
         })
       }

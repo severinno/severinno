@@ -21,6 +21,10 @@ export { MetricCard, KpiCard } from "./admin-metric-card"
 export type { MetricCardProps, KpiCardProps } from "./admin-metric-card"
 export { default as OnlineUsersKpiCard } from "./admin-online-users-card"
 export type { OnlineUsersSessionsResponse } from "./admin-online-users-card"
+export { default as SessionConflictAlert } from "./admin-session-conflict-alert"
+export type { SessionConflictAlertData } from "./admin-session-conflict-alert"
+export { default as SessionLimitsCard } from "./admin-session-limits-card"
+export type { SessionLimitsInfo } from "./admin-session-limits-card"
 
 // ── Dashboard layout ────────────────────────────────────────────────────
 export { DashboardHeader } from "./admin-dashboard-header"

@@ -7,7 +7,7 @@ vi.mock("../logger", () => ({
 }))
 
 // Use vi.hoisted to avoid hoisting issues with vi.mock()
-const { mockDb, cookieStore } = vi.hoisted(() => ({
+const { mockDb, cookieStore, mockCacheStore } = vi.hoisted(() => ({
   mockDb: {
     user: {
       findUnique: vi.fn(),
@@ -15,11 +15,51 @@ const { mockDb, cookieStore } = vi.hoisted(() => ({
     },
   },
   cookieStore: new Map<string, { value: string }>(),
+  // Store em memória da camada de cache — mock determinístico do ../redis.
+  // O ioredis global do vitest.setup NÃO é stateful (get sempre resolve
+  // null), então um cacheSet+cacheGet reais nunca veriam a chave: o cacheGet
+  // real tem a regra "Redis respondeu null → não cai na memória", e o tier
+  // mockado fica "disponível mas vazio" — a chave escrita pelo cacheSet
+  // ficaria invisível (falso negativo no dedupe cross-instância). O mock
+  // replica o contrato (JSON + TTL) para os testes do dedupe multi-réplica
+  // serem determinísticos.
+  mockCacheStore: new Map<string, { value: string; expiresAt: number | null }>(),
 }))
 
 vi.mock("../db", () => ({
   default: mockDb,
   db: mockDb,
+}))
+
+vi.mock("../redis", () => ({
+  cacheGet: async <T>(key: string): Promise<T | null> => {
+    const item = mockCacheStore.get(key)
+    if (!item) return null
+    if (item.expiresAt !== null && item.expiresAt < Date.now()) {
+      mockCacheStore.delete(key)
+      return null
+    }
+    try {
+      return JSON.parse(item.value) as T
+    } catch {
+      mockCacheStore.delete(key)
+      return null
+    }
+  },
+  cacheSet: async (key: string, value: unknown, ttl?: number): Promise<void> => {
+    const expiresAt = ttl !== undefined && ttl > 0 ? Date.now() + ttl * 1000 : null
+    mockCacheStore.set(key, { value: JSON.stringify(value), expiresAt })
+  },
+  cacheInvalidate: async (pattern: string): Promise<void> => {
+    if (pattern.endsWith("*")) {
+      const prefix = pattern.slice(0, -1)
+      for (const key of mockCacheStore.keys()) {
+        if (key.startsWith(prefix)) mockCacheStore.delete(key)
+      }
+    } else {
+      mockCacheStore.delete(pattern)
+    }
+  },
 }))
 
 vi.mock("next/headers", () => ({
@@ -37,8 +77,11 @@ vi.mock("next/headers", () => ({
 
 // destroySession now emits a realtime revocation (logout → disconnect
 // sockets). Mock the bridge so unit tests never hit the network.
+// DEFAULT: entrega CONFIRMADA (true) — o dedupe de Map/chave Redis só se
+// comporta como produção quando o emit resolve ok; testes de falha usam
+// mockResolvedValueOnce(false) para exercitar o rollback.
 vi.mock("../realtime-client", () => ({
-  emitRealtime: vi.fn(),
+  emitRealtime: vi.fn().mockResolvedValue(true),
 }))
 
 import {
@@ -52,6 +95,7 @@ import {
   resolveCookieMaxAgeSeconds,
 } from "../auth"
 import { emitRealtime } from "../realtime-client"
+import { cacheGet, cacheSet } from "../redis"
 
 const VALID_USER = {
   id: "user-1",
@@ -78,6 +122,7 @@ function signValidCookie(userId: string, role: string, expiresAtSec = 0): string
 beforeEach(() => {
   vi.clearAllMocks()
   cookieStore.clear()
+  mockCacheStore.clear()
 })
 
 afterEach(() => {
@@ -325,6 +370,80 @@ describe("getSession — rotação de cookie (<15d) → session:renew", () => {
         expiresAt: expect.any(Number),
       })
     })
+  })
+})
+
+describe("session:renew — dedupe multi-réplica (chave Redis realtime:renewed:{userId})", () => {
+  const TEN_DAYS = 10 * 24 * 60 * 60
+
+  it("entrega CONFIRMADA reivindica a chave Redis (TTL 1h) — dedupe cross-instância", async () => {
+    const nowSec = Math.floor(Date.now() / 1000)
+    const userId = "multi-renew-ok"
+    cookieStore.set("severinno_session", {
+      value: signValidCookie(userId, "CLIENT", nowSec + TEN_DAYS),
+    })
+    vi.mocked(emitRealtime).mockResolvedValue(true)
+    expect(await getSession()).not.toBeNull()
+    await vi.waitFor(() => {
+      expect(emitRealtime).toHaveBeenCalledWith("session:renew", {
+        userId,
+        expiresAt: expect.any(Number),
+      })
+    })
+    // Só após a entrega confirmada a chave compartilhada é reivindicada — uma
+    // 2ª réplica (Map vazio) veria a chave e pularia o emit.
+    await vi.waitFor(async () => {
+      const claimed = await cacheGet<number>(`realtime:renewed:${userId}`)
+      expect(claimed).not.toBeNull()
+    })
+  })
+
+  it("entrega FALHA NÃO reivindica a chave — outra réplica retentaria (não perde renew)", async () => {
+    const nowSec = Math.floor(Date.now() / 1000)
+    const userId = "multi-renew-fail"
+    cookieStore.set("severinno_session", {
+      value: signValidCookie(userId, "CLIENT", nowSec + TEN_DAYS),
+    })
+    vi.mocked(emitRealtime).mockResolvedValueOnce(false)
+    expect(await getSession()).not.toBeNull()
+    await vi.waitFor(() => {
+      expect(emitRealtime).toHaveBeenCalledWith("session:renew", {
+        userId,
+        expiresAt: expect.any(Number),
+      })
+    })
+    // A chave NÃO foi reivindicada (emit falhou): a próxima réplica — ou o
+    // próximo request, já que o Map in-process foi rollbackado — retentaria.
+    // Sem este fix, a chave seria setada mesmo com o emit falho e silenciaria
+    // TODAS as réplicas por 1h (o renew se perderia até o sweep matar a
+    // sessão reemitida válida).
+    expect(await cacheGet<number>(`realtime:renewed:${userId}`)).toBeNull()
+  })
+
+  it("réplica com Map vazio vê a chave Redis reivindicada por OUTRA réplica e NÃO reemite", async () => {
+    const nowSec = Math.floor(Date.now() / 1000)
+    const userId = "multi-renew-b"
+    // Simula a réplica A que JÁ entregou o renew: a chave compartilhada está
+    // reivindicada (TTL 1h). A réplica B (Map de memória vazio — outro
+    // processo) consulta o Redis e PULA o emit — o renew é idempotente, o
+    // primeiro que entrega vence. Sem perda: os sockets já foram estendidos.
+    await cacheSet(`realtime:renewed:${userId}`, nowSec, 3600)
+    cookieStore.set("severinno_session", {
+      value: signValidCookie(userId, "CLIENT", nowSec + TEN_DAYS),
+    })
+    expect(await getSession()).not.toBeNull()
+    const renewCalls = vi.mocked(emitRealtime).mock.calls.filter(([e]) => e === "session:renew")
+    expect(renewCalls).toHaveLength(0)
+  })
+
+  it("TTL-expiry revoke: chave realtime:revoked:expired:{userId} reivindicada por OUTRA réplica → não reemite", async () => {
+    const userId = "multi-revoke-b"
+    // Réplica A já revogou (chave reivindicada) — a réplica B pula o emit.
+    await cacheSet(`realtime:revoked:expired:${userId}`, Date.now(), 3600)
+    cookieStore.set("severinno_session", { value: signValidCookie(userId, "CLIENT", 0) })
+    expect(await getSession()).toBeNull()
+    const revokeCalls = vi.mocked(emitRealtime).mock.calls.filter(([e]) => e === "session:revoke")
+    expect(revokeCalls).toHaveLength(0)
   })
 })
 

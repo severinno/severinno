@@ -47,6 +47,7 @@ import {
   Shield,
   ShieldAlert,
   RefreshCcw,
+  Radio,
 } from "lucide-react"
 
 import { DashboardShell, type NavItem, type Breadcrumb } from "@/components/shared/dashboard-shell"
@@ -75,6 +76,7 @@ import { AdminProjectStatus } from "./admin-project-status"
 import { AdminPushAudit } from "./admin-push-audit"
 import { AdminWebhookAudit } from "./admin-webhook-audit"
 import { AdminRevokeInactive } from "./admin-revoke-inactive"
+import { AdminActiveSessions } from "./admin-active-sessions"
 import { AdminGatewayDashboard } from "./admin-gateway-dashboard"
 import { AdminPgBouncer } from "./admin-pgbouncer"
 import { AdminGeoMetricsDashboard } from "./admin-geo-metrics-dashboard"
@@ -168,6 +170,11 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.revoke-inactive",
     label: "Revogação Inativa",
     icon: RefreshCcw,
+  },
+  {
+    view: "admin.sessions",
+    label: "Sessões Ativas",
+    icon: Radio,
   },
   {
     view: "admin.gateway",
@@ -317,6 +324,12 @@ const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs:
     subtitle:
       "Audit trail das execuções do cron de revogação e disparo manual com dry-run por padrão.",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Revogação Inativa" }],
+  },
+  "admin.sessions": {
+    title: "Sessões ativas em tempo real",
+    subtitle:
+      "Quem está online agora no realtime — usuário, perfil, joinedAt e motivo do último kick, com poll de 5s, filtro por perfil e busca por e-mail.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Sessões Ativas" }],
   },
   "admin.push": {
     title: "Notificações Push",
@@ -533,6 +546,8 @@ function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: stri
       return <AdminWebhookAudit />
     case "admin.revoke-inactive":
       return <AdminRevokeInactive />
+    case "admin.sessions":
+      return <AdminActiveSessions />
     case "admin.project-status":
       return <AdminProjectStatus />
     case "admin.gateway":

@@ -1,8 +1,7 @@
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
 import { createHmac } from "node:crypto"
 import { io, type Socket } from "socket.io-client"
 import { test, expect } from "@playwright/test"
+import { readEnv, realtimePort } from "./realtime-emit"
 
 // =========================================================================
 // TTL Sweep — E2E (Realtime)
@@ -66,21 +65,6 @@ let EMIT_TOKEN = ""
 // Helpers
 // =========================================================================
 
-/** Lê uma env var do processo ou do .env.local (mesmo padrão do
- *  readEmitToken no admin-session-revocation.spec.ts). */
-function readEnv(name: string): string | undefined {
-  const fromEnv = process.env[name]
-  if (fromEnv) return fromEnv
-  try {
-    const content = readFileSync(join(process.cwd(), ".env.local"), "utf8")
-    const match = content.match(new RegExp(`^${name}=(.+)$`, "m"))
-    if (match) return match[1].replace(/^"|"$/g, "")
-  } catch {
-    /* sem .env.local — CI injeta via env */
-  }
-  return undefined
-}
-
 /** Assina um cookie de sessão com o MESMO HMAC do app (src/lib/auth.ts). */
 function signSessionCookie(userId: string, role: string, expiresAtSec: number): string {
   const payload = `${userId}.${role}.${expiresAtSec}`
@@ -110,7 +94,7 @@ async function fetchSessions(): Promise<{
   sessions: Array<{ userId: string }>
   kicks: Record<string, { reason: string; count: number }>
 }> {
-  const res = await fetch("http://localhost:3003/sessions", {
+  const res = await fetch(`http://localhost:${realtimePort()}/sessions`, {
     headers: { Authorization: `Bearer ${EMIT_TOKEN}` },
   })
   expect(res.ok, "GET /sessions deve aceitar o Bearer REALTIME_EMIT_TOKEN").toBeTruthy()
@@ -158,7 +142,7 @@ test.describe.serial("TTL Sweep — sessão com TTL curto expira e o socket morr
     let revokedReason: string | null = null
     let disconnected = false
 
-    const socket: Socket = io("http://localhost:3003", {
+    const socket: Socket = io(`http://localhost:${realtimePort()}`, {
       transports: ["websocket"],
       reconnection: false,
       timeout: 5000,

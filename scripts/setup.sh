@@ -324,6 +324,9 @@ else
     
     if echo "$DETECTED_COMPOSE" | grep -q "dev"; then
         # docker-compose.dev.yml defaults
+        # Porta do realtime (fallback 3003). O heredoc é QUOTED ('ENVEOF' →
+        # sem expansão de variáveis), então o placeholder é substituído via
+        # sed após a escrita — seguro e explícito.
         cat > .env << 'ENVEOF'
 # Severinno — Variáveis de ambiente (gerado automaticamente pelo setup.sh)
 DATABASE_URL="postgresql://severinno:severinno@localhost:5432/severinno"
@@ -334,8 +337,9 @@ S3_SECRET_KEY=severinno_minio_dev
 S3_BUCKET=severinno
 S3_ENDPOINT=http://localhost:9000
 NEXT_PUBLIC_APP_URL=http://localhost:3000
-NEXT_PUBLIC_WS_URL=ws://localhost:3003
+NEXT_PUBLIC_WS_URL=ws://localhost:__RT_PORT__
 ENVEOF
+        sed -i "s|__RT_PORT__|${REALTIME_PORT:-3003}|" .env
     else
         # docker-compose.yml defaults
         cat > .env << 'ENVEOF'

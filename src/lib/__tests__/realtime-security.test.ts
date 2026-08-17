@@ -24,6 +24,7 @@ import {
   selectSocketsToKickForSessionLimit,
   selectExpiredSessionSockets,
   renewSessionSockets,
+  countRenewedSockets,
   extractEmitEventInfo,
   summarizeActiveSessions,
   computeSocketAgeMs,
@@ -32,8 +33,11 @@ import {
   KICK_AUDIT_MAX,
   parseMaxSessionsPerRole,
   resolveMaxSessionsPerRole,
+  parseMaxSessionsPerPlan,
+  resolveMaxSessionsForUser,
   parseSweepIntervalMs,
   parseTelemetryIntervalMs,
+  parseRealtimePort,
   toPublicRecentEmits,
   type KickAuditMap,
   type BookingParticipantChecker,
@@ -101,6 +105,106 @@ describe("verifySessionCookie", () => {
   it("returns null when the secret is not configured (fail closed)", () => {
     const cookie = signSession("user-1", "PROVIDER", future)
     expect(verifySessionCookie(`${SESSION_COOKIE_NAME}=${cookie}`, undefined)).toBeNull()
+  })
+})
+
+describe("parseRealtimePort (env REALTIME_PORT)", () => {
+  it("returns the configured port when valid (1–65535)", () => {
+    expect(parseRealtimePort("3199")).toBe(3199)
+    expect(parseRealtimePort("3003")).toBe(3003)
+    expect(parseRealtimePort("8080", 9090)).toBe(8080)
+  })
+
+  it("uses the fallback (3003) for missing/empty/whitespace", () => {
+    expect(parseRealtimePort(undefined)).toBe(3003)
+    expect(parseRealtimePort("")).toBe(3003)
+    expect(parseRealtimePort("   ")).toBe(3003)
+    expect(parseRealtimePort(undefined, 9090)).toBe(9090)
+  })
+
+  it("uses the fallback for non-numeric values (NaN)", () => {
+    expect(parseRealtimePort("abc")).toBe(3003)
+    expect(parseRealtimePort("3003x")).toBe(3003)
+    expect(parseRealtimePort("Infinity")).toBe(3003) // não-inteiro
+    // NOTA: "1e3" (Number = 1000) É um inteiro válido no range → 1000 é o
+    // comportamento correto do parse (não é caso de fallback).
+    expect(parseRealtimePort("1e3")).toBe(1000)
+  })
+
+  it("uses the fallback for '0' (falsy) — porta 0 não é válida para listen", () => {
+    expect(parseRealtimePort("0")).toBe(3003)
+    expect(parseRealtimePort("-5")).toBe(3003)
+  })
+
+  it("uses the fallback fora do range válido (65535+)", () => {
+    expect(parseRealtimePort("70000")).toBe(3003)
+    expect(parseRealtimePort("65536")).toBe(3003)
+    expect(parseRealtimePort("65535")).toBe(65535) // limite superior ok
+    expect(parseRealtimePort("1")).toBe(1) // limite inferior ok
+  })
+
+  it("fractional ports fall back (listen exige inteiro)", () => {
+    expect(parseRealtimePort("3003.5")).toBe(3003)
+  })
+})
+
+describe("parseMaxSessionsPerPlan (env REALTIME_MAX_SESSIONS_PER_PLAN)", () => {
+  it('parseia JSON `{"FREE":1,"PREMIUM":5}` (mesmo formato do per-role)', () => {
+    expect(parseMaxSessionsPerPlan('{"FREE":1,"PREMIUM":5}')).toEqual({ FREE: 1, PREMIUM: 5 })
+  })
+
+  it("tolerates quoted numbers e normaliza chaves para UPPERCASE", () => {
+    expect(parseMaxSessionsPerPlan('{"free":"1","Premium":2}')).toEqual({ FREE: 1, PREMIUM: 2 })
+  })
+
+  it("undefined/JSON inválido → undefined (fallback ao per-role)", () => {
+    expect(parseMaxSessionsPerPlan(undefined)).toBeUndefined()
+    expect(parseMaxSessionsPerPlan("not-json")).toBeUndefined()
+    expect(parseMaxSessionsPerPlan("[]")).toBeUndefined()
+  })
+
+  it("entradas inválidas são dropadas; tudo inválido → undefined", () => {
+    expect(parseMaxSessionsPerPlan('{"FREE":0,"PREMIUM":"x"}')).toBeUndefined()
+    expect(parseMaxSessionsPerPlan('{"FREE":1,"PREMIUM":0}')).toEqual({ FREE: 1 })
+  })
+})
+
+describe("resolveMaxSessionsForUser (plano > role > default)", () => {
+  const PER_ROLE = { CLIENT: 1, PROVIDER: 2, ADMIN: 5 }
+  const PER_PLAN = { FREE: 1, PREMIUM: 5 }
+  const FALLBACK = 1
+
+  it("o plano com override VENCE o per-role (PREMIUM=5 > PROVIDER=2)", () => {
+    expect(resolveMaxSessionsForUser("PREMIUM", PER_PLAN, "PROVIDER", PER_ROLE, FALLBACK)).toBe(5)
+    expect(resolveMaxSessionsForUser("premium", PER_PLAN, "PROVIDER", PER_ROLE, FALLBACK)).toBe(5)
+  })
+
+  it("plano SEM override no env cai no per-role atual (fallback preservado)", () => {
+    // FREE tem override (1), mas um plano FORA do env (ex.: "ENTERPRISE") não
+    // rebaixa ninguém — usa o per-role (PROVIDER=2).
+    expect(resolveMaxSessionsForUser("ENTERPRISE", PER_PLAN, "PROVIDER", PER_ROLE, FALLBACK)).toBe(
+      2,
+    )
+  })
+
+  it("plano sem override cai no default quando o role também não tem override", () => {
+    expect(resolveMaxSessionsForUser("ENTERPRISE", PER_PLAN, "GUEST", undefined, FALLBACK)).toBe(1)
+  })
+
+  it("perPlan ausente (env não configurado) → comportamento per-role intacto", () => {
+    expect(resolveMaxSessionsForUser("FREE", undefined, "PROVIDER", PER_ROLE, FALLBACK)).toBe(2)
+    expect(resolveMaxSessionsForUser("PREMIUM", undefined, "CLIENT", PER_ROLE, FALLBACK)).toBe(1)
+  })
+
+  it("plano ausente → fallback ao per-role; plano com override (FREE=1) → override", () => {
+    // undefined (sem plano no banco) → per-role PROVIDER=2.
+    expect(resolveMaxSessionsForUser(undefined, PER_PLAN, "PROVIDER", PER_ROLE, FALLBACK)).toBe(2)
+    // FREE TEM override no env (FREE=1) → 1 (plano vence — NÃO é fallback).
+    expect(resolveMaxSessionsForUser("FREE", PER_PLAN, "PROVIDER", PER_ROLE, FALLBACK)).toBe(1)
+  })
+
+  it("nunca desabilita o limite (fallback não-finito → 1)", () => {
+    expect(resolveMaxSessionsForUser("X", PER_PLAN, "GUEST", undefined, NaN)).toBe(1)
   })
 })
 
@@ -288,6 +392,49 @@ describe("renewSessionSockets (rotação de cookie → session:renew)", () => {
     }
     expect(renewSessionSockets([socketLike], "u1", 2000)).toBe(1)
     expect(socketLike.data.session?.expiresAt).toBe(2000)
+  })
+
+  it("marca `renewed: true` no socket efetivamente estendido (telemetria do /health)", () => {
+    const sockets = [sock({ userId: "u1", role: "CLIENT", expiresAt: 1000 }, "a")]
+    renewSessionSockets(sockets, "u1", 2000)
+    expect(sockets[0].data.session?.renewed).toBe(true)
+  })
+
+  it("NÃO marca `renewed` quando o renew é no-op (extend-only: antes/igual)", () => {
+    // expiry ANTES do armazenado → no-op, flag não deve ser setada.
+    const before = sock({ userId: "u1", role: "CLIENT", expiresAt: 3000 }, "a")
+    renewSessionSockets([before], "u1", 2000)
+    expect(before.data.session?.renewed).toBeUndefined()
+    // expiry IGUAL → no-op, flag não deve ser setada.
+    const equal = sock({ userId: "u1", role: "CLIENT", expiresAt: 2000 }, "b")
+    renewSessionSockets([equal], "u1", 2000)
+    expect(equal.data.session?.renewed).toBeUndefined()
+    // Outro usuário → não tocado (flag não deve ser setada).
+    const other = sock({ userId: "u2", role: "CLIENT", expiresAt: 1000 }, "c")
+    renewSessionSockets([other], "u1", 2000)
+    expect(other.data.session?.renewed).toBeUndefined()
+  })
+})
+
+describe("countRenewedSockets (sockets com expiry estendido — /health)", () => {
+  const sock = (session: VerifiedSession | null) => ({ id: "s", data: { session } })
+
+  it("conta sockets com session.renewed === true", () => {
+    const sockets = [
+      sock({ userId: "u1", role: "CLIENT", expiresAt: 2000, renewed: true }),
+      sock({ userId: "u2", role: "PROVIDER", expiresAt: 1000 }),
+      sock({ userId: "u3", role: "CLIENT", expiresAt: 2000, renewed: true }),
+    ]
+    expect(countRenewedSockets(sockets)).toBe(2)
+  })
+
+  it("ignora sockets sem sessão verificada e sem flag", () => {
+    const sockets = [sock(null), sock({ userId: "u4", role: "CLIENT", expiresAt: 1000 })]
+    expect(countRenewedSockets(sockets)).toBe(0)
+  })
+
+  it("lista vazia → 0", () => {
+    expect(countRenewedSockets([])).toBe(0)
   })
 })
 

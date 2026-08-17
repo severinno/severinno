@@ -59,6 +59,17 @@ Convenções:
 - [WORKLOG-TOC](#worklog-toc) — Índice (TOC) no topo do worklog.md listando todos os Task IDs com âncora e linha de resumo, para na…
 - [CACHE-PATTERNS-GUARD](#cache-patterns-guard) — Adicionar um guard check-*.mjs que valida a lista CACHE_PATTERNS do seed contra os prefixes reais d…
 - [DEV-DB-DRIFT-MIGRATIONS](#dev-db-drift-migrations) — Aplicar as demais migrations custom pendentes ao banco dev (XX_add_postgis GIST indexes, mv_provide…
+- [KICK-AUDIT-REDIS](#kick-audit-redis) — Persistir o kick audit do realtime no Redis (realtime:kick-audit, janela deslizante 7d) em vez de Map em…
+- [SESSION-CONFLICT-ALERT](#session-conflict-alert) — Badge de conflito de sessão na view de detalhes do provider + alerta global no topo do Admin…
+- [SESSION-CONFLICT-E2E](#session-conflict-e2e) — Spec E2E do indicador de conflito: dashboard do mesmo provider em 2 abas → badge âmbar "2 sessões" na UI admin via refresh manual + motivo do último kick (session_limit) no tooltip.
+- [REALTIME-PORT-ENV](#realtime-port-env) — Parametrizar o PORT do realtime via env (REALTIME_PORT com fallback 3003): o compose já repassava PORT: ${REALTIME_PORT:-3003}, mas o index.ts tinha const PORT = 3003 hardcoded (parametrizacao morta). parseRealtimePort no security.ts + derivacao nos clientes (realtime-client/env/use-realtime/rotas admin/health) + e2e realtimePort() + composes/.env.example/README.
+- [SESSION-LIMITS-ADMIN](#session-limits-admin) — Refletir o limite de sessoes POR ROLE no painel admin: kick audit com max (mesmo valor do payload session:limit) no tooltip do OnlineSessionsCell + card de status SessionLimitsCard no dashboard com a config atual (default + perRole do GET /sessions).
+- [REALTIME-ROLE-LIMIT-E2E](#realtime-role-limit-e2e) — Spec E2E novo que valida o limite por role do realtime de ponta a ponta: PROVIDER=2 mantem 2 de 3 abas (3a derruba a mais antiga) e CLIENT segue limite 1 (2a aba derruba a 1a) — provider E client isolados registrados via API (emails unicos por run).
+- [SESSION-LIMIT-CLIENT-MAX](#session-limit-client-max) — Cobrir o payload max do session:limit no client: onSessionLimited captura o limite POR ROLE aplicado e expoe lastSessionLimit no hook; RealtimeProvider mostra toast 'Sua sessao foi encerrada em outro dispositivo' com 'Limite de N sessoes simultaneas por perfil'; 5 testes unitarios do hook (guards de degradacao).
+- [SESSION-LIMIT-BY-PLAN](#session-limit-by-plan) — Limite de sessoes POR PLANO/TENANT com fallback ao per-role: User.plan (default FREE) + migration + REALTIME_MAX_SESSIONS_PER_PLAN; realtime le o plano no join (user-plan.ts fail-open) e resolve plano > role > default; admin reflete perPlan; E2E PREMIUM=5 vs FREE per-role 2; fix port.ts (env.ts parava de puxar node:crypto pro Edge).
+- [REALTIME-RENEW-SMOKE](#realtime-renew-smoke) — Smoke E2E do session:renew (rotacao de cookie): forja cookie com TTL curto (15s), o app REEMITE via GET /api/auth/me (getSession reissue em <15d) e propaga session:renew ao realtime; o socket renovado SOBREVIVE ao TTL sweep enquanto o controle (sem renew) cai com session_expired — diferencial de dois providers isolados registrados via API.
+- [RT-HEALTH-RENEWS](#rt-health-renews) — Estender a telemetria do /health do realtime: contadores de session:renew APLICADOS por minuto (janela deslizante 1h em memoria, buckets UTC) + socketsWithExtendedExpiry (flag renewed setada pelo renewSessionSockets EXTEND-ONLY) — ops monitora se a propagacao da rotacao de cookie esta fluindo; testes unitarios do flag + countRenewedSockets.
+- [RT-RENEW-DEDUPE-MULTI](#rt-renew-dedupe-multi) — Investigar o caso multi-replica do dedupe de renew (chave Redis realtime:renewed:{userId} TTL 1h): happy path seguro (renew idempotente EXTEND-ONLY, primeira replica entrega e as demais pulam), MAS bug de ordering — chave reivindicada ANTES do emit com emitRealtime engolindo falhas silenciava TODAS as replicas por 1h apos um emit falho. Fix: emitRealtime retorna res.ok (boolean) e a chave so e reivindicada apos entrega CONFIRMADA + rollback do Map in-process em falha (renew E revoke-expired); realtime sem adapter Redis documentado (cada replica ve so os proprios sockets).
 
 ---
 
@@ -2504,3 +2515,318 @@ Stage Summary:
 - **Aplicação**: 6 arquivos via prisma db execute; fix de ordem de índice embutido na XX (DROP antes de CREATE — não depende mais da ordem manual).
 - **Validação**: search_vector backfill 9/9, busca da app ok, GIST index ok (Bitmap Scan), MV com 6 providers.
 - **Docs**: worklog Task ID DEV-DB-DRIFT-MIGRATIONS.
+
+---
+
+Task ID: KICK-AUDIT-REDIS
+<a id="kick-audit-redis"></a>
+Agent: buffy (ops/realtime)
+Task: Persistir o kick audit do realtime no Redis (em vez de Map em memória) para sobreviver a restart do serviço e permitir histórico por usuário no painel admin — seguindo o padrão do cron de revogação (pool serializado + cooldown).
+
+Work Log:
+
+- PROBLEMA: o kick audit (por que os sockets de um usuário foram derrubados: session_limit / revoke / session_expired) vivia num Map em memória (security.ts recordKickAudit/snapshotKickAudit + index.ts). Um restart do realtime zerava o histórico; o painel admin só via o ÚLTIMO kick por usuário, sem série temporal.
+- SOLUÇÃO: novo módulo mini-services/realtime/redis-kick-audit.ts — persister com:
+  - Chave única `realtime:kick-audit` (STRING JSON, TTL janela deslizante 7d, sem SCAN) mapeando userId → { count, entries[] } com entries bounded (KICK_HISTORY_MAX=20) e usuários capped (KICK_USERS_MAX=500, eviction do mais antigo por ordem de inserção).
+  - Escrita em LOTE com COOLDOWN (debounce flush a cada REALTIME_KICK_AUDIT_FLUSH_MS, default 5s, clamp >= 1s — mesmo guard `Math.max(1, Number(env) || default)` do repo) em vez de um RMW por kick.
+  - POOL de 1: flush serializado (o cron de revogação usa pool 5; aqui o RMW é sobre UMA chave, então 1 é o pool correto) — flushs concorrentes são coalesced.
+  - FAIL-OPEN: sem REDIS_URL ou Redis fora → record() mantém o pending em memória (espelho do antigo Map) e snapshot() funde Redis + pending; um kick ou um GET /sessions nunca quebra por falha de Redis.
+  - Loader INJETADO (duck-typed, zero import de ioredis no módulo) — o index.ts reusa o createRedisLoader() da telemetria; testes unitários passam fakes.
+- WIRING (mini-services/realtime/index.ts): os 4 call sites de recordKickAudit (session_limit no enforceSessionLimit, session_expired no TTL sweep, revoke no handleSessionRevoke e revoke-orphans) agora chamam kickAudit.record(userId, reason, socketId, at); os 2 snapshot (GET /sessions e GET /health/detailed) chamam `await kickAudit.snapshot()` (assíncrono, com history).
+- ADMIN (src/app/api/admin/realtime/sessions/route.ts + admin-users.tsx + admin-providers.tsx): tipo RealtimeKickInfo estendido com `history[]` (reason/at/socketId, oldest → newest); o tooltip do OnlineSessionsCell (espelho H4 nas duas views) agora lista os últimos kicks além do motivo atual — o admin vê a série (ex.: session_limit às 14h, revoke às 15h), não só o último.
+- TESTES: src/lib/**tests**/realtime-kick-audit.test.ts (padrão realtime-telemetry.test.ts, fake client sem ioredis): helpers puros (append merge/bounded/eviction, snapshot último=current, parse sanitize/corrompido), flush grava setex com TTL 7d, snapshot funde Redis+pending, cooldown com fake timers (nada antes do intervalo, um setex coalesced com 2 kicks), pool de 1 (3 flushs concorrentes → 1 write), fail-open (loadClient null/rejeita, setex rejeita com retry do pending, get rejeita), no-op com userId vazio.
+- FIX de default: o flushIntervalMs do persister tinha bug quando a option era omitida (caía para 1s em vez do default 5s) — corrigido com default honesto + clamp >= 1s.
+- DECISÃO (padrão do cron): a janela deslizante de 7d + bounded por usuário mantém o Redis pequeno e a leitura O(1) (uma chave, sem SCAN) — suficiente para o painel admin e auditoria pós-incidente.
+
+Resultado da varredura:
+
+- Kick audit persistido no Redis (sobrevive a restart), histórico por usuário exposto no admin, 16 testes unitários verdes, fail-open em todos os caminhos de Redis.
+
+Stage Summary:
+
+- **Persistência**: realtime:kick-audit (STRING, TTL 7d) com pool de 1 + cooldown 5s + fail-open (pending em memória cobre Redis fora).
+- **Admin**: RealtimeKickInfo.history[] + tooltip do OnlineSessionsCell lista os últimos kicks (users e providers).
+- **Testes**: realtime-kick-audit.test.ts (helpers + persister + cooldown/pool/fail-open), padrão da telemetria.
+- **Docs**: worklog Task ID KICK-AUDIT-REDIS (TOC sincronizado).
+
+---
+
+Task ID: SESSION-CONFLICT-ALERT
+<a id="session-conflict-alert"></a>
+Agent: buffy (ops/realtime/admin)
+Task: Adicionar badge de conflito de sessão na view de detalhes do provider (ProviderProfileModal) e alerta global no topo do AdminDashboard quando houver qualquer usuário com >1 socket simultâneo no realtime.
+
+Work Log:
+
+- MOTIVAÇÃO: o indicador de conflito de sessão (>1 socket simultâneo — órfão de HMR / stale / multi-tab) existia só na coluna "Online" das tabelas admin (OnlineSessionsCell). O admin precisava do problema visível: (1) NA view de detalhes do provider (ao abrir o perfil para revogar/desativar) e (2) GLOBALMENTE na primeira tela do dashboard.
+- NOVO COMPONENTE src/components/admin/admin-session-conflict-alert.tsx: banner global (Alert âmbar) que renderiza quando usersWithMultipleSockets > 0 — contagem de usuários em conflito + total de sockets + CTA "Ver usuários" (onNavigate("admin.users")). Degradação graciosa: sessionsData undefined / ok:false / 0 conflitos → renderiza NADA (dashboard nunca quebra). Exportado via _shared.ts (padrão OnlineUsersKpiCard).
+- WIRING AdminDashboard: nova query de sessões com a MESMA queryKey compartilhada ["admin","realtime","sessions"] (staleTime 15s, refetchInterval 30s — cache reutilizado com as tabelas admin, zero fetch extra) e <SessionConflictAlert> no topo da view.
+- BADGE ProviderProfileModal (admin-only): o modal agora lê useAuthStore.user.role — só ADMIN dispara a query de sessões (enabled: isAdmin && open && !!providerId, mesma key compartilhada). provider.id É o userId (a rota /api/providers/[id] busca db.user por id), então casa direto com sessions[userId]. Badge âmbar "N sessões" + tooltip no header (ao lado do Verificado) quando o provider tem >1 socket. Clientes/visitantes nunca disparam a query (gate isAdmin).
+- TESTES: (1) admin-session-conflict-alert.test.tsx (novo, 7 testes): nada sem dados / ok:false / 0 conflitos; banner com contagem singular+plural; CTA navega admin.users; sem onNavigate → sem botão. (2) provider-profile-modal.test.tsx (4 testes novos no bloco "session conflict badge"): não-admin não vê badge mesmo com sockets; admin vê com 3 sockets; 1 socket → sem badge; ok:false → sem badge. Mock de useQuery brancha por queryKey (provider vs admin sessions).
+- DECISÃO: o badge/alert são 100% client-side sobre a resposta existente do GET /api/admin/realtime/sessions (sem mudança de API). O AdminDashboard testa com o mock de useQuery retornando o mesmo objeto para as duas queries — o alert degrada (usersWithMultipleSockets undefined → nada), mantendo o teste existente verde.
+
+Resultado da varredura:
+
+- Conflito de sessão visível em 2 novos pontos (detalhe do provider + topo do dashboard), 11 testes novos/estendidos, sem mudança de API.
+
+Stage Summary:
+
+- **Dashboard**: SessionConflictAlert global no topo (query key compartilhada, degrada gracioso).
+- **Modal provider**: badge "N sessões" admin-only (gate useAuthStore + enabled).
+- **Testes**: 7 (alert) + 4 (modal badge) = 11 novos.
+- **Docs**: worklog Task ID SESSION-CONFLICT-ALERT (TOC sincronizado).
+
+---
+
+Task ID: SESSION-CONFLICT-E2E
+<a id="session-conflict-e2e"></a>
+Agent: buffy (realtime/admin/e2e)
+Task: Spec E2E do indicador de conflito de sessão (badge âmbar "2 sessões" no admin via refresh manual + session_limit no tooltip) + alinhamento do realtime dev ao limite por role documentado (PROVIDER=2) + adaptação do realtime-session-limit.spec.ts ao novo limite.
+
+Work Log:
+
+- MOTIVAÇÃO: o badge de conflito (>1 socket simultâneo) e o tooltip de kick existiam na UI admin (OnlineSessionsCell / SESSION-CONFLICT-ALERT), mas só com unit tests. Faltava a prova NO BROWSER: 2 abas do mesmo provider → badge âmbar "2 sessões" via refresh manual; 3ª aba → tooltip com o motivo do último kick (session_limit).
+- DRIFT DESCOBERTO (probe realtime-probe.mjs): o realtime dev rodando aplicava max:1 para PROVIDER (2º socket derrubava o 1º na hora — badge "2 sessões" impossível), enquanto o repo documenta o limite por role no compose e nas notas do admin-session-revocation ("limite de sockets por PROVIDER no realtime é 2"). Alinhado o .env.local com REALTIME_MAX_SESSIONS_PER_ROLE={"CLIENT":1,"PROVIDER":2,"ADMIN":5} e reiniciado o realtime → probe 2 confirmou: 2 sockets coexistindo + 3º derruba o mais antigo com session:limit max:2.
+- BUG REAL CORRIGIDO de passagem: mini-services/realtime/index.ts declarava telemetryLoadClient DUAS vezes (linhas ~329 e ~530) — o realtime nem subia após o restart ("has already been declared"). Removida a declaração duplicada (o loader é memoizado e compartilhado — a seção de telemetria só consome).
+- NOVO SPEC e2e/admin-session-conflict.spec.ts: provider ISOLADO registrado via API no beforeAll (email único por run — os 6 do seed já pertencem a outros specs de realtime; com limite PROVIDER=2 um terceiro spec no mesmo provider derrubaria os sockets deles). Fases: admin na view Usuários → aba A + aba B (2 sockets coexistem) → refresh manual ("Atualizar status online") → badge âmbar "2 sessões" na linha → aba C (3 > 2 derruba o mais antigo) → refresh manual → badge segue "2 sessões" + hover no badge → tooltip "Último kick: limite de sessões (2ª aba derrubou a 1ª)" + sanidade de close do socket A.
+- ADAPTAÇÃO e2e/realtime-session-limit.spec.ts ao PROVIDER=2: o spec assumia limite 1 (2ª aba derrubava a 1ª) e quebraria com o novo limite. Reescrito para o fluxo real: abas A e B coexistem (dentro do limite), aba C derruba a MAIS ANTIGA (A) com session_limit; toasts nas abas vivas (B/C), nenhum na A. FOOTGUN do header atualizado para "REQUISITO DE CONFIG" (PROVIDER=2 ativo no dev).
+
+Resultado da varredura:
+
+- Indicador de conflito validado no browser (badge + tooltip), realtime dev alinhado à config documentada, spec de limite adaptado e bug de boot do realtime corrigido.
+
+Stage Summary:
+
+- **Config**: .env.local com REALTIME_MAX_SESSIONS_PER_ROLE (PROVIDER=2) + realtime reiniciado (probe confirma max:2).
+- **Bugfix**: duplicata telemetryLoadClient removida (realtime voltou a subir).
+- **E2E novo**: admin-session-conflict.spec.ts (badge "2 sessões" + session_limit no tooltip, provider isolado via register).
+- **Adaptação**: realtime-session-limit.spec.ts → fluxo 3 abas (limite 2).
+- **Docs**: worklog Task ID SESSION-CONFLICT-E2E (TOC sincronizado).
+
+---
+
+Task ID: REALTIME-PORT-ENV
+<a id="realtime-port-env"></a>
+Agent: buffy (realtime/infra)
+Task: Parametrizar o PORT do realtime mini-service via env (REALTIME_PORT com fallback 3003) de ponta a ponta.
+
+Work Log:
+
+- DRIFT DESCOBERTO: o docker-compose.yml JÁ repassava `PORT: ${REALTIME_PORT:-3003}` ao container realtime, mas o index.ts tinha `const PORT = 3003` hardcoded — a parametrização do compose era MORTA (o serviço sempre ouvia em 3003). Smoke de boot em porta alternativa (ex.: 3199) era impossível e testes de isolamento (múltiplas instâncias no mesmo host) ficavam inviáveis.
+- FIX SERVIDOR: `parseRealtimePort` em mini-services/realtime/security.ts (padrão do parseSweepIntervalMs: NaN/não-inteiro/'0'/fora do range 1–65535 → fallback; uma porta inválida NUNCA derruba o listen) + index.ts `const PORT = parseRealtimePort(process.env.REALTIME_PORT ?? process.env.PORT)` (aceita REALTIME_PORT primeiro, depois PORT — compatível com o contrato do compose; fallback 3003). Header do index.ts atualizado (XTransformPort=<port>).
+- CLIENTES DERIVAM A MESMA PORTA (isolation reflete sem tocar em código): src/lib/realtime-client.ts (REALTIME_URL default de REALTIME_PORT), src/lib/env.ts (REALTIME_PORT no schema + REALTIME_URL default derivado), src/hooks/use-realtime.ts (NEXT_PUBLIC_REALTIME_PORT no XTransformPort do gateway), rotas admin src/app/api/admin/realtime/sessions/route.ts + revoke-orphans/route.ts, e src/app/api/health/detailed/route.ts (healthcheck em Docker: http://realtime:${REALTIME_PORT}).
+- E2E: e2e/realtime-emit.ts ganhou `realtimePort()` (readEnv REALTIME_PORT ?? "3003") e os 5 specs que filtravam websockets/URLs com :3003 hardcoded (admin-session-revocation, admin-session-conflict, realtime-session-limit, session-revocation, realtime-ttl-sweep) agora usam o helper — rodar o realtime em porta alternativa não quebra os specs.
+- COMPOSES + DOCS: docker-compose.dev.yml (ports + REALTIME_PORT env), docker-compose.yml (REALTIME_PORT + PORT mantido para compatibilidade), .env.example (REALTIME_PORT=3003), README (linha da porta + seção "Porta alternativa" com smoke boot).
+- TESTES: parseRealtimePort (6 casos — valid/invalid/range/fracionário) no realtime-security.test.ts + env.test.ts (REALTIME_URL default derivada da REALTIME_PORT e REALTIME_URL manual sobrescrevendo).
+
+Resultado da varredura:
+
+- Porta do realtime 100% configurável via env com fallback 3003, sem nenhum 3003 funcional hardcoded no código (restam só EXPOSE do Dockerfile, comentários e o default documentado).
+
+Stage Summary:
+
+- **Servidor**: parseRealtimePort + PORT via REALTIME_PORT/PORT (fallback 3003).
+- **Clientes**: realtime-client, env, use-realtime, rotas admin + health/detailed derivam a porta.
+- **E2E**: realtimePort() no realtime-emit + 5 specs sem :3003 hardcoded.
+- **Infra/docs**: composes dev/prod, .env.example, README com smoke de boot alternativo.
+- **Validação**: typecheck + vitest + eslint/prettier + guards + smoke real com REALTIME_PORT=3199.
+
+---
+
+Task ID: SESSION-LIMITS-ADMIN
+<a id="session-limits-admin"></a>
+Agent: buffy (realtime/admin)
+Task: Refletir o limite de sessões POR ROLE no painel admin — exibir o `max` aplicado por usuário no tooltip do kick (o mesmo valor do payload session:limit) e a config atual de limites por role num card de status no dashboard admin.
+
+Work Log:
+
+- GAP: o payload `session:limit` emitido ao socket derrubado JÁ carregava `max` (limite por role aplicado), mas o kick AUDIT (Redis, realtime:kick-audit) NÃO persistia esse valor — o tooltip do admin mostrava o motivo (session_limit) sem o limite aplicado, e o texto do conflito dizia "limite do realtime é 1" hardcoded (errado com PROVIDER=2).
+- KICK AUDIT COM MAX: mini-services/realtime/redis-kick-audit.ts — StoredKickEntry ganha `max?: number` (só session_limit carrega; revoke/session_expired → undefined), KickAuditSnapshotEntry + history ganham max, `record(userId, reason, socketId, at, max?)` persiste com guard (número >= 1 → floor; inválido → undefined), `parseStoredKickAudit` sanitiza max (válido mantido, inválido DERRUBADO — nunca aceita dado corrompido), `storedToKickSnapshot` carrega max do último entry + history.
+- EMISSOR: mini-services/realtime/index.ts — `enforceSessionLimit` agora passa `maxSessions` ao `kickAudit.record` (o MESMO valor do payload session:limit — fonte única). NOVO `SESSION_LIMITS_CONFIG` (default global + CLIENT/PROVIDER/ADMIN resolvidos via resolveMaxSessionsPerRole — a MESMA resolução do join) exposto no GET /sessions (Bearer).
+- ROTA ADMIN: src/app/api/admin/realtime/sessions/route.ts — RealtimeKickInfo ganha `max` (+ history), NOVO tipo RealtimeLimitsConfig, response passa `limits` do realtime (ausente → undefined, degradação graciosa).
+- UI (tipos IDÊNTICOS nos dois admins — H4): admin-users.tsx + admin-providers.tsx — tipo kicks ganha max + limits; OnlineSessionsCell mostra "Limite aplicado: N socket(s) simultâneo(s)" quando session_limit com max; texto do CONFLITO dinâmico por role ("Conflito: 2 sessões ativas — o limite de PROVIDER é 2 sockets por usuário") em vez do default hardcoded 1, com cláusula de derrubada SÓ acima do limite (count > roleLimit) — honesto: com PROVIDER=2 e 2 sockets nada é derrubado até a 3ª aba.
+- CARD DE STATUS: NOVO src/components/admin/admin-session-limits-card.tsx — card no AdminDashboard com default + max por role (Clientes/Prestadores/Administradores), degrada para NADA quando realtime fora (available=false) ou limits ausente; exportado em _shared.ts; AdminDashboard renderiza com limits={sessionsData?.limits} available={sessionsData?.ok === true}; SessionConflictAlertData ganha limits (optional).
+- TESTES: realtime-kick-audit (max no snapshot/history, record com max, record sem max → undefined, parse sanitize max incl. floor de fracionário e derrubada de inválido), sessions-route (limits pass-through, sem limits → undefined, KICK com max), NOVO admin-session-limits-card.test.tsx (undefined/false → nada; render default + roles; fallback ao default sem override).
+- REVIEWER (2 nits de texto + 1 estilo aplicados): (1) plural do conflito usava `roleLimit === 1` contra o valor cru — sem limits o texto viraria "1 sockets"; corrigido para `(roleLimit ?? 1) === 1`; (2) cláusula "a mais antiga será derrubada" aparecia mesmo dentro do limite (PROVIDER=2 com 2 sockets) — gate por count > roleLimit com texto alternativo honesto; (3) admin-session-limits-card.test.tsx importava vi.mock sem `vi` explícito — alinhado ao padrão dos demais testes admin.
+
+Resultado da varredura:
+
+- O admin enxerga o limite REAL por role (card de status no dashboard + tooltip do kick com "Limite aplicado: N") e o texto do conflito reflete a config atual em vez do default hardcoded — sem conhecer as envs do realtime (o SESSION_LIMITS_CONFIG é a fonte única de resolução).
+
+Stage Summary:
+
+- **Servidor**: kick audit com max + SESSION_LIMITS_CONFIG no GET /sessions.
+- **API admin**: RealtimeKickInfo.max + RealtimeLimitsConfig pass-through.
+- **UI**: OnlineSessionsCell (limite aplicado + conflito dinâmico por role) em ambos os admins + SessionLimitsCard no dashboard.
+- **Testes**: kick-audit (max), sessions-route (limits), SessionLimitsCard (novo) — 44 testes verdes.
+- **Validação**: typecheck + vitest + eslint/prettier + guards todos 0.
+
+---
+
+Task ID: REALTIME-ROLE-LIMIT-E2E
+<a id="realtime-role-limit-e2e"></a>
+Agent: buffy (realtime/e2e)
+Task: Spec E2E novo validando o limite de sessoes POR ROLE do realtime de ponta a ponta — com REALTIME_MAX_SESSIONS_PER_ROLE ativo (minimo {"PROVIDER":2}), 3 abas do mesmo provider mantem 2 (a 3a derruba a mais antiga) e CLIENT segue o limite 1 (a 2a aba derruba a 1a).
+
+Work Log:
+
+- MOTIVAÇÃO: o limite por role do realtime (REALTIME_MAX_SESSIONS_PER_ROLE) so tinha cobertura no spec realtime-session-limit (PROVIDER=2, 3 abas) usando users do seed. Faltava: (a) um spec dedicado ao COMPORTAMENTO DIFERENCIAL por role (PROVIDER=2 co-existe com 2 abas vs CLIENT=1 derrubando na 2a aba) e (b) a prova de que CLIENT sem override por role cai no default global 1.
+- ISOLAMENTO COMPLETO: provider E client REGISTRADOS via API no beforeAll (emails unicos por run — mesmo padrao do admin-session-conflict.spec.ts; CLIENT nao exige cpfCnpj/whatsapp/city no registerSchema). Nenhum user do seed usado — specs de realtime rodam fullyParallel e casam sockets por userId (users compartilhados se derrubariam entre specs).
+- NOVO SPEC e2e/realtime-role-limit.spec.ts (2 testes seriais):
+  - PROVIDER=2: abas A e B COEXISTEM (socket A permanece aberto — assert diferencial que distingue limite 2 de limite 1); aba C derruba a MAIS ANTIGA (A, session_limit — waitForWsClose); sockets B e C permanecem abertos.
+  - CLIENT=1: abas A e B do mesmo client no painel (qualquer pagina autenticada conecta — RealtimeProvider e role-agnostico); a 2a aba derruba a 1a (default global 1); socket B permanece.
+  - Helpers: trackRealtimeSockets + waitForRealtimeSocket (poll pelo ws realtime sem depender do bell) + waitForWsClose — mesmo padrao do realtime-session-limit.spec.ts.
+- Header do realtime-session-limit.spec.ts atualizado com a linha do realtime-role-limit no mapa de isolamento.
+- REVIEWER: aprovou; nit unico aplicado — seção REQUISITO DE CONFIG agora documenta que o minimo e {"PROVIDER":2} e que a assercao CLIENT=1 passa nas DUAS configs (CLIENT sem override cai no default global 1).
+
+Resultado da varredura:
+
+- Limite por role validado no browser para os DOIS perfis (PROVIDER=2 mantem 2 de 3 abas; CLIENT=1 derruba na 2a aba) com users isolados — prova o comportamento diferencial sem colisao com os demais specs de realtime.
+
+Stage Summary:
+
+- **E2E novo**: realtime-role-limit.spec.ts (2 testes seriais: provider 3 abas + client 2 abas).
+- **Isolamento**: provider + client registrados via API (emails unicos por run).
+- **Docs**: worklog Task ID REALTIME-ROLE-LIMIT-E2E (TOC sincronizado) + mapa de isolamento atualizado.
+- **Validacao**: prettier/eslint/typecheck 0 + guards 0 + spec rodado 2/2 verde (42s) com dev 3000 + realtime 3003 no ar.
+
+---
+
+Task ID: SESSION-LIMIT-CLIENT-MAX
+<a id="session-limit-client-max"></a>
+Agent: buffy (realtime/hooks)
+Task: Cobrir o payload `max` do `session:limit` no client — o handler `onSessionLimited` em use-realtime.ts captura o limite POR ROLE aplicado no kick e expõe `lastSessionLimit` no hook; o RealtimeProvider mostra um toast 'Sua sessão foi encerrada em outro dispositivo' com 'Limite de N sessões simultâneas por perfil'; painel admin já expõe o motivo do último kick (verificado).
+
+Work Log:
+
+- MOTIVAÇÃO: o servidor emite `session:limit` com o `max` (limite por role aplicado, ex.: PROVIDER=2) e o painel admin já mostra 'Limite aplicado: N' no tooltip do kick (delta SESSION-LIMITS-ADMIN), mas o CLIENT ignorava o payload — o usuário derrubado não sabia o limite do seu perfil.
+- use-realtime.ts: NOVOS tipos SessionLimitPayload { userId?, reason?, max? } + SessionLimitInfo { max, at }; onSessionLimited agora recebe o payload e extrai o max (guard: number finito >= 1 → floor; invalido/ausente → 0 — degradação graciosa) → setLastSessionLimit({ max, at: ISO }); mantém o reset do singleton (socketRef = null + disconnect — sem loop de reconexao). UseRealtimeResult ganha lastSessionLimit: SessionLimitInfo | null.
+- realtime-provider.tsx: NOVO useEffect em [lastSessionLimit] → toast sonner 'Sua sessao foi encerrada em outro dispositivo' com description 'Limite de N sessao(oes) simultanea(s) por perfil' (max > 0) ou texto generico (max 0). Efeito sem loop (dependencia por identidade do objeto — cada kick cria objeto novo).
+- TESTE src/hooks/**tests**/use-realtime.test.tsx (NOVO): fake socket.io (vi.hoisted + vi.mock) + renderHook oficial do test-utils; 5 testes — max=2 no payload → lastSessionLimit { max: 2, at }; sem max → 0; max invalido (string/NaN/0/negativo) → 0; lastSessionLimit inicial null; singleton resetado → novo mount cria socket NOVO.
+- FIXES DE RODADA: (1) teste com JSX em .ts → TS1005 (TS parseou <Harness /> como type assertion) → renomeado para .tsx (padrao do repo); (2) render() do test-utils reutiliza o MESMO root singleton — segundo render(<Harness />) era UPDATE (useEffect deps [] nao roda) → teste 5 usa o auto-unmount do renderHook do test-utils ao ser chamado de novo (mount NOVO de verdade); (3) eslint react-hooks/globals bloqueava `rt = useRealtime()` (reatribuicao de variavel de fora do componente no corpo do render) → reescrito com o renderHook oficial (result.current via ref).
+- PAINEL ADMIN: OnlineSessionsCell ja expoe o motivo do ultimo kick + 'Limite aplicado: N' (delta SESSION-LIMITS-ADMIN) — verificado, sem mudanca nova.
+- LIMITACOES CONHECIDAS (registradas pelo reviewer, nao-bloqueantes): (a) double-toast race — o socket derrubado pode receber session:limit (emit direto) e, em janela de poucos ms, o notification:new (broadcast na room antes do disconnect propagar); dedupe nao vale o risco (suprimiria o toast legitimo no socket NOVO); (b) lastSessionLimit nunca limpo — inofensivo (deps por identidade impedem re-fire; reset no remount); se o provider precisar descartar estado stale, um clearSessionLimit() resolve.
+
+Resultado da varredura:
+
+- O usuário derrubado por session_limit agora vê o toast com o limite POR PERFIL ('Limite de N sessões simultâneas por perfil') — o mesmo `max` que o painel admin mostra no tooltip do kick — com degradação graciosa quando o payload não carrega max.
+
+Stage Summary:
+
+- **Hook**: SessionLimitPayload/SessionLimitInfo + onSessionLimited com payload (guard de max) + lastSessionLimit exposto.
+- **UI**: toast no RealtimeProvider com o limite por perfil (max > 0) ou texto generico (max 0).
+- **Testes**: use-realtime.test.tsx (5) — payload max, degradacao (sem max / invalido), estado inicial, reset do singleton.
+- **Validação**: typecheck + vitest (5/5) + eslint/prettier 0 + reviewer aprovou (2 rodadas); guards rodando junto.
+- **Limitações**: double-toast race + lastSessionLimit nunca limpo documentados (follow-ups opcionais).
+
+---
+
+Task ID: SESSION-LIMIT-BY-PLAN
+<a id="session-limit-by-plan"></a>
+Agent: buffy (realtime/admin/schema)
+Task: Estender o limite de sessões para ser configurável por TENANT/PLANO (ex.: FREE 1, PREMIUM 5) em vez de só por role — lendo o plano do usuário no banco no join e fazendo fallback ao per-role atual.
+
+Work Log:
+
+- MOTIVAÇÃO: o limite de sessões do realtime era só por role (REALTIME_MAX_SESSIONS_PER_ROLE) + default global. Para monetizar por plano/tenant (gratuito 1 sessão, premium 5), o limite precisa variar por plano — lendo o plano do usuário (que NÃO está no cookie de sessão `${userId}.${role}.${expiresAt}.${sig}`) e resolvendo plano > role > default com fallback ao per-role atual.
+- SCHEMA: User ganha `plan String @default("FREE")` (comment com FREE/PREMIUM) + migration 20260817090000_add_user_plan (ALTER TABLE ADD COLUMN plan TEXT NOT NULL DEFAULT 'FREE') — aplicada no banco dev via prisma db execute (coluna verificada via information_schema) + prisma generate; seed marca o admin como PREMIUM (demo; demais users FREE).
+- security.ts: `parseMaxSessionsPerPlan` (alias do parser genérico do per-role — mesma estrutura JSON) + `resolveMaxSessionsForUser(plan, perPlan, role, perRole, fallback)` — plano com override VENCE o per-role (case-insensitive); plano sem override cai no per-role ATUAL (nunca rebaixa quem já tem limite por role maior); perPlan ausente → per-role intacto; sempre ≥ 1.
+- NOVO mini-services/realtime/user-plan.ts: `createUserPlanLoader` (SELECT plan FROM "User" WHERE id=$1 AND "deletedAt" IS NULL) — duck-typed pool (sem import pg), fail-open: pool ausente / erro / coluna inexistente pré-migration → null → cai no per-role.
+- index.ts: `MAX_SESSIONS_PER_PLAN` parseado (warn se inválido); `SESSION_LIMITS_CONFIG` ganha `perPlan` ({} quando não configurado → /sessions expõe ao admin); `enforceSessionLimit` resolve via `loadUserPlan(userId)` SOMENTE quando perPlan configurado (zero DB hit no default); payload session:limit + kick audit carregam o max plan-aware; log do kick inclui plan.
+- ADMIN: RealtimeLimitsConfig.perPlan (rota /api/admin/realtime/sessions) + SessionLimitsCard renderiza chips de plano (★ FREE 1 / PREMIUM 5) com tooltip "Override por plano — vence o limite por role" quando perPlan presente; sem perPlan → nenhum chip (roles intactos).
+- E2E NOVO e2e/realtime-plan-limit.spec.ts: 2 providers ISOLADOS registrados via API (emails únicos por run); um sobe para PREMIUM via UPDATE pg no beforeAll (billing server-side — register não aceita plano); teste 1 PREMIUM=5 → 3 abas COEXISTEM (plano vence per-role PROVIDER=2); teste 2 FREE → 3ª aba derruba a mais antiga (fallback per-role 2). REQUISITO DE CONFIG documentado (env REALTIME_MAX_SESSIONS_PER_PLAN + coluna no banco dev). Rodado 2/2 VERDE (2.6 min).
+- COMPOSE dev/prod + .env.example: REALTIME_MAX_SESSIONS_PER_PLAN documentada ao lado do per-role; mapa de isolamento do realtime-session-limit atualizado com o novo spec.
+- FIX DE CAUSA RAIZ (herança do delta REALTIME-PORT-ENV anterior — NÃO deste): o 500 em TODAS as rotas API no dev pós-restart era o instrumentation do Next 16 falhando no Edge Runtime — `src/lib/env.ts` importava `parseRealtimePort` de `mini-services/realtime/security.ts`, que puxa `node:crypto` pro grafo Edge. FIX: NOVO módulo puro `mini-services/realtime/port.ts` (zero imports) com parseRealtimePort; security.ts re-exporta de ./port (fonte única — index.ts e testes seguem importando de security); env.ts importa direto de ./port. Dev validado: register=201 + log sem node:crypto/instrumentation error.
+- REVIEWER (5 rodadas): nits aplicados — (1) log do shared pool agora cobre os dois consumidores (booking DENIED / plan fail-open); (2) rótulo do teste de resolução (FREE=1 é plano-vence, não fallback); (3) card test ambiguidade de texto (getAllByText/getAllByTitle); (4) tipo do registerProvider no E2E (APIRequestContext em vez de Parameters<...> → never); (5) confirmação do fix port.ts (re-export preserva contratos).
+
+Resultado da varredura:
+
+- Limite por plano validado de ponta a ponta: PREMIUM=5 mantém 3 abas do mesmo provider (plano vence o per-role PROVIDER=2) enquanto FREE cai no per-role 2 (3ª aba derruba a mais antiga) — com leitura do plano no join (fail-open) e zero DB hit quando o env per-plan não está configurado. Painel admin reflete o perPlan real (card de status + tooltip do kick com max plan-aware).
+
+Stage Summary:
+
+- **Schema**: User.plan (default FREE) + migration aplicada no banco dev + prisma generate + seed admin PREMIUM.
+- **Servidor**: parseMaxSessionsPerPlan + resolveMaxSessionsForUser (plano > role > default) + user-plan.ts (fail-open) + SESSION_LIMITS_CONFIG.perPlan.
+- **Admin**: RealtimeLimitsConfig.perPlan + SessionLimitsCard com chips de plano.
+- **Testes**: security (7), sessions-route (perPlan + ausente), card (chips + ausente) — 126 verdes; E2E realtime-plan-limit 2/2.
+- **Infra**: port.ts (fix Edge) + composes + .env.example.
+- **Validação**: typecheck 0 + vitest 126/126 + eslint/prettier 0 (warning MAX_METRICS_MINUTES pré-existente) + guards 0 + E2E 2/2 verde + reviewer aprovou.
+
+---
+
+Task ID: REALTIME-RENEW-SMOKE
+<a id="realtime-renew-smoke"></a>
+Agent: buffy (e2e/realtime)
+Task: Smoke E2E do session:renew (rotação de cookie): provar que, quando o app REEMITE o cookie (getSession reissue na janela <15d) e PROPAGA o novo expiresAt ao realtime via bridge /emit (event session:renew), o TTL sweep NÃO derruba o socket da sessão reemitida válida — fechando o edge case da rotação de cookie documentado no README.
+
+Work Log:
+
+- MOTIVAÇÃO: os sockets fixam o expiresAt no HANDSHAKE; sem o renew, o TTL sweep fecharia a sessão reemitida VÁLIDA quando o expiry ORIGINAL passasse. O renew (renewSessionSockets, EXTEND-ONLY) já existia em security.ts + propagateSessionRenewal em auth.ts, mas NÃO havia cobertura E2E do caminho real app→realtime.
+- SPEC NOVO e2e/realtime-renew-sweep.spec.ts (serial, timeout 180s): DOIS providers ISOLADOS registrados via API (emails únicos por run — padrão do realtime-role-limit). O spec FORJA o cookie HMAC (mesmo formato `${userId}.${role}.${expiresAt}.${sig}` com o MESMO SESSION_SECRET) com expiresAt = agora + 15s — remaining < ROTATION_THRESHOLD (metade do TTL 30d = 15d), então o GET /api/auth/me com esse cookie dispara a REEMISSÃO REAL do app (reissueSession → novo ~30d → propagateSessionRenewal → POST /emit session:renew). É o caminho real, não simulação do bridge.
+- DIFERENCIAL (coração do smoke): o provider CONTROLE conecta com o MESMO cookie forjado de 15s mas SEM passar pelo /api/auth/me. O sweep derruba o controle com session_expired (prova que o sweep está ATIVO) enquanto o renovado sobrevive — sem o controle, "o socket não caiu" seria falso positivo de sweep não rodando.
+- GATES de determinismo: (1) espera do sweep derivada de REALTIME_TTL_SWEEP_MS com FOOTGUN-guard (Math.max(1000, ...) || 60s — nunca undershoot do default); (2) waitForRenewLanded via GET /health/detailed (Bearer) — prova que o session:renew CHEGOU ao realtime (recentEmits com event+userId) ANTES de esperar o sweep; (3) GET /sessions (Bearer) p/ cross-check server-side (renovado online, controle fora, kick audit: controle=session_expired, renovado SEM kick de TTL).
+- POR QUE client socket.io NODE (não browser): o cookie forjado precisa chegar ao handshake como o realtime o fixaria (extraHeaders.Cookie — idêntico ao browser com cookie httpOnly). Um browser com dashboard usaria o cookie REAL de 30d → sweep nunca tocaria → cenário inerte. Mesmo padrão do realtime-ttl-sweep.spec.ts.
+- REQUISITO DE CONFIG documentado no cabeçalho: SESSION_COOKIE_MAX_AGE_SECONDS default (30d) — a reemissão precisa gerar expiry MUITO além da janela do sweep (~90s); se a env for reduzida, a asserção de reemissão falha rápido com mensagem clara (não flaky).
+
+Resultado da varredura:
+
+- Rodado 2/2 VERDE (com dev 3000 + realtime 3003 no ar): provider renovado PERMANECE online em /sessions após a janela do sweep (sem session:revoked, kick audit sem session_expired) enquanto o controle cai com session_expired — provando o renew de ponta a ponta (cookie forjado → reemissão real do app → bridge session:renew → socket estendido → sweep não derruba).
+
+Stage Summary:
+
+- **Spec**: e2e/realtime-renew-sweep.spec.ts (serial, 180s, 2 providers isolados, cookie forjado 15s, reemissão real via /api/auth/me, gates /health/detailed + /sessions).
+- **Validação**: prettier/eslint/typecheck + rodada E2E real (2/2 verde) + guards worklog/toc.
+
+---
+
+Task ID: RT-HEALTH-RENEWS
+<a id="rt-health-renews"></a>
+Agent: buffy (realtime/telemetria)
+Task: Estender a telemetria do GET /health do realtime para expor contadores de session:renew (renews APLICADOS por minuto) e o total de sockets com expiry estendido — para ops monitorar se a propagação da rotação de cookie (app → bridge /emit → renewSessionSockets) está fluindo em produção.
+
+Work Log:
+
+- MOTIVAÇÃO: o session:renew (rotação de cookie) já existia (REALTIME-RENEW-SMOKE provou o caminho), mas o /health não expunha NADA sobre renovação — ops não via se a propagação estava fluindo nem quantos sockets tinham expiry estendido. O emitCounters contava o EVENTO /emit, não a APLICAÇÃO.
+- security.ts: `VerifiedSession` ganha `renewed?: boolean` — setado SOMENTE quando o renewSessionSockets EFETIVAMENTE estende o socket (EXTEND-ONLY: renew antigo/igual/não-finito ou outro userId NÃO marca — a flag reflete aplicação real, não tentativa). Novo helper puro `countRenewedSockets` (conta sockets com session.renewed) — derivado ao vivo via fetchSockets no snapshot (mesma fonte da verdade da revogação/TTL, sem registro paralelo).
+- index.ts: `renewCounters` (Map bucket por minuto UTC "YYYY-MM-DDTHH:mm", janela deslizante de 1h em memória — RENEW_BUCKETS_MAX=60, poda pelo mais antigo) + `bumpRenewCounter(updated)` chamado no handleSessionRenew APÓS o renewSessionSockets devolver quantos atualizou (renew que não estende nada → 0 → não incrementa). GET /health (e /health/detailed via spread do snapshot) agora expõe `renews: { perMinute: {...}, socketsWithExtendedExpiry: N }` — dados AGREGADOS, sem userIds, então o /health público (SEM auth) pode expor (mesma fronteira de privacidade do emitCounters).
+- TESTES: realtime-security.test.ts — (1) renewSessionSockets marca `renewed: true` no socket estendido; (2) NÃO marca em no-op (expiry antes/igual) nem em outro usuário; (3) countRenewedSockets conta só os com flag (ignora null/sem flag, lista vazia → 0). 6 novos testes no bloco de renew + describe novo.
+
+Resultado da varredura:
+
+- Telemetria de renovação exposta no /health público: perMinute (renews aplicados por minuto, janela 1h) + socketsWithExtendedExpiry (quem já foi estendido e segue conectado) — ops monitora a propagação com o mesmo padrão do emitCounters. Zero DB hit, zero fetchSockets extra (reusa o do snapshot).
+
+Stage Summary:
+
+- **security.ts**: flag `renewed` (EXTEND-ONLY) + countRenewedSockets (puro, testado).
+- **index.ts**: renewCounters por minuto (janela 1h em memória) + bump no handleSessionRenew + `renews` no /health.
+- **Testes**: 6 novos (flag aplicada/no-op/outro usuário + countRenewedSockets ×3).
+- **Validação**: prettier/eslint/typecheck + vitest + guards worklog/toc + reviewer.
+
+---
+
+Task ID: RT-RENEW-DEDUPE-MULTI
+<a id="rt-renew-dedupe-multi"></a>
+Agent: buffy (auth/realtime)
+Task: Investigar o caso multi-réplica do dedupe de renew — validar que a chave Redis `realtime:renewed:{userId}` (TTL 1h) não perde renews quando réplicas diferentes reemitem em momentos distintos — e documentar a conclusão.
+
+Work Log:
+
+- ARQUITETURA DO DEDUPE (app-side): o dedupe vive em `src/lib/auth.ts` `propagateSessionRenewal` — NÃO no realtime. Duas camadas: (1) Map em memória `sessionRenewedAt` (por processo, janela 1h, poda >1000) e (2) chave Redis `realtime:renewed:{userId}` TTL 1h (compartilhada entre réplicas do app via o MESMO Redis do cache). O realtime em si NÃO tem adaptador Redis do socket.io (sem @socket.io/redis-adapter) — cada réplica do realtime vê só os próprios sockets locais via io.fetchSockets() (limitação documentada, não deste delta).
+- HAPPY PATH MULTI-RÉPLICA — VÁLIDO: o renew é idempotente e EXTEND-ONLY no realtime (renewSessionSockets). A primeira réplica a emitir reivindica a chave compartilhada; as demais consultam a chave antes e pulam. Nenhum renew se perde — o socket foi estendido pelo primeiro emit, os demais são no-op. Dedupe correto, sem perda, quando réplicas reemitem em momentos distintos.
+- BUG DE ORDERING (encontrado e CORRIGIDO): o código ANTIGO fazia `cacheSet(dedupeKey, ...)` ANTES de `emitRealtime(...)` — e o emitRealtime engolia falhas (catch + log, retorno void). Um emit que FALHA (realtime fora/timeout/HTTP não-2xx) ainda deixava a chave setada por 1h, suprimindo retries de TODAS as réplicas do app: a sessão reemitida VÁLIDA morreria no sweep do expiry ORIGINAL (o renew não chega ao realtime → socket mantém o expiresAt do handshake → selectExpiredSessionSockets fecha). Perda de renew por até 1h após uma falha.
+- FIX APLICADO (3 arquivos):
+  1. `src/lib/realtime-client.ts` — `emitRealtime` agora retorna `Promise<boolean>` = `res.ok` (HTTP 2xx = entrega CONFIRMADA; erro de rede/timeout/não-2xx = false). Retrocompatível: todos os consumers só faziam `await` ignorando o retorno (rotas, notification-queue, notifications, revokeUserSessions).
+  2. `src/lib/auth.ts` `propagateSessionRenewal` — reordena: checa a chave Redis (sem reivindicar) → guard Map in-process → emit → SÓ se `delivered === true` reivindica a chave Redis; em falha, rollback do Map (`delete`) para o próximo request/outra réplica retentar. Mesmo padrão aplicado a `revokeExpiredSessionSockets` (chave `realtime:revoked:expired:{userId}` + rollback do `expiredRevokeEmittedAt`) e `revokeUserSessions` agora devolve `Promise<boolean>`.
+  3. Typo no comentário do auth.ts corrigido (`realtime:renewed:expired:{userId}` → `realtime:renewed:{userId}` — o sufixo "expired" pertence à chave de revoke).
+- TESTES: realtime-client.test.ts — 200 → resolves true; erro de rede → resolves false (antes toBeUndefined); NOVO caso HTTP 500 → false (entrega não confirmada); hang → false. auth.test.ts — mock do emitRealtime agora resolve true por default (entrega confirmada); NOVOS 4 testes multi-réplica: (1) entrega OK reivindica a chave Redis; (2) entrega FALHA NÃO reivindica (outra réplica retentaria); (3) réplica com Map vazio vê a chave reivindicada por outra e NÃO reemite; (4) revoke-expired idem com `realtime:revoked:expired:{userId}`.
+
+Resultado da varredura:
+
+- Conclusão VALIDADA: a chave Redis `realtime:renewed:{userId}` TTL 1h NÃO perde renews no happy path multi-réplica (renew idempotente, primeiro que entrega vence, demais pulam). O risco real era a reivindicação PRÉ-emit + emitRealtime que engolia falhas — corrigido para reivindicação PÓS-entrega confirmada com rollback do Map in-process, cobrindo renew e revoke-expired. Limitação documentada: o realtime sem adapter Redis vê só os próprios sockets por réplica (multi-replica do realtime exigiria @socket.io/redis-adapter — fora de escopo).
+
+Stage Summary:
+
+- **realtime-client.ts**: emitRealtime → Promise<boolean> (res.ok) — entrega confirmada vs falha.
+- **auth.ts**: chave Redis reivindicada SÓ após emit OK (renew + revoke-expired) + rollback do Map in-process em falha + typo do comentário + revokeUserSessions → Promise<boolean>.
+- **Testes**: realtime-client (200→true, erro→false, NOVO 500→false, hang→false) + 4 novos testes multi-réplica no auth.test.ts.
+- **Validação**: prettier/eslint/typecheck + vitest + guards worklog/toc + reviewer.

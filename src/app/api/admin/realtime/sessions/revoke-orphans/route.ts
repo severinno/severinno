@@ -23,7 +23,10 @@ import { recordRevokeRun } from "@/lib/revoke-run-audit"
  * primeiro: nunca derruba usuário válido por falha de infra.
  */
 
-const REALTIME_URL = process.env.REALTIME_URL ?? "http://localhost:3003"
+// Porta do mini-service (fallback 3003) — derivada na URL default do proxy
+// (isolation: REALTIME_PORT=3199 reflete aqui sem tocar em código).
+const REALTIME_PORT = process.env.REALTIME_PORT ?? "3003"
+const REALTIME_URL = process.env.REALTIME_URL ?? `http://localhost:${REALTIME_PORT}`
 // Timeout (ms) do fetch para o mini-service (guard do repo: >= 1s).
 const REALTIME_ORPHANS_TIMEOUT_MS = Math.max(
   1,

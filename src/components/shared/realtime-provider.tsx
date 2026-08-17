@@ -19,7 +19,7 @@ import type { BookingStatus } from "@/lib/constants"
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((s) => s.user)
   const qc = useQueryClient()
-  const { isConnected, join, on, off } = useRealtime()
+  const { isConnected, join, on, off, lastSessionLimit } = useRealtime()
 
   // Join user's room when connected + authenticated
   React.useEffect(() => {
@@ -27,6 +27,20 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       join({ userId: user.id, role: user.role })
     }
   }, [isConnected, user?.id, user?.role, join])
+
+  // Socket derrubado por limite de sessões por role (session:limit): o hook
+  // expõe o limite aplicado (max) no payload — o toast avisa o usuário que
+  // esta sessão foi encerrada por outra mais recente, com o limite por perfil.
+  React.useEffect(() => {
+    if (!lastSessionLimit) return
+    toast("Sua sessão foi encerrada em outro dispositivo", {
+      description:
+        lastSessionLimit.max > 0
+          ? `Limite de ${lastSessionLimit.max} sessão(ões) simultânea(s) por perfil — a mais antiga foi derrubada no novo login.`
+          : "Um novo login excedeu o limite de sessões simultâneas — esta sessão foi encerrada.",
+      duration: 6000,
+    })
+  }, [lastSessionLimit])
 
   // Listen for real-time events
   React.useEffect(() => {

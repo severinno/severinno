@@ -221,8 +221,9 @@ test.describe.serial("Notificações em Tempo Real", () => {
 
       // ── Provider: aguardar toast automático via WebSocket ────────────
       // O booking route chama emitRealtime("notification:new",...), que
-      // faz POST para http://localhost:3003/emit. O realtime server
-      // emite "notification:new" para a sala user:{providerId}.
+      // faz POST para o /emit do realtime na porta configurada
+      // (REALTIME_PORT, fallback 3003). O realtime server emite
+      // "notification:new" para a sala user:{providerId}.
       // O RealtimeProvider recebe e chama toast().
       // Obs: sonner 2.x renderiza o toast como <li data-sonner-toast>
       // dentro de <ol data-sonner-toaster> (sem role="status").

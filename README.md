@@ -96,7 +96,7 @@ Servidor WebSocket para notificações em tempo real, chat e tracking.
 
 | Propriedade          | Valor                                                                                                                                           |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Porta**            | `3003`                                                                                                                                          |
+| **Porta**            | `3003` (configurável via `REALTIME_PORT`)                                                                                                       |
 | **Path**             | `/ws` (Socket.io) — `/health` (healthcheck, SEM auth), `/health/detailed` (Bearer), `/sessions` (Bearer), `/metrics` (Bearer), `/emit` (Bearer) |
 | **Admin online**     | `GET /api/admin/realtime/sessions` (admin) — por usuário: sockets com `ageMs`, kicks, e `conflicts` (órfãos)                                    |
 | **Stack**            | Socket.io 4, Bun                                                                                                                                |
@@ -105,6 +105,19 @@ Servidor WebSocket para notificações em tempo real, chat e tracking.
 | **Dev (hot-reload)** | `cd mini-services/realtime && bun --hot index.ts`                                                                                               |
 
 **Healthcheck:** `curl http://localhost:3003/health` → `{"status":"ok"}`
+
+**Porta alternativa (`REALTIME_PORT`):** o serviço lê `REALTIME_PORT` (ou
+`PORT`, compatível com o compose) com fallback `3003` — smoke de boot em
+porta alternativa e testes de isolamento (várias instâncias no mesmo host):
+
+```bash
+REALTIME_PORT=3199 bun mini-services/realtime/index.ts
+curl http://localhost:3199/health
+```
+
+O client do app (server e browser) deriva a mesma porta — sem
+`REALTIME_URL`/`NEXT_PUBLIC_REALTIME_URL` explícitas, a URL default usa
+`REALTIME_PORT`.
 
 **Debug do socket órfão (`/health/detailed`, Bearer):** o `/health` público
 omite `userId`/`rooms` por privacidade; o `/health/detailed` (mesmo Bearer do

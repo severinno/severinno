@@ -208,6 +208,7 @@ vi.mock("lucide-react", () => {
   )
   Icon.displayName = "LucideIcon"
   return {
+    AlertTriangle: Icon,
     BadgeCheck: Icon,
     Calendar: Icon,
     ChevronDown: Icon,
@@ -307,6 +308,10 @@ const mockProvider = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+
+  // Reset do mock state compartilhado: os testes do badge mutam user.role —
+  // sem o reset, o ADMIN vaza para os testes seguintes (fragilidade de ordem).
+  mockAuthStore.user = null
 
   mockUIStore.providerModal = { open: false, providerId: null }
   mockUIStore.closeProvider = vi.fn()
@@ -500,5 +505,113 @@ describe("ProviderProfileModal — favorite toggle", () => {
     const favBtns = screen.getAllByLabelText("Adicionar aos favoritos")
     expect(favBtns.length).toBeGreaterThan(0)
     expect(favBtns[0]).toHaveAttribute("aria-pressed", "false")
+  })
+})
+
+// -----------------------------------------------------------------------
+// Session conflict badge (ADMIN only — GET /api/admin/realtime/sessions)
+// -----------------------------------------------------------------------
+
+describe("ProviderProfileModal — session conflict badge", () => {
+  // O modal agora faz DUAS queries: a do provider ([provider, id]) e a de
+  // sessões realtime ([admin, realtime, sessions] — admin only). O mock
+  // brancha por queryKey para devolver sessões controladas por teste.
+  const mockSessionsQuery = (sessionsData: unknown) => {
+    mockUseQuery.mockImplementation((opts: any) => {
+      if (opts?.queryKey?.[0] === "admin") {
+        return { data: sessionsData, isLoading: false }
+      }
+      return { data: mockProvider, isLoading: false }
+    })
+  }
+
+  it("não renderiza badge de conflito para não-admin (mesmo com sockets)", () => {
+    mockAuthStore.user = {
+      id: "client-1",
+      name: "Cliente",
+      email: "c@x.com",
+      role: "CLIENT",
+      avatarUrl: null,
+    }
+    mockUIStore.providerModal = { open: true, providerId: "prov-1" }
+    // Sem admin, a query de sessões é disabled — o mock devolve dados mesmo
+    // assim; o badge NÃO aparece (isAdmin false é o gate real).
+    mockSessionsQuery({
+      ok: true,
+      sessions: {
+        "prov-1": [
+          { userId: "prov-1", role: "PROVIDER", socketId: "s1" },
+          { userId: "prov-1", role: "PROVIDER", socketId: "s2" },
+        ],
+      },
+    })
+    renderModal()
+
+    const badges = screen.getAllByTestId("badge")
+    expect(badges.some((b) => b.textContent?.includes("sessões"))).toBe(false)
+    expect(badges.some((b) => b.textContent?.includes("Verificado"))).toBe(true)
+  })
+
+  it("admin vê o badge de conflito quando o provider tem >1 socket simultâneo", () => {
+    mockAuthStore.user = {
+      id: "admin-1",
+      name: "Admin",
+      email: "a@x.com",
+      role: "ADMIN",
+      avatarUrl: null,
+    }
+    mockUIStore.providerModal = { open: true, providerId: "prov-1" }
+    mockSessionsQuery({
+      ok: true,
+      sessions: {
+        "prov-1": [
+          { userId: "prov-1", role: "PROVIDER", socketId: "s1" },
+          { userId: "prov-1", role: "PROVIDER", socketId: "s2" },
+          { userId: "prov-1", role: "PROVIDER", socketId: "s3" },
+        ],
+      },
+    })
+    renderModal()
+
+    const badge = screen.getAllByTestId("badge").find((b) => b.textContent?.includes("sessões"))
+    expect(badge).toBeTruthy()
+    expect(badge?.textContent).toContain("3")
+  })
+
+  it("admin sem conflito (1 socket) → sem badge", () => {
+    mockAuthStore.user = {
+      id: "admin-1",
+      name: "Admin",
+      email: "a@x.com",
+      role: "ADMIN",
+      avatarUrl: null,
+    }
+    mockUIStore.providerModal = { open: true, providerId: "prov-1" }
+    mockSessionsQuery({
+      ok: true,
+      sessions: {
+        "prov-1": [{ userId: "prov-1", role: "PROVIDER", socketId: "s1" }],
+      },
+    })
+    renderModal()
+
+    const badges = screen.getAllByTestId("badge")
+    expect(badges.some((b) => b.textContent?.includes("sessões"))).toBe(false)
+  })
+
+  it("admin com realtime fora do ar (ok: false) → sem badge (degradação graciosa)", () => {
+    mockAuthStore.user = {
+      id: "admin-1",
+      name: "Admin",
+      email: "a@x.com",
+      role: "ADMIN",
+      avatarUrl: null,
+    }
+    mockUIStore.providerModal = { open: true, providerId: "prov-1" }
+    mockSessionsQuery({ ok: false, sessions: {} })
+    renderModal()
+
+    const badges = screen.getAllByTestId("badge")
+    expect(badges.some((b) => b.textContent?.includes("sessões"))).toBe(false)
   })
 })

@@ -1,5 +1,10 @@
 import "server-only"
 import { z } from "zod"
+// importa do módulo PURO (port.ts, zero imports) e NÃO de security.ts: este
+// arquivo entra no grafo do Edge Runtime (instrumentation) e security.ts
+// puxaria node:crypto pro Edge — derruba o hook de instrumentação (500 em
+// todas as rotas API no dev). Mesma fonte única (security.ts re-exporta).
+import { parseRealtimePort } from "../../mini-services/realtime/port"
 
 const envSchema = z.object({
   // App
@@ -28,7 +33,19 @@ const envSchema = z.object({
   MAX_UPLOAD_SIZE: z.coerce.number().default(10 * 1024 * 1024), // 10 MB
 
   // Realtime
-  REALTIME_URL: z.string().url().default("http://localhost:3003"),
+  // Porta do mini-service (fallback 3003) — usada para derivar a URL default
+  // quando REALTIME_URL não é setada (isolation: REALTIME_PORT=3199 reflete
+  // aqui sem tocar em código). FAIL-OPEN: o campo aceita qualquer valor e o
+  // default é derivado com o MESMO guard do serviço (parseRealtimePort) — um
+  // typo na env NUNCA derruba o app inteiro (o realtime degrada para 3003).
+  // (z.coerce + catch: valor presente-inválido → 3003, sem crash no parse;
+  //  env ausente → undefined via optional(). O default da URL abaixo re-parseia
+  //  process.env com o MESMO guard — o parseRealtimePort é a fonte única.)
+  REALTIME_PORT: z.coerce.number().int().min(1).max(65535).optional().catch(3003),
+  REALTIME_URL: z
+    .string()
+    .url()
+    .default(`http://localhost:${parseRealtimePort(process.env.REALTIME_PORT)}`),
   // Bearer token para o POST /emit do realtime mini-service (fail closed).
   REALTIME_EMIT_TOKEN: z.string().optional(),
   // Timeout (ms) do POST /emit — um realtime que aceita o TCP mas nunca

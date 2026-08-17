@@ -1,7 +1,8 @@
 // Severinno Marketplace SaaS — Realtime Mini-Service (Fase 1 / MVP)
-// Socket.io server on port 3003, path "/" (required by Caddy gateway).
-// The gateway selects this service via the `?XTransformPort=3003` query
-// param sent by the frontend client (see src/hooks/use-realtime.ts).
+// Socket.io server on port REALTIME_PORT (default 3003), path "/" (required
+// by Caddy gateway). The gateway selects this service via the
+// `?XTransformPort=<port>` query param sent by the frontend client (see
+// src/hooks/use-realtime.ts).
 
 import { createServer } from "http"
 import { Server, Socket } from "socket.io"
@@ -16,18 +17,19 @@ import {
   selectExpiredSessionSockets,
   selectOrphanSockets,
   renewSessionSockets,
+  countRenewedSockets,
   parseSweepIntervalMs,
   parseTelemetryIntervalMs,
+  parseRealtimePort,
   extractEmitEventInfo,
   toPublicRecentEmits,
   type RecentEmitEntry,
   summarizeActiveSessions,
   computeSocketAgeMs,
-  recordKickAudit,
-  snapshotKickAudit,
   parseMaxSessionsPerRole,
   resolveMaxSessionsPerRole,
-  type KickAuditMap,
+  parseMaxSessionsPerPlan,
+  resolveMaxSessionsForUser,
   type VerifiedSession,
   type BookingParticipantChecker,
 } from "./security"
@@ -40,12 +42,18 @@ import {
   type TelemetrySessionsSnapshot,
 } from "./redis-telemetry"
 import {
+  createKickAuditPersister,
+  parseKickAuditFlushIntervalMs,
+  type KickAuditRedisLoader,
+} from "./redis-kick-audit"
+import {
   createOrphanAlert,
   parseOrphanAlertThreshold,
   parseOrphanAlertCooldownMs,
   resolveAlertDsn,
 } from "./ops-alert"
 import { createBookingParticipantChecker, type PoolLike } from "./booking-participant"
+import { createUserPlanLoader } from "./user-plan"
 import {
   createSessionLimitNotifier,
   SESSION_LIMIT_TYPE,
@@ -53,7 +61,13 @@ import {
   SESSION_LIMIT_BODY,
 } from "./session-notification"
 
-const PORT = 3003
+// Porta HTTP/socket — REALTIME_PORT (fallback 3003). O compose repassa
+// `REALTIME_PORT: ${REALTIME_PORT:-3003}` ao container (docker-compose.yml);
+// NÃO lemos PORT (convenção de PaaS tipo Heroku/Render): um PORT injetado
+// pelo runtime sobrescreveria silenciosamente o default documentado.
+// Configurável para smoke de boot em porta alternativa e testes de
+// isolamento (várias instâncias no mesmo host sem colisão de porta).
+const PORT = parseRealtimePort(process.env.REALTIME_PORT)
 
 // ── Security env (fail closed when missing) ─────────────────────────────
 // SESSION_SECRET       — verifies the HMAC-signed session cookie (same
@@ -85,6 +99,15 @@ if (!EMIT_TOKEN) {
 //                                          '{"CLIENT":1,"PROVIDER":2,"ADMIN":5}'
 //                                          Roles sem override usam o fallback
 //                                          global; JSON inválido → fallback.
+//   REALTIME_MAX_SESSIONS_PER_PLAN       → override POR PLANO/TENANT (JSON):
+//                                          '{"FREE":1,"PREMIUM":5}'
+//                                          O plano do usuário é lido do banco
+//                                          no join (user-plan.ts, fail-open:
+//                                          sem DB/coluna → null → cai no
+//                                          per-role atual). Planos sem
+//                                          override usam o per-role (nunca
+//                                          rebaixam quem já tem limite por
+//                                          role maior); JSON inválido → per-role.
 const DEFAULT_MAX_SESSIONS_PER_USER = Math.max(
   1,
   Number(process.env.REALTIME_MAX_SESSIONS_PER_USER) || 1,
@@ -92,6 +115,30 @@ const DEFAULT_MAX_SESSIONS_PER_USER = Math.max(
 const MAX_SESSIONS_PER_ROLE = parseMaxSessionsPerRole(process.env.REALTIME_MAX_SESSIONS_PER_ROLE)
 if (process.env.REALTIME_MAX_SESSIONS_PER_ROLE && !MAX_SESSIONS_PER_ROLE) {
   console.warn("[realtime] ⚠️ REALTIME_MAX_SESSIONS_PER_ROLE inválido — usando o default global")
+}
+const MAX_SESSIONS_PER_PLAN = parseMaxSessionsPerPlan(process.env.REALTIME_MAX_SESSIONS_PER_PLAN)
+if (process.env.REALTIME_MAX_SESSIONS_PER_PLAN && !MAX_SESSIONS_PER_PLAN) {
+  console.warn("[realtime] ⚠️ REALTIME_MAX_SESSIONS_PER_PLAN inválido — usando o per-role atual")
+}
+
+// ── Session-limits config resolvida (GET /sessions → painel admin) ────────
+// O painel admin reflete a config ATUAL de limites por role num card de
+// status: o default global + o max resolvido para cada role conhecida
+// (override por role quando presente, senão o fallback global — a MESMA
+// resolução que enforceSessionLimit usa no join). Fonte única: qualquer
+// mudança na env reflete aqui sem tocar no card.
+const SESSION_LIMITS_CONFIG = {
+  default: DEFAULT_MAX_SESSIONS_PER_USER,
+  perRole: Object.fromEntries(
+    ["CLIENT", "PROVIDER", "ADMIN"].map((role) => [
+      role,
+      resolveMaxSessionsPerRole(role, MAX_SESSIONS_PER_ROLE, DEFAULT_MAX_SESSIONS_PER_USER),
+    ]),
+  ),
+  // Override por PLANO/TENANT (quando configurado) — o card de status do
+  // painel admin mostra o limite por plano; usuários sem override caem no
+  // per-role. Fonte única: a MESMA env que enforceSessionLimit usa.
+  perPlan: MAX_SESSIONS_PER_PLAN ?? {},
 }
 
 // ── Booking participant checker (message:send full-flow validation) ───────
@@ -106,8 +153,11 @@ const loadBookingPool: () => Promise<PoolLike | null> = () => {
   bookingPoolPromise ??= (async () => {
     const url = readSecret("DATABASE_URL")
     if (!url) {
+      // Pool compartilhado por booking check (fail-CLOSED: message:send com
+      // bookingId é DENIED) e plan lookup (fail-OPEN: cai no per-role) — a
+      // mensagem cobre os dois consumidores sem contexto enganoso.
       console.warn(
-        "[realtime] ⚠️ DATABASE_URL not configured — message:send with bookingId will be DENIED (fail closed)",
+        "[realtime] ⚠️ DATABASE_URL not configured — booking checks DENIED (fail closed) e plan lookups caem no per-role (fail open)",
       )
       return null
     }
@@ -123,6 +173,13 @@ const loadBookingPool: () => Promise<PoolLike | null> = () => {
 }
 const isBookingParticipant: BookingParticipantChecker =
   createBookingParticipantChecker(loadBookingPool)
+
+// ── User plan loader (limite de sessões POR PLANO) ────────────────────────
+// Lê o plano do usuário (coluna "plan") no JOIN via o MESMO pool lazy do
+// booking check. Fail-open: sem DATABASE_URL, erro de query ou coluna
+// inexistente (banco pré-migration) → null → o limite cai no per-role atual
+// (o plano nunca quebra o join nem derruba o serviço).
+const loadUserPlan = createUserPlanLoader(loadBookingPool)
 
 // ── Session-limit in-app notification ───────────────────────────────────────
 // Quando o limite de sessões derruba um socket antigo, persiste uma notificação
@@ -307,6 +364,43 @@ function auditSocketEvent<T>(event: string, payload: T): void {
 // room has multiple stale sockets). Counters are in-memory per process;
 // /health exposes the totals + a short ring buffer of recent emits.
 const emitCounters = new Map<string, number>()
+// ── Renew telemetry (session:renew / cookie rotation) ─────────────────────
+// Contadores de RENOVAÇÃO APLICADA (event session:renew vindo do bridge
+// /emit — a reemissão de cookie do app): buckets por minuto (janela
+// deslizante em memória, como os emitCounters) para ops monitorar se a
+// propagação da rotação está fluindo: renews/min > 0 quando o app reemite.
+// A contagem reflete sockets EFETIVAMENTE estendidos (renewSessionSockets
+// EXTEND-ONLY devolve quantos atualizou) — um renew atrasado que não estende
+// nada não incrementa.
+const renewCounters = new Map<string, number>()
+/** Buckets de minuto retidos (janela deslizante de 1h em memória). */
+const RENEW_BUCKETS_MAX = 60
+
+/** Chave do bucket de minuto (UTC "YYYY-MM-DDTHH:mm"). */
+function renewBucketKey(tsMs: number): string {
+  const d = new Date(tsMs)
+  const p = (n: number) => String(n).padStart(2, "0")
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}T${p(
+    d.getUTCHours(),
+  )}:${p(d.getUTCMinutes())}`
+}
+
+/** Incrementa o bucket do minuto atual e poda a janela (1h). */
+function bumpRenewCounter(updated: number): void {
+  if (updated <= 0) return
+  const key = renewBucketKey(Date.now())
+  renewCounters.set(key, (renewCounters.get(key) ?? 0) + updated)
+  // Poda pelo MÍNIMO da janela: Map preserva ORDEM DE INSERÇÃO (não
+  // lexicográfica) — os buckets só entram com Date.now() (cronológico) e
+  // set em chave EXISTENTE não move a ordem, então o primeiro a sair é
+  // sempre o mais antigo. Não re-inserir buckets fora de ordem aqui (ex.:
+  // replay histórico) ou a poda apagaria o bucket errado silenciosamente.
+  if (renewCounters.size > RENEW_BUCKETS_MAX) {
+    const oldest = renewCounters.keys().next().value
+    if (oldest !== undefined) renewCounters.delete(oldest)
+  }
+}
+
 const RECENT_EMITS_MAX = 20
 // Ring COMPLETO: carrega userId/rooms/relatedIds (presença de usuários). O
 // GET /health (SEM auth) recebe a forma pública via toPublicRecentEmits(); o
@@ -314,14 +408,22 @@ const RECENT_EMITS_MAX = 20
 // socket órfão.
 const recentEmits: Array<RecentEmitEntry> = []
 
-// ── Kick audit (admin "last kick reason" display) ─────────────────────────
+// ── Kick audit (admin "last kick reason + history" display) ────────────────
 // Tracks WHY a user's sockets were force-closed (session_limit vs revoke vs
-// session_expired) + the last timestamp + a running count. Pure helpers in
-// security.ts (recordKickAudit/snapshotKickAudit, unit-tested); exposed via
-// GET /sessions (Bearer-protected) so the admin panel can show the reason of
-// the last kick per user — e.g. why a dashboard tab dropped right after
-// opening a second one (session_limit) or after an admin revoke.
-const kickAudit: KickAuditMap = new Map()
+// session_expired) + the last timestamp + a running count + recent HISTORY,
+// persisted in Redis (realtime:kick-audit) so it SURVIVES a realtime restart
+// and the admin panel can list per-user kicks over time. Writes are BATCHED
+// (debounced flush, pool de 1, cooldown env REALTIME_KICK_AUDIT_FLUSH_MS) and
+// fail-open: sem REDIS_URL/Redis fora → o pending in-memory cobre o processo
+// (mesmo comportamento do antigo Map). Exposed via GET /sessions
+// (Bearer-protected) — por que o dashboard caiu: session_limit (2ª aba),
+// revoke (admin) ou session_expired (TTL).
+const telemetryLoadClient = createRedisLoader()
+const kickAuditLoadClient = telemetryLoadClient as unknown as KickAuditRedisLoader
+const kickAudit = createKickAuditPersister({
+  loadClient: kickAuditLoadClient,
+  flushIntervalMs: parseKickAuditFlushIntervalMs(process.env.REALTIME_KICK_AUDIT_FLUSH_MS),
+})
 
 function bumpEmitCounter(event: string): void {
   emitCounters.set(event, (emitCounters.get(event) ?? 0) + 1)
@@ -420,9 +522,14 @@ async function enforceSessionLimit(
   justJoinedSocketId: string,
 ): Promise<void> {
   try {
-    // Limite POR ROLE: override estruturado quando presente, senão o default
-    // global. Ex.: clientes 1, providers 2, admins 5 (via JSON no env).
-    const maxSessions = resolveMaxSessionsPerRole(
+    // Limite POR PLANO/TENANT: o plano do usuário (lido do banco, fail-open
+    // → null) vence quando o env per-plan tem override; senão cai no per-role
+    // atual (override por role → default global). Ex.: FREE=1, PREMIUM=5
+    // (JSON no env) sobrepõem o per-role para quem tem plano no env.
+    const plan = MAX_SESSIONS_PER_PLAN ? await loadUserPlan(userId) : null
+    const maxSessions = resolveMaxSessionsForUser(
+      plan ?? undefined,
+      MAX_SESSIONS_PER_PLAN,
       role,
       MAX_SESSIONS_PER_ROLE,
       DEFAULT_MAX_SESSIONS_PER_USER,
@@ -439,9 +546,11 @@ async function enforceSessionLimit(
       // admin pode exibir "limite N" sem conhecer a config do servidor.
       s.emit("session:limit", { userId, reason: "session_limit", max: maxSessions })
       setTimeout(() => s.disconnect(true), REVOKE_CLOSE_DELAY_MS).unref()
-      recordKickAudit(kickAudit, userId, "session_limit", s.id, new Date().toISOString())
+      // Audit com o max POR ROLE aplicado (mesmo valor do payload session:limit)
+      // — o tooltip do admin exibe "limite N" sem conhecer a config do servidor.
+      kickAudit.record(userId, "session_limit", s.id, new Date().toISOString(), maxSessions)
       console.log(
-        `[realtime] session limit: kicked socket ${s.id} for user:${userId} role:${role} (max ${maxSessions})`,
+        `[realtime] session limit: kicked socket ${s.id} for user:${userId} role:${role} plan:${plan ?? "-"} (max ${maxSessions})`,
       )
     }
 
@@ -493,7 +602,7 @@ const ttlSweep = setInterval(async () => {
       const userId = s.data.session?.userId ?? "unknown"
       s.emit("session:revoked", { userId, reason: "session_expired" })
       setTimeout(() => s.disconnect(true), REVOKE_CLOSE_DELAY_MS).unref()
-      recordKickAudit(kickAudit, userId, "session_expired", s.id, new Date().toISOString())
+      kickAudit.record(userId, "session_expired", s.id, new Date().toISOString())
       console.log(
         `[realtime] TTL sweep: session expired for user:${userId} — closing socket ${s.id}`,
       )
@@ -516,8 +625,8 @@ ttlSweep.unref()
 // verdade — sem registro separado para manter em sync).
 const TELEMETRY_INTERVAL_MS = parseTelemetryIntervalMs(process.env.REALTIME_TELEMETRY_INTERVAL_MS)
 // Loader compartilhado: o persister escreve e o GET /metrics lê o MESMO client
-// lazy (um único ioredis, docker-secret aware, memoizado).
-const telemetryLoadClient = createRedisLoader()
+// lazy (um único ioredis, docker-secret aware, memoizado) — declarado UMA vez
+// no topo (usado também pelo kick-audit); esta seção apenas o consome.
 const telemetry = createTelemetryPersister({
   loadClient: telemetryLoadClient,
   // Flag de órfãos: TTL ≈ 2× o intervalo — a flag self-clears quando a
@@ -588,6 +697,9 @@ function handleSessionRenew(payload: { userId?: string; expiresAt?: number }): v
   io.fetchSockets()
     .then((sockets) => {
       const updated = renewSessionSockets(sockets, userId, expiresAt)
+      // Telemetria: contabiliza a renovação APLICADA (sockets efetivamente
+      // estendidos) no bucket do minuto — ops vê renews/min no /health.
+      bumpRenewCounter(updated)
       console.log(
         `[realtime] session renewed for user:${userId} — ${updated} socket(s) re-expired to ${expiresAt}`,
       )
@@ -623,13 +735,7 @@ function handleSessionRevoke(payload: { userId?: string }): void {
       // when a socket was actually force-closed — repo principle: the audit
       // reflects real events, not attempts.
       if (revocable.length > 0) {
-        recordKickAudit(
-          kickAudit,
-          userId,
-          "revoke",
-          revocable[0]?.id ?? "",
-          new Date().toISOString(),
-        )
+        kickAudit.record(userId, "revoke", revocable[0]?.id ?? "", new Date().toISOString())
       }
       // The force-close is DELAYED: engine.io discards buffered packets when
       // a polling transport closes immediately, which would drop the
@@ -838,10 +944,15 @@ async function getHealthSnapshot(): Promise<Record<string, unknown>> {
   let socketsCount = 0
   let verifiedCount = 0
   let joinedCount = 0
+  let extendedExpirySockets = 0
   const sessions: SessionMetaLike[] = []
   try {
     const sockets = await io.fetchSockets()
     socketsCount = sockets.length
+    // Sockets com expiry estendido pela rotação de cookie (session:renew) —
+    // derivado ao vivo (fetchSockets é a fonte da verdade, sem registro
+    // paralelo): quem foi renovado e ainda está conectado conta aqui.
+    extendedExpirySockets = countRenewedSockets(sockets)
     for (const s of sockets) {
       const session = s.data?.session as VerifiedSession | null
       if (session) verifiedCount += 1
@@ -864,6 +975,16 @@ async function getHealthSnapshot(): Promise<Record<string, unknown>> {
     sockets: { total: socketsCount, verified: verifiedCount, joined: joinedCount },
     sessions: metrics,
     emitCounters: Object.fromEntries(emitCounters),
+    // Telemetria da rotação de cookie: renews APLICADOS por minuto (janela
+    // deslizante de 1h em memória) + o total ATUAL de sockets com expiry
+    // estendido — ops monitora se a propagação session:renew está fluindo
+    // (renews/min > 0 quando o app reemite; socketsWithExtendedExpiry conta
+    // quem já foi estendido e segue conectado). Dados agregados — sem
+    // userIds — então o /health público (SEM auth) pode expor.
+    renews: {
+      perMinute: Object.fromEntries(renewCounters),
+      socketsWithExtendedExpiry: extendedExpirySockets,
+    },
     // Fronteira de privacidade: o /health é SEM auth — só a forma pública
     // (sem userId/rooms). O detalhe completo vive no /health/detailed (Bearer).
     recentEmits: toPublicRecentEmits(recentEmits.slice(-10)),
@@ -903,7 +1024,7 @@ httpServer.on("request", (req, res) => {
       return
     }
     getHealthSnapshot()
-      .then((snapshot) => {
+      .then(async (snapshot) => {
         res.writeHead(200, { "Content-Type": "application/json" })
         res.end(
           JSON.stringify({
@@ -912,7 +1033,9 @@ httpServer.on("request", (req, res) => {
             // Sobrescreve o recentEmits já stripped pelo snapshot com a forma
             // COMPLETA (ring inteiro, não só os últimos 10 do /health).
             recentEmits: recentEmits.slice(-RECENT_EMITS_MAX),
-            kicks: snapshotKickAudit(kickAudit),
+            // Kick audit persistido no Redis (sobrevive a restart): última
+            // razão + contagem + histórico por usuário.
+            kicks: await kickAudit.snapshot(),
           }),
         )
       })
@@ -952,16 +1075,22 @@ httpServer.on("request", (req, res) => {
       return
     }
     getActiveSessions()
-      .then((sessions) => {
+      .then(async (sessions) => {
         res.writeHead(200, { "Content-Type": "application/json" })
         res.end(
           JSON.stringify({
             ok: true,
             sessions,
             total: sessions.length,
-            // Motivo do último kick por usuário (session_limit/revoke/expired)
-            // + contagem — consumido pelo painel admin (Bearer-protected).
-            kicks: snapshotKickAudit(kickAudit),
+            // Config atual de limites por role (default + max resolvido por
+            // role) — o painel admin exibe num card de status; reflete a
+            // MESMA resolução do join (fonte única: SESSION_LIMITS_CONFIG).
+            limits: SESSION_LIMITS_CONFIG,
+            // Kick audit persistido no Redis (sobrevive a restart): motivo do
+            // último kick por usuário (session_limit/revoke/expired) + contagem
+            // + histórico + o limite aplicado (max) — consumido pelo painel
+            // admin (Bearer-protected).
+            kicks: await kickAudit.snapshot(),
           }),
         )
       })
@@ -1048,8 +1177,7 @@ httpServer.on("request", (req, res) => {
         // Kick audit com o MESMO reason emitido (session_expired para TTL,
         // revoke para usuário inexistente) — o painel admin mostra o motivo
         // real do último kick, consistente com o que o client recebeu.
-        recordKickAudit(
-          kickAudit,
+        kickAudit.record(
           userId,
           reason as "revoke" | "session_expired",
           s.id,

@@ -24,6 +24,11 @@ export interface VerifiedSession {
   /** Unix seconds — cookie TTL; used by the periodic TTL sweep to close
    *  sockets whose session expired without an explicit logout. */
   expiresAt?: number
+  /** TRUE quando o expiry foi EXTENDIDO via session:renew (rotação de cookie
+   *  do app — renewSessionSockets). Telemetria: o /health conta sockets com
+   *  expiry estendido (socketsWithExtendedExpiry) para ops confirmar que a
+   *  propagação do cookie rotation está fluindo até o realtime. */
+  renewed?: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -133,6 +138,44 @@ export function resolveMaxSessionsPerRole(
   // Math.max(1, NaN) é NaN — um fallback não-finito nunca pode desabilitar o
   // limite (misconfig → default 1).
   return Number.isFinite(fallback) ? Math.max(1, fallback) : 1
+}
+
+// ---------------------------------------------------------------------------
+// Per-plan session limits (REALTIME_MAX_SESSIONS_PER_PLAN)
+//
+// Extensão por TENANT/PLANO do limite de sessões: o plano do usuário é lido
+// do banco no join (pool lazy, fail-open — ver user-plan.ts) e a resolução
+// vira `plano > role > default`. O plano vence QUANDO o env estruturado tem
+// um override para ele; plano sem override cai no per-role atual (fallback
+// preservado — não muda o comportamento de quem não está no env).
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse do `REALTIME_MAX_SESSIONS_PER_PLAN` — MESMO formato do per-role
+ * (JSON `{"FREE":1,"PREMIUM":5}`). O parser genérico é reutilizado: a
+ * estrutura (key → número) é idêntica; apenas o nome documenta a semântica
+ * de plano. Unset/JSON inválido/todos inválidos → undefined (fallback).
+ */
+export const parseMaxSessionsPerPlan = parseMaxSessionsPerRole
+
+/**
+ * Resolve o max simultâneo de sockets para um usuário com plano: o override
+ * POR PLANO quando presente (case-insensitive), senão o per-role atual
+ * (resolveMaxSessionsPerRole — plano sem override NUNCA rebaixa quem já tem
+ * limite por role maior). Sempre ≥ 1.
+ */
+export function resolveMaxSessionsForUser(
+  plan: string | undefined,
+  perPlan: Record<string, number> | undefined,
+  role: string | undefined,
+  perRole: Record<string, number> | undefined,
+  fallback: number,
+): number {
+  if (perPlan && plan) {
+    const n = perPlan[plan.toUpperCase()]
+    if (typeof n === "number" && n >= 1) return n
+  }
+  return resolveMaxSessionsPerRole(role, perRole, fallback)
 }
 
 export function selectSocketsToKickForSessionLimit<T extends DatedSessionSocketLike>(
@@ -307,6 +350,12 @@ export function verifySessionCookie(
   return { userId, role, expiresAt }
 }
 
+// `parseRealtimePort` vive em ./port.ts (módulo PURO, zero imports): o app
+// importa dele no src/lib/env.ts sem puxar node:crypto pro Edge Runtime do
+// instrumentation. Este re-export mantém security.ts como fonte única pro
+// serviço realtime + testes (index.ts importa daqui).
+export { parseRealtimePort } from "./port"
+
 /**
  * Resolve the TTL sweep interval (ms) from env `REALTIME_TTL_SWEEP_MS`.
  * Guard pattern do repo (`Math.max(1, Number(env) || default)`):
@@ -464,9 +513,29 @@ export function renewSessionSockets<T extends SessionSocketLike>(
     if (!sess || sess.userId !== userId) continue
     if (typeof sess.expiresAt === "number" && sess.expiresAt >= expiresAt) continue
     sess.expiresAt = expiresAt
+    // Marca o socket como renovado (telemetria do /health: quantos sockets
+    // têm expiry estendido pela rotação de cookie do app). EXTEND-ONLY — a
+    // flag só é setada quando o expiry foi de fato estendido (no-op de um
+    // renew antigo/atrasado não marca).
+    sess.renewed = true
     updated += 1
   }
   return updated
+}
+
+/**
+ * Count sockets whose verified session was RENEWED (expiry extended via
+ * session:renew — `session.renewed === true`). Pure — the /health snapshot
+ * uses it to expose `socketsWithExtendedExpiry` (ops: quantos sockets estão
+ * com expiry estendido pela rotação de cookie AGORA, derivado ao vivo de
+ * fetchSockets — mesma fonte da verdade da revogação/TTL).
+ */
+export function countRenewedSockets<T extends SessionSocketLike>(sockets: readonly T[]): number {
+  let count = 0
+  for (const s of sockets) {
+    if (s.data.session?.renewed) count += 1
+  }
+  return count
 }
 
 // ---------------------------------------------------------------------------

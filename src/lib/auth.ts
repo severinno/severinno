@@ -175,27 +175,46 @@ async function revokeExpiredSessionSockets(userId: string): Promise<void> {
   }
   const last = expiredRevokeEmittedAt.get(userId)
   if (last !== undefined && now - last < EXPIRED_REVOKE_DEDUPE_WINDOW_MS) return
+
+  // Guard in-process (in-flight + janela 1h) setado SÍNCRONO logo após o
+  // check — ANTES de qualquer await (in-flight guard para requests
+  // concorrentes no mesmo processo; mesmo padrão do renew). Rollback em
+  // falha: uma revogação que não entregou NÃO pode travar esta réplica por
+  // 1h — o próximo request (ou outra réplica) retenta.
   expiredRevokeEmittedAt.set(userId, now)
 
   let alreadyRevoked = false
   try {
     const dedupeKey = `realtime:revoked:expired:${userId}`
     const cached = await cacheGet<number>(dedupeKey)
-    if (cached) {
-      alreadyRevoked = true
-    } else {
-      await cacheSet(dedupeKey, now, EXPIRED_REVOKE_DEDUPE_KEY_TTL_S)
-    }
+    if (cached) alreadyRevoked = true
   } catch {
     // Redis/cache indisponível → cai para o emit mesmo assim (a revogação é
     // idempotente: sockets já mortos são no-op). Nunca bloqueia o request.
   }
   if (alreadyRevoked) return
   try {
-    await revokeUserSessions(userId)
+    // Mesmo padrão do renew: revogar é idempotente (primeiro entrega vence),
+    // então a chave Redis só é reivindicada APÓS a entrega confirmada — uma
+    // falha de emit de uma réplica não suprime a revogação das outras.
+    const delivered = await revokeUserSessions(userId)
+    if (!delivered) {
+      // Falha de entrega → rollback do guard in-process. A chave Redis NÃO é
+      // reivindicada: outra réplica (ou esta, no próximo request) retenta.
+      expiredRevokeEmittedAt.delete(userId)
+      return
+    }
+    try {
+      await cacheSet(`realtime:revoked:expired:${userId}`, now, EXPIRED_REVOKE_DEDUPE_KEY_TTL_S)
+    } catch {
+      // Redis fora no momento do claim → Map cobre esta réplica. Não bloqueia.
+    }
   } catch {
-    // Best-effort: a função é consumida com `void` (fire-and-forget) — nunca
-    // pode rejeitar (unhandled rejection). A revogação é idempotente.
+    // Simetria com o renew: revokeUserSessions nunca lança (emitRealtime
+    // captura erros e devolve boolean), então este catch é defensivo — mas se
+    // um dia lançar, o guard in-process não pode ficar setado por 1h
+    // suprimindo retries desta réplica (mesmo rollback do caminho renew).
+    expiredRevokeEmittedAt.delete(userId)
   }
 }
 
@@ -206,9 +225,21 @@ async function revokeExpiredSessionSockets(userId: string): Promise<void> {
 // NOVO expiresAt é propagado ao realtime via bridge /emit (session:renew,
 // Bearer-protected) para o sweep de TTL nunca fechar uma sessão reemitida
 // VÁLIDA (os sockets fixam expiresAt no handshake). Deduplicado em duas
-// camadas — Map 1h + chave Redis `realtime:renewed:expired:{userId}` TTL 1h
-// — porque o getSession roda em TODO request passado o threshold: sem dedupe,
-// cada request martelaria o bridge /emit com o mesmo renew.
+// camadas — Map 1h (por processo) + chave Redis `realtime:renewed:{userId}`
+// TTL 1h (compartilhada entre réplicas) — porque o getSession roda em TODO
+// request passado o threshold: sem dedupe, cada request martelaria o bridge
+// /emit com o mesmo renew.
+//
+// ORDERING MULTI-RÉPLICA (por que a chave é reivindicada SÓ após o emit OK):
+// o renew é idempotente (EXTEND-ONLY no realtime), então o happy path não
+// perde nada — a primeira réplica a emitir reivindica a chave compartilhada
+// e as demais pulam. MAS se a chave fosse reivindicada ANTES do emit (como
+// antes), um emit que FALHA (realtime fora/timeout/HTTP não-2xx — o
+// emitRealtime retorna false em vez de throw) deixaria a chave setada por 1h
+// suprimindo retries de TODAS as réplicas: a sessão reemitida VÁLIDA morreria
+// no sweep do expiry ORIGINAL. Reivindicar apenas pós-entrega garantida
+// (emitRealtime → res.ok) + rollback do Map in-process faz a falha de uma
+// réplica NÃO silenciar as outras — quem chegar depois retenta e entrega.
 const RENEW_DEDUPE_WINDOW_MS = 60 * 60 * 1000 // 1h
 const RENEW_DEDUPE_KEY_TTL_S = 60 * 60 // 1h (segundos)
 const sessionRenewedAt = new Map<string, number>()
@@ -223,26 +254,56 @@ async function propagateSessionRenewal(userId: string, expiresAt: number): Promi
   }
   const last = sessionRenewedAt.get(userId)
   if (last !== undefined && now - last < RENEW_DEDUPE_WINDOW_MS) return
+
+  // Guard in-process (in-flight + janela 1h) setado SÍNCRONO logo após o
+  // check — ANTES de qualquer await — para que requests CONCORRENTES no
+  // mesmo processo vejam a entrada e retornem cedo (in-flight guard): sem
+  // isso, dois requests paralelos passariam ambos pelo check do Redis e
+  // emitiriam em duplicata (o hammering que o dedupe evita). Rollback em
+  // falha: um emit que não entregou NÃO pode travar esta réplica por 1h — o
+  // próximo request (ou outra réplica) retenta. O Map é por processo; a
+  // chave Redis é a fronteira compartilhada entre réplicas.
   sessionRenewedAt.set(userId, now)
 
+  // Dedupe cross-instância: checa a chave ANTES de emitir. Se outra réplica
+  // já ENTREGOU o renew na última 1h (chave presente), pula — o renew é
+  // idempotente, então o primeiro que entrega vence. Checar não reivindica.
   let alreadyRenewed = false
   try {
     const dedupeKey = `realtime:renewed:${userId}`
     const cached = await cacheGet<number>(dedupeKey)
-    if (cached) {
-      alreadyRenewed = true
-    } else {
-      await cacheSet(dedupeKey, now, RENEW_DEDUPE_KEY_TTL_S)
-    }
+    if (cached) alreadyRenewed = true
   } catch {
-    // Redis/cache indisponível → emite mesmo assim (renew é idempotente e
-    // EXTEND-ONLY no realtime — um renew repetido é no-op). Não bloqueia.
+    // Redis/cache indisponível → segue para o emit mesmo assim (renew é
+    // idempotente e EXTEND-ONLY no realtime — um renew repetido é no-op).
   }
   if (alreadyRenewed) return
+
+  let delivered = false
   try {
-    await emitRealtime("session:renew", { userId, expiresAt })
+    // emitRealtime devolve res.ok — a ENTREGA CONFIRMADA (não throw).
+    delivered = await emitRealtime("session:renew", { userId, expiresAt })
   } catch {
     // Best-effort: consumido com `void` — nunca pode rejeitar.
+    delivered = false
+  }
+  if (!delivered) {
+    // Falha de entrega → rollback do guard in-process. A chave Redis NÃO é
+    // reivindicada: outra réplica (ou esta, no próximo request) retenta e
+    // entrega. Antes, a chave era setada pre-emit e a falha silenciava TODAS
+    // as réplicas por 1h (sessão reemitida válida morria no sweep do expiry
+    // ORIGINAL) — o caso multi-réplica que este fix fecha.
+    sessionRenewedAt.delete(userId)
+    return
+  }
+  try {
+    // Entrega CONFIRMADA → só agora reivindica a chave compartilhada (TTL
+    // 1h): as demais réplicas veem a chave e pulam — dedupe correto, sem
+    // perder renews quando réplicas diferentes reemitem em momentos distintos.
+    await cacheSet(`realtime:renewed:${userId}`, now, RENEW_DEDUPE_KEY_TTL_S)
+  } catch {
+    // Redis fora de novo no momento do claim → o Map cobre esta réplica;
+    // outra réplica pode re-emitir (idempotente). Não bloqueia.
   }
 }
 
@@ -250,10 +311,13 @@ async function propagateSessionRenewal(userId: string, expiresAt: number): Promi
  * Revoke a user's realtime sockets (logout in any tab, or an admin
  * deactivation/delete). Server-side bridge (Bearer-protected). Non-blocking:
  * emitRealtime catches network errors, so a down realtime service never
- * breaks the calling flow.
+ * breaks the calling flow. Returns `true` only when the realtime CONFIRMED
+ * the delivery (HTTP 2xx) — callers use it to claim the cross-replica dedupe
+ * key only after a successful revoke (a failed emit of one replica must not
+ * suppress the revoke of the others).
  */
-export async function revokeUserSessions(userId: string): Promise<void> {
-  await emitRealtime("session:revoke", { userId })
+export async function revokeUserSessions(userId: string): Promise<boolean> {
+  return emitRealtime("session:revoke", { userId })
 }
 
 /**

@@ -50,7 +50,15 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { BookingStatusBadge, ErrorState, FreshnessLabel, initials } from "./_shared"
+import {
+  BookingStatusBadge,
+  ErrorState,
+  FreshnessLabel,
+  initials,
+  SessionConflictAlert,
+  SessionLimitsCard,
+  type SessionConflictAlertData,
+} from "./_shared"
 import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 // ---------------------------------------------------------------------------
@@ -128,6 +136,17 @@ export function AdminDashboard({ onNavigate }: { onNavigate: (view: string) => v
     staleTime: 60_000,
   })
 
+  // ── Sessões realtime (alerta global de conflito de sessão) ────────────
+  // Mesma query key do AdminUsers/AdminProviders ([admin, realtime,
+  // sessions]) — cache compartilhado; refetch a cada 30s; degrada
+  // graciosamente (ok: false → banner ausente, nunca quebra o dashboard).
+  const { data: sessionsData } = useQuery({
+    queryKey: ["admin", "realtime", "sessions"],
+    queryFn: () => apiGet<SessionConflictAlertData>("/api/admin/realtime/sessions"),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  })
+
   // H9 — ErrorState with retry
   if (isError) {
     return (
@@ -176,6 +195,16 @@ export function AdminDashboard({ onNavigate }: { onNavigate: (view: string) => v
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-8">
+      {/* Alerta global de conflito de sessão: qualquer usuário com >1 socket
+          simultâneo no realtime (órfão de HMR / stale / multi-tab). O admin
+          vê o problema na PRIMEIRA tela, antes de revogar/desativar. */}
+      <SessionConflictAlert sessionsData={sessionsData} onNavigate={onNavigate} />
+
+      {/* Card de status: config ATUAL de limites de sessão por role
+          (default + perRole do realtime). Degrada para NADA se o realtime
+          estiver fora (available=false) — nunca quebra o dashboard. */}
+      <SessionLimitsCard limits={sessionsData?.limits} available={sessionsData?.ok === true} />
+
       {/* Page header with period selector + freshness + refresh */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>

@@ -290,6 +290,10 @@ if (Test-Path ".env") {
     Write-Warn ".env não existe — criando com valores padrão..."
     
     if ($detectedCompose -match "dev") {
+        # Porta do realtime (fallback 3003). NOTA: `${VAR:-default}` é sintaxe
+        # bash — inválida em PowerShell (here-string expandiria `$REALTIME_PORT`
+        # + literal ":-3003"). Computa a porta nativamente antes do here-string.
+        $rtPort = if ($env:REALTIME_PORT) { $env:REALTIME_PORT } else { "3003" }
         @"
 # Severinno — Variáveis de ambiente (gerado automaticamente pelo setup.ps1)
 DATABASE_URL="postgresql://severinno:severinno@localhost:5432/severinno"
@@ -300,7 +304,7 @@ S3_SECRET_KEY=severinno_minio_dev
 S3_BUCKET=severinno
 S3_ENDPOINT=http://localhost:9000
 NEXT_PUBLIC_APP_URL=http://localhost:3000
-NEXT_PUBLIC_WS_URL=ws://localhost:3003
+NEXT_PUBLIC_WS_URL=ws://localhost:$rtPort
 "@ | Set-Content ".env" -Encoding UTF8
     } else {
         @"

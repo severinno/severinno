@@ -101,7 +101,10 @@ async function openAdminUsersView(adminPage: Page) {
   await adminPage.goto("/dashboard")
   await adminPage.waitForTimeout(2000)
   const usuariosNav = adminPage.getByRole("button", { name: /Usuários/ }).first()
-  await expect(usuariosNav).toBeVisible({ timeout: 8000 })
+  // Timeout folgado: sob fullyParallel o dev server compila o painel admin
+  // sob carga e o nav pode demorar (flake observado com 8s — C1 falhou 2x na
+  // rodada paralela). 15s absorve a latência sem mascarar quebra.
+  await expect(usuariosNav).toBeVisible({ timeout: 15000 })
   await usuariosNav.click()
   await adminPage.waitForTimeout(1500)
 }
@@ -126,11 +129,13 @@ async function readOnlineCardValue(page: Page): Promise<number> {
  */
 async function findProviderRow(adminPage: Page, email: string) {
   const search = adminPage.getByPlaceholder("Buscar por nome, e-mail ou cidade")
-  await expect(search).toBeVisible({ timeout: 8000 })
+  await expect(search).toBeVisible({ timeout: 15000 })
   await search.fill(email)
   await adminPage.waitForTimeout(800)
   const row = adminPage.locator("tr").filter({ hasText: email }).first()
-  await expect(row).toBeVisible({ timeout: 8000 })
+  // 15s: a busca + render da tabela sob fullyParallel com dev server
+  // compilando pode passar de 8s (flake observado na rodada paralela).
+  await expect(row).toBeVisible({ timeout: 15000 })
   return row
 }
 
@@ -139,6 +144,11 @@ async function findProviderRow(adminPage: Page, email: string) {
 // =========================================================================
 
 test.describe.serial("Card Usuários Online — Realtime", () => {
+  // Dois cenários com dashboard + admin: sob fullyParallel o dev server
+  // compila sob carga e o global de 120s estoura (padrão do
+  // realtime-ttl-sweep.spec.ts).
+  test.setTimeout(180_000)
+
   test.beforeAll(async ({ request }) => {
     // ── Fixture dinâmica: lima por email (login + /api/auth/me) ─────────
     const loginRes = await request.post("/api/auth/login", {

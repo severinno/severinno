@@ -93,9 +93,15 @@ services:
     image: severinno-realtime:latest
     restart: unless-stopped
     ports:
-      - "${REALTIME_PORT:-3003}:3003"
+      # Mapping host:container — AMBOS os lados parametrizados: o serviço
+      # agora ouve em REALTIME_PORT DENTRO do container (env abaixo), então o
+      # container-side não pode ficar fixo em 3003 (host:3199 → container:3003
+      # quebraria a conexão quando REALTIME_PORT≠3003).
+      - "${REALTIME_PORT:-3003}:${REALTIME_PORT:-3003}"
     environment:
-      PORT: ${REALTIME_PORT:-3003}
+      # Porta HTTP/socket — o serviço lê REALTIME_PORT (fallback 3003).
+      # Smoke de boot em porta alternativa: REALTIME_PORT=3199 docker compose up realtime
+      REALTIME_PORT: ${REALTIME_PORT:-3003}
       REDIS_URL: redis://redis:6379
       CORS_ORIGIN: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
     depends_on:
@@ -151,6 +157,9 @@ services:
       REALTIME_URL: http://realtime:${REALTIME_PORT:-3003}
       SENTRY_DSN: ${SENTRY_DSN:-}
       NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+      # Default 3003: compose NÃO suporta interpolação aninhada
+      # (${VAR:-...${OTHER:-...}}) — quem parametriza REALTIME_PORT define
+      # também NEXT_PUBLIC_WS_URL (o client browser usa essa URL direta).
       NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:3003}
       # ── Timeouts (ms) — defaults = código; guard check:timeout-envs exige
       # consistência com README/.env.example (não edite sem atualizar os 3)

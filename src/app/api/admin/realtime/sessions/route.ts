@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 
@@ -23,7 +24,10 @@ import { handleError } from "@/lib/api-server"
  * so the admin table never breaks because realtime is offline.
  */
 
-const REALTIME_URL = process.env.REALTIME_URL ?? "http://localhost:3003"
+// Porta do mini-service (fallback 3003) — derivada na URL default do proxy
+// (isolation: REALTIME_PORT=3199 reflete aqui sem tocar em código).
+const REALTIME_PORT = process.env.REALTIME_PORT ?? "3003"
+const REALTIME_URL = process.env.REALTIME_URL ?? `http://localhost:${REALTIME_PORT}`
 // Timeout (ms) do fetch para o mini-service. Um realtime que aceita o TCP
 // mas nunca responde deixaria o request pendurado — AbortSignal.timeout()
 // aborta após o prazo (o catch devolve sessions vazio, degradação graciosa).
@@ -42,11 +46,24 @@ type RealtimeSession = {
   ageMs?: number
 }
 
-/** Último kick por usuário (session_limit vs revoke vs session_expired). */
+/** Último kick por usuário (session_limit vs revoke vs session_expired),
+ *  persistido no Redis do realtime (sobrevive a restart) — inclui o
+ *  HISTÓRICO recente (oldest → newest) que o tooltip do painel lista. `max`
+ *  é o limite de sessões por role aplicado no kick (session_limit) — o mesmo
+ *  valor do payload session:limit emitido ao socket derrubado. */
 export type RealtimeKickInfo = {
   reason: "session_limit" | "session_expired" | "revoke"
   at: string
   count: number
+  /** Limite de sessões por role aplicado no último kick (session_limit). */
+  max?: number
+  /** Histórico recente de kicks do usuário (bounded, oldest → newest). */
+  history?: Array<{
+    reason: "session_limit" | "session_expired" | "revoke"
+    at: string
+    socketId: string
+    max?: number
+  }>
 }
 
 /** Conflito de sessão/órfão: um usuário com >1 socket ativo em paralelo. */
@@ -61,10 +78,28 @@ export type SessionConflict = {
   lastKick: RealtimeKickInfo | null
 }
 
+/** Config atual de limites de sessões por role E por plano (GET /sessions do
+ *  realtime): o default global + o max resolvido por role (override por role
+ *  quando presente, senão o fallback global) + o override por PLANO/tenant
+ *  (REALTIME_MAX_SESSIONS_PER_PLAN — ex.: FREE=1, PREMIUM=5; vazio quando
+ *  não configurado). Espelho do SESSION_LIMITS_CONFIG do mini-service — o
+ *  card de status do dashboard reflete sem conhecer envs. */
+export type RealtimeLimitsConfig = {
+  default: number
+  perRole: Record<string, number>
+  /** Override por plano/tenant (vazio quando REALTIME_MAX_SESSIONS_PER_PLAN
+   *  não está configurado — usuários caem no per-role). */
+  perPlan?: Record<string, number>
+}
+
 export type AdminRealtimeSessionsResponse = {
   ok: boolean
   /** userId → sockets ativos (sessões revogáveis, cada um com ageMs). */
   sessions: Record<string, RealtimeSession[]>
+  /** Usuários online resolvidos (name/email/avatar) — a página dedicada de
+   *  sessões busca por e-mail e exibe nome; o realtime só devolve userId/role.
+   *  Vazio (fail-open) se o lookup no banco falhar ou não houver online. */
+  users?: Record<string, { name: string; email: string; avatarUrl: string | null }>
   /** Soma de sockets ativos (presença única de usuários online). */
   totalSockets: number
   onlineUsers: number
@@ -74,6 +109,8 @@ export type AdminRealtimeSessionsResponse = {
   conflicts: SessionConflict[]
   /** Total de usuários em conflito (len(conflicts)) — para cards/badges. */
   usersWithMultipleSockets: number
+  /** Config atual de limites por role (default + perRole) — card de status. */
+  limits?: RealtimeLimitsConfig
 }
 
 /**
@@ -106,6 +143,7 @@ export function buildSessionConflicts(
 const EMPTY: AdminRealtimeSessionsResponse = {
   ok: false,
   sessions: {},
+  users: {},
   totalSockets: 0,
   onlineUsers: 0,
   kicks: {},
@@ -141,6 +179,7 @@ export async function GET(): Promise<NextResponse<AdminRealtimeSessionsResponse>
       sessions?: RealtimeSession[]
       total?: number
       kicks?: Record<string, RealtimeKickInfo>
+      limits?: RealtimeLimitsConfig
     }
     const list = data.sessions ?? []
 
@@ -150,6 +189,26 @@ export async function GET(): Promise<NextResponse<AdminRealtimeSessionsResponse>
       ;(sessions[s.userId] ??= []).push(s)
     }
     const onlineUsers = Object.keys(sessions).length
+    // Resolve nome/e-mail/avatar dos usuários online (1 query, não N+1) para
+    // a página dedicada de sessões ativas: exibir nome e buscar por e-mail.
+    // O realtime só devolve userId/role — este map enriquece a resposta.
+    // Fail-open: DB fora ou erro no query → users vazio; a página degrada
+    // para userId (nunca 500 — mesmo contrato do resto da rota).
+    const onlineIds = Object.keys(sessions)
+    const users: AdminRealtimeSessionsResponse["users"] = {}
+    if (onlineIds.length > 0) {
+      try {
+        const found = await db.user.findMany({
+          where: { id: { in: onlineIds } },
+          select: { id: true, name: true, email: true, avatarUrl: true },
+        })
+        for (const u of found) {
+          users[u.id] = { name: u.name, email: u.email, avatarUrl: u.avatarUrl }
+        }
+      } catch (lookupErr) {
+        console.error("[admin] realtime sessions user lookup failed (fail-open):", lookupErr)
+      }
+    }
     // Conflitos de sessão/órfãos em tempo real (usuários com >1 socket),
     // ordenados por gravidade — o admin vê quem está duplicado AGORA e há
     // quanto tempo, com o motivo do último kick como contexto.
@@ -158,11 +217,15 @@ export async function GET(): Promise<NextResponse<AdminRealtimeSessionsResponse>
     return NextResponse.json({
       ok: true,
       sessions,
+      users,
       totalSockets: list.length,
       onlineUsers,
       kicks: data.kicks ?? {},
       conflicts,
       usersWithMultipleSockets: conflicts.length,
+      // Config de limites por role (default + perRole) — o card de status do
+      // dashboard reflete a config atual sem conhecer as envs do realtime.
+      limits: data.limits,
     })
   } catch (e) {
     // Degradação graciosa: realtime fora do ar → sem indicador, sem erro 500.

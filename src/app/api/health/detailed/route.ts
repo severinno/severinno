@@ -305,7 +305,9 @@ async function checkPgBouncer(): Promise<ServiceHealth> {
 async function checkRealtime(): Promise<ServiceHealth> {
   const t0 = performance.now()
   try {
-    const url = process.env.REALTIME_URL ?? "http://realtime:3003"
+    // Porta do mini-service (fallback 3003) — em Docker o host é o serviço
+    // `realtime`; REALTIME_PORT parametriza o healthcheck em porta alternativa.
+    const url = process.env.REALTIME_URL ?? `http://realtime:${process.env.REALTIME_PORT ?? "3003"}`
     const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(5000) })
     const latency = Math.round(performance.now() - t0)
     if (res.ok) {

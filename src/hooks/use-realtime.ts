@@ -2,10 +2,16 @@
  * Severinno Marketplace SaaS — Realtime client hook (Fase 1 / MVP)
  *
  * Singleton Socket.io client that connects to the realtime mini-service
- * (port 3003) through the Caddy gateway. The gateway selects the upstream
- * service by the `?XTransformPort=3003` query string and forwards to path `/`.
+ * (port REALTIME_PORT, default 3003) through the Caddy gateway. The gateway
+ * selects the upstream service by the `?XTransformPort=<port>` query string
+ * and forwards to path `/`.
  *
- *   io("/?XTransformPort=3003")   <- NEVER put the port in the URL.
+ *   io("/?XTransformPort=<port>")   <- NEVER put the port in the URL.
+ *
+ * Porta configurável via NEXT_PUBLIC_REALTIME_PORT (fallback 3003) — smoke
+ * de boot em porta alternativa e testes de isolamento (o gateway Caddy
+ * roteia pelo XTransformPort, então o client precisa anunciar a MESMA
+ * porta do upstream).
  *
  * Usage:
  *   const { isConnected, join, sendMessage, ... } = useRealtime();
@@ -101,6 +107,24 @@ export interface TrackingPositionEvent {
   timestamp: string
 }
 
+/** Payload do evento `session:limit` emitido pelo realtime quando um socket
+ *  ANTIGO do mesmo usuário é derrubado por exceder o limite de sessões
+ *  simultâneas por role (um socket MAIS NOVO assumiu). O campo `max` é o
+ *  limite POR ROLE aplicado no kick (ex.: PROVIDER=2) — o client expõe para
+ *  a UI exibir "limite N" sem conhecer a config do servidor. */
+export interface SessionLimitPayload {
+  userId?: string
+  reason?: string
+  max?: number
+}
+
+/** Último `session:limit` recebido pelo socket (ou null se nunca houve).
+ *  Carrega o limite por role aplicado (max) + o instante do kick. */
+export interface SessionLimitInfo {
+  max: number
+  at: string
+}
+
 // ---------- Singleton socket ----------
 // Only build it in the browser. SSR returns null.
 let socketRef: Socket | null = null
@@ -115,7 +139,9 @@ let socketRef: Socket | null = null
 function getSocketUrl(): string {
   const explicit = process.env.NEXT_PUBLIC_REALTIME_URL
   if (explicit) return explicit
-  return "/?XTransformPort=3003"
+  // Porta do upstream no gateway — NEXT_PUBLIC_REALTIME_PORT (fallback 3003).
+  const port = process.env.NEXT_PUBLIC_REALTIME_PORT ?? "3003"
+  return `/?XTransformPort=${port}`
 }
 
 function getSocket(): Socket | null {
@@ -141,6 +167,9 @@ function getSocket(): Socket | null {
 export interface UseRealtimeResult {
   isConnected: boolean
   status: ConnectionStatus
+  /** Último `session:limit` recebido (socket derrubado por limite por role) —
+   *  carrega o `max` do payload para a UI exibir "limite N" (null se nunca). */
+  lastSessionLimit: SessionLimitInfo | null
   // helpers
   join: (payload: JoinPayload) => Promise<boolean>
   sendMessage: (payload: MessageSendPayload) => void
@@ -158,6 +187,7 @@ export interface UseRealtimeResult {
 export function useRealtime(): UseRealtimeResult {
   const [isConnected, setIsConnected] = useState(false)
   const [status, setStatus] = useState<ConnectionStatus>("connecting")
+  const [lastSessionLimit, setLastSessionLimit] = useState<SessionLimitInfo | null>(null)
 
   useEffect(() => {
     const s = getSocket()
@@ -196,7 +226,17 @@ export function useRealtime(): UseRealtimeResult {
     // treatment as revocation — reset the singleton and disconnect, so the
     // client does not auto-reconnect (reconnection: true would otherwise loop
     // joining → kicked → reconnecting forever).
-    const onSessionLimited = () => {
+    // O payload carrega o limite POR ROLE aplicado (max) — exposto como
+    // `lastSessionLimit` para a UI exibir "limite N" (o mesmo valor que o
+    // painel admin mostra no tooltip do kick). max inválido/ausente → 0
+    // (degradação graciosa: o kick acontece, só o detalhe fica vazio).
+    const onSessionLimited = (payload?: SessionLimitPayload) => {
+      const rawMax = payload?.max
+      const max =
+        typeof rawMax === "number" && Number.isFinite(rawMax) && rawMax >= 1
+          ? Math.floor(rawMax)
+          : 0
+      setLastSessionLimit({ max, at: new Date().toISOString() })
       if (socketRef === s) socketRef = null
       s.disconnect()
       setIsConnected(false)
@@ -329,6 +369,7 @@ export function useRealtime(): UseRealtimeResult {
   return {
     isConnected,
     status,
+    lastSessionLimit,
     join,
     sendMessage,
     updateBooking,

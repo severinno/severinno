@@ -1,36 +1,50 @@
 import { test, expect, type Page } from "@playwright/test"
 import type { WebSocket as PlaywrightWebSocket } from "playwright"
+import { realtimePort } from "./realtime-emit"
 
 // =========================================================================
 // Limite de Sessões — E2E (Realtime)
 //
-// Cenário: o mesmo usuário abre o dashboard em DUAS abas (mesmo browser
-// context → mesmo cookie → mesma sessão). O realtime mantém apenas o socket
-// MAIS RECENTE (REALTIME_MAX_SESSIONS_PER_USER, default 1) e derruba os
-// antigos com motivo "session_limit":
+// Cenário: o mesmo usuário abre o dashboard em TRÊS abas (mesmo browser
+// context → mesmo cookie → mesma sessão). Com o limite por role ativo no dev
+// (REALTIME_MAX_SESSIONS_PER_ROLE='{"CLIENT":1,"PROVIDER":2,"ADMIN":5}'),
+// o realtime mantém os 2 sockets MAIS RECENTES de um PROVIDER e derruba o
+// antigo com motivo "session_limit":
 //   1. Aba A abre o dashboard → socket A dá join em user:{providerId}.
-//   2. Aba B abre o dashboard → socket B dá join; o servidor detecta o
-//      excesso (sweep fetchSockets + selectSocketsToKickForSessionLimit) e
-//      força o close do socket A (evento session:limit + close atrasado).
-//   3. O client da aba A reseta o singleton (onSessionLimited) e NÃO
+//   2. Aba B abre o dashboard → socket B dá join; 2 sockets ficam DENTRO do
+//      limite PROVIDER=2 → ambos coexistem (mesmo cenário do badge '2
+//      sessões' no painel admin — o conflito NÃO derruba ninguém).
+//   3. Aba C abre o dashboard → socket C dá join; 3 sockets > 2 → o servidor
+//      detecta o excesso (sweep fetchSockets + selectSocketsToKickForSessionLimit)
+//      e força o close do socket A (evento session:limit + close atrasado).
+//   4. O client da aba A reseta o singleton (onSessionLimited) e NÃO
 //      reconecta — o websocket fecha de verdade (sem loop join→kick→rejoin).
-//   4. O socket B continua vivo e recebe o toast de um novo booking — prova
-//      que o "mais recente vence" e o canal não quebrou.
+//   5. Os sockets B e C continuam vivos e recebem o toast de um novo booking —
+//      prova que os "mais recentes vencem" e o canal não quebrou.
 //
 // ISOLAMENTO COMPLETO (provider E client próprios): cada spec E2E de realtime
 // usa um provider E um client distinto porque os specs rodam em paralelo
-// (fullyParallel) e o realtime casa sockets por userId — com o limite
-// REALTIME_MAX_SESSIONS_PER_USER (default 1), sockets do MESMO usuário se
-// derrubam entre si. Mapa de isolamento:
+// (fullyParallel) e o realtime casa sockets por userId — sockets do MESMO
+// usuário se derrubam quando o limite por role é excedido. Mapa:
 //
-// ⚠️ FOOTGUN: este spec assume PROVIDER limit = 1 (default). Se o ambiente
-// dev setar REALTIME_MAX_SESSIONS_PER_ROLE com PROVIDER > 1 (ex.: JSON
-// '{"PROVIDER":2}'), a 2ª aba NÃO derruba a 1ª e o spec quebra. Só rode com
-// o limite por role = 1 para PROVIDER (ou sem override).
+// ⚠️ REQUISITO DE CONFIG: este spec valida o comportamento com o limite por
+// role ATIVO no dev — REALTIME_MAX_SESSIONS_PER_ROLE='{"CLIENT":1,
+// "PROVIDER":2,"ADMIN":5}' (exemplo do docker-compose.dev.yml + .env.local).
+// Com PROVIDER=2, a 2ª aba NÃO derruba a 1ª (coexistem — badge '2 sessões');
+// a 3ª aba derruba a MAIS ANTIGA. Se o realtime rodar sem override (limite
+// 1), o cenário muda (a 2ª aba já derruba a 1ª) e este spec quebra — rode
+// com a config por role acima.
 //   realtime-notification → carlos (provider) + cliente (client)
 //   session-revocation    → ricardo (provider) + cliente (client)
 //   session-limit         → fernanda (provider) + maria (client, 2º client
 //                           do seed — password cliente123)
+//   admin-session-conflict → provider isolado registrado via API (único por
+//                           run — nunca colide com os do seed)
+//   realtime-role-limit   → provider E client isolados registrados via API
+//                           (emails únicos por run — nenhum user do seed)
+//   realtime-plan-limit   → 2 providers isolados registrados via API (emails
+//                           únicos por run); um deles sobe para PREMIUM via
+//                           UPDATE no banco (pg) — nunca colide com o seed
 // =========================================================================
 
 const CLIENT_EMAIL = "maria@severinno.com"
@@ -131,6 +145,11 @@ async function waitForWsClose(
 // =========================================================================
 
 test.describe.serial("Limite de Sessões — Realtime", () => {
+  // Fluxo pesado (3 abas + booking + toasts): sob fullyParallel o dev server
+  // compila sob carga e o global de 120s estoura (padrão do
+  // realtime-ttl-sweep.spec.ts).
+  test.setTimeout(180_000)
+
   // Resolve os IDs dinamicamente: provider por email (login + /api/auth/me)
   // e serviço por título (/api/services, público). Re-seed não quebra o spec.
   test.beforeAll(async ({ request }) => {
@@ -159,8 +178,10 @@ test.describe.serial("Limite de Sessões — Realtime", () => {
     console.log(`✅ Fixtures dinâmicas: provider=${PROVIDER_ID} service=${SERVICE_ID}`)
   })
 
-  test("segunda aba assume e derruba o socket mais antigo (session_limit)", async ({ browser }) => {
-    // ── Contexto do provider (mesmo cookie nas duas abas) ──────────────
+  test("3ª aba derruba o socket mais antigo (session_limit) — limite PROVIDER=2", async ({
+    browser,
+  }) => {
+    // ── Contexto do provider (mesmo cookie nas três abas) ──────────────
     const providerCtx = await browser.newContext()
     const pageA = await providerCtx.newPage()
     await login(pageA, PROVIDER_EMAIL, PROVIDER_PASSWORD)
@@ -184,18 +205,37 @@ test.describe.serial("Limite de Sessões — Realtime", () => {
       await expect(pageB.locator('[aria-label="Notifications alt+T"]')).toBeAttached({
         timeout: 5000,
       })
-      console.log("✅ Aba B montada — socket B deve ter assumido, socket A deve cair")
+      console.log("✅ Aba B montada — 2 sockets dentro do limite PROVIDER=2 (coexistem)")
 
-      // ── Socket A (antigo) deve FECHAR (kicked com session_limit) ─────
+      // ── Com PROVIDER=2 a 2ª aba NÃO derruba a 1ª: socket A PERMANECE ──
       const realtimeA = wsA.filter(
-        (w) => w.url.includes(":3003") || w.url.includes("XTransformPort"),
+        (w) => w.url.includes(`:${realtimePort()}`) || w.url.includes("XTransformPort"),
       )
-      if (realtimeA.length === 0) {
-        console.log("ℹ️ Nenhum websocket realtime na aba A — assert de close pulado")
+      const activeA = realtimeA.length > 0 ? realtimeA[realtimeA.length - 1] : null
+      if (activeA) {
+        await pageA.waitForTimeout(1500)
+        expect(
+          activeA.ws.isClosed(),
+          "socket da aba A (1ª) deve PERMANECER aberto — limite PROVIDER=2 permite 2 sockets",
+        ).toBe(false)
+        console.log("✅ Socket da aba A segue vivo (2 sockets dentro do limite)")
       } else {
-        const activeA = realtimeA[realtimeA.length - 1]
-        const closedA = await waitForWsClose(activeA.ws, 10000, "aba A (antiga)")
-        expect(closedA, "socket da aba A (mais antigo) deve fechar após a 2ª aba assumir").toBe(
+        console.log("ℹ️ Nenhum websocket realtime na aba A — assert de coexistência pulado")
+      }
+
+      // ── Aba C: socket C dá join → 3 sockets > 2 → derruba o MAIS ANTIGO (A) ──
+      const pageC = await providerCtx.newPage()
+      const wsC = trackRealtimeSockets(pageC)
+      await pageC.goto("/dashboard")
+      await pageC.waitForTimeout(3000)
+      await expect(pageC.locator('[aria-label="Notifications alt+T"]')).toBeAttached({
+        timeout: 5000,
+      })
+      console.log("✅ Aba C montada — 3 sockets > limite 2: o mais antigo (A) deve cair")
+
+      if (activeA) {
+        const closedA = await waitForWsClose(activeA.ws, 10000, "aba A (mais antiga)")
+        expect(closedA, "socket da aba A (mais antigo) deve fechar após a 3ª aba assumir").toBe(
           true,
         )
         console.log(
@@ -203,18 +243,25 @@ test.describe.serial("Limite de Sessões — Realtime", () => {
         )
       }
 
-      // ── Socket B (novo) deve PERMANECER vivo ─────────────────────────
+      // ── Sockets B e C (mais recentes) devem PERMANECER vivos ─────────
       const realtimeB = wsB.filter(
-        (w) => w.url.includes(":3003") || w.url.includes("XTransformPort"),
+        (w) => w.url.includes(`:${realtimePort()}`) || w.url.includes("XTransformPort"),
       )
       expect(realtimeB.length, "aba B deve ter websocket realtime").toBeGreaterThan(0)
       const activeB = realtimeB[realtimeB.length - 1]
-      expect(activeB.ws.isClosed(), "socket da aba B (mais recente) deve permanecer aberto").toBe(
+      expect(activeB.ws.isClosed(), "socket da aba B (recente) deve permanecer aberto").toBe(false)
+
+      const realtimeC = wsC.filter(
+        (w) => w.url.includes(`:${realtimePort()}`) || w.url.includes("XTransformPort"),
+      )
+      expect(realtimeC.length, "aba C deve ter websocket realtime").toBeGreaterThan(0)
+      const activeC = realtimeC[realtimeC.length - 1]
+      expect(activeC.ws.isClosed(), "socket da aba C (mais recente) deve permanecer aberto").toBe(
         false,
       )
-      console.log("✅ Socket da aba B permanece aberto (mais recente vence)")
+      console.log("✅ Sockets das abas B e C permanecem abertos (os 2 mais recentes vencem)")
 
-      // ── Booking do cliente → toast SOMENTE na aba B ──────────────────
+      // ── Booking do cliente → toast nas abas vivas (B/C), NUNCA na A ──
       const clientCtx = await browser.newContext()
       const clientPage = await clientCtx.newPage()
       try {
@@ -224,7 +271,7 @@ test.describe.serial("Limite de Sessões — Realtime", () => {
         const booking = await createBooking(clientPage, 11)
         console.log(`✅ Booking criado: ${booking}`)
 
-        // O toast chega na aba B (socket vivo, sala user:{providerId}).
+        // O toast chega nas abas com socket vivo (B e C — sala user:{id}).
         const toastB = pageB.locator("[data-sonner-toast]").first()
         await expect(toastB).toBeVisible({ timeout: 10000 })
         const textoB = (await toastB.textContent()) ?? ""
@@ -240,6 +287,7 @@ test.describe.serial("Limite de Sessões — Realtime", () => {
       }
 
       await pageB.close()
+      await pageC.close()
     } finally {
       await providerCtx.close()
     }

@@ -212,6 +212,10 @@ async function main() {
       name: "Administrador Severinno",
       slug: slugify("Administrador Severinno"),
       role: "ADMIN",
+      // Demo do limite por plano do realtime: o admin é PREMIUM (5 sessões)
+      // enquanto os demais users do seed ficam no default FREE (fallback ao
+      // per-role). Conta demo — em produção o plano vem do billing/tenant.
+      plan: "PREMIUM",
       verified: true,
       active: true,
       phone: "(11) 4000-0000",

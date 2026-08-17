@@ -161,11 +161,30 @@ type RealtimeSessionsResponse = {
   >
   totalSockets: number
   onlineUsers: number
-  /** Motivo do último kick por usuário (conflito de sessão vs revoke). */
+  /** Motivo do último kick por usuário + histórico recente (conflito de
+   *  sessão vs revoke vs TTL). Persistido no Redis — sobrevive a restart. */
   kicks: Record<
     string,
-    { reason: "session_limit" | "session_expired" | "revoke"; at: string; count: number }
+    {
+      reason: "session_limit" | "session_expired" | "revoke"
+      at: string
+      count: number
+      /** Limite de sessões por role aplicado no kick (session_limit). */
+      max?: number
+      /** Histórico recente de kicks (bounded, oldest → newest). */
+      history?: Array<{
+        reason: "session_limit" | "session_expired" | "revoke"
+        at: string
+        socketId: string
+        max?: number
+      }>
+    }
   >
+  /** Config atual de limites por role (default + perRole) — o card de
+   *  status do dashboard e o tooltip do conflito a usam (limite real por
+   *  role, não o default hardcoded). Espelho do SESSION_LIMITS_CONFIG do
+   *  realtime. */
+  limits?: { default: number; perRole: Record<string, number> }
 }
 
 type StatsResponse = {
@@ -759,6 +778,7 @@ export function AdminUsers() {
                               userId={u.id}
                               sessionsByUser={sessionsByUser}
                               kicks={sessionsData?.kicks ?? {}}
+                              limits={sessionsData?.limits}
                             />
                           ) : (
                             <span className="text-muted-foreground/50 text-[11px]">—</span>
@@ -925,39 +945,80 @@ function OnlineSessionsCell({
   userId,
   sessionsByUser,
   kicks,
+  limits,
 }: {
   userId: string
   sessionsByUser: Map<string, RealtimeSessionsResponse["sessions"][string]>
   kicks: RealtimeSessionsResponse["kicks"]
+  /** Config atual de limites por role (default + perRole) — resolve o
+   *  limite REAL do role do usuário (ex.: PROVIDER=2), não o default. */
+  limits?: RealtimeSessionsResponse["limits"]
 }) {
   const sockets = sessionsByUser.get(userId) ?? []
   const count = sockets.length
   const kick = kicks[userId]
   const conflict = count > 1
 
-  const kickLabel = kick
-    ? {
-        session_limit: "limite de sessões (2ª aba derrubou a 1ª)",
-        session_expired: "sessão expirada (TTL)",
-        revoke: "revogada (logout ou ação do admin)",
-      }[kick.reason]
-    : null
+  // Limite real do role do usuário (override por role → fallback global):
+  // exibe "limite N" no conflito em vez do default hardcoded 1.
+  const role = sockets[0]?.role
+  const roleLimit = limits && role ? (limits.perRole[role] ?? limits.default) : undefined
+
+  const kickReasonLabel = (reason: RealtimeSessionsResponse["kicks"][string]["reason"]) =>
+    ({
+      session_limit: "limite de sessões (2ª aba derrubou a 1ª)",
+      session_expired: "sessão expirada (TTL)",
+      revoke: "revogada (logout ou ação do admin)",
+    })[reason]
 
   const detail = (
     <>
       <p className="font-medium">
         {count} {count === 1 ? "sessão ativa" : "sessões ativas"} no realtime
-      </p>
+      </p>{" "}
       {conflict ? (
         <p className="text-amber-500">
-          Conflito: o limite do realtime é 1 socket por usuário — a mais antiga será derrubada a
-          cada novo join.
+          Conflito: {count} sessões ativas — o limite{role ? ` de ${role}` : ""} é {roleLimit ?? 1}{" "}
+          {(roleLimit ?? 1) === 1 ? "socket" : "sockets"} por usuário.
+          {/* A cláusula de derrubada SÓ vale acima do limite: com PROVIDER=2 e 2
+              sockets nada é derrubado até a 3ª aba — o texto honesto evita
+              alarme falso de kick iminente. */}
+          {roleLimit !== undefined && count > roleLimit ? (
+            <> A mais antiga será derrubada a cada novo join.</>
+          ) : (
+            <> Dentro do limite — um novo join além dele derruba a mais antiga.</>
+          )}
         </p>
       ) : null}
       {kick ? (
-        <p className="text-muted-foreground">
-          Último kick: {kickLabel ?? kick.reason} · {formatRelative(kick.at)} ({kick.count}×)
-        </p>
+        <>
+          <p className="text-muted-foreground">
+            Último kick: {kickReasonLabel(kick.reason)} · {formatRelative(kick.at)} ({kick.count}×)
+          </p>
+          {kick.reason === "session_limit" && typeof kick.max === "number" ? (
+            <p className="text-muted-foreground">
+              Limite aplicado: {kick.max} socket{kick.max === 1 ? "" : "s"} simultâneo
+              {kick.max === 1 ? "" : "s"} (config por role)
+            </p>
+          ) : null}
+          {kick.history && kick.history.length > 0 ? (
+            <div className="border-border/40 border-t pt-1">
+              <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+                Histórico de kicks
+              </p>
+              <ul className="space-y-0.5">
+                {kick.history
+                  .slice(-3)
+                  .reverse()
+                  .map((h, i) => (
+                    <li key={i} className="text-muted-foreground text-xs">
+                      {kickReasonLabel(h.reason)} · {formatRelative(h.at)}
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          ) : null}
+        </>
       ) : (
         <p className="text-muted-foreground">Sem kicks registrados.</p>
       )}

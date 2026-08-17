@@ -7,15 +7,18 @@
  *   2. Degradation: no EMIT_TOKEN or realtime down → EMPTY (never 500)
  *   3. Groups by userId, passes through ageMs/kicks, derives conflicts
  *      (users with >1 socket, sorted by severity, merged with last kick)
- *   4. buildSessionConflicts unit cases (pure)
+ *   4. Users map enrichment (name/email/avatar p/ display + busca por e-mail)
+ *      with fail-open when the DB lookup fails
+ *   5. buildSessionConflicts unit cases (pure)
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { NextResponse } from "next/server"
 
-const { mockRequireRole, mockHandleError } = vi.hoisted(() => ({
+const { mockRequireRole, mockHandleError, mockUserFindMany } = vi.hoisted(() => ({
   mockRequireRole: vi.fn(),
   mockHandleError: vi.fn(),
+  mockUserFindMany: vi.fn(),
 }))
 
 vi.mock("@/lib/auth", () => ({
@@ -24,12 +27,22 @@ vi.mock("@/lib/auth", () => ({
 vi.mock("@/lib/api-server", () => ({
   handleError: mockHandleError,
 }))
+vi.mock("@/lib/db", () => ({
+  db: { user: { findMany: mockUserFindMany } },
+}))
 
 import { GET, buildSessionConflicts, type RealtimeKickInfo } from "../sessions/route"
 
 const ADMIN = { userId: "admin-1", role: "ADMIN" }
 
-const KICK: RealtimeKickInfo = { reason: "session_limit", at: "2026-08-16T12:00:00.000Z", count: 2 }
+const KICK: RealtimeKickInfo = {
+  reason: "session_limit",
+  at: "2026-08-16T12:00:00.000Z",
+  count: 2,
+  max: 2, // limite por role aplicado no kick (PROVIDER=2)
+}
+
+const LIMITS = { default: 1, perRole: { CLIENT: 1, PROVIDER: 2, ADMIN: 5 } }
 
 function fakeSessionsResponse() {
   return {
@@ -63,6 +76,7 @@ function fakeSessionsResponse() {
       },
     ],
     total: 3,
+    limits: LIMITS,
     kicks: { u1: KICK },
   }
 }
@@ -91,6 +105,74 @@ beforeEach(() => {
   // Ambiente determinístico: nenhum teste pode vazar REALTIME_EMIT_TOKEN
   // para o próximo (o teste "sem token" exige ausência; os demais setam).
   delete process.env.REALTIME_EMIT_TOKEN
+  // Default do lookup de usuários: os testes de happy path (agrupa por
+  // usuário, limits) NÃO setam db.user.findMany — com resetAllMocks ele
+  // devolveria undefined → `for (const u of found)` lançaria → o catch
+  // fail-open engoliria com console.error enganoso. Mockar [] mantém o
+  // caminho feliz determinístico; só o teste dedicado de fail-open exercita
+  // o catch (mockRejectedValue por teste).
+  mockUserFindMany.mockResolvedValue([])
+})
+
+describe("users map (enriquecimento p/ display + busca por e-mail)", () => {
+  it("resolve name/email/avatar dos usuários online via db.user.findMany", async () => {
+    mockRequireRole.mockResolvedValue(ADMIN)
+    process.env.REALTIME_EMIT_TOKEN = "test-token"
+    mockFetchOk(fakeSessionsResponse())
+    mockUserFindMany.mockResolvedValue([
+      { id: "u1", name: "Ana Prestadora", email: "ana@severinno.com", avatarUrl: null },
+      {
+        id: "u2",
+        name: "Bruno Cliente",
+        email: "bruno@severinno.com",
+        avatarUrl: "https://x/a.png",
+      },
+    ])
+
+    const res = await GET()
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      users: Record<string, { name: string; email: string; avatarUrl: string | null }>
+    }
+
+    // Busca com `id in [onlineIds]` — só os userIds presentes nas sessões.
+    expect(mockUserFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: { in: ["u1", "u2"] } },
+        select: expect.objectContaining({ name: true, email: true, avatarUrl: true }),
+      }),
+    )
+    expect(body.users).toEqual({
+      u1: { name: "Ana Prestadora", email: "ana@severinno.com", avatarUrl: null },
+      u2: { name: "Bruno Cliente", email: "bruno@severinno.com", avatarUrl: "https://x/a.png" },
+    })
+  })
+
+  it("fail-open: db.user.findMany lança → users {} e ok continua true (nunca 500)", async () => {
+    mockRequireRole.mockResolvedValue(ADMIN)
+    process.env.REALTIME_EMIT_TOKEN = "test-token"
+    mockFetchOk(fakeSessionsResponse())
+    mockUserFindMany.mockRejectedValue(new Error("db down"))
+
+    const res = await GET()
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { ok: boolean; users: unknown; sessions: unknown }
+    expect(body.ok).toBe(true)
+    expect(body.users).toEqual({})
+    // Sessões/conflitos continuam intactos — o map é apenas enriquecimento.
+    expect((body.sessions as Record<string, unknown[]>)["u1"]).toHaveLength(2)
+  })
+
+  it("sem usuários online → users {} e db.user.findMany NÃO é chamado", async () => {
+    mockRequireRole.mockResolvedValue(ADMIN)
+    process.env.REALTIME_EMIT_TOKEN = "test-token"
+    mockFetchOk({ ok: true, sessions: [], total: 0, kicks: {} })
+
+    const res = await GET()
+    const body = (await res.json()) as { users: unknown }
+    expect(body.users).toEqual({})
+    expect(mockUserFindMany).not.toHaveBeenCalled()
+  })
 })
 
 describe("GET /api/admin/realtime/sessions", () => {
@@ -162,6 +244,7 @@ describe("GET /api/admin/realtime/sessions", () => {
     expect(body.sessions["u1"]![0]!.ageMs).toBe(300_000)
     expect(body.sessions["u2"]![0]!.ageMs).toBe(600_000)
     expect(body.kicks["u1"]).toEqual(KICK)
+    expect(body.kicks["u1"]!.max).toBe(2)
     // conflito: só u1 (2 sockets), com o socket mais antigo + último kick
     expect(body.usersWithMultipleSockets).toBe(1)
     expect(body.conflicts).toHaveLength(1)
@@ -172,6 +255,48 @@ describe("GET /api/admin/realtime/sessions", () => {
       oldestAgeMs: 300_000,
     })
     expect(body.conflicts[0]!.lastKick).toEqual(KICK)
+  })
+
+  it("passa a config de limites por role E por plano (limits) do realtime — card de status do dashboard", async () => {
+    mockRequireRole.mockResolvedValue(ADMIN)
+    process.env.REALTIME_EMIT_TOKEN = "test-token"
+    mockFetchOk({
+      ...fakeSessionsResponse(),
+      limits: { ...LIMITS, perPlan: { FREE: 1, PREMIUM: 5 } },
+    })
+
+    const res = await GET()
+    const body = (await res.json()) as {
+      limits?: {
+        default: number
+        perRole: Record<string, number>
+        perPlan?: Record<string, number>
+      }
+    }
+    expect(body.limits).toEqual({ ...LIMITS, perPlan: { FREE: 1, PREMIUM: 5 } })
+  })
+
+  it("passa limits SEM perPlan (env per-plan não configurado) — perPlan undefined", async () => {
+    mockRequireRole.mockResolvedValue(ADMIN)
+    process.env.REALTIME_EMIT_TOKEN = "test-token"
+    mockFetchOk(fakeSessionsResponse())
+
+    const res = await GET()
+    const body = (await res.json()) as {
+      limits?: { default: number; perRole: Record<string, number>; perPlan?: unknown }
+    }
+    expect(body.limits).toEqual(LIMITS)
+    expect(body.limits?.perPlan).toBeUndefined()
+  })
+
+  it("realtime sem limits → response sem limits (undefined — card degrada graciosamente)", async () => {
+    mockRequireRole.mockResolvedValue(ADMIN)
+    process.env.REALTIME_EMIT_TOKEN = "test-token"
+    mockFetchOk({ ok: true, sessions: [], total: 0, kicks: {} })
+
+    const res = await GET()
+    const body = (await res.json()) as { limits?: unknown }
+    expect(body.limits).toBeUndefined()
   })
 })
 

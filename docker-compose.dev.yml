@@ -66,11 +66,18 @@ services:
       args:
         BUN_VERSION: ${BUN_VERSION:-1.3.14}
     ports:
-      - "3003:3003"
+      # Mapping host:container — AMBOS os lados parametrizados: o serviço ouve
+      # em REALTIME_PORT DENTRO do container (env abaixo), então o container-side
+      # não pode ficar fixo em 3003 (host:3199 → container:3003 quebraria quando
+      # REALTIME_PORT≠3003).
+      - "${REALTIME_PORT:-3003}:${REALTIME_PORT:-3003}"
     volumes:
       - ./mini-services/realtime:/app
       - /app/node_modules
     environment:
+      # Porta HTTP/socket — o serviço lê REALTIME_PORT (fallback 3003).
+      # Smoke de boot em porta alternativa: REALTIME_PORT=3199 docker compose up realtime
+      REALTIME_PORT: ${REALTIME_PORT:-3003}
       # Seguranca: SESSION_SECRET valida o cookie HMAC no join e
       # REALTIME_EMIT_TOKEN protege o POST /emit (fail closed sem ambos).
       # DATABASE_URL habilita a validacao de participante real do booking
@@ -82,6 +89,10 @@ services:
       # Override POR ROLE (JSON): {"CLIENT":1,"PROVIDER":2,"ADMIN":5}.
       # Roles sem override usam o default global acima; JSON invalido → default.
       REALTIME_MAX_SESSIONS_PER_ROLE: ${REALTIME_MAX_SESSIONS_PER_ROLE:-}
+      # Override POR PLANO/TENANT (JSON): {"FREE":1,"PREMIUM":5}. O plano do
+      # usuario e lido do banco no join (coluna User.plan, fail-open) — planos
+      # sem override usam o per-role acima; JSON invalido → per-role.
+      REALTIME_MAX_SESSIONS_PER_PLAN: ${REALTIME_MAX_SESSIONS_PER_PLAN:-}
       # Intervalo do sweep de TTL do cookie (ms; default 60000; clamp >= 1000).
       # Baixo em dev/CI acelera o spec e2e/realtime-ttl-sweep.spec.ts.
       REALTIME_TTL_SWEEP_MS: ${REALTIME_TTL_SWEEP_MS:-}

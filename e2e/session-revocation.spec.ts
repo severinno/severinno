@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test"
 import type { WebSocket as PlaywrightWebSocket } from "playwright"
+import { realtimePort } from "./realtime-emit"
 
 // =========================================================================
 // Revogação de Sessão — E2E (Realtime)
@@ -227,7 +228,7 @@ test.describe.serial("Revogação de Sessão — Realtime", () => {
       // fecha. Em produção não há HMR, então tipicamente existe um único
       // socket por aba (múltiplas abas / reconnect ainda são possíveis).
       const realtimeWs = wsList.filter(
-        (w) => w.url.includes(":3003") || w.url.includes("XTransformPort"),
+        (w) => w.url.includes(`:${realtimePort()}`) || w.url.includes("XTransformPort"),
       )
       if (realtimeWs.length === 0) {
         console.log("ℹ️ Nenhum websocket realtime observado — assert de close pulado")

@@ -68,13 +68,19 @@ vi.mock("@/lib/sounds", () => ({
 }))
 
 vi.mock("lucide-react", () => ({
+  AlertTriangle: () => <svg />,
   ArrowRight: () => <svg />,
   CalendarCheck: () => <svg />,
+  CircleUser: () => <svg />,
   Clock: () => <svg />,
   DollarSign: () => <svg />,
+  HardHat: () => <svg />,
+  RefreshCcw: () => <svg />,
   RotateCw: () => <svg />,
+  ShieldCheck: () => <svg />,
   Star: () => <svg />,
   Users: () => <svg />,
+  Wifi: () => <svg />,
   Wrench: () => <svg />,
 }))
 

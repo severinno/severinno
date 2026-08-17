@@ -41,7 +41,9 @@ describe("emitRealtime", () => {
     // Import after mocks are set up
     const { emitRealtime } = await import("@/lib/realtime-client")
 
-    await emitRealtime("payment:confirmed", { bookingId: "b-123" })
+    // 200 → entrega CONFIRMADA (res.ok): o caller usa o boolean para decidir
+    // se reivindica a chave de dedupe (ex.: realtime:renewed:{userId}).
+    await expect(emitRealtime("payment:confirmed", { bookingId: "b-123" })).resolves.toBe(true)
 
     expect(mockFetch).toHaveBeenCalledTimes(1)
     const call = mockFetch.mock.calls[0]!
@@ -101,21 +103,33 @@ describe("emitRealtime", () => {
     vi.unstubAllEnvs()
   })
 
-  it("captura erro de rede e loga warning sem propagar exceção", async () => {
+  it("captura erro de rede e loga warning sem propagar exceção (resolve false)", async () => {
     const mockFetch = vi.mocked(fetch)
     const networkError = new Error("ECONNREFUSED")
     mockFetch.mockRejectedValueOnce(networkError)
 
     const { emitRealtime } = await import("@/lib/realtime-client")
 
-    // Should NOT throw
-    await expect(emitRealtime("test:fail", {})).resolves.toBeUndefined()
+    // Should NOT throw — mas resolve false: o caller NÃO reivindica a chave
+    // de dedupe (uma falha de uma réplica não pode suprimir retries das outras).
+    await expect(emitRealtime("test:fail", {})).resolves.toBe(false)
 
     expect(mockLoggerWarn).toHaveBeenCalledTimes(1)
     expect(mockLoggerWarn).toHaveBeenCalledWith(
       { err: networkError, event: "test:fail" },
       "realtime emit failed",
     )
+  })
+
+  it("resolve false quando o realtime responde HTTP não-2xx (entrega NÃO confirmada)", async () => {
+    const mockFetch = vi.mocked(fetch)
+    mockFetch.mockResolvedValueOnce(new Response(null, { status: 500 }))
+
+    const { emitRealtime } = await import("@/lib/realtime-client")
+
+    // 500 do realtime = falha de entrega (mesmo sem exceção de rede): a
+    // chave de dedupe NÃO pode ser reivindicada — outra réplica retenta.
+    await expect(emitRealtime("test:server-error", {})).resolves.toBe(false)
   })
 
   it("passa AbortSignal.timeout como signal do fetch", async () => {
@@ -151,7 +165,7 @@ describe("emitRealtime", () => {
     const { emitRealtime } = await import("@/lib/realtime-client")
 
     const started = Date.now()
-    await expect(emitRealtime("test:hang", {})).resolves.toBeUndefined()
+    await expect(emitRealtime("test:hang", {})).resolves.toBe(false)
     const elapsed = Date.now() - started
 
     expect(elapsed).toBeLessThan(2000) // não esperou para sempre

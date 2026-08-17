@@ -18,6 +18,7 @@ import Image from "next/image"
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
+  AlertTriangle,
   BadgeCheck,
   Calendar,
   ChevronDown,
@@ -46,9 +47,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 import { useUIStore } from "@/store/ui"
+import { useAuthStore } from "@/store/auth"
 import { useRecentlyViewedStore } from "@/store/recently-viewed"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { fetchProviderDetail, type ProviderDetail, type ProviderService } from "@/lib/api"
+import { apiGet, fetchProviderDetail, type ProviderDetail, type ProviderService } from "@/lib/api"
 import { formatBRL } from "@/lib/format"
 import { SERVICE_UNIT_SHORT, WEEKDAYS, WEEKDAYS_SHORT } from "@/lib/constants"
 import { StarRatingDisplay } from "./star-rating"
@@ -62,6 +64,19 @@ const ProviderMiniMap = dynamic(() => import("@/components/shared/provider-mini-
   loading: () => <Skeleton className="h-48 w-full rounded-xl" />,
 })
 
+// ── Sessões realtime (badge de conflito — ADMIN only) ───────────────────
+// O provider.id é o userId (a rota /api/providers/[id] busca por user.id),
+// então casa direto com sessions[userId] do GET /api/admin/realtime/sessions.
+// O badge de conflito (>1 socket simultâneo) é um dado ADMIN (a rota exige
+// role ADMIN) — clientes/visitantes nunca disparam essa query (enabled).
+// Query key COMPARTILHADA com o painel admin ([admin, realtime, sessions]):
+// cache reutilizado quando o admin abriu as tabelas antes — zero fetch extra.
+// Degradação graciosa: realtime fora / não-admin → sem badge, modal intacto.
+type ProviderSessionsResponse = {
+  ok: boolean
+  sessions: Record<string, Array<{ userId: string; role: string; socketId: string }>>
+}
+
 // ---------------------------------------------------------------------------
 // Main modal wrapper
 // ---------------------------------------------------------------------------
@@ -74,6 +89,22 @@ export function ProviderProfileModal() {
   const openBooking = useUIStore((s) => s.openBooking)
   const addRecentlyViewed = useRecentlyViewedStore((s) => s.addView)
   const isMobile = useIsMobile()
+  const user = useAuthStore((s) => s.user)
+  const isAdmin = user?.role === "ADMIN"
+
+  // Sessões ativas por usuário (admin only): o badge de conflito aparece
+  // quando o provider visualizado tem >1 socket simultâneo no realtime.
+  const { data: sessionsData } = useQuery({
+    queryKey: ["admin", "realtime", "sessions"],
+    queryFn: () => apiGet<ProviderSessionsResponse>("/api/admin/realtime/sessions"),
+    enabled: isAdmin && open && !!providerId,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  })
+  // Nº de sockets simultâneos do provider (null = sem conflito / não-admin /
+  // realtime fora). O badge renderiza só quando > 1.
+  const providerSockets = isAdmin ? (sessionsData?.sessions?.[providerId ?? ""] ?? []) : []
+  const sessionConflict = isAdmin && providerSockets.length > 1 ? providerSockets.length : null
 
   const { lat, lng } = useGeoStore()
 
@@ -154,6 +185,7 @@ export function ProviderProfileModal() {
       provider={provider}
       loading={query.isLoading}
       favorited={favorited}
+      sessionConflict={sessionConflict}
       onFavorite={handleFavorite}
       onShare={handleShare}
       onClose={close}
@@ -200,6 +232,7 @@ function ProfileBody({
   provider,
   loading,
   favorited,
+  sessionConflict,
   onFavorite,
   onShare,
   onClose,
@@ -209,6 +242,9 @@ function ProfileBody({
   provider?: ProviderDetail
   loading: boolean
   favorited: boolean
+  /** Nº de sockets simultâneos do provider no realtime (>1 = conflito).
+   *  Só é preenchido para admins (admin-only /api/admin/realtime/sessions). */
+  sessionConflict?: number | null
   onFavorite: () => void
   onShare: () => void
   onClose: () => void
@@ -255,6 +291,17 @@ function ProfileBody({
                       <BadgeCheck className="size-2.5" /> Verificado
                     </Badge>
                   )}
+                  {/* Badge de conflito de sessão (admin only): o provider está
+                      com >1 socket simultâneo no realtime — o admin vê o
+                      problema NA view de detalhes, não só na tabela. */}
+                  {sessionConflict ? (
+                    <Badge
+                      title={`Conflito de sessão: ${sessionConflict} sockets simultâneos no realtime (limite derruba o mais antigo a cada join)`}
+                      className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-1.5 py-0 text-[9px] font-semibold whitespace-nowrap text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-800"
+                    >
+                      <AlertTriangle className="size-2.5" /> {sessionConflict} sessões
+                    </Badge>
+                  ) : null}
                 </div>
                 <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-2 text-xs">
                   {provider && (

@@ -31,6 +31,11 @@ model User {
   name         String
   // role: "CLIENT" | "PROVIDER" | "ADMIN"
   role         String   @default("CLIENT")
+  // Plano/tenant do usuário (limites de sessão do realtime por plano):
+  // "FREE" | "PREMIUM" (default FREE). O realtime lê no join e resolve
+  // limite = perPlan (quando configurado) > perRole > default global — ver
+  // REALTIME_MAX_SESSIONS_PER_PLAN em mini-services/realtime/index.ts.
+  plan         String   @default("FREE")
   cpfCnpj      String?
   whatsapp     String?
   phone        String?

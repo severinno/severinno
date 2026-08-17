@@ -23,7 +23,10 @@ const {
   mockCaptureMessage,
   mockRecordRevokeRun,
 } = vi.hoisted(() => {
-  const revoke = vi.fn().mockResolvedValue(undefined)
+  // revokeUserSessions agora retorna Promise<boolean> (entrega confirmada do
+  // bridge /emit — usado pelo dedupe cross-réplica do auth.ts). O mock resolve
+  // true por padrão: entrega CONFIRMADA, alinhado ao contrato novo.
+  const revoke = vi.fn().mockResolvedValue(true)
   const cooldown = vi.fn().mockResolvedValue(true)
   const mark = vi.fn().mockResolvedValue(undefined)
   const capture = vi.fn()
@@ -85,11 +88,12 @@ describe("revokeInactiveSessionsBatch — pool de concorrência (função pura)"
   it("limita a concorrência ao pool (5) e revoga todos", async () => {
     let inFlight = 0
     let maxInFlight = 0
-    const revoke = vi.fn(async () => {
+    const revoke = vi.fn(async (): Promise<boolean> => {
       inFlight++
       maxInFlight = Math.max(maxInFlight, inFlight)
       await new Promise((r) => setTimeout(r, 5))
       inFlight--
+      return true
     })
     const users = usersOf(12)
 
@@ -97,6 +101,8 @@ describe("revokeInactiveSessionsBatch — pool de concorrência (função pura)"
 
     expect(res.revoked).toBe(12)
     expect(res.failed).toBe(0)
+    // Todos confirmados → todos entram no once-only marker
+    expect(res.confirmedIds).toHaveLength(12)
     expect(revoke).toHaveBeenCalledTimes(12)
     expect(maxInFlight).toBeLessThanOrEqual(5)
     expect(maxInFlight).toBeGreaterThan(1) // concorrência realmente usada
@@ -110,7 +116,33 @@ describe("revokeInactiveSessionsBatch — pool de concorrência (função pura)"
 
     expect(res.revoked).toBe(0)
     expect(res.failed).toBe(6)
+    expect(res.confirmedIds).toHaveLength(0) // nada confirmado → nada marcado
     expect(revoke).toHaveBeenCalledTimes(6)
+  })
+
+  it("entrega NÃO confirmada (false) entra em failed e NÃO é confirmada — o socket vivo não é esquecido", async () => {
+    // Metade dos revokes devolve false (realtime fora/timeout): o batch deve
+    // contar como failed e NÃO listar no confirmedIds — sem isso, o caller
+    // gravaria o once-only marker e a condição (revokedByCronAt: null)
+    // excluiria o usuário da próxima varredura, esquecendo o socket vivo
+    // (mesma classe de bug que o fix do auth.ts fechou).
+    const revoke = vi
+      .fn()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+    const users = usersOf(4)
+
+    const res = await revokeInactiveSessionsBatch(users, { dryRun: false, revoke })
+
+    expect(res.revoked).toBe(2)
+    expect(res.failed).toBe(2)
+    // Ordem determinística (workers iniciam síncronos, sem timers): as
+    // entregas confirmadas são exatamente u-0 e u-2 — o marker once-only só
+    // recebe estes.
+    expect([...res.confirmedIds].sort()).toEqual(["u-0", "u-2"])
+    expect(revoke).toHaveBeenCalledTimes(4)
   })
 
   it("dryRun conta sem chamar revoke (batch)", async () => {
@@ -121,6 +153,7 @@ describe("revokeInactiveSessionsBatch — pool de concorrência (função pura)"
 
     expect(res.revoked).toBe(4)
     expect(res.failed).toBe(0)
+    expect(res.confirmedIds).toHaveLength(0) // dry-run não confirma nada
     expect(revoke).not.toHaveBeenCalled()
   })
 })
