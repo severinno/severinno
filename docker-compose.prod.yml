@@ -488,6 +488,19 @@ services:
 
   # ── Realtime WebSocket (Socket.io) ─────────────────────────────────────
   # Hardening: read-only + tmpfs. Servico stateless — estado via Redis.
+  #
+  # ── ESCALA HORIZONTAL (N replicas) ─────────────────────────────────────
+  # O serviço attacha o @socket.io/redis-adapter (rooms/broadcasts
+  # compartilhados entre replicas via Redis pub/sub) quando REDIS_URL está
+  # presente (é o caso aqui — fail-open: sem a env, roda single-node). Para
+  # escalar: `docker compose up -d --scale realtime=N` (o Caddyfile.prod já
+  # tem lb_policy cookie no /socket.io/* para STICKY SESSIONS — a conexao
+  # socket.io é estado in-memory do engine.io da réplica que a aceitou; o
+  # adapter compartilha salas, não conexões). Custo de consistência entre
+  # réplicas: estado in-memory (contadores/audit ring) é por processo — o
+  # /health de cada réplica mostra só o que ELA processou; o /metrics
+  # agregado via Redis soma deltas de todas; Redis fora → cada réplica segue
+  # degradada (broadcasts só locais). Ver README seção Realtime.
   realtime:
     build:
       context: ./mini-services/realtime

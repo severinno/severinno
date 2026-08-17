@@ -9,8 +9,9 @@
     "start": "bun index.ts"
   },
   "dependencies": {
-    "socket.io": "^4.8.1",
+    "@socket.io/redis-adapter": "^8.3.0",
+    "ioredis": "5.6.1",
     "pg": "^8.13.1",
-    "ioredis": "5.6.1"
+    "socket.io": "^4.8.1"
   }
 }

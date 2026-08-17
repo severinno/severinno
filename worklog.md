@@ -13,6 +13,8 @@ Convenções:
 
 ## Índice de Task IDs
 
+- [REALTIME-REDIS-ADAPTER](#realtime-redis-adapter) — Escala horizontal do realtime: @socket.io/redis-adapter (rooms/broadcasts entre réplicas via Redis pub/sub, fail-open single-node, estado no /health) + sticky sessions (lb_policy cookie) no Caddyfile.prod + docs do custo de consistência entre réplicas.
+- [REALTIME-COPY-GUARD](#realtime-copy-guard) — Guard check-realtime-copy.mjs: valida que o Dockerfile do realtime copia todo módulo importado transitivamente por index.ts (módulo esquecido = imagem quebrada com module not found), com mutation test e registro no pre-commit/CI/GUARDS.md.
 - [TELEMETRY-E2E](#telemetry-e2e) — Spec E2E do fluxo completo da telemetria do realtime: admin autenticado chama GET /api/admin/realtime/telemetry com socket real + emit disparado, conferindo emits > 0 na janela e o sinal multi (usersWithMultipleSockets + flag) no Redis.
 - [CRLF-NORM](#crlf-norm) — Normalizar o working tree deste checkout — converter os 415 .ts/.tsx com w/crlf para LF. O artefato…
 - [2](#2) — Set up WebSocket mini-service (port 3003, path /) with socket.io for realtime messaging/booking/quo…
@@ -3165,3 +3167,65 @@ Stage Summary:
 - e2e/admin-realtime-telemetry.spec.ts: spec novo (C1 emits > 0 + C2 sinal multi + flag) com provider isolado via API.
 - Worklog: Task ID TELEMETRY-E2E + TOC.
 - Validação: prettier + eslint + typecheck + run do spec com dev 3000 + realtime 3003 no ar + code-reviewer.
+
+---
+
+Task ID: REALTIME-COPY-GUARD
+<a id="realtime-copy-guard"></a>
+Agent: orchestrator (guard de consistência do Dockerfile do realtime)
+Task: Adicionar um guard check-*.mjs que falha se o Dockerfile do realtime deixar de copiar algum módulo importado pelo index.ts (parse dos imports vs COPY), evitando a regressão de imagem quebrada em futuros deltas.
+
+Work Log:
+
+- Diagnóstico: o COPY explícito do realtime (index.ts security.ts booking-participant.ts) quebrou 2x quando um módulo novo entrou (redis-telemetry/redis-kick-audit/ops-alert/user-plan/session-notification/port) e o container bootou com module not found — o fix foi COPY *.ts ./ (glob), mas sem um guard a regressão (alguém reverte para lista explícita e esquece um módulo) poderia voltar silenciosamente.
+- Guard novo scripts/check-realtime-copy.mjs (node-puro, <1s, padrão do check-cache-patterns.mjs):
+  - Deriva o CLOSURE TRANSITIVO dos imports locais a partir de index.ts (collectModuleClosure: cada módulo lido e seus próprios imports seguidos até fechar; Set visited evita ciclos ex.: security ↔ index).
+  - extractLocalImports captura from/import/re-export (`from "./x"`, `import "./x"`, `export { a } from "./x"`) e normaliza (.ts/.js removido); imports de pacotes não são locais. Subdiretório (`./lib/x`) é rastreado como `lib/x` — o glob *.ts NÃO recursa, então o forward flagra o gap real (não só arquivo ausente).
+  - parseDockerfileCopies distingue glob (_.ts/_.js), `.` (diretório inteiro, recursivo) e lista explícita; ignora --from e dest diferente de ./|/app.
+  - checkRealtimeCopy valida em 3 camadas: (1) arquivo AUSENTE em qualquer lugar (resolved-set acumulado via readModule) = module not found SEMPRE — mesmo na lista do COPY (fecha o fail-open do skip por list-membership que o reviewer achou); (2) arquivo existe mas o COPY não o alcança (subdir + glob que não recursa — gated em hasGlob, a lista explícita é dona do caso; skip quando a lista cobre o subdir no mixed glob+lista); (3) reverse (entrada órfã na lista explícita).
+  - Fail-closed: index.ts, Dockerfile ou COPY de fonte ausentes = violação.
+- Testes em src/lib/**tests**/check-realtime-copy.test.ts (18 testes): CLI (fixture limpo → 0; módulo sem arquivo → 1; lista omitindo módulo → 1; órfã → 1; módulo na lista SEM arquivo em lugar nenhum → 1 (fail-open do reviewer); index/Dockerfile ausente → 1; sem COPY de fonte → 1; subdir com arquivo em lib/ → 1; flag desconhecida → 2) + funções puras (extractLocalImports com from/import/re-export + normalize + subdir; closure transitivo com ciclo; parseDockerfileCopies glob vs lista; checkRealtimeCopy nas 3 camadas + mixed glob+lista → [] e subdir não listado → flagra "NÃO está na lista" sem mensagem de glob).
+- Mutation test scripts/test-mutation-realtime-copy.sh (controle + 4 mutações): A import ./ghost sem arquivo → falha; B lista explícita sem ops-alert → falha; C ghost.ts órfão na lista → falha; D glob *.ts com módulo novo → passa (sem falso positivo).
+- Registro: package.json (check:realtime-copy), .husky/pre-commit (após check:cache-patterns), job realtime-copy-guard no pr-check.yml (mutation + check + summary), docs/GUARDS.md seção 4 (header + descrição).
+
+Resultado da varredura:
+
+- O guard fecha a classe de regressão do COPY de forma DERIVADA do código (nunca lista hardcoded): um módulo novo importado por index.ts sem o .ts no diretório, ou fora da lista explícita do COPY, falha o commit/CI antes de gerar imagem quebrada.
+- O glob *.ts continua sendo o fix recomendado (cobre qualquer módulo top-level futuro automaticamente); o guard só falha quando o glob não tem o que copiar (arquivo ausente) ou alguém volta para lista explícita incompleta/órfã.
+- Documentado em docs/GUARDS.md (seção 4) com o mesmo padrão dos demais guards de consistência.
+
+Stage Summary:
+
+- scripts/check-realtime-copy.mjs: guard novo (closure de imports transitivos vs COPY, arquivo-ausente-sempre + cobertura + reverse, fail-closed).
+- src/lib/**tests**/check-realtime-copy.test.ts: 18 testes (CLI + funções puras).
+- scripts/test-mutation-realtime-copy.sh: mutation test (controle + 4 mutações).
+- package.json + .husky/pre-commit + .github/workflows/pr-check.yml (job realtime-copy-guard) + docs/GUARDS.md + worklog TOC/Task ID.
+- Validação: guard real no repo + vitest + mutation test + guards + code-reviewer.
+
+---
+
+Task ID: REALTIME-REDIS-ADAPTER
+<a id="realtime-redis-adapter"></a>
+Agent: orchestrator (escala horizontal do realtime)
+Task: Preparar o realtime para escala horizontal: @socket.io/redis-adapter (rooms/sweeps compartilhados via Redis) + sticky sessions no Caddy para as rotas WS, com nota sobre o custo de consistência entre réplicas.
+
+Work Log:
+
+- Diagnóstico: sem o adapter, cada réplica do realtime só vê os próprios sockets — um `io.to(user:{id})` emitido na réplica A nunca alcança um socket conectado na réplica B. O `fetchSockets()` do adapter v8 é GLOBAL (sweeps de TTL/limite/revoke/órfãos passam a enxergar todas as réplicas), mas o socket.data é serializado via JSON no transporte cross-node (a VerifiedSession userId/role/expiresAt é JSON-serializável — ok). Estado in-memory (emitCounters/recentEmits/renew/expired counters/pending do kick audit) permanece por processo.
+- mini-services/realtime/redis-adapter.ts (novo): loader promise-memoizado `createRedisAdapterLoader` com deps INJETÁVEIS (readSecret/createClientPair/createAdapter duck-typed — o módulo nunca importa ioredis/@socket.io/redis-adapter no topo; factories default usam dynamic import, testes passam fakes) + `attachRedisAdapter(io, loader)` → `{ attached, mode: "redis"|"local", close }`. Fail-open: sem REDIS_URL ou erro no connect → null (single-node, comportamento atual); a falha NÃO é memoizada (o próximo load() tenta de novo — auto-recuperação, mesmo padrão do createRedisLoader). createClientPair cria pub+sub (duplicate) com lazyConnect/connectTimeout 2s/maxRetries 1/offline queue off; createAdapter usa `key: REDIS_ADAPTER_KEY` + `requestsTimeout: 5000` (evita hangs nos broadcasts cross-replica).
+- mini-services/realtime/index.ts: TLA (`await attachRedisAdapter(io, createRedisAdapterLoader())`) ANTES do httpServer.listen — a ordem é garantida (nenhuma conexão entra sem o modo decidido). `/health` expõe `adapter: { attached, mode }` para ops confirmar o modo de cada réplica. Shutdown (SIGTERM/SIGINT) chama `void redisAdapterState.close()` (fecha os clientes pub/sub, best-effort, não bloqueia o exit de 5s).
+- Caddyfile.prod: STICKY SESSIONS OBRIGATÓRIAS no `handle_path /socket.io/*` → `reverse_proxy realtime:3003 { lb_policy cookie severinno_realtime }` (Caddy 2.7+; resolve NAT/CGNAT melhor que sticky por IP). A CONEXÃO socket.io (handshake + polling + upgrade) é estado in-memory do engine.io da réplica que a aceitou — o adapter compartilha SALAS, não conexões; sem sticky um polling que cai noutra réplica quebra a sessão (reconnect loop). Nota de escala: `docker compose up -d --scale realtime=N` (DNS do Docker devolve os N IPs).
+- Caddyfile (dev): nota de que sticky NÃO se aplica (XTransformPort, instância única por porta — escala N só em prod).
+- docker-compose.prod.yml: nota no serviço realtime (réplicas: estado in-memory por processo, /metrics agrega via Redis, Redis fora → degradado com broadcasts locais).
+- .env.example: nota da env REDIS_URL (mesmo Redis do app) + sticky sessions no multi-réplica.
+- README: seção "Escala horizontal (N réplicas + Redis adapter)" — modo no /health, comando de escala, aviso de sticky sessions, e o custo de consistência entre réplicas (rooms/broadcasts globais; fetchSockets global com JSON do socket.data; estado in-memory por processo; Redis single point para cross-replica com requestsTimeout 5s).
+- Testes unitários src/lib/**tests**/realtime-redis-adapter.test.ts (padrão dos irmãos, fakes herméticos, sem rede): shouldUseRedisAdapter (url presente/ausente); loader fail-open sem REDIS_URL; sucesso cria pub/sub + attacha factory; promise-memoizado (mesma promise); falha NÃO memoizada (createClientPair null e createAdapter throw → próximo load retenta); createClientPair lança → null; attach (io.adapter chamado, attached/mode, close fecha os clients); fail-open loader null/throw → mode local com close no-op; REGRESSÃO do leak: io.adapter() lança após load OK → mode local MAS os clients pub/sub são fechados (try/catch aninhado no attachRedisAdapter).
+
+Stage Summary:
+
+- mini-services/realtime/redis-adapter.ts: módulo novo (loader + attach, fail-open, deps injetáveis).
+- mini-services/realtime/index.ts: TLA attach antes do listen + adapter no /health + close no shutdown.
+- Caddyfile.prod: lb_policy cookie severinno_realtime no /socket.io/* (sticky obrigatório com N réplicas).
+- Caddyfile + docker-compose.prod.yml + .env.example + README: docs da escala horizontal e consistência entre réplicas.
+- src/lib/**tests**/realtime-redis-adapter.test.ts: testes unitários do loader/attach (fakes).
+- Validação: typecheck + vitest + prettier/eslint + guard check-realtime-copy + smoke boot com Redis + code-reviewer.

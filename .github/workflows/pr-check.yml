@@ -325,6 +325,29 @@ jobs:
       - name: Summary
         run: echo "✅ CACHE_PATTERNS consistente — todo prefixo de withCache/cacheInvalidate em src/ classificado (catálogo no seed ou ALLOWLIST) e todo padrão com uso real."
 
+  # ── Realtime COPY Guard ──────────────────────────────────────────────
+  # Fast gate (node puro, <1s): falha o PR se o Dockerfile do realtime deixar
+  # de copiar um módulo importado por index.ts (direta ou transitivamente) —
+  # o container bootaria com "module not found" (o gap que quebrou 2x antes
+  # do fix COPY *.ts ./). O guard DERIVA os imports do código (closure a
+  # partir de index.ts) e valida contra o COPY do Dockerfile (glob *.ts cobre
+  # top-level; lista explícita precisa listar cada módulo), com entradas
+  # órfãs na lista (reverse) também flagradas.
+  realtime-copy-guard:
+    name: Realtime COPY Guard (index.ts imports ↔ Dockerfile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mutation test — guard detecta módulo esquecido/órfão no COPY
+        run: bash scripts/test-mutation-realtime-copy.sh
+
+      - name: Check módulos importados por index.ts vs COPY do Dockerfile
+        run: node scripts/check-realtime-copy.mjs
+
+      - name: Summary
+        run: echo "✅ Realtime COPY consistente — todo módulo importado por index.ts tem arquivo e cobertura no Dockerfile."
+
   # ── Bun Mirror Guard ─────────────────────────────────────────────────
   # Fast gate (node puro, <1s): falha o PR se a FONTE ÚNICA da versão do
   # Bun for violada. A versão vive APENAS na repository variable

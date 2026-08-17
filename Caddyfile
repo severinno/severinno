@@ -4,6 +4,9 @@
 	}
 
 	# ── App (Next.js) ─────────────────────────────────────────────────
+	# Dev: uma única instância do realtime por porta (XTransformPort) — sticky
+	# sessions NÃO se aplica (escala N só em prod, Caddyfile.prod lb_policy
+	# cookie no /socket.io/* + @socket.io/redis-adapter para rooms cross-replica).
 	handle @transform_port_query {
 		reverse_proxy localhost:{query.XTransformPort} {
 			header_up Host {host}

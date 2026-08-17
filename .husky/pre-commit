@@ -92,6 +92,12 @@ bun run check:worklog-toc
 # do re-seed ou padrão órfão falham o commit)
 bun run check:cache-patterns
 
+# Realtime COPY — todo módulo importado por mini-services/realtime/index.ts
+# (direta ou transitivamente) coberto pelo COPY do Dockerfile (módulo novo
+# esquecido = imagem quebrada com module not found no boot; o guard deriva
+# os imports do código — a lista não pode driftar)
+bun run check:realtime-copy
+
 # Type check — rejeita commit se houver erros de tipo no projeto
 bun run typecheck
 

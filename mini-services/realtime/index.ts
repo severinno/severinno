@@ -8,6 +8,11 @@ import { createServer } from "http"
 import { Server, Socket } from "socket.io"
 import { Server as EngineServer } from "engine.io"
 import {
+  createRedisAdapterLoader,
+  attachRedisAdapter,
+  type RedisAdapterState,
+} from "./redis-adapter"
+import {
   readSecret,
   verifySessionCookie,
   verifyEmitToken,
@@ -236,6 +241,22 @@ const engine = new EngineServer({
 
 const io = new Server({ path: "/" })
 io.bind(engine)
+
+// ── Redis adapter (escala horizontal — N réplicas) ────────────────────────
+// Compartilha rooms/broadcasts entre réplicas via Redis pub/sub
+// (@socket.io/redis-adapter, createAdapter). SEM o adapter, cada réplica só
+// vê os próprios sockets: um `io.to(user:{id})` na réplica A nunca alcança um
+// socket conectado na réplica B. Com o adapter o emit vira um publish e TODAS
+// as réplicas entregam aos membros locais da sala. Fail-open: sem REDIS_URL
+// ou falha no connect → single-node (comportamento atual), nunca quebra o
+// boot. TLA (top-level await, bun ESM) GARANTE a ordem: o adapter é attachado
+// ANTES do httpServer.listen — nenhuma conexão entra sem o modo decidido.
+// Estado exposto no /health (`adapter: { attached, mode }`) para ops saberem
+// em que modo cada réplica bootou.
+const redisAdapterState: RedisAdapterState = await attachRedisAdapter(
+  io,
+  createRedisAdapterLoader(),
+)
 
 // ---------- Types ----------
 interface JoinPayload {
@@ -984,6 +1005,13 @@ async function getHealthSnapshot(): Promise<Record<string, unknown>> {
   const expiredPerMinute = Object.fromEntries(expiredCounters)
   return {
     uptimeSeconds: Math.floor(process.uptime()),
+    // Modo de escala: redis = rooms/broadcasts compartilhados entre réplicas
+    // (adapter attachado); local = single-node (sem REDIS_URL ou falha). Ops
+    // usa isto para confirmar que TODAS as réplicas bootaram no modo certo.
+    adapter: {
+      attached: redisAdapterState.attached,
+      mode: redisAdapterState.mode,
+    },
     sockets: { total: socketsCount, verified: verifiedCount, joined: joinedCount },
     sessions: metrics,
     emitCounters: Object.fromEntries(emitCounters),
@@ -1351,6 +1379,9 @@ const shutdown = (signal: string) => {
   console.log(`[realtime] received ${signal}, shutting down...`)
   // Close all connected sockets first
   io.disconnectSockets(true)
+  // Fecha os clientes pub/sub do adapter Redis (best-effort, não bloqueia o
+  // shutdown — o timeout de 5s abaixo é a rede de segurança).
+  void redisAdapterState.close()
   io.close(() => {
     httpServer.close(() => {
       console.log("[realtime] server closed")

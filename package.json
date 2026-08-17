@@ -19,6 +19,7 @@
     "check:worklog": "node scripts/check-worklog.mjs",
     "check:worklog-toc": "node scripts/check-worklog-toc.mjs",
     "check:cache-patterns": "node scripts/check-cache-patterns.mjs",
+    "check:realtime-copy": "node scripts/check-realtime-copy.mjs",
     "gen:worklog-toc": "node scripts/gen-worklog-toc.mjs",
     "check:ts-nocheck": "node scripts/check-ts-nocheck.mjs",
     "check:seed-hooks": "node scripts/check-seed-hooks.mjs",

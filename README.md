@@ -187,6 +187,48 @@ curl -X POST http://localhost:3003/emit \
 - **Desenvolvimento:** Conecta direto em `http://localhost:3003` (via `NEXT_PUBLIC_REALTIME_URL` no `.env`)
 - **Produção:** Conecta via Caddy em `/?XTransformPort=3003` (que roteia para o container `realtime:3003`)
 
+#### Escala horizontal (N réplicas + Redis adapter)
+
+O realtime attacha o [`@socket.io/redis-adapter`](https://socket.io/docs/v4/redis-adapter/)
+quando `REDIS_URL` está presente (o mesmo Redis do app) — rooms e
+**broadcasts passam a ser compartilhados entre réplicas** via pub/sub: um
+`io.to(user:{id})` emitido na réplica A vira um publish e **todas** as
+réplicas entregam aos membros locais da sala. Sem o adapter, cada réplica só
+vê os próprios sockets (um emit na A nunca alcança um socket na B).
+
+**Modo exposto no `/health`:** `adapter: { attached, mode }` — `mode: "redis"`
+(adapter attachado) vs `"local"` (single-node, fail-open: sem `REDIS_URL` ou
+falha no connect). Ops confirma por réplica em que modo cada uma bootou.
+
+**Escalar:** `docker compose up -d --scale realtime=N` — o DNS do Docker
+resolve os N IPs e o `lb_policy cookie` do Caddy distribui/gruda os clientes.
+
+> **⚠️ Sticky sessions são OBRIGATÓRIAS com N réplicas** (`lb_policy cookie
+severinno_realtime` no `handle_path /socket.io/*` do `Caddyfile.prod`). A
+> **conexão** socket.io (handshake + polling + upgrade) é estado in-memory do
+> engine.io da réplica que a aceitou — o adapter compartilha **salas**, não
+> **conexões**. Sem sticky, um polling que cai noutra réplica quebra a sessão
+> (o engine desconhece o sid → reconnect loop).
+
+**Custo de consistência entre réplicas (documentado para auditoria):**
+
+- **Rooms/broadcasts:** globais (é o ponto do adapter).
+- **`io.fetchSockets()` (adapter v8): global** — os sweeps de TTL, limite de
+  sessões, revoke e órfãos passam a enxergar sockets de **todas** as réplicas
+  (mais correto que o escopo por-réplica anterior). ⚠️ O `socket.data` é
+  serializado via **JSON** no transporte cross-node: campos custom devem ser
+  JSON-serializáveis (a `VerifiedSession` é: userId/role/expiresAt); dados
+  não-serializáveis chegam vazios na réplica remota.
+- **Estado in-memory (emitCounters, recentEmits, renew/expired counters,
+  pending do kick audit): por processo** — o `/health` de cada réplica mostra
+  só o que **ela** processou. O `/metrics` agregado via Redis soma os deltas
+  de todas (buckets de minuto, hincrby) e a flag multi usa MAX por minuto.
+- **Redis é single point para cross-replica:** se cair, cada réplica continua
+  degradada (broadcasts só alcançam sockets locais) e o adapter loga erros;
+  `requestsTimeout: 5000` evita hangs nos broadcasts cross-replica. Fail-open
+  no boot: falha de connect NÃO é memoizada (o próximo `load()` tenta de
+  novo — auto-recuperação quando o Redis volta).
+
 #### Limitações conhecidas (Realtime)
 
 - **Sessão verificada só no handshake.** O cookie `severinno_session` é

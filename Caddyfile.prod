@@ -87,8 +87,17 @@ severinno.com.br, www.severinno.com.br {
   }
 
   # ── WebSocket (Socket.io) — Caddy detecta upgrade automático ─────────
+  # STICKY SESSIONS OBRIGATÓRIAS com N réplicas do realtime: a CONEXÃO
+  # socket.io (handshake + polling + upgrade) é estado in-memory do engine.io
+  # da réplica que a aceitou — o redis-adapter compartilha ROOMS e broadcasts
+  # entre réplicas, mas NÃO migra conexões. Sem sticky, um polling que cai
+  # noutra réplica quebra a sessão (engine desconhece o sid → reconnect loop).
+  # lb_policy cookie (Caddy 2.7+) = sticky por cookie (resolve NAT/CGNAT
+  # melhor que sticky por IP). Escala: docker compose up -d --scale realtime=N
+  # (o DNS do Docker devolve os N IPs; o lb_policy distribui + gruda).
   handle_path /socket.io/* {
     reverse_proxy realtime:3003 {
+      lb_policy cookie severinno_realtime
       header_up Host {host}
       header_up X-Real-IP {remote_host}
       header_up X-Forwarded-For {remote_host}

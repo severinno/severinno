@@ -132,7 +132,7 @@ tabela acima quando medir.
 
 ---
 
-## 4. README/docs guards — `check-readme-anchors`, `check-readme-toc`, `check-readme-images`, `check-readme-reverse-baseline`, `check-readme-repro-marker`, `check-worklog`, `check-worklog-toc`, `check-cache-patterns`
+## 4. README/docs guards — `check-readme-anchors`, `check-readme-toc`, `check-readme-images`, `check-readme-reverse-baseline`, `check-readme-repro-marker`, `check-worklog`, `check-worklog-toc`, `check-cache-patterns`, `check-realtime-copy`
 
 **O que protege:** links internos (#slug) resolvem, TOCs apontam para headings
 reais, imagens existem, e o reverse (semântico) detecta label apontando para o
@@ -155,7 +155,15 @@ cache-capable. Flagra nas duas direções: prefixo de catálogo NOVO em src/
 esquecido do CACHE_PATTERNS (a janela de stale do re-seed volta a existir)
 e padrão do seed sem uso real (órfão); prefixes não-catálogo (sessão/push/
 ops/geo externa) são cobertos pela ALLOWLIST do guard, espelho do comentário
-de exclusões do seed.
+de exclusões do seed. O `check-realtime-copy` valida que o Dockerfile do
+realtime (`mini-services/realtime/Dockerfile`) COPIA todo módulo local
+importado — direta ou TRANSITIVAMENTE — por `index.ts`: o guard deriva o
+closure dos imports do código (cada módulo lido e seus próprios imports
+seguidos até fechar) e checa contra o COPY (glob `*.ts` cobre módulos
+top-level; lista explícita precisa listar cada um), flagrando módulo sem
+arquivo no diretório (module not found no boot do container), módulo fora
+da lista explícita e entrada órfã na lista (reverse) — a regressão de
+imagem quebrada que quebrou 2x antes do fix `COPY *.ts ./` não volta.
 
 **Por que existe:** o README é a porta de entrada do repo; heading renomeado
 sem atualizar o link = link morto silencioso. O guard roda o algoritmo do
