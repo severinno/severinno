@@ -250,6 +250,21 @@ jobs:
       - name: Summary
         run: echo "✅ No 'npx playwright' in docs/scripts/package.json — use bunx playwright."
 
+  fetch-timeout-guard:
+    name: Fetch timeout Guard (hangs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mutation test — guard detecta a reintrodução
+        run: bash scripts/test-mutation-fetch-timeout.sh
+
+      - name: Check src/ sem fetch( sem AbortSignal.timeout
+        run: node scripts/check-fetch-timeout.mjs
+
+      - name: Summary
+        run: echo "✅ Todo fetch( de src/ passa signal de timeout (AbortSignal.timeout/envTimeoutSignal)."
+
   # ── Bun Mirror Guard ─────────────────────────────────────────────────
   # Fast gate (node puro, <1s): falha o PR se a FONTE ÚNICA da versão do
   # Bun for violada. A versão vive APENAS na repository variable

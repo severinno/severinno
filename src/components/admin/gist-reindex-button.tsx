@@ -20,6 +20,7 @@
 import * as React from "react"
 import { Database } from "lucide-react"
 import { toast } from "sonner"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 
 import {
   AlertDialog,
@@ -61,7 +62,10 @@ export function GistReindexButton({ onReindexSuccess, isRefetching }: GistReinde
     setShowReindexConfirm(false)
 
     try {
-      const res = await fetch("/api/admin/geo-reindex", { method: "POST" })
+      const res = await fetch("/api/admin/geo-reindex", {
+        method: "POST",
+        signal: envTimeoutSignal("API_TIMEOUT_MS", 15_000),
+      })
       const data = (await res.json()) as {
         success: boolean
         message: string

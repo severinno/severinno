@@ -11,6 +11,7 @@
 import { useParams, useRouter } from "next/navigation"
 import * as React from "react"
 import { CheckCircle2, Eye, EyeOff, Loader2, Lock, XCircle } from "lucide-react"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 
 export default function ResetPasswordPage() {
   const { token } = useParams<{ token: string }>()
@@ -36,6 +37,7 @@ export default function ResetPasswordPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password }),
+        signal: envTimeoutSignal("API_TIMEOUT_MS", 15_000),
       })
 
       const data = await res.json()

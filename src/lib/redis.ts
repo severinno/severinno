@@ -29,12 +29,23 @@
 import { Redis, Cluster } from "ioredis"
 import { captureMessage } from "@/lib/sentry"
 import logger from "@/lib/logger"
+import { resolveTimeoutMs } from "./fetch-timeout"
 
 // ── Configuration ─────────────────────────────────────────────────────────
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379"
 const REDIS_CLUSTER_MODE = process.env.REDIS_CLUSTER_MODE === "true"
 const REDIS_CLUSTER_NODES = process.env.REDIS_CLUSTER_NODES || "localhost:6379"
+
+// ── Timeouts (env-configuráveis, mesmo guard de invalidez do fetch-timeout) ──
+//   REDIS_CONNECT_TIMEOUT_MS — handshake TCP/connect (default 10s)
+//   REDIS_COMMAND_TIMEOUT_MS — comando sem resposta (default 5s)
+// Fecha o hang de um Redis que aceita TCP mas nunca responde: sem o
+// commandTimeout, um `get`/`setex` pendurado travaria cacheGet/cacheSet para
+// sempre (a request nunca completaria). Com ele, o comando aborta e a cadeia
+// de tiers degrada para a memória — a request completa em tempo finito.
+const REDIS_CONNECT_TIMEOUT_MS = resolveTimeoutMs("REDIS_CONNECT_TIMEOUT_MS", 10_000)
+const REDIS_COMMAND_TIMEOUT_MS = resolveTimeoutMs("REDIS_COMMAND_TIMEOUT_MS", 5_000)
 
 /** Which Redis topology the application was configured to use. */
 const configMode: "cluster" | "standalone" = REDIS_CLUSTER_MODE ? "cluster" : "standalone"
@@ -88,7 +99,8 @@ function createClient(mode: "cluster" | "standalone"): Cluster | Redis {
       redisOptions: {
         maxRetriesPerRequest: 2,
         lazyConnect: true,
-        connectTimeout: 10_000,
+        connectTimeout: REDIS_CONNECT_TIMEOUT_MS,
+        commandTimeout: REDIS_COMMAND_TIMEOUT_MS,
       },
     })
   }
@@ -102,6 +114,8 @@ function createClient(mode: "cluster" | "standalone"): Cluster | Redis {
     },
     lazyConnect: true,
     enableOfflineQueue: false,
+    connectTimeout: REDIS_CONNECT_TIMEOUT_MS,
+    commandTimeout: REDIS_COMMAND_TIMEOUT_MS,
   })
 }
 

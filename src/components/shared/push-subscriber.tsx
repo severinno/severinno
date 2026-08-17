@@ -7,6 +7,7 @@ import { useAuthStore } from "@/store/auth"
 import { toast } from "sonner"
 import { useMobileOS, useStandaloneMode, isPushSupported } from "@/components/shared/pwa-setup"
 import { cn } from "@/lib/utils"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""
 
@@ -54,6 +55,7 @@ export function PushToggle() {
             method: "DELETE",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ endpoint: sub.endpoint }),
+            signal: envTimeoutSignal("API_TIMEOUT_MS", 15_000),
           })
         }
         setSubscribed(false)
@@ -73,6 +75,7 @@ export function PushToggle() {
             auth: btoa(String.fromCharCode(...new Uint8Array(sub.getKey("auth")!))),
             userAgent: navigator.userAgent,
           }),
+          signal: envTimeoutSignal("API_TIMEOUT_MS", 15_000),
         })
         setSubscribed(true)
         toast.success(

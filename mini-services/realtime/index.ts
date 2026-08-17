@@ -21,6 +21,7 @@ import {
   toPublicRecentEmits,
   type RecentEmitEntry,
   summarizeActiveSessions,
+  computeSocketAgeMs,
   recordKickAudit,
   snapshotKickAudit,
   parseMaxSessionsPerRole,
@@ -375,6 +376,8 @@ interface SessionSocketMeta {
   socketId: string
   connectedAt: string
   joinedAt: string
+  /** Idade do socket em ms desde o handshake (admin exibe "há X min"). */
+  ageMs: number
 }
 
 /**
@@ -383,17 +386,20 @@ interface SessionSocketMeta {
  */
 async function getActiveSessions(): Promise<SessionSocketMeta[]> {
   const sockets = await io.fetchSockets()
+  const nowMs = Date.now()
   const out: SessionSocketMeta[] = []
   for (const s of sockets) {
     const session = s.data?.session as VerifiedSession | null
     const joinedAt = s.data?.joinedAt as string | null | undefined
     if (!session || !joinedAt) continue // not verified OR not joined → offline
+    const connectedAt = (s.handshake?.time as string | undefined) ?? new Date(nowMs).toISOString()
     out.push({
       userId: session.userId,
       role: session.role,
       socketId: s.id,
-      connectedAt: (s.handshake?.time as string | undefined) ?? new Date().toISOString(),
+      connectedAt,
       joinedAt,
+      ageMs: computeSocketAgeMs(connectedAt, nowMs),
     })
   }
   return out

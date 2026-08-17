@@ -1,6 +1,7 @@
 import "server-only"
 import { db } from "@/lib/db"
 import logger from "@/lib/logger"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 
 // Lazy accessors so vi.stubEnv works in tests (module-level consts are cached at import time)
 function getApiUrl(): string {
@@ -80,6 +81,7 @@ export async function sendWhatsApp(payload: WhatsAppPayload): Promise<void> {
         text,
         delay: 1000,
       }),
+      signal: envTimeoutSignal("WHATSAPP_TIMEOUT_MS", 10_000),
     })
 
     if (!response.ok) {

@@ -43,6 +43,7 @@ import { useScrollReveal, useCountUp } from "@/hooks/use-animation"
 import { useAuthStore } from "@/store/auth"
 import { useUIStore } from "@/store/ui"
 import { cn } from "@/lib/utils"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -444,7 +445,9 @@ function usePublicStats() {
     let cancelled = false
     async function load() {
       try {
-        const res = await fetch("/api/stats/public")
+        const res = await fetch("/api/stats/public", {
+          signal: envTimeoutSignal("API_TIMEOUT_MS", 15_000),
+        })
         if (!res.ok) return
         const data: PublicStats = await res.json()
         if (!cancelled) setStats(data)

@@ -6,6 +6,15 @@ export async function register() {
   // Load env vars first — everything depends on them
   await import("./lib/env")
 
+  // ── Global fetch timeout floor (server) ──────────────────────────────
+  // Todo fetch SEM signal explícito ganha AbortSignal.timeout resolvido de
+  // GLOBAL_FETCH_TIMEOUT_MS (default 60s) — fecha hangs de serviços que aceitam
+  // TCP mas nunca respondem em código que não passa signal (libs de terceiros,
+  // fora do guard check-fetch-timeout). Signal explícito (envTimeoutSignal por
+  // chamada) VENCE. Idempotente; ver src/lib/fetch-timeout.ts.
+  const { installGlobalFetchTimeoutFloor } = await import("./lib/fetch-timeout")
+  installGlobalFetchTimeoutFloor()
+
   // ── Geo cache warming (post-restart) ────────────────────────────────
   // Pre-heats the Redis cache with the most popular geo queries so the
   // first users after restart get cached responses instead of 5s latencies.

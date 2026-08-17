@@ -24,6 +24,7 @@ import { MessageCircle, X, Send, Bot, User, Trash2, Sparkles } from "lucide-reac
 import { motion, AnimatePresence } from "framer-motion"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -122,6 +123,7 @@ export default function AIChatWidget() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text, history }),
+        signal: envTimeoutSignal("API_TIMEOUT_MS", 15_000),
       })
 
       const data = await res.json()

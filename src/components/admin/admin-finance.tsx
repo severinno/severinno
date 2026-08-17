@@ -56,6 +56,7 @@ import { TOOLTIP_STYLE } from "./admin-chart-theme"
 import { useRealtimeFinance } from "@/hooks/use-realtime-finance"
 import { RealtimeStatusBadge } from "@/components/shared/realtime-status-badge"
 import { apiGet } from "@/lib/api"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 import { formatBRL } from "@/lib/format"
 import { PAYMENT_STATUS_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/constants"
 import { cn } from "@/lib/utils"
@@ -1100,7 +1101,9 @@ function ExportProvidersCSVButton({ period }: { period: Period }) {
   const handleExport = React.useCallback(async () => {
     setExporting(true)
     try {
-      const res = await fetch(`/api/admin/finance/export-providers?period=${period}`)
+      const res = await fetch(`/api/admin/finance/export-providers?period=${period}`, {
+        signal: envTimeoutSignal("API_TIMEOUT_MS", 15_000),
+      })
       if (!res.ok) throw new Error("Falha ao exportar")
 
       const blob = await res.blob()
@@ -1145,7 +1148,9 @@ function ExportCSVButton({ period }: { period: Period }) {
   const handleExport = React.useCallback(async () => {
     setExporting(true)
     try {
-      const res = await fetch(`/api/admin/finance/export?period=${period}`)
+      const res = await fetch(`/api/admin/finance/export?period=${period}`, {
+        signal: envTimeoutSignal("API_TIMEOUT_MS", 15_000),
+      })
       if (!res.ok) throw new Error("Falha ao exportar")
 
       const blob = await res.blob()

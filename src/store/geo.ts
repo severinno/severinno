@@ -2,6 +2,7 @@
 
 import { create } from "zustand"
 import { persist, createJSONStorage } from "zustand/middleware"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 
 export type GeoStatus = "idle" | "locating" | "geocoding" | "ready" | "error" | "denied"
 
@@ -128,7 +129,9 @@ export const useGeoStore = create<GeoState>()(
         set({ status: "geocoding", error: null })
         try {
           const clean = cep.replace(/\D/g, "")
-          const res = await fetch(`/api/geo/cep?cep=${encodeURIComponent(clean)}`)
+          const res = await fetch(`/api/geo/cep?cep=${encodeURIComponent(clean)}`, {
+            signal: envTimeoutSignal("GEO_CEP_TIMEOUT_MS", 10_000),
+          })
           const data = await res.json()
           if (!res.ok || !data?.cep) {
             set({

@@ -12,6 +12,7 @@ import { apiGet, apiPost } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Calendar } from "@/components/ui/calendar"
@@ -91,6 +92,7 @@ export function ProviderDateBlocks() {
     try {
       const res = await fetch(`/api/availability/blocks/${blockId}`, {
         method: "DELETE",
+        signal: envTimeoutSignal("API_TIMEOUT_MS", 15_000),
       })
       if (!res.ok) throw new Error("Erro ao remover bloqueio")
       toast.success("Bloqueio removido")

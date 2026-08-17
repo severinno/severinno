@@ -43,6 +43,7 @@ import { useViewStore } from "@/store/view"
 import { useUIStore } from "@/store/ui"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -130,6 +131,7 @@ export default function Footer({ className }: { className?: string }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: trimmed }),
+        signal: envTimeoutSignal("API_TIMEOUT_MS", 15_000),
       })
       const data = await res.json()
 

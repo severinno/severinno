@@ -8,6 +8,7 @@
 import { useRouter } from "next/navigation"
 import * as React from "react"
 import { ArrowLeft, Loader2, Mail, SendHorizonal } from "lucide-react"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 
 export default function ForgotPasswordPage() {
   const router = useRouter()
@@ -27,6 +28,7 @@ export default function ForgotPasswordPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
+        signal: envTimeoutSignal("API_TIMEOUT_MS", 15_000),
       })
 
       const data = await res.json()

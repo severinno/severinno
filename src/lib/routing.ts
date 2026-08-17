@@ -14,6 +14,7 @@
  */
 
 import { haversineKm } from "./geo-server"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -104,11 +105,9 @@ async function osrmRoute(origin: LatLng, destination: LatLng): Promise<RouteResu
       `${formatCoord(origin.lat, origin.lng)};${formatCoord(destination.lat, destination.lng)}` +
       `?overview=full&geometries=geojson&steps=false&alternatives=false`
 
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 5_000)
-
-    const res = await fetch(url, { signal: controller.signal })
-    clearTimeout(timeout)
+    const res = await fetch(url, {
+      signal: envTimeoutSignal("OSRM_TIMEOUT_MS", 5_000),
+    })
 
     if (!res.ok) return null
 

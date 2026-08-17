@@ -11,6 +11,7 @@
 import * as React from "react"
 import { Eye, EyeOff, Key, Loader2, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -43,6 +44,7 @@ export function ChangePasswordForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ currentPassword, newPassword }),
+        signal: envTimeoutSignal("API_TIMEOUT_MS", 15_000),
       })
 
       const data = await res.json()

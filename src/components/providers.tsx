@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes"
 import { QueryClient, QueryClientProvider, type QueryClientConfig } from "@tanstack/react-query"
 import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 import { SoundProvider } from "@/lib/sound-context"
+import "@/lib/fetch-timeout-client" // instala piso global de fetch timeout no browser
 import { RealtimeProvider } from "@/components/shared/realtime-provider"
 import { PWASetup } from "@/components/shared/pwa-setup"
 import { PWAInstallBanner } from "@/components/shared/pwa-install"

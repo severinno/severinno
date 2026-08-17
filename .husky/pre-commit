@@ -68,6 +68,10 @@ bun run check:direct-rtl-import
 # docs/scripts/package.json (npx quebra no Windows; use bunx playwright)
 bun run check:no-npx-playwright
 
+# Fetch timeout — impede reintrodução de `fetch(` SEM signal de timeout em src/
+# (fecha a classe de hangs quando o serviço aceita TCP mas nunca responde)
+bun run check:fetch-timeout
+
 # Type check — rejeita commit se houver erros de tipo no projeto
 bun run typecheck
 

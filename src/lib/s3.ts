@@ -28,6 +28,7 @@ import {
   type ObjectCannedACL,
 } from "@aws-sdk/client-s3"
 import logger from "./logger"
+import { envTimeoutSignal } from "./fetch-timeout"
 
 // @aws-sdk/s3-request-presigner is optional — install it if you need signed URLs.
 // If not installed, getSignedUrlForObject will throw a clear error.
@@ -69,10 +70,12 @@ export function getS3Client(): S3Client {
       region,
       credentials: { accessKeyId, secretAccessKey },
       forcePathStyle: !endpoint?.includes("r2.cloudflarestorage.com"), // R2 uses virtual-hosted style
-      requestHandler: {
-        // 30-second timeout for uploads
-        requestTimeout: 30_000,
-      },
+      // ⚠️ SEM requestTimeout/connectionTimeout no config: verificado
+      // empiricamente (SDK v3.1090.0) que NEM o requestHandler plain-object
+      // NEM o requestTimeout top-level abortam contra um servidor que aceita
+      // TCP mas nunca responde — o 30s antigo via requestHandler era um no-op.
+      // O mecanismo confiável é o abortSignal no client.send() (helper
+      // sendWithS3Timeout abaixo), que rejeita com AbortError em ~timeoutMs.
     })
   }
   return client
@@ -84,8 +87,23 @@ export function getBucket(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Types
+// Send com timeout (abortSignal — o caminho CONFIÁVEL do SDK)
 // ---------------------------------------------------------------------------
+// O requestTimeout do config NÃO aborta contra um S3 que aceita TCP mas
+// nunca responde (verificado empiricamente na v3.1090.0). O mecanismo que
+// funciona é o abortSignal no segundo argumento do send: o SDK escuta o
+// abort e rejeita com AbortError em ~timeoutMs. Mesmo guard de invalidez do
+// envTimeoutSignal (NaN/'0'/negativo → fallback/clamp).
+//
+// Inline nos call sites (em vez de helper genérico): o send do S3Client
+// infere o output pelo comando concreto — um helper com união de comandos
+// (PutObject|DeleteObject|ListObjectsV2) quebra essa inferência (TS não
+// unifica os InitializeHandler). Factory de 1 linha para não repetir a env.
+
+/** Signal de timeout para requests S3 (env S3_REQUEST_TIMEOUT_MS, default 30s). */
+function s3TimeoutSignal(): AbortSignal {
+  return envTimeoutSignal("S3_REQUEST_TIMEOUT_MS", 30_000)
+}
 
 export type UploadResult = {
   key: string
@@ -131,7 +149,7 @@ export async function uploadToS3(
 
   try {
     const cmd = new PutObjectCommand(params)
-    const result = await getS3Client().send(cmd)
+    const result = await getS3Client().send(cmd, { abortSignal: s3TimeoutSignal() })
 
     // Construct URL — for R2 with public access, use the direct URL
     const baseUrl = process.env.NEXT_PUBLIC_UPLOADS_BASE_URL || getDefaultBaseUrl()
@@ -170,7 +188,7 @@ export async function uploadBase64(
 export async function deleteFromS3(key: string): Promise<void> {
   try {
     const cmd = new DeleteObjectCommand({ Bucket: getBucket(), Key: key })
-    await getS3Client().send(cmd)
+    await getS3Client().send(cmd, { abortSignal: s3TimeoutSignal() })
     logger.info({ key }, "s3 delete successful")
   } catch (err) {
     logger.error({ err, key }, "s3 delete failed")
@@ -202,7 +220,7 @@ export async function listObjects(prefix?: string) {
     Prefix: prefix,
     MaxKeys: 100,
   })
-  const result = await getS3Client().send(cmd)
+  const result = await getS3Client().send(cmd, { abortSignal: s3TimeoutSignal() })
   return (result.Contents || []).map((obj) => ({
     key: obj.Key!,
     size: obj.Size!,

@@ -8,6 +8,8 @@
  * Helper functions throw on !ok and return the parsed JSON body.
  */
 
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
+
 // ---------------------------------------------------------------------------
 // Shared API types — mirrored from the API contract in worklog.md
 // ---------------------------------------------------------------------------
@@ -158,6 +160,7 @@ async function request<T>(
     },
     cache: "no-store", // dynamic data; public endpoints use per-route caching via apiGet calls
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    signal: envTimeoutSignal("API_TIMEOUT_MS", 15_000),
   }
 
   let res: Response

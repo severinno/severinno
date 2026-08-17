@@ -2096,3 +2096,93 @@ emits, multi[], flag }` — emitCounters por minuto + histórico
   erro por comando → skip; clamp de minutes; fail-open (exec rejeita → null).
 - README: Path + seção com curl do /metrics. Validação: prettier/eslint/
   typecheck 0 + vitest alvo + smoke real + reviewer.
+
+## Task: admin sessions com idade de socket + conflitos/órfãos em tempo real
+
+- **`mini-services/realtime/security.ts`**: `computeSocketAgeMs` puro
+  (idade do socket desde o handshake; clamp >= 0; ausente/inválido → 0).
+- **`mini-services/realtime/index.ts`**: `getActiveSessions()` agora inclui
+  `ageMs` por socket (calculado no snapshot do GET /sessions).
+- **`src/app/api/admin/realtime/sessions/route.ts`**: RealtimeSession ganhou
+  `ageMs` (passthrough) + NOVO `buildSessionConflicts` puro — usuários com
+  > 1 socket simultâneo (o sinal do órfão: HMR leak/stale/multi-tab),
+  > ordenados por gravidade (socketCount desc, desempate: socket mais antigo),
+  > com `oldestAgeMs` + o último kick como contexto; resposta ganhou
+  > `conflicts[]` + `usersWithMultipleSockets`. Degradação graciosa mantida
+  > (EMPTY quando realtime fora do ar, nunca 500).
+- **Unit tests**: `computeSocketAgeMs` (idade/clamp/futuro/inválido) em
+  realtime-security.test.ts + NOVO sessions-route.test.ts (401 sem ADMIN,
+  degradação sem token e com fetch TimeoutError, agrupamento + ageMs/kicks
+  passthrough + conflitos ordenados, e casos puros de buildSessionConflicts).
+- README: linha Admin online na tabela do realtime + seção de sessões ativas.
+- Validação: prettier/eslint/typecheck 0 + vitest alvo + smoke real + reviewer.
+
+## Task: sweep de timeout em todos os fetch( de src/ (fecha classe de hangs)
+
+Aplicar `envTimeoutSignal` a todo `fetch(` de `src/` que ainda não passava `signal` com `AbortSignal.timeout`, fechando a classe de hangs quando um serviço aceita TCP mas nunca responde.
+
+**Sweep (23 fetches / 21 arquivos):**
+
+- Wrapper central `src/lib/api.ts` (request<T>) — cobre apiGet/apiPost/apiPatch/apiDelete de toda a SPA.
+- Libs: `routing.ts` (OSRM, converteu AbortController manual 5s → envTimeoutSignal), `slack-notify.ts`, `whatsapp.ts`, `use-upload.ts`.
+- Store: `geo.ts` (CEP lookup client).
+- Auth pages: `auth/reset-password/page.tsx`, `auth/reset-password/[token]/page.tsx`, `reset-password/reset-password-form.tsx`.
+- Componentes: `admin-finance.tsx` (2), `gist-reindex-button.tsx`, `client-profile.tsx`, `file-photos.tsx`, `provider-date-blocks.tsx`, `provider-onboarding.tsx`, `provider-profile.tsx`, `ai-chat-widget.tsx`, `change-password-form.tsx`, `footer.tsx`, `push-subscriber.tsx` (2), `cta-banner.tsx`.
+
+**Envs novos (padrão `*_TIMEOUT_MS` com fallback):** `API_TIMEOUT_MS` (15s), `UPLOAD_TIMEOUT_MS` (60s), `OSRM_TIMEOUT_MS` (5s), `SLACK_TIMEOUT_MS` (10s), `WHATSAPP_TIMEOUT_MS` (10s), `GEO_CEP_TIMEOUT_MS` (10s).
+
+**Guard de regressão:** `scripts/check-fetch-timeout.mjs` (padrão check-*.mjs, `bun run check:fetch-timeout`) — falha se um `fetch(` de `src/` voltar a aparecer sem signal; trata falsos positivos (comentários/strings apagados, delegação pura `fetch(url, init)` com signal no arquivo, testes excluídos).
+
+**Testes:** `src/lib/__tests__/api-timeout.test.ts` (signal no init do wrapper, não-trava com hang simulado 50ms, fallback de env inválido) + `src/lib/__tests__/check-fetch-timeout-cli.test.ts` (fixtures: limpo exit 0, violação cita arquivo:linha exit 1, delegação/comentário/teste exit 0, flag inválida exit 2).
+
+**Validação:** prettier/eslint/typecheck/vitest + guard no repo verde.
+
+## Task: piso global de timeout no fetch (GLOBAL_FETCH_TIMEOUT_MS)
+
+Avaliar e implementar um AbortSignal.timeout DEFAULT no fetch global (instrumentation.ts + client), com env-specific sobrepondo via helper — fechando hangs de código que NÃO passa signal (libs de terceiros, fetches fora do guard).
+
+**Modelo de precedência (única fonte de verdade):**
+
+1. Signal EXPLÍCITO no `init` (ex.: `envTimeoutSignal("API_TIMEOUT_MS", ...)`) → passado INTACTO ao fetch nativo. Timeouts env-specific sempre vencem.
+2. `Request` com signal próprio → honrado (alinhado ao spec do fetch — fetch(req) respeita req.signal).
+3. Sem signal → piso global: `AbortSignal.timeout(GLOBAL_FETCH_TIMEOUT_MS, default 60s)`, com o mesmo guard de invalidez do `resolveTimeoutMs`.
+
+**Implementação:**
+
+- `src/lib/fetch-timeout.ts`: `installGlobalFetchTimeoutFloor()` — embrulha o fetch global; checa `init.signal` E `input.signal` (Request); idempotente via FLOOR_MARKER (protege HMR/registro duplo).
+- Server: `src/instrumentation.ts` `register()` instala o piso (após `./lib/env`).
+- Client: `src/lib/fetch-timeout-client.ts` ("use client") importado no `Providers` — browser-safe (`process?.env?.[envName]` já era optional chaining; no browser o valor efetivo é o fallback 60s, env não-NEXT_PUBLIC não chega ao bundle).
+
+**Fix pós-review (HMR):** o `FLOOR_MARKER` nasceu como `Symbol`, mas no HMR o módulo client é re-avaliado e um Symbol novo perde identidade — o check `g.fetch[novoSymbol]` falharia no wrapper antigo e o fetch seria re-embrulhado a cada reload (leak de camadas). Trocado por chave STRING (`__severinno_fetch_timeout_floor__`) — igualdade por valor sobrevive à re-avaliação; o marker vive no wrapper, então restaurar o fetch original (testes) também o remove.
+
+**Limite conhecido (documentado):** (1) `fetch(new Request(url))` nu SEMPRE carrega um signal (o default nunca aborta) — o wrapper não distingue default de explícito e honra o do Request (spec-aligned). O guard `check-fetch-timeout` cobre `src/`; o piso é rede de segurança para fora dele. (2) **Streaming/SSE:** o piso de 60s pode abortar respostas de streaming longo de libs de terceiros que não passam signal próprio — sem SSE no `src/` hoje; se entrar, o caller deve passar signal explícito (regra 1) para excluir o stream do piso.
+
+**Testes:** `src/lib/__tests__/fetch-global-timeout.test.ts` (9 casos) — sem signal ganha signal do piso; init do caller não é mutado (spread); signal explícito no init vence; Request com signal vence; Request default passado intacto (limite conhecido); env controla o valor (spy AbortSignal.timeout); env inválida cai no fallback 60s; idempotência (2x instalação → mesmo wrapper); delegação única.
+
+**Validação:** prettier/eslint/typecheck/vitest + guard `check:fetch-timeout` no repo verde; README env table + guards TOC/anchors.
+
+## Task: timeouts de hang nos clientes Redis e S3 (REDIS_COMMAND_TIMEOUT_MS etc.)
+
+Aplicar o mesmo padrão de proteção de hang (serviço que aceita TCP mas nunca responde) aos clientes Redis e S3 do app, que ainda não tinham cobertura de timeout — fechando a classe inteira de pendências HTTP/TCP.
+
+**redis.ts (ioredis):**
+
+- `REDIS_COMMAND_TIMEOUT_MS` (default 5s) — comando sem resposta aborta (o caso do Redis que aceita TCP mas nunca responde): sem ele, `cacheGet`/`cacheSet` travaria para sempre.
+- `REDIS_CONNECT_TIMEOUT_MS` (default 10s) — handshake TCP/connect (cluster tinha hardcoded 10s; standalone não tinha nenhum).
+- Aplicado no cluster (redisOptions) E no standalone. Reusa `resolveTimeoutMs` (mesmo guard de invalidez do fetch-timeout: NaN/'0'/negativo → fallback/clamp).
+
+**s3.ts / storage.ts (SDK @aws-sdk/client-s3):**
+
+- `S3_REQUEST_TIMEOUT_MS` (default 30s) — request inteira sem resposta aborta (s3.ts tinha 30s hardcoded; storage.ts NÃO tinha nenhum timeout).
+- ❌ `S3_CONNECTION_TIMEOUT_MS` NÃO foi adotada: o connectionTimeout do SDK não funciona nesta versão (mesmo problema do requestTimeout) e o tipo do S3ClientConfig rejeita a opção top-level — documentação da env foi removida do README.
+- ⚠️ **Descoberta empírica (SDK v3.1090.0, probes com servidor TCP real):** o `requestHandler: { requestTimeout }` como plain-object NÃO aplica os timeouts (handler.config fica sem eles), e o `requestTimeout` top-level no config do S3Client TAMBÉM não aborta contra um servidor que aceita TCP mas nunca responde (send pendurou >120s). O 30s antigo do s3.ts era um **no-op**. O mecanismo que FUNCIONA é o **abortSignal no segundo argumento do `client.send(cmd, { abortSignal: envTimeoutSignal("S3_REQUEST_TIMEOUT_MS", 30_000) })`** — rejeita com AbortError em ~timeoutMs (medido: 169ms com env 150ms). Aplicado inline nos 3 sends do s3.ts (uploadToS3, deleteFromS3, listObjects) e no uploadFile do storage.ts. Helper genérico com união de comandos quebra a inferência do send (TS não unifica os InitializeHandler) — inline preserva o output type por comando.
+
+**Testes de hang (padrão realtime-client.test.ts, com TCP REAL node:net):**
+
+- `src/lib/__tests__/redis-timeout.test.ts` — servidor TCP que aceita e nunca responde + ioredis REAL: `cacheSet`+`cacheGet` completam <3s (commandTimeout 150ms aborta, cadeia degrada standalone→memory, valor servido da memória); + test de wiring dos options a partir das envs.
+- `src/lib/__tests__/s3-timeout.test.ts` — SDK REAL apontado para o TCP hang: `uploadToS3` rejeita <5s com "Falha ao fazer upload do arquivo".
+- `src/lib/__tests__/storage-timeout.test.ts` — `uploadFile` retorna null <5s (engole o erro do SDK).
+
+**Nota:** o `.env.example` linkado no README não existe no worktree (arquivo ausente/gitignored) — as novas envs ficam documentadas na tabela do README (seção Fetch timeouts, com nota dos clientes Redis/S3).
+
+**Validação:** prettier/eslint/typecheck/vitest + guard check:fetch-timeout no repo verde; reviewer em paralelo.

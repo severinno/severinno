@@ -1,6 +1,7 @@
 import "server-only"
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
 import logger from "./logger"
+import { envTimeoutSignal } from "./fetch-timeout"
 
 const ENDPOINT = process.env.S3_ENDPOINT ?? ""
 const REGION = process.env.S3_REGION ?? "auto"
@@ -16,6 +17,11 @@ function getClient(): S3Client | null {
     region: REGION,
     credentials: { accessKeyId: ACCESS_KEY, secretAccessKey: SECRET_KEY },
     forcePathStyle: true,
+    // ⚠️ SEM requestTimeout/connectionTimeout no config: verificado
+    // empiricamente (SDK v3.1090.0) que NEM o requestHandler plain-object
+    // NEM o requestTimeout top-level abortam contra um servidor que aceita
+    // TCP mas nunca responde. O mecanismo confiável é o abortSignal no
+    // client.send() abaixo, que rejeita com AbortError em ~timeoutMs.
   })
 }
 
@@ -31,6 +37,8 @@ export async function uploadFile(
   }
 
   try {
+    // abortSignal é o mecanismo CONFIÁVEL contra hang (requestTimeout do
+    // config é no-op nesta versão do SDK — verificado empiricamente).
     await client.send(
       new PutObjectCommand({
         Bucket: BUCKET,
@@ -38,6 +46,7 @@ export async function uploadFile(
         Body: buffer,
         ContentType: contentType,
       }),
+      { abortSignal: envTimeoutSignal("S3_REQUEST_TIMEOUT_MS", 30_000) },
     )
     const url = PUBLIC_URL ? `${PUBLIC_URL}/${key}` : `${ENDPOINT}/${BUCKET}/${key}`
     return url

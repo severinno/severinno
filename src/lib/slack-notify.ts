@@ -24,6 +24,7 @@
 import "server-only"
 import { env } from "@/lib/env"
 import logger from "@/lib/logger"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -185,6 +186,7 @@ export async function sendSlackAlert(payload: SlackAlertPayload): Promise<boolea
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payloadJson),
+      signal: envTimeoutSignal("SLACK_TIMEOUT_MS", 10_000),
     })
 
     if (!response.ok) {

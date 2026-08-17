@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Loader2, Lock, CheckCircle2, AlertCircle } from "lucide-react"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 
 export function ResetPasswordForm() {
   const searchParams = useSearchParams()
@@ -33,6 +34,7 @@ export function ResetPasswordForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password }),
+        signal: envTimeoutSignal("API_TIMEOUT_MS", 15_000),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? "Erro ao redefinir senha")

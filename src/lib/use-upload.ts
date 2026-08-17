@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback } from "react"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 import { toast } from "sonner"
 
 export function useUpload() {
@@ -16,6 +17,7 @@ export function useUpload() {
       const res = await fetch("/api/upload", {
         method: "POST",
         body: form,
+        signal: envTimeoutSignal("UPLOAD_TIMEOUT_MS", 60_000),
       })
 
       if (!res.ok) {

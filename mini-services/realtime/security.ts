@@ -508,6 +508,23 @@ export function toPublicRecentEmits(entries: readonly RecentEmitEntry[]): Public
 }
 
 // ---------------------------------------------------------------------------
+// Socket age (admin "who is online" — idade de cada socket)
+// ---------------------------------------------------------------------------
+
+/**
+ * Idade do socket em ms desde o handshake (`connectedAt`). Clamp >= 0
+ * (relógios/ordenação não podem produzir idade negativa); `connectedAt`
+ * ausente ou inválido → 0 (idade desconhecida). Pure — o realtime calcula
+ * por socket no snapshot do GET /sessions e o admin exibe "há X min".
+ */
+export function computeSocketAgeMs(connectedAt: string | undefined, nowMs: number): number {
+  if (!connectedAt) return 0
+  const t = new Date(connectedAt).getTime()
+  if (!Number.isFinite(t)) return 0
+  return Math.max(0, nowMs - t)
+}
+
+// ---------------------------------------------------------------------------
 // Session metrics (aggregated — for /health)
 // ---------------------------------------------------------------------------
 

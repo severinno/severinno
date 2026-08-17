@@ -3,6 +3,7 @@
 import * as React from "react"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { apiGet, apiPatch, apiPost } from "@/lib/api"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 import { useAuthStore } from "@/store/auth"
 import { toast } from "sonner"
 
@@ -136,6 +137,7 @@ export function ProviderOnboarding({ onComplete }: { onComplete: () => void }) {
             duration: form.serviceDuration ? Number(form.serviceDuration) : 60,
             categoryId: null,
           }),
+          signal: envTimeoutSignal("API_TIMEOUT_MS", 15_000),
         })
       }
       try {

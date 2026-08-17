@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 
 import { apiGet, apiPatch } from "@/lib/api"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 import { playCoinSound, playCompletionSound, playReviewSound, tryVibrate } from "@/lib/sounds"
 import { providerProfileSchema, type ProviderProfileInput } from "@/lib/validators"
 import { useAuthStore } from "@/store/auth"
@@ -106,6 +107,7 @@ function SinglePhoto({
         method: "POST",
         body: formData,
         credentials: "same-origin",
+        signal: envTimeoutSignal("UPLOAD_TIMEOUT_MS", 60_000),
       })
       const data = await res.json().catch(() => null)
       if (!res.ok || !data?.url) {

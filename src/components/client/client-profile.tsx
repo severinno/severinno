@@ -12,6 +12,7 @@
  */
 
 import * as React from "react"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   AtSign,
@@ -188,6 +189,7 @@ export function ClientProfile() {
         method: "POST",
         body: formData,
         credentials: "same-origin",
+        signal: envTimeoutSignal("UPLOAD_TIMEOUT_MS", 60_000),
       })
       const data = await res.json()
       if (!res.ok || !data?.url) {

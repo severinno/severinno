@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Loader2, UploadCloud, X } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { envTimeoutSignal } from "@/lib/fetch-timeout"
 
 type FilePhotosProps = {
   /** Current list of stored photo URLs. */
@@ -59,6 +60,7 @@ export function FilePhotos({
         method: "POST",
         body: formData,
         credentials: "same-origin",
+        signal: envTimeoutSignal("UPLOAD_TIMEOUT_MS", 60_000),
       })
       const data = await res.json().catch(() => null)
       if (!res.ok || !data?.url) {

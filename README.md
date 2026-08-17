@@ -98,6 +98,7 @@ Servidor WebSocket para notificações em tempo real, chat e tracking.
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Porta**            | `3003`                                                                                                                                          |
 | **Path**             | `/ws` (Socket.io) — `/health` (healthcheck, SEM auth), `/health/detailed` (Bearer), `/sessions` (Bearer), `/metrics` (Bearer), `/emit` (Bearer) |
+| **Admin online**     | `GET /api/admin/realtime/sessions` (admin) — por usuário: sockets com `ageMs`, kicks, e `conflicts` (órfãos)                                    |
 | **Stack**            | Socket.io 4, Bun                                                                                                                                |
 | **Docker**           | `docker compose up -d realtime`                                                                                                                 |
 | **Manual**           | `cd mini-services/realtime && bun index.ts`                                                                                                     |
@@ -115,6 +116,17 @@ omite `userId`/`rooms` por privacidade; o `/health/detailed` (mesmo Bearer do
 TOKEN=$(grep REALTIME_EMIT_TOKEN .env.local | cut -d= -f2- | tr -d '"')
 curl -H "Authorization: Bearer $TOKEN" http://localhost:3003/health/detailed
 ```
+
+**Sessões ativas no admin (`/api/admin/realtime/sessions`):** o app expõe
+para o painel admin (requireRole ADMIN) a presença em tempo real derivada do
+`/sessions` do realtime: `sessions[userId]` (cada socket com `connectedAt` +
+`ageMs` — idade desde o handshake), `totalSockets`, `onlineUsers`, `kicks`
+(motivo do último kick: `session_limit`/`revoke`/`session_expired`) e
+`conflicts[]` — usuários com **>1 socket simultâneo** (o sintoma do órfão:
+HMR leak, sessão stale vazada, multi-tab), ordenados por gravidade
+(socketCount desc, desempate: socket mais antigo) com `oldestAgeMs` + o
+último kick como contexto. O admin visualiza conflitos de sessão em tempo
+real antes de revogar/desativar.
 
 **Telemetria persistida (`/metrics`, Bearer):** o realtime grava em Redis a
 cada `REALTIME_TELEMETRY_INTERVAL_MS` (default 30s) os `emitCounters` por
@@ -313,6 +325,62 @@ Requer download de dados OSRM do Brasil (~600MB). Veja [documentação OSRM](htt
 ## Environment Variables
 
 See [`.env.example`](.env.example) for all variables and their descriptions.
+
+### Fetch timeouts (`*_TIMEOUT_MS`)
+
+Every `fetch(` in `src/` must pass a timeout signal (`AbortSignal.timeout` via the shared `envTimeoutSignal` helper in `src/lib/fetch-timeout.ts`) so an upstream that accepts TCP but never responds can't hang the calling flow (booking creation, logout, alerts, client fetches). Invalid env values fall back to the default:
+
+| Env                        | Default | Scope                                                                        |
+| -------------------------- | ------- | ---------------------------------------------------------------------------- |
+| `API_TIMEOUT_MS`           | 15s     | Central `src/lib/api.ts` wrapper + client fetches to first-party routes      |
+| `UPLOAD_TIMEOUT_MS`        | 60s     | `/api/upload` (FormData — larger payloads)                                   |
+| `OSRM_TIMEOUT_MS`          | 5s      | OSRM routing client (`src/lib/routing.ts`)                                   |
+| `SLACK_TIMEOUT_MS`         | 10s     | Slack webhook alerts (`src/lib/slack-notify.ts`)                             |
+| `WHATSAPP_TIMEOUT_MS`      | 10s     | WhatsApp/Evolution notifications (`src/lib/whatsapp.ts`)                     |
+| `GEO_CEP_TIMEOUT_MS`       | 10s     | CEP lookup from the client geo store                                         |
+| `GLOBAL_FETCH_TIMEOUT_MS`  | 60s     | Piso GLOBAL do `fetch` (rede de segurança p/ código sem signal — ver abaixo) |
+| `REDIS_COMMAND_TIMEOUT_MS` | 5s      | Comando ioredis sem resposta (cluster + standalone)                          |
+| `REDIS_CONNECT_TIMEOUT_MS` | 10s     | Handshake TCP do ioredis (cluster + standalone)                              |
+| `S3_REQUEST_TIMEOUT_MS`    | 30s     | Request inteira do SDK S3 (upload/delete/list, via abortSignal)              |
+
+Regression guard: `bun run check:fetch-timeout` (pre-commit) fails if a `fetch(` in `src/` is introduced without a timeout signal.
+
+**Clientes Redis/S3 (mesmo guard de invalidez via `resolveTimeoutMs`):** o
+`redis.ts` wirea `commandTimeout`/`connectTimeout` do ioredis (o comando
+pendurado — ex.: Redis que aceita TCP mas nunca responde — aborta e a cadeia
+de tiers degrada para a memória, `cacheGet`/`cacheSet` completam em vez de
+travar); o `s3.ts`/`storage.ts` passam `abortSignal: envTimeoutSignal(...)`
+no `client.send()` (upload/delete/list abortam em vez de pendurar). ⚠️ O
+`requestTimeout`/`connectionTimeout` do config do SDK (requestHandler
+plain-object ou top-level) NÃO aborta contra um S3 que aceita TCP mas nunca
+responde no SDK v3.1090.0 (verificado empiricamente — o antigo `requestTimeout:
+30_000` era um no-op); o `abortSignal` no send é o mecanismo confiável.
+
+**Piso global (`GLOBAL_FETCH_TIMEOUT_MS`, default 60s).** Além do guard
+(exige signal explícito em `src/`), o app instala um piso de timeout no
+`fetch` **global**: todo `fetch` SEM signal explícito ganha
+`AbortSignal.timeout(GLOBAL_FETCH_TIMEOUT_MS)` — rede de segurança para
+código que não passa signal (libs de terceiros, fetches fora do guard).
+Modelo de precedência (documentado no worklog):
+
+1. **Signal explícito no `init`** (ex.: `envTimeoutSignal("API_TIMEOUT_MS", …)`)
+   → passado INTACTO ao fetch nativo. Timeouts env-specific sempre vencem.
+2. **`Request` com signal próprio** → honrado (alinhado ao spec do fetch).
+3. **Sem signal** → piso global: `GLOBAL_FETCH_TIMEOUT_MS` (default 60s),
+   com o mesmo guard de invalidez do `envTimeoutSignal`.
+
+O piso é instalado no **server** via `src/instrumentation.ts`
+(`register()`) e no **client** via `src/lib/fetch-timeout-client.ts`
+(importado no `Providers`). Idempotente — um fetch já embrulhado não é
+re-embrulhado. No browser, env não-NEXT_PUBLIC não chega ao bundle, então o
+valor efetivo é o fallback (60s); para tunar por chamada use
+`envTimeoutSignal` no init. ⚠️ Limite conhecido: `fetch(new Request(url))` nu
+sempre carrega o signal default do Request, que é honrado (não distingue do
+explícito) — o guard de `src/` cobre o código próprio; o piso protege o que
+está fora dele. ⚠️ **Streaming/SSE:** o piso de 60s pode abortar respostas de
+streaming longo de libs de terceiros que não passam signal próprio — sem SSE
+no `src/` hoje, mas se um dia entrar, passe `signal` explícito (regra 1)
+para excluir o stream do piso.
 
 ## Scripts
 

@@ -26,6 +26,7 @@ import {
   renewSessionSockets,
   extractEmitEventInfo,
   summarizeActiveSessions,
+  computeSocketAgeMs,
   recordKickAudit,
   snapshotKickAudit,
   KICK_AUDIT_MAX,
@@ -407,6 +408,28 @@ describe("summarizeActiveSessions (métricas do /health)", () => {
     const m = summarizeActiveSessions([sess("u1", "CLIENT", "s1"), sess("u2", "PROVIDER", "s2")])
     expect(m.usersWithMultipleSockets).toBe(0)
     expect(m.maxSocketsPerUser).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Socket age (admin "quem está online há quanto tempo")
+// ---------------------------------------------------------------------------
+
+describe("computeSocketAgeMs", () => {
+  const NOW = 1786919580000
+
+  it("devolve a idade desde o connectedAt (handshake)", () => {
+    expect(computeSocketAgeMs(new Date(NOW - 180_000).toISOString(), NOW)).toBe(180_000)
+  })
+
+  it("clampa a 0 quando connectedAt é futuro (relógios/ordenação)", () => {
+    expect(computeSocketAgeMs(new Date(NOW + 5_000).toISOString(), NOW)).toBe(0)
+  })
+
+  it("devolve 0 para connectedAt ausente/inválido", () => {
+    expect(computeSocketAgeMs(undefined, NOW)).toBe(0)
+    expect(computeSocketAgeMs("not-a-date", NOW)).toBe(0)
+    expect(computeSocketAgeMs("", NOW)).toBe(0)
   })
 })
 
