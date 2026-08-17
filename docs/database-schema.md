@@ -1,7 +1,7 @@
 # Database Schema — Severinno Marketplace
 
 > Schema do banco de dados PostgreSQL do Severinno Marketplace.
-> 21 tabelas, PostGIS espacial, soft-delete, full-text search.
+> 27 modelos, PostGIS espacial, soft-delete, full-text search.
 
 ---
 
@@ -33,7 +33,7 @@
 | ------------- | ------------------------- | ------------------------------------------------ |
 | id            | `TEXT PK`                 | CUID único                                       |
 | email         | `TEXT UNIQUE`             | Login único                                      |
-| passwordHash  | `TEXT`                    | bcrypt hash                                      |
+| passwordHash  | `TEXT`                    | scrypt (N=16384, r=8, p=1)                       |
 | name          | `TEXT`                    | Nome completo                                    |
 | role          | `TEXT`                    | `CLIENT` / `PROVIDER` / `ADMIN`                  |
 | cpfCnpj       | `TEXT?`                   | CPF ou CNPJ                                      |
@@ -289,7 +289,7 @@ A camada de soft-delete é aplicada automaticamente via `PrismaClient.$extends` 
 
 - **IDs:** CUID (`cuid()`) — 25 caracteres, URL-safe
 - **Timestamps:** `DateTime @default(now())` / `@updatedAt`
-- **Enums:** `String` com validação em Zod (SQLite compat, PostgreSQL flexível)
+- **Enums:** `String` com validação em Zod (escolha do projeto — evita migrations de enum no Postgres; valores listados em comentário no schema)
 - **Soft-delete:** `deletedAt: DateTime?` com filtro automático via `$extends`
 - **Nomes:** camelCase no Prisma, PascalCase/SnakeCase no SQL (conforme Prisma)
 - **Chaves estrangeiras:** `ON DELETE CASCADE` (usuário) / `RESTRICT` (serviço em booking) / `SET NULL` (categoria pai)

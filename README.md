@@ -10,8 +10,8 @@
   <a href="https://github.com/severinno/severinno/actions/workflows/e2e-cache.yml">
     <img src="https://github.com/severinno/severinno/actions/workflows/e2e-cache.yml/badge.svg" alt="E2E Cache">
   </a>
-  <img src="https://img.shields.io/badge/utf8--check-748%20files%20%E2%9C%85-2ea44f" alt="UTF-8: 748 files">
-  <img src="https://img.shields.io/badge/tests-3.527%20unit%20%7C%20realtime%20e2e%204%2F4%20%E2%9C%85-2ea44f" alt="Tests: 3.527 unit | realtime E2E 4/4">
+  <img src="https://img.shields.io/badge/utf8--check-837%20files%20%E2%9C%85-2ea44f" alt="UTF-8: 837 files">
+  <img src="https://img.shields.io/badge/tests-4.564%20unit%20%7C%20realtime%20e2e%204%2F4%20%E2%9C%85-2ea44f" alt="Tests: 4.564 unit | realtime E2E 4/4">
   <img src="https://img.shields.io/badge/encoding%20guards-8%2F8%20active%20%E2%9C%85-2ea44f" alt="Encoding guards: 8/8 active">
 </p>
 
@@ -28,7 +28,7 @@
 | **Queue**      | RabbitMQ 4 (notifications, email)                                                    |
 | **Routing**    | OSRM (fallback Haversine)                                                            |
 | **Realtime**   | Socket.io (tracking, chat, notifications)                                            |
-| **Auth**       | Session-based (iron-web-token, crypto)                                               |
+| **Auth**       | Session cookie HMAC-SHA256 (custom, no JWT)                                          |
 | **Storage**    | S3-compatible (R2) with local fallback                                               |
 | **Monitoring** | Sentry (errors), Pino (logs)                                                         |
 | **Testing**    | Vitest (unit), Playwright (E2E)                                                      |
@@ -69,7 +69,7 @@ does not exist`). Ajustes locais vão em `.env.local` (gitignored).
 ```
 ┌─────────────┐     ┌──────────────┐     ┌──────────────┐
 │   Browser    │────▶│  Next.js 16  │────▶│  API Routes  │
-│  (React SPA) │     │  (Server)    │     │  (36 rotas)  │
+│  (React SPA) │     │  (Server)    │     │ (124 rotas)  │
 └─────────────┘     └──────┬───────┘     └──────┬───────┘
                            │                    │
                     ┌──────▼───────┐     ┌──────▼───────┐
@@ -145,7 +145,7 @@ Processam filas de email e notificações em background.
 bun run consumer
 
 # Consumer de email
-bun run email-consumer
+bun run src/queue/email-consumer.ts
 ```
 
 #### OSRM Routing (Opcional)
@@ -167,7 +167,7 @@ Requer download de dados OSRM do Brasil (~600MB). Veja [documentação OSRM](htt
 | `provider.*` | Provider panel — services, agenda, finances, messages          |
 | `admin.*`    | Admin panel — users, services, taxonomy, settings              |
 
-## API Routes (36 endpoints)
+## API Routes (124 rotas / 148 handlers)
 
 ### Public
 
@@ -228,14 +228,14 @@ See [`.env.example`](.env.example) for all variables and their descriptions.
 bun run dev        # Development server (Next.js + Turbopack)
 bun run build      # Production build
 bun run start      # Start production server
-bun run seed       # Seed database
+bun run db:seed       # Seed database
 ```
 
 ### Workers
 
 ```bash
 bun run consumer         # Start RabbitMQ notification worker
-bun run email-consumer   # Start email queue worker
+bun run src/queue/email-consumer.ts   # Start email queue worker
 ```
 
 ### Testes de Cache
@@ -244,7 +244,7 @@ bun run email-consumer   # Start email queue worker
 # Fast gate — valida manifesto contra codigo real (~2s)
 npx tsx scripts/validate-cache-manifest.ts
 
-# Unit tests — 74 testes em 5 suites de cache
+# Unit tests — 65 testes em 5 suites de cache
 bun vitest run src/app/api/__tests__/all-cache-routes.test.ts
 bun vitest run src/app/api/__tests__/providers-cache-header.test.ts
 bun vitest run src/app/api/__tests__/categories-cache-header.test.ts
@@ -262,7 +262,7 @@ npx playwright test e2e/providers-cache.spec.ts e2e/all-cache-routes.spec.ts --p
 ### Geral
 
 ```bash
-bun run vitest     # Run all unit tests
+bun run test:run   # Run all unit tests (vitest run)
 bun run e2e        # Run full Playwright E2E suite (all browsers)
 npx playwright install  # Install Playwright browsers (first time only)
 ```
@@ -433,7 +433,7 @@ docker compose up -d app realtime postgis redis rabbitmq email-worker notificati
 
 | Documento                                                  | Descrição                                                       |
 | :--------------------------------------------------------- | :-------------------------------------------------------------- |
-| [`docs/API.md`](docs/API.md)                               | Referência completa da API REST (50+ endpoints)                 |
+| [`docs/API.md`](docs/API.md)                               | Referência completa da API REST (124 rotas / 148 handlers)      |
 | [`docs/CACHE_STRATEGY.md`](docs/CACHE_STRATEGY.md)         | Estratégia de cache em 3 camadas (Redis + HTTP + Browser)       |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)                 | Guia de deploy em produção com Docker + Caddy                   |
 | [`docs/PUSH_NOTIFICATIONS.md`](docs/PUSH_NOTIFICATIONS.md) | Sistema de push notifications (Web Push, agendamento, webhooks) |
@@ -490,7 +490,7 @@ Quatro camadas de proteção previnem que arquivos com encoding corrompido (ex: 
 | 🎯 **CRLF Scope**  | `git commit` + push/PR     | `scripts/check-crlf-scope.mjs` (pre-commit + `utf8-check.yml`)    |  <1s  |     ✅ Exit 1     |     | 🧨 **Single-line out=** | `git commit` + push/PR | `scripts/check-single-line-out-assign.sh --ci` (pre-commit + `utf8-check.yml`) | <1s | ✅ Exit 1 |
 | 🎯 **UTF-8 Scope** | `git commit` + push/PR     | `scripts/check-utf8-scope.mjs` (pre-commit + `utf8-check.yml`)    |  <1s  |     ✅ Exit 1     |
 
-**748 arquivos escaneados** (`.ts` + `.tsx`) em cada execução — zero corrupção encontrada.
+**837 arquivos escaneados** (`.ts` + `.tsx`) em cada execução — zero corrupção encontrada.
 
 ### CRLF Guard
 
@@ -919,7 +919,7 @@ runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 | Gate / job                                        | Local (Windows, node frio) |            act + ubuntu-bun (step real)            | CI real (GH hosted) |
 | :------------------------------------------------ | :------------------------: | :------------------------------------------------: | :-----------------: |
 | 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |                      — (n/a)                       |         <2s         |
-| `utf8-check` (748 arquivos, `--ci src/`)          |        ≈ **0.92s**         |                     **7.46s**                      |    ~2-5s (est.)     |
+| `utf8-check` (837 arquivos, `--ci src/`)          |        ≈ **0.92s**         |                     **7.46s**                      |    ~2-5s (est.)     |
 | `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |                     **3.61s**                      |    ~1-2s (est.)     |
 | `mutation-guards` (15 sub-tests node-puro)        |         ≈ **39s**          |                     **9.1s**²                      |   ~15-25s (est.)    |
 | `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |                    **4m37.6s**                     |   ~35-45s (est.)³   |

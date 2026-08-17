@@ -11,7 +11,7 @@ O **Severinno Marketplace** é uma plataforma SaaS residencial para contrataçã
 | **Frontend**                | React 19 + Next.js 16 (App Router, Turbopack) | SPA no cliente orientada por troca de views no Zustand.                                                      |
 | **Estilização**             | Tailwind CSS v4 + shadcn/ui                   | Design System baseado na cor de destaque **Emerald** (Esmeralda).                                            |
 | **Gerenciamento de Estado** | Zustand + XState                              | Zustand para estados globais (auth, geo, view, UI) e XState para fluxos complexos (Checkout e Rastreamento). |
-| **Banco de Dados**          | PostgreSQL 16 + Extensão PostGIS 3.4          | Capacidades geoespaciais nativas (armazenamento e consultas geográficas rápidas). ORM Prisma (v6.11.1).      |
+| **Banco de Dados**          | PostgreSQL 16 + Extensão PostGIS 3.4          | Capacidades geoespaciais nativas (armazenamento e consultas geográficas rápidas). ORM Prisma (^6.19.3).      |
 | **Mensageria e Filas**      | RabbitMQ 4                                    | Consumers em background rodando de forma assíncrona para e-mails e notificações.                             |
 | **Cache & Sessão**          | Redis 7                                       | Controle de taxa (Rate Limiting) e cache geográfico de alta velocidade.                                      |
 | **Comunicação Realtime**    | WebSocket (Socket.io 4)                       | Mini-serviço rodando na porta `3003` para chat, notificações e tracking ao vivo.                             |
@@ -28,7 +28,7 @@ O **Severinno Marketplace** é uma plataforma SaaS residencial para contrataçã
 
 Apesar de usar Next.js App Router, para os painéis de usuário logado a plataforma adota o conceito de **Single Page Application (SPA)** a partir da rota principal `/`.
 
-- O componente principal [page-client.tsx](file:///c:/PROJETOS/$everinno__Produto/src/app/page-client.tsx) monitora o estado de `view` da store global do Zustand ([view.ts](file:///c:/PROJETOS/$everinno__Produto/src/store/view.ts)).
+- O componente principal [page.tsx](file:///C:/PROJETOS/severinno/src/app/page.tsx) (orquestrador de views) monitora o estado de `view` da store global do Zustand ([view.ts](file:///C:/PROJETOS/severinno/src/store/view.ts)).
 - As views são strings no formato `categoria.secao` (ex: `client.bookings`, `provider.services`, `admin.taxonomy`, `vitrine`).
 - Um **Auth Guard** reativo no shell redireciona o usuário para a vitrine caso ele tente acessar uma view restrita à sua Role sem estar devidamente autenticado.
 
@@ -61,17 +61,17 @@ Localizado em `mini-services/realtime/`, roda de maneira desacoplada utilizando 
 ## 📂 Estrutura de Diretórios Principal
 
 ```
-c:/PROJETOS/$everinno__Produto
+C:\PROJETOS\severinno
 ├── .agents/                    # Configurações do AG Kit (regras, agentes e memória persistente)
 ├── mini-services/              # Microserviços auxiliares independentes
 │   └── realtime/               # Servidor de WebSocket (Socket.io) escrito em TypeScript
 ├── prisma/                     # Configurações do Banco de Dados
-│   ├── schema.prisma           # Schema contendo 13 modelos relacionais
+│   ├── schema.prisma           # Schema contendo 27 modelos relacionais
 │   └── seed.ts                 # Seed com 9 usuários mockados e árvore completa de serviços
 ├── src/                        # Código fonte do Next.js
 │   ├── app/                    # Next.js App Router (Layouts, Páginas estáticas, Rotas de API)
-│   │   ├── api/                # 36 Endpoints HTTP (Auth, Reservas, Orçamentos, Mensagens, Upload, etc.)
-│   │   └── page-client.tsx     # Orquestrador de views do cliente (Router da SPA)
+│   │   ├── api/                # 124 rotas / 148 handlers HTTP (Auth, Reservas, Orçamentos, Mensagens, Upload, etc.)
+│   │   └── page.tsx            # Orquestrador de views (Router da SPA)
 │   ├── components/             # Componentes de UI divididos por escopo
 │   │   ├── admin/              # Componentes do Dashboard do Administrador
 │   │   ├── client/             # Componentes do Dashboard do Cliente
@@ -93,7 +93,7 @@ c:/PROJETOS/$everinno__Produto
 O banco de dados do Severinno gerencia os seguintes modelos fundamentais:
 
 - **User**: Base comum para Clientes, Prestadores e Administradores. Guarda as coordenadas geográficas (`lat`, `lng`) da base de atendimento do prestador ou endereço do cliente, raio máximo de cobertura (`radiusKm`) e campos adicionais de integração bancária (`lytexRecipientId`).
-- **Category**: Árvore estruturada em até 3 níveis (Pai > Filha > Subcategoria) para busca semântica otimizada de serviços (definida conforme [TAXONOMIA.md](file:///c:/PROJETOS/$everinno__Produto/TAXONOMIA.md)).
+- **Category**: Árvore estruturada em até 3 níveis (Pai > Filha > Subcategoria) para busca semântica otimizada de serviços (definida conforme [TAXONOMIA.md](file:///C:/PROJETOS/severinno/TAXONOMIA.md)).
 - **Service**: Os serviços oferecidos por cada prestador sob determinada categoria, com preço base e unidade de medição (ex: metro quadrado, hora, unidade fixa).
 - **ProviderAvailability** e **DateBlock**: Definições semanais de horário de expediente do prestador e bloqueio de datas específicas (ex: folgas, férias).
 - **QuoteRequest** & **QuoteItem**: Fluxo de cotação/orçamento múltiplo iniciado pelo cliente para um prestador.
@@ -111,12 +111,12 @@ O banco de dados do Severinno gerencia os seguintes modelos fundamentais:
 
 Ao carregar a Vitrine, o sistema lê o ponto de geolocalização do usuário (obtido via GPS do navegador ou digitando um CEP integrado com a API ViaCEP).
 
-1. A rota [api/providers/route.ts](file:///c:/PROJETOS/$everinno__Produto/src/app/api/providers/route.ts) calcula a distância de cada prestador baseado na sua latitude e longitude cadastradas.
+1. A rota [api/providers/route.ts](file:///C:/PROJETOS/severinno/src/app/api/providers/route.ts) calcula a distância de cada prestador baseado na sua latitude e longitude cadastradas.
 2. É retornado o vetor de prestadores ordenados por proximidade ou classificação, exibindo-os em um mapa vetorial interativo baseado em **MapLibre GL JS** com tiles livres do OpenStreetMap.
 
 ### B. Checkout de Agendamento (XState + Stepper)
 
-Quando um cliente clica para agendar um serviço, a máquina de estado ([checkout.machine.ts](file:///c:/PROJETOS/$everinno__Produto/src/machines/checkout.machine.ts)) gerencia as etapas de contratação através do [booking-modal.tsx](file:///c:/PROJETOS/$everinno__Produto/src/components/modals/booking-modal.tsx):
+Quando um cliente clica para agendar um serviço, a máquina de estado ([checkout.machine.ts](file:///C:/PROJETOS/severinno/src/machines/checkout.machine.ts)) gerencia as etapas de contratação através do [booking-modal.tsx](file:///C:/PROJETOS/severinno/src/components/modals/booking-modal.tsx):
 
 1. **Passo 1 (Calendário & Slots)**: Carrega a disponibilidade real do prestador e gera slots de 60 minutos dinamicamente.
 2. **Passo 2 (Dados & Endereço)**: Coleta informações de local e observações com auto-preenchimento por CEP.
@@ -131,7 +131,7 @@ No terminal rodando na máquina:
 1. **Instalação das dependências**: `bun install`
 2. **Infraestrutura via Docker**: `docker compose up -d postgis redis rabbitmq`
 3. **Configuração inicial do banco de dados**: `bunx prisma migrate dev` (ou `prisma db push`)
-4. **Seed de dados demo**: `bun run seed`
+4. **Seed de dados demo**: `bun run db:seed`
 5. **Servidor de desenvolvimento**: `bun run dev`
-6. **Worker de filas em background (opcional)**: `bun run consumer` (notificações) e `bun run email-consumer` (e-mails)
+6. **Worker de filas em background (opcional)**: `bun run consumer` (notificações) e `bun run src/queue/email-consumer.ts` (e-mails)
 7. **Servidor realtime independente (WebSocket)**: `cd mini-services/realtime && bun index.ts`

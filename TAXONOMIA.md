@@ -50,7 +50,17 @@ Esta categoria Pai ficou muito "pesada" (com 5 categorias filhas). Vamos desmemb
 
 ### 🏆 TAXONOMIA FINAL OTIMIZADA (VERSÃO DE PRODUÇÃO)
 
-Aqui está a estrutura definitiva, pronta para ser entregue ao time de desenvolvimento e marketing:
+> **⚠️ Proposta vs. produção:** a árvore abaixo é uma **proposta otimizada** (14
+> categorias de nível 1) — **não é a taxonomia em produção**. A taxonomia REAL
+> está definida em `prisma/seed-data.ts` (`CATEGORY_SPEC`) e contém **27
+> categorias: 3 pais + 7 filhas + 17 subcategorias**:
+>
+> - **Reparos** → Elétrica (Tomadas e interruptores, Curto-circuito, Quadro elétrico) · Hidráulica (Desentupimento, Vazamento, Caixa de descarga) · Pintura (Pintura interna, Pintura externa, Textura e grafiato)
+> - **Limpeza** → Residencial (Limpeza geral, Organização) · Pós-Obra (Limpeza pós-obra)
+> - **Reforma** → Pisos (Assentamento de piso, Rejunte) · Alvenaria (Pequenas reformas, Contrapiso, Poda de árvores)
+>
+> A proposta abaixo pode ser usada como referência de evolução futura da árvore;
+> qualquer mudança em produção deve passar por `prisma/seed-data.ts`.
 
 ### 1. Reformas e Acabamentos
 
@@ -292,7 +302,7 @@ Aqui está a estrutura definitiva, pronta para ser entregue ao time de desenvolv
 
 ### 1. Mapeamento de Sinônimos (Dicionário de Busca - SEO)
 
-O sistema de busca (ElasticSearch, Algolia ou similar) deve reconhecer os seguintes sinônimos populares e redirecioná-los para a subcategoria oficial:
+O sistema de busca (PostgreSQL `tsvector` + OpenSearch) deve reconhecer os seguintes sinônimos populares e redirecioná-los para a subcategoria oficial:
 
 | Termo Buscado pelo Usuário | Redirecionar para Subcategoria (Nível 3)                      |
 | :------------------------- | :------------------------------------------------------------ |

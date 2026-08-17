@@ -1,7 +1,7 @@
-// Severinno Marketplace SaaS — Prisma schema (Fase 1 / MVP)
-// Stack: SQLite + Prisma. SQLite does NOT support native `enum` keyword,
-// so all enum-like fields are `String` with a comment listing allowed values.
-// Validation is enforced at runtime via Zod (see src/lib/validators.ts).
+// Severinno Marketplace SaaS — Prisma schema
+// Stack: PostgreSQL 16 + PostGIS (via Prisma `postgresql` provider).
+// Enum-like fields are `String` with a comment listing allowed values;
+// validation is enforced at runtime via Zod (see src/lib/validators.ts).
 
 generator client {
   provider = "prisma-client-js"
@@ -126,7 +126,7 @@ model Service {
   basePrice   Float
   // unit: "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO"
   unit        String   @default("UNIDADE")
-  // photos: JSON array of url strings (max 4) — SQLite-safe
+  // photos: JSON array of url strings (max 4)
   photos      Json     @default("[]")
   // duration in minutes (e.g. 60, 120, 180)
   duration    Int?

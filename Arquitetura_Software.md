@@ -43,12 +43,12 @@ Em vez de usar a API do Google para converter CEP em coordenadas (Geocoding) ou 
 
 Incluindo os novos estados de geolocalização, todas as ferramentas abaixo são 100% Open Source (Licença MIT):
 
-| Tipo de Estado              | Responsabilidade                                    | Hardware de Código Aberto | Uso no Marketplace                                                                                                              |
-| :-------------------------- | :-------------------------------------------------- | :------------------------ | :------------------------------------------------------------------------------------------------------------------------------ |
-| Status do servidor          | Cache e sincronização de dados da API.              | Consulta TanStack         | Lista de produtos, histórico de pedidos, busca de vendedores próximos (recebe coords do PostGIS).                               |
-| Estado Global (UI/Auth/GPS) | Dados do usuário, preferências e localização atual. | Condição                  | Armazena JWT, Role, itens do carrinho e as coordenadas GPS atuais do dispositivo do usuário (atualizadas via API do navegador). |
-| Fluxos Críticos             | Controle de etapas e regras rígidas.                | XState                    | Fluxo de Checkout (com seleção de local no mapa) e Rastreamento de Entrega em tempo real.                                       |
-| Estado de Formulários       | Inputs e validação.                                 | Forma Gancho React \+ Zod | Endereçamento e validação de CEP/Coordenadas.                                                                                   |
+| Tipo de Estado              | Responsabilidade                                    | Hardware de Código Aberto | Uso no Marketplace                                                                                                                                                                                          |
+| :-------------------------- | :-------------------------------------------------- | :------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status do servidor          | Cache e sincronização de dados da API.              | Consulta TanStack         | Lista de produtos, histórico de pedidos, busca de vendedores próximos (recebe coords do PostGIS).                                                                                                           |
+| Estado Global (UI/Auth/GPS) | Dados do usuário, preferências e localização atual. | Condição                  | Armazena a role e dados do usuário da sessão (cookie HMAC-SHA256 `severinno_session`, sem JWT), itens do carrinho e as coordenadas GPS atuais do dispositivo do usuário (atualizadas via API do navegador). |
+| Fluxos Críticos             | Controle de etapas e regras rígidas.                | XState                    | Fluxo de Checkout (com seleção de local no mapa) e Rastreamento de Entrega em tempo real.                                                                                                                   |
+| Estado de Formulários       | Inputs e validação.                                 | Forma Gancho React \+ Zod | Endereçamento e validação de CEP/Coordenadas.                                                                                                                                                               |
 
 ---
 
