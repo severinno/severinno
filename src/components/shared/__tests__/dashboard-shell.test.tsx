@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { cleanup, fireEvent, render, screen } from "@/__tests__/test-utils"
+import { cleanup, fireEvent, render, screen, within } from "@/__tests__/test-utils"
 import { axe } from "vitest-axe"
 
 // ---------------------------------------------------------------------------
@@ -580,7 +580,12 @@ describe("DashboardShell — SessionExpiryBanner", () => {
   it("o botão Renovar chama renewSession (renovação proativa NÃO-destrutiva)", () => {
     mockSessionExpiry.current = now + 2 * DAY
     renderShell({ user: { role: "CLIENT" } })
-    fireEvent.click(screen.getByRole("button", { name: /Renovar/ }))
+    // A 2d TANTO o banner (≤7d) QUANTO a pill (≤15d) exibem o botão —
+    // getAllByRole para não estourar o strict mode; clicar qualquer um
+    // dispara a MESMA ação dedicada do store.
+    const renewButtons = screen.getAllByRole("button", { name: /Renovar/ })
+    expect(renewButtons.length).toBeGreaterThanOrEqual(2)
+    fireEvent.click(renewButtons[0]!)
     // Renew reusa a ação dedicada do store — NUNCA fetchMe (que em erro de
     // rede marca unauthenticated e derruba o usuário para o login).
     expect(mockRenewSession).toHaveBeenCalledTimes(1)
@@ -639,6 +644,56 @@ describe("DashboardShell — SessionExpiryInfo (pill do dropdown)", () => {
     mockSessionExpiry.current = now - 60
     renderShell({ user: { role: "CLIENT" } })
     expect(screen.queryByTestId("session-expiry-info")).toBeNull()
+  })
+
+  // ── Janela 8–15d: botão Renovar na pill (fecha o gap do banner ≤7d) ──
+
+  it("mostra o botão Renovar na pill na janela 8–15 dias (ex.: 12d)", () => {
+    mockSessionExpiry.current = now + 12 * DAY
+    renderShell({ user: { role: "CLIENT" } })
+    const pill = screen.getByTestId("session-expiry-info")
+    expect(pill.textContent).toContain("12 dias")
+    // A pill oferece o botão na janela 8-15d — o servidor JÁ reemite em
+    // <15d, mas a ação explícita dá controle ao usuário.
+    expect(within(pill).getByRole("button", { name: /Renovar/ })).toBeDefined()
+  })
+
+  it("boundary: 15 dias mostra o botão na pill (days ≤ 15 inclusive)", () => {
+    mockSessionExpiry.current = now + 15 * DAY
+    renderShell({ user: { role: "CLIENT" } })
+    expect(
+      within(screen.getByTestId("session-expiry-info")).getByRole("button", {
+        name: /Renovar/,
+      }),
+    ).toBeDefined()
+  })
+
+  it("boundary: 16 dias esconde o botão na pill (days > 15)", () => {
+    mockSessionExpiry.current = now + 16 * DAY
+    renderShell({ user: { role: "CLIENT" } })
+    const pill = screen.getByTestId("session-expiry-info")
+    expect(pill.textContent).toContain("16 dias")
+    expect(within(pill).queryByRole("button", { name: /Renovar/ })).toBeNull()
+  })
+
+  it("NÃO mostra o botão Renovar na pill acima de 15 dias (ex.: 20d)", () => {
+    mockSessionExpiry.current = now + 20 * DAY
+    renderShell({ user: { role: "CLIENT" } })
+    const pill = screen.getByTestId("session-expiry-info")
+    expect(pill.textContent).toContain("20 dias")
+    // Acima de 15d o servidor ainda NÃO reemite o cookie (fora da janela de
+    // rotação) — renovar seria um no-op, então a pill não oferece o botão.
+    expect(within(pill).queryByRole("button", { name: /Renovar/ })).toBeNull()
+  })
+
+  it("clicar Renovar na pill (8–15d) chama renewSession — NUNCA fetchMe", () => {
+    mockSessionExpiry.current = now + 10 * DAY
+    renderShell({ user: { role: "CLIENT" } })
+    const pill = screen.getByTestId("session-expiry-info")
+    fireEvent.click(within(pill).getByRole("button", { name: /Renovar/ }))
+    // Mesma ação NÃO-destrutiva do banner: renovar não pode expulsar o user.
+    expect(mockRenewSession).toHaveBeenCalledTimes(1)
+    expect(mockFetchMe).not.toHaveBeenCalled()
   })
 })
 

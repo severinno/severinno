@@ -37,6 +37,11 @@ type AuthState = {
   fetchMe: () => Promise<void>
   /** Renovação PROATIVA da sessão (não-destrutiva) — ver implementação. */
   renewSession: () => Promise<void>
+  /** Semear o countdown via SSR (server components): preenche
+   *  sessionExpiresAt SOMENTE se ainda estiver null — o fetchMe (rede) pode
+   *  estar lento, e um valor já resolvido nunca é sobrescrito. Não muda
+   *  user/status: é só o paint inicial do countdown, sem efeitos colaterais. */
+  seedSessionExpiry: (expiresAt: number | null) => void
   setUser: (user: AuthUser | null) => void
   clearError: () => void
 }
@@ -58,6 +63,14 @@ export const useAuthStore = create<AuthState>()(
         }),
 
       clearError: () => set({ error: null }),
+
+      // Seed do countdown via SSR: preenche só se vazio (primeiro paint antes
+      // do fetchMe resolver). Se já houver valor (fetchMe mais rápido, outro
+      // seed), mantém — o mais fresco vence.
+      seedSessionExpiry: (expiresAt) =>
+        set((s) => ({
+          sessionExpiresAt: s.sessionExpiresAt ?? expiresAt,
+        })),
 
       login: async ({ email, password }) => {
         set({ status: "loading", error: null })

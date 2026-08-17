@@ -70,6 +70,10 @@ Convenções:
 - [REALTIME-RENEW-SMOKE](#realtime-renew-smoke) — Smoke E2E do session:renew (rotacao de cookie): forja cookie com TTL curto (15s), o app REEMITE via GET /api/auth/me (getSession reissue em <15d) e propaga session:renew ao realtime; o socket renovado SOBREVIVE ao TTL sweep enquanto o controle (sem renew) cai com session_expired — diferencial de dois providers isolados registrados via API.
 - [RT-HEALTH-RENEWS](#rt-health-renews) — Estender a telemetria do /health do realtime: contadores de session:renew APLICADOS por minuto (janela deslizante 1h em memoria, buckets UTC) + socketsWithExtendedExpiry (flag renewed setada pelo renewSessionSockets EXTEND-ONLY) — ops monitora se a propagacao da rotacao de cookie esta fluindo; testes unitarios do flag + countRenewedSockets.
 - [RT-RENEW-DEDUPE-MULTI](#rt-renew-dedupe-multi) — Investigar o caso multi-replica do dedupe de renew (chave Redis realtime:renewed:{userId} TTL 1h): happy path seguro (renew idempotente EXTEND-ONLY, primeira replica entrega e as demais pulam), MAS bug de ordering — chave reivindicada ANTES do emit com emitRealtime engolindo falhas silenciava TODAS as replicas por 1h apos um emit falho. Fix: emitRealtime retorna res.ok (boolean) e a chave so e reivindicada apos entrega CONFIRMADA + rollback do Map in-process em falha (renew E revoke-expired); realtime sem adapter Redis documentado (cada replica ve so os proprios sockets).
+- [SSR-SESSION-EXPIRY](#ssr-session-expiry) — Expor o expiresAt da sessao via SSR (server components): helper getSessionExpiresAt le o cookie SEM reemitir (RSC nao pode cookies().set()) e espelha a rotacao <15d aritmeticamente; dashboard/page.tsx vira async e passa initialSessionExpiresAt ao client, que semeia o auth store via seedSessionExpiry (so se null) — o countdown do banner/pill renderiza no primeiro paint sem flash antes do fetchMe resolver.
+- [SESSION-EXPIRY-E2E](#session-expiry-e2e) — Spec E2E do fluxo de expiração de sessão no browser: provider isolado registrado via API → login real → GET /api/auth/me devolve expiresAt (~30d sessão fresca) → pill do countdown visível no dropdown (data-testid=session-expiry-info) → e cenário do Renovar com cookie FORJADO de 2 dias (<15d, mesmo HMAC do app): o /api/auth/me (mesmo request do renewSession) reemite o cookie (Set-Cookie novo + expiresAt ~30d).
+- [PILL-RENEW-8-15D](#pill-renew-8-15d) — Fechar a janela 8–15 dias: botão "Renovar" na pill SessionExpiryInfo quando days ≤ SESSION_EXPIRY_RENEW_DAYS (15) — o servidor JÁ reemite o cookie em qualquer request <15d, mas a ação explícita dá controle ao usuário antes da rotação proativa; acima de 15d a pill não oferece o botão (renovar seria no-op). Unit tests da janela (12d mostra, boundary 15/16, >15 esconde, click chama renewSession NUNCA fetchMe) + assert negativo no E2E (sessão fresca >15d sem botão).
+- [TTL-SWEEP-RENEW-E2E](#ttl-sweep-renew-e2e) — Segundo cenário no realtime-ttl-sweep.spec.ts provando o gap da rotação deslizante (renovação) ponta-a-ponta: par renovado/controle com cookies forjados de TTL 15s — o renovado recebe session:renew via POST /emit (Bearer, mesmo bridge do app) ANTES do expiry e SOBREVIVE ao sweep (EXTEND-ONLY do renewSessionSockets, hoje só unit test), enquanto o controle (sem renew) cai com session_expired provando o sweep ativo. Gate via recentEmits do /health/detailed + cross-check /sessions. Providers isolados registrados via API.
 
 ---
 
@@ -2830,3 +2834,115 @@ Stage Summary:
 - **auth.ts**: chave Redis reivindicada SÓ após emit OK (renew + revoke-expired) + rollback do Map in-process em falha + typo do comentário + revokeUserSessions → Promise<boolean>.
 - **Testes**: realtime-client (200→true, erro→false, NOVO 500→false, hang→false) + 4 novos testes multi-réplica no auth.test.ts.
 - **Validação**: prettier/eslint/typecheck + vitest + guards worklog/toc + reviewer.
+
+---
+
+Task ID: SSR-SESSION-EXPIRY
+<a id="ssr-session-expiry"></a>
+Agent: orchestrator (frontend — countdown SSR)
+Task: Expor o expiresAt da sessão também via SSR (server components): ler o cookie no server component e passar o countdown inicial ao client para evitar o flash de carregamento no dashboard antes do fetchMe resolver.
+
+Work Log:
+
+- Contexto: /api/auth/me já devolve expiresAt e o auth store guarda em sessionExpiresAt, mas o dashboard/page.tsx era SSR vazio que renderizava um client component sem dados — o countdown (SessionExpiryBanner/SessionExpiryInfo) só aparecia após o fetchMe resolver (round-trip de rede), com flash de loading no primeiro paint.
+- auth.ts: extraiu verifySessionCookieValue (parser puro + HMAC, sem side effects — safe para RSC onde cookies().set() é proibido) e criou getSessionExpiresAt() — leitura SSR-safe que NUNCA reemite cookie, mas ESPELHA a rotação <15d aritmeticamente (now + COOKIE_MAX_AGE) para o valor inicial já ser o que o client verá pós-fetchMe (evita o salto "10 dias" → "30 dias"). getSession refatorado para reusar o parser (comportamento idêntico).
+- dashboard/page.tsx: virou async — chama getSessionExpiresAt() e passa initialSessionExpiresAt ao DashboardPageClient.
+- store/auth.ts: nova action seedSessionExpiry(expiresAt) — preenche sessionExpiresAt SOMENTE se ainda null (o mais fresco vence; SSR lento não regride valor já resolvido pelo fetchMe). Não toca user/status.
+- dashboard-page-client.tsx: aceita a prop e semeia o store no mount (useEffect) antes/em paralelo ao fetchMe.
+- Testes: auth.test.ts (verifySessionCookieValue 4 casos + getSessionExpiresAt 5 casos: fora da janela, espelho da rotação, sem cookie, adulterado, expirado); store auth.test.ts (seedSessionExpiry 3 casos: preenche null, não sobrescreve resolvido, não altera user/status); novo dashboard-page-client.test.tsx (seeding com prop, null não semeia, renderiza painel do role, spinner quando não inicializado).
+
+Resultado da varredura:
+
+- O countdown da sessão agora renderiza no PRIMEIRO paint do dashboard (valor vindo do SSR) sem depender do round-trip do fetchMe.
+- getSessionExpiresAt é a única leitura nova; a reemissão real do cookie continua no primeiro /api/auth/me (nenhuma renovação perdida).
+
+Stage Summary:
+
+- src/lib/auth.ts: verifySessionCookieValue (export) + getSessionExpiresAt (export) + getSession refatorado.
+- src/app/dashboard/page.tsx: async, passa initialSessionExpiresAt.
+- src/store/auth.ts: seedSessionExpiry.
+- src/app/dashboard/dashboard-page-client.tsx: prop + seeding no mount.
+- Testes: auth.test.ts, store/**tests**/auth.test.ts, app/dashboard/**tests**/dashboard-page-client.test.tsx (novo).
+- Validação: prettier, eslint, typecheck, vitest + guards + code-reviewer.
+
+---
+
+Task ID: SESSION-EXPIRY-E2E
+<a id="session-expiry-e2e"></a>
+Agent: orchestrator (E2E do fluxo de expiração de sessão)
+Task: Adicionar um spec E2E Playwright que valida o fluxo completo de expiração/renovação da sessão no browser: login real, /api/auth/me retornando expiresAt, pill do countdown no dropdown do usuário e o botão Renovar reemitindo o cookie (<15d simulado).
+
+Work Log:
+
+- e2e/session-expiry-flow.spec.ts (novo): describe.serial com 2 testes cobrindo os 3 contratos do delta SSR-SESSION-EXPIRY + o botão Renovar.
+- Teste 1 (login real → /api/auth/me → pill): provider ISOLADO registrado via API no beforeAll (email único por run — padrão realtime-role-limit); login via page.request.post("/api/auth/login") (cookie salvo no context); GET /api/auth/me asserta user.id == providerId E expiresAt ~ now + 30d (sessão fresca; margem 1h cobre atraso); abre /dashboard → dropdown (button[aria-label="Menu da conta"]) → pill [data-testid="session-expiry-info"] visível com regex /Sessão expira em (2[5-9]|30) dias/ (ceil do daysLeft — margem evita flake de timing).
+- Teste 2 (Renovar reemite o cookie no <15d simulado): mesmo provider; login real; FORJA cookie de sessão com TTL de 2 dias usando o MESMO HMAC do app (signSessionCookie `${userId}.${role}.${expiresAt}.${sig}` com SESSION_SECRET lido via readEnv — padrão do realtime-renew-sweep); seta no context via ctx.addCookies (substitui o cookie real); dispara GET /api/auth/me — o MESMO request que o botão Renovar executa via renewSession; o getSession vê remaining 2d < ROTATION_THRESHOLD (metade do TTL) → REEMITE: asserta expiresAt renovado (~now + 30d — saltou de 2 dias) + Set-Cookie header contendo o novo severinno_session (reemissão FÍSICA); re-abre o dashboard e a pill reflete o countdown renovado.
+- POR QUE forjar o cookie: a rotação real só dispara com remaining < metade do TTL (30d default → janela <15d); um cookie real de 30d nunca entraria na janela durante o spec. O forjado percorre o CAMINHO REAL do app (getSession → reissueSession → Set-Cookie), idem realtime-renew-sweep.
+- Isolamento: describe.serial porque os 2 testes usam o MESMO provider e cada um fecha o próprio context no finally (nenhum socket realtime vaza entre testes).
+- REQUISITO DE CONFIG documentado no header: SESSION_SECRET precisa estar no env/.env.local do app E acessível ao spec via readEnv (HMAC do cookie forjado precisa casar com o servidor).
+
+Resultado da varredura:
+
+- O fluxo completo do countdown de sessão agora tem cobertura E2E no browser: login → expiresAt no /api/auth/me → pill no dropdown (paint inicial SSR) → renovação <15d reemitindo o cookie de verdade.
+- O spec prova que o botão Renovar (renewSession → /api/auth/me) reemite o cookie quando o remaining está na janela de rotação — sem depender de mock do bridge ou de esperar 30d.
+- Sem mudanças em src/: o spec consome contratos já expostos (data-testid da pill, aria-label do dropdown, /api/auth/me com expiresAt, HMAC do cookie).
+
+Stage Summary:
+
+- e2e/session-expiry-flow.spec.ts (novo) — 2 testes serial.
+- Worklog: Task ID SESSION-EXPIRY-E2E + TOC.
+- Validação: prettier, eslint, typecheck, guards + execução do spec no chromium com dev 3000 + realtime 3003 no ar.
+
+---
+
+Task ID: PILL-RENEW-8-15D
+<a id="pill-renew-8-15d"></a>
+Agent: orchestrator (fechar a janela 8–15 dias da renovação de sessão)
+Task: Adicionar o botão "Renovar" na pill SessionExpiryInfo do dropdown do usuário quando days ≤ 15 (SESSION_EXPIRY_RENEW_DAYS) — o servidor JÁ reemite o cookie em qualquer request <15d, mas a ação explícita dá controle ao usuário antes da rotação proativa acontecer. Acima de 15d a pill não oferece o botão (o servidor ainda não reemite — renovar seria no-op).
+
+Work Log:
+
+- src/components/shared/session-expiry-banner.tsx: nova constante exportada SESSION_EXPIRY_RENEW_DAYS = 15 (janela de renovação EXPLÍCITA na pill, 8–15d) + SessionExpiryInfo ganhou o botão "Renovar" (variant ghost, tamanho compacto, ícone RefreshCw/Loader2 com estado renewing + disabled) renderizado quando days ≤ SESSION_EXPIRY_RENEW_DAYS.
+- Reusa a MESMA ação NÃO-destrutiva do banner (renewSession do auth store — nunca fetchMe, que em erro de rede marca unauthenticated e derruba o usuário para o login); o doc header foi atualizado explicando a janela 8–15d (o banner cobre só ≤7d; a pill fecha o gap onde a rotação <15d já está ativa).
+- Flex-wrap na pill (inline-flex flex-wrap gap-x/gap-y) para o botão quebrar linha sem estourar o layout do dropdown em telas estreitas.
+- dashboard-shell.test.tsx: ajustado o teste existente "o botão Renovar chama renewSession" (agora a 2d TANTO o banner ≤7d QUANTO a pill ≤15d exibem o botão — getAllByRole para não estourar strict mode do getByRole) + 4 testes novos da janela: (1) 12d mostra o botão na pill (gap 8–15d fechado); (2) boundary 15d mostra / 16d esconde; (3) >15d (20d) esconde (fora da janela de rotação); (4) click na pill chama renewSession e NUNCA fetchMe.
+- e2e/session-expiry-flow.spec.ts: assert negativo nos 2 testes (sessão FRESCA >15d → pill SEM botão Renovar) — o caso POSITIVO da janela 8–15d fica nos unit tests porque no browser o SSR espelha a rotação (getSessionExpiresAt) e o fetchMe reemite: qualquer sessão <15d aparece como ~TTL fresco na UI (o botão a 8–15d só é observável com mock direto do sessionExpiresAt).
+
+Resultado da varredura:
+
+- A janela 8–15 dias agora tem ação explícita: o usuário vê o botão "Renovar" na pill do dropdown quando faltam ≤ 15 dias (e o banner ≤7d continua oferecendo o mesmo botão) — cobertura contínua do countdown em toda a vida da sessão.
+- Sem mudanças em src/lib ou no store: a pill reusa o renewSession já existente; o delta é UI + testes + docs.
+
+Stage Summary:
+
+- src/components/shared/session-expiry-banner.tsx: SESSION_EXPIRY_RENEW_DAYS + botão na pill (renewing state).
+- src/components/shared/**tests**/dashboard-shell.test.tsx: getAllByRole no teste do banner + 4 testes da janela 8–15d.
+- e2e/session-expiry-flow.spec.ts: assert negativo (sem botão a >15d) nos 2 testes.
+- Worklog: Task ID PILL-RENEW-8-15D + TOC.
+- Validação: prettier, eslint, typecheck, vitest (dashboard-shell + sessão) + guards + execução do spec E2E no chromium com dev 3000 + realtime 3003 no ar + code-reviewer.
+
+---
+
+Task ID: TTL-SWEEP-RENEW-E2E
+<a id="ttl-sweep-renew-e2e"></a>
+Agent: orchestrator (cenário 2 do TTL sweep — renew × sweep)
+Task: Adicionar um segundo cenário no realtime-ttl-sweep.spec.ts que valida a interação renew × sweep: com o realtime em sweep curto, forjar cookie com TTL curto, emitir session:renew (extend) ANTES do expiry e garantir que o socket NÃO é fechado — provando o gap da rotação deslizante que hoje só tem unit test.
+
+Work Log:
+
+- e2e/realtime-ttl-sweep.spec.ts (cenário 2): par renovado/controle com DOIS providers ISOLADOS registrados via API no beforeAll (emails únicos por run — padrão realtime-role-limit/realtime-renew-sweep; specs de realtime rodam fullyParallel e casam sockets por userId).
+- Helpers novos: registerProvider (API), connectSocket (client socket.io NODE com cookie forjado no handshake), emitSessionRenew (POST /emit Bearer com { event: session:renew, data: { userId, expiresAt } } — o MESMO bridge que o app usa via realtime-client.ts), fetchHealthDetailed + waitForRenewLanded (gate via recentEmits do /health/detailed).
+- Fluxo do teste: forja cookies com o MESMO TTL curto (15s) para os dois providers → conecta ambos → join (sanidade sessão verificada) → EMIT session:renew para o RENOVADO com novo expiresAt BEM além da janela do sweep (+15min) ANTES do expiry original → GATE waitForRenewLanded (prova que o renew chegou ao realtime) → espera a janela do sweep (TTL + 1 intervalo + close delay + margem; loop termina cedo no disconnect do controle) → asserts do DIFERENCIAL: CONTROLE caiu com session_expired (prova o sweep ATIVO — sem isso o resultado do renovado poderia ser falso positivo de sweep não rodando) e RENOVADO sobreviveu (EXTEND-ONLY do renewSessionSockets aplicado, sem session:revoked, sem disconnect) → cross-check /sessions: renovado online, controle fora, kick audit control=session_expired / renew≠session_expired.
+- Header doc atualizado com os DOIS cenários + REQUISITO DE CONFIG do cenário 2 (REALTIME_EMIT_TOKEN no realtime + SESSION_SECRET compartilhado).
+
+Resultado da varredura:
+
+- O gap da rotação deslizante (renovar antes do sweep) agora tem cobertura E2E ponta-a-ponta no realtime — o EXTEND-ONLY do renewSessionSockets era coberto só por unit test.
+- O par renovado/controle elimina o falso positivo: o controle caindo prova que o sweep está ativo e que a sobrevivência do renovado é o renew agindo, não timing.
+- Sem mudanças em src/ ou mini-services: o spec exercita contratos já expostos (POST /emit Bearer, /health/detailed, /sessions).
+
+Stage Summary:
+
+- e2e/realtime-ttl-sweep.spec.ts (cenário 2 + helpers).
+- Worklog: Task ID TTL-SWEEP-RENEW-E2E + TOC.
+- Validação: prettier, eslint, typecheck, guards + execução do spec no chromium com dev 3000 + realtime 3003 no ar + code-reviewer.

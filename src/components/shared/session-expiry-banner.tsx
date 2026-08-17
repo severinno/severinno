@@ -14,9 +14,14 @@
  *
  * Renovação: já é PROATIVA server-side — qualquer request passa pelo
  * getSession, que reemite o cookie na janela <15d. O botão "Renovar" apenas
- * re-dispara o fetchMe() (o servidor reemite e devolve o novo expiresAt).
- * No banner (≤7d < 15d) a renovação é garantida; na pill informativa (15–30d)
- * o servidor ainda não reemite — por isso a pill não oferece o botão.
+ * re-dispara o renewSession (o servidor reemite e devolve o novo expiresAt).
+ *
+ * JANELA DO BOTÃO NA PILL (8–15 dias): o banner oferece Renovar só até 7d,
+ * mas o servidor JÁ reemite em qualquer request <15d. A pill fecha o gap
+ * 8–15d exibindo o botão quando days ≤ SESSION_EXPIRY_RENEW_DAYS (15): o
+ * usuário ganha controle explícito antes da rotação proativa acontecer por
+ * conta própria. Acima de 15d o servidor ainda não reemite (fora da janela
+ * de rotação) — por isso a pill não oferece o botão nesse trecho.
  */
 
 import * as React from "react"
@@ -28,6 +33,13 @@ import { Button } from "@/components/ui/button"
 
 /** Janela de aviso: mostra o banner quando faltam ≤ 7 dias. */
 export const SESSION_EXPIRY_WARN_DAYS = 7
+
+/** Janela de renovação EXPLÍCITA na pill (8–15 dias): o servidor reemite o
+ *  cookie em qualquer request <15d, mas o botão dá controle ao usuário antes
+ *  da rotação proativa acontecer — fecha o gap em que o banner (≤7d) ainda
+ *  não apareceu mas a janela de rotação já abriu. Acima de 15d a pill não
+ *  oferece o botão (o servidor ainda não reemite). */
+export const SESSION_EXPIRY_RENEW_DAYS = 15
 
 /**
  * Dias restantes (ceil, mínimo 1): uma sessão fresca de 30d mostra "30
@@ -46,13 +58,29 @@ function dayLabel(days: number): string {
   return days === 1 ? "1 dia" : `${days} dias`
 }
 
-export function SessionExpiryBanner() {
-  const expiresAt = useAuthStore((s) => s.sessionExpiresAt)
-  // renewSession (não-destrutiva) — NÃO fetchMe: em erro de rede, o fetchMe
-  // marca unauthenticated e derruba o usuário para o login; renovar não pode
-  // expulsar ninguém (ver store/auth.ts renewSession).
+/**
+ * Estado + handler compartilhado de renovação (banner ≤7d e pill ≤15d usam a
+ * MESMA ação NÃO-destrutiva do store): renewSession → /api/auth/me → o
+ * getSession reemite o cookie na janela <15d e devolve o novo expiresAt. Em
+ * erro de rede o renewSession NUNCA derruba o usuário (diferente do fetchMe).
+ */
+function useSessionRenew() {
   const renewSession = useAuthStore((s) => s.renewSession)
   const [renewing, setRenewing] = React.useState(false)
+  const handleRenew = async () => {
+    setRenewing(true)
+    try {
+      await renewSession()
+    } finally {
+      setRenewing(false)
+    }
+  }
+  return { renewing, handleRenew }
+}
+
+export function SessionExpiryBanner() {
+  const expiresAt = useAuthStore((s) => s.sessionExpiresAt)
+  const { renewing, handleRenew } = useSessionRenew()
   // Dismiss por montagem (sem localStorage/efeito): a pill do dropdown mostra
   // o countdown sempre, então dispensar o banner não perde a informação.
   const [dismissed, setDismissed] = React.useState(false)
@@ -60,17 +88,6 @@ export function SessionExpiryBanner() {
   const days = expiresAt ? daysLeft(expiresAt, new Date().getTime()) : 0
 
   const show = expiresAt != null && days > 0 && days <= SESSION_EXPIRY_WARN_DAYS && !dismissed
-
-  const handleRenew = async () => {
-    setRenewing(true)
-    try {
-      // renewSession → /api/auth/me → getSession reemite o cookie (≤7d < 15d)
-      // e devolve o novo expiresAt — o countdown zera e o banner some.
-      await renewSession()
-    } finally {
-      setRenewing(false)
-    }
-  }
 
   if (!show) return null
 
@@ -127,19 +144,47 @@ export function SessionExpiryBanner() {
  * Pill informativa do dropdown do usuário — countdown SEMPRE visível quando
  * há sessão (a rotação mantém 15–30d na operação normal; o banner ≤7d é o
  * caso raro). Retorna null sem sessão/expiry.
+ *
+ * Botão "Renovar" na janela 8–15d (days ≤ SESSION_EXPIRY_RENEW_DAYS): fecha
+ * o gap do banner — o servidor JÁ reemite o cookie em <15d, e a ação
+ * explícita dá controle ao usuário antes da rotação proativa. Reusa a MESMA
+ * ação NÃO-destrutiva do banner (renewSession — nunca fetchMe, que em erro
+ * de rede derrubaria o usuário para o login). Acima de 15d o servidor ainda
+ * não reemite, então o botão não aparece (renovar seria um no-op).
  */
 export function SessionExpiryInfo() {
   const expiresAt = useAuthStore((s) => s.sessionExpiresAt)
+  const { renewing, handleRenew } = useSessionRenew()
   if (expiresAt == null) return null
   const days = daysLeft(expiresAt, new Date().getTime())
   if (days <= 0) return null
+
+  const showRenew = days <= SESSION_EXPIRY_RENEW_DAYS
+
   return (
     <span
       data-testid="session-expiry-info"
-      className="text-muted-foreground mt-1 inline-flex items-center gap-1.5 text-[11px] font-normal"
+      className="text-muted-foreground mt-1 inline-flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] font-normal"
     >
       <CalendarClock className="size-3.5" aria-hidden />
       Sessão expira em <strong className="tabular-nums">{dayLabel(days)}</strong>
+      {showRenew && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 gap-1 px-1.5 text-[10px] text-current"
+          onClick={handleRenew}
+          disabled={renewing}
+          title="Renovar sessão"
+        >
+          {renewing ? (
+            <Loader2 className="size-3 animate-spin" aria-hidden />
+          ) : (
+            <RefreshCw className="size-3" aria-hidden />
+          )}
+          Renovar
+        </Button>
+      )}
     </span>
   )
 }

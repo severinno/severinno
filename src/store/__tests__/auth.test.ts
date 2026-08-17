@@ -122,3 +122,33 @@ describe("fetchMe — contrato destrutivo (referência: derruba em erro)", () =>
     expect(s.sessionExpiresAt).toBeNull()
   })
 })
+
+describe("seedSessionExpiry — semeadura SSR do countdown (paint inicial)", () => {
+  it("preenche sessionExpiresAt quando ainda está null (SSR antes do fetchMe)", () => {
+    useAuthStore.setState({ sessionExpiresAt: null })
+    useAuthStore.getState().seedSessionExpiry(EXPIRY)
+    expect(useAuthStore.getState().sessionExpiresAt).toBe(EXPIRY)
+  })
+
+  it("NÃO sobrescreve um valor já resolvido (o mais fresco vence)", () => {
+    useAuthStore.setState({ sessionExpiresAt: EXPIRY })
+    // Um SSR mais lento chegando depois do fetchMe não pode regredir o valor.
+    useAuthStore.getState().seedSessionExpiry(EXPIRY - 30 * 24 * 60 * 60)
+    expect(useAuthStore.getState().sessionExpiresAt).toBe(EXPIRY)
+  })
+
+  it("NÃO altera user/status/initialized (é só o paint inicial do countdown)", () => {
+    useAuthStore.setState({
+      user: SAMPLE_USER,
+      status: "authenticated",
+      initialized: true,
+      sessionExpiresAt: null,
+    })
+    useAuthStore.getState().seedSessionExpiry(EXPIRY)
+    const s = useAuthStore.getState()
+    expect(s.user).toEqual(SAMPLE_USER)
+    expect(s.status).toBe("authenticated")
+    expect(s.initialized).toBe(true)
+    expect(s.sessionExpiresAt).toBe(EXPIRY)
+  })
+})

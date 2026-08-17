@@ -91,6 +91,37 @@ async function reissueSession(userId: string, role: SessionPayload["role"]) {
 }
 
 /**
+ * Parse + HMAC-verify a session cookie value, SEM side effects (não reemite
+ * cookie, não dispara revoke/renew, não escreve nada). Puro e síncrono —
+ * seguro para chamar de Server Components (RSC), onde `cookies().set()` é
+ * proibido e lançaria.
+ *
+ * Retorna o payload decodificado ou null (formato inválido, assinatura
+ * adulterada, expiresAt não-finito). A expiração TEMPORAL NÃO é checada
+ * aqui — o chamador decide (getSession trata TTL-expired com revoke;
+ * getSessionExpiresAt trata como null).
+ */
+export function verifySessionCookieValue(
+  value: string,
+): { userId: string; role: string; expiresAt: number } | null {
+  const parts = value.split(".")
+  if (parts.length !== 4) return null
+  const [userId, role, expiresAtStr, signature] = parts
+  if (!userId || !role || !expiresAtStr || !signature) return null
+
+  const payload = `${userId}.${role}.${expiresAtStr}`
+  const expected = sign(payload)
+
+  const a = Buffer.from(signature, "hex")
+  const b = Buffer.from(expected, "hex")
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null
+
+  const expiresAt = Number(expiresAtStr)
+  if (!Number.isFinite(expiresAt)) return null
+  return { userId, role, expiresAt }
+}
+
+/**
  * Read & verify the session cookie. Returns the session payload or null.
  * Automatically rotates (reissues) the cookie if past the rotation threshold.
  */
@@ -100,20 +131,9 @@ export async function getSession(): Promise<SessionPayload | null> {
     const cookie = store.get(COOKIE_NAME)
     if (!cookie?.value) return null
 
-    const parts = cookie.value.split(".")
-    if (parts.length !== 4) return null
-    const [userId, role, expiresAtStr, signature] = parts
-    if (!userId || !role || !expiresAtStr || !signature) return null
-
-    const payload = `${userId}.${role}.${expiresAtStr}`
-    const expected = sign(payload)
-
-    const a = Buffer.from(signature, "hex")
-    const b = Buffer.from(expected, "hex")
-    if (a.length !== b.length || !timingSafeEqual(a, b)) return null
-
-    const expiresAt = Number(expiresAtStr)
-    if (!Number.isFinite(expiresAt)) return null
+    const parsed = verifySessionCookieValue(cookie.value)
+    if (!parsed) return null
+    const { userId, role, expiresAt } = parsed
     if (expiresAt * 1000 < Date.now()) {
       // Sessão expirou por TTL (sem logout explícito): os sockets realtime do
       // usuário ficariam vivos até o próximo logout. Dispara a revogação a
@@ -143,6 +163,44 @@ export async function getSession(): Promise<SessionPayload | null> {
       // Expiry efetivo (pós-rotação) — o client usa para o countdown da sessão.
       expiresAt: effectiveExpiresAt,
     }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Lê o expiresAt EFETIVO do cookie para consumo em Server Components (RSC) —
+ * o countdown inicial do dashboard sem flash de carregamento antes do
+ * fetchMe resolver.
+ *
+ * Diferente do getSession: NUNCA escreve cookie. A rotação (<15d) do
+ * getSession reemite via `cookies().set()`, que é PROIBIDO em RSC e
+ * lançaria. Aqui a rotação é ESPELHADA aritmeticamente (expiry novo = now +
+ * COOKIE_MAX_AGE) sem reemitir — o valor inicial já é o que o client verá
+ * após o fetchMe, evitando o salto "10 dias" → "30 dias" no primeiro paint.
+ * O reissue real acontece no primeiro /api/auth/me (fetchMe) — nenhuma
+ * renovação é perdida, apenas o paint inicial usa o valor calculado.
+ *
+ * Sem cookies() → null. Cookie expirado/adulterado → null.
+ */
+export async function getSessionExpiresAt(): Promise<number | null> {
+  try {
+    const store = await cookies()
+    const cookie = store.get(COOKIE_NAME)
+    if (!cookie?.value) return null
+
+    const parsed = verifySessionCookieValue(cookie.value)
+    if (!parsed) return null
+    if (parsed.expiresAt * 1000 < Date.now()) return null
+
+    const remaining = parsed.expiresAt - Math.floor(Date.now() / 1000)
+    if (remaining < ROTATION_THRESHOLD_SECONDS) {
+      // Espelho da rotação: sem reemitir o cookie (RSC), o valor inicial já
+      // é o refresh de COOKIE_MAX_AGE — igual ao que o getSession devolveria
+      // ao reemitir na janela <15d.
+      return Math.floor(Date.now() / 1000) + COOKIE_MAX_AGE_SECONDS
+    }
+    return parsed.expiresAt
   } catch {
     return null
   }

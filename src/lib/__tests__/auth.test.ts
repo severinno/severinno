@@ -87,6 +87,8 @@ vi.mock("../realtime-client", () => ({
 import {
   createSession,
   getSession,
+  getSessionExpiresAt,
+  verifySessionCookieValue,
   destroySession,
   revokeUserSessions,
   requireUser,
@@ -183,6 +185,75 @@ describe("createSession", () => {
     const session = await getSession()
     expect(session).not.toBeNull()
     expect(session!.userId).toBe("user-1")
+  })
+})
+
+describe("verifySessionCookieValue — parser puro (sem side effects)", () => {
+  const DAY = 24 * 60 * 60
+
+  it("devolve userId/role/expiresAt para um cookie VÁLIDO", () => {
+    const expiresAt = Math.floor(Date.now() / 1000) + 20 * DAY
+    const parsed = verifySessionCookieValue(signValidCookie("parse-user-1", "CLIENT", expiresAt))
+    expect(parsed).not.toBeNull()
+    expect(parsed!.userId).toBe("parse-user-1")
+    expect(parsed!.role).toBe("CLIENT")
+    expect(parsed!.expiresAt).toBe(expiresAt)
+  })
+
+  it("retorna null para assinatura adulterada (sem validar expiração — parser puro)", () => {
+    const expiresAt = Math.floor(Date.now() / 1000) + 20 * DAY
+    const good = signValidCookie("parse-user-2", "CLIENT", expiresAt)
+    const tampered = good.split(".").slice(0, 3).join(".") + ".badbeef"
+    expect(verifySessionCookieValue(tampered)).toBeNull()
+  })
+
+  it("retorna null para formato inválido (< 4 partes)", () => {
+    expect(verifySessionCookieValue("a.b.c")).toBeNull()
+    expect(verifySessionCookieValue("")).toBeNull()
+  })
+
+  it("retorna null para expiresAt não-finito", () => {
+    expect(verifySessionCookieValue(signValidCookie("parse-user-3", "CLIENT", NaN))).toBeNull()
+  })
+})
+
+describe("getSessionExpiresAt — leitura SSR-safe (RSC, sem reemitir cookie)", () => {
+  const DAY = 24 * 60 * 60
+  const THIRTY_DAYS = 60 * 60 * 24 * 30
+
+  it("devolve o expiresAt do cookie quando fora da janela de rotação", async () => {
+    const expiresAt = Math.floor(Date.now() / 1000) + 20 * DAY
+    cookieStore.set("severinno_session", {
+      value: signValidCookie("ssr-user-1", "CLIENT", expiresAt),
+    })
+    expect(await getSessionExpiresAt()).toBe(expiresAt)
+  })
+
+  it("ESPELHA a rotação (<15d) sem reemitir: devolve now + COOKIE_MAX_AGE (30d)", async () => {
+    const old = Math.floor(Date.now() / 1000) + 10 * DAY // 10d restantes < 15d
+    cookieStore.set("severinno_session", {
+      value: signValidCookie("ssr-user-2", "CLIENT", old),
+    })
+    const value = await getSessionExpiresAt()
+    expect(value).not.toBeNull()
+    // O valor inicial já é o refresh de 30d — igual ao que o getSession
+    // devolveria ao reemitir; sem isso o countdown saltaria 10d → 30d.
+    expect(value!).toBeGreaterThan(old + 15 * DAY)
+    expect(value!).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + THIRTY_DAYS + 2)
+  })
+
+  it("retorna null sem cookie", async () => {
+    expect(await getSessionExpiresAt()).toBeNull()
+  })
+
+  it("retorna null para cookie adulterado", async () => {
+    cookieStore.set("severinno_session", { value: "ssr-user-3.CLIENT.999999.deadbeef" })
+    expect(await getSessionExpiresAt()).toBeNull()
+  })
+
+  it("retorna null para cookie expirado", async () => {
+    cookieStore.set("severinno_session", { value: signValidCookie("ssr-user-4", "CLIENT", 0) })
+    expect(await getSessionExpiresAt()).toBeNull()
   })
 })
 
