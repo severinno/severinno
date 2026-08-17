@@ -337,13 +337,18 @@ Every `fetch(` in `src/` must pass a timeout signal (`AbortSignal.timeout` via t
 | `OSRM_TIMEOUT_MS`          | 5s      | OSRM routing client (`src/lib/routing.ts`)                                   |
 | `SLACK_TIMEOUT_MS`         | 10s     | Slack webhook alerts (`src/lib/slack-notify.ts`)                             |
 | `WHATSAPP_TIMEOUT_MS`      | 10s     | WhatsApp/Evolution notifications (`src/lib/whatsapp.ts`)                     |
+| `LYTEX_TIMEOUT_MS`         | 10s     | Gateway Lytex (PIX/cartão) — `src/lib/lytex.ts` + admin gateway routes       |
+| `EVOLUTION_TIMEOUT_MS`     | 10s     | WhatsApp/Evolution API (`src/lib/evolution.ts`)                              |
+| `GLITCHTIP_TIMEOUT_MS`     | 5s      | Tunnel Sentry/GlitchTip (`src/app/api/sentry/route.ts`)                      |
+| `ALERT_WEBHOOK_TIMEOUT_MS` | 5s      | Webhook de alerta do Sentry (`src/app/api/webhooks/sentry-alert/route.ts`)   |
+| `REALTIME_EMIT_TIMEOUT_MS` | 3s      | POST /emit do realtime (`src/lib/realtime-client.ts`)                        |
 | `GEO_CEP_TIMEOUT_MS`       | 10s     | CEP lookup from the client geo store                                         |
 | `GLOBAL_FETCH_TIMEOUT_MS`  | 60s     | Piso GLOBAL do `fetch` (rede de segurança p/ código sem signal — ver abaixo) |
 | `REDIS_COMMAND_TIMEOUT_MS` | 5s      | Comando ioredis sem resposta (cluster + standalone)                          |
 | `REDIS_CONNECT_TIMEOUT_MS` | 10s     | Handshake TCP do ioredis (cluster + standalone)                              |
 | `S3_REQUEST_TIMEOUT_MS`    | 30s     | Request inteira do SDK S3 (upload/delete/list, via abortSignal)              |
 
-Regression guard: `bun run check:fetch-timeout` (pre-commit) fails if a `fetch(` in `src/` is introduced without a timeout signal.
+Regression guards (pre-commit): `bun run check:fetch-timeout` fails if a `fetch(` in `src/` is introduced without a timeout signal; `bun run check:timeout-envs` fails if a `*_TIMEOUT_MS` env used in `src/` is missing from this table, from `.env.example`, or from the compose app services (or has a default that diverges from the code).
 
 **Clientes Redis/S3 (mesmo guard de invalidez via `resolveTimeoutMs`):** o
 `redis.ts` wirea `commandTimeout`/`connectTimeout` do ioredis (o comando

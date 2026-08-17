@@ -13,6 +13,20 @@ SET location = ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography
 WHERE lat IS NOT NULL AND lng IS NOT NULL AND location IS NULL;
 
 -- 4. Create spatial GiST index for fast ST_DWithin / ST_Distance queries
+--
+-- ORDERING HAZARD (reviewer finding, fixed here):
+--   20260722120000_add_performance_indexes creates the SAME index name
+--   (idx_user_location_gist) as a geometry EXPRESSION index on
+--   ST_SetSRID(ST_MakePoint(lng, lat), 4326). Prisma `migrate deploy` sorts
+--   migrations lexicographically, so that migration runs BEFORE this one and
+--   its CREATE INDEX IF NOT EXISTS would make the geography-column index
+--   below get SKIPPED — leaving prod with an index that cannot serve
+--   ST_DWithin(u.location, ...) (geography opclass).
+--   Fix: DROP the name first so the geography-column GIST index is
+--   guaranteed to exist regardless of application order. No app query uses
+--   the raw ST_MakePoint(lng, lat) expression (all use `location` /
+--   ::geography), so dropping the expression index is safe.
+DROP INDEX IF EXISTS idx_user_location_gist;
 CREATE INDEX IF NOT EXISTS idx_user_location_gist
 ON "User" USING GIST (location);
 
@@ -53,8 +67,11 @@ SET location = ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography
 WHERE lat IS NOT NULL AND lng IS NOT NULL AND location IS NULL;
 
 -- Create indexes for Booking and QuoteRequest
+-- (same ordering-hazard fix as idx_user_location_gist above)
+DROP INDEX IF EXISTS idx_booking_location_gist;
 CREATE INDEX IF NOT EXISTS idx_booking_location_gist
 ON "Booking" USING GIST (location);
+DROP INDEX IF EXISTS idx_quoterequest_location_gist;
 CREATE INDEX IF NOT EXISTS idx_quoterequest_location_gist
 ON "QuoteRequest" USING GIST (location);
 

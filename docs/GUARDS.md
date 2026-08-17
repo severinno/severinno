@@ -132,18 +132,45 @@ tabela acima quando medir.
 
 ---
 
-## 4. README/docs guards — `check-readme-anchors`, `check-readme-toc`, `check-readme-images`, `check-readme-reverse-baseline`, `check-readme-repro-marker`
+## 4. README/docs guards — `check-readme-anchors`, `check-readme-toc`, `check-readme-images`, `check-readme-reverse-baseline`, `check-readme-repro-marker`, `check-worklog`, `check-worklog-toc`, `check-cache-patterns`
 
 **O que protege:** links internos (#slug) resolvem, TOCs apontam para headings
 reais, imagens existem, e o reverse (semântico) detecta label apontando para o
-heading errado.
+heading errado. O `check-worklog` valida a INTEGRIDADE do worklog.md: cada
+entrada de auditoria exige o formato mínimo (Task ID/Agent/Task/Work Log —
+com `Stage:` aceito como ID legado e `Work Log (sufixo):` tolerado) e Task
+IDs ÚNICOS no arquivo (entrada sem contexto rastreável ou ID duplicado = PR
+bloqueado). O `check-worklog-toc` valida a SINCRONIA do índice (TOC) do
+worklog.md nas TRÊS direções: todo Task ID/Stage tem linha no índice com
+âncora e resumo (reverse), todo link do índice resolve para uma âncora real
+(forward) e toda âncora é o slug github-slugger exato do ID (anchor) — além
+de linhas stale do índice (ID sem entrada real). O resumo de cada linha é
+derivado da descrição `Task:` da entrada pelo gerador `gen-worklog-toc.mjs`
+(bun run gen:worklog-toc — idempotente, revalida com os dois guards antes de
+escrever). O `check-cache-patterns` valida a CONSISTÊNCIA da lista de
+invalidação do seed (`CACHE_PATTERNS` em prisma/seed.ts) contra os prefixes
+reais de `withCache`/`withCachedGeo`/`cacheInvalidate` em src/ — derivando
+os prefixes dos call sites (e builders `*CacheKey`) em arquivos
+cache-capable. Flagra nas duas direções: prefixo de catálogo NOVO em src/
+esquecido do CACHE_PATTERNS (a janela de stale do re-seed volta a existir)
+e padrão do seed sem uso real (órfão); prefixes não-catálogo (sessão/push/
+ops/geo externa) são cobertos pela ALLOWLIST do guard, espelho do comentário
+de exclusões do seed.
 
 **Por que existe:** o README é a porta de entrada do repo; heading renomeado
 sem atualizar o link = link morto silencioso. O guard roda o algoritmo do
-GitHub slugger exato (sem depender de lib externa).
+GitHub slugger exato (sem depender de lib externa). O worklog é o registro de
+auditoria entre threads; sem o mínimo, vira uma pilha de anotações sem
+contexto (quem/qual tarefa) e IDs duplicados quebram referências cruzadas.
 
 **Onde roda:** pre-commit (staged), pre-push, CI; `--reverse`/`--reverse-strict`
-em job semanal com baseline (alerta, não gate de PR).
+em job semanal com baseline (alerta, não gate de PR). O `check-worklog` roda
+no pre-commit (bun run check:worklog) + job `worklog-guard` no pr-check.yml
+(sem mutation test próprio — o CLI test cobre os formatos e o fixture). O
+`check-worklog-toc` roda no pre-commit (bun run check:worklog-toc) + job
+`worklog-toc-guard` no pr-check.yml, com mutation test próprio
+(`test-mutation-worklog-toc.sh`: entrada sem linha, link sem âncora, slug
+errado e linha stale — todos detectados).
 
 ---
 
@@ -311,6 +338,35 @@ pr-check.yml (mutation test + guard real).
 **Como testar:** `bun run check:no-npx-playwright`; vitest
 `check-no-npx-playwright-cli.test.ts` (via `test:guards`); mutation
 `bash scripts/test-mutation-no-npx-playwright.sh`.
+
+---
+
+## 14. Timeout envs docs — `check-timeout-envs`
+
+**O que protege:** toda env `*_TIMEOUT_MS` consumida em src/ (via
+`envTimeoutSignal`/`resolveTimeoutMs` ou constantes `X_ENV`/`X_DEFAULT_MS`)
+está documentada com o MESMO default (ms) em TRÊS lugares: README (tabela
+"Fetch timeouts"), `.env.example` e os composes (docker-compose.yml +
+docker-compose.prod.yml, serviço `app`).
+
+**Por que existe:** as 4 envs de clientes externos (LYTEX, EVOLUTION,
+GLITCHTIP, ALERT_WEBHOOK) existiam no código mas estavam INVISÍVEIS na doc
+— operação não sabia que dava para tunar o timeout, e o default documentado
+podia driftar do código. O guard DERIVA as envs do código (fonte da verdade,
+nada hardcoded) e exige o par env+default nas 3 docs — fechando a classe por
+regressão: env de timeout nova em src/ sem doc (ou default divergente) falha
+o PR. Reverse também: linha da tabela do README sem uso real em src/ =
+linha stale.
+
+**Onde roda:** pre-commit (fast gate, após o check:fetch-timeout), job
+`timeout-envs-guard` do pr-check.yml (mutation test + guard real).
+
+**Como testar:** `bun run check:timeout-envs`; vitest
+`check-timeout-envs-cli.test.ts` (via `test:guards`); mutation
+`bash scripts/test-mutation-timeout-envs.sh`.
+
+**Família relacionada:** `check-fetch-timeout` (hangs de fetch — o guard
+irmão que exige o `signal`; este exige a DOC das envs de timeout).
 
 ---
 

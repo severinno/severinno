@@ -265,6 +265,66 @@ jobs:
       - name: Summary
         run: echo "✅ Todo fetch( de src/ passa signal de timeout (AbortSignal.timeout/envTimeoutSignal)."
 
+  timeout-envs-guard:
+    name: Timeout envs Guard (docs consistency)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mutation test — guard detecta env órfã de doc
+        run: bash scripts/test-mutation-timeout-envs.sh
+
+      - name: Check envs de timeout documentadas (README/.env.example/compose)
+        run: node scripts/check-timeout-envs.mjs
+
+      - name: Summary
+        run: echo "✅ Todo *_TIMEOUT_MS de src/ documentado com default consistente (README + .env.example + composes)."
+
+  worklog-guard:
+    name: Worklog integrity Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mutation test — guard detecta entrada incompleta/ID duplicado
+        run: bash scripts/test-mutation-worklog.sh
+
+      - name: Check worklog.md entries (Task ID/Agent/Task/Work Log + IDs únicos)
+        run: node scripts/check-worklog.mjs
+
+      - name: Summary
+        run: echo "✅ worklog.md íntegro — todo Task ID com formato mínimo e sem duplicação."
+
+  worklog-toc-guard:
+    name: Worklog TOC Guard (índice ↔ entradas)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mutation test — guard detecta índice dessincronizado
+        run: bash scripts/test-mutation-worklog-toc.sh
+
+      - name: Check worklog.md TOC (todo Task ID indexado + link resolve + âncora)
+        run: node scripts/check-worklog-toc.mjs
+
+      - name: Summary
+        run: echo "✅ worklog.md TOC sincronizado — todo Task ID/Stage com linha no índice (âncora + resumo) e todo link resolvendo."
+
+  cache-patterns-guard:
+    name: Cache Patterns Guard (CACHE_PATTERNS ↔ src/)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mutation test — guard detecta prefixo esquecido/padrão órfão
+        run: bash scripts/test-mutation-cache-patterns.sh
+
+      - name: Check CACHE_PATTERNS do seed vs prefixes reais de src/
+        run: node scripts/check-cache-patterns.mjs
+
+      - name: Summary
+        run: echo "✅ CACHE_PATTERNS consistente — todo prefixo de withCache/cacheInvalidate em src/ classificado (catálogo no seed ou ALLOWLIST) e todo padrão com uso real."
+
   # ── Bun Mirror Guard ─────────────────────────────────────────────────
   # Fast gate (node puro, <1s): falha o PR se a FONTE ÚNICA da versão do
   # Bun for violada. A versão vive APENAS na repository variable

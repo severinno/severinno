@@ -19,6 +19,8 @@
 // ── Metric & KPI cards ──────────────────────────────────────────────────
 export { MetricCard, KpiCard } from "./admin-metric-card"
 export type { MetricCardProps, KpiCardProps } from "./admin-metric-card"
+export { default as OnlineUsersKpiCard } from "./admin-online-users-card"
+export type { OnlineUsersSessionsResponse } from "./admin-online-users-card"
 
 // ── Dashboard layout ────────────────────────────────────────────────────
 export { DashboardHeader } from "./admin-dashboard-header"

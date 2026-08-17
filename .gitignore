@@ -34,6 +34,7 @@ yarn-error.log*
 .env*
 # ...mas os templates .example são seguros e devem continuar rastreáveis
 !.env.glitchtip.example
+!.env.example
 
 # vercel
 .vercel

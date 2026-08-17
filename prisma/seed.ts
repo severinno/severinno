@@ -53,17 +53,21 @@ function jitter(base: number, delta: number): number {
  * cada cache (services 30s, providers:count 120s, proximity 60s,
  * categories/cat:desc 10min, reviews:recent 60s).
  *
- * Excluídos de propósito:
- *   - `geo:*` (cep/search/reverse) — cacheiam resultado de APIs EXTERNAS
- *     (ViaCEP/Nominatim), não dados derivados do seed; invalidar forçaria
- *     re-busca externa sem benefício. Edge conhecido: se a API externa
- *     estava FORA no momento de uma request anterior, o fallback local
- *     (que lê providers do DB) ficou cacheado sob `geo:*` com TTL de
+ * Excluídos de propósito (espelho da ALLOWLIST do guard
+ * scripts/check-cache-patterns.mjs — mantenha em sync):
+ *   - `geo:*` (cep/search/reverse/structured) — cacheiam resultado de APIs
+ *     EXTERNAS (ViaCEP/Nominatim), não dados derivados do seed; invalidar
+ *     forçaria re-busca externa sem benefício. Edge conhecido: se a API
+ *     externa estava FORA no momento de uma request anterior, o fallback
+ *     local (que lê providers do DB) ficou cacheado sob `geo:*` com TTL de
  *     7d/24h — esse caso fica stale após re-seed, mas é caminho degradado
  *     e auto-expira; invalidar sempre forçaria re-busca externa à toa.
- *   - `user:active:*` / `realtime:revoked:*` / `push:payload:*` /
- *     `cron:cooldown:*` / `geo:metrics:*` — estado de sessão/push/ops,
- *     não catálogo (IDs antigos órfãos são inofensivos).
+ *   - `user:active:*` / `realtime:renewed:*` / `realtime:revoked:*` /
+ *     `push:payload:*` / `cron:cooldown:*` / `geo:metrics:*` — estado de
+ *     sessão/push/ops, não catálogo (IDs antigos órfãos são inofensivos).
+ *   - `distance:*` / `postgis:available` — distância usuário-a-usuário
+ *     (IDs não estáveis entre re-seeds — órfãos inofensivos) e flag de
+ *     capacidade do PostGIS (não é dado derivado do seed).
  */
 const CACHE_PATTERNS: readonly string[] = [
   "services:*",

@@ -358,6 +358,81 @@ export function selectExpiredSessionSockets<T extends SessionSocketLike>(
 }
 
 // ---------------------------------------------------------------------------
+// Orphan-socket selection (admin "revoke orphans" sweep)
+//
+// An ORPHAN socket is one whose verified session no longer maps to a live
+// user: (a) the session EXPIRED by TTL (cookie `expiresAt` in the past — the
+// periodic sweep would close it, but the admin wants it NOW), or (b) the
+// session's userId no longer exists in the database (soft-deleted/hard-deleted
+// account — the room may still hold a stale socket that keeps receiving
+// events for a ghost user). Pure + generic: the service passes a DB-backed
+// `isUserAlive` checker and unit tests inject fakes.
+// ---------------------------------------------------------------------------
+
+/** Structural view of a socket for the orphan sweep (adds `id`). */
+export interface OrphanSweepSocketLike extends SessionSocketLike {
+  id: string
+}
+
+export interface OrphanSweepResult<T extends OrphanSweepSocketLike> {
+  /** Sockets with a session whose TTL already passed (cookie expired). */
+  expired: T[]
+  /** Sockets whose userId is not (or no longer) in the database. */
+  missingUser: T[]
+  /** All sockets to force-close: expired ∪ missingUser (no duplicates). */
+  toRevoke: T[]
+  /** userIds to check against the DB (only those NOT already expired). */
+  userIdsToCheck: string[]
+}
+
+/**
+ * Classify sockets into TTL-expired vs user-missing (orphans). Sockets without
+ * a session are never selected (can't judge presence). An expired socket is
+ * not re-checked against the DB (its fate is already sealed).
+ *
+ * Async: `isUserAlive` may be a sync boolean or a Promise (the service passes
+ * a pg-backed checker; tests inject fakes) — every check is awaited so
+ * `missingUser`/`toRevoke` are complete before the caller proceeds.
+ */
+export async function selectOrphanSockets<T extends OrphanSweepSocketLike>(
+  sockets: readonly T[],
+  nowMs: number,
+  isUserAlive: (userId: string) => boolean | Promise<boolean>,
+): Promise<OrphanSweepResult<T>> {
+  const expired: T[] = []
+  const candidates: T[] = []
+  const userIdsToCheck: string[] = []
+  const seen = new Set<string>()
+
+  for (const s of sockets) {
+    const session = s.data.session
+    if (!session?.userId) continue
+    const expiresAt = session.expiresAt
+    if (typeof expiresAt === "number" && Number.isFinite(expiresAt) && expiresAt * 1000 < nowMs) {
+      expired.push(s)
+      continue
+    }
+    if (!seen.has(session.userId)) {
+      seen.add(session.userId)
+      userIdsToCheck.push(session.userId)
+    }
+    candidates.push(s)
+  }
+
+  const aliveByUser = new Map<string, boolean>()
+  for (const userId of userIdsToCheck) {
+    aliveByUser.set(userId, Boolean(await isUserAlive(userId)))
+  }
+
+  const missingUser = candidates.filter((s) => {
+    const userId = s.data.session?.userId
+    return userId !== undefined && aliveByUser.get(userId) === false
+  })
+
+  return { expired, missingUser, toRevoke: [...expired, ...missingUser], userIdsToCheck }
+}
+
+// ---------------------------------------------------------------------------
 // Session renewal (cookie rotation / reissue)
 //
 // The app's getSession REISSUES the session cookie when less than half the

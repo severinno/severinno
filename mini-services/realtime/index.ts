@@ -14,6 +14,7 @@ import {
   filterSocketsBySessionUserId,
   selectSocketsToKickForSessionLimit,
   selectExpiredSessionSockets,
+  selectOrphanSockets,
   renewSessionSockets,
   parseSweepIntervalMs,
   parseTelemetryIntervalMs,
@@ -879,11 +880,12 @@ type SessionMetaLike = {
 // GET  /health          -> público: { status, sockets, sessions, emitCounters,
 //                           recentEmits } — SEM userId/rooms (privacidade)
 // GET  /health/detailed -> Bearer: snapshot + recentEmits COMPLETO (userId/
-//                           rooms) + kick audit — debugging do socket órfão
-// GET  /sessions        -> Bearer: sessões ativas + kicks
-// GET  /metrics         -> Bearer: telemetria persistida no Redis (emitCounters
+//                           rooms) + kick audit — debugging do socket órfão  // GET /sessions        -> Bearer: sessões ativas + kicks
+// GET /metrics         -> Bearer: telemetria persistida no Redis (emitCounters
 //                           por minuto + histórico usersWithMultipleSockets +
 //                           flag órfã) — dashboards de operação
+// POST /revoke-orphans -> Bearer: desconecta sockets órfãos (sessão TTL
+//                           expirada OU usuário não existe mais no DB)
 // POST /emit            -> Bearer: bridge server→server usado pelo app
 // Every other request is delegated to engine.io (socket.io handshakes).
 httpServer.on("request", (req, res) => {
@@ -977,6 +979,106 @@ httpServer.on("request", (req, res) => {
   // Bearer do /sessions e /health/detailed: é dado operacional do serviço.
   // Redis fora → `{ ok: false, available: false }` (degradação graciosa, o
   // dashboard mostra a telemetria como offline — nunca 500).
+  // POST /revoke-orphans (Bearer) — varredura manual de sockets órfãos,
+  // disparada pelo botão "Revogar sockets órfãos" do painel admin (o app
+  // proxyia via /api/admin/realtime/sessions/revoke-orphans). Um socket é
+  // órfão quando a sessão verificada no handshake (socket.data.session):
+  //   (a) expirou por TTL (cookie expiresAt no passado — o sweep periódico
+  //       fecharia, o admin quer AGORA), ou
+  //   (b) aponta para um userId que não existe (mais) no banco — conta
+  //       soft-deletada/removida com socket stale ainda na sala user:{id}.
+  // Usa o MESMO padrão do session:revoke/sweep: evento session:revoked +
+  // force-close atrasado (flush do pacote) + kick audit. A checagem de
+  // existência no DB reusa o pool pg lazy do booking check — fail-open:
+  // sem DATABASE_URL ou erro no query, sockets NÃO são derrubados por essa
+  // rota (evita desconectar usuários válidos por falha de infra); os
+  // expirados por TTL são sempre revogados (não dependem do DB).
+  if (url.pathname === "/revoke-orphans" && req.method === "POST") {
+    if (!verifyEmitToken(req.headers.authorization, EMIT_TOKEN)) {
+      res.writeHead(401, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ ok: false, error: "UNAUTHORIZED" }))
+      return
+    }
+    ;(async () => {
+      const nowMs = Date.now()
+      const sockets = await io.fetchSockets()
+
+      // isUserAlive: userId existe no banco? Fail-open — sem pool ou erro no
+      // query devolve true (usuário considerado vivo, não revoga por engano).
+      let checkPool: PoolLike | null = null
+      try {
+        checkPool = await loadBookingPool()
+      } catch {
+        checkPool = null
+      }
+      const isUserAlive = async (userId: string): Promise<boolean> => {
+        if (!checkPool) return true
+        try {
+          // Tabela "User" (sem @@map — como "Booking" no booking check),
+          // colunas camelCase. `deletedAt IS NULL` exclui contas soft-deletadas.
+          const r = await checkPool.query(
+            'SELECT 1 FROM "User" WHERE id = $1 AND "deletedAt" IS NULL',
+            [userId],
+          )
+          return (r.rowCount ?? 0) > 0
+        } catch (err) {
+          console.error(
+            `[realtime] revoke-orphans user check failed for ${userId} (fail-open):`,
+            err,
+          )
+          return true
+        }
+      }
+
+      const { expired, missingUser, toRevoke, userIdsToCheck } = await selectOrphanSockets(
+        sockets,
+        nowMs,
+        isUserAlive,
+      )
+
+      const reasonBySocket = new Map<string, string>()
+      for (const s of expired) reasonBySocket.set(s.id, "session_expired")
+      for (const s of missingUser) reasonBySocket.set(s.id, "revoke")
+
+      for (const s of toRevoke) {
+        const userId = s.data.session?.userId ?? "unknown"
+        const reason = reasonBySocket.get(s.id) ?? "revoke"
+        s.emit("session:revoked", { userId, reason })
+        setTimeout(() => s.disconnect(true), REVOKE_CLOSE_DELAY_MS).unref()
+        // Kick audit com o MESMO reason emitido (session_expired para TTL,
+        // revoke para usuário inexistente) — o painel admin mostra o motivo
+        // real do último kick, consistente com o que o client recebeu.
+        recordKickAudit(
+          kickAudit,
+          userId,
+          reason as "revoke" | "session_expired",
+          s.id,
+          new Date().toISOString(),
+        )
+        console.log(`[realtime] revoke-orphans: closing ${s.id} for user:${userId} (${reason})`)
+      }
+
+      console.log(
+        `[realtime] revoke-orphans: ${toRevoke.length} sockets revogados (${expired.length} TTL expirado, ${missingUser.length} usuário inexistente; ${userIdsToCheck.length} userIds checados)`,
+      )
+      res.writeHead(200, { "Content-Type": "application/json" })
+      res.end(
+        JSON.stringify({
+          ok: true,
+          revoked: toRevoke.length,
+          expired: expired.length,
+          missingUser: missingUser.length,
+          checkedUsers: userIdsToCheck.length,
+        }),
+      )
+    })().catch((err) => {
+      console.error("[realtime] /revoke-orphans error:", err)
+      res.writeHead(500, { "Content-Type": "application/json" })
+      res.end(JSON.stringify({ ok: false, error: "internal" }))
+    })
+    return
+  }
+
   if (url.pathname === "/metrics" && req.method === "GET") {
     if (!verifyEmitToken(req.headers.authorization, EMIT_TOKEN)) {
       res.writeHead(401, { "Content-Type": "application/json" })

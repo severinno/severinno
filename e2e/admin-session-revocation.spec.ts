@@ -28,10 +28,29 @@ import type { WebSocket as PlaywrightWebSocket } from "playwright"
 //   permanece válida (/api/auth/me ainda retorna o usuário) e o usuário
 //   pode continuar logado; apenas o socket morre.
 //
+//   Cenário 3 — MESMO fluxo do C2, mas na view admin.PROVIDERS: cobre o
+//   gap de cobertura da UI onde o botão "Revogar sessões" e o indicador
+//   Online existem nas DUAS views (admin.users e admin.providers) mas o
+//   spec só exercitava a primeira. Navega pela nav "Prestadores", valida
+//   o badge "Online · N" via refresh manual e revoga pelo ⋮ da linha —
+//   com as mesmas asserções do C2 (socket cai, conta continua ativa,
+//   nenhum toast após novo booking).
+//
+//   NOTA SOBRE O PROVIDER DO C3: reusa o ANTONIO (mesmo do C2), NÃO o
+//   lima@severinno.com — o lima tem socket aberto por admin-online-card
+//   E realtime-ttl-sweep (2 specs; limite de sockets por PROVIDER no
+//   realtime é 2), então um terceiro spec com o lima derrubaria o socket
+//   deles via session_limit. O antonio é usado SÓ neste arquivo, e o
+//   describe.serial garante que o C3 roda DEPOIS do C2 — cujo fim deixa
+//   exatamente a pré-condição que o C3 precisa: conta ativa + socket
+//   morto (sem rejoin). O C3 abre um dashboard NOVO → socket novo dá
+//   join → revoga pela view Prestadores.
+//
 // Providers ISOLADOS dos demais specs (carlos/ricardo/fernanda são usados
-// por realtime-notification/session-revocation/realtime-session-limit):
-//   pedro@severinno.com  (jardineiro) → cenário 1 (desativação)
-//   antonio@severinno.com (pedreiro)  → cenário 2 (revogar sem desativar)
+// por realtime-notification/session-revocation/realtime-session-limit;
+// lima por admin-online-card/realtime-ttl-sweep):
+//   pedro@severinno.com  (jardineiro)  → cenário 1 (desativação)
+//   antonio@severinno.com (pedreiro)   → cenários 2 e 3 (serial no arquivo)
 // Como os specs rodam fullyParallel e a revogação casa sockets por userId
 // no realtime, providers distintos garantem isolamento total.
 //
@@ -49,7 +68,9 @@ const PEDRO_EMAIL = "pedro@severinno.com"
 const PEDRO_PASSWORD = "provider123"
 const PEDRO_SERVICE_TITLE = "Poda de árvores e arbustos"
 
-// Cenário 2 — revogar sem desativar (antonio, pedreiro)
+// Cenários 2 e 3 — revogar sem desativar (antonio, pedreiro). O C2 usa a
+// view admin.users; o C3 reusa o MESMO provider na view admin.providers
+// (serial no arquivo; após o C2 o socket está morto e a conta ativa).
 const ANTONIO_EMAIL = "antonio@severinno.com"
 const ANTONIO_PASSWORD = "provider123"
 const ANTONIO_SERVICE_TITLE = "Assentamento de piso cerâmico"
@@ -480,6 +501,105 @@ test.describe.serial("Revogação pelo Admin — Realtime", () => {
       const toastCount = await providerPage.locator("[data-sonner-toast]").count()
       expect(toastCount, "nenhum toast deve aparecer após a revogação").toBe(0)
       console.log("✅ C2 nenhum toast após a revogação — cenário validado")
+    } finally {
+      await adminCtx.close()
+      await clientCtx.close()
+      await providerCtx.close()
+    }
+  })
+
+  test("C3 — view Prestadores: botão 'Revogar sessões' + indicador Online (mesmo fluxo do admin.users)", async ({
+    browser,
+  }) => {
+    const providerCtx = await browser.newContext()
+    const providerPage = await providerCtx.newPage()
+    // Reusa o ANTONIO (mesmo do C2): o describe.serial garante que o C2
+    // terminou — conta ativa + socket morto. Abrir o dashboard de novo
+    // cria um socket NOVO que dá join na sala user:{antonioId}.
+    const wsList = await openProviderDashboard(providerPage, ANTONIO_EMAIL, ANTONIO_PASSWORD)
+
+    const clientCtx = await browser.newContext()
+    const clientPage = await clientCtx.newPage()
+    await login(clientPage, CLIENT_EMAIL, CLIENT_PASSWORD)
+    await clientPage.goto("/")
+
+    const adminCtx = await browser.newContext()
+    const adminPage = await adminCtx.newPage()
+    await login(adminPage, ADMIN_EMAIL, ADMIN_PASSWORD)
+
+    try {
+      // ── Sanidade: booking do cliente → toast (prova socket vivo) ────
+      const bookingSanity = await createBooking(clientPage, ANTONIO_ID, ANTONIO_SERVICE_ID, 11)
+      console.log(`✅ C3 booking de sanidade criado: ${bookingSanity}`)
+
+      const toast = providerPage.locator("[data-sonner-toast]").first()
+      await expect(toast).toBeVisible({ timeout: 10000 })
+      console.log("✅ C3 sanidade: toast via WebSocket antes da revogação")
+
+      await expect(providerPage.locator("[data-sonner-toast]")).toHaveCount(0, {
+        timeout: 10000,
+      })
+
+      // ── Admin navega até a view PRESTADORES (não Usuários) ─────────
+      await adminPage.goto("/dashboard")
+      await adminPage.waitForTimeout(2000)
+
+      // Nav lateral (DashboardShell) → "Prestadores" (view admin.providers)
+      const prestadoresNav = adminPage.getByRole("button", { name: /Prestadores/ }).first()
+      await expect(prestadoresNav).toBeVisible({ timeout: 8000 })
+      await prestadoresNav.click()
+      await adminPage.waitForTimeout(1500)
+
+      // Filtra a tabela pelo e-mail do provider (search com debounce)
+      const search = adminPage.getByPlaceholder("Buscar por nome, e-mail ou cidade")
+      await expect(search).toBeVisible({ timeout: 8000 })
+      await search.fill(ANTONIO_EMAIL)
+      await adminPage.waitForTimeout(800)
+
+      // Linha do provider (por e-mail)
+      const row = adminPage.locator("tr").filter({ hasText: ANTONIO_EMAIL }).first()
+      await expect(row).toBeVisible({ timeout: 8000 })
+
+      // O indicador Online vem de /api/admin/realtime/sessions (staleTime
+      // 15s) — força o refresh manual e espera o badge "Online · 1" na
+      // linha antes de abrir o dropdown (mesmo seletor do C2).
+      const refreshOnline = adminPage.getByRole("button", {
+        name: "Atualizar status online",
+      })
+      await expect(refreshOnline).toBeVisible({ timeout: 8000 })
+      await refreshOnline.click()
+      await expect(row.getByText(/Online · \d+/)).toBeVisible({ timeout: 15000 })
+      console.log("✅ C3 provider ONLINE na view Prestadores (indicador realtime)")
+
+      // Abre o dropdown ⋮ e clica em "Revogar sessões" (view Prestadores)
+      await row.getByRole("button", { name: "Mais ações" }).click()
+      const revokeItem = adminPage.getByRole("menuitem", { name: "Revogar sessões" })
+      await expect(revokeItem).toBeEnabled({ timeout: 5000 })
+      await revokeItem.click()
+
+      // Toast de sucesso no painel admin (confirma o fluxo do botão)
+      const adminToast = adminPage.locator("[data-sonner-toast]").first()
+      await expect(adminToast).toBeVisible({ timeout: 8000 })
+      const adminToastText = (await adminToast.textContent()) ?? ""
+      console.log(`✅ C3 toast do admin: "${adminToastText.trim()}"`)
+
+      // ── Socket derrubado ─────────────────────────────────────────────
+      await expectActiveSocketClosed(providerPage, wsList, "C3-view-prestadores")
+
+      // ── SEM desativar: a sessão do provider continua válida ─────────
+      const me = await providerPage.request.get("/api/auth/me")
+      const meBody = (await me.json()) as { user?: { email?: string } | null }
+      expect(meBody.user?.email, "sessão deve continuar válida (conta ativa)").toBe(ANTONIO_EMAIL)
+      console.log("✅ C3 conta continua ATIVA — /api/auth/me ainda retorna o usuário")
+
+      // ── Novo booking → NENHUM toast (socket morto, sem rejoin) ──────
+      const booking2 = await createBooking(clientPage, ANTONIO_ID, ANTONIO_SERVICE_ID, 18)
+      console.log(`✅ C3 booking pós-revogação criado: ${booking2}`)
+
+      await providerPage.waitForTimeout(8000)
+      const toastCount = await providerPage.locator("[data-sonner-toast]").count()
+      expect(toastCount, "nenhum toast deve aparecer após a revogação").toBe(0)
+      console.log("✅ C3 nenhum toast após a revogação — cenário validado")
     } finally {
       await adminCtx.close()
       await clientCtx.close()

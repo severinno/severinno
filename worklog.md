@@ -11,9 +11,59 @@ Convenções:
 - APIs em `src/app/api/**` (não server actions).
 - z-ai-web-dev-sdk apenas no backend.
 
+## Índice de Task IDs
+
+- [CRLF-NORM](#crlf-norm) — Normalizar o working tree deste checkout — converter os 415 .ts/.tsx com w/crlf para LF. O artefato…
+- [2](#2) — Set up WebSocket mini-service (port 3003, path /) with socket.io for realtime messaging/booking/quo…
+- [1](#1) — Construir a fundação do Severinno Marketplace SaaS — Prisma schema (SQLite, sem enum nativo), seed…
+- [3](#3) — Criar TODAS as rotas de API backend do Severinno Marketplace SaaS (Fase 1 / MVP) sob `src/app/api/*…
+- [5](#5) — Construir os Flow Modals do Severinno Marketplace SaaS (Fase 1/MVP): Quote flow, Booking flow, Prov…
+- [4](#4) — Build the public storefront (vitrine) with MapLibre map, provider cards, filters, hero, topbar, foo…
+- [7](#7) — Construir o PAINEL DO PRESTADOR do Severinno Marketplace SaaS (Fase 1 / MVP): 10 views (dashboard,…
+- [6](#6) — Build the Client panel (dashboard, bookings, quotes, services, finance, messages, reviews, favorite…
+- [8](#8) — Build the Admin panel (dashboard, taxonomy tree, users, providers, services, bookings, settings).
+- [9](#9) — Integrate all surfaces into the single / route (SPA view-switching) + app shell + footer.
+- [10](#10) — End-to-end browser verification of all surfaces and flows.
+- [F0](#f0) — Fix auth store persistence race condition causing guard to fire on reload after cookie-based login.
+- [F1](#f1) — Polish the vitrine (storefront) visual design — topbar, hero, category showcase, how-it-works, prov…
+- [F3](#f3) — Refine visual design, layout density, transitions, and form UX of all flow modals (auth, provider p…
+- [F2](#f2) — Polish the three dashboard panels (client / provider / admin) and the shared DashboardShell to a pr…
+- [Memory System](#memory-system) — Configurar sistema de memória persistente para retomar contexto entre threads.
+- [MEDIO-PRAZO-3A](#medio-prazo-3a) — Executar as 3 ações de médio prazo recomendadas no parecer técnico: (1) consolidar o meta-tooling c…
+- [SEED-COUNT-LITERALS](#seed-count-literals) — Criar um guard (padrão check-e2e-counts) que varre TODO o repo — scripts/, docs/, .github/ — por li…
+- [SINGLE-LINE-CONTRATO](#single-line-contrato) — Conferir se o exemplo '128 checks' nos comentários do check-single-line-out-assign.sh (L11/L15) ref…
+- [MUTATION-COORD-UPDATE](#mutation-coord-update) — Mutation test do contrato de atualização COORDENADA dos counts de seed — prova que o seed-e2e-count…
+- [MUTATION-COORD-UPDATE-B (direção inversa)](#mutation-coord-update-b-direção-inversa) — Estender o mutation test do contrato coordenado para a DIREÇÃO INVERSA — mutar SÓ a âncora do teste…
+- [MUTATION-COORD-2ELOS (guard estático + vitest)](#mutation-coord-2elos-guard-estático--vitest) — Fechar os DOIS elos da cadeia de validação no mesmo mutation test — rodar o guard estático check-e2…
+- [MUTATION-COORD-MEASURE (overhead por PR)](#mutation-coord-measure-overhead-por-pr) — Medir o tempo real do job mutation-coord-update (payload) e documentar o overhead por PR na seção d…
+- [BARREL-LINT-PRE-LINTSTAGED](#barrel-lint-pre-lintstaged) — Mover o barrel-lint (guard de headers Usage/Exit codes nas 50 primeiras linhas) para ANTES do lint-…
+- [COMMIT-6A900E1](#commit-6a900e1) — Commit 6a900e1 — guards de dependências + fix do rate-limit do /api/chat (20 arquivos).
+- [CLEANUP-65-ARQUIVOS](#cleanup-65-arquivos) — Pequenos itens técnicos — 65 arquivos mortos removidos (14MB) + achado do middleware raiz.
+- [RATE-LIMIT-UPSTASH-FIX](#rate-limit-upstash-fix) — Fix do rate limit Upstash inativo — integrado no src/middleware.ts.
+- [DEPLOY-PATH-MIGRATE](#deploy-path-migrate) — Confirmar se produção usa `prisma migrate deploy` (gap era só dev) ou `db push`
+- [CRON-REVOKE-INACTIVE](#cron-revoke-inactive) — Webhook/job agendado que revoga sockets realtime de usuários inativos automaticamente.
+- [RT-SESSION-LIMIT](#rt-session-limit) — Manter apenas o socket mais recente por usuário no realtime, derrubando os antigos com motivo "sess…
+- [RT-TTL-REVOKE](#rt-ttl-revoke) — Disparar session:revoke quando a sessão expira por TTL (não só no logout explícito), garantindo que…
+- [RT-TELEMETRY](#rt-telemetry) — Auditoria estruturada no POST /emit (userId, rooms, source) + métricas de sessão ativa por usuário…
+- [FETCH-TIMEOUT-HELPER](#fetch-timeout-helper) — Extrair o guard `Math.max(1, Number(env) || default)` + `AbortSignal.timeout()` em um helper compar…
+- [FETCH-TIMEOUT-TESTS](#fetch-timeout-tests) — Adicionar testes de 'não trava quando o serviço aceita TCP mas nunca responde' (simulação de hang c…
+- [DATA-TIMEOUTS-AUDIT](#data-timeouts-audit) — Auditar os timeouts do client OpenSearch (requestTimeout 10s existe, connectionTimeout não explícit…
+- [ADMIN-ONLINE-CARD](#admin-online-card) — Exibir o total de usuários online como card/contador no topo da lista de usuários do painel admin,…
+- [ADMIN-ONLINE-PROVIDERS](#admin-online-providers) — Estender o indicador de usuários online e a ação "Revogar sessões" do AdminUsers para o AdminProvid…
+- [CRON-REVOKE-INACTIVE-TEST](#cron-revoke-inactive-test) — Adicionar teste unitário do cron revoke-inactive-sessions (GET /api/cron/revoke-inactive-sessions)…
+- [ADMIN-REVOKE-AUDIT](#admin-revoke-audit) — Endpoint admin de audit trail dos runs do cron de revogação de sessões inativas + botão "Executar v…
+- [CRON-PASSWORD-CHANGE-REVOKE](#cron-password-change-revoke) — Estender o cron revoke-inactive-sessions para também revogar sessões de usuários que trocaram a sen…
+- [NPX-RUNNER-DIAG](#npx-runner-diag) — Registrar no worklog o trecho do diagnóstico (npx vs bunx, shim .EXE,
+- [REVOKE-ORPHANS](#revoke-orphans) — Botão "Revogar sockets órfãos" no card de usuários online — desconecta sockets do realtime cuja ses…
+- [WORKLOG-GUARD](#worklog-guard) — Guard de integridade do worklog.md — cada Task ID com o formato mínimo (Task ID/Agent/Task/Work Log…
+- [WORKLOG-TOC](#worklog-toc) — Índice (TOC) no topo do worklog.md listando todos os Task IDs com âncora e linha de resumo, para na…
+- [CACHE-PATTERNS-GUARD](#cache-patterns-guard) — Adicionar um guard check-*.mjs que valida a lista CACHE_PATTERNS do seed contra os prefixes reais d…
+- [DEV-DB-DRIFT-MIGRATIONS](#dev-db-drift-migrations) — Aplicar as demais migrations custom pendentes ao banco dev (XX_add_postgis GIST indexes, mv_provide…
+
 ---
 
 Task ID: CRLF-NORM
+<a id="crlf-norm"></a>
 Agent: orchestrator (normalização de checkout)
 Task: Normalizar o working tree deste checkout — converter os 415 .ts/.tsx com w/crlf para LF. O artefato de checkout (w/crlf) some sem tocar no histórico (blobs i/lf intocados).
 
@@ -36,6 +86,7 @@ Stage Summary:
 ---
 
 Task ID: 2
+<a id="2"></a>
 Agent: general-purpose (websocket mini-service)
 Task: Set up WebSocket mini-service (port 3003, path /) with socket.io for realtime messaging/booking/quote/tracking events; provide singleton React client hook; start service in background and verify.
 
@@ -83,6 +134,7 @@ Stage Summary:
 ---
 
 Task ID: 1
+<a id="1"></a>
 Agent: full-stack-developer (foundation)
 Task: Construir a fundação do Severinno Marketplace SaaS — Prisma schema (SQLite, sem enum nativo), seed com 1 admin + 2 clients + 6 providers + categorias 3-níveis + services + bookings/reviews, design system emerald, Zustand stores (auth/geo/view/ui) e lib utilities (crypto scrypt, auth HMAC cookie, geo ViaCEP/Nominatim/haversine, format pt-BR, constants, validators Zod 4).
 
@@ -119,6 +171,7 @@ Stage Summary:
 ---
 
 Task ID: 3
+<a id="3"></a>
 Agent: full-stack-developer (api routes)
 Task: Criar TODAS as rotas de API backend do Severinno Marketplace SaaS (Fase 1 / MVP) sob `src/app/api/**` usando Next.js 16 App Router route handlers + Prisma (SQLite) + Zod, alinhadas ao contrato esperado pela UI (foundation `src/lib/api.ts`).
 
@@ -172,6 +225,7 @@ Stage Summary:
 ---
 
 Task ID: 5
+<a id="5"></a>
 Agent: full-stack-developer (flow modals)
 Task: Construir os Flow Modals do Severinno Marketplace SaaS (Fase 1/MVP): Quote flow, Booking flow, Provider Profile modal, Auth modal e bits compartilhados (star-rating, file-photos, address-form) + orchestrator modals-host. Next.js 16 + shadcn/ui + Tailwind 4 + react-hook-form + Zod 4 + TanStack Query + framer-motion. Primary emerald, pt-BR, mobile-first.
 
@@ -216,6 +270,7 @@ Stage Summary:
 ---
 
 Task ID: 4
+<a id="4"></a>
 Agent: full-stack-developer (vitrine) [completed files; verification record added by orchestrator after agent cancellation]
 Task: Build the public storefront (vitrine) with MapLibre map, provider cards, filters, hero, topbar, footer.
 
@@ -238,6 +293,7 @@ Stage Summary:
 ---
 
 Task ID: 7
+<a id="7"></a>
 Agent: full-stack-developer (provider panel)
 Task: Construir o PAINEL DO PRESTADOR do Severinno Marketplace SaaS (Fase 1 / MVP): 10 views (dashboard, expediente, agenda, bookings, quotes, services, finance, messages, reviews, profile) + orquestrador provider-panel + 3 rotas API (availability GET/POST, availability/[id] DELETE, users/me GET/PATCH) + shared MessagesView. Next.js 16 + shadcn/ui + Tailwind 4 + recharts + react-hook-form + Zod 4 + TanStack Query. Primary emerald, pt-BR, mobile-first.
 
@@ -310,6 +366,7 @@ Stage Summary:
 ---
 
 Task ID: 6
+<a id="6"></a>
 Agent: full-stack-developer (client panel) [files complete; agent stopped during reporting — record added by orchestrator]
 Task: Build the Client panel (dashboard, bookings, quotes, services, finance, messages, reviews, favorites, profile).
 
@@ -328,6 +385,7 @@ Stage Summary:
 ---
 
 Task ID: 8
+<a id="8"></a>
 Agent: full-stack-developer (admin panel) [files complete; agent stopped during reporting — record added by orchestrator]
 Task: Build the Admin panel (dashboard, taxonomy tree, users, providers, services, bookings, settings).
 
@@ -345,6 +403,7 @@ Stage Summary:
 ---
 
 Task ID: 9
+<a id="9"></a>
 Agent: orchestrator (main route integration)
 Task: Integrate all surfaces into the single / route (SPA view-switching) + app shell + footer.
 
@@ -365,6 +424,7 @@ Stage Summary:
 ---
 
 Task ID: 10
+<a id="10"></a>
 Agent: orchestrator (E2E verification)
 Task: End-to-end browser verification of all surfaces and flows.
 
@@ -386,6 +446,7 @@ Stage Summary:
 ---
 
 Task ID: F0
+<a id="f0"></a>
 Agent: orchestrator (frontend focus — auth fix)
 Task: Fix auth store persistence race condition causing guard to fire on reload after cookie-based login.
 
@@ -402,6 +463,7 @@ Stage Summary:
 ---
 
 Task ID: F1
+<a id="f1"></a>
 Agent: frontend-styling-expert (vitrine polish)
 Task: Polish the vitrine (storefront) visual design — topbar, hero, category showcase, how-it-works, provider card, filters, vitrine-results, footer — to production-polished level. Edit existing files surgically; preserve all component APIs, props, exports, and data logic.
 
@@ -429,6 +491,7 @@ Stage Summary:
 ---
 
 Task ID: F3
+<a id="f3"></a>
 Agent: full-stack-developer (modals polish)
 Task: Refine visual design, layout density, transitions, and form UX of all flow modals (auth, provider profile, quote, booking) plus shared bits (file-photos, address-form, star-rating, modals-host) to a production-polished level. Emerald primary, pt-BR, mobile-first, Nielsen heuristics.
 
@@ -454,6 +517,7 @@ Stage Summary:
 ---
 
 Task ID: F2
+<a id="f2"></a>
 Agent: frontend-styling-expert (dashboard polish)
 Task: Polish the three dashboard panels (client / provider / admin) and the shared DashboardShell to a production-polished level — KPI cards, charts, spacing, hierarchy, sidebar/topbar, notifications dropdown.
 
@@ -502,6 +566,7 @@ Stage Summary:
 ---
 
 Task ID: Memory System
+<a id="memory-system"></a>
 Agent: Buffy (AI coding assistant)
 Task: Configurar sistema de memória persistente para retomar contexto entre threads.
 
@@ -523,6 +588,7 @@ Stage Summary:
 ---
 
 Task ID: MEDIO-PRAZO-3A
+<a id="medio-prazo-3a"></a>
 Agent: Buffy (orchestrator — parecer + 3 ações recomendadas)
 Task: Executar as 3 ações de médio prazo recomendadas no parecer técnico: (1) consolidar o meta-tooling com doc do "porquê" de cada família de guard, (2) revisar o useViewStore (performance/histórico), (3) ampliar a auditoria de segredos com classificação de severidade.
 
@@ -547,6 +613,7 @@ Stage Summary:
 ---
 
 Task ID: SEED-COUNT-LITERALS
+<a id="seed-count-literals"></a>
 Agent: Buffy (orchestrator — guard de refs órfãos de counts)
 Task: Criar um guard (padrão check-e2e-counts) que varre TODO o repo — scripts/, docs/, .github/ — por literais 115/123 de counts de seed que não batam com a derivação real, evitando que um bump futuro deixe outro ref órfão como a âncora ficou.
 
@@ -568,6 +635,7 @@ Stage Summary:
 ---
 
 Task ID: SINGLE-LINE-CONTRATO
+<a id="single-line-contrato"></a>
 Agent: Buffy (orchestrator — contrato do último ref de count não auditado)
 Task: Conferir se o exemplo '128 checks' nos comentários do check-single-line-out-assign.sh (L11/L15) reflete o estado atual dos workflows e documentar o contrato — fechando o último ref de count não auditado.
 
@@ -586,6 +654,7 @@ Stage Summary:
 ---
 
 Stage: MUTATION-COORD-UPDATE
+<a id="mutation-coord-update"></a>
 Agent: orchestrator
 Task: Mutation test do contrato de atualização COORDENADA dos counts de seed — prova que o seed-e2e-count.test.ts pega o cenário exato do bug histórico (atualizar SÓ os comentários dos workflows 128→N sem tocar a âncora do teste).
 
@@ -606,6 +675,7 @@ Stage Summary:
 ---
 
 Stage: MUTATION-COORD-UPDATE-B (direção inversa)
+<a id="mutation-coord-update-b-direção-inversa"></a>
 Agent: orchestrator
 Task: Estender o mutation test do contrato coordenado para a DIREÇÃO INVERSA — mutar SÓ a âncora do teste (.toBe(128)→.toBe(129)) sem tocar a doc dos workflows, provando o contrato nas 2 direções em um único script.
 
@@ -625,6 +695,7 @@ Stage Summary:
 ---
 
 Stage: MUTATION-COORD-2ELOS (guard estático + vitest)
+<a id="mutation-coord-2elos-guard-estático--vitest"></a>
 Agent: orchestrator
 Task: Fechar os DOIS elos da cadeia de validação no mesmo mutation test — rodar o guard estático check-e2e-counts.mjs contra a doc mutada e exigir que ele FALHE com exit 1, além do vitest.
 
@@ -645,6 +716,7 @@ Stage Summary:
 ---
 
 Stage: MUTATION-COORD-MEASURE (overhead por PR)
+<a id="mutation-coord-measure-overhead-por-pr"></a>
 Agent: orchestrator
 Task: Medir o tempo real do job mutation-coord-update (payload) e documentar o overhead por PR na seção de mutation tests do docs/GUARDS.md.
 
@@ -665,6 +737,7 @@ Stage Summary:
 ---
 
 Stage: BARREL-LINT-PRE-LINTSTAGED
+<a id="barrel-lint-pre-lintstaged"></a>
 Agent: orchestrator
 Task: Mover o barrel-lint (guard de headers Usage/Exit codes nas 50 primeiras linhas) para ANTES do lint-staged no pre-commit — a violação de header pega com arquivo:linha cedo, sem o prettier já ter reformatado o working tree.
 
@@ -1032,6 +1105,13 @@ barrel 0, guards de docs 0, workflow-refs 0.
 
 ---
 
+Task ID: COMMIT-6A900E1
+<a id="commit-6a900e1"></a>
+Agent: orchestrator (commit local 6a900e1)
+Task: Commit 6a900e1 — guards de dependências + fix do rate-limit do /api/chat (20 arquivos).
+
+Work Log:
+
 ## [2026-08-06] Commit 6a900e1 — guards de dependências + fix do rate-limit do /api/chat (20 arquivos)
 
 Commit local na branch `freebuff/new-thread-thms5x3m7xt8k4` (8 novos + 12 modificados,
@@ -1148,6 +1228,13 @@ liberado após o commit do fix do test-setup.
 
 ---
 
+Task ID: CLEANUP-65-ARQUIVOS
+<a id="cleanup-65-arquivos"></a>
+Agent: orchestrator (limpeza de arquivos mortos)
+Task: Pequenos itens técnicos — 65 arquivos mortos removidos (14MB) + achado do middleware raiz.
+
+Work Log:
+
 ## [2026-08-06] Pequenos itens técnicos — 65 arquivos mortos removidos (14MB) + achado do middleware raiz
 
 ### Limpeza executada (git rm, 65 arquivos, ~14MB)
@@ -1184,7 +1271,15 @@ no src/middleware.ts (restaurar a camada), (b) remover middleware.ts raiz +
 middleware.test.ts (aceitar só o token bucket), ou (c) manter como está
 (documentado). Recomendação: (a) antes do go-live — a camada Upstash foi
 construída intencionalmente (commit 489686f) e hoje não protege nada.
+
 ---
+
+Task ID: RATE-LIMIT-UPSTASH-FIX
+<a id="rate-limit-upstash-fix"></a>
+Agent: orchestrator (fix do rate limit Upstash)
+Task: Fix do rate limit Upstash inativo — integrado no src/middleware.ts.
+
+Work Log:
 
 ## [2026-08-06] Fix do rate limit Upstash inativo — integrado no src/middleware.ts
 
@@ -1223,6 +1318,7 @@ guards (no-leaked-imports, workflow-refs, unused-deps, barrel-lint) exit 0.
 ---
 
 Task ID: DEPLOY-PATH-MIGRATE
+<a id="deploy-path-migrate"></a>
 Agent: auditoria (camada 3 — verificar caminho de deploy p/ gap de triggers/GIST)
 Task: Confirmar se produção usa `prisma migrate deploy` (gap era só dev) ou `db push`
 (bug de produção) e registrar a conclusão.
@@ -1232,7 +1328,7 @@ Contexto: no banco dev (criado via `prisma db push` + seed), os triggers de sync
 existiam — o `db push` sincroniza só o schema declarado em schema.prisma e não
 roda o SQL arbitrário das migrations customizadas. Ficou a dúvida: e em produção?
 
-Work Log (evidência lida no código):
+Work Log:
 
 - **`.github/workflows/deploy.yml` (job `migrate`, linhas 166-182)**: primário
   `bunx prisma migrate deploy` → fallback `db push --accept-data-loss`.
@@ -1270,6 +1366,7 @@ package.json) · versão PG de prod 16 (>= 14) · nenhuma mudança de código.
 ---
 
 Task ID: CRON-REVOKE-INACTIVE
+<a id="cron-revoke-inactive"></a>
 Agent: orchestrator (job agendado de revogação de sessões inativas)
 Task: Webhook/job agendado que revoga sockets realtime de usuários inativos automaticamente.
 
@@ -1303,6 +1400,7 @@ Stage Summary:
 ---
 
 Task ID: RT-SESSION-LIMIT
+<a id="rt-session-limit"></a>
 Agent: orchestrator (limite de sessões simultâneas no realtime)
 Task: Manter apenas o socket mais recente por usuário no realtime, derrubando os antigos com motivo "session_limit".
 
@@ -1339,7 +1437,10 @@ Stage Summary:
   src/lib/**tests**/realtime-security.test.ts, e2e/realtime-session-limit.spec.ts (novo),
   worklog.md.
 
+---
+
 Task ID: RT-TTL-REVOKE
+<a id="rt-ttl-revoke"></a>
 Agent: orchestrator (revogação realtime por TTL da sessão)
 Task: Disparar session:revoke quando a sessão expira por TTL (não só no logout explícito), garantindo que sockets antigos morram mesmo sem ação do usuário.
 
@@ -1382,7 +1483,10 @@ Stage Summary:
   zera o singleton). Raríssimo (tab ociosa >30d) e a alternativa (reconectar) criaria loop com
   sessão genuinamente expirada — escolha atual é a mais segura, apenas documentada.
 
+---
+
 Task ID: RT-TELEMETRY
+<a id="rt-telemetry"></a>
 Agent: orchestrator (telemetria/auditoria do realtime)
 Task: Auditoria estruturada no POST /emit (userId, rooms, source) + métricas de sessão ativa por usuário no /health, para operação e debugging (ex.: socket órfão do HMR).
 
@@ -1416,7 +1520,10 @@ Stage Summary:
 - **Alterado**: mini-services/realtime/security.ts, mini-services/realtime/index.ts,
   src/lib/**tests**/realtime-security.test.ts, worklog.md.
 
+---
+
 Task ID: FETCH-TIMEOUT-HELPER
+<a id="fetch-timeout-helper"></a>
 Agent: orchestrator (helper compartilhado de fetch timeout)
 Task: Extrair o guard `Math.max(1, Number(env) || default)` + `AbortSignal.timeout()` em um helper compartilhado src/lib/fetch-timeout.ts, eliminando a duplicação em 7 arquivos.
 
@@ -1451,7 +1558,10 @@ Stage Summary:
   src/app/api/admin/gateway/invoices/route.ts, src/app/api/admin/gateway/stats/route.ts,
   worklog.md.
 
+---
+
 Task ID: FETCH-TIMEOUT-TESTS
+<a id="fetch-timeout-tests"></a>
 Agent: orchestrator (testes de hang/AbortSignal dos helpers e rotas refatoradas)
 Task: Adicionar testes de 'não trava quando o serviço aceita TCP mas nunca responde' (simulação de hang com AbortSignal) para os helpers lytexRequest e evolutionRequest, seguindo o padrão do realtime-client.test.ts, e teste de presença do signal nos fetches das rotas gateway e sentry.
 
@@ -1486,7 +1596,10 @@ Stage Summary:
   src/app/api/**tests**/admin-gateway-invoices-route.test.ts, src/app/api/**tests**/admin-gateway-stats-route.test.ts,
   worklog.md.
 
+---
+
 Task ID: DATA-TIMEOUTS-AUDIT
+<a id="data-timeouts-audit"></a>
 Agent: orchestrator (auditoria de timeouts dos clientes de dados)
 Task: Auditar os timeouts do client OpenSearch (requestTimeout 10s existe, connectionTimeout não explícito) e do Prisma (query_timeout/connection_limit) para garantir que nenhum serviço de dados pendure requests indefinidamente, documentando a conclusão.
 
@@ -1538,6 +1651,7 @@ Stage Summary:
 ---
 
 Task ID: ADMIN-ONLINE-CARD
+<a id="admin-online-card"></a>
 Agent: general-purpose (admin panel)
 Task: Exibir o total de usuários online como card/contador no topo da lista de usuários do painel admin, com refresh manual ao lado da coluna Online.
 
@@ -1567,6 +1681,7 @@ Stage Summary:
 ---
 
 Task ID: ADMIN-ONLINE-PROVIDERS
+<a id="admin-online-providers"></a>
 Agent: general-purpose (admin panel)
 Task: Estender o indicador de usuários online e a ação "Revogar sessões" do AdminUsers para o AdminProviders (admin-providers.tsx), seguindo o mesmo padrão.
 
@@ -1600,6 +1715,7 @@ Stage Summary:
 ---
 
 Task ID: CRON-REVOKE-INACTIVE-TEST
+<a id="cron-revoke-inactive-test"></a>
 Agent: general-purpose (testes de cron)
 Task: Adicionar teste unitário do cron revoke-inactive-sessions (GET /api/cron/revoke-inactive-sessions) no padrão do cron-settlements-route.test.ts.
 
@@ -1631,6 +1747,7 @@ Stage Summary:
 ---
 
 Task ID: ADMIN-REVOKE-AUDIT
+<a id="admin-revoke-audit"></a>
 Agent: general-purpose (admin panel + cron)
 Task: Endpoint admin de audit trail dos runs do cron de revogação de sessões inativas + botão "Executar varredura agora" com dry-run por padrão no painel.
 
@@ -1680,6 +1797,7 @@ Stage Summary:
 ---
 
 Task ID: CRON-PASSWORD-CHANGE-REVOKE
+<a id="cron-password-change-revoke"></a>
 Agent: general-purpose (cron + auth)
 Task: Estender o cron revoke-inactive-sessions para também revogar sessões de usuários que trocaram a senha há N dias (defesa extra pós-vazamento), reutilizando a mesma varredura em lote.
 
@@ -1810,7 +1928,10 @@ do bun.lock>` no worktree — o npm criou `playwright.cmd`/`playwright.ps1`/
   O guard continua exigindo bunx em docs/scripts/package.json — o npx com
   shims é workaround local de node_modules, não o padrão documentado.
 
+---
+
 Task ID: NPX-RUNNER-DIAG
+<a id="npx-runner-diag"></a>
 Agent: orchestrator (diagnóstico do runner oficial E2E no Windows)
 Task: Registrar no worklog o trecho do diagnóstico (npx vs bunx, shim .EXE,
 reprodução via cmd.exe) e a decisão de runner oficial, para auditoria futura.
@@ -2186,3 +2307,200 @@ Aplicar o mesmo padrão de proteção de hang (serviço que aceita TCP mas nunca
 **Nota:** o `.env.example` linkado no README não existe no worktree (arquivo ausente/gitignored) — as novas envs ficam documentadas na tabela do README (seção Fetch timeouts, com nota dos clientes Redis/S3).
 
 **Validação:** prettier/eslint/typecheck/vitest + guard check:fetch-timeout no repo verde; reviewer em paralelo.
+
+## Task: guard de consistência das envs de timeout (check-timeout-envs.mjs)
+
+Validar de ponta a ponta que os valores de timeout das envs (LYTEX_TIMEOUT_MS,
+EVOLUTION_TIMEOUT_MS, GLITCHTIP_TIMEOUT_MS, ALERT_WEBHOOK_TIMEOUT_MS) estão
+documentados no README/.env.example e no compose, com um guard de consistência.
+
+**Descoberta:** as 4 envs existiam no código (fallbacks válidos) mas estavam
+INVISÍVEIS na doc — a tabela "Fetch timeouts" do README não as listava,
+`.env.example` não existia no repo (link quebrado) e o compose não passava
+nenhuma env de timeout. Operação não sabia que dava para tunar o timeout do
+Lytex/Evolution/GlitchTip/alerta, e o default documentado podia driftar do
+código.
+
+**Guard novo (`scripts/check-timeout-envs.mjs`, derivado — nada hardcoded):**
+
+- DERIVA as 15 envs `*_TIMEOUT_MS` de src/ via `envTimeoutSignal`/
+  `resolveTimeoutMs` (literal) + pares de constantes `X_ENV`/`X_DEFAULT_MS`
+  (o GLOBAL_FETCH_TIMEOUT_MS é passado via constantes, não literal — o
+  pareamento é por PREFIXO porque os nomes não são simétricos:
+  `GLOBAL_FETCH_TIMEOUT_MS_ENV` vs `GLOBAL_FETCH_TIMEOUT_DEFAULT_MS`).
+- Exige o par env+default (ms) nas 3 docs: README (tabela Fetch timeouts),
+  `.env.example` e os 2 composes (docker-compose.yml + prod, serviço app).
+- Bidirecional: forward (env sem doc/default divergente/defaults inconsistentes
+  no próprio src/) + reverse (linha stale na tabela do README).
+- Escopo: sufixo `_TIMEOUT_MS` (PRISMA_CONNECT_TIMEOUT_SEC etc. ficam fora).
+
+**Docs corrigidas:** README +5 linhas na tabela (LYTEX 10s, EVOLUTION 10s,
+GLITCHTIP 5s, ALERT_WEBHOOK 5s, REALTIME_EMIT 3s) + prosa dos guards de
+regressão; `.env.example` CRIADO e rastreado (exceção `!.env.example` no
+gitignore, sem segredos — só timeouts); docker-compose.yml + prod ganharam as
+15 envs `ENV: ${ENV:-default}` no serviço app.
+
+**Wiring:** package.json `check:timeout-envs` + pre-commit (após
+check:fetch-timeout) + job `timeout-envs-guard` no pr-check.yml (mutation test
+
+- guard real, padrão do fetch-timeout-guard — fora da matriz do master).
+
+**Testes:** `src/lib/__tests__/check-timeout-envs-cli.test.ts` (8 CLI + 3
+funções puras: blankComments preserva strings, parseDocDefaultMs, reverse
+stale) + `scripts/test-mutation-timeout-envs.sh` (controle + 7 mutações:
+README removido, default divergente, .env.example vazio, compose base/prod sem
+env, linha stale, defaults inconsistentes em src/).
+
+**Nota:** o guard exige o arquivo `.env.example` presente (fail-closed) — o
+arquivo agora é rastreado, então CI/hooks sempre o têm.
+
+**Validação:** guard no repo exit 0 (15 envs consistentes nas 3 docs) + vitest
+
+- mutation test + typecheck + prettier/eslint + guards (hooks-symmetry,
+  mutation-jobs, TOC/anchors) + reviewer.
+
+---
+
+Task ID: REVOKE-ORPHANS
+<a id="revoke-orphans"></a>
+Agent: buffy (ops/admin)
+Task: Botão "Revogar sockets órfãos" no card de usuários online — desconecta sockets do realtime cuja sessão expirou por TTL OU cujo userId não existe (mais) no banco (contas removidas/soft-deletadas com sessão stale), com auditoria Redis + worklog.
+
+Work Log:
+
+- Criou o selector puro `selectOrphanSockets` em `mini-services/realtime/security.ts` (async; classifica expired por TTL sem consultar DB + missingUser via `isUserAlive` injetado; `toRevoke` = união sem duplicar; `userIdsToCheck` só dos não-expirados).
+- Adicionou `POST /revoke-orphans` no realtime (Bearer fail-closed): `io.fetchSockets()` → `selectOrphanSockets` com `isUserAlive` reusando o pool pg lazy (SQL `SELECT 1 FROM "User" WHERE id=$1 AND "deletedAt" IS NULL` — tabela sem @@map, camelCase). FAIL-OPEN na checagem de existência (sem DB/erro → alive; só TTL-expirados revogados — nunca derruba usuário válido por falha de infra). Emite `session:revoked` + force-close atrasado + kick audit com o MESMO reason emitido (session_expired vs revoke). Responde `{ok, revoked, expired, missingUser, checkedUsers}`.
+- Criou a rota admin `POST /api/admin/realtime/sessions/revoke-orphans` (requireRole ADMIN): proxy Bearer + `AbortSignal.timeout` (REALTIME_ORPHANS_TIMEOUT_MS 5s, guard ≥1s) + `recordRevokeRun` (source=admin, completed/error, reason com counts, elapsedMs medido). Degradação graciosa por NOME do TimeoutError (Bun não instanceof Error): sem token / realtime fora → `ok:false` 200, nunca 500.
+- Card `OnlineUsersKpiCard` (admin-users + admin-providers): botão "Revogar sockets órfãos" + ConfirmDialog (H5) + toast do resultado + `invalidateQueries(['admin','realtime','sessions'])` (indicador re-renderiza).
+- Auditoria: trail Redis via `revoke-run-audit.ts` (listável no painel) + esta entrada no worklog.
+
+Resultado da varredura:
+
+- Testes: rota admin (5) + selector puro (6) + card (7) = 18 verdes.
+- Validação: typecheck 0, prettier 0, eslint 0 (só warning pré-existente MAX_METRICS_MINUTES), reviewer 4 rodadas sem bloqueio.
+- Requisito: "Revogar todos os sockets órfãos" — implementado como "Revogar sockets órfãos" (rótulo mais preciso; o fluxo proxy+auditoria é coberto por testes).
+
+Stage Summary:
+
+- **Realtime**: endpoint novo + selector puro testável; kick audit consistente com o evento emitido.
+- **Admin**: rota proxy Bearer + auditoria Redis; botão com confirmação no card compartilhado.
+- **Segurança**: fail-closed no token; fail-open na checagem de existência (direção segura).
+
+---
+
+Task ID: WORKLOG-GUARD
+<a id="worklog-guard"></a>
+Agent: buffy (ops/docs)
+Task: Guard de integridade do worklog.md — cada Task ID com o formato mínimo (Task ID/Agent/Task/Work Log) e IDs únicos, na família dos guards de docs.
+
+Work Log:
+
+- Criou `scripts/check-worklog.mjs` (node-puro, <1s): divide o worklog em entradas por separador `---` (fence-aware — ``` não quebra entrada), extrai headers (Task ID moderno + Stage legado + Agent/Task/Work Log com sufixo parentético tolerado) e valida: entrada sem ID = violação; Task ID vazio = violação; ID duplicado no arquivo = violação; sem Agent/Task/Work Log = violação. Head do arquivo (prosa antes do 1º separador) é isento.
+- Worklog real normalizado para o formato mínimo: 3 entradas de commits antigos (COMMIT-6A900E1, CLEANUP-65-ARQUIVOS, RATE-LIMIT-UPSTASH-FIX) receberam Task ID/Agent/Task/Work Log; a DEPLOY-PATH-MIGRATE teve o heading `Work Log (evidência lida no código):` aceito pelo regex (sufixo parentético) — 36 entradas íntegras no repo.
+- Wiring: package.json `check:worklog` + .husky/pre-commit (após check:timeout-envs) + job `worklog-guard` no pr-check.yml (rodada node, sem mutation test próprio).
+- Testes: `src/lib/__tests__/check-worklog-cli.test.ts` (11 testes: CLI exit codes + funções puras splitEntries/extractEntryHeaders/checkWorklog com fences e legado) + `scripts/test-mutation-worklog.sh` (controle + 5 mutações: sem Agent/Task/Work Log, ID duplicado, sem ID).
+
+Resultado da varredura:
+
+- Guard no repo exit 0 (36 entradas íntegras, IDs únicos).
+- Validação: vitest do CLI test + mutation test 5/5 + typecheck 0 + prettier/eslint 0 + guards de wiring (hooks-symmetry, mutation-jobs, workflow-refs, barrel-lint, TOC/anchors) + reviewer.
+
+Stage Summary:
+
+- **Guard**: check-worklog.mjs na família 4 (README/docs guards) — formato mínimo + unicidade de IDs enforced.
+- **Docs**: GUARDS.md seção 4 atualizada; worklog com Task IDs únicos (3 entradas de commits normalizadas).
+- **CI**: pre-commit + pr-check job worklog-guard.
+
+---
+
+Task ID: WORKLOG-TOC
+<a id="worklog-toc"></a>
+Agent: buffy (ops/docs)
+Task: Índice (TOC) no topo do worklog.md listando todos os Task IDs com âncora e linha de resumo, para navegação rápida nas 30+ entradas — com guard de sincronia (check-worklog-toc.mjs) no padrão check-readme-toc.
+
+Work Log:
+
+- Criou `scripts/check-worklog-toc.mjs` (node-puro, <1s): extração fence-aware de entradas (`Task ID:` moderno + `Stage:` legado), linhas do TOC (`- [ID](#slug) — resumo`) e âncoras `<a id="slug">`; valida nas TRÊS direções: forward (todo link do índice resolve para âncora real), reverse (todo Task ID/Stage tem linha no índice) e anchor (âncora = slugify(id) — mesmo algoritmo github-slugger do check-readme-anchors, reutilizado por import, sem drift) + stale (linha do índice sem entrada real).
+- Gerador `scripts/gen-worklog-toc.mjs`: deriva o resumo de cada entrada da linha `Task:` (truncado ~100 chars), normaliza a posição da âncora para logo após o Task ID, rejoin com separador `---` entre entradas e revalida com AMBOS os guards (TOC + integridade) antes de escrever — fail-closed, nunca deixa o repo quebrado. Idempotente (2ª run == 1ª).
+- REPARO de estrutura no worklog: 6 entradas estavam COLADAS sem separador `---` (RT-TTL-REVOKE/RT-TELEMETRY/FETCH-TIMEOUT-HELPER/FETCH-TIMEOUT-TESTS/DATA-TIMEOUTS-AUDIT dentro do bloco do RT-SESSION-LIMIT + NPX-RUNNER-DIAG dentro do CRON-PASSWORD-CHANGE-REVOKE) — 43 IDs em 37 blocos. Separadores re-inseridos (fence-aware) → 43 entradas íntegras; o check-worklog agora conta 43.
+- TOC real regenerado: 43 linhas com resumo derivado da Task: de cada entrada (zero placeholders `— —`).
+- Wiring: package.json `check:worklog-toc` + `gen:worklog-toc` + .husky/pre-commit (após check:worklog) + job `worklog-toc-guard` no pr-check.yml (com mutation test bash antes do check — satisfaz o check-mutation-jobs).
+- Testes: `src/lib/__tests__/check-worklog-toc-cli.test.ts` (CLI exit codes + funções puras extractEntries/extractTocRows/extractAnchors/checkWorklogToc com fences, tabelas e legado) + `scripts/test-mutation-worklog-toc.sh` (controle + 4 mutações: sem linha no índice, sem âncora, slug errado, linha stale).
+
+Resultado da varredura:
+
+- Guard no repo exit 0 (43 entradas ↔ 43 linhas de índice, forward + reverse + anchor ok).
+- Validação: vitest do CLI test + mutation test + typecheck + prettier/eslint + guards de wiring (hooks-symmetry, mutation-jobs, mutation-count, workflow-refs, barrel-lint, TOC/anchors) + reviewer.
+
+Stage Summary:
+
+- **Guard**: check-worklog-toc.mjs na família 4 — índice bidirecional enforced (todo ID indexado, todo link resolve, slug correto).
+- **Gerador**: gen-worklog-toc.mjs mantém o índice em sincronia (resumo da Task:, âncora normalizada, idempotente).
+- **Reparo**: 6 entradas coladas sem separador re-parceladas (43 blocos íntegros).
+- **Docs**: GUARDS.md seção 4 atualizada; worklog com Task ID WORKLOG-TOC.
+- **CI**: pre-commit + pr-check job worklog-toc-guard.
+
+---
+
+Task ID: CACHE-PATTERNS-GUARD
+<a id="cache-patterns-guard"></a>
+Agent: buffy (ops/docs)
+Task: Adicionar um guard check-*.mjs que valida a lista CACHE_PATTERNS do seed contra os prefixes reais de withCache/cacheInvalidate do src/ (detecta prefixos novos esquecidos ou padrões órfãos), no padrão dos guards de docs/escopo do repo.
+
+Work Log:
+
+- Criou `scripts/check-cache-patterns.mjs` (node-puro, <1s): deriva os padrões do literal `CACHE_PATTERNS` do prisma/seed.ts (fonte da verdade — nunca hardcoded) e os prefixes reais dos call sites `withCache`/`withCachedGeo`/`cacheInvalidate` + builders `*CacheKey` em arquivos cache-capable de src/ (testes excluídos, comentários blanked preservando strings). Valida nas DUAS direções: forward (prefixo de catálogo NOVO em src/ sem padrão no CACHE_PATTERNS nem na ALLOWLIST = esquecido do re-seed — a janela de stale volta) e reverse (padrão do seed sem nenhum uso real em src/ = órfão).
+- ALLOWLIST no guard (espelho exato do comentário "Excluídos de propósito" do seed): `geo:*`, `user:active:*`, `realtime:renewed:*`, `realtime:revoked:*`, `distance:*`, `postgis:available`, `push:payload:*`, `cron:cooldown:*`, `geo:metrics:*` — não-catálogo não vira falso positivo.
+- Calibração com probe: varredura ingênua de strings pegava CSS/tailwind/logs/protocolos (`https:`, `dark:bg-*`, `node:buffer`) — a extração scoped (call sites + templates com shape de chave sem espaços) pega EXATAMENTE os 15 prefixes reais sem ruído.
+- Comentário do prisma/seed.ts atualizado: exclusões agora documentam `realtime:renewed:*`, `distance:*` e `postgis:available` (espelho da ALLOWLIST do guard).
+- Wiring: package.json `check:cache-patterns` + .husky/pre-commit (após check:worklog-toc) + job `cache-patterns-guard` no pr-check.yml (com mutation test bash antes do check — satisfaz o check-mutation-jobs).
+- Testes: `src/lib/__tests__/check-cache-patterns-cli.test.ts` (CLI exit codes + funções puras extractCachePatterns/collectCachePrefixes/checkCachePatterns/stripComments) + `scripts/test-mutation-cache-patterns.sh` (controle + mutações A forward/B reverse/C allowlist).
+
+Resultado da varredura:
+
+- Guard no repo exit 0 (6 padrões catálogo ↔ 6 prefixes reais + 9 allowlist, zero falsos positivos).
+- Validação: vitest do CLI test + mutation test + typecheck + prettier/eslint + guards de wiring (hooks-symmetry, mutation-jobs, mutation-count, workflow-refs, barrel-lint, TOC/anchors) + reviewer.
+
+Stage Summary:
+
+- **Guard**: check-cache-patterns.mjs na família 4 — CACHE_PATTERNS nunca deriva do código (forward + reverse + allowlist).
+- **Derivação**: padrões do literal do seed; prefixes dos call sites reais (nada hardcoded).
+- **Docs**: GUARDS.md seção 4 atualizada + comentário de exclusões do seed em sync com a ALLOWLIST; worklog com Task ID CACHE-PATTERNS-GUARD.
+- **CI**: pre-commit + pr-check job cache-patterns-guard.
+
+---
+
+Task ID: DEV-DB-DRIFT-MIGRATIONS
+<a id="dev-db-drift-migrations"></a>
+Agent: buffy (ops/data)
+Task: Aplicar as demais migrations custom pendentes ao banco dev (XX_add_postgis GIST indexes, mv_provider_stats, índices compostos, user/service search_vector) via prisma db execute e documentar o estado de drift do ambiente (db push vs migrations SQL custom).
+
+Work Log:
+
+- DRIFT IDENTIFICADO no banco dev (postgres:5433, db severinno_test): criado por `prisma db push` (SEM tabela `_prisma_migrations`), ele diverge das migrations SQL customizadas que o db push não cobre. Inventário pré-aplicação:
+  - JÁ APLICADO (via seed/setup anterior): extensão postgis, colunas location (User/Booking/QuoteRequest), triggers de sync de location/rating/favorite, search_reindex_queue + notify_search_reindex, soft-delete (deletedAt), tabelas de push/webhook, passwordChangedAt/revokedByCronAt, updatedAt, FKs RESTRICT.
+  - PENDENTE (6 migrations): GIST indexes da coluna location (idx_user/booking/quoterequest_location_gist — a query ST_DWithin(u.location) usa a COLUNA, não a expressão ST_MakePoint), search_vector de User (coluna + GIN + trigger + backfill), GIN/trigger de Service search_vector, mv_provider_stats (materialized view + refresh triggers), e os ~25 índices compostos custom `idx_*` (20260722120000/24130000/24160000).
+- APLICADO via `prisma db execute --file <migration.sql>` (ordem importa): XX_add_postgis → 20260722120000_add_performance_indexes → 20260724120000_mv_provider_stats → 20260724130000_add_composite_indexes → 20260724160000_add_missing_composite_indexes → 20260726120000_add_user_search_vector. Todas exit 0 (idempotentes — IF NOT EXISTS/CREATE OR REPLACE/DROP IF EXISTS).
+- FIX DE ORDEM EM XX_ADD_POSTGIS (revisor): `migrate deploy` aplica as migrations em ordem LEXICOGRÁFICA — `20260722120000_add_performance_indexes` (começa com "2") roda ANTES de `XX_add_postgis` ("X"). A 22120000 cria `idx_user_location_gist` como índice de EXPRESSÃO geométrica (ST_MakePoint(lng,lat)) com o MESMO nome; o `CREATE INDEX IF NOT EXISTS` da XX seria então PULADO (nome já existe) e a query `ST_DWithin(u.location, ...)` (opclass geography) ficaria SEM índice em produção. Fix aplicado no arquivo: XX_add_postgis agora faz `DROP INDEX IF EXISTS` antes do `CREATE INDEX IF NOT EXISTS` nos 3 GIST indexes (user/booking/quoterequest) — a definição na COLUNA location é garantida independente da ordem de aplicação. Grep confirma que nenhuma query da app usa a expressão crua ST_MakePoint(lng,lat) (todas usam `location` / `::geography`), então dropar o índice de expressão é seguro. Re-aplicado no dev e verificado: `pg_indexes` mostra os 3 como `USING gist (location)`.
+- VERIFICAÇÃO PÓS-ESTADO: User.search_vector preenchido 9/9 (backfill ok); 5 índices GIST/GIN (idx_user/booking/quoterequest_location_gist, idx_service_search_vector, idx_user_search_vector); mv_provider_stats com 6 rows; triggers trg_user/service_search_vector + trg_refresh_mv_on_review/booking/favorite; 30 índices custom `idx_*` presentes.
+- VALIDAÇÃO FUNCIONAL: busca full-text com o padrão EXATO da app (`encanador:*` → to_tsquery 'portuguese') retorna "Carlos Encanador"; GIST index confirmado via EXPLAIN (Bitmap Index Scan em idx_user_location_gist quando enable_seqscan=off — o Seq Scan padrão é escolha de custo com 9 rows, correto); MV retorna avg_rating/review_count/completed_booking_count/favorite_count coerentes.
+- NOTA (quirk do PG): busca por prefixo curto (`encanad:*`) retorna vazio — o config 'portuguese' aplica stemming no prefixo; a app manda palavras completas + `:*`, que funciona. Não é bug da migration.
+- DOCUMENTAÇÃO DE DRIFT (estado completo do ambiente):
+  - O banco dev é criado por `db push` (sem tabela `_prisma_migrations`) — migrations SQL custom precisam ser aplicadas manualmente; produção usa `migrate deploy` (ver README/deploy). DISTINÇÃO IMPORTANTE: `migrate deploy` aplica DIRETÓRIOS versionados (ex.: `XX_add_postgis` É diretório → chega à produção automaticamente); arquivos SOLTOS na raiz de prisma/migrations/ (ex.: `003_database_optimizations.sql`) NÃO são executados — precisam de caminho explícito em produção.
+  - ACHADO 1 (mv_provider_stats): materialized view declarada no schema.prisma (`MvProviderStats`, type-safe) mas SEM uso ativo nas rotas — a vitrine usa as colunas denormalizadas `u.avgRating/reviewCount/favoriteCount` (fonte primária, ver 20260726130000). Os triggers de refresh (trg_refresh_mv_on_review/booking/favorite) rodam `REFRESH MATERIALIZED VIEW CONCURRENTLY` em CADA statement de Review/Booking/Favorite — write amplification real duplicando o sync denormalizado. Decisão documentada: manter (pré-computação disponível para queries futuras), mas revisitar antes de produção — se nenhuma query futura precisar de stats pré-computados, dropar SÓ os refresh triggers (não a MV) elimina a amplificação preservando o modelo declarado type-safe.
+  - ACHADO 2 (003_database_optimizations.sql root-level): arquivo SOLTO na raiz de prisma/migrations/ (não é diretório versionado) — `migrate deploy` NÃO executa arquivos root-level, só diretórios (contraste com XX_add_postgis, que É diretório e chega à produção). Seus efeitos (updatedAt, Category.search_vector, FKs RESTRICT, índices compostos) entraram no dev via db push/schema ou aplicação manual — produção PRECISA de caminho explícito para o 003 (ou consolidar no schema).
+  - ACHADO 3 (Notification_userId_idx): o 003 manda dropar (redundante com o composto userId+createdAt) mas o schema.prisma declara `@@index([userId])` — o db push recria. Redundância persistente no dev; alinhar schema se quiser eliminar.
+  - ACHADO 4 (tabelas de fila duplicadas): `search_reindex_queue` (minúsculo — gravado pelos triggers e pelos helpers sync*Search, drenado pelo consumer src/queue/search-index-consumer.ts) E `SearchReindexQueue` (PascalCase, criada pela 20260728150000 — SEM uso em código). A pipeline funciona na minúscula; a PascalCase é peso morto — dropar na próxima janela de manutenção.
+  - ACHADO 5 (User.search_vector fora do schema): a coluna/trigger/GIN de search_vector de User existe só via migration SQL (20260726120000) — o schema.prisma NÃO declara (Service/Category têm `search_vector Unsupported("tsvector")?`; User não). Re-seeds/`db push` em outro ambiente perdem a coluna — adicionar `search_vector Unsupported("tsvector")?` ao model User para o db push recriar.
+  - ACHADO 6 (colisão de nome de índice XX × 22120000 em produção): o dev só ficou correto porque a XX foi aplicada MANUALMENTE antes da 22120000. Em produção `migrate deploy` roda 22120000 primeiro (lexicográfico) e o `IF NOT EXISTS` da XX pularia o índice na coluna — `ST_DWithin(u.location)` sem índice espacial em prod. CORRIGIDO no arquivo XX_add_postgis (DROP antes de CREATE, ver bullet acima); a correção é idempotente e já revalidada no dev. CAVEAT para ambientes que JÁ aplicaram a XX com o conteúdo antigo: `migrate deploy` não re-executa migrations presentes no `_prisma_migrations` — o arquivo editado fica inerte nesses ambientes e o índice de expressão sobrevive. Remediação: DROP INDEX + CREATE INDEX manual na coluna (ou migration de follow-up).
+
+Resultado da varredura:
+
+- 6 migrations custom aplicadas no banco dev (5433/severinno_test), exit 0 todas; pós-estado validado (colunas, GIN/GIST, MV, triggers, índices) e funcional (busca + geo + vitrine).
+
+Stage Summary:
+
+- **Drift**: banco dev criado por db push sem `_prisma_migrations` — migrations SQL custom ficam fora do schema push.
+- **Aplicação**: 6 arquivos via prisma db execute; fix de ordem de índice embutido na XX (DROP antes de CREATE — não depende mais da ordem manual).
+- **Validação**: search_vector backfill 9/9, busca da app ok, GIST index ok (Bitmap Scan), MV com 6 providers.
+- **Docs**: worklog Task ID DEV-DB-DRIFT-MIGRATIONS.

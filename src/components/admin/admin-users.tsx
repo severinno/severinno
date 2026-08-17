@@ -109,7 +109,7 @@ import {
   FilterBar,
   type GeoFilterState,
   initials,
-  KpiCard,
+  OnlineUsersKpiCard,
   PageSectionHeader,
   Pagination,
   ResultCount,
@@ -473,20 +473,9 @@ export function AdminUsers() {
 
       {/* Usuários online — contador de sessões realtime ativas
           (GET /api/admin/realtime/sessions). Atualiza sozinho a cada 30s;
-          o refresh manual fica na coluna "Online" da tabela. */}
-      <div className="max-w-xs">
-        <KpiCard
-          icon={Wifi}
-          label="Usuários online"
-          value={String(sessionsData?.onlineUsers ?? 0)}
-          subtitle={(() => {
-            if (sessionsData?.ok === false) return "Realtime indisponível"
-            const conflicts = [...sessionsByUser.values()].filter((s) => s.length > 1).length
-            const base = `${sessionsData?.totalSockets ?? 0} sockets ativos`
-            return conflicts > 0 ? `${base} · ${conflicts} conflito(s)` : base
-          })()}
-        />
-      </div>
+          o refresh manual fica na coluna "Online" da tabela. O tooltip do
+          card mostra o breakdown por perfil (clientes/prestadores/admins). */}
+      <OnlineUsersKpiCard sessionsData={sessionsData} sessionsByUser={sessionsByUser} />
 
       {/* Role tabs with counts */}
       <Tabs

@@ -72,6 +72,26 @@ bun run check:no-npx-playwright
 # (fecha a classe de hangs quando o serviço aceita TCP mas nunca responde)
 bun run check:fetch-timeout
 
+# Timeout envs docs — impede env de timeout em src/ sem doc consistente
+# (README tabela Fetch timeouts + .env.example + composes; default divergente
+# da doc = operação tunando valor errado — o guard deriva do código)
+bun run check:timeout-envs
+
+# Worklog integrity — cada Task ID do worklog.md com o formato mínimo
+# (Task ID/Agent/Task/Work Log) e IDs únicos; entradas sem contexto de
+# auditoria ou IDs duplicados falham o commit
+bun run check:worklog
+
+# Worklog TOC — todo Task ID/Stage do worklog.md com linha no índice
+# (âncora + resumo) e todo link do índice resolvendo para a entrada real;
+# entrada nova sem linha no TOC (ou link stale) falha o commit
+bun run check:worklog-toc
+
+# Cache patterns — CACHE_PATTERNS do seed sincronizado com os prefixes reais
+# de withCache/withCachedGeo/cacheInvalidate em src/ (prefixo novo esquecido
+# do re-seed ou padrão órfão falham o commit)
+bun run check:cache-patterns
+
 # Type check — rejeita commit se houver erros de tipo no projeto
 bun run typecheck
 
