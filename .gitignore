@@ -72,6 +72,14 @@ docs/benchmarks/metrics/
 # Runtime data directory (cache, temp files, generated assets)
 data/
 
+# SQLite leftovers from the MVP era — database is PostgreSQL + PostGIS now
+db/
+prisma/db/
+
+# Scratch artifacts accidentally committed by agents (deleted 08/2026)
+upload/
+download/
+
 # Freebuff Desktop — local app state, not project source
 .freebuff/
 
@@ -88,7 +96,6 @@ lhci-reports/
 
 # Runtime artifacts — process IDs and error logs regenerated on each run
 *.pid
-.zscripts/dev.pid
 mini-services/realtime/service.pid
 mini-services/realtime/realtime.err
 /dev.err
