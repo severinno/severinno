@@ -1,7 +1,24 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import { test, expect, type Page } from "@playwright/test"
-import { waitForVitrine, registerUser, openBookingModal } from "./helpers"
+import {
+  waitForVitrine,
+  registerUser,
+  openBookingModal,
+  goToLanding,
+  clickProviderAgendar,
+} from "./helpers"
 import { setupApiMocks } from "./mocks"
+
+// The PWA service worker (public/sw.js) intercepts /api/* GET requests and
+// fetches them from inside the worker — requests initiated by the SW bypass
+// page.route() and hit the real backend, so the GET mocks in setupApiMocks
+// (providers, services, categories, geo, bookings, quotes) never take effect.
+test.use({ serviceWorkers: "block" })
+
+// The PWA service worker (public/sw.js) intercepts /api/* GET requests and
+// fetches them from inside the worker — requests initiated by the SW bypass
+// page.route() and hit the real backend, so the GET mocks in setupApiMocks
+// (providers, services, categories, geo, bookings, quotes) never take effect.
 
 // ---------------------------------------------------------------------------
 // Helpers específicas deste spec
@@ -17,6 +34,40 @@ async function searchProviders(page: Page, query: string) {
     await searchInput.press("Enter")
     await page.waitForTimeout(1500)
   }
+}
+
+/**
+ * Seleciona o primeiro dia disponível + horário no calendário do booking modal.
+ * O calendário usa <td class="rdp-day"><button/></td> — o seletor antigo
+ * button[role="gridcell"] nunca casava, então os steps ficavam sem data e o
+ * Continuar permanecia disabled. Usa waitFor (auto-retry) em vez de isVisible()
+ * one-shot: o provider/availability pode ainda estar carregando quando o modal
+ * abre, e os slots só aparecem depois.
+ */
+async function selectFirstDateTime(page: Page): Promise<boolean> {
+  const dayButton = page.locator('[class*="rdp-day"] button:not([disabled])').first()
+  try {
+    await dayButton.waitFor({ state: "visible", timeout: 10_000 })
+  } catch {
+    return false
+  }
+  await dayButton.click()
+
+  // Slots renderizam como "08h00" (formatHHmm) — não "08:00". Usa
+  // getByRole().filter({ hasText }) — :has-text(/regex/) dentro de um
+  // locator CSS é inválido (os {} do quantificador quebram o parser).
+  const timeSlot = page
+    .getByRole("button", { name: /\d{2}h\d{2}/ })
+    .filter({ visible: true })
+    .first()
+  try {
+    await timeSlot.waitFor({ state: "visible", timeout: 10_000 })
+  } catch {
+    return false
+  }
+  await timeSlot.click()
+  await page.waitForTimeout(300)
+  return true
 }
 
 /**
@@ -135,7 +186,9 @@ test.describe("Fluxo Completo de Agendamento — Visitante (não logado)", () =>
 
       if (profileOpened) {
         // Verifica que há abas/tabs no perfil
-        const tabs = page.locator("button:has-text(/Serviços|Sobre|Avaliações|Expediente/i)")
+        const tabs = page.getByRole("button", {
+          name: /Serviços|Sobre|Avaliações|Expediente/i,
+        })
         const tabCount = await tabs.count()
         expect(tabCount).toBeGreaterThanOrEqual(1)
       }
@@ -143,19 +196,14 @@ test.describe("Fluxo Completo de Agendamento — Visitante (não logado)", () =>
   })
 
   test("3. abre modal de agendamento a partir do card do prestador", async ({ page }) => {
-    // Clica no botão "Agendar" do primeiro card
-    const agendarBtn = page.locator('button:has-text("Agendar")').first()
-    await expect(agendarBtn).toBeVisible({ timeout: 10000 })
-    await agendarBtn.click()
-    await page.waitForTimeout(1000)
+    // Clica no botão "Agendar" do card de provider (há outros botões com esse
+    // texto na landing — HowItWorks/FAQ — que não abrem o modal de booking)
+    await clickProviderAgendar(page)
 
     // Verifica que o modal de agendamento abriu com o título correto
-    const modalTitles = page
-      .locator(
-        'h2:has-text("Agendar"), [class*="title"]:has-text("Agendar"), text=/Agendar serviço/i',
-      )
-      .first()
-    await expect(modalTitles).toBeVisible({ timeout: 5000 })
+    // (o DialogTitle renderiza um h2 com "Agendar serviço")
+    const modalTitle = page.getByText(/Agendar serviço/i).first()
+    await expect(modalTitle).toBeVisible({ timeout: 5000 })
   })
 
   test("4. booking step 1 — calendário e seleção de horário", async ({ page }) => {
@@ -167,35 +215,24 @@ test.describe("Fluxo Completo de Agendamento — Visitante (não logado)", () =>
       .first()
     await expect(calendar).toBeVisible({ timeout: 5000 })
 
-    // Seleciona uma data disponível
-    const dayButton = page.locator('button[role="gridcell"]:not([disabled])').first()
-    const dayExists = await dayButton.isVisible().catch(() => false)
-    if (dayExists) {
-      await dayButton.click()
-      await page.waitForTimeout(500)
-
-      // Verifica se horários aparecem
-      const timeSlots = page.locator("button:not([disabled]):has-text(/^\\d{2}:\\d{2}$/)")
-      const timeCount = await timeSlots.count()
-      if (timeCount > 0) {
-        // Seleciona o primeiro horário disponível
-        await timeSlots.first().click()
-        await page.waitForTimeout(300)
-      }
-    }
+    // Seleciona uma data disponível + horário
+    await selectFirstDateTime(page)
   })
 
   test("5. booking step 2 — endereço com CEP", async ({ page }) => {
     await openBookingModal(page)
 
-    // Avança para step 2 (pode falhar se step 1 não tiver seleção)
-    await navigateToStep(page, 2)
+    // Step 1 exige data+horário (o botão Continuar fica disabled sem eles) —
+    // seleciona antes de navegar, como o fluxo completo faz
+    await selectFirstDateTime(page)
 
-    // Aguarda um pouco para ver se o formulário de endereço apareceu
+    // Avança para step 2
+    await navigateToStep(page, 2)
     await page.waitForTimeout(500)
 
-    // Tenta preencher o CEP
-    const cepInput = page.getByPlaceholder(/CEP/i).first()
+    // Tenta preencher o CEP (placeholder exato do GeoAddressForm — o campo de
+    // busca "CEP, cidade ou endereço…" também casa com /CEP/i)
+    const cepInput = page.getByPlaceholder("00000-000").first()
     if (await cepInput.isVisible().catch(() => false)) {
       await cepInput.fill("01310100")
       await page.waitForTimeout(1500)
@@ -247,19 +284,8 @@ test.describe("Fluxo Completo de Agendamento — Visitante (não logado)", () =>
     // PASSO 1: Landing page
     await expect(page.locator("body")).toBeVisible()
 
-    // PASSO 2: Abrir modal de agendamento
-    const agendarBtn = page.locator('button:has-text("Agendar")').first()
-    await expect(agendarBtn).toBeVisible({ timeout: 10000 })
-
-    // Se não houver botão "Agendar", tenta via card
-    if (!(await agendarBtn.isVisible().catch(() => false))) {
-      const card = page.locator('[class*="Card"]').first()
-      await card.click()
-      await page.waitForTimeout(500)
-    } else {
-      await agendarBtn.click()
-    }
-    await page.waitForTimeout(1000)
+    // PASSO 2: Abrir modal de agendamento (botão do card de provider)
+    await clickProviderAgendar(page)
 
     // PASSO 3: Verifica que o modal abriu
     const modal = page.locator('h2:has-text("Agendar"), text=/Agendar serviço/i').first()
@@ -267,17 +293,7 @@ test.describe("Fluxo Completo de Agendamento — Visitante (não logado)", () =>
 
     if (modalOpened) {
       // PASSO 4: Step 1 — seleciona data e horário
-      const dayButton = page.locator('button[role="gridcell"]:not([disabled])').first()
-      if (await dayButton.isVisible().catch(() => false)) {
-        await dayButton.click()
-        await page.waitForTimeout(300)
-
-        const timeSlot = page.locator("button:not([disabled]):has-text(/^\\d{2}:\\d{2}$/)").first()
-        if (await timeSlot.isVisible().catch(() => false)) {
-          await timeSlot.click()
-          await page.waitForTimeout(300)
-        }
-      }
+      await selectFirstDateTime(page)
 
       // PASSO 5: Continuar para Step 2
       await navigateToStep(page, 2)
@@ -311,8 +327,11 @@ test.describe("Fluxo Completo de Agendamento — Cliente Autenticado", () => {
   let _userEmail = ""
   let _userPassword = "test123456"
 
+  // authenticated: false — o fluxo REGISTRA o usuário via UI. O mock de
+  // auth devolve o user, o store persiste em localStorage e o gating dos
+  // endpoints (bookings/quotes) passa a enxergar a sessão real.
   test.beforeEach(async ({ page }) => {
-    await setupApiMocks(page, { authenticated: true })
+    await setupApiMocks(page, { authenticated: false })
     await page.goto("/")
     await waitForVitrine(page)
   })
@@ -332,9 +351,9 @@ test.describe("Fluxo Completo de Agendamento — Cliente Autenticado", () => {
       .catch(() => true)
     expect(loggedIn).toBe(true)
 
-    // PASSO 3: Navegar de volta pra landing se necessário
-    await page.goto("/")
-    await waitForVitrine(page)
+    // PASSO 3: Navegar de volta pra landing (limpa a view persistida do
+    // dashboard — o registro navega para o painel e a store persiste)
+    await goToLanding(page)
 
     // PASSO 4: Abrir modal de agendamento
     await openBookingModal(page)
@@ -347,18 +366,7 @@ test.describe("Fluxo Completo de Agendamento — Cliente Autenticado", () => {
     expect(authBannerVisible).toBe(false)
 
     // PASSO 6: Step 1 — selecionar data + horário
-    const dayBtn = page.locator('button[role="gridcell"]:not([disabled])').first()
-    if (await dayBtn.isVisible().catch(() => false)) {
-      await dayBtn.click()
-      await page.waitForTimeout(300)
-
-      const timeSlot = page.locator("button:not([disabled]):has-text(/^\\d{2}:\\d{2}$/)").first()
-      const timeVisible = await timeSlot.isVisible().catch(() => false)
-      if (timeVisible) {
-        await timeSlot.click()
-        await page.waitForTimeout(300)
-      }
-    }
+    await selectFirstDateTime(page)
 
     // PASSO 7: Avançar etapas e preencher endereço
     await navigateToStep(page, 2)
@@ -392,26 +400,15 @@ test.describe("Fluxo Completo de Agendamento — Cliente Autenticado", () => {
     _userEmail = creds.email
     await page.waitForTimeout(500)
 
-    // PASSO 2: Voltar pra landing
-    await page.goto("/")
-    await waitForVitrine(page)
+    // PASSO 2: Voltar pra landing (limpa a view persistida do dashboard)
+    await goToLanding(page)
 
     // PASSO 3: Abrir booking
     await openBookingModal(page)
     await page.waitForTimeout(500)
 
     // PASSO 4: Preencher agendamento
-    const dayBtn = page.locator('button[role="gridcell"]:not([disabled])').first()
-    if (await dayBtn.isVisible().catch(() => false)) {
-      await dayBtn.click()
-      await page.waitForTimeout(300)
-
-      const timeSlot = page.locator("button:not([disabled]):has-text(/^\\d{2}:\\d{2}$/)").first()
-      if (await timeSlot.isVisible().catch(() => false)) {
-        await timeSlot.click()
-        await page.waitForTimeout(300)
-      }
-    }
+    await selectFirstDateTime(page)
 
     // PASSO 5: Avançar, preencher endereço, confirmar
     await navigateToStep(page, 2)
@@ -450,8 +447,10 @@ test.describe("Fluxo Completo de Agendamento — Cliente Autenticado", () => {
 })
 
 test.describe("Fluxo de Pagamento PIX", () => {
+  // authenticated: false — o fluxo registra o usuário primeiro (mesmo
+  // padrão do describe anterior: a sessão real passa a valer após register).
   test.beforeEach(async ({ page }) => {
-    await setupApiMocks(page, { authenticated: true })
+    await setupApiMocks(page, { authenticated: false })
     await page.goto("/")
     await waitForVitrine(page)
   })
@@ -461,31 +460,15 @@ test.describe("Fluxo de Pagamento PIX", () => {
     await registerUser(page, { role: "CLIENT" })
     await page.waitForTimeout(500)
 
-    // Voltar pra landing
-    await page.goto("/")
-    await waitForVitrine(page)
+    // Voltar pra landing (limpa a view persistida do dashboard)
+    await goToLanding(page)
 
-    // Abrir booking
-    const agendarBtn = page.locator('button:has-text("Agendar")').first()
-    if (await agendarBtn.isVisible({ timeout: 10000 }).catch(() => false)) {
-      await agendarBtn.click()
-    } else {
-      const card = page.locator('[class*="Card"]').first()
-      await card.click()
-    }
+    // Abrir booking (botão do card de provider)
+    await clickProviderAgendar(page)
     await page.waitForTimeout(1000)
 
     // Step 1: Data + horário
-    const dayBtn = page.locator('button[role="gridcell"]:not([disabled])').first()
-    if (await dayBtn.isVisible().catch(() => false)) {
-      await dayBtn.click()
-      await page.waitForTimeout(300)
-      const timeSlot = page.locator("button:not([disabled]):has-text(/^\\d{2}:\\d{2}$/)").first()
-      if (await timeSlot.isVisible().catch(() => false)) {
-        await timeSlot.click()
-        await page.waitForTimeout(300)
-      }
-    }
+    await selectFirstDateTime(page)
 
     // Step 2: Endereço
     await navigateToStep(page, 2)
@@ -654,15 +637,11 @@ test.describe("Navegação e UX do Booking", () => {
     }
 
     // Reabre o modal
-    const agendarBtn = page.locator('button:has-text("Agendar")').first()
-    if (await agendarBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await agendarBtn.click()
-      await page.waitForTimeout(500)
+    await clickProviderAgendar(page)
 
-      // Verifica que o modal abriu novamente no passo 1 (estado inicial)
-      const calendar = page.locator('[class*="calendar"], [class*="rdp"]').first()
-      await expect(calendar).toBeVisible({ timeout: 5000 })
-    }
+    // Verifica que o modal abriu novamente no passo 1 (estado inicial)
+    const calendar = page.locator('[class*="calendar"], [class*="rdp"]').first()
+    await expect(calendar).toBeVisible({ timeout: 5000 })
   })
 
   test("16. scroll e responsividade do modal de booking", async ({ page }) => {

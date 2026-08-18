@@ -158,8 +158,17 @@ function computeCoverageGrid(providers: CoverageProvider[]): CoverageGridCell[] 
 
   const cells: CoverageGridCell[] = []
 
-  for (let lat = sMinLat; lat <= sMaxLat; lat += GRID_STEP_DEG) {
-    for (let lng = sMinLng; lng <= sMaxLng; lng += GRID_STEP_DEG) {
+  // Iterate with integer steps instead of `lat += GRID_STEP_DEG` to avoid
+  // floating-point drift: e.g. -24.05 + 10 × 0.1 = -23.050000000000004 >
+  // -23.05, which silently dropped the last row/column (100 cells instead
+  // of the intended 11 × 11 for a ±0.5° sample area).
+  const latSteps = Math.round((sMaxLat - sMinLat) / GRID_STEP_DEG)
+  const lngSteps = Math.round((sMaxLng - sMinLng) / GRID_STEP_DEG)
+
+  for (let i = 0; i <= latSteps; i++) {
+    const lat = sMinLat + i * GRID_STEP_DEG
+    for (let j = 0; j <= lngSteps; j++) {
+      const lng = sMinLng + j * GRID_STEP_DEG
       let density = 0
       let nearestKm: number | null = null
 

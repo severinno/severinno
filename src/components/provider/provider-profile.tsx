@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { useForm, type Resolver } from "react-hook-form"
+import { useForm, useWatch, type Resolver } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
 import {
@@ -246,18 +246,26 @@ export function ProviderProfile() {
     },
   })
 
-  // Hoisted watch() results — react-hooks/incompatible-library bans calling
-  // watch() inline in JSX (cannot be memoized safely).
-  const coverUrl = form.watch("coverUrl")
-  const avatarUrl = form.watch("avatarUrl")
-  const lat = form.watch("lat")
-  const lng = form.watch("lng")
+  // Hoisted watch() results — useWatch (not form.watch) is compiler-safe:
+  // watch() returns a function that cannot be memoized (incompatible-library).
+  const coverUrl = useWatch({ control: form.control, name: "coverUrl" })
+  const avatarUrl = useWatch({ control: form.control, name: "avatarUrl" })
+  const lat = useWatch({ control: form.control, name: "lat" })
+  const lng = useWatch({ control: form.control, name: "lng" })
 
-  // Hydrate
-  React.useEffect(() => {
+  // Hydrate toggles when the profile query data lands (adjust during render).
+  const [soundEnabled, setSoundEnabled] = React.useState(true)
+  const [vibrateEnabled, setVibrateEnabled] = React.useState(true)
+  const [prevProfile, setPrevProfile] = React.useState(profile)
+  if (profile !== prevProfile) {
+    setPrevProfile(profile)
     if (profile) {
       setSoundEnabled(profile.soundEnabled ?? true)
       setVibrateEnabled(profile.vibrateEnabled ?? true)
+    }
+  }
+  React.useEffect(() => {
+    if (profile) {
       form.reset({
         name: profile.name ?? "",
         bio: profile.bio ?? "",
@@ -279,8 +287,6 @@ export function ProviderProfile() {
     }
   }, [profile, form])
 
-  const [soundEnabled, setSoundEnabled] = React.useState(true)
-  const [vibrateEnabled, setVibrateEnabled] = React.useState(true)
   const [saving, setSaving] = React.useState(false)
 
   const useGPS = async () => {

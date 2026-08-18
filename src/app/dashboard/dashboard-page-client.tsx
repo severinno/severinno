@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 import { ClientPanel } from "@/components/client/client-panel"
@@ -14,6 +15,7 @@ export function DashboardPageClient() {
   const user = useAuthStore((s) => s.user)
   const fetchMe = useAuthStore((s) => s.fetchMe)
   const navigate = useViewStore((s) => s.navigate)
+  const router = useRouter()
 
   // Initial auth check — important: the persisted status may be stale
   // ("unauthenticated") from a previous visit; only trust it after fetchMe.
@@ -24,7 +26,7 @@ export function DashboardPageClient() {
   useEffect(() => {
     if (!initialized) return
     if (status === "unauthenticated") {
-      window.location.href = "/?login"
+      router.replace("/?login")
       return
     }
     if (user && status === "authenticated") {
@@ -36,7 +38,7 @@ export function DashboardPageClient() {
             : "client.dashboard"
       navigate(view)
     }
-  }, [initialized, status, user, navigate])
+  }, [initialized, status, user, navigate, router])
 
   if (!initialized || status === "loading" || !user) {
     return (

@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Footer from "@/components/shared/footer"
 
 export const metadata: Metadata = {
   title: "Como funciona — Severinno",
@@ -7,31 +8,34 @@ export const metadata: Metadata = {
 
 export default function ComoFunciona() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12">
-      <h1 className="text-3xl font-bold">Como funciona</h1>
-      <div className="mt-8 space-y-8">
-        <Step
-          number={1}
-          title="Busque um profissional"
-          desc="Encontre o profissional ideal para o serviço que você precisa. Filtre por categoria, localização e avaliação."
-        />
-        <Step
-          number={2}
-          title="Solicite um orçamento"
-          desc="Envie os detalhes do serviço e receba orçamentos personalizados dos profissionais."
-        />
-        <Step
-          number={3}
-          title="Agende o serviço"
-          desc="Escolha a melhor data e horário. O pagamento é processado com segurança."
-        />
-        <Step
-          number={4}
-          title="Avalie o trabalho"
-          desc="Após a conclusão, avalie o profissional e ajude outros clientes a escolherem."
-        />
+    <>
+      <div className="mx-auto max-w-3xl px-4 py-12">
+        <h1 className="text-3xl font-bold">Como funciona</h1>
+        <div className="mt-8 space-y-8">
+          <Step
+            number={1}
+            title="Busque um profissional"
+            desc="Encontre o profissional ideal para o serviço que você precisa. Filtre por categoria, localização e avaliação."
+          />
+          <Step
+            number={2}
+            title="Solicite um orçamento"
+            desc="Envie os detalhes do serviço e receba orçamentos personalizados dos profissionais."
+          />
+          <Step
+            number={3}
+            title="Agende o serviço"
+            desc="Escolha a melhor data e horário. O pagamento é processado com segurança."
+          />
+          <Step
+            number={4}
+            title="Avalie o trabalho"
+            desc="Após a conclusão, avalie o profissional e ajude outros clientes a escolherem."
+          />
+        </div>
       </div>
-    </div>
+      <Footer />
+    </>
   )
 }
 

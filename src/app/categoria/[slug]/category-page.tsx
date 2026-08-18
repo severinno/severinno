@@ -7,6 +7,7 @@ import type { ProviderCard as ProviderCardType } from "@/lib/api"
 import ProviderCard from "@/components/vitrine/provider-card"
 import { ProviderCardSkeleton } from "@/components/vitrine/provider-card"
 import { Input } from "@/components/ui/input"
+import Footer from "@/components/shared/footer"
 import { Search } from "lucide-react"
 
 interface Props {
@@ -73,6 +74,8 @@ export function CategoryPage({ category }: Props) {
           <p className="text-muted-foreground text-sm">Tente ajustar sua busca ou filtro.</p>
         </div>
       )}
+
+      <Footer />
     </div>
   )
 }

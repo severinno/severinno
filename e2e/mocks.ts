@@ -96,9 +96,7 @@ function uid(prefix = "mock"): string {
   return `${prefix}-${_idCounter++}`
 }
 
-export function createMockService(
-  overrides?: Partial<MockProviderService>,
-): MockProviderService {
+export function createMockService(overrides?: Partial<MockProviderService>): MockProviderService {
   return {
     id: uid("svc"),
     title: "Instalação Elétrica",
@@ -111,9 +109,7 @@ export function createMockService(
   }
 }
 
-export function createMockProviderCard(
-  overrides?: Partial<MockProviderCard>,
-): MockProviderCard {
+export function createMockProviderCard(overrides?: Partial<MockProviderCard>): MockProviderCard {
   return {
     id: uid("prov"),
     name: "Maria Silva",
@@ -147,11 +143,16 @@ export function createMockProviderDetail(
     cep: "01310-100",
     radiusKm: 30,
     availability: [
+      // Todos os 7 dias — o booking modal só gera horários se o dayOfWeek
+      // do dia selecionado tiver bloco; cobrir só seg-sex fazia os testes
+      // que rodam em fins de semana ficarem sem slots (Continuar disabled).
+      { id: "avail-0", dayOfWeek: 0, startTime: "08:00", endTime: "18:00" },
       { id: "avail-1", dayOfWeek: 1, startTime: "08:00", endTime: "18:00" },
       { id: "avail-2", dayOfWeek: 2, startTime: "08:00", endTime: "18:00" },
       { id: "avail-3", dayOfWeek: 3, startTime: "08:00", endTime: "18:00" },
       { id: "avail-4", dayOfWeek: 4, startTime: "08:00", endTime: "18:00" },
       { id: "avail-5", dayOfWeek: 5, startTime: "08:00", endTime: "18:00" },
+      { id: "avail-6", dayOfWeek: 6, startTime: "08:00", endTime: "18:00" },
     ],
     reviews: [
       {
@@ -173,9 +174,7 @@ export function createMockProviderDetail(
   }
 }
 
-export function createMockProvidersList(
-  count = 3,
-): MockPagedResult<MockProviderCard> {
+export function createMockProvidersList(count = 3): MockPagedResult<MockProviderCard> {
   const names = [
     "Maria Silva",
     "João Pedreiro",
@@ -196,17 +195,13 @@ export function createMockProvidersList(
       id: `prov-${i + 1}`,
       name: names[idx],
       city: "São Paulo",
-      services: [
-        createMockService({ category: cats[idx] }),
-      ],
+      services: [createMockService({ category: cats[idx] })],
     })
   })
   return { items, total: count, page: 1, limit: 20 }
 }
 
-export function createMockCepResult(
-  overrides?: Partial<MockCepResult>,
-): MockCepResult {
+export function createMockCepResult(overrides?: Partial<MockCepResult>): MockCepResult {
   return {
     cep: "01310-100",
     street: "Av. Paulista",
@@ -255,8 +250,7 @@ export function createMockPayResponse(
   overrides?: Record<string, unknown>,
 ): Record<string, unknown> {
   return {
-    pixQrCode:
-      "00020101021226930014br.gov.bcb.pix2571pix.example.com/qr/v2/teste123456789",
+    pixQrCode: "00020101021226930014br.gov.bcb.pix2571pix.example.com/qr/v2/teste123456789",
     pixKey: "teste-pix-key-12345",
     expiresAt: new Date(Date.now() + 3600_000).toISOString(),
     amount: 120,
@@ -264,9 +258,7 @@ export function createMockPayResponse(
   }
 }
 
-export function createMockUser(
-  role: "CLIENT" | "PROVIDER" = "CLIENT",
-): Record<string, unknown> {
+export function createMockUser(role: "CLIENT" | "PROVIDER" = "CLIENT"): Record<string, unknown> {
   return {
     id: uid("user"),
     name: role === "PROVIDER" ? "Maria Silva" : "Test User",
@@ -276,9 +268,7 @@ export function createMockUser(
   }
 }
 
-export function createMockCategory(
-  overrides?: Partial<MockCategory>,
-): MockCategory {
+export function createMockCategory(overrides?: Partial<MockCategory>): MockCategory {
   return {
     id: uid("cat"),
     name: "Elétrica",
@@ -293,12 +283,10 @@ export function createMockCategory(
 // Factory: quote requests (para fluxo de resposta de orçamento)
 // =========================================================================
 
-export function createMockQuoteRequest(
-  overrides?: {
-    status?: "PENDING" | "RESPONDED" | "APPROVED"
-    itemStatus?: "PENDING" | "QUOTED"
-  },
-): Record<string, unknown> {
+export function createMockQuoteRequest(overrides?: {
+  status?: "PENDING" | "RESPONDED" | "APPROVED"
+  itemStatus?: "PENDING" | "QUOTED"
+}): Record<string, unknown> {
   const status = overrides?.status ?? "PENDING"
   const itemStatus = overrides?.itemStatus ?? "PENDING"
 
@@ -370,6 +358,25 @@ export type MockOptions = {
 }
 
 /**
+ * Lê a sessão real do app (Zustand persist em localStorage) para saber se o
+ * usuário está autenticado. Usado no gating de endpoints autenticados — assim
+ * um fluxo que REGISTRA o usuário (mock de register devolve o user, o store
+ * persiste em "severinno:auth") passa a estar autenticado para as chamadas
+ * seguintes, em vez de depender só do flag estático `authenticated`.
+ */
+async function isAuthenticated(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    try {
+      const raw = localStorage.getItem("severinno:auth")
+      const parsed = raw ? JSON.parse(raw) : null
+      return !!parsed?.state?.user
+    } catch {
+      return false
+    }
+  })
+}
+
+/**
  * Configura interceptors de rota para TODAS as APIs que o booking flow
  * utiliza. As requisições são interceptadas no navegador e respondidas
  * com dados mock — sem dependência de banco de dados ou serviços externos.
@@ -382,10 +389,7 @@ export type MockOptions = {
  * Para cenários de erro, importe as factories e use `page.route()` manualmente
  * com respostas customizadas (ex: 500, timeout, etc).
  */
-export async function setupApiMocks(
-  page: Page,
-  options: MockOptions = {},
-) {
+export async function setupApiMocks(page: Page, options: MockOptions = {}) {
   const {
     authenticated = false,
     userRole = "CLIENT",
@@ -395,18 +399,10 @@ export async function setupApiMocks(
   } = options
 
   // ── GET /api/providers (listagem pública) ──────────────────────────
-  // NOTA: a ordem das rotas importa. Playwright usa a primeira que der match,
-  // então registramos o pattern mais específico (/api/providers/:id) primeiro.
-  await page.route(/\/api\/providers\/(?!favorite)[a-f0-9-]+(\?|$)/, async (route) => {
-    return route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(
-        providerDetail ?? createMockProviderDetail(),
-      ),
-    })
-  })
-
+  // NOTA: Playwright dá precedência ao ÚLTIMO route registrado (LIFO), então o
+  // handler genérico **/api/providers** deve vir ANTES do pattern de detail —
+  // se registrarmos o detail primeiro, o genérico engole as requisições
+  // /api/providers/:id e o modal recebe a lista em vez do detail.
   await page.route("**/api/providers**", async (route, request) => {
     const url = new URL(request.url())
     const path = url.pathname
@@ -420,8 +416,8 @@ export async function setupApiMocks(
       })
     }
 
-    // GET /api/providers (lista)
-    if (request.method() === "GET") {
+    // GET /api/providers (lista) — sem segmento de id no path
+    if (request.method() === "GET" && !/\/api\/providers\/[^/?]+/.test(path)) {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -430,6 +426,16 @@ export async function setupApiMocks(
     }
 
     return route.fallback()
+  })
+
+  // GET /api/providers/:id (detalhe) — registrado por ÚLTIMO para ter
+  // precedência sobre o genérico. O id pode ser alfanumérico (prov-1, uuid).
+  await page.route(/\/api\/providers\/(?!favorite)[A-Za-z0-9-]+(\?|$)/, async (route) => {
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(providerDetail ?? createMockProviderDetail()),
+    })
   })
 
   // ── GET /api/services?providerId=... ───────────────────────────────
@@ -588,9 +594,21 @@ export async function setupApiMocks(
           });
         }
 
-        // GET /api/auth/me
+        // GET /api/auth/me — devolve o usuário se houver sessão real no
+        // localStorage (criada por register/login no fluxo da UI) ou se o
+        // flag estatico authenticated=true. Isso evita que um registro
+        // recém-feito seja deslogado pelo me() subsequente.
         if (path.endsWith('/api/auth/me') && method === 'GET') {
-          const user = ${authenticated ? JSON.stringify(userMock) : 'null'};
+          let user = null;
+          if (${authenticated ? "true" : "false"}) {
+            user = ${JSON.stringify(userMock)};
+          } else {
+            try {
+              const raw = localStorage.getItem('severinno:auth');
+              const parsed = raw ? JSON.parse(raw) : null;
+              user = parsed?.state?.user ?? null;
+            } catch {}
+          }
           return new Response(JSON.stringify({ user }), {
             status: 200,
             headers: { 'Content-Type': 'application/json' }
@@ -615,6 +633,9 @@ export async function setupApiMocks(
   await page.route("**/api/bookings**", async (route, request) => {
     const url = new URL(request.url())
     const path = url.pathname
+    // Estaticamente autenticado OU sessão real criada por register/login no
+    // fluxo da própria UI (mock de auth devolve o user e o store persiste).
+    const authed = authenticated || (await isAuthenticated(page))
 
     // POST /api/bookings/:id/pay
     if (request.method() === "POST" && /\/pay$/.test(path)) {
@@ -627,7 +648,7 @@ export async function setupApiMocks(
 
     // POST /api/bookings (criar)
     if (request.method() === "POST") {
-      if (!authenticated) {
+      if (!authed) {
         return route.fulfill({
           status: 401,
           contentType: "application/json",
@@ -643,7 +664,7 @@ export async function setupApiMocks(
 
     // GET /api/bookings (listar)
     if (request.method() === "GET") {
-      if (!authenticated) {
+      if (!authed) {
         return route.fulfill({
           status: 401,
           contentType: "application/json",
@@ -669,10 +690,11 @@ export async function setupApiMocks(
   await page.route("**/api/quotes**", async (route, request) => {
     const url = new URL(request.url())
     const path = url.pathname
+    const authed = authenticated || (await isAuthenticated(page))
 
     // POST /api/quotes (criar)
     if (request.method() === "POST") {
-      if (!authenticated) {
+      if (!authed) {
         return route.fulfill({
           status: 401,
           contentType: "application/json",
@@ -707,7 +729,7 @@ export async function setupApiMocks(
 
     // GET /api/quotes (listar)
     if (request.method() === "GET") {
-      if (!authenticated) {
+      if (!authed) {
         return route.fulfill({
           status: 401,
           contentType: "application/json",
@@ -818,6 +840,4 @@ export async function setupApiMocks(
     }
     return route.fallback()
   })
-
-
 }
