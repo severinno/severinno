@@ -117,8 +117,8 @@ const mockUser = {
 const clientPayload = {
   name: "Maria Souza",
   email: "maria@example.com",
-  password: "123456",
-  confirmPassword: "123456",
+  password: "12345678",
+  confirmPassword: "12345678",
   role: "CLIENT",
 }
 
@@ -138,7 +138,7 @@ describe("POST /api/auth/login", () => {
 
     const req = createMockRequest({
       method: "POST",
-      body: { email: "joao@example.com", password: "123456" },
+      body: { email: "joao@example.com", password: "12345678" },
     })
     const res = await login(req)
     const parsed = await parseResponse(res)
@@ -156,7 +156,7 @@ describe("POST /api/auth/login", () => {
 
     const req = createMockRequest({
       method: "POST",
-      body: { email: "joao@example.com", password: "wrong1" },
+      body: { email: "joao@example.com", password: "wrongpwd" },
     })
     const res = await login(req)
     expect(res.status).toBe(401)
@@ -167,7 +167,7 @@ describe("POST /api/auth/login", () => {
 
     const req = createMockRequest({
       method: "POST",
-      body: { email: "noone@example.com", password: "123456" },
+      body: { email: "noone@example.com", password: "12345678" },
     })
     const res = await login(req)
     expect(res.status).toBe(401)
@@ -178,7 +178,7 @@ describe("POST /api/auth/login", () => {
 
     const req = createMockRequest({
       method: "POST",
-      body: { email: "inactive@example.com", password: "123456" },
+      body: { email: "inactive@example.com", password: "12345678" },
     })
     const res = await login(req)
     expect(res.status).toBe(401)
@@ -187,7 +187,7 @@ describe("POST /api/auth/login", () => {
   it("returns 400 for invalid email format", async () => {
     const req = createMockRequest({
       method: "POST",
-      body: { email: "not-an-email", password: "123456" },
+      body: { email: "not-an-email", password: "12345678" },
     })
     const res = await login(req)
     expect(res.status).toBe(400)
@@ -253,7 +253,7 @@ describe("POST /api/auth/login — contas demo (prod vs dev)", () => {
     const res = await login(
       createMockRequest({
         method: "POST",
-        body: { email: "joao@example.com", password: "123456" },
+        body: { email: "joao@example.com", password: "12345678" },
       }),
     )
     expect(res.status).toBe(200)
@@ -286,7 +286,7 @@ describe("POST /api/auth/register", () => {
     expect(parsed.status).toBe(201)
     expect((parsed.body as any).user.email).toBe("maria@example.com")
     expect((parsed.body as any).user.role).toBe("CLIENT")
-    expect(hashPassword).toHaveBeenCalledWith("123456")
+    expect(hashPassword).toHaveBeenCalledWith("12345678")
     expect(createSession).toHaveBeenCalled()
   })
 
@@ -307,8 +307,8 @@ describe("POST /api/auth/register", () => {
       body: {
         name: "Carlos Prestador",
         email: "carlos@example.com",
-        password: "123456",
-        confirmPassword: "123456",
+        password: "12345678",
+        confirmPassword: "12345678",
         role: "PROVIDER",
         cpfCnpj: "123.456.789-00",
         whatsapp: "11999999999",
