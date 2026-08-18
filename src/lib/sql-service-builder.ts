@@ -93,13 +93,24 @@ export function buildServiceWhereClause(opts: BuildServiceWhereClauseOptions): [
     params.push(categoryId)
   }
 
-  // Full-text search on title and description
+  // Full-text search on title and description using tsvector + GIN index
+  // Uses plainto_tsquery for natural language search (handles accents, stops)
   if (q) {
     const sanitized = q.replace(/[^\w\sÀ-ÿ]/g, " ").trim()
     if (sanitized) {
-      const likePattern = `%${sanitized}%`
-      conditions.push(`(s.title ILIKE $${++idx} OR s.description ILIKE $${idx})`)
-      params.push(likePattern)
+      // Use plainto_tsquery with portuguese configuration for accent-insensitive search
+      // Falls back to ILIKE for very short queries (< 3 chars) where tsquery is less effective
+      if (sanitized.length >= 3) {
+        conditions.push(`(
+          to_tsvector('portuguese', coalesce(s.title, '') || ' ' || coalesce(s.description, '')) @@ plainto_tsquery('portuguese', $${++idx})
+          OR s.title ILIKE $${++idx} OR s.description ILIKE $${idx}
+        )`)
+        params.push(sanitized, `%${sanitized}%`)
+      } else {
+        const likePattern = `%${sanitized}%`
+        conditions.push(`(s.title ILIKE $${++idx} OR s.description ILIKE $${idx})`)
+        params.push(likePattern)
+      }
     }
   }
 

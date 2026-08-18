@@ -42,6 +42,11 @@ concurrency:
   group: benchmark-weekly-${{ github.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: write
+  issues: write
+  actions: read
+
 env:
   NODE_ENV: development
   # Staging database — must be configured in GitHub Secrets
@@ -210,6 +215,98 @@ jobs:
         run: |
           echo "No geo-real-baseline.json found — this is the first run." | tee /tmp/benchmark-diff.txt
           echo "Results will be saved as the new baseline."
+
+      # ── Regression Alerting ───────────────────────────────────────────
+      # Create GitHub issue + optional webhook when regression detected
+      - name: Create regression issue
+        if: steps.compare.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const diffText = fs.existsSync('/tmp/benchmark-diff.txt')
+              ? fs.readFileSync('/tmp/benchmark-diff.txt', 'utf-8')
+              : 'No diff available';
+
+            const threshold = '${{ steps.changes.outputs.threshold }}';
+            const repo = context.repo;
+            const runUrl = `${context.serverUrl}/${repo.owner}/${repo.repo}/actions/runs/${context.runId}`;
+
+            // Extract regression details from diff output
+            const regressions = [];
+            const lines = diffText.split('\n');
+            for (const line of lines) {
+              if (line.includes('→') && line.includes('%')) {
+                const match = line.match(/·\s+(.+?)\s+—\s+mean\s+(.+?)\s+→\s+(.+?)\s+µs\s+\((.+?)%\)/);
+                if (match) {
+                  regressions.push({
+                    name: match[1].trim(),
+                    baseline: match[2],
+                    current: match[3],
+                    pct: match[4]
+                  });
+                }
+              }
+            }
+
+            const regressionList = regressions.length > 0
+              ? regressions.map(r => `- **${r.name}**: ${r.baseline} → ${r.current} µs (+${r.pct}%)`).join('\n')
+              : '- See comparison output below';
+
+            const body = `## ⚠️ Benchmark Regression Detected\n\nA performance regression was detected in the weekly PostGIS benchmark.\n\n### Regressions (> ${threshold}% threshold)\n\n${regressionList}\n\n### Details\n\n<details>\n<summary>Full comparison output</summary>\n\n\`\`\`\n${diffText}\n\`\`\`\n\n</details>\n\n### Action Required\n\n1. Review the regression details above\n2. Check if the regression is expected (e.g., new features, data changes)\n3. If unexpected, investigate the root cause\n4. Close this issue once resolved or marked as expected\n\n---\n\n**Workflow**: [Benchmark Weekly](${runUrl})\n**Threshold**: ${threshold}%\n**Run**: ${context.runId}`;
+
+            // Check for existing open issues with same title
+            const { data: existingIssues } = await github.rest.issues.listForRepo({
+              owner: repo.owner,
+              repo: repo.repo,
+              state: 'open',
+              labels: 'benchmark-regression',
+              per_page: 10
+            });
+
+            const title = '⚠️ Benchmark Regression — PostGIS Weekly';
+            const existing = existingIssues.find(i => i.title === title);
+
+            if (existing) {
+              // Update existing issue
+              await github.rest.issues.createComment({
+                owner: repo.owner,
+                repo: repo.repo,
+                issue_number: existing.number,
+                body: `### New regression detected (${new Date().toISOString()})\n\n${body}`
+              });
+              console.log(`  📝 Updated existing issue #${existing.number}`);
+            } else {
+              // Create new issue
+              const { data: issue } = await github.rest.issues.create({
+                owner: repo.owner,
+                repo: repo.repo,
+                title: title,
+                body: body,
+                labels: ['benchmark-regression', 'performance', 'automated']
+              });
+              console.log(`  🐛 Created issue #${issue.number}`);
+            }
+
+      # ── Send webhook notification (optional) ──────────────────────────
+      - name: Send regression webhook
+        if: steps.compare.outcome == 'failure' && vars.BENCHMARK_WEBHOOK_URL != ''
+        run: |
+          DIFF_TEXT=$(cat /tmp/benchmark-diff.txt 2>/dev/null || echo 'No diff available')
+          THRESHOLD=${{ steps.changes.outputs.threshold }}
+
+          # Truncate diff for webhook payload
+          DIFF_TRUNCATED=$(echo "$DIFF_TEXT" | head -c 2000)
+
+          curl -s -X POST "${{ vars.BENCHMARK_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"text\": \"⚠️ Benchmark Regression Detected\",
+              \"repo\": \"${{ github.repository }}\",
+              \"threshold\": \"${THRESHOLD}%\",
+              \"run_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\",
+              \"diff\": $(echo "$DIFF_TRUNCATED" | jq -Rs .)
+            }" || echo "  ⚠ Webhook failed (non-critical)"
 
       # ── Copy latest to baseline ────────────────────────────────────────
       - name: Update baseline

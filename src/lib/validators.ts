@@ -156,7 +156,7 @@ export const bookingSchema = z.object({
   cep: z.string().min(8),
   lat: z.coerce.number(),
   lng: z.coerce.number(),
-  amount: z.coerce.number().min(0),
+  amount: z.coerce.number().min(0).max(1_000_000),
   paymentMethod: z.enum(["CARD", "PIX"]).default("PIX"),
   notes: z.string().max(1000).optional().or(z.literal("")),
 })

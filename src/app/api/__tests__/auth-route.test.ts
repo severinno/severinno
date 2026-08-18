@@ -7,6 +7,16 @@ vi.mock("@/lib/with-rate-limit", () => ({
   withRateLimit: (handler: (...args: unknown[]) => unknown) => handler,
 }))
 
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn().mockResolvedValue(undefined),
+  RATE_LIMITS: {
+    login: { prefix: "login", max: 5, windowMs: 60000 },
+    register: { prefix: "register", max: 5, windowMs: 60000 },
+    forgotPassword: { prefix: "forgot-pw", max: 3, windowMs: 600000 },
+    authMe: { prefix: "auth-me", max: 30, windowMs: 60000 },
+  },
+}))
+
 vi.mock("@/lib/logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -417,7 +427,7 @@ describe("GET /api/auth/me", () => {
       avatarUrl: null,
     } as any)
 
-    const res = await me()
+    const res = await me(createMockRequest())
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -426,7 +436,7 @@ describe("GET /api/auth/me", () => {
   })
 
   it("returns null user when not authenticated", async () => {
-    const res = await me()
+    const res = await me(createMockRequest())
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
@@ -437,7 +447,7 @@ describe("GET /api/auth/me", () => {
     _mockSession = { userId: "nonexistent", role: "CLIENT" } as any
     ;(vi.mocked(db.user.findUnique) as any).mockResolvedValue(null)
 
-    const res = await me()
+    const res = await me(createMockRequest())
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
