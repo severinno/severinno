@@ -26,6 +26,21 @@ vi.mock("@/lib/postgis", () => ({
   isPostGISAvailable: vi.fn().mockResolvedValue(false),
 }))
 
+vi.mock("@/lib/provider-stats", () => ({
+  getProviderStatsMap: vi.fn().mockResolvedValue(
+    new Map([
+      ["prov-1", {
+        providerId: "prov-1",
+        avgRating: 4.5,
+        reviewCount: 2,
+        completedBookingCount: 3,
+        favoriteCount: 10,
+      }],
+    ]),
+  ),
+  refreshProviderStats: vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock("@/lib/db", () => ({
   db: {
     user: {

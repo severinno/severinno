@@ -16,6 +16,7 @@
  */
 
 import { computeDistanceMap } from "@/lib/geo-server"
+import { getProviderStatsMap } from "@/lib/provider-stats"
 
 // ---------------------------------------------------------------------------
 // Internal row types (derived from what the mapper actually consumes)
@@ -152,19 +153,15 @@ export async function fetchProvidersData(
   const { hasGeo, latNum, lngNum, centerGeo } = geo
   const { serviceFindMany, bookingGroupBy, userFindMany, queryRawUnsafe } = deps
 
-  const [services, completedBookingsData] = await Promise.all([
+  const [services, providerStatsMap] = await Promise.all([
     // Services for these providers (flat, no cartesian join)
     serviceFindMany({
       where: { providerId: { in: providerIds }, active: true },
       include: { category: { select: { id: true, name: true } } },
       orderBy: { basePrice: "asc" },
     }),
-    // Completed bookings count per provider
-    bookingGroupBy({
-      by: ["providerId"],
-      where: { providerId: { in: providerIds }, status: "COMPLETED" },
-      _count: { id: true },
-    }),
+    // Pre-computed stats from materialized view (eliminates N+1 GROUP BY)
+    getProviderStatsMap(providerIds),
   ])
 
   // Group services by providerId
@@ -175,11 +172,7 @@ export async function fetchProvidersData(
     servicesByProvider.set(svc.providerId, arr)
   }
 
-  // Map completed bookings count
-  const completedMap = new Map<string, number>()
-  for (const row of completedBookingsData) {
-    completedMap.set(row.providerId, row._count.id)
-  }
+  // Stats are now from the materialized view (no need for completedMap)
 
   // Fetch provider records (lightweight select)
   const providers = await userFindMany({
@@ -224,6 +217,8 @@ export async function fetchProvidersData(
   return providers.map((p: ProviderRow) => {
     const distanceKm = distanceMap.get(p.id) ?? null
 
+    const stats = providerStatsMap.get(p.id)
+
     return {
       id: p.id,
       name: p.name,
@@ -235,11 +230,11 @@ export async function fetchProvidersData(
       city: p.city,
       state: p.state,
       verified: p.verified,
-      rating: p.avgRating,
-      reviewCount: p.reviewCount,
-      favoriteCount: p.favoriteCount,
+      rating: stats?.avgRating ?? p.avgRating,
+      reviewCount: stats?.reviewCount ?? p.reviewCount,
+      favoriteCount: stats?.favoriteCount ?? p.favoriteCount,
       radiusKm: p.radiusKm,
-      completedBookings: completedMap.get(p.id) ?? 0,
+      completedBookings: stats?.completedBookingCount ?? 0,
       memberSince: p.createdAt.toISOString(),
       distanceKm,
       services: (servicesByProvider.get(p.id) ?? []).map((s: ServiceRow) => ({
