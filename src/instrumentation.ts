@@ -8,6 +8,27 @@ export async function register() {
     // Load env vars first — everything depends on them
     await import("./lib/env")
 
+    // ── OpenTelemetry distributed tracing ──────────────────────────────
+    // Must be initialized BEFORE any other imports that need instrumentation.
+    // Set OTEL_ENABLED=true to enable (disabled by default for dev speed).
+    if (process.env.OTEL_ENABLED === "true") {
+      try {
+        const { initTracing, shutdownTracing } = await import("./lib/tracing")
+        initTracing()
+        logger.info("instrumentation: OpenTelemetry tracing initialized")
+
+        // Graceful shutdown — flush pending spans before exit
+        const shutdown = async () => {
+          logger.info("instrumentation: shutting down OpenTelemetry...")
+          await shutdownTracing()
+        }
+        process.on("SIGTERM", shutdown)
+        process.on("SIGINT", shutdown)
+      } catch (err) {
+        logger.warn({ err }, "instrumentation: OpenTelemetry init failed — skipping")
+      }
+    }
+
     // ── Geo cache warming (post-restart) ────────────────────────────────
     // Pre-heats the Redis cache with the most popular geo queries so the
     // first users after restart get cached responses instead of 5s latencies.

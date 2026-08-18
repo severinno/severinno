@@ -89,6 +89,7 @@ type HealthResponse = {
     nominatim: ServiceStatus
     viacep: ServiceStatus
     postgis: ServiceStatus
+    tracing: ServiceStatus
   }
   cache: {
     hits: number
@@ -100,6 +101,11 @@ type HealthResponse = {
     nominatim: string
     viacep: string
     postgis: string
+  }
+  tracing: {
+    enabled: boolean
+    exporter: string
+    sampleRate: number
   }
   version: string
 }
@@ -121,6 +127,7 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
     checkNominatim(),
     checkViaCEP(),
     checkPostGIS(),
+    checkTracing(),
   ])
 
   const database = results[0].status === "fulfilled" ? results[0].value : ("error" as const)
@@ -131,6 +138,8 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
     results[3].status === "fulfilled" ? results[3].value.status : ("error" as const)
   const postgisStatus =
     results[4].status === "fulfilled" ? results[4].value.status : ("error" as const)
+  const tracingStatus =
+    results[5].status === "fulfilled" ? results[5].value.status : ("error" as const)
 
   const nominatimDetail =
     results[2].status === "fulfilled" ? results[2].value.detail : "unreachable"
@@ -144,7 +153,8 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
     isHealthy(redis) &&
     isHealthy(nominatimStatus) &&
     isHealthy(viacepStatus) &&
-    isHealthy(postgisStatus)
+    isHealthy(postgisStatus) &&
+    isHealthy(tracingStatus)
 
   const response: HealthResponse = {
     status: allOk ? "ok" : "degraded",
@@ -156,12 +166,18 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
       nominatim: nominatimStatus,
       viacep: viacepStatus,
       postgis: postgisStatus,
+      tracing: tracingStatus,
     },
     cache: getCacheStats(),
     geo: {
       nominatim: nominatimDetail,
       viacep: viacepDetail,
       postgis: postgisDetail,
+    },
+    tracing: {
+      enabled: process.env.OTEL_ENABLED === "true",
+      exporter: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "console",
+      sampleRate: parseFloat(process.env.OTEL_SAMPLE_RATE || "0.1"),
     },
     version: pkg.version,
   }
@@ -303,5 +319,22 @@ async function checkPostGIS(): Promise<{ status: ServiceStatus; detail: string }
     return { status: "error", detail: "extension not found" }
   } catch (e) {
     return { status: "error", detail: e instanceof Error ? e.message : "query failed" }
+  }
+}
+
+/** Check OpenTelemetry tracing status. */
+async function checkTracing(): Promise<{ status: ServiceStatus; detail: string }> {
+  try {
+    const enabled = process.env.OTEL_ENABLED === "true"
+    const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+    if (!enabled) {
+      return { status: "disabled", detail: "OTEL_ENABLED=false" }
+    }
+    if (!endpoint) {
+      return { status: "error", detail: "OTEL_EXPORTER_OTLP_ENDPOINT not set" }
+    }
+    return { status: "ok", detail: `endpoint=${endpoint}` }
+  } catch (e) {
+    return { status: "error", detail: e instanceof Error ? e.message : "check failed" }
   }
 }
