@@ -1,0 +1,42 @@
+# =============================================================================
+# Grafana Datasources — Severinno Marketplace
+# =============================================================================
+
+apiVersion: 1
+
+datasources:
+  # ── Prometheus (Metrics) ────────────────────────────────────────────────
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      httpMethod: POST
+      timeInterval: "15s"
+
+  # ── Tempo (Traces) ─────────────────────────────────────────────────────
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: true
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        filterByTraceID: true
+        filterBySpanID: true
+      nodeGraph:
+        enabled: true
+      tracesToMetrics:
+        datasourceUid: prometheus
+        queries:
+          - name: "Requests"
+            query: "sum(rate(http_request_duration_ms_count{$$__tags}[5m])) by (operation_name)"
+          - name: "Errors"
+            query: "sum(rate(http_request_duration_ms_count{$$__tags,status=~\"5..\"}[5m])) by (operation_name)"
+          - name: "Duration P95"
+            query: "histogram_quantile(0.95, sum(rate(http_request_duration_ms_bucket{$$__tags}[5m])) by (le, operation_name))"
