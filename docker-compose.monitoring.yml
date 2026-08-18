@@ -1,0 +1,135 @@
+# =============================================================================
+# docker-compose.monitoring.yml — Severinno Marketplace (Monitoring Stack)
+# =============================================================================
+# Uso:
+#   docker compose -f docker-compose.monitoring.yml up -d
+#   docker compose -f docker-compose.monitoring.yml logs -f
+#   docker compose -f docker-compose.monitoring.yml down
+#
+# Serviços:
+#   - Prometheus (metrics collection)
+#   - Tempo (distributed tracing)
+#   - Grafana (dashboards + visualization)
+#
+# Acesso:
+#   Grafana:  http://localhost:3001 (admin/admin)
+#   Prometheus: http://localhost:9090
+#   Tempo: http://localhost:3200
+#
+# Portas:
+#   3001 — Grafana
+#   9090 — Prometheus
+#   3200 — Tempo (OTLP gRPC)
+#   4318 — Tempo (OTLP HTTP)
+# =============================================================================
+
+networks:
+  monitoring:
+    name: severinno_monitoring
+    driver: bridge
+
+volumes:
+  prometheus_data:
+    name: severinno_prometheus_data
+  grafana_data:
+    name: severinno_grafana_data
+  tempo_data:
+    name: severinno_tempo_data
+
+services:
+  # ── Prometheus (Metrics Collection) ────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+      - "--web.enable-admin-api"
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD", "wget", "-s", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ── Tempo (Distributed Tracing) ───────────────────────────────────────
+  tempo:
+    image: grafana/tempo:2.5.0
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M
+    ports:
+      - "3200:3200"   # Tempo HTTP
+      - "4318:4318"   # OTLP HTTP
+    volumes:
+      - ./monitoring/tempo/tempo.yml:/etc/tempo/config.yml:ro
+      - tempo_data:/var/tempo
+    command: ["-config.file=/etc/tempo/config.yml"]
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD", "wget", "-s", "-q", "http://localhost:3200/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ── Grafana (Dashboards + Visualization) ──────────────────────────────
+  grafana:
+    image: grafana/grafana:11.1.0
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    tmpfs:
+      - /tmp:size=64M
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: http://localhost:3001
+      GF_INSTALL_PLUGINS: grafana-tempo-app
+    networks:
+      - monitoring
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      tempo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-s", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
