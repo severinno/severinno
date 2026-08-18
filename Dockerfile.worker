@@ -51,6 +51,7 @@ COPY --from=deps /app/node_modules ./node_modules
 # Worker source code
 COPY src/queue ./src/queue
 COPY src/lib ./src/lib
+COPY src/types ./src/types
 COPY package.json ./
 
 RUN chown -R appuser:appuser /app

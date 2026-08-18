@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 /**
  * Rate limiter for Severinno Marketplace API routes.
  *
@@ -60,6 +60,7 @@ type WindowEntry = {
 }
 
 const memoryStore = new Map<string, WindowEntry>()
+const MEMORY_STORE_MAX_SIZE = 10_000 // Prevent memory leak under extreme traffic
 
 // Periodically clean expired entries (every 60s)
 if (typeof setInterval !== "undefined") {
@@ -67,6 +68,14 @@ if (typeof setInterval !== "undefined") {
     const now = Date.now()
     for (const [key, entry] of memoryStore) {
       if (entry.resetAt < now) memoryStore.delete(key)
+    }
+    // Evict oldest entries if store is too large
+    if (memoryStore.size > MEMORY_STORE_MAX_SIZE) {
+      const entries = Array.from(memoryStore.entries()).sort((a, b) => a[1].resetAt - b[1].resetAt)
+      const toRemove = entries.slice(0, entries.length - MEMORY_STORE_MAX_SIZE)
+      for (const [key] of toRemove) {
+        memoryStore.delete(key)
+      }
     }
   }, 60_000).unref?.()
 }
@@ -176,22 +185,57 @@ export async function checkRateLimit(
 // Lazy Redis client access (import from cache module)
 // ---------------------------------------------------------------------------
 
+// Singleton Redis client for rate limiting (reuses connection instead of creating per-request)
+let cachedClient: import("ioredis").Redis | null = null
+let cachedClientPromise: Promise<import("ioredis").Redis | null> | null = null
+
 async function getRedisClient(): Promise<import("ioredis").Redis | null> {
-  try {
-    const { default: Redis } = await import("ioredis")
-    const url = process.env.REDIS_URL
-    if (!url) return null
-    const client = new Redis(url, {
-      maxRetriesPerRequest: 1,
-      retryStrategy: () => null, // don't retry — return null immediately
-      lazyConnect: true,
-    })
-    // Test connection
-    await client.ping()
-    return client
-  } catch {
-    return null
+  // Return cached client if still connected
+  if (cachedClient) {
+    try {
+      await cachedClient.ping()
+      return cachedClient
+    } catch {
+      cachedClient = null
+    }
   }
+
+  // Avoid concurrent reconnections
+  if (cachedClientPromise) return cachedClientPromise
+
+  cachedClientPromise = (async () => {
+    try {
+      const { default: Redis } = await import("ioredis")
+      const url = process.env.REDIS_URL
+      if (!url) return null
+      const client = new Redis(url, {
+        maxRetriesPerRequest: 1,
+        retryStrategy: () => null,
+        lazyConnect: true,
+        enableReadyCheck: true,
+      })
+      await client.connect()
+      await client.ping()
+      cachedClient = client
+
+      // Clear cache on disconnect/error
+      client.on("error", () => {
+        cachedClient = null
+      })
+      client.on("close", () => {
+        cachedClient = null
+      })
+
+      return client
+    } catch {
+      cachedClient = null
+      return null
+    } finally {
+      cachedClientPromise = null
+    }
+  })()
+
+  return cachedClientPromise
 }
 
 // ---------------------------------------------------------------------------

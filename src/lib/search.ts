@@ -39,7 +39,7 @@ function createClient(): Client {
 
 export function getClient(): Client | null {
   if (typeof window !== "undefined" && !process.env.VITEST) return null
-  if (process.env.NODE_ENV === "production") return createClient()
+  // Singleton in all environments (production included) to avoid creating new connections per request
   if (!globalThis.__opensearch) {
     globalThis.__opensearch = createClient()
   }

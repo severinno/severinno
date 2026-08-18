@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+ 
 /**
  * PostGIS spatial helpers for the Severinno Marketplace.
  *
@@ -190,7 +190,11 @@ export async function isPostGISAvailable(): Promise<boolean> {
 /**
  * Find provider geographic IDs located inside a bounding box (e.g. current map viewport)
  * using PostGIS ST_MakeEnvelope and spatial index.
+ *
+ * Results are cached for 30 seconds to avoid repeated queries for the same viewport.
  */
+const BOUNDS_CACHE_TTL = 30
+
 export async function findProvidersWithinBounds(
   minLat: number,
   minLng: number,
@@ -199,18 +203,26 @@ export async function findProvidersWithinBounds(
   limit: number = 50,
 ): Promise<string[]> {
   try {
-    const rows = await db.$queryRaw<Array<{ id: string }>>`
-      SELECT id
-      FROM "User"
-      WHERE
-        role = 'PROVIDER'
-        AND active = true
-        AND "deletedAt" IS NULL
-        AND location IS NOT NULL
-        AND location && ST_MakeEnvelope(${minLng}, ${minLat}, ${maxLng}, ${maxLat}, 4326)::geography
-      LIMIT ${limit}
-    `
-    return rows.map((r) => r.id)
+    // Round coordinates to 4 decimal places (~11m precision) for cache grouping
+    const key = `bounds:${minLat.toFixed(4)}:${minLng.toFixed(4)}:${maxLat.toFixed(4)}:${maxLng.toFixed(4)}:${limit}`
+    return await withCache(
+      key,
+      async () => {
+        const rows = await db.$queryRaw<Array<{ id: string }>>`
+        SELECT id
+        FROM "User"
+        WHERE
+          role = 'PROVIDER'
+          AND active = true
+          AND "deletedAt" IS NULL
+          AND location IS NOT NULL
+          AND location && ST_MakeEnvelope(${minLng}, ${minLat}, ${maxLng}, ${maxLat}, 4326)::geography
+        LIMIT ${limit}
+      `
+        return rows.map((r) => r.id)
+      },
+      BOUNDS_CACHE_TTL,
+    )
   } catch {
     return []
   }
@@ -239,5 +251,3 @@ export async function isPointInServiceZone(
     return false
   }
 }
-
-

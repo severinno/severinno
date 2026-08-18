@@ -16,10 +16,13 @@ const dsn = process.env.SENTRY_DSN || ""
 if (dsn) {
   Sentry.init({
     dsn,
-    // Higher sample rate on the server — errors here are more critical
-    tracesSampleRate: process.env.NODE_ENV === "production" ? 0.8 : 0.3,
-    // Profile sampling — CPU profiling for server-side transactions
-    profilesSampleRate: process.env.NODE_ENV === "production" ? 0.3 : 0.1,
+    // Configurable sample rates via env vars (default: production defaults)
+    tracesSampleRate:
+      Number(process.env.SENTRY_TRACES_SAMPLE_RATE) ||
+      (process.env.NODE_ENV === "production" ? 0.8 : 0.3),
+    profilesSampleRate:
+      Number(process.env.SENTRY_PROFILES_SAMPLE_RATE) ||
+      (process.env.NODE_ENV === "production" ? 0.3 : 0.1),
     // Server-side: no replays needed
     integrations: [],
     // Ignore common non-actionable errors

@@ -104,6 +104,8 @@ secrets:
   # ── GlitchTip ───────────────────────────────────────────────────────
   glitchtip_s3_secret_key:
     file: ./secrets/glitchtip_s3_secret_key.secret
+  glitchtip_secret_key:
+    file: ./secrets/glitchtip_secret_key.secret
 
 # ============================================================================
 # SERVICOS
@@ -1168,13 +1170,18 @@ services:
     restart: "no"
     profiles:
       - glitchtip
-    command: ./bin/run-migrate
+    entrypoint: ["./scripts/glitchtip-entrypoint.sh"]
+    command: ["./bin/run-migrate"]
     depends_on:
       glitchtip-db:
         condition: service_healthy
+    secrets:
+      - glitchtip_db_password
+      - session_secret
+    volumes:
+      - ./scripts/glitchtip-entrypoint.sh:/app/scripts/glitchtip-entrypoint.sh:ro
     environment:
-      DATABASE_URL: postgres://${GLITCHTIP_DB_USER:-glitchtip}:${GLITCHTIP_DB_PASSWORD}@glitchtip-db:5432/${GLITCHTIP_DB_NAME:-glitchtip}
-      SECRET_KEY: ${GLITCHTIP_SECRET_KEY}
+      DATABASE_URL: postgres://${GLITCHTIP_DB_USER:-glitchtip}@glitchtip-db:5432/${GLITCHTIP_DB_NAME:-glitchtip}
     networks:
       - backend
 
@@ -1196,7 +1203,8 @@ services:
       - glitchtip
     security_opt:
       - no-new-privileges:true
-    command: ./bin/run-web
+    entrypoint: ["./scripts/glitchtip-entrypoint.sh"]
+    command: ["./bin/run-web"]
     expose:
       - "8000"
     depends_on:
@@ -1210,11 +1218,16 @@ services:
         condition: service_completed_successfully
       pgbouncer-glitchtip:
         condition: service_healthy
+    secrets:
+      - glitchtip_db_password
+      - session_secret
+      - glitchtip_s3_secret_key
+    volumes:
+      - ./scripts/glitchtip-entrypoint.sh:/app/scripts/glitchtip-entrypoint.sh:ro
     environment:
-      # Conexão via PgBouncer (pooler em session mode compatível com Django)
-      DATABASE_URL: postgres://${GLITCHTIP_DB_USER:-glitchtip}:${GLITCHTIP_DB_PASSWORD}@pgbouncer-glitchtip:6432/${GLITCHTIP_DB_NAME:-glitchtip}
+      # Database URL without password — entrypoint reads from Docker secret
+      DATABASE_URL: postgres://${GLITCHTIP_DB_USER:-glitchtip}@pgbouncer-glitchtip:6432/${GLITCHTIP_DB_NAME:-glitchtip}
       REDIS_URL: redis://glitchtip-redis:6379
-      SECRET_KEY: ${GLITCHTIP_SECRET_KEY}
       GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-https://glitchtip.severinno.com.br}
       DEFAULT_FROM_EMAIL: ${GLITCHTIP_FROM_EMAIL:-noreply@severinno.com.br}
       EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-}
@@ -1222,7 +1235,6 @@ services:
       S3_ENABLED: "true"
       S3_ENDPOINT_URL: http://glitchtip-minio:9000
       S3_ACCESS_KEY_ID: ${GLITCHTIP_S3_ACCESS_KEY:-glitchtip_storage}
-      S3_SECRET_ACCESS_KEY: ${GLITCHTIP_S3_SECRET_KEY}
       S3_BUCKET_NAME: ${GLITCHTIP_S3_BUCKET:-glitchtip-storage}
       S3_REGION: auto
       DATABASE_POOL_MAX_SIZE: ${GLITCHTIP_DB_POOL:-10}
@@ -1256,7 +1268,8 @@ services:
       - glitchtip
     security_opt:
       - no-new-privileges:true
-    command: ./bin/run-worker
+    entrypoint: ["./scripts/glitchtip-entrypoint.sh"]
+    command: ["./bin/run-worker"]
     depends_on:
       glitchtip-db:
         condition: service_healthy
@@ -1268,11 +1281,16 @@ services:
         condition: service_completed_successfully
       pgbouncer-glitchtip:
         condition: service_healthy
+    secrets:
+      - glitchtip_db_password
+      - session_secret
+      - glitchtip_s3_secret_key
+    volumes:
+      - ./scripts/glitchtip-entrypoint.sh:/app/scripts/glitchtip-entrypoint.sh:ro
     environment:
-      # Conexão via PgBouncer (pooler em session mode compatível com Django)
-      DATABASE_URL: postgres://${GLITCHTIP_DB_USER:-glitchtip}:${GLITCHTIP_DB_PASSWORD}@pgbouncer-glitchtip:6432/${GLITCHTIP_DB_NAME:-glitchtip}
+      # Database URL without password — entrypoint reads from Docker secret
+      DATABASE_URL: postgres://${GLITCHTIP_DB_USER:-glitchtip}@pgbouncer-glitchtip:6432/${GLITCHTIP_DB_NAME:-glitchtip}
       REDIS_URL: redis://glitchtip-redis:6379
-      SECRET_KEY: ${GLITCHTIP_SECRET_KEY}
       GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-https://glitchtip.severinno.com.br}
       DEFAULT_FROM_EMAIL: ${GLITCHTIP_FROM_EMAIL:-noreply@severinno.com.br}
       EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-}
@@ -1280,7 +1298,6 @@ services:
       S3_ENABLED: "true"
       S3_ENDPOINT_URL: http://glitchtip-minio:9000
       S3_ACCESS_KEY_ID: ${GLITCHTIP_S3_ACCESS_KEY:-glitchtip_storage}
-      S3_SECRET_ACCESS_KEY: ${GLITCHTIP_S3_SECRET_KEY}
       S3_BUCKET_NAME: ${GLITCHTIP_S3_BUCKET:-glitchtip-storage}
       S3_REGION: auto
       DATABASE_POOL_MAX_SIZE: ${GLITCHTIP_DB_POOL:-10}

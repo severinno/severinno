@@ -63,21 +63,21 @@ interface DetailedHealthResponse {
 
 const THRESHOLDS = {
   // Memória
-  RSS_MB_WARN: 400, // Aviso quando RSS > 400MB
-  RSS_MB_CRIT: 600, // Crítico quando RSS > 600MB
-  HEAP_MB_WARN: 200, // Aviso quando heap > 200MB
-  HEAP_MB_CRIT: 350, // Crítico quando heap > 350MB
+  RSS_MB_WARN: Number(process.env.HEALTH_RSS_MB_WARN) || 400,
+  RSS_MB_CRIT: Number(process.env.HEALTH_RSS_MB_CRIT) || 600,
+  HEAP_MB_WARN: Number(process.env.HEALTH_HEAP_MB_WARN) || 200,
+  HEAP_MB_CRIT: Number(process.env.HEALTH_HEAP_MB_CRIT) || 350,
   // Latência
-  DB_LATENCY_WARN_MS: 2000, // Aviso quando DB query > 2s
-  DB_LATENCY_CRIT_MS: 5000, // Crítico quando DB query > 5s
-  CACHE_WARN_MS: 1000, // Aviso quando cache > 1s
+  DB_LATENCY_WARN_MS: Number(process.env.HEALTH_DB_LATENCY_WARN_MS) || 2000,
+  DB_LATENCY_CRIT_MS: Number(process.env.HEALTH_DB_LATENCY_CRIT_MS) || 5000,
+  CACHE_WARN_MS: Number(process.env.HEALTH_CACHE_WARN_MS) || 1000,
   // Filas
-  QUEUE_DEPTH_WARN: 100, // Aviso quando fila > 100 mensagens
-  QUEUE_DEPTH_CRIT: 500, // Crítico quando fila > 500 mensagens
+  QUEUE_DEPTH_WARN: Number(process.env.HEALTH_QUEUE_DEPTH_WARN) || 100,
+  QUEUE_DEPTH_CRIT: Number(process.env.HEALTH_QUEUE_DEPTH_CRIT) || 500,
   // Workers
-  WORKER_IDLE_WARN_HOURS: 2, // Aviso se worker idle por > 2h
+  WORKER_IDLE_WARN_HOURS: Number(process.env.HEALTH_WORKER_IDLE_WARN_HOURS) || 2,
   // Cache
-  CACHE_HIT_RATIO_WARN: 0.5, // Aviso quando hit ratio < 50%
+  CACHE_HIT_RATIO_WARN: Number(process.env.HEALTH_CACHE_HIT_RATIO_WARN) || 0.5,
 }
 
 // ── Critical services (mirrors the route's CRITICAL_SERVICES) ──────────────

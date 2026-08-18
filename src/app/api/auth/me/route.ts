@@ -2,9 +2,11 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getOptionalSession } from "@/lib/auth"
 import { handleError, USER_PUBLIC_SELECT } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.authMe)
     const session = await getOptionalSession()
     if (!session) {
       return NextResponse.json({ user: null })

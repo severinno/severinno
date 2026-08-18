@@ -141,7 +141,8 @@ export async function handleNotification(msg: Record<string, unknown>): Promise<
     `SELECT "pushEnabled", "emailEnabled", "whatsappEnabled", "soundEnabled"
      FROM "NotificationPreference"
      WHERE "userId" = $1 AND "type" = $2`,
-    [userId, type],
+    userId,
+    type,
   )
 
   const pref = rows[0] // null = no preference set → enabled by default

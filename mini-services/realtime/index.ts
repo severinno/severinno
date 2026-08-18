@@ -8,6 +8,7 @@ import { Server, Socket } from "socket.io"
 import { Server as EngineServer } from "engine.io"
 import { createAdapter } from "@socket.io/redis-adapter"
 import { Redis } from "ioredis"
+import { randomUUID } from "crypto"
 
 const PORT = 3003
 
@@ -104,7 +105,7 @@ interface TrackingPositionPayload {
 }
 
 // ---------- Helpers ----------
-const generateId = () => Math.random().toString(36).slice(2, 11)
+const generateId = () => randomUUID()
 const nowTimestamp = () => new Date().toISOString()
 
 // ---------- Shared emit logic (socket listeners + HTTP /emit) ----------
@@ -271,12 +272,49 @@ httpServer.on("request", (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost")
 
   if (url.pathname === "/health" && req.method === "GET") {
+    const clientsCount = io.engine ? io.engine.clientsCount : 0
     res.writeHead(200, { "Content-Type": "application/json" })
-    res.end(JSON.stringify({ status: "ok" }))
+    res.end(
+      JSON.stringify({
+        status: "ok",
+        uptime: process.uptime(),
+        connections: clientsCount,
+        timestamp: new Date().toISOString(),
+      }),
+    )
+    return
+  }
+
+  if (url.pathname === "/metrics" && req.method === "GET") {
+    const clientsCount = io.engine ? io.engine.clientsCount : 0
+    const rooms = io.sockets.adapter.rooms
+    const roomsList = Array.from(rooms.entries())
+      .filter(([name]) => name.startsWith("user:") || name.startsWith("role:"))
+      .map(([name, sockets]) => ({ room: name, clients: sockets.size }))
+    res.writeHead(200, { "Content-Type": "application/json" })
+    res.end(
+      JSON.stringify({
+        connections: clientsCount,
+        rooms: roomsList,
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString(),
+      }),
+    )
     return
   }
 
   if (url.pathname === "/emit" && req.method === "POST") {
+    // Authenticate internal API calls via x-api-key header
+    const emitApiKey = process.env.REALTIME_EMIT_API_KEY
+    if (emitApiKey) {
+      const providedKey = req.headers["x-api-key"]
+      if (providedKey !== emitApiKey) {
+        res.writeHead(401, { "Content-Type": "application/json" })
+        res.end(JSON.stringify({ ok: false, error: "unauthorized" }))
+        return
+      }
+    }
+
     let body = ""
     req.setEncoding("utf8")
     req.on("data", (chunk: string) => {

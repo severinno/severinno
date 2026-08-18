@@ -36,6 +36,21 @@ const ALLOWED_MIME_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ])
 
+// Extension → MIME mapping to prevent MIME spoofing (e.g. .exe uploaded as image/jpeg)
+const EXTENSION_MIME_MAP: Record<string, string> = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".pdf": "application/pdf",
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+const ALLOWED_EXTENSIONS = new Set(Object.keys(EXTENSION_MIME_MAP))
+
 export async function POST(request: Request) {
   try {
     // 0. Rate limit (conservador — uploads são pesados)
@@ -71,6 +86,28 @@ export async function POST(request: Request) {
         {
           error:
             "Tipo de arquivo não permitido. Envie imagens (JPG, PNG, GIF, WebP, SVG), PDF ou DOC.",
+        },
+        { status: 415 },
+      )
+    }
+
+    // 4b. Validate file extension matches MIME type (prevent MIME spoofing)
+    const fileName = file.name || "unknown"
+    const ext = fileName.includes(".") ? "." + fileName.split(".").pop()?.toLowerCase() : ""
+    if (ext && ALLOWED_EXTENSIONS.has(ext)) {
+      const expectedMime = EXTENSION_MIME_MAP[ext]
+      if (expectedMime && contentType !== expectedMime && contentType !== "application/octet-stream") {
+        return NextResponse.json(
+          {
+            error: `Extensão ${ext} incompatível com o tipo de conteúdo. Envie o arquivo com o tipo correto.`,
+          },
+          { status: 415 },
+        )
+      }
+    } else if (ext && !ALLOWED_EXTENSIONS.has(ext)) {
+      return NextResponse.json(
+        {
+          error: `Extensão ${ext} não permitida. Envie imagens (JPG, PNG, GIF, WebP, SVG), PDF ou DOC.`,
         },
         { status: 415 },
       )
