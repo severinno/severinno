@@ -214,6 +214,7 @@ vi.mock("react-hook-form", () => ({
     register: vi.fn(),
   }),
   useController: () => ({ field: { value: "", onChange: vi.fn() }, fieldState: {} }),
+  useWatch: ({ name }: any) => formValues[name] ?? {},
   FormProvider: ({ children }: any) => <>{children}</>,
 }))
 

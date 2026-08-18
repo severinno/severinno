@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Footer from "@/components/shared/footer"
 
 export const metadata: Metadata = {
   title: "Contato — Severinno",
@@ -6,24 +7,27 @@ export const metadata: Metadata = {
 
 export default function Contato() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12">
-      <h1 className="text-3xl font-bold">Contato</h1>
-      <p className="text-muted-foreground mt-2">Entre em contato com a equipe Severinno.</p>
-      <div className="mt-8 grid gap-6 sm:grid-cols-2">
-        <ContactCard
-          title="E-mail"
-          desc="Resposta em até 24h"
-          value="contato@severinno.com.br"
-          href="mailto:contato@severinno.com.br"
-        />
-        <ContactCard
-          title="WhatsApp"
-          desc="Atendimento rápido"
-          value="(11) 99999-9999"
-          href="https://wa.me/5511999999999"
-        />
+    <>
+      <div className="mx-auto max-w-3xl px-4 py-12">
+        <h1 className="text-3xl font-bold">Contato</h1>
+        <p className="text-muted-foreground mt-2">Entre em contato com a equipe Severinno.</p>
+        <div className="mt-8 grid gap-6 sm:grid-cols-2">
+          <ContactCard
+            title="E-mail"
+            desc="Resposta em até 24h"
+            value="contato@severinno.com.br"
+            href="mailto:contato@severinno.com.br"
+          />
+          <ContactCard
+            title="WhatsApp"
+            desc="Atendimento rápido"
+            value="(11) 99999-9999"
+            href="https://wa.me/5511999999999"
+          />
+        </div>
       </div>
-    </div>
+      <Footer />
+    </>
   )
 }
 

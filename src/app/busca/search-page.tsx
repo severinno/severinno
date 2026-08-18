@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 "use client"
 
 /**
@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import ProviderCard, { ProviderCardSkeleton } from "@/components/vitrine/provider-card"
+import Footer from "@/components/shared/footer"
 import {
   Pagination,
   PaginationContent,
@@ -304,6 +305,8 @@ export function SearchPage() {
           </motion.div>
         )}
       </div>
+
+      <Footer />
     </div>
   )
 }

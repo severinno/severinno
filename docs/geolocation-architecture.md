@@ -107,16 +107,16 @@ O Severinno usa geolocalização como seu principal diferencial: busca por proxi
 
 ### 2.4. Server Libraries
 
-| Arquivo                        | Descrição                                                                                 |
-| ------------------------------ | ----------------------------------------------------------------------------------------- |
-| `src/lib/geo.ts`               | `server-only` — viaCEP, reverseGeocode, geocodeSearch, geocodeSearchStructured            |
-| `src/lib/geo-shared.ts`        | Pure math: `haversineKm`, `formatDistance` — seguro para server e client                  |
-| `src/lib/geo-client.ts`        | Re-exporta `geo-shared.ts` para uso em componentes client                                 |
-| `src/lib/geo-server.ts`        | Barrel que re-exporta `distance-fallback.ts` + `geo-shared.ts`                            |
-| `src/lib/postgis.ts`           | Wrappers PostGIS: `findProvidersWithinRadius`, `getDistanceBetween`, `isPostGISAvailable` |
-| `src/lib/distance-fallback.ts` | Cadeia: PostGIS ST_Distance → Haversine JS → null                                         |
-| `src/lib/radius-expansion.ts`  | Expansão progressiva de raio: 5→10→25→50→100 km                                           |
-| `src/lib/geo-circle.ts`        | Gerador de círculo GeoJSON + helpers MapLibre GL (fill, outline, edge dots)               |
+| Arquivo                        | Descrição                                                                                                            |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/geo.ts`               | `server-only` — viaCEP, reverseGeocode, geocodeSearch, geocodeSearchStructured                                       |
+| `src/lib/geo-shared.ts`        | Pure math: `haversineKm`, `formatDistance` — seguro para server e client                                             |
+| `src/lib/geo-client.ts`        | Re-exporta `geo-shared.ts` para uso em componentes client                                                            |
+| `src/lib/geo-server.ts`        | Barrel que re-exporta `distance-fallback.ts` + `geo-shared.ts`                                                       |
+| `src/lib/postgis.ts`           | Check de disponibilidade PostGIS (`isPostGISAvailable`) — queries de proximidade rodam via SQL raw na rota providers |
+| `src/lib/distance-fallback.ts` | Cadeia: PostGIS ST_Distance → Haversine JS → null                                                                    |
+| `src/lib/radius-expansion.ts`  | Expansão progressiva de raio: 5→10→25→50→100 km                                                                      |
+| `src/lib/geo-circle.ts`        | Gerador de círculo GeoJSON + helpers MapLibre GL (fill, outline, edge dots)                                          |
 
 ### 2.5. React Components
 
@@ -206,12 +206,10 @@ Quando PostGIS está disponível e o raio do usuário retorna 0 provedores:
 
 ### 4.3. Cache
 
-| Função                      | Cache Key                                                 | TTL         | Agrupamento         |
-| --------------------------- | --------------------------------------------------------- | ----------- | ------------------- |
-| `findProvidersWithinRadius` | `proximity:{lat:.3f}:{lng:.3f}:{radius}`                  | 60s         | ~110m precision     |
-| `getDistanceBetween`        | `distance:{userIdA}:{userIdB}` (sorted)                   | 60s         | Por par de usuários |
-| `isPostGISAvailable`        | `postgis:available`                                       | 300s (5min) | Global              |
-| Radius count                | `providers:count:{lat:.3f}:{lng:.3f}:{radius}:{cats}:{q}` | 120s        | ~110m precision     |
+| Função               | Cache Key                                                 | TTL         | Agrupamento     |
+| -------------------- | --------------------------------------------------------- | ----------- | --------------- |
+| `isPostGISAvailable` | `postgis:available`                                       | 300s (5min) | Global          |
+| Radius count         | `providers:count:{lat:.3f}:{lng:.3f}:{radius}:{cats}:{q}` | 120s        | ~110m precision |
 
 ---
 
@@ -253,25 +251,25 @@ Atribuição obrigatória: "© OpenStreetMap contributors" (já inclusa nos comp
 
 ## 7. Testes
 
-| Suite                    | Arquivo                                                    | Testes                                                                 |
-| ------------------------ | ---------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Core geo                 | `src/lib/__tests__/geo.test.ts`                            | 23+ (geocodeSearch, structured, haversine, formatDistance)             |
-| Client geo               | `src/lib/__tests__/geo-client.test.ts`                     | 7 (re-exports)                                                         |
-| Geo circle               | `src/lib/__tests__/geo-circle.test.ts`                     | 20+ + fuzzing 600                                                      |
-| Geo circle map           | `src/lib/__tests__/geo-circle-map.test.ts`                 | 8 (syncRadiusCircle, removeRadiusCircle)                               |
-| Distance fallback        | `src/lib/__tests__/distance-fallback.test.ts`              | 10 (computeDistanceMap)                                                |
-| Distance fallback fuzz   | `src/lib/__tests__/distance-fallback-fuzz.test.ts`         | 100 iterations + edge cases                                            |
-| Radius expansion         | `src/lib/__tests__/radius-expansion.test.ts`               | 12+ (buildRadiiToTry, findEffectiveRadius)                             |
-| Radius expansion fuzz    | `src/lib/__tests__/radius-expansion-fuzz.test.ts`          | 1000 iterations                                                        |
-| Radius expansion (route) | `src/app/api/__tests__/providers-radius-expansion.test.ts` | 10+ (integração providers route)                                       |
-| PostGIS                  | `src/lib/__tests__/postgis.test.ts`                        | 16 (findProvidersWithinRadius, getDistanceBetween, isPostGISAvailable) |
-| Nominatim rate limit     | `src/lib/__tests__/nominatim-rate-limit.test.ts`           | 8 (rateLimitedNominatim, reset)                                        |
-| Geo store                | `src/lib/__tests__/geo-store.test.ts`                      | 12+ (setFromCoords, setFromCEP, setFromGPS, clear)                     |
-| CEP route                | `src/app/api/__tests__/geo-cep-route.test.ts`              | Rota CEP                                                               |
-| Reverse route            | `src/app/api/__tests__/geo-reverse-route.test.ts`          | Rota reverse                                                           |
-| Search route             | `src/app/api/__tests__/geo-search-route.test.ts`           | Rota search                                                            |
-| Benchmarks               | `src/lib/__tests__/geo-benchmark.bench.ts`                 | Performance                                                            |
-| Performance regression   | `src/lib/__tests__/geo-performance-regression.test.ts`     | Regressão                                                              |
+| Suite                    | Arquivo                                                    | Testes                                                     |
+| ------------------------ | ---------------------------------------------------------- | ---------------------------------------------------------- |
+| Core geo                 | `src/lib/__tests__/geo.test.ts`                            | 23+ (geocodeSearch, structured, haversine, formatDistance) |
+| Client geo               | `src/lib/__tests__/geo-client.test.ts`                     | 7 (re-exports)                                             |
+| Geo circle               | `src/lib/__tests__/geo-circle.test.ts`                     | 20+ + fuzzing 600                                          |
+| Geo circle map           | `src/lib/__tests__/geo-circle-map.test.ts`                 | 8 (syncRadiusCircle, removeRadiusCircle)                   |
+| Distance fallback        | `src/lib/__tests__/distance-fallback.test.ts`              | 10 (computeDistanceMap)                                    |
+| Distance fallback fuzz   | `src/lib/__tests__/distance-fallback-fuzz.test.ts`         | 100 iterations + edge cases                                |
+| Radius expansion         | `src/lib/__tests__/radius-expansion.test.ts`               | 12+ (buildRadiiToTry, findEffectiveRadius)                 |
+| Radius expansion fuzz    | `src/lib/__tests__/radius-expansion-fuzz.test.ts`          | 1000 iterations                                            |
+| Radius expansion (route) | `src/app/api/__tests__/providers-radius-expansion.test.ts` | 10+ (integração providers route)                           |
+| PostGIS                  | `src/lib/__tests__/postgis.test.ts`                        | 5 (isPostGISAvailable)                                     |
+| Nominatim rate limit     | `src/lib/__tests__/nominatim-rate-limit.test.ts`           | 8 (rateLimitedNominatim, reset)                            |
+| Geo store                | `src/lib/__tests__/geo-store.test.ts`                      | 12+ (setFromCoords, setFromCEP, setFromGPS, clear)         |
+| CEP route                | `src/app/api/__tests__/geo-cep-route.test.ts`              | Rota CEP                                                   |
+| Reverse route            | `src/app/api/__tests__/geo-reverse-route.test.ts`          | Rota reverse                                               |
+| Search route             | `src/app/api/__tests__/geo-search-route.test.ts`           | Rota search                                                |
+| Benchmarks               | `src/lib/__tests__/geo-benchmark.bench.ts`                 | Performance                                                |
+| Performance regression   | `src/lib/__tests__/geo-performance-regression.test.ts`     | Regressão                                                  |
 
 ---
 

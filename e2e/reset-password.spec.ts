@@ -1,7 +1,13 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import { test, expect } from "@playwright/test"
 import { setupApiMocks } from "./mocks"
 import { waitForVitrine } from "./helpers"
+
+// The PWA service worker (public/sw.js) intercepts /api/* GET requests and
+// fetches them from inside the worker — requests initiated by the SW bypass
+// page.route() and hit the real backend, so the GET mocks in setupApiMocks
+// never take effect. (Auth POSTs are mocked at JS level and are unaffected.)
+test.use({ serviceWorkers: "block" })
 
 // =========================================================================
 // Test Constants

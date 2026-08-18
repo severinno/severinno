@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { UserX } from "lucide-react"
 
@@ -11,6 +12,7 @@ export default function ProfileError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  const router = useRouter()
   useEffect(() => {
     console.error("Profile error:", error)
   }, [error])
@@ -29,7 +31,7 @@ export default function ProfileError({
         <Button onClick={reset} variant="default">
           Tentar novamente
         </Button>
-        <Button onClick={() => (window.location.href = "/")} variant="outline">
+        <Button onClick={() => router.push("/")} variant="outline">
           Voltar ao início
         </Button>
       </div>

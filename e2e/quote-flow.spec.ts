@@ -1,7 +1,18 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 import { test, expect, type Page } from "@playwright/test"
 import { waitForVitrine, registerUser } from "./helpers"
 import { setupApiMocks } from "./mocks"
+
+// The PWA service worker (public/sw.js) intercepts /api/* GET requests and
+// fetches them from inside the worker — requests initiated by the SW bypass
+// page.route() and hit the real backend, so the GET mocks in setupApiMocks
+// (providers, categories, quotes list) never take effect.
+test.use({ serviceWorkers: "block" })
+
+// The PWA service worker (public/sw.js) intercepts /api/* GET requests and
+// fetches them from inside the worker — requests initiated by the SW bypass
+// page.route() and hit the real backend, so the GET mocks in setupApiMocks
+// (providers, categories, quotes list) never take effect.
 
 // =========================================================================
 // Helpers específicas da Quote

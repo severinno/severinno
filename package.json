@@ -80,7 +80,6 @@
     "db:search:refresh": "bun scripts/search-index.ts --refresh",
     "db:migrate-pg": "bun scripts/migrate-sqlite-to-postgres.ts",
     "test:postgis": "bun scripts/test-postgis.ts",
-    "test:redis-cache": "bun scripts/test-redis-cache.ts",
     "test:seed-prod-e2e": "bash scripts/test-seed-prod-e2e.sh",
     "test:seed-dev-e2e": "bash scripts/test-seed-dev-e2e.sh",
     "test:mutation-seed-dev-e2e": "bash scripts/test-mutation-seed-dev-e2e.sh",

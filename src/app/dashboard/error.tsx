@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { AlertTriangle } from "lucide-react"
 
@@ -11,6 +12,7 @@ export default function DashboardError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  const router = useRouter()
   useEffect(() => {
     console.error("Dashboard error:", error)
   }, [error])
@@ -28,7 +30,7 @@ export default function DashboardError({
         <Button onClick={reset} variant="default">
           Tentar novamente
         </Button>
-        <Button onClick={() => (window.location.href = "/")} variant="outline">
+        <Button onClick={() => router.push("/")} variant="outline">
           Voltar ao início
         </Button>
       </div>

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { SearchX } from "lucide-react"
 
@@ -11,6 +12,7 @@ export default function BuscaError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  const router = useRouter()
   useEffect(() => {
     console.error("Busca error:", error)
   }, [error])
@@ -29,7 +31,7 @@ export default function BuscaError({
         <Button onClick={reset} variant="default">
           Tentar novamente
         </Button>
-        <Button onClick={() => (window.location.href = "/")} variant="outline">
+        <Button onClick={() => router.push("/")} variant="outline">
           Voltar ao início
         </Button>
       </div>

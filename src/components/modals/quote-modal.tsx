@@ -3,7 +3,7 @@
 import * as React from "react"
 import Image from "next/image"
 import { useQuery } from "@tanstack/react-query"
-import { useForm, type Resolver, type UseFormReturn } from "react-hook-form"
+import { useForm, useWatch, type Resolver, type UseFormReturn } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import {
@@ -204,8 +204,10 @@ export function QuoteModal() {
   }, [open, providerIdPreset, serviceIdPreset, form])
 
   // ── Step validation map ──
-  const items = form.watch("items")
-  const address = form.watch("address")
+  // useWatch (not form.watch) — react-hooks/incompatible-library: watch()
+  // returns a function that cannot be memoized safely by the compiler.
+  const items = useWatch({ control: form.control, name: "items" })
+  const address = useWatch({ control: form.control, name: "address" })
   const errors = form.formState.errors
   const item0 = items[0]
   const _item0Errors = errors.items?.[0]
@@ -428,7 +430,7 @@ export function QuoteModal() {
 // ---------------------------------------------------------------------------
 
 function Step1Provider({ form }: { form: UseFormReturn<QuoteFormValues> }) {
-  const item = form.watch("items.0")
+  const item = useWatch({ control: form.control, name: "items.0" })
   const error = form.formState.errors.items?.[0]
 
   return (
@@ -502,7 +504,7 @@ function SelectedProviderCard({ providerId }: { providerId: string }) {
 // ---------------------------------------------------------------------------
 
 function Step2Service({ form }: { form: UseFormReturn<QuoteFormValues> }) {
-  const item = form.watch("items.0")
+  const item = useWatch({ control: form.control, name: "items.0" })
   const error = form.formState.errors.items?.[0]
 
   return (
@@ -581,7 +583,7 @@ function ServiceInfoCard({ providerId, serviceId }: { providerId: string; servic
 // ---------------------------------------------------------------------------
 
 function Step3Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
-  const item = form.watch("items.0")
+  const item = useWatch({ control: form.control, name: "items.0" })
   const error = form.formState.errors.items?.[0]
   const descLen = item?.description?.length ?? 0
 
@@ -689,7 +691,7 @@ function Step3Details({ form }: { form: UseFormReturn<QuoteFormValues> }) {
 // ---------------------------------------------------------------------------
 
 function Step4Address({ form }: { form: UseFormReturn<QuoteFormValues> }) {
-  const address = form.watch("address")
+  const address = useWatch({ control: form.control, name: "address" })
   const errors = form.formState.errors.address
 
   return (
@@ -731,8 +733,8 @@ function Step5Review({
   form: UseFormReturn<QuoteFormValues>
   goToStep: (s: Step) => void
 }) {
-  const item = form.watch("items.0")
-  const address = form.watch("address")
+  const item = useWatch({ control: form.control, name: "items.0" })
+  const address = useWatch({ control: form.control, name: "address" })
 
   const { data: providerData } = useQuery({
     queryKey: ["providers-options", ""],

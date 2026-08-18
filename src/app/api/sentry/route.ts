@@ -5,7 +5,11 @@ import { NextRequest, NextResponse } from "next/server"
  * Proxies envelope requests to the self-hosted GlitchTip instance
  * to bypass ad-blockers that block direct requests to error trackers.
  */
-const GLITCHTIP_INTERNAL_URL = process.env.GLITCHTIP_INTERNAL_URL ?? "http://glitchtip-web:8000"
+// Lazy accessor so vi.stubEnv works in tests (module-level consts are cached
+// at import time — see src/lib/whatsapp.ts for the same pattern).
+function getGlitchtipInternalUrl(): string {
+  return process.env.GLITCHTIP_INTERNAL_URL ?? "http://glitchtip-web:8000"
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,7 +18,7 @@ export async function POST(request: NextRequest) {
     const header = JSON.parse(piece)
     const dsn = new URL(header.dsn as string)
     const projectId = dsn.pathname.replace("/", "")
-    const glitchtipUrl = `${GLITCHTIP_INTERNAL_URL}/api/${projectId}/envelope/`
+    const glitchtipUrl = `${getGlitchtipInternalUrl()}/api/${projectId}/envelope/`
 
     const response = await fetch(glitchtipUrl, {
       method: "POST",

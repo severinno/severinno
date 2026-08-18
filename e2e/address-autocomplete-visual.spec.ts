@@ -22,6 +22,12 @@ import { test, expect } from "@playwright/test"
 import path from "path"
 import { mkdirSync } from "fs"
 
+// The PWA service worker (public/sw.js) intercepts /api/* GET requests and
+// fetches them from inside the worker — requests initiated by the SW bypass
+// page.route() and hit the real backend (real Nominatim/ViaCEP), which
+// breaks the mocked visual states. Block it so mocks take effect.
+test.use({ serviceWorkers: "block" })
+
 // ===========================================================================
 // Constants
 // ===========================================================================
@@ -117,6 +123,21 @@ async function typeAndWait(page: import("@playwright/test").Page, text: string) 
 }
 
 /**
+ * Navigate to the autocomplete page and wait for React hydration.
+ *
+ * The dev server compiles JS chunks on demand — on a cold or slow compile the
+ * HTML arrives before the client chunks are ready, and typing before React
+ * attaches its listeners loses the keystrokes silently. Wait for the network
+ * to quiesce (all chunks fetched) plus a short grace for hydration.
+ */
+async function gotoAutocompletePage(page: import("@playwright/test").Page) {
+  await page.goto(TEST_PAGE, { waitUntil: "domcontentloaded" })
+  await page.waitForLoadState("networkidle")
+  await expect(page.getByRole("combobox")).toBeAttached()
+  await page.waitForTimeout(300)
+}
+
+/**
  * Take a screenshot of the AddressAutocomplete root element.
  * The root is the first `<div class="relative">` ancestor of the
  * combobox input.  The `..` locator walks up one DOM level, which
@@ -193,7 +214,7 @@ test.describe("AddressAutocomplete — Visual Regression", () => {
   // -----------------------------------------------------------------------
   test("results dropdown @visual", async ({ page }) => {
     await mockGeoSearchOk(page)
-    await page.goto(TEST_PAGE, { waitUntil: "domcontentloaded" })
+    await gotoAutocompletePage(page)
 
     await typeAndWait(page, "Av. Paulista")
 
@@ -208,7 +229,7 @@ test.describe("AddressAutocomplete — Visual Regression", () => {
   // -----------------------------------------------------------------------
   test("dropdown hover @visual", async ({ page }) => {
     await mockGeoSearchOk(page)
-    await page.goto(TEST_PAGE, { waitUntil: "domcontentloaded" })
+    await gotoAutocompletePage(page)
 
     await typeAndWait(page, "Av. Paulista")
 
@@ -241,8 +262,9 @@ test.describe("AddressAutocomplete — Visual Regression", () => {
     const gpsBtn = page.getByLabel("Usar localização atual")
     await gpsBtn.click()
 
-    // The spinner should appear immediately
-    await expect(page.getByTestId("icon-loading")).toBeAttached()
+    // The spinner should appear immediately (lucide Loader2/loader-circle
+    // inside the GPS button — the component renders no data-testid for it)
+    await expect(gpsBtn.locator(".lucide-loader-circle")).toBeAttached()
 
     await screenshot(page, "gps-spinner")
   })
@@ -251,23 +273,32 @@ test.describe("AddressAutocomplete — Visual Regression", () => {
   // 6. Reverse geocode error (GPS succeeds, reverse fails)
   // -----------------------------------------------------------------------
   test("reverse geocode error @visual", async ({ page }) => {
+    // Deterministic GPS: replace the real geolocation API with an immediate
+    // fixed-position resolution. Headless Chromium's geolocation is flaky,
+    // and the app's getCurrentPosition call has NO error callback — a
+    // denied/hung prompt leaves the flow pending forever (input stays empty).
+    await page.addInitScript(() => {
+      const pos = {
+        coords: { latitude: -23.5505, longitude: -46.6333, accuracy: 10 },
+        timestamp: Date.now(),
+      }
+      // Override the DOM geolocation callback with a partial position — cast
+      // is needed since the real signature expects a full GeolocationPosition
+      const override = ((success: (p: unknown) => void) =>
+        success(pos)) as unknown as typeof navigator.geolocation.getCurrentPosition
+      navigator.geolocation.getCurrentPosition = override
+    })
+
     await mockReverseGeoError(page)
     await page.goto(TEST_PAGE, { waitUntil: "domcontentloaded" })
-
-    // Grant geolocation permission and set a fixed position
-    const context = page.context()
-    await context.grantPermissions(["geolocation"])
-    await (page as any).setGeolocation({ latitude: -23.5505, longitude: -46.6333 })
 
     const gpsBtn = page.getByLabel("Usar localização atual")
     await gpsBtn.click()
 
-    // Wait for async GPS + reverse geocode to complete
-    await page.waitForTimeout(1000)
-
+    // Auto-retrying assertion — reverse geocode is async; on failure the
+    // component falls back to raw coordinates
     const input = page.getByRole("combobox")
-    // Input should show raw coordinates as fallback
-    await expect(input).toHaveValue("-23.5505, -46.6333")
+    await expect(input).toHaveValue("-23.5505, -46.6333", { timeout: 10_000 })
 
     await screenshot(page, "reverse-geocode-error")
   })
@@ -277,7 +308,7 @@ test.describe("AddressAutocomplete — Visual Regression", () => {
   // -----------------------------------------------------------------------
   test("fetch error @visual", async ({ page }) => {
     await mockGeoSearchError(page)
-    await page.goto(TEST_PAGE, { waitUntil: "domcontentloaded" })
+    await gotoAutocompletePage(page)
 
     await typeAndWait(page, "Av. Paulista")
 
@@ -293,7 +324,7 @@ test.describe("AddressAutocomplete — Visual Regression", () => {
   // -----------------------------------------------------------------------
   test("input filled @visual", async ({ page }) => {
     await mockGeoSearchOk(page)
-    await page.goto(TEST_PAGE, { waitUntil: "domcontentloaded" })
+    await gotoAutocompletePage(page)
 
     await typeAndWait(page, "Av. Paulista")
 

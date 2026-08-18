@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ 
 /**
  * Playwright + axe-core Accessibility Audit
  *
@@ -20,6 +20,22 @@
  */
 import { test, expect, type Page } from "@playwright/test"
 import AxeBuilder from "@axe-core/playwright"
+
+// The PWA service worker (public/sw.js) intercepts /api/* GET requests and
+// fetches them from inside the worker — requests initiated by the SW bypass
+// page.route() and hit the real backend. Block it so the /api/auth/me and
+// bookings/quotes stubs below take effect (auth is also mocked at JS level).
+test.use({ serviceWorkers: "block" })
+
+// The PWA service worker (public/sw.js) intercepts /api/* GET requests and
+// fetches them from inside the worker — requests initiated by the SW bypass
+// page.route() and hit the real backend. Block it so the /api/auth/me and
+// bookings/quotes stubs below take effect (auth is also mocked at JS level).
+
+// The PWA service worker (public/sw.js) intercepts /api/* GET requests and
+// fetches them from inside the worker — requests initiated by the SW bypass
+// page.route() and hit the real backend. Block it so the /api/auth/me and
+// bookings/quotes stubs below take effect (auth is also mocked at JS level).
 
 // ===========================================================================
 // Constants
@@ -183,6 +199,20 @@ for (const { path, label, waitUntil } of PAGES) {
 
       // ── Console errors ──
       await collectAndAssertErrors(label, consoleErrors)
+
+      // ── Wait for initial data loading to settle ──
+      // Without this, axe can run over loading skeletons (unlabeled buttons,
+      // aria-busy wrappers) on slow API responses and report false positives.
+      await page
+        .waitForFunction(
+          () => {
+            const busy = document.querySelectorAll('[aria-busy="true"]').length
+            const loadingText = document.body?.innerText?.includes("Carregando")
+            return busy === 0 && !loadingText
+          },
+          { timeout: 15_000 },
+        )
+        .catch(() => {})
 
       // ── Axe-core ──
       await runAxe(page, label)

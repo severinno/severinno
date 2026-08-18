@@ -127,6 +127,19 @@ vi.mock("lucide-react", () => {
     Search: () => <span data-testid="icon-search" />,
     SearchX: () => <span data-testid="icon-searchx" />,
     X: () => <span data-testid="icon-x" />,
+    HelpCircle: () => <span data-testid="icon-helpcircle" />,
+    Briefcase: () => <span data-testid="icon-briefcase" />,
+    Users: () => <span data-testid="icon-users" />,
+    MessageCircle: () => <span data-testid="icon-messagecircle" />,
+    Github: () => <span data-testid="icon-github" />,
+    Twitter: () => <span data-testid="icon-twitter" />,
+    Instagram: () => <span data-testid="icon-instagram" />,
+    Linkedin: () => <span data-testid="icon-linkedin" />,
+    Mail: () => <span data-testid="icon-mail" />,
+    Heart: () => <span data-testid="icon-heart" />,
+    ArrowUp: () => <span data-testid="icon-arrowup" />,
+    Send: () => <span data-testid="icon-send" />,
+    CheckCircle2: () => <span data-testid="icon-checkcircle2" />,
   }
 })
 

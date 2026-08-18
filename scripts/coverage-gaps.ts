@@ -194,7 +194,9 @@ async function main() {
       .replace(/\/route\.ts$/, "")
       .replace(/\\/g, "/")
       .split("/")
-    const excluded = EXCLUDED_ROUTES.has(`src/app/api/${routeFile}`)
+    // globSync returns OS-native separators on Windows (\) — normalize so the
+    // EXCLUDED_ROUTES set (always "/") matches on every platform.
+    const excluded = EXCLUDED_ROUTES.has(`src/app/api/${routeFile.replace(/\\/g, "/")}`)
 
     const coveredBy: string[] = []
     let infraOnly = false
