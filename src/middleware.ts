@@ -3,6 +3,14 @@ import type { NextRequest } from "next/server"
 import { checkGlobalRateLimit, globalRateLimitHeaders } from "@/lib/global-rate-limit"
 import { handleApiVersioning } from "@/lib/api-versioning"
 
+// ── Request ID generation (Edge-compatible) ──────────────────────────────
+// Uses crypto.randomUUID() which is available in Edge Runtime.
+// The request ID is added to headers so route handlers can read it.
+
+function generateRequestId(): string {
+  return crypto.randomUUID()
+}
+
 // ---------------------------------------------------------------------------
 // Rate limiting — global sliding-window limiter for /api/* (Edge-compatible).
 //
@@ -173,6 +181,11 @@ export async function middleware(request: NextRequest) {
   if (versionedResponse) return versionedResponse
 
   const response = NextResponse.next()
+
+  // --- Request ID (propagated via headers to route handlers) ---
+  // Check if client sent a request ID (for distributed tracing), otherwise generate one
+  const requestId = request.headers.get("x-request-id") || generateRequestId()
+  response.headers.set("x-request-id", requestId)
 
   // --- Security headers (applied to ALL responses) ---
   response.headers.set("X-DNS-Prefetch-Control", "on")
