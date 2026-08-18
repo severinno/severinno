@@ -37,6 +37,9 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
   NODE_VERSION: 22
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test
+  REDIS_URL: redis://localhost:6379
+  SESSION_SECRET: ci-session-secret-at-least-32-characters-long
 
 jobs:
   # -- Quality gates (fast, parallel) ---------------------------------------

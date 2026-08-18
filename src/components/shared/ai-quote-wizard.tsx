@@ -103,15 +103,14 @@ export function AiQuoteWizard({
     },
   })
 
-  // Reset state on modal close
-  React.useEffect(() => {
-    if (!open) {
+  const handleOpenChange = (next: boolean) => {
+    if (!next) {
       setDescription("")
       setStep("INPUT")
       estimateMutation.reset()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+    onOpenChange(next)
+  }
 
   const result = estimateMutation.data
 
@@ -131,7 +130,7 @@ export function AiQuoteWizard({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-xl sm:rounded-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl font-bold">

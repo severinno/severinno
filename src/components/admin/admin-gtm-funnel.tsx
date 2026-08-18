@@ -38,13 +38,36 @@ import {
 } from "@/components/ui/select"
 import { GTMLead, LeadStatus, FunnelMetrics, generateWhatsAppOutreachLink } from "@/lib/gtm-engine"
 
-const STATUS_CONFIG: Record<LeadStatus, { label: string; color: string; icon: React.ComponentType<{ className?: string }> }> = {
+const STATUS_CONFIG: Record<
+  LeadStatus,
+  { label: string; color: string; icon: React.ComponentType<{ className?: string }> }
+> = {
   NEW: { label: "Novo Lead", color: "bg-slate-100 text-slate-800 border-slate-300", icon: Clock },
-  CONTACTED: { label: "Contatado", color: "bg-blue-100 text-blue-800 border-blue-300", icon: PhoneCall },
-  DEMO_SCHEDULED: { label: "Pitch / Demo", color: "bg-amber-100 text-amber-800 border-amber-300", icon: MessageSquare },
-  ONBOARDED: { label: "Cadastrado", color: "bg-emerald-100 text-emerald-800 border-emerald-300", icon: CheckCircle2 },
-  FIRST_SERVICE: { label: "1º Atendimento", color: "bg-purple-100 text-purple-800 border-purple-300", icon: Award },
-  REJECTED: { label: "Descartado", color: "bg-rose-100 text-rose-800 border-rose-300", icon: Clock },
+  CONTACTED: {
+    label: "Contatado",
+    color: "bg-blue-100 text-blue-800 border-blue-300",
+    icon: PhoneCall,
+  },
+  DEMO_SCHEDULED: {
+    label: "Pitch / Demo",
+    color: "bg-amber-100 text-amber-800 border-amber-300",
+    icon: MessageSquare,
+  },
+  ONBOARDED: {
+    label: "Cadastrado",
+    color: "bg-emerald-100 text-emerald-800 border-emerald-300",
+    icon: CheckCircle2,
+  },
+  FIRST_SERVICE: {
+    label: "1º Atendimento",
+    color: "bg-purple-100 text-purple-800 border-purple-300",
+    icon: Award,
+  },
+  REJECTED: {
+    label: "Descartado",
+    color: "bg-rose-100 text-rose-800 border-rose-300",
+    icon: Clock,
+  },
 }
 
 export function AdminGTMFunnel() {
@@ -65,7 +88,6 @@ export function AdminGTMFunnel() {
 
   const loadData = React.useCallback(async () => {
     try {
-      setLoading(true)
       const res = await fetch("/api/admin/gtm/leads")
       const json = await res.json()
       if (json.success) {
@@ -79,8 +101,12 @@ export function AdminGTMFunnel() {
     }
   }, [])
 
+  // Deferred via queueMicrotask to satisfy react-hooks/set-state-in-effect
+  // (matches the pattern in admin-benchmark-dashboard.tsx).
   React.useEffect(() => {
-    loadData()
+    queueMicrotask(() => {
+      loadData()
+    })
   }, [loadData])
 
   const handleStatusChange = async (leadId: string, newStatus: LeadStatus) => {
@@ -145,9 +171,9 @@ export function AdminGTMFunnel() {
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+          <h2 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-slate-900">
             <Target className="h-6 w-6 text-emerald-600" />
             Go-To-Market — Aquisição de Prestadores (Fase 1)
           </h2>
@@ -158,7 +184,7 @@ export function AdminGTMFunnel() {
 
         <Dialog open={isNewLeadOpen} onOpenChange={setIsNewLeadOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shadow-sm">
+            <Button className="gap-2 bg-emerald-600 text-white shadow-sm hover:bg-emerald-700">
               <Plus className="h-4 w-4" />
               Novo Prestador Alvo
             </Button>
@@ -168,7 +194,8 @@ export function AdminGTMFunnel() {
               <DialogHeader>
                 <DialogTitle>Adicionar Prestador ao Funil</DialogTitle>
                 <DialogDescription>
-                  Insira os dados do profissional para gerar o link de abordagem personalizado via WhatsApp.
+                  Insira os dados do profissional para gerar o link de abordagem personalizado via
+                  WhatsApp.
                 </DialogDescription>
               </DialogHeader>
 
@@ -203,7 +230,9 @@ export function AdminGTMFunnel() {
                   </div>
 
                   <div className="grid gap-2">
-                    <label className="text-xs font-semibold text-slate-700">WhatsApp (com DDD)</label>
+                    <label className="text-xs font-semibold text-slate-700">
+                      WhatsApp (com DDD)
+                    </label>
                     <Input
                       placeholder="(11) 98765-4321"
                       value={newPhone}
@@ -229,7 +258,9 @@ export function AdminGTMFunnel() {
                 </div>
 
                 <div className="grid gap-2">
-                  <label className="text-xs font-semibold text-slate-700">Observações / Origem</label>
+                  <label className="text-xs font-semibold text-slate-700">
+                    Observações / Origem
+                  </label>
                   <Input
                     placeholder="Ex: Grupo WhatsApp Zona Oeste, 5k seguidores Instagram"
                     value={newNotes}
@@ -242,7 +273,7 @@ export function AdminGTMFunnel() {
                 <Button type="button" variant="outline" onClick={() => setIsNewLeadOpen(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                <Button type="submit" className="bg-emerald-600 text-white hover:bg-emerald-700">
                   Salvar Lead
                 </Button>
               </DialogFooter>
@@ -254,27 +285,30 @@ export function AdminGTMFunnel() {
       {/* Target Progress Card */}
       <Card className="border-emerald-200 bg-gradient-to-r from-emerald-50 via-teal-50 to-white shadow-sm">
         <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="space-y-2 max-w-lg">
-              <div className="flex items-center gap-2 text-emerald-800 font-semibold text-sm">
+          <div className="flex flex-col justify-between gap-6 md:flex-row md:items-center">
+            <div className="max-w-lg space-y-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
                 <Sparkles className="h-4 w-4" /> Meta: 50 Prestadores em 14 Dias
               </div>
               <h3 className="text-2xl font-black text-slate-900">
-                {metrics?.onboardedCount || 0} / 50 <span className="text-sm font-normal text-slate-600">prestadores ativos</span>
+                {metrics?.onboardedCount || 0} / 50{" "}
+                <span className="text-sm font-normal text-slate-600">prestadores ativos</span>
               </h3>
               <p className="text-xs text-slate-600">
-                Taxa de conversão atual do funil: <span className="font-bold text-emerald-700">{metrics?.conversionRate || 0}%</span>. Foco em categorias de alta demanda (Elétrica e Hidráulica).
+                Taxa de conversão atual do funil:{" "}
+                <span className="font-bold text-emerald-700">{metrics?.conversionRate || 0}%</span>.
+                Foco em categorias de alta demanda (Elétrica e Hidráulica).
               </p>
             </div>
 
-            <div className="flex-1 max-w-md space-y-2">
+            <div className="max-w-md flex-1 space-y-2">
               <div className="flex justify-between text-xs font-semibold text-slate-700">
                 <span>Progresso do Lançamento</span>
                 <span>{metrics?.progressPct || 0}%</span>
               </div>
-              <div className="h-3 w-full bg-slate-200 rounded-full overflow-hidden">
+              <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200">
                 <div
-                  className="h-full bg-emerald-600 transition-all duration-500 rounded-full"
+                  className="h-full rounded-full bg-emerald-600 transition-all duration-500"
                   style={{ width: `${Math.max(5, metrics?.progressPct || 0)}%` }}
                 />
               </div>
@@ -288,47 +322,77 @@ export function AdminGTMFunnel() {
       </Card>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {(
           [
-            { status: "NEW", label: "Novos", count: metrics?.byStatus.NEW || 0, color: "text-slate-700 border-slate-200" },
-            { status: "CONTACTED", label: "Contatados", count: metrics?.byStatus.CONTACTED || 0, color: "text-blue-700 border-blue-200" },
-            { status: "DEMO_SCHEDULED", label: "Em Pitch", count: metrics?.byStatus.DEMO_SCHEDULED || 0, color: "text-amber-700 border-amber-200" },
-            { status: "ONBOARDED", label: "Cadastrados", count: metrics?.byStatus.ONBOARDED || 0, color: "text-emerald-700 border-emerald-200" },
-            { status: "FIRST_SERVICE", label: "1º Serviço", count: metrics?.byStatus.FIRST_SERVICE || 0, color: "text-purple-700 border-purple-200" },
-            { status: "REJECTED", label: "Descartados", count: metrics?.byStatus.REJECTED || 0, color: "text-rose-700 border-rose-200" },
+            {
+              status: "NEW",
+              label: "Novos",
+              count: metrics?.byStatus.NEW || 0,
+              color: "text-slate-700 border-slate-200",
+            },
+            {
+              status: "CONTACTED",
+              label: "Contatados",
+              count: metrics?.byStatus.CONTACTED || 0,
+              color: "text-blue-700 border-blue-200",
+            },
+            {
+              status: "DEMO_SCHEDULED",
+              label: "Em Pitch",
+              count: metrics?.byStatus.DEMO_SCHEDULED || 0,
+              color: "text-amber-700 border-amber-200",
+            },
+            {
+              status: "ONBOARDED",
+              label: "Cadastrados",
+              count: metrics?.byStatus.ONBOARDED || 0,
+              color: "text-emerald-700 border-emerald-200",
+            },
+            {
+              status: "FIRST_SERVICE",
+              label: "1º Serviço",
+              count: metrics?.byStatus.FIRST_SERVICE || 0,
+              color: "text-purple-700 border-purple-200",
+            },
+            {
+              status: "REJECTED",
+              label: "Descartados",
+              count: metrics?.byStatus.REJECTED || 0,
+              color: "text-rose-700 border-rose-200",
+            },
           ] as const
         ).map((item) => (
           <Card
             key={item.status}
-            className={`cursor-pointer transition-all hover:shadow-md border ${
-              statusFilter === item.status ? "ring-2 ring-emerald-500 bg-emerald-50/40" : ""
+            className={`cursor-pointer border transition-all hover:shadow-md ${
+              statusFilter === item.status ? "bg-emerald-50/40 ring-2 ring-emerald-500" : ""
             }`}
             onClick={() => setStatusFilter(statusFilter === item.status ? "ALL" : item.status)}
           >
             <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold text-slate-900">{item.count}</div>
-              <div className="text-xs font-medium text-slate-600 mt-1">{item.label}</div>
+              <div className="mt-1 text-xs font-medium text-slate-600">{item.label}</div>
             </CardContent>
           </Card>
         ))}
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+      <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
         <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <Search className="absolute top-2.5 left-3 h-4 w-4 text-slate-400" />
           <Input
             placeholder="Buscar por nome, telefone, especialidade..."
-            className="pl-9 bg-white"
+            className="bg-white pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex w-full items-center gap-2 sm:w-auto">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full sm:w-48 bg-white">
+            <SelectTrigger className="w-full bg-white sm:w-48">
               <SelectValue placeholder="Filtrar por Status" />
             </SelectTrigger>
             <SelectContent>
@@ -345,10 +409,10 @@ export function AdminGTMFunnel() {
       </div>
 
       {/* Leads Table */}
-      <Card className="border-slate-200 shadow-sm overflow-hidden bg-white">
+      <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-slate-700">
-            <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500 border-b border-slate-200">
+            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500 uppercase">
               <tr>
                 <th className="px-4 py-3">Prestador</th>
                 <th className="px-4 py-3">Especialidade</th>
@@ -377,18 +441,18 @@ export function AdminGTMFunnel() {
                   const waLink = generateWhatsAppOutreachLink(lead)
 
                   return (
-                    <tr key={lead.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={lead.id} className="transition-colors hover:bg-slate-50/80">
                       <td className="px-4 py-3">
                         <div className="font-semibold text-slate-900">{lead.name}</div>
                         <div className="text-xs text-slate-500">{lead.phone}</div>
                       </td>
                       <td className="px-4 py-3">
-                        <Badge variant="outline" className="font-medium text-xs">
+                        <Badge variant="outline" className="text-xs font-medium">
                           {lead.profession}
                         </Badge>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="text-xs text-slate-800 font-medium">
+                        <div className="text-xs font-medium text-slate-800">
                           {lead.district ? `${lead.district}, ` : ""}
                           {lead.city}/{lead.state}
                         </div>
@@ -398,7 +462,7 @@ export function AdminGTMFunnel() {
                           value={lead.status}
                           onValueChange={(val) => handleStatusChange(lead.id, val as LeadStatus)}
                         >
-                          <SelectTrigger className="h-8 text-xs w-36 font-semibold bg-white">
+                          <SelectTrigger className="h-8 w-36 bg-white text-xs font-semibold">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -411,14 +475,14 @@ export function AdminGTMFunnel() {
                           </SelectContent>
                         </Select>
                       </td>
-                      <td className="px-4 py-3 max-w-xs truncate text-xs text-slate-600">
+                      <td className="max-w-xs truncate px-4 py-3 text-xs text-slate-600">
                         {lead.notes || "—"}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <Button
                           size="sm"
                           asChild
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 text-xs h-8 shadow-xs"
+                          className="h-8 gap-1.5 bg-emerald-600 text-xs text-white shadow-xs hover:bg-emerald-700"
                         >
                           <a href={waLink} target="_blank" rel="noopener noreferrer">
                             <Send className="h-3 w-3" />
