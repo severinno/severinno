@@ -1,5 +1,45 @@
 # Changelog
 
+## v1.0.1 — Security Audit Improvements (2026-08-18)
+
+### 🛡️ Security Enhancements
+
+- **Input Validation Hardening** — `bookingSchema.amount` now has `.max(1_000_000)` to prevent absurd values; upload endpoint validates file extension vs Content-Type (anti-MIME spoofing).
+- **Full-Text Search Migration** — Service search migrated from ILIKE (linear scan) to `plainto_tsquery` with GIN index fallback for better performance.
+- **GlitchTip Docker Secrets** — Error monitoring now uses Docker Secrets via custom entrypoint wrapper instead of plaintext environment variables.
+- **Realtime Authentication** — `/emit` endpoint now requires `x-api-key` header when configured; IDs use `crypto.randomUUID()` instead of `Math.random()`.
+- **AI Bot Blocking** — robots.txt now blocks CCBot, Google-Extended, ClaudeBot, and Bytespider.
+
+### ⚡ Performance Improvements
+
+- **Rate Limit Singleton** — Redis client is now reused across requests instead of creating new instances per request.
+- **Memory Store Limits** — In-memory stores have max size (10k) with LRU eviction to prevent memory leaks.
+- **OpenSearch Singleton** — Client is now a singleton in production to reduce overhead.
+- **Geo Bounds Cache** — `findProvidersWithinBounds` now has 30s cache to avoid repeated PostgreSQL queries.
+
+### 📊 Observability
+
+- **Configurable Thresholds** — Health monitor thresholds are now configurable via environment variables.
+- **Sentry Sample Rates** — Sentry sample rates are now configurable via environment variables.
+- **Realtime Metrics** — `/metrics` endpoint exposes active connections and room counts.
+- **Benchmark Regression Alerting** — Weekly benchmark workflow now creates GitHub Issues and sends webhooks when regressions are detected.
+
+### 🏗️ Infrastructure
+
+- **Worker Dockerfile** — Now copies `src/types` directory for TypeScript support.
+- **Notification Queue Fix** — Fixed `$queryRawUnsafe` params to use spread instead of array.
+- **Auth ME Rate Limit** — `/api/auth/me` now has explicit rate limit (30/min).
+
+### 📝 Documentation
+
+- **15 Audit Reports** — ~190KB of detailed audit documentation covering all 12 architecture layers.
+- **Executive Summary** — Complete implementation status with all 47 findings addressed.
+
+### 🔧 Fixes
+
+- Login endpoint now uses `parseBody()` instead of manual `request.json()`.
+- Payment polling now has max attempts to prevent infinite loops.
+
 ## v1.0.0 — Production-Ready Release (2026-08-13)
 
 ### 🚀 Destaques da Release
