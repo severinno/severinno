@@ -63,6 +63,7 @@
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { handleError } from "@/lib/api-server"
+import { recordRequestDuration } from "@/lib/metrics"
 
 // ---------------------------------------------------------------------------
 // Core wrapper
@@ -89,11 +90,24 @@ import { handleError } from "@/lib/api-server"
  * }
  * ```
  */
-export async function apiRoute(handler: () => Promise<NextResponse>): Promise<NextResponse> {
+export async function apiRoute(
+  handler: (request: Request) => Promise<NextResponse>,
+  request?: Request,
+): Promise<NextResponse> {
+  const startTime = performance.now()
+  let status = 200
+  let path = request ? new URL(request.url).pathname : "unknown"
+
   try {
-    return await handler()
+    const response = await handler(request!)
+    status = response.status
+    return response
   } catch (e) {
+    status = 500
     return handleError(e)
+  } finally {
+    const durationMs = performance.now() - startTime
+    recordRequestDuration(path, status, durationMs)
   }
 }
 

@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { getClient, getCacheStats } from "@/lib/redis"
 import { getChannel } from "@/lib/queue"
 import logger from "@/lib/logger"
+import { exportMetrics } from "@/lib/metrics"
 import pkg from "../../../../../package.json"
 
 // Force Node.js runtime — uses Prisma, amqplib, and Node.js APIs
@@ -655,6 +656,9 @@ function toOpenMetrics(resp: DetailedHealthResponse): string {
   lines.push("# HELP severinno_scrape_timestamp_seconds Timestamp of the metrics scrape")
   lines.push("# TYPE severinno_scrape_timestamp_seconds gauge")
   lines.push(`severinno_scrape_timestamp_seconds ${Date.now() / 1000}`)
+
+  // ── Request Duration Metrics ───────────────────────────────────
+  lines.push(exportMetrics())
 
   // ── EOF marker (required by OpenMetrics) ───────────────────────
   lines.push("# EOF")
