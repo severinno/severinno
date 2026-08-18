@@ -1,123 +1,345 @@
 # =============================================================================
-# docker-compose.staging.yml — Severinno Marketplace SaaS (Ambiente de Staging)
-#
+# docker-compose.staging.yml — Severinno Marketplace (Staging Environment)
+# =============================================================================
 # Uso:
 #   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
-#   docker compose -f docker-compose.staging.yml down
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging down
+#
+# Stack completo:
+#   - PostgreSQL 16 + PostGIS (primary + read replica)
+#   - Redis 7 (cache + rate limiting)
+#   - MinIO (S3-compatible storage)
+#   - OSRM (driving routing)
+#   - RabbitMQ (message queue)
+#   - PgBouncer (connection pooler)
+#   - Next.js App (web)
+#   - Workers (email, notification, search-index)
 # =============================================================================
-
-services:
-  # ── PostgreSQL with PostGIS ─────────────────────────────────────────────
-  postgres-staging:
-    image: postgis/postgis:16-3.4
-    container_name: severinno-postgres-staging
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-severinno_staging}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-severinno_staging_pass}
-      POSTGRES_DB: ${POSTGRES_DB:-severinno_staging}
-    ports:
-      - "${STAGING_POSTGRES_PORT:-5433}:5432"
-    volumes:
-      - staging_postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-postgis.sql:/docker-entrypoint-initdb.d/init-postgis.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-severinno_staging} -d ${POSTGRES_DB:-severinno_staging}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - severinno-staging-net
-
-  # ── Redis 7 (GEO + Cache) ───────────────────────────────────────────────
-  redis-staging:
-    image: redis:7-alpine
-    container_name: severinno-redis-staging
-    restart: unless-stopped
-    ports:
-      - "${STAGING_REDIS_PORT:-6380}:6379"
-    volumes:
-      - staging_redis_data:/data
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - severinno-staging-net
-
-  # ── MinIO S3 Object Storage ─────────────────────────────────────────────
-  minio-staging:
-    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
-    container_name: severinno-minio-staging
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    ports:
-      - "${STAGING_MINIO_PORT:-9002}:9000"
-      - "${STAGING_MINIO_CONSOLE_PORT:-9003}:9001"
-    environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minio_staging_key}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minio_staging_secret_key}
-    volumes:
-      - staging_minio_data:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-    networks:
-      - severinno-staging-net
-
-  # ── OSRM Driving Engine ─────────────────────────────────────────────────
-  osrm-staging:
-    image: osrm/osrm-backend:latest
-    container_name: severinno-osrm-staging
-    restart: unless-stopped
-    ports:
-      - "${STAGING_OSRM_PORT:-5001}:5000"
-    volumes:
-      - ./osrm-data:/data:ro
-    command: osrm-routed --algorithm mld /data/brazil-latest.osrm
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5000/route/v1/driving/-46.6565,-23.5615;-46.6855,-23.5670?overview=false || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - severinno-staging-net
-
-  # ── Severinno Next.js Web App (Staging) ──────────────────────────────────
-  web-staging:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        NODE_ENV: staging
-    container_name: severinno-web-staging
-    restart: unless-stopped
-    ports:
-      - "${STAGING_PORT:-3001}:3000"
-    environment:
-      NODE_ENV: staging
-      DATABASE_URL: "postgresql://${POSTGRES_USER:-severinno_staging}:${POSTGRES_PASSWORD:-severinno_staging_pass}@postgres-staging:5432/${POSTGRES_DB:-severinno_staging}?schema=public"
-      REDIS_URL: "redis://redis-staging:6379"
-      OSRM_URL: "http://osrm-staging:5000"
-      NEXT_PUBLIC_APP_URL: "${STAGING_APP_URL:-http://localhost:3001}"
-      JWT_SECRET: "${JWT_SECRET:-staging_super_secret_jwt_key_severinno_2026}"
-    depends_on:
-      postgres-staging:
-        condition: service_healthy
-      redis-staging:
-        condition: service_healthy
-    networks:
-      - severinno-staging-net
 
 networks:
   severinno-staging-net:
     driver: bridge
 
 volumes:
-  staging_postgres_data:
+  staging_postgres_primary_data:
+  staging_postgres_replica_data:
   staging_redis_data:
   staging_minio_data:
+  staging_rabbitmq_data:
+  staging_pgbouncer_data
+
+services:
+  # ── PostgreSQL Primary (Read/Write) ──────────────────────────────────────
+  postgres-staging:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: severinno-postgres-staging
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    tmpfs:
+      - /tmp:size=128M
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-severinno_staging}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-severinno_staging_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-severinno_staging}
+    volumes:
+      - staging_postgres_primary_data:/var/lib/postgresql/data
+      - ./scripts/init-postgis.sql:/docker-entrypoint-initdb.d/init-postgis.sql:ro
+    networks:
+      - severinno-staging-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-severinno_staging} -d ${POSTGRES_DB:-severinno_staging}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "1G"
+
+  # ── PostgreSQL Read Replica (Read Only) ──────────────────────────────────
+  postgres-replica-staging:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: severinno-postgres-replica-staging
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    tmpfs:
+      - /tmp:size=128M
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-severinno_staging}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-severinno_staging_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-severinno_staging}
+    volumes:
+      - staging_postgres_replica_data:/var/lib/postgresql/data
+    networks:
+      - severinno-staging-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-severinno_staging} -d ${POSTGRES_DB:-severinno_staging}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
+
+  # ── PgBouncer (Connection Pooler) ───────────────────────────────────────
+  pgbouncer-staging:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    container_name: severinno-pgbouncer-staging
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    tmpfs:
+      - /tmp:size=16M
+    expose:
+      - "6432"
+    volumes:
+      - ./config/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+    networks:
+      - severinno-staging-net
+    depends_on:
+      postgres-staging:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "6432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Redis 7 (Cache + Rate Limiting) ─────────────────────────────────────
+  redis-staging:
+    image: redis:7-alpine
+    container_name: severinno-redis-staging
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp:size=32M
+    expose:
+      - "6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - staging_redis_data:/data
+    networks:
+      - severinno-staging-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── RabbitMQ (Message Queue) ────────────────────────────────────────────
+  rabbitmq-staging:
+    image: rabbitmq:4-alpine
+    container_name: severinno-rabbitmq-staging
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp:size=32M
+      - /var/log/rabbitmq:size=16M
+    expose:
+      - "5672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-severinno_staging}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-severinno_staging_pass}
+    volumes:
+      - staging_rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - severinno-staging-net
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics ping >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ── MinIO (S3-compatible Storage) ───────────────────────────────────────
+  minio-staging:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    container_name: severinno-minio-staging
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - SYS_CHROOT
+    command: server /data --console-address ":9001"
+    expose:
+      - "9000"
+      - "9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minio_staging_key}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minio_staging_secret_key}
+    volumes:
+      - staging_minio_data:/data
+    networks:
+      - severinno-staging-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── OSRM (Driving Routing) ──────────────────────────────────────────────
+  osrm-staging:
+    image: osrm/osrm-backend:latest
+    container_name: severinno-osrm-staging
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    expose:
+      - "5000"
+    volumes:
+      - ./osrm-data:/data:ro
+    command: osrm-routed --algorithm mld /data/brazil-latest.osrm
+    networks:
+      - severinno-staging-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Severinno Next.js App ───────────────────────────────────────────────
+  web-staging:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: production
+    container_name: severinno-web-staging
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    tmpfs:
+      - /tmp:size=256M
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-severinno_staging}:${POSTGRES_PASSWORD:-severinno_staging_pass}@pgbouncer-staging:6432/${POSTGRES_DB:-severinno_staging}?schema=public"
+      DIRECT_URL: "postgresql://${POSTGRES_USER:-severinno_staging}:${POSTGRES_PASSWORD:-severinno_staging_pass}@postgres-staging:5432/${POSTGRES_DB:-severinno_staging}?schema=public"
+      REDIS_URL: "redis://redis-staging:6379"
+      RABBITMQ_URL: "amqp://${RABBITMQ_USER:-severinno_staging}:${RABBITMQ_PASS:-severinno_staging_pass}@rabbitmq-staging:5672"
+      S3_ENDPOINT: "http://minio-staging:9000"
+      S3_ACCESS_KEY: "${S3_ACCESS_KEY:-minio_staging_key}"
+      S3_SECRET_KEY: "${S3_SECRET_KEY:-minio_staging_secret_key}"
+      S3_BUCKET: "${S3_BUCKET:-severinno-staging-uploads}"
+      S3_REGION: "auto"
+      OSRM_BASE_URL: "http://osrm-staging:5000"
+      NEXT_PUBLIC_APP_URL: "${STAGING_APP_URL:-http://localhost:3001}"
+      SESSION_SECRET: "${SESSION_SECRET:-staging_session_secret_min_32_chars_long!!}"
+      LOG_LEVEL: "info"
+      OTEL_ENABLED: "true"
+      OTEL_SERVICE_NAME: "severinno-staging"
+    networks:
+      - severinno-staging-net
+    depends_on:
+      pgbouncer-staging:
+        condition: service_healthy
+      redis-staging:
+        condition: service_healthy
+      rabbitmq-staging:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: "1G"
+
+  # ── Email Worker ────────────────────────────────────────────────────────
+  email-worker-staging:
+    image: ghcr.io/${GITHUB_REPOSITORY:-severinno}/severinno:worker-latest
+    container_name: severinno-email-worker-staging
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64M
+    environment:
+      NODE_ENV: production
+      WORKER_TYPE: email
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-severinno_staging}:${POSTGRES_PASSWORD:-severinno_staging_pass}@pgbouncer-staging:6432/${POSTGRES_DB:-severinno_staging}?schema=public"
+      REDIS_URL: "redis://redis-staging:6379"
+      RABBITMQ_URL: "amqp://${RABBITMQ_USER:-severinno_staging}:${RABBITMQ_PASS:-severinno_staging_pass}@rabbitmq-staging:5672"
+    networks:
+      - severinno-staging-net
+    depends_on:
+      rabbitmq-staging:
+        condition: service_healthy
+
+  # ── Notification Worker ─────────────────────────────────────────────────
+  notification-worker-staging:
+    image: ghcr.io/${GITHUB_REPOSITORY:-severinno}/severinno:worker-latest
+    container_name: severinno-notification-worker-staging
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64M
+    environment:
+      NODE_ENV: production
+      WORKER_TYPE: notification
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-severinno_staging}:${POSTGRES_PASSWORD:-severinno_staging_pass}@pgbouncer-staging:6432/${POSTGRES_DB:-severinno_staging}?schema=public"
+      REDIS_URL: "redis://redis-staging:6379"
+      RABBITMQ_URL: "amqp://${RABBITMQ_USER:-severinno_staging}:${RABBITMQ_PASS:-severinno_staging_pass}@rabbitmq-staging:5672"
+    networks:
+      - severinno-staging-net
+    depends_on:
+      rabbitmq-staging:
+        condition: service_healthy
