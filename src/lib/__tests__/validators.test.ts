@@ -15,7 +15,7 @@ describe("loginSchema", () => {
   it("accepts valid login data", () => {
     const result = loginSchema.safeParse({
       email: "user@example.com",
-      password: "123456",
+      password: "12345678",
     })
     expect(result.success).toBe(true)
   })
@@ -23,7 +23,7 @@ describe("loginSchema", () => {
   it("rejects invalid email", () => {
     const result = loginSchema.safeParse({
       email: "not-an-email",
-      password: "123456",
+      password: "12345678",
     })
     expect(result.success).toBe(false)
   })
@@ -31,7 +31,7 @@ describe("loginSchema", () => {
   it("rejects short password", () => {
     const result = loginSchema.safeParse({
       email: "user@example.com",
-      password: "12345",
+      password: "1234567",
     })
     expect(result.success).toBe(false)
   })
@@ -46,8 +46,8 @@ describe("registerSchema", () => {
   const validClient = {
     name: "João Silva",
     email: "joao@example.com",
-    password: "123456",
-    confirmPassword: "123456",
+    password: "12345678",
+    confirmPassword: "12345678",
     role: "CLIENT" as const,
   }
 
@@ -90,8 +90,8 @@ describe("registerSchema", () => {
     const result = registerSchema.safeParse({
       name: "Carlos Prestador",
       email: "carlos@example.com",
-      password: "123456",
-      confirmPassword: "123456",
+      password: "12345678",
+      confirmPassword: "12345678",
       role: "PROVIDER",
       cpfCnpj: "123.456.789-00",
       whatsapp: "11999999999",
