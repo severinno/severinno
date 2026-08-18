@@ -23,6 +23,14 @@ vi.mock("@/lib/logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn().mockResolvedValue(undefined),
+  RATE_LIMITS: new Proxy(
+    {},
+    { get: () => ({ prefix: "test", max: 1000, windowMs: 60_000 }) },
+  ),
+}))
+
 // ── Imports ────────────────────────────────────────────────────────────────
 
 import { POST } from "../provider/wallet/withdraw/route"
