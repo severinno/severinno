@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test"
 import { waitForVitrine, registerUser, loginUser } from "./helpers"
 
@@ -40,7 +41,7 @@ test.describe("Autenticação", () => {
     await loginUser(page, "invalido@test.com", "senha_errada")
 
     // Deve mostrar mensagem de erro ou permanecer no modal
-    const errorMsg = page.locator('text=/inválido|erro|incorreto|não encontrado/i').first()
+    const errorMsg = page.locator("text=/inválido|erro|incorreto|não encontrado/i").first()
     const stillOnModal = page.getByPlaceholder(/email/i).first()
 
     const hasError = await errorMsg.isVisible().catch(() => false)
@@ -56,9 +57,12 @@ test.describe("Autenticação", () => {
     // Após registro bem-sucedido, verifica se o usuário está autenticado
     // (pode esconder o botão Entrar ou mostrar o nome do usuário)
     const entrarBtn = page.getByRole("button", { name: /entrar|login|criar conta/i }).first()
-    const btnHidden = await entrarBtn.isVisible().then(v => !v).catch(() => true)
+    const btnHidden = await entrarBtn
+      .isVisible()
+      .then((v) => !v)
+      .catch(() => true)
 
-    const userName = page.locator('text=/Test User/i').first()
+    const userName = page.locator("text=/Test User/i").first()
     const nameVisible = await userName.isVisible().catch(() => false)
 
     expect(btnHidden || nameVisible).toBe(true)

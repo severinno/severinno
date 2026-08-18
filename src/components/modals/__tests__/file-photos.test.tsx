@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, screen, fireEvent, act, waitFor, cleanup } from "@/__tests__/test-utils"
 import { FilePhotos } from "../file-photos"

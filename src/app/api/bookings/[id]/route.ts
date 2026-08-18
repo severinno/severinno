@@ -3,7 +3,11 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
 import { refundCharge, getCharge, lytexLogger } from "@/lib/lytex"
-import { notifyBookingStatus } from "@/lib/notifications"
+import {
+  notifyBookingStatus,
+  notifyCompletionRequest,
+  notifyPaymentConfirmed,
+} from "@/lib/notifications"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -89,8 +93,8 @@ export async function PATCH(request: Request, { params }: Params) {
 
     // Side effects on CONFIRM / CANCELLED
     const patch: {
-      status: string
-      paymentStatus?: string
+      status: any
+      paymentStatus?: any
     } = { status: next }
 
     // Se provider CONFIRMA sem pagamento ainda, cria cobrança PIX automática
@@ -100,7 +104,21 @@ export async function PATCH(request: Request, { params }: Params) {
       // O pagamento será feito via POST /api/bookings/[id]/pay
     }
 
-    if (next === "CANCELLED" && booking.paymentStatus === "PAID") {
+    // Escrow logic: when provider completes service, hold funds in escrow
+    if (next === "COMPLETED") {
+      if (isProvider) {
+        // Provider completed -> funds held in escrow awaiting client confirmation
+        patch.paymentStatus = "HELD"
+      } else {
+        // Client or Admin marked completed -> funds released immediately
+        patch.paymentStatus = "PAID"
+      }
+    }
+
+    if (
+      next === "CANCELLED" &&
+      (booking.paymentStatus === "PAID" || booking.paymentStatus === "HELD")
+    ) {
       // Tentar estornar no Lytex
       const payment = await db.payment.findUnique({
         where: { bookingId: id },
@@ -128,7 +146,7 @@ export async function PATCH(request: Request, { params }: Params) {
       patch.paymentStatus = "REFUNDED"
     }
 
-    const updated = await db.booking.update({
+    const updated: any = await db.booking.update({
       where: { id },
       data: patch,
       include: {
@@ -154,6 +172,14 @@ export async function PATCH(request: Request, { params }: Params) {
     // Notificar as partes sobre a mudança de status (best-effort)
     const newStatus = next
     const serviceName = updated.service?.title ?? "Serviço"
+
+    if (next === "COMPLETED" && isProvider) {
+      // Pedir ao cliente para confirmar conclusão e liberar custódia
+      notifyCompletionRequest(updated.clientId, id, updated.provider.name).catch(() => {})
+    } else if (next === "COMPLETED" && !isProvider) {
+      // Liberou pagamento
+      notifyPaymentConfirmed(updated.providerId, id, updated.amount).catch(() => {})
+    }
 
     // Notificar o cliente
     notifyBookingStatus(updated.clientId, id, newStatus, serviceName).catch(() => {})

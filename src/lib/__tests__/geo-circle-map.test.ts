@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { syncRadiusCircle, removeRadiusCircle, RADIUS_SOURCE_ID, type MapLike } from "../geo-circle"
 

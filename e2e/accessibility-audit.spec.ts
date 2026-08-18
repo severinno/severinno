@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Playwright + axe-core Accessibility Audit
  *
@@ -28,16 +29,16 @@ import AxeBuilder from "@axe-core/playwright"
 // avoid hanging on persistent connections.  Static pages use 'networkidle'.
 // Category & Provider pages need 'load' because they fetch DB data server-side.
 const PAGES = [
-  { path: "/",                     label: "Home",             waitUntil: "load"          as const },
-  { path: "/busca",                label: "Busca",            waitUntil: "load"          as const },
-  { path: "/como-funciona",        label: "ComoFunciona",     waitUntil: "networkidle"   as const },
-  { path: "/contato",              label: "Contato",          waitUntil: "networkidle"   as const },
-  { path: "/termos",               label: "Termos",           waitUntil: "networkidle"   as const },
-  { path: "/reset-password",       label: "ResetPassword",    waitUntil: "networkidle"   as const },
-  { path: "/pagina-que-nao-existe",label: "404",              waitUntil: "networkidle"   as const },
+  { path: "/", label: "Home", waitUntil: "load" as const },
+  { path: "/busca", label: "Busca", waitUntil: "load" as const },
+  { path: "/como-funciona", label: "ComoFunciona", waitUntil: "networkidle" as const },
+  { path: "/contato", label: "Contato", waitUntil: "networkidle" as const },
+  { path: "/termos", label: "Termos", waitUntil: "networkidle" as const },
+  { path: "/reset-password", label: "ResetPassword", waitUntil: "networkidle" as const },
+  { path: "/pagina-que-nao-existe", label: "404", waitUntil: "networkidle" as const },
   // ── Category pages (require DB seed — see scripts/test-e2e-a11y.sh) ──
-  { path: "/categoria/reparos",    label: "CategoriaReparos", waitUntil: "load"          as const },
-  { path: "/categoria/eletrica-reparos", label: "CategoriaEletrica", waitUntil: "load"  as const },
+  { path: "/categoria/reparos", label: "CategoriaReparos", waitUntil: "load" as const },
+  { path: "/categoria/eletrica-reparos", label: "CategoriaEletrica", waitUntil: "load" as const },
 ] as const
 
 // Colour contrast can't be accurately measured in headless Chrome
@@ -81,10 +82,13 @@ const SEED_PROVIDER_PASS = "provider123"
 async function mockAuth(page: Page, user: typeof MOCK_CLIENT | typeof MOCK_PROVIDER) {
   // ── 1. Seed Zustand persist in localStorage ──
   await page.addInitScript((u) => {
-    localStorage.setItem("severinno:auth", JSON.stringify({
-      state: { user: u, status: "authenticated" },
-      version: 0,
-    }))
+    localStorage.setItem(
+      "severinno:auth",
+      JSON.stringify({
+        state: { user: u, status: "authenticated" },
+        version: 0,
+      }),
+    )
   }, user)
 
   // ── 2. Intercept API routes ──
@@ -112,9 +116,7 @@ async function mockAuth(page: Page, user: typeof MOCK_CLIENT | typeof MOCK_PROVI
  * Run axe-core on the current page and assert results.
  */
 async function runAxe(page: Page, label: string) {
-  const results = await new AxeBuilder({ page })
-    .disableRules(DISABLE_RULES)
-    .analyze()
+  const results = await new AxeBuilder({ page }).disableRules(DISABLE_RULES).analyze()
 
   const allViolations = results.violations
   const seriousViolations = allViolations.filter(
@@ -128,9 +130,7 @@ async function runAxe(page: Page, label: string) {
       console.log(`  Impact: ${v.impact}`)
       console.log(`  Help: ${v.helpUrl}`)
       for (const node of v.nodes) {
-        const html = node.html.length > 120
-          ? node.html.slice(0, 120) + "..."
-          : node.html
+        const html = node.html.length > 120 ? node.html.slice(0, 120) + "..." : node.html
         console.log(`  → ${html}`)
       }
     }
@@ -143,10 +143,7 @@ async function runAxe(page: Page, label: string) {
 /**
  * Collect console errors during navigation, filter expected noise, and assert.
  */
-async function collectAndAssertErrors(
-  label: string,
-  consoleErrors: string[],
-) {
+async function collectAndAssertErrors(label: string, consoleErrors: string[]) {
   const realErrors = consoleErrors.filter(
     (e) =>
       !e.includes("WebSocket") &&

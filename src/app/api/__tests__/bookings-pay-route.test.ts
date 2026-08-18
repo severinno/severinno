@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for POST /api/bookings/[id]/pay — payment processing.
  *

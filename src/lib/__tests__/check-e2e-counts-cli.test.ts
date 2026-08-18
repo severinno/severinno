@@ -158,7 +158,7 @@ describe("check-e2e-counts.mjs — CLI real (fast gate)", () => {
     expect(out).toContain("não é JSON válido")
   })
 
-  it("repo real do projeto → exit 0 (derivação real prod=128, dev=162)", () => {
+  it("repo real do projeto → exit 0 (derivação real prod=127, dev=161)", () => {
     const { status, out } = runGuard(process.cwd())
     expect(status).toBe(0)
     expect(out).toContain("sincronizados")

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect, type Page } from "@playwright/test"
 import { waitForVitrine, registerUser, openBookingModal } from "./helpers"
 import { setupApiMocks } from "./mocks"

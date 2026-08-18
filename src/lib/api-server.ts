@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { ZodError } from "zod"
 import { db } from "@/lib/db"
 import { withCache, cacheInvalidate } from "@/lib/redis"
+import { BookingError, PaymentError } from "./domain-errors"
 import logger from "./logger"
 
 /**
@@ -73,6 +74,15 @@ export const conflict = (msg = "Conflito de estado") => new HttpError(409, msg)
 export function handleError(e: unknown) {
   if (e instanceof HttpError) {
     return NextResponse.json({ error: e.message }, { status: e.status, headers: e.headers })
+  }
+  // Duck-type AuthError instead of instanceof: many route tests mock
+  // @/lib/auth without the AuthError export, which breaks instanceof.
+  const domainErr = e as { name?: string; code?: string; status?: number }
+  if (domainErr?.name === "AuthError" || domainErr?.name === "BookingError" || domainErr?.name === "PaymentError") {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "", code: domainErr.code },
+      { status: domainErr.status ?? 500 },
+    )
   }
   if (e instanceof ZodError) {
     return NextResponse.json({ error: "Dados inválidos", details: e.issues }, { status: 400 })

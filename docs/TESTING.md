@@ -219,6 +219,65 @@ npx tsx scripts/coverage-gaps.ts --ci
 npx playwright test e2e/providers-cache.spec.ts --project=chromium
 ```
 
+---## Snapshot Management
+
+O projeto usa **snapshot tests** do Vitest (`toMatchSnapshot`) para capturar
+a saída renderizada de componentes em diferentes estados visuais.
+
+Atualmente há 8 snapshot tests em `src/components/admin/__tests__/`:
+
+| Arquivo                                    | Componente             |                  Snapshots                   |
+| :----------------------------------------- | :--------------------- | :------------------------------------------: |
+| `gist-reindex-button-snapshot.test.tsx`    | `GistReindexButton`    | 4 (initial, reindexing, success, refetching) |
+| `gist-degradation-panel-snapshot.test.tsx` | `GistDegradationPanel` | 4 (initial, reindexing, success, refetching) |
+
+### Workflow
+
+#### Atualizar snapshots (quando uma mudança intencional de UI quebra snapshots)
+
+```bash
+# Regenera TODOS os snapshots
+bun run test:snapshot-update
+
+# Ou para um arquivo específico
+npx vitest run --update src/components/admin/__tests__/gist-reindex-button-snapshot.test.tsx
+```
+
+#### Visualizar diff ao revisar snapshots
+
+```bash
+# Vitest mostra o diff no terminal quando um snapshot diverge
+bun run test:unit  # Se um snapshot quebrou, o diff aparece no output
+```
+
+#### Commitar snapshots atualizados
+
+1. Execute `bun run test:snapshot-update`
+2. Revise o diff dos snapshots no `git diff` — confirme que a mudança é intencional
+3. Faça commit junto com as alterações de código que os geraram
+4. **Nunca** faça `git add -A` depois de `--update` sem revisar o diff primeiro
+
+### Diretrizes
+
+- **Snapshots são arquivos de commit** — estão em `src/components/*/__tests__/__snapshots__/`
+  e precisam ser versionados para que o CI possa compará-los
+- **Prefira snapshots pequenos** — cada teste deve capturar UM estado visual, não o componente inteiro
+- **Nomeie snapshots com prefixo do componente** — ex: `gist-reindex-button-initial`,
+  `gist-degradation-panel-success` — para evitar colisão entre arquivos
+- **Evite atualizar snapshots em lote** — se mais de 3 snapshots quebrarem, a mudança
+  provavelmente é intencional (e o diff é fácil de revisar). Se dezenas quebrarem,
+  desconfie de mudança estrutural no componente base
+- **CI falha se snapshots divergirem** — é um guardrail contra regressão visual.
+  Execute `--update` localmente, revise, e comite. O CI só aceita snapshots exatos
+
+### Troubleshooting
+
+| Problema                                    | Causa provável                                                                  | Solução                                                               |
+| :------------------------------------------ | :------------------------------------------------------------------------------ | :-------------------------------------------------------------------- |
+| Snapshot quebrou no CI mas não localmente   | Versão diferente do React, jsdom, ou sistema de arquivos                        | Rode `bun run test:snapshot-update` na mesma plataforma do CI (Linux) |
+| `asFragment()` captura HTML enorme (>100KB) | Mock renderiza conteúdo condicional incondicionalmente                          | Verifique se Collapsible/AlertDialog mocks têm wrapper conditional    |
+| Snapshot mudou sem alteração de código      | Dependência dinâmica (ex: `Date.now()`, `Math.random()`, `crypto.randomUUID()`) | Mock a função com `vi.fn().mockReturnValue(fixedValue)`               |
+
 ---
 
 ## Seed E2Es (PostGIS efêmero)

@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Severinno Marketplace — Script de povoamento completo
  * Run with: bun prisma/populate.ts
@@ -1113,7 +1114,7 @@ async function main() {
           title: s.titulo,
           description: s.desc,
           basePrice: s.preco,
-          unit: s.unidade,
+          unit: s.unidade as any,
           photos: [
             `https://picsum.photos/seed/${s.fotoSeed}-1/800/600`,
             `https://picsum.photos/seed/${s.fotoSeed}-2/800/600`,
@@ -1151,7 +1152,7 @@ async function main() {
       data: {
         clientId: cliente.id,
         providerId: prestador.user.id,
-        status,
+        status: status as any,
         address: `${cliente.street ?? "Endereço"}, ${cliente.number ?? "s/n"}`,
         cep: cliente.cep ?? "00000-000",
         lat: cliente.lat ?? SP_LAT,
@@ -1238,14 +1239,14 @@ async function main() {
         providerId: prestador.user.id,
         serviceId: service.id,
         scheduledAt,
-        status,
+        status: status as any,
         address: `${cliente.street ?? "Endereço"}, ${cliente.number ?? "s/n"}`,
         cep: cliente.cep ?? "00000-000",
         lat: cliente.lat ?? SP_LAT,
         lng: cliente.lng ?? SP_LNG,
         amount,
         paymentMethod: i % 2 === 0 ? "PIX" : "CARD",
-        paymentStatus: payStatus,
+        paymentStatus: payStatus as any,
         notes: "Agendamento realizado via marketplace Severinno.",
       },
     })
@@ -1256,7 +1257,7 @@ async function main() {
         bookingId: booking.id,
         amount,
         method: i % 2 === 0 ? "PIX" : "CARD",
-        status: payStatus,
+        status: payStatus as any,
         transactionId: "TX" + booking.id.toUpperCase().slice(-10),
       },
     })

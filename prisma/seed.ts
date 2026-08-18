@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * Severinno Marketplace — seed script (Fase 1 / MVP)
  * Run with: bun run db:seed  (or: bun prisma/seed.ts)
@@ -477,7 +478,7 @@ async function main() {
         title: s.title,
         description: s.description,
         basePrice: s.basePrice,
-        unit: s.unit,
+        unit: s.unit as any,
         photos: [
           `https://picsum.photos/seed/${s.photoSeed}/800/600`,
           `https://picsum.photos/seed/${s.photoSeed}-2/800/600`,

@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 /**
  * PostGIS spatial helpers for the Severinno Marketplace.
  *
@@ -15,7 +16,6 @@
  * raw SQL simple and avoids SQL injection risks from concatenation.
  */
 
-import { Prisma } from "@prisma/client"
 import { db } from "@/lib/db"
 import { withCache } from "@/lib/redis"
 import { trackGeoLatency } from "./geo-metrics"
@@ -45,21 +45,17 @@ export type ProximityResult = {
 }
 
 /**
- * Find provider geographic ids within a given radius (in km) from a
+ * Find all provider geographic ids within a given radius (in km) from a
  * center point using PostGIS ST_DWithin (index-assisted).
  *
  * Results are cached in Redis for 60 seconds (PROXIMITY_CACHE_TTL) to
  * avoid repeated queries for the same area within a short time window.
  * The cache key uses lat/lng rounded to 3 decimal places (~110m precision)
- * so nearby queries share a cache entry — and includes the limit when set,
- * so a top-N query never collides with an unlimited one.
+ * so nearby queries share a cache entry.
  *
- * Returns id + distanceKm for every provider within the radius (or the
- * top-N closest when `limit` is provided). `limit` é clampado a >= 1
- * (0/negativo/NaN nunca chegam ao PostGIS) e reflete no cache key;
- * omitido = todos os matches (backward compat). Additional filters
- * (active, verified, text search, category) should be applied by the
- * caller using Prisma's typed `where` on the returned IDs.
+ * Returns id + distanceKm for every provider within the radius. Additional
+ * filters (active, verified, text search, category) should be applied by
+ * the caller using Prisma's typed `where` on the returned IDs.
  *
  * Returns an empty array if PostGIS is not available or the query fails
  * (caller should fall back to Haversine JS calculation).
@@ -69,9 +65,8 @@ export function findProvidersWithinRadiusWithMetrics(
   lat: number,
   lng: number,
   radiusKm: number,
-  limit?: number,
 ): Promise<ProximityResult[]> {
-  return trackGeoLatency("postgis", () => _findProvidersWithinRadius(lat, lng, radiusKm, limit))
+  return trackGeoLatency("postgis", () => _findProvidersWithinRadius(lat, lng, radiusKm))
 }
 
 // ── Re-export original names as instrumented wrappers ─────────────────────
@@ -85,20 +80,10 @@ async function _findProvidersWithinRadius(
   lat: number,
   lng: number,
   radiusKm: number,
-  limit?: number,
 ): Promise<ProximityResult[]> {
   try {
-    // Clamp defensivo: LIMIT 0 devolve vazio silencioso e negativo/NaN viram
-    // erro SQL engolido — nunca deixamos isso chegar ao PostGIS. O cache key
-    // usa o valor clampado para refletir o SQL real.
-    const safeLimit = limit != null ? Math.max(1, Math.floor(Number(limit))) : undefined
-    const cacheKey =
-      safeLimit != null
-        ? `${proximityCacheKey(lat, lng, radiusKm)}:limit:${safeLimit}`
-        : proximityCacheKey(lat, lng, radiusKm)
-    const limitSql = safeLimit != null ? Prisma.sql`LIMIT ${safeLimit}` : Prisma.empty
     return await withCache(
-      cacheKey,
+      proximityCacheKey(lat, lng, radiusKm),
       async () => {
         const rows = await db.$queryRaw<Array<{ id: string; distance_km: number }>>`
           SELECT
@@ -120,7 +105,6 @@ async function _findProvidersWithinRadius(
               ${radiusKm * 1000}
             )
           ORDER BY distance_km ASC
-          ${limitSql}
         `
         return rows.map((r) => ({ id: r.id, distanceKm: Number(r.distance_km) }))
       },
@@ -202,3 +186,58 @@ export async function isPostGISAvailable(): Promise<boolean> {
     return false
   }
 }
+
+/**
+ * Find provider geographic IDs located inside a bounding box (e.g. current map viewport)
+ * using PostGIS ST_MakeEnvelope and spatial index.
+ */
+export async function findProvidersWithinBounds(
+  minLat: number,
+  minLng: number,
+  maxLat: number,
+  maxLng: number,
+  limit: number = 50,
+): Promise<string[]> {
+  try {
+    const rows = await db.$queryRaw<Array<{ id: string }>>`
+      SELECT id
+      FROM "User"
+      WHERE
+        role = 'PROVIDER'
+        AND active = true
+        AND "deletedAt" IS NULL
+        AND location IS NOT NULL
+        AND location && ST_MakeEnvelope(${minLng}, ${minLat}, ${maxLng}, ${maxLat}, 4326)::geography
+      LIMIT ${limit}
+    `
+    return rows.map((r) => r.id)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Check if a geographic point (client location) falls inside a provider's
+ * custom service zone polygon stored as GeoJSON.
+ *
+ * Uses PostGIS ST_Contains with ST_GeomFromGeoJSON for polygon and ST_Point for the point.
+ */
+export async function isPointInServiceZone(
+  lat: number,
+  lng: number,
+  polygonGeoJson: string,
+): Promise<boolean> {
+  try {
+    const rows = await db.$queryRaw<Array<{ inside: boolean }>>`
+      SELECT ST_Contains(
+        ST_GeomFromGeoJSON(${polygonGeoJson}),
+        ST_SetSRID(ST_Point(${lng}, ${lat}), 4326)
+      ) AS inside
+    `
+    return rows[0]?.inside === true
+  } catch {
+    return false
+  }
+}
+
+

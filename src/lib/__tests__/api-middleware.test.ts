@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 /**
  * api-middleware.test.ts
  *
@@ -7,7 +8,7 @@
  *   - parseSearchParams — validate URLSearchParams with Zod
  */
 
-import { describe, it, expect, vi } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 import { NextResponse } from "next/server"
 import { z } from "zod"
 import { apiRoute, parseBody, parseSearchParams } from "@/lib/api-middleware"
@@ -47,7 +48,7 @@ const testSchema = z.object({
   age: z.coerce.number().int().min(0),
 })
 
-type _TestInput = z.infer<typeof testSchema>
+type TestInput = z.infer<typeof testSchema>
 
 const searchSchema = z.object({
   q: z.string().min(1, "Query obrigatória"),

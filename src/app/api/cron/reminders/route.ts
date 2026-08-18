@@ -5,6 +5,11 @@ import { sendMail, bookingReminderHtml } from "@/lib/mail"
 import { sendPushNotification } from "@/lib/push"
 import { captureError } from "@/lib/sentry"
 import { handleError } from "@/lib/api-server"
+import {
+  notifyPaymentReminder,
+  notifyReviewRequest,
+  notifyPaymentConfirmed,
+} from "@/lib/notifications"
 
 export async function GET(request: Request) {
   try {
@@ -16,7 +21,10 @@ export async function GET(request: Request) {
     const now = new Date()
     const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000)
     const in23h = new Date(now.getTime() + 23 * 60 * 60 * 1000)
+    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000)
+    const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000)
 
+    // 1. Upcoming 24h reminders
     const bookings = await db.booking.findMany({
       where: {
         scheduledAt: { gte: in23h, lte: in24h },
@@ -79,8 +87,100 @@ export async function GET(request: Request) {
       sent++
     }
 
-    logger.info({ sent, total: bookings.length }, "cron reminders processed")
-    return NextResponse.json({ ok: true, sent })
+    // 2. Pending payment reminders (> 2h created, PIX, unpaid)
+    const unpaidBookings = await db.booking.findMany({
+      where: {
+        paymentStatus: "PENDING",
+        status: { in: ["PENDING", "CONFIRMED"] },
+        createdAt: { lte: twoHoursAgo },
+        paymentMethod: "PIX",
+      },
+      include: {
+        payment: { select: { qrCode: true } },
+      },
+      take: 20,
+    })
+
+    let paymentRemindersSent = 0
+    for (const ub of unpaidBookings) {
+      notifyPaymentReminder(ub.clientId, ub.id, ub.amount, ub.payment?.qrCode ?? undefined).catch(
+        () => {},
+      )
+      paymentRemindersSent++
+    }
+
+    // 3. Review request reminders (completed > 48h ago without review)
+    const completedWithoutReview = await db.booking.findMany({
+      where: {
+        status: "COMPLETED",
+        updatedAt: { lte: twoDaysAgo },
+        reviews: { none: {} },
+      },
+      include: {
+        provider: { select: { name: true } },
+      },
+      take: 20,
+    })
+
+    let reviewRequestsSent = 0
+    for (const cwr of completedWithoutReview) {
+      notifyReviewRequest(cwr.clientId, cwr.id, cwr.provider.name).catch(() => {})
+      reviewRequestsSent++
+    }
+
+    // 4. Escrow auto-release (HELD > 72h without open disputes)
+    const threeDaysAgo = new Date(now.getTime() - 72 * 60 * 60 * 1000)
+    const heldBookingsToRelease = await db.booking.findMany({
+      where: {
+        paymentStatus: "HELD",
+        status: "COMPLETED",
+        updatedAt: { lte: threeDaysAgo },
+        disputes: { none: { status: "OPEN" } },
+      },
+      take: 20,
+    })
+
+    let escrowAutoReleasedCount = 0
+    for (const hb of heldBookingsToRelease) {
+      await db.$transaction([
+        db.booking.update({
+          where: { id: hb.id },
+          data: {
+            paymentStatus: "PAID",
+            escrowReleasedAt: now,
+          },
+        }),
+        db.payment.updateMany({
+          where: { bookingId: hb.id },
+          data: {
+            status: "PAID",
+            paidAt: now,
+          },
+        }),
+      ])
+
+      notifyPaymentConfirmed(hb.providerId, hb.id, hb.amount).catch(() => {})
+      escrowAutoReleasedCount++
+    }
+
+    logger.info(
+      {
+        sent,
+        paymentRemindersSent,
+        reviewRequestsSent,
+        escrowAutoReleasedCount,
+        total: bookings.length,
+      },
+      "cron reminders processed with extended WhatsApp lifecycle and escrow auto-release",
+    )
+
+    return NextResponse.json({
+      ok: true,
+      sent,
+      paymentRemindersSent,
+      reviewRequestsSent,
+      escrowAutoReleasedCount,
+    })
   } catch (e) {
     return handleError(e)
   }

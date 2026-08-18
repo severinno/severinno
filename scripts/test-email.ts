@@ -1,3 +1,4 @@
+/* eslint-disable no-console, @typescript-eslint/no-explicit-any  */
 /**
  * Script de teste de envio real de emails transactionais
  * via SMTP Hostinger com nodemailer.

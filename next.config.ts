@@ -6,7 +6,9 @@ import withBundleAnalyzer from "@next/bundle-analyzer"
 // See src/middleware.ts for the dynamic CSP header.
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  ...(process.env.BUILD_STANDALONE === "true" || process.env.DOCKER_BUILD === "true"
+    ? { output: "standalone" }
+    : {}),
   reactStrictMode: true,
   poweredByHeader: false,
   generateEtags: true,

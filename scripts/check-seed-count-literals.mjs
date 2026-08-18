@@ -27,7 +27,7 @@
 //
 // Nota (self-scan): este guard varre scripts/ e, portanto, o PRÓPRIO arquivo.
 // O header NÃO usa literais reais de count com "checks" adjacente de
-// propósito — ex.: "N checks" em vez de "128 checks" — para que um bump
+// propósito — ex.: "N checks" em vez de "127 checks" — para que um bump
 // futuro da derivação não transforme a documentação do guard num tripwire.
 //
 // Fonte da verdade: REUSA runDerivation/parseDerivedJson do
@@ -74,19 +74,19 @@ const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", "tool-result
 /**
  * Padrões que extraem um literal de count em CONTEXTO. Cada padrão captura o
  * número no grupo 1. O contexto é o que separa um count de seed de mock data:
- *   - "128 checks" / "162 checks" (adjacência à palavra checks)
- *   - ternary da matrix do seed-guards.yml: 'prod' && '128' || '162' }} checks
+ *   - "127 checks" / "161 checks" (adjacência à palavra checks)
+ *   - ternary da matrix do seed-guards.yml: 'prod' && '127' || '161' }} checks
  * Prosa sem a palavra "checks" perto do número não casa (GUARDS.md histórica).
  */
 const COUNT_CONTEXT_PATTERNS = [
   // "N checks" — forma dominante em comentários, echos e docs. O prefixo
   // [^\w-] impede casar "UTF-8 check" (hífen antes do número) e números
-  // colados em palavras ("a128 checks" não casa em 128). \d{2,}: counts de
+  // colados em palavras ("a127 checks" não casa em 127). \d{2,}: counts de
   // seed nunca são single-digit (128/162) — prosa como "run 3 checks" e o
   // flag '1' (SKIP_PRISMA_GENERATE) não casam; e o teto fica aberto (4+
   // dígitos num bump futuro ainda são detectados, não viram ref órfão).
   { re: /(?:^|[^\w-])(\d{2,})\s+checks?\b/gi },
-  // ternary ESPECÍFICO da matrix: ${{ matrix.seed == 'prod' && '128' || '162' }} checks
+  // ternary ESPECÍFICO da matrix: ${{ matrix.seed == 'prod' && '127' || '161' }} checks
   // — ancorado em 'prod' E em 2+ dígitos: ternaries && '1' (SKIP_PRISMA_
   // GENERATE) são single-digit e NÃO casam.
   { re: /'prod'\s*&&\s*'(\d{2,})'/g },
