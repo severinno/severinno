@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { getCacheStats, getClient } from "@/lib/redis"
 import { getGeoSettings } from "@/lib/geo-settings"
 import logger from "@/lib/logger"
+import { getRequestId } from "@/lib/request-context"
 import pkg from "../../../../package.json"
 
 // Sentry is optional — only imported and used when SENTRY_DSN is configured
@@ -107,6 +108,7 @@ type HealthResponse = {
     exporter: string
     sampleRate: number
   }
+  requestId: string | null
   version: string
 }
 
@@ -179,6 +181,7 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
       exporter: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "console",
       sampleRate: parseFloat(process.env.OTEL_SAMPLE_RATE || "0.1"),
     },
+    requestId: getRequestId(),
     version: pkg.version,
   }
 

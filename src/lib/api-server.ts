@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { withCache, cacheInvalidate } from "@/lib/redis"
 import { BookingError, PaymentError } from "./domain-errors"
 import logger from "./logger"
+import { getRequestId } from "./request-context"
 
 /**
  * Server-side helpers for API route handlers.
@@ -95,8 +96,11 @@ export function handleError(e: unknown) {
       return NextResponse.json({ error: "Acesso proibido" }, { status: 403 })
     }
   }
-  logger.error({ err: e }, "unhandled api error")
-  return NextResponse.json({ error: "Erro interno do servidor" }, { status: 500 })
+  logger.error({ err: e, requestId: getRequestId() }, "unhandled api error")
+  return NextResponse.json(
+    { error: "Erro interno do servidor", requestId: getRequestId() },
+    { status: 500 },
+  )
 }
 
 // ---------------------------------------------------------------------------
