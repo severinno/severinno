@@ -1,0 +1,217 @@
+# =============================================================================
+# Grafana Alerting Rules — Severinno Marketplace
+# =============================================================================
+# Configuração de alertas automáticos para métricas críticas.
+#
+# Uso:
+#   - Importar via Grafana UI: Alerting → Alert Rules → Import
+#   - Ou via API: POST /api/v1/provisioning/alert-rules
+#
+# Alertas configurados:
+#   1. High Error Rate (> 5% em 5min)
+#   2. High Latency (P95 > 2s por 5min)
+#   3. Database Down
+#   4. Redis Down
+#   5. Memory Critical (> 90%)
+#   6. Disk Space Low (< 10%)
+# =============================================================================
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: Severinno Production
+    folder: Severinno
+    interval: 1m
+    rules:
+      # ── 1. High Error Rate ─────────────────────────────────────────────
+      - uid: severinno-high-error-rate
+        title: "High Error Rate (> 5%)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: sum(rate(http_request_duration_ms_count{status=~"5.."}[5m])) / sum(rate(http_request_duration_ms_count[5m])) * 100
+              instant: false
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $values.A }}% (threshold: 5%)"
+          runbook_url: "https://docs.severinno.com.br/runbooks/high-error-rate"
+
+      # ── 2. High Latency ────────────────────────────────────────────────
+      - uid: severinno-high-latency
+        title: "High Latency (P95 > 2s)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: histogram_quantile(0.95, sum(rate(http_request_duration_ms_bucket[5m])) by (le))
+              instant: false
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High latency detected"
+          description: "P95 latency is {{ $values.A }}ms (threshold: 2000ms)"
+          runbook_url: "https://docs.severinno.com.br/runbooks/high-latency"
+
+      # ── 3. Database Down ────────────────────────────────────────────────
+      - uid: severinno-database-down
+        title: "Database Down"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 60
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: severinno_service_status{name="database"} == -1
+              instant: true
+        noDataState: OK
+        execErrState: Error
+        for: 1m
+        labels:
+          severity: critical
+          team: infra
+        annotations:
+          summary: "Database is down"
+          description: "PostgreSQL service is unhealthy"
+          runbook_url: "https://docs.severinno.com.br/runbooks/database-down"
+
+      # ── 4. Redis Down ──────────────────────────────────────────────────
+      - uid: severinno-redis-down
+        title: "Redis Down"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 60
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: severinno_service_status{name="redis"} == -1
+              instant: true
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        labels:
+          severity: warning
+          team: infra
+        annotations:
+          summary: "Redis is down"
+          description: "Redis service is unhealthy (app degrades gracefully)"
+          runbook_url: "https://docs.severinno.com.br/runbooks/redis-down"
+
+      # ── 5. Memory Critical ─────────────────────────────────────────────
+      - uid: severinno-memory-critical
+        title: "Memory Usage Critical (> 90%)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: severinno_process_memory_rss_bytes / (1024 * 1024 * 1024) * 100 > 90
+              instant: false
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: critical
+          team: infra
+        annotations:
+          summary: "Memory usage critical"
+          description: "Memory usage is {{ $values.A }}% (threshold: 90%)"
+          runbook_url: "https://docs.severinno.com.br/runbooks/memory-critical"
+
+      # ── 6. Cache Hit Ratio Low ─────────────────────────────────────────
+      - uid: severinno-cache-hit-low
+        title: "Cache Hit Ratio Low (< 50%)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: severinno_cache_hit_ratio < 0.5
+              instant: false
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Cache hit ratio is low"
+          description: "Cache hit ratio is {{ $values.A }} (threshold: 0.5)"
+          runbook_url: "https://docs.severinno.com.br/runbooks/cache-hit-low"
+
+      # ── 7. Too Many Active Connections ──────────────────────────────────
+      - uid: severinno-high-connections
+        title: "Too Many Active Connections (> 200)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: http_active_connections > 200
+              instant: false
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Too many active connections"
+          description: "Active connections: {{ $values.A }} (threshold: 200)"
+          runbook_url: "https://docs.severinno.com.br/runbooks/high-connections"
+
+      # ── 8. RabbitMQ Queue Depth High ────────────────────────────────────
+      - uid: severinno-queue-depth-high
+        title: "RabbitMQ Queue Depth High (> 1000)"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: severinno_rabbitmq_queue_messages > 1000
+              instant: false
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "RabbitMQ queue depth is high"
+          description: "Queue {{ $labels.queue }} has {{ $values.A }} messages (threshold: 1000)"
+          runbook_url: "https://docs.severinno.com.br/runbooks/queue-depth-high"
