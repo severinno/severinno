@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { checkGlobalRateLimit, globalRateLimitHeaders } from "@/lib/global-rate-limit"
+import { handleApiVersioning } from "@/lib/api-versioning"
 
 // ---------------------------------------------------------------------------
 // Rate limiting — global sliding-window limiter for /api/* (Edge-compatible).
@@ -166,6 +167,11 @@ function isPublicApi(pathname: string): boolean {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+
+  // --- API versioning (rewrites /api/v1/* → /api/*) ---
+  const versionedResponse = handleApiVersioning(request)
+  if (versionedResponse) return versionedResponse
+
   const response = NextResponse.next()
 
   // --- Security headers (applied to ALL responses) ---
