@@ -1,0 +1,123 @@
+# =============================================================================
+# docker-compose.staging.yml — Severinno Marketplace SaaS (Ambiente de Staging)
+#
+# Uso:
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
+#   docker compose -f docker-compose.staging.yml down
+# =============================================================================
+
+services:
+  # ── PostgreSQL with PostGIS ─────────────────────────────────────────────
+  postgres-staging:
+    image: postgis/postgis:16-3.4
+    container_name: severinno-postgres-staging
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-severinno_staging}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-severinno_staging_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-severinno_staging}
+    ports:
+      - "${STAGING_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - staging_postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-postgis.sql:/docker-entrypoint-initdb.d/init-postgis.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-severinno_staging} -d ${POSTGRES_DB:-severinno_staging}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - severinno-staging-net
+
+  # ── Redis 7 (GEO + Cache) ───────────────────────────────────────────────
+  redis-staging:
+    image: redis:7-alpine
+    container_name: severinno-redis-staging
+    restart: unless-stopped
+    ports:
+      - "${STAGING_REDIS_PORT:-6380}:6379"
+    volumes:
+      - staging_redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - severinno-staging-net
+
+  # ── MinIO S3 Object Storage ─────────────────────────────────────────────
+  minio-staging:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    container_name: severinno-minio-staging
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "${STAGING_MINIO_PORT:-9002}:9000"
+      - "${STAGING_MINIO_CONSOLE_PORT:-9003}:9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minio_staging_key}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minio_staging_secret_key}
+    volumes:
+      - staging_minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - severinno-staging-net
+
+  # ── OSRM Driving Engine ─────────────────────────────────────────────────
+  osrm-staging:
+    image: osrm/osrm-backend:latest
+    container_name: severinno-osrm-staging
+    restart: unless-stopped
+    ports:
+      - "${STAGING_OSRM_PORT:-5001}:5000"
+    volumes:
+      - ./osrm-data:/data:ro
+    command: osrm-routed --algorithm mld /data/brazil-latest.osrm
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/route/v1/driving/-46.6565,-23.5615;-46.6855,-23.5670?overview=false || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - severinno-staging-net
+
+  # ── Severinno Next.js Web App (Staging) ──────────────────────────────────
+  web-staging:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: staging
+    container_name: severinno-web-staging
+    restart: unless-stopped
+    ports:
+      - "${STAGING_PORT:-3001}:3000"
+    environment:
+      NODE_ENV: staging
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-severinno_staging}:${POSTGRES_PASSWORD:-severinno_staging_pass}@postgres-staging:5432/${POSTGRES_DB:-severinno_staging}?schema=public"
+      REDIS_URL: "redis://redis-staging:6379"
+      OSRM_URL: "http://osrm-staging:5000"
+      NEXT_PUBLIC_APP_URL: "${STAGING_APP_URL:-http://localhost:3001}"
+      JWT_SECRET: "${JWT_SECRET:-staging_super_secret_jwt_key_severinno_2026}"
+    depends_on:
+      postgres-staging:
+        condition: service_healthy
+      redis-staging:
+        condition: service_healthy
+    networks:
+      - severinno-staging-net
+
+networks:
+  severinno-staging-net:
+    driver: bridge
+
+volumes:
+  staging_postgres_data:
+  staging_redis_data:
+  staging_minio_data:

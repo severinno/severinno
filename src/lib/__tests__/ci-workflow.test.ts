@@ -156,9 +156,9 @@ describe("ci.yml — fatos-chave", () => {
     expect(parsed.jobs?.["quality-gate"]?.uses).toBe("./.github/workflows/quality-gate.yml")
   })
 
-  it("test: postgres service + bun run test:run", () => {
+  it("test: postgis service + bun run test:run", () => {
     const test = parsed.jobs?.test
-    expect(test?.services?.postgres?.image).toContain("postgres")
+    expect(test?.services?.postgres?.image).toContain("postgis")
     expect(jobRun("test", "bun run test:run")).toContain("bun run test:run")
   })
 

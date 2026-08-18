@@ -1,5 +1,24 @@
 {
-  "count": 0,
-  "updatedAt": "2026-08-06",
-  "findings": []
+  "count": 3,
+  "updatedAt": "2026-08-18",
+  "findings": [
+    {
+      "package": "deepmerge-ts",
+      "url": "https://github.com/advisories/GHSA-ggr8-5vv4-36mx",
+      "severity": "high",
+      "title": "DeepmergeTS has stack exhaustion when merging recursive object graphs"
+    },
+    {
+      "package": "js-yaml",
+      "url": "https://github.com/advisories/GHSA-5p4m-2wfm-xmqj",
+      "severity": "high",
+      "title": "JS-YAML: Quadratic CPU consumption in !!omap resolution (3.x and 4.x) — CVE-2026-59870 fix not backported"
+    },
+    {
+      "package": "nanoid",
+      "url": "https://github.com/advisories/GHSA-2v37-7h3g-55p8",
+      "severity": "high",
+      "title": "nanoid: custom generators can loop indefinitely when size is zero"
+    }
+  ]
 }

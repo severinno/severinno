@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Rate limiter for Severinno Marketplace API routes.
  *
@@ -221,8 +222,8 @@ export async function assertRateLimit(request: Request, options: RateLimitOption
 // ---------------------------------------------------------------------------
 
 export const RATE_LIMITS = {
-  /** Login: 10 attempts per minute per IP */
-  login: { prefix: "login", max: 10, windowMs: 60_000 },
+  /** Login: 5 attempts per minute per IP (strict protection against brute-force) */
+  login: { prefix: "login", max: 5, windowMs: 60_000 },
   /** Register: 5 attempts per minute per IP */
   register: { prefix: "register", max: 5, windowMs: 60_000 },
   /** Password recovery: 3 attempts per 10 min per IP */

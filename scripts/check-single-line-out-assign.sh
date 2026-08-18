@@ -8,18 +8,18 @@
 # POSITIONAL ARGUMENT — `out` is never set and `$?` captures the wrong
 # command, so the script silently breaks while looking correct. In
 # validate-seed-guards-matrix-local.sh this pattern would have been a FALSE
-# POSITIVE: the E2E count string ("128 checks") still appears in the output,
+# POSITIVE: the E2E count string ("127 checks") still appears in the output,
 # so check-e2e-counts.mjs passes, while the actual `out` capture and the
 # exit-code check are dead code. The correct form is TWO lines:
 #
-#     cell "Rodando prod E2E (128 checks)..."
+#     cell "Rodando prod E2E (127 checks)..."
 #     out=$(cd "$SCRIPT_DIR" && ... 2>&1)
 #
-# CONTRATO DE COUNTS: o exemplo "128 checks" (acima) é um count de seed
+# CONTRATO DE COUNTS: o exemplo "127 checks" (acima) é um count de seed
 # REAL — a derivação scripts/seed-e2e-count.ts dá prod=128, dev=162 hoje
 # (snapshot com "hoje" de propósito: a prosa sem "checks" adjacente não é
 # flag do guard, igual à prosa histórica do GUARDS.md), e "Rodando prod E2E
-# (128 checks)..." é a string exata do validate-seed-guards-matrix-local.sh
+# (127 checks)..." é a string exata do validate-seed-guards-matrix-local.sh
 # (grep: `grep -n 'Rodando prod E2E' scripts/validate-seed-guards-matrix-local.sh`).
 # É um ref VIVO, não uma ilustração genérica: scripts/check-seed-count-literals.mjs
 # varre TODO o repo (scripts/, docs/, .github/) e FALHA se qualquer literal

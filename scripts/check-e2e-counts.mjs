@@ -32,7 +32,7 @@
 //
 // PISO de sites por alvo (MIN_DOCUMENTED_SITES, prod ≥ 8 / dev ≥ 6): além
 // de validar cada count ENCONTRADO, o guard falha se sites documentados
-// SOMEM da extração (ex.: reformatar o ternary, generalizar "128 checks" →
+// SOMEM da extração (ex.: reformatar o ternary, generalizar "127 checks" →
 // "N checks") — mesma proteção do piso do seed-e2e-count.test.ts, fechando
 // a brecha onde uma doc esvaziada passaria sem violações.
 //
@@ -70,7 +70,7 @@ export const SCAN_FILES = [
  *
  * Por quê: checkCounts só valida counts que a extração ENCONTRA. Se um site
  * for silenciosamente PERDIDO (ex.: reformatar o ternary da matrix, ou — o
- * cenário do mutation test — generalizar "128 checks" → "N checks"), a
+ * cenário do mutation test — generalizar "127 checks" → "N checks"), a
  * extração encolhe, zero violações são encontradas e o guard passaria com a
  * doc esvaziada. Este piso falha o guard quando um alvo fica com menos sites
  * do que o mínimo — fechando a mesma brecha que o piso do teste de
@@ -80,7 +80,7 @@ export const MIN_DOCUMENTED_SITES = { prod: 8, dev: 6 }
 
 /**
  * Padrões que ligam um count documentado ao SEU alvo (prod|dev). A dedupe
- * remove sobreposições (ex.: uma linha com "prod E2E (test-seed-prod-e2e.ts *   — 128 checks)" casa 2×, mas com o MESMO count → vira 1 registro).
+ * remove sobreposições (ex.: uma linha com "prod E2E (test-seed-prod-e2e.ts *   — 127 checks)" casa 2×, mas com o MESMO count → vira 1 registro).
  */
 const TARGET_PATTERNS = [
   // Filename explícito do source
@@ -92,7 +92,7 @@ const TARGET_PATTERNS = [
   // "prod: N checks" / "dev: N checks" (seed-guards.yml — linha do validator)
   { target: "prod", re: /\bprod:\s*(\d+)\s+checks?/g },
   { target: "dev", re: /\bdev:\s*(\d+)\s+checks?/g },
-  // Ternary da matrix (seed-guards.yml L205): seed == 'prod' && '128' || '162'
+  // Ternary da matrix (seed-guards.yml L205): seed == 'prod' && '127' || '161'
   // ATENÇÃO: o padrão dev depende da formatação exata `'162' }} checks` — se
   // o echo for reformatado, o count dev deixa de ser validado (site perdido,
   // não violação). Mantenha o formato quando editar a linha do summary.

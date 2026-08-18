@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test"
 import { setupApiMocks } from "./mocks"
 import { waitForVitrine } from "./helpers"

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
@@ -43,7 +44,7 @@ function mockFetch(response: Partial<Response>) {
 // ===========================================================================
 
 describe("sendWhatsApp", () => {
-  const _OLD_ENV = { ...process.env }
+  const OLD_ENV = { ...process.env }
 
   beforeEach(() => {
     vi.clearAllMocks()

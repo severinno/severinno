@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { type QuoteStatus } from "@prisma/client"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { quoteSchema } from "@/lib/validators"
@@ -98,7 +99,7 @@ export async function GET(request: Request) {
     const session = await requireUser()
     const { searchParams } = new URL(request.url)
     const role = (searchParams.get("role") || session.role) as "CLIENT" | "PROVIDER" | "ADMIN"
-    const status = searchParams.get("status") || undefined
+    const status = (searchParams.get("status") || undefined) as QuoteStatus | undefined
     const { page, limit, skip, take } = parsePagination(searchParams)
 
     const where =

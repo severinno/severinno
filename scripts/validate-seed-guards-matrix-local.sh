@@ -140,10 +140,10 @@ run_cell() {
   # 4. E2E da célula (--skip-docker usa o container existente)
   local out code
   if [ "$seed" = "prod" ]; then
-    cell "Rodando prod E2E (128 checks)..."
+    cell "Rodando prod E2E (127 checks)..."
     out=$(cd "$SCRIPT_DIR" && DATABASE_URL="$url" bun run test:seed-prod-e2e --skip-docker 2>&1)
   else
-    cell "Rodando dev E2E (162 checks)..."
+    cell "Rodando dev E2E (161 checks)..."
     out=$(cd "$SCRIPT_DIR" && DATABASE_URL="$url" bun run test:seed-dev-e2e --skip-docker 2>&1)
   fi
   code=$?

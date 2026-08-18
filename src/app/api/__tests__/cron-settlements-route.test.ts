@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for GET /api/cron/settlements — auto-generate settlement period via cron.
  *
@@ -143,7 +144,7 @@ describe("GET /api/cron/settlements", () => {
   })
 
   it("catches errors and returns 500 with message", async () => {
-    vi.mocked(db.setting.findUnique).mockRejectedValue(new Error("DB connection failed"))
+    vi.mocked(db.settlementPeriod.findFirst).mockRejectedValue(new Error("DB connection failed"))
 
     const req = new Request("http://localhost/api/cron/settlements?type=MONTHLY&key=my-cron-secret")
     const res = await GET(req)

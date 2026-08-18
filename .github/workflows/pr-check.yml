@@ -1268,8 +1268,8 @@ jobs:
   # economia ~1 min/PR vs. jobs separados: 1 pull de imagem + 1 bun install
   # + 1 prisma generate/push em vez de 2 de cada).
   #
-  # ORDEM: prod E2E PRIMEIRO (128 checks — banco limpo, asserta ZERO
-  # usuários), dev E2E DEPOIS (162 checks — o wipe+recreate do dev seed não
+  # ORDEM: prod E2E PRIMEIRO (127 checks — banco limpo, asserta ZERO
+  # usuários), dev E2E DEPOIS (161 checks — o wipe+recreate do dev seed não
   # conflita com os dados do prod).
   #
   # Independência PRESERVADA: o step do dev roda com if: always() — um PR

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Comprehensive Vitest test for ALL cache-controlled API routes.
  *

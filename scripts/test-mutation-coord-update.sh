@@ -18,7 +18,7 @@
 # Prova que o seed-e2e-count.test.ts pega o cenário exato do bug
 # histórico: atualizar SÓ os comentários dos workflows (128→N) sem tocar a
 # âncora do teste. A mutação generaliza os literais documentados dos
-# SCAN_FILES (check-e2e-counts.mjs): "128 checks" → "N checks" e o ternary
+# SCAN_FILES (check-e2e-counts.mjs): "127 checks" → "N checks" e o ternary
 # da matrix ('128' → 'N') — simulando um dev que "limpa a doc" por conta
 # própria — e exige que o seed-e2e-count.test.ts FALHE pela asserção certa.
 #
@@ -36,7 +36,7 @@
 # derivação real continua 128 mas o literal esperado virou 129 — provando
 # que o contrato também trava quando só o anchor é editado, sem atualizar
 # os comentários dos workflows. O script verifica que a doc ficou INTACTA
-# ("128 checks" ainda presente) — a falha vem SÓ da âncora, isolando a causa.
+# ("127 checks" ainda presente) — a falha vem SÓ da âncora, isolando a causa.
 #
 # Se o teste PASSAR com a mutação em qualquer direção (exit 0), o guard está
 # CEGO — a atualização unilateral passaria no CI — e o script falha (1).
@@ -67,8 +67,8 @@
 #
 # ESPELHO DEV (cenário E): o contrato vale para AMBOS os counts — não só prod
 # (128, cenário A) mas também DEV (162). A mutação ataca SÓ os sites de dev
-# ("162 checks" → "N checks" + ternary '162' → 'N'), deixando a doc de prod
-# INTACTA ("128 checks" presente) e a âncora dev (.toBe(162)) INTOCADA — a
+# ("161 checks" → "N checks" + ternary '162' → 'N'), deixando a doc de prod
+# INTACTA ("127 checks" presente) e a âncora dev (.toBe(162)) INTOCADA — a
 # falha tem que vir SÓ da doc de dev. Vitest falha pelo piso dev ('piso dev
 # violado', hardcoded ≥ 6 no teste) E o guard pelo piso de sites (dev
 # encontrados 0 < 6 → 'piso por alvo violado'), fechando os 2 elos no par.
@@ -97,8 +97,8 @@
 #      guard) → guard estático → deve PASSAR (exit 0, cego por design: sem
 #      piso e sem sites de prod, não há o que acusar) → restaura;
 #   6. CENÁRIO E — backup dos SCAN_FILES + mutação da doc DE DEV (162→N:
-#      "162 checks" → "N checks" + ternary '162' → 'N') + verificação de
-#      que a doc de prod ("128 checks") E a âncora dev (.toBe(162)) seguem
+#      "161 checks" → "N checks" + ternary '162' → 'N') + verificação de
+#      que a doc de prod ("127 checks") E a âncora dev (.toBe(162)) seguem
 #      INTACTAS → vitest → deve FALHAR com 'piso dev violado' (≥ 6 sites
 #      hardcoded no teste) → guard estático → deve FALHAR com o piso de
 #      sites (dev 0 < 6) → restaura;
@@ -149,11 +149,11 @@ EXPECTED_GUARD_FAILURE="piso por alvo violado"
 BACKUP_DIR="$(mktemp -d)"
 
 # ── Cenário A — mutação da DOC: 128→N nos literais documentados ───────────
-# 1. "128 checks" → "N checks"  (comentários/echos: prod E2E, test-seed-*-e2e.ts)
+# 1. "127 checks" → "N checks"  (comentários/echos: prod E2E, test-seed-*-e2e.ts)
 # 2. ternary '128' → 'N'        (matrix summary do seed-guards.yml — o site
 #    do ternary prod morre; o dev ('162') fica, isolando a falha em prod)
 MUTATION_SED=(
-  "s/128 checks/N checks/g"
+  "s/127 checks/N checks/g"
   "s/'128'/'N'/g"
 )
 
@@ -215,10 +215,10 @@ EXPECTED_FAILURE_INDEPENDENCE="piso prod violado"
 # (162) também é auditado. Esta mutação ataca SÓ os sites de dev: "162
 # checks" → "N checks" (5 sites: pr-check 1, seed-guards 3, validate 1) e o
 # ternary '162' → 'N' (o site do ternary dev morre; o prod ('128') fica,
-# isolando a falha em dev). A doc de prod ("128 checks") E a âncora dev
+# isolando a falha em dev). A doc de prod ("127 checks") E a âncora dev
 # (.toBe(162)) ficam INTACTAS — a falha vem SÓ da doc de dev.
 MUTATION_SED_DEV=(
-  "s/162 checks/N checks/g"
+  "s/161 checks/N checks/g"
   "s/'162'/'N'/g"
 )
 
@@ -382,8 +382,8 @@ done
 # Fail-fast: se o padrão não existir (doc refatorada), o sed vira no-op
 # silencioso → o teste passaria e o script acusaria "guard cego" sendo que
 # o problema é o padrão do mutation test. Pare com mensagem clara.
-if ! grep -Fq "128 checks" "${SCAN_FILES[@]}"; then
-  fail "Padrão '128 checks' não encontrado nos SCAN_FILES."
+if ! grep -Fq "127 checks" "${SCAN_FILES[@]}"; then
+  fail "Padrão '127 checks' não encontrado nos SCAN_FILES."
   fail "A doc dos workflows mudou? Atualize MUTATION_SED neste script."
   exit 1
 fi
@@ -395,8 +395,8 @@ for file in "${SCAN_FILES[@]}"; do
 done
 
 # Verifica que a mutação realmente aplicou (novo presente + antigo ausente).
-if grep -Fq "N checks" "${SCAN_FILES[@]}" && ! grep -Fq "128 checks" "${SCAN_FILES[@]}"; then
-  pass "Mutação A aplicada: '128 checks' → 'N checks' (anchor do teste intocado)"
+if grep -Fq "N checks" "${SCAN_FILES[@]}" && ! grep -Fq "127 checks" "${SCAN_FILES[@]}"; then
+  pass "Mutação A aplicada: '127 checks' → 'N checks' (anchor do teste intocado)"
 else
   fail "Mutação A não aplicou corretamente (sed falhou?)."
   exit 1
@@ -449,12 +449,12 @@ fi
 # Prova o isolamento: a doc dos workflows DEVE estar intacta — a falha do
 # teste neste cenário tem que vir SÓ da âncora, não de uma doc mutada
 # sobrando do cenário A (ou de um leak do sed).
-if ! grep -Fq "128 checks" "${SCAN_FILES[@]}"; then
-  fail "Doc dos workflows NÃO está íntegra ('128 checks' ausente)."
+if ! grep -Fq "127 checks" "${SCAN_FILES[@]}"; then
+  fail "Doc dos workflows NÃO está íntegra ('127 checks' ausente)."
   fail "O cenário A não foi restaurado? Verifique antes de prosseguir."
   exit 1
 fi
-pass "Doc dos workflows INTACTA ('128 checks' presente) — falha isolada na âncora"
+pass "Doc dos workflows INTACTA ('127 checks' presente) — falha isolada na âncora"
 
 info "CENÁRIO B: seed-e2e-count.test.ts com a âncora MUTADA (falha esperada)..."
 run_vitest
@@ -512,8 +512,8 @@ fi
 
 # Prova o isolamento: a doc dos workflows E a âncora do teste DEVM estar
 # intactas — a falha deste cenário tem que vir SÓ do código mutado.
-if ! grep -Fq "128 checks" "${SCAN_FILES[@]}"; then
-  fail "Doc dos workflows NÃO está íntegra ('128 checks' ausente)."
+if ! grep -Fq "127 checks" "${SCAN_FILES[@]}"; then
+  fail "Doc dos workflows NÃO está íntegra ('127 checks' ausente)."
   fail "Os cenários A/B não foram restaurados? Verifique antes de prosseguir."
   exit 1
 fi
@@ -522,7 +522,7 @@ if ! grep -Fq "$ANCHOR_PATTERN" "$TEST_FILE"; then
   fail "O cenário B não foi restaurado? Verifique antes de prosseguir."
   exit 1
 fi
-pass "Doc INTACTA ('128 checks') E âncora INTACTA ('.toBe(128)') — falha isolada na derivação"
+pass "Doc INTACTA ('127 checks') E âncora INTACTA ('.toBe(128)') — falha isolada na derivação"
 
 info "CENÁRIO C: seed-e2e-count.test.ts com a derivação MUTADA (falha esperada)..."
 run_vitest
@@ -556,8 +556,8 @@ done
 cp "$GUARD_FILE" "$BACKUP_DIR/guard"
 
 # Fail-fast: padrões dos seds presentes (doc refatorada / guard reestruturado)
-if ! grep -Fq "128 checks" "${SCAN_FILES[@]}"; then
-  fail "Padrão '128 checks' não encontrado nos SCAN_FILES."
+if ! grep -Fq "127 checks" "${SCAN_FILES[@]}"; then
+  fail "Padrão '127 checks' não encontrado nos SCAN_FILES."
   fail "A doc dos workflows mudou? Atualize MUTATION_SED neste script."
   exit 1
 fi
@@ -576,8 +576,8 @@ done
 sed -i "s/${GUARD_PISO_PATTERN}/${GUARD_PISO_REPLACEMENT}/" "$GUARD_FILE"
 
 # Verifica que AMBAS as mutações aplicaram + âncora intacta
-if grep -Fq "N checks" "${SCAN_FILES[@]}" && ! grep -Fq "128 checks" "${SCAN_FILES[@]}"; then
-  pass "Mutação da doc aplicada: '128 checks' → 'N checks'"
+if grep -Fq "N checks" "${SCAN_FILES[@]}" && ! grep -Fq "127 checks" "${SCAN_FILES[@]}"; then
+  pass "Mutação da doc aplicada: '127 checks' → 'N checks'"
 else
   fail "Mutação da doc não aplicou corretamente (sed falhou?)."
   exit 1
@@ -639,8 +639,8 @@ done
 # Fail-fast: se o padrão não existir (doc refatorada), o sed vira no-op
 # silencioso → o teste passaria e o script acusaria "guard cego" sendo que
 # o problema é o padrão do mutation test. Pare com mensagem clara.
-if ! grep -Fq "162 checks" "${SCAN_FILES[@]}"; then
-  fail "Padrão '162 checks' não encontrado nos SCAN_FILES."
+if ! grep -Fq "161 checks" "${SCAN_FILES[@]}"; then
+  fail "Padrão '161 checks' não encontrado nos SCAN_FILES."
   fail "A doc dos workflows mudou? Atualize MUTATION_SED_DEV neste script."
   exit 1
 fi
@@ -652,18 +652,18 @@ for file in "${SCAN_FILES[@]}"; do
 done
 
 # Verifica que a mutação realmente aplicou (novo presente + antigo ausente).
-if grep -Fq "N checks" "${SCAN_FILES[@]}" && ! grep -Fq "162 checks" "${SCAN_FILES[@]}"; then
-  pass "Mutação E aplicada: '162 checks' → 'N checks' (anchor dev intocado)"
+if grep -Fq "N checks" "${SCAN_FILES[@]}" && ! grep -Fq "161 checks" "${SCAN_FILES[@]}"; then
+  pass "Mutação E aplicada: '161 checks' → 'N checks' (anchor dev intocado)"
 else
   fail "Mutação E não aplicou corretamente (sed falhou?)."
   exit 1
 fi
 
-# Prova o isolamento: a doc de PROD ("128 checks") E a âncora de DEV
+# Prova o isolamento: a doc de PROD ("127 checks") E a âncora de DEV
 # ('.toBe(162)') DEVM estar intactas — a falha deste cenário tem que vir SÓ
 # da doc de dev, não de um leak do sed (que atingisse prod) nem do anchor.
-if ! grep -Fq "128 checks" "${SCAN_FILES[@]}"; then
-  fail "Doc de PROD NÃO está íntegra ('128 checks' ausente)."
+if ! grep -Fq "127 checks" "${SCAN_FILES[@]}"; then
+  fail "Doc de PROD NÃO está íntegra ('127 checks' ausente)."
   fail "O sed do cenário E atingiu prod? Verifique MUTATION_SED_DEV."
   exit 1
 fi
@@ -672,7 +672,7 @@ if ! grep -Fq "$DEV_ANCHOR_PATTERN" "$TEST_FILE"; then
   fail "O cenário B/C não foi restaurado? Verifique antes de prosseguir."
   exit 1
 fi
-pass "Doc de prod INTACTA ('128 checks') E âncora dev INTACTA ('.toBe(162)') — falha isolada na doc de dev"
+pass "Doc de prod INTACTA ('127 checks') E âncora dev INTACTA ('.toBe(162)') — falha isolada na doc de dev"
 
 info "CENÁRIO E: seed-e2e-count.test.ts com a doc de DEV MUTADA (falha esperada)..."
 run_vitest

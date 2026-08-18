@@ -23,6 +23,7 @@ import {
 } from "@/lib/lytex"
 import { notifyPaymentConfirmed } from "@/lib/notifications"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { cacheGet, cacheSet } from "@/lib/redis"
 
 // ---------------------------------------------------------------------------
 // Helper: confirmar pagamento do booking
@@ -183,6 +184,18 @@ export async function POST(request: Request) {
     }
 
     const bookingId = ref.id
+
+    // Trava de idempotência via Redis (impede processamento duplicado em caso de retentativas rápidas)
+    const idempotencyKey = `webhook:lytex:${body.id || bookingId}:${body.status}`
+    const alreadyProcessed = await cacheGet<{ processedAt: string }>(idempotencyKey)
+    if (alreadyProcessed) {
+      lytexLogger.info(
+        { idempotencyKey, bookingId, status: body.status },
+        "Webhook: evento já processado anteriormente (idempotência garantida)",
+      )
+      return NextResponse.json({ received: true, deduplicated: true })
+    }
+    await cacheSet(idempotencyKey, { processedAt: new Date().toISOString() }, 300)
 
     // Processar conforme o status
     switch (body.status) {

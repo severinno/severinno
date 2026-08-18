@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * E2E test for CDN/edge cache behavior of /api/providers.
  *
@@ -31,7 +32,7 @@ async function fetchProviders(request: import("@playwright/test").APIRequestCont
   return {
     response,
     elapsedMs: Math.round(elapsed),
-    body: await response.json() as {
+    body: (await response.json()) as {
       items: unknown[]
       total: number
       page: number
@@ -46,9 +47,7 @@ test.describe("GET /api/providers — cache headers", () => {
     const { response } = await fetchProviders(request)
 
     expect(response.ok()).toBeTruthy()
-    expect(response.headers()["cache-control"]).toBe(
-      "public, max-age=60, s-maxage=60",
-    )
+    expect(response.headers()["cache-control"]).toBe("public, max-age=60, s-maxage=60")
   })
 
   test("returns Vary including Accept-Encoding, Accept, Origin", async ({ request }) => {
@@ -85,9 +84,7 @@ test.describe("GET /api/providers — repeated calls (cache consistency)", () =>
       expect(Number(age)).toBeGreaterThanOrEqual(0)
     } else {
       // Local dev: no CDN edge, Age header is not present
-      console.log(
-        "  💻 Local dev — Age header absent (expected — no CDN edge in dev mode)",
-      )
+      console.log("  💻 Local dev — Age header absent (expected — no CDN edge in dev mode)")
     }
   })
 
@@ -138,17 +135,14 @@ test.describe("GET /api/providers — edge cache detection", () => {
 
     // Check for definitive edge cache signals
     const age = second.response.headers()["age"]
-    const isEdgeCache =
-      age !== undefined || second.elapsedMs < 5
+    const isEdgeCache = age !== undefined || second.elapsedMs < 5
 
     if (age) {
       console.log(`  🏭 Edge cache HIT! Age: ${age}s`)
     }
 
     if (second.elapsedMs < 5) {
-      console.log(
-        `  🚀 Sub-5ms response (${second.elapsedMs}ms) — edge cache likely active!`,
-      )
+      console.log(`  🚀 Sub-5ms response (${second.elapsedMs}ms) — edge cache likely active!`)
     }
 
     if (isEdgeCache) {
@@ -160,8 +154,8 @@ test.describe("GET /api/providers — edge cache detection", () => {
       // (Vercel edge), one of the two signals would be present.
       console.log(
         "  💻 Local dev — no edge cache signals detected (expected).\n" +
-        "     In production, the Vercel edge network would serve the\n" +
-        "     second request in ~1-5ms or include an Age header.",
+          "     In production, the Vercel edge network would serve the\n" +
+          "     second request in ~1-5ms or include an Age header.",
       )
     }
   })
@@ -170,10 +164,10 @@ test.describe("GET /api/providers — edge cache detection", () => {
     const first = await fetchProviders(request)
     const second = await fetchProviders(request)
 
-    const ratio = first.elapsedMs > 0
-      ? Math.round((second.elapsedMs / first.elapsedMs) * 100)
-      : 100
-    console.log(`  ⏱  First: ${first.elapsedMs}ms | Second: ${second.elapsedMs}ms | Ratio: ${ratio}%`)
+    const ratio = first.elapsedMs > 0 ? Math.round((second.elapsedMs / first.elapsedMs) * 100) : 100
+    console.log(
+      `  ⏱  First: ${first.elapsedMs}ms | Second: ${second.elapsedMs}ms | Ratio: ${ratio}%`,
+    )
 
     // Allow 50% headroom for dev mode noise
     expect(second.elapsedMs).toBeLessThan(first.elapsedMs * 1.5)
@@ -183,9 +177,7 @@ test.describe("GET /api/providers — edge cache detection", () => {
     expect(second.elapsedMs).toBeLessThan(10_000)
 
     if (ratio < 50) {
-      console.log(
-        "  🚀 Second call >50% faster — production edge cache would amplify this!",
-      )
+      console.log("  🚀 Second call >50% faster — production edge cache would amplify this!")
     }
   })
 })

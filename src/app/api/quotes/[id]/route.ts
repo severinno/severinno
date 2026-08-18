@@ -64,7 +64,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
     const updated = await db.quoteRequest.update({
       where: { id },
-      data: { status },
+      data: { status: status as any },
       include: {
         items: { include: { service: true } },
         provider: { select: { id: true, name: true } },

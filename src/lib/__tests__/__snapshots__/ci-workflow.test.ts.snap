@@ -41,6 +41,7 @@ exports[`ci.yml — sintaxe YAML + snapshot > parseia como YAML válido (js-yaml
         },
         {
           "env": {
+            "BUILD_STANDALONE": "true",
             "SKIP_TYPESCRIPT_CHECK": "true",
           },
           "run": "bun run build",
@@ -109,7 +110,7 @@ exports[`ci.yml — sintaxe YAML + snapshot > parseia como YAML válido (js-yaml
             "POSTGRES_PASSWORD": "postgres",
             "POSTGRES_USER": "postgres",
           },
-          "image": "postgres:16-alpine",
+          "image": "postgis/postgis:16-3.4-alpine",
           "options": "--health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5",
           "ports": [
             "5432:5432",
@@ -128,6 +129,9 @@ exports[`ci.yml — sintaxe YAML + snapshot > parseia como YAML válido (js-yaml
         },
         {
           "run": "bun install --frozen-lockfile",
+        },
+        {
+          "run": "bun run db:generate",
         },
         {
           "env": {

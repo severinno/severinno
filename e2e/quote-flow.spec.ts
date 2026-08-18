@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect, type Page } from "@playwright/test"
 import { waitForVitrine, registerUser } from "./helpers"
 import { setupApiMocks } from "./mocks"
@@ -10,9 +11,7 @@ import { setupApiMocks } from "./mocks"
  * Abre o QuoteModal clicando no botão "Pedir orçamento" ou similar.
  */
 async function openQuoteModal(page: Page) {
-  const orcamentoBtn = page.locator(
-    'button:has-text(/orçamento|orçar|Pedir orçamento/i)',
-  ).first()
+  const orcamentoBtn = page.locator("button:has-text(/orçamento|orçar|Pedir orçamento/i)").first()
   const visible = await orcamentoBtn.isVisible({ timeout: 10000 }).catch(() => false)
   if (visible) {
     await orcamentoBtn.click()
@@ -26,7 +25,7 @@ async function openQuoteModal(page: Page) {
   await page.waitForTimeout(1000)
 
   // Verifica se o modal de orçamento abriu
-  const modal = page.locator('text=/Pedir orçamento|orçamento/i').first()
+  const modal = page.locator("text=/Pedir orçamento|orçamento/i").first()
   await modal.waitFor({ state: "visible", timeout: 5000 }).catch(() => {})
 }
 
@@ -52,9 +51,9 @@ async function navigateQuoteStep(page: Page, targetStep: number) {
  */
 async function selectProvider(page: Page) {
   // Abre o combobox de prestadores
-  const comboboxTrigger = page.locator(
-    'button[role="combobox"]:has-text(/Selecionar prestador/i)',
-  ).first()
+  const comboboxTrigger = page
+    .locator('button[role="combobox"]:has-text(/Selecionar prestador/i)')
+    .first()
   if (await comboboxTrigger.isVisible().catch(() => false)) {
     await comboboxTrigger.click()
     await page.waitForTimeout(500)
@@ -76,9 +75,7 @@ async function selectProvider(page: Page) {
 async function selectService(page: Page) {
   // Espera os serviços carregarem e seleciona o primeiro
   // O shadcn SelectTrigger renderiza o placeholder dentro de <span> no botão
-  const serviceSelect = page.locator(
-    '[role="combobox"]:has-text(/Selecionar serviço/i)',
-  ).first()
+  const serviceSelect = page.locator('[role="combobox"]:has-text(/Selecionar serviço/i)').first()
   if (await serviceSelect.isVisible().catch(() => false)) {
     await serviceSelect.click()
     await page.waitForTimeout(500)
@@ -97,13 +94,15 @@ async function selectService(page: Page) {
  * No Step 3 (Detalhes): preenche descrição e quantidade.
  */
 async function fillDetails(page: Page) {
-  const descInput = page.locator("#item-0-desc, textarea[placeholder*=\"Instalar\"]").first()
+  const descInput = page.locator('#item-0-desc, textarea[placeholder*="Instalar"]').first()
   if (await descInput.isVisible().catch(() => false)) {
-    await descInput.fill("Preciso instalar 3 tomadas novas na sala. A fiação já está embutida, só preciso dos pontos.")
+    await descInput.fill(
+      "Preciso instalar 3 tomadas novas na sala. A fiação já está embutida, só preciso dos pontos.",
+    )
     await page.waitForTimeout(300)
   }
 
-  const qtyInput = page.locator("#item-0-qty, input[type=\"number\"]").first()
+  const qtyInput = page.locator('#item-0-qty, input[type="number"]').first()
   if (await qtyInput.isVisible().catch(() => false)) {
     await qtyInput.fill("3")
     await page.waitForTimeout(300)
@@ -153,9 +152,9 @@ test.describe("QuoteModal — Visitante (não logado)", () => {
     await page.waitForTimeout(500)
 
     // Verifica que o modal abriu
-    const modalTitle = page.locator(
-      'h2:has-text("orçamento"), [class*="title"]:has-text("orçamento")',
-    ).first()
+    const modalTitle = page
+      .locator('h2:has-text("orçamento"), [class*="title"]:has-text("orçamento")')
+      .first()
     await expect(modalTitle).toBeVisible({ timeout: 5000 })
   })
 
@@ -164,9 +163,7 @@ test.describe("QuoteModal — Visitante (não logado)", () => {
     await page.waitForTimeout(500)
 
     // Verifica o auth gate
-    const authBanner = page.locator(
-      'text=/cadastro gratuito|Crie sua conta|Faça login/i',
-    ).first()
+    const authBanner = page.locator("text=/cadastro gratuito|Crie sua conta|Faça login/i").first()
     await expect(authBanner).toBeVisible({ timeout: 5000 })
   })
 
@@ -175,13 +172,7 @@ test.describe("QuoteModal — Visitante (não logado)", () => {
     await page.waitForTimeout(500)
 
     // Verifica labels das etapas
-    const stepLabels = [
-      /Prestador/i,
-      /Serviço/i,
-      /Detalhes/i,
-      /Endereço/i,
-      /Revisão/i,
-    ]
+    const stepLabels = [/Prestador/i, /Serviço/i, /Detalhes/i, /Endereço/i, /Revisão/i]
 
     for (const label of stepLabels) {
       const stepEl = page.locator(`text=${label.source}`).first()
@@ -221,7 +212,7 @@ test.describe("QuoteModal — Cliente Autenticado", () => {
     await page.waitForTimeout(500)
 
     // Verifica que o auth gate NÃO aparece para usuário logado
-    const authBanner = page.locator('text=/cadastro gratuito/i').first()
+    const authBanner = page.locator("text=/cadastro gratuito/i").first()
     const authVisible = await authBanner.isVisible().catch(() => false)
     expect(authVisible).toBe(false)
 
@@ -229,7 +220,7 @@ test.describe("QuoteModal — Cliente Autenticado", () => {
     await selectProvider(page)
 
     // Verifica que o card do prestador selecionado apareceu
-    const providerCard = page.locator('text=/Maria Silva|Verificado/i').first()
+    const providerCard = page.locator("text=/Maria Silva|Verificado/i").first()
     const cardVisible = await providerCard.isVisible().catch(() => false)
     if (cardVisible) {
       await expect(providerCard).toBeVisible()
@@ -250,7 +241,7 @@ test.describe("QuoteModal — Cliente Autenticado", () => {
     const serviceSelected = await selectService(page)
     if (serviceSelected) {
       // Verifica que o card do serviço selecionado apareceu
-      const serviceCard = page.locator('text=/Instalação Elétrica/i').first()
+      const serviceCard = page.locator("text=/Instalação Elétrica/i").first()
       const visible = await serviceCard.isVisible().catch(() => false)
       if (visible) {
         await expect(serviceCard).toBeVisible()
@@ -272,7 +263,7 @@ test.describe("QuoteModal — Cliente Autenticado", () => {
     await fillDetails(page)
 
     // Verifica que o contador de caracteres aparece
-    const charCounter = page.locator('text=/\\d+\\/400/').first()
+    const charCounter = page.locator("text=/\\d+\\/400/").first()
     const counterVisible = await charCounter.isVisible().catch(() => false)
     if (counterVisible) {
       await expect(charCounter).toBeVisible()
@@ -310,16 +301,12 @@ test.describe("QuoteModal — Cliente Autenticado", () => {
     await page.waitForTimeout(500)
 
     // Verifica que a tela de revisão mostra os dados
-    const reviewSections = page.locator(
-      'text=/Prestador|Serviço|Detalhes|Endereço|Revise/i',
-    )
+    const reviewSections = page.locator("text=/Prestador|Serviço|Detalhes|Endereço|Revise/i")
     const sectionCount = await reviewSections.count()
     expect(sectionCount).toBeGreaterThanOrEqual(2)
 
     // Verifica que o botão de envio existe
-    const submitBtn = page.locator(
-      'button:has-text(/Enviar orçamento|Enviar/i)',
-    ).first()
+    const submitBtn = page.locator("button:has-text(/Enviar orçamento|Enviar/i)").first()
     await expect(submitBtn).toBeVisible({ timeout: 5000 })
   })
 
@@ -343,7 +330,7 @@ test.describe("QuoteModal — Cliente Autenticado", () => {
       await descInput.fill("Preciso instalar 3 tomadas novas na sala. A fiação já está embutida.")
       await page.waitForTimeout(200)
     }
-    const qtyInput = page.locator("#item-0-qty, input[type=\"number\"]").first()
+    const qtyInput = page.locator('#item-0-qty, input[type="number"]').first()
     if (await qtyInput.isVisible().catch(() => false)) {
       await qtyInput.fill("2")
       await page.waitForTimeout(200)
@@ -374,9 +361,7 @@ test.describe("QuoteModal — Cliente Autenticado", () => {
     await page.waitForTimeout(500)
 
     // Envia o orçamento
-    const submitBtn = page.locator(
-      'button:has-text(/Enviar orçamento/i)',
-    ).first()
+    const submitBtn = page.locator("button:has-text(/Enviar orçamento/i)").first()
     const canSubmit = await submitBtn.isVisible().catch(() => false)
     if (canSubmit) {
       await submitBtn.click()
@@ -406,14 +391,10 @@ test.describe("QuoteModal — Casos de Erro e Validação", () => {
     await page.waitForTimeout(500)
 
     // Deve permanecer no step 1 (validação)
-    const providerSection = page.locator(
-      'text=/Escolha o prestador|prestador/i',
-    ).first()
+    const providerSection = page.locator("text=/Escolha o prestador|prestador/i").first()
     const stillOnStep1 = await providerSection.isVisible().catch(() => false)
 
-    const errorMsg = page.locator(
-      'text=/selecione|obrigatório|complete|primeiro/i',
-    ).first()
+    const errorMsg = page.locator("text=/selecione|obrigatório|complete|primeiro/i").first()
     const hasError = await errorMsg.isVisible().catch(() => false)
 
     expect(stillOnStep1 || hasError).toBe(true)
@@ -437,13 +418,14 @@ test.describe("QuoteModal — Casos de Erro e Validação", () => {
     }
 
     // Tenta avançar
-    await page.locator('button:has-text("Continuar")').click().catch(() => {})
+    await page
+      .locator('button:has-text("Continuar")')
+      .click()
+      .catch(() => {})
     await page.waitForTimeout(500)
 
     // Verifica se mensagem de erro apareceu
-    const errMsg = page.locator(
-      'text=/caracteres|mínimo|inválido|curto|descreva/i',
-    ).first()
+    const errMsg = page.locator("text=/caracteres|mínimo|inválido|curto|descreva/i").first()
     const hasError = await errMsg.isVisible().catch(() => false)
     if (hasError) {
       await expect(errMsg).toBeVisible()
@@ -469,9 +451,7 @@ test.describe("QuoteModal — Casos de Erro e Validação", () => {
       await page.waitForTimeout(1500)
 
       // Verifica se mensagem de erro apareceu
-      const cepError = page.locator(
-        'text=/não encontrado|inválido|erro/i',
-      ).first()
+      const cepError = page.locator("text=/não encontrado|inválido|erro/i").first()
       const hasError = await cepError.isVisible({ timeout: 3000 }).catch(() => false)
       if (hasError) {
         await expect(cepError).toBeVisible()
@@ -495,7 +475,10 @@ test.describe("QuoteModal — registra e envia orçamento", () => {
 
     // Verifica que está logado
     const loginBtn = page.getByRole("button", { name: /entrar|login|criar conta/i }).first()
-    const loggedIn = await loginBtn.isVisible().then(v => !v).catch(() => true)
+    const loggedIn = await loginBtn
+      .isVisible()
+      .then((v) => !v)
+      .catch(() => true)
     expect(loggedIn).toBe(true)
 
     // Navega de volta pra landing
@@ -506,7 +489,7 @@ test.describe("QuoteModal — registra e envia orçamento", () => {
     await openQuoteModal(page)
 
     // Verifica que o auth gate NÃO aparece (usuário logado)
-    const authBanner = page.locator('text=/cadastro gratuito/i').first()
+    const authBanner = page.locator("text=/cadastro gratuito/i").first()
     const authVisible = await authBanner.isVisible().catch(() => false)
     expect(authVisible).toBe(false)
 
@@ -522,7 +505,7 @@ test.describe("QuoteModal — registra e envia orçamento", () => {
     await page.waitForTimeout(500)
 
     // Envia orçamento
-    const submitBtn = page.locator('button:has-text(/Enviar orçamento/i)').first()
+    const submitBtn = page.locator("button:has-text(/Enviar orçamento/i)").first()
     if (await submitBtn.isVisible().catch(() => false)) {
       await submitBtn.click()
       await page.waitForTimeout(2000)
@@ -559,9 +542,7 @@ test.describe("QuoteModal — UX e Navegação", () => {
       await page.waitForTimeout(300)
 
       // Verifica que voltou para etapa anterior
-      const backSuccess = page.locator(
-        'text=/Escolha o prestador|Qual serviço/i',
-      ).first()
+      const backSuccess = page.locator("text=/Escolha o prestador|Qual serviço/i").first()
       const visible = await backSuccess.isVisible().catch(() => false)
       if (visible) {
         console.log("✅ Navegação entre etapas funciona")
@@ -574,9 +555,7 @@ test.describe("QuoteModal — UX e Navegação", () => {
     await page.waitForTimeout(500)
 
     // Fecha o modal
-    const closeBtn = page.locator(
-      'button[aria-label="Close"], button[aria-label="Fechar"]',
-    ).first()
+    const closeBtn = page.locator('button[aria-label="Close"], button[aria-label="Fechar"]').first()
     if (await closeBtn.isVisible().catch(() => false)) {
       await closeBtn.click()
     } else {
@@ -589,9 +568,7 @@ test.describe("QuoteModal — UX e Navegação", () => {
     await page.waitForTimeout(500)
 
     // Verifica que voltou ao step 1
-    const step1Content = page.locator(
-      'text=/Escolha o prestador|Selecionar prestador/i',
-    ).first()
+    const step1Content = page.locator("text=/Escolha o prestador|Selecionar prestador/i").first()
     const onStep1 = await step1Content.isVisible().catch(() => false)
     if (onStep1) {
       await expect(step1Content).toBeVisible()

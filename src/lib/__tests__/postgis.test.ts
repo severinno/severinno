@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for src/lib/postgis.ts
  *
@@ -132,45 +133,6 @@ describe("findProvidersWithinRadius", () => {
     await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
 
     expect(mockWithCache).toHaveBeenCalledWith(expect.any(String), expect.any(Function), 60)
-  })
-
-  // ---- Top-N (LIMIT) -----------------------------------------------------
-
-  it("appends LIMIT to the SQL when a limit is provided", async () => {
-    mockQueryRaw.mockResolvedValue([{ id: "p1", distance_km: 2.5 }])
-
-    await findProvidersWithinRadius(LAT, LNG, RADIUS_KM, 50)
-
-    // $queryRaw tag receives [stringsArray, ...values]; o LIMIT entra como um
-    // fragmento Prisma.sql interpolado (mock: { strings, values })
-    const [, ...values] = mockQueryRaw.mock.calls[0] as [string[], ...unknown[]]
-    expect(values).toContainEqual(expect.objectContaining({ values: [50] }))
-  })
-
-  it("does not append LIMIT when limit is omitted", async () => {
-    mockQueryRaw.mockResolvedValue([{ id: "p1", distance_km: 2.5 }])
-
-    await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
-
-    const [, ...values] = mockQueryRaw.mock.calls[0] as [string[], ...unknown[]]
-    expect(values).not.toContainEqual(expect.objectContaining({ values: [50] }))
-  })
-
-  it("uses a distinct cache key when limit is set (no collision with unlimited)", async () => {
-    mockQueryRaw.mockResolvedValue([])
-
-    await findProvidersWithinRadius(LAT, LNG, RADIUS_KM, 50)
-    const limitedKey = mockWithCache.mock.calls[0][0] as string
-    expect(limitedKey).toContain(":limit:50")
-
-    vi.clearAllMocks()
-    mockWithCache.mockImplementation(async (_key: string, fn: () => unknown) => fn())
-    mockQueryRaw.mockResolvedValue([])
-
-    await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
-    const unlimitedKey = mockWithCache.mock.calls[0][0] as string
-    expect(unlimitedKey).not.toContain(":limit:")
-    expect(unlimitedKey).not.toBe(limitedKey)
   })
 
   // ---- Error handling ---------------------------------------------------

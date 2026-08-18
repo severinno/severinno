@@ -11,7 +11,11 @@ const subject = process.env.VAPID_SUBJECT ?? "mailto:admin@severinno.com.br"
 // Only configure web-push when VAPID keys are available (production).
 // In dev/test, push notifications are silently skipped.
 if (publicKey && privateKey) {
-  webpush.setVapidDetails(subject, publicKey, privateKey)
+  try {
+    webpush.setVapidDetails(subject, publicKey, privateKey)
+  } catch (e) {
+    logger.warn({ err: e }, "Invalid VAPID keys — push notifications disabled")
+  }
 } else {
   logger.warn("VAPID keys not configured — push notifications disabled")
 }
@@ -194,6 +198,8 @@ export async function sendPushNotification(
   let failed = 0
 
   for (const sub of subs) {
+    let _lastError: Error | null = null
+
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         await webpush.sendNotification(
@@ -201,9 +207,11 @@ export async function sendPushNotification(
           wirePayload,
         )
         succeeded++
+        _lastError = null
         break // success — exit retry loop
       } catch (err) {
         const webpushErr = err as { statusCode?: number } & Error
+        _lastError = webpushErr
 
         // Permanent failure (410/404) — remove subscription immediately
         if (webpushErr.statusCode === 410 || webpushErr.statusCode === 404) {

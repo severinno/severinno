@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 // Playwright-based Performance + Accessibility Audit
 // Run: node scripts/audit-playwright.mjs
 

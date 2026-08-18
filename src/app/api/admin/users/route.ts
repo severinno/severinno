@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { type Role } from "@prisma/client"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError, parsePagination, USER_PUBLIC_SELECT } from "@/lib/api-server"
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
   try {
     await requireRole("ADMIN")
     const { searchParams } = new URL(request.url)
-    const role = searchParams.get("role") || undefined
+    const role = (searchParams.get("role") || undefined) as Role | undefined
     const q = searchParams.get("q")?.trim() || undefined
     const city = searchParams.get("city")?.trim() || undefined
     const state = searchParams.get("state")?.trim() || undefined

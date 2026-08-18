@@ -105,8 +105,8 @@ describe("CATEGORY_SPEC", () => {
 })
 
 describe("DEFAULT_SETTINGS", () => {
-  it("contém 9 settings com keys únicas", () => {
-    expect(DEFAULT_SETTINGS.length).toBe(9)
+  it("contém 8 settings com keys únicas", () => {
+    expect(DEFAULT_SETTINGS.length).toBe(8)
     const keys = DEFAULT_SETTINGS.map((s) => s.key)
     expect(new Set(keys).size).toBe(keys.length)
     expect(keys).toContain("site_name")
@@ -170,14 +170,14 @@ describe("buildPatchedSpec", () => {
 })
 
 describe("buildSeedPlan", () => {
-  it("banco vazio → tudo create (27 categorias + 9 settings)", () => {
+  it("banco vazio → tudo create (27 categorias + 8 settings)", () => {
     const plan = buildSeedPlan([], [])
     expect(plan.categories).toHaveLength(27)
-    expect(plan.settings).toHaveLength(9)
+    expect(plan.settings).toHaveLength(8)
     expect(plan.summary.categoriesCreate).toBe(27)
     expect(plan.summary.categoriesUpdate).toBe(0)
     expect(plan.summary.categoriesUnchanged).toBe(0)
-    expect(plan.summary.settingsCreate).toBe(9)
+    expect(plan.summary.settingsCreate).toBe(8)
     expect(plan.summary.settingsUpdate).toBe(0)
     expect(plan.summary.settingsUnchanged).toBe(0)
     // todos os creates têm slug canônico
@@ -192,7 +192,7 @@ describe("buildSeedPlan", () => {
     expect(plan.summary.categoriesUnchanged).toBe(27)
     expect(plan.summary.settingsCreate).toBe(0)
     expect(plan.summary.settingsUpdate).toBe(0)
-    expect(plan.summary.settingsUnchanged).toBe(9)
+    expect(plan.summary.settingsUnchanged).toBe(8)
   })
 
   it("detecta update quando name/level/icon/order/parent divergem", () => {
@@ -231,7 +231,7 @@ describe("buildSeedPlan", () => {
     expect(plan.summary.categoriesUpdate).toBe(2)
     expect(plan.summary.settingsUpdate).toBe(1)
     expect(plan.summary.categoriesUnchanged).toBe(25)
-    expect(plan.summary.settingsUnchanged).toBe(8)
+    expect(plan.summary.settingsUnchanged).toBe(7)
   })
 
   it("create preserva parent/icon/order corretos para subcategorias", () => {

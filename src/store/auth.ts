@@ -12,6 +12,8 @@ export type AuthUser = {
   email: string
   role: UserRole
   avatarUrl?: string | null
+  verified?: boolean
+  identityStatus?: string | null
   soundEnabled?: boolean
   vibrateEnabled?: boolean
 }

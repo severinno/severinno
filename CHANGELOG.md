@@ -1,5 +1,20 @@
 # Changelog
 
+## v1.0.0 — Production-Ready Release (2026-08-13)
+
+### 🚀 Destaques da Release
+
+- **Auditoria Técnica Completa (Nota 9.4/10)** — 8 camadas arquiteturais auditadas e otimizadas (Apresentação, Máquinas de Estado, Borda, Negócio, Geoespacial, Persistência, Observabilidade e CI/CD).
+- **Idempotência no Webhook Lytex** — Trava atômica no Redis com TTL de 300s (`webhook:lytex:${id}:${status}`) prevenindo processamento duplicado de webhooks.
+- **Migration Formal Versionada no Prisma** — Migration DDL oficial (`20260813200000_native_enums_and_postgis_sync`) com 7 enums nativos PostgreSQL e triggers PostGIS.
+- **Expansão de Cobertura de Testes (60%+)** — 14 novas suítes de testes de integração cobrindo busca, orçamentos, infraestrutura, administração e rotas agendadas (Cron).
+- **Code-Splitting da Vitrine** — Componentes below-the-fold (`QuickQuoteCalculator`, `Testimonials`, `FAQ`, `WhySeverinno`, `CtaBanner`, `CompareModal`) carregados dinamicamente via `next/dynamic` (-140KB no bundle inicial).
+- **SEO Avançado & JSON-LD Rich Snippets** — Schemas estruturados `Service`, `LocalBusiness` e `BreadcrumbList` em categorias e perfis públicos.
+- **Sitemap XML Dinâmico & Robots.txt** — Geração automatizada de sitemap indexando categorias de 3 níveis e perfis de prestadores ativos (`/sitemap.xml`).
+- **Smoke Test de Produção CLI** — Script automatizado em tempo real (`scripts/smoke-test-prod.ts`) com 6/6 verificações de integridade (100% passing).
+- **Pipeline CI/CD com PostGIS 16-3.4** — Service container oficial alpine com suporte completo a extensões geoespaciais e build standalone.
+- **Manual de Produção & Arquitetura Consolidada** — Documentação `docs/RUNBOOK.md` e `docs/ARCHITECTURE.md` para deploy zero-downtime e disaster recovery.
+
 ## v0.4.0 (2026-07-28)
 
 ### 🚀 Destaques

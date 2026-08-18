@@ -1,7 +1,6 @@
 // Severinno Marketplace SaaS — Prisma schema
-// Stack: PostgreSQL 16 + PostGIS (via Prisma `postgresql` provider).
-// Enum-like fields are `String` with a comment listing allowed values;
-// validation is enforced at runtime via Zod (see src/lib/validators.ts).
+// Stack: PostgreSQL 16 + PostGIS (geolocation). Native enums via Prisma `enum`.
+// Validation is also enforced at runtime via Zod (see src/lib/validators.ts).
 
 generator client {
   provider = "prisma-client-js"
@@ -13,6 +12,61 @@ datasource db {
 }
 
 // ============================================================================
+// ENUMS (PostgreSQL Native)
+// ============================================================================
+
+enum Role {
+  CLIENT
+  PROVIDER
+  ADMIN
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CARD
+  PIX
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  HELD
+  PAID
+  REFUNDED
+  FAILED
+}
+
+enum QuoteStatus {
+  PENDING
+  RESPONDED
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum QuoteItemStatus {
+  PENDING
+  QUOTED
+  ACCEPTED
+  REJECTED
+}
+
+enum ServiceUnit {
+  UNIDADE
+  METRO_LINEAR
+  METRO_QUADRADO
+  METRO_CUBICO
+  HORA
+}
+
+// ============================================================================
 // USER — base account for CLIENT | PROVIDER | ADMIN
 // ============================================================================
 model User {
@@ -20,8 +74,7 @@ model User {
   email        String   @unique
   passwordHash String
   name         String
-  // role: "CLIENT" | "PROVIDER" | "ADMIN"
-  role         String   @default("CLIENT")
+  role         Role     @default(CLIENT)
   cpfCnpj      String?
   whatsapp     String?
   phone        String?
@@ -54,6 +107,14 @@ model User {
   favoriteCount Int     @default(0)
   // Lytex Pagamentos recipient ID for split payments
   lytexRecipientId String?
+  // Identity verification (KYC)
+  identityDocUrl    String?
+  identitySelfieUrl String?
+  identityVerifiedAt DateTime?
+  identityStatus    String?  // "pending" | "approved" | "rejected"
+  // Advanced Geolocation: custom polygon area and travel fee policy
+  servicePolygon    Json?
+  travelFeePolicy   Json?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -124,8 +185,7 @@ model Service {
   title       String
   description String
   basePrice   Float
-  // unit: "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO"
-  unit        String   @default("UNIDADE")
+  unit        ServiceUnit @default(UNIDADE)
   // photos: JSON array of url strings (max 4)
   photos      Json     @default("[]")
   // duration in minutes (e.g. 60, 120, 180)
@@ -174,8 +234,7 @@ model QuoteRequest {
   id         String   @id @default(cuid())
   clientId   String
   providerId String   // primary provider
-  // status: "PENDING" | "RESPONDED" | "APPROVED" | "REJECTED" | "EXPIRED"
-  status     String   @default("PENDING")
+  status     QuoteStatus @default(PENDING)
   address    String
   cep        String
   lat        Float
@@ -204,13 +263,11 @@ model QuoteItem {
   serviceId    String
   description  String
   quantity     Float
-  // unit: "UNIDADE" | "METRO_LINEAR" | "METRO_QUADRADO" | "METRO_CUBICO"
-  unit         String   @default("UNIDADE")
+  unit         ServiceUnit @default(UNIDADE)
   photos       Json     @default("[]")
   price        Float?   // provider's offer
   providerNote String?
-  // status: "PENDING" | "QUOTED" | "ACCEPTED" | "REJECTED"
-  status       String   @default("PENDING")
+  status       QuoteItemStatus @default(PENDING)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -232,8 +289,7 @@ model Booking {
   providerId    String
   serviceId     String
   scheduledAt   DateTime
-  // status: "PENDING" | "CONFIRMED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"
-  status        String   @default("PENDING")
+  status        BookingStatus @default(PENDING)
   address       String
   cep           String
   lat           Float
@@ -242,10 +298,8 @@ model Booking {
   // READ-ONLY via Prisma: all spatial access uses $queryRaw (see src/lib/postgis.ts)
   location     Unsupported("geography(Point, 4326)")?
   amount        Float
-  // paymentMethod: "CARD" | "PIX"
-  paymentMethod String   @default("PIX")
-  // paymentStatus: "PENDING" | "PAID" | "REFUNDED"
-  paymentStatus String   @default("PENDING")
+  paymentMethod PaymentMethod @default(PIX)
+  paymentStatus PaymentStatus @default(PENDING)
   notes         String?
   // Quote request that originated this booking
   quoteId       String?  @unique
@@ -253,6 +307,15 @@ model Booking {
   completionPin String?
   // Timestamp for automated reminders
   reminderSentAt DateTime?
+  // Timestamp for automated proximity geofence alert (within 1km / 5min)
+  geofenceAlertSentAt DateTime?
+  // Escrow & custody release
+  escrowReleasedAt DateTime?
+  escrowDisputeReason String?
+  // Before / After photos for job proof
+  beforePhotos  Json     @default("[]")
+  afterPhotos   Json     @default("[]")
+  completionNote String?
   deletedAt     DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -263,15 +326,35 @@ model Booking {
   quote    QuoteRequest? @relation("BookingQuote", fields: [quoteId], references: [id], onDelete: SetNull)
   reviews  Review[]
   payment  Payment?
+  disputes Dispute[]
   pushAnalytics PushAnalytics[]
 
   @@index([clientId])
   @@index([providerId])
   @@index([serviceId])
   @@index([status])
+  @@index([paymentStatus])
   @@index([scheduledAt])
   @@index([providerId, status, scheduledAt])
   @@index([clientId, status, scheduledAt])
+}
+
+// ============================================================================
+// DISPUTE — transaction mediation between client and provider
+// ============================================================================
+model Dispute {
+  id          String   @id @default(cuid())
+  bookingId   String
+  reason      String
+  status      String   @default("OPEN") // "OPEN" | "RESOLVED" | "REJECTED"
+  resolution  String?
+  createdAt   DateTime @default(now())
+  resolvedAt  DateTime?
+
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([status])
 }
 
 // ============================================================================
@@ -366,10 +449,8 @@ model Payment {
   id            String   @id @default(cuid())
   bookingId     String   @unique
   amount        Float
-  // method: "CARD" | "PIX"
-  method        String   @default("PIX")
-  // status: "PENDING" | "PAID" | "REFUNDED"
-  status        String   @default("PENDING")
+  method        PaymentMethod @default(PIX)
+  status        PaymentStatus @default(PENDING)
   transactionId String?
   // Lytex Pagamentos integration fields
   lytexId       String?  @unique // ID da cobrança no Lytex

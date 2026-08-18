@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test"
 
 /**
@@ -29,7 +30,9 @@ test.describe("Vitrine — Página Inicial", () => {
   })
 
   test("hero deve ter campo de busca funcional", async ({ page }) => {
-    const searchInput = page.locator('input[placeholder*="Buscar"], input[aria-label*="Buscar"]').first()
+    const searchInput = page
+      .locator('input[placeholder*="Buscar"], input[aria-label*="Buscar"]')
+      .first()
     await expect(searchInput).toBeVisible()
 
     // Type a query

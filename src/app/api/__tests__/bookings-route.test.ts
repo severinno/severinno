@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, no-console  */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
 
@@ -166,8 +167,10 @@ describe("POST /api/bookings", () => {
 
   it("creates a booking and returns 201", async () => {
     _mockSession = { userId: "client-1", role: "CLIENT" } as any
-    ;(vi.mocked(db.service.findUnique) as any).mockResolvedValue(mockService)
-    ;(vi.mocked(db.booking.create) as any).mockResolvedValue(mockBooking)
+    ;(vi.mocked(db.service.findUnique) as any)
+      .mockResolvedValue(mockService)
+    ;(vi.mocked(db.booking.create) as any)
+      .mockResolvedValue(mockBooking)
 
     const req = createMockRequest({ method: "POST", body: validBody })
     const res = await createBooking(req)
@@ -225,8 +228,10 @@ describe("GET /api/bookings", () => {
 
   it("lists bookings for the authenticated client", async () => {
     _mockSession = { userId: "client-1", role: "CLIENT" } as any
-    ;(vi.mocked(db.booking.findMany) as any).mockResolvedValue([mockBooking])
-    ;(vi.mocked(db.booking.count) as any).mockResolvedValue(1)
+    ;(vi.mocked(db.booking.findMany) as any)
+      .mockResolvedValue([mockBooking])
+    ;(vi.mocked(db.booking.count) as any)
+      .mockResolvedValue(1)
 
     const req = createMockRequest()
     const res = await listBookings(req)
@@ -239,8 +244,10 @@ describe("GET /api/bookings", () => {
 
   it("filters by status", async () => {
     _mockSession = { userId: "client-1", role: "CLIENT" } as any
-    ;(vi.mocked(db.booking.findMany) as any).mockResolvedValue([])
-    ;(vi.mocked(db.booking.count) as any).mockResolvedValue(0)
+    ;(vi.mocked(db.booking.findMany) as any)
+      .mockResolvedValue([])
+    ;(vi.mocked(db.booking.count) as any)
+      .mockResolvedValue(0)
 
     const req = createMockRequest({ searchParams: { status: "CONFIRMED" } })
     await listBookings(req)
@@ -310,7 +317,7 @@ describe("PATCH /api/bookings/[id]", () => {
       status: "PENDING",
       paymentStatus: "PENDING",
     } as any)
-    vi.mocked(db.booking.update).mockResolvedValue(mockBooking)
+    vi.mocked(db.booking.update).mockResolvedValue(mockBooking as any)
 
     const req = createMockRequest({ method: "PATCH", body: { status: "CANCELLED" } })
     const res = await updateBooking(req, { params: Promise.resolve({ id: "book-1" }) })
@@ -346,7 +353,7 @@ describe("PATCH /api/bookings/[id]", () => {
       status: "PENDING",
       paymentStatus: "PENDING",
     } as any)
-    vi.mocked(db.booking.update).mockResolvedValue(mockBooking)
+    vi.mocked(db.booking.update).mockResolvedValue(mockBooking as any)
 
     const req = createMockRequest({ method: "PATCH", body: { status: "CONFIRMED" } })
     const res = await updateBooking(req, { params: Promise.resolve({ id: "book-1" }) })
@@ -397,35 +404,38 @@ describe("POST /api/bookings/[id]/pay", () => {
 
   it("simulates PIX payment when lytex is not configured", async () => {
     _mockSession = { userId: "client-1", role: "CLIENT" } as any
-    ;(vi.mocked(db.booking.findUnique) as any).mockResolvedValue(pixBooking)
-    ;(vi.mocked(db.user.findUnique) as any).mockResolvedValue({ lytexRecipientId: null } as any)
-    ;(vi.mocked(db.user.findUniqueOrThrow) as any).mockResolvedValue({
-      name: "Test Client",
-      email: "test@test.com",
-      cpfCnpj: "12345678900",
-      phone: "11999999999",
-    } as any)
-    ;(vi.mocked(db.payment.upsert) as any).mockResolvedValue({} as any)
-    ;(vi.mocked(db.booking.update) as any).mockResolvedValue({
-      ...mockBooking,
-      paymentStatus: "PAID",
-    } as any)
-    // Mock createPixCharge to return a valid charge (needed because .env has LYTEX_CLIENT_ID)
-    ;(vi.mocked(createPixCharge) as any).mockResolvedValue({
-      id: "charge-1",
-      status: "waitingPayment",
-      amount: 200,
-      qrCode: "base64...",
-      qrCodeText: "pix-copia-e-colai",
-      txId: "tx-id-123",
-      expiresAt: new Date(Date.now() + 86400000).toISOString(),
-      linkCheckout: "https://checkout.lytex.com.br/charge-1",
-      hashId: "hash-1",
-      gatewayId: "gateway-1",
-      gatewayHashId: "gateway-hash-1",
-      checkoutUrl: "https://checkout.lytex.com.br/charge-1",
-      gatewayMetadata: {},
-    })
+    ;(vi.mocked(db.booking.findUnique) as any)
+      .mockResolvedValue(pixBooking)
+    ;(vi.mocked(db.user.findUnique) as any)
+      .mockResolvedValue({ lytexRecipientId: null } as any)
+    ;(vi.mocked(db.user.findUniqueOrThrow) as any)
+      .mockResolvedValue({
+        name: "Test Client",
+        email: "test@test.com",
+        cpfCnpj: "12345678900",
+        phone: "11999999999",
+      } as any)
+    ;(vi.mocked(db.payment.upsert) as any)
+      .mockResolvedValue({} as any)
+    ;(vi.mocked(db.booking.update) as any)
+      .mockResolvedValue({ ...mockBooking, paymentStatus: "PAID" } as any)
+    ;(vi.mocked(createPixCharge) as any)
+      // Mock createPixCharge to return a valid charge (needed because .env has LYTEX_CLIENT_ID)
+      .mockResolvedValue({
+        id: "charge-1",
+        status: "waitingPayment",
+        amount: 200,
+        qrCode: "base64...",
+        qrCodeText: "pix-copia-e-colai",
+        txId: "tx-id-123",
+        expiresAt: new Date(Date.now() + 86400000).toISOString(),
+        linkCheckout: "https://checkout.lytex.com.br/charge-1",
+        hashId: "hash-1",
+        gatewayId: "gateway-1",
+        gatewayHashId: "gateway-hash-1",
+        checkoutUrl: "https://checkout.lytex.com.br/charge-1",
+        gatewayMetadata: {},
+      })
 
     const req = createMockRequest({ method: "POST" })
     const res = await payBooking(req, { params: Promise.resolve({ id: "book-1" }) })

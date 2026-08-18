@@ -8,10 +8,10 @@
 #   prod×alpine, prod×full, dev×alpine, dev×full
 # Objetivo: validar a compatibilidade de AMBAS as variantes da imagem em PRs,
 # não só em cron/deploy — o full é a MESMA imagem que o deploy.yml usa.
-#   1. prod E2E (test-seed-prod-e2e.ts — 128 checks): guard recusa fora de
+#   1. prod E2E (test-seed-prod-e2e.ts — 127 checks): guard recusa fora de
 #      produção, dry-run nada escrito, bootstrap categorias+settings, ZERO
 #      usuários, idempotência, cenários SEED_SPEC_PATCH (update + rename)
-#   2. dev E2E (test-seed-dev-e2e.ts — 162 checks): guard recusa em produção,
+#   2. dev E2E (test-seed-dev-e2e.ts — 161 checks): guard recusa em produção,
 #      9 usuários demo, árvore completa, wipe+recreate idempotente, guard
 #      ENTRE re-execuções, cenários SEED_SPEC_PATCH
 #   3. prod E2E dev-env (job seed-prod-e2e-dev-env — container PRÓPRIO): roda
@@ -182,7 +182,7 @@ jobs:
       # (banco limpo próprio — o prod asserta ZERO usuários; o dev faz
       # wipe+recreate). Sem acoplamento nem ordem entre células.
       # O .sh com --skip-docker faz: prisma generate (se cache miss) +
-      # db push (schema) + validator (prod: 128 checks; dev: 162 checks).
+      # db push (schema) + validator (prod: 127 checks; dev: 161 checks).
       - name: Run seed-${{ matrix.seed }} E2E
         id: e2e
         env:
@@ -191,10 +191,10 @@ jobs:
         run: |
           if [ "${{ matrix.seed }}" = "prod" ]; then
             bun run test:seed-prod-e2e --skip-docker
-            echo "  ✅ Seed prod E2E passou (128 checks)"
+            echo "  ✅ Seed prod E2E passou (127 checks)"
           else
             bun run test:seed-dev-e2e --skip-docker
-            echo "  ✅ Seed dev E2E passou (162 checks)"
+            echo "  ✅ Seed dev E2E passou (161 checks)"
           fi
 
       # ── Publish summary ─────────────────────────────────────────────
@@ -208,7 +208,7 @@ jobs:
             echo '|---|---|'
             echo "| Seed | ${{ matrix.seed }} |"
             echo "| Variante imagem | ${{ matrix.variant }} |"
-            echo "| E2E (${{ matrix.seed == 'prod' && '128' || '162' }} checks) | ${{ steps.e2e.conclusion == 'success' && '✅' || '❌' }} |"
+            echo "| E2E (${{ matrix.seed == 'prod' && '127' || '161' }} checks) | ${{ steps.e2e.conclusion == 'success' && '✅' || '❌' }} |"
             echo "| Imagem PostGIS | ${{ matrix.variant == 'full' && 'postgis/postgis:16-3.4' || (vars.POSTGIS_IMAGE || 'postgis/postgis:16-3.4-alpine') }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -340,8 +340,8 @@ jobs:
   #       divergir) mas o vitest CONTINUA falhando ('piso prod violado' — o
   #       piso do TESTE é próprio, não herdado do guard): o teste de
   #       integração não depende do guard para pegar a regressão da doc;
-  #   (E) ESPELHO DEV: mutar SÓ a doc de dev (162→N: "162 checks" → "N
-  #       checks" + ternary '162' → 'N') com a doc de prod ("128 checks")
+  #   (E) ESPELHO DEV: mutar SÓ a doc de dev (162→N: "161 checks" → "N
+  #       checks" + ternary '162' → 'N') com a doc de prod ("127 checks")
   #       E a âncora dev (.toBe(162)) INTACTAS → teste falha com 'piso dev
   #       violado' (hardcoded ≥ 6 no seed-e2e-count.test.ts) E guard falha
   #       pelo piso de sites (dev 0 < 6) — o contrato vale para AMBOS os
@@ -523,7 +523,7 @@ jobs:
           SKIP_PRISMA_GENERATE: ${{ steps.prisma-cache.outputs.cache-hit == 'true' && '1' || '0' }}
         run: |
           bun run test:seed-prod-e2e --skip-docker
-          echo "  ✅ Seed prod E2E (dev-env) passou — 128 checks"
+          echo "  ✅ Seed prod E2E (dev-env) passou — 127 checks"
 
       # ── Smoke do fluxo documentado de override ────────────────────────
       # O comando EXATO que um dev roda contra banco efêmero em dev
@@ -555,7 +555,7 @@ jobs:
             echo ''
             echo '| Check | Result |'
             echo '|---|---|'
-            echo "| Prod E2E (128 checks, override no env) | ${{ steps.e2e.conclusion == 'success' && '✅' || '❌' }} |"
+            echo "| Prod E2E (127 checks, override no env) | ${{ steps.e2e.conclusion == 'success' && '✅' || '❌' }} |"
             echo "| Smoke db:seed:prod com override | ${{ steps.smoke.conclusion == 'success' && '✅' || '❌' }} |"
             echo "| Imagem PostGIS | ${{ vars.POSTGIS_IMAGE || 'postgis/postgis:16-3.4-alpine (default)' }} |"
           } >> "$GITHUB_STEP_SUMMARY"
