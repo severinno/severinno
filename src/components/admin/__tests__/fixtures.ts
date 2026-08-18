@@ -29,7 +29,7 @@ import type { BenchmarkData } from "@/lib/benchmark-data"
  */
 export const FIXTURE_BENCHMARK: BenchmarkData = {
   meta: {
-    timestamp: "2026-04-13T00:00:00.000Z",
+    timestamp: "2026-04-13T12:00:00.000Z",
     platform: "win32",
     nodeVersion: "v22.14.0",
     centerLabel: "-23.5505, -46.6333",

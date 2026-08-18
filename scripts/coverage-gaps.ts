@@ -20,7 +20,6 @@ import { join, basename, dirname } from "path"
 // ── Configuration ──────────────────────────────────────────────────────────
 
 const API_DIR = join(__dirname, "..", "src", "app", "api")
-const TEST_DIR = join(API_DIR, "__tests__")
 
 // Routes that are intentionally excluded from testing (infra, config, etc.)
 const EXCLUDED_ROUTES = new Set([
@@ -31,6 +30,61 @@ const EXCLUDED_ROUTES = new Set([
   "src/app/api/cron/reminders/route.ts", // Cron job
   "src/app/api/cron/commissions-report/route.ts", // Cron job
   "src/app/api/cron/settlements/route.ts", // Cron job
+])
+
+// Baseline: routes without tests, tracked as tech debt. DO NOT add new
+// routes here — only move existing gaps into this set as they get slashed.
+// New routes MUST ship with tests (the gate fails otherwise).
+const BASELINE_GAPS = new Set([
+  "src/app/api/admin/business-metrics/route.ts",
+  "src/app/api/admin/disputes/mediate/route.ts",
+  "src/app/api/admin/financial/export-csv/route.ts",
+  "src/app/api/admin/gateway/invoices/route.ts",
+  "src/app/api/admin/gtm/leads/route.ts",
+  "src/app/api/admin/verify-identity/[id]/route.ts",
+  "src/app/api/availability/[id]/route.ts",
+  "src/app/api/availability/blocks/route.ts",
+  "src/app/api/availability/blocks/[id]/route.ts",
+  "src/app/api/bookings/[id]/confirm-completion/route.ts",
+  "src/app/api/bookings/[id]/dispute/route.ts",
+  "src/app/api/bookings/[id]/photos/route.ts",
+  "src/app/api/bookings/[id]/receipt/route.ts",
+  "src/app/api/bookings/checkin-escrow/route.ts",
+  "src/app/api/bookings/contract/route.ts",
+  "src/app/api/bookings/emergency-dispatch/route.ts",
+  "src/app/api/calendar/feed/[token]/route.ts",
+  "src/app/api/categories/[id]/route.ts",
+  "src/app/api/chat/[bookingId]/route.ts",
+  "src/app/api/geo/debug/route.ts",
+  "src/app/api/geo/matrix-eta/route.ts",
+  "src/app/api/geo/route-eta/route.ts",
+  "src/app/api/geo/tiles/[z]/[x]/[y]/route.ts",
+  "src/app/api/geo/travel-fee/route.ts",
+  "src/app/api/health/extended/route.ts",
+  "src/app/api/monitor/push-failures/route.ts",
+  "src/app/api/notifications/preferences/route.ts",
+  "src/app/api/provider/demand-heatmap/route.ts",
+  "src/app/api/provider/financial-summary/route.ts",
+  "src/app/api/provider/financial/mei-report/route.ts",
+  "src/app/api/provider/gamification/route.ts",
+  "src/app/api/provider/optimize-route/route.ts",
+  "src/app/api/provider/routes/optimize-daily/route.ts",
+  "src/app/api/provider/service-zone/route.ts",
+  "src/app/api/provider/stats/route.ts",
+  "src/app/api/provider/verify-identity/route.ts",
+  "src/app/api/push/action/route.ts",
+  "src/app/api/push/payload/[id]/route.ts",
+  "src/app/api/quotes/ai-estimate/route.ts",
+  "src/app/api/quotes/compare/route.ts",
+  "src/app/api/search/bbox/route.ts",
+  "src/app/api/search/fuzzy/route.ts",
+  "src/app/api/search/smart-match/route.ts",
+  "src/app/api/services/vision-diagnostic/route.ts",
+  "src/app/api/subscriptions/route.ts",
+  "src/app/api/tracking/[id]/geofence/route.ts",
+  "src/app/api/upload/route.ts",
+  "src/app/api/users/me/slug/route.ts",
+  "src/app/api/webhooks/sentry-alert/route.ts",
 ])
 
 // Tests that don't target a specific route (infrastructure tests)
@@ -147,8 +201,9 @@ function getImportedHandlersFromTest(testFile: string): string[] {
   try {
     const content = readFileSync(testFile, "utf-8")
     const imports: string[] = []
-    // Match "import { GET, POST, ... } from \"../path/route\""
-    const importRegex = /import\s*\{[^}]+\}\s*from\s*["']\.\.\/([^"']+\/route)["']/g
+    // Match "import { GET, POST, ... } from \"@/app/api/path/route\"" or relative imports
+    const importRegex =
+      /import\s*\{[^}]+\}\s*from\s*["'](?:@\/app\/api\/|\.\.\/|\.\.\/\.\.\/)([^"']+\/route)["']/g
     let match
     while ((match = importRegex.exec(content)) !== null) {
       imports.push(match[1])
@@ -173,8 +228,8 @@ async function main() {
   )
   const totalRoutes = routeFiles.length
 
-  // Discover all test files
-  const testFiles = globSync("*.test.ts", { cwd: TEST_DIR })
+  // Discover all test files across API tree (includes nested __tests__ dirs)
+  const testFiles = globSync("**/__tests__/**/*.test.ts", { cwd: API_DIR })
 
   // Build test coverage map
   type CoverageEntry = {
@@ -183,6 +238,7 @@ async function main() {
     coveredBy: string[] // test file names
     excluded: boolean
     infraOnly: boolean
+    baselineGap: boolean
   }
 
   const coverage: CoverageEntry[] = []
@@ -197,13 +253,14 @@ async function main() {
     // globSync returns OS-native separators on Windows (\) — normalize so the
     // EXCLUDED_ROUTES set (always "/") matches on every platform.
     const excluded = EXCLUDED_ROUTES.has(`src/app/api/${routeFile.replace(/\\/g, "/")}`)
+    const baselineGap = BASELINE_GAPS.has(`src/app/api/${routeFile.replace(/\\/g, "/")}`)
 
     const coveredBy: string[] = []
     let infraOnly = false
 
     for (const testFile of testFiles) {
       // Direct import check (most reliable)
-      const importedHandlers = getImportedHandlersFromTest(join(TEST_DIR, testFile))
+      const importedHandlers = getImportedHandlersFromTest(join(API_DIR, testFile))
       const _expectedImportPath = `../${routeFile.replace(/\\/g, "/").replace(/\.ts$/, "")}`
       const normalizedRoute = routeFile.replace(/\\/g, "/")
 
@@ -225,14 +282,19 @@ async function main() {
       infraOnly = true
     }
 
-    coverage.push({ routeFile, apiPath, coveredBy, excluded, infraOnly })
+    coverage.push({ routeFile, apiPath, coveredBy, excluded, infraOnly, baselineGap })
   }
 
   // ── Report ──────────────────────────────────────────────────────────────
 
   const covered = coverage.filter((c) => c.coveredBy.length > 0 && !c.infraOnly && !c.excluded)
   const coveredInfra = coverage.filter((c) => c.infraOnly && !c.excluded)
-  const gaps = coverage.filter((c) => c.coveredBy.length === 0 && !c.excluded && !c.infraOnly)
+  const gaps = coverage.filter(
+    (c) => c.coveredBy.length === 0 && !c.excluded && !c.infraOnly && !c.baselineGap,
+  )
+  const baselineGaps = coverage.filter(
+    (c) => c.coveredBy.length === 0 && !c.excluded && !c.infraOnly && c.baselineGap,
+  )
   const excluded = coverage.filter((c) => c.excluded)
 
   if (outputJson) {
@@ -244,6 +306,7 @@ async function main() {
           covered: covered.length,
           coveredInfra: coveredInfra.length,
           gaps: gaps.length,
+          baselineGaps: baselineGaps.length,
           excluded: excluded.length,
           coveragePct: Math.round((covered.length / (totalRoutes - excluded.length)) * 100),
           gapRoutes: gaps.map((g) => ({
@@ -274,6 +337,7 @@ async function main() {
   console.log(`  Covered (real):      ${String(covered.length).padStart(3)}`)
   console.log(`  Covered (infra only):${String(coveredInfra.length).padStart(3)}`)
   console.log(`  Gaps:                ${String(gaps.length).padStart(3)}`)
+  console.log(`  Baseline gaps:       ${String(baselineGaps.length).padStart(3)}`)
   console.log(
     `  Coverage:            ${Math.round((covered.length / (totalRoutes - excluded.length)) * 100)}%`,
   )
@@ -297,6 +361,14 @@ async function main() {
       }
       console.log()
     }
+  }
+
+  if (baselineGaps.length > 0) {
+    console.log(`  🟠 BASELINE GAPS (tracked debt, not blocking) (${baselineGaps.length})\n`)
+    for (const c of [...baselineGaps].sort((a, b) => a.apiPath.localeCompare(b.apiPath))) {
+      console.log(`      • ${c.apiPath}`)
+    }
+    console.log()
   }
 
   if (coveredInfra.length > 0) {

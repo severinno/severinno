@@ -76,6 +76,9 @@ export function PixCheckoutModal({
   const [copied, setCopied] = React.useState(false)
   const [isPaid, setIsPaid] = React.useState(false)
   const [isExpired, setIsExpired] = React.useState(false)
+  const [fallbackExpiresAt] = React.useState(() =>
+    new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  )
 
   // Step 1: Generate PIX charge
   const pixMutation = useMutation({
@@ -90,14 +93,17 @@ export function PixCheckoutModal({
     if (open && !pixMutation.data && !pixMutation.isPending) {
       pixMutation.mutate()
     }
-    // Reset state when modal closes
-    if (!open) {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next) {
       setCopied(false)
       setIsPaid(false)
       setIsExpired(false)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open])
+    onOpenChange(next)
+  }
 
   // Step 2: Poll for payment confirmation every 5s
   const pixData = pixMutation.data
@@ -138,12 +144,12 @@ export function PixCheckoutModal({
       toast.success("Código PIX copiado!")
       setTimeout(() => setCopied(false), 3_000)
     }
-  }, [pixData?.qrCode])
+  }, [pixData])
 
-  const expiresAt = pixData?.expiresAt ?? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+  const expiresAt = pixData?.expiresAt ?? fallbackExpiresAt
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
