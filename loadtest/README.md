@@ -25,38 +25,43 @@ choco install k6
 ## Executar Testes
 
 ### Teste Básico
+
 ```bash
 k6 run loadtest/k6-load-test.js
 ```
 
 ### Com Output JSON
+
 ```bash
 k6 run --out json=loadtest/results.json loadtest/k6-load-test.js
 ```
 
 ### Com Output InfluxDB
+
 ```bash
 k6 run --out influxdb=http://localhost:8086/k6 loadtest/k6-load-test.js
 ```
 
 ### Configurar URL Base
+
 ```bash
 BASE_URL=https://staging.severinno.com.br k6 run loadtest/k6-load-test.js
 ```
 
 ## Thresholds (Critérios de Aprovação)
 
-| Métrica | Threshold | Descrição |
-|---------|-----------|-----------|
-| `http_req_duration` | P95 < 2000ms | 95% das requests < 2s |
-| `http_req_failed` | Rate < 1% | Taxa de erro < 1% |
-| `health_duration` | P95 < 500ms | Health check P95 < 500ms |
-| `providers_duration` | P95 < 3000ms | Providers P95 < 3s |
-| `categories_duration` | P95 < 1000ms | Categories P95 < 1s |
+| Métrica               | Threshold    | Descrição                |
+| --------------------- | ------------ | ------------------------ |
+| `http_req_duration`   | P95 < 2000ms | 95% das requests < 2s    |
+| `http_req_failed`     | Rate < 1%    | Taxa de erro < 1%        |
+| `health_duration`     | P95 < 500ms  | Health check P95 < 500ms |
+| `providers_duration`  | P95 < 3000ms | Providers P95 < 3s       |
+| `categories_duration` | P95 < 1000ms | Categories P95 < 1s      |
 
 ## Cenários de Teste
 
 ### Ramp Up Gradual
+
 ```
 30s → 10 VUs
 1m  → 10 VUs (sustain)
@@ -125,6 +130,7 @@ jq -s '.[0] as $base | .[1] | {
 ## Troubleshooting
 
 ### k6 não conecta na API
+
 ```bash
 # Verificar se a API está rodando
 curl http://localhost:3000/api/health
@@ -134,6 +140,7 @@ docker compose logs app
 ```
 
 ### Muitos erros 429 (Rate Limit)
+
 ```bash
 # Aumentar rate limit no .env.staging
 GLOBAL_RATE_LIMIT_MAX=1000
@@ -141,6 +148,7 @@ GLOBAL_RATE_LIMIT_WINDOW_MS=60000
 ```
 
 ### Memória insuficiente
+
 ```bash
 # Reduzir VUs máximas
 k6 run --vus 50 --duration 2m loadtest/k6-load-test.js

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Vitrine — Integration Tests: Search → Filters → Pagination
  *

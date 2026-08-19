@@ -65,32 +65,6 @@ async function registerTestUser(request: any): Promise<string> {
   return cookies || ""
 }
 
-/**
- * Create a test booking via API.
- */
-async function createTestBooking(request: any, cookie: string): Promise<string> {
-  const res = await request.post("/api/bookings", {
-    headers: { Cookie: cookie },
-    data: {
-      providerId: TEST_BOOKING.providerId,
-      serviceId: TEST_BOOKING.serviceId,
-      scheduledAt: TEST_BOOKING.scheduledAt,
-      address: TEST_BOOKING.address,
-      cep: TEST_BOOKING.cep,
-      lat: TEST_BOOKING.lat,
-      lng: TEST_BOOKING.lng,
-      amount: TEST_BOOKING.amount,
-      paymentMethod: TEST_BOOKING.paymentMethod,
-    },
-  })
-
-  if (res.ok()) {
-    const body = await res.json()
-    return body.booking?.id || body.id
-  }
-  return TEST_BOOKING.id
-}
-
 // ── Tests ─────────────────────────────────────────────────────────────────
 
 test.describe("Payment Flow — PIX", () => {
@@ -118,9 +92,7 @@ test.describe("Payment Flow — PIX", () => {
     expect(body).toHaveProperty("error")
   })
 
-  test("POST /api/bookings/[id]/pay returns 404 for non-existent booking", async ({
-    request,
-  }) => {
+  test("POST /api/bookings/[id]/pay returns 404 for non-existent booking", async ({ request }) => {
     // Register user to get auth
     const cookie = await registerTestUser(request)
 
@@ -323,7 +295,7 @@ test.describe("Payment Flow — Error Handling", () => {
     const cookie = await registerTestUser(request)
 
     // Make multiple rapid requests to trigger rate limit
-    const requests = Array.from({ length: 10 }, (_, i) =>
+    const requests = Array.from({ length: 10 }, () =>
       request.post(`/api/bookings/${TEST_BOOKING.id}/pay`, {
         headers: { Cookie: cookie },
         data: {},
@@ -332,8 +304,6 @@ test.describe("Payment Flow — Error Handling", () => {
 
     const responses = await Promise.all(requests)
 
-    // At least some should be rate limited (429)
-    const rateLimited = responses.some((r) => r.status() === 429)
     // Note: Rate limit might not trigger in test environment
     // This test validates the endpoint exists and handles requests
     expect(responses.length).toBe(10)

@@ -1,4 +1,3 @@
-/* eslint-disable no-console, @typescript-eslint/no-explicit-any  */
 // @ts-nocheck
 /**
  * Lytex Pagamentos — Integration test

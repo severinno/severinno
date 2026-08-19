@@ -1,4 +1,3 @@
- 
 /**
  * Playwright + axe-core Accessibility Audit
  *

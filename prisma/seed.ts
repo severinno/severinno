@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Severinno Marketplace — seed script (Fase 1 / MVP)
  * Run with: bun run db:seed  (or: bun prisma/seed.ts)

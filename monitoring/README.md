@@ -44,32 +44,36 @@ docker compose -f docker-compose.monitoring.yml ps
 
 O dashboard principal (`Severinno Marketplace — Overview`) inclui:
 
-| Seção | Métricas |
-|-------|----------|
-| **Overview** | Response Time (P50/P95), Requests/sec, Error Rate |
-| **HTTP Requests** | Requests by Status Code, Response Time by Endpoint |
-| **Database** | DB Query Duration, Active DB Connections |
-| **Redis Cache** | Cache Hit Ratio, Cache Size, Redis Operations |
-| **Business Metrics** | Bookings by Status, Revenue (24h), Active Providers |
-| **Distributed Traces** | Trace Search (Tempo) |
+| Seção                  | Métricas                                            |
+| ---------------------- | --------------------------------------------------- |
+| **Overview**           | Response Time (P50/P95), Requests/sec, Error Rate   |
+| **HTTP Requests**      | Requests by Status Code, Response Time by Endpoint  |
+| **Database**           | DB Query Duration, Active DB Connections            |
+| **Redis Cache**        | Cache Hit Ratio, Cache Size, Redis Operations       |
+| **Business Metrics**   | Bookings by Status, Revenue (24h), Active Providers |
+| **Distributed Traces** | Trace Search (Tempo)                                |
 
 ### Métricas Disponíveis
 
 **HTTP Metrics:**
+
 - `http_request_duration_ms_bucket` — Duration histogram
 - `http_request_duration_ms_count` — Request count
 - `http_request_duration_ms_sum` — Total duration
 
 **Database Metrics:**
+
 - `db_query_duration_ms_bucket` — Query duration histogram
 - `pg_stat_activity_count` — Active connections
 
 **Cache Metrics:**
+
 - `redis_cache_hits` — Cache hits
 - `redis_cache_misses` — Cache misses
 - `redis_memory_used_bytes` — Memory usage
 
 **Business Metrics:**
+
 - `bookings_total` — Total bookings
 - `payment_amount_total` — Payment amounts
 - `providers_active_total` — Active providers

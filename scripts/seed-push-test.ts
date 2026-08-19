@@ -1,4 +1,3 @@
-/* eslint-disable no-console, @typescript-eslint/no-explicit-any  */
 /**
  * Severinno Marketplace — seed push subscriptions for testing
  *

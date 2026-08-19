@@ -47,7 +47,9 @@ async function main() {
 
   // 1. Health check
   const isOnline = await isLocalAiOnline()
-  console.log(`🔌 Status LocalAI (http://localhost:8081): ${isOnline ? "🟢 ONLINE (Inferência Llama 3.1 8B)" : "🟡 OFFLINE (Fallback Local Ativo)"}`)
+  console.log(
+    `🔌 Status LocalAI (http://localhost:8081): ${isOnline ? "🟢 ONLINE (Inferência Llama 3.1 8B)" : "🟡 OFFLINE (Fallback Local Ativo)"}`,
+  )
   console.log(`🔒 Política de Privacidade: Dados nunca saem do servidor local\n`)
 
   console.log("----------------------------------------------------------------")
@@ -65,8 +67,12 @@ async function main() {
     console.log(`[Cenário ${i + 1}/5] "${scenario.input.slice(0, 50)}..."`)
     console.log(`  📂 Categoria:    ${result.categoryName}`)
     console.log(`  ⚠️  Gravidade:    ${result.problemSeverity}`)
-    console.log(`  💰 Estimativa:   R$ ${result.estimatedPriceRange.min.toFixed(2)} — R$ ${result.estimatedPriceRange.max.toFixed(2)}`)
-    console.log(`  ⚙️  Motor:        ${result.source === "local-llama" ? "🦙 Llama 3.1 8B" : "⚡ Keyword Fallback"}`)
+    console.log(
+      `  💰 Estimativa:   R$ ${result.estimatedPriceRange.min.toFixed(2)} — R$ ${result.estimatedPriceRange.max.toFixed(2)}`,
+    )
+    console.log(
+      `  ⚙️  Motor:        ${result.source === "local-llama" ? "🦙 Llama 3.1 8B" : "⚡ Keyword Fallback"}`,
+    )
     console.log(`  ⏱️  Latência:     ${elapsed}ms\n`)
 
     if (result.categoryName && result.estimatedPriceRange.min > 0) {

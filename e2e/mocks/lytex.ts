@@ -98,7 +98,11 @@ export async function confirmPayment(
 /**
  * Simulate payment refund via webhook.
  */
-export async function refundPayment(page: Page, chargeId: string, bookingId: string): Promise<void> {
+export async function refundPayment(
+  page: Page,
+  chargeId: string,
+  bookingId: string,
+): Promise<void> {
   await page.request.post("/api/webhooks/lytex", {
     data: {
       id: chargeId,
@@ -112,7 +116,11 @@ export async function refundPayment(page: Page, chargeId: string, bookingId: str
 /**
  * Simulate payment expiration via webhook.
  */
-export async function expirePayment(page: Page, chargeId: string, bookingId: string): Promise<void> {
+export async function expirePayment(
+  page: Page,
+  chargeId: string,
+  bookingId: string,
+): Promise<void> {
   await page.request.post("/api/webhooks/lytex", {
     data: {
       id: chargeId,
@@ -126,7 +134,11 @@ export async function expirePayment(page: Page, chargeId: string, bookingId: str
 /**
  * Simulate payment cancellation via webhook.
  */
-export async function cancelPayment(page: Page, chargeId: string, bookingId: string): Promise<void> {
+export async function cancelPayment(
+  page: Page,
+  chargeId: string,
+  bookingId: string,
+): Promise<void> {
   await page.request.post("/api/webhooks/lytex", {
     data: {
       id: chargeId,

@@ -130,11 +130,9 @@ test.describe("Complete Flow — Client Registration → Booking → Payment", (
     await waitForApp(page)
   })
 
-  test("1. complete client journey: register → search → book → pay", async ({
-    page,
-  }) => {
+  test("1. complete client journey: register → search → book → pay", async ({ page }) => {
     // Step 1: Register new user
-    const creds = await registerUser(page, { role: "CLIENT" })
+    await registerUser(page, { role: "CLIENT" })
     await page.waitForTimeout(1000)
 
     // Step 2: Verify logged in (no login button visible)
@@ -185,9 +183,7 @@ test.describe("Complete Flow — Client Registration → Booking → Payment", (
         await page.waitForTimeout(3000)
 
         // Step 10: Verify result (PIX QR code or confirmation)
-        const success = page
-          .locator("text=/PIX|QR Code|agendamento confirmado|pagamento/i")
-          .first()
+        const success = page.locator("text=/PIX|QR Code|agendamento confirmado|pagamento/i").first()
         const hasSuccess = await success.isVisible({ timeout: 5000 }).catch(() => false)
         if (hasSuccess) {
           console.log("✅ Booking created successfully!")
@@ -204,11 +200,9 @@ test.describe("Complete Flow — Provider Onboarding", () => {
     await waitForApp(page)
   })
 
-  test("2. complete provider journey: register → profile → service → manage", async ({
-    page,
-  }) => {
+  test("2. complete provider journey: register → profile → service → manage", async ({ page }) => {
     // Step 1: Register as provider
-    const creds = await registerUser(page, { role: "PROVIDER" })
+    await registerUser(page, { role: "PROVIDER" })
     await page.waitForTimeout(1000)
 
     // Step 2: Verify logged in
@@ -362,9 +356,7 @@ test.describe("Complete Flow — Responsive Design", () => {
 
     if (isVisible) {
       // Check for mobile-specific elements (hamburger menu, etc.)
-      const mobileMenu = page.locator(
-        'button[aria-label="Menu"], button:has(svg.lucide-menu)',
-      )
+      const mobileMenu = page.locator('button[aria-label="Menu"], button:has(svg.lucide-menu)')
       const hasMobileMenu = await mobileMenu.isVisible({ timeout: 3000 }).catch(() => false)
 
       if (hasMobileMenu) {

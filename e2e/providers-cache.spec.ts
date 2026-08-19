@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * E2E test for CDN/edge cache behavior of /api/providers.
  *

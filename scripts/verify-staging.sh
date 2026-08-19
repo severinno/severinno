@@ -10,6 +10,10 @@
 # Requirements:
 #   - curl, jq
 #   - Staging environment running
+#
+# Exit codes:
+#   0 — success
+#   1 — failure
 # =============================================================================
 
 set -euo pipefail

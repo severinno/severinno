@@ -37,6 +37,6 @@ datasources:
           - name: "Requests"
             query: "sum(rate(http_request_duration_ms_count{$$__tags}[5m])) by (operation_name)"
           - name: "Errors"
-            query: "sum(rate(http_request_duration_ms_count{$$__tags,status=~\"5..\"}[5m])) by (operation_name)"
+            query: 'sum(rate(http_request_duration_ms_count{$$__tags,status=~"5.."}[5m])) by (operation_name)'
           - name: "Duration P95"
             query: "histogram_quantile(0.95, sum(rate(http_request_duration_ms_bucket{$$__tags}[5m])) by (le, operation_name))"
