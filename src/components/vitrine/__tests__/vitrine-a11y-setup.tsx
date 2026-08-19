@@ -18,7 +18,6 @@ vi.mock("lucide-react", () => {
     BadgeCheck: Icon,
     Banknote: Icon,
     Bell: Icon,
-    Bot: Icon,
     BrickWall: Icon,
     Calculator: Icon,
     Calendar: Icon,
