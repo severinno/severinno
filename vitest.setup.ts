@@ -47,6 +47,12 @@ globalThis.ResizeObserver = class ResizeObserver {
   disconnect() {}
 }
 
+// ── Polyfill scrollIntoView (jsdom não implementa; Radix dialogs/selects
+// chamam candidate.scrollIntoView ao focar itens) ─────────────────────────
+if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {}
+}
+
 // ── Polyfill URL.createObjectURL/revokeObjectURL (jsdom não tem) ───────────
 // O maplibre-gl chama window.URL.createObjectURL(new Blob([...])) no PRÓPRIO
 // import do módulo (setWorkerUrl com worker inline). Qualquer teste que carregue
