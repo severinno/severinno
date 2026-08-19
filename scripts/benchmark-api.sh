@@ -12,6 +12,10 @@
 # Requirements:
 #   - curl, jq
 #   - API running on BASE_URL (default: http://localhost:3000)
+#
+# Exit codes:
+#   0 — success
+#   1 — failure
 # =============================================================================
 
 set -euo pipefail

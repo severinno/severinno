@@ -1,13 +1,13 @@
-import { createServer } from 'http'
-import { Server } from 'socket.io'
+import { createServer } from "http"
+import { Server } from "socket.io"
 
 const httpServer = createServer()
 const io = new Server(httpServer, {
   // DO NOT change the path, it is used by Caddy to forward the request to the correct port
-  path: '/',
+  path: "/",
   cors: {
     origin: "*",
-    methods: ["GET", "POST"]
+    methods: ["GET", "POST"],
   },
   pingTimeout: 60000,
   pingInterval: 25000,
@@ -23,7 +23,7 @@ interface Message {
   username: string
   content: string
   timestamp: Date
-  type: 'user' | 'system'
+  type: "user" | "system"
 }
 
 const users = new Map<string, User>()
@@ -32,10 +32,10 @@ const generateMessageId = () => Math.random().toString(36).substr(2, 9)
 
 const createSystemMessage = (content: string): Message => ({
   id: generateMessageId(),
-  username: 'System',
+  username: "System",
   content,
   timestamp: new Date(),
-  type: 'system'
+  type: "system",
 })
 
 const createUserMessage = (username: string, content: string): Message => ({
@@ -43,74 +43,77 @@ const createUserMessage = (username: string, content: string): Message => ({
   username,
   content,
   timestamp: new Date(),
-  type: 'user'
+  type: "user",
 })
 
-io.on('connection', (socket) => {
+io.on("connection", (socket) => {
   console.log(`User connected: ${socket.id}`)
 
   // Add test event handler
-  socket.on('test', (data) => {
-    console.log('Received test message:', data)
-    socket.emit('test-response', { 
-      message: 'Server received test message', 
+  socket.on("test", (data) => {
+    console.log("Received test message:", data)
+    socket.emit("test-response", {
+      message: "Server received test message",
       data: data,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     })
   })
 
-  socket.on('join', (data: { username: string }) => {
+  socket.on("join", (data: { username: string }) => {
     const { username } = data
-    
+
     // Create user object
     const user: User = {
       id: socket.id,
-      username
+      username,
     }
-    
+
     // Add to user list
     users.set(socket.id, user)
-    
+
     // Send join message to all users
     const joinMessage = createSystemMessage(`${username} joined the chat room`)
-    io.emit('user-joined', { user, message: joinMessage })
-    
+    io.emit("user-joined", { user, message: joinMessage })
+
     // Send current user list to new user
     const usersList = Array.from(users.values())
-    socket.emit('users-list', { users: usersList })
-    
+    socket.emit("users-list", { users: usersList })
+
     console.log(`${username} joined the chat room, current online users: ${users.size}`)
   })
 
-  socket.on('message', (data: { content: string; username: string }) => {
+  socket.on("message", (data: { content: string; username: string }) => {
     const { content, username } = data
     const user = users.get(socket.id)
-    
+
     if (user && user.username === username) {
       const message = createUserMessage(username, content)
-      io.emit('message', message)
+      io.emit("message", message)
       console.log(`${username}: ${content}`)
     }
   })
 
-  socket.on('disconnect', () => {
+  socket.on("disconnect", () => {
     const user = users.get(socket.id)
-    
+
     if (user) {
       // Remove from user list
       users.delete(socket.id)
-      
+
       // Send leave message to all users
       const leaveMessage = createSystemMessage(`${user.username} left the chat room`)
-      io.emit('user-left', { user: { id: socket.id, username: user.username }, message: leaveMessage })
-      
+      io.emit("user-left", {
+        user: { id: socket.id, username: user.username },
+        message: leaveMessage,
+      })
+
       console.log(`${user.username} left the chat room, current online users: ${users.size}`)
     } else {
       console.log(`User disconnected: ${socket.id}`)
     }
   })
 
-  socket.on('error', (error) => {
+  socket.on("error", (error) => {
     console.error(`Socket error (${socket.id}):`, error)
   })
 })
@@ -121,18 +124,18 @@ httpServer.listen(PORT, () => {
 })
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('Received SIGTERM signal, shutting down server...')
+process.on("SIGTERM", () => {
+  console.log("Received SIGTERM signal, shutting down server...")
   httpServer.close(() => {
-    console.log('WebSocket server closed')
+    console.log("WebSocket server closed")
     process.exit(0)
   })
 })
 
-process.on('SIGINT', () => {
-  console.log('Received SIGINT signal, shutting down server...')
+process.on("SIGINT", () => {
+  console.log("Received SIGINT signal, shutting down server...")
   httpServer.close(() => {
-    console.log('WebSocket server closed')
+    console.log("WebSocket server closed")
     process.exit(0)
   })
 })

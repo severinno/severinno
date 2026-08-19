@@ -1,4 +1,3 @@
-/* eslint-disable no-console, @typescript-eslint/no-explicit-any  */
 /**
  * Script de migração: SQLite → PostgreSQL + PostGIS
  *

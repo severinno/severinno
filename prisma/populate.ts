@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * Severinno Marketplace — Script de povoamento completo
  * Run with: bun prisma/populate.ts

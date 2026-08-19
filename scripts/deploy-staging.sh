@@ -13,6 +13,10 @@
 # Requirements:
 #   - Docker + Docker Compose v2
 #   - .env.staging configured
+#
+# Exit codes:
+#   0 — success
+#   1 — failure
 # =============================================================================
 
 set -euo pipefail

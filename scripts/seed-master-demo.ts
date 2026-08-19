@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 /**
  * seed-master-demo.ts — Master Showcase Seed for Severinno Marketplace SaaS
  *
@@ -33,10 +32,6 @@ const CITIES = {
   CWB: { lat: -25.4284, lng: -49.2733, name: "Curitiba", state: "PR" },
 }
 
-function jitter(base: number, delta: number): number {
-  return Number((base + (Math.random() * 2 - 1) * delta).toFixed(5))
-}
-
 function slugify(s: string): string {
   return s
     .toLowerCase()
@@ -54,7 +49,7 @@ async function main() {
   const passwordHash = await hashPassword("senha123")
 
   // Admin
-  const admin = await db.user.upsert({
+  await db.user.upsert({
     where: { email: "admin@severinno.com.br" },
     update: {},
     create: {
@@ -96,7 +91,7 @@ async function main() {
     },
   })
 
-  const client2 = await db.user.upsert({
+  await db.user.upsert({
     where: { email: "carolina.moraes@gmail.com" },
     update: {},
     create: {

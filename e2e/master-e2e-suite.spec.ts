@@ -17,7 +17,9 @@ test.describe("Severinno Master Suite — E2E Golden Paths", () => {
     await page.waitForLoadState("networkidle")
 
     // Find login or register button
-    const entrarBtn = page.getByRole("button", { name: /entrar|login|cadastre-se|trabalhe/i }).first()
+    const entrarBtn = page
+      .getByRole("button", { name: /entrar|login|cadastre-se|trabalhe/i })
+      .first()
     if (await entrarBtn.isVisible()) {
       await entrarBtn.click()
       await page.waitForTimeout(500)
@@ -47,10 +49,14 @@ test.describe("Severinno Master Suite — E2E Golden Paths", () => {
   })
 
   test("5. PostGIS Bbox and Route ETA endpoints respond gracefully", async ({ request }) => {
-    const bboxRes = await request.get("/api/search/bbox?minLat=-23.60&maxLat=-23.50&minLng=-46.70&maxLng=-46.60")
+    const bboxRes = await request.get(
+      "/api/search/bbox?minLat=-23.60&maxLat=-23.50&minLng=-46.70&maxLng=-46.60",
+    )
     expect([200, 400]).toContain(bboxRes.status())
 
-    const etaRes = await request.get("/api/geo/route-eta?originLat=-23.55&originLng=-46.63&destLat=-23.56&destLng=-46.65")
+    const etaRes = await request.get(
+      "/api/geo/route-eta?originLat=-23.55&originLng=-46.63&destLat=-23.56&destLng=-46.65",
+    )
     expect([200, 400]).toContain(etaRes.status())
   })
 })

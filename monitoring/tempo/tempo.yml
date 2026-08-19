@@ -23,7 +23,7 @@ ingester:
 # ── Compactor (consolidates blocks) ───────────────────────────────────────
 compactor:
   compaction:
-    block_retention: 720h  # 30 days
+    block_retention: 720h # 30 days
     compacted_block_retention: 24h
 
 # ── Storage (local filesystem) ────────────────────────────────────────────

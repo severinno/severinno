@@ -1,4 +1,3 @@
- 
 import { test, expect, type Page } from "@playwright/test"
 import { waitForVitrine, registerUser } from "./helpers"
 import { setupApiMocks } from "./mocks"

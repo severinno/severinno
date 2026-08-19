@@ -62,6 +62,7 @@ docker compose -f docker-compose.staging.yml --env-file .env.staging up -d
 ## Monitoramento
 
 ### Grafana (se habilitado)
+
 ```bash
 # Iniciar stack de monitoramento
 docker compose -f docker-compose.monitoring.yml up -d
@@ -72,6 +73,7 @@ open http://localhost:3001
 ```
 
 ### Logs Estruturados
+
 ```bash
 # Logs com request ID
 docker compose -f docker-compose.staging.yml logs app | grep requestId
@@ -82,18 +84,19 @@ docker compose -f docker-compose.staging.yml logs app | grep '"level":50'
 
 ## Variáveis Críticas
 
-| Variável | Descrição | Obrigatória |
-|----------|-----------|-------------|
-| `DATABASE_URL` | Conexão PostgreSQL | ✅ |
-| `REDIS_URL` | Conexão Redis | ✅ |
-| `SESSION_SECRET` | Segredo das sessões (min 32 chars) | ✅ |
-| `LYTEX_CLIENT_ID` | ID do cliente Lytex | ✅ |
-| `LYTEX_CLIENT_SECRET` | Segredo do cliente Lytex | ✅ |
-| `SENTRY_DSN` | DSN do Sentry/GlitchTip | ❌ |
+| Variável              | Descrição                          | Obrigatória |
+| --------------------- | ---------------------------------- | ----------- |
+| `DATABASE_URL`        | Conexão PostgreSQL                 | ✅          |
+| `REDIS_URL`           | Conexão Redis                      | ✅          |
+| `SESSION_SECRET`      | Segredo das sessões (min 32 chars) | ✅          |
+| `LYTEX_CLIENT_ID`     | ID do cliente Lytex                | ✅          |
+| `LYTEX_CLIENT_SECRET` | Segredo do cliente Lytex           | ✅          |
+| `SENTRY_DSN`          | DSN do Sentry/GlitchTip            | ❌          |
 
 ## Troubleshooting
 
 ### App não inicia
+
 ```bash
 # Verificar logs
 docker compose -f docker-compose.staging.yml logs app
@@ -103,6 +106,7 @@ docker compose -f docker-compose.staging.yml exec app env | grep DATABASE
 ```
 
 ### Database connection refused
+
 ```bash
 # Verificar PgBouncer
 docker compose -f docker-compose.staging.yml logs pgbouncer
@@ -112,6 +116,7 @@ docker compose -f docker-compose.staging.yml logs postgres
 ```
 
 ### Redis connection refused
+
 ```bash
 # Verificar Redis
 docker compose -f docker-compose.staging.yml logs redis

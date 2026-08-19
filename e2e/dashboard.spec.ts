@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test"
 
 test("GET /dashboard returns 200 and shows login redirect for unauthenticated", async ({
