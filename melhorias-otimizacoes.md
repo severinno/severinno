@@ -36,7 +36,10 @@
 
 1. `next/image` — convertidos os 2 usos de `<img>` nativo restantes em produção
    (`provider-profile.tsx` SinglePhoto + cover via novo `SafeImage`) em 19/08.
-   Restam: `photo-upload.tsx` (**dead code** — sem imports) e avatar Radix.
+   Restou: `photo-upload.tsx` — **removido (dead code, sem imports) em 19/08**.
+   Avatar Radix: **mantido por decisão** — `next/image` não expõe `onError`
+   confiável p/ disparar o `AvatarFallback` do Radix, e avatares (≤40px) não se
+   beneficiam da otimização; galho `blob:`/`data:` já coberto por Radix.
 2. `"use client"` em massa na vitrine → **SSR real implementado em 19/08**:
    `AppShell` renderiza a vitrine no servidor (removido gate `!mounted → null`).
    HTML inicial passou de skeleton para 364KB de conteúdo real (SEO + LCP).
