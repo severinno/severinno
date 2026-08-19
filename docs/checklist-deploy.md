@@ -1,4 +1,4 @@
-# 📋 Checklist de Deploy em Produção — Severinno v0.4.0
+# 📋 Checklist de Deploy em Produção — Severinno v1.0.1
 
 > Checklist completo para colocar o Severinno Marketplace em produção.
 > Marque cada item conforme for concluído.
@@ -249,8 +249,8 @@ curl -s http://localhost:3000/api/health/detailed | jq .
 O workflow `.github/workflows/release-deploy.yml` é acionado automaticamente ao fazer push de uma tag `v*`:
 
 ```bash
-git tag v0.4.0
-git push origin v0.4.0
+git tag v1.0.1
+git push origin v1.0.1
 ```
 
 **Pipeline:**
@@ -462,8 +462,8 @@ docker compose -f docker-compose.prod.yml up -d app:anterior
 bash scripts/backup-db.sh --restore /var/backups/severinno/postgres/severinno-db_20240101_030000.sql.gz
 
 # 4. Reverter tag no GitHub (se necessário)
-git tag -d v0.4.0
-git push origin :refs/tags/v0.4.0
+git tag -d v1.0.1
+git push origin :refs/tags/v1.0.1
 ```
 
 ---
@@ -477,7 +477,7 @@ git push origin :refs/tags/v0.4.0
    [ ] 1.1 Repositório criado (severinno/severinno)
    [ ] 1.2 Chave SSH do VPS adicionada
    [ ] 1.3 GitHub Secrets configurados (DEPLOY_HOST, USER, KEY)
-   [ ] 1.4 Push do release/v0.4.0 + tag v0.4.0
+   [ ] 1.4 Push do release/v0.4.0 + tag v1.0.1
    [ ] 1.5 CI/CD acionado (Actions)
 
 🟠 VPS

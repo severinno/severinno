@@ -2,7 +2,7 @@
 
 > Medidas de segurança implementadas para proteger uma plataforma que lida com
 > **valores monetários**, dados pessoais e geolocalização de usuários.
-> Última atualização: 2026-08-01 | Versão: v0.4.0
+> Última atualização: 2026-08-19 | Versão: v1.0.1
 
 ## Sumário
 

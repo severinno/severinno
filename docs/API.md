@@ -99,7 +99,7 @@ Content-Type: application/json
 
 ---
 
-## Panorama da API (v0.4.0)
+## Panorama da API (v1.0.1)
 
 A API totaliza **124 arquivos `route.ts` / 148 handlers HTTP** (GET 88 · POST 38 · PATCH 13 · DELETE 9), distribuídos em:
 

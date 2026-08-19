@@ -2,7 +2,7 @@
 
 > Sistema completo de notificações push com Web Push API, suporte a agendamento,
 > eventos automáticos via webhooks, payloads grandes (>4KB) e métricas de entrega.
-> Última atualização: 2026-07-28 | Versão: v0.4.0
+> Última atualização: 2026-08-19 | Versão: v1.0.1
 
 ## Arquitetura
 
