@@ -144,6 +144,7 @@ vi.mock("lucide-react", () => {
     CheckIcon: () => <span data-testid="icon-check" />,
     ChevronDownIcon: () => <span data-testid="icon-chevron-down" />,
     ChevronUpIcon: () => <span data-testid="icon-chevron-up" />,
+    ChevronRightIcon: () => <span data-testid="icon-chevron-right" />,
     CircleIcon: () => <span data-testid="icon-circle" />,
   }
 })

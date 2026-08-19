@@ -1,6 +1,14 @@
 import { describe, it, expect } from "vitest"
 import { render, screen } from "@/__tests__/test-utils"
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "../card"
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+  CardAction,
+} from "../card"
 
 describe("Card", () => {
   it("renders children", () => {
@@ -41,6 +49,15 @@ describe("CardFooter", () => {
     const el = container.querySelector("[data-slot='card-footer']")
     expect(el).toBeInTheDocument()
     expect(el?.textContent).toBe("Footer")
+  })
+})
+
+describe("CardAction", () => {
+  it("renders action slot", () => {
+    const { container } = render(<CardAction>Action</CardAction>)
+    const el = container.querySelector("[data-slot='card-action']")
+    expect(el).toBeInTheDocument()
+    expect(el?.textContent).toBe("Action")
   })
 })
 
