@@ -3,15 +3,14 @@
 /**
  * AppShell — the full client-side SPA shell.
  *
- * Extracted from page.tsx to enable the home page to be a Server Component
- * with SSR Streaming. This component handles all interactive concerns:
- *   - View routing (vitrine / client / provider / admin)
- *   - Auth check and guards
- *   - Realtime connection
- *   - Modal mounting
+ * Renders the active surface on both server and client:
+ *   - Server: streams real vitrine HTML (SEO + LCP) for the default
+ *     view, then the interactive bundle hydrates.
+ *   - Client: view routing (vitrine / client / provider / admin),
+ *     auth check and guards, realtime connection, modal mounting.
  */
 
-import { useEffect, useSyncExternalStore } from "react"
+import { useEffect } from "react"
 import dynamic from "next/dynamic"
 
 import { useAuthStore } from "@/store/auth"
@@ -35,16 +34,7 @@ const ModalsHost = dynamic(
   { ssr: false },
 )
 
-const useHydrated = () =>
-  useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  )
-
 export default function AppShell() {
-  const mounted = useHydrated()
-
   const view = useViewStore((s) => s.view)
   const reset = useViewStore((s) => s.reset)
   const user = useAuthStore((s) => s.user)
@@ -61,7 +51,7 @@ export default function AppShell() {
 
   // Auth guard for panel views
   useEffect(() => {
-    if (!mounted || !initialized) return
+    if (!initialized) return
     if (view.startsWith("client.") && (!user || user.role !== "CLIENT")) {
       reset("vitrine")
       openAuth("login", "CLIENT")
@@ -77,18 +67,13 @@ export default function AppShell() {
       openAuth("login", "CLIENT")
       return
     }
-  }, [mounted, view, user, initialized, reset, openAuth])
+  }, [view, user, initialized, reset, openAuth])
 
   // Realtime connection
   useEffect(() => {
     if (!user) return
     join({ userId: user.id, role: user.role })
   }, [user, join])
-
-  // Pre-hydration loading shell (matches streaming SSR fallback)
-  if (!mounted) {
-    return null // page.tsx already renders LoadingShell during SSR
-  }
 
   // Route to the active surface with ErrorBoundary
   let content: React.ReactNode

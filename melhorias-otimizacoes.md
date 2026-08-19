@@ -4,6 +4,41 @@
 
 ---
 
+## 📌 Atualização — 19/08/2026 (estado real pós-otimizações)
+
+> A análise abaixo (22/07) está desatualizada em vários pontos. Estado verificado
+> em 19/08/2026:
+
+### ✅ Resolvidos desde 22/07
+
+| Item (doc abaixo)          | Estado 19/08/2026                                                    |
+| -------------------------- | -------------------------------------------------------------------- |
+| #1 Paginação providers     | ✅ `skip`/`take` + PostGIS em `src/app/api/providers/route.ts`       |
+| #2 Middleware fail-open    | ✅ Verificar `src/middleware.ts`                                     |
+| #3 Redis indisponível      | ✅ Infra Valkey/Redis completa (rate-limit, cache 3 camadas, testes) |
+| #15 ESLint desabilitado    | ✅ 0 erros / 0 warnings (215 warnings corrigidos em 18/08)           |
+| #7/#16 Cache APIs públicas | ✅ `cacheControlPublic` + suíte `all-cache-routes`                   |
+| #8 OpenSearch sync         | ✅ Automático via `search_reindex_queue` (`src/lib/api-server.ts`)   |
+| #9 Barrel `@/store`        | ✅ Verificado com barrel-lint guard                                  |
+| #14 Bundle analyzer        | ✅ Configurado (`ANALYZE=true`)                                      |
+| #20 Testes                 | ✅ 3.899 unit (263 arquivos) + 207 e2e + 13 a11y                     |
+
+### 🔴 Pendências reais verificadas em 19/08/2026
+
+1. `next/image` — convertidos os 2 usos de `<img>` nativo restantes em produção
+   (`provider-profile.tsx` SinglePhoto + cover via novo `SafeImage`) em 19/08.
+   Restam: `photo-upload.tsx` (**dead code** — sem imports) e avatar Radix.
+2. `"use client"` em massa na vitrine → **SSR real implementado em 19/08**:
+   `AppShell` renderiza a vitrine no servidor (removido gate `!mounted → null`).
+   HTML inicial passou de skeleton para 364KB de conteúdo real (SEO + LCP).
+   Componentes seguem client (decisão SPA preservada — RSC literal inviável
+   abaixo do `AppShell` client).
+3. Observação de arquitetura: a conversão literal dos componentes vitrine para
+   Server Components NÃO é possível enquanto viverem abaixo de `AppShell`
+   (client) — o SSR real do shell é o ganho viável.
+
+---
+
 ## Resumo Executivo
 
 O projeto tem **arquitetura sólida** e boa engenharia. As recomendações abaixo estão organizadas por criticidade e camada.

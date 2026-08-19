@@ -22,6 +22,7 @@ import { playCoinSound, playCompletionSound, playReviewSound, tryVibrate } from 
 import { providerProfileSchema, type ProviderProfileInput } from "@/lib/validators"
 import { useAuthStore } from "@/store/auth"
 
+import { SafeImage } from "@/components/shared/safe-image"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -132,8 +133,12 @@ function SinglePhoto({
         }
       >
         {value ? (
-          // eslint-disable-next-line @next/next/no-img-element -- URL runtime (upload/blob)
-          <img src={value} alt={label} className="size-full object-cover" />
+          <SafeImage
+            src={value}
+            alt={label}
+            sizes={aspect === "square" ? "96px" : "640px"}
+            className="size-full object-cover"
+          />
         ) : (
           <div className="text-muted-foreground flex size-full items-center justify-center">
             <ImagePlus className="size-6" />
@@ -366,8 +371,12 @@ export function ProviderProfile() {
           <CardContent className="p-4">
             <div className="relative h-32 w-full overflow-hidden rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-700 sm:h-40">
               {coverUrl && (
-                // eslint-disable-next-line @next/next/no-img-element -- URL runtime (upload/blob)
-                <img src={coverUrl ?? ""} alt="Capa" className="size-full object-cover" />
+                <SafeImage
+                  src={coverUrl}
+                  alt="Capa"
+                  sizes="(max-width: 640px) 100vw, 640px"
+                  className="size-full object-cover"
+                />
               )}
               <div className="absolute -bottom-8 left-4 flex items-end gap-3">
                 <Avatar className="border-background size-16 border-4 sm:size-20">
