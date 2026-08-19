@@ -21,7 +21,16 @@
 | #8 OpenSearch sync         | ✅ Automático via `search_reindex_queue` (`src/lib/api-server.ts`)   |
 | #9 Barrel `@/store`        | ✅ Verificado com barrel-lint guard                                  |
 | #14 Bundle analyzer        | ✅ Configurado (`ANALYZE=true`)                                      |
-| #20 Testes                 | ✅ 3.899 unit (263 arquivos) + 207 e2e + 13 a11y                     |
+| #20 Testes                 | ✅ 4.689 unit (331 arquivos) + e2e + a11y                            |
+
+### 🧹 Higiene/processo — concluído em 19/08
+
+| Item                    | Estado 19/08/2026                                             |
+| ----------------------- | ------------------------------------------------------------- |
+| 4. Poda de branches     | ✅ 21 → 2 (`main` + `release/v0.4.0`); `main` avançada (ff)   |
+| 5. Lixo na raiz         | ✅ 67 `.log`/`tsbuildinfo` removidos (~14.5 MB), gitignored   |
+| 6. Coverage (meta ≥60%) | ✅ 61.35% lines / 77.7% branch (era 60.34%/77.46%) — +1,01pp  |
+| 7. Versionamento v1.0.0 | ✅ `package.json` 0.4.0 → 1.0.1 (alineado com CHANGELOG/tags) |
 
 ### 🔴 Pendências reais verificadas em 19/08/2026
 
@@ -36,6 +45,17 @@
 3. Observação de arquitetura: a conversão literal dos componentes vitrine para
    Server Components NÃO é possível enquanto viverem abaixo de `AppShell`
    (client) — o SSR real do shell é o ganho viável.
+
+### ⚠️ Flakies conhecidos (sob carga de coverage; passam isolados)
+
+| Teste                                                  | Comportamento                                                                                |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `src/lib/__tests__/geo-performance-regression.test.ts` | Guard de latência (THRESHOLD_US_PER_PROVIDER) falha sob instrumentação v8; passa 6/6 isolado |
+| `src/lib/__tests__/haversine-throughput.test.ts`       | Guard de throughput (≥0.5M ops/s) falha sob carga; passa isolado                             |
+| `src/lib/__tests__/geo-alert-notify.test.ts`           | Round-trip de timers/rabbit falha intermitente sob coverage                                  |
+
+> Recomendação: subir `retry` no vitest OU mover esses guards para um job
+> CI dedicado sem instrumentação (ex.: `test:perf` separado do `test:coverage`).
 
 ---
 
