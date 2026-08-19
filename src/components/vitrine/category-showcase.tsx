@@ -764,7 +764,7 @@ export default function CategoryShowcase({
                 </div>
 
                 {/* Mobile: compact chip row */}
-                <div className="scrollbar-thin flex gap-2 overflow-x-auto pb-1 sm:hidden">
+                <div className="flex scrollbar-thin gap-2 overflow-x-auto pb-1 sm:hidden">
                   {popularCategories.map((c, idx) => (
                     <PopularChip
                       key={c.id}
@@ -809,7 +809,7 @@ export default function CategoryShowcase({
               {/* Mobile: horizontal scroll chips */}
               <div
                 ref={scrollRef}
-                className="scrollbar-thin flex gap-3 overflow-x-auto pb-3 sm:hidden"
+                className="flex scrollbar-thin gap-3 overflow-x-auto pb-3 sm:hidden"
               >
                 {categories.map((c, idx) => (
                   <MobileCategoryChip

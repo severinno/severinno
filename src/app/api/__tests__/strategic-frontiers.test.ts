@@ -48,9 +48,23 @@ describe("2. Emergency Broadcast Matchmaking Engine", () => {
     }
 
     const availableProviders = [
-      { id: "p1", name: "Carlos Encanador", lat: -23.56, lng: -46.64, rating: 4.9, activeBookings: 0 },
-      { id: "p2", name: "Marcos Hidráulica", lat: -23.58, lng: -46.66, rating: 4.7, activeBookings: 1 },
-      { id: "p3", name: "Lucas Longe", lat: -23.90, lng: -46.90, rating: 5.0, activeBookings: 0 }, // Out of radius
+      {
+        id: "p1",
+        name: "Carlos Encanador",
+        lat: -23.56,
+        lng: -46.64,
+        rating: 4.9,
+        activeBookings: 0,
+      },
+      {
+        id: "p2",
+        name: "Marcos Hidráulica",
+        lat: -23.58,
+        lng: -46.66,
+        rating: 4.7,
+        activeBookings: 1,
+      },
+      { id: "p3", name: "Lucas Longe", lat: -23.9, lng: -46.9, rating: 5.0, activeBookings: 0 }, // Out of radius
     ]
 
     const dispatch = await createEmergencyDispatch(req, availableProviders)
@@ -82,8 +96,8 @@ describe("3. Geo Check-in & PIN-Based Escrow Release Protocol", () => {
       providerId: "p-1",
       providerLat: -23.5505,
       providerLng: -46.6333,
-      clientAddressLat: -23.5900,
-      clientAddressLng: -46.6800, // ~6km away
+      clientAddressLat: -23.59,
+      clientAddressLng: -46.68, // ~6km away
     })
     expect(farAttempt.success).toBe(false)
     expect(farAttempt.reason).toContain("Aproxime-se")
@@ -133,7 +147,13 @@ describe("4. AI-Powered Dispute Mediation Engine", () => {
     const rec = await mediateDispute(dispute)
 
     expect(rec.bookingId).toBe("disp-101")
-    expect(["FULL_REFUND", "PARTIAL_REFUND", "REDO_SERVICE", "SPLIT_DECISION", "NO_REFUND"]).toContain(rec.verdict)
+    expect([
+      "FULL_REFUND",
+      "PARTIAL_REFUND",
+      "REDO_SERVICE",
+      "SPLIT_DECISION",
+      "NO_REFUND",
+    ]).toContain(rec.verdict)
     expect(rec.refundAmount + rec.providerPayout).toBeCloseTo(400.0, 1)
     expect(rec.reasoning.length).toBeGreaterThan(10)
     expect(rec.suggestedActions.length).toBeGreaterThan(0)
@@ -153,7 +173,7 @@ describe("5. MEI/DASN-SIMEI Fiscal Module", () => {
       "Roberto Eletricista MEI",
       2026,
       bookings,
-      "12.345.678/0001-90"
+      "12.345.678/0001-90",
     )
 
     expect(report.providerId).toBe("prov-123")

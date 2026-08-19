@@ -98,7 +98,7 @@ export default function PartnersTrust() {
           transition={{ duration: 0.6, delay: 0.15 }}
         >
           {/* Mobile: horizontal scroll */}
-          <div className="scrollbar-thin -mx-4 flex gap-3 overflow-x-auto px-4 pb-2 sm:hidden">
+          <div className="-mx-4 flex scrollbar-thin gap-3 overflow-x-auto px-4 pb-2 sm:hidden">
             {PRESS_LOGOS.map((logo) => (
               <LogoCard key={logo.name} logo={logo} />
             ))}

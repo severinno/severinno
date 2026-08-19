@@ -14,10 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  type NotificationItem,
-  NOTIFICATION_ROUTES,
-} from "./types"
+import { type NotificationItem, NOTIFICATION_ROUTES } from "./types"
 
 export function groupNotificationsByDate(
   items: NotificationItem[],
@@ -83,10 +80,7 @@ export function NotificationsBell({
   markingAll: boolean
   onNavigate: (view: string) => void
 }) {
-  const unreadIds = React.useMemo(
-    () => items.filter((n) => !n.read).map((n) => n.id),
-    [items],
-  )
+  const unreadIds = React.useMemo(() => items.filter((n) => !n.read).map((n) => n.id), [items])
 
   return (
     <DropdownMenu>
@@ -94,15 +88,13 @@ export function NotificationsBell({
         <Button
           variant="ghost"
           size="icon"
-          className="relative size-9 text-muted-foreground hover:text-foreground"
-          aria-label={`Notificações${
-            unreadCount > 0 ? ` (${unreadCount} não lidas)` : ""
-          }`}
+          className="text-muted-foreground hover:text-foreground relative size-9"
+          aria-label={`Notificações${unreadCount > 0 ? ` (${unreadCount} não lidas)` : ""}`}
         >
           <Bell className="size-[18px]" />
           {unreadCount > 0 ? (
             <span
-              className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground ring-2 ring-background"
+              className="bg-primary text-primary-foreground ring-background absolute -top-0.5 -right-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold ring-2"
               aria-hidden
             >
               {unreadCount > 9 ? "9+" : unreadCount}
@@ -117,7 +109,7 @@ export function NotificationsBell({
             {unreadCount > 0 ? (
               <Badge
                 variant="secondary"
-                className="h-5 bg-primary/10 px-1.5 text-[10px] font-semibold text-primary"
+                className="bg-primary/10 text-primary h-5 px-1.5 text-[10px] font-semibold"
               >
                 {unreadCount} nova{unreadCount > 1 ? "s" : ""}
               </Badge>
@@ -128,7 +120,7 @@ export function NotificationsBell({
               type="button"
               onClick={() => onMarkAllRead(unreadIds)}
               disabled={markingAll}
-              className="inline-flex items-center gap-1 text-[11px] font-medium text-primary transition-colors hover:text-primary/80 disabled:opacity-50"
+              className="text-primary hover:text-primary/80 inline-flex items-center gap-1 text-[11px] font-medium transition-colors disabled:opacity-50"
             >
               {markingAll ? (
                 <Loader2 className="size-3 animate-spin" />
@@ -142,24 +134,22 @@ export function NotificationsBell({
 
         <ScrollArea className="max-h-80">
           {isLoading ? (
-            <div className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
+            <div className="text-muted-foreground flex items-center justify-center gap-2 p-8 text-sm">
               <Loader2 className="size-4 animate-spin" />
               Carregando…
             </div>
           ) : items.length === 0 ? (
             <div className="flex flex-col items-center gap-2 p-8 text-center">
-              <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <span className="bg-muted text-muted-foreground flex size-12 items-center justify-center rounded-full">
                 <Bell className="size-5" />
               </span>
-              <p className="text-sm text-muted-foreground">
-                Você não tem notificações.
-              </p>
+              <p className="text-muted-foreground text-sm">Você não tem notificações.</p>
             </div>
           ) : (
             <div className="max-h-80 overflow-y-auto">
               {groupNotificationsByDate(items).map((group) => (
                 <div key={group.label}>
-                  <div className="sticky top-0 z-10 bg-popover px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  <div className="bg-popover text-muted-foreground sticky top-0 z-10 px-3 py-1.5 text-[10px] font-medium tracking-wider uppercase">
                     {group.label}
                   </div>
                   <ul className="divide-y">
@@ -172,7 +162,7 @@ export function NotificationsBell({
                           className={cn(
                             "relative flex gap-3 px-3 py-2.5 transition-colors",
                             !n.read && "bg-primary/5",
-                            targetRoute && "cursor-pointer hover:bg-accent/50",
+                            targetRoute && "hover:bg-accent/50 cursor-pointer",
                           )}
                           onClick={() => {
                             if (targetRoute) {
@@ -187,28 +177,24 @@ export function NotificationsBell({
                           }}
                           role={targetRoute ? "button" : undefined}
                           tabIndex={targetRoute ? 0 : undefined}
-                          title={
-                            targetRoute ? `Ir para ${typeLabel ?? targetRoute}` : undefined
-                          }
+                          title={targetRoute ? `Ir para ${typeLabel ?? targetRoute}` : undefined}
                         >
                           <span
                             className={cn(
                               "mt-1.5 size-2 shrink-0 rounded-full",
-                              n.read ? "bg-transparent ring-1 ring-border" : "bg-primary",
+                              n.read ? "ring-border bg-transparent ring-1" : "bg-primary",
                             )}
                             aria-hidden
                           />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-baseline justify-between gap-2">
-                              <p className="text-sm font-medium leading-tight">
-                                {n.title}
-                              </p>
-                              <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                              <p className="text-sm leading-tight font-medium">{n.title}</p>
+                              <span className="text-muted-foreground shrink-0 text-[10px] tabular-nums">
                                 {formatRelative(n.createdAt)}
                               </span>
                             </div>
                             {n.body ? (
-                              <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+                              <p className="text-muted-foreground mt-0.5 line-clamp-2 text-xs">
                                 {n.body}
                               </p>
                             ) : null}
@@ -216,7 +202,7 @@ export function NotificationsBell({
                               {typeLabel ? (
                                 <Badge
                                   variant="outline"
-                                  className="h-4 px-1.5 text-[10px] font-medium text-muted-foreground"
+                                  className="text-muted-foreground h-4 px-1.5 text-[10px] font-medium"
                                 >
                                   {typeLabel}
                                 </Badge>
@@ -228,7 +214,7 @@ export function NotificationsBell({
                                     e.stopPropagation()
                                     onMarkRead(n.id)
                                   }}
-                                  className="inline-flex items-center gap-1 text-[10px] font-medium text-primary hover:underline"
+                                  className="text-primary inline-flex items-center gap-1 text-[10px] font-medium hover:underline"
                                 >
                                   <Check className="size-3" />
                                   Marcar como lida

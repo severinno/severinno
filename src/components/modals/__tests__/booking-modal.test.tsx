@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, @next/next/no-img-element, jsx-a11y/alt-text  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { cleanup, render, screen } from "@/__tests__/test-utils"
 import { BookingModal } from "../booking-modal"

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Unit tests for PreferenceToggles — shared sound & vibration preference component.
  *

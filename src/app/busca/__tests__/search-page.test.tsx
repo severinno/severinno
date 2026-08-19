@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { cleanup, render, screen } from "@/__tests__/test-utils"
 

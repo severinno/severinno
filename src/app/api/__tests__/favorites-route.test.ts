@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET } from "../favorites/route"
 import { createMockRequest } from "@/lib/__tests__/helpers/api-test-utils"

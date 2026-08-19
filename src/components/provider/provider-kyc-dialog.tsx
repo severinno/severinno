@@ -18,7 +18,6 @@ import {
   Lock,
   ShieldAlert,
   UploadCloud,
-  XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -76,7 +75,8 @@ export function ProviderKycDialog({
             Verificação de Identidade (Selo Oficial)
           </DialogTitle>
           <DialogDescription>
-            Profissionais verificados recebem até 3x mais solicitações e transmitem total confiança aos clientes.
+            Profissionais verificados recebem até 3x mais solicitações e transmitem total confiança
+            aos clientes.
           </DialogDescription>
         </DialogHeader>
 
@@ -86,10 +86,10 @@ export function ProviderKycDialog({
               <CheckCircle2 className="size-8 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-foreground">
+              <h3 className="text-foreground text-base font-bold">
                 Seu perfil está 100% Verificado!
               </h3>
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="text-muted-foreground mt-1 text-xs">
                 Você possui o selo de prestador verificado ativo em todas as suas ofertas e buscas.
               </p>
             </div>
@@ -103,11 +103,10 @@ export function ProviderKycDialog({
               <Clock className="size-8 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-foreground">
-                Documentos em Análise
-              </h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Nossa equipe de compliance está validando seus documentos. O prazo médio de aprovação é de até 24 horas.
+              <h3 className="text-foreground text-base font-bold">Documentos em Análise</h3>
+              <p className="text-muted-foreground mt-1 text-xs">
+                Nossa equipe de compliance está validando seus documentos. O prazo médio de
+                aprovação é de até 24 horas.
               </p>
             </div>
             <Button variant="outline" onClick={() => onOpenChange(false)} className="mt-2">
@@ -123,16 +122,17 @@ export function ProviderKycDialog({
             className="space-y-4 pt-2"
           >
             {currentStatus === "rejected" && (
-              <div className="rounded-lg bg-red-50 p-3 border border-red-200 dark:bg-red-950/20 text-xs text-red-700 flex items-start gap-2">
-                <ShieldAlert className="size-4 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:bg-red-950/20">
+                <ShieldAlert className="mt-0.5 size-4 shrink-0" />
                 <span>
-                  Sua verificação anterior não foi aprovada. Certifique-se de que o documento esteja legível e reenvie abaixo.
+                  Sua verificação anterior não foi aprovada. Certifique-se de que o documento esteja
+                  legível e reenvie abaixo.
                 </span>
               </div>
             )}
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+              <label className="text-foreground flex items-center gap-1.5 text-xs font-semibold">
                 <FileText className="size-3.5 text-emerald-600" />
                 Foto do Documento (RG ou CNH) — Frente e Verso
               </label>
@@ -144,13 +144,13 @@ export function ProviderKycDialog({
                 required
                 className="h-10"
               />
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-muted-foreground text-[11px]">
                 Você pode subir a foto no Imgur ou no seu armazenamento S3 e colar o link seguro.
               </span>
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+              <label className="text-foreground flex items-center gap-1.5 text-xs font-semibold">
                 <UploadCloud className="size-3.5 text-emerald-600" />
                 Selfie segurando o documento ao lado do rosto
               </label>
@@ -164,21 +164,22 @@ export function ProviderKycDialog({
               />
             </div>
 
-            <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground border flex items-center gap-2">
-              <Lock className="size-4 text-emerald-600 shrink-0" />
+            <div className="bg-muted/40 text-muted-foreground flex items-center gap-2 rounded-lg border p-3 text-xs">
+              <Lock className="size-4 shrink-0 text-emerald-600" />
               <span>
-                Seus documentos são criptografados e utilizados exclusivamente para validação de segurança e compliance.
+                Seus documentos são criptografados e utilizados exclusivamente para validação de
+                segurança e compliance.
               </span>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t">
+            <div className="flex justify-end gap-2 border-t pt-2">
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
               <Button
                 type="submit"
                 disabled={!docUrl || !selfieUrl || mutation.isPending}
-                className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+                className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700"
               >
                 {mutation.isPending ? (
                   <>

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Vitest tests for Cache-Control and Vary headers on /api/categories.
  *

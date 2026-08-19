@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, no-console  */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
 
@@ -167,10 +166,8 @@ describe("POST /api/bookings", () => {
 
   it("creates a booking and returns 201", async () => {
     _mockSession = { userId: "client-1", role: "CLIENT" } as any
-    ;(vi.mocked(db.service.findUnique) as any)
-      .mockResolvedValue(mockService)
-    ;(vi.mocked(db.booking.create) as any)
-      .mockResolvedValue(mockBooking)
+    ;(vi.mocked(db.service.findUnique) as any).mockResolvedValue(mockService)
+    ;(vi.mocked(db.booking.create) as any).mockResolvedValue(mockBooking)
 
     const req = createMockRequest({ method: "POST", body: validBody })
     const res = await createBooking(req)
@@ -228,10 +225,8 @@ describe("GET /api/bookings", () => {
 
   it("lists bookings for the authenticated client", async () => {
     _mockSession = { userId: "client-1", role: "CLIENT" } as any
-    ;(vi.mocked(db.booking.findMany) as any)
-      .mockResolvedValue([mockBooking])
-    ;(vi.mocked(db.booking.count) as any)
-      .mockResolvedValue(1)
+    ;(vi.mocked(db.booking.findMany) as any).mockResolvedValue([mockBooking])
+    ;(vi.mocked(db.booking.count) as any).mockResolvedValue(1)
 
     const req = createMockRequest()
     const res = await listBookings(req)
@@ -244,10 +239,8 @@ describe("GET /api/bookings", () => {
 
   it("filters by status", async () => {
     _mockSession = { userId: "client-1", role: "CLIENT" } as any
-    ;(vi.mocked(db.booking.findMany) as any)
-      .mockResolvedValue([])
-    ;(vi.mocked(db.booking.count) as any)
-      .mockResolvedValue(0)
+    ;(vi.mocked(db.booking.findMany) as any).mockResolvedValue([])
+    ;(vi.mocked(db.booking.count) as any).mockResolvedValue(0)
 
     const req = createMockRequest({ searchParams: { status: "CONFIRMED" } })
     await listBookings(req)
@@ -404,21 +397,19 @@ describe("POST /api/bookings/[id]/pay", () => {
 
   it("simulates PIX payment when lytex is not configured", async () => {
     _mockSession = { userId: "client-1", role: "CLIENT" } as any
-    ;(vi.mocked(db.booking.findUnique) as any)
-      .mockResolvedValue(pixBooking)
-    ;(vi.mocked(db.user.findUnique) as any)
-      .mockResolvedValue({ lytexRecipientId: null } as any)
-    ;(vi.mocked(db.user.findUniqueOrThrow) as any)
-      .mockResolvedValue({
-        name: "Test Client",
-        email: "test@test.com",
-        cpfCnpj: "12345678900",
-        phone: "11999999999",
-      } as any)
-    ;(vi.mocked(db.payment.upsert) as any)
-      .mockResolvedValue({} as any)
-    ;(vi.mocked(db.booking.update) as any)
-      .mockResolvedValue({ ...mockBooking, paymentStatus: "PAID" } as any)
+    ;(vi.mocked(db.booking.findUnique) as any).mockResolvedValue(pixBooking)
+    ;(vi.mocked(db.user.findUnique) as any).mockResolvedValue({ lytexRecipientId: null } as any)
+    ;(vi.mocked(db.user.findUniqueOrThrow) as any).mockResolvedValue({
+      name: "Test Client",
+      email: "test@test.com",
+      cpfCnpj: "12345678900",
+      phone: "11999999999",
+    } as any)
+    ;(vi.mocked(db.payment.upsert) as any).mockResolvedValue({} as any)
+    ;(vi.mocked(db.booking.update) as any).mockResolvedValue({
+      ...mockBooking,
+      paymentStatus: "PAID",
+    } as any)
     ;(vi.mocked(createPixCharge) as any)
       // Mock createPixCharge to return a valid charge (needed because .env has LYTEX_CLIENT_ID)
       .mockResolvedValue({

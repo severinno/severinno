@@ -9,21 +9,21 @@ export async function POST(req: NextRequest) {
     if (!origin || typeof origin.lat !== "number" || typeof origin.lng !== "number") {
       return NextResponse.json(
         { success: false, error: "Origin coordinates (lat, lng) are required" },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
     if (!Array.isArray(destinations) || destinations.length === 0) {
       return NextResponse.json(
         { success: false, error: "Destinations array is required (at least 1 destination)" },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
     // Limit batch size to 50 destinations per request
-    const cappedDestinations: TargetDestination[] = destinations.slice(0, 50).filter(
-      (d) => d && typeof d.lat === "number" && typeof d.lng === "number" && d.id
-    )
+    const cappedDestinations: TargetDestination[] = destinations
+      .slice(0, 50)
+      .filter((d) => d && typeof d.lat === "number" && typeof d.lng === "number" && d.id)
 
     const results = await calculate1xNDistanceMatrix(origin, cappedDestinations)
 
@@ -38,8 +38,11 @@ export async function POST(req: NextRequest) {
     })
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Matrix calculation failed" },
-      { status: 500 }
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Matrix calculation failed",
+      },
+      { status: 500 },
     )
   }
 }

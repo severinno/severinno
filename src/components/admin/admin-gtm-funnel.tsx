@@ -1,22 +1,8 @@
 "use client"
 
 import * as React from "react"
-import {
-  Users,
-  Target,
-  Send,
-  Plus,
-  Search,
-  CheckCircle2,
-  PhoneCall,
-  Clock,
-  ExternalLink,
-  MessageSquare,
-  Sparkles,
-  TrendingUp,
-  Award,
-} from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Target, Send, Plus, Search, ExternalLink, Sparkles } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -37,38 +23,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { GTMLead, LeadStatus, FunnelMetrics, generateWhatsAppOutreachLink } from "@/lib/gtm-engine"
-
-const STATUS_CONFIG: Record<
-  LeadStatus,
-  { label: string; color: string; icon: React.ComponentType<{ className?: string }> }
-> = {
-  NEW: { label: "Novo Lead", color: "bg-slate-100 text-slate-800 border-slate-300", icon: Clock },
-  CONTACTED: {
-    label: "Contatado",
-    color: "bg-blue-100 text-blue-800 border-blue-300",
-    icon: PhoneCall,
-  },
-  DEMO_SCHEDULED: {
-    label: "Pitch / Demo",
-    color: "bg-amber-100 text-amber-800 border-amber-300",
-    icon: MessageSquare,
-  },
-  ONBOARDED: {
-    label: "Cadastrado",
-    color: "bg-emerald-100 text-emerald-800 border-emerald-300",
-    icon: CheckCircle2,
-  },
-  FIRST_SERVICE: {
-    label: "1º Atendimento",
-    color: "bg-purple-100 text-purple-800 border-purple-300",
-    icon: Award,
-  },
-  REJECTED: {
-    label: "Descartado",
-    color: "bg-rose-100 text-rose-800 border-rose-300",
-    icon: Clock,
-  },
-}
 
 export function AdminGTMFunnel() {
   const [leads, setLeads] = React.useState<GTMLead[]>([])
@@ -437,7 +391,6 @@ export function AdminGTMFunnel() {
                 </tr>
               ) : (
                 filteredLeads.map((lead) => {
-                  const statusConf = STATUS_CONFIG[lead.status]
                   const waLink = generateWhatsAppOutreachLink(lead)
 
                   return (

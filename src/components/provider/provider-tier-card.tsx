@@ -54,7 +54,8 @@ const TIER_COLORS: Record<string, { bg: string; text: string; border: string; ba
 export function ProviderTierCard() {
   const { data, isLoading } = useQuery<{ ok: boolean; profile: GamificationProfile }>({
     queryKey: ["provider-gamification"],
-    queryFn: () => apiGet<{ ok: boolean; profile: GamificationProfile }>("/api/provider/gamification"),
+    queryFn: () =>
+      apiGet<{ ok: boolean; profile: GamificationProfile }>("/api/provider/gamification"),
   })
 
   if (isLoading) {
@@ -74,7 +75,9 @@ export function ProviderTierCard() {
             <Trophy className="size-5 text-amber-500" />
             <CardTitle className="text-base font-bold">Programa Severinno Pro</CardTitle>
           </div>
-          <span className={`rounded-full px-3 py-1 text-xs font-bold shadow-sm ${colors.badge} flex items-center gap-1`}>
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-bold shadow-sm ${colors.badge} flex items-center gap-1`}
+          >
             <Medal className="size-3.5" />
             Nível {profile.tierLabel}
           </span>
@@ -85,7 +88,7 @@ export function ProviderTierCard() {
         {/* XP Progress Bar */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold text-foreground">
+            <span className="text-foreground font-semibold">
               Pontuação Pro: <strong>{profile.score} pts</strong>
             </span>
             {profile.nextTierScore ? (
@@ -96,19 +99,19 @@ export function ProviderTierCard() {
               <span className="font-bold text-emerald-600">Nível Máximo Atingido! 🏆</span>
             )}
           </div>
-          <Progress value={profile.progressToNextTierPercent} className="h-2 bg-muted/60" />
+          <Progress value={profile.progressToNextTierPercent} className="bg-muted/60 h-2" />
         </div>
 
         {/* Benefits Unlocked */}
-        <div className="rounded-lg bg-background/80 p-3 border space-y-2">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+        <div className="bg-background/80 space-y-2 rounded-lg border p-3">
+          <div className="text-foreground flex items-center gap-1.5 text-xs font-bold">
             <Sparkles className="size-3.5 text-emerald-600" />
             Benefícios Ativos do seu Nível:
           </div>
-          <ul className="grid grid-cols-1 md:grid-cols-2 gap-1 text-xs text-muted-foreground">
+          <ul className="text-muted-foreground grid grid-cols-1 gap-1 text-xs md:grid-cols-2">
             {profile.benefits.map((b, i) => (
               <li key={i} className="flex items-center gap-1.5">
-                <CheckCircle2 className="size-3 text-emerald-600 shrink-0" />
+                <CheckCircle2 className="size-3 shrink-0 text-emerald-600" />
                 <span>{b}</span>
               </li>
             ))}
@@ -117,26 +120,34 @@ export function ProviderTierCard() {
 
         {/* Badges Grid */}
         <div className="space-y-2">
-          <div className="text-xs font-bold text-foreground">Conquistas & Selos:</div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="text-foreground text-xs font-bold">Conquistas & Selos:</div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {profile.badges.map((b) => (
               <div
                 key={b.id}
                 className={`rounded-lg border p-2.5 text-center transition-all ${
                   b.unlocked
-                    ? "bg-background border-emerald-300 dark:border-emerald-800 shadow-sm"
+                    ? "bg-background border-emerald-300 shadow-sm dark:border-emerald-800"
                     : "bg-muted/40 border-muted opacity-50 grayscale"
                 }`}
               >
-                <div className="flex justify-center mb-1">
+                <div className="mb-1 flex justify-center">
                   {b.id === "verified_pro" && <ShieldCheck className="size-5 text-emerald-600" />}
-                  {b.id === "top_rated" && <Star className="size-5 text-amber-500 fill-amber-500" />}
+                  {b.id === "top_rated" && (
+                    <Star className="size-5 fill-amber-500 text-amber-500" />
+                  )}
                   {b.id === "veteran" && <Award className="size-5 text-blue-600" />}
                   {b.id === "master" && <Crown className="size-5 text-purple-600" />}
                 </div>
-                <div className="text-[11px] font-bold leading-tight text-foreground">{b.name}</div>
-                <div className="text-[10px] text-muted-foreground mt-0.5 leading-tight">
-                  {b.unlocked ? "Desbloqueado" : <span className="flex items-center justify-center gap-0.5"><Lock className="size-2.5" /> Bloqueado</span>}
+                <div className="text-foreground text-[11px] leading-tight font-bold">{b.name}</div>
+                <div className="text-muted-foreground mt-0.5 text-[10px] leading-tight">
+                  {b.unlocked ? (
+                    "Desbloqueado"
+                  ) : (
+                    <span className="flex items-center justify-center gap-0.5">
+                      <Lock className="size-2.5" /> Bloqueado
+                    </span>
+                  )}
                 </div>
               </div>
             ))}

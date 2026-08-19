@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
@@ -25,10 +24,7 @@ vi.mock("@/lib/logger", () => ({
 
 vi.mock("@/lib/rate-limit", () => ({
   assertRateLimit: vi.fn().mockResolvedValue(undefined),
-  RATE_LIMITS: new Proxy(
-    {},
-    { get: () => ({ prefix: "test", max: 1000, windowMs: 60_000 }) },
-  ),
+  RATE_LIMITS: new Proxy({}, { get: () => ({ prefix: "test", max: 1000, windowMs: 60_000 }) }),
 }))
 
 // ── Imports ────────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import {
   notifyCompletionRequest,
   notifyPaymentConfirmed,
 } from "@/lib/notifications"
+import type { BookingStatus, PaymentStatus } from "@/generated/prisma/enums"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -93,9 +94,9 @@ export async function PATCH(request: Request, { params }: Params) {
 
     // Side effects on CONFIRM / CANCELLED
     const patch: {
-      status: any
-      paymentStatus?: any
-    } = { status: next }
+      status: BookingStatus
+      paymentStatus?: PaymentStatus
+    } = { status: next as BookingStatus }
 
     // Se provider CONFIRMA sem pagamento ainda, cria cobrança PIX automática
     // (fluxo alternativo: provider "cobra na confirmação")
@@ -146,7 +147,7 @@ export async function PATCH(request: Request, { params }: Params) {
       patch.paymentStatus = "REFUNDED"
     }
 
-    const updated: any = await db.booking.update({
+    const updated = await db.booking.update({
       where: { id },
       data: patch,
       include: {

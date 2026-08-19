@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for GET /api/admin/gateway/invoices — admin Lytex invoice listing.
  *

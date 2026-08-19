@@ -19,7 +19,6 @@ import {
 } from "@/lib/fuzzy-search"
 import {
   escapeCSVField,
-  formatCSVLine,
   generateFinancialCSV,
   computeFinancialSummary,
   TransactionRecord,
@@ -88,7 +87,11 @@ describe("3. Service Contract Generator with SHA-256 Crypto Seal", () => {
     const contract = generateServiceContract({
       bookingId: "book-xyz-987",
       client: { name: "Maria Oliveira", document: "111.222.333-44", email: "maria@gmail.com" },
-      provider: { name: "Roberto Eletricista", document: "555.666.777-88", email: "roberto@severinno.com.br" },
+      provider: {
+        name: "Roberto Eletricista",
+        document: "555.666.777-88",
+        email: "roberto@severinno.com.br",
+      },
       serviceTitle: "Instalação de Painel Solar",
       serviceDescription: "Instalação de 4 placas solares 550W com inversor",
       totalAmount: 3500.0,

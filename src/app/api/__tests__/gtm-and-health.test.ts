@@ -94,7 +94,10 @@ describe("Alerting Service & Incident Reporting", () => {
   })
 
   it("should report fraud attempt warnings", async () => {
-    const result = await AlertingService.reportFraudAttempt("booking-99", "user-123", ["pix fora", "whatsapp direto"])
+    const result = await AlertingService.reportFraudAttempt("booking-99", "user-123", [
+      "pix fora",
+      "whatsapp direto",
+    ])
     expect(result).toBe(true)
   })
 })

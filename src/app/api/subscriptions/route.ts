@@ -74,7 +74,9 @@ export async function POST(request: Request) {
     }
 
     if (!body.serviceId || !body.providerId || !body.frequency || !body.startDate) {
-      throw badRequest("Campos 'serviceId', 'providerId', 'frequency' e 'startDate' são obrigatórios")
+      throw badRequest(
+        "Campos 'serviceId', 'providerId', 'frequency' e 'startDate' são obrigatórios",
+      )
     }
 
     const service = await db.service.findUnique({

@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach } from "vitest"
 import { latLngToH3, h3ToLatLng, h3GetKRing, h3ToGeoBoundary, clusterByH3 } from "@/lib/h3-grid"
 import { tileToBBox } from "@/lib/vector-tiles"
 import { calculate1xNDistanceMatrix } from "@/lib/osrm-table"
-import { encodeGeohash, decodeGeohash, getOrSetGeohashCache, clearGeohashCache } from "@/lib/geohash-cache"
+import {
+  encodeGeohash,
+  decodeGeohash,
+  getOrSetGeohashCache,
+  clearGeohashCache,
+} from "@/lib/geohash-cache"
 import { optimizeDailyRoute2Opt, RouteStop } from "@/lib/tsp-route-optimizer"
 
 describe("1. H3 Hexagonal Spatial Indexing Engine", () => {
@@ -42,8 +47,8 @@ describe("1. H3 Hexagonal Spatial Indexing Engine", () => {
   it("should cluster multiple coordinates into H3 density buckets", () => {
     const points = [
       { id: "1", lat: -23.5505, lng: -46.6333 },
-      { id: "2", lat: -23.5510, lng: -46.6335 },
-      { id: "3", lat: -23.6040, lng: -46.6610 },
+      { id: "2", lat: -23.551, lng: -46.6335 },
+      { id: "3", lat: -23.604, lng: -46.661 },
     ]
 
     const clusters = clusterByH3(points, 7)
@@ -123,9 +128,27 @@ describe("5. 2-Opt TSP Route Optimizer Engine", () => {
     const baseLocation = { lat: -23.5505, lng: -46.6333 } // Downtown Base
 
     const stops: RouteStop[] = [
-      { id: "stop-far", title: "Instalação Santo Amaro", address: "Av Santo Amaro", lat: -23.63, lng: -46.69 },
-      { id: "stop-near", title: "Troca Disjuntor Bela Vista", address: "Av Paulista", lat: -23.56, lng: -46.65 },
-      { id: "stop-mid", title: "Reparo Pinheiros", address: "Rua dos Pinheiros", lat: -23.57, lng: -46.68 },
+      {
+        id: "stop-far",
+        title: "Instalação Santo Amaro",
+        address: "Av Santo Amaro",
+        lat: -23.63,
+        lng: -46.69,
+      },
+      {
+        id: "stop-near",
+        title: "Troca Disjuntor Bela Vista",
+        address: "Av Paulista",
+        lat: -23.56,
+        lng: -46.65,
+      },
+      {
+        id: "stop-mid",
+        title: "Reparo Pinheiros",
+        address: "Rua dos Pinheiros",
+        lat: -23.57,
+        lng: -46.68,
+      },
     ]
 
     const plan = optimizeDailyRoute2Opt(baseLocation, stops)

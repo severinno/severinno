@@ -416,10 +416,6 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     vi.mocked(db.service.findMany as any).mockRejectedValue(
       new Error("Services DB connection lost"),
     )
-    // Other Phase 2 queries are fine
-    vi.mocked(db.booking.groupBy as any).mockResolvedValue([
-      { providerId: "prov-1", _count: { id: 3 } },
-    ])
     ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
 
     const req = createMockRequest({
@@ -431,7 +427,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
     expect(res.status).not.toBe(200)
   })
 
-  it("does not swallow errors from booking.groupBy in Phase 2", async () => {
+  it("does not swallow errors from user.findMany in Phase 2", async () => {
     // Phase 1 succeeds
     ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
       if (sql.includes("COUNT")) {
@@ -443,7 +439,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
       return Promise.resolve([{ id: "prov-1" }])
     })
 
-    // Phase 2: booking.groupBy throws
+    // Phase 2: services OK, user profiles throw
     vi.mocked(db.service.findMany as any).mockResolvedValue([
       {
         id: "svc-1",
@@ -457,10 +453,7 @@ describe("GET /api/providers — Progressive Radius Expansion", () => {
         category: { id: "cat-1", name: "Elétrica" },
       },
     ])
-    ;(vi.mocked(db.booking.groupBy) as any).mockRejectedValue(
-      new Error("Bookings DB connection lost"),
-    )
-    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider] as any)
+    ;(vi.mocked(db.user.findMany) as any).mockRejectedValue(new Error("Users DB connection lost"))
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },

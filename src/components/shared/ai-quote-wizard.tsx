@@ -11,20 +11,7 @@
 
 import * as React from "react"
 import { useMutation } from "@tanstack/react-query"
-import {
-  ArrowRight,
-  Bot,
-  Check,
-  CheckCircle2,
-  DollarSign,
-  Loader2,
-  Lock,
-  MapPin,
-  Send,
-  Sparkles,
-  Star,
-  Wrench,
-} from "lucide-react"
+import { Bot, DollarSign, Loader2, Lock, MapPin, Send, Sparkles, Star, Wrench } from "lucide-react"
 import { toast } from "sonner"
 import { motion, AnimatePresence } from "framer-motion"
 

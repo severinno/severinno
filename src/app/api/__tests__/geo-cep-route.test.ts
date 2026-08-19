@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET } from "../geo/cep/route"
 import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-test-utils"

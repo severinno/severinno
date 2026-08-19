@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest"
 
 // ── Mocks ─────────────────────────────────────────────────────────────────

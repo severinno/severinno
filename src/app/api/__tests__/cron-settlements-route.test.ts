@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for GET /api/cron/settlements — auto-generate settlement period via cron.
  *

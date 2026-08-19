@@ -84,7 +84,7 @@ export function RecentlyViewed() {
         </CardHeader>
         <CardContent className="pt-0">
           {/* Horizontal scroll on mobile, grid on desktop */}
-          <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:thin] sm:grid sm:grid-cols-2 sm:overflow-visible sm:pb-0 lg:grid-cols-4">
+          <div className="flex [scrollbar-width:thin] gap-3 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:overflow-visible sm:pb-0 lg:grid-cols-4">
             {items.map((p) => {
               const firstService = p.services?.[0]
               return (

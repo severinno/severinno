@@ -101,10 +101,9 @@ describe("Geo Innovations Tests", () => {
 
   describe("2. Route Optimizer (@/lib/route-optimizer)", () => {
     it("should handle single-stop route without error", async () => {
-      const result = await optimizeDailyRoute(
-        { lat: -23.5505, lng: -46.6333 },
-        [{ id: "b-1", label: "Conserto", lat: -23.56, lng: -46.64 }],
-      )
+      const result = await optimizeDailyRoute({ lat: -23.5505, lng: -46.6333 }, [
+        { id: "b-1", label: "Conserto", lat: -23.56, lng: -46.64 },
+      ])
 
       expect(result.orderedStops).toHaveLength(1)
       expect(result.totalDistanceKm).toBeGreaterThan(0)
@@ -112,10 +111,7 @@ describe("Geo Innovations Tests", () => {
     })
 
     it("should handle empty stops list", async () => {
-      const result = await optimizeDailyRoute(
-        { lat: -23.5505, lng: -46.6333 },
-        [],
-      )
+      const result = await optimizeDailyRoute({ lat: -23.5505, lng: -46.6333 }, [])
 
       expect(result.orderedStops).toHaveLength(0)
       expect(result.totalDistanceKm).toBe(0)
@@ -126,13 +122,15 @@ describe("Geo Innovations Tests", () => {
     it("should validate point containment in polygon", async () => {
       const polygon = JSON.stringify({
         type: "Polygon",
-        coordinates: [[
-          [-46.7, -23.6],
-          [-46.6, -23.6],
-          [-46.6, -23.5],
-          [-46.7, -23.5],
-          [-46.7, -23.6],
-        ]],
+        coordinates: [
+          [
+            [-46.7, -23.6],
+            [-46.6, -23.6],
+            [-46.6, -23.5],
+            [-46.7, -23.5],
+            [-46.7, -23.6],
+          ],
+        ],
       })
 
       const result = await isPointInServiceZone(-23.55, -46.65, polygon)

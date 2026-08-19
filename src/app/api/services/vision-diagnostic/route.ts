@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     if (!imageBase64 && !imageUrl && !clientDescription) {
       return NextResponse.json(
         { success: false, error: "Provide imageBase64, imageUrl, or clientDescription" },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : "Vision analysis failed" },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }

@@ -58,13 +58,13 @@ export async function GET() {
 
     const totalGross = completedBookings.reduce((sum, b) => sum + b.amount, 0)
     // Platform standard fee is 10%
-    const totalPlatformFee = Math.round(totalGross * 0.10 * 100) / 100
+    const totalPlatformFee = Math.round(totalGross * 0.1 * 100) / 100
     const totalNet = Math.round((totalGross - totalPlatformFee) * 100) / 100
 
     const custodyBalance = custodyBookings.reduce((sum, b) => sum + b.amount, 0)
     const availableBalance = completedBookings
       .filter((b) => b.escrowReleasedAt !== null || b.paymentStatus === "PAID")
-      .reduce((sum, b) => sum + b.amount * 0.90, 0)
+      .reduce((sum, b) => sum + b.amount * 0.9, 0)
 
     const recentTransactions = completedBookings.slice(0, 15).map((b) => ({
       id: b.id,
@@ -72,7 +72,7 @@ export async function GET() {
       serviceTitle: b.service.title,
       clientName: b.client.name,
       grossAmount: b.amount,
-      netAmount: Math.round(b.amount * 0.90 * 100) / 100,
+      netAmount: Math.round(b.amount * 0.9 * 100) / 100,
       receiptUrl: `/api/bookings/${b.id}/receipt`,
     }))
 

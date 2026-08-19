@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     if (!providerId || !providerName || !year) {
       return NextResponse.json(
         { success: false, error: "providerId, providerName, and year are required" },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
       providerName,
       parseInt(String(year), 10),
       bookingList,
-      cnpj
+      cnpj,
     )
 
     return NextResponse.json({
@@ -36,8 +36,11 @@ export async function POST(req: NextRequest) {
     })
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Failed to generate MEI report" },
-      { status: 500 }
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to generate MEI report",
+      },
+      { status: 500 },
     )
   }
 }

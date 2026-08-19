@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for VibrationIndicator — displays vibration-enabled state.
  *

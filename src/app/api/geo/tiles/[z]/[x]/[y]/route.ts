@@ -41,7 +41,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to generate vector tile" },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }

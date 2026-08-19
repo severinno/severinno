@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     if (!dispute.bookingId || !dispute.clientComplaint) {
       return NextResponse.json(
         { success: false, error: "bookingId and clientComplaint are required" },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : "Mediation failed" },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }

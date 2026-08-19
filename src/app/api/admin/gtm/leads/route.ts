@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
         success: false,
         error: error instanceof Error ? error.message : "Erro ao carregar leads GTM",
       },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
           count: created.length,
           data: created,
         },
-        { status: 201 }
+        { status: 201 },
       )
     }
 
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
           success: false,
           error: "Campos obrigatórios: name, profession, phone",
         },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
         success: true,
         data: lead,
       },
-      { status: 201 }
+      { status: 201 },
     )
   } catch (error) {
     return NextResponse.json(
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
         success: false,
         error: error instanceof Error ? error.message : "Erro ao criar lead GTM",
       },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }
@@ -96,7 +96,7 @@ export async function PATCH(req: NextRequest) {
           success: false,
           error: "Campos obrigatórios: id, status",
         },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -108,7 +108,7 @@ export async function PATCH(req: NextRequest) {
           success: false,
           error: "Lead não encontrado",
         },
-        { status: 404 }
+        { status: 404 },
       )
     }
 
@@ -122,7 +122,7 @@ export async function PATCH(req: NextRequest) {
         success: false,
         error: error instanceof Error ? error.message : "Erro ao atualizar status do lead",
       },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }
@@ -138,7 +138,7 @@ export async function DELETE(req: NextRequest) {
           success: false,
           error: "Parâmetro id é obrigatório",
         },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -154,7 +154,7 @@ export async function DELETE(req: NextRequest) {
         success: false,
         error: error instanceof Error ? error.message : "Erro ao deletar lead",
       },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }

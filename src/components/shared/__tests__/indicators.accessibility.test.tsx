@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Accessibility (axe-core) tests for MuteIndicator and VibrationIndicator.
  *

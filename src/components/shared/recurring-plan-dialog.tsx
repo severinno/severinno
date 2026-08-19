@@ -18,12 +18,7 @@ import {
   type SubscriptionFrequency,
 } from "@/lib/subscriptions"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 type RecurringPlanDialogProps = {
   open: boolean
@@ -36,14 +31,10 @@ type RecurringPlanDialogProps = {
   }
 }
 
-export function RecurringPlanDialog({
-  open,
-  onOpenChange,
-  service,
-}: RecurringPlanDialogProps) {
+export function RecurringPlanDialog({ open, onOpenChange, service }: RecurringPlanDialogProps) {
   const queryClient = useQueryClient()
   const [frequency, setFrequency] = React.useState<SubscriptionFrequency>("BIWEEKLY")
-  const [startDate, setStartDate] = React.useState(() => {
+  const [startDate] = React.useState(() => {
     const d = new Date()
     d.setDate(d.getDate() + 3)
     return d.toISOString().slice(0, 10)
@@ -81,16 +72,17 @@ export function RecurringPlanDialog({
         </DialogHeader>
 
         <div className="space-y-4 text-xs">
-          <div className="rounded-lg bg-emerald-50/80 p-3 border border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900 text-emerald-900 dark:text-emerald-200 flex items-start gap-2">
-            <Sparkles className="size-4 text-emerald-600 shrink-0 mt-0.5" />
+          <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50/80 p-3 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200">
+            <Sparkles className="mt-0.5 size-4 shrink-0 text-emerald-600" />
             <p className="text-[11px] leading-relaxed">
-              Assine com periodicidade garantida na agenda do profissional e ganhe <strong>até 10% de desconto</strong> em cada atendimento.
+              Assine com periodicidade garantida na agenda do profissional e ganhe{" "}
+              <strong>até 10% de desconto</strong> em cada atendimento.
             </p>
           </div>
 
           {/* Frequency selector */}
           <div className="space-y-2">
-            <label className="font-semibold text-foreground">Escolha a Frequência:</label>
+            <label className="text-foreground font-semibold">Escolha a Frequência:</label>
             <div className="grid grid-cols-3 gap-2">
               {(Object.keys(SUBSCRIPTION_PLANS) as SubscriptionFrequency[]).map((f) => {
                 const plan = SUBSCRIPTION_PLANS[f]
@@ -102,13 +94,13 @@ export function RecurringPlanDialog({
                     onClick={() => setFrequency(f)}
                     className={`rounded-xl border p-2.5 text-center transition-all ${
                       isSelected
-                        ? "border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 shadow-sm font-bold"
+                        ? "border-emerald-600 bg-emerald-50 font-bold text-emerald-900 shadow-sm dark:bg-emerald-950/40 dark:text-emerald-200"
                         : "border-muted hover:border-muted-foreground/40 bg-background text-muted-foreground"
                     }`}
                   >
                     <div className="text-xs">{plan.label.split(" ")[0]}</div>
                     {plan.discountPercent > 0 && (
-                      <span className="mt-1 inline-block rounded-full bg-emerald-600 px-1.5 py-0.2 text-[9px] text-white">
+                      <span className="py-0.2 mt-1 inline-block rounded-full bg-emerald-600 px-1.5 text-[9px] text-white">
                         {plan.discountPercent}% OFF
                       </span>
                     )}
@@ -119,12 +111,12 @@ export function RecurringPlanDialog({
           </div>
 
           {/* Price breakdown */}
-          <div className="rounded-lg border p-3 bg-muted/20 space-y-1.5">
-            <div className="flex justify-between text-muted-foreground">
+          <div className="bg-muted/20 space-y-1.5 rounded-lg border p-3">
+            <div className="text-muted-foreground flex justify-between">
               <span>Valor avulso:</span>
               <span className="line-through">{formatBRL(priceInfo.originalPrice)}</span>
             </div>
-            <div className="flex justify-between font-bold text-foreground text-sm">
+            <div className="text-foreground flex justify-between text-sm font-bold">
               <span>Valor com desconto do plano:</span>
               <span className="text-emerald-600 dark:text-emerald-400">
                 {formatBRL(priceInfo.discountedPrice)} / visita
@@ -134,15 +126,17 @@ export function RecurringPlanDialog({
 
           {/* Upcoming dates preview */}
           <div className="space-y-1.5">
-            <label className="font-semibold text-foreground flex items-center gap-1.5">
+            <label className="text-foreground flex items-center gap-1.5 font-semibold">
               <Calendar className="size-3.5 text-emerald-600" />
               Próximas Visitas Agendadas:
             </label>
-            <div className="rounded-lg border p-2.5 bg-background space-y-1">
+            <div className="bg-background space-y-1 rounded-lg border p-2.5">
               {previewDates.map((d, i) => (
-                <div key={i} className="flex items-center gap-2 text-muted-foreground">
+                <div key={i} className="text-muted-foreground flex items-center gap-2">
                   <CheckCircle2 className="size-3 text-emerald-600" />
-                  <span>{i + 1}ª visita: {formatDate(d)}</span>
+                  <span>
+                    {i + 1}ª visita: {formatDate(d)}
+                  </span>
                 </div>
               ))}
             </div>
@@ -151,7 +145,7 @@ export function RecurringPlanDialog({
           <Button
             onClick={() => mutation.mutate()}
             disabled={mutation.isPending}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 font-bold text-xs h-10 shadow-md"
+            className="h-10 w-full bg-emerald-600 text-xs font-bold shadow-md hover:bg-emerald-700"
           >
             {mutation.isPending ? (
               <Loader2 className="size-4 animate-spin" />
