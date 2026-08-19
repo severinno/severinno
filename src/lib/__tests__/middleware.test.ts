@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for middleware.ts — global rate limiting middleware for /api/*.
  *

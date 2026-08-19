@@ -86,11 +86,13 @@ export function initTracing(): void {
   initialized = true
 
   if (!OTEL_ENABLED) {
-    console.log("[tracing] OpenTelemetry disabled (set OTEL_ENABLED=true to enable)")
+    console.warn("[tracing] OpenTelemetry disabled (set OTEL_ENABLED=true to enable)")
     return
   }
 
-  console.log("[tracing] OpenTelemetry enabled — spans will be created for instrumented operations")
+  console.warn(
+    "[tracing] OpenTelemetry enabled — spans will be created for instrumented operations",
+  )
 }
 
 /**

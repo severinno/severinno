@@ -44,7 +44,9 @@ function computeTourDistance(base: { lat: number; lng: number }, stops: RouteSto
   let total = haversineKm(base.lat, base.lng, stops[0].lat, stops[0].lng) * URBAN_ROAD_FACTOR
 
   for (let i = 0; i < stops.length - 1; i++) {
-    total += haversineKm(stops[i].lat, stops[i].lng, stops[i + 1].lat, stops[i + 1].lng) * URBAN_ROAD_FACTOR
+    total +=
+      haversineKm(stops[i].lat, stops[i].lng, stops[i + 1].lat, stops[i + 1].lng) *
+      URBAN_ROAD_FACTOR
   }
 
   return Number(total.toFixed(2))
@@ -65,7 +67,7 @@ function twoOptSwap(route: RouteStop[], i: number, k: number): RouteStop[] {
  */
 export function optimizeDailyRoute2Opt(
   baseLocation: { lat: number; lng: number },
-  stops: RouteStop[]
+  stops: RouteStop[],
 ): OptimizedRoutePlan {
   if (stops.length <= 1) {
     const dist = computeTourDistance(baseLocation, stops)
@@ -136,7 +138,8 @@ export function optimizeDailyRoute2Opt(
 
   const optimizedDistanceKm = Number(bestDistance.toFixed(2))
   const savedDistanceKm = Number(Math.max(0, initialDistanceKm - optimizedDistanceKm).toFixed(2))
-  const savedPercent = initialDistanceKm > 0 ? Number(((savedDistanceKm / initialDistanceKm) * 100).toFixed(1)) : 0
+  const savedPercent =
+    initialDistanceKm > 0 ? Number(((savedDistanceKm / initialDistanceKm) * 100).toFixed(1)) : 0
   const estimatedTimeSavedMinutes = Math.round((savedDistanceKm / AVG_CITY_SPEED_KMH) * 60)
 
   return {
@@ -158,14 +161,17 @@ export function optimizeDailyRoute2Opt(
  */
 function generateGoogleMapsMultiStopUrl(
   origin: { lat: number; lng: number },
-  stops: RouteStop[]
+  stops: RouteStop[],
 ): string {
   if (stops.length === 0) {
     return `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}`
   }
 
   const destination = stops[stops.length - 1]
-  const waypoints = stops.slice(0, stops.length - 1).map((s) => `${s.lat},${s.lng}`).join("|")
+  const waypoints = stops
+    .slice(0, stops.length - 1)
+    .map((s) => `${s.lat},${s.lng}`)
+    .join("|")
 
   const waypointParam = waypoints ? `&waypoints=${encodeURIComponent(waypoints)}` : ""
   return `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}${waypointParam}&travelmode=driving`

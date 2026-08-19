@@ -86,8 +86,8 @@ export function levenshteinDistance(a: string, b: string): number {
       } else {
         matrix[i][j] = Math.min(
           matrix[i - 1][j - 1] + 1, // substitution
-          matrix[i][j - 1] + 1,     // insertion
-          matrix[i - 1][j] + 1      // deletion
+          matrix[i][j - 1] + 1, // insertion
+          matrix[i - 1][j] + 1, // deletion
         )
       }
     }
@@ -100,15 +100,51 @@ export function levenshteinDistance(a: string, b: string): number {
  * Standard Brazilian Home Services search catalog dictionary
  */
 export const DEFAULT_SERVICE_CATALOG = [
-  { id: "cat-1", title: "Eletricista Residencial", tags: ["eletrica", "disjuntor", "tomada", "chuveiro", "fio", "luminaria"] },
-  { id: "cat-2", title: "Encanador / Desentupidor", tags: ["hidraulica", "vazamento", "cano", "pia", "ralo", "esgoto", "torneira"] },
-  { id: "cat-3", title: "Pintor Profissional", tags: ["pintura", "parede", "tinta", "massa corrida", "verniz", "textura"] },
-  { id: "cat-4", title: "Chaveiro 24 Horas", tags: ["fechadura", "chave", "porta", "abertura", "tranca", "tetra"] },
-  { id: "cat-5", title: "Técnico de Ar-Condicionado", tags: ["split", "climatizacao", "gas", "limpeza", "higienizacao", "inverter"] },
-  { id: "cat-6", title: "Marceneiro & Montador de Móveis", tags: ["marcenaria", "armario", "guarda-roupa", "cozinha", "madeira"] },
-  { id: "cat-7", title: "Instalador de Energia Solar", tags: ["solar", "placa", "fotovoltaica", "inversor", "economia"] },
-  { id: "cat-8", title: "Pedreiro & Reformas", tags: ["alvenaria", "reforma", "piso", "porcelanato", "azulejo", "reboco"] },
-  { id: "cat-9", title: "Diarista & Faxina Pesada", tags: ["limpeza", "faxina", "pos-obra", "casa", "apartamento"] },
+  {
+    id: "cat-1",
+    title: "Eletricista Residencial",
+    tags: ["eletrica", "disjuntor", "tomada", "chuveiro", "fio", "luminaria"],
+  },
+  {
+    id: "cat-2",
+    title: "Encanador / Desentupidor",
+    tags: ["hidraulica", "vazamento", "cano", "pia", "ralo", "esgoto", "torneira"],
+  },
+  {
+    id: "cat-3",
+    title: "Pintor Profissional",
+    tags: ["pintura", "parede", "tinta", "massa corrida", "verniz", "textura"],
+  },
+  {
+    id: "cat-4",
+    title: "Chaveiro 24 Horas",
+    tags: ["fechadura", "chave", "porta", "abertura", "tranca", "tetra"],
+  },
+  {
+    id: "cat-5",
+    title: "Técnico de Ar-Condicionado",
+    tags: ["split", "climatizacao", "gas", "limpeza", "higienizacao", "inverter"],
+  },
+  {
+    id: "cat-6",
+    title: "Marceneiro & Montador de Móveis",
+    tags: ["marcenaria", "armario", "guarda-roupa", "cozinha", "madeira"],
+  },
+  {
+    id: "cat-7",
+    title: "Instalador de Energia Solar",
+    tags: ["solar", "placa", "fotovoltaica", "inversor", "economia"],
+  },
+  {
+    id: "cat-8",
+    title: "Pedreiro & Reformas",
+    tags: ["alvenaria", "reforma", "piso", "porcelanato", "azulejo", "reboco"],
+  },
+  {
+    id: "cat-9",
+    title: "Diarista & Faxina Pesada",
+    tags: ["limpeza", "faxina", "pos-obra", "casa", "apartamento"],
+  },
 ]
 
 /**
@@ -117,7 +153,7 @@ export const DEFAULT_SERVICE_CATALOG = [
 export function fuzzySearchCatalog<T extends { title: string; tags?: string[] }>(
   query: string,
   catalog: T[] = DEFAULT_SERVICE_CATALOG as unknown as T[],
-  minScore: number = 0.3
+  minScore: number = 0.3,
 ): FuzzyMatchResult<T>[] {
   if (!query || query.trim().length === 0) return []
 

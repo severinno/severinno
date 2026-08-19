@@ -9,12 +9,7 @@
  */
 
 export type LeadStatus =
-  | "NEW"
-  | "CONTACTED"
-  | "DEMO_SCHEDULED"
-  | "ONBOARDED"
-  | "FIRST_SERVICE"
-  | "REJECTED"
+  "NEW" | "CONTACTED" | "DEMO_SCHEDULED" | "ONBOARDED" | "FIRST_SERVICE" | "REJECTED"
 
 export interface GTMLead {
   id: string
@@ -25,7 +20,12 @@ export interface GTMLead {
   state: string
   district?: string
   status: LeadStatus
-  source: "WHATSAPP_SCRAPING" | "INSTAGRAM_OUTREACH" | "STORE_PARTNERSHIP" | "ORGANIC_LANDING" | "REFERRAL"
+  source:
+    | "WHATSAPP_SCRAPING"
+    | "INSTAGRAM_OUTREACH"
+    | "STORE_PARTNERSHIP"
+    | "ORGANIC_LANDING"
+    | "REFERRAL"
   notes?: string
   lastContactAt?: string
   onboardedAt?: string
@@ -56,7 +56,8 @@ let leadsStore: GTMLead[] = [
     district: "Pinheiros",
     status: "ONBOARDED",
     source: "INSTAGRAM_OUTREACH",
-    notes: "Perfil verificado no Instagram com 4.5k seguidores. Excelente portfólio de quadros de disjuntores.",
+    notes:
+      "Perfil verificado no Instagram com 4.5k seguidores. Excelente portfólio de quadros de disjuntores.",
     createdAt: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(),
     onboardedAt: new Date(Date.now() - 1 * 24 * 3600 * 1000).toISOString(),
@@ -71,7 +72,8 @@ let leadsStore: GTMLead[] = [
     district: "Moema",
     status: "DEMO_SCHEDULED",
     source: "STORE_PARTNERSHIP",
-    notes: "Indicação da loja C&C Moema. Quer entender como funciona o recebimento garantido via PIX.",
+    notes:
+      "Indicação da loja C&C Moema. Quer entender como funciona o recebimento garantido via PIX.",
     createdAt: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 12 * 3600 * 1000).toISOString(),
   },
@@ -85,7 +87,8 @@ let leadsStore: GTMLead[] = [
     district: "Tatuapé",
     status: "CONTACTED",
     source: "ORGANIC_LANDING",
-    notes: "Cadastrou-se pela calculadora de faturamento da landing page. Estimou ganhos de R$ 4.200/mês.",
+    notes:
+      "Cadastrou-se pela calculadora de faturamento da landing page. Estimou ganhos de R$ 4.200/mês.",
     createdAt: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 6 * 3600 * 1000).toISOString(),
   },
@@ -113,7 +116,8 @@ let leadsStore: GTMLead[] = [
     district: "Bela Vista",
     status: "FIRST_SERVICE",
     source: "REFERRAL",
-    notes: "Primeiro serviço concluído com sucesso e nota 5 estrelas! Recebeu pagamento via PIX em 5 minutos.",
+    notes:
+      "Primeiro serviço concluído com sucesso e nota 5 estrelas! Recebeu pagamento via PIX em 5 minutos.",
     createdAt: new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
     onboardedAt: new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString(),
@@ -123,7 +127,10 @@ let leadsStore: GTMLead[] = [
 /**
  * Generates an individualized WhatsApp direct outreach link with pre-filled message
  */
-export function generateWhatsAppOutreachLink(lead: GTMLead, appUrl: string = "https://severinno.com.br"): string {
+export function generateWhatsAppOutreachLink(
+  lead: GTMLead,
+  appUrl: string = "https://severinno.com.br",
+): string {
   const cleanPhone = lead.phone.replace(/\D/g, "")
   const fullPhone = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`
 
@@ -168,7 +175,7 @@ export const GTMEngine = {
           l.name.toLowerCase().includes(q) ||
           l.profession.toLowerCase().includes(q) ||
           l.phone.includes(q) ||
-          (l.district && l.district.toLowerCase().includes(q))
+          (l.district && l.district.toLowerCase().includes(q)),
       )
     }
 
@@ -196,7 +203,8 @@ export const GTMEngine = {
       status,
       notes: notes !== undefined ? notes : lead.notes,
       updatedAt: new Date().toISOString(),
-      onboardedAt: status === "ONBOARDED" && !lead.onboardedAt ? new Date().toISOString() : lead.onboardedAt,
+      onboardedAt:
+        status === "ONBOARDED" && !lead.onboardedAt ? new Date().toISOString() : lead.onboardedAt,
       lastContactAt: status === "CONTACTED" ? new Date().toISOString() : lead.lastContactAt,
     }
 
@@ -231,7 +239,8 @@ export const GTMEngine = {
     const onboardedCount = byStatus.ONBOARDED + byStatus.FIRST_SERVICE
     const firstServiceCount = byStatus.FIRST_SERVICE
     const activeInFunnel = byStatus.NEW + byStatus.CONTACTED + byStatus.DEMO_SCHEDULED
-    const conversionRate = totalLeads > 0 ? Number(((onboardedCount / totalLeads) * 100).toFixed(1)) : 0
+    const conversionRate =
+      totalLeads > 0 ? Number(((onboardedCount / totalLeads) * 100).toFixed(1)) : 0
     const progressPct = Number(Math.min(100, (onboardedCount / target) * 100).toFixed(1))
 
     return {

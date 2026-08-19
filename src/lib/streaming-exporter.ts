@@ -57,7 +57,7 @@ export function formatCSVLine(fields: unknown[], delimiter: string = ";"): strin
  */
 export function generateFinancialCSV(
   transactions: TransactionRecord[],
-  delimiter: string = ";"
+  delimiter: string = ";",
 ): string {
   const BOM = "\uFEFF" // UTF-8 Byte Order Mark for Excel pt-BR
 
@@ -104,7 +104,7 @@ export function generateFinancialCSV(
  */
 export function computeFinancialSummary(
   transactions: TransactionRecord[],
-  period: string = "Últimos 30 dias"
+  period: string = "Últimos 30 dias",
 ): FinancialExportSummary {
   const totalGrossGMV = transactions.reduce((s, t) => s + t.grossAmount, 0)
   const totalPlatformRevenue = transactions.reduce((s, t) => s + t.platformFeeAmount, 0)

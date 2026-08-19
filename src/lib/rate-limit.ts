@@ -1,4 +1,3 @@
- 
 /**
  * Rate limiter for Severinno Marketplace API routes.
  *
@@ -188,6 +187,13 @@ export async function checkRateLimit(
 // Singleton Redis client for rate limiting (reuses connection instead of creating per-request)
 let cachedClient: import("ioredis").Redis | null = null
 let cachedClientPromise: Promise<import("ioredis").Redis | null> | null = null
+
+/** Clear the cached client and in-memory store (testing-only export). */
+export function __testing__resetRateLimiter(): void {
+  cachedClient = null
+  cachedClientPromise = null
+  memoryStore.clear()
+}
 
 async function getRedisClient(): Promise<import("ioredis").Redis | null> {
   // Return cached client if still connected

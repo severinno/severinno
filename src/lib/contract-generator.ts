@@ -61,7 +61,7 @@ export function computeContractSeal(
   clientDoc: string,
   providerDoc: string,
   timestamp: string,
-  ipAddress: string = "127.0.0.1"
+  ipAddress: string = "127.0.0.1",
 ): string {
   const payload = `${contractId}|${bookingId}|${totalAmount.toFixed(2)}|${clientDoc}|${providerDoc}|${timestamp}|${ipAddress}`
   return createHash("sha256").update(payload, "utf8").digest("hex")
@@ -80,7 +80,7 @@ export function generateServiceContract(params: ContractParams): ServiceContract
     params.client.document || params.client.email,
     params.provider.document || params.provider.email,
     issuedAt,
-    params.ipAddress
+    params.ipAddress,
   )
 
   const verificationUrl = `https://severinno.com.br/verificar-contrato?id=${contractId}&seal=${sha256Seal.slice(0, 16)}`

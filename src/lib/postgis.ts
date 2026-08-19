@@ -1,4 +1,3 @@
- 
 /**
  * PostGIS spatial helpers for the Severinno Marketplace.
  *

@@ -95,12 +95,7 @@ export async function optimizeDailyRoute(
     let bestLeg: RouteEtaResult | null = null
 
     for (const idx of remaining) {
-      const leg = await calculateRouteAndEta(
-        currentLat,
-        currentLng,
-        stops[idx].lat,
-        stops[idx].lng,
-      )
+      const leg = await calculateRouteAndEta(currentLat, currentLng, stops[idx].lat, stops[idx].lng)
       if (!bestLeg || leg.distanceKm < bestLeg.distanceKm) {
         bestIdx = idx
         bestLeg = leg
@@ -124,8 +119,7 @@ export async function optimizeDailyRoute(
   }
 
   const savingsKm = Math.max(0, Math.round((originalTotalKm - totalDistanceKm) * 10) / 10)
-  const savingsPercent =
-    originalTotalKm > 0 ? Math.round((savingsKm / originalTotalKm) * 100) : 0
+  const savingsPercent = originalTotalKm > 0 ? Math.round((savingsKm / originalTotalKm) * 100) : 0
 
   logger.info(
     {

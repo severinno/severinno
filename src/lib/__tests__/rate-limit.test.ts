@@ -1,10 +1,9 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 // Mock ioredis so tests can control Redis behavior
 vi.mock("ioredis", () => ({ default: vi.fn() }))
 
-import { checkRateLimit, rateLimitHeaders } from "../rate-limit"
+import { checkRateLimit, rateLimitHeaders, __testing__resetRateLimiter } from "../rate-limit"
 import IORedis from "ioredis"
 
 // ---------------------------------------------------------------------------
@@ -22,6 +21,7 @@ function mockRedisClient(overrides: Record<string, unknown> = {}) {
     incr: vi.fn().mockResolvedValue(1),
     pexpire: vi.fn().mockResolvedValue("OK"),
     ping: vi.fn().mockResolvedValue("PONG"),
+    connect: vi.fn().mockResolvedValue(undefined),
     on: vi.fn(),
     ...overrides,
   }
@@ -39,6 +39,7 @@ function enableRedis() {
 beforeEach(() => {
   vi.clearAllMocks()
   delete process.env.REDIS_URL
+  __testing__resetRateLimiter()
 })
 
 // ---------------------------------------------------------------------------

@@ -46,9 +46,7 @@ export interface MediationRecommendation {
 /**
  * Analyzes a dispute case and generates a structured mediation recommendation
  */
-export async function mediateDispute(
-  dispute: DisputeCase
-): Promise<MediationRecommendation> {
+export async function mediateDispute(dispute: DisputeCase): Promise<MediationRecommendation> {
   // 1. Try AI mediation via LocalAI/Ollama
   const localAiUrl = process.env.LOCAL_AI_URL || process.env.OLLAMA_URL
   if (localAiUrl) {
@@ -69,7 +67,7 @@ export async function mediateDispute(
  */
 async function callAIMediationEngine(
   baseUrl: string,
-  dispute: DisputeCase
+  dispute: DisputeCase,
 ): Promise<MediationRecommendation | null> {
   const prompt = `Você é um mediador de disputas em um marketplace de serviços domésticos.
 
@@ -77,10 +75,10 @@ CASO:
 - Serviço: ${dispute.serviceTitle}
 - Valor: R$ ${dispute.totalAmount.toFixed(2)}
 - Reclamação do Cliente: "${dispute.clientComplaint}"
-- Resposta do Prestador: "${dispute.providerResponse || 'Sem resposta'}"
+- Resposta do Prestador: "${dispute.providerResponse || "Sem resposta"}"
 - Rating do Prestador: ${dispute.providerRating}/5 (${dispute.providerCompletedJobs} serviços completados)
 - Taxa de Disputas do Prestador: ${(dispute.providerDisputeRate * 100).toFixed(1)}%
-- Fotos Antes/Depois: ${dispute.hasBeforePhotos ? 'Sim' : 'Não'} / ${dispute.hasAfterPhotos ? 'Sim' : 'Não'}
+- Fotos Antes/Depois: ${dispute.hasBeforePhotos ? "Sim" : "Não"} / ${dispute.hasAfterPhotos ? "Sim" : "Não"}
 - Mensagens no Chat: ${dispute.chatMessageCount}
 
 Analise e retorne um JSON com:
@@ -174,27 +172,34 @@ function ruleBasedMediation(dispute: DisputeCase): MediationRecommendation {
   if (score >= 80) {
     verdict = "FULL_REFUND"
     refundPercentage = 100
-    reasoning = "Múltiplos indicadores apontam falha significativa na prestação do serviço. Reembolso total recomendado para preservar a confiança do cliente."
+    reasoning =
+      "Múltiplos indicadores apontam falha significativa na prestação do serviço. Reembolso total recomendado para preservar a confiança do cliente."
   } else if (score >= 60) {
     verdict = "PARTIAL_REFUND"
     refundPercentage = 70
-    reasoning = "Evidências indicam execução parcial ou com falhas. Reembolso parcial de 70% recomendado, com orientação ao prestador para melhoria."
+    reasoning =
+      "Evidências indicam execução parcial ou com falhas. Reembolso parcial de 70% recomendado, com orientação ao prestador para melhoria."
   } else if (score >= 40) {
     verdict = "SPLIT_DECISION"
     refundPercentage = 50
-    reasoning = "Caso equilibrado sem evidências conclusivas para nenhum dos lados. Recomenda-se divisão de 50% do valor como acordo."
+    reasoning =
+      "Caso equilibrado sem evidências conclusivas para nenhum dos lados. Recomenda-se divisão de 50% do valor como acordo."
   } else if (score >= 20) {
     verdict = "REDO_SERVICE"
     refundPercentage = 0
-    reasoning = "O prestador demonstra bom histórico. Recomenda-se reexecução do serviço sem custo adicional como solução."
+    reasoning =
+      "O prestador demonstra bom histórico. Recomenda-se reexecução do serviço sem custo adicional como solução."
   } else {
     verdict = "NO_REFUND"
     refundPercentage = 0
-    reasoning = "Prestador altamente confiável com histórico exemplar. Evidências insuficientes para justificar reembolso."
+    reasoning =
+      "Prestador altamente confiável com histórico exemplar. Evidências insuficientes para justificar reembolso."
   }
 
   const suggestedActions = [
-    refundPercentage > 0 ? `Processar reembolso de R$ ${((dispute.totalAmount * refundPercentage) / 100).toFixed(2)}` : "Manter pagamento integral ao prestador",
+    refundPercentage > 0
+      ? `Processar reembolso de R$ ${((dispute.totalAmount * refundPercentage) / 100).toFixed(2)}`
+      : "Manter pagamento integral ao prestador",
     verdict === "REDO_SERVICE" ? "Agendar reexecução sem custo adicional" : "",
     dispute.providerDisputeRate > 0.1 ? "⚠️ Monitorar prestador — taxa de disputas elevada" : "",
     !dispute.providerResponse ? "Notificar prestador para responder à reclamação" : "",

@@ -34,10 +34,7 @@ export function generateCalendarToken(): string {
 /**
  * Generate RFC 5545 compliant VCALENDAR string from a list of events.
  */
-export function generateIcsFeed(
-  calendarName: string,
-  events: CalendarEvent[],
-): string {
+export function generateIcsFeed(calendarName: string, events: CalendarEvent[]): string {
   const lines: string[] = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",

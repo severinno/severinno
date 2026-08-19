@@ -36,7 +36,8 @@ export async function getProviderStatsMap(
 ): Promise<Map<string, ProviderStatsRow>> {
   if (providerIds.length === 0) return new Map()
 
-  const cacheKey = `provider-stats:${providerIds.sort().join(",")}`
+  const sortedIds = [...providerIds].sort()
+  const cacheKey = `provider-stats:${sortedIds.join(",")}`
 
   try {
     const rows = await withCache<ProviderStatsRow[]>(
@@ -79,9 +80,7 @@ export async function getProviderStatsMap(
  */
 export async function refreshProviderStats(): Promise<void> {
   try {
-    await db.$executeRawUnsafe(
-      "REFRESH MATERIALIZED VIEW CONCURRENTLY mv_provider_stats",
-    )
+    await db.$executeRawUnsafe("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_provider_stats")
   } catch (err) {
     console.warn("[provider-stats] Refresh failed:", err)
   }

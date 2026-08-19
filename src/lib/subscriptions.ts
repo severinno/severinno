@@ -46,7 +46,7 @@ export function calculateSubscriptionPrice(
 ): { originalPrice: number; discountedPrice: number; discountPercent: number; savings: number } {
   const plan = SUBSCRIPTION_PLANS[frequency]
   const discountPercent = plan.discountPercent
-  const savings = Math.round((basePrice * (discountPercent / 100)) * 100) / 100
+  const savings = Math.round(basePrice * (discountPercent / 100) * 100) / 100
   const discountedPrice = Math.round((basePrice - savings) * 100) / 100
 
   return {
@@ -60,10 +60,7 @@ export function calculateSubscriptionPrice(
 /**
  * Compute the next occurrence date based on current date and frequency
  */
-export function getNextOccurrenceDate(
-  fromDate: Date,
-  frequency: SubscriptionFrequency,
-): Date {
+export function getNextOccurrenceDate(fromDate: Date, frequency: SubscriptionFrequency): Date {
   const base = startOfDay(fromDate)
   switch (frequency) {
     case "WEEKLY":

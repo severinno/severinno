@@ -30,7 +30,7 @@ const AVG_CITY_SPEED_KMH = 28.0 // Average urban traffic speed
  */
 export async function calculate1xNDistanceMatrix(
   origin: { lat: number; lng: number },
-  destinations: TargetDestination[]
+  destinations: TargetDestination[],
 ): Promise<MatrixETAResult[]> {
   if (!origin || destinations.length === 0) {
     return []
@@ -83,7 +83,7 @@ export async function calculate1xNDistanceMatrix(
         })
       }
     }
-  } catch (error) {
+  } catch {
     // Fallback gracefully on timeout or offline mode
   }
 

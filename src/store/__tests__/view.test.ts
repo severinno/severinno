@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, beforeEach } from "vitest"
 import { useViewStore, HISTORY_LIMIT } from "../view"
 

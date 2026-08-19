@@ -14,7 +14,8 @@ export type LeakDetectionResult = {
 
 const SUSPICIOUS_PATTERNS = [
   {
-    regex: /(?:pago|pagar|fa[çc]o|acerto|passo)\s+(?:por\s+fora|em\s+m[ãa]os|no\s+dinheiro|direto)/i,
+    regex:
+      /(?:pago|pagar|fa[çc]o|acerto|passo)\s+(?:por\s+fora|em\s+m[ãa]os|no\s+dinheiro|direto)/i,
     reason: "Tentativa de pagamento fora da plataforma",
     level: "HIGH" as const,
   },
@@ -24,7 +25,8 @@ const SUSPICIOUS_PATTERNS = [
     level: "HIGH" as const,
   },
   {
-    regex: /(?:chama|manda|conversa|fala|adiciona)\s+(?:no\s+zap|no\s+whatsapp|no\s+whats|no\s+wpp)/i,
+    regex:
+      /(?:chama|manda|conversa|fala|adiciona)\s+(?:no\s+zap|no\s+whatsapp|no\s+whats|no\s+wpp)/i,
     reason: "Tentativa de desvio de atendimento para WhatsApp externo antes da contratação",
     level: "MEDIUM" as const,
   },
@@ -71,9 +73,11 @@ export function analyzeMessageForLeakage(content: string): LeakDetectionResult {
 
   let warning: string | null = null
   if (highestLevel === "HIGH") {
-    warning = "⚠️ Atenção: Pagamentos realizados fora do Severinno perdem a proteção de Custódia Segura (Escrow) e a garantia do serviço."
+    warning =
+      "⚠️ Atenção: Pagamentos realizados fora do Severinno perdem a proteção de Custódia Segura (Escrow) e a garantia do serviço."
   } else if (highestLevel === "MEDIUM") {
-    warning = "💡 Dica de Segurança: Mantenha as mensagens no chat do Severinno para registrar o histórico e assegurar a cobertura da garantia."
+    warning =
+      "💡 Dica de Segurança: Mantenha as mensagens no chat do Severinno para registrar o histórico e assegurar a cobertura da garantia."
   }
 
   return {

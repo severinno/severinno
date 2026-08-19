@@ -101,13 +101,17 @@ const CATEGORY_PATTERNS: Array<{
  * Attempts AI Vision analysis via LocalAI/Ollama, with heuristic fallback
  */
 export async function analyzeServicePhoto(
-  input: VisionDiagnosticInput
+  input: VisionDiagnosticInput,
 ): Promise<VisionDiagnosticResult> {
   // 1. Try LocalAI Vision endpoint if available
   const localAiUrl = process.env.LOCAL_AI_URL || process.env.OLLAMA_URL
   if (localAiUrl && input.imageBase64) {
     try {
-      const aiResult = await callLocalAIVision(localAiUrl, input.imageBase64, input.clientDescription)
+      const aiResult = await callLocalAIVision(
+        localAiUrl,
+        input.imageBase64,
+        input.clientDescription,
+      )
       if (aiResult) return aiResult
     } catch {
       // Fall through to heuristic
@@ -124,7 +128,7 @@ export async function analyzeServicePhoto(
 async function callLocalAIVision(
   baseUrl: string,
   imageBase64: string,
-  description?: string
+  description?: string,
 ): Promise<VisionDiagnosticResult | null> {
   const prompt = `Analise esta foto de um problema residencial e retorne um JSON com:
 - category: categoria do serviço
@@ -196,7 +200,11 @@ function classifyByDescription(description: string): VisionDiagnosticResult {
         subcategory: pattern.subcategory,
         severity: pattern.severity,
         estimatedComplexity:
-          pattern.severity === "EMERGENCY" ? "COMPLEX" : pattern.severity === "HIGH" ? "MODERATE" : "SIMPLE",
+          pattern.severity === "EMERGENCY"
+            ? "COMPLEX"
+            : pattern.severity === "HIGH"
+              ? "MODERATE"
+              : "SIMPLE",
         suggestedMaterials: pattern.materials,
         autoFilledDescription: `Serviço de ${pattern.subcategory.toLowerCase()} detectado com base na descrição: "${description}".`,
         confidence: 0.7,

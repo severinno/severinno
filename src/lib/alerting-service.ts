@@ -43,7 +43,7 @@ export const AlertingService = {
     const icon = severityIcons[alert.severity] || "⚠️"
     const formattedTitle = `${icon} [${alert.severity}] ${alert.title}`
 
-    console.log(`[ALERTING] [${alert.severity}] ${alert.title} — ${alert.message}`)
+    console.warn(`[ALERTING] [${alert.severity}] ${alert.title} — ${alert.message}`)
 
     if (!webhookUrl) {
       // In dev or without webhook configured, log to stdout/stderr
@@ -65,8 +65,8 @@ export const AlertingService = {
                   alert.severity === "CRITICAL" || alert.severity === "EMERGENCY"
                     ? 0xdc2626
                     : alert.severity === "WARNING"
-                    ? 0xd97706
-                    : 0x059669,
+                      ? 0xd97706
+                      : 0x059669,
                 fields: Object.entries(alert.metadata).map(([k, v]) => ({
                   name: k,
                   value: String(v),
@@ -112,7 +112,11 @@ export const AlertingService = {
   /**
    * Helper for SLA Degradation (High Latency)
    */
-  async reportLatencySpike(endpoint: string, latencyMs: number, thresholdMs: number): Promise<boolean> {
+  async reportLatencySpike(
+    endpoint: string,
+    latencyMs: number,
+    thresholdMs: number,
+  ): Promise<boolean> {
     return this.sendAlert({
       title: `Pico de Latência Detectado`,
       message: `A rota ${endpoint} registrou latência de ${latencyMs}ms (limite de SLA: ${thresholdMs}ms).`,
@@ -129,7 +133,11 @@ export const AlertingService = {
   /**
    * Helper for Fraud Detection Spike
    */
-  async reportFraudAttempt(bookingId: string, senderId: string, matchedPatterns: string[]): Promise<boolean> {
+  async reportFraudAttempt(
+    bookingId: string,
+    senderId: string,
+    matchedPatterns: string[],
+  ): Promise<boolean> {
     return this.sendAlert({
       title: `Tentativa de Desintermediação Bloqueada`,
       message: `Mensagem no chat do agendamento #${bookingId} continha padrões de pagamento por fora.`,

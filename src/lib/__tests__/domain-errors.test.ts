@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from "vitest"
 import { BookingError, PaymentError } from "../domain-errors"
 import { handleError } from "../api-server"

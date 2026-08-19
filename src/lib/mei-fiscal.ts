@@ -58,7 +58,7 @@ export interface MEIAnnualReport {
   generatedAt: string
 }
 
-const MEI_ANNUAL_LIMIT_2024 = 81000.00 // R$ 81.000,00 annual cap for MEI
+const MEI_ANNUAL_LIMIT_2024 = 81000.0 // R$ 81.000,00 annual cap for MEI
 const FUEL_COST_PER_KM = 0.85 // Estimated fuel cost per km (gasoline average BR)
 const PLATFORM_FEE_RATE = 0.12 // 12% Severinno platform fee
 
@@ -75,17 +75,20 @@ export function generateMEIAnnualReport(
     distanceKm: number
     materialsCost?: number
   }>,
-  cnpj?: string
+  cnpj?: string,
 ): MEIAnnualReport {
   // 1. Group bookings by month
-  const monthlyMap = new Map<number, {
-    gross: number
-    platformFee: number
-    fuel: number
-    materials: number
-    count: number
-    km: number
-  }>()
+  const monthlyMap = new Map<
+    number,
+    {
+      gross: number
+      platformFee: number
+      fuel: number
+      materials: number
+      count: number
+      km: number
+    }
+  >()
 
   for (let m = 1; m <= 12; m++) {
     monthlyMap.set(m, { gross: 0, platformFee: 0, fuel: 0, materials: 0, count: 0, km: 0 })
@@ -127,27 +130,32 @@ export function generateMEIAnnualReport(
   const totalGrossRevenue = monthlyBreakdown.reduce((s, m) => s + m.grossRevenue, 0)
   const totalPlatformFees = monthlyBreakdown.reduce((s, m) => s + m.platformFee, 0)
   const totalEstimatedFuelCost = monthlyBreakdown.reduce((s, m) => s + m.estimatedFuelCost, 0)
-  const totalEstimatedMaterialsCost = monthlyBreakdown.reduce((s, m) => s + m.estimatedMaterialsCost, 0)
+  const totalEstimatedMaterialsCost = monthlyBreakdown.reduce(
+    (s, m) => s + m.estimatedMaterialsCost,
+    0,
+  )
   const totalNetRevenue = monthlyBreakdown.reduce((s, m) => s + m.netRevenue, 0)
   const totalBookings = monthlyBreakdown.reduce((s, m) => s + m.bookingCount, 0)
   const totalKmTraveled = monthlyBreakdown.reduce((s, m) => s + m.totalKmTraveled, 0)
 
   const activeMonths = monthlyBreakdown.filter((m) => m.grossRevenue > 0)
-  const averageMonthlyRevenue = activeMonths.length > 0
-    ? round2(totalGrossRevenue / activeMonths.length)
-    : 0
+  const averageMonthlyRevenue =
+    activeMonths.length > 0 ? round2(totalGrossRevenue / activeMonths.length) : 0
 
   const highestMonth = monthlyBreakdown.reduce(
-    (best, m) => (m.grossRevenue > best.revenue ? { month: m.month, revenue: m.grossRevenue } : best),
-    { month: 1, revenue: 0 }
+    (best, m) =>
+      m.grossRevenue > best.revenue ? { month: m.month, revenue: m.grossRevenue } : best,
+    { month: 1, revenue: 0 },
   )
 
-  const lowestActiveMonth = activeMonths.length > 0
-    ? activeMonths.reduce(
-        (worst, m) => (m.grossRevenue < worst.revenue ? { month: m.month, revenue: m.grossRevenue } : worst),
-        { month: activeMonths[0].month, revenue: activeMonths[0].grossRevenue }
-      )
-    : { month: 1, revenue: 0 }
+  const lowestActiveMonth =
+    activeMonths.length > 0
+      ? activeMonths.reduce(
+          (worst, m) =>
+            m.grossRevenue < worst.revenue ? { month: m.month, revenue: m.grossRevenue } : worst,
+          { month: activeMonths[0].month, revenue: activeMonths[0].grossRevenue },
+        )
+      : { month: 1, revenue: 0 }
 
   // 4. MEI compliance check
   const percentUsed = round2((totalGrossRevenue / MEI_ANNUAL_LIMIT_2024) * 100)
@@ -156,7 +164,8 @@ export function generateMEIAnnualReport(
 
   let warning: string | undefined
   if (percentUsed >= 100) {
-    warning = "⚠️ ATENÇÃO: Faturamento ultrapassou o limite MEI de R$ 81.000. Migração para ME obrigatória."
+    warning =
+      "⚠️ ATENÇÃO: Faturamento ultrapassou o limite MEI de R$ 81.000. Migração para ME obrigatória."
   } else if (percentUsed >= 80) {
     warning = "⚡ Atenção: Faturamento próximo do limite MEI. Considere planejar migração para ME."
   }
