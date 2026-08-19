@@ -80,14 +80,25 @@ const eslintConfig = [
     },
   },
   {
-    // Scripts CLI/benchmark, seeds Prisma e mini-services — o console é o
-    // mecanismo de output correto (não há logger/browser) e `any` em dados
-    // dinâmicos de CLI é idiomático. no-console/no-explicit-any só fazem
-    // sentido no código da aplicação (src/).
-    files: ["scripts/**", "prisma/**", "mini-services/**"],
+    // Scripts CLI/benchmark, seeds Prisma, mini-services e load tests k6 — o
+    // console é o mecanismo de output correto (não há logger/browser), `any`
+    // em dados dinâmicos de CLI é idiomático, e o k6 usa padrões próprios
+    // (export default function, check() || rate.add(1)). no-console,
+    // no-explicit-any e no-unused-expressions só fazem sentido no src/.
+    files: ["scripts/**", "prisma/**", "mini-services/**", "loadtest/**"],
     rules: {
       "no-console": "off",
       "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unused-expressions": "off",
+      "import/no-anonymous-default-export": "off",
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
     },
   },
   {

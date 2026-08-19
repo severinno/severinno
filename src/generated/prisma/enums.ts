@@ -63,8 +63,11 @@ export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod]
 
 export const PaymentStatus = {
   PENDING: "PENDING",
+  AUTHORIZED: "AUTHORIZED",
+  HELD: "HELD",
   PAID: "PAID",
   REFUNDED: "REFUNDED",
+  FAILED: "FAILED",
 } as const
 
 export type PaymentStatus = (typeof PaymentStatus)[keyof typeof PaymentStatus]
