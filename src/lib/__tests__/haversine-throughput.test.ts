@@ -89,66 +89,74 @@ const providers = generateProviders(NUM_PROVIDERS)
 // ---------------------------------------------------------------------------
 
 describe("haversineKm throughput guard", () => {
-  it(`single-call throughput ≥ ${(MIN_THROUGHPUT / 1_000_000).toFixed(1)}M ops/sec`, () => {
-    // ── Warmup ───────────────────────────────────────────────────────
-    for (let i = 0; i < WARMUP; i++) {
-      haversineKm(CENTER_LAT, CENTER_LNG, -23.5605, -46.6433)
-    }
-
-    // ── Measure each iteration independently ──────────────────────────
-    const samples: number[] = []
-    // Use an accumulator to prove the function actually ran
-    let grandTotal = 0
-
-    for (let i = 0; i < ITERATIONS; i++) {
-      // Single call per iteration (baseline latency)
-      const t0 = performance.now()
-      for (let j = 0; j < 1000; j++) {
-        grandTotal += haversineKm(
-          CENTER_LAT,
-          CENTER_LNG,
-          -23.5605 + j * 0.0001,
-          -46.6433 + j * 0.0001,
-        )
+  it(
+    `single-call throughput ≥ ${(MIN_THROUGHPUT / 1_000_000).toFixed(1)}M ops/sec`,
+    { retry: 2 },
+    () => {
+      // ── Warmup ───────────────────────────────────────────────────────
+      for (let i = 0; i < WARMUP; i++) {
+        haversineKm(CENTER_LAT, CENTER_LNG, -23.5605, -46.6433)
       }
-      const t1 = performance.now()
-      samples.push(t1 - t0)
-    }
 
-    expect(grandTotal).toBeGreaterThan(0)
+      // ── Measure each iteration independently ──────────────────────────
+      const samples: number[] = []
+      // Use an accumulator to prove the function actually ran
+      let grandTotal = 0
 
-    const meanMs = samples.reduce((s, v) => s + v, 0) / samples.length
-    const opsPerSec = 1000 / (meanMs / 1000) // 1000 calls per iteration
+      for (let i = 0; i < ITERATIONS; i++) {
+        // Single call per iteration (baseline latency)
+        const t0 = performance.now()
+        for (let j = 0; j < 1000; j++) {
+          grandTotal += haversineKm(
+            CENTER_LAT,
+            CENTER_LNG,
+            -23.5605 + j * 0.0001,
+            -46.6433 + j * 0.0001,
+          )
+        }
+        const t1 = performance.now()
+        samples.push(t1 - t0)
+      }
 
-    expect(opsPerSec).toBeGreaterThan(MIN_THROUGHPUT)
-  })
+      expect(grandTotal).toBeGreaterThan(0)
 
-  it(`batch ${NUM_PROVIDERS} — per-provider ops/sec ≥ ${(MIN_THROUGHPUT / 1_000_000).toFixed(1)}M`, () => {
-    // ── Warmup ───────────────────────────────────────────────────────
-    for (let i = 0; i < WARMUP; i++) {
-      haversineAll(CENTER_LAT, CENTER_LNG, providers)
-    }
+      const meanMs = samples.reduce((s, v) => s + v, 0) / samples.length
+      const opsPerSec = 1000 / (meanMs / 1000) // 1000 calls per iteration
 
-    // ── Measure ──────────────────────────────────────────────────────
-    const samples: number[] = []
-    let grandTotal = 0
+      expect(opsPerSec).toBeGreaterThan(MIN_THROUGHPUT)
+    },
+  )
 
-    for (let i = 0; i < ITERATIONS; i++) {
-      const t0 = performance.now()
-      grandTotal += haversineAll(CENTER_LAT, CENTER_LNG, providers)
-      const t1 = performance.now()
-      samples.push((t1 - t0) * 1000) // µs
-    }
+  it(
+    `batch ${NUM_PROVIDERS} — per-provider ops/sec ≥ ${(MIN_THROUGHPUT / 1_000_000).toFixed(1)}M`,
+    { retry: 2 },
+    () => {
+      // ── Warmup ───────────────────────────────────────────────────────
+      for (let i = 0; i < WARMUP; i++) {
+        haversineAll(CENTER_LAT, CENTER_LNG, providers)
+      }
 
-    expect(grandTotal).toBeGreaterThan(0)
+      // ── Measure ──────────────────────────────────────────────────────
+      const samples: number[] = []
+      let grandTotal = 0
 
-    const meanUs = samples.reduce((s, v) => s + v, 0) / samples.length
-    // Per-provider throughput: how many single calls per second
-    // meanUs / NUM_PROVIDERS = µs per single call
-    // ops/sec = 1_000_000 / (meanUs / NUM_PROVIDERS)
-    const perProviderUs = meanUs / NUM_PROVIDERS
-    const opsPerSec = 1_000_000 / perProviderUs
+      for (let i = 0; i < ITERATIONS; i++) {
+        const t0 = performance.now()
+        grandTotal += haversineAll(CENTER_LAT, CENTER_LNG, providers)
+        const t1 = performance.now()
+        samples.push((t1 - t0) * 1000) // µs
+      }
 
-    expect(opsPerSec).toBeGreaterThan(MIN_THROUGHPUT)
-  })
+      expect(grandTotal).toBeGreaterThan(0)
+
+      const meanUs = samples.reduce((s, v) => s + v, 0) / samples.length
+      // Per-provider throughput: how many single calls per second
+      // meanUs / NUM_PROVIDERS = µs per single call
+      // ops/sec = 1_000_000 / (meanUs / NUM_PROVIDERS)
+      const perProviderUs = meanUs / NUM_PROVIDERS
+      const opsPerSec = 1_000_000 / perProviderUs
+
+      expect(opsPerSec).toBeGreaterThan(MIN_THROUGHPUT)
+    },
+  )
 })

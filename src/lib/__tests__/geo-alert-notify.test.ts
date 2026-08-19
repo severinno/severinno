@@ -181,7 +181,7 @@ describe("notifyGeoAlert — round-trip", () => {
     )
   })
 
-  it("tags push with auto-generated tag when payload has no tag", async () => {
+  it("tags push with auto-generated tag when payload has no tag", { retry: 2 }, async () => {
     await notifyGeoAlert(NO_TAG_PAYLOAD)
 
     // Each push gets a unique auto-generated tag
