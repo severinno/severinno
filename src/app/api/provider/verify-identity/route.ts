@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { badRequest, forbidden, handleError } from "@/lib/api-server"
+import { forbidden, handleError } from "@/lib/api-server"
 import { z } from "zod"
 
 const verifyIdentitySchema = z.object({

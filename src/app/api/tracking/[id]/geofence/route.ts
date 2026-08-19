@@ -17,10 +17,7 @@ const GEOFENCE_DURATION_MIN = 5
  * If the provider is within 1 km or ≤5 min ETA (and no prior alert was sent),
  * dispatches a WhatsApp notification to the client.
  */
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireUser()
     const { id: bookingId } = await params
@@ -84,8 +81,7 @@ export async function POST(
     )
 
     const shouldTrigger =
-      route.distanceKm <= GEOFENCE_DISTANCE_KM ||
-      route.durationMin <= GEOFENCE_DURATION_MIN
+      route.distanceKm <= GEOFENCE_DISTANCE_KM || route.durationMin <= GEOFENCE_DURATION_MIN
 
     if (!shouldTrigger) {
       return NextResponse.json({
@@ -98,9 +94,8 @@ export async function POST(
 
     // Fire geofence alert — WhatsApp notification to client
     const providerName = booking.provider?.name ?? "O prestador"
-    const etaText = route.durationMin <= 1
-      ? "menos de 1 minuto"
-      : `aproximadamente ${route.durationMin} minutos`
+    const etaText =
+      route.durationMin <= 1 ? "menos de 1 minuto" : `aproximadamente ${route.durationMin} minutos`
 
     await sendWhatsApp({
       userId: booking.clientId,

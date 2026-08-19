@@ -176,17 +176,17 @@ describe("GET /api/providers — handleError delegation", () => {
   })
 
   // -----------------------------------------------------------------------
-  // Scenario 2 — handleError is called when booking.groupBy throws
+  // Scenario 2 — handleError is called when user.findMany throws
   // -----------------------------------------------------------------------
 
-  it("calls handleError when booking.groupBy rejects in Phase 2", async () => {
+  it("calls handleError when user.findMany rejects in Phase 2", async () => {
     ;(db.$queryRawUnsafe as any).mockImplementation((sql: string) => {
       if (sql.includes("COUNT")) return Promise.resolve([{ total: BigInt(3) }])
       if (sql.includes("ST_Distance")) return Promise.resolve([{ id: "prov-1", distance_km: 2.5 }])
       return Promise.resolve([{ id: "prov-1" }])
     })
 
-    // Phase 2: service OK, booking throws
+    // Phase 2: services OK, user profiles throw
     vi.mocked(db.service.findMany as any).mockResolvedValue([
       {
         id: "svc-1",
@@ -200,9 +200,8 @@ describe("GET /api/providers — handleError delegation", () => {
         category: { id: "cat-1", name: "Elétrica" },
       },
     ])
-    const phase2Error = new Error("Bookings DB connection lost")
-    ;(vi.mocked(db.booking.groupBy) as any).mockRejectedValue(phase2Error)
-    ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider])
+    const phase2Error = new Error("Users DB connection lost")
+    vi.mocked(db.user.findMany as any).mockRejectedValue(phase2Error)
 
     const req = createMockRequest({
       searchParams: { lat: "-23.5505", lng: "-46.6333", radius: "10" },
@@ -237,9 +236,6 @@ describe("GET /api/providers — handleError delegation", () => {
         category: { id: "cat-1", name: "Elétrica" },
       },
     ])
-    ;(vi.mocked(db.booking.groupBy) as any).mockResolvedValue([
-      { providerId: "prov-1", _count: { id: 3 } },
-    ])
     ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider])
 
     const req = createMockRequest({
@@ -266,9 +262,6 @@ describe("GET /api/providers — handleError delegation", () => {
 
     const phase2Error = new Error("Phase 2 database timeout")
     vi.mocked(db.service.findMany as any).mockRejectedValue(phase2Error)
-    ;(vi.mocked(db.booking.groupBy) as any).mockResolvedValue([
-      { providerId: "prov-1", _count: { id: 3 } },
-    ])
     ;(vi.mocked(db.user.findMany) as any).mockResolvedValue([baseProvider])
 
     const req = createMockRequest({

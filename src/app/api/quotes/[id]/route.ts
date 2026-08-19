@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
+import type { QuoteStatus } from "@/generated/prisma/enums"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -64,7 +65,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
     const updated = await db.quoteRequest.update({
       where: { id },
-      data: { status: status as any },
+      data: { status: status as QuoteStatus },
       include: {
         items: { include: { service: true } },
         provider: { select: { id: true, name: true } },

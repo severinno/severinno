@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     if (!request || typeof request.lat !== "number" || typeof request.lng !== "number") {
       return NextResponse.json(
         { success: false, error: "Emergency request with lat/lng is required" },
-        { status: 400 }
+        { status: 400 },
       )
     }
 
@@ -36,8 +36,11 @@ export async function POST(req: NextRequest) {
     })
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Emergency dispatch failed" },
-      { status: 500 }
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Emergency dispatch failed",
+      },
+      { status: 500 },
     )
   }
 }

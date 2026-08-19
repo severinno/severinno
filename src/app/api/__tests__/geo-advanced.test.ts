@@ -9,10 +9,7 @@ vi.mock("@/lib/redis", () => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
-    $queryRaw: vi.fn().mockResolvedValue([
-      { id: "prov-1" },
-      { id: "prov-2" },
-    ]),
+    $queryRaw: vi.fn().mockResolvedValue([{ id: "prov-1" }, { id: "prov-2" }]),
     user: {
       findMany: vi.fn().mockResolvedValue([
         {
@@ -55,10 +52,10 @@ describe("Advanced Geolocation Layer Tests", () => {
 
   describe("2. PostGIS Bounding Box Query (@/lib/postgis)", () => {
     it("should return provider IDs inside bounding box coordinates", async () => {
-      const minLat = -23.6000
-      const minLng = -46.7000
-      const maxLat = -23.5000
-      const maxLng = -46.6000
+      const minLat = -23.6
+      const minLng = -46.7
+      const maxLat = -23.5
+      const maxLng = -46.6
 
       const ids = await findProvidersWithinBounds(minLat, minLng, maxLat, maxLng)
 

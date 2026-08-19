@@ -13,7 +13,7 @@
 import * as React from "react"
 import maplibregl, { Map as MapLibreMap, Marker, Popup } from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
-import { BadgeCheck, Loader2, Locate, RefreshCw, Star } from "lucide-react"
+import { Loader2, RefreshCw } from "lucide-react"
 
 import { formatBRL } from "@/lib/format"
 import { Button } from "@/components/ui/button"
@@ -37,7 +37,12 @@ type InteractiveGeoMapProps = {
   zoom?: number
   providers: MapProviderPin[]
   onSelectProvider?: (providerId: string) => void
-  onBoundsChange?: (bounds: { minLat: number; minLng: number; maxLat: number; maxLng: number }) => void
+  onBoundsChange?: (bounds: {
+    minLat: number
+    minLng: number
+    maxLat: number
+    maxLng: number
+  }) => void
   className?: string
 }
 
@@ -69,7 +74,8 @@ export function InteractiveGeoMap({
             type: "raster",
             tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
             tileSize: 256,
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            attribution:
+              '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
           },
         },
         layers: [
@@ -197,11 +203,11 @@ export function InteractiveGeoMap({
 
       {/* Floating "Search This Area" Button */}
       {mapMoved && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
+        <div className="absolute top-4 left-1/2 z-10 -translate-x-1/2">
           <Button
             onClick={handleSearchArea}
             disabled={loadingBbox}
-            className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xl rounded-full px-4 h-9 font-semibold text-xs transition-all hover:scale-105"
+            className="h-9 gap-2 rounded-full bg-emerald-600 px-4 text-xs font-semibold text-white shadow-xl transition-all hover:scale-105 hover:bg-emerald-700"
           >
             {loadingBbox ? (
               <Loader2 className="size-3.5 animate-spin" />

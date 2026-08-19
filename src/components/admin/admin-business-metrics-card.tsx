@@ -6,16 +6,7 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import {
-  Banknote,
-  DollarSign,
-  Flame,
-  MapPin,
-  Percent,
-  ShieldCheck,
-  TrendingUp,
-  Users,
-} from "lucide-react"
+import { Banknote, DollarSign, Flame, MapPin, Percent, TrendingUp } from "lucide-react"
 
 import { apiGet } from "@/lib/api"
 import { formatBRL } from "@/lib/format"
@@ -27,7 +18,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 export function AdminBusinessMetricsCard() {
   const { data, isLoading } = useQuery<{ ok: boolean; metrics: BusinessMetricsResponse }>({
     queryKey: ["admin-business-metrics"],
-    queryFn: () => apiGet<{ ok: boolean; metrics: BusinessMetricsResponse }>("/api/admin/business-metrics"),
+    queryFn: () =>
+      apiGet<{ ok: boolean; metrics: BusinessMetricsResponse }>("/api/admin/business-metrics"),
   })
 
   if (isLoading) {
@@ -40,65 +32,65 @@ export function AdminBusinessMetricsCard() {
   return (
     <div className="space-y-6">
       {/* 4 Executive KPI Metric Tiles */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <Card className="rounded-xl border shadow-sm bg-background">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="size-11 rounded-xl bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center text-emerald-600">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="bg-background rounded-xl border shadow-sm">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-950">
               <TrendingUp className="size-5" />
             </div>
             <div>
-              <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+              <div className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
                 GMV Transacionado
               </div>
-              <div className="text-xl font-bold tabular-nums text-foreground">
+              <div className="text-foreground text-xl font-bold tabular-nums">
                 {formatBRL(m.gmv)}
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="rounded-xl border shadow-sm bg-background">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="size-11 rounded-xl bg-blue-100 dark:bg-blue-950 flex items-center justify-center text-blue-600">
+        <Card className="bg-background rounded-xl border shadow-sm">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-950">
               <DollarSign className="size-5" />
             </div>
             <div>
-              <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+              <div className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
                 Receita da Plataforma (10%)
               </div>
-              <div className="text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+              <div className="text-xl font-bold text-emerald-600 tabular-nums dark:text-emerald-400">
                 {formatBRL(m.platformRevenue)}
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="rounded-xl border shadow-sm bg-background">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="size-11 rounded-xl bg-purple-100 dark:bg-purple-950 flex items-center justify-center text-purple-600">
+        <Card className="bg-background rounded-xl border shadow-sm">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-purple-100 text-purple-600 dark:bg-purple-950">
               <Banknote className="size-5" />
             </div>
             <div>
-              <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+              <div className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
                 Ticket Médio
               </div>
-              <div className="text-xl font-bold tabular-nums text-foreground">
+              <div className="text-foreground text-xl font-bold tabular-nums">
                 {formatBRL(m.avgTicket)}
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="rounded-xl border shadow-sm bg-background">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="size-11 rounded-xl bg-amber-100 dark:bg-amber-950 flex items-center justify-center text-amber-600">
+        <Card className="bg-background rounded-xl border shadow-sm">
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-amber-100 text-amber-600 dark:bg-amber-950">
               <Percent className="size-5" />
             </div>
             <div>
-              <div className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+              <div className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">
                 Taxa de Conclusão
               </div>
-              <div className="text-xl font-bold tabular-nums text-foreground">
+              <div className="text-foreground text-xl font-bold tabular-nums">
                 {m.completionRatePercent}%
               </div>
             </div>
@@ -107,18 +99,18 @@ export function AdminBusinessMetricsCard() {
       </div>
 
       {/* Breakdowns: Top Districts and Top Categories */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {/* District Ranking */}
         <Card className="rounded-xl border shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-bold">
               <MapPin className="size-4 text-emerald-600" />
               Ranking de Bairros por Volume Financeiro
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {m.topDistricts.length === 0 ? (
-              <div className="py-6 text-center text-xs text-muted-foreground">
+              <div className="text-muted-foreground py-6 text-center text-xs">
                 Nenhum dado registrado ainda.
               </div>
             ) : (
@@ -127,8 +119,12 @@ export function AdminBusinessMetricsCard() {
                 return (
                   <div key={i} className="space-y-1 text-xs">
                     <div className="flex justify-between font-semibold">
-                      <span>{i + 1}. {d.district} ({d.count} serviços)</span>
-                      <span className="text-emerald-600">{formatBRL(d.totalGmv)} ({percentage}%)</span>
+                      <span>
+                        {i + 1}. {d.district} ({d.count} serviços)
+                      </span>
+                      <span className="text-emerald-600">
+                        {formatBRL(d.totalGmv)} ({percentage}%)
+                      </span>
                     </div>
                     <Progress value={percentage} className="h-1.5" />
                   </div>
@@ -141,14 +137,14 @@ export function AdminBusinessMetricsCard() {
         {/* Categories Ranking */}
         <Card className="rounded-xl border shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-bold">
               <Flame className="size-4 text-orange-500" />
               Categorias Mais Demandadas
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {m.topCategories.length === 0 ? (
-              <div className="py-6 text-center text-xs text-muted-foreground">
+              <div className="text-muted-foreground py-6 text-center text-xs">
                 Nenhum dado registrado ainda.
               </div>
             ) : (
@@ -157,8 +153,12 @@ export function AdminBusinessMetricsCard() {
                 return (
                   <div key={i} className="space-y-1 text-xs">
                     <div className="flex justify-between font-semibold">
-                      <span>{i + 1}. {c.title} ({c.count} atendimentos)</span>
-                      <span className="text-orange-600 dark:text-orange-400">{formatBRL(c.totalRevenue)}</span>
+                      <span>
+                        {i + 1}. {c.title} ({c.count} atendimentos)
+                      </span>
+                      <span className="text-orange-600 dark:text-orange-400">
+                        {formatBRL(c.totalRevenue)}
+                      </span>
                     </div>
                     <Progress value={percentage} className="h-1.5" />
                   </div>

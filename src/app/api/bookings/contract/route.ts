@@ -7,8 +7,11 @@ export async function POST(req: NextRequest) {
 
     if (!body.bookingId || !body.client || !body.provider || !body.serviceTitle) {
       return NextResponse.json(
-        { success: false, error: "Missing required contract fields (bookingId, client, provider, serviceTitle)" },
-        { status: 400 }
+        {
+          success: false,
+          error: "Missing required contract fields (bookingId, client, provider, serviceTitle)",
+        },
+        { status: 400 },
       )
     }
 
@@ -24,8 +27,11 @@ export async function POST(req: NextRequest) {
     })
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Contract generation failed" },
-      { status: 500 }
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Contract generation failed",
+      },
+      { status: 500 },
     )
   }
 }
@@ -38,7 +44,7 @@ export async function GET(req: NextRequest) {
   if (!id || !seal) {
     return NextResponse.json(
       { success: false, error: "id and seal query parameters are required" },
-      { status: 400 }
+      { status: 400 },
     )
   }
 

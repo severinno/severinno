@@ -26,22 +26,15 @@ export function EmptyState({
   className?: string
 }) {
   return (
-    <Card
-      className={cn(
-        "border-dashed bg-muted/30 py-10 text-center",
-        className,
-      )}
-    >
+    <Card className={cn("bg-muted/30 border-dashed py-10 text-center", className)}>
       <CardContent className="flex flex-col items-center gap-3">
-        <div className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <div className="bg-primary/10 text-primary flex size-14 items-center justify-center rounded-full">
           <Icon className="size-7" />
         </div>
         <div className="space-y-1">
           <p className="text-base font-semibold">{title}</p>
           {description ? (
-            <p className="mx-auto max-w-md text-sm text-muted-foreground">
-              {description}
-            </p>
+            <p className="text-muted-foreground mx-auto max-w-md text-sm">{description}</p>
           ) : null}
         </div>
         {action}
@@ -83,15 +76,10 @@ export function StatCard({
       animate={cardMotion.animate}
       transition={{ delay: index * 0.05, duration: 0.25, ease: "easeOut" }}
     >
-      <Card className="rounded-xl bg-card shadow-sm transition-shadow hover:shadow-md">
+      <Card className="bg-card rounded-xl shadow-sm transition-shadow hover:shadow-md">
         <CardContent className="p-5">
           <div className="flex items-start justify-between gap-3">
-            <span
-              className={cn(
-                "flex size-10 items-center justify-center rounded-lg",
-                toneClass,
-              )}
-            >
+            <span className={cn("flex size-10 items-center justify-center rounded-lg", toneClass)}>
               <Icon className="size-5" />
             </span>
             {trend ? (
@@ -107,15 +95,11 @@ export function StatCard({
               </span>
             ) : null}
           </div>
-          <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">
-            {value}
-          </p>
-          <p className="mt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+          <p className="text-muted-foreground mt-1 text-xs font-medium tracking-wide uppercase">
             {label}
           </p>
-          {hint ? (
-            <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
-          ) : null}
+          {hint ? <p className="text-muted-foreground mt-1 text-xs">{hint}</p> : null}
         </CardContent>
       </Card>
     </motion.div>
@@ -134,13 +118,11 @@ export function SectionTitle({
   return (
     <div className="mb-3 flex items-end justify-between gap-3">
       <div className="min-w-0">
-        <h2 className="text-base font-semibold tracking-tight text-foreground md:text-lg">
+        <h2 className="text-foreground text-base font-semibold tracking-tight md:text-lg">
           {title}
         </h2>
         {description ? (
-          <p className="truncate text-xs text-muted-foreground">
-            {description}
-          </p>
+          <p className="text-muted-foreground truncate text-xs">{description}</p>
         ) : null}
       </div>
       {action}

@@ -18,7 +18,9 @@ export async function GET(request: Request) {
     const destLngStr = searchParams.get("destLng")
 
     if (!originLatStr || !originLngStr || !destLatStr || !destLngStr) {
-      throw badRequest("Parâmetros 'originLat', 'originLng', 'destLat' e 'destLng' são obrigatórios")
+      throw badRequest(
+        "Parâmetros 'originLat', 'originLng', 'destLat' e 'destLng' são obrigatórios",
+      )
     }
 
     const originLat = Number(originLatStr)

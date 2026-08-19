@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET } from "../notifications/route"
 import { PATCH } from "../notifications/[id]/read/route"

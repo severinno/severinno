@@ -180,7 +180,7 @@ export default function NearbyProviders() {
           ) : (
             /* === COLLAPSED: horizontal scroll === */
             <div>
-              <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:thin]">
+              <div className="flex [scrollbar-width:thin] gap-3 overflow-x-auto pb-2">
                 {visibleProviders.map((provider) => (
                   <NearbyCard key={provider.id} provider={provider} onSelect={openProvider} />
                 ))}

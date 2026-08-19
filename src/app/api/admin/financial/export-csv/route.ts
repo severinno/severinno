@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { generateFinancialCSV, computeFinancialSummary, TransactionRecord } from "@/lib/streaming-exporter"
+import {
+  generateFinancialCSV,
+  computeFinancialSummary,
+  TransactionRecord,
+} from "@/lib/streaming-exporter"
 
 export async function GET(req: NextRequest) {
   try {
@@ -64,7 +68,7 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : "Export failed" },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }

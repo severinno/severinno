@@ -2,15 +2,7 @@
 
 import * as React from "react"
 import { useTheme } from "next-themes"
-import {
-  ChevronRight,
-  LayoutDashboard,
-  LogOut,
-  MapPin,
-  Menu,
-  Moon,
-  Sun,
-} from "lucide-react"
+import { ChevronRight, LayoutDashboard, LogOut, MapPin, Menu, Moon, Sun } from "lucide-react"
 
 import { ROLE_LABELS } from "@/lib/constants"
 import { Button } from "@/components/ui/button"
@@ -30,12 +22,7 @@ import { MuteIndicator } from "@/components/shared/mute-indicator"
 import { VibrationIndicator } from "@/components/shared/vibration-indicator"
 import { WalletBalancePill } from "@/components/shared/wallet-balance-pill"
 import { NotificationsBell } from "./shell-notifications"
-import {
-  type Breadcrumb,
-  type ShellUser,
-  type NotificationItem,
-  DASHBOARD_VIEW,
-} from "./types"
+import { type Breadcrumb, type ShellUser, type NotificationItem, DASHBOARD_VIEW } from "./types"
 
 function initials(name?: string | null): string {
   if (!name) return "?"
@@ -80,14 +67,14 @@ export function ShellHeader({
   const { resolvedTheme, setTheme } = useTheme()
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center border-b border-border/50 bg-background/80 backdrop-blur-md px-4 supports-[backdrop-filter]:bg-background/60 lg:px-6">
+    <header className="border-border/50 bg-background/80 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-30 flex h-14 items-center border-b px-4 backdrop-blur-md lg:px-6">
       {/* Left section */}
-      <div className="flex items-center gap-3 min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
         {/* Mobile menu button */}
         <Button
           variant="ghost"
           size="icon"
-          className="size-9 text-muted-foreground hover:text-foreground lg:hidden"
+          className="text-muted-foreground hover:text-foreground size-9 lg:hidden"
           onClick={onOpenMobile}
           aria-label="Abrir menu"
         >
@@ -95,14 +82,14 @@ export function ShellHeader({
         </Button>
 
         {/* Desktop sidebar trigger */}
-        <SidebarTrigger className="hidden size-9 text-muted-foreground hover:text-foreground lg:flex" />
+        <SidebarTrigger className="text-muted-foreground hover:text-foreground hidden size-9 lg:flex" />
 
         {/* Title block */}
         <div className="min-w-0">
           {breadcrumbs && breadcrumbs.length > 0 ? (
             <nav
               aria-label="Trilha de navegação"
-              className="flex items-center gap-1 text-xs text-muted-foreground"
+              className="text-muted-foreground flex items-center gap-1 text-xs"
             >
               {breadcrumbs.map((b, i) => (
                 <React.Fragment key={i}>
@@ -110,7 +97,7 @@ export function ShellHeader({
                     <button
                       type="button"
                       onClick={b.onClick}
-                      className="outline-none transition-colors hover:text-foreground focus-visible:underline"
+                      className="hover:text-foreground transition-colors outline-none focus-visible:underline"
                     >
                       {b.label}
                     </button>
@@ -118,19 +105,15 @@ export function ShellHeader({
                     <span>{b.label}</span>
                   )}
                   {i < breadcrumbs.length - 1 ? (
-                    <ChevronRight className="size-3 text-muted-foreground/50" />
+                    <ChevronRight className="text-muted-foreground/50 size-3" />
                   ) : null}
                 </React.Fragment>
               ))}
             </nav>
           ) : null}
-          <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
-            {title}
-          </h1>
+          <h1 className="text-foreground truncate text-lg font-semibold tracking-tight">{title}</h1>
           {subtitle ? (
-            <p className="hidden truncate text-sm text-muted-foreground md:block">
-              {subtitle}
-            </p>
+            <p className="text-muted-foreground hidden truncate text-sm md:block">{subtitle}</p>
           ) : null}
         </div>
       </div>
@@ -150,15 +133,13 @@ export function ShellHeader({
         <Button
           variant="ghost"
           size="icon"
-          className="size-9 text-muted-foreground hover:text-foreground"
-          onClick={() =>
-            setTheme(resolvedTheme === "dark" ? "light" : "dark")
-          }
+          className="text-muted-foreground hover:text-foreground size-9"
+          onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
           aria-label="Alternar tema"
           title="Alternar tema"
         >
-          <Sun className="size-[18px] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-          <Moon className="absolute size-[18px] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          <Sun className="size-[18px] scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
+          <Moon className="absolute size-[18px] scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
         </Button>
 
         {/* Notifications */}
@@ -173,24 +154,21 @@ export function ShellHeader({
         />
 
         {/* Divider before user avatar */}
-        <Separator orientation="vertical" className="mx-1.5 h-5 bg-border/50" />
+        <Separator orientation="vertical" className="bg-border/50 mx-1.5 h-5" />
 
         {/* User dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex items-center gap-1.5 rounded-full p-0.5 outline-none transition hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+              className="hover:bg-accent focus-visible:ring-ring flex items-center gap-1.5 rounded-full p-0.5 transition outline-none focus-visible:ring-2"
               aria-label="Menu da conta"
             >
               <Avatar className="size-8">
                 {user?.avatarUrl ? (
-                  <AvatarImage
-                    src={user.avatarUrl}
-                    alt={user.name ?? ""}
-                  />
+                  <AvatarImage src={user.avatarUrl} alt={user.name ?? ""} />
                 ) : null}
-                <AvatarFallback className="bg-primary text-[11px] font-semibold text-primary-foreground">
+                <AvatarFallback className="bg-primary text-primary-foreground text-[11px] font-semibold">
                   {initials(user?.name)}
                 </AvatarFallback>
               </Avatar>
@@ -199,14 +177,11 @@ export function ShellHeader({
           <DropdownMenuContent align="end" className="w-60">
             <DropdownMenuLabel className="flex flex-col gap-1">
               <span className="truncate">{user?.name}</span>
-              <span className="truncate text-xs font-normal text-muted-foreground">
+              <span className="text-muted-foreground truncate text-xs font-normal">
                 {user?.email}
               </span>
               {user?.role ? (
-                <Badge
-                  variant="secondary"
-                  className="mt-1 w-fit text-[10px]"
-                >
+                <Badge variant="secondary" className="mt-1 w-fit text-[10px]">
                   {ROLE_LABELS[user.role]}
                 </Badge>
               ) : null}
@@ -229,10 +204,7 @@ export function ShellHeader({
               Voltar à vitrine
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              variant="destructive"
-              onSelect={onLogout}
-            >
+            <DropdownMenuItem variant="destructive" onSelect={onLogout}>
               <LogOut className="size-4" />
               Sair
             </DropdownMenuItem>

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from "vitest"
 import { render, screen } from "@/__tests__/test-utils"
 import { Badge } from "../badge"

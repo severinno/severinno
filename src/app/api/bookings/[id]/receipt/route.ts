@@ -9,10 +9,7 @@ import crypto from "crypto"
  * GET /api/bookings/[id]/receipt
  * Generates a formal digital receipt for completed services.
  */
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireUser()
     const { id: bookingId } = await params
@@ -56,7 +53,12 @@ export async function GET(
 
     // Cryptographic validation hash
     const hashData = `${serialNumber}:${booking.id}:${booking.amount}:${booking.providerId}:${booking.clientId}`
-    const authCode = crypto.createHash("sha256").update(hashData).digest("hex").slice(0, 16).toUpperCase()
+    const authCode = crypto
+      .createHash("sha256")
+      .update(hashData)
+      .digest("hex")
+      .slice(0, 16)
+      .toUpperCase()
 
     return NextResponse.json({
       ok: true,
@@ -79,7 +81,9 @@ export async function GET(
         },
         provider: {
           name: booking.provider.name,
-          document: booking.provider.cpfCnpj ? `${booking.provider.cpfCnpj.slice(0, 3)}***` : "Cadastrado",
+          document: booking.provider.cpfCnpj
+            ? `${booking.provider.cpfCnpj.slice(0, 3)}***`
+            : "Cadastrado",
           email: booking.provider.email,
         },
         client: {

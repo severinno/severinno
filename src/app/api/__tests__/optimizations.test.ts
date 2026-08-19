@@ -1,15 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import {
-  indexProviderLocation,
-  searchNearbyProvidersFast,
-  seedGeoIndex,
-} from "@/lib/redis-geo"
+import { searchNearbyProvidersFast, seedGeoIndex } from "@/lib/redis-geo"
 import { analyzeMessageForLeakage } from "@/lib/leak-detector"
 
 vi.mock("@/lib/postgis", () => ({
-  findProvidersWithinRadius: vi.fn().mockResolvedValue([
-    { id: "postgis-prov-1", distanceKm: 4.2 },
-  ]),
+  findProvidersWithinRadius: vi.fn().mockResolvedValue([{ id: "postgis-prov-1", distanceKm: 4.2 }]),
 }))
 
 describe("Advanced Optimizations & Anti-Fraud Suite", () => {
@@ -21,9 +15,9 @@ describe("Advanced Optimizations & Anti-Fraud Suite", () => {
     it("should seed fast index and return nearby providers in sub-5ms", async () => {
       // Seed 3 providers near São Paulo Center (-23.55, -46.63)
       seedGeoIndex([
-        { id: "prov-fast-1", lat: -23.5510, lng: -46.6340 }, // ~150m
-        { id: "prov-fast-2", lat: -23.5600, lng: -46.6500 }, // ~2.5km
-        { id: "prov-far-away", lat: -23.9900, lng: -46.9900 }, // ~60km (outside 10km)
+        { id: "prov-fast-1", lat: -23.551, lng: -46.634 }, // ~150m
+        { id: "prov-fast-2", lat: -23.56, lng: -46.65 }, // ~2.5km
+        { id: "prov-far-away", lat: -23.99, lng: -46.99 }, // ~60km (outside 10km)
       ])
 
       const results = await searchNearbyProvidersFast(-23.5505, -46.6333, 10, 10)
@@ -55,7 +49,8 @@ describe("Advanced Optimizations & Anti-Fraud Suite", () => {
     })
 
     it("should pass legitimate conversation without false positives", () => {
-      const message = "Boa tarde! Que horas você consegue chegar para realizar a instalação do chuveiro?"
+      const message =
+        "Boa tarde! Que horas você consegue chegar para realizar a instalação do chuveiro?"
       const result = analyzeMessageForLeakage(message)
 
       expect(result.isSuspicious).toBe(false)

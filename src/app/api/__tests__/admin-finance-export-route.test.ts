@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for GET /api/admin/finance/export — CSV export endpoint.
  *

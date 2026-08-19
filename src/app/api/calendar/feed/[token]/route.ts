@@ -8,10 +8,7 @@ import { addHours } from "date-fns"
  * GET /api/calendar/feed/[token]
  * Serves live RFC 5545 iCalendar feed to external calendar clients (Google Calendar, Apple, Outlook).
  */
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ token: string }> },
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
   try {
     const { token } = await params
 
@@ -22,10 +19,7 @@ export async function GET(
     // Find provider by id or slug matching token prefix
     const provider = await db.user.findFirst({
       where: {
-        OR: [
-          { id: token },
-          { slug: token },
-        ],
+        OR: [{ id: token }, { slug: token }],
         role: "PROVIDER",
         active: true,
       },

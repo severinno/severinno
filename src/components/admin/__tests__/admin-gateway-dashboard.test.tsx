@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for AdminGatewayDashboard — gateway de pagamento dashboard.
  *

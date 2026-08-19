@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for AdminFinanceDashboard — financial overview for the admin panel.
  *

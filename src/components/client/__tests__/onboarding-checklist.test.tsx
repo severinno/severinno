@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for OnboardingChecklist — preference toggles (sound & vibration).
  *

@@ -12,9 +12,19 @@ export async function POST(req: NextRequest) {
 
     switch (action) {
       case "checkin": {
-        const { bookingId, providerId, providerLat, providerLng, clientAddressLat, clientAddressLng } = body
+        const {
+          bookingId,
+          providerId,
+          providerLat,
+          providerLng,
+          clientAddressLat,
+          clientAddressLng,
+        } = body
         if (!bookingId || typeof providerLat !== "number" || typeof clientAddressLat !== "number") {
-          return NextResponse.json({ success: false, error: "Missing checkin parameters" }, { status: 400 })
+          return NextResponse.json(
+            { success: false, error: "Missing checkin parameters" },
+            { status: 400 },
+          )
         }
 
         const result = validateGeoCheckin({
@@ -32,7 +42,10 @@ export async function POST(req: NextRequest) {
       case "generate-pin": {
         const { bookingId } = body
         if (!bookingId) {
-          return NextResponse.json({ success: false, error: "bookingId is required" }, { status: 400 })
+          return NextResponse.json(
+            { success: false, error: "bookingId is required" },
+            { status: 400 },
+          )
         }
 
         const pin = generateEscrowPIN(bookingId)
@@ -42,7 +55,10 @@ export async function POST(req: NextRequest) {
       case "release-escrow": {
         const { bookingId, pin, escrowAmount } = body
         if (!bookingId || !pin || typeof escrowAmount !== "number") {
-          return NextResponse.json({ success: false, error: "bookingId, pin and escrowAmount required" }, { status: 400 })
+          return NextResponse.json(
+            { success: false, error: "bookingId, pin and escrowAmount required" },
+            { status: 400 },
+          )
         }
 
         const result = validateEscrowRelease(bookingId, pin, escrowAmount)
@@ -52,13 +68,13 @@ export async function POST(req: NextRequest) {
       default:
         return NextResponse.json(
           { success: false, error: "Invalid action. Use: checkin, generate-pin, release-escrow" },
-          { status: 400 }
+          { status: 400 },
         )
     }
   } catch (error) {
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : "Escrow operation failed" },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }

@@ -914,6 +914,7 @@ describe("GET /api/health", () => {
       nominatim: "ok",
       viacep: "ok",
       postgis: "ok",
+      tracing: "disabled",
     })
     expect(body.cache).toEqual({ hits: 42, misses: 8, total: 50, hitRatio: 0.84 })
     expect(body.geo.nominatim).toBe("online")

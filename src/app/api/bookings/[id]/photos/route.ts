@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
+import { forbidden, handleError, notFound } from "@/lib/api-server"
 import { z } from "zod"
 
 type Params = { params: Promise<{ id: string }> }
@@ -39,7 +39,7 @@ export async function POST(request: Request, { params }: Params) {
 
     if (!isParticipant) throw forbidden("Acesso negado a este agendamento")
 
-    const updateData: Record<string, any> = {}
+    const updateData: Record<string, string | string[]> = {}
 
     if (type === "before") {
       updateData.beforePhotos = photos
@@ -52,7 +52,7 @@ export async function POST(request: Request, { params }: Params) {
 
     const updated = await db.booking.update({
       where: { id },
-      data: updateData as any,
+      data: updateData as Record<string, never>,
       select: {
         id: true,
         beforePhotos: true,

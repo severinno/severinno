@@ -43,7 +43,6 @@ import {
   UserPlus,
   FileText,
   Sparkles,
-  Bot,
 } from "lucide-react"
 
 import { useGeoStore } from "@/store/geo"
@@ -294,7 +293,7 @@ export default function Hero({ query, onQueryChange, onSearchSubmit, resultsAnch
               <Button
                 size="lg"
                 onClick={() => setAiWizardOpen(true)}
-                className="h-11 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 px-5 text-base font-bold text-zinc-950 shadow-xl hover:from-amber-300 hover:to-amber-400 transition-all hover:scale-[1.02]"
+                className="h-11 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 px-5 text-base font-bold text-zinc-950 shadow-xl transition-all hover:scale-[1.02] hover:from-amber-300 hover:to-amber-400"
               >
                 <Sparkles className="size-4" />
                 Orçar com IA Local

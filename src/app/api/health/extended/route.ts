@@ -1,12 +1,15 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { RedisGeoCache } from "@/lib/redis-geo"
 
 export const dynamic = "force-dynamic"
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   const startTime = performance.now()
-  const checks: Record<string, { status: "UP" | "DOWN" | "DEGRADED"; latencyMs: number; details?: string }> = {}
+  const checks: Record<
+    string,
+    { status: "UP" | "DOWN" | "DEGRADED"; latencyMs: number; details?: string }
+  > = {}
 
   let hasFailure = false
   let hasDegradation = false
@@ -47,7 +50,7 @@ export async function GET(req: NextRequest) {
       latencyMs: redisLatency,
       details: `${redisStats.cachedLocations} coordenadas no grid. Tipo: ${redisStats.engine}`,
     }
-  } catch (err) {
+  } catch {
     const redisLatency = Math.round(performance.now() - redisStart)
     hasDegradation = true
     checks.redisGeo = {
@@ -61,9 +64,12 @@ export async function GET(req: NextRequest) {
   const osrmStart = performance.now()
   try {
     const osrmUrl = process.env.OSRM_URL || "http://router.project-osrm.org"
-    const res = await fetch(`${osrmUrl}/route/v1/driving/-46.6565,-23.5615;-46.6855,-23.5670?overview=false`, {
-      signal: AbortSignal.timeout(2500),
-    })
+    const res = await fetch(
+      `${osrmUrl}/route/v1/driving/-46.6565,-23.5615;-46.6855,-23.5670?overview=false`,
+      {
+        signal: AbortSignal.timeout(2500),
+      },
+    )
     const osrmLatency = Math.round(performance.now() - osrmStart)
 
     if (res.ok) {
@@ -116,6 +122,6 @@ export async function GET(req: NextRequest) {
     },
     {
       status: hasFailure ? 503 : 200,
-    }
+    },
   )
 }

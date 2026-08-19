@@ -47,10 +47,11 @@ export async function GET() {
     })
 
     const gmv = bookings.reduce((sum, b) => sum + b.amount, 0)
-    const platformRevenue = Math.round(gmv * 0.10 * 100) / 100
+    const platformRevenue = Math.round(gmv * 0.1 * 100) / 100
     const completedCount = bookings.filter((b) => b.status === "COMPLETED").length
     const avgTicket = bookings.length > 0 ? Math.round((gmv / bookings.length) * 100) / 100 : 0
-    const completionRate = bookings.length > 0 ? Math.round((completedCount / bookings.length) * 100) : 0
+    const completionRate =
+      bookings.length > 0 ? Math.round((completedCount / bookings.length) * 100) : 0
 
     // 2. User base metrics
     const [clientsCount, providersCount, verifiedCount] = await Promise.all([
@@ -70,7 +71,11 @@ export async function GET() {
     }
 
     const topCategories = Array.from(categoryMap.entries())
-      .map(([title, data]) => ({ title, count: data.count, totalRevenue: Math.round(data.totalRevenue * 100) / 100 }))
+      .map(([title, data]) => ({
+        title,
+        count: data.count,
+        totalRevenue: Math.round(data.totalRevenue * 100) / 100,
+      }))
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
       .slice(0, 5)
 
@@ -85,7 +90,11 @@ export async function GET() {
     }
 
     const topDistricts = Array.from(districtMap.entries())
-      .map(([district, data]) => ({ district, count: data.count, totalGmv: Math.round(data.totalGmv * 100) / 100 }))
+      .map(([district, data]) => ({
+        district,
+        count: data.count,
+        totalGmv: Math.round(data.totalGmv * 100) / 100,
+      }))
       .sort((a, b) => b.totalGmv - a.totalGmv)
       .slice(0, 5)
 

@@ -10,14 +10,7 @@
 import * as React from "react"
 import maplibregl, { Map as MapLibreMap } from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
-import {
-  Loader2,
-  MapPin,
-  Pencil,
-  RotateCcw,
-  Save,
-  Trash2,
-} from "lucide-react"
+import { Loader2, MapPin, Pencil, RotateCcw, Save, Trash2 } from "lucide-react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { apiGet, apiPost } from "@/lib/api"
@@ -50,8 +43,7 @@ export function ProviderServiceZoneEditor() {
   })
 
   const saveMutation = useMutation({
-    mutationFn: (polygon: GeoJSONPolygon) =>
-      apiPost("/api/provider/service-zone", { polygon }),
+    mutationFn: (polygon: GeoJSONPolygon) => apiPost("/api/provider/service-zone", { polygon }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["provider-service-zone"] })
       toast.success("Zona de atendimento salva com sucesso!")
@@ -78,8 +70,7 @@ export function ProviderServiceZoneEditor() {
             type: "raster",
             tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
             tileSize: 256,
-            attribution:
-              '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
           },
         },
         layers: [
@@ -335,18 +326,19 @@ export function ProviderServiceZoneEditor() {
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          Desenhe no mapa os bairros e regiões exatas que deseja atender.
-          Clientes fora desta zona não poderão solicitar seus serviços.
+        <p className="text-muted-foreground text-xs leading-relaxed">
+          Desenhe no mapa os bairros e regiões exatas que deseja atender. Clientes fora desta zona
+          não poderão solicitar seus serviços.
         </p>
 
         {/* Map container */}
-        <div className="relative h-[400px] w-full rounded-xl overflow-hidden border">
+        <div className="relative h-[400px] w-full overflow-hidden rounded-xl border">
           <div ref={mapContainerRef} className="size-full" />
 
           {isDrawing && (
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white shadow-xl">
-              📍 Clique no mapa para adicionar pontos ({vertices.length} vértice{vertices.length !== 1 ? "s" : ""})
+            <div className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white shadow-xl">
+              📍 Clique no mapa para adicionar pontos ({vertices.length} vértice
+              {vertices.length !== 1 ? "s" : ""})
             </div>
           )}
         </div>
@@ -358,7 +350,7 @@ export function ProviderServiceZoneEditor() {
               onClick={startDrawing}
               variant="outline"
               size="sm"
-              className="gap-1.5 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              className="gap-1.5 border-emerald-300 text-xs text-emerald-700 hover:bg-emerald-50"
             >
               <Pencil className="size-3.5" />
               {data?.polygon ? "Redesenhar Zona" : "Desenhar Zona"}
@@ -369,7 +361,7 @@ export function ProviderServiceZoneEditor() {
                 onClick={saveZone}
                 disabled={vertices.length < 3 || saveMutation.isPending}
                 size="sm"
-                className="gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700"
+                className="gap-1.5 bg-emerald-600 text-xs hover:bg-emerald-700"
               >
                 {saveMutation.isPending ? (
                   <Loader2 className="size-3.5 animate-spin" />
@@ -392,7 +384,7 @@ export function ProviderServiceZoneEditor() {
                 onClick={cancelDrawing}
                 variant="ghost"
                 size="sm"
-                className="gap-1.5 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                className="gap-1.5 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
               >
                 <Trash2 className="size-3.5" />
                 Cancelar

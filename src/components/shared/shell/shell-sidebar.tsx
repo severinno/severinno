@@ -21,20 +21,13 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar"
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { WalletBalancePill } from "@/components/shared/wallet-balance-pill"
 import { type NavItem, type ShellUser } from "./types"
 
-const NAV_ITEM_ACTIVE =
-  "!bg-primary/5 !text-foreground font-medium hover:!bg-primary/8"
-const NAV_ITEM_INACTIVE =
-  "!text-muted-foreground hover:!bg-accent/60 hover:!text-foreground"
+const NAV_ITEM_ACTIVE = "!bg-primary/5 !text-foreground font-medium hover:!bg-primary/8"
+const NAV_ITEM_INACTIVE = "!text-muted-foreground hover:!bg-accent/60 hover:!text-foreground"
 const NAV_ICON_ACTIVE = "!text-primary"
 const NAV_ICON_INACTIVE = "!text-muted-foreground"
 
@@ -67,18 +60,16 @@ export function ShellSidebar({
   onLogout: () => void
 }) {
   return (
-    <Sidebar collapsible="icon" className="border-r border-border/50">
+    <Sidebar collapsible="icon" className="border-border/50 border-r">
       {/* Sidebar Header */}
       <SidebarHeader className="pb-0">
         <div className="flex items-center gap-3 px-3 pt-3 pb-4">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+          <span className="bg-primary text-primary-foreground flex size-9 shrink-0 items-center justify-center rounded-xl">
             <PanelIcon className="size-[18px]" />
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-bold tracking-tight text-foreground">
-              {APP_NAME}
-            </p>
-            <p className="truncate text-[11px] font-medium text-muted-foreground/70">
+            <p className="text-foreground truncate text-sm font-bold tracking-tight">{APP_NAME}</p>
+            <p className="text-muted-foreground/70 truncate text-[11px] font-medium">
               {panelLabel}
             </p>
           </div>
@@ -89,7 +80,7 @@ export function ShellSidebar({
       {/* Sidebar Nav */}
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-[11px] uppercase tracking-wider font-medium text-muted-foreground/70 px-3 h-7">
+          <SidebarGroupLabel className="text-muted-foreground/70 h-7 px-3 text-[11px] font-medium tracking-wider uppercase">
             Navegação
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -117,7 +108,7 @@ export function ShellSidebar({
                       />
                       <span className="truncate text-[14px]">{item.label}</span>
                       {item.badge != null && item.badge !== 0 ? (
-                        <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
+                        <span className="bg-primary text-primary-foreground ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold">
                           {item.badge}
                         </span>
                       ) : null}
@@ -133,24 +124,19 @@ export function ShellSidebar({
       {/* Sidebar Footer */}
       <SidebarFooter className="mt-auto">
         <SidebarSeparator className="mx-3 w-auto" />
-        <div className="flex items-center gap-3 rounded-lg border border-border/50 p-2.5">
+        <div className="border-border/50 flex items-center gap-3 rounded-lg border p-2.5">
           <Avatar className="size-8 shrink-0">
-            {user?.avatarUrl ? (
-              <AvatarImage src={user.avatarUrl} alt={user.name ?? ""} />
-            ) : null}
-            <AvatarFallback className="bg-primary text-[11px] font-semibold text-primary-foreground">
+            {user?.avatarUrl ? <AvatarImage src={user.avatarUrl} alt={user.name ?? ""} /> : null}
+            <AvatarFallback className="bg-primary text-primary-foreground text-[11px] font-semibold">
               {initials(user?.name)}
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-medium leading-tight text-foreground">
+            <p className="text-foreground truncate text-[13px] leading-tight font-medium">
               {user?.name ?? "Visitante"}
             </p>
             {user?.role ? (
-              <Badge
-                variant="secondary"
-                className="mt-1 h-4 px-1.5 text-[10px] font-medium"
-              >
+              <Badge variant="secondary" className="mt-1 h-4 px-1.5 text-[10px] font-medium">
                 {ROLE_LABELS[user.role]}
               </Badge>
             ) : null}
@@ -158,7 +144,7 @@ export function ShellSidebar({
           <Button
             variant="ghost"
             size="icon"
-            className="size-8 shrink-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+            className="text-muted-foreground size-8 shrink-0 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/30"
             onClick={onLogout}
             aria-label="Sair"
             title="Sair"
@@ -194,24 +180,21 @@ export function ShellMobileSheet({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="left"
-        className="w-[80vw] border-r border-border/50 p-0 sm:max-w-sm"
-      >
+      <SheetContent side="left" className="border-border/50 w-[80vw] border-r p-0 sm:max-w-sm">
         <SheetHeader className="sr-only">
           <SheetTitle>{panelLabel}</SheetTitle>
         </SheetHeader>
         <div className="flex h-full flex-col">
           {/* Mobile header */}
-          <div className="flex items-center gap-3 border-b border-border/50 px-4 py-4">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+          <div className="border-border/50 flex items-center gap-3 border-b px-4 py-4">
+            <span className="bg-primary text-primary-foreground flex size-9 shrink-0 items-center justify-center rounded-xl">
               <PanelIcon className="size-[18px]" />
             </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold tracking-tight text-foreground">
+              <p className="text-foreground truncate text-sm font-bold tracking-tight">
                 {APP_NAME}
               </p>
-              <p className="truncate text-[11px] font-medium text-muted-foreground/70">
+              <p className="text-muted-foreground/70 truncate text-[11px] font-medium">
                 {panelLabel}
               </p>
             </div>
@@ -220,7 +203,7 @@ export function ShellMobileSheet({
           {/* Mobile nav */}
           <ScrollArea className="flex-1">
             <div className="flex flex-col gap-px p-3">
-              <p className="mb-2 px-3 text-[11px] uppercase tracking-wider font-medium text-muted-foreground/70">
+              <p className="text-muted-foreground/70 mb-2 px-3 text-[11px] font-medium tracking-wider uppercase">
                 Navegação
               </p>
               {navItems.map((item) => {
@@ -235,7 +218,7 @@ export function ShellMobileSheet({
                       onNavigate(item.view)
                     }}
                     className={cn(
-                      "flex h-10 w-full min-w-0 items-center gap-3 rounded-lg px-3 text-sm font-normal outline-none transition-colors duration-150",
+                      "flex h-10 w-full min-w-0 items-center gap-3 rounded-lg px-3 text-sm font-normal transition-colors duration-150 outline-none",
                       active
                         ? "bg-primary/5 text-foreground font-medium"
                         : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -249,7 +232,7 @@ export function ShellMobileSheet({
                     />
                     <span className="truncate text-[14px]">{item.label}</span>
                     {item.badge != null && item.badge !== 0 ? (
-                      <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground">
+                      <span className="bg-primary text-primary-foreground ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold">
                         {item.badge}
                       </span>
                     ) : null}
@@ -268,24 +251,21 @@ export function ShellMobileSheet({
 
           {/* Mobile footer */}
           <div className="border-t p-3">
-            <div className="flex items-center gap-3 rounded-lg border border-border/50 p-2.5">
+            <div className="border-border/50 flex items-center gap-3 rounded-lg border p-2.5">
               <Avatar className="size-8 shrink-0">
                 {user?.avatarUrl ? (
                   <AvatarImage src={user.avatarUrl} alt={user.name ?? ""} />
                 ) : null}
-                <AvatarFallback className="bg-primary text-[11px] font-semibold text-primary-foreground">
+                <AvatarFallback className="bg-primary text-primary-foreground text-[11px] font-semibold">
                   {initials(user?.name)}
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-medium leading-tight text-foreground">
+                <p className="text-foreground truncate text-[13px] leading-tight font-medium">
                   {user?.name ?? "Visitante"}
                 </p>
                 {user?.role ? (
-                  <Badge
-                    variant="secondary"
-                    className="mt-1 h-4 px-1.5 text-[10px] font-medium"
-                  >
+                  <Badge variant="secondary" className="mt-1 h-4 px-1.5 text-[10px] font-medium">
                     {ROLE_LABELS[user.role]}
                   </Badge>
                 ) : null}
@@ -293,7 +273,7 @@ export function ShellMobileSheet({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-8 shrink-0 text-muted-foreground hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                className="text-muted-foreground size-8 shrink-0 hover:bg-rose-50 hover:text-rose-500 dark:hover:bg-rose-950/30"
                 onClick={() => {
                   onOpenChange(false)
                   onLogout()

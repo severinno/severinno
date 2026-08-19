@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { categorizeServiceRequest } from "@/lib/ai-categorizer"
 import { findBestProviders } from "@/lib/smart-match"
-import { badRequest, handleError } from "@/lib/api-server"
+import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { z } from "zod"
 

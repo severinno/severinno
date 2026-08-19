@@ -34,14 +34,23 @@ export async function GET(
 
     const booking = await db.booking.findUnique({
       where: { id: bookingId },
-      select: { clientId: true, providerId: true, client: { select: { name: true } }, provider: { select: { name: true } } },
+      select: {
+        clientId: true,
+        providerId: true,
+        client: { select: { name: true } },
+        provider: { select: { name: true } },
+      },
     })
 
     if (!booking) {
       throw notFound("Agendamento não encontrado")
     }
 
-    if (session.userId !== booking.clientId && session.userId !== booking.providerId && session.role !== "ADMIN") {
+    if (
+      session.userId !== booking.clientId &&
+      session.userId !== booking.providerId &&
+      session.role !== "ADMIN"
+    ) {
       throw forbidden("Acesso restrito aos participantes deste agendamento")
     }
 
@@ -50,7 +59,8 @@ export async function GET(
     return NextResponse.json({
       ok: true,
       bookingId,
-      counterpart: session.userId === booking.clientId ? booking.provider.name : booking.client.name,
+      counterpart:
+        session.userId === booking.clientId ? booking.provider.name : booking.client.name,
       messages,
     })
   } catch (e) {
@@ -92,7 +102,11 @@ export async function POST(
       throw notFound("Agendamento não encontrado")
     }
 
-    if (session.userId !== booking.clientId && session.userId !== booking.providerId && session.role !== "ADMIN") {
+    if (
+      session.userId !== booking.clientId &&
+      session.userId !== booking.providerId &&
+      session.role !== "ADMIN"
+    ) {
       throw forbidden("Acesso restrito aos participantes deste agendamento")
     }
 

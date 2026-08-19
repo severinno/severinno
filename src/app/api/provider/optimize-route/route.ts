@@ -35,10 +35,13 @@ export async function GET(request: Request) {
     })
 
     if (!provider?.lat || !provider?.lng) {
-      return NextResponse.json({
-        ok: false,
-        error: "Defina seu endereço base no perfil para usar o otimizador de rotas",
-      }, { status: 422 })
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Defina seu endereço base no perfil para usar o otimizador de rotas",
+        },
+        { status: 422 },
+      )
     }
 
     // 2. Fetch confirmed bookings for the day
@@ -84,10 +87,7 @@ export async function GET(request: Request) {
     }))
 
     // 4. Optimize the route
-    const result = await optimizeDailyRoute(
-      { lat: provider.lat, lng: provider.lng },
-      stops,
-    )
+    const result = await optimizeDailyRoute({ lat: provider.lat, lng: provider.lng }, stops)
 
     return NextResponse.json({
       ok: true,
