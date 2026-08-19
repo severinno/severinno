@@ -83,8 +83,8 @@ services:
     tmpfs:
       - /tmp:size=64M
     ports:
-      - "3200:3200"   # Tempo HTTP
-      - "4318:4318"   # OTLP HTTP
+      - "3200:3200" # Tempo HTTP
+      - "4318:4318" # OTLP HTTP
     volumes:
       - ./monitoring/tempo/tempo.yml:/etc/tempo/config.yml:ro
       - tempo_data:/var/tempo
