@@ -7,8 +7,6 @@
 import { haversineKm } from "@/lib/geo"
 import { findProvidersWithinRadius } from "@/lib/postgis"
 
-const REDIS_GEO_KEY = "geo:providers:active"
-
 // Fast in-process coordinate cache for instant responses (<1ms)
 const inMemoryGeoIndex = new Map<string, { lat: number; lng: number; updatedAt: number }>()
 
@@ -47,8 +45,6 @@ export async function searchNearbyProvidersFast(
   radiusKm: number = 25,
   limit: number = 50,
 ): Promise<Array<{ id: string; distanceKm: number; source: "fast-index" | "postgis" }>> {
-  const startTime = Date.now()
-
   // 1. Try In-Memory Spatial Index if populated
   if (inMemoryGeoIndex.size > 0) {
     const nearby: Array<{ id: string; distanceKm: number; source: "fast-index" }> = []
@@ -83,9 +79,7 @@ export async function searchNearbyProvidersFast(
 /**
  * Bulk seed the fast spatial index with providers
  */
-export function seedGeoIndex(
-  providers: Array<{ id: string; lat: number; lng: number }>,
-): number {
+export function seedGeoIndex(providers: Array<{ id: string; lat: number; lng: number }>): number {
   let count = 0
   for (const p of providers) {
     if (p.lat && p.lng) {
@@ -112,4 +106,3 @@ export const RedisGeoCache = {
   searchNearbyProvidersFast,
   seedGeoIndex,
 }
-

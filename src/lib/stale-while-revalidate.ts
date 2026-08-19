@@ -51,11 +51,7 @@ interface CacheEntry<T> {
  * )
  * ```
  */
-export async function withSWR<T>(
-  key: string,
-  fn: () => Promise<T>,
-  opts: SWROptions,
-): Promise<T> {
+export async function withSWR<T>(key: string, fn: () => Promise<T>, opts: SWROptions): Promise<T> {
   const { maxAge, maxStaleAge = maxAge * 5 } = opts
   const now = Date.now()
 

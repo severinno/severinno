@@ -151,7 +151,7 @@ export async function fetchProvidersData(
   deps: FetchProvidersDataDeps,
 ): Promise<ProviderDataItem[]> {
   const { hasGeo, latNum, lngNum, centerGeo } = geo
-  const { serviceFindMany, bookingGroupBy, userFindMany, queryRawUnsafe } = deps
+  const { serviceFindMany, userFindMany, queryRawUnsafe } = deps
 
   const [services, providerStatsMap] = await Promise.all([
     // Services for these providers (flat, no cartesian join)

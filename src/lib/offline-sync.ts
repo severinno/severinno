@@ -9,12 +9,7 @@
  */
 
 export type SyncActionType =
-  | "CHECKIN"
-  | "STATUS_UPDATE"
-  | "SEND_MESSAGE"
-  | "UPLOAD_PHOTO"
-  | "COMPLETE_JOB"
-  | "GENERATE_PIN"
+  "CHECKIN" | "STATUS_UPDATE" | "SEND_MESSAGE" | "UPLOAD_PHOTO" | "COMPLETE_JOB" | "GENERATE_PIN"
 
 export interface QueuedMutation<T = Record<string, unknown>> {
   id: string
@@ -77,7 +72,7 @@ export function enqueueOfflineMutation<T extends Record<string, unknown>>(
   action: SyncActionType,
   entityId: string,
   payload: T,
-  maxAttempts: number = 5
+  maxAttempts: number = 5,
 ): QueuedMutation<T> {
   const mutation: QueuedMutation<T> = {
     id: `sync-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -108,7 +103,7 @@ export function getPendingMutations(): QueuedMutation[] {
  * Processes the queue with a provided handler executor function
  */
 export async function processSyncQueue(
-  executor: (mutation: QueuedMutation) => Promise<boolean>
+  executor: (mutation: QueuedMutation) => Promise<boolean>,
 ): Promise<SyncProcessResult> {
   const pending = getPendingMutations()
   let succeeded = 0

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { setup } from "xstate"
 
 export type CheckoutContext = {

@@ -123,7 +123,7 @@ export async function getOrSetGeohashCache<T>(
   geohash: string,
   cacheKeySuffix: string,
   fetcher: () => Promise<T>,
-  ttlSeconds: number = 60
+  ttlSeconds: number = 60,
 ): Promise<{ data: T; source: "cache-hit" | "swr-stale" | "fresh-db" }> {
   const cacheKey = `geo:gh:${geohash}:${cacheKeySuffix}`
   const now = Date.now()

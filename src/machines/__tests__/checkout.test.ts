@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from "vitest"
 import { createActor } from "xstate"
 import { checkoutMachine } from "../checkout.machine"

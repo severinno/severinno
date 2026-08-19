@@ -26,7 +26,6 @@ import { PrismaClient } from "@prisma/client"
 // ── Configuration ──────────────────────────────────────────────────────────
 
 const REPLICA_URL = process.env.REPLICATE_DATABASE_URL
-const DIRECT_URL = process.env.DIRECT_URL
 
 // ── Replica Client ─────────────────────────────────────────────────────────
 
@@ -83,7 +82,7 @@ function getReplicaClient(): PrismaClient {
 export const dbRead = new Proxy({} as PrismaClient, {
   get(_target, prop) {
     const client = getReplicaClient()
-    const value = (client as Record<string | symbol, unknown>)[prop]
+    const value = (client as unknown as Record<string | symbol, unknown>)[prop]
 
     if (typeof value === "function") {
       return value.bind(client)

@@ -21,16 +21,9 @@ import logger from "./logger"
 
 const DURATION_BUCKETS = [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, Infinity]
 
-const requestDuration = new Map<
-  string,
-  { count: number; sum: number; buckets: number[] }
->()
+const requestDuration = new Map<string, { count: number; sum: number; buckets: number[] }>()
 
-export function recordRequestDuration(
-  path: string,
-  status: number,
-  durationMs: number,
-): void {
+export function recordRequestDuration(path: string, status: number, durationMs: number): void {
   const key = `${normalizePath(path)}:${status}`
   let entry = requestDuration.get(key)
 
@@ -85,7 +78,9 @@ export function exportMetrics(): string {
       )
     }
     lines.push(`http_request_duration_ms_count{path="${path}",status="${status}"} ${entry.count}`)
-    lines.push(`http_request_duration_ms_sum{path="${path}",status="${status}"} ${entry.sum.toFixed(2)}`)
+    lines.push(
+      `http_request_duration_ms_sum{path="${path}",status="${status}"} ${entry.sum.toFixed(2)}`,
+    )
   }
   lines.push("")
 

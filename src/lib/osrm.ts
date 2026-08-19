@@ -71,7 +71,10 @@ export async function calculateRouteAndEta(
           }
         }
       } catch (err) {
-        osrmLogger.warn({ err: (err as Error).message }, "OSRM routing unavailable, using urban fallback")
+        osrmLogger.warn(
+          { err: (err as Error).message },
+          "OSRM routing unavailable, using urban fallback",
+        )
       }
 
       // 2. High-precision Urban Road Network Fallback

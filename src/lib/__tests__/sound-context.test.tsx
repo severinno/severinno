@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Tests for useSoundEnabledPreference — resolves the effective soundEnabled
  * value by combining SoundContext override + auth store preference.

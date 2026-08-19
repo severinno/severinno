@@ -60,7 +60,7 @@ export async function createEmergencyDispatch(
     lng: number
     rating: number
     activeBookings: number
-  }>
+  }>,
 ): Promise<EmergencyDispatchResult> {
   // 1. Compute H3 cell and k-ring neighbors for spatial filtering
   const h3Cell = latLngToH3(request.lat, request.lng, 7)
@@ -84,7 +84,7 @@ export async function createEmergencyDispatch(
 
   const etaMatrix = await calculate1xNDistanceMatrix(
     { lat: request.lat, lng: request.lng },
-    destinations
+    destinations,
   )
 
   // 4. Score and rank candidates
@@ -96,7 +96,8 @@ export async function createEmergencyDispatch(
       // Scoring: 40% proximity + 30% rating + 30% availability
       const proximityScore = Math.max(0, 1 - eta.distanceKm / request.maxRadiusKm) * 40
       const ratingScore = (provider.rating / 5) * 30
-      const availabilityScore = provider.activeBookings === 0 ? 30 : Math.max(0, 30 - provider.activeBookings * 10)
+      const availabilityScore =
+        provider.activeBookings === 0 ? 30 : Math.max(0, 30 - provider.activeBookings * 10)
 
       return {
         providerId: provider.id,

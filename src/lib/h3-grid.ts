@@ -24,9 +24,6 @@ export interface H3Cluster<T = unknown> {
   boundary: Array<[number, number]> // [lng, lat] GeoJSON polygon ring
 }
 
-// Earth constants for spherical projections
-const EARTH_RADIUS_KM = 6371.0088
-
 // Base resolution scales (approximate hexagon side length in degrees)
 const RES_DEGREE_SCALES: Record<number, { latStep: number; lngStep: number }> = {
   6: { latStep: 0.032, lngStep: 0.038 },
@@ -141,7 +138,7 @@ export function h3GetKRing(h3Index: string, k: number = 1): string[] {
  */
 export function clusterByH3<T extends { lat: number; lng: number }>(
   items: T[],
-  resolution: number = 7
+  resolution: number = 7,
 ): H3Cluster<T>[] {
   const groups = new Map<string, T[]>()
 

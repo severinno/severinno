@@ -96,7 +96,7 @@ export async function apiRoute(
 ): Promise<NextResponse> {
   const startTime = performance.now()
   let status = 200
-  let path = request ? new URL(request.url).pathname : "unknown"
+  const path = request ? new URL(request.url).pathname : "unknown"
 
   try {
     const response = await handler(request!)

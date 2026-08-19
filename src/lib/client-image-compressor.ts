@@ -38,7 +38,7 @@ export function calculateProportionalDimensions(
   origWidth: number,
   origHeight: number,
   maxWidth: number = 1920,
-  maxHeight: number = 1920
+  maxHeight: number = 1920,
 ): { width: number; height: number } {
   if (origWidth <= 0 || origHeight <= 0) {
     return { width: maxWidth, height: maxHeight }
@@ -74,7 +74,7 @@ export function formatBytes(bytes: number): string {
  */
 export async function compressImageFile(
   file: File | Blob,
-  options: CompressionOptions = {}
+  options: CompressionOptions = {},
 ): Promise<Blob> {
   const opts = { ...DEFAULT_OPTIONS, ...options }
 
@@ -88,7 +88,7 @@ export async function compressImageFile(
     bitmap.width,
     bitmap.height,
     opts.maxWidth,
-    opts.maxHeight
+    opts.maxHeight,
   )
 
   const canvas = document.createElement("canvas")
@@ -106,7 +106,7 @@ export async function compressImageFile(
         resolve(blob || file)
       },
       opts.outputFormat,
-      opts.quality
+      opts.quality,
     )
   })
 }
@@ -118,14 +118,14 @@ export function computeCompressionMetrics(
   originalBytes: number,
   origWidth: number,
   origHeight: number,
-  options: CompressionOptions = {}
+  options: CompressionOptions = {},
 ): CompressionResult {
   const opts = { ...DEFAULT_OPTIONS, ...options }
   const { width, height } = calculateProportionalDimensions(
     origWidth,
     origHeight,
     opts.maxWidth,
-    opts.maxHeight
+    opts.maxHeight,
   )
 
   // WebP compression approximation: ~0.15 bytes per pixel at 0.82 quality

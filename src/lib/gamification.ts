@@ -31,7 +31,10 @@ export type GamificationProfile = {
   }
 }
 
-const TIER_THRESHOLDS: Record<ProviderTier, { min: number; next: ProviderTier | null; nextMin: number | null; label: string }> = {
+const TIER_THRESHOLDS: Record<
+  ProviderTier,
+  { min: number; next: ProviderTier | null; nextMin: number | null; label: string }
+> = {
   BRONZE: { min: 0, next: "SILVER", nextMin: 250, label: "Bronze" },
   SILVER: { min: 250, next: "GOLD", nextMin: 500, label: "Prata" },
   GOLD: { min: 500, next: "DIAMOND", nextMin: 800, label: "Ouro" },
@@ -107,7 +110,10 @@ export function calculateProviderTier(metrics: {
   if (config.nextMin !== null) {
     const currentTierRange = config.nextMin - config.min
     const pointsInTier = score - config.min
-    progressPercent = Math.min(100, Math.max(0, Math.round((pointsInTier / currentTierRange) * 100)))
+    progressPercent = Math.min(
+      100,
+      Math.max(0, Math.round((pointsInTier / currentTierRange) * 100)),
+    )
   }
 
   // Badges Calculation
