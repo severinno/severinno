@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest"
 import { getRoute, getMultiRoute, clearRouteCache } from "../routing"
 
+beforeEach(() => {
+  clearRouteCache()
+  vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("OSRM offline in unit test"))
+})
+
 afterEach(() => {
   clearRouteCache()
   vi.restoreAllMocks()
