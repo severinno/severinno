@@ -13,7 +13,7 @@
 {
   # ── Global settings ──────────────────────────────────────────────────
   # Email obrigatório para registro ACME (Let's Encrypt / ZeroSSL)
-  email admin@severinno.com.br
+  email admin@severinno.com
 
   # Admin API — apenas para monitoramento interno via Docker network
   admin 0.0.0.0:2019
@@ -30,10 +30,10 @@
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
-# DOMÍNIO PRINCIPAL — severinno.com.br
+# DOMÍNIO PRINCIPAL — severinno.com
 # ═══════════════════════════════════════════════════════════════════════════
 
-severinno.com.br, www.severinno.com.br {
+severinno.com, www.severinno.com {
   # ── Compressão (zstd prioritário, fallback gzip) ──────────────────────
   encode zstd gzip
 
@@ -64,7 +64,7 @@ severinno.com.br, www.severinno.com.br {
   #   manifest-src 'self'     → Manifest PWA apenas da origem
   #   img-src restrito        → Sem wildcard https:; apenas domínios específicos
   header {
-    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.tile.osrm.org https://s3.severinno.com.br https://*.s3.severinno.com.br; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.tile.openstreetmap.org https://nominatim.openstreetmap.org ws: wss: https://api.glitchtip.com wss://severinno.com.br https://glitchtip.severinno.com.br; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; worker-src 'self' blob:; manifest-src 'self'"
+    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.tile.osrm.org https://s3.severinno.com https://*.s3.severinno.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.tile.openstreetmap.org https://nominatim.openstreetmap.org ws: wss: https://api.glitchtip.com wss://severinno.com https://glitchtip.severinno.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; worker-src 'self' blob:; manifest-src 'self'"
   }
 
   # ── Healthcheck interno (Docker HEALTHCHECK) ────────────────────────
@@ -163,14 +163,14 @@ severinno.com.br, www.severinno.com.br {
 # SUBDOMÍNIO — GlitchTip (Error Monitoring — Self-hosted Sentry)
 # ═══════════════════════════════════════════════════════════════════════════
 # Para ativar:
-#   1. Aponte glitchtip.severinno.com.br para o IP do servidor
+#   1. Aponte glitchtip.severinno.com para o IP do servidor
 #   2. Inicie com: docker compose --profile glitchtip --env-file .env.glitchtip up -d
 #   3. ./scripts/glitchtip-setup.sh create-admin
 #   4. ./scripts/glitchtip-setup.sh create-project
 #   5. Copie o DSN para o .env.production
 # ═══════════════════════════════════════════════════════════════════════════
 
-glitchtip.severinno.com.br {
+glitchtip.severinno.com {
   encode zstd gzip
 
   header {
@@ -222,7 +222,7 @@ glitchtip.severinno.com.br {
 # Descomente para acessar o console MinIO do GlitchTip via navegador.
 # ═══════════════════════════════════════════════════════════════════════════
 
-# minio.severinno.com.br {
+# minio.severinno.com {
 #   encode zstd gzip
 #
 #   header {

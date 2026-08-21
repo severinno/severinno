@@ -42,8 +42,8 @@ const nextConfig: NextConfig = {
       // MinIO / local S3 (dev)
       { protocol: "http", hostname: "localhost" },
       // Production domain
-      { protocol: "https", hostname: "severinno.com.br" },
-      { protocol: "https", hostname: "*.severinno.com.br" },
+      { protocol: "https", hostname: "severinno.com" },
+      { protocol: "https", hostname: "*.severinno.com" },
       // Cloudflare R2 / common CDN patterns
       { protocol: "https", hostname: "*.r2.cloudflarestorage.com" },
       { protocol: "https", hostname: "*.cloudflare.com" },
