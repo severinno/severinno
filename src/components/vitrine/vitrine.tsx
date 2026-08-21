@@ -25,7 +25,6 @@ import { fetchCategories, fetchFavorites, fetchProviders, type Category } from "
 
 import Topbar from "./topbar"
 import Hero from "./hero"
-import SocialProofTicker from "./social-proof-ticker"
 import CategoryShowcase from "./category-showcase"
 import VitrineResults from "./vitrine-results"
 import HowItWorks from "./how-it-works"
@@ -203,10 +202,7 @@ export default function Vitrine() {
           }}
         />
 
-        {/* 2. SocialProofTicker — H1/H6: live activity, immediate trust */}
-        <SocialProofTicker />
-
-        {/* 3. CategoryShowcase — browse by category */}
+        {/* 2. CategoryShowcase — browse by category */}
         <CategoryShowcase
           categories={categories}
           activeId={filters.categoryId}

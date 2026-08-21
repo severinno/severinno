@@ -120,8 +120,23 @@ export type ApiError = {
 }
 
 // ---------------------------------------------------------------------------
-// Core fetch wrapper
+// Core fetch wrapper with timeout + retry
 // ---------------------------------------------------------------------------
+
+/** Default request timeout (15 seconds). */
+const DEFAULT_TIMEOUT_MS = 15_000
+
+/** Maximum retry attempts for network errors (status 0). */
+const MAX_RETRIES = 2
+
+/**
+ * Calculate jittered backoff delay.
+ * Returns a random value between base and base*1.5 to avoid thundering herd.
+ */
+function backoffDelay(attempt: number): number {
+  const base = Math.min(500 * Math.pow(2, attempt - 1), 4000)
+  return base + Math.random() * base * 0.5
+}
 
 function buildUrl(path: string, params?: Record<string, unknown>): string {
   if (!params) return path
@@ -160,36 +175,64 @@ async function request<T>(
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   }
 
-  let res: Response
-  try {
-    res = await fetch(url, init)
-  } catch (e) {
-    const err: ApiError = {
-      status: 0,
-      message: "Erro de rede. Verifique sua conexão e tente novamente.",
-      data: e,
+  let lastError: ApiError | null = null
+
+  for (let attempt = 1; attempt <= 1 + MAX_RETRIES; attempt++) {
+    // Create an abort signal with timeout
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)
+    init.signal = controller.signal
+
+    let res: Response
+    try {
+      res = await fetch(url, init)
+    } catch (e) {
+      clearTimeout(timeoutId)
+
+      // Network errors (status 0) are retryable
+      if (attempt <= MAX_RETRIES) {
+        const delay = backoffDelay(attempt)
+        await new Promise((resolve) => setTimeout(resolve, delay))
+        lastError = {
+          status: 0,
+          message: e instanceof DOMException && e.name === "AbortError"
+            ? "A requisição excedeu o tempo limite. Verifique sua conexão."
+            : "Erro de rede. Verifique sua conexão e tente novamente.",
+          data: e,
+        }
+        continue
+      }
+
+      throw lastError ?? {
+        status: 0,
+        message: "Erro de rede. Verifique sua conexão e tente novamente.",
+        data: e,
+      }
     }
-    throw err
+    clearTimeout(timeoutId)
+
+    const contentType = res.headers.get("content-type") ?? ""
+    let parsed: unknown = null
+    if (contentType.includes("application/json")) {
+      parsed = await res.json().catch(() => null)
+    }
+
+    if (!res.ok) {
+      const message =
+        (parsed && typeof parsed === "object" && "error" in parsed
+          ? String((parsed as { error?: unknown }).error)
+          : undefined) ??
+        (typeof parsed === "string" && parsed ? parsed : undefined) ??
+        `Erro ${res.status} ao processar a requisição.`
+      const err: ApiError = { status: res.status, message, data: parsed }
+      throw err
+    }
+
+    return parsed as T
   }
 
-  const contentType = res.headers.get("content-type") ?? ""
-  let parsed: unknown = null
-  if (contentType.includes("application/json")) {
-    parsed = await res.json().catch(() => null)
-  }
-
-  if (!res.ok) {
-    const message =
-      (parsed && typeof parsed === "object" && "error" in parsed
-        ? String((parsed as { error?: unknown }).error)
-        : undefined) ??
-      (typeof parsed === "string" && parsed ? parsed : undefined) ??
-      `Erro ${res.status} ao processar a requisição.`
-    const err: ApiError = { status: res.status, message, data: parsed }
-    throw err
-  }
-
-  return parsed as T
+  // Should never reach here — either return or throw inside the loop
+  throw lastError ?? { status: 0, message: "Falha inesperada na requisição." }
 }
 
 export function apiGet<T>(path: string, params?: Record<string, unknown>): Promise<T> {

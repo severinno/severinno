@@ -223,7 +223,7 @@ function degradeTier(failedTier: Tier): void {
       // Skip — still within debounce window
     } else {
       lastDegradationAlertAt = now
-      captureMessage(
+      void captureMessage(
         `[Redis] Múltiplas degradações — ${degradationCount} desde o início`,
         "error",
         {
@@ -306,7 +306,7 @@ async function tryReindexGiST(): Promise<void> {
         logger.warn({ indexName: name, err }, "[proactive] GiST REINDEX failed (non-blocking)")
       }
     }
-    captureMessage("[Redis] Proactive recovery — GiST REINDEX concluído", "info", {
+    void captureMessage("[Redis] Proactive recovery — GiST REINDEX concluído", "info", {
       degradationCount,
     })
   } catch (err) {
@@ -350,7 +350,7 @@ async function restartRedisClients(): Promise<void> {
     "[proactive] Redis clients restarted with clean configuration",
   )
 
-  captureMessage("[Redis] Proactive recovery — clients reiniciados", "info", {
+  void captureMessage("[Redis] Proactive recovery — clients reiniciados", "info", {
     degradationCount,
     newTier: configMode,
   })

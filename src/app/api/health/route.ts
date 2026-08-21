@@ -2,81 +2,23 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getCacheStats, getClient } from "@/lib/redis"
 import { getGeoSettings } from "@/lib/geo-settings"
+import { getHealth as getRabbitHealth } from "@/lib/queue"
 import logger from "@/lib/logger"
 import { getRequestId } from "@/lib/request-context"
 import pkg from "../../../../package.json"
 
-// Sentry is optional — only imported and used when SENTRY_DSN is configured
-// Dynamic import avoids ESM `require()` restriction; value is cached after first call.
-let _sentry: typeof import("@sentry/nextjs") | null | undefined = undefined
-async function getSentry(): Promise<typeof import("@sentry/nextjs") | null> {
-  if (_sentry !== undefined) return _sentry
-  try {
-    _sentry = await import("@sentry/nextjs")
-    return _sentry
-  } catch {
-    _sentry = null
-    return null
-  }
-}
+// In-memory cache (Redis-independent so it works even when Redis is down)
+let inMemoryCache: { timestamp: number; result: HealthResponse } | null = null
 
-/**
- * GET /api/health
- *
- * Lightweight health-check endpoint used by Docker HEALTHCHECK, load
- * balancers, and monitoring tools (UptimeRobot, Better Stack, etc.).
- *
- * Checks:
- *   1. App responds (trivial — we're already running)
- *   2. Database connectivity (SELECT 1 via Prisma)
- *   3. Redis connectivity (PING via ioredis)
- *   4. **Nominatim API** (OpenStreetMap geocoding)
- *   5. **ViaCEP API** (Brazilian postal code service)
- *   6. **PostGIS extension** availability
- *
- * Os checks de Nominatim/ViaCEP respeitam os kill-switches do painel admin
- * (nominatim_enabled / viacep_enabled): com o switch desligado o serviço é
- * reportado como "disabled" SEM chamada de rede, e o status geral continua
- * "ok" (desabilitar é decisão intencional, não degradação). As URLs e o
- * User-Agent usados no probe vêm das settings (base URL substituível).
- * Monitores estritos que comparam checks.nominatim === "ok" veem "disabled"
- * como não-ok: o geo.* detail ("kill-switch ...") distingue do erro real.
- *
- * Response shape:
- *   {
- *     status: "ok" | "degraded",
- *     timestamp: ISO string,
- *     uptime: seconds,
- *     checks: {
- *       database: "ok"|"error",
- *       redis: "ok"|"error",
- *       nominatim: "ok"|"disabled"|"error",
- *       viacep: "ok"|"disabled"|"error",
- *       postgis: "ok"|"error",
- *     },
- *     version: string (from package.json)
- *   }
- *
- * Degraded states (any geo service down) are reported to Sentry automatically
- * so the single-person team is alerted without manual monitoring.
- *
- * The middleware (src/middleware.ts) explicitly allows this route — no auth.
- */
-
-// Cache the health result for 15s so we don't hammer external APIs on every check
 const HEALTH_CACHE_TTL = 15
 
 /**
- * Reseta o cache in-memory. Usado pelos testes (padrão __testing__) e pelo
- * POST /api/admin/settings — quando um kill-switch/base URL muda, o próximo
- * /api/health reflete imediatamente em vez de servir o estado antigo por até 15s.
+ * Reseta o cache in-memory. Usado pelos testes e pelo POST /api/admin/settings
+ * para que a próxima requisição reflita imediatamente as mudanças.
  */
 export function resetHealthCache(): void {
   inMemoryCache = null
 }
-
-// In-memory cache (Redis-independent so it works even when Redis is down)
-let inMemoryCache: { timestamp: number; result: HealthResponse } | null = null
 
 type ServiceStatus = "ok" | "disabled" | "error"
 
@@ -84,19 +26,38 @@ type HealthResponse = {
   status: "ok" | "degraded"
   timestamp: string
   uptime: number
+  version: string
+  requestId: string | null
   checks: {
     database: ServiceStatus
     redis: ServiceStatus
+    rabbitmq: ServiceStatus
     nominatim: ServiceStatus
     viacep: ServiceStatus
     postgis: ServiceStatus
+    s3: ServiceStatus
+    opensearch: ServiceStatus
     tracing: ServiceStatus
+  }
+  details: {
+    database?: string
+    redis?: string
+    rabbitmq?: RabbitMQDetail
+    nominatim?: string
+    viacep?: string
+    postgis?: string
+    s3?: string
+    opensearch?: string
+    tracing?: string
   }
   cache: {
     hits: number
     misses: number
     total: number
     hitRatio: number | null
+    memoryStoreSize: number
+    activeTier: string
+    degradationCount: number
   }
   geo: {
     nominatim: string
@@ -108,12 +69,20 @@ type HealthResponse = {
     exporter: string
     sampleRate: number
   }
-  requestId: string | null
-  version: string
+}
+
+type RabbitMQDetail = {
+  status: string
+  connected: boolean
+  lastConnectedAt: number | null
+  reconnectAttempts: number
+  totalReconnectAttempts: number
+  heartbeat: number
+  uptimeSeconds: number | null
 }
 
 export async function GET(): Promise<NextResponse<HealthResponse>> {
-  // Try in-memory cache first (fast path — avoids touching DB/Redis at all)
+  // Try in-memory cache first (fast path)
   if (inMemoryCache && Date.now() - inMemoryCache.timestamp < HEALTH_CACHE_TTL * 1000) {
     return NextResponse.json(inMemoryCache.result, {
       status: inMemoryCache.result.status === "ok" ? 200 : 503,
@@ -126,102 +95,84 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
   const results = await Promise.allSettled([
     checkDatabase(),
     checkRedis(),
+    checkRabbitMQ(),
     checkNominatim(),
     checkViaCEP(),
     checkPostGIS(),
+    checkS3(),
+    checkOpenSearch(),
     checkTracing(),
   ])
 
-  const database = results[0].status === "fulfilled" ? results[0].value : ("error" as const)
-  const redis = results[1].status === "fulfilled" ? results[1].value : ("error" as const)
-  const nominatimStatus =
-    results[2].status === "fulfilled" ? results[2].value.status : ("error" as const)
-  const viacepStatus =
-    results[3].status === "fulfilled" ? results[3].value.status : ("error" as const)
-  const postgisStatus =
-    results[4].status === "fulfilled" ? results[4].value.status : ("error" as const)
-  const tracingStatus =
-    results[5].status === "fulfilled" ? results[5].value.status : ("error" as const)
+  const checks: HealthResponse["checks"] = {
+    database: resolveStatus(results[0]),
+    redis: resolveStatus(results[1]),
+    rabbitmq: resolveStatus(results[2]),
+    nominatim: resolveDetailStatus(results[3]),
+    viacep: resolveDetailStatus(results[4]),
+    postgis: resolveDetailStatus(results[5]),
+    s3: resolveStatus(results[6]),
+    opensearch: resolveStatus(results[7]),
+    tracing: resolveDetailStatus(results[8]),
+  }
 
-  const nominatimDetail =
-    results[2].status === "fulfilled" ? results[2].value.detail : "unreachable"
-  const viacepDetail = results[3].status === "fulfilled" ? results[3].value.detail : "unreachable"
-  const postgisDetail = results[4].status === "fulfilled" ? results[4].value.detail : "unreachable"
+  const details: HealthResponse["details"] = {
+    database: resolvedDetail(results[0]),
+    redis: resolvedDetail(results[1]),
+    rabbitmq: resolvedObject<RabbitMQDetail>(results[2]),
+    nominatim: resolvedDetail(results[3]),
+    viacep: resolvedDetail(results[4]),
+    postgis: resolvedDetail(results[5]),
+    s3: resolvedDetail(results[6]),
+    opensearch: resolvedDetail(results[7]),
+    tracing: resolvedDetail(results[8]),
+  }
 
-  // "disabled" (kill-switch) é decisão intencional — não conta como degradação.
+  // "disabled" (kill-switch) não conta como degradação
   const isHealthy = (s: ServiceStatus): boolean => s === "ok" || s === "disabled"
-  const allOk =
-    isHealthy(database) &&
-    isHealthy(redis) &&
-    isHealthy(nominatimStatus) &&
-    isHealthy(viacepStatus) &&
-    isHealthy(postgisStatus) &&
-    isHealthy(tracingStatus)
+  const allOk = Object.values(checks).every(isHealthy)
+
+  const cacheStats = getCacheStats()
 
   const response: HealthResponse = {
     status: allOk ? "ok" : "degraded",
     timestamp: new Date().toISOString(),
     uptime: Math.floor(process.uptime()),
-    checks: {
-      database,
-      redis,
-      nominatim: nominatimStatus,
-      viacep: viacepStatus,
-      postgis: postgisStatus,
-      tracing: tracingStatus,
+    version: pkg.version,
+    requestId: getRequestId(),
+    checks,
+    details,
+    cache: {
+      hits: cacheStats.hits,
+      misses: cacheStats.misses,
+      total: cacheStats.total,
+      hitRatio: cacheStats.hitRatio,
+      memoryStoreSize: cacheStats.memoryStoreSize,
+      activeTier: cacheStats.activeTier,
+      degradationCount: cacheStats.degradationCount,
     },
-    cache: getCacheStats(),
     geo: {
-      nominatim: nominatimDetail,
-      viacep: viacepDetail,
-      postgis: postgisDetail,
+      nominatim: details.nominatim ?? "unknown",
+      viacep: details.viacep ?? "unknown",
+      postgis: details.postgis ?? "unknown",
     },
     tracing: {
       enabled: process.env.OTEL_ENABLED === "true",
       exporter: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "console",
       sampleRate: parseFloat(process.env.OTEL_SAMPLE_RATE || "0.1"),
     },
-    requestId: getRequestId(),
-    version: pkg.version,
   }
 
-  // Report degraded state to Sentry automatically
+  // Report degraded state
   if (!allOk) {
-    const failedChecks = Object.entries(response.checks)
+    const failedChecks = Object.entries(checks)
       .filter(([, status]) => status === "error")
       .map(([name]) => name)
 
-    logger.error(
-      {
-        failedChecks,
-        nominatim: nominatimDetail,
-        viacep: viacepDetail,
-        postgis: postgisDetail,
-      },
-      "health check: geo services degraded",
-    )
-
-    const sentry = await getSentry()
-    if (sentry?.captureMessage) {
-      sentry.captureMessage(`Geo service(s) degraded: ${failedChecks.join(", ")}`, {
-        level: "warning",
-        extra: {
-          failedChecks,
-          nominatim: nominatimDetail,
-          viacep: viacepDetail,
-          postgis: postgisDetail,
-          uptime: process.uptime(),
-        },
-        tags: {
-          source: "health-check",
-          type: "geo-degraded",
-        },
-      })
-    }
+    logger.error({ failedChecks }, "health check: services degraded")
   }
 
-  // Cache the result (best-effort, in-memory only).
-  // Only cache healthy responses — degraded states should be visible immediately.
+  // Only cache healthy responses
   if (allOk) {
     inMemoryCache = { timestamp: Date.now(), result: response }
   } else {
@@ -236,28 +187,89 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
   })
 }
 
-async function checkDatabase(): Promise<ServiceStatus> {
+// ── Helper: resolve PromiseSettledResult ──────────────────────────────────
+
+function resolveStatus(result: PromiseSettledResult<unknown>): ServiceStatus {
+  if (result.status === "rejected") return "error"
+  const value = result.value as { status?: ServiceStatus }
+  if (value === null || value === undefined) return "error"
+  return value.status ?? "ok"
+}
+
+function resolveDetailStatus(result: PromiseSettledResult<unknown>): ServiceStatus {
+  if (result.status === "rejected") return "error"
+  const value = result.value as { status?: ServiceStatus }
+  return value?.status ?? "ok"
+}
+
+function resolvedDetail(result: PromiseSettledResult<unknown>): string {
+  if (result.status === "rejected") return "unreachable"
+  const value = result.value as { detail?: string }
+  return value?.detail ?? "ok"
+}
+
+function resolvedObject<T>(result: PromiseSettledResult<unknown>): T | undefined {
+  if (result.status === "rejected") return undefined
+  return result.value as T
+}
+
+// ── Individual checks ──────────────────────────────────────────────────────
+
+async function checkDatabase(): Promise<{ status: ServiceStatus; detail: string }> {
   try {
     await db.$queryRaw`SELECT 1`
-    return "ok"
+    return { status: "ok", detail: "connected" }
   } catch (err) {
     logger.error({ err }, "health: database check failed")
-    return "error"
+    return { status: "error", detail: (err as Error)?.message ?? "query failed" }
   }
 }
 
-async function checkRedis(): Promise<ServiceStatus> {
+async function checkRedis(): Promise<{ status: ServiceStatus; detail: string }> {
   try {
     const client = getClient()
-    if (!client) return "error"
+    if (!client) return { status: "error", detail: "no client available" }
     await client.ping()
-    return "ok"
-  } catch {
-    return "error"
+    return { status: "ok", detail: "pong" }
+  } catch (err) {
+    return { status: "error", detail: (err as Error)?.message ?? "ping failed" }
   }
 }
 
-/** Check Nominatim API availability (respeita o kill-switch nominatim_enabled). */
+async function checkRabbitMQ(): Promise<{ status: ServiceStatus; detail: RabbitMQDetail }> {
+  try {
+    const health = getRabbitHealth()
+    // Mapeia "reconnecting" para "error" (degradado mas não crítico)
+    const status: ServiceStatus =
+      health.status === "ok" ? "ok" : health.status === "reconnecting" ? "error" : "error"
+    return {
+      status,
+      detail: {
+        status: health.status,
+        connected: health.connected,
+        lastConnectedAt: health.lastConnectedAt,
+        reconnectAttempts: health.reconnectAttempts,
+        totalReconnectAttempts: health.totalReconnectAttempts,
+        heartbeat: health.heartbeat,
+        uptimeSeconds: health.uptimeSeconds,
+      },
+    }
+  } catch (err) {
+    return {
+      status: "error",
+      detail: {
+        status: "error",
+        connected: false,
+        lastConnectedAt: null,
+        reconnectAttempts: 0,
+        totalReconnectAttempts: 0,
+        heartbeat: 60,
+        uptimeSeconds: null,
+      },
+    }
+  }
+}
+
 async function checkNominatim(): Promise<{ status: ServiceStatus; detail: string }> {
   try {
     const settings = await getGeoSettings()
@@ -265,50 +277,36 @@ async function checkNominatim(): Promise<{ status: ServiceStatus; detail: string
       return { status: "disabled", detail: "kill-switch nominatim_enabled=false" }
     }
     const res = await fetch(`${settings.nominatimBaseUrl}/status.php?format=json`, {
-      headers: {
-        "User-Agent": settings.userAgent,
-      },
+      headers: { "User-Agent": settings.userAgent },
       signal: AbortSignal.timeout(5000),
     })
-    if (!res.ok) {
-      return { status: "error", detail: `HTTP ${res.status}` }
-    }
+    if (!res.ok) return { status: "error", detail: `HTTP ${res.status}` }
     const data = (await res.json()) as { status?: number; message?: string }
-    // Nominatim status: 0=OK, 1=degraded, 2=down
-    if (data.status === 0) {
-      return { status: "ok", detail: "online" }
-    }
+    if (data.status === 0) return { status: "ok", detail: "online" }
     return { status: "error", detail: data.message || `status ${data.status}` }
   } catch (e) {
     return { status: "error", detail: e instanceof Error ? e.message : "timeout" }
   }
 }
 
-/** Check ViaCEP API availability (respeita o kill-switch viacep_enabled). */
 async function checkViaCEP(): Promise<{ status: ServiceStatus; detail: string }> {
   try {
     const settings = await getGeoSettings()
     if (!settings.viacepEnabled) {
       return { status: "disabled", detail: "kill-switch viacep_enabled=false" }
     }
-    // Use a well-known CEP (CEP da Rua Augusta, SP)
     const res = await fetch(`${settings.viacepBaseUrl}/ws/01310100/json/`, {
       signal: AbortSignal.timeout(5000),
     })
-    if (!res.ok) {
-      return { status: "error", detail: `HTTP ${res.status}` }
-    }
+    if (!res.ok) return { status: "error", detail: `HTTP ${res.status}` }
     const data = (await res.json()) as { erro?: boolean }
-    if (data.erro) {
-      return { status: "error", detail: "unexpected error response" }
-    }
+    if (data.erro) return { status: "error", detail: "unexpected error response" }
     return { status: "ok", detail: "online" }
   } catch (e) {
     return { status: "error", detail: e instanceof Error ? e.message : "timeout" }
   }
 }
 
-/** Check PostGIS extension availability in the database. */
 async function checkPostGIS(): Promise<{ status: ServiceStatus; detail: string }> {
   try {
     const rows = await db.$queryRaw<Array<{ available: boolean }>>`
@@ -325,17 +323,102 @@ async function checkPostGIS(): Promise<{ status: ServiceStatus; detail: string }
   }
 }
 
-/** Check OpenTelemetry tracing status. */
+/**
+ * Check S3-compatible storage (MinIO / Cloudflare R2 / AWS S3).
+ * Attempts to list the configured bucket. If S3 is not configured, reports disabled.
+ */
+async function checkS3(): Promise<{ status: ServiceStatus; detail: string }> {
+  const endpoint = process.env.S3_ENDPOINT
+  const bucket = process.env.S3_BUCKET
+  const accessKey = process.env.S3_ACCESS_KEY
+  const secretKey = process.env.S3_SECRET_KEY
+
+  if (!endpoint || !bucket) {
+    return { status: "disabled", detail: "S3 not configured (S3_ENDPOINT or S3_BUCKET missing)" }
+  }
+
+  if (!accessKey || !secretKey) {
+    return { status: "disabled", detail: "S3 credentials not configured" }
+  }
+
+  try {
+    // Simple HTTP HEAD request against the bucket to check reachability
+    // Uses the S3-compatible API: HeadBucket
+    const url = `${endpoint}/${bucket}`
+    const res = await fetch(url, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(5000),
+      headers: {
+        // Basic health check — real operations use the SDK
+        "User-Agent": "Severinno-HealthCheck/1.0",
+      },
+    })
+
+    if (res.ok || res.status === 403) {
+      // 403 often means bucket exists but listing is denied (minimal IAM) — still "ok"
+      return { status: "ok", detail: `reachable (HTTP ${res.status})` }
+    }
+
+    return { status: "error", detail: `HTTP ${res.status}` }
+  } catch (e) {
+    return { status: "error", detail: e instanceof Error ? e.message : "timeout" }
+  }
+}
+
+/**
+ * Check OpenSearch cluster availability.
+ * If OPENSEARCH_URL is not configured, reports disabled.
+ */
+async function checkOpenSearch(): Promise<{ status: ServiceStatus; detail: string }> {
+  const opensearchUrl = process.env.OPENSEARCH_URL
+  if (!opensearchUrl) {
+    return { status: "disabled", detail: "OPENSEARCH_URL not configured" }
+  }
+
+  try {
+    const res = await fetch(`${opensearchUrl}/_cluster/health`, {
+      signal: AbortSignal.timeout(5000),
+      headers: {
+        "Accept": "application/json",
+        ...(process.env.OPENSEARCH_USERNAME
+          ? { Authorization: `Basic ${Buffer.from(
+              `${process.env.OPENSEARCH_USERNAME}:${process.env.OPENSEARCH_PASSWORD ?? ""}`,
+            ).toString("base64")}` }
+          : {}),
+      },
+    })
+
+    if (!res.ok) return { status: "error", detail: `HTTP ${res.status}` }
+
+    const data = (await res.json()) as {
+      status?: string
+      cluster_name?: string
+      number_of_nodes?: number
+    } | null
+
+    if (!data) return { status: "error", detail: "empty response" }
+
+    // OpenSearch cluster status: green, yellow, or red
+    // green = all good, yellow = degraded (replicas not assigned), red = critical
+    if (data.status === "green" || data.status === "yellow") {
+      return {
+        status: "ok",
+        detail: `cluster=${data.cluster_name ?? "unknown"} nodes=${data.number_of_nodes ?? "?"} status=${data.status}`,
+      }
+    }
+
+    return { status: "error", detail: `cluster status=${data.status}` }
+  } catch (e) {
+    return { status: "error", detail: e instanceof Error ? e.message : "timeout" }
+  }
+}
+
 async function checkTracing(): Promise<{ status: ServiceStatus; detail: string }> {
   try {
     const enabled = process.env.OTEL_ENABLED === "true"
     const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT
-    if (!enabled) {
-      return { status: "disabled", detail: "OTEL_ENABLED=false" }
-    }
-    if (!endpoint) {
-      return { status: "error", detail: "OTEL_EXPORTER_OTLP_ENDPOINT not set" }
-    }
+    if (!enabled) return { status: "disabled", detail: "OTEL_ENABLED=false" }
+    if (!endpoint) return { status: "error", detail: "OTEL_EXPORTER_OTLP_ENDPOINT not set" }
     return { status: "ok", detail: `endpoint=${endpoint}` }
   } catch (e) {
     return { status: "error", detail: e instanceof Error ? e.message : "check failed" }

@@ -24,6 +24,7 @@ import { syncRadiusCircle, removeRadiusCircle, type MapLike } from "@/lib/geo-ci
 import { Slider } from "@/components/ui/slider"
 import type { ProviderCard } from "@/lib/api"
 import type { GeoJSONSource, MapLayerMouseEvent } from "maplibre-gl"
+import "maplibre-gl/dist/maplibre-gl.css"
 
 type Props = {
   providers: ProviderCard[]
@@ -120,15 +121,16 @@ export default function ProvidersMap({
     if (!containerRef.current) return
     let cancelled = false
     let cleanup: (() => void) | undefined
+    let resizeObserver: ResizeObserver | undefined
 
     ;(async () => {
       const maplibregl = await import("maplibre-gl")
-      await import("maplibre-gl/dist/maplibre-gl.css")
       if (cancelled || !containerRef.current) return
       maplibreglRef.current = maplibregl
 
       const map = new maplibregl.Map({
         container: containerRef.current,
+        trackResize: true,
         style: {
           version: 8,
           sources: {
@@ -167,16 +169,39 @@ export default function ProvidersMap({
       map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left")
 
       map.on("load", () => {
+        map.resize()
         fitToBounds(map, providersRef.current, userLatRef.current, userLngRef.current)
       })
-      window.setTimeout(() => {
-        if (mapRef.current)
+
+      // Multiple resize passes to handle layout settle / animations
+      const t1 = window.setTimeout(() => {
+        if (mapRef.current) {
+          mapRef.current.resize()
           fitToBounds(mapRef.current, providersRef.current, userLatRef.current, userLngRef.current)
-      }, 50)
+        }
+      }, 100)
+
+      const t2 = window.setTimeout(() => {
+        if (mapRef.current) {
+          mapRef.current.resize()
+        }
+      }, 400)
+
+      if (containerRef.current && typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(() => {
+          if (mapRef.current) {
+            mapRef.current.resize()
+          }
+        })
+        resizeObserver.observe(containerRef.current)
+      }
 
       mapRef.current = map
 
       cleanup = () => {
+        window.clearTimeout(t1)
+        window.clearTimeout(t2)
+        resizeObserver?.disconnect()
         map.remove()
         mapRef.current = null
         markersRef.current = {}
@@ -278,14 +303,13 @@ export default function ProvidersMap({
   return (
     <div
       className={cn(
-        "bg-muted relative w-full overflow-hidden rounded-xl border",
-        "h-[400px] md:h-full",
+        "bg-muted relative h-full min-h-[400px] w-full overflow-hidden rounded-xl border",
         className,
       )}
       aria-label="Mapa de prestadores"
       role="application"
     >
-      <div ref={containerRef} className="absolute inset-0" />
+      <div ref={containerRef} className="absolute inset-0 h-full w-full" />
 
       {/* Radius slider overlay — only when user has location and onRadiusChange is provided */}
       {hasUserLocation && typeof radius === "number" && onRadiusChange ? (

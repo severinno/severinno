@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { checkGlobalRateLimit, globalRateLimitHeaders } from "@/lib/global-rate-limit"
+import { checkRouteRateLimit, routeRateLimitHeaders } from "@/lib/route-rate-limit"
 import { handleApiVersioning } from "@/lib/api-versioning"
 
 // ── Request ID generation (Edge-compatible) ──────────────────────────────
@@ -78,13 +79,30 @@ async function verifySession(
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("")
 
-  if (expected.length !== signature.length) return null
-  // Constant-time-ish compare (Edge doesn't have timingSafeEqual)
-  let mismatch = 0
-  for (let i = 0; i < expected.length; i++) {
-    mismatch |= expected.charCodeAt(i) ^ signature.charCodeAt(i)
+  // Constant-time comparison using Web Crypto API's timingSafeEqual.
+  // This is available in Edge Runtime (Next.js middleware) and prevents
+  // timing attacks that could leak the signature character by character.
+  const expectedBytes = encoder.encode(expected)
+  const signatureBytes = encoder.encode(signature)
+
+  // Pad the shorter buffer to avoid leaking length differences.
+  // timingSafeEqual requires both buffers to be the same length, so we
+  // compare the hex-encoded expected (64 chars) against a padded version
+  // of the received signature. If lengths differ, padding ensures the
+  // comparison still runs in constant time and fails.
+  const maxLen = Math.max(expectedBytes.byteLength, signatureBytes.byteLength)
+  const bufA = new Uint8Array(maxLen)
+  const bufB = new Uint8Array(maxLen)
+  bufA.set(expectedBytes)
+  bufB.set(signatureBytes)
+
+  try {
+    const equal = await crypto.subtle.timingSafeEqual(bufA.buffer, bufB.buffer)
+    if (!equal) return null
+  } catch {
+    // timingSafeEqual may throw if inputs are incompatible; fall back safely
+    return null
   }
-  if (mismatch !== 0) return null
 
   return { userId, role }
 }
@@ -249,6 +267,30 @@ export async function middleware(request: NextRequest) {
         addCorsHeaders(response429, request.headers.get("origin"))
         return response429
       }
+    }
+  }
+
+  // --- Route-specific rate limiting (sensitive endpoints) ---
+  // Segunda camada: limites mais restritivos para rotas sensíveis
+  // (login, register, forgot-password, push/subscribe, etc.).
+  // Aplica-se DEPOIS do global rate limit (que é uma proteção mais ampla).
+  // Se o global já barrou, não executamos este para evitar trabalho extra.
+  if (pathname.startsWith("/api/")) {
+    const routeResult = await checkRouteRateLimit(request)
+    if (routeResult && !routeResult.allowed) {
+      const body = JSON.stringify({
+        error: "Muitas tentativas para esta operação. Aguarde um minuto.",
+        retryAfter: Math.ceil((routeResult.reset - Date.now()) / 1000),
+      })
+      const response429 = new NextResponse(body, {
+        status: 429,
+        headers: {
+          "Content-Type": "application/json",
+          ...routeRateLimitHeaders(routeResult),
+        },
+      })
+      addCorsHeaders(response429, request.headers.get("origin"))
+      return response429
     }
   }
 

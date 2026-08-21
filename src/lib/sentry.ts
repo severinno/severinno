@@ -5,24 +5,34 @@ type Severity = "info" | "warn" | "error" | "fatal"
 
 const isProd = process.env.NODE_ENV === "production"
 
+// Cache for the lazy-loaded Sentry module to avoid repeated dynamic imports.
+let sentryModule: typeof import("@sentry/nextjs") | null | undefined = undefined
+
 /**
- * Lazy-load Sentry to avoid crashing when the DSN is not configured
- * (e.g. local dev without GlitchTip running).
+ * Lazy-load Sentry using dynamic import (ESM-safe).
+ *
+ * Unlike require(), import() is asynchronous and won't crash the module if
+ * the Sentry package is missing or corrupted — the error is caught gracefully.
+ *
+ * The result is cached after the first successful load for subsequent calls.
  */
-function getSentry() {
+async function getSentry(): Promise<typeof import("@sentry/nextjs") | null> {
+  if (sentryModule !== undefined) return sentryModule
   try {
-    return require("@sentry/nextjs") // eslint-disable-line @typescript-eslint/no-require-imports
+    sentryModule = await import("@sentry/nextjs")
+    return sentryModule
   } catch {
+    sentryModule = null
     return null
   }
 }
 
-export function captureError(error: unknown, context?: Record<string, unknown>) {
+export async function captureError(error: unknown, context?: Record<string, unknown>) {
   const message = error instanceof Error ? error.message : String(error)
   logger.error({ err: error, ...context }, message)
 
   if (!isProd) return
-  const Sentry = getSentry()
+  const Sentry = await getSentry()
   if (!Sentry) return
 
   Sentry.withScope(
@@ -37,7 +47,7 @@ export function captureError(error: unknown, context?: Record<string, unknown>) 
   )
 }
 
-export function captureMessage(
+export async function captureMessage(
   message: string,
   severity: Severity = "info",
   context?: Record<string, unknown>,
@@ -45,7 +55,7 @@ export function captureMessage(
   logger[severity](context ?? {}, message)
 
   if (!isProd) return
-  const Sentry = getSentry()
+  const Sentry = await getSentry()
   if (!Sentry) return
 
   Sentry.withScope((scope: { setExtras: (ctx: Record<string, unknown> | undefined) => void }) => {
@@ -65,7 +75,7 @@ export function captureMessage(
 
 export async function flushSentry(timeoutMs = 2000) {
   if (!isProd) return
-  const Sentry = getSentry()
+  const Sentry = await getSentry()
   if (!Sentry) return
 
   try {

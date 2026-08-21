@@ -6,10 +6,7 @@
  * Exibe até 3 prestadores mais próximos (< 100km) em cards destacados com
  * gradiente e badge "Perto de você" quando o usuário tem GPS ativo.
  *
- * Integra-se com o fluxo da vitrine: fica entre o hero/topbar e os resultados
- * principais, servindo como call-to-action geográfico.
- *
- * Data source: GET /api/providers?sort=distance&radius=100&limit=3
+ * Centralizado e integrado com a largura padrão da vitrine (max-w-7xl).
  */
 
 import * as React from "react"
@@ -78,25 +75,22 @@ export default function ProviderSpotlightGeo({ onQuote, onBook, onView, classNam
 
   return (
     <section
-      className={cn(
-        "dark:via-background relative overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-emerald-50/80 via-white to-emerald-100/30 dark:from-emerald-950/30 dark:to-emerald-900/10",
-        className,
-      )}
+      className={cn("mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-4 sm:py-6", className)}
       aria-label="Prestadores próximos a você"
     >
-      {/* Subtle decorative elements */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-16 -right-16 size-48 rounded-full bg-emerald-400/5 blur-3xl"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -bottom-8 -left-8 size-32 rounded-full bg-emerald-500/5 blur-2xl"
-      />
+      <div className="relative overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-emerald-50/70 via-card to-emerald-100/20 p-5 sm:p-6 shadow-xs dark:border-emerald-900/40 dark:from-emerald-950/20 dark:to-emerald-900/10">
+        {/* Subtle decorative elements */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-16 -right-16 size-48 rounded-full bg-emerald-400/5 blur-3xl"
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-8 -left-8 size-32 rounded-full bg-emerald-500/5 blur-2xl"
+        />
 
-      <div className="relative px-5 py-4 sm:px-6 sm:py-5">
         {/* Header */}
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-5 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <span className="inline-flex size-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
               <Navigation className="size-4" />
@@ -114,11 +108,11 @@ export default function ProviderSpotlightGeo({ onQuote, onBook, onView, classNam
 
         {/* Loading state */}
         {nearbyQuery.isLoading ? (
-          <div className="flex gap-3 overflow-hidden">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {Array.from({ length: 3 }).map((_, i) => (
               <div
                 key={i}
-                className="dark:bg-card min-w-[240px] flex-1 rounded-xl border bg-white p-4"
+                className="rounded-xl border border-border/60 bg-card p-4 shadow-xs"
               >
                 <div className="flex items-center gap-3">
                   <Skeleton className="size-10 rounded-full" />
@@ -137,7 +131,7 @@ export default function ProviderSpotlightGeo({ onQuote, onBook, onView, classNam
           </div>
         ) : (
           /* Provider cards — carousel on mobile, grid on desktop */
-          <div className="hidden sm:grid sm:grid-cols-3 sm:gap-3">
+          <div className="hidden sm:grid sm:grid-cols-3 sm:gap-4">
             {providers.map((provider) => (
               <SpotlightCard
                 key={provider.id}
@@ -174,7 +168,7 @@ export default function ProviderSpotlightGeo({ onQuote, onBook, onView, classNam
                   </CarouselItem>
                 ))}
               </CarouselContent>
-              <div className="mt-2 flex justify-center gap-1.5">
+              <div className="mt-3 flex justify-center gap-2">
                 <CarouselPrevious className="static size-7 translate-y-0" />
                 <CarouselNext className="static size-7 translate-y-0" />
               </div>
@@ -184,8 +178,8 @@ export default function ProviderSpotlightGeo({ onQuote, onBook, onView, classNam
 
         {/* Distance hint at the bottom */}
         {providers.length > 0 && !nearbyQuery.isLoading ? (
-          <p className="text-muted-foreground mt-3 text-center text-[11px]">
-            <MapPin className="mr-0.5 inline size-3 align-text-top text-emerald-600" />
+          <p className="text-muted-foreground mt-4 text-center text-[11px]">
+            <MapPin className="mr-1 inline size-3 align-text-top text-emerald-600" />
             Mostrando prestadores num raio de até 100 km da sua localização
           </p>
         ) : null}
@@ -228,8 +222,8 @@ function SpotlightCard({
   return (
     <div
       className={cn(
-        "group relative rounded-xl border bg-white p-3.5 shadow-sm transition-all duration-200",
-        "hover:border-emerald-200 hover:shadow-md",
+        "group relative flex flex-col justify-between rounded-xl border border-border/60 bg-card p-4 shadow-xs transition-all duration-200",
+        "hover:border-primary/40 hover:shadow-md",
         isNearby && "ring-1 ring-emerald-400/30",
       )}
     >
@@ -237,71 +231,73 @@ function SpotlightCard({
       {isNearby ? (
         <Badge
           variant="outline"
-          className="absolute -top-2 -right-2 border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] text-blue-700 shadow-sm"
+          className="absolute -top-2 -right-2 border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] text-blue-700 shadow-xs dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300"
         >
           <Navigation className="mr-0.5 size-3" />
           Perto de você
         </Badge>
       ) : null}
 
-      {/* Header: avatar + name + rating */}
-      <div className="flex items-start justify-between gap-2">
-        <button
-          type="button"
-          onClick={() => onView?.(provider.id)}
-          className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
-          aria-label={`Ver perfil de ${provider.name}`}
-        >
-          <Avatar className="size-10 shrink-0 rounded-md">
-            {provider.avatarUrl ? (
-              <AvatarImage src={provider.avatarUrl} alt={provider.name} />
-            ) : null}
-            <AvatarFallback className="rounded-md bg-emerald-100 text-xs text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium transition-colors group-hover:text-emerald-700">
-              {provider.name}
-            </p>
-            <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
-              {typeof provider.distanceKm === "number" ? (
-                <span className="inline-flex items-center gap-0.5">
-                  <MapPin className="size-3 text-emerald-600" />
-                  {formatDistance(provider.distanceKm)}
-                </span>
+      <div>
+        {/* Header: avatar + name + rating */}
+        <div className="flex items-start justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => onView?.(provider.id)}
+            className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+            aria-label={`Ver perfil de ${provider.name}`}
+          >
+            <Avatar className="size-10 shrink-0 rounded-lg">
+              {provider.avatarUrl ? (
+                <AvatarImage src={provider.avatarUrl} alt={provider.name} />
               ) : null}
-              {provider.city ? <span className="truncate">· {provider.city}</span> : null}
+              <AvatarFallback className="rounded-lg bg-emerald-100 text-xs font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold transition-colors group-hover:text-primary">
+                {provider.name}
+              </p>
+              <div className="text-muted-foreground flex items-center gap-1 text-[11px]">
+                {typeof provider.distanceKm === "number" ? (
+                  <span className="inline-flex items-center gap-0.5">
+                    <MapPin className="size-3 text-emerald-600" />
+                    {formatDistance(provider.distanceKm)}
+                  </span>
+                ) : null}
+                {provider.city ? <span className="truncate">· {provider.city}</span> : null}
+              </div>
             </div>
-          </div>
-        </button>
-        <span
-          className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold"
-          title="Avaliação"
-        >
-          <Star className="size-3.5 fill-amber-400 text-amber-400" />
-          {provider.rating > 0 ? provider.rating.toFixed(1) : "—"}
-        </span>
+          </button>
+          <span
+            className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold"
+            title="Avaliação"
+          >
+            <Star className="size-3.5 fill-amber-400 text-amber-400" />
+            {provider.rating > 0 ? provider.rating.toFixed(1) : "—"}
+          </span>
+        </div>
+
+        {/* Price hint */}
+        {cheapestPrice !== null ? (
+          <p className="text-muted-foreground mt-3 text-xs">
+            a partir de{" "}
+            <span className="font-bold text-emerald-700 dark:text-emerald-400">
+              {formatBRL(cheapestPrice)}
+            </span>
+          </p>
+        ) : null}
       </div>
 
-      {/* Price hint */}
-      {cheapestPrice !== null ? (
-        <p className="text-muted-foreground mt-2 text-xs">
-          a partir de{" "}
-          <span className="font-semibold text-emerald-700 dark:text-emerald-400">
-            {formatBRL(cheapestPrice)}
-          </span>
-        </p>
-      ) : null}
-
       {/* Actions */}
-      <div className="mt-2.5 flex items-center gap-2">
+      <div className="mt-4 flex items-center gap-2">
         <Button
           type="button"
           variant="outline"
           size="sm"
           onClick={() => onQuote?.(provider.id)}
-          className="h-8 flex-1 gap-1 text-xs"
+          className="h-8 flex-1 gap-1 text-xs font-medium"
         >
           <Wrench className="size-3" />
           Orçamento
@@ -310,7 +306,7 @@ function SpotlightCard({
           type="button"
           size="sm"
           onClick={() => onBook?.(provider.id)}
-          className="h-8 flex-1 gap-1 text-xs"
+          className="h-8 flex-1 gap-1 bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90"
         >
           Agendar
           <ChevronRight className="size-3" />

@@ -28,10 +28,10 @@
  */
 
 import * as React from "react"
+import Image from "next/image"
 import { useTheme } from "next-themes"
 import { motion, AnimatePresence } from "framer-motion"
 import {
-  MapPin,
   LocateFixed,
   Search,
   Menu,
@@ -408,55 +408,29 @@ export default function Topbar({
             scrolled ? "h-14" : "h-16",
           )}
         >
-          {/* ── Logo with hover bounce/pulse + "Verificado" badge (H6) ──── */}
+          {/* ── Logo ──── */}
           <button
             type="button"
             onClick={() => onSelectCategory(null)}
-            className="group hover:bg-primary/5 focus-visible:ring-ring flex shrink-0 items-center gap-2.5 rounded-xl px-1.5 py-1.5 transition-all outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            className="hover:opacity-85 focus-visible:ring-ring flex shrink-0 items-center rounded-lg px-1.5 py-1.5 transition-opacity outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
             aria-label="Severinno — página inicial"
           >
-            <motion.span
-              className="from-primary shadow-primary/25 group-hover:shadow-primary/30 relative flex size-9 items-center justify-center rounded-xl bg-gradient-to-br to-emerald-600 shadow-md transition-shadow duration-300 group-hover:shadow-lg"
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.95 }}
-              transition={{ type: "spring", stiffness: 400, damping: 20 }}
-            >
-              <motion.div
-                className="flex items-center justify-center"
-                whileHover={{
-                  y: [0, -3, 0],
-                  transition: {
-                    duration: 0.5,
-                    repeat: Infinity,
-                    repeatType: "loop",
-                    ease: "easeInOut",
-                  },
-                }}
-              >
-                <MapPin className="size-5 text-white" />
-              </motion.div>
-              <span className="absolute -right-0.5 -bottom-0.5 flex size-3 items-center justify-center rounded-full bg-emerald-400 shadow-sm">
-                <Sparkles className="size-2 text-white" />
-              </span>
-            </motion.span>
-            <span className="text-xl font-extrabold tracking-tight">
-              <span className="from-primary bg-gradient-to-r to-emerald-600 bg-clip-text text-transparent">
-                Sever
-              </span>
-              <span className="text-foreground">inno</span>
-            </span>
-            {/* "Verificado" shield badge (H6) */}
-            <motion.span
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.5, duration: 0.3 }}
-              className="hidden items-center gap-1 rounded-full bg-gradient-to-r from-emerald-100 to-teal-100 px-2 py-0.5 sm:inline-flex dark:from-emerald-900/40 dark:to-teal-900/40"
-            >
-              <ShieldCheck className="size-3 text-emerald-600 dark:text-emerald-400" />
-              <span className="text-[10px] font-bold tracking-wide text-emerald-700 dark:text-emerald-300">
-                Verificado
-              </span>
-            </motion.span>
+            <Image
+              src="/logo.png"
+              alt="Severinno"
+              width={140}
+              height={28}
+              className="h-7 w-auto object-contain dark:hidden"
+              priority
+            />
+            <Image
+              src="/logo-dark.png"
+              alt="Severinno"
+              width={140}
+              height={28}
+              className="hidden h-7 w-auto object-contain dark:block"
+              priority
+            />
           </button>
 
           {/* ── Desktop search — full bar or mini bar (H7: efficiency) ──── */}
@@ -1053,23 +1027,21 @@ export default function Topbar({
                 className="w-[88vw] rounded-l-2xl border-0 p-0 shadow-2xl sm:max-w-sm"
               >
                 <SheetHeader className="border-b px-6 py-4">
-                  <SheetTitle className="flex items-center gap-2.5">
-                    <span className="from-primary flex size-8 items-center justify-center rounded-xl bg-gradient-to-br to-emerald-600 shadow-sm">
-                      <MapPin className="size-4 text-white" />
-                    </span>
-                    <span className="text-lg font-bold">
-                      <span className="from-primary bg-gradient-to-r to-emerald-600 bg-clip-text text-transparent">
-                        Sever
-                      </span>
-                      <span>inno</span>
-                    </span>
-                    {/* Verificado badge in mobile menu too */}
-                    <span className="flex items-center gap-1 rounded-full bg-gradient-to-r from-emerald-100 to-teal-100 px-2 py-0.5 dark:from-emerald-900/40 dark:to-teal-900/40">
-                      <ShieldCheck className="size-3 text-emerald-600 dark:text-emerald-400" />
-                      <span className="text-[10px] font-bold tracking-wide text-emerald-700 dark:text-emerald-300">
-                        Verificado
-                      </span>
-                    </span>
+                  <SheetTitle className="flex items-center">
+                    <Image
+                      src="/logo.png"
+                      alt="Severinno"
+                      width={130}
+                      height={26}
+                      className="h-6 w-auto object-contain dark:hidden"
+                    />
+                    <Image
+                      src="/logo-dark.png"
+                      alt="Severinno"
+                      width={130}
+                      height={26}
+                      className="hidden h-6 w-auto object-contain dark:block"
+                    />
                   </SheetTitle>
                 </SheetHeader>
                 <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-6">

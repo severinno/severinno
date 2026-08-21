@@ -1,8 +1,8 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import {
-  MapPin,
   Search,
   Menu,
   LogOut,
@@ -78,22 +78,21 @@ export function TopbarMobileMenu({
         className="w-[88vw] rounded-l-2xl border-0 p-0 shadow-2xl sm:max-w-sm"
       >
         <SheetHeader className="border-b px-6 py-4">
-          <SheetTitle className="flex items-center gap-2.5">
-            <span className="from-primary flex size-8 items-center justify-center rounded-xl bg-gradient-to-br to-emerald-600 shadow-sm">
-              <MapPin className="size-4 text-white" />
-            </span>
-            <span className="text-lg font-bold">
-              <span className="from-primary bg-gradient-to-r to-emerald-600 bg-clip-text text-transparent">
-                Sever
-              </span>
-              <span>inno</span>
-            </span>
-            <span className="flex items-center gap-1 rounded-full bg-gradient-to-r from-emerald-100 to-teal-100 px-2 py-0.5 dark:from-emerald-900/40 dark:to-teal-900/40">
-              <ShieldCheck className="size-3 text-emerald-600 dark:text-emerald-400" />
-              <span className="text-[10px] font-bold tracking-wide text-emerald-700 dark:text-emerald-300">
-                Verificado
-              </span>
-            </span>
+          <SheetTitle className="flex items-center">
+            <Image
+              src="/logo.png"
+              alt="Severinno"
+              width={130}
+              height={26}
+              className="h-6 w-auto object-contain dark:hidden"
+            />
+            <Image
+              src="/logo-dark.png"
+              alt="Severinno"
+              width={130}
+              height={26}
+              className="hidden h-6 w-auto object-contain dark:block"
+            />
           </SheetTitle>
         </SheetHeader>
         <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-6">
