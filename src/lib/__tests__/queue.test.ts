@@ -17,6 +17,7 @@ const { mockChannel, mockConnection, mockDb } = vi.hoisted(() => {
     ack: vi.fn(),
     nack: vi.fn(),
     close: vi.fn(),
+    on: vi.fn(),
   }
   return {
     mockChannel: _channel,

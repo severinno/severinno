@@ -38,8 +38,17 @@ if [ ! -f "$PY_SCRIPT" ]; then
   exit 2
 fi
 
-PY="python3"
-command -v python3 >/dev/null 2>&1 || PY="python"
+if command -v python3 >/dev/null 2>&1 && python3 -c "import sys" >/dev/null 2>&1; then
+  PY="python3"
+elif command -v python >/dev/null 2>&1 && python -c "import sys" >/dev/null 2>&1; then
+  PY="python"
+elif [ -f "$SCRIPT_DIR/audit_blob_crlf_history.mjs" ]; then
+  PY="node"
+  PY_SCRIPT="$SCRIPT_DIR/audit_blob_crlf_history.mjs"
+else
+  echo "audit-blob-crlf-history: ERROR: python or node is required" >&2
+  exit 2
+fi
 
 ROOT="${CHECK_CRLF_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 cd "$ROOT"

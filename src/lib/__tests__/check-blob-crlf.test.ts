@@ -30,7 +30,7 @@ import { execFileSync, spawnSync } from "node:child_process"
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { resolveBash } from "@/lib/__tests__/helpers/bash-resolver"
+import { resolveBash, spawnDetector } from "@/lib/__tests__/helpers/bash-resolver"
 
 const GUARD = resolve(process.cwd(), "scripts/check-blob-crlf.sh")
 
@@ -226,9 +226,8 @@ describe("contrato de escopo (.ts fora do guard de blob)", () => {
     expect(indexEol(dir, "component.ts")).toBe("crlf")
     // ...mas o filtro `git ls-files --eol -z -- "*.sh" "*.bash"` do _scan()
     // exclui a extensão: chamado direto (sem o wrapper), exit 0, sem o .ts.
-    const res = spawnSync("python3", [resolve(process.cwd(), "scripts/check_blob_crlf.py")], {
+    const res = spawnDetector(resolve(process.cwd(), "scripts/check_blob_crlf.py"), [], {
       cwd: dir,
-      encoding: "utf8",
     })
     expect(res.status).toBe(0)
     expect(res.stdout).not.toContain("component.ts")

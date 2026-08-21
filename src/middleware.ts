@@ -79,30 +79,20 @@ async function verifySession(
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("")
 
-  // Constant-time comparison using Web Crypto API's timingSafeEqual.
-  // This is available in Edge Runtime (Next.js middleware) and prevents
-  // timing attacks that could leak the signature character by character.
+  // Constant-time comparison preventing timing attacks
   const expectedBytes = encoder.encode(expected)
   const signatureBytes = encoder.encode(signature)
 
-  // Pad the shorter buffer to avoid leaking length differences.
-  // timingSafeEqual requires both buffers to be the same length, so we
-  // compare the hex-encoded expected (64 chars) against a padded version
-  // of the received signature. If lengths differ, padding ensures the
-  // comparison still runs in constant time and fails.
-  const maxLen = Math.max(expectedBytes.byteLength, signatureBytes.byteLength)
-  const bufA = new Uint8Array(maxLen)
-  const bufB = new Uint8Array(maxLen)
-  bufA.set(expectedBytes)
-  bufB.set(signatureBytes)
-
-  try {
-    const equal = await crypto.subtle.timingSafeEqual(bufA.buffer, bufB.buffer)
-    if (!equal) return null
-  } catch {
-    // timingSafeEqual may throw if inputs are incompatible; fall back safely
+  if (expectedBytes.byteLength !== signatureBytes.byteLength) {
     return null
   }
+
+  let diff = 0
+  for (let i = 0; i < expectedBytes.byteLength; i++) {
+    diff |= expectedBytes[i] ^ signatureBytes[i]
+  }
+
+  if (diff !== 0) return null
 
   return { userId, role }
 }

@@ -35,16 +35,11 @@ export async function captureError(error: unknown, context?: Record<string, unkn
   const Sentry = await getSentry()
   if (!Sentry) return
 
-  Sentry.withScope(
-    (scope: {
-      setExtras: (ctx: Record<string, unknown> | undefined) => void
-      setTag: (key: string, value: string) => void
-    }) => {
-      if (context) scope.setExtras(context)
-      scope.setTag("source", "server")
-      Sentry.captureException(error)
-    },
-  )
+  Sentry.withScope((scope) => {
+    if (context) scope.setExtras(context)
+    scope.setTag("source", "server")
+    Sentry.captureException(error)
+  })
 }
 
 export async function captureMessage(
@@ -58,7 +53,7 @@ export async function captureMessage(
   const Sentry = await getSentry()
   if (!Sentry) return
 
-  Sentry.withScope((scope: { setExtras: (ctx: Record<string, unknown> | undefined) => void }) => {
+  Sentry.withScope((scope) => {
     if (context) scope.setExtras(context)
     Sentry.captureMessage(
       message,

@@ -27,7 +27,7 @@ import { execFileSync, spawnSync } from "node:child_process"
 import { mkdtempSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { resolveBash } from "@/lib/__tests__/helpers/bash-resolver"
+import { resolveBash, spawnDetector } from "@/lib/__tests__/helpers/bash-resolver"
 
 const GUARD = resolve(process.cwd(), "scripts/check-crlf.sh")
 const PY_DETECTOR = resolve(process.cwd(), "scripts/check_crlf.py")
@@ -139,7 +139,7 @@ describe("check_crlf.py (detector bruto)", () => {
     const loneCr = join(dir, "lone-cr.sh")
     writeFileSync(loneCr, "echo a\r\necho b\recho c\n", "utf8")
 
-    const res = spawnSync("python3", [PY_DETECTOR, "--fix", loneCr], { encoding: "utf8" })
+    const res = spawnDetector(PY_DETECTOR, ["--fix", loneCr])
     expect(res.status).toBe(0)
     const fixed = readFileSync(loneCr, "utf8")
     expect(fixed).toBe("echo a\necho b\necho c\n")
@@ -151,7 +151,7 @@ describe("check_crlf.py (detector bruto)", () => {
     const bad = join(dir, "bad.sh")
     writeFileSync(bad, "#!/usr/bin/env bash\r\necho hi\r\n", "utf8")
 
-    const res = spawnSync("python3", [PY_DETECTOR, bad], { encoding: "utf8" })
+    const res = spawnDetector(PY_DETECTOR, [bad])
     expect(res.status).toBe(1)
     expect(res.stdout.trim()).toBe(bad)
   })
@@ -164,7 +164,7 @@ describe("check_crlf.py (detector bruto)", () => {
     const missing = join(dir, "nope.sh")
     expect(existsSync(missing)).toBe(false)
 
-    const res = spawnSync("python3", [PY_DETECTOR, ok, missing], { encoding: "utf8" })
+    const res = spawnDetector(PY_DETECTOR, [ok, missing])
     expect(res.status).toBe(0)
   })
 })
@@ -185,7 +185,7 @@ describe("contrato de escopo (.ts fora dos guards CRLF)", () => {
     const ts = join(dir, "component.ts")
     writeFileSync(ts, "export const a = 1;\r\nexport const b = 2;\r\n", "utf8")
 
-    const res = spawnSync("python3", [PY_DETECTOR, ts], { encoding: "utf8" })
+    const res = spawnDetector(PY_DETECTOR, [ts])
     expect(res.status).toBe(1)
     expect(res.stdout.trim()).toBe(ts)
   })
@@ -196,7 +196,7 @@ describe("contrato de escopo (.ts fora dos guards CRLF)", () => {
     const ts = join(dir, "component.ts")
     writeFileSync(ts, "export const a = 1;\r\nexport const b = 2;\r\n", "utf8")
 
-    const fix = spawnSync("python3", [PY_DETECTOR, "--fix", ts], { encoding: "utf8" })
+    const fix = spawnDetector(PY_DETECTOR, ["--fix", ts])
     expect(fix.status).toBe(0)
     const fixed = readFileSync(ts, "utf8")
     expect(fixed).toBe("export const a = 1;\nexport const b = 2;\n")

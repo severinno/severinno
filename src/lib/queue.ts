@@ -79,10 +79,7 @@ export let totalReconnectAttempts = 0
 
 // ── Connection factory ─────────────────────────────────────────────────────
 
-async function connectWithRetry(
-  url: string,
-  attempt: number,
-): Promise<Connection> {
+async function connectWithRetry(url: string, attempt: number): Promise<Connection> {
   // Exponential backoff with jitter: 1s, 2s, 4s, 8s, 16s, capped at 30s
   const delay = Math.min(1000 * Math.pow(2, attempt), MAX_RECONNECT_DELAY)
   const jitter = delay * (0.5 + Math.random() * 0.5)
@@ -265,6 +262,14 @@ async function ensureChannel(): Promise<Channel> {
   return chanPromise
 }
 
+/**
+ * Returns the shared singleton RabbitMQ channel (or initializes it if not yet open).
+ * Exported for health checks and consumers that require direct channel access.
+ */
+export async function getChannel(): Promise<Channel> {
+  return ensureChannel()
+}
+
 // ── Publish ────────────────────────────────────────────────────────────────
 
 export type PublishOptions = {
@@ -281,7 +286,10 @@ export async function publish(opts: PublishOptions): Promise<void> {
       contentType: "application/json",
     })
   } catch (err) {
-    logger.error({ err: (err as Error).message, routingKey: opts.routingKey }, "rabbitmq publish error")
+    logger.error(
+      { err: (err as Error).message, routingKey: opts.routingKey },
+      "rabbitmq publish error",
+    )
     // Don't reconnect here — the connection/channel events handle that.
   }
 }
@@ -416,14 +424,22 @@ export type RabbitMQHealth = {
  */
 export function getHealth(): RabbitMQHealth {
   return {
-    status: connectionStatus === "connected" ? "ok" : connectionStatus === "reconnecting" ? "reconnecting" : connectionStatus === "connecting" ? "disconnected" : "error",
+    status:
+      connectionStatus === "connected"
+        ? "ok"
+        : connectionStatus === "reconnecting"
+          ? "reconnecting"
+          : connectionStatus === "connecting"
+            ? "disconnected"
+            : "error",
     connected: connectionStatus === "connected",
     connectionStatus,
     lastConnectedAt,
     reconnectAttempts,
     totalReconnectAttempts,
     heartbeat: HEARTBEAT,
-    uptimeSeconds: lastConnectedAt !== null ? Math.floor((Date.now() - lastConnectedAt) / 1000) : null,
+    uptimeSeconds:
+      lastConnectedAt !== null ? Math.floor((Date.now() - lastConnectedAt) / 1000) : null,
   }
 }
 
