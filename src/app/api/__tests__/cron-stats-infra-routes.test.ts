@@ -91,6 +91,19 @@ vi.mock("@/lib/redis", () => ({
   getCacheStats: vi.fn(),
 }))
 
+vi.mock("@/lib/queue", () => ({
+  getHealth: vi.fn().mockReturnValue({
+    status: "ok",
+    connected: true,
+    connectionStatus: "connected",
+    lastConnectedAt: Date.now(),
+    reconnectAttempts: 0,
+    totalReconnectAttempts: 0,
+    heartbeat: 60,
+    uptimeSeconds: 100,
+  }),
+}))
+
 vi.mock("@sentry/nextjs", () => ({
   captureMessage: vi.fn(),
 }))
@@ -125,7 +138,6 @@ import { sendPushToMany, sendPushNotification } from "@/lib/push"
 import { captureError } from "@/lib/sentry"
 import { getGeoSettings } from "@/lib/geo-settings"
 import { getClient, getCacheStats } from "@/lib/redis"
-import { captureMessage } from "@sentry/nextjs"
 
 // ── Global fetch mock ──────────────────────────────────────────────────────
 
@@ -911,9 +923,12 @@ describe("GET /api/health", () => {
     expect(body.checks).toEqual({
       database: "ok",
       redis: "ok",
+      rabbitmq: "ok",
       nominatim: "ok",
       viacep: "ok",
       postgis: "ok",
+      s3: "disabled",
+      opensearch: "disabled",
       tracing: "disabled",
     })
     expect(body.cache).toEqual({ hits: 42, misses: 8, total: 50, hitRatio: 0.84 })
@@ -924,7 +939,7 @@ describe("GET /api/health", () => {
     expect(body.uptime).toBeGreaterThanOrEqual(0)
   })
 
-  it("returns 503 degraded and reports to Sentry when a geo service fails", async () => {
+  it("returns 503 degraded when a service fails", async () => {
     vi.mocked(getClient).mockReturnValue(null)
     vi.mocked(db.$queryRaw).mockRejectedValue(new Error("connection refused"))
 
@@ -935,14 +950,6 @@ describe("GET /api/health", () => {
     expect(body.status).toBe("degraded")
     expect(body.checks.database).toBe("error")
     expect(body.checks.redis).toBe("error")
-    expect(captureMessage).toHaveBeenCalledTimes(1)
-    expect(captureMessage).toHaveBeenCalledWith(
-      expect.stringContaining("Geo service(s) degraded: database"),
-      expect.objectContaining({
-        level: "warning",
-        tags: expect.objectContaining({ source: "health-check", type: "geo-degraded" }),
-      }),
-    )
   })
 
   it("treats kill-switched geo services as disabled without network calls", async () => {

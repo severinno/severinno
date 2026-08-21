@@ -41,6 +41,19 @@ vi.mock("@/lib/logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
+vi.mock("@/lib/queue", () => ({
+  getHealth: vi.fn().mockReturnValue({
+    status: "ok",
+    connected: true,
+    connectionStatus: "connected",
+    lastConnectedAt: Date.now(),
+    reconnectAttempts: 0,
+    totalReconnectAttempts: 0,
+    heartbeat: 60,
+    uptimeSeconds: 100,
+  }),
+}))
+
 // ── Mock geo-settings (kill-switches) ─────────────────────────────────────
 const mockGetGeoSettings = vi.fn()
 

@@ -30,8 +30,16 @@ fi
 echo "Scanning .ts files for UTF-8 validity..."
 echo ""
 
-python3 "$PYTHON_SCRIPT" "$@"
-EXIT_CODE=$?
+if command -v python3 >/dev/null 2>&1 && python3 -c "import sys" >/dev/null 2>&1; then
+  python3 "$PYTHON_SCRIPT" "$@"
+  EXIT_CODE=$?
+elif [ -f "$SCRIPT_DIR/check_utf8.mjs" ]; then
+  node "$SCRIPT_DIR/check_utf8.mjs" "$@"
+  EXIT_CODE=$?
+else
+  echo "ERROR: python3 or node is required"
+  exit 2
+fi
 
 echo ""
 if [ $EXIT_CODE -eq 0 ]; then
