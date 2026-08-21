@@ -130,6 +130,7 @@ git push origin main
 docker compose -f docker-compose.prod.yml logs caddy
 
 # Verificar se as portas 80/443 estão acessíveis externamente
+
 curl -I http://<IP_VPS>
 ```
 
@@ -138,6 +139,7 @@ curl -I http://<IP_VPS>
 ```bash
 # Ver logs detalhados
 docker compose -f docker-compose.prod.yml logs --tail=50 app
+
 
 # Entrar no container
 docker compose -f docker-compose.prod.yml exec app sh
