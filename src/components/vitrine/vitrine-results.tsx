@@ -451,10 +451,11 @@ function MapView({
   onRadiusChange?: (radius: number) => void
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_400px]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       {/* Map */}
-      <div className="order-1 h-[500px] overflow-hidden rounded-xl lg:sticky lg:top-32 lg:order-2 lg:h-[calc(100vh-12rem)]">
+      <div className="order-1 h-[480px] w-full min-h-[400px] overflow-hidden rounded-xl lg:sticky lg:top-32 lg:order-2 lg:h-[calc(100vh-12rem)]">
         <ProvidersMap
+          className="h-full w-full"
           providers={providers}
           userLat={userLat}
           userLng={userLng}

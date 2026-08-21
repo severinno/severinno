@@ -77,7 +77,7 @@ services:
 
   # ── OpenSearch (Full-text search — Apache 2.0) ──────────────────────────
   opensearch:
-    image: opensearchproject/opensearch:2.19
+    image: opensearchproject/opensearch:2.19.0
     environment:
       discovery.type: single-node
       DISABLE_INSTALL_DEMO_CONFIG: "true"
@@ -161,7 +161,7 @@ services:
 
   # ── MinIO Bucket Setup (one-shot init) ─────────────────────────────────
   minio-init:
-    image: minio/mc:RELEASE.2024-12-18T13-15-44Z
+    image: minio/mc:latest
     depends_on:
       minio:
         condition: service_healthy
@@ -177,7 +177,7 @@ services:
   # Start with: docker compose -f docker-compose.dev.yml --profile routing up -d osrm
   # Setup data first: bash scripts/setup-osrm.sh
   osrm:
-    image: ghcr.io/project-osrm/osrm-backend:v26.7.3
+    image: ghcr.io/project-osrm/osrm-backend:latest
     ports:
       - "127.0.0.1:5000:5000"
     volumes:

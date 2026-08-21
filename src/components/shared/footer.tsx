@@ -18,6 +18,7 @@
  */
 
 import * as React from "react"
+import Image from "next/image"
 import {
   MapPin,
   Github,
@@ -218,11 +219,14 @@ export default function Footer({ className }: { className?: string }) {
         <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {/* Column 1: Brand + Social */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <span className="flex size-9 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
-                <MapPin className="size-5" />
-              </span>
-              <span className="text-lg font-bold tracking-tight text-white">{APP_NAME}</span>
+            <div className="flex items-center">
+              <Image
+                src="/logo-dark.png"
+                alt="Severinno"
+                width={140}
+                height={28}
+                className="h-7 w-auto object-contain"
+              />
             </div>
             <p className="max-w-xs text-sm text-slate-400">
               Marketplace de serviços com geolocalização. Encontre prestadores verificados, próximos
