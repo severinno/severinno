@@ -36,7 +36,13 @@ COPY . .
 # Skip type-check in build (already done in CI); Prisma generate is required.
 ENV SKIP_TYPESCRIPT_CHECK=true
 ENV BUILD_STANDALONE=true
-RUN bun run db:generate && \
+# 1. Definimos a versão
+ARG BUN_VERSION=1.0.36
+
+# 2. O Bloco Único (Tudo em um só RUN para não perder o rastro do comando)
+RUN npm install -g bun@${BUN_VERSION} && \
+    bun install --frozen-lockfile && \
+    bun run db:generate && \
     bun run build
 
 # ── Stage 3: Production runtime ─────────────────────────────────────────────
