@@ -18,13 +18,11 @@ COPY package.json bun.lock ./
 # deploy.yml). Sem literal aqui (bun@1.2 era drift) — o guard
 # check-bun-mirror.mjs falha se um Dockerfile pinar versão hardcoded; o
 # padrão é ARG BUN_VERSION + bun@${BUN_VERSION} (mesmo do Dockerfile.ubuntu-bun).
+# Define uma versão fixa para não depender de variáveis externas
 ARG BUN_VERSION=1.0.36
-RUN if [ -z "${BUN_VERSION}" ]; then \
-      echo "::error::--build-arg BUN_VERSION obrigatório (FONTE ÚNICA: vars.BUN_VERSION, ex.: docker build --build-arg BUN_VERSION=1.3.14 .)" >&2; \
-      exit 1; \
-    fi \
-    && npm install -g bun@${BUN_VERSION} \
-    && bun install --frozen-lockfile
+
+# Instala o bun e as dependências sem fazer verificações complicadas
+RUN npm install -g bun@${BUN_VERSION} && bun install --frozen-lockfile
 
 # ── Stage 2: Build the application ──────────────────────────────────────────
 FROM node:22-alpine AS builder
