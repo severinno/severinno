@@ -5,7 +5,7 @@
 # =============================================================================
 
 # ── Stage 1: Install dependencies ───────────────────────────────────────────
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 LABEL stage=deps
 
 RUN apk add --no-cache libc6-compat curl
@@ -25,7 +25,7 @@ ARG BUN_VERSION=1.0.36
 RUN npm install -g bun@${BUN_VERSION} && bun install --frozen-lockfile
 
 # ── Stage 2: Build the application ──────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 LABEL stage=builder
 
 WORKDIR /app
@@ -46,7 +46,7 @@ RUN npm install -g bun@${BUN_VERSION} && \
     bun run build
 
 # ── Stage 3: Production runtime ─────────────────────────────────────────────
-FROM node:22-alpine AS runner
+FROM node:26-alpine AS runner
 LABEL stage=runner
 
 RUN addgroup --system --gid 1001 severinno && \
