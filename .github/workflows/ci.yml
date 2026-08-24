@@ -34,7 +34,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -48,7 +48,7 @@ jobs:
     name: TypeCheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -98,7 +98,7 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -133,7 +133,7 @@ jobs:
     needs: [lint, typecheck, utf8-check, quality-gate, test]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -147,7 +147,7 @@ jobs:
           BUILD_STANDALONE: "true"
 
       # Archive the standalone build for deployment
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: standalone-build
           path: .next/standalone/
@@ -161,7 +161,7 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: standalone-build
           path: .next/standalone/

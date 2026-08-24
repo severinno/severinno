@@ -66,7 +66,7 @@ jobs:
     timeout-minutes: 2
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -118,7 +118,7 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -128,7 +128,7 @@ jobs:
           bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -314,7 +314,7 @@ jobs:
       # ── Upload artifact ────────────────────────────────────────────────
       - name: Upload benchmark artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: geo-gist-benchmark
           path: |
