@@ -989,8 +989,9 @@ ZERO referências** — a política é ZERO-órfãs.
    referenciado em código): `@types/*` e `bun-types` (tipos via `tsconfig types`),
    `@vitest/coverage-v8` (provider v8 da config), `sharp` (runtime implícito da
    otimização de imagem do Next — remover quebraria produção), `husky`/`lint-staged`
-   (CLIs via `prepare`/pre-commit) e `prisma` (CLI de generate/migrate). A entrada
-   precisa da razão no header do guard — sem razão não entra.
+   (CLIs via `prepare`/pre-commit), `prisma` (CLI de generate/migrate) e
+   `@opentelemetry/*` (SDK de telemetria habilitado via env vars em runtime). A
+   entrada precisa da razão no header do guard — sem razão não entra.
 
 **5 deps órfãs removidas no bump 0.4.0** (08/2026, item #4 da auditoria —
 verificadas com ZERO hits em código/config/scripts, `bun install` só removeu,

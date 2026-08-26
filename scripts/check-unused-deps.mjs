@@ -67,9 +67,13 @@
 //   - prisma        — CLI via "prisma" nos scripts (generate/migrate) e
 //                     prisma.config.ts (o schema .prisma não referencia o
 //                     pacote npm; o runtime é @prisma/client, que É importado)
+//   - @opentelemetry/* — SDK de telemetria (tracer, exporter, resources):
+//                     usado via config de telemetria em runtime (não
+//                     importado diretamente em código de produção;
+//                     habilitado/desabilitado via env vars)
 //
 // (allowlist final: @types/*, bun-types, @vitest/coverage-v8, sharp, husky,
-// lint-staged, prisma — documentadas com o PORQUÊ acima.)
+// lint-staged, prisma, @opentelemetry/* — documentadas com o PORQUÊ acima.)
 //
 // O guard tem --update? NÃO — diferente dos guards de baseline (secrets,
 // jsdom, bun-audit), aqui a política é ZERO órfãs: adicionou dep, use-a ou
