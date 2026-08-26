@@ -109,7 +109,7 @@ jobs:
   # ── Coverage Badge ────────────────────────────────────────────────────────
   # Generates the shields.io-style coverage badge SVG.
   # Note: The badge commit step remains in parent workflows (ci.yml,
-  # release-deploy.yml) because they run on the same runner as the test
+  # deploy.yml) because they run on the same runner as the test
   # job and can git-commit the generated file. This job uploads the badge
   # as an artifact for downstream use if needed.
   coverage-badge:

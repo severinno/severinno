@@ -2,7 +2,7 @@
  * quality-gate-workflow.test.ts
  *
  * Snapshot test do reusable workflow .github/workflows/quality-gate.yml
- * (on: workflow_call — chamado por ci.yml/deploy/release-deploy) — consolida
+ * (on: workflow_call — chamado por ci.yml/deploy) — consolida
  * os validadores de qualidade: barrel-lint, security-audit, coverage-gaps,
  * cache-manifest e coverage-badge.
  *

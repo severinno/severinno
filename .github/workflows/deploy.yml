@@ -1,9 +1,29 @@
+# =============================================================================
+# Deploy — Severinno Marketplace
+#
+# Unified CI/CD pipeline for continuous deployment (main) and releases (tags).
+#
+# Triggers:
+#   - push to main       → docker-test smoke gate → build → migrate → deploy
+#   - push tags v*       → full CI gates → build → migrate → deploy
+#   - workflow_dispatch   → same as main push
+#
+# Merged from deploy.yml + release-deploy.yml (22 → 19 workflows).
+# =============================================================================
+
 name: Deploy
 
 on:
   push:
     branches: [main]
+    tags:
+      - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.3.1) — optional, only for manual releases"
+        required: false
+        type: string
 
 concurrency:
   group: deploy-${{ github.ref }}
@@ -14,18 +34,17 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  # UTF-8 Encoding Gate ----------------------------------------------------
-  # Fast gate: <10s. Validates encoding before building Docker images.
+  # ── Fast Gates (always run, <30s) ────────────────────────────────────────
+
   utf8-check:
     uses: ./.github/workflows/utf8-check.yml
 
-  # Seed Test Hooks Guard ------------------------------------------------
   # Fail-closed gate ANTES de tocar produção: SEED_SPEC_PATCH e
   # PROD_SEED_ALLOW_DEV são hooks TEST-ONLY (E2Es de seed contra banco
   # efêmero). Se aparecerem neste workflow de produção (ou em qualquer
-  # workflow fora do allowlist de teste), o guard falha e o deploy não roda
-  # — impedindo que o seed de produção rode com spec patchado ou com o
-  # guard de produção contornado.
+  # workflow fora do allowlist de teste em scripts/check-seed-hooks.mjs), o
+  # guard falha e o deploy não roda — impedindo que o seed de produção rode
+  # com spec patchado ou com o guard de produção contornado.
   seed-hooks-guard:
     name: Seed Test Hooks Guard
     runs-on: ubuntu-latest
@@ -35,11 +54,79 @@ jobs:
       - name: Check no seed test hooks in non-test workflows
         run: node scripts/check-seed-hooks.mjs
 
-  # Docker Build & Test (local, no push) ----------------------------------
+  # ── Quality Gates (tag pushes only) ──────────────────────────────────────
+
+  quality-gate:
+    if: github.ref_type == 'tag'
+    uses: ./.github/workflows/quality-gate.yml
+
+  lint:
+    name: Lint
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+
+  typecheck:
+    name: TypeCheck
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - run: bun run db:generate
+
+      # O heap default do Node (~1.4GB) é insuficiente para o tsc neste
+      # codebase — o processo crasha com 'JavaScript heap out of memory'
+      # (SIGABRT exit 134, não erro de tipo). Reproduzido e validado em
+      # 08/2026: com 4096MB o typecheck passa limpo em ~2min.
+      - name: Type check
+        run: bunx tsc --noEmit
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+
+  test:
+    name: Tests
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+      - run: bun install --frozen-lockfile
+      - run: bun run test:run
+
+      - name: Generate coverage badge (for commit)
+        run: npx tsx scripts/coverage-badge.ts --save
+
+      - name: Commit updated badge (tag pushes only)
+        if: github.ref_type == 'tag' && github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/badge-coverage.svg
+          if git diff --cached --quiet; then
+            echo "No changes to badge — skipping commit"
+          else
+            git commit -m "chore: update coverage badge [skip ci]"
+            git push
+          fi
+
+  # ── Docker Build & Test (main push only — smoke test) ────────────────────
   # Builds the image locally and runs a health-check smoke test to catch
   # runtime regressions before the image is pushed to the registry.
   docker-test:
     name: Docker Build & Test
+    if: github.ref_type != 'tag'
     needs: [utf8-check, seed-hooks-guard]
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -83,7 +170,14 @@ jobs:
 
       - name: Start container
         run: |
-          docker run -d             --name severinno-test             -p 3000:3000             -e DATABASE_URL="postgresql://severinno:severinno@postgis:5432/severinno"             -e REDIS_URL=""             -e SESSION_SECRET="test-secret-at-least-32-chars-long"             -e NODE_ENV=production             severinno-test:latest
+          docker run -d \
+            --name severinno-test \
+            -p 3000:3000 \
+            -e DATABASE_URL="postgresql://severinno:severinno@postgis:5432/severinno" \
+            -e REDIS_URL="" \
+            -e SESSION_SECRET="test-secret-at-least-32-chars-long" \
+            -e NODE_ENV=production \
+            severinno-test:latest
 
       - name: Wait for health check
         run: |
@@ -107,8 +201,20 @@ jobs:
         if: always()
         run: docker rm -f severinno-test 2>/dev/null || true
 
+  # ── Docker Build & Push (depends on the appropriate gate) ─────────────────
+
   build:
-    needs: [docker-test]
+    name: Docker Build & Push
+    needs:
+      - utf8-check
+      - seed-hooks-guard
+      - docker-test
+      - quality-gate
+      - lint
+      - typecheck
+      - test
+    # Skip if neither docker-test nor quality-gate succeeded (skipped counts as success)
+    if: always() && !failure() && !cancelled()
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -133,8 +239,11 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=,format=short
             type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
 
       - name: Build and push app image
         uses: docker/build-push-action@v6
@@ -157,16 +266,21 @@ jobs:
           context: .
           file: Dockerfile.worker
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:worker-${{ steps.meta.outputs.version }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:worker-${{ steps.meta.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:worker-latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
             BUN_VERSION=${{ vars.BUN_VERSION }}
 
+  # ── Deploy ────────────────────────────────────────────────────────────────
+
   migrate:
-    needs: build
+    name: DB Migrations
+    needs: [build]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    if: always() && needs.build.result == 'success'
 
     steps:
       - name: Run database migrations
@@ -182,9 +296,10 @@ jobs:
               docker compose run --rm --no-deps app bunx prisma db push --accept-data-loss
 
   deploy:
-    needs: migrate
+    name: Deploy to VPS
+    needs: [migrate]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    if: always() && needs.migrate.result == 'success'
 
     steps:
       - name: Deploy via SSH
@@ -196,18 +311,20 @@ jobs:
           script: |
             set -e
             cd ${{ secrets.DEPLOY_PATH }}
+
             echo "Pulling new images..."
             docker compose pull app realtime email-worker notification-worker
+
             echo "Restarting services..."
             docker compose up -d --no-deps --remove-orphans app realtime
             docker compose --profile workers up -d --no-deps email-worker notification-worker
+
             echo "Waiting for health check..."
             for i in $(seq 1 12); do
               sleep 5
               HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health)
               if [ "$HTTP_CODE" = "200" ]; then
                 echo "Health check passed (HTTP $HTTP_CODE)"
-                # Clean up old images
                 docker image prune -f
                 exit 0
               fi

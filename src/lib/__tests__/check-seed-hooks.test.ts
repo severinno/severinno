@@ -103,7 +103,11 @@ describe("checkWorkflowFile", () => {
     expect(violations[0]).toMatchObject({ file: "deploy.yml", hook: "PROD_SEED_ALLOW_DEV" })
   })
 
-  it("release-deploy.yml com hook falha (fail-closed)", () => {
+  it("workflow antigo release-deploy (mesclado no deploy.yml) com hook falha — fail-closed", () => {
+    // release-deploy.yml foi mesclado em deploy.yml (consolidação 22→19
+    // workflows). O nome continua NÃO estar no allowlist, então o guard
+    // continua protegendo contra ele — validando que o allowlist é
+    // fail-closed mesmo para nomes históricos.
     const violations = checkWorkflowFile("release-deploy.yml", DEPLOY_WITH_HOOK)
     expect(violations).toHaveLength(1)
     expect(violations[0].file).toBe("release-deploy.yml")
@@ -125,11 +129,11 @@ describe("scanWorkflows", () => {
     const files = [
       { name: "deploy.yml", content: DEPLOY_WITH_HOOK },
       { name: "seed-guards.yml", content: DEPLOY_WITH_HOOK }, // allowlist → ignorado
-      { name: "release-deploy.yml", content: "run: |\n  SEED_SPEC_PATCH=1 bun seed.ts\n" },
+      { name: "benchmark-events.yml", content: "run: |\n  SEED_SPEC_PATCH=1 bun seed.ts\n" },
     ]
     const violations = scanWorkflows(files)
     expect(violations).toHaveLength(2)
-    expect(violations.map((v) => v.file)).toEqual(["deploy.yml", "release-deploy.yml"])
+    expect(violations.map((v) => v.file)).toEqual(["deploy.yml", "benchmark-events.yml"])
   })
 
   it("lista vazia → sem violações", () => {

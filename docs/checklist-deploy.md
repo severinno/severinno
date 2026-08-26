@@ -246,7 +246,7 @@ curl -s http://localhost:3000/api/health/detailed | jq .
 
 ### Opção B — Deploy via CI/CD (após configurar GitHub Secrets)
 
-O workflow `.github/workflows/release-deploy.yml` é acionado automaticamente ao fazer push de uma tag `v*`:
+O workflow `.github/workflows/deploy.yml` é acionado automaticamente ao fazer push de uma tag `v*`:
 
 ```bash
 git tag v1.0.1

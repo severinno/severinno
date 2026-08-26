@@ -5,7 +5,7 @@
 //
 // CI guard que falha se os hooks de TESTE do seed (SEED_SPEC_PATCH e
 // PROD_SEED_ALLOW_DEV) aparecerem em workflows de PRODUÇÃO (ex.: deploy.yml,
-// release-deploy.yml) ou em QUALQUER workflow fora do allowlist de teste.
+// ou em QUALQUER workflow fora do allowlist de teste.
 //
 // Por que existe: SEED_SPEC_PATCH é o hook de cenários de update/rename usado
 // pelos E2Es de seed (test-seed-{prod,dev}-e2e.ts) e PROD_SEED_ALLOW_DEV é o
@@ -16,7 +16,7 @@
 //
 // Fail-closed: os hooks só são permitidos nos workflows de teste listados em
 // ALLOWED_SEED_TEST_WORKFLOWS. Qualquer outro workflow (deploy.yml,
-// release-deploy.yml, ou um workflow NOVO criado por engano) que os referencie
+// ou um workflow NOVO criado por engano) que os referencie
 // falha o guard — um workflow novo de teste legítimo deve ser adicionado ao
 // allowlist EXPLICITAMENTE (com review), nunca silenciosamente.
 //

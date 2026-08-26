@@ -134,7 +134,7 @@ jobs:
   #
   # Por que existe: esses hooks são TEST-ONLY (E2Es de seed contra banco
   # efêmero). Se vazarem para um workflow de produção (deploy.yml,
-  # release-deploy.yml, ou um workflow novo), o seed de produção pode rodar
+  # ou um workflow novo), o seed de produção pode rodar
   # com spec patchado ou com o guard de produção contornado — o pipeline de
   # deploy precisa bloquear isso antes de tocar o servidor.
   seed-hooks-guard:
@@ -404,7 +404,7 @@ jobs:
   # os demais fast gates.
   #
   # Por que dedicado: o mesmo guard também roda no reusable utf8-check.yml
-  # (chamado por ci/deploy/e2e-cache/release-deploy), mas o PR-check só
+  # (chamado por ci/deploy), mas o PR-check só
   # chamava o mutation test (que prova SENSIBILIDADE do guard em repo
   # fixture) — o guard REAL nunca era executado contra o working tree do PR
   # (o job inline utf8-check roda apenas check-utf8.sh). Um PR que quebre a
