@@ -63,7 +63,7 @@
 //                      DURO (--max) NÃO muda — o drift é detectado por DESVIO
 //                      RELATIVO à mediana (uma regressão lenta 40→55→75→90s
 //                      acende o soft cedo sem tocar o duro de 240s). Fonte do
-//                      histórico: gh run list --workflow benchmark-weekly.yml
+//                      histórico: gh run list --workflow benchmark-scheduled.yml
 //                      + jobs API por run (o MESMO mecanismo do
 //                      measure-mutation-trend.mjs — buildRunListJq
 //                      compartilhado) nos modos --run/--act-log; --history-file
@@ -104,7 +104,7 @@
 //                      anteriores — o mesmo default do trend guard). Exige
 //                      --fail-drift.
 //   --workflow NAME    workflow cujos runs fornecem o histórico da mediana
-//                      (default benchmark-weekly.yml — o job semanal que
+//                      (default benchmark-scheduled.yml — o job semanal que
 //                      executa o seed-guards.yml via reusable; os runs
 //                      ANTERIORES do seed-guards estão nos runs do caller).
 //   --history-file FILE JSON { runs: [{ runId, durationSecs }] } dos runs
@@ -178,7 +178,7 @@
 //     dryRun?|error? } } — publicado SÓ quando zone != 'fail' (budget passou)
 // Em erro: { runId, repo, found: false, error: '<mensagem>' }
 //
-// Job semanal (benchmark-weekly.yml — mutation-coord-timing): mede, gateia E
+// Job semanal (benchmark-scheduled.yml — mutation-coord-timing): mede, gateia E
 // a faixa soft DERIVA da mediana dos últimos 4 runs (sem baseline var):
 //   node scripts/measure-mutation-timing.mjs --run <id> --repo <owner/repo> --max 240 --warn-median 4 --warn-margin 0.2 --json /tmp/mutation-timing.json
 // Job PR (pr-check.yml — mutation-coord-timing-guard, antes do merge): GATE DE
@@ -310,7 +310,7 @@ export function buildRunListJq(currentRunId) {
 
 /**
  * Busca as durações do MESMO step de mutation nos N runs ANTERIORES do
- * benchmark-weekly.yml via gh run list + jobs API por run (o MESMO mecanismo
+ * benchmark-scheduled.yml via gh run list + jobs API por run (o MESMO mecanismo
  * do trend guard — fonte única da derivação da mediana). Runs onde o step não
  * apareceu (falhou antes / contrato antigo) simplesmente não entram.
  *
@@ -352,7 +352,7 @@ export function fetchHistoryDurationsViaGh(currentRunId, repo, window, branch, w
       "run",
       "list",
       "--workflow",
-      workflow ?? "benchmark-weekly.yml",
+      workflow ?? "benchmark-scheduled.yml",
       "--repo",
       repo,
       "--branch",
@@ -439,7 +439,7 @@ function parseArgs(argv) {
     warnMargin: null, // headroom sobre a mediana (default 0.2 quando --warn-median)
     failDrift: null, // PCT de drift relativo vs mediana que FALHA (--max vira teto absoluto)
     window: null, // janela do histórico do --fail-drift (default 4)
-    workflow: null, // workflow do histórico (default benchmark-weekly.yml)
+    workflow: null, // workflow do histórico (default benchmark-scheduled.yml)
     historyFile: null, // histórico determinístico (modo TESTE --jobs-file)
     alert: null,
     warnOnly: false,
@@ -724,7 +724,7 @@ function parseArgs(argv) {
 /**
  * Lê o histórico de durações do MESMO step: --history-file (fixtures
  * determinísticos — { runs: [{ runId, durationSecs }] }) no modo TESTE, ou gh
- * run list benchmark-weekly.yml + jobs API por run no modo REAL (o MESMO
+ * run list benchmark-scheduled.yml + jobs API por run no modo REAL (o MESMO
  * mecanismo do trend guard — buildRunListJq/computeMedian compartilhados).
  *
  * @param {object} args args parseados (warnMedian/historyFile/run)
@@ -741,7 +741,7 @@ function readHistoryDurations(args, repo) {
     }
   }
   // Modo REAL: histórico dos últimos N runs do workflow que executa o
-  // seed-guards (default benchmark-weekly.yml — o semanal; --workflow permite
+  // seed-guards (default benchmark-scheduled.yml — o semanal; --workflow permite
   // outro caller, ex.: pr-check.yml). A janela vem do --warn-median N OU do
   // --window do --fail-drift (default 4). Em --act-log o run atual não é um
   // run real do CI (o act é local) — passar o id 0 na exclusão é inofensivo

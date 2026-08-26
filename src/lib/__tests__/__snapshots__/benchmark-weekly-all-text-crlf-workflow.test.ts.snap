@@ -1,7 +1,8 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`benchmark-weekly.yml — job blob-crlf-all-text-alert (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
+exports[`benchmark-scheduled.yml — job blob-crlf-all-text-alert (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
 {
+  "if": "github.event.schedule == '0 3 * * 0'",
   "name": "Blob CRLF all-text (alcance, aviso)",
   "runs-on": "ubuntu-latest",
   "steps": [
@@ -13,27 +14,23 @@ exports[`benchmark-weekly.yml — job blob-crlf-all-text-alert (sintaxe YAML + s
     },
     {
       "id": "alltext",
-      "name": "Auditar blobs CRLF em todos os tipos do .gitattributes (REPORT)",
+      "name": "Audit all-text (REPORT)",
       "run": "set +e
 bash scripts/audit-blob-crlf-history.sh --all-text | tee all-text-report.txt
 report_exit=\${PIPESTATUS[0]}
 set -e
 echo "report_exit=$report_exit" >> "$GITHUB_OUTPUT"
-if grep -Fq 'com CRLF' all-text-report.txt; then
-  echo "found_crlf=true" >> "$GITHUB_OUTPUT"
-else
-  echo "found_crlf=false" >> "$GITHUB_OUTPUT"
-fi
+grep -Fq 'com CRLF' all-text-report.txt && echo "found_crlf=true" >> "$GITHUB_OUTPUT" || echo "found_crlf=false" >> "$GITHUB_OUTPUT"
 ",
     },
     {
       "if": "steps.alltext.outputs.report_exit != '0' || steps.alltext.outputs.found_crlf == 'true'",
       "name": "Alertar sobre CRLF ou falha do audit (--all-text)",
       "run": "if [ "\${{ steps.alltext.outputs.report_exit }}" != "0" ]; then
-  echo "::error::Audit --all-text FALHOU (exit \${{ steps.alltext.outputs.report_exit }}) — 'não encontrou CRLF' em uma auditoria quebrada não é evidência de limpo; veja o log do passo anterior."
+  echo "::error::Audit --all-text FALHOU (exit \${{ steps.alltext.outputs.report_exit }})"
 else
-  echo "::warning::CRLF encontrado no histórico em tipos além de .sh/.bash (veja all-text-report.txt)"
-  echo "::error::Alcance do CRLF cresceu — revise all-text-report.txt e decida a correção retroativa (README: Auditoria histórica)."
+  echo "::warning::CRLF encontrado no histórico em tipos além de .sh/.bash"
+  echo "::error::Alcance do CRLF cresceu"
 fi
 exit 1
 ",

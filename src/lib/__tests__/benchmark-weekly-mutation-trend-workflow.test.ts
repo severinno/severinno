@@ -2,7 +2,7 @@
  * benchmark-weekly-mutation-trend-workflow.test.ts
  *
  * Snapshot test do job PERIÓDICO mutation-coord-trend do
- * .github/workflows/benchmark-weekly.yml — o guard de TENDÊNCIA do overhead
+ * .github/workflows/benchmark-scheduled.yml — o guard de TENDÊNCIA do overhead
  * do mutation-coord: compara a duração do step 'Run mutation test (contrato
  * coordenado)' do run ATUAL contra a MEDIANA dos N runs anteriores e emite
  * ::warning:: quando o drift relativo passa de X% — pegando a tendência
@@ -43,7 +43,7 @@ import { extractScriptRefs } from "../../../scripts/check-workflow-refs.mjs"
 import { JOB_NAME_MARKER, STEP_NAME_MARKER } from "../../../scripts/measure-mutation-timing.mjs"
 
 const CWD = process.cwd()
-const WF_NAME = "benchmark-weekly.yml"
+const WF_NAME = "benchmark-scheduled.yml"
 const WF_PATH = join(CWD, ".github", "workflows", WF_NAME)
 const JOB_KEY = "mutation-coord-trend"
 const SEED_GUARDS_PATH = join(CWD, ".github", "workflows", "seed-guards.yml")
@@ -88,7 +88,7 @@ const ctx = (() => {
 
 // ── 1. Sintaxe YAML + snapshot da estrutura do job ──────────────────────
 
-describe("benchmark-weekly.yml — job mutation-coord-trend (sintaxe YAML + snapshot)", () => {
+describe("benchmark-scheduled.yml — job mutation-coord-trend (sintaxe YAML + snapshot)", () => {
   it("parseia como YAML válido e o job casa com o snapshot da estrutura", () => {
     expect(job).toBeDefined()
     expect(job).toMatchSnapshot()
@@ -106,10 +106,10 @@ describe("benchmark-weekly.yml — job mutation-coord-trend (sintaxe YAML + snap
 
 // ── 2. Contrato de medição (needs/if/permissions/GH_TOKEN/invocação) ───
 
-describe("benchmark-weekly.yml — contrato de medição do mutation-coord-trend", () => {
+describe("benchmark-scheduled.yml — contrato de medição do mutation-coord-trend", () => {
   it("needs: seed-guards E if: always() — mede TAMBÉM quando o seed-guards falhou", () => {
     expect(job?.needs).toBe("seed-guards")
-    expect(job?.if).toBe("always()")
+    expect(job?.if).toContain("always()")
   })
 
   it("permissions: actions: READ (só leitura — o trend NÃO publica baseline, ao contrário do timing job com write)", () => {
@@ -151,7 +151,7 @@ describe("benchmark-weekly.yml — contrato de medição do mutation-coord-trend
 
 // ── 3. Contrato de alerta: não-bloqueante por design, fail-closed no step ─
 
-describe("benchmark-weekly.yml — contrato de alerta do mutation-coord-trend", () => {
+describe("benchmark-scheduled.yml — contrato de alerta do mutation-coord-trend", () => {
   it("o summary descreve o alerta como ::warning:: de tendência (não gate de falha)", () => {
     const summary = steps.find((s) => s.name === "Summary")
     const run = summary?.run ?? ""
@@ -188,7 +188,7 @@ describe("measure-mutation-trend.mjs — markers casam com os nomes reais do see
 
 // ── 5. Refs de script contra o repo real ────────────────────────────────
 
-describe("benchmark-weekly.yml — refs do mutation-coord-trend contra o check-workflow-refs", () => {
+describe("benchmark-scheduled.yml — refs do mutation-coord-trend contra o check-workflow-refs", () => {
   it("measure-mutation-trend.mjs existe em scripts/ e é referenciado", () => {
     const refs = extractScriptRefs(content)
     const trendRef = refs.find((r) => r.ref === "measure-mutation-trend.mjs")

@@ -2,7 +2,7 @@
  * benchmark-weekly-all-text-crlf-workflow.test.ts
  *
  * Snapshot test do job PERIÓDICO blob-crlf-all-text-alert do
- * .github/workflows/benchmark-weekly.yml — o ALERTA semanal de ALCANCE do
+ * .github/workflows/benchmark-scheduled.yml — o ALERTA semanal de ALCANCE do
  * CRLF no histórico (modo --all-text do audit-blob-crlf-history: audita os
  * tipos do .gitattributes com 'text eol=lf', não só .sh/.bash).
  *
@@ -62,7 +62,7 @@ import {
 // js-yaml.d.ts (mesmo diretório; .d.ts global, não inline, para evitar TS2665).
 
 const CWD = process.cwd()
-const WF_NAME = "benchmark-weekly.yml"
+const WF_NAME = "benchmark-scheduled.yml"
 const WF_PATH = join(CWD, ".github", "workflows", WF_NAME)
 const JOB_KEY = "blob-crlf-all-text-alert"
 const PY_PATH = join(CWD, "scripts", "audit_blob_crlf_history.py")
@@ -129,7 +129,7 @@ const ctx = (() => {
 
 // ── 1. Sintaxe YAML + snapshot da estrutura do job ──────────────────────
 
-describe("benchmark-weekly.yml — job blob-crlf-all-text-alert (sintaxe YAML + snapshot)", () => {
+describe("benchmark-scheduled.yml — job blob-crlf-all-text-alert (sintaxe YAML + snapshot)", () => {
   it("parseia como YAML válido e o job casa com o snapshot da estrutura", () => {
     expect(job).toBeDefined()
     expect(job).toMatchSnapshot()
@@ -157,7 +157,7 @@ describe("benchmark-weekly.yml — job blob-crlf-all-text-alert (sintaxe YAML + 
 
 // ── 2. Condicionais do job (sintaxe + complementaridade lógica) ─────────
 
-describe("benchmark-weekly.yml — condicionais do job blob-crlf-all-text-alert", () => {
+describe("benchmark-scheduled.yml — condicionais do job blob-crlf-all-text-alert", () => {
   function stepRun(idOrName: string): string {
     const s = steps.find((x) => x.id === idOrName || x.name === idOrName)
     if (!s) throw new Error(`step '${idOrName}' não encontrado no job`)
@@ -209,7 +209,7 @@ describe("benchmark-weekly.yml — condicionais do job blob-crlf-all-text-alert"
 
 // ── 3. Refs de script/package.json/workflows/actions contra o repo real ─
 
-describe("benchmark-weekly.yml — refs contra o check-workflow-refs", () => {
+describe("benchmark-scheduled.yml — refs contra o check-workflow-refs", () => {
   it("todo script invocado existe em scripts/ (refs resolvem no repo real)", () => {
     const refs = extractScriptRefs(content)
     expect(refs.length).toBeGreaterThan(0)
@@ -258,7 +258,7 @@ describe("benchmark-weekly.yml — refs contra o check-workflow-refs", () => {
 
 // ── 4. Sentinel 'com CRLF' + gate de report_exit TRAVADOS ───────────────
 
-describe("benchmark-weekly.yml — sentinel 'com CRLF' e gate de report_exit", () => {
+describe("benchmark-scheduled.yml — sentinel 'com CRLF' e gate de report_exit", () => {
   it("o passo REPORT grepa o sentinel 'com CRLF' (grep -Fq literal) sobre o report", () => {
     const run = steps.find((s) => s.id === "alltext")?.run ?? ""
     expect(run).toContain("grep -Fq 'com CRLF' all-text-report.txt")

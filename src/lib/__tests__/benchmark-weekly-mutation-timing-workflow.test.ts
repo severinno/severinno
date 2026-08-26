@@ -2,7 +2,7 @@
  * benchmark-weekly-mutation-timing-workflow.test.ts
  *
  * Snapshot test do job PERIÓDICO mutation-coord-timing do
- * .github/workflows/benchmark-weekly.yml — a RE-MEDIÇÃO semanal do tempo
+ * .github/workflows/benchmark-scheduled.yml — a RE-MEDIÇÃO semanal do tempo
  * real do step 'Run mutation test (contrato coordenado — 5 cenários, 2
  * elos)' do seed-guards.yml (fecha a linha '~35-45s (est.)¹ pendente de
  * medição real' da tabela de overhead do README sem depender de auth
@@ -53,7 +53,7 @@ import { JOB_NAME_MARKER, STEP_NAME_MARKER } from "../../../scripts/measure-muta
 // js-yaml.d.ts (mesmo diretório; .d.ts global, não inline, para evitar TS2665).
 
 const CWD = process.cwd()
-const WF_NAME = "benchmark-weekly.yml"
+const WF_NAME = "benchmark-scheduled.yml"
 const WF_PATH = join(CWD, ".github", "workflows", WF_NAME)
 const JOB_KEY = "mutation-coord-timing"
 const SEED_GUARDS_PATH = join(CWD, ".github", "workflows", "seed-guards.yml")
@@ -101,7 +101,7 @@ const ctx = (() => {
 
 // ── 1. Sintaxe YAML + snapshot da estrutura do job ──────────────────────
 
-describe("benchmark-weekly.yml — job mutation-coord-timing (sintaxe YAML + snapshot)", () => {
+describe("benchmark-scheduled.yml — job mutation-coord-timing (sintaxe YAML + snapshot)", () => {
   it("parseia como YAML válido e o job casa com o snapshot da estrutura", () => {
     expect(job).toBeDefined()
     expect(job).toMatchSnapshot()
@@ -127,10 +127,10 @@ describe("benchmark-weekly.yml — job mutation-coord-timing (sintaxe YAML + sna
 
 // ── 2. Contrato de medição (needs/if/permissions/GH_TOKEN/invocação) ───
 
-describe("benchmark-weekly.yml — contrato de medição do mutation-coord-timing", () => {
+describe("benchmark-scheduled.yml — contrato de medição do mutation-coord-timing", () => {
   it("needs: seed-guards E if: always() — mede TAMBÉM quando o seed-guards falhou (timeout é o alvo)", () => {
     expect(job?.needs).toBe("seed-guards")
-    expect(job?.if).toBe("always()")
+    expect(job?.if).toContain("always()")
   })
 
   it("permissions: actions: READ (jobs API + gh run list da derivação — NÃO publica variable) + contents: read", () => {
@@ -208,7 +208,7 @@ describe("measure-mutation-timing.mjs — markers casam com os nomes reais do se
 
 // ── 4. Refs de script/workflow contra o repo real ───────────────────────
 
-describe("benchmark-weekly.yml — refs do mutation-coord-timing contra o check-workflow-refs", () => {
+describe("benchmark-scheduled.yml — refs do mutation-coord-timing contra o check-workflow-refs", () => {
   it("todo script invocado existe em scripts/ (measure-mutation-timing.mjs resolve)", () => {
     const refs = extractScriptRefs(content)
     const timingRef = refs.find((r) => r.ref === "measure-mutation-timing.mjs")

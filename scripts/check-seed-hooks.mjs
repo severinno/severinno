@@ -54,7 +54,7 @@ const ALLOWED_SEED_TEST_WORKFLOWS = new Set([
   "ci.yml", // pipeline de CI (lint/typecheck/test/build) — nunca toca produção
   "pr-check.yml", // PR check — roda seed-guards (prod + dev E2E em PostGIS efêmero)
   "seed-guards.yml", // reusable workflow dos E2Es de seed (prod + dev)
-  "benchmark-weekly.yml", // cron semanal — chama seed-guards contra banco efêmero
+  "benchmark-scheduled.yml", // cron semanal — chama seed-guards contra banco efêmero
 ])
 
 // ---------------------------------------------------------------------------

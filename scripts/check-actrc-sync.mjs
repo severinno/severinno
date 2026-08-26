@@ -10,7 +10,7 @@
 // BUN_VERSION (existe a linha `--var BUN_VERSION=...`), mas NÃO pode conferir
 // se o VALOR bate com a variável do GitHub — isso é impossível estaticamente
 // (a variável remota só existe em runtime no Actions). Este script compara os
-// DOIS: o job semanal `actrc-sync` do benchmark-weekly.yml passa o valor real
+// DOIS: o job semanal `actrc-sync` do benchmark-scheduled.yml passa o valor real
 // de vars.BUN_VERSION via `--expected` e o script lê o .actrc do working tree.
 //
 // POR QUE: o .actrc é o espelho LOCAL do act (o act não lê as variables do
@@ -86,7 +86,7 @@ export function actrcSyncWarnings(actrcVersion, expected) {
   return warnings
 }
 
-// ── modo CLI (consumido pelo benchmark-weekly.yml) ─────────────────────────
+// ── modo CLI (consumido pelo benchmark-scheduled.yml) ─────────────────────────
 // Só executa quando invocado diretamente (não quando importado pelo teste).
 const isMain = !!process.argv[1] && process.argv[1].split(/[\\/]/).pop() === "check-actrc-sync.mjs"
 

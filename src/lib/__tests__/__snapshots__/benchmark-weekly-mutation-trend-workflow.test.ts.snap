@@ -1,8 +1,8 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`benchmark-weekly.yml — job mutation-coord-trend (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
+exports[`benchmark-scheduled.yml — job mutation-coord-trend (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
 {
-  "if": "always()",
+  "if": "always() && github.event.schedule == '0 3 * * 0'",
   "name": "Mutation coord trend (mediana vs drift %)",
   "needs": "seed-guards",
   "permissions": {
@@ -42,29 +42,12 @@ exports[`benchmark-weekly.yml — job mutation-coord-trend (sintaxe YAML + snaps
       "if": "always()",
       "name": "Summary",
       "run": "{
-  echo '## 📈 Mutation coord — tendência de overhead (mediana vs drift)'
+  echo '## 📈 Mutation coord — tendência'
   echo ''
   if [ -f /tmp/mutation-trend.json ]; then
-    node -e "
-      const r = require('/tmp/mutation-trend.json');
-      if (r.current && r.current.found) {
-        console.log('| Campo | Valor |');
-        console.log('|---|---|');
-        console.log('| Run atual | **' + r.current.durationSecs + 's** |');
-        console.log('| Baseline (mediana ' + r.window + ' runs anteriores) | **' + r.medianSecs + 's** |');
-        console.log('| Drift relativo | ' + (typeof r.driftPct === 'number' ? r.driftPct.toFixed(1) + '%' : 'n/a') + ' (limiar ' + r.maxDriftPct + '%) |');
-        if (r.warned) console.log('| Tendência | ⚠️ **ACIMA do limiar** — overhead subindo antes do gate duro disparar |');
-        else console.log('| Tendência | ✅ saudável (dentro do limiar) |');
-        if (r.history && r.history.length) {
-          console.log('');
-          console.log('Últimos ' + r.history.length + ' runs: ' + r.history.map(h => h.durationSecs + 's').join(' → '));
-        }
-      } else {
-        console.log('⚠ Tendência não medida: ' + (r.error || 'sem detalhes'));
-      }
-    "
+    node -e "const r=require('/tmp/mutation-trend.json');if(r.current&&r.current.found){console.log('| Run atual | **'+r.current.durationSecs+'s** |');console.log('| Baseline (mediana '+r.window+' runs anteriores) | **'+r.medianSecs+'s** |');console.log('| Drift relativo | '+(typeof r.driftPct==='number'?r.driftPct.toFixed(1)+'%':'n/a')+' (limiar '+r.maxDriftPct+'%) |');if(r.warned)console.log('| Tendência | ⚠️ **ACIMA do limiar** — overhead subindo antes do gate duro disparar |');else console.log('| Tendência | ✅ saudável (dentro do limiar) |')}else{console.log('⚠ Tendência não medida')}"
   else
-    echo '⚠ Tendência não produziu JSON — veja o passo "Medir drift de tendência".'
+    echo '⚠ Tendência não produziu JSON'
   fi
 } >> "$GITHUB_STEP_SUMMARY"
 ",

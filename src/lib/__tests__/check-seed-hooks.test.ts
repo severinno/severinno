@@ -92,7 +92,7 @@ run: |
 
 describe("checkWorkflowFile", () => {
   it("workflow de teste no allowlist passa mesmo com hooks", () => {
-    for (const name of ["seed-guards.yml", "pr-check.yml", "benchmark-weekly.yml", "ci.yml"]) {
+    for (const name of ["seed-guards.yml", "pr-check.yml", "benchmark-scheduled.yml", "ci.yml"]) {
       expect(checkWorkflowFile(name, DEPLOY_WITH_HOOK), `${name} no allowlist`).toEqual([])
     }
   })

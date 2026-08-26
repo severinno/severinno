@@ -2,7 +2,7 @@
  * benchmark-weekly-readme-reverse-workflow.test.ts
  *
  * Snapshot test do job PERIÓDICO readme-reverse-audit do
- * .github/workflows/benchmark-weekly.yml — o guard semanal de drift
+ * .github/workflows/benchmark-scheduled.yml — o guard semanal de drift
  * SEMÂNTICO de links do README (modo --reverse do check-readme-anchors:
  * links que RESOLVEM mas apontam para o heading semanticamente errado — o
  * forward não vê; falha SOMENTE em achados NOVOS além do baseline commitado
@@ -54,7 +54,7 @@ import { extractScriptRefs } from "../../../scripts/check-workflow-refs.mjs"
 // js-yaml.d.ts (mesmo diretório; .d.ts global, não inline, para evitar TS2665).
 
 const CWD = process.cwd()
-const WF_NAME = "benchmark-weekly.yml"
+const WF_NAME = "benchmark-scheduled.yml"
 const WF_PATH = join(CWD, ".github", "workflows", WF_NAME)
 const JOB_KEY = "readme-reverse-audit"
 const BASELINE_PATH = join(CWD, "docs", "security", "readme-reverse-baseline.json")
@@ -88,7 +88,7 @@ const ctx = (() => {
 
 // ── 1. Sintaxe YAML + snapshot da estrutura do job ──────────────────────
 
-describe("benchmark-weekly.yml — job readme-reverse-audit (sintaxe YAML + snapshot)", () => {
+describe("benchmark-scheduled.yml — job readme-reverse-audit (sintaxe YAML + snapshot)", () => {
   it("parseia como YAML válido e o job casa com o snapshot da estrutura", () => {
     expect(job).toBeDefined()
     expect(job).toMatchSnapshot()
@@ -121,7 +121,7 @@ describe("benchmark-weekly.yml — job readme-reverse-audit (sintaxe YAML + snap
 
 // ── 2. GATE ─────────────────────────────────────────────────────────────
 
-describe("benchmark-weekly.yml — gate do readme-reverse-audit", () => {
+describe("benchmark-scheduled.yml — gate do readme-reverse-audit", () => {
   function stepRun(nameOrId: string): string {
     const s = steps.find((x) => x.name === nameOrId || x.id === nameOrId)
     if (!s) throw new Error(`step '${nameOrId}' não encontrado no job`)
@@ -147,7 +147,7 @@ describe("benchmark-weekly.yml — gate do readme-reverse-audit", () => {
 
 // ── 3. ISSUE (publica achados novos como tickets) ────────────────────────
 
-describe("benchmark-weekly.yml — step de issue do readme-reverse-audit", () => {
+describe("benchmark-scheduled.yml — step de issue do readme-reverse-audit", () => {
   it("step ISSUE roda node scripts/readme-reverse-issue.mjs com if: always() e GH_TOKEN", () => {
     const issue = steps.find((s) => s.name?.startsWith("Publicar achados"))
     expect(issue).toBeDefined()
@@ -166,7 +166,7 @@ describe("benchmark-weekly.yml — step de issue do readme-reverse-audit", () =>
 
 // ── 4. Refs de script contra o repo real ────────────────────────────────
 
-describe("benchmark-weekly.yml — refs do readme-reverse-audit", () => {
+describe("benchmark-scheduled.yml — refs do readme-reverse-audit", () => {
   it("o guard referenciado existe em scripts/ (ref resolve no repo real)", () => {
     const refs = extractScriptRefs(content)
     expect(refs.map((r) => r.ref)).toContain("check-readme-reverse-baseline.mjs")

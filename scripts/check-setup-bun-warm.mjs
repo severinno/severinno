@@ -4,7 +4,7 @@
 // check-setup-bun-warm.mjs
 //
 // Guard PERIÓDICO (semanal) do tier-2 do setup-bun — o cache REAL do GitHub.
-// O job `setup-bun-warm` do benchmark-weekly.yml roda `bench-setup-bun.sh`
+// O job `setup-bun-warm` do benchmark-scheduled.yml roda `bench-setup-bun.sh`
 // (cold→warm: run #1 = cache frio, run #2 = cache quente) e salva o JSON de
 // medição. Este guard lê esse JSON e FALHA se o run WARM (cache quente) levar
 // mais que o limiar (default 10s).
@@ -92,7 +92,7 @@ export function checkWarmCache(data, maxS = DEFAULT_WARM_MAX_S) {
   return []
 }
 
-// ── modo CLI (consumido pelo benchmark-weekly.yml) ─────────────────────────
+// ── modo CLI (consumido pelo benchmark-scheduled.yml) ─────────────────────────
 // Só executa quando invocado diretamente (não quando importado pelo teste).
 const isMain =
   !!process.argv[1] && process.argv[1].split(/[\\/]/).pop() === "check-setup-bun-warm.mjs"

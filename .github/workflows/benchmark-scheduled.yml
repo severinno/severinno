@@ -1,0 +1,766 @@
+# =============================================================================
+# Benchmark Scheduled — Severinno Marketplace
+#
+# Consolidated weekly benchmark pipeline (replaces benchmark-weekly.yml,
+# benchmark-gist-weekly.yml, and benchmark-all-weekly.yml).
+#
+# Schedules:
+#   - Sunday 03:00 UTC: PostGIS Real Benchmark + guard jobs (13 jobs)
+#   - Monday 04:00 UTC: GiST Index Benchmark (2 jobs)
+#   - Monday 06:00 UTC: Benchmark All 6 Types (2 jobs)
+#
+# Each job group uses `if: github.event.schedule == '...'` to run only on
+# its designated schedule. workflow_dispatch triggers all groups.
+# =============================================================================
+
+name: Benchmark Scheduled
+
+on:
+  schedule:
+    - cron: "0 3 * * 0"  # Sunday 03:00 UTC — PostGIS Real + guards
+    - cron: "0 4 * * 1"  # Monday 04:00 UTC — GiST Index
+    - cron: "0 6 * * 1"  # Monday 06:00 UTC — All 6 types
+  workflow_dispatch:
+    inputs:
+      threshold:
+        description: "Regression threshold percentage"
+        required: false
+        default: 10
+        type: number
+      providers:
+        description: "Custom provider count (optional)"
+        required: false
+        default: ""
+        type: string
+      threshold-steps:
+        description: "Max crossover radius step drift (GiST, default: 2)"
+        required: false
+        default: 2
+        type: number
+      ratio-drift:
+        description: "Max best-ratio drift in pp (GiST, default: 25)"
+        required: false
+        default: 25
+        type: number
+      radii:
+        description: "Custom radius list in km (GiST, optional)"
+        required: false
+        default: ""
+        type: string
+      skip-db:
+        description: "Skip DB benchmarks (real, gist)"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: benchmark-scheduled-${{ github.ref }}-${{ github.event.schedule || 'dispatch' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  actions: read
+
+env:
+  NODE_ENV: development
+  PGUSER: ${{ secrets.STAGING_PGUSER || 'severinno' }}
+  PGPASSWORD: ${{ secrets.STAGING_PGPASSWORD || '' }}
+  PGHOST: ${{ secrets.STAGING_PGHOST || 'localhost' }}
+  PGPORT: ${{ secrets.STAGING_PGPORT || '5432' }}
+  PGDATABASE: ${{ secrets.STAGING_PGDATABASE || 'severinno' }}
+
+jobs:
+  # ══════════════════════════════════════════════════════════════════════════
+  # GROUP 1: Sunday 03:00 UTC — PostGIS Real Benchmark + Guard Jobs
+  # ══════════════════════════════════════════════════════════════════════════
+
+  smoke-postgis:
+    name: "Smoke: PostGIS Real"
+    if: github.event.schedule == '0 3 * * 0' || (github.event_name == 'workflow_dispatch' && !inputs['skip-db'])
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+      - name: Check benchmark scripts exist
+        run: |
+          MISSING=false
+          for script in scripts/geo-benchmark-real.mjs scripts/compare-benchmarks.mjs; do
+            if [ ! -f "$script" ]; then echo "  ❌ Missing: $script"; MISSING=true
+            else echo "  ✅ Found:   $script"; fi
+          done
+          [ "$MISSING" = true ] && exit 1
+      - name: Check output directory
+        run: |
+          [ -d "docs/benchmarks" ] && echo "  ✅ Output directory: docs/benchmarks/" || { echo "❌ Missing docs/benchmarks/"; exit 1; }
+      - name: Verify staging credentials
+        run: |
+          if [ -z "${{ secrets.STAGING_PGHOST }}" ] && [ -z "${{ secrets.STAGING_PGPASSWORD }}" ]; then
+            echo "⚠  No staging database secrets configured."
+          else
+            echo "  ✅ Staging database credentials configured."
+          fi
+
+  benchmark-postgis:
+    name: PostGIS Real Benchmark
+    if: github.event.schedule == '0 3 * * 0' || (github.event_name == 'workflow_dispatch' && !inputs['skip-db'])
+    needs: smoke-postgis
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Run real PostGIS benchmark
+        run: |
+          if [ -n "${{ github.event.inputs.providers }}" ]; then
+            node scripts/geo-benchmark-real.mjs --json --providers "${{ github.event.inputs.providers }}"
+          else
+            node scripts/geo-benchmark-real.mjs --json
+          fi
+          echo "✅ Benchmark completed"
+      - name: Validate benchmark result
+        run: |
+          node -e "
+            const fs = require('fs');
+            const p = 'docs/benchmarks/geo-real-latest.json';
+            if (!fs.existsSync(p)) throw Error('geo-real-latest.json not found');
+            const d = JSON.parse(fs.readFileSync(p, 'utf-8'));
+            if (!d.meta || !Array.isArray(d.benchmarks) || d.benchmarks.length === 0) throw Error('invalid');
+            console.log('  ✅ Benchmarks: ' + d.benchmarks.length);
+          "
+      - name: Fetch baseline
+        id: baseline
+        run: |
+          git show HEAD:docs/benchmarks/geo-real-baseline.json > /tmp/geo-real-baseline.json 2>/dev/null \
+            && echo "baseline_exists=true" >> "$GITHUB_OUTPUT" \
+            || echo "baseline_exists=false" >> "$GITHUB_OUTPUT"
+      - name: Detect threshold
+        id: changes
+        run: |
+          MANUAL=${{ github.event.inputs.threshold || 0 }}
+          [ "$MANUAL" -gt 0 ] 2>/dev/null && echo "threshold=$MANUAL" >> "$GITHUB_OUTPUT" || echo "threshold=10" >> "$GITHUB_OUTPUT"
+      - name: Compare with baseline
+        id: compare
+        if: steps.baseline.outputs.baseline_exists == 'true'
+        env:
+          BENCHMARK_THRESHOLD: ${{ steps.changes.outputs.threshold }}
+        continue-on-error: true
+        run: node scripts/compare-benchmarks.mjs /tmp/geo-real-baseline.json docs/benchmarks/geo-real-latest.json 2>&1 | tee /tmp/benchmark-diff.txt
+      - name: No baseline
+        if: steps.baseline.outputs.baseline_exists != 'true'
+        run: echo "First run — results will become baseline." | tee /tmp/benchmark-diff.txt
+      - name: Create regression issue
+        if: steps.compare.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const diff = fs.existsSync('/tmp/benchmark-diff.txt') ? fs.readFileSync('/tmp/benchmark-diff.txt', 'utf-8') : 'No diff';
+            const body = `## ⚠️ Benchmark Regression Detected\n\n<details><summary>Full comparison</summary>\n\n` + '```' + `\n${diff}\n` + '```' + `\n\n</details>`;
+            const { data: existing } = await github.rest.issues.listForRepo({ owner: context.repo.owner, repo: context.repo.repo, state: 'open', labels: 'benchmark-regression', per_page: 10 });
+            const title = '⚠️ Benchmark Regression — PostGIS Weekly';
+            const found = existing.find(i => i.title === title);
+            if (found) await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: found.number, body });
+            else await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body, labels: ['benchmark-regression', 'performance', 'automated'] });
+      - name: Update baseline
+        run: cp docs/benchmarks/geo-real-latest.json docs/benchmarks/geo-real-baseline.json
+      - name: Check for changes
+        id: diff
+        run: |
+          FILE="docs/benchmarks/geo-real-latest.json"
+          git ls-files --error-unmatch "$FILE" 2>/dev/null \
+            && { git diff --quiet HEAD -- "$FILE" && echo "HAS_CHANGES=false" >> "$GITHUB_OUTPUT" || echo "HAS_CHANGES=true" >> "$GITHUB_OUTPUT"; } \
+            || echo "HAS_CHANGES=true" >> "$GITHUB_OUTPUT"
+      - name: Commit results
+        if: steps.diff.outputs.HAS_CHANGES == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/benchmarks/geo-real-baseline.json docs/benchmarks/geo-real-latest.json
+          git commit -m "chore: auto-atualizar benchmark real PostGIS (semanal)"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: geo-real-benchmark
+          path: |
+            docs/benchmarks/geo-real-latest.json
+            docs/benchmarks/geo-real-baseline.json
+          retention-days: 90
+
+  # ── Guard jobs (Sunday only) ─────────────────────────────────────────────
+
+  setup-bun-warm:
+    name: Setup-bun warm cache
+    if: github.event.schedule == '0 3 * * 0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run bench-setup-bun (cold→warm)
+        env:
+          BENCH_TIMEOUT_S: 300
+        run: ./scripts/bench-setup-bun.sh --repo "${{ github.repository }}" --ref "${{ github.ref_name }}" --runs 2 --json /tmp/bench-setup-bun.json
+      - name: Guard warm cache (limiar 10s)
+        run: node scripts/check-setup-bun-warm.mjs --json /tmp/bench-setup-bun.json --max 10
+      - name: Upload bench JSON (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-setup-bun-warm
+          path: /tmp/bench-setup-bun.json
+          if-no-files-found: ignore
+
+  act-startup-bench:
+    name: Act startup bench (delta 30%)
+    if: github.event.schedule == '0 3 * * 0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+      - name: Download act (Linux)
+        run: |
+          mkdir -p "$RUNNER_TEMP/act-bin"
+          curl -fsSL -o /tmp/act.tar.gz https://github.com/nektos/act/releases/download/v0.2.89/act_Linux_x86_64.tar.gz
+          tar -xzf /tmp/act.tar.gz -C "$RUNNER_TEMP/act-bin"
+          "$RUNNER_TEMP/act-bin/act" --version
+      - name: Pull images
+        run: |
+          docker pull catthehacker/ubuntu:act-latest
+          docker pull ghcr.io/severinno/ubuntu-bun:${{ vars.BUN_VERSION }}
+      - name: Bench startup act (assert delta 30%)
+        env:
+          ACT_BIN: "${{ runner.temp }}/act-bin/act"
+        run: |
+          set -eo pipefail
+          bun run bench:act-startup --assert-pct 30 \
+            --image "catthehacker|catthehacker/ubuntu:act-latest" \
+            --image "ubuntu-bun|ghcr.io/severinno/ubuntu-bun:${{ vars.BUN_VERSION }}" \
+            2>&1 | tee /tmp/act-startup-bench.log
+      - name: Upload bench log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: act-startup-bench
+          path: /tmp/act-startup-bench.log
+          if-no-files-found: ignore
+
+  blob-crlf-history-audit:
+    name: Blob CRLF history (zero-CRLF)
+    if: github.event.schedule == '0 3 * * 0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Audit blob CRLF in full history
+        run: bash scripts/audit-blob-crlf-history.sh
+
+  blob-crlf-all-text-alert:
+    name: Blob CRLF all-text (alcance, aviso)
+    if: github.event.schedule == '0 3 * * 0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Audit all-text (REPORT)
+        id: alltext
+        run: |
+          set +e
+          bash scripts/audit-blob-crlf-history.sh --all-text | tee all-text-report.txt
+          report_exit=${PIPESTATUS[0]}
+          set -e
+          echo "report_exit=$report_exit" >> "$GITHUB_OUTPUT"
+          grep -Fq 'com CRLF' all-text-report.txt && echo "found_crlf=true" >> "$GITHUB_OUTPUT" || echo "found_crlf=false" >> "$GITHUB_OUTPUT"
+      - name: "Alertar sobre CRLF ou falha do audit (--all-text)"
+        if: "steps.alltext.outputs.report_exit != '0' || steps.alltext.outputs.found_crlf == 'true'"
+        run: |
+          if [ "${{ steps.alltext.outputs.report_exit }}" != "0" ]; then
+            echo "::error::Audit --all-text FALHOU (exit ${{ steps.alltext.outputs.report_exit }})"
+          else
+            echo "::warning::CRLF encontrado no histórico em tipos além de .sh/.bash"
+            echo "::error::Alcance do CRLF cresceu"
+          fi
+          exit 1
+      - name: "Summary (histórico limpo em todos os tipos)"
+        if: "steps.alltext.outputs.report_exit == '0' && steps.alltext.outputs.found_crlf != 'true'"
+        run: echo "✅ Nenhum CRLF no histórico em nenhum tipo do .gitattributes (--all-text)."
+
+  secret-leaks-audit:
+    name: Secret leaks (baseline)
+    if: github.event.schedule == '0 3 * * 0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Audit secrets vs baseline
+        run: node scripts/check-secret-leaks-baseline.mjs
+
+  readme-reverse-audit:
+    name: README reverse semantics (baseline)
+    if: github.event.schedule == '0 3 * * 0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Auditar links do README (--reverse) vs baseline
+        run: node scripts/check-readme-reverse-baseline.mjs
+      - name: Publicar achados novos como GitHub Issues
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/readme-reverse-issue.mjs
+      - name: Summary
+        run: echo "✅ Nenhum drift semântico de links no README (baseline docs/security/readme-reverse-baseline.json)."
+
+  actrc-sync:
+    name: ".actrc ↔ vars.BUN_VERSION"
+    if: github.event.schedule == '0 3 * * 0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare .actrc with vars.BUN_VERSION
+        run: node scripts/check-actrc-sync.mjs --expected "${{ vars.BUN_VERSION }}"
+
+  seed-guards:
+    name: Seed Guards (semanal)
+    if: github.event.schedule == '0 3 * * 0'
+    uses: ./.github/workflows/seed-guards.yml
+
+  default-branch-workflow-guard:
+    name: "Default-branch workflow guard (medição deployada?)"
+    if: github.event.schedule == '0 3 * * 0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate workflows on default branch
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/check-default-branch-workflows.mjs \
+            --repo "${{ github.repository }}" \
+            --workflow seed-guards.yml \
+            --json /tmp/default-branch-guard.json
+      - name: Upload guard JSON (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: default-branch-workflow-guard
+          path: /tmp/default-branch-guard.json
+          if-no-files-found: ignore
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## 🛡️ Default-branch workflow guard'
+            echo ''
+            if [ -f /tmp/default-branch-guard.json ]; then
+              node -e "const r=require('/tmp/default-branch-guard.json');if(r.infra){console.log('❌ INFRA: '+r.error)}else{for(const w of r.workflows){console.log((w.exists?'✅':'❌')+' '+w.file)}if(!r.allPresent){console.log('');console.log('❌ BLOQUEIO REAL: '+r.missing.join(', ')+' não está na default')}else{console.log('');console.log('✅ Todos os workflows de medição estão na default branch')}}"
+            else
+              echo '⚠️ Relatório ausente'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  mutation-coord-timing:
+    name: Mutation coord timing (re-medição semanal)
+    if: always() && github.event.schedule == '0 3 * * 0'
+    needs: seed-guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Medir tempo do step mutation test (budget 240/mediana 4)
+        id: measure
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/measure-mutation-timing.mjs \
+            --run "${{ github.run_id }}" \
+            --repo "${{ github.repository }}" \
+            --max 240 \
+            --warn-median 4 \
+            --warn-margin 0.2 \
+            --json /tmp/mutation-timing.json
+      - name: Upload timing JSON (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-coord-timing
+          path: /tmp/mutation-timing.json
+          if-no-files-found: ignore
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## ⏱️ Mutation coord — tempo real'
+            echo ''
+            if [ -f /tmp/mutation-timing.json ]; then
+              node -e "const r=require('/tmp/mutation-timing.json');if(r.found){console.log('| Step | '+r.stepName+' |');console.log('| Duração | **'+r.durationSecs+'s** |');console.log('| Conclusão | '+r.conclusion+' |')}else{console.log('⚠ Medição falhou')}"
+            else
+              echo '⚠ Medição não produziu JSON'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  mutation-coord-trend:
+    name: Mutation coord trend (mediana vs drift %)
+    if: always() && github.event.schedule == '0 3 * * 0'
+    needs: seed-guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Medir drift de tendência do mutation-coord (window/mediana)
+        id: trend
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/measure-mutation-trend.mjs \
+            --run "${{ github.run_id }}" \
+            --repo "${{ github.repository }}" \
+            --window "${{ vars.MUTATION_TIMING_TREND_WINDOW || '4' }}" \
+            --max-drift "${{ vars.MUTATION_TIMING_TREND_MAX_DRIFT || '30' }}" \
+            --json /tmp/mutation-trend.json
+      - name: Upload trend JSON (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-coord-trend
+          path: /tmp/mutation-trend.json
+          if-no-files-found: ignore
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## 📈 Mutation coord — tendência'
+            echo ''
+            if [ -f /tmp/mutation-trend.json ]; then
+              node -e "const r=require('/tmp/mutation-trend.json');if(r.current&&r.current.found){console.log('| Run atual | **'+r.current.durationSecs+'s** |');console.log('| Baseline (mediana '+r.window+' runs anteriores) | **'+r.medianSecs+'s** |');console.log('| Drift relativo | '+(typeof r.driftPct==='number'?r.driftPct.toFixed(1)+'%':'n/a')+' (limiar '+r.maxDriftPct+'%) |');if(r.warned)console.log('| Tendência | ⚠️ **ACIMA do limiar** — overhead subindo antes do gate duro disparar |');else console.log('| Tendência | ✅ saudável (dentro do limiar) |')}else{console.log('⚠ Tendência não medida')}"
+            else
+              echo '⚠ Tendência não produziu JSON'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # GROUP 2: Monday 04:00 UTC — GiST Index Benchmark
+  # ══════════════════════════════════════════════════════════════════════════
+
+  smoke-gist:
+    name: "Smoke: GiST Index"
+    if: github.event.schedule == '0 4 * * 1' || (github.event_name == 'workflow_dispatch' && !inputs['skip-db'])
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+      - name: Check scripts exist
+        run: |
+          MISSING=false
+          for script in scripts/geo-benchmark-gist.mjs scripts/validate-gist-crossover.mjs scripts/compare-benchmarks.mjs; do
+            [ ! -f "$script" ] && { echo "  ❌ Missing: $script"; MISSING=true; } || echo "  ✅ Found:   $script"
+          done
+          [ "$MISSING" = true ] && exit 1
+      - name: Check output directory
+        run: |
+          [ -d "docs/benchmarks" ] || { echo "❌ Missing docs/benchmarks/"; exit 1; }
+
+  benchmark-gist:
+    name: GiST Index Benchmark
+    if: github.event.schedule == '0 4 * * 1' || (github.event_name == 'workflow_dispatch' && !inputs['skip-db'])
+    needs: smoke-gist
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Run GiST benchmark
+        run: |
+          CMD="node scripts/geo-benchmark-gist.mjs --json docs/benchmarks/geo-gist-latest.json"
+          [ -n "${{ github.event.inputs.providers }}" ] && CMD="$CMD --providers ${{ github.event.inputs.providers }}"
+          [ -n "${{ github.event.inputs.radii }}" ] && CMD="$CMD --radius-list ${{ github.event.inputs.radii }}"
+          eval "$CMD"
+          echo "✅ GiST Benchmark completed"
+      - name: Validate result
+        run: |
+          node -e "
+            const fs = require('fs');
+            const d = JSON.parse(fs.readFileSync('docs/benchmarks/geo-gist-latest.json','utf-8'));
+            if (!d.meta || !Array.isArray(d.crossover) || d.crossover.length===0) throw Error('invalid');
+            console.log('  ✅ Crossover rows: ' + d.crossover.length);
+          "
+      - name: Fetch baseline
+        id: baseline
+        run: |
+          git show HEAD:docs/benchmarks/geo-gist-baseline.json > /tmp/geo-gist-baseline.json 2>/dev/null \
+            && echo "baseline_exists=true" >> "$GITHUB_OUTPUT" \
+            || echo "baseline_exists=false" >> "$GITHUB_OUTPUT"
+      - name: Detect thresholds
+        id: thresholds
+        run: |
+          echo "steps=${{ github.event.inputs.threshold-steps || 2 }}" >> "$GITHUB_OUTPUT"
+          echo "ratio=${{ github.event.inputs.ratio-drift || 25 }}" >> "$GITHUB_OUTPUT"
+      - name: Validate crossover stability
+        id: validate
+        if: steps.baseline.outputs.baseline_exists == 'true'
+        env:
+          THRESHOLD_STEPS: ${{ steps.thresholds.outputs.steps }}
+          RATIO_DRIFT: ${{ steps.thresholds.outputs.ratio }}
+        continue-on-error: true
+        run: |
+          node scripts/validate-gist-crossover.mjs \
+            --threshold "$THRESHOLD_STEPS" --ratio-drift "$RATIO_DRIFT" \
+            /tmp/geo-gist-baseline.json docs/benchmarks/geo-gist-latest.json \
+            2>&1 | tee /tmp/gist-crossover-diff.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+      - name: No baseline
+        if: steps.baseline.outputs.baseline_exists != 'true'
+        run: echo "First run — results will become baseline." | tee /tmp/gist-crossover-diff.txt
+      - name: Update baseline
+        run: cp docs/benchmarks/geo-gist-latest.json docs/benchmarks/geo-gist-baseline.json
+      - name: Check for changes
+        id: diff
+        run: |
+          FILE="docs/benchmarks/geo-gist-latest.json"
+          git ls-files --error-unmatch "$FILE" 2>/dev/null \
+            && { git diff --quiet HEAD -- "$FILE" && echo "HAS_CHANGES=false" >> "$GITHUB_OUTPUT" || echo "HAS_CHANGES=true" >> "$GITHUB_OUTPUT"; } \
+            || echo "HAS_CHANGES=true" >> "$GITHUB_OUTPUT"
+      - name: Commit results
+        if: steps.diff.outputs.HAS_CHANGES == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/benchmarks/geo-gist-baseline.json docs/benchmarks/geo-gist-latest.json
+          git commit -m "chore: auto-atualizar benchmark GiST Index (semanal)"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: geo-gist-benchmark
+          path: |
+            docs/benchmarks/geo-gist-latest.json
+            docs/benchmarks/geo-gist-baseline.json
+          retention-days: 90
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # GROUP 3: Monday 06:00 UTC — Benchmark All 6 Types
+  # ══════════════════════════════════════════════════════════════════════════
+
+  smoke-all:
+    name: "Smoke: All Types"
+    if: github.event.schedule == '0 6 * * 1' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+      - name: Check all benchmark scripts exist
+        run: |
+          MISSING=false
+          for script in scripts/run-benchmark.mjs scripts/compare-benchmarks.mjs scripts/geo-benchmark.mjs scripts/cache-benchmark.mjs scripts/search-benchmark.mjs scripts/geo-benchmark-real.mjs scripts/geo-benchmark-gist.mjs scripts/geo-pipeline-benchmark.mjs; do
+            [ ! -f "$script" ] && { echo "  ❌ Missing: $script"; MISSING=true; } || echo "  ✅ Found:   $script"
+          done
+          [ "$MISSING" = true ] && exit 1
+      - name: Check output directory
+        run: |
+          [ -d "docs/benchmarks" ] || mkdir -p docs/benchmarks
+          echo "  ✅ Output directory ready"
+
+  benchmark-all:
+    name: Benchmark All Types
+    if: github.event.schedule == '0 6 * * 1' || github.event_name == 'workflow_dispatch'
+    needs: smoke-all
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      has_regressions: ${{ steps.sentry-alert.outputs.has_regressions }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Determine benchmark flags
+        id: flags
+        run: |
+          FLAGS="--type all --json"
+          STAGING_AVAILABLE="${{ secrets.STAGING_PGHOST != '' && secrets.STAGING_PGPASSWORD != '' }}"
+          if [ "$STAGING_AVAILABLE" = "false" ] || [ "${{ github.event.inputs.skip-db }}" = "true" ]; then
+            FLAGS="$FLAGS --skip-db"
+          fi
+          echo "flags=$FLAGS" >> "$GITHUB_OUTPUT"
+      - name: Run all benchmarks
+        id: run
+        continue-on-error: true
+        run: |
+          node scripts/run-benchmark.mjs ${{ steps.flags.outputs.flags }} 2>&1 | tee /tmp/benchmark-run.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+      - name: Validate output files
+        run: |
+          for type in geo cache search real gist pipeline; do
+            FILE="docs/benchmarks/${type}-latest.json"
+            [ -f "$FILE" ] && echo "  ✅ $FILE" || echo "  ⏭  $FILE (skipped)"
+          done
+      - name: Compare against baselines
+        id: compare
+        continue-on-error: true
+        run: |
+          TYPES=("geo" "cache" "search" "real" "gist" "pipeline")
+          BASELINES=("docs/benchmarks/geo-baseline.json" "docs/benchmarks/cache-baseline.json" "docs/benchmarks/search-baseline.json" "docs/benchmarks/geo-real-baseline.json" "docs/benchmarks/geo-gist-baseline.json" "docs/benchmarks/pipeline-baseline.json")
+          FILTERS=("" "--filter cache" "--filter search" "" "" "")
+          THRESHOLD=${{ github.event.inputs.threshold || 10 }}
+          REGRESSIONS=()
+          ALL_OUTPUT=""
+          for i in "${!TYPES[@]}"; do
+            TYPE="${TYPES[$i]}"
+            LATEST="docs/benchmarks/${TYPE}-latest.json"
+            BASELINE="${BASELINES[$i]}"
+            FILTER="${FILTERS[$i]}"
+            [ ! -f "$LATEST" ] && { ALL_OUTPUT+="\n### $TYPE — skipped\n"; continue; }
+            [ ! -f "$BASELINE" ] && { ALL_OUTPUT+="\n### $TYPE — first run\n"; continue; }
+            eval "node scripts/compare-benchmarks.mjs --threshold \"$THRESHOLD\"${FILTER:+ $FILTER} \"$BASELINE\" \"$LATEST\"" 2>&1 | tee "/tmp/compare-${TYPE}.txt"
+            DIFF=$(cat "/tmp/compare-${TYPE}.txt" 2>/dev/null)
+            ALL_OUTPUT+="\n### $TYPE\n\`\`\`\n${DIFF:0:2000}\n\`\`\`\n"
+            [ "${PIPESTATUS[0]}" = "1" ] && REGRESSIONS+=("$TYPE")
+          done
+          { echo "all_output<<EOF"; printf "%b" "$ALL_OUTPUT"; echo "EOF"; } >> "$GITHUB_OUTPUT"
+          if [ ${#REGRESSIONS[@]} -gt 0 ]; then
+            echo "regressions=${REGRESSIONS[*]}" >> "$GITHUB_OUTPUT"
+            echo "has_regressions=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "regressions=" >> "$GITHUB_OUTPUT"
+            echo "has_regressions=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build summary
+        id: summary
+        run: |
+          THRESHOLD=${{ github.event.inputs.threshold || 10 }}
+          HAS_REGRESSIONS="${{ steps.compare.outputs.has_regressions }}"
+          REGRESSIONS="${{ steps.compare.outputs.regressions }}"
+          {
+            echo "text<<EOF"
+            echo "## 📊 Benchmark — All 6 Types"
+            echo ""
+            echo "**Threshold:** ${THRESHOLD}%"
+            echo "**Regressions:** $([ \"$HAS_REGRESSIONS\" = \"true\" ] && echo \"⚠ ${REGRESSIONS}\" || echo \"✅ None\")"
+            echo ""
+            echo "${{ steps.compare.outputs.all_output }}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - name: Publish summary
+        if: always()
+        run: echo "${{ steps.summary.outputs.text }}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Find most recent merged PR
+        id: find-pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const oneWeekAgo = new Date(); oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+            const { data: prs } = await github.rest.pulls.list({ owner: context.repo.owner, repo: context.repo.repo, state: 'closed', sort: 'updated', direction: 'desc', per_page: 20, base: 'main' });
+            const recent = prs.filter(pr => pr.merged_at && new Date(pr.merged_at) >= oneWeekAgo);
+            if (recent.length === 0) { core.setOutput('pr_number', '0'); return; }
+            const latest = recent.reduce((a, b) => new Date(a.merged_at) > new Date(b.merged_at) ? a : b);
+            core.setOutput('pr_number', String(latest.number));
+      - name: Post comment on PR
+        if: steps.find-pr.outputs.pr_number != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = parseInt('${{ steps.find-pr.outputs.pr_number }}', 10);
+            const summary = `${{ steps.summary.outputs.text }}`;
+            const { data: comments } = await github.rest.issues.listComments({ owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber });
+            for (const c of comments.filter(c => c.user.type === 'Bot' && c.body?.startsWith('## 📊'))) {
+              await github.rest.issues.deleteComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: c.id });
+            }
+            await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber, body: summary });
+      - name: Sentry alert on regression
+        id: sentry-alert
+        if: steps.compare.outputs.has_regressions == 'true'
+        run: echo "has_regressions=true" >> "$GITHUB_OUTPUT"
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-benchmarks
+          path: |
+            docs/benchmarks/*-latest.json
+            /tmp/compare-*.txt
+            /tmp/benchmark-run.txt
+          retention-days: 90
+      - name: Fail on regression
+        if: steps.compare.outputs.has_regressions == 'true'
+        run: |
+          echo "❌ Performance regression(s) detected: ${{ steps.compare.outputs.regressions }}"
+          exit 1

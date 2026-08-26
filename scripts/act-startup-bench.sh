@@ -64,7 +64,7 @@ REPO_ROOT="$SCRIPT_DIR"
 # Binário do act: ACT_BIN permite apontar para um binário alternativo (ex.:
 # o act Linux baixado no CI — o default é o act.exe local do Windows em
 # tool-results/act/). Usado pelo job semanal act-startup-bench do
-# benchmark-weekly.yml.
+# benchmark-scheduled.yml.
 ACT="${ACT_BIN:-$REPO_ROOT/tool-results/act/act.exe}"
 WORKFLOW_DIR="$REPO_ROOT/.github/workflows"
 JOB="secrets-guard"   # sem setup-bun → isola só o overhead de startup

@@ -1,7 +1,8 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`benchmark-weekly.yml — job readme-reverse-audit (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
+exports[`benchmark-scheduled.yml — job readme-reverse-audit (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
 {
+  "if": "github.event.schedule == '0 3 * * 0'",
   "name": "README reverse semantics (baseline)",
   "permissions": {
     "contents": "read",

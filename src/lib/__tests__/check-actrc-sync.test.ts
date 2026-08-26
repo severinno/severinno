@@ -9,7 +9,7 @@
  * se o VALOR bate com a variável do GitHub — impossível estaticamente (a
  * variável remota só existe em runtime no Actions). Este guard compara os
  * DOIS e emite `::warning::` (NÃO-bloqueante) se divergirem: o job semanal
- * `actrc-sync` do benchmark-weekly.yml passa o valor real de vars.BUN_VERSION
+ * `actrc-sync` do benchmark-scheduled.yml passa o valor real de vars.BUN_VERSION
  * via --expected e o script lê o .actrc do working tree.
  *
  * Cobre:

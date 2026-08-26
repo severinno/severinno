@@ -85,7 +85,7 @@ function writeFixture(
     "utf8",
   )
   writeFileSync(
-    join(dir, ".github", "workflows", "benchmark-weekly.yml"),
+    join(dir, ".github", "workflows", "benchmark-scheduled.yml"),
     `        run: |\n          node scripts/measure-mutation-timing.mjs \\\n            --run 1 \\\n            --max 240 \\\n            --warn-median 4 \\\n            --warn-margin 0.2 \\\n            --json /tmp/mutation-timing.json\n\n      - name: Guard warm cache (limiar 10s)\n        run: |\n          node scripts/check-setup-bun-warm.mjs \\\n            --max 10\n`,
     "utf8",
   )

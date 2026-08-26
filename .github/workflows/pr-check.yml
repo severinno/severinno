@@ -40,7 +40,7 @@ jobs:
 
   # ── Blob CRLF History Audit (PR) ─────────────────────────────────────
   # Zero-CRLF NO HISTÓRICO revalidado a CADA PR (não só no cron semanal —
-  # o job blob-crlf-history-audit do benchmark-weekly.yml só roda na cron).
+  # o job blob-crlf-history-audit do benchmark-scheduled.yml só roda na cron).
   #
   # Por quê: o guard de blob (check-blob-crlf.sh) inspeciona o index/HEAD —
   # um blob .sh/.bash CRLF commitado NO PASSADO (ex.: antes do
@@ -53,7 +53,7 @@ jobs:
   #
   # Requer o histórico completo (fetch-depth: 0). Node/Bun não são
   # necessários — só git + python3 (pré-instalados no runner). Espelho do
-  # job semanal (blob-crlf-history-audit em benchmark-weekly.yml) —
+  # job semanal (blob-crlf-history-audit em benchmark-scheduled.yml) —
   # alterações no script/args DEVEM ser replicadas nos dois lugares.
   blob-crlf-history-audit:
     name: Blob CRLF history (zero-CRLF)
@@ -85,7 +85,7 @@ jobs:
         run: echo "✅ Zero-CRLF no histórico revalidado (audit de todos os blobs .sh/.bash)."
 
   # ── All-Text Alert Validation (fixture → audit → gate) ────────────────
-  # Prova o fluxo do job semanal blob-crlf-all-text-alert (benchmark-weekly.yml)
+  # Prova o fluxo do job semanal blob-crlf-all-text-alert (benchmark-scheduled.yml)
   # ponta-a-ponta em CADA PR, sem depender do cron: cria fixtures git reais
   # (o mesmo procedimento do docs/TESTING.md automatizado por
   # scripts/validate-all-text-alert.sh), roda o REPORT --all-text e replica o
@@ -1293,7 +1293,7 @@ jobs:
   # sucesso do prod (schema já pushado → pula; prod falhou → dev faz push).
   #
   # A definição do job vive no reusable workflow seed-guards.yml — chamado
-  # também pelo cron semanal (benchmark-weekly.yml) para revalidar contra
+  # também pelo cron semanal (benchmark-scheduled.yml) para revalidar contra
   # um banco efêmero sem duplicar a lógica.
   #
   # O reusable workflow define TRÊS jobs: (1) seed-guards — MATRIX 2×2
@@ -1327,13 +1327,13 @@ jobs:
   # usa automaticamente). O script é fail-closed: exit 1 = infra OU budget
   # excedido (report.exceeded=true distingue), exit 2 = drift de contrato
   # ('não achado' não é 'limpo'). Espelho do job semanal
-  # mutation-coord-timing (benchmark-weekly.yml) — alterações no
+  # mutation-coord-timing (benchmark-scheduled.yml) — alterações no
   # script/args DEVEM ser replicadas nos dois lugares.
   #
   # TUINING DO GATE (DRIFT RELATIVO + TETO ABSOLUTO): alterar em lugares
   # coordenados — este job (--max 240 --fail-drift ${{ vars.MUTATION_TIMING_DRIFT_MAX || '50' }}
   # --window 4), o job semanal
-  # mutation-coord-timing do benchmark-weekly.yml (mantém o --warn-median da
+  # mutation-coord-timing do benchmark-scheduled.yml (mantém o --warn-median da
   # faixa soft — a re-medição alerta; o PR gateia) e as asserções de teste
   # de workflow — o README (seção Git Hooks, bloco de overhead) documenta os
   # valores como fonte da verdade. O PR compara o timing contra a MEDIANA do
@@ -1360,7 +1360,7 @@ jobs:
       # ── Mede o step no run ATUAL e gateia por DRIFT RELATIVO + TETO ──
       # --max 240 (TETO ABSOLUTO) = 4 min — falha SEMPRE acima disso;
       # --fail-drift compara a duração contra a MEDIANA do histórico (gh run
-      # list --workflow benchmark-weekly.yml — os runs anteriores do
+      # list --workflow benchmark-scheduled.yml — os runs anteriores do
       # seed-guards vivem nos runs do caller — + jobs API por run, o mesmo
       # mecanismo do trend guard; branch DEFAULT resolvida via gh repo view)
       # e falha quando o desvio relativo ultrapassa o threshold configurável
@@ -1393,7 +1393,7 @@ jobs:
       # ── Summary (a evidência do budget E do drift no PR) ───────────
       # Mostra o NÚMERO que falhou, não só o JSON bruto: a tabela
       # 'atual vs mediana vs threshold' (mesmo shape do summary do
-      # mutation-coord-trend do benchmark-weekly.yml — drift relativo vs a
+      # mutation-coord-trend do benchmark-scheduled.yml — drift relativo vs a
       # mediana do histórico com o limiar configurável) + o veredito do
       # budget. r.driftPct é o número real do --fail-drift; o PR mostra por
       # que falhou (quanto % acima da mediana) sem abrir o artifact.
@@ -1454,7 +1454,7 @@ jobs:
   # usa o auth automático do runner (GITHUB_TOKEN com 'packages: read').
   # ⚠️ Espelho do gate real acima: alterações nos args do guard (--max
   # --warn-median --warn-margin) DEVEM ser replicadas nos dois jobs +
-  # benchmark-weekly.yml + os 2 testes de workflow (ver README, bloco de
+  # benchmark-scheduled.yml + os 2 testes de workflow (ver README, bloco de
   # overhead).
   mutation-coord-timing-act-guard:
     name: Mutation coord timing (act, budget 240/mediana 4)

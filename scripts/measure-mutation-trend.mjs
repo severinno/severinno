@@ -3,7 +3,7 @@
 // =============================================================================
 // measure-mutation-trend.mjs
 //
-// Guard de TENDÊNCIA (semanal, benchmark-weekly.yml — job mutation-coord-trend)
+// Guard de TENDÊNCIA (semanal, benchmark-scheduled.yml — job mutation-coord-trend)
 // que compara o tempo do step 'Run mutation test (contrato coordenado — 5
 // cenários, 2 elos)' do run ATUAL contra a MEDIANA dos N runs ANTERIORES do
 // MESMO step — emitindo ::warning:: quando o drift relativo passar de X%.
@@ -39,7 +39,7 @@
 // Modos:
 //   --run ID           spawna o gh para buscar os jobs do run ATUAL
 //                      (GH_TOKEN do env) E a lista dos runs anteriores
-//                      (gh run list --workflow benchmark-weekly.yml)
+//                      (gh run list --workflow benchmark-scheduled.yml)
 //   --jobs-file FILE   payload da jobs API do run atual (modo de TESTE —
 //                      fixtures determinísticos, sem gh)
 //   --history-file FILE  JSON de { runs: [{ runId, durationSecs }] } dos runs
@@ -200,7 +200,7 @@ function fetchCurrentViaGh(runId, repo) {
 }
 
 /**
- * Busca as durações dos N runs ANTERIORES do workflow benchmark-weekly.yml —
+ * Busca as durações dos N runs ANTERIORES do workflow benchmark-scheduled.yml —
  * DELEGA ao medidor (fetchHistoryDurationsViaGh, a MESMA fonte do
  * --warn-median): gh run list (jq compartilhado buildRunListJq, exclui o run
  * atual + só runs completed) + jobs API por run. Runs onde o step não apareceu

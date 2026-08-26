@@ -2,7 +2,7 @@
  * benchmark-weekly-default-branch-guard-workflow.test.ts
  *
  * Snapshot test do job PERIÓDICO default-branch-workflow-guard do
- * .github/workflows/benchmark-weekly.yml — o guard que valida que os
+ * .github/workflows/benchmark-scheduled.yml — o guard que valida que os
  * workflows de MEDIÇÃO de CI (seed-guards.yml) EXISTEM na branch DEFAULT
  * do repo, prevenindo o falso estado 'pendente de medição' (o gh run list
  * responde '404: workflow not found on the default branch' quando o
@@ -38,7 +38,7 @@ import yaml from "js-yaml"
 import { extractScriptRefs } from "../../../scripts/check-workflow-refs.mjs"
 
 const CWD = process.cwd()
-const WF_NAME = "benchmark-weekly.yml"
+const WF_NAME = "benchmark-scheduled.yml"
 const WF_PATH = join(CWD, ".github", "workflows", WF_NAME)
 const JOB_KEY = "default-branch-workflow-guard"
 
@@ -71,7 +71,7 @@ const steps = job?.steps ?? []
 
 // ── 1. Sintaxe YAML + snapshot da estrutura do job ─────────────────────
 
-describe("benchmark-weekly.yml — job default-branch-workflow-guard (sintaxe YAML + snapshot)", () => {
+describe("benchmark-scheduled.yml — job default-branch-workflow-guard (sintaxe YAML + snapshot)", () => {
   it("parseia como YAML válido e o job casa com o snapshot da estrutura", () => {
     expect(job).toBeDefined()
     expect(job).toMatchSnapshot()
@@ -89,7 +89,7 @@ describe("benchmark-weekly.yml — job default-branch-workflow-guard (sintaxe YA
 
 // ── 2. Contrato de verificação (permissions/GH_TOKEN/invocação) ────────
 
-describe("benchmark-weekly.yml — contrato de verificação do default-branch-workflow-guard", () => {
+describe("benchmark-scheduled.yml — contrato de verificação do default-branch-workflow-guard", () => {
   it("permissions: contents: read (gh api repos/X/contents — existência do workflow na branch)", () => {
     expect(job?.permissions).toMatchObject({
       contents: "read",
@@ -140,7 +140,7 @@ describe("check-default-branch-workflows.mjs — contrato fail-closed no header"
 
 // ── 4. Refs de script contra o repo real ───────────────────────────────
 
-describe("benchmark-weekly.yml — refs do default-branch-workflow-guard contra o check-workflow-refs", () => {
+describe("benchmark-scheduled.yml — refs do default-branch-workflow-guard contra o check-workflow-refs", () => {
   it("o script invocado existe em scripts/ (check-default-branch-workflows.mjs resolve)", () => {
     const refs = extractScriptRefs(content)
     const ref = refs.find((r) => r.ref === "check-default-branch-workflows.mjs")

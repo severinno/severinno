@@ -9,7 +9,7 @@
 // .ts/.py — com chase de delegação .sh→.py) OU inline no próprio workflow.
 //
 // Por que existe: o job periódico blob-crlf-all-text-alert do
-// benchmark-weekly.yml grepa o sentinel 'com CRLF' no output do produtor
+// benchmark-scheduled.yml grepa o sentinel 'com CRLF' no output do produtor
 // (audit-blob-crlf-history.sh → audit_blob_crlf_history.py). Antes, a
 // consistência produtor↔job era travada por UM teste unitário específico
 // ('com CRLF' — benchmark-weekly-all-text-crlf-workflow.test.ts). Se um

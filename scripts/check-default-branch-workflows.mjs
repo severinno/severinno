@@ -54,7 +54,7 @@
 //   }
 // Em erro: { repo, error: '<mensagem>', infra: true }
 //
-// Job semanal (benchmark-weekly.yml — default-branch-workflow-guard):
+// Job semanal (benchmark-scheduled.yml — default-branch-workflow-guard):
 //   node scripts/check-default-branch-workflows.mjs --repo <owner/repo> --json /tmp/default-branch-guard.json
 // =============================================================================
 

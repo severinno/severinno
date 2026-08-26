@@ -77,7 +77,7 @@ export const CONTRACTS = [
         regex: /node scripts\/measure-mutation-timing\.mjs[\s\S]*?--max (\d+)/,
       },
       {
-        file: ".github/workflows/benchmark-weekly.yml",
+        file: ".github/workflows/benchmark-scheduled.yml",
         regex: /node scripts\/measure-mutation-timing\.mjs[\s\S]*?--max (\d+)/,
       },
     ],
@@ -92,7 +92,7 @@ export const CONTRACTS = [
         regex: /node scripts\/measure-mutation-timing\.mjs[\s\S]*?--warn-median (\d+)/,
       },
       {
-        file: ".github/workflows/benchmark-weekly.yml",
+        file: ".github/workflows/benchmark-scheduled.yml",
         regex: /node scripts\/measure-mutation-timing\.mjs[\s\S]*?--warn-median (\d+)/,
       },
     ],
@@ -107,7 +107,7 @@ export const CONTRACTS = [
         regex: /node scripts\/measure-mutation-timing\.mjs[\s\S]*?--warn-margin ([\d.]+)/,
       },
       {
-        file: ".github/workflows/benchmark-weekly.yml",
+        file: ".github/workflows/benchmark-scheduled.yml",
         regex: /node scripts\/measure-mutation-timing\.mjs[\s\S]*?--warn-margin ([\d.]+)/,
       },
     ],

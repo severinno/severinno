@@ -54,7 +54,7 @@
 #
 # Chamado por:
 #   - pr-check.yml          (a cada pull request)
-#   - benchmark-weekly.yml  (cron semanal — revalida contra banco efêmero)
+#   - benchmark-scheduled.yml  (cron semanal — revalida contra banco efêmero)
 # =============================================================================
 
 name: Seed Guards E2E (reusable)
