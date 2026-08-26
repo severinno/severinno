@@ -141,11 +141,11 @@ async function setupData(count) {
     const values = chunk
       .map((_, j) => {
         const idx = i + j
-        return `($${idx * 4 + 1}, $${idx * 4 + 2}, $${idx * 4 + 3},
-              ST_SetSRID(ST_MakePoint($${idx * 4 + 4}, $${idx * 4 + 3}), 4326)::geography)`
+        return `($${idx * 2 + 1}, $${idx * 2 + 2},
+              ST_SetSRID(ST_MakePoint($${idx * 2 + 2}, $${idx * 2 + 1}), 4326)::geography)`
       })
       .join(",\n")
-    const params = chunk.flatMap((p) => [p.lat, p.lng, p.lat, p.lng])
+    const params = chunk.flatMap((p) => [p.lat, p.lng])
     await query(`INSERT INTO "${TABLE}" (lat, lng, location) VALUES ${values}`, params)
   }
 
