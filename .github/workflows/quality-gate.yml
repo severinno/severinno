@@ -3,8 +3,8 @@
 #
 # Consolidated reusable workflow that runs ALL code quality validators in
 # parallel before the build step. Replaces the individual reusable workflows:
-#   .github/workflows/validate-coverage.yml
-#   .github/workflows/validate-cache.yml
+#   (validate-coverage — integrado no quality-gate)
+#   (validate-cache — integrado no quality-gate)
 #   coverage-badge inline steps in test jobs
 #
 # Jobs (run in parallel):
