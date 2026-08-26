@@ -1,0 +1,69 @@
+# =============================================================================
+# Self-hosted GitHub Actions Runner (Docker-in-Docker)
+#
+# Runner self-hosted que roda DENTRO do Docker com Docker-in-Docker (DinD),
+# permitindo que workflows usem:
+#   - docker build / docker push (GHCR mirror sync)
+#   - act local (precisa de Docker)
+#   - qualquer step que use Docker
+#
+# Setup:
+#   1. Gere o registration token:
+#      gh api -X POST repos/OWNER/REPO/actions/runners/registration-token --jq '.token'
+#   2. Substitua RUNNER_TOKEN abaixo pelo token gerado
+#   3. Substitua RUNNER_NAME pelo nome desejado (ex.: my-windows-runner)
+#   4. docker compose up -d
+#
+# Tokens expiram em 1h — se não iniciar a tempo, gere um novo.
+# O token do GITHUB_TOKEN é apenas para o runner (pull de imagens Docker).
+# =============================================================================
+
+services:
+  runner:
+    image: myoung34/github-runner:latest
+    container_name: severinno-runner
+    restart: unless-stopped
+    environment:
+      # ── Configuração do runner ──────────────────────────────────
+      RUNNER_NAME: severinno-self-hosted
+      REPO_URL: "https://github.com/severinno/severinno"
+      RUNNER_TOKEN: "${RUNNER_TOKEN}"
+      RUNNER_SCOPE: "repo"
+      # Labels para filtering nos workflows:
+      #   runs-on: [self-hosted, docker]
+      RUNNER_LABELS: "self-hosted,linux,x64,docker"
+
+      # ── Runner work directory ───────────────────────────────────
+      RUNNER_WORKDIR: /home/runner/_work
+
+      # ── Docker-in-Docker ────────────────────────────────────────
+      DOCKER_HOST: tcp://docker:2375
+    volumes:
+      # Compartilha o Docker socket do host (DinD via TCP)
+      - runner-workdir:/home/runner/_work
+    networks:
+      - runner-net
+    depends_on:
+      - dind
+
+  # ── Docker-in-Docker sidecar ──────────────────────────────────
+  dind:
+    image: docker:27-dind
+    container_name: severinno-dind
+    restart: unless-stopped
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    volumes:
+      - dind-storage:/var/lib/docker
+      - /c/severinno:/workspace:ro
+    networks:
+      - runner-net
+
+volumes:
+  runner-workdir:
+  dind-storage:
+
+networks:
+  runner-net:
+    driver: bridge

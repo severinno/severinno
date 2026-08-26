@@ -3,7 +3,10 @@
 exports[`pr-check.yml — job lint-guard (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
 {
   "name": "Lint Guard (prettier + eslint zero)",
-  "runs-on": "ubuntu-latest",
+  "runs-on": [
+    "self-hosted",
+    "docker",
+  ],
   "steps": [
     {
       "uses": "actions/checkout@v4",

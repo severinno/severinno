@@ -32,7 +32,7 @@ jobs:
   # ── Lint ──────────────────────────────────────────────────────────────────
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -46,7 +46,7 @@ jobs:
   # ── TypeScript check ─────────────────────────────────────────────────────
   typecheck:
     name: TypeCheck
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -80,7 +80,7 @@ jobs:
   # ── Tests ─────────────────────────────────────────────────────────────────
   test:
     name: Tests
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
 
     services:
       postgres:
@@ -129,7 +129,7 @@ jobs:
   # ── Build ─────────────────────────────────────────────────────────────────
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     needs: [lint, typecheck, utf8-check, quality-gate, test]
 
     steps:
@@ -156,7 +156,7 @@ jobs:
   # ── Deploy (manual trigger or on push to main) ────────────────────────────
   deploy:
     name: Deploy
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     needs: [build]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 

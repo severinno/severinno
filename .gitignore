@@ -37,6 +37,9 @@ yarn-error.log*
 !.env.example
 !.env.production.example
 
+# Self-hosted runner (secrets do registration token)
+.github/runner/.env
+
 # local backups
 backups/
 *.err

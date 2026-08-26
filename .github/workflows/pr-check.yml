@@ -28,7 +28,7 @@ jobs:
   # Runs in parallel with the main check job.
   utf8-check:
     name: UTF-8 Check
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -57,7 +57,7 @@ jobs:
   # alterações no script/args DEVEM ser replicadas nos dois lugares.
   blob-crlf-history-audit:
     name: Blob CRLF history (zero-CRLF)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     timeout-minutes: 5
 
     steps:
@@ -97,7 +97,7 @@ jobs:
   # contra um blob CRLF real. Bash + git + python3 (pré-instalados), <5s.
   all-text-alert-validation:
     name: All-text alert validation (fixture → gate)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -117,7 +117,7 @@ jobs:
   # adicionado de volta ao tracking sem o PR ser bloqueado.
   secrets-guard:
     name: Secrets Guard (no .env tracked)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -139,7 +139,7 @@ jobs:
   # deploy precisa bloquear isso antes de tocar o servidor.
   seed-hooks-guard:
     name: Seed Test Hooks Guard (no prod leak)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -168,7 +168,7 @@ jobs:
   # hook local no runtime sem este modo.
   workflow-refs-guard:
     name: Workflow References Guard (no dangling refs)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -200,7 +200,7 @@ jobs:
   # tabela de simetria do README é de encoding guards). Node puro, sem deps.
   sentinel-producer-guard:
     name: Sentinel Producer Guard (grep -Fq ↔ produtor)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -218,7 +218,7 @@ jobs:
   # path → actions/cache keyed na versão → download direto só em cache miss).
   no-setup-bun-guard:
     name: No setup-bun Guard (local action)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -248,7 +248,7 @@ jobs:
   # início com a violação exata (arquivo:linha).
   bun-mirror-guard:
     name: Bun Mirror Guard (fonte única vars.BUN_VERSION)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -271,7 +271,7 @@ jobs:
   # --staged usa git diff --cached.
   bun-mirror-staged-guard:
     name: Bun Mirror Guard (staged diff)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -302,7 +302,7 @@ jobs:
   # scripts/check-mutation-jobs.mjs --staged usa git diff --cached.
   mutation-jobs-staged-guard:
     name: Mutation Jobs Guard (staged diff)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -375,7 +375,7 @@ jobs:
   # prettier/eslint de node_modules (os demais sub-tests são puros shell).
   mutation-guards:
     name: Mutation guards master (15 node-pure mutation tests)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -414,7 +414,7 @@ jobs:
   # (mutation test) no mesmo workflow.
   hooks-symmetry-guard:
     name: Hooks Symmetry Guard (README ↔ hooks)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -444,7 +444,7 @@ jobs:
   # merge (e o mesmo guard roda no reusable utf8-check.yml + hooks locais).
   mutation-jobs-guard:
     name: Mutation Jobs Guard (test-mutation-*.sh ↔ CI jobs)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -470,7 +470,7 @@ jobs:
   readme-reverse-strict-alert:
     name: "README Reverse-Strict Alert (::warning::, não-bloqueante)"
     if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -553,7 +553,7 @@ jobs:
   # alterações no act/args do guard DEVEM ser replicadas nos dois lugares.
   tier1-fastpath-guard:
     name: Tier-1 Fastpath Guard (setup-bun changes)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -663,7 +663,7 @@ jobs:
   # impresso (📊 Resultados) bate com a própria constante (exit 1 se divergir).
   e2e-counts-guard:
     name: E2E Counts Guard (comentários = derivação)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -699,7 +699,7 @@ jobs:
   # são flags.
   seed-count-literals-guard:
     name: Seed Count Literals Guard (scripts/docs/.github = derivação)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -716,7 +716,7 @@ jobs:
   # ── Actionlint (workflow syntax) ───────────────────────────────────────
   actionlint:
     name: Actionlint (workflow syntax)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -750,7 +750,7 @@ jobs:
   # explícito.
   lint-guard:
     name: Lint Guard (prettier + eslint zero)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -803,7 +803,7 @@ jobs:
   # do run da suíte completa.
   jsdom-drift-guard:
     name: JSDOM component suite — drift baseline
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     # Folga para o pior caso: install + run real (~6 min) + 2ª run de
     # CONFIRMAÇÃO quando drift é detectado (anti-flake) ≈ 14-15 min.
     timeout-minutes: 25
@@ -854,7 +854,7 @@ jobs:
   # bun.lock direto (não precisa de node_modules).
   unused-deps-guard:
     name: Unused Deps Guard (package.json hygiene)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -877,7 +877,7 @@ jobs:
   # corrigido à mão; o guard impede a repetição). Node-puro, <1s, sem deps.
   mutation-count-guard:
     name: Mutation Count Guard (matrix ↔ job name/summary ↔ README)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -896,7 +896,7 @@ jobs:
 
   bun-audit-guard:
     name: Bun Audit Guard (deps — drift baseline)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -917,7 +917,7 @@ jobs:
   # Runs in parallel with other checks. No external dependencies needed.
   fuzz:
     name: Fuzz Tests
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -953,7 +953,7 @@ jobs:
   # flakiness from algorithmic changes.
   benchmark:
     name: Geo Benchmark
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -1059,7 +1059,7 @@ jobs:
   # nothing beyond the runner minutes.
   benchmark-gist:
     name: GiST Benchmark (PR)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
 
     # ── Ephemeral PostGIS service container ───────────────────────────
     # Imagem via vars.POSTGIS_IMAGE (default alpine — menor: 154 MiB vs
@@ -1345,7 +1345,7 @@ jobs:
   # pequeno). Sem histórico (primeiro run) → ::notice:: + gate só no teto.
   mutation-coord-timing-guard:
     name: Mutation coord timing (drift 50%/teto 240)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     needs: seed-guards
     if: always() # mede também quando o seed-guards falhou (timeout é o alvo)
     timeout-minutes: 5
@@ -1458,7 +1458,7 @@ jobs:
   # overhead).
   mutation-coord-timing-act-guard:
     name: Mutation coord timing (act, budget 240/mediana 4)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     timeout-minutes: 25
 
     # packages: read — pull da imagem PRIVADA ghcr.io/<owner>/ubuntu-bun pelo
@@ -1577,7 +1577,7 @@ jobs:
   # Falha se algum header obrigatório estiver ausente ou mal configurado.
   security-headers:
     name: Security Headers
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -1600,7 +1600,7 @@ jobs:
   # do job typecheck do ci.yml.
   typecheck:
     name: TypeCheck (tsc --noEmit)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 
@@ -1634,7 +1634,7 @@ jobs:
         run: echo "✅ TypeScript typecheck (tsc --noEmit, heap 4096MB) passed."
 
   check:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, docker]
     steps:
       - uses: actions/checkout@v4
 

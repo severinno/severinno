@@ -3,7 +3,10 @@
 exports[`pr-check.yml — job typecheck (typecheck paralelo) > snapshot da estrutura do job (mudança estrutural exige revisão consciente) 1`] = `
 {
   "name": "TypeCheck (tsc --noEmit)",
-  "runs-on": "ubuntu-latest",
+  "runs-on": [
+    "self-hosted",
+    "docker",
+  ],
   "steps": [
     {
       "uses": "actions/checkout@v4",

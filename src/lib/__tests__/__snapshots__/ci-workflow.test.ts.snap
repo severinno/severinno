@@ -22,7 +22,10 @@ exports[`ci.yml — sintaxe YAML + snapshot > parseia como YAML válido (js-yaml
         "quality-gate",
         "test",
       ],
-      "runs-on": "ubuntu-latest",
+      "runs-on": [
+        "self-hosted",
+        "docker",
+      ],
       "steps": [
         {
           "uses": "actions/checkout@v4",
@@ -62,7 +65,10 @@ exports[`ci.yml — sintaxe YAML + snapshot > parseia como YAML válido (js-yaml
       "needs": [
         "build",
       ],
-      "runs-on": "ubuntu-latest",
+      "runs-on": [
+        "self-hosted",
+        "docker",
+      ],
       "steps": [
         {
           "uses": "actions/download-artifact@v4",
@@ -78,7 +84,10 @@ exports[`ci.yml — sintaxe YAML + snapshot > parseia como YAML válido (js-yaml
     },
     "lint": {
       "name": "Lint",
-      "runs-on": "ubuntu-latest",
+      "runs-on": [
+        "self-hosted",
+        "docker",
+      ],
       "steps": [
         {
           "uses": "actions/checkout@v4",
@@ -102,7 +111,10 @@ exports[`ci.yml — sintaxe YAML + snapshot > parseia como YAML válido (js-yaml
     },
     "test": {
       "name": "Tests",
-      "runs-on": "ubuntu-latest",
+      "runs-on": [
+        "self-hosted",
+        "docker",
+      ],
       "services": {
         "postgres": {
           "env": {
@@ -161,7 +173,10 @@ fi
     },
     "typecheck": {
       "name": "TypeCheck",
-      "runs-on": "ubuntu-latest",
+      "runs-on": [
+        "self-hosted",
+        "docker",
+      ],
       "steps": [
         {
           "uses": "actions/checkout@v4",
