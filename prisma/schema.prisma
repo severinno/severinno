@@ -99,6 +99,14 @@ model User {
   reviewCount      Int       @default(0)
   favoriteCount    Int       @default(0)
   lytexRecipientId String?
+  // Identity verification (KYC)
+  identityDocUrl    String?
+  identitySelfieUrl String?
+  identityVerifiedAt DateTime?
+  identityStatus    String?
+  // Advanced Geolocation
+  servicePolygon    Json?
+  travelFeePolicy   Json?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -315,6 +323,7 @@ model Booking {
   beforePhotos      Json          @default("[]")
   afterPhotos       Json          @default("[]")
   completionNote    String?
+  geofenceAlertSentAt DateTime?
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
 
@@ -754,7 +763,7 @@ model SettlementPeriod {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  providerSettlements ProviderSettlement[]
+  providers ProviderSettlement[] @relation("SettlementProviders")
 
   @@index([status])
   @@index([startDate, endDate])
@@ -775,7 +784,7 @@ model ProviderSettlement {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  period   SettlementPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  period   SettlementPeriod @relation("SettlementProviders", fields: [periodId], references: [id], onDelete: Cascade)
   provider User            @relation(fields: [providerId], references: [id], onDelete: Restrict)
 
   @@unique([periodId, providerId])

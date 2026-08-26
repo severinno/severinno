@@ -122,6 +122,11 @@ export const ALLOWLIST = [
   { match: "husky", type: "exact", why: "CLI de hooks via package.json prepare + .husky/*" },
   { match: "lint-staged", type: "exact", why: "CLI via .husky/pre-commit bunx lint-staged" },
   { match: "prisma", type: "exact", why: "CLI via scripts (generate/migrate) + prisma.config.ts" },
+  {
+    match: "@opentelemetry/",
+    type: "prefix",
+    why: "OpenTelemetry SDK packages — used via telemetry config at runtime",
+  },
 ]
 
 /**
