@@ -371,12 +371,26 @@ jobs:
   # + utf8-scope), cada um com o overhead de setup do container/checkout —
   # consolidar reduz o setup por job sem perder a granularidade
   # (--scenario <id> roda um sub-test isolado para diagnóstico local).
-  # Node-puro, <9s total, sem docker.
+  # Requer bun install porque o sub-test lint-guard usa os binários
+  # prettier/eslint de node_modules (os demais sub-tests são puros shell).
   mutation-guards:
     name: Mutation guards master (15 node-pure mutation tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
 
       - name: Mutation tests — todos os guards devem FALHAR nas mutações
         run: bash scripts/test-mutation-guards.sh
