@@ -132,7 +132,7 @@ describe("pr-check.yml — lint-guard (gate de lint/prettier)", () => {
 
   it("roda prettier --check --ignore-unknown (falha em qualquer arquivo fora do padrão)", () => {
     const run = stepRun("Check prettier formatting")
-    expect(run).toContain("npx prettier --check --ignore-unknown")
+    expect(run).toContain("bunx prettier --check --ignore-unknown")
     // Escopo explícito = o mesmo validado localmente na Fase 3 — um
     // `prettier --check .` puro quebraria em globs *.prisma/*.sql na raiz.
     expect(run).toContain(
@@ -142,7 +142,7 @@ describe("pr-check.yml — lint-guard (gate de lint/prettier)", () => {
 
   it("roda eslint . --max-warnings 0 (falha em QUALQUER warning/erro)", () => {
     const run = stepRun("Check eslint")
-    expect(run).toContain("npx eslint . --max-warnings 0")
+    expect(run).toContain("bunx eslint . --max-warnings 0")
   })
 
   it("instala deps antes dos checks (bun install --frozen-lockfile)", () => {

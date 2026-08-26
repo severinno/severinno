@@ -1,6 +1,8 @@
 {
-  "count": 0,
-  "fileCount": 0,
-  "updatedAt": "2026-08-06",
-  "files": {}
+  "count": 1,
+  "fileCount": 1,
+  "updatedAt": "2026-08-26",
+  "files": {
+    "src/components/vitrine/__tests__/provider-card-geo.test.tsx": 1
+  }
 }

@@ -29,12 +29,12 @@ exports[`pr-check.yml — job lint-guard (sintaxe YAML + snapshot) > parseia com
     },
     {
       "name": "Check prettier formatting (all matched files)",
-      "run": "npx prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'
+      "run": "bunx prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'
 ",
     },
     {
       "name": "Check eslint (max-warnings 0)",
-      "run": "npx eslint . --max-warnings 0",
+      "run": "bunx eslint . --max-warnings 0",
     },
     {
       "name": "Summary",

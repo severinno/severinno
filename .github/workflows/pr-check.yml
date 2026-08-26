@@ -770,11 +770,11 @@ jobs:
 
       - name: Check prettier formatting (all matched files)
         run: >
-          npx prettier --check --ignore-unknown
+          bunx prettier --check --ignore-unknown
           'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'
 
       - name: Check eslint (max-warnings 0)
-        run: npx eslint . --max-warnings 0
+        run: bunx eslint . --max-warnings 0
 
       # CONTRATO REPO-WIDE (não PR-scope): eslint . --max-warnings 0 cobre
       # TODO o repo — um warning introduzido em QUALQUER arquivo (mesmo via

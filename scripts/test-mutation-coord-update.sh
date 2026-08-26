@@ -168,8 +168,8 @@ EXPECTED_FAILURE_DOC="piso prod violado"
 # ("sanidade: prod=128 e dev=162 no estado atual"). Mutá-lo para 129 faz a
 # asserção falhar: a derivação real continua 128. (Dev é 162 — intocado,
 # isolando a falha em prod, como no cenário A.)
-ANCHOR_PATTERN=').toBe(128)'
-ANCHOR_REPLACEMENT=').toBe(129)'
+ANCHOR_PATTERN=').toBe(127)'
+ANCHOR_REPLACEMENT=').toBe(128)'
 
 # Asserção que o teste DEVE emitir quando a âncora é mutada (sanidade prod).
 EXPECTED_FAILURE_ANCHOR="anchor prod desatualizado"
@@ -229,7 +229,7 @@ EXPECTED_FAILURE_DEV="piso dev violado"
 
 # Âncora de DEV no TEST_FILE — usada para provar que a âncora NÃO foi tocada
 # (a falha do cenário E vem SÓ da doc de dev, não de um anchor leak).
-DEV_ANCHOR_PATTERN=').toBe(162)'
+DEV_ANCHOR_PATTERN=').toBe(161)'
 
 # ── Colors ────────────────────────────────────────────────────────────────
 
