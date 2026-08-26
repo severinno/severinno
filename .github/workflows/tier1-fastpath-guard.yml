@@ -27,7 +27,7 @@
 #   - Se act falhar DEPOIS do setup-bun, a evidência existe → guard decide.
 #
 # ⚠️ A imagem precisa estar PÚBLICA no GHCR (pull sem auth do act local e do
-# CI). O sync-ubuntu-bun-mirror.yml (cron 05:34 seg) publica a imagem — este
+# CI). O sync-mirrors.yml (cron 05:34 seg) publica a imagem — este
 # guard roda DEPOIS (06:15 seg) para validar o mirror recém-publicado.
 #
 # Usage:

@@ -232,7 +232,7 @@ jobs:
   # Fast gate (node puro, <1s): falha o PR se a FONTE ÚNICA da versão do
   # Bun for violada. A versão vive APENAS na repository variable
   # vars.BUN_VERSION (Settings → Secrets and variables → Actions): workflows
-  # passam 'bun-version: ${{ vars.BUN_VERSION }}', o sync-bun-mirror.yml usa
+  # passam 'bun-version: ${{ vars.BUN_VERSION }}', o sync-mirrors.yml usa
   # a mesma variável no env, e o composite action setup-bun resolve a versão
   # em runtime (metadata de action NÃO avalia ${{ }}, então default literal é
   # proibido). O guard falha se: mirror ausente, mirror com BUN_VERSION
@@ -1063,7 +1063,7 @@ jobs:
 
     # ── Ephemeral PostGIS service container ───────────────────────────
     # Imagem via vars.POSTGIS_IMAGE (default alpine — menor: 154 MiB vs
-    # ~203 MiB do full). Mire no GHCR com sync-postgis-mirror.yml para
+    # ~203 MiB do full). Mire no GHCR com sync-mirrors.yml para
     # pull dentro da rede do GitHub + sem rate limit do Docker Hub.
     services:
       postgis:

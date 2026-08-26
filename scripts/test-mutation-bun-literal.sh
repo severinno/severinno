@@ -86,7 +86,7 @@ info "STEP 1: Criando repo fixture temporário em $TMP_DIR..."
 mkdir -p "$TMP_DIR/.github/workflows" "$TMP_DIR/.github/actions/setup-bun" "$TMP_DIR/mini-services/realtime"
 
 # Mirror workflow válido (env.BUN_VERSION = ${{ vars.BUN_VERSION }} — fonte única)
-cat > "$TMP_DIR/.github/workflows/sync-bun-mirror.yml" <<'EOF'
+cat > "$TMP_DIR/.github/workflows/sync-mirrors.yml" <<'EOF'
 name: Sync Bun Mirror
 env:
   BUN_VERSION: ${{ vars.BUN_VERSION }}

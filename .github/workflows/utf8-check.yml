@@ -38,7 +38,7 @@
 #      ./.github/actions/setup-bun (pre-installed fast path + actions/cache
 #      keyed on the pinned version). See scripts/check-no-setup-bun.mjs.
 #
-#   5. Bun mirror: fails if the GHCR mirror workflow (sync-bun-mirror.yml)
+#   5. Bun mirror: fails if the GHCR mirror workflow (sync-mirrors.yml)
 #      is missing, its BUN_VERSION doesn't reference the repository variable
 #      vars.BUN_VERSION (single source), the setup-bun action pins a literal
 #      default (metadata can't evaluate ${{ }}), a literal Bun version

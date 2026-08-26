@@ -19,7 +19,7 @@
 #        echo "$GH_TOKEN" | gh auth login --with-token
 #   3. docker login ghcr.io  (só push — sem gh, o script AVISA que a
 #                            visibilidade pública precisa de ajuste manual)
-#   4. No CI: o workflow .github/workflows/sync-ubuntu-bun-mirror.yml já
+#   4. No CI: o workflow .github/workflows/sync-mirrors.yml já
 #      publica com secrets.GITHUB_TOKEN (packages: write) — mas pacotes
 #      criados com GITHUB_TOKEN nascem PRIVADOS e exigem marcar público nas
 #      settings da org (ver etapa 3 do fluxo).

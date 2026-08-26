@@ -30,7 +30,7 @@ derivam dela:
 | --------------------------------------- | -------------------------------------------------------------------------------- |
 | Workflows (`bun-version:` no setup-bun) | `${{ vars.BUN_VERSION }}`                                                        |
 | Cache keys `bun-`/`prisma-`             | `bun-${{ vars.BUN_VERSION }}-${{ hashFiles(...) }}`                              |
-| Mirror GHCR (`sync-bun-mirror.yml` env) | `BUN_VERSION: ${{ vars.BUN_VERSION }}`                                           |
+| Mirror GHCR (`sync-mirrors.yml` env) | `BUN_VERSION: ${{ vars.BUN_VERSION }}`                                           |
 | Mirror ubuntu-bun (`--build-arg`)       | `BUN_VERSION: ${{ vars.BUN_VERSION }}` (Dockerfile falha sem ela)                |
 | Composite action `setup-bun`            | resolve do input `bun-version` (callers resolvem `vars.BUN_VERSION` no workflow) |
 | Act local (`.actrc`)                    | `--var BUN_VERSION=<versão>` (espelho local da variável)                         |
@@ -96,14 +96,14 @@ semanal de segunda-feira também roda sozinho, mas não espere por ele num bump)
 
 ```bash
 # 1. Mirror do binário (imagem scratch ghcr.io/<owner>/bun:<versão> — tier 3 do setup-bun)
-gh workflow run sync-bun-mirror.yml -R <owner>/<repo>
+gh workflow run sync-mirrors.yml -R <owner>/<repo>
 # gh run watch sem run id vigia o ÚLTIMO run do repo — capture o id do workflow certo
-RUN_ID=$(gh run list -R <owner>/<repo> --workflow sync-bun-mirror.yml --limit 1 --json databaseId -q '.[0].databaseId')
+RUN_ID=$(gh run list -R <owner>/<repo> --workflow sync-mirrors.yml --limit 1 --json databaseId -q '.[0].databaseId')
 gh run watch --exit-status "$RUN_ID" -R <owner>/<repo>   # aguarda concluir (exit 0 = ok)
 
 # 2. Mirror da imagem runner (ghcr.io/<owner>/ubuntu-bun:<versão> — tier-1 fast path no act local)
-gh workflow run sync-ubuntu-bun-mirror.yml -R <owner>/<repo>
-RUN_ID=$(gh run list -R <owner>/<repo> --workflow sync-ubuntu-bun-mirror.yml --limit 1 --json databaseId -q '.[0].databaseId')
+gh workflow run sync-mirrors.yml -R <owner>/<repo>
+RUN_ID=$(gh run list -R <owner>/<repo> --workflow sync-mirrors.yml --limit 1 --json databaseId -q '.[0].databaseId')
 gh run watch --exit-status "$RUN_ID" -R <owner>/<repo>
 ```
 
@@ -205,7 +205,7 @@ rm -f .github/workflows/tmp-bench-literal.yml
 
 Roda no PR Check, `utf8-check.yml`, pre-commit e pre-push. Falha (exit 1) se:
 
-1. o mirror `sync-bun-mirror.yml` tiver `BUN_VERSION` **literal** em vez de
+1. o mirror `sync-mirrors.yml` tiver `BUN_VERSION` **literal** em vez de
    `${{ vars.BUN_VERSION }}`;
 2. o action `setup-bun` tiver `default:` literal (metadata de action não
    avalia `${{ }}`);
@@ -278,8 +278,8 @@ node scripts/check-actrc-sync.mjs --expected 1.3.14 --fail   # exit 1 (drift)
 gh variable list -R <owner>/<repo> | grep BUN_VERSION
 
 # 2. Mirrors re-disparados e concluídos (Verify ok)
-gh run list -R <owner>/<repo> --workflow sync-bun-mirror.yml --limit 1
-gh run list -R <owner>/<repo> --workflow sync-ubuntu-bun-mirror.yml --limit 1
+gh run list -R <owner>/<repo> --workflow sync-mirrors.yml --limit 1
+gh run list -R <owner>/<repo> --workflow sync-mirrors.yml --limit 1
 
 # 3. Espelho local sincronizado
 grep BUN_VERSION .actrc

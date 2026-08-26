@@ -1,0 +1,192 @@
+# =============================================================================
+# Sync Mirrors → GHCR (consolidado)
+#
+# Espelha 3 imagens para o GHCR em um único workflow:
+#   1. bun — binário do Bun (scratch image, tier 3 do setup-bun)
+#   2. postgis — imagem postgis do Docker Hub (crane copy, mais rápido)
+#   3. ubuntu-bun — imagem runner com bun pré-instalado (tier 1 do setup-bun)
+#
+# Cada mirror é um JOB INDEPENDENTE com seu próprio cron schedule.
+# Removidos: sync-bun-mirror.yml, sync-postgis-mirror.yml, sync-ubuntu-bun-mirror.yml
+#
+# FONTE ÚNICA DA VERSÃO: repository variable BUN_VERSION (vars.BUN_VERSION).
+# Trocar o Bun = alterar a variável em UM lugar.
+#
+# ⚠️ Pacotes GHCR criados via GITHUB_TOKEN nascem PRIVADOS por padrão.
+# Para pull anônimo, torne o pacote público em:
+#   https://github.com/orgs/severinno/packages
+#
+# Exit codes:
+#   0 — todos os mirrors concluídos
+#   1 — falha em qualquer mirror
+# =============================================================================
+
+name: Sync Mirrors (GHCR)
+
+on:
+  schedule:
+    # Bun mirror — semanal 04:23 UTC
+    - cron: "23 4 * * 1"
+    # PostGIS mirror — diário 04:17 UTC
+    - cron: "17 4 * * *"
+    # Ubuntu-Bun mirror — semanal 05:34 UTC
+    - cron: "34 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  BUN_VERSION: ${{ vars.BUN_VERSION }}
+
+jobs:
+  # ── Bun Mirror (scratch image com /bun) ────────────────────────────────
+  # Espelha o binário do Bun para GHCR como imagem scratch mínima.
+  # Usado pelo tier 3 (cold cache) do composite action setup-bun.
+  mirror-bun:
+    name: "Mirror bun:v${{ vars.BUN_VERSION }} → GHCR"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate BUN_VERSION variable
+        run: |
+          set -euo pipefail
+          if [ -z "${BUN_VERSION}" ]; then
+            echo "::error::Repository variable BUN_VERSION não definida — crie em Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "  ✅ BUN_VERSION=${BUN_VERSION}"
+
+      - name: Download bun release (linux-x64)
+        run: |
+          set -euo pipefail
+          curl -fsSL -o "$RUNNER_TEMP/bun.zip" \
+            "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip"
+          unzip -qo "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP/bun-extract"
+          find "$RUNNER_TEMP/bun-extract" -type f -name bun \
+            -exec mv -f {} "$RUNNER_TEMP/bun" \;
+          chmod +x "$RUNNER_TEMP/bun"
+          "$RUNNER_TEMP/bun" --version
+
+      - name: Build scratch image
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ctx"
+          cp "$RUNNER_TEMP/bun" "$RUNNER_TEMP/ctx/bun"
+          docker build \
+            -f Dockerfile.bun-mirror \
+            -t "ghcr.io/${{ github.repository_owner }}/bun:${BUN_VERSION}" \
+            "$RUNNER_TEMP/ctx"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push mirror → GHCR
+        run: |
+          set -euo pipefail
+          docker push "ghcr.io/${{ github.repository_owner }}/bun:${BUN_VERSION}"
+
+      - name: Verify mirror digest
+        run: |
+          set -euo pipefail
+          IMG="ghcr.io/${{ github.repository_owner }}/bun:${BUN_VERSION}"
+          CID="$(docker create "$IMG")"
+          docker cp "$CID:/bun" "$RUNNER_TEMP/bun-verify"
+          docker rm -f "$CID" >/dev/null 2>&1 || true
+          chmod +x "$RUNNER_TEMP/bun-verify"
+          echo "  ✅ Mirror ok — bun $("$RUNNER_TEMP/bun-verify" --version)"
+          echo "  Imagem: ${IMG}"
+
+  # ── PostGIS Mirror (crane copy do Docker Hub) ──────────────────────────
+  # Espelha postgis/postgis do Docker Hub para GHCR.
+  # Pull do GHCR é mais rápido e sem rate limit.
+  mirror-postgis:
+    name: "Mirror postgis → GHCR"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Install crane (registry-to-registry copy)
+        run: |
+          curl -sL https://github.com/google/go-containerregistry/releases/download/v0.20.3/go-containerregistry_Linux_x86_64.tar.gz \
+            | tar xz crane
+          sudo mv crane /usr/local/bin/
+          crane version
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Copy postgis:16-3.4-alpine → GHCR"
+        run: |
+          crane copy postgis/postgis:16-3.4-alpine ghcr.io/${{ github.repository_owner }}/postgis:16-3.4-alpine
+
+      - name: "Copy postgis:16-3.4 → GHCR (fallback)"
+        run: |
+          crane copy postgis/postgis:16-3.4 ghcr.io/${{ github.repository_owner }}/postgis:16-3.4 || true
+
+      - name: Verify mirror digest
+        run: |
+          echo "  Mirrored digest (alpine):"
+          crane digest ghcr.io/${{ github.repository_owner }}/postgis:16-3.4-alpine
+          echo "  ✅ Sync completo — defina vars.POSTGIS_IMAGE para usar o mirror"
+
+  # ── Ubuntu-Bun Mirror (runner image com bun pré-instalado) ─────────────
+  # Imagem base catthehacker/ubuntu:act-latest com bun no PATH.
+  # Habilita o TIER-1 FAST PATH do setup-bun (bun já instalado).
+  mirror-ubuntu-bun:
+    name: "Mirror ubuntu-bun:v${{ vars.BUN_VERSION }} → GHCR"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate BUN_VERSION variable
+        run: |
+          set -euo pipefail
+          if [ -z "${BUN_VERSION}" ]; then
+            echo "::error::Repository variable BUN_VERSION não definida — crie em Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "  ✅ BUN_VERSION=${BUN_VERSION}"
+
+      - name: Build ubuntu-bun image
+        run: |
+          set -euo pipefail
+          docker build \
+            --build-arg BUN_VERSION="${BUN_VERSION}" \
+            -f Dockerfile.ubuntu-bun \
+            -t "ghcr.io/${{ github.repository_owner }}/ubuntu-bun:${BUN_VERSION}" \
+            .
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push mirror → GHCR
+        run: |
+          set -euo pipefail
+          docker push "ghcr.io/${{ github.repository_owner }}/ubuntu-bun:${BUN_VERSION}"
+
+      - name: Verify mirror digest
+        run: |
+          set -euo pipefail
+          IMG="ghcr.io/${{ github.repository_owner }}/ubuntu-bun:${BUN_VERSION}"
+          docker run --rm "$IMG" bash -lc 'node --version; bun --version; bunx --version 2>/dev/null || true' \
+            | sed 's/^/  /'
+          echo "  ✅ Mirror ok — imagem: ${IMG}"

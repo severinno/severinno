@@ -91,7 +91,7 @@ Cada camada gera um relatório em `docs/audit/` com:
 - [ ] **seed-guards.yml:** Guards de seed protegem contra dados incorretos?
 - [ ] **tier1-fastpath-guard.yml:** Guard de performance no caminho crítico?
 - [ ] **utf8-check.yml:** Validação de encoding em todos os .ts files?
-- [ ] **sync-bun-mirror.yml:** Mirror do Bun sincronizado?
+- [ ] **sync-mirrors.yml:** Mirror do Bun sincronizado?
 
 ## 11.5 Actions Customizadas
 

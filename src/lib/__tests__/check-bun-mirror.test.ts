@@ -3,10 +3,10 @@
  *
  * Testes das funções PURAS do scripts/check-bun-mirror.mjs — guard da FONTE
  * ÚNICA da versão do Bun (repository variable vars.BUN_VERSION) + do mirror
- * GHCR (.github/workflows/sync-bun-mirror.yml).
+ * GHCR (.github/workflows/sync-mirrors.yml).
  *
  * O guard garante 9 invariantes:
- *   1. O workflow do mirror existe (sync-bun-mirror.yml).
+ *   1. O workflow do mirror existe (sync-mirrors.yml).
  *   2. env.BUN_VERSION do mirror referencia ${{ vars.BUN_VERSION }} (não literal).
  *   3. O action.yml NÃO tem default literal para bun-version (metadata não
  *      avalia ${{ }}) — a versão resolve em runtime de input || vars.
@@ -317,7 +317,7 @@ describe("hasGhcrMirrorRef", () => {
 // ── validateMirror ────────────────────────────────────────────────────────
 
 describe("validateMirror", () => {
-  const wfName = "sync-bun-mirror.yml"
+  const wfName = "sync-mirrors.yml"
   const actName = "action.yml"
   // Estado CONSENSO: mirror referencia a variável, action SEM default, com
   // resolve de vars + ref ao mirror GHCR no tier 3.

@@ -6,7 +6,7 @@
 #
 # FONTE ÚNICA DA VERSÃO: repository variable BUN_VERSION (vars.BUN_VERSION).
 # Todos os workflows passam `bun-version: vars.BUN_VERSION` no input e o
-# sync-bun-mirror.yml usa a mesma variável no env — trocar o Bun = alterar
+# sync-mirrors.yml usa a mesma variável no env — trocar o Bun = alterar
 # a variável em UM lugar (Settings → Secrets and variables → Actions).
 #
 # Por que NÃO há `default:` no input:
@@ -43,7 +43,7 @@
 #   2. actions/cache restore — caso contrário, restaura o binário do release
 #      EXATO de actions/cache (key = bun-<versão>-<os>-<arch>) (~1-2s).
 #   3. COLD-CACHE download — só em cache miss, puxa do mirror GHCR
-#      (ghcr.io/<owner>/bun:<versão>, sincronizado por sync-bun-mirror.yml)
+#      (ghcr.io/<owner>/bun:<versão>, sincronizado por sync-mirrors.yml)
 #      via docker pull + docker create/cp (~1-3s, sem rate limit do GitHub
 #      Releases) e o salva no cache para os próximos jobs. Se o mirror ainda
 #      não existir ou o docker não estiver disponível, faz fallback para o
@@ -135,7 +135,7 @@ runs:
 
     # ── Tier 3: cold-cache download (GHCR mirror → GitHub release fallback) ─
     # Prioridade: mirror GHCR ghcr.io/<owner>/bun:<versão> (imagem scratch com
-    # o binário em /bun, sincronizada por sync-bun-mirror.yml). O mirror só
+    # o binário em /bun, sincronizada por sync-mirrors.yml). O mirror só
     # serve linux/x64; demais plataformas e fallbacks vão direto ao release.
     - name: Download Bun release (cold cache)
       if: (steps.detect.outputs.found == 'false' || steps.detect.outputs.version != steps.resolve.outputs.version) && steps.cache.outputs.cache-hit != 'true'

@@ -63,7 +63,7 @@ function makeBaseRepo(name: string): string {
   mkdirSync(realtimeDir, { recursive: true })
 
   writeFileSync(
-    join(wfDir, "sync-bun-mirror.yml"),
+    join(wfDir, "sync-mirrors.yml"),
     `name: Sync Bun Mirror
 env:
   BUN_VERSION: \${{ vars.BUN_VERSION }}

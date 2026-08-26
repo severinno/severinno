@@ -43,7 +43,7 @@
 #
 # Otimizações de CI aplicadas:
 #   - vars.POSTGIS_IMAGE (default alpine; mire no GHCR com
-#     sync-postgis-mirror.yml para pull mais rápido + sem rate limit Docker Hub)
+#     sync-mirrors.yml para pull mais rápido + sem rate limit Docker Hub)
 #   - Cache do Prisma client keyed no schema.prisma + bun.lock →
 #     SKIP_PRISMA_GENERATE=1 em cache hit (pula o generate, ~6s)
 #   - A matrix compartilha o cache do Prisma client entre as 4 combinações
@@ -92,7 +92,7 @@ jobs:
     # ── Ephemeral PostGIS service container (UM por combinação) ─────
     # Imagem resolvida por matrix.variant: alpine usa vars.POSTGIS_IMAGE
     # (fallback Docker Hub; aponte para o mirror GHCR com
-    # sync-postgis-mirror.yml), full usa a imagem oficial postgis/postgis:16-3.4
+    # sync-mirrors.yml), full usa a imagem oficial postgis/postgis:16-3.4
     # (a MESMA que o deploy.yml usa — compatibilidade garantida com prod).
     services:
       postgres:

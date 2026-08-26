@@ -3,7 +3,7 @@
 // =============================================================================
 // check-bun-mirror.mjs
 //
-// CI guard do mirror GHCR do Bun (.github/workflows/sync-bun-mirror.yml) +
+// CI guard do mirror GHCR do Bun (.github/workflows/sync-mirrors.yml) +
 // da FONTE ÚNICA da versão do Bun (repository variable BUN_VERSION).
 //
 // FONTE ÚNICA: a versão pinada do Bun vive na repository variable
@@ -27,7 +27,7 @@
 //
 // Este guard garante os invariantes:
 //
-//   1. O workflow do mirror EXISTE (sync-bun-mirror.yml).
+//   1. O workflow do mirror EXISTE (sync-mirrors.yml).
 //   2. env.BUN_VERSION do mirror referencia ${{ vars.BUN_VERSION }} (não um
 //      literal — um literal criaria um segundo ponto de verdade).
 //   3. O action.yml (setup-bun) NÃO tem default literal para bun-version
@@ -112,7 +112,7 @@
 //      é travada: um `npm install` acidental regenera o npm lockfile e o
 //      guard falha no PR).
 //
-// Escopo: lê .github/workflows/sync-bun-mirror.yml + .github/actions/
+// Escopo: lê .github/workflows/sync-mirrors.yml + .github/actions/
 // setup-bun/action.yml + Dockerfile.bun-mirror + TODOS os .github/workflows/*.yml
 // E *.yaml (cache keys + literais) + .actrc + Dockerfiles (Dockerfile,
 // Dockerfile.worker, Dockerfile.ubuntu-bun, mini-services/realtime/Dockerfile)
@@ -1287,7 +1287,7 @@ export function validateMirror(workflowPath, actionPath, dockerfilePath) {
   const violations = []
 
   if (!existsSync(workflowPath)) {
-    violations.push(`workflow do mirror ausente: ${workflowPath} (crie sync-bun-mirror.yml)`)
+    violations.push(`workflow do mirror ausente: ${workflowPath} (crie sync-mirrors.yml)`)
     return violations
   }
   if (!existsSync(actionPath)) {
@@ -1398,7 +1398,7 @@ function main() {
   const cwd = process.cwd()
   const actionPath = join(cwd, ".github", "actions", "setup-bun", "action.yml")
   const violations = validateMirror(
-    join(cwd, ".github", "workflows", "sync-bun-mirror.yml"),
+    join(cwd, ".github", "workflows", "sync-mirrors.yml"),
     actionPath,
     join(cwd, "Dockerfile.bun-mirror"),
   )

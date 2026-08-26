@@ -12,8 +12,8 @@
 #   2. Atualizar o .actrc local             (espelho para o act — o guard
 #      estático só valida a EXISTÊNCIA da linha, não o valor; o job semanal
 #      actrc-sync avisa via ::warning:: se divergir)
-#   3. Re-disparar os DOIS mirrors GHCR     (sync-bun-mirror.yml = binário
-#      scratch tier-3; sync-ubuntu-bun-mirror.yml = imagem runner tier-1) e
+#   3. Re-disparar os DOIS mirrors GHCR     (sync-mirrors.yml = binário
+#      scratch tier-3; sync-mirrors.yml = imagem runner tier-1) e
 #      aguardar conclusão via POLLING do gh run list + check de conclusion
 #      (mesma técnica do bench-setup-bun.sh — não usa gh run watch)
 #   4. Aviso de CACHE MISS na 1ª execução   (esperado: toolchain nova ≠ chave
@@ -232,16 +232,16 @@ echo "3/4  Re-dispatch dos mirrors GHCR (leem vars.BUN_VERSION)"
 echo "──────────────────────────────────────────────────────────────"
 if [ "$SKIP_MIRRORS" = "1" ]; then
   echo "  (--skip-mirrors — dispatch NÃO será feito; rode manualmente depois:)"
-  echo "    gh workflow run sync-bun-mirror.yml -R $GH_REPO"
-  echo "    gh workflow run sync-ubuntu-bun-mirror.yml -R $GH_REPO"
+  echo "    gh workflow run sync-mirrors.yml -R $GH_REPO"
+  echo "    gh workflow run sync-mirrors.yml -R $GH_REPO"
 else
   if [ "$DRY_RUN" = "1" ]; then
-    echo "  [dry-run] $ gh workflow run sync-bun-mirror.yml --ref $REF -R $GH_REPO"
-    echo "  [dry-run] $ gh workflow run sync-ubuntu-bun-mirror.yml --ref $REF -R $GH_REPO"
+    echo "  [dry-run] $ gh workflow run sync-mirrors.yml --ref $REF -R $GH_REPO"
+    echo "  [dry-run] $ gh workflow run sync-mirrors.yml --ref $REF -R $GH_REPO"
     echo "  [dry-run]   (aguardaria conclusão com gh run watch --exit-status)"
   else
-    dispatch_and_watch "sync-bun-mirror.yml" "Mirror bun (binário scratch, tier-3)" || exit 1
-    dispatch_and_watch "sync-ubuntu-bun-mirror.yml" "Mirror ubuntu-bun (imagem runner, tier-1)" || exit 1
+    dispatch_and_watch "sync-mirrors.yml" "Mirror bun (binário scratch, tier-3)" || exit 1
+    dispatch_and_watch "sync-mirrors.yml" "Mirror ubuntu-bun (imagem runner, tier-1)" || exit 1
   fi
 
   echo ""
