@@ -95,7 +95,7 @@ A camada de qualidade é **excepcionalmente abrangente** com 150+ testes unitár
 - ✅ **Pipeline benchmarks**: `scripts/run-benchmark.mjs --type pipeline`
 - ✅ **Gist benchmarks**: `scripts/run-benchmark.mjs --type gist`
 - ✅ **Comparison**: `scripts/compare-benchmarks.mjs` compara baseline vs latest
-- ✅ **Auto-baseline**: `benchmark-auto-baseline.yml` atualiza baseline semanalmente
+- ✅ **Auto-baseline**: `benchmark-events.yml` atualiza baseline semanalmente
 
 ### 8. Quality Gate
 
