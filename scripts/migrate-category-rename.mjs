@@ -178,9 +178,9 @@ USO:
 
 VALIDAÇÕES do --move-to:
   - a categoria não pode ser raiz (level 0) — raiz não tem parent
-  - o parent de destino deve ter level ESTRITAMENTE menor (árvore 3 níveis)
-  - o parent de destino não pode ser a própria categoria nem um descendente (ciclo)
   - o parent de destino deve estar ativo
+  - o parent de destino não pode ser a própria categoria nem um descendente (ciclo)
+  - o parent de destino deve ter level ESTRITAMENTE menor (árvore 3 níveis)
 
 O QUE FAZ (uma transação):
   1. Cria a NOVA linha (slug canônico derivado do novo nome)
@@ -264,13 +264,8 @@ async function main() {
       )
       process.exit(1)
     }
-    if (newParent.level >= oldCat.level) {
-      console.error(
-        `❌ '${newParent.name}' (level ${newParent.level}) não pode ser parent de '${oldCat.name}' (level ${oldCat.level}) — o parent deve ter level estritamente menor.`,
-      )
-      process.exit(1)
-    }
     // Ciclo: o destino não pode ser a própria categoria nem um descendente dela
+    // (roda ANTES do check de level para dar mensagem mais específica)
     let cursor = newParent
     const seen = new Set()
     while (cursor) {
@@ -284,6 +279,12 @@ async function main() {
       cursor = cursor.parentId
         ? await db.category.findUnique({ where: { id: cursor.parentId } })
         : null
+    }
+    if (newParent.level >= oldCat.level) {
+      console.error(
+        `❌ '${newParent.name}' (level ${newParent.level}) não pode ser parent de '${oldCat.name}' (level ${oldCat.level}) — o parent deve ter level estritamente menor.`,
+      )
+      process.exit(1)
     }
   }
 
