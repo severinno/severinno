@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { generateServiceContract, ContractParams } from "@/lib/contract-generator"
+import { requireUser } from "@/lib/auth"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 export async function POST(req: NextRequest) {
   try {
+    await requireUser()
+    await assertRateLimit(req, RATE_LIMITS.bookings)
     const body: ContractParams = await req.json()
 
     if (!body.bookingId || !body.client || !body.provider || !body.serviceTitle) {
@@ -37,6 +41,8 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  await requireUser()
+  await assertRateLimit(req, RATE_LIMITS.bookings)
   const { searchParams } = new URL(req.url)
   const id = searchParams.get("id")
   const seal = searchParams.get("seal")

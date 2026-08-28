@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
+import { requireRole } from "@/lib/auth"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { generateMEIAnnualReport } from "@/lib/mei-fiscal"
 
 export async function POST(req: NextRequest) {
+  await requireRole("PROVIDER")
+  await assertRateLimit(req, RATE_LIMITS.general)
   try {
     const body = await req.json()
     const { providerId, providerName, year, bookings, cnpj } = body

@@ -34,6 +34,7 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import logger from "@/lib/logger"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -310,6 +311,7 @@ function isAuthorized(request: NextRequest, body: string): boolean {
 // ── Handler ───────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+  await assertRateLimit(request, RATE_LIMITS.webhookSentry)
   const projectName = process.env.SENTRY_PROJECT_NAME ?? "Severinno"
 
   try {

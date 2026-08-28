@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { fuzzySearchCatalog, DEFAULT_SERVICE_CATALOG } from "@/lib/fuzzy-search"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 export async function GET(req: NextRequest) {
+  await assertRateLimit(req, RATE_LIMITS.general)
   const { searchParams } = new URL(req.url)
   const q = searchParams.get("q") || ""
 

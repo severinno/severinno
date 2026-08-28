@@ -4,9 +4,13 @@ import {
   generateEscrowPIN,
   validateEscrowRelease,
 } from "@/lib/geo-checkin-escrow"
+import { requireUser } from "@/lib/auth"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 export async function POST(req: NextRequest) {
   try {
+    await requireUser()
+    await assertRateLimit(req, RATE_LIMITS.bookings)
     const body = await req.json()
     const { action } = body
 

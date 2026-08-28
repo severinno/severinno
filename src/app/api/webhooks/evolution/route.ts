@@ -15,6 +15,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { evolutionLogger } from "@/lib/evolution"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // ---------------------------------------------------------------------------
 // Helper: extrair número do JID (remoteJid)
@@ -73,6 +74,7 @@ async function findUserByPhone(phone: string): Promise<{ id: string; name: strin
  * Sempre retorna 200 para evitar reenvios.
  */
 export async function POST(request: Request) {
+  await assertRateLimit(request, RATE_LIMITS.webhookSentry)
   try {
     const body = await request.json()
 

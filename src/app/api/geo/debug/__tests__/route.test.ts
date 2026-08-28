@@ -81,6 +81,21 @@ vi.mock("@/lib/geo-rate-limit", () => ({
   },
 }))
 
+// ── Mock auth ──────────────────────────────────────────────────────────────
+
+vi.mock("@/lib/auth", () => ({
+  requireRole: vi.fn().mockResolvedValue(undefined),
+}))
+
+// ── Mock rate-limit ────────────────────────────────────────────────────────
+
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn().mockResolvedValue(undefined),
+  RATE_LIMITS: {
+    admin: { max: 100, windowMs: 60_000 },
+  },
+}))
+
 // ── Mock redis ─────────────────────────────────────────────────────────────
 
 vi.mock("@/lib/redis", () => ({
@@ -106,12 +121,12 @@ import { GET } from "../route"
 
 describe("GET /api/geo/debug", () => {
   it("retorna 200 OK", async () => {
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/api/geo/debug"))
     expect(res.status).toBe(200)
   })
 
   it("retorna JSON com as 6 seções esperadas", async () => {
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/api/geo/debug"))
     const body = await res.json()
 
     expect(body).toHaveProperty("server")
@@ -124,7 +139,7 @@ describe("GET /api/geo/debug", () => {
 
   describe("server", () => {
     it("contém uptime, platform, nodeVersion, timestamp", async () => {
-      const res = await GET()
+      const res = await GET(new Request("http://localhost/api/geo/debug"))
       const body = await res.json()
 
       expect(body.server).toMatchObject({
@@ -140,7 +155,7 @@ describe("GET /api/geo/debug", () => {
 
   describe("redis", () => {
     it("contém available, hits, misses, memoryStoreSize", async () => {
-      const res = await GET()
+      const res = await GET(new Request("http://localhost/api/geo/debug"))
       const body = await res.json()
 
       expect(body.redis).toMatchObject({
@@ -157,7 +172,7 @@ describe("GET /api/geo/debug", () => {
 
   describe("queryLog", () => {
     it("contém totais e top entries", async () => {
-      const res = await GET()
+      const res = await GET(new Request("http://localhost/api/geo/debug"))
       const body = await res.json()
 
       expect(body.queryLog).toMatchObject({
@@ -194,7 +209,7 @@ describe("GET /api/geo/debug", () => {
 
   describe("cacheWarm", () => {
     it("contém config estática de warm", async () => {
-      const res = await GET()
+      const res = await GET(new Request("http://localhost/api/geo/debug"))
       const body = await res.json()
 
       expect(body.cacheWarm).toMatchObject({
@@ -208,7 +223,7 @@ describe("GET /api/geo/debug", () => {
     })
 
     it("contém lastRun com resultado do último warm", async () => {
-      const res = await GET()
+      const res = await GET(new Request("http://localhost/api/geo/debug"))
       const body = await res.json()
 
       expect(body.cacheWarm.lastRun).toEqual({
@@ -229,7 +244,7 @@ describe("GET /api/geo/debug", () => {
 
   describe("rateLimits", () => {
     it("contém search, cep, reverse com max e windowMs", async () => {
-      const res = await GET()
+      const res = await GET(new Request("http://localhost/api/geo/debug"))
       const body = await res.json()
 
       expect(body.rateLimits).toMatchObject({
@@ -242,7 +257,7 @@ describe("GET /api/geo/debug", () => {
 
   describe("env", () => {
     it("contém variáveis de ambiente relevantes (sem valores sensíveis)", async () => {
-      const res = await GET()
+      const res = await GET(new Request("http://localhost/api/geo/debug"))
       const body = await res.json()
 
       expect(body.env).toMatchObject({
@@ -254,7 +269,7 @@ describe("GET /api/geo/debug", () => {
   })
 
   it("inclui Cache-Control header", async () => {
-    const res = await GET()
+    const res = await GET(new Request("http://localhost/api/geo/debug"))
     expect(res.headers.get("Cache-Control")).toContain("max-age=5")
   })
 })

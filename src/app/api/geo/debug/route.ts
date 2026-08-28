@@ -60,6 +60,8 @@
  */
 
 import { NextResponse } from "next/server"
+import { requireRole } from "@/lib/auth"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { getCacheStats, getMemoryCacheDiagnostics, isRedisAvailable } from "@/lib/redis"
 import {
   getQueryLogDiagnostics,
@@ -125,7 +127,9 @@ type DebugResponse = {
 // GET handler
 // ---------------------------------------------------------------------------
 
-export async function GET(): Promise<NextResponse<DebugResponse>> {
+export async function GET(request: Request): Promise<NextResponse<DebugResponse>> {
+  await requireRole("ADMIN")
+  await assertRateLimit(request, RATE_LIMITS.admin)
   // ── Server info (always available, zero-cost) ──────────────────────
   const server = {
     uptime: Math.floor(process.uptime()),

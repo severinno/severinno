@@ -7,6 +7,11 @@ vi.mock("@/lib/auth", () => ({
   requireRole: vi.fn(),
 }))
 
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn(),
+  RATE_LIMITS: { admin: 100, general: 100 },
+}))
+
 vi.mock("@/lib/db", () => ({
   db: {},
 }))
@@ -29,7 +34,7 @@ describe("Admin Infra API Routes (/api/admin/performance, /api/admin/pgbouncer)"
   })
 
   it("handles PgBouncer diagnostics gracefully", async () => {
-    const res = await getPgBouncer()
+    const res = await getPgBouncer(new Request("http://localhost/api/admin/pgbouncer"))
     const json = await res.json()
 
     expect(res.status).toBe(200)

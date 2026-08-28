@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { generateIcsFeed, type CalendarEvent } from "@/lib/calendar-sync"
 import { notFound, handleError } from "@/lib/api-server"
 import { addHours } from "date-fns"
@@ -9,6 +10,7 @@ import { addHours } from "date-fns"
  * Serves live RFC 5545 iCalendar feed to external calendar clients (Google Calendar, Apple, Outlook).
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
+  await assertRateLimit(_request, RATE_LIMITS.general)
   try {
     const { token } = await params
 

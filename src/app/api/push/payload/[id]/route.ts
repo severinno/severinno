@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getPayload } from "@/lib/push-store"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { handleError } from "@/lib/api-server"
 import logger from "@/lib/logger"
 
@@ -19,6 +20,7 @@ import logger from "@/lib/logger"
  *   404 — { error: "Payload not found or expired" }
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  await assertRateLimit(_request, RATE_LIMITS.general)
   try {
     const { id } = await params
 

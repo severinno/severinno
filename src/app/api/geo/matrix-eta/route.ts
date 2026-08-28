@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { calculate1xNDistanceMatrix, TargetDestination } from "@/lib/osrm-table"
 
 export async function POST(req: NextRequest) {
+  await assertRateLimit(req, RATE_LIMITS.geo)
   try {
     const body = await req.json()
     const { origin, destinations } = body
