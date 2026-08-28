@@ -19,13 +19,17 @@
  */
 
 import { readFileSync, writeFileSync, readdirSync } from "node:fs"
-import { join, relative, resolve } from "node:path"
+import { join, relative, resolve, dirname } from "node:path"
+import { fileURLToPath } from "node:url"
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
-const ROOT = resolve(import.meta.dirname, "..")
+const ROOT = resolve(__dirname, "..")
 const SCAN_DIR = join(ROOT, "src", "components", "vitrine")
 const SETUP_FILE = join(ROOT, "src", "components", "vitrine", "__tests__", "vitrine-a11y-setup.tsx")
 
