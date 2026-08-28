@@ -81,21 +81,39 @@ function analyzeRoute(filePath) {
 // ── Issue classification ────────────────────────────────────────────────────
 
 const PUBLIC_ROUTES = new Set([
-  "app/api/route.ts",                         // Root health check
-  "app/api/auth/login/route.ts",              // Public by design
-  "app/api/auth/register/route.ts",           // Public by design
-  "app/api/auth/forgot-password/route.ts",    // Public by design
-  "app/api/auth/reset-password/route.ts",     // Public by design
-  "app/api/auth/me/route.ts",                 // Returns null for guests
-  "app/api/auth/logout/route.ts",             // Session destroy (rate limited)
-  "app/api/stats/public/route.ts",            // Public stats
-  "app/api/health/route.ts",                  // Health check
-  "app/api/health/detailed/route.ts",         // Health check (admin)
-  "app/api/health/extended/route.ts",         // Health check (admin)
-  "app/api/sentry/route.ts",                  // Sentry webhook
-  "app/api/webhooks/lytex/route.ts",          // Lytex webhook
-  "app/api/webhooks/evolution/route.ts",      // Evolution webhook
-  "app/api/webhooks/sentry-alert/route.ts",   // Sentry webhook
+  // Root
+  "app/api/route.ts",
+  // Auth (public by design)
+  "app/api/auth/login/route.ts",
+  "app/api/auth/register/route.ts",
+  "app/api/auth/forgot-password/route.ts",
+  "app/api/auth/reset-password/route.ts",
+  "app/api/auth/me/route.ts",
+  "app/api/auth/logout/route.ts",
+  // Cron (CRON_SECRET via middleware)
+  "app/api/cron/commissions-report/route.ts",
+  "app/api/cron/geo-cache-warm/route.ts",
+  "app/api/cron/geo-health-alert/route.ts",
+  "app/api/cron/health-monitor/route.ts",
+  "app/api/cron/push-scheduled/route.ts",
+  "app/api/cron/reminders/route.ts",
+  "app/api/cron/scheduled-push/route.ts",
+  "app/api/cron/settlements/route.ts",
+  // Health/metrics (public monitoring endpoints)
+  "app/api/health/route.ts",
+  "app/api/health/detailed/route.ts",
+  "app/api/health/extended/route.ts",
+  "app/api/metrics/route.ts",
+  "app/api/metrics/prometheus/route.ts",
+  // Webhooks (signature verification)
+  "app/api/sentry/route.ts",
+  "app/api/webhooks/lytex/route.ts",
+  "app/api/webhooks/evolution/route.ts",
+  "app/api/webhooks/sentry-alert/route.ts",
+  // Public search/stats
+  "app/api/stats/public/route.ts",
+  "app/api/stats/activity/route.ts",
+  "app/api/reviews/recent/route.ts",
 ])
 
 const AUTH_ONLY_ROUTES = new Set([

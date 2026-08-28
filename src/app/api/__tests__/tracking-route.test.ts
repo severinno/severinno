@@ -6,6 +6,15 @@ vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
+vi.mock("@/lib/auth", () => ({
+  requireUser: vi.fn().mockResolvedValue({ id: "user-1", role: "CLIENT" }),
+}))
+
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn(),
+  RATE_LIMITS: { general: { interval: 60000, maxRequests: 100 } },
+}))
+
 vi.mock("@/lib/api-server", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
   return {
