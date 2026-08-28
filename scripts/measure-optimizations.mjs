@@ -19,11 +19,11 @@ const args = process.argv.slice(2)
 const DURATION_SEC = Number(args.find((_, i, a) => a[i - 1] === "--duration") ?? 30)
 const VERBOSE = args.includes("--verbose")
 
-function log(msg) {
+function _log(msg) {
   if (VERBOSE) console.log(msg)
 }
 
-function hr(start) {
+function _hr(start) {
   return (performance.now() - start).toFixed(2)
 }
 

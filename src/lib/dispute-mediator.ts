@@ -53,7 +53,8 @@ export async function mediateDispute(dispute: DisputeCase): Promise<MediationRec
     try {
       const aiResult = await callAIMediationEngine(localAiUrl, dispute)
       if (aiResult) return aiResult
-    } catch {
+    } catch (err) {
+      console.warn("[dispute-mediator] AI mediation failed, using rule-based:", (err as Error).message)
       // Fall through to rule-based
     }
   }
@@ -123,7 +124,8 @@ Analise e retorne um JSON com:
       riskLevel: parsed.riskLevel || "MEDIUM",
       source: "ai-mediation",
     }
-  } catch {
+  } catch (err) {
+    console.warn("[dispute-mediator] AI engine call failed:", (err as Error).message)
     return null
   }
 }

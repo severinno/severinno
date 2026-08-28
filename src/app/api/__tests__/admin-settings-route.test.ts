@@ -85,7 +85,6 @@ import { resetGeoSettingsCache } from "@/lib/geo-settings"
 import { resetHealthCache } from "@/app/api/health/route"
 import { db } from "@/lib/db"
 import { parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
-import { assertRateLimit } from "@/lib/rate-limit"
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 

@@ -33,7 +33,8 @@ export async function isLocalAiOnline(): Promise<boolean> {
       signal: AbortSignal.timeout(2000),
     })
     return res.ok
-  } catch {
+  } catch (err) {
+    aiLogger.debug({ err: (err as Error).message }, "LocalAI health check failed")
     return false
   }
 }
