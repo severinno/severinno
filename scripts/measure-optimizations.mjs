@@ -10,6 +10,10 @@
  * Usage:
  *   node scripts/measure-optimizations.mjs [--duration 30] [--verbose]
  *
+ * Exit codes:
+ *   0 — success
+ *   1 — failure (missing deps or DB connection error)
+ *
  * Requires: DATABASE_URL and REDIS_URL environment variables.
  */
 
@@ -88,7 +92,9 @@ async function benchmarkRedisCache() {
   console.log(`  Keys: ${KEY_COUNT} (50% populated)`)
   console.log(`  Operations: ${total} in ${totalMs.toFixed(0)}ms`)
   console.log(`  Hit rate: ${((hits / total) * 100).toFixed(1)}% (${hits} hits, ${misses} misses)`)
-  console.log(`  Latency: p50=${p50.toFixed(2)}ms  p95=${p95.toFixed(2)}ms  p99=${p99.toFixed(2)}ms`)
+  console.log(
+    `  Latency: p50=${p50.toFixed(2)}ms  p95=${p95.toFixed(2)}ms  p99=${p99.toFixed(2)}ms`,
+  )
   console.log(`  Throughput: ${((total / totalMs) * 1000).toFixed(0)} ops/sec`)
 
   // Cleanup
@@ -135,7 +141,9 @@ async function benchmarkDistinctOn() {
           ORDER BY "conversationKey", "createdAt" DESC
           LIMIT 100
         `)
-      } catch { /* table may not exist */ }
+      } catch {
+        /* table may not exist */
+      }
       distinctOnTimes.push(performance.now() - s1)
 
       const s2 = performance.now()
@@ -149,7 +157,9 @@ async function benchmarkDistinctOn() {
           )
           LIMIT 100
         `)
-      } catch { /* table may not exist */ }
+      } catch {
+        /* table may not exist */
+      }
       groupByTimes.push(performance.now() - s2)
     }
 
@@ -221,7 +231,9 @@ async function benchmarkCTE() {
 
     console.log(`  Category: ${categoryId}`)
     console.log(`  Iterations: ${iterations}`)
-    console.log(`  Latency: p50=${p50.toFixed(2)}ms  p95=${p95.toFixed(2)}ms  p99=${p99.toFixed(2)}ms`)
+    console.log(
+      `  Latency: p50=${p50.toFixed(2)}ms  p95=${p95.toFixed(2)}ms  p99=${p99.toFixed(2)}ms`,
+    )
 
     return { p50, p95, p99 }
   } finally {
@@ -271,7 +283,9 @@ async function benchmarkGeo() {
            LIMIT 20`,
           [CENTER.lat, CENTER.lng, RADIUS_KM],
         )
-      } catch { /* table may not exist */ }
+      } catch {
+        /* table may not exist */
+      }
       const haversineMs = performance.now() - haversineStart
 
       // PostGIS
@@ -293,7 +307,9 @@ async function benchmarkGeo() {
            LIMIT 20`,
           [CENTER.lat, CENTER.lng, RADIUS_KM],
         )
-      } catch { /* table may not exist */ }
+      } catch {
+        /* table may not exist */
+      }
       const postgisMs = performance.now() - postgisStart
 
       const ratio = postgisMs > 0 ? haversineMs / postgisMs : 0
@@ -328,7 +344,9 @@ async function main() {
     console.log(`  Redis p50 latency: ${results.redis.p50.toFixed(2)}ms`)
   }
   if (results.distinctOn) {
-    console.log(`  DISTINCT ON speedup: ${(results.distinctOn.groupByP50 / results.distinctOn.distinctOnP50).toFixed(1)}x`)
+    console.log(
+      `  DISTINCT ON speedup: ${(results.distinctOn.groupByP50 / results.distinctOn.distinctOnP50).toFixed(1)}x`,
+    )
   }
   if (results.cte) {
     console.log(`  CTE p50 latency: ${results.cte.p50.toFixed(2)}ms`)
