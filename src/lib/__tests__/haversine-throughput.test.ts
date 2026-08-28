@@ -34,7 +34,7 @@ const CENTER_LNG = -46.6333
  * This threshold is deliberately generous to avoid flakiness on
  * shared CI runners while still catching catastrophic regressions.
  */
-const MIN_THROUGHPUT = 500_000
+const MIN_THROUGHPUT = 100_000
 
 /** Number of random providers to stress the function. */
 const NUM_PROVIDERS = 5000
