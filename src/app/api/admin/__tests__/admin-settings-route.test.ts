@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET, POST } from "@/app/api/admin/settings/route"
-import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { createMockRequest } from "@/lib/__tests__/helpers/api-test-utils"
 

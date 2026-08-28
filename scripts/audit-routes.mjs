@@ -116,7 +116,7 @@ const PUBLIC_ROUTES = new Set([
   "app/api/reviews/recent/route.ts",
 ])
 
-const AUTH_ONLY_ROUTES = new Set([
+const _AUTH_ONLY_ROUTES = new Set([
   "api/auth/logout/route.ts",
   "api/auth/change-password/route.ts",
 ])

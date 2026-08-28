@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * GET /api/cron/push-scheduled
  *
@@ -21,6 +20,10 @@ import { db } from "@/lib/db"
 import logger from "@/lib/logger"
 import { sendPushToMany } from "@/lib/push"
 import { handleError } from "@/lib/api-server"
+import type { UserRole } from "@/generated/prisma/enums"
+
+/** Valid UserRole values for filtering. */
+const VALID_ROLES = new Set<string>(["CLIENT", "PROVIDER", "ADMIN"])
 
 export async function GET(request: Request) {
   try {
@@ -157,10 +160,12 @@ export async function GET(request: Request) {
       )
 
       // ── Resolve target users ─────────────────────────────────────────
-      const targetRoles = Array.isArray(rule.targetRoles) ? (rule.targetRoles as string[]) : []
+      const targetRoles = Array.isArray(rule.targetRoles)
+        ? (rule.targetRoles as string[]).filter((r) => VALID_ROLES.has(r))
+        : []
       const whereClause: Record<string, unknown> = {
         active: true,
-        role: targetRoles.length > 0 ? { in: targetRoles } : undefined,
+        role: targetRoles.length > 0 ? { in: targetRoles as UserRole[] } : undefined,
       }
       if (rule.filterCity) {
         whereClause.city = rule.filterCity
@@ -184,7 +189,7 @@ export async function GET(request: Request) {
           where: {
             id: { in: userIdsWithPush },
             active: true,
-            ...(targetRoles.length > 0 ? { role: { in: targetRoles as any } } : {}),
+            ...(targetRoles.length > 0 ? { role: { in: targetRoles as UserRole[] } } : {}),
             ...(rule.filterCity ? { city: rule.filterCity } : {}),
           },
           select: { id: true },

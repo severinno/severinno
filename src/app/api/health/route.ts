@@ -254,7 +254,7 @@ async function checkRabbitMQ(): Promise<{ status: ServiceStatus; detail: RabbitM
         uptimeSeconds: health.uptimeSeconds,
       },
     }
-  } catch (err) {
+  } catch (_err) {
     return {
       status: "error",
       detail: {
