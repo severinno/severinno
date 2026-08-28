@@ -24,6 +24,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
+const CLI_TIMEOUT = 30_000 // npx tsx fallback é lento
+
 const SCRIPT = join(process.cwd(), "scripts", "check-seed-count-literals.mjs")
 const ROOT_TMP = mkdtempSync(join(tmpdir(), "cseed-count-literals-"))
 
@@ -97,7 +99,7 @@ describe("check-seed-count-literals.mjs — CLI real (varredura repo-wide)", () 
     rmSync(ROOT_TMP, { recursive: true, force: true })
   })
 
-  it("literal de count fora da derivação em docs/ → exit 1 com arquivo:linha", () => {
+  it("literal de count fora da derivação em docs/ → exit 1 com arquivo:linha", { timeout: CLI_TIMEOUT }, () => {
     const dir = makeFakeRepo("t1-docs-stale", {
       files: {
         "docs/report.md": DOCS_STALE,
@@ -111,7 +113,7 @@ describe("check-seed-count-literals.mjs — CLI real (varredura repo-wide)", () 
     expect(out).toContain("literal=123")
   })
 
-  it("literal de count fora da derivação em .github/workflows → exit 1", () => {
+  it("literal de count fora da derivação em .github/workflows → exit 1", { timeout: CLI_TIMEOUT }, () => {
     const dir = makeFakeRepo("t2-wf-stale", {
       files: { ".github/workflows/seed-guards.yml": WORKFLOW_STALE },
     })
@@ -121,7 +123,7 @@ describe("check-seed-count-literals.mjs — CLI real (varredura repo-wide)", () 
     expect(out).toContain("literal=115")
   })
 
-  it("literais iguais à derivação + noise (UTF-8/mock/prosa) → exit 0", () => {
+  it("literais iguais à derivação + noise (UTF-8/mock/prosa) → exit 0", { timeout: CLI_TIMEOUT }, () => {
     const dir = makeFakeRepo("t3-clean", {
       files: {
         ".github/workflows/pr-check.yml": PR_CHECK_OK,
@@ -134,7 +136,7 @@ describe("check-seed-count-literals.mjs — CLI real (varredura repo-wide)", () 
     expect(out).toContain("prod=128, dev=162")
   })
 
-  it("derivação FALHA (stub exit 1) → exit 1 (fail-closed)", () => {
+  it("derivação FALHA (stub exit 1) → exit 1 (fail-closed)", { timeout: CLI_TIMEOUT }, () => {
     const dir = makeFakeRepo("t4-derivation-fails", {
       derivationFails: true,
       files: { "docs/ok.md": `- seed passou com 128 checks\n` },
@@ -145,7 +147,7 @@ describe("check-seed-count-literals.mjs — CLI real (varredura repo-wide)", () 
     expect(out).toContain("seed-e2e-count.ts")
   })
 
-  it("derivação com JSON inválido → exit 1 (fail-closed)", () => {
+  it("derivação com JSON inválido → exit 1 (fail-closed)", { timeout: CLI_TIMEOUT }, () => {
     const dir = makeFakeRepo("t4b-bad-json", {
       derivationJson: "não é json",
       files: { "docs/ok.md": `- seed passou com 128 checks\n` },
@@ -155,7 +157,7 @@ describe("check-seed-count-literals.mjs — CLI real (varredura repo-wide)", () 
     expect(out).toContain("não é JSON válido")
   })
 
-  it("repo real do projeto → exit 0 (derivação real prod=127, dev=161)", () => {
+  it("repo real do projeto → exit 0 (derivação real prod=127, dev=161)", { timeout: CLI_TIMEOUT }, () => {
     const { status, out } = runGuard(process.cwd())
     expect(status).toBe(0)
     expect(out).toContain("sincronizados")
