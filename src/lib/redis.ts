@@ -651,7 +651,13 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
       if (c) {
         const raw = await c.get(key)
         if (raw !== null) {
-          return JSON.parse(raw) as T
+          try {
+            return JSON.parse(raw) as T
+          } catch {
+            // Corrupted value — delete and treat as miss
+            try { await c.del(key) } catch { /* best-effort */ }
+            return null
+          }
         }
         // Redis returned null → not cached in Redis (don't fall through to memory)
         return null
@@ -670,7 +676,12 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
       if (c) {
         const raw = await c.get(key)
         if (raw !== null) {
-          return JSON.parse(raw) as T
+          try {
+            return JSON.parse(raw) as T
+          } catch {
+            try { await c.del(key) } catch { /* best-effort */ }
+            return null
+          }
         }
         return null
       }

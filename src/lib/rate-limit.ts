@@ -22,6 +22,7 @@
  */
 
 import { HttpError } from "@/lib/api-server"
+import { getClient } from "@/lib/redis"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -140,7 +141,7 @@ export async function checkRateLimit(
 
   // ---- Try Redis first (atomic INCR + EXPIRE) ----------------------------
   try {
-    const redis = await getRedisClient()
+    const redis = getClient()
     if (redis) {
       const count = await redis.incr(redisKey)
       if (count === 1) {
@@ -181,67 +182,12 @@ export async function checkRateLimit(
 }
 
 // ---------------------------------------------------------------------------
-// Lazy Redis client access (import from cache module)
+// Redis client access (reuses shared client from redis.ts)
 // ---------------------------------------------------------------------------
 
-// Singleton Redis client for rate limiting (reuses connection instead of creating per-request)
-let cachedClient: import("ioredis").Redis | null = null
-let cachedClientPromise: Promise<import("ioredis").Redis | null> | null = null
-
-/** Clear the cached client and in-memory store (testing-only export). */
+/** Clear cached state (testing-only export). */
 export function __testing__resetRateLimiter(): void {
-  cachedClient = null
-  cachedClientPromise = null
   memoryStore.clear()
-}
-
-async function getRedisClient(): Promise<import("ioredis").Redis | null> {
-  // Return cached client if still connected
-  if (cachedClient) {
-    try {
-      await cachedClient.ping()
-      return cachedClient
-    } catch {
-      cachedClient = null
-    }
-  }
-
-  // Avoid concurrent reconnections
-  if (cachedClientPromise) return cachedClientPromise
-
-  cachedClientPromise = (async () => {
-    try {
-      const { default: Redis } = await import("ioredis")
-      const url = process.env.REDIS_URL
-      if (!url) return null
-      const client = new Redis(url, {
-        maxRetriesPerRequest: 1,
-        retryStrategy: () => null,
-        lazyConnect: true,
-        enableReadyCheck: true,
-      })
-      await client.connect()
-      await client.ping()
-      cachedClient = client
-
-      // Clear cache on disconnect/error
-      client.on("error", () => {
-        cachedClient = null
-      })
-      client.on("close", () => {
-        cachedClient = null
-      })
-
-      return client
-    } catch {
-      cachedClient = null
-      return null
-    } finally {
-      cachedClientPromise = null
-    }
-  })()
-
-  return cachedClientPromise
 }
 
 // ---------------------------------------------------------------------------

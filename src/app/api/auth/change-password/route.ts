@@ -3,14 +3,16 @@ import { db } from "@/lib/db"
 import { hashPassword, verifyPassword } from "@/lib/crypto"
 import { requireUser } from "@/lib/auth"
 import { handleError, badRequest } from "@/lib/api-server"
-import { withRateLimit } from "@/lib/with-rate-limit"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { saveAndQueueNotification } from "@/lib/notification-queue"
 import { sendMail, passwordChangedHtml } from "@/lib/mail"
 import { captureError } from "@/lib/sentry"
+import { cacheInvalidate } from "@/lib/redis"
 import logger from "@/lib/logger"
 
-export const POST = withRateLimit(async (request: Request) => {
+export async function POST(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.general)
     const session = await requireUser()
 
     const { currentPassword, newPassword } = await request.json()
@@ -23,8 +25,8 @@ export const POST = withRateLimit(async (request: Request) => {
       throw badRequest("Senhas inválidas.")
     }
 
-    if (newPassword.length < 6) {
-      throw badRequest("A nova senha deve ter ao menos 6 caracteres.")
+    if (newPassword.length < 8) {
+      throw badRequest("A nova senha deve ter ao menos 8 caracteres.")
     }
 
     // Fetch user with current password hash
@@ -49,6 +51,9 @@ export const POST = withRateLimit(async (request: Request) => {
       where: { id: user.id },
       data: { passwordHash: newHash },
     })
+
+    // Invalidate all cached session data for this user (security: force re-auth)
+    await cacheInvalidate(`user:active:${user.id}`)
 
     // Send push notification as security alert
     saveAndQueueNotification({
@@ -79,4 +84,4 @@ export const POST = withRateLimit(async (request: Request) => {
   } catch (e) {
     return handleError(e)
   }
-}, 10)
+}

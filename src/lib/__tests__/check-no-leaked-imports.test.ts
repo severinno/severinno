@@ -187,10 +187,11 @@ describe("resolveImport", () => {
   it("declarada mas não instalada → pending-install (não falha)", () => {
     const dir = makeRepo()
     // declara no package.json mas SEM o node_modules correspondente
+    // Use a package name that is NOT installed system-wide
     const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"))
-    pkg.dependencies.chalk = "^5.0.0"
+    pkg.dependencies["@nonexistent/test-pkg-for-leak-guard"] = "^1.0.0"
     writeFileSync(join(dir, "package.json"), JSON.stringify(pkg, null, 2), "utf8")
-    const r = resolveImport("chalk", join(dir, "src", "index.ts"), dir)
+    const r = resolveImport("@nonexistent/test-pkg-for-leak-guard", join(dir, "src", "index.ts"), dir)
     expect(r.kind).toBe("pending-install")
     expect(r.leaked).toBe(false)
   })

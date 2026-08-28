@@ -53,6 +53,15 @@ vi.mock("@/lib/db", () => ({
   },
 }))
 
+vi.mock("@/lib/api-server", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>
+  return {
+    ...(actual as Record<string, unknown>),
+    getCategoryDescendants: vi.fn().mockImplementation(async (id: string) => [id]),
+    cacheControlPublic: vi.fn((response: Response) => response),
+  }
+})
+
 // ---------------------------------------------------------------------------
 // Imports under test
 // ---------------------------------------------------------------------------

@@ -71,7 +71,7 @@ USER severinno
 
 ENV NODE_ENV=production
 ENV PORT=3000
-ENV HOST=187.127.16.136
+ENV HOST=0.0.0.0
 EXPOSE 3000
 
 # Run the Next.js standalone server directly.

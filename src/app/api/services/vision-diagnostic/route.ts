@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { analyzeServicePhoto } from "@/lib/vision-diagnostic"
+import { requireUser } from "@/lib/auth"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { handleError } from "@/lib/api-server"
 
 export async function POST(req: NextRequest) {
   try {
+    await requireUser()
+    await assertRateLimit(req, RATE_LIMITS.general)
     const body = await req.json()
     const { imageBase64, imageUrl, clientDescription } = body
 
@@ -20,9 +25,6 @@ export async function POST(req: NextRequest) {
       data: result,
     })
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Vision analysis failed" },
-      { status: 500 },
-    )
+    return handleError(error)
   }
 }

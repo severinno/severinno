@@ -105,13 +105,12 @@ export async function GET(request: Request) {
       db.booking.findMany({
         where,
         include: {
-          service: true,
+          service: { select: { id: true, title: true, photos: true } },
           provider: {
             select: { id: true, name: true, avatarUrl: true, whatsapp: true },
           },
           client: { select: { id: true, name: true, avatarUrl: true } },
-          reviews: true,
-          payment: true,
+          payment: { select: { status: true, amount: true } },
         },
         orderBy: { scheduledAt: "desc" },
         skip,

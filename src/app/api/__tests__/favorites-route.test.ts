@@ -19,6 +19,8 @@ const { mockFavorites } = vi.hoisted(() => ({
         active: true,
         lat: -23.5,
         lng: -46.6,
+        avgRating: 4.5,
+        reviewCount: 2,
         services: [
           {
             id: "svc-1",
@@ -27,7 +29,6 @@ const { mockFavorites } = vi.hoisted(() => ({
             category: { id: "cat-1", name: "Doméstico", slug: "domestico" },
           },
         ],
-        reviewsReceived: [{ rating: 5 }, { rating: 4 }],
         _count: { bookingsAsProvider: 0 },
       },
     },
@@ -46,6 +47,8 @@ const { mockFavorites } = vi.hoisted(() => ({
         active: true,
         lat: -23.55,
         lng: -46.65,
+        avgRating: 5.0,
+        reviewCount: 1,
         services: [
           {
             id: "svc-2",
@@ -54,7 +57,6 @@ const { mockFavorites } = vi.hoisted(() => ({
             category: { id: "cat-2", name: "Reforma", slug: "reforma" },
           },
         ],
-        reviewsReceived: [{ rating: 5 }],
         _count: { bookingsAsProvider: 0 },
       },
     },
@@ -136,7 +138,7 @@ describe("GET /api/favorites", () => {
     const noReviews = [
       {
         ...mockFavorites[0],
-        provider: { ...mockFavorites[0].provider, reviewsReceived: [] },
+        provider: { ...mockFavorites[0].provider, avgRating: 0, reviewCount: 0 },
       },
     ]
     mockDb.favorite.findMany.mockResolvedValue(noReviews)

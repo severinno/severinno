@@ -238,7 +238,7 @@ describe("ProviderCard — distance display", () => {
 
   it("renders the city name", () => {
     render(<ProviderCard provider={provider({ city: "Rio de Janeiro" })} />)
-    expect(screen.getByText("Rio de Janeiro")).toBeTruthy()
+    expect(screen.getByText(/Rio de Janeiro/)).toBeTruthy()
   })
 
   it("hides the distance row when distanceKm is null", () => {

@@ -47,66 +47,52 @@ export async function GET(request: Request) {
       return NextResponse.json({ peer, items: messages })
     }
 
-    // Conversations list — fetch all peers the user exchanged messages with.
-    // Group by peer and pick the most recent message.
-    const sent = await db.message.findMany({
-      where: { fromId: session.userId },
-      select: { toId: true, createdAt: true, content: true, read: true },
-      orderBy: { createdAt: "desc" },
-    })
-    const received = await db.message.findMany({
-      where: { toId: session.userId },
-      select: { fromId: true, createdAt: true, content: true, read: true },
-      orderBy: { createdAt: "desc" },
-    })
+    // Conversations list — use DISTINCT ON to get the last message per peer
+    // in a single query instead of loading ALL messages into memory.
+    const LIMIT = 100
 
-    const byPeer = new Map<
-      string,
-      {
-        peerId: string
-        lastMessage: string
-        lastAt: Date
-        unreadCount: number
-      }
-    >()
+    const lastMessages = await db.$queryRawUnsafe<
+      { peer_id: string; content: string; created_at: Date; unread: boolean }[]
+    >(
+      `SELECT DISTINCT ON (peer_id) peer_id, content, created_at, unread
+       FROM (
+         SELECT "toId" AS peer_id, content, "createdAt" AS created_at, read AS unread, 0 AS ord
+         FROM "Message" WHERE "fromId" = $1
+         UNION ALL
+         SELECT "fromId" AS peer_id, content, "createdAt" AS created_at, false AS unread, 1 AS ord
+         FROM "Message" WHERE "toId" = $1
+       ) sub
+       ORDER BY peer_id, created_at DESC
+       LIMIT $2`,
+      session.userId,
+      LIMIT,
+    )
 
-    // unread count (received & unread)
-    const unreadByPeer = new Map<string, number>()
-    for (const m of received) {
-      if (!m.read) {
-        unreadByPeer.set(m.fromId, (unreadByPeer.get(m.fromId) ?? 0) + 1)
-      }
-    }
-
-    const consider = (peerId: string, content: string, createdAt: Date) => {
-      const existing = byPeer.get(peerId)
-      if (!existing || existing.lastAt < createdAt) {
-        byPeer.set(peerId, {
-          peerId,
-          lastMessage: content,
-          lastAt: createdAt,
-          unreadCount: unreadByPeer.get(peerId) ?? 0,
-        })
-      } else {
-        existing.unreadCount = unreadByPeer.get(peerId) ?? existing.unreadCount
-      }
-    }
-
-    for (const m of sent) consider(m.toId, m.content, m.createdAt)
-    for (const m of received) consider(m.fromId, m.content, m.createdAt)
-
-    const peerIds = Array.from(byPeer.keys())
+    const peerIds = lastMessages.map((m) => m.peer_id)
     const peers = await db.user.findMany({
       where: { id: { in: peerIds } },
       select: { id: true, name: true, avatarUrl: true, role: true },
     })
 
-    const items = Array.from(byPeer.values())
-      .sort((a, b) => b.lastAt.getTime() - a.lastAt.getTime())
-      .map((c) => ({
-        ...c,
-        peer: peers.find((p) => p.id === c.peerId) ?? null,
-      }))
+    // Count unread received messages per peer
+    const unreadRows = await db.$queryRawUnsafe<{ peer_id: string; count: bigint }[]>(
+      `SELECT "fromId" AS peer_id, COUNT(*)::int AS count
+       FROM "Message" WHERE "toId" = $1 AND read = false
+       GROUP BY "fromId"`,
+      session.userId,
+    )
+    const unreadByPeer = new Map<string, number>()
+    for (const row of unreadRows) {
+      unreadByPeer.set(row.peer_id, Number(row.count))
+    }
+
+    const items = lastMessages.map((m) => ({
+      peerId: m.peer_id,
+      lastMessage: m.content,
+      lastAt: m.created_at,
+      unreadCount: unreadByPeer.get(m.peer_id) ?? 0,
+      peer: peers.find((p) => p.id === m.peer_id) ?? null,
+    }))
 
     return NextResponse.json({ items })
   } catch (e) {

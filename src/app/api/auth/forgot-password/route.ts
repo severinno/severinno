@@ -5,11 +5,12 @@ import { handleError } from "@/lib/api-server"
 import { sendMail, passwordResetHtml } from "@/lib/mail"
 import { saveAndQueueNotification } from "@/lib/notification-queue"
 import { captureError } from "@/lib/sentry"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import logger from "@/lib/logger"
-import { withRateLimit } from "@/lib/with-rate-limit"
 import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
 
-export const POST = withRateLimit(async (request: Request) => {
+export async function POST(request: Request) {
+  await assertRateLimit(request, RATE_LIMITS.forgotPassword)
   try {
     // Parse body safely — always return 200 to prevent email enumeration
     let rawEmail = ""
@@ -88,4 +89,4 @@ export const POST = withRateLimit(async (request: Request) => {
   } catch (e) {
     return handleError(e)
   }
-}, 5)
+}

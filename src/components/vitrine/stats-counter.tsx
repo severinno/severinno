@@ -72,7 +72,7 @@ export default function StatsCounter() {
 
   // Fetch stats from API
   const statsQuery = useQuery({
-    queryKey: ["stats", "public"],
+    queryKey: ["public-stats"],
     queryFn: () => apiGet<PublicStats>("/api/stats/public"),
     staleTime: 5 * 60 * 1000,
   })

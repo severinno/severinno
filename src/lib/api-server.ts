@@ -14,12 +14,21 @@ import { getRequestId } from "./request-context"
 // ---------------------------------------------------------------------------
 // Public-safe user shape — never expose passwordHash
 // ---------------------------------------------------------------------------
+
+/** Minimal user select — for public listings where only identity is needed. */
+export const USER_MINIMAL_SELECT = {
+  id: true,
+  name: true,
+  avatarUrl: true,
+  role: true,
+} as const
+
+/** Public user select — for profile views (no PII like CPF/CNPJ or full address). */
 export const USER_PUBLIC_SELECT = {
   id: true,
   email: true,
   name: true,
   role: true,
-  cpfCnpj: true,
   whatsapp: true,
   phone: true,
   avatarUrl: true,
@@ -29,17 +38,23 @@ export const USER_PUBLIC_SELECT = {
   lng: true,
   radiusKm: true,
   cep: true,
+  slug: true,
+  verified: true,
+  active: true,
+  createdAt: true,
+  updatedAt: true,
+} as const
+
+/** Full user select — for the user's own profile (includes all fields). */
+export const USER_FULL_SELECT = {
+  ...USER_PUBLIC_SELECT,
+  cpfCnpj: true,
   street: true,
   number: true,
   complement: true,
   district: true,
   city: true,
   state: true,
-  slug: true,
-  verified: true,
-  active: true,
-  createdAt: true,
-  updatedAt: true,
 } as const
 
 export function publicUser<T extends { passwordHash?: string }>(user: T): Omit<T, "passwordHash"> {
@@ -124,28 +139,16 @@ export async function getCategoryDescendants(categoryId: string): Promise<string
   return withCache(
     `cat:desc:${categoryId}`,
     async () => {
-      const all = await db.category.findMany({
-        select: { id: true, parentId: true },
-      })
-      const childrenOf = new Map<string, string[]>()
-      for (const c of all) {
-        if (c.parentId) {
-          const arr = childrenOf.get(c.parentId) ?? []
-          arr.push(c.id)
-          childrenOf.set(c.parentId, arr)
-        }
-      }
-      const result: string[] = [categoryId]
-      const queue = [categoryId]
-      while (queue.length) {
-        const current = queue.shift()!
-        const children = childrenOf.get(current) ?? []
-        for (const child of children) {
-          result.push(child)
-          queue.push(child)
-        }
-      }
-      return result
+      // Recursive CTE — single query instead of loading all categories into memory
+      const rows = await db.$queryRawUnsafe<{ id: string }[]>(
+        `WITH RECURSIVE tree AS (
+           SELECT id FROM "Category" WHERE id = $1
+           UNION ALL
+           SELECT c.id FROM "Category" c JOIN tree t ON c."parentId" = t.id
+         ) SELECT id FROM tree`,
+        categoryId,
+      )
+      return rows.map((r) => r.id)
     },
     600, // 10 min
   )
@@ -226,40 +229,27 @@ export function cacheControlPrivate(response: NextResponse, maxAge: number): Nex
 // ---------------------------------------------------------------------------
 
 /**
- * Queue a category for search reindexing.
+ * Queue an entity for search reindexing.
  */
-export async function syncCategorySearch(category: { id: string }): Promise<void> {
+export async function syncEntitySearch(
+  entityType: "category" | "service" | "provider",
+  entity: { id: string },
+): Promise<void> {
   await db.$queryRawUnsafe(
     `INSERT INTO "search_reindex_queue" ("entityType", "entityId", action, "createdAt")
      VALUES ($1, $2, $3, NOW())`,
-    "category",
-    category.id,
+    entityType,
+    entity.id,
     "upsert",
   )
 }
 
-/**
- * Queue a service for search reindexing.
- */
-export async function syncServiceSearch(service: { id: string }): Promise<void> {
-  await db.$queryRawUnsafe(
-    `INSERT INTO "search_reindex_queue" ("entityType", "entityId", action, "createdAt")
-     VALUES ($1, $2, $3, NOW())`,
-    "service",
-    service.id,
-    "upsert",
-  )
-}
-
-/**
- * Queue a provider for search reindexing.
- */
-export async function syncProviderSearch(provider: { id: string }): Promise<void> {
-  await db.$queryRawUnsafe(
-    `INSERT INTO "search_reindex_queue" ("entityType", "entityId", action, "createdAt")
-     VALUES ($1, $2, $3, NOW())`,
-    "provider",
-    provider.id,
-    "upsert",
-  )
-}
+/** @deprecated Use syncEntitySearch("category", entity) instead. */
+export const syncCategorySearch = (entity: { id: string }) =>
+  syncEntitySearch("category", entity)
+/** @deprecated Use syncEntitySearch("service", entity) instead. */
+export const syncServiceSearch = (entity: { id: string }) =>
+  syncEntitySearch("service", entity)
+/** @deprecated Use syncEntitySearch("provider", entity) instead. */
+export const syncProviderSearch = (entity: { id: string }) =>
+  syncEntitySearch("provider", entity)

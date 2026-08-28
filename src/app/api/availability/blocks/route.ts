@@ -4,11 +4,12 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { dateBlockSchema } from "@/lib/validators"
 import { badRequest, forbidden, handleError } from "@/lib/api-server"
-import { withRateLimit } from "@/lib/with-rate-limit"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import logger from "@/lib/logger"
 
 // GET: list date blocks (any authenticated user can read)
-export const GET = withRateLimit(async (request: Request) => {
+export async function GET(request: Request) {
+  await assertRateLimit(request, RATE_LIMITS.general)
   try {
     const session = await requireUser()
 
@@ -49,10 +50,11 @@ export const GET = withRateLimit(async (request: Request) => {
   } catch (e) {
     return handleError(e)
   }
-}, 30)
+}
 
 // POST: create a new date block
-export const POST = withRateLimit(async (request: Request) => {
+export async function POST(request: Request) {
+  await assertRateLimit(request, RATE_LIMITS.general)
   try {
     const session = await requireUser()
     if (session.role !== "PROVIDER" && session.role !== "ADMIN") {
@@ -96,4 +98,4 @@ export const POST = withRateLimit(async (request: Request) => {
   } catch (e) {
     return handleError(e)
   }
-}, 20)
+}

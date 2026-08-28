@@ -153,7 +153,7 @@ describe("POST /api/auth/change-password", () => {
     expect(sentNotifications.length).toBe(0)
   })
 
-  it("rejeita senha muito curta (< 6 caracteres)", async () => {
+  it("rejeita senha muito curta (< 8 caracteres)", async () => {
     const res = await changePassword(
       createMockRequest({
         method: "POST",
@@ -163,7 +163,7 @@ describe("POST /api/auth/change-password", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
-    expect((parsed.body as any).error).toContain("6 caracteres")
+    expect((parsed.body as any).error).toContain("8 caracteres")
     expect(mockDb.user.update).not.toHaveBeenCalled()
   })
 

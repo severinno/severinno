@@ -62,24 +62,35 @@ beforeEach(() => {
 describe("GET /api/notifications", () => {
   it("returns paginated notifications", async () => {
     mockDb.notification.findMany.mockResolvedValue(mockNotifications)
-    const response = await GET(createMockRequest())
+    mockDb.notification.count
+      .mockResolvedValueOnce(3) // total
+      .mockResolvedValueOnce(2) // unreadCount
+    const response = await GET(createMockRequest({ searchParams: { unreadCount: "1" } }))
     const data = await response.json()
     expect(response.status).toBe(200)
     expect(data.items).toHaveLength(3)
     expect(data.total).toBe(3)
     expect(data).toHaveProperty("page")
     expect(data).toHaveProperty("limit")
-    expect(data).toHaveProperty("unreadCount")
+    expect(data).toHaveProperty("unreadCount", 2)
   })
 
-  it("includes unreadCount in response", async () => {
+  it("includes unreadCount when requested", async () => {
     mockDb.notification.findMany.mockResolvedValue(mockNotifications)
     mockDb.notification.count
       .mockResolvedValueOnce(3) // total
       .mockResolvedValueOnce(2) // unreadCount
-    const response = await GET(createMockRequest())
+    const response = await GET(createMockRequest({ searchParams: { unreadCount: "1" } }))
     const data = await response.json()
     expect(data.unreadCount).toBe(2)
+  })
+
+  it("does not include unreadCount when not requested", async () => {
+    mockDb.notification.findMany.mockResolvedValue(mockNotifications)
+    mockDb.notification.count.mockResolvedValueOnce(3)
+    const response = await GET(createMockRequest())
+    const data = await response.json()
+    expect(data.unreadCount).toBeUndefined()
   })
 
   it("filters by unread=1", async () => {

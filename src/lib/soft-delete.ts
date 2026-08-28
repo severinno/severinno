@@ -2,7 +2,9 @@
  * Soft-delete middleware logic — extracted as pure functions so they can be
  * tested without mocking Prisma.
  *
- * These are used by db.ts's Prisma middleware and can also be tested directly.
+ * NOTE: The primary soft-delete implementation lives in db.ts via Prisma
+ * $extends middleware. These functions are legacy helpers retained for
+ * backward compatibility and direct unit testing.
  */
 
 // Models that support soft delete (have a `deletedAt` column)
@@ -17,8 +19,6 @@ export function isSoftDeleteModel(model: string): model is SoftDeleteModel {
 export const READ_ACTIONS = [
   "findFirst",
   "findFirstOrThrow",
-  "findUnique",
-  "findUniqueOrThrow",
   "findMany",
   "count",
   "aggregate",

@@ -2,12 +2,12 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { hashPassword } from "@/lib/crypto"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import logger from "@/lib/logger"
 import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
 
-import { withRateLimit } from "@/lib/with-rate-limit"
-
-export const POST = withRateLimit(async (request: Request) => {
+export async function POST(request: Request) {
+  await assertRateLimit(request, RATE_LIMITS.forgotPassword)
   try {
     const body = await request.json()
     const token = (body.token as string | undefined)?.trim()
@@ -17,9 +17,9 @@ export const POST = withRateLimit(async (request: Request) => {
       return NextResponse.json({ error: "Token e nova senha são obrigatórios." }, { status: 400 })
     }
 
-    if (password.length < 6) {
+    if (password.length < 8) {
       return NextResponse.json(
-        { error: "A senha deve ter ao menos 6 caracteres." },
+        { error: "A senha deve ter ao menos 8 caracteres." },
         { status: 400 },
       )
     }
@@ -90,4 +90,4 @@ export const POST = withRateLimit(async (request: Request) => {
   } catch (e) {
     return handleError(e)
   }
-}, 5)
+}

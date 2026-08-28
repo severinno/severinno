@@ -38,6 +38,11 @@ vi.mock("@/lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn().mockResolvedValue(undefined),
+  RATE_LIMITS: { general: { prefix: "general", max: 60, windowMs: 60000 } },
+}))
+
 import { requireUser } from "@/lib/auth"
 
 const mockAvailability = [
@@ -74,8 +79,10 @@ beforeEach(() => {
 })
 
 describe("GET /api/availability", () => {
+  const mockGetRequest = createMockRequest({ method: "GET" })
+
   it("returns provider's availability", async () => {
-    const response = await GET()
+    const response = await GET(mockGetRequest)
     const parsed = await parseResponse(response)
 
     expect(parsed.status).toBe(200)
@@ -86,7 +93,7 @@ describe("GET /api/availability", () => {
   it("throws 403 for non-provider roles", async () => {
     vi.mocked(requireUser).mockResolvedValue({ userId: "client-1", role: "CLIENT" })
 
-    const response = await GET()
+    const response = await GET(mockGetRequest)
     const parsed = await parseResponse(response)
 
     expect(parsed.status).toBe(403)
@@ -95,14 +102,14 @@ describe("GET /api/availability", () => {
   it("allows ADMIN to view any provider's availability", async () => {
     vi.mocked(requireUser).mockResolvedValue({ userId: "admin-1", role: "ADMIN" })
 
-    const response = await GET()
+    const response = await GET(mockGetRequest)
     const parsed = await parseResponse(response)
 
     expect(parsed.status).toBe(200)
   })
 
   it("orders results by dayOfWeek and startTime", async () => {
-    const response = await GET()
+    const response = await GET(mockGetRequest)
     await parseResponse(response)
 
     expect(mockDb.providerAvailability.findMany).toHaveBeenCalledWith(

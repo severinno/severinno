@@ -37,6 +37,13 @@ vi.mock("@/lib/db", () => ({
       findMany: vi.fn(),
       upsert: vi.fn(),
     },
+    $transaction: vi.fn().mockImplementation(async (ops: Promise<unknown>[]) => {
+      const results = []
+      for (const op of ops) {
+        results.push(await op)
+      }
+      return results
+    }),
   },
 }))
 
@@ -60,6 +67,11 @@ vi.mock("@/lib/api-server", async (importOriginal) => {
   return { ...actual, handleError: vi.fn((e: unknown) => (actual as any).handleError(e)) }
 })
 
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn().mockResolvedValue(undefined),
+  RATE_LIMITS: { admin: { prefix: "admin", max: 30, windowMs: 60000 } },
+}))
+
 // health route: tudo real, mas resetHealthCache vira spy (o contrato testado).
 vi.mock("@/app/api/health/route", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>
@@ -73,6 +85,7 @@ import { resetGeoSettingsCache } from "@/lib/geo-settings"
 import { resetHealthCache } from "@/app/api/health/route"
 import { db } from "@/lib/db"
 import { parseResponse } from "@/lib/__tests__/helpers/api-test-utils"
+import { assertRateLimit } from "@/lib/rate-limit"
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 

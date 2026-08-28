@@ -108,10 +108,17 @@ export async function GET(request: Request) {
         : role === "PROVIDER"
           ? {
               ...(status ? { status } : {}),
-              OR: [
-                { providerId: session.userId },
-                { items: { some: { providerId: session.userId } } },
-              ],
+              ...(await (async () => {
+                const secondaryIds = await db.quoteItem.findMany({
+                  where: { providerId: session.userId },
+                  select: { requestId: true },
+                  distinct: ["requestId"],
+                })
+                const ids = secondaryIds.map((i) => i.requestId)
+                return {
+                  OR: [{ providerId: session.userId }, { id: { in: ids } }],
+                }
+              })()),
             }
           : // ADMIN: see all
             { ...(status ? { status } : {}) }

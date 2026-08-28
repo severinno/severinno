@@ -39,6 +39,7 @@ const mockDb = vi.hoisted(() => ({
   user: { findUnique: vi.fn(), findMany: vi.fn() },
   message: { findMany: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
   notification: { create: vi.fn() },
+  $queryRawUnsafe: vi.fn(),
 }))
 
 vi.mock("@/lib/db", () => ({ default: mockDb, db: mockDb }))
@@ -93,27 +94,25 @@ describe("GET /api/messages", () => {
 
   describe("conversations list (no ?with param)", () => {
     beforeEach(() => {
-      mockDb.message.findMany
+      mockDb.$queryRawUnsafe
         .mockResolvedValueOnce([
           {
-            toId: "prov-1",
+            peer_id: "prov-1",
             content: "Olá",
-            createdAt: new Date("2026-07-20T10:10:00Z"),
-            read: true,
+            created_at: new Date("2026-07-20T10:10:00Z"),
+            unread: true,
           },
           {
-            toId: "prov-2",
+            peer_id: "prov-2",
             content: "Teste",
-            createdAt: new Date("2026-07-19T09:00:00Z"),
-            read: true,
+            created_at: new Date("2026-07-19T09:00:00Z"),
+            unread: true,
           },
         ])
         .mockResolvedValueOnce([
           {
-            fromId: "prov-1",
-            content: "Oi",
-            createdAt: new Date("2026-07-20T10:05:00Z"),
-            read: false,
+            peer_id: "prov-1",
+            count: 1,
           },
         ])
       mockDb.user.findMany.mockResolvedValue([mockPeer])
@@ -124,7 +123,7 @@ describe("GET /api/messages", () => {
       const data = await response.json()
       expect(response.status).toBe(200)
       expect(data.items).toBeDefined()
-      expect(mockDb.message.findMany).toHaveBeenCalledTimes(2)
+      expect(mockDb.$queryRawUnsafe).toHaveBeenCalledTimes(2)
     })
 
     it("sorts conversations by most recent message", async () => {
