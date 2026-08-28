@@ -28,10 +28,6 @@ const { mockDb, sentEmails, sentNotifications } = vi.hoisted(() => {
   }
 })
 
-vi.mock("@/lib/with-rate-limit", () => ({
-  withRateLimit: (handler: (...args: unknown[]) => unknown) => handler,
-}))
-
 vi.mock("@/lib/logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },

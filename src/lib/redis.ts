@@ -122,7 +122,7 @@ function ensureClient(tier: Tier): Cluster | Redis | null {
       clusterClient = createClient("cluster") as Cluster
 
       clusterClient.on("error", (err: Error) => {
-        console.error(`[redis] cluster error: ${err.message}`)
+        logger.error({ err }, "[redis] cluster error")
         degradeTier("cluster")
       })
       clusterClient.on("ready", () => {
@@ -132,7 +132,7 @@ function ensureClient(tier: Tier): Cluster | Redis | null {
 
       // Node-level events (partial cluster failure)
       clusterClient.on("node error", (err: Error, node: unknown) => {
-        console.warn(`[redis] cluster node error (${JSON.stringify(node)}): ${err.message}`)
+        logger.warn({ err, node: JSON.stringify(node) }, "[redis] cluster node error")
         // Don't degrade the whole cluster — one node may be down
         // while the rest continues to serve.
       })
@@ -140,7 +140,7 @@ function ensureClient(tier: Tier): Cluster | Redis | null {
         logger.info({ node: JSON.stringify(node) }, "[redis] cluster node added")
       })
       clusterClient.on("-node", (node: unknown) => {
-        console.warn(`[redis] cluster node removed: ${JSON.stringify(node)}`)
+        logger.warn({ node: JSON.stringify(node) }, "[redis] cluster node removed")
       })
     }
     return clusterClient
@@ -151,7 +151,7 @@ function ensureClient(tier: Tier): Cluster | Redis | null {
     standaloneClient = createClient("standalone") as Redis
 
     standaloneClient.on("error", (err: Error) => {
-      console.error(`[redis] standalone error: ${err.message}`)
+      logger.error({ err }, "[redis] standalone error")
       degradeTier("standalone")
     })
     standaloneClient.on("ready", () => {
@@ -205,9 +205,9 @@ function degradeTier(failedTier: Tier): void {
   if (!nextTier) return // already at the lowest tier (memory)
 
   degradationCount++
-  console.warn(
-    `[redis] degrading from ${activeTier} to ${nextTier} ` +
-      `(degradation #${degradationCount}, failed tier: ${failedTier})`,
+  logger.warn(
+    { degradationCount, failedTier, activeTier, nextTier },
+    `[redis] degrading from ${activeTier} to ${nextTier}`,
   )
 
   // Alert Sentry when degradation count reaches 3+, indicating the cluster
@@ -450,7 +450,7 @@ async function tryRecoverTier(): Promise<void> {
         clusterClient = tempClient as Cluster
         // Re-attach event handlers
         clusterClient.on("error", (err: Error) => {
-          console.error(`[redis] cluster error: ${err.message}`)
+          logger.error({ err }, "[redis] cluster error")
           degradeTier("cluster")
         })
         clusterClient.on("ready", () => {
@@ -458,13 +458,13 @@ async function tryRecoverTier(): Promise<void> {
           everConnected = true
         })
         clusterClient.on("node error", (err: Error, node: unknown) => {
-          console.warn(`[redis] cluster node error (${JSON.stringify(node)}): ${err.message}`)
+          logger.warn({ err, node: JSON.stringify(node) }, "[redis] cluster node error")
         })
         clusterClient.on("+node", (node: unknown) => {
           logger.info({ node: JSON.stringify(node) }, "[redis] cluster node added")
         })
         clusterClient.on("-node", (node: unknown) => {
-          console.warn(`[redis] cluster node removed: ${JSON.stringify(node)}`)
+          logger.warn({ node: JSON.stringify(node) }, "[redis] cluster node removed")
         })
       } else if (
         targetTier === "standalone" &&
@@ -478,7 +478,7 @@ async function tryRecoverTier(): Promise<void> {
         }
         standaloneClient = tempClient as Redis
         standaloneClient.on("error", (err: Error) => {
-          console.error(`[redis] standalone error: ${err.message}`)
+          logger.error({ err }, "[redis] standalone error")
           degradeTier("standalone")
         })
         standaloneClient.on("ready", () => {

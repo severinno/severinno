@@ -13,6 +13,7 @@
 
 import { db } from "@/lib/db"
 import { withCache } from "@/lib/redis"
+import logger from "@/lib/logger"
 
 // Cache TTL for provider stats (30s — balances freshness with performance)
 const PROVIDER_STATS_CACHE_TTL = 30
@@ -67,7 +68,7 @@ export async function getProviderStatsMap(
     return map
   } catch (err) {
     // MV might not exist yet — degrade gracefully
-    console.warn("[provider-stats] MV query failed, falling back:", err)
+    logger.warn({ err }, "[provider-stats] MV query failed, falling back")
     return new Map()
   }
 }
@@ -82,6 +83,6 @@ export async function refreshProviderStats(): Promise<void> {
   try {
     await db.$executeRawUnsafe("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_provider_stats")
   } catch (err) {
-    console.warn("[provider-stats] Refresh failed:", err)
+    logger.warn({ err }, "[provider-stats] Refresh failed")
   }
 }

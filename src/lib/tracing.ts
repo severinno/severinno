@@ -16,6 +16,7 @@
  */
 
 import { trace as otelTrace, SpanStatusCode, context, SpanKind } from "@opentelemetry/api"
+import logger from "@/lib/logger"
 
 // ── Configuration ─────────────────────────────────────────────────────────
 
@@ -86,13 +87,11 @@ export function initTracing(): void {
   initialized = true
 
   if (!OTEL_ENABLED) {
-    console.warn("[tracing] OpenTelemetry disabled (set OTEL_ENABLED=true to enable)")
+    logger.warn("[tracing] OpenTelemetry disabled (set OTEL_ENABLED=true to enable)")
     return
   }
 
-  console.warn(
-    "[tracing] OpenTelemetry enabled — spans will be created for instrumented operations",
-  )
+  logger.warn("[tracing] OpenTelemetry enabled — spans will be created for instrumented operations")
 }
 
 /**

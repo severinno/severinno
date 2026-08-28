@@ -3,10 +3,6 @@ import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-te
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-vi.mock("@/lib/with-rate-limit", () => ({
-  withRateLimit: (handler: (...args: unknown[]) => unknown) => handler,
-}))
-
 vi.mock("@/lib/rate-limit", () => ({
   assertRateLimit: vi.fn().mockResolvedValue(undefined),
   RATE_LIMITS: {
@@ -402,7 +398,7 @@ describe("POST /api/auth/register — emails demo (prod vs dev)", () => {
 
 describe("POST /api/auth/logout", () => {
   it("destroys session and returns ok", async () => {
-    const res = await logout()
+    const res = await logout(createMockRequest())
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(200)
