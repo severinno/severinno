@@ -42,7 +42,7 @@ export type ProviderCardProps = {
   className?: string
 }
 
-export default function ProviderCard({
+export default React.memo(function ProviderCard({
   provider,
   favorited: favoritedProp,
   onQuote,
@@ -286,7 +286,7 @@ export default function ProviderCard({
       </div>
     </Card>
   )
-}
+})
 
 export function ProviderCardSkeleton() {
   return (

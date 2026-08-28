@@ -435,7 +435,7 @@ describe("POST /api/auth/reset-password", () => {
     expect(parsed.body!.error).toContain("inválido")
   })
 
-  it("rejeita senha muito curta (< 6 caracteres)", async () => {
+  it("rejeita senha muito curta (< 8 caracteres)", async () => {
     const res = await resetPassword(
       createMockRequest({
         method: "POST",
@@ -445,7 +445,7 @@ describe("POST /api/auth/reset-password", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
-    expect(parsed.body!.error).toContain("6 caracteres")
+    expect(parsed.body!.error).toContain("8 caracteres")
   })
 
   it("rejeita requisição sem token", async () => {

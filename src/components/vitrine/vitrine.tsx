@@ -18,6 +18,7 @@
  */
 
 import * as React from "react"
+import { Suspense } from "react"
 import { useQuery, keepPreviousData } from "@tanstack/react-query"
 
 import { useAuthStore, useGeoStore, useUIStore } from "@/store"
@@ -48,6 +49,49 @@ import { DEFAULT_FILTERS, type FiltersState } from "./filters"
 
 const RESULTS_ANCHOR_ID = "vitrine-resultados"
 const PAGE_LIMIT = 9
+
+// ---------------------------------------------------------------------------
+// Lazy section wrapper — defers rendering until section scrolls into view
+// ---------------------------------------------------------------------------
+
+function LazySection({ children }: { children: React.ReactNode }) {
+  const [visible, setVisible] = React.useState(false)
+  const ref = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: "200px" },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <div ref={ref}>
+      {visible ? (
+        <Suspense
+          fallback={
+            <div className="flex items-center justify-center py-16">
+              <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          }
+        >
+          {children}
+        </Suspense>
+      ) : (
+        <div className="min-h-[200px]" />
+      )}
+    </div>
+  )
+}
 
 // ── Combined state (filters + debouncedQ + page) via reducer ─────────────
 // Using useReducer so that filter changes atomically reset the page,
@@ -249,28 +293,44 @@ export default function Vitrine() {
         />
 
         {/* 5. HowItWorks — process explanation */}
-        <HowItWorks />
+        <LazySection>
+          <HowItWorks />
+        </LazySection>
 
         {/* 5b. QuickQuoteCalculator — instant price estimate */}
-        <QuickQuoteCalculator />
+        <LazySection>
+          <QuickQuoteCalculator />
+        </LazySection>
 
         {/* 6. PartnersTrust — H6/H9: press logos, trust signals */}
-        <PartnersTrust />
+        <LazySection>
+          <PartnersTrust />
+        </LazySection>
 
         {/* 7. Testimonials — social proof from real users */}
-        <Testimonials />
+        <LazySection>
+          <Testimonials />
+        </LazySection>
 
         {/* 8. WhySeverinno — value proposition */}
-        <WhySeverinno />
+        <LazySection>
+          <WhySeverinno />
+        </LazySection>
 
         {/* 9. ProviderSpotlight — featured provider */}
-        <ProviderSpotlight />
+        <LazySection>
+          <ProviderSpotlight />
+        </LazySection>
 
         {/* 10. FAQ — common questions */}
-        <FAQ />
+        <LazySection>
+          <FAQ />
+        </LazySection>
 
         {/* 11. CtaBanner — final conversion CTA */}
-        <CtaBanner />
+        <LazySection>
+          <CtaBanner />
+        </LazySection>
       </main>
 
       <Footer />

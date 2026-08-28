@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { providerProfileSchema } from "@/lib/validators"
 import { forbidden, handleError, USER_PUBLIC_SELECT, syncServiceSearch } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // GET: current authenticated user (full public profile)
 export async function GET() {
@@ -23,6 +24,7 @@ export async function GET() {
 
 // PATCH: update own profile (name, bio, contact, address, geoloc, avatarUrl, coverUrl, radiusKm)
 export async function PATCH(request: Request) {
+  await assertRateLimit(request, RATE_LIMITS.general)
   try {
     const session = await requireUser()
     const body = await request.json()

@@ -150,12 +150,20 @@ export function runDerivation(cwd) {
   // Windows: `bun` costuma ser um shim npm (bun.cmd) — node não executa
   // shims .cmd sem shell:true (spawn direto → ENOENT). Linux/macOS (CI com
   // oven-sh/setup-bun@v2) tem o binário real — spawn direto é suficiente.
-  const res = spawnSync("bun", ["scripts/seed-e2e-count.ts", "--json"], {
+  let res = spawnSync("bun", ["scripts/seed-e2e-count.ts", "--json"], {
     cwd,
     encoding: "utf8",
     timeout: 30_000,
     ...(process.platform === "win32" ? { shell: true } : {}),
   })
+  // Fallback: if bun is not installed, try `npx tsx` (TypeScript runner)
+  if (res.error && res.status === null) {
+    res = spawnSync("npx", ["tsx", "scripts/seed-e2e-count.ts", "--json"], {
+      cwd,
+      encoding: "utf8",
+      timeout: 30_000,
+    })
+  }
   if (res.status !== 0) {
     const err = (res.stderr ?? res.stdout ?? "").trim() || `exit ${res.status}`
     throw new Error(`derivação de counts falhou (bun scripts/seed-e2e-count.ts --json): ${err}`)

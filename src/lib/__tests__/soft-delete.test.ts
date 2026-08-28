@@ -100,7 +100,7 @@ describe("softDeleteReadFilter", () => {
     })
   })
 
-  it("applies to findUnique", () => {
+  it("does NOT apply to findUnique (Prisma uses unique constraint)", () => {
     const result = softDeleteReadFilter({
       model: "Booking",
       action: "findUnique",
@@ -108,8 +108,10 @@ describe("softDeleteReadFilter", () => {
     })
 
     expect(result.args as Record<string, unknown>).toMatchObject({
-      where: { id: "booking-1", deletedAt: null },
+      where: { id: "booking-1" },
     })
+    const where = (result.args as { where: Record<string, unknown> }).where
+    expect(where).not.toHaveProperty("deletedAt")
   })
 })
 

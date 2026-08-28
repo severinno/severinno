@@ -38,9 +38,9 @@ let replicaClient: PrismaClient | null = null
 function getReplicaClient(): PrismaClient {
   // If no replica URL, return the primary client (imported lazily)
   if (!REPLICA_URL) {
-    // Lazy import to avoid circular dependency
+    // Lazy dynamic import to avoid circular dependency
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { db } = require("./db")
+    const { db } = require("./db") as { db: PrismaClient }
     return db
   }
 

@@ -36,7 +36,7 @@ export async function GET(request: Request) {
               : {}),
           },
           include: {
-            category: true,
+            category: { select: { id: true, name: true, slug: true, icon: true } },
             provider: {
               select: {
                 id: true,

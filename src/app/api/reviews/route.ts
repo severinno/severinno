@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { reviewSchema } from "@/lib/validators"
-import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
+import { badRequest, forbidden, handleError, notFound, parsePagination } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { fireEvent } from "@/lib/event-hub"
 
@@ -13,20 +13,28 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const providerId = searchParams.get("providerId") || undefined
     const bookingId = searchParams.get("bookingId") || undefined
+    const { page, limit, skip, take } = parsePagination(searchParams)
 
-    const reviews = await db.review.findMany({
-      where: {
-        ...(providerId ? { providerId } : {}),
-        ...(bookingId ? { bookingId } : {}),
-      },
-      include: {
-        client: { select: { id: true, name: true, avatarUrl: true } },
-        booking: { select: { id: true, serviceId: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    })
+    const where = {
+      ...(providerId ? { providerId } : {}),
+      ...(bookingId ? { bookingId } : {}),
+    }
 
-    return NextResponse.json({ items: reviews, total: reviews.length })
+    const [items, total] = await Promise.all([
+      db.review.findMany({
+        where,
+        include: {
+          client: { select: { id: true, name: true, avatarUrl: true } },
+          booking: { select: { id: true, serviceId: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+      }),
+      db.review.count({ where }),
+    ])
+
+    return NextResponse.json({ items, total, page, limit })
   } catch (e) {
     return handleError(e)
   }

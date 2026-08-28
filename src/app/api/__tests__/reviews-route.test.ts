@@ -42,6 +42,7 @@ const { mockDb, mockReviews, validReviewData, completedBooking, recentReviews } 
       findUnique: vi.fn(),
       create: vi.fn(),
       aggregate: vi.fn(),
+      count: vi.fn().mockResolvedValue(0),
     },
     booking: {
       findUnique: vi.fn(),
@@ -119,6 +120,7 @@ beforeEach(() => {
 describe("GET /api/reviews", () => {
   it("lists all reviews when no filters are provided", async () => {
     mockDb.review.findMany.mockResolvedValue(mockReviews)
+    mockDb.review.count.mockResolvedValue(mockReviews.length)
 
     const req = createMockRequest()
     const response = await GET(req)

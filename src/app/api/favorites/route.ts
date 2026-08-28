@@ -25,8 +25,11 @@ export async function GET(request: Request) {
       include: {
         provider: {
           include: {
-            services: { where: { active: true }, include: { category: true } },
-            reviewsReceived: { select: { rating: true } },
+            services: {
+              where: { active: true },
+              select: { id: true, title: true, basePrice: true },
+              take: 3,
+            },
           },
         },
       },
@@ -34,14 +37,13 @@ export async function GET(request: Request) {
     })
 
     const providers = favorites.map((f) => {
-      const ratings = f.provider.reviewsReceived.map((r) => r.rating)
-      const rating = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0
-      const reviewCount = ratings.length
+      const rating = f.provider.avgRating ?? 0
+      const reviewCount = f.provider.reviewCount ?? 0
       const distanceKm =
         hasGeo && f.provider.lat !== null && f.provider.lng !== null
           ? Math.round(haversineKm(latNum!, lngNum!, f.provider.lat, f.provider.lng) * 10) / 10
           : null
-      const { reviewsReceived: _ignored, passwordHash: _ignored2, ...safeProvider } = f.provider
+      const { passwordHash: _ignored, ...safeProvider } = f.provider
       return {
         ...safeProvider,
         rating: Math.round(rating * 10) / 10,

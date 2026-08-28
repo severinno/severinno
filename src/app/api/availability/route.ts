@@ -3,9 +3,11 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { availabilitySchema } from "@/lib/validators"
 import { forbidden, handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // GET: provider's own availability
-export async function GET() {
+export async function GET(request: Request) {
+  await assertRateLimit(request, RATE_LIMITS.general)
   try {
     const session = await requireUser()
     if (session.role !== "PROVIDER" && session.role !== "ADMIN") {
@@ -26,6 +28,7 @@ export async function GET() {
 // POST: upsert (replace) the provider's availability array
 // Body: { items: Array<{ dayOfWeek, startTime, endTime, active }> }
 export async function POST(request: Request) {
+  await assertRateLimit(request, RATE_LIMITS.general)
   try {
     const session = await requireUser()
     if (session.role !== "PROVIDER" && session.role !== "ADMIN") {

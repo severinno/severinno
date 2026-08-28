@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-// Mock ioredis so tests can control Redis behavior
-vi.mock("ioredis", () => ({ default: vi.fn() }))
+// Mock redis module (checkRateLimit uses getClient() from redis.ts)
+const mockGetClient = vi.fn()
+vi.mock("@/lib/redis", () => ({
+  getClient: (...args: unknown[]) => mockGetClient(...args),
+}))
 
 import { checkRateLimit, rateLimitHeaders, __testing__resetRateLimiter } from "../rate-limit"
-import IORedis from "ioredis"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -15,21 +17,13 @@ function mockRequest(): Request {
   return new Request("http://localhost")
 }
 
-/** Build a mock ioredis client with controllable methods. */
+/** Build a mock redis client with controllable methods. */
 function mockRedisClient(overrides: Record<string, unknown> = {}) {
   return {
     incr: vi.fn().mockResolvedValue(1),
     pexpire: vi.fn().mockResolvedValue("OK"),
-    ping: vi.fn().mockResolvedValue("PONG"),
-    connect: vi.fn().mockResolvedValue(undefined),
-    on: vi.fn(),
     ...overrides,
   }
-}
-
-/** Enable Redis in the test (default: no REDIS_URL). */
-function enableRedis() {
-  process.env.REDIS_URL = "redis://localhost:6379"
 }
 
 // ---------------------------------------------------------------------------
@@ -38,7 +32,7 @@ function enableRedis() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  delete process.env.REDIS_URL
+  mockGetClient.mockReturnValue(null) // default: no Redis (in-memory fallback)
   __testing__resetRateLimiter()
 })
 
@@ -61,9 +55,8 @@ describe("checkRateLimit", () => {
   })
 
   it("allows request when under limit", async () => {
-    enableRedis()
     const client = mockRedisClient({ incr: vi.fn().mockResolvedValue(5) })
-    vi.mocked(IORedis).mockReturnValue(client as any)
+    mockGetClient.mockReturnValue(client)
 
     const result = await checkRateLimit(mockRequest(), {
       prefix: "test",
@@ -79,9 +72,8 @@ describe("checkRateLimit", () => {
   })
 
   it("blocks request when over limit", async () => {
-    enableRedis()
     const client = mockRedisClient({ incr: vi.fn().mockResolvedValue(31) })
-    vi.mocked(IORedis).mockReturnValue(client as any)
+    mockGetClient.mockReturnValue(client)
 
     const result = await checkRateLimit(mockRequest(), {
       prefix: "test",
@@ -95,9 +87,8 @@ describe("checkRateLimit", () => {
   })
 
   it("allows at exactly the limit", async () => {
-    enableRedis()
     const client = mockRedisClient({ incr: vi.fn().mockResolvedValue(30) })
-    vi.mocked(IORedis).mockReturnValue(client as any)
+    mockGetClient.mockReturnValue(client)
 
     const result = await checkRateLimit(mockRequest(), {
       prefix: "test",
@@ -110,9 +101,8 @@ describe("checkRateLimit", () => {
   })
 
   it("sets TTL on first request in the window", async () => {
-    enableRedis()
     const client = mockRedisClient({ incr: vi.fn().mockResolvedValue(1) })
-    vi.mocked(IORedis).mockReturnValue(client as any)
+    mockGetClient.mockReturnValue(client)
 
     await checkRateLimit(mockRequest(), {
       prefix: "test",
@@ -124,11 +114,10 @@ describe("checkRateLimit", () => {
   })
 
   it("falls back to in-memory on Redis error", async () => {
-    enableRedis()
     const client = mockRedisClient({
       incr: vi.fn().mockRejectedValue(new Error("Redis connection failed")),
     })
-    vi.mocked(IORedis).mockReturnValue(client as any)
+    mockGetClient.mockReturnValue(client)
 
     const result = await checkRateLimit(mockRequest(), {
       prefix: "test-fallback-redis-error",
@@ -142,9 +131,8 @@ describe("checkRateLimit", () => {
   })
 
   it("uses custom identifier when provided", async () => {
-    enableRedis()
     const client = mockRedisClient()
-    vi.mocked(IORedis).mockReturnValue(client as any)
+    mockGetClient.mockReturnValue(client)
 
     await checkRateLimit(mockRequest(), {
       prefix: "test",
@@ -157,7 +145,6 @@ describe("checkRateLimit", () => {
   })
 
   it("uses different keys for different prefixes", async () => {
-    enableRedis()
     const keys: string[] = []
     const client = mockRedisClient({
       incr: vi.fn().mockImplementation((key: string) => {
@@ -165,7 +152,7 @@ describe("checkRateLimit", () => {
         return Promise.resolve(1)
       }),
     })
-    vi.mocked(IORedis).mockReturnValue(client as any)
+    mockGetClient.mockReturnValue(client)
 
     const req = mockRequest()
     await checkRateLimit(req, { prefix: "login", max: 10, windowMs: 60_000 })
