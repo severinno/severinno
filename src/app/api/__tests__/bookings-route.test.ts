@@ -3,10 +3,6 @@ import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-te
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-vi.mock("@/lib/with-rate-limit", () => ({
-  withRateLimit: (handler: (...args: unknown[]) => unknown) => handler,
-}))
-
 vi.mock("@/lib/logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() },
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), child: vi.fn().mockReturnThis() },

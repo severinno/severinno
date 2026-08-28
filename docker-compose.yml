@@ -153,6 +153,12 @@ services:
       NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
       NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:3003}
     # Health check defined in Dockerfile
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
 
   # ── Geo Cache Warm (one-shot init) ───────────────────────────────────────
   # After the app is healthy, pre-fills the Redis cache with the most
