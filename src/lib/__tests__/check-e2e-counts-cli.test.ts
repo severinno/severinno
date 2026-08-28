@@ -27,6 +27,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
+const CLI_TIMEOUT = 30_000 // npx tsx fallback é lento
+
 const SCRIPT = join(process.cwd(), "scripts", "check-e2e-counts.mjs")
 const ROOT_TMP = mkdtempSync(join(tmpdir(), "ce2e-counts-"))
 
@@ -112,7 +114,7 @@ describe("check-e2e-counts.mjs — CLI real (fast gate)", () => {
     rmSync(ROOT_TMP, { recursive: true, force: true })
   })
 
-  it("count documentado divergente da derivação → exit 1 com arquivo:linha", () => {
+  it("count documentado divergente da derivação → exit 1 com arquivo:linha", { timeout: CLI_TIMEOUT }, () => {
     const dir = makeFakeRepo("t1-divergent", {
       workflows: {
         // Linha 1 divergente (147) + piso completo de sites corretos (115/162)
@@ -127,7 +129,7 @@ describe("check-e2e-counts.mjs — CLI real (fast gate)", () => {
     expect(out).toContain("[prod] documentado=147 → esperado=115")
   })
 
-  it("counts documentados iguais à derivação → exit 0", () => {
+  it("counts documentados iguais à derivação → exit 0", { timeout: CLI_TIMEOUT }, () => {
     const dir = makeFakeRepo("t2-clean", {
       workflows: { "pr-check.yml": PR_CHECK(115, 162), "seed-guards.yml": SEED_GUARDS(115, 162) },
     })
@@ -137,7 +139,7 @@ describe("check-e2e-counts.mjs — CLI real (fast gate)", () => {
     expect(out).toContain("prod=115, dev=162")
   })
 
-  it("derivação FALHA (stub exit 1) → exit 1 (fail-closed)", () => {
+  it("derivação FALHA (stub exit 1) → exit 1 (fail-closed)", { timeout: CLI_TIMEOUT }, () => {
     const dir = makeFakeRepo("t3-derivation-fails", {
       derivationFails: true,
       workflows: { "seed-guards.yml": SEED_GUARDS(115, 162) },
@@ -148,7 +150,7 @@ describe("check-e2e-counts.mjs — CLI real (fast gate)", () => {
     expect(out).toContain("seed-e2e-count.ts")
   })
 
-  it("derivação com JSON inválido → exit 1 (fail-closed)", () => {
+  it("derivação com JSON inválido → exit 1 (fail-closed)", { timeout: CLI_TIMEOUT }, () => {
     const dir = makeFakeRepo("t3b-bad-json", {
       derivationJson: "não é json",
       workflows: { "seed-guards.yml": SEED_GUARDS(115, 162) },
@@ -158,7 +160,7 @@ describe("check-e2e-counts.mjs — CLI real (fast gate)", () => {
     expect(out).toContain("não é JSON válido")
   })
 
-  it("repo real do projeto → exit 0 (derivação real prod=127, dev=161)", () => {
+  it("repo real do projeto → exit 0 (derivação real prod=127, dev=161)", { timeout: CLI_TIMEOUT }, () => {
     const { status, out } = runGuard(process.cwd())
     expect(status).toBe(0)
     expect(out).toContain("sincronizados")
