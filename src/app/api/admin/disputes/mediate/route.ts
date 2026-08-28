@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { mediateDispute, DisputeCase } from "@/lib/dispute-mediator"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 export async function POST(req: NextRequest) {
+  await assertRateLimit(req, RATE_LIMITS.admin)
   try {
     const body = await req.json()
     const dispute: DisputeCase = body

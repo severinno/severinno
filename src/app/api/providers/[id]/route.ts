@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { haversineKm } from "@/lib/geo-server"
 import { cacheControlPrivate, handleError, notFound } from "@/lib/api-server"
 import { getOptionalSession } from "@/lib/auth"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -12,6 +13,7 @@ type Params = { params: Promise<{ id: string }> }
  * If logged-in client, include `favorited` flag.
  */
 export async function GET(request: Request, { params }: Params) {
+  await assertRateLimit(request, RATE_LIMITS.providers)
   try {
     const { id } = await params
     const { searchParams } = new URL(request.url)

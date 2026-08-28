@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createEmergencyDispatch, EmergencyRequest } from "@/lib/emergency-matchmaking"
+import { requireUser } from "@/lib/auth"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 export async function POST(req: NextRequest) {
   try {
+    await requireUser()
+    await assertRateLimit(req, RATE_LIMITS.bookings)
     const body = await req.json()
     const { request, availableProviders } = body
 

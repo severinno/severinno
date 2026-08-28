@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { handleError } from "@/lib/api-server"
 import logger from "@/lib/logger"
 
@@ -20,6 +21,7 @@ import logger from "@/lib/logger"
  * risco de manipulacao.
  */
 export async function POST(request: Request) {
+  await assertRateLimit(request, RATE_LIMITS.general)
   try {
     const body = await request.json()
     const { notificationId, title } = body

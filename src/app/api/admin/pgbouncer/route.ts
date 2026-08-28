@@ -24,6 +24,7 @@
 
 import { NextResponse } from "next/server"
 import { execSync, type ExecSyncOptionsWithStringEncoding } from "child_process"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -147,7 +148,8 @@ const CACHE_TTL_MS = 15_000
 // Route Handler
 // ═════════════════════════════════════════════════════════════════════════
 
-export async function GET(): Promise<NextResponse<PgBouncerResponse>> {
+export async function GET(request: Request): Promise<NextResponse<PgBouncerResponse>> {
+  await assertRateLimit(request, RATE_LIMITS.admin)
   // Try cache first
   if (inMemoryCache && Date.now() - inMemoryCache.timestamp < CACHE_TTL_MS) {
     return NextResponse.json(inMemoryCache.result)

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { searchProviders, type SearchProviderParams } from "@/lib/search"
 import { cacheControlPublic, handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * OpenSearch-powered provider search.
@@ -24,6 +25,7 @@ import { cacheControlPublic, handleError } from "@/lib/api-server"
  * Falls back to empty results if OpenSearch is unavailable.
  */
 export async function GET(request: Request) {
+  await assertRateLimit(request, RATE_LIMITS.providers)
   try {
     const { searchParams } = new URL(request.url)
 

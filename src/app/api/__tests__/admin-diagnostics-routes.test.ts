@@ -149,6 +149,11 @@ vi.mock("@/lib/global-rate-limit", () => ({
   resetGlobalRateLimiter: vi.fn(),
 }))
 
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn(),
+  RATE_LIMITS: { admin: 100, general: 100 },
+}))
+
 vi.mock("@/lib/redis", () => ({
   getCacheStats: vi.fn(),
   getMemoryCacheDiagnostics: vi.fn(),
@@ -1282,7 +1287,7 @@ describe("GET /api/admin/pgbouncer", () => {
       return defaultExecSync(cmd)
     })
 
-    const res = await GETPgBouncer()
+    const res = await GETPgBouncer(new Request("http://localhost/api/admin/pgbouncer"))
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -1295,7 +1300,7 @@ describe("GET /api/admin/pgbouncer", () => {
   })
 
   it("returns pools, stats and config parsed from psql output", async () => {
-    const res = await GETPgBouncer()
+    const res = await GETPgBouncer(new Request("http://localhost/api/admin/pgbouncer"))
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -1329,7 +1334,7 @@ describe("GET /api/admin/pgbouncer", () => {
       throw new Error("connection refused")
     })
 
-    const res = await GETPgBouncer()
+    const res = await GETPgBouncer(new Request("http://localhost/api/admin/pgbouncer"))
     const body = await res.json()
 
     expect(res.status).toBe(200)

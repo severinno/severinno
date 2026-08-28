@@ -2,11 +2,15 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { handleError, notFound } from "@/lib/api-server"
 import { getRoute } from "@/lib/routing"
+import { requireUser } from "@/lib/auth"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 type Params = { params: Promise<{ id: string }> }
 
 export async function GET(request: Request, { params }: Params) {
   try {
+    await requireUser()
+    await assertRateLimit(request, RATE_LIMITS.general)
     const { id } = await params
     const { searchParams } = new URL(request.url)
     const latStr = searchParams.get("lat")

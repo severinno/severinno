@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getVectorTileData } from "@/lib/vector-tiles"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 interface RouteParams {
   params: Promise<{
@@ -10,6 +11,7 @@ interface RouteParams {
 }
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
+  await assertRateLimit(req, RATE_LIMITS.general)
   try {
     const { z: zStr, x: xStr, y: yStr } = await params
     const z = parseInt(zStr, 10)

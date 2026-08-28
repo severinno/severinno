@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { searchServices } from "@/lib/search"
 import { cacheControlPublic, handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * OpenSearch-powered service search.
@@ -16,6 +17,7 @@ import { cacheControlPublic, handleError } from "@/lib/api-server"
  * Falls back to empty results if OpenSearch is unavailable.
  */
 export async function GET(request: Request) {
+  await assertRateLimit(request, RATE_LIMITS.general)
   try {
     const { searchParams } = new URL(request.url)
     const q = searchParams.get("q")?.trim()

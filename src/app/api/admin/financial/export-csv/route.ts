@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import {
   generateFinancialCSV,
   computeFinancialSummary,
@@ -7,6 +8,7 @@ import {
 } from "@/lib/streaming-exporter"
 
 export async function GET(req: NextRequest) {
+  await assertRateLimit(req, RATE_LIMITS.admin)
   try {
     const { searchParams } = new URL(req.url)
     const format = searchParams.get("format") || "csv"
