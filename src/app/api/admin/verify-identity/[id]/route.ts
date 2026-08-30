@@ -1,3 +1,4 @@
+import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
@@ -59,7 +60,7 @@ export async function PATCH(request: Request, { params }: Params) {
         ? `🎉 *Parabéns, ${provider.name}!*\n\nSeu perfil no Severinno foi *verificado com sucesso*! Você agora possui o selo oficial de prestador verificado e terá destaque nas buscas da sua região.`
         : `⚠️ *Aviso de Verificação - Severinno*\n\nOlá, ${provider.name}. Sua solicitação de verificação de identidade não pôde ser aprovada.\n${reason ? `Motivo: ${reason}\n\n` : "\n"}Acesse o app para reenviar documentos legíveis.`
 
-      sendText(provider.whatsapp, msg).catch(() => {})
+      sendText(provider.whatsapp, msg).catch((err) => logger.warn({ err }, "whatsapp notification failed"))
     }
 
     return NextResponse.json({

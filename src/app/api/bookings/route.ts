@@ -1,3 +1,4 @@
+import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { type BookingStatus } from "@prisma/client"
 import { db } from "@/lib/db"
@@ -85,7 +86,7 @@ export async function POST(request: Request) {
       service.title,
       data.scheduledAt,
       booking.client?.name ?? "Cliente",
-    ).catch(() => {})
+    ).catch((err) => logger.warn({ err }, "notification failed (fire-and-forget)"))
 
     return NextResponse.json({ booking }, { status: 201 })
   } catch (e) {

@@ -1,3 +1,4 @@
+import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
@@ -108,7 +109,7 @@ export async function POST(request: Request) {
         comment: review.comment ?? "",
       },
       { scopedUserIds: [booking.providerId] },
-    ).catch(() => {})
+    ).catch((err) => logger.warn({ err }, "review notification failed (fire-and-forget)"))
 
     return NextResponse.json({ review }, { status: 201 })
   } catch (e) {

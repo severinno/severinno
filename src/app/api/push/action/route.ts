@@ -166,7 +166,7 @@ export async function POST(request: Request) {
     }
 
     // ── View (just mark as read, already handled by SW opening URL) ────
-    await logPushAction(session.userId, bookingId, "view", "viewed").catch(() => {})
+    await logPushAction(session.userId, bookingId, "view", "viewed").catch((err) => logger.warn({ err }, "push action log failed"))
 
     return NextResponse.json({
       ok: true,

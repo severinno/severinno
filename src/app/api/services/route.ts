@@ -1,3 +1,4 @@
+import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
@@ -95,10 +96,10 @@ export async function POST(request: Request) {
       include: { category: true },
     })
     // Queue search reindex (non-critical — don't fail the request)
-    syncServiceSearch(created).catch(() => {})
+    syncServiceSearch(created).catch((err) => logger.warn({ err }, "search index sync failed"))
 
     // Invalidate service list cache so new services appear immediately
-    cacheInvalidate("services:*").catch(() => {})
+    cacheInvalidate("services:*").catch((err) => logger.warn({ err }, "search index sync failed"))
     return NextResponse.json({ service: created }, { status: 201 })
   } catch (e) {
     return handleError(e)

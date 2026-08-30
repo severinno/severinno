@@ -1,3 +1,4 @@
+import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
@@ -62,7 +63,7 @@ export async function PATCH(request: Request, { params }: Params) {
           id,
           quote.provider?.name ?? "Prestador",
           data.price,
-        ).catch(() => {})
+        ).catch((err) => logger.warn({ err }, "quote item notification failed"))
       }
     }
 
