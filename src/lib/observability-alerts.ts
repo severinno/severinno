@@ -51,6 +51,8 @@ function fireAlert(alert: Alert): void {
     `[ALERT] ${alert.title}: ${alert.message}`,
   )
   sendAlertWebhook({ severity: alert.severity, title: alert.title, message: alert.message, metric: alert.metric }).catch(() => {})
+  alertHistory.push({ severity: alert.severity, title: alert.title, metric: alert.metric, timestamp: new Date().toISOString() })
+  if (alertHistory.length > MAX_ALERT_HISTORY) alertHistory.shift()
 }
 
 // ── Check functions (call periodically) ────────────────────────────────────
@@ -160,4 +162,28 @@ export function runObservabilityChecks(debugData: {
   checkCacheHitRatio(debugData.redis.hits, debugData.redis.misses)
   checkFallbackRates(debugData.geoMetrics.calls)
   checkGeoLatency(debugData.geoMetrics.latency)
+}
+
+
+// ── Alert stats (for health dashboard) ────────────────────────────────────
+
+const alertHistory: Array<{ severity: string; title: string; metric: string; timestamp: string }> = []
+const MAX_ALERT_HISTORY = 100
+
+/**
+ * Get alert statistics for the health dashboard.
+ */
+export function getAlertStats(): { total: number; recent: typeof alertHistory } {
+  return {
+    total: alertHistory.length,
+    recent: [...alertHistory].slice(-20),
+  }
+}
+
+/**
+ * Reset alert stats (useful for testing).
+ */
+export function resetAlertStats(): void {
+  alertHistory.length = 0
+  lastAlertAt.clear()
 }

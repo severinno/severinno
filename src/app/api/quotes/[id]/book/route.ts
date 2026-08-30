@@ -1,3 +1,4 @@
+import { captureErrorEnhanced } from "@/lib/sentry-enhanced"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
@@ -99,7 +100,7 @@ export async function POST(request: Request, { params }: Params) {
       providerId: quote.providerId,
       status: "PENDING",
     }).catch((err) => {
-      captureError(err, { bookingId: booking.id, context: "quote book realtime" })
+      captureErrorEnhanced(err, { url: "/api/quotes/[id]/book", method: "POST", tags: { source: "quote-book", bookingId: booking.id } })
     })
 
     return NextResponse.json({ booking }, { status: 201 })
