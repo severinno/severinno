@@ -1,4 +1,5 @@
 import logger from "./logger"
+import { safeFetch } from "./safe-fetch"
 
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL
 const SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL
@@ -13,7 +14,7 @@ export async function sendAlertWebhook(alert: {
 
   if (DISCORD_WEBHOOK_URL) {
     try {
-      await fetch(DISCORD_WEBHOOK_URL, {
+      await safeFetch(DISCORD_WEBHOOK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -26,6 +27,8 @@ export async function sendAlertWebhook(alert: {
             timestamp: new Date().toISOString(),
           }],
         }),
+        timeoutMs: 5_000,
+        label: "discord-webhook",
       })
     } catch (e) {
       logger.warn({ err: e }, "Failed to send Discord alert")
@@ -34,12 +37,14 @@ export async function sendAlertWebhook(alert: {
 
   if (SLACK_WEBHOOK_URL) {
     try {
-      await fetch(SLACK_WEBHOOK_URL, {
+      await safeFetch(SLACK_WEBHOOK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text: `${emoji} *${alert.title}*\n${alert.message}\n_Metric: ${alert.metric}_`,
         }),
+        timeoutMs: 5_000,
+        label: "slack-webhook",
       })
     } catch (e) {
       logger.warn({ err: e }, "Failed to send Slack alert")

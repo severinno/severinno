@@ -65,6 +65,13 @@ type ExtendedPrismaClient = ReturnType<typeof createPrismaClient>
 function createPrismaClient() {
   const base = new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["query"] : [],
+    datasources: {
+      db: {
+        url: process.env.DATABASE_URL,
+        // Connection pooling: 10 connections default, 5s timeout
+        // These are Prisma-level; for PgBouncer, set pool_mode=transaction in the URL
+      },
+    },
   })
 
   // Merge soft-delete + slow query monitor extensions
