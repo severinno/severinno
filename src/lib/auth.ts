@@ -154,6 +154,10 @@ export class AuthError extends Error {
  * Uses Redis cache (5min TTL) to avoid hitting PostgreSQL on every request.
  */
 export async function requireUser(): Promise<SessionPayload> {
+  // Establish request context for distributed tracing (x-request-id propagation)
+  const { establishRequestContext } = await import("./request-context")
+  await establishRequestContext()
+
   const session = await getSession()
   if (!session) {
     throw new AuthError("UNAUTHORIZED")

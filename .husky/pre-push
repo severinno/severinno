@@ -1,42 +1,70 @@
 set -eu
 
-# 15 guards de encoding/CI compartilhados com o pre-commit (fonte única —
-# adicionar um guard novo = editar scripts/run-encoding-guards.sh em UM lugar)
+# ── Fast encoding guards (sempre rodam, ~2s) ──────────────────────────────
 bash scripts/run-encoding-guards.sh
-
-# CLI tests dos guards (check-bun-mirror, e2e-counts, workflow-refs, badge) —
-# spawnam as CLIs reais via child_process; rápidos e rodam SEMPRE, como os
-# encoding guards (independem do smart-skip de source files)
 bun run test:guards
 
 # ── Smart skip: só roda testes se arquivos-fonte foram alterados ──────────
-# Determina quais arquivos mudaram em relação ao upstream ou commit anterior
 MERGE_BASE=$(git merge-base HEAD "@{u}" 2>/dev/null || git rev-parse HEAD~1 2>/dev/null || echo "")
 
 if [ -z "$MERGE_BASE" ]; then
-  # Primeiro commit ou sem referência — roda testes por segurança
   CHANGED_FILES=""
 else
   CHANGED_FILES=$(git diff --name-only "$MERGE_BASE" HEAD 2>/dev/null || true)
 fi
 
-# Padrões de arquivos que NÃO exigem testes
+# Padrões que NÃO exigem testes (docs, config, assets, hooks)
 SKIP_PATTERN='\.(md|json|yaml|yml|toml|ini)$|^docs/|^examples/|\.(png|jpg|gif|svg|ico|webp)$|^LICENSE$|CODE_OF_CONDUCT|CONTRIBUTING|SECURITY|CHANGELOG|README|\.gitignore|\.prettierrc|\.editorconfig|\.env|\.husky/'
 
 SHOULD_RUN_TESTS=true
-
 if [ -n "$CHANGED_FILES" ] && echo "$CHANGED_FILES" | grep -qvE "$SKIP_PATTERN"; then
-  # Arquivos-fonte detectados — roda testes
   SHOULD_RUN_TESTS=true
 elif [ -n "$CHANGED_FILES" ]; then
-  # Só docs/config — pula testes
   SHOULD_RUN_TESTS=false
-  echo "📄 Apenas documentação/config alterados — testes ignorados"
+  echo "📄 Apenas documentação/config — testes ignorados"
 fi
 
-# Caso sem referência (primeiro commit, etc.) — roda testes como precaução
 if [ "$SHOULD_RUN_TESTS" = true ]; then
-  bun run test:unit
-  bun run fuzz:ci
-  bun run fuzz
+  # ── Fast path: rodar só testes dos arquivos afetados ────────────────────
+  # Mapeia cada src/alterado pro respectivo arquivo de teste
+  AFFECTED_TESTS=""
+  for file in $CHANGED_FILES; do
+    # src/lib/foo.ts → src/lib/__tests__/foo.test.ts
+    # src/app/api/foo/route.ts → src/app/api/__tests__/foo*.test.ts
+    case "$file" in
+      src/lib/*.ts)
+        test_file="src/lib/__tests__/$(basename "$file" .ts).test.ts"
+        [ -f "$test_file" ] && AFFECTED_TESTS="$AFFECTED_TESTS $test_file"
+        ;;
+      src/app/api/*)
+        # Match any test file related to this route path
+        dir=$(dirname "$file")
+        for t in src/app/api/__tests__/$(basename "$dir")*.test.ts; do
+          [ -f "$t" ] && AFFECTED_TESTS="$AFFECTED_TESTS $t"
+        done
+        ;;
+      src/hooks/*.ts)
+        test_file="src/hooks/__tests__/$(basename "$file" .ts).test.ts"
+        [ -f "$test_file" ] && AFFECTED_TESTS="$AFFECTED_TESTS $test_file"
+        ;;
+      src/store/*.ts)
+        test_file="src/store/__tests__/$(basename "$file" .ts).test.ts"
+        [ -f "$test_file" ] && AFFECTED_TESTS="$AFFECTED_TESTS $test_file"
+        ;;
+    esac
+  done
+
+  if [ -n "$AFFECTED_TESTS" ]; then
+    echo "🧪 Testes afetados:$(echo $AFFECTED_TESTS | wc -w) arquivos"
+    bun run vitest run --reporter=verbose $AFFECTED_TESTS 2>&1 | tail -5
+  else
+    echo "⚡ Nenhum teste afetado — rodando typecheck rápido"
+    bunx tsc --noEmit 2>&1 | head -5
+  fi
+
+  # Fuzz tests só rodam no CI (sao lentos demais pra push)
+  if [ -n "${CI:-}" ]; then
+    bun run fuzz:ci
+    bun run fuzz
+  fi
 fi

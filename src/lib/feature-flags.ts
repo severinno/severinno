@@ -30,6 +30,9 @@ export type FeatureFlag =
   | "circuit-breaker-push"
   | "circuit-breaker-email"
   | "circuit-breaker-lytex"
+  | "circuit-breaker-nominatim"
+  | "circuit-breaker-viacep"
+  | "circuit-breaker-osrm"
   | "h3-clustering"
   | "postgis-spatial-query"
   | "redis-geo-index-seed"
@@ -46,6 +49,9 @@ const DEFAULT_FLAGS: Record<FeatureFlag, boolean> = {
   "circuit-breaker-push": true,
   "circuit-breaker-email": true,
   "circuit-breaker-lytex": true,
+  "circuit-breaker-nominatim": true,
+  "circuit-breaker-viacep": true,
+  "circuit-breaker-osrm": true,
   "h3-clustering": true,
   "postgis-spatial-query": true,
   "redis-geo-index-seed": true,

@@ -10,6 +10,7 @@
  */
 
 import { createCircuitBreaker } from "./circuit-breaker"
+import { isEnabled } from "./feature-flags"
 
 // ---------------------------------------------------------------------------
 // Evolution API (WhatsApp integration)
@@ -25,6 +26,7 @@ import { createCircuitBreaker } from "./circuit-breaker"
 export const evolutionBreaker = createCircuitBreaker("evolution", {
   failureThreshold: 3,
   cooldownMs: 60_000,
+  disabled: !isEnabled("circuit-breaker-evolution"),
 })
 
 // ---------------------------------------------------------------------------
@@ -38,8 +40,9 @@ export const evolutionBreaker = createCircuitBreaker("evolution", {
  * (fire-and-forget) — the breaker just prevents hanging on timeouts.
  */
 export const pushBreaker = createCircuitBreaker("push", {
-  failureThreshold: 5, // more tolerant — push is best-effort
+  failureThreshold: 5,
   cooldownMs: 120_000,
+  disabled: !isEnabled("circuit-breaker-push"),
 })
 
 // ---------------------------------------------------------------------------
@@ -56,6 +59,7 @@ export const pushBreaker = createCircuitBreaker("push", {
 export const emailBreaker = createCircuitBreaker("email", {
   failureThreshold: 5,
   cooldownMs: 120_000,
+  disabled: !isEnabled("circuit-breaker-email"),
 })
 
 // ---------------------------------------------------------------------------
@@ -71,4 +75,5 @@ export const emailBreaker = createCircuitBreaker("email", {
 export const lytexBreaker = createCircuitBreaker("lytex", {
   failureThreshold: 3,
   cooldownMs: 60_000,
+  disabled: !isEnabled("circuit-breaker-lytex"),
 })

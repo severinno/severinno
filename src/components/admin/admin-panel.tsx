@@ -82,6 +82,7 @@ import { AdminBenchmarkEvolution } from "./admin-benchmark-evolution"
 import { AdminGeoCacheDashboard } from "./admin-geo-cache-dashboard"
 import { AdminRedisDiagnosticsDashboard } from "./admin-redis-diagnostics"
 import { AdminGeoRateLimitStatus } from "./admin-geo-rate-limit-status"
+import { GeoDebugDashboard } from "./geo-debug-dashboard"
 
 // ---------------------------------------------------------------------------
 // Nav config
@@ -191,6 +192,11 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.geo-metrics",
     label: "Geo Metrics",
     icon: Globe,
+  },
+  {
+    view: "admin.geo-debug",
+    label: "Geo Debug",
+    icon: Activity,
   },
   {
     view: "admin.benchmarks",
@@ -532,6 +538,8 @@ function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: stri
       return <AdminGeoCacheDashboard />
     case "admin.geo-metrics":
       return <AdminGeoMetricsDashboard />
+    case "admin.geo-debug":
+      return <GeoDebugDashboard />
     case "admin.benchmarks":
       return <AdminBenchmarkDashboard />
     case "admin.benchmark-evolution":
