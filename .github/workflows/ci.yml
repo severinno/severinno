@@ -66,6 +66,9 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=4096
 
+      - name: Check Prisma migrations
+        run: bash scripts/check-prisma-migrations.sh
+
     # UTF-8 Encoding Check ----------------------------------------------------
   # Reusable via .github/workflows/utf8-check.yml
   utf8-check:
@@ -145,6 +148,9 @@ jobs:
         env:
           SKIP_TYPESCRIPT_CHECK: "true"
           BUILD_STANDALONE: "true"
+
+      - name: Check bundle size budget
+        run: bash scripts/check-bundle-size.sh
 
       # Archive the standalone build for deployment
       - uses: actions/upload-artifact@v4
