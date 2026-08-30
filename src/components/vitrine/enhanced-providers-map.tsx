@@ -1,0 +1,555 @@
+"use client"
+
+/**
+ * EnhancedProvidersMap — Next-gen map with all features:
+ *
+ * - Animated provider pins with status dots
+ * - Rich tooltip cards (desktop) / bottom sheet (mobile)
+ * - Heatmap overlay for provider density
+ * - Dashed route line (user → provider)
+ * - Floating filter bar
+ * - Dark mode tiles support
+ * - Offline indicator styling
+ *
+ * Wraps ProvidersMap functionality with enhanced UX.
+ */
+
+import { useEffect, useRef, useState } from "react"
+import { cn } from "@/lib/utils"
+import { createAnimatedPinElement } from "@/components/map/pins"
+import { HeatmapOverlay, RouteLine } from "@/components/map/overlays"
+import { Slider } from "@/components/ui/slider"
+import { Layers, Route, Eye, EyeOff, Sun, Moon } from "lucide-react"
+import type { ProviderCard } from "@/lib/api"
+import type { GeoJSONSource } from "maplibre-gl"
+import "maplibre-gl/dist/maplibre-gl.css"
+
+type Props = {
+  providers: ProviderCard[]
+  userLat?: number | null
+  userLng?: number | null
+  onSelectProvider?: (id: string) => void
+  selectedId?: string | null
+  className?: string
+  radius?: number
+  onRadiusChange?: (radius: number) => void
+}
+
+const OSM_TILES_LIGHT = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+const OSM_TILES_DARK = "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png"
+const OSM_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | &copy; <a href="https://carto.com/">CARTO</a>'
+
+const DEFAULT_CENTER: [number, number] = [-41.9455, -18.8566] // GV
+const CLUSTER_MAX_ZOOM = 14
+const CLUSTER_RADIUS = 50
+
+type MapLibreMap = InstanceType<typeof import("maplibre-gl").Map>
+type MarkerInstance = InstanceType<typeof import("maplibre-gl").Marker>
+
+export default function EnhancedProvidersMap({
+  providers,
+  userLat,
+  userLng,
+  onSelectProvider,
+  selectedId,
+  className,
+  radius,
+  onRadiusChange,
+}: Props) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const mapRef = useRef<MapLibreMap | null>(null)
+  const markersRef = useRef<Record<string, MarkerInstance>>({})
+  const userMarkerRef = useRef<MarkerInstance | null>(null)
+  const clusterSourceAdded = useRef(false)
+  const maplibreglRef = useRef<typeof import("maplibre-gl") | null>(null)
+  const selectRef = useRef(onSelectProvider)
+  const providersRef = useRef(providers)
+  const userLatRef = useRef(userLat)
+  const userLngRef = useRef(userLng)
+
+  // State for overlays
+  const [showHeatmap, setShowHeatmap] = useState(true)
+  const [showRoute, setShowRoute] = useState(true)
+  const [isDark, setIsDark] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
+  const [mapInstance, setMapInstance] = useState<MapLibreMap | null>(null)
+
+  useEffect(() => {
+    selectRef.current = onSelectProvider
+    providersRef.current = providers
+    userLatRef.current = userLat
+    userLngRef.current = userLng
+  })
+
+  const hasUserLocation = typeof userLat === "number" && typeof userLng === "number"
+
+  // Get selected provider coordinates for route line
+  const selectedProvider = selectedId
+    ? providers.find(p => p.id === selectedId)
+    : null
+
+  // ---- Initialize map once -------------------------------------------------
+  useEffect(() => {
+    if (!containerRef.current) return
+    let cancelled = false
+    let cleanup: (() => void) | undefined
+
+    ;(async () => {
+      const maplibregl = await import("maplibre-gl")
+      if (cancelled || !containerRef.current) return
+      maplibreglRef.current = maplibregl
+
+      const tiles = isDark ? OSM_TILES_DARK : OSM_TILES_LIGHT
+
+      const map = new maplibregl.Map({
+        container: containerRef.current,
+        trackResize: true,
+        style: {
+          version: 8,
+          sources: {
+            osm: {
+              type: "raster",
+              tiles: [tiles],
+              tileSize: 256,
+              attribution: OSM_ATTRIBUTION,
+              maxzoom: 19,
+            },
+          },
+          layers: [
+            {
+              id: "osm-tiles",
+              type: "raster",
+              source: "osm",
+              paint: { "raster-opacity": 1 },
+            },
+          ],
+        },
+        center: DEFAULT_CENTER,
+        zoom: 13,
+        attributionControl: { compact: true },
+      })
+
+      map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right")
+      map.addControl(
+        new maplibregl.ScaleControl({ unit: "metric" }),
+        "bottom-left",
+      )
+
+      map.on("load", () => {
+        map.resize()
+        fitToBounds(map, providersRef.current, userLatRef.current, userLngRef.current)
+      })
+
+      // Resize passes
+      const t1 = window.setTimeout(() => {
+        if (mapRef.current) {
+          mapRef.current.resize()
+          fitToBounds(mapRef.current, providersRef.current, userLatRef.current, userLngRef.current)
+        }
+      }, 100)
+
+      mapRef.current = map
+      setMapInstance(map)
+
+      cleanup = () => {
+        window.clearTimeout(t1)
+        map.remove()
+        mapRef.current = null
+        setMapInstance(null)
+        markersRef.current = {}
+        userMarkerRef.current = null
+        clusterSourceAdded.current = false
+      }
+    })().catch((err) => {
+      console.error("Erro ao inicializar o mapa:", err)
+    })
+
+    return () => {
+      cancelled = true
+      cleanup?.()
+    }
+  }, [isDark]) // Re-init when dark mode changes
+
+  // ---- Sync providers → animated markers -----------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    const maplibregl = maplibreglRef.current
+    if (!map || !maplibregl) return
+
+    const useClustering = providers.length > 20
+    if (useClustering) {
+      syncClusterSource(map, providers, markersRef, clusterSourceAdded)
+    } else {
+      removeClusterSource(map, clusterSourceAdded)
+      syncAnimatedMarkers({ map, maplibregl, providers, selectedId, onSelectProvider: selectRef.current, markersRef })
+    }
+    fitToBounds(map, providers, userLat, userLng)
+  }, [providers, selectedId, userLat, userLng])
+
+  // ---- Sync user location marker -------------------------------------------
+  useEffect(() => {
+    const map = mapRef.current
+    const maplibregl = maplibreglRef.current
+    if (!map || !maplibregl) return
+
+    syncUserMarker({ map, maplibregl, lat: userLat, lng: userLng, userMarkerRef })
+  }, [userLat, userLng])
+
+  return (
+    <div
+      className={cn(
+        "bg-muted relative h-full min-h-[400px] w-full overflow-hidden rounded-xl border",
+        className,
+      )}
+      aria-label="Mapa de prestadores"
+      role="application"
+    >
+      <div ref={containerRef} className="absolute inset-0 h-full w-full" />
+
+      {/* Heatmap overlay */}
+      <HeatmapOverlay
+        map={mapInstance}
+        providers={providers}
+        enabled={showHeatmap}
+      />
+
+      {/* Route line */}
+      <RouteLine
+        map={mapInstance}
+        userLat={userLat}
+        userLng={userLng}
+        providerLat={selectedProvider?.lat}
+        providerLng={selectedProvider?.lng}
+        visible={showRoute && !!selectedProvider}
+      />
+
+      {/* Floating filter bar */}
+      <div className="absolute top-3 left-3 z-20 flex flex-col gap-2">
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className={cn(
+            "flex size-10 items-center justify-center rounded-xl border bg-white/90 shadow-lg backdrop-blur-sm transition-all hover:scale-105",
+            showFilters ? "border-emerald-500 bg-emerald-50" : "border-gray-200"
+          )}
+          title="Filtros do mapa"
+        >
+          <Layers className="size-5 text-gray-600" />
+        </button>
+
+        {showFilters && (
+          <div className="w-56 space-y-3 rounded-xl border border-gray-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm">
+            {/* Dark mode toggle */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-600">Modo escuro</span>
+              <button
+                onClick={() => setIsDark(!isDark)}
+                className="flex size-7 items-center justify-center rounded-lg bg-gray-100 transition-colors hover:bg-gray-200"
+              >
+                {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
+              </button>
+            </div>
+
+            {/* Heatmap toggle */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-600">Heatmap</span>
+              <button
+                onClick={() => setShowHeatmap(!showHeatmap)}
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-lg transition-colors",
+                  showHeatmap ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
+                )}
+              >
+                {showHeatmap ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+              </button>
+            </div>
+
+            {/* Route toggle */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-600">Rota</span>
+              <button
+                onClick={() => setShowRoute(!showRoute)}
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-lg transition-colors",
+                  showRoute ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
+                )}
+              >
+                <Route className="size-4" />
+              </button>
+            </div>
+
+            {/* Provider count */}
+            <div className="border-t border-gray-100 pt-2">
+              <p className="text-[10px] text-gray-400">
+                {providers.length} prestadores no mapa
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Radius slider overlay */}
+      {hasUserLocation && typeof radius === "number" && onRadiusChange ? (
+        <div className="absolute bottom-3 left-1/2 z-30 w-[calc(100%-24px)] max-w-xs -translate-x-1/2">
+          <div className="bg-background/95 flex items-center gap-3 rounded-xl border px-4 py-2.5 shadow-lg backdrop-blur-sm">
+            <span className="text-muted-foreground shrink-0 text-[11px] font-semibold tabular-nums">
+              {radius} km
+            </span>
+            <Slider
+              min={1}
+              max={100}
+              step={1}
+              value={[radius]}
+              onValueChange={([v]) => onRadiusChange(v ?? 15)}
+              aria-label="Ajustar raio de busca"
+              className="flex-1 [&_[data-slot=slider-track]]:h-1.5"
+            />
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function fitToBounds(
+  map: MapLibreMap,
+  providers: ProviderCard[],
+  userLat?: number | null,
+  userLng?: number | null,
+) {
+  const points: [number, number][] = []
+  for (const p of providers) {
+    if (typeof p.lat === "number" && typeof p.lng === "number") {
+      points.push([p.lng, p.lat])
+    }
+  }
+  if (typeof userLat === "number" && typeof userLng === "number") {
+    points.push([userLng, userLat])
+  }
+  if (points.length === 0) return
+  if (points.length === 1) {
+    map.setCenter(points[0])
+    map.setZoom(14)
+    return
+  }
+  let west = points[0][0]
+  let south = points[0][1]
+  let east = points[0][0]
+  let north = points[0][1]
+  for (const [lng, lat] of points) {
+    if (lng < west) west = lng
+    if (lat < south) south = lat
+    if (lng > east) east = lng
+    if (lat > north) north = lat
+  }
+  const pad = 0.005
+  try {
+    map.fitBounds(
+      [[west - pad, south - pad], [east + pad, north + pad]],
+      { padding: 60, maxZoom: 15, duration: 600 },
+    )
+  } catch { /* ignore */ }
+}
+
+function buildGeoJSON(providers: ProviderCard[]) {
+  const features = providers.flatMap((p) => {
+    if (typeof p.lat !== "number" || typeof p.lng !== "number") return []
+    return [{
+      type: "Feature" as const,
+      geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
+      properties: { id: p.id },
+    }]
+  })
+  return { type: "FeatureCollection" as const, features }
+}
+
+function syncAnimatedMarkers(opts: {
+  map: MapLibreMap
+  maplibregl: typeof import("maplibre-gl")
+  providers: ProviderCard[]
+  selectedId?: string | null
+  onSelectProvider?: (id: string) => void
+  markersRef: React.MutableRefObject<Record<string, MarkerInstance>>
+}) {
+  const { map, maplibregl, providers, selectedId, onSelectProvider, markersRef } = opts
+  const registry = markersRef.current ?? {}
+
+  // Remove markers for providers no longer in the list
+  for (const [id, marker] of Object.entries(registry)) {
+    if (!providers.some((p) => p.id === id)) {
+      marker.remove()
+      delete registry[id]
+    }
+  }
+
+  for (const provider of providers) {
+    if (typeof provider.lat !== "number" || typeof provider.lng !== "number") continue
+    const existing = registry[provider.id]
+    const isSelected = selectedId === provider.id
+
+    if (existing) {
+      existing.getElement().dataset.selected = isSelected ? "true" : "false"
+      continue
+    }
+
+    const el = createAnimatedPinElement({ provider, isSelected, onSelect: onSelectProvider })
+
+    const marker = new maplibregl.Marker({ element: el, anchor: "bottom" })
+      .setLngLat([provider.lng, provider.lat])
+      .addTo(map)
+
+    registry[provider.id] = marker
+  }
+
+  markersRef.current = registry
+}
+
+function syncClusterSource(
+  map: MapLibreMap,
+  providers: ProviderCard[],
+  markersRef: React.MutableRefObject<Record<string, MarkerInstance>>,
+  clusterSourceAdded: React.MutableRefObject<boolean>,
+) {
+  // Remove existing HTML markers
+  const registry = markersRef.current ?? {}
+  for (const marker of Object.values(registry)) marker.remove()
+  markersRef.current = {}
+
+  const source = map.getSource("providers") as GeoJSONSource | undefined
+  const geojson = buildGeoJSON(providers)
+
+  if (source) {
+    source.setData(geojson)
+    return
+  }
+
+  map.addSource("providers", {
+    type: "geojson",
+    data: geojson,
+    cluster: true,
+    clusterMaxZoom: CLUSTER_MAX_ZOOM,
+    clusterRadius: CLUSTER_RADIUS,
+  })
+
+  map.addLayer({
+    id: "clusters",
+    type: "circle",
+    source: "providers",
+    filter: ["has", "point_count"],
+    paint: {
+      "circle-color": [
+        "step", ["get", "point_count"],
+        "rgba(16, 185, 129, 0.85)",
+        10, "rgba(5, 150, 105, 0.9)",
+        50, "rgba(4, 120, 87, 0.95)",
+      ],
+      "circle-radius": [
+        "step", ["get", "point_count"],
+        22, 10, 30, 50, 38,
+      ],
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#fff",
+    },
+  })
+
+  map.addLayer({
+    id: "cluster-count",
+    type: "symbol",
+    source: "providers",
+    filter: ["has", "point_count"],
+    layout: {
+      "text-field": ["get", "point_count_abbreviated"],
+      "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+      "text-size": 13,
+    },
+    paint: { "text-color": "#fff" },
+  })
+
+  map.addLayer({
+    id: "unclustered-point",
+    type: "circle",
+    source: "providers",
+    filter: ["!", ["has", "point_count"]],
+    paint: {
+      "circle-color": "rgba(16, 185, 129, 0.9)",
+      "circle-radius": 8,
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#fff",
+    },
+  })
+
+  clusterSourceAdded.current = true
+}
+
+function removeClusterSource(
+  map: MapLibreMap,
+  clusterSourceAdded: React.MutableRefObject<boolean>,
+) {
+  if (!clusterSourceAdded.current) return
+  try {
+    if (map.getLayer("unclustered-point")) map.removeLayer("unclustered-point")
+    if (map.getLayer("cluster-count")) map.removeLayer("cluster-count")
+    if (map.getLayer("clusters")) map.removeLayer("clusters")
+    if (map.getSource("providers")) map.removeSource("providers")
+  } catch { /* ignore */ }
+  clusterSourceAdded.current = false
+}
+
+function syncUserMarker(opts: {
+  map: MapLibreMap
+  maplibregl: typeof import("maplibre-gl")
+  lat?: number | null
+  lng?: number | null
+  userMarkerRef: React.MutableRefObject<MarkerInstance | null>
+}) {
+  const { map, maplibregl, lat, lng, userMarkerRef } = opts
+  if (userMarkerRef.current) {
+    userMarkerRef.current.remove()
+    userMarkerRef.current = null
+  }
+  if (typeof lat !== "number" || typeof lng !== "number") return
+
+  const el = document.createElement("div")
+  el.setAttribute("aria-label", "Sua localização")
+  el.style.cssText = `
+    width: 18px; height: 18px;
+    border-radius: 9999px;
+    background: #2563eb;
+    border: 3px solid white;
+    box-shadow: 0 0 0 4px rgba(37,99,235,0.25), 0 2px 8px rgba(0,0,0,0.25);
+    position: relative;
+  `
+  const pulse = document.createElement("span")
+  pulse.style.cssText = `
+    position: absolute; inset: -6px;
+    border-radius: 9999px;
+    border: 2px solid rgba(37,99,235,0.55);
+    animation: vitrine-map-pulse 1.6s ease-out infinite;
+  `
+  el.appendChild(pulse)
+
+  const marker = new maplibregl.Marker({ element: el, anchor: "center" })
+    .setLngLat([lng, lat])
+    .addTo(map)
+  userMarkerRef.current = marker
+}
+
+// Inject pulse keyframes
+if (typeof document !== "undefined") {
+  const id = "enhanced-map-pulse-keyframes"
+  if (!document.getElementById(id)) {
+    const style = document.createElement("style")
+    style.id = id
+    style.textContent = `
+      @keyframes vitrine-map-pulse {
+        0%   { transform: scale(0.6); opacity: 0.9; }
+        100% { transform: scale(2.0); opacity: 0; }
+      }
+    `
+    document.head.appendChild(style)
+  }
+}
