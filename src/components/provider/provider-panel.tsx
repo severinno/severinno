@@ -26,11 +26,12 @@ import { ProviderExpediente } from "./provider-expediente"
 import { ProviderAgenda } from "./provider-agenda"
 import { ProviderBookings } from "./provider-bookings"
 import { ProviderQuotes } from "./provider-quotes"
-import { ProviderServices } from "./provider-services"
+import dynamic from "next/dynamic"
+const ProviderServices = dynamic(() => import("./provider-services").then(m => ({ default: m.ProviderServices })), { ssr: false })
 import { ProviderFinance } from "./provider-finance"
 import { ProviderMessages } from "./provider-messages"
 import { ProviderReviews } from "./provider-reviews"
-import { ProviderProfile } from "./provider-profile"
+const ProviderProfile = dynamic(() => import("./provider-profile").then(m => ({ default: m.ProviderProfile })), { ssr: false })
 import { ProviderOnboarding } from "./provider-onboarding"
 
 // ---------------------------------------------------------------------------
