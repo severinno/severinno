@@ -14,13 +14,14 @@
  * Wraps ProvidersMap functionality with enhanced UX.
  */
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 import { createAnimatedPinElement } from "@/components/map/pins"
 import { HeatmapOverlay, RouteLine } from "@/components/map/overlays"
 import { Slider } from "@/components/ui/slider"
-import { Layers, Route, Eye, EyeOff, Sun, Moon, Loader2 } from "lucide-react"
+import { Layers, Route, Eye, EyeOff, Sun, Moon, Loader2, Download, Maximize2, Minimize2 } from "lucide-react"
 import type { ProviderCard } from "@/lib/api"
+import { precacheTiles, getCacheSizeMB } from "@/lib/map-tile-cache"
 import type { GeoJSONSource } from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 
@@ -74,6 +75,10 @@ export default function EnhancedProvidersMap({
   const [isDark, setIsDark] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
   const [mapInstance, setMapInstance] = useState<MapLibreMap | null>(null)
+  const [cacheSizeMB, setCacheSizeMB] = useState(0)
+  const [isPrecaching, setIsPrecaching] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const wrapperRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     selectRef.current = onSelectProvider
@@ -83,6 +88,44 @@ export default function EnhancedProvidersMap({
   })
 
   const hasUserLocation = typeof userLat === "number" && typeof userLng === "number"
+
+  // Fullscreen toggle
+  const toggleFullscreen = useCallback(() => {
+    if (!wrapperRef.current) return
+    if (!document.fullscreenElement) {
+      wrapperRef.current.requestFullscreen().catch(() => {})
+      setIsFullscreen(true)
+    } else {
+      document.exitFullscreen().catch(() => {})
+      setIsFullscreen(false)
+    }
+  }, [])
+
+  // Listen for fullscreen changes (e.g. user presses Escape)
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener("fullscreenchange", onFsChange)
+    return () => document.removeEventListener("fullscreenchange", onFsChange)
+  }, [])
+
+  // Handle manual precache
+  const handlePrecache = async () => {
+    if (!mapInstance || isPrecaching) return
+    setIsPrecaching(true)
+    try {
+      const bounds = mapInstance.getBounds()
+      const zoom = Math.floor(mapInstance.getZoom())
+      await precacheTiles({
+        minLat: bounds.getSouth(),
+        minLng: bounds.getWest(),
+        maxLat: bounds.getNorth(),
+        maxLng: bounds.getEast(),
+      }, zoom)
+      setCacheSizeMB(await getCacheSizeMB())
+    } finally {
+      setIsPrecaching(false)
+    }
+  }
 
   // Get selected provider coordinates for route line
   const selectedProvider = selectedId
@@ -105,6 +148,11 @@ export default function EnhancedProvidersMap({
       const map = new maplibregl.Map({
         container: containerRef.current,
         trackResize: true,
+        touchZoomRotate: true,
+        touchPitch: false,
+        maxPitch: 0,
+        dragRotate: false,
+        pitchWithRotate: false,
         style: {
           version: 8,
           sources: {
@@ -130,15 +178,41 @@ export default function EnhancedProvidersMap({
         attributionControl: { compact: true },
       })
 
-      map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right")
+      map.addControl(
+        new maplibregl.NavigationControl({
+          visualizePitch: false,
+          showZoom: true,
+          showCompass: false,
+        }),
+        "top-right",
+      )
       map.addControl(
         new maplibregl.ScaleControl({ unit: "metric" }),
         "bottom-left",
       )
 
+      // Touch handling configured via Map constructor options above
+
       map.on("load", () => {
         map.resize()
         fitToBounds(map, providersRef.current, userLatRef.current, userLngRef.current)
+      })
+
+      // Auto pre-cache tiles on viewport move (debounced)
+      let precacheTimer: ReturnType<typeof setTimeout> | null = null
+      map.on("moveend", () => {
+        if (precacheTimer) clearTimeout(precacheTimer)
+        precacheTimer = setTimeout(async () => {
+          const bounds = map.getBounds()
+          const zoom = Math.floor(map.getZoom())
+          await precacheTiles({
+            minLat: bounds.getSouth(),
+            minLng: bounds.getWest(),
+            maxLat: bounds.getNorth(),
+            maxLng: bounds.getEast(),
+          }, zoom)
+          setCacheSizeMB(await getCacheSizeMB())
+        }, 2000)
       })
 
       // Resize passes
@@ -171,6 +245,21 @@ export default function EnhancedProvidersMap({
     }
   }, [isDark]) // Re-init when dark mode changes
 
+  // Resize map when fullscreen changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (mapRef.current) {
+        mapRef.current.resize()
+      }
+    }, isFullscreen ? 300 : 50)
+    return () => clearTimeout(timer)
+  }, [isFullscreen])
+
+  // Update cache size on mount
+  useEffect(() => {
+    getCacheSizeMB().then(setCacheSizeMB)
+  }, [])
+
   // ---- Sync providers → animated markers -----------------------------------
   useEffect(() => {
     const map = mapRef.current
@@ -198,12 +287,15 @@ export default function EnhancedProvidersMap({
 
   return (
     <div
+      ref={wrapperRef}
       className={cn(
         "bg-muted relative h-full min-h-[400px] w-full overflow-hidden rounded-xl border",
+        isFullscreen && "fixed inset-0 z-[9999] min-h-screen rounded-none",
         className,
       )}
       aria-label="Mapa de prestadores"
       role="application"
+      style={{ touchAction: "pan-x pan-y pinch-zoom" }}
     >
       <div ref={containerRef} className="absolute inset-0 h-full w-full" />
 
@@ -239,7 +331,20 @@ export default function EnhancedProvidersMap({
 
         {showFilters && (
           <div className="w-56 space-y-3 rounded-xl border border-gray-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm">
-            {/* Dark mode toggle */}
+            {/* Fullscreen toggle */}
+        <button
+          onClick={toggleFullscreen}
+          className="flex size-10 items-center justify-center rounded-xl border border-gray-200 bg-white/90 shadow-lg backdrop-blur-sm transition-all hover:scale-105"
+          title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
+        >
+          {isFullscreen ? (
+            <Minimize2 className="size-5 text-gray-600" />
+          ) : (
+            <Maximize2 className="size-5 text-gray-600" />
+          )}
+        </button>
+
+        {/* Dark mode toggle */}
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-gray-600">Modo escuro</span>
               <button
@@ -278,10 +383,24 @@ export default function EnhancedProvidersMap({
               </button>
             </div>
 
-            {/* Provider count */}
+            {/* Precache button */}
+            <button
+              onClick={handlePrecache}
+              disabled={isPrecaching}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+            >
+              {isPrecaching ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Download className="size-3.5" />
+              )}
+              {isPrecaching ? "Baixando tiles..." : "Cache offline"}
+            </button>
+
+            {/* Cache stats */}
             <div className="border-t border-gray-100 pt-2">
               <p className="text-[10px] text-gray-400">
-                {providers.length} prestadores no mapa
+                {providers.length} prestadores · {cacheSizeMB.toFixed(1)} MB cache
               </p>
             </div>
           </div>
