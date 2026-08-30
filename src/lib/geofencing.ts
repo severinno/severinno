@@ -12,6 +12,7 @@
 import { db } from "@/lib/db"
 import { cacheGet, cacheSet } from "@/lib/redis"
 import { haversineKm } from "@/lib/geo-shared"
+import { captureError } from "@/lib/sentry"
 import logger from "@/lib/logger"
 
 export type GeofenceEvent = {
@@ -109,6 +110,11 @@ export async function checkGeofences(
           { providerId, bookingId: booking.id, distanceMeters },
           "geofence: provider ENTERED zone",
         )
+
+        // Send notification to client
+        notifyGeofenceEvent(event, booking.client.name, booking.service.title).catch(() => {
+          // Notification is best-effort
+        })
       } else if (!isInside && wasInside && now - lastEventAt > debounceMs) {
         // Provider EXITED the geofence
         const event: GeofenceEvent = {
@@ -158,5 +164,65 @@ export async function getGeofenceStatus(
     inside: state?.inside ?? false,
     distanceMeters: null, // Would need current provider position
     lastEventAt: state?.lastEventAt ?? null,
+  }
+}
+
+// ── Notification Pipeline ─────────────────────────────────────────────────
+
+async function notifyGeofenceEvent(
+  event: GeofenceEvent,
+  clientName: string,
+  serviceTitle: string,
+): Promise<void> {
+  try {
+    // Log to Sentry for observability
+    captureError(
+      new Error(`Geofence ${event.type}: provider ${event.providerId} ${event.type === "enter" ? "entered" : "exited"} zone`),
+      {
+        level: event.type === "enter" ? "info" : "warning",
+        extra: {
+          providerId: event.providerId,
+          bookingId: event.bookingId,
+          distanceMeters: event.distanceMeters,
+          type: event.type,
+        },
+      },
+    )
+
+    // Store event in Redis for audit trail
+    const auditKey = `geofence:audit:${event.bookingId}`
+    try {
+      const existing = await cacheGet<GeofenceEvent[]>(auditKey) ?? []
+      existing.push(event)
+      await cacheSet(auditKey, existing, 86400) // 24h TTL
+    } catch {
+      // Redis unavailable
+    }
+
+    logger.info(
+      {
+        type: event.type,
+        providerId: event.providerId,
+        bookingId: event.bookingId,
+        distanceMeters: event.distanceMeters,
+        clientName,
+        serviceTitle,
+      },
+      `geofence: notification — ${event.type === "enter" ? "provider is arriving" : "provider left zone"}`,
+    )
+  } catch (err) {
+    logger.warn({ err, event }, "geofence: notification failed")
+  }
+}
+
+/**
+ * Get audit trail for a booking's geofence events.
+ */
+export async function getGeofenceAuditTrail(bookingId: string): Promise<GeofenceEvent[]> {
+  try {
+    const events = await cacheGet<GeofenceEvent[]>(`geofence:audit:${bookingId}`)
+    return events ?? []
+  } catch {
+    return []
   }
 }
