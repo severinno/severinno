@@ -49,33 +49,37 @@ export default function HeatmapOverlay({
       return
     }
 
-    const geojson = {
-      type: "FeatureCollection" as const,
-      features: providers
-        .filter(p => typeof p.lat === "number" && typeof p.lng === "number")
-        .map(p => ({
-          type: "Feature" as const,
-          geometry: {
-            type: "Point" as const,
-            coordinates: [p.lng!, p.lat!],
-          },
-          properties: {
-            // Weight by rating and review count
-            weight: Math.max(0.3, Math.min(1, (p.rating / 5) * 0.5 + (p.reviewCount / 50) * 0.5)),
-          },
-        })),
-    }
+    // Wait for map style to be fully loaded before adding sources/layers
+    const addHeatmap = () => {
+      if (!map || !map.isStyleLoaded()) return
 
-    const source = map.getSource(HEATMAP_SOURCE_ID) as { setData: (data: typeof geojson) => void } | undefined
-    if (source) {
-      source.setData(geojson)
-      return
-    }
+      const geojson = {
+        type: "FeatureCollection" as const,
+        features: providers
+          .filter(p => typeof p.lat === "number" && typeof p.lng === "number")
+          .map(p => ({
+            type: "Feature" as const,
+            geometry: {
+              type: "Point" as const,
+              coordinates: [p.lng!, p.lat!],
+            },
+            properties: {
+              // Weight by rating and review count
+              weight: Math.max(0.3, Math.min(1, (p.rating / 5) * 0.5 + (p.reviewCount / 50) * 0.5)),
+            },
+          })),
+      }
 
-    map.addSource(HEATMAP_SOURCE_ID, {
-      type: "geojson",
-      data: geojson,
-    })
+      const source = map.getSource(HEATMAP_SOURCE_ID) as { setData: (data: typeof geojson) => void } | undefined
+      if (source) {
+        source.setData(geojson)
+        return
+      }
+
+      map.addSource(HEATMAP_SOURCE_ID, {
+        type: "geojson",
+        data: geojson,
+      })
 
     map.addLayer({
       id: HEATMAP_LAYER_ID,
@@ -139,10 +143,19 @@ export default function HeatmapOverlay({
       },
     })
 
-    sourceAdded.current = true
+      sourceAdded.current = true
+    }
+
+    // If style is already loaded, add immediately; otherwise wait for 'style.load'
+    if (map.isStyleLoaded()) {
+      addHeatmap()
+    } else {
+      map.once("style.load", addHeatmap)
+    }
 
     return () => {
       try {
+        map.off("style.load", addHeatmap)
         if (map.getLayer(HEATMAP_LAYER_ID)) map.removeLayer(HEATMAP_LAYER_ID)
         if (map.getSource(HEATMAP_SOURCE_ID)) map.removeSource(HEATMAP_SOURCE_ID)
         sourceAdded.current = false

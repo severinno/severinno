@@ -61,94 +61,109 @@ export default function RouteLine({
       return
     }
 
-    // Haversine distance in km
-    const R = 6371
-    const dLat = ((providerLat - userLat) * Math.PI) / 180
-    const dLng = ((providerLng - userLng) * Math.PI) / 180
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos((userLat * Math.PI) / 180) * Math.cos((providerLat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2
-    const distanceKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    // Wait for map style to be loaded before adding sources/layers
+    const addRoute = () => {
+      if (!map || !map.isStyleLoaded()) return
 
-    // Build GeoJSON line
-    const geojson = {
-      type: "FeatureCollection" as const,
-      features: [
-        {
-          type: "Feature" as const,
-          geometry: {
-            type: "LineString" as const,
-            coordinates: [
-              [userLng, userLat],
-              [providerLng, providerLat],
-            ],
+      // Haversine distance in km
+      const R = 6371
+      const dLat = ((providerLat - userLat) * Math.PI) / 180
+      const dLng = ((providerLng - userLng) * Math.PI) / 180
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos((userLat * Math.PI) / 180) * Math.cos((providerLat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2
+      const distanceKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+
+      // Build GeoJSON line
+      const geojson = {
+        type: "FeatureCollection" as const,
+        features: [
+          {
+            type: "Feature" as const,
+            geometry: {
+              type: "LineString" as const,
+              coordinates: [
+                [userLng, userLat],
+                [providerLng, providerLat],
+              ],
+            },
+            properties: {
+              distance: distanceKm,
+            },
           },
-          properties: {
-            distance: distanceKm,
-          },
+        ],
+      }
+
+      const source = map.getSource(ROUTE_SOURCE_ID) as { setData: (data: typeof geojson) => void } | undefined
+      if (source) {
+        source.setData(geojson)
+        return
+      }
+
+      map.addSource(ROUTE_SOURCE_ID, {
+        type: "geojson",
+        data: geojson,
+      })
+
+      // Background line (solid, subtle)
+      map.addLayer({
+        id: ROUTE_LAYER_ID,
+        type: "line",
+        source: ROUTE_SOURCE_ID,
+        paint: {
+          "line-color": "#10b981",
+          "line-width": 3,
+          "line-opacity": 0.3,
         },
-      ],
-    }
+      })
 
-    const source = map.getSource(ROUTE_SOURCE_ID) as { setData: (data: typeof geojson) => void } | undefined
-    if (source) {
-      source.setData(geojson)
-      return
-    }
+      // Animated dashed line (marching ants)
+      map.addLayer({
+        id: ROUTE_ANIM_LAYER_ID,
+        type: "line",
+        source: ROUTE_SOURCE_ID,
+        paint: {
+          "line-color": "#10b981",
+          "line-width": 2,
+          "line-opacity": 0.8,
+          "line-dasharray": [0, 4, 3],
+        },
+      })
 
-    map.addSource(ROUTE_SOURCE_ID, {
-      type: "geojson",
-      data: geojson,
-    })
+      sourceAdded.current = true
 
-    // Background line (solid, subtle)
-    map.addLayer({
-      id: ROUTE_LAYER_ID,
-      type: "line",
-      source: ROUTE_SOURCE_ID,
-      paint: {
-        "line-color": "#10b981",
-        "line-width": 3,
-        "line-opacity": 0.3,
-      },
-    })
-
-    // Animated dashed line (marching ants)
-    map.addLayer({
-      id: ROUTE_ANIM_LAYER_ID,
-      type: "line",
-      source: ROUTE_SOURCE_ID,
-      paint: {
-        "line-color": "#10b981",
-        "line-width": 2,
-        "line-opacity": 0.8,
-        "line-dasharray": [0, 4, 3],
-      },
-    })
-
-    sourceAdded.current = true
-
-    // Marching ants animation
-    const animate = () => {
-      dashOffset.current = (dashOffset.current + 0.05) % 1
-      try {
-        map.setPaintProperty(ROUTE_ANIM_LAYER_ID, "line-dasharray", [
-          dashOffset.current,
-          4,
-          3,
-        ])
-      } catch { /* ignore */ }
+      // Marching ants animation
+      const animate = () => {
+        dashOffset.current = (dashOffset.current + 0.05) % 1
+        try {
+          map.setPaintProperty(ROUTE_ANIM_LAYER_ID, "line-dasharray", [
+            dashOffset.current,
+            4,
+            3,
+          ])
+        } catch { /* ignore */ }
+        animFrame.current = requestAnimationFrame(animate)
+      }
       animFrame.current = requestAnimationFrame(animate)
+
+      // Fit bounds to include both points
+      const bounds = new maplibregl.LngLatBounds()
+        .extend([userLng, userLat])
+        .extend([providerLng, providerLat])
+      map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 800 })
     }
-    animFrame.current = requestAnimationFrame(animate)
 
-    // Fit bounds to include both points
-    const bounds = new maplibregl.LngLatBounds()
-      .extend([userLng, userLat])
-      .extend([providerLng, providerLat])
-    map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 800 })
+    // If style is already loaded, add immediately; otherwise wait
+    if (map.isStyleLoaded()) {
+      addRoute()
+    } else {
+      map.once("style.load", addRoute)
+    }
 
-    return cleanup
+    return () => {
+      map.off("style.load", addRoute)
+      cleanup()
+    }
   }, [map, userLat, userLng, providerLat, providerLng, visible])
 
   return null
