@@ -1,106 +1,71 @@
-/**
- * tracing.ts
- *
- * OpenTelemetry distributed tracing helpers for the Severinno Marketplace.
- *
- * Configuration via environment variables:
- *   OTEL_ENABLED=true                    — Enable/disable tracing (default: false)
- *   OTEL_SERVICE_NAME=severinno-api      — Service name in traces
- *
- * Usage:
- *   import { withSpan } from "@/lib/tracing"
- *
- *   const result = await withSpan("operation-name", async () => {
- *     return await doSomething()
- *   })
- */
+import logger from "./logger"
+import { AsyncLocalStorage } from "async_hooks"
+import crypto from "crypto"
 
-import { trace as otelTrace, SpanStatusCode, context, SpanKind } from "@opentelemetry/api"
-import logger from "@/lib/logger"
+interface TraceContext {
+  traceId: string
+  spanId: string
+  parentSpanId?: string
+  operation: string
+  startTime: number
+  attributes: Record<string, string>
+}
 
-// ── Configuration ─────────────────────────────────────────────────────────
+const traceStorage = new AsyncLocalStorage<TraceContext>()
 
-const OTEL_ENABLED = process.env.OTEL_ENABLED === "true"
-const OTEL_SERVICE_VERSION = process.env.npm_package_version || "0.4.0"
+export function generateTraceId(): string {
+  return crypto.randomBytes(16).toString("hex")
+}
 
-// ── Custom span helpers ───────────────────────────────────────────────────
+export function generateSpanId(): string {
+  return crypto.randomBytes(8).toString("hex")
+}
 
-/**
- * Execute a function within a new span.
- * Automatically handles span lifecycle (start, set status, end).
- *
- * When OTEL_ENABLED=false, runs the function without any tracing overhead.
- *
- * @param name - Span name (e.g. "providers.list", "cache.get")
- * @param fn - Function to execute within the span
- * @param attributes - Optional span attributes
- * @returns The function result
- *
- * @example
- * ```ts
- * const providers = await withSpan("providers.list", async () => {
- *   return await fetchProviders(...)
- * }, { radius: 10 })
- * ```
- */
-export async function withSpan<T>(
-  name: string,
-  fn: () => Promise<T>,
-  attributes?: Record<string, string | number | boolean>,
-): Promise<T> {
-  if (!OTEL_ENABLED) {
-    return fn()
+export function startSpan<T>(operation: string, fn: () => T, attrs?: Record<string, string>): T {
+  const parent = traceStorage.getStore()
+  const span: TraceContext = {
+    traceId: parent?.traceId ?? generateTraceId(),
+    spanId: generateSpanId(),
+    parentSpanId: parent?.spanId,
+    operation,
+    startTime: Date.now(),
+    attributes: attrs ?? {},
   }
+  return traceStorage.run(span, fn)
+}
 
-  const tracer = otelTrace.getTracer("severinno", OTEL_SERVICE_VERSION)
-  const span = tracer.startSpan(name, {
-    kind: SpanKind.INTERNAL,
-    attributes,
-  })
+export function getTraceId(): string | null {
+  return traceStorage.getStore()?.traceId ?? null
+}
 
-  try {
-    const result = await context.with(otelTrace.setSpan(context.active(), span), fn)
-    span.setStatus({ code: SpanStatusCode.OK })
-    return result
-  } catch (err) {
-    span.setStatus({
-      code: SpanStatusCode.ERROR,
-      message: err instanceof Error ? err.message : String(err),
-    })
-    span.recordException(err as Error)
-    throw err
-  } finally {
-    span.end()
+export function getSpanId(): string | null {
+  return traceStorage.getStore()?.spanId ?? null
+}
+
+export function getTraceHeaders(): Record<string, string> {
+  const ctx = traceStorage.getStore()
+  if (!ctx) return {}
+  return {
+    "traceparent": `00-${ctx.traceId}-${ctx.spanId}-01`,
+    "x-trace-id": ctx.traceId,
+    "x-span-id": ctx.spanId,
   }
 }
 
-// ── Initialization (called from instrumentation.ts) ───────────────────────
+export function endSpan(status: "ok" | "error" = "ok"): void {
+  const ctx = traceStorage.getStore()
+  if (!ctx) return
+  const duration = Date.now() - ctx.startTime
+  if (status === "error" || duration > 1000) {
+    
+    logger.info({ traceId: ctx.traceId, spanId: ctx.spanId, operation: ctx.operation, duration, status }, "trace span completed")
+  }
+}
 
-let initialized = false
-
-/**
- * Initialize OpenTelemetry tracing.
- * Called once from instrumentation.ts at startup.
- */
 export function initTracing(): void {
-  if (initialized) return
-  initialized = true
-
-  if (!OTEL_ENABLED) {
-    logger.warn("[tracing] OpenTelemetry disabled (set OTEL_ENABLED=true to enable)")
-    return
-  }
-
-  logger.warn("[tracing] OpenTelemetry enabled — spans will be created for instrumented operations")
+  logger.info("Tracing initialized (lightweight mode)")
 }
 
-/**
- * Shutdown tracing gracefully.
- */
-export async function shutdownTracing(): Promise<void> {
-  // No-op — spans are exported via SDK
+export function shutdownTracing(): void {
+  logger.info("Tracing shutdown")
 }
-
-// ── Re-export OpenTelemetry API ───────────────────────────────────────────
-
-export { otelTrace as trace, SpanStatusCode, SpanKind, context }

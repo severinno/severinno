@@ -12,6 +12,7 @@
  */
 
 import logger from "./logger"
+import { sendAlertWebhook } from "./alert-webhook"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -47,8 +48,9 @@ function fireAlert(alert: Alert): void {
   const logFn = alert.severity === "critical" ? logger.error : logger.warn
   logFn(
     { severity: alert.severity, metric: alert.metric, value: alert.value, threshold: alert.threshold },
-    `🚨 ${alert.title}: ${alert.message}`,
+    `[ALERT] ${alert.title}: ${alert.message}`,
   )
+  sendAlertWebhook({ severity: alert.severity, title: alert.title, message: alert.message, metric: alert.metric }).catch(() => {})
 }
 
 // ── Check functions (call periodically) ────────────────────────────────────
