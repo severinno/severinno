@@ -1,4 +1,4 @@
-set -euo pipefail
+set -eu
 
 # 15 guards de encoding/CI compartilhados com o pre-commit (fonte única —
 # adicionar um guard novo = editar scripts/run-encoding-guards.sh em UM lugar)
