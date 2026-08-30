@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client"
 import { SOFT_DELETE_MODELS } from "./soft-delete"
+import { buildQueryMonitorExtensions } from "./db-query-monitor"
 
 // The `query` option type Prisma's `$extends` accepts for per-model operation
 // interceptors — extracted from the generated client's extension signature so
@@ -19,17 +20,10 @@ type QueryArgs = {
 const SOFT_DELETE_MODEL_KEYS = SOFT_DELETE_MODELS.map((m) => m.charAt(0).toLowerCase() + m.slice(1))
 
 // Only operations that accept arbitrary WHERE clauses.
-// findUnique / findUniqueOrThrow are excluded because Prisma does not allow
-// non-unique fields (like deletedAt) in their `where` — those ops use unique
-// constraints and would throw "Unknown arg `deletedAt`" at runtime.
 const READ_OPS = ["findMany", "findFirst", "findFirstOrThrow", "count", "aggregate", "groupBy"]
 
 /**
  * Build per-model query extensions for soft-delete.
- *
- * Prisma v6 removed `$use`. Using `$extends` instead:
- *   - READ ops: add `deletedAt: null` to WHERE (unless caller explicitly queries deletedAt)
- *   - DELETE ops: throw a clear error guiding devs to use `update()` with `deletedAt`
  */
 function buildSoftDeleteQueries() {
   const queries: Record<string, Record<string, (opts: QueryArgs) => Promise<unknown>>> = {}
@@ -38,7 +32,6 @@ function buildSoftDeleteQueries() {
     queries[model] = {}
     const modelName = model.charAt(0).toUpperCase() + model.slice(1)
 
-    // Read operations: auto-filter deleted rows
     for (const op of READ_OPS) {
       queries[model][op] = async ({ args, query }: QueryArgs) => {
         if (!(args.where as Record<string, unknown> | undefined)?.deletedAt) {
@@ -48,7 +41,6 @@ function buildSoftDeleteQueries() {
       }
     }
 
-    // Block hard-delete with helpful message
     queries[model].delete = async ({ args: _a, query: _q }: QueryArgs) => {
       throw new Error(
         `[soft-delete] Cannot hard-delete a '${modelName}' record. ` +
@@ -68,7 +60,6 @@ function buildSoftDeleteQueries() {
 
 // ── Create the extended Prisma client ──────────────────────────────────────
 
-/** Extended client type — compatible with `PrismaClient` in usage */
 type ExtendedPrismaClient = ReturnType<typeof createPrismaClient>
 
 function createPrismaClient() {
@@ -76,13 +67,43 @@ function createPrismaClient() {
     log: process.env.NODE_ENV === "development" ? ["query"] : [],
   })
 
-  // Prisma's $extends query option is a per-model operation map. The outer
-  // extension object stays inline so $extends keeps its contextual typing
-  // (preserving the full PrismaClient model delegates); only the interceptor
-  // map is cast to the exact type Prisma expects.
+  // Merge soft-delete + slow query monitor extensions
+  const softDeleteQueries = buildSoftDeleteQueries()
+  const monitorQueries = buildQueryMonitorExtensions()
+
+  // Merge query extensions: monitor wraps soft-delete (outer = monitor, inner = soft-delete)
+  const mergedQueries: Record<string, Record<string, (opts: QueryArgs) => Promise<unknown>>> = {}
+  const allModels = new Set([...Object.keys(softDeleteQueries), ...Object.keys(monitorQueries)])
+
+  for (const model of allModels) {
+    mergedQueries[model] = {}
+    const allOps = new Set([
+      ...Object.keys(softDeleteQueries[model] ?? {}),
+      ...Object.keys(monitorQueries[model] ?? {}),
+    ])
+    for (const op of allOps) {
+      const monitorFn = monitorQueries[model]?.[op]
+      const softDeleteFn = softDeleteQueries[model]?.[op]
+
+      if (monitorFn && softDeleteFn) {
+        // Monitor wraps soft-delete
+        mergedQueries[model][op] = async ({ args, query }: QueryArgs) => {
+          return monitorFn({
+            args,
+            query: async (innerArgs: Record<string, unknown>) => softDeleteFn({ args: innerArgs, query }),
+          })
+        }
+      } else if (monitorFn) {
+        mergedQueries[model][op] = monitorFn
+      } else if (softDeleteFn) {
+        mergedQueries[model][op] = softDeleteFn
+      }
+    }
+  }
+
   return base.$extends({
-    name: "soft-delete",
-    query: buildSoftDeleteQueries() as unknown as PrismaQueryExtension,
+    name: "soft-delete+monitor",
+    query: mergedQueries as unknown as PrismaQueryExtension,
   })
 }
 

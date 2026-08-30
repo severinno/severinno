@@ -362,3 +362,42 @@ async function openOrFocusUrl(url) {
     return clients.openWindow(url)
   }
 }
+
+
+// ---- Background Sync — queue actions when offline -------------------------
+const SYNC_QUEUE = "severinno-sync-v1"
+
+self.addEventListener("sync", (event) => {
+  if (event.tag === "sync-offline-actions") {
+    event.waitUntil(syncOfflineActions())
+  }
+})
+
+async function syncOfflineActions() {
+  const cache = await caches.open(SYNC_QUEUE)
+  const keys = await cache.keys()
+  for (const request of keys) {
+    try {
+      const body = await request.clone().text()
+      const response = await fetch(request, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      })
+      if (response.ok) {
+        await cache.delete(request)
+      }
+    } catch {
+      // Will retry on next sync
+    }
+  }
+}
+
+// ---- Max cache size enforcement -------------------------------------------
+async function enforceMaxEntries(cacheName, max) {
+  const cache = await caches.open(cacheName)
+  const keys = await cache.keys()
+  if (keys.length > max) {
+    await Promise.all(keys.slice(0, keys.length - max).map(k => cache.delete(k)))
+  }
+}
