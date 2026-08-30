@@ -1,3 +1,4 @@
+import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
@@ -176,18 +177,18 @@ export async function PATCH(request: Request, { params }: Params) {
 
     if (next === "COMPLETED" && isProvider) {
       // Pedir ao cliente para confirmar conclusão e liberar custódia
-      notifyCompletionRequest(updated.clientId, id, updated.provider.name).catch(() => {})
+      notifyCompletionRequest(updated.clientId, id, updated.provider.name).catch((err) => logger.warn({ err }, "notification failed (fire-and-forget)"))
     } else if (next === "COMPLETED" && !isProvider) {
       // Liberou pagamento
-      notifyPaymentConfirmed(updated.providerId, id, updated.amount).catch(() => {})
+      notifyPaymentConfirmed(updated.providerId, id, updated.amount).catch((err) => logger.warn({ err }, "notification failed (fire-and-forget)"))
     }
 
     // Notificar o cliente
-    notifyBookingStatus(updated.clientId, id, newStatus, serviceName).catch(() => {})
+    notifyBookingStatus(updated.clientId, id, newStatus, serviceName).catch((err) => logger.warn({ err }, "notification failed (fire-and-forget)"))
 
     // Notificar o provider (se não for o mesmo que o cliente)
     if (updated.clientId !== updated.providerId) {
-      notifyBookingStatus(updated.providerId, id, newStatus, serviceName).catch(() => {})
+      notifyBookingStatus(updated.providerId, id, newStatus, serviceName).catch((err) => logger.warn({ err }, "notification failed (fire-and-forget)"))
     }
 
     return NextResponse.json({ booking: updated })

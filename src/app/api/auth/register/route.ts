@@ -1,3 +1,4 @@
+import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { hashPassword } from "@/lib/crypto"
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
         providerName: user.name,
         city: (data.city || "") as string,
         state: (data.state || "") as string,
-      }).catch(() => {})
+      }).catch((err) => logger.warn({ err }, "push notification failed (fire-and-forget)"))
     }
 
     return NextResponse.json({ user }, { status: 201 })

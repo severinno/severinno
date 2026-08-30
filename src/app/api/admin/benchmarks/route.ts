@@ -676,7 +676,7 @@ export async function GET() {
           })),
           totalComparisons: comparisons.length,
         },
-      }).catch(() => {})
+      }).catch((err) => logger.warn({ err }, "benchmark write failed (fire-and-forget)"))
     }
 
     // ── Extract GiST crossover history from git ──────────────────────
@@ -731,7 +731,7 @@ export async function GET() {
             currentCommit: a.currentCommitHash,
           })),
         },
-      }).catch(() => {})
+      }).catch((err) => logger.warn({ err }, "benchmark write failed (fire-and-forget)"))
 
       // Email to admins via queue — fetch ALL admin emails from DB
       const adminEmails = await db.user

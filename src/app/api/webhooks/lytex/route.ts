@@ -1,3 +1,4 @@
+import logger from "@/lib/logger"
 /**
  * Webhook Lytex Pagamentos
  *
@@ -111,7 +112,7 @@ async function confirmBookingPayment(
   )
 
   // Notificar provider via WhatsApp (best-effort)
-  notifyPaymentConfirmed(booking.providerId, bookingId, booking.amount).catch(() => {})
+  notifyPaymentConfirmed(booking.providerId, bookingId, booking.amount).catch((err) => logger.warn({ err }, "lytex payment notification failed"))
 }
 
 // ---------------------------------------------------------------------------

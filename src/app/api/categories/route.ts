@@ -1,3 +1,4 @@
+import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
@@ -98,9 +99,9 @@ export async function POST(request: Request) {
     })
 
     // Invalidate all cached category lists so fresh data is served
-    Promise.all([cacheInvalidate("categories:*"), invalidateCategoryCache()]).catch(() => {})
+    Promise.all([cacheInvalidate("categories:*"), invalidateCategoryCache()]).catch((err) => logger.warn({ err }, "category cache invalidation failed"))
     // Queue search reindex (non-critical — don't fail the request)
-    syncCategorySearch(created).catch(() => {})
+    syncCategorySearch(created).catch((err) => logger.warn({ err }, "category cache invalidation failed"))
     return NextResponse.json({ category: created }, { status: 201 })
   } catch (e) {
     return handleError(e)

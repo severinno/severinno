@@ -1,3 +1,4 @@
+import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
@@ -59,7 +60,7 @@ export async function POST(_request: Request, { params }: Params) {
     ])
 
     // Notify provider that escrow was released
-    notifyPaymentConfirmed(booking.providerId, booking.id, booking.amount).catch(() => {})
+    notifyPaymentConfirmed(booking.providerId, booking.id, booking.amount).catch((err) => logger.warn({ err }, "payment notification failed (fire-and-forget)"))
 
     return NextResponse.json({
       ok: true,

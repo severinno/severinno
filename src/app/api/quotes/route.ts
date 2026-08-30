@@ -1,3 +1,4 @@
+import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { type QuoteStatus } from "@prisma/client"
 import { db } from "@/lib/db"
@@ -84,7 +85,7 @@ export async function POST(request: Request) {
       quote.id,
       data.items.length,
       quote.client?.name ?? "Cliente",
-    ).catch(() => {})
+    ).catch((err) => logger.warn({ err }, "quote notification failed (fire-and-forget)"))
 
     return NextResponse.json({ quote }, { status: 201 })
   } catch (e) {

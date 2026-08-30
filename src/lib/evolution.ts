@@ -113,11 +113,13 @@ function getConfig() {
 // HTTP helpers
 // ---------------------------------------------------------------------------
 
+import { evolutionBreaker } from "./external-circuit-breakers"
+
 async function evolutionRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
   const { baseUrl, apiKey } = getConfig()
   const url = `${baseUrl}${path}`
 
-  const res = await fetch(url, {
+  const res = await evolutionBreaker.execute(() => fetch(url, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -125,7 +127,7 @@ async function evolutionRequest<T>(method: string, path: string, body?: unknown)
       apikey: apiKey,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
-  })
+  }))
 
   const contentType = res.headers.get("content-type") ?? ""
   let parsed: unknown = null
