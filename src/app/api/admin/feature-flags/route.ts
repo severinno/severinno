@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { isEnabled, setFlag, clearFlag, getAllFlags, type FeatureFlag } from "@/lib/feature-flags"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { handleError } from "@/lib/api-server"
 
 const VALID_FLAGS: FeatureFlag[] = [
   "circuit-breaker-evolution", "circuit-breaker-push", "circuit-breaker-email",
@@ -13,33 +14,45 @@ const VALID_FLAGS: FeatureFlag[] = [
 ]
 
 export async function GET() {
-  await requireRole("ADMIN")
-  const flags = getAllFlags()
-  return NextResponse.json({ flags })
+  try {
+    await requireRole("ADMIN")
+    const flags = getAllFlags()
+    return NextResponse.json({ flags })
+  } catch (e) {
+    return handleError(e)
+  }
 }
 
 export async function PATCH(request: Request) {
-  await requireRole("ADMIN")
-  await assertRateLimit(request, RATE_LIMITS.admin)
-  const body = await request.json()
-  const { flag, enabled } = body as { flag?: string; enabled?: boolean }
-  if (!flag || typeof enabled !== "boolean") {
-    return NextResponse.json({ error: "flag and enabled required" }, { status: 400 })
+  try {
+    await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
+    const body = await request.json()
+    const { flag, enabled } = body as { flag?: string; enabled?: boolean }
+    if (!flag || typeof enabled !== "boolean") {
+      return NextResponse.json({ error: "flag and enabled required" }, { status: 400 })
+    }
+    if (!VALID_FLAGS.includes(flag as FeatureFlag)) {
+      return NextResponse.json({ error: `Invalid flag: ${flag}` }, { status: 400 })
+    }
+    setFlag(flag as FeatureFlag, enabled)
+    return NextResponse.json({ flag, enabled, source: "runtime" })
+  } catch (e) {
+    return handleError(e)
   }
-  if (!VALID_FLAGS.includes(flag as FeatureFlag)) {
-    return NextResponse.json({ error: `Invalid flag: ${flag}` }, { status: 400 })
-  }
-  setFlag(flag as FeatureFlag, enabled)
-  return NextResponse.json({ flag, enabled, source: "runtime" })
 }
 
 export async function DELETE(request: Request) {
-  await requireRole("ADMIN")
-  const { searchParams } = new URL(request.url)
-  const flag = searchParams.get("flag")
-  if (!flag) {
-    return NextResponse.json({ error: "flag query param required" }, { status: 400 })
+  try {
+    await requireRole("ADMIN")
+    const { searchParams } = new URL(request.url)
+    const flag = searchParams.get("flag")
+    if (!flag) {
+      return NextResponse.json({ error: "flag query param required" }, { status: 400 })
+    }
+    clearFlag(flag as FeatureFlag)
+    return NextResponse.json({ flag, enabled: isEnabled(flag as FeatureFlag), source: "default" })
+  } catch (e) {
+    return handleError(e)
   }
-  clearFlag(flag as FeatureFlag)
-  return NextResponse.json({ flag, enabled: isEnabled(flag as FeatureFlag), source: "default" })
 }

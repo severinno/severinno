@@ -1,6 +1,14 @@
-import { isEnabled } from "./feature-flags"
+import { isEnabled, type FeatureFlag } from "./feature-flags"
 
-const CANARY_PERCENTAGE_KEY = "canary:percentage"
+const VALID_FLAGS: FeatureFlag[] = [
+  "circuit-breaker-evolution", "circuit-breaker-push", "circuit-breaker-email",
+  "circuit-breaker-lytex", "circuit-breaker-nominatim", "circuit-breaker-viacep",
+  "circuit-breaker-osrm", "h3-clustering", "postgis-spatial-query",
+  "redis-geo-index-seed", "wallet-serializable-tx", "geo-cache-local",
+  "geo-metrics-async-persist", "geo-alert-redis-debounce", "dynamic-h3-resolution",
+  "geocode-search-layered", "reverse-geocode-cache",
+]
+
 let canaryPercentage = 0
 
 export function setCanaryPercentage(pct: number): void {
@@ -21,6 +29,7 @@ export function isInCanary(userId: string): boolean {
 }
 
 export function canaryGate(userId: string, flag: string): boolean {
-  if (!isEnabled(flag as any)) return false
+  if (!VALID_FLAGS.includes(flag as FeatureFlag)) return false
+  if (!isEnabled(flag as FeatureFlag)) return false
   return isInCanary(userId)
 }
