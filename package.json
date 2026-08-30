@@ -256,6 +256,7 @@
     "tsx": "^4.23.12",
     "tw-animate-css": "^1.3.5",
     "typescript": "^5",
+    "vite": "6",
     "vitest": "^3.2.7",
     "vitest-axe": "^0.1.0"
   },
@@ -268,7 +269,8 @@
     "lodash": "4.18.1",
     "lodash-es": "4.18.1",
     "defu": "6.1.7",
-    "postcss": "8.5.26"
+    "postcss": "8.5.26",
+    "vite": "6.4.3"
   },
   "trustedDependencies": [
     "@sentry/cli",

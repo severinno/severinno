@@ -103,21 +103,21 @@ describe("3. Geo Check-in & PIN-Based Escrow Release Protocol", () => {
     expect(farAttempt.reason).toContain("Aproxime-se")
   })
 
-  it("should generate secure 4-digit PIN and validate escrow release correctly", () => {
+  it("should generate secure 4-digit PIN and validate escrow release correctly", async () => {
     const bookingId = `b-test-${Date.now()}`
-    const pinData = generateEscrowPIN(bookingId)
+    const pinData = await generateEscrowPIN(bookingId)
 
     expect(pinData.pin.length).toBe(4)
     expect(pinData.qrPayload).toContain(bookingId)
 
     // Test invalid PIN
-    const failRelease = validateEscrowRelease(bookingId, "9999", 250.0)
+    const failRelease = await validateEscrowRelease(bookingId, "9999", 250.0)
     if (pinData.pin !== "9999") {
       expect(failRelease.success).toBe(false)
     }
 
     // Test correct PIN
-    const okRelease = validateEscrowRelease(bookingId, pinData.pin, 250.0)
+    const okRelease = await validateEscrowRelease(bookingId, pinData.pin, 250.0)
     expect(okRelease.success).toBe(true)
     expect(okRelease.releasedAmount).toBe(250.0)
   })

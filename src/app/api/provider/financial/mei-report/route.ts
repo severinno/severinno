@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to generate MEI report",
+        error: "Failed to generate MEI report",
       },
       { status: 500 },
     )

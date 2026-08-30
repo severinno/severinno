@@ -37,6 +37,7 @@ export async function GET() {
         client: { select: { name: true } },
       },
       orderBy: { updatedAt: "desc" },
+      take: 500,
     })
 
     // 2. Fetch bookings currently in custody (PAID or HELD, waiting for completion/escrow release)

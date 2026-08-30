@@ -2,15 +2,31 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
-const mockDb = vi.hoisted(() => ({
-  booking: {
-    findMany: vi.fn(),
-  },
-  walletTransaction: {
-    findMany: vi.fn(),
-    create: vi.fn(),
-  },
-}))
+const mockDb = vi.hoisted(() => {
+  const db = {
+    booking: {
+      findMany: vi.fn(),
+    },
+    walletTransaction: {
+      findMany: vi.fn(),
+      create: vi.fn(),
+    },
+    $transaction: vi.fn() as ReturnType<typeof vi.fn>,
+  }
+  // $transaction: execute callback-style or array-style with the mock db as tx
+  db.$transaction = vi.fn(async (arg: unknown) => {
+    if (typeof arg === "function") {
+      return await arg(db) // callback-style: $transaction(async (tx) => { ... })
+    }
+    // array-style: $transaction([promise1, promise2])
+    const results: unknown[] = []
+    for (const fn of arg as Array<() => Promise<unknown>>) {
+      results.push(await fn())
+    }
+    return results
+  })
+  return db
+})
 
 vi.mock("@/lib/db", () => ({ db: mockDb }))
 

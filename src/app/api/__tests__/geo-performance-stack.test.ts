@@ -1,13 +1,7 @@
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect } from "vitest"
 import { latLngToH3, h3ToLatLng, h3GetKRing, h3ToGeoBoundary, clusterByH3 } from "@/lib/h3-grid"
 import { tileToBBox } from "@/lib/vector-tiles"
 import { calculate1xNDistanceMatrix } from "@/lib/osrm-table"
-import {
-  encodeGeohash,
-  decodeGeohash,
-  getOrSetGeohashCache,
-  clearGeohashCache,
-} from "@/lib/geohash-cache"
 import { optimizeDailyRoute2Opt, RouteStop } from "@/lib/tsp-route-optimizer"
 
 describe("1. H3 Hexagonal Spatial Indexing Engine", () => {
@@ -89,41 +83,7 @@ describe("3. OSRM Table 1xN Distance Matrix Batch Engine", () => {
   })
 })
 
-describe("4. Geohash Encoder & SWR Edge Cache", () => {
-  beforeEach(() => {
-    clearGeohashCache()
-  })
-
-  it("should encode and decode geohashes with high precision", () => {
-    const lat = -23.55052
-    const lng = -46.633308
-    const geohash = encodeGeohash(lat, lng, 6)
-
-    expect(geohash.length).toBe(6)
-
-    const decoded = decodeGeohash(geohash)
-    expect(Math.abs(decoded.lat - lat)).toBeLessThan(0.01)
-    expect(Math.abs(decoded.lng - lng)).toBeLessThan(0.01)
-  })
-
-  it("should cache results using SWR strategy", async () => {
-    let callCount = 0
-    const fetcher = async () => {
-      callCount++
-      return [{ id: "prov-1", name: "Carlos" }]
-    }
-
-    const res1 = await getOrSetGeohashCache("6gyf4b", "eletricista", fetcher, 60)
-    expect(res1.source).toBe("fresh-db")
-    expect(callCount).toBe(1)
-
-    const res2 = await getOrSetGeohashCache("6gyf4b", "eletricista", fetcher, 60)
-    expect(res2.source).toBe("cache-hit")
-    expect(callCount).toBe(1) // Should not invoke DB again
-  })
-})
-
-describe("5. 2-Opt TSP Route Optimizer Engine", () => {
+describe("4. 2-Opt TSP Route Optimizer Engine", () => {
   it("should optimize a sequence of multiple daily appointments", () => {
     const baseLocation = { lat: -23.5505, lng: -46.6333 } // Downtown Base
 

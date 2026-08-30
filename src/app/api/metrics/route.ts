@@ -36,7 +36,8 @@ type MetricsResponse = {
   timestamp: string
 }
 
-export async function GET(): Promise<NextResponse<MetricsResponse>> {
+export async function GET(): Promise<NextResponse<MetricsResponse | { error: string }>> {
+  try {
   const start = Date.now()
 
   const cacheStats = getCacheStats()
@@ -60,4 +61,7 @@ export async function GET(): Promise<NextResponse<MetricsResponse>> {
   logger.debug({ elapsed }, "metrics endpoint")
 
   return NextResponse.json(response)
+  } catch {
+    return NextResponse.json({ error: "Metrics unavailable" }, { status: 500 })
+  }
 }

@@ -22,6 +22,7 @@ export async function GET(request: Request) {
 
     const favorites = await db.favorite.findMany({
       where: { clientId: session.userId },
+      take: 100,
       include: {
         provider: {
           include: {

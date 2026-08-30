@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
           )
         }
 
-        const pin = generateEscrowPIN(bookingId)
+        const pin = await generateEscrowPIN(bookingId)
         return NextResponse.json({ success: true, data: pin })
       }
 
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
           )
         }
 
-        const result = validateEscrowRelease(bookingId, pin, escrowAmount)
+        const result = await validateEscrowRelease(bookingId, pin, escrowAmount)
         return NextResponse.json({ success: result.success, data: result })
       }
 
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     }
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : "Escrow operation failed" },
+      { success: false, error: "Escrow operation failed" },
       { status: 500 },
     )
   }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { requireRole } from "@/lib/auth"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import {
   generateFinancialCSV,
@@ -8,6 +9,7 @@ import {
 } from "@/lib/streaming-exporter"
 
 export async function GET(req: NextRequest) {
+  await requireRole("ADMIN")
   await assertRateLimit(req, RATE_LIMITS.admin)
   try {
     const { searchParams } = new URL(req.url)

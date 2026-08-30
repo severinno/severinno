@@ -18,6 +18,15 @@ export async function POST(request: Request) {
     const body = await request.json()
     const data = bookingSchema.parse(body)
 
+    // Validate scheduledAt is in the future
+    const scheduledDate = new Date(data.scheduledAt)
+    if (isNaN(scheduledDate.getTime())) {
+      throw badRequest("Data de agendamento inválida")
+    }
+    if (scheduledDate <= new Date()) {
+      throw badRequest("A data de agendamento deve ser no futuro")
+    }
+
     const service = await db.service.findUnique({
       where: { id: data.serviceId },
       include: { provider: { select: { id: true, verified: true, active: true } } },

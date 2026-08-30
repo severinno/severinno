@@ -14,6 +14,7 @@
  */
 
 import { haversineKm } from "./geo-server"
+import { osrmBreaker } from "./geo-circuit-breakers"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -99,30 +100,28 @@ async function osrmRoute(origin: LatLng, destination: LatLng): Promise<RouteResu
   if (cached) return cached
 
   try {
-    const url =
-      `${OSRM_BASE_URL}/route/v1/driving/` +
-      `${formatCoord(origin.lat, origin.lng)};${formatCoord(destination.lat, destination.lng)}` +
-      `?overview=full&geometries=geojson&steps=false&alternatives=false`
+    const data = await osrmBreaker.execute(async () => {
+      const url =
+        `${OSRM_BASE_URL}/route/v1/driving/` +
+        `${formatCoord(origin.lat, origin.lng)};${formatCoord(destination.lat, destination.lng)}` +
+        `?overview=full&geometries=geojson&steps=false&alternatives=false`
 
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 5_000)
-
-    const res = await fetch(url, { signal: controller.signal })
-    clearTimeout(timeout)
-
-    if (!res.ok) return null
-
-    const data = (await res.json()) as {
-      code: string
-      routes?: Array<{
-        distance: number
-        duration: number
-        geometry: {
-          coordinates: [number, number][]
-          type: string
-        }
-      }>
-    }
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(5_000),
+      })
+      if (!res.ok) throw new Error(`OSRM HTTP ${res.status}`)
+      return (await res.json()) as {
+        code: string
+        routes?: Array<{
+          distance: number
+          duration: number
+          geometry: {
+            coordinates: [number, number][]
+            type: string
+          }
+        }>
+      }
+    })
 
     if (data.code !== "Ok" || !data.routes?.length) return null
 

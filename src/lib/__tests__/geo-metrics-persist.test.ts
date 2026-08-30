@@ -101,6 +101,65 @@ vi.mock("node:fs", () => {
   }
 })
 
+vi.mock("node:fs/promises", () => {
+  const readFile = async (path: string) => {
+    const name = path.split("/").pop() ?? path.split("\\").pop() ?? ""
+    const file = virtualDir.find((f) => f.name === name)
+    if (!file) {
+      const err = new Error(`ENOENT: ${path}`) as NodeJS.ErrnoException
+      err.code = "ENOENT"
+      throw err
+    }
+    return file.content
+  }
+  const writeFile = async (_path: string, content: string) => {
+    const name = _path.split("/").pop() ?? _path.split("\\").pop() ?? ""
+    const idx = virtualDir.findIndex((f) => f.name === name)
+    if (idx >= 0) {
+      virtualDir[idx] = { name, content }
+    } else {
+      virtualDir.push({ name, content })
+    }
+  }
+  const readdir = async () => {
+    if (mockReaddirShouldThrow) throw new Error("readdir failed")
+    return populateVirtualDir()
+  }
+  const unlink = async (path: string) => {
+    if (mockUnlinkShouldThrow) throw new Error("unlink failed")
+    const name = path.split("/").pop() ?? path.split("\\").pop() ?? ""
+    const idx = virtualDir.findIndex((f) => f.name === name)
+    if (idx >= 0) virtualDir.splice(idx, 1)
+  }
+  const access = async () => {
+    if (!mockExists) {
+      const err = new Error("ENOENT") as NodeJS.ErrnoException
+      err.code = "ENOENT"
+      throw err
+    }
+  }
+  const mkdir = async () => {
+    if (mockMkdirShouldThrow) throw new Error("mkdir failed")
+    mockExists = true
+  }
+  return {
+    default: {
+      readFile,
+      writeFile,
+      readdir,
+      unlink,
+      access,
+      mkdir,
+    },
+    readFile,
+    writeFile,
+    readdir,
+    unlink,
+    access,
+    mkdir,
+  }
+})
+
 vi.mock("node:path", () => {
   const join = (...parts: string[]) => parts.join("/")
   const basename = (path: string) => path.split("/").pop() ?? path

@@ -34,8 +34,6 @@ export async function POST(request: Request) {
         id: true,
         name: true,
         identityStatus: true,
-        identityDocUrl: true,
-        identitySelfieUrl: true,
       },
     })
 

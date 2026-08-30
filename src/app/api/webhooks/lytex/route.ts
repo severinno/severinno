@@ -195,7 +195,7 @@ export async function POST(request: Request) {
       )
       return NextResponse.json({ received: true, deduplicated: true })
     }
-    await cacheSet(idempotencyKey, { processedAt: new Date().toISOString() }, 300)
+    await cacheSet(idempotencyKey, { processedAt: new Date().toISOString() }, 86400)
 
     // Processar conforme o status
     switch (body.status) {

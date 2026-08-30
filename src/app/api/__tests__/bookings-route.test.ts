@@ -118,7 +118,7 @@ const mockBooking = {
   providerId: "prov-1",
   serviceId: "svc-1",
   status: "PENDING",
-  scheduledAt: new Date("2025-02-15T14:00:00Z"),
+  scheduledAt: new Date("2030-02-15T14:00:00Z"),
   address: "Rua Augusta, 1500",
   cep: "01304-001",
   lat: -23.55,
@@ -151,7 +151,7 @@ describe("POST /api/bookings", () => {
   const validBody = {
     providerId: "prov-1",
     serviceId: "svc-1",
-    scheduledAt: new Date("2025-02-15T14:00:00Z").toISOString(),
+    scheduledAt: new Date("2030-02-15T14:00:00Z").toISOString(),
     address: "Rua Augusta, 1500",
     cep: "01304-001",
     lat: -23.55,

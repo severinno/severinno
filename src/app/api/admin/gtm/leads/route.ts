@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
+import { requireRole } from "@/lib/auth"
 import { GTMEngine, LeadStatus } from "@/lib/gtm-engine"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 export async function GET(req: NextRequest) {
+  await requireRole("ADMIN")
   await assertRateLimit(req, RATE_LIMITS.admin)
   try {
     const { searchParams } = new URL(req.url)
@@ -32,6 +34,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  await requireRole("ADMIN")
   await assertRateLimit(req, RATE_LIMITS.admin)
   try {
     const body = await req.json()
@@ -90,6 +93,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  await requireRole("ADMIN")
   await assertRateLimit(req, RATE_LIMITS.admin)
   try {
     const body = await req.json()
@@ -132,6 +136,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  await requireRole("ADMIN")
   await assertRateLimit(req, RATE_LIMITS.admin)
   try {
     const { searchParams } = new URL(req.url)

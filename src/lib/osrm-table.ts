@@ -6,6 +6,7 @@
  */
 
 import { haversineKm } from "@/lib/geo"
+import { osrmTableBreaker } from "./geo-circuit-breakers"
 
 export interface TargetDestination {
   id: string
@@ -49,15 +50,16 @@ export async function calculate1xNDistanceMatrix(
     const coordString = coords.join(";")
     const destIndices = Array.from({ length: destinations.length }, (_, i) => i + 1).join(";")
 
-    const url = `${osrmBaseUrl}/table/v1/driving/${coordString}?sources=0&destinations=${destIndices}&annotations=distance,duration`
-
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(3000),
+    const data = await osrmTableBreaker.execute(async () => {
+      const url = `${osrmBaseUrl}/table/v1/driving/${coordString}?sources=0&destinations=${destIndices}&annotations=distance,duration`
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(3000),
+      })
+      if (!res.ok) throw new Error(`OSRM Table HTTP ${res.status}`)
+      return res.json()
     })
 
-    if (res.ok) {
-      const data = await res.json()
-      if (data.code === "Ok" && data.durations?.[0] && data.distances?.[0]) {
+    if (data.code === "Ok" && data.durations?.[0] && data.distances?.[0]) {
         const durations = data.durations[0] // in seconds
         const distances = data.distances[0] // in meters
 
@@ -81,7 +83,6 @@ export async function calculate1xNDistanceMatrix(
             trafficLevel,
           }
         })
-      }
     }
   } catch {
     // Fallback gracefully on timeout or offline mode

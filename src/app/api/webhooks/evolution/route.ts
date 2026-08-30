@@ -76,6 +76,17 @@ async function findUserByPhone(phone: string): Promise<{ id: string; name: strin
 export async function POST(request: Request) {
   await assertRateLimit(request, RATE_LIMITS.webhookSentry)
   try {
+    // Verify Evolution API secret (api-key or bearer token)
+    const evolutionSecret = process.env.EVOLUTION_WEBHOOK_SECRET
+    if (evolutionSecret) {
+      const authHeader = request.headers.get("authorization")
+      const apiKey = request.headers.get("apikey")
+      if (authHeader !== `Bearer ${evolutionSecret}` && apiKey !== evolutionSecret) {
+        evolutionLogger.warn("Webhook Evolution: autenticação inválida")
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      }
+    }
+
     const body = await request.json()
 
     evolutionLogger.debug(

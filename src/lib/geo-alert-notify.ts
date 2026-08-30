@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { captureMessage } from "@/lib/sentry"
 import { sendPushNotification } from "@/lib/push"
 import { sendSlackAlert } from "@/lib/slack-notify"
+import { cacheGet, cacheSet } from "@/lib/redis"
 import logger from "@/lib/logger"
 
 // ---------------------------------------------------------------------------
@@ -41,11 +42,56 @@ const SENTRY_DEBOUNCE_MS = 15 * 60 * 1000
 const ADMIN_ROLE = "ADMIN"
 
 // ---------------------------------------------------------------------------
-// In-memory debounce state (resets on server restart)
+// Debounce state — Redis-backed (survives restarts, shared across instances)
+// Falls back to in-memory when Redis is unavailable.
 // ---------------------------------------------------------------------------
 
+const PUSH_DEBOUNCE_REDIS_KEY = "geo:alert:push:debounce:"
+const SENTRY_DEBOUNCE_REDIS_KEY = "geo:alert:sentry:debounce:"
+const DEBOUNCE_TTL_SECONDS = Math.ceil(PUSH_DEBOUNCE_MS / 1000) // 15 min
+
+// In-memory fallback for when Redis is down
 const lastPushByTag = new Map<string, number>()
 const lastSentryByTag = new Map<string, number>()
+
+async function isPushDebounced(tag: string): Promise<boolean> {
+  try {
+    const val = await cacheGet<number>(`${PUSH_DEBOUNCE_REDIS_KEY}${tag}`)
+    return val !== null
+  } catch {
+    // Redis down — fall back to in-memory
+    const lastSent = lastPushByTag.get(tag) ?? 0
+    return Date.now() - lastSent < PUSH_DEBOUNCE_MS
+  }
+}
+
+async function markPushSent(tag: string): Promise<void> {
+  try {
+    await cacheSet(`${PUSH_DEBOUNCE_REDIS_KEY}${tag}`, Date.now(), DEBOUNCE_TTL_SECONDS)
+  } catch {
+    // Redis down — fall back to in-memory
+  }
+  lastPushByTag.set(tag, Date.now())
+}
+
+async function isSentryDebounced(tag: string): Promise<boolean> {
+  try {
+    const val = await cacheGet<number>(`${SENTRY_DEBOUNCE_REDIS_KEY}${tag}`)
+    return val !== null
+  } catch {
+    const lastSent = lastSentryByTag.get(tag) ?? 0
+    return Date.now() - lastSent < SENTRY_DEBOUNCE_MS
+  }
+}
+
+async function markSentrySent(tag: string): Promise<void> {
+  try {
+    await cacheSet(`${SENTRY_DEBOUNCE_REDIS_KEY}${tag}`, Date.now(), DEBOUNCE_TTL_SECONDS)
+  } catch {
+    // Redis down — fall back to in-memory
+  }
+  lastSentryByTag.set(tag, Date.now())
+}
 
 // ---------------------------------------------------------------------------
 // Send alert to all admin users
@@ -87,17 +133,14 @@ export async function notifyGeoAlert(payload: GeoAlertPayload): Promise<{
 }> {
   const { title, body, severity, url, tag, context, source } = payload
 
-  // ── 1. Sentry (debounced by tag) ───────────────────────────────────
+  // ── 1. Sentry (debounced by tag, Redis-backed) ─────────────────────
   let sentryDebounced = false
   if (tag) {
-    const lastSentry = lastSentryByTag.get(tag) ?? 0
-    if (Date.now() - lastSentry < SENTRY_DEBOUNCE_MS) {
-      sentryDebounced = true
-    }
+    sentryDebounced = await isSentryDebounced(tag)
   }
 
   if (!sentryDebounced) {
-    if (tag) lastSentryByTag.set(tag, Date.now())
+    if (tag) await markSentrySent(tag)
 
     captureMessage(
       `[${source}] ${severity === "error" ? "🛑" : severity === "warning" ? "⚠️" : "ℹ️"} ${title}`,
@@ -113,21 +156,17 @@ export async function notifyGeoAlert(payload: GeoAlertPayload): Promise<{
     return { sentrySent: true, pushSent: false, pushDebounced: false, adminCount: 0 }
   }
 
-  // Debounce check
+  // Debounce check (Redis-backed, shared across instances)
   if (tag) {
-    const lastSent = lastPushByTag.get(tag) ?? 0
-    if (Date.now() - lastSent < PUSH_DEBOUNCE_MS) {
-      logger.debug(
-        { tag, lastSent: new Date(lastSent).toISOString() },
-        "geo-alert-notify: push debounced",
-      )
+    if (await isPushDebounced(tag)) {
+      logger.debug({ tag }, "geo-alert-notify: push debounced")
       return { sentrySent: true, pushSent: false, pushDebounced: true, adminCount: adminIds.length }
     }
   }
 
-  // Update debounce timestamp BEFORE sending (prevents concurrent sends)
+  // Mark as sent BEFORE actually sending (prevents concurrent sends)
   if (tag) {
-    lastPushByTag.set(tag, Date.now())
+    await markPushSent(tag)
   }
 
   // Send push to all admins (best-effort, parallel)
@@ -180,7 +219,18 @@ export async function notifyGeoAlert(payload: GeoAlertPayload): Promise<{
 // Reset debounce state (useful for testing)
 // ---------------------------------------------------------------------------
 
-export function resetGeoAlertDebounce(): void {
+export async function resetGeoAlertDebounce(): Promise<void> {
+  // Clear all known Redis debounce keys
+  const allTags = new Set([...lastPushByTag.keys(), ...lastSentryByTag.keys()])
+  for (const tag of allTags) {
+    try {
+      const { cacheInvalidate } = await import("@/lib/redis")
+      await cacheInvalidate(`${PUSH_DEBOUNCE_REDIS_KEY}${tag}`)
+      await cacheInvalidate(`${SENTRY_DEBOUNCE_REDIS_KEY}${tag}`)
+    } catch {
+      // best-effort
+    }
+  }
   lastPushByTag.clear()
   lastSentryByTag.clear()
 }

@@ -1,4 +1,4 @@
-set -euo pipefail
+set -eu
 
 # Bun guard STAGED — detecta cache keys/literais velhos no que está STAGED
 # (git diff --cached) ANTES do guard global: se o commit introduzir uma key
