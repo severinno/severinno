@@ -7,7 +7,8 @@ import { SoundProvider } from "@/lib/sound-context"
 import { RealtimeProvider } from "@/components/shared/realtime-provider"
 import { PWASetup } from "@/components/shared/pwa-setup"
 import { PWAInstallBanner } from "@/components/shared/pwa-install"
-import { useState, useEffect, type ReactNode } from "react"
+import PwaUpdateBanner from "@/components/pwa-update-banner"
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react"
 
 const queryConfig: QueryClientConfig = {
   defaultOptions: {
@@ -35,13 +36,67 @@ export function Providers({ children }: { children: ReactNode }) {
       }),
   )
 
-  // Register Service Worker on mount (once)
+  // Register Service Worker on mount (once) + detect updates
+  const [swUpdateAvailable, setSwUpdateAvailable] = useState(false)
+  const swRegistrationRef = useRef<ServiceWorkerRegistration | null>(null)
+
   useEffect(() => {
-    if ("serviceWorker" in navigator && "PushManager" in window) {
-      navigator.serviceWorker.register("/sw.js").catch(() => {
+    if (!("serviceWorker" in navigator)) return
+
+    let cancelled = false
+
+    navigator.serviceWorker
+      .register("/sw.js", { updateViaCache: "none" })
+      .then((reg) => {
+        if (cancelled) return
+        swRegistrationRef.current = reg
+
+        // Check for updates every 60 minutes
+        const interval = setInterval(() => {
+          if (!cancelled) reg.update().catch(() => {}
+        )
+        }, 60 * 60 * 1000)
+
+        // Detect new SW waiting
+        function detectUpdate() {
+          const waiting = reg.waiting ?? reg.installing
+          if (waiting) {
+            waiting.addEventListener("statechange", () => {
+              if (!cancelled && waiting.state === "installed" && navigator.serviceWorker.controller) {
+                setSwUpdateAvailable(true)
+              }
+            })
+          }
+          // Also listen for updatefound
+          reg.addEventListener("updatefound", () => {
+            const newWorker = reg.installing
+            if (newWorker) {
+              newWorker.addEventListener("statechange", () => {
+                if (!cancelled && newWorker.state === "installed" && navigator.serviceWorker.controller) {
+                  setSwUpdateAvailable(true)
+                }
+              })
+            }
+          })
+        }
+
+        detectUpdate()
+
+        return () => clearInterval(interval)
+      })
+      .catch(() => {
         // SW registration failure is non-fatal
       })
+
+    return () => { cancelled = true }
+  }, [])
+
+  const handleApplyUpdate = useCallback(() => {
+    const waiting = swRegistrationRef.current?.waiting
+    if (waiting) {
+      waiting.postMessage({ type: "SKIP_WAITING" })
     }
+    window.location.reload()
   }, [])
 
   // ── Listen for silent-notification messages from the Service Worker ──
@@ -72,6 +127,9 @@ export function Providers({ children }: { children: ReactNode }) {
           <SonnerToaster position="top-right" richColors closeButton />
         </SoundProvider>
       </QueryClientProvider>
+
+      {/* PWA update banner — shown when new SW version is waiting */}
+      <PwaUpdateBanner visible={swUpdateAvailable} onUpdate={handleApplyUpdate} />
 
       {/* PWA setup — renderless (injects meta, detects standalone) */}
       <PWASetup />
