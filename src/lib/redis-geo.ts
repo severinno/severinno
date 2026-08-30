@@ -7,10 +7,14 @@
 import { haversineKm } from "@/lib/geo"
 import { findProvidersWithinRadius } from "@/lib/postgis"
 import { db } from "@/lib/db"
+import { getClient } from "@/lib/redis"
 import logger from "@/lib/logger"
 
 // Fast in-process coordinate cache for instant responses (<1ms)
 const inMemoryGeoIndex = new Map<string, { lat: number; lng: number; updatedAt: number }>()
+
+// Redis GEO key for provider locations
+const REDIS_GEO_KEY = "geo:providers"
 
 /**
  * Index a provider's active coordinates into the fast geo cache.
@@ -28,6 +32,16 @@ export async function indexProviderLocation(
     lng,
     updatedAt: Date.now(),
   })
+
+  // 2. Update Redis GEO sorted set (shared across instances)
+  try {
+    const client = getClient()
+    if (client) {
+      await client.geoadd(REDIS_GEO_KEY, lng, lat, providerId)
+    }
+  } catch {
+    // Redis unavailable — in-memory fallback handles it
+  }
 }
 
 /**
@@ -35,6 +49,14 @@ export async function indexProviderLocation(
  */
 export async function removeProviderFromGeoIndex(providerId: string): Promise<void> {
   inMemoryGeoIndex.delete(providerId)
+  try {
+    const client = getClient()
+    if (client) {
+      await client.zrem(REDIS_GEO_KEY, providerId)
+    }
+  } catch {
+    // Redis unavailable
+  }
 }
 
 /**
@@ -46,7 +68,7 @@ export async function searchNearbyProvidersFast(
   centerLng: number,
   radiusKm: number = 25,
   limit: number = 50,
-): Promise<Array<{ id: string; distanceKm: number; source: "fast-index" | "postgis" }>> {
+): Promise<Array<{ id: string; distanceKm: number; source: "fast-index" | "redis-geo" | "postgis" }>> {
   // 1. Try In-Memory Spatial Index if populated
   if (inMemoryGeoIndex.size > 0) {
     const nearby: Array<{ id: string; distanceKm: number; source: "fast-index" }> = []
@@ -68,7 +90,38 @@ export async function searchNearbyProvidersFast(
     }
   }
 
-  // 2. Fallback to PostGIS GiST index
+  // 2. Try Redis GEO (GEORADIUS) — shared across instances
+  try {
+    const client = getClient()
+    if (client) {
+      const results = await client.georadius(
+        REDIS_GEO_KEY,
+        centerLng,
+        centerLat,
+        radiusKm,
+        "km",
+        "WITHCOORD",
+        "WITHDIST",
+        "COUNT",
+        limit,
+        "ASC",
+      )
+      if (results.length > 0) {
+        return results.map((r) => {
+          const [id, dist] = r as [string, string, [string, string]]
+          return {
+            id,
+            distanceKm: Math.round(Number(dist) * 10) / 10,
+            source: "redis-geo" as const,
+          }
+        })
+      }
+    }
+  } catch {
+    // Redis GEO unavailable — fall through to PostGIS
+  }
+
+  // 3. Fallback to PostGIS GiST index
   const postgisResults = await findProvidersWithinRadius(centerLat, centerLng, radiusKm)
 
   return postgisResults.slice(0, limit).map((p) => ({

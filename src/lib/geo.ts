@@ -16,6 +16,7 @@ import { rateLimitedViaCEP } from "./viacep-rate-limit"
 import { nominatimBreaker, viacepBreaker } from "./geo-circuit-breakers"
 import { recordSearch, recordCEP, recordReverse } from "./geo-query-log"
 import { getGeoSettings } from "./geo-settings"
+import { geoFetchWithRetry } from "./geo-fetch"
 import logger from "./logger"
 
 // ── Per-operation call counters ──────────────────────────────────────────
@@ -96,7 +97,7 @@ export async function geocodeCEP(cep: string): Promise<ViaCEPResult> {
   const result = await withCachedGeo(
     `geo:cep:${clean}`,
     () => trackGeoLatency("viacep", () => _geocodeCEP(clean)),
-    604800, // 7d
+    86400, // 24h (was 7d — CEPs can change when streets are renamed)
     rateLimitedViaCEP,
   )
   // Record in query log so we can warm the most popular CEPs after restart
@@ -180,10 +181,12 @@ async function _geocodeCEP(cep: string): Promise<ViaCEPResult> {
 
     const res = await viacepBreaker.execute(async () => {
       const url = `${settings.viacepBaseUrl}/ws/${clean}/json/`
-      const r = await fetch(url, {
+      const r = await geoFetchWithRetry(url, {
         headers: { Accept: "application/json" },
         next: { revalidate: 86400 },
-        signal: AbortSignal.timeout(5000), // 5s timeout
+        timeoutMs: 5000,
+        maxRetries: 1,
+        label: "viacep",
       })
       if (!r.ok) throw new Error(`ViaCEP HTTP ${r.status}`)
       return r
@@ -272,10 +275,12 @@ async function _reverseGeocode(lat: number, lng: number): Promise<ReverseGeocode
 
     const res = await nominatimBreaker.execute(async () => {
       const url = `${settings.nominatimBaseUrl}/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1&accept-language=pt-BR`
-      const r = await fetch(url, {
+      const r = await geoFetchWithRetry(url, {
         headers: nominatimHeaders(settings.userAgent),
         next: { revalidate: 3600 },
-        signal: AbortSignal.timeout(5000), // 5s timeout
+        timeoutMs: 5000,
+        maxRetries: 1,
+        label: "nominatim-reverse",
       })
       if (!r.ok) throw new Error(`Nominatim HTTP ${r.status}`)
       return r
@@ -303,7 +308,8 @@ async function _reverseGeocode(lat: number, lng: number): Promise<ReverseGeocode
       postcode: a.postcode,
     }
   } catch {
-    // Nominatim unavailable — fall back to nearest provider in DB    geoFallbackCounts.reverse++
+    // Nominatim unavailable — fall back to nearest provider in DB
+    geoFallbackCounts.reverse++
     return reverseGeocodeLocal(lat, lng)
   }
 }
@@ -539,10 +545,12 @@ async function _geocodeSearch(query: string, limit: number = 5): Promise<GeoSear
         `${settings.nominatimBaseUrl}/search?` +
         `format=jsonv2&q=${encodeURIComponent(trimmed)}` +
         `&addressdetails=1&limit=${clampedLimit}&accept-language=pt-BR`
-      const r = await fetch(url, {
+      const r = await geoFetchWithRetry(url, {
         headers: nominatimHeaders(settings.userAgent),
         next: { revalidate: 86400 },
-        signal: AbortSignal.timeout(5000), // 5s timeout
+        timeoutMs: 5000,
+        maxRetries: 1,
+        label: "nominatim-search",
       })
       if (!r.ok) throw new Error(`Nominatim HTTP ${r.status}`)
       return r
@@ -733,10 +741,12 @@ async function _geocodeSearchStructured(opts: {
 
     const res = await nominatimBreaker.execute(async () => {
       const url = `${settings.nominatimBaseUrl}/search?${params.toString()}`
-      const r = await fetch(url, {
+      const r = await geoFetchWithRetry(url, {
         headers: nominatimHeaders(settings.userAgent),
         next: { revalidate: 86400 },
-        signal: AbortSignal.timeout(5000), // 5s timeout
+        timeoutMs: 5000,
+        maxRetries: 1,
+        label: "nominatim-structured",
       })
       if (!r.ok) throw new Error(`Nominatim structured HTTP ${r.status}`)
       return r

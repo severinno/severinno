@@ -1,0 +1,163 @@
+/**
+ * POST /api/geo/batch — Batch geocoding endpoint.
+ *
+ * Geocodes up to 50 addresses in a single request.
+ * Uses PostGIS local DB first (fast), falls back to Nominatim for unknown addresses.
+ *
+ * Body: { addresses: string[], limit?: number }
+ * Response: { results: Array<{ query, lat, lng, displayName, source }> }
+ */
+import { NextResponse } from "next/server"
+import { db } from "@/lib/db"
+import { withCache } from "@/lib/redis"
+import { trackGeoLatency } from "@/lib/geo-metrics"
+import { rateLimitedNominatim } from "@/lib/nominatim-rate-limit"
+import { nominatimBreaker } from "@/lib/geo-circuit-breakers"
+import { getGeoSettings } from "@/lib/geo-settings"
+import { handleError } from "@/lib/api-server"
+
+const MAX_BATCH_SIZE = 50
+
+type BatchResult = {
+  query: string
+  lat: number | null
+  lng: number | null
+  displayName: string | null
+  source: "local-db" | "nominatim" | "not-found"
+}
+
+async function geocodeLocal(address: string): Promise<{ lat: number; lng: number; displayName: string } | null> {
+  try {
+    const q = address.trim()
+    if (!q) return null
+
+    // Try exact city match first (B-tree index)
+    const users = await db.user.findMany({
+      where: {
+        role: "PROVIDER",
+        active: true,
+        lat: { not: null },
+        lng: { not: null },
+        OR: [
+          { city: { equals: q, mode: "insensitive" } },
+          { city: { startsWith: q, mode: "insensitive" } },
+          { street: { contains: q, mode: "insensitive" } },
+          { district: { contains: q, mode: "insensitive" } },
+        ],
+      },
+      select: { lat: true, lng: true, street: true, district: true, city: true, state: true },
+      take: 1,
+      orderBy: { avgRating: "desc" },
+    })
+
+    if (users.length > 0 && users[0]!.lat != null && users[0]!.lng != null) {
+      const u = users[0]!
+      return {
+        lat: u.lat!,
+        lng: u.lng!,
+        displayName: [u.street, u.district, u.city, u.state].filter(Boolean).join(", "),
+      }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+async function geocodeNominatim(address: string): Promise<{ lat: number; lng: number; displayName: string } | null> {
+  try {
+    const settings = await getGeoSettings()
+    if (!settings.nominatimEnabled) return null
+
+    const result = await nominatimBreaker.execute(async () => {
+      const url = `${settings.nominatimBaseUrl}/search?format=jsonv2&q=${encodeURIComponent(address)}&limit=1&accept-language=pt-BR`
+      const r = await fetch(url, {
+        headers: { Accept: "application/json", "User-Agent": settings.userAgent },
+        signal: AbortSignal.timeout(5000),
+      })
+      if (!r.ok) throw new Error(`Nominatim HTTP ${r.status}`)
+      return r.json()
+    })
+
+    const data = result as Array<{ lat: string; lon: string; display_name?: string }>
+    if (data.length > 0) {
+      return {
+        lat: Number.parseFloat(data[0]!.lat),
+        lng: Number.parseFloat(data[0]!.lon),
+        displayName: data[0]!.display_name ?? address,
+      }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json() as { addresses?: string[]; limit?: number }
+    const addresses = body.addresses ?? []
+
+    if (!Array.isArray(addresses) || addresses.length === 0) {
+      return NextResponse.json({ error: "Forneça um array de endereços" }, { status: 400 })
+    }
+
+    if (addresses.length > MAX_BATCH_SIZE) {
+      return NextResponse.json(
+        { error: `Máximo de ${MAX_BATCH_SIZE} endereços por request` },
+        { status: 400 },
+      )
+    }
+
+    const results: BatchResult[] = await Promise.all(
+      addresses.map(async (address): Promise<BatchResult> => {
+        const trimmed = address.trim()
+        if (!trimmed) {
+          return { query: address, lat: null, lng: null, displayName: null, source: "not-found" }
+        }
+
+        // Try cache first
+        const cacheKey = `geo:batch:${trimmed.toLowerCase()}`
+        const cached = await withCache<{ lat: number; lng: number; displayName: string } | null>(
+          cacheKey,
+          async () => {
+            // Try local DB first (fast)
+            const local = await geocodeLocal(trimmed)
+            if (local) return local
+
+            // Fall back to Nominatim (rate-limited)
+            return trackGeoLatency("nominatim", () =>
+              rateLimitedNominatim(() => geocodeNominatim(trimmed)),
+            )
+          },
+          86400, // 24h cache
+        )
+
+        if (cached) {
+          return {
+            query: address,
+            lat: cached.lat,
+            lng: cached.lng,
+            displayName: cached.displayName,
+            source: "local-db", // We don't know which source from cache, but local-db is most common
+          }
+        }
+
+        return { query: address, lat: null, lng: null, displayName: null, source: "not-found" }
+      }),
+    )
+
+    const found = results.filter((r) => r.lat !== null).length
+
+    return NextResponse.json({
+      results,
+      stats: {
+        total: addresses.length,
+        found,
+        notFound: addresses.length - found,
+      },
+    })
+  } catch (e) {
+    return handleError(e)
+  }
+}

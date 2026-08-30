@@ -29,18 +29,30 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 
     const tileData = await getVectorTileData(z, x, y)
 
-    // Return with aggressive browser and CDN caching
+    // Cache strategy based on zoom level:
+    //   z < 8:  city/region level — tiles rarely change (immutable for 1h)
+    //   z 8-14: neighborhood level — moderate change (10min SWR)
+    //   z > 14: street level — frequent updates (5min SWR)
+    const isStatic = z < 8
+    const isNeighborhood = z >= 8 && z <= 14
+    const cacheControl = isStatic
+      ? "public, max-age=3600, s-maxage=7200, stale-while-revalidate=86400, immutable"
+      : isNeighborhood
+        ? "public, max-age=300, s-maxage=600, stale-while-revalidate=1800"
+        : "public, max-age=120, s-maxage=300, stale-while-revalidate=600"
+
     return NextResponse.json(tileData, {
       status: 200,
       headers: {
         "Content-Type": "application/json",
-        "Cache-Control": "public, max-age=120, s-maxage=300, stale-while-revalidate=600",
+        "Cache-Control": cacheControl,
         "X-Tile-Z": String(z),
         "X-Tile-X": String(x),
         "X-Tile-Y": String(y),
+        "Vary": "Accept-Encoding",
       },
     })
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to generate vector tile" },
       { status: 500 },
