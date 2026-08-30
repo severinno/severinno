@@ -100,7 +100,7 @@ describe("ci.yml — sintaxe YAML + snapshot", () => {
     expect(parsed).toMatchSnapshot()
   })
 
-  it("estrutura mínima: os 7 jobs do pipeline (lint, typecheck, utf8-check, quality-gate, test, build, deploy)", () => {
+  it("estrutura mínima: os 8 jobs do pipeline (lint, typecheck, utf8-check, quality-gate, test, build, lighthouse, deploy)", () => {
     const jobs = Object.keys(parsed.jobs ?? {})
     expect(jobs).toEqual([
       "lint",
@@ -109,6 +109,7 @@ describe("ci.yml — sintaxe YAML + snapshot", () => {
       "quality-gate",
       "test",
       "build",
+      "lighthouse",
       "deploy",
     ])
   })

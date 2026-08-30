@@ -92,6 +92,38 @@ const ROUTE_LIMITS: RouteLimit[] = [
     max: 5,
     windowMs: DEFAULT_WINDOW,
   },
+  // Public search — prevent scraping / DoS (30 req/min per fingerprint)
+  {
+    pattern: "^/api/search$",
+    max: 30,
+    windowMs: DEFAULT_WINDOW,
+  },
+  {
+    pattern: "^/api/search/providers$",
+    max: 30,
+    windowMs: DEFAULT_WINDOW,
+  },
+  {
+    pattern: "^/api/providers$",
+    max: 30,
+    windowMs: DEFAULT_WINDOW,
+  },
+  // Geo endpoints — prevent geocoding abuse (20 req/min)
+  {
+    pattern: "^/api/geo/search$",
+    max: 20,
+    windowMs: DEFAULT_WINDOW,
+  },
+  {
+    pattern: "^/api/geo/reverse$",
+    max: 20,
+    windowMs: DEFAULT_WINDOW,
+  },
+  {
+    pattern: "^/api/geo/cep$",
+    max: 20,
+    windowMs: DEFAULT_WINDOW,
+  },
 ]
 
 // Compile patterns and apply env overrides
@@ -177,6 +209,25 @@ function getClientIp(request: NextRequest): string {
   return "unknown"
 }
 
+/** Minimal deterministic hash for Edge Runtime. */
+function simpleHash(s: string): string {
+  let hash = 0
+  for (let i = 0; i < s.length; i++) {
+    const char = s.charCodeAt(i)
+    hash = (hash << 5) - hash + char
+    hash |= 0
+  }
+  return Math.abs(hash).toString(36)
+}
+
+/** Composite fingerprint: IP + User-Agent hash (anti VPN-rotation). */
+function getCompositeFingerprint(request: NextRequest): string {
+  const ip = getClientIp(request)
+  const ua = request.headers.get("user-agent") ?? "no-ua"
+  const uaShort = ua.length > 100 ? ua.slice(0, 100) : ua
+  return `${ip}:${simpleHash(uaShort)}`
+}
+
 // ---------------------------------------------------------------------------
 // Rate limit check
 // ---------------------------------------------------------------------------
@@ -218,12 +269,12 @@ export async function checkRouteRateLimit(
   const routeLimit = findMatchingLimit(pathname)
   if (!routeLimit) return null
 
-  const ip = getClientIp(request)
+  const fingerprint = getCompositeFingerprint(request)
   const now = Date.now()
 
   // Namespace per route to avoid collisions between different endpoints
   const windowKey = Math.floor(now / routeLimit.windowMs) * routeLimit.windowMs
-  const storageKey = `route-ratelimit:${pathname}:${ip}:${windowKey}`
+  const storageKey = `route-ratelimit:${pathname}:${fingerprint}:${windowKey}`
 
   // Try Upstash first
   const client = getUpstashClient()

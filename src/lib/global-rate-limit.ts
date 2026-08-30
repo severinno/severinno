@@ -195,20 +195,34 @@ function simpleHash(s: string): string {
   return Math.abs(hash).toString(36)
 }
 
+/**
+ * Composite fingerprint: IP + User-Agent hash.
+ *
+ * Makes VPN-rotation attacks harder — an attacker rotating IPs but
+ * keeping the same browser UA will still be rate-limited.
+ * In production behind a proxy, the IP is always from x-forwarded-for.
+ */
+function getCompositeFingerprint(request: Request): string {
+  const ip = getClientIp(request)
+  const ua = request.headers.get("user-agent") ?? "no-ua"
+  // Only use the first 100 chars of UA to avoid fingerprint explosion
+  const uaShort = ua.length > 100 ? ua.slice(0, 100) : ua
+  const uaHash = simpleHash(uaShort)
+  return `${ip}:${uaHash}`
+}
+
 // ---------------------------------------------------------------------------
 // Upstash sliding window (INCR + EXPIRE — REST-friendly)
 // ---------------------------------------------------------------------------
 
 /**
- * Check rate limit against Upstash Redis using INCR + EXPIRE.
+ * Generate a composite fingerprint for rate limiting.
  *
- * Uses a simple counter with TTL approach (not sorted sets) because:
- *   1. Upstash Redis is REST-based — sorted set operations are more expensive
- *   2. For global rate limiting, a fixed window with EXPIRE is sufficient
- *      (the middleware smooths out spikes — precision comes from route handlers)
- *   3. INCR + EXPIRE is more reliable over REST (atomic, idempotent)
+ * Combines IP + User-Agent hash to make rate limit evasion harder.
+ * Attackers rotating VPNs often keep the same UA pattern; this catches
+ * VPN-rotation attacks that keep the same browser fingerprint.
  *
- * Key format: `ratelimit:global:{window_start_ms}:{route}:{ip}`
+ * Key format: `ratelimit:global:{window_start_ms}:{route}:{fingerprint}`
  * The window_start_ms in the key ensures a new window starts fresh.
  *
  * Returns true when the request is allowed, false when blocked.
@@ -284,7 +298,8 @@ export async function checkGlobalRateLimit(
 
   // Route-based key normalization
   const route = routePrefix ?? extractRoutePrefix(request.url)
-  const key = `ratelimit:global:${route}:${ip}`
+  const fingerprint = getCompositeFingerprint(request)
+  const key = `ratelimit:global:${route}:${fingerprint}`
   const now = Date.now()
 
   // ── Try Upstash Redis (distributed) ──────────────────────────────────
