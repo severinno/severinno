@@ -19,15 +19,35 @@
 
 import { NextResponse } from "next/server"
 
+/** Allowed origins for CORS (configurable via env) */
+const ALLOWED_ORIGINS = [
+  process.env.NEXT_PUBLIC_APP_URL,
+  "http://localhost:3000",
+  "http://localhost:3001",
+].filter(Boolean) as string[]
+
+/** Resolve the CORS origin for a given request origin */
+function resolveCorsOrigin(requestOrigin: string | null): string {
+  if (!requestOrigin) return ALLOWED_ORIGINS[0] || ""
+  if (ALLOWED_ORIGINS.includes(requestOrigin)) return requestOrigin
+  // Allow any *.vercel.app in dev/staging
+  if (requestOrigin.endsWith(".vercel.app") && process.env.NODE_ENV !== "production") {
+    return requestOrigin
+  }
+  return ""
+}
+
 /** Standard success response with CORS for edge runtime */
-export function edgeResponse<T>(data: T, status = 200): NextResponse {
+export function edgeResponse<T>(data: T, status = 200, requestOrigin?: string | null): NextResponse {
+  const origin = resolveCorsOrigin(requestOrigin ?? null)
   return NextResponse.json(data, {
     status,
     headers: {
-      "Access-Control-Allow-Origin": "*",
+      ...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
       "Access-Control-Allow-Methods": "GET, OPTIONS",
       "Access-Control-Max-Age": "86400",
       "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+      "Vary": "Accept-Encoding, Origin",
     },
   })
 }
@@ -38,13 +58,15 @@ export function edgeError(message: string, status = 500): NextResponse {
 }
 
 /** CORS preflight handler */
-export function edgeCors(): NextResponse {
+export function edgeCors(requestOrigin?: string | null): NextResponse {
+  const origin = resolveCorsOrigin(requestOrigin ?? null)
   return new NextResponse(null, {
     status: 204,
     headers: {
-      "Access-Control-Allow-Origin": "*",
+      ...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
       "Access-Control-Allow-Methods": "GET, OPTIONS",
       "Access-Control-Max-Age": "86400",
+      "Vary": "Origin",
     },
   })
 }

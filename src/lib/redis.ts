@@ -33,6 +33,8 @@ import logger from "@/lib/logger"
 // ── Configuration ─────────────────────────────────────────────────────────
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379"
+const REDIS_PASSWORD = process.env.REDIS_PASSWORD || undefined
+const REDIS_TLS = process.env.REDIS_TLS === "true"
 const REDIS_CLUSTER_MODE = process.env.REDIS_CLUSTER_MODE === "true"
 const REDIS_CLUSTER_NODES = process.env.REDIS_CLUSTER_NODES || "localhost:6379"
 
@@ -86,6 +88,8 @@ function createClient(mode: "cluster" | "standalone"): Cluster | Redis {
       enableOfflineQueue: true,
       scaleReads: "master",
       redisOptions: {
+        password: REDIS_PASSWORD,
+        tls: REDIS_TLS ? { rejectUnauthorized: process.env.NODE_ENV === "production" } : undefined,
         maxRetriesPerRequest: 2,
         lazyConnect: true,
         connectTimeout: 10_000,
@@ -95,6 +99,8 @@ function createClient(mode: "cluster" | "standalone"): Cluster | Redis {
 
   // ── Standalone ──────────────────────────────────────────────────────
   return new Redis(REDIS_URL, {
+    password: REDIS_PASSWORD,
+    tls: REDIS_TLS ? { rejectUnauthorized: process.env.NODE_ENV === "production" } : undefined,
     maxRetriesPerRequest: 3,
     retryStrategy(times) {
       if (times > 3) return null

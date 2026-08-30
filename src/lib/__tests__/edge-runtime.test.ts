@@ -26,7 +26,8 @@ describe("edge-runtime", () => {
 
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toContain("application/json");
-      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+      // CORS origin is resolved from whitelist (localhost:3000 in test)
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBeTruthy();
       expect(response.headers.get("Cache-Control")).toContain("s-maxage=60");
 
       const body = await response.json();
@@ -64,7 +65,8 @@ describe("edge-runtime", () => {
       const response = edgeCors();
 
       expect(response.status).toBe(204);
-      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+      // CORS origin resolved from whitelist
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBeTruthy();
       expect(response.headers.get("Access-Control-Allow-Methods")).toBe("GET, OPTIONS");
       expect(response.headers.get("Access-Control-Max-Age")).toBe("86400");
     });

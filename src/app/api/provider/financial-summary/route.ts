@@ -55,6 +55,7 @@ export async function GET() {
         service: { select: { title: true } },
         client: { select: { name: true } },
       },
+      take: 100,
     })
 
     const totalGross = completedBookings.reduce((sum, b) => sum + b.amount, 0)

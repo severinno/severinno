@@ -1,5 +1,6 @@
 import "server-only"
 import logger from "./logger"
+import { safeFetch } from "./safe-fetch"
 
 const REALTIME_URL = process.env.REALTIME_URL ?? "http://localhost:3003"
 
@@ -8,10 +9,12 @@ export async function emitRealtime<T = Record<string, unknown>>(
   data: T,
 ): Promise<void> {
   try {
-    await fetch(`${REALTIME_URL}/emit`, {
+    await safeFetch(`${REALTIME_URL}/emit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ event, data }),
+      timeoutMs: 5_000,
+      label: "realtime",
     })
   } catch (err) {
     logger.warn({ err, event }, "realtime emit failed")

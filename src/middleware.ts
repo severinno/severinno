@@ -197,11 +197,27 @@ export async function middleware(request: NextRequest) {
 
   // --- Security headers (applied to ALL responses) ---
   response.headers.set("X-DNS-Prefetch-Control", "on")
-  response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+  response.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
   response.headers.set("X-Content-Type-Options", "nosniff")
   response.headers.set("X-Frame-Options", "DENY")
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
   response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)")
+  response.headers.set("Vary", "Accept-Encoding")
+
+  // Content-Security-Policy (production-grade)
+  const cspDirectives = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com https://vercel-insights.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "img-src 'self' data: blob: https://*.vercel.app https://*.s3.amazonaws.com https://maps.googleapis.com https://*.tile.openstreetmap.org",
+    "font-src 'self' https://fonts.gstatic.com",
+    "connect-src 'self' https://*.vercel.app wss://*.vercel.app https://*.upstash.io https://sentry.io https://*.ingest.sentry.io",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "upgrade-insecure-requests",
+  ].join("; ")
+  response.headers.set("Content-Security-Policy", cspDirectives)
 
   // --- CORS headers (API routes) ---
   if (pathname.startsWith("/api/")) {
@@ -211,6 +227,27 @@ export async function middleware(request: NextRequest) {
     // Handle preflight (OPTIONS) requests
     if (request.method === "OPTIONS") {
       return new NextResponse(null, { status: 204, headers: response.headers })
+    }
+
+    // --- Request body size limits ---
+    const contentLength = request.headers.get("content-length")
+    if (contentLength && ["POST", "PUT", "PATCH"].includes(request.method)) {
+      const sizeBytes = Number(contentLength)
+      const isUpload = pathname.includes("/upload") || pathname.includes("/avatar")
+      const isWebhook = pathname.startsWith("/api/webhooks/")
+      const isAuth = pathname.startsWith("/api/auth/")
+
+      let maxSize = 1_048_576 // 1MB default
+      if (isUpload) maxSize = 10_485_760 // 10MB for uploads
+      else if (isWebhook) maxSize = 2_097_152 // 2MB for webhooks
+      else if (isAuth) maxSize = 16_384 // 16KB for auth
+
+      if (sizeBytes > maxSize) {
+        return NextResponse.json(
+          { error: `Payload excede o limite de ${Math.round(maxSize / 1024)}KB` },
+          { status: 413 },
+        )
+      }
     }
   }
 
@@ -291,7 +328,13 @@ export async function middleware(request: NextRequest) {
   if (!isApi && !isProtectedPage) return response
 
   // --- Public API routes pass through ---
-  if (isApi && isPublicApi(pathname)) return response
+  if (isApi && isPublicApi(pathname)) {
+    // Add Cache-Control for public read-only routes (reduces DB load)
+    if (request.method === "GET" && !pathname.startsWith("/api/auth")) {
+      response.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300")
+    }
+    return response
+  }
 
   // --- Cron routes use a shared secret instead of session ---
   if (pathname.startsWith("/api/cron/")) {
