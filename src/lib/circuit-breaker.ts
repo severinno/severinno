@@ -31,6 +31,8 @@ export interface CircuitBreakerOptions {
   cooldownMs?: number
   /** Time in ms to wait for the half-open test request. Default: 10s */
   testTimeoutMs?: number
+  /** When true, circuit breaker is bypassed — all requests go through directly. */
+  disabled?: boolean
 }
 
 export interface CircuitBreakerStats {
@@ -51,6 +53,7 @@ export function createCircuitBreaker(
   const failureThreshold = opts.failureThreshold ?? 3
   const cooldownMs = opts.cooldownMs ?? 60_000
   const _testTimeoutMs = opts.testTimeoutMs ?? 10_000
+  const disabled = opts.disabled ?? false
 
   let state: CircuitState = "closed"
   let failures = 0
@@ -69,6 +72,7 @@ export function createCircuitBreaker(
   }
 
   async function execute<T>(fn: () => Promise<T>): Promise<T> {
+    if (disabled) return fn() // bypass: pass through directly
     if (isOpen()) {
       throw new CircuitOpenError(name, cooldownMs)
     }

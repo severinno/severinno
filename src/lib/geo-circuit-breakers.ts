@@ -15,6 +15,7 @@
  */
 
 import { createCircuitBreaker } from "./circuit-breaker"
+import { isEnabled } from "./feature-flags"
 
 // ---------------------------------------------------------------------------
 // Nominatim (forward + reverse geocoding)
@@ -29,7 +30,8 @@ import { createCircuitBreaker } from "./circuit-breaker"
  */
 export const nominatimBreaker = createCircuitBreaker("nominatim", {
   failureThreshold: 3,
-  cooldownMs: 60_000, // 1 min — Nominatim usually recovers fast
+  cooldownMs: 60_000,
+  disabled: !isEnabled("circuit-breaker-nominatim"),
 })
 
 // ---------------------------------------------------------------------------
@@ -46,6 +48,7 @@ export const nominatimBreaker = createCircuitBreaker("nominatim", {
 export const viacepBreaker = createCircuitBreaker("viacep", {
   failureThreshold: 3,
   cooldownMs: 60_000,
+  disabled: !isEnabled("circuit-breaker-viacep"),
 })
 
 // ---------------------------------------------------------------------------
@@ -61,7 +64,8 @@ export const viacepBreaker = createCircuitBreaker("viacep", {
  */
 export const osrmBreaker = createCircuitBreaker("osrm", {
   failureThreshold: 3,
-  cooldownMs: 30_000, // 30s — OSRM self-hosted should recover quickly
+  cooldownMs: 30_000,
+  disabled: !isEnabled("circuit-breaker-osrm"),
 })
 
 /**
@@ -73,4 +77,5 @@ export const osrmBreaker = createCircuitBreaker("osrm", {
 export const osrmTableBreaker = createCircuitBreaker("osrm-table", {
   failureThreshold: 3,
   cooldownMs: 30_000,
+  disabled: !isEnabled("circuit-breaker-osrm"),
 })
