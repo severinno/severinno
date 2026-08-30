@@ -19,28 +19,13 @@
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
-  "screenshots": [
-    {
-      "src": "/screenshots/home.png",
-      "sizes": "1080x1920",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Página inicial da Severinno"
-    },
-    {
-      "src": "/screenshots/search.png",
-      "sizes": "1080x1920",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Busca de prestadores"
-    }
-  ],
+  "screenshots": [],
   "shortcuts": [
     {
       "name": "Buscar prestadores",
       "short_name": "Buscar",
       "description": "Encontre prestadores de serviço perto de você",
-      "url": "/search?utm_source=pwa_shortcut",
+      "url": "/busca?utm_source=pwa_shortcut",
       "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
