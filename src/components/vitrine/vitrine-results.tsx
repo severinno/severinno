@@ -33,11 +33,15 @@ import Filters, { DEFAULT_FILTERS, type FiltersState } from "./filters"
 import ProviderCard, { ProviderCardSkeleton } from "./provider-card"
 
 // MapLibre is client-only — dynamic import with ssr:false to be safe
-const ProvidersMap = dynamic(() => import("./providers-map"), {
+const ProvidersMap = dynamic(() => import("./enhanced-providers-map"), {
   ssr: false,
   loading: () => (
-    <div className="bg-muted flex h-[400px] items-center justify-center rounded-xl border">
-      <Loader2 className="text-muted-foreground size-6 animate-spin" />
+    <div className="bg-muted relative flex h-[400px] items-center justify-center overflow-hidden rounded-xl border">
+      <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-gray-100 to-gray-200" />
+      <div className="relative z-10 flex flex-col items-center gap-2">
+        <Loader2 className="text-muted-foreground size-6 animate-spin" />
+        <span className="text-muted-foreground text-xs">Carregando mapa...</span>
+      </div>
     </div>
   ),
 })
