@@ -14,10 +14,11 @@ const nextConfig: NextConfig = {
   generateEtags: true,
   compress: true,
 
-  // Skip TypeScript type-checking during build when SKIP_TYPESCRIPT_CHECK=true
-  // (used in Docker builds where type-checking is very slow)
+  // Skip TypeScript type-checking during build ONLY in Docker (CI always runs tsc --noEmit separately).
+  // ⚠️ NEVER set this to true in CI/CD — it masks type errors that break production.
   typescript: {
-    ignoreBuildErrors: process.env.SKIP_TYPESCRIPT_CHECK === "true",
+    ignoreBuildErrors:
+      process.env.DOCKER_BUILD === "true" && process.env.SKIP_TYPESCRIPT_CHECK === "true",
   },
 
   // Static security headers (CSP is handled by middleware)

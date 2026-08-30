@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         )
     }
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json(
       { success: false, error: "Escrow operation failed" },
       { status: 500 },

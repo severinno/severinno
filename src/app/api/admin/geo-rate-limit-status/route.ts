@@ -15,8 +15,9 @@
  * fast and safe for the admin dashboard.
  */
 
+import { handleError } from "@/lib/api-server"
 import { NextResponse } from "next/server"
-import { requireUser } from "@/lib/auth"
+import { requireRole } from "@/lib/auth"
 import { getRateLimitDiagnostics } from "@/lib/geo-rate-limit"
 
 // ---------------------------------------------------------------------------
@@ -25,16 +26,13 @@ import { getRateLimitDiagnostics } from "@/lib/geo-rate-limit"
 
 export async function GET() {
   try {
-    const session = await requireUser()
-    if (session.role !== "ADMIN") {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
-    }
+    await requireRole("ADMIN")
 
     const diagnostics = getRateLimitDiagnostics()
 
     return NextResponse.json(diagnostics)
-  } catch {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
+  } catch (e) {
+    return handleError(e)
   }
 }
 

@@ -667,7 +667,7 @@ describe("DELETE /api/admin/users/[id] — soft delete", () => {
 
 describe("POST /api/admin/users/[id]/lytex-account — auth", () => {
   it("returns 401 when auth fails", async () => {
-    vi.mocked(requireUser).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
+    vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
     const req = buildJsonRequest("http://localhost:3000/api/admin/users/u-1/lytex-account", {
       lytexRecipientId: "rec-1",
@@ -678,7 +678,7 @@ describe("POST /api/admin/users/[id]/lytex-account — auth", () => {
   })
 
   it("returns 403 when the session user is not an admin", async () => {
-    vi.mocked(requireUser).mockResolvedValueOnce({ userId: "u-1", role: "PROVIDER" } as any)
+    vi.mocked(requireRole).mockRejectedValueOnce(Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" }))
 
     const req = buildJsonRequest("http://localhost:3000/api/admin/users/u-1/lytex-account", {
       lytexRecipientId: "rec-1",
@@ -687,7 +687,7 @@ describe("POST /api/admin/users/[id]/lytex-account — auth", () => {
 
     expect(res.status).toBe(403)
     const body = await res.json()
-    expect(body.error).toBe("Acesso restrito a administradores")
+    expect(body.error).toBe("FORBIDDEN")
   })
 })
 
@@ -745,7 +745,7 @@ describe("POST /api/admin/users/[id]/lytex-account — link sub-account", () => 
 
 describe("DELETE /api/admin/users/[id]/lytex-account — unlink sub-account", () => {
   it("returns 403 when the session user is not an admin", async () => {
-    vi.mocked(requireUser).mockResolvedValueOnce({ userId: "u-1", role: "CLIENT" } as any)
+    vi.mocked(requireRole).mockRejectedValueOnce(Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" }))
 
     const res = await lytexDELETE(
       buildRequest("http://localhost:3000/api/admin/users/u-1/lytex-account"),

@@ -3,6 +3,12 @@ import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-te
 
 // ── Hoisted mocks ──────────────────────────────────────────────────────────
 
+vi.mock("@/lib/redis", () => ({
+  cacheGet: vi.fn().mockResolvedValue(null),
+  cacheSet: vi.fn().mockResolvedValue(undefined),
+  cacheInvalidate: vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock("@/lib/rate-limit", () => ({
   assertRateLimit: vi.fn().mockResolvedValue(undefined),
   RATE_LIMITS: {

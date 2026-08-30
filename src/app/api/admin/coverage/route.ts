@@ -21,8 +21,9 @@
  * ```
  */
 
+import { handleError } from "@/lib/api-server"
 import { NextResponse } from "next/server"
-import { requireUser } from "@/lib/auth"
+import { requireRole } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { haversineKm } from "@/lib/geo-server"
 
@@ -71,10 +72,7 @@ const GAP_THRESHOLD = 2
 
 export async function GET() {
   try {
-    const session = await requireUser()
-    if (session.role !== "ADMIN") {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
-    }
+    await requireRole("ADMIN")
 
     // Fetch all active, verified providers with location data
     const users = await db.user.findMany({
@@ -133,8 +131,8 @@ export async function GET() {
       grid,
       bounds,
     })
-  } catch {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
+  } catch (e) {
+    return handleError(e)
   }
 }
 

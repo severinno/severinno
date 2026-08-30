@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { requireUser } from "@/lib/auth"
-import { forbidden, handleError } from "@/lib/api-server"
+import { requireRole } from "@/lib/auth"
+import { handleError } from "@/lib/api-server"
 
 export type BusinessMetricsResponse = {
   gmv: number // Gross Merchandise Volume
@@ -26,10 +26,7 @@ export type BusinessMetricsResponse = {
  */
 export async function GET() {
   try {
-    const session = await requireUser()
-    if (session.role !== "ADMIN") {
-      throw forbidden("Acesso restrito a administradores da plataforma")
-    }
+    await requireRole("ADMIN")
 
     // 1. All Bookings summary
     const bookings = await db.booking.findMany({

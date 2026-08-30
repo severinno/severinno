@@ -18,8 +18,9 @@
  * the admin dashboard.
  */
 
+import { handleError } from "@/lib/api-server"
 import { NextResponse } from "next/server"
-import { requireUser } from "@/lib/auth"
+import { requireRole } from "@/lib/auth"
 import { getGlobalRateLimitDiagnostics } from "@/lib/global-rate-limit"
 
 // ---------------------------------------------------------------------------
@@ -28,16 +29,13 @@ import { getGlobalRateLimitDiagnostics } from "@/lib/global-rate-limit"
 
 export async function GET() {
   try {
-    const session = await requireUser()
-    if (session.role !== "ADMIN") {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
-    }
+    await requireRole("ADMIN")
 
     const diagnostics = getGlobalRateLimitDiagnostics()
 
     return NextResponse.json(diagnostics)
-  } catch {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
+  } catch (e) {
+    return handleError(e)
   }
 }
 

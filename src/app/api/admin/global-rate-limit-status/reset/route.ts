@@ -16,8 +16,9 @@
  * Requires admin authentication.
  */
 
+import { handleError } from "@/lib/api-server"
 import { NextResponse } from "next/server"
-import { requireUser } from "@/lib/auth"
+import { requireRole } from "@/lib/auth"
 import { getGlobalRateLimitDiagnostics, resetGlobalRateLimiter } from "@/lib/global-rate-limit"
 
 // ---------------------------------------------------------------------------
@@ -26,10 +27,7 @@ import { getGlobalRateLimitDiagnostics, resetGlobalRateLimiter } from "@/lib/glo
 
 export async function POST() {
   try {
-    const session = await requireUser()
-    if (session.role !== "ADMIN") {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
-    }
+    await requireRole("ADMIN")
 
     // Snapshot before reset for the response
     const before = getGlobalRateLimitDiagnostics()
@@ -42,7 +40,7 @@ export async function POST() {
       before,
       timestamp: Date.now(),
     })
-  } catch {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
+  } catch (e) {
+    return handleError(e)
   }
 }

@@ -243,13 +243,3 @@ export async function syncEntitySearch(
     "upsert",
   )
 }
-
-/** @deprecated Use syncEntitySearch("category", entity) instead. */
-export const syncCategorySearch = (entity: { id: string }) =>
-  syncEntitySearch("category", entity)
-/** @deprecated Use syncEntitySearch("service", entity) instead. */
-export const syncServiceSearch = (entity: { id: string }) =>
-  syncEntitySearch("service", entity)
-/** @deprecated Use syncEntitySearch("provider", entity) instead. */
-export const syncProviderSearch = (entity: { id: string }) =>
-  syncEntitySearch("provider", entity)

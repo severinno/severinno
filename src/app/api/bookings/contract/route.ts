@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
       success: true,
       data: contract,
     })
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json(
       {
         success: false,

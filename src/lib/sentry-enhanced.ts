@@ -9,8 +9,6 @@
 import "server-only"
 import logger from "./logger"
 
-type Severity = "info" | "warn" | "error" | "fatal"
-
 const isProd = process.env.NODE_ENV === "production"
 
 let sentryModule: typeof import("@sentry/nextjs") | null | undefined = undefined

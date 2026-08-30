@@ -21,10 +21,10 @@ const { mockRequireUser } = vi.hoisted(() => ({
 }))
 
 vi.mock("@/lib/auth", () => ({
-  requireUser: mockRequireUser,
+  requireRole: mockRequireUser,
 }))
 
-import { setupAdmin, setupNonAdmin, setupUnauthenticated } from "@/lib/__tests__/helpers/auth-mock"
+import { setupAdmin, setupUnauthenticated } from "@/lib/__tests__/helpers/auth-mock"
 
 // ── Mock geo-metrics ───────────────────────────────────────────────────────
 
@@ -138,11 +138,9 @@ describe("GET /api/admin/geo-metrics", () => {
     })
 
     it("retorna 403 para non-admin", async () => {
-      setupNonAdmin(mockRequireUser, "USER")
+      mockRequireUser.mockRejectedValueOnce(Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" }))
       const res = await GET()
       expect(res.status).toBe(403)
-      const body = await res.json()
-      expect(body.error).toBe("Não autorizado")
     })
 
     it("retorna 401 quando requireUser lança erro", async () => {

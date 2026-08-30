@@ -7,16 +7,62 @@ import { handleError, unauthorized } from "@/lib/api-server"
 import { parseBody } from "@/lib/api-middleware"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
+import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/redis"
+import logger from "@/lib/logger"
+
+// ── Account lockout (per-email brute force protection) ─────────────────────
+// 5 failed attempts → lock for 15 minutes. Redis-backed, degrades gracefully.
+const MAX_FAILED_ATTEMPTS = 5
+const LOCKOUT_SECONDS = 15 * 60 // 15 minutes
+const LOCKOUT_PREFIX = "auth:lockout:"
+
+async function isLockedOut(email: string): Promise<boolean> {
+  const lockout = await cacheGet<{ lockedUntil: number }>(`${LOCKOUT_PREFIX}${email}`)
+  if (!lockout) return false
+  if (Date.now() > lockout.lockedUntil) {
+    await cacheInvalidate(`${LOCKOUT_PREFIX}${email}`)
+    return false
+  }
+  return true
+}
+
+async function recordFailedAttempt(email: string): Promise<void> {
+  const key = `${LOCKOUT_PREFIX}${email}`
+  const existing = await cacheGet<{ count: number; lockedUntil?: number }>(key)
+  const count = (existing?.count ?? 0) + 1
+
+  if (count >= MAX_FAILED_ATTEMPTS) {
+    await cacheSet(key, {
+      count,
+      lockedUntil: Date.now() + LOCKOUT_SECONDS * 1000,
+    }, LOCKOUT_SECONDS)
+    logger.warn({ email }, "Account locked after too many failed attempts")
+  } else {
+    await cacheSet(key, { count }, LOCKOUT_SECONDS)
+  }
+}
+
+async function clearFailedAttempts(email: string): Promise<void> {
+  await cacheInvalidate(`${LOCKOUT_PREFIX}${email}`)
+}
 
 export async function POST(request: Request) {
   try {
     await assertRateLimit(request, RATE_LIMITS.login)
     const data = await parseBody(request, loginSchema)
 
+    const email = data.email.toLowerCase()
+
+    // 🛡️ Account lockout check
+    if (await isLockedOut(email)) {
+      throw unauthorized("Conta temporariamente bloqueada. Tente novamente em 15 minutos.")
+    }
+
     const user = await db.user.findUnique({
-      where: { email: data.email.toLowerCase() },
+      where: { email },
     })
     if (!user) {
+      // Use generic message to prevent email enumeration
       throw unauthorized("E-mail ou senha inválidos")
     }
     // 🛡️ Contas demo (dev/staging only): mesmo que o usuário exista no banco
@@ -31,8 +77,12 @@ export async function POST(request: Request) {
     }
     const ok = verifyPassword(data.password, user.passwordHash)
     if (!ok) {
+      await recordFailedAttempt(email)
       throw unauthorized("E-mail ou senha inválidos")
     }
+
+    // 🛡️ Login successful — clear lockout counter
+    await clearFailedAttempts(email)
 
     await createSession(user.id, user.role as "CLIENT" | "PROVIDER" | "ADMIN")
 

@@ -56,7 +56,7 @@
  */
 
 import { NextResponse } from "next/server"
-import { requireUser } from "@/lib/auth"
+import { requireRole } from "@/lib/auth"
 import { loadPersistedSnapshots } from "@/lib/geo-metrics-persist"
 import { SERVICE_LABELS, type GeoServiceName } from "@/lib/geo-metrics"
 import { handleError } from "@/lib/api-server"
@@ -136,10 +136,7 @@ export const dynamic = "force-dynamic"
 
 export async function GET(request: Request) {
   try {
-    const session = await requireUser()
-    if (session.role !== "ADMIN") {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
-    }
+    await requireRole("ADMIN")
 
     const url = new URL(request.url)
     const now = Date.now()

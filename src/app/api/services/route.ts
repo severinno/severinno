@@ -4,56 +4,41 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { serviceSchema } from "@/lib/validators"
 import {
-  badRequest,
   forbidden,
   handleError,
-  syncServiceSearch,
+  syncEntitySearch,
   cacheControlPublic,
 } from "@/lib/api-server"
 import { withCache, cacheInvalidate } from "@/lib/redis"
-import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
-// Public: list services, optionally filtered by providerId and/or categoryId
+// GET: list services (with optional filtering)
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const providerId = searchParams.get("providerId") || undefined
-    const categoryId = searchParams.get("categoryId") || undefined
-    const q = searchParams.get("q")?.trim() || undefined
+    const categoryId = searchParams.get("categoryId")
+    const providerId = searchParams.get("providerId")
 
-    const cacheKey = `services:${providerId ?? "all"}:${categoryId ?? "all"}:${q ?? ""}`
-    const services = await withCache(
-      cacheKey,
-      async () => {
-        return db.service.findMany({
-          where: {
-            active: true,
-            ...(providerId ? { providerId } : {}),
-            ...(categoryId ? { categoryId } : {}),
-            ...(q
-              ? {
-                  OR: [{ title: { contains: q } }, { description: { contains: q } }],
-                }
-              : {}),
-          },
-          include: {
-            category: { select: { id: true, name: true, slug: true, icon: true } },
-            provider: {
-              select: {
-                id: true,
-                name: true,
-                avatarUrl: true,
-                city: true,
-                state: true,
-                verified: true,
-              },
-            },
-          },
-          orderBy: { createdAt: "desc" },
-        })
-      },
-      30,
-    )
+    const where: Record<string, unknown> = { active: true }
+    if (categoryId) where.categoryId = categoryId
+    if (providerId) where.providerId = providerId
+
+    const q = searchParams.get("q")
+    if (q) {
+      where.OR = [
+        { title: { contains: q } },
+        { description: { contains: q } },
+      ]
+    }
+
+    const cacheKey = `services:${JSON.stringify(where)}`
+    const services = await withCache(cacheKey, async () => {
+      return db.service.findMany({
+        where,
+        include: { category: { select: { id: true, name: true, slug: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+      })
+    }, 30)
 
     return cacheControlPublic(NextResponse.json(services), 30, 120)
   } catch (e) {
@@ -61,30 +46,18 @@ export async function GET(request: Request) {
   }
 }
 
-// PROVIDER or ADMIN: create a service
+// POST: create a new service (provider only)
 export async function POST(request: Request) {
   try {
-    await assertRateLimit(request, RATE_LIMITS.general)
     const session = await requireUser()
-    if (session.role !== "PROVIDER" && session.role !== "ADMIN") {
-      throw forbidden("Apenas prestadores podem cadastrar serviços")
-    }
+    if (session.role !== "PROVIDER") throw forbidden("Only providers can create services")
+
     const body = await request.json()
     const data = serviceSchema.parse(body)
 
-    // Validate category exists
-    const category = await db.category.findUnique({
-      where: { id: data.categoryId },
-      select: { id: true },
-    })
-    if (!category) throw badRequest("Categoria inválida")
-
-    // providerId is always the current user (admins act on behalf via separate admin route)
-    const providerId = session.userId
-
     const created = await db.service.create({
       data: {
-        providerId,
+        providerId: session.userId,
         categoryId: data.categoryId,
         title: data.title,
         description: data.description,
@@ -96,7 +69,7 @@ export async function POST(request: Request) {
       include: { category: true },
     })
     // Queue search reindex (non-critical — don't fail the request)
-    syncServiceSearch(created).catch((err) => logger.warn({ err }, "search index sync failed"))
+    syncEntitySearch("service", created).catch((err) => logger.warn({ err }, "search index sync failed"))
 
     // Invalidate service list cache so new services appear immediately
     cacheInvalidate("services:*").catch((err) => logger.warn({ err }, "search index sync failed"))

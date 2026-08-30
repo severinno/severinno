@@ -11,8 +11,9 @@
  * Requires admin authentication.
  */
 
+
 import { NextResponse } from "next/server"
-import { requireUser } from "@/lib/auth"
+import { requireRole } from "@/lib/auth"
 import { getCacheStats, getMemoryCacheDiagnostics, getClient, isRedisAvailable } from "@/lib/redis"
 import { getGeoMetrics, SERVICE_LABELS, type GeoServiceName } from "@/lib/geo-metrics"
 import {
@@ -21,6 +22,7 @@ import {
   getTopReverses,
   getQueryLogDiagnostics,
 } from "@/lib/geo-query-log"
+import { handleError } from "@/lib/api-server"
 import { getWarmConfig } from "@/lib/geo-cache-warm"
 
 // ---------------------------------------------------------------------------
@@ -29,10 +31,7 @@ import { getWarmConfig } from "@/lib/geo-cache-warm"
 
 export async function GET() {
   try {
-    const session = await requireUser()
-    if (session.role !== "ADMIN") {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
-    }
+    await requireRole("ADMIN")
 
     const cacheStats = getCacheStats()
     const memoryDiag = getMemoryCacheDiagnostics()
@@ -80,7 +79,7 @@ export async function GET() {
                 (r as PromiseFulfilledResult<{ key: string; ttlSeconds: number | null }>).value,
             )
         }
-      } catch {
+      } catch (e) {
         // Redis TTL read failed — skip
       }
     }
@@ -115,8 +114,8 @@ export async function GET() {
       },
       timestamp: Date.now(),
     })
-  } catch {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
+  } catch (_e) {
+    return handleError(_e)
   }
 }
 
