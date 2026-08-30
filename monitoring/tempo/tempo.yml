@@ -5,37 +5,6 @@
 server:
   http_listen_port: 3200
 
-# ── Distributor (receives traces) ─────────────────────────────────────────
-distributor:
-  receivers:
-    otlp:
-      protocols:
-        grpc:
-          endpoint: "0.0.0.0:4317"
-        http:
-          endpoint: "0.0.0.0:4318"
-
-# ── Ingester (processes traces) ───────────────────────────────────────────
-ingester:
-  trace_idle_period: 10s
-  max_block_duration: 5m
-
-# ── Compactor (consolidates blocks) ───────────────────────────────────────
-compactor:
-  compaction:
-    block_retention: 720h # 30 days
-    compacted_block_retention: 24h
-
-# ── Storage (local filesystem) ────────────────────────────────────────────
-storage:
-  trace:
-    backend: local
-    local:
-      path: /var/tempo/traces
-    block:
-      max_block_duration: 5m
-
-# ── Metrics Generator (optional) ──────────────────────────────────────────
 metrics_generator:
   registry:
     external_labels:
@@ -50,6 +19,13 @@ metrics_generator:
     kvstore:
       store: inmemory
 
-# ── Query Frontend ────────────────────────────────────────────────────────
-query_frontend:
-  max_retry_attempts: 2
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graph, span-metrics]
