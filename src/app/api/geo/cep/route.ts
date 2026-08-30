@@ -1,29 +1,29 @@
-import { NextResponse } from "next/server"
-import { ZodError } from "zod"
+/**
+ * GET /api/geo/cep?cep=30130-000
+ *
+ * Geocode a Brazilian CEP via ViaCEP.
+ * Returns: { cep, street, district, city, state }
+ *
+ * Uses withGeoMiddleware for unified rate limiting, caching, and error handling.
+ */
 import { geocodeCEP } from "@/lib/geo"
-import { cacheControlPublic, handleError } from "@/lib/api-server"
-import { assertGeoRateLimit } from "@/lib/geo-rate-limit"
+import { withGeoMiddleware } from "@/lib/geo-middleware"
 import { geocodeCepSchema } from "@/lib/validators"
 
-// Public: geocode a Brazilian CEP via ViaCEP.
-// Returns a flat `CepResult` (UI: `apiGet<CepResult>("/api/geo/cep", { cep })`).
-// Cached internally by geocodeCEP via withCachedGeo (Redis, 7d TTL).
-export async function GET(request: Request) {
-  try {
-    await assertGeoRateLimit(request, "cep")
-    const { searchParams } = new URL(request.url)
-    const rawCep = searchParams.get("cep") || ""
-    const { cep: clean } = geocodeCepSchema.parse({ cep: rawCep })
+export const GET = withGeoMiddleware(async ({ searchParams }) => {
+  const rawCep = searchParams.get("cep") || ""
+  const { cep } = geocodeCepSchema.parse({ cep: rawCep })
 
-    const address = await geocodeCEP(clean)
-    return cacheControlPublic(NextResponse.json(address), 60)
-  } catch (e) {
-    if (e instanceof ZodError) {
-      return NextResponse.json({ error: "CEP inválido", details: e.issues }, { status: 400 })
+  try {
+    const address = await geocodeCEP(cep)
+    return { data: address, cacheSeconds: 60 }
+  } catch (err) {
+    // Map ViaCEP errors to 400 with the upstream message
+    const message = err instanceof Error ? err.message : "Erro ao consultar CEP"
+    return {
+      data: { error: message },
+      status: 400,
+      cacheSeconds: 0,
     }
-    if (e instanceof Error) {
-      return NextResponse.json({ error: e.message || "Erro ao consultar CEP" }, { status: 400 })
-    }
-    return handleError(e)
   }
-}
+})
