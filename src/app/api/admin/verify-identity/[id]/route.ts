@@ -1,8 +1,8 @@
 import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { requireUser } from "@/lib/auth"
-import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
+import { requireRole } from "@/lib/auth"
+import { badRequest, handleError, notFound } from "@/lib/api-server"
 import { z } from "zod"
 import { sendText } from "@/lib/evolution"
 
@@ -19,10 +19,7 @@ const adminReviewSchema = z.object({
  */
 export async function PATCH(request: Request, { params }: Params) {
   try {
-    const session = await requireUser()
-    if (session.role !== "ADMIN") {
-      throw forbidden("Acesso restrito a administradores")
-    }
+    await requireRole("ADMIN")
     const { id } = await params
     const body = await request.json().catch(() => ({}))
     const { status, reason } = adminReviewSchema.parse(body)

@@ -1,3 +1,4 @@
+import { handleError } from "@/lib/api-server"
 /**
  * GET /api/admin/geo-metrics
  *
@@ -18,10 +19,11 @@
  * ```
  */
 
+
 import { NextResponse } from "next/server"
 import { readFileSync, existsSync } from "node:fs"
 import { join } from "node:path"
-import { requireUser } from "@/lib/auth"
+import { requireRole } from "@/lib/auth"
 import { getP95Baselines } from "@/lib/geo-baselines"
 import {
   getGeoMetrics,
@@ -137,7 +139,7 @@ function loadBenchmarkData(): BenchmarkData | null {
         avgHaversinePerProvider: parsed.analysis.avgHaversinePerProvider,
       },
     }
-  } catch {
+  } catch (e) {
     return null
   }
 }
@@ -148,10 +150,7 @@ function loadBenchmarkData(): BenchmarkData | null {
 
 export async function GET() {
   try {
-    const session = await requireUser()
-    if (session.role !== "ADMIN") {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
-    }
+    await requireRole("ADMIN")
     const snapshot = getGeoMetrics()
     const benchmark = loadBenchmarkData()
     const history = getGeoMetricsHistory()
@@ -163,7 +162,7 @@ export async function GET() {
       history,
       baselines: getP95Baselines(),
     })
-  } catch {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
+  } catch (_e) {
+    return handleError(_e)
   }
 }

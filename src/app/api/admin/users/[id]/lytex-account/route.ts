@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { requireUser } from "@/lib/auth"
-import { handleError, badRequest, notFound, forbidden } from "@/lib/api-server"
+import { requireRole } from "@/lib/auth"
+import { handleError, badRequest, notFound } from "@/lib/api-server"
 import logger from "@/lib/logger"
 
 type Params = { params: Promise<{ id: string }> }
 
 export async function POST(request: Request, { params }: Params) {
   try {
-    const session = await requireUser()
-    if (session.role !== "ADMIN") throw forbidden("Acesso restrito a administradores")
-
+    await requireRole("ADMIN")
     const { id } = await params
     const body = await request.json()
     const { lytexRecipientId } = body
@@ -37,9 +35,7 @@ export async function POST(request: Request, { params }: Params) {
 
 export async function DELETE(_request: Request, { params }: Params) {
   try {
-    const session = await requireUser()
-    if (session.role !== "ADMIN") throw forbidden("Acesso restrito a administradores")
-
+    await requireRole("ADMIN")
     const { id } = await params
 
     const user = await db.user.findUnique({ where: { id } })

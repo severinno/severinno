@@ -21,10 +21,13 @@ export function subscribe(channel: string, handler: MessageHandler): () => void 
     subscribers.set(channel, new Set())
     // Subscribe via Redis client when available
     const client = getClient()
-    if (client && "subscribe" in client) {
-      (client as any).subscribe(channel, (msg: string) => {
+    if (client && typeof client.subscribe === "function") {
+      // ioredis subscribe() signature doesn't match the callback pattern we need,
+      // so we use the low-level subscribe that accepts a callback
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      void (client as any).subscribe(channel, (msg: string) => {
         subscribers.get(channel)?.forEach((h) => h(channel, msg))
-      }).catch(() => {})
+      })
     }
   }
   subscribers.get(channel)!.add(handler)

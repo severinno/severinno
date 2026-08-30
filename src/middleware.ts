@@ -207,7 +207,7 @@ export async function middleware(request: NextRequest) {
   // Content-Security-Policy (production-grade)
   const cspDirectives = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com https://vercel-insights.com",
+    "script-src 'self' https://va.vercel-scripts.com https://vercel-insights.com https://*.vercel.app",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https://*.vercel.app https://*.s3.amazonaws.com https://maps.googleapis.com https://*.tile.openstreetmap.org",
     "font-src 'self' https://fonts.gstatic.com",

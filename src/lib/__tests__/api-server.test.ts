@@ -13,8 +13,7 @@ import {
   USER_PUBLIC_SELECT,
   cacheControlPublic,
   cacheControlPrivate,
-  syncCategorySearch,
-  syncServiceSearch,
+  syncEntitySearch,
 } from "../api-server"
 
 // Mock logger to avoid noisy output
@@ -248,13 +247,13 @@ describe("cacheControlPublic", () => {
 // ---------------------------------------------------------------------------
 // syncCategorySearch
 // ---------------------------------------------------------------------------
-describe("syncCategorySearch", () => {
+describe("syncEntitySearch(category)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
   it("inserts a category reindex job into search_reindex_queue", async () => {
-    await syncCategorySearch({ id: "cat-123" })
+    await syncEntitySearch("category", { id: "cat-123" })
     expect(mockDb.$queryRawUnsafe).toHaveBeenCalledTimes(1)
     const sql = mockDb.$queryRawUnsafe.mock.calls[0][0] as string
     expect(sql).toContain("INSERT INTO")
@@ -266,20 +265,20 @@ describe("syncCategorySearch", () => {
 
   it("resolves to undefined on success", async () => {
     mockDb.$queryRawUnsafe.mockResolvedValue([])
-    await expect(syncCategorySearch({ id: "cat-1" })).resolves.toBeUndefined()
+    await expect(syncEntitySearch("category", { id: "cat-1" })).resolves.toBeUndefined()
   })
 })
 
 // ---------------------------------------------------------------------------
 // syncServiceSearch
 // ---------------------------------------------------------------------------
-describe("syncServiceSearch", () => {
+describe("syncEntitySearch(service)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
   it("inserts a service reindex job into search_reindex_queue", async () => {
-    await syncServiceSearch({ id: "svc-456" })
+    await syncEntitySearch("service", { id: "svc-456" })
     expect(mockDb.$queryRawUnsafe).toHaveBeenCalledTimes(1)
     const sql = mockDb.$queryRawUnsafe.mock.calls[0][0] as string
     expect(sql).toContain("INSERT INTO")
@@ -291,6 +290,6 @@ describe("syncServiceSearch", () => {
 
   it("resolves to undefined on success", async () => {
     mockDb.$queryRawUnsafe.mockResolvedValue([])
-    await expect(syncServiceSearch({ id: "svc-1" })).resolves.toBeUndefined()
+    await expect(syncEntitySearch("service", { id: "svc-1" })).resolves.toBeUndefined()
   })
 })

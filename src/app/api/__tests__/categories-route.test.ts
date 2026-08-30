@@ -4,7 +4,7 @@ import { createMockRequest, parseResponse } from "@/lib/__tests__/helpers/api-te
 
 // Mock the db module
 vi.mock("@/lib/redis", () => ({
-  withCache: vi.fn((_key: string, fn: () => Promise<unknown>) => fn()),
+  withCache: vi.fn((_key: string, fn: () => Promise<unknown>, _ttl?: number) => fn()),
   cacheInvalidate: vi.fn(),
 }))
 
@@ -13,7 +13,7 @@ vi.mock("@/lib/api-server", async (importOriginal) => {
   return {
     ...(actual as Record<string, unknown>),
     cacheControlPublic: vi.fn((response: Response) => response),
-    syncCategorySearch: vi.fn(),
+    syncEntitySearch: vi.fn(),
   }
 })
 

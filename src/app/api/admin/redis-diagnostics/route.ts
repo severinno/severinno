@@ -13,8 +13,9 @@
  * Response type: RedisDiagnosticsResponse (exported below)
  */
 
+import { handleError } from "@/lib/api-server"
 import { NextResponse } from "next/server"
-import { requireUser } from "@/lib/auth"
+import { requireRole } from "@/lib/auth"
 import { getRedisDiagnostics } from "@/lib/redis"
 
 // ---------------------------------------------------------------------------
@@ -23,10 +24,7 @@ import { getRedisDiagnostics } from "@/lib/redis"
 
 export async function GET() {
   try {
-    const session = await requireUser()
-    if (session.role !== "ADMIN") {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 403 })
-    }
+    await requireRole("ADMIN")
 
     const diagnostics = await getRedisDiagnostics()
 
@@ -34,8 +32,8 @@ export async function GET() {
       ...diagnostics,
       timestamp: Date.now(),
     })
-  } catch {
-    return NextResponse.json({ error: "Não autorizado" }, { status: 401 })
+  } catch (e) {
+    return handleError(e)
   }
 }
 

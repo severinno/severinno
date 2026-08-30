@@ -15,7 +15,7 @@ import { expectCacheHeaders } from "@/lib/__tests__/helpers/cache-test-utils"
 
 // Mock Redis withCache to just call the factory function (bypasses real Redis)
 vi.mock("@/lib/redis", () => ({
-  withCache: vi.fn((_key: string, fn: () => Promise<unknown>) => fn()),
+  withCache: vi.fn((_key: string, fn: () => Promise<unknown>, _ttl?: number) => fn()),
   cacheInvalidate: vi.fn(),
 }))
 

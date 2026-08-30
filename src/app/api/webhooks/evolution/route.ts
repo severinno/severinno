@@ -16,7 +16,6 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { evolutionLogger } from "@/lib/evolution"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { evolutionBreaker } from "@/lib/external-circuit-breakers"
 
 // ---------------------------------------------------------------------------
 // Helper: extrair número do JID (remoteJid)
