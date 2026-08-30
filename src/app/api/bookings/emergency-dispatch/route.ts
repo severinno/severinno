@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Emergency dispatch failed",
+        error: "Emergency dispatch failed",
       },
       { status: 500 },
     )

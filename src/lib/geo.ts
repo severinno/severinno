@@ -8,12 +8,51 @@ import "server-only"
  * which is safe for both server and client.
  */
 
+import { db } from "@/lib/db"
 import { trackGeoLatency } from "./geo-metrics"
 import { withCache } from "./redis"
 import { rateLimitedNominatim } from "./nominatim-rate-limit"
 import { rateLimitedViaCEP } from "./viacep-rate-limit"
+import { nominatimBreaker, viacepBreaker } from "./geo-circuit-breakers"
 import { recordSearch, recordCEP, recordReverse } from "./geo-query-log"
 import { getGeoSettings } from "./geo-settings"
+import logger from "./logger"
+
+// ── Per-operation call counters ──────────────────────────────────────────
+// Lightweight in-memory counters for geo debug endpoint.
+// No external I/O — just increments. Safe for sub-μs overhead.
+
+type GeoOperationType = "cep" | "search" | "reverse" | "structured"
+
+const geoCallCounts: Record<GeoOperationType, number> = {
+  cep: 0,
+  search: 0,
+  reverse: 0,
+  structured: 0,
+}
+const geoFallbackCounts: Record<GeoOperationType, number> = {
+  cep: 0,
+  search: 0,
+  reverse: 0,
+  structured: 0,
+}
+
+export function getGeoCallStats(): {
+  calls: Record<GeoOperationType, number>
+  fallbacks: Record<GeoOperationType, number>
+  fallbackRate: Record<GeoOperationType, number | null>
+} {
+  const fallbackRate = {} as Record<GeoOperationType, number | null>
+  for (const op of Object.keys(geoCallCounts) as GeoOperationType[]) {
+    const calls = geoCallCounts[op]
+    fallbackRate[op] = calls > 0 ? +((geoFallbackCounts[op] / calls) * 100).toFixed(1) : null
+  }
+  return {
+    calls: { ...geoCallCounts },
+    fallbacks: { ...geoFallbackCounts },
+    fallbackRate,
+  }
+}
 
 export { haversineKm, formatDistance } from "./geo-shared"
 
@@ -52,6 +91,7 @@ function withCachedGeo<T>(
 
 /** Wraps geocodeCEP with Redis cache (7d TTL) + ViaCEP latency tracking + limiter 60 req/min. */
 export async function geocodeCEP(cep: string): Promise<ViaCEPResult> {
+  geoCallCounts.cep++
   const clean = cep.replace(/\D/g, "")
   const result = await withCachedGeo(
     `geo:cep:${clean}`,
@@ -66,6 +106,7 @@ export async function geocodeCEP(cep: string): Promise<ViaCEPResult> {
 
 /** Wraps geocodeSearch with Redis cache (24h TTL) + Nominatim latency tracking. */
 export async function geocodeSearch(query: string, limit: number = 5): Promise<GeoSearchResult[]> {
+  geoCallCounts.search++
   const key = `geo:search:${normalizeCacheKey(query)}:${Math.max(1, Math.min(10, limit))}`
   const result = await withCachedGeo(
     key,
@@ -81,6 +122,7 @@ export async function geocodeSearch(query: string, limit: number = 5): Promise<G
 export async function geocodeSearchStructured(
   opts: Parameters<typeof _geocodeSearchStructured>[0],
 ): Promise<GeoSearchResult[]> {
+  geoCallCounts.structured++
   const { street, city, state, country, postcode, limit = 5 } = opts
   const parts = [
     street?.trim().toLowerCase() ?? "",
@@ -103,6 +145,7 @@ export async function geocodeSearchStructured(
 
 /** Wraps reverseGeocode with Redis cache (24h TTL) + Nominatim latency tracking. */
 export async function reverseGeocode(lat: number, lng: number): Promise<ReverseGeocodeResult> {
+  geoCallCounts.reverse++
   const result = await withCachedGeo(
     `geo:reverse:${lat.toFixed(4)},${lng.toFixed(4)}`,
     () => trackGeoLatency("nominatim", () => _reverseGeocode(lat, lng)),
@@ -135,13 +178,16 @@ async function _geocodeCEP(cep: string): Promise<ViaCEPResult> {
     // Kill-switch: ViaCEP desligado → fallback local direto (sem rede)
     if (!settings.viacepEnabled) return geocodeCEPLocal(clean)
 
-    const url = `${settings.viacepBaseUrl}/ws/${clean}/json/`
-    const res = await fetch(url, {
-      headers: { Accept: "application/json" },
-      next: { revalidate: 86400 },
-      signal: AbortSignal.timeout(5000), // 5s timeout
+    const res = await viacepBreaker.execute(async () => {
+      const url = `${settings.viacepBaseUrl}/ws/${clean}/json/`
+      const r = await fetch(url, {
+        headers: { Accept: "application/json" },
+        next: { revalidate: 86400 },
+        signal: AbortSignal.timeout(5000), // 5s timeout
+      })
+      if (!r.ok) throw new Error(`ViaCEP HTTP ${r.status}`)
+      return r
     })
-    if (!res.ok) throw new Error(`ViaCEP HTTP ${res.status}`)
 
     const data = (await res.json()) as {
       cep?: string
@@ -162,6 +208,7 @@ async function _geocodeCEP(cep: string): Promise<ViaCEPResult> {
     }
   } catch {
     // ViaCEP unavailable — fall back to local DB CEP search
+    geoFallbackCounts.cep++
     return geocodeCEPLocal(clean)
   }
 }
@@ -223,13 +270,16 @@ async function _reverseGeocode(lat: number, lng: number): Promise<ReverseGeocode
     // Kill-switch: Nominatim desligado → fallback local direto (sem rede)
     if (!settings.nominatimEnabled) return reverseGeocodeLocal(lat, lng)
 
-    const url = `${settings.nominatimBaseUrl}/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1&accept-language=pt-BR`
-    const res = await fetch(url, {
-      headers: nominatimHeaders(settings.userAgent),
-      next: { revalidate: 3600 },
-      signal: AbortSignal.timeout(5000), // 5s timeout
+    const res = await nominatimBreaker.execute(async () => {
+      const url = `${settings.nominatimBaseUrl}/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1&accept-language=pt-BR`
+      const r = await fetch(url, {
+        headers: nominatimHeaders(settings.userAgent),
+        next: { revalidate: 3600 },
+        signal: AbortSignal.timeout(5000), // 5s timeout
+      })
+      if (!r.ok) throw new Error(`Nominatim HTTP ${r.status}`)
+      return r
     })
-    if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}`)
 
     const data = (await res.json()) as {
       display_name?: string
@@ -253,10 +303,11 @@ async function _reverseGeocode(lat: number, lng: number): Promise<ReverseGeocode
       postcode: a.postcode,
     }
   } catch {
-    // Nominatim unavailable — fall back to nearest provider in DB
+    // Nominatim unavailable — fall back to nearest provider in DB    geoFallbackCounts.reverse++
     return reverseGeocodeLocal(lat, lng)
   }
 }
+
 
 // ---------------------------------------------------------------------------
 // Nominatim Search (forward geocoding)
@@ -283,45 +334,132 @@ export type GeoSearchResult = {
  * coordinates) and returns their address. Limited to ~100km radius to avoid
  * returning irrelevant results.
  */
+/** Maximum radius for local reverse geocode fallback (km). */
+const REVERSE_LOCAL_RADIUS_KM = 100
+
+/**
+ * Fallback local reverse geocode when Nominatim is unavailable.
+ *
+ * Uses PostGIS ST_DWithin (index-assisted) to find the nearest provider
+ * within 100km. Falls back to Haversine in JS only when PostGIS is
+ * unavailable or the spatial query fails.
+ */
 async function reverseGeocodeLocal(lat: number, lng: number): Promise<ReverseGeocodeResult> {
-  try {
-    const { db } = await import("@/lib/db")
-    const { haversineKm } = await import("@/lib/geo-server")
+  // Short-term cache (60s) keyed by rounded coordinates.
+  // Same coordinate queried multiple times (check-in + check-out) hits cache.
+  const cacheKey = `geo:reverse-local:${lat.toFixed(4)},${lng.toFixed(4)}`
+  return withCache<ReverseGeocodeResult>(cacheKey, async () => {
+    // ── Step 1: Try PostGIS spatial query (O(log N) via GiST index) ──
+    try {
+      const rows = await db.$queryRaw<
+        Array<{
+          street: string | null
+          district: string | null
+          city: string | null
+          state: string | null
+          cep: string | null
+          distance_km: number
+        }>
+      >`
+        SELECT
+          "street",
+          "district",
+          "city",
+          "state",
+          "cep",
+          ST_Distance(
+            location,
+            ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
+          ) / 1000 AS distance_km
+        FROM "User"
+        WHERE
+          role = 'PROVIDER'
+          AND active = true
+          AND "deletedAt" IS NULL
+          AND location IS NOT NULL
+          AND ST_DWithin(
+            location,
+            ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
+            ${REVERSE_LOCAL_RADIUS_KM * 1000}
+          )
+        ORDER BY distance_km ASC
+        LIMIT 1
+      `
 
-    const users = await db.user.findMany({
-      where: {
-        role: "PROVIDER",
-        active: true,
-        lat: { not: null },
-        lng: { not: null },
-      },
-      select: {
-        lat: true,
-        lng: true,
-        street: true,
-        district: true,
-        city: true,
-        state: true,
-        cep: true,
-      },
-      take: 5,
-      orderBy: { avgRating: "desc" as const },
-    })
-
-    // Find the nearest provider by Haversine distance
-    let nearest: (typeof users)[number] | null = null
-    let minDist = Infinity
-    for (const u of users) {
-      if (u.lat == null || u.lng == null) continue
-      const d = haversineKm(lat, lng, u.lat, u.lng)
-      if (d < minDist) {
-        minDist = d
-        nearest = u
+      if (rows.length > 0 && rows[0]!.distance_km <= REVERSE_LOCAL_RADIUS_KM) {
+        const nearest = rows[0]!
+        return {
+          displayName: [nearest.street, nearest.district, nearest.city, nearest.state]
+            .filter(Boolean)
+            .join(", "),
+          road: nearest.street ?? undefined,
+          neighbourhood: nearest.district ?? undefined,
+          city: nearest.city ?? undefined,
+          state: nearest.state ?? undefined,
+          postcode: nearest.cep ?? undefined,
+        }
       }
+    } catch {
+      // PostGIS unavailable or extension not installed — fall through to Haversine
     }
 
-    if (!nearest || minDist > 100) {
-      // No provider within 100km — return minimal result with raw coords
+    // ── Step 2: Haversine fallback ──
+    try {
+      const { haversineKm } = await import("@/lib/geo-server")
+
+      const users = await db.user.findMany({
+        where: {
+          role: "PROVIDER",
+          active: true,
+          lat: { not: null },
+          lng: { not: null },
+        },
+        select: {
+          lat: true,
+          lng: true,
+          street: true,
+          district: true,
+          city: true,
+          state: true,
+          cep: true,
+        },
+        take: 20,
+        orderBy: { avgRating: "desc" as const },
+      })
+
+      let nearest: (typeof users)[number] | null = null
+      let minDist = Infinity
+      for (const u of users) {
+        if (u.lat == null || u.lng == null) continue
+        const d = haversineKm(lat, lng, u.lat, u.lng)
+        if (d < minDist) {
+          minDist = d
+          nearest = u
+        }
+      }
+
+      if (!nearest || minDist > REVERSE_LOCAL_RADIUS_KM) {
+        return {
+          displayName: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+          road: undefined,
+          neighbourhood: undefined,
+          city: undefined,
+          state: undefined,
+          postcode: undefined,
+        }
+      }
+
+      return {
+        displayName: [nearest.street, nearest.district, nearest.city, nearest.state]
+          .filter(Boolean)
+          .join(", "),
+        road: nearest.street ?? undefined,
+        neighbourhood: nearest.district ?? undefined,
+        city: nearest.city ?? undefined,
+        state: nearest.state ?? undefined,
+        postcode: nearest.cep ?? undefined,
+      }
+    } catch {
       return {
         displayName: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
         road: undefined,
@@ -331,28 +469,7 @@ async function reverseGeocodeLocal(lat: number, lng: number): Promise<ReverseGeo
         postcode: undefined,
       }
     }
-
-    return {
-      displayName: [nearest.street, nearest.district, nearest.city, nearest.state]
-        .filter(Boolean)
-        .join(", "),
-      road: nearest.street ?? undefined,
-      neighbourhood: nearest.district ?? undefined,
-      city: nearest.city ?? undefined,
-      state: nearest.state ?? undefined,
-      postcode: nearest.cep ?? undefined,
-    }
-  } catch {
-    // DB query also failed — return minimal result
-    return {
-      displayName: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
-      road: undefined,
-      neighbourhood: undefined,
-      city: undefined,
-      state: undefined,
-      postcode: undefined,
-    }
-  }
+  }, 60) // 60s cache TTL for local reverse geocode
 }
 
 /**
@@ -417,21 +534,24 @@ async function _geocodeSearch(query: string, limit: number = 5): Promise<GeoSear
     // Kill-switch: Nominatim desligado → fallback local direto (sem rede)
     if (!settings.nominatimEnabled) return geocodeSearchLocal(trimmed, clampedLimit)
 
-    const url =
-      `${settings.nominatimBaseUrl}/search?` +
-      `format=jsonv2&q=${encodeURIComponent(trimmed)}` +
-      `&addressdetails=1&limit=${clampedLimit}&accept-language=pt-BR`
-
-    const res = await fetch(url, {
-      headers: nominatimHeaders(settings.userAgent),
-      next: { revalidate: 86400 },
-      signal: AbortSignal.timeout(5000), // 5s timeout
+    const res = await nominatimBreaker.execute(async () => {
+      const url =
+        `${settings.nominatimBaseUrl}/search?` +
+        `format=jsonv2&q=${encodeURIComponent(trimmed)}` +
+        `&addressdetails=1&limit=${clampedLimit}&accept-language=pt-BR`
+      const r = await fetch(url, {
+        headers: nominatimHeaders(settings.userAgent),
+        next: { revalidate: 86400 },
+        signal: AbortSignal.timeout(5000), // 5s timeout
+      })
+      if (!r.ok) throw new Error(`Nominatim HTTP ${r.status}`)
+      return r
     })
-    if (!res.ok) throw new Error(`Nominatim HTTP ${res.status}`)
 
     return parseNominatimSearchResponse(await res.json())
   } catch {
     // Nominatim unavailable — fall back to local DB address search
+    geoFallbackCounts.search++
     return geocodeSearchLocal(trimmed, clampedLimit)
   }
 }
@@ -443,53 +563,130 @@ async function _geocodeSearch(query: string, limit: number = 5): Promise<GeoSear
  * query. This won't find every address (it only covers registered providers)
  * but ensures the user never sees an error — they get partial results instead.
  */
+/**
+ * Shared select fields for local geocoding queries.
+ */
+const LOCAL_GEO_SELECT = {
+  lat: true,
+  lng: true,
+  city: true,
+  state: true,
+  district: true,
+  street: true,
+  cep: true,
+} as const
+
+/**
+ * Convert Prisma user results to GeoSearchResult[] (local fallback shape).
+ */
+function usersToGeoResults(
+  users: Array<{
+    lat: number | null
+    lng: number | null
+    city: string | null
+    state: string | null
+    district: string | null
+    street: string | null
+    cep: string | null
+  }>,
+): GeoSearchResult[] {
+  return users.map((u) => ({
+    lat: u.lat!,
+    lng: u.lng!,
+    displayName: [u.street, u.district, u.city, u.state].filter(Boolean).join(", "),
+    street: u.street,
+    district: u.district,
+    city: u.city,
+    state: u.state,
+    cep: u.cep,
+    category: "place",
+    type: "local_fallback",
+    importance: 0.5,
+  }))
+}
+
+/**
+ * Fallback local address search when Nominatim is unavailable.
+ *
+ * Uses a layered strategy to maximize index usage:
+ *   1. Exact city match — uses @@index([city, active, verified]) → O(log N)
+ *   2. City prefix (ILIKE 'query%') — still uses B-tree index → O(log N)
+ *   3. Broad search on city only (ILIKE '%query%') — single column seq scan
+ *   4. Full fallback on all 4 columns (city, street, state, district)
+ *
+ * Most queries hit layer 1-2 and never reach the expensive paths.
+ */
 async function geocodeSearchLocal(query: string, limit: number): Promise<GeoSearchResult[]> {
   try {
     const { db } = await import("@/lib/db")
+    const q = query.trim()
+    if (!q) return []
 
-    // Search for providers whose city, street, or state contains the query
-    const users = await db.user.findMany({
+    // ── Layer 1: Exact city match (B-tree index) ──────────────────────
+    const exact = await db.user.findMany({
+      where: {
+        role: "PROVIDER",
+        active: true,
+        lat: { not: null },
+        lng: { not: null },
+        city: { equals: q, mode: "insensitive" },
+      },
+      select: LOCAL_GEO_SELECT,
+      take: limit,
+      orderBy: { avgRating: "desc" },
+    })
+    if (exact.length > 0) return usersToGeoResults(exact)
+
+    // ── Layer 2: City prefix match (B-tree index: 'query%') ───────────
+    const prefix = await db.user.findMany({
+      where: {
+        role: "PROVIDER",
+        active: true,
+        lat: { not: null },
+        lng: { not: null },
+        city: { startsWith: q, mode: "insensitive" },
+      },
+      select: LOCAL_GEO_SELECT,
+      take: limit,
+      orderBy: { avgRating: "desc" },
+    })
+    if (prefix.length > 0) return usersToGeoResults(prefix)
+
+    // ── Layer 3: City contains (single column seq scan — cheaper than 4) ─
+    const cityMatch = await db.user.findMany({
+      where: {
+        role: "PROVIDER",
+        active: true,
+        lat: { not: null },
+        lng: { not: null },
+        city: { contains: q, mode: "insensitive" },
+      },
+      select: LOCAL_GEO_SELECT,
+      take: limit,
+      orderBy: { avgRating: "desc" },
+    })
+    if (cityMatch.length > 0) return usersToGeoResults(cityMatch)
+
+    // ── Layer 4: Broad search on all 4 columns (most expensive) ───────
+    const broad = await db.user.findMany({
       where: {
         role: "PROVIDER",
         active: true,
         lat: { not: null },
         lng: { not: null },
         OR: [
-          { city: { contains: query, mode: "insensitive" } },
-          { street: { contains: query, mode: "insensitive" } },
-          { state: { contains: query, mode: "insensitive" } },
-          { district: { contains: query, mode: "insensitive" } },
+          { street: { contains: q, mode: "insensitive" } },
+          { state: { contains: q, mode: "insensitive" } },
+          { district: { contains: q, mode: "insensitive" } },
         ],
       },
-      select: {
-        lat: true,
-        lng: true,
-        city: true,
-        state: true,
-        district: true,
-        street: true,
-        cep: true,
-      },
+      select: LOCAL_GEO_SELECT,
       take: limit,
       orderBy: { avgRating: "desc" },
     })
-
-    return users.map((u) => ({
-      lat: u.lat!,
-      lng: u.lng!,
-      displayName: [u.street, u.district, u.city, u.state].filter(Boolean).join(", "),
-      street: u.street,
-      district: u.district,
-      city: u.city,
-      state: u.state,
-      cep: u.cep,
-      category: "place",
-      type: "local_fallback",
-      importance: 0.5,
-    }))
+    return usersToGeoResults(broad)
   } catch {
-    // If DB query also fails, return empty array
-    console.warn("[geo] Local DB fallback also failed")
+    logger.warn("[geo] Local DB fallback also failed")
     return []
   }
 }
@@ -534,17 +731,21 @@ async function _geocodeSearchStructured(opts: {
       return geocodeSearchLocal(combined, clampedLimit)
     }
 
-    const url = `${settings.nominatimBaseUrl}/search?${params.toString()}`
-    const res = await fetch(url, {
-      headers: nominatimHeaders(settings.userAgent),
-      next: { revalidate: 86400 },
-      signal: AbortSignal.timeout(5000), // 5s timeout
+    const res = await nominatimBreaker.execute(async () => {
+      const url = `${settings.nominatimBaseUrl}/search?${params.toString()}`
+      const r = await fetch(url, {
+        headers: nominatimHeaders(settings.userAgent),
+        next: { revalidate: 86400 },
+        signal: AbortSignal.timeout(5000), // 5s timeout
+      })
+      if (!r.ok) throw new Error(`Nominatim structured HTTP ${r.status}`)
+      return r
     })
-    if (!res.ok) throw new Error(`Nominatim structured HTTP ${res.status}`)
 
     return parseNominatimSearchResponse(await res.json())
   } catch {
     // Nominatim unavailable — fall back to local DB address search
+    geoFallbackCounts.structured++
     // Build a combined query from the structured fields for the local search
     const combined = [street, city, state].filter(Boolean).join(", ")
     return geocodeSearchLocal(combined, clampedLimit)

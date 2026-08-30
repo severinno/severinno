@@ -46,6 +46,12 @@ const mockLoggerDebug = vi.hoisted(() => vi.fn())
 const mockLoggerWarn = vi.hoisted(() => vi.fn())
 const mockLoggerError = vi.hoisted(() => vi.fn())
 
+// In-memory Redis mock for debounce (notifyGeoAlert uses cacheGet/cacheSet/cacheInvalidate)
+const redisStore = new Map<string, unknown>()
+const mockCacheGet = vi.hoisted(() => vi.fn(async (key: string) => redisStore.get(key) ?? null))
+const mockCacheSet = vi.hoisted(() => vi.fn(async (key: string, value: unknown, _ttl: number) => { redisStore.set(key, value) }))
+const mockCacheInvalidate = vi.hoisted(() => vi.fn(async (key: string) => { redisStore.delete(key) }))
+
 // Sentry
 vi.mock("@/lib/sentry", () => ({
   captureMessage: mockCaptureMessage,
@@ -94,6 +100,13 @@ vi.mock("@/lib/logger", () => ({
 // Server-only module (required by vitest)
 vi.mock("server-only", () => ({}))
 
+// Redis — in-memory mock for debounce state
+vi.mock("@/lib/redis", () => ({
+  cacheGet: mockCacheGet,
+  cacheSet: mockCacheSet,
+  cacheInvalidate: mockCacheInvalidate,
+}))
+
 // ---------------------------------------------------------------------------
 // Imports — real implementations (not mocked!)
 // ---------------------------------------------------------------------------
@@ -133,10 +146,11 @@ const ADMIN_EMAIL = "admin@severinno.com.br"
 // Setup
 // ---------------------------------------------------------------------------
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks()
+  redisStore.clear()
   resetGeoHealthState()
-  resetGeoAlertDebounce()
+  await resetGeoAlertDebounce()
 
   // Default: admins found
   mockFindMany.mockResolvedValue([{ id: "admin-1" }, { id: "admin-2" }])

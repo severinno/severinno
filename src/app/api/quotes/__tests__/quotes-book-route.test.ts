@@ -3,8 +3,8 @@ import { POST } from "@/app/api/quotes/[id]/book/route"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 
-vi.mock("@/lib/db", () => ({
-  db: {
+vi.mock("@/lib/db", () => {
+  const mockDb: Record<string, unknown> = {
     user: {
       findUnique: vi.fn(),
     },
@@ -17,8 +17,21 @@ vi.mock("@/lib/db", () => ({
     quoteItem: {
       updateMany: vi.fn(),
     },
-  },
-}))
+  }
+  // $transaction: Prisma passes array of already-started promises (PrismaPromise[])
+  mockDb.$transaction = vi.fn(async (arg: unknown) => {
+    if (typeof arg === "function") {
+      return await arg(mockDb)
+    }
+    // array-style: $transaction([promise1, promise2]) — each is a Promise
+    const results: unknown[] = []
+    for (const item of arg as unknown[]) {
+      results.push(await Promise.resolve(item))
+    }
+    return results
+  })
+  return { db: mockDb }
+})
 
 vi.mock("@/lib/auth", () => ({
   requireUser: vi.fn(),

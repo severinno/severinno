@@ -176,6 +176,27 @@
             "description": "Árvore de categorias"
           }
         }
+      },
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Categories"
+        ]
       }
     },
     "/api/bookings": {
@@ -285,6 +306,17 @@
             "description": "URL do arquivo"
           }
         }
+      },
+      "get": {
+        "summary": "POST /api/upload",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Storage"
+        ]
       }
     },
     "/api/health": {
@@ -298,6 +330,2907 @@
             "description": "Status dos serviços"
           }
         }
+      }
+    },
+    "/api/admin/benchmarks": {
+      "get": {
+        "summary": "GET /api/admin/benchmarks — Benchmark Monitoring Dashboard",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/business-metrics": {
+      "get": {
+        "summary": "GET /api/admin/business-metrics",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/cache-routes": {
+      "get": {
+        "summary": "Static manifest of all cache-controlled API routes.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/commissions/export": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/commissions": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/coverage": {
+      "get": {
+        "summary": "GET /api/admin/coverage",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/disputes/mediate": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/errors": {
+      "get": {
+        "summary": "GET /api/admin/errors — Métricas e tendências de erros",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/finance/export": {
+      "get": {
+        "summary": "CSV export of all transactions for the given period.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/finance/export-providers": {
+      "get": {
+        "summary": "CSV export of the per-provider aggregated statement.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/finance/provider-transactions": {
+      "get": {
+        "summary": "Individual transactions for a specific provider.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/finance": {
+      "get": {
+        "summary": "ADMIN: aggregated financial dashboard data.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/financial/export-csv": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/gateway/invoices": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/gateway/stats": {
+      "get": {
+        "summary": "Fetch all invoices from Lytex with pagination, up to MAX_INVOICES.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/geo-cache-diagnostics": {
+      "get": {
+        "summary": "GET /api/admin/geo-cache-diagnostics",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/geo-metrics": {
+      "get": {
+        "summary": "GET /api/admin/geo-metrics",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/geo-metrics/timeline": {
+      "get": {
+        "summary": "GET /api/admin/geo-metrics/timeline",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/geo-query-log": {
+      "get": {
+        "summary": "GET /api/admin/geo-query-log",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/geo-rate-limit-status/reset": {
+      "post": {
+        "summary": "POST /api/admin/geo-rate-limit-status/reset",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/geo-rate-limit-status": {
+      "get": {
+        "summary": "GET /api/admin/geo-rate-limit-status",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/geo-reindex": {
+      "post": {
+        "summary": "POST /api/admin/geo-reindex",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/geo-snapshots-summary": {
+      "get": {
+        "summary": "GET /api/admin/geo-snapshots-summary",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/global-rate-limit-status/reset": {
+      "post": {
+        "summary": "POST /api/admin/global-rate-limit-status/reset",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/global-rate-limit-status": {
+      "get": {
+        "summary": "GET /api/admin/global-rate-limit-status",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/gtm/leads": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "patch": {
+        "summary": "Update",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "delete": {
+        "summary": "Delete",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/performance": {
+      "get": {
+        "summary": "GET /api/admin/performance — Métricas de performance do sistema",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/pgbouncer": {
+      "get": {
+        "summary": "GET /api/admin/pgbouncer",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/push/analytics": {
+      "get": {
+        "summary": "GET /api/admin/push/analytics",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/push/audit": {
+      "get": {
+        "summary": "GET /api/admin/push/audit",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/push/history": {
+      "get": {
+        "summary": "GET /api/admin/push/history",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/push/metrics": {
+      "get": {
+        "summary": "GET /api/admin/push/metrics",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/push/recurring": {
+      "get": {
+        "summary": "CRUD /api/admin/push/recurring",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "post": {
+        "summary": "CRUD /api/admin/push/recurring",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "patch": {
+        "summary": "CRUD /api/admin/push/recurring",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "delete": {
+        "summary": "CRUD /api/admin/push/recurring",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/push/schedule/{id}": {
+      "patch": {
+        "summary": "PATCH /api/admin/push/schedule/[id]",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/push/schedule": {
+      "get": {
+        "summary": "POST /api/admin/push/schedule",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "post": {
+        "summary": "POST /api/admin/push/schedule",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/push/send": {
+      "post": {
+        "summary": "POST /api/admin/push/send",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/push/users": {
+      "get": {
+        "summary": "GET /api/admin/push/users",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/push/webhooks/{id}": {
+      "patch": {
+        "summary": "PATCH /api/admin/push/webhooks/[id]",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "delete": {
+        "summary": "PATCH /api/admin/push/webhooks/[id]",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/push/webhooks/audit": {
+      "get": {
+        "summary": "GET /api/admin/push/webhooks/audit",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/push/webhooks": {
+      "get": {
+        "summary": "Known system events that can trigger automatic push notifications.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "post": {
+        "summary": "Known system events that can trigger automatic push notifications.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/redis-diagnostics": {
+      "get": {
+        "summary": "GET /api/admin/redis-diagnostics",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/services": {
+      "get": {
+        "summary": "ADMIN: list ALL services (including inactive), enriched with provider +",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/settings": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/settlements/{id}/finalize": {
+      "post": {
+        "summary": "POST /api/admin/settlements/[id]/finalize",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/settlements/{id}/pay/{providerId}": {
+      "post": {
+        "summary": "POST /api/admin/settlements/[id]/pay/[providerId]",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/settlements/{id}": {
+      "get": {
+        "summary": "GET /api/admin/settlements/[id] — get settlement period details",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "post": {
+        "summary": "GET /api/admin/settlements/[id] — get settlement period details",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/settlements": {
+      "get": {
+        "summary": "GET /api/admin/settlements — list all settlement periods",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "post": {
+        "summary": "GET /api/admin/settlements — list all settlement periods",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/stats": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/users/{id}/lytex-account": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "delete": {
+        "summary": "Delete",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/users/{id}": {
+      "patch": {
+        "summary": "Update",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      },
+      "delete": {
+        "summary": "Delete",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "summary": "ADMIN: paginated user list with optional role / q / geo filters.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/admin/verify-identity/{id}": {
+      "patch": {
+        "summary": "PATCH /api/admin/verify-identity/[id]",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Admin"
+        ]
+      }
+    },
+    "/api/auth/change-password": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/forgot-password": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/reset-password": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/availability/{id}": {
+      "delete": {
+        "summary": "Delete",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Availability"
+        ]
+      }
+    },
+    "/api/availability/blocks/{id}": {
+      "delete": {
+        "summary": "Delete",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Availability"
+        ]
+      }
+    },
+    "/api/availability/blocks": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Availability"
+        ]
+      },
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Availability"
+        ]
+      }
+    },
+    "/api/availability": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Availability"
+        ]
+      },
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Availability"
+        ]
+      }
+    },
+    "/api/bookings/{id}/confirm-completion": {
+      "post": {
+        "summary": "POST /api/bookings/[id]/confirm-completion",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/api/bookings/{id}/dispute": {
+      "post": {
+        "summary": "POST /api/bookings/[id]/dispute",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/api/bookings/{id}/pay": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/api/bookings/{id}/photos": {
+      "post": {
+        "summary": "POST /api/bookings/[id]/photos",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/api/bookings/{id}/receipt": {
+      "get": {
+        "summary": "GET /api/bookings/[id]/receipt",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/api/bookings/{id}": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Bookings"
+        ]
+      },
+      "patch": {
+        "summary": "Update",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/api/bookings/checkin-escrow": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/api/bookings/contract": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Bookings"
+        ]
+      },
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/api/bookings/emergency-dispatch": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Bookings"
+        ]
+      }
+    },
+    "/api/calendar/feed/{token}": {
+      "get": {
+        "summary": "GET /api/calendar/feed/[token]",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Calendar"
+        ]
+      }
+    },
+    "/api/categories/{id}": {
+      "patch": {
+        "summary": "Update",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Categories"
+        ]
+      },
+      "delete": {
+        "summary": "Delete",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Categories"
+        ]
+      }
+    },
+    "/api/chat/{bookingId}": {
+      "get": {
+        "summary": "GET /api/chat/[bookingId]",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Chat"
+        ]
+      },
+      "post": {
+        "summary": "GET /api/chat/[bookingId]",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Chat"
+        ]
+      }
+    },
+    "/api/chat": {
+      "post": {
+        "summary": "POST /api/chat",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Chat"
+        ]
+      }
+    },
+    "/api/cron/commissions-report": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Cron"
+        ]
+      }
+    },
+    "/api/cron/geo-cache-warm": {
+      "get": {
+        "summary": "GET /api/cron/geo-cache-warm",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Cron"
+        ]
+      }
+    },
+    "/api/cron/geo-health-alert": {
+      "get": {
+        "summary": "GET /api/cron/geo-health-alert",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Cron"
+        ]
+      }
+    },
+    "/api/cron/health-monitor": {
+      "get": {
+        "summary": "GET /api/cron/health-monitor",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Cron"
+        ]
+      }
+    },
+    "/api/cron/push-scheduled": {
+      "get": {
+        "summary": "GET /api/cron/push-scheduled",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Cron"
+        ]
+      }
+    },
+    "/api/cron/reminders": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Cron"
+        ]
+      }
+    },
+    "/api/cron/scheduled-push": {
+      "get": {
+        "summary": "GET /api/cron/scheduled-push",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Cron"
+        ]
+      }
+    },
+    "/api/cron/settlements": {
+      "get": {
+        "summary": "Cron job to auto-generate a settlement period.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Cron"
+        ]
+      }
+    },
+    "/api/favorites": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Favorites"
+        ]
+      }
+    },
+    "/api/geo/cep": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Geo"
+        ]
+      }
+    },
+    "/api/geo/debug": {
+      "get": {
+        "summary": "GET /api/geo/debug",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Geo"
+        ]
+      }
+    },
+    "/api/geo/matrix-eta": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Geo"
+        ]
+      }
+    },
+    "/api/geo/reverse": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Geo"
+        ]
+      }
+    },
+    "/api/geo/route-eta": {
+      "get": {
+        "summary": "GET /api/geo/route-eta?originLat=-23.55&originLng=-46.63&destLat=-23.56&destLng=-46.64",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Geo"
+        ]
+      }
+    },
+    "/api/geo/search": {
+      "get": {
+        "summary": "Forward-geocode an address via Nominatim Search (OpenStreetMap).",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Geo"
+        ]
+      }
+    },
+    "/api/geo/tiles/{z}/{x}/{y}": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Geo"
+        ]
+      }
+    },
+    "/api/geo/travel-fee": {
+      "get": {
+        "summary": "GET /api/geo/travel-fee?providerId=X&clientLat=Y&clientLng=Z",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Geo"
+        ]
+      }
+    },
+    "/api/health/detailed": {
+      "get": {
+        "summary": "@${poolerHost}:${poolerPort}/severinno`,",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/health/extended": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/metrics/prometheus": {
+      "get": {
+        "summary": "GET /api/metrics/prometheus",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Metrics"
+        ]
+      }
+    },
+    "/api/metrics": {
+      "get": {
+        "summary": "GET /api/metrics",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Metrics"
+        ]
+      }
+    },
+    "/api/monitor/push-failures": {
+      "get": {
+        "summary": "GET /api/monitor/push-failures",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Monitor"
+        ]
+      }
+    },
+    "/api/newsletter": {
+      "post": {
+        "summary": "POST /api/newsletter",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Newsletter"
+        ]
+      }
+    },
+    "/api/notifications/{id}/read": {
+      "patch": {
+        "summary": "Update",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/notifications/preferences": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Notifications"
+        ]
+      },
+      "patch": {
+        "summary": "Update",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Notifications"
+        ]
+      }
+    },
+    "/api/provider/demand-heatmap": {
+      "get": {
+        "summary": "GET /api/provider/demand-heatmap",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/provider/financial/mei-report": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/provider/financial-summary": {
+      "get": {
+        "summary": "GET /api/provider/financial-summary",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/provider/gamification": {
+      "get": {
+        "summary": "GET /api/provider/gamification",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/provider/lytex": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/provider/onboarding": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      },
+      "patch": {
+        "summary": "Update",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/provider/optimize-route": {
+      "get": {
+        "summary": "GET /api/provider/optimize-route?date=YYYY-MM-DD",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/provider/region-demand": {
+      "get": {
+        "summary": "GET /api/provider/region-demand",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/provider/routes/optimize-daily": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/provider/service-zone": {
+      "get": {
+        "summary": "GET /api/provider/service-zone",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      },
+      "post": {
+        "summary": "GET /api/provider/service-zone",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/provider/stats": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/provider/verify-identity": {
+      "post": {
+        "summary": "POST /api/provider/verify-identity",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/provider/wallet/history/export": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/provider/wallet/history": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/provider/wallet": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/provider/wallet/withdraw": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Provider"
+        ]
+      }
+    },
+    "/api/providers/{id}/favorite": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Providers"
+        ]
+      }
+    },
+    "/api/providers/{id}": {
+      "get": {
+        "summary": "Public provider detail: profile, services, availability (ordered),",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Providers"
+        ]
+      }
+    },
+    "/api/push/action": {
+      "post": {
+        "summary": "Atualiza o registro PushAnalytics mais recente para o par",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Push"
+        ]
+      }
+    },
+    "/api/push/click": {
+      "post": {
+        "summary": "POST /api/push/click",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Push"
+        ]
+      }
+    },
+    "/api/push/payload/{id}": {
+      "get": {
+        "summary": "GET /api/push/payload/:id",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Push"
+        ]
+      }
+    },
+    "/api/push/subscribe": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Push"
+        ]
+      },
+      "delete": {
+        "summary": "Delete",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Push"
+        ]
+      }
+    },
+    "/api/quotes/{id}/book": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Quotes"
+        ]
+      }
+    },
+    "/api/quotes/{id}/items/{itemId}": {
+      "patch": {
+        "summary": "Update",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Quotes"
+        ]
+      }
+    },
+    "/api/quotes/{id}": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Quotes"
+        ]
+      },
+      "patch": {
+        "summary": "Update",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Quotes"
+        ]
+      }
+    },
+    "/api/quotes/ai-estimate": {
+      "post": {
+        "summary": "POST /api/quotes/ai-estimate",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Quotes"
+        ]
+      }
+    },
+    "/api/quotes/compare": {
+      "get": {
+        "summary": "GET /api/quotes/compare?ids=id1,id2,id3",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Quotes"
+        ]
+      }
+    },
+    "/api/reviews/recent": {
+      "get": {
+        "summary": "GET /api/reviews/recent — public endpoint for the vitrine testimonials section.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Reviews"
+        ]
+      }
+    },
+    "/api": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "System"
+        ]
+      }
+    },
+    "/api/search/bbox": {
+      "get": {
+        "summary": "GET /api/search/bbox?minLat=-23.6&minLng=-46.7&maxLat=-23.5&maxLng=-46.6&categoryId=...",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Search"
+        ]
+      }
+    },
+    "/api/search/fuzzy": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Search"
+        ]
+      }
+    },
+    "/api/search/providers": {
+      "get": {
+        "summary": "OpenSearch-powered provider search.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Search"
+        ]
+      }
+    },
+    "/api/search": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Search"
+        ]
+      }
+    },
+    "/api/search/services": {
+      "get": {
+        "summary": "OpenSearch-powered service search.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Search"
+        ]
+      }
+    },
+    "/api/search/smart-match": {
+      "get": {
+        "summary": "GET /api/search/smart-match?lat=-23.55&lng=-46.63&categoryId=cat123&scheduledAt=2026-08-20T10:00:00Z&limit=5",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Search"
+        ]
+      }
+    },
+    "/api/sentry": {
+      "post": {
+        "summary": "Tunnel for Sentry/GlitchTip client-side errors.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Sentry"
+        ]
+      }
+    },
+    "/api/services/{id}": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Services"
+        ]
+      },
+      "patch": {
+        "summary": "Update",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Services"
+        ]
+      },
+      "delete": {
+        "summary": "Delete",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Services"
+        ]
+      }
+    },
+    "/api/services": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Services"
+        ]
+      },
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Services"
+        ]
+      }
+    },
+    "/api/services/vision-diagnostic": {
+      "post": {
+        "summary": "Create",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Services"
+        ]
+      }
+    },
+    "/api/stats/activity": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Stats"
+        ]
+      }
+    },
+    "/api/stats/public": {
+      "get": {
+        "summary": "Public platform stats — used by the vitrine hero for social proof.",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Stats"
+        ]
+      }
+    },
+    "/api/subscriptions": {
+      "get": {
+        "summary": "GET /api/subscriptions",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Subscriptions"
+        ]
+      },
+      "post": {
+        "summary": "GET /api/subscriptions",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Subscriptions"
+        ]
+      }
+    },
+    "/api/tracking/{id}/geofence": {
+      "post": {
+        "summary": "POST /api/tracking/[id]/geofence",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Tracking"
+        ]
+      }
+    },
+    "/api/tracking/{id}": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Tracking"
+        ]
+      }
+    },
+    "/api/users/me": {
+      "get": {
+        "summary": "Retrieve",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      },
+      "patch": {
+        "summary": "Update",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/users/me/slug": {
+      "post": {
+        "summary": "POST /api/users/me/slug",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/webhooks/evolution": {
+      "post": {
+        "summary": "Webhook Evolution API",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Webhooks"
+        ]
+      }
+    },
+    "/api/webhooks/lytex": {
+      "post": {
+        "summary": "Webhook Lytex Pagamentos",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Webhooks"
+        ]
+      }
+    },
+    "/api/webhooks/sentry-alert": {
+      "post": {
+        "summary": "POST /api/webhooks/sentry-alert — Recebe alertas do GlitchTip/Sentry e encaminha",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "tags": [
+          "Webhooks"
+        ]
       }
     }
   },

@@ -18,6 +18,7 @@
 import { db } from "@/lib/db"
 import { withCache } from "@/lib/redis"
 import { trackGeoLatency } from "./geo-metrics"
+import logger from "./logger"
 
 // Cache TTL values
 const PROXIMITY_CACHE_TTL = 60 // 60 seconds for proximity queries
@@ -110,7 +111,7 @@ async function _findProvidersWithinRadius(
       PROXIMITY_CACHE_TTL,
     )
   } catch (e) {
-    console.warn("PostGIS ST_DWithin query failed:", e)
+    logger.warn({ err: e }, "PostGIS ST_DWithin query failed")
     return []
   }
 }

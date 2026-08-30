@@ -50,6 +50,26 @@
  *     "cep": { "max": 60, "windowMs": 60000 },
  *     "reverse": { "max": 30, "windowMs": 60000 }
  *   },
+ *   "circuitBreakers": {
+ *     "nominatim": { "name": "nominatim", "state": "closed", "failures": 0, "successes": 120, "lastFailureAt": null, "openedAt": null },
+ *     "viacep": { "name": "viacep", "state": "open", "failures": 5, "successes": 80, "lastFailureAt": "2026-04-13T09:58:00.000Z", "openedAt": "2026-04-13T09:58:05.000Z" },
+ *     "osrm": { "name": "osrm", "state": "closed", "failures": 0, "successes": 200, "lastFailureAt": null, "openedAt": null },
+ *     "osrmTable": { "name": "osrm-table", "state": "half-open", "failures": 3, "successes": 150, "lastFailureAt": "2026-04-13T09:59:00.000Z", "openedAt": "2026-04-13T09:59:00.000Z" }
+ *   },
+ *   "geoMetrics": {
+ *     "calls": {
+ *       "cep": { "calls": 500, "fallbacks": 12, "fallbackRate": 2.4 },
+ *       "search": { "calls": 320, "fallbacks": 5, "fallbackRate": 1.6 },
+ *       "reverse": { "calls": 180, "fallbacks": 30, "fallbackRate": 16.7 },
+ *       "structured": { "calls": 45, "fallbacks": 2, "fallbackRate": 4.4 }
+ *     },
+ *     "latency": {
+ *       "nominatim": { "p50": 120, "p95": 340, "p99": 890, "count": 500, "errorRate": 0.02, "errorCount": 10 },
+ *       "viacep": { "p50": 80, "p95": 200, "p99": 450, "count": 500, "errorRate": 0.01, "errorCount": 5 },
+ *       "geo-cache": { "p50": 1, "p95": 3, "p99": 8, "count": 1000, "errorRate": 0, "errorCount": 0 }
+ *     },
+ *     "latencyWindowSeconds": 300
+ *   },
  *   "env": {
  *     "REDIS_CLUSTER_MODE": false,
  *     "GEO_QUERY_LOG_PATH": "...",
@@ -71,10 +91,42 @@ import {
 } from "@/lib/geo-query-log"
 import { getWarmConfig, getLastWarmResult, type WarmResult } from "@/lib/geo-cache-warm"
 import { GEO_LIMITS } from "@/lib/geo-rate-limit"
+import {
+  nominatimBreaker,
+  viacepBreaker,
+  osrmBreaker,
+  osrmTableBreaker,
+} from "@/lib/geo-circuit-breakers"
+import { getGeoCallStats } from "@/lib/geo"
+import { getGeoMetrics } from "@/lib/geo-metrics"
 
 // ---------------------------------------------------------------------------
 // Type
 // ---------------------------------------------------------------------------
+
+type GeoOperationDebug = {
+  calls: number
+  fallbacks: number
+  fallbackRate: number | null
+}
+
+type GeoMetricsServiceDebug = {
+  p50: number
+  p95: number
+  p99: number
+  count: number
+  errorRate: number
+  errorCount: number
+}
+
+type CircuitBreakerDebug = {
+  name: string
+  state: string
+  failures: number
+  successes: number
+  lastFailureAt: string | null
+  openedAt: string | null
+}
 
 type DebugResponse = {
   server: {
@@ -116,6 +168,22 @@ type DebugResponse = {
     lastRun: (WarmResult & { completedAt: string }) | null
   }
   rateLimits: Record<string, { max: number; windowMs: number }>
+  circuitBreakers: {
+    nominatim: CircuitBreakerDebug
+    viacep: CircuitBreakerDebug
+    osrm: CircuitBreakerDebug
+    osrmTable: CircuitBreakerDebug
+  }
+  geoMetrics: {
+    calls: {
+      cep: GeoOperationDebug
+      search: GeoOperationDebug
+      reverse: GeoOperationDebug
+      structured: GeoOperationDebug
+    }
+    latency: Record<string, GeoMetricsServiceDebug>
+    latencyWindowSeconds: number
+  }
   env: {
     REDIS_CLUSTER_MODE: boolean
     hasGeoQueryLogPath: boolean
@@ -178,6 +246,41 @@ export async function GET(request: Request): Promise<NextResponse<DebugResponse>
     lastRun: cacheWarmLastRun,
   }
 
+  // ── Geo call stats + latency metrics ───────────────────────────
+  const geoCallStats = getGeoCallStats()
+  const geoMetrics = getGeoMetrics()
+
+  const geoMetricsSection = {
+    calls: {
+      cep: { calls: geoCallStats.calls.cep, fallbacks: geoCallStats.fallbacks.cep, fallbackRate: geoCallStats.fallbackRate.cep },
+      search: { calls: geoCallStats.calls.search, fallbacks: geoCallStats.fallbacks.search, fallbackRate: geoCallStats.fallbackRate.search },
+      reverse: { calls: geoCallStats.calls.reverse, fallbacks: geoCallStats.fallbacks.reverse, fallbackRate: geoCallStats.fallbackRate.reverse },
+      structured: { calls: geoCallStats.calls.structured, fallbacks: geoCallStats.fallbacks.structured, fallbackRate: geoCallStats.fallbackRate.structured },
+    },
+    latency: Object.fromEntries(
+      Object.entries(geoMetrics.services).map(([name, svc]) => [
+        name,
+        {
+          p50: svc.p50,
+          p95: svc.p95,
+          p99: svc.p99,
+          count: svc.count,
+          errorRate: svc.errorRate,
+          errorCount: svc.errorCount,
+        },
+      ]),
+    ),
+    latencyWindowSeconds: geoMetrics.timestamp,
+  }
+
+  // ── Circuit breaker status ─────────────────────────────────────
+  const circuitBreakers = {
+    nominatim: nominatimBreaker.getStats(),
+    viacep: viacepBreaker.getStats(),
+    osrm: osrmBreaker.getStats(),
+    osrmTable: osrmTableBreaker.getStats(),
+  }
+
   // ── Rate limit config ──────────────────────────────────────────────
   const rateLimits = Object.fromEntries(
     Object.entries(GEO_LIMITS).map(([key, val]) => [key, { max: val.max, windowMs: val.windowMs }]),
@@ -196,6 +299,8 @@ export async function GET(request: Request): Promise<NextResponse<DebugResponse>
     queryLog,
     cacheWarm,
     rateLimits,
+    circuitBreakers,
+    geoMetrics: geoMetricsSection,
     env,
   }
 

@@ -22,13 +22,13 @@
 
 import "server-only"
 import {
-  readFileSync,
-  writeFileSync,
-  readdirSync,
-  unlinkSync,
-  existsSync,
-  mkdirSync,
-} from "node:fs"
+  readFile,
+  writeFile,
+  readdir,
+  unlink,
+  access,
+  mkdir,
+} from "node:fs/promises"
 import { join } from "node:path"
 import { cacheGet, cacheSet, cacheInvalidate } from "./redis"
 import logger from "./logger"
@@ -97,9 +97,11 @@ const COUNT_CACHE_KEY = "geo:metrics:count"
 // Directory management
 // ---------------------------------------------------------------------------
 
-function ensureDir(): void {
-  if (!existsSync(SNAPSHOTS_DIR)) {
-    mkdirSync(SNAPSHOTS_DIR, { recursive: true })
+async function ensureDir(): Promise<void> {
+  try {
+    await access(SNAPSHOTS_DIR)
+  } catch {
+    await mkdir(SNAPSHOTS_DIR, { recursive: true })
   }
 }
 
@@ -134,9 +136,9 @@ async function invalidateSnapshotsCache(): Promise<void> {
 
 async function writeSnapshot(snapshot: PersistedSnapshot): Promise<void> {
   try {
-    ensureDir()
+    await ensureDir()
     const filePath = join(SNAPSHOTS_DIR, `${FILE_PREFIX}${snapshot.timestamp}.json`)
-    writeFileSync(filePath, JSON.stringify(snapshot), "utf-8")
+    await writeFile(filePath, JSON.stringify(snapshot), "utf-8")
     await invalidateSnapshotsCache()
   } catch (err) {
     logger.error({ err }, "geo-metrics-persist: failed to write snapshot")
@@ -149,8 +151,8 @@ async function writeSnapshot(snapshot: PersistedSnapshot): Promise<void> {
  */
 async function rotateOldSnapshots(): Promise<void> {
   try {
-    ensureDir()
-    const entries = readdirSync(SNAPSHOTS_DIR, { withFileTypes: true })
+    await ensureDir()
+    const entries = await readdir(SNAPSHOTS_DIR, { withFileTypes: true })
     const snapFiles = entries
       .filter((e) => e.isFile() && parseSnapshotFileName(e.name) !== null)
       .map((e) => ({
@@ -164,7 +166,7 @@ async function rotateOldSnapshots(): Promise<void> {
     const toDelete = snapFiles.slice(MAX_SNAPSHOTS)
     for (const f of toDelete) {
       try {
-        unlinkSync(join(SNAPSHOTS_DIR, f.name))
+        await unlink(join(SNAPSHOTS_DIR, f.name))
       } catch {
         // best-effort
       }
@@ -266,7 +268,7 @@ export async function loadPersistedSnapshots(): Promise<PersistedSnapshot[]> {
 
   try {
     ensureDir()
-    const entries = readdirSync(SNAPSHOTS_DIR, { withFileTypes: true })
+    const entries = await readdir(SNAPSHOTS_DIR, { withFileTypes: true })
     const snapFiles = entries
       .filter((e) => e.isFile() && parseSnapshotFileName(e.name) !== null)
       .map((e) => ({
@@ -279,7 +281,7 @@ export async function loadPersistedSnapshots(): Promise<PersistedSnapshot[]> {
 
     for (const f of snapFiles) {
       try {
-        const content = readFileSync(join(SNAPSHOTS_DIR, f.name), "utf-8")
+        const content = await readFile(join(SNAPSHOTS_DIR, f.name), "utf-8")
         const parsed = JSON.parse(content) as PersistedSnapshot
 
         // Basic validation
@@ -370,8 +372,8 @@ export async function getSnapshotCount(): Promise<number> {
   lastCountCacheHit = false
 
   try {
-    ensureDir()
-    const entries = readdirSync(SNAPSHOTS_DIR, { withFileTypes: true })
+    await ensureDir()
+    const entries = await readdir(SNAPSHOTS_DIR, { withFileTypes: true })
     const count = entries.filter((e) => e.isFile() && parseSnapshotFileName(e.name) !== null).length
 
     // Store in Redis cache (best-effort)

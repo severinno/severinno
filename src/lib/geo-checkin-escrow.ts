@@ -10,6 +10,8 @@
  */
 
 import { haversineKm } from "@/lib/geo-server"
+import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/redis"
+import logger from "@/lib/logger"
 
 export interface CheckinAttempt {
   bookingId: string
@@ -47,7 +49,10 @@ const MAX_CHECKIN_DISTANCE_METERS = 150 // 150m tolerance (GPS drift + building 
 const PIN_LENGTH = 4
 const PIN_EXPIRY_HOURS = 8
 
-// In-memory PIN store (in production, use Redis or DB)
+// Redis-backed PIN store with TTL (survives server restarts)
+// Falls back to in-memory Map when Redis is unavailable (e.g. tests).
+const PIN_KEY_PREFIX = "escrow:pin:"
+const PIN_TTL_SECONDS = PIN_EXPIRY_HOURS * 60 * 60 // 8 hours
 const activePins = new Map<string, { pin: string; expiresAt: number }>()
 
 /**
@@ -80,9 +85,10 @@ export function validateGeoCheckin(attempt: CheckinAttempt): CheckinResult {
 }
 
 /**
- * Generates a secure 4-digit PIN for escrow release + QR code payload
+ * Generates a secure 4-digit PIN for escrow release + QR code payload.
+ * PIN is stored in Redis with TTL so it survives server restarts.
  */
-export function generateEscrowPIN(bookingId: string): EscrowPIN {
+export async function generateEscrowPIN(bookingId: string): Promise<EscrowPIN> {
   // Cryptographically secure random PIN
   const digits: string[] = []
   for (let i = 0; i < PIN_LENGTH; i++) {
@@ -92,7 +98,14 @@ export function generateEscrowPIN(bookingId: string): EscrowPIN {
 
   const expiresAt = Date.now() + PIN_EXPIRY_HOURS * 60 * 60 * 1000
 
-  // Store active PIN
+  // Store PIN in Redis with TTL (auto-expires after 8 hours)
+  const redisKey = `${PIN_KEY_PREFIX}${bookingId}`
+  try {
+    await cacheSet(redisKey, { pin, expiresAt }, PIN_TTL_SECONDS)
+  } catch (err) {
+    logger.warn({ err, bookingId }, "checkin-escrow: failed to store PIN in Redis — using in-memory fallback")
+  }
+  // Always store in in-memory Map as fallback (Redis may be unavailable in tests)
   activePins.set(bookingId, { pin, expiresAt })
 
   // QR payload includes booking ID + PIN for scanning
@@ -112,14 +125,26 @@ export function generateEscrowPIN(bookingId: string): EscrowPIN {
 }
 
 /**
- * Validates PIN and releases escrow payment if correct
+ * Validates PIN and releases escrow payment if correct.
+ * PIN is read from Redis (survives server restarts).
  */
-export function validateEscrowRelease(
+export async function validateEscrowRelease(
   bookingId: string,
   inputPin: string,
   escrowAmount: number,
-): EscrowReleaseResult {
-  const stored = activePins.get(bookingId)
+): Promise<EscrowReleaseResult> {
+  const redisKey = `${PIN_KEY_PREFIX}${bookingId}`
+  let stored: { pin: string; expiresAt: number } | null = null
+
+  // Try Redis first, fall back to in-memory Map
+  try {
+    stored = await cacheGet<{ pin: string; expiresAt: number }>(redisKey)
+  } catch (err) {
+    logger.warn({ err, bookingId }, "checkin-escrow: failed to read PIN from Redis")
+  }
+  if (!stored) {
+    stored = activePins.get(bookingId) ?? null
+  }
 
   if (!stored) {
     return {
@@ -130,7 +155,9 @@ export function validateEscrowRelease(
   }
 
   if (Date.now() > stored.expiresAt) {
+    // PIN expired — clean up both stores
     activePins.delete(bookingId)
+    try { await cacheInvalidate(redisKey) } catch { /* best-effort */ }
     return {
       success: false,
       bookingId,
@@ -146,8 +173,9 @@ export function validateEscrowRelease(
     }
   }
 
-  // PIN is correct — release escrow
+  // PIN is correct — release escrow and remove PIN from both stores
   activePins.delete(bookingId)
+  try { await cacheInvalidate(redisKey) } catch { /* best-effort */ }
 
   return {
     success: true,
@@ -158,18 +186,17 @@ export function validateEscrowRelease(
 }
 
 /**
- * Cleanup expired PINs (called periodically)
+ * Cleanup expired PINs from the in-memory fallback.
+ * Redis handles its own expiration via TTL.
  */
 export function cleanupExpiredPins(): number {
   const now = Date.now()
   let cleaned = 0
-
   for (const [bookingId, data] of activePins.entries()) {
     if (now > data.expiresAt) {
       activePins.delete(bookingId)
       cleaned++
     }
   }
-
   return cleaned
 }

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
-import { computeAvailableBalance } from "@/lib/wallet"
+import { handleError, badRequest } from "@/lib/api-server"
+import { FEE_RATE } from "@/lib/constants"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import logger from "@/lib/logger"
 
@@ -40,28 +40,41 @@ export async function POST(request: Request) {
       )
     }
 
-    // Compute current available balance via shared lib
-    const availableBalance = await computeAvailableBalance(session.userId)
+    // Serializable transaction: balance check + withdrawal creation
+    // are atomic to prevent double-spend race conditions.
+    const { withdrawal, availableBalance } = await db.$transaction(
+      async (tx) => {
+        // Compute balance inside transaction (snapshot read)
+        const bookings = await tx.booking.findMany({
+          where: { providerId: session.userId, paymentStatus: "PAID", status: "COMPLETED" },
+          select: { amount: true },
+        })
+        const earned = bookings.reduce((acc, b) => acc + Math.round(b.amount * (1 - FEE_RATE) * 100) / 100, 0)
 
-    if (withdrawAmount > availableBalance) {
-      return NextResponse.json(
-        {
-          error: `Saldo insuficiente. Disponível: R$ ${availableBalance.toFixed(2)}.`,
-          availableBalance,
-        },
-        { status: 400 },
-      )
-    }
+        const existingWithdrawals = await tx.walletTransaction.findMany({
+          where: { providerId: session.userId, status: "completed" },
+          select: { amount: true },
+        })
+        const totalWithdrawn = existingWithdrawals.reduce((acc, w) => acc + w.amount, 0)
+        const available = Math.max(0, Math.round((earned - totalWithdrawn) * 100) / 100)
 
-    // Create withdrawal record
-    const withdrawal = await db.walletTransaction.create({
-      data: {
-        providerId: session.userId,
-        amount: withdrawAmount,
-        status: "completed",
-        description: `Saque simulado de R$ ${withdrawAmount.toFixed(2)}`,
+        if (withdrawAmount > available) {
+          throw badRequest(`Saldo insuficiente. Disponível: R$ ${available.toFixed(2)}.`)
+        }
+
+        const w = await tx.walletTransaction.create({
+          data: {
+            providerId: session.userId,
+            amount: withdrawAmount,
+            status: "completed",
+            description: `Saque de R$ ${withdrawAmount.toFixed(2)}`,
+          },
+        })
+
+        return { withdrawal: w, availableBalance: available }
       },
-    })
+      { isolationLevel: "Serializable" },
+    )
 
     const newBalance = Math.round((availableBalance - withdrawAmount) * 100) / 100
 

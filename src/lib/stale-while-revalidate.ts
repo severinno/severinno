@@ -18,6 +18,7 @@
  */
 
 import { cacheGet, cacheSet } from "@/lib/redis"
+import logger from "./logger"
 
 export interface SWROptions {
   /** Maximum age in seconds before data is considered stale */
@@ -102,6 +103,6 @@ async function revalidateInBackground<T>(
     await cacheSet(key, { data: freshData, timestamp: now } satisfies CacheEntry<T>, maxAge * 5)
   } catch (err) {
     // Non-critical — log and continue
-    console.warn(`[swr] Background revalidation failed for key "${key}":`, err)
+    logger.warn({ err, key }, "[swr] Background revalidation failed")
   }
 }

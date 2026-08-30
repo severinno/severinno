@@ -291,7 +291,11 @@ async function sendTelegram(msg: AlertMessage): Promise<void> {
 
 function isAuthorized(request: NextRequest, body: string): boolean {
   const secret = process.env.SENTRY_ALERT_SECRET
-  if (!secret) return true // sem secret configurado → aceita qualquer origem (dev)
+  if (!secret) {
+    // In production, reject if secret is not configured
+    if (process.env.NODE_ENV === "production") return false
+    return true // dev: accept any origin
+  }
 
   // Verifica header Authorization
   const auth = request.headers.get("authorization")

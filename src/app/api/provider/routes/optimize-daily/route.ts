@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Route optimization failed",
+        error: "Route optimization failed",
       },
       { status: 500 },
     )

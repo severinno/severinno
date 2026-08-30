@@ -34,28 +34,29 @@ export async function POST(_request: Request, { params }: Params) {
 
     const now = new Date()
 
-    const updated = await db.booking.update({
-      where: { id },
-      data: {
-        status: "COMPLETED",
-        paymentStatus: "PAID",
-        escrowReleasedAt: now,
-      },
-      include: {
-        service: true,
-        provider: { select: { id: true, name: true } },
-        client: { select: { id: true, name: true } },
-      },
-    })
-
-    // Also update payment record if present
-    await db.payment.updateMany({
-      where: { bookingId: id },
-      data: {
-        status: "PAID",
-        paidAt: now,
-      },
-    })
+    // Atomic: booking + payment must both update or neither
+    const [updated] = await db.$transaction([
+      db.booking.update({
+        where: { id },
+        data: {
+          status: "COMPLETED",
+          paymentStatus: "PAID",
+          escrowReleasedAt: now,
+        },
+        include: {
+          service: true,
+          provider: { select: { id: true, name: true } },
+          client: { select: { id: true, name: true } },
+        },
+      }),
+      db.payment.updateMany({
+        where: { bookingId: id },
+        data: {
+          status: "PAID",
+          paidAt: now,
+        },
+      }),
+    ])
 
     // Notify provider that escrow was released
     notifyPaymentConfirmed(booking.providerId, booking.id, booking.amount).catch(() => {})

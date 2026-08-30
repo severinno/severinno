@@ -303,7 +303,14 @@ export async function middleware(request: NextRequest) {
 
   // --- Verify session cookie ---
   const sessionSecret = process.env.SESSION_SECRET
-  if (!sessionSecret) return response // fail open in dev if misconfigured
+  if (!sessionSecret) {
+    // Fail closed in production (no auth = no access)
+    // Fail open only in development for DX convenience
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json({ error: "Servidor mal configurado" }, { status: 500 })
+    }
+    return response
+  }
 
   const cookie = request.cookies.get(COOKIE_NAME)?.value
   if (!cookie) {

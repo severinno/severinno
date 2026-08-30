@@ -51,32 +51,33 @@ export async function POST(request: Request, { params }: Params) {
     const firstQuoted = quote.items.find((i) => i.status === "ACCEPTED" || i.price != null)
     if (!firstQuoted) throw badRequest("Nenhum item com preço no orçamento")
 
-    const booking = await db.booking.create({
-      data: {
-        clientId: session.userId,
-        providerId: quote.providerId,
-        serviceId: firstQuoted.serviceId,
-        scheduledAt: scheduleDate,
-        amount,
-        address: body.address ?? quote.address,
-        cep: quote.cep,
-        lat: quote.lat,
-        lng: quote.lng,
-        status: "PENDING",
-        quoteId: id,
-      },
-      include: {
-        service: { select: { id: true, title: true } },
-        provider: { select: { id: true, name: true, avatarUrl: true } },
-        client: { select: { id: true, name: true } },
-      },
-    })
-
-    // Accept all QUOTED items
-    await db.quoteItem.updateMany({
-      where: { requestId: id, status: "QUOTED" },
-      data: { status: "ACCEPTED" },
-    })
+    // Atomic: create booking + accept quote items
+    const [booking] = await db.$transaction([
+      db.booking.create({
+        data: {
+          clientId: session.userId,
+          providerId: quote.providerId,
+          serviceId: firstQuoted.serviceId,
+          scheduledAt: scheduleDate,
+          amount,
+          address: body.address ?? quote.address,
+          cep: quote.cep,
+          lat: quote.lat,
+          lng: quote.lng,
+          status: "PENDING",
+          quoteId: id,
+        },
+        include: {
+          service: { select: { id: true, title: true } },
+          provider: { select: { id: true, name: true, avatarUrl: true } },
+          client: { select: { id: true, name: true } },
+        },
+      }),
+      db.quoteItem.updateMany({
+        where: { requestId: id, status: "QUOTED" },
+        data: { status: "ACCEPTED" },
+      }),
+    ])
 
     // Notify provider
     saveAndQueueNotification({

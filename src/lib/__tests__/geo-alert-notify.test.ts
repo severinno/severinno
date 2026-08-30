@@ -26,6 +26,15 @@ const mockCaptureMessage = vi.hoisted(() => vi.fn())
 const mockSendPushNotification = vi.hoisted(() => vi.fn())
 const mockLoggerDebug = vi.hoisted(() => vi.fn())
 const mockLoggerInfo = vi.hoisted(() => vi.fn())
+const mockLoggerWarn = vi.hoisted(() => vi.fn())
+const mockLoggerError = vi.hoisted(() => vi.fn())
+
+// In-memory Redis mock for debounce tests
+const redisStore = new Map<string, unknown>()
+const mockCacheGet = vi.hoisted(() => vi.fn(async (key: string) => redisStore.get(key) ?? null))
+const mockCacheSet = vi.hoisted(
+  () => vi.fn(async (key: string, value: unknown, _ttl: number) => { redisStore.set(key, value) }),
+)
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -44,7 +53,13 @@ vi.mock("@/lib/push", () => ({
 }))
 
 vi.mock("@/lib/logger", () => ({
-  default: { debug: mockLoggerDebug, info: mockLoggerInfo, error: vi.fn() },
+  default: { debug: mockLoggerDebug, info: mockLoggerInfo, warn: mockLoggerWarn, error: mockLoggerError },
+}))
+
+vi.mock("@/lib/redis", () => ({
+  cacheGet: mockCacheGet,
+  cacheSet: mockCacheSet,
+  cacheInvalidate: vi.fn(async (key: string) => { redisStore.delete(key) }),
 }))
 
 // ---------------------------------------------------------------------------
@@ -99,9 +114,10 @@ const NO_TAG_PAYLOAD: GeoAlertPayload = {
 // Setup
 // ---------------------------------------------------------------------------
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks()
-  resetGeoAlertDebounce()
+  redisStore.clear()
+  await resetGeoAlertDebounce()
 
   // Default: two admins found
   mockFindMany.mockResolvedValue(ADMIN_IDS.map((id) => ({ id })))
@@ -255,7 +271,7 @@ describe("notifyGeoAlert — push debounce", () => {
     expect(mockSendPushNotification).not.toHaveBeenCalled()
 
     // Reset
-    resetGeoAlertDebounce()
+    await resetGeoAlertDebounce()
 
     // Third call: should send again
     const r3 = await notifyGeoAlert(WARN_PAYLOAD)

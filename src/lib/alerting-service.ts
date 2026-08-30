@@ -11,6 +11,8 @@
  * Supports Discord, Slack, Telegram & Generic Webhooks.
  */
 
+import logger from "./logger"
+
 export type AlertSeverity = "INFO" | "WARNING" | "CRITICAL" | "EMERGENCY"
 
 export interface AlertPayload {
@@ -43,7 +45,7 @@ export const AlertingService = {
     const icon = severityIcons[alert.severity] || "⚠️"
     const formattedTitle = `${icon} [${alert.severity}] ${alert.title}`
 
-    console.warn(`[ALERTING] [${alert.severity}] ${alert.title} — ${alert.message}`)
+    logger.warn({ severity: alert.severity, title: alert.title }, alert.message)
 
     if (!webhookUrl) {
       // In dev or without webhook configured, log to stdout/stderr
@@ -88,7 +90,7 @@ export const AlertingService = {
 
       return res.ok
     } catch (e) {
-      console.error("[ALERTING] Failed to send webhook alert:", e)
+      logger.error({ err: e }, "[ALERTING] Failed to send webhook alert")
       return false
     }
   },

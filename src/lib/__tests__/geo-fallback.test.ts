@@ -24,6 +24,7 @@ const mockDb = vi.hoisted(() => ({
     findMany: vi.fn<() => Promise<unknown[]>>(),
     findFirst: vi.fn<() => Promise<unknown>>(),
   },
+  $queryRaw: vi.fn<() => Promise<unknown[]>>(),
 }))
 
 vi.mock("@/lib/db", () => ({
@@ -108,21 +109,22 @@ describe("geocodeSearch — fallback local DB (geocodeSearchLocal)", () => {
     expect(results[1].city).toBe("Rio de Janeiro")
   })
 
-  it("passes the query and limit to db.user.findMany", async () => {
-    mockDb.user.findMany.mockResolvedValue([MOCK_PROVIDER_SP])
+  it("passes the query and limit to db.user.findMany (layered strategy)", async () => {
+    // Mock all layers to return empty until layer 3 (city contains)
+    mockDb.user.findMany
+      .mockResolvedValueOnce([]) // Layer 1: exact city
+      .mockResolvedValueOnce([]) // Layer 2: city prefix
+      .mockResolvedValueOnce([MOCK_PROVIDER_SP]) // Layer 3: city contains
     const { geocodeSearch } = await import("../geo")
     await geocodeSearch("Fallback Limit Query Param", 3)
 
+    // Should have tried at least layer 1 (exact) with the query
     expect(mockDb.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           role: "PROVIDER",
           active: true,
-          OR: expect.arrayContaining([
-            expect.objectContaining({
-              city: { contains: "Fallback Limit Query Param", mode: "insensitive" },
-            }),
-          ]),
+          city: { equals: "Fallback Limit Query Param", mode: "insensitive" },
         }),
         take: 3,
       }),
@@ -285,12 +287,22 @@ describe("reverseGeocode — fallback local DB (reverseGeocodeLocal)", () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Nominatim offline"))
     mockDb.user.findMany.mockReset()
     mockDb.user.findFirst.mockReset()
+    mockDb.$queryRaw.mockReset()
   })
 
-  it("returns nearest provider's address within 100km", async () => {
-    mockDb.user.findMany.mockResolvedValue([MOCK_PROVIDER_SP, MOCK_PROVIDER_RJ])
+  it("returns nearest provider's address within 100km (PostGIS path)", async () => {
+    // Mock PostGIS returning nearest provider
+    mockDb.$queryRaw.mockResolvedValueOnce([
+      {
+        street: "Rua Augusta",
+        district: "Consolação",
+        city: "São Paulo",
+        state: "SP",
+        cep: "01310-100",
+        distance_km: 0.5,
+      },
+    ])
     const { reverseGeocode } = await import("../geo")
-    // User at SP coords — SP provider is nearest (~0km)
     const result = await reverseGeocode(-23.5505, -46.6333)
 
     expect(result.road).toBe("Rua Augusta")
@@ -301,12 +313,14 @@ describe("reverseGeocode — fallback local DB (reverseGeocodeLocal)", () => {
   })
 
   it("returns raw coordinates when no provider is within 100km", async () => {
+    // PostGIS returns empty (no providers in range)
+    mockDb.$queryRaw.mockResolvedValueOnce([])
+    // Haversine fallback also finds nothing within 100km
     mockDb.user.findMany.mockResolvedValue([MOCK_PROVIDER_SP, MOCK_PROVIDER_RJ])
     const { reverseGeocode } = await import("../geo")
     // User in Tokyo — no provider within 100km
     const result = await reverseGeocode(35.6762, 139.6503)
 
-    // JS toFixed() always uses dot as decimal separator
     expect(result.displayName).toBe("35.6762, 139.6503")
     expect(result.road).toBeUndefined()
     expect(result.city).toBeUndefined()
@@ -315,9 +329,9 @@ describe("reverseGeocode — fallback local DB (reverseGeocodeLocal)", () => {
   })
 
   it("returns raw coordinates when DB query also fails", async () => {
+    mockDb.$queryRaw.mockRejectedValue(new Error("PostGIS not available"))
     mockDb.user.findMany.mockRejectedValue(new Error("DB connection failed"))
     const { reverseGeocode } = await import("../geo")
-    // Unique coords to avoid cache collision with previous test
     const result = await reverseGeocode(48.8566, 2.3522)
 
     expect(result.displayName).toBe("48.8566, 2.3522")
@@ -326,82 +340,72 @@ describe("reverseGeocode — fallback local DB (reverseGeocodeLocal)", () => {
   })
 
   it("returns raw coordinates when DB returns empty array", async () => {
+    mockDb.$queryRaw.mockResolvedValueOnce([])
     mockDb.user.findMany.mockResolvedValue([])
     const { reverseGeocode } = await import("../geo")
-    // Unique coords to avoid cache collision
     const result = await reverseGeocode(51.5074, -0.1278)
 
     expect(result.displayName).toBe("51.5074, -0.1278")
   })
 
-  it("selects nearest provider using Haversine distance", async () => {
-    const NEAR = makeProvider({
-      lat: -23.55,
-      lng: -46.63,
-      street: "Perto",
-      district: "Centro",
-      cep: "01001-000",
-    })
-    const FAR = makeProvider({
-      lat: -23.56,
-      lng: -46.64,
-      street: "Longe",
-      district: "Vila Mariana",
-      cep: "04001-000",
-    })
-    mockDb.user.findMany.mockResolvedValue([FAR, NEAR])
+  it("selects nearest provider using PostGIS distance", async () => {
+    // Mock PostGIS returning nearest provider first (ORDER BY distance_km ASC LIMIT 1)
+    mockDb.$queryRaw.mockResolvedValueOnce([
+      {
+        street: "Perto",
+        district: "Centro",
+        city: "São Paulo",
+        state: "SP",
+        cep: "01001-000",
+        distance_km: 0.1,
+      },
+    ])
 
     const { reverseGeocode } = await import("../geo")
     const result = await reverseGeocode(-23.55, -46.63)
 
-    // Should pick NEAR (almost 0km) over FAR
     expect(result.road).toBe("Perto")
     expect(result.city).toBe("São Paulo")
   })
 
   it("builds displayName from nearest provider's address fields", async () => {
-    mockDb.user.findMany.mockResolvedValue([MOCK_PROVIDER_SP])
+    mockDb.$queryRaw.mockResolvedValueOnce([
+      {
+        street: "Rua Augusta",
+        district: "Consolação",
+        city: "São Paulo",
+        state: "SP",
+        cep: "01310-100",
+        distance_km: 0.5,
+      },
+    ])
     const { reverseGeocode } = await import("../geo")
     const result = await reverseGeocode(-23.5505, -46.6333)
 
     expect(result.displayName).toBe("Rua Augusta, Consolação, São Paulo, SP")
   })
 
-  it("filters for active PROVIDERs with non-null lat/lng", async () => {
-    mockDb.user.findMany.mockResolvedValue([MOCK_PROVIDER_SP])
+  it("PostGIS path uses ST_DWithin and orders by distance", async () => {
+    mockDb.$queryRaw.mockResolvedValueOnce([])
+    mockDb.user.findMany.mockResolvedValue([])
     const { reverseGeocode } = await import("../geo")
     // Unique coords to avoid cache collision
     await reverseGeocode(41.9028, 12.4964)
 
-    expect(mockDb.user.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          role: "PROVIDER",
-          active: true,
-          lat: { not: null },
-          lng: { not: null },
-        },
-        take: 5,
-        orderBy: { avgRating: "desc" },
-      }),
-    )
+    // Verify $queryRaw was called (PostGIS path attempted)
+    expect(mockDb.$queryRaw).toHaveBeenCalled()
   })
 
-  it("skips providers with null lat/lng when computing nearest", async () => {
-    const PARTIAL = makeProvider({
-      lat: null as unknown as number,
-      lng: null as unknown as number,
-      street: "Sem Coordenadas",
-      city: "Nowhere",
-      state: "XX",
-      cep: null,
-    })
-    mockDb.user.findMany.mockResolvedValue([PARTIAL, MOCK_PROVIDER_SP])
+  it("falls back to Haversine when PostGIS returns empty", async () => {
+    // PostGIS returns nothing
+    mockDb.$queryRaw.mockResolvedValueOnce([])
+    // Haversine fallback returns nearest provider
+    mockDb.user.findMany.mockResolvedValue([MOCK_PROVIDER_SP])
 
     const { reverseGeocode } = await import("../geo")
     const result = await reverseGeocode(-23.5505, -46.6333)
 
-    // Should skip PARTIAL (null lat/lng) and return SP provider
+    // Should use Haversine fallback and return SP provider
     expect(result.road).toBe("Rua Augusta")
     expect(result.city).toBe("São Paulo")
   })

@@ -6,6 +6,8 @@
 
 import { haversineKm } from "@/lib/geo"
 import { findProvidersWithinRadius } from "@/lib/postgis"
+import { db } from "@/lib/db"
+import logger from "@/lib/logger"
 
 // Fast in-process coordinate cache for instant responses (<1ms)
 const inMemoryGeoIndex = new Map<string, { lat: number; lng: number; updatedAt: number }>()
@@ -92,6 +94,41 @@ export function seedGeoIndex(providers: Array<{ id: string; lat: number; lng: nu
     }
   }
   return count
+}
+
+/**
+ * Load all active providers with coordinates from DB into the in-memory
+ * spatial index. Called once on server startup to enable the fast path
+ * in searchNearbyProvidersFast.
+ *
+ * If PostGIS location column exists, uses it; otherwise falls back to
+ * lat/lng columns.
+ */
+export async function seedGeoIndexFromDB(): Promise<number> {
+  try {
+    const providers = await db.user.findMany({
+      where: {
+        role: "PROVIDER",
+        active: true,
+        deletedAt: null,
+        lat: { not: null },
+        lng: { not: null },
+      },
+      select: { id: true, lat: true, lng: true },
+    })
+
+    const count = seedGeoIndex(
+      providers
+        .filter((p) => p.lat != null && p.lng != null)
+        .map((p) => ({ id: p.id, lat: p.lat!, lng: p.lng! })),
+    )
+
+    logger.info({ count }, "redis-geo: seeded in-memory spatial index from DB")
+    return count
+  } catch (err) {
+    logger.warn({ err }, "redis-geo: failed to seed index from DB — falling through to PostGIS")
+    return 0
+  }
 }
 
 export const RedisGeoCache = {

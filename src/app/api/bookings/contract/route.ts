@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Contract generation failed",
+        error: "Contract generation failed",
       },
       { status: 500 },
     )

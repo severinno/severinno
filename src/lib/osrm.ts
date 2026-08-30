@@ -1,5 +1,6 @@
 import { withCache } from "@/lib/redis"
 import { haversineKm } from "@/lib/geo"
+import { osrmBreaker } from "./geo-circuit-breakers"
 import logger from "@/lib/logger"
 
 const osrmLogger = logger.child({ module: "osrm" })
@@ -45,29 +46,30 @@ export async function calculateRouteAndEta(
   return withCache(
     cacheKey,
     async () => {
-      // 1. Try real OSRM driving route
+      // 1. Try real OSRM driving route (protected by circuit breaker)
       try {
-        const url = `${getOsrmUrl()}/route/v1/driving/${originLng},${originLat};${destLng},${destLat}?overview=simplified&geometries=geojson`
-        const res = await fetch(url, {
-          headers: { "User-Agent": "SeverinnoMarketplace/1.0" },
-          signal: AbortSignal.timeout(3500),
+        const data = await osrmBreaker.execute(async () => {
+          const url = `${getOsrmUrl()}/route/v1/driving/${originLng},${originLat};${destLng},${destLat}?overview=simplified&geometries=geojson`
+          const res = await fetch(url, {
+            headers: { "User-Agent": "SeverinnoMarketplace/1.0" },
+            signal: AbortSignal.timeout(3500),
+          })
+          if (!res.ok) throw new Error(`OSRM HTTP ${res.status}`)
+          return (await res.json()) as OsrmApiResponse
         })
 
-        if (res.ok) {
-          const data = (await res.json()) as OsrmApiResponse
-          if (data.code === "Ok" && data.routes?.length > 0) {
-            const route = data.routes[0]
-            const distanceKm = Math.round((route.distance / 1000) * 10) / 10
-            const durationMin = Math.max(1, Math.round(route.duration / 60))
+        if (data.code === "Ok" && data.routes?.length > 0) {
+          const route = data.routes[0]
+          const distanceKm = Math.round((route.distance / 1000) * 10) / 10
+          const durationMin = Math.max(1, Math.round(route.duration / 60))
 
-            return {
-              distanceKm,
-              durationMin,
-              origin: { lat: originLat, lng: originLng },
-              destination: { lat: destLat, lng: destLng },
-              geometry: route.geometry?.coordinates,
-              source: "osrm" as const,
-            }
+          return {
+            distanceKm,
+            durationMin,
+            origin: { lat: originLat, lng: originLng },
+            destination: { lat: destLat, lng: destLng },
+            geometry: route.geometry?.coordinates,
+            source: "osrm" as const,
           }
         }
       } catch (err) {

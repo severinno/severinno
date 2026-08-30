@@ -36,6 +36,7 @@ export async function GET(request: Request) {
           ],
         },
         orderBy: { createdAt: "asc" },
+        take: 500,
       })
 
       // Mark unread inbound messages as read

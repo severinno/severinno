@@ -11,6 +11,8 @@
  * Cost: $0 — LocalAI / Ollama or deterministic rule-based fallback
  */
 
+import logger from "./logger"
+
 export interface DisputeCase {
   bookingId: string
   clientId: string
@@ -54,7 +56,7 @@ export async function mediateDispute(dispute: DisputeCase): Promise<MediationRec
       const aiResult = await callAIMediationEngine(localAiUrl, dispute)
       if (aiResult) return aiResult
     } catch (err) {
-      console.warn("[dispute-mediator] AI mediation failed, using rule-based:", (err as Error).message)
+      logger.warn({ err }, "[dispute-mediator] AI mediation failed, using rule-based")
       // Fall through to rule-based
     }
   }
@@ -125,7 +127,7 @@ Analise e retorne um JSON com:
       source: "ai-mediation",
     }
   } catch (err) {
-    console.warn("[dispute-mediator] AI engine call failed:", (err as Error).message)
+    logger.warn({ err }, "[dispute-mediator] AI engine call failed")
     return null
   }
 }

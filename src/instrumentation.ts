@@ -28,6 +28,18 @@ export async function register() {
       }
     }
 
+    // ── Seed in-memory spatial index from DB ──────────────────────────
+    // Powers the fast path in searchNearbyProvidersFast (<1ms lookups).
+    // Runs once on startup, before any requests arrive.
+    import("./lib/redis-geo")
+      .then(async ({ seedGeoIndexFromDB }) => {
+        const count = await seedGeoIndexFromDB()
+        logger.info({ count }, "instrumentation: geo spatial index seeded")
+      })
+      .catch((err: unknown) => {
+        logger.warn({ err }, "instrumentation: geo spatial index seed failed — falling through to PostGIS")
+      })
+
     // ── Geo cache warming (post-restart) ────────────────────────────────
     // Pre-heats the Redis cache with the most popular geo queries so the
     // first users after restart get cached responses instead of 5s latencies.
