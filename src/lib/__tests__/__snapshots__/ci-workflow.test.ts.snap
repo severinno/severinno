@@ -80,6 +80,53 @@ exports[`ci.yml — sintaxe YAML + snapshot > parseia como YAML válido (js-yaml
         },
       ],
     },
+    "lighthouse": {
+      "if": "github.event_name == 'pull_request'",
+      "name": "Lighthouse Audit",
+      "needs": [
+        "build",
+      ],
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+        },
+        {
+          "uses": "./.github/actions/setup-bun",
+          "with": {
+            "bun-version": "\${{ vars.BUN_VERSION }}",
+          },
+        },
+        {
+          "run": "bun install --frozen-lockfile",
+        },
+        {
+          "run": "bun run db:generate",
+        },
+        {
+          "env": {
+            "DATABASE_URL": "\${{ env.DATABASE_URL }}",
+            "PORT": 3456,
+            "REDIS_URL": "\${{ env.REDIS_URL }}",
+            "SESSION_SECRET": "\${{ env.SESSION_SECRET }}",
+            "SKIP_TYPESCRIPT_CHECK": "true",
+          },
+          "name": "Start server",
+          "run": "bun run build &
+sleep 5
+bun run start -- -p 3456 &
+sleep 10
+",
+        },
+        {
+          "env": {
+            "LHCI_GITHUB_APP_TOKEN": "\${{ secrets.LHCI_GITHUB_APP_TOKEN }}",
+          },
+          "name": "Lighthouse CI",
+          "run": "npx lhci autorun",
+        },
+      ],
+    },
     "lint": {
       "name": "Lint",
       "runs-on": "ubuntu-latest",

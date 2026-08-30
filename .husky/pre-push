@@ -68,3 +68,22 @@ if [ "$SHOULD_RUN_TESTS" = true ]; then
     bun run fuzz
   fi
 fi
+
+# ── Performance budget check (fast, no server needed) ──────────────────
+if [ -d ".next/static/chunks" ]; then
+  echo "📦 Checking bundle size budget..."
+  BUDGET_JS_KB=500
+  OVER=false
+  for f in $(find .next/static/chunks -name '*.js' -size +${BUDGET_JS_KB}k 2>/dev/null); do
+    size=$(du -k "$f" | cut -f1)
+    echo "   ⚠️  JS over budget: $(basename $f) (${size}KB > ${BUDGET_JS_KB}KB)"
+    OVER=true
+  done
+  if [ "$OVER" = true ]; then
+    echo "❌ Bundle size budget exceeded! Reduce before pushing."
+    exit 1
+  fi
+  echo "   ✅ Bundles within budget"
+else
+  echo "📦 No .next build found — skipping bundle check"
+fi

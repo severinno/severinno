@@ -194,10 +194,10 @@ describe("ErrorComponent (ErrorBoundary) — accessibility", () => {
     const button = container.querySelector("button")
     expect(button).toBeInTheDocument()
 
-    // Click the button - it sets isResetting=true and schedules reset()
+    // Click the button - it sets isRetrying=true and schedules reset()
     fireEvent.click(button!)
 
-    // Button should show "Tentando…" text (isResetting = true)
+    // Button should show "Tentando…" text (isRetrying = true)
     expect(button?.textContent).toContain("Tentando…")
 
     // Advance time past the 600ms timeout
