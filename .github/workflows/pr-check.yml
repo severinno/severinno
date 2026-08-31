@@ -30,7 +30,7 @@ jobs:
     name: UTF-8 Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Run UTF-8 validation on all .ts files
         run: bash scripts/check-utf8.sh --ci src/
@@ -61,7 +61,7 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # histórico completo — auditamos TODOS os blobs
 
@@ -99,7 +99,7 @@ jobs:
     name: All-text alert validation (fixture → gate)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Validate all-text alert fixture + gate replica
         run: bash scripts/validate-all-text-alert.sh
@@ -119,7 +119,7 @@ jobs:
     name: Secrets Guard (no .env tracked)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check no .env tracked in git
         run: node scripts/rotate-secrets.mjs --check
@@ -141,7 +141,7 @@ jobs:
     name: Seed Test Hooks Guard (no prod leak)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check no seed test hooks in non-test workflows
         run: node scripts/check-seed-hooks.mjs
@@ -170,7 +170,7 @@ jobs:
     name: Workflow References Guard (no dangling refs)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check workflow → script/package.json/uses references
         run: node scripts/check-workflow-refs.mjs --pkg-internal
@@ -202,7 +202,7 @@ jobs:
     name: Sentinel Producer Guard (grep -Fq ↔ produtor)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check every grep -Fq sentinel has a matching producer
         run: node scripts/check-sentinel-producer.mjs
@@ -220,7 +220,7 @@ jobs:
     name: No setup-bun Guard (local action)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check no workflow uses oven-sh/setup-bun
         run: node scripts/check-no-setup-bun.mjs
@@ -250,7 +250,7 @@ jobs:
     name: Bun Mirror Guard (fonte única vars.BUN_VERSION)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check bun single-source + GHCR mirror consistency
         run: node scripts/check-bun-mirror.mjs
@@ -273,7 +273,7 @@ jobs:
     name: Bun Mirror Guard (staged diff)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # needed for origin/main...HEAD diff
 
@@ -304,7 +304,7 @@ jobs:
     name: Mutation Jobs Guard (staged diff)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # needed for origin/main...HEAD diff
 
@@ -376,7 +376,7 @@ jobs:
     name: Mutation guards master (15 node-pure mutation tests)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Mutation tests — todos os guards devem FALHAR nas mutações
         run: bash scripts/test-mutation-guards.sh
@@ -402,7 +402,7 @@ jobs:
     name: Hooks Symmetry Guard (README ↔ hooks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check README Git Hooks table ↔ real hooks (bidirectional)
         run: node scripts/check-hooks-symmetry.mjs
@@ -432,7 +432,7 @@ jobs:
     name: Mutation Jobs Guard (test-mutation-*.sh ↔ CI jobs)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check every test-mutation-*.sh has a CI job (transitive)
         run: node scripts/check-mutation-jobs.mjs
@@ -458,7 +458,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # PROSE ALLOWLIST: exime palavras de prosa comum ('abaixo', 'acima',
       # 'seguir', 'aqui', 'fluxo') que o strict flagaria como falso positivo
@@ -542,7 +542,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # needed for origin/main...HEAD diff
 
@@ -651,7 +651,7 @@ jobs:
     name: E2E Counts Guard (comentários = derivação)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -687,7 +687,7 @@ jobs:
     name: Seed Count Literals Guard (scripts/docs/.github = derivação)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -704,7 +704,7 @@ jobs:
     name: Actionlint (workflow syntax)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Run actionlint on all workflows
         uses: docker://rhysd/actionlint:latest
@@ -738,14 +738,14 @@ jobs:
     name: Lint Guard (prettier + eslint zero)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -794,14 +794,14 @@ jobs:
     # CONFIRMAÇÃO quando drift é detectado (anti-flake) ≈ 14-15 min.
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -842,7 +842,7 @@ jobs:
     name: Unused Deps Guard (package.json hygiene)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -865,7 +865,7 @@ jobs:
     name: Mutation Count Guard (matrix ↔ job name/summary ↔ README)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -884,7 +884,7 @@ jobs:
     name: Bun Audit Guard (deps — drift baseline)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -905,14 +905,14 @@ jobs:
     name: Fuzz Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -925,7 +925,7 @@ jobs:
         run: bun run fuzz:ci > fuzz-results.json
 
       - name: Archive fuzz results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-results
           path: fuzz-results.json
@@ -941,7 +941,7 @@ jobs:
     name: Geo Benchmark
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # needed to fetch main branch for baseline
 
@@ -950,7 +950,7 @@ jobs:
           bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -1026,7 +1026,7 @@ jobs:
       # Upload artifact even on failure so results can be inspected
       - name: Upload benchmark artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: geo-benchmark
           path: docs/benchmarks/geo-latest.json
@@ -1068,7 +1068,7 @@ jobs:
           --health-start-period 10s
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -1077,7 +1077,7 @@ jobs:
           bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -1245,7 +1245,7 @@ jobs:
       # ── Upload artifact ───────────────────────────────────────────────
       - name: Upload GiST benchmark artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: geo-gist-benchmark-pr
           path: |
@@ -1341,7 +1341,7 @@ jobs:
       actions: read # gh api repos/X/actions/runs/<id>/jobs (jobs API) + gh run list + gh repo view
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Mede o step no run ATUAL e gateia por DRIFT RELATIVO + TETO ──
       # --max 240 (TETO ABSOLUTO) = 4 min — falha SEMPRE acima disso;
@@ -1370,7 +1370,7 @@ jobs:
       # ── Evidência como artifact (debug de falhas do budget) ────────
       - name: Upload timing JSON (artifact)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-coord-timing-pr
           path: /tmp/mutation-timing.json
@@ -1456,7 +1456,7 @@ jobs:
       packages: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # needed for origin/main...HEAD diff
 
@@ -1565,7 +1565,7 @@ jobs:
     name: Security Headers
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check security headers (CSP, HSTS, XFO, etc.)
         run: bash scripts/test-security-headers.sh --ci --url "${{ secrets.BASE_URL || 'https://severinno.com.br' }}"
@@ -1588,14 +1588,14 @@ jobs:
     name: TypeCheck (tsc --noEmit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -1622,14 +1622,14 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}

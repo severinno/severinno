@@ -55,7 +55,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Valida a repository variable (fail-fast com mensagem clara) ──
       # Sem a variável, o download abaixo montaria um URL quebrado
@@ -97,7 +97,7 @@ jobs:
             "$RUNNER_TEMP/ctx"
 
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

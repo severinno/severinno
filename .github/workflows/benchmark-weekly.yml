@@ -64,7 +64,7 @@ jobs:
     timeout-minutes: 2
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -115,7 +115,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -125,7 +125,7 @@ jobs:
           bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -220,7 +220,7 @@ jobs:
       # Create GitHub issue + optional webhook when regression detected
       - name: Create regression issue
         if: steps.compare.outcome == 'failure'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -376,7 +376,7 @@ jobs:
       # ── Upload artifact ────────────────────────────────────────────────
       - name: Upload benchmark artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: geo-real-benchmark
           path: |
@@ -406,7 +406,7 @@ jobs:
       actions: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Roda a medição real (cold→warm) e salva o JSON ───────────────
       # gh usa o token padrão do run (GITHUB_TOKEN) para dispatch + jobs API.
@@ -433,7 +433,7 @@ jobs:
       # ── Evidência como artifact (debug de falhas) ────────────────────
       - name: Upload bench JSON (on failure)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bench-setup-bun-warm
           path: /tmp/bench-setup-bun.json
@@ -461,7 +461,7 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
@@ -511,7 +511,7 @@ jobs:
       # dispara: mostra run-a-run + cold/warm de ambas as imagens.
       - name: Upload bench log (on failure)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: act-startup-bench
           path: /tmp/act-startup-bench.log
@@ -534,7 +534,7 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # histórico completo — auditamos TODOS os blobs
 
@@ -569,7 +569,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # histórico completo — auditamos TODOS os blobs
 
@@ -629,7 +629,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # histórico completo — o audit varre git log -p --all
 
@@ -679,7 +679,7 @@ jobs:
       issues: write # gh issue create para achados novos de drift semântico
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── GATE: nenhum achado NOVO além do baseline commitado ──────────
       # Exit 1 = drift semântico novo detectado → job falha (alerta). O step
@@ -718,7 +718,7 @@ jobs:
     timeout-minutes: 2
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Compara o .actrc do working tree com vars.BUN_VERSION ────────
       # Node puro (sem deps) — não precisa de bun para o aviso. O exit 0
@@ -761,7 +761,7 @@ jobs:
       contents: read # gh api repos/X/contents (existência do workflow)
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Valida a existência dos workflows de medição na default ─────
       # NÃO passar --default-branch de propósito: em eventos schedule o
@@ -782,7 +782,7 @@ jobs:
       # ── Evidência como artifact (debug + insumo da tabela) ──────────
       - name: Upload guard JSON (artifact)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: default-branch-workflow-guard
           path: /tmp/default-branch-guard.json
@@ -849,7 +849,7 @@ jobs:
       actions: read # gh api jobs (read) + gh run list (read) — NÃO publica baseline (faixa soft DERIVA da mediana)
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Mede o tempo real do step no run ATUAL com a faixa soft DERIVADA ──
       # GH_TOKEN explícito: o gh do runner já usa o GITHUB_TOKEN por
@@ -877,7 +877,7 @@ jobs:
       # ── Evidência como artifact (debug + insumo da tabela) ─────────
       - name: Upload timing JSON (artifact)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-coord-timing
           path: /tmp/mutation-timing.json
@@ -948,7 +948,7 @@ jobs:
       actions: read # gh run list + jobs API (só leitura — não publica baseline)
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Mede o drift de tendência: run atual vs mediana dos N anteriores ──
       # --window N (default 4) e --max-drift X% (default 30) vêm de vars com
@@ -975,7 +975,7 @@ jobs:
       # ── Evidência como artifact (debug + histórico da tendência) ─────
       - name: Upload trend JSON (artifact)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-coord-trend
           path: /tmp/mutation-trend.json

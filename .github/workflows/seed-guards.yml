@@ -111,14 +111,14 @@ jobs:
           --health-start-period 10s
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -134,7 +134,7 @@ jobs:
       # exata, então um restore parcial roda o generate.
       - name: Cache Prisma client
         id: prisma-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules/.prisma
@@ -242,14 +242,14 @@ jobs:
           --health-start-period 10s
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -260,7 +260,7 @@ jobs:
 
       - name: Cache Prisma client
         id: prisma-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules/.prisma
@@ -365,14 +365,14 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -455,14 +455,14 @@ jobs:
           --health-start-period 10s
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -473,7 +473,7 @@ jobs:
 
       - name: Cache Prisma client
         id: prisma-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules/.prisma
@@ -590,14 +590,14 @@ jobs:
           --health-start-period 10s
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-bun
         with:
           bun-version: ${{ vars.BUN_VERSION }}
 
       - name: Cache node_modules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: node_modules
           key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
@@ -608,7 +608,7 @@ jobs:
 
       - name: Cache Prisma client
         id: prisma-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules/.prisma
