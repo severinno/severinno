@@ -327,13 +327,14 @@ export async function middleware(request: NextRequest) {
   response.headers.set("Vary", "Accept-Encoding")
 
   // Content-Security-Policy
+  // Domains: severinno.com (production), localhost (dev)
   const cspDirectives = [
     "default-src 'self'",
-    "script-src 'self' https://va.vercel-scripts.com https://vercel-insights.com https://*.vercel.app",
+    "script-src 'self' 'unsafe-eval' https://va.vercel-scripts.com https://vercel-insights.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "img-src 'self' data: blob: https://*.vercel.app https://*.s3.amazonaws.com https://maps.googleapis.com https://*.tile.openstreetmap.org",
+    "img-src 'self' data: blob: https://*.s3.amazonaws.com https://maps.googleapis.com https://*.tile.openstreetmap.org https://*.gravatar.com https://ui-avatars.com https://i.pravatar.cc https://picsum.photos",
     "font-src 'self' https://fonts.gstatic.com",
-    "connect-src 'self' https://*.vercel.app wss://*.vercel.app https://*.upstash.io https://sentry.io https://*.ingest.sentry.io",
+    "connect-src 'self' https://*.upstash.io https://sentry.io https://*.ingest.sentry.io https://*.tile.openstreetmap.org wss://localhost:*",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
