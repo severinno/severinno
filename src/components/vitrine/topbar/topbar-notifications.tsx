@@ -88,6 +88,8 @@ export function TopbarNotifications({
                 exit={{ scale: 0 }}
                 transition={{ type: "spring", stiffness: 500, damping: 20 }}
                 className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-gradient-to-r from-red-500 to-red-400 text-[9px] font-bold text-white shadow-sm"
+                aria-live="polite"
+                aria-atomic="true"
               >
                 {unreadCount > 9 ? "9+" : unreadCount}
               </motion.span>
