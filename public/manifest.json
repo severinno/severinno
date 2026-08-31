@@ -3,6 +3,8 @@
   "short_name": "Severinno",
   "description": "Encontre profissionais para serviços domésticos, reparos, eventos e mais. Orçamento grátis e agendamento online.",
   "start_url": "/?utm_source=pwa",
+  "scope": "/",
+  "id": "/?utm_source=pwa",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui", "browser"],
   "background_color": "#ffffff",
@@ -10,8 +12,6 @@
   "orientation": "portrait-primary",
   "categories": ["marketplace", "services", "lifestyle"],
   "lang": "pt-BR",
-  "scope": "/",
-  "id": "/?utm_source=pwa",
   "edge_side_panel": { "preferred_width": 360 },
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },

@@ -118,3 +118,8 @@ mini-services/realtime/realtime.err
 # Python bytecode (check_crlf.py / check_blob_crlf.py compile cache)
 __pycache__/
 *.pyc
+
+# Caddy reverse proxy
+.caddy/
+caddy-access.log
+.caddy.pid
