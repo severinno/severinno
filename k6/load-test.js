@@ -118,9 +118,10 @@ function testHome() {
   totalRequests.add(1)
   homeLatency.add(res.timings.duration)
 
+  const body = res.body || ""
   const success = check(res, {
     "home: status 200": (r) => r.status === 200,
-    "home: has content": (r) => r.body.includes("Severinno") || r.body.includes("prestadores"),
+    "home: has content": () => body.includes("Severinno") || body.includes("prestadores"),
     "home: response < 5s": (r) => r.timings.duration < 5000,
   })
 
@@ -188,8 +189,10 @@ function testCategories() {
   totalRequests.add(1)
   categoriesLatency.add(res.timings.duration)
 
+  const catBody = res.body || ""
   const success = check(res, {
     "categories: status 200": (r) => r.status === 200,
+    "categories: has data": () => catBody.length > 2,
     "categories: response < 2s": (r) => r.timings.duration < 2000,
   })
 
