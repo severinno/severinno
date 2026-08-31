@@ -11,7 +11,7 @@
  */
 import { db } from "@/lib/db"
 import { cacheGet, cacheSet } from "@/lib/redis"
-import { haversineKm } from "@/lib/geo-shared"
+import { haversineKm } from "@/lib/geo-server"
 import { captureError } from "@/lib/sentry"
 import logger from "@/lib/logger"
 
@@ -177,7 +177,9 @@ async function notifyGeofenceEvent(
   try {
     // Log to Sentry for observability
     captureError(
-      new Error(`Geofence ${event.type}: provider ${event.providerId} ${event.type === "enter" ? "entered" : "exited"} zone`),
+      new Error(
+        `Geofence ${event.type}: provider ${event.providerId} ${event.type === "enter" ? "entered" : "exited"} zone`,
+      ),
       {
         level: event.type === "enter" ? "info" : "warning",
         extra: {
@@ -192,7 +194,7 @@ async function notifyGeofenceEvent(
     // Store event in Redis for audit trail
     const auditKey = `geofence:audit:${event.bookingId}`
     try {
-      const existing = await cacheGet<GeofenceEvent[]>(auditKey) ?? []
+      const existing = (await cacheGet<GeofenceEvent[]>(auditKey)) ?? []
       existing.push(event)
       await cacheSet(auditKey, existing, 86400) // 24h TTL
     } catch {

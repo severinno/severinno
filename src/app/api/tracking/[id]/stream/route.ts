@@ -14,7 +14,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { cacheGet, cacheSet } from "@/lib/redis"
-import { haversineKm } from "@/lib/geo-shared"
+import { haversineKm } from "@/lib/geo-server"
 
 // ── SSE connection registry ───────────────────────────────────────────────
 
@@ -29,21 +29,21 @@ type SSEClient = {
 const sseClients = new Map<string, SSEClient[]>()
 
 // Position broadcast buffer (latest position per booking)
-const positionBuffer = new Map<string, {
-  lat: number
-  lng: number
-  speed: number | null
-  heading: number | null
-  timestamp: string
-  providerId: string
-}>()
+const positionBuffer = new Map<
+  string,
+  {
+    lat: number
+    lng: number
+    speed: number | null
+    heading: number | null
+    timestamp: string
+    providerId: string
+  }
+>()
 
 // ── Route handler ─────────────────────────────────────────────────────────
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: bookingId } = await params
 
   // Validate booking exists
@@ -138,11 +138,18 @@ export async function GET(
         clearInterval(heartbeatInterval)
         clearInterval(pollInterval)
         const clients = sseClients.get(bookingId) ?? []
-        sseClients.set(bookingId, clients.filter((c) => c !== client))
+        sseClients.set(
+          bookingId,
+          clients.filter((c) => c !== client),
+        )
         if (sseClients.get(bookingId)?.length === 0) {
           sseClients.delete(bookingId)
         }
-        try { controller.close() } catch { /* already closed */ }
+        try {
+          controller.close()
+        } catch {
+          /* already closed */
+        }
       })
 
       // Send connection established
@@ -159,7 +166,7 @@ export async function GET(
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-store, must-revalidate",
-      "Connection": "keep-alive",
+      Connection: "keep-alive",
       "X-Accel-Buffering": "no", // Disable Nginx buffering
     },
   })
@@ -167,12 +174,9 @@ export async function GET(
 
 // ── Position update endpoint (called by provider app) ─────────────────────
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: bookingId } = await params
-  const body = await request.json() as {
+  const body = (await request.json()) as {
     lat: number
     lng: number
     speed?: number

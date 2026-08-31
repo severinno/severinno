@@ -9,7 +9,7 @@
  */
 import { db } from "@/lib/db"
 import { cacheGet, cacheSet, getClient } from "@/lib/redis"
-import { haversineKm } from "@/lib/geo-shared"
+import { haversineKm } from "@/lib/geo-server"
 import logger from "./logger"
 
 const REDIS_GEO_KEY = "geo:provider-locations"
@@ -88,7 +88,11 @@ export async function getCachedProviderLocation(
     if (user?.lat && user?.lng) {
       const loc = { lat: user.lat, lng: user.lng }
       memoryStore.set(providerId, { ...loc, updatedAt: Date.now() })
-      try { await cacheSet(`geo:location:${providerId}`, loc, CACHE_TTL_S) } catch { /* */ }
+      try {
+        await cacheSet(`geo:location:${providerId}`, loc, CACHE_TTL_S)
+      } catch {
+        /* */
+      }
       return loc
     }
   } catch {
@@ -127,8 +131,15 @@ export async function findNearestCached(
     const client = getClient()
     if (client) {
       const results = await client.georadius(
-        REDIS_GEO_KEY, centerLng, centerLat, radiusKm, "km",
-        "WITHDIST", "COUNT", limit, "ASC",
+        REDIS_GEO_KEY,
+        centerLng,
+        centerLat,
+        radiusKm,
+        "km",
+        "WITHDIST",
+        "COUNT",
+        limit,
+        "ASC",
       )
       if (results.length > 0) {
         return results.map((r) => {
