@@ -115,6 +115,12 @@ model User {
   // Advanced Geolocation: custom polygon area and travel fee policy
   servicePolygon    Json?
   travelFeePolicy   Json?
+  // Session version — incremented on password change/reset to revoke all sessions
+  sessionVersion  Int      @default(0)
+  // Two-factor authentication (TOTP)
+  twoFactorEnabled     Boolean  @default(false)
+  twoFactorSecret      String?
+  twoFactorBackupCodes String?  // JSON array of hashed backup codes
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

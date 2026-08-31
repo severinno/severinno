@@ -41,6 +41,21 @@ vi.mock("@/lib/mail", () => ({
   passwordChangedHtml: vi.fn().mockReturnValue("<html>senha alterada</html>"),
 }))
 
+vi.mock("@/lib/redis", () => ({
+  cacheInvalidate: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock("@/lib/sentry", () => ({
+  captureError: vi.fn(),
+}))
+
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn().mockResolvedValue(undefined),
+  RATE_LIMITS: {
+    general: { prefix: "general", max: 100, windowMs: 60000 },
+  },
+}))
+
 vi.mock("@/lib/crypto", () => ({
   hashPassword: vi.fn().mockReturnValue("mocked-salt:mocked-hash"),
   verifyPassword: vi.fn().mockReturnValue(true),
@@ -51,6 +66,7 @@ vi.mock("@/lib/auth", () => ({
     userId: "user-1",
     role: "CLIENT",
   })),
+  invalidateSessionCache: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock("@/lib/db", () => ({
@@ -113,7 +129,7 @@ describe("POST /api/auth/change-password", () => {
     // Atualiza no banco
     expect(mockDb.user.update).toHaveBeenCalledWith({
       where: { id: "user-1" },
-      data: { passwordHash: "mocked-salt:mocked-hash" },
+      data: { passwordHash: "mocked-salt:mocked-hash", sessionVersion: { increment: 1 } },
     })
 
     // Push notification de segurança

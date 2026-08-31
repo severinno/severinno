@@ -26,14 +26,19 @@ function sign(payload: string): string {
 export type SessionPayload = {
   userId: string
   role: "CLIENT" | "PROVIDER" | "ADMIN"
+  sessionVersion?: number
 }
 
 /**
  * Create a signed session cookie and set it on the response.
  */
-export async function createSession(userId: string, role: SessionPayload["role"]) {
+export async function createSession(
+  userId: string,
+  role: SessionPayload["role"],
+  sessionVersion = 0,
+) {
   const expiresAt = Math.floor(Date.now() / 1000) + COOKIE_MAX_AGE_SECONDS
-  const payload = `${userId}.${role}.${expiresAt}`
+  const payload = `${userId}.${role}.${expiresAt}.${sessionVersion}`
   const signature = sign(payload)
   const value = `${payload}.${signature}`
 
@@ -53,13 +58,18 @@ export async function createSession(userId: string, role: SessionPayload["role"]
  * Reissue the session cookie with a new expiry (sliding extension).
  * Used when the session is past the rotation threshold.
  */
-async function reissueSession(userId: string, role: SessionPayload["role"]) {
-  await createSession(userId, role)
+async function reissueSession(
+  userId: string,
+  role: SessionPayload["role"],
+  sessionVersion: number,
+) {
+  await createSession(userId, role, sessionVersion)
 }
 
 /**
  * Read & verify the session cookie. Returns the session payload or null.
  * Automatically rotates (reissues) the cookie if past the rotation threshold.
+ * Supports both old 4-part (backward compat) and new 5-part cookies.
  */
 export async function getSession(): Promise<SessionPayload | null> {
   try {
@@ -68,11 +78,32 @@ export async function getSession(): Promise<SessionPayload | null> {
     if (!cookie?.value) return null
 
     const parts = cookie.value.split(".")
-    if (parts.length !== 4) return null
-    const [userId, role, expiresAtStr, signature] = parts
-    if (!userId || !role || !expiresAtStr || !signature) return null
 
-    const payload = `${userId}.${role}.${expiresAtStr}`
+    // New format: userId.role.expiresAt.sessionVersion.signature (5 parts)
+    // Old format: userId.role.expiresAt.signature (4 parts) — backward compat
+    let userId: string
+    let role: string
+    let expiresAtStr: string
+    let sessionVersion: number
+    let signature: string
+
+    if (parts.length === 5) {
+      const sessionVersionStr = parts[3]
+      ;[userId, role, expiresAtStr, , signature] = parts
+      sessionVersion = Number(sessionVersionStr)
+    } else if (parts.length === 4) {
+      ;[userId, role, expiresAtStr, signature] = parts
+      sessionVersion = 0 // old cookie — assume version 0
+    } else {
+      return null
+    }
+
+    if (!userId || !role || !expiresAtStr || !signature) return null
+    if (parts.length === 5 && isNaN(sessionVersion)) return null
+
+    const payload = parts.length === 5
+      ? `${userId}.${role}.${expiresAtStr}.${sessionVersion}`
+      : `${userId}.${role}.${expiresAtStr}`
     const expected = sign(payload)
 
     const a = Buffer.from(signature, "hex")
@@ -83,14 +114,20 @@ export async function getSession(): Promise<SessionPayload | null> {
     if (!Number.isFinite(expiresAt)) return null
     if (expiresAt * 1000 < Date.now()) return null
 
+    // Verify sessionVersion against database (cached 5min in Redis)
+    const dbVersion = await getUserSessionVersion(userId)
+    if (dbVersion === null) return null
+    if (sessionVersion !== dbVersion) return null
+
     const remaining = expiresAt - Math.floor(Date.now() / 1000)
     if (remaining < ROTATION_THRESHOLD_SECONDS) {
-      await reissueSession(userId, role as SessionPayload["role"])
+      await reissueSession(userId, role as SessionPayload["role"], sessionVersion)
     }
 
     return {
       userId,
       role: role as SessionPayload["role"],
+      sessionVersion,
     }
   } catch {
     return null
@@ -128,6 +165,27 @@ async function verifyUserActive(userId: string): Promise<boolean> {
   const active = !!user?.active && !demoBlocked
   await cacheSet(cacheKey, { active, role: user?.role ?? "" }, 300)
   return active
+}
+
+/**
+ * Get the session version for a user, cached in Redis for 5 minutes.
+ * Returns null if user not found.
+ */
+async function getUserSessionVersion(userId: string): Promise<number | null> {
+  const cacheKey = `user:sessionVersion:${userId}`
+  const cached = await cacheGet<{ version: number }>(cacheKey)
+
+  if (cached !== null) return cached.version
+
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { sessionVersion: true },
+  })
+
+  if (!user) return null
+
+  await cacheSet(cacheKey, { version: user.sessionVersion }, 300)
+  return user.sessionVersion
 }
 
 // ---------------------------------------------------------------------------
@@ -174,6 +232,14 @@ export async function requireUser(): Promise<SessionPayload> {
  */
 export async function invalidateUserCache(userId: string): Promise<void> {
   await cacheInvalidate(`user:active:${userId}`)
+}
+
+/**
+ * Invalidate cached session version (call after password change/reset).
+ * Forces next getSession() to re-read from database.
+ */
+export async function invalidateSessionCache(userId: string): Promise<void> {
+  await cacheInvalidate(`user:sessionVersion:${userId}`)
 }
 
 /**

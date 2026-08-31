@@ -58,14 +58,31 @@ async function verifySession(
   secret: string,
 ): Promise<{ userId: string; role: string } | null> {
   const parts = cookieValue.split(".")
-  if (parts.length !== 4) return null
-  const [userId, role, expiresAtStr, signature] = parts
+
+  // New format: userId.role.expiresAt.sessionVersion.signature (5 parts)
+  // Old format: userId.role.expiresAt.signature (4 parts) — backward compat
+  let userId: string
+  let role: string
+  let expiresAtStr: string
+  let signature: string
+
+  if (parts.length === 5) {
+    ;[userId, role, expiresAtStr, , signature] = parts
+  } else if (parts.length === 4) {
+    ;[userId, role, expiresAtStr, signature] = parts
+  } else {
+    return null
+  }
+
   if (!userId || !role || !expiresAtStr || !signature) return null
 
   const expiresAt = Number(expiresAtStr)
   if (!Number.isFinite(expiresAt) || expiresAt * 1000 < Date.now()) return null
 
-  const payload = `${userId}.${role}.${expiresAtStr}`
+  // Build the same payload that was signed (includes sessionVersion for new cookies)
+  const payload = parts.length === 5
+    ? `${userId}.${role}.${expiresAtStr}.${parts[3]}`
+    : `${userId}.${role}.${expiresAtStr}`
   const encoder = new TextEncoder()
   const key = await crypto.subtle.importKey(
     "raw",

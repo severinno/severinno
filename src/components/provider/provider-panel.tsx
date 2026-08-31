@@ -9,6 +9,7 @@ import {
   FileText,
   LayoutDashboard,
   MessageSquare,
+  Shield,
   Star,
   User,
   Wallet,
@@ -33,6 +34,7 @@ import { ProviderMessages } from "./provider-messages"
 import { ProviderReviews } from "./provider-reviews"
 const ProviderProfile = dynamic(() => import("./provider-profile").then(m => ({ default: m.ProviderProfile })), { ssr: false })
 import { ProviderOnboarding } from "./provider-onboarding"
+import { ClientSecurity } from "@/components/client/client-security"
 
 // ---------------------------------------------------------------------------
 // View metadata
@@ -109,6 +111,13 @@ const VIEWS: ViewMeta[] = [
     icon: Star,
     title: "Avaliações",
     subtitle: "Veja o que seus clientes estão dizendo sobre você.",
+  },
+  {
+    view: "provider.security",
+    label: "Segurança",
+    icon: Shield,
+    title: "Segurança",
+    subtitle: "Senha e autenticação de dois fatores.",
   },
   {
     view: "provider.profile",
@@ -242,6 +251,7 @@ export function ProviderPanel() {
       {view === "provider.finance" && <ProviderFinance />}
       {view === "provider.messages" && <ProviderMessages />}
       {view === "provider.reviews" && <ProviderReviews />}
+      {view === "provider.security" && <ClientSecurity />}
       {view === "provider.profile" && <ProviderProfile />}
     </DashboardShell>
   )
