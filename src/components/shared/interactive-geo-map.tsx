@@ -115,15 +115,18 @@ export function InteractiveGeoMap({
     const map = mapInstanceRef.current
     if (!map) return
 
-    // Clear old markers
-    for (const m of markersRef.current) {
-      m.remove()
-    }
-    markersRef.current = []
+    const syncMarkers = () => {
+      if (!map.isStyleLoaded()) return
 
-    // Add new markers
-    for (const p of providers) {
-      if (!p.lat || !p.lng) continue
+      // Clear old markers
+      for (const m of markersRef.current) {
+        m.remove()
+      }
+      markersRef.current = []
+
+      // Add new markers
+      for (const p of providers) {
+        if (!p.lat || !p.lng) continue
 
       // Custom marker DOM element
       const el = document.createElement("div")
@@ -177,6 +180,17 @@ export function InteractiveGeoMap({
         .addTo(map)
 
       markersRef.current.push(marker)
+    }
+    }
+
+    if (map.isStyleLoaded()) {
+      syncMarkers()
+    } else {
+      map.once("style.load", syncMarkers)
+    }
+
+    return () => {
+      map.off("style.load", syncMarkers)
     }
   }, [providers, onSelectProvider])
 

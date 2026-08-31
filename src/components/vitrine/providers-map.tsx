@@ -249,8 +249,9 @@ export default function ProvidersMap({
     const maplibregl = maplibreglRef.current
     if (!map || !maplibregl) return
     let cancelled = false
-    ;(async () => {
-      if (cancelled) return
+
+    const sync = () => {
+      if (cancelled || !map.isStyleLoaded()) return
       const useClustering = providers.length > 20
       if (useClustering) {
         syncClusterSource(
@@ -273,9 +274,17 @@ export default function ProvidersMap({
         })
       }
       fitToBounds(map, providers, userLat, userLng)
-    })()
+    }
+
+    if (map.isStyleLoaded()) {
+      sync()
+    } else {
+      map.once("style.load", sync)
+    }
+
     return () => {
       cancelled = true
+      map.off("style.load", sync)
     }
   }, [providers, selectedId, userLat, userLng])
 
@@ -285,7 +294,8 @@ export default function ProvidersMap({
     const maplibregl = maplibreglRef.current
     if (!map || !maplibregl) return
     let cancelled = false
-    ;(async () => {
+
+    const sync = () => {
       if (cancelled) return
       syncUserMarker({ map, maplibregl, lat: userLat, lng: userLng, userMarkerRef })
       // Sync radius circle whenever user location or radius changes
@@ -294,9 +304,17 @@ export default function ProvidersMap({
       } else {
         removeRadiusCircle(map as unknown as MapLike)
       }
-    })()
+    }
+
+    if (map.isStyleLoaded()) {
+      sync()
+    } else {
+      map.once("style.load", sync)
+    }
+
     return () => {
       cancelled = true
+      map.off("style.load", sync)
     }
   }, [userLat, userLng, radius, hasUserLocation])
 
