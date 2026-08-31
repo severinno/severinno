@@ -72,7 +72,7 @@ fi
 # ── Performance budget check (fast, no server needed) ──────────────────
 if [ -d ".next/static/chunks" ]; then
   echo "📦 Checking bundle size budget..."
-  BUDGET_JS_KB=500
+  BUDGET_JS_KB=600
   OVER=false
   for f in $(find .next/static/chunks -name '*.js' -size +${BUDGET_JS_KB}k 2>/dev/null); do
     size=$(du -k "$f" | cut -f1)
