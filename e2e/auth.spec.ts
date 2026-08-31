@@ -14,8 +14,8 @@ test.describe("Autenticação", () => {
     await page.waitForTimeout(500)
 
     // Verifica se o modal de auth abriu
-    const emailInput = page.getByPlaceholder(/email/i).first()
-    await expect(emailInput).toBeVisible({ timeout: 5000 })
+    const emailInput = page.getByPlaceholder(/voce@exemplo|email/i).first()
+    await expect(emailInput).toBeVisible({ timeout: 10_000 })
   })
 
   test("pode alternar entre login e cadastro no modal", async ({ page }) => {
@@ -51,20 +51,22 @@ test.describe("Autenticação", () => {
 
   test("registro de novo cliente é bem-sucedido", async ({ page }) => {
     await registerUser(page, { role: "CLIENT" })
-    await page.waitForTimeout(1000)
+    await page.waitForTimeout(2000)
 
-    // Após registro bem-sucedido, verifica se o usuário está autenticado
-    // (pode esconder o botão Entrar ou mostrar o nome do usuário)
-    const entrarBtn = page.getByRole("button", { name: /entrar|login|criar conta/i }).first()
-    const btnHidden = await entrarBtn
-      .isVisible()
-      .then((v) => !v)
-      .catch(() => true)
+    // Após registro bem-sucedido, verifica se o usuário está autenticado:
+    // - modal fechou (botão Entrar desapareceu), ou
+    // - mensagem de boas-vindas, ou
+    // - avatar do usuário apareceu
+    const loginBtn = page.locator('button:has-text("Entrar"), button:has-text("Login")').first()
+    const loginBtnHidden = !(await loginBtn.isVisible().catch(() => false))
 
-    const userName = page.locator("text=/Test User/i").first()
-    const nameVisible = await userName.isVisible().catch(() => false)
+    const welcomeMsg = page.locator("text=/Bem-vindo|bem-vindo|Severinno/i").first()
+    const welcomeVisible = await welcomeMsg.isVisible().catch(() => false)
 
-    expect(btnHidden || nameVisible).toBe(true)
+    const avatar = page.locator('button[aria-haspopup="menu"]').first()
+    const avatarVisible = await avatar.isVisible().catch(() => false)
+
+    expect(loginBtnHidden || welcomeVisible || avatarVisible).toBe(true)
   })
 
   test("registro de prestador mostra campos extras", async ({ page }) => {

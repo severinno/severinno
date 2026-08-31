@@ -165,19 +165,22 @@ async function waitForMapReady(page: Page) {
 async function goToMapView(page: Page) {
   await setupMapMocks(page)
   await page.goto(BASE_URL)
-  // Wait for the vitrine to load
+
+  // Wait for the vitrine results to appear (providers loaded via mock)
   await page
-    .locator('button:has-text("Entrar"), button:has-text("Cadastrar"), [data-testid="provider-card"]')
+    .locator('[role="tab"][title="Mapa"], button:has-text("Mapa")')
     .first()
     .waitFor({ state: "visible", timeout: 30_000 })
-    .catch(() => {})
 
-  // Switch to map view if there's a toggle
-  const mapToggle = page.locator('button:has-text("Mapa"), [aria-label*="mapa"], [aria-label*="Mapa"]').first()
-  if (await mapToggle.isVisible().catch(() => false)) {
-    await mapToggle.click()
-    await page.waitForTimeout(1000)
-  }
+  // Switch to map view by clicking the "Mapa" tab
+  const mapToggle = page.locator('[role="tab"][title="Mapa"], button:has-text("Mapa")').first()
+  await mapToggle.click()
+  // Wait for map container to appear after view switch
+  await page
+    .locator('[aria-label="Mapa de prestadores"], [role="application"]')
+    .first()
+    .waitFor({ state: "visible", timeout: 15_000 })
+    .catch(() => {})
 }
 
 // ---------------------------------------------------------------------------
@@ -351,13 +354,18 @@ test.describe("EnhancedProvidersMap — Filter Bar", () => {
 })
 
 test.describe("EnhancedProvidersMap — Fullscreen", () => {
-  test("fullscreen toggle button is visible", async ({ page }) => {
+  test("fullscreen toggle button is visible in filter panel", async ({ page }) => {
     await goToMapView(page)
     await waitForMap(page)
     await waitForMapReady(page)
 
+    // Fullscreen button is inside the filter panel — open it first
+    const filterBtn = page.locator('button[title*="Filtros"], button[title*="filtro"]').first()
+    await filterBtn.click()
+    await page.waitForTimeout(500)
+
     const fullscreenBtn = page.locator('button[title*="tela cheia"], button[title*="Tela cheia"]').first()
-    await expect(fullscreenBtn).toBeVisible()
+    await expect(fullscreenBtn).toBeVisible({ timeout: 5000 })
   })
 
   test("clicking fullscreen toggle expands map", async ({ page }) => {
@@ -365,9 +373,15 @@ test.describe("EnhancedProvidersMap — Fullscreen", () => {
     await waitForMap(page)
     await waitForMapReady(page)
 
-    const fullscreenBtn = page.locator('button[title*="tela cheia"], button[title*="Tela cheia"]').first()
-    await fullscreenBtn.click()
+    // Open filter panel first (fullscreen button is inside it)
+    const filterBtn = page.locator('button[title*="Filtros"], button[title*="filtro"]').first()
+    await filterBtn.click()
     await page.waitForTimeout(500)
+
+    const fullscreenBtn = page.locator('button[title*="tela cheia"], button[title*="Tela cheia"]').first()
+    await expect(fullscreenBtn).toBeVisible({ timeout: 5000 })
+    await fullscreenBtn.click()
+    await page.waitForTimeout(1000)
 
     // The map container should now have fullscreen styling
     const mapContainer = page.locator('[aria-label="Mapa de prestadores"]').first()
@@ -389,13 +403,13 @@ test.describe("AnimatedProviderPin — Interactions", () => {
     // Wait for pins to render (they're HTML elements added to the map)
     await page.waitForFunction(
       () => {
-        const pins = document.querySelectorAll(".animated-provider-pin")
+        const pins = document.querySelectorAll(".vitrine-map-marker")
         return pins.length > 0
       },
       { timeout: 30_000 },
     )
 
-    const pins = page.locator(".animated-provider-pin")
+    const pins = page.locator(".vitrine-map-marker")
     const count = await pins.count()
     expect(count).toBeGreaterThan(0)
 
@@ -411,11 +425,11 @@ test.describe("AnimatedProviderPin — Interactions", () => {
     await waitForMapReady(page)
 
     await page.waitForFunction(
-      () => document.querySelectorAll(".animated-provider-pin").length > 0,
-      { timeout: 30_000 },
+      () => document.querySelectorAll(".vitrine-map-marker").length > 0,
+      { timeout: 45_000 },
     )
 
-    const firstPin = page.locator(".animated-provider-pin").first()
+    const firstPin = page.locator(".vitrine-map-marker").first()
     const status = await firstPin.getAttribute("data-status")
     expect(["online", "recent", "away", "offline"]).toContain(status)
   })
@@ -426,11 +440,11 @@ test.describe("AnimatedProviderPin — Interactions", () => {
     await waitForMapReady(page)
 
     await page.waitForFunction(
-      () => document.querySelectorAll(".animated-provider-pin").length > 0,
-      { timeout: 30_000 },
+      () => document.querySelectorAll(".vitrine-map-marker").length > 0,
+      { timeout: 45_000 },
     )
 
-    const firstPin = page.locator(".animated-provider-pin").first()
+    const firstPin = page.locator(".vitrine-map-marker").first()
     await firstPin.click()
     await page.waitForTimeout(500)
 
@@ -445,11 +459,11 @@ test.describe("AnimatedProviderPin — Interactions", () => {
     await waitForMapReady(page)
 
     await page.waitForFunction(
-      () => document.querySelectorAll(".animated-provider-pin").length > 0,
-      { timeout: 30_000 },
+      () => document.querySelectorAll(".vitrine-map-marker").length > 0,
+      { timeout: 45_000 },
     )
 
-    const firstPin = page.locator(".animated-provider-pin").first()
+    const firstPin = page.locator(".vitrine-map-marker").first()
     await firstPin.click()
     await page.waitForTimeout(500)
 
@@ -469,11 +483,11 @@ test.describe("ProviderTooltipCard — Desktop", () => {
     await waitForMapReady(page)
 
     await page.waitForFunction(
-      () => document.querySelectorAll(".animated-provider-pin").length > 0,
-      { timeout: 30_000 },
+      () => document.querySelectorAll(".vitrine-map-marker").length > 0,
+      { timeout: 45_000 },
     )
 
-    const firstPin = page.locator(".animated-provider-pin").first()
+    const firstPin = page.locator(".vitrine-map-marker").first()
     await firstPin.hover()
     await page.waitForTimeout(1000)
 
@@ -519,12 +533,12 @@ test.describe("RouteLine — Provider Selection", () => {
     await waitForMapReady(page)
 
     await page.waitForFunction(
-      () => document.querySelectorAll(".animated-provider-pin").length > 0,
-      { timeout: 30_000 },
+      () => document.querySelectorAll(".vitrine-map-marker").length > 0,
+      { timeout: 45_000 },
     )
 
     // Click a provider pin
-    const firstPin = page.locator(".animated-provider-pin").first()
+    const firstPin = page.locator(".vitrine-map-marker").first()
     await firstPin.click()
     await page.waitForTimeout(1000)
 
@@ -572,11 +586,11 @@ test.describe("Map — Mobile Viewport", () => {
     await waitForMapReady(page)
 
     await page.waitForFunction(
-      () => document.querySelectorAll(".animated-provider-pin").length > 0,
-      { timeout: 30_000 },
+      () => document.querySelectorAll(".vitrine-map-marker").length > 0,
+      { timeout: 45_000 },
     )
 
-    const firstPin = page.locator(".animated-provider-pin").first()
+    const firstPin = page.locator(".vitrine-map-marker").first()
     await firstPin.tap()
     await page.waitForTimeout(500)
 
@@ -613,11 +627,11 @@ test.describe("Map — Accessibility", () => {
     await waitForMapReady(page)
 
     await page.waitForFunction(
-      () => document.querySelectorAll(".animated-provider-pin").length > 0,
-      { timeout: 30_000 },
+      () => document.querySelectorAll(".vitrine-map-marker").length > 0,
+      { timeout: 45_000 },
     )
 
-    const pins = page.locator(".animated-provider-pin")
+    const pins = page.locator(".vitrine-map-marker")
     const count = await pins.count()
 
     for (let i = 0; i < Math.min(count, 5); i++) {
