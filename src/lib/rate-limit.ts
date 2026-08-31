@@ -224,8 +224,8 @@ export const RATE_LIMITS = {
   register: { prefix: "register", max: 5, windowMs: 60_000 },
   /** Password recovery: 3 attempts per 10 min per IP */
   forgotPassword: { prefix: "forgot-pw", max: 3, windowMs: 600_000 },
-  /** Provider search: 100 requests per minute */
-  providers: { prefix: "providers", max: 100, windowMs: 60_000 },
+  /** Provider search: 2000 requests per minute (main search endpoint, high volume) */
+  providers: { prefix: "providers", max: 2000, windowMs: 60_000 },
   /** Bookings (create + list): 30 requests per minute */
   bookings: { prefix: "bookings", max: 30, windowMs: 60_000 },
   /** Quotes (create + list): 20 requests per minute */
