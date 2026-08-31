@@ -7,6 +7,25 @@ export async function register() {
     // Load env vars first — everything depends on them
     await import("./lib/env")
 
+    // ── Sentry / GlitchTip error tracking ──────────────────────────────
+    // sentry.server.config.ts is auto-loaded by Next.js instrumentation.
+    // We add flush on shutdown so pending events are delivered before exit.
+    if (process.env.GLITCHTIP_DSN || process.env.SENTRY_DSN) {
+      try {
+        const { flushSentry } = await import("./lib/sentry")
+        const shutdown = async () => {
+          await flushSentry(3000)
+        }
+        process.on("SIGTERM", shutdown)
+        process.on("SIGINT", shutdown)
+        logger.info("instrumentation: GlitchTip/Sentry error tracking active")
+      } catch {
+        logger.warn("instrumentation: Sentry init skipped")
+      }
+    }
+    // Load env vars first — everything depends on them
+    await import("./lib/env")
+
     // ── OpenTelemetry distributed tracing ──────────────────────────────
     // Must be initialized BEFORE any other imports that need instrumentation.
     // Set OTEL_ENABLED=true to enable (disabled by default for dev speed).

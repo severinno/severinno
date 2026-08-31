@@ -119,6 +119,36 @@ export function Providers({ children }: { children: ReactNode }) {
     return () => navigator.serviceWorker.removeEventListener("message", handleSWMessage)
   }, [client])
 
+  // ── Global error handlers → GlitchTip ──────────────────────────────
+  useEffect(() => {
+    // Capture unhandled promise rejections
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      event.preventDefault()
+      import("@sentry/nextjs").then((Sentry) => {
+        Sentry.captureException(event.reason, {
+          tags: { source: "unhandled-rejection" },
+        })
+      }).catch(() => {})
+    }
+
+    // Capture uncaught errors
+    const handleError = (event: ErrorEvent) => {
+      import("@sentry/nextjs").then((Sentry) => {
+        Sentry.captureException(event.error, {
+          tags: { source: "window.onerror" },
+          extra: { filename: event.filename, lineno: event.lineno, colno: event.colno },
+        })
+      }).catch(() => {})
+    }
+
+    window.addEventListener("unhandledrejection", handleUnhandledRejection)
+    window.addEventListener("error", handleError)
+    return () => {
+      window.removeEventListener("unhandledrejection", handleUnhandledRejection)
+      window.removeEventListener("error", handleError)
+    }
+  }, [])
+
   return (
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
       <QueryClientProvider client={client}>
