@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth"
 import { messageSchema } from "@/lib/validators"
 import { badRequest, handleError, notFound } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { sanitizeText } from "@/lib/sanitize"
 
 // Authenticated: list messages
 // - If `with` is provided → return conversation between current user and that user
@@ -124,7 +125,7 @@ export async function POST(request: Request) {
       data: {
         fromId: session.userId,
         toId: data.toId,
-        content: data.content,
+        content: sanitizeText(data.content),
         bookingId: data.bookingId || null,
         read: false,
       },
@@ -137,7 +138,10 @@ export async function POST(request: Request) {
           userId: data.toId,
           type: "MESSAGE",
           title: "Nova mensagem",
-          body: data.content.length > 80 ? data.content.slice(0, 80) + "…" : data.content,
+          body:
+            data.content.length > 80
+              ? sanitizeText(data.content.slice(0, 80)) + "…"
+              : sanitizeText(data.content),
           read: false,
         },
       })

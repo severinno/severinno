@@ -41,8 +41,17 @@ type TwoFactorStatus = {
 }
 
 type SetupResponse = {
-  secret: string
   uri: string
+}
+
+/** Extract the base32 secret from a TOTP otpauth:// URI. */
+function extractSecretFromUri(uri: string): string {
+  try {
+    const url = new URL(uri)
+    return url.searchParams.get("secret") ?? ""
+  } catch {
+    return ""
+  }
 }
 
 type EnableResponse = {
@@ -80,9 +89,7 @@ export function TwoFactorSetup() {
   const isEnabled = statusQuery.data?.twoFactorEnabled ?? false
 
   // Setup state
-  const [step, setStep] = React.useState<"idle" | "setup" | "verify" | "enabled" | "backup">(
-    "idle",
-  )
+  const [step, setStep] = React.useState<"idle" | "setup" | "verify" | "enabled" | "backup">("idle")
   const [setupData, setSetupData] = React.useState<SetupResponse | null>(null)
   const [code, setCode] = React.useState("")
   const [backupCodes, setBackupCodes] = React.useState<string[]>([])
@@ -102,8 +109,7 @@ export function TwoFactorSetup() {
 
   // Enable mutation
   const enableMutation = useMutation({
-    mutationFn: (code: string) =>
-      apiPost<EnableResponse>("/api/auth/2fa/enable", { code }),
+    mutationFn: (code: string) => apiPost<EnableResponse>("/api/auth/2fa/enable", { code }),
     onSuccess: (data) => {
       setBackupCodes(data.backupCodes)
       setStep("backup")
@@ -117,8 +123,7 @@ export function TwoFactorSetup() {
 
   // Disable mutation
   const disableMutation = useMutation({
-    mutationFn: (code: string) =>
-      apiPost<DisableResponse>("/api/auth/2fa/disable", { code }),
+    mutationFn: (code: string) => apiPost<DisableResponse>("/api/auth/2fa/disable", { code }),
     onSuccess: () => {
       setStep("idle")
       setCode("")
@@ -132,8 +137,7 @@ export function TwoFactorSetup() {
 
   // Regenerate backup codes
   const regenerateMutation = useMutation({
-    mutationFn: (code: string) =>
-      apiPost<VerifyResponse>("/api/auth/2fa/backup-codes", { code }),
+    mutationFn: (code: string) => apiPost<VerifyResponse>("/api/auth/2fa/backup-codes", { code }),
     onSuccess: (data) => {
       setBackupCodes(data.backupCodes)
       toast.success("Códigos de backup regenerados!")
@@ -144,8 +148,9 @@ export function TwoFactorSetup() {
   })
 
   const copySecret = () => {
-    if (setupData?.secret) {
-      navigator.clipboard.writeText(setupData.secret)
+    const secret = setupData ? extractSecretFromUri(setupData.uri) : ""
+    if (secret) {
+      navigator.clipboard.writeText(secret)
       setSecretCopied(true)
       setTimeout(() => setSecretCopied(false), 2000)
     }
@@ -170,7 +175,7 @@ export function TwoFactorSetup() {
         <CardContent className="p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-start gap-3">
-              <ShieldCheck className="text-green-500 mt-0.5 size-5" />
+              <ShieldCheck className="mt-0.5 size-5 text-green-500" />
               <div>
                 <p className="text-sm font-medium">Autenticação de Dois Fatores</p>
                 <p className="text-muted-foreground text-xs">
@@ -220,14 +225,14 @@ export function TwoFactorSetup() {
   if (step === "setup" && setupData) {
     return (
       <Card>
-        <CardContent className="p-4 space-y-4">
+        <CardContent className="space-y-4 p-4">
           <div className="flex items-start gap-3">
             <Shield className="text-primary mt-0.5 size-5" />
             <div>
               <p className="text-sm font-medium">Configurar 2FA</p>
               <p className="text-muted-foreground text-xs">
-                Escaneie o QR code abaixo com seu aplicativo autenticador
-                (Google Authenticator, Authy, etc.).
+                Escaneie o QR code abaixo com seu aplicativo autenticador (Google Authenticator,
+                Authy, etc.).
               </p>
             </div>
           </div>
@@ -235,12 +240,7 @@ export function TwoFactorSetup() {
           {/* QR Code */}
           <div className="flex justify-center">
             <div className="bg-background flex items-center justify-center rounded-lg border p-4">
-              <QRCodeSVG
-                value={setupData.uri}
-                size={192}
-                level="M"
-                includeMargin={false}
-              />
+              <QRCodeSVG value={setupData.uri} size={192} level="M" includeMargin={false} />
             </div>
           </div>
 
@@ -249,19 +249,10 @@ export function TwoFactorSetup() {
             <Label className="text-xs">Ou insira manualmente:</Label>
             <div className="flex items-center gap-2">
               <code className="bg-muted flex-1 truncate rounded px-3 py-2 font-mono text-xs">
-                {setupData.secret}
+                {setupData ? extractSecretFromUri(setupData.uri) : ""}
               </code>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={copySecret}
-              >
-                {secretCopied ? (
-                  <Check className="size-4" />
-                ) : (
-                  <Copy className="size-4" />
-                )}
+              <Button type="button" variant="outline" size="sm" onClick={copySecret}>
+                {secretCopied ? <Check className="size-4" /> : <Copy className="size-4" />}
               </Button>
             </div>
           </div>
@@ -301,21 +292,21 @@ export function TwoFactorSetup() {
   if (step === "backup" && backupCodes.length > 0) {
     return (
       <Card>
-        <CardContent className="p-4 space-y-4">
+        <CardContent className="space-y-4 p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="text-amber-500 mt-0.5 size-5" />
+            <AlertTriangle className="mt-0.5 size-5 text-amber-500" />
             <div>
               <p className="text-sm font-medium">Códigos de Backup</p>
               <p className="text-muted-foreground text-xs">
-                Salve estes códigos em local seguro. Cada código pode ser usado
-                uma vez se você perder acesso ao autenticador.
+                Salve estes códigos em local seguro. Cada código pode ser usado uma vez se você
+                perder acesso ao autenticador.
               </p>
             </div>
           </div>
 
           <div className="bg-muted grid grid-cols-2 gap-2 rounded-lg p-3">
             {backupCodes.map((code, i) => (
-              <code key={i} className="font-mono text-center text-sm">
+              <code key={i} className="text-center font-mono text-sm">
                 {code}
               </code>
             ))}
