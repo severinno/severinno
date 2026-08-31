@@ -1,10 +1,9 @@
 /**
- * Tests for src/middleware.ts — global rate limiting for /api/*.
+ * Tests for middleware.ts (project root) — global rate limiting for /api/*.
  *
- * The global limiter (checkGlobalRateLimit: Upstash → in-memory fallback) was
- * previously wired only in the ROOT middleware.ts, which Next.js ignores when
- * a src/ directory exists (the root file never ran in production). This suite
- * validates the same contract now that the limiter lives in src/middleware.ts.
+ * The global limiter (checkGlobalRateLimit: Upstash → in-memory fallback) runs
+ * in the root middleware.ts, which is the single source of truth for Edge
+ * middleware. This suite validates the contract.
  *
  * Coverage:
  *   1. Request permitido — checkGlobalRateLimit permite → NextResponse.next()
@@ -25,7 +24,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { NextRequest } from "next/server"
 
-import { middleware } from "../../middleware"
+import { middleware } from "../../../middleware"
 import { globalRateLimitHeaders, type GlobalRateLimitResult } from "@/lib/global-rate-limit"
 
 // ---------------------------------------------------------------------------

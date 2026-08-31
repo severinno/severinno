@@ -420,15 +420,14 @@ describe("GET /api/cron/geo-cache-warm", () => {
     expect(warmGeoCache).not.toHaveBeenCalled()
   })
 
-  it("skips auth when CRON_SECRET is not configured", async () => {
+  it("rejects request when CRON_SECRET is not configured (fail-closed)", async () => {
     process.env.CRON_SECRET = ""
-    vi.mocked(isCooldownElapsed).mockResolvedValue(false)
 
     const res = await getGeoCacheWarm(cronRequest("/api/cron/geo-cache-warm"))
     const body = await res.json()
 
-    expect(res.status).toBe(200)
-    expect(body.status).toBe("skipped")
+    expect(res.status).toBe(401)
+    expect(body.error).toMatch(/Unauthorized/i)
   })
 
   it("returns 500 via handleError on internal failure", async () => {

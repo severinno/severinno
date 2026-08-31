@@ -156,9 +156,9 @@ describe("middleware — global rate limit", () => {
   })
 
   it("respeita GLOBAL_RATE_LIMIT_WHITELIST via env var", async () => {
-    process.env.GLOBAL_RATE_LIMIT_WHITELIST = "/api/newsletter2"
+    process.env.GLOBAL_RATE_LIMIT_WHITELIST = "/api/health"
 
-    const response = await middleware(makeRequest("/api/newsletter2/subscribe"))
+    const response = await middleware(makeRequest("/api/health/detailed"))
 
     expect(response.status).toBe(200)
     expect(mockCheckGlobalRateLimit).not.toHaveBeenCalled()
