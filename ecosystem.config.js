@@ -19,7 +19,10 @@ module.exports = {
       instances: 1, // Single instance (Next.js handles its own clustering)
       exec_mode: "fork",
 
-      // Environment
+      // Load .env file automatically
+      node_args: "--max-old-space-size=1024 --require dotenv/config",
+
+      // Environment (override .env if needed)
       env: {
         NODE_ENV: "production",
         PORT: 3000,
@@ -40,7 +43,7 @@ module.exports = {
       merge_logs: true,
 
       // Performance
-      node_args: "--max-old-space-size=1024",
+      // node_args moved above to combine with dotenv
     },
   ],
 }
