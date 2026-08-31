@@ -62,7 +62,7 @@ vi.mock("@/lib/db", () => ({
 
 // ---- SUT imports ----------------------------------------------------------
 
-import { requireRole, requireUser, invalidateUserCache } from "@/lib/auth"
+import { requireRole, invalidateUserCache } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { db } from "@/lib/db"
 import { haversineKm } from "@/lib/geo-server"

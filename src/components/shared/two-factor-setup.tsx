@@ -20,7 +20,6 @@ import {
   Copy,
   Check,
   Loader2,
-  RefreshCw,
   AlertTriangle,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -136,7 +135,7 @@ export function TwoFactorSetup() {
   })
 
   // Regenerate backup codes
-  const regenerateMutation = useMutation({
+  const _regenerateMutation = useMutation({
     mutationFn: (code: string) => apiPost<VerifyResponse>("/api/auth/2fa/backup-codes", { code }),
     onSuccess: (data) => {
       setBackupCodes(data.backupCodes)

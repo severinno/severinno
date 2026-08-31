@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
 import { saveAndQueueNotification } from "@/lib/notification-queue"
-import { captureError } from "@/lib/sentry"
+import { captureError as _captureError } from "@/lib/sentry"
 import { emitRealtime } from "@/lib/realtime-client"
 import logger from "@/lib/logger"
 

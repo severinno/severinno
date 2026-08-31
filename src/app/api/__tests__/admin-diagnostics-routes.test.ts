@@ -201,7 +201,7 @@ vi.mock("child_process", () => ({
 
 // ---- SUT imports ----------------------------------------------------------
 
-import { requireRole, requireUser } from "@/lib/auth"
+import { requireRole } from "@/lib/auth"
 import { notifyGeoAlert } from "@/lib/geo-alert-notify"
 import { queueEmail } from "@/lib/email-queue"
 import { db } from "@/lib/db"

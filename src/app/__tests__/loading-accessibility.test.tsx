@@ -204,18 +204,11 @@ describe("Dashboard Loading (/dashboard) — accessibility", () => {
     assertNoInteractiveElements(container)
   })
 
-  it("renders topbar and sidebar layout", () => {
+  it("renders centered loading spinner", () => {
     const { container } = render(<DashboardLoading />)
-    // Dashboard has max-w-7xl container
-    const containerEl = container.querySelector('[class*="max-w-7xl"]')
-    expect(containerEl).toBeInTheDocument()
-  })
-
-  it("renders stats cards grid", () => {
-    const { container } = render(<DashboardLoading />)
-    // 4 stats cards in lg:grid-cols-4
-    const statsGrid = container.querySelector('[class*="lg:grid-cols-4"]')
-    expect(statsGrid).toBeInTheDocument()
+    // Simplified spinner layout with flex centering
+    const spinnerContainer = container.querySelector('[class*="min-h-screen"]')
+    expect(spinnerContainer).toBeInTheDocument()
   })
 })
 

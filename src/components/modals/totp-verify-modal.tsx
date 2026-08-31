@@ -9,7 +9,7 @@
 
 import * as React from "react"
 import { useMutation } from "@tanstack/react-query"
-import { Loader2, ShieldCheck, Key } from "lucide-react"
+import { Loader2, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiPost } from "@/lib/api"
