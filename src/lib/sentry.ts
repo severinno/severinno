@@ -31,13 +31,14 @@ export async function captureError(error: unknown, context?: Record<string, unkn
   const message = error instanceof Error ? error.message : String(error)
   logger.error({ err: error, ...context }, message)
 
-  if (!isProd) return
+  // In dev: log locally and still send to GlitchTip so errors are visible
   const Sentry = await getSentry()
   if (!Sentry) return
 
   Sentry.withScope((scope) => {
     if (context) scope.setExtras(context)
     scope.setTag("source", "server")
+    scope.setTag("environment", isProd ? "production" : "development")
     Sentry.captureException(error)
   })
 }
@@ -49,12 +50,12 @@ export async function captureMessage(
 ) {
   logger[severity](context ?? {}, message)
 
-  if (!isProd) return
   const Sentry = await getSentry()
   if (!Sentry) return
 
   Sentry.withScope((scope) => {
     if (context) scope.setExtras(context)
+    scope.setTag("environment", isProd ? "production" : "development")
     Sentry.captureMessage(
       message,
       severity === "fatal"
@@ -69,7 +70,6 @@ export async function captureMessage(
 }
 
 export async function flushSentry(timeoutMs = 2000) {
-  if (!isProd) return
   const Sentry = await getSentry()
   if (!Sentry) return
 
