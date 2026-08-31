@@ -1,0 +1,90 @@
+# =============================================================================
+# Prometheus Alert Rules — Severinno Marketplace
+# =============================================================================
+# Monitors health endpoint, container status, and app metrics.
+#
+# Reload: kill -HUP $(pidof prometheus) or POST /-/reload
+# =============================================================================
+
+groups:
+  - name: severinno-health
+    interval: 30s
+    rules:
+      # ── App Down ───────────────────────────────────────────────────────
+      - alert: AppDown
+        expr: up{job="severinno-app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Severinno app is DOWN"
+          description: "Next.js app has been unreachable for more than 1 minute."
+
+      # ── High Error Rate (>5%) ─────────────────────────────────────────
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_request_duration_ms_count{status=~"5.."}[5m]))
+          / sum(rate(http_request_duration_ms_count[5m])) * 100 > 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High error rate: {{ $value | printf \"%.1f\" }}%"
+          description: "HTTP 5xx error rate exceeds 5% threshold for 5 minutes."
+
+      # ── High Latency (P95 > 2s) ──────────────────────────────────────
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_ms_bucket[5m])) by (le)
+          ) > 2000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High P95 latency: {{ $value | printf \"%.0f\" }}ms"
+          description: "P95 response time exceeds 2000ms for 5 minutes."
+
+      # ── Memory Usage Critical (>90%) ──────────────────────────────────
+      - alert: MemoryCritical
+        expr: |
+          process_resident_memory_bytes / 1024 / 1024 / 1024 * 100 > 90
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Memory usage critical: {{ $value | printf \"%.1f\" }}%"
+          description: "Next.js process memory exceeds 90% of expected allocation."
+
+  - name: severinno-infra
+    interval: 30s
+    rules:
+      # ── PostgreSQL Down ───────────────────────────────────────────────
+      - alert: PostgresDown
+        expr: up{job="severinno-app"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL may be down"
+          description: "App is unreachable — likely database connection failure."
+
+      # ── Prometheus Self-Monitoring ────────────────────────────────────
+      - alert: PrometheusDown
+        expr: up{job="prometheus"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus is DOWN"
+          description: "Prometheus self-monitoring target is unreachable."
+
+      # ── Scrape Failures ──────────────────────────────────────────────
+      - alert: HighScrapeErrors
+        expr: prometheus_target_scrapes_exceeded_body_size_limit_total > 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus scrape errors detected"
+          description: "More than 10 scrape failures in the last 10 minutes."
