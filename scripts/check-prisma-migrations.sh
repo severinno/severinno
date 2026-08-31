@@ -4,6 +4,8 @@
 # Verifica se o schema Prisma e as migrations estão sincronizados.
 # Usado no CI pra garantir que nenhuma migration foi esquecida.
 #
+# Usage: bash scripts/check-prisma-migrations.sh
+#
 # Exit codes:
 #   0 — tudo sincronizado
 #   1 — há migrations pendentes ou schema divergente

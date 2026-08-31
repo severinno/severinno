@@ -6,6 +6,10 @@
 # Fails CI if breaking changes are detected.
 #
 # Usage: bash scripts/check-api-compatibility.sh
+#
+# Exit codes:
+#   0 — API is backward-compatible
+#   1 — breaking changes detected
 
 set -euo pipefail
 

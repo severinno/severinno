@@ -8,6 +8,13 @@
  * - 2000 clientes
  *
  * Coordenadas approximadas de cada bairro.
+ *
+ * Usage:
+ *   npx tsx scripts/seed-governador-valadares.ts
+ *
+ * Exit codes:
+ *   0 — seed completed successfully
+ *   1 — error during seed
  */
 
 import { PrismaClient } from "@prisma/client"
@@ -16,54 +23,179 @@ const prisma = new PrismaClient()
 
 const BAIRROS = [
   { nome: "Centro", lat: -18.8566, lng: -41.9455 },
-  { nome: "Boa Sorte", lat: -18.8480, lng: -41.9380 },
-  { nome: "Cidade Nova", lat: -18.8650, lng: -41.9350 },
-  { nome: "Alto Boa Sorte", lat: -18.8400, lng: -41.9300 },
-  { nome: "Jardim Palácia", lat: -18.8700, lng: -41.9500 },
-  { nome: "Eldorado", lat: -18.8500, lng: -41.9600 },
-  { nome: "São José", lat: -18.8620, lng: -41.9250 },
-  { nome: "Cidade dos Meninos", lat: -18.8750, lng: -41.9400 },
-  { nome: "Nova Vista", lat: -18.8550, lng: -41.9200 },
-  { nome: "Progresso", lat: -18.8450, lng: -41.9550 },
-  { nome: "Belvedere", lat: -18.8680, lng: -41.9600 },
-  { nome: "Castelo Branco", lat: -18.8720, lng: -41.9200 },
-  { nome: "Vila Betânia", lat: -18.8350, lng: -41.9450 },
-  { nome: "Santa Bárbara", lat: -18.8800, lng: -41.9550 },
-  { nome: "Aeroporto", lat: -18.8800, lng: -41.9200 },
-  { nome: "Morada do Sol", lat: -18.8420, lng: -41.9650 },
-  { nome: "Vila Istanbul", lat: -18.8580, lng: -41.9700 },
-  { nome: "Pousada do Sol", lat: -18.8500, lng: -41.9150 },
-  { nome: "Bela Vista", lat: -18.8630, lng: -41.9450 },
-  { nome: "Laranjeiras", lat: -18.8700, lng: -41.9300 },
+  { nome: "Boa Sorte", lat: -18.848, lng: -41.938 },
+  { nome: "Cidade Nova", lat: -18.865, lng: -41.935 },
+  { nome: "Alto Boa Sorte", lat: -18.84, lng: -41.93 },
+  { nome: "Jardim Palácia", lat: -18.87, lng: -41.95 },
+  { nome: "Eldorado", lat: -18.85, lng: -41.96 },
+  { nome: "São José", lat: -18.862, lng: -41.925 },
+  { nome: "Cidade dos Meninos", lat: -18.875, lng: -41.94 },
+  { nome: "Nova Vista", lat: -18.855, lng: -41.92 },
+  { nome: "Progresso", lat: -18.845, lng: -41.955 },
+  { nome: "Belvedere", lat: -18.868, lng: -41.96 },
+  { nome: "Castelo Branco", lat: -18.872, lng: -41.92 },
+  { nome: "Vila Betânia", lat: -18.835, lng: -41.945 },
+  { nome: "Santa Bárbara", lat: -18.88, lng: -41.955 },
+  { nome: "Aeroporto", lat: -18.88, lng: -41.92 },
+  { nome: "Morada do Sol", lat: -18.842, lng: -41.965 },
+  { nome: "Vila Istanbul", lat: -18.858, lng: -41.97 },
+  { nome: "Pousada do Sol", lat: -18.85, lng: -41.915 },
+  { nome: "Bela Vista", lat: -18.863, lng: -41.945 },
+  { nome: "Laranjeiras", lat: -18.87, lng: -41.93 },
 ]
 
 const SERVICOS = [
-  { titulo: "Limpeza Residencial", categoria: "Limpeza", slug: "limpeza-residencial", precoMin: 80, precoMax: 250 },
-  { titulo: "Limpeza Pós-Obra", categoria: "Limpeza", slug: "limpeza-pos-obra", precoMin: 200, precoMax: 600 },
+  {
+    titulo: "Limpeza Residencial",
+    categoria: "Limpeza",
+    slug: "limpeza-residencial",
+    precoMin: 80,
+    precoMax: 250,
+  },
+  {
+    titulo: "Limpeza Pós-Obra",
+    categoria: "Limpeza",
+    slug: "limpeza-pos-obra",
+    precoMin: 200,
+    precoMax: 600,
+  },
   { titulo: "Encanador", categoria: "Manutenção", slug: "encanador", precoMin: 100, precoMax: 400 },
-  { titulo: "Eletricista", categoria: "Manutenção", slug: "eletricista", precoMin: 80, precoMax: 350 },
+  {
+    titulo: "Eletricista",
+    categoria: "Manutenção",
+    slug: "eletricista",
+    precoMin: 80,
+    precoMax: 350,
+  },
   { titulo: "Pintor", categoria: "Reforma", slug: "pintor", precoMin: 150, precoMax: 500 },
   { titulo: "Pedreiro", categoria: "Reforma", slug: "pedreiro", precoMin: 200, precoMax: 800 },
   { titulo: "Marceneiro", categoria: "Reforma", slug: "marceneiro", precoMin: 150, precoMax: 600 },
   { titulo: "Jardineiro", categoria: "Jardim", slug: "jardineiro", precoMin: 60, precoMax: 200 },
   { titulo: "Diarista", categoria: "Limpeza", slug: "diarista", precoMin: 60, precoMax: 150 },
-  { titulo: "Técnico de Ar Condicionado", categoria: "Manutenção", slug: "tecnico-ar-condicionado", precoMin: 100, precoMax: 400 },
+  {
+    titulo: "Técnico de Ar Condicionado",
+    categoria: "Manutenção",
+    slug: "tecnico-ar-condicionado",
+    precoMin: 100,
+    precoMax: 400,
+  },
   { titulo: "Chaveiro", categoria: "Serviços", slug: "chaveiro", precoMin: 50, precoMax: 200 },
-  { titulo: "Instalador de Piso", categoria: "Reforma", slug: "instalador-piso", precoMin: 30, precoMax: 100 },
-  { titulo: "Motorista Particular", categoria: "Transporte", slug: "motorista-particular", precoMin: 150, precoMax: 500 },
+  {
+    titulo: "Instalador de Piso",
+    categoria: "Reforma",
+    slug: "instalador-piso",
+    precoMin: 30,
+    precoMax: 100,
+  },
+  {
+    titulo: "Motorista Particular",
+    categoria: "Transporte",
+    slug: "motorista-particular",
+    precoMin: 150,
+    precoMax: 500,
+  },
   { titulo: "Babá", categoria: "Cuidados", slug: "baba", precoMin: 100, precoMax: 300 },
-  { titulo: "Cuidador de Idosos", categoria: "Cuidados", slug: "cuidador-idosos", precoMin: 120, precoMax: 350 },
-  { titulo: "Personal Trainer", categoria: "Saúde", slug: "personal-trainer", precoMin: 80, precoMax: 200 },
+  {
+    titulo: "Cuidador de Idosos",
+    categoria: "Cuidados",
+    slug: "cuidador-idosos",
+    precoMin: 120,
+    precoMax: 350,
+  },
+  {
+    titulo: "Personal Trainer",
+    categoria: "Saúde",
+    slug: "personal-trainer",
+    precoMin: 80,
+    precoMax: 200,
+  },
   { titulo: "Dentista", categoria: "Saúde", slug: "dentista", precoMin: 100, precoMax: 500 },
-  { titulo: "Fisioterapeuta", categoria: "Saúde", slug: "fisioterapeuta", precoMin: 80, precoMax: 250 },
-  { titulo: "Nutricionista", categoria: "Saúde", slug: "nutricionista", precoMin: 80, precoMax: 200 },
-  { titulo: "Psalterista", categoria: "Serviços", slug: "psalterista", precoMin: 200, precoMax: 800 },
+  {
+    titulo: "Fisioterapeuta",
+    categoria: "Saúde",
+    slug: "fisioterapeuta",
+    precoMin: 80,
+    precoMax: 250,
+  },
+  {
+    titulo: "Nutricionista",
+    categoria: "Saúde",
+    slug: "nutricionista",
+    precoMin: 80,
+    precoMax: 200,
+  },
+  {
+    titulo: "Psalterista",
+    categoria: "Serviços",
+    slug: "psalterista",
+    precoMin: 200,
+    precoMax: 800,
+  },
 ]
 
-const PRIMEIROS_NOMES_M = ["João", "Pedro", "Lucas", "Matheus", "Gabriel", "Rafael", "Felipe", "Bruno", "Gustavo", "Thiago", "Diego", "André", "Carlos", "Eduardo", "Marcos"]
-const PRIMEIROS_NOMES_F = ["Maria", "Ana", "Juliana", "Fernanda", "Patricia", "Camila", "Amanda", "Beatriz", "Larissa", "Letícia", "Mariana", "Raquel", "Vanessa", "Carla", "Adriana"]
-const SOBRENOMES = ["Silva", "Santos", "Oliveira", "Souza", "Pereira", "Costa", "Rodrigues", "Almeida", "Nascimento", "Lima", "Araújo", "Fernandes", "Carvalho", "Gomes", "Martins"]
-const RUA_NOMES = ["São Paulo", "Minas Gerais", "Getúlio Vargas", "Borges de Medeiros", "Marechal Deodoro", "Dom Pedro II", "Bahia", "Pará", "Tiradentes", "Castro Alves"]
+const PRIMEIROS_NOMES_M = [
+  "João",
+  "Pedro",
+  "Lucas",
+  "Matheus",
+  "Gabriel",
+  "Rafael",
+  "Felipe",
+  "Bruno",
+  "Gustavo",
+  "Thiago",
+  "Diego",
+  "André",
+  "Carlos",
+  "Eduardo",
+  "Marcos",
+]
+const PRIMEIROS_NOMES_F = [
+  "Maria",
+  "Ana",
+  "Juliana",
+  "Fernanda",
+  "Patricia",
+  "Camila",
+  "Amanda",
+  "Beatriz",
+  "Larissa",
+  "Letícia",
+  "Mariana",
+  "Raquel",
+  "Vanessa",
+  "Carla",
+  "Adriana",
+]
+const SOBRENOMES = [
+  "Silva",
+  "Santos",
+  "Oliveira",
+  "Souza",
+  "Pereira",
+  "Costa",
+  "Rodrigues",
+  "Almeida",
+  "Nascimento",
+  "Lima",
+  "Araújo",
+  "Fernandes",
+  "Carvalho",
+  "Gomes",
+  "Martins",
+]
+const RUA_NOMES = [
+  "São Paulo",
+  "Minas Gerais",
+  "Getúlio Vargas",
+  "Borges de Medeiros",
+  "Marechal Deodoro",
+  "Dom Pedro II",
+  "Bahia",
+  "Pará",
+  "Tiradentes",
+  "Castro Alves",
+]
 const REVIEW_TEXTS = [
   "Excelente profissional! Muito pontual e trabalha direitinho.",
   "Bom serviço, recomendo. Preço justo.",
@@ -164,9 +296,21 @@ async function seed() {
 
   // 3. Categories (ensure they exist)
   console.log("📂 Criando categorias...")
-  const categorias = ["Limpeza", "Manutenção", "Reforma", "Jardim", "Serviços", "Transporte", "Cuidados", "Saúde"]
+  const categorias = [
+    "Limpeza",
+    "Manutenção",
+    "Reforma",
+    "Jardim",
+    "Serviços",
+    "Transporte",
+    "Cuidados",
+    "Saúde",
+  ]
   for (const cat of categorias) {
-    const slug = cat.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    const slug = cat
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
     await prisma.category.upsert({
       where: { slug },
       update: {},
@@ -206,7 +350,13 @@ async function seed() {
   console.log("📅 Criando 5.000 bookings...")
   const now = new Date()
   const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000)
-  const statuses: Array<"PENDING" | "CONFIRMED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"> = ["PENDING", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED"]
+  const statuses: Array<"PENDING" | "CONFIRMED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"> = [
+    "PENDING",
+    "CONFIRMED",
+    "IN_PROGRESS",
+    "COMPLETED",
+    "CANCELLED",
+  ]
   const weights = [0.1, 0.15, 0.05, 0.65, 0.05]
 
   const bookingData = []
@@ -218,12 +368,15 @@ async function seed() {
     const bairro = pick(BAIRROS)
     const createdAt = randomDate(sixMonthsAgo, now)
 
-    let rand = Math.random()
+    const rand = Math.random()
     let cumWeight = 0
     let status: "PENDING" | "CONFIRMED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" = "COMPLETED"
     for (let j = 0; j < statuses.length; j++) {
       cumWeight += weights[j]
-      if (rand <= cumWeight) { status = statuses[j]; break }
+      if (rand <= cumWeight) {
+        status = statuses[j]
+        break
+      }
     }
 
     bookingData.push({
@@ -285,4 +438,9 @@ async function seed() {
   console.log("\n✅ Seed Governador Valadares concluído!")
 }
 
-seed().catch((e) => { console.error("❌ Erro:", e); process.exit(1) }).finally(() => prisma.$disconnect())
+seed()
+  .catch((e) => {
+    console.error("❌ Erro:", e)
+    process.exit(1)
+  })
+  .finally(() => prisma.$disconnect())

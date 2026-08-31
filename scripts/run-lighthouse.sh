@@ -4,6 +4,8 @@
 # Lightweight Lighthouse CI performance audit.
 # Runs after next build + next start, tests key pages for performance budget.
 #
+# Usage: bash scripts/run-lighthouse.sh
+#
 # Exit codes:
 #   0 — all pages pass performance budget
 #   1 — one or more pages fail

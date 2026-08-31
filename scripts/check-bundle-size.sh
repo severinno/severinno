@@ -4,6 +4,8 @@
 # Checks Next.js build output against performance budgets.
 # Run after `next build` to validate bundle sizes.
 #
+# Usage: bash scripts/check-bundle-size.sh
+#
 # Exit codes:
 #   0 — all bundles within budget
 #   1 — one or more bundles exceed budget
