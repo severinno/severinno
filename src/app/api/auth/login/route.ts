@@ -8,6 +8,7 @@ import { parseBody } from "@/lib/api-middleware"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
 import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/redis"
+import { randomBytes } from "crypto"
 import logger from "@/lib/logger"
 
 // ── Account lockout (per-email brute force protection) ─────────────────────
@@ -15,6 +16,8 @@ import logger from "@/lib/logger"
 const MAX_FAILED_ATTEMPTS = 5
 const LOCKOUT_SECONDS = 15 * 60 // 15 minutes
 const LOCKOUT_PREFIX = "auth:lockout:"
+const TEMP_TOKEN_PREFIX = "auth:2fa:temp:"
+const TEMP_TOKEN_TTL = 300 // 5 minutes
 
 async function isLockedOut(email: string): Promise<boolean> {
   const lockout = await cacheGet<{ lockedUntil: number }>(`${LOCKOUT_PREFIX}${email}`)
@@ -60,6 +63,15 @@ export async function POST(request: Request) {
 
     const user = await db.user.findUnique({
       where: { email },
+      select: {
+        id: true,
+        role: true,
+        active: true,
+        email: true,
+        passwordHash: true,
+        sessionVersion: true,
+        twoFactorEnabled: true,
+      },
     })
     if (!user) {
       // Use generic message to prevent email enumeration
@@ -84,7 +96,24 @@ export async function POST(request: Request) {
     // 🛡️ Login successful — clear lockout counter
     await clearFailedAttempts(email)
 
-    await createSession(user.id, user.role as "CLIENT" | "PROVIDER" | "ADMIN")
+    // 🛡️ 2FA: If enabled, return a temporary token instead of creating a session
+    if (user.twoFactorEnabled) {
+      const tempToken = randomBytes(32).toString("hex")
+      await cacheSet(
+        `${TEMP_TOKEN_PREFIX}${tempToken}`,
+        { userId: user.id, role: user.role },
+        TEMP_TOKEN_TTL,
+      )
+
+      return NextResponse.json({
+        requires2FA: true,
+        tempToken,
+        message: "Digite o código do seu aplicativo autenticador.",
+      })
+    }
+
+    // No 2FA — create session directly
+    await createSession(user.id, user.role as "CLIENT" | "PROVIDER" | "ADMIN", user.sessionVersion)
 
     const { passwordHash: _ignored, ...safe } = user
     return NextResponse.json({ user: safe })

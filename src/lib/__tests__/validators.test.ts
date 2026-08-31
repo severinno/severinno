@@ -8,13 +8,51 @@ import {
   reviewSchema,
   messageSchema,
   availabilitySchema,
+  passwordSchema,
 } from "../validators"
+
+describe("passwordSchema", () => {
+  it("accepts password with uppercase, lowercase, and number", () => {
+    const result = passwordSchema.safeParse("MyPass123")
+    expect(result.success).toBe(true)
+  })
+
+  it("rejects password without uppercase", () => {
+    const result = passwordSchema.safeParse("mypass123")
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects password without number", () => {
+    const result = passwordSchema.safeParse("MyPassword")
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects password shorter than 8 characters", () => {
+    const result = passwordSchema.safeParse("My123")
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects common passwords", () => {
+    const result = passwordSchema.safeParse("Password1")
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects other common passwords", () => {
+    const result = passwordSchema.safeParse("Password1")
+    expect(result.success).toBe(false)
+  })
+
+  it("accepts strong password", () => {
+    const result = passwordSchema.safeParse("S3cure!Pass2024")
+    expect(result.success).toBe(true)
+  })
+})
 
 describe("loginSchema", () => {
   it("accepts valid login data", () => {
     const result = loginSchema.safeParse({
       email: "user@example.com",
-      password: "12345678",
+      password: "MyPass123",
     })
     expect(result.success).toBe(true)
   })
@@ -22,15 +60,15 @@ describe("loginSchema", () => {
   it("rejects invalid email", () => {
     const result = loginSchema.safeParse({
       email: "not-an-email",
-      password: "12345678",
+      password: "MyPass123",
     })
     expect(result.success).toBe(false)
   })
 
-  it("rejects short password", () => {
+  it("rejects empty password", () => {
     const result = loginSchema.safeParse({
       email: "user@example.com",
-      password: "1234567",
+      password: "",
     })
     expect(result.success).toBe(false)
   })
@@ -45,8 +83,8 @@ describe("registerSchema", () => {
   const validClient = {
     name: "João Silva",
     email: "joao@example.com",
-    password: "12345678",
-    confirmPassword: "12345678",
+    password: "MyPass123",
+    confirmPassword: "MyPass123",
     role: "CLIENT" as const,
   }
 
@@ -58,7 +96,7 @@ describe("registerSchema", () => {
   it("rejects mismatched passwords", () => {
     const result = registerSchema.safeParse({
       ...validClient,
-      confirmPassword: "654321",
+      confirmPassword: "Different1",
     })
     expect(result.success).toBe(false)
     if (!result.success) {
@@ -70,6 +108,24 @@ describe("registerSchema", () => {
     const result = registerSchema.safeParse({
       ...validClient,
       name: "A",
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects weak password (no uppercase)", () => {
+    const result = registerSchema.safeParse({
+      ...validClient,
+      password: "mypass123",
+      confirmPassword: "mypass123",
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it("rejects common password", () => {
+    const result = registerSchema.safeParse({
+      ...validClient,
+      password: "Password1",
+      confirmPassword: "Password1",
     })
     expect(result.success).toBe(false)
   })
@@ -89,8 +145,8 @@ describe("registerSchema", () => {
     const result = registerSchema.safeParse({
       name: "Carlos Prestador",
       email: "carlos@example.com",
-      password: "12345678",
-      confirmPassword: "12345678",
+      password: "MyPass123",
+      confirmPassword: "MyPass123",
       role: "PROVIDER",
       cpfCnpj: "123.456.789-00",
       whatsapp: "11999999999",

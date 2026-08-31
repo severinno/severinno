@@ -50,11 +50,15 @@ const VALID_USER = {
   role: "CLIENT",
   active: true,
   verified: true,
+  sessionVersion: 0,
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
   cookieStore.clear()
+  // Default mock: return VALID_USER for any findUnique call (covers both
+  // verifyUserActive and getUserSessionVersion)
+  mockDb.user.findUnique.mockResolvedValue(VALID_USER)
 })
 
 afterEach(() => {

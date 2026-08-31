@@ -1,13 +1,28 @@
 import { z } from "zod"
+import { isCommonPassword } from "@/lib/common-passwords"
 
 // ---------------------------------------------------------------------------
 // AUTH
 // ---------------------------------------------------------------------------
 const cpfCnpjRegex = /^[\d.\-/]+$/
 
+/**
+ * Reusable password schema — enforces:
+ * - Minimum 8 characters
+ * - At least 1 uppercase letter
+ * - At least 1 number
+ * - Not a common password (top 100)
+ */
+export const passwordSchema = z
+  .string()
+  .min(8, "Senha deve ter ao menos 8 caracteres")
+  .regex(/[A-Z]/, "Senha deve conter ao menos 1 letra maiúscula")
+  .regex(/\d/, "Senha deve conter ao menos 1 número")
+  .refine((pw) => !isCommonPassword(pw), "Esta senha é muito comum. Escolha uma senha mais segura.")
+
 export const loginSchema = z.object({
   email: z.string().email("E-mail inválido"),
-  password: z.string().min(8, "Senha deve ter ao menos 8 caracteres"),
+  password: z.string().min(1, "Senha é obrigatória"),
 })
 export type LoginInput = z.infer<typeof loginSchema>
 
@@ -15,7 +30,7 @@ export const registerSchema = z
   .object({
     name: z.string().min(2, "Informe seu nome completo"),
     email: z.string().email("E-mail inválido"),
-    password: z.string().min(8, "Senha deve ter ao menos 8 caracteres"),
+    password: passwordSchema,
     confirmPassword: z.string(),
     role: z.enum(["CLIENT", "PROVIDER"], {
       message: "Selecione um tipo de conta",

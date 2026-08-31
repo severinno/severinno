@@ -62,10 +62,30 @@ vi.mock("@/lib/auth", () => ({
     throw new Error("UNAUTHORIZED")
   }),
   getOptionalSession: vi.fn().mockResolvedValue(null),
+  invalidateSessionCache: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock("@/lib/db", () => ({
   db: mockDb,
+}))
+
+vi.mock("@/lib/redis", () => ({
+  cacheGet: vi.fn().mockResolvedValue(null),
+  cacheSet: vi.fn().mockResolvedValue(undefined),
+  cacheInvalidate: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock("@/lib/sentry", () => ({
+  captureError: vi.fn(),
+}))
+
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn().mockResolvedValue(undefined),
+  RATE_LIMITS: {
+    general: { prefix: "general", max: 100, windowMs: 60000 },
+    login: { prefix: "login", max: 5, windowMs: 60000 },
+    forgotPassword: { prefix: "forgot-pw", max: 3, windowMs: 600000 },
+  },
 }))
 
 // ── Imports ────────────────────────────────────────────────────────────────

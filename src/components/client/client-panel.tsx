@@ -23,6 +23,7 @@ import {
   type LucideIcon,
   MapPin,
   MessageSquare,
+  Shield,
   Star,
   User as UserIcon,
   Wallet,
@@ -45,6 +46,7 @@ import { ClientReviews } from "@/components/client/client-reviews"
 import { ClientFavorites } from "@/components/client/client-favorites"
 import { ClientMessages } from "@/components/client/client-messages"
 import { ClientProfile } from "@/components/client/client-profile"
+import { ClientSecurity } from "@/components/client/client-security"
 
 // ---------------------------------------------------------------------------
 // Nav items
@@ -59,6 +61,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Mensagens", icon: MessageSquare, view: "client.messages" },
   { label: "Avaliações", icon: Star, view: "client.reviews" },
   { label: "Favoritos", icon: Heart, view: "client.favorites" },
+  { label: "Segurança", icon: Shield, view: "client.security" },
   { label: "Perfil", icon: UserIcon, view: "client.profile" },
 ]
 
@@ -103,6 +106,10 @@ const VIEW_META: Record<string, ViewMeta> = {
   "client.favorites": {
     title: "Favoritos",
     subtitle: "Prestadores salvos",
+  },
+  "client.security": {
+    title: "Segurança",
+    subtitle: "Senha e autenticação de dois fatores",
   },
   "client.profile": {
     title: "Meu perfil",
@@ -191,6 +198,8 @@ function renderView(view: string): React.ReactNode {
       return <ClientReviews />
     case "client.favorites":
       return <ClientFavorites />
+    case "client.security":
+      return <ClientSecurity />
     case "client.profile":
       return <ClientProfile />
     default:

@@ -113,14 +113,16 @@ const mockUser = {
   coverUrl: null,
   createdAt: new Date("2025-01-01"),
   updatedAt: new Date("2025-01-01"),
+  sessionVersion: 0,
+  twoFactorEnabled: false,
 } as any
 
 // Payload mínimo de cadastro (reusado nos describes de register)
 const clientPayload = {
   name: "Maria Souza",
   email: "maria@example.com",
-  password: "12345678",
-  confirmPassword: "12345678",
+  password: "Senha1234",
+  confirmPassword: "Senha1234",
   role: "CLIENT",
 }
 
@@ -149,7 +151,7 @@ describe("POST /api/auth/login", () => {
     expect(parsed.body).toHaveProperty("user")
     expect((parsed.body as any).user.email).toBe("joao@example.com")
     expect((parsed.body as any).user).not.toHaveProperty("passwordHash")
-    expect(createSession).toHaveBeenCalledWith("user-1", "CLIENT")
+    expect(createSession).toHaveBeenCalledWith("user-1", "CLIENT", 0)
   })
 
   it("returns 401 for wrong password", async () => {
@@ -231,7 +233,7 @@ describe("POST /api/auth/login — contas demo (prod vs dev)", () => {
       }),
     )
     expect(res.status).toBe(200)
-    expect(createSession).toHaveBeenCalledWith("user-1", "ADMIN")
+    expect(createSession).toHaveBeenCalledWith("user-1", "ADMIN", 0)
   })
 
   it("bloqueia login de conta demo em produção (401)", async () => {
@@ -288,7 +290,7 @@ describe("POST /api/auth/register", () => {
     expect(parsed.status).toBe(201)
     expect((parsed.body as any).user.email).toBe("maria@example.com")
     expect((parsed.body as any).user.role).toBe("CLIENT")
-    expect(hashPassword).toHaveBeenCalledWith("12345678")
+    expect(hashPassword).toHaveBeenCalledWith("Senha1234")
     expect(createSession).toHaveBeenCalled()
   })
 
@@ -309,8 +311,8 @@ describe("POST /api/auth/register", () => {
       body: {
         name: "Carlos Prestador",
         email: "carlos@example.com",
-        password: "12345678",
-        confirmPassword: "12345678",
+        password: "Senha1234",
+        confirmPassword: "Senha1234",
         role: "PROVIDER",
         cpfCnpj: "123.456.789-00",
         whatsapp: "11999999999",

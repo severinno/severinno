@@ -3,6 +3,8 @@ import { db } from "@/lib/db"
 import { hashPassword } from "@/lib/crypto"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { invalidateSessionCache } from "@/lib/auth"
+import { passwordSchema } from "@/lib/validators"
 import logger from "@/lib/logger"
 import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
 
@@ -17,9 +19,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Token e nova senha são obrigatórios." }, { status: 400 })
     }
 
-    if (password.length < 8) {
+    // Validate password complexity
+    const pwResult = passwordSchema.safeParse(password)
+    if (!pwResult.success) {
       return NextResponse.json(
-        { error: "A senha deve ter ao menos 8 caracteres." },
+        { error: pwResult.error.issues[0]?.message ?? "Senha não atende aos requisitos de segurança." },
         { status: 400 },
       )
     }
@@ -68,19 +72,25 @@ export async function POST(request: Request) {
       )
     }
 
-    // Hash the new password and update the user
+    // Hash the new password and update the user, increment sessionVersion to revoke all sessions
     const passwordHash = hashPassword(password)
 
     await db.$transaction([
       db.user.update({
         where: { id: resetToken.userId },
-        data: { passwordHash },
+        data: {
+          passwordHash,
+          sessionVersion: { increment: 1 },
+        },
       }),
       db.resetToken.update({
         where: { id: resetToken.id },
         data: { used: true },
       }),
     ])
+
+    // Invalidate session version cache so old cookies are rejected immediately
+    await invalidateSessionCache(resetToken.userId)
 
     logger.info({ userId: resetToken.userId }, "password reset successful")
     return NextResponse.json({

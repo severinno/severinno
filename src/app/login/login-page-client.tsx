@@ -27,6 +27,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { TotpVerifyModal } from "@/components/modals/totp-verify-modal"
 
 export function LoginPageClient() {
   const router = useRouter()
@@ -36,11 +37,18 @@ export function LoginPageClient() {
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [role, setRole] = useState<"CLIENT" | "PROVIDER">("CLIENT")
+  const [twoFAToken, setTwoFAToken] = useState<string | null>(null)
+  const [showTotpModal, setShowTotpModal] = useState(false)
 
   const loginMutation = useMutation({
     mutationFn: (data: { email: string; password: string; role: string }) =>
-      apiPost<{ user?: AuthUser | null }>("/api/auth/login", data),
-    onSuccess: (data: { user?: AuthUser | null }) => {
+      apiPost<{ user?: AuthUser | null; requires2FA?: boolean; tempToken?: string }>("/api/auth/login", data),
+    onSuccess: (data) => {
+      if (data.requires2FA && data.tempToken) {
+        setTwoFAToken(data.tempToken)
+        setShowTotpModal(true)
+        return
+      }
       if (data.user) {
         setUser(data.user)
         toast.success("Login realizado com sucesso!")
@@ -184,6 +192,19 @@ export function LoginPageClient() {
           </p>
         </CardFooter>
       </Card>
+
+      {twoFAToken && (
+        <TotpVerifyModal
+          open={showTotpModal}
+          onOpenChange={setShowTotpModal}
+          tempToken={twoFAToken}
+          onSuccess={(user) => {
+            setUser(user as AuthUser)
+            toast.success("Verificação concluída!")
+            router.push("/")
+          }}
+        />
+      )}
     </div>
   )
 }
