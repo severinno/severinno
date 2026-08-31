@@ -239,9 +239,17 @@ async function checkRedis(): Promise<{ status: ServiceStatus; detail: string }> 
 async function checkRabbitMQ(): Promise<{ status: ServiceStatus; detail: RabbitMQDetail }> {
   try {
     const health = getRabbitHealth()
-    // Mapeia "reconnecting" para "error" (degradado mas não crítico)
+    // "disconnected" significa que ninguém chamou publish() ainda (lazy init) — isso é OK
+    // "reconnecting" é degradado mas não crítico
+    // "error" é falha real
     const status: ServiceStatus =
-      health.status === "ok" ? "ok" : health.status === "reconnecting" ? "error" : "error"
+      health.status === "ok"
+        ? "ok"
+        : health.status === "disconnected"
+          ? "ok" // RabbitMQ é opcional — sem workers, lazy init é esperado
+          : health.status === "reconnecting"
+            ? "error"
+            : "error"
     return {
       status,
       detail: {
