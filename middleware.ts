@@ -437,12 +437,45 @@ export async function middleware(request: NextRequest) {
   const isApi = pathname.startsWith("/api/")
   const isProtectedPage = DASHBOARD_PAGES.test(pathname) || SETTINGS_PAGES.test(pathname)
 
-  if (!isApi && !isProtectedPage) return response
+  // --- Public pages: short cache for SSR (Cloudflare caches these) ---
+  if (!isApi && !isProtectedPage) {
+    const isPublicPage =
+      pathname === "/" ||
+      pathname === "/busca" ||
+      pathname === "/como-funciona" ||
+      pathname === "/contato"
+    if (isPublicPage && request.method === "GET") {
+      response.headers.set(
+        "Cache-Control",
+        "public, s-maxage=60, stale-while-revalidate=300",
+      )
+    }
+    return response
+  }
 
   // --- Public API routes pass through ---
   if (isApi && isPublicApi(pathname)) {
     if (request.method === "GET" && !pathname.startsWith("/api/auth")) {
-      response.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300")
+      // Differentiated caching: hot endpoints get longer cache
+      const isHotEndpoint =
+        pathname.startsWith("/api/providers") ||
+        pathname.startsWith("/api/categories") ||
+        pathname === "/api/health" ||
+        pathname === "/api/stats/public"
+
+      if (isHotEndpoint) {
+        // Providers/categories: cache 5 min, serve stale 30 min
+        response.headers.set(
+          "Cache-Control",
+          "public, s-maxage=300, stale-while-revalidate=1800",
+        )
+      } else {
+        // Other public APIs: cache 1 min, serve stale 5 min
+        response.headers.set(
+          "Cache-Control",
+          "public, s-maxage=60, stale-while-revalidate=300",
+        )
+      }
     }
     return response
   }
@@ -512,5 +545,13 @@ export async function middleware(request: NextRequest) {
 // Match config — API routes + protected pages
 // ---------------------------------------------------------------------------
 export const config = {
-  matcher: ["/api/:path*", "/dashboard/:path*", "/settings/:path*"],
+  matcher: [
+    "/api/:path*",
+    "/dashboard/:path*",
+    "/settings/:path*",
+    "/",
+    "/busca",
+    "/como-funciona",
+    "/contato",
+  ],
 }

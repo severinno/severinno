@@ -283,7 +283,7 @@ describe("getGlobalRateLimitDiagnostics", () => {
     expect(diag.storeSize).toBe(0)
     expect(diag.upstashAvailable).toBe(false) // env vars not set
     expect(diag.upstashConnected).toBe(false)
-    expect(diag.config.max).toBe(100) // default
+    expect(diag.config.max).toBe(500) // default
     expect(diag.config.windowMs).toBe(60_000) // default
     expect(diag.timestamp).toBeGreaterThan(0)
   })

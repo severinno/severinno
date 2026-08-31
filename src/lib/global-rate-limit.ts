@@ -117,7 +117,7 @@ function getUpstashClient(): UpstashRedis | null {
 // Configuration (env vars with defaults)
 // ---------------------------------------------------------------------------
 
-const DEFAULT_MAX = 100
+const DEFAULT_MAX = 500
 const DEFAULT_WINDOW_MS = 60_000
 
 function getConfig() {
