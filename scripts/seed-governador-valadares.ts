@@ -294,6 +294,58 @@ async function seed() {
   }
   console.log(`  ✅ ${providers.length} providers\n`)
 
+  // 2b. Provider Availability (horários de trabalho)
+  console.log("🕐 Criando horários de disponibilidade...")
+  const availabilityData: Array<{
+    providerId: string
+    dayOfWeek: number
+    startTime: string
+    endTime: string
+    active: boolean
+  }> = []
+
+  // Horários padrão com variação pra parecer real
+  const SHIFT_PATTERNS = [
+    // Seg-Sex 8h-17h (padrão)
+    [1, 2, 3, 4, 5].map((d) => ({ day: d, start: "08:00", end: "17:00" })),
+    // Seg-Sex 7h-16h
+    [1, 2, 3, 4, 5].map((d) => ({ day: d, start: "07:00", end: "16:00" })),
+    // Seg-Sex 9h-18h
+    [1, 2, 3, 4, 5].map((d) => ({ day: d, start: "09:00", end: "18:00" })),
+    // Seg-Sáb 8h-17h
+    [1, 2, 3, 4, 5, 6].map((d) => ({ day: d, start: "08:00", end: "17:00" })),
+    // Seg-Qua-Sex 8h-17h
+    [1, 3, 5].map((d) => ({ day: d, start: "08:00", end: "17:00" })),
+    // Ter-Qui-Sáb 8h-17h
+    [2, 4, 6].map((d) => ({ day: d, start: "08:00", end: "17:00" })),
+    // Seg-Sex 8h-12h (meio período)
+    [1, 2, 3, 4, 5].map((d) => ({ day: d, start: "08:00", end: "12:00" })),
+  ]
+
+  for (const provider of providers) {
+    const pattern = pick(SHIFT_PATTERNS)
+    for (const shift of pattern) {
+      availabilityData.push({
+        providerId: provider.id,
+        dayOfWeek: shift.day,
+        startTime: shift.start,
+        endTime: shift.end,
+        active: true,
+      })
+    }
+  }
+
+  // Batch insert availability
+  for (let i = 0; i < availabilityData.length; i += 500) {
+    const batch = availabilityData.slice(i, i + 500)
+    await prisma.$transaction(
+      batch.map((d) =>
+        prisma.providerAvailability.create({ data: d }),
+      ),
+    )
+  }
+  console.log(`  ✅ ${availabilityData.length} horários criados\n`)
+
   // 3. Categories (ensure they exist)
   console.log("📂 Criando categorias...")
   const categorias = [
@@ -432,6 +484,7 @@ async function seed() {
   console.log(`  👤 Clientes:   ${await prisma.user.count({ where: { role: "CLIENT" } })}`)
   console.log(`  🔧 Providers:  ${await prisma.user.count({ where: { role: "PROVIDER" } })}`)
   console.log(`  📋 Serviços:   ${await prisma.service.count()}`)
+  console.log(`  🕐 Horários:   ${await prisma.providerAvailability.count()}`)
   console.log(`  📅 Bookings:   ${await prisma.booking.count()}`)
   console.log(`  ⭐ Reviews:    ${await prisma.review.count()}`)
   console.log(`  📂 Categorias: ${await prisma.category.count()}`)
