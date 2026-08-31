@@ -139,7 +139,7 @@ function loadBenchmarkData(): BenchmarkData | null {
         avgHaversinePerProvider: parsed.analysis.avgHaversinePerProvider,
       },
     }
-  } catch (e) {
+  } catch {
     return null
   }
 }

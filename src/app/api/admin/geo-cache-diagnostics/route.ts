@@ -79,7 +79,7 @@ export async function GET() {
                 (r as PromiseFulfilledResult<{ key: string; ttlSeconds: number | null }>).value,
             )
         }
-      } catch (e) {
+      } catch {
         // Redis TTL read failed — skip
       }
     }
