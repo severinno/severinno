@@ -129,17 +129,15 @@ describe("GET /api/cron/settlements", () => {
     expect(data.error).toBe("Unauthorized")
   })
 
-  it("allows access when CRON_SECRET is empty (no auth configured)", async () => {
+  it("rejects access when CRON_SECRET is empty (fail-closed)", async () => {
     process.env.CRON_SECRET = ""
-    vi.mocked(db.settlementPeriod.findFirst).mockResolvedValue(null)
-    vi.mocked(db.payment.findMany).mockResolvedValue([])
 
     const req = new Request("http://localhost/api/cron/settlements?type=MONTHLY")
     const res = await GET(req)
     const data = await res.json()
 
-    expect(res.status).toBe(200)
-    expect(data.message).toContain("Nenhum pagamento")
+    expect(res.status).toBe(401)
+    expect(data.error).toMatch(/Unauthorized/i)
   })
 
   it("catches errors and returns 500 with message", async () => {

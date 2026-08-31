@@ -13,11 +13,14 @@ import { FEE_RATE } from "@/lib/constants"
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
+    const cronSecret = process.env.CRON_SECRET
+    const authHeader = request.headers.get("authorization")
     const key = searchParams.get("key")
-    const cronSecret = process.env.CRON_SECRET ?? ""
 
-    // Simple auth — the caller must provide the correct key
-    if (cronSecret && key !== cronSecret) {
+    // Fail-closed: require either valid Bearer token or valid query param
+    const authorized =
+      (cronSecret && authHeader === `Bearer ${cronSecret}`) || (cronSecret && key === cronSecret)
+    if (!authorized) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 

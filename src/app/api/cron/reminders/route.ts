@@ -14,7 +14,8 @@ import {
 export async function GET(request: Request) {
   try {
     const auth = request.headers.get("authorization")
-    if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    const cronSecret = process.env.CRON_SECRET
+    if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -124,7 +125,9 @@ export async function GET(request: Request) {
 
     let reviewRequestsSent = 0
     for (const cwr of completedWithoutReview) {
-      notifyReviewRequest(cwr.clientId, cwr.id, cwr.provider.name).catch((err) => logger.warn({ err }, "cron notification failed (fire-and-forget)"))
+      notifyReviewRequest(cwr.clientId, cwr.id, cwr.provider.name).catch((err) =>
+        logger.warn({ err }, "cron notification failed (fire-and-forget)"),
+      )
       reviewRequestsSent++
     }
 
@@ -159,7 +162,9 @@ export async function GET(request: Request) {
         }),
       ])
 
-      notifyPaymentConfirmed(hb.providerId, hb.id, hb.amount).catch((err) => logger.warn({ err }, "cron notification failed (fire-and-forget)"))
+      notifyPaymentConfirmed(hb.providerId, hb.id, hb.amount).catch((err) =>
+        logger.warn({ err }, "cron notification failed (fire-and-forget)"),
+      )
       escrowAutoReleasedCount++
     }
 

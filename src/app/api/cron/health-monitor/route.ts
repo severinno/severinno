@@ -34,11 +34,9 @@ export async function GET(request: Request) {
   try {
     // ── Auth ─────────────────────────────────────────────────────────
     const auth = request.headers.get("authorization")
-    const cronSecret = process.env.CRON_SECRET ?? ""
+    const cronSecret = process.env.CRON_SECRET
 
-    if (!cronSecret) {
-      logger.warn("health-monitor: CRON_SECRET not configured — skipping auth check")
-    } else if (auth !== `Bearer ${cronSecret}`) {
+    if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
       return NextResponse.json(
         { error: "Unauthorized — provide a valid Bearer token" },
         { status: 401 },
