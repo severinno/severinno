@@ -229,6 +229,26 @@ function isWhitelisted(pathname: string, prefixes: string[]): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Rate limit whitelist — lazily parsed from env var. Cached after first
+// parse so repeated requests don't re-split the string.
+// ---------------------------------------------------------------------------
+
+let _whitelistCache: string[] | null = null
+let _whitelistEnvSnapshot: string | undefined
+
+function getRateLimitWhitelist(): string[] {
+  const raw = process.env.GLOBAL_RATE_LIMIT_WHITELIST ?? ""
+  if (raw !== _whitelistEnvSnapshot) {
+    _whitelistEnvSnapshot = raw
+    _whitelistCache = raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+  }
+  return _whitelistCache!
+}
+
+// ---------------------------------------------------------------------------
 // Route protection rules
 // ---------------------------------------------------------------------------
 
@@ -358,11 +378,7 @@ export async function middleware(request: NextRequest) {
 
   // --- Global rate limiting (API routes only) ---
   if (pathname.startsWith("/api/") && !shouldBypassGlobalRateLimit(pathname)) {
-    const whitelistRaw = process.env.GLOBAL_RATE_LIMIT_WHITELIST ?? ""
-    const whitelist = whitelistRaw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
+    const whitelist = getRateLimitWhitelist()
     const bypassedByWhitelist = whitelist.length > 0 && isWhitelisted(pathname, whitelist)
 
     if (!bypassedByWhitelist) {

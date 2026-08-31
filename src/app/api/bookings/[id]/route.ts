@@ -3,6 +3,8 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
+import { parseBody } from "@/lib/api-middleware"
+import { bookingUpdateSchema } from "@/lib/validators"
 import { refundCharge, getCharge, lytexLogger } from "@/lib/lytex"
 import {
   notifyBookingStatus,
@@ -77,9 +79,7 @@ export async function PATCH(request: Request, { params }: Params) {
       throw forbidden("Acesso negado a este agendamento")
     }
 
-    const body = await request.json()
-    const next = String(body?.status || "").toUpperCase()
-    if (!next) throw badRequest("Informe o novo status")
+    const { status: next } = await parseBody(request, bookingUpdateSchema)
 
     // Validate transition
     const allowed = isAdmin
@@ -177,18 +177,26 @@ export async function PATCH(request: Request, { params }: Params) {
 
     if (next === "COMPLETED" && isProvider) {
       // Pedir ao cliente para confirmar conclusão e liberar custódia
-      notifyCompletionRequest(updated.clientId, id, updated.provider.name).catch((err) => logger.warn({ err }, "notification failed (fire-and-forget)"))
+      notifyCompletionRequest(updated.clientId, id, updated.provider.name).catch((err) =>
+        logger.warn({ err }, "notification failed (fire-and-forget)"),
+      )
     } else if (next === "COMPLETED" && !isProvider) {
       // Liberou pagamento
-      notifyPaymentConfirmed(updated.providerId, id, updated.amount).catch((err) => logger.warn({ err }, "notification failed (fire-and-forget)"))
+      notifyPaymentConfirmed(updated.providerId, id, updated.amount).catch((err) =>
+        logger.warn({ err }, "notification failed (fire-and-forget)"),
+      )
     }
 
     // Notificar o cliente
-    notifyBookingStatus(updated.clientId, id, newStatus, serviceName).catch((err) => logger.warn({ err }, "notification failed (fire-and-forget)"))
+    notifyBookingStatus(updated.clientId, id, newStatus, serviceName).catch((err) =>
+      logger.warn({ err }, "notification failed (fire-and-forget)"),
+    )
 
     // Notificar o provider (se não for o mesmo que o cliente)
     if (updated.clientId !== updated.providerId) {
-      notifyBookingStatus(updated.providerId, id, newStatus, serviceName).catch((err) => logger.warn({ err }, "notification failed (fire-and-forget)"))
+      notifyBookingStatus(updated.providerId, id, newStatus, serviceName).catch((err) =>
+        logger.warn({ err }, "notification failed (fire-and-forget)"),
+      )
     }
 
     return NextResponse.json({ booking: updated })
