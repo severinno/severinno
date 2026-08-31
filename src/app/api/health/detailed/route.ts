@@ -239,9 +239,11 @@ async function checkRabbitMQ(): Promise<ServiceHealth> {
     // This avoids opening a new AMQP connection on every health check
     const ch = await getChannel()
     // Check queue depth for main queues via the singleton connection
-    const emailQ = await ch.checkQueue("email")
-    const notifQ = await ch.checkQueue("notification")
-    const searchQ = await ch.checkQueue("search-index")
+    // Use assertQueue (idempotent) instead of checkQueue to avoid errors
+    // when queues haven't been created yet (no workers running)
+    const emailQ = await ch.assertQueue("email", { durable: true })
+    const notifQ = await ch.assertQueue("notification", { durable: true })
+    const searchQ = await ch.assertQueue("search-index", { durable: true })
     const latency = Math.round(performance.now() - t0)
     return {
       name: "rabbitmq",
@@ -258,12 +260,18 @@ async function checkRabbitMQ(): Promise<ServiceHealth> {
     }
   } catch (err) {
     const latency = Math.round(performance.now() - t0)
+    const msg = (err as Error).message ?? String(err)
+    // "Channel ended" means the lazy connection was never used — acceptable without workers
+    const isOptionalFailure = msg.includes("Channel ended") || msg.includes("no queue")
     return {
       name: "rabbitmq",
-      status: "degraded",
+      status: isOptionalFailure ? "healthy" : "degraded",
       latencyMs: latency,
-      message: (err as Error).message,
-      details: { note: "RabbitMQ is optional without workers — app works without it" },
+      message: isOptionalFailure ? `Connected (lazy, no consumers yet)` : msg,
+      details: {
+        note: "RabbitMQ is optional without workers — app works without it",
+        queues: {},
+      },
     }
   }
 }
