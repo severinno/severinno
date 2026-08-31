@@ -67,6 +67,28 @@ enum ServiceUnit {
 }
 
 // ============================================================================
+// CITY — multi-city support
+// ============================================================================
+model City {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  state       String?
+  country     String   @default("BR")
+  lat         Float?
+  lng         Float?
+  active      Boolean  @default(true)
+  timezone    String   @default("America/Sao_Paulo")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  providers   User[]
+
+  @@index([slug])
+  @@index([active])
+}
+
+// ============================================================================
 // USER — base account for CLIENT | PROVIDER | ADMIN
 // ============================================================================
 model User {
@@ -96,6 +118,8 @@ model User {
   complement   String?
   district     String?
   city         String?
+  cityId       String?
+  cityRelation City?   @relation(fields: [cityId], references: [id])
   state        String?
   slug         String?  @unique
   verified     Boolean  @default(false)
@@ -373,6 +397,9 @@ model Review {
   providerId String
   rating     Int      // 1-5
   comment    String?
+  photos     Json     @default("[]")  // Array of photo URLs (max 4)
+  providerReply   String?  // Provider's response to the review
+  providerReplyAt DateTime? // When the provider replied
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -384,6 +411,7 @@ model Review {
 
   @@index([providerId])
   @@index([providerId, createdAt])
+  @@index([providerId, rating])
   @@index([clientId])
   @@index([rating])
 }

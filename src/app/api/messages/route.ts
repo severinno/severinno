@@ -149,6 +149,25 @@ export async function POST(request: Request) {
         /* ignore notification errors */
       })
 
+    // Broadcast to recipient via Redis pub/sub (real-time SSE)
+    try {
+      const { getClient } = await import("@/lib/redis")
+      const redisClient = getClient()
+      if (redisClient) {
+        await redisClient.publish(`messages:${data.toId}`, JSON.stringify({
+          type: "message",
+          id: message.id,
+          fromId: message.fromId,
+          toId: message.toId,
+          content: message.content,
+          createdAt: message.createdAt,
+          bookingId: message.bookingId,
+        }))
+      }
+    } catch {
+      /* Redis unavailable — message saved, real-time skip */
+    }
+
     return NextResponse.json({ message }, { status: 201 })
   } catch (e) {
     return handleError(e)
