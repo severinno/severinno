@@ -1,0 +1,25 @@
+[Unit]
+Description=Severinno — Caddy Reverse Proxy
+Documentation=https://caddyserver.com/docs/
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=severinno
+Group=severinno
+ExecStart=/home/severinno/caddy run --config /home/severinno/severinno/Caddyfile --adapter caddyfile
+ExecReload=/home/severinno/caddy reload --config /home/severinno/severinno/Caddyfile --adapter caddyfile
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+
+# Permitir binding em portas privilegiadas (443, 80) sem rodar como root
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN
+
+# Environment
+Environment=HOME=/home/severinno
+
+[Install]
+WantedBy=multi-user.target
