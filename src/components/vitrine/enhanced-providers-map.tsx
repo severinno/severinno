@@ -287,7 +287,7 @@ export default function EnhancedProvidersMap({
     return () => {
       map.off("style.load", sync)
     }
-  }, [providers, selectedId, userLat, userLng])
+  }, [providers, selectedId, userLat, userLng, mapInstance])
 
   // ---- Sync user location marker -------------------------------------------
   useEffect(() => {
@@ -302,7 +302,7 @@ export default function EnhancedProvidersMap({
       map.once("style.load", onReady)
       return () => { map.off("style.load", onReady) }
     }
-  }, [userLat, userLng])
+  }, [userLat, userLng, mapInstance])
 
   return (
     <div

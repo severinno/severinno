@@ -60,26 +60,6 @@ exports[`ci.yml — sintaxe YAML + snapshot > parseia como YAML válido (js-yaml
         },
       ],
     },
-    "deploy": {
-      "if": "github.ref == 'refs/heads/main' && github.event_name == 'push'",
-      "name": "Deploy",
-      "needs": [
-        "build",
-      ],
-      "runs-on": "ubuntu-latest",
-      "steps": [
-        {
-          "uses": "actions/download-artifact@v4",
-          "with": {
-            "name": "standalone-build",
-            "path": ".next/standalone/",
-          },
-        },
-        {
-          "run": "echo "Build ready for deployment"",
-        },
-      ],
-    },
     "lighthouse": {
       "if": "github.event_name == 'pull_request'",
       "name": "Lighthouse Audit",
@@ -165,6 +145,13 @@ sleep 10
           "options": "--health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5",
           "ports": [
             "5432:5432",
+          ],
+        },
+        "redis": {
+          "image": "redis:7-alpine",
+          "options": "--health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5",
+          "ports": [
+            "6379:6379",
           ],
         },
       },

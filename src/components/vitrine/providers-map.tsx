@@ -16,7 +16,7 @@
  *   overlay at the bottom of the map lets the user adjust the radius.
  */
 
-import { useEffect, useRef, useCallback } from "react"
+import { useEffect, useRef, useCallback, useState } from "react"
 import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
 import { formatDistance } from "@/lib/geo-client"
@@ -68,6 +68,9 @@ export default function ProvidersMap({
   const userMarkerRef = useRef<MarkerInstance | null>(null)
   const clusterSourceAdded = useRef(false)
   const maplibreglRef = useRef<typeof import("maplibre-gl") | null>(null)
+  // Counter incremented when the async map init completes — used to
+  // re-trigger the sync effects that depend on a valid mapRef.
+  const [mapReady, setMapReady] = useState(0)
 
   const selectRef = useRef(onSelectProvider)
 
@@ -197,6 +200,7 @@ export default function ProvidersMap({
       }
 
       mapRef.current = map
+      setMapReady((n) => n + 1)
 
       cleanup = () => {
         window.clearTimeout(t1)
@@ -286,7 +290,7 @@ export default function ProvidersMap({
       cancelled = true
       map.off("style.load", sync)
     }
-  }, [providers, selectedId, userLat, userLng])
+  }, [providers, selectedId, userLat, userLng, mapReady])
 
   // ---- Sync user location marker + radius circle --------------------------
   useEffect(() => {
@@ -316,7 +320,7 @@ export default function ProvidersMap({
       cancelled = true
       map.off("style.load", sync)
     }
-  }, [userLat, userLng, radius, hasUserLocation])
+  }, [userLat, userLng, radius, hasUserLocation, mapReady])
 
   return (
     <div
