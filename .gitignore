@@ -123,3 +123,5 @@ __pycache__/
 .caddy/
 caddy-access.log
 .caddy.pid
+k6/results.json
+playwright-report/
