@@ -245,8 +245,8 @@ async function checkRabbitMQ(): Promise<{ status: ServiceStatus; detail: RabbitM
     const status: ServiceStatus =
       health.status === "ok"
         ? "ok"
-        : health.status === "disconnected"
-          ? "ok" // RabbitMQ é opcional — sem workers, lazy init é esperado
+        : !health.connected && health.reconnectAttempts === 0
+          ? "ok" // Nunca tentou conectar (lazy init) — RabbitMQ é opcional
           : health.status === "reconnecting"
             ? "error"
             : "error"
