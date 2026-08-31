@@ -266,14 +266,27 @@ export default function EnhancedProvidersMap({
     const maplibregl = maplibreglRef.current
     if (!map || !maplibregl) return
 
-    const useClustering = providers.length > 20
-    if (useClustering) {
-      syncClusterSource(map, providers, markersRef, clusterSourceAdded)
-    } else {
-      removeClusterSource(map, clusterSourceAdded)
-      syncAnimatedMarkers({ map, maplibregl, providers, selectedId, onSelectProvider: selectRef.current, markersRef })
+    const sync = () => {
+      if (!map.isStyleLoaded()) return
+      const useClustering = providers.length > 20
+      if (useClustering) {
+        syncClusterSource(map, providers, markersRef, clusterSourceAdded)
+      } else {
+        removeClusterSource(map, clusterSourceAdded)
+        syncAnimatedMarkers({ map, maplibregl, providers, selectedId, onSelectProvider: selectRef.current, markersRef })
+      }
+      fitToBounds(map, providers, userLat, userLng)
     }
-    fitToBounds(map, providers, userLat, userLng)
+
+    if (map.isStyleLoaded()) {
+      sync()
+    } else {
+      map.once("style.load", sync)
+    }
+
+    return () => {
+      map.off("style.load", sync)
+    }
   }, [providers, selectedId, userLat, userLng])
 
   // ---- Sync user location marker -------------------------------------------
@@ -282,7 +295,13 @@ export default function EnhancedProvidersMap({
     const maplibregl = maplibreglRef.current
     if (!map || !maplibregl) return
 
-    syncUserMarker({ map, maplibregl, lat: userLat, lng: userLng, userMarkerRef })
+    if (map.isStyleLoaded()) {
+      syncUserMarker({ map, maplibregl, lat: userLat, lng: userLng, userMarkerRef })
+    } else {
+      const onReady = () => syncUserMarker({ map, maplibregl, lat: userLat, lng: userLng, userMarkerRef })
+      map.once("style.load", onReady)
+      return () => { map.off("style.load", onReady) }
+    }
   }, [userLat, userLng])
 
   return (

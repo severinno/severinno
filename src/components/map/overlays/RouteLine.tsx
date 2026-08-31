@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useRef } from "react"
+import maplibregl from "maplibre-gl"
 
 type MapLibreMap = InstanceType<typeof import("maplibre-gl").Map>
 
@@ -147,10 +148,12 @@ export default function RouteLine({
       animFrame.current = requestAnimationFrame(animate)
 
       // Fit bounds to include both points
-      const bounds = new maplibregl.LngLatBounds()
-        .extend([userLng, userLat])
-        .extend([providerLng, providerLat])
-      map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 800 })
+      try {
+        const bounds = new maplibregl.LngLatBounds()
+          .extend([userLng, userLat])
+          .extend([providerLng, providerLat])
+        map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 800 })
+      } catch { /* ignore — map may have been removed */ }
     }
 
     // If style is already loaded, add immediately; otherwise wait
@@ -168,6 +171,3 @@ export default function RouteLine({
 
   return null
 }
-
-// Need maplibregl for bounds
-import maplibregl from "maplibre-gl"
