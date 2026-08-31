@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { headers } from "next/headers"
 import "./globals.css"
 import { Providers } from "@/components/providers"
+import { SWRegister } from "@/components/sw-register"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,7 +30,8 @@ export const metadata: Metadata = {
     "pintor",
     "diarista",
     "geolocalização",
-    "São Paulo",
+    "Governador Valadares",
+    "Minas Gerais",
     "Severinno",
   ],
   authors: [{ name: "Severinno" }],
@@ -51,10 +53,19 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Severinno Marketplace",
-    description: "Encontre prestadores de serviço verificados, com base na sua localização.",
+    description: "Encontre prestadores de serviço verificados, com base na sua localização — Governador Valadares, MG.",
+    url: process.env.NEXT_PUBLIC_APP_URL ?? "https://severinno.com",
     siteName: "Severinno",
     locale: "pt_BR",
     type: "website",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Severinno — Marketplace de Serviços",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
@@ -76,6 +87,7 @@ export default async function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} bg-background text-foreground antialiased`}
       >
         <Providers>{children}</Providers>
+        <SWRegister />
       </body>
     </html>
   )
