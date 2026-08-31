@@ -1,0 +1,20 @@
+[Unit]
+Description=Severinno — Cloudflare Tunnel
+Documentation=https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=severinno
+Group=severinno
+ExecStart=/home/severinno/cloudflared tunnel --url http://localhost:3000 --protocol http2 --no-autoupdate
+Restart=always
+RestartSec=5s
+LimitNOFILE=65536
+
+# Environment
+Environment=HOME=/home/severinno
+
+[Install]
+WantedBy=multi-user.target
