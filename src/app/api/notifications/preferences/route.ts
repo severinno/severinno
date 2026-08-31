@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { handleError, badRequest, unauthorized } from "@/lib/api-server"
+import { handleError, badRequest } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { requireUser } from "@/lib/auth"
 
 // ── GET — list all preferences for the current user ─────────────────────────
 
 export async function GET(request: NextRequest) {
   try {
-    const userId = request.headers.get("x-user-id")
-    if (!userId) throw unauthorized()
+    await assertRateLimit(request, RATE_LIMITS.general)
+    const session = await requireUser()
 
     const result = await db.$queryRawUnsafe<
       Array<{
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
       `SELECT type, "pushEnabled", "emailEnabled", "whatsappEnabled", "soundEnabled"
        FROM "NotificationPreference"
        WHERE "userId" = $1`,
-      [userId],
+      [session.userId],
     )
 
     return NextResponse.json({ preferences: result })
@@ -36,8 +37,7 @@ export async function GET(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     await assertRateLimit(request, RATE_LIMITS.general)
-    const userId = request.headers.get("x-user-id")
-    if (!userId) throw unauthorized()
+    const session = await requireUser()
 
     const body = await request.json()
     const { type, pushEnabled, emailEnabled, whatsappEnabled, soundEnabled } = body
@@ -53,7 +53,7 @@ export async function PATCH(request: NextRequest) {
          "emailEnabled" = COALESCE($4, "NotificationPreference"."emailEnabled"),
          "whatsappEnabled" = COALESCE($5, "NotificationPreference"."whatsappEnabled"),
          "soundEnabled" = COALESCE($6, "NotificationPreference"."soundEnabled")`,
-      [userId, type, pushEnabled, emailEnabled, whatsappEnabled, soundEnabled],
+      [session.userId, type, pushEnabled, emailEnabled, whatsappEnabled, soundEnabled],
     )
 
     return NextResponse.json({ success: true })

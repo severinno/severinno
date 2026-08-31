@@ -6,6 +6,7 @@ import { reviewSchema } from "@/lib/validators"
 import { badRequest, forbidden, handleError, notFound, parsePagination } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { fireEvent } from "@/lib/event-hub"
+import { sanitizeText } from "@/lib/sanitize"
 
 // Public: list reviews (filter by providerId or bookingId)
 export async function GET(request: Request) {
@@ -85,7 +86,7 @@ export async function POST(request: Request) {
         providerId: booking.providerId,
         serviceId: booking.serviceId,
         rating: data.rating,
-        comment: data.comment || null,
+        comment: data.comment ? sanitizeText(data.comment) : null,
       },
       include: {
         client: { select: { id: true, name: true, avatarUrl: true } },

@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       data: { twoFactorSecret: secret },
     })
 
-    return NextResponse.json({ secret, uri })
+    return NextResponse.json({ uri })
   } catch (e) {
     return handleError(e)
   }
