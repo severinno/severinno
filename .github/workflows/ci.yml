@@ -99,6 +99,15 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
@@ -195,42 +204,3 @@ jobs:
         run: npx lhci autorun
         env:
           LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
-
-  # ── Deploy (manual trigger or on push to main) ────────────────────────────
-  deploy:
-    name: Deploy
-    runs-on: ubuntu-latest
-    needs: [build]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: standalone-build
-          path: .next/standalone/
-
-      # Example: SSH deploy to VPS
-      # Uncomment and configure secrets for your server:
-      #
-      # - name: Deploy via SSH
-      #   uses: appleboy/scp-action@v0.1.7
-      #   with:
-      #     host: ${{ secrets.DEPLOY_HOST }}
-      #     username: ${{ secrets.DEPLOY_USER }}
-      #     key: ${{ secrets.DEPLOY_KEY }}
-      #     source: ".next/standalone/*"
-      #     target: "/opt/severinno/"
-      #     strip_components: 2
-      #
-      # - name: Restart server
-      #   uses: appleboy/ssh-action@v1.2.0
-      #   with:
-      #     host: ${{ secrets.DEPLOY_HOST }}
-      #     username: ${{ secrets.DEPLOY_USER }}
-      #     key: ${{ secrets.DEPLOY_KEY }}
-      #     script: |
-      #       cd /opt/severinno
-      #       docker compose pull
-      #       docker compose up -d --force-recreate
-
-      - run: echo "Build ready for deployment"
