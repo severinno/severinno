@@ -283,3 +283,33 @@ export const slugSchema = z
   .min(2)
   .max(80)
   .regex(/^[a-z0-9-]+$/, "Slug deve ter apenas letras, números e hífens")
+
+// ---------------------------------------------------------------------------
+// BOOKING UPDATE
+// ---------------------------------------------------------------------------
+const BOOKING_STATUSES = ["PENDING", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED"] as const
+
+export const bookingUpdateSchema = z.object({
+  status: z.enum(BOOKING_STATUSES, {
+    message: `Status inválido. Valores permitidos: ${BOOKING_STATUSES.join(", ")}`,
+  }),
+})
+
+// ---------------------------------------------------------------------------
+// CATEGORY UPDATE
+// ---------------------------------------------------------------------------
+export const categoryUpdateSchema = z.object({
+  id: z.string().min(1, "ID obrigatório"),
+  name: z.string().min(1).max(100).optional(),
+  slug: z
+    .string()
+    .min(2)
+    .max(80)
+    .regex(/^[a-z0-9-]+$/, "Slug deve ter apenas letras, números e hífens")
+    .optional(),
+  parentId: z.string().nullable().optional(),
+  level: z.number().int().min(0).max(3).optional(),
+  icon: z.string().max(50).nullable().optional(),
+  order: z.number().int().min(0).optional(),
+  active: z.boolean().optional(),
+})

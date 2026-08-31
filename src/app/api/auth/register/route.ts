@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { hashPassword } from "@/lib/crypto"
 import { createSession } from "@/lib/auth"
 import { registerSchema } from "@/lib/validators"
+import { parseBody } from "@/lib/api-middleware"
 import { handleError, conflict } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { fireEvent } from "@/lib/event-hub"
@@ -12,8 +13,7 @@ import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
 export async function POST(request: Request) {
   try {
     await assertRateLimit(request, RATE_LIMITS.register)
-    const body = await request.json()
-    const data = registerSchema.parse(body)
+    const data = await parseBody(request, registerSchema)
 
     // 🛡️ Emails demo são reservados (dev/staging only). Em produção, impedir
     // que alguém registre uma conta com email demo (ex.: sequestrar

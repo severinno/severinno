@@ -2,7 +2,8 @@ import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
-import { categorySchema } from "@/lib/validators"
+import { categorySchema, categoryUpdateSchema } from "@/lib/validators"
+import { parseBody } from "@/lib/api-middleware"
 import {
   notFound,
   cacheControlPublic,
@@ -14,20 +15,24 @@ import { withCache, cacheInvalidate } from "@/lib/redis"
 // GET: list categories (public, cached)
 export async function GET(_request?: Request) {
   try {
-    const categories = await withCache("categories:all", async () => {
-      return db.category.findMany({
-        where: { active: true },
-        include: {
-          children: {
-            where: { active: true },
-            include: {
-              children: { where: { active: true } },
+    const categories = await withCache(
+      "categories:all",
+      async () => {
+        return db.category.findMany({
+          where: { active: true },
+          include: {
+            children: {
+              where: { active: true },
+              include: {
+                children: { where: { active: true } },
+              },
             },
           },
-        },
-        orderBy: [{ order: "asc" }, { name: "asc" }],
-      })
-    }, 60)
+          orderBy: [{ order: "asc" }, { name: "asc" }],
+        })
+      },
+      60,
+    )
     return cacheControlPublic(NextResponse.json(categories), 120, 600)
   } catch {
     return NextResponse.json({ error: "Erro interno" }, { status: 500 })
@@ -38,8 +43,7 @@ export async function GET(_request?: Request) {
 export async function POST(request: Request) {
   try {
     await requireRole("ADMIN")
-    const body = await request.json()
-    const data = categorySchema.parse(body)
+    const data = await parseBody(request, categorySchema)
 
     // Check slug uniqueness
     const existing = await db.category.findUnique({ where: { slug: data.slug } })
@@ -58,9 +62,13 @@ export async function POST(request: Request) {
     })
 
     // Invalidate all cached category lists so fresh data is served
-    Promise.all([cacheInvalidate("categories:*"), invalidateCategoryCache()]).catch((err) => logger.warn({ err }, "category cache invalidation failed"))
+    Promise.all([cacheInvalidate("categories:*"), invalidateCategoryCache()]).catch((err) =>
+      logger.warn({ err }, "category cache invalidation failed"),
+    )
     // Queue search reindex (non-critical — don't fail the request)
-    syncEntitySearch("category", created).catch((err) => logger.warn({ err }, "category search reindex failed"))
+    syncEntitySearch("category", created).catch((err) =>
+      logger.warn({ err }, "category search reindex failed"),
+    )
     return NextResponse.json({ category: created }, { status: 201 })
   } catch {
     return NextResponse.json({ error: "Erro interno" }, { status: 500 })
@@ -71,10 +79,7 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     await requireRole("ADMIN")
-    const body = await request.json()
-    const { id, ...data } = body
-
-    if (!id) return NextResponse.json({ error: "ID obrigatório" }, { status: 400 })
+    const { id, ...data } = await parseBody(request, categoryUpdateSchema)
 
     const category = await db.category.findUnique({ where: { id } })
     if (!category) throw notFound()
