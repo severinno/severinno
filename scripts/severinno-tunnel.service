@@ -1,5 +1,5 @@
 [Unit]
-Description=Severinno — Cloudflare Tunnel
+Description=Severinno — Cloudflare Named Tunnel
 Documentation=https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/
 After=network-online.target
 Wants=network-online.target
@@ -8,7 +8,7 @@ Wants=network-online.target
 Type=simple
 User=severinno
 Group=severinno
-ExecStart=/home/severinno/cloudflared tunnel --url http://localhost:3000 --protocol http2 --no-autoupdate
+ExecStart=/home/severinno/cloudflared tunnel --config /home/severinno/.cloudflared/config.yml run
 Restart=always
 RestartSec=5s
 LimitNOFILE=65536
