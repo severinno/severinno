@@ -350,24 +350,32 @@ async function checkS3(): Promise<{ status: ServiceStatus; detail: string }> {
   }
 
   try {
-    // Simple HTTP HEAD request against the bucket to check reachability
-    // Uses the S3-compatible API: HeadBucket
-    const url = `${endpoint}/${bucket}`
-    const res = await fetch(url, {
-      method: "HEAD",
+    // Try MinIO-specific health endpoint first (no auth needed)
+    const baseUrl = endpoint.replace(/\/$/, "")
+    const healthUrl = `${baseUrl}/minio/health/live`
+    const res = await fetch(healthUrl, {
+      method: "GET",
       signal: AbortSignal.timeout(5000),
-      headers: {
-        // Basic health check — real operations use the SDK
-        "User-Agent": "Severinno-HealthCheck/1.0",
-      },
+      headers: { "User-Agent": "Severinno-HealthCheck/1.0" },
     })
 
-    if (res.ok || res.status === 403) {
-      // 403 often means bucket exists but listing is denied (minimal IAM) — still "ok"
-      return { status: "ok", detail: `reachable (HTTP ${res.status})` }
+    if (res.ok) {
+      return { status: "ok", detail: `reachable (bucket: ${bucket})` }
     }
 
-    return { status: "error", detail: `HTTP ${res.status}` }
+    // Fallback: HEAD on bucket (may return 403 without auth — still means reachable)
+    const bucketUrl = `${baseUrl}/${bucket}`
+    const bucketRes = await fetch(bucketUrl, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(5000),
+      headers: { "User-Agent": "Severinno-HealthCheck/1.0" },
+    })
+
+    if (bucketRes.ok || bucketRes.status === 403) {
+      return { status: "ok", detail: `reachable (bucket: ${bucket})` }
+    }
+
+    return { status: "error", detail: `HTTP ${bucketRes.status}` }
   } catch (e) {
     return { status: "error", detail: e instanceof Error ? e.message : "timeout" }
   }
