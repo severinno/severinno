@@ -190,8 +190,8 @@ describe("POST /api/reviews", () => {
     expect(mockDb.review.create).toHaveBeenCalled()
   })
 
-  it("throws 403 when user is not a CLIENT", async () => {
-    vi.mocked(requireUser).mockResolvedValue({ userId: "prov-1", role: "PROVIDER" })
+  it("throws 403 when PROVIDER tries to review another provider's booking", async () => {
+    vi.mocked(requireUser).mockResolvedValue({ userId: "prov-other", role: "PROVIDER" })
 
     const req = createMockRequest({ method: "POST", body: validReviewData })
     const response = await POST(req)
@@ -227,7 +227,7 @@ describe("POST /api/reviews", () => {
   })
 
   it("throws 400 when booking already has a review", async () => {
-    mockDb.review.findUnique.mockResolvedValue({ id: "existing-review" })
+    mockDb.review.findUnique.mockResolvedValue({ id: "existing-review", rating: 5 })
 
     const req = createMockRequest({ method: "POST", body: validReviewData })
     const response = await POST(req)
