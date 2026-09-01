@@ -142,13 +142,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ review }, { status: 200 })
     }
 
+    const rating = data.rating ?? 0
+    if (rating <= 0) {
+      throw badRequest("Rating do cliente é obrigatório")
+    }
+
     const review = await db.review.create({
       data: {
         bookingId: booking.id,
         clientId: session.userId,
         providerId: booking.providerId,
         serviceId: booking.serviceId,
-        rating: data.rating,
+        rating,
         comment: data.comment ? sanitizeText(data.comment) : null,
       },
       include: {

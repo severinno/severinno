@@ -180,14 +180,18 @@ export type BookingInput = z.infer<typeof bookingSchema>
 // ---------------------------------------------------------------------------
 // REVIEW
 // ---------------------------------------------------------------------------
-export const reviewSchema = z.object({
-  bookingId: z.string().min(1),
-  rating: z.coerce.number().int().min(1).max(5),
-  comment: z.string().max(1000).optional().or(z.literal("")),
-  // Bidirectional: provider rates the client
-  providerRating: z.coerce.number().int().min(1).max(5).optional(),
-  providerComment: z.string().max(1000).optional().or(z.literal("")),
-})
+export const reviewSchema = z
+  .object({
+    bookingId: z.string().min(1),
+    rating: z.coerce.number().int().min(1).max(5).optional(),
+    comment: z.string().max(1000).optional().or(z.literal("")),
+    // Bidirectional: provider rates the client
+    providerRating: z.coerce.number().int().min(1).max(5).optional(),
+    providerComment: z.string().max(1000).optional().or(z.literal("")),
+  })
+  .refine((data) => data.rating != null || data.providerRating != null, {
+    message: "Ao menos um rating (client ou provider) é obrigatório",
+  })
 export type ReviewInput = z.infer<typeof reviewSchema>
 
 // ---------------------------------------------------------------------------
