@@ -3,113 +3,9 @@
  *
  * Middleware helpers that eliminate repetitive try/catch + ZodError + handleError
  * boilerplate across API route handlers.
- *
- * ## Motivation
- *
- * Every API route follows the same pattern:
- *
- * ```ts
- * export async function POST(request: Request) {
- *   try {
- *     await assertRateLimit(request, RATE_LIMITS.bookings)
- *     const session = await requireUser()
- *     const body = await request.json()
- *     const data = bookingSchema.parse(body)
- *     // business logic…
- *     return NextResponse.json({ booking })
- *   } catch (e) {
- *     return handleError(e)
- *   }
- * }
- * ```
- *
- * With `apiRoute` + `parseBody` this becomes:
- *
- * ```ts
- * export async function POST(request: Request) {
- *   return apiRoute(async () => {
- *     await assertRateLimit(request, RATE_LIMITS.bookings)
- *     const session = await requireUser()
- *     const data = await parseBody(request, bookingSchema)
- *     // business logic…
- *     return NextResponse.json({ booking })
- *   })
- * }
- * ```
- *
- * ## What it handles
- *
- * | Error type | Response |
- * |------------|----------|
- * | `HttpError` (badRequest, notFound, etc.) | JSON with `error` + status code |
- * | `ZodError` | 400 with `error: "Dados inválidos"` + `details` array |
- * | Auth errors (`UNAUTHORIZED` / `FORBIDDEN`) | 401 / 403 |
- * | Unknown errors | 500 + Sentry log |
- *
- * @example
- * ```ts
- * // GET handler with searchParams validation
- * export async function GET(request: Request) {
- *   return apiRoute(async () => {
- *     const { searchParams } = new URL(request.url)
- *     const { cep } = parseSearchParams(geocodeCepSchema, searchParams)
- *     const result = await geocodeCEP(cep)
- *     return cacheControlPublic(NextResponse.json(result), 60)
- *   })
- * }
- * ```
  */
 
-import { NextResponse } from "next/server"
 import { z } from "zod"
-import { handleError } from "@/lib/api-server"
-import { recordRequestDuration } from "@/lib/metrics"
-
-// ---------------------------------------------------------------------------
-// Core wrapper
-// ---------------------------------------------------------------------------
-
-/**
- * Wrap any API route handler with automatic try/catch + handleError.
- *
- * Inside the handler, throw `HttpError` (via `badRequest()`, `notFound()`,
- * etc.), `ZodError`, or any standard Error — they are all caught and mapped
- * to appropriate JSON error responses.
- *
- * @param handler  Async function that produces a NextResponse.
- * @returns        The handler's response on success, or an error JSON response.
- *
- * @example
- * ```ts
- * export async function GET(request: Request) {
- *   return apiRoute(async () => {
- *     const { searchParams } = new URL(request.url)
- *     const result = await db.service.findMany()
- *     return NextResponse.json(result)
- *   })
- * }
- * ```
- */
-export async function apiRoute(
-  handler: (request: Request) => Promise<NextResponse>,
-  request?: Request,
-): Promise<NextResponse> {
-  const startTime = performance.now()
-  let status = 200
-  const path = request ? new URL(request.url).pathname : "unknown"
-
-  try {
-    const response = await handler(request!)
-    status = response.status
-    return response
-  } catch (e) {
-    status = 500
-    return handleError(e)
-  } finally {
-    const durationMs = performance.now() - startTime
-    recordRequestDuration(path, status, durationMs)
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Body parser
@@ -119,8 +15,8 @@ export async function apiRoute(
  * Parse and validate a JSON request body with a Zod schema.
  *
  * On success, returns the inferred type.
- * On failure, throws a `ZodError` which `apiRoute`'s catch block handles
- * automatically as a 400 response.
+ * On failure, throws a `ZodError` which the caller's catch block handles
+ * as a 400 response.
  *
  * @param request  The Next.js Request object.
  * @param schema   A Zod schema to validate against.
@@ -129,11 +25,13 @@ export async function apiRoute(
  * @example
  * ```ts
  * export async function POST(request: Request) {
- *   return apiRoute(async () => {
+ *   try {
  *     const data = await parseBody(request, bookingSchema)
  *     const booking = await db.booking.create({ data })
  *     return NextResponse.json({ booking }, { status: 201 })
- *   })
+ *   } catch (e) {
+ *     return handleError(e)
+ *   }
  * }
  * ```
  */
@@ -152,7 +50,7 @@ export async function parseBody<T>(request: Request, schema: z.ZodSchema<T>): Pr
  * Each field in `schema` is expected to match a search param name. Supports
  * Zod's `.optional()` and `.default()` for params that may be absent.
  *
- * On failure, throws a `ZodError` which `apiRoute`'s catch block handles.
+ * On failure, throws a `ZodError` which the caller's catch block handles.
  *
  * @param schema        A Zod object schema.
  * @param searchParams  The URLSearchParams from `new URL(request.url)`.
@@ -166,12 +64,14 @@ export async function parseBody<T>(request: Request, schema: z.ZodSchema<T>): Pr
  * })
  *
  * export async function GET(request: Request) {
- *   return apiRoute(async () => {
+ *   try {
  *     const { searchParams } = new URL(request.url)
  *     const { q, limit } = parseSearchParams(schema, searchParams)
  *     const results = await geocodeSearch(q, limit)
  *     return NextResponse.json(results)
- *   })
+ *   } catch (e) {
+ *     return handleError(e)
+ *   }
  * }
  * ```
  */

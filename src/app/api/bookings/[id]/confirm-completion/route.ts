@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { notifyPaymentConfirmed } from "@/lib/notifications"
 
 type Params = { params: Promise<{ id: string }> }
@@ -13,6 +14,7 @@ type Params = { params: Promise<{ id: string }> }
  */
 export async function POST(_request: Request, { params }: Params) {
   try {
+    await assertRateLimit(_request, RATE_LIMITS.bookings)
     const session = await requireUser()
     const { id } = await params
 
@@ -60,7 +62,9 @@ export async function POST(_request: Request, { params }: Params) {
     ])
 
     // Notify provider that escrow was released
-    notifyPaymentConfirmed(booking.providerId, booking.id, booking.amount).catch((err) => logger.warn({ err }, "payment notification failed (fire-and-forget)"))
+    notifyPaymentConfirmed(booking.providerId, booking.id, booking.amount).catch((err) =>
+      logger.warn({ err }, "payment notification failed (fire-and-forget)"),
+    )
 
     return NextResponse.json({
       ok: true,

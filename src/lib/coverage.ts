@@ -16,6 +16,7 @@ export function isInCoverage(
 export async function getProvidersInCoverage(
   lat: number,
   lng: number,
+  limit = 50,
 ): Promise<Array<{ id: string; name: string; distanceKm: number }>> {
   const providers = await prisma.user.findMany({
     where: {
@@ -26,6 +27,7 @@ export async function getProvidersInCoverage(
       radiusKm: { not: null },
     },
     select: { id: true, name: true, lat: true, lng: true, radiusKm: true },
+    take: 200,
   })
 
   return providers
@@ -36,6 +38,7 @@ export async function getProvidersInCoverage(
       radiusKm: p.radiusKm!,
     }))
     .filter((p) => p.distanceKm <= p.radiusKm)
-    .map(({ id, name, distanceKm }) => ({ id, name, distanceKm: +distanceKm.toFixed(2) }))
     .sort((a, b) => a.distanceKm - b.distanceKm)
+    .slice(0, limit)
+    .map(({ id, name, distanceKm }) => ({ id, name, distanceKm: +distanceKm.toFixed(2) }))
 }

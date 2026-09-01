@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { forbidden, badRequest, handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * GET /api/provider/service-zone
@@ -36,6 +37,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.general)
     const session = await requireUser()
     if (session.role !== "PROVIDER" && session.role !== "ADMIN") {
       throw forbidden("Acesso restrito a prestadores")

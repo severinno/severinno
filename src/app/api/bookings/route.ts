@@ -44,8 +44,8 @@ export async function POST(request: Request) {
       throw badRequest("Não é possível agendar com você mesmo")
     }
 
-    // amount: use payload if provided, otherwise service.basePrice
-    const amount = Number.isFinite(body?.amount) ? Number(body.amount) : service.basePrice
+    // amount: always use server-side price to prevent client-side override
+    const amount = service.basePrice
 
     const booking = await db.booking.create({
       data: {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { z } from "zod"
 import { sanitizeText } from "@/lib/sanitize"
 
@@ -17,6 +18,7 @@ const disputeSchema = z.object({
  */
 export async function POST(request: Request, { params }: Params) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.bookings)
     const session = await requireUser()
     const { id } = await params
     const body = await request.json().catch(() => ({}))

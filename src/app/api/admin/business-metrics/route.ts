@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { type BookingStatus } from "@prisma/client"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
@@ -30,27 +31,26 @@ export async function GET(request: Request) {
     await assertRateLimit(request, RATE_LIMITS.admin)
     await requireRole("ADMIN")
 
-    // 1. All Bookings summary
-    const bookings = await db.booking.findMany({
-      where: {
-        status: { in: ["COMPLETED", "CONFIRMED", "IN_PROGRESS"] },
-      },
-      select: {
-        id: true,
-        amount: true,
-        status: true,
-        address: true,
-        service: { select: { title: true } },
-        client: { select: { district: true, city: true } },
-      },
-    })
+    const activeStatuses: BookingStatus[] = ["COMPLETED", "CONFIRMED", "IN_PROGRESS"]
 
-    const gmv = bookings.reduce((sum, b) => sum + b.amount, 0)
+    // 1. Aggregate bookings summary via SQL
+    const [bookingStats, completedCount] = await Promise.all([
+      db.booking.aggregate({
+        where: { status: { in: activeStatuses } },
+        _sum: { amount: true },
+        _count: true,
+      }),
+      db.booking.count({
+        where: { status: "COMPLETED" as BookingStatus },
+      }),
+    ])
+
+    const gmv = bookingStats._sum?.amount ?? 0
+    const totalBookings = bookingStats._count
     const platformRevenue = Math.round(gmv * 0.1 * 100) / 100
-    const completedCount = bookings.filter((b) => b.status === "COMPLETED").length
-    const avgTicket = bookings.length > 0 ? Math.round((gmv / bookings.length) * 100) / 100 : 0
+    const avgTicket = totalBookings > 0 ? Math.round((gmv / totalBookings) * 100) / 100 : 0
     const completionRate =
-      bookings.length > 0 ? Math.round((completedCount / bookings.length) * 100) : 0
+      totalBookings > 0 ? Math.round((completedCount / totalBookings) * 100) : 0
 
     // 2. User base metrics
     const [clientsCount, providersCount, verifiedCount] = await Promise.all([
@@ -59,50 +59,57 @@ export async function GET(request: Request) {
       db.user.count({ where: { role: "PROVIDER", verified: true, active: true } }),
     ])
 
-    // 3. Category breakdown
-    const categoryMap = new Map<string, { count: number; totalRevenue: number }>()
-    for (const b of bookings) {
-      const cat = b.service.title
-      const existing = categoryMap.get(cat) || { count: 0, totalRevenue: 0 }
-      existing.count++
-      existing.totalRevenue += b.amount
-      categoryMap.set(cat, existing)
-    }
+    // 3. Category breakdown via SQL groupBy
+    const categoryStats = await db.booking.groupBy({
+      by: ["serviceId"],
+      where: { status: { in: activeStatuses } },
+      _count: true,
+      _sum: { amount: true },
+      orderBy: { _sum: { amount: "desc" } },
+      take: 5,
+    })
 
-    const topCategories = Array.from(categoryMap.entries())
-      .map(([title, data]) => ({
-        title,
-        count: data.count,
-        totalRevenue: Math.round(data.totalRevenue * 100) / 100,
-      }))
-      .sort((a, b) => b.totalRevenue - a.totalRevenue)
-      .slice(0, 5)
+    const serviceIds = categoryStats.map((c) => c.serviceId)
+    const services = await db.service.findMany({
+      where: { id: { in: serviceIds } },
+      select: { id: true, title: true },
+    })
+    const serviceTitleMap = new Map(services.map((s) => [s.id, s.title]))
 
-    // 4. District breakdown
-    const districtMap = new Map<string, { count: number; totalGmv: number }>()
-    for (const b of bookings) {
-      const dist = b.client.district || "Centro / Geral"
-      const existing = districtMap.get(dist) || { count: 0, totalGmv: 0 }
-      existing.count++
-      existing.totalGmv += b.amount
-      districtMap.set(dist, existing)
-    }
+    const topCategories = categoryStats.map((c) => ({
+      title: serviceTitleMap.get(c.serviceId) ?? "Desconhecido",
+      count: c._count,
+      totalRevenue: Math.round((c._sum?.amount ?? 0) * 100) / 100,
+    }))
 
-    const topDistricts = Array.from(districtMap.entries())
-      .map(([district, data]) => ({
-        district,
-        count: data.count,
-        totalGmv: Math.round(data.totalGmv * 100) / 100,
-      }))
-      .sort((a, b) => b.totalGmv - a.totalGmv)
-      .slice(0, 5)
+    // 4. District breakdown via raw SQL aggregation
+    const districtStats = await db.$queryRaw<
+      Array<{ district: string; count: bigint; total_gmv: number }>
+    >`
+      SELECT
+        COALESCE(u.district, 'Centro / Geral') AS district,
+        COUNT(b.id)::bigint AS count,
+        ROUND(SUM(b.amount)::numeric, 2) AS total_gmv
+      FROM "Booking" b
+      JOIN "User" u ON u.id = b."clientId"
+      WHERE b.status IN ('COMPLETED', 'CONFIRMED', 'IN_PROGRESS')
+      GROUP BY COALESCE(u.district, 'Centro / Geral')
+      ORDER BY total_gmv DESC
+      LIMIT 5
+    `
+
+    const topDistricts = districtStats.map((d) => ({
+      district: d.district,
+      count: Number(d.count),
+      totalGmv: Number(d.total_gmv),
+    }))
 
     const responseData: BusinessMetricsResponse = {
       gmv: Math.round(gmv * 100) / 100,
       platformRevenue,
       takeRatePercent: 10,
       avgTicket,
-      totalBookings: bookings.length,
+      totalBookings,
       completedBookings: completedCount,
       completionRatePercent: completionRate,
       activeUsers: {

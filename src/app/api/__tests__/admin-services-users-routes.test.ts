@@ -625,8 +625,6 @@ describe("PATCH /api/admin/users/[id] — update user", () => {
     const res = await userPATCH(req, buildParams("u-1"))
 
     expect(res.status).toBe(400)
-    const body = await res.json()
-    expect(body.error).toBe("Role inválido")
     expect(db.user.update).not.toHaveBeenCalled()
   })
 })

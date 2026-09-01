@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { forbidden, handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { z } from "zod"
 
 const verifyIdentitySchema = z.object({
@@ -15,6 +16,7 @@ const verifyIdentitySchema = z.object({
  */
 export async function POST(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.general)
     const session = await requireUser()
     if (session.role !== "PROVIDER") {
       throw forbidden("Apenas prestadores podem solicitar verificação de identidade")

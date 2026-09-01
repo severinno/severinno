@@ -8,33 +8,50 @@ import { FEE_RATE } from "@/lib/constants"
 type PeriodType = "WEEKLY" | "MONTHLY"
 
 /**
- * GET /api/admin/settlements — list all settlement periods
+ * GET /api/admin/settlements — list all settlement periods with pagination
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
-    const periods = await db.settlementPeriod.findMany({
-      orderBy: { startDate: "desc" },
-      include: {
-        providers: {
-          select: {
-            id: true,
-            status: true,
-            totalAmount: true,
-            commission: true,
-            netAmount: true,
-            transactionCount: true,
-            paidAt: true,
-            provider: { select: { id: true, name: true, email: true } },
+    const { searchParams } = new URL(request.url)
+    const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10))
+    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") ?? "20", 10)))
+    const skip = (page - 1) * limit
+
+    const [periods, total] = await Promise.all([
+      db.settlementPeriod.findMany({
+        orderBy: { startDate: "desc" },
+        skip,
+        take: limit,
+        include: {
+          providers: {
+            select: {
+              id: true,
+              status: true,
+              totalAmount: true,
+              commission: true,
+              netAmount: true,
+              transactionCount: true,
+              paidAt: true,
+              provider: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: { totalAmount: "desc" },
           },
-          orderBy: { totalAmount: "desc" },
+          _count: { select: { providers: true } },
         },
-        _count: { select: { providers: true } },
-      },
-    })
+      }),
+      db.settlementPeriod.count(),
+    ])
 
-    return NextResponse.json({ items: periods, total: periods.length })
+    return NextResponse.json({
+      items: periods,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    })
   } catch (e) {
     return handleError(e)
   }

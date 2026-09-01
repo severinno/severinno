@@ -25,6 +25,7 @@ export async function PATCH(request: Request) {
     const session = await requireUser()
     const body = await request.json()
     const data = providerProfileSchema.partial().parse(body)
+    const { sanitizeText } = await import("@/lib/sanitize")
 
     const existing = await db.user.findUnique({
       where: { id: session.userId },
@@ -40,10 +41,10 @@ export async function PATCH(request: Request) {
     const updated = await db.user.update({
       where: { id: session.userId },
       data: {
-        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.name !== undefined ? { name: sanitizeText(data.name) } : {}),
         ...(data.whatsapp !== undefined ? { whatsapp: data.whatsapp } : {}),
         ...(data.phone !== undefined ? { phone: data.phone } : {}),
-        ...(data.bio !== undefined ? { bio: data.bio } : {}),
+        ...(data.bio !== undefined ? { bio: data.bio ? sanitizeText(data.bio) : null } : {}),
         ...(data.lat !== undefined ? { lat: data.lat } : {}),
         ...(data.lng !== undefined ? { lng: data.lng } : {}),
         ...(data.cep !== undefined ? { cep: data.cep } : {}),

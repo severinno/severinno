@@ -46,6 +46,7 @@ import { db } from "@/lib/db"
 function resetDbMocks() {
   ;(db.settlementPeriod as any) = {
     findMany: vi.fn(),
+    count: vi.fn().mockResolvedValue(1),
     findFirst: vi.fn(),
     findUnique: vi.fn(),
     create: vi.fn(),
@@ -122,7 +123,8 @@ describe("GET /api/admin/settlements — list periods", () => {
       mockSettlementPeriod,
     ] as any)
 
-    const res = await listPeriods()
+    const request = new Request("http://localhost/api/admin/settlements")
+    const res = await listPeriods(request)
     const data = await res.json()
 
     expect(res.status).toBe(200)
@@ -135,7 +137,8 @@ describe("GET /api/admin/settlements — list periods", () => {
   it("returns 403 when user is not ADMIN", async () => {
     _mockRole = "PROVIDER"
 
-    const res = await listPeriods()
+    const request = new Request("http://localhost/api/admin/settlements")
+    const res = await listPeriods(request)
     expect(res.status).toBe(403)
   })
 })

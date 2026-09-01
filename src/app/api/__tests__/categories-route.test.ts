@@ -72,46 +72,34 @@ beforeEach(() => {
 })
 
 describe("GET /api/categories", () => {
-  it("returns all active categories as a flat array", async () => {
+  it("returns categories as a tree (roots with children)", async () => {
     ;(vi.mocked(db.category.findMany) as any).mockResolvedValue(mockCategories)
 
     const req = createMockRequest()
     const response = await GET(req)
-    const parsed = await parseResponse<typeof mockCategories>(response)
+    const parsed = await parseResponse<any[]>(response)
 
     expect(parsed.status).toBe(200)
     expect(Array.isArray(parsed.body)).toBe(true)
-    expect(parsed.body).toHaveLength(3)
+    // Tree structure: 1 root (Reparos) with 2 children
+    expect(parsed.body).toHaveLength(1)
     expect(parsed.body![0]?.name).toBe("Reparos")
+    expect(parsed.body![0]?.children).toHaveLength(2)
+    expect(parsed.body![0]?.children![0]?.name).toBe("Elétrica")
+    expect(parsed.body![0]?.children![1]?.name).toBe("Hidráulica")
   })
 
-  it("filters by level", async () => {
-    ;(vi.mocked(db.category.findMany) as any).mockResolvedValue(
-      mockCategories.filter((c) => c.level === 0),
-    )
+  it("returns flat list when all categories are roots", async () => {
+    const rootsOnly = mockCategories.filter((c) => c.parentId === null)
+    ;(vi.mocked(db.category.findMany) as any).mockResolvedValue(rootsOnly)
 
-    const req = createMockRequest({ searchParams: { level: "0" } })
+    const req = createMockRequest()
     const response = await GET(req)
-    const parsed = await parseResponse<typeof mockCategories>(response)
+    const parsed = await parseResponse<any[]>(response)
 
     expect(parsed.status).toBe(200)
     expect(parsed.body).toHaveLength(1)
-    expect(parsed.body![0]?.level).toBe(0)
-  })
-
-  it("filters by parentId", async () => {
-    ;(vi.mocked(db.category.findMany) as any).mockResolvedValue(
-      mockCategories.filter((c) => c.parentId === "cat-1"),
-    )
-
-    const req = createMockRequest({ searchParams: { parentId: "cat-1" } })
-    const response = await GET(req)
-    const parsed = await parseResponse<typeof mockCategories>(response)
-
-    expect(parsed.status).toBe(200)
-    expect(parsed.body).toHaveLength(2)
-    expect(parsed.body![0]?.name).toBe("Elétrica")
-    expect(parsed.body![1]?.name).toBe("Hidráulica")
+    expect(parsed.body![0]?.name).toBe("Reparos")
   })
 
   it("returns empty array when no categories exist", async () => {
@@ -119,7 +107,7 @@ describe("GET /api/categories", () => {
 
     const req = createMockRequest()
     const response = await GET(req)
-    const parsed = await parseResponse<typeof mockCategories>(response)
+    const parsed = await parseResponse(response)
 
     expect(parsed.status).toBe(200)
     expect(parsed.body).toEqual([])
@@ -128,7 +116,7 @@ describe("GET /api/categories", () => {
   it("passes correct Prisma query parameters", async () => {
     ;(vi.mocked(db.category.findMany) as any).mockResolvedValue([])
 
-    const req = createMockRequest({ searchParams: { level: "1" } })
+    const req = createMockRequest()
     await GET(req)
 
     expect(db.category.findMany).toHaveBeenCalledWith(

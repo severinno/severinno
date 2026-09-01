@@ -55,6 +55,7 @@ export async function PATCH(request: Request, { params }: Params) {
 
     const body = await request.json()
     const data = serviceSchema.partial().parse(body)
+    const { sanitizeText } = await import("@/lib/sanitize")
 
     // Business rule: basePrice may only increase
     if (data.basePrice !== undefined && data.basePrice < service.basePrice) {
@@ -77,8 +78,8 @@ export async function PATCH(request: Request, { params }: Params) {
     const updated = await db.service.update({
       where: { id },
       data: {
-        ...(data.title !== undefined ? { title: data.title } : {}),
-        ...(data.description !== undefined ? { description: data.description } : {}),
+        ...(data.title !== undefined ? { title: sanitizeText(data.title) } : {}),
+        ...(data.description !== undefined ? { description: sanitizeText(data.description) } : {}),
         ...(data.categoryId !== undefined ? { categoryId: data.categoryId } : {}),
         ...(data.basePrice !== undefined ? { basePrice: data.basePrice } : {}),
         ...(data.unit !== undefined ? { unit: data.unit } : {}),

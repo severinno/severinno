@@ -14,6 +14,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { cacheGet, cacheSet } from "@/lib/redis"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { haversineKm } from "@/lib/geo-server"
 
 // ── SSE connection registry ───────────────────────────────────────────────
@@ -44,16 +45,37 @@ const positionBuffer = new Map<
 // ── Route handler ─────────────────────────────────────────────────────────
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id: bookingId } = await params
+  const { requireUser } = await import("@/lib/auth")
 
-  // Validate booking exists
-  const booking = await db.booking.findUnique({
-    where: { id: bookingId },
-    select: { id: true, clientId: true, providerId: true, status: true },
-  })
+  // Auth + ownership check
+  let bookingId: string
+  let booking: { id: string; clientId: string; providerId: string; status: string }
+  try {
+    const session = await requireUser()
+    await assertRateLimit(request, RATE_LIMITS.general)
+    const { id } = await params
+    bookingId = id
 
-  if (!booking) {
-    return NextResponse.json({ error: "Agendamento não encontrado" }, { status: 404 })
+    // Validate booking exists
+    const found = await db.booking.findUnique({
+      where: { id: bookingId },
+      select: { id: true, clientId: true, providerId: true, status: true },
+    })
+
+    if (!found) {
+      return NextResponse.json({ error: "Agendamento não encontrado" }, { status: 404 })
+    }
+
+    if (
+      session.userId !== found.clientId &&
+      session.userId !== found.providerId &&
+      session.role !== "ADMIN"
+    ) {
+      return NextResponse.json({ error: "Acesso restrito" }, { status: 403 })
+    }
+    booking = found
+  } catch {
+    return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
   }
 
   // Create SSE stream

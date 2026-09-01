@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { optimizeDailyRoute, type RouteStop } from "@/lib/route-optimizer"
 import { forbidden, badRequest, handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { startOfDay, endOfDay, parseISO } from "date-fns"
 
 /**
@@ -12,6 +13,7 @@ import { startOfDay, endOfDay, parseISO } from "date-fns"
  */
 export async function GET(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.general)
     const session = await requireUser()
     if (session.role !== "PROVIDER" && session.role !== "ADMIN") {
       throw forbidden("Acesso restrito a prestadores")
