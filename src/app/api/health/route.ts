@@ -432,9 +432,9 @@ async function checkOpenSearch(): Promise<{ status: ServiceStatus; detail: strin
 async function checkTracing(): Promise<{ status: ServiceStatus; detail: string }> {
   try {
     const enabled = process.env.OTEL_ENABLED === "true"
-    const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT
+    const endpoint = process.env.OTEL_EXPORTER_ENDPOINT || process.env.OTEL_EXPORTER_OTLP_ENDPOINT
     if (!enabled) return { status: "disabled", detail: "OTEL_ENABLED=false" }
-    if (!endpoint) return { status: "error", detail: "OTEL_EXPORTER_OTLP_ENDPOINT not set" }
+    if (!endpoint) return { status: "error", detail: "OTEL_EXPORTER_ENDPOINT not set" }
     return { status: "ok", detail: `endpoint=${endpoint}` }
   } catch (e) {
     return { status: "error", detail: e instanceof Error ? e.message : "check failed" }

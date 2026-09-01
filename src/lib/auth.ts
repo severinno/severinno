@@ -3,6 +3,7 @@ import { createHmac, timingSafeEqual } from "crypto"
 import { db } from "@/lib/db"
 import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/redis"
 import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
+import { traceSpan } from "./tracing"
 
 /**
  * Lightweight HMAC-signed session cookie (no JWT lib).
@@ -37,21 +38,25 @@ export async function createSession(
   role: SessionPayload["role"],
   sessionVersion = 0,
 ) {
-  const expiresAt = Math.floor(Date.now() / 1000) + COOKIE_MAX_AGE_SECONDS
-  const payload = `${userId}.${role}.${expiresAt}.${sessionVersion}`
-  const signature = sign(payload)
-  const value = `${payload}.${signature}`
+  return traceSpan("auth.createSession", async (span) => {
+    span.setAttribute("auth.userId", userId)
+    span.setAttribute("auth.role", role)
+    const expiresAt = Math.floor(Date.now() / 1000) + COOKIE_MAX_AGE_SECONDS
+    const payload = `${userId}.${role}.${expiresAt}.${sessionVersion}`
+    const signature = sign(payload)
+    const value = `${payload}.${signature}`
 
-  const store = await cookies()
-  store.set(COOKIE_NAME, value, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: COOKIE_MAX_AGE_SECONDS,
+    const store = await cookies()
+    store.set(COOKIE_NAME, value, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: COOKIE_MAX_AGE_SECONDS,
+    })
+
+    return { userId, role, expiresAt }
   })
-
-  return { userId, role, expiresAt }
 }
 
 /**
@@ -72,66 +77,84 @@ async function reissueSession(
  * Supports both old 4-part (backward compat) and new 5-part cookies.
  */
 export async function getSession(): Promise<SessionPayload | null> {
-  try {
-    const store = await cookies()
-    const cookie = store.get(COOKIE_NAME)
-    if (!cookie?.value) return null
+  return traceSpan("auth.getSession", async (span) => {
+    try {
+      const store = await cookies()
+      const cookie = store.get(COOKIE_NAME)
+      if (!cookie?.value) {
+        span.setAttribute("auth.session", "missing")
+        return null
+      }
 
-    const parts = cookie.value.split(".")
+      const parts = cookie.value.split(".")
 
-    // New format: userId.role.expiresAt.sessionVersion.signature (5 parts)
-    // Old format: userId.role.expiresAt.signature (4 parts) — backward compat
-    let userId: string
-    let role: string
-    let expiresAtStr: string
-    let sessionVersion: number
-    let signature: string
+      // New format: userId.role.expiresAt.sessionVersion.signature (5 parts)
+      // Old format: userId.role.expiresAt.signature (4 parts) — backward compat
+      let userId: string
+      let role: string
+      let expiresAtStr: string
+      let sessionVersion: number
+      let signature: string
 
-    if (parts.length === 5) {
-      const sessionVersionStr = parts[3]
-      ;[userId, role, expiresAtStr, , signature] = parts
-      sessionVersion = Number(sessionVersionStr)
-    } else if (parts.length === 4) {
-      ;[userId, role, expiresAtStr, signature] = parts
-      sessionVersion = 0 // old cookie — assume version 0
-    } else {
+      if (parts.length === 5) {
+        const sessionVersionStr = parts[3]
+        ;[userId, role, expiresAtStr, , signature] = parts
+        sessionVersion = Number(sessionVersionStr)
+      } else if (parts.length === 4) {
+        ;[userId, role, expiresAtStr, signature] = parts
+        sessionVersion = 0 // old cookie — assume version 0
+      } else {
+        span.setAttribute("auth.session", "invalid_format")
+        return null
+      }
+
+      if (!userId || !role || !expiresAtStr || !signature) return null
+      if (parts.length === 5 && isNaN(sessionVersion)) return null
+
+      const payload = parts.length === 5
+        ? `${userId}.${role}.${expiresAtStr}.${sessionVersion}`
+        : `${userId}.${role}.${expiresAtStr}`
+      const expected = sign(payload)
+
+      const a = Buffer.from(signature, "hex")
+      const b = Buffer.from(expected, "hex")
+      if (a.length !== b.length || !timingSafeEqual(a, b)) {
+        span.setAttribute("auth.session", "invalid_signature")
+        return null
+      }
+
+      const expiresAt = Number(expiresAtStr)
+      if (!Number.isFinite(expiresAt)) return null
+      if (expiresAt * 1000 < Date.now()) {
+        span.setAttribute("auth.session", "expired")
+        return null
+      }
+
+      // Verify sessionVersion against database (cached 5min in Redis)
+      const dbVersion = await getUserSessionVersion(userId)
+      if (dbVersion === null) return null
+      if (sessionVersion !== dbVersion) {
+        span.setAttribute("auth.session", "version_mismatch")
+        return null
+      }
+
+      const remaining = expiresAt - Math.floor(Date.now() / 1000)
+      if (remaining < ROTATION_THRESHOLD_SECONDS) {
+        await reissueSession(userId, role as SessionPayload["role"], sessionVersion)
+      }
+
+      span.setAttribute("auth.userId", userId)
+      span.setAttribute("auth.role", role)
+      span.setAttribute("auth.session", "valid")
+      return {
+        userId,
+        role: role as SessionPayload["role"],
+        sessionVersion,
+      }
+    } catch {
       return null
     }
-
-    if (!userId || !role || !expiresAtStr || !signature) return null
-    if (parts.length === 5 && isNaN(sessionVersion)) return null
-
-    const payload = parts.length === 5
-      ? `${userId}.${role}.${expiresAtStr}.${sessionVersion}`
-      : `${userId}.${role}.${expiresAtStr}`
-    const expected = sign(payload)
-
-    const a = Buffer.from(signature, "hex")
-    const b = Buffer.from(expected, "hex")
-    if (a.length !== b.length || !timingSafeEqual(a, b)) return null
-
-    const expiresAt = Number(expiresAtStr)
-    if (!Number.isFinite(expiresAt)) return null
-    if (expiresAt * 1000 < Date.now()) return null
-
-    // Verify sessionVersion against database (cached 5min in Redis)
-    const dbVersion = await getUserSessionVersion(userId)
-    if (dbVersion === null) return null
-    if (sessionVersion !== dbVersion) return null
-
-    const remaining = expiresAt - Math.floor(Date.now() / 1000)
-    if (remaining < ROTATION_THRESHOLD_SECONDS) {
-      await reissueSession(userId, role as SessionPayload["role"], sessionVersion)
-    }
-
-    return {
-      userId,
-      role: role as SessionPayload["role"],
-      sessionVersion,
-    }
-  } catch {
-    return null
-  }
+  })
 }
 
 /**

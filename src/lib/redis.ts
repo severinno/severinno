@@ -29,6 +29,7 @@
 import { Redis, Cluster } from "ioredis"
 import { captureMessage } from "@/lib/sentry"
 import logger from "@/lib/logger"
+import { traceSpan } from "./tracing"
 
 // ── Configuration ─────────────────────────────────────────────────────────
 
@@ -874,16 +875,23 @@ export function getMemoryCacheDiagnostics(): {
  * ```
  */
 export async function withCache<T>(key: string, fn: () => Promise<T>, ttl?: number): Promise<T> {
-  const cached = await cacheGet<T>(key)
-  if (cached !== null) {
-    cacheHits++
-    return cached
-  }
+  return traceSpan(`cache.withCache`, async (span) => {
+    span.setAttribute("cache.key", key.slice(0, 80))
+    span.setAttribute("cache.tier", activeTier)
 
-  cacheMisses++
-  const result = await fn()
-  await cacheSet(key, result, ttl)
-  return result
+    const cached = await cacheGet<T>(key)
+    if (cached !== null) {
+      cacheHits++
+      span.setAttribute("cache.hit", true)
+      return cached
+    }
+
+    cacheMisses++
+    span.setAttribute("cache.hit", false)
+    const result = await fn()
+    await cacheSet(key, result, ttl)
+    return result
+  })
 }
 
 /**
