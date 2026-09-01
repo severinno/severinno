@@ -78,3 +78,13 @@ export async function verifyCsrfToken(token: string, secret: string): Promise<bo
 }
 
 export { CSRF_COOKIE, CSRF_HEADER, MAX_AGE }
+
+/**
+ * Read CSRF token from cookie (client-side only).
+ * Used by api.ts to attach the X-CSRF-Token header on mutations.
+ */
+export function getCsrfTokenFromCookie(): string | null {
+  if (typeof document === "undefined") return null
+  const match = document.cookie.split("; ").find((c) => c.startsWith(CSRF_COOKIE + "="))
+  return match ? match.split("=")[1] : null
+}

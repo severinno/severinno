@@ -350,18 +350,18 @@ export async function middleware(request: NextRequest) {
   response.headers.set("Vary", "Accept-Encoding")
 
   // Content-Security-Policy
-  // Domains: severinno.com (production), localhost (dev)
+  // Dynamically allow self-origin for connect-src
+  const requestOrigin = request.headers.get("origin") || "https://severinno.com"
   const cspDirectives = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-eval' https://va.vercel-scripts.com https://vercel-insights.com",
+    "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://va.vercel-scripts.com https://vercel-insights.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https://*.s3.amazonaws.com https://maps.googleapis.com https://*.tile.openstreetmap.org https://*.gravatar.com https://ui-avatars.com https://i.pravatar.cc https://picsum.photos",
     "font-src 'self' https://fonts.gstatic.com",
-    "connect-src 'self' https://*.upstash.io https://sentry.io https://*.ingest.sentry.io https://*.tile.openstreetmap.org wss://localhost:*",
+    `connect-src 'self' ${requestOrigin} https://severinno.local https://severinno.com http://localhost:* https://*.upstash.io https://sentry.io https://*.ingest.sentry.io https://*.tile.openstreetmap.org wss://localhost:* ws://localhost:*`,
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    "upgrade-insecure-requests",
   ].join("; ")
   response.headers.set("Content-Security-Policy", cspDirectives)
 
@@ -553,33 +553,33 @@ export async function middleware(request: NextRequest) {
   response.headers.set("x-user-role", session.role)
 
   // --- CSRF protection for sensitive routes ---
+  // Set CSRF cookie whenever there's a valid session (not just API GET).
+  // This ensures the cookie exists BEFORE the first POST mutation, which
+  // happens on page loads that include a session but no prior API GET.
+  if (session && sessionSecret && !request.cookies.get(CSRF_COOKIE)) {
+    const token = await generateCsrfToken(sessionSecret)
+    response.cookies.set(CSRF_COOKIE, token, {
+      httpOnly: false, // Must be readable by client JS for Double-Submit pattern
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: MAX_AGE,
+      path: "/",
+    })
+  }
+
   if (isApi && sessionSecret) {
-    if (isCsrfProtected(pathname)) {
-      // On GET: set CSRF token cookie if not present
-      if (request.method === "GET" && !request.cookies.get(CSRF_COOKIE)) {
-        const token = await generateCsrfToken(sessionSecret)
-        response.cookies.set(CSRF_COOKIE, token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "strict",
-          maxAge: MAX_AGE,
-          path: "/",
-        })
+    // On mutations: verify X-CSRF-Token header matches cookie
+    if (isCsrfSensitive(pathname, request.method)) {
+      const cookieToken = request.cookies.get(CSRF_COOKIE)?.value
+      const headerToken = request.headers.get(CSRF_HEADER)
+
+      if (!cookieToken || !headerToken) {
+        return NextResponse.json({ error: "CSRF token ausente" }, { status: 403 })
       }
 
-      // On mutations: verify X-CSRF-Token header matches cookie
-      if (isCsrfSensitive(pathname, request.method)) {
-        const cookieToken = request.cookies.get(CSRF_COOKIE)?.value
-        const headerToken = request.headers.get(CSRF_HEADER)
-
-        if (!cookieToken || !headerToken) {
-          return NextResponse.json({ error: "CSRF token ausente" }, { status: 403 })
-        }
-
-        const valid = await verifyCsrfToken(cookieToken, sessionSecret)
-        if (!valid || cookieToken !== headerToken) {
-          return NextResponse.json({ error: "CSRF token inválido" }, { status: 403 })
-        }
+      const valid = await verifyCsrfToken(cookieToken, sessionSecret)
+      if (!valid || cookieToken !== headerToken) {
+        return NextResponse.json({ error: "CSRF token inválido" }, { status: 403 })
       }
     }
   }

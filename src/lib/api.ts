@@ -8,6 +8,8 @@
  * Helper functions throw on !ok and return the parsed JSON body.
  */
 
+import { getCsrfTokenFromCookie, CSRF_HEADER } from "@/lib/csrf"
+
 // ---------------------------------------------------------------------------
 // Shared API types — mirrored from the API contract in worklog.md
 // ---------------------------------------------------------------------------
@@ -170,6 +172,8 @@ async function request<T>(
     headers: {
       Accept: "application/json",
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      // CSRF: attach token from cookie for mutations (POST/PUT/PATCH/DELETE)
+      ...(method !== "GET" ? { [CSRF_HEADER]: getCsrfTokenFromCookie() ?? "" } : {}),
     },
     cache: "no-store", // dynamic data; public endpoints use per-route caching via apiGet calls
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
