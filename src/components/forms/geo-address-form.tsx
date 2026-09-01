@@ -27,6 +27,8 @@ import {
 import { useGeoStore } from "@/store/geo"
 import { cn } from "@/lib/utils"
 import AddressAutocomplete from "@/components/vitrine/address-autocomplete"
+import { apiGet } from "@/lib/api"
+import type { CepResult, GeoSearchResult } from "@/lib/api"
 
 export type AddressFormValue = {
   cep: string
@@ -109,6 +111,58 @@ export function GeoAddressForm({
     [value, onChange],
   )
 
+  // --- CEP auto-fill on blur ---
+  const [cepLoading, setCepLoading] = React.useState(false)
+
+  const handleCepBlur = React.useCallback(
+    async (raw: string) => {
+      const cep = raw.replace(/\D/g, "")
+      if (cep.length !== 8) return
+      if (cepLoading) return
+      setCepLoading(true)
+      try {
+        const data = await apiGet<CepResult>("/api/geo/cep", { cep })
+        const updates: Partial<AddressFormValue> = {}
+        if (data.cep) updates.cep = maskCep(data.cep)
+        if (data.street) updates.street = data.street
+        if (data.district) updates.district = data.district
+        if (data.city) updates.city = data.city
+        if (data.state) updates.state = data.state
+
+        // Enrich with lat/lng from Nominatim structured search
+        if (data.city) {
+          try {
+            const geoResults = await apiGet<GeoSearchResult[]>("/api/geo/search", {
+              street: data.street,
+              city: data.city,
+              state: data.state || undefined,
+              postcode: cep,
+              limit: 1,
+            })
+            if (geoResults.length > 0) {
+              const first = geoResults[0]
+              if (first.lat && first.lng) {
+                updates.lat = first.lat
+                updates.lng = first.lng
+              }
+            }
+          } catch {
+            // Nominatim failed — keep lat/lng undefined
+          }
+        }
+
+        if (Object.keys(updates).length > 0) {
+          onChange({ ...value, ...updates })
+        }
+      } catch {
+        // ViaCEP failed — leave fields as-is, user can fill manually
+      } finally {
+        setCepLoading(false)
+      }
+    },
+    [value, onChange, cepLoading],
+  )
+
   const handleAutocompleteSelect = React.useCallback(
     (_lat: number, _lng: number, _displayName: string) => {
       // Read the geo store directly — AddressAutocomplete already updated it
@@ -165,15 +219,21 @@ export function GeoAddressForm({
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-1.5">
           <Label htmlFor={`${idPrefix}-cep`}>CEP</Label>
-          <Input
-            id={`${idPrefix}-cep`}
-            inputMode="numeric"
-            placeholder="00000-000"
-            value={value.cep}
-            onChange={(e) => set("cep", maskCep(e.target.value))}
-            aria-invalid={!!errors?.cep}
-            className="h-10 text-sm"
-          />
+          <div className="relative">
+            <Input
+              id={`${idPrefix}-cep`}
+              inputMode="numeric"
+              placeholder="00000-000"
+              value={value.cep}
+              onChange={(e) => set("cep", maskCep(e.target.value))}
+              onBlur={(e) => handleCepBlur(e.target.value)}
+              aria-invalid={!!errors?.cep}
+              className="h-10 text-sm"
+            />
+            {cepLoading && (
+              <Loader2 className="text-muted-foreground absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin" />
+            )}
+          </div>
           {errors?.cep && <p className="text-destructive text-xs">{errors.cep}</p>}
         </div>
         {!hideGps && (
