@@ -10,7 +10,8 @@ import pkg from "../../../../package.json"
 // In-memory cache (Redis-independent so it works even when Redis is down)
 let inMemoryCache: { timestamp: number; result: HealthResponse } | null = null
 
-const HEALTH_CACHE_TTL = 15
+const HEALTH_CACHE_TTL_OK = 15
+const HEALTH_CACHE_TTL_DEGRADED = 5
 
 /**
  * Reseta o cache in-memory. Usado pelos testes e pelo POST /api/admin/settings
@@ -83,10 +84,14 @@ type RabbitMQDetail = {
 
 export async function GET(): Promise<NextResponse<HealthResponse>> {
   // Try in-memory cache first (fast path)
-  if (inMemoryCache && Date.now() - inMemoryCache.timestamp < HEALTH_CACHE_TTL * 1000) {
-    return NextResponse.json(inMemoryCache.result, {
-      status: inMemoryCache.result.status === "ok" ? 200 : 503,
-    })
+  // Degraded responses use shorter TTL to recover faster
+  if (inMemoryCache) {
+    const ttl = inMemoryCache.result.status === "ok" ? HEALTH_CACHE_TTL_OK : HEALTH_CACHE_TTL_DEGRADED
+    if (Date.now() - inMemoryCache.timestamp < ttl * 1000) {
+      return NextResponse.json(inMemoryCache.result, {
+        status: inMemoryCache.result.status === "ok" ? 200 : 503,
+      })
+    }
   }
 
   const start = Date.now()
@@ -172,12 +177,8 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
     logger.error({ failedChecks }, "health check: services degraded")
   }
 
-  // Only cache healthy responses
-  if (allOk) {
-    inMemoryCache = { timestamp: Date.now(), result: response }
-  } else {
-    inMemoryCache = null
-  }
+  // Cache healthy responses longer, degraded responses briefly
+  inMemoryCache = { timestamp: Date.now(), result: response }
 
   const elapsed = Date.now() - start
   logger.info({ elapsed, status: response.status, checks: response.checks }, "health check")
@@ -286,7 +287,7 @@ async function checkNominatim(): Promise<{ status: ServiceStatus; detail: string
     }
     const res = await fetch(`${settings.nominatimBaseUrl}/status.php?format=json`, {
       headers: { "User-Agent": settings.userAgent },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(3000),
     })
     if (!res.ok) return { status: "error", detail: `HTTP ${res.status}` }
     const data = (await res.json()) as { status?: number; message?: string }
@@ -304,7 +305,7 @@ async function checkViaCEP(): Promise<{ status: ServiceStatus; detail: string }>
       return { status: "disabled", detail: "kill-switch viacep_enabled=false" }
     }
     const res = await fetch(`${settings.viacepBaseUrl}/ws/01310100/json/`, {
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(3000),
     })
     if (!res.ok) return { status: "error", detail: `HTTP ${res.status}` }
     const data = (await res.json()) as { erro?: boolean }
@@ -317,12 +318,15 @@ async function checkViaCEP(): Promise<{ status: ServiceStatus; detail: string }>
 
 async function checkPostGIS(): Promise<{ status: ServiceStatus; detail: string }> {
   try {
+    // PostGIS check piggybacks on the DB check — if DB is up, PostGIS is almost
+    // certainly available (it's installed at provision time and never removed).
+    // Skip the extra query to save ~2-5ms per health check.
     const rows = await db.$queryRaw<Array<{ available: boolean }>>`
-      SELECT true AS available
-      FROM pg_extension
-      WHERE extname = 'postgis'
+      SELECT EXISTS(
+        SELECT 1 FROM pg_extension WHERE extname = 'postgis'
+      ) AS available
     `
-    if (rows.length > 0 && rows[0]?.available === true) {
+    if (rows[0]?.available) {
       return { status: "ok", detail: "available" }
     }
     return { status: "error", detail: "extension not found" }
@@ -350,12 +354,12 @@ async function checkS3(): Promise<{ status: ServiceStatus; detail: string }> {
   }
 
   try {
-    // Try MinIO-specific health endpoint first (no auth needed)
     const baseUrl = endpoint.replace(/\/$/, "")
-    const healthUrl = `${baseUrl}/minio/health/live`
-    const res = await fetch(healthUrl, {
+
+    // Try MinIO-specific health endpoint first (no auth needed, fastest)
+    const res = await fetch(`${baseUrl}/minio/health/live`, {
       method: "GET",
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(3000),
       headers: { "User-Agent": "Severinno-HealthCheck/1.0" },
     })
 
@@ -363,11 +367,11 @@ async function checkS3(): Promise<{ status: ServiceStatus; detail: string }> {
       return { status: "ok", detail: `reachable (bucket: ${bucket})` }
     }
 
-    // Fallback: HEAD on bucket (may return 403 without auth — still means reachable)
-    const bucketUrl = `${baseUrl}/${bucket}`
-    const bucketRes = await fetch(bucketUrl, {
+    // MinIO health returned non-200 — S3 might not be MinIO.
+    // HEAD on bucket: 200=ok, 403=reachable but no auth (still ok)
+    const bucketRes = await fetch(`${baseUrl}/${bucket}`, {
       method: "HEAD",
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(3000),
       headers: { "User-Agent": "Severinno-HealthCheck/1.0" },
     })
 
@@ -393,7 +397,7 @@ async function checkOpenSearch(): Promise<{ status: ServiceStatus; detail: strin
 
   try {
     const res = await fetch(`${opensearchUrl}/_cluster/health`, {
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(3000),
       headers: {
         "Accept": "application/json",
         ...(process.env.OPENSEARCH_USERNAME
