@@ -184,6 +184,9 @@ export const reviewSchema = z.object({
   bookingId: z.string().min(1),
   rating: z.coerce.number().int().min(1).max(5),
   comment: z.string().max(1000).optional().or(z.literal("")),
+  // Bidirectional: provider rates the client
+  providerRating: z.coerce.number().int().min(1).max(5).optional(),
+  providerComment: z.string().max(1000).optional().or(z.literal("")),
 })
 export type ReviewInput = z.infer<typeof reviewSchema>
 

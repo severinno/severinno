@@ -43,14 +43,13 @@ export async function GET(request: Request) {
   }
 }
 
-// CLIENT: create a review for a completed booking (one per booking)
+// CLIENT or PROVIDER: create/update a review for a completed booking
+// Client reviews provider (rating + comment)
+// Provider reviews client (providerRating + providerComment) — bidirectional
 export async function POST(request: Request) {
   try {
     await assertRateLimit(request, RATE_LIMITS.reviews)
     const session = await requireUser()
-    if (session.role !== "CLIENT") {
-      throw forbidden("Apenas clientes podem avaliar")
-    }
     const data = await parseBody(request, reviewSchema)
 
     const booking = await db.booking.findUnique({
@@ -64,19 +63,83 @@ export async function POST(request: Request) {
       },
     })
     if (!booking) throw notFound("Agendamento não encontrado")
-    if (booking.clientId !== session.userId) {
-      throw forbidden("Você só pode avaliar seus próprios agendamentos")
-    }
     if (booking.status !== "COMPLETED") {
       throw badRequest("Só é possível avaliar agendamentos concluídos")
     }
 
+    // ── Provider rating the client (bidirectional) ────────────────────────
+    if (session.role === "PROVIDER") {
+      if (booking.providerId !== session.userId) {
+        throw forbidden("Você só pode avaliar seus próprios agendamentos")
+      }
+      if (!data.providerRating) {
+        throw badRequest("Rating do provider é obrigatório")
+      }
+
+      const existing = await db.review.findUnique({
+        where: { bookingId: booking.id },
+        select: { id: true, providerRating: true },
+      })
+      if (existing?.providerRating) {
+        throw badRequest("Este agendamento já foi avaliado pelo prestador")
+      }
+
+      // Update existing review or create new one
+      if (existing) {
+        const review = await db.review.update({
+          where: { bookingId: booking.id },
+          data: {
+            providerRating: data.providerRating,
+            providerComment: data.providerComment ? sanitizeText(data.providerComment) : null,
+          },
+        })
+        fireEvent("review.created", { reviewId: review.id, bookingId: booking.id })
+        return NextResponse.json({ review }, { status: 200 })
+      }
+
+      // Create review with only provider side (client hasn't reviewed yet)
+      const review = await db.review.create({
+        data: {
+          bookingId: booking.id,
+          clientId: booking.clientId,
+          providerId: session.userId,
+          serviceId: booking.serviceId,
+          rating: 0, // placeholder — client hasn't reviewed yet
+          providerRating: data.providerRating,
+          providerComment: data.providerComment ? sanitizeText(data.providerComment) : null,
+        },
+      })
+      fireEvent("review.created", { reviewId: review.id, bookingId: booking.id })
+      return NextResponse.json({ review }, { status: 201 })
+    }
+
+    // ── Client rating the provider (original flow) ───────────────────────
+    if (session.role !== "CLIENT") {
+      throw forbidden("Apenas clientes e prestadores podem avaliar")
+    }
+    if (booking.clientId !== session.userId) {
+      throw forbidden("Você só pode avaliar seus próprios agendamentos")
+    }
+
     const existing = await db.review.findUnique({
       where: { bookingId: booking.id },
-      select: { id: true },
+      select: { id: true, rating: true },
     })
-    if (existing) {
+    if (existing && existing.rating > 0) {
       throw badRequest("Este agendamento já foi avaliado")
+    }
+
+    // Update existing review (provider rated first) or create new
+    if (existing) {
+      const review = await db.review.update({
+        where: { bookingId: booking.id },
+        data: {
+          rating: data.rating,
+          comment: data.comment ? sanitizeText(data.comment) : null,
+        },
+      })
+      fireEvent("review.created", { reviewId: review.id, bookingId: booking.id })
+      return NextResponse.json({ review }, { status: 200 })
     }
 
     const review = await db.review.create({

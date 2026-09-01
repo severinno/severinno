@@ -39,9 +39,8 @@ export const metadata: Metadata = {
   icons: {
     icon: "/logo.svg",
     apple: [
-      { url: "/icons/icon-152.png", sizes: "152x152", type: "image/png" },
-      { url: "/icons/icon-167.png", sizes: "167x167", type: "image/png" },
-      { url: "/icons/icon-180.png", sizes: "180x180", type: "image/png" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
     ],
   },
   other: {
@@ -53,14 +52,15 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Severinno Marketplace",
-    description: "Encontre prestadores de serviço verificados, com base na sua localização — Governador Valadares, MG.",
+    description:
+      "Encontre prestadores de serviço verificados, com base na sua localização — Governador Valadares, MG.",
     url: process.env.NEXT_PUBLIC_APP_URL ?? "https://severinno.com",
     siteName: "Severinno",
     locale: "pt_BR",
     type: "website",
     images: [
       {
-        url: "/og-image.png",
+        url: "/logo-severinno.png",
         width: 1200,
         height: 630,
         alt: "Severinno — Marketplace de Serviços",

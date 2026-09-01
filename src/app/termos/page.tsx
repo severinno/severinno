@@ -1,6 +1,8 @@
 import type { Metadata } from "next"
 import Footer from "@/components/shared/footer"
 
+export const revalidate = 3600 // ISR: revalidate every hour
+
 export const metadata: Metadata = {
   title: "Termos de Uso — Severinno",
 }
