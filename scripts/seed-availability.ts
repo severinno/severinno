@@ -4,7 +4,12 @@
  * Adiciona horários de trabalho pra todos os providers existentes
  * que não têm disponibilidade configurada.
  *
- * Usage: npx tsx scripts/seed-availability.ts
+ * Usage:
+ *   npx tsx scripts/seed-availability.ts
+ *
+ * Exit codes:
+ *   0 — success
+ *   1 — failure
  */
 
 import { PrismaClient } from "@prisma/client"

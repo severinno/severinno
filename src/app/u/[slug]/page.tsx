@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { db } from "@/lib/db"
 import { PublicProfilePage } from "./public-profile-page"
 import { BreadcrumbJsonLd } from "@/components/shared/breadcrumb-json-ld"
+import { sanitizeForJsonLd } from "@/lib/sanitize"
 
 type Props = { params: Promise<{ slug: string }> }
 
@@ -76,8 +77,8 @@ export default async function Page({ params }: Props) {
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "LocalBusiness",
-    name: provider.name,
-    description: provider.bio ?? undefined,
+    name: sanitizeForJsonLd(provider.name),
+    description: provider.bio ? sanitizeForJsonLd(provider.bio) : undefined,
     image: provider.avatarUrl ?? undefined,
     address: {
       "@type": "PostalAddress",

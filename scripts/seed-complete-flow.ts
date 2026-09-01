@@ -9,7 +9,12 @@
  *
  * Safe to run multiple times (idempotent — skips existing records).
  *
- * Usage: npx tsx scripts/seed-complete-flow.ts
+ * Usage:
+ *   npx tsx scripts/seed-complete-flow.ts
+ *
+ * Exit codes:
+ *   0 — success
+ *   1 — failure
  */
 
 import { PrismaClient } from "@prisma/client"

@@ -1,7 +1,14 @@
 #!/bin/bash
 # ---------------------------------------------------------------------------
 # start-caddy.sh — Inicia Caddy como reverse proxy pro Severinno
-# Uso: ./scripts/start-caddy.sh
+# ---------------------------------------------------------------------------
+#
+# Usage:
+#   bash scripts/start-caddy.sh [args]
+#
+# Exit codes:
+#   0 — success
+#   1 — failure
 # ---------------------------------------------------------------------------
 
 set -euo pipefail

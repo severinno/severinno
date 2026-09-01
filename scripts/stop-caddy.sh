@@ -2,6 +2,13 @@
 # ---------------------------------------------------------------------------
 # stop-caddy.sh — Para o Caddy reverse proxy
 # ---------------------------------------------------------------------------
+#
+# Usage:
+#   bash scripts/stop-caddy.sh [args]
+#
+# Exit codes:
+#   0 — success
+#   1 — failure
 
 set -euo pipefail
 

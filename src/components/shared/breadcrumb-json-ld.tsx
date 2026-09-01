@@ -1,3 +1,5 @@
+import { sanitizeForJsonLd } from "@/lib/sanitize"
+
 type Crumb = { name: string; url: string }
 
 export function BreadcrumbJsonLd({ items }: { items: Crumb[] }) {
@@ -9,8 +11,8 @@ export function BreadcrumbJsonLd({ items }: { items: Crumb[] }) {
     itemListElement: items.map((item, i) => ({
       "@type": "ListItem",
       position: i + 1,
-      name: item.name,
-      item: item.url,
+      name: sanitizeForJsonLd(item.name),
+      item: sanitizeForJsonLd(item.url),
     })),
   }
 

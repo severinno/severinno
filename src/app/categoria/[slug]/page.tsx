@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 import type { Metadata } from "next"
 import { CategoryPage } from "./category-page"
 import { BreadcrumbJsonLd } from "@/components/shared/breadcrumb-json-ld"
+import { sanitizeForJsonLd } from "@/lib/sanitize"
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -45,8 +46,10 @@ export default async function Page({ params }: Props) {
   const categoryJsonLd = {
     "@context": "https://schema.org",
     "@type": "Service",
-    name: category.name,
-    description: category.description ?? `Encontre profissionais de ${category.name} no Severinno.`,
+    name: sanitizeForJsonLd(category.name),
+    description: sanitizeForJsonLd(
+      category.description ?? `Encontre profissionais de ${category.name} no Severinno.`,
+    ),
     provider: {
       "@type": "Organization",
       name: "Severinno Marketplace",

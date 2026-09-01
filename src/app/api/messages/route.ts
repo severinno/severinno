@@ -29,6 +29,10 @@ export async function GET(request: Request) {
       })
       if (!peer) throw notFound("Usuário não encontrado")
 
+      // Cursor-based pagination: ?cursor=<messageId>&limit=50
+      const cursor = searchParams.get("cursor") || undefined
+      const limit = Math.min(Number(searchParams.get("limit") || "50"), 100)
+
       const messages = await db.message.findMany({
         where: {
           OR: [
@@ -37,8 +41,18 @@ export async function GET(request: Request) {
           ],
         },
         orderBy: { createdAt: "asc" },
-        take: 500,
+        take: limit + 1, // fetch one extra to determine if there are more
+        ...(cursor
+          ? {
+              cursor: { id: cursor },
+              skip: 1,
+            }
+          : {}),
       })
+
+      const hasMore = messages.length > limit
+      const items = hasMore ? messages.slice(0, limit) : messages
+      const nextCursor = hasMore ? items[items.length - 1].id : null
 
       // Mark unread inbound messages as read
       await db.message.updateMany({
@@ -46,7 +60,7 @@ export async function GET(request: Request) {
         data: { read: true },
       })
 
-      return NextResponse.json({ peer, items: messages })
+      return NextResponse.json({ peer, items, nextCursor })
     }
 
     // Conversations list — use DISTINCT ON to get the last message per peer
@@ -154,15 +168,18 @@ export async function POST(request: Request) {
       const { getClient } = await import("@/lib/redis")
       const redisClient = getClient()
       if (redisClient) {
-        await redisClient.publish(`messages:${data.toId}`, JSON.stringify({
-          type: "message",
-          id: message.id,
-          fromId: message.fromId,
-          toId: message.toId,
-          content: message.content,
-          createdAt: message.createdAt,
-          bookingId: message.bookingId,
-        }))
+        await redisClient.publish(
+          `messages:${data.toId}`,
+          JSON.stringify({
+            type: "message",
+            id: message.id,
+            fromId: message.fromId,
+            toId: message.toId,
+            content: message.content,
+            createdAt: message.createdAt,
+            bookingId: message.bookingId,
+          }),
+        )
       }
     } catch {
       /* Redis unavailable — message saved, real-time skip */

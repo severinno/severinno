@@ -32,3 +32,15 @@ export function sanitizeText(input: string): string {
 export function stripHtml(input: string): string {
   return input.replace(/<[^>]*>/g, "").trim()
 }
+
+/**
+ * Sanitize a string for safe embedding in a <script type="application/ld+json"> tag.
+ * Prevents script injection by escaping `</script>` and backslash sequences.
+ */
+export function sanitizeForJsonLd(input: string): string {
+  return input
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/'/g, "\\u0027")
+}
