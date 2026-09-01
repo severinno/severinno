@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { settingSchema } from "@/lib/validators"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { resetGeoSettingsCache } from "@/lib/geo-settings"
 import { resetHealthCache } from "@/app/api/health/route"
@@ -27,10 +28,12 @@ export async function POST(request: Request) {
   await assertRateLimit(request, RATE_LIMITS.admin)
   try {
     const session = await requireRole("ADMIN")
-    const body = await request.json()
-    const pairs: Array<{ key: string; value: string }> = Array.isArray(body)
-      ? body
-      : (body?.items ?? body?.settings ?? [])
+    const raw = (await request.json()) as unknown
+    const pairs: Array<{ key: string; value: string }> = Array.isArray(raw)
+      ? (raw as Array<{ key: string; value: string }>)
+      : (((raw as Record<string, unknown>)?.items as Array<{ key: string; value: string }>) ??
+        ((raw as Record<string, unknown>)?.settings as Array<{ key: string; value: string }>) ??
+        [])
     if (!Array.isArray(pairs) || pairs.length === 0) {
       return NextResponse.json({ error: "Envie um array de { key, value }" }, { status: 400 })
     }
@@ -39,6 +42,11 @@ export async function POST(request: Request) {
         { error: `Máximo de ${MAX_SETTINGS_PER_REQUEST} configurações por requisição` },
         { status: 400 },
       )
+    }
+
+    // Validate each pair
+    for (const p of pairs) {
+      settingSchema.parse(p)
     }
 
     const updated = await db.$transaction(

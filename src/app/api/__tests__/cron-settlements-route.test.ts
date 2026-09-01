@@ -71,7 +71,9 @@ describe("GET /api/cron/settlements", () => {
       providerCount: 2,
     } as any)
 
-    const req = new Request("http://localhost/api/cron/settlements?type=MONTHLY&key=my-cron-secret")
+    const req = new Request("http://localhost/api/cron/settlements?type=MONTHLY", {
+      headers: { Authorization: "Bearer my-cron-secret" },
+    })
     const res = await GET(req)
     const data = await res.json()
 
@@ -86,7 +88,9 @@ describe("GET /api/cron/settlements", () => {
   it("returns existing period when already generated (idempotent)", async () => {
     vi.mocked(db.settlementPeriod.findFirst).mockResolvedValue({ id: "existing-sp-1" } as any)
 
-    const req = new Request("http://localhost/api/cron/settlements?type=MONTHLY&key=my-cron-secret")
+    const req = new Request("http://localhost/api/cron/settlements?type=MONTHLY", {
+      headers: { Authorization: "Bearer my-cron-secret" },
+    })
     const res = await GET(req)
     const data = await res.json()
 
@@ -102,7 +106,9 @@ describe("GET /api/cron/settlements", () => {
     vi.mocked(db.settlementPeriod.findFirst).mockResolvedValue(null)
     vi.mocked(db.payment.findMany).mockResolvedValue([])
 
-    const req = new Request("http://localhost/api/cron/settlements?type=MONTHLY&key=my-cron-secret")
+    const req = new Request("http://localhost/api/cron/settlements?type=MONTHLY", {
+      headers: { Authorization: "Bearer my-cron-secret" },
+    })
     const res = await GET(req)
     const data = await res.json()
 
@@ -121,7 +127,9 @@ describe("GET /api/cron/settlements", () => {
   })
 
   it("returns 401 when CRON_SECRET is set but key is wrong", async () => {
-    const req = new Request("http://localhost/api/cron/settlements?type=MONTHLY&key=wrong-key")
+    const req = new Request("http://localhost/api/cron/settlements?type=MONTHLY", {
+      headers: { Authorization: "Bearer wrong-key" },
+    })
     const res = await GET(req)
     const data = await res.json()
 
@@ -143,7 +151,9 @@ describe("GET /api/cron/settlements", () => {
   it("catches errors and returns 500 with message", async () => {
     vi.mocked(db.settlementPeriod.findFirst).mockRejectedValue(new Error("DB connection failed"))
 
-    const req = new Request("http://localhost/api/cron/settlements?type=MONTHLY&key=my-cron-secret")
+    const req = new Request("http://localhost/api/cron/settlements?type=MONTHLY", {
+      headers: { Authorization: "Bearer my-cron-secret" },
+    })
     const res = await GET(req)
     const data = await res.json()
 

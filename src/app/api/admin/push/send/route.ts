@@ -25,6 +25,7 @@ export async function POST(request: Request) {
 
     const body = await request.json()
     const { userIds, title, body: messageBody, pushUrl, type } = body
+    const { sanitizeText } = await import("@/lib/sanitize")
 
     // Validacoes
     if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
@@ -44,8 +45,8 @@ export async function POST(request: Request) {
     }
 
     const notificationType = type || "ADMIN_MANUAL"
-    const notificationTitle = title.trim()
-    const notificationBody = messageBody?.trim() || ""
+    const notificationTitle = sanitizeText(title.trim())
+    const notificationBody = sanitizeText(messageBody?.trim() || "")
     const notificationUrl = pushUrl || "/"
 
     // Validar pushUrl (seguranca — prevenir javascript: etc)

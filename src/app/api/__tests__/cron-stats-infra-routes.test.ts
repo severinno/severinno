@@ -89,6 +89,7 @@ vi.mock("@/lib/geo-settings", () => ({
 vi.mock("@/lib/redis", () => ({
   getClient: vi.fn(),
   getCacheStats: vi.fn(),
+  withCache: vi.fn(async (_key: string, fn: () => Promise<unknown>) => fn()),
 }))
 
 vi.mock("@/lib/queue", () => ({

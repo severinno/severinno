@@ -63,6 +63,7 @@ export async function POST(request: Request) {
 
     const body = await request.json()
     const data = dateBlockSchema.parse(body)
+    const { sanitizeText } = await import("@/lib/sanitize")
 
     // Validate time fields
     if (!data.allDay) {
@@ -85,7 +86,7 @@ export async function POST(request: Request) {
         allDay: data.allDay,
         startTime: data.allDay ? null : data.startTime,
         endTime: data.allDay ? null : data.endTime,
-        reason: data.reason || null,
+        reason: data.reason ? sanitizeText(data.reason) : null,
       },
     })
 

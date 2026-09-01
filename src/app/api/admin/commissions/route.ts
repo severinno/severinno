@@ -59,72 +59,39 @@ export async function GET(request: Request) {
       where.providerId = providerId
     }
 
-    // All PAID bookings within the selected year
-    const bookings = await db.booking.findMany({
-      where,
-      select: {
-        id: true,
-        amount: true,
-        status: true,
-        createdAt: true,
-        provider: {
-          select: { id: true, name: true, avatarUrl: true },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    })
+    // Aggregate totals via SQL
+    const [bookingStats, completedCount] = await Promise.all([
+      db.booking.aggregate({
+        where,
+        _sum: { amount: true },
+        _count: { id: true },
+      }),
+      db.booking.count({
+        where: { ...where, status: "COMPLETED" },
+      }),
+    ])
 
-    // Totals
-    let grossRevenue = 0
-    let completedCount = 0
-    const providerMap = new Map<
-      string,
-      {
-        id: string
-        name: string
-        avatarUrl: string | null
-        bookingCount: number
-        grossRevenue: number
-        completedCount: number
-      }
-    >()
-
-    for (const b of bookings) {
-      grossRevenue += b.amount
-
-      if (b.status === "COMPLETED") completedCount++
-
-      // Per-provider
-      const pid = b.provider.id
-      if (!providerMap.has(pid)) {
-        providerMap.set(pid, {
-          id: pid,
-          name: b.provider.name,
-          avatarUrl: b.provider.avatarUrl,
-          bookingCount: 0,
-          grossRevenue: 0,
-          completedCount: 0,
-        })
-      }
-      const p = providerMap.get(pid)!
-      p.bookingCount++
-      p.grossRevenue += b.amount
-      if (b.status === "COMPLETED") p.completedCount++
-    }
-
+    const grossRevenue = bookingStats._sum.amount ?? 0
+    const bookingCount = bookingStats._count.id
     const platformCommission = Math.round(grossRevenue * FEE_RATE * 100) / 100
     const providerEarnings = Math.round(grossRevenue * (1 - FEE_RATE) * 100) / 100
 
-    // Monthly breakdown (selected year — bookings are already filtered by year at DB level)
-    const monthlyMap = new Map<string, { gross: number; count: number }>()
+    // Monthly breakdown via SQL groupBy
+    const monthlyStats = await db.booking.groupBy({
+      by: ["createdAt"],
+      where,
+      _sum: { amount: true },
+      _count: { id: true },
+      orderBy: { createdAt: "asc" },
+    })
 
-    for (const b of bookings) {
-      const d = new Date(b.createdAt)
-      // Use UTC methods — DB stores dates in UTC, avoiding timezone day-shift
+    const monthlyMap = new Map<string, { gross: number; count: number }>()
+    for (const m of monthlyStats) {
+      const d = new Date(m.createdAt)
       const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`
       const entry = monthlyMap.get(key) ?? { gross: 0, count: 0 }
-      entry.gross += b.amount
-      entry.count++
+      entry.gross += m._sum.amount ?? 0
+      entry.count += m._count.id
       monthlyMap.set(key, entry)
     }
 
@@ -138,22 +105,51 @@ export async function GET(request: Request) {
         bookingCount: data.count,
       }))
 
-    // Per-provider breakdown
-    const providers = Array.from(providerMap.entries())
-      .map(([, p]) => ({
-        ...p,
-        grossRevenue: Math.round(p.grossRevenue * 100) / 100,
-        commission: Math.round(p.grossRevenue * FEE_RATE * 100) / 100,
-        netEarnings: Math.round(p.grossRevenue * (1 - FEE_RATE) * 100) / 100,
-      }))
-      .sort((a, b) => b.grossRevenue - a.grossRevenue)
+    // Per-provider breakdown via SQL groupBy
+    const providerStats = await db.booking.groupBy({
+      by: ["providerId"],
+      where,
+      _sum: { amount: true },
+      _count: { id: true },
+      orderBy: { _sum: { amount: "desc" } },
+    })
+
+    const providerIds = providerStats.map((p) => p.providerId)
+    const providerUsers = await db.user.findMany({
+      where: { id: { in: providerIds } },
+      select: { id: true, name: true, avatarUrl: true },
+    })
+    const providerInfoMap = new Map(providerUsers.map((p) => [p.id, p]))
+
+    // Count completed per provider
+    const completedByProvider = await db.booking.groupBy({
+      by: ["providerId"],
+      where: { ...where, status: "COMPLETED" },
+      _count: { id: true },
+    })
+    const completedMap = new Map(completedByProvider.map((c) => [c.providerId, c._count.id]))
+
+    const providers = providerStats.map((p) => {
+      const info = providerInfoMap.get(p.providerId)
+      const gross = p._sum.amount ?? 0
+      return {
+        id: p.providerId,
+        name: info?.name ?? "Desconhecido",
+        avatarUrl: info?.avatarUrl ?? null,
+        bookingCount: p._count.id,
+        grossRevenue: Math.round(gross * 100) / 100,
+        commission: Math.round(gross * FEE_RATE * 100) / 100,
+        netEarnings: Math.round(gross * (1 - FEE_RATE) * 100) / 100,
+        completedCount: completedMap.get(p.providerId) ?? 0,
+      }
+    })
 
     return NextResponse.json({
       year: selectedYear,
       grossRevenue: Math.round(grossRevenue * 100) / 100,
       platformCommission,
       providerEarnings,
-      bookingCount: bookings.length,
+      bookingCount,
       completedCount,
       monthly,
       providers,

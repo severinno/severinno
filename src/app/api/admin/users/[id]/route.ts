@@ -2,10 +2,23 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole, invalidateUserCache } from "@/lib/auth"
 import { badRequest, handleError, notFound, USER_PUBLIC_SELECT } from "@/lib/api-server"
+import { z } from "zod"
 
 type Params = { params: Promise<{ id: string }> }
 
 const ALLOWED_ROLES = ["CLIENT", "PROVIDER", "ADMIN"]
+
+const adminUserUpdateSchema = z.object({
+  verified: z.boolean().optional(),
+  active: z.boolean().optional(),
+  role: z.enum(["CLIENT", "PROVIDER", "ADMIN"]).optional(),
+  name: z.string().min(1).max(200).optional(),
+  email: z.string().email().optional(),
+  avatarUrl: z.string().url().optional().nullable(),
+  bio: z.string().max(2000).optional().nullable(),
+  city: z.string().max(100).optional().nullable(),
+  state: z.string().max(2).optional().nullable(),
+})
 
 // ADMIN: update user (toggle verified/active, change role, basic profile fields)
 export async function PATCH(request: Request, { params }: Params) {
@@ -19,26 +32,23 @@ export async function PATCH(request: Request, { params }: Params) {
     })
     if (!user) throw notFound("Usuário não encontrado")
 
-    const body = await request.json()
+    const raw = (await request.json()) as unknown
+    const body = adminUserUpdateSchema.parse(raw)
 
-    if (body.role !== undefined && !ALLOWED_ROLES.includes(body.role)) {
-      throw badRequest("Role inválido")
-    }
+    const data: Record<string, unknown> = {}
+    if (body.verified !== undefined) data.verified = body.verified
+    if (body.active !== undefined) data.active = body.active
+    if (body.role !== undefined) data.role = body.role
+    if (body.name !== undefined) data.name = body.name
+    if (body.email !== undefined) data.email = body.email.toLowerCase()
+    if (body.avatarUrl !== undefined) data.avatarUrl = body.avatarUrl
+    if (body.bio !== undefined) data.bio = body.bio
+    if (body.city !== undefined) data.city = body.city
+    if (body.state !== undefined) data.state = body.state
 
     const updated = await db.user.update({
       where: { id },
-      data: {
-        ...(body.verified !== undefined ? { verified: Boolean(body.verified) } : {}),
-        ...(body.active !== undefined ? { active: Boolean(body.active) } : {}),
-        ...(body.role !== undefined ? { role: body.role } : {}),
-        ...(body.name !== undefined ? { name: String(body.name) } : {}),
-        ...(body.email !== undefined ? { email: String(body.email).toLowerCase() } : {}),
-        ...(body.avatarUrl !== undefined ? { avatarUrl: body.avatarUrl } : {}),
-        ...(body.bio !== undefined ? { bio: body.bio } : {}),
-        ...(body.city !== undefined ? { city: body.city } : {}),
-        ...(body.state !== undefined ? { state: body.state } : {}),
-        ...(body.verified !== undefined && body.verified === true ? { verified: true } : {}),
-      },
+      data,
       select: USER_PUBLIC_SELECT,
     })
     await invalidateUserCache(id)

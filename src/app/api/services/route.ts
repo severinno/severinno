@@ -3,12 +3,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { serviceSchema } from "@/lib/validators"
-import {
-  forbidden,
-  handleError,
-  syncEntitySearch,
-  cacheControlPublic,
-} from "@/lib/api-server"
+import { forbidden, handleError, syncEntitySearch, cacheControlPublic } from "@/lib/api-server"
 import { withCache, cacheInvalidate } from "@/lib/redis"
 
 // GET: list services (with optional filtering)
@@ -24,21 +19,22 @@ export async function GET(request: Request) {
 
     const q = searchParams.get("q")
     if (q) {
-      where.OR = [
-        { title: { contains: q } },
-        { description: { contains: q } },
-      ]
+      where.OR = [{ title: { contains: q } }, { description: { contains: q } }]
     }
 
     const cacheKey = `services:${JSON.stringify(where)}`
-    const services = await withCache(cacheKey, async () => {
-      return db.service.findMany({
-        where,
-        include: { category: { select: { id: true, name: true, slug: true } } },
-        orderBy: { createdAt: "desc" },
-        take: 50,
-      })
-    }, 30)
+    const services = await withCache(
+      cacheKey,
+      async () => {
+        return db.service.findMany({
+          where,
+          include: { category: { select: { id: true, name: true, slug: true } } },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+        })
+      },
+      30,
+    )
 
     return cacheControlPublic(NextResponse.json(services), 30, 120)
   } catch (e) {
@@ -54,13 +50,14 @@ export async function POST(request: Request) {
 
     const body = await request.json()
     const data = serviceSchema.parse(body)
+    const { sanitizeText } = await import("@/lib/sanitize")
 
     const created = await db.service.create({
       data: {
         providerId: session.userId,
         categoryId: data.categoryId,
-        title: data.title,
-        description: data.description,
+        title: sanitizeText(data.title),
+        description: sanitizeText(data.description),
         basePrice: data.basePrice,
         unit: data.unit,
         photos: data.photos,
@@ -69,7 +66,9 @@ export async function POST(request: Request) {
       include: { category: true },
     })
     // Queue search reindex (non-critical — don't fail the request)
-    syncEntitySearch("service", created).catch((err) => logger.warn({ err }, "search index sync failed"))
+    syncEntitySearch("service", created).catch((err) =>
+      logger.warn({ err }, "search index sync failed"),
+    )
 
     // Invalidate service list cache so new services appear immediately
     cacheInvalidate("services:*").catch((err) => logger.warn({ err }, "search index sync failed"))

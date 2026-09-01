@@ -239,7 +239,7 @@ export const settingSchema = z.object({
     .string()
     .min(1)
     .max(80)
-    .regex(/^[A-Z0-9_]+$/, "Chave deve ter letras maiúsculas, números e _"),
+    .regex(/^[A-Za-z0-9_]+$/, "Chave deve ter letras, números e _"),
   value: z.string().max(4000),
 })
 export type SettingInput = z.infer<typeof settingSchema>

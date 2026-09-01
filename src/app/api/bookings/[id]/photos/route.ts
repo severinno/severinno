@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
+import { sanitizeText } from "@/lib/sanitize"
 import { forbidden, handleError, notFound } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { z } from "zod"
 
 type Params = { params: Promise<{ id: string }> }
@@ -21,6 +23,7 @@ const photosSchema = z.object({
  */
 export async function POST(request: Request, { params }: Params) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.bookings)
     const session = await requireUser()
     const { id } = await params
     const body = await request.json().catch(() => ({}))
@@ -46,7 +49,7 @@ export async function POST(request: Request, { params }: Params) {
     } else {
       updateData.afterPhotos = photos
       if (completionNote) {
-        updateData.completionNote = completionNote
+        updateData.completionNote = sanitizeText(completionNote)
       }
     }
 

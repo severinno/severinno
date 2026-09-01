@@ -30,6 +30,7 @@ const mockDb = vi.hoisted(() => {
       update: vi.fn(),
       updateMany: vi.fn(),
       findMany: vi.fn(),
+      aggregate: vi.fn(),
     },
     payment: {
       findUnique: vi.fn(),
@@ -38,6 +39,7 @@ const mockDb = vi.hoisted(() => {
     },
     walletTransaction: {
       findMany: vi.fn(),
+      aggregate: vi.fn(),
       create: vi.fn(),
     },
     resetToken: {
@@ -92,7 +94,9 @@ vi.mock("@/lib/redis", () => ({
   cacheSet: vi.fn().mockResolvedValue(undefined),
   cacheInvalidate: vi.fn().mockResolvedValue(undefined),
   withCache: vi.fn(async (_key: string, fn: () => Promise<unknown>) => fn()),
-  getCacheStats: vi.fn().mockReturnValue({ hits: 0, misses: 0, total: 0, hitRatio: null, memoryStoreSize: 0 }),
+  getCacheStats: vi
+    .fn()
+    .mockReturnValue({ hits: 0, misses: 0, total: 0, hitRatio: null, memoryStoreSize: 0 }),
   isRedisAvailable: vi.fn().mockReturnValue(false),
   getMemoryCacheDiagnostics: vi.fn().mockReturnValue({ available: true, size: 0, maxAgeMs: null }),
 }))
@@ -337,8 +341,8 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
     vi.mocked(requireUser).mockResolvedValue({ userId: PROVIDER_ID, role: "PROVIDER" } as any)
 
     // 1 completed booking at R$250 → earned R$212.50 (after 15% fee)
-    mockDb.booking.findMany.mockResolvedValue([{ amount: 250 }])
-    mockDb.walletTransaction.findMany.mockResolvedValue([])
+    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 250 } })
+    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
     mockDb.walletTransaction.create.mockResolvedValue({
       id: "wth-001",
       providerId: PROVIDER_ID,
@@ -370,8 +374,8 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
     const { requireUser } = await import("@/lib/auth")
     vi.mocked(requireUser).mockResolvedValue({ userId: PROVIDER_ID, role: "PROVIDER" } as any)
 
-    mockDb.booking.findMany.mockResolvedValue([{ amount: 250 }])
-    mockDb.walletTransaction.findMany.mockResolvedValue([])
+    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 250 } })
+    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
 
     const { POST } = await import("@/app/api/provider/wallet/withdraw/route")
     const req = new Request("http://localhost", {
@@ -390,18 +394,9 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
     const { requireUser } = await import("@/lib/auth")
     vi.mocked(requireUser).mockResolvedValue({ userId: PROVIDER_ID, role: "PROVIDER" } as any)
 
-    // Balance is R$212.50 — first withdrawal of R$200 should succeed
-    // Second should fail because balance is now R$12.50
-    let callCount = 0
-    mockDb.booking.findMany.mockResolvedValue([{ amount: 250 }])
-    mockDb.walletTransaction.findMany.mockImplementation(async () => {
-      callCount++
-      // Second call sees the first withdrawal
-      if (callCount > 2) {
-        return [{ amount: 200, status: "completed" }]
-      }
-      return []
-    })
+    // Balance is R$212.50 — withdrawal of R$200 should succeed
+    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 250 } })
+    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
     mockDb.walletTransaction.create.mockResolvedValue({
       id: "wth-002",
       amount: 200,
@@ -418,9 +413,8 @@ describe("Financial Flow E2E: Booking → Payment → Escrow → Completion → 
     expect(res.status).toBe(200)
 
     // Verify Serializable isolation is used
-    expect(mockDb.$transaction).toHaveBeenCalledWith(
-      expect.any(Function),
-      { isolationLevel: "Serializable" },
-    )
+    expect(mockDb.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: "Serializable",
+    })
   })
 })

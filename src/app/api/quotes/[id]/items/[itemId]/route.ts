@@ -2,8 +2,10 @@ import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
+import { sanitizeText } from "@/lib/sanitize"
 import { quoteItemResponseSchema } from "@/lib/validators"
 import { forbidden, handleError, notFound } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { notifyQuoteResponse } from "@/lib/notifications"
 
 type Params = { params: Promise<{ id: string; itemId: string }> }
@@ -12,6 +14,7 @@ type Params = { params: Promise<{ id: string; itemId: string }> }
 // Sets request status to RESPONDED.
 export async function PATCH(request: Request, { params }: Params) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.bookings)
     const session = await requireUser()
     const { id, itemId } = await params
 
@@ -34,7 +37,7 @@ export async function PATCH(request: Request, { params }: Params) {
       where: { id: itemId },
       data: {
         price: data.price,
-        providerNote: data.providerNote || null,
+        providerNote: data.providerNote ? sanitizeText(data.providerNote) : null,
         status: data.status,
       },
     })

@@ -6,9 +6,11 @@ const mockDb = vi.hoisted(() => {
   const db = {
     booking: {
       findMany: vi.fn(),
+      aggregate: vi.fn(),
     },
     walletTransaction: {
       findMany: vi.fn(),
+      aggregate: vi.fn(),
       create: vi.fn(),
     },
     $transaction: vi.fn() as ReturnType<typeof vi.fn>,
@@ -66,8 +68,8 @@ describe("POST /api/provider/wallet/withdraw", () => {
 
   it("creates a withdrawal and returns success", async () => {
     // 2 COMPLETED bookings = balance 467.5
-    mockDb.booking.findMany.mockResolvedValue([{ amount: 200 }, { amount: 350 }])
-    mockDb.walletTransaction.findMany.mockResolvedValue([])
+    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 550 } })
+    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
     mockDb.walletTransaction.create.mockResolvedValue({
       id: "wth-new-1",
       amount: 100,
@@ -85,8 +87,8 @@ describe("POST /api/provider/wallet/withdraw", () => {
   })
 
   it("rejects withdrawal exceeding available balance", async () => {
-    mockDb.booking.findMany.mockResolvedValue([{ amount: 200 }])
-    mockDb.walletTransaction.findMany.mockResolvedValue([])
+    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 200 } })
+    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: null } })
 
     const res = await POST(mockRequest({ amount: 999 }))
     const data = await res.json()
@@ -129,9 +131,9 @@ describe("POST /api/provider/wallet/withdraw", () => {
 
   it("subtracts from balance considering previous withdrawals", async () => {
     // Balance from bookings: 200 * 0.85 = 170
-    mockDb.booking.findMany.mockResolvedValue([{ amount: 200 }])
+    mockDb.booking.aggregate.mockResolvedValue({ _sum: { amount: 200 } })
     // Already withdrew 50
-    mockDb.walletTransaction.findMany.mockResolvedValue([{ amount: 50, status: "completed" }])
+    mockDb.walletTransaction.aggregate.mockResolvedValue({ _sum: { amount: 50 } })
     mockDb.walletTransaction.create.mockResolvedValue({
       id: "wth-new-2",
       amount: 30,

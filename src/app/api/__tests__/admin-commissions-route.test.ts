@@ -4,6 +4,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const mockDb = vi.hoisted(() => ({
   booking: {
+    aggregate: vi.fn(),
+    count: vi.fn(),
+    groupBy: vi.fn(),
+  },
+  user: {
     findMany: vi.fn(),
   },
 }))
@@ -18,6 +23,11 @@ vi.mock("@/lib/auth", () => ({
   }),
 }))
 
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn().mockResolvedValue(undefined),
+  RATE_LIMITS: { admin: { prefix: "admin", max: 30, windowMs: 60000 } },
+}))
+
 vi.mock("@/lib/logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
@@ -26,59 +36,69 @@ vi.mock("@/lib/logger", () => ({
 
 import { GET } from "../admin/commissions/route"
 
-// ── Mock data ──────────────────────────────────────────────────────────────
-
-const mockBookings = [
-  {
-    id: "b-1",
-    amount: 1000,
-    status: "COMPLETED",
-    createdAt: new Date("2025-01-15"),
-    provider: { id: "prov-1", name: "João Prestador", avatarUrl: null },
-  },
-  {
-    id: "b-2",
-    amount: 500,
-    status: "COMPLETED",
-    createdAt: new Date("2025-02-10"),
-    provider: { id: "prov-1", name: "João Prestador", avatarUrl: null },
-  },
-  {
-    id: "b-3",
-    amount: 2000,
-    status: "COMPLETED",
-    createdAt: new Date("2025-02-20"),
-    provider: {
-      id: "prov-2",
-      name: "Maria Profissional",
-      avatarUrl: "https://example.com/avatar.jpg",
-    },
-  },
-  {
-    id: "b-4",
-    amount: 300,
-    status: "CONFIRMED",
-    createdAt: new Date("2025-03-01"),
-    provider: { id: "prov-1", name: "João Prestador", avatarUrl: null },
-  },
-]
-
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe("GET /api/admin/commissions", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     _mockRole = "ADMIN"
+
+    // Default mocks for the SQL-based implementation
+    mockDb.booking.aggregate.mockResolvedValue({
+      _sum: { amount: 3800 },
+      _count: { id: 4 },
+    })
+    mockDb.booking.count.mockResolvedValue(3) // completedCount
+    mockDb.booking.groupBy
+      .mockResolvedValueOnce([
+        // monthly
+        {
+          createdAt: new Date("2025-01-15"),
+          _sum: { amount: 1000 },
+          _count: { id: 1 },
+        },
+        {
+          createdAt: new Date("2025-02-10"),
+          _sum: { amount: 2500 },
+          _count: { id: 2 },
+        },
+        {
+          createdAt: new Date("2025-03-01"),
+          _sum: { amount: 300 },
+          _count: { id: 1 },
+        },
+      ])
+      .mockResolvedValueOnce([
+        // per-provider
+        {
+          providerId: "prov-2",
+          _sum: { amount: 2000 },
+          _count: { id: 1 },
+        },
+        {
+          providerId: "prov-1",
+          _sum: { amount: 1800 },
+          _count: { id: 3 },
+        },
+      ])
+      .mockResolvedValueOnce([
+        // completed by provider
+        { providerId: "prov-1", _count: { id: 2 } },
+        { providerId: "prov-2", _count: { id: 1 } },
+      ])
+
+    mockDb.user.findMany.mockResolvedValue([
+      { id: "prov-1", name: "João Prestador", avatarUrl: null },
+      { id: "prov-2", name: "Maria Profissional", avatarUrl: "https://example.com/avatar.jpg" },
+    ])
   })
 
   it("returns correct aggregated totals", async () => {
-    mockDb.booking.findMany.mockResolvedValue(mockBookings)
-
     const req = new Request("http://localhost/api/admin/commissions?year=2025")
     const res = await GET(req)
     const data = await res.json()
 
-    // grossRevenue = 1000 + 500 + 2000 + 300 = 3800
+    // grossRevenue = 3800
     expect(data.grossRevenue).toBe(3800)
     expect(data.platformCommission).toBe(570) // 3800 * 0.15
     expect(data.providerEarnings).toBe(3230) // 3800 * 0.85
@@ -86,26 +106,21 @@ describe("GET /api/admin/commissions", () => {
   })
 
   it("counts total bookings and completed bookings", async () => {
-    mockDb.booking.findMany.mockResolvedValue(mockBookings)
-
     const req = new Request("http://localhost/api/admin/commissions?year=2025")
     const res = await GET(req)
     const data = await res.json()
 
     expect(data.bookingCount).toBe(4)
-    expect(data.completedCount).toBe(3) // b-1, b-2, b-3 are COMPLETED
+    expect(data.completedCount).toBe(3)
   })
 
   it("returns per-provider breakdown sorted by gross revenue", async () => {
-    mockDb.booking.findMany.mockResolvedValue(mockBookings)
-
     const req = new Request("http://localhost/api/admin/commissions?year=2025")
     const res = await GET(req)
     const data = await res.json()
 
     expect(data.providers).toHaveLength(2)
 
-    // First: prov-2 (Maria) with 2000 > prov-1 (João) with 1500 (1000+500-300... wait 1000+500+300=1800... no, 1000+500+300=1800)
     expect(data.providers[0].name).toBe("Maria Profissional")
     expect(data.providers[0].grossRevenue).toBe(2000)
     expect(data.providers[0].commission).toBe(300) // 2000 * 0.15
@@ -114,7 +129,7 @@ describe("GET /api/admin/commissions", () => {
     expect(data.providers[0].completedCount).toBe(1)
 
     expect(data.providers[1].name).toBe("João Prestador")
-    expect(data.providers[1].grossRevenue).toBe(1800) // 1000 + 500 + 300
+    expect(data.providers[1].grossRevenue).toBe(1800)
     expect(data.providers[1].commission).toBe(270) // 1800 * 0.15
     expect(data.providers[1].netEarnings).toBe(1530) // 1800 * 0.85
     expect(data.providers[1].bookingCount).toBe(3)
@@ -122,7 +137,17 @@ describe("GET /api/admin/commissions", () => {
   })
 
   it("returns empty state when no bookings exist", async () => {
-    mockDb.booking.findMany.mockResolvedValue([])
+    mockDb.booking.aggregate.mockResolvedValue({
+      _sum: { amount: null },
+      _count: { id: 0 },
+    })
+    mockDb.booking.count.mockResolvedValue(0)
+    mockDb.booking.groupBy.mockReset()
+    mockDb.booking.groupBy
+      .mockResolvedValueOnce([]) // monthly
+      .mockResolvedValueOnce([]) // per-provider
+      .mockResolvedValueOnce([]) // completed by provider
+    mockDb.user.findMany.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/commissions?year=2025")
     const res = await GET(req)
@@ -139,7 +164,6 @@ describe("GET /api/admin/commissions", () => {
 
   it("throws 403 when user is not ADMIN", async () => {
     _mockRole = "PROVIDER"
-    mockDb.booking.findMany.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/commissions?year=2025")
     const res = await GET(req)
