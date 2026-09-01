@@ -5,6 +5,18 @@
 server:
   http_listen_port: 3200
 
+# ── Distributor — OTLP receivers ──────────────────────────────────────────
+# Enables the OTLP HTTP (4318) and gRPC (4317) endpoints that the app
+# sends traces to via @opentelemetry/exporter-trace-otlp-http.
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:4318
+        grpc:
+          endpoint: 0.0.0.0:4317
+
 metrics_generator:
   registry:
     external_labels:
@@ -28,4 +40,4 @@ storage:
 overrides:
   defaults:
     metrics_generator:
-      processors: [service-graph, span-metrics]
+      processors: [span-metrics]
