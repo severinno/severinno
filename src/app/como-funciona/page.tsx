@@ -1,6 +1,8 @@
 import type { Metadata } from "next"
 import Footer from "@/components/shared/footer"
 
+export const revalidate = 3600 // ISR: revalidate every hour
+
 export const metadata: Metadata = {
   title: "Como funciona — Severinno",
   description: "Encontre e agende serviços profissionais online com facilidade e segurança.",

@@ -400,6 +400,8 @@ model Review {
   photos     Json     @default("[]")  // Array of photo URLs (max 4)
   providerReply   String?  // Provider's response to the review
   providerReplyAt DateTime? // When the provider replied
+  providerRating  Int?     // Provider's rating of the client (1-5)
+  providerComment String?  // Provider's comment about the client
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
