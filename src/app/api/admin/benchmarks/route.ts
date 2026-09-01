@@ -28,6 +28,7 @@ import { notifyGeoAlert } from "@/lib/geo-alert-notify"
 import { queueEmail } from "@/lib/email-queue"
 import { db } from "@/lib/db"
 import logger from "@/lib/logger"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -560,8 +561,9 @@ function compareBaselineLatest(
 // Handler
 // ---------------------------------------------------------------------------
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.admin)
     await requireRole("ADMIN")
 
     // Read all JSON files from benchmark dir

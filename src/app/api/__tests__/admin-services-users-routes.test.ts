@@ -78,6 +78,10 @@ import { POST as lytexPOST, DELETE as lytexDELETE } from "../admin/users/[id]/ly
 
 const MOCK_SESSION = { userId: "admin-1", role: "ADMIN" as const }
 
+function mockRequest(path = "/api/admin/stats"): Request {
+  return new Request(`http://localhost:3000${path}`)
+}
+
 function buildRequest(url: string): NextRequest {
   return new NextRequest(new Request(url))
 }
@@ -228,7 +232,7 @@ describe("GET /api/admin/stats — auth guard", () => {
   it("returns 401 when auth fails", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await statsGET()
+    const res = await statsGET(mockRequest())
 
     expect(res.status).toBe(401)
   })
@@ -256,13 +260,29 @@ describe("GET /api/admin/stats — aggregation", () => {
 
   const topProvidersRows = [
     {
+      id: "p-2",
+      name: "Bruno Lima",
+      email: "bruno@example.com",
+      avatarUrl: null,
+      avgRating: 5,
+      reviewCount: 1,
+    },
+    {
       id: "p-1",
       name: "Ana Souza",
-      role: "PROVIDER",
-      reviewsReceived: [{ rating: 5 }, { rating: 4 }],
+      email: "ana@example.com",
+      avatarUrl: null,
+      avgRating: 4.5,
+      reviewCount: 2,
     },
-    { id: "p-2", name: "Bruno Lima", role: "PROVIDER", reviewsReceived: [{ rating: 5 }] },
-    { id: "p-3", name: "Carla Dias", role: "PROVIDER", reviewsReceived: [] },
+    {
+      id: "p-3",
+      name: "Carla Dias",
+      email: "carla@example.com",
+      avatarUrl: null,
+      avgRating: 0,
+      reviewCount: 0,
+    },
   ]
 
   function mockQueries() {
@@ -291,7 +311,7 @@ describe("GET /api/admin/stats — aggregation", () => {
   it("aggregates users, bookings, quotes, revenue and top providers", async () => {
     mockQueries()
 
-    const res = await statsGET()
+    const res = await statsGET(mockRequest())
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -329,7 +349,7 @@ describe("GET /api/admin/stats — aggregation", () => {
     vi.mocked(db.booking.findMany).mockResolvedValueOnce([] as any)
     vi.mocked(db.user.findMany).mockResolvedValueOnce([] as any)
 
-    const res = await statsGET()
+    const res = await statsGET(mockRequest())
     const body = await res.json()
 
     expect(body.usersByRole).toEqual({})
@@ -678,7 +698,9 @@ describe("POST /api/admin/users/[id]/lytex-account — auth", () => {
   })
 
   it("returns 403 when the session user is not an admin", async () => {
-    vi.mocked(requireRole).mockRejectedValueOnce(Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" }))
+    vi.mocked(requireRole).mockRejectedValueOnce(
+      Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" }),
+    )
 
     const req = buildJsonRequest("http://localhost:3000/api/admin/users/u-1/lytex-account", {
       lytexRecipientId: "rec-1",
@@ -745,7 +767,9 @@ describe("POST /api/admin/users/[id]/lytex-account — link sub-account", () => 
 
 describe("DELETE /api/admin/users/[id]/lytex-account — unlink sub-account", () => {
   it("returns 403 when the session user is not an admin", async () => {
-    vi.mocked(requireRole).mockRejectedValueOnce(Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" }))
+    vi.mocked(requireRole).mockRejectedValueOnce(
+      Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" }),
+    )
 
     const res = await lytexDELETE(
       buildRequest("http://localhost:3000/api/admin/users/u-1/lytex-account"),

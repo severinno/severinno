@@ -165,51 +165,10 @@ function getConfig() {
 }
 
 // ---------------------------------------------------------------------------
-// Client IP extraction (proxy-aware, Edge-compatible)
+// Client IP extraction — delegated to shared module
 // ---------------------------------------------------------------------------
 
-function getClientIp(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-for")
-  if (forwarded) {
-    const ip = forwarded.split(",")[0]?.trim()
-    if (ip) return ip
-  }
-  const realIp = request.headers.get("x-real-ip")
-  if (realIp) return realIp
-  const cfIp = request.headers.get("cf-connecting-ip")
-  if (cfIp) return cfIp
-  // Fallback: use a hash of a subset of headers (not ideal but edge-safe)
-  const ua = request.headers.get("user-agent") ?? ""
-  const accept = request.headers.get("accept") ?? ""
-  return `anon-${simpleHash(`${ua}:${accept}`)}`
-}
-
-/** Minimal deterministic hash for Edge Runtime (no crypto.subtle needed). */
-function simpleHash(s: string): string {
-  let hash = 0
-  for (let i = 0; i < s.length; i++) {
-    const char = s.charCodeAt(i)
-    hash = (hash << 5) - hash + char
-    hash |= 0 // Convert to 32-bit integer
-  }
-  return Math.abs(hash).toString(36)
-}
-
-/**
- * Composite fingerprint: IP + User-Agent hash.
- *
- * Makes VPN-rotation attacks harder — an attacker rotating IPs but
- * keeping the same browser UA will still be rate-limited.
- * In production behind a proxy, the IP is always from x-forwarded-for.
- */
-function getCompositeFingerprint(request: Request): string {
-  const ip = getClientIp(request)
-  const ua = request.headers.get("user-agent") ?? "no-ua"
-  // Only use the first 100 chars of UA to avoid fingerprint explosion
-  const uaShort = ua.length > 100 ? ua.slice(0, 100) : ua
-  const uaHash = simpleHash(uaShort)
-  return `${ip}:${uaHash}`
-}
+import { getClientIp, simpleHash, getCompositeFingerprint } from "@/lib/rate-limit-shared"
 
 // ---------------------------------------------------------------------------
 // Upstash sliding window (INCR + EXPIRE — REST-friendly)

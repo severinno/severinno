@@ -23,6 +23,7 @@
 
 import { HttpError } from "@/lib/api-server"
 import { getClient } from "@/lib/redis"
+import { getClientIp } from "@/lib/rate-limit-shared"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -78,26 +79,6 @@ if (typeof setInterval !== "undefined") {
       }
     }
   }, 60_000).unref?.()
-}
-
-// ---------------------------------------------------------------------------
-// Extract client IP from request
-// ---------------------------------------------------------------------------
-
-function getClientIp(request: Request): string {
-  // Try standard proxy headers in order
-  const forwarded = request.headers.get("x-forwarded-for")
-  if (forwarded) {
-    const ip = forwarded.split(",")[0]?.trim()
-    if (ip) return ip
-  }
-  const realIp = request.headers.get("x-real-ip")
-  if (realIp) return realIp
-  const cfIp = request.headers.get("cf-connecting-ip")
-  if (cfIp) return cfIp
-
-  // Fallback: use a hash of the request (not ideal but works)
-  return "unknown"
 }
 
 // ---------------------------------------------------------------------------

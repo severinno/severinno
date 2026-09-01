@@ -195,38 +195,10 @@ if (typeof setInterval !== "undefined") {
 }
 
 // ---------------------------------------------------------------------------
-// Client IP extraction
+// Client IP extraction — delegated to shared module
 // ---------------------------------------------------------------------------
 
-function getClientIp(request: NextRequest): string {
-  const forwarded = request.headers.get("x-forwarded-for")
-  if (forwarded) {
-    const ip = forwarded.split(",")[0]?.trim()
-    if (ip) return ip
-  }
-  const realIp = request.headers.get("x-real-ip")
-  if (realIp) return realIp
-  return "unknown"
-}
-
-/** Minimal deterministic hash for Edge Runtime. */
-function simpleHash(s: string): string {
-  let hash = 0
-  for (let i = 0; i < s.length; i++) {
-    const char = s.charCodeAt(i)
-    hash = (hash << 5) - hash + char
-    hash |= 0
-  }
-  return Math.abs(hash).toString(36)
-}
-
-/** Composite fingerprint: IP + User-Agent hash (anti VPN-rotation). */
-function getCompositeFingerprint(request: NextRequest): string {
-  const ip = getClientIp(request)
-  const ua = request.headers.get("user-agent") ?? "no-ua"
-  const uaShort = ua.length > 100 ? ua.slice(0, 100) : ua
-  return `${ip}:${simpleHash(uaShort)}`
-}
+import { getClientIp, simpleHash, getCompositeFingerprint } from "@/lib/rate-limit-shared"
 
 // ---------------------------------------------------------------------------
 // Rate limit check

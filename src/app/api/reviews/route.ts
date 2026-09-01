@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { reviewSchema } from "@/lib/validators"
+import { parseBody } from "@/lib/api-middleware"
 import { badRequest, forbidden, handleError, notFound, parsePagination } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { fireEvent } from "@/lib/event-hub"
@@ -50,8 +51,7 @@ export async function POST(request: Request) {
     if (session.role !== "CLIENT") {
       throw forbidden("Apenas clientes podem avaliar")
     }
-    const body = await request.json()
-    const data = reviewSchema.parse(body)
+    const data = await parseBody(request, reviewSchema)
 
     const booking = await db.booking.findUnique({
       where: { id: data.bookingId },

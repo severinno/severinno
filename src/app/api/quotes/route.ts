@@ -4,9 +4,11 @@ import { type QuoteStatus } from "@prisma/client"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { quoteSchema } from "@/lib/validators"
+import { parseBody } from "@/lib/api-middleware"
 import { badRequest, forbidden, handleError, notFound, parsePagination } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { notifyNewQuote } from "@/lib/notifications"
+import { sanitizeText } from "@/lib/sanitize"
 
 // CLIENT: create a quote request with N items
 export async function POST(request: Request) {
@@ -16,8 +18,7 @@ export async function POST(request: Request) {
     if (session.role !== "CLIENT") {
       throw forbidden("Apenas clientes podem solicitar orçamentos")
     }
-    const body = await request.json()
-    const data = quoteSchema.parse(body)
+    const data = await parseBody(request, quoteSchema)
 
     // Validate provider exists & is verified/active
     const provider = await db.user.findFirst({
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
           create: data.items.map((item) => ({
             providerId: data.providerId,
             serviceId: item.serviceId,
-            description: item.description,
+            description: item.description ? sanitizeText(item.description) : item.description,
             quantity: item.quantity,
             unit: item.unit,
             photos: item.photos,

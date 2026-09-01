@@ -8,6 +8,7 @@
  */
 import { createSchema, createYoga } from "graphql-yoga"
 import { db } from "@/lib/db"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 const typeDefs = /* GraphQL */ `
   type Query {
@@ -23,8 +24,7 @@ const typeDefs = /* GraphQL */ `
   type Provider {
     id: ID!
     name: String!
-    email: String!
-    phone: String
+    avatarUrl: String
     lat: Float
     lng: Float
     city: String
@@ -86,6 +86,19 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+// Select only public fields — never expose email, phone, or passwordHash
+const PUBLIC_PROVIDER_SELECT = {
+  id: true,
+  name: true,
+  avatarUrl: true,
+  lat: true,
+  lng: true,
+  city: true,
+  bio: true,
+  verified: true,
+  active: true,
+} as const
+
 const resolvers = {
   Query: {
     providers: async (
@@ -96,9 +109,10 @@ const resolvers = {
 
       const providers = await db.user.findMany({
         where: { role: "PROVIDER", active: true },
-        include: {
+        select: {
+          ...PUBLIC_PROVIDER_SELECT,
           services: { where: { active: true }, take: 5, include: { category: true } },
-          reviewsReceived: { take: 5, orderBy: { createdAt: "desc" }, include: { client: true } },
+          reviewsReceived: { take: 5, orderBy: { createdAt: "desc" }, select: { rating: true } },
         },
         take: 500,
       })
@@ -106,10 +120,7 @@ const resolvers = {
       return providers
         .map((p) => ({
           ...p,
-          distanceKm:
-            p.lat && p.lng
-              ? haversineKm(latitude, longitude, p.lat, p.lng)
-              : null,
+          distanceKm: p.lat && p.lng ? haversineKm(latitude, longitude, p.lat, p.lng) : null,
         }))
         .filter((p) => p.distanceKm !== null && p.distanceKm <= radiusKm)
         .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity))
@@ -119,24 +130,31 @@ const resolvers = {
     provider: async (_: unknown, args: { id: string }) => {
       return db.user.findUnique({
         where: { id: args.id },
-        include: {
+        select: {
+          ...PUBLIC_PROVIDER_SELECT,
           services: { where: { active: true }, include: { category: true } },
-          reviewsReceived: { take: 10, orderBy: { createdAt: "desc" }, include: { client: true } },
+          reviewsReceived: {
+            take: 10,
+            orderBy: { createdAt: "desc" },
+            select: {
+              rating: true,
+              comment: true,
+              createdAt: true,
+              client: { select: PUBLIC_PROVIDER_SELECT },
+            },
+          },
         },
       })
     },
 
-    services: async (
-      _: unknown,
-      args: { providerId?: string; categoryId?: string },
-    ) => {
+    services: async (_: unknown, args: { providerId?: string; categoryId?: string }) => {
       return db.service.findMany({
         where: {
           active: true,
           ...(args.providerId && { providerId: args.providerId }),
           ...(args.categoryId && { categoryId: args.categoryId }),
         },
-        include: { category: true, provider: true },
+        include: { category: true, provider: { select: PUBLIC_PROVIDER_SELECT } },
         take: 50,
       })
     },
@@ -150,12 +168,13 @@ const resolvers = {
           ...(args.clientId && { clientId: args.clientId }),
           ...(args.providerId && { providerId: args.providerId }),
           ...(args.status && {
-            status: args.status as "PENDING" | "CONFIRMED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED",
+            status: args.status as
+              "PENDING" | "CONFIRMED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED",
           }),
         },
         include: {
-          client: true,
-          provider: true,
+          client: { select: PUBLIC_PROVIDER_SELECT },
+          provider: { select: PUBLIC_PROVIDER_SELECT },
           service: { include: { category: true } },
         },
         orderBy: { createdAt: "desc" },
@@ -166,7 +185,13 @@ const resolvers = {
     reviews: async (_: unknown, args: { providerId: string; limit?: number }) => {
       return db.review.findMany({
         where: { providerId: args.providerId },
-        include: { client: true },
+        select: {
+          id: true,
+          rating: true,
+          comment: true,
+          createdAt: true,
+          client: { select: PUBLIC_PROVIDER_SELECT },
+        },
         orderBy: { createdAt: "desc" },
         take: args.limit ?? 20,
       })
@@ -184,7 +209,8 @@ const resolvers = {
             { services: { some: { title: { contains: args.query, mode: "insensitive" } } } },
           ],
         },
-        include: {
+        select: {
+          ...PUBLIC_PROVIDER_SELECT,
           services: { where: { active: true }, take: 5, include: { category: true } },
         },
         take: 50,
@@ -195,9 +221,7 @@ const resolvers = {
           .map((p) => ({
             ...p,
             distanceKm:
-              p.lat && p.lng
-                ? haversineKm(args.latitude!, args.longitude!, p.lat, p.lng)
-                : null,
+              p.lat && p.lng ? haversineKm(args.latitude!, args.longitude!, p.lat, p.lng) : null,
           }))
           .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity))
       }
@@ -223,4 +247,12 @@ const resolvers = {
 
 export const schema = createSchema({ typeDefs, resolvers })
 
-export const graphqlHandler = createYoga({ schema, graphqlEndpoint: "/api/graphql" })
+// Wrap yoga handler with rate limiting
+const yoga = createYoga({ schema, graphqlEndpoint: "/api/graphql" })
+
+export const graphqlHandler = {
+  handle: async (request: Request, _ctx: unknown) => {
+    await assertRateLimit(request, RATE_LIMITS.general)
+    return yoga.handle({ request } as any, {} as any)
+  },
+}
