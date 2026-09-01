@@ -10,14 +10,10 @@ if (dsn) {
     replaysSessionSampleRate: 0,
     replaysOnErrorSampleRate: 0.5,
 
-    // ── Breadcrumbs ─────────────────────────────────────────────────────────
-    // Auto-capture navigation and console as breadcrumbs for context
-    enableConsoleLogging: true,
-
     // ── Error filtering ──────────────────────────────────────────────────────
     // Ignore common noise: ResizeObserver, hydration, abandoned fetches
     beforeSend(event) {
-      const msg = event.message?.formatted ?? ""
+      const msg = typeof event.message === "string" ? event.message : (event.message as any)?.formatted ?? ""
       const exc = event.exception?.values?.[0]?.value ?? ""
       const combined = `${msg} ${exc}`
 
