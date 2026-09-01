@@ -10,6 +10,13 @@
 #   3. Cleanup local backups older than 7 days
 #   4. Cleanup MinIO backups older than 30 days
 # ==============================================================================
+#
+# Usage:
+#   bash scripts/backup-cron.sh [args]
+#
+# Exit codes:
+#   0 — success
+#   1 — failure
 
 set -euo pipefail
 

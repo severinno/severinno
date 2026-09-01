@@ -11,6 +11,11 @@ import {
   invalidateCategoryCache,
 } from "@/lib/api-server"
 import { withCache, cacheInvalidate } from "@/lib/redis"
+import { type Prisma } from "@prisma/client"
+
+type CategoryNode = Prisma.CategoryGetPayload<Record<string, never>> & {
+  children: CategoryNode[]
+}
 
 // GET: list categories (public, cached)
 export async function GET(_request?: Request) {
@@ -18,18 +23,23 @@ export async function GET(_request?: Request) {
     const categories = await withCache(
       "categories:all",
       async () => {
-        return db.category.findMany({
+        // Flat query — fetch all active categories in one pass, no nested includes
+        const all = await db.category.findMany({
           where: { active: true },
-          include: {
-            children: {
-              where: { active: true },
-              include: {
-                children: { where: { active: true } },
-              },
-            },
-          },
           orderBy: [{ order: "asc" }, { name: "asc" }],
         })
+        // Build tree in memory (avoids N+1 with nested includes)
+        const byId = new Map<string, CategoryNode>(all.map((c) => [c.id, { ...c, children: [] }]))
+        const roots: CategoryNode[] = []
+        for (const cat of all) {
+          const node = byId.get(cat.id)!
+          if (cat.parentId && byId.has(cat.parentId)) {
+            byId.get(cat.parentId)!.children.push(node)
+          } else {
+            roots.push(node)
+          }
+        }
+        return roots
       },
       60,
     )

@@ -44,18 +44,20 @@ export async function POST(request: Request) {
     // are atomic to prevent double-spend race conditions.
     const { withdrawal, availableBalance } = await db.$transaction(
       async (tx) => {
-        // Compute balance inside transaction (snapshot read)
-        const bookings = await tx.booking.findMany({
-          where: { providerId: session.userId, paymentStatus: "PAID", status: "COMPLETED" },
-          select: { amount: true },
-        })
-        const earned = bookings.reduce((acc, b) => acc + Math.round(b.amount * (1 - FEE_RATE) * 100) / 100, 0)
+        // Compute balance via aggregation (no full table load)
+        const [bookingAgg, withdrawalAgg] = await Promise.all([
+          tx.booking.aggregate({
+            where: { providerId: session.userId, paymentStatus: "PAID", status: "COMPLETED" },
+            _sum: { amount: true },
+          }),
+          tx.walletTransaction.aggregate({
+            where: { providerId: session.userId, status: "completed" },
+            _sum: { amount: true },
+          }),
+        ])
 
-        const existingWithdrawals = await tx.walletTransaction.findMany({
-          where: { providerId: session.userId, status: "completed" },
-          select: { amount: true },
-        })
-        const totalWithdrawn = existingWithdrawals.reduce((acc, w) => acc + w.amount, 0)
+        const earned = Number(bookingAgg._sum.amount ?? 0) * (1 - FEE_RATE)
+        const totalWithdrawn = Number(withdrawalAgg._sum.amount ?? 0)
         const available = Math.max(0, Math.round((earned - totalWithdrawn) * 100) / 100)
 
         if (withdrawAmount > available) {

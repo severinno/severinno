@@ -12,6 +12,10 @@
 #   TELEGRAM_BOT_TOKEN — Token do bot Telegram (obtido via @BotFather)
 #   TELEGRAM_CHAT_ID   — ID do chat/grupo pra enviar alertas
 #   APP_URL            — URL do health check (default: http://localhost:3000)
+#
+# Exit codes:
+#   0 — success
+#   1 — failure
 # =============================================================================
 
 set -euo pipefail

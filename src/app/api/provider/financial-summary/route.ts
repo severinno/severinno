@@ -20,55 +20,55 @@ export async function GET() {
 
     const providerId = session.userId
 
-    // 1. Fetch completed bookings (released or settled)
-    const completedBookings = await db.booking.findMany({
-      where: {
-        providerId,
-        status: "COMPLETED",
-      },
+    // 1. Aggregated totals via SQL (no full table load)
+    const [completedAgg, custodyAgg, escrowAgg] = await Promise.all([
+      db.booking.aggregate({
+        where: { providerId, status: "COMPLETED" },
+        _sum: { amount: true },
+        _count: true,
+      }),
+      db.booking.aggregate({
+        where: {
+          providerId,
+          status: { in: ["CONFIRMED", "IN_PROGRESS"] },
+          paymentStatus: { in: ["PAID", "HELD"] },
+        },
+        _sum: { amount: true },
+        _count: true,
+      }),
+      db.booking.aggregate({
+        where: {
+          providerId,
+          status: "COMPLETED",
+          paymentStatus: "PAID",
+          escrowReleasedAt: { not: null },
+        },
+        _sum: { amount: true },
+      }),
+    ])
+
+    const totalGross = Number(completedAgg._sum.amount ?? 0)
+    const totalPlatformFee = Math.round(totalGross * 0.1 * 100) / 100
+    const totalNet = Math.round((totalGross - totalPlatformFee) * 100) / 100
+    const custodyBalance = Number(custodyAgg._sum.amount ?? 0)
+    // Available = released escrow (90% of PAID with escrowReleasedAt)
+    const availableBalance = Math.round(Number(escrowAgg._sum.amount ?? 0) * 0.9 * 100) / 100
+
+    // 2. Recent transactions (paginated, not all 500)
+    const recentBookings = await db.booking.findMany({
+      where: { providerId, status: "COMPLETED" },
       select: {
         id: true,
         amount: true,
-        paymentStatus: true,
-        escrowReleasedAt: true,
-        createdAt: true,
         updatedAt: true,
         service: { select: { title: true } },
         client: { select: { name: true } },
       },
       orderBy: { updatedAt: "desc" },
-      take: 500,
+      take: 15,
     })
 
-    // 2. Fetch bookings currently in custody (PAID or HELD, waiting for completion/escrow release)
-    const custodyBookings = await db.booking.findMany({
-      where: {
-        providerId,
-        status: { in: ["CONFIRMED", "IN_PROGRESS"] },
-        paymentStatus: { in: ["PAID", "HELD"] },
-      },
-      select: {
-        id: true,
-        amount: true,
-        paymentStatus: true,
-        createdAt: true,
-        service: { select: { title: true } },
-        client: { select: { name: true } },
-      },
-      take: 100,
-    })
-
-    const totalGross = completedBookings.reduce((sum, b) => sum + b.amount, 0)
-    // Platform standard fee is 10%
-    const totalPlatformFee = Math.round(totalGross * 0.1 * 100) / 100
-    const totalNet = Math.round((totalGross - totalPlatformFee) * 100) / 100
-
-    const custodyBalance = custodyBookings.reduce((sum, b) => sum + b.amount, 0)
-    const availableBalance = completedBookings
-      .filter((b) => b.escrowReleasedAt !== null || b.paymentStatus === "PAID")
-      .reduce((sum, b) => sum + b.amount * 0.9, 0)
-
-    const recentTransactions = completedBookings.slice(0, 15).map((b) => ({
+    const recentTransactions = recentBookings.map((b) => ({
       id: b.id,
       date: b.updatedAt,
       serviceTitle: b.service.title,
@@ -85,9 +85,9 @@ export async function GET() {
         totalNet,
         totalPlatformFee,
         custodyBalance: Math.round(custodyBalance * 100) / 100,
-        availableBalance: Math.round(availableBalance * 100) / 100,
-        completedCount: completedBookings.length,
-        inProgressCount: custodyBookings.length,
+        availableBalance,
+        completedCount: completedAgg._count,
+        inProgressCount: custodyAgg._count,
       },
       transactions: recentTransactions,
     })

@@ -7,7 +7,12 @@
 #   1. ~/cloudflared (binário instalado)
 #   2. ~/.cloudflared/cert.pem (autenticado via 'cloudflared tunnel login')
 #
-# Usage: ./scripts/setup-cloudflare-tunnel-ci.sh
+# Usage:
+#   bash scripts/setup-cloudflare-tunnel-ci.sh [args]
+#
+# Exit codes:
+#   0 — success
+#   1 — failure
 # ---------------------------------------------------------------------------
 
 set -euo pipefail

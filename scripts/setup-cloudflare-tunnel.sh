@@ -8,8 +8,12 @@
 #   2. Nameservers do domínio apontando pro Cloudflare
 #   3. cloudflared instalado em ~/cloudflared
 #
-# Uso:
-#   ./scripts/setup-cloudflare-tunnel.sh
+# Usage:
+#   bash scripts/setup-cloudflare-tunnel.sh [args]
+#
+# Exit codes:
+#   0 — success
+#   1 — failure
 # ---------------------------------------------------------------------------
 
 set -euo pipefail

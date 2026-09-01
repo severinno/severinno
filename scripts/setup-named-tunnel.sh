@@ -9,8 +9,11 @@
 #   4. Run: cloudflared tunnel login (opens browser for auth)
 #
 # Usage:
-#   chmod +x scripts/setup-named-tunnel.sh
-#   ./scripts/setup-named-tunnel.sh
+#   bash scripts/setup-named-tunnel.sh [args]
+#
+# Exit codes:
+#   0 — success
+#   1 — failure
 # =============================================================================
 
 set -euo pipefail

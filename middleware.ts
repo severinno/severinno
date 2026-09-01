@@ -35,6 +35,7 @@ import { checkGlobalRateLimit, globalRateLimitHeaders } from "@/lib/global-rate-
 import { checkRouteRateLimit, routeRateLimitHeaders } from "@/lib/route-rate-limit"
 import { handleApiVersioning } from "@/lib/api-versioning"
 import { Redis } from "@upstash/redis/cloudflare"
+import { generateCsrfToken, verifyCsrfToken, CSRF_COOKIE, CSRF_HEADER, MAX_AGE } from "@/lib/csrf"
 
 // ── Request ID generation (Edge-compatible) ──────────────────────────────
 
@@ -249,6 +250,28 @@ function getRateLimitWhitelist(): string[] {
 }
 
 // ---------------------------------------------------------------------------
+// CSRF protection — sensitive mutation routes
+// ---------------------------------------------------------------------------
+
+const CSRF_SENSITIVE_PREFIXES = [
+  "/api/auth/change-password",
+  "/api/auth/2fa/",
+  "/api/provider/wallet/withdraw",
+  "/api/bookings",
+  "/api/reviews",
+  "/api/messages",
+]
+
+function isCsrfSensitive(pathname: string, method: string): boolean {
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return false
+  return CSRF_SENSITIVE_PREFIXES.some((p) => pathname.startsWith(p))
+}
+
+function isCsrfProtected(pathname: string): boolean {
+  return CSRF_SENSITIVE_PREFIXES.some((p) => pathname.startsWith(p))
+}
+
+// ---------------------------------------------------------------------------
 // Route protection rules
 // ---------------------------------------------------------------------------
 
@@ -445,10 +468,7 @@ export async function middleware(request: NextRequest) {
       pathname === "/como-funciona" ||
       pathname === "/contato"
     if (isPublicPage && request.method === "GET") {
-      response.headers.set(
-        "Cache-Control",
-        "public, s-maxage=60, stale-while-revalidate=300",
-      )
+      response.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300")
     }
     return response
   }
@@ -465,16 +485,10 @@ export async function middleware(request: NextRequest) {
 
       if (isHotEndpoint) {
         // Providers/categories: cache 5 min, serve stale 30 min
-        response.headers.set(
-          "Cache-Control",
-          "public, s-maxage=300, stale-while-revalidate=1800",
-        )
+        response.headers.set("Cache-Control", "public, s-maxage=300, stale-while-revalidate=1800")
       } else {
         // Other public APIs: cache 1 min, serve stale 5 min
-        response.headers.set(
-          "Cache-Control",
-          "public, s-maxage=60, stale-while-revalidate=300",
-        )
+        response.headers.set("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300")
       }
     }
     return response
@@ -537,6 +551,38 @@ export async function middleware(request: NextRequest) {
   // --- Forward user info to API routes ---
   response.headers.set("x-user-id", session.userId)
   response.headers.set("x-user-role", session.role)
+
+  // --- CSRF protection for sensitive routes ---
+  if (isApi && sessionSecret) {
+    if (isCsrfProtected(pathname)) {
+      // On GET: set CSRF token cookie if not present
+      if (request.method === "GET" && !request.cookies.get(CSRF_COOKIE)) {
+        const token = await generateCsrfToken(sessionSecret)
+        response.cookies.set(CSRF_COOKIE, token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "strict",
+          maxAge: MAX_AGE,
+          path: "/",
+        })
+      }
+
+      // On mutations: verify X-CSRF-Token header matches cookie
+      if (isCsrfSensitive(pathname, request.method)) {
+        const cookieToken = request.cookies.get(CSRF_COOKIE)?.value
+        const headerToken = request.headers.get(CSRF_HEADER)
+
+        if (!cookieToken || !headerToken) {
+          return NextResponse.json({ error: "CSRF token ausente" }, { status: 403 })
+        }
+
+        const valid = await verifyCsrfToken(cookieToken, sessionSecret)
+        if (!valid || cookieToken !== headerToken) {
+          return NextResponse.json({ error: "CSRF token inválido" }, { status: 403 })
+        }
+      }
+    }
+  }
 
   return response
 }

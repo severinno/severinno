@@ -2,6 +2,13 @@
 # ---------------------------------------------------------------------------
 # restart-caddy.sh — Reinicia o Caddy reverse proxy
 # ---------------------------------------------------------------------------
+#
+# Usage:
+#   bash scripts/restart-caddy.sh [args]
+#
+# Exit codes:
+#   0 — success
+#   1 — failure
 
 set -euo pipefail
 
