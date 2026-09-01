@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError, parsePagination } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * ADMIN: list services with server-side filtering + pagination.
@@ -9,6 +10,7 @@ import { handleError, parsePagination } from "@/lib/api-server"
  */
 export async function GET(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.admin)
     await requireRole("ADMIN")
     const { searchParams } = new URL(request.url)
     const q = searchParams.get("q")?.trim() || undefined
@@ -29,7 +31,17 @@ export async function GET(request: Request) {
         where,
         include: {
           category: true,
-          provider: { select: { id: true, name: true, avatarUrl: true, city: true, state: true, verified: true, active: true } },
+          provider: {
+            select: {
+              id: true,
+              name: true,
+              avatarUrl: true,
+              city: true,
+              state: true,
+              verified: true,
+              active: true,
+            },
+          },
           _count: { select: { bookings: true, reviews: true } },
         },
         orderBy: { createdAt: "desc" },

@@ -2,10 +2,12 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // ADMIN: aggregate marketplace stats
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.admin)
     await requireRole("ADMIN")
 
     const [
@@ -37,10 +39,19 @@ export async function GET() {
           provider: { select: { id: true, name: true, avatarUrl: true } },
         },
       }),
-      // Top providers by avg rating (need raw aggregation in JS)
+      // Use denormalized fields (avgRating, reviewCount) instead of loading all reviews
       db.user.findMany({
         where: { role: "PROVIDER", active: true, verified: true },
-        include: { reviewsReceived: { select: { rating: true } } },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatarUrl: true,
+          avgRating: true,
+          reviewCount: true,
+        },
+        orderBy: { avgRating: "desc" },
+        take: 20,
       }),
     ])
 
@@ -57,19 +68,14 @@ export async function GET() {
       quotesByStatus[row.status] = row._count._all
     }
 
-    const topProviders = topProvidersRows
-      .map((p) => {
-        const ratings = p.reviewsReceived.map((r) => r.rating)
-        const avg = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0
-        const { reviewsReceived: _ignored, ...rest } = p
-        return {
-          ...rest,
-          rating: Math.round(avg * 10) / 10,
-          reviewCount: ratings.length,
-        }
-      })
-      .sort((a, b) => b.rating - a.rating || b.reviewCount - a.reviewCount)
-      .slice(0, 5)
+    const topProviders = topProvidersRows.slice(0, 5).map((p) => ({
+      id: p.id,
+      name: p.name,
+      email: p.email,
+      avatarUrl: p.avatarUrl,
+      rating: Math.round((p.avgRating ?? 0) * 10) / 10,
+      reviewCount: p.reviewCount ?? 0,
+    }))
 
     return NextResponse.json({
       usersByRole,

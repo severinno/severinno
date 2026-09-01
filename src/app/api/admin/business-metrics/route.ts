@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 export type BusinessMetricsResponse = {
   gmv: number // Gross Merchandise Volume
@@ -24,8 +25,9 @@ export type BusinessMetricsResponse = {
  * GET /api/admin/business-metrics
  * Returns executive marketplace SaaS KPIs (GMV, Platform Net Revenue, Take Rate, Top Districts).
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.admin)
     await requireRole("ADMIN")
 
     // 1. All Bookings summary

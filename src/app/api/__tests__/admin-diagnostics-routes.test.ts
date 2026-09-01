@@ -51,10 +51,14 @@ vi.mock("@/lib/api-server", async (importOriginal) => {
     handleError: vi.fn((e: unknown) => {
       const message = e instanceof Error ? e.message : String(e)
       const domainErr = e as { name?: string; status?: number; code?: string }
-      const status = message === "UNAUTHORIZED" ? 401
-        : domainErr?.name === "AuthError" ? (domainErr.status ?? 403)
-        : message === "FORBIDDEN" ? 403
-        : 500
+      const status =
+        message === "UNAUTHORIZED"
+          ? 401
+          : domainErr?.name === "AuthError"
+            ? (domainErr.status ?? 403)
+            : message === "FORBIDDEN"
+              ? 403
+              : 500
       return new Response(JSON.stringify({ error: message, code: domainErr?.code }), {
         status,
         headers: { "content-type": "application/json" },
@@ -258,6 +262,10 @@ import { GET as GETRedisDiagnostics } from "../admin/redis-diagnostics/route"
 
 const MOCK_ADMIN = { userId: "admin-1", role: "ADMIN" as const }
 
+function mockRequest(path = "/api/admin/benchmarks"): Request {
+  return new Request(`http://localhost:3000${path}`)
+}
+
 function buildRequest(url: string): NextRequest {
   return new NextRequest(new Request(url))
 }
@@ -430,13 +438,13 @@ describe("GET /api/admin/benchmarks", () => {
   it("returns 401 when requireRole rejects", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await GETBenchmarks()
+    const res = await GETBenchmarks(mockRequest())
 
     expect(res.status).toBe(401)
   })
 
   it("returns an empty summary when the benchmarks dir has no files", async () => {
-    const res = await GETBenchmarks()
+    const res = await GETBenchmarks(mockRequest())
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -458,7 +466,7 @@ describe("GET /api/admin/benchmarks", () => {
       String(filePath).includes("baseline") ? GEO_BASELINE_JSON : GEO_LATEST_JSON,
     )
 
-    const res = await GETBenchmarks()
+    const res = await GETBenchmarks(mockRequest())
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -489,7 +497,7 @@ describe("GET /api/admin/benchmarks", () => {
     mockReaddirSync.mockImplementation(() => ["cache-baseline.json", "cache-latest.json"])
     mockReadFileSync.mockImplementation(() => CACHE_STABLE_JSON)
 
-    const res = await GETBenchmarks()
+    const res = await GETBenchmarks(mockRequest())
     const body = await res.json()
 
     expect(body.runs.cache).toHaveLength(2)
@@ -509,7 +517,7 @@ describe("GET /api/admin/benchmarks", () => {
     })
     vi.mocked(db.user.findMany).mockResolvedValue([{ email: "admin@severinno.com.br" }] as any)
 
-    const res = await GETBenchmarks()
+    const res = await GETBenchmarks(mockRequest())
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -593,7 +601,11 @@ describe("GET /api/admin/coverage", () => {
   })
 
   it("returns 403 when requireRole throws FORBIDDEN", async () => {
-    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" })
+    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), {
+      status: 403,
+      code: "FORBIDDEN",
+      name: "AuthError",
+    })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
     const res = await GETCoverage()
@@ -740,7 +752,11 @@ describe("GET /api/admin/geo-cache-diagnostics", () => {
   })
 
   it("returns 403 when requireRole throws FORBIDDEN", async () => {
-    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" })
+    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), {
+      status: 403,
+      code: "FORBIDDEN",
+      name: "AuthError",
+    })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
     const res = await GETGeoCacheDiagnostics()
@@ -801,7 +817,11 @@ describe("GET /api/admin/geo-metrics", () => {
   })
 
   it("returns 403 when requireRole throws FORBIDDEN", async () => {
-    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" })
+    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), {
+      status: 403,
+      code: "FORBIDDEN",
+      name: "AuthError",
+    })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
     const res = await GETGeoMetrics()
@@ -882,7 +902,11 @@ describe("GET /api/admin/geo-metrics/timeline", () => {
   })
 
   it("returns 403 when requireRole throws FORBIDDEN", async () => {
-    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" })
+    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), {
+      status: 403,
+      code: "FORBIDDEN",
+      name: "AuthError",
+    })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
     const res = await GETGeoMetricsTimeline(
@@ -1019,7 +1043,11 @@ describe("GET /api/admin/geo-rate-limit-status", () => {
   })
 
   it("returns 403 when requireRole throws FORBIDDEN", async () => {
-    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" })
+    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), {
+      status: 403,
+      code: "FORBIDDEN",
+      name: "AuthError",
+    })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
     const res = await GETGeoRateLimitStatus()
@@ -1060,7 +1088,11 @@ describe("POST /api/admin/geo-rate-limit-status/reset", () => {
   })
 
   it("returns 403 when requireRole throws FORBIDDEN", async () => {
-    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" })
+    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), {
+      status: 403,
+      code: "FORBIDDEN",
+      name: "AuthError",
+    })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
     const res = await POSTGeoRateLimitReset()
@@ -1187,7 +1219,11 @@ describe("GET /api/admin/global-rate-limit-status", () => {
   })
 
   it("returns 403 when requireRole throws FORBIDDEN", async () => {
-    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" })
+    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), {
+      status: 403,
+      code: "FORBIDDEN",
+      name: "AuthError",
+    })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
     const res = await GETGlobalRateLimitStatus()
@@ -1226,7 +1262,11 @@ describe("POST /api/admin/global-rate-limit-status/reset", () => {
   })
 
   it("returns 403 when requireRole throws FORBIDDEN", async () => {
-    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" })
+    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), {
+      status: 403,
+      code: "FORBIDDEN",
+      name: "AuthError",
+    })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
     const res = await POSTGlobalRateLimitReset()
@@ -1370,7 +1410,11 @@ describe("GET /api/admin/redis-diagnostics", () => {
   })
 
   it("returns 403 when requireRole throws FORBIDDEN", async () => {
-    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" })
+    const forbiddenErr = Object.assign(new Error("FORBIDDEN"), {
+      status: 403,
+      code: "FORBIDDEN",
+      name: "AuthError",
+    })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
     const res = await GETRedisDiagnostics()

@@ -30,6 +30,15 @@ vi.mock("@/lib/auth", () => ({
   requireRole: vi.fn(),
 }))
 
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn().mockResolvedValue(undefined),
+  RATE_LIMITS: { admin: { prefix: "admin", max: 30, windowMs: 60000 } },
+}))
+
+function mockRequest() {
+  return new Request("http://localhost:3000/api/admin/stats")
+}
+
 describe("GET /api/admin/stats", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -58,11 +67,14 @@ describe("GET /api/admin/stats", () => {
       {
         id: "p1",
         name: "Top Provider",
-        reviewsReceived: [{ rating: 5 }, { rating: 5 }],
+        email: "top@example.com",
+        avatarUrl: null,
+        avgRating: 5,
+        reviewCount: 2,
       } as any,
     ])
 
-    const res = await GET()
+    const res = await GET(mockRequest())
     const json = await res.json()
 
     expect(res.status).toBe(200)
@@ -86,7 +98,7 @@ describe("GET /api/admin/stats", () => {
     vi.mocked(db.booking.findMany).mockResolvedValue([])
     vi.mocked(db.user.findMany).mockResolvedValue([])
 
-    const res = await GET()
+    const res = await GET(mockRequest())
     const json = await res.json()
 
     expect(res.status).toBe(200)

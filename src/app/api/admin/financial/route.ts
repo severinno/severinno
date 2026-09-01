@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { FEE_RATE } from "@/lib/wallet"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // =============================================================================
 // GET /api/admin/financial — Admin financial dashboard
@@ -10,8 +11,9 @@ import { FEE_RATE } from "@/lib/wallet"
 // Returns: revenue metrics, projections, top providers, commission breakdown
 // =============================================================================
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.admin)
     const session = await requireUser()
     if (session.role !== "ADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
@@ -135,9 +137,7 @@ export async function GET() {
     for (let i = 11; i >= 0; i--) {
       const m = new Date(now.getFullYear(), now.getMonth() - i, 1)
       const mEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1)
-      const monthBookings = yearBookings.filter(
-        (b) => b.createdAt >= m && b.createdAt < mEnd,
-      )
+      const monthBookings = yearBookings.filter((b) => b.createdAt >= m && b.createdAt < mEnd)
       const revenue = monthBookings.reduce((s, b) => s + b.amount, 0)
       monthlyTrend.push({
         month: m.toISOString().slice(0, 7),

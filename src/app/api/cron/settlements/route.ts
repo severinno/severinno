@@ -8,19 +8,17 @@ import { FEE_RATE } from "@/lib/constants"
  * Called by an external scheduler (cron-job.org, system cron, etc.)
  * at the end of each month (or week).
  *
- * GET /api/cron/settlements?type=MONTHLY&key=CRON_SECRET
+ * GET /api/cron/settlements?type=MONTHLY
+ * Authorization: Bearer CRON_SECRET
  */
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const cronSecret = process.env.CRON_SECRET
     const authHeader = request.headers.get("authorization")
-    const key = searchParams.get("key")
 
-    // Fail-closed: require either valid Bearer token or valid query param
-    const authorized =
-      (cronSecret && authHeader === `Bearer ${cronSecret}`) || (cronSecret && key === cronSecret)
-    if (!authorized) {
+    // Fail-closed: require valid Bearer token only (no query param — avoids log leakage)
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 

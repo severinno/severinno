@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
 import { z } from "zod"
+import { sanitizeText } from "@/lib/sanitize"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -41,14 +42,14 @@ export async function POST(request: Request, { params }: Params) {
       db.dispute.create({
         data: {
           bookingId: id,
-          reason,
+          reason: sanitizeText(reason),
           status: "OPEN",
         },
       }),
       db.booking.update({
         where: { id },
         data: {
-          escrowDisputeReason: reason,
+          escrowDisputeReason: sanitizeText(reason),
         },
       }),
     ])
