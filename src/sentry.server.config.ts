@@ -15,7 +15,7 @@ if (dsn) {
 
     // ── Error filtering (server-side) ────────────────────────────────────────
     beforeSend(event) {
-      const msg = event.message?.formatted ?? ""
+      const msg = typeof event.message === "string" ? event.message : (event.message as any)?.formatted ?? ""
       const exc = event.exception?.values?.[0]?.value ?? ""
       const combined = `${msg} ${exc}`
 
