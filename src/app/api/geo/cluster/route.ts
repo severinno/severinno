@@ -47,6 +47,8 @@ function resolveH3Resolution(zoom: number): number {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
+    const { assertRateLimit, RATE_LIMITS } = await import("@/lib/rate-limit")
+    await assertRateLimit(request, RATE_LIMITS.geo)
     const minLat = Number(searchParams.get("minLat"))
     const minLng = Number(searchParams.get("minLng"))
     const maxLat = Number(searchParams.get("maxLat"))
@@ -116,27 +118,37 @@ async function clusterWithPostGIS(
   categoryId: string | undefined,
   limit: number,
 ): Promise<ClusterCell[]> {
-  const categoryFilter = categoryId
-    ? `AND u."id" IN (
-        SELECT s."providerId" FROM "Service" s
-        WHERE s."categoryId" = ${categoryId} AND s.active = true
-      )`
-    : ""
-
-  const rows = await db.$queryRaw<Array<{ id: string; lat: number; lng: number }>>`
-    SELECT u.id, u.lat, u.lng
-    FROM "User" u
-    WHERE
-      u.role = 'PROVIDER'
-      AND u.active = true
-      AND u."deletedAt" IS NULL
-      AND u.lat IS NOT NULL
-      AND u.lng IS NOT NULL
-      AND u.location IS NOT NULL
-      AND u.location && ST_MakeEnvelope(${minLng}, ${minLat}, ${maxLng}, ${maxLat}, 4326)::geography
-      ${categoryFilter ? [categoryFilter] : []}
-    LIMIT ${limit}
-  `
+  const rows = categoryId
+    ? await db.$queryRaw<Array<{ id: string; lat: number; lng: number }>>`
+        SELECT u.id, u.lat, u.lng
+        FROM "User" u
+        WHERE
+          u.role = 'PROVIDER'
+          AND u.active = true
+          AND u."deletedAt" IS NULL
+          AND u.lat IS NOT NULL
+          AND u.lng IS NOT NULL
+          AND u.location IS NOT NULL
+          AND u.location && ST_MakeEnvelope(${minLng}, ${minLat}, ${maxLng}, ${maxLat}, 4326)::geography
+          AND u."id" IN (
+            SELECT s."providerId" FROM "Service" s
+            WHERE s."categoryId" = ${categoryId} AND s.active = true
+          )
+        LIMIT ${limit}
+      `
+    : await db.$queryRaw<Array<{ id: string; lat: number; lng: number }>>`
+        SELECT u.id, u.lat, u.lng
+        FROM "User" u
+        WHERE
+          u.role = 'PROVIDER'
+          AND u.active = true
+          AND u."deletedAt" IS NULL
+          AND u.lat IS NOT NULL
+          AND u.lng IS NOT NULL
+          AND u.location IS NOT NULL
+          AND u.location && ST_MakeEnvelope(${minLng}, ${minLat}, ${maxLng}, ${maxLat}, 4326)::geography
+        LIMIT ${limit}
+      `
 
   return buildClusterCells(rows, resolution)
 }
