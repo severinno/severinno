@@ -28,23 +28,25 @@ import Topbar from "./topbar"
 import Hero from "./hero"
 import CategoryShowcase from "./category-showcase"
 import VitrineResults from "./vitrine-results"
-import HowItWorks from "./how-it-works"
-import QuickQuoteCalculator from "./quick-quote-calculator"
-import PartnersTrust from "./partners-trust"
-import Testimonials from "./testimonials"
-import FAQ from "./faq"
-import WhySeverinno from "./why-severinno"
-import CtaBanner from "./cta-banner"
-import ProviderSpotlight from "./provider-spotlight"
 import { RecentlyViewed } from "./recently-viewed"
 import NearbyProviders from "./nearby-providers"
 import ProviderSpotlightGeo from "./provider-spotlight-geo"
 import CompareBar from "./compare-bar"
-import CompareModal from "./compare-modal"
 import BackToTop from "./back-to-top"
 import Footer from "../shared/footer"
-import AIChatWidget from "../shared/ai-chat-widget"
-import CookieConsent from "../shared/cookie-consent"
+
+// Lazy-loaded below-the-fold components (code-split)
+const HowItWorks = React.lazy(() => import("./how-it-works"))
+const QuickQuoteCalculator = React.lazy(() => import("./quick-quote-calculator"))
+const PartnersTrust = React.lazy(() => import("./partners-trust"))
+const Testimonials = React.lazy(() => import("./testimonials"))
+const FAQ = React.lazy(() => import("./faq"))
+const WhySeverinno = React.lazy(() => import("./why-severinno"))
+const CtaBanner = React.lazy(() => import("./cta-banner"))
+const ProviderSpotlight = React.lazy(() => import("./provider-spotlight"))
+const CompareModal = React.lazy(() => import("./compare-modal"))
+const AIChatWidget = React.lazy(() => import("../shared/ai-chat-widget"))
+const CookieConsent = React.lazy(() => import("../shared/cookie-consent"))
 import { DEFAULT_FILTERS, type FiltersState } from "./filters"
 
 const RESULTS_ANCHOR_ID = "vitrine-resultados"
@@ -68,28 +70,24 @@ function LazySection({ children }: { children: React.ReactNode }) {
           observer.disconnect()
         }
       },
-      { rootMargin: "200px" },
+      { rootMargin: "300px" },
     )
     observer.observe(el)
     return () => observer.disconnect()
   }, [])
 
+  if (!visible) return <div ref={ref} className="min-h-[100px]" />
+
   return (
-    <div ref={ref}>
-      {visible ? (
-        <Suspense
-          fallback={
-            <div className="flex items-center justify-center py-16">
-              <div className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            </div>
-          }
-        >
-          {children}
-        </Suspense>
-      ) : (
-        <div className="min-h-[200px]" />
-      )}
-    </div>
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-12">
+          <div className="size-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      }
+    >
+      {children}
+    </Suspense>
   )
 }
 
@@ -338,13 +336,19 @@ export default function Vitrine() {
       {/* Floating UI — compare bar + back-to-top + AI chat */}
       <CompareBar />
       <BackToTop />
-      <AIChatWidget />
+      <Suspense fallback={null}>
+        <AIChatWidget />
+      </Suspense>
 
       {/* Compare modal — portal-mounted by Radix */}
-      <CompareModal />
+      <Suspense fallback={null}>
+        <CompareModal />
+      </Suspense>
 
       {/* Cookie consent banner — LGPD compliance */}
-      <CookieConsent />
+      <Suspense fallback={null}>
+        <CookieConsent />
+      </Suspense>
     </div>
   )
 }
