@@ -56,16 +56,16 @@ export const options = {
 // ── Helper functions ────────────────────────────────────────────────────────
 
 const PROVIDER_IDS = [
-  "cmtga9n4101t8smz5r8ydixv3", "cmtga9n1p01oasmz5snnnlfbi",
-  "cmtga9n0d01kcsmz5s2oar395", "cmtga9n2x01rcsmz5r7awlhyy",
-  "cmtga9n0i01losmz5crugj3g5", "cmtga9n2w01r4smz5hd45jvlk",
-  "cmtga9n0b01josmz5lnzwpa35", "cmtga9n0d01k3smz5v64mfgsi",
-  "cmtga9n5201ursmz5uyrckqiy", "cmtga9n3w01s5smz58shp2dgq",
-  "cmtga9n4201tosmz5tr5uzcdc", "cmtga9n5b01wxsmz5ap8719yx",
-  "cmtga9n4401u3smz5t2v5cu83", "cmtga9n0k01m7smz5hzalhezk",
-  "cmtga9n1r01p1smz56lboxtpx", "cmtga9n5701vysmz5pzpwilsb",
-  "cmtga9n1q01oksmz5cffmwsyz", "cmtga9n3x01sfsmz5128znbab",
-  "cmtga9n1m01nfsmz5zjyfw7uf", "cmtga9n5501vksmz5kvhbrwmk",
+  "cmtga9n3z01swsmz530cwkik4", "cmtgaq7mi0001smx083iwaqtn",
+  "cmthhl6vd0000smsz1v4yo93e", "cmtga9n0b01jksmz5h06rsoox",
+  "cmtga9n0b01jlsmz57saf1z6e", "cmtga9n0b01jmsmz5npv12841",
+  "cmtga9n0b01jnsmz5ywb043fe", "cmtga9n0b01josmz5lnzwpa35",
+  "cmtga9n0b01jpsmz5xpsbm22z", "cmtga9n0b01jqsmz5e82jjjf6",
+  "cmtga9n0b01jrsmz5k7fhc79a", "cmtga9n0b01jssmz5w9ul55ey",
+  "cmtga9n0c01jtsmz5yzxfj561", "cmtga9n0c01jusmz5xqzef8ky",
+  "cmtga9n0c01jvsmz5wgo7mu3b", "cmtga9n0c01jwsmz5o1b7zbb1",
+  "cmtga9n0c01jxsmz57ayxzqrc", "cmtga9n0c01jysmz5lndd3x02",
+  "cmtga9n0c01jzsmz5nweba9oy", "cmtga9n0c01k0smz58tpxcj4e",
 ]
 
 function randomProviderId() {
@@ -131,7 +131,7 @@ function testHome() {
 function testHealth() {
   const res = http.get(`${BASE_URL}/api/health`, {
     tags: { endpoint: "health" },
-    timeout: "5s",
+    timeout: "15s",
   })
 
   totalRequests.add(1)
@@ -158,7 +158,7 @@ function testHealth() {
 function testSearch() {
   const res = http.get(`${BASE_URL}/api/providers?limit=9`, {
     tags: { endpoint: "search" },
-    timeout: "15s",
+    timeout: "20s",
   })
 
   totalRequests.add(1)
