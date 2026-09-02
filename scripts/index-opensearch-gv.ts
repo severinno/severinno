@@ -365,7 +365,7 @@ async function main() {
   const hits = testResult.body.hits.hits
   console.log(`   Found ${testResult.body.hits.total.value} results:`)
   for (const hit of hits) {
-    console.log(`   - ${hit._source.title} (${hit._source.categoryName}) — R$ ${hit._source.basePrice}`)
+    console.log(`   - ${hit._source?.title} (${hit._source?.categoryName}) — R$ ${hit._source?.basePrice}`)
   }
 }
 
