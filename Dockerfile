@@ -3,10 +3,16 @@
 # =============================================================================
 # Stage 1-2: Bun for dependency install + build (fast, native lockfile)
 # Stage 3:   Node.js for the standalone server (Next.js needs Node)
+#
+# Build:
+#   docker build --build-arg BUN_VERSION=1.4.0 -t severinno .
 # =============================================================================
 
+# ── Bun version (single source of truth — CI passes via --build-arg) ────────
+ARG BUN_VERSION=1.4.0
+
 # ── Base: Bun runtime ────────────────────────────────────────────────────────
-FROM oven/bun:1-alpine AS base
+FROM oven/bun:${BUN_VERSION}-alpine AS base
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
