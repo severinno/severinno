@@ -341,16 +341,13 @@ export async function middleware(request: NextRequest) {
   response.headers.set("x-request-id", requestId)
 
   // --- Security headers (applied to ALL responses) ---
+  // Note: Static headers (HSTS, X-Frame-Options, X-Content-Type-Options,
+  // Referrer-Policy, Permissions-Policy) are set by Caddy reverse proxy.
+  // Only dynamic/Next.js-specific headers are set here.
   response.headers.set("X-DNS-Prefetch-Control", "on")
-  response.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload")
-  response.headers.set("X-Content-Type-Options", "nosniff")
-  response.headers.set("X-Frame-Options", "DENY")
-  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
-  response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)")
   response.headers.set("Vary", "Accept-Encoding")
 
-  // Content-Security-Policy
-  // Dynamically allow self-origin for connect-src
+  // Content-Security-Policy (dynamic — uses request origin)
   const requestOrigin = request.headers.get("origin") || "https://severinno.com"
   const cspDirectives = [
     "default-src 'self'",

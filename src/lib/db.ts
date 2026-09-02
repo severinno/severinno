@@ -118,6 +118,35 @@ const globalForPrisma = globalThis as unknown as {
   prisma: ExtendedPrismaClient | undefined
 }
 
-export const db = globalForPrisma.prisma ?? createPrismaClient()
+// Lazy initialization — avoids triggering DB connections during `next build`.
+// The getter defers createPrismaClient() until the first actual database access.
+let _db: ExtendedPrismaClient | null = null
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db
+function getDb(): ExtendedPrismaClient {
+  if (_db) return _db
+  if (process.env.NODE_ENV !== "production" && globalForPrisma.prisma) {
+    _db = globalForPrisma.prisma
+    return _db
+  }
+  _db = createPrismaClient()
+  if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = _db
+  return _db
+}
+
+// Proxy that lazily initializes the Prisma client on first property access.
+// This prevents DB connections during `next build` when modules are imported
+// but never queried.
+export const db = new Proxy({} as ExtendedPrismaClient, {
+  get(_target, prop, receiver) {
+    const client = getDb()
+    const value = Reflect.get(client, prop, receiver)
+    if (typeof value === "function") {
+      return value.bind(client)
+    }
+    return value
+  },
+})
+
+// Re-export the direct client for edge cases that need the real instance.
+// Accessing `db.$extends(...)` or `db.$transaction(...)` works through the proxy.
+export { getDb as getPrismaClient }

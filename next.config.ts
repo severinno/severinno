@@ -21,18 +21,11 @@ const nextConfig: NextConfig = {
       process.env.DOCKER_BUILD === "true" && process.env.SKIP_TYPESCRIPT_CHECK === "true",
   },
 
-  // Static security headers (CSP is handled by middleware)
+  // Security headers are set by Caddy reverse proxy (HSTS, X-Frame-Options,
+  // X-Content-Type-Options, Referrer-Policy, Permissions-Policy, CSP).
+  // Only dynamic headers are set in middleware.ts.
   async headers() {
-    return [
-      {
-        source: "/(.*)",
-        headers: [
-          { key: "X-Frame-Options", value: "DENY" },
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-        ],
-      },
-    ]
+    return []
   },
 
   // Image optimization

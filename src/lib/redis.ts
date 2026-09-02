@@ -584,7 +584,9 @@ function startCleanupTimer(): void {
 }
 
 // Start background timers (safe in Node.js, gracefully skipped in Edge)
-if (typeof setInterval !== "undefined") {
+// Start background timers only at runtime (not during `next build`).
+// NEXT_RUNTIME is set by Next.js instrumentation hook — undefined during build.
+if (typeof setInterval !== "undefined" && process.env.NEXT_RUNTIME === "nodejs") {
   startCleanupTimer()
   startRecheckTimer()
 }

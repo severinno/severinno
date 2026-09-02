@@ -9,7 +9,7 @@ services:
     depends_on: [db, redis]
     restart: unless-stopped
   db:
-    image: postgres:16-alpine
+    image: postgis/postgis:16-3.4-alpine
     environment:
       POSTGRES_DB: severinno
       POSTGRES_USER: postgres
