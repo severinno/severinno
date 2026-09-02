@@ -106,8 +106,9 @@ describe("src/middleware — global rate limit (Upstash → in-memory)", () => {
     expect(response.headers.get("X-RateLimit-Limit")).toBe("100")
     expect(response.headers.get("X-RateLimit-Remaining")).toBe("99")
 
-    // Security headers continuam presentes
-    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff")
+    // Security headers: static (HSTS, X-Frame-Options, X-Content-Type-Options)
+    // are set by Caddy reverse proxy. Middleware sets dynamic headers only.
+    expect(response.headers.get("X-DNS-Prefetch-Control")).toBe("on")
   })
 
   // -------------------------------------------------------------------------
