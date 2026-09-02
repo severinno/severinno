@@ -389,17 +389,7 @@ export default function Topbar({
             : "bg-background/70 supports-[backdrop-filter]:bg-background/55 border-b border-transparent backdrop-blur-md",
         )}
       >
-        {/* ── Gradient bottom border on scroll (2px emerald-400 → teal-500) ── */}
-        <motion.div
-          className="absolute right-0 bottom-0 left-0 h-[2px] bg-gradient-to-r from-emerald-400 to-teal-500"
-          initial={{ scaleX: 0, opacity: 0 }}
-          animate={{
-            scaleX: scrolled ? 1 : 0,
-            opacity: scrolled ? 1 : 0,
-          }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
-          style={{ transformOrigin: "left" }}
-        />
+
 
         {/* ── Main bar ─────────────────────────────────────────────────────── */}
         <div
