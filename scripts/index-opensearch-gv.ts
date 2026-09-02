@@ -159,10 +159,10 @@ async function ensureIndices(): Promise<void> {
             index: {
               number_of_shards: 1,
               number_of_replicas: 0,
-              analysis: SHARED_ANALYSIS,
+              analysis: SHARED_ANALYSIS as unknown as Record<string, unknown>,
             },
           },
-          mappings,
+          mappings: mappings as unknown as Record<string, unknown>,
         },
       })
       console.log(`  📦 Created index: ${name}`)
