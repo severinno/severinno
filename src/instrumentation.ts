@@ -7,6 +7,21 @@ export async function register() {
     // Load env vars first — everything depends on them
     await import("./lib/env")
 
+    // ── Eagerly connect Redis ────────────────────────────────────────
+    // Prevents race condition where health check pings before lazy
+    // connect completes. This ensures the client is ready on first request.
+    try {
+      const { ensureConnected } = await import("./lib/redis")
+      const client = await ensureConnected()
+      if (client) {
+        logger.info("instrumentation: Redis connected eagerly")
+      } else {
+        logger.warn("instrumentation: Redis unavailable — falling through to memory tier")
+      }
+    } catch (err) {
+      logger.warn({ err }, "instrumentation: Redis eager connect failed — memory tier active")
+    }
+
     // ── Sentry / GlitchTip error tracking ──────────────────────────────
     // sentry.server.config.ts is auto-loaded by Next.js instrumentation.
     // We add flush on shutdown so pending events are delivered before exit.

@@ -115,17 +115,35 @@ function createClient(mode: "cluster" | "standalone"): Cluster | Redis {
 // ── Ensure a client exists for the given tier ─────────────────────────────
 
 /**
- * Ensure the client for `tier` exists and has event handlers wired.
- *
- * Creates the client on first call.  Event handlers respond to errors
- * by calling `degradeTier()`, which moves the active tier down and
- * potentially creates the next client.
+ * Guard to prevent concurrent `ensureClient` connect attempts.
+ * Each tier has its own lock so a slow cluster connect doesn't block
+ * a fast standalone connect (and vice versa).
  */
-function ensureClient(tier: Tier): Cluster | Redis | null {
+const connectingLocks: Record<string, boolean> = {}
+
+/**
+ * Ensure the client for `tier` exists, is wired with event handlers,
+ * and has eagerly connected (or failed).
+ *
+ * On first call, creates the client and immediately calls `.connect()`.
+ * Returns `null` only if the client failed to connect on creation
+ * (the tier is down). Subsequent calls return the cached client.
+ *
+ * Event handlers respond to errors by calling `degradeTier()`, which
+ * moves the active tier down and potentially creates the next client.
+ */
+async function ensureClient(tier: Tier): Promise<Cluster | Redis | null> {
   if (tier === "memory") return null
 
+  // ── Cluster ────────────────────────────────────────────────────────
   if (tier === "cluster") {
-    if (!clusterClient) {
+    if (clusterClient) return clusterClient
+
+    // Prevent concurrent connect attempts
+    if (connectingLocks["cluster"]) return clusterClient
+    connectingLocks["cluster"] = true
+
+    try {
       clusterClient = createClient("cluster") as Cluster
 
       clusterClient.on("error", (err: Error) => {
@@ -136,12 +154,8 @@ function ensureClient(tier: Tier): Cluster | Redis | null {
         activeTier = "cluster"
         everConnected = true
       })
-
-      // Node-level events (partial cluster failure)
       clusterClient.on("node error", (err: Error, node: unknown) => {
         logger.warn({ err, node: JSON.stringify(node) }, "[redis] cluster node error")
-        // Don't degrade the whole cluster — one node may be down
-        // while the rest continues to serve.
       })
       clusterClient.on("+node", (node: unknown) => {
         logger.info({ node: JSON.stringify(node) }, "[redis] cluster node added")
@@ -149,12 +163,31 @@ function ensureClient(tier: Tier): Cluster | Redis | null {
       clusterClient.on("-node", (node: unknown) => {
         logger.warn({ node: JSON.stringify(node) }, "[redis] cluster node removed")
       })
+
+      // Eagerly connect — don't wait for lazy connect race condition
+      // Defensive: skip if .connect() is unavailable (test mocks)
+      if (typeof clusterClient.connect === "function") {
+        await clusterClient.connect()
+      }
+      return clusterClient
+    } catch (err) {
+      logger.warn({ err }, "[redis] cluster connect failed on creation")
+      try { clusterClient?.disconnect() } catch { /* ignore */ }
+      clusterClient = null
+      return null
+    } finally {
+      connectingLocks["cluster"] = false
     }
-    return clusterClient
   }
 
   // ── Standalone ──────────────────────────────────────────────────────
-  if (!standaloneClient) {
+  if (standaloneClient) return standaloneClient
+
+  // Prevent concurrent connect attempts
+  if (connectingLocks["standalone"]) return standaloneClient
+  connectingLocks["standalone"] = true
+
+  try {
     standaloneClient = createClient("standalone") as Redis
 
     standaloneClient.on("error", (err: Error) => {
@@ -165,8 +198,21 @@ function ensureClient(tier: Tier): Cluster | Redis | null {
       activeTier = "standalone"
       everConnected = true
     })
+
+    // Eagerly connect — don't wait for lazy connect race condition
+    // Defensive: skip if .connect() is unavailable (test mocks)
+    if (typeof standaloneClient.connect === "function") {
+      await standaloneClient.connect()
+    }
+    return standaloneClient
+  } catch (err) {
+    logger.warn({ err }, "[redis] standalone connect failed on creation")
+    try { standaloneClient?.disconnect() } catch { /* ignore */ }
+    standaloneClient = null
+    return null
+  } finally {
+    connectingLocks["standalone"] = false
   }
-  return standaloneClient
 }
 
 // ── Degrade to a lower tier ──────────────────────────────────────────────
@@ -386,7 +432,24 @@ async function proactiveRecovery(): Promise<void> {
  *
  * Returns `null` when the active tier is "memory" (no Redis available).
  */
+/**
+ * Synchronous fast-path: returns the current client if already connected.
+ * Returns null if no client exists yet or tier is memory.
+ * Use ensureConnected() at startup for the eager-connect path.
+ */
 export function getClient(): Redis | Cluster | null {
+  if (activeTier === "memory") return null
+  if (activeTier === "cluster") return clusterClient
+  return standaloneClient
+}
+
+/**
+ * Async eager-connect: ensures the client for the active tier exists
+ * and has connected (or failed). Call this at startup or on first use.
+ *
+ * Returns the connected client, or null if the tier is down.
+ */
+export async function ensureConnected(): Promise<Redis | Cluster | null> {
   if (activeTier === "memory") return null
   return ensureClient(activeTier as "cluster" | "standalone")
 }
@@ -656,7 +719,7 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
   if (activeTier !== "memory") {
     triedTier = activeTier
     try {
-      const c = getClient()
+      const c = await ensureConnected()
       if (c) {
         const raw = await c.get(key)
         if (raw !== null) {
@@ -681,7 +744,7 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
   // ── Retry with the new active tier (if we just degraded) ─────────────
   if (triedTier !== null && activeTier !== "memory" && activeTier !== triedTier) {
     try {
-      const c = getClient()
+      const c = await ensureConnected()
       if (c) {
         const raw = await c.get(key)
         if (raw !== null) {
@@ -738,7 +801,7 @@ export async function cacheSet(key: string, value: unknown, ttl?: number): Promi
   // Best-effort write to active Redis tier
   if (activeTier !== "memory") {
     try {
-      const c = getClient()
+      const c = await ensureConnected()
       if (c) {
         if (ttl !== undefined && ttl > 0) {
           await c.setex(key, ttl, serialized)
@@ -779,7 +842,7 @@ export async function cacheInvalidate(pattern: string): Promise<void> {
   // ── Clear active Redis tier ───────────────────────────────────────────
   if (activeTier !== "memory") {
     try {
-      const c = getClient()
+      const c = await ensureConnected()
       if (c) {
         const keys = await scanKeys(c, pattern)
         if (keys.length > 0) {
@@ -1030,7 +1093,7 @@ export async function getRedisDiagnostics(): Promise<RedisDiagnostics> {
     }
   }
 
-  const c = getClient()
+  const c = await ensureConnected()
   if (!c) {
     return {
       ...base,
