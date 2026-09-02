@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Severinno Marketplace",
+    default: "severinno",
     template: "%s · Severinno",
   },
   description:
@@ -52,7 +52,7 @@ export const metadata: Metadata = {
     "apple-mobile-web-app-title": "Severinno",
   },
   openGraph: {
-    title: "Severinno Marketplace",
+    title: "severinno",
     description:
       "Encontre prestadores de serviço verificados, com base na sua localização — Governador Valadares, MG.",
     url: process.env.NEXT_PUBLIC_APP_URL ?? "https://severinno.com",
@@ -70,7 +70,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Severinno Marketplace",
+    title: "severinno",
     description: "Encontre prestadores de serviço verificados, com base na sua localização.",
   },
 }
