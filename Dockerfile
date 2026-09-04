@@ -42,7 +42,7 @@ ENV DOCKER_BUILD=true
 RUN bun run build
 
 # ── Runner: Node.js standalone server ────────────────────────────────────────
-FROM node:22-alpine AS runner
+FROM node:26-alpine AS runner
 ENV NODE_ENV=production
 
 RUN addgroup --system --gid 1001 nodejs && \
