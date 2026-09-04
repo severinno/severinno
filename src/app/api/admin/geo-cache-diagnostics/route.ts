@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 /**
  * GET /api/admin/geo-cache-diagnostics
  *
@@ -10,7 +12,6 @@
  *
  * Requires admin authentication.
  */
-
 
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"

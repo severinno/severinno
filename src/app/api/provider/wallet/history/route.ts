@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { requireUser } from "@/lib/auth"
 import { handleError, parsePagination } from "@/lib/api-server"

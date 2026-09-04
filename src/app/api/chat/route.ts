@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextRequest, NextResponse } from "next/server"
 import ZAI from "z-ai-web-dev-sdk"
 import { handleError, badRequest } from "@/lib/api-server"

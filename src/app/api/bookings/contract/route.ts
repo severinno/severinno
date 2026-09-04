@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextRequest, NextResponse } from "next/server"
 import { generateServiceContract, ContractParams } from "@/lib/contract-generator"
 import { requireUser } from "@/lib/auth"

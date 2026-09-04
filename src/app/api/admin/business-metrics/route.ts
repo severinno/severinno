@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { type BookingStatus } from "@prisma/client"
 import { db } from "@/lib/db"

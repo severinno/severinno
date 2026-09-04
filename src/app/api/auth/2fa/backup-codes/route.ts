@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
@@ -54,7 +56,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       backupCodes,
-      message: "Códigos de backup regenerados. Salve em local seguro — não serão exibidos novamente.",
+      message:
+        "Códigos de backup regenerados. Salve em local seguro — não serão exibidos novamente.",
     })
   } catch (e) {
     return handleError(e)

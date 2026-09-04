@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { mediateDispute, DisputeCase } from "@/lib/dispute-mediator"

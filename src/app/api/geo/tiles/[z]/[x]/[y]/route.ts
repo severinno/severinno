@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextRequest, NextResponse } from "next/server"
 import { getVectorTileData } from "@/lib/vector-tiles"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
@@ -49,13 +51,10 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
         "X-Tile-Z": String(z),
         "X-Tile-X": String(x),
         "X-Tile-Y": String(y),
-        "Vary": "Accept-Encoding",
+        Vary: "Accept-Encoding",
       },
     })
   } catch (_error) {
-    return NextResponse.json(
-      { error: "Failed to generate vector tile" },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: "Failed to generate vector tile" }, { status: 500 })
   }
 }

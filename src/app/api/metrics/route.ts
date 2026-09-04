@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 /**
  * GET /api/metrics
  *
@@ -38,29 +40,29 @@ type MetricsResponse = {
 
 export async function GET(): Promise<NextResponse<MetricsResponse | { error: string }>> {
   try {
-  const start = Date.now()
+    const start = Date.now()
 
-  const cacheStats = getCacheStats()
-  const memory = process.memoryUsage()
-  const cpu = process.cpuUsage()
+    const cacheStats = getCacheStats()
+    const memory = process.memoryUsage()
+    const cpu = process.cpuUsage()
 
-  const response: MetricsResponse = {
-    cache: cacheStats,
-    process: {
-      uptime: Math.floor(process.uptime()),
-      memoryRss: memory.rss,
-      memoryHeapUsed: memory.heapUsed,
-      memoryHeapTotal: memory.heapTotal,
-      cpuUser: cpu.user,
-      cpuSystem: cpu.system,
-    },
-    timestamp: new Date().toISOString(),
-  }
+    const response: MetricsResponse = {
+      cache: cacheStats,
+      process: {
+        uptime: Math.floor(process.uptime()),
+        memoryRss: memory.rss,
+        memoryHeapUsed: memory.heapUsed,
+        memoryHeapTotal: memory.heapTotal,
+        cpuUser: cpu.user,
+        cpuSystem: cpu.system,
+      },
+      timestamp: new Date().toISOString(),
+    }
 
-  const elapsed = Date.now() - start
-  logger.debug({ elapsed }, "metrics endpoint")
+    const elapsed = Date.now() - start
+    logger.debug({ elapsed }, "metrics endpoint")
 
-  return NextResponse.json(response)
+    return NextResponse.json(response)
   } catch {
     return NextResponse.json({ error: "Metrics unavailable" }, { status: 500 })
   }

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { runHealthMonitor } from "@/lib/health-monitor"
 import logger from "@/lib/logger"

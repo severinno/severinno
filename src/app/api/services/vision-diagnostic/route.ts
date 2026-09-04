@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextRequest, NextResponse } from "next/server"
 import { analyzeServicePhoto } from "@/lib/vision-diagnostic"
 import { requireUser } from "@/lib/auth"

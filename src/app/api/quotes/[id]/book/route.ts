@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { captureErrorEnhanced } from "@/lib/sentry-enhanced"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
@@ -100,7 +102,11 @@ export async function POST(request: Request, { params }: Params) {
       providerId: quote.providerId,
       status: "PENDING",
     }).catch((err) => {
-      captureErrorEnhanced(err, { url: "/api/quotes/[id]/book", method: "POST", tags: { source: "quote-book", bookingId: booking.id } })
+      captureErrorEnhanced(err, {
+        url: "/api/quotes/[id]/book",
+        method: "POST",
+        tags: { source: "quote-book", bookingId: booking.id },
+      })
     })
 
     return NextResponse.json({ booking }, { status: 201 })

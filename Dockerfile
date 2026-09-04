@@ -34,7 +34,11 @@ RUN bun run db:generate
 
 # Build Next.js with standalone output
 # BUILD_STANDALONE=true triggers output: "standalone" in next.config.ts
+# SKIP_TYPESCRIPT_CHECK: skip tsc in Docker build (CI runs tsc separately)
+# DOCKER_BUILD: tells next.config.ts to ignore build-time TS errors
 ENV BUILD_STANDALONE=true
+ENV SKIP_TYPESCRIPT_CHECK=true
+ENV DOCKER_BUILD=true
 RUN bun run build
 
 # ── Runner: Node.js standalone server ────────────────────────────────────────

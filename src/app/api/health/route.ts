@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getCacheStats, getClient } from "@/lib/redis"
@@ -86,7 +88,8 @@ export async function GET(): Promise<NextResponse<HealthResponse>> {
   // Try in-memory cache first (fast path)
   // Degraded responses use shorter TTL to recover faster
   if (inMemoryCache) {
-    const ttl = inMemoryCache.result.status === "ok" ? HEALTH_CACHE_TTL_OK : HEALTH_CACHE_TTL_DEGRADED
+    const ttl =
+      inMemoryCache.result.status === "ok" ? HEALTH_CACHE_TTL_OK : HEALTH_CACHE_TTL_DEGRADED
     if (Date.now() - inMemoryCache.timestamp < ttl * 1000) {
       return NextResponse.json(inMemoryCache.result, {
         status: inMemoryCache.result.status === "ok" ? 200 : 503,
@@ -399,11 +402,13 @@ async function checkOpenSearch(): Promise<{ status: ServiceStatus; detail: strin
     const res = await fetch(`${opensearchUrl}/_cluster/health`, {
       signal: AbortSignal.timeout(3000),
       headers: {
-        "Accept": "application/json",
+        Accept: "application/json",
         ...(process.env.OPENSEARCH_USERNAME
-          ? { Authorization: `Basic ${Buffer.from(
-              `${process.env.OPENSEARCH_USERNAME}:${process.env.OPENSEARCH_PASSWORD ?? ""}`,
-            ).toString("base64")}` }
+          ? {
+              Authorization: `Basic ${Buffer.from(
+                `${process.env.OPENSEARCH_USERNAME}:${process.env.OPENSEARCH_PASSWORD ?? ""}`,
+              ).toString("base64")}`,
+            }
           : {}),
       },
     })

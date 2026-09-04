@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { handleError } from "@/lib/api-server"
@@ -85,9 +87,25 @@ export async function GET(request: Request) {
       cacheKey,
       async () => {
         if (pgAvailable) {
-          return await clusterWithPostGIS(minLat, minLng, maxLat, maxLng, resolution, categoryId, limit)
+          return await clusterWithPostGIS(
+            minLat,
+            minLng,
+            maxLat,
+            maxLng,
+            resolution,
+            categoryId,
+            limit,
+          )
         }
-        return await clusterWithPrisma(minLat, minLng, maxLat, maxLng, resolution, categoryId, limit)
+        return await clusterWithPrisma(
+          minLat,
+          minLng,
+          maxLat,
+          maxLng,
+          resolution,
+          categoryId,
+          limit,
+        )
       },
       30, // 30s cache
     )
@@ -191,11 +209,13 @@ async function clusterWithPrisma(
   })
 
   return buildClusterCells(
-    users.filter((u) => u.lat != null && u.lng != null).map((u) => ({
-      id: u.id,
-      lat: u.lat!,
-      lng: u.lng!,
-    })),
+    users
+      .filter((u) => u.lat != null && u.lng != null)
+      .map((u) => ({
+        id: u.id,
+        lat: u.lat!,
+        lng: u.lng!,
+      })),
     resolution,
   )
 }

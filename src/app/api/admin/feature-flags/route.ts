@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { isEnabled, setFlag, clearFlag, getAllFlags, type FeatureFlag } from "@/lib/feature-flags"
@@ -5,12 +7,23 @@ import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { handleError } from "@/lib/api-server"
 
 const VALID_FLAGS: FeatureFlag[] = [
-  "circuit-breaker-evolution", "circuit-breaker-push", "circuit-breaker-email",
-  "circuit-breaker-lytex", "circuit-breaker-nominatim", "circuit-breaker-viacep",
-  "circuit-breaker-osrm", "h3-clustering", "postgis-spatial-query",
-  "redis-geo-index-seed", "wallet-serializable-tx", "geo-cache-local",
-  "geo-metrics-async-persist", "geo-alert-redis-debounce", "dynamic-h3-resolution",
-  "geocode-search-layered", "reverse-geocode-cache",
+  "circuit-breaker-evolution",
+  "circuit-breaker-push",
+  "circuit-breaker-email",
+  "circuit-breaker-lytex",
+  "circuit-breaker-nominatim",
+  "circuit-breaker-viacep",
+  "circuit-breaker-osrm",
+  "h3-clustering",
+  "postgis-spatial-query",
+  "redis-geo-index-seed",
+  "wallet-serializable-tx",
+  "geo-cache-local",
+  "geo-metrics-async-persist",
+  "geo-alert-redis-debounce",
+  "dynamic-h3-resolution",
+  "geocode-search-layered",
+  "reverse-geocode-cache",
 ]
 
 export async function GET() {

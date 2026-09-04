@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 /**
  * GET /api/admin/benchmarks — Benchmark Monitoring Dashboard
  *
@@ -22,13 +24,7 @@ import { NextResponse } from "next/server"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { execSync } from "node:child_process"
-import { requireRole } from "@/lib/auth"
-import { handleError } from "@/lib/api-server"
-import { notifyGeoAlert } from "@/lib/geo-alert-notify"
-import { queueEmail } from "@/lib/email-queue"
-import { db } from "@/lib/db"
 import logger from "@/lib/logger"
-import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -562,6 +558,14 @@ function compareBaselineLatest(
 // ---------------------------------------------------------------------------
 
 export async function GET(request: Request) {
+  // Lazy imports to avoid triggering side effects during next build
+  const { requireRole } = await import("@/lib/auth")
+  const { assertRateLimit, RATE_LIMITS } = await import("@/lib/rate-limit")
+  const { notifyGeoAlert } = await import("@/lib/geo-alert-notify")
+  const { queueEmail } = await import("@/lib/email-queue")
+  const { db } = await import("@/lib/db")
+  const { handleError } = await import("@/lib/api-server")
+
   try {
     await assertRateLimit(request, RATE_LIMITS.admin)
     await requireRole("ADMIN")

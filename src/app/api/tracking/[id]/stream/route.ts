@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 /**
  * GET /api/tracking/[id]/stream — SSE streaming for real-time tracking.
  *

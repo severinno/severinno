@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 /**
  * POST /api/admin/global-rate-limit-status/reset
  *

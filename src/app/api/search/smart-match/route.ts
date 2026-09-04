@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { findBestProviders } from "@/lib/smart-match"
 import { badRequest, handleError } from "@/lib/api-server"

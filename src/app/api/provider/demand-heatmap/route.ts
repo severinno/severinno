@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
@@ -66,7 +68,10 @@ export async function GET(request: Request) {
     })
 
     // 2. Aggregate points into H3 hexagonal clusters (~1.2km per cell at res 7)
-    const clusters = new Map<string, { lat: number; lng: number; count: number; labels: Set<string> }>()
+    const clusters = new Map<
+      string,
+      { lat: number; lng: number; count: number; labels: Set<string> }
+    >()
 
     for (const b of recentBookings) {
       if (!b.lat || !b.lng) continue

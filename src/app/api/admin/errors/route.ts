@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 /**
  * GET /api/admin/errors — Métricas e tendências de erros
  *

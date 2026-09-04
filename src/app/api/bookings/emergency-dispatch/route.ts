@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextRequest, NextResponse } from "next/server"
 import { createEmergencyDispatch, EmergencyRequest } from "@/lib/emergency-matchmaking"
 import { requireUser } from "@/lib/auth"
