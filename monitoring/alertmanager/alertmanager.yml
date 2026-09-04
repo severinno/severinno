@@ -13,17 +13,24 @@ global:
   resolve_timeout: 5m
 
 route:
-  receiver: "telegram"
+  receiver: "null"
   group_by: ["alertname", "severity"]
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
+  routes:
+    - match:
+        severity: "critical"
+      receiver: "telegram"
+      continue: false
 
 receivers:
+  - name: "null"
+
   - name: "telegram"
     telegram_configs:
-      - bot_token: "${ALERTMANAGER_TELEGRAM_BOT_TOKEN}"
-        chat_id: ${ALERTMANAGER_TELEGRAM_CHAT_ID}
+      - bot_token: "0000000000:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+        chat_id: 123456789
         parse_mode: "HTML"
         message: |
           🔔 <b>{{ .GroupLabels.alertname }}</b>
