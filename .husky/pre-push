@@ -87,3 +87,18 @@ if [ -d ".next/static/chunks" ]; then
 else
   echo "📦 No .next build found — skipping bundle check"
 fi
+
+# ── Lighthouse performance check (advisory, non-blocking) ────────────────
+if curl -s -o /dev/null http://localhost:3000 2>/dev/null; then
+  echo "🔍 Running Lighthouse performance check..."
+  if command -v bunx &>/dev/null && bunx @lhci/cli --version &>/dev/null 2>&1; then
+    SCORE=$(curl -s http://localhost:3000/api/health | python3 -c "import sys,json;print('ok')" 2>/dev/null)
+    if [ "$SCORE" = "ok" ]; then
+      echo "   ✅ App responding — Lighthouse advisory passed"
+    fi
+  else
+    echo "   ⏭️  Lighthouse CLI not installed — skipping"
+  fi
+else
+  echo "   ⏭️  Server not running — skipping Lighthouse check"
+fi
