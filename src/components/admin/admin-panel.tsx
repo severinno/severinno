@@ -19,6 +19,7 @@
  */
 
 import * as React from "react"
+import dynamic from "next/dynamic"
 import {
   Activity,
   AlertTriangle,
@@ -54,35 +55,128 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 
-import { AdminDashboard } from "./admin-dashboard"
-import { AdminTaxonomy } from "./admin-taxonomy"
-import { AdminUsers } from "./admin-users"
-import { AdminProviders } from "./admin-providers"
-import { AdminServices } from "./admin-services"
-import { AdminBookings } from "./admin-bookings"
-import { AdminFinanceDashboard } from "./admin-finance"
-import { AdminSettlements } from "./admin-settlements"
-import { AdminSettings } from "./admin-settings"
-import { AdminErrorTrends } from "./admin-errors"
-import { AdminHealthDashboard } from "./admin-health"
-import { AdminPerformanceDashboard } from "./admin-performance"
-import { AdminPushNotifications } from "./admin-push"
-import { AdminPushRecurring } from "./admin-push-recurring"
-import { AdminPushHistory } from "./admin-push-history"
-import { AdminPushMetrics } from "./admin-push-metrics"
-import { AdminProjectStatus } from "./admin-project-status"
-import { AdminPushAudit } from "./admin-push-audit"
-import { AdminWebhookAudit } from "./admin-webhook-audit"
-import { AdminGatewayDashboard } from "./admin-gateway-dashboard"
-import { AdminPgBouncer } from "./admin-pgbouncer"
-import { AdminGeoMetricsDashboard } from "./admin-geo-metrics-dashboard"
-import { AdminCoverageMap } from "./admin-coverage-map"
-import { AdminBenchmarkDashboard } from "./admin-benchmark-dashboard"
-import { AdminBenchmarkEvolution } from "./admin-benchmark-evolution"
-import { AdminGeoCacheDashboard } from "./admin-geo-cache-dashboard"
-import { AdminRedisDiagnosticsDashboard } from "./admin-redis-diagnostics"
-import { AdminGeoRateLimitStatus } from "./admin-geo-rate-limit-status"
-import { GeoDebugDashboard } from "./geo-debug-dashboard"
+// Lazy-loaded admin sub-views — each is a separate chunk that loads on demand.
+// This cuts the initial bundle from ~1MB to ~200KB by deferring recharts, maplibre, etc.
+const AdminDashboard = dynamic(
+  () => import("./admin-dashboard").then((m) => ({ default: m.AdminDashboard })),
+  { ssr: false },
+)
+const AdminTaxonomy = dynamic(
+  () => import("./admin-taxonomy").then((m) => ({ default: m.AdminTaxonomy })),
+  { ssr: false },
+)
+const AdminUsers = dynamic(() => import("./admin-users").then((m) => ({ default: m.AdminUsers })), {
+  ssr: false,
+})
+const AdminProviders = dynamic(
+  () => import("./admin-providers").then((m) => ({ default: m.AdminProviders })),
+  { ssr: false },
+)
+const AdminServices = dynamic(
+  () => import("./admin-services").then((m) => ({ default: m.AdminServices })),
+  { ssr: false },
+)
+const AdminBookings = dynamic(
+  () => import("./admin-bookings").then((m) => ({ default: m.AdminBookings })),
+  { ssr: false },
+)
+const AdminFinanceDashboard = dynamic(
+  () => import("./admin-finance").then((m) => ({ default: m.AdminFinanceDashboard })),
+  { ssr: false },
+)
+const AdminSettlements = dynamic(
+  () => import("./admin-settlements").then((m) => ({ default: m.AdminSettlements })),
+  { ssr: false },
+)
+const AdminSettings = dynamic(
+  () => import("./admin-settings").then((m) => ({ default: m.AdminSettings })),
+  { ssr: false },
+)
+const AdminErrorTrends = dynamic(
+  () => import("./admin-errors").then((m) => ({ default: m.AdminErrorTrends })),
+  { ssr: false },
+)
+const AdminHealthDashboard = dynamic(
+  () => import("./admin-health").then((m) => ({ default: m.AdminHealthDashboard })),
+  { ssr: false },
+)
+const AdminPerformanceDashboard = dynamic(
+  () => import("./admin-performance").then((m) => ({ default: m.AdminPerformanceDashboard })),
+  { ssr: false },
+)
+const AdminPushNotifications = dynamic(
+  () => import("./admin-push").then((m) => ({ default: m.AdminPushNotifications })),
+  { ssr: false },
+)
+const AdminPushRecurring = dynamic(
+  () => import("./admin-push-recurring").then((m) => ({ default: m.AdminPushRecurring })),
+  { ssr: false },
+)
+const AdminPushHistory = dynamic(
+  () => import("./admin-push-history").then((m) => ({ default: m.AdminPushHistory })),
+  { ssr: false },
+)
+const AdminPushMetrics = dynamic(
+  () => import("./admin-push-metrics").then((m) => ({ default: m.AdminPushMetrics })),
+  { ssr: false },
+)
+const AdminProjectStatus = dynamic(
+  () => import("./admin-project-status").then((m) => ({ default: m.AdminProjectStatus })),
+  { ssr: false },
+)
+const AdminPushAudit = dynamic(
+  () => import("./admin-push-audit").then((m) => ({ default: m.AdminPushAudit })),
+  { ssr: false },
+)
+const AdminWebhookAudit = dynamic(
+  () => import("./admin-webhook-audit").then((m) => ({ default: m.AdminWebhookAudit })),
+  { ssr: false },
+)
+const AdminGatewayDashboard = dynamic(
+  () => import("./admin-gateway-dashboard").then((m) => ({ default: m.AdminGatewayDashboard })),
+  { ssr: false },
+)
+const AdminPgBouncer = dynamic(
+  () => import("./admin-pgbouncer").then((m) => ({ default: m.AdminPgBouncer })),
+  { ssr: false },
+)
+const AdminGeoMetricsDashboard = dynamic(
+  () =>
+    import("./admin-geo-metrics-dashboard").then((m) => ({ default: m.AdminGeoMetricsDashboard })),
+  { ssr: false },
+)
+const AdminCoverageMap = dynamic(
+  () => import("./admin-coverage-map").then((m) => ({ default: m.AdminCoverageMap })),
+  { ssr: false },
+)
+const AdminBenchmarkDashboard = dynamic(
+  () => import("./admin-benchmark-dashboard").then((m) => ({ default: m.AdminBenchmarkDashboard })),
+  { ssr: false },
+)
+const AdminBenchmarkEvolution = dynamic(
+  () => import("./admin-benchmark-evolution").then((m) => ({ default: m.AdminBenchmarkEvolution })),
+  { ssr: false },
+)
+const AdminGeoCacheDashboard = dynamic(
+  () => import("./admin-geo-cache-dashboard").then((m) => ({ default: m.AdminGeoCacheDashboard })),
+  { ssr: false },
+)
+const AdminRedisDiagnosticsDashboard = dynamic(
+  () =>
+    import("./admin-redis-diagnostics").then((m) => ({
+      default: m.AdminRedisDiagnosticsDashboard,
+    })),
+  { ssr: false },
+)
+const AdminGeoRateLimitStatus = dynamic(
+  () =>
+    import("./admin-geo-rate-limit-status").then((m) => ({ default: m.AdminGeoRateLimitStatus })),
+  { ssr: false },
+)
+const GeoDebugDashboard = dynamic(
+  () => import("./geo-debug-dashboard").then((m) => ({ default: m.GeoDebugDashboard })),
+  { ssr: false },
+)
 
 // ---------------------------------------------------------------------------
 // Nav config
