@@ -4,6 +4,7 @@ import { headers } from "next/headers"
 import "./globals.css"
 import { Providers } from "@/components/providers"
 import { SWRegister } from "@/components/sw-register"
+import { WebVitals } from "@/components/web-vitals"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -88,6 +89,7 @@ export default async function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} bg-background text-foreground antialiased`}
       >
         <Providers>{children}</Providers>
+        <WebVitals />
         <SWRegister />
       </body>
     </html>
