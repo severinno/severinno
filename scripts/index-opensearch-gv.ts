@@ -11,6 +11,10 @@
  *   bun scripts/index-opensearch-gv.ts              # Full reindex
  *   bun scripts/index-opensearch-gv.ts --refresh    # Only new/updated docs
  *
+ * Exit codes:
+ *   0 — success
+ *   1 — failure (connection error or index error)
+ *
  * Environment:
  *   DATABASE_URL      — PostgreSQL connection string
  *   OPENSEARCH_URL    — OpenSearch endpoint (default: http://localhost:9200)
@@ -48,12 +52,24 @@ const SHARED_ANALYSIS = {
     severinno_search: {
       type: "custom",
       tokenizer: "standard",
-      filter: ["lowercase", "asciifolding", "brazilian_stop", "brazilian_stemmer", "severinno_synonyms"],
+      filter: [
+        "lowercase",
+        "asciifolding",
+        "brazilian_stop",
+        "brazilian_stemmer",
+        "severinno_synonyms",
+      ],
     },
     severinno_index: {
       type: "custom",
       tokenizer: "standard",
-      filter: ["lowercase", "asciifolding", "brazilian_stop", "brazilian_stemmer", "severinno_synonyms"],
+      filter: [
+        "lowercase",
+        "asciifolding",
+        "brazilian_stop",
+        "brazilian_stemmer",
+        "severinno_synonyms",
+      ],
     },
   },
   filter: {
@@ -90,10 +106,23 @@ const PROVIDER_MAPPINGS = {
   dynamic: "strict",
   properties: {
     id: { type: "keyword" },
-    name: { type: "text", analyzer: "severinno_index", search_analyzer: "severinno_search", fields: { keyword: { type: "keyword" }, sort: { type: "keyword", normalizer: "severinno_sort" } } },
+    name: {
+      type: "text",
+      analyzer: "severinno_index",
+      search_analyzer: "severinno_search",
+      fields: {
+        keyword: { type: "keyword" },
+        sort: { type: "keyword", normalizer: "severinno_sort" },
+      },
+    },
     email: { type: "keyword" },
     bio: { type: "text", analyzer: "severinno_index", search_analyzer: "severinno_search" },
-    city: { type: "text", analyzer: "severinno_index", search_analyzer: "severinno_search", fields: { keyword: { type: "keyword" } } },
+    city: {
+      type: "text",
+      analyzer: "severinno_index",
+      search_analyzer: "severinno_search",
+      fields: { keyword: { type: "keyword" } },
+    },
     state: { type: "keyword" },
     district: { type: "text", analyzer: "severinno_index", search_analyzer: "severinno_search" },
     role: { type: "keyword" },
@@ -103,8 +132,17 @@ const PROVIDER_MAPPINGS = {
     rating: { type: "float" },
     reviewCount: { type: "integer" },
     completedBookings: { type: "integer" },
-    serviceTitles: { type: "text", analyzer: "severinno_index", search_analyzer: "severinno_search", boost: 2.0 },
-    serviceCategories: { type: "text", analyzer: "severinno_index", search_analyzer: "severinno_search" },
+    serviceTitles: {
+      type: "text",
+      analyzer: "severinno_index",
+      search_analyzer: "severinno_search",
+      boost: 2.0,
+    },
+    serviceCategories: {
+      type: "text",
+      analyzer: "severinno_index",
+      search_analyzer: "severinno_search",
+    },
     createdAt: { type: "date" },
   },
 }
@@ -115,9 +153,19 @@ const SERVICE_MAPPINGS = {
     id: { type: "keyword" },
     providerId: { type: "keyword" },
     providerName: { type: "keyword" },
-    title: { type: "text", analyzer: "severinno_index", search_analyzer: "severinno_search", fields: { keyword: { type: "keyword" } }, boost: 3.0 },
+    title: {
+      type: "text",
+      analyzer: "severinno_index",
+      search_analyzer: "severinno_search",
+      fields: { keyword: { type: "keyword" } },
+      boost: 3.0,
+    },
     description: { type: "text", analyzer: "severinno_index", search_analyzer: "severinno_search" },
-    categoryName: { type: "text", analyzer: "severinno_index", search_analyzer: "severinno_search" },
+    categoryName: {
+      type: "text",
+      analyzer: "severinno_index",
+      search_analyzer: "severinno_search",
+    },
     basePrice: { type: "float" },
     unit: { type: "keyword" },
     active: { type: "boolean" },
@@ -129,7 +177,15 @@ const CATEGORY_MAPPINGS = {
   dynamic: "strict",
   properties: {
     id: { type: "keyword" },
-    name: { type: "text", analyzer: "severinno_index", search_analyzer: "severinno_search", fields: { keyword: { type: "keyword" }, sort: { type: "keyword", normalizer: "severinno_sort" } } },
+    name: {
+      type: "text",
+      analyzer: "severinno_index",
+      search_analyzer: "severinno_search",
+      fields: {
+        keyword: { type: "keyword" },
+        sort: { type: "keyword", normalizer: "severinno_sort" },
+      },
+    },
     slug: { type: "keyword" },
     description: { type: "text", analyzer: "severinno_index", search_analyzer: "severinno_search" },
     level: { type: "byte" },
@@ -363,9 +419,13 @@ async function main() {
   })
 
   const hits = testResult.body.hits.hits
-  console.log(`   Found ${testResult.body.hits.total.value} results:`)
+  const totalHits = testResult.body.hits.total
+  const totalNum = typeof totalHits === "number" ? totalHits : (totalHits?.value ?? 0)
+  console.log(`   Found ${totalNum} results:`)
   for (const hit of hits) {
-    console.log(`   - ${hit._source?.title} (${hit._source?.categoryName}) — R$ ${hit._source?.basePrice}`)
+    console.log(
+      `   - ${hit._source?.title} (${hit._source?.categoryName}) — R$ ${hit._source?.basePrice}`,
+    )
   }
 }
 

@@ -54,13 +54,43 @@ const configMode: "cluster" | "standalone" = REDIS_CLUSTER_MODE ? "cluster" : "s
 //   standalone → Single-instance Redis (fast, no cluster overhead)
 //   memory     → In-memory Map (always available, process-local)
 
-let clusterClient: Cluster | null = null
-let standaloneClient: Redis | null = null
-type Tier = "cluster" | "standalone" | "memory"
-let activeTier: Tier = configMode // start at the configured tier
+// ── Shared state via globalThis ──────────────────────────────────────────────
+// Next.js may bundle this module into separate chunks (e.g. instrumentation.ts
+// dynamic import vs API route static import). Using globalThis ensures a single
+// shared instance of the Redis client and tier state across all module instances.
 
-/** Whether we have ever successfully connected to at least one tier. */
-let everConnected = false
+type Tier = "cluster" | "standalone" | "memory"
+
+type RedisState = {
+  clusterClient: Cluster | null
+  standaloneClient: Redis | null
+  activeTier: Tier
+  everConnected: boolean
+}
+
+const GLOBAL_KEY = "__SEVERINNO_REDIS__" as const
+const g = (globalThis as Record<string, unknown>)[GLOBAL_KEY] as RedisState | undefined
+const state: RedisState =
+  g ??
+  ((globalThis as Record<string, unknown>)[GLOBAL_KEY] = {
+    clusterClient: null,
+    standaloneClient: null,
+    activeTier: configMode,
+    everConnected: false,
+  })
+
+let clusterClient = state.clusterClient
+let standaloneClient = state.standaloneClient
+let activeTier = state.activeTier
+let everConnected = state.everConnected
+
+/** Sync state back to globalThis after mutation */
+function syncState() {
+  state.clusterClient = clusterClient
+  state.standaloneClient = standaloneClient
+  state.activeTier = activeTier
+  state.everConnected = everConnected
+}
 
 // ── Client factory ─────────────────────────────────────────────────────────
 
@@ -153,6 +183,7 @@ async function ensureClient(tier: Tier): Promise<Cluster | Redis | null> {
       clusterClient.on("ready", () => {
         activeTier = "cluster"
         everConnected = true
+        syncState()
       })
       clusterClient.on("node error", (err: Error, node: unknown) => {
         logger.warn({ err, node: JSON.stringify(node) }, "[redis] cluster node error")
@@ -172,8 +203,13 @@ async function ensureClient(tier: Tier): Promise<Cluster | Redis | null> {
       return clusterClient
     } catch (err) {
       logger.warn({ err }, "[redis] cluster connect failed on creation")
-      try { clusterClient?.disconnect() } catch { /* ignore */ }
+      try {
+        clusterClient?.disconnect()
+      } catch {
+        /* ignore */
+      }
       clusterClient = null
+      syncState()
       return null
     } finally {
       connectingLocks["cluster"] = false
@@ -197,6 +233,7 @@ async function ensureClient(tier: Tier): Promise<Cluster | Redis | null> {
     standaloneClient.on("ready", () => {
       activeTier = "standalone"
       everConnected = true
+      syncState()
     })
 
     // Eagerly connect — don't wait for lazy connect race condition
@@ -207,8 +244,13 @@ async function ensureClient(tier: Tier): Promise<Cluster | Redis | null> {
     return standaloneClient
   } catch (err) {
     logger.warn({ err }, "[redis] standalone connect failed on creation")
-    try { standaloneClient?.disconnect() } catch { /* ignore */ }
+    try {
+      standaloneClient?.disconnect()
+    } catch {
+      /* ignore */
+    }
     standaloneClient = null
+    syncState()
     return null
   } finally {
     connectingLocks["standalone"] = false
@@ -312,6 +354,7 @@ function degradeTier(failedTier: Tier): void {
   }
 
   activeTier = nextTier
+  syncState()
 
   // Ensure the next tier's client exists so it's ready on first use
   if (nextTier !== "memory") {
@@ -396,7 +439,9 @@ async function restartRedisClients(): Promise<void> {
   // Reset to configured tier and create a fresh client
   // configMode is always "cluster" or "standalone" — never "memory"
   activeTier = configMode
+  syncState()
   ensureClient(configMode)
+  syncState()
 
   logger.info(
     { newTier: configMode, degradationCount },
@@ -518,6 +563,7 @@ async function tryRecoverTier(): Promise<void> {
           /* ignore */
         }
         clusterClient = tempClient as Cluster
+        syncState()
         // Re-attach event handlers
         clusterClient.on("error", (err: Error) => {
           logger.error({ err }, "[redis] cluster error")
@@ -526,6 +572,7 @@ async function tryRecoverTier(): Promise<void> {
         clusterClient.on("ready", () => {
           activeTier = "cluster"
           everConnected = true
+          syncState()
         })
         clusterClient.on("node error", (err: Error, node: unknown) => {
           logger.warn({ err, node: JSON.stringify(node) }, "[redis] cluster node error")
@@ -547,6 +594,7 @@ async function tryRecoverTier(): Promise<void> {
           /* ignore */
         }
         standaloneClient = tempClient as Redis
+        syncState()
         standaloneClient.on("error", (err: Error) => {
           logger.error({ err }, "[redis] standalone error")
           degradeTier("standalone")
@@ -554,14 +602,17 @@ async function tryRecoverTier(): Promise<void> {
         standaloneClient.on("ready", () => {
           activeTier = "standalone"
           everConnected = true
+          syncState()
         })
       } else {
         // First-time client — ensureClient will wire events
         if (targetTier === "cluster") clusterClient = tempClient as Cluster
         else standaloneClient = tempClient as Redis
+        syncState()
       }
 
       activeTier = targetTier
+      syncState()
       everConnected = true
       logger.info({ targetTier }, "[redis] recovered tier")
 
@@ -727,7 +778,11 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
             return JSON.parse(raw) as T
           } catch {
             // Corrupted value — delete and treat as miss
-            try { await c.del(key) } catch { /* best-effort */ }
+            try {
+              await c.del(key)
+            } catch {
+              /* best-effort */
+            }
             return null
           }
         }
@@ -751,7 +806,11 @@ export async function cacheGet<T>(key: string): Promise<T | null> {
           try {
             return JSON.parse(raw) as T
           } catch {
-            try { await c.del(key) } catch { /* best-effort */ }
+            try {
+              await c.del(key)
+            } catch {
+              /* best-effort */
+            }
             return null
           }
         }
