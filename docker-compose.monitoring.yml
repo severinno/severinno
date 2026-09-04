@@ -1,26 +1,13 @@
 # =============================================================================
 # docker-compose.monitoring.yml — Severinno Marketplace (Monitoring Stack)
 # =============================================================================
-# Uso:
-#   docker compose -f docker-compose.monitoring.yml up -d
-#   docker compose -f docker-compose.monitoring.yml logs -f
-#   docker compose -f docker-compose.monitoring.yml down
-#
-# Serviços:
-#   - Prometheus (metrics collection)
-#   - Tempo (distributed tracing)
-#   - Grafana (dashboards + visualization)
+# Serviços: Prometheus, Tempo, Grafana, Loki, Promtail
 #
 # Acesso:
-#   Grafana:  http://localhost:3001 (admin/admin)
+#   Grafana:    http://localhost:3001 (admin/admin)
 #   Prometheus: http://localhost:9090
-#   Tempo: http://localhost:3200
-#
-# Portas:
-#   3001 — Grafana
-#   9090 — Prometheus
-#   3200 — Tempo (OTLP gRPC)
-#   4318 — Tempo (OTLP HTTP)
+#   Tempo:      http://localhost:3200
+#   Loki:       http://localhost:3100
 # =============================================================================
 
 networks:
@@ -35,9 +22,10 @@ volumes:
     name: severinno_grafana_data
   tempo_data:
     name: severinno_tempo_data
+  loki_data:
+    name: severinno_loki_data
 
 services:
-  # ── Prometheus (Metrics Collection) ────────────────────────────────────
   prometheus:
     image: prom/prometheus:v2.53.0
     restart: unless-stopped
@@ -60,13 +48,12 @@ services:
       timeout: 5s
       retries: 3
 
-  # ── Tempo (Distributed Tracing) ───────────────────────────────────────
   tempo:
     image: grafana/tempo:2.5.0
     restart: unless-stopped
     ports:
-      - "3200:3200" # Tempo HTTP
-      - "4318:4318" # OTLP HTTP
+      - "3200:3200"
+      - "4318:4318"
     volumes:
       - ./monitoring/tempo/tempo.yml:/etc/tempo/config.yml:ro
       - tempo_data:/var/tempo
@@ -80,7 +67,41 @@ services:
       retries: 5
       start_period: 30s
 
-  # ── Grafana (Dashboards + Visualization) ──────────────────────────────
+  loki:
+    image: grafana/loki:3.2.0
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  promtail:
+    image: grafana/promtail:3.2.0
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/promtail/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /home/severinno/.pm2/logs:/home/severinno/.pm2/logs:ro
+      - /var/log/caddy:/var/log/caddy:ro
+      - /tmp:/tmp
+    command: ["-config.file=/etc/promtail/config.yml"]
+    networks:
+      - monitoring
+    depends_on:
+      loki:
+        condition: service_healthy
+
   grafana:
     image: grafana/grafana:11.1.0
     restart: unless-stopped
@@ -95,13 +116,14 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_ROOT_URL: http://localhost:3001
-      # Grafana 11+ has Tempo built-in, no plugin needed
     networks:
       - monitoring
     depends_on:
       prometheus:
         condition: service_healthy
       tempo:
+        condition: service_healthy
+      loki:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/api/health"]
