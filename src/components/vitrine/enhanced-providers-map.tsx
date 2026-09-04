@@ -65,6 +65,7 @@ export default function EnhancedProvidersMap({
   const clusterSourceAdded = useRef(false)
   const maplibreglRef = useRef<typeof import("maplibre-gl") | null>(null)
   const selectRef = useRef(onSelectProvider)
+  const markerSyncCleanupRef = useRef<(() => void) | null>(null)
   const providersRef = useRef(providers)
   const userLatRef = useRef(userLat)
   const userLngRef = useRef(userLng)
@@ -196,6 +197,19 @@ export default function EnhancedProvidersMap({
       map.on("load", () => {
         map.resize()
         fitToBounds(map, providersRef.current, userLatRef.current, userLngRef.current)
+        // Force-sync markers on map load — the useEffect may have missed the
+        // window because mapRef/maplibreglRef were still null during its run.
+        const ml = maplibreglRef.current
+        if (ml && providersRef.current.length > 0) {
+          syncAnimatedMarkers({
+            map,
+            maplibregl: ml,
+            providers: providersRef.current,
+            selectedId: null,
+            onSelectProvider: selectRef.current,
+            markersRef,
+          })
+        }
       })
 
       // Auto pre-cache tiles on viewport move (debounced)
@@ -262,30 +276,51 @@ export default function EnhancedProvidersMap({
 
   // ---- Sync providers → animated markers -----------------------------------
   useEffect(() => {
-    const map = mapRef.current
-    const maplibregl = maplibreglRef.current
-    if (!map || !maplibregl) return
+    const syncMarkers = () => {
+      const map = mapRef.current
+      const maplibregl = maplibreglRef.current
+      if (!map || !maplibregl) return
 
-    const sync = () => {
-      if (!map.isStyleLoaded()) return
-      const useClustering = providers.length > 20
-      if (useClustering) {
-        syncClusterSource(map, providers, markersRef, clusterSourceAdded)
-      } else {
-        removeClusterSource(map, clusterSourceAdded)
-        syncAnimatedMarkers({ map, maplibregl, providers, selectedId, onSelectProvider: selectRef.current, markersRef })
+      const sync = () => {
+        if (!map.isStyleLoaded()) return
+        const useClustering = providers.length > 20
+        if (useClustering) {
+          syncClusterSource(map, providers, markersRef, clusterSourceAdded)
+        } else {
+          removeClusterSource(map, clusterSourceAdded)
+          syncAnimatedMarkers({ map, maplibregl, providers, selectedId, onSelectProvider: selectRef.current, markersRef })
+        }
+        fitToBounds(map, providers, userLat, userLng)
       }
-      fitToBounds(map, providers, userLat, userLng)
+
+      if (map.isStyleLoaded()) {
+        sync()
+      } else {
+        map.once("style.load", sync)
+      }
+
+      return () => {
+        map.off("style.load", sync)
+      }
     }
 
-    if (map.isStyleLoaded()) {
-      sync()
-    } else {
-      map.once("style.load", sync)
-    }
+    // Try immediately — refs may already be set
+    const cleanup = syncMarkers()
+    if (cleanup) return cleanup
+
+    // If refs are still null (async init pending), poll until map is ready
+    const interval = setInterval(() => {
+      const c = syncMarkers()
+      if (c) {
+        clearInterval(interval)
+        // Store cleanup for the outer return
+        markerSyncCleanupRef.current = c
+      }
+    }, 200)
 
     return () => {
-      map.off("style.load", sync)
+      clearInterval(interval)
+      markerSyncCleanupRef.current?.()
     }
   }, [providers, selectedId, userLat, userLng, mapInstance])
 
