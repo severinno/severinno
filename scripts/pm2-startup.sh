@@ -6,6 +6,10 @@
 #
 # Usage:
 #   sudo bash scripts/pm2-startup.sh
+#
+# Exit codes:
+#   0 — success
+#   1 — failure (permission denied or pm2 not found)
 # =============================================================================
 
 set -euo pipefail
