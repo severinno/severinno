@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextRequest, NextResponse } from "next/server"
 import {
   validateGeoCheckin,
@@ -76,9 +78,6 @@ export async function POST(req: NextRequest) {
         )
     }
   } catch (_error) {
-    return NextResponse.json(
-      { success: false, error: "Escrow operation failed" },
-      { status: 500 },
-    )
+    return NextResponse.json({ success: false, error: "Escrow operation failed" }, { status: 500 })
   }
 }

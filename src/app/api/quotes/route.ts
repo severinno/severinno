@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import logger from "@/lib/logger"
 import { NextResponse } from "next/server"
 import { type QuoteStatus } from "@prisma/client"

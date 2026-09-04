@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { hashPassword } from "@/lib/crypto"
@@ -23,7 +25,10 @@ export async function POST(request: Request) {
     const pwResult = passwordSchema.safeParse(password)
     if (!pwResult.success) {
       return NextResponse.json(
-        { error: pwResult.error.issues[0]?.message ?? "Senha não atende aos requisitos de segurança." },
+        {
+          error:
+            pwResult.error.issues[0]?.message ?? "Senha não atende aos requisitos de segurança.",
+        },
         { status: 400 },
       )
     }

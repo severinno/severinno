@@ -1,8 +1,8 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
-import { evaluateGeoHealth, type GeoHealthInput } from "@/lib/geo-health-alert"
-import { checkGeoPerformance } from "@/lib/geo-performance-alert"
+import type { GeoHealthInput } from "@/lib/geo-health-alert"
 import logger from "@/lib/logger"
-import { handleError } from "@/lib/api-server"
 
 /**
  * GET /api/cron/geo-health-alert
@@ -43,6 +43,11 @@ import { handleError } from "@/lib/api-server"
 export const runtime = "nodejs"
 
 export async function GET(request: Request) {
+  // Lazy imports to avoid triggering side effects during next build
+  const { evaluateGeoHealth } = await import("@/lib/geo-health-alert")
+  const { checkGeoPerformance } = await import("@/lib/geo-performance-alert")
+  const { handleError } = await import("@/lib/api-server")
+
   try {
     // ── Auth ─────────────────────────────────────────────────────────
     const auth = request.headers.get("authorization")

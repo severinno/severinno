@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
@@ -8,10 +10,7 @@ import { sanitizeText } from "@/lib/sanitize"
 // =============================================================================
 // POST /api/reviews/[id]/reply — Provider replies to a review
 // =============================================================================
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await assertRateLimit(request, RATE_LIMITS.general)
     const session = await requireUser()

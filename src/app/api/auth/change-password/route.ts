@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { hashPassword, verifyPassword } from "@/lib/crypto"
@@ -30,7 +32,9 @@ export async function POST(request: Request) {
     // Validate new password complexity
     const pwResult = passwordSchema.safeParse(newPassword)
     if (!pwResult.success) {
-      throw badRequest(pwResult.error.issues[0]?.message ?? "Senha não atende aos requisitos de segurança.")
+      throw badRequest(
+        pwResult.error.issues[0]?.message ?? "Senha não atende aos requisitos de segurança.",
+      )
     }
 
     // Fetch user with current password hash

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
@@ -166,7 +168,9 @@ export async function POST(request: Request) {
     }
 
     // ── View (just mark as read, already handled by SW opening URL) ────
-    await logPushAction(session.userId, bookingId, "view", "viewed").catch((err) => logger.warn({ err }, "push action log failed"))
+    await logPushAction(session.userId, bookingId, "view", "viewed").catch((err) =>
+      logger.warn({ err }, "push action log failed"),
+    )
 
     return NextResponse.json({
       ok: true,

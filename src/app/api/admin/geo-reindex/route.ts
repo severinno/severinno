@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 /**
  * POST /api/admin/geo-reindex
  *

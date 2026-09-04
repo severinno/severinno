@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 /**
  * GET /api/geo/debug
  *
@@ -252,10 +254,26 @@ export async function GET(request: Request): Promise<NextResponse<DebugResponse>
 
   const geoMetricsSection = {
     calls: {
-      cep: { calls: geoCallStats.calls.cep, fallbacks: geoCallStats.fallbacks.cep, fallbackRate: geoCallStats.fallbackRate.cep },
-      search: { calls: geoCallStats.calls.search, fallbacks: geoCallStats.fallbacks.search, fallbackRate: geoCallStats.fallbackRate.search },
-      reverse: { calls: geoCallStats.calls.reverse, fallbacks: geoCallStats.fallbacks.reverse, fallbackRate: geoCallStats.fallbackRate.reverse },
-      structured: { calls: geoCallStats.calls.structured, fallbacks: geoCallStats.fallbacks.structured, fallbackRate: geoCallStats.fallbackRate.structured },
+      cep: {
+        calls: geoCallStats.calls.cep,
+        fallbacks: geoCallStats.fallbacks.cep,
+        fallbackRate: geoCallStats.fallbackRate.cep,
+      },
+      search: {
+        calls: geoCallStats.calls.search,
+        fallbacks: geoCallStats.fallbacks.search,
+        fallbackRate: geoCallStats.fallbackRate.search,
+      },
+      reverse: {
+        calls: geoCallStats.calls.reverse,
+        fallbacks: geoCallStats.fallbacks.reverse,
+        fallbackRate: geoCallStats.fallbackRate.reverse,
+      },
+      structured: {
+        calls: geoCallStats.calls.structured,
+        fallbacks: geoCallStats.fallbacks.structured,
+        fallbackRate: geoCallStats.fallbackRate.structured,
+      },
     },
     latency: Object.fromEntries(
       Object.entries(geoMetrics.services).map(([name, svc]) => [

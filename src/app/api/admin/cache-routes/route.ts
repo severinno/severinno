@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { handleError, cacheControlPrivate } from "@/lib/api-server"

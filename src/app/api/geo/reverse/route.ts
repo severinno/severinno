@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { reverseGeocode } from "@/lib/geo"
 import { cacheControlPublic } from "@/lib/api-server"

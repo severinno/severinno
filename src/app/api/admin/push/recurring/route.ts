@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 /**
  * CRUD /api/admin/push/recurring
  *

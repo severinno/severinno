@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 /**
  * POST /api/geo/batch — Batch geocoding endpoint.
  *
@@ -26,7 +28,9 @@ type BatchResult = {
   source: "local-db" | "nominatim" | "not-found"
 }
 
-async function geocodeLocal(address: string): Promise<{ lat: number; lng: number; displayName: string } | null> {
+async function geocodeLocal(
+  address: string,
+): Promise<{ lat: number; lng: number; displayName: string } | null> {
   try {
     const q = address.trim()
     if (!q) return null
@@ -64,7 +68,9 @@ async function geocodeLocal(address: string): Promise<{ lat: number; lng: number
   }
 }
 
-async function geocodeNominatim(address: string): Promise<{ lat: number; lng: number; displayName: string } | null> {
+async function geocodeNominatim(
+  address: string,
+): Promise<{ lat: number; lng: number; displayName: string } | null> {
   try {
     const settings = await getGeoSettings()
     if (!settings.nominatimEnabled) return null
@@ -95,7 +101,7 @@ async function geocodeNominatim(address: string): Promise<{ lat: number; lng: nu
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { addresses?: string[]; limit?: number }
+    const body = (await request.json()) as { addresses?: string[]; limit?: number }
     const addresses = body.addresses ?? []
 
     if (!Array.isArray(addresses) || addresses.length === 0) {
@@ -117,13 +123,24 @@ export async function POST(request: Request) {
     for (const address of addresses) {
       const trimmed = address.trim()
       if (!trimmed) {
-        results.push({ query: address, lat: null, lng: null, displayName: null, source: "not-found" })
+        results.push({
+          query: address,
+          lat: null,
+          lng: null,
+          displayName: null,
+          source: "not-found",
+        })
         continue
       }
 
       // Try cache first
       const cacheKey = `geo:batch:${trimmed.toLowerCase()}`
-      const cached = await withCache<{ lat: number; lng: number; displayName: string; source: string } | null>(
+      const cached = await withCache<{
+        lat: number
+        lng: number
+        displayName: string
+        source: string
+      } | null>(
         cacheKey,
         async () => {
           // Try local DB first (fast, no rate limit)
@@ -156,7 +173,13 @@ export async function POST(request: Request) {
           source: cached.source as "local-db" | "nominatim",
         })
       } else {
-        results.push({ query: address, lat: null, lng: null, displayName: null, source: "not-found" })
+        results.push({
+          query: address,
+          lat: null,
+          lng: null,
+          displayName: null,
+          source: "not-found",
+        })
       }
     }
 

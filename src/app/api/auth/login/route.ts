@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { verifyPassword } from "@/lib/crypto"
@@ -35,10 +37,14 @@ async function recordFailedAttempt(email: string): Promise<void> {
   const count = (existing?.count ?? 0) + 1
 
   if (count >= MAX_FAILED_ATTEMPTS) {
-    await cacheSet(key, {
-      count,
-      lockedUntil: Date.now() + LOCKOUT_SECONDS * 1000,
-    }, LOCKOUT_SECONDS)
+    await cacheSet(
+      key,
+      {
+        count,
+        lockedUntil: Date.now() + LOCKOUT_SECONDS * 1000,
+      },
+      LOCKOUT_SECONDS,
+    )
     logger.warn({ email }, "Account locked after too many failed attempts")
   } else {
     await cacheSet(key, { count }, LOCKOUT_SECONDS)

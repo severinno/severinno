@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { captureErrorEnhanced } from "@/lib/sentry-enhanced"
 import logger from "@/lib/logger"
 /**
@@ -113,7 +115,9 @@ async function confirmBookingPayment(
   )
 
   // Notificar provider via WhatsApp (best-effort)
-  notifyPaymentConfirmed(booking.providerId, bookingId, booking.amount).catch((err) => logger.warn({ err }, "lytex payment notification failed"))
+  notifyPaymentConfirmed(booking.providerId, bookingId, booking.amount).catch((err) =>
+    logger.warn({ err }, "lytex payment notification failed"),
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -237,7 +241,11 @@ export async function POST(request: Request) {
   } catch (e) {
     // Log do erro mas retorna 200 para a Lytex não reenviar
     lytexLogger.error({ err: e }, "Webhook: erro no processamento")
-    captureErrorEnhanced(e, { url: "/api/webhooks/lytex", method: "POST", tags: { source: "lytex-webhook" } })
+    captureErrorEnhanced(e, {
+      url: "/api/webhooks/lytex",
+      method: "POST",
+      tags: { source: "lytex-webhook" },
+    })
     return NextResponse.json({ received: true })
   }
 }

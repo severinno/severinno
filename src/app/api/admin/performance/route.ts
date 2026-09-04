@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 /**
  * GET /api/admin/performance — Métricas de performance do sistema
  *

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextRequest, NextResponse } from "next/server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 

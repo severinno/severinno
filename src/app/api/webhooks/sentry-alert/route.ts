@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 /**
  * POST /api/webhooks/sentry-alert — Recebe alertas do GlitchTip/Sentry e encaminha
  *

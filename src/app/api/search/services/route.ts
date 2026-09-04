@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { searchServices } from "@/lib/search"
 import { cacheControlPublic, handleError } from "@/lib/api-server"

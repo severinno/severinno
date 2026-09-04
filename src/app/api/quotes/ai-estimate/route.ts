@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { categorizeServiceRequest } from "@/lib/ai-categorizer"
 import { findBestProviders } from "@/lib/smart-match"

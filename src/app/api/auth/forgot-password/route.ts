@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { randomBytes } from "crypto"
 import { db } from "@/lib/db"

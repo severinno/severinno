@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { handleError } from "@/lib/api-server"
 /**
  * GET /api/admin/geo-metrics
@@ -18,7 +20,6 @@ import { handleError } from "@/lib/api-server"
  * }
  * ```
  */
-
 
 import { NextResponse } from "next/server"
 import { readFileSync, existsSync } from "node:fs"
