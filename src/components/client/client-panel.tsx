@@ -15,6 +15,7 @@
  */
 
 import * as React from "react"
+import dynamic from "next/dynamic"
 import {
   Calendar,
   FileText,
@@ -37,16 +38,49 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { DashboardShell, type NavItem } from "@/components/shared/dashboard-shell"
 
-import { ClientDashboard } from "@/components/client/client-dashboard"
-import { ClientBookings } from "@/components/client/client-bookings"
-import { ClientQuotes } from "@/components/client/client-quotes"
-import { ClientServices } from "@/components/client/client-services"
-import { ClientFinance } from "@/components/client/client-finance"
-import { ClientReviews } from "@/components/client/client-reviews"
-import { ClientFavorites } from "@/components/client/client-favorites"
-import { ClientMessages } from "@/components/client/client-messages"
-import { ClientProfile } from "@/components/client/client-profile"
-import { ClientSecurity } from "@/components/client/client-security"
+// Lazy-loaded client sub-views — code-split per route for smaller bundles
+const ClientDashboard = dynamic(
+  () =>
+    import("@/components/client/client-dashboard").then((m) => ({ default: m.ClientDashboard })),
+  { ssr: false },
+)
+const ClientBookings = dynamic(
+  () => import("@/components/client/client-bookings").then((m) => ({ default: m.ClientBookings })),
+  { ssr: false },
+)
+const ClientQuotes = dynamic(
+  () => import("@/components/client/client-quotes").then((m) => ({ default: m.ClientQuotes })),
+  { ssr: false },
+)
+const ClientServices = dynamic(
+  () => import("@/components/client/client-services").then((m) => ({ default: m.ClientServices })),
+  { ssr: false },
+)
+const ClientFinance = dynamic(
+  () => import("@/components/client/client-finance").then((m) => ({ default: m.ClientFinance })),
+  { ssr: false },
+)
+const ClientReviews = dynamic(
+  () => import("@/components/client/client-reviews").then((m) => ({ default: m.ClientReviews })),
+  { ssr: false },
+)
+const ClientFavorites = dynamic(
+  () =>
+    import("@/components/client/client-favorites").then((m) => ({ default: m.ClientFavorites })),
+  { ssr: false },
+)
+const ClientMessages = dynamic(
+  () => import("@/components/client/client-messages").then((m) => ({ default: m.ClientMessages })),
+  { ssr: false },
+)
+const ClientProfile = dynamic(
+  () => import("@/components/client/client-profile").then((m) => ({ default: m.ClientProfile })),
+  { ssr: false },
+)
+const ClientSecurity = dynamic(
+  () => import("@/components/client/client-security").then((m) => ({ default: m.ClientSecurity })),
+  { ssr: false },
+)
 
 // ---------------------------------------------------------------------------
 // Nav items
