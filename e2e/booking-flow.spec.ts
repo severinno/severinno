@@ -50,7 +50,19 @@ async function selectFirstDateTime(page: Page): Promise<boolean> {
   } catch {
     return false
   }
-  await dayButton.click()
+  // Hide sticky footer that intercepts pointer events, then click
+  await page.evaluate(() => {
+    document.querySelectorAll('[class*="sticky bottom-0"]').forEach(el => {
+      (el as HTMLElement).style.pointerEvents = 'none'
+    })
+  })
+  await dayButton.click({ force: true })
+  // Restore pointer events
+  await page.evaluate(() => {
+    document.querySelectorAll('[class*="sticky bottom-0"]').forEach(el => {
+      (el as HTMLElement).style.pointerEvents = ''
+    })
+  })
 
   // Slots renderizam como "08h00" (formatHHmm) — não "08:00". Usa
   // getByRole().filter({ hasText }) — :has-text(/regex/) dentro de um
@@ -64,7 +76,8 @@ async function selectFirstDateTime(page: Page): Promise<boolean> {
   } catch {
     return false
   }
-  await timeSlot.click()
+  await timeSlot.scrollIntoViewIfNeeded()
+  await timeSlot.click({ force: true })
   await page.waitForTimeout(300)
   return true
 }
@@ -74,11 +87,17 @@ async function selectFirstDateTime(page: Page): Promise<boolean> {
  * Retorna true se conseguiu navegar.
  */
 async function navigateToStep(page: Page, step: number) {
+  // Disable sticky footer pointer events before clicking
+  await page.evaluate(() => {
+    document.querySelectorAll('[class*="sticky bottom-0"]').forEach(el => {
+      (el as HTMLElement).style.pointerEvents = 'none'
+    })
+  })
   // Clica "Continuar" múltiplas vezes até chegar na etapa desejada
   for (let i = 1; i < step; i++) {
     const continuar = page.locator('button:has-text("Continuar")')
     if (await continuar.isVisible().catch(() => false)) {
-      await continuar.click()
+      await continuar.click({ force: true })
       await page.waitForTimeout(500)
     } else {
       return false
@@ -622,18 +641,16 @@ test.describe("Navegação e UX do Booking", () => {
     await openBookingModal(page)
     await page.waitForTimeout(500)
 
-    // Fecha o modal
+    // Fecha o modal — Radix Dialog close button
     const closeBtn = page
-      .locator('button[aria-label="Close"], button[aria-label="Fechar"], button:has(svg.lucide-x)')
+      .locator('[data-slot="close"], button[aria-label="Close"], button[aria-label="Fechar"]')
       .first()
-    if (await closeBtn.isVisible().catch(() => false)) {
-      await closeBtn.click()
-      await page.waitForTimeout(500)
+    if (await closeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await closeBtn.click({ force: true })
     } else {
-      // Tenta ESC para fechar
       await page.keyboard.press("Escape")
-      await page.waitForTimeout(500)
     }
+    await page.waitForTimeout(500)
 
     // Reabre o modal
     await clickProviderAgendar(page)

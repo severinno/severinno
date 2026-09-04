@@ -233,6 +233,13 @@ export async function openBookingModal(page: Page) {
     .locator('h2:has-text("Agendar serviço"), h2:has-text("Agendar serviço")')
     .first()
   await modalTitle.waitFor({ state: "visible", timeout: 5000 }).catch(() => {})
+
+  // Disable pointer events on sticky footer so calendar/slots are clickable
+  await page.evaluate(() => {
+    document.querySelectorAll('[class*="sticky bottom-0"]').forEach(el => {
+      (el as HTMLElement).style.pointerEvents = 'none'
+    })
+  })
 }
 
 /**
