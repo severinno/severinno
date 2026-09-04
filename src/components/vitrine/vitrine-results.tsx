@@ -134,7 +134,7 @@ export default function VitrineResults({
       <div className="lg:grid lg:grid-cols-[260px_1fr] lg:gap-8">
         {/* Sidebar (desktop) */}
         <aside className="hidden lg:block">
-          <div className="bg-card sticky top-32 max-h-[calc(100vh-9rem)] overflow-y-auto rounded-xl border p-4 shadow-sm">
+          <div className="sticky top-32 max-h-[calc(100vh-9rem)] overflow-y-auto rounded-xl border border-slate-200 bg-slate-100 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
             <Filters
               value={filters}
               onChange={onFiltersChange}
@@ -186,7 +186,7 @@ export default function VitrineResults({
                     <SheetHeader>
                       <SheetTitle>Filtros</SheetTitle>
                     </SheetHeader>
-                    <div className="flex-1 overflow-y-auto p-4">
+                    <div className="flex-1 overflow-y-auto bg-slate-100 p-4 dark:bg-slate-800">
                       <Filters
                         value={filters}
                         onChange={(v) => {
@@ -457,7 +457,7 @@ function MapView({
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       {/* Map */}
-      <div className="order-1 h-[480px] w-full min-h-[400px] overflow-hidden rounded-xl lg:sticky lg:top-32 lg:order-2 lg:h-[calc(100vh-12rem)]">
+      <div className="order-1 h-[480px] min-h-[400px] w-full overflow-hidden rounded-xl lg:sticky lg:top-32 lg:order-2 lg:h-[calc(100vh-12rem)]">
         <ProvidersMap
           className="h-full w-full"
           providers={providers}
