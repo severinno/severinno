@@ -26,6 +26,12 @@ scrape_configs:
     static_configs:
       - targets: ["tempo:3200"]
 
-# ── Alert Rules (optional) ────────────────────────────────────────────────
+# ── Alert Rules ──────────────────────────────────────────────────────────
 rule_files:
   - "alerts/*.yml"
+
+# ── Alertmanager ──────────────────────────────────────────────────────────
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
