@@ -1,171 +1,25 @@
 # =============================================================================
 # docker-compose.glitchtip.yml — GlitchTip (Sentry-compatible, self-hosted)
 #
-# 🔥 Self-contained error monitoring stack.
-# Run standalone:
-#
-#   docker compose -f docker-compose.glitchtip.yml --env-file .env.glitchtip up -d
-#
-# Or merge with the main stack:
-#
-#   docker compose -f docker-compose.yml -f docker-compose.glitchtip.yml up -d
-#
-# After first start:
-#   1. Open http://localhost:8000
-#   2. Create admin account
-#   3. Create a project → copy its DSN
-#   4. Set SENTRY_DSN / NEXT_PUBLIC_SENTRY_DSN in your .env
+# Uses host networking to connect to existing PostGIS + Redis.
+# Start:  docker compose -f docker-compose.glitchtip.yml up -d
+# UI:     http://localhost:8001
 # =============================================================================
 
-# ── Shared environment (reused by web + worker + migrate) ─────────────────
-x-glitchtip-env: &glitchtip-env
-  DATABASE_URL: postgres://${GLITCHTIP_DB_USER:-glitchtip}:${GLITCHTIP_DB_PASSWORD:-glitchtip_dev}@glitchtip-db:5432/${GLITCHTIP_DB_NAME:-glitchtip}
-  REDIS_URL: redis://glitchtip-redis:6379
-  SECRET_KEY: ${GLITCHTIP_SECRET_KEY}
-  GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://localhost:8000}
-  DEFAULT_FROM_EMAIL: ${GLITCHTIP_FROM_EMAIL:-noreply@severinno.com.br}
-  EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-}
-  CELERY_DEFAULT_QUEUE: glitchtip
-  # S3 / MinIO — source maps & cold storage
-  S3_ENABLED: "true"
-  S3_ENDPOINT_URL: http://glitchtip-minio:9000
-  S3_ACCESS_KEY_ID: ${GLITCHTIP_S3_ACCESS_KEY:-glitchtip_storage}
-  S3_SECRET_ACCESS_KEY: ${GLITCHTIP_S3_SECRET_KEY:-glitchtip_storage_secret}
-  S3_BUCKET_NAME: ${GLITCHTIP_S3_BUCKET:-glitchtip-storage}
-  S3_REGION: auto
-  # Performance
-  DATABASE_POOL_MAX_SIZE: ${GLITCHTIP_DB_POOL:-10}
-  VTASKS_CONCURRENCY: ${GLITCHTIP_CONCURRENCY:-4}
-
 services:
-  # ── PostgreSQL (GlitchTip database) ─────────────────────────────────────
-  glitchtip-db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${GLITCHTIP_DB_USER:-glitchtip}
-      POSTGRES_PASSWORD: ${GLITCHTIP_DB_PASSWORD:-glitchtip_dev}
-      POSTGRES_DB: ${GLITCHTIP_DB_NAME:-glitchtip}
-    ports:
-      - "${GLITCHTIP_DB_PORT:-5433}:5432"
-    volumes:
-      - glitchtip_db_data:/var/lib/postgresql/data
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U ${GLITCHTIP_DB_USER:-glitchtip} -d ${GLITCHTIP_DB_NAME:-glitchtip}",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ── Redis (caching, task queue, sessions) ───────────────────────────────
-  glitchtip-redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    ports:
-      - "${GLITCHTIP_REDIS_PORT:-6380}:6379"
-    volumes:
-      - glitchtip_redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ── MinIO (S3-compatible storage for source maps & cold storage) ────────
-  glitchtip-minio:
-    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    ports:
-      - "${GLITCHTIP_S3_PORT:-9002}:9000"
-      - "${GLITCHTIP_S3_CONSOLE_PORT:-9003}:9001"
-    environment:
-      MINIO_ROOT_USER: ${GLITCHTIP_S3_ACCESS_KEY:-glitchtip_storage}
-      MINIO_ROOT_PASSWORD: ${GLITCHTIP_S3_SECRET_KEY:-glitchtip_storage_secret}
-    volumes:
-      - glitchtip_minio_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # ── MinIO Bucket Init (auto-create bucket before web/worker start) ─────
-  glitchtip-minio-init:
-    image: minio/mc:RELEASE.2024-12-18T13-15-44Z
-    restart: "no"
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        echo "Waiting for MinIO..."
-        until /usr/bin/mc alias set glitchtip http://glitchtip-minio:9000 \
-          "${S3_ACCESS_KEY}" "${S3_SECRET_KEY}"; do sleep 2; done
-        echo "Creating bucket '${S3_BUCKET}'..."
-        /usr/bin/mc mb "glitchtip/${S3_BUCKET}" --ignore-existing
-        /usr/bin/mc anonymous set download "glitchtip/${S3_BUCKET}"
-        echo "Bucket '${S3_BUCKET}' ready."
-    environment:
-      S3_ACCESS_KEY: ${GLITCHTIP_S3_ACCESS_KEY:-glitchtip_storage}
-      S3_SECRET_KEY: ${GLITCHTIP_S3_SECRET_KEY:-glitchtip_storage_secret}
-      S3_BUCKET: ${GLITCHTIP_S3_BUCKET:-glitchtip-storage}
-    depends_on:
-      glitchtip-minio:
-        condition: service_healthy
-
-  # ── Database Migration (one-time, runs before web/worker start) ────────
-  glitchtip-migrate:
+  error-tracking:
     image: glitchtip/glitchtip:v5.2
-    restart: "no"
-    command: ./bin/run-migrate
-    depends_on:
-      glitchtip-db:
-        condition: service_healthy
-    environment:
-      # Only needs DB + SECRET_KEY — don't import shared env (S3/Redis not needed)
-      DATABASE_URL: postgres://${GLITCHTIP_DB_USER:-glitchtip}:${GLITCHTIP_DB_PASSWORD:-glitchtip_dev}@glitchtip-db:5432/${GLITCHTIP_DB_NAME:-glitchtip}
-      SECRET_KEY: ${GLITCHTIP_SECRET_KEY}
-
-  # ── Web Server (Django — serves the UI + API) ───────────────────────────
-  glitchtip-web:
-    image: glitchtip/glitchtip:v5.2
+    container_name: severinno-glitchtip
     restart: unless-stopped
-    command: ./bin/run-web
-    ports:
-      - "${GLITCHTIP_PORT:-8000}:8000"
-    depends_on:
-      glitchtip-db:
-        condition: service_healthy
-      glitchtip-redis:
-        condition: service_healthy
-      glitchtip-minio-init:
-        condition: service_completed_successfully
-      glitchtip-migrate:
-        condition: service_completed_successfully
+    command: gunicorn glitchtip.wsgi:application --bind 0.0.0.0:8001 --workers 2 --timeout 60
+    network_mode: host
     environment:
-      <<: *glitchtip-env
-
-  # ── Background Worker (Celery — processes events asynchronously) ────────
-  glitchtip-worker:
-    image: glitchtip/glitchtip:v5.2
-    restart: unless-stopped
-    command: ./bin/run-worker
-    depends_on:
-      glitchtip-db:
-        condition: service_healthy
-      glitchtip-redis:
-        condition: service_healthy
-      glitchtip-minio-init:
-        condition: service_completed_successfully
-      glitchtip-migrate:
-        condition: service_completed_successfully
-    environment:
-      <<: *glitchtip-env
-
-volumes:
-  glitchtip_db_data:
-  glitchtip_redis_data:
-  glitchtip_minio_data:
+      DATABASE_URL: postgres://severinno:severinno@localhost:5433/severinno?options=-c%20search_path%3Dglitchtip%2Cpublic
+      REDIS_URL: redis://localhost:6379/2
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:?Set GLITCHTIP_SECRET_KEY in .env}
+      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://localhost:8001}
+      DEFAULT_FROM_EMAIL: ${GLITCHTIP_FROM_EMAIL:-noreply@severinno.com.br}
+      EMAIL_URL: ${GLITCHTIP_EMAIL_URL:-consolemail://}
+      S3_ENABLED: "false"
+      DATABASE_POOL_MAX_SIZE: ${GLITCHTIP_DB_POOL:-5}
+      VTASKS_CONCURRENCY: ${GLITCHTIP_CONCURRENCY:-2}
