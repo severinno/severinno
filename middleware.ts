@@ -306,6 +306,7 @@ const PUBLIC_API = new Set([
   "/api/newsletter",
   "/api/sentry",
   "/api/sentry/test",
+  "/api/web-vitals",
   "/api/webhooks/lytex",
   "/api/webhooks/sentry-alert",
   "/api/webhooks/evolution",
