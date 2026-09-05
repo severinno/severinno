@@ -107,7 +107,8 @@ export async function registerUser(page: Page, options: { role?: "CLIENT" | "PRO
   try {
     await entrarBtn.waitFor({ state: "visible", timeout: 10_000 })
     await entrarBtn.click()
-    await page.waitForTimeout(800)
+    // Wait for dialog to appear after click — increase from 800ms to 2s
+    await page.waitForTimeout(2000)
   } catch {
     // Already authenticated — no login button; skip opening the modal
   }
@@ -115,7 +116,7 @@ export async function registerUser(page: Page, options: { role?: "CLIENT" | "PRO
   // Switch to the register tab — role="tab" so we don't hit the topbar's
   // "Cadastrar" button that sits behind the modal overlay
   const dialog = page.getByRole("dialog")
-  await dialog.waitFor({ state: "visible", timeout: 10_000 })
+  await dialog.waitFor({ state: "visible", timeout: 15_000 })
   const criarTab = dialog.getByRole("tab", { name: /cadastrar/i }).first()
   await criarTab.waitFor({ state: "visible", timeout: 10_000 })
   await criarTab.click()

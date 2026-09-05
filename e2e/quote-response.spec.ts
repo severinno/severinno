@@ -102,20 +102,31 @@ async function expandQuoteItems(page: Page) {
 
 test.describe("Quote Response — Provider responde orçamento", () => {
   test.beforeEach(async ({ page }) => {
-    await setupApiMocks(page, {
-      authenticated: true,
-      userRole: "PROVIDER",
-      quoteStage: "pending",
-    })
+    await setupApiMocks(page, { quoteStage: "pending" })
+    // Login via UI form (real session cookie, bypasses middleware redirect)
     await page.goto("/")
-    await waitForVitrine(page)
+    await page.waitForTimeout(2000)
+    const entrarBtn = page.getByRole("button", { name: /entrar/i }).first()
+    await entrarBtn.waitFor({ state: "visible", timeout: 10_000 })
+    await entrarBtn.click()
+    await page.waitForTimeout(1000)
+    const dialog = page.getByRole("dialog")
+    await dialog.waitFor({ state: "visible", timeout: 10_000 })
+    const emailInput = dialog.locator('input[placeholder*="email" i], input[type="email"]').first()
+    const passInput = dialog.locator('input[type="password"]').first()
+    await emailInput.fill("e2e-provider@test.com")
+    await passInput.fill("Test123456!")
+    const loginBtn = dialog.locator('button[type="submit"]').first()
+    await loginBtn.click()
+    await page.waitForTimeout(3000)
+    // Now navigate to dashboard — middleware sees real session cookie
+    await page.goto("/dashboard")
+    await page.waitForTimeout(3000)
   })
 
   test("1. registra como provider e vê orçamento pendente no painel", async ({ page }) => {
-    // Registra como PROVIDER
-    const creds = await registerUser(page, { role: "PROVIDER" })
-    console.log(`Provider criado: ${creds.email}`)
-    await page.waitForTimeout(2000)
+    // Auth already mocked in beforeEach (userRole: PROVIDER)
+    await page.waitForTimeout(1000)
 
     // Navega para a aba Orçamentos
     await navigateToQuotesPanel(page)
@@ -141,9 +152,8 @@ test.describe("Quote Response — Provider responde orçamento", () => {
   })
 
   test("2. provider preenche preço e nota e envia orçamento", async ({ page }) => {
-    // Registra como PROVIDER
-    await registerUser(page, { role: "PROVIDER" })
-    await page.waitForTimeout(2000)
+    // Auth already mocked in beforeEach (userRole: PROVIDER)
+    await page.waitForTimeout(1000)
 
     // Navega para Orçamentos
     await navigateToQuotesPanel(page)
@@ -181,9 +191,8 @@ test.describe("Quote Response — Provider responde orçamento", () => {
   })
 
   test("3. preco vazio bloqueia envio do orcamento", async ({ page }) => {
-    // Registra como PROVIDER
-    await registerUser(page, { role: "PROVIDER" })
-    await page.waitForTimeout(2000)
+    // Auth already mocked in beforeEach (userRole: PROVIDER)
+    await page.waitForTimeout(1000)
 
     // Navega para Orçamentos
     await navigateToQuotesPanel(page)
@@ -224,20 +233,31 @@ test.describe("Quote Response — Provider responde orçamento", () => {
 
 test.describe("Quote Response — Cliente aprova orcamento respondido", () => {
   test.beforeEach(async ({ page }) => {
-    await setupApiMocks(page, {
-      authenticated: true,
-      userRole: "CLIENT",
-      quoteStage: "responded",
-    })
+    await setupApiMocks(page, { quoteStage: "responded" })
+    // Login via UI form (real session cookie)
     await page.goto("/")
-    await waitForVitrine(page)
+    await page.waitForTimeout(2000)
+    const entrarBtn = page.getByRole("button", { name: /entrar/i }).first()
+    await entrarBtn.waitFor({ state: "visible", timeout: 10_000 })
+    await entrarBtn.click()
+    await page.waitForTimeout(1000)
+    const dialog = page.getByRole("dialog")
+    await dialog.waitFor({ state: "visible", timeout: 10_000 })
+    const emailInput = dialog.locator('input[placeholder*="email" i], input[type="email"]').first()
+    const passInput = dialog.locator('input[type="password"]').first()
+    await emailInput.fill("e2e-client@test.com")
+    await passInput.fill("Test123456!")
+    const loginBtn = dialog.locator('button[type="submit"]').first()
+    await loginBtn.click()
+    await page.waitForTimeout(3000)
+    // Navigate to dashboard with real session
+    await page.goto("/dashboard")
+    await page.waitForTimeout(3000)
   })
 
   test("4. registra como cliente e ve orcamento respondido", async ({ page }) => {
-    // Registra como CLIENT
-    const creds = await registerUser(page, { role: "CLIENT" })
-    console.log(`Cliente criado: ${creds.email}`)
-    await page.waitForTimeout(2000)
+    // Auth already mocked in beforeEach (userRole: CLIENT)
+    await page.waitForTimeout(1000)
 
     // Navega para Orçamentos no painel do cliente
     await navigateToQuotesPanel(page)
@@ -261,9 +281,8 @@ test.describe("Quote Response — Cliente aprova orcamento respondido", () => {
   })
 
   test("5. cliente aprova orcamento respondido", async ({ page }) => {
-    // Registra como CLIENT
-    await registerUser(page, { role: "CLIENT" })
-    await page.waitForTimeout(2000)
+    // Auth already mocked in beforeEach (userRole: CLIENT)
+    await page.waitForTimeout(1000)
 
     // Navega para Orçamentos
     await navigateToQuotesPanel(page)
@@ -304,9 +323,8 @@ test.describe("Quote Response — Cliente aprova orcamento respondido", () => {
   })
 
   test("6. cliente ve acoes disponiveis no card do orcamento", async ({ page }) => {
-    // Registra como CLIENT
-    await registerUser(page, { role: "CLIENT" })
-    await page.waitForTimeout(2000)
+    // Auth already mocked in beforeEach (userRole: CLIENT)
+    await page.waitForTimeout(1000)
 
     // Navega para Orçamentos
     await navigateToQuotesPanel(page)

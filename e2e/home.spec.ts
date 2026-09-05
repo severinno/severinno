@@ -12,7 +12,7 @@ test.describe("Home page", () => {
   test("shows category showcase", async ({ page }) => {
     await page.goto("/")
     const _categorySection = page.locator("text=/Categorias|Serviços/i").first()
-    await expect(page.locator("header, main")).toBeVisible()
+    await expect(page.locator("header, main").first()).toBeVisible()
   })
 
   test("search input works on hero", async ({ page }) => {

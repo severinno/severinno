@@ -16,7 +16,7 @@ services:
       POSTGRES_USER: severinno
       POSTGRES_PASSWORD: severinno
     ports:
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata_dev:/var/lib/postgresql/data
       - ./scripts/init-postgis.sql:/docker-entrypoint-initdb.d/init-postgis.sql:ro
