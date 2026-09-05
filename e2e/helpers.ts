@@ -99,7 +99,7 @@ export async function clickConfirmBooking(page: Page) {
 export async function registerUser(page: Page, options: { role?: "CLIENT" | "PROVIDER" } = {}) {
   const { role = "CLIENT" } = options
   const email = `e2e-${Date.now()}@test.com`
-  const password = "test123456"
+  const password = "Test123456!"
 
   // Open auth modal if not already open — wait for the topbar "Entrar"
   // button (auto-retry; a one-shot isVisible() can miss it during hydration)

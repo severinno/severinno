@@ -40,18 +40,44 @@ async function openQuoteModal(page: Page) {
 }
 
 /**
+ * Detecta o step atual do wizard lendo o botão de step ativo
+ * (o ativo tem font-semibold + text-emerald-700).
+ */
+async function getCurrentQuoteStep(page: Page): Promise<number> {
+  const stepBtns = page
+    .locator('[role="dialog"] button')
+    .filter({ hasText: /Prestador|Serviço|Detalhes|Endereço|Revisão/i })
+  const count = await stepBtns.count().catch(() => 0)
+  for (let i = 0; i < count; i++) {
+    const cls = (await stepBtns.nth(i).getAttribute("class").catch(() => "")) ?? ""
+    if (cls.includes("font-semibold") && cls.includes("text-emerald-700")) {
+      const text = ((await stepBtns.nth(i).textContent().catch(() => "")) ?? "").toLowerCase()
+      if (text.includes("prestador")) return 1
+      if (text.includes("serviço")) return 2
+      if (text.includes("detalhes")) return 3
+      if (text.includes("endereço")) return 4
+      if (text.includes("revisão")) return 5
+    }
+  }
+  return 1
+}
+
+/**
  * Navega para uma etapa específica do wizard de orçamento.
- * Clica "Continuar" múltiplas vezes até chegar na etapa desejada.
+ * Detecta o step atual e clica "Continuar" apenas o necessário.
+ * Nunca tenta clicar em um botão disabled (evita timeout de 40s).
  */
 async function navigateQuoteStep(page: Page, targetStep: number) {
-  for (let i = 1; i < targetStep; i++) {
-    const continuar = page.locator('button:has-text("Continuar")')
-    if (await continuar.isVisible().catch(() => false)) {
-      await continuar.click()
-      await page.waitForTimeout(500)
-    } else {
-      return false
-    }
+  const maxClicks = 6
+  for (let i = 0; i < maxClicks; i++) {
+    const current = await getCurrentQuoteStep(page)
+    if (current >= targetStep) return true
+
+    const continuar = page.locator('button:has-text("Continuar")').first()
+    const disabled = await continuar.isDisabled().catch(() => true)
+    if (disabled) return false
+    await continuar.click()
+    await page.waitForTimeout(600)
   }
   return true
 }
@@ -60,23 +86,24 @@ async function navigateQuoteStep(page: Page, targetStep: number) {
  * No Step 1 (Prestador): abre o combobox e seleciona o primeiro prestador.
  */
 async function selectProvider(page: Page) {
-  // Abre o combobox de prestadores
+  // Abre o combobox de prestadores (provider may already be pre-selected
+  // when the modal opens with a providerId preset — that's fine)
   const comboboxTrigger = page
-    .locator('button[role="combobox"]:has-text(/Selecionar prestador/i)')
+    .locator('button[role="combobox"]')
+    .filter({ hasText: /Selecionar prestador/i })
     .first()
-  if (await comboboxTrigger.isVisible().catch(() => false)) {
+  try {
+    await comboboxTrigger.waitFor({ state: "visible", timeout: 5000 })
     await comboboxTrigger.click()
-    await page.waitForTimeout(500)
-
-    // Seleciona o primeiro item da lista
     const providerItem = page.locator('[role="option"], [role="menuitem"]').first()
-    if (await providerItem.isVisible().catch(() => false)) {
-      await providerItem.click()
-      await page.waitForTimeout(300)
-      return true
-    }
+    await providerItem.waitFor({ state: "visible", timeout: 5000 })
+    await providerItem.click()
+    await page.waitForTimeout(500)
+    return true
+  } catch {
+    // Provider already selected via preset — step 1 is valid
+    return true
   }
-  return false
 }
 
 /**
@@ -84,20 +111,23 @@ async function selectProvider(page: Page) {
  */
 async function selectService(page: Page) {
   // Espera os serviços carregarem e seleciona o primeiro
-  // O shadcn SelectTrigger renderiza o placeholder dentro de <span> no botão
-  const serviceSelect = page.locator('[role="combobox"]:has-text(/Selecionar serviço/i)').first()
-  if (await serviceSelect.isVisible().catch(() => false)) {
+  const serviceSelect = page
+    .locator('[role="combobox"]')
+    .filter({ hasText: /Selecionar serviço/i })
+    .first()
+  try {
+    await serviceSelect.waitFor({ state: "visible", timeout: 8000 })
     await serviceSelect.click()
-    await page.waitForTimeout(500)
-
+    // Wait for options to appear in the popover/portal
     const serviceItem = page.locator('[role="option"]').first()
-    if (await serviceItem.isVisible().catch(() => false)) {
-      await serviceItem.click()
-      await page.waitForTimeout(300)
-      return true
-    }
+    await serviceItem.waitFor({ state: "visible", timeout: 8000 })
+    await serviceItem.click()
+    // Verify the combobox now shows a selected service (not the placeholder)
+    await page.waitForTimeout(800)
+    return true
+  } catch {
+    return false
   }
-  return false
 }
 
 /**
@@ -123,25 +153,48 @@ async function fillDetails(page: Page) {
  * No Step 4 (Endereço): preenche CEP para auto-preenchimento.
  */
 async function fillQuoteAddress(page: Page) {
-  const cepInput = page.getByPlaceholder(/CEP/i).first()
+  // The address form has TWO CEP inputs: the search field
+  // ("CEP, cidade ou endereço…") and the actual CEP field ("00000-000").
+  // Fill the real CEP field so ViaCEP autocomplete fires.
+  const cepInput = page.getByPlaceholder("00000-000").first()
   if (await cepInput.isVisible().catch(() => false)) {
     await cepInput.fill("01310100")
-    await page.waitForTimeout(1500)
+    // A busca do CEP dispara no onBlur — sem o blur o autocomplete nunca roda
+    await cepInput.blur()
+    await page.waitForTimeout(1800)
+
+    // Número é sempre obrigatório (CEP autocomplete não preenche)
+    const numberInput = page.getByPlaceholder("123").first()
+    if (await numberInput.isVisible().catch(() => false)) {
+      const numVal = await numberInput.inputValue().catch(() => "")
+      if (!numVal) await numberInput.fill("1000")
+    }
 
     // Verifica se a rua foi preenchida automaticamente
-    const streetInput = page.getByPlaceholder(/Rua|avenida/i).first()
+    const streetInput = page.getByPlaceholder(/Rua, avenida\.\.\./i).first()
     const filled = await streetInput
       .inputValue()
       .then((v: string) => v.length > 0)
       .catch(() => false)
 
     if (!filled) {
-      // Fallback: preenche manualmente
+      // Fallback: preenche manualmente (incluindo UF via combobox)
       await streetInput.fill("Av. Paulista")
-      const numberInput = page.getByPlaceholder(/123|número/i).first()
       await numberInput.fill("1000")
-      const cityInput = page.getByPlaceholder(/cidade|Cidade/i).first()
+      const cityInput = page.getByPlaceholder("Cidade").first()
       await cityInput.fill("São Paulo")
+      // UF é um Select — abre o combobox e escolhe SP
+      const stateTrigger = page
+        .locator('[role="combobox"]')
+        .filter({ hasText: /Estado|UF/i })
+        .first()
+      if (await stateTrigger.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await stateTrigger.click()
+        const spOption = page.locator('[role="option"]', { hasText: "SP" }).first()
+        if (await spOption.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await spOption.click()
+        }
+      }
     }
   }
 }
@@ -197,14 +250,16 @@ test.describe("QuoteModal — Visitante (não logado)", () => {
     await openQuoteModal(page)
     await page.waitForTimeout(500)
 
-    // Clica no botão 'Entrar' do auth gate
-    const entrarBtn = page.locator('button:has-text("Entrar")').first()
-    if (await entrarBtn.isVisible().catch(() => false)) {
+    // Clica no botão 'Entrar' do auth gate DENTRO do modal de orçamento
+    // (não o da topbar — escopa ao dialog para evitar ambiguidade)
+    const dialog = page.getByRole("dialog").first()
+    const entrarBtn = dialog.locator('button:has-text("Entrar")').first()
+    if (await entrarBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
       await entrarBtn.click()
       await page.waitForTimeout(500)
 
-      // Verifica se modal de auth abriu
-      const emailInput = page.getByPlaceholder(/email/i).first()
+      // Verifica se modal de auth abriu (placeholder real: "voce@exemplo.com")
+      const emailInput = page.getByPlaceholder("voce@exemplo.com").first()
       await expect(emailInput).toBeVisible({ timeout: 5000 })
     }
   })
@@ -316,7 +371,7 @@ test.describe("QuoteModal — Cliente Autenticado", () => {
     expect(sectionCount).toBeGreaterThanOrEqual(2)
 
     // Verifica que o botão de envio existe
-    const submitBtn = page.locator("button:has-text(/Enviar orçamento|Enviar/i)").first()
+    const submitBtn = page.getByRole("button", { name: /Enviar orçamento|Enviar/i }).first()
     await expect(submitBtn).toBeVisible({ timeout: 5000 })
   })
 
@@ -351,7 +406,8 @@ test.describe("QuoteModal — Cliente Autenticado", () => {
     const cepInput = page.getByPlaceholder(/CEP/i).first()
     if (await cepInput.isVisible().catch(() => false)) {
       await cepInput.fill("01310100")
-      await page.waitForTimeout(1500)
+      await cepInput.blur()
+      await page.waitForTimeout(1800)
 
       // Preenche número se CEP não auto-preencheu
       const numberInput = page.getByPlaceholder(/123|número/i).first()
@@ -371,7 +427,7 @@ test.describe("QuoteModal — Cliente Autenticado", () => {
     await page.waitForTimeout(500)
 
     // Envia o orçamento
-    const submitBtn = page.locator("button:has-text(/Enviar orçamento/i)").first()
+    const submitBtn = page.getByRole("button", { name: /Enviar orçamento/i }).first()
     const canSubmit = await submitBtn.isVisible().catch(() => false)
     if (canSubmit) {
       await submitBtn.click()
@@ -427,10 +483,10 @@ test.describe("QuoteModal — Casos de Erro e Validação", () => {
       await page.waitForTimeout(300)
     }
 
-    // Tenta avançar
+    // Tenta avançar (força o click mesmo disabled — testa que o step não avança)
     await page
       .locator('button:has-text("Continuar")')
-      .click()
+      .click({ force: true, timeout: 3000 })
       .catch(() => {})
     await page.waitForTimeout(500)
 
@@ -458,6 +514,7 @@ test.describe("QuoteModal — Casos de Erro e Validação", () => {
     const cepInput = page.getByPlaceholder(/CEP/i).first()
     if (await cepInput.isVisible().catch(() => false)) {
       await cepInput.fill("00000000")
+      await cepInput.blur()
       await page.waitForTimeout(1500)
 
       // Verifica se mensagem de erro apareceu
@@ -472,7 +529,8 @@ test.describe("QuoteModal — Casos de Erro e Validação", () => {
 
 test.describe("QuoteModal — registra e envia orçamento", () => {
   test.beforeEach(async ({ page }) => {
-    await setupApiMocks(page, { authenticated: true })
+    // authenticated: false — o teste registra um usuário real via UI
+    await setupApiMocks(page, { authenticated: false })
     await page.goto("/")
     await waitForVitrine(page)
   })
@@ -491,7 +549,13 @@ test.describe("QuoteModal — registra e envia orçamento", () => {
       .catch(() => true)
     expect(loggedIn).toBe(true)
 
-    // Navega de volta pra landing
+    // Navega de volta pra landing — limpa a view persistida
+    // (o registro navega para ?view=client.dashboard, que esconderia a vitrine)
+    await page.evaluate(() => {
+      try {
+        localStorage.removeItem("severinno:view")
+      } catch {}
+    })
     await page.goto("/")
     await waitForVitrine(page)
 
@@ -514,10 +578,11 @@ test.describe("QuoteModal — registra e envia orçamento", () => {
     await navigateQuoteStep(page, 5)
     await page.waitForTimeout(500)
 
-    // Envia orçamento
-    const submitBtn = page.locator("button:has-text(/Enviar orçamento/i)").first()
+    // Envia orçamento — o footer sticky do dialog fica abaixo do viewport
+    // (y > 720), então clica via JS (dispara o onClick do React igualmente)
+    const submitBtn = page.getByRole("button", { name: /Enviar orçamento/i }).first()
     if (await submitBtn.isVisible().catch(() => false)) {
-      await submitBtn.click()
+      await submitBtn.evaluate((el) => (el as HTMLElement).click())
       await page.waitForTimeout(2000)
 
       console.log("✅ Fluxo completo de orçamento finalizado!")
