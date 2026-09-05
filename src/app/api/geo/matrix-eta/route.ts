@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { NextRequest, NextResponse } from "next/server"
+import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { calculate1xNDistanceMatrix, TargetDestination } from "@/lib/osrm-table"
 
@@ -40,13 +41,7 @@ export async function POST(req: NextRequest) {
       origin,
       results,
     })
-  } catch (_error) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Matrix calculation failed",
-      },
-      { status: 500 },
-    )
+  } catch (e) {
+    return handleError(e)
   }
 }

@@ -16,6 +16,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { cacheGet, cacheSet } from "@/lib/redis"
+import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { haversineKm } from "@/lib/geo-server"
 
@@ -199,53 +200,68 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 // ── Position update endpoint (called by provider app) ─────────────────────
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id: bookingId } = await params
-  const body = (await request.json()) as {
-    lat: number
-    lng: number
-    speed?: number
-    heading?: number
-    providerId: string
-  }
-
-  // Validate
-  if (!body.lat || !body.lng || !body.providerId) {
-    return NextResponse.json({ error: "lat, lng, providerId são obrigatórios" }, { status: 400 })
-  }
-
-  // Store position
-  const position = {
-    lat: body.lat,
-    lng: body.lng,
-    speed: body.speed ?? null,
-    heading: body.heading ?? null,
-    timestamp: new Date().toISOString(),
-    providerId: body.providerId,
-  }
-
-  positionBuffer.set(bookingId, position)
-
-  // Cache in Redis for cross-instance broadcast
   try {
-    await cacheSet(`tracking:position:${bookingId}`, position, 300) // 5min TTL
-  } catch {
-    // Redis unavailable
-  }
+    const { requireUser } = await import("@/lib/auth")
+    const session = await requireUser()
+    await assertRateLimit(request, RATE_LIMITS.general)
 
-  // Broadcast to all SSE clients for this booking
-  const clients = sseClients.get(bookingId) ?? []
-  for (const client of clients) {
-    try {
-      const encoder = new TextEncoder()
-      client.controller.enqueue(
-        encoder.encode(`event: position\ndata: ${JSON.stringify(position)}\n\n`),
-      )
-    } catch {
-      // Client disconnected
+    const { id: bookingId } = await params
+    const body = await request.json()
+
+    const lat = Number(body?.lat)
+    const lng = Number(body?.lng)
+    if (!lat || !lng || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return NextResponse.json({ error: "lat e lng são obrigatórios" }, { status: 400 })
     }
-  }
 
-  return NextResponse.json({ ok: true, clients: clients.length })
+    // Verify the caller is the assigned provider for this booking
+    const booking = await db.booking.findUnique({
+      where: { id: bookingId },
+      select: { providerId: true, status: true },
+    })
+    if (!booking) {
+      return NextResponse.json({ error: "Agendamento não encontrado" }, { status: 404 })
+    }
+    if (booking.providerId !== session.userId && session.role !== "ADMIN") {
+      return NextResponse.json({ error: "Acesso restrito" }, { status: 403 })
+    }
+
+    // Store position
+    const position = {
+      lat,
+      lng,
+      speed: typeof body.speed === "number" ? body.speed : null,
+      heading: typeof body.heading === "number" ? body.heading : null,
+      timestamp: new Date().toISOString(),
+      providerId: session.userId,
+    }
+
+    positionBuffer.set(bookingId, position)
+
+    // Cache in Redis for cross-instance broadcast
+    try {
+      await cacheSet(`tracking:position:${bookingId}`, position, 300)
+    } catch {
+      // Redis unavailable — non-critical
+    }
+
+    // Broadcast to all SSE clients for this booking
+    const clients = sseClients.get(bookingId) ?? []
+    for (const client of clients) {
+      try {
+        const encoder = new TextEncoder()
+        client.controller.enqueue(
+          encoder.encode(`event: position\ndata: ${JSON.stringify(position)}\n\n`),
+        )
+      } catch {
+        // Client disconnected
+      }
+    }
+
+    return NextResponse.json({ ok: true, clients: clients.length })
+  } catch (e) {
+    return handleError(e)
+  }
 }
 
 // ── Geofence check during tracking ────────────────────────────────────────

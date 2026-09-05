@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextRequest, NextResponse } from "next/server"
 import { generateServiceContract, ContractParams } from "@/lib/contract-generator"
 import { requireUser } from "@/lib/auth"
+import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { z } from "zod"
 
@@ -44,14 +45,8 @@ export async function POST(req: NextRequest) {
       success: true,
       data: contract,
     })
-  } catch (_error) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Contract generation failed",
-      },
-      { status: 500 },
-    )
+  } catch (e) {
+    return handleError(e)
   }
 }
 
@@ -91,7 +86,7 @@ export async function GET(req: NextRequest) {
       message: "Contrato válido e registrado com integridade criptográfica SHA-256.",
       verifiedAt: booking.createdAt.toISOString(),
     })
-  } catch (_error) {
-    return NextResponse.json({ success: false, error: "Verification failed" }, { status: 500 })
+  } catch (e) {
+    return handleError(e)
   }
 }

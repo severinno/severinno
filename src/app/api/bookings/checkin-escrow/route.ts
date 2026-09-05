@@ -7,6 +7,7 @@ import {
   validateEscrowRelease,
 } from "@/lib/geo-checkin-escrow"
 import { requireUser } from "@/lib/auth"
+import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 export async function POST(req: NextRequest) {
@@ -77,7 +78,7 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         )
     }
-  } catch (_error) {
-    return NextResponse.json({ success: false, error: "Escrow operation failed" }, { status: 500 })
+  } catch (e) {
+    return handleError(e)
   }
 }

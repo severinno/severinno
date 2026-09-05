@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextRequest, NextResponse } from "next/server"
 import { createEmergencyDispatch, EmergencyRequest } from "@/lib/emergency-matchmaking"
 import { requireUser } from "@/lib/auth"
+import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 export async function POST(req: NextRequest) {
@@ -40,13 +41,7 @@ export async function POST(req: NextRequest) {
       success: true,
       data: dispatch,
     })
-  } catch (_error) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Emergency dispatch failed",
-      },
-      { status: 500 },
-    )
+  } catch (e) {
+    return handleError(e)
   }
 }

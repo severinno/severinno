@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
+import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { generateMEIAnnualReport } from "@/lib/mei-fiscal"
 
@@ -40,13 +41,7 @@ export async function POST(req: NextRequest) {
       success: true,
       data: report,
     })
-  } catch (_error) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Failed to generate MEI report",
-      },
-      { status: 500 },
-    )
+  } catch (e) {
+    return handleError(e)
   }
 }

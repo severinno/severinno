@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
+import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { optimizeDailyRoute2Opt, RouteStop } from "@/lib/tsp-route-optimizer"
 
@@ -40,13 +41,7 @@ export async function POST(req: NextRequest) {
       success: true,
       data: plan,
     })
-  } catch (_error) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Route optimization failed",
-      },
-      { status: 500 },
-    )
+  } catch (e) {
+    return handleError(e)
   }
 }
