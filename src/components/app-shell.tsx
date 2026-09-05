@@ -17,7 +17,6 @@ import * as Sentry from "@sentry/nextjs"
 import { useAuthStore } from "@/store/auth"
 import { useUIStore } from "@/store/ui"
 import { useViewStore } from "@/store/view"
-import { useRealtime } from "@/hooks/use-realtime"
 
 import { ErrorBoundary } from "@/components/shared/error-boundary"
 import { PWAInstallBanner } from "@/components/shared/pwa-install"
@@ -44,8 +43,6 @@ export default function AppShell() {
   const fetchMe = useAuthStore((s) => s.fetchMe)
   const openAuth = useUIStore((s) => s.openAuth)
 
-  const { join } = useRealtime()
-
   // Initial auth check
   useEffect(() => {
     void fetchMe()
@@ -71,11 +68,10 @@ export default function AppShell() {
     }
   }, [view, user, initialized, reset, openAuth])
 
-  // Realtime connection
-  useEffect(() => {
-    if (!user) return
-    join({ userId: user.id, role: user.role })
-  }, [user, join])
+  // Realtime connection happens in RealtimeProvider (lazy, mounted in
+  // Providers) — it joins the user's room when authenticated, so there's
+  // no duplicate join here (avoids pulling socket.io-client into the
+  // initial bundle through the shell).
 
   // Send errors to GlitchTip/Sentry
   const handleBoundaryError = useCallback(

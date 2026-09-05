@@ -16,7 +16,7 @@ import type { BookingStatus } from "@/lib/constants"
  *   - Shows toast notifications to the user
  *   - Invalidates React Query caches for instant UI updates
  */
-export function RealtimeProvider({ children }: { children: React.ReactNode }) {
+export function RealtimeProvider({ children }: { children?: React.ReactNode }) {
   const user = useAuthStore((s) => s.user)
   const qc = useQueryClient()
   const { isConnected, join, on, off } = useRealtime()

@@ -2,13 +2,21 @@
 
 import { ThemeProvider } from "next-themes"
 import { QueryClient, QueryClientProvider, type QueryClientConfig } from "@tanstack/react-query"
+import dynamic from "next/dynamic"
 import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 import { SoundProvider } from "@/lib/sound-context"
-import { RealtimeProvider } from "@/components/shared/realtime-provider"
 import { PWASetup } from "@/components/shared/pwa-setup"
 import { PWAInstallBanner } from "@/components/shared/pwa-install"
 import PwaUpdateBanner from "@/components/pwa-update-banner"
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react"
+
+// RealtimeProvider is renderless (it only runs effects) — mounting it as a
+// sibling lets us keep socket.io-client (~41KB) OUT of the initial bundle.
+// It loads right after hydration and connects once the user authenticates.
+const RealtimeProviderLazy = dynamic(
+  () => import("@/components/shared/realtime-provider").then((m) => m.RealtimeProvider),
+  { ssr: false, loading: () => null },
+)
 
 const queryConfig: QueryClientConfig = {
   defaultOptions: {
@@ -153,8 +161,9 @@ export function Providers({ children }: { children: ReactNode }) {
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
       <QueryClientProvider client={client}>
         <SoundProvider>
-          <RealtimeProvider>{children}</RealtimeProvider>
+          {children}
           <SonnerToaster position="top-right" richColors closeButton />
+          <RealtimeProviderLazy />
         </SoundProvider>
       </QueryClientProvider>
 

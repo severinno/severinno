@@ -28,14 +28,14 @@ import Topbar from "./topbar"
 import Hero from "./hero"
 import CategoryShowcase from "./category-showcase"
 import VitrineResults from "./vitrine-results"
-import { RecentlyViewed } from "./recently-viewed"
-import NearbyProviders from "./nearby-providers"
-import ProviderSpotlightGeo from "./provider-spotlight-geo"
-import CompareBar from "./compare-bar"
-import BackToTop from "./back-to-top"
 import Footer from "../shared/footer"
 
 // Lazy-loaded below-the-fold components (code-split)
+const RecentlyViewed = React.lazy(() => import("./recently-viewed").then((m) => ({ default: m.RecentlyViewed })))
+const NearbyProviders = React.lazy(() => import("./nearby-providers"))
+const ProviderSpotlightGeo = React.lazy(() => import("./provider-spotlight-geo"))
+const CompareBar = React.lazy(() => import("./compare-bar"))
+const BackToTop = React.lazy(() => import("./back-to-top"))
 const HowItWorks = React.lazy(() => import("./how-it-works"))
 const QuickQuoteCalculator = React.lazy(() => import("./quick-quote-calculator"))
 const PartnersTrust = React.lazy(() => import("./partners-trust"))
@@ -252,13 +252,19 @@ export default function Vitrine() {
           isLoading={categoriesQuery.isLoading}
         />
 
-        <RecentlyViewed />
+        <Suspense fallback={null}>
+          <RecentlyViewed />
+        </Suspense>
 
         {/* 3b. NearbyProviders — Perto de você (geo-aware) */}
-        <NearbyProviders />
+        <Suspense fallback={null}>
+          <NearbyProviders />
+        </Suspense>
 
         {/* 3c. ProviderSpotlightGeo — prestadores próximos em destaque */}
-        <ProviderSpotlightGeo onQuote={handleQuote} onBook={handleBook} onView={handleView} />
+        <Suspense fallback={null}>
+          <ProviderSpotlightGeo onQuote={handleQuote} onBook={handleBook} onView={handleView} />
+        </Suspense>
 
         {/* 4. VitrineResults — provider listings */}
         <VitrineResults
@@ -334,8 +340,12 @@ export default function Vitrine() {
       <Footer />
 
       {/* Floating UI — compare bar + back-to-top + AI chat */}
-      <CompareBar />
-      <BackToTop />
+      <Suspense fallback={null}>
+        <CompareBar />
+      </Suspense>
+      <Suspense fallback={null}>
+        <BackToTop />
+      </Suspense>
       <Suspense fallback={null}>
         <AIChatWidget />
       </Suspense>
