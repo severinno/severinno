@@ -253,6 +253,6 @@ const yoga = createYoga({ schema, graphqlEndpoint: "/api/graphql" })
 export const graphqlHandler = {
   handle: async (request: Request, _ctx: unknown) => {
     await assertRateLimit(request, RATE_LIMITS.general)
-    return yoga.handle({ request } as any, {} as any)
+    return yoga.handle({ request } as { request: Request }, {} as Record<string, unknown>)
   },
 }
