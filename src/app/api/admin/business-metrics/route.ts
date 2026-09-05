@@ -6,6 +6,7 @@ import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { FEE_RATE } from "@/lib/constants"
 
 export type BusinessMetricsResponse = {
   gmv: number // Gross Merchandise Volume
@@ -49,7 +50,7 @@ export async function GET(request: Request) {
 
     const gmv = bookingStats._sum?.amount ?? 0
     const totalBookings = bookingStats._count
-    const platformRevenue = Math.round(gmv * 0.1 * 100) / 100
+    const platformRevenue = Math.round(gmv * FEE_RATE * 100) / 100
     const avgTicket = totalBookings > 0 ? Math.round((gmv / totalBookings) * 100) / 100 : 0
     const completionRate =
       totalBookings > 0 ? Math.round((completedCount / totalBookings) * 100) : 0
@@ -109,7 +110,7 @@ export async function GET(request: Request) {
     const responseData: BusinessMetricsResponse = {
       gmv: Math.round(gmv * 100) / 100,
       platformRevenue,
-      takeRatePercent: 10,
+      takeRatePercent: Math.round(FEE_RATE * 100),
       avgTicket,
       totalBookings,
       completedBookings: completedCount,

@@ -7,6 +7,7 @@ import { requireRole } from "@/lib/auth"
 import { badRequest, handleError, notFound } from "@/lib/api-server"
 import { z } from "zod"
 import { sendText } from "@/lib/evolution"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -22,6 +23,7 @@ const adminReviewSchema = z.object({
 export async function PATCH(request: Request, { params }: Params) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
     const { id } = await params
     const body = await request.json().catch(() => ({}))
     const { status, reason } = adminReviewSchema.parse(body)

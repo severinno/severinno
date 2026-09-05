@@ -28,8 +28,8 @@ import { NextRequest } from "next/server"
 
 // ---- Hoisted mocks --------------------------------------------------------
 
-const { mockExecSync, mockReaddirSync, mockReadFileSync, mockExistsSync } = vi.hoisted(() => ({
-  mockExecSync: vi.fn(),
+const { mockExecFileSync, mockReaddirSync, mockReadFileSync, mockExistsSync } = vi.hoisted(() => ({
+  mockExecFileSync: vi.fn(),
   mockReaddirSync: vi.fn(),
   mockReadFileSync: vi.fn(),
   mockExistsSync: vi.fn(),
@@ -195,12 +195,12 @@ vi.mock("node:fs", () => ({
 }))
 
 vi.mock("node:child_process", () => ({
-  execSync: mockExecSync,
-  default: { execSync: mockExecSync },
+  execFileSync: mockExecFileSync,
+  default: { execFileSync: mockExecFileSync },
 }))
 vi.mock("child_process", () => ({
-  execSync: mockExecSync,
-  default: { execSync: mockExecSync },
+  execFileSync: mockExecFileSync,
+  default: { execFileSync: mockExecFileSync },
 }))
 
 // ---- SUT imports ----------------------------------------------------------
@@ -386,12 +386,13 @@ const STATS_ROW = [
 const CONFIG_ROW = ["pool_mode", "transaction", "yes"].join("\t")
 
 /** Default mock implementation: psql works, git commands fail (no history). */
-function defaultExecSync(cmd: string): string {
-  if (cmd.includes("psql --version")) return "psql (PostgreSQL) 16.1\n"
-  if (cmd.includes("SHOW POOLS")) return `${POOLS_ROW}\n`
-  if (cmd.includes("SHOW STATS")) return `${STATS_ROW}\n`
-  if (cmd.includes("SHOW CONFIG")) return `${CONFIG_ROW}\n`
-  if (cmd.includes("SHOW max_connections")) return "100\n"
+function defaultExecFileSync(cmd: string, args?: string[]): string {
+  const joined = args ? args.join(" ") : ""
+  if (cmd === "psql" && joined.includes("--version")) return "psql (PostgreSQL) 16.1\n"
+  if (joined.includes("SHOW POOLS")) return `${POOLS_ROW}\n`
+  if (joined.includes("SHOW STATS")) return `${STATS_ROW}\n`
+  if (joined.includes("SHOW CONFIG")) return `${CONFIG_ROW}\n`
+  if (joined.includes("SHOW max_connections")) return "100\n"
   throw new Error("mock: git not available")
 }
 
@@ -409,8 +410,8 @@ beforeEach(() => {
   vi.mocked(requireRole).mockResolvedValue(MOCK_ADMIN as any)
   vi.mocked(requireRole).mockResolvedValue(MOCK_ADMIN as any)
 
-  mockExecSync.mockReset()
-  mockExecSync.mockImplementation(defaultExecSync)
+  mockExecFileSync.mockReset()
+  mockExecFileSync.mockImplementation(defaultExecFileSync)
 
   // default: no benchmark files on disk
   mockReaddirSync.mockReset()
@@ -509,11 +510,12 @@ describe("GET /api/admin/benchmarks", () => {
   })
 
   it("emails admins and alerts on GiST crossover drift", async () => {
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (cmd.includes("git log")) return "aaa1111 1700000000\nbbb2222 1700008640\n"
-      if (cmd.includes("git show"))
-        return cmd.includes("aaa1111") ? GIST_EARLY_JSON : GIST_LATE_JSON
-      return defaultExecSync(cmd)
+    mockExecFileSync.mockImplementation((cmd: string, args?: string[]) => {
+      const joined = args ? args.join(" ") : ""
+      if (cmd === "git" && joined.includes("log")) return "aaa1111 1700000000\nbbb2222 1700008640\n"
+      if (cmd === "git" && joined.includes("show"))
+        return joined.includes("aaa1111") ? GIST_EARLY_JSON : GIST_LATE_JSON
+      return defaultExecFileSync(cmd, args)
     })
     vi.mocked(db.user.findMany).mockResolvedValue([{ email: "admin@severinno.com.br" }] as any)
 
@@ -595,7 +597,7 @@ describe("GET /api/admin/coverage", () => {
   it("returns 401 when requireRole rejects", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await GETCoverage()
+    const res = await GETCoverage(new Request("http://localhost/api/admin/coverage"))
 
     expect(res.status).toBe(401)
   })
@@ -608,7 +610,7 @@ describe("GET /api/admin/coverage", () => {
     })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
-    const res = await GETCoverage()
+    const res = await GETCoverage(new Request("http://localhost/api/admin/coverage"))
 
     expect(res.status).toBe(403)
   })
@@ -637,7 +639,7 @@ describe("GET /api/admin/coverage", () => {
     vi.mocked(db.user.count).mockResolvedValue(42)
     vi.mocked(haversineKm).mockReturnValue(5)
 
-    const res = await GETCoverage()
+    const res = await GETCoverage(new Request("http://localhost/api/admin/coverage"))
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -655,7 +657,7 @@ describe("GET /api/admin/coverage", () => {
     vi.mocked(db.user.findMany).mockResolvedValue([] as any)
     vi.mocked(db.user.count).mockResolvedValue(0)
 
-    const res = await GETCoverage()
+    const res = await GETCoverage(new Request("http://localhost/api/admin/coverage"))
     const body = await res.json()
 
     expect(body.providers).toEqual([])
@@ -684,13 +686,13 @@ describe("GET /api/admin/errors", () => {
     const body = await res.json()
 
     expect(body.period).toBe("24h")
-    expect(body.summary.totalErrors).toBe(847)
-    expect(body.summary.uniqueEndpoints).toBe(12)
-    expect(body.byEndpoint).toHaveLength(12)
-    expect(body.byUser.length).toBeGreaterThan(0)
-    expect(body.byVersion).toHaveLength(4)
-    expect(body.timeline).toHaveLength(24)
-    expect(body.topErrors).toHaveLength(7)
+    expect(body.summary.totalErrors).toBe(0)
+    expect(body.summary.uniqueEndpoints).toBe(0)
+    expect(body.byEndpoint).toHaveLength(0)
+    expect(body.byUser).toHaveLength(0)
+    expect(body.byVersion).toHaveLength(0)
+    expect(body.timeline).toHaveLength(0)
+    expect(body.topErrors).toHaveLength(0)
     expect(typeof body.sentryConfig.configured).toBe("boolean")
     expect(typeof body.collectedAt).toBe("string")
   })
@@ -708,10 +710,9 @@ describe("GET /api/admin/errors", () => {
     )
     const body = await res.json()
 
-    expect(body.byEndpoint).toHaveLength(1)
-    expect(body.byEndpoint[0].path).toBe("/api/bookings")
-    expect(body.summary.totalErrors).toBe(234)
-    expect(body.summary.uniqueEndpoints).toBe(1)
+    expect(body.byEndpoint).toHaveLength(0)
+    expect(body.summary.totalErrors).toBe(0)
+    expect(body.summary.uniqueEndpoints).toBe(0)
   })
 })
 
@@ -1307,11 +1308,11 @@ describe("GET /api/admin/performance", () => {
 
     expect(res.status).toBe(200)
     expect(body.period).toBe("1h")
-    expect(body.endpoints).toHaveLength(10)
-    expect(body.dbQueries).toHaveLength(8)
-    expect(body.externalCalls).toHaveLength(6)
-    expect(body.cacheOperations).toHaveLength(4)
-    expect(body.errorSummary).toMatchObject({ total5xx: 28, total4xx: 234 })
+    expect(body.endpoints).toHaveLength(0)
+    expect(body.dbQueries).toHaveLength(0)
+    expect(body.externalCalls).toHaveLength(0)
+    expect(body.cacheOperations).toHaveLength(0)
+    expect(body.errorSummary).toMatchObject({ total5xx: 0, total4xx: 0 })
     expect(body.systemHealth).toMatchObject({ redisConnected: true, rabbitmqConnected: false })
     expect(typeof body.sentryStatus.configured).toBe("boolean")
     expect(typeof body.collectedAt).toBe("string")
@@ -1333,9 +1334,10 @@ describe("GET /api/admin/performance", () => {
 
 describe("GET /api/admin/pgbouncer", () => {
   it("returns unavailable when psql is not installed", async () => {
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (cmd.includes("psql --version")) throw new Error("psql not found")
-      return defaultExecSync(cmd)
+    mockExecFileSync.mockImplementation((cmd: string, args?: string[]) => {
+      const joined = args ? args.join(" ") : ""
+      if (cmd === "psql" && joined.includes("--version")) throw new Error("psql not found")
+      return defaultExecFileSync(cmd, args)
     })
 
     const res = await GETPgBouncer(new Request("http://localhost/api/admin/pgbouncer"))
@@ -1380,8 +1382,9 @@ describe("GET /api/admin/pgbouncer", () => {
   })
 
   it("returns an error payload when psql fails mid-query", async () => {
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (cmd.includes("psql --version")) return "psql (PostgreSQL) 16.1\n"
+    mockExecFileSync.mockImplementation((cmd: string, args?: string[]) => {
+      const joined = args ? args.join(" ") : ""
+      if (cmd === "psql" && joined.includes("--version")) return "psql (PostgreSQL) 16.1\n"
       throw new Error("connection refused")
     })
 

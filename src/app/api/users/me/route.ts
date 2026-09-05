@@ -5,6 +5,7 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { providerProfileSchema } from "@/lib/validators"
 import { forbidden, handleError, USER_PUBLIC_SELECT, syncEntitySearch } from "@/lib/api-server"
+import logger from "@/lib/logger"
 
 // GET: current authenticated user (full public profile)
 export async function GET() {
@@ -64,7 +65,9 @@ export async function PATCH(request: Request) {
     })
 
     if (existing.role === "PROVIDER") {
-      syncEntitySearch("provider", { id: updated.id }).catch(() => {})
+      syncEntitySearch("provider", { id: updated.id }).catch((err) =>
+        logger.warn({ err }, "provider search reindex failed"),
+      )
     }
 
     return NextResponse.json({ user: updated })

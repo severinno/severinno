@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
-import { execSync } from "node:child_process"
+import { execFileSync } from "node:child_process"
 import logger from "@/lib/logger"
 
 // ---------------------------------------------------------------------------
@@ -171,7 +171,7 @@ interface GitHistoryEntry {
 function extractGitHistory(relativePath: string, maxSnapshots = 50): GitHistoryEntry[] {
   try {
     // Get all commit hashes that modified the file
-    const logOutput = execSync(`git log --format="%H %ct" -- "${relativePath}"`, {
+    const logOutput = execFileSync("git", ["log", "--format=%H %ct", "--", relativePath], {
       encoding: "utf-8",
       timeout: 10_000,
       maxBuffer: 1024 * 1024,
@@ -188,7 +188,7 @@ function extractGitHistory(relativePath: string, maxSnapshots = 50): GitHistoryE
       if (!hash) continue
 
       try {
-        const content = execSync(`git show "${hash}:${relativePath}"`, {
+        const content = execFileSync("git", ["show", `${hash}:${relativePath}`], {
           encoding: "utf-8",
           timeout: 5000,
           maxBuffer: 1024 * 1024,

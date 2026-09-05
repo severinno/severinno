@@ -53,6 +53,11 @@ vi.mock("@/lib/evolution", () => ({
   },
 }))
 
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn().mockResolvedValue(undefined),
+  RATE_LIMITS: new Proxy({}, { get: () => ({ prefix: "test", max: 1000, windowMs: 60_000 }) }),
+}))
+
 import { POST, __testing__extractNumber, __testing__findUserByPhone } from "../route"
 
 // ── Fixtures ─────────────────────────────────────────────────────────────

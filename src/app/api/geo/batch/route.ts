@@ -17,6 +17,12 @@ import { rateLimitedNominatim } from "@/lib/nominatim-rate-limit"
 import { nominatimBreaker } from "@/lib/geo-circuit-breakers"
 import { getGeoSettings } from "@/lib/geo-settings"
 import { handleError } from "@/lib/api-server"
+import { z } from "zod"
+import { parseBody } from "@/lib/api-middleware"
+
+const geoBatchSchema = z.object({
+  addresses: z.array(z.string().min(1).max(500)).min(1).max(50),
+})
 
 const MAX_BATCH_SIZE = 50
 
@@ -101,19 +107,7 @@ async function geocodeNominatim(
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { addresses?: string[]; limit?: number }
-    const addresses = body.addresses ?? []
-
-    if (!Array.isArray(addresses) || addresses.length === 0) {
-      return NextResponse.json({ error: "Forneça um array de endereços" }, { status: 400 })
-    }
-
-    if (addresses.length > MAX_BATCH_SIZE) {
-      return NextResponse.json(
-        { error: `Máximo de ${MAX_BATCH_SIZE} endereços por request` },
-        { status: 400 },
-      )
-    }
+    const { addresses } = await parseBody(request, geoBatchSchema)
 
     // Process sequentially with 1s delay between Nominatim calls
     // (Nominatim rate limit: 1 req/s). Local DB hits are instant.

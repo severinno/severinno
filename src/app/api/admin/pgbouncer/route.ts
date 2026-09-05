@@ -25,7 +25,7 @@ export const dynamic = "force-dynamic"
  */
 
 import { NextResponse } from "next/server"
-import { execSync, type ExecSyncOptionsWithStringEncoding } from "child_process"
+import { execFileSync, type ExecFileSyncOptions } from "child_process"
 import { requireRole } from "@/lib/auth"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
@@ -88,30 +88,36 @@ function psqlEnv(): Record<string, string> {
 /** Run a psql command and return parsed tab-separated output. */
 function psqlQuery(sql: string, timeoutMs = 5000): string[][] {
   const env = psqlEnv()
-  const cmd = [
-    `psql`,
-    `-h "${env.PGHOST}"`,
-    `-p "${env.PGPORT}"`,
-    `-U "${env.PGUSER}"`,
-    `-d "pgbouncer"`,
-    `-At`,
-    `-F "\\t"`,
-    `-c "${sql.replace(/"/g, '\\"')}"`,
-  ].join(" ")
-
-  const execOptions: ExecSyncOptionsWithStringEncoding = {
-    env: { ...process.env, ...env },
-    encoding: "utf-8",
-    timeout: timeoutMs,
-    maxBuffer: 1024 * 1024,
-  }
-  const result = execSync(cmd, execOptions)
+  const result = execFileSync(
+    "psql",
+    [
+      "-h",
+      env.PGHOST,
+      "-p",
+      env.PGPORT,
+      "-U",
+      env.PGUSER,
+      "-d",
+      "pgbouncer",
+      "-At",
+      "-F",
+      "\t",
+      "-c",
+      sql,
+    ],
+    {
+      env: { ...process.env, ...env },
+      encoding: "utf-8",
+      timeout: timeoutMs,
+      maxBuffer: 1024 * 1024,
+    },
+  ) as string
 
   return result
     .trim()
     .split("\n")
     .filter(Boolean)
-    .map((line) => line.split("\t"))
+    .map((line: string) => line.split("\t"))
 }
 
 /** Get PostgreSQL max_connections (runs through PgBouncer). */
@@ -119,23 +125,28 @@ function getPgMaxConnections(): number {
   try {
     const env = psqlEnv()
     env.PGDATABASE = process.env.POSTGRES_DB ?? "severinno"
-    const cmd = [
-      `psql`,
-      `-h "${env.PGHOST}"`,
-      `-p "${env.PGPORT}"`,
-      `-U "${env.PGUSER}"`,
-      `-d "${env.PGDATABASE}"`,
-      `-At`,
-      `-c "SHOW max_connections;"`,
-    ].join(" ")
-
-    const execOptions: ExecSyncOptionsWithStringEncoding = {
-      env: { ...process.env, ...env },
-      encoding: "utf-8",
-      timeout: 5000,
-      maxBuffer: 1024,
-    }
-    const result = execSync(cmd, execOptions)
+    const result = execFileSync(
+      "psql",
+      [
+        "-h",
+        env.PGHOST,
+        "-p",
+        env.PGPORT,
+        "-U",
+        env.PGUSER,
+        "-d",
+        env.PGDATABASE,
+        "-At",
+        "-c",
+        "SHOW max_connections;",
+      ],
+      {
+        env: { ...process.env, ...env },
+        encoding: "utf-8",
+        timeout: 5000,
+        maxBuffer: 1024,
+      },
+    ) as string
     return Number(result.trim().split("\n").filter(Boolean)[0] ?? 100)
   } catch {
     return 100
@@ -161,7 +172,7 @@ export async function GET(request: Request): Promise<NextResponse<PgBouncerRespo
 
   // Check if psql is available
   try {
-    execSync("psql --version", { encoding: "utf-8", timeout: 3000 })
+    execFileSync("psql", ["--version"], { encoding: "utf-8", timeout: 3000 })
   } catch {
     const unavailable: PgBouncerResponse = {
       ok: false,

@@ -72,9 +72,11 @@ const GAP_THRESHOLD = 2
 
 // ── Route ────────────────────────────────────────────────────────────────
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await requireRole("ADMIN")
+    const { assertRateLimit, RATE_LIMITS } = await import("@/lib/rate-limit")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
     // Fetch all active, verified providers with location data
     const users = await db.user.findMany({
@@ -176,6 +178,7 @@ function computeCoverageGrid(providers: CoverageProvider[]): CoverageGridCell[] 
         const dist = haversineKm(lat, lng, p.lat, p.lng)
         if (dist <= p.radiusKm) {
           density++
+          if (density >= 10) break
         }
         if (nearestKm === null || dist < nearestKm) {
           nearestKm = Math.round(dist)

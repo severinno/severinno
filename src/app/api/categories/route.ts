@@ -8,6 +8,7 @@ import { categorySchema, categoryUpdateSchema } from "@/lib/validators"
 import { parseBody } from "@/lib/api-middleware"
 import {
   notFound,
+  handleError,
   cacheControlPublic,
   syncEntitySearch,
   invalidateCategoryCache,
@@ -82,8 +83,8 @@ export async function POST(request: Request) {
       logger.warn({ err }, "category search reindex failed"),
     )
     return NextResponse.json({ category: created }, { status: 201 })
-  } catch {
-    return NextResponse.json({ error: "Erro interno" }, { status: 500 })
+  } catch (e) {
+    return handleError(e)
   }
 }
 
@@ -109,11 +110,15 @@ export async function PUT(request: Request) {
       },
     })
 
-    Promise.all([cacheInvalidate("categories:*"), invalidateCategoryCache()]).catch(() => {})
-    syncEntitySearch("category", updated).catch(() => {})
+    Promise.all([cacheInvalidate("categories:*"), invalidateCategoryCache()]).catch((err) =>
+      logger.warn({ err }, "category cache invalidation failed"),
+    )
+    syncEntitySearch("category", updated).catch((err) =>
+      logger.warn({ err }, "category search reindex failed"),
+    )
     return NextResponse.json({ category: updated })
-  } catch {
-    return NextResponse.json({ error: "Erro interno" }, { status: 500 })
+  } catch (e) {
+    return handleError(e)
   }
 }
 
@@ -133,9 +138,11 @@ export async function DELETE(request: Request) {
       data: { active: false },
     })
 
-    cacheInvalidate("categories:*").catch(() => {})
+    cacheInvalidate("categories:*").catch((err) =>
+      logger.warn({ err }, "category cache invalidation failed"),
+    )
     return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: "Erro interno" }, { status: 500 })
+  } catch (e) {
+    return handleError(e)
   }
 }

@@ -5,6 +5,13 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { z } from "zod"
+import { parseBody } from "@/lib/api-middleware"
+
+const onboardingSchema = z.object({
+  step: z.number().int().min(0).max(20).optional(),
+  done: z.boolean().optional(),
+})
 
 export async function GET() {
   try {
@@ -29,7 +36,7 @@ export async function PATCH(req: Request) {
   try {
     await assertRateLimit(req, RATE_LIMITS.general)
     const user = await requireUser()
-    const { step, done } = await req.json()
+    const { step, done } = await parseBody(req, onboardingSchema)
 
     const data = JSON.stringify({ step: step ?? 0, done: done ?? false })
 

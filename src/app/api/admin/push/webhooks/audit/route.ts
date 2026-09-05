@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * GET /api/admin/push/webhooks/audit
@@ -24,6 +25,7 @@ import { handleError } from "@/lib/api-server"
 export async function GET(request: Request) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
     const { searchParams } = new URL(request.url)
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1", 10) || 1)

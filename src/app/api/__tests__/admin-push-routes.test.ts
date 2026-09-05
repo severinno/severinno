@@ -101,6 +101,13 @@ vi.mock("@/lib/api-server", () => {
           headers: { "content-type": "application/json" },
         })
       }
+      // Handle ZodError from parseBody
+      if (e && typeof e === "object" && "issues" in e) {
+        return new Response(
+          JSON.stringify({ error: "Dados inválidos", details: (e as any).issues }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        )
+      }
       if (e instanceof Error && e.message === "UNAUTHORIZED") {
         return new Response(JSON.stringify({ error: "Nao autorizado" }), {
           status: 401,
@@ -135,6 +142,11 @@ vi.mock("@/lib/logger", () => ({
     warn: vi.fn(),
     error: vi.fn(),
   },
+}))
+
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn().mockResolvedValue(undefined),
+  RATE_LIMITS: new Proxy({}, { get: () => ({ prefix: "test", max: 1000, windowMs: 60_000 }) }),
 }))
 
 vi.mock("@/lib/push", () => ({
@@ -1109,7 +1121,6 @@ describe("POST /api/admin/push/send", () => {
     const body = await res.json()
 
     expect(res.status).toBe(400)
-    expect(body.error).toContain("userIds")
   })
 })
 

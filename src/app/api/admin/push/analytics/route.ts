@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * GET /api/admin/push/analytics
@@ -17,6 +18,7 @@ import { handleError } from "@/lib/api-server"
 export async function GET(request: Request) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
     const { searchParams } = new URL(request.url)
     const days = Math.min(90, Math.max(1, parseInt(searchParams.get("days") || "30", 10) || 30))

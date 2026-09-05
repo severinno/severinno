@@ -5,6 +5,7 @@ import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError, badRequest, notFound } from "@/lib/api-server"
 import logger from "@/lib/logger"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 const VALID_ROLES = ["CLIENT", "PROVIDER", "ADMIN"]
 
@@ -23,6 +24,7 @@ const VALID_ROLES = ["CLIENT", "PROVIDER", "ADMIN"]
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
     const { id } = await params
 
     const existing = await db.eventWebhook.findUnique({ where: { id } })
@@ -94,6 +96,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(_request, RATE_LIMITS.admin)
     const { id } = await params
 
     const existing = await db.eventWebhook.findUnique({ where: { id } })

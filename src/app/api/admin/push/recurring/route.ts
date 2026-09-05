@@ -17,12 +17,14 @@ import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError, badRequest, notFound } from "@/lib/api-server"
 import logger from "@/lib/logger"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 // ── GET ─────────────────────────────────────────────────────────────────────
 
 export async function GET(request: Request) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
     const { searchParams } = new URL(request.url)
     const statusFilter = searchParams.get("status") ?? ""
@@ -80,6 +82,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const session = await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
     const body = await request.json()
     const {
@@ -174,6 +177,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
     const body = await request.json()
     const {
@@ -269,6 +273,7 @@ export async function PATCH(request: Request) {
 export async function DELETE(request: Request) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
     const body = await request.json()
     const { id } = body

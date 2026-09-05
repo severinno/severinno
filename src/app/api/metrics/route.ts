@@ -38,8 +38,12 @@ type MetricsResponse = {
   timestamp: string
 }
 
-export async function GET(): Promise<NextResponse<MetricsResponse | { error: string }>> {
+export async function GET(
+  request: Request,
+): Promise<NextResponse<MetricsResponse | { error: string }>> {
   try {
+    const { assertRateLimit, RATE_LIMITS } = await import("@/lib/rate-limit")
+    await assertRateLimit(request, RATE_LIMITS.geo)
     const start = Date.now()
 
     const cacheStats = getCacheStats()

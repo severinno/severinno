@@ -7,6 +7,19 @@ import { handleError, badRequest } from "@/lib/api-server"
 import { sendPushNotification } from "@/lib/push"
 import { saveAndQueueNotification } from "@/lib/notification-queue"
 import logger from "@/lib/logger"
+import { z } from "zod"
+import { parseBody } from "@/lib/api-middleware"
+
+const pushSendSchema = z.object({
+  userIds: z.array(z.string().min(1)).min(1).max(50),
+  title: z.string().min(1).max(120),
+  body: z.string().max(500).optional(),
+  pushUrl: z
+    .string()
+    .regex(/^\/(?!\/)|^https?:\/\//, "pushUrl must start with /, http:// or https://")
+    .optional(),
+  type: z.string().max(50).optional(),
+})
 
 /**
  * POST /api/admin/push/send
@@ -24,37 +37,17 @@ import logger from "@/lib/logger"
 export async function POST(request: Request) {
   try {
     const session = await requireRole("ADMIN")
+    const { assertRateLimit, RATE_LIMITS } = await import("@/lib/rate-limit")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
-    const body = await request.json()
-    const { userIds, title, body: messageBody, pushUrl, type } = body
+    const parsed = await parseBody(request, pushSendSchema)
+    const { userIds, title, body: messageBody, pushUrl, type } = parsed
     const { sanitizeText } = await import("@/lib/sanitize")
-
-    // Validacoes
-    if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
-      throw badRequest("Envie um array userIds com pelo menos um ID de usuario.")
-    }
-    if (userIds.length > 50) {
-      throw badRequest("Maximo de 50 usuarios por envio.")
-    }
-    if (!title || typeof title !== "string" || title.trim().length === 0) {
-      throw badRequest("title e obrigatorio.")
-    }
-    if (title.length > 120) {
-      throw badRequest("title deve ter no maximo 120 caracteres.")
-    }
-    if (messageBody && messageBody.length > 500) {
-      throw badRequest("body deve ter no maximo 500 caracteres.")
-    }
 
     const notificationType = type || "ADMIN_MANUAL"
     const notificationTitle = sanitizeText(title.trim())
     const notificationBody = sanitizeText(messageBody?.trim() || "")
     const notificationUrl = pushUrl || "/"
-
-    // Validar pushUrl (seguranca — prevenir javascript: etc)
-    if (pushUrl && !/^\/(?!\/)|^https?:\/\//.test(pushUrl)) {
-      throw badRequest("pushUrl deve comecar com /, http:// ou https://.")
-    }
 
     logger.info(
       {

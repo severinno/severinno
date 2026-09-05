@@ -28,6 +28,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import {
   loadPersistedSnapshots,
   getSnapshotCount,
@@ -178,6 +179,7 @@ export const dynamic = "force-dynamic"
 export async function GET(request: NextRequest) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
     const { searchParams } = request.nextUrl
     const daysParam = searchParams.get("days")

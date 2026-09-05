@@ -5,6 +5,7 @@ import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError, notFound } from "@/lib/api-server"
 import logger from "@/lib/logger"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * PATCH /api/admin/push/schedule/[id]
@@ -18,6 +19,7 @@ import logger from "@/lib/logger"
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
     const { id } = await params
 
     const body = await request.json()

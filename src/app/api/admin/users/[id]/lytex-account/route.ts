@@ -5,12 +5,14 @@ import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError, badRequest, notFound } from "@/lib/api-server"
 import logger from "@/lib/logger"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 type Params = { params: Promise<{ id: string }> }
 
 export async function POST(request: Request, { params }: Params) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
     const { id } = await params
     const body = await request.json()
     const { lytexRecipientId } = body
@@ -38,6 +40,7 @@ export async function POST(request: Request, { params }: Params) {
 export async function DELETE(_request: Request, { params }: Params) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(_request, RATE_LIMITS.admin)
     const { id } = await params
 
     const user = await db.user.findUnique({ where: { id } })

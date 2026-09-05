@@ -5,6 +5,7 @@ import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError, badRequest } from "@/lib/api-server"
 import logger from "@/lib/logger"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * Known system events that can trigger automatic push notifications.
@@ -77,6 +78,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const session = await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
     const body = await request.json()
     const { event, title, body: messageBody, pushUrl, targetRoles, active } = body

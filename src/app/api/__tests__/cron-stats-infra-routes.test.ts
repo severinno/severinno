@@ -1005,7 +1005,7 @@ describe("GET /api/metrics", () => {
   })
 
   it("returns cache and process metrics as JSON", async () => {
-    const res = await getMetrics()
+    const res = await getMetrics(new Request("http://localhost/api/metrics"))
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -1026,7 +1026,7 @@ describe("GET /api/metrics", () => {
       hitRatio: null,
     } as never)
 
-    const res = await getMetrics()
+    const res = await getMetrics(new Request("http://localhost/api/metrics"))
     const body = await res.json()
 
     expect(body.cache).toEqual({ hits: 0, misses: 0, total: 0, hitRatio: null })

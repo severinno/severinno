@@ -6,6 +6,7 @@ import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError, badRequest } from "@/lib/api-server"
 import logger from "@/lib/logger"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * POST /api/admin/push/schedule
@@ -24,6 +25,7 @@ import logger from "@/lib/logger"
 export async function POST(request: Request) {
   try {
     const session = await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
     const body = await request.json()
     const { userIds, title, body: messageBody, pushUrl, type, scheduledAt } = body
@@ -143,6 +145,7 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
     const { searchParams } = new URL(request.url)
     const status = searchParams.get("status") || undefined

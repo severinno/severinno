@@ -6,6 +6,7 @@ import { db } from "@/lib/db"
 import { requireRole } from "@/lib/auth"
 import { handleError, parsePagination, USER_PUBLIC_SELECT } from "@/lib/api-server"
 import { haversineKm } from "@/lib/geo-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * ADMIN: paginated user list with optional role / q / geo filters.
@@ -25,6 +26,7 @@ import { haversineKm } from "@/lib/geo-server"
 export async function GET(request: Request) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
     const { searchParams } = new URL(request.url)
     const role = (searchParams.get("role") || undefined) as Role | undefined
     const q = searchParams.get("q")?.trim() || undefined
