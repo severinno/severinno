@@ -33,6 +33,22 @@ vi.mock("@/lib/rate-limit", () => ({
   RATE_LIMITS: new Proxy({}, { get: () => ({ prefix: "test", max: 1000, windowMs: 60_000 }) }),
 }))
 
+const mockDb = vi.hoisted(() => ({
+  settlementPeriod: {
+    findMany: vi.fn(),
+    count: vi.fn().mockResolvedValue(1),
+    findFirst: vi.fn(),
+    findUnique: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  },
+  providerSettlement: { findUnique: vi.fn(), update: vi.fn() },
+  setting: { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() },
+  payment: { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() },
+}))
+
+vi.mock("@/lib/db", () => ({ db: mockDb }))
+
 // ── Imports ────────────────────────────────────────────────────────────────
 
 import { GET as listPeriods, POST as generatePeriod } from "../admin/settlements/route"
@@ -44,17 +60,11 @@ import { db } from "@/lib/db"
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function resetDbMocks() {
-  ;(db.settlementPeriod as any) = {
-    findMany: vi.fn(),
-    count: vi.fn().mockResolvedValue(1),
-    findFirst: vi.fn(),
-    findUnique: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  }
-  ;(db.providerSettlement as any) = { findUnique: vi.fn(), update: vi.fn() }
-  ;(db.setting as any) = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() }
-  ;(db.payment as any) = { findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() }
+  Object.values(mockDb.settlementPeriod).forEach((fn) => (fn as any).mockReset())
+  Object.values(mockDb.providerSettlement).forEach((fn) => (fn as any).mockReset())
+  Object.values(mockDb.setting).forEach((fn) => (fn as any).mockReset())
+  Object.values(mockDb.payment).forEach((fn) => (fn as any).mockReset())
+  mockDb.settlementPeriod.count.mockResolvedValue(1)
 }
 
 function mockRequest(body?: unknown, method = "POST"): Request {

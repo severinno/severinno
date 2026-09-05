@@ -113,6 +113,8 @@ let redisModule: typeof import("@/lib/redis")
 
 async function reloadModule(clusterMode: boolean) {
   vi.resetModules()
+  // Clear global Redis state so each test starts fresh
+  delete (globalThis as Record<string, unknown>)["__SEVERINNO_REDIS__"]
   process.env.REDIS_CLUSTER_MODE = clusterMode ? "true" : "false"
   process.env.REDIS_CLUSTER_NODES = clusterMode ? "localhost:7000,localhost:7001" : "localhost:6379"
 

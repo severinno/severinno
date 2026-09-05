@@ -26,6 +26,18 @@ vi.mock("@/lib/logger", () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
 
+const mockDb = vi.hoisted(() => ({
+  setting: { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() },
+  payment: {
+    findMany: vi.fn(),
+    count: vi.fn(),
+    groupBy: vi.fn(),
+    update: vi.fn(),
+  },
+}))
+
+vi.mock("@/lib/db", () => ({ db: mockDb }))
+
 // ── Imports ────────────────────────────────────────────────────────────────
 
 import { GET } from "../admin/finance/provider-transactions/route"
@@ -34,13 +46,8 @@ import { db } from "@/lib/db"
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function resetDbMocks() {
-  ;(db.setting as any) = { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() }
-  db.payment = {
-    findMany: vi.fn(),
-    count: vi.fn(),
-    groupBy: vi.fn(),
-    update: vi.fn(),
-  } as any
+  Object.values(mockDb.setting).forEach((fn) => (fn as any).mockReset())
+  Object.values(mockDb.payment).forEach((fn) => (fn as any).mockReset())
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
