@@ -207,20 +207,20 @@ export const RATE_LIMITS = {
   forgotPassword: { prefix: "forgot-pw", max: 3, windowMs: 600_000 },
   /** Provider search: 2000 requests per minute (main search endpoint, high volume) */
   providers: { prefix: "providers", max: 2000, windowMs: 60_000 },
-  /** Bookings (create + list): 30 requests per minute */
-  bookings: { prefix: "bookings", max: 30, windowMs: 60_000 },
+  /** Bookings (create + list): 60 requests per minute (production-ready) */
+  bookings: { prefix: "bookings", max: 60, windowMs: 60_000 },
   /** Quotes (create + list): 20 requests per minute */
   quotes: { prefix: "quotes", max: 20, windowMs: 60_000 },
   /** Messages: 30 per minute */
   messages: { prefix: "messages", max: 30, windowMs: 60_000 },
   /** Reviews: 10 per minute */
   reviews: { prefix: "reviews", max: 10, windowMs: 60_000 },
-  /** Geo endpoints (CEP + reverse): 30 per minute */
-  geo: { prefix: "geo", max: 30, windowMs: 60_000 },
-  /** Auth check (/api/auth/me): 30 per minute */
-  authMe: { prefix: "auth-me", max: 30, windowMs: 60_000 },
-  /** General API: 60 per minute */
-  general: { prefix: "general", max: 60, windowMs: 60_000 },
+  /** Geo endpoints (CEP + reverse): 100 per minute (production-ready) */
+  geo: { prefix: "geo", max: 100, windowMs: 60_000 },
+  /** Auth check (/api/auth/me): 120 per minute (frequent polling) */
+  authMe: { prefix: "auth-me", max: 120, windowMs: 60_000 },
+  /** General API: 120 per minute (increased for production) */
+  general: { prefix: "general", max: 120, windowMs: 60_000 },
   /** Payments (create + list): 10 per minute */
   payments: { prefix: "payments", max: 10, windowMs: 60_000 },
   /** Wallet transactions: 10 per minute */

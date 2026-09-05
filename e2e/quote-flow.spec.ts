@@ -21,21 +21,21 @@ test.use({ serviceWorkers: "block" })
  * Abre o QuoteModal clicando no botão "Pedir orçamento" ou similar.
  */
 async function openQuoteModal(page: Page) {
-  const orcamentoBtn = page.locator("button:has-text(/orçamento|orçar|Pedir orçamento/i)").first()
-  const visible = await orcamentoBtn.isVisible({ timeout: 10000 }).catch(() => false)
-  if (visible) {
-    await orcamentoBtn.click()
+  // Provider cards have an "Orçamento" button that triggers openQuote
+  const quoteBtn = page.getByRole("button", { name: /orçamento/i }).first()
+  if (await quoteBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+    await quoteBtn.click()
+    await page.waitForTimeout(1500)
   } else {
-    // Fallback: clica no primeiro card da vitrine
-    const card = page.locator('[class*="Card"], [class*="card"]').first()
-    if (await card.isVisible().catch(() => false)) {
+    // Fallback: click first provider card
+    const card = page.locator('[class*="Card"]').first()
+    if (await card.isVisible({ timeout: 3000 }).catch(() => false)) {
       await card.click()
+      await page.waitForTimeout(1500)
     }
   }
-  await page.waitForTimeout(1000)
-
-  // Verifica se o modal de orçamento abriu
-  const modal = page.locator("text=/Pedir orçamento|orçamento/i").first()
+  // Verify modal opened — look for auth gate or wizard title
+  const modal = page.locator("text=/Pedir orçamento|cadastro gratuito|Prestador/i").first()
   await modal.waitFor({ state: "visible", timeout: 5000 }).catch(() => {})
 }
 
