@@ -122,6 +122,11 @@ export const ALLOWLIST = [
   { match: "husky", type: "exact", why: "CLI de hooks via package.json prepare + .husky/*" },
   { match: "lint-staged", type: "exact", why: "CLI via .husky/pre-commit bunx lint-staged" },
   { match: "prisma", type: "exact", why: "CLI via scripts (generate/migrate) + prisma.config.ts" },
+  {
+    match: "vite",
+    type: "exact",
+    why: "devDependency used internally by vitest (never imported directly)",
+  },
 ]
 
 /**
