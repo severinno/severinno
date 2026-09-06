@@ -9,6 +9,10 @@
 #   sudo bash scripts/backup-postgis.sh
 #   crontab: 0 2 * * * /home/severinno/severinno/scripts/backup-postgis.sh
 #
+# Exit codes:
+#   0 — success
+#   1 — failure (pg_dump or upload error)
+#
 # Env vars (with defaults):
 #   DATABASE_URL  — PostgreSQL connection string
 #   MINIO_ALIAS   — MinIO mc alias (default: local)

@@ -16,9 +16,13 @@ RED   := \033[0;31m
 NC    := \033[0m
 
 # ── Variáveis ─────────────────────────────────────────────────────────────
-COMPOSE_FILES := -f docker-compose.yml
-COMPOSE_FULL  := --profile full
-COMPOSE_WORKERS := --profile workers
+# Infra real (PostGIS + Redis + RabbitMQ + OpenSearch + MinIO + Realtime + GlitchTip)
+# mora no docker-compose.dev.yml — o docker-compose.yml só tem app+redis.
+COMPOSE_INFRA := -f docker-compose.dev.yml
+# App (Next.js) — build/deploy do serviço `app`
+COMPOSE_APP   := -f docker-compose.yml
+# OSRM é opcional (profile routing) — só sobe com --profile routing
+COMPOSE_ROUTING := --profile routing
 
 # ═════════════════════════════════════════════════════════════════════════════
 help:
@@ -61,34 +65,34 @@ help:
 
 # ═════════════════════════════════════════════════════════════════════════════
 infra:
-	@echo "$(CYAN)[..] Subindo infraestrutura...$(NC)"
-	docker compose $(COMPOSE_FILES) up -d postgres redis minio pgbouncer
-	@echo "$(GREEN)[OK] PostgreSQL + Redis + MinIO + PgBouncer pronto$(NC)"
+	@echo "$(CYAN)[..] Subindo infraestrutura (postgis + redis + rabbitmq + realtime + minio)...$(NC)"
+	docker compose $(COMPOSE_INFRA) up -d postgis redis rabbitmq realtime minio
+	@echo "$(GREEN)[OK] PostgreSQL/PostGIS + Redis + RabbitMQ + Realtime + MinIO pronto$(NC)"
 
 infra-full:
-	@echo "$(CYAN)[..] Subindo infraestrutura completa...$(NC)"
-	docker compose $(COMPOSE_FILES) $(COMPOSE_FULL) up -d
+	@echo "$(CYAN)[..] Subindo infraestrutura completa (inclui OpenSearch + GlitchTip + OSRM)...$(NC)"
+	docker compose $(COMPOSE_INFRA) $(COMPOSE_ROUTING) up -d
 	@echo "$(GREEN)[OK] Infraestrutura completa pronta$(NC)"
 
 infra-down:
 	@echo "$(YELLOW)[..] Derrubando infraestrutura...$(NC)"
-	docker compose $(COMPOSE_FILES) down
+	docker compose $(COMPOSE_INFRA) down
 	@echo "$(GREEN)[OK] Infraestrutura derrubada$(NC)"
 
 workers:
-	@echo "$(CYAN)[..] Subindo workers...$(NC)"
-	docker compose $(COMPOSE_FILES) $(COMPOSE_WORKERS) up -d
-	@echo "$(GREEN)[OK] Workers iniciados$(NC)"
+	@echo "$(CYAN)[..] Iniciando worker (consumidor de filas)...$(NC)"
+	bun run consumer
+	@echo "$(GREEN)[OK] Worker iniciado$(NC)"
 
 # ═════════════════════════════════════════════════════════════════════════════
 build:
 	@echo "$(CYAN)[..] Buildando aplicacao...$(NC)"
-	docker compose $(COMPOSE_FILES) build app
+	docker compose $(COMPOSE_APP) build app
 	@echo "$(GREEN)[OK] Build concluido$(NC)"
 
 deploy: build
 	@echo "$(CYAN)[..] Realizando rolling update...$(NC)"
-	docker compose $(COMPOSE_FILES) up -d --no-deps --build app
+	docker compose $(COMPOSE_APP) up -d --no-deps --build app
 	@echo "$(GREEN)[OK] Deploy concluido$(NC)"
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -127,7 +131,7 @@ dlq-monitor:
 	@echo "$(GREEN)[OK] Monitoramento DLQ concluido$(NC)"
 
 logs:
-	docker compose $(COMPOSE_FILES) logs -f
+	docker compose $(COMPOSE_INFRA) logs -f
 
 health:
 	@echo "$(CYAN)[..] Verificando saude da aplicacao...$(NC)"
@@ -162,8 +166,8 @@ clean:
 	@echo "$(YELLOW)[..] Limpando builds e caches...$(NC)"
 	rm -rf .next node_modules/.cache
 	rm -rf .backups
-	docker compose $(COMPOSE_FILES) down -v --remove-orphans 2>/dev/null || true
-	docker system prune -f --volumes 2>/dev/null || true
+	docker compose $(COMPOSE_INFRA) down --remove-orphans 2>/dev/null || true
+	docker compose $(COMPOSE_APP) down --remove-orphans 2>/dev/null || true
 	@echo "$(GREEN)[OK] Limpeza concluida$(NC)"
 
 reset:
@@ -173,7 +177,8 @@ reset:
 	read CONFIRM; \
 	if [ "$$CONFIRM" = "RESET" ]; then \
 		echo "$(RED)[..] Destruindo tudo...$(NC)"; \
-		docker compose $(COMPOSE_FILES) down -v 2>/dev/null || true; \
+		docker compose $(COMPOSE_INFRA) down -v 2>/dev/null || true; \
+		docker compose $(COMPOSE_APP) down -v 2>/dev/null || true; \
 		rm -rf .next node_modules; \
 		bun install; \
 		echo "$(GREEN)[OK] Reset concluido. Execute 'make setup' para comecar.$(NC)"; \

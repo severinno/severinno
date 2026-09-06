@@ -36,25 +36,45 @@
 
 ## Quick Start
 
+### Pré-requisitos
+
+- **Bun ≥ 1.0** (`curl -fsSL https://bun.sh/install | bash`) — Node 20.9+ também funciona (ver `.nvmrc`)
+- **Docker + Docker Compose** (para PostGIS, Redis, RabbitMQ, OpenSearch, MinIO, Realtime, GlitchTip)
+- **Node 20 LTS** — `nvm use` respeita o `.nvmrc`
+
+### Setup (um comando)
+
 ```bash
-# 1. Install dependencies
+# 1. Instala dependências
 bun install
 
-# 2. Start infrastructure (postgis, redis, rabbitmq)
-docker compose up -d postgis redis rabbitmq
+# 2. Cria .env a partir do template (preencha os valores obrigatórios)
+cp .env.example .env
 
-# 3. Setup database (db push — a linha usa schema sync, não migrações)
-bunx prisma db push
+# 3. Sobe a infraestrutura completa (PostGIS + Redis + RabbitMQ + Realtime + MinIO)
+make infra
 
-# 4. Seed data
-bun run db:seed
+# 4. Aplica migrations, popula o banco com seed e indexa a busca — tudo em um comando
+bun run db:setup
 
-# 5. Start dev server
+# 5. Sobe o servidor de desenvolvimento
 bun run dev
 ```
 
+### Alternativa: setup automático completo
+
+```bash
+make setup        # pré-requisitos + .env + infra + seed + dev server (detecta o compose certo)
+```
+
+> **Qual compose usar?** A infra real (PostGIS, RabbitMQ, OpenSearch, MinIO,
+> GlitchTip, Realtime) mora no `docker-compose.dev.yml`. O `docker-compose.yml`
+> contém apenas o serviço `app` (Next.js). Os targets do Makefile já apontam
+> para o arquivo correto: `make infra` usa o dev.yml, `make build`/`make deploy`
+> usam o app. Para incluir o OSRM (rota de mapa), use `make infra-full`.
+
 > **DATABASE_URL:** o compose expõe o PostGIS na porta `5432` com DB `severinno`
-> (usuário/senha `severinno`/`severinno_dev`) e a imagem `postgis` já habilita
+> (usuário/senha `severinno`/`severinno`) e a imagem `postgis` já habilita
 > a extensão no DB criado por ela. Para um DB criado manualmente, rode
 > `CREATE EXTENSION postgis;` antes do `db push` (senão: `type "geography"
 does not exist`). Ajustes locais vão em `.env.local` (gitignored).

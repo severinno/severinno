@@ -61,7 +61,8 @@ docker --version && docker compose version
 Copie o template e preencha:
 
 ```bash
-cp .env.production.example .env.production
+# Template real: .env.example (mantido em git). Crie o arquivo de produção:
+cp .env.example .env.production
 nano .env.production
 ```
 

@@ -1,11 +1,16 @@
 {
-  "name": "nextjs_tailwind_shadcn_ts",
+  "name": "severinno",
   "version": "0.4.0",
   "private": true,
+  "packageManager": "bun@1.4.0",
+  "engines": {
+    "node": ">=20.9.0",
+    "bun": ">=1.0.0"
+  },
   "scripts": {
     "dev": "next dev -p 3000",
     "dev:clean": "rm -rf .next && bun run dev",
-    "dev:kill-port": "kill -9 $(lsof -ti:3000) 2>/dev/null; powershell -Command \"Get-NetTCPConnection -LocalPort 3000|ForEach-Object{Stop-Process -Id $_.OwningProcess -Force}\" 2>/dev/null; exit 0",
+    "dev:kill-port": "kill -9 $(lsof -ti:3000) 2>/dev/null; exit 0",
     "dev:watch:clean": "npm run dev:kill-port && npm run dev:clean",
     "dev:log": "mkdir -p .next && bun run dev 2>&1 | tee -a .next/dev-server-$(date +%Y%m%d).log",
     "build": "next build",
@@ -56,6 +61,7 @@
     "secrets:check": "node scripts/rotate-secrets.mjs --check",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
+    "db:setup": "bun run db:migrate && bun run db:seed && bun run db:search:index",
     "db:seed": "bun prisma/seed.ts",
     "db:seed:prod": "bun prisma/seed-prod.ts",
     "db:seed:prod:dry": "bun prisma/seed-prod.ts --dry-run",
