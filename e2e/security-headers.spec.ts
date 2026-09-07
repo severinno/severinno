@@ -5,7 +5,7 @@ import type { APIResponse } from "@playwright/test"
 // Security Headers E2E Tests
 // =========================================================================
 // Verifies that ALL security headers defined in Caddyfile.prod and
-// middleware.ts are present and correctly configured.
+// proxy.ts are present and correctly configured.
 //
 // NOTE: Some headers (CSP, removed Server/X-Powered-By) come from
 // Caddyfile.prod and are only present when behind the Caddy reverse proxy.
@@ -15,7 +15,7 @@ import type { APIResponse } from "@playwright/test"
 // Expected headers come from:
 //   Caddyfile.prod  →  HSTS, CSP, XFO, XSS, Referrer-Policy,
 //                      Permissions-Policy, -Server, -X-Powered-By
-//   middleware.ts   →  HSTS, XFO, XCTO, Referrer-Policy,
+//   proxy.ts        →  HSTS, XFO, XCTO, Referrer-Policy,
 //                      Permissions-Policy, X-DNS-Prefetch-Control, CORS
 // =========================================================================
 
@@ -136,24 +136,6 @@ function checkHeaderRemoved(response: APIResponse, headerName: string, endpoint:
   expect(value, `[${endpoint}] "${headerName}" deve estar removido (sem vazamento)`).toBeNull()
 }
 
-// ── Helper: fetch via page.goto (follows redirects) ──────────────────────
-
-async function getResponseViaPage(
-  page: import("@playwright/test").Page,
-  url: string,
-): Promise<{ response: APIResponse; headers: Record<string, string> }> {
-  const resp = await page.goto(url, { waitUntil: "domcontentloaded" })
-  expect(resp, `[${url}] página carregou`).not.toBeNull()
-  const hdrs: Record<string, string> = {}
-  for (const [k, v] of Object.entries(resp!.headers())) {
-    hdrs[k] = v
-  }
-  return {
-    response: resp as unknown as APIResponse,
-    headers: hdrs,
-  }
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // TESTS — PÁGINA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════
@@ -270,7 +252,7 @@ test.describe("Security Headers — API (/api/health)", () => {
     expect(response.status()).toBe(200)
   })
 
-  // Headers obrigatórios (presentes em TODAS as respostas, via middleware.ts)
+  // Headers obrigatórios (presentes em TODAS as respostas, via proxy.ts)
   const apiCriticalHeaders: Record<string, HeaderCheck> = {
     "strict-transport-security": EXPECTED_HEADERS["strict-transport-security"],
     "x-content-type-options": EXPECTED_HEADERS["x-content-type-options"],
@@ -324,7 +306,7 @@ test.describe("Security Headers — Página de Login (/login)", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 test.describe("X-DNS-Prefetch-Control", () => {
-  test("🟡 Header presente (configurado em middleware.ts)", async ({ request }) => {
+  test("🟡 Header presente (configurado em proxy.ts)", async ({ request }) => {
     const response = await request.get("/")
     const dns = response.headers()["x-dns-prefetch-control"]
     expect(dns, "X-DNS-Prefetch-Control presente").toBeDefined()

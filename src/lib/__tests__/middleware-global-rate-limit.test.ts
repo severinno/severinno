@@ -24,7 +24,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { NextRequest } from "next/server"
 
-import { middleware } from "../../../middleware"
+import { proxy } from "../../../proxy"
 import { globalRateLimitHeaders, type GlobalRateLimitResult } from "@/lib/global-rate-limit"
 
 // ---------------------------------------------------------------------------
@@ -88,7 +88,7 @@ describe("src/middleware — global rate limit (Upstash → in-memory)", () => {
     mockCheckGlobalRateLimit.mockResolvedValue(allowedResult())
 
     const req = makeRequest("/api/providers")
-    const response = await middleware(req)
+    const response = await proxy(req)
 
     // checkGlobalRateLimit recebe a própria request (para extrair IP/rota)
     expect(mockCheckGlobalRateLimit).toHaveBeenCalledTimes(1)
@@ -101,6 +101,11 @@ describe("src/middleware — global rate limit (Upstash → in-memory)", () => {
     expect(response.headers.get("X-Global-RateLimit-Limit")).toBe("100")
     expect(response.headers.get("X-Global-RateLimit-Remaining")).toBe("99")
     expect(response.headers.get("X-Global-RateLimit-Reset")).toBeDefined()
+
+    // RFC 9205 standardized headers
+    expect(response.headers.get("RateLimit-Limit")).toBe("100")
+    expect(response.headers.get("RateLimit-Remaining")).toBe("99")
+    expect(response.headers.get("RateLimit-Reset")).toBeDefined()
 
     // Compat headers (X-RateLimit-*) preservam o contrato anterior
     expect(response.headers.get("X-RateLimit-Limit")).toBe("100")
@@ -122,7 +127,7 @@ describe("src/middleware — global rate limit (Upstash → in-memory)", () => {
     )
 
     const req = makeRequest("/api/providers")
-    const response = await middleware(req)
+    const response = await proxy(req)
 
     expect(response.status).toBe(429)
 
@@ -144,7 +149,7 @@ describe("src/middleware — global rate limit (Upstash → in-memory)", () => {
   // -------------------------------------------------------------------------
 
   it("não aplica rate limit em /api/health (rota fixa)", async () => {
-    const response = await middleware(makeRequest("/api/health"))
+    const response = await proxy(makeRequest("/api/health"))
 
     expect(response.status).toBe(200)
     expect(mockCheckGlobalRateLimit).not.toHaveBeenCalled()
@@ -152,14 +157,14 @@ describe("src/middleware — global rate limit (Upstash → in-memory)", () => {
   })
 
   it("normaliza trailing slash — /api/health/ também é bypass", async () => {
-    const response = await middleware(makeRequest("/api/health/"))
+    const response = await proxy(makeRequest("/api/health/"))
 
     expect(response.status).toBe(200)
     expect(mockCheckGlobalRateLimit).not.toHaveBeenCalled()
   })
 
   it("não aplica rate limit em /api/webhooks/* (prefixo)", async () => {
-    const response = await middleware(makeRequest("/api/webhooks/evolution"))
+    const response = await proxy(makeRequest("/api/webhooks/evolution"))
 
     expect(response.status).toBe(200)
     expect(mockCheckGlobalRateLimit).not.toHaveBeenCalled()
@@ -173,7 +178,7 @@ describe("src/middleware — global rate limit (Upstash → in-memory)", () => {
     const req = makeRequest("/api/cron/health-monitor")
     req.headers.set("authorization", "Bearer cron-secret-teste")
 
-    const response = await middleware(req)
+    const response = await proxy(req)
 
     expect(response.status).toBe(200)
     expect(mockCheckGlobalRateLimit).not.toHaveBeenCalled()
@@ -186,7 +191,7 @@ describe("src/middleware — global rate limit (Upstash → in-memory)", () => {
   it("respeita GLOBAL_RATE_LIMIT_WHITELIST via env var", async () => {
     process.env.GLOBAL_RATE_LIMIT_WHITELIST = "/api/providers"
 
-    const response = await middleware(makeRequest("/api/providers/42"))
+    const response = await proxy(makeRequest("/api/providers/42"))
 
     expect(response.status).toBe(200)
     expect(mockCheckGlobalRateLimit).not.toHaveBeenCalled()
@@ -197,7 +202,7 @@ describe("src/middleware — global rate limit (Upstash → in-memory)", () => {
 
     // /api/geo/search alimenta o address-autocomplete da vitrine pública —
     // deve passar pelo limiter E pelo auth público (sem sessão) com 200.
-    const response = await middleware(makeRequest("/api/geo/search"))
+    const response = await proxy(makeRequest("/api/geo/search"))
 
     expect(response.status).toBe(200)
     expect(mockCheckGlobalRateLimit).toHaveBeenCalledTimes(1)
@@ -207,7 +212,7 @@ describe("src/middleware — global rate limit (Upstash → in-memory)", () => {
   it("aplica rate limit em /api/health/detailed (não é bypass de health)", async () => {
     mockCheckGlobalRateLimit.mockResolvedValue(allowedResult())
 
-    const response = await middleware(makeRequest("/api/health/detailed"))
+    const response = await proxy(makeRequest("/api/health/detailed"))
 
     expect(response.status).toBe(200)
     expect(mockCheckGlobalRateLimit).toHaveBeenCalledTimes(1)
@@ -218,7 +223,7 @@ describe("src/middleware — global rate limit (Upstash → in-memory)", () => {
   // -------------------------------------------------------------------------
 
   it("responde OPTIONS preflight com 204 sem consultar o rate limiter", async () => {
-    const response = await middleware(makeRequest("/api/providers", "OPTIONS"))
+    const response = await proxy(makeRequest("/api/providers", "OPTIONS"))
 
     expect(response.status).toBe(204)
     expect(mockCheckGlobalRateLimit).not.toHaveBeenCalled()
@@ -232,7 +237,7 @@ describe("src/middleware — global rate limit (Upstash → in-memory)", () => {
     const result = allowedResult({ remaining: 42 })
     mockCheckGlobalRateLimit.mockResolvedValue(result)
 
-    const response = await middleware(makeRequest("/api/geo/search"))
+    const response = await proxy(makeRequest("/api/geo/search"))
 
     const expected = globalRateLimitHeaders(result)
     // Retry-After é derivado de Date.now() dentro do middleware — comparado

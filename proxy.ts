@@ -1,7 +1,8 @@
 /**
- * middleware.ts
+ * proxy.ts
  *
- * Global Edge middleware — the single source of truth for request processing.
+ * Global Proxy (formerly middleware) — the single source of truth for request processing.
+ * Renamed from middleware.ts per Next.js 16 convention (middleware → proxy).
  *
  * Responsibilities (in order):
  *   1. OPTIONS preflight handling (CORS)
@@ -323,7 +324,7 @@ function isPublicApi(pathname: string): boolean {
 // Middleware handler
 // ---------------------------------------------------------------------------
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname: rawPathname } = request.nextUrl
   const pathname = rawPathname.replace(/\/+$/, "")
 
@@ -416,7 +417,14 @@ export async function middleware(request: NextRequest) {
     if (!bypassedByWhitelist) {
       const result = await checkGlobalRateLimit(request)
       const rateHeaders = globalRateLimitHeaders(result)
+      const deltaSeconds = Math.max(0, Math.ceil((result.reset - Date.now()) / 1000))
 
+      // RFC 9205 standardized headers
+      response.headers.set("RateLimit-Limit", String(result.limit))
+      response.headers.set("RateLimit-Remaining", String(result.remaining))
+      response.headers.set("RateLimit-Reset", String(deltaSeconds))
+
+      // Legacy headers for backward compatibility
       response.headers.set("X-RateLimit-Limit", String(result.limit))
       response.headers.set("X-RateLimit-Remaining", String(result.remaining))
       response.headers.set("X-RateLimit-Reset", rateHeaders["X-Global-RateLimit-Reset"])
@@ -427,12 +435,16 @@ export async function middleware(request: NextRequest) {
       if (!result.allowed) {
         const body = JSON.stringify({
           error: "Muitas requisições. Tente novamente em alguns segundos.",
-          retryAfter: Math.ceil((result.reset - Date.now()) / 1000),
+          retryAfter: deltaSeconds,
         })
         const response429 = new NextResponse(body, {
           status: 429,
           headers: {
             "Content-Type": "application/json",
+            "Retry-After": String(deltaSeconds),
+            "RateLimit-Limit": String(result.limit),
+            "RateLimit-Remaining": String(result.remaining),
+            "RateLimit-Reset": String(deltaSeconds),
             "X-RateLimit-Limit": String(result.limit),
             "X-RateLimit-Remaining": String(result.remaining),
             ...rateHeaders,
@@ -448,14 +460,19 @@ export async function middleware(request: NextRequest) {
   if (pathname.startsWith("/api/")) {
     const routeResult = await checkRouteRateLimit(request)
     if (routeResult && !routeResult.allowed) {
+      const retryAfterSec = Math.max(0, Math.ceil((routeResult.reset - Date.now()) / 1000))
       const body = JSON.stringify({
         error: "Muitas tentativas para esta operação. Aguarde um minuto.",
-        retryAfter: Math.ceil((routeResult.reset - Date.now()) / 1000),
+        retryAfter: retryAfterSec,
       })
       const response429 = new NextResponse(body, {
         status: 429,
         headers: {
           "Content-Type": "application/json",
+          "Retry-After": String(retryAfterSec),
+          "RateLimit-Limit": String(routeResult.limit),
+          "RateLimit-Remaining": "0",
+          "RateLimit-Reset": String(retryAfterSec),
           ...routeRateLimitHeaders(routeResult),
         },
       })

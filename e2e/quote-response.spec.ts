@@ -1,5 +1,4 @@
 import { test, expect, type Page } from "@playwright/test"
-import { waitForVitrine, registerUser } from "./helpers"
 import { setupApiMocks } from "./mocks"
 
 // The PWA service worker (public/sw.js) intercepts /api/* GET requests and

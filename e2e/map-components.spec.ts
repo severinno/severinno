@@ -61,12 +61,10 @@ const MOCK_PROVIDERS = {
       city: "Governador Valadares",
       distanceKm: 3.2,
       radiusKm: 20,
-      lat: -18.8600,
-      lng: -41.9500,
+      lat: -18.86,
+      lng: -41.95,
       memberSince: new Date(Date.now() - 3600000).toISOString(), // 1h ago = recent
-      services: [
-        { id: "svc-3", title: "Diarista", basePrice: 80, unit: "UNIDADE", photos: [] },
-      ],
+      services: [{ id: "svc-3", title: "Diarista", basePrice: 80, unit: "UNIDADE", photos: [] }],
       completedBookings: 203,
     },
     {
@@ -81,8 +79,8 @@ const MOCK_PROVIDERS = {
       city: "Governador Valadares",
       distanceKm: 5.8,
       radiusKm: 30,
-      lat: -18.8520,
-      lng: -41.9400,
+      lat: -18.852,
+      lng: -41.94,
       memberSince: new Date(Date.now() - 86400000 * 3).toISOString(), // 3 days ago = away
       services: [
         { id: "svc-4", title: "Pintura", basePrice: 150, unit: "METRO_QUADRADO", photos: [] },
@@ -101,12 +99,10 @@ const MOCK_PROVIDERS = {
       city: "Governador Valadares",
       distanceKm: 8.1,
       radiusKm: 15,
-      lat: -18.8480,
-      lng: -41.9350,
+      lat: -18.848,
+      lng: -41.935,
       memberSince: null, // no data = offline
-      services: [
-        { id: "svc-5", title: "Jardim", basePrice: 100, unit: "UNIDADE", photos: [] },
-      ],
+      services: [{ id: "svc-5", title: "Jardim", basePrice: 100, unit: "UNIDADE", photos: [] }],
       completedBookings: 24,
     },
   ],
@@ -128,15 +124,9 @@ const MOCK_CATEGORIES = [
 
 /** Setup API mocks for map tests */
 async function setupMapMocks(page: Page) {
-  await page.route("**/api/providers**", (route) =>
-    route.fulfill({ json: MOCK_PROVIDERS }),
-  )
-  await page.route("**/api/categories**", (route) =>
-    route.fulfill({ json: MOCK_CATEGORIES }),
-  )
-  await page.route("**/api/search**", (route) =>
-    route.fulfill({ json: MOCK_PROVIDERS }),
-  )
+  await page.route("**/api/providers**", (route) => route.fulfill({ json: MOCK_PROVIDERS }))
+  await page.route("**/api/categories**", (route) => route.fulfill({ json: MOCK_CATEGORIES }))
+  await page.route("**/api/search**", (route) => route.fulfill({ json: MOCK_PROVIDERS }))
   await page.route("**/api/geo/**", (route) =>
     route.fulfill({ json: { lat: -18.8566, lng: -41.9455, city: "Governador Valadares" } }),
   )
@@ -202,7 +192,9 @@ test.describe("EnhancedProvidersMap — Rendering", () => {
     await goToMapView(page)
     await waitForMap(page)
 
-    const mapContainer = page.locator('[aria-label="Mapa de prestadores"], [role="application"]').first()
+    const mapContainer = page
+      .locator('[aria-label="Mapa de prestadores"], [role="application"]')
+      .first()
     await expect(mapContainer).toBeVisible()
   })
 
@@ -374,7 +366,9 @@ test.describe("EnhancedProvidersMap — Fullscreen", () => {
     await filterBtn.click()
     await page.waitForTimeout(500)
 
-    const fullscreenBtn = page.locator('button[title*="tela cheia"], button[title*="Tela cheia"]').first()
+    const fullscreenBtn = page
+      .locator('button[title*="tela cheia"], button[title*="Tela cheia"]')
+      .first()
     await expect(fullscreenBtn).toBeVisible({ timeout: 5000 })
   })
 
@@ -388,7 +382,9 @@ test.describe("EnhancedProvidersMap — Fullscreen", () => {
     await filterBtn.click()
     await page.waitForTimeout(500)
 
-    const fullscreenBtn = page.locator('button[title*="tela cheia"], button[title*="Tela cheia"]').first()
+    const fullscreenBtn = page
+      .locator('button[title*="tela cheia"], button[title*="Tela cheia"]')
+      .first()
     await expect(fullscreenBtn).toBeVisible({ timeout: 5000 })
     await fullscreenBtn.click()
     await page.waitForTimeout(1000)
@@ -502,12 +498,8 @@ test.describe("ProviderTooltipCard — Desktop", () => {
     await page.waitForTimeout(1000)
 
     // Tooltip card should appear with provider info
-    // The tooltip is rendered as a MapLibre popup
-    const tooltip = page.locator(".maplibregl-popup, .mapboxgl-popup").first()
-    const isTooltipVisible = await tooltip.isVisible().catch(() => false)
-
-    // Even if tooltip doesn't appear via hover (MapLibre popups need explicit trigger),
-    // the pin itself should show the price chip
+    // The tooltip is rendered as a MapLibre popup — MapLibre popups need an explicit
+    // trigger, so we don't assert visibility; the pin itself shows the price chip.
     const pinText = await firstPin.textContent()
     expect(pinText).toBeTruthy()
   })
@@ -615,7 +607,9 @@ test.describe("Map — Accessibility", () => {
     await goToMapView(page)
     await waitForMap(page)
 
-    const mapContainer = page.locator('[role="application"][aria-label="Mapa de prestadores"]').first()
+    const mapContainer = page
+      .locator('[role="application"][aria-label="Mapa de prestadores"]')
+      .first()
     await expect(mapContainer).toBeVisible()
   })
 

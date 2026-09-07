@@ -1,6 +1,12 @@
 import "server-only"
 import { Client } from "@opensearch-project/opensearch"
 import logger from "./logger"
+import {
+  enqueueSearchSync,
+  processSearchSyncQueue,
+  getSearchQueueStats,
+  type SearchSyncJob,
+} from "./search-queue"
 
 // ============================================================================
 // Configuration
@@ -512,7 +518,7 @@ export async function searchServices(
 }
 
 /**
- * Index a single document (upsert).
+ * Index a single document (upsert) with resilient fallback queue.
  */
 export async function indexDocument(
   index: string,
@@ -520,23 +526,33 @@ export async function indexDocument(
   body: Record<string, unknown>,
 ): Promise<void> {
   const client = getClient()
-  if (!client) return
+  if (!client) {
+    enqueueSearchSync("index", index, id, body)
+    return
+  }
   try {
     await client.index({ index, id, body, refresh: "true" })
   } catch (err) {
-    logger.error({ err, index, id }, "OpenSearch index error")
+    logger.error({ err, index, id }, "OpenSearch index error, queueing for retry")
+    enqueueSearchSync("index", index, id, body)
   }
 }
 
 /**
- * Bulk index multiple documents.
+ * Bulk index multiple documents with resilient fallback queue.
  */
 export async function bulkIndex(
   index: string,
   documents: Array<{ id: string; body: Record<string, unknown> }>,
 ): Promise<void> {
   const client = getClient()
-  if (!client || documents.length === 0) return
+  if (documents.length === 0) return
+  if (!client) {
+    for (const doc of documents) {
+      enqueueSearchSync("index", index, doc.id, doc.body)
+    }
+    return
+  }
 
   const body = documents.flatMap((doc) => [{ index: { _index: index, _id: doc.id } }, doc.body])
 
@@ -544,29 +560,73 @@ export async function bulkIndex(
     const response = await client.bulk({ body, refresh: "true" })
     if (response.body.errors) {
       const errorItems = response.body.items.filter(
-        (i: { index?: { error?: unknown } }) => i.index?.error,
+        (i: { index?: { error?: unknown; _id?: string } }) => i.index?.error,
       )
-      logger.error({ errorCount: errorItems.length, index }, "Bulk index had errors")
+      logger.error(
+        { errorCount: errorItems.length, index },
+        "Bulk index had errors, queueing failed items",
+      )
+      for (const item of errorItems) {
+        const failedId = item.index?._id
+        const matchingDoc = documents.find((d) => d.id === failedId)
+        if (failedId && matchingDoc) {
+          enqueueSearchSync("index", index, failedId, matchingDoc.body)
+        }
+      }
     }
   } catch (err) {
-    logger.error({ err, index }, "Bulk index error")
+    logger.error({ err, index }, "Bulk index error, queueing all documents")
+    for (const doc of documents) {
+      enqueueSearchSync("index", index, doc.id, doc.body)
+    }
   }
 }
 
 /**
- * Delete a document from the index.
+ * Delete a document from the index with resilient fallback queue.
  */
 export async function deleteDocument(index: string, id: string): Promise<void> {
   const client = getClient()
-  if (!client) return
+  if (!client) {
+    enqueueSearchSync("delete", index, id)
+    return
+  }
   try {
     await client.delete({ index, id })
   } catch (err: unknown) {
     // 404 is fine (document already gone)
     if ((err as { statusCode?: number }).statusCode !== 404) {
-      logger.error({ err, index, id }, "OpenSearch delete error")
+      logger.error({ err, index, id }, "OpenSearch delete error, queueing for retry")
+      enqueueSearchSync("delete", index, id)
     }
   }
+}
+
+/**
+ * Process pending search synchronization jobs from the resilient queue.
+ */
+export async function processPendingSearchQueue(
+  maxBatchSize = 50,
+): Promise<{ processed: number; failed: number }> {
+  return processSearchSyncQueue(async (job: SearchSyncJob) => {
+    const client = getClient()
+    if (!client) return false
+
+    if (job.action === "index") {
+      await client.index({
+        index: job.index,
+        id: job.docId,
+        body: job.body ?? {},
+        refresh: "true",
+      })
+    } else {
+      await client.delete({
+        index: job.index,
+        id: job.docId,
+      })
+    }
+    return true
+  }, maxBatchSize)
 }
 
 /**
@@ -600,6 +660,9 @@ const searchModule = {
   indexDocument,
   bulkIndex,
   deleteDocument,
+  processPendingSearchQueue,
+  enqueueSearchSync,
+  getSearchQueueStats,
   INDICES,
 }
 

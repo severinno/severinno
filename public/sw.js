@@ -1,6 +1,7 @@
 const CACHE = "severinno-v4"
 const ASSETS = [
   "/",
+  "/offline",
   "/manifest.json",
   "/sw.js",
   "/logo.svg",
@@ -37,9 +38,7 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter(
-              (k) => k !== CACHE && k !== OSM_TILE_CACHE && k !== API_CACHE,
-            )
+            .filter((k) => k !== CACHE && k !== OSM_TILE_CACHE && k !== API_CACHE)
             .map((k) => caches.delete(k)),
         ),
       )
@@ -106,7 +105,10 @@ async function cacheFirstStrategy(request) {
     const response = await fetch(request)
     if (response.ok) {
       const clone = response.clone()
-      caches.open(CACHE).then((cache) => cache.put(request, clone)).catch(() => {})
+      caches
+        .open(CACHE)
+        .then((cache) => cache.put(request, clone))
+        .catch(() => {})
     }
     return response
   } catch {
@@ -123,7 +125,10 @@ async function networkFirstStrategy(request) {
     const response = await fetch(request)
     if (response.ok && response.type === "basic") {
       const clone = response.clone()
-      caches.open(CACHE).then((cache) => cache.put(request, clone)).catch(() => {})
+      caches
+        .open(CACHE)
+        .then((cache) => cache.put(request, clone))
+        .catch(() => {})
     }
     return response
   } catch {
@@ -145,15 +150,21 @@ async function apiStrategy(request) {
     const response = await fetch(request)
     if (response.ok) {
       const clone = response.clone()
-      caches.open(API_CACHE).then((cache) => cache.put(request, clone)).catch(() => {})
+      caches
+        .open(API_CACHE)
+        .then((cache) => cache.put(request, clone))
+        .catch(() => {})
     }
     return response
   } catch {
     const cached = await caches.match(request)
-    return cached ?? new Response(JSON.stringify({ error: "offline" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    })
+    return (
+      cached ??
+      new Response(JSON.stringify({ error: "offline" }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      })
+    )
   }
 }
 
@@ -369,7 +380,6 @@ async function openOrFocusUrl(url) {
   }
 }
 
-
 // ---- Background Sync — queue actions when offline -------------------------
 const SYNC_QUEUE = "severinno-sync-v1"
 
@@ -396,14 +406,5 @@ async function syncOfflineActions() {
     } catch {
       // Will retry on next sync
     }
-  }
-}
-
-// ---- Max cache size enforcement -------------------------------------------
-async function enforceMaxEntries(cacheName, max) {
-  const cache = await caches.open(cacheName)
-  const keys = await cache.keys()
-  if (keys.length > max) {
-    await Promise.all(keys.slice(0, keys.length - max).map(k => cache.delete(k)))
   }
 }

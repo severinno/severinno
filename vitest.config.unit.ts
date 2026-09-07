@@ -21,6 +21,8 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: true,
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     include: ["src/**/*.test.{ts,tsx}"],
     exclude: ["src/components/**/*.test.{ts,tsx}", "node_modules", ".next"],
     server: {

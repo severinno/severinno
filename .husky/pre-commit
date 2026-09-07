@@ -1,62 +1,59 @@
 set -eu
 
-# Bun guard STAGED — detecta cache keys/literais velhos no que está STAGED
-# (git diff --cached) ANTES do guard global: se o commit introduzir uma key
-# antiga (ex.: bun-1.3.14-...) ou literal, falha aqui com a mensagem do diff,
-# mesmo que o working tree global já esteja migrado. Node puro, <1s.
-node scripts/check-bun-mirror.mjs --staged
+# ============================================================================
+# Pre-commit hook — Severinno Marketplace
+#
+# Structured in 3 phases for maximum parallelism:
+#   Phase A — Staged-only guards (parallel, ~2s)
+#   Phase B — Global guards (parallel, ~3s)
+#   Phase C — Sequential checks (state-dependent, ~5s)
+#
+# Total estimated: ~8-12s (down from ~15-30s serial)
+# ============================================================================
 
-# Mutation-jobs STAGED — avalia o par de cobertura de mutation tests no que
-# está STAGED (git diff --cached, escopo scripts/ E .github/workflows/) ANTES
-# do guard global: se o commit introduzir um script de mutation test sem wire
-# em NENHUM job/matriz (forward) OU um run: de workflow novo apontando para
-# script inexistente (reverse), falha aqui com a mensagem do diff, mesmo que o
-# working tree global já esteja consistente. Espelho do bun-mirror --staged.
-# Node puro, <1s.
-node scripts/check-mutation-jobs.mjs --staged
+# ── Phase A: Staged guards (parallel) ─────────────────────────────────────
+# These guards inspect only git diff --cached (staged changes) and are
+# completely independent of each other — safe to run in parallel.
 
-# Unused-deps STAGED — detecta dep órfã INTRODUZIDA pelo commit (adicionada no
-# package.json do git diff --cached sem referência no ÍNDICE) ANTES do guard
-# global (CI): o scan completo é ~850ms (1057 arquivos) e não roda no
-# pre-commit; o --staged custa ~290ms (caso comum, sem diff do package.json)
-# e ~150-500ms com deps novas (1-2 git grep --cached por dep). O import em
-# arquivo NÃO staged não conta (o commit não o carrega). Node puro, <1s.
-node scripts/check-unused-deps.mjs --staged
+node scripts/check-bun-mirror.mjs --staged &
+PID_BUN=$!
 
-# Mutation-timing contract STAGED — valida que os markers do mutation-coord
-# (job/step do seed-guards.yml) estão consistentes no que está STAGED (git
-# diff --cached — lê o ÍNDICE, não o working tree) ANTES do guard global: um
-# PR que renomeia o job/step no seed-guards.yml sem atualizar os outros 3
-# locais (medidor/mutation test/unit test) de forma COORDENADA falha aqui,
-# mesmo que o working tree global já esteja migrado (estágio parcial).
-# Espelho do check-bun-mirror --staged. Node puro, <1s.
-node scripts/check-mutation-timing-contract.mjs --staged
+node scripts/check-mutation-jobs.mjs --staged &
+PID_MUT=$!
 
-# 15 guards de encoding/CI compartilhados com o pre-push (fonte única —
-# adicionar um guard novo = editar scripts/run-encoding-guards.sh em UM lugar)
-bash scripts/run-encoding-guards.sh
+node scripts/check-unused-deps.mjs --staged &
+PID_DEPS=$!
 
-# Barrel lint — valida imports diretos (barrels) E headers de scripts
-# (Usage + Exit code nas 50 primeiras linhas). Roda ANTES do lint-staged
-# para que a violação de header seja pega com arquivo:linha cedo, sem o
-# prettier já ter reformatado o working tree (o lint-staged roda por último
-# na cadeia de formatação — se o barrel falhasse depois, o dev corrigiria
-# sobre arquivos já modificados).
-bun run barrel-lint
+node scripts/check-mutation-timing-contract.mjs --staged &
+PID_TIMING=$!
 
-# Prettier check STAGED — feedback local de formatação ANTES do lint-staged
-# (padrão do barrel-lint: o erro é pego com arquivo:linha cedo, não
-# silenciosamente corrigido). Escopo = arquivos do commit (staged) — o
-# repo-wide é responsabilidade do job lint-guard no CI (prettier --check
-# sobre TODO o repo a cada PR). Arquivos não-formatados que o lint-staged
-# corrigiria agora FALHAM o commit: rode `npx prettier --write <arquivo>`
-# e re-stage.
-STAGED_FORMAT=$(git diff --cached --name-only --diff-filter=ACMR | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
-if [ -n "$STAGED_FORMAT" ]; then
-  # O --check lê o working tree, não o índice: com git add -p o conteúdo
-  # checado pode diferir do que será commitado — caso raro no repo, aceito.
-  npx prettier --check --ignore-unknown $STAGED_FORMAT
-fi
+# Wait for all Phase A jobs — fail immediately if any exits non-zero
+wait $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING
+
+# ── Phase B: Global guards (parallel) ─────────────────────────────────────
+# Encoding guards, barrel lint, and prettier check are read-only and
+# independent — safe to run in parallel.
+
+bash scripts/run-encoding-guards.sh &
+PID_ENCODING=$!
+
+bun run barrel-lint &
+PID_BARREL=$!
+
+# Prettier check STAGED — feedback de formatação ANTES do lint-staged
+(
+  STAGED_FORMAT=$(git diff --cached --name-only --diff-filter=ACMR | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
+  if [ -n "$STAGED_FORMAT" ]; then
+    bun x prettier --check --ignore-unknown $STAGED_FORMAT
+  fi
+) &
+PID_PRETTIER=$!
+
+wait $PID_ENCODING $PID_BARREL $PID_PRETTIER
+
+# ── Phase C: Sequential checks (state-dependent) ─────────────────────────
+# These checks may modify files (lint-staged) or depend on the full project
+# state (typecheck), so they run sequentially.
 
 bun x lint-staged
 
@@ -67,7 +64,7 @@ bun run check:direct-rtl-import
 # Type check — rejeita commit se houver erros de tipo no projeto
 bun run typecheck
 
-# Snapshot guard — roda os testes de snapshot quando .snap ou *snapshot*.test.tsx
+# Snapshot guard — roda testes de snapshot quando .snap ou *snapshot*.test.tsx
 # forem alterados (staged), impedindo snapshots obsoletos de entrar no commit
 STAGED_SNAP=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.snap$|snapshot[^/]*\.test\.tsx$' || true)
 if [ -n "$STAGED_SNAP" ]; then

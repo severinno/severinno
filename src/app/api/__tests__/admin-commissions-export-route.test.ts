@@ -12,9 +12,11 @@ vi.mock("@/lib/db", () => ({ db: mockDb }))
 
 let _mockRole: string | null = null
 
+import { makeAuthError } from "@/lib/__tests__/helpers/auth-mock"
+
 vi.mock("@/lib/auth", () => ({
   requireRole: vi.fn().mockImplementation(async (role: string) => {
-    if (_mockRole !== role) throw new Error("FORBIDDEN")
+    if (_mockRole !== role) throw makeAuthError("FORBIDDEN")
   }),
 }))
 

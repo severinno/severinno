@@ -82,16 +82,16 @@ export const notFound = (msg = "Recurso não encontrado") => new HttpError(404, 
 export const conflict = (msg = "Conflito de estado") => new HttpError(409, msg)
 
 /**
- * Map any thrown error to a JSON response. Auth errors thrown by
- * `requireUser`/`requireRole` (`UNAUTHORIZED` / `FORBIDDEN` strings) are
- * mapped to 401/403. Zod errors → 400 with issue details.
+ * Map any thrown error to a JSON response. Domain errors (`AuthError`,
+ * `BookingError`, `PaymentError`) and `HttpError` are mapped to their
+ * respective status codes and messages. Zod errors → 400 with issue details.
  */
 export function handleError(e: unknown) {
   if (e instanceof HttpError) {
     return NextResponse.json({ error: e.message }, { status: e.status, headers: e.headers })
   }
-  // Duck-type AuthError instead of instanceof: many route tests mock
-  // @/lib/auth without the AuthError export, which breaks instanceof.
+  // Duck-type domain errors instead of instanceof: route tests mock domain modules
+  // without exporting class definitions, which breaks instanceof across isolated contexts.
   const domainErr = e as { name?: string; code?: string; status?: number }
   if (
     domainErr?.name === "AuthError" ||

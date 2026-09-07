@@ -32,6 +32,9 @@ interface CacheEntry<T> {
   timestamp: number
 }
 
+// In-memory micro-cache (L1) to avoid network latency to Redis on back-to-back requests
+const l1SwrCache = new Map<string, { entry: CacheEntry<unknown>; localTimestamp: number }>()
+
 /**
  * Cache-aside with Stale-While-Revalidate.
  *
@@ -56,10 +59,23 @@ export async function withSWR<T>(key: string, fn: () => Promise<T>, opts: SWROpt
   const { maxAge, maxStaleAge = maxAge * 5 } = opts
   const now = Date.now()
 
-  // Try to get cached entry
+  // 1. Fast path: check L1 in-memory micro-cache (< 5s old)
+  const l1 = l1SwrCache.get(key)
+  if (l1 && now - l1.localTimestamp < 5000) {
+    const cached = l1.entry as CacheEntry<T>
+    const ageSeconds = (now - cached.timestamp) / 1000
+    if (ageSeconds < maxAge) {
+      return cached.data
+    }
+  }
+
+  // 2. Redis L2 cache lookup
   const cached = await cacheGet<CacheEntry<T>>(key)
 
   if (cached) {
+    // Keep L1 fresh
+    if (l1SwrCache.size > 200) l1SwrCache.clear()
+    l1SwrCache.set(key, { entry: cached, localTimestamp: now })
     const ageSeconds = (now - cached.timestamp) / 1000
 
     // Data is fresh — return it

@@ -52,6 +52,19 @@
 
 import { vi } from "vitest"
 
+// ── Lightweight AuthError shape for mocks ────────────────────────────────
+// We can't import AuthError from @/lib/auth because that module is mocked.
+// Instead we create a duck-typed error with the same shape (name, code, status)
+// that handleError in api-server.ts detects via duck-typing.
+export function makeAuthError(code: "UNAUTHORIZED" | "FORBIDDEN"): Error {
+  const msg = code === "FORBIDDEN" ? "Acesso proibido" : "Não autorizado"
+  return Object.assign(new Error(msg), {
+    name: "AuthError",
+    code,
+    status: code === "FORBIDDEN" ? 403 : 401,
+  })
+}
+
 // =========================================================================
 // Pattern 1: requireUser (returns user object with role)
 // =========================================================================
@@ -94,7 +107,7 @@ export function setupNonAdmin(mock: ReturnType<typeof vi.fn>, role = "USER"): vo
  * @param mock - The vi.fn() instance created inside vi.hoisted().
  */
 export function setupUnauthenticated(mock: ReturnType<typeof vi.fn>): void {
-  mock.mockRejectedValue(new Error("UNAUTHORIZED"))
+  mock.mockRejectedValue(makeAuthError("UNAUTHORIZED"))
 }
 
 // =========================================================================
@@ -122,7 +135,8 @@ export function setMockRole(role: string | null): void {
 /**
  * Create a mock module object for `vi.mock("@/lib/auth", () => setupRoleMock())`.
  *
- * The `requireRole` function throws `new Error("FORBIDDEN")` when the
+ * The `requireRole` function throws a duck-typed AuthError with
+ * `{ name: "AuthError", code: "FORBIDDEN", status: 403 }` when the
  * requested role doesn't match the current `_mockRole`.
  *
  * Also provides a dummy `requireUser: vi.fn()` for routes that import it.
@@ -134,7 +148,7 @@ export function setupRoleMock(): {
   return {
     requireUser: vi.fn(),
     requireRole: vi.fn().mockImplementation(async (role: string) => {
-      if (_mockRole !== role) throw new Error("FORBIDDEN")
+      if (_mockRole !== role) throw makeAuthError("FORBIDDEN")
     }),
   }
 }

@@ -3,13 +3,11 @@ export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireRole, invalidateUserCache } from "@/lib/auth"
-import { badRequest, handleError, notFound, USER_PUBLIC_SELECT } from "@/lib/api-server"
+import { handleError, notFound, USER_PUBLIC_SELECT } from "@/lib/api-server"
 import { z } from "zod"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 type Params = { params: Promise<{ id: string }> }
-
-const ALLOWED_ROLES = ["CLIENT", "PROVIDER", "ADMIN"]
 
 const adminUserUpdateSchema = z.object({
   verified: z.boolean().optional(),

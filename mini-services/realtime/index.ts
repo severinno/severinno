@@ -5,7 +5,6 @@
 
 import { createServer } from "http"
 import { Server, Socket } from "socket.io"
-import { Server as EngineServer } from "engine.io"
 import { createAdapter } from "@socket.io/redis-adapter"
 import { Redis } from "ioredis"
 import { randomUUID } from "crypto"

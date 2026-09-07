@@ -61,6 +61,7 @@ const nextConfig: NextConfig = {
       "framer-motion",
       "zod",
       "sonner",
+      "@tanstack/react-query",
     ],
   },
 }

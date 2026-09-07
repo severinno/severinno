@@ -24,6 +24,7 @@ function sendToAnalytics(metric: Metric) {
   }
 
   if (process.env.NODE_ENV === "development") {
+    // eslint-disable-next-line no-console -- dev-only Web Vitals output
     console.log(`[Web Vitals] ${metric.name}: ${metric.value.toFixed(2)} (${metric.rating})`)
     return
   }

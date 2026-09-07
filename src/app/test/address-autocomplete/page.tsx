@@ -20,6 +20,7 @@ export default function TestAddressAutocompletePage() {
         <AddressAutocomplete
           placeholder="CEP, cidade ou endereço…"
           onSelect={(lat, lng, name) => {
+            // eslint-disable-next-line no-console -- debug output for the E2E test page
             console.log("[test] onSelect", { lat, lng, name })
           }}
         />

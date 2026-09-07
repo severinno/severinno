@@ -1118,7 +1118,6 @@ describe("POST /api/admin/push/send", () => {
         body: { userIds: [], title: "Hello" },
       }),
     )
-    const body = await res.json()
 
     expect(res.status).toBe(400)
   })

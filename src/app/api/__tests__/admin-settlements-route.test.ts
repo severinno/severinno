@@ -17,9 +17,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 let _mockRole: string | null = null
 let _mockSession: { userId: string } | null = null
 
+import { makeAuthError } from "@/lib/__tests__/helpers/auth-mock"
+
 vi.mock("@/lib/auth", () => ({
   requireRole: vi.fn().mockImplementation(async (role: string) => {
-    if (_mockRole !== role) throw new Error("FORBIDDEN")
+    if (_mockRole !== role) throw makeAuthError("FORBIDDEN")
     return _mockSession ?? { userId: "admin-1" }
   }),
 }))

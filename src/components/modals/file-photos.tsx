@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Loader2, UploadCloud, X } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { SafeImage } from "@/components/shared/safe-image"
 
 type FilePhotosProps = {
   /** Current list of stored photo URLs. */
@@ -172,13 +173,11 @@ export function FilePhotos({
               key={url + i}
               className="group bg-muted relative aspect-square overflow-hidden rounded-lg border"
             >
-              {/* img element used intentionally for runtime-provided URLs */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <SafeImage
                 src={url}
                 alt={`Foto ${i + 1}`}
-                className="size-full object-cover"
-                loading="lazy"
+                className="object-cover"
+                sizes="(max-width: 640px) 25vw, 120px"
               />
               <button
                 type="button"
