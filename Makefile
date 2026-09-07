@@ -62,6 +62,7 @@ help:
 	@echo "  make qa             Suite completa de QA (lint + typecheck + test + barrel-lint)"
 	@echo "  make pr-ready       Valida tudo para PR (qa + build)"
 	@echo "  make guard          Executa encoding guards locais"
+	@echo "  make analyze        Executa o Next.js Bundle Analyzer"
 	@echo ""
 	@echo "$(GREEN)Manutencao:$(NC)"
 	@echo "  make backup-auto    Executa backup automatico com verificacao"
@@ -186,6 +187,11 @@ guard:
 	@echo "$(CYAN)[..] Executando encoding guards...$(NC)"
 	bash scripts/run-encoding-guards.sh
 	@echo "$(GREEN)[OK] Encoding guards aprovados!$(NC)"
+
+analyze:
+	@echo "$(CYAN)[..] Executando Next.js Bundle Analyzer...$(NC)"
+	bun run build:analyze
+	@echo "$(GREEN)[OK] Analise de bundle concluida!$(NC)"
 
 backup-auto:
 	@echo "$(CYAN)[..] Executando backup automatico com verificacao...$(NC)"

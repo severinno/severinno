@@ -153,34 +153,76 @@ export function useScrollReveal<T extends HTMLElement = HTMLDivElement>(options?
 export function useTilt<T extends HTMLElement = HTMLDivElement>(options?: {
   max?: number // max degrees
   scale?: number // hover scale
+  disabled?: boolean
 }) {
-  const { max = 6, scale = 1.01 } = options ?? {}
+  const { max = 6, scale = 1.01, disabled = false } = options ?? {}
   const ref = React.useRef<T>(null)
+  const rafId = React.useRef<number | null>(null)
+  const isEnabledRef = React.useRef<boolean>(false)
 
-  // We return a single `handlers` object so consumers can spread it onto the
-  // element without the linter complaining about ref-access during render.
-  // The handlers themselves access ref.current only when invoked (i.e. on
-  // actual mouse events), not during the render phase.
+  // Evaluate media queries on mount and listen to changes, eliminating repeated
+  // synchronous window.matchMedia queries during hot mousemove events.
+  React.useEffect(() => {
+    if (typeof window === "undefined" || disabled) {
+      isEnabledRef.current = false
+      return
+    }
+
+    const checkEnabled = () => {
+      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      // Only enable on devices supporting fine pointer hover (desktops/laptops, not touchscreens)
+      const canHover = window.matchMedia("(hover: hover) and (pointer: fine)").matches
+      isEnabledRef.current = !prefersReducedMotion && canHover
+    }
+
+    checkEnabled()
+
+    const motionMedia = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const hoverMedia = window.matchMedia("(hover: hover) and (pointer: fine)")
+
+    motionMedia.addEventListener?.("change", checkEnabled)
+    hoverMedia.addEventListener?.("change", checkEnabled)
+
+    return () => {
+      motionMedia.removeEventListener?.("change", checkEnabled)
+      hoverMedia.removeEventListener?.("change", checkEnabled)
+      if (rafId.current !== null) {
+        cancelAnimationFrame(rafId.current)
+      }
+    }
+  }, [disabled])
+
   const handlers = React.useMemo(
     () => ({
       ref,
       onMouseMove: (e: React.MouseEvent<T>) => {
+        if (!isEnabledRef.current) return
         const el = ref.current
         if (!el) return
-        if (
-          typeof window !== "undefined" &&
-          window.matchMedia("(prefers-reduced-motion: reduce)").matches
-        ) {
-          return
+
+        // Throttle updates to display refresh rate with requestAnimationFrame
+        if (rafId.current !== null) {
+          cancelAnimationFrame(rafId.current)
         }
-        const rect = el.getBoundingClientRect()
-        const x = (e.clientX - rect.left) / rect.width
-        const y = (e.clientY - rect.top) / rect.height
-        const tiltX = (0.5 - y) * max * 2
-        const tiltY = (x - 0.5) * max * 2
-        el.style.transform = `perspective(900px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) scale(${scale})`
+
+        const clientX = e.clientX
+        const clientY = e.clientY
+
+        rafId.current = requestAnimationFrame(() => {
+          if (!ref.current) return
+          const rect = ref.current.getBoundingClientRect()
+          const x = (clientX - rect.left) / rect.width
+          const y = (clientY - rect.top) / rect.height
+          const tiltX = (0.5 - y) * max * 2
+          const tiltY = (x - 0.5) * max * 2
+          ref.current.style.transform = `perspective(900px) rotateX(${tiltX}deg) rotateY(${tiltY}deg) scale(${scale})`
+        })
       },
       onMouseLeave: () => {
+        if (rafId.current !== null) {
+          cancelAnimationFrame(rafId.current)
+          rafId.current = null
+        }
         const el = ref.current
         if (!el) return
         el.style.transform = "perspective(900px) rotateX(0) rotateY(0) scale(1)"
