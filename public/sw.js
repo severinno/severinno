@@ -1,6 +1,7 @@
 const CACHE = "severinno-v4"
 const ASSETS = [
   "/",
+  "/offline",
   "/manifest.json",
   "/sw.js",
   "/logo.svg",

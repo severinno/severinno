@@ -205,6 +205,11 @@ search-reindex:
 	node scripts/search-reindex.mjs
 	@echo "$(GREEN)[OK] Reindexacao concluida!$(NC)"
 
+benchmark-multi-cache:
+	@echo "$(CYAN)[..] Executando benchmark de concorrencia do cache multi-nivel...$(NC)"
+	node scripts/benchmark-multi-cache.mjs
+	@echo "$(GREEN)[OK] Benchmark do cache aprovado!$(NC)"
+
 backup-auto:
 	@echo "$(CYAN)[..] Executando backup automatico com verificacao...$(NC)"
 	bash scripts/backup-cron.sh

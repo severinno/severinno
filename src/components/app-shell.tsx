@@ -19,7 +19,6 @@ import { useUIStore } from "@/store/ui"
 import { useViewStore } from "@/store/view"
 
 import { ErrorBoundary } from "@/components/shared/error-boundary"
-import { PWAInstallBanner } from "@/components/shared/pwa-install"
 
 // Lazy-loaded panels (code-split)
 const Vitrine = dynamic(() => import("@/components/vitrine/vitrine"))
@@ -118,7 +117,6 @@ export default function AppShell() {
     <div className="bg-background flex min-h-screen flex-col">
       {content}
       <ModalsHost />
-      <PWAInstallBanner />
     </div>
   )
 }

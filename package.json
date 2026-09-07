@@ -122,6 +122,7 @@
     "benchmark:cache:save": "node scripts/run-benchmark.mjs --type cache --save",
     "benchmark:cache:baseline": "node scripts/run-benchmark.mjs --type cache --baseline",
     "benchmark:cache:compare": "node scripts/run-benchmark.mjs --type cache --json --compare",
+    "benchmark:multi-cache": "node scripts/benchmark-multi-cache.mjs",
     "benchmark:all": "node scripts/run-benchmark.mjs --type all",
     "benchmark:all:json": "node scripts/run-benchmark.mjs --type all --json",
     "benchmark:all:compare": "node scripts/run-benchmark.mjs --type all --json --compare",

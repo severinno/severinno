@@ -23,9 +23,11 @@ import {
   HardDrive,
   MemoryStick,
   Rabbit,
+  Search,
   Server,
   Wifi,
   XCircle,
+  Zap,
   type LucideIcon,
 } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
@@ -303,6 +305,19 @@ export function AdminHealthDashboard() {
         </MetricCard>
       </section>
 
+      {/* ── Resiliência de Busca & Cache Multi-nível ────────────────── */}
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* OpenSearch Outbox + DLQ */}
+        <MetricCard icon={Search} title="OpenSearch — Resiliência & DLQ">
+          {renderOpenSearchDetails(data)}
+        </MetricCard>
+
+        {/* Multi-Level Cache L1+L2 */}
+        <MetricCard icon={Zap} title="Cache Multi-Nível — TTFB Sub-50ms">
+          {renderMultiLevelCacheDetails(data)}
+        </MetricCard>
+      </section>
+
       {/* ── Raw Timestamp ────────────────────────────────────────────── */}
       <div className="border-border/50 bg-muted/30 text-muted-foreground rounded-lg border px-4 py-2 text-[10px]">
         Último check: {new Date(data.timestamp).toLocaleString("pt-BR")} · Cache TTL: 15s · Refetch
@@ -553,6 +568,118 @@ function renderRabbitMQDetails(data: DetailedHealthResponse): React.ReactNode {
           </span>
         </div>
       ))}
+    </div>
+  )
+}
+
+function renderOpenSearchDetails(data: DetailedHealthResponse): React.ReactNode {
+  const osSvc = data.services.find((s) => s.name === "opensearch")
+  const queue =
+    data.searchQueue ??
+    (osSvc?.details?.queue as { pendingCount?: number; dlqCount?: number } | undefined)
+  const pending = queue?.pendingCount ?? 0
+  const dlq = queue?.dlqCount ?? 0
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-muted/30 flex items-center justify-between rounded-lg px-3 py-2">
+        <div>
+          <p className="text-foreground text-xs font-medium">Cluster OpenSearch</p>
+          <p className="text-muted-foreground text-[10px]">
+            {osSvc?.message ?? "Consultando cluster..."}
+          </p>
+        </div>
+        <span
+          className={cn(
+            "rounded-full px-2 py-0.5 text-[10px] font-medium",
+            osSvc?.status === "healthy"
+              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+              : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+          )}
+        >
+          {osSvc?.status === "healthy" ? "Operacional" : "Fallback Ativo"}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-muted/30 rounded-lg p-3">
+          <p className="text-foreground text-lg font-bold tabular-nums">{pending}</p>
+          <p className="text-muted-foreground text-[10px]">Fila Outbox (Pendentes)</p>
+        </div>
+        <div className="bg-muted/30 rounded-lg p-3">
+          <p
+            className={cn(
+              "text-lg font-bold tabular-nums",
+              dlq > 0 ? "text-amber-500 dark:text-amber-400" : "text-emerald-500",
+            )}
+          >
+            {dlq}
+          </p>
+          <p className="text-muted-foreground text-[10px]">Dead Letter Queue (DLQ)</p>
+        </div>
+      </div>
+
+      {dlq > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-[11px] text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300">
+          ⚠️ <strong>Atenção:</strong> {dlq} mutação(ões) retida(s) na DLQ após 5 retries. Execute{" "}
+          <code>make search-reindex</code> para sincronizar.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function renderMultiLevelCacheDetails(data: DetailedHealthResponse): React.ReactNode {
+  const cache = data.multiLevelCache
+  if (!cache) {
+    return <p className="text-muted-foreground text-xs">Métricas L1/L2 não disponíveis</p>
+  }
+
+  const hitRatePct = Math.round(cache.hitRate * 100)
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground font-medium">Hit Rate Consolidado</span>
+        <span className="font-bold text-emerald-600 tabular-nums dark:text-emerald-400">
+          {hitRatePct}%
+        </span>
+      </div>
+
+      <div className="bg-muted/50 h-2 w-full overflow-hidden rounded-full">
+        <div
+          className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+          style={{ width: `${Math.min(100, Math.max(0, hitRatePct))}%` }}
+        />
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 pt-1">
+        <div className="bg-muted/30 rounded-lg p-2.5 text-center">
+          <p className="text-base font-bold text-emerald-500 tabular-nums">
+            {cache.l1Hits.toLocaleString()}
+          </p>
+          <p className="text-muted-foreground text-[10px]">L1 Hits (&lt; 1ms)</p>
+        </div>
+        <div className="bg-muted/30 rounded-lg p-2.5 text-center">
+          <p className="text-base font-bold text-cyan-500 tabular-nums">
+            {cache.l2Hits.toLocaleString()}
+          </p>
+          <p className="text-muted-foreground text-[10px]">L2 Hits (Redis)</p>
+        </div>
+        <div className="bg-muted/30 rounded-lg p-2.5 text-center">
+          <p className="text-base font-bold text-amber-500 tabular-nums">
+            {cache.misses.toLocaleString()}
+          </p>
+          <p className="text-muted-foreground text-[10px]">Misses</p>
+        </div>
+      </div>
+
+      <div className="text-muted-foreground flex items-center justify-between pt-1 text-[11px]">
+        <span>Ocupação L1 em memória:</span>
+        <span className="text-foreground font-medium tabular-nums">
+          {cache.l1Size} / 500 entradas
+        </span>
+      </div>
     </div>
   )
 }

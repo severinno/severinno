@@ -6,6 +6,9 @@ import { getClient, getCacheStats } from "@/lib/redis"
 import { getChannel } from "@/lib/queue"
 import logger from "@/lib/logger"
 import { exportMetrics } from "@/lib/metrics"
+import { getMultiLevelCacheStats, type MultiLevelCacheStats } from "@/lib/cache/multi-level-cache"
+import { getSearchQueueStats } from "@/lib/search-queue"
+import { getClient as getOpenSearchClient } from "@/lib/search"
 import pkg from "../../../../../package.json"
 
 // Force Node.js runtime — uses Prisma, amqplib, and Node.js APIs
@@ -27,6 +30,8 @@ export interface DetailedHealthResponse {
   }
   services: ServiceHealth[]
   cache: ReturnType<typeof getCacheStats>
+  multiLevelCache?: MultiLevelCacheStats
+  searchQueue?: ReturnType<typeof getSearchQueueStats>
 }
 
 interface ServiceHealth {
@@ -44,7 +49,7 @@ interface ServiceHealth {
 
 const CRITICAL_SERVICES = new Set(["database", "app"])
 
-const _DEGRADING_SERVICES = new Set(["redis", "rabbitmq", "pgbouncer", "realtime"])
+const _DEGRADING_SERVICES = new Set(["redis", "rabbitmq", "pgbouncer", "realtime", "opensearch"])
 
 const _INFO_SERVICES = new Set(["caddy", "minio", "disk", "workers"])
 
@@ -80,6 +85,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     checkCaddy(),
     checkDisk(),
     checkWorkers(),
+    checkOpenSearch(),
   ])
 
   const services: ServiceHealth[] = results.map((r) =>
@@ -127,6 +133,8 @@ export async function GET(request: Request): Promise<NextResponse> {
     summary: { healthy, degraded, unhealthy, total: services.length },
     services,
     cache: getCacheStats(),
+    multiLevelCache: getMultiLevelCacheStats(),
+    searchQueue: getSearchQueueStats(),
   }
 
   // Cache only healthy responses (JSON only)
@@ -492,6 +500,63 @@ async function checkWorkers(): Promise<ServiceHealth> {
       message: (err as Error).message,
       details: {
         note: "Cannot check workers without RabbitMQ. Workers may be running but are invisible.",
+      },
+    }
+  }
+}
+
+async function checkOpenSearch(): Promise<ServiceHealth> {
+  const t0 = performance.now()
+  const queueStats = getSearchQueueStats()
+  try {
+    const client = getOpenSearchClient()
+    if (!client) {
+      return {
+        name: "opensearch",
+        status: "degraded",
+        latencyMs: 0,
+        message: "Client inativo (fallback relacional ativo)",
+        details: { queue: queueStats },
+      }
+    }
+
+    const pingRes = await client.ping({ requestTimeout: 3000 })
+    const latency = Math.round(performance.now() - t0)
+
+    if (queueStats.dlqCount > 0) {
+      return {
+        name: "opensearch",
+        status: "degraded",
+        latencyMs: latency,
+        message: `Online (${latency}ms) — Alerta: ${queueStats.dlqCount} item(ns) na DLQ`,
+        details: {
+          ping: pingRes.body,
+          queue: queueStats,
+          warning: "Itens na Dead Letter Queue requerem reprocessamento ou inspeção",
+        },
+      }
+    }
+
+    return {
+      name: "opensearch",
+      status: "healthy",
+      latencyMs: latency,
+      message: `Cluster operacional (${latency}ms) — Outbox: ${queueStats.pendingCount} pendente(s)`,
+      details: {
+        ping: pingRes.body,
+        queue: queueStats,
+      },
+    }
+  } catch (err) {
+    const latency = Math.round(performance.now() - t0)
+    return {
+      name: "opensearch",
+      status: "degraded",
+      latencyMs: latency,
+      message: `Cluster offline (${(err as Error).message}) — Fallback relacional ativo`,
+      details: {
+        queue: queueStats,
+        fallback: "active",
       },
     }
   }
