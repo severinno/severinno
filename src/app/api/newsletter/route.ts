@@ -2,8 +2,9 @@ export const dynamic = "force-dynamic"
 
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { handleError, badRequest } from "@/lib/api-server"
+import { handleError } from "@/lib/api-server"
 import { assertRateLimit } from "@/lib/rate-limit"
+import { newsletterSchema } from "@/lib/validators"
 
 /**
  * POST /api/newsletter
@@ -16,10 +17,7 @@ export async function POST(req: NextRequest) {
   await assertRateLimit(req, { prefix: "newsletter", max: 5, windowMs: 60_000 })
   try {
     const body = await req.json()
-    const email = (body.email as string | undefined)?.trim().toLowerCase()
-
-    if (!email) throw badRequest("E-mail é obrigatório.")
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw badRequest("E-mail inválido.")
+    const { email } = newsletterSchema.parse(body)
 
     // Check if already subscribed (using Setting as a KV store)
     const key = `newsletter:${email}`

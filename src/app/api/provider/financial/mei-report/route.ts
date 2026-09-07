@@ -1,43 +1,33 @@
 export const dynamic = "force-dynamic"
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { generateMEIAnnualReport } from "@/lib/mei-fiscal"
+import { meiReportSchema } from "@/lib/validators"
 
 export async function POST(req: NextRequest) {
-  await requireRole("PROVIDER")
-  await assertRateLimit(req, RATE_LIMITS.general)
   try {
+    await requireRole("PROVIDER")
+    await assertRateLimit(req, RATE_LIMITS.general)
     const body = await req.json()
-    const { providerId, providerName, year, bookings, cnpj } = body
-
-    if (!providerId || !providerName || !year) {
-      return NextResponse.json(
-        { success: false, error: "providerId, providerName, and year are required" },
-        { status: 400 },
-      )
-    }
-
-    const bookingList = Array.isArray(bookings)
-      ? bookings.map((b) => ({
-          completedAt: new Date(b.completedAt || Date.now()),
-          totalAmount: typeof b.totalAmount === "number" ? b.totalAmount : 0,
-          distanceKm: typeof b.distanceKm === "number" ? b.distanceKm : 0,
-          materialsCost: typeof b.materialsCost === "number" ? b.materialsCost : 0,
-        }))
-      : []
+    const parsed = meiReportSchema.parse(body)
 
     const report = generateMEIAnnualReport(
-      providerId,
-      providerName,
-      parseInt(String(year), 10),
-      bookingList,
-      cnpj,
+      parsed.providerId,
+      parsed.providerName,
+      parsed.year,
+      parsed.bookings.map((b) => ({
+        completedAt: b.completedAt || new Date(),
+        totalAmount: b.totalAmount,
+        distanceKm: b.distanceKm,
+        materialsCost: b.materialsCost,
+      })),
+      parsed.cnpj,
     )
 
-    return NextResponse.json({
+    return Response.json({
       success: true,
       data: report,
     })

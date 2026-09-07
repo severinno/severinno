@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { GTMEngine, LeadStatus } from "@/lib/gtm-engine"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { gtmLeadCreateSchema, gtmLeadUpdateSchema } from "@/lib/validators"
 
 export async function GET(req: NextRequest) {
   await requireRole("ADMIN")
@@ -43,7 +44,11 @@ export async function POST(req: NextRequest) {
 
     // Handle batch import or single creation
     if (Array.isArray(body)) {
-      const created = body.map((item) => GTMEngine.createLead(item))
+      const schema = gtmLeadCreateSchema
+      const created = body.map((item) => {
+        const parsed = schema.parse(item)
+        return GTMEngine.createLead(parsed)
+      })
       return NextResponse.json(
         {
           success: true,
@@ -54,27 +59,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    if (!body.name || !body.profession || !body.phone) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Campos obrigatórios: name, profession, phone",
-        },
-        { status: 400 },
-      )
-    }
-
-    const lead = GTMEngine.createLead({
-      name: body.name,
-      profession: body.profession,
-      phone: body.phone,
-      city: body.city || "São Paulo",
-      state: body.state || "SP",
-      district: body.district || "",
-      status: body.status || "NEW",
-      source: body.source || "WHATSAPP_SCRAPING",
-      notes: body.notes || "",
-    })
+    const parsed = gtmLeadCreateSchema.parse(body)
+    const lead = GTMEngine.createLead(parsed)
 
     return NextResponse.json(
       {
@@ -99,18 +85,9 @@ export async function PATCH(req: NextRequest) {
   await assertRateLimit(req, RATE_LIMITS.admin)
   try {
     const body = await req.json()
+    const parsed = gtmLeadUpdateSchema.parse(body)
 
-    if (!body.id || !body.status) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Campos obrigatórios: id, status",
-        },
-        { status: 400 },
-      )
-    }
-
-    const updated = GTMEngine.updateLeadStatus(body.id, body.status as LeadStatus, body.notes)
+    const updated = GTMEngine.updateLeadStatus(parsed.id, parsed.status, parsed.notes)
 
     if (!updated) {
       return NextResponse.json(

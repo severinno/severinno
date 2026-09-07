@@ -45,7 +45,7 @@ describe("POST /api/bookings/checkin-escrow", () => {
     const res = await POST(req({ action: "unknown" }))
     const parsed = await parseResponse(res)
     expect(parsed.status).toBe(400)
-    expect((parsed.body as any).error).toContain("Invalid action")
+    expect((parsed.body as any).error).toBe("Dados inválidos")
   })
 
   it("checkin — returns 400 when missing parameters", async () => {

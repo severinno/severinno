@@ -2,28 +2,8 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import {
-  CalendarDays,
-  CalendarOff,
-  Check,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Clock,
-  CreditCard,
-  Loader2,
-  MapPin,
-  Moon,
-  Pencil,
-  QrCode,
-  Send,
-  ShieldCheck,
-  Sun,
-  Wallet,
-} from "lucide-react"
+import { CalendarDays, Check, ChevronLeft, ChevronRight, Loader2, Send } from "lucide-react"
 import { toast } from "sonner"
-import { ptBR } from "date-fns/locale"
-import { format } from "date-fns"
 import { motion, AnimatePresence } from "framer-motion"
 
 import {
@@ -41,120 +21,28 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import { Calendar } from "@/components/ui/calendar"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { apiGet, apiPost, type ProviderDetail, type ProviderService } from "@/lib/api"
-import { SERVICE_UNIT_LABELS, SERVICE_UNIT_SHORT, WEEKDAYS_SHORT } from "@/lib/constants"
-import { formatBRL, formatDate, formatHHmm } from "@/lib/format"
 import { useUIStore } from "@/store/ui"
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { GeoAddressForm, type AddressFormValue } from "@/components/forms/geo-address-form"
-import { StepWizard, StepHeader, InfoCard, type StepDef } from "./step-wizard"
+import { StepWizard } from "./step-wizard"
 
-// ---------------------------------------------------------------------------
-// Step definitions — 4 steps
-// Nielsen #8: Minimalist — each step has ONE focused task
-// ---------------------------------------------------------------------------
-
-const STEPS: StepDef[] = [
-  { id: 1, label: "Agenda", shortLabel: "Agenda", icon: CalendarDays },
-  { id: 2, label: "Detalhes", shortLabel: "Detalhes", icon: MapPin },
-  { id: 3, label: "Pagamento", shortLabel: "Pagamento", icon: Wallet },
-  { id: 4, label: "Confirmação", shortLabel: "Confirmar", icon: Check },
-]
-
-type Step = (typeof STEPS)[number]["id"]
-
-// ---------------------------------------------------------------------------
-// Form state
-// ---------------------------------------------------------------------------
-
-type BookingFormState = {
-  date: Date | undefined
-  time: string | undefined
-  quantity: number
-  notes: string
-  address: AddressFormValue
-  paymentMethod: "CARD" | "PIX"
-  cardName: string
-  cardNumber: string
-  cardExpiry: string
-  cardCvv: string
-}
-
-const emptyAddress: AddressFormValue = {
-  cep: "",
-  street: "",
-  number: "",
-  complement: "",
-  district: "",
-  city: "",
-  state: "",
-  lat: null,
-  lng: null,
-}
-
-const initialState = (quantity = 1): BookingFormState => ({
-  date: undefined,
-  time: undefined,
-  quantity,
-  notes: "",
-  address: emptyAddress,
-  paymentMethod: "PIX",
-  cardName: "",
-  cardNumber: "",
-  cardExpiry: "",
-  cardCvv: "",
-})
-
-// ---------------------------------------------------------------------------
-// Validation helpers
-// ---------------------------------------------------------------------------
-
-function cardNameValid(v: string) {
-  return v.trim().length >= 3
-}
-function cardNumberValid(v: string) {
-  return v.replace(/\s/g, "").length >= 13
-}
-function cardExpiryValid(v: string) {
-  return /^\d{2}\/\d{2}$/.test(v)
-}
-function cardCvvValid(v: string) {
-  return /^\d{3,4}$/.test(v)
-}
-
-// ---------------------------------------------------------------------------
-// Time slot period grouping
-// Nielsen #6: Recognition over recall — group slots by time of day
-// ---------------------------------------------------------------------------
-
-type TimePeriod = {
-  key: string
-  label: string
-  icon: React.ComponentType<{ className?: string }>
-  range: [number, number] // start hour, end hour (exclusive)
-}
-
-const TIME_PERIODS: TimePeriod[] = [
-  { key: "morning", label: "Manhã", icon: Sun, range: [6, 12] },
-  { key: "afternoon", label: "Tarde", icon: Clock, range: [12, 18] },
-  { key: "evening", label: "Noite", icon: Moon, range: [18, 24] },
-]
-
-// ---------------------------------------------------------------------------
-// Main modal
-// ---------------------------------------------------------------------------
+import {
+  Step1Schedule,
+  Step2Details,
+  Step3Payment,
+  Step4Confirmation,
+  STEPS,
+  initialState,
+  cardNameValid,
+  cardNumberValid,
+  cardExpiryValid,
+  cardCvvValid,
+  type Step,
+  type BookingFormState,
+} from "./booking"
 
 export function BookingModal() {
   const open = useUIStore((s) => s.bookingModal.open)
@@ -171,7 +59,6 @@ export function BookingModal() {
   const [submitting, setSubmitting] = React.useState(false)
   const [touched, setTouched] = React.useState<Set<string>>(new Set())
 
-  // Reset when modal opens (adjust state during render)
   const [prevOpen, setPrevOpen] = React.useState(open)
   if (open && prevOpen !== open) {
     setPrevOpen(open)
@@ -180,7 +67,6 @@ export function BookingModal() {
     setTouched(new Set())
   }
 
-  // Fetch provider + services
   const providerQuery = useQuery({
     queryKey: ["provider", providerIdPreset],
     queryFn: () => apiGet<ProviderDetail>(`/api/providers/${providerIdPreset}`),
@@ -199,7 +85,6 @@ export function BookingModal() {
   const services = servicesQuery.data ?? []
   const selectedService = services.find((s) => s.id === serviceIdPreset) ?? services[0]
 
-  // Ensure qty=1 when a service becomes available (adjust state during render)
   const [prevSelectedService, setPrevSelectedService] = React.useState(selectedService)
   if (open && prevSelectedService !== selectedService) {
     setPrevSelectedService(selectedService)
@@ -211,7 +96,6 @@ export function BookingModal() {
 
   const markTouched = (field: string) => setTouched((prev) => new Set(prev).add(field))
 
-  // ── Step validation ──
   const step1Valid = !!state.date && !!state.time
   const step2Valid =
     !!state.address.cep &&
@@ -227,7 +111,6 @@ export function BookingModal() {
       cardNumberValid(state.cardNumber) &&
       cardExpiryValid(state.cardExpiry) &&
       cardCvvValid(state.cardCvv))
-  // Step 4 is always valid (it's a review)
 
   const validSteps: Record<number, boolean> = {
     1: step1Valid,
@@ -236,7 +119,6 @@ export function BookingModal() {
     4: true,
   }
 
-  // ── Navigation ──
   const handleStepClick = (target: Step) => {
     if (target < step) {
       setStep(target)
@@ -321,7 +203,6 @@ export function BookingModal() {
     }
   }
 
-  // ── Step content ──
   const stepContent = (() => {
     switch (step) {
       case 1:
@@ -369,10 +250,8 @@ export function BookingModal() {
     }
   })()
 
-  // Dynamic dialog sizing: wider on Step 1 for side-by-side calendar layout
   const dialogSizeClass = step === 1 ? "sm:max-w-2xl" : "sm:max-w-lg"
 
-  // ── Step indicator (reused for desktop custom layout) ──
   const stepIndicator = (
     <div className="border-b px-4 py-3 sm:px-5">
       <div className="flex items-center justify-between">
@@ -436,7 +315,6 @@ export function BookingModal() {
     </div>
   )
 
-  // ── Footer buttons ──
   const footerButtons = (
     <div className="bg-background/95 sticky bottom-0 border-t px-4 py-2.5 backdrop-blur sm:px-5">
       <div className="flex items-center justify-between gap-2">
@@ -528,7 +406,6 @@ export function BookingModal() {
     )
   }
 
-  // ── Desktop: Custom layout with proper scrolling ──
   return (
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent
@@ -538,7 +415,6 @@ export function BookingModal() {
         )}
         onInteractOutside={(e) => e.preventDefault()}
       >
-        {/* Header — Nielsen #3: User control */}
         <DialogHeader className="shrink-0 border-b px-5 pt-4 pb-2">
           <DialogTitle className="flex items-center gap-2 text-base">
             <CalendarDays className="size-4 text-emerald-600" />
@@ -549,10 +425,8 @@ export function BookingModal() {
           </DialogDescription>
         </DialogHeader>
 
-        {/* Step indicator — always visible */}
         {stepIndicator}
 
-        {/* Step content — scrollable */}
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
           <AnimatePresence mode="wait">
             <motion.div
@@ -567,842 +441,8 @@ export function BookingModal() {
           </AnimatePresence>
         </div>
 
-        {/* Footer — always visible at bottom */}
         {footerButtons}
       </DialogContent>
     </Dialog>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Step 1 — Agenda (Date & Time) — REDESIGNED
-// Desktop: Calendar LEFT + Time slots RIGHT (side-by-side)
-// Mobile: Calendar TOP + Time slots BOTTOM (stacked)
-// Nielsen #1: Visibility of system status — selected date/time highlighted
-// Nielsen #6: Recognition over recall — visible calendar, time slot buttons
-// Nielsen #8: Minimalist — clean two-column layout
-// Reference: shadcnspace.com Calendar 03 - Time Calendar
-// ---------------------------------------------------------------------------
-
-function Step1Schedule({
-  state,
-  set,
-  availability,
-  selectedService,
-  provider,
-  loading,
-  isDesktop,
-}: {
-  state: BookingFormState
-  set: <K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) => void
-  availability: ProviderDetail["availability"]
-  selectedService?: ProviderService
-  provider?: ProviderDetail
-  loading: boolean
-  isDesktop: boolean
-}) {
-  // Generate slot list for selected date
-  const slots = React.useMemo(() => {
-    if (!state.date) return [] as { label: string; value: string }[]
-    const dow = state.date.getDay()
-    const dayBlocks = (availability ?? [])
-      .filter((a) => a.dayOfWeek === dow)
-      .sort((a, b) => a.startTime.localeCompare(b.startTime))
-    if (dayBlocks.length === 0) return []
-    const out: { label: string; value: string }[] = []
-    for (const block of dayBlocks) {
-      const [sh, sm] = block.startTime.split(":").map(Number)
-      const [eh, em] = block.endTime.split(":").map(Number)
-      let cur = sh * 60 + sm
-      const end = eh * 60 + em
-      while (cur + 60 <= end) {
-        const h = Math.floor(cur / 60)
-        const m = cur % 60
-        const hhmm = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`
-        out.push({ label: formatHHmm(hhmm), value: hhmm })
-        cur += 60
-      }
-    }
-    return out
-  }, [state.date, availability])
-
-  // Group slots by time period — Nielsen #6: recognition over recall
-  const groupedSlots = React.useMemo(() => {
-    return TIME_PERIODS.map((period) => ({
-      ...period,
-      slots: slots.filter((s) => {
-        const h = parseInt(s.value.split(":")[0], 10)
-        return h >= period.range[0] && h < period.range[1]
-      }),
-    })).filter((g) => g.slots.length > 0)
-  }, [slots])
-
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-10">
-        <Loader2 className="size-5 animate-spin text-emerald-600" />
-      </div>
-    )
-  }
-
-  // ── Service info banner (compact, always visible) ──
-  const serviceBanner = selectedService ? (
-    <InfoCard variant="emerald" className="mb-4">
-      <div className="flex items-center gap-3">
-        <Avatar className="size-9 rounded-md">
-          {provider?.avatarUrl ? (
-            <AvatarImage src={provider.avatarUrl} alt={provider.name} />
-          ) : null}
-          <AvatarFallback className="rounded-md bg-emerald-100 text-xs text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-            {provider?.name?.[0]?.toUpperCase() ?? "?"}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{selectedService.title}</p>
-          <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
-            {formatBRL(selectedService.basePrice)} /{" "}
-            {SERVICE_UNIT_LABELS[selectedService.unit] ?? "un"}
-          </p>
-        </div>
-        {state.date && state.time && <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />}
-      </div>
-    </InfoCard>
-  ) : null
-
-  // ── Calendar section (clean, no label — Calendar 03 style) ──
-  const calendarSection = (
-    <Calendar
-      mode="single"
-      locale={ptBR}
-      selected={state.date}
-      onSelect={(d) => {
-        set("date", d)
-        set("time", undefined)
-      }}
-      disabled={(d) => d < today}
-      className="rounded-lg border shadow-sm [--cell-size:--spacing(7)]"
-    />
-  )
-
-  // ── Time slots section (Calendar 03 style — borderless chips) ──
-  const timeSlotsSection = (
-    <div className="flex h-full flex-col">
-      {!state.date ? (
-        <div className="flex flex-1 items-center justify-center">
-          <div className="py-8 text-center">
-            <CalendarDays className="text-muted-foreground/20 mx-auto mb-2 size-8" />
-            <p className="text-muted-foreground text-xs">Selecione uma data</p>
-            <p className="text-muted-foreground/50 mt-0.5 text-[11px]">
-              para ver os horários disponíveis
-            </p>
-          </div>
-        </div>
-      ) : slots.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center">
-          <div className="bg-muted/20 rounded-lg border border-dashed px-6 py-5 text-center">
-            <CalendarOff className="text-muted-foreground/30 mx-auto mb-1.5 size-6" />
-            <p className="text-muted-foreground text-xs font-medium">Sem horários neste dia</p>
-            <p className="text-muted-foreground/50 mt-0.5 text-[11px]">
-              {WEEKDAYS_SHORT[state.date.getDay()]} — fora do expediente
-            </p>
-          </div>
-        </div>
-      ) : (
-        <ScrollArea className="-mx-1 flex-1 px-1">
-          <div className="grid gap-3">
-            {groupedSlots.map((group) => {
-              const PeriodIcon = group.icon
-              return (
-                <div key={group.key}>
-                  <div className="mb-1.5 flex items-center gap-1.5">
-                    <PeriodIcon className="text-muted-foreground/50 size-3" />
-                    <span className="text-muted-foreground/70 text-[11px] font-medium tracking-wide uppercase">
-                      {group.label}
-                    </span>
-                    <span className="text-muted-foreground/40 text-[10px]">
-                      {group.slots.length}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {group.slots.map((s) => {
-                      const active = state.time === s.value
-                      return (
-                        <button
-                          key={s.value}
-                          type="button"
-                          onClick={() => set("time", s.value)}
-                          className={cn(
-                            "rounded-lg px-2 py-2 text-center text-xs font-medium transition-all duration-150",
-                            "focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1 focus-visible:outline-none",
-                            active
-                              ? "bg-emerald-600 text-white shadow-sm shadow-emerald-600/20"
-                              : "bg-muted/60 text-muted-foreground hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-300",
-                          )}
-                        >
-                          {s.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </ScrollArea>
-      )}
-    </div>
-  )
-
-  // ── Selected date summary (below calendar, both layouts) ──
-  const selectedDateSummary = state.date && (
-    <div
-      className={cn(
-        "mt-2 rounded-lg px-3 py-2 text-center transition-colors duration-200",
-        state.time
-          ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"
-          : "bg-muted/40 text-muted-foreground",
-      )}
-    >
-      <p className="text-xs font-semibold">
-        {format(state.date, "EEEE, dd 'de' MMMM", { locale: ptBR })}
-      </p>
-      {state.time ? (
-        <p className="mt-0.5 flex items-center justify-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
-          <Clock className="size-3" />
-          {formatHHmm(state.time)}
-        </p>
-      ) : (
-        <p className="mt-0.5 text-[11px] opacity-60">Escolha o horário →</p>
-      )}
-    </div>
-  )
-
-  return (
-    <div>
-      {/* StepHeader only on mobile — desktop layout is self-explanatory */}
-      {!isDesktop && (
-        <StepHeader
-          icon={CalendarDays}
-          title="Escolha a data e horário"
-          description="Selecione o melhor dia e horário para o serviço."
-        />
-      )}
-
-      {serviceBanner}
-
-      {/* ── Desktop: Side-by-side (shadcnspace Calendar 03 style) ── */}
-      {isDesktop ? (
-        <div className="grid grid-cols-[auto_1fr] divide-x">
-          {/* LEFT: Calendar + date summary */}
-          <div className="flex flex-col pr-4">
-            {calendarSection}
-            {selectedDateSummary}
-          </div>
-
-          {/* RIGHT: Time slots */}
-          <div className="flex min-h-0 flex-col pl-4">{timeSlotsSection}</div>
-        </div>
-      ) : (
-        /* ── Mobile: Stacked ── */
-        <div className="grid gap-4">
-          {calendarSection}
-          {selectedDateSummary}
-          {timeSlotsSection}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Step 2 — Detalhes (Address + Quantity + Notes)
-// Nielsen #5: Error prevention — CEP auto-fill, GPS
-// Nielsen #8: Minimalist — clean form layout
-// ---------------------------------------------------------------------------
-
-function Step2Details({
-  state,
-  set,
-  provider,
-  selectedService,
-}: {
-  state: BookingFormState
-  set: <K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) => void
-  provider?: ProviderDetail
-  selectedService?: ProviderService
-}) {
-  const scheduledAt =
-    state.date && state.time
-      ? (() => {
-          const d = new Date(state.date)
-          const [h, m] = state.time.split(":").map(Number)
-          d.setHours(h ?? 0, m ?? 0, 0, 0)
-          return d
-        })()
-      : null
-
-  const estimatedTotal = (selectedService?.basePrice ?? 0) * (state.quantity || 1)
-
-  return (
-    <div className="grid gap-4">
-      <StepHeader
-        icon={MapPin}
-        title="Detalhes do agendamento"
-        description="Informe a quantidade, endereço e observações."
-      />
-
-      {/* Compact summary card — Nielsen #1: visibility */}
-      <InfoCard variant="emerald">
-        <div className="flex items-center gap-3">
-          <Avatar className="size-8 rounded-md">
-            {provider?.avatarUrl ? (
-              <AvatarImage src={provider.avatarUrl} alt={provider.name} />
-            ) : null}
-            <AvatarFallback className="rounded-md bg-emerald-100 text-xs text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-              {provider?.name?.[0]?.toUpperCase() ?? "?"}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{provider?.name}</p>
-            <p className="text-muted-foreground truncate text-[11px]">{selectedService?.title}</p>
-          </div>
-          <div className="shrink-0 text-right">
-            <p className="text-muted-foreground text-[11px]">
-              {scheduledAt ? formatDate(scheduledAt) : "—"}
-            </p>
-            <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
-              {scheduledAt ? formatHHmm(state.time!) : "—"}
-            </p>
-          </div>
-        </div>
-      </InfoCard>
-
-      {/* Quantity + estimated total */}
-      {selectedService && (
-        <div className="flex items-end gap-3">
-          <div className="grid flex-1 gap-1">
-            <Label htmlFor="qty" className="text-xs">
-              Quantidade ({SERVICE_UNIT_SHORT[selectedService.unit]})
-            </Label>
-            <Input
-              id="qty"
-              type="number"
-              min={1}
-              step={1}
-              value={state.quantity}
-              onChange={(e) => set("quantity", Number(e.target.value) || 1)}
-              className="h-9 text-sm"
-            />
-          </div>
-          <div className="pb-0.5">
-            <p className="text-muted-foreground text-[11px]">Total estimado</p>
-            <p className="text-base font-bold text-emerald-700 dark:text-emerald-400">
-              {formatBRL(estimatedTotal)}
-            </p>
-          </div>
-        </div>
-      )}
-
-      <Separator />
-
-      {/* Address */}
-      <div>
-        <p className="text-muted-foreground mb-1.5 flex items-center gap-1 text-xs font-medium">
-          <MapPin className="size-3.5 text-emerald-600" />
-          Endereço do serviço
-        </p>
-        <GeoAddressForm value={state.address} onChange={(v) => set("address", v)} />
-      </div>
-
-      <Separator />
-
-      {/* Notes */}
-      <div className="grid gap-1">
-        <Label htmlFor="notes" className="text-xs">
-          Observações (opcional)
-        </Label>
-        <Textarea
-          id="notes"
-          placeholder="Detalhes para o prestador: portão, vaga, problemas específicos..."
-          rows={2}
-          value={state.notes}
-          onChange={(e) => set("notes", e.target.value)}
-          className="resize-none text-sm"
-        />
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Step 3 — Pagamento (Payment Method)
-// Nielsen #5: Error prevention — inline card validation
-// Nielsen #8: Minimalist — clean payment selection
-// ---------------------------------------------------------------------------
-
-function Step3Payment({
-  state,
-  set,
-  markTouched,
-  touched,
-  selectedService,
-}: {
-  state: BookingFormState
-  set: <K extends keyof BookingFormState>(key: K, value: BookingFormState[K]) => void
-  markTouched: (field: string) => void
-  touched: Set<string>
-  selectedService?: ProviderService
-}) {
-  const amount = (selectedService?.basePrice ?? 0) * (state.quantity || 1)
-  const fees = 0
-  const total = amount + fees
-  const [paid, setPaid] = React.useState(false)
-
-  const fieldOk = (field: string, valid: boolean) => {
-    if (!touched.has(field)) return null
-    return valid
-  }
-
-  return (
-    <div className="grid gap-4">
-      <StepHeader
-        icon={Wallet}
-        title="Forma de pagamento"
-        description="Escolha como pagar pelo serviço."
-      />
-
-      {/* Amount summary — Nielsen #1: visibility of system status */}
-      <InfoCard>
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">
-            {selectedService?.title} × {state.quantity}
-          </span>
-          <span className="font-medium">{formatBRL(amount)}</span>
-        </div>
-        <div className="mt-0.5 flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Taxa de serviço</span>
-          <span className="font-medium">{formatBRL(fees)}</span>
-        </div>
-        <Separator className="my-1.5" />
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">Total</span>
-          <span className="text-base font-bold text-emerald-700 dark:text-emerald-400">
-            {formatBRL(total)}
-          </span>
-        </div>
-      </InfoCard>
-
-      {/* Payment method selection */}
-      <div>
-        <p className="text-muted-foreground mb-1.5 text-xs font-medium">Forma de pagamento</p>
-        <RadioGroup
-          value={state.paymentMethod}
-          onValueChange={(v) => set("paymentMethod", v as "CARD" | "PIX")}
-          className="grid grid-cols-2 gap-2"
-        >
-          <PaymentOption
-            value="PIX"
-            title="PIX"
-            description="Aprovação imediata"
-            icon={QrCode}
-            selected={state.paymentMethod === "PIX"}
-          />
-          <PaymentOption
-            value="CARD"
-            title="Cartão"
-            description="Crédito"
-            icon={CreditCard}
-            selected={state.paymentMethod === "CARD"}
-          />
-        </RadioGroup>
-      </div>
-
-      {/* Card details — Nielsen #5: error prevention with inline validation */}
-      {state.paymentMethod === "CARD" ? (
-        <div className="bg-card grid gap-2.5 rounded-lg border px-3 py-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium">Dados do cartão</p>
-            <Badge
-              variant="outline"
-              className="h-5 border-amber-400 px-1.5 py-0 text-[10px] text-amber-700 dark:border-amber-600 dark:text-amber-400"
-            >
-              Demonstração
-            </Badge>
-          </div>
-
-          <div className="grid gap-0.5">
-            <Label htmlFor="cardName" className="text-xs">
-              Nome impresso
-            </Label>
-            <div className="relative">
-              <Input
-                id="cardName"
-                placeholder="NOME NO CARTÃO"
-                value={state.cardName}
-                onChange={(e) => set("cardName", e.target.value.toUpperCase())}
-                onBlur={() => markTouched("cardName")}
-                className={cn(
-                  "h-8 pr-7 text-sm",
-                  fieldOk("cardName", cardNameValid(state.cardName)) === false &&
-                    "border-destructive",
-                )}
-              />
-              {fieldOk("cardName", cardNameValid(state.cardName)) && (
-                <CheckCircle2 className="absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-emerald-600" />
-              )}
-            </div>
-          </div>
-
-          <div className="grid gap-0.5">
-            <Label htmlFor="cardNumber" className="text-xs">
-              Número
-            </Label>
-            <div className="relative">
-              <Input
-                id="cardNumber"
-                inputMode="numeric"
-                placeholder="0000 0000 0000 0000"
-                value={state.cardNumber}
-                onChange={(e) => {
-                  const digits = e.target.value.replace(/\D/g, "").slice(0, 16)
-                  const parts = digits.match(/.{1,4}/g)
-                  set("cardNumber", parts ? parts.join(" ") : "")
-                }}
-                onBlur={() => markTouched("cardNumber")}
-                className={cn(
-                  "h-8 pr-7 text-sm",
-                  fieldOk("cardNumber", cardNumberValid(state.cardNumber)) === false &&
-                    "border-destructive",
-                )}
-              />
-              {fieldOk("cardNumber", cardNumberValid(state.cardNumber)) && (
-                <CheckCircle2 className="absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-emerald-600" />
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div className="grid gap-0.5">
-              <Label htmlFor="cardExpiry" className="text-xs">
-                Validade
-              </Label>
-              <div className="relative">
-                <Input
-                  id="cardExpiry"
-                  inputMode="numeric"
-                  placeholder="MM/AA"
-                  maxLength={5}
-                  value={state.cardExpiry}
-                  onChange={(e) => {
-                    let v = e.target.value.replace(/\D/g, "").slice(0, 4)
-                    if (v.length >= 3) v = `${v.slice(0, 2)}/${v.slice(2)}`
-                    set("cardExpiry", v)
-                  }}
-                  onBlur={() => markTouched("cardExpiry")}
-                  className={cn(
-                    "h-8 pr-7 text-sm",
-                    fieldOk("cardExpiry", cardExpiryValid(state.cardExpiry)) === false &&
-                      "border-destructive",
-                  )}
-                />
-                {fieldOk("cardExpiry", cardExpiryValid(state.cardExpiry)) && (
-                  <CheckCircle2 className="absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-emerald-600" />
-                )}
-              </div>
-            </div>
-            <div className="grid gap-0.5">
-              <Label htmlFor="cardCvv" className="text-xs">
-                CVV
-              </Label>
-              <div className="relative">
-                <Input
-                  id="cardCvv"
-                  inputMode="numeric"
-                  placeholder="123"
-                  maxLength={4}
-                  value={state.cardCvv}
-                  onChange={(e) => set("cardCvv", e.target.value.replace(/\D/g, "").slice(0, 4))}
-                  onBlur={() => markTouched("cardCvv")}
-                  className={cn(
-                    "h-8 pr-7 text-sm",
-                    fieldOk("cardCvv", cardCvvValid(state.cardCvv)) === false &&
-                      "border-destructive",
-                  )}
-                />
-                {fieldOk("cardCvv", cardCvvValid(state.cardCvv)) && (
-                  <CheckCircle2 className="absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-emerald-600" />
-                )}
-              </div>
-            </div>
-          </div>
-
-          <p className="text-muted-foreground flex items-start gap-1 text-[11px]">
-            <ShieldCheck className="mt-0.5 size-3 shrink-0 text-emerald-600" />
-            Ambiente de demonstração — não use dados reais.
-          </p>
-        </div>
-      ) : (
-        /* PIX payment */
-        <div className="bg-card grid gap-2.5 rounded-lg border px-3 py-3">
-          <p className="text-xs font-medium">Pague com PIX</p>
-          <div className="flex flex-col items-center gap-2 py-2">
-            <div className="rounded-lg bg-slate-100 p-5 text-center dark:bg-slate-800/50">
-              <QrCode className="size-16 text-slate-500 dark:text-slate-300" />
-            </div>
-            <p className="text-muted-foreground max-w-xs text-center text-[11px]">
-              Escaneie o QR code ou copie a chave para pagar
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => {
-                navigator.clipboard.writeText("severinno@exemplo.com").catch((err) => {
-                  console.warn("[booking-modal] clipboard copy failed:", err)
-                })
-                toast.success("Chave PIX copiada!")
-              }}
-            >
-              Copiar chave PIX
-            </Button>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 border-emerald-500 text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
-            onClick={() => {
-              setPaid(true)
-              toast.success("Pagamento confirmado. Conclua o agendamento.")
-            }}
-            disabled={paid}
-          >
-            {paid ? (
-              <>
-                <Check className="size-3.5" /> Pagamento confirmado
-              </>
-            ) : (
-              "Já paguei"
-            )}
-          </Button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Step 4 — Confirmação (Review + Confirm)
-// Nielsen #5: error prevention (review before commit)
-// Nielsen #3: user control — edit links
-// Nielsen #10: help — "what happens next" timeline
-// ---------------------------------------------------------------------------
-
-function Step4Confirmation({
-  state,
-  provider,
-  selectedService,
-  goToStep,
-}: {
-  state: BookingFormState
-  provider?: ProviderDetail
-  selectedService?: ProviderService
-  goToStep: (s: Step) => void
-}) {
-  const amount = (selectedService?.basePrice ?? 0) * (state.quantity || 1)
-  const scheduledAt =
-    state.date && state.time
-      ? (() => {
-          const d = new Date(state.date)
-          const [h, m] = state.time.split(":").map(Number)
-          d.setHours(h ?? 0, m ?? 0, 0, 0)
-          return d
-        })()
-      : null
-
-  return (
-    <div className="grid gap-4">
-      <StepHeader
-        icon={Check}
-        title="Confirme o agendamento"
-        description="Revise os detalhes antes de confirmar."
-      />
-
-      {/* Provider + Service */}
-      <ReviewSection label="Prestador" onEdit={() => goToStep(1)}>
-        <div className="flex items-center gap-2.5">
-          <Avatar className="size-8 rounded-md">
-            {provider?.avatarUrl ? (
-              <AvatarImage src={provider.avatarUrl} alt={provider.name} />
-            ) : null}
-            <AvatarFallback className="rounded-md bg-emerald-100 text-xs text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-              {provider?.name?.[0]?.toUpperCase() ?? "?"}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{provider?.name}</p>
-            <p className="text-muted-foreground truncate text-xs">{selectedService?.title}</p>
-          </div>
-        </div>
-      </ReviewSection>
-
-      {/* Date/Time */}
-      <ReviewSection label="Data e horário" onEdit={() => goToStep(1)}>
-        <div className="flex items-center gap-2">
-          <CalendarDays className="size-4 text-emerald-600" />
-          <span className="text-sm">
-            {scheduledAt ? formatDate(scheduledAt) : "—"} às{" "}
-            {state.time ? formatHHmm(state.time) : "—"}
-          </span>
-        </div>
-      </ReviewSection>
-
-      {/* Address */}
-      <ReviewSection label="Endereço" onEdit={() => goToStep(2)}>
-        <div className="flex items-start gap-2 text-sm">
-          <MapPin className="mt-0.5 size-4 shrink-0 text-emerald-600" />
-          <span className="text-muted-foreground">
-            {state.address.street
-              ? `${state.address.street}, ${state.address.number}${
-                  state.address.complement ? ` - ${state.address.complement}` : ""
-                }${state.address.district ? ` · ${state.address.district}` : ""}`
-              : "—"}
-            {state.address.city ? ` · ${state.address.city}/${state.address.state}` : ""}
-          </span>
-        </div>
-      </ReviewSection>
-
-      {/* Payment */}
-      <ReviewSection label="Pagamento" onEdit={() => goToStep(3)}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm">
-            {state.paymentMethod === "PIX" ? (
-              <QrCode className="size-4 text-emerald-600" />
-            ) : (
-              <CreditCard className="size-4 text-emerald-600" />
-            )}
-            <span>{state.paymentMethod === "PIX" ? "PIX" : "Cartão de crédito"}</span>
-          </div>
-          <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
-            {formatBRL(amount)}
-          </span>
-        </div>
-        {state.notes && (
-          <p className="text-muted-foreground mt-1.5 line-clamp-2 text-xs">📝 {state.notes}</p>
-        )}
-      </ReviewSection>
-
-      {/* What happens next — Nielsen #10: help & documentation */}
-      <InfoCard variant="emerald" className="mt-1">
-        <h4 className="mb-3 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-emerald-700 uppercase dark:text-emerald-400">
-          <Clock className="size-3.5" />O que acontece agora?
-        </h4>
-        <div className="grid gap-2.5">
-          {[
-            { icon: CalendarDays, label: "Agendado", desc: "Seu pedido é registrado" },
-            { icon: CheckCircle2, label: "Prestador confirma", desc: "Aceita ou ajusta o horário" },
-            { icon: Clock, label: "Em andamento", desc: "Serviço sendo realizado" },
-            { icon: Check, label: "Concluído", desc: "Você avalia o serviço" },
-          ].map((item, i) => {
-            const _Icon = item.icon
-            return (
-              <div key={i} className="flex items-start gap-2.5">
-                <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">
-                  {i + 1}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
-                    {item.label}
-                  </p>
-                  <p className="text-muted-foreground text-[11px]">{item.desc}</p>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </InfoCard>
-
-      {/* Security note */}
-      <div className="text-muted-foreground flex items-center justify-center gap-1.5 text-[11px]">
-        <ShieldCheck className="size-3.5 text-emerald-600" />
-        Ambiente de demonstração — nenhum pagamento será efetivado
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// ReviewSection — Editable review card
-// Nielsen #3: user control — "Editar" links
-// ---------------------------------------------------------------------------
-
-function ReviewSection({
-  label,
-  onEdit,
-  children,
-}: {
-  label: string
-  onEdit: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <div className="rounded-lg border p-3">
-      <div className="mb-1.5 flex items-center justify-between">
-        <h4 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-          {label}
-        </h4>
-        <button
-          type="button"
-          onClick={onEdit}
-          className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 transition-colors hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300"
-        >
-          <Pencil className="size-3" />
-          Editar
-        </button>
-      </div>
-      {children}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// PaymentOption card
-// ---------------------------------------------------------------------------
-
-function PaymentOption({
-  value,
-  title,
-  description,
-  icon: Icon,
-  selected,
-}: {
-  value: string
-  title: string
-  description: string
-  icon: React.ComponentType<{ className?: string }>
-  selected: boolean
-}) {
-  return (
-    <Label
-      htmlFor={`pay-${value}`}
-      className={cn(
-        "flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 transition-all",
-        selected
-          ? "border-emerald-600 bg-emerald-50/50 ring-1 ring-emerald-600 dark:bg-emerald-950/30"
-          : "hover:bg-accent/40 hover:border-emerald-400/50",
-      )}
-    >
-      <RadioGroupItem value={value} id={`pay-${value}`} className="sr-only" />
-      <Icon className={cn("size-4", selected ? "text-emerald-600" : "text-muted-foreground")} />
-      <div className="min-w-0 flex-1">
-        <p className="text-xs leading-tight font-medium">{title}</p>
-        <p className="text-muted-foreground text-[10px] leading-tight">{description}</p>
-      </div>
-      {selected && <Check className="size-3.5 shrink-0 text-emerald-600" />}
-    </Label>
   )
 }

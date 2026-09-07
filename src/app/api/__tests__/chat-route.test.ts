@@ -119,7 +119,7 @@ describe("POST /api/chat", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
-    expect((parsed.body as any).error).toBe("Mensagem é obrigatória.")
+    expect((parsed.body as any).error).toBe("Dados inválidos")
     expect(ZAI.create).not.toHaveBeenCalled()
   })
 
@@ -128,7 +128,7 @@ describe("POST /api/chat", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
-    expect((parsed.body as any).error).toBe("Mensagem é obrigatória.")
+    expect((parsed.body as any).error).toBe("Dados inválidos")
   })
 
   it("rejeita body sem o campo message com 400", async () => {
@@ -136,7 +136,7 @@ describe("POST /api/chat", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
-    expect((parsed.body as any).error).toBe("Mensagem é obrigatória.")
+    expect((parsed.body as any).error).toBe("Dados inválidos")
   })
 
   it("retorna a resposta do assistente no caminho de sucesso", async () => {

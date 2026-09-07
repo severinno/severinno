@@ -2,8 +2,9 @@ export const dynamic = "force-dynamic"
 
 import { NextRequest, NextResponse } from "next/server"
 import ZAI from "z-ai-web-dev-sdk"
-import { handleError, badRequest } from "@/lib/api-server"
+import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { chatMessageSchema } from "@/lib/validators"
 
 /**
  * POST /api/chat
@@ -18,13 +19,7 @@ export async function POST(req: NextRequest) {
   try {
     await assertRateLimit(req, RATE_LIMITS.general)
     const body = await req.json()
-    const message = body.message as string | undefined
-    const history = body.history as Array<{ role: string; content: string }> | undefined
-
-    if (!message?.trim()) throw badRequest("Mensagem é obrigatória.")
-
-    // Limit history to last 10 messages to keep context manageable
-    const trimmedHistory = (history ?? []).slice(-10)
+    const { message, history } = chatMessageSchema.parse(body)
 
     const systemPrompt = `Você é o assistente virtual do Severinno Marketplace, uma plataforma brasileira de serviços verificados com geolocalização.
 
@@ -50,7 +45,7 @@ Serviços populares: Encanador, Eletricista, Pintor, Diarista, Pedreiro, Jardine
 
     const messages = [
       { role: "assistant" as const, content: systemPrompt },
-      ...trimmedHistory.map((m) => ({
+      ...history.map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
       })),

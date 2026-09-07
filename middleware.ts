@@ -267,10 +267,6 @@ function isCsrfSensitive(pathname: string, method: string): boolean {
   return CSRF_SENSITIVE_PREFIXES.some((p) => pathname.startsWith(p))
 }
 
-function isCsrfProtected(pathname: string): boolean {
-  return CSRF_SENSITIVE_PREFIXES.some((p) => pathname.startsWith(p))
-}
-
 // ---------------------------------------------------------------------------
 // Route protection rules
 // ---------------------------------------------------------------------------
@@ -350,19 +346,27 @@ export async function middleware(request: NextRequest) {
   response.headers.set("X-Frame-Options", "DENY")
   response.headers.set("X-Content-Type-Options", "nosniff")
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
-  response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(self), payment=()")
+  response.headers.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(self), payment=()",
+  )
   response.headers.set("Vary", "Accept-Encoding")
 
   // Content-Security-Policy (dynamic — uses request origin)
   const requestOrigin = request.headers.get("origin") || "https://severinno.com"
+  const isProduction = process.env.NODE_ENV === "production"
   const cspDirectives = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://va.vercel-scripts.com https://vercel-insights.com",
+    isProduction
+      ? "script-src 'self' 'unsafe-inline' https://va.vercel-scripts.com https://vercel-insights.com"
+      : "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://va.vercel-scripts.com https://vercel-insights.com",
     "worker-src 'self' blob:",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https://*.s3.amazonaws.com https://maps.googleapis.com https://*.tile.openstreetmap.org https://tile.openstreetmap.org https://*.gravatar.com https://ui-avatars.com https://i.pravatar.cc https://picsum.photos",
     "font-src 'self' https://fonts.gstatic.com",
-    `connect-src 'self' ${requestOrigin} https://severinno.local https://severinno.com http://localhost:* https://*.upstash.io https://sentry.io https://*.ingest.sentry.io https://tile.openstreetmap.org https://*.tile.openstreetmap.org wss://localhost:* ws://localhost:*`,
+    isProduction
+      ? `connect-src 'self' ${requestOrigin} https://severinno.com https://*.upstash.io https://sentry.io https://*.ingest.sentry.io https://tile.openstreetmap.org https://*.tile.openstreetmap.org`
+      : `connect-src 'self' ${requestOrigin} https://severinno.local https://severinno.com http://localhost:* https://*.upstash.io https://sentry.io https://*.ingest.sentry.io https://tile.openstreetmap.org https://*.tile.openstreetmap.org wss://localhost:* ws://localhost:*`,
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

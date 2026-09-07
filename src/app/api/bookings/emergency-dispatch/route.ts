@@ -5,37 +5,29 @@ import { createEmergencyDispatch, EmergencyRequest } from "@/lib/emergency-match
 import { requireUser } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { emergencyDispatchSchema } from "@/lib/validators"
 
 export async function POST(req: NextRequest) {
   try {
     await requireUser()
     await assertRateLimit(req, RATE_LIMITS.bookings)
     const body = await req.json()
-    const { request, availableProviders } = body
-
-    if (!request || typeof request.lat !== "number" || typeof request.lng !== "number") {
-      return NextResponse.json(
-        { success: false, error: "Emergency request with lat/lng is required" },
-        { status: 400 },
-      )
-    }
+    const parsed = emergencyDispatchSchema.parse(body)
 
     const emergencyReq: EmergencyRequest = {
-      id: request.id || `emg-${Date.now()}`,
-      clientId: request.clientId || "unknown",
-      clientName: request.clientName || "Cliente",
-      lat: request.lat,
-      lng: request.lng,
-      category: request.category || "Emergência Geral",
-      description: request.description || "",
-      severity: request.severity || "EMERGENCY",
-      maxRadiusKm: request.maxRadiusKm || 10,
-      surgeMultiplier: request.surgeMultiplier,
+      id: parsed.request.id || `emg-${Date.now()}`,
+      clientId: parsed.request.clientId,
+      clientName: parsed.request.clientName,
+      lat: parsed.request.lat,
+      lng: parsed.request.lng,
+      category: parsed.request.category,
+      description: parsed.request.description,
+      severity: parsed.request.severity,
+      maxRadiusKm: parsed.request.maxRadiusKm,
+      surgeMultiplier: parsed.request.surgeMultiplier,
     }
 
-    const providers = Array.isArray(availableProviders) ? availableProviders : []
-
-    const dispatch = await createEmergencyDispatch(emergencyReq, providers)
+    const dispatch = await createEmergencyDispatch(emergencyReq, parsed.availableProviders)
 
     return NextResponse.json({
       success: true,

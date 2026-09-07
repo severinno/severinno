@@ -9,74 +9,42 @@ import {
 import { requireUser } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { checkinEscrowSchema } from "@/lib/validators"
 
 export async function POST(req: NextRequest) {
   try {
     await requireUser()
     await assertRateLimit(req, RATE_LIMITS.bookings)
     const body = await req.json()
-    const { action } = body
+    const parsed = checkinEscrowSchema.parse(body)
 
-    switch (action) {
+    switch (parsed.action) {
       case "checkin": {
-        const {
-          bookingId,
-          providerId,
-          providerLat,
-          providerLng,
-          clientAddressLat,
-          clientAddressLng,
-        } = body
-        if (!bookingId || typeof providerLat !== "number" || typeof clientAddressLat !== "number") {
-          return NextResponse.json(
-            { success: false, error: "Missing checkin parameters" },
-            { status: 400 },
-          )
-        }
-
         const result = validateGeoCheckin({
-          bookingId,
-          providerId: providerId || "unknown",
-          providerLat,
-          providerLng,
-          clientAddressLat,
-          clientAddressLng,
+          bookingId: parsed.bookingId,
+          providerId: parsed.providerId,
+          providerLat: parsed.providerLat,
+          providerLng: parsed.providerLng,
+          clientAddressLat: parsed.clientAddressLat,
+          clientAddressLng: parsed.clientAddressLng,
         })
 
         return NextResponse.json({ success: result.success, data: result })
       }
 
       case "generate-pin": {
-        const { bookingId } = body
-        if (!bookingId) {
-          return NextResponse.json(
-            { success: false, error: "bookingId is required" },
-            { status: 400 },
-          )
-        }
-
-        const pin = await generateEscrowPIN(bookingId)
+        const pin = await generateEscrowPIN(parsed.bookingId)
         return NextResponse.json({ success: true, data: pin })
       }
 
       case "release-escrow": {
-        const { bookingId, pin, escrowAmount } = body
-        if (!bookingId || !pin || typeof escrowAmount !== "number") {
-          return NextResponse.json(
-            { success: false, error: "bookingId, pin and escrowAmount required" },
-            { status: 400 },
-          )
-        }
-
-        const result = await validateEscrowRelease(bookingId, pin, escrowAmount)
+        const result = await validateEscrowRelease(
+          parsed.bookingId,
+          parsed.pin,
+          parsed.escrowAmount,
+        )
         return NextResponse.json({ success: result.success, data: result })
       }
-
-      default:
-        return NextResponse.json(
-          { success: false, error: "Invalid action. Use: checkin, generate-pin, release-escrow" },
-          { status: 400 },
-        )
     }
   } catch (e) {
     return handleError(e)

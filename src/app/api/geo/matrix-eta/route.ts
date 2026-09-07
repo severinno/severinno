@@ -1,44 +1,26 @@
 export const dynamic = "force-dynamic"
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { calculate1xNDistanceMatrix, TargetDestination } from "@/lib/osrm-table"
+import { calculate1xNDistanceMatrix } from "@/lib/osrm-table"
+import { matrixEtaSchema } from "@/lib/validators"
 
 export async function POST(req: NextRequest) {
-  await assertRateLimit(req, RATE_LIMITS.geo)
   try {
+    await assertRateLimit(req, RATE_LIMITS.geo)
     const body = await req.json()
-    const { origin, destinations } = body
+    const parsed = matrixEtaSchema.parse(body)
 
-    if (!origin || typeof origin.lat !== "number" || typeof origin.lng !== "number") {
-      return NextResponse.json(
-        { success: false, error: "Origin coordinates (lat, lng) are required" },
-        { status: 400 },
-      )
-    }
-
-    if (!Array.isArray(destinations) || destinations.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "Destinations array is required (at least 1 destination)" },
-        { status: 400 },
-      )
-    }
-
-    // Limit batch size to 50 destinations per request
-    const cappedDestinations: TargetDestination[] = destinations
-      .slice(0, 50)
-      .filter((d) => d && typeof d.lat === "number" && typeof d.lng === "number" && d.id)
-
-    const results = await calculate1xNDistanceMatrix(origin, cappedDestinations)
+    const results = await calculate1xNDistanceMatrix(parsed.origin, parsed.destinations)
 
     // Sort by fastest duration / distance
     results.sort((a, b) => a.durationMinutes - b.durationMinutes || a.distanceKm - b.distanceKm)
 
-    return NextResponse.json({
+    return Response.json({
       success: true,
       count: results.length,
-      origin,
+      origin: parsed.origin,
       results,
     })
   } catch (e) {

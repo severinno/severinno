@@ -1,43 +1,22 @@
 export const dynamic = "force-dynamic"
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { optimizeDailyRoute2Opt, RouteStop } from "@/lib/tsp-route-optimizer"
+import { optimizeDailyRoute2Opt } from "@/lib/tsp-route-optimizer"
+import { routeOptimizationSchema } from "@/lib/validators"
 
 export async function POST(req: NextRequest) {
-  await requireRole("PROVIDER")
-  await assertRateLimit(req, RATE_LIMITS.general)
   try {
+    await requireRole("PROVIDER")
+    await assertRateLimit(req, RATE_LIMITS.general)
     const body = await req.json()
-    const { baseLocation, stops } = body
+    const parsed = routeOptimizationSchema.parse(body)
 
-    if (
-      !baseLocation ||
-      typeof baseLocation.lat !== "number" ||
-      typeof baseLocation.lng !== "number"
-    ) {
-      return NextResponse.json(
-        { success: false, error: "baseLocation (lat, lng) is required" },
-        { status: 400 },
-      )
-    }
+    const plan = optimizeDailyRoute2Opt(parsed.baseLocation, parsed.stops)
 
-    if (!Array.isArray(stops) || stops.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "stops array is required" },
-        { status: 400 },
-      )
-    }
-
-    const validStops: RouteStop[] = stops.filter(
-      (s) => s && typeof s.lat === "number" && typeof s.lng === "number" && s.id,
-    )
-
-    const plan = optimizeDailyRoute2Opt(baseLocation, validStops)
-
-    return NextResponse.json({
+    return Response.json({
       success: true,
       data: plan,
     })

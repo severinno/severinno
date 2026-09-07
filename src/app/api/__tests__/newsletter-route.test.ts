@@ -96,7 +96,7 @@ describe("POST /api/newsletter", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
-    expect((parsed.body as any).error).toBe("E-mail é obrigatório.")
+    expect((parsed.body as any).error).toBe("Dados inválidos")
   })
 
   it("returns 400 when email is invalid", async () => {
@@ -108,7 +108,7 @@ describe("POST /api/newsletter", () => {
     const parsed = await parseResponse(res)
 
     expect(parsed.status).toBe(400)
-    expect((parsed.body as any).error).toBe("E-mail inválido.")
+    expect((parsed.body as any).error).toBe("Dados inválidos")
   })
 
   it("normalizes email to lowercase", async () => {
@@ -119,8 +119,10 @@ describe("POST /api/newsletter", () => {
       method: "POST",
       body: { email: "User@Example.COM" },
     })
-    await newsletterHandler(req as any)
+    const res = await newsletterHandler(req as any)
+    const parsed = await parseResponse(res)
 
+    expect(parsed.status).toBe(200)
     expect(db.setting.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         key: "newsletter:user@example.com",
@@ -136,8 +138,10 @@ describe("POST /api/newsletter", () => {
       method: "POST",
       body: { email: "  user@example.com  " },
     })
-    await newsletterHandler(req as any)
+    const res = await newsletterHandler(req as any)
+    const parsed = await parseResponse(res)
 
+    expect(parsed.status).toBe(200)
     expect(db.setting.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         key: "newsletter:user@example.com",

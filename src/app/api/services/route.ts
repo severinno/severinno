@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth"
 import { serviceSchema } from "@/lib/validators"
 import { forbidden, handleError, syncEntitySearch, cacheControlPublic } from "@/lib/api-server"
 import { withCache, cacheInvalidate } from "@/lib/redis"
+import { createHash } from "crypto"
 
 // GET: list services (with optional filtering)
 export async function GET(request: Request) {
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
       where.OR = [{ title: { contains: q } }, { description: { contains: q } }]
     }
 
-    const cacheKey = `services:${JSON.stringify(where)}`
+    const cacheKey = `services:${createHash("sha256").update(JSON.stringify(where)).digest("hex").slice(0, 8)}`
     const services = await withCache(
       cacheKey,
       async () => {
