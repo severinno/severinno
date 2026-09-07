@@ -93,7 +93,15 @@ const SHARED_ANALYSIS = {
       // Path relative to OpenSearch config dir (/usr/share/opensearch/config/).
       // The file is mounted at config/analysis/synonyms.txt in docker-compose.
       synonyms_path: "analysis/synonyms.txt",
-      updateable: true,
+      // NOTE: `updateable` was removed on purpose — an updateable synonym
+      // filter is only allowed in search-time analyzers, and severinno_index
+      // runs at index time (fails with mapper_parsing_exception). Full reindex
+      // (scripts/search-index.ts) already recreates indices, so hot-reload is
+      // not needed.
+      // Skip multi-word rules whose terms are removed by the stop filter
+      // (e.g. "orçamento sem compromisso" — "sem" is a stopword). Without
+      // this, creating the index fails with "Failed to build synonyms".
+      lenient: true,
     },
   },
   normalizer: {
