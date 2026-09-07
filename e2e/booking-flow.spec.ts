@@ -52,15 +52,15 @@ async function selectFirstDateTime(page: Page): Promise<boolean> {
   }
   // Hide sticky footer that intercepts pointer events, then click
   await page.evaluate(() => {
-    document.querySelectorAll('[class*="sticky bottom-0"]').forEach(el => {
-      (el as HTMLElement).style.pointerEvents = 'none'
+    document.querySelectorAll('[class*="sticky bottom-0"]').forEach((el) => {
+      ;(el as HTMLElement).style.pointerEvents = "none"
     })
   })
   await dayButton.click({ force: true })
   // Restore pointer events
   await page.evaluate(() => {
-    document.querySelectorAll('[class*="sticky bottom-0"]').forEach(el => {
-      (el as HTMLElement).style.pointerEvents = ''
+    document.querySelectorAll('[class*="sticky bottom-0"]').forEach((el) => {
+      ;(el as HTMLElement).style.pointerEvents = ""
     })
   })
 
@@ -84,19 +84,22 @@ async function selectFirstDateTime(page: Page): Promise<boolean> {
 
 /**
  * Navega até uma etapa específica do booking modal.
- * Retorna true se conseguiu navegar.
+ * Retorna true se conseguiu navegar. Checa se o botão "Continuar" está
+ * DISABLED (step anterior inválido) — um clique force em botão disabled
+ * não avança, então o helper retorna false em vez de fingir sucesso.
  */
 async function navigateToStep(page: Page, step: number) {
   // Disable sticky footer pointer events before clicking
   await page.evaluate(() => {
-    document.querySelectorAll('[class*="sticky bottom-0"]').forEach(el => {
-      (el as HTMLElement).style.pointerEvents = 'none'
+    document.querySelectorAll('[class*="sticky bottom-0"]').forEach((el) => {
+      ;(el as HTMLElement).style.pointerEvents = "none"
     })
   })
   // Clica "Continuar" múltiplas vezes até chegar na etapa desejada
   for (let i = 1; i < step; i++) {
     const continuar = page.locator('button:has-text("Continuar")')
     if (await continuar.isVisible().catch(() => false)) {
+      if (await continuar.isDisabled().catch(() => true)) return false
       await continuar.click({ force: true })
       await page.waitForTimeout(500)
     } else {
@@ -104,6 +107,27 @@ async function navigateToStep(page: Page, step: number) {
     }
   }
   return true
+}
+
+/**
+ * Preenche o endereço no step 2 do booking: CEP com blur (o lookup dispara
+ * no onBlur — sem blur o autocomplete nunca roda) + número obrigatório
+ * (step2Valid exige street+number+city+state; o CEP autocomplete preenche
+ * rua/cidade/UF mas não o número).
+ */
+async function fillBookingAddress(page: Page) {
+  const cepInput = page.getByPlaceholder("00000-000").first()
+  if (await cepInput.isVisible().catch(() => false)) {
+    await cepInput.fill("01310100")
+    await cepInput.blur()
+    await page.waitForTimeout(1800)
+  }
+  // Número é sempre obrigatório
+  const numberInput = page.getByPlaceholder("123").first()
+  if (await numberInput.isVisible().catch(() => false)) {
+    const numVal = await numberInput.inputValue().catch(() => "")
+    if (!numVal) await numberInput.fill("1000")
+  }
 }
 
 /**
@@ -329,7 +353,9 @@ test.describe("Fluxo Completo de Agendamento — Visitante (não logado)", () =>
       await page.waitForTimeout(500)
 
       // PASSO 8: Confirma o agendamento
-      const confirmBtn = page.locator('button:has-text("Confirmar")').first()
+      // O step 4 do wizard tem shortLabel "Confirmar" (step button disabled no
+      // header) — usa o texto completo do submit pra não casar com ele
+      const confirmBtn = page.locator('button:has-text("Confirmar agendamento")').first()
       if (await confirmBtn.isVisible().catch(() => false)) {
         await confirmBtn.click()
         await page.waitForTimeout(2000)
@@ -390,18 +416,14 @@ test.describe("Fluxo Completo de Agendamento — Cliente Autenticado", () => {
     await navigateToStep(page, 2)
     await page.waitForTimeout(300)
 
-    const cepInput = page.getByPlaceholder(/CEP/i).first()
-    if (await cepInput.isVisible().catch(() => false)) {
-      await cepInput.fill("01310100")
-      await page.waitForTimeout(1500)
-    }
+    await fillBookingAddress(page)
 
     // PASSO 8: Avançar para confirmação
     await navigateToStep(page, 4)
     await page.waitForTimeout(500)
 
     // PASSO 9: Confirmar agendamento
-    const confirmBtn = page.locator('button:has-text("Confirmar")').first()
+    const confirmBtn = page.locator('button:has-text("Confirmar agendamento")').first()
     const canConfirm = await confirmBtn.isVisible().catch(() => false)
     if (canConfirm) {
       await confirmBtn.click()
@@ -432,16 +454,12 @@ test.describe("Fluxo Completo de Agendamento — Cliente Autenticado", () => {
     await navigateToStep(page, 2)
     await page.waitForTimeout(300)
 
-    const cepInput = page.getByPlaceholder(/CEP/i).first()
-    if (await cepInput.isVisible().catch(() => false)) {
-      await cepInput.fill("01310100")
-      await page.waitForTimeout(1500)
-    }
+    await fillBookingAddress(page)
 
     await navigateToStep(page, 4)
     await page.waitForTimeout(500)
 
-    const confirmBtn = page.locator('button:has-text("Confirmar")').first()
+    const confirmBtn = page.locator('button:has-text("Confirmar agendamento")').first()
     if (await confirmBtn.isVisible().catch(() => false)) {
       await confirmBtn.click()
       await page.waitForTimeout(3000)
@@ -486,16 +504,10 @@ test.describe("Fluxo de Pagamento PIX", () => {
     await page.waitForTimeout(1000)
 
     // Step 1: Data + horário
-    await selectFirstDateTime(page)
-
-    // Step 2: Endereço
+    await selectFirstDateTime(page) // Step 2: Endereço
     await navigateToStep(page, 2)
     await page.waitForTimeout(300)
-    const cepInput = page.getByPlaceholder(/CEP/i).first()
-    if (await cepInput.isVisible().catch(() => false)) {
-      await cepInput.fill("01310100")
-      await page.waitForTimeout(1500)
-    }
+    await fillBookingAddress(page)
 
     // Step 3: Pagamento — selecionar PIX
     await navigateToStep(page, 3)
@@ -514,7 +526,7 @@ test.describe("Fluxo de Pagamento PIX", () => {
     await navigateToStep(page, 4)
     await page.waitForTimeout(500)
 
-    const confirmBtn = page.locator('button:has-text("Confirmar")').first()
+    const confirmBtn = page.locator('button:has-text("Confirmar agendamento")').first()
     if (await confirmBtn.isVisible().catch(() => false)) {
       await confirmBtn.click()
       await page.waitForTimeout(3000)

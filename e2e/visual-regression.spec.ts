@@ -27,6 +27,10 @@
 
 import { test, expect, type Page } from "@playwright/test"
 
+// Visual regression não precisa de vídeo — e o screencast + fullPage screenshot
+// de página alta derruba o browser ("Target page has been closed")
+test.use({ video: "off" })
+
 // Block PWA service worker to avoid interfering with screenshots
 test.use({ serviceWorkers: "block" })
 
@@ -71,12 +75,10 @@ const MOCK_PROVIDERS = {
       city: "Governador Valadares",
       distanceKm: 3.2,
       radiusKm: 20,
-      lat: -18.8600,
-      lng: -41.9500,
+      lat: -18.86,
+      lng: -41.95,
       memberSince: new Date(Date.now() - 3600000).toISOString(),
-      services: [
-        { id: "svc-3", title: "Diarista", basePrice: 80, unit: "UNIDADE", photos: [] },
-      ],
+      services: [{ id: "svc-3", title: "Diarista", basePrice: 80, unit: "UNIDADE", photos: [] }],
       completedBookings: 203,
     },
     {
@@ -91,8 +93,8 @@ const MOCK_PROVIDERS = {
       city: "Governador Valadares",
       distanceKm: 5.8,
       radiusKm: 30,
-      lat: -18.8520,
-      lng: -41.9400,
+      lat: -18.852,
+      lng: -41.94,
       memberSince: new Date(Date.now() - 86400000 * 3).toISOString(),
       services: [
         { id: "svc-4", title: "Pintura", basePrice: 150, unit: "METRO_QUADRADO", photos: [] },
@@ -118,15 +120,9 @@ const MOCK_CATEGORIES = [
 // ---------------------------------------------------------------------------
 
 async function setupMocks(page: Page) {
-  await page.route("**/api/providers**", (route) =>
-    route.fulfill({ json: MOCK_PROVIDERS }),
-  )
-  await page.route("**/api/categories**", (route) =>
-    route.fulfill({ json: MOCK_CATEGORIES }),
-  )
-  await page.route("**/api/search**", (route) =>
-    route.fulfill({ json: MOCK_PROVIDERS }),
-  )
+  await page.route("**/api/providers**", (route) => route.fulfill({ json: MOCK_PROVIDERS }))
+  await page.route("**/api/categories**", (route) => route.fulfill({ json: MOCK_CATEGORIES }))
+  await page.route("**/api/search**", (route) => route.fulfill({ json: MOCK_PROVIDERS }))
   await page.route("**/api/geo/**", (route) =>
     route.fulfill({ json: { lat: -18.8566, lng: -41.9455, city: "Governador Valadares" } }),
   )
@@ -135,11 +131,16 @@ async function setupMocks(page: Page) {
 /** Wait for the page to be fully rendered and stable */
 async function waitForStable(page: Page, timeout = 15_000) {
   // Wait for network idle
+  const t0 = Date.now()
   await page.waitForLoadState("networkidle", { timeout }).catch(() => {})
+  console.log(`[timing] networkidle: ${Date.now() - t0}ms`)
   // Wait for any animations to settle
   await page.waitForTimeout(1500)
   // Wait for fonts to load
-  await page.waitForFunction(() => document.fonts.ready.then(() => true), { timeout: 5000 }).catch(() => {})
+  await page
+    .waitForFunction(() => document.fonts.ready.then(() => true), { timeout: 5000 })
+    .catch(() => {})
+  console.log(`[timing] waitForStable total: ${Date.now() - t0}ms`)
 }
 
 /** Take a full-page screenshot with stable rendering */
@@ -150,19 +151,48 @@ async function takeStableScreenshot(
 ) {
   await waitForStable(page)
 
+  // Pre-load lazy sections (React.lazy + IntersectionObserver) — rola a página
+  // toda antes do fullPage pra estabilizar a altura (senão o screenshot cresce
+  // infinitamente conforme as sections montam durante a captura)
+  if (options?.fullPage ?? true) {
+    await page.evaluate(async () => {
+      const height = () => document.body.scrollHeight
+      let prev = -1
+      for (let i = 0; i < 12 && prev !== height(); i++) {
+        prev = height()
+        window.scrollTo(0, prev)
+        await new Promise((r) => setTimeout(r, 400))
+      }
+      window.scrollTo(0, 0)
+    })
+    await page.waitForTimeout(1200)
+  }
+
   // Mask dynamic content (timestamps, prices that change)
   const masks = options?.mask ?? []
   for (const selector of masks) {
-    await page.locator(selector).evaluate((el) => {
-      ;(el as HTMLElement).style.visibility = "hidden"
-    }).catch(() => {})
+    await page
+      .locator(selector)
+      .evaluate((el) => {
+        ;(el as HTMLElement).style.visibility = "hidden"
+      })
+      .catch(() => {})
   }
 
+  console.log(
+    `[debug] screenshot start: ${name} height=`,
+    await page.evaluate(() => document.body.scrollHeight),
+  )
+  page.on("crash", () => console.log("[debug] PAGE CRASHED"))
+  page.on("console", (m) => {
+    if (m.type() === "error") console.log("[debug] console.error:", m.text().slice(0, 120))
+  })
   await expect(page).toHaveScreenshot(`${name}.png`, {
     fullPage: options?.fullPage ?? true,
     maxDiffPixelRatio: 0.01, // 1% tolerance
     animations: "disabled",
   })
+  console.log(`[debug] screenshot OK: ${name}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -173,6 +203,11 @@ test.describe("Visual Regression — Desktop Chrome", () => {
   test.use({ viewport: { width: 1280, height: 720 } })
 
   test("home page — full page screenshot", async ({ page }) => {
+    page.on("crash", () => console.log("[debug] PAGE CRASHED"))
+    page.on("pageerror", (e) => console.log("[debug] pageerror:", String(e).slice(0, 180)))
+    page.on("console", (m) => {
+      if (m.type() === "error") console.log("[debug] console.error:", m.text().slice(0, 150))
+    })
     await setupMocks(page)
     await page.goto(BASE_URL)
     await takeStableScreenshot(page, "home/desktop-full", {
@@ -382,9 +417,7 @@ test.describe("Visual Regression — Component States", () => {
     await page.route("**/api/providers**", (route) =>
       route.fulfill({ json: { items: [], total: 0, page: 1, pageSize: 20, totalPages: 0 } }),
     )
-    await page.route("**/api/categories**", (route) =>
-      route.fulfill({ json: MOCK_CATEGORIES }),
-    )
+    await page.route("**/api/categories**", (route) => route.fulfill({ json: MOCK_CATEGORIES }))
     await page.route("**/api/search**", (route) =>
       route.fulfill({ json: { items: [], total: 0, page: 1, pageSize: 20, totalPages: 0 } }),
     )
@@ -403,9 +436,7 @@ test.describe("Visual Regression — Component States", () => {
     await page.route("**/api/providers**", (route) =>
       route.fulfill({ status: 500, json: { error: "Internal Server Error" } }),
     )
-    await page.route("**/api/categories**", (route) =>
-      route.fulfill({ json: MOCK_CATEGORIES }),
-    )
+    await page.route("**/api/categories**", (route) => route.fulfill({ json: MOCK_CATEGORIES }))
 
     await page.goto(BASE_URL)
     await waitForStable(page)
@@ -428,12 +459,8 @@ test.describe("Visual Regression — Component States", () => {
       await providersPromise
       await route.fulfill({ json: MOCK_PROVIDERS })
     })
-    await page.route("**/api/categories**", (route) =>
-      route.fulfill({ json: MOCK_CATEGORIES }),
-    )
-    await page.route("**/api/search**", (route) =>
-      route.fulfill({ json: MOCK_PROVIDERS }),
-    )
+    await page.route("**/api/categories**", (route) => route.fulfill({ json: MOCK_CATEGORIES }))
+    await page.route("**/api/search**", (route) => route.fulfill({ json: MOCK_PROVIDERS }))
 
     await page.goto(BASE_URL)
     // Screenshot immediately (before providers load)

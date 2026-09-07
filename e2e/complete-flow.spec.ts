@@ -11,6 +11,7 @@
 
 import { test, expect, type Page } from "@playwright/test"
 import { setupApiMocks } from "./mocks"
+import { registerUser, openBookingModal } from "./helpers"
 
 // Block PWA service worker to avoid interference
 test.use({ serviceWorkers: "block" })
@@ -24,78 +25,6 @@ async function waitForApp(page: Page) {
     .first()
     .waitFor({ state: "visible", timeout: 30_000 })
     .catch(() => {})
-}
-
-async function registerUser(
-  page: Page,
-  options: { role?: "CLIENT" | "PROVIDER" } = {},
-): Promise<{ email: string; password: string }> {
-  const { role = "CLIENT" } = options
-  const email = `e2e-${Date.now()}@test.com`
-  const password = "test123456"
-
-  // Open auth modal
-  const entrarBtn = page.getByRole("button", { name: /entrar|login/i }).first()
-  try {
-    await entrarBtn.waitFor({ state: "visible", timeout: 10_000 })
-    await entrarBtn.click()
-    await page.waitForTimeout(800)
-  } catch {
-    // Already authenticated
-  }
-
-  // Switch to register tab
-  const dialog = page.getByRole("dialog")
-  await dialog.waitFor({ state: "visible", timeout: 10_000 })
-  const criarTab = dialog.getByRole("tab", { name: /cadastrar/i }).first()
-  await criarTab.waitFor({ state: "visible", timeout: 10_000 })
-  await criarTab.click()
-  await page.waitForTimeout(300)
-
-  // Fill form
-  const form = dialog.locator("form:visible")
-  await form.waitFor({ state: "visible", timeout: 10_000 })
-
-  await form.getByLabel("Nome completo", { exact: true }).fill(`Test User ${role}`)
-  await form.getByPlaceholder("voce@exemplo.com").fill(email)
-  await form.getByPlaceholder("Mínimo 6 caracteres").fill(password)
-  await form.getByPlaceholder("Repita a senha").fill(password)
-
-  // Select role
-  const roleBtn = form
-    .getByRole("button", {
-      name: role === "CLIENT" ? /cliente/i : /prestador/i,
-    })
-    .first()
-  if (await roleBtn.isVisible().catch(() => false)) {
-    await roleBtn.click()
-    await page.waitForTimeout(200)
-  }
-
-  // For provider, fill additional fields
-  if (role === "PROVIDER") {
-    await form.getByLabel("CPF / CNPJ", { exact: true }).fill("123.456.789-00")
-    await form.getByLabel("WhatsApp", { exact: true }).fill("(11) 90000-0000")
-    await form.getByLabel("Cidade", { exact: true }).fill("São Paulo")
-    await form.getByLabel("UF", { exact: true }).fill("SP")
-  }
-
-  // Submit
-  const submitBtn = form.getByRole("button", { name: /criar conta|cadastrar/i }).first()
-  await submitBtn.click()
-  await page.waitForTimeout(2000)
-
-  return { email, password }
-}
-
-async function openBookingModal(page: Page) {
-  const btn = page
-    .locator('[data-slot="card"] button:has-text("Agendar")')
-    .filter({ visible: true })
-    .first()
-  await btn.waitFor({ state: "visible", timeout: 15_000 })
-  await btn.click()
-  await page.waitForTimeout(1000)
 }
 
 async function selectDateTime(page: Page): Promise<boolean> {
@@ -165,19 +94,29 @@ test.describe("Complete Flow — Client Registration → Booking → Payment", (
       // Step 7: Advance to payment step
       const continuar = page.locator('button:has-text("Continuar")')
       if (await continuar.isVisible().catch(() => false)) {
-        await continuar.click()
+        // Footer sticky intercepta pointer events — mesmo bug do quote-flow
+        await continuar.evaluate((el) => (el as HTMLButtonElement).click())
         await page.waitForTimeout(500)
       }
 
-      // Step 8: Fill address if visible
-      const cepInput = page.getByPlaceholder(/CEP/i).first()
+      // Step 8: Fill address — CEP com blur (lookup dispara no onBlur) +
+      // número obrigatório (step2Valid exige; autocomplete não preenche)
+      const cepInput = page.getByPlaceholder("00000-000").first()
       if (await cepInput.isVisible().catch(() => false)) {
         await cepInput.fill("01310100")
-        await page.waitForTimeout(1500)
+        await cepInput.blur()
+        await page.waitForTimeout(1800)
+      }
+      const numberInput = page.getByPlaceholder("123").first()
+      if (await numberInput.isVisible().catch(() => false)) {
+        const numVal = await numberInput.inputValue().catch(() => "")
+        if (!numVal) await numberInput.fill("1000")
       }
 
       // Step 9: Confirm booking
-      const confirmBtn = page.locator('button:has-text("Confirmar")').first()
+      // O step 4 do wizard tem shortLabel "Confirmar" (step button disabled no
+      // header) — usa o texto completo do submit pra não casar com ele
+      const confirmBtn = page.locator('button:has-text("Confirmar agendamento")').first()
       if (await confirmBtn.isVisible().catch(() => false)) {
         await confirmBtn.click()
         await page.waitForTimeout(3000)
@@ -310,19 +249,25 @@ test.describe("Complete Flow — Error Handling", () => {
   })
 
   test("5. invalid login shows error message", async ({ page }) => {
-    // Open login modal
+    // Open login modal (auto-retry — one-shot click pode perder a hidratação)
     const entrarBtn = page.getByRole("button", { name: /entrar|login/i }).first()
-    try {
-      await entrarBtn.waitFor({ state: "visible", timeout: 10_000 })
-      await entrarBtn.click()
-      await page.waitForTimeout(800)
-    } catch {
-      console.log("Login button not found — skipping")
+    const dialog = page.getByRole("dialog")
+    let opened = false
+    for (let attempt = 0; attempt < 3 && !opened; attempt++) {
+      try {
+        await entrarBtn.click({ timeout: 10_000 })
+      } catch {}
+      try {
+        await dialog.waitFor({ state: "visible", timeout: 10_000 })
+        opened = true
+      } catch {}
+    }
+    if (!opened) {
+      console.log("Login dialog not found — skipping")
       return
     }
 
     // Fill invalid credentials
-    const dialog = page.getByRole("dialog")
     const form = dialog.locator("form:visible")
     await form.getByPlaceholder("voce@exemplo.com").fill("nonexistent@test.com")
     await form.getByPlaceholder("••••••").fill("wrongpassword")

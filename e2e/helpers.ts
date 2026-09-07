@@ -104,18 +104,40 @@ export async function registerUser(page: Page, options: { role?: "CLIENT" | "PRO
   // Open auth modal if not already open — wait for the topbar "Entrar"
   // button (auto-retry; a one-shot isVisible() can miss it during hydration)
   const entrarBtn = page.getByRole("button", { name: /entrar|login|criar conta/i }).first()
-  try {
-    await entrarBtn.waitFor({ state: "visible", timeout: 10_000 })
-    await entrarBtn.click()
-    // Wait for dialog to appear after click — increase from 800ms to 2s
-    await page.waitForTimeout(2000)
-  } catch {
-    // Already authenticated — no login button; skip opening the modal
-  }
-
-  // Switch to the register tab — role="tab" so we don't hit the topbar's
-  // "Cadastrar" button that sits behind the modal overlay
   const dialog = page.getByRole("dialog")
+  let dialogOpened = false
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      await entrarBtn.waitFor({ state: "visible", timeout: 10_000 })
+      await entrarBtn.click()
+      // Wait for dialog to appear after click
+      try {
+        await dialog.waitFor({ state: "visible", timeout: 4000 })
+        dialogOpened = true
+        break
+      } catch {
+        // Dialog didn't open — retry (hydration race: the SSR button is
+        // visible before React attaches its click handler)
+      }
+    } catch {
+      // Already authenticated — no login button; skip opening the modal
+      break
+    }
+  }
+  if (!dialogOpened) {
+    // Last chance: try the topbar header button explicitly
+    const topbarBtn = page
+      .locator("header button")
+      .filter({ hasText: /entrar|cadastrar|login/i })
+      .first()
+    try {
+      await topbarBtn.click()
+      await dialog.waitFor({ state: "visible", timeout: 5000 })
+      dialogOpened = true
+    } catch {
+      // Give up — will fail on the form fill below with a clear error
+    }
+  }
   await dialog.waitFor({ state: "visible", timeout: 15_000 })
   const criarTab = dialog.getByRole("tab", { name: /cadastrar/i }).first()
   await criarTab.waitFor({ state: "visible", timeout: 10_000 })
@@ -155,9 +177,12 @@ export async function registerUser(page: Page, options: { role?: "CLIENT" | "PRO
     await form.getByLabel("UF", { exact: true }).fill("SP")
   }
 
-  // Submit
+  // Submit — o form PROVIDER é mais alto e o botão fica fora do viewport
+  // (sticky footer não rola). force:true não resolve (elemento fora da
+  // viewport). JS click dispara o mesmo onSubmit do React.
   const submitBtn = form.getByRole("button", { name: /criar conta|cadastrar/i }).first()
-  await submitBtn.click()
+  await submitBtn.scrollIntoViewIfNeeded().catch(() => {})
+  await submitBtn.evaluate((el) => (el as HTMLButtonElement).click())
   await page.waitForTimeout(2000)
 
   return { email, password }
@@ -237,8 +262,8 @@ export async function openBookingModal(page: Page) {
 
   // Disable pointer events on sticky footer so calendar/slots are clickable
   await page.evaluate(() => {
-    document.querySelectorAll('[class*="sticky bottom-0"]').forEach(el => {
-      (el as HTMLElement).style.pointerEvents = 'none'
+    document.querySelectorAll('[class*="sticky bottom-0"]').forEach((el) => {
+      ;(el as HTMLElement).style.pointerEvents = "none"
     })
   })
 }
