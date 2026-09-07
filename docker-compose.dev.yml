@@ -14,7 +14,7 @@ services:
     environment:
       POSTGRES_DB: severinno
       POSTGRES_USER: severinno
-      POSTGRES_PASSWORD: severinno
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-severinno}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -117,7 +117,13 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/_health/')"]
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/_health/')",
+        ]
       interval: 15s
       timeout: 10s
       retries: 3

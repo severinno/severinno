@@ -140,12 +140,12 @@ function randomBase64url(bytes) {
 
 /** Substitui a senha embutida em uma URL do tipo scheme://user:pass@host. */
 function replaceUrlPassword(url, newPassword) {
-  // Captura: scheme://user:  SENHA  @resto
-  const m = url.match(/^([a-zA-Z][\w+.-]*:\/\/[^:/\s]+:)([^@\s]*)(@.*)$/)
+  // Captura: scheme://user:  SENHA  @host
+  // O grupo 3 já inclui o '@' separador; o guard usa `@[^@]*$` de forma que
+  // um '@' EXTRA (senha antiga com '@' embutido) faz o match falhar → null,
+  // e a URL não é reescrita (evita URL corrompida).
+  const m = url.match(/^([a-zA-Z][\w+.-]*:\/\/[^:/\s]+:)([^@\s]*)(@[^@]*)$/)
   if (!m) return null
-  // Guard: se o resto (@host) ainda contém '@', a senha antiga tinha '@'
-  // embutido e o match quebrou — NÃO reescrever (evita URL corrompida).
-  if (m[3].includes("@")) return null
   // base64url é URL-safe — não precisa de percent-encoding
   return `${m[1]}${newPassword}${m[3]}`
 }
