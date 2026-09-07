@@ -102,6 +102,11 @@ describe("src/middleware — global rate limit (Upstash → in-memory)", () => {
     expect(response.headers.get("X-Global-RateLimit-Remaining")).toBe("99")
     expect(response.headers.get("X-Global-RateLimit-Reset")).toBeDefined()
 
+    // RFC 9205 standardized headers
+    expect(response.headers.get("RateLimit-Limit")).toBe("100")
+    expect(response.headers.get("RateLimit-Remaining")).toBe("99")
+    expect(response.headers.get("RateLimit-Reset")).toBeDefined()
+
     // Compat headers (X-RateLimit-*) preservam o contrato anterior
     expect(response.headers.get("X-RateLimit-Limit")).toBe("100")
     expect(response.headers.get("X-RateLimit-Remaining")).toBe("99")

@@ -15,6 +15,8 @@
     "dev:log": "mkdir -p .next && bun run dev 2>&1 | tee -a .next/dev-server-$(date +%Y%m%d).log",
     "build": "next build",
     "build:analyze": "node scripts/analyze-bundle.mjs",
+    "smoke": "node scripts/smoke-test.mjs",
+    "search:reindex": "node scripts/search-reindex.mjs",
     "start": "NODE_ENV=production node .next/standalone/server.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

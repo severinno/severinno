@@ -63,6 +63,8 @@ help:
 	@echo "  make pr-ready       Valida tudo para PR (qa + build)"
 	@echo "  make guard          Executa encoding guards locais"
 	@echo "  make analyze        Executa o Next.js Bundle Analyzer"
+	@echo "  make smoke          Executa smoke test unificado pos-deploy"
+	@echo "  make search-reindex Reindexa catalogo no OpenSearch"
 	@echo ""
 	@echo "$(GREEN)Manutencao:$(NC)"
 	@echo "  make backup-auto    Executa backup automatico com verificacao"
@@ -192,6 +194,16 @@ analyze:
 	@echo "$(CYAN)[..] Executando Next.js Bundle Analyzer...$(NC)"
 	bun run build:analyze
 	@echo "$(GREEN)[OK] Analise de bundle concluida!$(NC)"
+
+smoke:
+	@echo "$(CYAN)[..] Executando Smoke Test unificado...$(NC)"
+	node scripts/smoke-test.mjs
+	@echo "$(GREEN)[OK] Smoke test aprovado!$(NC)"
+
+search-reindex:
+	@echo "$(CYAN)[..] Executando reindexacao do OpenSearch...$(NC)"
+	node scripts/search-reindex.mjs
+	@echo "$(GREEN)[OK] Reindexacao concluida!$(NC)"
 
 backup-auto:
 	@echo "$(CYAN)[..] Executando backup automatico com verificacao...$(NC)"
