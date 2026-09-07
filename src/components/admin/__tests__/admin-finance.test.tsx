@@ -196,6 +196,14 @@ vi.mock("@/components/admin/admin-shared", () => ({
       )}
     </div>
   ),
+  RefreshButton: ({ onClick, disabled }: { onClick?: () => void; disabled?: boolean }) => (
+    <button type="button" onClick={onClick} disabled={disabled} data-testid="refresh-btn">
+      Atualizar
+    </button>
+  ),
+  PaymentStatusBadge: ({ status }: { status: string }) => (
+    <span data-testid="payment-status-badge">{status}</span>
+  ),
 }))
 
 vi.mock("@/lib/constants", () => ({

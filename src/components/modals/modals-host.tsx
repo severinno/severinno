@@ -1,9 +1,14 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import { AuthModal } from "./auth-modal"
 import { ProviderProfileModal } from "./provider-profile-modal"
 import { QuoteModal } from "./quote-modal"
-import { BookingModal } from "./booking-modal"
+
+const BookingModal = dynamic(
+  () => import("./booking-modal").then((m) => ({ default: m.BookingModal })),
+  { ssr: false },
+)
 
 /**
  * Single host that mounts every flow modal in the app.
@@ -11,9 +16,7 @@ import { BookingModal } from "./booking-modal"
  * Each modal reads its own open-state from `useUIStore`, so this component
  * has no props — mount it once at the app shell (next to the main view).
  *
- * All modals are client components ("use client") and guard against SSR by
- * rendering nothing until their `open` flag is true (driven by user
- * interaction, so always false on the server).
+ * BookingModal is lazy-loaded via next/dynamic to reduce initial bundle size.
  */
 export function ModalsHost() {
   return (

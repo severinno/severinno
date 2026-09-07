@@ -61,6 +61,14 @@ vi.mock("@/lib/cron-cooldown", () => ({
   markCompleted: vi.fn(),
 }))
 
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn().mockResolvedValue(undefined),
+  RATE_LIMITS: {
+    general: { key: "general", interval: 60, max: 100 },
+    bookings: { key: "bookings", interval: 60, max: 10 },
+  },
+}))
+
 vi.mock("@/lib/geo-health-alert", () => ({
   evaluateGeoHealth: vi.fn(),
 }))
@@ -309,7 +317,7 @@ describe("GET /api/stats/public", () => {
     vi.mocked(db.booking.count).mockResolvedValue(456)
     vi.mocked(db.review.aggregate).mockResolvedValue({ _avg: { rating: 4.756 } } as never)
 
-    const res = await getStatsPublic()
+    const res = await getStatsPublic(new Request("http://localhost/api/stats/public"))
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -325,7 +333,7 @@ describe("GET /api/stats/public", () => {
   })
 
   it("returns zero average rating when there are no reviews", async () => {
-    const res = await getStatsPublic()
+    const res = await getStatsPublic(new Request("http://localhost/api/stats/public"))
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -336,7 +344,7 @@ describe("GET /api/stats/public", () => {
   it("returns zeros with 200 when the database fails", async () => {
     vi.mocked(db.user.count).mockRejectedValue(new Error("DB down"))
 
-    const res = await getStatsPublic()
+    const res = await getStatsPublic(new Request("http://localhost/api/stats/public"))
     const body = await res.json()
 
     expect(res.status).toBe(200)

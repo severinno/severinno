@@ -14,6 +14,7 @@ import {
   invalidateCategoryCache,
 } from "@/lib/api-server"
 import { withCache, cacheInvalidate } from "@/lib/redis"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { type Prisma } from "@prisma/client"
 
 type CategoryNode = Prisma.CategoryGetPayload<Record<string, never>> & {
@@ -21,8 +22,9 @@ type CategoryNode = Prisma.CategoryGetPayload<Record<string, never>> & {
 }
 
 // GET: list categories (public, cached)
-export async function GET(_request?: Request) {
+export async function GET(request?: Request) {
   try {
+    await assertRateLimit(request!, RATE_LIMITS.general)
     const categories = await withCache(
       "categories:all",
       async () => {

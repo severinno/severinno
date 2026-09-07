@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { handleError, cacheControlPublic } from "@/lib/api-server"
 import { withCache } from "@/lib/redis"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 
 /**
  * GET /api/reviews/recent — public endpoint for the vitrine testimonials section.
@@ -15,6 +16,7 @@ import { withCache } from "@/lib/redis"
  */
 export async function GET(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.reviews)
     const { searchParams } = new URL(request.url)
     const limit = Math.min(parseInt(searchParams.get("limit") || "6", 10), 12)
 

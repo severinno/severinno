@@ -28,6 +28,13 @@ vi.mock("@/lib/db", () => ({
   },
 }))
 
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn().mockResolvedValue(undefined),
+  RATE_LIMITS: {
+    general: { key: "general", interval: 60, max: 100 },
+  },
+}))
+
 describe("GET /api/stats/public & /api/stats/activity", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -40,7 +47,7 @@ describe("GET /api/stats/public & /api/stats/activity", () => {
     vi.mocked(db.booking.count).mockResolvedValue(40)
     vi.mocked(db.review.aggregate).mockResolvedValue({ _avg: { rating: 4.8 } } as any)
 
-    const res = await getPublicStats()
+    const res = await getPublicStats(new Request("http://localhost/api/stats/public"))
     const json = await res.json()
 
     expect(res.status).toBe(200)

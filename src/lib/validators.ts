@@ -173,7 +173,19 @@ export const bookingSchema = z.object({
   lng: z.coerce.number(),
   amount: z.coerce.number().min(0).max(1_000_000),
   paymentMethod: z.enum(["CARD", "PIX"]).default("PIX"),
-  notes: z.string().max(1000).optional().or(z.literal("")),
+  notes: z
+    .string()
+    .max(1000)
+    .optional()
+    .or(z.literal(""))
+    .transform((v) => {
+      if (!v) return ""
+      return v
+        .trim()
+        .replace(/<[^>]*>/g, "")
+        .replace(/&[a-z]+;/gi, "")
+        .slice(0, 1000)
+    }),
 })
 export type BookingInput = z.infer<typeof bookingSchema>
 
@@ -342,7 +354,13 @@ export const chatMessageSchema = z.object({
     .string()
     .min(1, "Mensagem é obrigatória")
     .max(2000, "Mensagem muito longa")
-    .transform((v) => v.trim())
+    .transform((v) =>
+      v
+        .trim()
+        .replace(/<[^>]*>/g, "")
+        .replace(/&[a-z]+;/gi, "")
+        .slice(0, 2000),
+    )
     .refine((v) => v.length > 0, "Mensagem é obrigatória"),
   history: z
     .array(

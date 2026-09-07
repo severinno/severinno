@@ -7,11 +7,13 @@ import { requireUser } from "@/lib/auth"
 import { serviceSchema } from "@/lib/validators"
 import { forbidden, handleError, syncEntitySearch, cacheControlPublic } from "@/lib/api-server"
 import { withCache, cacheInvalidate } from "@/lib/redis"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { createHash } from "crypto"
 
 // GET: list services (with optional filtering)
 export async function GET(request: Request) {
   try {
+    await assertRateLimit(request, RATE_LIMITS.general)
     const { searchParams } = new URL(request.url)
     const categoryId = searchParams.get("categoryId")
     const providerId = searchParams.get("providerId")
