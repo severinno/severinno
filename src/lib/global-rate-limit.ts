@@ -168,7 +168,7 @@ function getConfig() {
 // Client IP extraction — delegated to shared module
 // ---------------------------------------------------------------------------
 
-import { getClientIp, simpleHash, getCompositeFingerprint } from "@/lib/rate-limit-shared"
+import { getClientIp, getCompositeFingerprint } from "@/lib/rate-limit-shared"
 
 // ---------------------------------------------------------------------------
 // Upstash sliding window (INCR + EXPIRE — REST-friendly)

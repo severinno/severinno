@@ -24,8 +24,6 @@ const geoBatchSchema = z.object({
   addresses: z.array(z.string().min(1).max(500)).min(1).max(50),
 })
 
-const MAX_BATCH_SIZE = 50
-
 type BatchResult = {
   query: string
   lat: number | null

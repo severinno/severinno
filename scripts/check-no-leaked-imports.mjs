@@ -382,10 +382,10 @@ export function pkgFromSpec(spec) {
 }
 
 /**
- * Pacotes implementados fora de node_modules (compilador Next) — nunca são
+ * Pacotes implementados fora de node_modules (compilador Next ou runner k6) — nunca são
  * leak, mesmo sem o pacote físico instalado.
  */
-const COMPILER_LEVEL = new Set(["server-only", "client-only"])
+const COMPILER_LEVEL = new Set(["server-only", "client-only", "k6"])
 
 /**
  * Verifica se um pacote está DECLARADO em QUALQUER package.json do repo

@@ -15,7 +15,6 @@ YELLOW:= \033[1;33m
 RED   := \033[0;31m
 NC    := \033[0m
 
-# ── Variáveis ─────────────────────────────────────────────────────────────
 # Infra real (PostGIS + Redis + RabbitMQ + OpenSearch + MinIO + Realtime + GlitchTip)
 # mora no docker-compose.dev.yml — o docker-compose.yml só tem app+redis.
 COMPOSE_INFRA := -f docker-compose.dev.yml
@@ -23,6 +22,8 @@ COMPOSE_INFRA := -f docker-compose.dev.yml
 COMPOSE_APP   := -f docker-compose.yml
 # OSRM é opcional (profile routing) — só sobe com --profile routing
 COMPOSE_ROUTING := --profile routing
+COMPOSE_FULL  := --profile full
+COMPOSE_WORKERS := --profile workers
 
 # ═════════════════════════════════════════════════════════════════════════════
 help:
@@ -58,8 +59,12 @@ help:
 	@echo "  make test           Testes unitarios (Vitest)"
 	@echo "  make test-e2e       Testes E2E (Playwright)"
 	@echo "  make lint           ESLint + TypeScript check"
+	@echo "  make qa             Suite completa de QA (lint + typecheck + test + barrel-lint)"
+	@echo "  make pr-ready       Valida tudo para PR (qa + build)"
+	@echo "  make guard          Executa encoding guards locais"
 	@echo ""
 	@echo "$(GREEN)Manutencao:$(NC)"
+	@echo "  make backup-auto    Executa backup automatico com verificacao"
 	@echo "  make clean          Limpa builds, caches e containers"
 	@echo "  make reset          Destroi tudo e recria do zero"
 	@echo ""
@@ -166,6 +171,26 @@ lint:
 	bun run lint
 	npx tsc --noEmit
 	@echo "$(GREEN)[OK] Lint + typecheck concluidos$(NC)"
+
+qa:
+	@echo "$(CYAN)[..] Executando suite completa de QA...$(NC)"
+	bun run qa
+	@echo "$(GREEN)[OK] Suite de QA aprovada!$(NC)"
+
+pr-ready: qa
+	@echo "$(CYAN)[..] Verificando build de producao...$(NC)"
+	bun run build
+	@echo "$(GREEN)[OK] PR pronto para envio!$(NC)"
+
+guard:
+	@echo "$(CYAN)[..] Executando encoding guards...$(NC)"
+	bash scripts/run-encoding-guards.sh
+	@echo "$(GREEN)[OK] Encoding guards aprovados!$(NC)"
+
+backup-auto:
+	@echo "$(CYAN)[..] Executando backup automatico com verificacao...$(NC)"
+	bash scripts/backup-cron.sh
+	@echo "$(GREEN)[OK] Backup automatico concluido!$(NC)"
 
 # ═════════════════════════════════════════════════════════════════════════════
 clean:

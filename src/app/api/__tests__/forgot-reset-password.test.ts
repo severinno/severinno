@@ -55,11 +55,13 @@ vi.mock("@/lib/crypto", () => ({
   verifyPassword: vi.fn().mockReturnValue(true),
 }))
 
+import { makeAuthError } from "@/lib/__tests__/helpers/auth-mock"
+
 vi.mock("@/lib/auth", () => ({
   createSession: vi.fn().mockResolvedValue(undefined),
   destroySession: vi.fn().mockResolvedValue(undefined),
   requireUser: vi.fn().mockImplementation(async () => {
-    throw new Error("UNAUTHORIZED")
+    throw makeAuthError("UNAUTHORIZED")
   }),
   getOptionalSession: vi.fn().mockResolvedValue(null),
   invalidateSessionCache: vi.fn().mockResolvedValue(undefined),

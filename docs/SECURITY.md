@@ -34,7 +34,7 @@ Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
 - **Subdomínios:** Incluídos (inclui `glitchtip.severinno.com.br`)
 - **Preload:** Elegível para pré-carga em navegadores
 
-**Aplicado em:** Caddyfile.prod + middleware.ts (Edge Runtime)
+**Aplicado em:** Caddyfile.prod + proxy.ts (Edge Runtime)
 
 ### TLS
 
@@ -93,7 +93,7 @@ Content-Security-Policy:
 
 ### Edge Runtime Verification
 
-O middleware.ts replica a verificação HMAC usando Web Crypto API (constant-time):
+O proxy.ts replica a verificação HMAC usando Web Crypto API (constant-time):
 
 ```typescript
 // Constant-time compare para prevenir timing attacks
@@ -216,7 +216,7 @@ const envSchema = z.object({
 
 ## 8. CORS Policy
 
-**Aplicado em:** `src/middleware.ts`
+**Aplicado em:** `proxy.ts`
 
 ```typescript
 const ALLOWED_ORIGINS = process.env.NEXT_PUBLIC_APP_URL ? [process.env.NEXT_PUBLIC_APP_URL] : [] // Sem fallback — CORS bloqueado se não configurado

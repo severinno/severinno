@@ -25,10 +25,12 @@ vi.mock("@/lib/logger", () => ({
 
 let _mockSession: any = null
 
+import { makeAuthError } from "@/lib/__tests__/helpers/auth-mock"
+
 vi.mock("@/lib/auth", () => ({
   requireUser: vi.fn().mockImplementation(async () => {
     const s = _mockSession
-    if (!s) throw new Error("UNAUTHORIZED")
+    if (!s) throw makeAuthError("UNAUTHORIZED")
     return s
   }),
   createSession: vi.fn().mockResolvedValue(undefined),
@@ -65,7 +67,7 @@ import { POST as disable } from "../auth/2fa/disable/route"
 import { POST as backupCodes } from "../auth/2fa/backup-codes/route"
 import { GET as status } from "../auth/2fa/status/route"
 import { db } from "@/lib/db"
-import { verifyTOTP, verifyBackupCodeFromStore } from "@/lib/totp"
+import { verifyTOTP } from "@/lib/totp"
 import { cacheGet, cacheInvalidate } from "@/lib/redis"
 
 // ── Tests ──────────────────────────────────────────────────────────────────

@@ -25,7 +25,7 @@ export const dynamic = "force-dynamic"
  */
 
 import { NextResponse } from "next/server"
-import { execFileSync, type ExecFileSyncOptions } from "child_process"
+import { execFileSync } from "child_process"
 import { requireRole } from "@/lib/auth"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 

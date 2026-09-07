@@ -17,13 +17,6 @@ import { test, expect } from "@playwright/test"
 
 // ── Test data ─────────────────────────────────────────────────────────────
 
-const TEST_USER = {
-  email: `payment-e2e-${Date.now()}@test.com`,
-  password: "test123456",
-  name: "Payment Test User",
-  role: "CLIENT" as const,
-}
-
 const TEST_PROVIDER = {
   id: "prov-payment-test",
   name: "Payment Test Provider",
@@ -56,7 +49,9 @@ test.describe("Payment Flow — PIX", () => {
     expect(body).toHaveProperty("error")
   })
 
-  test("POST /api/bookings/[id]/pay with nonexistent booking returns 401 or 404", async ({ request }) => {
+  test("POST /api/bookings/[id]/pay with nonexistent booking returns 401 or 404", async ({
+    request,
+  }) => {
     const res = await request.post("/api/bookings/non-existent-id/pay", {
       data: {},
     })

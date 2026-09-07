@@ -198,7 +198,7 @@ if (typeof setInterval !== "undefined") {
 // Client IP extraction — delegated to shared module
 // ---------------------------------------------------------------------------
 
-import { getClientIp, simpleHash, getCompositeFingerprint } from "@/lib/rate-limit-shared"
+import { getCompositeFingerprint } from "@/lib/rate-limit-shared"
 
 // ---------------------------------------------------------------------------
 // Rate limit check

@@ -40,16 +40,18 @@ if (dsn) {
     // Set user info from auth store when available
     initialScope(scope) {
       try {
-        // Dynamically import to avoid circular deps at init time
-        const { useAuthStore } = require("@/store/auth")
-        const user = useAuthStore?.getState?.()?.user
-        if (user?.id) {
-          scope.setUser({
-            id: user.id,
-            username: user.name ?? undefined,
-            email: user.email ?? undefined,
-          })
-        }
+        // Dynamic import to avoid circular deps at init time (ESM-safe, no require).
+        // Fire-and-forget: the user is attached as soon as the module resolves.
+        void import("@/store/auth").then(({ useAuthStore }) => {
+          const user = useAuthStore?.getState?.()?.user
+          if (user?.id) {
+            scope.setUser({
+              id: user.id,
+              username: user.name ?? undefined,
+              email: user.email ?? undefined,
+            })
+          }
+        })
       } catch {
         // Auth store not yet available during hydration — that's fine
       }

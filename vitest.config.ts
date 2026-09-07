@@ -28,6 +28,12 @@ export default defineConfig({
 
   test: {
     environment: "jsdom",
+    // Guardas de CI/CLI (check-crlf, check-blob-crlf, normalize-crlf,
+    // check-secret-leaks-baseline, etc.) criam fixtures git reais e levam
+    // 5–21s por teste no Windows — acima do default de 5s do Vitest.
+    // Timeout global de 30s cobre esses casos sem mascarar hangs reais.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     // ── (Redundant since custom-render bypasses RTL entirely) ─────────
     // Keep as safety net — forces react/react-dom into the same Vite bundle
     // context, preventing duplicate-instance issues in edge cases.

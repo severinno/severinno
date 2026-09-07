@@ -15,11 +15,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 let _mockRole: string | null = null
 
+import { makeAuthError } from "@/lib/__tests__/helpers/auth-mock"
+
 vi.mock("@/lib/auth", () => ({
   requireRole: vi.fn().mockImplementation(async (role: string) => {
     // null = unauthenticated → 401; wrong role → 403
-    if (_mockRole == null) throw new Error("UNAUTHORIZED")
-    if (_mockRole !== role) throw new Error("FORBIDDEN")
+    if (_mockRole == null) throw makeAuthError("UNAUTHORIZED")
+    if (_mockRole !== role) throw makeAuthError("FORBIDDEN")
   }),
 }))
 

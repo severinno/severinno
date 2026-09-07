@@ -26,7 +26,7 @@ function Write-Step { param([string]$T) Write-Host "`n$("=" * 40)" -ForegroundCo
 
 # ── Resolve project root ────────────────────────────────────────────
 $ScriptPath = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $PSCommandPath }
-$ProjectDir = Resolve-Path "$ScriptPath\.."
+$ProjectDir = if (Test-Path "$ScriptPath\package.json") { Resolve-Path "$ScriptPath" } else { Resolve-Path "$ScriptPath\.." }
 Set-Location $ProjectDir
 
 Write-Host "Severinno Marketplace — Dev Launcher" -ForegroundColor $Cyan

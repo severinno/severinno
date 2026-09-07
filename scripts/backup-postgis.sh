@@ -10,7 +10,7 @@
 #   crontab: 0 2 * * * /home/severinno/severinno/scripts/backup-postgis.sh
 #
 # Exit codes:
-#   0 — success
+#   0 — success (backup and upload succeeded)
 #   1 — failure (pg_dump or upload error)
 #
 # Env vars (with defaults):

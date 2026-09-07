@@ -35,6 +35,9 @@ const mockReverseGeocode = vi.hoisted(() => vi.fn())
 // Hoisted mock for redis cacheGet
 const mockCacheGet = vi.hoisted(() => vi.fn())
 
+// Hoisted mock for redis availability
+const mockIsRedisAvailable = vi.hoisted(() => vi.fn())
+
 vi.mock("@/lib/geo-query-log", () => ({
   getTopSearches: mockGetTopSearches,
   getTopCEPs: mockGetTopCEPs,
@@ -55,6 +58,7 @@ vi.mock("@/lib/geo", () => ({
 
 vi.mock("@/lib/redis", () => ({
   cacheGet: mockCacheGet,
+  isRedisAvailable: mockIsRedisAvailable,
 }))
 
 vi.mock("@/lib/logger", () => ({
@@ -126,7 +130,8 @@ beforeEach(() => {
   mockGetTopCEPs.mockReturnValue(TOP_CEPS)
   mockGetTopReverses.mockReturnValue(TOP_REVERSES)
 
-  // Default: nothing cached (all queries will be warmed)
+  // Default: Redis available (all queries will be warmed)
+  mockIsRedisAvailable.mockReturnValue(true)
   mockCacheGet.mockResolvedValue(null)
 
   // Default: geo functions succeed
@@ -347,5 +352,23 @@ describe("warmGeoCacheFromLog — edge cases", () => {
     expect(result.searches).toBe(2)
     expect(result.ceps).toBe(1)
     expect(result.reverses).toBe(1)
+  })
+
+  it("skips warming entirely when Redis is unavailable", async () => {
+    mockIsRedisAvailable.mockReturnValue(false)
+
+    const result = await warmGeoCacheFromLog()
+
+    expect(result.source).toBe("nothing_to_warm")
+    expect(result.total).toBe(0)
+    expect(result.searches).toBe(0)
+    expect(result.ceps).toBe(0)
+    expect(result.reverses).toBe(0)
+
+    // No external geo calls and no curated fallback when Redis is down
+    expect(mockGeocodeSearch).not.toHaveBeenCalled()
+    expect(mockGeocodeCEP).not.toHaveBeenCalled()
+    expect(mockReverseGeocode).not.toHaveBeenCalled()
+    expect(mockWarmGeoCache).not.toHaveBeenCalled()
   })
 })

@@ -27,12 +27,14 @@ vi.mock("@/lib/logger", () => ({
 // Auth functions — use mutable module-level variables so per-test setup works
 let _mockSession: any = null
 
+import { makeAuthError } from "@/lib/__tests__/helpers/auth-mock"
+
 vi.mock("@/lib/auth", () => ({
   createSession: vi.fn().mockResolvedValue(undefined),
   destroySession: vi.fn().mockResolvedValue(undefined),
   requireUser: vi.fn().mockImplementation(async () => {
     const s = _mockSession
-    if (!s) throw new Error("UNAUTHORIZED")
+    if (!s) throw makeAuthError("UNAUTHORIZED")
     return s
   }),
   getOptionalSession: vi.fn().mockImplementation(async () => _mockSession),

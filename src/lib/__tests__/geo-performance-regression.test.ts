@@ -2,13 +2,14 @@
  * geo-performance-regression.test.ts
  *
  * Performance regression test for the Haversine distance calculation.
- * Fails if `haversineKm` becomes pathologically slower (≥4× the
+ * Fails if `haversineKm` becomes pathologically slower (≥6× the
  * measured baseline of ~0.05 µs/provider on Node 22, win32 x64).
  *
- * The 0.2 µs/provider threshold is safely above the baseline (±40 %
- * run-to-run variance on shared CI runners).  With `retry: 2` the test
- * will re-run up to 3 times before failing, which eliminates flakiness
- * from occasional CPU throttling or V8 GC pauses.
+ * The 0.3 µs/provider threshold is 6× the baseline — safely above the
+ * ±40 % run-to-run variance on shared CI runners and the CPU contention
+ * of parallel vitest forks on Windows.  With `retry: 2` the test will
+ * re-run up to 3 times before failing, which eliminates flakiness from
+ * occasional CPU throttling or V8 GC pauses.
  *
  * If the Haversine function is intentionally made slower (e.g. higher
  * precision), update the threshold accordingly.
@@ -30,10 +31,10 @@ const CENTER_LNG = -46.6333
  * Maximum allowed time per haversineKm call, in microseconds.
  *
  * Baseline: ~0.05 µs/provider (10K run, Node 22, win32 x64).
- * Threshold: 4× baseline = 0.2 µs/provider.
+ * Threshold: 6× baseline = 0.3 µs/provider (parallel-fork safe on Windows).
  * Retry: 2 (runs up to 3× before failing) to absorb CPU throttling.
  */
-const THRESHOLD_US_PER_PROVIDER = 0.2
+const THRESHOLD_US_PER_PROVIDER = 0.3
 
 /** Number of random providers to generate for the benchmark. */
 const NUM_PROVIDERS = 5000

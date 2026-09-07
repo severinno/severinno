@@ -1,7 +1,8 @@
 /**
- * middleware.ts
+ * proxy.ts
  *
- * Global Edge middleware — the single source of truth for request processing.
+ * Global Proxy (formerly middleware) — the single source of truth for request processing.
+ * Renamed from middleware.ts per Next.js 16 convention (middleware → proxy).
  *
  * Responsibilities (in order):
  *   1. OPTIONS preflight handling (CORS)
@@ -323,7 +324,7 @@ function isPublicApi(pathname: string): boolean {
 // Middleware handler
 // ---------------------------------------------------------------------------
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname: rawPathname } = request.nextUrl
   const pathname = rawPathname.replace(/\/+$/, "")
 

@@ -71,10 +71,12 @@ vi.mock("@/lib/db", () => ({
 // Auth mock with mutable session
 let _mockSession: { userId: string; role: "CLIENT" | "PROVIDER" | "ADMIN" } | null = null
 
+import { makeAuthError } from "@/lib/__tests__/helpers/auth-mock"
+
 vi.mock("@/lib/auth", () => ({
   requireUser: vi.fn().mockImplementation(async () => {
     const s = _mockSession
-    if (!s) throw new Error("UNAUTHORIZED")
+    if (!s) throw makeAuthError("UNAUTHORIZED")
     return s
   }),
   getOptionalSession: vi.fn().mockImplementation(async () => _mockSession),

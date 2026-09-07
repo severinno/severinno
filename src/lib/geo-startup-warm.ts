@@ -36,7 +36,7 @@ import "server-only"
 import { getTopSearches, getTopCEPs, getTopReverses, getQueryLogDiagnostics } from "./geo-query-log"
 import { warmGeoCache, getWarmConfig } from "./geo-cache-warm"
 import { geocodeSearch, geocodeCEP, reverseGeocode } from "./geo"
-import { cacheGet } from "./redis"
+import { cacheGet, isRedisAvailable } from "./redis"
 import logger from "./logger"
 
 // ---------------------------------------------------------------------------
@@ -98,6 +98,31 @@ export type StartupWarmResult = {
 export async function warmGeoCacheFromLog(): Promise<StartupWarmResult> {
   const start = Date.now()
   const diagnostics = getQueryLogDiagnostics()
+
+  // ── Guard: skip external warming when Redis is unavailable ─────────────
+  // Without Redis, warming only populates the per-process in-memory tier
+  // (useless after a restart) and would burn ~40 external geocoding calls
+  // to Nominatim/ViaCEP (rate-limited, ~1 req/s). Skip early instead — the
+  // 30s recheck timer in redis.ts promotes back to standalone automatically.
+  if (!isRedisAvailable()) {
+    logger.warn({}, "geo-startup-warm: Redis unavailable — skipping external warm")
+    return {
+      source: "nothing_to_warm",
+      searches: 0,
+      ceps: 0,
+      reverses: 0,
+      total: 0,
+      skipped: 0,
+      errors: 0,
+      elapsedMs: Date.now() - start,
+      diagnostics: {
+        totalSearches: diagnostics.totalSearches,
+        uniqueSearches: diagnostics.uniqueSearches,
+        totalCEPs: diagnostics.totalCEPs,
+        uniqueCEPs: diagnostics.uniqueCEPs,
+      },
+    }
+  }
 
   // ── Decide source: query log or curated fallback ─────────────────────
   const topSearches = getTopSearches(TOP_SEARCHES)

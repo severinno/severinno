@@ -22,9 +22,12 @@ export function SWRegister() {
       .register("/sw.js")
       .then((reg) => {
         // Check for SW updates every hour
-        setInterval(() => {
-          reg.update().catch(() => {})
-        }, 60 * 60 * 1000)
+        setInterval(
+          () => {
+            reg.update().catch(() => {})
+          },
+          60 * 60 * 1000,
+        )
 
         // Listen for new SW activation
         reg.addEventListener("updatefound", () => {
@@ -33,6 +36,7 @@ export function SWRegister() {
           newWorker.addEventListener("statechange", () => {
             if (newWorker.state === "activated") {
               // SW updated — notify user or silently reload
+              // eslint-disable-next-line no-console -- dev visibility for SW lifecycle
               console.log("[PWA] Service Worker updated")
             }
           })

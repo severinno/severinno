@@ -5,7 +5,7 @@ import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { sanitizeText } from "@/lib/sanitize"
 import { analyzeMessageForLeakage } from "@/lib/leak-detector"
-import { badRequest, forbidden, notFound, handleError } from "@/lib/api-server"
+import { forbidden, notFound, handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { z } from "zod"
 

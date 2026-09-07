@@ -34,18 +34,18 @@ const BASE_URL = __ENV.BASE_URL || "http://localhost:3000"
 export const options = {
   // Ramp-up: 0→50→100→150 VUs over 3 minutes, hold 100 VUs for 2 min, ramp-down
   stages: [
-    { duration: "30s", target: 20 },   // Warm-up
-    { duration: "30s", target: 50 },   // Ramp to 50
-    { duration: "30s", target: 100 },  // Ramp to 100
-    { duration: "2m", target: 100 },   // Hold 100 VUs
-    { duration: "30s", target: 150 },  // Spike to 150
-    { duration: "1m", target: 150 },   // Hold spike
-    { duration: "30s", target: 0 },    // Ramp-down
+    { duration: "30s", target: 20 }, // Warm-up
+    { duration: "30s", target: 50 }, // Ramp to 50
+    { duration: "30s", target: 100 }, // Ramp to 100
+    { duration: "2m", target: 100 }, // Hold 100 VUs
+    { duration: "30s", target: 150 }, // Spike to 150
+    { duration: "1m", target: 150 }, // Hold spike
+    { duration: "30s", target: 0 }, // Ramp-down
   ],
 
   thresholds: {
-    http_req_duration: ["p(95)<2000", "p(99)<5000"],  // 95% < 2s, 99% < 5s
-    http_req_failed: ["rate<0.05"],                     // < 5% errors
+    http_req_duration: ["p(95)<2000", "p(99)<5000"], // 95% < 2s, 99% < 5s
+    http_req_failed: ["rate<0.05"], // < 5% errors
     errors: ["rate<0.05"],
     home_latency: ["p(95)<3000"],
     health_latency: ["p(95)<1000"],
@@ -56,30 +56,35 @@ export const options = {
 // ── Helper functions ────────────────────────────────────────────────────────
 
 const PROVIDER_IDS = [
-  "cmtga9n3z01swsmz530cwkik4", "cmtgaq7mi0001smx083iwaqtn",
-  "cmthhl6vd0000smsz1v4yo93e", "cmtga9n0b01jksmz5h06rsoox",
-  "cmtga9n0b01jlsmz57saf1z6e", "cmtga9n0b01jmsmz5npv12841",
-  "cmtga9n0b01jnsmz5ywb043fe", "cmtga9n0b01josmz5lnzwpa35",
-  "cmtga9n0b01jpsmz5xpsbm22z", "cmtga9n0b01jqsmz5e82jjjf6",
-  "cmtga9n0b01jrsmz5k7fhc79a", "cmtga9n0b01jssmz5w9ul55ey",
-  "cmtga9n0c01jtsmz5yzxfj561", "cmtga9n0c01jusmz5xqzef8ky",
-  "cmtga9n0c01jvsmz5wgo7mu3b", "cmtga9n0c01jwsmz5o1b7zbb1",
-  "cmtga9n0c01jxsmz57ayxzqrc", "cmtga9n0c01jysmz5lndd3x02",
-  "cmtga9n0c01jzsmz5nweba9oy", "cmtga9n0c01k0smz58tpxcj4e",
+  "cmtga9n3z01swsmz530cwkik4",
+  "cmtgaq7mi0001smx083iwaqtn",
+  "cmthhl6vd0000smsz1v4yo93e",
+  "cmtga9n0b01jksmz5h06rsoox",
+  "cmtga9n0b01jlsmz57saf1z6e",
+  "cmtga9n0b01jmsmz5npv12841",
+  "cmtga9n0b01jnsmz5ywb043fe",
+  "cmtga9n0b01josmz5lnzwpa35",
+  "cmtga9n0b01jpsmz5xpsbm22z",
+  "cmtga9n0b01jqsmz5e82jjjf6",
+  "cmtga9n0b01jrsmz5k7fhc79a",
+  "cmtga9n0b01jssmz5w9ul55ey",
+  "cmtga9n0c01jtsmz5yzxfj561",
+  "cmtga9n0c01jusmz5xqzef8ky",
+  "cmtga9n0c01jvsmz5wgo7mu3b",
+  "cmtga9n0c01jwsmz5o1b7zbb1",
+  "cmtga9n0c01jxsmz57ayxzqrc",
+  "cmtga9n0c01jysmz5lndd3x02",
+  "cmtga9n0c01jzsmz5nweba9oy",
+  "cmtga9n0c01k0smz58tpxcj4e",
 ]
 
 function randomProviderId() {
   return PROVIDER_IDS[Math.floor(Math.random() * PROVIDER_IDS.length)]
 }
 
-function randomCategory() {
-  const cats = ["limpeza", "manutencao", "reforma", "jardim", "servicos", "transporte", "cuidados", "saude"]
-  return cats[Math.floor(Math.random() * cats.length)]
-}
-
 // ── Test scenarios ──────────────────────────────────────────────────────────
 
-export default function () {
+export default function loadTest() {
   const scenario = __ENV.SCENARIO || "mixed"
 
   if (scenario === "home") {
@@ -93,11 +98,11 @@ export default function () {
     const rand = Math.random()
     if (rand < 0.35) {
       testHome()
-    } else if (rand < 0.50) {
+    } else if (rand < 0.5) {
       testHealth()
-    } else if (rand < 0.80) {
+    } else if (rand < 0.8) {
       testSearch()
-    } else if (rand < 0.90) {
+    } else if (rand < 0.9) {
       testCategories()
     } else {
       testProviderDetail()
@@ -252,6 +257,7 @@ export function handleSummary(data) {
 ╚══════════════════════════════════════════════════════════╝
 `
 
+  // eslint-disable-next-line no-console -- k6 writes results to stdout intentionally
   console.log(summary)
 
   return {
