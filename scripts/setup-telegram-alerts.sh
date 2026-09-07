@@ -48,24 +48,56 @@ fi
 
 echo "Configurando Telegram alerts..."
 
-# Update alertmanager config with real token and chat_id
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 CONFIG_FILE="$PROJECT_DIR/monitoring/alertmanager/alertmanager.yml"
+ENV_FILE="$PROJECT_DIR/.env"
 
-sed -i "s|bot_token:.*|bot_token: \"${BOT_TOKEN}\"|" "$CONFIG_FILE"
-sed -i "s|chat_id:.*|chat_id: ${CHAT_ID}|" "$CONFIG_FILE"
-
-# Update docker-compose env vars
-COMPOSE_FILE="$PROJECT_DIR/docker-compose.monitoring.yml"
-if grep -q "ALERTMANAGER_TELEGRAM_BOT_TOKEN" "$COMPOSE_FILE"; then
-  sed -i "s|ALERTMANAGER_TELEGRAM_BOT_TOKEN=.*|ALERTMANAGER_TELEGRAM_BOT_TOKEN=${BOT_TOKEN}|" "$COMPOSE_FILE"
-  sed -i "s|ALERTMANAGER_TELEGRAM_CHAT_ID=.*|ALERTMANAGER_TELEGRAM_CHAT_ID=${CHAT_ID}|" "$COMPOSE_FILE"
+# 1. O alertmanager.yml usa ${ALERTMANAGER_TELEGRAM_BOT_TOKEN} / ${CHAT_ID}
+#    (Alertmanager expande env vars no config). O docker-compose.monitoring.yml
+#    injeta esses valores do .env — então só precisamos garantir que estão no
+#    .env (o docker compose lê .env automaticamente). NÃO fazer sed no yml:
+#    isso quebraria a referência de env var.
+#
+# 2. Grava no .env — o health-alert.sh (cron */5) lê TELEGRAM_* do .env e envia
+#    alertas independentes do Alertmanager; o compose do Alertmanager lê
+#    ALERTMANAGER_TELEGRAM_* do mesmo .env. Sem isso, o monitoramento "finge"
+#    que funciona: o cron roda mas nunca notifica ninguém.
+if [ -f "$ENV_FILE" ]; then
+  for pair in \
+    "TELEGRAM_BOT_TOKEN=${BOT_TOKEN}" \
+    "TELEGRAM_CHAT_ID=${CHAT_ID}" \
+    "ALERTMANAGER_TELEGRAM_BOT_TOKEN=${BOT_TOKEN}" \
+    "ALERTMANAGER_TELEGRAM_CHAT_ID=${CHAT_ID}"; do
+    KEY="${pair%%=*}"
+    VAL="${pair#*=}"
+    if grep -q "^${KEY}=" "$ENV_FILE"; then
+      sed -i "s|^${KEY}=.*|${KEY}=${VAL}|" "$ENV_FILE"
+    else
+      echo "${KEY}=${VAL}" >> "$ENV_FILE"
+    fi
+  done
+  echo "   ✅ .env atualizado (TELEGRAM_* e ALERTMANAGER_TELEGRAM_*)"
 fi
 
-# Restart alertmanager
-docker cp "$CONFIG_FILE" severinno-alertmanager-1:/etc/alertmanager/alertmanager.yml 2>/dev/null || true
-docker restart severinno-alertmanager-1 2>&1 | tail -1
+# 4. Teste real: envia mensagem de confirmação pro chat
+SEND_RESULT=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+  -d "chat_id=${CHAT_ID}" \
+  -d "text=✅ <b>Severinno</b> — alertas Telegram configurados com sucesso!" \
+  -d "parse_mode=HTML" 2>/dev/null || echo "")
+
+if echo "$SEND_RESULT" | grep -q '"ok":true'; then
+  echo "   ✅ Mensagem de teste enviada pro chat $CHAT_ID"
+else
+  echo "   ⚠️  Não consegui enviar mensagem de teste (token inválido ou chat não iniciado)"
+  echo "      Abra o bot no Telegram e envie /start antes de testar."
+fi
+
+# 5. Recria o container do Alertmanager (se a stack de monitoring estiver no
+#    ar) pra ele pegar as novas ALERTMANAGER_TELEGRAM_* do .env
+if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "alertmanager"; then
+  docker compose -f "$PROJECT_DIR/docker-compose.monitoring.yml" up -d alertmanager 2>&1 | tail -1
+fi
 
 echo "✅ Telegram alerts configurado!"
 echo ""

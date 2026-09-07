@@ -43,6 +43,7 @@ help:
 	@echo "  make backup         Backup local do PostgreSQL"
 	@echo "  make backup-s3      Backup + upload para S3/R2"
 	@echo "  make restore        Restaura do backup mais recente"
+	@echo "  make test-restore   Valida o backup restaurando em banco descartavel"
 	@echo "  make db-studio      Abre Prisma Studio"
 	@echo "  make db-migrate     Aplica migrations pendentes"
 	@echo "  make db-seed        Popula banco com dados demo"
@@ -109,6 +110,11 @@ backup-s3:
 restore:
 	@echo "$(YELLOW)[..] Restaurando banco do backup mais recente...$(NC)"
 	bash scripts/restore-db.sh --latest
+
+test-restore:
+	@echo "$(CYAN)[..] Testando restore do backup em banco descartavel...$(NC)"
+	bash scripts/test-restore.sh
+	@echo "$(GREEN)[OK] Teste de restore concluido$(NC)"
 
 db-studio:
 	@echo "$(CYAN)[..] Abrindo Prisma Studio...$(NC)"

@@ -110,6 +110,11 @@ services:
       - "9093:9093"
     volumes:
       - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    # Preenchidas pelo scripts/setup-telegram-alerts.sh (via sed). A config
+    # do Alertmanager usa esses valores no receiver "telegram".
+    environment:
+      ALERTMANAGER_TELEGRAM_BOT_TOKEN: ${ALERTMANAGER_TELEGRAM_BOT_TOKEN:-0000000000:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX}
+      ALERTMANAGER_TELEGRAM_CHAT_ID: ${ALERTMANAGER_TELEGRAM_CHAT_ID:-123456789}
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"

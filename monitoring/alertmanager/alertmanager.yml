@@ -29,8 +29,11 @@ receivers:
 
   - name: "telegram"
     telegram_configs:
-      - bot_token: "0000000000:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-        chat_id: 123456789
+      # Valores injetados via env (docker-compose.monitoring.yml), preenchidos
+      # por scripts/setup-telegram-alerts.sh. Alertmanager expande ${VAR} no
+      # arquivo de config a partir da v0.24.
+      - bot_token: "${ALERTMANAGER_TELEGRAM_BOT_TOKEN}"
+        chat_id: ${ALERTMANAGER_TELEGRAM_CHAT_ID}
         parse_mode: "HTML"
         message: |
           🔔 <b>{{ .GroupLabels.alertname }}</b>

@@ -20,6 +20,9 @@ name: Release & Deploy
 
 on:
   push:
+    # ⚠️ Deploy contínuo em push main é responsabilidade do deploy.yml.
+    # NÃO adicionar branches: [main] aqui — dispararia DOIS deploys
+    # concorrentes (deploy.yml + release-deploy.yml) no mesmo push.
     tags:
       - "v*"
   workflow_dispatch:

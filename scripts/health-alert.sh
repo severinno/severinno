@@ -52,6 +52,16 @@ mkdir -p "$(dirname "$LOG_FILE")"
 # Load .env if exists
 [ -f /home/severinno/severinno/.env ] && source <(grep -E "^(TELEGRAM_|APP_URL)" /home/severinno/severinno/.env 2>/dev/null || true)
 
+# ── Guard: Telegram configurado? ────────────────────────────────────────────
+# Se o health falhar e o token não estiver no .env, ninguém é notificado —
+# o monitoramento "finge" que funciona. Loga o estado da config uma vez por
+# execução e falha visível (exit 1) se o health cair sem token configurado.
+if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+    log "⚠️  TELEGRAM NÃO CONFIGURADO — alertas silenciosos. Rode: bash scripts/setup-telegram-alerts.sh <BOT_TOKEN> <CHAT_ID>"
+    # Não aborta o check — mas marca que os alertas estão mudos pra quem
+    # monitorar o log de perto
+fi
+
 # Previous state
 PREV_STATUS="ok"
 [ -f "$STATE_FILE" ] && PREV_STATUS=$(cat "$STATE_FILE")
@@ -72,6 +82,10 @@ else
     if [ "$PREV_STATUS" = "ok" ]; then
         log "🔴 DOWN — health check returned HTTP $HTTP_CODE"
         send_telegram "🔴 <b>Severinno DOWN!</b>%0AHealth check retornou HTTP $HTTP_CODE.%0AURL: ${HEALTH_URL}%0ATempo: $(date +'%d/%m/%Y %H:%M:%S')"
+        if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            # DOWN + Telegram mudo = o operador PRECISA saber que não foi avisado
+            exit 1
+        fi
     else
         log "⚠️  STILL DOWN — HTTP $HTTP_CODE"
     fi
