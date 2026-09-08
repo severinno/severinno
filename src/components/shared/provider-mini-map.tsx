@@ -13,8 +13,9 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from "react"
-import { Loader2, Maximize2, MapPin } from "lucide-react"
+import { Loader2, Maximize2, MapPin, Radio } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useLocationBroadcaster } from "@/hooks/use-location-broadcaster"
 import {
   syncRadiusCircle,
   removeRadiusCircle,
@@ -64,6 +65,8 @@ type Props = {
   /** Height in px. Default 200. */
   height?: number
   className?: string
+  /** Optional active booking ID for live GPS broadcasting to client. */
+  activeBookingId?: string | null
 }
 
 // Static map fallback URL (OpenStreetMap static image via staticmap.openstreetmap.de)
@@ -82,6 +85,7 @@ export default function ProviderMiniMap({
   interactive = false,
   height = 200,
   className,
+  activeBookingId,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<unknown>(null)
@@ -89,6 +93,10 @@ export default function ProviderMiniMap({
   const [radius, setRadius] = useState(radiusKm ?? 50)
   const [saving, setSaving] = useState(false)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const { isBroadcasting, toggle: toggleBroadcasting } = useLocationBroadcaster({
+    bookingId: activeBookingId,
+  })
 
   // ── Auto-save: debounced PATCH to /api/users/me ────────────────────
   const autoSaveRadius = useCallback(
@@ -419,6 +427,41 @@ export default function ProviderMiniMap({
           <span>100 km</span>
         </div>
       </div>
+
+      {activeBookingId ? (
+        <div className="border-border/80 bg-muted/40 mt-2.5 flex items-center justify-between rounded-lg border p-2.5 text-xs">
+          <div className="flex items-center gap-2">
+            <Radio
+              className={cn(
+                "size-4 shrink-0",
+                isBroadcasting ? "animate-pulse text-emerald-600" : "text-muted-foreground",
+              )}
+            />
+            <div>
+              <p className="text-foreground font-medium">
+                {isBroadcasting ? "Transmitindo GPS" : "Compartilhar localização"}
+              </p>
+              <p className="text-muted-foreground text-[10px]">
+                {isBroadcasting
+                  ? "Cliente acompanha seu trajeto em tempo real"
+                  : "Ative para o cliente acompanhar sua rota"}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={toggleBroadcasting}
+            className={cn(
+              "shrink-0 rounded-md px-2.5 py-1 text-xs font-semibold transition-colors",
+              isBroadcasting
+                ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                : "border-input bg-background hover:bg-muted text-foreground border",
+            )}
+          >
+            {isBroadcasting ? "Ativo" : "Iniciar GPS"}
+          </button>
+        </div>
+      ) : null}
     </>
   )
 }

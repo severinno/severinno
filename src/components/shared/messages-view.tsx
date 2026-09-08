@@ -23,6 +23,7 @@ import {
   ShieldCheck,
   Clock,
   WifiOff,
+  Sparkles,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useRealtime } from "@/hooks/use-realtime"
@@ -30,6 +31,12 @@ import { playCoinSound } from "@/lib/sounds"
 import { compressImageFile } from "@/lib/client-image-compression"
 import { detectChatFraud } from "@/lib/chat-fraud-detector"
 import { enqueueOfflineMutation, processSyncQueue } from "@/lib/offline-sync"
+import {
+  fetchChatSuggestions,
+  INTENT_LABELS,
+  URGENCY_COLORS,
+  type ChatSuggestionResult,
+} from "@/lib/chat-ai-assistant"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -446,6 +453,26 @@ export function MessagesView({
   }, [threadQuery.data?.items, currentPeerOffline])
   const peer = threadQuery.data?.peer
 
+  const [aiSuggestions, setAiSuggestions] = React.useState<ChatSuggestionResult | null>(null)
+  const [aiLoading, setAiLoading] = React.useState(false)
+
+  const handleFetchSuggestions = async () => {
+    if (!selectedPeerId || thread.length === 0) return
+    setAiLoading(true)
+    try {
+      const msgs = thread.slice(-10).map((m) => ({
+        role: (m.fromId === user?.id ? "user" : "assistant") as "user" | "assistant",
+        content: m.content,
+      }))
+      const result = await fetchChatSuggestions(msgs)
+      setAiSuggestions(result)
+    } catch {
+      toast.error("Não foi possível gerar sugestões no momento.")
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
   return (
     <div
       className={cn(
@@ -668,6 +695,74 @@ export function MessagesView({
             </div>
 
             <footer className="bg-background border-t p-3">
+              {/* ── AI Suggestion Panel ── */}
+              {aiSuggestions && (
+                <div className="mb-2.5 space-y-2 rounded-xl border border-violet-200/80 bg-violet-50/50 p-2.5 dark:border-violet-800/40 dark:bg-violet-950/20">
+                  {aiSuggestions.intent && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-medium text-violet-600 dark:text-violet-400">
+                        {INTENT_LABELS[aiSuggestions.intent] ?? aiSuggestions.intent}
+                      </span>
+                      {aiSuggestions.urgency !== "low" && (
+                        <span
+                          className={cn(
+                            "rounded-full border px-1.5 py-0.5 text-[9px] font-semibold",
+                            URGENCY_COLORS[aiSuggestions.urgency] ?? "",
+                          )}
+                        >
+                          {aiSuggestions.urgency === "critical"
+                            ? "🚨 Crítico"
+                            : aiSuggestions.urgency === "high"
+                              ? "⚡ Urgente"
+                              : "⏰ Moderado"}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    {aiSuggestions.suggestions.map((s, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => {
+                          setDraft(s)
+                          setAiSuggestions(null)
+                        }}
+                        className="rounded-full border border-violet-300/60 bg-white px-3 py-1 text-xs text-violet-700 transition-colors hover:border-violet-400 hover:bg-violet-100 active:bg-violet-200 dark:border-violet-700/40 dark:bg-violet-950/40 dark:text-violet-300 dark:hover:bg-violet-900/40"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAiSuggestions(null)}
+                    className="text-[10px] text-violet-400 hover:text-violet-600 dark:hover:text-violet-300"
+                  >
+                    Fechar sugestões
+                  </button>
+                </div>
+              )}
+
+              {/* ── AI Suggest Button ── */}
+              {!aiSuggestions && !aiLoading && thread.length > 0 && (
+                <div className="mb-2">
+                  <button
+                    type="button"
+                    onClick={handleFetchSuggestions}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-medium text-violet-600 transition-colors hover:bg-violet-100 dark:border-violet-800/40 dark:bg-violet-950/30 dark:text-violet-400 dark:hover:bg-violet-900/40"
+                  >
+                    <Sparkles className="size-3" />
+                    Sugerir resposta IA
+                  </button>
+                </div>
+              )}
+              {aiLoading && (
+                <div className="mb-2 flex items-center gap-1.5 text-[11px] text-violet-500">
+                  <Loader2 className="size-3 animate-spin" />
+                  Gerando sugestões…
+                </div>
+              )}
               {fraudResult.hasRisk && (
                 <div className="mb-2.5 flex items-start gap-2.5 rounded-xl border border-amber-300/80 bg-amber-50/95 p-2.5 text-xs text-amber-950 shadow-xs dark:border-amber-700/50 dark:bg-amber-950/50 dark:text-amber-200">
                   <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
