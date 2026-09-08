@@ -12,6 +12,7 @@
 
 import { useEffect, useRef } from "react"
 import maplibregl from "maplibre-gl"
+import { haversineKm } from "@/lib/geo-shared"
 
 type MapLibreMap = InstanceType<typeof import("maplibre-gl").Map>
 
@@ -69,15 +70,7 @@ export default function RouteLine({
       if (!map || !map.isStyleLoaded()) return
 
       // Haversine distance in km
-      const R = 6371
-      const dLat = ((providerLat - userLat) * Math.PI) / 180
-      const dLng = ((providerLng - userLng) * Math.PI) / 180
-      const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos((userLat * Math.PI) / 180) *
-          Math.cos((providerLat * Math.PI) / 180) *
-          Math.sin(dLng / 2) ** 2
-      const distanceKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+      const distanceKm = haversineKm(userLat, userLng, providerLat, providerLng)
 
       // Build GeoJSON line
       const geojson = {

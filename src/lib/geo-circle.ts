@@ -1,5 +1,8 @@
 import { haversineKm } from "./geo-shared"
 
+/** Kilometers per degree of latitude (equirectangular approximation). */
+const KM_PER_DEG_LAT = 111.32
+
 /**
  * GeoJSON circle generator for drawing radius circles on maps.
  *
@@ -41,14 +44,13 @@ export function createRadiusGeoJSON(
 
   const numPoints = Math.max(3, Math.round(points))
   const coords: number[][] = []
-  const kmPerDegLat = 111.32
   const latRad = (lat * Math.PI) / 180
-  const kmPerDegLng = 111.32 * Math.cos(latRad)
+  const kmPerDegLng = KM_PER_DEG_LAT * Math.cos(latRad)
 
   for (let i = 0; i <= numPoints; i++) {
     const bearing = (i * 360) / numPoints
     const bearingRad = (bearing * Math.PI) / 180
-    const dLat = (radiusKm / kmPerDegLat) * Math.cos(bearingRad)
+    const dLat = (radiusKm / KM_PER_DEG_LAT) * Math.cos(bearingRad)
     const dLng = (radiusKm / kmPerDegLng) * Math.sin(bearingRad)
     coords.push([lng + dLng, lat + dLat])
   }
@@ -219,7 +221,7 @@ export const HANDLE_LAYER_ID = "radius-handle"
  */
 export function syncRadiusHandle(map: MapLike, lat: number, lng: number, radiusKm: number): void {
   // Compute the north-most point of the circle
-  const northLat = lat + radiusKm / 111.32
+  const northLat = lat + radiusKm / KM_PER_DEG_LAT
   const geojson: Record<string, unknown> = {
     type: "FeatureCollection",
     features: [

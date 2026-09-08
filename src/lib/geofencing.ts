@@ -40,6 +40,15 @@ const DEFAULT_GEOFENCE_CONFIG: GeofenceConfig = {
   debounceMinutes: 5,
 }
 
+/** Redis TTL for geofence state cache (1 hour). */
+const GEOFENCE_STATE_TTL = 3600
+
+/** Redis TTL for geofence audit trail (24 hours). */
+const GEOFENCE_AUDIT_TTL = 86400
+
+/** Redis lock TTL in seconds to prevent duplicate geofence notifications. */
+const GEOFENCE_LOCK_TTL_SECONDS = 5
+
 /**
  * Check if a provider is inside any active booking's geofence.
  * Returns entry/exit events for zones that were just entered or exited.
@@ -88,7 +97,7 @@ export async function checkGeofences(
       let lockAcquired = false
       if (redis) {
         try {
-          const result = await redis.set(lockKey, "1", "EX", 5, "NX")
+          const result = await redis.set(lockKey, "1", "EX", GEOFENCE_LOCK_TTL_SECONDS, "NX")
           lockAcquired = result === "OK"
         } catch (err) {
           // Redis unavailable — proceed without lock (best-effort)
@@ -131,7 +140,7 @@ export async function checkGeofences(
           }
           events.push(event)
 
-          await cacheSet(stateKey, { inside: true, lastEventAt: now }, 3600)
+          await cacheSet(stateKey, { inside: true, lastEventAt: now }, GEOFENCE_STATE_TTL)
           logger.info(
             { providerId, bookingId: booking.id, distanceMeters },
             "geofence: provider ENTERED zone",
@@ -157,7 +166,7 @@ export async function checkGeofences(
           }
           events.push(event)
 
-          await cacheSet(stateKey, { inside: false, lastEventAt: now }, 3600)
+          await cacheSet(stateKey, { inside: false, lastEventAt: now }, GEOFENCE_STATE_TTL)
           logger.info(
             { providerId, bookingId: booking.id, distanceMeters },
             "geofence: provider EXITED zone",
@@ -165,7 +174,7 @@ export async function checkGeofences(
         } else {
           // No state change — just update the inside status (no debounce needed)
           if (isInside !== wasInside) {
-            await cacheSet(stateKey, { inside: isInside, lastEventAt }, 3600)
+            await cacheSet(stateKey, { inside: isInside, lastEventAt }, GEOFENCE_STATE_TTL)
           }
         }
       } finally {
@@ -230,7 +239,7 @@ async function notifyGeofenceEvent(
     try {
       const existing = (await cacheGet<GeofenceEvent[]>(auditKey)) ?? []
       existing.push(event)
-      await cacheSet(auditKey, existing, 86400) // 24h TTL
+      await cacheSet(auditKey, existing, GEOFENCE_AUDIT_TTL)
     } catch (err) {
       // Redis unavailable
       logger.debug({ err }, "geofencing: audit trail write failed")

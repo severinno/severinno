@@ -27,7 +27,9 @@ import logger from "@/lib/logger"
 // Types
 // ---------------------------------------------------------------------------
 
-export type GeoServiceName = "nominatim" | "viacep" | "postgis"
+import { type GeoServiceName } from "@/lib/geo-metrics"
+
+export type { GeoServiceName }
 
 export type GeoHealthAlertResult = {
   checked: number
@@ -111,8 +113,9 @@ async function getState(name: GeoServiceName): Promise<ServiceState> {
       state.set(name, persisted)
       return persisted
     }
-  } catch {
+  } catch (err) {
     // Redis unavailable — start fresh
+    logger.debug({ err }, "geo-health-alert: Redis hydration failed, starting fresh")
   }
 
   s = {
@@ -134,8 +137,9 @@ async function saveState(s: ServiceState): Promise<void> {
   try {
     const { cacheSet } = await import("@/lib/redis")
     await cacheSet(`${HEALTH_STATE_PREFIX}${s.name}`, s, HEALTH_STATE_TTL)
-  } catch {
+  } catch (err) {
     // Redis unavailable — in-memory state is still valid for this instance
+    logger.debug({ err }, "geo-health-alert: Redis save failed")
   }
 }
 

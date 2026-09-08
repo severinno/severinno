@@ -255,8 +255,6 @@ async function _geocodeCEP(cep: string): Promise<ViaCEPResult> {
  */
 async function geocodeCEPLocal(cep: string): Promise<ViaCEPResult> {
   try {
-    const { db } = await import("@/lib/db")
-
     // Try matching both with and without hyphen (DB may store either format)
     const withHyphen = `${cep.slice(0, 5)}-${cep.slice(5)}`
     const user = await db.user.findFirst({
@@ -726,7 +724,6 @@ const LOCAL_NEIGHBORHOOD_CATALOG: Array<{
  */
 async function geocodeSearchLocal(query: string, limit: number): Promise<GeoSearchResult[]> {
   try {
-    const { db } = await import("@/lib/db")
     const q = query.trim()
     if (!q) return []
 

@@ -263,7 +263,7 @@ export async function loadPersistedSnapshots(): Promise<PersistedSnapshot[]> {
   lastSnapshotCacheHit = false
 
   try {
-    ensureDir()
+    await ensureDir()
     const entries = await readdir(SNAPSHOTS_DIR, { withFileTypes: true })
     const snapFiles = entries
       .filter((e) => e.isFile() && parseSnapshotFileName(e.name) !== null)

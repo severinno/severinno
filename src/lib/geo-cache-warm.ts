@@ -15,7 +15,7 @@
  *   2. warmGeoCache() iterates through the list and calls each geo
  *      function (geocodeSearch, geocodeCEP, reverseGeocode).
  *   3. Each call goes through withCachedGeo → withCache, which
- *      stores the result in Redis (24h TTL for search, 7d for CEP).
+ *      stores the result in Redis (24h TTL for search, 24h for CEP).
  *   4. Progress is tracked and returned so the cron endpoint can
  *      report how many queries were warmed.
  *

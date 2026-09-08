@@ -372,18 +372,20 @@ export default function EnhancedProvidersMap({
     const cleanup = syncMarkers()
     if (cleanup) return cleanup
 
-    // If refs are still null (async init pending), poll until map is ready
-    const interval = setInterval(() => {
+    // If refs are still null (async init pending), use a short timeout chain
+    let timeoutId: ReturnType<typeof setTimeout>
+    const poll = () => {
       const c = syncMarkers()
       if (c) {
-        clearInterval(interval)
-        // Store cleanup for the outer return
         markerSyncCleanupRef.current = c
+      } else {
+        timeoutId = setTimeout(poll, 200)
       }
-    }, 200)
+    }
+    timeoutId = setTimeout(poll, 200)
 
     return () => {
-      clearInterval(interval)
+      clearTimeout(timeoutId)
       markerSyncCleanupRef.current?.()
     }
   }, [providers, selectedId, userLat, userLng, mapInstance])
