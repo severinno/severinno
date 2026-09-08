@@ -57,6 +57,7 @@ export interface EscrowReleaseResult {
 }
 
 const MAX_CHECKIN_DISTANCE_METERS = 150 // 150m tolerance (GPS drift + building size)
+const MAX_SPEED_KMH = 200 // Plausibility threshold — above this, GPS is likely spoofed
 const PIN_LENGTH = 4
 const PIN_EXPIRY_HOURS = 8
 
@@ -96,7 +97,7 @@ export function validateGeoCheckin(attempt: CheckinAttempt): CheckinResult {
         attempt.providerLng,
       )
       const speedKmH = movedKm / elapsedHours
-      if (speedKmH > 200) {
+      if (speedKmH > MAX_SPEED_KMH) {
         return {
           success: false,
           distanceMeters: 0,

@@ -343,7 +343,10 @@ export function makeRadiusEdgeDraggable(
         features: [
           {
             type: "Feature",
-            geometry: { type: "Point", coordinates: [centerLng, centerLat + newRadius / 111.32] },
+            geometry: {
+              type: "Point",
+              coordinates: [centerLng, centerLat + newRadius / KM_PER_DEG_LAT],
+            },
             properties: {},
           },
         ],
