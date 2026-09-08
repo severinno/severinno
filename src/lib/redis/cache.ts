@@ -216,7 +216,12 @@ export async function cacheInvalidate(pattern: string): Promise<void> {
   }
 }
 
-export async function withCache<T>(key: string, fn: () => Promise<T>, ttl?: number): Promise<T> {
+export async function withCache<T>(
+  key: string,
+  fn: () => Promise<T>,
+  ttl?: number,
+  opts?: { staleGraceSeconds?: number },
+): Promise<T> {
   return traceSpan(`cache.withCache`, async (span) => {
     span.setAttribute("cache.key", key.slice(0, 80))
     span.setAttribute("cache.tier", activeTier)
@@ -228,10 +233,34 @@ export async function withCache<T>(key: string, fn: () => Promise<T>, ttl?: numb
       return cached
     }
 
+    // SWR: check if there's a stale copy we can serve while revalidating
+    const staleGrace = opts?.staleGraceSeconds
+    if (staleGrace && staleGrace > 0) {
+      const staleKey = `${key}:stale`
+      const stale = await cacheGet<T>(staleKey)
+      if (stale !== null) {
+        span.setAttribute("cache.swr", true)
+        // Revalidate in background (fire-and-forget)
+        fn()
+          .then((result) => {
+            cacheSet(key, result, ttl)
+            cacheSet(staleKey, result, (ttl ?? 0) + staleGrace)
+          })
+          .catch(() => {}) // stale is better than nothing
+        return stale
+      }
+    }
+
     cacheMisses++
     span.setAttribute("cache.hit", false)
     const result = await fn()
     await cacheSet(key, result, ttl)
+
+    // Store stale copy with extended TTL for future SWR
+    if (staleGrace && staleGrace > 0) {
+      await cacheSet(`${key}:stale`, result, (ttl ?? 0) + staleGrace)
+    }
+
     return result
   })
 }

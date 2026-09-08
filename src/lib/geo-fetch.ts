@@ -9,7 +9,7 @@
  *   - Max 1 retry (total 2 attempts)
  *   - Only on: 5xx, ECONNRESET, ETIMEDOUT, network errors
  *   - NOT on: 4xx (client errors), parse errors, AbortError (timeout)
- *   - Backoff: 1s between attempts
+ *   - Backoff: exponential (1s, 2s) + random jitter (0-500ms)
  */
 import logger from "./logger"
 
@@ -26,7 +26,8 @@ interface GeoFetchOptions extends RequestInit {
 function isTransientError(error: Error): boolean {
   const msg = error.message.toLowerCase()
   // Network-level errors
-  if (msg.includes("econnreset") || msg.includes("etimedout") || msg.includes("econnrefused")) return true
+  if (msg.includes("econnreset") || msg.includes("etimedout") || msg.includes("econnrefused"))
+    return true
   if (msg.includes("socket hang up") || msg.includes("network")) return true
   // AbortError = timeout — don't retry (circuit breaker handles this)
   if (error.name === "AbortError") return false
@@ -48,12 +49,7 @@ export async function geoFetchWithRetry(
   url: string | URL,
   options: GeoFetchOptions = {},
 ): Promise<Response> {
-  const {
-    timeoutMs = 5_000,
-    maxRetries = 1,
-    label = "geo-fetch",
-    ...fetchOptions
-  } = options
+  const { timeoutMs = 5_000, maxRetries = 1, label = "geo-fetch", ...fetchOptions } = options
 
   let lastError: Error | null = null
 
@@ -74,7 +70,9 @@ export async function geoFetchWithRetry(
           { label, url: String(url), status: response.status, attempt },
           `[geo-fetch] ${label} retryable status ${response.status}, attempt ${attempt + 1}/${maxRetries + 1}`,
         )
-        await new Promise((r) => setTimeout(r, 1000))
+        const jitter = Math.random() * 500
+        const backoffMs = 1000 * Math.pow(2, attempt) + jitter
+        await new Promise((r) => setTimeout(r, backoffMs))
         continue
       }
 
@@ -94,7 +92,9 @@ export async function geoFetchWithRetry(
           { label, url: String(url), error: lastError.message, attempt },
           `[geo-fetch] ${label} transient error, retrying in 1s`,
         )
-        await new Promise((r) => setTimeout(r, 1000))
+        const jitter = Math.random() * 500
+        const backoffMs = 1000 * Math.pow(2, attempt) + jitter
+        await new Promise((r) => setTimeout(r, backoffMs))
         continue
       }
     }

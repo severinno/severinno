@@ -141,6 +141,43 @@ export async function findEffectiveRadius(
   return { effectiveRadius: null, matchCount: 0 }
 }
 
+/**
+ * Single-pass radius resolution given the minimum distance to the closest provider.
+ *
+ * Rather than issuing up to 5 sequential COUNT queries for [5, 10, 25, 50, 100],
+ * a single KNN / MIN(distance) query discovers minDistanceKm in 1 database round trip.
+ * This function determines the smallest expansion step that encloses that distance.
+ *
+ * @param userRadiusKm - The initial requested radius (e.g. 5)
+ * @param minDistanceKm - The distance in km to the closest eligible provider (or null if none exists)
+ * @returns The effective radius to expand to, or null if beyond maximum expansion step.
+ *
+ * @example
+ * ```ts
+ * findEffectiveRadiusSinglePass(5, 3.1)   // → 5
+ * findEffectiveRadiusSinglePass(5, 7.2)   // → 10
+ * findEffectiveRadiusSinglePass(10, 22.0) // → 25
+ * findEffectiveRadiusSinglePass(5, 150)   // → null
+ * ```
+ */
+export function findEffectiveRadiusSinglePass(
+  userRadiusKm: number,
+  minDistanceKm: number | null,
+): number | null {
+  if (minDistanceKm === null || !Number.isFinite(minDistanceKm)) {
+    return null
+  }
+
+  const radii = buildRadiiToTry(userRadiusKm)
+  for (const radius of radii) {
+    if (minDistanceKm <= radius) {
+      return radius
+    }
+  }
+
+  return null
+}
+
 // ---------------------------------------------------------------------------
 // Cache-key helper
 // ---------------------------------------------------------------------------

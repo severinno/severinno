@@ -37,6 +37,8 @@ import {
   findProvidersWithinRadius,
   getDistanceBetween,
   isPostGISAvailable,
+  findNearestProvidersKNN,
+  filterProvidersByServicePolygon,
   type ProximityResult,
 } from "../postgis"
 
@@ -97,11 +99,7 @@ describe("findProvidersWithinRadius", () => {
     await findProvidersWithinRadius(LAT, LNG, RADIUS_KM)
 
     const cacheKey = mockWithCache.mock.calls[0][0] as string
-    expect(cacheKey).toMatch(/^proximity:/)
-    // Coords rounded to 3 decimals (~110m precision).
-    // Floating-point toFixed(3) may round -23.5505 to "-23.551" or "-23.550"
-    // depending on internal representation — accept either.
-    expect(cacheKey).toMatch(/-\d+\.\d{3}:-\d+\.\d{3}/)
+    expect(cacheKey).toMatch(/^proximity:[0-9a-z]{7}:10$/)
     expect(cacheKey).toContain(":10") // radius
   })
 
@@ -306,5 +304,58 @@ describe("isPostGISAvailable", () => {
     const result2 = await isPostGISAvailable()
     expect(result2).toBe(true)
     expect(mockQueryRaw).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// findNearestProvidersKNN
+// ---------------------------------------------------------------------------
+
+describe("findNearestProvidersKNN", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockWithCache.mockImplementation(async (_key: string, fn: () => unknown) => fn())
+  })
+
+  it("calls queryRaw and returns nearest providers", async () => {
+    mockQueryRaw.mockResolvedValue([
+      { id: "p-1", distance_km: "1.2" },
+      { id: "p-2", distance_km: "3.5" },
+    ])
+
+    const results = await findNearestProvidersKNN(-23.5505, -46.6333, 5)
+    expect(results).toEqual([
+      { id: "p-1", distanceKm: 1.2 },
+      { id: "p-2", distanceKm: 3.5 },
+    ])
+    expect(mockQueryRaw).toHaveBeenCalled()
+  })
+
+  it("handles empty results gracefully", async () => {
+    mockQueryRaw.mockResolvedValue([])
+    const results = await findNearestProvidersKNN(-23.5505, -46.6333, 10, 50)
+    expect(results).toEqual([])
+  })
+
+  it("handles query rejection and returns empty array", async () => {
+    mockQueryRaw.mockRejectedValue(new Error("Index broken"))
+    const results = await findNearestProvidersKNN(-23.5505, -46.6333, 10)
+    expect(results).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// filterProvidersByServicePolygon
+// ---------------------------------------------------------------------------
+
+describe("filterProvidersByServicePolygon", () => {
+  it("returns empty sets for empty provider list", async () => {
+    const { matchingIds, unconstrainedIds } = await filterProvidersByServicePolygon(
+      -23.5505,
+      -46.6333,
+      [],
+    )
+    expect(matchingIds.size).toBe(0)
+    expect(unconstrainedIds.size).toBe(0)
   })
 })

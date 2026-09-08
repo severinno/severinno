@@ -85,7 +85,13 @@ function withCachedGeo<T>(
   // The rate limiter + latency tracker go INSIDE the cache-miss callback
   // so they only run when we actually call the external API.
   // Cache hit is nearly instant — no need for separate metrics.
-  return withCache(key, () => limiter(fn), ttl)
+  //
+  // SWR grace: 10% of TTL (e.g. ~2.4h for 24h TTL). When cache expires,
+  // serve stale result instantly while revalidating in background.
+  // Addresses/CEPs don't change in a few hours — stale is safe.
+  return withCache(key, () => limiter(fn), ttl, {
+    staleGraceSeconds: Math.round(ttl * 0.1),
+  })
 }
 
 // ── Instrumented + cached wrappers ───────────────────────────────────────
@@ -105,7 +111,7 @@ export async function geocodeCEP(cep: string): Promise<ViaCEPResult> {
     )
     span.setAttribute("geo.result.city", result.city)
     span.setAttribute("geo.result.state", result.state)
-    recordCEP(cep)
+    recordCEP(clean)
     return result
   })
 }
@@ -185,9 +191,9 @@ export type ViaCEPResult = {
   state: string
 }
 
-/** @internal renamed to _geocodeCEP — use geocodeCEPWithMetrics for latency tracking. */
+/** @internal renamed to _geocodeCEP — use geocodeCEP for latency tracking and caching. */
 async function _geocodeCEP(cep: string): Promise<ViaCEPResult> {
-  const clean = cep.replace(/\D/g, "")
+  const clean = cep.length === 8 && /^\d{8}$/.test(cep) ? cep : cep.replace(/\D/g, "")
   if (clean.length !== 8) {
     throw new Error("CEP inválido (deve ter 8 dígitos)")
   }
@@ -332,7 +338,6 @@ async function _reverseGeocode(lat: number, lng: number): Promise<ReverseGeocode
   }
 }
 
-
 // ---------------------------------------------------------------------------
 // Nominatim Search (forward geocoding)
 // ---------------------------------------------------------------------------
@@ -372,19 +377,21 @@ async function reverseGeocodeLocal(lat: number, lng: number): Promise<ReverseGeo
   // Short-term cache (60s) keyed by rounded coordinates.
   // Same coordinate queried multiple times (check-in + check-out) hits cache.
   const cacheKey = `geo:reverse-local:${lat.toFixed(4)},${lng.toFixed(4)}`
-  return withCache<ReverseGeocodeResult>(cacheKey, async () => {
-    // ── Step 1: Try PostGIS spatial query (O(log N) via GiST index) ──
-    try {
-      const rows = await db.$queryRaw<
-        Array<{
-          street: string | null
-          district: string | null
-          city: string | null
-          state: string | null
-          cep: string | null
-          distance_km: number
-        }>
-      >`
+  return withCache<ReverseGeocodeResult>(
+    cacheKey,
+    async () => {
+      // ── Step 1: Try PostGIS spatial query (O(log N) via GiST index) ──
+      try {
+        const rows = await db.$queryRaw<
+          Array<{
+            street: string | null
+            district: string | null
+            city: string | null
+            state: string | null
+            cep: string | null
+            distance_km: number
+          }>
+        >`
         SELECT
           "street",
           "district",
@@ -410,8 +417,69 @@ async function reverseGeocodeLocal(lat: number, lng: number): Promise<ReverseGeo
         LIMIT 1
       `
 
-      if (rows.length > 0 && rows[0]!.distance_km <= REVERSE_LOCAL_RADIUS_KM) {
-        const nearest = rows[0]!
+        if (rows.length > 0 && rows[0]!.distance_km <= REVERSE_LOCAL_RADIUS_KM) {
+          const nearest = rows[0]!
+          return {
+            displayName: [nearest.street, nearest.district, nearest.city, nearest.state]
+              .filter(Boolean)
+              .join(", "),
+            road: nearest.street ?? undefined,
+            neighbourhood: nearest.district ?? undefined,
+            city: nearest.city ?? undefined,
+            state: nearest.state ?? undefined,
+            postcode: nearest.cep ?? undefined,
+          }
+        }
+      } catch {
+        // PostGIS unavailable or extension not installed — fall through to Haversine
+      }
+
+      // ── Step 2: Haversine fallback ──
+      try {
+        const { haversineKm } = await import("@/lib/geo-server")
+
+        const users = await db.user.findMany({
+          where: {
+            role: "PROVIDER",
+            active: true,
+            lat: { not: null },
+            lng: { not: null },
+          },
+          select: {
+            lat: true,
+            lng: true,
+            street: true,
+            district: true,
+            city: true,
+            state: true,
+            cep: true,
+          },
+          take: 20,
+          orderBy: { avgRating: "desc" as const },
+        })
+
+        let nearest: (typeof users)[number] | null = null
+        let minDist = Infinity
+        for (const u of users) {
+          if (u.lat == null || u.lng == null) continue
+          const d = haversineKm(lat, lng, u.lat, u.lng)
+          if (d < minDist) {
+            minDist = d
+            nearest = u
+          }
+        }
+
+        if (!nearest || minDist > REVERSE_LOCAL_RADIUS_KM) {
+          return {
+            displayName: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+            road: undefined,
+            neighbourhood: undefined,
+            city: undefined,
+            state: undefined,
+            postcode: undefined,
+          }
+        }
+
         return {
           displayName: [nearest.street, nearest.district, nearest.city, nearest.state]
             .filter(Boolean)
@@ -422,47 +490,7 @@ async function reverseGeocodeLocal(lat: number, lng: number): Promise<ReverseGeo
           state: nearest.state ?? undefined,
           postcode: nearest.cep ?? undefined,
         }
-      }
-    } catch {
-      // PostGIS unavailable or extension not installed — fall through to Haversine
-    }
-
-    // ── Step 2: Haversine fallback ──
-    try {
-      const { haversineKm } = await import("@/lib/geo-server")
-
-      const users = await db.user.findMany({
-        where: {
-          role: "PROVIDER",
-          active: true,
-          lat: { not: null },
-          lng: { not: null },
-        },
-        select: {
-          lat: true,
-          lng: true,
-          street: true,
-          district: true,
-          city: true,
-          state: true,
-          cep: true,
-        },
-        take: 20,
-        orderBy: { avgRating: "desc" as const },
-      })
-
-      let nearest: (typeof users)[number] | null = null
-      let minDist = Infinity
-      for (const u of users) {
-        if (u.lat == null || u.lng == null) continue
-        const d = haversineKm(lat, lng, u.lat, u.lng)
-        if (d < minDist) {
-          minDist = d
-          nearest = u
-        }
-      }
-
-      if (!nearest || minDist > REVERSE_LOCAL_RADIUS_KM) {
+      } catch {
         return {
           displayName: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
           road: undefined,
@@ -472,28 +500,9 @@ async function reverseGeocodeLocal(lat: number, lng: number): Promise<ReverseGeo
           postcode: undefined,
         }
       }
-
-      return {
-        displayName: [nearest.street, nearest.district, nearest.city, nearest.state]
-          .filter(Boolean)
-          .join(", "),
-        road: nearest.street ?? undefined,
-        neighbourhood: nearest.district ?? undefined,
-        city: nearest.city ?? undefined,
-        state: nearest.state ?? undefined,
-        postcode: nearest.cep ?? undefined,
-      }
-    } catch {
-      return {
-        displayName: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
-        road: undefined,
-        neighbourhood: undefined,
-        city: undefined,
-        state: undefined,
-        postcode: undefined,
-      }
-    }
-  }, 60) // 60s cache TTL for local reverse geocode
+    },
+    60,
+  ) // 60s cache TTL for local reverse geocode
 }
 
 /**
@@ -632,6 +641,65 @@ function usersToGeoResults(
 }
 
 /**
+ * Curated catalog of major Brazilian neighborhoods with verified coordinates.
+ * Used as Layer 5 fallback when Nominatim is offline and DB has no local match.
+ */
+const LOCAL_NEIGHBORHOOD_CATALOG: Array<{
+  name: string
+  city: string
+  state: string
+  lat: number
+  lng: number
+}> = [
+  // São Paulo
+  { name: "Moema", city: "São Paulo", state: "SP", lat: -23.6042, lng: -46.6669 },
+  { name: "Pinheiros", city: "São Paulo", state: "SP", lat: -23.5671, lng: -46.6993 },
+  { name: "Itaim Bibi", city: "São Paulo", state: "SP", lat: -23.5843, lng: -46.6791 },
+  { name: "Vila Mariana", city: "São Paulo", state: "SP", lat: -23.5898, lng: -46.6347 },
+  { name: "Bela Vista", city: "São Paulo", state: "SP", lat: -23.5606, lng: -46.6493 },
+  { name: "Perdizes", city: "São Paulo", state: "SP", lat: -23.5358, lng: -46.6749 },
+  { name: "Santana", city: "São Paulo", state: "SP", lat: -23.5042, lng: -46.6264 },
+  { name: "Tatuapé", city: "São Paulo", state: "SP", lat: -23.5407, lng: -46.5765 },
+  // Rio de Janeiro
+  { name: "Copacabana", city: "Rio de Janeiro", state: "RJ", lat: -22.9694, lng: -43.1868 },
+  { name: "Ipanema", city: "Rio de Janeiro", state: "RJ", lat: -22.9868, lng: -43.2003 },
+  { name: "Leblon", city: "Rio de Janeiro", state: "RJ", lat: -22.9839, lng: -43.2238 },
+  { name: "Barra da Tijuca", city: "Rio de Janeiro", state: "RJ", lat: -23.0003, lng: -43.3658 },
+  { name: "Botafogo", city: "Rio de Janeiro", state: "RJ", lat: -22.9519, lng: -43.1843 },
+  { name: "Tijuca", city: "Rio de Janeiro", state: "RJ", lat: -22.9304, lng: -43.2366 },
+  // Belo Horizonte
+  { name: "Savassi", city: "Belo Horizonte", state: "MG", lat: -19.9386, lng: -43.9338 },
+  { name: "Lourdes", city: "Belo Horizonte", state: "MG", lat: -19.9298, lng: -43.9439 },
+  { name: "Funcionários", city: "Belo Horizonte", state: "MG", lat: -19.9329, lng: -43.9292 },
+  { name: "Buritis", city: "Belo Horizonte", state: "MG", lat: -19.9723, lng: -43.9667 },
+  // Curitiba
+  { name: "Batel", city: "Curitiba", state: "PR", lat: -25.4419, lng: -49.2897 },
+  { name: "Bigorrilho", city: "Curitiba", state: "PR", lat: -25.4336, lng: -49.2974 },
+  // Salvador
+  { name: "Pituba", city: "Salvador", state: "BA", lat: -13.0038, lng: -38.4619 },
+  { name: "Barra", city: "Salvador", state: "BA", lat: -13.0102, lng: -38.5324 },
+  // Fortaleza
+  { name: "Meireles", city: "Fortaleza", state: "CE", lat: -3.7297, lng: -38.4975 },
+  { name: "Aldeota", city: "Fortaleza", state: "CE", lat: -3.7388, lng: -38.5028 },
+  // Governador Valadares
+  {
+    name: "Ilha dos Araújos",
+    city: "Governador Valadares",
+    state: "MG",
+    lat: -18.8475,
+    lng: -41.9392,
+  },
+  { name: "Esplanada", city: "Governador Valadares", state: "MG", lat: -18.8542, lng: -41.9567 },
+  {
+    name: "Morada do Acampamento",
+    city: "Governador Valadares",
+    state: "MG",
+    lat: -18.8681,
+    lng: -41.9612,
+  },
+]
+
+/**
  * Fallback local address search when Nominatim is unavailable.
  *
  * Uses a layered strategy to maximize index usage:
@@ -639,6 +707,7 @@ function usersToGeoResults(
  *   2. City prefix (ILIKE 'query%') — still uses B-tree index → O(log N)
  *   3. Broad search on city only (ILIKE '%query%') — single column seq scan
  *   4. Full fallback on all 4 columns (city, street, state, district)
+ *   5. In-memory popular Brazilian neighborhoods catalog
  *
  * Most queries hit layer 1-2 and never reach the expensive paths.
  */
@@ -710,7 +779,28 @@ async function geocodeSearchLocal(query: string, limit: number): Promise<GeoSear
       take: limit,
       orderBy: { avgRating: "desc" },
     })
-    return usersToGeoResults(broad)
+    if (broad.length > 0) return usersToGeoResults(broad)
+
+    // ── Layer 5: In-memory Popular Brazilian Neighborhoods Catalog ────
+    const normalizedQ = q.toLowerCase()
+    const matched = LOCAL_NEIGHBORHOOD_CATALOG.filter(
+      (n) =>
+        n.name.toLowerCase().includes(normalizedQ) || normalizedQ.includes(n.name.toLowerCase()),
+    )
+    if (matched.length > 0) {
+      return matched.slice(0, limit).map((n) => ({
+        lat: n.lat,
+        lng: n.lng,
+        displayName: `${n.name}, ${n.city} - ${n.state}, Brasil`,
+        city: n.city,
+        state: n.state,
+        district: n.name,
+        country: "Brasil",
+        importance: 0.6,
+      }))
+    }
+
+    return []
   } catch {
     logger.warn("[geo] Local DB fallback also failed")
     return []

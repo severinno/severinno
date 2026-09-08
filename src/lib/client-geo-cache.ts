@@ -143,6 +143,33 @@ function sweepExpired(): number {
   return removed
 }
 
+let sweepScheduled = false
+
+/**
+ * Schedule an idle sweep of expired entries.
+ * Uses requestIdleCallback (with setTimeout fallback) so the main thread
+ * is never blocked by JSON.parse batches during user interactions.
+ * Debounced: multiple triggers collapse into a single idle run.
+ */
+export function scheduleSweep(): void {
+  if (typeof window === "undefined" || sweepScheduled) return
+  sweepScheduled = true
+
+  const run = () => {
+    try {
+      sweepExpired()
+    } finally {
+      sweepScheduled = false
+    }
+  }
+
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(run, { timeout: 5000 })
+  } else {
+    setTimeout(run, 2000)
+  }
+}
+
 /** Evict the oldest entries if we exceed GEO_MAX_ENTRIES. */
 function evictIfNeeded(): void {
   const queue = readQueue()
@@ -285,6 +312,7 @@ export function setCachedGeo(query: string, results: GeoSearchResult[], silent =
   // Track in FIFO queue
   pushToQueue(normalized)
   evictIfNeeded()
+  scheduleSweep()
 
   if (!silent) {
     broadcast(normalized, results, cachedAt)

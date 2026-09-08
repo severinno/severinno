@@ -68,7 +68,9 @@ export async function searchNearbyProvidersFast(
   centerLng: number,
   radiusKm: number = 25,
   limit: number = 50,
-): Promise<Array<{ id: string; distanceKm: number; source: "fast-index" | "redis-geo" | "postgis" }>> {
+): Promise<
+  Array<{ id: string; distanceKm: number; source: "fast-index" | "redis-geo" | "postgis" }>
+> {
   // 1. Try In-Memory Spatial Index if populated
   if (inMemoryGeoIndex.size > 0) {
     const nearby: Array<{ id: string; distanceKm: number; source: "fast-index" }> = []
@@ -170,11 +172,38 @@ export async function seedGeoIndexFromDB(): Promise<number> {
       select: { id: true, lat: true, lng: true },
     })
 
-    const count = seedGeoIndex(
-      providers
-        .filter((p) => p.lat != null && p.lng != null)
-        .map((p) => ({ id: p.id, lat: p.lat!, lng: p.lng! })),
-    )
+    const validProviders = providers.filter((p) => p.lat != null && p.lng != null) as Array<{
+      id: string
+      lat: number
+      lng: number
+    }>
+
+    const count = seedGeoIndex(validProviders)
+
+    // Sync to Redis GEO set in batches via pipelining (shared across instances)
+    try {
+      const client = getClient()
+      if (client && validProviders.length > 0) {
+        const BATCH_SIZE = 100
+        for (let i = 0; i < validProviders.length; i += BATCH_SIZE) {
+          const batch = validProviders.slice(i, i + BATCH_SIZE)
+          const pipeline = client.pipeline()
+          for (const p of batch) {
+            pipeline.geoadd(REDIS_GEO_KEY, p.lng, p.lat, p.id)
+          }
+          await pipeline.exec()
+        }
+        logger.info(
+          { count: validProviders.length },
+          "redis-geo: synced providers to Redis GEO set",
+        )
+      }
+    } catch (redisErr) {
+      logger.warn(
+        { err: redisErr },
+        "redis-geo: failed to sync to Redis GEO set (in-memory remains ready)",
+      )
+    }
 
     logger.info({ count }, "redis-geo: seeded in-memory spatial index from DB")
     return count

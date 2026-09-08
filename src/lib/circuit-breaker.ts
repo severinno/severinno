@@ -42,14 +42,19 @@ export interface CircuitBreakerStats {
   successes: number
   lastFailureAt: string | null
   openedAt: string | null
+  /** Transition counters for observability */
+  transitions: {
+    openCount: number
+    halfOpenSuccessCount: number
+    halfOpenFailCount: number
+  }
+  /** Percentage of time spent in CLOSED state since creation */
+  uptimePercent: number
 }
 
 // ---------------------------------------------------------------------------
 
-export function createCircuitBreaker(
-  name: string,
-  opts: CircuitBreakerOptions = {},
-) {
+export function createCircuitBreaker(name: string, opts: CircuitBreakerOptions = {}) {
   const failureThreshold = opts.failureThreshold ?? 3
   const cooldownMs = opts.cooldownMs ?? 60_000
   const _testTimeoutMs = opts.testTimeoutMs ?? 10_000
@@ -60,6 +65,14 @@ export function createCircuitBreaker(
   let successes = 0
   let lastFailureAt: number | null = null
   let openedAt: number | null = null
+
+  // Transition counters for observability
+  let openCount = 0
+  let halfOpenSuccessCount = 0
+  let halfOpenFailCount = 0
+  const createdAt = Date.now()
+  let totalOpenMs = 0
+  let lastOpenedAt: number | null = null
 
   function isOpen(): boolean {
     if (state !== "open") return false
@@ -82,6 +95,11 @@ export function createCircuitBreaker(
       // Success
       if (state === "half-open") {
         state = "closed"
+        halfOpenSuccessCount++
+        if (lastOpenedAt) {
+          totalOpenMs += Date.now() - lastOpenedAt
+          lastOpenedAt = null
+        }
         logger.info({ name }, "circuit-breaker: recovered to closed")
       }
       failures = 0
@@ -94,6 +112,8 @@ export function createCircuitBreaker(
       if (failures >= failureThreshold && state === "closed") {
         state = "open"
         openedAt = Date.now()
+        openCount++
+        lastOpenedAt = Date.now()
         logger.warn(
           { name, failures, cooldownMs },
           "circuit-breaker: opened after consecutive failures",
@@ -101,6 +121,8 @@ export function createCircuitBreaker(
       } else if (state === "half-open") {
         state = "open"
         openedAt = Date.now()
+        halfOpenFailCount++
+        lastOpenedAt = Date.now()
         logger.warn(
           { name, failures, cooldownMs },
           "circuit-breaker: half-open test failed, reopening",
@@ -112,6 +134,11 @@ export function createCircuitBreaker(
   }
 
   function getStats(): CircuitBreakerStats {
+    const currentOpenMs = state !== "closed" && lastOpenedAt ? Date.now() - lastOpenedAt : 0
+    const totalElapsed = Date.now() - createdAt
+    const openMs = totalOpenMs + currentOpenMs
+    const uptimePercent = totalElapsed > 0 ? +((1 - openMs / totalElapsed) * 100).toFixed(1) : 100
+
     return {
       name,
       state,
@@ -119,6 +146,8 @@ export function createCircuitBreaker(
       successes,
       lastFailureAt: lastFailureAt ? new Date(lastFailureAt).toISOString() : null,
       openedAt: openedAt ? new Date(openedAt).toISOString() : null,
+      transitions: { openCount, halfOpenSuccessCount, halfOpenFailCount },
+      uptimePercent,
     }
   }
 

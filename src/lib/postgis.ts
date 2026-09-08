@@ -26,14 +26,63 @@ const DISTANCE_CACHE_TTL = 60 // 60 seconds for user-to-user distance
 const POSTGIS_CHECK_CACHE_TTL = 300 // 5 minutes for PostGIS availability check
 
 /**
- * Build a cache key from rounded coordinates and radius.
- * Rounding to 3 decimal places (~110m precision) groups nearby queries
- * so the same cache entry serves requests from slightly different coords.
+ * Minimal geohash encoder (zero deps, ~153m precision at 7 chars).
+ *
+ * Geohash groups nearby coordinates into the same cell more uniformly
+ * than toFixed(3), which creates rectangular cells with misalignment at
+ * boundaries. Two points 50m apart no longer get different cache keys
+ * just because they straddle a 0.001° boundary.
+ */
+const BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz"
+function encodeGeohash(lat: number, lng: number, precision = 7): string {
+  let minLat = -90,
+    maxLat = 90
+  let minLng = -180,
+    maxLng = 180
+  let hash = ""
+  let isLng = true
+  let bit = 0
+  let ch = 0
+
+  while (hash.length < precision) {
+    if (isLng) {
+      const mid = (minLng + maxLng) / 2
+      if (lng >= mid) {
+        ch = (ch << 1) | 1
+        minLng = mid
+      } else {
+        ch <<= 1
+        maxLng = mid
+      }
+    } else {
+      const mid = (minLat + maxLat) / 2
+      if (lat >= mid) {
+        ch = (ch << 1) | 1
+        minLat = mid
+      } else {
+        ch <<= 1
+        maxLat = mid
+      }
+    }
+    isLng = !isLng
+    bit++
+    if (bit === 5) {
+      hash += BASE32[ch]!
+      bit = 0
+      ch = 0
+    }
+  }
+  return hash
+}
+
+/**
+ * Build a cache key from geohash-encoded coordinates and radius.
+ * Geohash-7 (~153m precision) groups nearby queries into the same
+ * cache cell, improving hit rate over the previous toFixed(3) approach.
  */
 function proximityCacheKey(lat: number, lng: number, radiusKm: number): string {
-  const rLat = lat.toFixed(3)
-  const rLng = lng.toFixed(3)
-  return `proximity:${rLat}:${rLng}:${radiusKm}`
+  const gh = encodeGeohash(lat, lng, 7)
+  return `proximity:${gh}:${radiusKm}`
 }
 
 /**
@@ -69,11 +118,85 @@ export function findProvidersWithinRadiusWithMetrics(
   return trackGeoLatency("postgis", () => _findProvidersWithinRadius(lat, lng, radiusKm))
 }
 
-// ── Re-export original names as instrumented wrappers ─────────────────────
-// Existing callers get automatic latency tracking without changes.
-
 export const findProvidersWithinRadius = findProvidersWithinRadiusWithMetrics
 export const getDistanceBetween = getDistanceBetweenWithMetrics
+export const findNearestProvidersKNN = findNearestProvidersKNNWithMetrics
+
+/** Wraps findNearestProvidersKNN with PostGIS latency tracking. */
+export function findNearestProvidersKNNWithMetrics(
+  lat: number,
+  lng: number,
+  limit: number = 20,
+  maxRadiusKm?: number,
+): Promise<ProximityResult[]> {
+  return trackGeoLatency("postgis", () => _findNearestProvidersKNN(lat, lng, limit, maxRadiusKm))
+}
+
+/**
+ * Find the N closest providers using PostGIS K-Nearest Neighbors (KNN) GiST index operator (<->).
+ * Traverses the spatial index directly without calculating distance across all rows first.
+ */
+async function _findNearestProvidersKNN(
+  lat: number,
+  lng: number,
+  limit: number = 20,
+  maxRadiusKm?: number,
+): Promise<ProximityResult[]> {
+  try {
+    const cacheKey = `knn:${encodeGeohash(lat, lng, 7)}:${limit}:${maxRadiusKm ?? "all"}`
+    return await withCache(
+      cacheKey,
+      async () => {
+        const rows =
+          typeof maxRadiusKm === "number" && maxRadiusKm > 0
+            ? await db.$queryRaw<Array<{ id: string; distance_km: number }>>`
+              SELECT
+                id,
+                ST_Distance(
+                  location,
+                  ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
+                ) / 1000 AS distance_km
+              FROM "User"
+              WHERE
+                role = 'PROVIDER'
+                AND active = true
+                AND verified = true
+                AND "deletedAt" IS NULL
+                AND location IS NOT NULL
+                AND ST_DWithin(
+                  location,
+                  ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
+                  ${maxRadiusKm * 1000}
+                )
+              ORDER BY location <-> ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography ASC
+              LIMIT ${limit}
+            `
+            : await db.$queryRaw<Array<{ id: string; distance_km: number }>>`
+              SELECT
+                id,
+                ST_Distance(
+                  location,
+                  ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography
+                ) / 1000 AS distance_km
+              FROM "User"
+              WHERE
+                role = 'PROVIDER'
+                AND active = true
+                AND verified = true
+                AND "deletedAt" IS NULL
+                AND location IS NOT NULL
+              ORDER BY location <-> ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography ASC
+              LIMIT ${limit}
+            `
+        return rows.map((r) => ({ id: r.id, distanceKm: Number(r.distance_km) }))
+      },
+      PROXIMITY_CACHE_TTL,
+    )
+  } catch (e) {
+    logger.warn({ err: e }, "PostGIS KNN query failed")
+    return []
+  }
+}
 
 /** @internal use findProvidersWithinRadiusWithMetrics for latency tracking. */
 async function _findProvidersWithinRadius(
@@ -216,7 +339,10 @@ export async function findProvidersWithinBounds(
           AND active = true
           AND "deletedAt" IS NULL
           AND location IS NOT NULL
-          AND location && ST_MakeEnvelope(${minLng}, ${minLat}, ${maxLng}, ${maxLat}, 4326)::geography
+          AND ST_Intersects(
+            location,
+            ST_MakeEnvelope(${minLng}, ${minLat}, ${maxLng}, ${maxLat}, 4326)::geography
+          )
         LIMIT ${limit}
       `
         return rows.map((r) => r.id)
@@ -250,4 +376,45 @@ export async function isPointInServiceZone(
   } catch {
     return false
   }
+}
+
+/**
+ * Filter a list of provider IDs by whether their custom service area polygon (if defined)
+ * covers the given client point. Providers without a custom polygon are returned as unconstrained.
+ */
+export async function filterProvidersByServicePolygon(
+  lat: number,
+  lng: number,
+  providerIds: string[],
+): Promise<{ matchingIds: Set<string>; unconstrainedIds: Set<string> }> {
+  const matchingIds = new Set<string>()
+  const unconstrainedIds = new Set<string>()
+
+  if (!providerIds || providerIds.length === 0) {
+    return { matchingIds, unconstrainedIds }
+  }
+
+  try {
+    const providers = await db.user.findMany({
+      where: { id: { in: providerIds } },
+      select: { id: true, servicePolygon: true },
+    })
+
+    for (const p of providers) {
+      if (!p.servicePolygon) {
+        unconstrainedIds.add(p.id)
+        continue
+      }
+      const polyStr =
+        typeof p.servicePolygon === "string" ? p.servicePolygon : JSON.stringify(p.servicePolygon)
+      const inside = await isPointInServiceZone(lat, lng, polyStr)
+      if (inside) {
+        matchingIds.add(p.id)
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, "filterProvidersByServicePolygon failed")
+  }
+
+  return { matchingIds, unconstrainedIds }
 }
