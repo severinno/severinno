@@ -9,6 +9,7 @@ type QuoteModalState = {
   open: boolean
   providerId?: string
   serviceId?: string
+  initialDescription?: string
 }
 
 type BookingModalState = {

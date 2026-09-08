@@ -12,7 +12,8 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { PageTransition } from "@/components/shared/page-transition"
-import { CheckCircle2, Sparkles, ShieldCheck } from "lucide-react"
+import { CheckCircle2, Sparkles, Loader2, ArrowRight } from "lucide-react"
+import { launchConfetti } from "@/lib/confetti"
 
 type OnboardingStep = 1 | 2 | 3
 
@@ -117,6 +118,41 @@ function Step1Address({
   onChange: (d: Partial<OnboardingData>) => void
   onNext: () => void
 }) {
+  const [isSearchingCep, setIsSearchingCep] = useState(false)
+  const [cepFeedback, setCepFeedback] = useState<string | null>(null)
+
+  const handleCepChange = async (val: string) => {
+    onChange({ cep: val })
+    const clean = val.replace(/\D/g, "")
+    if (clean.length === 8) {
+      setIsSearchingCep(true)
+      setCepFeedback(null)
+      try {
+        const res = await fetch(`/api/geo/cep?cep=${clean}`)
+        if (res.ok) {
+          const json = await res.json()
+          if (json.data && !json.data.error) {
+            onChange({
+              street: json.data.street || data.street,
+              district: json.data.district || data.district,
+              city: json.data.city || data.city,
+              state: json.data.state || data.state,
+              lat: json.data.lat ?? data.lat,
+              lng: json.data.lng ?? data.lng,
+            })
+            setCepFeedback("✅ Endereço localizado automaticamente!")
+          } else {
+            setCepFeedback("CEP não encontrado. Preencha manualmente.")
+          }
+        }
+      } catch {
+        setCepFeedback("Erro ao consultar CEP. Preencha os campos abaixo.")
+      } finally {
+        setIsSearchingCep(false)
+      }
+    }
+  }
+
   return (
     <div className="space-y-4">
       <h2 className="text-xl font-bold">📍 Onde você trabalha?</h2>
@@ -124,14 +160,25 @@ function Step1Address({
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="mb-1 block text-sm font-medium">CEP</label>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="text-sm font-medium">CEP</label>
+            {isSearchingCep && (
+              <span className="flex animate-pulse items-center gap-1 text-xs font-medium text-blue-600">
+                <Loader2 className="h-3 w-3 animate-spin" /> Buscando...
+              </span>
+            )}
+          </div>
           <input
             type="text"
             value={data.cep}
-            onChange={(e) => onChange({ cep: e.target.value })}
+            onChange={(e) => handleCepChange(e.target.value)}
             placeholder="30130-000"
+            maxLength={9}
             className="w-full rounded-lg border px-3 py-2"
           />
+          {cepFeedback && (
+            <p className="mt-1 text-xs font-medium text-emerald-600">{cepFeedback}</p>
+          )}
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium">Raio de atendimento</label>
@@ -487,10 +534,14 @@ export default function OnboardingPage() {
     }
   })
 
+  const [isCompleted, setIsCompleted] = useState(false)
+
   // Save to localStorage
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ step, data }))
-  }, [step, data])
+    if (!isCompleted) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ step, data }))
+    }
+  }, [step, data, isCompleted])
 
   const handleChange = (partial: Partial<OnboardingData>) => {
     setData((prev) => ({ ...prev, ...partial }))
@@ -510,13 +561,83 @@ export default function OnboardingPage() {
         throw new Error(body.error || "Falha ao registrar conclusão do onboarding")
       }
       localStorage.removeItem(STORAGE_KEY)
-      router.push("/dashboard")
+      launchConfetti()
+      setIsCompleted(true)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro ao concluir onboarding"
       setSubmitError(msg)
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  if (isCompleted) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
+        <div className="w-full max-w-lg">
+          <PageTransition className="space-y-6 rounded-2xl border border-emerald-100 bg-white p-8 text-center shadow-lg">
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-inner">
+              <Sparkles className="h-10 w-10 animate-pulse" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h2 className="text-2xl font-black tracking-tight text-gray-900">
+                Parabéns! Seu perfil está ativo 🚀
+              </h2>
+              <p className="text-sm text-gray-600">
+                Você já pode ser encontrado e receber pedidos de orçamento em{" "}
+                {data.city || "sua região"}.
+              </p>
+            </div>
+
+            {/* Profile Completeness Card */}
+            <div className="space-y-3.5 rounded-xl border border-gray-100 bg-gray-50/80 p-5 text-left">
+              <div className="flex items-center justify-between text-xs font-bold">
+                <span className="text-gray-700">Completude do Perfil</span>
+                <span className="font-extrabold text-emerald-600">75% Concluído</span>
+              </div>
+
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-200">
+                <div className="h-full w-3/4 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-1000" />
+              </div>
+
+              <div className="space-y-2.5 pt-1 text-xs">
+                <div className="flex items-center gap-2 font-medium text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  <span>Endereço e raio de atendimento definidos ({data.radiusKm} km)</span>
+                </div>
+                <div className="flex items-center gap-2 font-medium text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  <span>Primeiro serviço cadastrado ({data.serviceCategory})</span>
+                </div>
+                <div className="flex items-center gap-2 text-gray-600">
+                  <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-gray-400 text-[10px] font-bold">
+                    3
+                  </span>
+                  <span>Envie seus documentos KYC para conquistar o Selo Verificado</span>
+                </div>
+                <div className="flex items-center gap-2 text-gray-600">
+                  <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-gray-400 text-[10px] font-bold">
+                    4
+                  </span>
+                  <span>
+                    Adicione fotos de serviços concluídos para atrair até 3x mais clientes
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => router.push("/dashboard")}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-3.5 font-bold text-white shadow-md transition-all hover:bg-emerald-700 active:scale-[0.99]"
+            >
+              <span>Acessar Meu Painel</span>
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </PageTransition>
+        </div>
+      </div>
+    )
   }
 
   return (

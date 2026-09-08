@@ -297,7 +297,16 @@ self.addEventListener("push", (event) => {
  */
 function showNotificationFromPayload(data) {
   const title = data.title || "Severinno"
-  const body = data.body || ""
+  const isMessage =
+    data.type === "message" ||
+    data.notificationType === "message" ||
+    !!(data.data && (data.data.peerId || data.data.senderId))
+  const actions =
+    data.actions && data.actions.length > 0
+      ? data.actions
+      : isMessage
+        ? [{ action: "open_chat", title: "💬 Responder" }]
+        : []
 
   const options = {
     body,
@@ -307,8 +316,8 @@ function showNotificationFromPayload(data) {
     data: data.data || { url: data.url || "/" },
     tag: data.tag,
     renotify: true,
-    requireInteraction: !!(data.actions && data.actions.length > 0),
-    actions: data.actions || [],
+    requireInteraction: !!(actions.length > 0),
+    actions,
   }
 
   // Large image (e.g. service photo, map thumbnail)
@@ -344,6 +353,14 @@ self.addEventListener("notificationclick", (event) => {
   }
 
   // ── Handle action buttons ────────────────────────────────────────────
+  const peerId = data.peerId || data.senderId || (data.data && data.data.peerId)
+
+  if (action === "open_chat" || (peerId && !bookingId && action !== "reject")) {
+    const chatUrl = `/dashboard?tab=messages&peer=${peerId}`
+    event.waitUntil(openOrFocusUrl(chatUrl))
+    return
+  }
+
   if (action && bookingId) {
     let actionUrl
     switch (action) {

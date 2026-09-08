@@ -263,11 +263,20 @@ export default function QuickQuoteCalculator() {
     setStep(0)
   }, [])
 
-  const handleRequestQuote = React.useCallback(() => {
-    openQuote({ providerId: "" }) // Opens quote modal flow
-  }, [openQuote])
-
   const selectedCategoryConfig = CATEGORIES.find((c) => c.key === selectedCategory)
+
+  const handleRequestQuote = React.useCallback(() => {
+    const categoryLabel = selectedCategoryConfig?.label ?? ""
+    const scopeObj = SCOPES.find((s) => s.key === selectedScope)
+    const scopeLabel = scopeObj?.label ? `Porte ${scopeObj.label}` : ""
+    const priceText = priceRange
+      ? ` — Estimativa calculada: R$ ${priceRange[0]} a R$ ${priceRange[1]}`
+      : ""
+    const desc = categoryLabel
+      ? `Serviço solicitado: ${categoryLabel}${scopeLabel ? ` (${scopeLabel})` : ""}${priceText}`
+      : ""
+    openQuote({ providerId: "", initialDescription: desc })
+  }, [openQuote, selectedCategoryConfig, selectedScope, priceRange])
 
   return (
     <section

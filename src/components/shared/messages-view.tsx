@@ -10,11 +10,26 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import { Send, MessagesSquare, Loader2, Check, CheckCheck, Paperclip, Mic, X } from "lucide-react"
+import {
+  Send,
+  MessagesSquare,
+  Loader2,
+  Check,
+  CheckCheck,
+  Paperclip,
+  Mic,
+  X,
+  ShieldAlert,
+  ShieldCheck,
+  Clock,
+  WifiOff,
+} from "lucide-react"
 import { toast } from "sonner"
 import { useRealtime } from "@/hooks/use-realtime"
 import { playCoinSound } from "@/lib/sounds"
 import { compressImageFile } from "@/lib/client-image-compression"
+import { detectChatFraud } from "@/lib/chat-fraud-detector"
+import { enqueueOfflineMutation, processSyncQueue } from "@/lib/offline-sync"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -100,6 +115,50 @@ export function MessagesView({
   const [sending, setSending] = React.useState(false)
   const [uploading, setUploading] = React.useState(false)
   const [isPeerTyping, setIsPeerTyping] = React.useState(false)
+  const [offlinePendingMessages, setOfflinePendingMessages] = React.useState<Message[]>([])
+  const [isOnline, setIsOnline] = React.useState<boolean>(() =>
+    typeof navigator !== "undefined" ? navigator.onLine : true,
+  )
+
+  const fraudResult = React.useMemo(() => detectChatFraud(draft), [draft])
+
+  // Online / Offline synchronization listener
+  React.useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const handleOnline = async () => {
+      setIsOnline(true)
+      const res = await processSyncQueue(async (mutation) => {
+        if (mutation.action === "SEND_MESSAGE") {
+          const payload = mutation.payload as { toId: string; content: string }
+          await apiPost("/api/messages", { toId: payload.toId, content: payload.content })
+          return true
+        }
+        return true
+      })
+      if (res.succeeded > 0) {
+        toast.success(
+          `Conexão restabelecida! ${res.succeeded} ${res.succeeded === 1 ? "mensagem sincronizada" : "mensagens sincronizadas"}.`,
+        )
+        setOfflinePendingMessages([])
+        qc.invalidateQueries({ queryKey: ["messages"] })
+      }
+    }
+
+    const handleOffline = () => {
+      setIsOnline(false)
+      toast.warning(
+        "Modo offline ativado. Suas mensagens serão enviadas automaticamente ao reconectar.",
+      )
+    }
+
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+    }
+  }, [qc])
 
   // Voice recording state
   const [isRecording, setIsRecording] = React.useState(false)
@@ -217,6 +276,27 @@ export function MessagesView({
   const send = async (contentToSend?: string) => {
     const text = contentToSend ?? draft.trim()
     if (!selectedPeerId || !text) return
+
+    // If device is offline, enqueue locally and show optimistic message
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      enqueueOfflineMutation("SEND_MESSAGE", selectedPeerId, {
+        toId: selectedPeerId,
+        content: text,
+      })
+      const optimisticMsg: Message = {
+        id: `offline-${Date.now()}`,
+        fromId: user?.id ?? "",
+        toId: selectedPeerId,
+        content: text,
+        read: false,
+        createdAt: new Date().toISOString(),
+      }
+      setOfflinePendingMessages((prev) => [...prev, optimisticMsg])
+      if (!contentToSend) setDraft("")
+      toast.info("Mensagem salva offline. Será enviada automaticamente ao reconectar.")
+      return
+    }
+
     setSending(true)
     try {
       await apiPost("/api/messages", {
@@ -229,7 +309,22 @@ export function MessagesView({
       })
       qc.invalidateQueries({ queryKey: ["messages", "conversations"] })
     } catch (_e) {
-      toast.error("Não foi possível enviar a mensagem. Tente novamente.")
+      // Network failed during send, fallback to offline queue
+      enqueueOfflineMutation("SEND_MESSAGE", selectedPeerId, {
+        toId: selectedPeerId,
+        content: text,
+      })
+      const optimisticMsg: Message = {
+        id: `offline-${Date.now()}`,
+        fromId: user?.id ?? "",
+        toId: selectedPeerId,
+        content: text,
+        read: false,
+        createdAt: new Date().toISOString(),
+      }
+      setOfflinePendingMessages((prev) => [...prev, optimisticMsg])
+      if (!contentToSend) setDraft("")
+      toast.warning("Falha temporária de rede. Mensagem salva para reenvio automático.")
     } finally {
       setSending(false)
     }
@@ -343,7 +438,12 @@ export function MessagesView({
   }
 
   const conversations = conversationsQuery.data ?? []
-  const thread = threadQuery.data?.items ?? []
+  const currentPeerOffline = React.useMemo(() => {
+    return offlinePendingMessages.filter((m) => m.toId === selectedPeerId)
+  }, [offlinePendingMessages, selectedPeerId])
+  const thread = React.useMemo(() => {
+    return [...(threadQuery.data?.items ?? []), ...currentPeerOffline]
+  }, [threadQuery.data?.items, currentPeerOffline])
   const peer = threadQuery.data?.peer
 
   return (
@@ -457,16 +557,28 @@ export function MessagesView({
                 </div>
               </div>
 
-              {isPeerTyping && (
-                <div className="flex animate-pulse items-center gap-1.5 text-xs font-medium text-emerald-600">
-                  <span className="flex gap-1">
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-600" />
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-600 delay-150" />
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-600 delay-300" />
-                  </span>
-                  digitando...
+              <div className="flex items-center gap-2">
+                {isPeerTyping && (
+                  <div className="flex animate-pulse items-center gap-1.5 text-xs font-medium text-emerald-600">
+                    <span className="flex gap-1">
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-600" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-600 delay-150" />
+                      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-emerald-600 delay-300" />
+                    </span>
+                    digitando...
+                  </div>
+                )}
+                {!isOnline && (
+                  <div className="flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
+                    <WifiOff className="size-3" />
+                    <span>Modo Offline</span>
+                  </div>
+                )}
+                <div className="hidden items-center gap-1 rounded-full border border-emerald-200/60 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 sm:flex dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+                  <ShieldCheck className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Garantia Severinno</span>
                 </div>
-              )}
+              </div>
             </header>
 
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
@@ -527,7 +639,16 @@ export function MessagesView({
                               minute: "2-digit",
                             })}
                           </span>
-                          {mine &&
+                          {m.id.startsWith("offline-") ? (
+                            <span
+                              title="Pendente de sincronização (offline)"
+                              className="inline-flex items-center gap-0.5 text-amber-600 dark:text-amber-400"
+                            >
+                              <Clock className="inline size-3" />
+                              <span>offline</span>
+                            </span>
+                          ) : (
+                            mine &&
                             (m.read ? (
                               <span title="Lida">
                                 <CheckCheck className="inline h-3.5 w-3.5 text-blue-500" />
@@ -536,7 +657,8 @@ export function MessagesView({
                               <span title="Enviada">
                                 <Check className="text-muted-foreground inline h-3 w-3" />
                               </span>
-                            ))}
+                            ))
+                          )}
                         </div>
                       </li>
                     )
@@ -546,6 +668,17 @@ export function MessagesView({
             </div>
 
             <footer className="bg-background border-t p-3">
+              {fraudResult.hasRisk && (
+                <div className="mb-2.5 flex items-start gap-2.5 rounded-xl border border-amber-300/80 bg-amber-50/95 p-2.5 text-xs text-amber-950 shadow-xs dark:border-amber-700/50 dark:bg-amber-950/50 dark:text-amber-200">
+                  <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div className="flex-1">
+                    <p className="font-semibold">{fraudResult.warningTitle}</p>
+                    <p className="mt-0.5 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+                      {fraudResult.warningMessage}
+                    </p>
+                  </div>
+                </div>
+              )}
               {isRecording ? (
                 <div className="bg-destructive/10 border-destructive/20 flex w-full items-center justify-between rounded-xl border p-2 px-3">
                   <div className="text-destructive flex items-center gap-2 text-xs font-medium">

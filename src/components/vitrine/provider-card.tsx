@@ -8,7 +8,7 @@
  */
 
 import * as React from "react"
-import { Star, MapPin, Heart, GitCompare, ChevronRight, CheckCircle2 } from "lucide-react"
+import { Star, MapPin, Heart, GitCompare, ChevronRight, CheckCircle2, Sparkles } from "lucide-react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 
 import { cn } from "@/lib/utils"
@@ -151,6 +151,23 @@ export default React.memo(function ProviderCard({
                   {provider.name}
                 </h3>
                 {provider.verified && <VerifiedBadge size="sm" />}
+                {typeof provider.matchScore === "number" && provider.matchScore > 0 && (
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-tight shadow-xs",
+                      provider.matchScore >= 80
+                        ? "border border-emerald-500/30 bg-emerald-500/15 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
+                        : "border-primary/20 bg-primary/10 text-primary border",
+                    )}
+                    title={
+                      provider.matchReasons?.join(" • ") ||
+                      `Compatibilidade calculada por IA: ${Math.round(provider.matchScore)}%`
+                    }
+                  >
+                    <Sparkles className="size-2.5" />
+                    {Math.round(provider.matchScore)}% Match
+                  </span>
+                )}
                 {isNearby && (
                   <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
                     Perto de você
