@@ -78,6 +78,11 @@ jobs:
 
       - name: Build image (load locally, no push)
         uses: docker/build-push-action@v6
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          BUN_VERSION: ${{ vars.BUN_VERSION }}
         with:
           context: .
           load: true
@@ -86,10 +91,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
-            SENTRY_ORG=${{ secrets.SENTRY_ORG }}
-            SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}
-            BUN_VERSION=${{ vars.BUN_VERSION }}
+            SENTRY_AUTH_TOKEN=${{ env.SENTRY_AUTH_TOKEN }}
+            SENTRY_ORG=${{ env.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ env.SENTRY_PROJECT }}
+            BUN_VERSION=${{ env.BUN_VERSION }}
 
       - name: Start container
         run: |
@@ -155,6 +160,11 @@ jobs:
 
       - name: Build and push app image
         uses: docker/build-push-action@v6
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          BUN_VERSION: ${{ vars.BUN_VERSION }}
         with:
           context: .
           push: true
@@ -163,10 +173,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
-            SENTRY_ORG=${{ secrets.SENTRY_ORG }}
-            SENTRY_PROJECT=${{ secrets.SENTRY_PROJECT }}
-            BUN_VERSION=${{ vars.BUN_VERSION }}
+            SENTRY_AUTH_TOKEN=${{ env.SENTRY_AUTH_TOKEN }}
+            SENTRY_ORG=${{ env.SENTRY_ORG }}
+            SENTRY_PROJECT=${{ env.SENTRY_PROJECT }}
+            BUN_VERSION=${{ env.BUN_VERSION }}
 
       - name: Build and push worker image
         uses: docker/build-push-action@v6
@@ -188,12 +198,17 @@ jobs:
     steps:
       - name: Run database migrations
         uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ env.DEPLOY_KEY }}
           script: |
-            cd ${{ secrets.DEPLOY_PATH }}
+            cd ${{ env.DEPLOY_PATH }}
             echo "Running database migrations..."
             docker compose run --rm --no-deps app bunx prisma migrate deploy || \
               docker compose run --rm --no-deps app bunx prisma db push --accept-data-loss
@@ -206,13 +221,18 @@ jobs:
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_KEY }}
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ env.DEPLOY_KEY }}
           script: |
             set -e
-            cd ${{ secrets.DEPLOY_PATH }}
+            cd ${{ env.DEPLOY_PATH }}
             echo "Pulling new images..."
             docker compose pull app realtime email-worker notification-worker
             echo "Restarting services..."
