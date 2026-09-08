@@ -427,11 +427,17 @@ export function getHealth(): RabbitMQHealth {
     status:
       connectionStatus === "connected"
         ? "ok"
-        : connectionStatus === "reconnecting"
-          ? "reconnecting"
-          : connectionStatus === "connecting"
+        : connectionStatus === "connecting"
+          ? // Tentativa de conexão em andamento: sem histórico é lazy (disconnected);
+            // com histórico a reconexão está ativa (reconnecting), não é erro.
+            lastConnectedAt === null
             ? "disconnected"
-            : "error",
+            : "reconnecting"
+          : connectionStatus === "reconnecting"
+            ? "reconnecting"
+            : lastConnectedAt === null
+              ? "disconnected" // Nunca conectou (lazy init) — estado normal, não é erro
+              : "error", // Esteve conectado e caiu sem reconexão ativa (ex: shutdown)
     connected: connectionStatus === "connected",
     connectionStatus,
     lastConnectedAt,

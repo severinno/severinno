@@ -11,7 +11,7 @@
 //   4. Presença de scripts de Disaster Recovery (PostGIS backup/restore)
 //   5. Verificação do Caddyfile.prod (regras de segurança e proxy)
 //
-// Uso:
+// Usage:
 //   bun run scripts/preflight-deploy.ts
 //   bun run scripts/preflight-deploy.ts --env-file .env.production.local
 //

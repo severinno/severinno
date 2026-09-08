@@ -6,7 +6,7 @@
 // Inspeciona um arquivo .env ou process.env garantindo que todas as variáveis
 // críticas existam, possuam formato válido e não contenham placeholders <MUDE_AQUI>.
 //
-// Uso:
+// Usage:
 //   bun run scripts/verify-env.ts .env.production.local
 //   bun run scripts/verify-env.ts --env-file .env.staging
 //   bun run scripts/verify-env.ts --check-current

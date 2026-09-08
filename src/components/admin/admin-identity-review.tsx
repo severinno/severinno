@@ -8,21 +8,10 @@
  */
 
 import * as React from "react"
-import {
-  ShieldCheck,
-  ShieldX,
-  Eye,
-  Loader2,
-  FileCheck,
-  User,
-  Clock,
-  CheckCircle2,
-  XCircle,
-  Bot,
-} from "lucide-react"
+import { ShieldCheck, Eye, Loader2, CheckCircle2, XCircle, Bot } from "lucide-react"
 import { toast } from "sonner"
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -280,6 +269,7 @@ export function AdminIdentityReview() {
                         onClick={() => setPreviewUrl(v.identityDocUrl)}
                         className="group bg-muted/20 relative flex-1 overflow-hidden rounded-lg border"
                       >
+                        {/* eslint-disable-next-line @next/next/no-img-element -- documento KYC dinâmico (S3/blob), fora do otimizador */}
                         <img
                           src={v.identityDocUrl}
                           alt="Documento"
@@ -299,6 +289,7 @@ export function AdminIdentityReview() {
                         onClick={() => setPreviewUrl(v.identitySelfieUrl)}
                         className="group bg-muted/20 relative flex-1 overflow-hidden rounded-lg border"
                       >
+                        {/* eslint-disable-next-line @next/next/no-img-element -- selfie KYC dinâmica (S3/blob), fora do otimizador */}
                         <img
                           src={v.identitySelfieUrl}
                           alt="Selfie"
@@ -357,6 +348,7 @@ export function AdminIdentityReview() {
           </DialogHeader>
           {previewUrl && (
             <div className="p-4">
+              {/* eslint-disable-next-line @next/next/no-img-element -- preview ampliado dinâmico (blob/S3) */}
               <img
                 src={previewUrl}
                 alt="Documento ampliado"

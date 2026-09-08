@@ -24,18 +24,8 @@ import {
   CartesianGrid,
   ResponsiveContainer,
   Tooltip as RechartsTooltip,
-  Legend,
 } from "recharts"
-import {
-  TrendingUp,
-  TrendingDown,
-  Users,
-  ArrowRight,
-  Activity,
-  DollarSign,
-  Clock,
-  BarChart3,
-} from "lucide-react"
+import { TrendingUp, TrendingDown, Users, ArrowRight, Activity, BarChart3 } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -74,17 +64,6 @@ const STAGE_LABELS: Record<FunnelStage, string> = {
   completed: "Concluído",
   review: "Avaliação",
   retention: "Retenção",
-}
-
-const STAGE_COLORS: Record<FunnelStage, string> = {
-  landing: "hsl(160, 60%, 45%)",
-  signup: "hsl(160, 55%, 50%)",
-  onboarding: "hsl(155, 50%, 55%)",
-  search: "hsl(180, 50%, 45%)",
-  booking: "hsl(200, 60%, 50%)",
-  completed: "hsl(120, 50%, 50%)",
-  review: "hsl(45, 80%, 55%)",
-  retention: "hsl(280, 50%, 55%)",
 }
 
 const PERIOD_DAYS: Record<Period, number> = { "7d": 7, "30d": 30, "90d": 90 }

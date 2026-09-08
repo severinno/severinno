@@ -4,7 +4,6 @@ import * as React from "react"
 import {
   MapPin,
   Flame,
-  Filter,
   TrendingUp,
   Layers,
   RefreshCw,

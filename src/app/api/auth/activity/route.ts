@@ -5,7 +5,7 @@
  * POST — Records a custom activity item (or internal helper)
  */
 
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { getSession } from "@/lib/auth"
 import { getClient } from "@/lib/redis"
 import logger from "@/lib/logger"

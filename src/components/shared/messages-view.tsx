@@ -648,6 +648,7 @@ export function MessagesView({
                             </div>
                           ) : isImage ? (
                             <a href={m.content} target="_blank" rel="noopener noreferrer">
+                              {/* eslint-disable-next-line @next/next/no-img-element -- anexo dinâmico (S3/blob), fora do otimizador */}
                               <img
                                 src={m.content}
                                 alt="Anexo"

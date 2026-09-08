@@ -313,6 +313,7 @@ export function IdentityVerification({ className }: { className?: string }) {
                   onClick={() => document.getElementById("doc-input")?.click()}
                 >
                   {docPreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- preview local blob: antes do upload
                     <img
                       src={docPreview}
                       alt="Preview do documento"
@@ -349,6 +350,7 @@ export function IdentityVerification({ className }: { className?: string }) {
                   onClick={() => document.getElementById("selfie-input")?.click()}
                 >
                   {selfiePreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- preview local blob: antes do upload
                     <img
                       src={selfiePreview}
                       alt="Preview da selfie"

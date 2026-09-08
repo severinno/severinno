@@ -91,6 +91,7 @@ beforeAll(() => {
 })
 
 import { GET, resetHealthCache } from "@/app/api/health/route"
+import { getHealth as getRabbitHealth } from "@/lib/queue"
 
 describe("GET /api/health", () => {
   beforeEach(() => {
@@ -132,6 +133,35 @@ describe("GET /api/health", () => {
 
     const second = await GET()
     expect(second.status).toBe(200)
+  })
+
+  it("rabbitmq lazy (nunca conectou) → agregado ok E detail não marca error", async () => {
+    // Estado real quando ninguém chamou publish() ainda (lazy init):
+    // queue.getHealth() deve reportar "disconnected" (não "error"), e o
+    // agregado /api/health deve seguir "ok" sem contradição no detail.
+    // Nota: details.rabbitmq = { status: <agregado>, detail: <health da lib> }.
+    vi.mocked(getRabbitHealth).mockReturnValueOnce({
+      status: "disconnected",
+      connected: false,
+      connectionStatus: "disconnected",
+      lastConnectedAt: null,
+      reconnectAttempts: 0,
+      totalReconnectAttempts: 0,
+      heartbeat: 60,
+      uptimeSeconds: null,
+    })
+
+    const response = await GET()
+    const body = await response.json()
+
+    expect(body.checks.rabbitmq).toBe("ok")
+    // O agregado nunca é "error" aqui, e o health da lib (detail.status)
+    // deixa de gritar "error" — passa a ser "disconnected" (lazy, honesto).
+    expect(body.details.rabbitmq.detail.status).not.toBe("error")
+    expect(body.details.rabbitmq.detail.status).toBe("disconnected")
+    expect(body.details.rabbitmq.detail.connected).toBe(false)
+    expect(body.status).toBe("ok")
+    expect(response.status).toBe(200)
   })
 
   // ---- Kill-switches (kill-switch não é degradação) ---------------------

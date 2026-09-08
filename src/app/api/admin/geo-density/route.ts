@@ -18,7 +18,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { db } from "@/lib/db"
-import { clusterByH3, latLngToH3, h3ToGeoBoundary, h3ToLatLng } from "@/lib/h3-grid"
+import { clusterByH3, h3ToGeoBoundary, h3ToLatLng } from "@/lib/h3-grid"
 
 export async function GET(req: NextRequest) {
   try {
