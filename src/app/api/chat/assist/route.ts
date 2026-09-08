@@ -79,42 +79,81 @@ ${transcript}
 
 Responda APENAS com o JSON válido, sem markdown ou texto adicional.`
 
-    const zai = await ZAI.create()
-    const completion = await zai.chat.completions.create({
-      messages: [
-        { role: "assistant" as const, content: systemPrompt },
-        { role: "user" as const, content: "Analise a conversa e gere as sugestões." },
-      ],
-      thinking: { type: "disabled" },
-    })
+    let suggestions: string[] = []
+    let intent = "geral"
+    let urgency = "low"
 
-    const raw = completion.choices[0]?.message?.content ?? ""
-
-    // Parse JSON from response (handle markdown fences)
-    let parsed: { suggestions: string[]; intent: string; urgency: string }
     try {
+      const zai = await ZAI.create()
+      const completion = await zai.chat.completions.create({
+        messages: [
+          { role: "assistant" as const, content: systemPrompt },
+          { role: "user" as const, content: "Analise a conversa e gere as sugestões." },
+        ],
+        thinking: { type: "disabled" },
+      })
+
+      const raw = completion.choices[0]?.message?.content ?? ""
       const jsonStr = raw
         .replace(/```json\s*\n?/gi, "")
         .replace(/```\s*$/gi, "")
         .trim()
-      parsed = JSON.parse(jsonStr)
+      const parsed = JSON.parse(jsonStr)
+
+      if (Array.isArray(parsed.suggestions)) {
+        suggestions = parsed.suggestions.slice(0, 3).map(String)
+      }
+      if (parsed.intent) intent = parsed.intent
+      if (parsed.urgency) urgency = parsed.urgency
     } catch {
-      // Fallback if LLM didn't return valid JSON
-      parsed = {
-        suggestions: [
-          "Obrigado pelo contato! Posso ajudar sim.",
-          "Vou verificar minha agenda e te retorno.",
-          "Poderia me enviar mais detalhes sobre o serviço?",
-        ],
-        intent: "geral",
-        urgency: "low",
+      // Fallback: rule-based contextual generator when ZAI is unavailable or fails
+      const lastMsg = (messages[messages.length - 1]?.content || "").toLowerCase()
+      if (/preço|quanto|valor|orçamento|cobrar|custa/.test(lastMsg)) {
+        intent = "orcamento"
+        suggestions = [
+          "Consigo te passar um valor mais exato se me enviar fotos.",
+          "Para esse tipo de serviço, a média é entre R$ 100 e R$ 250.",
+          "Posso fazer uma visita técnica sem compromisso para avaliar.",
+        ]
+      } else if (/hora|quando|chega|onde|chegando|atras|previsão/.test(lastMsg)) {
+        intent = "agendamento"
+        urgency = "medium"
+        suggestions = [
+          "Estou a caminho! Devo chegar em cerca de 30 minutos.",
+          "Estou finalizando um atendimento e já sigo para o local.",
+          "Podemos confirmar para as 14h? Já estou com os materiais.",
+        ]
+      } else if (/vazamento|urgente|emergência|cano|inunda|fogo|choque|perigo/.test(lastMsg)) {
+        intent = "urgencia"
+        urgency = "high"
+        suggestions = [
+          "Recomendo fechar o registro geral imediatamente! Já estou a caminho.",
+          "Chego em 20 minutos. Desligue a chave geral por segurança.",
+          "Entendido! Estou priorizando seu atendimento agora.",
+        ]
+      } else if (/obrigad|valeu|ótimo|perfeito|excelente|bom/.test(lastMsg)) {
+        intent = "elogio"
+        suggestions = [
+          "Disponha sempre! Qualquer dúvida estou à disposição.",
+          "Perfeito! Nos vemos em breve.",
+          "Obrigado você pela confiança! Até logo.",
+        ]
+      } else {
+        suggestions = [
+          "Obrigado pelo contato! Posso ajudar com isso sim.",
+          "Vou verificar minha agenda e te confirmo o horário.",
+          "Poderia me enviar mais detalhes ou uma foto do local?",
+        ]
       }
     }
 
-    // Ensure valid structure
-    const suggestions = Array.isArray(parsed.suggestions)
-      ? parsed.suggestions.slice(0, 3).map(String)
-      : ["Obrigado pelo contato!", "Vou verificar e te retorno.", "Poderia dar mais detalhes?"]
+    if (!suggestions.length) {
+      suggestions = [
+        "Obrigado pelo contato!",
+        "Vou verificar e te retorno.",
+        "Poderia dar mais detalhes?",
+      ]
+    }
 
     const validIntents = [
       "orcamento",
@@ -125,12 +164,12 @@ Responda APENAS com o JSON válido, sem markdown ou texto adicional.`
       "urgencia",
       "geral",
     ]
-    const intent = validIntents.includes(parsed.intent) ? parsed.intent : "geral"
+    const finalIntent = validIntents.includes(intent) ? intent : "geral"
 
     const validUrgencies = ["low", "medium", "high", "critical"]
-    const urgency = validUrgencies.includes(parsed.urgency) ? parsed.urgency : "low"
+    const finalUrgency = validUrgencies.includes(urgency) ? urgency : "low"
 
-    return NextResponse.json({ suggestions, intent, urgency })
+    return NextResponse.json({ suggestions, intent: finalIntent, urgency: finalUrgency })
   } catch (e) {
     return handleError(e)
   }
