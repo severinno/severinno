@@ -24,12 +24,14 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  CreditCard,
   Eye,
   Loader2,
   MapPin,
   MessageSquare,
   MoreHorizontal,
   Navigation,
+  QrCode,
   Star,
   XCircle,
 } from "lucide-react"
@@ -73,6 +75,8 @@ import {
 import { EmptyState } from "@/components/shared/dashboard-shell"
 import { ReviewDialog } from "@/components/client/review-dialog"
 import { BookingTimeline } from "@/components/shared/flow-timeline"
+import { PixCheckout } from "@/components/shared/pix-checkout"
+import { LiveTracking } from "@/components/shared/live-tracking"
 import {
   PageHeader,
   StatusBadge,
@@ -168,6 +172,8 @@ export function ClientBookings() {
   const [detailsId, setDetailsId] = React.useState<string | null>(null)
   const [reviewBooking, setReviewBooking] = React.useState<Booking | null>(null)
   const [cancelBooking, setCancelBooking] = React.useState<Booking | null>(null)
+  const [pixBooking, setPixBooking] = React.useState<Booking | null>(null)
+  const [trackingBooking, setTrackingBooking] = React.useState<Booking | null>(null)
 
   // Reset page when tab changes
   React.useEffect(() => {
@@ -341,7 +347,12 @@ export function ClientBookings() {
               onReview={() => setReviewBooking(b)}
               onMessage={() => navigate("client.messages", { with: b.provider.id })}
               onViewProvider={() => openProvider(b.provider.id)}
-              onTrack={() => window.open(`/tracking/${b.id}`, "_blank")}
+              onTrack={() => setTrackingBooking(b)}
+              onPay={
+                b.paymentMethod === "PIX" && b.paymentStatus === "PENDING"
+                  ? () => setPixBooking(b)
+                  : undefined
+              }
               isCompleting={completeMutation.isPending}
             />
           ))}
@@ -428,6 +439,53 @@ export function ClientBookings() {
 
       {/* Details dialog */}
       <BookingDetailsDialog bookingId={detailsId} onOpenChange={(o) => !o && setDetailsId(null)} />
+
+      {/* PIX Checkout dialog */}
+      <Dialog open={!!pixBooking} onOpenChange={(o) => !o && setPixBooking(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="size-5 text-emerald-600" />
+              Pagamento PIX
+            </DialogTitle>
+            <DialogDescription>Escaneie o QR code ou copie o código para pagar.</DialogDescription>
+          </DialogHeader>
+          {pixBooking && (
+            <PixCheckout
+              bookingId={pixBooking.id}
+              amount={pixBooking.amount}
+              onPaymentConfirmed={() => {
+                qc.invalidateQueries({ queryKey: ["bookings"] })
+                qc.invalidateQueries({ queryKey: ["client", "dashboard"] })
+                setTimeout(() => setPixBooking(null), 3000)
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Live Tracking dialog */}
+      <Dialog open={!!trackingBooking} onOpenChange={(o) => !o && setTrackingBooking(null)}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Navigation className="size-5 text-blue-600" />
+              Rastreamento ao Vivo
+            </DialogTitle>
+            <DialogDescription>
+              Acompanhe a chegada de {trackingBooking?.provider.name} em tempo real.
+            </DialogDescription>
+          </DialogHeader>
+          {trackingBooking && (
+            <LiveTracking
+              bookingId={trackingBooking.id}
+              destinationLat={-19.92} // Will be overridden by SSE
+              destinationLng={-43.94}
+              providerName={trackingBooking.provider.name}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -445,6 +503,7 @@ function BookingCard({
   onMessage,
   onViewProvider,
   onTrack,
+  onPay,
   isCompleting,
 }: {
   booking: Booking
@@ -455,6 +514,7 @@ function BookingCard({
   onMessage: () => void
   onViewProvider: () => void
   onTrack?: () => void
+  onPay?: () => void
   isCompleting: boolean
 }) {
   const provider = booking.provider
@@ -464,6 +524,7 @@ function BookingCard({
   const canCancel = status === "PENDING" || status === "CONFIRMED" || status === "IN_PROGRESS"
   const canComplete = status === "CONFIRMED" || status === "IN_PROGRESS"
   const canTrack = status === "IN_PROGRESS"
+  const canPay = !!onPay
   const hasReview = (booking.reviews?.length ?? 0) > 0
   const canReview = status === "COMPLETED" && !hasReview
 
@@ -554,6 +615,12 @@ function BookingCard({
                   Rastrear ao vivo
                 </DropdownMenuItem>
               ) : null}
+              {canPay ? (
+                <DropdownMenuItem onSelect={onPay}>
+                  <QrCode className="size-4 text-emerald-600" />
+                  Pagar com PIX
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem onSelect={onMessage}>
                 <MessageSquare className="size-4" />
                 Enviar mensagem
@@ -595,6 +662,17 @@ function BookingCard({
             >
               <Navigation className="size-4" />
               Rastrear
+            </Button>
+          ) : null}
+          {canPay ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onPay}
+              className="h-9 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+            >
+              <CreditCard className="size-4" />
+              Pagar PIX
             </Button>
           ) : null}
           {canComplete ? (

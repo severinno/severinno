@@ -25,7 +25,7 @@ import {
   lytexLogger,
   type LytexWebhookPayload,
 } from "@/lib/lytex"
-import { notifyPaymentConfirmed } from "@/lib/notifications"
+import { notifyPaymentConfirmed, notifyPaymentConfirmedToClient } from "@/lib/notifications"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { cacheGet, cacheSet } from "@/lib/redis"
 
@@ -56,6 +56,8 @@ async function confirmBookingPayment(
       clientId: true,
       providerId: true,
       amount: true,
+      service: { select: { title: true } },
+      provider: { select: { name: true } },
       payment: { select: { id: true, status: true } },
     },
   })
@@ -118,6 +120,15 @@ async function confirmBookingPayment(
   notifyPaymentConfirmed(booking.providerId, bookingId, booking.amount).catch((err) =>
     logger.warn({ err }, "lytex payment notification failed"),
   )
+
+  // Notificar cliente com recibo via WhatsApp (best-effort)
+  notifyPaymentConfirmedToClient(
+    booking.clientId,
+    bookingId,
+    booking.amount,
+    booking.service?.title ?? "Serviço",
+    booking.provider?.name ?? "Prestador",
+  ).catch((err) => logger.warn({ err }, "lytex client payment confirmation failed"))
 }
 
 // ---------------------------------------------------------------------------

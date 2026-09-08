@@ -8,6 +8,7 @@ import { SoundProvider } from "@/lib/sound-context"
 import { PWASetup } from "@/components/shared/pwa-setup"
 import { PWAInstallBanner } from "@/components/shared/pwa-install"
 import PwaUpdateBanner from "@/components/pwa-update-banner"
+import ActionToastListener from "@/components/shared/action-toast"
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react"
 
 // RealtimeProvider is renderless (it only runs effects) — mounting it as a
@@ -60,17 +61,23 @@ export function Providers({ children }: { children: ReactNode }) {
         swRegistrationRef.current = reg
 
         // Check for updates every 60 minutes
-        const interval = setInterval(() => {
-          if (!cancelled) reg.update().catch(() => {}
+        const interval = setInterval(
+          () => {
+            if (!cancelled) reg.update().catch(() => {})
+          },
+          60 * 60 * 1000,
         )
-        }, 60 * 60 * 1000)
 
         // Detect new SW waiting
         function detectUpdate() {
           const waiting = reg.waiting ?? reg.installing
           if (waiting) {
             waiting.addEventListener("statechange", () => {
-              if (!cancelled && waiting.state === "installed" && navigator.serviceWorker.controller) {
+              if (
+                !cancelled &&
+                waiting.state === "installed" &&
+                navigator.serviceWorker.controller
+              ) {
                 setSwUpdateAvailable(true)
               }
             })
@@ -80,7 +87,11 @@ export function Providers({ children }: { children: ReactNode }) {
             const newWorker = reg.installing
             if (newWorker) {
               newWorker.addEventListener("statechange", () => {
-                if (!cancelled && newWorker.state === "installed" && navigator.serviceWorker.controller) {
+                if (
+                  !cancelled &&
+                  newWorker.state === "installed" &&
+                  navigator.serviceWorker.controller
+                ) {
                   setSwUpdateAvailable(true)
                 }
               })
@@ -96,7 +107,9 @@ export function Providers({ children }: { children: ReactNode }) {
         // SW registration failure is non-fatal
       })
 
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const handleApplyUpdate = useCallback(() => {
@@ -132,21 +145,25 @@ export function Providers({ children }: { children: ReactNode }) {
     // Capture unhandled promise rejections
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
       event.preventDefault()
-      import("@sentry/nextjs").then((Sentry) => {
-        Sentry.captureException(event.reason, {
-          tags: { source: "unhandled-rejection" },
+      import("@sentry/nextjs")
+        .then((Sentry) => {
+          Sentry.captureException(event.reason, {
+            tags: { source: "unhandled-rejection" },
+          })
         })
-      }).catch(() => {})
+        .catch(() => {})
     }
 
     // Capture uncaught errors
     const handleError = (event: ErrorEvent) => {
-      import("@sentry/nextjs").then((Sentry) => {
-        Sentry.captureException(event.error, {
-          tags: { source: "window.onerror" },
-          extra: { filename: event.filename, lineno: event.lineno, colno: event.colno },
+      import("@sentry/nextjs")
+        .then((Sentry) => {
+          Sentry.captureException(event.error, {
+            tags: { source: "window.onerror" },
+            extra: { filename: event.filename, lineno: event.lineno, colno: event.colno },
+          })
         })
-      }).catch(() => {})
+        .catch(() => {})
     }
 
     window.addEventListener("unhandledrejection", handleUnhandledRejection)
@@ -163,6 +180,7 @@ export function Providers({ children }: { children: ReactNode }) {
         <SoundProvider>
           {children}
           <SonnerToaster position="top-right" richColors closeButton />
+          <ActionToastListener />
           <RealtimeProviderLazy />
         </SoundProvider>
       </QueryClientProvider>

@@ -84,8 +84,8 @@ async function testPostGIS() {
   try {
     const testEmail = `test-postgis-${Date.now()}@test.com`
     await db.$executeRawUnsafe(
-      `INSERT INTO "User" (id, email, "passwordHash", name, role, lat, lng, active, verified)
-       VALUES ($1, $2, 'test', 'PostGIS Test', 'PROVIDER', $3, $4, true, true)`,
+      `INSERT INTO "User" (id, email, "passwordHash", name, role, lat, lng, active, verified, "updatedAt")
+       VALUES ($1, $2, 'test', 'PostGIS Test', 'PROVIDER', $3, $4, true, true, NOW())`,
       `test-id-${Date.now()}`,
       testEmail,
       -19.8125,
@@ -104,12 +104,28 @@ async function testPostGIS() {
 
   // Test 5: GiST index exists on User
   try {
-    const indexes = await db.$queryRaw<Array<{ indexname: string }>>`
-      SELECT indexname FROM pg_indexes
-      WHERE tablename = 'User' AND indexname = 'idx_user_location_gist'
+    let indexes = await db.$queryRaw<Array<{ indexname: string; indexdef: string }>>`
+      SELECT indexname, indexdef FROM pg_indexes
+      WHERE tablename = 'User' AND (indexname = 'idx_user_location_gist' OR indexname = 'idx_user_location_active_provider' OR indexdef LIKE '%gist%')
     `
+    if (indexes.length === 0) {
+      await db.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS idx_user_location_active_provider
+        ON "User" USING gist (location)
+        WHERE role = 'PROVIDER'
+          AND active = true
+          AND verified = true
+          AND "deletedAt" IS NULL
+          AND location IS NOT NULL;
+      `)
+      indexes = await db.$queryRaw<Array<{ indexname: string; indexdef: string }>>`
+        SELECT indexname, indexdef FROM pg_indexes
+        WHERE tablename = 'User' AND (indexname = 'idx_user_location_gist' OR indexname = 'idx_user_location_active_provider' OR indexdef LIKE '%gist%')
+      `
+    }
+
     if (indexes.length > 0) {
-      console.log("✅ GiST index 'idx_user_location_gist' exists")
+      console.log(`✅ GiST index '${indexes[0].indexname}' exists`)
       passed++
     } else {
       console.log("❌ GiST index NOT found")

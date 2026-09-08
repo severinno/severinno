@@ -12,6 +12,7 @@ import {
   notifyBookingStatus,
   notifyCompletionRequest,
   notifyPaymentConfirmed,
+  notifyLiveTrackingStarted,
 } from "@/lib/notifications"
 import type { BookingStatus, PaymentStatus } from "@/generated/prisma/enums"
 
@@ -186,6 +187,11 @@ export async function PATCH(request: Request, { params }: Params) {
       // Liberou pagamento
       notifyPaymentConfirmed(updated.providerId, id, updated.amount).catch((err) =>
         logger.warn({ err }, "notification failed (fire-and-forget)"),
+      )
+    } else if (next === "IN_PROGRESS") {
+      // Prestador a caminho — envia link de tracking em tempo real para o cliente
+      notifyLiveTrackingStarted(updated.clientId, id, updated.provider.name, serviceName).catch(
+        (err) => logger.warn({ err }, "live tracking notification failed (fire-and-forget)"),
       )
     }
 

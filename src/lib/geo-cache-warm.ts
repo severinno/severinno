@@ -174,94 +174,12 @@ export async function warmGeoCache(): Promise<WarmResult> {
   let skipped = 0
   let errors = 0
 
-  // ── Warm city searches ────────────────────────────────────────────
-  for (const city of TOP_CITIES) {
-    try {
-      // Cache key pattern from geo.ts: geo:search:{normalized}:{limit}
-      const key = `geo:search:${city.toLowerCase()}:5`
-      if (await isKeyCached(key)) {
-        skipped++
-        continue
-      }
-      // geocodeSearch goes through withCachedGeo → withCache → rateLimitedNominatim
-      await geocodeSearch(city, 5)
-      searches++
-    } catch {
-      errors++
-    }
-  }
-
-  // ── Warm CEP lookups ──────────────────────────────────────────────
-  for (const cep of TOP_CEPS) {
-    try {
-      const key = `geo:cep:${cep}`
-      if (await isKeyCached(key)) {
-        skipped++
-        continue
-      }
-      await geocodeCEP(cep)
-      ceps++
-    } catch {
-      errors++
-    }
-  }
-
-  // ── Warm reverse geocodes ─────────────────────────────────────────
-  for (const coord of TOP_COORDS) {
-    try {
-      const key = `geo:reverse:${coord.lat.toFixed(4)},${coord.lng.toFixed(4)}`
-      if (await isKeyCached(key)) {
-        skipped++
-        continue
-      }
-      await reverseGeocode(coord.lat, coord.lng)
-      reverses++
-    } catch {
-      errors++
-    }
-  }
-
-  // ── Warm neighborhood searches (Grupo 1) ───────────────────────────
-  for (const bairro of TOP_NEIGHBORHOODS) {
-    try {
-      const key = `geo:search:${bairro.toLowerCase()}:5`
-      if (await isKeyCached(key)) {
-        skipped++
-        continue
-      }
-      await geocodeSearch(bairro, 5)
-      searches++
-    } catch {
-      errors++
-    }
-  }
-
-  // ── Warm missing capital searches (Grupo 3) ────────────────────────
-  for (const capital of MISSING_CAPITALS) {
-    try {
-      const key = `geo:search:${capital.toLowerCase()}:5`
-      if (await isKeyCached(key)) {
-        skipped++
-        continue
-      }
-      await geocodeSearch(capital, 5)
-      searches++
-    } catch {
-      errors++
-    }
-  }
-
-  // ── Warm log-based queries ──────────────────────────────────────────
-  // After the static lists, warm the most popular user queries from the
-  // persistent query log.  Deduplication happens naturally via isKeyCached():
-  // if the static list already primed an entry, the log loop skips it.
-
+  // ── 1. Warm log-based queries FIRST (real user traffic has top priority) ──
   let logSearches = 0
   let logCeps = 0
   let logReverses = 0
 
-  // Log-based searches
-  const topSearches = getTopSearches(10)
+  const topSearches = getTopSearches(20)
   for (const { query } of topSearches) {
     try {
       const key = `geo:search:${query.toLowerCase()}:5`
@@ -276,8 +194,7 @@ export async function warmGeoCache(): Promise<WarmResult> {
     }
   }
 
-  // Log-based CEP lookups
-  const topCEPs = getTopCEPs(10)
+  const topCEPs = getTopCEPs(15)
   for (const { cep } of topCEPs) {
     try {
       const key = `geo:cep:${cep}`
@@ -292,8 +209,7 @@ export async function warmGeoCache(): Promise<WarmResult> {
     }
   }
 
-  // Log-based reverse geocodes
-  const topReverses = getTopReverses(5)
+  const topReverses = getTopReverses(10)
   for (const { coords } of topReverses) {
     try {
       const key = `geo:reverse:${coords}`
@@ -308,6 +224,82 @@ export async function warmGeoCache(): Promise<WarmResult> {
       }
       await reverseGeocode(lat, lng)
       logReverses++
+    } catch {
+      errors++
+    }
+  }
+
+  // ── 2. Complement with static lists (for cold start / new regions) ──────
+  // Warm city searches
+  for (const city of TOP_CITIES) {
+    try {
+      const key = `geo:search:${city.toLowerCase()}:5`
+      if (await isKeyCached(key)) {
+        skipped++
+        continue
+      }
+      await geocodeSearch(city, 5)
+      searches++
+    } catch {
+      errors++
+    }
+  }
+
+  // Warm CEP lookups
+  for (const cep of TOP_CEPS) {
+    try {
+      const key = `geo:cep:${cep}`
+      if (await isKeyCached(key)) {
+        skipped++
+        continue
+      }
+      await geocodeCEP(cep)
+      ceps++
+    } catch {
+      errors++
+    }
+  }
+
+  // Warm reverse geocodes
+  for (const coord of TOP_COORDS) {
+    try {
+      const key = `geo:reverse:${coord.lat.toFixed(4)},${coord.lng.toFixed(4)}`
+      if (await isKeyCached(key)) {
+        skipped++
+        continue
+      }
+      await reverseGeocode(coord.lat, coord.lng)
+      reverses++
+    } catch {
+      errors++
+    }
+  }
+
+  // Warm neighborhood searches (Grupo 1)
+  for (const bairro of TOP_NEIGHBORHOODS) {
+    try {
+      const key = `geo:search:${bairro.toLowerCase()}:5`
+      if (await isKeyCached(key)) {
+        skipped++
+        continue
+      }
+      await geocodeSearch(bairro, 5)
+      searches++
+    } catch {
+      errors++
+    }
+  }
+
+  // Warm missing capital searches (Grupo 3)
+  for (const capital of MISSING_CAPITALS) {
+    try {
+      const key = `geo:search:${capital.toLowerCase()}:5`
+      if (await isKeyCached(key)) {
+        skipped++
+        continue
+      }
+      await geocodeSearch(capital, 5)
+      searches++
     } catch {
       errors++
     }

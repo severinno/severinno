@@ -14,7 +14,12 @@
  */
 
 import { describe, it, expect } from "vitest"
-import { EXPANSION_STEPS, buildRadiiToTry, findEffectiveRadius } from "../radius-expansion"
+import {
+  EXPANSION_STEPS,
+  buildRadiiToTry,
+  findEffectiveRadius,
+  findEffectiveRadiusSinglePass,
+} from "../radius-expansion"
 
 // ---------------------------------------------------------------------------
 // EXPANSION_STEPS
@@ -173,5 +178,32 @@ describe("findEffectiveRadius", () => {
         throw new Error("DB unavailable")
       }),
     ).rejects.toThrow("DB unavailable")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// findEffectiveRadiusSinglePass
+// ---------------------------------------------------------------------------
+
+describe("findEffectiveRadiusSinglePass", () => {
+  it("returns user radius when closest provider is within initial radius", () => {
+    expect(findEffectiveRadiusSinglePass(5, 3.2)).toBe(5)
+    expect(findEffectiveRadiusSinglePass(10, 8.5)).toBe(10)
+  })
+
+  it("expands to the nearest step that encloses min distance", () => {
+    expect(findEffectiveRadiusSinglePass(5, 7.8)).toBe(10)
+    expect(findEffectiveRadiusSinglePass(5, 18.0)).toBe(25)
+    expect(findEffectiveRadiusSinglePass(10, 32.5)).toBe(50)
+    expect(findEffectiveRadiusSinglePass(25, 75.0)).toBe(100)
+  })
+
+  it("returns null when min distance exceeds all expansion steps", () => {
+    expect(findEffectiveRadiusSinglePass(5, 120.0)).toBeNull()
+  })
+
+  it("returns null when min distance is null or NaN", () => {
+    expect(findEffectiveRadiusSinglePass(5, null)).toBeNull()
+    expect(findEffectiveRadiusSinglePass(5, NaN)).toBeNull()
   })
 })

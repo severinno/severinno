@@ -15,8 +15,10 @@ import {
   Play,
   X,
   Info,
+  Radio,
 } from "lucide-react"
 
+import { useLocationBroadcaster } from "@/hooks/use-location-broadcaster"
 import { apiGet, apiPatch } from "@/lib/api"
 import {
   BOOKING_STATUS_LABELS,
@@ -597,6 +599,7 @@ function BookingActions({
           <Play className="size-3.5" /> Iniciar
         </Button>
       )}
+      {booking.status === "IN_PROGRESS" && <LocationBroadcastButton bookingId={booking.id} />}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" className="size-8" aria-label="Mais ações">
@@ -636,6 +639,28 @@ function BookingActions({
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Location broadcast button
+// ---------------------------------------------------------------------------
+
+function LocationBroadcastButton({ bookingId }: { bookingId: string }) {
+  const { isBroadcasting, toggle } = useLocationBroadcaster({ bookingId })
+  return (
+    <Button
+      size="sm"
+      variant={isBroadcasting ? "default" : "outline"}
+      onClick={toggle}
+      className={cn(
+        "h-8 gap-1.5 px-2.5 text-xs transition-colors",
+        isBroadcasting && "animate-pulse bg-emerald-600 text-white hover:bg-emerald-700",
+      )}
+    >
+      <Radio className="size-3.5" />
+      {isBroadcasting ? "GPS Ativo" : "Transmitir GPS"}
+    </Button>
   )
 }
 

@@ -251,7 +251,10 @@ function ProfileBody({
                     {provider?.name}
                   </h2>
                   {provider?.verified && (
-                    <Badge className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0 text-[9px] font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800">
+                    <Badge
+                      data-testid="badge"
+                      className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0 text-[9px] font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800"
+                    >
                       <BadgeCheck className="size-2.5" /> Verificado
                     </Badge>
                   )}

@@ -21,14 +21,7 @@ import logger from "./logger"
 // ── Event Types ───────────────────────────────────────────────────────────
 
 export type FunnelStage =
-  | "landing"
-  | "signup"
-  | "onboarding"
-  | "search"
-  | "booking"
-  | "completed"
-  | "review"
-  | "retention"
+  "landing" | "signup" | "onboarding" | "search" | "booking" | "completed" | "review" | "retention"
 
 export type AnalyticsEvent = {
   stage: FunnelStage
@@ -72,7 +65,7 @@ export async function trackEvent(
     // Also store per-user funnel
     if (data.userId) {
       const userKey = `analytics:user:${data.userId}`
-      const existing = await cacheGet<AnalyticsEvent[]>(userKey) ?? []
+      const existing = (await cacheGet<AnalyticsEvent[]>(userKey)) ?? []
       existing.push(event)
       await cacheSet(userKey, existing, 90 * 24 * 60 * 60)
     }
@@ -92,8 +85,31 @@ export async function getFunnelSummary(
   startMs: number,
   endMs: number,
 ): Promise<Record<FunnelStage, { total: number; byRole: { CLIENT: number; PROVIDER: number } }>> {
-  const stages: FunnelStage[] = ["landing", "signup", "onboarding", "search", "booking", "completed", "review", "retention"]
-  const result: Record<FunnelStage, { total: number; byRole: { CLIENT: number; PROVIDER: number } }> = {} as Record<FunnelStage, { total: number; byRole: { CLIENT: number; PROVIDER: number } }>
+  const stages: FunnelStage[] = [
+    "landing",
+    "signup",
+    "onboarding",
+    "search",
+    "booking",
+    "completed",
+    "review",
+    "retention",
+  ]
+  const result: Record<
+    FunnelStage,
+    { total: number; byRole: { CLIENT: number; PROVIDER: number } }
+  > = {} as Record<FunnelStage, { total: number; byRole: { CLIENT: number; PROVIDER: number } }>
+
+  const cacheKey = `analytics:summary:${startMs}:${endMs}`
+  try {
+    const cached =
+      await cacheGet<
+        Record<FunnelStage, { total: number; byRole: { CLIENT: number; PROVIDER: number } }>
+      >(cacheKey)
+    if (cached) return cached
+  } catch {
+    // Cache miss
+  }
 
   for (const stage of stages) {
     result[stage] = { total: 0, byRole: { CLIENT: 0, PROVIDER: 0 } }
@@ -119,6 +135,8 @@ export async function getFunnelSummary(
         }
       }
     }
+    // Cache summary for 5 minutes
+    await cacheSet(cacheKey, result, 300)
   } catch {
     // Redis unavailable
   }
@@ -132,16 +150,32 @@ export async function getFunnelSummary(
 export async function getConversionRates(
   startMs: number,
   endMs: number,
-): Promise<Array<{
-  from: FunnelStage
-  to: FunnelStage
-  rate: number | null
-  absolute: number
-}>> {
+): Promise<
+  Array<{
+    from: FunnelStage
+    to: FunnelStage
+    rate: number | null
+    absolute: number
+  }>
+> {
   const funnel = await getFunnelSummary(startMs, endMs)
-  const stages: FunnelStage[] = ["landing", "signup", "onboarding", "search", "booking", "completed", "review", "retention"]
+  const stages: FunnelStage[] = [
+    "landing",
+    "signup",
+    "onboarding",
+    "search",
+    "booking",
+    "completed",
+    "review",
+    "retention",
+  ]
 
-  const rates: Array<{ from: FunnelStage; to: FunnelStage; rate: number | null; absolute: number }> = []
+  const rates: Array<{
+    from: FunnelStage
+    to: FunnelStage
+    rate: number | null
+    absolute: number
+  }> = []
 
   for (let i = 0; i < stages.length - 1; i++) {
     const from = stages[i]!
@@ -179,6 +213,14 @@ export async function getDailyCounts(
   stage: FunnelStage,
   days: number = 30,
 ): Promise<Array<{ date: string; count: number }>> {
+  const cacheKey = `analytics:daily:${stage}:${days}`
+  try {
+    const cached = await cacheGet<Array<{ date: string; count: number }>>(cacheKey)
+    if (cached) return cached
+  } catch {
+    // Cache miss
+  }
+
   const result: Array<{ date: string; count: number }> = []
   const now = Date.now()
   const msPerDay = 24 * 60 * 60 * 1000
@@ -197,6 +239,9 @@ export async function getDailyCounts(
       const count = await client.zcount(key, dayStart, dayEnd)
       result.push({ date, count })
     }
+
+    // Cache daily counts for 5 minutes
+    await cacheSet(cacheKey, result, 300)
   } catch {
     // Redis unavailable
   }

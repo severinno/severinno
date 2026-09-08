@@ -119,15 +119,17 @@ async function evolutionRequest<T>(method: string, path: string, body?: unknown)
   const { baseUrl, apiKey } = getConfig()
   const url = `${baseUrl}${path}`
 
-  const res = await evolutionBreaker.execute(() => fetch(url, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      apikey: apiKey,
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  }))
+  const res = await evolutionBreaker.execute(() =>
+    fetch(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        apikey: apiKey,
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    }),
+  )
 
   const contentType = res.headers.get("content-type") ?? ""
   let parsed: unknown = null
@@ -194,6 +196,55 @@ export async function sendText(
     number,
     text,
   } as EvolutionMessageText)
+}
+
+export type EvolutionButton = {
+  id: string
+  text: string
+}
+
+/**
+ * Enviar mensagem com botões interativos via WhatsApp (Evolution API).
+ * Se a instância não suportar botões interativos ou falhar, faz fallback
+ * gracioso para mensagem de texto formatada com opções numeradas.
+ */
+export async function sendButtons(
+  to: string,
+  title: string,
+  description: string,
+  buttons: EvolutionButton[],
+  footer = "Severinno Marketplace",
+  instanceName?: string,
+): Promise<{ key: { id: string } }> {
+  const instance = instanceName ?? getConfig().instance
+  const number = to.replace(/\D/g, "")
+
+  try {
+    const payload = {
+      number,
+      title,
+      description,
+      footer,
+      buttons: buttons.map((b) => ({
+        buttonId: b.id,
+        buttonText: { displayText: b.text },
+        type: 1,
+      })),
+    }
+    return await evolutionRequest<{ key: { id: string } }>(
+      "POST",
+      `/message/sendButtons/${instance}`,
+      payload,
+    )
+  } catch (err) {
+    logger.warn(
+      { err, to: number.slice(0, 4) + "****" },
+      "sendButtons falhou na Evolution API, enviando fallback em texto",
+    )
+    const buttonList = buttons.map((b, i) => `👉 *${i + 1}. ${b.text}*`).join("\n")
+    const fallbackText = `*${title}*\n\n${description}\n\n${buttonList}\n\n_${footer}_`
+    return sendText(number, fallbackText, instance)
+  }
 }
 
 /**
@@ -378,6 +429,73 @@ export async function sendReviewRequest(
     `⭐ *Como foi o atendimento com ${providerName}?*\n\n` +
     `Sua opinião ajuda outros clientes a escolherem os melhores profissionais.\n` +
     `Avalie o serviço #${bookingId.slice(0, 8)} no app Severinno em menos de 1 minuto! ✨`
+
+  return sendText(to, text)
+}
+
+/**
+ * Enviar notificação de prestador a caminho com link de rastreamento ao vivo.
+ */
+export async function sendLiveTrackingNotification(
+  to: string,
+  providerName: string,
+  serviceName: string,
+  bookingId: string,
+  trackingUrl?: string,
+): Promise<{ key: { id: string } } | null> {
+  const url = trackingUrl ?? `https://severinno.com.br/?view=client.bookings&tracking=${bookingId}`
+  const text =
+    `🚗 *Prestador a caminho!*\n\n` +
+    `*${providerName}* iniciou o deslocamento para o seu atendimento de *${serviceName}*.\n\n` +
+    `📍 *Acompanhe em tempo real pelo mapa:*\n` +
+    `${url}\n\n` +
+    `Você pode ver a rota e o tempo estimado de chegada (ETA) ao vivo.`
+
+  return sendText(to, text)
+}
+
+/**
+ * Enviar recibo de confirmação de pagamento PIX para o cliente.
+ */
+export async function sendPixPaymentReceiptToClient(
+  to: string,
+  bookingId: string,
+  amount: number,
+  serviceName: string,
+  providerName: string,
+): Promise<{ key: { id: string } } | null> {
+  const text =
+    `✅ *Pagamento PIX Confirmado! - Severinno*\n\n` +
+    `📋 Agendamento: #${bookingId.slice(0, 8)}\n` +
+    `🔧 Serviço: ${serviceName}\n` +
+    `👤 Prestador: ${providerName}\n` +
+    `💰 Valor pago: R$ ${amount.toFixed(2)}\n\n` +
+    `🛡️ O valor está protegido pelo *Severinno Escrow* e só será liberado ao profissional após a sua confirmação de conclusão do serviço!`
+
+  return sendText(to, text)
+}
+
+/**
+ * Enviar lembrete de agendamento 24h antes para o cliente.
+ */
+export async function sendBookingReminder24hNotification(
+  to: string,
+  clientName: string,
+  serviceName: string,
+  providerName: string,
+  scheduledDate: string,
+  bookingId: string,
+  address?: string,
+): Promise<{ key: { id: string } } | null> {
+  const text =
+    `⏰ *Lembrete de Agendamento - Severinno*\n\n` +
+    `Olá, ${clientName}! Lembramos que você tem um serviço agendado para amanhã:\n\n` +
+    `🔧 Serviço: *${serviceName}*\n` +
+    `👤 Profissional: *${providerName}*\n` +
+    `📅 Data e horário: *${scheduledDate}*\n` +
+    (address ? `📍 Endereço: ${address}\n` : "") +
+    `🆔 #${bookingId.slice(0, 8)}\n\n` +
+    `Qualquer imprevisto, você pode conversar com o profissional pelo chat do app Severinno.`
 
   return sendText(to, text)
 }

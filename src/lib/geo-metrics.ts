@@ -55,16 +55,25 @@ const store: Record<GeoServiceName, Sample[]> = {
 
 // ── Internal helpers ─────────────────────────────────────────────────────
 
-/** Prune samples older than WINDOW_MS and enforce MAX_SAMPLES cap. */
+/** Prune samples older than WINDOW_MS and enforce MAX_SAMPLES cap.
+ *  Uses binary search (O(log n)) since timestamps are monotonically increasing. */
 function prune(service: GeoServiceName): void {
   const now = Date.now()
   const cutoff = now - WINDOW_MS
   let arr = store[service]
-  // Remove expired
+
+  // Binary search: find first index where timestamp >= cutoff
   if (arr.length > 0 && arr[0]!.timestamp < cutoff) {
-    const firstValid = arr.findIndex((s) => s.timestamp >= cutoff)
-    arr = firstValid > 0 ? arr.slice(firstValid) : arr
+    let lo = 0
+    let hi = arr.length - 1
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (arr[mid]!.timestamp < cutoff) lo = mid + 1
+      else hi = mid
+    }
+    if (lo > 0) arr = arr.slice(lo)
   }
+
   // Cap size
   if (arr.length > MAX_SAMPLES) {
     arr = arr.slice(arr.length - MAX_SAMPLES)

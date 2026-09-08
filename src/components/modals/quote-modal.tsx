@@ -134,10 +134,11 @@ const emptyItem = (
   providerId?: string,
   serviceId?: string,
   unit: ServiceUnit = "UNIDADE",
+  description: string = "",
 ): QuoteItemForm => ({
   providerId: providerId ?? "",
   serviceId: serviceId ?? "",
-  description: "",
+  description,
   quantity: 1,
   unit,
   photos: [],
@@ -163,6 +164,7 @@ export function QuoteModal() {
   const open = useUIStore((s) => s.quoteModal.open)
   const providerIdPreset = useUIStore((s) => s.quoteModal.providerId)
   const serviceIdPreset = useUIStore((s) => s.quoteModal.serviceId)
+  const initialDescriptionPreset = useUIStore((s) => s.quoteModal.initialDescription)
   const close = useUIStore((s) => s.closeQuote)
   const openAuth = useUIStore((s) => s.openAuth)
   const isMobile = useIsMobile()
@@ -172,7 +174,9 @@ export function QuoteModal() {
   const form = useForm<QuoteFormValues>({
     resolver: zodResolver(quoteFormSchema) as unknown as Resolver<QuoteFormValues>,
     defaultValues: {
-      items: [emptyItem(providerIdPreset, serviceIdPreset)],
+      items: [
+        emptyItem(providerIdPreset, serviceIdPreset, "UNIDADE", initialDescriptionPreset || ""),
+      ],
       address: emptyAddress,
     },
     mode: "onTouched",
@@ -187,21 +191,29 @@ export function QuoteModal() {
   // store, and calling its reset() from the render phase would update a
   // different component's store (React warns against that).
   const [prevOpen, setPrevOpen] = React.useState(open)
-  const [prevPresets, setPrevPresets] = React.useState(`${providerIdPreset}|${serviceIdPreset}`)
-  if (open && (prevOpen !== open || prevPresets !== `${providerIdPreset}|${serviceIdPreset}`)) {
+  const [prevPresets, setPrevPresets] = React.useState(
+    `${providerIdPreset}|${serviceIdPreset}|${initialDescriptionPreset || ""}`,
+  )
+  if (
+    open &&
+    (prevOpen !== open ||
+      prevPresets !== `${providerIdPreset}|${serviceIdPreset}|${initialDescriptionPreset || ""}`)
+  ) {
     setPrevOpen(open)
-    setPrevPresets(`${providerIdPreset}|${serviceIdPreset}`)
+    setPrevPresets(`${providerIdPreset}|${serviceIdPreset}|${initialDescriptionPreset || ""}`)
     setStep(1)
   }
 
   React.useEffect(() => {
     if (open) {
       form.reset({
-        items: [emptyItem(providerIdPreset, serviceIdPreset)],
+        items: [
+          emptyItem(providerIdPreset, serviceIdPreset, "UNIDADE", initialDescriptionPreset || ""),
+        ],
         address: emptyAddress,
       })
     }
-  }, [open, providerIdPreset, serviceIdPreset, form])
+  }, [open, providerIdPreset, serviceIdPreset, initialDescriptionPreset, form])
 
   // ── Step validation map ──
   // useWatch (not form.watch) — react-hooks/incompatible-library: watch()

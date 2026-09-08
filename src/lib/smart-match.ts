@@ -14,6 +14,7 @@ export type SmartMatchCandidate = {
   serviceTitle: string
   serviceId: string
   matchScore: number
+  matchReasons: string[]
   isAvailable: boolean
 }
 
@@ -109,17 +110,30 @@ export async function findBestProviders({
     // - Distance weight (35%): closer gets up to 35 pts (decay over 30km)
     const distanceScore = Math.max(0, 35 * (1 - distanceKm / 30))
 
-    // - Rating weight (35%): 5.0 = 35 pts
-    const ratingScore = (Math.max(3.0, p.avgRating || 4.0) / 5.0) * 35
+    // - Rating & review volume weight (30%):
+    const ratingBase = ((p.avgRating || 4.0) / 5.0) * 25
+    const reviewBonus = Math.min(5, (p.reviewCount || 0) * 0.5)
+    const ratingScore = ratingBase + reviewBonus
 
-    // - Verified bonus (15%):
-    const verifiedScore = p.verified ? 15 : 0
+    // - Verified KYC bonus (20%):
+    const verifiedScore = p.verified ? 20 : 0
 
     // - Availability bonus (15%):
     const availabilityScore = isAvailable ? 15 : 0
 
-    const matchScore =
-      Math.round((distanceScore + ratingScore + verifiedScore + availabilityScore) * 10) / 10
+    const matchScore = Math.min(
+      100,
+      Math.round((distanceScore + ratingScore + verifiedScore + availabilityScore) * 10) / 10,
+    )
+
+    const matchReasons: string[] = []
+    if (distanceKm <= 5) matchReasons.push("Muito próximo (< 5 km)")
+    else if (distanceKm <= 12) matchReasons.push("Raio de atendimento ideal")
+
+    if (p.verified) matchReasons.push("Identidade Verificada (KYC)")
+    if ((p.avgRating || 0) >= 4.8)
+      matchReasons.push(`Avaliação Excelente (⭐ ${(p.avgRating || 0).toFixed(1)})`)
+    if (isAvailable) matchReasons.push("Disponível para agendamento rápido")
 
     candidates.push({
       providerId: p.id,
@@ -133,6 +147,7 @@ export async function findBestProviders({
       serviceTitle: svc.title,
       serviceId: svc.id,
       matchScore,
+      matchReasons,
       isAvailable,
     })
   }

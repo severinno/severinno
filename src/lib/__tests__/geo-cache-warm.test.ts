@@ -39,14 +39,14 @@ vi.mock("../redis", () => ({
   cacheGet: (key: string) => mockCacheGet(key),
 }))
 
-const mockGeocodeSearch = vi.hoisted(() => vi.fn<() => Promise<unknown[]>>())
-const mockGeocodeCEP = vi.hoisted(() => vi.fn<() => Promise<unknown>>())
-const mockReverseGeocode = vi.hoisted(() => vi.fn<() => Promise<unknown>>())
+const mockGeocodeSearch = vi.hoisted(() => vi.fn<(...args: any[]) => Promise<unknown[]>>())
+const mockGeocodeCEP = vi.hoisted(() => vi.fn<(...args: any[]) => Promise<unknown>>())
+const mockReverseGeocode = vi.hoisted(() => vi.fn<(...args: any[]) => Promise<unknown>>())
 
 vi.mock("../geo", () => ({
-  geocodeSearch: () => mockGeocodeSearch(),
-  geocodeCEP: () => mockGeocodeCEP(),
-  reverseGeocode: () => mockReverseGeocode(),
+  geocodeSearch: (...args: any[]) => mockGeocodeSearch(...args),
+  geocodeCEP: (...args: any[]) => mockGeocodeCEP(...args),
+  reverseGeocode: (...args: any[]) => mockReverseGeocode(...args),
 }))
 
 // ── Mock geo-query-log: empty by default, overridden in log-based tests ──
@@ -376,24 +376,17 @@ describe("warmGeoCache — log-based warming", () => {
     mockGetTopCEPs.mockReturnValue([{ cep: "00000000", count: 3 }])
     mockGetTopReverses.mockReturnValue([{ coords: "0.0000,0.0000", count: 1 }])
 
-    // Make only the log-based calls fail (after static lists complete).
-    // Static: 36 search + 15 CEP + 8 reverse = 59 total calls before log phase.
-    let searchCalls = 0
-    mockGeocodeSearch.mockImplementation(async () => {
-      searchCalls++
-      if (searchCalls > 36) throw new Error("rate limit")
+    // Make only the log-based calls fail
+    mockGeocodeSearch.mockImplementation(async (query: string) => {
+      if (query === "unknown city") throw new Error("rate limit")
       return []
     })
-    let cepCalls = 0
-    mockGeocodeCEP.mockImplementation(async () => {
-      cepCalls++
-      if (cepCalls > 15) throw new Error("timeout")
+    mockGeocodeCEP.mockImplementation(async (cep: string) => {
+      if (cep === "00000000") throw new Error("timeout")
       return { cep: "00000000", street: "", city: "", state: "" }
     })
-    let reverseCalls = 0
-    mockReverseGeocode.mockImplementation(async () => {
-      reverseCalls++
-      if (reverseCalls > 8) throw new Error("fail")
+    mockReverseGeocode.mockImplementation(async (lat: number, lng: number) => {
+      if (lat === 0 && lng === 0) throw new Error("fail")
       return { displayName: "test" }
     })
 

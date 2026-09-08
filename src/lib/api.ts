@@ -43,6 +43,8 @@ export type ProviderCard = {
   services: ProviderService[]
   completedBookings?: number
   memberSince?: string
+  matchScore?: number | null
+  matchReasons?: string[] | null
 }
 
 export type ProviderAvailability = {
@@ -199,19 +201,22 @@ async function request<T>(
         await new Promise((resolve) => setTimeout(resolve, delay))
         lastError = {
           status: 0,
-          message: e instanceof DOMException && e.name === "AbortError"
-            ? "A requisição excedeu o tempo limite. Verifique sua conexão."
-            : "Erro de rede. Verifique sua conexão e tente novamente.",
+          message:
+            e instanceof DOMException && e.name === "AbortError"
+              ? "A requisição excedeu o tempo limite. Verifique sua conexão."
+              : "Erro de rede. Verifique sua conexão e tente novamente.",
           data: e,
         }
         continue
       }
 
-      throw lastError ?? {
-        status: 0,
-        message: "Erro de rede. Verifique sua conexão e tente novamente.",
-        data: e,
-      }
+      throw (
+        lastError ?? {
+          status: 0,
+          message: "Erro de rede. Verifique sua conexão e tente novamente.",
+          data: e,
+        }
+      )
     }
     clearTimeout(timeoutId)
 

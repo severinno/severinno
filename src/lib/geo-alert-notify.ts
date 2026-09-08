@@ -170,10 +170,11 @@ export async function notifyGeoAlert(payload: GeoAlertPayload): Promise<{
   }
 
   // Send push to all admins (best-effort, parallel)
+  const resolvedTag = tag ?? `geo-alert:${source}:${Date.now()}`
   const pushResults = await Promise.allSettled(
     adminIds.map((uid) =>
       sendPushNotification(uid, title, body, url ?? "/admin", {
-        tag: tag ?? `geo-alert:${source}:${Date.now()}`,
+        tag: resolvedTag,
         source,
         data: context as Record<string, unknown>,
       }),

@@ -77,7 +77,7 @@ const SERVICE_ICONS: Record<GeoServiceName, string> = {
 const CRITICAL_SERVICES: Set<GeoServiceName> = new Set(["postgis"])
 
 // ---------------------------------------------------------------------------
-// In-memory state
+// In-memory state (hydrated from Redis on first access)
 // ---------------------------------------------------------------------------
 
 type ServiceState = {
@@ -90,19 +90,53 @@ type ServiceState = {
 
 const state = new Map<GeoServiceName, ServiceState>()
 
-function getState(name: GeoServiceName): ServiceState {
+/** Redis key prefix for health alert state. TTL = 1 hour. */
+const HEALTH_STATE_PREFIX = "geo:health:state:"
+const HEALTH_STATE_TTL = 3600 // 1 hour
+
+/**
+ * Get the current state for a service.
+ * On first call, attempts to hydrate from Redis (survives server restarts).
+ * Falls back to fresh in-memory state if Redis is unavailable.
+ */
+async function getState(name: GeoServiceName): Promise<ServiceState> {
   let s = state.get(name)
-  if (!s) {
-    s = {
-      name,
-      consecutiveFailures: 0,
-      firstDegradedAt: null,
-      lastAlertedAt: null,
-      lastStatus: null,
+  if (s) return s
+
+  // Try to hydrate from Redis (survives deploys/restarts)
+  try {
+    const { cacheGet } = await import("@/lib/redis")
+    const persisted = await cacheGet<ServiceState>(`${HEALTH_STATE_PREFIX}${name}`)
+    if (persisted && typeof persisted.consecutiveFailures === "number") {
+      state.set(name, persisted)
+      return persisted
     }
-    state.set(name, s)
+  } catch {
+    // Redis unavailable — start fresh
   }
+
+  s = {
+    name,
+    consecutiveFailures: 0,
+    firstDegradedAt: null,
+    lastAlertedAt: null,
+    lastStatus: null,
+  }
+  state.set(name, s)
   return s
+}
+
+/**
+ * Persist the current state to Redis (best-effort, fire-and-forget).
+ * Called after every state change so the next server instance picks it up.
+ */
+async function saveState(s: ServiceState): Promise<void> {
+  try {
+    const { cacheSet } = await import("@/lib/redis")
+    await cacheSet(`${HEALTH_STATE_PREFIX}${s.name}`, s, HEALTH_STATE_TTL)
+  } catch {
+    // Redis unavailable — in-memory state is still valid for this instance
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -315,7 +349,7 @@ export async function evaluateGeoHealth(checks: GeoHealthInput): Promise<GeoHeal
     GeoServiceName,
     { status: "ok" | "error"; detail: string },
   ][]) {
-    const s = getState(name)
+    const s = await getState(name)
     const isError = check.status === "error"
     const isCritical = CRITICAL_SERVICES.has(name)
 
@@ -429,6 +463,7 @@ export async function evaluateGeoHealth(checks: GeoHealthInput): Promise<GeoHeal
     }
 
     s.lastStatus = isError ? "error" : "ok"
+    saveState(s)
   }
 
   result.degraded = result.services.filter((s) => s.status === "error").length

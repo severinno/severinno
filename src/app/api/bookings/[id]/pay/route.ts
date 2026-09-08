@@ -10,8 +10,10 @@ import {
   pollChargeStatus,
   lytexLogger,
   LytexError,
+  type PixChargeResponse,
 } from "@/lib/lytex"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { notifyPixCreated } from "@/lib/notifications"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -100,8 +102,9 @@ export async function POST(_request: Request, { params }: Params) {
         }
       }
 
+      let pix: PixChargeResponse
       try {
-        const pix = await createPixCharge({
+        pix = await createPixCharge({
           externalReference,
           amount: booking.amount,
           customer,
@@ -111,50 +114,74 @@ export async function POST(_request: Request, { params }: Params) {
             { key: "client_id", value: booking.clientId },
           ],
         })
-
-        // Salvar dados PIX no payment
-        await db.payment.upsert({
-          where: { bookingId: id },
-          create: {
-            bookingId: id,
+      } catch (e) {
+        if (e instanceof LytexError) {
+          lytexLogger.error({ err: e, bookingId: id }, "Pay: erro Lytex no PIX")
+          throw badRequest(`Lytex: ${e.message}`)
+        }
+        if (process.env.NODE_ENV === "development" && !process.env.LYTEX_CLIENT_ID) {
+          lytexLogger.warn({ bookingId: id }, "Pay: usando mock dev de PIX (Lytex não configurado)")
+          const mockTx = `tx_${Date.now()}`
+          const mockCode = `00020126580014br.gov.bcb.pix0136${id}520400005303986540${booking.amount.toFixed(2)}5802BR5913Severinno%20Plat6009Sao%20Paulo62070503***6304ABCD`
+          pix = {
+            id: `lytex_mock_${id}`,
+            status: "pending",
+            transactionId: mockTx,
+            qrCode: mockCode,
+            qrCodeImage: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(mockCode)}`,
+            pixKey: "financeiro@severinno.com",
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
             amount: booking.amount,
-            method: "PIX",
-            status: "PENDING",
-            transactionId: pix.transactionId,
-            lytexId: pix.id,
-            lytexStatus: pix.status,
-            qrCode: pix.qrCode,
-            qrCodeImage: pix.qrCodeImage,
-            lytexRawResponse: JSON.parse(JSON.stringify(pix)),
-          },
-          update: {
-            transactionId: pix.transactionId,
-            lytexId: pix.id,
-            lytexStatus: pix.status,
-            qrCode: pix.qrCode,
-            qrCodeImage: pix.qrCodeImage,
-            lytexRawResponse: JSON.parse(JSON.stringify(pix)),
-          },
-        })
+            lytexStatus: "pending",
+            createdAt: new Date().toISOString(),
+          }
+        } else {
+          lytexLogger.error({ err: e, bookingId: id }, "Pay: erro ao gerar PIX")
+          throw e
+        }
+      }
 
-        lytexLogger.info({ bookingId: id, lytexId: pix.id }, "Pay: PIX gerado com sucesso")
-
-        return NextResponse.json({
-          paymentMethod: "PIX",
+      // Salvar dados PIX no payment
+      await db.payment.upsert({
+        where: { bookingId: id },
+        create: {
+          bookingId: id,
+          amount: booking.amount,
+          method: "PIX",
           status: "PENDING",
+          transactionId: pix.transactionId,
+          lytexId: pix.id,
           lytexStatus: pix.status,
           qrCode: pix.qrCode,
           qrCodeImage: pix.qrCodeImage,
+          lytexRawResponse: JSON.parse(JSON.stringify(pix)),
+        },
+        update: {
+          transactionId: pix.transactionId,
           lytexId: pix.id,
-          expiresAt: pix.expiresAt,
-        })
-      } catch (e) {
-        lytexLogger.error({ err: e, bookingId: id }, "Pay: erro ao gerar PIX")
-        if (e instanceof LytexError) {
-          throw badRequest(`Lytex: ${e.message}`)
-        }
-        throw e
-      }
+          lytexStatus: pix.status,
+          qrCode: pix.qrCode,
+          qrCodeImage: pix.qrCodeImage,
+          lytexRawResponse: JSON.parse(JSON.stringify(pix)),
+        },
+      })
+
+      lytexLogger.info({ bookingId: id, lytexId: pix.id }, "Pay: PIX gerado com sucesso")
+
+      // Notificar cliente via WhatsApp com o código PIX Copia e Cola (fire-and-forget)
+      notifyPixCreated(booking.clientId, id, booking.amount, pix.qrCode).catch((err) =>
+        lytexLogger.warn({ err, bookingId: id }, "Pay: falha ao enviar notificação PIX"),
+      )
+
+      return NextResponse.json({
+        paymentMethod: "PIX",
+        status: "PENDING",
+        lytexStatus: pix.status,
+        qrCode: pix.qrCode,
+        qrCodeImage: pix.qrCodeImage,
+        lytexId: pix.id,
+        expiresAt: pix.expiresAt,
+      })
     }
 
     // ── Cartão de Crédito ──

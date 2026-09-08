@@ -9,6 +9,7 @@
  * Cost: $0 — Pure algorithmic (Haversine + crypto.randomInt)
  */
 
+import { randomInt } from "node:crypto"
 import { haversineKm } from "@/lib/geo-server"
 import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/redis"
 import logger from "@/lib/logger"
@@ -20,6 +21,16 @@ export interface CheckinAttempt {
   providerLng: number
   clientAddressLat: number
   clientAddressLng: number
+  /** GPS accuracy radius in meters reported by device geolocation API */
+  accuracyMeters?: number
+  /** Client-side capture timestamp in milliseconds */
+  clientTimestamp?: number
+  /** Previous recorded location and timestamp for speed plausibility verification */
+  previousLocation?: {
+    lat: number
+    lng: number
+    timestamp: number
+  }
 }
 
 export interface CheckinResult {
@@ -56,9 +67,47 @@ const PIN_TTL_SECONDS = PIN_EXPIRY_HOURS * 60 * 60 // 8 hours
 const activePins = new Map<string, { pin: string; expiresAt: number }>()
 
 /**
- * Validates the provider's GPS coordinates against the client's address location
+ * Validates the provider's GPS coordinates against the client's address location.
+ * Includes GPS accuracy validation and anti-spoofing speed plausibility checks.
  */
 export function validateGeoCheckin(attempt: CheckinAttempt): CheckinResult {
+  // 1. Anti-Spoofing: reject GPS readings with degraded/simulated accuracy (>150m)
+  if (
+    typeof attempt.accuracyMeters === "number" &&
+    attempt.accuracyMeters > MAX_CHECKIN_DISTANCE_METERS
+  ) {
+    return {
+      success: false,
+      distanceMeters: 0,
+      maxAllowedMeters: MAX_CHECKIN_DISTANCE_METERS,
+      reason: `Sinal de GPS com baixa precisão (margem de erro de ±${Math.round(attempt.accuracyMeters)}m). Ative o GPS de alta precisão e tente novamente.`,
+    }
+  }
+
+  // 2. Anti-Spoofing: verify physical speed plausibility between consecutive readings
+  if (attempt.previousLocation && attempt.clientTimestamp) {
+    const elapsedHours =
+      (attempt.clientTimestamp - attempt.previousLocation.timestamp) / (1000 * 60 * 60)
+    if (elapsedHours > 0 && elapsedHours < 1) {
+      const movedKm = haversineKm(
+        attempt.previousLocation.lat,
+        attempt.previousLocation.lng,
+        attempt.providerLat,
+        attempt.providerLng,
+      )
+      const speedKmH = movedKm / elapsedHours
+      if (speedKmH > 200) {
+        return {
+          success: false,
+          distanceMeters: 0,
+          maxAllowedMeters: MAX_CHECKIN_DISTANCE_METERS,
+          reason: "Inconsistência de deslocamento detectada (GPS mock ou teletransporte virtual).",
+        }
+      }
+    }
+  }
+
+  // 3. Proximity check
   const distanceKm = haversineKm(
     attempt.providerLat,
     attempt.providerLng,
@@ -86,13 +135,14 @@ export function validateGeoCheckin(attempt: CheckinAttempt): CheckinResult {
 
 /**
  * Generates a secure 4-digit PIN for escrow release + QR code payload.
+ * Uses crypto.randomInt for cryptographically secure unpredictability.
  * PIN is stored in Redis with TTL so it survives server restarts.
  */
 export async function generateEscrowPIN(bookingId: string): Promise<EscrowPIN> {
-  // Cryptographically secure random PIN
+  // Cryptographically secure random PIN using node:crypto
   const digits: string[] = []
   for (let i = 0; i < PIN_LENGTH; i++) {
-    digits.push(String(Math.floor(Math.random() * 10)))
+    digits.push(String(randomInt(0, 10)))
   }
   const pin = digits.join("")
 
@@ -103,7 +153,10 @@ export async function generateEscrowPIN(bookingId: string): Promise<EscrowPIN> {
   try {
     await cacheSet(redisKey, { pin, expiresAt }, PIN_TTL_SECONDS)
   } catch (err) {
-    logger.warn({ err, bookingId }, "checkin-escrow: failed to store PIN in Redis — using in-memory fallback")
+    logger.warn(
+      { err, bookingId },
+      "checkin-escrow: failed to store PIN in Redis — using in-memory fallback",
+    )
   }
   // Always store in in-memory Map as fallback (Redis may be unavailable in tests)
   activePins.set(bookingId, { pin, expiresAt })
@@ -157,7 +210,11 @@ export async function validateEscrowRelease(
   if (Date.now() > stored.expiresAt) {
     // PIN expired — clean up both stores
     activePins.delete(bookingId)
-    try { await cacheInvalidate(redisKey) } catch { /* best-effort */ }
+    try {
+      await cacheInvalidate(redisKey)
+    } catch {
+      /* best-effort */
+    }
     return {
       success: false,
       bookingId,
@@ -175,7 +232,11 @@ export async function validateEscrowRelease(
 
   // PIN is correct — release escrow and remove PIN from both stores
   activePins.delete(bookingId)
-  try { await cacheInvalidate(redisKey) } catch { /* best-effort */ }
+  try {
+    await cacheInvalidate(redisKey)
+  } catch {
+    /* best-effort */
+  }
 
   return {
     success: true,
