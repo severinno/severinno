@@ -11,6 +11,7 @@ import {
   notifyPaymentReminder,
   notifyReviewRequest,
   notifyPaymentConfirmed,
+  notifyBookingReminder24h,
 } from "@/lib/notifications"
 
 export async function GET(request: Request) {
@@ -79,6 +80,22 @@ export async function GET(request: Request) {
           bookingId: booking.id,
           clientId: booking.client.id,
           context: "cron reminder push",
+        })
+      })
+
+      notifyBookingReminder24h(
+        booking.clientId,
+        booking.id,
+        booking.client.name,
+        booking.service.title,
+        booking.provider.name,
+        scheduledDate,
+        booking.address,
+      ).catch((err) => {
+        captureError(err, {
+          bookingId: booking.id,
+          clientId: booking.client.id,
+          context: "cron reminder whatsapp",
         })
       })
 

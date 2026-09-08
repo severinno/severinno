@@ -21,6 +21,10 @@ import {
   sendPaymentReminderMessage,
   sendServiceCompletionRequest,
   sendReviewRequest,
+  sendPixPaymentMessage,
+  sendLiveTrackingNotification,
+  sendPixPaymentReceiptToClient,
+  sendBookingReminder24hNotification,
   formatPhone,
   isValidWhatsApp,
 } from "./evolution"
@@ -523,6 +527,111 @@ export async function notifyIdentityResult(
           : `⚠️ *Aviso de Verificação — Severinno*\n\nNão foi possível aprovar sua verificação: ${body}\n\nAcesse seu painel para reenviar.`,
       ),
     `identity:${userId}:${action}`,
+  )
+}
+
+/**
+ * Notificar cliente sobre início do deslocamento do prestador com link de rastreamento.
+ * Canais: in-app + WhatsApp + Push
+ */
+export async function notifyLiveTrackingStarted(
+  clientId: string,
+  bookingId: string,
+  providerName: string,
+  serviceName: string,
+): Promise<void> {
+  const title = "🚗 Prestador a caminho!"
+  const body = `${providerName} iniciou o deslocamento para o serviço "${serviceName}". Acompanhe ao vivo pelo mapa.`
+  const trackingUrl = `https://severinno.com.br/?view=client.bookings&tracking=${bookingId}`
+
+  await createInAppNotification(clientId, "LIVE_TRACKING_STARTED", title, body)
+  await sendPushNotification(clientId, title, body, trackingUrl).catch(() => {})
+  await sendWhatsApp(
+    clientId,
+    (to) => sendLiveTrackingNotification(to, providerName, serviceName, bookingId, trackingUrl),
+    `tracking:${bookingId}:started`,
+  )
+}
+
+/**
+ * Notificar cliente com o código PIX Copia e Cola gerado para pagamento.
+ * Canais: in-app + WhatsApp + Push
+ */
+export async function notifyPixCreated(
+  clientId: string,
+  bookingId: string,
+  amount: number,
+  qrCode?: string,
+): Promise<void> {
+  const title = "🟢 Pagamento PIX gerado"
+  const body = `PIX de R$ ${amount.toFixed(2)} gerado para #${bookingId.slice(0, 8)}. Pague para confirmar seu agendamento.`
+  const pushUrl = `/dashboard?tab=bookings&booking=${bookingId}`
+
+  await createInAppNotification(clientId, "PIX_CREATED", title, body)
+  await sendPushNotification(clientId, title, body, pushUrl).catch(() => {})
+  await sendWhatsApp(
+    clientId,
+    (to) => sendPixPaymentMessage(to, bookingId, amount, qrCode),
+    `pix:${bookingId}:created`,
+  )
+}
+
+/**
+ * Notificar cliente com recibo de confirmação de pagamento seguro (Severinno Escrow).
+ * Canais: in-app + WhatsApp + Push
+ */
+export async function notifyPaymentConfirmedToClient(
+  clientId: string,
+  bookingId: string,
+  amount: number,
+  serviceName: string,
+  providerName: string,
+): Promise<void> {
+  const title = "✅ Pagamento confirmado"
+  const body = `Recebemos seu pagamento de R$ ${amount.toFixed(2)} para o serviço "${serviceName}". O valor está em custódia segura.`
+  const pushUrl = `/dashboard?tab=bookings&booking=${bookingId}`
+
+  await createInAppNotification(clientId, "PAYMENT_CONFIRMED_CLIENT", title, body)
+  await sendPushNotification(clientId, title, body, pushUrl).catch(() => {})
+  await sendWhatsApp(
+    clientId,
+    (to) => sendPixPaymentReceiptToClient(to, bookingId, amount, serviceName, providerName),
+    `payment:${bookingId}:confirmed_client`,
+  )
+}
+
+/**
+ * Notificar cliente 24h antes do agendamento com detalhes e lembrete.
+ * Canais: in-app + WhatsApp + Push
+ */
+export async function notifyBookingReminder24h(
+  clientId: string,
+  bookingId: string,
+  clientName: string,
+  serviceName: string,
+  providerName: string,
+  scheduledDate: string,
+  address?: string,
+): Promise<void> {
+  const title = "⏰ Lembrete de Agendamento"
+  const body = `Você tem um serviço de ${serviceName} com ${providerName} amanhã (${scheduledDate}).`
+  const pushUrl = `/dashboard?tab=bookings&booking=${bookingId}`
+
+  await createInAppNotification(clientId, "BOOKING_REMINDER_24H", title, body)
+  await sendPushNotification(clientId, title, body, pushUrl).catch(() => {})
+  await sendWhatsApp(
+    clientId,
+    (to) =>
+      sendBookingReminder24hNotification(
+        to,
+        clientName,
+        serviceName,
+        providerName,
+        scheduledDate,
+        bookingId,
+        address,
+      ),
+    `reminder:${bookingId}:24h`,
   )
 }
 

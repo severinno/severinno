@@ -433,6 +433,73 @@ export async function sendReviewRequest(
   return sendText(to, text)
 }
 
+/**
+ * Enviar notificação de prestador a caminho com link de rastreamento ao vivo.
+ */
+export async function sendLiveTrackingNotification(
+  to: string,
+  providerName: string,
+  serviceName: string,
+  bookingId: string,
+  trackingUrl?: string,
+): Promise<{ key: { id: string } } | null> {
+  const url = trackingUrl ?? `https://severinno.com.br/?view=client.bookings&tracking=${bookingId}`
+  const text =
+    `🚗 *Prestador a caminho!*\n\n` +
+    `*${providerName}* iniciou o deslocamento para o seu atendimento de *${serviceName}*.\n\n` +
+    `📍 *Acompanhe em tempo real pelo mapa:*\n` +
+    `${url}\n\n` +
+    `Você pode ver a rota e o tempo estimado de chegada (ETA) ao vivo.`
+
+  return sendText(to, text)
+}
+
+/**
+ * Enviar recibo de confirmação de pagamento PIX para o cliente.
+ */
+export async function sendPixPaymentReceiptToClient(
+  to: string,
+  bookingId: string,
+  amount: number,
+  serviceName: string,
+  providerName: string,
+): Promise<{ key: { id: string } } | null> {
+  const text =
+    `✅ *Pagamento PIX Confirmado! - Severinno*\n\n` +
+    `📋 Agendamento: #${bookingId.slice(0, 8)}\n` +
+    `🔧 Serviço: ${serviceName}\n` +
+    `👤 Prestador: ${providerName}\n` +
+    `💰 Valor pago: R$ ${amount.toFixed(2)}\n\n` +
+    `🛡️ O valor está protegido pelo *Severinno Escrow* e só será liberado ao profissional após a sua confirmação de conclusão do serviço!`
+
+  return sendText(to, text)
+}
+
+/**
+ * Enviar lembrete de agendamento 24h antes para o cliente.
+ */
+export async function sendBookingReminder24hNotification(
+  to: string,
+  clientName: string,
+  serviceName: string,
+  providerName: string,
+  scheduledDate: string,
+  bookingId: string,
+  address?: string,
+): Promise<{ key: { id: string } } | null> {
+  const text =
+    `⏰ *Lembrete de Agendamento - Severinno*\n\n` +
+    `Olá, ${clientName}! Lembramos que você tem um serviço agendado para amanhã:\n\n` +
+    `🔧 Serviço: *${serviceName}*\n` +
+    `👤 Profissional: *${providerName}*\n` +
+    `📅 Data e horário: *${scheduledDate}*\n` +
+    (address ? `📍 Endereço: ${address}\n` : "") +
+    `🆔 #${bookingId.slice(0, 8)}\n\n` +
+    `Qualquer imprevisto, você pode conversar com o profissional pelo chat do app Severinno.`
+
+  return sendText(to, text)
+}
+
 // ---------------------------------------------------------------------------
 // Instance management
 // ---------------------------------------------------------------------------

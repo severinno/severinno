@@ -12,6 +12,7 @@ import {
   LytexError,
 } from "@/lib/lytex"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { notifyPixCreated } from "@/lib/notifications"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -138,6 +139,11 @@ export async function POST(_request: Request, { params }: Params) {
         })
 
         lytexLogger.info({ bookingId: id, lytexId: pix.id }, "Pay: PIX gerado com sucesso")
+
+        // Notificar cliente via WhatsApp com o código PIX Copia e Cola (fire-and-forget)
+        notifyPixCreated(booking.clientId, id, booking.amount, pix.qrCode).catch((err) =>
+          lytexLogger.warn({ err, bookingId: id }, "Pay: falha ao enviar notificação PIX"),
+        )
 
         return NextResponse.json({
           paymentMethod: "PIX",
