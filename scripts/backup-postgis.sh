@@ -33,6 +33,33 @@ DATE=$(date +%Y-%m-%d_%H%M%S)
 KEEP_DAILY=7
 KEEP_WEEKLY=4
 
+# ── Modo Restauração (--restore) ──────────────────────────────────────────
+if [[ "${1:-}" == "--restore" ]]; then
+  RESTORE_FILE="${2:-}"
+  if [[ -z "$RESTORE_FILE" || ! -f "$RESTORE_FILE" ]]; then
+    echo "[$(date)] ERROR: Arquivo de dump não especificado ou inexistente: $RESTORE_FILE"
+    exit 1
+  fi
+  echo "[$(date)] Restaurando backup do PostgreSQL + PostGIS a partir de $RESTORE_FILE..."
+  CONTAINER=$(docker ps --format '{{.Names}}' | grep postgis | head -1)
+  if command -v psql &>/dev/null; then
+    gunzip -c "$RESTORE_FILE" | PGPASSWORD="${DB_PASSWORD:-severinno}" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME"
+  elif [ -n "$CONTAINER" ]; then
+    gunzip -c "$RESTORE_FILE" | docker exec -i "$CONTAINER" psql -U "$DB_USER" -d "$DB_NAME"
+  else
+    echo "[$(date)] ERROR: psql não encontrado e nenhum container PostGIS em execução"
+    exit 1
+  fi
+  echo "[$(date)] Restauração concluída com sucesso! Verificando extensões PostGIS..."
+  if command -v psql &>/dev/null; then
+    PGPASSWORD="${DB_PASSWORD:-severinno}" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT PostGIS_Version();"
+  elif [ -n "$CONTAINER" ]; then
+    docker exec "$CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -c "SELECT PostGIS_Version();"
+  fi
+  echo "[$(date)] Verificação PostGIS OK."
+  exit 0
+fi
+
 # ── Setup ───────────────────────────────────────────────────────────────────
 mkdir -p "$BACKUP_DIR"
 DUMP_FILE="$BACKUP_DIR/severinno_${DATE}.sql.gz"

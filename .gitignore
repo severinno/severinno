@@ -35,6 +35,8 @@ yarn-error.log*
 # ...mas os templates .example são seguros e devem continuar rastreáveis
 !.env.glitchtip.example
 !.env.example
+!.env.production.example
+!.env.staging.example
 
 # local backups
 backups/
