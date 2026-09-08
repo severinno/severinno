@@ -13,8 +13,23 @@ import logger from "@/lib/logger"
 // Fast in-process coordinate cache for instant responses (<1ms)
 const inMemoryGeoIndex = new Map<string, { lat: number; lng: number; updatedAt: number }>()
 
+/** Maximum entries in the in-memory index before LRU eviction. */
+const MAX_INMEMORY_ENTRIES = 50_000
+
 // Redis GEO key for provider locations
 const REDIS_GEO_KEY = "geo:providers"
+
+/**
+ * Evict least-recently-updated entries when the in-memory index exceeds the cap.
+ */
+function evictStaleEntries(): void {
+  if (inMemoryGeoIndex.size <= MAX_INMEMORY_ENTRIES) return
+  const toRemove = inMemoryGeoIndex.size - MAX_INMEMORY_ENTRIES
+  const sorted = [...inMemoryGeoIndex.entries()].sort((a, b) => a[1].updatedAt - b[1].updatedAt)
+  for (let i = 0; i < toRemove; i++) {
+    inMemoryGeoIndex.delete(sorted[i][0])
+  }
+}
 
 /**
  * Index a provider's active coordinates into the fast geo cache.
@@ -32,6 +47,7 @@ export async function indexProviderLocation(
     lng,
     updatedAt: Date.now(),
   })
+  evictStaleEntries()
 
   // 2. Update Redis GEO sorted set (shared across instances)
   try {
@@ -39,8 +55,9 @@ export async function indexProviderLocation(
     if (client) {
       await client.geoadd(REDIS_GEO_KEY, lng, lat, providerId)
     }
-  } catch {
+  } catch (err) {
     // Redis unavailable — in-memory fallback handles it
+    logger.debug({ err }, "redis-geo: GEO add failed")
   }
 }
 
@@ -54,8 +71,9 @@ export async function removeProviderFromGeoIndex(providerId: string): Promise<vo
     if (client) {
       await client.zrem(REDIS_GEO_KEY, providerId)
     }
-  } catch {
+  } catch (err) {
     // Redis unavailable
+    logger.debug({ err }, "redis-geo: GEO remove failed")
   }
 }
 
@@ -119,8 +137,9 @@ export async function searchNearbyProvidersFast(
         })
       }
     }
-  } catch {
+  } catch (err) {
     // Redis GEO unavailable — fall through to PostGIS
+    logger.debug({ err }, "redis-geo: GEO search failed")
   }
 
   // 3. Fallback to PostGIS GiST index
@@ -148,6 +167,7 @@ export function seedGeoIndex(providers: Array<{ id: string; lat: number; lng: nu
       count++
     }
   }
+  evictStaleEntries()
   return count
 }
 
@@ -214,6 +234,7 @@ export async function seedGeoIndexFromDB(): Promise<number> {
 }
 
 export const RedisGeoCache = {
+  /** Return diagnostics: number of cached locations and which engine is active. */
   async getStats() {
     return {
       cachedLocations: inMemoryGeoIndex.size,

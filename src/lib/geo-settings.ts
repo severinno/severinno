@@ -1,4 +1,5 @@
 import "server-only"
+import logger from "./logger"
 
 /**
  * geo-settings.ts
@@ -106,7 +107,8 @@ export async function getGeoSettings(): Promise<GeoSettings> {
   let settings: GeoSettings
   try {
     settings = await loadFromDb()
-  } catch {
+  } catch (err) {
+    logger.warn({ err }, "geo-settings: DB read failed, using defaults")
     settings = GEO_SETTINGS_DEFAULTS
   }
 

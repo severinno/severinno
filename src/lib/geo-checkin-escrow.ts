@@ -9,7 +9,7 @@
  * Cost: $0 — Pure algorithmic (Haversine + crypto.randomInt)
  */
 
-import { randomInt } from "node:crypto"
+import { randomInt, timingSafeEqual } from "node:crypto"
 import { haversineKm } from "@/lib/geo-server"
 import { cacheGet, cacheSet, cacheInvalidate } from "@/lib/redis"
 import logger from "@/lib/logger"
@@ -222,7 +222,10 @@ export async function validateEscrowRelease(
     }
   }
 
-  if (stored.pin !== inputPin) {
+  // Constant-time comparison to prevent timing attacks on PIN digits
+  const storedBuf = Buffer.from(stored.pin, "utf-8")
+  const inputBuf = Buffer.from(inputPin, "utf-8")
+  if (storedBuf.length !== inputBuf.length || !timingSafeEqual(storedBuf, inputBuf)) {
     return {
       success: false,
       bookingId,

@@ -273,15 +273,18 @@ export default function AddressAutocomplete({
       setResults([])
       // Discriminate by type: "postcode" = CEP result (may have lat/lng from Nominatim)
       if (result.type === "postcode" && result.cep) {
-        const hasCoords = result.lat !== 0 && result.lng !== 0
+        const hasCoords =
+          typeof result.lat === "number" &&
+          typeof result.lng === "number" &&
+          result.lat !== 0 &&
+          result.lng !== 0
         if (hasCoords) {
           // CEP with real coordinates (Nominatim enhanced) — full geo data
           setFromCoords(result.lat, result.lng, result.displayName)
           onSelect?.(result.lat, result.lng, result.displayName)
-        } else {
-          onSelect?.(0, 0, result.displayName)
         }
         // Store ViaCEP address fields directly (no extra network call)
+        // Note: onSelect is NOT called with 0,0 — parent must handle missing coords
         useGeoStore.setState({
           cep: result.cep,
           district: result.district ?? null,

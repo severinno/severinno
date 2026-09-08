@@ -21,14 +21,7 @@
  */
 
 import "server-only"
-import {
-  readFile,
-  writeFile,
-  readdir,
-  unlink,
-  access,
-  mkdir,
-} from "node:fs/promises"
+import { readFile, writeFile, readdir, unlink, access, mkdir } from "node:fs/promises"
 import { join } from "node:path"
 import { cacheGet, cacheSet, cacheInvalidate } from "./redis"
 import logger from "./logger"
@@ -100,7 +93,8 @@ const COUNT_CACHE_KEY = "geo:metrics:count"
 async function ensureDir(): Promise<void> {
   try {
     await access(SNAPSHOTS_DIR)
-  } catch {
+  } catch (err) {
+    logger.debug({ err }, "geo-metrics-persist: dir access check failed, creating")
     await mkdir(SNAPSHOTS_DIR, { recursive: true })
   }
 }
@@ -129,8 +123,9 @@ async function invalidateSnapshotsCache(): Promise<void> {
   try {
     await cacheInvalidate(SNAPSHOTS_CACHE_KEY)
     await cacheInvalidate(COUNT_CACHE_KEY)
-  } catch {
+  } catch (err) {
     // Redis down — in-memory fallback handles it
+    logger.debug({ err }, "geo-metrics-persist: cache invalidation failed")
   }
 }
 
@@ -167,8 +162,8 @@ async function rotateOldSnapshots(): Promise<void> {
     for (const f of toDelete) {
       try {
         await unlink(join(SNAPSHOTS_DIR, f.name))
-      } catch {
-        // best-effort
+      } catch (err) {
+        logger.debug({ err }, "geo-metrics-persist: snapshot file unlink failed")
       }
     }
 
@@ -260,8 +255,9 @@ export async function loadPersistedSnapshots(): Promise<PersistedSnapshot[]> {
       lastSnapshotCacheHit = true
       return cached
     }
-  } catch {
+  } catch (err) {
     // Redis unavailable — fall through to disk
+    logger.debug({ err }, "geo-metrics-persist: snapshots cache read failed")
   }
 
   lastSnapshotCacheHit = false
@@ -308,8 +304,9 @@ export async function loadPersistedSnapshots(): Promise<PersistedSnapshot[]> {
     // Store in Redis cache (best-effort, 10s TTL)
     try {
       await cacheSet(SNAPSHOTS_CACHE_KEY, snapshots, CACHE_TTL_S)
-    } catch {
+    } catch (err) {
       // Redis down — in-memory fallback in redis.ts handles it
+      logger.debug({ err }, "geo-metrics-persist: Redis cache write failed")
     }
 
     return snapshots
@@ -365,8 +362,9 @@ export async function getSnapshotCount(): Promise<number> {
       lastCountCacheHit = true
       return cached
     }
-  } catch {
+  } catch (err) {
     // Redis unavailable — fall through to disk
+    logger.debug({ err }, "geo-metrics-persist: count cache read failed")
   }
 
   lastCountCacheHit = false
@@ -379,11 +377,12 @@ export async function getSnapshotCount(): Promise<number> {
     // Store in Redis cache (best-effort)
     try {
       await cacheSet(COUNT_CACHE_KEY, count, CACHE_TTL_S)
-    } catch {
-      // Redis down
+    } catch (err) {
+      logger.debug({ err }, "geo-metrics-persist: count cache write failed")
     }
     return count
-  } catch {
+  } catch (err) {
+    logger.debug({ err }, "geo-metrics-persist: snapshot count query failed")
     return 0
   }
 }

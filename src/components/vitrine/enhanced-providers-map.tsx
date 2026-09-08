@@ -19,9 +19,25 @@ import { cn } from "@/lib/utils"
 import { createAnimatedPinElement } from "@/components/map/pins"
 import { HeatmapOverlay, RouteLine } from "@/components/map/overlays"
 import { Slider } from "@/components/ui/slider"
-import { Layers, Route, Eye, EyeOff, Sun, Moon, Loader2, Download, Maximize2, Minimize2 } from "lucide-react"
+import {
+  Layers,
+  Route,
+  Eye,
+  EyeOff,
+  Sun,
+  Moon,
+  Loader2,
+  Download,
+  Maximize2,
+  Minimize2,
+} from "lucide-react"
 import type { ProviderCard } from "@/lib/api"
 import { precacheTiles, getCacheSizeMB } from "@/lib/map-tile-cache"
+import {
+  buildClusterGeoJSON,
+  fitProvidersBounds,
+  syncUserLocationMarker,
+} from "@/components/map/helpers"
 import type { GeoJSONSource } from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 
@@ -116,12 +132,15 @@ export default function EnhancedProvidersMap({
     try {
       const bounds = mapInstance.getBounds()
       const zoom = Math.floor(mapInstance.getZoom())
-      await precacheTiles({
-        minLat: bounds.getSouth(),
-        minLng: bounds.getWest(),
-        maxLat: bounds.getNorth(),
-        maxLng: bounds.getEast(),
-      }, zoom)
+      await precacheTiles(
+        {
+          minLat: bounds.getSouth(),
+          minLng: bounds.getWest(),
+          maxLat: bounds.getNorth(),
+          maxLng: bounds.getEast(),
+        },
+        zoom,
+      )
       setCacheSizeMB(await getCacheSizeMB())
     } finally {
       setIsPrecaching(false)
@@ -129,9 +148,7 @@ export default function EnhancedProvidersMap({
   }
 
   // Get selected provider coordinates for route line
-  const selectedProvider = selectedId
-    ? providers.find(p => p.id === selectedId)
-    : null
+  const selectedProvider = selectedId ? providers.find((p) => p.id === selectedId) : null
 
   // ---- Initialize map once -------------------------------------------------
   useEffect(() => {
@@ -187,16 +204,13 @@ export default function EnhancedProvidersMap({
         }),
         "top-right",
       )
-      map.addControl(
-        new maplibregl.ScaleControl({ unit: "metric" }),
-        "bottom-left",
-      )
+      map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left")
 
       // Touch handling configured via Map constructor options above
 
       map.on("load", () => {
         map.resize()
-        fitToBounds(map, providersRef.current, userLatRef.current, userLngRef.current)
+        fitProvidersBounds(map, providersRef.current, userLatRef.current, userLngRef.current)
         // Force-sync markers on map load — the useEffect may have missed the
         // window because mapRef/maplibreglRef were still null during its run.
         const ml = maplibreglRef.current
@@ -219,12 +233,15 @@ export default function EnhancedProvidersMap({
         precacheTimer = setTimeout(async () => {
           const bounds = map.getBounds()
           const zoom = Math.floor(map.getZoom())
-          await precacheTiles({
-            minLat: bounds.getSouth(),
-            minLng: bounds.getWest(),
-            maxLat: bounds.getNorth(),
-            maxLng: bounds.getEast(),
-          }, zoom)
+          await precacheTiles(
+            {
+              minLat: bounds.getSouth(),
+              minLng: bounds.getWest(),
+              maxLat: bounds.getNorth(),
+              maxLng: bounds.getEast(),
+            },
+            zoom,
+          )
           setCacheSizeMB(await getCacheSizeMB())
         }, 2000)
       })
@@ -233,7 +250,12 @@ export default function EnhancedProvidersMap({
       const t1 = window.setTimeout(() => {
         if (mapRef.current) {
           mapRef.current.resize()
-          fitToBounds(mapRef.current, providersRef.current, userLatRef.current, userLngRef.current)
+          fitProvidersBounds(
+            mapRef.current,
+            providersRef.current,
+            userLatRef.current,
+            userLngRef.current,
+          )
         }
       }, 100)
 
@@ -257,15 +279,50 @@ export default function EnhancedProvidersMap({
       cancelled = true
       cleanup?.()
     }
-  }, [isDark]) // Re-init when dark mode changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- isDark intentionally excluded from init; synced via setStyle effect
+  }, []) // Initialize once — dark mode handled via setStyle effect below
+
+  // ---- Sync dark mode via setStyle (avoids full map re-creation) -----------
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const tiles = isDark ? OSM_TILES_DARK : OSM_TILES_LIGHT
+    try {
+      map.setStyle({
+        version: 8,
+        sources: {
+          osm: {
+            type: "raster",
+            tiles: [tiles],
+            tileSize: 256,
+            attribution: OSM_ATTRIBUTION,
+            maxzoom: 19,
+          },
+        },
+        layers: [
+          {
+            id: "osm-tiles",
+            type: "raster",
+            source: "osm",
+            paint: { "raster-opacity": 1 },
+          },
+        ],
+      })
+    } catch {
+      /* map may not be fully initialized yet */
+    }
+  }, [isDark])
 
   // Resize map when fullscreen changes
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (mapRef.current) {
-        mapRef.current.resize()
-      }
-    }, isFullscreen ? 300 : 50)
+    const timer = setTimeout(
+      () => {
+        if (mapRef.current) {
+          mapRef.current.resize()
+        }
+      },
+      isFullscreen ? 300 : 50,
+    )
     return () => clearTimeout(timer)
   }, [isFullscreen])
 
@@ -288,9 +345,16 @@ export default function EnhancedProvidersMap({
           syncClusterSource(map, providers, markersRef, clusterSourceAdded)
         } else {
           removeClusterSource(map, clusterSourceAdded)
-          syncAnimatedMarkers({ map, maplibregl, providers, selectedId, onSelectProvider: selectRef.current, markersRef })
+          syncAnimatedMarkers({
+            map,
+            maplibregl,
+            providers,
+            selectedId,
+            onSelectProvider: selectRef.current,
+            markersRef,
+          })
         }
-        fitToBounds(map, providers, userLat, userLng)
+        fitProvidersBounds(map, providers, userLat, userLng)
       }
 
       if (map.isStyleLoaded()) {
@@ -331,11 +395,14 @@ export default function EnhancedProvidersMap({
     if (!map || !maplibregl) return
 
     if (map.isStyleLoaded()) {
-      syncUserMarker({ map, maplibregl, lat: userLat, lng: userLng, userMarkerRef })
+      syncUserLocationMarker({ map, maplibregl, lat: userLat, lng: userLng, userMarkerRef })
     } else {
-      const onReady = () => syncUserMarker({ map, maplibregl, lat: userLat, lng: userLng, userMarkerRef })
+      const onReady = () =>
+        syncUserLocationMarker({ map, maplibregl, lat: userLat, lng: userLng, userMarkerRef })
       map.once("style.load", onReady)
-      return () => { map.off("style.load", onReady) }
+      return () => {
+        map.off("style.load", onReady)
+      }
     }
   }, [userLat, userLng, mapInstance])
 
@@ -354,11 +421,7 @@ export default function EnhancedProvidersMap({
       <div ref={containerRef} className="absolute inset-0 h-full w-full" />
 
       {/* Heatmap overlay */}
-      <HeatmapOverlay
-        map={mapInstance}
-        providers={providers}
-        enabled={showHeatmap}
-      />
+      <HeatmapOverlay map={mapInstance} providers={providers} enabled={showHeatmap} />
 
       {/* Route line */}
       <RouteLine
@@ -376,7 +439,7 @@ export default function EnhancedProvidersMap({
           onClick={() => setShowFilters(!showFilters)}
           className={cn(
             "flex size-10 items-center justify-center rounded-xl border bg-white/90 shadow-lg backdrop-blur-sm transition-all hover:scale-105",
-            showFilters ? "border-emerald-500 bg-emerald-50" : "border-gray-200"
+            showFilters ? "border-emerald-500 bg-emerald-50" : "border-gray-200",
           )}
           title="Filtros do mapa"
         >
@@ -386,19 +449,19 @@ export default function EnhancedProvidersMap({
         {showFilters && (
           <div className="w-56 space-y-3 rounded-xl border border-gray-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm">
             {/* Fullscreen toggle */}
-        <button
-          onClick={toggleFullscreen}
-          className="flex size-10 items-center justify-center rounded-xl border border-gray-200 bg-white/90 shadow-lg backdrop-blur-sm transition-all hover:scale-105"
-          title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
-        >
-          {isFullscreen ? (
-            <Minimize2 className="size-5 text-gray-600" />
-          ) : (
-            <Maximize2 className="size-5 text-gray-600" />
-          )}
-        </button>
+            <button
+              onClick={toggleFullscreen}
+              className="flex size-10 items-center justify-center rounded-xl border border-gray-200 bg-white/90 shadow-lg backdrop-blur-sm transition-all hover:scale-105"
+              title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
+            >
+              {isFullscreen ? (
+                <Minimize2 className="size-5 text-gray-600" />
+              ) : (
+                <Maximize2 className="size-5 text-gray-600" />
+              )}
+            </button>
 
-        {/* Dark mode toggle */}
+            {/* Dark mode toggle */}
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-gray-600">Modo escuro</span>
               <button
@@ -416,7 +479,7 @@ export default function EnhancedProvidersMap({
                 onClick={() => setShowHeatmap(!showHeatmap)}
                 className={cn(
                   "flex size-7 items-center justify-center rounded-lg transition-colors",
-                  showHeatmap ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
+                  showHeatmap ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500",
                 )}
               >
                 {showHeatmap ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
@@ -430,7 +493,7 @@ export default function EnhancedProvidersMap({
                 onClick={() => setShowRoute(!showRoute)}
                 className={cn(
                   "flex size-7 items-center justify-center rounded-lg transition-colors",
-                  showRoute ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
+                  showRoute ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500",
                 )}
               >
                 <Route className="size-4" />
@@ -488,58 +551,6 @@ export default function EnhancedProvidersMap({
 // Helpers
 // ---------------------------------------------------------------------------
 
-function fitToBounds(
-  map: MapLibreMap,
-  providers: ProviderCard[],
-  userLat?: number | null,
-  userLng?: number | null,
-) {
-  const points: [number, number][] = []
-  for (const p of providers) {
-    if (typeof p.lat === "number" && typeof p.lng === "number") {
-      points.push([p.lng, p.lat])
-    }
-  }
-  if (typeof userLat === "number" && typeof userLng === "number") {
-    points.push([userLng, userLat])
-  }
-  if (points.length === 0) return
-  if (points.length === 1) {
-    map.setCenter(points[0])
-    map.setZoom(14)
-    return
-  }
-  let west = points[0][0]
-  let south = points[0][1]
-  let east = points[0][0]
-  let north = points[0][1]
-  for (const [lng, lat] of points) {
-    if (lng < west) west = lng
-    if (lat < south) south = lat
-    if (lng > east) east = lng
-    if (lat > north) north = lat
-  }
-  const pad = 0.005
-  try {
-    map.fitBounds(
-      [[west - pad, south - pad], [east + pad, north + pad]],
-      { padding: 60, maxZoom: 15, duration: 600 },
-    )
-  } catch { /* ignore */ }
-}
-
-function buildGeoJSON(providers: ProviderCard[]) {
-  const features = providers.flatMap((p) => {
-    if (typeof p.lat !== "number" || typeof p.lng !== "number") return []
-    return [{
-      type: "Feature" as const,
-      geometry: { type: "Point" as const, coordinates: [p.lng, p.lat] },
-      properties: { id: p.id },
-    }]
-  })
-  return { type: "FeatureCollection" as const, features }
-}
-
 function syncAnimatedMarkers(opts: {
   map: MapLibreMap
   maplibregl: typeof import("maplibre-gl")
@@ -593,7 +604,7 @@ function syncClusterSource(
   markersRef.current = {}
 
   const source = map.getSource("providers") as GeoJSONSource | undefined
-  const geojson = buildGeoJSON(providers)
+  const geojson = buildClusterGeoJSON(providers)
 
   if (source) {
     source.setData(geojson)
@@ -615,15 +626,15 @@ function syncClusterSource(
     filter: ["has", "point_count"],
     paint: {
       "circle-color": [
-        "step", ["get", "point_count"],
+        "step",
+        ["get", "point_count"],
         "rgba(16, 185, 129, 0.85)",
-        10, "rgba(5, 150, 105, 0.9)",
-        50, "rgba(4, 120, 87, 0.95)",
+        10,
+        "rgba(5, 150, 105, 0.9)",
+        50,
+        "rgba(4, 120, 87, 0.95)",
       ],
-      "circle-radius": [
-        "step", ["get", "point_count"],
-        22, 10, 30, 50, 38,
-      ],
+      "circle-radius": ["step", ["get", "point_count"], 22, 10, 30, 50, 38],
       "circle-stroke-width": 2,
       "circle-stroke-color": "#fff",
     },
@@ -668,47 +679,10 @@ function removeClusterSource(
     if (map.getLayer("cluster-count")) map.removeLayer("cluster-count")
     if (map.getLayer("clusters")) map.removeLayer("clusters")
     if (map.getSource("providers")) map.removeSource("providers")
-  } catch { /* ignore */ }
-  clusterSourceAdded.current = false
-}
-
-function syncUserMarker(opts: {
-  map: MapLibreMap
-  maplibregl: typeof import("maplibre-gl")
-  lat?: number | null
-  lng?: number | null
-  userMarkerRef: React.MutableRefObject<MarkerInstance | null>
-}) {
-  const { map, maplibregl, lat, lng, userMarkerRef } = opts
-  if (userMarkerRef.current) {
-    userMarkerRef.current.remove()
-    userMarkerRef.current = null
+  } catch {
+    /* ignore */
   }
-  if (typeof lat !== "number" || typeof lng !== "number") return
-
-  const el = document.createElement("div")
-  el.setAttribute("aria-label", "Sua localização")
-  el.style.cssText = `
-    width: 18px; height: 18px;
-    border-radius: 9999px;
-    background: #2563eb;
-    border: 3px solid white;
-    box-shadow: 0 0 0 4px rgba(37,99,235,0.25), 0 2px 8px rgba(0,0,0,0.25);
-    position: relative;
-  `
-  const pulse = document.createElement("span")
-  pulse.style.cssText = `
-    position: absolute; inset: -6px;
-    border-radius: 9999px;
-    border: 2px solid rgba(37,99,235,0.55);
-    animation: vitrine-map-pulse 1.6s ease-out infinite;
-  `
-  el.appendChild(pulse)
-
-  const marker = new maplibregl.Marker({ element: el, anchor: "center" })
-    .setLngLat([lng, lat])
-    .addTo(map)
-  userMarkerRef.current = marker
+  clusterSourceAdded.current = false
 }
 
 // Inject pulse keyframes

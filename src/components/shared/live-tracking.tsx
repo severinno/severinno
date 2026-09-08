@@ -153,50 +153,56 @@ export function LiveTracking({
 
   const eventSourceRef = React.useRef<EventSource | null>(null)
   const reconnectAttemptRef = React.useRef(0)
+  const reconnectTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const maplibreglCacheRef = React.useRef<typeof import("maplibre-gl") | null>(null)
 
   // ── Update provider marker on map ──
   const updateMarker = React.useCallback(
     (pos: Position) => {
       if (!mapRef.current) return
 
-      import("maplibre-gl")
-        .then((maplibreglModule) => {
-          const maplibregl =
-            (maplibreglModule as unknown as { default: typeof import("maplibre-gl") }).default ??
-            maplibreglModule
-          const map = mapRef.current as InstanceType<typeof maplibregl.Map>
+      const loadAndRun = async () => {
+        const maplibregl =
+          maplibreglCacheRef.current ??
+          (await import("maplibre-gl")).default ??
+          (await import("maplibre-gl"))
+        maplibreglCacheRef.current = maplibregl
 
-          if (providerMarkerRef.current) {
-            const marker = providerMarkerRef.current as InstanceType<typeof maplibregl.Marker>
-            marker.setLngLat([pos.lng, pos.lat])
-          } else {
-            const providerEl = document.createElement("div")
-            providerEl.style.display = "flex"
-            providerEl.style.alignItems = "center"
-            providerEl.style.justifyContent = "center"
-            providerEl.style.width = "36px"
-            providerEl.style.height = "36px"
-            providerEl.style.borderRadius = "50%"
-            providerEl.style.backgroundColor = "#3b82f6"
-            providerEl.style.border = "3px solid white"
-            providerEl.style.boxShadow = "0 2px 10px rgba(59,130,246,0.5)"
-            providerEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5" fill="white" stroke="#3b82f6" stroke-width="2"/></svg>`
+        const map = mapRef.current as InstanceType<typeof maplibregl.Map>
+        if (!map) return
 
-            const marker = new maplibregl.Marker({ element: providerEl })
-              .setLngLat([pos.lng, pos.lat])
-              .addTo(map)
-            providerMarkerRef.current = marker
-          }
+        if (providerMarkerRef.current) {
+          const marker = providerMarkerRef.current as InstanceType<typeof maplibregl.Marker>
+          marker.setLngLat([pos.lng, pos.lat])
+        } else {
+          const providerEl = document.createElement("div")
+          providerEl.style.display = "flex"
+          providerEl.style.alignItems = "center"
+          providerEl.style.justifyContent = "center"
+          providerEl.style.width = "36px"
+          providerEl.style.height = "36px"
+          providerEl.style.borderRadius = "50%"
+          providerEl.style.backgroundColor = "#3b82f6"
+          providerEl.style.border = "3px solid white"
+          providerEl.style.boxShadow = "0 2px 10px rgba(59,130,246,0.5)"
+          providerEl.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5" fill="white" stroke="#3b82f6" stroke-width="2"/></svg>`
 
-          // Fit bounds to show both markers
-          const bounds = new maplibregl.LngLatBounds()
-            .extend([pos.lng, pos.lat])
-            .extend([destinationLng, destinationLat])
-          map.fitBounds(bounds, { padding: 50, maxZoom: 16 })
-        })
-        .catch(() => {
-          /* ignore */
-        })
+          const marker = new maplibregl.Marker({ element: providerEl })
+            .setLngLat([pos.lng, pos.lat])
+            .addTo(map)
+          providerMarkerRef.current = marker
+        }
+
+        // Fit bounds to show both markers
+        const bounds = new maplibregl.LngLatBounds()
+          .extend([pos.lng, pos.lat])
+          .extend([destinationLng, destinationLat])
+        map.fitBounds(bounds, { padding: 50, maxZoom: 16 })
+      }
+
+      loadAndRun().catch(() => {
+        /* ignore */
+      })
     },
     [destinationLat, destinationLng],
   )
@@ -275,7 +281,7 @@ export function LiveTracking({
         // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
         const attempt = reconnectAttemptRef.current++
         const delay = Math.min(1000 * Math.pow(2, attempt), 30_000)
-        setTimeout(connect, delay)
+        reconnectTimerRef.current = setTimeout(connect, delay)
       }
     }
 
@@ -283,6 +289,10 @@ export function LiveTracking({
 
     return () => {
       cancelled = true
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+        reconnectTimerRef.current = null
+      }
       eventSourceRef.current?.close()
     }
   }, [bookingId, destinationLat, destinationLng, updateMarker])

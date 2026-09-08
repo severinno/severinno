@@ -58,8 +58,9 @@ async function isPushDebounced(tag: string): Promise<boolean> {
   try {
     const val = await cacheGet<number>(`${PUSH_DEBOUNCE_REDIS_KEY}${tag}`)
     return val !== null
-  } catch {
+  } catch (err) {
     // Redis down — fall back to in-memory
+    logger.debug({ err }, "geo-alert-notify: push debounce check failed")
     const lastSent = lastPushByTag.get(tag) ?? 0
     return Date.now() - lastSent < PUSH_DEBOUNCE_MS
   }
@@ -68,8 +69,9 @@ async function isPushDebounced(tag: string): Promise<boolean> {
 async function markPushSent(tag: string): Promise<void> {
   try {
     await cacheSet(`${PUSH_DEBOUNCE_REDIS_KEY}${tag}`, Date.now(), DEBOUNCE_TTL_SECONDS)
-  } catch {
+  } catch (err) {
     // Redis down — fall back to in-memory
+    logger.debug({ err }, "geo-alert-notify: push debounce mark failed")
   }
   lastPushByTag.set(tag, Date.now())
 }
@@ -78,7 +80,8 @@ async function isSentryDebounced(tag: string): Promise<boolean> {
   try {
     const val = await cacheGet<number>(`${SENTRY_DEBOUNCE_REDIS_KEY}${tag}`)
     return val !== null
-  } catch {
+  } catch (err) {
+    logger.debug({ err }, "geo-alert-notify: sentry debounce check failed")
     const lastSent = lastSentryByTag.get(tag) ?? 0
     return Date.now() - lastSent < SENTRY_DEBOUNCE_MS
   }
@@ -87,8 +90,9 @@ async function isSentryDebounced(tag: string): Promise<boolean> {
 async function markSentrySent(tag: string): Promise<void> {
   try {
     await cacheSet(`${SENTRY_DEBOUNCE_REDIS_KEY}${tag}`, Date.now(), DEBOUNCE_TTL_SECONDS)
-  } catch {
+  } catch (err) {
     // Redis down — fall back to in-memory
+    logger.debug({ err }, "geo-alert-notify: sentry debounce mark failed")
   }
   lastSentryByTag.set(tag, Date.now())
 }
@@ -108,8 +112,9 @@ async function getAdminUserIds(): Promise<string[]> {
       select: { id: true },
     })
     return admins.map((a) => a.id)
-  } catch {
+  } catch (err) {
     // DB unavailable — skip push (Sentry still fires)
+    logger.debug({ err }, "geo-alert-notify: admin user query failed")
     return []
   }
 }
@@ -228,8 +233,8 @@ export async function resetGeoAlertDebounce(): Promise<void> {
       const { cacheInvalidate } = await import("@/lib/redis")
       await cacheInvalidate(`${PUSH_DEBOUNCE_REDIS_KEY}${tag}`)
       await cacheInvalidate(`${SENTRY_DEBOUNCE_REDIS_KEY}${tag}`)
-    } catch {
-      // best-effort
+    } catch (err) {
+      logger.debug({ err }, "geo-alert-notify: debounce reset failed")
     }
   }
   lastPushByTag.clear()

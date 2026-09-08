@@ -61,6 +61,9 @@ const DEBOUNCE_MS = 30_000
 /** If we accumulate this many changes, flush immediately (safety valve). */
 const MAX_PENDING_CHANGES = 100
 
+/** Maximum unique entries per category before LRU eviction kicks in. */
+const MAX_ENTRIES_PER_CATEGORY = 10_000
+
 // ---------------------------------------------------------------------------
 // In-memory state
 // ---------------------------------------------------------------------------
@@ -163,6 +166,24 @@ function markDirty(): void {
 }
 
 // ---------------------------------------------------------------------------
+// LRU eviction
+// ---------------------------------------------------------------------------
+
+/** Evict least-recently-accessed entries when a category exceeds the cap. */
+function evictIfNeeded(category: "searches" | "ceps" | "reverses"): void {
+  const map = data[category]
+  const count = Object.keys(map).length
+  if (count <= MAX_ENTRIES_PER_CATEGORY) return
+
+  // Sort entries by lastAccessed ascending (oldest first) and remove excess
+  const entries = Object.entries(map).sort((a, b) => a[1].lastAccessed - b[1].lastAccessed)
+  const toRemove = count - MAX_ENTRIES_PER_CATEGORY
+  for (let i = 0; i < toRemove; i++) {
+    delete map[entries[i][0]]
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Record helpers
 // ---------------------------------------------------------------------------
 
@@ -179,6 +200,7 @@ export function recordSearch(query: string): void {
     entry.lastAccessed = Date.now()
   } else {
     data.searches[key] = { count: 1, lastAccessed: Date.now() }
+    evictIfNeeded("searches")
   }
   markDirty()
 }
@@ -196,6 +218,7 @@ export function recordCEP(cep: string): void {
     entry.lastAccessed = Date.now()
   } else {
     data.ceps[key] = { count: 1, lastAccessed: Date.now() }
+    evictIfNeeded("ceps")
   }
   markDirty()
 }
@@ -213,6 +236,7 @@ export function recordReverse(lat: number, lng: number): void {
     entry.lastAccessed = Date.now()
   } else {
     data.reverses[key] = { count: 1, lastAccessed: Date.now() }
+    evictIfNeeded("reverses")
   }
   markDirty()
 }

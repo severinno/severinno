@@ -22,6 +22,7 @@ import { formatBRL } from "@/lib/format"
 import { formatDistance } from "@/lib/geo-client"
 import { syncRadiusCircle, removeRadiusCircle, type MapLike } from "@/lib/geo-circle"
 import { Slider } from "@/components/ui/slider"
+import { fitProvidersBounds, syncUserLocationMarker, escapeHtml } from "@/components/map/helpers"
 import type { ProviderCard } from "@/lib/api"
 import type { GeoJSONSource, MapLayerMouseEvent } from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
@@ -164,7 +165,7 @@ export default function ProvidersMap({
         new maplibregl.GeolocateControl({
           positionOptions: { enableHighAccuracy: true },
           trackUserLocation: true,
-          showUserLocation: false, // custom marker via syncUserMarker
+          showUserLocation: false, // custom marker via syncUserLocationMarker
           showAccuracyCircle: false, // radius circle via syncRadiusCircle
         }),
         "top-right",
@@ -173,14 +174,19 @@ export default function ProvidersMap({
 
       map.on("load", () => {
         map.resize()
-        fitToBounds(map, providersRef.current, userLatRef.current, userLngRef.current)
+        fitProvidersBounds(map, providersRef.current, userLatRef.current, userLngRef.current)
       })
 
       // Multiple resize passes to handle layout settle / animations
       const t1 = window.setTimeout(() => {
         if (mapRef.current) {
           mapRef.current.resize()
-          fitToBounds(mapRef.current, providersRef.current, userLatRef.current, userLngRef.current)
+          fitProvidersBounds(
+            mapRef.current,
+            providersRef.current,
+            userLatRef.current,
+            userLngRef.current,
+          )
         }
       }, 100)
 
@@ -277,7 +283,7 @@ export default function ProvidersMap({
           markersRef,
         })
       }
-      fitToBounds(map, providers, userLat, userLng)
+      fitProvidersBounds(map, providers, userLat, userLng)
     }
 
     if (map.isStyleLoaded()) {
@@ -301,7 +307,7 @@ export default function ProvidersMap({
 
     const sync = () => {
       if (cancelled) return
-      syncUserMarker({ map, maplibregl, lat: userLat, lng: userLng, userMarkerRef })
+      syncUserLocationMarker({ map, maplibregl, lat: userLat, lng: userLng, userMarkerRef })
       // Sync radius circle whenever user location or radius changes
       if (hasUserLocation && typeof radius === "number" && radius > 0) {
         syncRadiusCircle(map as unknown as MapLike, userLat!, userLng!, radius)
@@ -486,49 +492,6 @@ function removeClusterSource(
 // HTML marker helpers (used when < 20 providers)
 // ---------------------------------------------------------------------------
 
-function fitToBounds(
-  map: MapLibreMap,
-  providers: ProviderCard[],
-  userLat?: number | null,
-  userLng?: number | null,
-) {
-  const points: [number, number][] = []
-  for (const p of providers) {
-    if (typeof p.lat === "number" && typeof p.lng === "number") {
-      points.push([p.lng, p.lat])
-    }
-  }
-  if (typeof userLat === "number" && typeof userLng === "number") {
-    points.push([userLng, userLat])
-  }
-  if (points.length === 0) return
-  if (points.length === 1) {
-    map.setCenter(points[0])
-    map.setZoom(14)
-    return
-  }
-  let west = points[0][0]
-  let south = points[0][1]
-  let east = points[0][0]
-  let north = points[0][1]
-  for (const [lng, lat] of points) {
-    if (lng < west) west = lng
-    if (lat < south) south = lat
-    if (lng > east) east = lng
-    if (lat > north) north = lat
-  }
-  const pad = 0.005
-  const bounds: [[number, number], [number, number]] = [
-    [west - pad, south - pad],
-    [east + pad, north + pad],
-  ]
-  try {
-    map.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 600 })
-  } catch {
-    /* ignore */
-  }
-}
-
 type MarkerRef = { marker: MarkerInstance; popup: PopupInstance }
 
 function syncProviderMarkers(opts: {
@@ -619,9 +582,9 @@ function syncProviderMarkers(opts: {
       `<div class="p-3 text-sm">
         <div class="font-semibold leading-tight">${escapeHtml(provider.name)}</div>
         <div class="mt-1 flex items-center gap-2 text-muted-foreground text-xs">
-          <span>★ ${provider.rating.toFixed(1)} (${provider.reviewCount})</span>
+          <span>★ ${escapeHtml(provider.rating.toFixed(1))} (${escapeHtml(String(provider.reviewCount))})</span>
           ${provider.city ? `<span>·</span><span>${escapeHtml(provider.city)}</span>` : ""}
-          ${typeof provider.distanceKm === "number" ? `<span>·</span><span>${formatDistance(provider.distanceKm)}</span>` : ""}
+          ${typeof provider.distanceKm === "number" ? `<span>·</span><span>${escapeHtml(formatDistance(provider.distanceKm))}</span>` : ""}
         </div>
         ${provider.verified ? `<div class="mt-1 text-[11px] font-medium text-primary">✓ Verificado</div>` : ""}
       </div>`,
@@ -639,54 +602,6 @@ function syncProviderMarkers(opts: {
   }
 
   markersRef.current = registry
-}
-
-function syncUserMarker(opts: {
-  map: MapLibreMap
-  maplibregl: typeof import("maplibre-gl")
-  lat?: number | null
-  lng?: number | null
-  userMarkerRef: React.RefObject<MarkerInstance | null>
-}) {
-  const { map, maplibregl, lat, lng, userMarkerRef } = opts
-  if (userMarkerRef.current) {
-    userMarkerRef.current.remove()
-    userMarkerRef.current = null
-  }
-  if (typeof lat !== "number" || typeof lng !== "number") return
-
-  const el = document.createElement("div")
-  el.setAttribute("aria-label", "Sua localização")
-  el.style.cssText = `
-    width: 18px; height: 18px;
-    border-radius: 9999px;
-    background: #2563eb;
-    border: 3px solid white;
-    box-shadow: 0 0 0 4px rgba(37,99,235,0.25), 0 2px 8px rgba(0,0,0,0.25);
-    position: relative;
-  `
-  const pulse = document.createElement("span")
-  pulse.style.cssText = `
-    position: absolute; inset: -6px;
-    border-radius: 9999px;
-    border: 2px solid rgba(37,99,235,0.55);
-    animation: vitrine-map-pulse 1.6s ease-out infinite;
-  `
-  el.appendChild(pulse)
-
-  const marker = new maplibregl.Marker({ element: el, anchor: "center" })
-    .setLngLat([lng, lat])
-    .addTo(map)
-  userMarkerRef.current = marker
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;")
 }
 
 if (typeof document !== "undefined") {

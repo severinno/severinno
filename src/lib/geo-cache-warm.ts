@@ -150,7 +150,8 @@ async function isKeyCached(key: string): Promise<boolean> {
   try {
     const cached = await cacheGet<unknown>(key)
     return cached !== null
-  } catch {
+  } catch (err) {
+    logger.debug({ err }, "geo-cache-warm: cache check failed")
     return false
   }
 }
@@ -189,7 +190,8 @@ export async function warmGeoCache(): Promise<WarmResult> {
       }
       await geocodeSearch(query, 5)
       logSearches++
-    } catch {
+    } catch (err) {
+      logger.debug({ err }, "geo-cache-warm: log search warm failed")
       errors++
     }
   }
@@ -204,7 +206,8 @@ export async function warmGeoCache(): Promise<WarmResult> {
       }
       await geocodeCEP(cep)
       logCeps++
-    } catch {
+    } catch (err) {
+      logger.debug({ err }, "geo-cache-warm: log CEP warm failed")
       errors++
     }
   }
@@ -224,7 +227,8 @@ export async function warmGeoCache(): Promise<WarmResult> {
       }
       await reverseGeocode(lat, lng)
       logReverses++
-    } catch {
+    } catch (err) {
+      logger.debug({ err }, "geo-cache-warm: log reverse warm failed")
       errors++
     }
   }
@@ -240,7 +244,8 @@ export async function warmGeoCache(): Promise<WarmResult> {
       }
       await geocodeSearch(city, 5)
       searches++
-    } catch {
+    } catch (err) {
+      logger.debug({ err }, "geo-cache-warm: city search warm failed")
       errors++
     }
   }
@@ -255,7 +260,8 @@ export async function warmGeoCache(): Promise<WarmResult> {
       }
       await geocodeCEP(cep)
       ceps++
-    } catch {
+    } catch (err) {
+      logger.debug({ err }, "geo-cache-warm: CEP warm failed")
       errors++
     }
   }
@@ -270,7 +276,8 @@ export async function warmGeoCache(): Promise<WarmResult> {
       }
       await reverseGeocode(coord.lat, coord.lng)
       reverses++
-    } catch {
+    } catch (err) {
+      logger.debug({ err }, "geo-cache-warm: reverse geocode warm failed")
       errors++
     }
   }
@@ -285,7 +292,8 @@ export async function warmGeoCache(): Promise<WarmResult> {
       }
       await geocodeSearch(bairro, 5)
       searches++
-    } catch {
+    } catch (err) {
+      logger.debug({ err }, "geo-cache-warm: neighborhood search warm failed")
       errors++
     }
   }
@@ -300,7 +308,8 @@ export async function warmGeoCache(): Promise<WarmResult> {
       }
       await geocodeSearch(capital, 5)
       searches++
-    } catch {
+    } catch (err) {
+      logger.debug({ err }, "geo-cache-warm: capital search warm failed")
       errors++
     }
   }

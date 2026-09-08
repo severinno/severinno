@@ -39,6 +39,10 @@ const geoFallbackCounts: Record<GeoOperationType, number> = {
   structured: 0,
 }
 
+/**
+ * Get cumulative call statistics for all geo operations.
+ * Includes call counts, fallback counts, and fallback rates per operation type.
+ */
 export function getGeoCallStats(): {
   calls: Record<GeoOperationType, number>
   fallbacks: Record<GeoOperationType, number>
@@ -183,6 +187,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<ReverseG
 
 // ── Original (private) implementations ────────────────────────────────────
 
+/** Result from ViaCEP API — Brazilian postal code lookup. */
 export type ViaCEPResult = {
   cep: string
   street: string
@@ -233,8 +238,9 @@ async function _geocodeCEP(cep: string): Promise<ViaCEPResult> {
       city: data.localidade ?? "",
       state: data.uf ?? "",
     }
-  } catch {
+  } catch (err) {
     // ViaCEP unavailable — fall back to local DB CEP search
+    logger.debug({ err }, "geo: CEP fallback to local")
     geoFallbackCounts.cep++
     return geocodeCEPLocal(clean)
   }
@@ -275,12 +281,14 @@ async function geocodeCEPLocal(cep: string): Promise<ViaCEPResult> {
       city: user.city ?? "",
       state: user.state ?? "",
     }
-  } catch {
+  } catch (err) {
     // DB query also failed
+    logger.debug({ err }, "geo: local CEP DB fallback failed")
     throw new Error("CEP não encontrado")
   }
 }
 
+/** Result from reverse geocoding — coordinates to human-readable address. */
 export type ReverseGeocodeResult = {
   displayName: string
   road?: string
@@ -331,8 +339,9 @@ async function _reverseGeocode(lat: number, lng: number): Promise<ReverseGeocode
       state: a.state,
       postcode: a.postcode,
     }
-  } catch {
+  } catch (err) {
     // Nominatim unavailable — fall back to nearest provider in DB
+    logger.debug({ err }, "geo: reverse fallback to local")
     geoFallbackCounts.reverse++
     return reverseGeocodeLocal(lat, lng)
   }
@@ -342,6 +351,7 @@ async function _reverseGeocode(lat: number, lng: number): Promise<ReverseGeocode
 // Nominatim Search (forward geocoding)
 // ---------------------------------------------------------------------------
 
+/** Result from forward geocoding — query text to coordinates + address. */
 export type GeoSearchResult = {
   lat: number
   lng: number
@@ -430,8 +440,9 @@ async function reverseGeocodeLocal(lat: number, lng: number): Promise<ReverseGeo
             postcode: nearest.cep ?? undefined,
           }
         }
-      } catch {
+      } catch (err) {
         // PostGIS unavailable or extension not installed — fall through to Haversine
+        logger.debug({ err }, "geo: PostGIS unavailable, falling back to Haversine")
       }
 
       // ── Step 2: Haversine fallback ──
@@ -490,7 +501,8 @@ async function reverseGeocodeLocal(lat: number, lng: number): Promise<ReverseGeo
           state: nearest.state ?? undefined,
           postcode: nearest.cep ?? undefined,
         }
-      } catch {
+      } catch (err) {
+        logger.debug({ err }, "geo: Haversine fallback failed")
         return {
           displayName: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
           road: undefined,
@@ -584,8 +596,9 @@ async function _geocodeSearch(query: string, limit: number = 5): Promise<GeoSear
     })
 
     return parseNominatimSearchResponse(await res.json())
-  } catch {
+  } catch (err) {
     // Nominatim unavailable — fall back to local DB address search
+    logger.debug({ err }, "geo: search fallback to local")
     geoFallbackCounts.search++
     return geocodeSearchLocal(trimmed, clampedLimit)
   }
@@ -717,45 +730,34 @@ async function geocodeSearchLocal(query: string, limit: number): Promise<GeoSear
     const q = query.trim()
     if (!q) return []
 
-    // ── Layer 1: Exact city match (B-tree index) ──────────────────────
-    const exact = await db.user.findMany({
-      where: {
-        role: "PROVIDER",
-        active: true,
-        lat: { not: null },
-        lng: { not: null },
-        city: { equals: q, mode: "insensitive" },
-      },
-      select: LOCAL_GEO_SELECT,
-      take: limit,
-      orderBy: { avgRating: "desc" },
-    })
-    if (exact.length > 0) return usersToGeoResults(exact)
+    const baseWhere = {
+      role: "PROVIDER" as const,
+      active: true,
+      lat: { not: null },
+      lng: { not: null },
+    }
 
-    // ── Layer 2: City prefix match (B-tree index: 'query%') ───────────
-    const prefix = await db.user.findMany({
-      where: {
-        role: "PROVIDER",
-        active: true,
-        lat: { not: null },
-        lng: { not: null },
-        city: { startsWith: q, mode: "insensitive" },
-      },
-      select: LOCAL_GEO_SELECT,
-      take: limit,
-      orderBy: { avgRating: "desc" },
-    })
+    // ── Layers 1-2: Parallel B-tree index queries (both ~O(log N)) ──────
+    const [exact, prefix] = await Promise.all([
+      db.user.findMany({
+        where: { ...baseWhere, city: { equals: q, mode: "insensitive" } },
+        select: LOCAL_GEO_SELECT,
+        take: limit,
+        orderBy: { avgRating: "desc" },
+      }),
+      db.user.findMany({
+        where: { ...baseWhere, city: { startsWith: q, mode: "insensitive" } },
+        select: LOCAL_GEO_SELECT,
+        take: limit,
+        orderBy: { avgRating: "desc" },
+      }),
+    ])
+    if (exact.length > 0) return usersToGeoResults(exact)
     if (prefix.length > 0) return usersToGeoResults(prefix)
 
     // ── Layer 3: City contains (single column seq scan — cheaper than 4) ─
     const cityMatch = await db.user.findMany({
-      where: {
-        role: "PROVIDER",
-        active: true,
-        lat: { not: null },
-        lng: { not: null },
-        city: { contains: q, mode: "insensitive" },
-      },
+      where: { ...baseWhere, city: { contains: q, mode: "insensitive" } },
       select: LOCAL_GEO_SELECT,
       take: limit,
       orderBy: { avgRating: "desc" },
@@ -765,10 +767,7 @@ async function geocodeSearchLocal(query: string, limit: number): Promise<GeoSear
     // ── Layer 4: Broad search on all 4 columns (most expensive) ───────
     const broad = await db.user.findMany({
       where: {
-        role: "PROVIDER",
-        active: true,
-        lat: { not: null },
-        lng: { not: null },
+        ...baseWhere,
         OR: [
           { street: { contains: q, mode: "insensitive" } },
           { state: { contains: q, mode: "insensitive" } },
@@ -801,8 +800,8 @@ async function geocodeSearchLocal(query: string, limit: number): Promise<GeoSear
     }
 
     return []
-  } catch {
-    logger.warn("[geo] Local DB fallback also failed")
+  } catch (err) {
+    logger.warn({ err }, "geo: local DB fallback also failed")
     return []
   }
 }
@@ -861,8 +860,9 @@ async function _geocodeSearchStructured(opts: {
     })
 
     return parseNominatimSearchResponse(await res.json())
-  } catch {
+  } catch (err) {
     // Nominatim unavailable — fall back to local DB address search
+    logger.debug({ err }, "geo: structured search fallback to local")
     geoFallbackCounts.structured++
     // Build a combined query from the structured fields for the local search
     const combined = [street, city, state].filter(Boolean).join(", ")

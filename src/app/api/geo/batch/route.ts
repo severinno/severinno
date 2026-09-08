@@ -17,6 +17,7 @@ import { rateLimitedNominatim } from "@/lib/nominatim-rate-limit"
 import { nominatimBreaker } from "@/lib/geo-circuit-breakers"
 import { getGeoSettings } from "@/lib/geo-settings"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { z } from "zod"
 import { parseBody } from "@/lib/api-middleware"
 
@@ -105,6 +106,8 @@ async function geocodeNominatim(
 
 export async function POST(request: Request) {
   try {
+    // Batch is expensive (up to 50 Nominatim calls per request) — strict limit
+    await assertRateLimit(request, RATE_LIMITS.geoBatch)
     const { addresses } = await parseBody(request, geoBatchSchema)
 
     // Process sequentially with 1s delay between Nominatim calls

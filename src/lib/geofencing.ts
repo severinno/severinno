@@ -10,7 +10,7 @@
  * Falls back to Haversine JS when PostGIS is unavailable.
  */
 import { db } from "@/lib/db"
-import { cacheGet, cacheSet } from "@/lib/redis"
+import { cacheGet, cacheSet, getClient } from "@/lib/redis"
 import { haversineKm } from "@/lib/geo-server"
 import { captureError } from "@/lib/sentry"
 import logger from "@/lib/logger"
@@ -80,66 +80,100 @@ export async function checkGeofences(
       const distanceMeters = Math.round(distanceKm * 1000)
       const isInside = distanceMeters <= cfg.radiusMeters
 
-      // Check previous state from cache
-      const stateKey = `geofence:${providerId}:${booking.id}`
-      const prevState = await cacheGet<{ inside: boolean; lastEventAt: number }>(stateKey)
-      const wasInside = prevState?.inside ?? false
-      const lastEventAt = prevState?.lastEventAt ?? 0
-      const debounceMs = cfg.debounceMinutes * 60 * 1000
-      const now = Date.now()
-
-      // Detect state change
-      if (isInside && !wasInside && now - lastEventAt > debounceMs) {
-        // Provider ENTERED the geofence
-        const event: GeofenceEvent = {
-          type: "enter",
-          providerId,
-          providerName: "Prestador",
-          clientId: booking.clientId,
-          bookingId: booking.id,
-          lat,
-          lng,
-          distanceMeters,
-          zoneRadiusMeters: cfg.radiusMeters,
-          timestamp: new Date().toISOString(),
+      // Distributed lock via Redis SETNX to prevent race conditions.
+      // Two concurrent location updates for the same booking could both
+      // read the same previous state and fire duplicate notifications.
+      const lockKey = `geofence:lock:${providerId}:${booking.id}`
+      const redis = getClient()
+      let lockAcquired = false
+      if (redis) {
+        try {
+          const result = await redis.set(lockKey, "1", "EX", 5, "NX")
+          lockAcquired = result === "OK"
+        } catch (err) {
+          // Redis unavailable — proceed without lock (best-effort)
+          logger.debug({ err }, "geofencing: Redis lock unavailable")
+          lockAcquired = true
         }
-        events.push(event)
-
-        await cacheSet(stateKey, { inside: true, lastEventAt: now }, 3600)
-        logger.info(
-          { providerId, bookingId: booking.id, distanceMeters },
-          "geofence: provider ENTERED zone",
-        )
-
-        // Send notification to client
-        notifyGeofenceEvent(event, booking.client.name, booking.service.title).catch(() => {
-          // Notification is best-effort
-        })
-      } else if (!isInside && wasInside && now - lastEventAt > debounceMs) {
-        // Provider EXITED the geofence
-        const event: GeofenceEvent = {
-          type: "exit",
-          providerId,
-          providerName: "Prestador",
-          clientId: booking.clientId,
-          bookingId: booking.id,
-          lat,
-          lng,
-          distanceMeters,
-          zoneRadiusMeters: cfg.radiusMeters,
-          timestamp: new Date().toISOString(),
-        }
-        events.push(event)
-
-        await cacheSet(stateKey, { inside: false, lastEventAt: now }, 3600)
-        logger.info(
-          { providerId, bookingId: booking.id, distanceMeters },
-          "geofence: provider EXITED zone",
-        )
       } else {
-        // No state change — just update the inside status (no debounce needed)
-        if (isInside !== wasInside) {
-          await cacheSet(stateKey, { inside: isInside, lastEventAt }, 3600)
+        // No Redis — single instance, no race condition possible
+        lockAcquired = true
+      }
+
+      if (!lockAcquired) {
+        // Another request is processing this geofence — skip
+        continue
+      }
+
+      try {
+        // Check previous state from cache
+        const stateKey = `geofence:${providerId}:${booking.id}`
+        const prevState = await cacheGet<{ inside: boolean; lastEventAt: number }>(stateKey)
+        const wasInside = prevState?.inside ?? false
+        const lastEventAt = prevState?.lastEventAt ?? 0
+        const debounceMs = cfg.debounceMinutes * 60 * 1000
+        const now = Date.now()
+
+        // Detect state change
+        if (isInside && !wasInside && now - lastEventAt > debounceMs) {
+          // Provider ENTERED the geofence
+          const event: GeofenceEvent = {
+            type: "enter",
+            providerId,
+            providerName: "Prestador",
+            clientId: booking.clientId,
+            bookingId: booking.id,
+            lat,
+            lng,
+            distanceMeters,
+            zoneRadiusMeters: cfg.radiusMeters,
+            timestamp: new Date().toISOString(),
+          }
+          events.push(event)
+
+          await cacheSet(stateKey, { inside: true, lastEventAt: now }, 3600)
+          logger.info(
+            { providerId, bookingId: booking.id, distanceMeters },
+            "geofence: provider ENTERED zone",
+          )
+
+          // Send notification to client
+          notifyGeofenceEvent(event, booking.client.name, booking.service.title).catch(() => {
+            // Notification is best-effort
+          })
+        } else if (!isInside && wasInside && now - lastEventAt > debounceMs) {
+          // Provider EXITED the geofence
+          const event: GeofenceEvent = {
+            type: "exit",
+            providerId,
+            providerName: "Prestador",
+            clientId: booking.clientId,
+            bookingId: booking.id,
+            lat,
+            lng,
+            distanceMeters,
+            zoneRadiusMeters: cfg.radiusMeters,
+            timestamp: new Date().toISOString(),
+          }
+          events.push(event)
+
+          await cacheSet(stateKey, { inside: false, lastEventAt: now }, 3600)
+          logger.info(
+            { providerId, bookingId: booking.id, distanceMeters },
+            "geofence: provider EXITED zone",
+          )
+        } else {
+          // No state change — just update the inside status (no debounce needed)
+          if (isInside !== wasInside) {
+            await cacheSet(stateKey, { inside: isInside, lastEventAt }, 3600)
+          }
+        }
+      } finally {
+        // Release lock (or let it expire via 5s TTL)
+        if (redis && lockAcquired) {
+          redis.del(lockKey).catch(() => {
+            /* lock will expire via TTL */
+          })
         }
       }
     }
@@ -197,8 +231,9 @@ async function notifyGeofenceEvent(
       const existing = (await cacheGet<GeofenceEvent[]>(auditKey)) ?? []
       existing.push(event)
       await cacheSet(auditKey, existing, 86400) // 24h TTL
-    } catch {
+    } catch (err) {
       // Redis unavailable
+      logger.debug({ err }, "geofencing: audit trail write failed")
     }
 
     logger.info(
@@ -224,7 +259,8 @@ export async function getGeofenceAuditTrail(bookingId: string): Promise<Geofence
   try {
     const events = await cacheGet<GeofenceEvent[]>(`geofence:audit:${bookingId}`)
     return events ?? []
-  } catch {
+  } catch (err) {
+    logger.debug({ err }, "geofencing: audit trail read failed")
     return []
   }
 }

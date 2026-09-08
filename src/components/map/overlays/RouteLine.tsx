@@ -53,7 +53,9 @@ export default function RouteLine({
         if (map.getLayer(ROUTE_ANIM_LAYER_ID)) map.removeLayer(ROUTE_ANIM_LAYER_ID)
         if (map.getLayer(ROUTE_LAYER_ID)) map.removeLayer(ROUTE_LAYER_ID)
         if (map.getSource(ROUTE_SOURCE_ID)) map.removeSource(ROUTE_SOURCE_ID)
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       sourceAdded.current = false
     }
 
@@ -72,7 +74,9 @@ export default function RouteLine({
       const dLng = ((providerLng - userLng) * Math.PI) / 180
       const a =
         Math.sin(dLat / 2) ** 2 +
-        Math.cos((userLat * Math.PI) / 180) * Math.cos((providerLat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2
+        Math.cos((userLat * Math.PI) / 180) *
+          Math.cos((providerLat * Math.PI) / 180) *
+          Math.sin(dLng / 2) ** 2
       const distanceKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 
       // Build GeoJSON line
@@ -95,7 +99,8 @@ export default function RouteLine({
         ],
       }
 
-      const source = map.getSource(ROUTE_SOURCE_ID) as { setData: (data: typeof geojson) => void } | undefined
+      const source = map.getSource(ROUTE_SOURCE_ID) as
+        { setData: (data: typeof geojson) => void } | undefined
       if (source) {
         source.setData(geojson)
         return
@@ -133,16 +138,18 @@ export default function RouteLine({
 
       sourceAdded.current = true
 
-      // Marching ants animation
-      const animate = () => {
-        dashOffset.current = (dashOffset.current + 0.05) % 1
-        try {
-          map.setPaintProperty(ROUTE_ANIM_LAYER_ID, "line-dasharray", [
-            dashOffset.current,
-            4,
-            3,
-          ])
-        } catch { /* ignore */ }
+      // Marching ants animation (~10fps to save CPU)
+      let lastFrame = 0
+      const animate = (now: number) => {
+        if (now - lastFrame >= 100) {
+          lastFrame = now
+          dashOffset.current = (dashOffset.current + 0.05) % 1
+          try {
+            map.setPaintProperty(ROUTE_ANIM_LAYER_ID, "line-dasharray", [dashOffset.current, 4, 3])
+          } catch {
+            /* ignore */
+          }
+        }
         animFrame.current = requestAnimationFrame(animate)
       }
       animFrame.current = requestAnimationFrame(animate)
@@ -153,7 +160,9 @@ export default function RouteLine({
           .extend([userLng, userLat])
           .extend([providerLng, providerLat])
         map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 800 })
-      } catch { /* ignore — map may have been removed */ }
+      } catch {
+        /* ignore — map may have been removed */
+      }
     }
 
     // If style is already loaded, add immediately; otherwise wait

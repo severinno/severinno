@@ -17,18 +17,21 @@ export const dynamic = "force-dynamic"
 import { NextRequest, NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { db } from "@/lib/db"
 import { clusterByH3, h3ToGeoBoundary, h3ToLatLng } from "@/lib/h3-grid"
 
 export async function GET(req: NextRequest) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(req, RATE_LIMITS.admin)
 
     const searchParams = req.nextUrl.searchParams
     const resParam = parseInt(searchParams.get("resolution") || "7", 10)
     const resolution = Math.max(6, Math.min(9, isNaN(resParam) ? 7 : resParam))
 
     // 1. Carregar prestadores ativos com coordenadas (Oferta)
+    // Limite de 5000 para evitar memory blowup em instances grandes
     const providers = await db.user.findMany({
       where: {
         role: "PROVIDER",
@@ -42,6 +45,7 @@ export async function GET(req: NextRequest) {
         lat: true,
         lng: true,
       },
+      take: 5000,
     })
 
     const providerItems = providers

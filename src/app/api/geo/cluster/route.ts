@@ -57,7 +57,8 @@ export async function GET(request: Request) {
     const maxLng = Number(searchParams.get("maxLng"))
     const zoom = Number(searchParams.get("zoom") ?? "12")
     const categoryId = searchParams.get("categoryId") || undefined
-    const limit = Math.min(Number(searchParams.get("limit") ?? "500"), 1000)
+    const rawLimit = Number(searchParams.get("limit") ?? "500")
+    const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(1, rawLimit), 1000) : 500
 
     // Validate bounding box
     if (

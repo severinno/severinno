@@ -217,6 +217,8 @@ export const RATE_LIMITS = {
   reviews: { prefix: "reviews", max: 10, windowMs: 60_000 },
   /** Geo endpoints (CEP + reverse): 100 per minute (production-ready) */
   geo: { prefix: "geo", max: 100, windowMs: 60_000 },
+  /** Geo batch: 5 per minute (each request can trigger up to 50 Nominatim calls) */
+  geoBatch: { prefix: "geo-batch", max: 5, windowMs: 60_000 },
   /** Auth check (/api/auth/me): 120 per minute (frequent polling) */
   authMe: { prefix: "auth-me", max: 120, windowMs: 60_000 },
   /** General API: 120 per minute (increased for production) */

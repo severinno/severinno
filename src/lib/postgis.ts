@@ -279,7 +279,8 @@ async function _getDistanceBetween(userId1: string, userId2: string): Promise<nu
       },
       DISTANCE_CACHE_TTL,
     )
-  } catch {
+  } catch (err) {
+    logger.debug({ err }, "postgis: distance query failed")
     return null
   }
 }
@@ -305,7 +306,8 @@ export async function isPostGISAvailable(): Promise<boolean> {
       },
       POSTGIS_CHECK_CACHE_TTL,
     )
-  } catch {
+  } catch (err) {
+    logger.debug({ err }, "postgis: availability check failed")
     return false
   }
 }
@@ -349,7 +351,8 @@ export async function findProvidersWithinBounds(
       },
       BOUNDS_CACHE_TTL,
     )
-  } catch {
+  } catch (err) {
+    logger.debug({ err }, "postgis: bounds query failed")
     return []
   }
 }
@@ -373,7 +376,8 @@ export async function isPointInServiceZone(
       ) AS inside
     `
     return rows[0]?.inside === true
-  } catch {
+  } catch (err) {
+    logger.debug({ err }, "postgis: point-in-polygon check failed")
     return false
   }
 }
