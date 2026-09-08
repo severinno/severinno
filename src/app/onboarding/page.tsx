@@ -11,6 +11,8 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { PageTransition } from "@/components/shared/page-transition"
+import { CheckCircle2, Sparkles, ShieldCheck } from "lucide-react"
 
 type OnboardingStep = 1 | 2 | 3
 
@@ -59,29 +61,49 @@ const STEPS = [
 ]
 
 function StepIndicator({ current }: { current: OnboardingStep }) {
+  const percentage = current === 1 ? 33 : current === 2 ? 66 : 100
   return (
-    <div className="mb-8 flex items-center justify-center gap-4">
-      {STEPS.map((step) => (
-        <div key={step.number} className="flex items-center gap-2">
-          <div
-            className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
-              step.number === current
-                ? "bg-blue-600 text-white"
-                : step.number < current
-                  ? "bg-green-500 text-white"
-                  : "bg-gray-200 text-gray-500"
-            }`}
-          >
-            {step.number < current ? "✓" : step.number}
-          </div>
-          <span
-            className={`text-sm ${step.number === current ? "font-semibold" : "text-gray-500"}`}
-          >
-            {step.title}
-          </span>
-          {step.number < 3 && <div className="h-0.5 w-8 bg-gray-200" />}
-        </div>
-      ))}
+    <div className="mb-6 space-y-3">
+      <div className="flex items-center justify-between text-xs font-semibold">
+        <span className="text-gray-700 dark:text-gray-300">
+          Passo {current} de 3: {STEPS[current - 1].title}
+        </span>
+        <span className="font-bold text-emerald-600">{percentage}% concluído</span>
+      </div>
+      <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-blue-600 to-emerald-500 transition-all duration-500 ease-out"
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+      <div className="flex items-center justify-between pt-1">
+        {STEPS.map((step) => {
+          const isDone = step.number < current
+          const isCurrent = step.number === current
+          return (
+            <div key={step.number} className="flex items-center gap-2">
+              <div
+                className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-all ${
+                  isCurrent
+                    ? "bg-blue-600 text-white shadow-xs ring-4 ring-blue-100"
+                    : isDone
+                      ? "bg-emerald-500 text-white"
+                      : "bg-gray-200 text-gray-500"
+                }`}
+              >
+                {isDone ? "✓" : step.number}
+              </div>
+              <span
+                className={`hidden text-xs font-medium sm:inline ${
+                  isCurrent ? "font-semibold text-gray-900" : "text-gray-500"
+                }`}
+              >
+                {step.title}
+              </span>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -501,13 +523,16 @@ export default function OnboardingPage() {
     <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
       <div className="w-full max-w-lg">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold">Bem-vindo ao Severinno! 🏠</h1>
-          <p className="mt-1 text-gray-600">Complete seu cadastro em 3 passos rápidos</p>
+          <h1 className="text-2xl font-bold text-gray-900">Bem-vindo ao Severinno! 🏠</h1>
+          <p className="mt-1 text-sm text-gray-600">Complete seu cadastro em 3 passos rápidos</p>
         </div>
 
         <StepIndicator current={step} />
 
-        <div className="rounded-xl bg-white p-6 shadow-sm">
+        <PageTransition
+          key={step}
+          className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm"
+        >
           {step === 1 && (
             <Step1Address data={data} onChange={handleChange} onNext={() => setStep(2)} />
           )}
@@ -528,11 +553,12 @@ export default function OnboardingPage() {
               error={submitError}
             />
           )}
-        </div>
+        </PageTransition>
 
-        <p className="mt-4 text-center text-xs text-gray-400">
-          Seus dados são salvos automaticamente. Você pode voltar a qualquer momento.
-        </p>
+        <div className="mx-auto mt-4 flex w-fit items-center justify-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs text-emerald-700">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          <span>Progresso salvo automaticamente no seu dispositivo.</span>
+        </div>
       </div>
     </div>
   )

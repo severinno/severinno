@@ -65,10 +65,19 @@ async function createInAppNotification(
   body?: string,
 ): Promise<{ id: string; createdAt: Date } | null> {
   try {
-    return await db.notification.create({
+    const notif = await db.notification.create({
       data: { userId, type, title, body: body ?? null, read: false },
       select: { id: true, createdAt: true },
     })
+    try {
+      emitRealtime(`user:${userId}`, {
+        type: "notification",
+        data: { id: notif.id, type, title, body },
+      })
+    } catch {
+      // Best effort realtime dispatch
+    }
+    return notif
   } catch (e) {
     notificationLogger.error({ err: e, userId, type }, "Erro ao criar notificação in-app")
     return null
@@ -474,6 +483,46 @@ export async function notifyReviewRequest(
     clientId,
     (to) => sendReviewRequest(to, bookingId, providerName),
     `booking:${bookingId}:review-request`,
+  )
+}
+
+/**
+ * Notificar usuário sobre aprovação ou rejeição da identidade KYC.
+ */
+export async function notifyIdentityResult(
+  userId: string,
+  action: "approve" | "reject",
+  reason?: string,
+): Promise<void> {
+  const isApproved = action === "approve"
+  const title = isApproved
+    ? "Identidade verificada com sucesso! 🛡️"
+    : "Verificação de identidade não aprovada ⚠️"
+  const body = isApproved
+    ? "Parabéns! Seus documentos foram validados e o selo de verificação já está ativo em seu perfil."
+    : reason ||
+      "Documento não aprovado pela equipe. Por favor, acesse seu perfil e reenvie seus documentos."
+  const pushUrl = "/dashboard?tab=profile"
+
+  await createInAppNotification(
+    userId,
+    isApproved ? "IDENTITY_APPROVED" : "IDENTITY_REJECTED",
+    title,
+    body,
+  )
+
+  await sendPushNotification(userId, title, body, pushUrl).catch(() => {})
+
+  await sendWhatsApp(
+    userId,
+    (to) =>
+      sendText(
+        to,
+        isApproved
+          ? `🛡️ *Identidade Verificada — Severinno*\n\nParabéns! Sua documentação foi aprovada e seu selo de verificação já está ativo na Severinno.`
+          : `⚠️ *Aviso de Verificação — Severinno*\n\nNão foi possível aprovar sua verificação: ${body}\n\nAcesse seu painel para reenviar.`,
+      ),
+    `identity:${userId}:${action}`,
   )
 }
 

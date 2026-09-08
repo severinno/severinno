@@ -47,6 +47,9 @@ import {
   Webhook,
   Shield,
   ShieldAlert,
+  ShieldCheck,
+  Flame,
+  TrendingUp,
 } from "lucide-react"
 
 import { DashboardShell, type NavItem, type Breadcrumb } from "@/components/shared/dashboard-shell"
@@ -177,6 +180,21 @@ const GeoDebugDashboard = dynamic(
   () => import("./geo-debug-dashboard").then((m) => ({ default: m.GeoDebugDashboard })),
   { ssr: false },
 )
+const AdminAnalyticsDashboard = dynamic(
+  () =>
+    import("./admin-analytics-dashboard").then((m) => ({
+      default: m.AdminAnalyticsDashboard,
+    })),
+  { ssr: false },
+)
+const AdminDemandHeatmap = dynamic(
+  () => import("./admin-demand-heatmap").then((m) => ({ default: m.AdminDemandHeatmap })),
+  { ssr: false },
+)
+const AdminIdentityReview = dynamic(
+  () => import("./admin-identity-review").then((m) => ({ default: m.AdminIdentityReview })),
+  { ssr: false },
+)
 
 // ---------------------------------------------------------------------------
 // Nav config
@@ -206,6 +224,21 @@ const NAV_ITEMS: NavItem[] = [
     view: "admin.providers",
     label: "Prestadores",
     icon: HardHat,
+  },
+  {
+    view: "admin.verifications",
+    label: "Verificações KYC",
+    icon: ShieldCheck,
+  },
+  {
+    view: "admin.analytics",
+    label: "Funil & Analytics",
+    icon: TrendingUp,
+  },
+  {
+    view: "admin.demand",
+    label: "Mapa de Demanda",
+    icon: Flame,
   },
   {
     view: "admin.services",
@@ -349,6 +382,21 @@ const VIEW_META: Record<string, { title: string; subtitle?: string; breadcrumbs:
     title: "Prestadores",
     subtitle: "Verificação, ativação e perfil dos prestadores de serviço.",
     breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Prestadores" }],
+  },
+  "admin.verifications": {
+    title: "Verificações de Identidade (KYC)",
+    subtitle: "Análise e aprovação de documentos e selfies com suporte de OCR por IA.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Verificações KYC" }],
+  },
+  "admin.analytics": {
+    title: "Analytics & Funil de Conversão",
+    subtitle: "Métricas de negócio, taxas de conversão entre etapas do funil e volume diário.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Analytics" }],
+  },
+  "admin.demand": {
+    title: "Mapa de Demanda Geográfica",
+    subtitle: "Distribuição espacial de pedidos e oportunidades de expansão de cobertura.",
+    breadcrumbs: [{ label: "Painel do Administrador" }, { label: "Mapa de Demanda" }],
   },
   "admin.services": {
     title: "Serviços",
@@ -598,6 +646,12 @@ function AdminView({ view, onNavigate }: { view: string; onNavigate: (view: stri
       return <AdminUsers />
     case "admin.providers":
       return <AdminProviders />
+    case "admin.verifications":
+      return <AdminIdentityReview />
+    case "admin.analytics":
+      return <AdminAnalyticsDashboard />
+    case "admin.demand":
+      return <AdminDemandHeatmap />
     case "admin.services":
       return <AdminServices />
     case "admin.finance":

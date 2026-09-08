@@ -8,21 +8,14 @@
  */
 
 import * as React from "react"
-import {
-  Star,
-  MapPin,
-  Heart,
-  ShieldCheck,
-  GitCompare,
-  ChevronRight,
-  CheckCircle2,
-} from "lucide-react"
+import { Star, MapPin, Heart, GitCompare, ChevronRight, CheckCircle2 } from "lucide-react"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 
 import { cn } from "@/lib/utils"
 import { formatBRL } from "@/lib/format"
 import { formatDistance } from "@/lib/geo-client"
 import { toggleFavorite, type ProviderCard as ProviderCardType } from "@/lib/api"
+import { VerifiedBadge } from "@/components/shared/verified-badge"
 import { useAuthStore } from "@/store/auth"
 import { useUIStore } from "@/store/ui"
 import { useCompareStore, MAX_COMPARE } from "@/store/compare"
@@ -157,12 +150,7 @@ export default React.memo(function ProviderCard({
                 >
                   {provider.name}
                 </h3>
-                {provider.verified && (
-                  <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-                    <ShieldCheck className="size-3" />
-                    Verificado
-                  </span>
-                )}
+                {provider.verified && <VerifiedBadge size="sm" />}
                 {isNearby && (
                   <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
                     Perto de você

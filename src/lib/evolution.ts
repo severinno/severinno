@@ -119,15 +119,17 @@ async function evolutionRequest<T>(method: string, path: string, body?: unknown)
   const { baseUrl, apiKey } = getConfig()
   const url = `${baseUrl}${path}`
 
-  const res = await evolutionBreaker.execute(() => fetch(url, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      apikey: apiKey,
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  }))
+  const res = await evolutionBreaker.execute(() =>
+    fetch(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        apikey: apiKey,
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    }),
+  )
 
   const contentType = res.headers.get("content-type") ?? ""
   let parsed: unknown = null
@@ -194,6 +196,55 @@ export async function sendText(
     number,
     text,
   } as EvolutionMessageText)
+}
+
+export type EvolutionButton = {
+  id: string
+  text: string
+}
+
+/**
+ * Enviar mensagem com botões interativos via WhatsApp (Evolution API).
+ * Se a instância não suportar botões interativos ou falhar, faz fallback
+ * gracioso para mensagem de texto formatada com opções numeradas.
+ */
+export async function sendButtons(
+  to: string,
+  title: string,
+  description: string,
+  buttons: EvolutionButton[],
+  footer = "Severinno Marketplace",
+  instanceName?: string,
+): Promise<{ key: { id: string } }> {
+  const instance = instanceName ?? getConfig().instance
+  const number = to.replace(/\D/g, "")
+
+  try {
+    const payload = {
+      number,
+      title,
+      description,
+      footer,
+      buttons: buttons.map((b) => ({
+        buttonId: b.id,
+        buttonText: { displayText: b.text },
+        type: 1,
+      })),
+    }
+    return await evolutionRequest<{ key: { id: string } }>(
+      "POST",
+      `/message/sendButtons/${instance}`,
+      payload,
+    )
+  } catch (err) {
+    logger.warn(
+      { err, to: number.slice(0, 4) + "****" },
+      "sendButtons falhou na Evolution API, enviando fallback em texto",
+    )
+    const buttonList = buttons.map((b, i) => `👉 *${i + 1}. ${b.text}*`).join("\n")
+    const fallbackText = `*${title}*\n\n${description}\n\n${buttonList}\n\n_${footer}_`
+    return sendText(number, fallbackText, instance)
+  }
 }
 
 /**

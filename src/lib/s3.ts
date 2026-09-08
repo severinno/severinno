@@ -142,8 +142,20 @@ export async function uploadToS3(
     return { key, url, etag: result.ETag }
   } catch (err) {
     logger.error({ err, key }, "s3 upload failed")
-    throw new Error("Falha ao fazer upload do arquivo")
+    throw new Error(`Upload to storage failed: ${(err as Error).message}`)
   }
+}
+
+/**
+ * Convenience helper to upload a buffer and return its public URL.
+ */
+export async function uploadBuffer(
+  buffer: Buffer,
+  fileName: string,
+  contentType?: string,
+): Promise<string> {
+  const res = await uploadToS3(buffer, fileName, { contentType })
+  return res.url
 }
 
 /**
