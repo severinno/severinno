@@ -2,6 +2,7 @@ import "server-only"
 import { db as prisma } from "./db"
 import { getRoute, getMultiRoute } from "./routing"
 import { saveAndQueueNotification } from "./notification-queue"
+import { getTimezoneFromCoords } from "@/lib/geo-timezone"
 
 export type DispatchResult = {
   providerId: string
@@ -161,17 +162,19 @@ export async function dispatchBooking(bookingId: string): Promise<void> {
 
   if (!booking) return
 
+  const tz = getTimezoneFromCoords(booking.lat, booking.lng)
+
   await saveAndQueueNotification({
     userId: booking.providerId,
     type: "BOOKING_ASSIGNED",
     title: "Novo serviço agendado",
-    body: `${booking.client.name} agendou um serviço para ${new Date(booking.scheduledAt).toLocaleString("pt-BR")}`,
+    body: `${booking.client.name} agendou um serviço para ${new Date(booking.scheduledAt).toLocaleString("pt-BR", { timeZone: tz })}`,
   })
 
   await saveAndQueueNotification({
     userId: booking.clientId,
     type: "BOOKING_CONFIRMED",
     title: "Serviço confirmado",
-    body: `${booking.provider.name} foi alocado para seu serviço em ${new Date(booking.scheduledAt).toLocaleString("pt-BR")}`,
+    body: `${booking.provider.name} foi alocado para seu serviço em ${new Date(booking.scheduledAt).toLocaleString("pt-BR", { timeZone: tz })}`,
   })
 }

@@ -6,6 +6,7 @@ import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { generateIcsFeed, type CalendarEvent } from "@/lib/calendar-sync"
 import { notFound, handleError } from "@/lib/api-server"
 import { addHours } from "date-fns"
+import { getTimezoneFromCoords } from "@/lib/geo-timezone"
 
 /**
  * GET /api/calendar/feed/[token]
@@ -47,6 +48,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
       select: {
         id: true,
         scheduledAt: true,
+        lat: true,
+        lng: true,
         address: true,
         status: true,
         service: { select: { title: true } },
@@ -67,6 +70,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ tok
         start,
         end,
         status: b.status === "COMPLETED" ? "CONFIRMED" : "CONFIRMED",
+        timezone: getTimezoneFromCoords(b.lat, b.lng),
       }
     })
 

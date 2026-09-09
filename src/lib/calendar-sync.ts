@@ -15,6 +15,7 @@ export type CalendarEvent = {
   start: Date
   end: Date
   status?: "CONFIRMED" | "CANCELLED" | "TENTATIVE"
+  timezone?: string
 }
 
 /**
@@ -47,6 +48,7 @@ export function generateIcsFeed(calendarName: string, events: CalendarEvent[]): 
 
   for (const ev of events) {
     const dtStamp = formatIcsDate(new Date())
+    const tz = ev.timezone
     const dtStart = formatIcsDate(ev.start)
     const dtEnd = formatIcsDate(ev.end)
     const cleanTitle = (ev.title || "Agendamento Severinno").replace(/\n/g, " ")
@@ -57,8 +59,8 @@ export function generateIcsFeed(calendarName: string, events: CalendarEvent[]): 
       "BEGIN:VEVENT",
       `UID:${ev.id}@severinno.app`,
       `DTSTAMP:${dtStamp}`,
-      `DTSTART:${dtStart}`,
-      `DTEND:${dtEnd}`,
+      tz ? `DTSTART;TZID=${tz}:${dtStart}` : `DTSTART:${dtStart}`,
+      tz ? `DTEND;TZID=${tz}:${dtEnd}` : `DTEND:${dtEnd}`,
       `SUMMARY:${cleanTitle}`,
       `DESCRIPTION:${cleanDesc}`,
       `LOCATION:${cleanLoc}`,

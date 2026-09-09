@@ -13,6 +13,7 @@
 import { db } from "@/lib/db"
 import { sendText, sendButtons, formatPhone, isValidWhatsApp } from "./evolution"
 import { getClient } from "@/lib/redis"
+import { getTimezoneFromCoords } from "@/lib/geo-timezone"
 import logger from "@/lib/logger"
 
 const log = logger.child({ module: "whatsapp-flows" })
@@ -67,10 +68,12 @@ export async function runBookingReminders(): Promise<{ sent: number; errors: num
       const dedupeKey = `booking-reminder:${booking.id}`
       if (await hasFlowExecuted(dedupeKey)) continue
 
+      const timezone = getTimezoneFromCoords(booking.lat, booking.lng)
       const timeStr = booking.scheduledAt
         ? new Date(booking.scheduledAt).toLocaleTimeString("pt-BR", {
             hour: "2-digit",
             minute: "2-digit",
+            timeZone: timezone,
           })
         : "horário agendado"
 

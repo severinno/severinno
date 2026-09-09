@@ -11,6 +11,7 @@
 
 import { db } from "@/lib/db"
 import logger from "./logger"
+import { getTimezoneFromCoords } from "@/lib/geo-timezone"
 import {
   sendText,
   sendNewBookingNotification,
@@ -130,12 +131,18 @@ export async function notifyNewBooking(
   scheduledAt: Date,
   clientName: string,
 ): Promise<void> {
+  const bookingCoords = await db.booking.findUnique({
+    where: { id: bookingId },
+    select: { lat: true, lng: true },
+  })
+  const timezone = getTimezoneFromCoords(bookingCoords?.lat ?? 0, bookingCoords?.lng ?? 0)
   const dateStr = scheduledAt.toLocaleDateString("pt-BR", {
     day: "numeric",
     month: "long",
     weekday: "short",
+    timeZone: timezone,
   })
-  const timeStr = scheduledAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+  const timeStr = scheduledAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: timezone })
   const title = `📅 Novo agendamento: ${serviceName}`
   const body = `${clientName} agendou para ${dateStr} às ${timeStr}`
   const pushUrl = `/dashboard?tab=bookings&booking=${bookingId}`

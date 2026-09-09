@@ -277,6 +277,10 @@ export async function sendNewBookingNotification(
   scheduledAt: Date,
   bookingId: string,
 ): Promise<{ key: { id: string } } | null> {
+  const { getTimezoneFromCoords } = await import("@/lib/geo-timezone")
+  const { db } = await import("@/lib/db")
+  const booking = await db.booking.findUnique({ where: { id: bookingId }, select: { lat: true, lng: true } })
+  const timezone = getTimezoneFromCoords(booking?.lat ?? 0, booking?.lng ?? 0)
   const scheduledStr = scheduledAt.toLocaleDateString("pt-BR", {
     weekday: "long",
     day: "numeric",
@@ -284,6 +288,7 @@ export async function sendNewBookingNotification(
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: timezone,
   })
 
   const text =

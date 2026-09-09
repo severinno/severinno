@@ -13,6 +13,7 @@ import { db } from "@/lib/db"
 import { cacheGet, cacheSet, getClient } from "@/lib/redis"
 import { haversineKm } from "@/lib/geo-server"
 import { captureError } from "@/lib/sentry"
+import { sendWhatsApp } from "@/lib/whatsapp"
 import logger from "@/lib/logger"
 
 export type GeofenceEvent = {
@@ -256,6 +257,27 @@ async function notifyGeofenceEvent(
       },
       `geofence: notification — ${event.type === "enter" ? "provider is arriving" : "provider left zone"}`,
     )
+
+    // WhatsApp notification for enter events
+    if (event.type === "enter") {
+      const provider = await db.user.findUnique({
+        where: { id: event.providerId },
+        select: { name: true },
+      })
+      const providerName = provider?.name ?? "O prestador"
+      const distanceText =
+        event.distanceMeters <= 100
+          ? "muito perto"
+          : `a aproximadamente ${Math.round(event.distanceMeters)} metros`
+      await sendWhatsApp({
+        userId: event.clientId,
+        title: `🚗 ${providerName} está chegando!`,
+        body: `${providerName} está ${distanceText} do seu endereço. Fique de prontidão!`,
+        url: `/?view=client.bookings&id=${event.bookingId}`,
+      }).catch((err) => {
+        logger.debug({ err, bookingId: event.bookingId }, "geofencing: WhatsApp send failed")
+      })
+    }
   } catch (err) {
     logger.warn({ err, event }, "geofence: notification failed")
   }
