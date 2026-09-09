@@ -1,0 +1,55 @@
+# =============================================================================
+# CLI Guard Tests — Severinno Marketplace
+#
+# Runs the CLI guard unit tests (vitest config unit, cli.test.ts) to validate
+# that check scripts (check-*.mjs) and their tests (check-*.test.ts) remain
+# consistent.
+#
+# Triggered on PRs to main and pushes to main when relevant files change.
+# =============================================================================
+
+name: CLI Guard Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/check-*.mjs"
+      - "src/lib/__tests__/check-*.test.ts"
+      - ".github/workflows/test-guards.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/check-*.mjs"
+      - "src/lib/__tests__/check-*.test.ts"
+      - ".github/workflows/test-guards.yml"
+
+concurrency:
+  group: test-guards-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-guards:
+    name: CLI Guard Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Run CLI guard tests
+        run: bun run test:guards

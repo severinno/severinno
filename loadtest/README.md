@@ -20,11 +20,27 @@ sudo apt-get install k6
 
 # Windows
 choco install k6
+
+# Instalar autocannon (zero-dependency Node.js load testing)
+npm install -g autocannon
 ```
 
 ## Executar Testes
 
-### Teste Básico
+### Autocannon (Geo Load Test)
+
+```bash
+# Rápido: 10s, 10 conexões
+npx autocannon -c 10 -d 10 -i loadtest/geo-loadtest.js http://localhost:3000
+
+# Produção: 50 conexões, 30s
+npx autocannon -c 50 -d 30 -i loadtest/geo-loadtest.js http://localhost:3000
+
+# Via script (salva resultados automaticamente)
+bash loadtest/geo-benchmark.sh
+```
+
+### Teste Básico (k6)
 
 ```bash
 k6 run loadtest/k6-load-test.js
@@ -57,6 +73,30 @@ BASE_URL=https://staging.severinno.com.br k6 run loadtest/k6-load-test.js
 | `health_duration`     | P95 < 500ms  | Health check P95 < 500ms |
 | `providers_duration`  | P95 < 3000ms | Providers P95 < 3s       |
 | `categories_duration` | P95 < 1000ms | Categories P95 < 1s      |
+
+## Autocannon — Baseline Numbers
+
+Expected performance for health endpoint (50 connections, 30s):
+
+| Metric         | Target      | Description                        |
+| -------------- | ----------- | ---------------------------------- |
+| Throughput     | > 1000 req/s | Requests per second                |
+| Latency P50    | < 50ms      | Median response time               |
+| Latency P99    | < 200ms     | 99th percentile response time      |
+| Errors         | 0           | All responses should be 200        |
+
+### Interpreting Results
+
+```
+Stat        1%      2.5%    50%     97.5%    99%     Avg     Stdev   Max
+Latency     3 ms    4 ms    12 ms   45 ms    62 ms   15 ms   8 ms    120 ms
+Req/Sec     800     850     950     1020     1050    940     45      1100
+```
+
+- **Latency P50**: Median — half of requests are faster than this
+- **Latency P99**: Tail latency — 1% of requests are slower
+- **Req/Sec**: Throughput — how many requests per second
+- **Errors**: Should be 0 for health endpoint; > 0 indicates issues
 
 ## Cenários de Teste
 

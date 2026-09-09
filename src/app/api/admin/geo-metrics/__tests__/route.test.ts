@@ -126,6 +126,8 @@ import { GET } from "../route"
 // ---------------------------------------------------------------------------
 
 describe("GET /api/admin/geo-metrics", () => {
+  const mockRequest = new Request("http://localhost/api/admin/geo-metrics")
+
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -133,19 +135,19 @@ describe("GET /api/admin/geo-metrics", () => {
   describe("autorização", () => {
     it("retorna 200 para admin", async () => {
       setupAdmin(mockRequireUser)
-      const res = await GET()
+      const res = await GET(mockRequest)
       expect(res.status).toBe(200)
     })
 
     it("retorna 403 para non-admin", async () => {
       mockRequireUser.mockRejectedValueOnce(Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" }))
-      const res = await GET()
+      const res = await GET(mockRequest)
       expect(res.status).toBe(403)
     })
 
     it("retorna 401 quando requireUser lança erro", async () => {
       setupUnauthenticated(mockRequireUser)
-      const res = await GET()
+      const res = await GET(mockRequest)
       expect(res.status).toBe(401)
       const body = await res.json()
       expect(body.error).toBe("Não autorizado")
@@ -158,7 +160,7 @@ describe("GET /api/admin/geo-metrics", () => {
     })
 
     it("retorna services com 3 serviços (nominatim, viacep, postgis)", async () => {
-      const res = await GET()
+      const res = await GET(mockRequest)
       const body = await res.json()
 
       expect(body).toHaveProperty("services")
@@ -166,7 +168,7 @@ describe("GET /api/admin/geo-metrics", () => {
     })
 
     it("cada serviço tem p50, p95, p99, count, errorRate, lastSampleAt, errorCount", async () => {
-      const res = await GET()
+      const res = await GET(mockRequest)
       const body = await res.json()
 
       for (const svc of ["nominatim", "viacep", "postgis"] as const) {
@@ -183,7 +185,7 @@ describe("GET /api/admin/geo-metrics", () => {
     })
 
     it("retorna timestamp e windowSeconds", async () => {
-      const res = await GET()
+      const res = await GET(mockRequest)
       const body = await res.json()
 
       expect(body.timestamp).toBe(1700000000000)
@@ -191,7 +193,7 @@ describe("GET /api/admin/geo-metrics", () => {
     })
 
     it("retorna labels com nomes amigáveis dos serviços", async () => {
-      const res = await GET()
+      const res = await GET(mockRequest)
       const body = await res.json()
 
       expect(body.labels).toEqual({
@@ -202,7 +204,7 @@ describe("GET /api/admin/geo-metrics", () => {
     })
 
     it("retorna baselines com P95 thresholds", async () => {
-      const res = await GET()
+      const res = await GET(mockRequest)
       const body = await res.json()
 
       expect(body.baselines).toMatchObject({
@@ -213,7 +215,7 @@ describe("GET /api/admin/geo-metrics", () => {
     })
 
     it("retorna history como array de snapshots", async () => {
-      const res = await GET()
+      const res = await GET(mockRequest)
       const body = await res.json()
 
       expect(Array.isArray(body.history)).toBe(true)
@@ -238,7 +240,7 @@ describe("GET /api/admin/geo-metrics", () => {
       // existsSync is NOT mocked here — it will use the real implementation
       // because importOriginal preserved it. The real geo-benchmark.json
       // exists on disk and will be read.
-      const res = await GET()
+      const res = await GET(mockRequest)
       const body = await res.json()
 
       // Benchmark should contain structured data (meta, comparisons, analysis)

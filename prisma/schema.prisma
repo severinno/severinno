@@ -358,6 +358,7 @@ model Booking {
   payment  Payment?
   disputes Dispute[]
   pushAnalytics PushAnalytics[]
+  waypoints Waypoint[]
 
   @@index([clientId])
   @@index([providerId])
@@ -367,6 +368,29 @@ model Booking {
   @@index([scheduledAt])
   @@index([providerId, status, scheduledAt])
   @@index([clientId, status, scheduledAt])
+}
+
+// ============================================================================
+// WAYPOINT — multi-stop tracking for bookings
+// ============================================================================
+model Waypoint {
+  id          String   @id @default(cuid())
+  bookingId   String
+  order       Int
+  label       String?
+  lat         Float
+  lng         Float
+  arrivalEstimate DateTime?
+  arrivedAt   DateTime?
+  geofenceRadiusMeters Int  @default(200)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([bookingId, order])
+  @@index([bookingId, arrivedAt])
 }
 
 // ============================================================================

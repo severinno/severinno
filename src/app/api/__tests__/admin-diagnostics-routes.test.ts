@@ -809,10 +809,12 @@ describe("GET /api/admin/geo-cache-diagnostics", () => {
 // ===========================================================================
 
 describe("GET /api/admin/geo-metrics", () => {
+  const mockRequest = new Request("http://localhost/api/admin/geo-metrics")
+
   it("returns 401 when requireRole rejects", async () => {
     vi.mocked(requireRole).mockRejectedValueOnce(new Error("UNAUTHORIZED"))
 
-    const res = await GETGeoMetrics()
+    const res = await GETGeoMetrics(mockRequest)
 
     expect(res.status).toBe(401)
   })
@@ -825,7 +827,7 @@ describe("GET /api/admin/geo-metrics", () => {
     })
     vi.mocked(requireRole).mockRejectedValueOnce(forbiddenErr)
 
-    const res = await GETGeoMetrics()
+    const res = await GETGeoMetrics(mockRequest)
 
     expect(res.status).toBe(403)
   })
@@ -837,7 +839,7 @@ describe("GET /api/admin/geo-metrics", () => {
     mockExistsSync.mockImplementation(() => true)
     mockReadFileSync.mockImplementation(() => GEO_BENCHMARK_FILE)
 
-    const res = await GETGeoMetrics()
+    const res = await GETGeoMetrics(mockRequest)
     const body = await res.json()
 
     expect(res.status).toBe(200)
@@ -862,7 +864,7 @@ describe("GET /api/admin/geo-metrics", () => {
     vi.mocked(getGeoMetricsHistory).mockReturnValue(GEO_METRICS_HISTORY as any)
     vi.mocked(getP95Baselines).mockReturnValue({})
 
-    const res = await GETGeoMetrics()
+    const res = await GETGeoMetrics(mockRequest)
     const body = await res.json()
 
     expect(body.benchmark).toBeNull()
