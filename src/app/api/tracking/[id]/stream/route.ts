@@ -19,6 +19,7 @@ import { cacheGet, cacheSet } from "@/lib/redis"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { checkGeofences } from "@/lib/geofencing"
+import { indexProviderLocation } from "@/lib/redis-geo"
 
 // ── SSE connection registry ───────────────────────────────────────────────
 
@@ -244,6 +245,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     } catch {
       // Redis unavailable — non-critical
     }
+
+    // Update spatial index so nearby-provider searches stay fresh during tracking
+    indexProviderLocation(session.userId, lat, lng).catch(() => {})
 
     // Broadcast to all SSE clients for this booking
     const clients = sseClients.get(bookingId) ?? []

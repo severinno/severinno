@@ -32,6 +32,7 @@ import {
   SERVICE_LABELS,
   type GeoServiceName,
 } from "@/lib/geo-metrics"
+import { getGeoMetricsSnapshot } from "@/lib/geo-observability"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -162,6 +163,7 @@ export async function GET() {
       benchmark,
       history,
       baselines: getP95Baselines(),
+      observability: getGeoMetricsSnapshot(),
     })
   } catch (_e) {
     return handleError(_e)

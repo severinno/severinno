@@ -6,18 +6,24 @@ import { requireUser } from "@/lib/auth"
 import { calculateRouteAndEta } from "@/lib/osrm"
 import { sendWhatsApp } from "@/lib/whatsapp"
 import { badRequest, forbidden, notFound, handleError } from "@/lib/api-server"
+import { checkGeofences } from "@/lib/geofencing"
+import { indexProviderLocation } from "@/lib/redis-geo"
+import { haversineKm } from "@/lib/geo-server"
 import logger from "@/lib/logger"
 
 const GEOFENCE_DISTANCE_KM = 1.0
 const GEOFENCE_DURATION_MIN = 5
+const GEOFENCE_RADIUS_M = 200
 
 /**
  * POST /api/tracking/[id]/geofence
  * body: { providerLat, providerLng }
  *
- * Evaluates real-time provider position against the booking destination.
- * If the provider is within 1 km or ≤5 min ETA (and no prior alert was sent),
- * dispatches a WhatsApp notification to the client.
+ * Unified geofence endpoint:
+ *   1. Updates Redis GEO spatial index
+ *   2. Runs geofencing engine (Haversine enter/exit with lock + debounce)
+ *   3. If still not triggered, evaluates OSRM ETA as fallback trigger
+ *   4. Sends WhatsApp "está chegando" on first trigger (idempotent)
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -32,6 +38,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!body.providerLat || !body.providerLng) {
       throw badRequest("Posição do prestador (providerLat, providerLng) é obrigatória")
     }
+
+    const { providerLat, providerLng } = body
 
     const booking = await db.booking.findUnique({
       where: { id: bookingId },
@@ -56,53 +64,83 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       throw forbidden("Apenas o prestador do agendamento pode enviar posição")
     }
 
-    if (!booking.lat || !booking.lng) {
-      return NextResponse.json({
-        ok: true,
-        triggered: false,
-        reason: "Agendamento sem coordenadas de destino",
-      })
-    }
+    // 1. Keep spatial index fresh
+    indexProviderLocation(session.userId, providerLat, providerLng).catch(() => {})
 
-    // Already sent — idempotent
+    // 2. Run geofencing engine (Haversine enter/exit with distributed lock)
+    const engineEvents = await checkGeofences(session.userId, providerLat, providerLng)
+
+    // 3. Check if engine already triggered an enter event for this booking
+    const engineTriggered = engineEvents.some(
+      (e) => e.type === "enter" && e.bookingId === bookingId,
+    )
+
+    // 4. Idempotent guard — already sent
     if (booking.geofenceAlertSentAt) {
       return NextResponse.json({
         ok: true,
         triggered: false,
         reason: "Alerta já enviado anteriormente",
         sentAt: booking.geofenceAlertSentAt,
+        engineEvents: engineEvents.length,
       })
     }
 
-    // Calculate real ETA from current provider position to booking destination
-    const route = await calculateRouteAndEta(
-      body.providerLat,
-      body.providerLng,
-      booking.lat,
-      booking.lng,
+    // 5. If engine didn't trigger, try OSRM ETA fallback
+    if (!engineTriggered) {
+      if (!booking.lat || !booking.lng) {
+        return NextResponse.json({
+          ok: true,
+          triggered: false,
+          reason: "Agendamento sem coordenadas de destino",
+          engineEvents: engineEvents.length,
+        })
+      }
+
+      const directDistanceKm = haversineKm(providerLat, providerLng, booking.lat, booking.lng)
+      const directDistanceMeters = Math.round(directDistanceKm * 1000)
+
+      // Fast path: Haversine already inside 200m zone — engine handles it
+      if (directDistanceMeters <= GEOFENCE_RADIUS_M) {
+        // Engine should have caught this, but log if it didn't
+        logger.debug(
+          { bookingId, distanceMeters: directDistanceMeters },
+          "geofence: Haversine inside zone but engine didn't trigger",
+        )
+      }
+
+      // OSRM ETA fallback for farther distances
+      const route = await calculateRouteAndEta(providerLat, providerLng, booking.lat, booking.lng)
+      const shouldTriggerByEta =
+        route.distanceKm <= GEOFENCE_DISTANCE_KM || route.durationMin <= GEOFENCE_DURATION_MIN
+
+      if (!shouldTriggerByEta) {
+        return NextResponse.json({
+          ok: true,
+          triggered: false,
+          distanceKm: route.distanceKm,
+          durationMin: route.durationMin,
+          engineEvents: engineEvents.length,
+        })
+      }
+    }
+
+    // 6. Trigger WhatsApp notification
+    const providerName = booking.provider?.name ?? "O Prestador"
+    const distanceMeters = Math.round(
+      haversineKm(providerLat, providerLng, booking.lat ?? 0, booking.lng ?? 0) * 1000,
     )
-
-    const shouldTrigger =
-      route.distanceKm <= GEOFENCE_DISTANCE_KM || route.durationMin <= GEOFENCE_DURATION_MIN
-
-    if (!shouldTrigger) {
-      return NextResponse.json({
-        ok: true,
-        triggered: false,
-        distanceKm: route.distanceKm,
-        durationMin: route.durationMin,
-      })
-    }
-
-    // Fire geofence alert — WhatsApp notification to client
-    const providerName = booking.provider?.name ?? "O prestador"
-    const etaText =
-      route.durationMin <= 1 ? "menos de 1 minuto" : `aproximadamente ${route.durationMin} minutos`
+    const distanceText =
+      distanceMeters <= 100
+        ? "muito perto"
+        : distanceMeters <= 1000
+          ? `a aproximadamente ${distanceMeters} metros`
+          : `a aproximadamente ${(distanceMeters / 1000).toFixed(1)} km`
 
     await sendWhatsApp({
       userId: booking.clientId,
       title: `🚗 ${providerName} está chegando!`,
-      body: `${providerName} está a ${etaText} do seu endereço. Fique de prontidão!`,
+      body: `${providerName} está ${distanceText} do seu endereço. Fique de prontidão!`,
       url: `/?view=client.bookings&id=${bookingId}`,
     })
 
@@ -113,16 +151,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     })
 
     logger.info(
-      { bookingId, distanceKm: route.distanceKm, durationMin: route.durationMin },
-      "Geofence alert triggered and WhatsApp sent",
+      { bookingId, distanceMeters, engineEvents: engineEvents.length },
+      "Geofence alert triggered (unified endpoint)",
     )
 
     return NextResponse.json({
       ok: true,
       triggered: true,
-      distanceKm: route.distanceKm,
-      durationMin: route.durationMin,
-      message: `Alerta enviado: ${providerName} está a ${etaText}`,
+      distanceMeters,
+      engineEvents: engineEvents.length,
+      message: `Alerta enviado: ${providerName} está ${distanceText}`,
     })
   } catch (e) {
     return handleError(e)

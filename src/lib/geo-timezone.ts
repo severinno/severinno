@@ -11,6 +11,8 @@
  * Execução em memória: O(1) síncrono (<0.01ms).
  */
 
+import { recordTimezoneLookup } from "@/lib/geo-observability"
+
 export type BrazilianTimezone =
   | "America/Noronha"
   | "America/Sao_Paulo"
@@ -39,54 +41,50 @@ const TZ_INFO_MAP: Record<BrazilianTimezone, { utcOffsetHours: number; label: st
  */
 export function getTimezoneFromCoords(lat: number, lng: number): BrazilianTimezone {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    recordTimezoneLookup("America/Sao_Paulo", true)
     return "America/Sao_Paulo"
   }
+
+  let tz: BrazilianTimezone
 
   // 1. Fernando de Noronha e Ilhas Oceânicas (UTC-2)
   // Arquipélago de Noronha fica em lat ~ -3.85, lng ~ -32.42
   // Atol das Rocas em lat ~ -3.86, lng ~ -33.80
   if (lng > -34.5 && lat > -5.0 && lat < -3.0) {
-    return "America/Noronha"
+    tz = "America/Noronha"
   }
-
   // 2. Acre e extremo sudoeste do Amazonas (UTC-5)
-  // Estado do Acre: Lat entre -11.3 e -7.0, Lng entre -74.0 e -66.5
-  // Municípios do extremo oeste do AM (Guajará, Eirunepé, Atalaia do Norte): Lng <= -70.0
-  if (
-    (lng <= -66.5 && lat <= -7.0 && lat >= -11.5) || // Acre
-    (lng <= -70.0 && lat < 0 && lat >= -10.0) // Extremo oeste AM
+  else if (
+    (lng <= -66.5 && lat <= -7.0 && lat >= -11.5) ||
+    (lng <= -70.0 && lat < 0 && lat >= -10.0)
   ) {
-    return "America/Rio_Branco"
+    tz = "America/Rio_Branco"
   }
-
   // 3. Mato Grosso e Mato Grosso do Sul (UTC-4)
-  // MT: lat entre -18.0 e -7.5, lng entre -61.5 e -50.0
-  // MS: lat entre -24.0 e -17.5, lng entre -58.2 e -50.8
-  if (
+  else if (
     lng >= -61.5 &&
     lng <= -50.5 &&
     lat <= -7.5 &&
     lat >= -24.5 &&
-    !(lat < -22.5 && lng > -53.0) // Exclui noroeste do Paraná (PR é UTC-3)
+    !(lat < -22.5 && lng > -53.0)
   ) {
-    return "America/Cuiaba"
+    tz = "America/Cuiaba"
   }
-
   // 4. Roraima, Rondônia e Amazonas (Centro/Leste) (UTC-4)
-  // Roraima (RR): lat entre 5.3 e -1.5, lng entre -64.8 e -58.8
-  // Rondônia (RO): lat entre -8.0 e -13.7, lng entre -66.6 e -60.0
-  // Amazonas (AM): lat entre 2.2 e -9.8, lng entre -70.0 e -56.0
-  if (
-    (lat >= -1.5 && lat <= 5.5 && lng <= -58.5 && lng >= -65.0) || // Roraima
-    (lat <= -8.0 && lat >= -14.0 && lng <= -60.0 && lng >= -67.0) || // Rondônia
-    (lat <= 2.5 && lat >= -9.5 && lng <= -56.5 && lng >= -70.0) // Amazonas Centro/Leste
+  else if (
+    (lat >= -1.5 && lat <= 5.5 && lng <= -58.5 && lng >= -65.0) ||
+    (lat <= -8.0 && lat >= -14.0 && lng <= -60.0 && lng >= -67.0) ||
+    (lat <= 2.5 && lat >= -9.5 && lng <= -56.5 && lng >= -70.0)
   ) {
-    return "America/Manaus"
+    tz = "America/Manaus"
+  }
+  // 5. Padrão: Horário de Brasília (UTC-3)
+  else {
+    tz = "America/Sao_Paulo"
   }
 
-  // 5. Padrão: Horário de Brasília (UTC-3)
-  // Sul, Sudeste, Nordeste, GO, DF, TO, PA, AP
-  return "America/Sao_Paulo"
+  recordTimezoneLookup(tz, tz === "America/Sao_Paulo")
+  return tz
 }
 
 /**

@@ -14,6 +14,12 @@ import { cacheGet, cacheSet, getClient } from "@/lib/redis"
 import { haversineKm } from "@/lib/geo-server"
 import { captureError } from "@/lib/sentry"
 import { sendWhatsApp } from "@/lib/whatsapp"
+import {
+  recordGeofenceEnter,
+  recordGeofenceExit,
+  recordGeofenceWhatsApp,
+  recordGeofenceError,
+} from "@/lib/geo-observability"
 import logger from "@/lib/logger"
 
 export type GeofenceEvent = {
@@ -127,6 +133,7 @@ export async function checkGeofences(
         // Detect state change
         if (isInside && !wasInside && now - lastEventAt > debounceMs) {
           // Provider ENTERED the geofence
+          recordGeofenceEnter()
           const event: GeofenceEvent = {
             type: "enter",
             providerId,
@@ -153,6 +160,7 @@ export async function checkGeofences(
           })
         } else if (!isInside && wasInside && now - lastEventAt > debounceMs) {
           // Provider EXITED the geofence
+          recordGeofenceExit()
           const event: GeofenceEvent = {
             type: "exit",
             providerId,
@@ -188,6 +196,7 @@ export async function checkGeofences(
       }
     }
   } catch (err) {
+    recordGeofenceError()
     logger.error({ err, providerId }, "geofence: check failed")
   }
 
@@ -274,7 +283,10 @@ async function notifyGeofenceEvent(
         title: `🚗 ${providerName} está chegando!`,
         body: `${providerName} está ${distanceText} do seu endereço. Fique de prontidão!`,
         url: `/?view=client.bookings&id=${event.bookingId}`,
+      }).then(() => {
+        recordGeofenceWhatsApp(true)
       }).catch((err) => {
+        recordGeofenceWhatsApp(false)
         logger.debug({ err, bookingId: event.bookingId }, "geofencing: WhatsApp send failed")
       })
     }
