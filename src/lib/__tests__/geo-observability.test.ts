@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { createMockLogger } from "./geo-test-helpers"
 
 const mockLoggerInfo = vi.hoisted(() => vi.fn())
 
@@ -121,6 +122,98 @@ describe("geo-observability.ts", () => {
       expect(msg).toBe("geo-observability: metrics snapshot")
       expect(payload).toHaveProperty("geofencing")
       expect(payload).toHaveProperty("timezone")
+    })
+  })
+
+  describe("e2e — realistic multi-operation scenarios", () => {
+    it("builds up a realistic metrics snapshot from multiple operations", () => {
+      recordGeofenceEnter()
+      recordGeofenceEnter()
+      recordGeofenceExit()
+      recordGeofenceWhatsApp(true)
+      recordGeofenceWhatsApp(true)
+      recordGeofenceWhatsApp(false)
+      recordGeofenceLockContention()
+      recordGeofenceError()
+      recordOsrmFallback()
+      recordTimezoneLookup("America/Sao_Paulo", false)
+      recordTimezoneLookup("America/Sao_Paulo", false)
+      recordTimezoneLookup("America/Manaus", false)
+      recordTimezoneLookup("America/Sao_Paulo", true)
+
+      const snap = getGeoMetricsSnapshot()
+      expect(snap.geofencing.enterEvents).toBeGreaterThanOrEqual(2)
+      expect(snap.geofencing.exitEvents).toBeGreaterThanOrEqual(1)
+      expect(snap.geofencing.whatsappSent).toBeGreaterThanOrEqual(2)
+      expect(snap.geofencing.whatsappFailed).toBeGreaterThanOrEqual(1)
+      expect(snap.geofencing.lockContentions).toBeGreaterThanOrEqual(1)
+      expect(snap.geofencing.engineErrors).toBeGreaterThanOrEqual(1)
+      expect(snap.geofencing.osrmFallbackTriggers).toBeGreaterThanOrEqual(1)
+      expect(snap.timezone.lookups).toBeGreaterThanOrEqual(4)
+      expect(snap.timezone.fallbackToBrasilia).toBeGreaterThanOrEqual(1)
+      expect(snap.timezone.byTimezone["America/Sao_Paulo"]).toBeGreaterThanOrEqual(3)
+      expect(snap.timezone.byTimezone["America/Manaus"]).toBeGreaterThanOrEqual(1)
+    })
+
+    it("formats fallback rate correctly in logGeoMetricsSummary", () => {
+      const before = getGeoMetricsSnapshot().timezone
+      recordTimezoneLookup("America/Sao_Paulo", false)
+      recordTimezoneLookup("America/Manaus", false)
+      recordTimezoneLookup("America/Sao_Paulo", true)
+
+      logGeoMetricsSummary()
+      const [payload] = mockLoggerInfo.mock.calls[mockLoggerInfo.mock.calls.length - 1]
+      const after = getGeoMetricsSnapshot().timezone
+      const expectedRate =
+        after.lookups > 0
+          ? `${((after.fallbackToBrasilia / after.lookups) * 100).toFixed(1)}%`
+          : "0%"
+      expect(payload.timezone.fallbackRate).toBe(expectedRate)
+      expect(after.lookups).toBe(before.lookups + 3)
+      expect(after.fallbackToBrasilia).toBe(before.fallbackToBrasilia + 1)
+    })
+
+    it("returns consistent structure after many operations", () => {
+      for (let i = 0; i < 20; i++) {
+        recordGeofenceEnter()
+        recordGeofenceExit()
+        recordOsrmFallback()
+        recordTimezoneLookup("America/Sao_Paulo", i % 3 === 0)
+      }
+
+      const snap = getGeoMetricsSnapshot()
+      expect(snap).toHaveProperty("geofencing")
+      expect(snap).toHaveProperty("timezone")
+      expect(snap).toHaveProperty("uptime")
+      expect(snap.geofencing).toHaveProperty("enterEvents")
+      expect(snap.geofencing).toHaveProperty("exitEvents")
+      expect(snap.geofencing).toHaveProperty("whatsappSent")
+      expect(snap.geofencing).toHaveProperty("whatsappFailed")
+      expect(snap.geofencing).toHaveProperty("lockContentions")
+      expect(snap.geofencing).toHaveProperty("engineErrors")
+      expect(snap.geofencing).toHaveProperty("osrmFallbackTriggers")
+      expect(snap.timezone).toHaveProperty("lookups")
+      expect(snap.timezone).toHaveProperty("fallbackToBrasilia")
+      expect(snap.timezone).toHaveProperty("byTimezone")
+      expect(typeof snap.uptime).toBe("number")
+    })
+
+    it("uptime is monotonically non-decreasing between calls", () => {
+      const snap1 = getGeoMetricsSnapshot()
+      const snap2 = getGeoMetricsSnapshot()
+      expect(snap2.uptime).toBeGreaterThanOrEqual(snap1.uptime)
+    })
+  })
+
+  describe("createMockLogger helper", () => {
+    it("returns an object with info, warn, error, debug spies", () => {
+      const logger = createMockLogger()
+      expect(typeof logger.info).toBe("function")
+      expect(typeof logger.warn).toBe("function")
+      expect(typeof logger.error).toBe("function")
+      expect(typeof logger.debug).toBe("function")
+      logger.info("test")
+      expect(logger.info).toHaveBeenCalledWith("test")
     })
   })
 })

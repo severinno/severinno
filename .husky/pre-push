@@ -2,7 +2,13 @@ set -eu
 
 # ── Fast encoding guards (sempre rodam, ~2s) ──────────────────────────────
 bash scripts/run-encoding-guards.sh
-bun run test:guards
+
+# ── Typecheck (~3s) ──────────────────────────────────────────────────────
+bunx tsc --noEmit
+
+# ── NOTE: CLI guard tests (test:guards, ~55s) run in CI only ──────────────
+# They're too slow for pre-push. Run locally before PR if needed:
+#   bun run test:guards
 
 # ── Smart skip: só roda testes se arquivos-fonte foram alterados ──────────
 MERGE_BASE=$(git merge-base HEAD "@{u}" 2>/dev/null || git rev-parse HEAD~1 2>/dev/null || echo "")

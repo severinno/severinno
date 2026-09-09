@@ -293,3 +293,123 @@ Métricas chave:
 4. **Fallback:** A cadeia PostGIS → Haversine → null garante que a busca funcione mesmo sem PostGIS instalado
 5. **Expansão:** A expansão progressiva de raio evita "zero results" para usuários em áreas com poucos prestadores
 6. **Rate limiting:** O rate limiter compartilhado do Nominatim é **obrigatório** — violar a política OSM pode resultar em bloqueio de IP
+
+---
+
+## 10. Observabilidade (geo-observability.ts)
+
+Métricas centralizadas do sistema de geolocalização, com contadores em memória e exportação via snapshot.
+
+### 10.1. Contadores
+
+| Contador            | Descrição                                    |
+| ------------------- | -------------------------------------------- |
+| `enterEvents`       | Eventos de entrada de geofence               |
+| `exitEvents`        | Eventos de saída de geofence                 |
+| `whatsappSent`      | Mensagens WhatsApp enviadas com sucesso      |
+| `whatsappFailed`    | Falhas no envio de mensagens WhatsApp        |
+| `lockContentions`   | Tentativas de bloqueio distribuído (Redis)   |
+| `engineErrors`      | Erros no engine de geofencing                |
+| `osrmFallbackTriggers` | Ativações do fallback OSRM para ETA       |
+
+### 10.2. Contadores de Timezone
+
+| Contador               | Descrição                                          |
+| ---------------------- | -------------------------------------------------- |
+| `lookups`              | Total de consultas de timezone                     |
+| `fallbackToBrasilia`   | Fallback para America/Sao_Paulo                    |
+| `byTimezone`           | Distribuição por timezone detectada                |
+
+### 10.3. API
+
+| Função                      | Descrição                                      |
+| --------------------------- | ---------------------------------------------- |
+| `getGeoMetricsSnapshot()`   | Retorna snapshot completo das métricas         |
+| `logGeoMetricsSummary()`    | Loga resumo das métricas no console            |
+
+### 10.4. Endpoint de Snapshot
+
+```
+GET /api/admin/geo-metrics
+```
+
+Retorna o resultado de `getGeoMetricsSnapshot()` — para dashboards e monitoramento.
+
+---
+
+## 11. Redis GEO Index (redis-geo.ts)
+
+Índice espacial em memória via Redis GEO para operações de baixa latência.
+
+| Função                      | Descrição                                                 |
+| --------------------------- | --------------------------------------------------------- |
+| `indexProviderLocation()`   | Usa `GEOADD` para indexar a localização de um provider   |
+
+Utilizado pela rota de stream e rota de geofence para manter o índice Redis atualizado em tempo real.
+
+---
+
+## 12. Endpoint Unificado de Geofence
+
+```
+POST /api/tracking/[id]/geofence
+```
+
+Endpoint unificado que combina engine de geofencing + fallback OSRM para ETA.
+
+| Aspecto       | Detalhe                                                              |
+| ------------- | -------------------------------------------------------------------- |
+| Método        | `POST`                                                               |
+| Parâmetro     | `[id]` — ID do tracking/booking                                     |
+| Lógica        | Verifica geofence via engine interno, com fallback OSRM para ETA     |
+| Substitui     | Endpoints separados de verificação de geofence                      |
+
+---
+
+## 13. Geofencing Engine (geofencing.ts)
+
+Engine de geofencing com integração WhatsApp, observabilidade e bloqueio distribuído.
+
+| Funcionalidade              | Descrição                                                          |
+| --------------------------- | ------------------------------------------------------------------ |
+| **WhatsApp**                | Notificação de providers via WhatsApp ao entrar/sair da geofence   |
+| **Observabilidade hooks**   | `recordGeofenceEnter()`, `recordGeofenceExit()` — atualiza contadores |
+| **Lock distribuído**        | Bloqueio via Redis para evitar processamento duplicado             |
+
+### 13.1. Hooks de Observabilidade
+
+| Hook                       | Descrição                                      |
+| -------------------------- | ---------------------------------------------- |
+| `recordGeofenceEnter()`    | Incrementa `enterEvents`                       |
+| `recordGeofenceExit()`     | Incrementa `exitEvents`                        |
+| `recordWhatsAppSent()`     | Incrementa `whatsappSent`                      |
+| `recordWhatsAppFailed()`   | Incrementa `whatsappFailed`                    |
+| `recordLockContention()`   | Incrementa `lockContentions`                   |
+| `recordEngineError()`      | Incrementa `engineErrors`                      |
+
+---
+
+## 14. Geo Timezone (geo-timezone.ts)
+
+Detecção dinâmica de timezone a partir de coordenadas GPS.
+
+| Funcionalidade              | Descrição                                                          |
+| --------------------------- | ------------------------------------------------------------------ |
+| **Detect timezone**         | Converte lat/lng em IANA timezone via biblioteca                   |
+| **isFallback**              | `false` para coordenadas válidas, `true` apenas para entradas NaN/inválidas |
+
+### 14.1. Integrações
+
+O módulo de timezone é integrado nos seguintes arquivos:
+
+| Arquivo                  | Uso                                                              |
+| ------------------------ | ---------------------------------------------------------------- |
+| `notifications.ts`      | Horário correto para envio de notificações                      |
+| `dispatch.ts`           | Horário de despacho de serviços                                 |
+| `evolution.ts`          | Timestamps de evolução de booking                               |
+| `whatsapp-flows.ts`     | Janela de envio de mensagens WhatsApp                           |
+| `calendar-sync.ts`      | Sincronização de calendário com timezone do prestador/cliente   |
+
+### 14.2. Fallback
+
+Quando as coordenadas são `NaN` ou inválidas, o sistema usa `America/Sao_Paulo` como fallback (Brasília). O flag `isFallback` permite rastrear quando isso ocorre para métricas.
