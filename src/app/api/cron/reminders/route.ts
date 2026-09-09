@@ -13,6 +13,7 @@ import {
   notifyPaymentConfirmed,
   notifyBookingReminder24h,
 } from "@/lib/notifications"
+import { getTimezoneFromCoords } from "@/lib/geo-timezone"
 
 export async function GET(request: Request) {
   try {
@@ -44,12 +45,14 @@ export async function GET(request: Request) {
 
     let sent = 0
     for (const booking of bookings) {
+      const timezone = getTimezoneFromCoords(booking.lat, booking.lng)
       const scheduledDate = booking.scheduledAt.toLocaleString("pt-BR", {
         day: "2-digit",
         month: "long",
         year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
+        timeZone: timezone,
       })
 
       if (booking.client.email) {

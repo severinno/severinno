@@ -18,7 +18,7 @@ import { db } from "@/lib/db"
 import { cacheGet, cacheSet } from "@/lib/redis"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
-import { haversineKm } from "@/lib/geo-server"
+import { checkGeofences } from "@/lib/geofencing"
 
 // ── SSE connection registry ───────────────────────────────────────────────
 
@@ -129,8 +129,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
           if (pos && pos.timestamp !== currentPos?.timestamp) {
             sendEvent("position", pos)
 
-            // Check geofence
-            const geofence = await checkTrackingGeofence(bookingId, pos.lat, pos.lng)
+            // Check geofence via engine
+            const geofence = await checkGeofences(booking.providerId, pos.lat, pos.lng)
             if (geofence) {
               sendEvent("geofence", geofence)
             }
@@ -258,47 +258,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
     }
 
-    return NextResponse.json({ ok: true, clients: clients.length })
-  } catch (e) {
-    return handleError(e)
-  }
-}
-
-// ── Geofence check during tracking ────────────────────────────────────────
-
-async function checkTrackingGeofence(
-  bookingId: string,
-  lat: number,
-  lng: number,
-): Promise<{ type: string; distanceMeters: number } | null> {
-  try {
-    const booking = await db.booking.findUnique({
-      where: { id: bookingId },
-      select: { lat: true, lng: true },
-    })
-
-    if (!booking?.lat || !booking?.lng) return null
-
-    const distanceMeters = Math.round(haversineKm(lat, lng, booking.lat, booking.lng) * 1000)
-    const GEOFENCE_RADIUS = 200 // 200m
-
-    // Check previous state
-    const prevKey = `tracking:geofence:${bookingId}`
-    const prev = await cacheGet<{ inside: boolean }>(prevKey)
-    const wasInside = prev?.inside ?? false
-    const isInside = distanceMeters <= GEOFENCE_RADIUS
-
-    if (isInside !== wasInside) {
-      await cacheSet(prevKey, { inside: isInside }, 3600)
-      return {
-        type: isInside ? "enter" : "exit",
-        distanceMeters,
+    // Geofence check — uses geofencing engine with distributed lock, debounce, and audit trail
+    const geofenceEvent = await checkGeofences(session.userId, lat, lng)
+    if (geofenceEvent) {
+      for (const client of clients) {
+        try {
+          const encoder = new TextEncoder()
+          client.controller.enqueue(
+            encoder.encode(`event: geofence\ndata: ${JSON.stringify(geofenceEvent)}\n\n`),
+          )
+        } catch {
+          // Client disconnected
+        }
       }
     }
 
-    return null
-  } catch {
-    return null
+    return NextResponse.json({ ok: true, clients: clients.length })
+  } catch (e) {
+    return handleError(e)
   }
 }
 
