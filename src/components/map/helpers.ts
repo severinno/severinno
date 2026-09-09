@@ -1,5 +1,5 @@
 import type { Map as MapLibreMap } from "maplibre-gl"
-import { haversineKm } from "@/lib/geo"
+import { haversineKm } from "@/lib/geo-shared"
 import type { ProviderCard } from "@/lib/api"
 
 type MarkerInstance = InstanceType<(typeof import("maplibre-gl"))["Marker"]>
