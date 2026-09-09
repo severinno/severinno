@@ -48,8 +48,6 @@ export function getTimezoneFromCoords(lat: number, lng: number): BrazilianTimezo
   let tz: BrazilianTimezone
 
   // 1. Fernando de Noronha e Ilhas Oceânicas (UTC-2)
-  // Arquipélago de Noronha fica em lat ~ -3.85, lng ~ -32.42
-  // Atol das Rocas em lat ~ -3.86, lng ~ -33.80
   if (lng > -34.5 && lat > -5.0 && lat < -3.0) {
     tz = "America/Noronha"
   }
@@ -83,7 +81,7 @@ export function getTimezoneFromCoords(lat: number, lng: number): BrazilianTimezo
     tz = "America/Sao_Paulo"
   }
 
-  recordTimezoneLookup(tz, tz === "America/Sao_Paulo")
+  recordTimezoneLookup(tz, false)
   return tz
 }
 

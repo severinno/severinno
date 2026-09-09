@@ -30,6 +30,11 @@ const mockCacheSet = vi.hoisted(() => vi.fn())
 const mockGetClient = vi.hoisted(() => vi.fn())
 const mockHaversineKm = vi.hoisted(() => vi.fn())
 const mockCaptureError = vi.hoisted(() => vi.fn())
+const mockSendWhatsApp = vi.hoisted(() => vi.fn())
+const mockRecordEnter = vi.hoisted(() => vi.fn())
+const mockRecordExit = vi.hoisted(() => vi.fn())
+const mockRecordWhatsApp = vi.hoisted(() => vi.fn())
+const mockRecordError = vi.hoisted(() => vi.fn())
 const mockLoggerInfo = vi.hoisted(() => vi.fn())
 const mockLoggerWarn = vi.hoisted(() => vi.fn())
 const mockLoggerError = vi.hoisted(() => vi.fn())
@@ -55,6 +60,17 @@ vi.mock("@/lib/geo-server", () => ({
 
 vi.mock("@/lib/sentry", () => ({
   captureError: mockCaptureError,
+}))
+
+vi.mock("@/lib/whatsapp", () => ({
+  sendWhatsApp: mockSendWhatsApp,
+}))
+
+vi.mock("@/lib/geo-observability", () => ({
+  recordGeofenceEnter: mockRecordEnter,
+  recordGeofenceExit: mockRecordExit,
+  recordGeofenceWhatsApp: mockRecordWhatsApp,
+  recordGeofenceError: mockRecordError,
 }))
 
 vi.mock("@/lib/logger", () => ({
@@ -582,5 +598,55 @@ describe("getGeofenceAuditTrail", () => {
     const trail = await getGeofenceAuditTrail("booking-1")
 
     expect(trail).toEqual([])
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Observability hooks
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("observability hooks", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    mockFindMany.mockResolvedValue([])
+    mockCacheGet.mockResolvedValue(null)
+    mockCacheSet.mockResolvedValue(undefined as unknown as string)
+    mockGetClient.mockReturnValue(null)
+    mockHaversineKm.mockReturnValue(0.05)
+    mockSendWhatsApp.mockResolvedValue(undefined)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it("calls recordGeofenceEnter on enter event", async () => {
+    mockFindMany.mockResolvedValue([makeBooking()])
+    mockCacheGet.mockResolvedValue({ inside: false, lastEventAt: 0 })
+    mockHaversineKm.mockReturnValue(0.1)
+
+    await checkGeofences("provider-1", -23.551, -46.634)
+
+    expect(mockRecordEnter).toHaveBeenCalled()
+  })
+
+  it("calls recordGeofenceExit on exit event", async () => {
+    mockFindMany.mockResolvedValue([makeBooking()])
+    mockCacheGet.mockResolvedValue({ inside: true, lastEventAt: 0 })
+    mockHaversineKm.mockReturnValue(0.5)
+
+    await checkGeofences("provider-1", -23.56, -46.64)
+
+    expect(mockRecordExit).toHaveBeenCalled()
+  })
+
+  it("calls recordGeofenceError on top-level DB error", async () => {
+    mockFindMany.mockRejectedValue(new Error("DB connection lost"))
+
+    await checkGeofences("provider-1", -23.55, -46.63)
+
+    expect(mockRecordError).toHaveBeenCalled()
   })
 })
