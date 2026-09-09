@@ -233,7 +233,6 @@ describe("withGeoMiddleware", () => {
     })
     const wrapped = withGeoMiddleware(handler)
     const response = await wrapped(makeRequest())
-    const body = await response.json()
 
     expect(response.status).toBe(500)
     expect(captureError).toHaveBeenCalledOnce()

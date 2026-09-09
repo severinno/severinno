@@ -1,9 +1,9 @@
 import type { NextConfig } from "next"
 import withBundleAnalyzer from "@next/bundle-analyzer"
 
-// CSP is set dynamically in middleware.ts with strict directives.
+// CSP is set dynamically in proxy.ts with strict directives.
 // Static security headers here apply to pre-rendered responses.
-// See src/middleware.ts for the dynamic CSP header.
+// See proxy.ts (Next.js 16 — formerly middleware.ts) for the dynamic CSP header.
 
 const nextConfig: NextConfig = {
   ...(process.env.BUILD_STANDALONE === "true" || process.env.DOCKER_BUILD === "true"
@@ -23,7 +23,7 @@ const nextConfig: NextConfig = {
 
   // Security headers are set by Caddy reverse proxy (HSTS, X-Frame-Options,
   // X-Content-Type-Options, Referrer-Policy, Permissions-Policy, CSP).
-  // Only dynamic headers are set in middleware.ts.
+  // Only dynamic headers are set in proxy.ts (formerly middleware.ts).
   async headers() {
     return []
   },

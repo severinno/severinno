@@ -11,8 +11,8 @@
  */
 
 import { useEffect, useRef } from "react"
-import maplibregl from "maplibre-gl"
-import { haversineKm } from "@/lib/geo-shared"
+import * as maplibregl from "maplibre-gl"
+import { haversineKm } from "@/lib/geo-server"
 
 type MapLibreMap = InstanceType<typeof import("maplibre-gl").Map>
 

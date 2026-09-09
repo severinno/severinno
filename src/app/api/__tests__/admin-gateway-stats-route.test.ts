@@ -84,6 +84,19 @@ import { GET } from "../admin/gateway/stats/route"
 
 const MOCK_SESSION = { userId: "admin-1", role: "ADMIN" as const }
 
+// O teste de filtro por período (7d) calcula invoices relativos ao "agora" do
+// teste enquanto a rota deriva a janela do PRÓPRIO new Date() — na virada de
+// dia (23:59:59.999 → 00:00:00) a fronteira muda entre as duas leituras e o
+// teste flakaria. Congela SÓ Date: teste e rota veem o MESMO relógio.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] })
+  vi.setSystemTime(new Date("2026-01-05T15:00:00.000Z"))
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+})
+
 function mockFetch(results: unknown[]) {
   // Use mockImplementation to create a FRESH Response on every fetch() call
   // This prevents "Body has already been read" errors when the route reads

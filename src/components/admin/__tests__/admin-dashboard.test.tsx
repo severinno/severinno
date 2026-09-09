@@ -91,11 +91,14 @@ vi.mock("@/components/ui/skeleton", () => ({
 // ---- Recharts needs ResizeObserver -----------------------------------------
 vi.stubGlobal(
   "ResizeObserver",
-  vi.fn().mockImplementation(() => ({
-    observe: vi.fn(),
-    unobserve: vi.fn(),
-    disconnect: vi.fn(),
-  })),
+  // Vitest 4: constructor mocks must use function/class implementations.
+  vi.fn(function () {
+    return {
+      observe: vi.fn(),
+      unobserve: vi.fn(),
+      disconnect: vi.fn(),
+    }
+  }),
 )
 
 // Recharts is not SVG-capable under JSDOM (React 19 + recharts 2.x hooks crash

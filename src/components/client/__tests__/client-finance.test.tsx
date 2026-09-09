@@ -206,11 +206,14 @@ vi.mock("@/components/client/client-shared", () => ({
 
 vi.stubGlobal(
   "ResizeObserver",
-  vi.fn().mockImplementation(() => ({
-    observe: vi.fn(),
-    unobserve: vi.fn(),
-    disconnect: vi.fn(),
-  })),
+  // Vitest 4: constructor mocks must use function/class implementations.
+  vi.fn(function () {
+    return {
+      observe: vi.fn(),
+      unobserve: vi.fn(),
+      disconnect: vi.fn(),
+    }
+  }),
 )
 
 vi.stubGlobal(
@@ -241,6 +244,19 @@ function mockUseQueries() {
 // ---- Tests ----------------------------------------------------------------
 
 afterEach(cleanup)
+
+// O ClientFinance filtra por ano corrente (getFullYear) derivado do relógio
+// real — o fixture usa o ANO atual, então se o teste rodasse na virada do ano
+// (31/12 23:59:59.999 → 01/01 00:00:00) a asserção "Paulo" flakaria. Congela
+// SÓ Date num horário neutro: componente e fixture veem o mesmo ano.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] })
+  vi.setSystemTime(new Date("2026-01-05T15:00:00.000Z")) // 12:00 BRT
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 describe("ClientFinance — loading", () => {
   beforeEach(() => {

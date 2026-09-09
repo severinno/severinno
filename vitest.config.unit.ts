@@ -33,6 +33,9 @@ export default defineConfig({
     setupFiles: ["./vitest.act-setup.ts", "./vitest.setup.ts"],
 
     pool: "forks",
-    poolOptions: { forks: { singleFork: true } },
+    // Vitest 4 removed `poolOptions` — singleFork: true virou maxWorkers: 1
+    // (singleFork/isolate agora são opções top-level; isolamento por arquivo
+    // continua no default `isolate: true`).
+    maxWorkers: 1,
   },
 })

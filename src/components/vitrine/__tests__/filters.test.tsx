@@ -149,24 +149,24 @@ import Filters, { DEFAULT_FILTERS, type FiltersState } from "../filters"
 function createProps(
   overrides?: Partial<{
     value: FiltersState
-    onChange: ReturnType<typeof vi.fn>
+    onChange: ReturnType<typeof vi.fn<(next: FiltersState) => void>>
     categories: Category[]
     hasGeo: boolean
-    onRequestGeo: ReturnType<typeof vi.fn>
+    onRequestGeo: ReturnType<typeof vi.fn<() => void>>
   }>,
 ): {
   value: FiltersState
-  onChange: ReturnType<typeof vi.fn>
+  onChange: ReturnType<typeof vi.fn<(next: FiltersState) => void>>
   categories: Category[]
   hasGeo: boolean
-  onRequestGeo: ReturnType<typeof vi.fn>
+  onRequestGeo: ReturnType<typeof vi.fn<() => void>>
 } {
   return {
     value: { ...DEFAULT_FILTERS },
-    onChange: vi.fn(),
+    onChange: vi.fn<(next: FiltersState) => void>(),
     categories: mockCategories,
     hasGeo: false,
-    onRequestGeo: vi.fn(),
+    onRequestGeo: vi.fn<() => void>(),
     ...overrides,
   }
 }

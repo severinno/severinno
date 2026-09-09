@@ -131,10 +131,10 @@ describe("seed-e2e-common — validateTree (db mockado)", () => {
     const rep = createReporter()
     await validateTree(mockDb(rows), rep)
 
-    const msgs = logSpy.mock.calls.map((c) => c.join(" "))
-    expect(msgs.some((m) => m.includes("ausente"))).toBe(true)
+    const msgs = logSpy.mock.calls.map((c: string[]) => c.join(" "))
+    expect(msgs.some((m: string) => m.includes("ausente"))).toBe(true)
     expect(
-      msgs.some((m) =>
+      msgs.some((m: string) =>
         m.includes(categorySlug({ name: "Poda de árvores", parent: "Alvenaria", level: 2 })),
       ),
     ).toBe(true)

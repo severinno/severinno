@@ -19,6 +19,13 @@ const eslintConfig = [
       "react-hooks": reactHooks,
       react,
     },
+    settings: {
+      react: {
+        // Auto-detecta a versão do React (19.x) — silencia o aviso
+        // "React version not specified in eslint-plugin-react settings".
+        version: "detect",
+      },
+    },
     rules: {
       // TypeScript rules — start with the most impactful
       "@typescript-eslint/no-explicit-any": "warn",

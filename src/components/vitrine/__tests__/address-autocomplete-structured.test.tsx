@@ -9,7 +9,7 @@
  * Coverage:
  *   ✅ Structured search called after ViaCEP with postcode/city/state
  *   ✅ CEP result with coordinates → selection calls setFromCoords + onSelect(lat, lng)
- *   ✅ CEP result WITHOUT coordinates (empty structured) → onSelect(0, 0, displayName)
+ *   ✅ CEP result WITHOUT coordinates (empty structured) → onSelect NOT called; parent reads geo store
  *   ✅ Structured search failure is non-fatal — ViaCEP result still shown
  *   ✅ Structured search skipped when ViaCEP result has no city
  *   ✅ ViaCEP fields still written to the geo store on selection
@@ -215,7 +215,7 @@ describe("AddressAutocomplete — CEP selection with structured coordinates", ()
     expect(mockGeoStore.status).toBe("ready")
   })
 
-  it("falls back to onSelect(0, 0) when structured returns no coordinates", async () => {
+  it("does not call onSelect when structured returns no coordinates — ViaCEP fields go to the store", async () => {
     const cep = nextCep()
     mockFetchCep.mockResolvedValue({ ...MOCK_CEP_RESULT, cep })
     mockFetchGeoSearchStructured.mockResolvedValue([])
@@ -225,12 +225,18 @@ describe("AddressAutocomplete — CEP selection with structured coordinates", ()
     await typeAndFlush(cep)
     await selectFirstOption()
 
-    // No coords → synthetic (0, 0), but the display name is still meaningful
-    expect(onSelect).toHaveBeenCalledWith(0, 0, expect.stringContaining("Rua Augusta"))
+    // Sem coords → o componente NÃO chama onSelect(0, 0) — o pai deve ler o
+    // geo store (atualizado com os campos ViaCEP via setState).
+    expect(onSelect).not.toHaveBeenCalled()
     expect(mockGeoStore.setFromCoords).not.toHaveBeenCalled()
+    expect(mockGeoStore.cep).toBe(cep)
+    expect(mockGeoStore.district).toBe("Consolação")
+    expect(mockGeoStore.city).toBe("São Paulo")
+    expect(mockGeoStore.state).toBe("SP")
+    expect(mockGeoStore.status).toBe("ready")
   })
 
-  it("falls back to onSelect(0, 0) when structured returns a result without lat/lng", async () => {
+  it("does not call onSelect when structured returns a result without lat/lng", async () => {
     const cep = nextCep()
     mockFetchCep.mockResolvedValue({ ...MOCK_CEP_RESULT, cep })
     mockFetchGeoSearchStructured.mockResolvedValue([
@@ -254,7 +260,9 @@ describe("AddressAutocomplete — CEP selection with structured coordinates", ()
     await typeAndFlush(cep)
     await selectFirstOption()
 
-    expect(onSelect).toHaveBeenCalledWith(0, 0, expect.any(String))
+    // lat/lng = 0 → tratado como SEM coordenadas → onSelect não é chamado.
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(mockGeoStore.setFromCoords).not.toHaveBeenCalled()
   })
 
   it("hides the dropdown after selecting an enriched CEP result", async () => {

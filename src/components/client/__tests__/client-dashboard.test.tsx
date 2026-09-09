@@ -115,11 +115,14 @@ vi.mock("lucide-react", () => ({
 // ---- Recharts needs ResizeObserver -----------------------------------------
 vi.stubGlobal(
   "ResizeObserver",
-  vi.fn().mockImplementation(() => ({
-    observe: vi.fn(),
-    unobserve: vi.fn(),
-    disconnect: vi.fn(),
-  })),
+  // Vitest 4: constructor mocks must use function/class implementations.
+  vi.fn(function () {
+    return {
+      observe: vi.fn(),
+      unobserve: vi.fn(),
+      disconnect: vi.fn(),
+    }
+  }),
 )
 
 // ---- SUT import (must be after vi.mock) ------------------------------------

@@ -4,7 +4,7 @@
  * Coverage:
  *   - CEP detection: 8-digit input triggers fetchCep instead of fetchGeoSearch
  *   - CEP display: ViaCEP badge, address subtitle
- *   - CEP selection: calls setFromCEP and onSelect
+ *   - CEP selection: updates geo store via setState (onSelect NOT called without coords)
  *   - Cache hit/miss: repeated same input uses cache, unique input re-fetches
  *   - Cache TTL: expired entry re-fetches after 5 min
  *   - Error handling: failed fetches not cached, retry works
@@ -182,7 +182,7 @@ describe("AddressAutocomplete — CEP selection", () => {
     mockFetchCep.mockResolvedValue(MOCK_CEP_RESULT)
   })
 
-  it("updates geo store and calls onSelect when CEP result is clicked", async () => {
+  it("updates geo store without calling onSelect when CEP has no coordinates", async () => {
     const onSelect = vi.fn()
     render(<AddressAutocomplete onSelect={onSelect} />)
 
@@ -194,14 +194,15 @@ describe("AddressAutocomplete — CEP selection", () => {
     })
 
     // O componente atualiza o store via useGeoStore.setState (não mais
-    // setFromCEP) com os campos ViaCEP + onSelect(0, 0, displayName) quando
-    // o CEP não tem coordenadas do Nominatim.
+    // setFromCEP) com os campos ViaCEP. Sem coordenadas do Nominatim, NÃO
+    // chama onSelect(0, 0) — o pai deve ler o geo store (geo-address-form
+    // já faz isso).
     expect(mockGeoStore.cep).toBe("01310100")
     expect(mockGeoStore.district).toBe("Consolação")
     expect(mockGeoStore.city).toBe("São Paulo")
     expect(mockGeoStore.state).toBe("SP")
     expect(mockGeoStore.status).toBe("ready")
-    expect(onSelect).toHaveBeenCalledWith(0, 0, expect.stringContaining("Rua Augusta"))
+    expect(onSelect).not.toHaveBeenCalled()
   })
 
   it("hides dropdown after selecting a CEP result", async () => {
@@ -312,8 +313,9 @@ describe("AddressAutocomplete — cache TTL and mixed flows", () => {
       fireEvent.change(input, { target: { value: "Rua Unica Qualquer" } })
     })
     // Wait 300ms debounce + fetch resolution
-    await new Promise((r) => setTimeout(r, 400))
-    await act(async () => {})
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 400))
+    })
 
     expect(mockFetchGeoSearch).toHaveBeenCalledTimes(1)
     mockFetchGeoSearch.mockClear()
@@ -325,8 +327,9 @@ describe("AddressAutocomplete — cache TTL and mixed flows", () => {
     await act(async () => {
       fireEvent.change(input, { target: { value: "88888888" } })
     })
-    await new Promise((r) => setTimeout(r, 400))
-    await act(async () => {})
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 400))
+    })
 
     expect(mockFetchCep).toHaveBeenCalledTimes(1)
     expect(screen.getByText("ViaCEP")).toBeTruthy()
@@ -370,8 +373,9 @@ describe("AddressAutocomplete — cache edge cases", () => {
     await act(async () => {
       fireEvent.change(input, { target: { value: "Rua Novinha Unica" } })
     })
-    await new Promise((r) => setTimeout(r, 400))
-    await act(async () => {})
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 400))
+    })
 
     expect(mockFetchGeoSearch).toHaveBeenCalledTimes(1)
 
@@ -382,13 +386,15 @@ describe("AddressAutocomplete — cache edge cases", () => {
     await act(async () => {
       fireEvent.change(input, { target: { value: "" } })
     })
-    await new Promise((r) => setTimeout(r, 350))
-    await act(async () => {})
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350))
+    })
     await act(async () => {
       fireEvent.change(input, { target: { value: "Rua Novinha Unica" } })
     })
-    await new Promise((r) => setTimeout(r, 400))
-    await act(async () => {})
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 400))
+    })
 
     expect(mockFetchGeoSearch).toHaveBeenCalledTimes(2)
     expect(screen.getByRole("listbox")).toBeTruthy()
@@ -402,8 +408,9 @@ describe("AddressAutocomplete — cache edge cases", () => {
     await act(async () => {
       fireEvent.change(input, { target: { value: "Rua Seis" } })
     })
-    await new Promise((r) => setTimeout(r, 400))
-    await act(async () => {})
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 400))
+    })
 
     expect(screen.queryByRole("listbox")).toBeTruthy()
 
@@ -411,8 +418,9 @@ describe("AddressAutocomplete — cache edge cases", () => {
     await act(async () => {
       fireEvent.change(input, { target: { value: "" } })
     })
-    await new Promise((r) => setTimeout(r, 400))
-    await act(async () => {})
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 400))
+    })
 
     expect(screen.queryByRole("listbox")).toBeNull()
   })

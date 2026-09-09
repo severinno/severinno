@@ -16,24 +16,38 @@ echo "🔍 Verificando migrations do Prisma..."
 
 # 1. Verificar se o client está gerado
 echo "  → Gerando Prisma client..."
-npx prisma generate --no-engine 2>/dev/null || npx prisma generate
+bunx prisma generate --no-engine 2>/dev/null || bunx prisma generate
 
 # 2. Verificar se há migrations pendentes
 echo "  → Verificando migrations pendentes..."
-PENDING=$(npx prisma migrate status 2>&1)
+# `prisma migrate status` sai com exit 1 quando há migrations pendentes — mas
+# TAMBÉM sai 1 em erro de conexão (P1001), banco inexistente (P1003) ou
+# migration falha no histórico (P3018). Por isso capturamos o exit code E o
+# output: só o texto "have not yet been applied" legitima o exit 1 de
+# pendências; qualquer outro exit 1 é erro de verdade.
+set +e
+PENDING=$(bunx prisma migrate status 2>&1)
+STATUS_CODE=$?
+set -e
+
+if [ $STATUS_CODE -ne 0 ] && ! echo "$PENDING" | grep -q "have not yet been applied"; then
+  echo "❌ ERRO ao verificar migrations (exit $STATUS_CODE):"
+  echo "$PENDING"
+  exit 1
+fi
 
 if echo "$PENDING" | grep -q "have not yet been applied"; then
   echo "❌ MIGRATIONS PENDENTES DETECTADAS!"
   echo ""
   echo "$PENDING" | grep -A5 "have not yet been applied"
   echo ""
-  echo "Rode: npx prisma migrate dev"
+  echo "Rode: bunx prisma migrate dev"
   exit 1
 fi
 
 # 3. Verificar se o schema está em dia com o client
 echo "  → Verificando drift do schema..."
-DRIFT=$(npx prisma format --schema=prisma/schema.prisma 2>&1 || true)
+DRIFT=$(bunx prisma format --schema=prisma/schema.prisma 2>&1 || true)
 
 if echo "$DRIFT" | grep -qi "error"; then
   echo "❌ ERRO no schema Prisma:"

@@ -7,7 +7,10 @@ import { syncRadiusCircle, removeRadiusCircle, RADIUS_SOURCE_ID, type MapLike } 
 
 /** Create a minimal mock Map-like object. */
 function createMockMap(): MapLike & { setDataCalls: unknown[] } {
-  const sourceStore = new Map<string, { setData: ReturnType<typeof vi.fn>; type?: string }>()
+  const sourceStore = new Map<
+    string,
+    { setData: ReturnType<typeof vi.fn<(data: unknown) => void>>; type?: string }
+  >()
   const layerStore = new Map<string, boolean>()
 
   return {

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import {
   formatBRL,
   formatDate,
@@ -65,6 +65,21 @@ describe("formatTime", () => {
 })
 
 describe("formatRelative", () => {
+  // O isYesterday/isToday do date-fns compara o DIA DO CALENDÁRIO LOCAL: num
+  // dia de transição de DST (spring-forward com 23h), `Date.now() - 86400000`
+  // (24h exatas) cai no ANTEONTEM → "há 2 dias" em vez de "ontem" (falha
+  // próximo à madrugada do dia da virada, em fusos com DST). Congela SÓ Date
+  // (toFake: ["Date"]) num horário neutro — timers reais intactos, data
+  // determinística em qualquer fuso/horário.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-01-05T15:00:00.000Z")) // 12:00 BRT (fora de pico)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('returns "hoje" for today', () => {
     const today = new Date()
     const result = formatRelative(today)

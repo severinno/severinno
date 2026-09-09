@@ -360,6 +360,8 @@ describe("circuit-breaker", () => {
       successes: 1,
       lastFailureAt: null,
       openedAt: null,
+      transitions: { openCount: 0, halfOpenSuccessCount: 0, halfOpenFailCount: 0 },
+      uptimePercent: 100,
     })
   })
 })

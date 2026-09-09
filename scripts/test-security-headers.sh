@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-security-headers.sh — Security Headers Verification
 # =============================================================================
-# Tests that ALL security headers defined in Caddyfile.prod and middleware.ts
+# Tests that ALL security headers defined in Caddyfile.prod and proxy.ts
 # are present and correctly configured on the target server.
 #
 # Usage:
@@ -387,7 +387,7 @@ else
   echo -e "${NC}"
   echo "Revise as falhas acima. Verifique:"
   echo "  - Caddyfile.prod (security headers block)"
-  echo "  - src/middleware.ts (security headers for SSR)"
+  echo "  - proxy.ts (security headers for SSR)"
   echo "  - docker-compose.prod.yml (Caddy config)"
 fi
 echo ""

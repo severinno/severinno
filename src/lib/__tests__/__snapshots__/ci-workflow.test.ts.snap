@@ -223,10 +223,6 @@ fi
           "name": "Type check",
           "run": "bunx tsc --noEmit",
         },
-        {
-          "name": "Check Prisma migrations",
-          "run": "bash scripts/check-prisma-migrations.sh",
-        },
       ],
     },
     "utf8-check": {

@@ -58,7 +58,8 @@ export default defineConfig({
       reportsDirectory: "./coverage",
       reporter: ["text", "html", "lcov"],
       include: ["src/**/*.{ts,tsx}"],
-      all: false,
+      // Vitest 4 removed `coverage.all` — the report now only includes files
+      // that were loaded during the test run (matching the old `all: false`).
       exclude: [
         "src/**/*.test.{ts,tsx}",
         "src/**/*.spec.{ts,tsx}",
@@ -69,10 +70,17 @@ export default defineConfig({
       ],
     },
     pool: "forks",
-    poolOptions: {
-      forks: {
-        singleFork: false,
-      },
-    },
+    // Vitest 4 removed `poolOptions` — pool settings are now top-level.
+    // maxForks virou maxWorkers; minForks e singleFork (default: false)
+    // foram removidos.
+    //
+    // Cap de workers para evitar o erro intermitente do Vitest
+    // "Timeouts calling onTaskUpdate" (timeout de RPC main↔worker) sob
+    // carga total de forks paralelos no Windows (8 CPUs). O pool cheio
+    // saturava os workers (setup/env cumulativos de 600-1400s), e o main
+    // estourava o timeout de comunicação sem relação com a duração dos
+    // testes em si. 4 workers (metade dos núcleos) mantém boa paralelização
+    // com folga de CPU para o processo main responder.
+    maxWorkers: 4,
   },
 })

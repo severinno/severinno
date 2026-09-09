@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 // Mock redis module (checkRateLimit uses getClient() from redis.ts)
 const mockGetClient = vi.fn()
@@ -34,6 +34,15 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockGetClient.mockReturnValue(null) // default: no Redis (in-memory fallback)
   __testing__resetRateLimiter()
+  // A asserção reset > Date.now() (linha 53) compara o SUT com o relógio
+  // real — congela SÓ Date num horário neutro para o teste ser determinístico
+  // em qualquer momento/fuso (guard check-clock-bombs).
+  vi.useFakeTimers({ toFake: ["Date"] })
+  vi.setSystemTime(new Date("2026-01-05T15:00:00.000Z"))
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 // ---------------------------------------------------------------------------

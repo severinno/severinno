@@ -1,0 +1,175 @@
+# =============================================================================
+# Infrastructure Guards — Severinno Marketplace
+#
+# Workflow DEDICADO de infraestrutura. Roda a cada push (e em PRs para main):
+#
+#   1. prisma-migrations — scripts/check-prisma-migrations.sh (corrigido para
+#      bunx — npx quebrava por EOVERRIDE de npm nos overrides do vite):
+#        · bunx prisma generate
+#        · bunx prisma migrate status (detecta pendências E erros de conexão)
+#        · bunx prisma format (drift do schema)
+#      Contra um PostGIS efêmero com `migrate deploy` aplicado antes (senão o
+#      status reporta "have not yet been applied" num banco zerado).
+#
+#   2. security-headers — scripts/test-security-headers.sh contra a URL de
+#      produção (mesma convenção do pr-check.yml): CSP, HSTS, X-Frame-Options,
+#      X-Content-Type-Options, X-XSS-Protection, Referrer-Policy,
+#      Permissions-Policy e remoção de Server/X-Powered-By. Só em push — em PR
+#      o pr-check.yml já cobre a mesma verificação.
+#
+#   3. static-guards — guards estáticos rápidos (sem banco):
+#        · check:crlf            (CRLF em .sh/.bash — quebra CI Linux)
+#        · check:workflow-refs   (referências de scripts/actions/workflows)
+#        · check:secret-leaks-baseline (novos segredos vs baseline commitado)
+#
+# Triggers:
+#   - push em main/develop       → TODOS os jobs (a cada push)
+#   - pull_request para main     → migrations + guards (security-headers é do
+#                                  pr-check.yml em PR)
+#   - workflow_dispatch          → rodada manual completa
+# =============================================================================
+
+name: Infrastructure Guards
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: infra-guards-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: postgresql://severinno:severinno_test@localhost:5432/severinno_test
+
+jobs:
+  # ── Prisma migrations sync ────────────────────────────────────────────────
+  prisma-migrations:
+    name: Prisma Migrations Sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: ${{ vars.POSTGIS_IMAGE || 'postgis/postgis:16-3.4-alpine' }}
+        env:
+          POSTGRES_DB: severinno_test
+          POSTGRES_USER: severinno
+          POSTGRES_PASSWORD: severinno_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U severinno -d severinno_test"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 10s
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      # ── PostGIS extension no service container ─────────────────────────
+      # A imagem postgis só habilita a extensão em postgres/template_postgis,
+      # NÃO no POSTGRES_DB (criado de template1) — sem ela o migrate deploy
+      # falha nas colunas Unsupported("geography(Point, 4326)"). Poll até a
+      # extensão carregar (a imagem carrega DEPOIS do healthcheck passar —
+      # criar na corrida racia com duplicate key pg_extension_name_index).
+      - name: Enable PostGIS extension
+        run: |
+          POSTGIS_READY=0
+          for _ in $(seq 1 30); do
+            if docker exec ${{ job.services.postgres.id }} \
+              psql -U severinno -d severinno_test -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+              POSTGIS_READY=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$POSTGIS_READY" != "1" ]; then
+            docker exec ${{ job.services.postgres.id }} \
+              psql -U severinno -d severinno_test -c "CREATE EXTENSION IF NOT EXISTS postgis" >/dev/null 2>&1 || true
+            if ! docker exec ${{ job.services.postgres.id }} \
+              psql -U severinno -d severinno_test -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+              echo "❌ postgis não disponível após espera/fallback"
+              exit 1
+            fi
+          fi
+          echo "✅ postgis disponível"
+
+      # ── Aplicar migrations (banco zerado do CI) ─────────────────────────
+      # Sem o deploy, o guard reportaria "have not yet been applied" num banco
+      # efêmero — o objetivo do guard é detectar DIVERGÊNCIA schema↔migrations,
+      # não acusar um banco recém-criado.
+      - name: Apply migrations (migrate deploy)
+        run: bunx prisma migrate deploy
+
+      - name: Run Prisma migrations guard
+        run: bash scripts/check-prisma-migrations.sh
+
+  # ── Security headers (produção) ───────────────────────────────────────────
+  security-headers:
+    name: Security Headers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test security headers against production
+        run: bash scripts/test-security-headers.sh --ci --url "${{ secrets.BASE_URL || 'https://severinno.com.br' }}"
+
+  # ── Static guards (sem banco) ─────────────────────────────────────────────
+  static-guards:
+    name: Static Guards
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: CRLF guard (.sh/.bash)
+        run: bun run check:crlf
+
+      - name: Workflow refs guard
+        run: bun run check:workflow-refs
+
+      - name: Clock bombs guard (testes com relógio de parede sem congelar)
+        run: bun run check:clock-bombs
+
+      - name: Env flakes guard (locale/TZ/Math.random sem controle)
+        run: bun run check:env-flakes
+
+      - name: Secret leaks baseline guard
+        run: bun run check:secret-leaks-baseline

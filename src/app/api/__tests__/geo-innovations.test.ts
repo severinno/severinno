@@ -72,6 +72,19 @@ describe("Geo Innovations Tests", () => {
   })
 
   describe("1. Travel Fee Engine (@/lib/travel-fee)", () => {
+    beforeEach(() => {
+      // Congela o relógio num horário FORA do rush hour (12:00 BRT numa
+      // segunda-feira) para isRushHour() ser determinístico. Sem isso, o
+      // teste falha quando a suíte roda entre 07:30-09:30 ou 17:30-19:30
+      // BRT (multiplicador 1.25 → 31.25 em vez de 25).
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date("2026-01-05T15:00:00.000Z"))
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
     it("should return zero fee when distance is within free km threshold", async () => {
       // Close coordinates -> distance 3.0 km -> free
       const result = await calculateTravelFee(-23.5505, -46.6333, -23.5585, -46.64)

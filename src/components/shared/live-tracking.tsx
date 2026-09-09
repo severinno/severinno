@@ -162,10 +162,7 @@ export function LiveTracking({
       if (!mapRef.current) return
 
       const loadAndRun = async () => {
-        const maplibregl =
-          maplibreglCacheRef.current ??
-          (await import("maplibre-gl")).default ??
-          (await import("maplibre-gl"))
+        const maplibregl = maplibreglCacheRef.current ?? (await import("maplibre-gl"))
         maplibreglCacheRef.current = maplibregl
 
         const map = mapRef.current as InstanceType<typeof maplibregl.Map>
@@ -306,9 +303,7 @@ export function LiveTracking({
     Promise.all([import("maplibre-gl"), import("maplibre-gl/dist/maplibre-gl.css")])
       .then(([maplibreglModule]) => {
         if (!isMounted || !mapContainerRef.current) return
-        const maplibregl =
-          (maplibreglModule as unknown as { default: typeof import("maplibre-gl") }).default ??
-          maplibreglModule
+        const maplibregl = maplibreglModule as typeof import("maplibre-gl")
 
         const map = new maplibregl.Map({
           container: mapContainerRef.current,

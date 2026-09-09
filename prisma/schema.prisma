@@ -500,6 +500,9 @@ model Notification {
   @@index([userId])
   @@index([userId, createdAt])
   @@index([read])
+  // Badge de não-lidos (WHERE userId = ? AND read = false) e lista ordenada
+  // por (read ASC, createdAt DESC) — cobre ambos com um único índice.
+  @@index([userId, read, createdAt])
 }
 
 // ============================================================================
@@ -686,6 +689,9 @@ model ScheduledPushNotification {
   @@index([status])
   @@index([scheduledAt])
   @@index([recurringId])
+  // Cron de envio: WHERE status = 'PENDING' AND scheduledAt <= now
+  // ORDER BY scheduledAt — igualdade + range/order num único índice.
+  @@index([status, scheduledAt])
 }
 
 // ============================================================================

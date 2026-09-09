@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { GET } from "@/app/api/admin/geo-metrics/route"
 import { requireRole, AuthError } from "@/lib/auth"
-import { getGeoMetricsSnapshot } from "@/lib/geo-observability"
-import { getGeoMetrics, getGeoMetricsHistory, SERVICE_LABELS } from "@/lib/geo-metrics"
-import { getP95Baselines } from "@/lib/geo-baselines"
+import { SERVICE_LABELS } from "@/lib/geo-metrics"
 
 vi.mock("@/lib/auth", () => ({
   requireRole: vi.fn(),
@@ -47,9 +45,33 @@ vi.mock("@/lib/geo-observability", () => ({
 vi.mock("@/lib/geo-metrics", () => ({
   getGeoMetrics: vi.fn().mockReturnValue({
     services: {
-      nominatim: { p50: 100, p95: 500, p99: 800, count: 100, errorRate: 0.01, lastSampleAt: 1700000000000, errorCount: 1 },
-      viacep: { p50: 50, p95: 200, p99: 400, count: 200, errorRate: 0.005, lastSampleAt: 1700000000000, errorCount: 1 },
-      postgis: { p50: 10, p95: 30, p99: 60, count: 300, errorRate: 0.002, lastSampleAt: 1700000000000, errorCount: 0 },
+      nominatim: {
+        p50: 100,
+        p95: 500,
+        p99: 800,
+        count: 100,
+        errorRate: 0.01,
+        lastSampleAt: 1700000000000,
+        errorCount: 1,
+      },
+      viacep: {
+        p50: 50,
+        p95: 200,
+        p99: 400,
+        count: 200,
+        errorRate: 0.005,
+        lastSampleAt: 1700000000000,
+        errorCount: 1,
+      },
+      postgis: {
+        p50: 10,
+        p95: 30,
+        p99: 60,
+        count: 300,
+        errorRate: 0.002,
+        lastSampleAt: 1700000000000,
+        errorCount: 0,
+      },
     },
     timestamp: 1700000000000,
     windowSeconds: 900,

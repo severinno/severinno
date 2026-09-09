@@ -56,8 +56,8 @@ const { createMockNode, mockCaptureMessage } = vi.hoisted(() => {
 // These are declared with `let` after hoisting but before vi.mock, so they
 // are accessible inside the mock factory closure at call time.
 
-let mockGetResult: ReturnType<typeof vi.fn>
-let mockSetexResult: ReturnType<typeof vi.fn>
+let mockGetResult: ReturnType<typeof vi.fn<(...args: unknown[]) => unknown>>
+let mockSetexResult: ReturnType<typeof vi.fn<(...args: unknown[]) => unknown>>
 let activeNodes: Array<{ scan: ReturnType<typeof vi.fn> }>
 
 vi.mock("ioredis", () => {
@@ -119,8 +119,8 @@ async function reloadModule(clusterMode: boolean) {
   process.env.REDIS_CLUSTER_NODES = clusterMode ? "localhost:7000,localhost:7001" : "localhost:6379"
 
   activeNodes = [createMockNode()]
-  mockGetResult = vi.fn().mockResolvedValue(null) // default: cache miss
-  mockSetexResult = vi.fn().mockResolvedValue("OK")
+  mockGetResult = vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue(null) // default: cache miss
+  mockSetexResult = vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue("OK")
 
   redisModule = await import("@/lib/redis")
   await redisModule.resetCacheCounters()
@@ -147,7 +147,9 @@ describe("Redis three-tier degradation chain", () => {
 
     // Make ALL Redis GET operations throw → triggers two degradeTier() calls
     // (cluster throws → degrade to standalone → retry → standalone also throws → degrade to memory)
-    mockGetResult = vi.fn().mockRejectedValue(new Error("Redis connection refused"))
+    mockGetResult = vi
+      .fn<(...args: unknown[]) => unknown>()
+      .mockRejectedValue(new Error("Redis connection refused"))
 
     const result = await redisModule.cacheGet("key:chain")
     expect(result).toBe("full_chain")
@@ -167,7 +169,7 @@ describe("Redis three-tier degradation chain", () => {
     // First call (cluster) throws → triggers degradeTier("cluster")
     // Second call (standalone retry) returns the cached value → no further degradation
     mockGetResult = vi
-      .fn()
+      .fn<(...args: unknown[]) => unknown>()
       .mockRejectedValueOnce(new Error("Cluster node unreachable"))
       .mockResolvedValue('"single_degrade"')
 
@@ -190,7 +192,7 @@ describe("Redis three-tier degradation chain", () => {
     // First call (cluster) throws → degrade to standalone
     // Subsequent calls (standalone) return the value → no further degradation
     mockGetResult = vi
-      .fn()
+      .fn<(...args: unknown[]) => unknown>()
       .mockRejectedValueOnce(new Error("Cluster error"))
       .mockResolvedValue('"stable_test"')
 
@@ -203,7 +205,7 @@ describe("Redis three-tier degradation chain", () => {
 
     // Now at standalone — another cacheGet should work without degrading further
     await redisModule.cacheSet("key:stable2", "test2", 60)
-    mockGetResult = vi.fn().mockResolvedValue('"test2"')
+    mockGetResult = vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue('"test2"')
     const result2 = await redisModule.cacheGet("key:stable2")
     expect(result2).toBe("test2")
 
@@ -220,7 +222,9 @@ describe("Redis three-tier degradation chain", () => {
     await redisModule.cacheSet("key:count", "count_test", 60)
 
     // Two-step degradation
-    mockGetResult = vi.fn().mockRejectedValue(new Error("Redis down"))
+    mockGetResult = vi
+      .fn<(...args: unknown[]) => unknown>()
+      .mockRejectedValue(new Error("Redis down"))
 
     await redisModule.cacheGet("key:count")
 
@@ -228,7 +232,9 @@ describe("Redis three-tier degradation chain", () => {
     expect(stats.degradationCount).toBe(2)
 
     // Additional cache operations at memory tier should not increase the count
-    mockGetResult = vi.fn().mockRejectedValue(new Error("Still down"))
+    mockGetResult = vi
+      .fn<(...args: unknown[]) => unknown>()
+      .mockRejectedValue(new Error("Still down"))
     await redisModule.cacheSet("key:count2", "noop", 60)
     await redisModule.cacheGet("key:count2")
 
@@ -246,7 +252,7 @@ describe("Redis three-tier degradation chain", () => {
 
     // First call to get() (cluster) throws; second call (standalone) returns raw JSON
     let callIdx = 0
-    mockGetResult = vi.fn().mockImplementation(() => {
+    mockGetResult = vi.fn<(...args: unknown[]) => unknown>().mockImplementation(() => {
       callIdx++
       if (callIdx <= 1) {
         return Promise.reject(new Error("Cluster timeout"))
@@ -275,7 +281,9 @@ describe("Redis three-tier degradation chain", () => {
     await redisModule.cacheSet("key:avail", "test", 60)
 
     // Trigger degradation to memory
-    mockGetResult = vi.fn().mockRejectedValue(new Error("Standalone down"))
+    mockGetResult = vi
+      .fn<(...args: unknown[]) => unknown>()
+      .mockRejectedValue(new Error("Standalone down"))
 
     await redisModule.cacheGet("key:avail")
 
@@ -291,7 +299,9 @@ describe("Redis three-tier degradation chain", () => {
     await redisModule.cacheSet("mem:persist", { nested: { value: 42 } }, 120)
 
     // Trigger full degradation
-    mockGetResult = vi.fn().mockRejectedValue(new Error("Redis fully down"))
+    mockGetResult = vi
+      .fn<(...args: unknown[]) => unknown>()
+      .mockRejectedValue(new Error("Redis fully down"))
 
     // cacheGet should fall through to memory after both tiers fail
     const result = await redisModule.cacheGet<{ nested: { value: number } }>("mem:persist")
@@ -334,7 +344,7 @@ describe("Redis tier recovery (__testing__tryRecoverTier)", () => {
     await redisModule.cacheSet("key:recovery", "val", 60)
 
     // Degrade fully to memory
-    mockGetResult = vi.fn().mockRejectedValue(new Error("Down"))
+    mockGetResult = vi.fn<(...args: unknown[]) => unknown>().mockRejectedValue(new Error("Down"))
     await redisModule.cacheGet("key:recovery")
 
     expect(redisModule.isRedisAvailable()).toBe(false)
@@ -350,7 +360,7 @@ describe("Redis tier recovery (__testing__tryRecoverTier)", () => {
     expect(redisModule.getCacheStats().activeTier).toBe("cluster")
 
     // After recovery, cacheGet reads from Redis (active tier = cluster)
-    mockGetResult = vi.fn().mockResolvedValue('"cluster_value"')
+    mockGetResult = vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue('"cluster_value"')
     const result = await redisModule.cacheGet<string>("key:recovery")
     expect(result).toBe("cluster_value")
   })
@@ -361,7 +371,9 @@ describe("Redis tier recovery (__testing__tryRecoverTier)", () => {
     await redisModule.cacheSet("key:standalone_rec", "val", 60)
 
     // Degrade to memory
-    mockGetResult = vi.fn().mockRejectedValue(new Error("Standalone down"))
+    mockGetResult = vi
+      .fn<(...args: unknown[]) => unknown>()
+      .mockRejectedValue(new Error("Standalone down"))
     await redisModule.cacheGet("key:standalone_rec")
 
     expect(redisModule.isRedisAvailable()).toBe(false)
@@ -471,7 +483,9 @@ describe("Redis Sentry degradation alert", () => {
 
       // ── Step 1: trigger 2 degradations via cacheGet ────────────────
       // Both cluster and standalone throw → two degradeTier calls
-      mockGetResult = vi.fn().mockRejectedValue(new Error("Redis connection refused"))
+      mockGetResult = vi
+        .fn<(...args: unknown[]) => unknown>()
+        .mockRejectedValue(new Error("Redis connection refused"))
       const result1 = await redisModule.cacheGet("key:alert")
       expect(result1).toBe("sentry_test")
 

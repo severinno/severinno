@@ -155,11 +155,14 @@ vi.mock("../provider-wallet", () => ({
 
 vi.stubGlobal(
   "ResizeObserver",
-  vi.fn().mockImplementation(() => ({
-    observe: vi.fn(),
-    unobserve: vi.fn(),
-    disconnect: vi.fn(),
-  })),
+  // Vitest 4: constructor mocks must use function/class implementations.
+  vi.fn(function () {
+    return {
+      observe: vi.fn(),
+      unobserve: vi.fn(),
+      disconnect: vi.fn(),
+    }
+  }),
 )
 
 vi.stubGlobal(
@@ -190,6 +193,20 @@ function useQueryMock() {
 // ---- Tests ----------------------------------------------------------------
 
 afterEach(cleanup)
+
+// O ProviderFinance filtra por mês/ano corrente (getMonth/getFullYear do
+// relógio real) e o fixture usa o 15 do mês ATUAL — determinístico por
+// construção, mas congela SÓ Date num horário neutro para que uma execução
+// na virada de mês (23:59:59.999 → 00:00:00) não mude o mês entre o fixture
+// e o filtro do componente (toFake:["Date"] preserva timers p/ o axe).
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] })
+  vi.setSystemTime(new Date("2026-01-05T15:00:00.000Z")) // 12:00 BRT
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 const emptyData = { items: [], total: 0 }
 

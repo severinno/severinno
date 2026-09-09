@@ -59,9 +59,15 @@ beforeEach(() => {
   // Default mock: return VALID_USER for any findUnique call (covers both
   // verifyUserActive and getUserSessionVersion)
   mockDb.user.findUnique.mockResolvedValue(VALID_USER)
+  // A asserção expiresAt > Date.now() (linha 75) compara o SUT com o relógio
+  // real — congela SÓ Date num horário neutro para o teste ser determinístico
+  // em qualquer momento/fuso (guard check-clock-bombs).
+  vi.useFakeTimers({ toFake: ["Date"] })
+  vi.setSystemTime(new Date("2026-01-05T15:00:00.000Z"))
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   vi.unstubAllEnvs()
 })
 

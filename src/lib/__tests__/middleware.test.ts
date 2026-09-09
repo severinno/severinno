@@ -1,5 +1,6 @@
 /**
- * Tests for middleware.ts — global rate limiting middleware for /api/*.
+ * Tests for proxy.ts (Next.js 16 — formerly middleware.ts) — global rate
+ * limiting middleware for /api/*.
  *
  * Coverage:
  *   1. Request permitido — checkGlobalRateLimit permite → NextResponse.next()

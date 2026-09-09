@@ -1,7 +1,19 @@
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { generateEscrowPIN, validateGeoCheckin, type CheckinAttempt } from "../geo-checkin-escrow"
 
 describe("geo-checkin-escrow.ts — PIN Generation & Anti-Spoofing", () => {
+  // A asserção expiresAt > Date.now() compara dois instantes do relógio real:
+  // se o TTL fosse curto e a execução demorasse, a janela fecharia no meio do
+  // teste (flake). Congela SÓ Date num horário neutro — determinístico.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-01-05T15:00:00.000Z")) // 12:00 BRT
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it("generates a 4-digit PIN with valid expiration", async () => {
     const escrow = await generateEscrowPIN("booking-test-123")
     expect(escrow.pin).toMatch(/^\d{4}$/)

@@ -16,11 +16,14 @@ const { mockApiPatch, mockPlayCoinSound, mockTryVibrate } = vi.hoisted(() => {
 
 vi.stubGlobal(
   "ResizeObserver",
-  vi.fn().mockImplementation(() => ({
-    observe: vi.fn(),
-    unobserve: vi.fn(),
-    disconnect: vi.fn(),
-  })),
+  // Vitest 4: constructor mocks must use function/class implementations.
+  vi.fn(function () {
+    return {
+      observe: vi.fn(),
+      unobserve: vi.fn(),
+      disconnect: vi.fn(),
+    }
+  }),
 )
 
 vi.mock("@/store/auth", () => ({

@@ -66,8 +66,8 @@ const { createMockNode, SCAN_RESULTS } = vi.hoisted(() => {
 // ===========================================================================
 
 let activeNodes: ReturnType<typeof createMockNode>[] = []
-let mockClusterGet: ReturnType<typeof vi.fn>
-let mockStandaloneGet: ReturnType<typeof vi.fn>
+let mockClusterGet: ReturnType<typeof vi.fn<(...args: unknown[]) => unknown>>
+let mockStandaloneGet: ReturnType<typeof vi.fn<(...args: unknown[]) => unknown>>
 
 vi.mock("ioredis", () => {
   // Use a real class so that `instanceof Cluster` passes in the production code
@@ -123,8 +123,8 @@ async function reloadModule(clusterMode: boolean, nodes: ReturnType<typeof creat
 
   activeNodes = nodes
   // Default: Redis GET returns null (cache miss in Redis)
-  mockClusterGet = vi.fn().mockResolvedValue(null)
-  mockStandaloneGet = vi.fn().mockResolvedValue(null)
+  mockClusterGet = vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue(null)
+  mockStandaloneGet = vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue(null)
 
   redisModule = await import("@/lib/redis")
   await redisModule.resetCacheCounters()
@@ -217,8 +217,8 @@ describe("scanKeys — cluster mode", () => {
     // throws, degradeTier moves to standalone whose GET resolves null, which
     // cacheGet treats as an authoritative miss — never reaching memory.
     const outage = new Error("Redis unavailable")
-    mockClusterGet = vi.fn().mockRejectedValue(outage)
-    mockStandaloneGet = vi.fn().mockRejectedValue(outage)
+    mockClusterGet = vi.fn<(...args: unknown[]) => unknown>().mockRejectedValue(outage)
+    mockStandaloneGet = vi.fn<(...args: unknown[]) => unknown>().mockRejectedValue(outage)
 
     await redisModule.cacheSet("fallback:key", { value: 42 }, 60)
 
@@ -235,8 +235,8 @@ describe("scanKeys — cluster mode", () => {
     // Make Redis throw on both tiers so cacheSet/cacheGet use the in-memory
     // store exclusively (a realistic full outage, not just a cluster hiccup)
     const outage = new Error("Redis unavailable")
-    mockClusterGet = vi.fn().mockRejectedValue(outage)
-    mockStandaloneGet = vi.fn().mockRejectedValue(outage)
+    mockClusterGet = vi.fn<(...args: unknown[]) => unknown>().mockRejectedValue(outage)
+    mockStandaloneGet = vi.fn<(...args: unknown[]) => unknown>().mockRejectedValue(outage)
 
     await redisModule.cacheSet("mem:a", "value_a")
     await redisModule.cacheSet("mem:b", "value_b")
@@ -260,8 +260,12 @@ describe("scanKeys — cluster mode", () => {
     await reloadModule(false, [node])
 
     // Make Redis throw so we use in-memory only
-    mockClusterGet = vi.fn().mockRejectedValue(new Error("Redis unavailable"))
-    mockStandaloneGet = vi.fn().mockRejectedValue(new Error("Redis unavailable"))
+    mockClusterGet = vi
+      .fn<(...args: unknown[]) => unknown>()
+      .mockRejectedValue(new Error("Redis unavailable"))
+    mockStandaloneGet = vi
+      .fn<(...args: unknown[]) => unknown>()
+      .mockRejectedValue(new Error("Redis unavailable"))
 
     await redisModule.cacheSet("standalone:only", "data")
     await redisModule.cacheInvalidate("standalone:*")

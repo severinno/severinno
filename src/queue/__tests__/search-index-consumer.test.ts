@@ -16,12 +16,16 @@ const { mockGetClient, mockIndexDocument, mockDeleteDocument, mockINDICES, mockP
       SERVICES: "severinno-services",
       CATEGORIES: "severinno-categories",
     },
-    mockPrismaClient: vi.fn().mockReturnValue({
-      user: { findUnique: vi.fn() },
-      service: { findUnique: vi.fn() },
-      category: { findUnique: vi.fn() },
-      $queryRawUnsafe: vi.fn().mockResolvedValue([]),
-      $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+    mockPrismaClient: vi.fn(function () {
+      // Vitest 4: constructor mock must use function/class implementation —
+      // `.mockReturnValue()` cannot be used with `new` anymore.
+      return {
+        user: { findUnique: vi.fn() },
+        service: { findUnique: vi.fn() },
+        category: { findUnique: vi.fn() },
+        $queryRawUnsafe: vi.fn().mockResolvedValue([]),
+        $executeRawUnsafe: vi.fn().mockResolvedValue(undefined),
+      }
     }),
   }))
 

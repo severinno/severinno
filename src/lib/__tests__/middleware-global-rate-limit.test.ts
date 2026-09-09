@@ -1,8 +1,9 @@
 /**
- * Tests for middleware.ts (project root) — global rate limiting for /api/*.
+ * Tests for proxy.ts (project root; Next.js 16 — formerly middleware.ts) —
+ * global rate limiting for /api/*.
  *
  * The global limiter (checkGlobalRateLimit: Upstash → in-memory fallback) runs
- * in the root middleware.ts, which is the single source of truth for Edge
+ * in the root proxy.ts, which is the single source of truth for Edge
  * middleware. This suite validates the contract.
  *
  * Coverage:
@@ -67,7 +68,7 @@ function allowedResult(overrides: Partial<GlobalRateLimitResult> = {}): GlobalRa
 // Suite
 // ---------------------------------------------------------------------------
 
-describe("src/middleware — global rate limit (Upstash → in-memory)", () => {
+describe("proxy — global rate limit (Upstash → in-memory)", () => {
   beforeEach(() => {
     mockCheckGlobalRateLimit.mockReset()
     // Ensure the env-var whitelist doesn't leak between tests

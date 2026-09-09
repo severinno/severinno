@@ -55,13 +55,22 @@ function createMockMap() {
 // Mock modules
 // ---------------------------------------------------------------------------
 
-// Mock maplibre-gl dynamic import — expose Map/Marker as named exports too
-const _mockMapCtor = vi.hoisted(() => vi.fn(() => createMockMap()))
+// Mock maplibre-gl dynamic import — expose Map/Marker as named exports too.
+// NOTE: implementations must be `function`/`class` (NOT arrow) — Vitest 4
+// throws "is not a constructor" when a `new`-ed mock has an arrow
+// implementation (the component instantiates via `new maplibregl.Map(...)`).
+const _mockMapCtor = vi.hoisted(() =>
+  vi.fn(function () {
+    return createMockMap()
+  }),
+)
 const _mockMarkerCtor = vi.hoisted(() =>
-  vi.fn(() => ({
-    setLngLat: () => ({ addTo: vi.fn() }),
-    addTo: vi.fn(),
-  })),
+  vi.fn(function () {
+    return {
+      setLngLat: () => ({ addTo: vi.fn() }),
+      addTo: vi.fn(),
+    }
+  }),
 )
 
 vi.mock("maplibre-gl", () => ({

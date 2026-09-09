@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from "vitest"
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest"
 import { render, within, cleanup } from "@/__tests__/test-utils"
 
 vi.mock("lucide-react", () => ({
@@ -13,6 +13,19 @@ vi.mock("lucide-react", () => ({
 }))
 
 afterEach(cleanup)
+
+// O teste do footer compara o ano renderizado com new Date().getFullYear() —
+// se rodasse na virada do ano (23:59:59.999 → 00:00:00) entre o render e a
+// asserção, o ano mudaria e o regex falharia. Congela SÓ Date (toFake:
+// ["Date"]) para os dois lados verem o mesmo ano.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] })
+  vi.setSystemTime(new Date("2026-01-05T15:00:00.000Z"))
+})
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 describe("NotFound (404 page)", () => {
   it("renders 404 badge", () => {

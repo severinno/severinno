@@ -9,8 +9,14 @@ vi.mock("../logger", () => ({
 }))
 
 vi.mock("@aws-sdk/client-s3", () => ({
-  S3Client: vi.fn(() => ({ send: mockS3Send })),
-  PutObjectCommand: vi.fn((args) => args),
+  // Vitest 4: implementations must be function/class (NOT arrow) — the
+  // production code instantiates via `new S3Client(...)` / `new PutObjectCommand(...)`.
+  S3Client: vi.fn(function () {
+    return { send: mockS3Send }
+  }),
+  PutObjectCommand: vi.fn(function (args: unknown) {
+    return args
+  }),
 }))
 
 const ORIG_ENV = { ...process.env }
