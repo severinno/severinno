@@ -579,7 +579,9 @@ describe("Pipeline: debounce consistency", () => {
     expect(mockSendPushNotification).toHaveBeenCalledTimes(2)
 
     vi.clearAllMocks()
+    redisStore.clear()
     resetGeoHealthState()
+    await resetGeoAlertDebounce()
     mockFindMany.mockResolvedValue([{ id: "admin-1" }, { id: "admin-2" }])
     mockSendPushNotification.mockResolvedValue(undefined)
 

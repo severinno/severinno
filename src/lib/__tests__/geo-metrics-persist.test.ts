@@ -177,7 +177,7 @@ vi.mock("node:path", () => {
 vi.mock("server-only", () => ({}))
 
 vi.mock("../logger", () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
 // ── Mock Redis cache: in-memory store controlled by the test ──────────────
