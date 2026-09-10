@@ -30,7 +30,7 @@ services:
     tmpfs:
       - /tmp
     volumes:
-      - ./deploy/Caddyfile.gitea:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - gitea-caddy-data:/data
       - gitea-caddy-config:/config
       - gitea-caddy-logs:/var/log/caddy

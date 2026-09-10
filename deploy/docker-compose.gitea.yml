@@ -34,7 +34,7 @@ services:
     tmpfs:
       - /tmp
     volumes:
-      - ./Caddyfile.gitea:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
       - caddy-logs:/var/log/caddy
