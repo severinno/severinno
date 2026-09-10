@@ -128,6 +128,28 @@ async function setupMocks(page: Page) {
   )
 }
 
+/** Congela TODAS as animações (CSS + WAAPI) pra captura determinística. */
+async function freezeAnimations(page: Page) {
+  await page.evaluate(() => {
+    // 1. Pausa animações WAAPI em execução
+    document.getAnimations().forEach((a) => a.pause())
+    // 2. Desliga animações/transições CSS restantes (inclusive as que nascerem depois)
+    const style = document.createElement("style")
+    style.id = "vr-freeze-animations"
+    style.textContent = `
+      *, *::before, *::after {
+        animation: none !important;
+        animation-play-state: paused !important;
+        transition: none !important;
+        scroll-behavior: auto !important;
+      }
+    `
+    document.head.appendChild(style)
+  })
+  // Espera um frame pra estabilizar
+  await page.evaluate(() => new Promise(requestAnimationFrame))
+}
+
 /** Wait for the page to be fully rendered and stable */
 async function waitForStable(page: Page, timeout = 15_000) {
   // Wait for network idle
@@ -141,6 +163,8 @@ async function waitForStable(page: Page, timeout = 15_000) {
     .waitForFunction(() => document.fonts.ready.then(() => true), { timeout: 5000 })
     .catch(() => {})
   console.log(`[timing] waitForStable total: ${Date.now() - t0}ms`)
+  // Congela animações pra screenshot determinístico
+  await freezeAnimations(page)
 }
 
 /** Take a full-page screenshot with stable rendering */
@@ -166,6 +190,8 @@ async function takeStableScreenshot(
       window.scrollTo(0, 0)
     })
     await page.waitForTimeout(1200)
+    // Re-congela após o scroll (lazy sections podem ter iniciado animações)
+    await freezeAnimations(page)
   }
 
   // Mask dynamic content (timestamps, prices that change)
@@ -465,6 +491,7 @@ test.describe("Visual Regression — Component States", () => {
     await page.goto(BASE_URL)
     // Screenshot immediately (before providers load)
     await page.waitForTimeout(500)
+    await freezeAnimations(page)
 
     await expect(page).toHaveScreenshot("home/desktop-loading.png", {
       fullPage: false,

@@ -29,6 +29,7 @@ import {
   type PaymentStatus,
 } from "@/lib/constants"
 import { formatBRL, formatDate, formatDateTime, formatTime } from "@/lib/format"
+import { BookingStatusBadge } from "@/components/admin/admin-shared"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -122,14 +123,6 @@ const STATUS_TABS: Array<{ value: Tab; label: string }> = [
 // Helpers
 // ---------------------------------------------------------------------------
 
-const BADGE_STYLES: Record<BookingStatus, string> = {
-  PENDING: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
-  CONFIRMED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  IN_PROGRESS: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200",
-  COMPLETED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  CANCELLED: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
-}
-
 const PAY_BADGE_STYLES: Record<PaymentStatus, string> = {
   PENDING: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
   PAID: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
@@ -143,28 +136,6 @@ function initials(name?: string) {
     .slice(0, 2)
     .map((s) => s[0]?.toUpperCase() ?? "")
     .join("")
-}
-
-function StatusBadge({ status }: { status: BookingStatus }) {
-  const Icon =
-    status === "CONFIRMED" || status === "COMPLETED"
-      ? CheckCircle2
-      : status === "PENDING"
-        ? Clock
-        : status === "IN_PROGRESS"
-          ? Loader2
-          : X
-  return (
-    <Badge
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
-        BADGE_STYLES[status],
-      )}
-    >
-      <Icon className="size-3" />
-      {BOOKING_STATUS_LABELS[status]}
-    </Badge>
-  )
 }
 
 // ---------------------------------------------------------------------------
@@ -216,7 +187,7 @@ function BookingDetailsDialog({
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Status</span>
-              <StatusBadge status={booking.status} />
+              <BookingStatusBadge status={booking.status} />
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Pagamento</span>
@@ -465,7 +436,7 @@ export function ProviderBookings() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <StatusBadge status={b.status} />
+                      <BookingStatusBadge status={b.status} />
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-0.5">
@@ -700,7 +671,7 @@ function BookingCard({
           <p className="leading-tight font-medium">{booking.client.name}</p>
           <p className="text-muted-foreground mt-0.5 truncate text-xs">{booking.service.title}</p>
         </div>
-        <StatusBadge status={booking.status} />
+        <BookingStatusBadge status={booking.status} />
       </div>
 
       <div className="text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">

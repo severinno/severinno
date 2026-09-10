@@ -6,6 +6,7 @@ import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { FEE_RATE } from "@/lib/constants"
+import { Prisma } from "@prisma/client"
 
 type Period = "7d" | "30d" | "90d" | "12m" | "all"
 
@@ -84,12 +85,17 @@ export async function GET(request: Request) {
         _count: { _all: true },
       }),
 
-      // Monthly revenue (paid payments only)
-      db.payment.findMany({
-        where: { ...paymentWhere, status: "PAID" },
-        select: { amount: true, createdAt: true },
-        orderBy: { createdAt: "asc" },
-      }),
+      // Monthly revenue (paid payments only) — groupBy mês em vez de findMany ilimitado
+      db.$queryRaw<Array<{ month: string; total: bigint; count: bigint }>>`
+        SELECT
+          to_char("createdAt", 'YYYY-MM') AS month,
+          SUM(amount) AS total,
+          COUNT(*) AS count
+        FROM "Payment"
+        WHERE "status" = 'PAID' ${dateFilter ? Prisma.sql`AND "createdAt" >= ${dateFilter}` : Prisma.empty}
+        GROUP BY to_char("createdAt", 'YYYY-MM')
+        ORDER BY month ASC
+      `,
 
       // Payment method stats
       db.payment.groupBy({
@@ -122,40 +128,52 @@ export async function GET(request: Request) {
       // Total count for pagination
       db.payment.count({ where: paymentWhere }),
 
-      // MRR current period (last 3 complete months)
-      db.payment.findMany({
+      // MRR current period (last 3 complete months) — aggregate em vez de findMany
+      db.payment.aggregate({
         where: {
           status: "PAID",
           createdAt: { gte: mrrCurrentStart, lt: mrrCurrentEnd },
         },
-        select: { amount: true, createdAt: true },
-        orderBy: { createdAt: "asc" },
+        _sum: { amount: true },
+        _count: { _all: true },
       }),
 
       // MRR previous period (3 months before current)
-      db.payment.findMany({
+      db.payment.aggregate({
         where: {
           status: "PAID",
           createdAt: { gte: mrrPreviousStart, lt: mrrPreviousEnd },
         },
-        select: { amount: true, createdAt: true },
-        orderBy: { createdAt: "asc" },
+        _sum: { amount: true },
+        _count: { _all: true },
       }),
 
-      // Per-provider aggregation (PAID payments only)
-      db.payment.findMany({
-        where: { ...paymentWhere, status: "PAID" },
-        select: {
-          amount: true,
-          booking: {
-            select: {
-              provider: {
-                select: { id: true, name: true, email: true, avatarUrl: true },
-              },
-            },
-          },
-        },
-      }),
+      // Per-provider aggregation (PAID payments only) — groupBy providerId
+      db.$queryRaw<
+        Array<{
+          providerId: string
+          name: string
+          email: string
+          avatarUrl: string | null
+          total: bigint
+          count: bigint
+        }>
+      >`
+        SELECT
+          p."providerId",
+          u.name,
+          u.email,
+          u."avatarUrl",
+          SUM(p.amount) AS total,
+          COUNT(*) AS count
+        FROM "Payment" pay
+        JOIN "Booking" b ON b.id = pay."bookingId"
+        JOIN "User" p ON p.id = b."providerId"
+        JOIN "User" u ON u.id = p."providerId"
+        WHERE pay.status = 'PAID' ${dateFilter ? Prisma.sql`AND pay."createdAt" >= ${dateFilter}` : Prisma.empty}
+        GROUP BY p."providerId", u.name, u.email, u."avatarUrl"
+        ORDER BY total DESC
+      `,
     ])
 
     // Build summary object
@@ -181,25 +199,25 @@ export async function GET(request: Request) {
 
     // MRR: monthly average of paid payments over exactly 3 months
     const MRR_MONTH_COUNT = 3
-    function calcMrr(payments: Array<{ amount: number; createdAt: Date }>): number {
-      if (payments.length === 0) return 0
-      const total = payments.reduce((sum, p) => sum + p.amount, 0)
-      return Math.round(total / MRR_MONTH_COUNT)
-    }
-
-    const mrrValue = calcMrr(mrrCurrent)
-    const previousMrr = calcMrr(mrrPrevious)
+    const mrrValue = Math.round(Number(mrrCurrent._sum.amount ?? 0) / MRR_MONTH_COUNT)
+    const previousMrr = Math.round(Number(mrrPrevious._sum.amount ?? 0) / MRR_MONTH_COUNT)
     const mrrGrowth = previousMrr > 0 ? ((mrrValue - previousMrr) / previousMrr) * 100 : 0
 
-    // Monthly MRR data (per-month breakdown for chart)
-    function buildMonthlyMrr(
-      payments: Array<{ amount: number; createdAt: Date }>,
-    ): Array<{ month: string; label: string; total: number }> {
-      const map = new Map<string, number>()
-      for (const p of payments) {
-        const key = `${p.createdAt.getFullYear()}-${String(p.createdAt.getMonth() + 1).padStart(2, "0")}`
-        map.set(key, (map.get(key) ?? 0) + p.amount)
-      }
+    // Monthly MRR data — usar o raw SQL que já agrupa por mês
+    async function buildMrrHistory(): Promise<
+      Array<{ month: string; label: string; total: number }>
+    > {
+      const rows = await db.$queryRaw<Array<{ month: string; total: bigint }>>`
+        SELECT
+          to_char("createdAt", 'YYYY-MM') AS month,
+          SUM(amount) AS total
+        FROM "Payment"
+        WHERE status = 'PAID'
+          AND "createdAt" >= ${mrrPreviousStart}
+          AND "createdAt" < ${mrrCurrentEnd}
+        GROUP BY to_char("createdAt", 'YYYY-MM')
+        ORDER BY month ASC
+      `
       const monthNames = [
         "Jan",
         "Fev",
@@ -214,6 +232,7 @@ export async function GET(request: Request) {
         "Nov",
         "Dez",
       ]
+      const map = new Map(rows.map((r) => [r.month, Number(r.total)]))
       const result: Array<{ month: string; label: string; total: number }> = []
       const iter = new Date(mrrPreviousStart)
       while (iter < mrrCurrentEnd) {
@@ -228,24 +247,32 @@ export async function GET(request: Request) {
       return result
     }
 
-    const mrrHistory = buildMonthlyMrr([...mrrPrevious, ...mrrCurrent])
+    const mrrHistory = await buildMrrHistory()
 
-    // Build monthly revenue (aggregate by YYYY-MM)
-    const monthlyMap = new Map<string, { total: number; count: number }>()
-    for (const p of monthlyRaw) {
-      const key = `${p.createdAt.getFullYear()}-${String(p.createdAt.getMonth() + 1).padStart(2, "0")}`
-      const existing = monthlyMap.get(key) ?? { total: 0, count: 0 }
-      existing.total += p.amount
-      existing.count += 1
-      monthlyMap.set(key, existing)
-    }
+    // Build monthly revenue (já vem agregado do raw SQL)
+    const monthNames = [
+      "Jan",
+      "Fev",
+      "Mar",
+      "Abr",
+      "Mai",
+      "Jun",
+      "Jul",
+      "Ago",
+      "Set",
+      "Out",
+      "Nov",
+      "Dez",
+    ]
+    const monthlyMap = new Map(
+      monthlyRaw.map((r) => [r.month, { total: Number(r.total), count: Number(r.count) }]),
+    )
 
     // Create full month range for the selected period
     const monthlyRevenue: Array<{ month: string; label: string; total: number; count: number }> = []
     if (dateFilter) {
       const start = new Date(dateFilter)
       const end = new Date(now)
-      // Reset to first of month
       start.setDate(1)
       start.setHours(0, 0, 0, 0)
       end.setDate(1)
@@ -254,20 +281,6 @@ export async function GET(request: Request) {
       const iter = new Date(start)
       while (iter <= end) {
         const key = `${iter.getFullYear()}-${String(iter.getMonth() + 1).padStart(2, "0")}`
-        const monthNames = [
-          "Jan",
-          "Fev",
-          "Mar",
-          "Abr",
-          "Mai",
-          "Jun",
-          "Jul",
-          "Ago",
-          "Set",
-          "Out",
-          "Nov",
-          "Dez",
-        ]
         const data = monthlyMap.get(key) ?? { total: 0, count: 0 }
         monthlyRevenue.push({
           month: key,
@@ -278,23 +291,8 @@ export async function GET(request: Request) {
         iter.setMonth(iter.getMonth() + 1)
       }
     } else {
-      // All time: show all months with data
       for (const [key, data] of monthlyMap) {
         const [, m] = key.split("-")
-        const monthNames = [
-          "Jan",
-          "Fev",
-          "Mar",
-          "Abr",
-          "Mai",
-          "Jun",
-          "Jul",
-          "Ago",
-          "Set",
-          "Out",
-          "Nov",
-          "Dez",
-        ]
         monthlyRevenue.push({
           month: key,
           label: `${monthNames[parseInt(m!) - 1]!}/${key.slice(2, 4)}`,
@@ -304,51 +302,22 @@ export async function GET(request: Request) {
       }
     }
 
-    // Per-provider aggregation
-    const providerMap = new Map<
-      string,
-      {
-        id: string
-        name: string
-        email: string
-        avatarUrl: string | null
-        total: number
-        count: number
-        commission: number
-        net: number
-      }
-    >()
-    for (const p of providerRaw) {
-      const provider = p.booking?.provider
-      if (!provider) continue
-      const existing = providerMap.get(provider.id) ?? {
-        id: provider.id,
-        name: provider.name,
-        email: provider.email,
-        avatarUrl: provider.avatarUrl,
-        total: 0,
-        count: 0,
-        commission: 0,
-        net: 0,
-      }
-      existing.total += p.amount
-      existing.count += 1
-      const fee = Math.round(p.amount * FEE_RATE * 100) / 100
-      existing.commission += fee
-      existing.net += p.amount - fee
-      providerMap.set(provider.id, existing)
-    }
-
+    // Per-provider aggregation (já vem do raw SQL)
     const ROUND2 = (v: number) => Math.round(v * 100) / 100
-
-    const providerStats = Array.from(providerMap.values())
-      .sort((a, b) => b.total - a.total)
-      .map((p) => ({
-        ...p,
-        total: ROUND2(p.total),
-        commission: ROUND2(p.commission),
-        net: ROUND2(p.net),
-      }))
+    const providerStats = providerRaw.map((p) => {
+      const total = Number(p.total)
+      const fee = Math.round(total * FEE_RATE * 100) / 100
+      return {
+        id: p.providerId,
+        name: p.name,
+        email: p.email,
+        avatarUrl: p.avatarUrl,
+        total: ROUND2(total),
+        count: Number(p.count),
+        commission: ROUND2(fee),
+        net: ROUND2(total - fee),
+      }
+    })
 
     // Payment method stats
     const methodStats = methodRaw.map((r) => ({

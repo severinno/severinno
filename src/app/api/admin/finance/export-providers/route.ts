@@ -6,6 +6,7 @@ import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { FEE_RATE } from "@/lib/constants"
+import { Prisma } from "@prisma/client"
 
 type Period = "7d" | "30d" | "90d" | "12m" | "all"
 
@@ -45,48 +46,47 @@ export async function GET(request: Request) {
 
     const paymentWhere = dateFilter ? { createdAt: { gte: dateFilter } } : {}
 
-    const payments = await db.payment.findMany({
-      where: { ...paymentWhere, status: "PAID" },
-      select: {
-        amount: true,
-        booking: {
-          select: {
-            provider: {
-              select: { id: true, name: true, email: true },
-            },
-          },
-        },
-      },
-    })
+    const payments = await db.$queryRaw<
+      Array<{
+        providerId: string
+        name: string
+        email: string
+        total: bigint
+        count: bigint
+      }>
+    >`
+      SELECT
+        b."providerId",
+        u.name,
+        u.email,
+        SUM(pay.amount) AS total,
+        COUNT(*) AS count
+      FROM "Payment" pay
+      JOIN "Booking" b ON b.id = pay."bookingId"
+      JOIN "User" u ON u.id = b."providerId"
+      WHERE pay.status = 'PAID' ${dateFilter ? Prisma.sql`AND pay."createdAt" >= ${dateFilter}` : Prisma.empty}
+      GROUP BY b."providerId", u.name, u.email
+      ORDER BY total DESC
+    `
 
     const ROUND2 = (v: number) => Math.round(v * 100) / 100
 
-    // Aggregate by provider
-    const providerMap = new Map<
-      string,
-      { name: string; email: string; total: number; count: number; commission: number; net: number }
-    >()
-    for (const p of payments) {
-      const prov = p.booking?.provider
-      if (!prov) continue
-      const existing = providerMap.get(prov.id) ?? {
-        name: prov.name,
-        email: prov.email,
-        total: 0,
-        count: 0,
-        commission: 0,
-        net: 0,
-      }
-      existing.total += p.amount
-      existing.count += 1
-      const fee = Math.round(p.amount * FEE_RATE * 100) / 100
-      existing.commission += fee
-      existing.net += p.amount - fee
-      providerMap.set(prov.id, existing)
-    }
-
-    // Sort by total descending
-    const sorted = Array.from(providerMap.entries()).sort((a, b) => b[1].total - a[1].total)
+    // Aggregate by provider (já vem do raw SQL)
+    const sorted = payments.map((p) => {
+      const total = Number(p.total)
+      const fee = Math.round(total * FEE_RATE * 100) / 100
+      return [
+        p.providerId,
+        {
+          name: p.name,
+          email: p.email,
+          total,
+          count: Number(p.count),
+          commission: fee,
+          net: total - fee,
+        },
+      ] as const
+    })
 
     // CSV helpers
     function escapeCsv(val: string | number | null | undefined): string {

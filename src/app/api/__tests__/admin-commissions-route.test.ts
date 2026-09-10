@@ -11,6 +11,7 @@ const mockDb = vi.hoisted(() => ({
   user: {
     findMany: vi.fn(),
   },
+  $queryRaw: vi.fn(),
 }))
 
 vi.mock("@/lib/db", () => ({ db: mockDb }))
@@ -45,33 +46,20 @@ describe("GET /api/admin/commissions", () => {
     vi.clearAllMocks()
     _mockRole = "ADMIN"
 
-    // Default mocks for the SQL-based implementation
     mockDb.booking.aggregate.mockResolvedValue({
       _sum: { amount: 3800 },
       _count: { id: 4 },
     })
-    mockDb.booking.count.mockResolvedValue(3) // completedCount
+    mockDb.booking.count.mockResolvedValue(3)
+    // $queryRaw: monthly breakdown (raw SQL)
+    mockDb.$queryRaw.mockResolvedValue([
+      { month: "2025-01", gross: BigInt(1000), count: BigInt(1) },
+      { month: "2025-02", gross: BigInt(2500), count: BigInt(2) },
+      { month: "2025-03", gross: BigInt(300), count: BigInt(1) },
+    ])
+    // 2x groupBy: per-provider + completed by provider
     mockDb.booking.groupBy
       .mockResolvedValueOnce([
-        // monthly
-        {
-          createdAt: new Date("2025-01-15"),
-          _sum: { amount: 1000 },
-          _count: { id: 1 },
-        },
-        {
-          createdAt: new Date("2025-02-10"),
-          _sum: { amount: 2500 },
-          _count: { id: 2 },
-        },
-        {
-          createdAt: new Date("2025-03-01"),
-          _sum: { amount: 300 },
-          _count: { id: 1 },
-        },
-      ])
-      .mockResolvedValueOnce([
-        // per-provider
         {
           providerId: "prov-2",
           _sum: { amount: 2000 },
@@ -84,7 +72,6 @@ describe("GET /api/admin/commissions", () => {
         },
       ])
       .mockResolvedValueOnce([
-        // completed by provider
         { providerId: "prov-1", _count: { id: 2 } },
         { providerId: "prov-2", _count: { id: 1 } },
       ])
@@ -100,10 +87,9 @@ describe("GET /api/admin/commissions", () => {
     const res = await GET(req)
     const data = await res.json()
 
-    // grossRevenue = 3800
     expect(data.grossRevenue).toBe(3800)
-    expect(data.platformCommission).toBe(570) // 3800 * 0.15
-    expect(data.providerEarnings).toBe(3230) // 3800 * 0.85
+    expect(data.platformCommission).toBe(570)
+    expect(data.providerEarnings).toBe(3230)
     expect(res.status).toBe(200)
   })
 
@@ -125,15 +111,15 @@ describe("GET /api/admin/commissions", () => {
 
     expect(data.providers[0].name).toBe("Maria Profissional")
     expect(data.providers[0].grossRevenue).toBe(2000)
-    expect(data.providers[0].commission).toBe(300) // 2000 * 0.15
-    expect(data.providers[0].netEarnings).toBe(1700) // 2000 * 0.85
+    expect(data.providers[0].commission).toBe(300)
+    expect(data.providers[0].netEarnings).toBe(1700)
     expect(data.providers[0].bookingCount).toBe(1)
     expect(data.providers[0].completedCount).toBe(1)
 
     expect(data.providers[1].name).toBe("João Prestador")
     expect(data.providers[1].grossRevenue).toBe(1800)
-    expect(data.providers[1].commission).toBe(270) // 1800 * 0.15
-    expect(data.providers[1].netEarnings).toBe(1530) // 1800 * 0.85
+    expect(data.providers[1].commission).toBe(270)
+    expect(data.providers[1].netEarnings).toBe(1530)
     expect(data.providers[1].bookingCount).toBe(3)
     expect(data.providers[1].completedCount).toBe(2)
   })
@@ -144,11 +130,9 @@ describe("GET /api/admin/commissions", () => {
       _count: { id: 0 },
     })
     mockDb.booking.count.mockResolvedValue(0)
+    mockDb.$queryRaw.mockResolvedValue([])
     mockDb.booking.groupBy.mockReset()
-    mockDb.booking.groupBy
-      .mockResolvedValueOnce([]) // monthly
-      .mockResolvedValueOnce([]) // per-provider
-      .mockResolvedValueOnce([]) // completed by provider
+    mockDb.booking.groupBy.mockResolvedValueOnce([]).mockResolvedValueOnce([])
     mockDb.user.findMany.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/commissions?year=2025")

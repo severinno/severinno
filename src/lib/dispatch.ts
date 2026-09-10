@@ -23,7 +23,6 @@ export async function findBestProvider(
       provider: {
         include: {
           availability: { where: { active: true } },
-          reviewsReceived: { select: { rating: true } },
           _count: { select: { bookingsAsProvider: { where: { status: "IN_PROGRESS" } } } },
         },
       },
@@ -39,20 +38,12 @@ export async function findBestProvider(
 
   if (route.distanceKm > provider.radiusKm) return null
 
-  const rating =
-    provider.reviewsReceived.length > 0
-      ? +(
-          provider.reviewsReceived.reduce((a: number, r: { rating: number }) => a + r.rating, 0) /
-          provider.reviewsReceived.length
-        ).toFixed(1)
-      : 0
-
   return {
     providerId: provider.id,
     providerName: provider.name,
     distanceKm: route.distanceKm,
     durationMin: route.durationMin,
-    rating,
+    rating: provider.avgRating,
   }
 }
 
@@ -100,7 +91,6 @@ export async function findBestProviders(
       id: { in: providerIds },
     },
     include: {
-      reviewsReceived: { select: { rating: true } },
       _count: { select: { bookingsAsProvider: { where: { status: "IN_PROGRESS" } } } },
     },
   })
@@ -128,20 +118,12 @@ export async function findBestProviders(
     const route = routes[i]
     if (p.radiusKm === null || route.distanceKm > p.radiusKm) continue
 
-    const rating =
-      p.reviewsReceived.length > 0
-        ? +(
-            p.reviewsReceived.reduce((a: number, r: { rating: number }) => a + r.rating, 0) /
-            p.reviewsReceived.length
-          ).toFixed(1)
-        : 0
-
     candidates.push({
       providerId: p.id,
       providerName: p.name,
       distanceKm: route.distanceKm,
       durationMin: route.durationMin,
-      rating,
+      rating: p.avgRating,
     })
   }
 

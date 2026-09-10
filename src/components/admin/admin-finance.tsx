@@ -50,7 +50,7 @@ import {
   UserCircle,
   Wallet,
 } from "lucide-react"
-import { ErrorState, RefreshButton } from "./_shared"
+import { ErrorState, RefreshButton, PaymentStatusBadge } from "./_shared"
 import { TOOLTIP_STYLE } from "./admin-chart-theme"
 
 import { useRealtimeFinance } from "@/hooks/use-realtime-finance"
@@ -596,7 +596,7 @@ export function AdminFinanceDashboard() {
                         <MethodBadge method={tx.method as PaymentMethod} />
                       </TableCell>
                       <TableCell>
-                        <StatusBadge status={tx.status as PaymentStatus} />
+                        <PaymentStatusBadge status={tx.status as PaymentStatus} />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -933,25 +933,6 @@ function MethodBadge({ method }: { method: PaymentMethod }) {
     >
       <Icon className="size-3" />
       {PAYMENT_METHOD_LABELS[method]}
-    </span>
-  )
-}
-
-function StatusBadge({ status }: { status: PaymentStatus }) {
-  const styles: Record<PaymentStatus, string> = {
-    PAID: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
-    PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-    REFUNDED: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300",
-  }
-
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
-        styles[status],
-      )}
-    >
-      {PAYMENT_STATUS_LABELS[status]}
     </span>
   )
 }

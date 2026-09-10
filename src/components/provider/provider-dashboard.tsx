@@ -56,6 +56,7 @@ import { StarRatingDisplay } from "@/components/modals/star-rating"
 import { PreferenceToggles } from "@/components/shared/preference-toggles"
 import { StatCard } from "@/components/shared/dashboard-shell"
 import ProviderGeoAwarenessBadge from "@/components/provider/provider-geo-awareness-badge"
+import { BookingStatusBadge } from "@/components/admin/admin-shared"
 
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 8,
@@ -113,33 +114,6 @@ function initials(name?: string) {
     .slice(0, 2)
     .map((s) => s[0]?.toUpperCase() ?? "")
     .join("")
-}
-
-const BADGE_STYLES: Record<BookingStatus, string> = {
-  PENDING: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
-  CONFIRMED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  IN_PROGRESS: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200",
-  COMPLETED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  CANCELLED: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
-}
-
-function StatusBadge({ status }: { status: BookingStatus }) {
-  const Icon =
-    status === "CONFIRMED" || status === "COMPLETED"
-      ? CheckCircle2
-      : status === "PENDING"
-        ? Clock
-        : status === "IN_PROGRESS"
-          ? Loader2
-          : XCircle
-  return (
-    <Badge
-      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${BADGE_STYLES[status]}`}
-    >
-      <Icon className="size-3" />
-      {BOOKING_STATUS_LABELS[status]}
-    </Badge>
-  )
 }
 
 // ---------------------------------------------------------------------------
@@ -593,7 +567,7 @@ export function ProviderDashboard() {
                             </p>
                           )}
                         </div>
-                        <StatusBadge status={b.status} />
+                        <BookingStatusBadge status={b.status} />
                       </li>
                     ))}
                   </ul>

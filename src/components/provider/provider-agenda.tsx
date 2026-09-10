@@ -36,6 +36,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { BookingStatusBadge } from "@/components/admin/admin-shared"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -70,42 +71,12 @@ function initials(name?: string) {
     .join("")
 }
 
-const BADGE_STYLES: Record<BookingStatus, string> = {
-  PENDING: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200",
-  CONFIRMED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  IN_PROGRESS: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200",
-  COMPLETED: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200",
-  CANCELLED: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200",
-}
-
 const DOT_STYLES: Record<BookingStatus, string> = {
   PENDING: "bg-amber-500",
   CONFIRMED: "bg-emerald-500",
   IN_PROGRESS: "bg-teal-500",
   COMPLETED: "bg-emerald-600",
   CANCELLED: "bg-rose-500",
-}
-
-function StatusBadge({ status }: { status: BookingStatus }) {
-  const Icon =
-    status === "CONFIRMED" || status === "COMPLETED"
-      ? CheckCircle2
-      : status === "PENDING"
-        ? Clock
-        : status === "IN_PROGRESS"
-          ? Loader2
-          : XCircle
-  return (
-    <Badge
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
-        BADGE_STYLES[status],
-      )}
-    >
-      <Icon className="size-3" />
-      {BOOKING_STATUS_LABELS[status]}
-    </Badge>
-  )
 }
 
 // ---------------------------------------------------------------------------
@@ -255,7 +226,7 @@ function DayList({ bookings }: { bookings: Booking[] }) {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm leading-tight font-medium">{b.client.name}</p>
-              <StatusBadge status={b.status} />
+              <BookingStatusBadge status={b.status} />
             </div>
             <p className="text-muted-foreground truncate text-xs">{b.service.title}</p>
             <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">

@@ -84,7 +84,6 @@ model City {
 
   providers   User[]
 
-  @@index([slug])
   @@index([active])
 }
 
@@ -174,6 +173,7 @@ model User {
   pushAnalytics      PushAnalytics[]
 
   @@index([role, active, verified])
+  @@index([deletedAt])
   @@index([city])
   @@index([city, active, verified])
   @@index([lat, lng])
@@ -365,6 +365,7 @@ model Booking {
   @@index([serviceId])
   @@index([status])
   @@index([paymentStatus])
+  @@index([paymentStatus, createdAt])
   @@index([scheduledAt])
   @@index([providerId, status, scheduledAt])
   @@index([clientId, status, scheduledAt])
@@ -531,6 +532,7 @@ model Payment {
   booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
 
   @@index([status])
+  @@index([status, createdAt])
   @@index([lytexId])
   @@index([lytexStatus])
 }

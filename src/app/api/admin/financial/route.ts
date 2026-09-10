@@ -26,39 +26,55 @@ export async function GET(request: Request) {
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
     const thisYear = new Date(now.getFullYear(), 0, 1)
 
-    // ── Parallel queries ────────────────────────────────────────────────
+    // ── Parallel queries (use aggregate instead of findMany to avoid OOM) ──
     const [
-      thisMonthBookings,
-      lastMonthBookings,
-      yearBookings,
+      thisMonthStats,
+      lastMonthStats,
+      yearStats,
+      thisMonthProviderStats,
+      yearMonthlyStats,
       totalProviders,
       totalClients,
       activeProviders,
     ] = await Promise.all([
-      // This month
-      db.booking.findMany({
-        where: {
-          paymentStatus: "PAID",
-          createdAt: { gte: thisMonth },
-        },
-        select: { amount: true, providerId: true, createdAt: true },
+      // This month — aggregate instead of loading all rows
+      db.booking.aggregate({
+        where: { paymentStatus: "PAID", createdAt: { gte: thisMonth } },
+        _sum: { amount: true },
+        _count: { id: true },
       }),
       // Last month
-      db.booking.findMany({
-        where: {
-          paymentStatus: "PAID",
-          createdAt: { gte: lastMonth, lt: thisMonth },
-        },
-        select: { amount: true },
+      db.booking.aggregate({
+        where: { paymentStatus: "PAID", createdAt: { gte: lastMonth, lt: thisMonth } },
+        _sum: { amount: true },
+        _count: { id: true },
       }),
       // This year
-      db.booking.findMany({
-        where: {
-          paymentStatus: "PAID",
-          createdAt: { gte: thisYear },
-        },
-        select: { amount: true, providerId: true, createdAt: true },
+      db.booking.aggregate({
+        where: { paymentStatus: "PAID", createdAt: { gte: thisYear } },
+        _sum: { amount: true },
+        _count: { id: true },
       }),
+      // Top providers this month (groupBy providerId)
+      db.booking.groupBy({
+        by: ["providerId"],
+        where: { paymentStatus: "PAID", createdAt: { gte: thisMonth } },
+        _sum: { amount: true },
+        _count: { id: true },
+        orderBy: { _sum: { amount: "desc" } },
+        take: 10,
+      }),
+      // Monthly trend: groupBy month for the year (use raw SQL for date_trunc)
+      db.$queryRaw<Array<{ month: string; revenue: bigint; count: bigint }>>`
+        SELECT
+          to_char("createdAt", 'YYYY-MM') AS month,
+          SUM(amount) AS revenue,
+          COUNT(*) AS count
+        FROM "Booking"
+        WHERE "paymentStatus" = 'PAID' AND "createdAt" >= ${thisYear}
+        GROUP BY to_char("createdAt", 'YYYY-MM')
+        ORDER BY month ASC
+      `,
       // Counts
       db.user.count({ where: { role: "PROVIDER", active: true } }),
       db.user.count({ where: { role: "CLIENT", active: true } }),
@@ -72,10 +88,11 @@ export async function GET(request: Request) {
       }),
     ])
 
-    // ── Compute metrics ────────────────────────────────────────────────
-    const thisMonthRevenue = thisMonthBookings.reduce((s, b) => s + b.amount, 0)
-    const lastMonthRevenue = lastMonthBookings.reduce((s, b) => s + b.amount, 0)
-    const yearRevenue = yearBookings.reduce((s, b) => s + b.amount, 0)
+    // ── Computar métricas a partir dos agregados (sem carregar linhas em memória) ──
+    const thisMonthRevenue = Number(thisMonthStats._sum.amount ?? 0)
+    const lastMonthRevenue = Number(lastMonthStats._sum.amount ?? 0)
+    const yearRevenue = Number(yearStats._sum.amount ?? 0)
+    const thisMonthBookingsCount = thisMonthStats._count.id
 
     const thisMonthCommission = Math.round(thisMonthRevenue * FEE_RATE * 100) / 100
     const lastMonthCommission = Math.round(lastMonthRevenue * FEE_RATE * 100) / 100
@@ -96,65 +113,47 @@ export async function GET(request: Request) {
     const projectedMonth = Math.round(dailyRate * daysInMonth * 100) / 100
     const projectedCommission = Math.round(projectedMonth * FEE_RATE * 100) / 100
 
-    // ── Top providers this month ───────────────────────────────────────
-    const providerMap = new Map<string, { name: string; revenue: number; count: number }>()
-    for (const b of thisMonthBookings) {
-      const existing = providerMap.get(b.providerId) ?? { name: "", revenue: 0, count: 0 }
-      existing.revenue += b.amount
-      existing.count++
-      providerMap.set(b.providerId, existing)
-    }
-
-    const topProviderIds = Array.from(providerMap.entries())
-      .sort(([, a], [, b]) => b.revenue - a.revenue)
-      .slice(0, 10)
-      .map(([id]) => id)
+    // ── Top providers this month (já vem do groupBy) ──────────────
+    const topProviderIds = thisMonthProviderStats.map((p) => p.providerId)
 
     const topProvidersData = await db.user.findMany({
       where: { id: { in: topProviderIds } },
       select: { id: true, name: true, avatarUrl: true },
     })
+    const topProviderInfoMap = new Map(topProvidersData.map((u) => [u.id, u]))
 
-    const topProviders = topProviderIds.map((id) => {
-      const stats = providerMap.get(id)!
-      const user = topProvidersData.find((u) => u.id === id)
+    const topProviders = thisMonthProviderStats.map((p) => {
+      const user = topProviderInfoMap.get(p.providerId)
+      const revenue = Number(p._sum.amount ?? 0)
       return {
-        id,
+        id: p.providerId,
         name: user?.name ?? "Desconhecido",
         avatarUrl: user?.avatarUrl,
-        revenue: Math.round(stats.revenue * 100) / 100,
-        commission: Math.round(stats.revenue * FEE_RATE * 100) / 100,
-        bookingCount: stats.count,
+        revenue: Math.round(revenue * 100) / 100,
+        commission: Math.round(revenue * FEE_RATE * 100) / 100,
+        bookingCount: p._count.id,
       }
     })
 
-    // ── Monthly trend (last 12 months) ────────────────────────────────
+    // ── Monthly trend (já agregado via SQL raw) ───────────────────
     const monthlyTrend: Array<{
       month: string
       revenue: number
       commission: number
       bookings: number
-    }> = []
-
-    for (let i = 11; i >= 0; i--) {
-      const m = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      const mEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1)
-      const monthBookings = yearBookings.filter((b) => b.createdAt >= m && b.createdAt < mEnd)
-      const revenue = monthBookings.reduce((s, b) => s + b.amount, 0)
-      monthlyTrend.push({
-        month: m.toISOString().slice(0, 7),
-        revenue: Math.round(revenue * 100) / 100,
-        commission: Math.round(revenue * FEE_RATE * 100) / 100,
-        bookings: monthBookings.length,
-      })
-    }
+    }> = yearMonthlyStats.map((row) => ({
+      month: row.month,
+      revenue: Math.round(Number(row.revenue) * 100) / 100,
+      commission: Math.round(Number(row.revenue) * FEE_RATE * 100) / 100,
+      bookings: Number(row.count),
+    }))
 
     return NextResponse.json({
       // Current metrics
       thisMonth: {
         revenue: Math.round(thisMonthRevenue * 100) / 100,
         commission: thisMonthCommission,
-        bookings: thisMonthBookings.length,
+        bookings: thisMonthBookingsCount,
         growthRate,
       },
       lastMonth: {

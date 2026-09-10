@@ -78,34 +78,28 @@ export async function GET(request: Request) {
     const platformCommission = Math.round(grossRevenue * FEE_RATE * 100) / 100
     const providerEarnings = Math.round(grossRevenue * (1 - FEE_RATE) * 100) / 100
 
-    // Monthly breakdown via SQL groupBy
-    const monthlyStats = await db.booking.groupBy({
-      by: ["createdAt"],
-      where,
-      _sum: { amount: true },
-      _count: { id: true },
-      orderBy: { createdAt: "asc" },
-    })
+    // Monthly breakdown via raw SQL com date_trunc (groupBy("createdAt") agrupava por ms)
+    const monthlyStats = await db.$queryRaw<Array<{ month: string; gross: bigint; count: bigint }>>`
+      SELECT
+        to_char("createdAt", 'YYYY-MM') AS month,
+        SUM(amount) AS gross,
+        COUNT(*) AS count
+      FROM "Booking"
+      WHERE "paymentStatus" = 'PAID'
+        AND "createdAt" >= ${yearStart}
+        AND "createdAt" < ${yearEnd}
+        ${providerId ? db.$queryRaw`AND "providerId" = ${providerId}` : db.$queryRaw``}
+      GROUP BY to_char("createdAt", 'YYYY-MM')
+      ORDER BY month ASC
+    `
 
-    const monthlyMap = new Map<string, { gross: number; count: number }>()
-    for (const m of monthlyStats) {
-      const d = new Date(m.createdAt)
-      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`
-      const entry = monthlyMap.get(key) ?? { gross: 0, count: 0 }
-      entry.gross += m._sum.amount ?? 0
-      entry.count += m._count.id
-      monthlyMap.set(key, entry)
-    }
-
-    const monthly = Array.from(monthlyMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([month, data]) => ({
-        month,
-        gross: Math.round(data.gross * 100) / 100,
-        commission: Math.round(data.gross * FEE_RATE * 100) / 100,
-        providerNet: Math.round(data.gross * (1 - FEE_RATE) * 100) / 100,
-        bookingCount: data.count,
-      }))
+    const monthly = monthlyStats.map((m) => ({
+      month: m.month,
+      gross: Math.round(Number(m.gross) * 100) / 100,
+      commission: Math.round(Number(m.gross) * FEE_RATE * 100) / 100,
+      providerNet: Math.round(Number(m.gross) * (1 - FEE_RATE) * 100) / 100,
+      bookingCount: Number(m.count),
+    }))
 
     // Per-provider breakdown via SQL groupBy
     const providerStats = await db.booking.groupBy({

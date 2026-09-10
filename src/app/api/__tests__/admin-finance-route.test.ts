@@ -1,20 +1,12 @@
 /**
  * Tests for GET /api/admin/finance — aggregated financial dashboard.
  *
- * Covers:
- *   - Summary by payment status (PAID/PENDING/REFUNDED)
- *   - Monthly revenue breakdown
- *   - Payment method stats
- *   - Per-provider aggregation + commission
- *   - MRR (current, previous, growth, history)
- *   - Average ticket calculation
- *   - Date filtering (period parameter)
- *   - Pagination defaults
- *   - 403 for non-admin
- *
- * NOTE on mock order (Vitest quirk):
- * mockResolvedValueOnce values take PRIORITY over mockResolvedValue default.
- * Always use 5 mockResolvedValueOnce for the 5 findMany calls in Promise.all.
+ * A rota agora usa:
+ *   1. db.payment.groupBy (2x) — summary + method stats
+ *   2. db.payment.findMany (1x) — transactions paginadas
+ *   3. db.payment.count (1x)
+ *   4. db.payment.aggregate (2x) — MRR current + previous
+ *   5. db.$queryRaw (3x) — monthly revenue, provider aggregation, MRR history
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
@@ -40,15 +32,22 @@ vi.mock("@/lib/api-server", async (importOriginal) => {
   return { ...actual, handleError: vi.fn((e: unknown) => (actual as any).handleError(e)) }
 })
 
+vi.mock("@/lib/rate-limit", () => ({
+  assertRateLimit: vi.fn().mockResolvedValue(undefined),
+  RATE_LIMITS: { admin: { key: "admin", interval: 60, max: 100 } },
+}))
+
 const mockDb = vi.hoisted(() => ({
   setting: { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn() },
   payment: {
     groupBy: vi.fn(),
     findMany: vi.fn(),
+    aggregate: vi.fn(),
     count: vi.fn(),
     update: vi.fn(),
     upsert: vi.fn(),
   },
+  $queryRaw: vi.fn(),
 }))
 
 vi.mock("@/lib/db", () => ({ db: mockDb }))
@@ -60,71 +59,11 @@ import { db } from "@/lib/db"
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/** Recreates all db mocks fresh to avoid vi.clearAllMocks() quirk */
 function resetDbMocks() {
   Object.values(mockDb.setting).forEach((fn) => (fn as any).mockReset())
   Object.values(mockDb.payment).forEach((fn) => (fn as any).mockReset())
+  mockDb.$queryRaw.mockReset()
 }
-
-// ── Mock data ──────────────────────────────────────────────────────────────
-
-const mockPayments = [
-  {
-    id: "pay-1",
-    amount: 50000,
-    method: "PIX",
-    status: "PAID",
-    createdAt: new Date("2026-01-15"),
-    paidAt: new Date("2026-01-15"),
-    bookingId: "b-1",
-    lytexId: "lytex-1",
-  },
-  {
-    id: "pay-2",
-    amount: 30000,
-    method: "PIX",
-    status: "PAID",
-    createdAt: new Date("2026-02-10"),
-    paidAt: new Date("2026-02-10"),
-    bookingId: "b-2",
-    lytexId: "lytex-2",
-  },
-  {
-    id: "pay-3",
-    amount: 15000,
-    method: "CARD",
-    status: "PAID",
-    createdAt: new Date("2026-02-20"),
-    paidAt: new Date("2026-02-20"),
-    bookingId: "b-3",
-    lytexId: "lytex-3",
-  },
-  {
-    id: "pay-4",
-    amount: 20000,
-    method: "PIX",
-    status: "PENDING",
-    createdAt: new Date("2026-03-01"),
-    bookingId: "b-4",
-    lytexId: null,
-  },
-  {
-    id: "pay-5",
-    amount: 10000,
-    method: "PIX",
-    status: "REFUNDED",
-    createdAt: new Date("2025-12-01"),
-    bookingId: "b-5",
-    lytexId: "lytex-5",
-  },
-]
-
-// Promise.all order for findMany calls:
-// 1. monthly revenue (PAID only)
-// 2. transactions (paginated)
-// 3. MRR current
-// 4. MRR previous
-// 5. provider aggregation (PAID only)
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
@@ -134,8 +73,8 @@ describe("GET /api/admin/finance", () => {
     resetDbMocks()
   })
 
-  it("returns summary by payment status (PAID/PENDING/REFUNDED)", async () => {
-    // groupBy: 1st call = summary, 2nd call = method stats
+  function setupBasicMocks() {
+    // 2x groupBy: summary + method stats
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([
         { status: "PAID", _sum: { amount: 95000 }, _count: { _all: 3 } },
@@ -146,82 +85,43 @@ describe("GET /api/admin/finance", () => {
         { method: "PIX", _sum: { amount: 80000 }, _count: { _all: 2 } },
         { method: "CARD", _sum: { amount: 15000 }, _count: { _all: 1 } },
       ] as any)
-    // findMany: 5 calls via Promise.all — MUST use mockResolvedValueOnce for ALL
-    vi.mocked(db.payment.findMany)
-      .mockResolvedValueOnce(mockPayments.filter((p) => p.status === "PAID") as any) // 1: monthly
-      .mockResolvedValueOnce([
-        // 2: transactions
-        {
-          ...mockPayments[0],
-          booking: {
-            id: "b-1",
-            scheduledAt: new Date("2026-01-15"),
-            status: "COMPLETED",
-            client: { id: "c-1", name: "Carlos", email: "carlos@test.com" },
-            provider: { id: "prov-1", name: "Paulo Prestador" },
-            service: { id: "svc-1", title: "Instalação" },
-          },
+
+    // 1x findMany: transactions paginadas
+    vi.mocked(db.payment.findMany).mockResolvedValueOnce([
+      {
+        id: "pay-1",
+        amount: 50000,
+        method: "PIX",
+        status: "PAID",
+        createdAt: new Date("2026-01-15"),
+        booking: {
+          id: "b-1",
+          scheduledAt: new Date("2026-01-15"),
+          status: "COMPLETED",
+          client: { id: "c-1", name: "Carlos", email: "carlos@test.com" },
+          provider: { id: "prov-1", name: "Paulo Prestador" },
+          service: { id: "svc-1", title: "Instalação" },
         },
-        {
-          ...mockPayments[1],
-          booking: {
-            id: "b-2",
-            scheduledAt: new Date("2026-02-10"),
-            status: "COMPLETED",
-            client: { id: "c-2", name: "Ana", email: "ana@test.com" },
-            provider: { id: "prov-2", name: "Maria Profissional" },
-            service: { id: "svc-2", title: "Limpeza" },
-          },
-        },
-        {
-          ...mockPayments[2],
-          booking: {
-            id: "b-3",
-            scheduledAt: new Date("2026-02-20"),
-            status: "COMPLETED",
-            client: { id: "c-1", name: "Carlos", email: "carlos@test.com" },
-            provider: { id: "prov-1", name: "Paulo Prestador" },
-            service: { id: "svc-1", title: "Instalação" },
-          },
-        },
-      ] as any)
-      .mockResolvedValueOnce([] as any) // 3: MRR current
-      .mockResolvedValueOnce([] as any) // 4: MRR previous
-      .mockResolvedValueOnce(
-        mockPayments
-          .filter((p) => p.status === "PAID")
-          .map((p) => ({
-            amount: p.amount,
-            booking:
-              p.id === "pay-1"
-                ? {
-                    provider: {
-                      id: "prov-1",
-                      name: "Paulo Prestador",
-                      email: "paulo@test.com",
-                      avatarUrl: null,
-                    },
-                  }
-                : p.id === "pay-2"
-                  ? {
-                      provider: {
-                        id: "prov-2",
-                        name: "Maria Profissional",
-                        email: "maria@test.com",
-                        avatarUrl: "avatar.jpg",
-                      },
-                    }
-                  : {
-                      provider: {
-                        id: "prov-1",
-                        name: "Paulo Prestador",
-                        email: "paulo@test.com",
-                        avatarUrl: null,
-                      },
-                    },
-          })) as any,
-      ) // 5: provider data
-    vi.mocked(db.payment.count).mockResolvedValue(5) // count is called once
+      },
+    ] as any)
+
+    // count
+    vi.mocked(db.payment.count).mockResolvedValue(5)
+
+    // 2x aggregate: MRR current + previous
+    vi.mocked(db.payment.aggregate)
+      .mockResolvedValueOnce({ _sum: { amount: 0 }, _count: { _all: 0 } } as any)
+      .mockResolvedValueOnce({ _sum: { amount: 0 }, _count: { _all: 0 } } as any)
+
+    // 3x $queryRaw: monthly revenue, provider aggregation, MRR history
+    mockDb.$queryRaw
+      .mockResolvedValueOnce([]) // monthly revenue
+      .mockResolvedValueOnce([]) // provider aggregation
+      .mockResolvedValueOnce([]) // MRR history
+  }
+
+  it("returns summary by payment status (PAID/PENDING/REFUNDED)", async () => {
+    setupBasicMocks()
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
     const res = await GET(req)
@@ -239,19 +139,18 @@ describe("GET /api/admin/finance", () => {
         { status: "PAID", _sum: { amount: 90000 }, _count: { _all: 3 } },
       ] as any)
       .mockResolvedValueOnce([] as any)
-    vi.mocked(db.payment.findMany)
-      .mockResolvedValueOnce([] as any) // 1: monthly
-      .mockResolvedValueOnce([] as any) // 2: transactions
-      .mockResolvedValueOnce([] as any) // 3: MRR current
-      .mockResolvedValueOnce([] as any) // 4: MRR previous
-      .mockResolvedValueOnce([] as any) // 5: provider
+    vi.mocked(db.payment.findMany).mockResolvedValueOnce([] as any)
     vi.mocked(db.payment.count).mockResolvedValue(3)
+    vi.mocked(db.payment.aggregate)
+      .mockResolvedValueOnce({ _sum: { amount: 0 }, _count: { _all: 0 } } as any)
+      .mockResolvedValueOnce({ _sum: { amount: 0 }, _count: { _all: 0 } } as any)
+    mockDb.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([])
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
     const res = await GET(req)
     const data = await res.json()
 
-    expect(data.averageTicket).toBe(30000) // 90000 / 3
+    expect(data.averageTicket).toBe(30000)
   })
 
   it("returns per-provider aggregation with commission", async () => {
@@ -260,48 +159,33 @@ describe("GET /api/admin/finance", () => {
         { status: "PAID", _sum: { amount: 95000 }, _count: { _all: 3 } },
       ] as any)
       .mockResolvedValueOnce([] as any)
-    vi.mocked(db.payment.findMany)
-      .mockResolvedValueOnce(mockPayments.filter((p) => p.status === "PAID") as any) // 1: monthly
-      .mockResolvedValueOnce([] as any) // 2: transactions
-      .mockResolvedValueOnce([] as any) // 3: MRR current
-      .mockResolvedValueOnce([] as any) // 4: MRR previous
-      .mockResolvedValueOnce([
-        // 5: provider
-        {
-          amount: 50000,
-          booking: {
-            provider: {
-              id: "prov-1",
-              name: "Paulo Prestador",
-              email: "paulo@test.com",
-              avatarUrl: null,
-            },
-          },
-        },
-        {
-          amount: 30000,
-          booking: {
-            provider: {
-              id: "prov-2",
-              name: "Maria Profissional",
-              email: "maria@test.com",
-              avatarUrl: "avatar.jpg",
-            },
-          },
-        },
-        {
-          amount: 15000,
-          booking: {
-            provider: {
-              id: "prov-1",
-              name: "Paulo Prestador",
-              email: "paulo@test.com",
-              avatarUrl: null,
-            },
-          },
-        },
-      ] as any)
+    vi.mocked(db.payment.findMany).mockResolvedValueOnce([] as any)
     vi.mocked(db.payment.count).mockResolvedValue(3)
+    vi.mocked(db.payment.aggregate)
+      .mockResolvedValueOnce({ _sum: { amount: 0 }, _count: { _all: 0 } } as any)
+      .mockResolvedValueOnce({ _sum: { amount: 0 }, _count: { _all: 0 } } as any)
+    // $queryRaw: monthly, providers, MRR history
+    mockDb.$queryRaw
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          providerId: "prov-1",
+          name: "Paulo Prestador",
+          email: "paulo@test.com",
+          avatarUrl: null,
+          total: BigInt(65000),
+          count: BigInt(2),
+        },
+        {
+          providerId: "prov-2",
+          name: "Maria Profissional",
+          email: "maria@test.com",
+          avatarUrl: "avatar.jpg",
+          total: BigInt(30000),
+          count: BigInt(1),
+        },
+      ])
+      .mockResolvedValueOnce([])
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
     const res = await GET(req)
@@ -319,21 +203,7 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("returns payment method stats", async () => {
-    vi.mocked(db.payment.groupBy)
-      .mockResolvedValueOnce([
-        { status: "PAID", _sum: { amount: 95000 }, _count: { _all: 3 } },
-      ] as any)
-      .mockResolvedValueOnce([
-        { method: "PIX", _sum: { amount: 80000 }, _count: { _all: 2 } },
-        { method: "CARD", _sum: { amount: 15000 }, _count: { _all: 1 } },
-      ] as any)
-    vi.mocked(db.payment.findMany)
-      .mockResolvedValueOnce([] as any) // 1: monthly
-      .mockResolvedValueOnce([] as any) // 2: transactions
-      .mockResolvedValueOnce([] as any) // 3: MRR current
-      .mockResolvedValueOnce([] as any) // 4: MRR previous
-      .mockResolvedValueOnce([] as any) // 5: provider
-    vi.mocked(db.payment.count).mockResolvedValue(3)
+    setupBasicMocks()
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
     const res = await GET(req)
@@ -346,18 +216,7 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("returns fixed commission percent (FEE_RATE)", async () => {
-    vi.mocked(db.payment.groupBy)
-      .mockResolvedValueOnce([
-        { status: "PAID", _sum: { amount: 95000 }, _count: { _all: 3 } },
-      ] as any)
-      .mockResolvedValueOnce([] as any)
-    vi.mocked(db.payment.findMany)
-      .mockResolvedValueOnce([] as any) // 1: monthly
-      .mockResolvedValueOnce([] as any) // 2: transactions
-      .mockResolvedValueOnce([] as any) // 3: MRR current
-      .mockResolvedValueOnce([] as any) // 4: MRR previous
-      .mockResolvedValueOnce([] as any) // 5: provider
-    vi.mocked(db.payment.count).mockResolvedValue(3)
+    setupBasicMocks()
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
     const res = await GET(req)
@@ -372,13 +231,12 @@ describe("GET /api/admin/finance", () => {
         { status: "PAID", _sum: { amount: 100000 }, _count: { _all: 2 } },
       ] as any)
       .mockResolvedValueOnce([] as any)
-    vi.mocked(db.payment.findMany)
-      .mockResolvedValueOnce([] as any) // 1: monthly
-      .mockResolvedValueOnce([] as any) // 2: transactions
-      .mockResolvedValueOnce([] as any) // 3: MRR current
-      .mockResolvedValueOnce([] as any) // 4: MRR previous
-      .mockResolvedValueOnce([] as any) // 5: provider
+    vi.mocked(db.payment.findMany).mockResolvedValueOnce([] as any)
     vi.mocked(db.payment.count).mockResolvedValue(2)
+    vi.mocked(db.payment.aggregate)
+      .mockResolvedValueOnce({ _sum: { amount: 0 }, _count: { _all: 0 } } as any)
+      .mockResolvedValueOnce({ _sum: { amount: 0 }, _count: { _all: 0 } } as any)
+    mockDb.$queryRaw.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
     const res = await GET(req)
@@ -396,17 +254,15 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("handles empty result set gracefully", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue(null)
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([] as any)
       .mockResolvedValueOnce([] as any)
-    vi.mocked(db.payment.findMany)
-      .mockResolvedValueOnce([] as any) // 1: monthly
-      .mockResolvedValueOnce([] as any) // 2: transactions
-      .mockResolvedValueOnce([] as any) // 3: MRR current
-      .mockResolvedValueOnce([] as any) // 4: MRR previous
-      .mockResolvedValueOnce([] as any) // 5: provider
+    vi.mocked(db.payment.findMany).mockResolvedValueOnce([] as any)
     vi.mocked(db.payment.count).mockResolvedValue(0)
+    vi.mocked(db.payment.aggregate)
+      .mockResolvedValueOnce({ _sum: { amount: 0 }, _count: { _all: 0 } } as any)
+      .mockResolvedValueOnce({ _sum: { amount: 0 }, _count: { _all: 0 } } as any)
+    mockDb.$queryRaw.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
     const res = await GET(req)
@@ -425,7 +281,6 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("paginates transactions with default page/limit", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue(null)
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([
         { status: "PAID", _sum: { amount: 95000 }, _count: { _all: 3 } },
@@ -441,13 +296,12 @@ describe("GET /api/admin/finance", () => {
       lytexId: null,
       booking: null,
     }))
-    vi.mocked(db.payment.findMany)
-      .mockResolvedValueOnce(mockPayments.filter((p) => p.status === "PAID") as any) // 1: monthly
-      .mockResolvedValueOnce(txData as any) // 2: transactions
-      .mockResolvedValueOnce([] as any) // 3: MRR current
-      .mockResolvedValueOnce([] as any) // 4: MRR previous
-      .mockResolvedValueOnce([] as any) // 5: provider
+    vi.mocked(db.payment.findMany).mockResolvedValueOnce(txData as any)
     vi.mocked(db.payment.count).mockResolvedValue(25)
+    vi.mocked(db.payment.aggregate)
+      .mockResolvedValueOnce({ _sum: { amount: 0 }, _count: { _all: 0 } } as any)
+      .mockResolvedValueOnce({ _sum: { amount: 0 }, _count: { _all: 0 } } as any)
+    mockDb.$queryRaw.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/finance?period=all")
     const res = await GET(req)
@@ -459,17 +313,15 @@ describe("GET /api/admin/finance", () => {
   })
 
   it("respects period parameter (7d vs 30d vs all)", async () => {
-    vi.mocked(db.setting.findUnique).mockResolvedValue(null)
     vi.mocked(db.payment.groupBy)
       .mockResolvedValueOnce([] as any)
       .mockResolvedValueOnce([] as any)
-    vi.mocked(db.payment.findMany)
-      .mockResolvedValueOnce([] as any) // 1: monthly
-      .mockResolvedValueOnce([] as any) // 2: transactions
-      .mockResolvedValueOnce([] as any) // 3: MRR current
-      .mockResolvedValueOnce([] as any) // 4: MRR previous
-      .mockResolvedValueOnce([] as any) // 5: provider
+    vi.mocked(db.payment.findMany).mockResolvedValueOnce([] as any)
     vi.mocked(db.payment.count).mockResolvedValue(0)
+    vi.mocked(db.payment.aggregate)
+      .mockResolvedValueOnce({ _sum: { amount: 0 }, _count: { _all: 0 } } as any)
+      .mockResolvedValueOnce({ _sum: { amount: 0 }, _count: { _all: 0 } } as any)
+    mockDb.$queryRaw.mockResolvedValue([])
 
     const req = new Request("http://localhost/api/admin/finance?period=7d")
     const res = await GET(req)
