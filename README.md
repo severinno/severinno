@@ -1464,3 +1464,5 @@ Para reproduzir: num checkout anterior ao commit de migração (`fd5381a`), rode
 `bun run repro:setup-bun` (`--expect cache-miss`). No `main` atual o job usa o
 composite local `.github/actions/setup-bun` e a 2ª run reporta `cache-hit=true`
 (fix).
+
+# test deploy hostinger
