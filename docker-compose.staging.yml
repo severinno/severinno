@@ -240,7 +240,7 @@ services:
       - "5000"
     volumes:
       - ./osrm-data:/data:ro
-    command: osrm-routed --algorithm mld /data/brazil-latest.osrm
+    command: osrm-routed --algorithm mld /data/governador-valadares.osrm
     networks:
       - severinno-staging-net
     healthcheck:
@@ -308,7 +308,11 @@ services:
 
   # ── Email Worker ────────────────────────────────────────────────────────
   email-worker-staging:
-    image: ghcr.io/${GITHUB_REPOSITORY:-severinno}/severinno:worker-latest
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        BUN_VERSION: "1.4.0"
     container_name: severinno-email-worker-staging
     restart: unless-stopped
     security_opt:
@@ -331,7 +335,11 @@ services:
 
   # ── Notification Worker ─────────────────────────────────────────────────
   notification-worker-staging:
-    image: ghcr.io/${GITHUB_REPOSITORY:-severinno}/severinno:worker-latest
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        BUN_VERSION: "1.4.0"
     container_name: severinno-notification-worker-staging
     restart: unless-stopped
     security_opt:
