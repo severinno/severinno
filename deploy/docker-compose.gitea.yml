@@ -60,14 +60,6 @@ services:
     image: gitea/gitea:1.22
     container_name: gitea
     restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
-      - SETUID
-      - SETGID
     environment:
       # ── Database ──────────────────────────────────────────────────────
       - GITEA__database__DB_TYPE=sqlite3
