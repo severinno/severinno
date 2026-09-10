@@ -31,7 +31,7 @@ concurrency:
 jobs:
   test-guards:
     name: CLI Guard Tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 120
 
     steps:

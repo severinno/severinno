@@ -31,7 +31,7 @@ jobs:
   # and scripts have minimum header documentation.
   barrel-lint:
     name: Barrel Lint
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - uses: actions/checkout@v4
@@ -56,7 +56,7 @@ jobs:
   # Checks for known vulnerabilities in dependencies.
   security-audit:
     name: Security Audit
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - uses: actions/checkout@v4
@@ -74,7 +74,7 @@ jobs:
   # Validates that all API routes have corresponding test files.
   coverage-gaps:
     name: Coverage Gaps
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - uses: actions/checkout@v4
@@ -92,7 +92,7 @@ jobs:
   # Validates the CACHED_ROUTES manifest matches actual route handlers.
   cache-manifest:
     name: Cache Manifest
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - uses: actions/checkout@v4
@@ -114,7 +114,7 @@ jobs:
   # as an artifact for downstream use if needed.
   coverage-badge:
     name: Coverage Badge
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - uses: actions/checkout@v4

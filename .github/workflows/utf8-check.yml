@@ -107,7 +107,7 @@ on:
 jobs:
   utf8-check:
     name: UTF-8 Check
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 

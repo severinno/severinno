@@ -49,7 +49,7 @@ jobs:
   # ── Prisma migrations sync ────────────────────────────────────────────────
   prisma-migrations:
     name: Prisma Migrations Sync
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
 
     services:
@@ -126,7 +126,7 @@ jobs:
   # ── Security headers (produção) ───────────────────────────────────────────
   security-headers:
     name: Security Headers
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 10
     if: github.event_name != 'pull_request'
 
@@ -139,7 +139,7 @@ jobs:
   # ── Static guards (sem banco) ─────────────────────────────────────────────
   static-guards:
     name: Static Guards
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 10
 
     steps:

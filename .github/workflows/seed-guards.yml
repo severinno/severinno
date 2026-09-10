@@ -65,7 +65,7 @@ on:
 jobs:
   seed-guards:
     name: Seed E2E ${{ matrix.seed }} · ${{ matrix.variant }}
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 30
 
     # ── MATRIX 2×2: seed (prod/dev) × imagem (alpine/full) ──────────
@@ -222,7 +222,7 @@ jobs:
   # seed via backup em trap, nunca git checkout).
   mutation-seed-dev-e2e:
     name: Mutation Test (seed dev E2E pega regressões?)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 30
 
     services:
@@ -361,7 +361,7 @@ jobs:
   # SCAN_FILES), não toca banco.
   mutation-coord-update:
     name: Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
 
     steps:
@@ -435,7 +435,7 @@ jobs:
   # asserções do prod E2E.
   seed-prod-e2e-dev-env:
     name: Seed Prod E2E (dev-env override)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 30
 
     services:
@@ -570,7 +570,7 @@ jobs:
   # dev + validator; --skip-docker usa o service container do job).
   migrate-category-rename-e2e:
     name: Migrate Category Rename E2E
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 30
 
     services:

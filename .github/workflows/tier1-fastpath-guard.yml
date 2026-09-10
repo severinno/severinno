@@ -63,7 +63,7 @@ concurrency:
 jobs:
   guard:
     name: Tier-1 Fastpath (act -j check, imagem custom)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 30
 
     steps:

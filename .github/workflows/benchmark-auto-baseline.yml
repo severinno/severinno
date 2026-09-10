@@ -46,7 +46,7 @@ jobs:
   # or missing output directory.
   smoke:
     name: Smoke Check
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 2
 
     steps:
@@ -95,7 +95,7 @@ jobs:
   # ── Auto-Baseline ───────────────────────────────────────────────────
   auto-baseline:
     name: Auto-Baseline
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: smoke
     timeout-minutes: 10
 

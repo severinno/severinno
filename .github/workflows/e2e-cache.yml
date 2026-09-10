@@ -57,7 +57,7 @@ jobs:
   e2e-cache:
     name: E2E Cache
     needs: [utf8-check, quality-gate]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
 
     services:

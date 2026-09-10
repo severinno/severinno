@@ -59,7 +59,7 @@ jobs:
   # com spec patchado ou com o guard de produção contornado.
   seed-hooks-guard:
     name: Seed Test Hooks Guard
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
@@ -72,7 +72,7 @@ jobs:
 
   lint:
     name: Lint
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
@@ -83,7 +83,7 @@ jobs:
 
   typecheck:
     name: TypeCheck
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
@@ -103,7 +103,7 @@ jobs:
 
   test:
     name: Tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-bun
@@ -135,7 +135,7 @@ jobs:
 
   docker:
     name: Docker Build & Push
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [utf8-check, seed-hooks-guard, quality-gate, lint, typecheck, test]
     permissions:
       contents: read
@@ -196,7 +196,7 @@ jobs:
 
   migrate:
     name: DB Migrations
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [docker]
     if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
 
@@ -215,7 +215,7 @@ jobs:
 
   deploy:
     name: Deploy to VPS
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [migrate]
     if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
 

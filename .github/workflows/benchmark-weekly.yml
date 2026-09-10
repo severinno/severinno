@@ -60,7 +60,7 @@ jobs:
   # ── Smoke Check ─────────────────────────────────────────────────────────
   smoke:
     name: Smoke Check
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 2
 
     steps:
@@ -110,7 +110,7 @@ jobs:
   # ── Real PostGIS Benchmark ─────────────────────────────────────────────
   benchmark:
     name: PostGIS Real Benchmark
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: smoke
     timeout-minutes: 30
 
@@ -397,7 +397,7 @@ jobs:
   # O guard (scripts/check-setup-bun-warm.mjs) é o GATE — exit 1 falha o job.
   setup-bun-warm:
     name: Setup-bun warm cache (limiar 10s)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 30
 
     permissions:
@@ -457,7 +457,7 @@ jobs:
   # run). A tag da custom vem de vars.BUN_VERSION (fonte única) via --image.
   act-startup-bench:
     name: Act startup bench (delta 30%)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 45
 
     steps:
@@ -530,7 +530,7 @@ jobs:
   # necessários — o wrapper só precisa de git + python3.
   blob-crlf-history-audit:
     name: Blob CRLF history (zero-CRLF)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 5
 
     steps:
@@ -565,7 +565,7 @@ jobs:
   # necessários — só git + python3, como o job irmão acima.
   blob-crlf-all-text-alert:
     name: Blob CRLF all-text (alcance, aviso)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
 
     steps:
@@ -625,7 +625,7 @@ jobs:
   # Baseline regenerável: node scripts/check-secret-leaks-baseline.mjs --update
   secret-leaks-audit:
     name: Secret leaks (baseline)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 10
 
     steps:
@@ -672,7 +672,7 @@ jobs:
   # run semanal). Requer permissions: issues: write.
   readme-reverse-audit:
     name: README reverse semantics (baseline)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 5
     permissions:
       contents: read
@@ -714,7 +714,7 @@ jobs:
   # ::warning:: (NÃO-bloqueante — drift de dev experience, não bug de CI).
   actrc-sync:
     name: .actrc ↔ vars.BUN_VERSION (aviso)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 2
 
     steps:
@@ -754,7 +754,7 @@ jobs:
   # merge, não com o PR em si).
   default-branch-workflow-guard:
     name: Default-branch workflow guard (medição deployada?)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 5
 
     permissions:
@@ -839,7 +839,7 @@ jobs:
   # só node + o gh pré-instalado do runner.
   mutation-coord-timing:
     name: Mutation coord timing (re-medição semanal)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: seed-guards
     if: always() # mede também quando o seed-guards falhou (timeout é o alvo)
     timeout-minutes: 5
@@ -938,7 +938,7 @@ jobs:
   # deve olhar antes do gate duro.
   mutation-coord-trend:
     name: Mutation coord trend (mediana vs drift %)
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: seed-guards
     if: always() # mede também quando o seed-guards falhou (timeout é o alvo)
     timeout-minutes: 5

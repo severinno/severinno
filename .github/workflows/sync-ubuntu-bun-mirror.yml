@@ -52,7 +52,7 @@ env:
 jobs:
   mirror:
     name: Mirror ubuntu-bun:v${{ vars.BUN_VERSION }} → GHCR
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 15
 
     steps:

@@ -70,7 +70,7 @@ jobs:
   # staging credentials are in place before the main job starts.
   smoke:
     name: Smoke Check
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 2
 
     steps:
@@ -117,7 +117,7 @@ jobs:
   # ── Benchmark All ───────────────────────────────────────────────────────
   benchmark-all:
     name: Benchmark All Types
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: smoke
     timeout-minutes: 60
 

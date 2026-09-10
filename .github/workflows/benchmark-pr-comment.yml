@@ -33,7 +33,7 @@ concurrency:
 jobs:
   comment:
     name: Post Benchmark Comment
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:

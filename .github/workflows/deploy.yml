@@ -28,7 +28,7 @@ jobs:
   # guard de produção contornado.
   seed-hooks-guard:
     name: Seed Test Hooks Guard
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
@@ -41,7 +41,7 @@ jobs:
   docker-test:
     name: Docker Build & Test
     needs: [utf8-check, seed-hooks-guard]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 20
 
     services:
@@ -131,7 +131,7 @@ jobs:
 
   build:
     needs: [docker-test]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       contents: read
       packages: write
@@ -192,7 +192,7 @@ jobs:
 
   migrate:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
 
     steps:
@@ -215,7 +215,7 @@ jobs:
 
   deploy:
     needs: migrate
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
 
     steps:
