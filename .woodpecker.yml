@@ -1,0 +1,125 @@
+# =============================================================================
+# .woodpecker.yml — Pipeline CI/CD para Severinno Marketplace
+# =============================================================================
+# Woodpecker CI - alternativa open source ao GitHub Actions
+#
+# Este arquivo define os pipelines de CI/CD que rodam no Woodpecker CI.
+# =============================================================================
+
+# ── Pipeline de CI (pull requests e push) ──────────────────────────────────
+pipeline:
+  lint:
+    image: oven/bun:1.4.0
+    commands:
+      - bun install --frozen-lockfile
+      - bun run lint
+
+  typecheck:
+    image: oven/bun:1.4.0
+    commands:
+      - bun install --frozen-lockfile
+      - bun run db:generate
+      - bunx tsc --noEmit
+    environment:
+      NODE_OPTIONS: --max-old-space-size=4096
+
+  test:
+    image: oven/bun:1.4.0
+    commands:
+      - bun install --frozen-lockfile
+      - bun run db:generate
+      - bun run test:run
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres-test:5432/severinno_test
+      REDIS_URL: redis://redis-test:6379
+      SESSION_SECRET: ci-session-secret-at-least-32-characters-long
+    services:
+      - name: postgres-test
+        image: postgis/postgis:16-3.4-alpine
+        environment:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: severinno_test
+      - name: redis-test
+        image: redis:7-alpine
+
+  build:
+    image: oven/bun:1.4.0
+    commands:
+      - bun install --frozen-lockfile
+      - bun run db:generate
+      - bun run build
+    environment:
+      SKIP_TYPESCRIPT_CHECK: "true"
+      BUILD_STANDALONE: "true"
+
+# ── Pipeline de Deploy (apenas main) ──────────────────────────────────────
+deploy:
+  docker-build:
+    image: plugins/docker
+    settings:
+      repo: ghcr.io/severinno/severinno
+      tags:
+        - latest
+        - ${CI_COMMIT_SHA:0:7}
+      registry: ghcr.io
+      username:
+        from_secret: ghcr_username
+      password:
+        from_secret: ghcr_token
+      dockerfile: Dockerfile
+      build_args:
+        - BUN_VERSION=1.4.0
+    when:
+      branch: main
+      event: push
+
+  docker-build-worker:
+    image: plugins/docker
+    settings:
+      repo: ghcr.io/severinno/severinno
+      tags:
+        - worker-latest
+        - worker-${CI_COMMIT_SHA:0:7}
+      registry: ghcr.io
+      username:
+        from_secret: ghcr_username
+      password:
+        from_secret: ghcr_token
+      dockerfile: Dockerfile.worker
+      build_args:
+        - BUN_VERSION=1.4.0
+    when:
+      branch: main
+      event: push
+
+  deploy-vps:
+    image: appleboy/ssh-action
+    settings:
+      host:
+        from_secret: deploy_host
+      username:
+        from_secret: deploy_user
+      key:
+        from_secret: deploy_key
+      script:
+        - cd /home/deploy/severinno
+        - docker compose pull app realtime email-worker notification-worker
+        - docker compose up -d --no-deps --remove-orphans app realtime
+        - docker compose --profile workers up -d --no-deps email-worker notification-worker
+        - docker image prune -f
+    when:
+      branch: main
+      event: push
+
+# ── Notificações ──────────────────────────────────────────────────────────
+notify:
+  telegram:
+    image: plugins/telegram
+    settings:
+      token:
+        from_secret: telegram_token
+      chat:
+        from_secret: telegram_chat_id
+    when:
+      status: [failure, success]
