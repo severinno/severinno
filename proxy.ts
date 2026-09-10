@@ -296,6 +296,7 @@ const PUBLIC_API = new Set([
   "/api/health",
   "/api/health/detailed",
   "/api/stats/public",
+  "/api/stats/activity",
   "/api/reviews/recent",
   "/api/services",
   "/api/metrics",
