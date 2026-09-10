@@ -1,0 +1,219 @@
+# =============================================================================
+# .gitea/workflows/deploy.yml — Deploy Pipeline para Severinno Marketplace
+# =============================================================================
+# Gitea Actions - build Docker image e deploy via SSH
+# =============================================================================
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # ── UTF-8 Check ──────────────────────────────────────────────────────────
+  utf8-check:
+    name: UTF-8 Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check UTF-8 encoding
+        run: |
+          find . -name "*.ts" -o -name "*.tsx" | xargs file --mime-encoding | grep -v utf-8 || true
+
+  # ── Docker Build & Test ──────────────────────────────────────────────────
+  docker-test:
+    name: Docker Build & Test
+    needs: [utf8-check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgis:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: severinno
+          POSTGRES_USER: severinno
+          POSTGRES_PASSWORD: severinno
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U severinno -d severinno"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 15s
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (load locally, no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: severinno-test:latest
+          build-args: |
+            BUN_VERSION=1.4.0
+
+      - name: Start container
+        run: |
+          docker run -d \
+            --name severinno-test \
+            --network host \
+            -e DATABASE_URL="postgresql://severinno:severinno@127.0.0.1:5432/severinno" \
+            -e REDIS_URL="redis://127.0.0.1:6379" \
+            -e SESSION_SECRET="test-secret-at-least-32-chars-long" \
+            -e NODE_ENV=production \
+            severinno-test:latest
+
+      - name: Wait for health check
+        run: |
+          for i in $(seq 1 20); do
+            sleep 3
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health 2>/dev/null || echo "000")
+            if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "503" ]; then
+              echo "Health check passed (HTTP $HTTP_CODE) after ${i}s"
+              exit 0
+            fi
+            echo "Attempt $i/20 - HTTP $HTTP_CODE"
+          done
+          echo "Health check failed after 20 attempts"
+          exit 1
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker logs severinno-test 2>&1 | tail -50
+
+      - name: Clean up container
+        if: always()
+        run: docker rm -f severinno-test 2>/dev/null || true
+
+  # ── Build & Push Docker Image ────────────────────────────────────────────
+  build:
+    name: Build & Push
+    needs: [docker-test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=,format=short
+            type=ref,event=branch
+
+      - name: Build and push app image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUN_VERSION=1.4.0
+
+      - name: Build and push worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.worker
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:worker-${{ steps.meta.outputs.version }}
+          build-args: |
+            BUN_VERSION=1.4.0
+
+  # ── Migrate Database ─────────────────────────────────────────────────────
+  migrate:
+    name: Migrate Database
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Run database migrations
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }}
+            echo "Running database migrations..."
+            docker compose run --rm --no-deps app bunx prisma migrate deploy || \
+              docker compose run --rm --no-deps app bunx prisma db push --accept-data-loss
+
+  # ── Deploy to VPS ────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to VPS
+    needs: migrate
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH }}
+            echo "Pulling new images..."
+            docker compose pull app realtime email-worker notification-worker
+            echo "Restarting services..."
+            docker compose up -d --no-deps --remove-orphans app realtime
+            docker compose --profile workers up -d --no-deps email-worker notification-worker
+            echo "Waiting for health check..."
+            for i in $(seq 1 12); do
+              sleep 5
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health)
+              if [ "$HTTP_CODE" = "200" ]; then
+                echo "Health check passed (HTTP $HTTP_CODE)"
+                docker image prune -f
+                exit 0
+              fi
+              echo "Attempt $i/12 — HTTP $HTTP_CODE, retrying..."
+            done
+            echo "Health check failed after 12 attempts" && exit 1

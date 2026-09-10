@@ -1,0 +1,145 @@
+# =============================================================================
+# docker-compose.gitea.yml — Gitea + Caddy (HTTPS) + Act Runner
+# =============================================================================
+# Uso:
+#   docker compose -f docker-compose.gitea.yml --env-file deploy/.env.gitea up -d
+#
+# Acesso:
+#   Web UI: https://git.severinno.cloud
+#   SSH:    ssh -p 2222 git@git.severinno.cloud
+#
+# NOTA: Este arquivo e o mesmo que deploy/docker-compose.gitea.yml.
+#       Mantido na raiz para conveniencia.
+# =============================================================================
+
+services:
+  # ── Caddy (Reverse Proxy + SSL Automatico) ──────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - ./deploy/Caddyfile.gitea:/etc/caddy/Caddyfile:ro
+      - gitea-caddy-data:/data
+      - gitea-caddy-config:/config
+      - gitea-caddy-logs:/var/log/caddy
+    networks:
+      - gitea-net
+    depends_on:
+      gitea:
+        condition: service_healthy
+    healthcheck:
+      start_period: 60s
+      test: ["CMD", "wget", "-s", "-q", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Gitea (Self-Hosted Git) ────────────────────────────────────────────
+  gitea:
+    image: gitea/gitea:1.22
+    container_name: gitea
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - SETUID
+      - SETGID
+    environment:
+      - GITEA__database__DB_TYPE=sqlite3
+      - GITEA__database__PATH=/data/gitea/gitea.db
+      - GITEA__server__DOMAIN=git.severinno.cloud
+      - GITEA__server__SSH_DOMAIN=git.severinno.cloud
+      - GITEA__server__SSH_PORT=2222
+      - GITEA__server__HTTP_PORT=3000
+      - GITEA__server__ROOT_URL=https://git.severinno.cloud/
+      - GITEA__server__DISABLE_SSH=false
+      - GITEA__server__START_SSH_SERVER=true
+      - GITEA__actions__ENABLED=true
+      - GITEA__actions__DEFAULT_ACTIONS_URL=https://github.com
+      - GITEA__security__INSTALL_LOCK=true
+      - GITEA__mailer__ENABLED=false
+      - GITEA__log__MODE=console
+      - GITEA__log__LEVEL=info
+    volumes:
+      - gitea-data:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    expose:
+      - "3000"
+    ports:
+      - "2222:22"
+    networks:
+      - gitea-net
+    healthcheck:
+      test: ["CMD", "curl", "-fsSL", "http://localhost:3000/api/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Gitea Act Runner (CI/CD) ────────────────────────────────────────────
+  runner:
+    image: gitea/act_runner:latest
+    container_name: gitea-runner
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      gitea:
+        condition: service_healthy
+    environment:
+      - GITEA_INSTANCE_URL=http://gitea:3000
+      - GITEA_RUNNER_REGISTRATION_TOKEN=${RUNNER_TOKEN}
+      - GITEA_RUNNER_NAME=vps-runner
+      - GITEA_RUNNER_LABELS=ubuntu-latest:docker://node:20-bullseye,ubuntu-22.04:docker://node:20-bullseye
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - gitea-runner-data:/data
+    networks:
+      - gitea-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  gitea-data:
+    name: gitea-data
+  gitea-runner-data:
+    name: gitea-runner-data
+  gitea-caddy-data:
+    name: gitea-caddy-data
+  gitea-caddy-config:
+    name: gitea-caddy-config
+  gitea-caddy-logs:
+    name: gitea-caddy-logs
+
+networks:
+  gitea-net:
+    driver: bridge

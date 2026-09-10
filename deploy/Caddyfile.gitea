@@ -1,0 +1,88 @@
+# =============================================================================
+# Caddyfile.gitea — HTTPS Reverse Proxy para Gitea Self-Hosted
+# =============================================================================
+# HTTPS automatico via Let's Encrypt / ZeroSSL.
+# O Caddy faz proxy reverso para o Gitea (porta 3000) e suporta
+# SSE para Gitea Actions.
+#
+# Uso: Montar como volume no docker-compose.gitea.yml
+# =============================================================================
+
+{
+  email admin@severinno.cloud
+  admin 0.0.0.0:2019
+  ocsp_stapling on
+  storage file:///data/caddy
+}
+
+# =============================================================================
+# DOMINIO PRINCIPAL — git.severinno.cloud (Gitea Web UI)
+# =============================================================================
+git.severinno.cloud {
+  encode zstd gzip
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    -Server
+    -X-Powered-By
+  }
+
+  # Health check interno
+  handle /health {
+    respond "OK" 200 {
+      close
+    }
+  }
+
+  # Gitea Actions SSE (Server-Sent Events) — streaming
+  handle /api/actions/* {
+    reverse_proxy gitea:3000 {
+      header_up Host {host}
+      header_up X-Real-IP {remote_host}
+      header_up X-Forwarded-For {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+      flush_interval -1
+    }
+  }
+
+  # Tudo o mais → Gitea
+  handle {
+    reverse_proxy gitea:3000 {
+      header_up Host {host}
+      header_up X-Real-IP {remote_host}
+      header_up X-Forwarded-For {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+
+      health_uri /
+      health_interval 30s
+      health_timeout 5s
+      health_status 200
+    }
+  }
+
+  log {
+    output file /var/log/caddy/gitea-access.log {
+      roll_size 50mb
+      roll_keep 3
+      roll_keep_for 720h
+    }
+    format transform "{request>remote_ip} - {request>user_id} [{ts}] \"{request>method} {request>uri} {request>proto}\" {status} {size} \"{request>headers>Referer}\" \"{request>headers>User-Agent}\""
+    level INFO
+  }
+
+  handle_errors {
+    @4xx {
+      expression {http.error.status_code} >= 400
+      expression {http.error.status_code} < 500
+    }
+    handle @4xx {
+      respond "{http.error.status_code} {http.error.status_text}" {http.error.status_code}
+    }
+    handle {
+      respond "Service Unavailable" 503
+    }
+  }
+}
