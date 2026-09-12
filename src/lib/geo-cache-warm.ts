@@ -215,7 +215,9 @@ export async function warmGeoCache(): Promise<WarmResult> {
   for (const bairro of TOP_NEIGHBORHOODS) allKeys.push(`geo:search:${normalizeCacheKey(bairro)}:5`)
   for (const capital of MISSING_CAPITALS) allKeys.push(`geo:search:${normalizeCacheKey(capital)}:5`)
 
-  const cachedKeys = await batchCheckCached(allKeys)
+  // Deduplicate to avoid redundant MGET entries
+  const uniqueKeys = [...new Set(allKeys)]
+  const cachedKeys = await batchCheckCached(uniqueKeys)
 
   // ── 2. Warm only missing keys ──────────────────────────────────────────
   let logSearches = 0

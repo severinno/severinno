@@ -54,7 +54,7 @@ const GEOFENCE_STATE_TTL = 3600
 const GEOFENCE_AUDIT_TTL = 86400
 
 /** Redis lock TTL in seconds to prevent duplicate geofence notifications. */
-const GEOFENCE_LOCK_TTL_SECONDS = 5
+const GEOFENCE_LOCK_TTL_SECONDS = 15
 
 /**
  * Check if a provider is inside any active booking's geofence.
@@ -191,8 +191,8 @@ export async function checkGeofences(
           )
 
           // Send notification to client
-          notifyGeofenceEvent(event, booking.client.name, booking.service.title).catch(() => {
-            // Notification is best-effort
+          notifyGeofenceEvent(event, booking.client.name, booking.service.title).catch((err) => {
+            logger.warn({ err, bookingId: booking.id }, "geofence: notification failed")
           })
         } else if (!isInside && wasInside && now - lastEventAt > debounceMs) {
           // Provider EXITED the geofence
@@ -223,10 +223,10 @@ export async function checkGeofences(
           }
         }
       } finally {
-        // Release lock (or let it expire via 5s TTL)
+        // Release lock (or let it expire via 15s TTL)
         if (redisForLock && lockAcquired) {
-          redisForLock.del(lockKey).catch(() => {
-            /* lock will expire via TTL */
+          redisForLock.del(lockKey).catch((err) => {
+            logger.debug({ err }, "geofencing: lock release failed, will expire via TTL")
           })
         }
       }

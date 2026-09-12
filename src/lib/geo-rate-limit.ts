@@ -268,6 +268,12 @@ async function redisSlidingWindow(
     pipeline.pexpire(key, config.windowMs * 2)
     const results = await pipeline.exec()
     if (results) {
+      // Check for individual command errors
+      const zcardError = results[1]?.[0]
+      if (zcardError) {
+        // ZCARD failed — fall through to in-memory fallback
+        throw zcardError
+      }
       // zcard is index 1 — returns [null, count]
       const count = (results[1]?.[1] as number) ?? 0
       const allowed = count < config.max

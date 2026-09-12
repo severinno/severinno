@@ -88,11 +88,20 @@ async function getRedisSubscriber() {
     const client = createClient("standalone")
     client.on("error", (err: Error) => {
       logger.warn({ err }, "[tracking-stream] redis subscriber error")
-      // Reset so next call to getRedisSubscriber() creates a new connection
+      // Disconnect old client to prevent socket leak
+      try {
+        client.quit().catch(() => client.disconnect())
+      } catch {}
+      // Clear stale channel subscriptions so next getRedisSubscriber() re-subscribes
+      subscribedChannels.clear()
+      channelHandlers.clear()
       redisSubscriber = null
     })
     client.connect().catch((err: Error) => {
       logger.warn({ err }, "[tracking-stream] redis subscriber connect failed")
+      try {
+        client.quit().catch(() => client.disconnect())
+      } catch {}
       redisSubscriber = null
     })
     redisSubscriber = client
@@ -109,10 +118,16 @@ async function getRedisPublisher() {
     const client = createClient("standalone")
     client.on("error", (err: Error) => {
       logger.warn({ err }, "[tracking-stream] redis publisher error")
+      try {
+        client.quit().catch(() => client.disconnect())
+      } catch {}
       redisPublisher = null
     })
     client.connect().catch((err: Error) => {
       logger.warn({ err }, "[tracking-stream] redis publisher connect failed")
+      try {
+        client.quit().catch(() => client.disconnect())
+      } catch {}
       redisPublisher = null
     })
     redisPublisher = client
@@ -261,12 +276,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             }
           }
           sseClients.delete(oldest[0])
-          // Also clean up its poller
+          // Also clean up its poller and Redis subscription
           const oldPoller = bookingPollers.get(oldest[0])
           if (oldPoller) {
             clearInterval(oldPoller.interval)
             bookingPollers.delete(oldest[0])
           }
+          unsubscribeFromBooking(oldest[0]).catch(() => {})
         }
       }
 

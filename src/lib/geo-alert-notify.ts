@@ -239,14 +239,18 @@ export async function resetGeoAlertDebounce(): Promise<void> {
   adminIdsCache = null
   // Clear all known Redis debounce keys
   const allTags = new Set([...lastPushByTag.keys(), ...lastSentryByTag.keys()])
-  for (const tag of allTags) {
-    try {
-      const { cacheInvalidate } = await import("@/lib/redis")
-      await cacheInvalidate(`${PUSH_DEBOUNCE_REDIS_KEY}${tag}`)
-      await cacheInvalidate(`${SENTRY_DEBOUNCE_REDIS_KEY}${tag}`)
-    } catch (err) {
-      logger.debug({ err }, "geo-alert-notify: debounce reset failed")
+  try {
+    const { cacheInvalidate } = await import("@/lib/redis")
+    for (const tag of allTags) {
+      try {
+        await cacheInvalidate(`${PUSH_DEBOUNCE_REDIS_KEY}${tag}`)
+        await cacheInvalidate(`${SENTRY_DEBOUNCE_REDIS_KEY}${tag}`)
+      } catch (err) {
+        logger.debug({ err }, "geo-alert-notify: debounce reset failed")
+      }
     }
+  } catch (err) {
+    logger.debug({ err }, "geo-alert-notify: Redis import failed")
   }
   lastPushByTag.clear()
   lastSentryByTag.clear()

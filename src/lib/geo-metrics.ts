@@ -100,6 +100,8 @@ function percentile(sorted: number[], p: number): number {
 export function recordGeoLatency(service: GeoServiceName, ms: number, error = false): void {
   if (!store[service]) return
   store[service].push({ ms, error, timestamp: Date.now() })
+  // Proactive pruning: prevent unbounded growth when getGeoMetrics() isn't called
+  if (store[service].length > MAX_SAMPLES * 1.5) prune(service)
 }
 
 /**

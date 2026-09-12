@@ -232,6 +232,7 @@ export function persistSnapshot(snapshot: PersistedSnapshot): void {
 
   debounceTimer = setTimeout(async () => {
     debounceTimer = null
+    if (flushing) return // flushGeoMetrics is handling it
     if (pendingSnapshot) {
       await writeSnapshot(pendingSnapshot)
       await rotateOldSnapshots()
@@ -353,7 +354,10 @@ export async function flushGeoMetrics(): Promise<void> {
   }
 }
 
+let shutdownHandlersInstalled = false
 function setupShutdownHandlers(): void {
+  if (shutdownHandlersInstalled) return
+  shutdownHandlersInstalled = true
   const handler = async () => {
     await flushGeoMetrics()
   }
