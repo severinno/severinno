@@ -175,8 +175,17 @@ jobs:
       - name: Check workflow → script/package.json/uses references
         run: node scripts/check-workflow-refs.mjs --pkg-internal
 
+      # O branch protection exige os checks declarados em ci/required-checks.json.
+      # Um required check que não corresponde a nenhum job real não falha: ele
+      # ESPERA — o PR trava para sempre. Aqui o manifesto é validado contra os
+      # workflows (job existe, não é condicional, contexto não duplicado).
+      # node direto (não `bun run`): este job não instala node_modules nem
+      # depende de bun no PATH — o guard é node-puro, de propósito.
+      - name: Required checks manifest ↔ workflows
+        run: node scripts/check-required-checks.mjs
+
       - name: Summary
-        run: echo "✅ No dangling references between workflows and scripts/package.json (incl. internal pkg targets)."
+        run: echo "✅ No dangling references between workflows and scripts/package.json (incl. internal pkg targets); required checks consistentes."
 
   # ── Sentinel Producer Guard ────────────────────────────────────────────
   # Fast gate (node puro, <1s): GENERALIZA a consistência produtor↔job de

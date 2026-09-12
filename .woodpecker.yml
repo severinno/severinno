@@ -26,6 +26,13 @@ pipeline:
       # Prova que o guard detecta regressão (sandbox isolado em .tmp/).
       - bun run check:pii-gate
 
+  # O manifesto dos required checks precisa apontar para jobs reais e
+  # incondicionais — um required check inexistente faz o PR esperar para sempre.
+  required-checks:
+    image: oven/bun:1.4.0
+    commands:
+      - bun run check:required-checks
+
   typecheck:
     image: oven/bun:1.4.0
     commands:
@@ -64,6 +71,28 @@ pipeline:
     environment:
       SKIP_TYPESCRIPT_CHECK: "true"
       BUILD_STANDALONE: "true"
+
+# ── Pipeline de drift dos required checks (cron) ──────────────────────────
+# NÃO roda em PR/push: é vigilância periódica do branch protection da forja.
+# Os gates rodam em cada PR, mas quem BLOQUEIA o merge é a lista de required
+# status checks — estado da forja, fora do review. Um rename de `name:` de job
+# muda o contexto de status e o PR passa a esperar para sempre por um check que
+# nunca roda; nenhum teste de PR enxerga isso.
+#
+# Agende no Woodpecker um cron (Repo Settings → Cron) — sem cron criado, este
+# pipeline nunca dispara. Secrets: gitea_token + gitea_url.
+drift:
+  required-checks-drift:
+    image: oven/bun:1.4.0
+    commands:
+      - bun scripts/apply-required-checks.mjs --check --forge gitea
+    environment:
+      GITEA_TOKEN:
+        from_secret: gitea_token
+      GITEA_URL:
+        from_secret: gitea_url
+    when:
+      - event: cron
 
 # ── Pipeline de Deploy (apenas main) ──────────────────────────────────────
 deploy:

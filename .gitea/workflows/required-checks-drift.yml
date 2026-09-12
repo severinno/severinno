@@ -1,0 +1,78 @@
+# =============================================================================
+# .gitea/workflows/required-checks-drift.yml
+#
+# Equivalente Gitea do `.github/workflows/required-checks-drift.yml`: verifica
+# periodicamente que o branch protection de `main` exige exatamente os checks
+# declarados em `ci/required-checks.json`.
+#
+# Por que um cron separado: os gates rodam em CADA PR, mas quem bloqueia o
+# merge é a lista de required status checks — estado da forja, invisível em
+# review. Um rename de `name:` de job muda o CONTEXTO de status, o manifesto
+# passa a exigir um check que nunca roda e o PR trava para sempre. Nenhum teste
+# de PR enxerga isso (no PR o job novo existe e passa).
+#
+# Este workflow NÃO pode estar em `ci/required-checks.json`: roda por cron, não
+# em PR — exigi-lo travaria todo PR. (A invariante é travada por teste em
+# src/lib/__tests__/required-checks-manifest.test.ts.)
+#
+# Diferença para o lado GitHub: aqui não há `gh`, então o job FALHA com o diff
+# no log em vez de abrir issue. O alerta acionável (issue com dedup) é o do
+# GitHub, que é a forja primária; este é a vigilância do espelho Gitea.
+#
+# Secrets: `GITEA_TOKEN` (permissão de leitura em branch protection da org/repo)
+#          `GITEA_URL`   (ex.: https://gitea.exemplo.com)
+# O job é pulado com aviso quando os secrets não existem — não falha por falta
+# de espelho configurado, só por drift real.
+#
+# Usage:
+#   cron semanal (segunda 06:41 UTC) ou dispatch manual.
+# =============================================================================
+
+name: Required Checks Drift
+
+on:
+  schedule:
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  drift:
+    name: Required checks drift (branch protection ↔ manifest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      # `bun <script>` direto (não `bun run <entry>`): a entry do package.json
+      # invoca `node scripts/...`, e a imagem do runner Gitea não garante `node`
+      # no PATH — bun executa o .mjs nativamente. O guard é node-puro (sem deps),
+      # então não precisa de `bun install`.
+      - name: Check drift (report only)
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ secrets.GITEA_URL }}
+          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+        run: |
+          set +e
+          if [ -z "${GITEA_TOKEN:-}" ]; then
+            echo "::notice::GITEA_TOKEN ausente — pulando a checagem de drift do Gitea."
+            exit 0
+          fi
+          bun scripts/apply-required-checks.mjs --check --forge gitea --json \
+            > /tmp/required-checks-drift.json
+          CODE=$?
+          set -e
+          if [ "${CODE}" -ne 0 ]; then
+            echo "::error::Branch protection do Gitea divergiu de ci/required-checks.json. Correção: bun run ci:required-checks -- --apply"
+            cat /tmp/required-checks-drift.json
+            exit 1
+          fi
+
+env:
+  BUN_VERSION: "1.4.0"

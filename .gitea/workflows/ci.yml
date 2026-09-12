@@ -46,6 +46,12 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run lint
 
+      # O manifesto dos required checks precisa apontar para jobs REAIS e
+      # incondicionais — um required check inexistente não falha, ele faz o PR
+      # esperar para sempre.
+      - name: Required checks manifest
+        run: bun run check:required-checks
+
   # ── TypeScript check ─────────────────────────────────────────────────────
   typecheck:
     name: TypeCheck

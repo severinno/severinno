@@ -27,6 +27,8 @@
     "check:ts-nocheck": "node scripts/check-ts-nocheck.mjs",
     "check:pii-allowlist": "vitest run src/app/api/__tests__/response-pii-guard.test.ts src/lib/__tests__/prisma-client-single-source.test.ts",
     "check:pii-gate": "node scripts/verify-pii-gate.mjs",
+    "check:required-checks": "node scripts/check-required-checks.mjs",
+    "ci:required-checks": "node scripts/apply-required-checks.mjs",
     "test:e2e:pii": "playwright test e2e/provider-public-payload.spec.ts --project=chromium --reporter=list",
     "check:seed-hooks": "node scripts/check-seed-hooks.mjs",
     "check:workflow-refs": "node scripts/check-workflow-refs.mjs",

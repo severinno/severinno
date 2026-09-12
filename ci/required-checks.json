@@ -1,0 +1,35 @@
+{
+  "$comment": [
+    "Fonte ÚNICA dos checks obrigatórios para merge em `main`.",
+    "",
+    "Os itens são IDs DE JOB do workflow, não os nomes exibidos: renomear o",
+    "`name:` de um job não muda o que está protegido, e remover um job faz o",
+    "guard falhar (scripts/check-required-checks.mjs) em vez de deixar todo PR",
+    "travado esperando para sempre um check que nunca vai rodar.",
+    "",
+    "Aplicado por scripts/apply-required-checks.mjs (dry-run por padrão).",
+    "Valide com `bun run check:required-checks`."
+  ],
+  "version": 1,
+  "branches": ["main"],
+  "forges": {
+    "github": {
+      "workflow": ".github/workflows/pr-check.yml",
+      "jobs": [
+        "utf8-check",
+        "secrets-guard",
+        "workflow-refs-guard",
+        "actionlint",
+        "lint-guard",
+        "typecheck",
+        "check",
+        "security-headers",
+        "pii-allowlist-guard"
+      ]
+    },
+    "gitea": {
+      "workflow": ".gitea/workflows/ci.yml",
+      "jobs": ["lint", "typecheck", "test", "build"]
+    }
+  }
+}

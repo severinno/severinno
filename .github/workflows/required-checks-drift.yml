@@ -1,0 +1,138 @@
+# =============================================================================
+# Required Checks Drift (semanal)
+#
+# O `ci/required-checks.json` declara quais checks o branch protection de `main`
+# DEVE exigir. Os gates rodam como jobs em CADA PR — mas quem bloqueia o merge é
+# essa lista, que é estado da forja e não aparece em nenhum review.
+#
+# POR QUE UM CRON: um rename de `name:` de job muda o CONTEXTO de status. O
+# manifesto (e o branch protection) passam a exigir um check que nunca roda — e
+# o PR trava esperando para sempre, com diagnóstico opaco ("Expected — Waiting
+# for status to be reported"). Nenhum teste de PR pega isso: no PR, o job novo
+# existe e passa. A divergência só é visível olhando a forja.
+#
+# Este workflow é o olho: roda `apply-required-checks.mjs --check`, que apenas
+# LÊ o branch protection, e publica uma issue quando diverge. Ele NÃO está — e
+# não pode estar — em `ci/required-checks.json`: roda por cron/dispatch, não em
+# PR, então exigi-lo como required check travaria todo PR para sempre.
+# (O teste `required-checks-manifest.test.ts` trava essa invariante.)
+#
+# Por que issue e não só "job vermelho": ver `required-checks-drift-issue.mjs`
+# — um cron que fica vermelho é alerta mudo. A issue carrega o diff exato e o
+# comando de correção, com dedup por assinatura (não repete toda semana).
+#
+# ⚠️ REQUER O SECRET `REQUIRED_CHECKS_TOKEN` com permissão de ADMINISTRAÇÃO no
+# repo: o `GITHUB_TOKEN` padrão não lê branch protection (403). PAT clássico com
+# scope `repo`, ou fine-grained com "Administration: read".
+#
+# Sem o secret a checagem NÃO é pulada: o applier produz um relatório de erro,
+# a issue é aberta com a explicação e o cron fica vermelho. Um drift que não
+# pode ser medido é tão grave quanto o drift — pular a verificação por falta de
+# credencial é como ficar sem o gate, só que sem avisar ninguém.
+#
+# Secrets OPCIONAIS (Gitea): `GITEA_TOKEN` + `GITEA_URL` (+ `GITEA_REPOSITORY`,
+# default `${{ github.repository }}`). Ausentes = a forja é pulada com aviso,
+# sem falhar o job.
+#
+# Usage:
+#   cron semanal (segunda 06:41 UTC) ou `workflow_dispatch` manual.
+#
+# Exit codes (dos steps):
+#   0 — branch protection em sincronia com o manifesto
+#   1 — drift detectado (a issue é publicada ANTES de o job falhar)
+# =============================================================================
+
+name: Required Checks Drift
+
+on:
+  schedule:
+    # Segunda 06:41 UTC — depois dos mirrors/mutations (03:00-06:15) para não
+    # competir por runner; o resultado não depende deles, só o horário é quieto.
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write # criar/comentar a issue de drift
+
+concurrency:
+  group: required-checks-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: Required checks drift (branch protection ↔ manifest)
+    runs-on: self-hosted
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Avisa cedo no log (o step seguinte reporta o erro na ISSUE) ────────
+      # Não falha aqui de propósito: se falhasse, o step da issue nunca rodaria
+      # e o alerta viraria um cron vermelho sem ticket — exatamente o "alerta
+      # mudo" que este workflow existe para eliminar.
+      - name: Warn if REQUIRED_CHECKS_TOKEN is missing
+        env:
+          DRIFT_TOKEN: ${{ secrets.REQUIRED_CHECKS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DRIFT_TOKEN}" ]; then
+            echo "::warning::Secret REQUIRED_CHECKS_TOKEN não definido. Ler o branch protection exige permissão de ADMINISTRAÇÃO no repo (o GITHUB_TOKEN padrão responde 403). Crie um PAT clássico com scope 'repo' (ou fine-grained com 'Administration: read') e salve como secret REQUIRED_CHECKS_TOKEN."
+          else
+            echo "  ✅ REQUIRED_CHECKS_TOKEN presente"
+          fi
+
+      # ── Lê a forja e grava o relatório JSON (nunca escreve) ──────────────
+      # `--forge all` só quando o Gitea está configurado: o applier falha se
+      # GITEA_TOKEN estiver ausente, e um erro de configuração viraria "drift"
+      # falso na issue toda semana.
+      - name: Check drift (report only)
+        id: drift
+        env:
+          GITHUB_TOKEN: ${{ secrets.REQUIRED_CHECKS_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ secrets.GITEA_URL }}
+          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+        run: |
+          set +e
+          FORGE=github
+          if [ -n "${GITEA_TOKEN:-}" ]; then
+            FORGE=all
+          else
+            echo "::notice::GITEA_TOKEN ausente — verificando apenas o GitHub."
+          fi
+          node scripts/apply-required-checks.mjs --check --forge "${FORGE}" \
+            --json > /tmp/required-checks-drift.json 2>/tmp/required-checks-drift.log
+          CODE=$?
+          set -e
+          cat /tmp/required-checks-drift.log
+          echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
+          echo "  relatório: /tmp/required-checks-drift.json ($(wc -c < /tmp/required-checks-drift.json) bytes)"
+
+      # ── Publica/atualiza a issue (usa o GITHUB_TOKEN do runner) ──────────
+      - name: Publish drift issue
+        if: steps.drift.outputs.exit_code != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/required-checks-drift-issue.mjs \
+            --report /tmp/required-checks-drift.json
+
+      # ── Falha o cron também: a issue é o alerta, o vermelho é a lembrança ──
+      - name: Fail on drift
+        if: steps.drift.outputs.exit_code != '0'
+        run: |
+          echo "::error::Branch protection divergiu de ci/required-checks.json. Veja a issue 'required-checks-drift' (correção: bun run ci:required-checks -- --apply)."
+          exit 1
+
+      # ── Relatório como artifact (debug sem re-rodar) ─────────────────────
+      - name: Upload drift report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: required-checks-drift-report
+          path: /tmp/required-checks-drift.json
+          if-no-files-found: ignore
