@@ -36,18 +36,38 @@ echo "   registry desta forja: \${IMAGE_REGISTRY}"
           "shell": "bash",
         },
         {
-          "name": "Prova 2 — composite local resolve e executa",
-          "uses": "./.github/actions/setup-bun",
+          "name": "Restore Bun cache",
+          "uses": "actions/cache@v4",
           "with": {
-            "bun-version": "\${{ vars.BUN_VERSION }}",
+            "key": "bun-\${{ vars.BUN_VERSION }}-\${{ runner.os }}-\${{ runner.arch }}",
+            "path": "~/.bun",
           },
+        },
+        {
+          "name": "Prova 2 — setup por run: + tier-1 da imagem do runner",
+          "run": "set -euo pipefail
+OUT="$(bash scripts/setup-bun-ci.sh "\${{ vars.BUN_VERSION }}" 2>&1)"
+printf '%s\\n' "$OUT"
+if ! grep -q 'Usando Bun pré-instalado:' <<<"$OUT"; then
+  echo "::error::tier-1 NAO disparou: a imagem do runner nao embarca o Bun \${{ vars.BUN_VERSION }}."
+  echo "  O setup FUNCIONOU (caiu no cache/mirror/release) — mas o fast path de 0s,"
+  echo "  que e a razao de a forja rodar numa imagem custom, nao engajou."
+  echo "  Remedio: aponte GITEA_RUNNER_LABELS para <registry>/<owner>/ubuntu-bun:<versao>"
+  echo "  em deploy/docker-compose.gitea.yml E RE-REGISTRE o runner (docker compose rm"
+  echo "  -sf runner + docker volume rm gitea-runner-data + docker compose up -d runner)."
+  echo "  Passo a passo em deploy/GITEA.md, secao 'Runner: a imagem que roda os jobs'."
+  exit 1
+fi
+echo "✅ tier-1 engajou (a imagem do runner embarca o Bun da variable)"
+",
+          "shell": "bash",
         },
         {
           "name": "Prova 3 — runtime == vars.BUN_VERSION",
           "run": "set -euo pipefail
 if ! command -v bun >/dev/null 2>&1; then
-  echo "::error::bun nao esta no PATH depois do composite — o setup nao concluiu."
-  echo "  cache: o tier 2/3 depende de actions/cache; sem cache-hit ele baixa o release."
+  echo "::error::bun nao esta no PATH depois do script de setup — o setup nao concluiu."
+  echo "  cache: o tier 3 depende de docker (mirror OCI) ou de curl (release); veja o log acima."
   exit 1
 fi
 ACTUAL="$(bun --version)"
@@ -64,10 +84,43 @@ echo "✅ bun \${ACTUAL} == vars.BUN_VERSION"
           "shell": "bash",
         },
         {
-          "name": "Prova 4 — install congelado + guard node-puro",
+          "name": "Prova 4 — install congelado + guards node-puros (render do compose EXIGIDO)",
           "run": "bun install --frozen-lockfile
-bun run check:registry-source
+bun run check:registry-source --require-compose
 ",
+        },
+        {
+          "name": "Prova 5 — o registro do runner é o do compose",
+          "run": "set -uo pipefail
+OUT="$(bun run runner-labels:check 2>&1)"
+CODE=$?
+printf '%s\\n' "$OUT"
+case "$CODE" in
+  0)
+    echo "✅ o registro do act_runner é o que o compose declara"
+    ;;
+  1)
+    echo "::error::REGISTRO VELHO: os labels gravados em /data/.runner não são os do compose."
+    echo "  O runner usa os labels do REGISTRO (não relê o compose): o job cai na imagem antiga,"
+    echo "  sem o Bun pré-instalado, e o download do Bun volta em TODO job — sem outro sintoma."
+    echo "  Remédio: bash deploy/gitea-up.sh --re-register"
+    echo "  Ver deploy/GITEA.md, seção 'Runner: a imagem que roda os jobs'."
+    exit 1
+    ;;
+  3)
+    echo "::error::NÃO PROVADO: o registro não pôde ser lido — a comparação NÃO aconteceu."
+    echo "  Exige o docker disponível no job (o runner monta /var/run/docker.sock por padrão;"
+    echo "  'container.docker_host: -' desliga essa montagem) e o container do runner no ar."
+    echo "  Um smoke verde aqui seria mentira: a invariante seguiria não verificada."
+    exit 1
+    ;;
+  *)
+    echo "::error::runner-labels:check saiu $CODE (env/uso) — veja a saída acima."
+    exit 1
+    ;;
+esac
+",
+          "shell": "bash",
         },
         {
           "if": "always()",
@@ -80,6 +133,7 @@ echo "bun --version    : $(bun --version 2>/dev/null || echo '<ausente>')"
 echo "node             : $(node --version 2>/dev/null || echo '<ausente>')"
 echo "docker           : $(docker --version 2>/dev/null || echo '<ausente>')"
 echo "IMAGE_REGISTRY   : \${IMAGE_REGISTRY:-<vazio>} (fallback = ghcr.io)"
+echo "registro do runner: $(docker exec gitea-runner cat /data/.runner 2>/dev/null | head -c 400 || echo '<nao lido / sem docker>')"
 echo "========================================================================="
 ",
           "shell": "bash",

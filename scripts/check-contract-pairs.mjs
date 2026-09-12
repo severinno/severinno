@@ -17,12 +17,12 @@
 //   - mode "contains": cada contrato tem marker + files[]; o marcador deve
 //     existir como substring em TODOS os arquivos.
 //
-// Contratos reais wireados (fonte da verdade = mutation test + action):
+// Contratos reais wireados (fonte da verdade = mutation test + script):
 //   1. BUDGET_MAX=240 (mutation test)   ↔ --max 240 (jobs do CI)      — equal
 //   2. --warn-median 4  (mutation test)  ↔ --warn-median 4 (jobs CI)   — equal
 //   3. --warn-margin 0.2 (mutation test) ↔ --warn-margin 0.2 (jobs CI) — equal
-//   4. 'Usando Bun pré-instalado'        (action setup-bun ↔ guard)   — contains
-//   5. 'Use pre-installed Bun (fast path)' (action ↔ guard tier-1)     — contains
+//   4. 'Usando Bun pré-instalado'      (script setup-bun-ci.sh ↔ guard) — contains
+//   5. 'Restore Bun cache'  (workflow pr-check ↔ guard tier-2)         — contains
 //
 // NOTA (BUDGET_WARN/BUDGET_ALERT): NÃO são wireados de propósito — a faixa
 // soft dos jobs virou DERIVADA da mediana (--warn-median) e o --alert só
@@ -116,13 +116,18 @@ export const CONTRACTS = [
     name: "marcador tier-1 'Usando Bun pré-instalado'",
     mode: "contains",
     marker: "Usando Bun pré-instalado",
-    files: [".github/actions/setup-bun/action.yml", "scripts/check-tier1-fastpath.mjs"],
+    files: ["scripts/setup-bun-ci.sh", "scripts/check-tier1-fastpath.mjs"],
   },
   {
-    name: "step tier-1 'Use pre-installed Bun (fast path)'",
+    // O par canônico do repo nomeia o step de cache e o guard de tier-2 casa
+    // esse NOME no log do act. Se um lado mudar sozinho, o guard fica cego
+    // (não acha a evidência e reporta passo ausente) — esta é a costura que
+    // impede isso. O nome é o mesmo em TODAS as forjas (o par é copiado
+    // byte a byte pelo check:bun-mirror, que trava a key ao lado dele).
+    name: "step de cache 'Restore Bun cache'",
     mode: "contains",
-    marker: "Use pre-installed Bun (fast path)",
-    files: [".github/actions/setup-bun/action.yml", "scripts/check-tier1-fastpath.mjs"],
+    marker: "Restore Bun cache",
+    files: [".github/workflows/pr-check.yml", "scripts/check-tier2-cache-restore.mjs"],
   },
 ]
 

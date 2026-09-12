@@ -44,13 +44,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Composite local (mesmo contrato da ci.yml) — a forja não usa mais o
-      # action externo, que re-baixa o release do Bun em todo job.
-      - name: Setup Bun
-        uses: ./.github/actions/setup-bun
+      # Mesmo contrato da ci.yml: script + cache, sem composite local.
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       # `bun <script>` direto (não `bun run <entry>`): a entry do package.json
       # invoca `node scripts/...`, e a imagem do runner Gitea não garante `node`
       # no PATH — bun executa o .mjs nativamente. O guard é node-puro (sem deps),

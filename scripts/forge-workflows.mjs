@@ -48,10 +48,17 @@ export const GITEA_WORKFLOW_DIR = ".gitea/workflows"
 export const FORGE_WORKFLOW_DIRS = [GITHUB_WORKFLOW_DIR, GITEA_WORKFLOW_DIR]
 
 /**
- * Diretorios de composite actions locais. O Gitea/Forgejo resolve actions
- * locais a partir do workspace, entao `.github/actions` vale para as duas
- * forjas; `.gitea/actions` existe como espelho opcional (caso a runner nao
- * resolva o caminho do GitHub).
+ * Diretorios de composite actions locais, VARRIDOS pelos guards para que uma
+ * action local em qualquer forja deixe de ser invisivel. Hoje so
+ * `.github/actions` e referenciado.
+ *
+ * NAO use esta lista para "consertar" resolucao de action local. O act_runner
+ * resolve `uses: ./<path>` como `filepath.Join(Config.Workdir, <path>)`
+ * (gitea/act, pkg/runner/step_action_local.go) — o NOME do diretorio nao entra
+ * na conta. Ou seja: `.gitea/actions/setup-bun` NAO resolve onde
+ * `.github/actions/setup-bun` falha; com o mesmo Workdir, ambos resolvem ou
+ * nenhum resolve. A lista existe para COBERTURA dos guards, nao como plano B de
+ * resolucao. Remedios reais em deploy/GITEA.md, secao "Smoke test da forja".
  */
 export const FORGE_ACTIONS_DIRS = [".github/actions", ".gitea/actions"]
 

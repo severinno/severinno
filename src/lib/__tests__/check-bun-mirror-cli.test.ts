@@ -47,19 +47,20 @@ function runGuard(cwd: string): { status: number | null; out: string } {
 /**
  * Cria um repo fake com o MÍNIMO para o validateMirror passar (senão o guard
  * falharia por motivo ALHEIO ao cache key↔path — o teste quer isolar o scan
- * de keys): mirror com env.BUN_VERSION = vars.BUN_VERSION, action sem default
- * + ref a inputs.bun-version + ref ao mirror GHCR, TODOS os 5 Dockerfiles da
- * lista DOCKERFILES (invariante 13: checkDockerfiles falha se um estiver
- * ausente — um fixture sem eles falharia por motivo alheio) e .actrc
- * definindo BUN_VERSION.
+ * de keys): mirror com env.BUN_VERSION = vars.BUN_VERSION, o SCRIPT do setup
+ * (scripts/setup-bun-ci.sh — o setup é um `run:`, não mais um composite) que
+ * lê a versão do ARGUMENTO, puxa do mirror OCI e mantém o marcador tier-1,
+ * TODOS os 5 Dockerfiles da lista DOCKERFILES (invariante 13: checkDockerfiles
+ * falha se um estiver ausente — um fixture sem eles falharia por motivo
+ * alheio) e .actrc definindo BUN_VERSION.
  */
 function makeBaseRepo(name: string): string {
   const dir = join(ROOT_TMP, name)
   const wfDir = join(dir, ".github", "workflows")
-  const actionDir = join(dir, ".github", "actions", "setup-bun")
+  const scriptsDir = join(dir, "scripts")
   const realtimeDir = join(dir, "mini-services", "realtime")
   mkdirSync(wfDir, { recursive: true })
-  mkdirSync(actionDir, { recursive: true })
+  mkdirSync(scriptsDir, { recursive: true })
   mkdirSync(realtimeDir, { recursive: true })
 
   writeFileSync(
@@ -76,20 +77,15 @@ jobs:
     "utf8",
   )
   writeFileSync(
-    join(actionDir, "action.yml"),
-    `inputs:
-  bun-version:
-    required: false
-runs:
-  using: composite
-  steps:
-    - name: Resolve Bun version
-      run: |
-        VERSION="\${{ inputs.bun-version }}"
-    - name: Download Bun release (cold cache)
-      run: |
-        MIRROR="ghcr.io/\${GHCR_OWNER}/bun:\${BUN_VERSION}"
-        docker pull "$MIRROR"
+    join(scriptsDir, "setup-bun-ci.sh"),
+    `set -euo pipefail
+VERSION="\${1:-}"
+if command -v bun >/dev/null 2>&1; then
+  echo "✅ Usando Bun pré-instalado: \${FOUND} (0s, sem download)"
+  exit 0
+fi
+MIRROR="ghcr.io/\${GHCR_OWNER}/bun:\${BUN_VERSION}"
+docker pull "$MIRROR"
 `,
     "utf8",
   )

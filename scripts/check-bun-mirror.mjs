@@ -8,12 +8,18 @@
 //
 // FONTE ÚNICA: a versão pinada do Bun vive na repository variable
 // vars.BUN_VERSION (Settings → Secrets and variables → Actions). Todos os
-// workflows passam `bun-version: ${{ vars.BUN_VERSION }}`, o sync-bun-mirror
-// usa a mesma variável no env, e o composite action resolve a versão DO
-// INPUT (callers passam o valor resolvido no workflow — vars NÃO resolve
-// dentro de composite action no act 0.2.89, ver header do action.yml).
-// Metadata de action NÃO avalia ${{ }}, então o default é proibido. Trocar
-// o Bun = alterar a variável em UM lugar.
+// workflows passam a versão como ARGUMENTO do script do setup
+// (`run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"`) e o
+// sync-bun-mirror usa a mesma variável no env. Trocar o Bun = alterar a
+// variável em UM lugar.
+//
+// HISTÓRICO: o setup foi um composite action local
+// (`.github/actions/setup-bun`) e a versão entrava por input. Ele saiu para
+// `scripts/setup-bun-ci.sh` — chamado por `run:`, que NÃO passa pelo
+// resolvedor de actions locais do runner — e o contrato virou "a versão é o
+// ARGUMENTO". As checagens abaixo foram retargetadas para o script junto com
+// ele (nada de validador de YAML aplicado a shell: ver
+// findBunLiteralDefaultInScript).
 //
 // Usage:
 //   node scripts/check-bun-mirror.mjs                  # invariantes globais
@@ -30,16 +36,16 @@
 //   1. O workflow do mirror EXISTE (sync-bun-mirror.yml).
 //   2. env.BUN_VERSION do mirror referencia ${{ vars.BUN_VERSION }} (não um
 //      literal — um literal criaria um segundo ponto de verdade).
-//   3. O action.yml (setup-bun) NÃO tem default literal para bun-version
-//      (metadata de action é estática — um default literal nunca poderia
-//      casar com a variável e viraria drift silencioso). A versão resolve
-//      em runtime do input bun-version (que os callers resolvem de
-//      vars.BUN_VERSION no workflow).
-//   4. O action.yml referencia ${{ inputs.bun-version }} no step de resolve
-//      (o composite NÃO lê vars internamente — act 0.2.89 não resolve vars
-//      em composite actions; o valor entra via input).
-//   5. O action.yml (tier 3, cold cache) referencia o mirror GHCR
-//      (ghcr.io/<owner>/bun:<versão>) — sem reverter para download direto.
+//   3. O SCRIPT do setup (scripts/setup-bun-ci.sh) NÃO tem default literal de
+//      versão — a versão entra SÓ pelo argumento (um default no script seria
+//      o segundo ponto de verdade, e o `bun-v<semver>` da URL de download não
+//      o pegaria).
+//   4. O SCRIPT lê a versão do PRIMEIRO ARGUMENTO posicional (é o único
+//      caminho pelo qual a versão entra na implementação).
+//   5. O SCRIPT (tier 3, cold cache) referencia o mirror OCI
+//      (<registry>/<owner>/bun:<versão>) — sem reverter para download direto.
+//      (invariantes 3-5 valiam para o action.yml do composite removido; os
+//      mesmos contratos recaem hoje sobre o script.)
 //   6. O Dockerfile.bun-mirror existe (senão o mirror quebra no cron/CI).
 //   7. Toda cache key bun-/prisma- nos workflows referencia
 //      ${{ vars.BUN_VERSION }} (ex.: key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}).
@@ -63,7 +69,7 @@
 //      toolchain errada). No modo --staged, a REMOÇÃO do path:/key: de um
 //      bloco actions/cache que SOBREVIVE no novo arquivo é violação de
 //      regressão (checkStagedRemovedCacheBlockFields) — espelha o
-//      checkStagedRemovedBunVersion: remover o path/key deixa o bloco sem o
+//      checkStagedRemovedSetupBunCall: remover o path/key deixa o bloco sem o
 //      par key↔path, quebrando o cache no restore.
 //   8. NENHUM literal de versão do Bun nos workflows (bun-version: 1.3.14,
 //      BUN_VERSION: "1.3.14", bun-1.3.14-...) — o guard caça versões
@@ -78,9 +84,9 @@
 //      site sem bun-version adicionado pelo próprio PR falha antes do merge,
 //      mesmo que o working tree global já esteja certo. Só linhas ADICIONADAS
 //      (+ no diff) são avaliadas — violações pré-existentes do base não
-//      poluem o PR (no call site, o bun-version pode estar numa linha de
-//      CONTEXTO — ex.: migração de oven-sh/setup-bun@v2 — por isso o check
-//      usa o parser rico).
+//      poluem o PR (a chamada pode estar CAPTURADA, em `$(...)`, ou com
+//      `# nota` no fim — por isso o check extrai o ARGUMENTO, não o resto da
+//      linha).
 //      REGRESSÃO INVERSA (checkStagedRemovedLiterals): um literal REMOVIDO
 //      pelo diff (linha `-` — o PR está migrando aquele literal para a fonte
 //      única) com OUTRO literal SOBREVIVENTE na mesma região (janela
@@ -88,13 +94,12 @@
 //      tocou a família de literais mas deixou um para trás. O checkStagedLiterals
 //      (só linhas +) não pega um literal de CONTEXTO; este check espelha o
 //      checkStagedRemovedCacheBlockFields para a família de literais.
-//  11. TODO call site do setup-bun passa `bun-version: ${{ vars.BUN_VERSION }}`
-//      (omitir o input ou usar literal é violação — sem ele o action falha
-//      em runtime com mensagem confusa). No modo --staged, call sites cuja
-//      linha `uses:` foi adicionada pelo diff são avaliados — E a REMOÇÃO
-//      do input bun-version de um call site que SOBREVIVEU (linha `uses:`
-//      de contexto/adicionada + `bun-version:` removido no diff) é
-//      violação de regressão (checkStagedRemovedBunVersion).
+//  11. TODO call site do setup passa a versão como argumento do SCRIPT
+//      (`bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"`; omitir o
+//      argumento ou usar literal é violação). No modo --staged, chamadas
+//      introduzidas pelo diff são avaliadas — E a REMOÇÃO da chamada de um
+//      job que SOBREVIVEU é violação de regressão
+//      (checkStagedRemovedSetupBunCall): o job ficaria sem Bun.
 //  12. Arquivos de workflow são escaneados nas DUAS extensões (.yml E .yaml)
 //      — um workflow com extensão alternativa não escapa dos checks de
 //      cache key/literal/call site/par key↔path (global E staged).
@@ -131,11 +136,11 @@ import { execFileSync } from "node:child_process"
 export const BUN_VERSION_VAR = "${{ vars.BUN_VERSION }}"
 
 /**
- * Janela (em linhas) após um `uses:` para procurar o `bun-version:` —
- * compartilhada entre o scan global (checkSetupBunCallSites) e o scan de diff
- * (checkStagedSetupBunCallSites), sem drift entre as duas janelas.
+ * Script que SUBSTITUIU o composite action local como setup do Bun. É chamado
+ * por `run:` — que NÃO passa pelo resolvedor de actions locais do runner — e
+ * recebe a versão como ARGUMENTO (ver o header do próprio script).
  */
-export const CALL_SITE_WINDOW = 6
+export const SETUP_BUN_SCRIPT = "scripts/setup-bun-ci.sh"
 
 /**
  * Janela (em linhas) do bloco `with:` de um actions/cache — cobre o caso
@@ -149,7 +154,7 @@ export const CACHE_BLOCK_WINDOW = 14
  * Contexto de linhas pedido ao `git diff` (flag -U) no modo --staged/--base.
  * O default do git é 3 linhas — INSUFICIENTE para os checks de REMOÇÃO com
  * janela (checkStagedRemovedLiterals, checkStagedRemovedCacheBlockFields,
- * checkStagedRemovedBunVersion): um literal/path/input SOBREVIVENTE a poucas
+ * checkStagedRemovedSetupBunCall): um literal/path/input SOBREVIVENTE a poucas
  * linhas de distância da mudança não apareceria no diff como contexto e o
  * check não o enxergaria (falso negativo — a migração incompleta passaria
  * despercebida). -U20 garante que QUALQUER linha dentro da janela
@@ -220,49 +225,37 @@ export function extractEnvVersion(content, name = "BUN_VERSION") {
 }
 
 /**
- * Extrai o default de um input do action.yml (ex.: bun-version).
- * Retorna null se NÃO houver default — o estado CORRETO hoje (o guard falha
- * se houver um default literal; metadata de action não avalia ${{ }}).
- */
-export function extractActionDefault(content, input = "bun-version") {
-  const m = content.match(new RegExp(`^\\s*${input}:`, "m"))
-  if (!m) return null
-  // procura `default: "..."` no bloco do input (até o próximo input: no
-  // nível 0 ou final do arquivo)
-  const after = content.slice(m.index + m[0].length)
-  const nextInput = after.search(/^\s{2}[a-z][a-z-]*:/m)
-  const block = nextInput === -1 ? after : after.slice(0, nextInput)
-  const d = block.match(/default:\s*["']?([^"'\n]+)/)
-  return d ? d[1].trim() : null
-}
-
-/**
- * O action.yml referencia a repository variable BUN_VERSION?
- * Casa AMBAS as formas — a referência pura (`${{ vars.BUN_VERSION }}`) e a
- * resolução runtime (`${{ inputs.bun-version || vars.BUN_VERSION }}`) — o
- * ponto é validar que o action REALMENTE lê a variável em algum lugar.
+ * Versão LITERAL usada como DEFAULT no script do setup (ex.:
+ * `VERSION="${1:-1.3.14}"` ou `VERSION=1.3.14`) — ou null.
  *
- * NOTA (08/2026): o runtime do action NÃO usa mais vars (resolve do input
- * — act 0.2.89 não resolve vars em composite actions). Esta função continua
- * exportada para testes/backwards-compat: ela casa também menções em prosa
- * (header do action.yml), então NÃO é usada pelo validateMirror — o contrato
- * real é hasBunVersionInputRef + checkSetupBunCallSites.
+ * POR QUE: a versão entra pelo ARGUMENTO (a fonte única é resolvida no
+ * workflow e chega por aqui). Um default literal no script é o mesmo segundo
+ * ponto de verdade que o guard inteiro existe para impedir — só que num
+ * artefato onde o `bun-v<semver>` (URL de download, visto por
+ * findBunLiteralInScript) NÃO pega.
+ *
+ * HISTÓRICO (e o motivo desta função existir): a checagem era feita com
+ * `extractActionDefault`, que procura a chave YAML `bun-version:` do antigo
+ * composite action. Aplicada ao SCRIPT — que não tem YAML nenhum — ela
+ * retornava null SEMPRE: o guard exibia a invariante "sem default literal",
+ * com mensagem de violação e tudo, e nunca podia disparar. Checagem que não
+ * PODE falhar é pior que checagem ausente: parece prova.
  */
-export function hasVarsBunVersionRef(actionContent) {
-  return /\bvars\.BUN_VERSION\b/.test(actionContent)
+export function findBunLiteralDefaultInScript(scriptContent) {
+  // Comentários ficam de fora: é onde o comportamento aparece como exemplo.
+  const code = scriptContent
+    .split(/\r?\n/)
+    .filter((line) => !line.trim().startsWith("#"))
+    .join("\n")
+  const substitution = code.match(/\$\{1:-\s*["']?(\d+\.\d+\.\d+)/)
+  if (substitution) return substitution[1]
+  const assignment = code.match(/^\s*(?:BUN_)?VERSION\s*=\s*["']?(\d+\.\d+\.\d+)/m)
+  return assignment ? assignment[1] : null
 }
 
-/**
- * O action.yml referencia o input bun-version no step de resolve?
- * (novo contrato: o composite resolve a versão DO INPUT, que os callers
- * resolvem de vars.BUN_VERSION no workflow — vars não resolve dentro de
- * composite action no act 0.2.89)
+/* * O setup (o SCRIPT que substituiu o composite) referencia o mirror OCI no
+ * tier 3? (<registry>/.../bun:<ver>)
  */
-export function hasBunVersionInputRef(actionContent) {
-  return /\binputs\.bun-version\b/.test(actionContent)
-}
-
-/** O action.yml referencia o mirror OCI no tier 3? (<registry>/.../bun:<ver>) */
 export function hasGhcrMirrorRef(actionContent) {
   // Tier 3 monta MIRROR="${IMAGE_REGISTRY:-ghcr.io}/${GHCR_OWNER}/bun:${BUN_VERSION}"
   // — o guard casa a construção do nome + o pull, não uma string hardcoded.
@@ -276,6 +269,302 @@ export function hasGhcrMirrorRef(actionContent) {
       actionContent,
     ) || /(?:ghcr\.io|\$\{IMAGE_REGISTRY(?::-[^}]*)?\})\/[^"']+\/bun:/m.test(actionContent)
   )
+}
+
+/**
+ * O script lê a versão do PRIMEIRO argumento posicional? É o único caminho
+ * pelo qual a versão entra no setup: a fonte única é resolvida no WORKFLOW e
+ * chega por aqui. Sem isso, o script usaria outra versão ou falharia.
+ */
+export function hasScriptVersionArg(scriptContent) {
+  return /\$\{1:-\}|\$1\b/.test(scriptContent)
+}
+
+/**
+ * O script mantém o marcador do tier-1 ('Usando Bun pré-instalado: <versão>')?
+ * É o literal que o guard periódico check:tier1-fastpath casa no log do act —
+ * sem ele o guard não acha a evidência e fica CEGO para a regressão do fast
+ * path. Este contrato entre o guard e a implementação é o que a função trava.
+ */
+export function hasPreinstalledMarker(scriptContent) {
+  return scriptContent.includes("Usando Bun pré-instalado:")
+}
+
+/** Versão LITERAL do Bun dentro do script (ex.: bun-v1.3.14) — ou null. */
+export function findBunLiteralInScript(scriptContent) {
+  const m = scriptContent.match(/bun-v(\d+\.\d+\.\d+)/)
+  return m ? m[1] : null
+}
+
+/** Compose da forja — onde os labels do runner apontam a imagem dos jobs. */
+export const GITEA_COMPOSE = "deploy/docker-compose.gitea.yml"
+
+/** Espelho da variável para o runner da forja (irmão do .actrc). */
+export const GITEA_ENV_MIRROR = "deploy/env.gitea.example"
+
+// Montados por código para não precisar de escape de '$' + '{' no fonte.
+const DOLLAR = String.fromCharCode(36)
+const BUN_VERSION_TAG = DOLLAR + "{BUN_VERSION"
+
+/**
+ * A forja roda os jobs numa imagem que EMBARCA o Bun na versão da variable?
+ *
+ * POR QUE (regressão silenciosa de performance): o tier-1 do setup é um
+ * `command -v bun` + comparação de versão — ele só engaja se a IMAGEM DO
+ * RUNNER já tiver o Bun. Com `node:20-bullseye` nos labels o tier-1 NUNCA
+ * engajava e todo job pagava o tier 3 (download), sem nada acusar: o setup
+ * funciona igual, só mais lento. Este guard prende a configuração ao desenho.
+ *
+ * A igualdade de VALOR entre o BUN_VERSION do runner e a repository variable
+ * não é verificável estaticamente (a variável só existe em runtime no Gitea) —
+ * quem a prova é o smoke da forja (Prova 3) e o guard periódico
+ * check-actrc-sync.mjs. Aqui a invariante é a FORMA: a imagem é a custom, e a
+ * tag vem da variável.
+ *
+ * @param {string} composeContent  conteúdo de GITEA_COMPOSE
+ * @param {string} envContent      conteúdo de GITEA_ENV_MIRROR
+ * @returns {string[]} violações (vazia = ok)
+ */
+export function checkGiteaRunnerImage(composeContent, envContent) {
+  const violations = []
+  const labels = composeContent.match(/GITEA_RUNNER_LABELS=.*$/m)?.[0] ?? ""
+
+  if (!labels) {
+    violations.push(
+      `${GITEA_COMPOSE}: GITEA_RUNNER_LABELS ausente — sem o label, nenhum job encontra runner`,
+    )
+  } else {
+    if (!labels.includes("ubuntu-bun:")) {
+      violations.push(
+        `${GITEA_COMPOSE}: GITEA_RUNNER_LABELS não aponta para a imagem ubuntu-bun — o tier-1 (0s) do setup-bun NUNCA engaja nesta forja e todo job paga o download do tier 3, em silêncio. Aponte o label para <registry>/<owner>/ubuntu-bun:<versão>.`,
+      )
+    }
+    if (!labels.includes(BUN_VERSION_TAG)) {
+      violations.push(
+        `${GITEA_COMPOSE}: GITEA_RUNNER_LABELS sem a variável da versão — a TAG da imagem precisa vir dela (fonte única); uma tag literal não seria invalidada pela troca do Bun e criaria um segundo ponto de verdade.`,
+      )
+    }
+  }
+
+  if (!/^BUN_VERSION=/m.test(envContent)) {
+    violations.push(
+      `${GITEA_ENV_MIRROR}: BUN_VERSION não definido — é o espelho da variável para o runner da forja; sem ele o compose resolve a tag da imagem vazia e nenhum job inicia.`,
+    )
+  }
+
+  return violations
+}
+
+/** O comando que sobe a stack da forja (garante a imagem antes do runner). */
+export const GITEA_BRING_UP = "deploy/gitea-up.sh"
+
+/** O instalador da forja — deve apontar para o bring-up, não subir o runner direto. */
+export const GITEA_SETUP = "deploy/setup-gitea.sh"
+
+/**
+ * A imagem do runner é PRÉ-REQUISITO da subida da stack?
+ *
+ * POR QUE (a falha mais cara da forja): o `depends_on` do compose ordena
+ * containers, não o mundo externo. Se a tag da imagem não existir quando o
+ * runner sobe, TODO job falha ao iniciar o container — e o erro aparece no
+ * meio do job, longe da causa. O desenho é: deploy/gitea-up.sh GARANTE a
+ * imagem (scripts/ensure-runner-image.mjs, que publica se faltar) e SÓ ENTÃO
+ * sobe o runner. Este guard prende essa ORDEM e prende o instalador ao mesmo
+ * caminho.
+ *
+ * A invariante é ESTRUTURAL (ordem das linhas que executam algo), não prosa:
+ * só contam linhas de comando (linhas de comentário são ignoradas), para que
+ * explicar a regra num comentário não a satisfaça.
+ *
+ * @param {string} bringUpContent  conteúdo de GITEA_BRING_UP ("" se ausente)
+ * @param {string|undefined} setupContent  conteúdo de GITEA_SETUP
+ * @returns {string[]} violações (vazia = ok)
+ */
+export function checkGiteaBringUp(bringUpContent, setupContent) {
+  if (!bringUpContent) {
+    return [
+      `${GITEA_BRING_UP}: ausente — é o comando que garante a imagem do runner ANTES de subir a stack (ver deploy/GITEA.md § Runner)`,
+    ]
+  }
+
+  const violations = []
+  // Invocação REAL do ensure (não a menção num comentário): `node ... ENSURE_SCRIPT`
+  // ou o caminho literal do script. `^\s*node` (sem `#`) descarta prosa.
+  const ensureMatch = bringUpContent.match(
+    /^\s*node\s+.*(?:ENSURE_SCRIPT|ensure-runner-image\.mjs)/m,
+  )
+  // Comando de subida do runner — `[^#\n]*` impede casar uma linha de comentário.
+  const runnerMatch = bringUpContent.match(/^\s*[^#\n]*\bup\s+-d\s+runner\b/m)
+
+  if (!ensureMatch) {
+    violations.push(
+      `${GITEA_BRING_UP}: não invoca scripts/ensure-runner-image.mjs — sem a garantia, subir o runner depende de a tag já existir por sorte.`,
+    )
+  }
+  if (!runnerMatch) {
+    violations.push(
+      `${GITEA_BRING_UP}: não sobe o runner (esperado 'up -d runner' depois da garantia).`,
+    )
+  }
+  if (ensureMatch && runnerMatch && runnerMatch.index < ensureMatch.index) {
+    violations.push(
+      `${GITEA_BRING_UP}: 'up -d runner' aparece ANTES da garantia da imagem — a stack subiria e os jobs falhariam ao iniciar o container. Garanta a imagem primeiro (scripts/ensure-runner-image.mjs).`,
+    )
+  }
+
+  if (setupContent !== undefined && !setupContent.includes("gitea-up.sh")) {
+    violations.push(
+      `${GITEA_SETUP}: não aponta para ${GITEA_BRING_UP} — o instalador precisa levar o usuário pelo caminho que GARANTE a imagem, não por um 'docker compose up -d runner' seco.`,
+    )
+  }
+  return violations
+}
+
+/** O runbook da forja — onde vive o procedimento de re-registro do runner. */
+export const GITEA_DOC = "deploy/GITEA.md"
+
+/**
+ * O re-registro do runner é um caminho GARANTIDO (não uma sequência à mão)?
+ *
+ * POR QUE: o re-registro é o momento em que se TROCA a imagem do runner (label
+ * ou `BUN_VERSION`), logo é quando a tag tem mais chance de não existir. O
+ * act_runner guarda os labels que recebeu no registro em `/data/.runner` e
+ * depois usa ESSES — então o procedimento precisa apagar container E volume, e
+ * precisa passar pela garantia da imagem. Duas invariantes:
+ *
+ *   1. no SCRIPT: `rm -sf runner` antes de `up -d runner` (só apagar o
+ *      container não basta para re-registrar; `restart` muito menos);
+ *   2. no DOC: o bloco de re-registro tem de CHAMAR o script — um runbook que
+ *      ensina a sequência crua faz o operador pular a garantia, e foi assim
+ *      que a versão antiga ficou com um `--check` cujo exit code não decidia
+ *      nada antes do `up -d runner`.
+ *
+ * A invariante 2 é textual e de propósito: o contrato une um .md e um .sh que
+ * não se importam, então tem de ser lido das duas fontes. Linhas de comentário
+ * são descartadas nas duas checagens — explicar a regra num comentário não
+ * pode satisfazê-la.
+ *
+ * @param {string} bringUpContent  conteúdo de GITEA_BRING_UP ("" se ausente)
+ * @param {string} docContent      conteúdo de GITEA_DOC ("" se ausente)
+ * @returns {string[]} violações (vazia = ok)
+ */
+export function checkReRegisterPath(bringUpContent, docContent) {
+  const violations = []
+  const code = (s) =>
+    s
+      .split(/\r?\n/)
+      .filter((line) => !line.trim().startsWith("#"))
+      .join("\n")
+
+  const bringsUp = /^\s*[^#\n]*\bup\s+-d\s+runner\b/m.test(bringUpContent)
+  if (bringsUp && !/^\s*[^#\n]*\brm\s+-sf\s+runner\b/m.test(bringUpContent)) {
+    violations.push(
+      `${GITEA_BRING_UP}: sobe o runner mas nunca o remove ('rm -sf runner') — sem isso não existe caminho de re-registro, e trocar a label exigiria o procedimento à mão que pula a garantia da imagem`,
+    )
+  }
+  // A ordem: remover ANTES de subir (subir e depois remover não re-registra).
+  const rmIdx = bringUpContent.search(/^\s*[^#\n]*\brm\s+-sf\s+runner\b/m)
+  const upIdx = bringUpContent.search(/^\s*[^#\n]*\bup\s+-d\s+runner\b/m)
+  if (rmIdx >= 0 && upIdx >= 0 && rmIdx > upIdx) {
+    violations.push(
+      `${GITEA_BRING_UP}: 'rm -sf runner' aparece DEPOIS do 'up -d runner' — o container subiria com o registro antigo e os labels novos nunca seriam enviados`,
+    )
+  }
+
+  if (!docContent) return violations // 2a. O runbook PRECISA mandar o operador pelo caminho garantido. Sem esta
+  //     metade, um runbook que simplesmente não menciona o modo de re-registro
+  //     passa calado — a instalação fica com um procedimento sem garantia.
+  if (!/gitea-up\.sh\s+--re-register/.test(docContent)) {
+    violations.push(
+      `${GITEA_DOC}: o runbook não invoca '${GITEA_BRING_UP} --re-register' — o re-registro é justamente quando a tag tem mais chance de faltar (é a troca da versão/label), então ele não pode ficar sem a garantia`,
+    )
+  }
+
+  // 2b. E não pode ENSINAR a alternativa: um cerco com `rm -sf runner` + um
+  //     `docker compose ... up -d runner` cru é a sequência à mão. Estes dois
+  //     juntos, num bloco, são o procedimento sem garantia — o operador copia o
+  //     que executa, não a prosa em volta. A prosa pode (e deve) explicar por
+  //     que a sequência antiga era errada; o que ela não pode é vir pronta para
+  //     copiar.
+  for (const fence of docContent.match(/```[a-z]*\n[\s\S]*?```/g) ?? []) {
+    const handRolled =
+      /rm\s+-sf\s+runner/.test(fence) &&
+      /^\s*[^#\n]*\bdocker\s+compose\b[^#\n]*\bup\s+-d\s+runner\b/m.test(code(fence))
+    if (handRolled) {
+      violations.push(
+        `${GITEA_DOC}: há um bloco que ensina o re-registro à mão ('rm -sf runner' + 'docker compose ... up -d runner') — isso sobe o runner sem passar pela garantia da imagem; o bloco tem de chamar ${GITEA_BRING_UP} --re-register`,
+      )
+    }
+  }
+  return violations
+}
+
+/** O script de bump — escreve a variável E os espelhos dela no working tree. */
+export const BUN_BUMP_SCRIPT = "scripts/bump-bun.sh"
+
+/** O guard SEMANAL — compara os VALORES dos espelhos com a variável remota. */
+export const ACTRC_SYNC_SCRIPT = "scripts/check-actrc-sync.mjs"
+
+/**
+ * Todo espelho que o guard semanal COMPARA é escrito pelo script de bump?
+ *
+ * POR QUE (dois donos, um conjunto só): cada espelho da variável — `.actrc`
+ * (o act local) e `deploy/env.gitea.example` (o runner da forja) — tem um
+ * ESCRITOR (`bump-bun.sh`, no bump) e um LEITOR-VERIFICADOR
+ * (`check-actrc-sync.mjs`, no job semanal). Os dois conjuntos têm de ser o
+ * MESMO, e a assimetria silenciosa é o risco real:
+ *   - leitor sem escritor → todo bump deixa um `::warning::` PERMANENTE. Um
+ *     aviso que o procedimento documentado não consegue silenciar é como um
+ *     aviso morre (o repo já tem esse diagnóstico no readme-reverse-issue);
+ *   - escritor sem leitor → o valor escrito nunca é conferido, e divergir
+ *     deixa de ter sintoma.
+ *
+ * A invariante é textual de propósito: ela liga DOIS arquivos que não se
+ * importam (um é .sh, o outro .mjs), então o contrato tem de ser lido das
+ * fontes. Cada espelho comparado precisa da DECLARAÇÃO
+ * (`X_PATH="$REPO_ROOT/<espelho>"`) e da CHAMADA (`update_mirror "$X_PATH"`) —
+ * uma declaração sem chamada seria um falso verde.
+ *
+ * @param {string} bumpContent  conteúdo de BUN_BUMP_SCRIPT ("" se ausente)
+ * @param {string} syncContent  conteúdo de ACTRC_SYNC_SCRIPT ("" se ausente)
+ * @returns {string[]} violações (vazia = ok)
+ */
+export function checkMirrorWriters(bumpContent, syncContent) {
+  if (!bumpContent)
+    return [`${BUN_BUMP_SCRIPT}: ausente — é ele que mantém os espelhos da variável no bump`]
+
+  // 1. O conjunto COMPARADO, lido do próprio guard semanal.
+  const compared = new Set()
+  if (/join\(process\.cwd\(\), "\.actrc"\)/.test(syncContent)) compared.add(".actrc")
+  const envConst = syncContent.match(/^export const GITEA_ENV_MIRROR = "([^"]+)"/m)
+  if (envConst) compared.add(envConst[1])
+
+  if (compared.size < 2) {
+    return [
+      `${ACTRC_SYNC_SCRIPT}: esperava comparar os DOIS espelhos da variável (.actrc e o env da forja), encontrei ${compared.size} — o espelho de fora divergiria sem nenhum aviso`,
+    ]
+  }
+
+  // 2. Cada espelho comparado precisa de um ESCRITOR no bump.
+  const declared = new Map() // espelho -> nome da variável no bump script
+  for (const m of bumpContent.matchAll(/^(\w+)_PATH="\$REPO_ROOT\/([^"]+)"/gm)) {
+    declared.set(m[2], `${m[1]}_PATH`)
+  }
+
+  const violations = []
+  for (const mirror of compared) {
+    const varName = declared.get(mirror)
+    if (!varName) {
+      violations.push(
+        `${BUN_BUMP_SCRIPT}: não escreve o espelho '${mirror}', que ${ACTRC_SYNC_SCRIPT} compara — todo bump deixaria um ::warning:: permanente sem remédio no procedimento`,
+      )
+    } else if (!bumpContent.includes(`update_mirror "$${varName}"`)) {
+      violations.push(
+        `${BUN_BUMP_SCRIPT}: declara ${varName}='${mirror}' mas nunca chama update_mirror "$${varName}" — o espelho é comparado pelo guard semanal e o bump não o atualizaria`,
+      )
+    }
+  }
+  return violations
 }
 
 /**
@@ -676,48 +965,119 @@ export function normalizeBunVersionValue(raw) {
 }
 
 /**
- * Checa UM call site do setup-bun: a partir da linha `uses:` (file:lineNo),
- * varre as linhas SEGUINTES (janela ~6) procurando `bun-version:`. Retorna
- * a violação como string, ou null se o call site estiver correto. Função de
- * NÍVEL DE CALL SITE compartilhada entre o scan global (checkSetupBunCallSites)
- * e o scan de diff (checkStagedSetupBunCallSites) — uma única fonte da
- * lógica, sem drift.
- *
- * @param {string} file           nome do arquivo
- * @param {number} lineNo         linha do `uses:` (1-based)
- * @param {string[]} following    conteúdo das linhas seguintes (janela)
- * @returns {string|null}
+ * Palavras que podem vir ANTES do script e ainda caracterizam uma CHAMADA
+ * (interpretador explícito, `env`, `time`...). É o que separa a chamada da
+ * MENÇÃO em prosa: `run: bash scripts/setup-bun-ci.sh` é chamada;
+ * `run: echo "... use scripts/setup-bun-ci.sh (cached)."` é texto.
  */
-export function checkSetupBunCallSite(file, lineNo, following) {
-  let found = null
-  for (const l of following) {
-    const m = l.match(/^\s*bun-version\s*:\s*(.+?)\s*$/)
-    if (m) {
-      found = normalizeBunVersionValue(m[1])
-      break
-    }
-  }
-  if (found === null) {
-    return `${file}:${lineNo}: call site do setup-bun SEM input bun-version — passe 'bun-version: ${BUN_VERSION_VAR}' (o composite resolve só do input; vars não resolve em composite no act 0.2.89)`
-  }
-  if (found !== BUN_VERSION_VAR) {
-    return `${file}:${lineNo}: call site do setup-bun com bun-version='${found}' — use a fonte única ${BUN_VERSION_VAR} (literal é violação)`
+export const SHELL_INTRODUCERS = new Set([
+  "bash",
+  "sh",
+  "source",
+  "env",
+  "time",
+  "command",
+  "xargs",
+])
+
+/** Qualquer forma de citar o script — `scripts/setup-bun-ci.sh`, `./x/y.sh`, `setup-bun-ci.sh`. */
+export const SETUP_BUN_REF_RE = /(?:[\w.~/-]*\/)?setup-bun-ci\.sh/g
+
+/**
+ * Do token imediatamente anterior ao script, extrai a PALAVRA QUE O INVOCA:
+ * descarta a chave YAML do step (`run:`, `-`), os separadores de shell
+ * (`$(`, crase, `;`, `&`, `|`, `(`, `)`, `=`) e as aspas que cercam o comando
+ * (`bash -lc "bash scripts/setup-bun-ci.sh"` → `bash`).
+ *
+ * O que NÃO é descartado importa tanto quanto: uma palavra qualquer
+ * (`echo "... use scripts/setup-bun-ci.sh ..."` → `use`) sobrevive e
+ * denuncia a linha como prosa.
+ */
+function invokerWord(rawWord) {
+  return rawWord
+    .replace(/["'`]/g, "")
+    .replace(/^(?:-|run:)$/, "")
+    .replace(/^.*(?:\$\(|`|[;&|()=])/, "")
+}
+
+/**
+ * O script aparece em POSIÇÃO DE COMANDO nesta linha? Devolve o texto DEPOIS
+ * do script (o argumento) quando sim, ou null quando a linha apenas o MENCIONA.
+ *
+ * Por que a distinção existe: um `run: echo "... scripts/setup-bun-ci.sh ..."`
+ * (resumo de job, log) NÃO é um call site — exigir a variável de um texto é
+ * falso positivo, e guard que acusa prosa vira guard que se aprende a ignorar.
+ * A regra é a do shell: o token imediatamente anterior ao script precisa ser o
+ * INÍCIO do comando (`bash scripts/...`, `./scripts/...`, `bash -lc "bash
+ * scripts/..."`, `OUT="$(bash scripts/...)"`) — ou um interpretador explícito.
+ * A intenção oposta segue coberta: uma chamada REAL sem a variável
+ * (`run: bash scripts/setup-bun-ci.sh 1.3.14`) continua sendo violação, com ou
+ * sem caminho e também capturada em `$(...)`/`OUT="$(...)"`.
+ *
+ * @param {string} content  conteúdo de UMA linha
+ * @returns {string|null} argumento (possivelmente vazio) ou null se for menção
+ */
+export function setupBunInvocationArgs(content) {
+  if (!content.includes("setup-bun-ci.sh")) return null
+  SETUP_BUN_REF_RE.lastIndex = 0
+  let m
+  while ((m = SETUP_BUN_REF_RE.exec(content)) !== null) {
+    const words = content.slice(0, m.index).trim().split(/\s+/).filter(Boolean)
+    const invoker = words.length > 0 ? invokerWord(words[words.length - 1]) : ""
+    if (invoker !== "" && !SHELL_INTRODUCERS.has(invoker)) continue
+    return content.slice(m.index + m[0].length)
   }
   return null
 }
 
 /**
- * Verifica que TODO call site do composite action setup-bun passa o input
- * bun-version com a fonte única (${{ vars.BUN_VERSION }}).
+ * Checa UMA linha de invocação do setup do Bun. O setup é um SCRIPT chamado
+ * por `run:` e recebe a versão como ARGUMENTO — a fonte única é a repository
+ * variable. Retorna a violação como string, ou null se a linha estiver
+ * correta.
  *
- * Por que existe (08/2026): o composite action resolve a versão APENAS do
- * input bun-version — vars não resolve dentro de composite action no act
- * 0.2.89 (erro 'Unknown Variable Access vars'), então o valor é resolvido
- * no WORKFLOW (onde vars funciona) e entra via input. Se um call site
- * omitir o input ou usar literal, o action falha em runtime com mensagem
- * confusa (ou usa versão errada) — este scan pega no PR, antes do merge.
+ * Substitui o antigo `checkSetupBunCallSite`, que varria a janela do input
+ * `bun-version:` do composite action. O setup saiu do composite para
+ * `SETUP_BUN_SCRIPT` (chamado por `run:`, que NÃO passa pelo resolvedor de
+ * actions locais do runner) — o argumento da linha É o call site agora.
  *
- * @param {string} workflowsDir  diretório .github/workflows
+ * @param {string} file      nome do arquivo
+ * @param {number} lineNo    número da linha (1-based)
+ * @param {string} content   conteúdo da linha
+ * @returns {string|null}
+ */
+export function checkSetupBunRunLine(file, lineNo, content) {
+  const rest = setupBunInvocationArgs(content)
+  if (rest === null) return null
+  // Extrai o ARGUMENTO, não o resto da linha: a chamada pode estar CAPTURADA
+  // (`OUT="$(bash ... "${{ vars.BUN_VERSION }}" 2>&1)"`) ou ter `# nota` no
+  // fim — ler o fim da linha fazia a versão canônica parecer um literal (o
+  // próprio guard pegou esse caso no smoke). Ordem: aspas (forma canônica),
+  // depois a EXPRESSÃO inteira (que tem espaço e escaparia de \S+) e por fim
+  // um token simples.
+  const m = rest.match(/^\s+("[^"]*"|'[^']*'|\$\{\{[^}]*\}\}|\S+)/)
+  if (!m) {
+    return `${file}:${lineNo}: chamada de ${SETUP_BUN_SCRIPT} SEM a versão — passe ${BUN_VERSION_VAR} como argumento (o script lê a versão SÓ do argumento; a fonte única é a repository variable)`
+  }
+  const arg = normalizeBunVersionValue(m[1])
+  if (arg !== BUN_VERSION_VAR) {
+    return `${file}:${lineNo}: chamada de ${SETUP_BUN_SCRIPT} com versão '${arg}' — use a fonte única ${BUN_VERSION_VAR} (literal é violação)`
+  }
+  return null
+}
+
+/**
+ * Verifica que TODA invocação do setup do Bun passa a versão da fonte única
+ * (${{ vars.BUN_VERSION }}) como argumento.
+ *
+ * Por que existe: substituiu a validação do input `bun-version:` do composite.
+ * A INVARIANTE é a mesma — a versão do Bun tem UM ponto de verdade —, mas o
+ * contrato mudou de forma: o setup agora é um script chamado por `run:`, e o
+ * argumento é o único caminho por onde a versão entra. Um call site com
+ * literal (ou sem argumento) usaria outra versão, e o mesmo commit geraria
+ * artefatos diferentes conforme a pipeline que o construiu.
+ *
+ * @param {string} workflowsDir  diretório de workflows de UMA forja
  * @returns {string[]} lista de violações (vazia = ok)
  */
 export function checkSetupBunCallSites(workflowsDir) {
@@ -728,11 +1088,10 @@ export function checkSetupBunCallSites(workflowsDir) {
     const lines = readFileSync(join(workflowsDir, file), "utf8").split("\n")
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
-      // Ignora comentários — uma prosa '# uses: ./.github/actions/setup-bun'
-      // não é um call site real (mesmo guard de check-no-setup-bun.mjs).
+      // Ignora comentários — prosa que MENCIONA o script não é uma chamada
+      // real (mesmo tratamento do check-no-setup-bun.mjs).
       if (line.trim() === "" || line.trim().startsWith("#")) continue
-      if (!line.includes("uses: ./.github/actions/setup-bun")) continue
-      const v = checkSetupBunCallSite(file, i + 1, lines.slice(i + 1, i + 1 + CALL_SITE_WINDOW))
+      const v = checkSetupBunRunLine(file, i + 1, line)
       if (v) violations.push(v)
     }
   }
@@ -750,7 +1109,7 @@ export function checkSetupBunCallSites(workflowsDir) {
  * ADICIONADA mas `with:`/`bun-version:` ficam como CONTEXTO no diff — um
  * parser só-de-adicionadas veria o call site SEM o bun-version e geraria
  * falso positivo. As REMOVIDAS (sem incrementar lineNo — não existem no
- * arquivo novo) são necessárias para o checkStagedRemovedBunVersion detectar
+ * arquivo novo) são necessárias para o checkStagedRemovedSetupBunCall detectar
  * a remoção do input bun-version de um call site que SOBREVIVEU. Headers
  * `--- a/<path>` do arquivo ANTIGO são ignorados (não são linhas removidas).
  * Arquivos sem extensão de workflow (.yml/.yaml) são ignorados.
@@ -794,7 +1153,7 @@ export function parseDiffLines(diffText) {
     } else if (ch === "-") {
       // linha REMOVIDA — não existe no arquivo novo; incluída com `removed:
       // true` SEM incrementar lineNo (ela não ocupa posição no arquivo novo)
-      // para o checkStagedRemovedBunVersion detectar a remoção do input
+      // para o checkStagedRemovedSetupBunCall detectar a remoção do input
       // bun-version de um call site que SOBREVIVEU no novo arquivo.
       if (!perFile.has(currentFile)) perFile.set(currentFile, [])
       perFile.get(currentFile).push({ lineNo, content: line.slice(1), removed: true })
@@ -907,13 +1266,11 @@ export function checkStagedCachePaths(diffText, rules) {
 }
 
 /**
- * Checa call sites do setup-bun nas linhas de um diff — detecta call sites
- * SEM input bun-version (ou com literal) INTRODUZIDOS pelo próprio PR antes
- * do merge. Só call sites cuja linha `uses:` foi ADICIONADA pelo diff são
- * avaliados (violações pré-existentes do base não poluem o PR). Usa o parser
- * RICO (parseDiffLines): o `bun-version:` pode estar numa linha de CONTEXTO
- * — ex.: migração de oven-sh/setup-bun@v2 → ./.github/actions/setup-bun, que
- * adiciona só a linha `uses:` e mantém `with:`/`bun-version:` como contexto.
+ * Checa as invocações do setup do Bun nas linhas de um diff — pega uma linha
+ * de `run:` com literal (ou SEM o argumento) INTRODUZIDA pelo próprio PR antes
+ * do merge. Avalia as linhas que o diff MOSTRA (adicionadas E de contexto): a
+ * chamada do script é UMA linha, então qualquer uma delas é o call site real
+ * — não existe mais a janela do `bun-version:` do composite.
  *
  * @param {string} diffText  saída de git diff
  * @returns {string[]} lista de violações (vazia = ok)
@@ -921,25 +1278,10 @@ export function checkStagedCachePaths(diffText, rules) {
 export function checkStagedSetupBunCallSites(diffText) {
   const violations = []
   for (const [file, lines] of parseDiffLines(diffText)) {
-    for (let i = 0; i < lines.length; i++) {
-      const { lineNo, content, added } = lines[i]
-      if (!added) continue // só call sites INTRODUZIDOS por este diff
+    for (const { lineNo, content, removed } of lines) {
+      if (removed) continue // linha removida não existe no arquivo novo
       if (content.trim() === "" || content.trim().startsWith("#")) continue
-      if (!content.includes("uses: ./.github/actions/setup-bun")) continue
-
-      // Janela de até CALL_SITE_WINDOW linhas depois do uses (mesma do
-      // checkSetupBunCallSites global) — varre adicionadas E contexto do
-      // mesmo arquivo. O limite por lineNo (não por índice) é necessário
-      // porque o parser só inclui linhas que aparecem no diff (gaps entre
-      // hunks ficam de fora). Linhas REMOVIDAS são puladas — um bun-version
-      // removido não é um input que sobrevive no novo arquivo (um call site
-      // adicionado junto com a remoção do bun-version seria falso negativo).
-      const following = []
-      for (let j = i + 1; j < lines.length && lines[j].lineNo <= lineNo + CALL_SITE_WINDOW; j++) {
-        if (lines[j].removed) continue
-        following.push(lines[j].content)
-      }
-      const v = checkSetupBunCallSite(file, lineNo, following)
+      const v = checkSetupBunRunLine(file, lineNo, content)
       if (v) violations.push(v)
     }
   }
@@ -947,51 +1289,27 @@ export function checkStagedSetupBunCallSites(diffText) {
 }
 
 /**
- * Checa a REMOÇÃO do input bun-version de call sites do setup-bun nas linhas
- * de um diff — a regressão OPOSTA à do checkStagedSetupBunCallSites: um call
- * site que SOBREVIVE no arquivo novo (linha `uses:` presente como contexto OU
- * adicionada) mas que PERDEU o `bun-version:` — o input foi REMOVIDO pelo PR
- * (linha `-` no diff). Sem este check, remover o input de um call site
- * pré-existente passaria no guard: o check de adição só avalia call sites
- * cuja linha `uses:` foi ADICIONADA.
+ * Checa a REMOÇÃO da chamada do setup do Bun nas linhas de um diff — a
+ * regressão OPOSTA à do checkStagedSetupBunCallSites: um PR que APAGA o setup
+ * de um job sem pôr outro no lugar.
  *
- * NÃO reporta quando:
- *   - o call site INTEIRO foi removido (a linha `uses:` também é `-` — o
- *     step deixou de existir, não há contrato a impor);
- *   - um `bun-version:` SOBREVIVE na janela (adicionado ou contexto) — ex.:
- *     migração literal→vars (a linha antiga é `-`, a nova é `+`) — o call
- *     site TROCOU o valor, não perdeu o input.
+ * NÃO reporta quando o mesmo arquivo TAMBÉM ganha uma chamada do script: aí é
+ * a movimentação/migração legítima (a antiga sai, a nova entra).
  *
  * @param {string} diffText  saída de git diff
  * @returns {string[]} lista de violações (vazia = ok)
  */
-export function checkStagedRemovedBunVersion(diffText) {
+export function checkStagedRemovedSetupBunCall(diffText) {
   const violations = []
   for (const [file, lines] of parseDiffLines(diffText)) {
-    for (let i = 0; i < lines.length; i++) {
-      const { lineNo, content, removed } = lines[i]
-      // âncora: call site que SOBREVIVE no novo arquivo (uses presente —
-      // contexto ou adicionado). `uses:` REMOVIDO = step inteiro removido.
-      if (removed) continue
-      if (content.trim() === "" || content.trim().startsWith("#")) continue
-      if (!content.includes("uses: ./.github/actions/setup-bun")) continue
-
-      // Janela seguinte (mesma do checkStagedSetupBunCallSites) — procura um
-      // `bun-version:` REMOVIDO e, na MESMA janela, um SOBREVIVENTE.
-      const following = []
-      for (let j = i + 1; j < lines.length && lines[j].lineNo <= lineNo + CALL_SITE_WINDOW; j++) {
-        following.push(lines[j])
-      }
-
-      const removedBun = following.find((l) => l.removed && /^\s*bun-version\s*:/.test(l.content))
-      if (!removedBun) continue
-      const survivingBun = following.some(
-        (l) => !l.removed && /^\s*bun-version\s*:/.test(l.content),
-      )
-      if (survivingBun) continue // trocou o valor (literal→vars), não perdeu o input
-
+    // Só CHAMADAS contam (menção em prosa/echo não é setup removido).
+    const removed = lines.filter((l) => l.removed && setupBunInvocationArgs(l.content) !== null)
+    if (removed.length === 0) continue
+    const added = lines.filter((l) => !l.removed && setupBunInvocationArgs(l.content) !== null)
+    if (added.length > 0) continue // o setup mudou de forma, não sumiu
+    for (const l of removed) {
       violations.push(
-        `${file}:${removedBun.lineNo}: REMOÇÃO do input bun-version do call site do setup-bun (uses: linha ${lineNo}) — o call site SOBREVIVEU sem o input; adicione de volta 'bun-version: ${BUN_VERSION_VAR}'`,
+        `${file}:${l.lineNo}: REMOÇÃO da chamada do setup do Bun (${SETUP_BUN_SCRIPT}) sem substituta neste arquivo — o job ficaria sem Bun na versão da fonte única ${BUN_VERSION_VAR}`,
       )
     }
   }
@@ -1295,15 +1613,17 @@ export function checkNoForeignLockfiles(cwd) {
  * Valida as invariantes a partir dos caminhos reais.
  * @returns {string[]} lista de violações (vazia = ok)
  */
-export function validateMirror(workflowPath, actionPath, dockerfilePath) {
+export function validateMirror(workflowPath, implPath, dockerfilePath) {
   const violations = []
 
   if (!existsSync(workflowPath)) {
     violations.push(`workflow do mirror ausente: ${workflowPath} (crie sync-bun-mirror.yml)`)
     return violations
   }
-  if (!existsSync(actionPath)) {
-    violations.push(`action ausente: ${actionPath}`)
+  if (!existsSync(implPath)) {
+    violations.push(
+      `implementação do setup do Bun ausente: ${implPath} (esperado ${SETUP_BUN_SCRIPT})`,
+    )
     return violations
   }
   if (dockerfilePath && !existsSync(dockerfilePath)) {
@@ -1313,7 +1633,7 @@ export function validateMirror(workflowPath, actionPath, dockerfilePath) {
   }
 
   const wf = readFileSync(workflowPath, "utf8")
-  const act = readFileSync(actionPath, "utf8")
+  const impl = readFileSync(implPath, "utf8")
 
   // ── Invariante 2: mirror referencia a repository variable (não literal) ─
   const mirrorVersion = extractEnvVersion(wf)
@@ -1325,23 +1645,42 @@ export function validateMirror(workflowPath, actionPath, dockerfilePath) {
     )
   }
 
-  // ── Invariantes 3-4: action sem default literal + referência à variável ─
-  const actionDefault = extractActionDefault(act)
-  if (actionDefault) {
+  // ── Invariantes 3-6: a IMPLEMENTAÇÃO do setup (o script que substituiu o ─
+  // composite action). Os mesmos contratos que o guard impunha ao action.yml
+  // recaem agora sobre o script — outro artefato, a mesma invariante.
+  // Checagem que PRECISA poder falhar: um default literal no script é o mesmo
+  // segundo ponto de verdade que o guard existe para impedir (a antiga versão
+  // desta checagem procurava YAML de action.yml e nunca casava — ver o doc de
+  // findBunLiteralDefaultInScript).
+  const implDefault = findBunLiteralDefaultInScript(impl)
+  if (implDefault) {
     violations.push(
-      `${actionPath}: default='${actionDefault}' é um LITERAL — metadata de action NÃO avalia \${{ }}, então nunca casaria com a variável. Remova o default; a versão resolve em runtime do input bun-version (que os callers resolvem de ${BUN_VERSION_VAR} no workflow).`,
+      `${implPath}: default='${implDefault}' é um LITERAL de versão — a versão entra SÓ pelo argumento (fonte única ${BUN_VERSION_VAR} no workflow). Use \`VERSION="${"${1:-}"}"\` e deixe o workflow passar a variável.`,
     )
   }
 
-  if (!hasBunVersionInputRef(act)) {
+  if (!hasScriptVersionArg(impl)) {
     violations.push(
-      `${actionPath}: não referencia 'inputs.bun-version' no step 'Resolve Bun version' — o composite resolve a versão DO INPUT (callers passam bun-version: ${BUN_VERSION_VAR} no workflow; vars não resolve dentro de composite action no act 0.2.89)`,
+      `${implPath}: não lê a versão do primeiro ARGUMENTO posicional — é o único caminho pelo qual a versão entra (a fonte única é resolvida no workflow e chega por aqui).`,
     )
   }
 
-  if (!hasGhcrMirrorRef(act)) {
+  if (!hasGhcrMirrorRef(impl)) {
     violations.push(
-      `${actionPath}: tier 3 (cold cache) não referencia o mirror OCI (<registry>/<owner>/bun:<versão>)`,
+      `${implPath}: tier 3 (cold cache) não referencia o mirror OCI (<registry>/<owner>/bun:<versão>)`,
+    )
+  }
+
+  if (!hasPreinstalledMarker(impl)) {
+    violations.push(
+      `${implPath}: sem o marcador tier-1 'Usando Bun pré-instalado:' — é o sinal que o guard periódico check:tier1-fastpath casa no log do act; sem ele o guard fica cego para a regressão do fast path.`,
+    )
+  }
+
+  const literal = findBunLiteralInScript(impl)
+  if (literal) {
+    violations.push(
+      `${implPath}: versão literal '${literal}' — a versão só pode vir do ARGUMENTO (fonte única ${BUN_VERSION_VAR}).`,
     )
   }
 
@@ -1379,28 +1718,28 @@ function main() {
       ...checkStagedCacheKeys(diffText, DEFAULT_CACHE_KEY_RULES()),
       ...checkStagedLiterals(diffText),
       ...checkStagedSetupBunCallSites(diffText),
-      ...checkStagedRemovedBunVersion(diffText),
+      ...checkStagedRemovedSetupBunCall(diffText),
       ...checkStagedCachePaths(diffText, DEFAULT_CACHE_KEY_RULES()),
       ...checkStagedRemovedCacheBlockFields(diffText),
       ...checkStagedRemovedLiterals(diffText),
     ]
     if (violations.length > 0) {
       console.error(
-        `❌ Diff com ${violations.length} violação(ões) de cache key/literal/call site/remoção de input/remoção de path-key/par key↔path do Bun:\n`,
+        `❌ Diff com ${violations.length} violação(ões) de cache key/literal/chamada do setup/remoção da chamada/remoção de path-key/par key↔path do Bun:\n`,
       )
       for (const v of violations) console.error(`   - ${v}`)
       console.error(
-        `\n   Cache keys, literais, call sites e pares key↔path introduzidos por este diff precisam usar a` +
-          `\n   fonte única ${BUN_VERSION_VAR} — um literal (bun-1.3.14-...) não seria` +
-          `\n   invalidado pela troca da variável, e um path de outra toolchain` +
-          `\n   (ex.: node_modules/.prisma com key bun-...) quebraria o cache. E` +
-          `\n   REMOVER o input bun-version de um call site que sobreviveu é` +
-          `\n   regressão — o action falharia em runtime sem a versão.`,
+        `\n   Cache keys, literais, chamadas do setup e pares key↔path introduzidos por este diff` +
+          `\n   precisam usar a fonte única ${BUN_VERSION_VAR} — um literal` +
+          `\n   (bun-1.3.14-...) não seria invalidado pela troca da variável, e um` +
+          `\n   path de outra toolchain (ex.: node_modules/.prisma com key bun-...)` +
+          `\n   quebraria o cache. E REMOVER a chamada do setup de um job é` +
+          `\n   regressão — o job ficaria sem Bun.`,
       )
       process.exit(1)
     }
     console.log(
-      `✅ Diff ok — nenhuma cache key/literal/call site/remoção de input/par key↔path do Bun introduzido` +
+      `✅ Diff ok — nenhuma cache key/literal/chamada do setup/remoção da chamada/par key↔path do Bun introduzido` +
         (base ? ` (vs base ${base})` : ` (staged)`),
     )
     process.exit(0)
@@ -1408,10 +1747,9 @@ function main() {
 
   // ── Modo padrão: invariantes globais do repositório ─────────────────
   const cwd = process.cwd()
-  const actionPath = join(cwd, ".github", "actions", "setup-bun", "action.yml")
   const violations = validateMirror(
     join(cwd, ".github", "workflows", "sync-bun-mirror.yml"),
-    actionPath,
+    join(cwd, SETUP_BUN_SCRIPT),
     join(cwd, "Dockerfile.bun-mirror"),
   )
 
@@ -1433,6 +1771,61 @@ function main() {
     violations.push(...checkSetupBunCallSites(workflowsDir).map(label))
   }
   violations.push(...checkActrc(join(cwd, ".actrc")))
+
+  // ── Forja: a imagem dos jobs embarca o Bun da variable? ──────────────
+  // A label do runner é a diferença entre o tier-1 de 0s e o download do
+  // tier 3 em TODO job — e o sintoma é invisível (o setup funciona nos dois
+  // casos). Só roda quando os dois arquivos existem (repo sem a forja não é
+  // violação).
+  const composePath = join(cwd, GITEA_COMPOSE)
+  const envMirrorPath = join(cwd, GITEA_ENV_MIRROR)
+  if (existsSync(composePath) && existsSync(envMirrorPath)) {
+    violations.push(
+      ...checkGiteaRunnerImage(
+        readFileSync(composePath, "utf8"),
+        readFileSync(envMirrorPath, "utf8"),
+      ),
+    )
+    // ── Forja: a imagem é PRÉ-REQUISITO da subida da stack? ─────────
+    // A label do runner aponta para uma imagem que pode não existir. O
+    // bring-up (gitea-up.sh) tem de garantir a tag ANTES do `up -d runner`
+    // — e o instalador tem de mandar o usuário por esse caminho.
+    const bringUpPath = join(cwd, GITEA_BRING_UP)
+    const setupPath = join(cwd, GITEA_SETUP)
+    violations.push(
+      ...checkGiteaBringUp(
+        existsSync(bringUpPath) ? readFileSync(bringUpPath, "utf8") : "",
+        existsSync(setupPath) ? readFileSync(setupPath, "utf8") : undefined,
+      ),
+    )
+    // ── Forja: o RE-REGISTRO também é um caminho garantido? ──────────
+    // Trocar a label é justamente quando a tag pode faltar; o runbook não
+    // pode ensinar uma sequência crua que pule a garantia.
+    const docPath = join(cwd, GITEA_DOC)
+    violations.push(
+      ...checkReRegisterPath(
+        existsSync(bringUpPath) ? readFileSync(bringUpPath, "utf8") : "",
+        existsSync(docPath) ? readFileSync(docPath, "utf8") : "",
+      ),
+    )
+  }
+
+  // ── Espelhos da variável: quem compara e quem escreve ────────────────
+  // Os espelhos têm dois donos em DOIS arquivos (o bump .sh escreve, o guard
+  // semanal .mjs compara). Se um lado ganhar um espelho que o outro não tem, a
+  // assimetria é silenciosa: aviso permanente ou valor nunca conferido.
+  {
+    const bumpPath = join(cwd, BUN_BUMP_SCRIPT)
+    const syncPath = join(cwd, ACTRC_SYNC_SCRIPT)
+    if (existsSync(syncPath)) {
+      violations.push(
+        ...checkMirrorWriters(
+          existsSync(bumpPath) ? readFileSync(bumpPath, "utf8") : "",
+          readFileSync(syncPath, "utf8"),
+        ),
+      )
+    }
+  }
   violations.push(...checkDockerfiles(cwd))
   violations.push(...checkNoForeignLockfiles(cwd))
 
@@ -1441,11 +1834,12 @@ function main() {
     for (const v of violations) console.error(`   - ${v}`)
     console.error(
       `\n   A versão do Bun vive APENAS na repository variable vars.BUN_VERSION` +
-        `\n   (Settings → Secrets and variables → Actions). Workflows passam` +
-        `\n   'bun-version: ${BUN_VERSION_VAR}', o mirror usa a mesma variável e` +
-        `\n   o action resolve em runtime. Sem literais em lugar nenhum — trocar` +
-        `\n   o Bun = alterar a variável em UM lugar. E o par key↔path de cada` +
-        `\n   bloco actions/cache precisa fechar (path da toolchain correta).`,
+        `\n   (Settings → Secrets and variables → Actions). O setup é um script` +
+        `\n   chamado por 'run:' que recebe a versão como argumento` +
+        `\n   ('bash ${SETUP_BUN_SCRIPT} "${BUN_VERSION_VAR}"'), o mirror usa a` +
+        `\n   mesma variável e o cache key inclui a variável. Sem literais em` +
+        `\n   lugar nenhum — trocar o Bun = alterar a variável em UM lugar. E o` +
+        `\n   par key↔path de cada bloco actions/cache precisa fechar.`,
     )
     process.exit(1)
   }

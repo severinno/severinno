@@ -105,14 +105,22 @@ describe("pr-check.yml — job lint-guard (sintaxe YAML + snapshot)", () => {
     expect(steps.length).toBeGreaterThanOrEqual(7)
   })
 
-  it("usa o composite action local setup-bun com a versão via vars.BUN_VERSION", () => {
-    const setupBun = steps.find((s) => s.uses === "./.github/actions/setup-bun")
-    expect(setupBun).toBeDefined()
-    expect(setupBun?.with).toMatchObject({ "bun-version": "${{ vars.BUN_VERSION }}" })
+  it("faz o setup do Bun por run: com a versão via vars.BUN_VERSION", () => {
+    // `run:` (scripts/setup-bun-ci.sh) — não passa pelo resolvedor de actions.
+    const setupBun = steps.find((s) => (s.run ?? "").includes("scripts/setup-bun-ci.sh"))
+    expect(setupBun, "setup do Bun por run:").toBeDefined()
+    expect(setupBun?.run).toContain('bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"')
   })
 
   it("cobre node_modules via actions/cache com key bun-BUN_VERSION-hashFiles", () => {
-    const cache = steps.find((s) => s.uses === "actions/cache@v4")
+    // O job tem DOIS blocos actions/cache desde a migração do setup: o do Bun
+    // (~/.bun, antes do step 'Setup Bun') e o de dependências (node_modules).
+    // Seleciona por PATH — pegar o primeiro `uses: actions/cache@v4` acharia o
+    // do Bun.
+    const cache = steps.find(
+      (s) =>
+        s.uses === "actions/cache@v4" && (s.with as { path?: string })?.path === "node_modules",
+    )
     expect(cache).toBeDefined()
     const withObj = cache?.with as { key?: string; path?: string } | undefined
     expect(withObj?.path).toBe("node_modules")
@@ -185,11 +193,8 @@ describe("pr-check.yml — refs contra o check-workflow-refs", () => {
 
   it("nenhum composite action local quebrado (uses: ./.github/actions/ — setup-bun existe)", () => {
     const refs = extractActionUses(content)
-    expect(refs.length).toBeGreaterThan(0)
-    for (const r of refs) {
-      expect(ctx.actions.has(r.ref), `action ausente: ${r.ref} (linha ${r.line})`).toBe(true)
-    }
-    // O job lint-guard depende do setup-bun local — ref central do job.
-    expect(ctx.actions.has("setup-bun")).toBe(true)
+    expect(refs, "nenhuma ref de action local deve restar").toEqual([])
+    // O setup do Bun é o script do repo (chamado por `run:`), não um action.
+    expect(content).toContain("bash scripts/setup-bun-ci.sh")
   })
 })

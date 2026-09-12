@@ -1185,15 +1185,25 @@ vivo sempre correto.
 > a repository variable do GitHub. O act não lê as variables do repositório —
 > o arquivo é o espelho local. Veja `### Act (executa os jobs localmente)`.
 >
-> **Drift de VALOR no `.actrc` (job semanal `actrc-sync`):** o guard estático
-> `check-bun-mirror.mjs` só valida que o `.actrc` DEFINE `BUN_VERSION` — o
+> **Drift de VALOR nos espelhos (job semanal `actrc-sync`):** o guard estático
+> `check-bun-mirror.mjs` só valida que cada espelho DEFINE `BUN_VERSION` — o
 > VALOR é impossível de conferir estaticamente (a variável remota só existe em
-> runtime). O job `actrc-sync` do `benchmark-weekly.yml` compara o `.actrc` do
-> working tree com `vars.BUN_VERSION` (via `scripts/check-actrc-sync.mjs
---expected "${{ vars.BUN_VERSION }}"`) e emite `::warning::` (NÃO-bloqueante)
-> se divergirem — o act local passaria a testar uma versão diferente da
-> produção sem o guard estático perceber. Variável ausente no repositório
+> runtime). O job `actrc-sync` do `benchmark-weekly.yml` compara os **dois**
+> espelhos do working tree com `vars.BUN_VERSION` (via
+> `scripts/check-actrc-sync.mjs --expected "${{ vars.BUN_VERSION }}"`) e emite
+> `::warning::` (NÃO-bloqueante) se divergirem: o `.actrc`, onde o act local
+> passaria a testar uma versão diferente da produção; e
+> `deploy/env.gitea.example`, que alimenta a label do runner da forja — ali o
+> sintoma é pior, porque o setup-bun funciona igual com ou sem Bun
+> pré-instalado, então a divergência só desliga o fast path de 0s do tier-1 em
+> silêncio (todo job volta a pagar o download). Variável ausente no repositório
 > também vira `::warning::` (exit 0), não falha o job.
+>
+> Como o run fica **verde** em qualquer cenário, a anotação não é canal de
+> ninguém: o step `if: always()` publica o drift como **issue**
+> (`scripts/actrc-sync-issue.mjs`, label `actrc-sync-drift`, dedup por
+> assinatura — a issue é o estado da dívida até ser fechada). Na forja, onde
+> não há canal de issue, o mesmo job roda com `--fail`.
 
 ## Local Workflow Validation (actionlint + act)
 

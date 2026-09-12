@@ -3,8 +3,8 @@
 #
 # Espelha o binário do Bun (release bun-v${BUN_VERSION}, linux-x64) para o
 # GHCR como uma imagem scratch MÍNIMA (ghcr.io/<owner>/bun:<versão>) com o
-# binário em /bun. O composite action ./.github/actions/setup-bun (tier 3,
-# cold cache) puxa DESTA imagem via docker pull + docker create/docker cp —
+# binário em /bun. O setup scripts/setup-bun-ci.sh (tier 3, cold cache)
+# puxa DESTA imagem via docker pull + docker create/docker cp —
 # pull dentro da rede do GitHub, SEM o rate limit anônimo do GitHub Releases.
 #
 # Por que não crane copy como o postgis: o postgis já é uma imagem de

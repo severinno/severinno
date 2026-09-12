@@ -69,10 +69,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Check benchmark scripts exist
         run: |
           MISSING=false
@@ -123,10 +127,14 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -466,10 +474,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       # ── act Linux (v0.2.89 — mesma da validação local no Windows) ────
       # O script aceita ACT_BIN para apontar para um binário alternativo;
       # sem ele, tenta tool-results/act/act.exe (não existe no runner).
@@ -715,20 +727,49 @@ jobs:
   # DIFERENTE da produção sem o guard estático perceber. Este job passa o
   # valor REAL de vars.BUN_VERSION via --expected e o script emite
   # ::warning:: (NÃO-bloqueante — drift de dev experience, não bug de CI).
+  #
+  # A ISSUE É O CANAL, não a anotação: um `::warning::` dentro de um run VERDE
+  # não é lido por ninguém (o run não fica vermelho em nenhum cenário). Por isso
+  # o step `if: always()` roda `scripts/actrc-sync-issue.mjs`, que reusa o MESMO
+  # `mirrorDriftReport` do guard (fonte única das regras — a issue e o log não
+  # podem discordar) e publica/comenta uma issue com dedup por assinatura.
+  # Antes deste step, a documentação prometia "aviso + issue" e a issue não
+  # existia em lugar nenhum: alerta mudo.
   actrc-sync:
-    name: .actrc ↔ vars.BUN_VERSION (aviso)
+    name: espelhos ↔ vars.BUN_VERSION (aviso + issue)
     runs-on: self-hosted
     timeout-minutes: 2
+    permissions:
+      contents: read
+      issues: write # a issue é o canal acionável do aviso (o run fica verde de propósito)
 
     steps:
       - uses: actions/checkout@v4
 
-      # ── Compara o .actrc do working tree com vars.BUN_VERSION ────────
-      # Node puro (sem deps) — não precisa de bun para o aviso. O exit 0
-      # em divergência é INTENCIONAL: ::warning:: não quebra o CI.
-      - name: Comparar .actrc com vars.BUN_VERSION
+      # ── Compara os DOIS espelhos do working tree com vars.BUN_VERSION ──
+      # `.actrc` e `deploy/env.gitea.example` (o arquivo comitado de onde o
+      # deploy/.env.gitea do VPS deriva). Node puro (sem deps) — não precisa
+      # de bun para o aviso. O exit 0 em divergência é INTENCIONAL:
+      # ::warning:: não quebra o CI — nenhum dos dois espelhos governa
+      # corretude de CI (um é a dev experience do act, o outro é a velocidade
+      # do runner da forja). Vale a pena avisar mesmo assim porque os dois
+      # falham em SILÊNCIO: o env desatualizado deixa o CI igualzinho, só
+      # sem o fast path de 0s do tier-1.
+      - name: Comparar espelhos (.actrc + env da forja) com vars.BUN_VERSION
         run: |
           node scripts/check-actrc-sync.mjs --expected "${{ vars.BUN_VERSION }}"
+
+      # ── ISSUE: o aviso acima vira ticket acionável ────────────────────────
+      # if: always() — roda TAMBÉM quando o guard sai 0 (que é o caso em
+      # divergência, por desenho). O script decide sozinho se há drift, com a
+      # mesma função do guard, e deduplica por assinatura contra issues abertas
+      # (a issue é o estado da dívida até ser fechada, não ruído semanal).
+      # GH_TOKEN explícito: o `gh` do runner já usa o GITHUB_TOKEN por padrão.
+      - name: Publicar o drift como Issue acionável
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/actrc-sync-issue.mjs --expected "${{ vars.BUN_VERSION }}"
 
   # ── Seed Guards E2E (semanal) ────────────────────────────────────────
   # Revalida SEMANALMENTE que os DOIS seeds (prod + dev) continuam

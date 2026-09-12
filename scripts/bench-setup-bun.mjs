@@ -103,8 +103,14 @@ export function deriveGhcrOwner(remoteUrl, envOwner = "") {
 
 /**
  * Classifica o tier do setup-bun a partir do log do act. Ordem de prioridade:
- * engajamento explícito de tier-3 (download) > tier-2 (cache restore) >
- * marcador tier-1 (bun pré-instalado) > sem evidência.
+ * download do script (tier-3) > script usou o cache (tier-2) > marcador tier-1
+ * (bun pré-instalado) > step de cache rodou (tier-2, sem marcador do script) >
+ * sem evidência.
+ *
+ * O último degrau existe porque, com o setup em `run:`, o actions/cache é um
+ * step de PRIMEIRO NÍVEL que roda SEMPRE — a linha dele não prova qual camada
+ * o SCRIPT usou, mas quando não há marcador tier-1 nem sinal do script, o
+ * cache é a única camada observável (ex.: cache emulado pelo act).
  *
  * @param {import("./check-tier1-fastpath.mjs").FastPathEvidence} fast
  * @param {import("./check-tier2-cache-restore.mjs").CacheRestoreEvidence} cache
@@ -115,6 +121,7 @@ export function classifyTier(fast, cache, tiers) {
   if (tiers.tier3Engaged) return "tier-3"
   if (tiers.tier2Engaged) return "tier-2"
   if (fast.markerVersion !== null) return "tier-1"
+  if (cache.cacheRestoreEngaged) return "tier-2"
   return "sem evidência"
 }
 

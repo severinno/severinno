@@ -7,11 +7,12 @@
 //
 // Por que existe: oven-sh/setup-bun@v2 re-downloada o release LATEST do Bun
 // em TODO job (~25-35s/job), mesmo quando o Bun já está instalado na imagem
-// (ubuntu-24.04 GitHub-hosted e catthehacker/act). O projeto migrou os 32
-// call sites dos 12 workflows para o composite action local
-// ./.github/actions/setup-bun, que usa 3 camadas (pre-installed fast path →
-// actions/cache keyed na versão → download direto do release só em cache
-// miss). Este guard falha o PR se alguém reintroduzir o action externo.
+// (ubuntu-24.04 GitHub-hosted e catthehacker/act). O projeto migrou TODOS os
+// call sites dos workflows para o script scripts/setup-bun-ci.sh, chamado por
+// `run:` (que NÃO passa pelo resolvedor de actions locais do runner), com 3
+// camadas: pre-installed fast path → cache keyed na versão → download do
+// release só em cache miss. Este guard falha o PR se alguém reintroduzir o
+// action externo.
 //
 // Escopo: varre TODAS as forjas (scripts/forge-workflows.mjs) procurando
 // `oven-sh/setup-bun` (qualquer versão/tag do action). Varreu só
@@ -96,15 +97,15 @@ function main() {
       }
     }
     console.error(
-      `\n   Use o composite action local ./.github/actions/setup-bun (pre-installed fast` +
-        `\n   path + actions/cache keyed na versão) em vez do action externo, que` +
+      `\n   Use o setup do repo — o par canônico 'actions/cache@v4 + run:` +
+        `\n   bash scripts/setup-bun-ci.sh <versão>' — em vez do action externo, que` +
         `\n   re-downloada o release LATEST em todo job (~25-35s/job).`,
     )
     process.exit(1)
   }
 
   console.log(
-    `✅ Nenhum workflow usa oven-sh/setup-bun em nenhuma forja (${dirs.join(", ")}) — migrados para ./.github/actions/setup-bun.`,
+    `✅ Nenhum workflow usa oven-sh/setup-bun em nenhuma forja (${dirs.join(", ")}) — migrados para scripts/setup-bun-ci.sh (chamado por run:).`,
   )
   process.exit(0)
 }

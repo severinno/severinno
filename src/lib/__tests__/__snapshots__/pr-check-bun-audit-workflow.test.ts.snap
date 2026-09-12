@@ -9,10 +9,17 @@ exports[`pr-check.yml — job bun-audit-guard (sintaxe YAML + snapshot) > parsei
       "uses": "actions/checkout@v4",
     },
     {
-      "uses": "./.github/actions/setup-bun",
+      "name": "Restore Bun cache",
+      "uses": "actions/cache@v4",
       "with": {
-        "bun-version": "\${{ vars.BUN_VERSION }}",
+        "key": "bun-\${{ vars.BUN_VERSION }}-\${{ runner.os }}-\${{ runner.arch }}",
+        "path": "~/.bun",
       },
+    },
+    {
+      "name": "Setup Bun",
+      "run": "bash scripts/setup-bun-ci.sh "\${{ vars.BUN_VERSION }}"",
+      "shell": "bash",
     },
     {
       "name": "Mutation test — bun audit guard sensitivity (fixtures)",

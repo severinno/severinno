@@ -28,10 +28,17 @@ exports[`ci.yml — sintaxe YAML + snapshot > parseia como YAML válido (js-yaml
           "uses": "actions/checkout@v4",
         },
         {
-          "uses": "./.github/actions/setup-bun",
+          "name": "Restore Bun cache",
+          "uses": "actions/cache@v4",
           "with": {
-            "bun-version": "\${{ vars.BUN_VERSION }}",
+            "key": "bun-\${{ vars.BUN_VERSION }}-\${{ runner.os }}-\${{ runner.arch }}",
+            "path": "~/.bun",
           },
+        },
+        {
+          "name": "Setup Bun",
+          "run": "bash scripts/setup-bun-ci.sh "\${{ vars.BUN_VERSION }}"",
+          "shell": "bash",
         },
         {
           "run": "bun install --frozen-lockfile",
@@ -72,10 +79,17 @@ exports[`ci.yml — sintaxe YAML + snapshot > parseia como YAML válido (js-yaml
           "uses": "actions/checkout@v4",
         },
         {
-          "uses": "./.github/actions/setup-bun",
+          "name": "Restore Bun cache",
+          "uses": "actions/cache@v4",
           "with": {
-            "bun-version": "\${{ vars.BUN_VERSION }}",
+            "key": "bun-\${{ vars.BUN_VERSION }}-\${{ runner.os }}-\${{ runner.arch }}",
+            "path": "~/.bun",
           },
+        },
+        {
+          "name": "Setup Bun",
+          "run": "bash scripts/setup-bun-ci.sh "\${{ vars.BUN_VERSION }}"",
+          "shell": "bash",
         },
         {
           "run": "bun install --frozen-lockfile",
@@ -115,10 +129,17 @@ sleep 10
           "uses": "actions/checkout@v4",
         },
         {
-          "uses": "./.github/actions/setup-bun",
+          "name": "Restore Bun cache",
+          "uses": "actions/cache@v4",
           "with": {
-            "bun-version": "\${{ vars.BUN_VERSION }}",
+            "key": "bun-\${{ vars.BUN_VERSION }}-\${{ runner.os }}-\${{ runner.arch }}",
+            "path": "~/.bun",
           },
+        },
+        {
+          "name": "Setup Bun",
+          "run": "bash scripts/setup-bun-ci.sh "\${{ vars.BUN_VERSION }}"",
+          "shell": "bash",
         },
         {
           "run": "bun install --frozen-lockfile",
@@ -160,10 +181,17 @@ sleep 10
           "uses": "actions/checkout@v4",
         },
         {
-          "uses": "./.github/actions/setup-bun",
+          "name": "Restore Bun cache",
+          "uses": "actions/cache@v4",
           "with": {
-            "bun-version": "\${{ vars.BUN_VERSION }}",
+            "key": "bun-\${{ vars.BUN_VERSION }}-\${{ runner.os }}-\${{ runner.arch }}",
+            "path": "~/.bun",
           },
+        },
+        {
+          "name": "Setup Bun",
+          "run": "bash scripts/setup-bun-ci.sh "\${{ vars.BUN_VERSION }}"",
+          "shell": "bash",
         },
         {
           "run": "bun install --frozen-lockfile",
@@ -205,10 +233,17 @@ fi
           "uses": "actions/checkout@v4",
         },
         {
-          "uses": "./.github/actions/setup-bun",
+          "name": "Restore Bun cache",
+          "uses": "actions/cache@v4",
           "with": {
-            "bun-version": "\${{ vars.BUN_VERSION }}",
+            "key": "bun-\${{ vars.BUN_VERSION }}-\${{ runner.os }}-\${{ runner.arch }}",
+            "path": "~/.bun",
           },
+        },
+        {
+          "name": "Setup Bun",
+          "run": "bash scripts/setup-bun-ci.sh "\${{ vars.BUN_VERSION }}"",
+          "shell": "bash",
         },
         {
           "run": "bun install --frozen-lockfile",

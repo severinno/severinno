@@ -3,28 +3,30 @@
 // check-tier2-cache-restore.mjs — guard do tier-2 (actions/cache restore) do
 // setup-bun
 //
-// POR QUE EXISTE: o composite action ./.github/actions/setup-bun tem 3 tiers:
+// POR QUE EXISTE: scripts/setup-bun-ci.sh (o setup é um SCRIPT chamado por
+// run:, não mais um composite action) tem 3 tiers:
 //   1. PRE-INSTALLED fast path — bun já no PATH da imagem (custom
 //      ghcr.io/<owner>/ubuntu-bun:<versão>) → ~0-2s, ZERO download/cache I/O.
 //      Guardado por scripts/check-tier1-fastpath.mjs.
 //   2. actions/cache restore — restaura o binário do release EXATO de
 //      actions/cache (key = bun-<versão>-<os>-<arch>) → ~1-2s. Este guard
-//      mede a duração do passo 'Restore Bun release from cache' e FALHA se
-//      ultrapassar o threshold — completando a cobertura dos 3 tiers.
+//      mede a duração do passo 'Restore Bun cache' (o step de
+//      actions/cache@v4 de primeiro nível do job) e FALHA se ultrapassar o
+//      threshold — completando a cobertura dos 3 tiers.
 //   3. COLD-CACHE download — só em cache miss (~1-3s mirror GHCR / ~5-10s
 //      GitHub Releases). Já coberto pelo check-tier1-fastpath.mjs, que FALHA
 //      quando o log mostra tier-3 engajado explicitamente.
 //
 // Sinais confiáveis (evidência empírica, act 0.2.89, logs não-TTY — verificado
 // em 08/2026 nos logs capturados):
-//   - `✅  Success - Main Restore Bun release from cache [<dur>]` — o step
-//     RODOU e a duração está na linha; é o que este guard mede.
+//   - `✅  Success - Main Restore Bun cache [<dur>]` — o step RODOU e a
+//     duração está na linha; é o que este guard mede.
 //   - `| Cache restored successfully` / `| Cache restored from key: ...` —
 //     cache HIT (tier-2 cumpriu o papel sem cair no download).
 //   - `| Cache not found for input keys: ...` — cache MISS (tier-3 em seguida).
-//   - `⬇  Skip - Main Restore Bun release from cache` — o step NÃO rodou
-//     (tier-1 engajou). N/A por default (PASS com nota); com
-//     --require-engagement vira FAIL (o job esperava medir o tier-2).
+//   - `⬇  Skip - Main Restore Bun cache` — o step NÃO rodou (tier-1
+//     engajou). N/A por default (PASS com nota); com --require-engagement
+//     vira FAIL (o job esperava medir o tier-2).
 //
 // Usage:
 //   node scripts/check-tier2-cache-restore.mjs --log <act-log> [--threshold <s>] [--require-engagement]
@@ -49,13 +51,21 @@ import { extractDurationFromLine } from "./check-setup-bun-common.mjs"
  * Extrai do log do act a evidência do tier-2 (cache restore):
  *   { cacheRestoreDurationSeconds, cacheRestoreEngaged, cacheRestoreSkipped,
  *     cacheHit, cacheMiss, compositeDurationSeconds }
+ *
+ * O `compositeDurationSeconds` mantém o nome por compatibilidade com
+ * scripts/bench-setup-bun.mjs, mas com o setup em UM step (o script) ele é a
+ * duração DESSE step — informativo, inclui o overhead do act.
  * Campos ausentes ficam como null/false (nunca lança).
  */
 export function extractCacheRestoreEvidence(logText) {
   const lines = String(logText).split(/\r?\n/)
-  const successLine = lines.find((l) => l.includes("Success - Main Restore Bun release from cache"))
-  const skipLine = lines.find((l) => l.includes("Skip - Main Restore Bun release from cache"))
-  const compositeLine = lines.find((l) => l.includes("Success - Main ./.github/actions/setup-bun"))
+  // O step de cache virou um step de PRIMEIRO NÍVEL do job (`name: Restore Bun
+  // cache`, o par canônico do repo) — o nome é o mesmo em todas as forjas, e é
+  // o que o check:bun-mirror trava junto da key.
+  const successLine = lines.find((l) => l.includes("Success - Main Restore Bun cache"))
+  const skipLine = lines.find((l) => l.includes("Skip - Main Restore Bun cache"))
+  // Sem composite, o total do setup é o step que roda o script.
+  const compositeLine = lines.find((l) => l.includes("Success - Main Setup Bun"))
   return {
     cacheRestoreDurationSeconds: successLine ? extractDurationFromLine(successLine) : null,
     cacheRestoreEngaged: Boolean(successLine),
@@ -107,17 +117,17 @@ export function checkTier2CacheRestore(
     if (requireEngagement) {
       reasons.push(
         ev.cacheRestoreSkipped
-          ? "tier-2 NÃO engajou — step 'Restore Bun release from cache' foi SKIPPED (tier-1 usou o fast path) e --require-engagement está ativo"
-          : "tier-2 NÃO engajou — step 'Restore Bun release from cache' AUSENTE do log e --require-engagement está ativo",
+          ? "tier-2 NÃO engajou — step 'Restore Bun cache' foi SKIPPED (tier-1 usou o fast path) e --require-engagement está ativo"
+          : "tier-2 NÃO engajou — step 'Restore Bun cache' AUSENTE do log e --require-engagement está ativo",
       )
     } else if (!ev.cacheRestoreSkipped) {
       reasons.push(
-        "step 'Restore Bun release from cache' AUSENTE do log — INCONCLUSIVO (job falhou antes do setup-bun ou passo renomeado/removido)",
+        "step 'Restore Bun cache' AUSENTE do log — INCONCLUSIVO (job falhou antes do setup-bun ou passo renomeado/removido)",
       )
     }
   } else if (ev.cacheRestoreDurationSeconds === null) {
     reasons.push(
-      "duração do passo 'Restore Bun release from cache' não encontrada na linha de success — INCONCLUSIVO (passo renomeado ou duração não reportada)",
+      "duração do passo 'Restore Bun cache' não encontrada na linha de success — INCONCLUSIVO (passo renomeado ou duração não reportada)",
     )
   } else if (ev.cacheRestoreDurationSeconds > thresholdSeconds) {
     reasons.push(

@@ -247,11 +247,12 @@ jobs:
   # ── No setup-bun Guard ────────────────────────────────────────────────
   # Fast gate (node puro, <1s): falha o PR se qualquer workflow voltar a usar
   # oven-sh/setup-bun@v2 (o action externo re-downloada o release LATEST do
-  # Bun em todo job, ~25-35s/job). Todos os 32 call sites foram migrados para
-  # o composite action local ./.github/actions/setup-bun (pre-installed fast
-  # path → actions/cache keyed na versão → download direto só em cache miss).
+  # Bun em todo job, ~25-35s/job). Todos os 54 call sites foram migrados para
+  # o script local scripts/setup-bun-ci.sh, chamado por `run:` (pre-installed
+  # fast path → actions/cache keyed na versão → mirror OCI/download no cold
+  # cache).
   no-setup-bun-guard:
-    name: No setup-bun Guard (local action)
+    name: No setup-bun Guard (script local)
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
@@ -260,18 +261,17 @@ jobs:
         run: node scripts/check-no-setup-bun.mjs
 
       - name: Summary
-        run: echo "✅ All workflows use ./.github/actions/setup-bun (cached)."
+        run: echo "✅ All workflows use scripts/setup-bun-ci.sh (cached)."
 
   # ── Bun Mirror Guard ─────────────────────────────────────────────────
   # Fast gate (node puro, <1s): falha o PR se a FONTE ÚNICA da versão do
   # Bun for violada. A versão vive APENAS na repository variable
   # vars.BUN_VERSION (Settings → Secrets and variables → Actions): workflows
-  # passam 'bun-version: ${{ vars.BUN_VERSION }}', o sync-bun-mirror.yml usa
-  # a mesma variável no env, e o composite action setup-bun resolve a versão
-  # em runtime (metadata de action NÃO avalia ${{ }}, então default literal é
-  # proibido). O guard falha se: mirror ausente, mirror com BUN_VERSION
-  # literal, action com default literal, action sem referência à variável,
-  # tier 3 (cold cache) sem ref ao mirror GHCR, qualquer literal de versão
+  # passam a versão como ARGUMENTO de scripts/setup-bun-ci.sh
+  # ('bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"'), o sync-bun-mirror.yml
+  # usa a mesma variável no env. O guard falha se: mirror ausente, mirror com
+  # BUN_VERSION literal, script sem leitura do argumento, script sem ref à
+  # variável, tier 3 (cold cache) sem ref ao mirror GHCR, qualquer literal de versão
   # do Bun em workflows (bun-version: 1.3.14, bun-1.3.14-...), ou .actrc
   # sem BUN_VERSION (act local).
   #
@@ -354,9 +354,9 @@ jobs:
   # scripts granulares (que continuam sendo a fonte única de
   # fixtures/mutações/asserções de cada guard):
   #   bun-literal    → test-mutation-bun-literal.sh
-  #                    (bun-version LITERAL em workflow deve FALHAR)
+  #                    (versão LITERAL na chamada do setup deve FALHAR)
   #   bun-removal    → test-mutation-bun-removal.sh
-  #                    (REMOÇÃO do input bun-version --staged deve FALHAR)
+  #                    (REMOÇÃO da chamada do setup --staged deve FALHAR)
   #   hooks-symmetry → test-mutation-hooks-symmetry.sh
   #                    (guard novo no pre-commit + linha stale devem FALHAR)
   #   readme         → test-mutation-readme-guards.sh (matriz ANINHADA:
@@ -545,8 +545,8 @@ jobs:
 
   # ── Tier-1 Fastpath Guard (PR, paths) ───────────────────────────────
   # Gate OPCIONAL (dry, sem cron): detecta regressão do tier-1 fast path
-  # do setup-bun ANTES do merge, apenas quando o PR tocar o composite
-  # action ./.github/actions/setup-bun/ ou o Dockerfile.ubuntu-bun.
+  # do setup-bun ANTES do merge, apenas quando o PR tocar o script do setup
+  # (scripts/setup-bun-ci.sh) ou o Dockerfile.ubuntu-bun.
   #
   # POR QUE: o guard periódico (tier1-fastpath-guard.yml) roda SÓ na cron
   # semanal — uma mudança de PR que quebre o tier-1 (imagem para de
@@ -580,9 +580,9 @@ jobs:
         with:
           fetch-depth: 0 # needed for origin/main...HEAD diff
 
-      # ── Path filter: steps pesados só rodam quando o PR toca o setup-bun
-      # action ou o Dockerfile.ubuntu-bun (mesmo padrão de diff dos jobs
-      # benchmark/geo — sem action externa de paths).
+      # ── Path filter: steps pesados só rodam quando o PR toca o script do
+      # setup (ou o Dockerfile.ubuntu-bun) — mesmo padrão de diff dos jobs
+      # benchmark/geo, sem action externa de paths.
       # Falha LOUD se o diff não puder ser calculado: um guard que pula em
       # silêncio (changed=false por erro de git) trairia o propósito.
       - name: Detect tier-1 relevant changes
@@ -594,12 +594,12 @@ jobs:
             cat /tmp/pr-diff.err
             exit 1
           fi
-          if grep -qE '^(\.github/actions/setup-bun/|Dockerfile\.ubuntu-bun)' /tmp/pr-diff.txt; then
+          if grep -qE '^(scripts/setup-bun-ci\.sh|Dockerfile\.ubuntu-bun)' /tmp/pr-diff.txt; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "  ✅ PR toca setup-bun/Dockerfile.ubuntu-bun — rodando guard"
+            echo "  ✅ PR toca o setup do Bun/Dockerfile.ubuntu-bun — rodando guard"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "  ℹ️ PR não toca setup-bun/Dockerfile.ubuntu-bun — guard pulado"
+            echo "  ℹ️ PR não toca o setup do Bun/Dockerfile.ubuntu-bun — guard pulado"
           fi
 
       # ── Valida a repository variable (fail-fast com mensagem clara) ──
@@ -687,10 +687,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Check documented E2E check counts match the derivation
         run: node scripts/check-e2e-counts.mjs
 
@@ -723,10 +727,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Check seed count literals across scripts/, docs/, .github/
         run: node scripts/check-seed-count-literals.mjs
 
@@ -774,10 +782,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -830,10 +842,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -878,10 +894,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Mutation test — unused deps guard sensitivity (fixtures)
         run: bash scripts/test-mutation-unused-deps.sh
 
@@ -901,10 +921,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Mutation test — count guard sensitivity (fixtures)
         run: bash scripts/test-mutation-mutation-count.sh
 
@@ -920,10 +944,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Mutation test — bun audit guard sensitivity (fixtures)
         run: bash scripts/test-mutation-bun-audit-baseline.sh
 
@@ -941,10 +969,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -979,10 +1011,14 @@ jobs:
         with:
           fetch-depth: 0 # needed to fetch main branch for baseline
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -1106,10 +1142,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -1624,10 +1664,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -1658,10 +1702,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -1728,10 +1776,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:

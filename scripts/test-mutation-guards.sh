@@ -22,9 +22,9 @@
 #
 # Matriz de sub-tests (id|descrição|script granular):
 #   bun-literal    → scripts/test-mutation-bun-literal.sh
-#                    bun-version LITERAL em workflow deve FALHAR (drift)
+#                    versão LITERAL na chamada do setup deve FALHAR (drift)
 #   bun-removal    → scripts/test-mutation-bun-removal.sh
-#                    REMOÇÃO do input bun-version (--staged) deve FALHAR
+#                    REMOÇÃO da chamada do setup (--staged) deve FALHAR
 #   hooks-symmetry → scripts/test-mutation-hooks-symmetry.sh
 #                    guard novo no pre-commit + linha stale devem FALHAR
 #   readme         → scripts/test-mutation-readme-guards.sh  (matriz aninhada:
@@ -85,8 +85,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # Adicionar um mutation test node-puro novo = adicionar UMA linha aqui (o
 # script granular já deve existir com exit 0 = mutação detectada).
 SUBTESTS=(
-  "bun-literal|Bun — literal bun-version em workflow|scripts/test-mutation-bun-literal.sh"
-  "bun-removal|Bun --staged — remoção do input bun-version|scripts/test-mutation-bun-removal.sh"
+  "bun-literal|Bun — versão literal na chamada do setup|scripts/test-mutation-bun-literal.sh"
+  "bun-removal|Bun --staged — remoção da chamada do setup|scripts/test-mutation-bun-removal.sh"
   "hooks-symmetry|Hooks — guard novo no pre-commit + linha stale|scripts/test-mutation-hooks-symmetry.sh"
   "readme|README — anchors + toc + images (matriz aninhada)|scripts/test-mutation-readme-guards.sh"
   "readme-reverse|README — drift semântico (baseline reverse) deve FALHAR|scripts/test-mutation-readme-reverse.sh"

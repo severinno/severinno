@@ -3,11 +3,14 @@
  *
  * Trava o contrato do smoke test MANUAL da forja
  * (.gitea/workflows/forge-smoke.yml) — o workflow que prova, no RUNTIME do
- * act_runner, as tres premissas de ambiente que nenhum guard estatico enxerga:
+ * act_runner, as quatro premissas de ambiente que nenhum guard estatico
+ * enxerga:
  *
  *   1. o contexto `vars` hidrata (repository variable BUN_VERSION);
- *   2. `uses: ./.github/actions/setup-bun` resolve (composite local);
- *   3. o runtime instalado e exatamente o da variable.
+ *   2. a cadeia do setup funciona por `run:` (com o tier-1 da imagem engajando);
+ *   3. o runtime instalado e exatamente o da variable;
+ *   4. o REGISTRO do act_runner (`/data/.runner`) e o que o compose declara —
+ *      os labels sao estado GRAVADO, nao configuracao do container.
  *
  * Valida QUATRO coisas:
  *
@@ -21,11 +24,12 @@
  *      lista de jobs exigidos da forja.
  *   3. Fonte unica do Bun — as funcoes do proprio guard (check-bun-mirror.mjs)
  *      rodam sobre o conteudo REAL: env resolvendo de vars.BUN_VERSION, nenhum
- *      literal de versao e o call site do composite passando o input.
- *   4. Auto-prova das provas — os scripts dos passos 1 e 3 sao EXTRAIDOS do YAML
- *      e EXECUTADOS com bash num ambiente controlado (var vazia, `bun` falso no
- *      PATH). Um diagnostico que nunca falhou nao diagnostica nada: se o passo 1
- *      deixar de detectar `vars` vazio, este teste quebra.
+ *      literal de versao e a chamada do setup passando a versao como argumento.
+ *   4. Auto-prova das provas — os scripts dos passos 1, 3 e 5 sao EXTRAIDOS do
+ *      YAML e EXECUTADOS com bash num ambiente controlado (var vazia, `bun` falso
+ *      no PATH). Um diagnostico que nunca falhou nao diagnostica nada: se o passo
+ *      1 deixar de detectar `vars` vazio, este teste quebra. No passo 5 o contrato
+ *      testado e o do EXIT CODE: 3 (nao provado) TEM de falhar a etapa.
  *
  * Uso:
  *   npx vitest run --config vitest.config.unit.ts src/lib/__tests__/forge-smoke-workflow.test.ts
@@ -100,6 +104,22 @@ function fakeBunDir(version: string): string {
 }
 
 /**
+ * `bun` FALSO que ignora os argumentos e sai com o codigo pedido.
+ *
+ * É o que permite exercitar o CONTRATO DA ETAPA da Prova 5 sem subir a forja: o
+ * que está sob teste é o mapeamento do exit code (0 passa, 1 e 3 falham), e não
+ * a leitura do registro — essa é coberta em check-runner-labels.test.ts.
+ */
+function fakeBunExit(output: string, code: number): string {
+  const dir = mkdtempSync(join(tmpdir(), "forge-smoke-bun-exit-"))
+  tempDirs.push(dir)
+  const bin = join(dir, "bun")
+  writeFileSync(bin, `#!/usr/bin/env bash\necho "${output}"\nexit ${code}\n`)
+  chmodSync(bin, 0o755)
+  return dir
+}
+
+/**
  * Caminho ABSOLUTO do bash. Necessário porque um dos testes roda com um PATH
  * sem `bun` (para provar o guard de `command -v`): se o bash em si fosse
  * resolvido pelo PATH, o spawn falharia com ENOENT (status null) antes de o
@@ -131,10 +151,25 @@ describe("forge-smoke.yml — sintaxe YAML + snapshot", () => {
     expect(Object.keys(parsed.jobs ?? {})).toEqual(["smoke"])
     const names = steps.map((s) => s.name)
     expect(names).toContain("Prova 1 — vars.BUN_VERSION resolve")
-    expect(names).toContain("Prova 2 — composite local resolve e executa")
+    expect(names).toContain("Prova 2 — setup por run: + tier-1 da imagem do runner")
     expect(names).toContain("Prova 3 — runtime == vars.BUN_VERSION")
-    expect(names).toContain("Prova 4 — install congelado + guard node-puro")
+    expect(names).toContain(
+      "Prova 4 — install congelado + guards node-puros (render do compose EXIGIDO)",
+    )
+    expect(names).toContain("Prova 5 — o registro do runner é o do compose")
     expect(names).toContain("Report runner toolchain")
+    // O par canônico: o step de CACHE (action remoto) precede a chamada.
+    expect(steps.map((s) => s.uses)).toContain("actions/cache@v4")
+  })
+
+  it("a Prova 4 EXIGE o render do compose — 'não provei' não pode passar verde na forja", () => {
+    const script = stepRun(
+      "Prova 4 — install congelado + guards node-puros (render do compose EXIGIDO)",
+    )
+    // Sem a flag, o `check:registry-source` trata a falta do docker/compose como
+    // INDETERMINADA e sai 0 (portabilidade do gate em qualquer máquina). Na forja
+    // isso significaria a INVARIANTE 7 não verificada dentro de um job verde.
+    expect(script).toContain("bun run check:registry-source --require-compose")
   })
 
   it("trigger: SOMENTE workflow_dispatch (nada de push/pull_request/schedule)", () => {
@@ -173,9 +208,13 @@ describe("forge-smoke.yml — fonte única do Bun", () => {
     expect(checkNoLiteralBunVersion(FORGE_WF_DIR)).toEqual([])
   })
 
-  it("o call site do composite passa bun-version (e nenhum oven-sh/setup-bun)", () => {
+  it("a chamada passa a versão da fonte única (e nenhuma action local)", () => {
+    // O guard roda sobre o diretório REAL da forja: se a chamada perdesse o
+    // argumento ou usasse literal, este teste (e o guard) quebrariam.
     expect(checkSetupBunCallSites(FORGE_WF_DIR)).toEqual([])
-    expect(content).toContain("uses: ./.github/actions/setup-bun")
+    expect(content).toContain('bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"')
+    // `run:` não passa pelo resolvedor de actions locais — nenhuma ref `./`.
+    expect(content).not.toContain("uses: ./")
     // Só linhas EXECUTÁVEIS importam — o header cita oven-sh/setup-bun em prosa.
     const executable = content
       .split(/\r?\n/)
@@ -229,5 +268,55 @@ describe("forge-smoke.yml — as provas detectam a falha que anunciam", () => {
     const res = runStep(script, { BUN_VERSION: "1.3.14", PATH: emptyDir })
     expect(res.status).toBe(1)
     expect(`${res.stdout}${res.stderr}`).toContain("bun nao esta no PATH")
+  })
+
+  /**
+   * Prova 5 — o contrato é o EXIT CODE do guard, e o caso que mais importa é o
+   * 3: "não consegui olhar" tem de FALHAR a etapa. Um smoke verde que não provou
+   * nada é exatamente o defeito que este workflow existe para pegar.
+   */
+  it("Prova 5: passa quando o guard prova o registro (exit 0)", () => {
+    const dir = fakeBunExit("check-runner-labels: ✅ o registro do act_runner é o do compose", 0)
+    const res = runStep(stepRun("Prova 5 — o registro do runner é o do compose"), {
+      PATH: `${dir}:${process.env.PATH ?? ""}`,
+    })
+    expect(res.status).toBe(0)
+    expect(res.stdout).toContain("o registro do act_runner é o que o compose declara")
+  })
+
+  it("Prova 5: falha com registro velho (exit 1) apontando o re-registro", () => {
+    const dir = fakeBunExit("REGISTRO VELHO: 1.0.0-antiga != 1.3.14", 1)
+    const res = runStep(stepRun("Prova 5 — o registro do runner é o do compose"), {
+      PATH: `${dir}:${process.env.PATH ?? ""}`,
+    })
+    expect(res.status).toBe(1)
+    const out = `${res.stdout}${res.stderr}`
+    expect(out).toContain("REGISTRO VELHO")
+    expect(out).toContain("--re-register")
+    // A saída do guard chega ANTES do diagnostico: quem le o log ve o diff.
+    expect(out).toContain("1.0.0-antiga")
+  })
+
+  it("Prova 5: NÃO PROVADO (exit 3) FALHA a etapa — nunca vira verde", () => {
+    const dir = fakeBunExit("check-runner-labels: NÃO PROVADO (unavailable)", 3)
+    const res = runStep(stepRun("Prova 5 — o registro do runner é o do compose"), {
+      PATH: `${dir}:${process.env.PATH ?? ""}`,
+    })
+    expect(res.status).toBe(1)
+    const out = `${res.stdout}${res.stderr}`
+    expect(out).toContain("NÃO PROVADO")
+    // A etapa diz que a VERIFICAÇÃO não aconteceu — não que a invariante falhou.
+    expect(out).toContain("a comparação NÃO aconteceu")
+  })
+
+  it("Prova 5: saída de env/uso (exit 2) também falha, sem se passar por divergência", () => {
+    const dir = fakeBunExit("check-runner-labels: env da forja não encontrado", 2)
+    const res = runStep(stepRun("Prova 5 — o registro do runner é o do compose"), {
+      PATH: `${dir}:${process.env.PATH ?? ""}`,
+    })
+    expect(res.status).toBe(1)
+    const out = `${res.stdout}${res.stderr}`
+    expect(out).toContain("env/uso")
+    expect(out).not.toContain("REGISTRO VELHO")
   })
 })

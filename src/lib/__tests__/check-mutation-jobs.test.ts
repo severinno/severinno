@@ -74,8 +74,8 @@ const PKG_SCRIPTS = {
 }
 
 const MASTER_MATRIX = `SUBTESTS=(
-  "bun-literal|Bun — literal bun-version em workflow|scripts/test-mutation-bun-literal.sh"
-  "bun-removal|Bun --staged — remoção do input bun-version|scripts/test-mutation-bun-removal.sh"
+  "bun-literal|Bun — versão literal na chamada do setup|scripts/test-mutation-bun-literal.sh"
+  "bun-removal|Bun --staged — remoção da chamada do setup|scripts/test-mutation-bun-removal.sh"
   "hooks-symmetry|Hooks — guard novo no pre-commit|scripts/test-mutation-hooks-symmetry.sh"
   "readme|README — anchors + toc + images (matriz aninhada)|scripts/test-mutation-readme-guards.sh"
   "utf8-scope|UTF-8 — call site sem src/|scripts/test-mutation-utf8-scope.sh"

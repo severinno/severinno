@@ -1,0 +1,78 @@
+# =============================================================================
+# .gitea/workflows/actrc-sync.yml
+#
+# Equivalente Gitea do job `actrc-sync` do `.github/workflows/benchmark-weekly.yml`:
+# compara os espelhos locais da repository variable BUN_VERSION com o valor dela.
+#
+# POR QUE A FORJA PRECISA DISSO (e por que o lado GitHub não bastava):
+#   - a forja é DONA DO MERGE e é onde a stack roda. O `deploy/.env.gitea` do
+#     checkout é o arquivo que o compose lê (`--env-file`) para montar a label
+#     do runner — é ESTE host que tem o arquivo para comparar. Num runner do
+#     GitHub ele não existe (gitignored), então o job de lá só enxerga o
+#     template comitado;
+#   - o drift aqui é silencioso por construção: o setup-bun funciona igual com
+#     ou sem Bun pré-instalado, então a imagem errada não deixa nenhum gate
+#     vermelho — ela só DESLIGA o fast path de 0s do tier-1, e todo job da forja
+#     volta a pagar o download.
+#
+# SEMÂNTICA DIFERENTE DO LADO GITHUB, de propósito: lá o guard roda sem --fail e
+# emite `::warning::` (exit 0), porque o alerta acionável é a issue aberta pelo
+# job irmão. Aqui não há `gh` nem issue: o ÚNICO canal visível é o status do run
+# agendado, e um `::warning::` dentro de um run VERDE não é lido por ninguém.
+# Então aqui o job roda com `--fail`: drift => run vermelho, com o remédio no
+# log. (Mesmo raciocínio do required-checks-drift.yml, que falha em vez de
+# abrir issue neste lado.)
+#
+# Este workflow NÃO pode estar em `ci/required-checks.json`: roda por cron, não
+# em PR — exigi-lo travaria todo PR para sempre.
+#
+# Usage:
+#   cron semanal (segunda 06:23 UTC) ou dispatch manual.
+# =============================================================================
+
+name: Actrc Sync
+
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  actrc-sync:
+    name: Espelhos ↔ vars.BUN_VERSION (.actrc + env da forja)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Mesmo contrato da ci.yml: script + cache, sem composite local.
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+
+      # `bun <script>` direto (não `bun run <entry>`): a entry do package.json
+      # invoca `node scripts/...`, e a imagem do runner Gitea não garante `node`
+      # no PATH — bun executa o .mjs nativamente. O guard é node-puro (sem
+      # deps), então não precisa de `bun install`.
+      #
+      # O guard DESCOBRE os espelhos no workspace: o template comitado
+      # (deploy/env.gitea.example) e o arquivo do host (deploy/.env.gitea), que
+      # neste checkout existe e é o que o compose lê. Cada um é comparado e
+      # nomeado no aviso — e é isso que faz este job valer mais que o do GitHub.
+      - name: Comparar espelhos com vars.BUN_VERSION
+        run: |
+          bun scripts/check-actrc-sync.mjs --expected "$BUN_VERSION" --fail || {
+            echo "::error::Drift entre os espelhos da versão do Bun e a repository variable BUN_VERSION."
+            echo "::error::Remédio: alinhe o .actrc e o deploy/env.gitea.example (template comitado) e o deploy/.env.gitea DESTE host; se o env mudou, re-registre o runner: bash deploy/gitea-up.sh --re-register"
+            exit 1
+          }
+
+env:
+  # FONTE ÚNICA (variable do repositório) — não cravar a versão aqui.
+  BUN_VERSION: ${{ vars.BUN_VERSION }}

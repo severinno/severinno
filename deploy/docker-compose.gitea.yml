@@ -120,7 +120,42 @@ services:
       - GITEA_INSTANCE_URL=http://gitea:3000
       - GITEA_RUNNER_REGISTRATION_TOKEN=${RUNNER_TOKEN}
       - GITEA_RUNNER_NAME=vps-runner
-      - GITEA_RUNNER_LABELS=ubuntu-latest:docker://node:20-bullseye,ubuntu-22.04:docker://node:20-bullseye
+      # ── Labels = IMAGEM que roda os jobs ───────────────────────────────
+      # Apontam para a imagem que EMBARCA o Bun na versão da variable. E isso
+      # que faz o fast path (tier-1, 0s) do setup-bun disparar nesta forja —
+      # com a `node:20-bullseye` anterior o tier-1 NUNCA engajava e todo job
+      # pagava o download do tier 3 (~1-3s pelo mirror, ~5-10s pelo release).
+      #
+      # FONTE UNICA da imagem: IMAGE_REGISTRY/IMAGE_NAMESPACE (as mesmas do
+      # resto do repo) + BUN_VERSION. O BUN_VERSION daqui precisa ser IGUAL a
+      # repository variable BUN_VERSION do repositorio — o guard semanal
+      # (check-actrc-sync.mjs) compara os dois espelhos e o smoke da forja
+      # (Proof 3) prova a igualdade em runtime.
+      #
+      # A TAG NAO PODE SER LITERAL: `check:registry-source` (invariante 6)
+      # falha se este diretorio voltar a fixar uma versao
+      # (`ubuntu-bun:1.3.14`) — a troca da variavel nao invalidaria a imagem e
+      # o runner rodaria outra versao, com o tier-1 desligado em silencio.
+      #
+      # ⚠️ PREREQUISITO: a imagem precisa EXISTIR no registry ANTES de subir o
+      # runner. NAO confie em subir a mao: quem garante isso e o comando
+      # `bash deploy/gitea-up.sh` (ou `bun run runner-image:ensure`), que le
+      # ESTE env, confere a tag no registry (publica se faltar — via
+      # sync-ubuntu-bun-mirror.yml ou build+push local) e so entao sobe o
+      # runner. Nao ha fallback: sem a imagem, os jobs nem iniciam — a
+      # `node:20-bullseye` do Docker Hub e que era "sempre existe, sempre
+      # lenta"; a troca e velocidade por dependencia.
+      #
+      # ⚠️ LABELS SAO DE REGISTRO: o act_runner os envia ao registrar e depois
+      # usa os que ficaram gravados em /data/.runner — um `restart` NAO aplica a
+      # troca de imagem. Mudar aqui exige RE-REGISTRAR, e o re-registro tambem
+      # passa pela garantia da imagem (trocar a versao e justamente quando a tag
+      # pode faltar):
+      #   bash deploy/gitea-up.sh --re-register   (ver deploy/GITEA.md § Runner)
+      # Ele garante a imagem, apaga o container E o registro gravado, e so
+      # entao sobe — sem apagar o volume o runner voltaria com os labels ANTIGOS
+      # e o tier-1 seguiria desligado, sem nenhum sintoma.
+      - GITEA_RUNNER_LABELS=ubuntu-latest:docker://${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-severinno}/ubuntu-bun:${BUN_VERSION},ubuntu-22.04:docker://${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-severinno}/ubuntu-bun:${BUN_VERSION}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - runner-data:/data

@@ -15,8 +15,9 @@
  *        test ↔ --max/--warn-median/--warn-margin dos jobs do CI (pr-check +
  *        benchmark-weekly) — mode "equal" (regexes escopo-delimitadas pela
  *        invocação do medidor para não casar --max de outros jobs)
- *   4-5. markers tier-1 'Usando Bun pré-instalado' / 'Use pre-installed Bun
- *        (fast path)' (action setup-bun ↔ check-tier1-fastpath) — contains
+ *   4-5. markers 'Usando Bun pré-instalado' (script setup-bun-ci.sh ↔ guard
+ *        tier-1) / 'Restore Bun cache' (workflow pr-check ↔ guard tier-2)
+ *        — contains
  *
  * Cobre (padrão dos testes de guards — funções puras + CLI real):
  *   - extractPairValues: 1 match, N matches (regex sem /g), 0 matches
@@ -49,6 +50,9 @@ const tmpDirs: string[] = []
 /** Escreve um fixture mínimo com TODOS os arquivos referenciados pelos
  * contratos (o --root real lê os paths do CONTRACTS).
  *
+ * O setup do Bun entra como `scripts/setup-bun-ci.sh` (o marcador tier-1) e o
+ * step de cache como o par canônico `Restore Bun cache`.
+ *
  * Semântica: o MUTATION TEST (scripts/test-mutation-timing-budget.sh) é a
  * FONTE DA VERDADE — recebe os valores parametrizados; os WORKFLOWS sempre
  * gravam os DEFAULTS (240/4/0.2). Assim `writeFixture(dir, { budgetMax:
@@ -73,7 +77,6 @@ function writeFixture(
   } = values
   mkdirSync(join(dir, "scripts"), { recursive: true })
   mkdirSync(join(dir, ".github", "workflows"), { recursive: true })
-  mkdirSync(join(dir, ".github", "actions", "setup-bun"), { recursive: true })
   writeFileSync(
     join(dir, "scripts", "test-mutation-timing-budget.sh"),
     `BUDGET_MAX=${budgetMax}\nBUDGET_WARN=180\nBUDGET_ALERT=100\nRUN_ARGS="--max ${budgetMax} --warn-median ${warnMedian} --warn-margin ${warnMargin}"\n`,
@@ -81,7 +84,7 @@ function writeFixture(
   )
   writeFileSync(
     join(dir, ".github", "workflows", "pr-check.yml"),
-    `      - name: Guard mutation coord timing (act log)\n        run: |\n          node scripts/measure-mutation-timing.mjs \\\n            --act-log /tmp/act.log \\\n            --max 240 \\\n            --warn-median 4 \\\n            --warn-margin 0.2 \\\n            --act-exit 0\n`,
+    `      - name: Restore Bun cache\n        uses: actions/cache@v4\n      - name: Guard mutation coord timing (act log)\n        run: |\n          node scripts/measure-mutation-timing.mjs \\\n            --act-log /tmp/act.log \\\n            --max 240 \\\n            --warn-median 4 \\\n            --warn-margin 0.2 \\\n            --act-exit 0\n`,
     "utf8",
   )
   writeFileSync(
@@ -89,14 +92,23 @@ function writeFixture(
     `        run: |\n          node scripts/measure-mutation-timing.mjs \\\n            --run 1 \\\n            --max 240 \\\n            --warn-median 4 \\\n            --warn-margin 0.2 \\\n            --json /tmp/mutation-timing.json\n\n      - name: Guard warm cache (limiar 10s)\n        run: |\n          node scripts/check-setup-bun-warm.mjs \\\n            --max 10\n`,
     "utf8",
   )
+  // O setup é um SCRIPT chamado por run: (não mais um composite) — o contrato
+  // 4 casa o marcador tier-1 entre ele e o guard.
   writeFileSync(
-    join(dir, ".github", "actions", "setup-bun", "action.yml"),
-    `    - name: Detect pre-installed Bun\n    - name: Use pre-installed Bun (fast path)\n        run: echo "✅ Usando Bun pré-instalado: $(bun --version) (0s, sem download)"\n`,
+    join(dir, "scripts", "setup-bun-ci.sh"),
+    `echo "✅ Usando Bun pré-instalado: ${"$"}{1:-} (0s, sem download)"\n`,
     "utf8",
   )
   writeFileSync(
     join(dir, "scripts", "check-tier1-fastpath.mjs"),
-    `export function parseMarkerVersion(line) {\n  const m = String(line).match(/Usando Bun pré-instalado:\\s*([\\d.]+)/)\n  return m ? m[1] : null\n}\nexport function findFastPathLine(lines) {\n  return lines.find((l) => l.includes("Success - Main Use pre-installed Bun (fast path)"))\n}\n`,
+    `export function parseMarkerVersion(line) {\n  const m = String(line).match(/Usando Bun pré-instalado:\\s*([\\d.]+)/)\n  return m ? m[1] : null\n}\nexport function findFastPathLine(lines) {\n  return lines.find((l) => l.includes("Success - Main Setup Bun"))\n}\n`,
+    "utf8",
+  )
+  // Contrato 5: o nome do step de cache é compartilhado entre o workflow e o
+  // guard tier-2 (se um lado mudar sozinho, o guard fica cego).
+  writeFileSync(
+    join(dir, "scripts", "check-tier2-cache-restore.mjs"),
+    `export function extractCacheRestoreEvidence(logText) {\n  const lines = String(logText).split("\\n")\n  return { successLine: lines.find((l) => l.includes("Success - Main Restore Bun cache")) }\n}\n`,
     "utf8",
   )
   // tokens configuráveis para os testes de drift do contains
@@ -105,8 +117,8 @@ function writeFixture(
   }
   if (!tier1Step) {
     writeFileSync(
-      join(dir, ".github", "actions", "setup-bun", "action.yml"),
-      `    - name: Detect pre-installed Bun\n    - name: Use instaled Bun (renamed)\n`,
+      join(dir, "scripts", "setup-bun-ci.sh"),
+      `echo "✅ Bun ja instalado (marcador renomeado)"\n`,
       "utf8",
     )
   }
@@ -240,7 +252,8 @@ describe("checkContractPairs + contractFiles", () => {
 
   it("contractFiles dedupe paths de contains e equal", () => {
     expect(contractFiles()).toContain("scripts/test-mutation-timing-budget.sh")
-    expect(contractFiles()).toContain(".github/actions/setup-bun/action.yml")
+    expect(contractFiles()).toContain("scripts/setup-bun-ci.sh")
+    expect(contractFiles()).toContain("scripts/check-tier2-cache-restore.mjs")
     expect(new Set(contractFiles()).size).toBe(contractFiles().length)
   })
 })
@@ -279,12 +292,12 @@ describe("CLI real --root", () => {
     expect(out).toContain("AUSENTE em scripts/check-tier1-fastpath.mjs")
   })
 
-  it("exit 1: step tier-1 renomeado na action → contains falha", () => {
+  it("exit 1: marcador tier-1 renomeado no script do setup → contains falha", () => {
     const dir = makeRoot()
     writeFixture(dir, { tier1Step: false })
     const { status, out } = runCli(dir, ["--root", dir])
     expect(status).toBe(1)
-    expect(out).toContain("AUSENTE em .github/actions/setup-bun/action.yml")
+    expect(out).toContain("AUSENTE em scripts/setup-bun-ci.sh")
   })
 
   it("exit 2: arquivo do contrato ausente no fixture → fail-closed", () => {

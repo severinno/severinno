@@ -11,25 +11,28 @@ import {
 // ---------------------------------------------------------------------------
 // Fixtures — logs realistas baseados na evidência empírica do act 0.2.89
 // (probe 08/2026: imagem custom ghcr.io/<owner>/ubuntu-bun, job check).
-// O composite total (~11-30s) inclui overhead do act — os sinais confiáveis
-// são o marcador e a duração do passo fast-path (~0.44-0.46s).
+// O setup é UM step ('Setup Bun', que roda scripts/setup-bun-ci.sh): com o
+// tier-1 engajado o script sai na PRIMEIRA checagem, então a duração desse
+// step É o fast path (~0.44-0.46s). O step inclui o overhead do act.
 // ---------------------------------------------------------------------------
 
 const LOG_TIER1_FAST = [
   "[PR Check/check]   ✅  Success - Main Resolve Bun version [464.4688ms]",
-  "[PR Check/check]   ✅  Success - Main Detect pre-installed Bun [625.9247ms]",
   "[PR Check/check]   | ✅ Usando Bun pré-instalado: 1.3.14 (0s, sem download)",
-  "[PR Check/check]   ✅  Success - Main Use pre-installed Bun (fast path) [461.9667ms]",
-  "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [10.9823953s]",
+  "[PR Check/check]   ✅  Success - Main Setup Bun [461.9667ms]",
   "[PR Check/check]   ✅  Success - Complete job",
 ].join("\n")
 
+// Tier-2: o actions/cache é um step de PRIMEIRO NÍVEL do job (rodou e
+// restaurou) e o SCRIPT consumiu o binário do cache — o marcador tier-1 está
+// ausente. O sinal de engajamento do tier-2 é a saída do script, não a linha
+// de success do step de cache (que roda sempre).
 const LOG_TIER2_CACHE = [
   "[PR Check/check]   ✅  Success - Main Resolve Bun version [464.4688ms]",
-  "[PR Check/check]   ✅  Success - Main Detect pre-installed Bun [625.9247ms]",
-  "[PR Check/check]   ⬇  Skip - Main Use pre-installed Bun (fast path)",
-  "[PR Check/check]   ✅  Success - Main Restore Bun release from cache [1.234s]",
-  "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [1.9s]",
+  "[PR Check/check]   ✅  Success - Main Restore Bun cache [1.234s]",
+  "[PR Check/check]   | Cache restored from key: bun-1.3.14-Linux-X64",
+  "[PR Check/check]   | ✅ Bun do cache: 1.3.14 (sem download)",
+  "[PR Check/check]   ✅  Success - Main Setup Bun [1.9s]",
   "[PR Check/check]   ✅  Success - Complete job",
 ].join("\n")
 
@@ -39,15 +42,13 @@ const LOG_NO_EVIDENCE = [
 ].join("\n")
 
 const LOG_SLOW_FASTPATH = [
-  "[PR Check/check]   ✅  Success - Main Detect pre-installed Bun [625.9247ms]",
   "[PR Check/check]   | ✅ Usando Bun pré-instalado: 1.3.14 (0s, sem download)",
-  "[PR Check/check]   ✅  Success - Main Use pre-installed Bun (fast path) [6.5s]",
-  "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [8.1s]",
+  "[PR Check/check]   ✅  Success - Main Setup Bun [6.5s]",
 ].join("\n")
 
 const LOG_VERSION_DRIFT = [
   "[PR Check/check]   | ✅ Usando Bun pré-instalado: 1.4.0 (0s, sem download)",
-  "[PR Check/check]   ✅  Success - Main Use pre-installed Bun (fast path) [450ms]",
+  "[PR Check/check]   ✅  Success - Main Setup Bun [450ms]",
 ].join("\n")
 
 // Cenário catthehacker default (act EMULA o actions/cache): tier-1 nem
@@ -56,11 +57,9 @@ const LOG_VERSION_DRIFT = [
 // o que o --tier2 adiciona é o sinal QUANTITATIVO do cache emulado.
 const LOG_CATTHEHACKER_DEFAULT = [
   "[PR Check/check]   ✅  Success - Main Resolve Bun version [464.4688ms]",
-  "[PR Check/check]   ✅  Success - Main Detect pre-installed Bun [625.9247ms]",
-  "[PR Check/check]   ⬇  Skip - Main Use pre-installed Bun (fast path)",
-  "[PR Check/check]   ✅  Success - Main Restore Bun release from cache [21.22s]",
+  "[PR Check/check]   ✅  Success - Main Restore Bun cache [21.22s]",
   "[PR Check/check]   | Cache restored from key: bun-1.3.14-Linux-X64",
-  "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [22.4s]",
+  "[PR Check/check]   ✅  Success - Main Setup Bun [22.4s]",
   "[PR Check/check]   ✅  Success - Complete job",
 ].join("\n")
 
@@ -70,31 +69,29 @@ const LOG_CATTHEHACKER_DEFAULT = [
 // guard só olhava a presença do marcador); agora deve FALHAR.
 const LOG_MARKER_WITH_TIER2 = [
   "[PR Check/check]   | ✅ Usando Bun pré-instalado: 1.3.14 (0s, sem download)",
-  "[PR Check/check]   ✅  Success - Main Use pre-installed Bun (fast path) [461.9667ms]",
-  "[PR Check/check]   ✅  Success - Main Restore Bun release from cache [1.234s]",
-  "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [2.1s]",
+  "[PR Check/check]   ✅  Success - Main Setup Bun [461.9667ms]",
+  "[PR Check/check]   | ✅ Bun do cache: 1.3.14 (sem download)",
 ].join("\n")
 
 // Mesma regressão via tier-3: marcador presente + download explícito.
 const LOG_MARKER_WITH_TIER3 = [
   "[PR Check/check]   | ✅ Usando Bun pré-instalado: 1.3.14 (0s, sem download)",
-  "[PR Check/check]   ✅  Success - Main Use pre-installed Bun (fast path) [461.9667ms]",
-  "[PR Check/check]   ✅  Success - Main Download Bun release (cold cache) [7.42s]",
-  "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [8.3s]",
+  "[PR Check/check]   ✅  Success - Main Setup Bun [461.9667ms]",
+  "[PR Check/check]   |   ✅ Mirror OCI ok — bun 1.3.14",
 ].join("\n")
 
-// Tier-3 engajado com o padrão REAL do act 0.2.89 em logs não-TTY: a linha
-// 'Success - Main Download Bun release (cold cache)' (os grupos internos
-// ::group:: do action são CONSUMIDOS pelo act e não aparecem literalmente).
-// NOTA: em um log tier-3 real, o step de restore do tier-2 roda ANTES com
-// cache-miss ("Success - Main Restore Bun release from cache" + "Cache not
-// found") — ou seja, logs genuínos de tier-3 costumam disparar AMBOS os
-// flags. Este fixture isola a detecção de tier-3 para teste unitário do
-// extractor; o verdict já lida com as duas razões juntas sem conflito.
+// Tier-3 engajado com o padrão REAL do act 0.2.89 em logs não-TTY: o script
+// baixou o release (a linha 'URL: https://...' é `echo` simples; os títulos
+// ::group:: são CONSUMIDOS pelo act e não aparecem literalmente).
+// NOTA: em um log tier-3 real, o step de cache roda ANTES com cache-miss
+// ("Success - Main Restore Bun cache" + "Cache not found") — logs genuínos de
+// tier-3 costumam disparar AMBOS os flags. Este fixture isola a detecção de
+// tier-3 para teste unitário do extractor; o verdict lida com as duas razões
+// juntas sem conflito.
 const LOG_TIER3_STEP_ONLY = [
   "[PR Check/check]   | Cache not found for input keys: bun-1.3.14-Linux-X64",
-  "[PR Check/check]   ✅  Success - Main Download Bun release (cold cache) [7.42s]",
-  "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [8.3s]",
+  "[PR Check/check]   | URL: https://github.com/oven-sh/bun/releases/download/bun-v1.3.14/bun-linux-x64.zip",
+  "[PR Check/check]   ✅  Success - Main Setup Bun [8.3s]",
 ].join("\n")
 
 // ---------------------------------------------------------------------------
@@ -103,21 +100,24 @@ const LOG_TIER3_STEP_ONLY = [
 
 describe("extractDurationFromLine", () => {
   it("converte ms para segundos", () => {
-    expect(
-      extractDurationFromLine("✅  Success - Main Use pre-installed Bun (fast path) [461.9667ms]"),
-    ).toBeCloseTo(0.4619667, 6)
+    expect(extractDurationFromLine("✅  Success - Main Setup Bun [461.9667ms]")).toBeCloseTo(
+      0.4619667,
+      6,
+    )
   })
 
   it("converte s (mantém o valor)", () => {
-    expect(
-      extractDurationFromLine("✅  Success - Main ./.github/actions/setup-bun [10.9823953s]"),
-    ).toBeCloseTo(10.9823953, 6)
+    expect(extractDurationFromLine("✅  Success - Main Setup Bun [10.9823953s]")).toBeCloseTo(
+      10.9823953,
+      6,
+    )
   })
 
   it("converte µs para segundos", () => {
-    expect(
-      extractDurationFromLine("✅  Success - Post ./.github/actions/setup-bun [589.4µs]"),
-    ).toBeCloseTo(0.0005894, 8)
+    expect(extractDurationFromLine("✅  Success - Main Complete job [589.4µs]")).toBeCloseTo(
+      0.0005894,
+      8,
+    )
   })
 
   it("retorna null sem duração na linha", () => {
@@ -151,16 +151,21 @@ describe("parseMarkerVersion", () => {
 // ---------------------------------------------------------------------------
 
 describe("extractFastPathEvidence", () => {
-  it("extrai marcador + durações do log tier-1", () => {
+  it("extrai marcador + duração do step 'Setup Bun' no log tier-1", () => {
     const ev = extractFastPathEvidence(LOG_TIER1_FAST)
     expect(ev.markerVersion).toBe("1.3.14")
+    // Com o setup em UM step, a duração do fast path É a do step (o script
+    // sai na primeira checagem) — e compositeDurationSeconds aponta p/ o
+    // MESMO step (nome mantido p/ compatibilidade com o bench).
     expect(ev.fastPathDurationSeconds).toBeCloseTo(0.4619667, 6)
-    expect(ev.compositeDurationSeconds).toBeCloseTo(10.9823953, 6)
+    expect(ev.compositeDurationSeconds).toBeCloseTo(0.4619667, 6)
   })
 
   it("marcador ausente no log tier-2 (cache)", () => {
     const ev = extractFastPathEvidence(LOG_TIER2_CACHE)
     expect(ev.markerVersion).toBeNull()
+    // O step 'Setup Bun' RODOU (o script foi para o cache) — mas SEM o
+    // marcador tier-1 essa duração é a do setup INTEIRO, não do fast path.
     expect(ev.fastPathDurationSeconds).toBeNull()
     expect(ev.compositeDurationSeconds).toBeCloseTo(1.9, 6)
   })
@@ -170,7 +175,7 @@ describe("extractFastPathEvidence", () => {
     expect(ev.markerVersion).toBe("1.3.14")
   })
 
-  it("extrai a duração do passo tier-2 (Restore Bun release from cache)", () => {
+  it("extrai a duração do step de cache (Restore Bun cache)", () => {
     const ev = extractFastPathEvidence(LOG_TIER2_CACHE)
     expect(ev.tier2RestoreDurationSeconds).toBeCloseTo(1.234, 6)
   })
@@ -184,7 +189,10 @@ describe("extractFastPathEvidence", () => {
     const ev = extractFastPathEvidence(LOG_CATTHEHACKER_DEFAULT)
     expect(ev.tier2RestoreDurationSeconds).toBeCloseTo(21.22, 6)
     expect(ev.markerVersion).toBeNull()
+    // O setup INTEIRO levou 22.4s (cache emulado + tier-3): o fast path não
+    // engajou (o marcador é quem prova isso), mas o total do step foi medido.
     expect(ev.fastPathDurationSeconds).toBeNull()
+    expect(ev.compositeDurationSeconds).toBeCloseTo(22.4, 6)
   })
 })
 
@@ -200,7 +208,7 @@ describe("extractTierEngagement", () => {
     })
   })
 
-  it("detecta tier-2 pela linha de success do cache restore", () => {
+  it("detecta tier-2 pela saída do script ('Bun do cache:')", () => {
     expect(extractTierEngagement(LOG_MARKER_WITH_TIER2).tier2Engaged).toBe(true)
   })
 
@@ -225,16 +233,27 @@ describe("extractTierEngagement", () => {
     expect(t.tier2Engaged).toBe(false)
   })
 
-  it("linha 'Skip' de tier-2 NÃO conta como engajamento", () => {
+  it("step de cache rodando NÃO conta como tier-2 (ele roda SEMPRE)", () => {
+    // Regressão do contrato: com o setup em `run:`, o actions/cache é um step
+    // de primeiro nível e roda em TODO run — a linha de success dele NÃO
+    // prova que a camada de cache foi usada. Quem sabe a camada é o script.
     const log = [
-      "[PR Check/check]   ⬇  Skip - Main Restore Bun release from cache",
-      "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [1.9s]",
+      "[PR Check/check]   ✅  Success - Main Restore Bun cache [1.9s]",
+      "[PR Check/check]   ✅  Success - Main Setup Bun [461.9667ms]",
     ].join("\n")
     expect(extractTierEngagement(log).tier2Engaged).toBe(false)
   })
 
-  it("linha 'Skip' de tier-3 NÃO conta como engajamento", () => {
-    const log = ["[PR Check/check]   ⬇  Skip - Main Download Bun release (cold cache)"].join("\n")
+  it("linha de Skip do step de cache não vira engajamento", () => {
+    const log = ["[PR Check/check]   ⬇  Skip - Main Restore Bun cache"].join("\n")
+    expect(extractTierEngagement(log).tier2Engaged).toBe(false)
+  })
+
+  it("sem o marcador do script não há tier-3 (título de grupo é consumido pelo act)", () => {
+    const log = [
+      "[PR Check/check]   | ::group::Baixando Bun 1.3.14 (linux-x64) do GitHub Releases",
+      "[PR Check/check]   | ::endgroup::",
+    ].join("\n")
     expect(extractTierEngagement(log).tier3Engaged).toBe(false)
   })
 })
@@ -294,8 +313,8 @@ describe("checkTier1Fastpath", () => {
 
   it("FAIL se o marcador existe mas o passo fast-path sumiu (renomeado/removido)", () => {
     const log = LOG_TIER1_FAST.replace(
-      "✅  Success - Main Use pre-installed Bun (fast path) [461.9667ms]",
-      "✅  Success - Main Use pre-installed Bun [461.9667ms]",
+      "✅  Success - Main Setup Bun [461.9667ms]",
+      "✅  Success - Main Bun setup [461.9667ms]",
     )
     const r = checkTier1Fastpath(log)
     expect(r.pass).toBe(false)
@@ -328,7 +347,7 @@ describe("checkTier1Fastpath", () => {
       "[PR Check/check]   | ::group::Puxando Bun 1.3.14 do mirror GHCR (ghcr.io/owner/bun:1.3.14)",
       "[PR Check/check]   | ::endgroup::",
       "[PR Check/check]   | ✅ Usando Bun pré-instalado: 1.3.14 (0s, sem download)",
-      "[PR Check/check]   ✅  Success - Main Use pre-installed Bun (fast path) [450ms]",
+      "[PR Check/check]   ✅  Success - Main Setup Bun [450ms]",
     ].join("\n")
     const r = checkTier1Fastpath(log)
     expect(r.pass).toBe(true)
@@ -416,8 +435,9 @@ describe("checkTier1Fastpath", () => {
   })
 
   it("regra 8 não dispara quando o tier-2 rodou rápido em log com marcador tier-1", () => {
-    // LOG_MARKER_WITH_TIER2 tem restore de 1.234s — abaixo de qualquer
-    // threshold razoável; a regra 8 não adiciona razão (as regras 1/5 dominam).
+    // LOG_MARKER_WITH_TIER2 tem o marcador do script ('Bun do cache:') sem
+    // linha de duração do step de cache — a regra 8 não adiciona razão (as
+    // regras 1/5 dominam).
     const r = checkTier1Fastpath(LOG_MARKER_WITH_TIER2, { tier2ThresholdSeconds: 10 })
     expect(r.reasons.some((x) => x.includes("cache emulado"))).toBe(false)
     expect(r.reasons.some((x) => x.includes("tier-2 EXPLÍCITO"))).toBe(true)

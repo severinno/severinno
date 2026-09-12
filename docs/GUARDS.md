@@ -50,8 +50,65 @@ verdade — bump da variável não invalidava caches nem imagens. O guard caça
 literais em workflows, Dockerfiles, .actrc e lockfiles estrangeiros
 (package-lock.json/pnpm-lock.yaml são proibidos; só bun.lock).
 
+**O valor, que o estático não alcança:** a variável tem espelhos no working
+tree — `.actrc` (o act local não lê as variables do repositório) e o env da
+forja: `deploy/env.gitea.example` (o template comitado) e `deploy/.env.gitea`
+(o arquivo do HOST que o compose lê de verdade, gitignored — logo só existe no
+checkout que roda a stack). O `check-actrc-sync` compara os VALORES de cada um
+com `vars.BUN_VERSION` (a variável remota só existe em runtime, então nenhum
+guard estático pode fazer isso) e DESCOBRE o env do host quando ele está
+presente; um aviso que não nomeia QUAL arquivo drifta não é acionável.
+Aqui os modos de falha são silenciosos: o `.actrc` desatualizado faz o act
+testar outra versão, e o env desatualizado desliga o fast path de 0s do tier-1
+da forja sem deixar o CI vermelho (o setup-bun funciona igual, só mais lento).
+
+**Roda nos DOIS lados, com o mesmo script e as mesmas regras:** no GitHub pelo
+job semanal `actrc-sync` (`benchmark-weekly.yml`) e na forja por
+`.gitea/workflows/actrc-sync.yml` (mesmo cron). A forja precisa disso por ser
+dona do merge _e_ o único host cujo checkout tem o `deploy/.env.gitea`.
+
+**O que muda entre os lados é só o CANAL, e a diferença é deliberada:**
+
+| lado       | guard                                    | canal acionável                                                                                             |
+| :--------- | :--------------------------------------- | :---------------------------------------------------------------------------------------------------------- |
+| **forja**  | mesmo script, **`--fail`**               | status do run — lá não existe canal de issue, e `::warning::` dentro de um run verde não é lido por ninguém |
+| **GitHub** | mesmo script, modo aviso (`::warning::`) | **issue** publicada por `actrc-sync-issue.mjs` (label `actrc-sync-drift`), com dedup por assinatura         |
+
+**A regra é uma só (defeito real, medido e corrigido):** a documentação e o
+header da forja já diziam "no GitHub o alerta acionável é a ISSUE aberta pelo job
+irmão" — e **não existia job irmão nenhum**. O drift saía como `::warning::`
+dentro de um run VERDE: um alerta mudo, exatamente o que o
+`required-checks-drift-issue.mjs` e o `readme-reverse-issue.mjs` existem para
+evitar. Hoje o step `if: always()` do job roda `actrc-sync-issue.mjs`, que
+importa `mirrorDriftReport` **do próprio guard** — a issue e o log não podem
+discordar, porque quem decide o que é drift é uma função só (o CLI e o
+publicador consomem o mesmo diagnóstico). A assinatura do drift é estável
+(duas runs do mesmo drift → mesma assinatura), então a issue é o **estado da
+dívida até ser fechada**, não ruído semanal.
+
+**O re-registro é o outro caminho que sobe o runner:** trocar a label (ou a
+`BUN_VERSION`) é quando a tag tem mais chance de faltar, e o act_runner guarda
+os labels do registro em `/data/.runner` — então o procedimento precisa apagar
+container **e** volume, e passar pela garantia da imagem. O `checkReRegisterPath`
+prende as duas metades: no script, `rm -sf runner` antes de `up -d runner`; no
+runbook, `deploy/GITEA.md` tem de mandar o operador pelo `--re-register` e não
+pode ensinar a sequência à mão (um bloco cercado com `rm -sf runner` + `docker
+compose ... up -d runner` cru é violação — a prosa em volta pode até explicar o
+caminho antigo, mas o que se copia tem de ser o garantido).
+
+**Os dois donos de cada espelho (prende a assimetria):** cada espelho tem um
+ESCRITOR (`scripts/bump-bun.sh`, no bump) e um LEITOR-VERIFICADOR
+(`scripts/check-actrc-sync.mjs`, no job semanal). O `check-bun-mirror` exige que
+os dois conjuntos sejam o MESMO arquivo a arquivo — porque a assimetria é
+silenciosa nos dois sentidos: leitor sem escritor transforma todo bump num
+`::warning::` **permanente** (um aviso que o procedimento documentado não
+consegue silenciar acaba ignorado), e escritor sem leitor deixa o valor escrito
+sem nenhuma conferência.
+
 **Onde roda:** pre-commit/pre-push (modo `--staged` pega key/literal/call site
-introduzidos pelo PR), CI (job dedicado), cron (tier-1 fastpath).
+introduzidos pelo PR), CI (job dedicado), cron (tier-1 fastpath), e no semanal
+`actrc-sync` — no GitHub (aviso + issue com dedup) e na forja (`--fail`),
+comparando o valor de todos os espelhos descobertos, incluindo o env do host.
 
 **Família relacionada:** `check-tier1-fastpath`, `check-tier2-cache-restore`
 (performance do setup-bun — ver família 10).
@@ -73,17 +130,74 @@ da variável: `${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}` / `${IMAGE_REGISTRY:-ghc
 
 **Por que o escopo é declarado:** o guard varre os **sites de resolução**
 (compose, workflows do GitHub e do Gitea, composite actions, `.woodpecker.yml`),
-todos YAML — onde comentário é inequívoco (`#`). `scripts/*.mjs` ficam FORA de
+todos YAML — onde comentário é inequívoco (`#`). Com o runner rodando imagem
+custom, o escopo inclui **`deploy/`**: o compose da forja
+(`deploy/docker-compose.gitea.yml`) entra no mesmo gate, e **tag literal** na
+imagem nossa ali é violação — a tag tem de vir da variável (`ubuntu-bun:${BUN_VERSION}`,
+não `ubuntu-bun:1.3.14`). O porquê é o sintoma: um literal em `deploy/` não
+quebra o repositório, quebra a subida da stack — o runner passa a rodar outra
+versão e o fast path do setup desliga **em silêncio** (o setup funciona igual
+com ou sem Bun pré-instalado; só muda a velocidade). `scripts/*.mjs` ficam FORA de
 propósito: neles a string aparece também em prosa de mensagens de erro, e
 prosa não é configurável — um guard com falso positivo acaba desligado. O
 caminho de código real dos scripts honra `process.env.IMAGE_REGISTRY`.
 
-**Onde roda:** pre-commit (fase paralela, node puro, <1s), CI (`pr-check.yml`,
-job `workflow-refs-guard`) e nos pipelines das outras forjas.
+**Onde roda:** pre-commit (fase paralela, node puro, ~0,8s — inclui a varredura
+de decisões de escopo), CI (`pr-check.yml`, job `workflow-refs-guard`) e nos
+pipelines das outras forjas.
 
 **Imagens de terceiros:** consumo do GHCR que NÃO é nosso (ex.:
 `ghcr.io/project-osrm/osrm-backend`) vive em `THIRD_PARTY_ALLOWLIST`, uma por
 uma — allowlist por prefixo de host esconderia a regressão.
+
+**A metade dinâmica (mesmo gate, invariante 7):** além da varredura do texto, o
+gate renderiza `deploy/docker-compose.gitea.yml` com o `docker compose config` e
+falha se uma variável resolver **vazia** ou se o registry/tag resolver para um
+**literal**. A tag existir no registry não diz o que o compose _pede_ — ver a
+seção 6, onde as três fases (declarado · sentinela · sem versão) estão
+detalhadas, junto do que acontece quando o ambiente não tem a ferramenta
+(INDETERMINADO, nunca "passou") e de `--require-compose`, que troca esse aviso
+por falha onde o render é obrigatório (o job da forja).
+
+**Alvo fora do escopo exige DECISÃO ESCRITA (invariante 8):** o escopo declarado
+(YAML, onde comentário é inequívoco) é cego em qualquer diretório **novo** — um
+arquivo que monte uma imagem nossa fora dele fica invisível. Por isso todo
+arquivo fora do escopo que referencie imagem nossa precisa de uma entrada em
+`OUT_OF_SCOPE_ALLOWLIST` **com o motivo escrito**; não decidir é violação, e
+decisão que envelheceu (o arquivo existe e não referencia mais a imagem) também.
+A varredura do repo inteiro é o que garante que o próximo alvo apareça **antes**
+de virar incidente — foi ela que encontrou um `ghcr.io/...` cravado em código no
+harness de benchmark do `act`, escondido em `scripts/` (diretório excluído do
+escopo estrito de propósito, por causa da prosa das mensagens de erro). Prosa e
+fixture de teste são excluídas **por regra**, com razão escrita (a string da
+imagem ali não resolve nada) — uma entrada por arquivo de teste viraria uma
+lista que envelhece a cada teste novo.
+
+**`runner-labels:check` (a mesma família, um passo além — do TEXTO para o
+ESTADO):** as invariantes 6 e 7 provam o que o compose **declara** e o que a
+interpolação resolve. Nenhuma das duas prova o que o runner **gravou**: os
+labels do act_runner são ESTADO (`/data/.runner`, no volume), enviados no
+registro e nunca relidos do compose — e o `up -d runner` recria o container com
+o env NOVO deixando o registro VELHO no lugar (o volume sobrevive ao `rm`).
+O resultado é o pior tipo de falha: nenhum sintoma. O job roda, o setup do Bun
+funciona, os testes passam — na imagem antiga, sem o tier-1, com o download de
+volta em TODO job. `scripts/check-runner-labels.mjs` compara as DUAS pontas
+(o `docker compose config` do checkout, a mesma fonte única do invariante 7, e o
+`/data/.runner` lido DENTRO do container em execução) nome por nome e imagem por
+imagem, e aponta qual label aponta para qual imagem. O container e o arquivo de
+registro saem do **compose** (o `container_name` e o único volume NOMEADO do
+serviço): com dois volumes nomeados ele não escolhe — falha alto, porque ler o
+arquivo errado e comparar seria pior que não comparar. `INDETERMINADO` (sem
+docker, sem socket no job, sem container, registro ilegível) nunca vira
+"provado". No runtime quem o executa é a **Prova 5** do smoke da forja — e ali
+"não provado" **falha a etapa** de propósito (ver `deploy/GITEA.md`).
+
+A entrada se chama `runner-labels:check`, e NÃO `check:runner-labels`: um comando
+sob `check:` é lido como gate PORTÁTIL (roda na bateria de qualquer checkout), e
+este só tem sentido no host da forja — mesma família de
+`runner-image:ensure/check/prove`. Onde ele roda e o que ele decide está no
+exit code — **0** provado, **1** registro velho, **3** não provado —, e o pior
+desfecho seria um verde que não olhou nada.
 
 ---
 
@@ -224,10 +338,66 @@ própria variável (`${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}` /
 
 **Por que o escopo é declarado:** o guard varre os **sites de resolução**
 (compose, workflows do GitHub e do Gitea, composite actions, `.woodpecker.yml`),
-todos YAML — onde comentário é inequívoco. `scripts/*.mjs` ficam FORA de
+todos YAML — onde comentário é inequívoco. Com o runner rodando imagem custom, o
+escopo inclui **`deploy/`**: o compose da forja entrou no mesmo gate, e **tag
+literal** na imagem nossa ali é violação — a tag tem de vir da variável
+(`ubuntu-bun:${BUN_VERSION}`, não `ubuntu-bun:1.3.14`), senão o runner roda uma
+imagem que não corresponde à versão declarada e o fast path do setup desliga em
+silêncio. `scripts/*.mjs` ficam FORA de
 propósito: neles a mesma string aparece em prosa de mensagem de erro, e um guard
 com falso positivo acaba desligado. O caminho de código real dos scripts honra
 `process.env.IMAGE_REGISTRY`.
+
+**A metade DINÂMICA (invariante 7): `docker compose config` no compose da
+forja.** A varredura acima prova que a linha do label **referencia**
+`${BUN_VERSION}`. Ela não prova o que a interpolação **resolve** — e os dois
+modos de falha que sobram são invisíveis no texto:
+
+| Defeito no compose                        | O que o texto parece         | O que o docker resolve                                                 |
+| :---------------------------------------- | :--------------------------- | :--------------------------------------------------------------------- |
+| `${BUN_VERSIO}` (typo / variável órfã)    | correto ("tem uma variável") | `ubuntu-bun:` — **tag vazia**; o runner registra imagem que não existe |
+| `${BUN_VERSION:-1.4.0}` (default literal) | correto ("tem BUN_VERSION")  | `ubuntu-bun:1.4.0` — a variável **deixou** de ser fonte única          |
+
+Por isso o gate renderiza o compose com o **próprio docker** (quem interpola em
+produção) em três fases, com ambiente **controlado** (um `BUN_VERSION` exportado
+no shell de quem roda o guard não pode mudar o resultado):
+
+1. **declarado** — com o env da forja (`deploy/.env.gitea` se existir, senão o
+   template): **nenhuma** variável pode resolver vazia (é o próprio docker que
+   avisa `variable is not set. Defaulting to a blank string` — detecção genérica,
+   vale até para variável que o guard não conhece) e a tag tem de ser a versão
+   declarada;
+2. **sentinela** — registry/namespace/versão/token trocados por valores que não
+   existem no repo: o label tem de carregá-los. Se o render mostrar qualquer outra
+   coisa, o que não veio da variável está **literal** no compose;
+3. **sem versão** — com `BUN_VERSION` ausente a tag tem de sair **vazia**
+   (a variável é obrigatória de fato). Uma versão aqui é um default literal.
+
+**Sem docker o passo é INDETERMINADO, não falha:** numa máquina sem a
+ferramenta a interpolação não pode ser provada — o guard emite `::warning::` e
+sai 0, e o relatório do doctor diz **"interpolação não provada"**. Ausência de
+prova não é prova de falha (a mesma regra do registry inacessível), e um gate
+vermelho só porque a máquina não tem a ferramenta ensinaria a equipe a
+ignorá-lo. Para pular o passo deliberadamente: `--no-compose-render`.
+
+**E onde "não provei" passa a ser FALHA — `--require-compose`:** o job `guards`
+da forja roda nesta mesma imagem, e lá o render **não é opcional**. A imagem do
+job embarca o plugin `compose` — medido em 09/2026:
+a base `catthehacker/ubuntu:act-latest` entrega
+`/usr/libexec/docker/cli-plugins/docker-compose` (`docker compose version`
+responde 5.4.0-2) — e o **build** do `Dockerfile.ubuntu-bun` agora FALHA se isso
+mudar, com o motivo escrito (antes era um acidente de uma tag flutuante: o
+próprio projeto da base fechou como "not planned" o pedido de incluí-lo,
+catthehacker/docker_images#70). Com a flag, só `proven` passa: sem ela, a
+invariante 7 degradaria para um `::warning::` **dentro de um job verde** — um
+gate que deixou de verificar sem ninguém notar. Quem a usa é a Prova 4 do smoke
+da forja, e as duas flags juntas (`--require-compose --no-compose-render`)
+falham em vez de escolher uma precedência em silêncio.
+
+**Prova por mutação** (arquivo real, restaurado byte-idêntico por sha256):
+`${BUN_VERSION:-1.4.0}` → exit 1 com "DEFAULT LITERAL"; `${BUN_VERSIO}` → exit 1
+nomeando a variável; registry literal no label → exit 1 pelas duas metades
+(estática e dinâmica); token literal no compose → exit 1 (segredo versionado).
 
 **`check:forge-parity` (mesma família — consistência entre pipelines):**
 
@@ -314,6 +484,21 @@ violá-la).
 única do Bun, incl. o pathspec do modo `--staged`), `check-no-setup-bun`,
 `check-seed-hooks`, `check-sentinel-producer`, `check-workflow-refs`,
 `check-mutation-jobs` e `check-registry-source`.
+
+**A label aponta para uma imagem que pode NÃO EXISTIR:**
+`checkGiteaRunnerImage` (mesma família, dentro de `check-bun-mirror`) prova que os
+labels apontam para `ubuntu-bun:<BUN_VERSION>`; ele **não** prova que a tag está
+publicada. Sem a imagem, o act_runner nem inicia o container — e a falha aparece
+no meio do job, longe da causa. Quem fecha isso é o comando
+`scripts/ensure-runner-image.mjs`, e o guard `checkGiteaBringUp` prende a ORDEM:
+`deploy/gitea-up.sh` tem de **garantir** a imagem antes de `up -d runner`, e o
+instalador (`deploy/setup-gitea.sh`) tem de apontar para o bring-up em vez de
+ensinar um `docker compose up -d runner` seco. O guard lê **linhas de comando**
+(comentário que explica a ordem não a satisfaz) e o comando separa três estados
+que se confundem: tag **existe** (puxável anônima), tag **ausente** (publica e
+**reconfere** no registry) e **indeterminado** (registry inacessível, ou pacote
+privado — 401 é a resposta do GHCR tanto para pacote privado quanto para pacote
+inexistente). Indeterminado nunca publica: "não sei" não é "não existe".
 
 **O limite desta família, e o que cobre o resto:** guard estático lê **texto**.
 Ele não vê o `vars` do act_runner hidratando, nem `./.github/actions/setup-bun`
@@ -428,6 +613,84 @@ razão; allowlist de uso implícito; as 5 deps removidas no bump 0.4.0; as
 limitações do scan):** veja a seção [Auditoria de dependências — política
 ZERO-órfãs](../README.md#auditoria-de-dependências-política-zero-órfãs) —
 fonte única, sem duplicação neste catálogo para não driftar.
+
+---
+
+## 13. O agregador de prontidão — `doctor` (`scripts/forge-doctor.mjs`)
+
+**Isto NÃO é um guard.** É o comando que roda a bateria da forja e junta os
+veredictos num só: `bun run doctor`. Ele existe porque cada peça tinha seu
+guard e ninguém respondia à pergunta inteira ("a forja está pronta para
+bloquear o merge?") — e as respostas parciais alinhavam num sentido falso:
+`check-forge-parity` prova que a pipeline da forja **contém** as invariantes do
+CORE (não que elas passam agora); `check-required-checks` prova que o manifesto
+aponta para jobs que existem (não que a forja aplicou o manifesto);
+`runner-image:ensure` prova a imagem (e não sabe nada sobre os guards).
+
+**A bateria é DERIVADA, não listada:** o doctor fatia o job `guards` de
+`.gitea/workflows/ci.yml` — a pipeline dona do merge — e executa os gates que
+estão lá, usando a mesma classificação do `check-forge-parity`
+(`discoverGates`). Um guard novo na pipeline entra no doctor sozinho; um guard
+removido de lá some daqui. Não existe lista paralela para envelhecer.
+
+**A trava que ele carrega (defeito real, cometido e corrigido):** o rótulo que
+o descobridor devolve para uma invocação direta é só o CAMINHO —
+`bun scripts/rotate-secrets.mjs --check` vira o rótulo `scripts/rotate-secrets.mjs`,
+com a flag descartada. Executar o rótulo como comando rodaria o script na
+modalidade de EFEITO (no caso do `rotate-secrets`, preparando uma rotação de
+segredos como efeito colateral de um relatório). Por isso o doctor executa a
+LINHA `run:` (que preserva as flags) e ainda exige um modo de verificação
+(`--check`/`--ci`, entrada `check:`, ou script `check-`/`validate-`/`audit-`/
+`test-mutation-`/`run-`) — sem isso ele NÃO executa, e diz por quê.
+
+**A PROVA do bloqueio (seção 4/5 do relatório):** a seção da imagem dizia se a
+tag existe AGORA — o que não responde "a subida da stack depende dela?", que é a
+pergunta que importa. O doctor executa então `proveRunnerImageGate`
+(`scripts/prove-runner-image-gate.mjs`, o mesmo que `runner-image:prove`): ele roda o
+`deploy/gitea-up.sh` REAL contra um registry de TESTE em 127.0.0.1, com a tag
+ausente e com a tag presente, e afirma sobre o LOG do `docker` dublê — com a tag
+ausente NENHUM `compose up` acontece; com a tag presente, `up -d runner` sim. É o
+CONTROLE que faz disso uma prova: sem ele, "o runner não subiu" seria satisfeito
+por um script quebrado. Uma prova VIOLADA bloqueia o veredito — é o caso mais
+grave dos três, porque o remédio não é publicar imagem nenhuma, é consertar a
+subida. Sem `bash`/bring-up o estado é `unavailable` (INDETERMINADA), nunca
+"provada"; `--no-proof` também rebaixa o veredito e é declarado no "NÃO cobre".
+
+**A INTERPOLAÇÃO do compose (na seção 3/5):** a seção da imagem responde "dá
+para puxar a tag?". Ela não responde **"o compose PEDE a tag certa?"** — e é
+isso que o runner registra no `/data/.runner`. O doctor chama
+`checkComposeInterpolation` (o mesmo código da invariante 7 do
+`check:registry-source`, uma fonte só) e mostra o veredito dessa renderização ao
+lado do estado da imagem. Uma interpolação **VIOLADA bloqueia** (variável vazia
+ou valor literal: com a tag existindo no registry, o runner puxa outra imagem);
+sem docker/compose no ambiente o estado é `unavailable` → **INDETERMINADA**, e
+`--no-compose-render` rebaixa o veredito do mesmo jeito que `--no-guards` e
+`--no-proof`.
+
+**Três veredictos, e a diferença é o ponto:** `BLOQUEADA` quando uma invariante
+falha, quando a imagem do runner está AUSENTE (sem imagem nenhum job inicia —
+não é um gate vermelho, é a fila parada) ou quando a PROVA do bloqueio é violada
+(a garantia da imagem é decorativa); `INDETERMINADA` quando nada falhou mas
+algo não pôde ser provado (env ausente neste checkout, registry inacessível,
+gate não executado, guards pulados por `--no-guards`, prova pulada por
+`--no-proof`, interpolação pulada/não provada, ou prova não executável);
+`PRONTA` só com tudo provado. O exit code é o veredicto (0/1/2), então ele serve
+de gate de operação.
+
+**O que ele NÃO cobre, e por isso está escrito no relatório:** a branch
+protection efetivamente REGISTRADA na forja (o manifesto é aplicado por
+`apply-required-checks.mjs`; o doctor lê o manifesto), o smoke (tier-1 em
+runtime é um job da própria forja), o `deploy/.env.gitea` do VPS e o render do
+compose feito com o **docker do runner** da forja — aqui o render usa este
+docker. O que faz aquele render funcionar está garantido em dois lugares: o
+**build** da imagem do job exige o plugin `compose` (`Dockerfile.ubuntu-bun`, e
+a `Verify mirror digest` do mirror confere na imagem PUBLICADA), e o **socket**
+do job é exercitado pela Prova 4 do smoke, que exige o render
+(`--require-compose`) em vez de aceitar o aviso.
+
+**Onde roda:** manual/operador (`bun run doctor`), antes de confiar o merge à
+forja e no runbook de deploy (`deploy/GITEA.md`). Fora do CI de propósito: ele
+depende do registry e do env do host.
 
 ---
 

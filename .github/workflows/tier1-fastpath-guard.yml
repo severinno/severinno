@@ -1,19 +1,19 @@
 # =============================================================================
 # Tier-1 Fastpath Guard (act)
 #
-# Validação PERIÓDICA do tier-1 fast path do composite action
-# ./.github/actions/setup-bun usando a imagem custom
-# ghcr.io/<owner>/ubuntu-bun:<versão> (bun PRÉ-INSTALADO).
+# Validação PERIÓDICA do tier-1 fast path do setup scripts/setup-bun-ci.sh
+# usando a imagem custom ghcr.io/<owner>/ubuntu-bun:<versão>
+# (bun PRÉ-INSTALADO).
 #
 # POR QUE: se o tier-1 regredir silenciosamente (imagem para de embarcar bun,
-# o passo 'Detect pre-installed Bun' quebra, ou a versão embarcada diverge de
+# o marcador do fast path some, ou a versão embarcada diverge de
 # vars.BUN_VERSION), o setup-bun continua FUNCIONANDO — só fica mais lento
 # (~25-35s do oven-sh/setup-bun@v2 antigo, ~1-2s do tier 2). O pr-check mede
 # correção, não performance — não percebe a regressão. Este guard re-executa
 # o MESMO job `check` do pr-check.yml via act com a imagem custom e falha se:
 #   - o marcador 'Usando Bun pré-instalado' não aparecer no log (tier-1 não
 #     engajou — caiu p/ tier 2/3), OU
-#   - a duração do passo 'Use pre-installed Bun (fast path)' > threshold
+#   - a duração do passo 'Setup Bun' (que roda o script) > threshold
 #     (default 5s — o passo mede ~0.44-0.46s com o fast path ativo).
 #
 # Semântica do verdict:

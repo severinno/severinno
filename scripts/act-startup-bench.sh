@@ -43,7 +43,7 @@
 #   ./scripts/act-startup-bench.sh --assert-pct 30  # falha se ALGUMA exceder a 1ª em +30%
 #   ACT_BIN=/caminho/act ./scripts/act-startup-bench.sh  # binário alternativo (ex.: act Linux no CI)
 #   ./scripts/act-startup-bench.sh --image 'alpine|act-bench-alpine:local' \
-#                                   --image 'ubuntu-bun|ghcr.io/severinno/ubuntu-bun:1.3.14'
+#                                   --image 'ubuntu-bun|<host>/<owner>/ubuntu-bun:<versao>'
 #                                                   # lista custom (1ª imagem = baseline)
 #   ./scripts/act-startup-bench.sh -h               # ajuda
 #
@@ -82,7 +82,12 @@ ACTRC_BUN="$(sed -n 's/^--var BUN_VERSION=//p' "$REPO_ROOT/.actrc" 2>/dev/null |
 ACTRC_BUN="${ACTRC_BUN:-1.3.14}"
 IMG_LABEL=("catthehacker:act-latest" "ubuntu-bun:$ACTRC_BUN")
 IMG_ID=("default" "custom")
-IMG_TAG=("catthehacker/ubuntu:act-latest" "ghcr.io/severinno/ubuntu-bun:$ACTRC_BUN")
+# FONTE ÚNICA do host (invariante 1 do check:registry-source): o registry sai de
+# IMAGE_REGISTRY/IMAGE_NAMESPACE (repo variable; no act local, `--var` do .actrc)
+# — NUNCA de um `ghcr.io` cravado aqui. O default acompanha o do compose.
+REGISTRY="${IMAGE_REGISTRY:-ghcr.io}"
+NAMESPACE="${IMAGE_NAMESPACE:-severinno}"
+IMG_TAG=("catthehacker/ubuntu:act-latest" "$REGISTRY/$NAMESPACE/ubuntu-bun:$ACTRC_BUN")
 IMG_ARGS=()   # --image 'label|tag' repetível — substitui a lista acima (1ª = baseline)
 
 GREEN='\033[0;32m'

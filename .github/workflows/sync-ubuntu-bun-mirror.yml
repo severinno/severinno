@@ -3,8 +3,8 @@
 #
 # Espelha a imagem custom ghcr.io/<owner>/ubuntu-bun:<versão> (base
 # catthehacker/ubuntu:act-latest com bun PRÉ-INSTALADO no PATH) para o GHCR.
-# A imagem habilita o TIER-1 FAST PATH do composite action
-# ./.github/actions/setup-bun: quando o act local roda com
+# A imagem habilita o TIER-1 FAST PATH do setup
+# scripts/setup-bun-ci.sh: quando o act local roda com
 # `-P ubuntu-latest=ghcr.io/<owner>/ubuntu-bun:<versão>`, o bun já está no
 # PATH → ZERO download, ZERO cache I/O (steps medidos em ~0.6-1.4s de
 # overhead de container vs ~25-35s do oven-sh/setup-bun@v2 e ~1-2s do tier 2).
@@ -98,12 +98,40 @@ jobs:
           set -euo pipefail
           docker push "${MIRROR_PREFIX}/ubuntu-bun:${BUN_VERSION}"
 
-      # ── Verify: puxa a imagem publicada e executa o bun (prova que o
-      # mirror é consumível — mesmo fluxo do act local com --pull=false).
+      # ── Verify: puxa a imagem PUBLICADA e prova os CONTRATOS nela.
+      #
+      # Antes este passo só IMPRIMIA versões — e um `docker run` que imprime não
+      # garante nada. A imagem publicada é o artefato que o runner da forja puxa:
+      # é NELA (não no Dockerfile, não na base) que os dois contratos têm de valer.
+      #
+      #   1. TIER-1 — `bun` no PATH, na versão da variável, resolvido de
+      #      /usr/local/bin. É o que faz o fast path de 0s do setup engajar; se
+      #      regredir, o job continua verde e mais lento (ninguém percebe).
+      #   2. INVARIANTE 7 — o plugin `compose` presente, para o job `guards` da
+      #      forja renderizar o compose. Sem ele a prova da interpolação degrada
+      #      para INDETERMINADA dentro de um job verde (o smoke tem
+      #      `--require-compose` justamente para não deixar isso passar).
       - name: Verify mirror digest
         run: |
           set -euo pipefail
           IMG="${MIRROR_PREFIX}/ubuntu-bun:${BUN_VERSION}"
-          docker run --rm "$IMG" bash -lc 'node --version; bun --version; bunx --version 2>/dev/null || true' \
-            | sed 's/^/  /'
-          echo "  ✅ Mirror ok — imagem: ${IMG}"
+          docker pull "$IMG"
+          docker run --rm -e EXPECTED_BUN="$BUN_VERSION" "$IMG" bash -lc '
+            set -euo pipefail
+            test "$(bun --version)" = "$EXPECTED_BUN" || {
+              echo "::error::tier-1 quebrado na imagem PUBLICADA: bun $(bun --version) != $EXPECTED_BUN";
+              exit 1;
+            }
+            test "$(command -v bun)" = "/usr/local/bin/bun" || {
+              echo "::error::bun resolve de $(command -v bun) e nao de /usr/local/bin/bun — shadowing desliga o tier-1 sem sintoma";
+              exit 1;
+            }
+            docker compose version >/dev/null || {
+              echo "::error::o plugin \`compose\` nao esta na imagem PUBLICADA — a invariante 7 fica INDETERMINADA no runner da forja";
+              exit 1;
+            }
+            node --version
+            echo "bun $(bun --version) em $(command -v bun)"
+            docker compose version
+          ' | sed 's/^/  /'
+          echo "  ✅ Mirror ok (tier-1 + plugin compose) — imagem: ${IMG}"

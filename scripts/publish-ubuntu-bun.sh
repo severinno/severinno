@@ -3,7 +3,7 @@
 # scripts/publish-ubuntu-bun.sh — Publica a imagem custom ubuntu-bun no GHCR e
 # valida o tier-1 do setup-bun com a imagem REMOTA (não só a local).
 #
-# Por que existe: o fast path (tier-1) do ./.github/actions/setup-bun só
+# Por que existe: o fast path (tier-1) do scripts/setup-bun-ci.sh só
 # dispara quando a imagem do runner embarca bun na versão pedida. A imagem
 # custom Dockerfile.ubuntu-bun ativa esse caminho (~0-2s vs ~25-35s do
 # oven-sh/setup-bun@v2). Este script fecha o ciclo completo de operação:
@@ -33,7 +33,7 @@
 #   5. docker pull ghcr.io/<owner>/ubuntu-bun:<version>
 #   6. act -j check com -P ubuntu-latest=ghcr.io/<owner>/ubuntu-bun:<version>
 #      --pull=false e valida a evidência do tier-1 no log:
-#        - 'Use pre-installed Bun (fast path)' passou
+#        - o step 'Setup Bun' passou
 #        - '✅ Usando Bun pré-instalado: <version> (0s, sem download)'
 #
 # Usage:
@@ -242,13 +242,13 @@ ACT_CODE=$?
 echo ""
 info "Extraindo evidência do tier-1 no log do act..."
 if grep -q "Unknown Variable Access vars\|expressions are not allowed here" "${LOG}"; then
-  fail "act falhou no parse do composite action (limitação act 0.2.89) — ver log."
+  fail "act falhou no parse dos workflows (expressão não resolvida) — ver log."
   tail -25 "${LOG}"
   rm -f "${LOG}"
   exit 4
 fi
 
-TIER1_STEP=$(grep -c "Success - Use pre-installed Bun" "${LOG}" || true)
+TIER1_STEP=$(grep -c "Success - Main Setup Bun" "${LOG}" || true)
 TIER1_MSG=$(grep -o "✅ Usando Bun pré-instalado: [0-9.]* (0s, sem download)" "${LOG}" | head -1 || true)
 
 if [ "${TIER1_STEP}" -ge 1 ] && [ -n "${TIER1_MSG}" ]; then

@@ -77,16 +77,44 @@ ${{ vars.BUN_VERSION }}`);
 - o `action.yml` não muda (metadata estática, sem `default:` — resolve do
   input em runtime).
 
-### 3.2 — Atualizar o espelho local do act (`.actrc`)
+### 3.2 — Atualizar os espelhos da versão (`.actrc` e o env da forja)
+
+A variável tem **dois espelhos** no working tree, um por consumidor:
+
+| Espelho                    | Consumidor                                                   |
+| :------------------------- | :----------------------------------------------------------- |
+| `.actrc` (raiz)            | o act local (ele não lê as variables do repositório)         |
+| `deploy/env.gitea.example` | a label do runner da forja (a imagem que roda TODOS os jobs) |
 
 ```bash
 # .actrc — raiz do repositório
 --var BUN_VERSION=1.3.15
+
+# deploy/env.gitea.example
+BUN_VERSION=1.3.15
 ```
 
-Sem isso, o act local roda com a versão **antiga** enquanto o CI usa a nova —
-o guard estático só valida a EXISTÊNCIA da linha, não o valor. Se você esquecer,
-o job semanal `actrc-sync` (`benchmark-weekly.yml`) avisa via `::warning::`
+O caminho automatizado é o script, que faz os 4 passos deste procedimento
+(inclusive esta edição nos DOIS arquivos) e valida no fim:
+
+```bash
+./scripts/bump-bun.sh 1.3.15                    # variável + espelhos + mirrors + validação
+./scripts/bump-bun.sh 1.3.15 --skip-actrc       # deixa o .actrc para depois
+./scripts/bump-bun.sh 1.3.15 --skip-env         # deixa o env da forja para depois
+```
+
+Sem isso, cada espelho falha de um jeito próprio — e **os dois em silêncio**:
+
+- `.actrc` desatualizado → o act local roda a versão **antiga** enquanto o CI
+  usa a nova;
+- `deploy/env.gitea.example` desatualizado → o runner da forja roda uma imagem
+  que embarca **outra** versão do Bun. Isto **não** deixa o CI vermelho: o
+  setup-bun funciona igual com ou sem Bun pré-instalado, então o fast path de 0s
+  do tier-1 apenas **desliga** — todo job da forja volta a pagar o download.
+
+Em ambos os casos o guard estático só valida a EXISTÊNCIA da linha, não o
+valor; quem compara os VALORES é o job semanal `actrc-sync`
+(`benchmark-weekly.yml`), que avisa via `::warning::`
 (ver [seção 6](#6-aviso-semanal-de-drift-actrc-sync)).
 
 ### 3.3 — Re-sincronizar os mirrors GHCR
@@ -237,7 +265,7 @@ Validação local antes de abrir PR:
 ```bash
 node scripts/check-bun-mirror.mjs            # invariantes globais
 node scripts/check-bun-mirror.mjs --staged   # diff staged (1º passo do pre-commit)
-node scripts/check-actrc-sync.mjs --expected "$(gh variable get BUN_VERSION -R <owner>/<repo> || echo 1.3.14)"  # .actrc vs variável real
+node scripts/check-actrc-sync.mjs --expected "$(gh variable get BUN_VERSION -R <owner>/<repo> || echo 1.3.14)"  # os DOIS espelhos vs variável real
 ```
 
 ---
@@ -245,29 +273,40 @@ node scripts/check-actrc-sync.mjs --expected "$(gh variable get BUN_VERSION -R <
 ## 6. Aviso semanal de drift (`actrc-sync`)
 
 O job `actrc-sync` do `benchmark-weekly.yml` (node-puro, sem setup-bun) compara
-o `.actrc` do working tree com `vars.BUN_VERSION` e emite `::warning::`
+os **dois espelhos** do working tree com `vars.BUN_VERSION` e emite `::warning::`
 **não-bloqueante** (exit 0) se divergirem — cobre o caso que o guard estático
-não alcança (o VALOR, não a existência da linha). Variável ausente no
-repositório também vira `::warning::`. Simulação local:
+não alcança (o VALOR, não a existência da linha):
+
+| Espelho                    | Quem lê                                                      | O que custa divergir                                                                                                                                                       |
+| :------------------------- | :----------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.actrc`                   | o act local (ele não lê as variables do repositório)         | o act testa uma versão diferente da produção                                                                                                                               |
+| `deploy/env.gitea.example` | a label do runner da forja (a imagem que roda TODOS os jobs) | a imagem embarca outra versão do Bun e o fast path de 0s do tier-1 desliga **em silêncio** — o setup-bun funciona igual, só mais lento (todo job volta a pagar o download) |
+
+Um espelho ausente é **ignorado**, não acusado: ausência de arquivo não é o
+drift que este job caça (o guard estático é que exige a linha dentro dele), e
+um checkout parcial não deve virar aviso. Variável ausente no repositório
+também vira `::warning::`. Simulação local:
 
 ```bash
 node scripts/check-actrc-sync.mjs --expected 1.3.15          # exit 0 (ok)
 node scripts/check-actrc-sync.mjs --expected 1.3.14 --fail   # exit 1 (drift)
+node scripts/check-actrc-sync.mjs --expected 1.3.15 --gitea-env deploy/.env.gitea  # o env do VPS
 ```
 
 ---
 
 ## 7. Troubleshooting
 
-| Sintoma                                                                   | Causa e correção                                                                                                                                                                                |
-| :------------------------------------------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `::error::Repository variable BUN_VERSION não definida` no mirror         | Variável não criada no repo (ou criada em outra org). Criar: `gh variable set BUN_VERSION 1.3.15 -R <owner>/<repo>` e re-disparar o workflow.                                                   |
-| Guard `check-bun-mirror` falha com "versão literal"                       | Sobrou literal do bump anterior (ex.: `bun-1.3.14-...` numa key) — atualizar para `${{ vars.BUN_VERSION }}`.                                                                                    |
-| Guard falha com "`.actrc` NÃO define BUN_VERSION"                         | `.actrc` sem a linha `--var BUN_VERSION=...` — restaurar (espelho local).                                                                                                                       |
-| `::warning::check-actrc-sync: .actrc define BUN_VERSION='1.3.14' mas ...` | Bump feito na variável sem atualizar `.actrc` — aplicar [3.2](#32--atualizar-o-espelho-local-do-act-actrc).                                                                                     |
-| `docker pull ghcr.io/...` pede login (denied)                             | Pacote GHCR privado — tornar público em `https://github.com/orgs/<owner>/packages` (não-bloqueante: tier 3 tem fallback p/ GitHub Releases).                                                    |
-| Cache miss em todas as keys após o bump                                   | **Esperado** — 1ª execução pós-bump re-popula o cache (ver [3.5](#35--primeira-execução-do-ci-após-o-bump)).                                                                                    |
-| `Unknown Variable Access vars` ao parsear `action.yml` no act             | Token `${{ vars.BUN_VERSION }}` com chaves dentro do composite action (proibido no act 0.2.89) — o action lê só o input `bun-version`; nunca edite o `action.yml` para \"resolver\" a variável. |
+| Sintoma                                                                                     | Causa e correção                                                                                                                                                                                                                                                                 |
+| :------------------------------------------------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `::error::Repository variable BUN_VERSION não definida` no mirror                           | Variável não criada no repo (ou criada em outra org). Criar: `gh variable set BUN_VERSION 1.3.15 -R <owner>/<repo>` e re-disparar o workflow.                                                                                                                                    |
+| Guard `check-bun-mirror` falha com "versão literal"                                         | Sobrou literal do bump anterior (ex.: `bun-1.3.14-...` numa key) — atualizar para `${{ vars.BUN_VERSION }}`.                                                                                                                                                                     |
+| Guard falha com "`.actrc` NÃO define BUN_VERSION"                                           | `.actrc` sem a linha `--var BUN_VERSION=...` — restaurar (espelho local).                                                                                                                                                                                                        |
+| `::warning::check-actrc-sync: .actrc define BUN_VERSION='1.3.14' mas ...`                   | Bump feito na variável sem atualizar `.actrc` — aplicar [3.2](#32--atualizar-os-espelhos-da-versão-actrc-e-o-env-da-forja).                                                                                                                                                      |
+| `::warning::check-actrc-sync: deploy/env.gitea.example define BUN_VERSION='1.3.14' mas ...` | Bump feito na variável sem atualizar o espelho do runner — o fast path de 0s do tier-1 desliga em silêncio (o CI continua verde, só mais lento). Atualize `BUN_VERSION` em `deploy/env.gitea.example` (e no `deploy/.env.gitea` do VPS, que dele deriva) e re-registre o runner. |
+| `docker pull ghcr.io/...` pede login (denied)                                               | Pacote GHCR privado — tornar público em `https://github.com/orgs/<owner>/packages` (não-bloqueante: tier 3 tem fallback p/ GitHub Releases).                                                                                                                                     |
+| Cache miss em todas as keys após o bump                                                     | **Esperado** — 1ª execução pós-bump re-popula o cache (ver [3.5](#35--primeira-execução-do-ci-após-o-bump)).                                                                                                                                                                     |
+| `Unknown Variable Access vars` ao parsear `action.yml` no act                               | Token `${{ vars.BUN_VERSION }}` com chaves dentro do composite action (proibido no act 0.2.89) — o action lê só o input `bun-version`; nunca edite o `action.yml` para \"resolver\" a variável.                                                                                  |
 
 ---
 
@@ -281,8 +320,9 @@ gh variable list -R <owner>/<repo> | grep BUN_VERSION
 gh run list -R <owner>/<repo> --workflow sync-bun-mirror.yml --limit 1
 gh run list -R <owner>/<repo> --workflow sync-ubuntu-bun-mirror.yml --limit 1
 
-# 3. Espelho local sincronizado
+# 3. Espelhos sincronizados (os DOIS)
 grep BUN_VERSION .actrc
+grep BUN_VERSION deploy/env.gitea.example
 
 # 4. Guard estático passa
 node scripts/check-bun-mirror.mjs && node scripts/check-actrc-sync.mjs --expected 1.3.15
