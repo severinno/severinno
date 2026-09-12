@@ -179,6 +179,46 @@ os `name:` dos jobs — hoje `Lint`, `Repo Guards`, `TypeCheck`, `Tests`, `Build
 O guard `check:forge-parity` garante que um gate novo nao fique so em uma das
 pipelines (GitHub x esta forja).
 
+### Smoke test da forja (manual)
+
+Os guards leem YAML; eles nao veem o RUNTIME desta forja. Tres pressupostos so
+existem quando o pipeline roda de verdade: o contexto `vars` hidratar, o
+composite local `./.github/actions/setup-bun` resolver no act_runner, e o
+runtime instalado ser exatamente o da variable. O workflow
+`.gitea/workflows/forge-smoke.yml` prova os tres.
+
+Como rodar: **Actions** -> **Forge Smoke (manual)** -> **Run workflow**
+(`workflow_dispatch`, na branch `main`). Leva ~1 min.
+
+| Passo                          | O que prova                                                      | Se falhar                                                          | Remedio                                                                                                                                                                                                                                                                        |
+| ------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1 — `vars.BUN_VERSION` resolve | o contexto `vars` existe nesta instancia                         | valor vazio = a variable nao foi criada (ou o runner e antigo)     | criar a variable em **Settings -> Actions -> Variables**; se o job morrer ANTES do passo 1 com `Unknown Variable Access vars`, a instancia nao suporta o contexto — recriar o container `runner` na versao 1.22+ (`docker compose pull runner && docker compose up -d runner`) |
+| 2 — composite local executa    | `uses: ./.github/actions/setup-bun` resolve relativo ao checkout | o job falha ao resolver o action (antes de rodar qualquer comando) | se `./` nao resolver no act_runner, espelhar o composite em `.gitea/actions/setup-bun/` e apontar os 6 call sites para lá (`FORGE_ACTIONS_DIRS` ja cobre `.gitea/actions` nos guards)                                                                                          |
+| 3 — runtime == variable        | mesmo commit -> mesmo runtime em qualquer pipeline               | `bun x.y.z != BUN_VERSION`                                         | a imagem do runner embarca outro Bun e ele vem antes no PATH, ou o cache do Bun nao invalidou (key `bun-<versao>-<os>-<arch>`)                                                                                                                                                 |
+| 4 — install + guard node-puro  | o runner resolve dependencias e roda guards sem `node_modules`   | erro de rede/registry                                              | liberar o registry de pacotes e o espelho OCI no runner                                                                                                                                                                                                                        |
+
+Saida esperada (verde):
+
+```
+✅ vars.BUN_VERSION = 1.3.14
+   registry desta forja: ghcr.io
+✅ Bun pré-instalado: 1.3.14 (0s, sem download)     # ou o tier 2/3
+✅ bun 1.3.14 == vars.BUN_VERSION
+============================== FORGE SMOKE ==============================
+BUN_VERSION      : 1.3.14   (vars.BUN_VERSION)
+IMAGE_REGISTRY   : ghcr.io (fallback = ghcr.io)
+=========================================================================
+```
+
+O relatorio final imprime `IMAGE_REGISTRY` resolvido — resposta direta para
+"a variable do registry ja foi criada ou ainda estou no default?".
+
+**NUNCA torne este job um required check.** Ele so roda por `workflow_dispatch`:
+um required check que nao reporta status num PR nao falha, ele faz o PR ESPERAR
+para sempre. Pelo mesmo motivo ele nao esta em `ci/required-checks.json` (o
+applier resolve os contextos a partir do `ci.yml`, e recusaria um job que nao
+existe la).
+
 ## Acesso
 
 | Servico | URL                                   | Porta |

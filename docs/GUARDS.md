@@ -315,6 +315,18 @@ violá-la).
 `check-seed-hooks`, `check-sentinel-producer`, `check-workflow-refs`,
 `check-mutation-jobs` e `check-registry-source`.
 
+**O limite desta família, e o que cobre o resto:** guard estático lê **texto**.
+Ele não vê o `vars` do act_runner hidratando, nem `./.github/actions/setup-bun`
+resolvendo relativo ao workspace, nem o runtime realmente instalado — os três só
+existem quando a pipeline roda. `check-bun-mirror` prova que a versão do Bun tem
+**um** ponto de verdade no repositório; ele não prova que a forja **usa** essa
+versão. Quem prova isso é o smoke manual
+`.gitea/workflows/forge-smoke.yml` (**Actions → Forge Smoke (manual) → Run
+workflow**), que falha apontando qual premissa quebrou. Ele é `workflow_dispatch`
+por desenho — um job de dispatch nunca reporta status num PR, então exigi-lo como
+required check travaria todo PR (travado em teste). Contrato e remédios em
+`deploy/GITEA.md` § "Smoke test da forja".
+
 ---
 
 ## 7. Segredos — `audit-secret-leaks`, `check-secret-leaks-baseline`, `rotate-secrets`

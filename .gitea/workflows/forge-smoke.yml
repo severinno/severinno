@@ -1,0 +1,144 @@
+# =============================================================================
+# .gitea/workflows/forge-smoke.yml — SMOKE TEST MANUAL da forja (Gitea/Forgejo)
+# =============================================================================
+#
+# POR QUE ESTE ARQUIVO EXISTE
+#
+# Esta forja e dona do merge (.gitea/workflows/ci.yml) e depende de TRES
+# pressupostos de AMBIENTE que nenhum guard estatico consegue verificar — todos
+# sao resolvidos pelo runtime do act_runner, nao pelo texto do YAML:
+#
+#   1. o contexto `vars` hidrata (repository variable BUN_VERSION). Exige
+#      Gitea >= 1.22; se o contexto nao existir, o act falha com "Unknown
+#      Variable Access vars" ANTES do primeiro passo (a mensagem aparece no
+#      log do job, nao aqui) e nenhum dos 6 call sites do composite funciona.
+#   2. `uses: ./.github/actions/setup-bun` RESOLVE. Composite local e resolvido
+#      relativo ao workspace do checkout: se o act_runner nao resolver, TODOS
+#      os jobs da forja quebram de uma vez (sao 6 call sites).
+#   3. o runtime instalado e EXATAMENTE o da variable. O check:bun-mirror
+#      protege isso no TEXTO (um unico ponto de verdade); aqui a invariante e
+#      provada no RESULTADO — mesmo commit, mesmo runtime, em qualquer pipeline.
+#
+# Um guard que le YAML nao ve nenhuma das tres. Um humano que nao roda o
+# pipeline tambem nao. Este workflow fecha a lacuna: roda sob demanda, prova as
+# tres e falha dizendo QUAL quebrou e o que fazer.
+#
+# POR QUE SO NA FORJA (e nao no .github/)
+#   Ele prova o AMBIENTE DESTA forja: o act_runner, o PATH dele, a resolucao de
+#   `vars` dele. Rodar o mesmo arquivo no GitHub provaria o ambiente do GitHub,
+#   que nao e o que esta em duvida. A assimetria e intencional — nao "complete"
+#   o par.
+#
+# POR QUE SO `workflow_dispatch`
+#   Isto e diagnostico, nao gate. Um job que so roda por dispatch NUNCA reporta
+#   status num PR; exigi-lo como required check travaria todo PR para sempre
+#   (mesma invariante do workflow de drift, travada em teste: um required check
+#   que nao roda nao falha, ele ESPERA). Pelo mesmo motivo ele nao entra em
+#   ci/required-checks.json: o applier resolve contextos a partir do workflow
+#   declarado (ci.yml) e recusaria, com razao, um job que nao existe la.
+#
+# COMO LER O RESULTADO ESPERADO
+#   Verde nos 4 passos + o relatorio de toolchain = a forja esta pronta para
+#   bloquear o merge. Qualquer falha aponta o remedio correspondente em
+#   deploy/GITEA.md, secao "Smoke test da forja".
+# =============================================================================
+
+name: Forge Smoke (manual)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: forge-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 22
+  # PROVA 1 (usada por todo passo abaixo): se o contexto `vars` nao hidratar,
+  # este valor chega VAZIO e o primeiro passo de verificacao falha apontando a
+  # causa — em vez de o erro aparecer como "bun-version vazia" no meio de um job
+  # de build, sem relacao visivel com a variable.
+  BUN_VERSION: ${{ vars.BUN_VERSION }}
+  # Registry de imagens (fonte unica). O fallback preserva o comportamento
+  # historico e permite reportar QUAL registry esta forja vai usar — resposta
+  # direta para "a variable IMAGE_REGISTRY foi criada ou ainda e o default?".
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
+
+jobs:
+  smoke:
+    name: Forge Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── PROVA 1: o contexto `vars` hidrata nesta forja ──────────────────
+      - name: "Prova 1 — vars.BUN_VERSION resolve"
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${BUN_VERSION:-}" ]; then
+            echo "::error::vars.BUN_VERSION chegou VAZIO nesta forja."
+            echo "  1) crie a variable em Settings > Actions > Variables (Gitea >= 1.22);"
+            echo "  2) confirme que o act_runner foi reiniciado depois da atualizacao;"
+            echo "  3) se o job morreu antes deste passo com 'Unknown Variable Access vars',"
+            echo "     a instancia nao suporta o contexto — a variable nao e o problema."
+            exit 1
+          fi
+          echo "✅ vars.BUN_VERSION = ${BUN_VERSION}"
+          echo "   registry desta forja: ${IMAGE_REGISTRY}"
+
+      # ── PROVA 2: o composite LOCAL resolve no act_runner ────────────────
+      # Sem `oven-sh/setup-bun` (proibido pelo check:no-setup-bun): o ponto e
+      # justamente validar a resolucao de `./` — caminho relativo ao workspace.
+      - name: "Prova 2 — composite local resolve e executa"
+        uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      # ── PROVA 3: o runtime em uso e o da variable ──────────────────────
+      # Mismatch aqui significa que o MESMO commit geraria artefatos diferentes
+      # conforme a pipeline que construiu — exatamente o que a fonte unica da
+      # versao do Bun existe para impedir.
+      - name: "Prova 3 — runtime == vars.BUN_VERSION"
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v bun >/dev/null 2>&1; then
+            echo "::error::bun nao esta no PATH depois do composite — o setup nao concluiu."
+            echo "  cache: o tier 2/3 depende de actions/cache; sem cache-hit ele baixa o release."
+            exit 1
+          fi
+          ACTUAL="$(bun --version)"
+          if [ "$ACTUAL" != "$BUN_VERSION" ]; then
+            echo "::error::runtime divergente: bun ${ACTUAL} != vars.BUN_VERSION ${BUN_VERSION}"
+            echo "  Causa provavel 1: a imagem do runner embarca outro Bun e ele vem ANTES"
+            echo "    no PATH (shadowing) — o binario correto existe, mas nao e o que executa."
+            echo "  Causa provavel 2: a variable foi alterada sem invalidar o cache do Bun"
+            echo "    (key = bun-<versao>-<os>-<arch>; versao nova = key nova, sem cache-hit)."
+            exit 1
+          fi
+          echo "✅ bun ${ACTUAL} == vars.BUN_VERSION"
+
+      # ── PROVA 4: o runner consegue resolver deps e rodar um guard ───────
+      # Todo job da forja comeca com `bun install --frozen-lockfile`; e os
+      # guards rodam sem node_modules (node puro). Se a rede/registry do runner
+      # estiver bloqueada, e aqui que aparece — e nao no meio de um job de teste.
+      - name: "Prova 4 — install congelado + guard node-puro"
+        run: |
+          bun install --frozen-lockfile
+          bun run check:registry-source
+
+      # ── Relatorio (sempre roda): o ambiente que produziu o resultado ────
+      - name: Report runner toolchain
+        if: always()
+        shell: bash
+        run: |
+          echo "============================== FORGE SMOKE =============================="
+          echo "forja            : ${GITHUB_SERVER_URL:-?} / ${GITHUB_REPOSITORY:-?}"
+          echo "BUN_VERSION      : ${BUN_VERSION:-<vazio>}   (vars.BUN_VERSION)"
+          echo "bun no PATH      : $(command -v bun 2>/dev/null || echo '<ausente>')"
+          echo "bun --version    : $(bun --version 2>/dev/null || echo '<ausente>')"
+          echo "node             : $(node --version 2>/dev/null || echo '<ausente>')"
+          echo "docker           : $(docker --version 2>/dev/null || echo '<ausente>')"
+          echo "IMAGE_REGISTRY   : ${IMAGE_REGISTRY:-<vazio>} (fallback = ghcr.io)"
+          echo "========================================================================="

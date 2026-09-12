@@ -1,0 +1,95 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`forge-smoke.yml — sintaxe YAML + snapshot > parseia como YAML válido e casa com o snapshot da estrutura 1`] = `
+{
+  "concurrency": {
+    "cancel-in-progress": true,
+    "group": "forge-smoke-\${{ github.ref }}",
+  },
+  "env": {
+    "BUN_VERSION": "\${{ vars.BUN_VERSION }}",
+    "IMAGE_REGISTRY": "\${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}",
+    "NODE_VERSION": 22,
+  },
+  "jobs": {
+    "smoke": {
+      "name": "Forge Smoke",
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+        },
+        {
+          "name": "Prova 1 — vars.BUN_VERSION resolve",
+          "run": "set -euo pipefail
+if [ -z "\${BUN_VERSION:-}" ]; then
+  echo "::error::vars.BUN_VERSION chegou VAZIO nesta forja."
+  echo "  1) crie a variable em Settings > Actions > Variables (Gitea >= 1.22);"
+  echo "  2) confirme que o act_runner foi reiniciado depois da atualizacao;"
+  echo "  3) se o job morreu antes deste passo com 'Unknown Variable Access vars',"
+  echo "     a instancia nao suporta o contexto — a variable nao e o problema."
+  exit 1
+fi
+echo "✅ vars.BUN_VERSION = \${BUN_VERSION}"
+echo "   registry desta forja: \${IMAGE_REGISTRY}"
+",
+          "shell": "bash",
+        },
+        {
+          "name": "Prova 2 — composite local resolve e executa",
+          "uses": "./.github/actions/setup-bun",
+          "with": {
+            "bun-version": "\${{ vars.BUN_VERSION }}",
+          },
+        },
+        {
+          "name": "Prova 3 — runtime == vars.BUN_VERSION",
+          "run": "set -euo pipefail
+if ! command -v bun >/dev/null 2>&1; then
+  echo "::error::bun nao esta no PATH depois do composite — o setup nao concluiu."
+  echo "  cache: o tier 2/3 depende de actions/cache; sem cache-hit ele baixa o release."
+  exit 1
+fi
+ACTUAL="$(bun --version)"
+if [ "$ACTUAL" != "$BUN_VERSION" ]; then
+  echo "::error::runtime divergente: bun \${ACTUAL} != vars.BUN_VERSION \${BUN_VERSION}"
+  echo "  Causa provavel 1: a imagem do runner embarca outro Bun e ele vem ANTES"
+  echo "    no PATH (shadowing) — o binario correto existe, mas nao e o que executa."
+  echo "  Causa provavel 2: a variable foi alterada sem invalidar o cache do Bun"
+  echo "    (key = bun-<versao>-<os>-<arch>; versao nova = key nova, sem cache-hit)."
+  exit 1
+fi
+echo "✅ bun \${ACTUAL} == vars.BUN_VERSION"
+",
+          "shell": "bash",
+        },
+        {
+          "name": "Prova 4 — install congelado + guard node-puro",
+          "run": "bun install --frozen-lockfile
+bun run check:registry-source
+",
+        },
+        {
+          "if": "always()",
+          "name": "Report runner toolchain",
+          "run": "echo "============================== FORGE SMOKE =============================="
+echo "forja            : \${GITHUB_SERVER_URL:-?} / \${GITHUB_REPOSITORY:-?}"
+echo "BUN_VERSION      : \${BUN_VERSION:-<vazio>}   (vars.BUN_VERSION)"
+echo "bun no PATH      : $(command -v bun 2>/dev/null || echo '<ausente>')"
+echo "bun --version    : $(bun --version 2>/dev/null || echo '<ausente>')"
+echo "node             : $(node --version 2>/dev/null || echo '<ausente>')"
+echo "docker           : $(docker --version 2>/dev/null || echo '<ausente>')"
+echo "IMAGE_REGISTRY   : \${IMAGE_REGISTRY:-<vazio>} (fallback = ghcr.io)"
+echo "========================================================================="
+",
+          "shell": "bash",
+        },
+      ],
+    },
+  },
+  "name": "Forge Smoke (manual)",
+  "on": {
+    "workflow_dispatch": null,
+  },
+}
+`;
