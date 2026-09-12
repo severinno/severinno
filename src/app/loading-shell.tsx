@@ -2,37 +2,30 @@
  * loading-shell.tsx
  *
  * Compound component that eliminates the boilerplate duplicated across every
- * loading.tsx:
- *   - "use client"
- *   - import { motion } from "framer-motion"
- *   - import { ShimmerStyle, S, createContainer, createItem } from "..."
- *   - const container = createContainer(X)
- *   - const item = createItem(Y, Z)
- *   - <ShimmerStyle />
+ * loading.tsx.
  *
  * Usage:
  *   import { LoadingShell, StaggerContainer, StaggerItem, S } from "@/app/loading-shell"
  *
  *   <LoadingShell>
  *     <StaggerContainer stagger={0.07}>
- *       <StaggerItem y={14} duration={0.4}>
+ *       <StaggerItem>
  *         <S className="h-8 w-48" />
+ *       </StaggerItem>
+ *       <StaggerItem>
+ *         <S className="h-4 w-32" />
  *       </StaggerItem>
  *     </StaggerContainer>
  *   </LoadingShell>
- *
- * For custom motion.div animations (e.g. fade-in with delay), just import
- * { motion } from "framer-motion" alongside LoadingShell.
  */
 
 "use client"
 
 import { type ReactNode } from "react"
-import { motion } from "framer-motion"
-import { ShimmerStyle, createContainer, createItem } from "./loading-base"
+import { ShimmerStyle, staggerDelay } from "./loading-base"
 
-/** Re‑exported so loading files need only one import line. */
-export { S, createContainer, createItem } from "./loading-base"
+/** Re-exported so loading files need only one import line. */
+export { S } from "./loading-base"
 
 // ── Root: renders ShimmerStyle once ───────────────────────────────────────
 
@@ -45,7 +38,7 @@ export function LoadingShell({ children }: { children: ReactNode }) {
   )
 }
 
-// ── Animated stagger container (replaces motion.div with container variants) ─
+// ── Stagger container (CSS-only animation) ────────────────────────────────
 
 export function StaggerContainer({
   children,
@@ -57,33 +50,41 @@ export function StaggerContainer({
   stagger?: number
   className?: string
 }) {
-  const variants = createContainer(stagger)
+  const items = Array.isArray(children) ? children : [children]
   return (
-    <motion.div variants={variants} initial="hidden" animate="show" className={className}>
-      {children}
-    </motion.div>
+    <div className={className}>
+      {items.map((child, i) => (
+        <div
+          key={i}
+          style={{
+            animation: `fadeSlideUp 0.35s ease-out ${i * stagger}s both`,
+          }}
+        >
+          {child}
+        </div>
+      ))}
+    </div>
   )
 }
 
-// ── Animated item (replaces motion.div with item variants) ─────────────────
+// ── Stagger item (wrapper) ────────────────────────────────────────────────
 
 export function StaggerItem({
   children,
-  y = 12,
-  duration = 0.35,
   className,
+  // Legacy props kept for backwards compatibility (no longer used in CSS animation)
+  y: _y,
+  duration: _duration,
 }: {
   children: ReactNode
-  /** Slide-up offset (px). Default 12. */
-  y?: number
-  /** Animation duration (seconds). Default 0.35. */
-  duration?: number
   className?: string
+  /** @deprecated No longer used — kept for backwards compatibility. */
+  y?: number
+  /** @deprecated No longer used — kept for backwards compatibility. */
+  duration?: number
 }) {
-  const variants = createItem(y, duration)
-  return (
-    <motion.div variants={variants} className={className}>
-      {children}
-    </motion.div>
-  )
+  return <div className={className}>{children}</div>
 }
+
+// Re-export for backwards compatibility
+export { staggerDelay }

@@ -1,7 +1,12 @@
 import { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { db } from "@/lib/db"
-import { TrackingPageClient } from "./tracking-page-client"
+import dynamic from "next/dynamic"
+
+const TrackingPageClient = dynamic(
+  () => import("./tracking-page-client").then((m) => ({ default: m.TrackingPageClient })),
+  { ssr: false },
+)
 
 type Props = { params: Promise<{ id: string }> }
 

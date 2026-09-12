@@ -12,7 +12,7 @@
 
 import { useEffect, useCallback } from "react"
 import dynamic from "next/dynamic"
-import * as Sentry from "@sentry/nextjs"
+import { withScope, captureException } from "@sentry/nextjs"
 
 import { useAuthStore } from "@/store/auth"
 import { useUIStore } from "@/store/ui"
@@ -75,11 +75,11 @@ export default function AppShell() {
   // Send errors to GlitchTip/Sentry
   const handleBoundaryError = useCallback(
     (error: Error, errorInfo: React.ErrorInfo) => {
-      Sentry.withScope((scope) => {
+      withScope((scope) => {
         scope.setExtras({ componentStack: errorInfo.componentStack, view })
         scope.setTag("surface", view.split(".")[0] ?? "unknown")
         scope.setTag("environment", process.env.NODE_ENV ?? "development")
-        Sentry.captureException(error)
+        captureException(error)
       })
     },
     [view],
