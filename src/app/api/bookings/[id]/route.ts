@@ -14,7 +14,7 @@ import {
   notifyPaymentConfirmed,
   notifyLiveTrackingStarted,
 } from "@/lib/notifications"
-import type { BookingStatus, PaymentStatus } from "@/generated/prisma/enums"
+import { type BookingStatus, type PaymentStatus } from "@prisma/client"
 
 type Params = { params: Promise<{ id: string }> }
 

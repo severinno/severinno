@@ -4,7 +4,7 @@ import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { requireUser } from "@/lib/auth"
 import { badRequest, forbidden, handleError, notFound } from "@/lib/api-server"
-import type { QuoteStatus } from "@/generated/prisma/enums"
+import { type QuoteStatus } from "@prisma/client"
 
 type Params = { params: Promise<{ id: string }> }
 
