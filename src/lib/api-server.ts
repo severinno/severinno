@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import type { Prisma } from "@prisma/client"
 import { ZodError } from "zod"
 import { db } from "@/lib/db"
 import { withCache, cacheInvalidate } from "@/lib/redis"
@@ -18,6 +19,7 @@ import { getRequestId } from "./request-context"
 /** Minimal user select — for public listings where only identity is needed. */
 export const USER_MINIMAL_SELECT = {
   id: true,
+  email: true,
   name: true,
   avatarUrl: true,
   role: true,
@@ -57,9 +59,207 @@ export const USER_FULL_SELECT = {
   state: true,
 } as const
 
-export function publicUser<T extends { passwordHash?: string }>(user: T): Omit<T, "passwordHash"> {
-  const { passwordHash: _ignored, ...rest } = user
-  return rest
+// ---------------------------------------------------------------------------
+// Credential/PII contract — allowlists for cross-user & anonymous responses
+// ---------------------------------------------------------------------------
+
+/**
+ * Columns that must NEVER leave the server in a response body aimed at
+ * another user (or at anonymous visitors).
+ *
+ * ⚠️ `passwordHash` is not the only credential: `twoFactorSecret` +
+ * `twoFactorBackupCodes` allow account takeover, `identityDocUrl` /
+ * `identitySelfieUrl` are KYC documents and `cpfCnpj`/`email`/full address are
+ * personal data under the LGPD.
+ *
+ * Declared as DATA (not prose) so guard tests assert against the same list the
+ * routes are built from — see `src/app/api/__tests__/response-pii-guard.test.ts`.
+ * Spread-based "strip only passwordHash" serialization is the anti-pattern this
+ * list exists to catch: it silently forwards every column the model gains later.
+ */
+export const SENSITIVE_USER_FIELDS = [
+  "passwordHash",
+  "twoFactorSecret",
+  "twoFactorBackupCodes",
+  "cpfCnpj",
+  "email",
+  "identityDocUrl",
+  "identitySelfieUrl",
+  "lytexRecipientId",
+  "sessionVersion",
+  "servicePolygon",
+  "travelFeePolicy",
+  "deletedAt",
+] as const
+
+/**
+ * Public provider projection — the ONLY user shape allowed to describe a
+ * provider to anonymous visitors or to another user.
+ *
+ * Consumers: `GET /api/providers/[id]` (public) and `GET /api/favorites`
+ * (any CLIENT describing third parties).
+ *
+ * Deliberately present (needed by the UI): contact/service-area fields
+ * (`whatsapp`, `cep`, `district`, `state`, `city`, `lat`/`lng`, `radiusKm`)
+ * and the denormalized counters (`avgRating`, `reviewCount`, `favoriteCount`).
+ * Deliberately absent: everything in `SENSITIVE_USER_FIELDS`.
+ */
+export const PUBLIC_PROVIDER_SELECT = {
+  id: true,
+  name: true,
+  slug: true,
+  role: true,
+  avatarUrl: true,
+  coverUrl: true,
+  bio: true,
+  verified: true,
+  active: true,
+  city: true,
+  district: true,
+  state: true,
+  cep: true,
+  whatsapp: true,
+  lat: true,
+  lng: true,
+  radiusKm: true,
+  avgRating: true,
+  reviewCount: true,
+  favoriteCount: true,
+  createdAt: true,
+  updatedAt: true,
+} as const
+
+export type PublicProviderField = keyof typeof PUBLIC_PROVIDER_SELECT
+
+/**
+ * Shape exato do payload público — derivado do PRÓPRIO select, então não pode
+ * divergir dele. Substitui o antigo `Record<string, unknown>`, que apagava toda
+ * a informação de tipo do corpo da resposta (e com ela a chance de o compilador
+ * perceber um campo indevido).
+ */
+export type PublicProviderPayload = Prisma.UserGetPayload<{
+  select: typeof PUBLIC_PROVIDER_SELECT
+}>
+
+/** Chaves permitidas no payload público — derivadas do select (fonte única). */
+export const PUBLIC_PROVIDER_FIELDS = Object.keys(PUBLIC_PROVIDER_SELECT) as PublicProviderField[]
+
+/**
+ * Projeta QUALQUER linha com shape de User no payload público de provider.
+ *
+ * Duas barreiras com a MESMA allowlist, por motivos diferentes:
+ *   1. `PUBLIC_PROVIDER_SELECT` na query — não busca colunas sensíveis (LGPD,
+ *      performance, e o segredo do 2FA nunca chega perto do processo de resposta).
+ *   2. `toPublicProvider()` na resposta — garante que a serialização não vaze
+ *      coluna nenhuma, MESMO se alguém trocar `select` por `include` no futuro
+ *      (o bug de 09/2026 foi exatamente esse: a segunda barreira não existia).
+ */
+export function toPublicProvider<T extends Record<string, unknown>>(row: T): PublicProviderPayload {
+  const out: Record<string, unknown> = {}
+  for (const field of PUBLIC_PROVIDER_FIELDS) {
+    if (field in row) out[field] = row[field]
+  }
+  // Só chaves da allowlist entram no objeto — a projeção é exata por construção.
+  return out as PublicProviderPayload
+}
+
+// ---------------------------------------------------------------------------
+// Travas de compilação da allowlist pública
+// ---------------------------------------------------------------------------
+
+type SensitiveProviderKey = Extract<PublicProviderField, (typeof SENSITIVE_USER_FIELDS)[number]>
+
+/**
+ * 🔒 Trava de compilação: se alguém adicionar à allowlist pública uma chave
+ * listada em SENSITIVE_USER_FIELDS (ex.: `email: true`), este tipo vira `never`
+ * e o `true` não é atribuível — o `bun run typecheck` falha apontando aqui.
+ *
+ * É a garantia que um teste não dá: o teste roda, isto impede o merge.
+ */
+export const PUBLIC_PROVIDER_ALLOWLIST_HAS_NO_SENSITIVE_FIELD: [SensitiveProviderKey] extends [
+  never,
+]
+  ? true
+  : never = true
+
+/**
+ * Trava de FORMA EXATA para corpos de resposta.
+ *
+ * ⚠️ O TypeScript NÃO aplica excess property check em propriedades vindas de
+ * spread: `const x: Narrow = { ...linhaInteira }` compila (verificado). Como a
+ * serialização é sempre um objeto literal com spread, só restringir o tipo de
+ * destino não protegia nada.
+ *
+ * Este helper transforma "chave extra" em erro de compilação inferindo `U` do
+ * argumento e exigindo `never` para toda chave de `U` fora de `T`:
+ *
+ * ```ts
+ * const body = exactShape<ProviderDetailBody>()({ ...toPublicProvider(row), rating })
+ * //                                                      ✅
+ * const body = exactShape<ProviderDetailBody>()({ ...row, rating })
+ * //                                                      ❌ TS2345: cpfCnpj: string
+ * //                                                          não é atribuível a never
+ * ```
+ *
+ * Ou seja: reverter `select` para `include` e espalhar a linha larga deixa de
+ * ser um bug silencioso e passa a não compilar.
+ */
+export function exactShape<T>() {
+  return <U extends T>(value: U & Record<Exclude<keyof U, keyof T>, never>): U => value
+}
+
+/**
+ * Own-session projection — the identity the client store expects
+ * (`AuthUser` in `src/store/auth.ts`) after login/register/me. Never a
+ * credential: no `passwordHash`, no `twoFactorSecret`, no `sessionVersion`.
+ */
+export const SESSION_USER_SELECT = {
+  id: true,
+  email: true,
+  name: true,
+  role: true,
+  active: true,
+  avatarUrl: true,
+  verified: true,
+  twoFactorEnabled: true,
+  identityStatus: true,
+} as const
+
+export type SessionUserResponse = {
+  id: string
+  name: string
+  email: string
+  role: string
+  avatarUrl: string | null
+  verified: boolean
+  twoFactorEnabled: boolean
+  identityStatus: string | null
+}
+
+/**
+ * Project a user row onto the own-session shape. Explicit allowlist: a column
+ * added to the query later can never leak through here by accident.
+ */
+export function toSessionUser(user: {
+  id: string
+  name: string
+  email: string
+  role: string
+  avatarUrl?: string | null
+  verified?: boolean | null
+  twoFactorEnabled?: boolean | null
+  identityStatus?: string | null
+}): SessionUserResponse {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    avatarUrl: user.avatarUrl ?? null,
+    verified: user.verified ?? false,
+    twoFactorEnabled: user.twoFactorEnabled ?? false,
+    identityStatus: user.identityStatus ?? null,
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -14,6 +14,18 @@ pipeline:
       - bun install --frozen-lockfile
       - bun run lint
 
+  # Barreira explícita contra vazamento de campo sensível em payload de
+  # usuário (allowlist de PII) + fonte única do client Prisma. Step próprio:
+  # a falha precisa apontar para o vazamento, não se diluir no `test:run`.
+  pii-allowlist:
+    image: oven/bun:1.4.0
+    commands:
+      - bun install --frozen-lockfile
+      - bun run db:generate
+      - bun run check:pii-allowlist
+      # Prova que o guard detecta regressão (sandbox isolado em .tmp/).
+      - bun run check:pii-gate
+
   typecheck:
     image: oven/bun:1.4.0
     commands:

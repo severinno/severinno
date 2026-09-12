@@ -1661,3 +1661,65 @@ jobs:
       # PR (e no pre-push via test:unit do smart-skip quando fonte mudou).
       - name: Unit tests
         run: bun run test:unit
+
+  # ── Allowlist de dados de usuário (PII) ───────────────────────────────────
+  #
+  # Este job é a barreira mais específica do repositório contra a classe de bug
+  # que já aconteceu uma vez (09/2026): `db.user.findFirst({ include })` sem
+  # `select` devolve TODA coluna escalar de User e a rota serializa com "a linha
+  # menos o passwordHash" — vazando cpfCnpj, e-mail, endereço e twoFactorSecret
+  # de TERCEIROS (em `/api/providers/[id]`, público e sem autenticação).
+  #
+  # Ele roda como job PRÓPRIO, e não só dentro de `test:unit`, por dois motivos:
+  #   1. Diagnóstico — a falha aponta para vazamento de campo, não para "testes
+  #      unitários falharam" no meio de milhares de casos.
+  #   2. Gate bloqueante explícito — o branch protection pode exigir ESTE check.
+  #
+  # As três camadas verificadas aqui:
+  #   - `response-pii-guard.test.ts`  — contrato da query + projeção da resposta
+  #     dos endpoints que descrevem terceiros, mais um guard estático que falha
+  #     se o idioma `{ passwordHash: x, ...rest }` voltar a `src/`.
+  #   - `prisma-client-single-source.test.ts` — o client do Prisma tem fonte
+  #     única (o artefato gerado versionado exportava `UserRole` enquanto o
+  #     schema já dizia `Role`: build quebrado esperando acontecer).
+  #   - o typecheck deste mesmo PR (`src/lib/api-server.ts`) — a allowlist é
+  #     travada em tempo de compilação: adicionar campo sensível ou espalhar uma
+  #     linha larga na resposta deixa de compilar.
+  #
+  # O E2E com banco real (mesma allowlist, resposta HTTP de verdade) roda no
+  # workflow `e2e-cache.yml`, que provisiona PostGIS e sobe o app.
+  pii-allowlist-guard:
+    name: PII Allowlist Guard (user payload projection)
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: bunx prisma generate
+
+      - name: PII allowlist + Prisma single source
+        run: bun run check:pii-allowlist
+
+      # Prova que o step acima NÃO é decoração: injeta uma regressão em sandbox
+      # isolado (`.tmp/`, fora do checkout) e exige que o gate a detecte. Um
+      # gate que nunca falhou não protege nada — este step é o que garante que
+      # ele ainda falharia hoje.
+      - name: PII gate self-test (injeta regressão em sandbox)
+        run: bun run check:pii-gate
+
+      - name: Summary
+        run: echo "✅ Nenhum payload cross-user expõe credencial/PII; client do Prisma com fonte única; gate comprovadamente sensível a regressão."

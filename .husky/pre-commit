@@ -40,6 +40,13 @@ PID_ENCODING=$!
 bun run barrel-lint &
 PID_BARREL=$!
 
+# Allowlist de PII em payload de usuário + fonte única do client Prisma.
+# Espelha o job `pii-allowlist-guard` do pr-check.yml (e o check:* do CI) —
+# falha AQUI evita abrir o PR já sabendo que o gate vai recusar. Read-only e
+# rápido (~2s), por isso entra na fase paralela.
+bun run check:pii-allowlist &
+PID_PII=$!
+
 # Prettier check STAGED — feedback de formatação ANTES do lint-staged
 (
   STAGED_FORMAT=$(git diff --cached --name-only --diff-filter=ACMR | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
@@ -49,7 +56,7 @@ PID_BARREL=$!
 ) &
 PID_PRETTIER=$!
 
-wait $PID_ENCODING $PID_BARREL $PID_PRETTIER
+wait $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII
 
 # ── Phase C: Sequential checks (state-dependent) ─────────────────────────
 # These checks may modify files (lint-staged) or depend on the full project

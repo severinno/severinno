@@ -105,6 +105,18 @@ jobs:
 
       - run: bun install --frozen-lockfile
       - run: bun run db:generate
+
+      # Barreira explícita de payload de usuário (allowlist de PII) + fonte
+      # única do client Prisma. Roda como step próprio para que a falha aponte
+      # direto para vazamento de campo, em vez de se perder no `test:run`.
+      - name: PII allowlist guard
+        run: bun run check:pii-allowlist
+
+      # Prova que o guard acima detecta a regressão que ele existe para impedir
+      # (sandbox isolado em `.tmp/`; o checkout não é tocado).
+      - name: PII gate self-test
+        run: bun run check:pii-gate
+
       - run: bun run test:run
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test

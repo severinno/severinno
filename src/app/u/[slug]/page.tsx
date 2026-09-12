@@ -1,9 +1,10 @@
 import { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { db } from "@/lib/db"
-import { PublicProfilePage } from "./public-profile-page"
+import { PublicProfilePage, type PublicProfileProvider } from "./public-profile-page"
 import { BreadcrumbJsonLd } from "@/components/shared/breadcrumb-json-ld"
 import { sanitizeForJsonLd } from "@/lib/sanitize"
+import { exactShape } from "@/lib/api-server"
 
 type Props = { params: Promise<{ slug: string }> }
 
@@ -34,7 +35,6 @@ export default async function Page({ params }: Props) {
     select: {
       id: true,
       name: true,
-      email: true,
       avatarUrl: true,
       coverUrl: true,
       bio: true,
@@ -100,6 +100,19 @@ export default async function Page({ params }: Props) {
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://severinno.com.br"
 
+  // Segunda barreira do perfil público (a primeira é o `select` acima):
+  // `_count` fica só para derivar os números, e o restante é travado na forma
+  // exata que o componente consome. Se alguém voltar a pedir `email` (ou
+  // qualquer coluna sensível) no `select`, isto deixa de compilar em vez de
+  // vazar no payload RSC desta página pública e indexável.
+  const { _count, ...profileRow } = provider
+  const profile = exactShape<PublicProfileProvider>()({
+    ...profileRow,
+    rating,
+    reviewCount: _count.reviewsReceived,
+    completedBookings: _count.bookingsAsProvider,
+  })
+
   return (
     <>
       <BreadcrumbJsonLd
@@ -112,14 +125,7 @@ export default async function Page({ params }: Props) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <PublicProfilePage
-        provider={{
-          ...provider,
-          rating,
-          reviewCount: provider._count.reviewsReceived,
-          completedBookings: provider._count.bookingsAsProvider,
-        }}
-      />
+      <PublicProfilePage provider={profile} />
     </>
   )
 }

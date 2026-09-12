@@ -9,7 +9,8 @@ import {
   conflict,
   handleError,
   parsePagination,
-  publicUser,
+  toPublicProvider,
+  PUBLIC_PROVIDER_SELECT,
   USER_PUBLIC_SELECT,
   cacheControlPublic,
   cacheControlPrivate,
@@ -147,34 +148,54 @@ describe("parsePagination", () => {
   })
 })
 
-describe("publicUser", () => {
-  it("strips passwordHash from user object", () => {
-    const user = {
+// `publicUser()` ("a linha menos o passwordHash") foi REMOVIDO em 09/2026:
+// serializar por subtração encaminhava toda coluna nova do modelo — inclusive
+// cpfCnpj, e-mail e o segredo do 2FA — em respostas cross-user. O contrato agora
+// é allowlist: PUBLIC_PROVIDER_SELECT / toPublicProvider / toSessionUser.
+describe("toPublicProvider (allowlist de terceiros)", () => {
+  it("descarta qualquer coluna fora da allowlist", () => {
+    const row = {
       id: "1",
-      email: "test@test.com",
       name: "Test",
+      whatsapp: "+5533999999999",
+      // colunas que um `include` (linha inteira) traria junto:
       passwordHash: "secret",
-      role: "CLIENT",
+      cpfCnpj: "123.456.789-00",
+      email: "test@test.com",
+      twoFactorSecret: "JBSWY3DPEHPK3PXP",
+      identityDocUrl: "https://cdn/rg.jpg",
+      sessionVersion: 3,
     }
-    const result = publicUser(user)
-    expect(result).not.toHaveProperty("passwordHash")
-    expect(result.id).toBe("1")
-    expect(result.email).toBe("test@test.com")
+    const result = toPublicProvider(row)
+
+    expect(result).toEqual({ id: "1", name: "Test", whatsapp: "+5533999999999" })
   })
 
-  it("preserves all other fields", () => {
-    const user = {
-      id: "1",
-      email: "test@test.com",
-      name: "Test",
-      passwordHash: "secret",
-      verified: true,
-      active: true,
+  it("omite campos ausentes em vez de escrever undefined", () => {
+    const result = toPublicProvider({ id: "1" })
+    expect(result).toEqual({ id: "1" })
+    expect(Object.keys(result)).toHaveLength(1)
+  })
+})
+
+describe("PUBLIC_PROVIDER_SELECT", () => {
+  it("não pede credencial, dado fiscal nem documento de KYC ao banco", () => {
+    for (const field of [
+      "passwordHash",
+      "twoFactorSecret",
+      "twoFactorBackupCodes",
+      "cpfCnpj",
+      "email",
+      "identityDocUrl",
+      "identitySelfieUrl",
+      "lytexRecipientId",
+      "sessionVersion",
+      "servicePolygon",
+      "travelFeePolicy",
+      "deletedAt",
+    ]) {
+      expect(PUBLIC_PROVIDER_SELECT, `campo sensível: ${field}`).not.toHaveProperty(field)
     }
-    const result = publicUser(user)
-    expect(result).toHaveProperty("verified")
-    expect(result).toHaveProperty("active")
-    expect(Object.keys(result)).not.toContain("passwordHash")
   })
 })
 
