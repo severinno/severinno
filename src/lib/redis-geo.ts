@@ -27,7 +27,7 @@ function evictStaleEntries(): void {
   const toRemove = inMemoryGeoIndex.size - MAX_INMEMORY_ENTRIES
   const sorted = [...inMemoryGeoIndex.entries()].sort((a, b) => a[1].updatedAt - b[1].updatedAt)
   for (let i = 0; i < toRemove; i++) {
-    inMemoryGeoIndex.delete(sorted[i][0])
+    inMemoryGeoIndex.delete(sorted[i]![0])
   }
 }
 
@@ -39,7 +39,8 @@ export async function indexProviderLocation(
   lat: number,
   lng: number,
 ): Promise<void> {
-  if (!providerId || !lat || !lng) return
+  if (!providerId || lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng))
+    return
 
   // 1. Update in-memory spatial index
   inMemoryGeoIndex.set(providerId, {
@@ -158,7 +159,7 @@ export async function searchNearbyProvidersFast(
 export function seedGeoIndex(providers: Array<{ id: string; lat: number; lng: number }>): number {
   let count = 0
   for (const p of providers) {
-    if (p.lat && p.lng) {
+    if (p.lat != null && p.lng != null && Number.isFinite(p.lat) && Number.isFinite(p.lng)) {
       inMemoryGeoIndex.set(p.id, {
         lat: p.lat,
         lng: p.lng,

@@ -30,9 +30,17 @@
 
 import "server-only"
 import { geocodeSearch, geocodeCEP, reverseGeocode } from "./geo"
-import { cacheGet } from "./redis"
+import { cacheGet, getClient } from "./redis"
 import { getTopSearches, getTopCEPs, getTopReverses } from "./geo-query-log"
 import logger from "./logger"
+
+// ---------------------------------------------------------------------------
+// Cache key normalization (must match geo-nominatim.ts)
+// ---------------------------------------------------------------------------
+
+function normalizeCacheKey(input: string): string {
+  return input.trim().toLowerCase().replace(/\s+/g, " ")
+}
 
 // ---------------------------------------------------------------------------
 // Frequency-ordered warm list
@@ -143,17 +151,33 @@ export type WarmResult = {
 }
 
 /**
- * Check if a geo cache key is already populated (avoids unnecessary warming).
- * Returns true if the key exists in cache (Redis or in-memory).
+ * Batch-check which keys are already cached via Redis MGET (1 round-trip instead of N).
+ * Falls back to individual cacheGet if Redis is unavailable.
  */
-async function isKeyCached(key: string): Promise<boolean> {
+async function batchCheckCached(keys: string[]): Promise<Set<string>> {
+  const cached = new Set<string>()
+  if (keys.length === 0) return cached
   try {
-    const cached = await cacheGet<unknown>(key)
-    return cached !== null
-  } catch (err) {
-    logger.debug({ err }, "geo-cache-warm: cache check failed")
-    return false
+    const redis = getClient()
+    if (redis) {
+      const results = await redis.mget(...keys)
+      for (let i = 0; i < keys.length; i++) {
+        if (results[i] !== null) cached.add(keys[i]!)
+      }
+      return cached
+    }
+  } catch {
+    // Redis unavailable — fall back to individual checks
   }
+  // Fallback: individual checks (still better than blocking the whole warm)
+  for (const key of keys) {
+    try {
+      if ((await cacheGet<unknown>(key)) !== null) cached.add(key)
+    } catch {
+      /* skip */
+    }
+  }
+  return cached
 }
 
 /**
@@ -175,19 +199,36 @@ export async function warmGeoCache(): Promise<WarmResult> {
   let skipped = 0
   let errors = 0
 
-  // ── 1. Warm log-based queries FIRST (real user traffic has top priority) ──
+  // ── 1. Collect all cache keys and batch-check with MGET (1 round-trip) ──
+  const topSearches = getTopSearches(20)
+  const topCEPs = getTopCEPs(15)
+  const topReverses = getTopReverses(10)
+
+  const allKeys: string[] = []
+  for (const { query } of topSearches) allKeys.push(`geo:search:${normalizeCacheKey(query)}:5`)
+  for (const { cep } of topCEPs) allKeys.push(`geo:cep:${cep}`)
+  for (const { coords } of topReverses) allKeys.push(`geo:reverse:${coords}`)
+  for (const city of TOP_CITIES) allKeys.push(`geo:search:${normalizeCacheKey(city)}:5`)
+  for (const cep of TOP_CEPS) allKeys.push(`geo:cep:${cep}`)
+  for (const coord of TOP_COORDS)
+    allKeys.push(`geo:reverse:${coord.lat.toFixed(4)},${coord.lng.toFixed(4)}`)
+  for (const bairro of TOP_NEIGHBORHOODS) allKeys.push(`geo:search:${normalizeCacheKey(bairro)}:5`)
+  for (const capital of MISSING_CAPITALS) allKeys.push(`geo:search:${normalizeCacheKey(capital)}:5`)
+
+  const cachedKeys = await batchCheckCached(allKeys)
+
+  // ── 2. Warm only missing keys ──────────────────────────────────────────
   let logSearches = 0
   let logCeps = 0
   let logReverses = 0
 
-  const topSearches = getTopSearches(20)
   for (const { query } of topSearches) {
+    const key = `geo:search:${normalizeCacheKey(query)}:5`
+    if (cachedKeys.has(key)) {
+      skipped++
+      continue
+    }
     try {
-      const key = `geo:search:${query.toLowerCase()}:5`
-      if (await isKeyCached(key)) {
-        skipped++
-        continue
-      }
       await geocodeSearch(query, 5)
       logSearches++
     } catch (err) {
@@ -196,14 +237,13 @@ export async function warmGeoCache(): Promise<WarmResult> {
     }
   }
 
-  const topCEPs = getTopCEPs(15)
   for (const { cep } of topCEPs) {
+    const key = `geo:cep:${cep}`
+    if (cachedKeys.has(key)) {
+      skipped++
+      continue
+    }
     try {
-      const key = `geo:cep:${cep}`
-      if (await isKeyCached(key)) {
-        skipped++
-        continue
-      }
       await geocodeCEP(cep)
       logCeps++
     } catch (err) {
@@ -212,14 +252,13 @@ export async function warmGeoCache(): Promise<WarmResult> {
     }
   }
 
-  const topReverses = getTopReverses(10)
   for (const { coords } of topReverses) {
+    const key = `geo:reverse:${coords}`
+    if (cachedKeys.has(key)) {
+      skipped++
+      continue
+    }
     try {
-      const key = `geo:reverse:${coords}`
-      if (await isKeyCached(key)) {
-        skipped++
-        continue
-      }
       const [lat, lng] = coords.split(",").map(Number)
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
         errors++
@@ -233,15 +272,14 @@ export async function warmGeoCache(): Promise<WarmResult> {
     }
   }
 
-  // ── 2. Complement with static lists (for cold start / new regions) ──────
-  // Warm city searches
+  // Static lists
   for (const city of TOP_CITIES) {
+    const key = `geo:search:${normalizeCacheKey(city)}:5`
+    if (cachedKeys.has(key)) {
+      skipped++
+      continue
+    }
     try {
-      const key = `geo:search:${city.toLowerCase()}:5`
-      if (await isKeyCached(key)) {
-        skipped++
-        continue
-      }
       await geocodeSearch(city, 5)
       searches++
     } catch (err) {
@@ -250,14 +288,13 @@ export async function warmGeoCache(): Promise<WarmResult> {
     }
   }
 
-  // Warm CEP lookups
   for (const cep of TOP_CEPS) {
+    const key = `geo:cep:${cep}`
+    if (cachedKeys.has(key)) {
+      skipped++
+      continue
+    }
     try {
-      const key = `geo:cep:${cep}`
-      if (await isKeyCached(key)) {
-        skipped++
-        continue
-      }
       await geocodeCEP(cep)
       ceps++
     } catch (err) {
@@ -266,30 +303,28 @@ export async function warmGeoCache(): Promise<WarmResult> {
     }
   }
 
-  // Warm reverse geocodes
   for (const coord of TOP_COORDS) {
+    const key = `geo:reverse:${coord.lat.toFixed(4)},${coord.lng.toFixed(4)}`
+    if (cachedKeys.has(key)) {
+      skipped++
+      continue
+    }
     try {
-      const key = `geo:reverse:${coord.lat.toFixed(4)},${coord.lng.toFixed(4)}`
-      if (await isKeyCached(key)) {
-        skipped++
-        continue
-      }
       await reverseGeocode(coord.lat, coord.lng)
       reverses++
     } catch (err) {
-      logger.debug({ err }, "geo-cache-warm: reverse geocode warm failed")
+      logger.debug({ err }, "geo-cache-warm: reverse warm failed")
       errors++
     }
   }
 
-  // Warm neighborhood searches (Grupo 1)
   for (const bairro of TOP_NEIGHBORHOODS) {
+    const key = `geo:search:${normalizeCacheKey(bairro)}:5`
+    if (cachedKeys.has(key)) {
+      skipped++
+      continue
+    }
     try {
-      const key = `geo:search:${bairro.toLowerCase()}:5`
-      if (await isKeyCached(key)) {
-        skipped++
-        continue
-      }
       await geocodeSearch(bairro, 5)
       searches++
     } catch (err) {
@@ -298,14 +333,13 @@ export async function warmGeoCache(): Promise<WarmResult> {
     }
   }
 
-  // Warm missing capital searches (Grupo 3)
   for (const capital of MISSING_CAPITALS) {
+    const key = `geo:search:${normalizeCacheKey(capital)}:5`
+    if (cachedKeys.has(key)) {
+      skipped++
+      continue
+    }
     try {
-      const key = `geo:search:${capital.toLowerCase()}:5`
-      if (await isKeyCached(key)) {
-        skipped++
-        continue
-      }
       await geocodeSearch(capital, 5)
       searches++
     } catch (err) {

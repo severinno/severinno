@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { calculateRouteAndEta } from "@/lib/osrm"
 import { badRequest, handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import { haversineKm } from "@/lib/geo-server"
 
 /**
  * GET /api/geo/route-eta?originLat=-23.55&originLng=-46.63&destLat=-23.56&destLng=-46.64
@@ -32,6 +33,25 @@ export async function GET(request: Request) {
 
     if (isNaN(originLat) || isNaN(originLng) || isNaN(destLat) || isNaN(destLng)) {
       throw badRequest("Coordenadas geográficas inválidas")
+    }
+
+    if (
+      originLat < -90 ||
+      originLat > 90 ||
+      originLng < -180 ||
+      originLng > 180 ||
+      destLat < -90 ||
+      destLat > 90 ||
+      destLng < -180 ||
+      destLng > 180
+    ) {
+      throw badRequest("Coordenadas fora do range válido")
+    }
+
+    // Reject intercontinental queries that would waste OSRM resources
+    const directDistance = haversineKm(originLat, originLng, destLat, destLng)
+    if (directDistance > 500) {
+      throw badRequest("Distância máxima permitida é 500km")
     }
 
     const route = await calculateRouteAndEta(originLat, originLng, destLat, destLng)

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic"
 import { NextRequest, NextResponse } from "next/server"
 import { getVectorTileData } from "@/lib/vector-tiles"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import logger from "@/lib/logger"
 
 interface RouteParams {
   params: Promise<{
@@ -27,6 +28,15 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     // Limit zoom levels (e.g. 0 to 18)
     if (z < 0 || z > 18) {
       return NextResponse.json({ error: "Zoom level out of range (0-18)" }, { status: 400 })
+    }
+
+    // Validate x/y range for the given zoom level: [0, 2^z - 1]
+    const maxCoord = (1 << z) - 1
+    if (x < 0 || x > maxCoord || y < 0 || y > maxCoord) {
+      return NextResponse.json(
+        { error: `Tile coordinates out of range for zoom ${z} (0-${maxCoord})` },
+        { status: 400 },
+      )
     }
 
     const tileData = await getVectorTileData(z, x, y)
@@ -54,7 +64,8 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
         Vary: "Accept-Encoding",
       },
     })
-  } catch (_error) {
+  } catch (error) {
+    logger.error({ error }, "[geo-tiles] failed to generate vector tile")
     return NextResponse.json({ error: "Failed to generate vector tile" }, { status: 500 })
   }
 }

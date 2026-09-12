@@ -168,11 +168,23 @@ const MAX_HISTORY = 1000
 const snapshotHistory: Array<{
   timestamp: number
   services: Record<GeoServiceName, { p50: number; p95: number; p99: number; count: number }>
-}> = []
+}> = new Array(MAX_HISTORY)
+let historyIndex = 0
+let historyCount = 0
 
 /** Get the current historical snapshot buffer (in-memory). */
-export function getGeoMetricsHistory(): typeof snapshotHistory {
-  return snapshotHistory
+export function getGeoMetricsHistory(): Array<{
+  timestamp: number
+  services: Record<GeoServiceName, { p50: number; p95: number; p99: number; count: number }>
+}> {
+  if (historyCount < MAX_HISTORY) {
+    return snapshotHistory.slice(0, historyCount)
+  }
+  // Ring buffer: oldest entry is at historyIndex % MAX_HISTORY
+  return [
+    ...snapshotHistory.slice(historyIndex % MAX_HISTORY),
+    ...snapshotHistory.slice(0, historyIndex % MAX_HISTORY),
+  ]
 }
 
 // ── Module init: hydrate from disk ────────────────────────────────────────
@@ -184,15 +196,13 @@ export function getGeoMetricsHistory(): typeof snapshotHistory {
   try {
     const persisted = await loadPersistedSnapshots()
     for (const snap of persisted) {
-      snapshotHistory.push(snap)
-      if (snapshotHistory.length > MAX_HISTORY) {
-        snapshotHistory.shift()
-        break // loaded oldest-first, so remaining are even older — skip
-      }
+      snapshotHistory[historyIndex % MAX_HISTORY] = snap
+      historyIndex++
+      if (historyCount < MAX_HISTORY) historyCount++
     }
     if (persisted.length > 0) {
       logger.info(
-        { loaded: persisted.length, capped: snapshotHistory.length },
+        { loaded: persisted.length, capped: historyCount },
         "geo-metrics: hydrated historical snapshots from disk",
       )
     }
@@ -211,18 +221,24 @@ export function getGeoMetrics(): GeoMetricsSnapshot {
   for (const svc of Object.keys(store) as GeoServiceName[]) {
     prune(svc)
     const samples = store[svc]
-    const latencies = samples.filter((s) => !s.error).map((s) => s.ms)
-    const errors = samples.filter((s) => s.error)
-    const sorted = [...latencies].sort((a, b) => a - b)
+
+    // Single pass: collect latencies and count errors
+    const sorted: number[] = []
+    let errorCount = 0
+    for (const s of samples) {
+      if (s.error) errorCount++
+      else sorted.push(s.ms)
+    }
+    sorted.sort((a, b) => a - b)
 
     services[svc] = {
       p50: percentile(sorted, 50),
       p95: percentile(sorted, 95),
       p99: percentile(sorted, 99),
       count: samples.length,
-      errorRate: samples.length > 0 ? errors.length / samples.length : 0,
+      errorRate: samples.length > 0 ? errorCount / samples.length : 0,
       lastSampleAt: samples.length > 0 ? samples[samples.length - 1]!.timestamp : null,
-      errorCount: errors.length,
+      errorCount,
     }
   }
 
@@ -232,7 +248,7 @@ export function getGeoMetrics(): GeoMetricsSnapshot {
     windowSeconds: WINDOW_MS / 1000,
   }
 
-  // Auto-save to history ring buffer
+  // Auto-save to history ring buffer (O(1) instead of O(n) shift)
   const historyEntry = {
     timestamp: snapshot.timestamp,
     services: Object.fromEntries(
@@ -242,10 +258,9 @@ export function getGeoMetrics(): GeoMetricsSnapshot {
       ]),
     ) as Record<GeoServiceName, { p50: number; p95: number; p99: number; count: number }>,
   }
-  snapshotHistory.push(historyEntry)
-  if (snapshotHistory.length > MAX_HISTORY) {
-    snapshotHistory.shift()
-  }
+  snapshotHistory[historyIndex % MAX_HISTORY] = historyEntry
+  historyIndex++
+  if (historyCount < MAX_HISTORY) historyCount++
 
   // Persist to disk (debounced, survives restarts)
   persistSnapshot(historyEntry)

@@ -1,0 +1,33 @@
+services:
+  woodpecker-server:
+    image: woodpeckerci/woodpecker-server:v3
+    container_name: woodpecker-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - woodpecker-server-data:/var/lib/woodpecker/
+    environment:
+      - WOODPECKER_OPEN=true
+      - WOODPECKER_HOST=http://severinno.cloud:8000
+      - WOODPECKER_GITHUB=true
+      - WOODPECKER_GITHUB_CLIENT=Ov23liz77qSee6LhH833
+      - WOODPECKER_GITHUB_SECRET=d23e37b7970c9cc6ea88bb1895affd170ba7d15d
+      - WOODPECKER_AGENT_SECRET=b62cfa8d1857a84b160e03d7d52e5d50b57fc8ce58c6cec8dd4092a1547aaf60
+      - WOODPECKER_ADMIN=severinno
+  woodpecker-agent:
+    image: woodpeckerci/woodpecker-agent:v3
+    container_name: woodpecker-agent
+    restart: unless-stopped
+    depends_on:
+      - woodpecker-server
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WOODPECKER_SERVER=woodpecker-server:9000
+      - WOODPECKER_AGENT_SECRET=b62cfa8d1857a84b160e03d7d52e5d50b57fc8ce58c6cec8dd4092a1547aaf60
+      - WOODPECKER_MAX_WORKFLOWS=2
+
+volumes:
+  woodpecker-server-data:
+    name: woodpecker-server-data

@@ -67,6 +67,10 @@ const FILE_PREFIX = "snap-"
 // ---------------------------------------------------------------------------
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Write counter — only run rotation every ROTATE_EVERY_WRITES calls. */
+let writeCount = 0
+const ROTATE_EVERY_WRITES = 10
 let pendingSnapshot: PersistedSnapshot | null = null
 
 // ── Redis cache configuration ──────────────────────────────────────────
@@ -145,6 +149,8 @@ async function writeSnapshot(snapshot: PersistedSnapshot): Promise<void> {
  * Called after each write.
  */
 async function rotateOldSnapshots(): Promise<void> {
+  writeCount++
+  if (writeCount % ROTATE_EVERY_WRITES !== 0) return
   try {
     await ensureDir()
     const entries = await readdir(SNAPSHOTS_DIR, { withFileTypes: true })
@@ -324,20 +330,27 @@ export async function loadPersistedSnapshots(): Promise<PersistedSnapshot[]> {
  * Immediately flush any pending snapshot, skipping the debounce timer.
  * Safe to call multiple times — writes at most once.
  */
+let flushing = false
 export async function flushGeoMetrics(): Promise<void> {
-  if (debounceTimer) {
-    clearTimeout(debounceTimer)
-    debounceTimer = null
+  if (flushing) return
+  flushing = true
+  try {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer)
+      debounceTimer = null
+    }
+    if (pendingSnapshot) {
+      await writeSnapshot(pendingSnapshot)
+      await rotateOldSnapshots()
+      pendingSnapshot = null
+    }
+    // Always invalidate cache — even when there's no pending snapshot,
+    // external writes (e.g. historical snapshots placed directly on disk)
+    // must be visible on the next loadPersistedSnapshots() call.
+    await invalidateSnapshotsCache()
+  } finally {
+    flushing = false
   }
-  if (pendingSnapshot) {
-    await writeSnapshot(pendingSnapshot)
-    await rotateOldSnapshots()
-    pendingSnapshot = null
-  }
-  // Always invalidate cache — even when there's no pending snapshot,
-  // external writes (e.g. historical snapshots placed directly on disk)
-  // must be visible on the next loadPersistedSnapshots() call.
-  await invalidateSnapshotsCache()
 }
 
 function setupShutdownHandlers(): void {

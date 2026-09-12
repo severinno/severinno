@@ -29,18 +29,9 @@ import { cn } from "@/lib/utils"
 import AddressAutocomplete from "@/components/vitrine/address-autocomplete"
 import { apiGet } from "@/lib/api"
 import type { CepResult, GeoSearchResult } from "@/lib/api"
+import { type AddressFormValue, UF_OPTIONS, maskCep } from "./address-shared"
 
-export type AddressFormValue = {
-  cep: string
-  street: string
-  number: string
-  complement: string
-  district: string
-  city: string
-  state: string
-  lat?: number | null
-  lng?: number | null
-}
+export type { AddressFormValue }
 
 type GeoAddressFormProps = {
   value: AddressFormValue
@@ -51,46 +42,6 @@ type GeoAddressFormProps = {
   hideGps?: boolean
   /** Field label prefix for screen readers / nested forms. */
   idPrefix?: string
-}
-
-const UF_OPTIONS = [
-  "AC",
-  "AL",
-  "AP",
-  "AM",
-  "BA",
-  "CE",
-  "DF",
-  "ES",
-  "GO",
-  "MA",
-  "MT",
-  "MS",
-  "MG",
-  "PA",
-  "PB",
-  "PR",
-  "PE",
-  "PI",
-  "RJ",
-  "RN",
-  "RS",
-  "RO",
-  "RR",
-  "SC",
-  "SP",
-  "SE",
-  "TO",
-]
-
-function onlyDigits(s: string): string {
-  return s.replace(/\D/g, "")
-}
-
-function maskCep(cep: string): string {
-  const d = onlyDigits(cep).slice(0, 8)
-  if (d.length <= 5) return d
-  return `${d.slice(0, 5)}-${d.slice(5)}`
 }
 
 export function GeoAddressForm({
@@ -209,8 +160,11 @@ export function GeoAddressForm({
     <div className={cn("grid gap-3", className)}>
       {/* AddressAutocomplete — primary input */}
       <div>
-        <Label className="text-muted-foreground mb-1.5 block text-xs">Buscar endereço</Label>
+        <Label htmlFor="gaf-search" className="text-muted-foreground mb-1.5 block text-xs">
+          Buscar endereço
+        </Label>
         <AddressAutocomplete
+          inputId="gaf-search"
           placeholder="CEP, cidade ou endereço…"
           onSelect={handleAutocompleteSelect}
         />
@@ -231,7 +185,7 @@ export function GeoAddressForm({
               className="h-10 text-sm"
             />
             {cepLoading && (
-              <Loader2 className="text-muted-foreground absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin" />
+              <Loader2 className="text-muted-foreground absolute top-1/2 right-3 size-4 -translate-y-1/2 animate-spin" />
             )}
           </div>
           {errors?.cep && <p className="text-destructive text-xs">{errors.cep}</p>}

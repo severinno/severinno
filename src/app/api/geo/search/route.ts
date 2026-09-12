@@ -70,6 +70,12 @@ export async function GET(request: Request) {
 
     // Free-form query with Zod validation
     const raw = searchParams.get("q") || ""
+    if (raw.length > 500) {
+      return NextResponse.json(
+        { error: 'Parâmetro "q" excede o limite de 500 caracteres' },
+        { status: 400 },
+      )
+    }
     if (!raw.trim()) {
       return NextResponse.json(
         { error: 'Parâmetro "q" é obrigatório (endereço textual) ou informe street/city/state' },
@@ -122,7 +128,7 @@ async function handleStructured(opts: {
     street,
     city,
     state,
-    country: country || "Brazil",
+    country: country || process.env.DEFAULT_COUNTRY || "Brazil",
     postcode,
     limit,
   })

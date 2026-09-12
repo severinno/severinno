@@ -259,7 +259,7 @@ async function redisSlidingWindow(
   const member = `${now}-${Math.random().toString(36).slice(2, 8)}`
 
   // Pipeline: remove old entries → count → add current → set TTL
-  const pipeline = (c as Redis).pipeline?.() ?? null
+  const pipeline = "pipeline" in c && typeof c.pipeline === "function" ? c.pipeline() : null
 
   if (pipeline) {
     pipeline.zremrangebyscore(key, 0, windowStart)
@@ -297,22 +297,23 @@ async function redisSlidingWindow(
   // Fallback: non-pipeline (e.g. Cluster mode where pipeline routes by slot)
   await c.zremrangebyscore(key, 0, windowStart)
   const count = await c.zcard(key)
-  const allowed = count < config.max
-  if (allowed) {
-    // Only record the request if under the limit
-    await c.zadd(key, now, member)
-    await c.pexpire(key, config.windowMs * 2)
-  }
-
-  // Track allowed/blocked for observability
-  if (allowed) {
-    rateLimitAllowed++
-  } else {
+  if (count >= config.max) {
+    // Already at limit — skip add/pexpire, track block
     rateLimitBlocked++
+    return {
+      allowed: false,
+      remaining: 0,
+      reset: windowStart + config.windowMs,
+      limit: config.max,
+    }
   }
+  await c.zadd(key, now, member)
+  await c.pexpire(key, config.windowMs * 2)
+
+  rateLimitAllowed++
 
   return {
-    allowed,
+    allowed: true,
     remaining: Math.max(0, config.max - (count + 1)),
     reset: windowStart + config.windowMs,
     limit: config.max,

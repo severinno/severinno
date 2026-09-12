@@ -4,7 +4,6 @@ export {
   buildClusterGeoJSON,
   fitProvidersBounds,
   syncUserLocationMarker,
-  escapeHtml,
   sortByDistance,
   pointInPolygon,
 } from "./helpers"

@@ -371,7 +371,7 @@ async function reverseGeocodeLocal(lat: number, lng: number): Promise<ReverseGeo
             state: true,
             cep: true,
           },
-          take: 20,
+          take: 100,
           orderBy: { avgRating: "desc" as const },
         })
 

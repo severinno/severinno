@@ -91,7 +91,7 @@ export function withGeoMiddleware<T>(
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         "Cache-Control": `public, s-maxage=${cacheSeconds}, stale-while-revalidate=${cacheSeconds * 5}`,
-        "Vary": "Accept-Encoding",
+        Vary: "Accept-Encoding",
         ...result.headers,
       }
 
@@ -124,6 +124,14 @@ function handleGeoError(err: unknown, pathname: string): NextResponse {
 
   // Known application errors → 400 with message
   if (err instanceof Error) {
+    // Errors with explicit statusCode (e.g. from route handlers)
+    if ("statusCode" in err && typeof (err as { statusCode: unknown }).statusCode === "number") {
+      return NextResponse.json(
+        { error: err.message },
+        { status: (err as { statusCode: number }).statusCode },
+      )
+    }
+
     const msg = err.message.toLowerCase()
 
     if (msg.includes("inválido") || msg.includes("invalid")) {
@@ -140,9 +148,7 @@ function handleGeoError(err: unknown, pathname: string): NextResponse {
     logger.error({ err, pathname }, "geo middleware: unhandled error")
     captureError(err, { extra: { pathname } })
 
-    const message = process.env.NODE_ENV === "production"
-      ? "Erro interno do servidor"
-      : err.message
+    const message = process.env.NODE_ENV === "production" ? "Erro interno do servidor" : err.message
 
     return NextResponse.json({ error: message }, { status: 500 })
   }

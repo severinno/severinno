@@ -30,6 +30,10 @@ export async function GET(request: Request) {
       throw badRequest("Coordenadas do cliente inválidas")
     }
 
+    if (clientLat < -90 || clientLat > 90 || clientLng < -180 || clientLng > 180) {
+      throw badRequest("Coordenadas do cliente fora do range válido")
+    }
+
     const provider = await db.user.findUnique({
       where: { id: providerId, role: "PROVIDER", active: true },
       select: {

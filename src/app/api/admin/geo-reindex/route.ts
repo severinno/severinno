@@ -38,6 +38,7 @@ import { NextResponse } from "next/server"
 import { requireRole } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { db } from "@/lib/db"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import logger from "@/lib/logger"
 
 // ---------------------------------------------------------------------------
@@ -71,9 +72,10 @@ const SPATIAL_INDEXES = [
 // Route
 // ---------------------------------------------------------------------------
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     await requireRole("ADMIN")
+    await assertRateLimit(request, RATE_LIMITS.admin)
 
     const completedIndexes: ReindexResult[] = []
     let failedIndex: string | null = null

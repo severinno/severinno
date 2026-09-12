@@ -15,18 +15,14 @@ import {
 import { apiGet, fetchGeoSearchStructured } from "@/lib/api"
 import { useGeoStore } from "@/store/geo"
 import { cn } from "@/lib/utils"
+import {
+  type AddressFormValue,
+  UF_OPTIONS,
+  onlyDigits,
+  maskCep,
+} from "@/components/forms/address-shared"
 
-export type AddressFormValue = {
-  cep: string
-  street: string
-  number: string
-  complement: string
-  district: string
-  city: string
-  state: string
-  lat?: number | null
-  lng?: number | null
-}
+export type { AddressFormValue }
 
 type AddressFormProps = {
   value: AddressFormValue
@@ -37,46 +33,6 @@ type AddressFormProps = {
   hideGps?: boolean
   /** Field label prefix for screen readers / nested forms. */
   idPrefix?: string
-}
-
-const UF_OPTIONS = [
-  "AC",
-  "AL",
-  "AP",
-  "AM",
-  "BA",
-  "CE",
-  "DF",
-  "ES",
-  "GO",
-  "MA",
-  "MT",
-  "MS",
-  "MG",
-  "PA",
-  "PB",
-  "PR",
-  "PE",
-  "PI",
-  "RJ",
-  "RN",
-  "RS",
-  "RO",
-  "RR",
-  "SC",
-  "SP",
-  "SE",
-  "TO",
-]
-
-function onlyDigits(s: string): string {
-  return s.replace(/\D/g, "")
-}
-
-function maskCep(cep: string): string {
-  const d = onlyDigits(cep).slice(0, 8)
-  if (d.length <= 5) return d
-  return `${d.slice(0, 5)}-${d.slice(5)}`
 }
 
 /**

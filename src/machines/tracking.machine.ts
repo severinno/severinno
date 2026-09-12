@@ -36,9 +36,19 @@ export const trackingMachine = setup({
   guards: {
     hasLocation: ({ context, event }) => {
       if (event.type === "SERVICE_LOCATION") {
-        return !!event.data.lat && !!event.data.lng
+        return (
+          typeof event.data.lat === "number" &&
+          typeof event.data.lng === "number" &&
+          Number.isFinite(event.data.lat) &&
+          Number.isFinite(event.data.lng)
+        )
       }
-      return !!context.serviceLat && !!context.serviceLng
+      return (
+        typeof context.serviceLat === "number" &&
+        typeof context.serviceLng === "number" &&
+        Number.isFinite(context.serviceLat) &&
+        Number.isFinite(context.serviceLng)
+      )
     },
     hasProvider: ({ context }) => !!context.providerId,
     hasEtd: ({ context, event }) => {
@@ -133,6 +143,10 @@ export const trackingMachine = setup({
         },
         CANCEL: { target: "cancelled" },
       },
+      // Auto-timeout: if provider doesn't start en_route within 4 hours, mark as error
+      after: {
+        14400000: { target: "error", actions: "setError" },
+      },
     },
     en_route: {
       entry: "clearError",
@@ -143,12 +157,20 @@ export const trackingMachine = setup({
         ARRIVED: { target: "arrived" },
         CANCEL: { target: "cancelled" },
       },
+      // Auto-timeout: if provider doesn't arrive within 2 hours, mark as error
+      after: {
+        7200000: { target: "error", actions: "setError" },
+      },
     },
     arrived: {
       entry: "clearError",
       on: {
         START: { target: "in_progress" },
         CANCEL: { target: "cancelled" },
+      },
+      // Auto-timeout: if service doesn't start within 1 hour, mark as error
+      after: {
+        3600000: { target: "error", actions: "setError" },
       },
     },
     in_progress: {
@@ -157,9 +179,12 @@ export const trackingMachine = setup({
         COMPLETE: { target: "completed" },
         ERROR: { target: "error", actions: "setError" },
       },
+      // Auto-timeout: if service doesn't complete within 8 hours, mark as error
+      after: {
+        28800000: { target: "error", actions: "setError" },
+      },
     },
     completed: {
-      type: "final",
       on: {
         RESET: { target: "idle", actions: "resetAll" },
       },

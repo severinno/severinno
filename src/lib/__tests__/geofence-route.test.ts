@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const mockFindUnique = vi.hoisted(() => vi.fn())
 const mockUpdate = vi.hoisted(() => vi.fn())
+const mockUpdateMany = vi.hoisted(() => vi.fn())
 const mockRequireUser = vi.hoisted(() => vi.fn())
 const mockCheckGeofences = vi.hoisted(() => vi.fn())
 const mockIndexProviderLocation = vi.hoisted(() => vi.fn())
@@ -20,6 +21,7 @@ vi.mock("@/lib/db", () => ({
     booking: {
       findUnique: mockFindUnique,
       update: mockUpdate,
+      updateMany: mockUpdateMany,
     },
   },
 }))
@@ -59,9 +61,12 @@ vi.mock("@/lib/api-server", () => ({
   notFound: (msg: string) => new Error(`NOT_FOUND: ${msg}`),
   handleError: (e: unknown) => {
     const msg = e instanceof Error ? e.message : "Unknown error"
-    if (msg.startsWith("NOT_FOUND")) return new Response(JSON.stringify({ error: msg }), { status: 404 })
-    if (msg.startsWith("FORBIDDEN")) return new Response(JSON.stringify({ error: msg }), { status: 403 })
-    if (msg.startsWith("BAD_REQUEST")) return new Response(JSON.stringify({ error: msg }), { status: 400 })
+    if (msg.startsWith("NOT_FOUND"))
+      return new Response(JSON.stringify({ error: msg }), { status: 404 })
+    if (msg.startsWith("FORBIDDEN"))
+      return new Response(JSON.stringify({ error: msg }), { status: 403 })
+    if (msg.startsWith("BAD_REQUEST"))
+      return new Response(JSON.stringify({ error: msg }), { status: 400 })
     return new Response(JSON.stringify({ error: msg }), { status: 500 })
   },
 }))
@@ -123,6 +128,7 @@ describe("POST /api/tracking/[id]/geofence — unified endpoint", () => {
     mockCalculateRouteAndEta.mockResolvedValue({ distanceKm: 0.3, durationMin: 2 })
     mockSendWhatsApp.mockResolvedValue(undefined)
     mockUpdate.mockResolvedValue({})
+    mockUpdateMany.mockResolvedValue({ count: 1 })
   })
 
   it("returns 400 when providerLat/providerLng missing", async () => {
@@ -181,13 +187,11 @@ describe("POST /api/tracking/[id]/geofence — unified endpoint", () => {
     expect(json.triggered).toBe(true)
     expect(json.engineEvents).toBe(1)
     expect(mockSendWhatsApp).toHaveBeenCalled()
-    expect(mockUpdate).toHaveBeenCalled()
+    expect(mockUpdateMany).toHaveBeenCalled()
   })
 
   it("returns idempotent when geofenceAlertSentAt already set", async () => {
-    mockFindUnique.mockResolvedValue(
-      makeBooking({ geofenceAlertSentAt: new Date("2026-01-01") }),
-    )
+    mockFindUnique.mockResolvedValue(makeBooking({ geofenceAlertSentAt: new Date("2026-01-01") }))
     const req = makeRequest({ providerLat: -23.55, providerLng: -46.63 })
     const res = await POST(req, { params: Promise.resolve({ id: "booking-1" }) })
     const json = await res.json()

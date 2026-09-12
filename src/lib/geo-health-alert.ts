@@ -28,6 +28,7 @@ import logger from "@/lib/logger"
 // ---------------------------------------------------------------------------
 
 import { type GeoServiceName } from "@/lib/geo-metrics"
+import { escapeHtml } from "@/lib/html"
 
 export type { GeoServiceName }
 
@@ -278,16 +279,6 @@ function geoRecoveryHtml(opts: {
       <a href="${APP_URL}/api/health" style="color:#059669">Ver health check completo →</a>
     </p>
   `
-}
-
-/** Basic HTML entity escaping to prevent injection in email/Slack content. */
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;")
 }
 
 async function sendAlertEmail(opts: { subject: string; html: string }): Promise<void> {

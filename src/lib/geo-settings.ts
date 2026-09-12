@@ -66,7 +66,21 @@ function stripTrailingSlash(url: string): string {
 
 async function loadFromDb(): Promise<GeoSettings> {
   const { db } = await import("@/lib/db")
-  const rows = await db.setting.findMany()
+  const rows = await db.setting.findMany({
+    where: {
+      key: {
+        in: [
+          "nominatim_enabled",
+          "viacep_enabled",
+          "nominatim_base_url",
+          "viacep_base_url",
+          "nominatim_user_agent",
+          "nominatim_email",
+        ],
+      },
+    },
+    select: { key: true, value: true },
+  })
 
   const map = new Map<string, string>()
   for (const row of rows) {

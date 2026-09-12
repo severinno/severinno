@@ -53,35 +53,49 @@ export async function getVectorTileData(z: number, x: number, y: number) {
       reviewCount: true,
       verified: true,
       radiusKm: true,
-      services: {
-        where: { active: true },
-        select: { title: true, basePrice: true },
-        take: 3,
-      },
     },
     take: 100,
   })
 
+  // Batch-fetch services to avoid N+1 — one query instead of 100
+  const providerIds = providers.map((p) => p.id)
+  const allServices =
+    providerIds.length > 0
+      ? await db.service.findMany({
+          where: { providerId: { in: providerIds }, active: true },
+          select: { providerId: true, title: true, basePrice: true },
+        })
+      : []
+  const servicesByProvider = new Map<string, Array<{ title: string; basePrice: number | null }>>()
+  for (const s of allServices) {
+    const list = servicesByProvider.get(s.providerId) ?? []
+    list.push(s)
+    servicesByProvider.set(s.providerId, list)
+  }
+
   // Format as GeoJSON FeatureCollection
   const features = providers
     .filter((p) => p.lat !== null && p.lng !== null)
-    .map((p) => ({
-      type: "Feature" as const,
-      geometry: {
-        type: "Point" as const,
-        coordinates: [p.lng!, p.lat!],
-      },
-      properties: {
-        id: p.id,
-        name: p.name,
-        rating: p.avgRating,
-        reviews: p.reviewCount,
-        verified: p.verified,
-        radiusKm: p.radiusKm || 15,
-        primaryService: p.services[0]?.title || "Serviço Geral",
-        minPrice: p.services[0]?.basePrice || 0,
-      },
-    }))
+    .map((p) => {
+      const services = servicesByProvider.get(p.id) ?? []
+      return {
+        type: "Feature" as const,
+        geometry: {
+          type: "Point" as const,
+          coordinates: [p.lng!, p.lat!],
+        },
+        properties: {
+          id: p.id,
+          name: p.name,
+          rating: p.avgRating,
+          reviews: p.reviewCount,
+          verified: p.verified,
+          radiusKm: p.radiusKm || 15,
+          primaryService: services[0]?.title || "Serviço Geral",
+          minPrice: services[0]?.basePrice || 0,
+        },
+      }
+    })
 
   return {
     type: "FeatureCollection" as const,

@@ -28,11 +28,20 @@ import { NextRequest } from "next/server"
 
 // ---- Hoisted mocks --------------------------------------------------------
 
-const { mockExecFileSync, mockReaddirSync, mockReadFileSync, mockExistsSync } = vi.hoisted(() => ({
+const {
+  mockExecFileSync,
+  mockReaddirSync,
+  mockReadFileSync,
+  mockExistsSync,
+  mockReadFile,
+  mockAccess,
+} = vi.hoisted(() => ({
   mockExecFileSync: vi.fn(),
   mockReaddirSync: vi.fn(),
   mockReadFileSync: vi.fn(),
   mockExistsSync: vi.fn(),
+  mockReadFile: vi.fn(),
+  mockAccess: vi.fn(),
 }))
 
 // ---- Mocks ----------------------------------------------------------------
@@ -191,6 +200,15 @@ vi.mock("node:fs", () => ({
     readdirSync: mockReaddirSync,
     readFileSync: mockReadFileSync,
     existsSync: mockExistsSync,
+  },
+}))
+
+vi.mock("node:fs/promises", () => ({
+  readFile: mockReadFile,
+  access: mockAccess,
+  default: {
+    readFile: mockReadFile,
+    access: mockAccess,
   },
 }))
 
@@ -838,6 +856,8 @@ describe("GET /api/admin/geo-metrics", () => {
     vi.mocked(getP95Baselines).mockReturnValue({ nominatim: 1000, viacep: 500, postgis: 100 })
     mockExistsSync.mockImplementation(() => true)
     mockReadFileSync.mockImplementation(() => GEO_BENCHMARK_FILE)
+    mockAccess.mockResolvedValue(undefined as never)
+    mockReadFile.mockResolvedValue(GEO_BENCHMARK_FILE as never)
 
     const res = await GETGeoMetrics(mockRequest)
     const body = await res.json()
@@ -863,6 +883,8 @@ describe("GET /api/admin/geo-metrics", () => {
     vi.mocked(getGeoMetrics).mockReturnValue(GEO_METRICS_SNAPSHOT as any)
     vi.mocked(getGeoMetricsHistory).mockReturnValue(GEO_METRICS_HISTORY as any)
     vi.mocked(getP95Baselines).mockReturnValue({})
+    mockAccess.mockRejectedValue(new Error("ENOENT") as never)
+    mockReadFile.mockRejectedValue(new Error("ENOENT") as never)
 
     const res = await GETGeoMetrics(mockRequest)
     const body = await res.json()

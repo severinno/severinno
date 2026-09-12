@@ -84,10 +84,43 @@ export async function checkGeofences(
         lng: true,
         clientId: true,
         client: { select: { name: true } },
+        provider: { select: { name: true } },
         service: { select: { title: true } },
       },
       take: 10,
     })
+
+    // Batch-read all geofence states in one Redis pipeline (avoids N round-trips)
+    const redis = getClient()
+    const stateKeys = bookings.map((b) => `geofence:${providerId}:${b.id}`)
+    const prevStates = new Map<string, { inside: boolean; lastEventAt: number }>()
+    let pipelineFailed = false
+
+    if (redis && stateKeys.length > 0) {
+      try {
+        const pipeline = redis.pipeline()
+        for (const key of stateKeys) pipeline.get(key)
+        const results = await pipeline.exec()
+        if (results) {
+          for (let i = 0; i < stateKeys.length; i++) {
+            const val = results[i]?.[1]
+            if (typeof val === "string") {
+              try {
+                prevStates.set(stateKeys[i]!, JSON.parse(val))
+              } catch {
+                /* malformed */
+              }
+            }
+          }
+        }
+      } catch (err) {
+        pipelineFailed = true
+        logger.debug({ err }, "geofencing: pipeline state read failed, falling back to per-booking")
+      }
+    } else {
+      // No Redis client — fall back to per-booking cacheGet
+      pipelineFailed = true
+    }
 
     for (const booking of bookings) {
       if (!booking.lat || !booking.lng) continue
@@ -100,11 +133,11 @@ export async function checkGeofences(
       // Two concurrent location updates for the same booking could both
       // read the same previous state and fire duplicate notifications.
       const lockKey = `geofence:lock:${providerId}:${booking.id}`
-      const redis = getClient()
+      const redisForLock = redis ?? getClient()
       let lockAcquired = false
-      if (redis) {
+      if (redisForLock) {
         try {
-          const result = await redis.set(lockKey, "1", "EX", GEOFENCE_LOCK_TTL_SECONDS, "NX")
+          const result = await redisForLock.set(lockKey, "1", "EX", GEOFENCE_LOCK_TTL_SECONDS, "NX")
           lockAcquired = result === "OK"
         } catch (err) {
           // Redis unavailable — proceed without lock (best-effort)
@@ -122,9 +155,12 @@ export async function checkGeofences(
       }
 
       try {
-        // Check previous state from cache
+        // Check previous state — from pipeline if available, else individual cacheGet
         const stateKey = `geofence:${providerId}:${booking.id}`
-        const prevState = await cacheGet<{ inside: boolean; lastEventAt: number }>(stateKey)
+        let prevState = prevStates.get(stateKey) ?? null
+        if (!prevState && pipelineFailed) {
+          prevState = await cacheGet<{ inside: boolean; lastEventAt: number }>(stateKey)
+        }
         const wasInside = prevState?.inside ?? false
         const lastEventAt = prevState?.lastEventAt ?? 0
         const debounceMs = cfg.debounceMinutes * 60 * 1000
@@ -137,7 +173,7 @@ export async function checkGeofences(
           const event: GeofenceEvent = {
             type: "enter",
             providerId,
-            providerName: "Prestador",
+            providerName: booking.provider?.name ?? "Prestador",
             clientId: booking.clientId,
             bookingId: booking.id,
             lat,
@@ -164,7 +200,7 @@ export async function checkGeofences(
           const event: GeofenceEvent = {
             type: "exit",
             providerId,
-            providerName: "Prestador",
+            providerName: booking.provider?.name ?? "Prestador",
             clientId: booking.clientId,
             bookingId: booking.id,
             lat,
@@ -188,8 +224,8 @@ export async function checkGeofences(
         }
       } finally {
         // Release lock (or let it expire via 5s TTL)
-        if (redis && lockAcquired) {
-          redis.del(lockKey).catch(() => {
+        if (redisForLock && lockAcquired) {
+          redisForLock.del(lockKey).catch(() => {
             /* lock will expire via TTL */
           })
         }
@@ -244,12 +280,23 @@ async function notifyGeofenceEvent(
       },
     )
 
-    // Store event in Redis for audit trail
+    // Store event in Redis for audit trail (atomic LPUSH + EXPIRE via pipeline)
     const auditKey = `geofence:audit:${event.bookingId}`
     try {
-      const existing = (await cacheGet<GeofenceEvent[]>(auditKey)) ?? []
-      existing.push(event)
-      await cacheSet(auditKey, existing, GEOFENCE_AUDIT_TTL)
+      const redis = getClient()
+      if (redis) {
+        // Use pipeline for atomicity — if process crashes between LPUSH and EXPIRE,
+        // the key would persist without TTL. Pipeline ensures both execute together.
+        const pipeline = redis.pipeline()
+        pipeline.lpush(auditKey, JSON.stringify(event))
+        pipeline.expire(auditKey, GEOFENCE_AUDIT_TTL)
+        await pipeline.exec()
+      } else {
+        // Fallback: use cacheGet/cacheSet (not atomic, but works for single instance)
+        const existing = (await cacheGet<GeofenceEvent[]>(auditKey)) ?? []
+        existing.push(event)
+        await cacheSet(auditKey, existing, GEOFENCE_AUDIT_TTL)
+      }
     } catch (err) {
       // Redis unavailable
       logger.debug({ err }, "geofencing: audit trail write failed")
@@ -269,11 +316,7 @@ async function notifyGeofenceEvent(
 
     // WhatsApp notification for enter events
     if (event.type === "enter") {
-      const provider = await db.user.findUnique({
-        where: { id: event.providerId },
-        select: { name: true },
-      })
-      const providerName = provider?.name ?? "O prestador"
+      const providerName = event.providerName
       const distanceText =
         event.distanceMeters <= 100
           ? "muito perto"
@@ -283,12 +326,14 @@ async function notifyGeofenceEvent(
         title: `🚗 ${providerName} está chegando!`,
         body: `${providerName} está ${distanceText} do seu endereço. Fique de prontidão!`,
         url: `/?view=client.bookings&id=${event.bookingId}`,
-      }).then(() => {
-        recordGeofenceWhatsApp(true)
-      }).catch((err) => {
-        recordGeofenceWhatsApp(false)
-        logger.debug({ err, bookingId: event.bookingId }, "geofencing: WhatsApp send failed")
       })
+        .then(() => {
+          recordGeofenceWhatsApp(true)
+        })
+        .catch((err) => {
+          recordGeofenceWhatsApp(false)
+          logger.debug({ err, bookingId: event.bookingId }, "geofencing: WhatsApp send failed")
+        })
     }
   } catch (err) {
     logger.warn({ err, event }, "geofence: notification failed")
@@ -300,6 +345,13 @@ async function notifyGeofenceEvent(
  */
 export async function getGeofenceAuditTrail(bookingId: string): Promise<GeofenceEvent[]> {
   try {
+    const redis = getClient()
+    if (redis) {
+      // Read from Redis list (LPUSH stores newest first, so reverse for chronological order)
+      const items = await redis.lrange(`geofence:audit:${bookingId}`, 0, -1)
+      return items.map((item) => JSON.parse(item as string) as GeofenceEvent).reverse()
+    }
+    // Fallback: read from cache (single instance mode)
     const events = await cacheGet<GeofenceEvent[]>(`geofence:audit:${bookingId}`)
     return events ?? []
   } catch (err) {

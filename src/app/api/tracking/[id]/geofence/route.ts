@@ -9,11 +9,12 @@ import { badRequest, forbidden, notFound, handleError } from "@/lib/api-server"
 import { checkGeofences } from "@/lib/geofencing"
 import { indexProviderLocation } from "@/lib/redis-geo"
 import { haversineKm } from "@/lib/geo-server"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import logger from "@/lib/logger"
 
-const GEOFENCE_DISTANCE_KM = 1.0
-const GEOFENCE_DURATION_MIN = 5
-const GEOFENCE_RADIUS_M = 200
+const GEOFENCE_DISTANCE_KM = Number(process.env.GEOFENCE_DISTANCE_KM ?? 1.0)
+const GEOFENCE_DURATION_MIN = Number(process.env.GEOFENCE_DURATION_MIN ?? 5)
+const GEOFENCE_RADIUS_M = Number(process.env.GEOFENCE_RADIUS_M ?? 200)
 
 /**
  * POST /api/tracking/[id]/geofence
@@ -28,6 +29,7 @@ const GEOFENCE_RADIUS_M = 200
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireUser()
+    await assertRateLimit(request, RATE_LIMITS.general)
     const { id: bookingId } = await params
 
     const body = (await request.json()) as {
@@ -35,8 +37,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       providerLng?: number
     }
 
-    if (!body.providerLat || !body.providerLng) {
+    if (
+      body.providerLat == null ||
+      body.providerLng == null ||
+      !Number.isFinite(body.providerLat) ||
+      !Number.isFinite(body.providerLng)
+    ) {
       throw badRequest("Posição do prestador (providerLat, providerLng) é obrigatória")
+    }
+
+    if (
+      body.providerLat < -90 ||
+      body.providerLat > 90 ||
+      body.providerLng < -180 ||
+      body.providerLng > 180
+    ) {
+      throw badRequest("Coordenadas fora do range válido")
     }
 
     const { providerLat, providerLng } = body
@@ -125,7 +141,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
     }
 
-    // 6. Trigger WhatsApp notification
+    // 6. Atomic guard — claim the alert slot before sending WhatsApp
+    const updateResult = await db.booking.updateMany({
+      where: { id: bookingId, geofenceAlertSentAt: null },
+      data: { geofenceAlertSentAt: new Date() },
+    })
+
+    if (updateResult.count === 0) {
+      // Another concurrent request already claimed it
+      return NextResponse.json({
+        ok: true,
+        triggered: false,
+        reason: "Alerta já enviado por outra requisição",
+        engineEvents: engineEvents.length,
+      })
+    }
+
+    // 7. Send WhatsApp notification
     const providerName = booking.provider?.name ?? "O Prestador"
     const distanceMeters = Math.round(
       haversineKm(providerLat, providerLng, booking.lat ?? 0, booking.lng ?? 0) * 1000,
@@ -137,17 +169,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           ? `a aproximadamente ${distanceMeters} metros`
           : `a aproximadamente ${(distanceMeters / 1000).toFixed(1)} km`
 
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? ""
     await sendWhatsApp({
       userId: booking.clientId,
       title: `🚗 ${providerName} está chegando!`,
       body: `${providerName} está ${distanceText} do seu endereço. Fique de prontidão!`,
-      url: `/?view=client.bookings&id=${bookingId}`,
-    })
-
-    // Mark alert as sent (idempotent guard)
-    await db.booking.update({
-      where: { id: bookingId },
-      data: { geofenceAlertSentAt: new Date() },
+      url: `${baseUrl}/?view=client.bookings&id=${bookingId}`,
     })
 
     logger.info(

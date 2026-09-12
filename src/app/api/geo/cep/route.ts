@@ -16,15 +16,10 @@ export const GET = withGeoMiddleware(async ({ searchParams }) => {
   const rawCep = searchParams.get("cep") || ""
   const { cep } = geocodeCepSchema.parse({ cep: rawCep })
 
-  try {
-    const address = await geocodeCEP(cep)
-    return { data: address, cacheSeconds: 60 }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Erro ao consultar CEP"
-    return {
-      data: { error: message } as unknown as import("@/lib/geo").ViaCEPResult,
-      status: 400,
-      cacheSeconds: 0,
-    }
-  }
+  const address = await geocodeCEP(cep).catch((err) => {
+    const e = err instanceof Error ? err : new Error("Erro ao consultar CEP")
+    ;(e as Error & { statusCode?: number }).statusCode = 400
+    throw e
+  })
+  return { data: address, cacheSeconds: 60 }
 })

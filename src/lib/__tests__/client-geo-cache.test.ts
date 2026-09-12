@@ -303,21 +303,13 @@ describe("FIFO eviction", () => {
     storeNCities(100)
     expect(mod.getCachedGeo("City-000")).not.toBeNull()
 
-    // Add one more — should evict City-000 from the queue
-    // Note: the queue is trimmed by writeQueue inside pushToQueue to max 100,
-    // but the physical localStorage data is only removed by evictIfNeeded.
-    // There is a known source bug: writeQueue already trims, so evictIfNeeded
-    // never fires (queue.length > 100 is never true).
-    // For now the test validates the queue-level trimming behavior.
+    // Add one more — should physically evict City-000 from localStorage
     mod.setCachedGeo("City-100", [
       { lat: 0, lng: 0, displayName: "City-100", type: "city", category: "place", importance: 0.5 },
     ])
 
-    // Queue trims to last 100: City-001 through City-100.
-    // City-000 is evicted from the queue (writeQueue slice), so getCachedGeo
-    // reads localStorage directly and still finds it (physical entry not removed).
-    // This is a known limitation of the current implementation.
-    // expect(mod.getCachedGeo("City-000")).toBeNull() // PHYSICAL EVICTION IS NOT YET IMPLEMENTED
+    // City-000 is evicted from both the queue AND localStorage
+    expect(mod.getCachedGeo("City-000")).toBeNull()
     expect(mod.getCachedGeo("City-099")).not.toBeNull()
     expect(mod.getCachedGeo("City-100")).not.toBeNull()
   })
