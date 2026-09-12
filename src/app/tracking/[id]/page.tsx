@@ -1,12 +1,11 @@
 import { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { db } from "@/lib/db"
-import dynamic from "next/dynamic"
+import { TrackingPageLoader } from "./tracking-page-loader"
 
-const TrackingPageClient = dynamic(
-  () => import("./tracking-page-client").then((m) => ({ default: m.TrackingPageClient })),
-  { ssr: false },
-)
+// O mapa é client-only: o `dynamic(..., { ssr: false })` vive no wrapper
+// `tracking-page-loader` porque este arquivo é Server Component e o Next 16
+// rejeita `ssr: false` declarado aqui (quebrava o `next build`).
 
 type Props = { params: Promise<{ id: string }> }
 
@@ -56,5 +55,5 @@ export default async function Page({ params }: Props) {
     scheduledAt: booking.scheduledAt.toISOString(),
     createdAt: booking.createdAt.toISOString(),
   }
-  return <TrackingPageClient booking={serialized} />
+  return <TrackingPageLoader booking={serialized} />
 }
