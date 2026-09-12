@@ -36,7 +36,7 @@ function isTransientError(error: Error): boolean {
 
 /** Whether an HTTP status is transient (retryable) */
 function isRetryableStatus(status: number): boolean {
-  return status === 429 || status === 502 || status === 503 || status === 504
+  return status === 429 || status === 500 || status === 502 || status === 503 || status === 504
 }
 
 /**
@@ -70,8 +70,11 @@ export async function geoFetchWithRetry(
           { label, url: String(url), status: response.status, attempt },
           `[geo-fetch] ${label} retryable status ${response.status}, attempt ${attempt + 1}/${maxRetries + 1}`,
         )
+        // Respect Retry-After header if present (Nominatim sends it on 429)
+        const retryAfter = response.headers.get("Retry-After")
+        const retryAfterMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : 0
         const jitter = Math.random() * 500
-        const backoffMs = 1000 * Math.pow(2, attempt) + jitter
+        const backoffMs = Math.max(retryAfterMs, 1000 * Math.pow(2, attempt) + jitter)
         await new Promise((r) => setTimeout(r, backoffMs))
         continue
       }
