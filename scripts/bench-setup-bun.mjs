@@ -59,6 +59,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { extractFastPathEvidence, extractTierEngagement } from "./check-tier1-fastpath.mjs"
 import { extractCacheRestoreEvidence } from "./check-tier2-cache-restore.mjs"
+import { GITHUB_WORKFLOW_DIR } from "./forge-workflows.mjs"
 
 // ---------------------------------------------------------------------------
 // Config
@@ -67,7 +68,7 @@ import { extractCacheRestoreEvidence } from "./check-tier2-cache-restore.mjs"
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(SCRIPT_DIR, "..")
 const ACT = join(REPO_ROOT, "tool-results", "act", "act.exe")
-const WORKFLOW_DIR = join(REPO_ROOT, ".github", "workflows")
+const WORKFLOW_DIR = join(REPO_ROOT, GITHUB_WORKFLOW_DIR)
 const JOB = "check" // único job do pr-check.yml que exercita o setup-bun
 const ACTRC_PATH = join(REPO_ROOT, ".actrc")
 
@@ -344,7 +345,11 @@ function main() {
     encoding: "utf8",
   }).stdout.trim()
   const owner = deriveGhcrOwner(remoteUrl, process.env.BENCH_OWNER || "")
-  const customTag = args.customTag || `ghcr.io/${owner}/ubuntu-bun:${bunVersion}`
+  // Registry da imagem custom — FONTE ÚNICA (env IMAGE_REGISTRY, mesmo
+  // contrato dos workflows e do .env.production); default = comportamento
+  // historico (ghcr.io). Ver scripts/check-registry-source.mjs.
+  const registry = process.env.IMAGE_REGISTRY || "ghcr.io"
+  const customTag = args.customTag || `${registry}/${owner}/ubuntu-bun:${bunVersion}`
   const imageTags = [
     { id: "default", tag: IMAGE_DEFAULT, label: `act + ${IMAGE_DEFAULT}` },
     { id: "custom", tag: customTag, label: `act + ${customTag}` },

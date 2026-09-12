@@ -37,7 +37,7 @@
 //          do workflow (produtor inline, ex.: echo "S" > file) — senão FAIL
 //          (produtor não resolvível: o grep não tem como acender)
 //
-// Escopo: .github/workflows/*.yml + .github/actions/*/action.yml (o guard é
+// Escopo: workflows de TODAS as forjas + actions locais (o guard é
 // CI-only — espelha o workflow-refs-guard, não entra nos hooks). Node puro,
 // sem deps, <1s.
 //
@@ -50,11 +50,14 @@
 // =============================================================================
 
 import { readFileSync, readdirSync, existsSync } from "node:fs"
+
+import { FORGE_ACTIONS_DIRS, FORGE_WORKFLOW_DIRS } from "./forge-workflows.mjs"
 import { join, dirname, basename } from "node:path"
 import { pathToFileURL } from "node:url"
 
-const WF_DIR = ".github/workflows"
-const ACTIONS_DIR = ".github/actions"
+// Os diretórios de forja vêm de scripts/forge-workflows.mjs (FONTE ÚNICA) —
+// cravar `.github/workflows` aqui foi o que deixou a pipeline dona do merge
+// fora da cobertura deste guard.
 
 // ── Helpers puros (exportados para testes) ────────────────────────────────
 
@@ -192,13 +195,18 @@ export function resolveProducerChain(ref, root, exists = existsSync, read = read
 
 // ── Varredura principal ───────────────────────────────────────────────────
 
-/** Lista { path, content } dos arquivos de workflow/action do root. */
+/**
+ * Lista { path, content } dos arquivos de workflow/action do root, em TODAS as
+ * forjas. O rótulo do path inclui o diretório da forja, então a violação diz em
+ * qual pipeline o sentinel ficou órfão — informação que faltava quando a
+ * varredura cobria só o GitHub.
+ */
 export function scanWorkflowFiles(root) {
   const files = []
-  for (const dir of [WF_DIR, ACTIONS_DIR]) {
+  for (const dir of [...FORGE_WORKFLOW_DIRS, ...FORGE_ACTIONS_DIRS]) {
     const absDir = join(root, dir)
     if (!existsSync(absDir)) continue
-    const isActions = dir === ACTIONS_DIR
+    const isActions = FORGE_ACTIONS_DIRS.includes(dir)
     for (const name of readdirSync(absDir)) {
       const p = isActions ? join(absDir, name, "action.yml") : join(absDir, name)
       if (!existsSync(p)) continue

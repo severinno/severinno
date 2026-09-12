@@ -4,6 +4,18 @@
 # Woodpecker CI - alternativa open source ao GitHub Actions
 #
 # Este arquivo define os pipelines de CI/CD que rodam no Woodpecker CI.
+#
+# ⚠️ STATUS: AVALIADO E ARQUIVADO (não é o caminho escolhido).
+# A forja/CI adotada é o Gitea/Forgejo Actions (.gitea/workflows/), porque
+# reaproveita a sintaxe dos workflows existentes; o Woodpecker exigiria
+# reescrever todos eles. Este arquivo fica como registro da alternativa
+# avaliada — dois pontos do rascunho original NÃO rodam como escritos:
+#   1. `plugins/docker` está DESCONTINUADO (use
+#      woodpeckerci/plugin-docker-buildx);
+#   2. `appleboy/ssh-action` é um GitHub Action, não um plugin Woodpecker
+#      (plugins do Woodpecker são imagens Docker lidas via `settings:`) — o
+#      equivalente é `appleboy/drone-ssh`.
+# O registry abaixo vem de secret (`image_registry`), não hardcoded.
 # =============================================================================
 
 # ── Pipeline de CI (pull requests e push) ──────────────────────────────────
@@ -32,6 +44,31 @@ pipeline:
     image: oven/bun:1.4.0
     commands:
       - bun run check:required-checks
+
+  # Fonte unica do registry OCI (imagens da app + mirrors). Step proprio: a
+  # falha precisa apontar o arquivo/linha que reacoplou o projeto ao GHCR.
+  registry-source:
+    image: oven/bun:1.4.0
+    commands:
+      - bun run check:registry-source
+
+  # Nenhuma referencia pendurada entre workflow -> script/package.json.
+  workflow-refs:
+    image: oven/bun:1.4.0
+    commands:
+      - bun run check:workflow-refs:internal
+
+  # Escopo dos guards: nenhum script pode cravar um diretorio de forja.
+  forge-workflow-scope:
+    image: oven/bun:1.4.0
+    commands:
+      - bun run check:forge-workflow-scope
+
+  # Paridade de gates entre a forja (dona do merge) e o espelho do GitHub.
+  forge-parity:
+    image: oven/bun:1.4.0
+    commands:
+      - bun run check:forge-parity
 
   typecheck:
     image: oven/bun:1.4.0
@@ -99,15 +136,21 @@ deploy:
   docker-build:
     image: plugins/docker
     settings:
-      repo: ghcr.io/severinno/severinno
+      # `repo` é o NOME da imagem SEM o host — o host vai em `registry:`.
+      # O rascunho original repetia o host aqui (produziria
+      # ghcr.io/ghcr.io/severinno/severinno).
+      repo: severinno/severinno
       tags:
         - latest
         - ${CI_COMMIT_SHA:0:7}
-      registry: ghcr.io
+      # FONTE ÚNICA do registry: secret `image_registry`
+      # (ex.: ghcr.io ou git.severinno.cloud).
+      registry:
+        from_secret: image_registry
       username:
-        from_secret: ghcr_username
+        from_secret: image_registry_user
       password:
-        from_secret: ghcr_token
+        from_secret: image_registry_token
       dockerfile: Dockerfile
       build_args:
         - BUN_VERSION=1.4.0
@@ -118,15 +161,16 @@ deploy:
   docker-build-worker:
     image: plugins/docker
     settings:
-      repo: ghcr.io/severinno/severinno
+      repo: severinno/severinno
       tags:
         - worker-latest
         - worker-${CI_COMMIT_SHA:0:7}
-      registry: ghcr.io
+      registry:
+        from_secret: image_registry
       username:
-        from_secret: ghcr_username
+        from_secret: image_registry_user
       password:
-        from_secret: ghcr_token
+        from_secret: image_registry_token
       dockerfile: Dockerfile.worker
       build_args:
         - BUN_VERSION=1.4.0

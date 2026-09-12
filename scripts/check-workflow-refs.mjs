@@ -52,6 +52,8 @@
 // =============================================================================
 
 import { existsSync, readdirSync, readFileSync } from "node:fs"
+
+import { FORGE_ACTIONS_DIRS, allWorkflowFiles, existingWorkflowDirs } from "./forge-workflows.mjs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -76,11 +78,17 @@ const PKG_RUN_RE = /\b(?:bun|npm|pnpm|yarn)\b\s+run\s+([A-Za-z0-9_:.-]+)/g
 const PKG_TARGET_RE =
   /\b(?:node|bun|bash|sh|python3|python)\b\s+(?:\.\/)?scripts\/([A-Za-z0-9_./-]+)/
 
-/** Reusable workflow local: `uses: ./.github/workflows/<file>.yml`. */
-const USES_LOCAL_RE = /uses:\s*\.\/\.github\/workflows\/([A-Za-z0-9_.-]+\.yml)/g
+/**
+ * Reusable workflow local: `uses: ./<forge>/workflows/<file>.yml` — o `forge`
+ * é curinga de propósito (`.github`, `.gitea`, ou a próxima forja): a ref
+ * aponta para o arquivo, e o guard valida contra o conjunto de workflows de
+ * TODAS as forjas. O grupo de captura continua sendo só o nome do arquivo, para
+ * não mudar o contrato das funções puras já testadas.
+ */
+const USES_LOCAL_RE = /uses:\s*\.\/\.[A-Za-z0-9_.-]+\/workflows\/([A-Za-z0-9_.-]+\.yml)/g
 
-/** Composite action local: `uses: ./.github/actions/<name>`. */
-const USES_ACTION_RE = /uses:\s*\.\/\.github\/actions\/([A-Za-z0-9_.-]+)/g
+/** Composite action local: `uses: ./<forge>/actions/<name>`. */
+const USES_ACTION_RE = /uses:\s*\.\/\.[A-Za-z0-9_.-]+\/actions\/([A-Za-z0-9_.-]+)/g
 
 /**
  * Expressão DINÂMICA do GitHub Actions (`${{ ... }}`) — não resolvível
@@ -145,7 +153,7 @@ export function extractPkgScriptRefs(content) {
 }
 
 /**
- * Extrai os reusable workflows locais (`uses: ./.github/workflows/X.yml`).
+ * Extrai os reusable workflows locais (`uses: ./<forge>/workflows/X.yml`).
  *
  * @param {string} content  conteúdo do workflow
  * @returns {{ line: number, ref: string, text: string }[]}  ref = nome do arquivo .yml
@@ -166,7 +174,7 @@ export function extractWorkflowUses(content) {
 }
 
 /**
- * Extrai os composite actions locais (`uses: ./.github/actions/<name>`).
+ * Extrai os composite actions locais (`uses: ./<forge>/actions/<name>`).
  *
  * @param {string} content  conteúdo do workflow
  * @returns {{ line: number, ref: string, text: string }[]}  ref = nome da action
@@ -377,37 +385,53 @@ function main() {
   const pkgInternal = args.includes("--pkg-internal")
 
   const cwd = process.cwd()
-  const wfDir = join(cwd, ".github", "workflows")
+  const dirs = existingWorkflowDirs(cwd)
 
   // ── Contexto: artefatos disponíveis ──────────────────────────────────
-  const names = listDir(wfDir).filter((f) => f.endsWith(".yml"))
+  // Leitura única de TODAS as forjas. O conjunto `workflows` é a UNIÃO dos
+  // basenames: uma ref `uses: ./<forge>/workflows/X.yml` resolve se X.yml
+  // existir em qualquer forja (o nome é o contrato; a forja é o endereço).
+  const all = allWorkflowFiles(cwd)
+  const read = all.map((w) => ({
+    dir: w.dir,
+    name: w.name,
+    content: readFileSync(join(cwd, w.path), "utf8"),
+  }))
   const scripts = new Set(listDir(join(cwd, "scripts")))
   const { pkgScripts, pkgTargets, pkgEntries, rawText } = readPkgScripts(cwd)
-  const workflows = new Set(names)
+  const workflows = new Set(read.map((f) => f.name))
 
-  // Composite actions locais: .github/actions/<name>/action.yml existentes
+  // Composite actions locais: <forge>/actions/<name>/action.yml existentes
   // (diretório pode não existir — ex.: repositório sem actions locais; nesse
-  // caso qualquer `uses: ./.github/actions/X` é dangling e é reportado).
-  const actionsDir = join(cwd, ".github", "actions")
+  // caso qualquer `uses: ./<forge>/actions/X` é dangling e é reportado).
   const actions = new Set(
-    existsSync(actionsDir)
-      ? listDir(actionsDir).filter((d) => existsSync(join(actionsDir, d, "action.yml")))
-      : [],
+    FORGE_ACTIONS_DIRS.flatMap((rel) => {
+      const abs = join(cwd, rel)
+      return existsSync(abs)
+        ? listDir(abs).filter((d) => existsSync(join(abs, d, "action.yml")))
+        : []
+    }),
   )
 
-  const files = names.map((n) => ({ name: n, content: readFileSync(join(wfDir, n), "utf8") }))
   // Reusa o conteúdo já lido (não re-lê os arquivos para o check de workflow_call)
   const workflowCall = new Set(
-    files.filter((f) => /workflow_call/.test(f.content)).map((f) => f.name),
+    read.filter((f) => /workflow_call/.test(f.content)).map((f) => f.name),
   )
-  const violations = scanWorkflows(files, {
-    scripts,
-    pkgScripts,
-    pkgTargets,
-    workflows,
-    workflowCall,
-    actions,
-  })
+  // Scaneia por forja para que a violação diga em QUAL pipeline ela está.
+  const violations = []
+  for (const dir of dirs) {
+    const files = read.filter((f) => f.dir === dir).map(({ name, content }) => ({ name, content }))
+    for (const v of scanWorkflows(files, {
+      scripts,
+      pkgScripts,
+      pkgTargets,
+      workflows,
+      workflowCall,
+      actions,
+    })) {
+      violations.push({ ...v, file: `${dir}/${v.file}` })
+    }
+  }
 
   // ── Modo --pkg-internal: consistência INTERNA do package.json ────────
   // Valida TODAS as entries que invocam scripts/ (mesmo sem workflow

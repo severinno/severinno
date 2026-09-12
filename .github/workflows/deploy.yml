@@ -10,8 +10,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  # Origem das imagens — FONTE ÚNICA (repo variable IMAGE_REGISTRY).
+  # Os defaults reproduzem o comportamento histórico (ghcr.io/<owner>/<repo>),
+  # então nada muda enquanto a variável não existir. Flip para o registry OCI
+  # do Gitea/Forgejo = definir vars.IMAGE_REGISTRY=git.severinno.cloud (e
+  # vars.IMAGE_NAME se o path não for <owner>/<repo>).
+  # Guard: `bun run check:registry-source`.
+  REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
+  IMAGE_NAME: ${{ vars.IMAGE_NAME || github.repository }}
 
 jobs:
   # UTF-8 Encoding Gate ----------------------------------------------------

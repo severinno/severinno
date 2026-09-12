@@ -37,8 +37,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  # Origem das imagens — FONTE ÚNICA (repo variable IMAGE_REGISTRY).
+  # Mesmo contrato do deploy.yml: default = ghcr.io/<owner>/<repo>.
+  REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
+  IMAGE_NAME: ${{ vars.IMAGE_NAME || github.repository }}
   NODE_VERSION: 22
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test
   REDIS_URL: redis://localhost:6379

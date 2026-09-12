@@ -131,17 +131,53 @@ Para que o CI/CD funcione igual ao GitHub, copie estes secrets:
 O pipeline esta em `.gitea/workflows/ci.yml` e faz:
 
 1. **Lint** → ESLint
-2. **TypeCheck** → tsc --noEmit
-3. **Test** → vitest com PostgreSQL + Redis
-4. **Build** → next build
-5. **Deploy** → SSH no VPS para atualizar containers
+2. **Repo Guards** → invariantes do repositorio (node puro): manifesto dos
+   required checks ↔ jobs reais, fonte unica do registry de imagens
+   (`check:registry-source`), referencias workflow→script
+   (`check:workflow-refs`), ausencia de `@ts-nocheck`, e **paridade de gates**
+   com o espelho do GitHub (`check:forge-parity`)
+3. **TypeCheck** → tsc --noEmit
+4. **Test** → guard de PII + auto-prova do guard + vitest com PostgreSQL + Redis
+5. **Build** → next build
+6. **Deploy** → SSH no VPS para atualizar containers
 
 O pipeline de deploy esta em `.gitea/workflows/deploy.yml`:
 
 - Build da imagem Docker
-- Push para GHCR
+- Push para o registry configurado (`vars.IMAGE_REGISTRY`)
 - Migrate do banco de dados
 - Deploy via SSH
+
+### Registry de imagens (fonte unica)
+
+O destino das imagens **nao** e hardcoded: vem de `IMAGE_REGISTRY`.
+
+| Onde                     | Como                                                        |
+| ------------------------ | ----------------------------------------------------------- |
+| Workflows (Gitea/GitHub) | variable `IMAGE_REGISTRY` do repositorio; default `ghcr.io` |
+| Compose da VPS           | `IMAGE_REGISTRY` / `IMAGE_NAMESPACE` no `.env.production`   |
+| act local                | `--var IMAGE_REGISTRY=...` no `.actrc`                      |
+| Woodpecker (arquivado)   | secret `image_registry`                                     |
+
+Para usar o **registry OCI embutido** desta instancia (sem cota de GHCR):
+
+```bash
+docker login git.severinno.cloud          # uma vez, na VPS
+# variable IMAGE_REGISTRY=git.severinno.cloud no repositorio
+# e IMAGE_REGISTRY=git.severinno.cloud no .env.production
+# secrets IMAGE_REGISTRY_USER / IMAGE_REGISTRY_TOKEN se o pacote for privado
+```
+
+O guard `bun run check:registry-source` falha se um `ghcr.io` solto voltar.
+
+### Checks obrigatorios para merge
+
+A lista e declarada em `ci/required-checks.json` e aplicada com
+`node scripts/apply-required-checks.mjs --forge gitea` (dry-run por padrao;
+`--apply` exige token com permissao de administracao). Os contextos exigidos sao
+os `name:` dos jobs — hoje `Lint`, `Repo Guards`, `TypeCheck`, `Tests`, `Build`.
+O guard `check:forge-parity` garante que um gate novo nao fique so em uma das
+pipelines (GitHub x esta forja).
 
 ## Acesso
 

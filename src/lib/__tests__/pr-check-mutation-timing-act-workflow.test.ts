@@ -172,8 +172,12 @@ describe("pr-check.yml — contrato do gate act-based mutation-coord-timing-act-
     expect(run).toContain("timeout 900 /tmp/act -b")
     expect(run).toContain("-W .github/workflows/seed-guards.yml")
     expect(run).toContain("-j mutation-coord-update")
+    // A imagem custom ubuntu-bun vem da FONTE ÚNICA (IMAGE_REGISTRY/
+    // IMAGE_NAMESPACE) — hardcodar `ghcr.io` aqui reacoplaria o projeto ao
+    // registry proprietário, que é exatamente o que o
+    // `check:registry-source` bloqueia.
     expect(run).toContain(
-      '-P "ubuntu-latest=ghcr.io/${{ github.repository_owner }}/ubuntu-bun:${{ vars.BUN_VERSION }}"',
+      '-P "ubuntu-latest=${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/ubuntu-bun:${{ vars.BUN_VERSION }}"',
     )
     expect(run).toContain('--var "BUN_VERSION=${{ vars.BUN_VERSION }}"')
     expect(run).toContain("ACT_EXIT=")

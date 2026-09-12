@@ -64,7 +64,7 @@ timeout 900 /tmp/act -b \\
   -W .github/workflows/seed-guards.yml \\
   -j mutation-coord-update \\
   --eventpath /tmp/wfc-event.json \\
-  -P "ubuntu-latest=ghcr.io/\${{ github.repository_owner }}/ubuntu-bun:\${{ vars.BUN_VERSION }}" \\
+  -P "ubuntu-latest=\${{ env.IMAGE_REGISTRY }}/\${{ env.IMAGE_NAMESPACE }}/ubuntu-bun:\${{ vars.BUN_VERSION }}" \\
   --var "BUN_VERSION=\${{ vars.BUN_VERSION }}" \\
   --secret "GITHUB_TOKEN=\${{ github.token }}" \\
   > /tmp/act-mutation.log 2>&1

@@ -13,8 +13,12 @@
 // actions/cache keyed na versão → download direto do release só em cache
 // miss). Este guard falha o PR se alguém reintroduzir o action externo.
 //
-// Escopo: varre .github/workflows/*.yml procurando `oven-sh/setup-bun`
-// (qualquer versão/tag do action). Node puro, sem deps, <1s.
+// Escopo: varre TODAS as forjas (scripts/forge-workflows.mjs) procurando
+// `oven-sh/setup-bun` (qualquer versão/tag do action). Varreu só
+// `.github/workflows` até 09/2026 — quando a forja Gitea/Forgejo virou dona do
+// merge, esse escopo deixou a pipeline que decide o merge fora da cobertura, e
+// ela reintroduziu o action externo em 3 call sites sem ninguém reclamar.
+// Node puro, sem deps, <1s.
 //
 // Usage:
 //   node scripts/check-no-setup-bun.mjs
@@ -27,6 +31,8 @@
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
+
+import { existingWorkflowDirs } from "./forge-workflows.mjs"
 
 /** Identifica USOS de oven-sh/setup-bun em um conteúdo de workflow. */
 export function findSetupBunRefs(content) {
@@ -59,10 +65,28 @@ export function scanWorkflowDir(dir) {
   return results
 }
 
+/**
+ * Varre TODAS as forjas. O rótulo do arquivo vem com o diretório da forja
+ * (`<dir>/<arquivo>`) para que a violação diga em QUAL pipeline está — a
+ * informação que faltava quando o guard só olhava o GitHub.
+ *
+ * @param {string} root
+ * @returns {{ file: string, refs: { line: number, text: string }[] }[]}
+ */
+export function scanAllForges(root) {
+  const results = []
+  for (const dir of existingWorkflowDirs(root)) {
+    for (const r of scanWorkflowDir(join(root, dir))) {
+      results.push({ file: `${dir}/${r.file}`, refs: r.refs })
+    }
+  }
+  return results
+}
+
 function main() {
   const cwd = process.cwd()
-  const wfDir = join(cwd, ".github", "workflows")
-  const results = scanWorkflowDir(wfDir)
+  const dirs = existingWorkflowDirs(cwd)
+  const results = scanAllForges(cwd)
 
   if (results.length > 0) {
     console.error(`❌ oven-sh/setup-bun@v2 encontrado em ${results.length} workflow(s):\n`)
@@ -80,7 +104,7 @@ function main() {
   }
 
   console.log(
-    "✅ Nenhum workflow usa oven-sh/setup-bun (migrados para ./.github/actions/setup-bun).",
+    `✅ Nenhum workflow usa oven-sh/setup-bun em nenhuma forja (${dirs.join(", ")}) — migrados para ./.github/actions/setup-bun.`,
   )
   process.exit(0)
 }

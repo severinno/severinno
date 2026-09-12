@@ -164,18 +164,23 @@ runs:
         mkdir -p "$HOME/.bun/bin"
         BUN_BIN="$HOME/.bun/bin/bun"
 
-        # ── 3a. Mirror GHCR (linux/x64 apenas) ───────────────────────────
+        # ── 3a. Mirror OCI (linux/x64 apenas) ────────────────────────────
         # Pull da imagem scratch (docker create + docker cp extrai /bun).
         # Se o mirror ainda não rodou ou o docker está indisponível, cai no
         # fallback 3b (release direto) — o mirror é otimização, não requisito.
         if [ "$OS" = "linux" ] && [ "$ARCH" = "x64" ] && command -v docker >/dev/null 2>&1; then
-          MIRROR="ghcr.io/${GHCR_OWNER}/bun:${BUN_VERSION}"
-          echo "::group::Puxando Bun ${BUN_VERSION} do mirror GHCR (${MIRROR})"
+          # Registry do mirror — FONTE ÚNICA (repo variable IMAGE_REGISTRY).
+          # O valor chega por ENV herdado do workflow (env: IMAGE_REGISTRY) e o
+          # default aqui preserva o comportamento histórico (ghcr.io).
+          # ⚠️ NUNCA usar ${{ vars.* }} neste arquivo: composite action não
+          # resolve o contexto `vars` no act 0.2.89 (ver header).
+          MIRROR="${IMAGE_REGISTRY:-ghcr.io}/${GHCR_OWNER}/bun:${BUN_VERSION}"
+          echo "::group::Puxando Bun ${BUN_VERSION} do mirror OCI (${MIRROR})"
           if docker pull "$MIRROR" >/dev/null 2>&1; then
             CID="$(docker create "$MIRROR" 2>/dev/null || true)"
             if [ -n "$CID" ] && docker cp "$CID:/bun" "$BUN_BIN" >/dev/null 2>&1; then
               chmod +x "$BUN_BIN" 2>/dev/null || true
-              echo "  ✅ Mirror GHCR ok — bun $( "$BUN_BIN" --version 2>/dev/null || echo '?' )"
+              echo "  ✅ Mirror OCI ok — bun $( "$BUN_BIN" --version 2>/dev/null || echo '?' )"
               docker rm -f "$CID" >/dev/null 2>&1 || true
               ln -sf "$BUN_BIN" "$HOME/.bun/bin/bunx"
               echo "bunx -> $(readlink -f "$HOME/.bun/bin/bunx" 2>/dev/null || echo "$HOME/.bun/bin/bunx")"
@@ -185,7 +190,7 @@ runs:
             fi
             [ -n "$CID" ] && docker rm -f "$CID" >/dev/null 2>&1 || true
           fi
-          echo "  ⚠️ Mirror GHCR indisponível (${MIRROR}) — fallback p/ GitHub Releases"
+          echo "  ⚠️ Mirror OCI indisponível (${MIRROR}) — fallback p/ GitHub Releases"
           echo "::endgroup::"
         fi
 

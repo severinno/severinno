@@ -25,7 +25,12 @@ concurrency:
 
 env:
   NODE_VERSION: 22
-  BUN_VERSION: "1.4.0"
+  # FONTE ÚNICA da versão do Bun: a variable do repositório. Era o literal
+  # "1.4.0" — um SEGUNDO ponto de verdade que permitia esta pipeline construir
+  # com um runtime diferente do que o espelho do GitHub constrói para o mesmo
+  # commit. O guard `check:bun-mirror` só varria `.github/workflows` e por isso
+  # não acusava; hoje ele varre todas as forjas (scripts/forge-workflows.mjs).
+  BUN_VERSION: ${{ vars.BUN_VERSION }}
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test
   REDIS_URL: redis://localhost:6379
   SESSION_SECRET: ci-session-secret-at-least-32-characters-long
@@ -38,19 +43,102 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Composite local, não o action externo (que re-baixa o Bun em todo job).
+      # `bun-version` resolve de `vars`: o composite lê a versão só do input.
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: ./.github/actions/setup-bun
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          bun-version: ${{ vars.BUN_VERSION }}
 
       - run: bun install --frozen-lockfile
       - run: bun run lint
 
+  # ── Repo Guards (invariantes do repositório, node-puro) ───────────────────
+  # NÃO dependem do app rodar: são consistência de manifesto, de referências e
+  # de fonte única. Job próprio para que a falha aponte o INVARIANTE violado em
+  # vez de se diluir no `test` — e para que cada um possa ser exigido
+  # individualmente no branch protection desta forja.
+  guards:
+    name: Repo Guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Composite local, não o action externo (que re-baixa o Bun em todo job).
+      # `bun-version` resolve de `vars`: o composite lê a versão só do input.
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+        with:
+          bun-version: ${{ vars.BUN_VERSION }}
+
+      - run: bun install --frozen-lockfile
+
       # O manifesto dos required checks precisa apontar para jobs REAIS e
       # incondicionais — um required check inexistente não falha, ele faz o PR
-      # esperar para sempre.
+      # ESPERAR para sempre (diagnóstico opaco, PR travado sem causa visível).
       - name: Required checks manifest
         run: bun run check:required-checks
+
+      # Fonte única do registry OCI (imagens da app + mirrors de toolchain).
+      # Impede o reacoplamento ao GHCR: um `ghcr.io/...` solto volta a exigir
+      # cota de storage/egress do registry proprietário e quebra o flip de uma
+      # única variável (IMAGE_REGISTRY).
+      - name: OCI registry single source
+        run: bun run check:registry-source
+
+      # Nenhuma referência pendurada entre workflow → script/package.json.
+      - name: Workflow references
+        run: bun run check:workflow-refs:internal
+
+      # @ts-nocheck desliga a verificação de tipos do arquivo — é a porta dos
+      # fundos do typecheck. Sem este gate na forja, um arquivo poderia entrar
+      # aqui com os tipos desligados e a pipeline passaria verde.
+      - name: No @ts-nocheck
+        run: bun run check:ts-nocheck
+
+      # Escopo dos guards: nenhum script pode cravar um diretório de forja —
+      # é o que garante que ESTA pipeline não volte a ficar fora da cobertura.
+      - name: Forge workflow scope
+        run: bun run check:forge-workflow-scope
+
+      # Paridade de gates entre esta pipeline (dona do merge) e o espelho do
+      # GitHub: um gate do CORE que roda em só uma delas é buraco silencioso.
+      - name: Forge gate parity
+        run: bun run check:forge-parity
+
+      # ── Segurança: gates que existiam APENAS no espelho do GitHub ────────
+      # Descobertos pela classificação obrigatória do check:forge-parity. Estar
+      # "no arquivo do GitHub" foi confundido com "ser específico do GitHub":
+      # a auditoria de dependências, a baseline de segredos e o guard de hooks
+      # de seed não têm nada de GitHub — só moravam lá. A forja é dona do merge,
+      # então ela é quem precisa bloquear neles.
+      - name: Dependency audit baseline (vulnerabilidades novas)
+        run: bun run check:bun-audit-baseline
+
+      - name: Secrets baseline (nenhum segredo versionado)
+        run: bun scripts/rotate-secrets.mjs --check
+
+      # SEED_SPEC_PATCH/PROD_SEED_ALLOW_DEV são TEST-ONLY: vazando para um
+      # caminho de deploy, o seed de produção roda com spec patchado. A forja
+      # TEM um deploy — este é o gate que mais faz sentido estar aqui.
+      - name: Seed test hooks (fora do caminho de deploy)
+        run: bun run check:seed-hooks
+
+      # Sentinel órfão = guarda CEGA (o grep nunca acende e 'não achou' vira
+      # falso positivo de 'limpo').
+      - name: Sentinel producer
+        run: bun run check:sentinel-producer
+
+      # ── Fonte única / consistência do repositório ─────────────────────────
+      - name: Bun single source (mirror + call sites)
+        run: bun run check:bun-mirror
+
+      - name: No oven-sh/setup-bun
+        run: bun run check:no-setup-bun
+
+      # README prometendo um hook que não existe = proteção fantasma.
+      - name: Hook symmetry (README ↔ hooks reais)
+        run: bun scripts/check-hooks-symmetry.mjs
 
   # ── TypeScript check ─────────────────────────────────────────────────────
   typecheck:
@@ -59,10 +147,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Composite local, não o action externo (que re-baixa o Bun em todo job).
+      # `bun-version` resolve de `vars`: o composite lê a versão só do input.
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: ./.github/actions/setup-bun
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          bun-version: ${{ vars.BUN_VERSION }}
 
       - run: bun install --frozen-lockfile
       - run: bun run db:generate
@@ -104,10 +194,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Composite local, não o action externo (que re-baixa o Bun em todo job).
+      # `bun-version` resolve de `vars`: o composite lê a versão só do input.
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: ./.github/actions/setup-bun
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          bun-version: ${{ vars.BUN_VERSION }}
 
       - run: bun install --frozen-lockfile
       - run: bun run db:generate
@@ -136,10 +228,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Composite local, não o action externo (que re-baixa o Bun em todo job).
+      # `bun-version` resolve de `vars`: o composite lê a versão só do input.
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: ./.github/actions/setup-bun
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          bun-version: ${{ vars.BUN_VERSION }}
 
       - run: bun install --frozen-lockfile
       - run: bun run db:generate

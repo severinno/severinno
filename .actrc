@@ -12,3 +12,12 @@
 # .mjs falha se este arquivo sumir ou perder a linha BUN_VERSION.
 # =============================================================================
 --var BUN_VERSION=1.3.14
+
+# Registry OCI de origem/destino das imagens e dos mirrors (app, worker,
+# realtime, bun, ubuntu-bun, postgis). Mesmo contrato do BUN_VERSION: a FONTE
+# ÚNICA é a repository variable IMAGE_REGISTRY (Settings → Secrets and
+# variables → Actions) e este arquivo é apenas o espelho local do act.
+# Sem o --var, o act local resolveria a variável vazia e cairia no default
+# 'ghcr.io' de cada workflow (o que ainda funciona, mas deixa de provar o
+# caminho do registry próprio). Mantenha em sincronia.
+--var IMAGE_REGISTRY=ghcr.io

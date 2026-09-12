@@ -21,6 +21,10 @@ env:
   DATABASE_URL: postgresql://localhost:5432/test
   REDIS_URL: redis://localhost:6379
   RABBITMQ_URL: amqp://localhost:5672
+  # Origem dos mirrors OCI (bun/ubuntu-bun/postgis) — FONTE ÚNICA.
+  # Default reproduz o comportamento histórico (ghcr.io/<owner>).
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
+  IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE || github.repository_owner }}
 
 jobs:
   # ── UTF-8 Encoding Check ────────────────────────────────────────────────
@@ -184,8 +188,29 @@ jobs:
       - name: Required checks manifest ↔ workflows
         run: node scripts/check-required-checks.mjs
 
+      # Fonte única do registry OCI (imagens da aplicação + mirrors de
+      # toolchain). Pega a regressão que reacoplaria o projeto ao GHCR — um
+      # `ghcr.io/...` solto volta a exigir cota de storage/egress do registry
+      # proprietário e quebra o flip de UMA variável (IMAGE_REGISTRY).
+      # node direto pelo mesmo motivo acima: guard node-puro, sem node_modules.
+      - name: OCI registry single source
+        run: node scripts/check-registry-source.mjs
+
+      # Escopo dos guards: nenhum script pode cravar um diretório de forja.
+      # Fecha a CLASSE de falha que deixou a pipeline dona do merge fora da
+      # cobertura de 14 guards quando ela nasceu (e que produziu, na prática,
+      # bun literal + oven-sh/setup-bun + ts-nocheck fora de alcance).
+      - name: Forge workflow scope
+        run: node scripts/check-forge-workflow-scope.mjs
+
+      # Paridade de gates: a forja self-hosted é dona do merge e o GitHub é
+      # espelho — um invariante do CORE que roda em só uma das pipelines é um
+      # buraco silencioso (o PR passa verde por onde rodou).
+      - name: Forge gate parity
+        run: node scripts/check-forge-parity.mjs
+
       - name: Summary
-        run: echo "✅ No dangling references between workflows and scripts/package.json (incl. internal pkg targets); required checks consistentes."
+        run: echo "✅ No dangling references between workflows and scripts/package.json (incl. internal pkg targets); required checks, registry de imagens e escopo de forja consistentes."
 
   # ── Sentinel Producer Guard ────────────────────────────────────────────
   # Fast gate (node puro, <1s): GENERALIZA a consistência produtor↔job de
@@ -612,7 +637,7 @@ jobs:
           timeout 900 /tmp/act -b \
             -W .github/workflows/pr-check.yml \
             -j check \
-            -P "ubuntu-latest=ghcr.io/${{ github.repository_owner }}/ubuntu-bun:${{ vars.BUN_VERSION }}" \
+            -P "ubuntu-latest=${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/ubuntu-bun:${{ vars.BUN_VERSION }}" \
             --var "BUN_VERSION=${{ vars.BUN_VERSION }}" \
             --secret "GITHUB_TOKEN=${{ github.token }}" \
             > /tmp/act-check.log 2>&1
@@ -1530,7 +1555,7 @@ jobs:
             -W .github/workflows/seed-guards.yml \
             -j mutation-coord-update \
             --eventpath /tmp/wfc-event.json \
-            -P "ubuntu-latest=ghcr.io/${{ github.repository_owner }}/ubuntu-bun:${{ vars.BUN_VERSION }}" \
+            -P "ubuntu-latest=${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/ubuntu-bun:${{ vars.BUN_VERSION }}" \
             --var "BUN_VERSION=${{ vars.BUN_VERSION }}" \
             --secret "GITHUB_TOKEN=${{ github.token }}" \
             > /tmp/act-mutation.log 2>&1

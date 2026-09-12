@@ -56,6 +56,35 @@ introduzidos pelo PR), CI (job dedicado), cron (tier-1 fastpath).
 **Família relacionada:** `check-tier1-fastpath`, `check-tier2-cache-restore`
 (performance do setup-bun — ver família 10).
 
+**`check:registry-source` (mesma família — fonte única, agora do registry OCI):**
+
+**O que protege:** o host do registry das imagens da aplicação (app, worker,
+realtime) e dos mirrors de toolchain (bun, ubuntu-bun, postgis) tem UMA fonte
+de verdade (`IMAGE_REGISTRY`): repository variable nos workflows, variável de
+`.env.production` no compose da VPS, `--var` no `.actrc` e secret
+`image_registry` no Woodpecker.
+
+**Por que existe:** as imagens eram referenciadas com o host hardcoded
+(`ghcr.io/...`, ~85 ocorrências). Isso acoplava o projeto a um registry
+proprietário com cota de armazenamento/egress no plano free, e transformava
+trocar de registry numa caçada de referências. Agora o flip é uma variável — e
+o guard falha se um `ghcr.io` solto voltar (a forma correta é o próprio default
+da variável: `${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}` / `${IMAGE_REGISTRY:-ghcr.io}`).
+
+**Por que o escopo é declarado:** o guard varre os **sites de resolução**
+(compose, workflows do GitHub e do Gitea, composite actions, `.woodpecker.yml`),
+todos YAML — onde comentário é inequívoco (`#`). `scripts/*.mjs` ficam FORA de
+propósito: neles a string aparece também em prosa de mensagens de erro, e
+prosa não é configurável — um guard com falso positivo acaba desligado. O
+caminho de código real dos scripts honra `process.env.IMAGE_REGISTRY`.
+
+**Onde roda:** pre-commit (fase paralela, node puro, <1s), CI (`pr-check.yml`,
+job `workflow-refs-guard`) e nos pipelines das outras forjas.
+
+**Imagens de terceiros:** consumo do GHCR que NÃO é nosso (ex.:
+`ghcr.io/project-osrm/osrm-backend`) vive em `THIRD_PARTY_ALLOWLIST`, uma por
+uma — allowlist por prefixo de host esconderia a regressão.
+
 ---
 
 ## 3. Mutation tests — `test-mutation-*.sh` + `check-mutation-jobs`
@@ -175,6 +204,116 @@ que EXISTE (par transitivo fechado: entry do package.json → scripts/X).
 quebrado no runtime, descoberto só no push. O guard pega no PR, antes do merge.
 
 **Onde roda:** pre-push, CI.
+
+---
+
+**`check:registry-source` (mesma família — fonte única do registry OCI):**
+
+**O que protege:** o host do registry das imagens da aplicação (app, worker,
+realtime) e dos mirrors de toolchain (bun, ubuntu-bun, postgis) tem UMA fonte de
+verdade (`IMAGE_REGISTRY`): repository variable nos workflows, variável de
+`.env.production` no compose da VPS, `--var` no `.actrc` e secret
+`image_registry` no Woodpecker.
+
+**Por que existe:** as imagens eram referenciadas com o host hardcoded
+(`ghcr.io/...`, ~85 ocorrências), acoplando o projeto a um registry proprietário
+com cota de armazenamento/egress no plano free e transformando a troca de
+registry numa caçada de referências. A forma correta é o default dentro da
+própria variável (`${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}` /
+`${IMAGE_REGISTRY:-ghcr.io}`) — um `ghcr.io` solto é regressão.
+
+**Por que o escopo é declarado:** o guard varre os **sites de resolução**
+(compose, workflows do GitHub e do Gitea, composite actions, `.woodpecker.yml`),
+todos YAML — onde comentário é inequívoco. `scripts/*.mjs` ficam FORA de
+propósito: neles a mesma string aparece em prosa de mensagem de erro, e um guard
+com falso positivo acaba desligado. O caminho de código real dos scripts honra
+`process.env.IMAGE_REGISTRY`.
+
+**`check:forge-parity` (mesma família — consistência entre pipelines):**
+
+**O que protege:** o desenho é a forja self-hosted (Gitea/Forgejo) como **dona do
+merge** e o GitHub como espelho. O guard **descobre** os gates das duas pipelines
+e exige que cada um esteja classificado. Três desfechos:
+
+| Desfecho      | Consequência                                            |
+| :------------ | :------------------------------------------------------ |
+| `CORE`        | precisa rodar nas **duas** pipelines                    |
+| `GITHUB_ONLY` | isento, **com razão escrita** (não pode rodar na forja) |
+| nada          | **VIOLAÇÃO** — o PR falha até alguém classificar        |
+
+**Por que existe:** um gate que roda em uma pipeline e não na outra é o pior tipo
+de falha — **silenciosa**: o PR fica verde por onde rodou e ninguém vê a
+invariante que ficou de fora.
+
+**O erro que este guard cometeu primeiro — e que vale ler antes de mexer:** a
+primeira versão comparava as pipelines contra uma lista `CORE` escrita **à mão**.
+A lista tinha 10 itens; o `pr-check.yml` executava ~30 gates. Os ~20 restantes
+eram **invisíveis** ao guard, e ele passava verde — dando a impressão de que a
+forja bloqueava o merge quando faltavam lá, entre outros:
+
+- `check-bun-audit-baseline` (dependência vulnerável);
+- `rotate-secrets --check` (segredo versionado);
+- `check-seed-hooks` (`SEED_SPEC_PATCH` chegando a um caminho de **deploy**).
+
+A causa foi tratar "está no arquivo do GitHub" como "é do GitHub". A
+_implementação_ de `dependency-review` é da plataforma; a _capacidade_ (não
+aceitar dependência vulnerável) não é. Um guard que dá falsa segurança é pior
+que guard nenhum: converte "não verificado" em "parece verificado".
+
+**O que conta como gate** (regra declarada, não lista à mão): `scripts/<nome>`
+com prefixo `check-`/`validate-`/`audit-`/`test-mutation-`/`run-`; qualquer
+comando com `--check`/`--ci`; `bun run <entry>` com prefixo correspondente ou as
+entradas estruturais (`lint`, `test:*`); `tsc --noEmit`; e
+`uses: ./<forge>/workflows/<arquivo>.yml`. Plumbing (`install`, `db:generate`,
+`build`, `docker`) **não** é gate — não declara verificação.
+
+**Prosa não conta:** o guard remove comentários antes de casar — mencionar o
+gate num comentário não é o gate rodando.
+
+**Inventário:** `node scripts/check-forge-parity.mjs --gates` lista o que o
+guard enxerga, com a classificação de cada gate — para a decisão ser revisável,
+não um ato de fé.
+
+**Gates que o guard promoveu do GitHub para a forja** (estavam só no espelho, e
+não por serem específicos da plataforma): auditoria de dependências, baseline de
+segredos, hooks de seed, sentinel producer, fonte única do Bun, proibição do
+`oven-sh/setup-bun` e simetria de hooks.
+
+---
+
+**`check:forge-workflow-scope` (mesma família — escopo da varredura):**
+
+**O que protege:** nenhum script pode **cravar** um diretório de workflow de
+forja. A lista de forjas vive em `scripts/forge-workflows.mjs` (FONTE ÚNICA) e
+é de lá que todo guard tira o escopo.
+
+**Por que existe:** o buraco não foi um bug pontual — foi uma **classe**. 14
+guards tinham `.github/workflows` cravado no escopo. Quando a forja
+self-hosted (Gitea/Forgejo) passou a ser **dona do merge**, a pipeline que
+decide o merge ficou fora da cobertura de todos eles de uma vez. O resultado
+observado, sem um único guard reclamar:
+
+| Sintoma na forja                             | Guard que deveria pegar |
+| :------------------------------------------- | :---------------------- |
+| `BUN_VERSION: "1.4.0"` literal (2 workflows) | `check-bun-mirror`      |
+| `oven-sh/setup-bun@v2` em 6 call sites       | `check-no-setup-bun`    |
+| `check:ts-nocheck` ausente da pipeline       | _nenhum_                |
+
+Corrigir os 14 casos resolve o sintoma; este guard resolve a classe — inclusive
+para a próxima forja que nascer.
+
+**O que é permitido:** referenciar um **arquivo** específico de uma forja
+(`".github/workflows/pr-check.yml"`), porque há guards legitimamente sobre UM
+workflow. O proibido é o **diretório** — e `join(root, ".gitea", "workflows")`
+também é, mesmo montado por segmentos.
+
+**Prosa não conta:** comentários são ignorados (documentar a regra não é
+violá-la).
+
+**Guards que passaram a varrer todas as forjas:** `check-bun-mirror` (fonte
+única do Bun, incl. o pathspec do modo `--staged`), `check-no-setup-bun`,
+`check-seed-hooks`, `check-sentinel-producer`, `check-workflow-refs`,
+`check-mutation-jobs` e `check-registry-source`.
 
 ---
 

@@ -37,9 +37,15 @@ permissions:
   contents: read
   packages: write
 
+env:
+  # Registry de destino do mirror — FONTE ÚNICA (repo variable IMAGE_REGISTRY).
+  # Default = ghcr.io (comportamento histórico).
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
+  MIRROR_PREFIX: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}/${{ github.repository_owner }}
+
 jobs:
   mirror:
-    name: Mirror postgis → GHCR
+    name: Mirror postgis → registry
     runs-on: self-hosted
     timeout-minutes: 15
 
@@ -54,23 +60,23 @@ jobs:
           sudo mv crane /usr/local/bin/
           crane version
 
-      - name: Login to GHCR
+      - name: Login to registry
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ secrets.IMAGE_REGISTRY_USER || github.actor }}
+          password: ${{ secrets.IMAGE_REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Copy postgis:16-3.4-alpine → GHCR
+      - name: Copy postgis:16-3.4-alpine → registry
         run: |
-          crane copy postgis/postgis:16-3.4-alpine ghcr.io/${{ github.repository_owner }}/postgis:16-3.4-alpine
+          crane copy postgis/postgis:16-3.4-alpine "${MIRROR_PREFIX}/postgis:16-3.4-alpine"
 
-      - name: Copy postgis:16-3.4 → GHCR (fallback para quem ainda usa o full)
+      - name: Copy postgis:16-3.4 → registry (fallback para quem ainda usa o full)
         run: |
-          crane copy postgis/postgis:16-3.4 ghcr.io/${{ github.repository_owner }}/postgis:16-3.4 || true
+          crane copy postgis/postgis:16-3.4 "${MIRROR_PREFIX}/postgis:16-3.4" || true
 
       - name: Verify mirror digest
         run: |
           echo "  Mirrored digest (alpine):"
-          crane digest ghcr.io/${{ github.repository_owner }}/postgis:16-3.4-alpine
+          crane digest "${MIRROR_PREFIX}/postgis:16-3.4-alpine"
           echo "  ✅ Sync completo — defina vars.POSTGIS_IMAGE para usar o mirror"

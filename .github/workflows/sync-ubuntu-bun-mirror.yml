@@ -48,6 +48,10 @@ permissions:
 
 env:
   BUN_VERSION: ${{ vars.BUN_VERSION }}
+  # Registry de destino do mirror — FONTE ÚNICA (repo variable IMAGE_REGISTRY).
+  # Default = ghcr.io (comportamento histórico).
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
+  MIRROR_PREFIX: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}/${{ github.repository_owner }}
 
 jobs:
   mirror:
@@ -79,27 +83,27 @@ jobs:
           docker build \
             --build-arg BUN_VERSION="${BUN_VERSION}" \
             -f Dockerfile.ubuntu-bun \
-            -t "ghcr.io/${{ github.repository_owner }}/ubuntu-bun:${BUN_VERSION}" \
+            -t "${MIRROR_PREFIX}/ubuntu-bun:${BUN_VERSION}" \
             .
 
-      - name: Login to GHCR
+      - name: Login to registry
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+          username: ${{ secrets.IMAGE_REGISTRY_USER || github.actor }}
+          password: ${{ secrets.IMAGE_REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Push mirror → GHCR
+      - name: Push mirror → registry
         run: |
           set -euo pipefail
-          docker push "ghcr.io/${{ github.repository_owner }}/ubuntu-bun:${BUN_VERSION}"
+          docker push "${MIRROR_PREFIX}/ubuntu-bun:${BUN_VERSION}"
 
       # ── Verify: puxa a imagem publicada e executa o bun (prova que o
       # mirror é consumível — mesmo fluxo do act local com --pull=false).
       - name: Verify mirror digest
         run: |
           set -euo pipefail
-          IMG="ghcr.io/${{ github.repository_owner }}/ubuntu-bun:${BUN_VERSION}"
+          IMG="${MIRROR_PREFIX}/ubuntu-bun:${BUN_VERSION}"
           docker run --rm "$IMG" bash -lc 'node --version; bun --version; bunx --version 2>/dev/null || true' \
             | sed 's/^/  /'
           echo "  ✅ Mirror ok — imagem: ${IMG}"

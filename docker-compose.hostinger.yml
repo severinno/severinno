@@ -2,7 +2,9 @@
 # docker-compose.hostinger.yml — Deploy via Hostinger GitHub Action
 # =============================================================================
 # Este arquivo é usado pela hostinger/deploy-on-vps action.
-# Mantém todos os serviços de produção com imagens do GHCR.
+# Mantém todos os serviços de produção, com a origem das imagens vinda de
+# IMAGE_REGISTRY/IMAGE_NAMESPACE (default: ghcr.io/severinno) — a MESMA fonte
+# única do docker-compose.prod.yml. Trocar registry = mudar a variável.
 #
 # Uso:
 #   docker compose -f docker-compose.hostinger.yml --env-file .env.production up -d
@@ -283,7 +285,7 @@ services:
       dockerfile: Dockerfile
       args:
         BUN_VERSION: ${BUN_VERSION:-1.4.0}
-    image: ghcr.io/${GITHUB_REPOSITORY:-severinno}/realtime:latest
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-severinno}/realtime:latest
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -320,7 +322,7 @@ services:
 
   # ── Next.js (App Principal) ───────────────────────────────────────────
   app:
-    image: ghcr.io/${GITHUB_REPOSITORY:-severinno}/severinno:latest
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-severinno}/severinno:latest
     entrypoint: ["./scripts/docker-entrypoint.sh"]
     restart: unless-stopped
     security_opt:
@@ -402,7 +404,7 @@ services:
 
   # ── Email Worker ──────────────────────────────────────────────────────
   email-worker:
-    image: ghcr.io/${GITHUB_REPOSITORY:-severinno}/severinno:worker-latest
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-severinno}/severinno:worker-latest
     entrypoint: ["./scripts/docker-entrypoint.sh"]
     restart: unless-stopped
     security_opt:
@@ -453,7 +455,7 @@ services:
 
   # ── Notification Worker ───────────────────────────────────────────────
   notification-worker:
-    image: ghcr.io/${GITHUB_REPOSITORY:-severinno}/severinno:worker-latest
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-severinno}/severinno:worker-latest
     entrypoint: ["./scripts/docker-entrypoint.sh"]
     restart: unless-stopped
     security_opt:

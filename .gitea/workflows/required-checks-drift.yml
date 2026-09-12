@@ -44,10 +44,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Composite local (mesmo contrato da ci.yml) — a forja não usa mais o
+      # action externo, que re-baixa o release do Bun em todo job.
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: ./.github/actions/setup-bun
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          bun-version: ${{ vars.BUN_VERSION }}
 
       # `bun <script>` direto (não `bun run <entry>`): a entry do package.json
       # invoca `node scripts/...`, e a imagem do runner Gitea não garante `node`
@@ -75,4 +77,5 @@ jobs:
           fi
 
 env:
-  BUN_VERSION: "1.4.0"
+  # FONTE ÚNICA (variable do repositório) — não cravar a versão aqui.
+  BUN_VERSION: ${{ vars.BUN_VERSION }}

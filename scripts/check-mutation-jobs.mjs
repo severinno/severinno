@@ -64,6 +64,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { DIFF_CONTEXT, isValidGitRef, parseDiffLines } from "./check-bun-mirror.mjs"
+import { existingWorkflowDirs } from "./forge-workflows.mjs"
 
 /**
  * Invocação com PREFIXO de comando (`bash scripts/test-mutation-X.sh`): exige
@@ -363,12 +364,12 @@ export function checkStagedMutationJobs(diffText, state) {
 function collectRepoState() {
   const cwd = process.cwd()
   const scriptsDir = join(cwd, "scripts")
-  const workflowsDir = join(cwd, ".github", "workflows")
+  const forgeDirs = existingWorkflowDirs(cwd)
   const pkgPath = join(cwd, "package.json")
 
   for (const [label, p] of [
     ["scripts/", scriptsDir],
-    [".github/workflows/", workflowsDir],
+    ...forgeDirs.map((d) => [`${d}/`, join(cwd, d)]),
     ["package.json", pkgPath],
   ]) {
     if (!existsSync(p)) {
@@ -383,14 +384,21 @@ function collectRepoState() {
 
   const pkgScripts = JSON.parse(readFileSync(pkgPath, "utf8")).scripts ?? {}
 
+  // UNIÃO das forjas: um mutation test tem job se ALGUMA pipeline o executa.
+  // Ampliar a varredura só pode ENCONTRAR mais jobs (nunca menos), então a
+  // semântica do guard não afrouxa — e o caso "o job existe só na forja" passa
+  // a ser enxergado em vez de virar falso positivo.
   const directRefs = new Set()
-  for (const wf of readdirSync(workflowsDir)) {
-    if (!/\.ya?ml$/i.test(wf)) continue
-    for (const ref of extractWorkflowRunRefs(
-      readFileSync(join(workflowsDir, wf), "utf8"),
-      pkgScripts,
-    )) {
-      directRefs.add(ref)
+  for (const rel of forgeDirs) {
+    const workflowsDir = join(cwd, rel)
+    for (const wf of readdirSync(workflowsDir)) {
+      if (!/\.ya?ml$/i.test(wf)) continue
+      for (const ref of extractWorkflowRunRefs(
+        readFileSync(join(workflowsDir, wf), "utf8"),
+        pkgScripts,
+      )) {
+        directRefs.add(ref)
+      }
     }
   }
 

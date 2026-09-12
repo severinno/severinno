@@ -8,6 +8,8 @@ exports[`tier1-fastpath-guard.yml — sintaxe YAML + snapshot > parseia como YAM
   },
   "env": {
     "BUN_VERSION": "\${{ vars.BUN_VERSION }}",
+    "IMAGE_NAMESPACE": "\${{ vars.IMAGE_NAMESPACE || github.repository_owner }}",
+    "IMAGE_REGISTRY": "\${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}",
   },
   "jobs": {
     "guard": {
@@ -43,7 +45,7 @@ tar -xzf /tmp/act.tar.gz -C /tmp act
 timeout 900 /tmp/act -b \\
   -W .github/workflows/pr-check.yml \\
   -j check \\
-  -P "ubuntu-latest=ghcr.io/\${{ github.repository_owner }}/ubuntu-bun:\${BUN_VERSION}" \\
+  -P "ubuntu-latest=\${IMAGE_REGISTRY}/\${IMAGE_NAMESPACE}/ubuntu-bun:\${BUN_VERSION}" \\
   --var "BUN_VERSION=\${BUN_VERSION}" \\
   --secret "GITHUB_TOKEN=\${{ github.token }}" \\
   > /tmp/act-check.log 2>&1

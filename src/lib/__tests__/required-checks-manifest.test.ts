@@ -80,7 +80,7 @@ const EXPECTED_JOB_IDS: Record<string, string[]> = {
     "check",
     "pii-allowlist-guard",
   ],
-  [GITEA_CI]: ["lint", "typecheck", "test", "build", "deploy"],
+  [GITEA_CI]: ["lint", "guards", "typecheck", "test", "build", "deploy"],
 }
 
 /** Jobs que de fato declaram `if:` (nível de job) em cada workflow. */
@@ -102,7 +102,7 @@ const EXPECTED_CONTEXTS: Record<string, string[]> = {
     "Security Headers",
     "PII Allowlist Guard (user payload projection)",
   ],
-  gitea: ["Lint", "TypeCheck", "Tests", "Build"],
+  gitea: ["Lint", "Repo Guards", "TypeCheck", "Tests", "Build"],
 }
 
 function workflowContent(file: string): string {

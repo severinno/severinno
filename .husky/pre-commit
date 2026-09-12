@@ -47,6 +47,23 @@ PID_BARREL=$!
 bun run check:pii-allowlist &
 PID_PII=$!
 
+# Fonte única do registry OCI (imagens da app + mirrors). Node puro, read-only,
+# <1s — falha aqui evita abrir um PR que reintroduz `ghcr.io` hardcoded e
+# quebra o flip de uma variável. Espelha o step do pr-check.yml.
+bun run check:registry-source &
+PID_REGISTRY=$!
+
+# Paridade de gates entre a forja (dona do merge) e o espelho do GitHub.
+# Node puro, read-only: falha se um invariante do CORE existir em só uma das
+# pipelines — o modo silencioso de achar que o PR foi verificado.
+bun run check:forge-parity &
+PID_FORGE=$!
+
+# Escopo dos guards: nenhum script pode cravar um diretório de forja (é o que
+# garante que a pipeline dona do merge não volte a ficar fora da cobertura).
+bun run check:forge-workflow-scope &
+PID_SCOPE=$!
+
 # Prettier check STAGED — feedback de formatação ANTES do lint-staged
 (
   STAGED_FORMAT=$(git diff --cached --name-only --diff-filter=ACMR | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
@@ -56,7 +73,7 @@ PID_PII=$!
 ) &
 PID_PRETTIER=$!
 
-wait $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII
+wait $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE
 
 # ── Phase C: Sequential checks (state-dependent) ─────────────────────────
 # These checks may modify files (lint-staged) or depend on the full project

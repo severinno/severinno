@@ -113,13 +113,16 @@
 //      guard falha no PR).
 //
 // Escopo: lê .github/workflows/sync-bun-mirror.yml + .github/actions/
-// setup-bun/action.yml + Dockerfile.bun-mirror + TODOS os .github/workflows/*.yml
+// setup-bun/action.yml + Dockerfile.bun-mirror + os workflows de TODAS as
+// forjas (scripts/forge-workflows.mjs)
 // E *.yaml (cache keys + literais) + .actrc + Dockerfiles (Dockerfile,
 // Dockerfile.worker, Dockerfile.ubuntu-bun, mini-services/realtime/Dockerfile)
 // + lockfiles estrangeiros. Node puro, sem deps, <1s.
 // =============================================================================
 
 import { readFileSync, existsSync, readdirSync } from "node:fs"
+
+import { FORGE_WORKFLOW_DIRS, existingWorkflowDirs, workflowFileNames } from "./forge-workflows.mjs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { execFileSync } from "node:child_process"
@@ -259,13 +262,19 @@ export function hasBunVersionInputRef(actionContent) {
   return /\binputs\.bun-version\b/.test(actionContent)
 }
 
-/** O action.yml referencia o mirror GHCR no tier 3? (ghcr.io/.../bun:<ver>) */
+/** O action.yml referencia o mirror OCI no tier 3? (<registry>/.../bun:<ver>) */
 export function hasGhcrMirrorRef(actionContent) {
-  // Tier 3 monta MIRROR="ghcr.io/${GHCR_OWNER}/bun:${BUN_VERSION}" — o guard
-  // casa a construção do nome + o pull, não uma string hardcoded.
+  // Tier 3 monta MIRROR="${IMAGE_REGISTRY:-ghcr.io}/${GHCR_OWNER}/bun:${BUN_VERSION}"
+  // — o guard casa a construção do nome + o pull, não uma string hardcoded.
+  //
+  // O registry é configurável (repo variable IMAGE_REGISTRY), então o prefixo
+  // aceito é 'ghcr.io' OU a expansão shell de IMAGE_REGISTRY. O que o guard
+  // protege é a INVARIANTE: o tier 3 puxa o Bun do mirror, e nunca volta a
+  // baixar o release direto (isso quebraria o objetivo do mirror).
   return (
-    /ghcr\.io\/\$\{GHCR_OWNER\}\/bun:\$\{BUN_VERSION\}/.test(actionContent) ||
-    /ghcr\.io\/[^"']+\/bun:/m.test(actionContent)
+    /(?:ghcr\.io|\$\{IMAGE_REGISTRY(?::-[^}]*)?\})\/\$\{GHCR_OWNER\}\/bun:\$\{BUN_VERSION\}/.test(
+      actionContent,
+    ) || /(?:ghcr\.io|\$\{IMAGE_REGISTRY(?::-[^}]*)?\})\/[^"']+\/bun:/m.test(actionContent)
   )
 }
 
@@ -1156,9 +1165,12 @@ export function isValidGitRef(ref) {
  */
 export function gitDiffWorkflows(base) {
   if (base !== null && !isValidGitRef(base)) return null
+  // Pathspec de TODAS as forjas: no modo --staged/--base o guard precisa ver o
+  // que o PR introduz em qualquer pipeline — limitar ao GitHub foi o que deixou
+  // a forja dona do merge sem cobertura de fonte única.
   const args = base
-    ? ["diff", `-U${DIFF_CONTEXT}`, `${base}...HEAD`, "--", ".github/workflows"]
-    : ["diff", `-U${DIFF_CONTEXT}`, "--cached", "--", ".github/workflows"]
+    ? ["diff", `-U${DIFF_CONTEXT}`, `${base}...HEAD`, "--", ...FORGE_WORKFLOW_DIRS]
+    : ["diff", `-U${DIFF_CONTEXT}`, "--cached", "--", ...FORGE_WORKFLOW_DIRS]
   try {
     return execFileSync("git", args, { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 })
   } catch {
@@ -1329,7 +1341,7 @@ export function validateMirror(workflowPath, actionPath, dockerfilePath) {
 
   if (!hasGhcrMirrorRef(act)) {
     violations.push(
-      `${actionPath}: tier 3 (cold cache) não referencia o mirror GHCR (ghcr.io/<owner>/bun:<versão>)`,
+      `${actionPath}: tier 3 (cold cache) não referencia o mirror OCI (<registry>/<owner>/bun:<versão>)`,
     )
   }
 
@@ -1403,11 +1415,23 @@ function main() {
     join(cwd, "Dockerfile.bun-mirror"),
   )
 
-  const workflowsDir = join(cwd, ".github", "workflows")
-  violations.push(...checkCacheKeys(workflowsDir, DEFAULT_CACHE_KEY_RULES()))
-  violations.push(...checkCachePaths(workflowsDir, DEFAULT_CACHE_KEY_RULES()))
-  violations.push(...checkNoLiteralBunVersion(workflowsDir))
-  violations.push(...checkSetupBunCallSites(workflowsDir))
+  // Os invariantes globais rodam em TODAS as forjas. As funções puras rotulam
+  // a violação com o BASENAME do workflow (contrato já testado); aqui o rótulo
+  // é prefixado com o diretório da forja para que o diagnóstico diga em qual
+  // pipeline a fonte única foi violada — foi essa ausência que deixou
+  // `BUN_VERSION: "1.4.0"` literal viver na pipeline dona do merge.
+  for (const dir of existingWorkflowDirs(cwd)) {
+    const workflowsDir = join(cwd, dir)
+    const names = workflowFileNames(cwd, dir)
+    const label = (v) => {
+      for (const n of names) if (v.startsWith(`${n}:`)) return `${dir}/${v}`
+      return v
+    }
+    violations.push(...checkCacheKeys(workflowsDir, DEFAULT_CACHE_KEY_RULES()).map(label))
+    violations.push(...checkCachePaths(workflowsDir, DEFAULT_CACHE_KEY_RULES()).map(label))
+    violations.push(...checkNoLiteralBunVersion(workflowsDir).map(label))
+    violations.push(...checkSetupBunCallSites(workflowsDir).map(label))
+  }
   violations.push(...checkActrc(join(cwd, ".actrc")))
   violations.push(...checkDockerfiles(cwd))
   violations.push(...checkNoForeignLockfiles(cwd))

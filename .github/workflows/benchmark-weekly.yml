@@ -55,6 +55,9 @@ env:
   PGHOST: ${{ secrets.STAGING_PGHOST || 'localhost' }}
   PGPORT: ${{ secrets.STAGING_PGPORT || '5432' }}
   PGDATABASE: ${{ secrets.STAGING_PGDATABASE || 'severinno' }}
+  # Origem do mirror ubuntu-bun — FONTE ÚNICA (default = ghcr.io/severinno).
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
+  IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE || 'severinno' }}
 
 jobs:
   # ── Smoke Check ─────────────────────────────────────────────────────────
@@ -484,7 +487,7 @@ jobs:
       - name: Puxar imagens do bench
         run: |
           docker pull catthehacker/ubuntu:act-latest
-          docker pull ghcr.io/severinno/ubuntu-bun:${{ vars.BUN_VERSION }}
+          docker pull "${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/ubuntu-bun:${{ vars.BUN_VERSION }}"
 
       # ── GATE: startup da custom dentro de +30% da baseline ───────────
       # --image explicita as DUAS imagens (a 1ª = baseline = catthehacker);
@@ -503,7 +506,7 @@ jobs:
           set -eo pipefail
           bun run bench:act-startup --assert-pct 30 \
             --image "catthehacker|catthehacker/ubuntu:act-latest" \
-            --image "ubuntu-bun|ghcr.io/severinno/ubuntu-bun:${{ vars.BUN_VERSION }}" \
+            --image "ubuntu-bun|${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/ubuntu-bun:${{ vars.BUN_VERSION }}" \
             2>&1 | tee /tmp/act-startup-bench.log
 
       # ── Evidência como artifact (debug de falhas) ────────────────────
