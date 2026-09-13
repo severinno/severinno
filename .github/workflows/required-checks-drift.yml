@@ -112,8 +112,13 @@ jobs:
           echo "  relatório: /tmp/required-checks-drift.json ($(wc -c < /tmp/required-checks-drift.json) bytes)"
 
       # ── Publica/atualiza a issue (usa o GITHUB_TOKEN do runner) ──────────
+      # `always()`: com drift ele PUBLICA; sem drift ele RECONCILIA — fecha as
+      # issues que ele mesmo abriu (com a prova no comentário), para a dívida
+      # não ficar ABERTA depois de resolvida. Condicionar a step ao drift faria
+      # o fechamento sumir em silêncio no único run que pode fechá-lo. O
+      # relatório existe nos dois casos (o step acima sempre o grava).
       - name: Publish drift issue
-        if: steps.drift.outputs.exit_code != '0'
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

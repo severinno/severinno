@@ -11,6 +11,16 @@
 // do check mora no branch protection, que é estado da forja e ninguém revisa em
 // PR. Declarar em arquivo + aplicar por script torna isso auditável e idempotente.
 //
+// NA FORJA (Gitea), REGISTRAR O CONTEXTO NÃO BASTA: `status_check_contexts`
+// guarda a LISTA exigida, e `enable_status_check` é quem a transforma em
+// bloqueio. Sem o booleano — que o default da API é `false` — a proteção fica
+// com os contextos anotados e o merge passa com o gate vermelho. Foi medido
+// contra um Gitea 1.22 real: com os contextos e `enable_status_check=false`, um
+// PR com `Repo Guards=failure` mergeia (HTTP 200); com `true`, o merge é
+// recusado com `not allowed to merge [reason: Not all required status checks
+// successful]`. Por isso o applier ENVIA o booleano e o trata como parte do
+// drift — é a diferença entre "bloqueante na intenção" e bloqueante.
+//
 // SEGURANÇA: o padrão é DRY-RUN (nenhuma requisição de escrita). Só `--apply`
 // altera a forja, e mesmo então toca APENAS a lista de required status checks —
 // não sobrescreve reviews obrigatórios, restrições de push ou outros ajustes de
@@ -214,6 +224,15 @@ async function giteaRequest({ token, baseUrl }, method, path, body) {
 /**
  * Compara (e opcionalmente aplica) os required checks no Gitea.
  *
+ * Três coisas contam como drift, e a terceira é a que mais parece verde:
+ *   1. contexto exigido que FALTA na proteção (o PR trava esperando um check que
+ *      nunca vai chegar — ou pior, o job roda e não bloqueia nada);
+ *   2. contexto a MAIS (régua velha: exige um check que o workflow já não tem,
+ *      e o PR fica travado para sempre);
+ *   3. `enable_status_check` DESLIGADO — os contextos estão anotados e nada
+ *      bloqueia. É o estado que a API devolve por default e o modo silencioso
+ *      que este applier existe para fechar.
+ *
  * @returns {Promise<{ drift: boolean, branches: object[] }>}  relatório por branch
  */
 async function planGitea({ config, branches, contexts, options, log }) {
@@ -227,15 +246,31 @@ async function planGitea({ config, branches, contexts, options, log }) {
     const currentContexts = existing?.status_check_contexts ?? null
     const missing = contexts.filter((c) => !(currentContexts ?? []).includes(c))
     const extra = (currentContexts ?? []).filter((c) => !contexts.includes(c))
+    /** A exigência efetiva: `true` só quando a forja diz `true`. */
+    const enforced = existing?.enable_status_check === true
 
-    if (existing && missing.length === 0 && extra.length === 0) {
-      log(`gitea   ${branch}: já em sincronia (${contexts.length} checks)`)
-      report.push({ branch, configured: true, inSync: true, missing, extra, applied: false })
+    if (existing && enforced && missing.length === 0 && extra.length === 0) {
+      log(`gitea   ${branch}: já em sincronia (${contexts.length} checks exigidos)`)
+      report.push({
+        branch,
+        configured: true,
+        inSync: true,
+        enforceStatusChecks: true,
+        missing,
+        extra,
+        applied: false,
+      })
       continue
     }
 
     drift = true
     log(`gitea   ${branch}: ${existing ? "drift detectado" : "sem proteção de branch"}`)
+    if (existing && !enforced) {
+      log(
+        `          ! enable_status_check=false — os contextos estão registrados e NÃO bloqueiam:` +
+          ` o merge passa com o gate vermelho (medido contra Gitea 1.22)`,
+      )
+    }
     for (const c of missing) log(`          + ${c}`)
     for (const c of extra) log(`          - ${c}`)
 
@@ -245,22 +280,25 @@ async function planGitea({ config, branches, contexts, options, log }) {
     } else if (existing) {
       await giteaRequest(config, "PATCH", `/repos/${config.repo}/branch_protections/${branch}`, {
         status_check_contexts: contexts,
+        enable_status_check: true,
       })
       applied = true
-      log(`          → aplicado`)
+      log(`          → aplicado (contextos + enable_status_check)`)
     } else {
       await giteaRequest(config, "POST", `/repos/${config.repo}/branch_protections`, {
         branch_name: branch,
         status_check_contexts: contexts,
+        enable_status_check: true,
       })
       applied = true
-      log(`          → aplicado`)
+      log(`          → aplicado (contextos + enable_status_check)`)
     }
 
     report.push({
       branch,
       configured: existing !== null,
       inSync: false,
+      enforceStatusChecks: enforced,
       missing,
       extra,
       applied,

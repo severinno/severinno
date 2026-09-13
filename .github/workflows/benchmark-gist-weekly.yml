@@ -252,6 +252,26 @@ jobs:
           # Always extract the alert details for the summary
           echo "🔔 GiST crossover regression detected — see workflow summary for details."
 
+      # ── FALHA o run: o aviso não pode terminar verde ───────────────────
+      # AUDITORIA DOS JOBS PERIÓDICOS: o step de validação usa
+      # `continue-on-error: true` (para o Sentry + summary rodarem mesmo com
+      # drift), então o job terminava VERDE com o crossover fora do limiar —
+      # e o único canal era o Sentry, CONDICIONAL a SENTRY_DSN (sem o secret,
+      # o alerta sumia). Mesmo padrão do benchmark-all-weekly ("Fail on
+      # regression").
+      #
+      # A POSIÇÃO importa: antes do "Update baseline", de propósito. O
+      # baseline é reescrito com a medição do run — se o run está fora do
+      # limiar, adotá-la como baseline transformaria a regressão no novo
+      # NORMAL e o drift nunca mais seria detectado (o defeito silencioso
+      # que este passo fecha junto com o verde falso). Falhar aqui pula o
+      # update/commit (o GitHub cancela os steps seguintes sem `if: always()`).
+      - name: Fail on crossover regression
+        if: steps.validate.outputs.exit_code == '1'
+        run: |
+          echo "::error::GiST crossover mudou além do limiar (steps/ratio drift) — veja /tmp/gist-crossover-diff.txt no summary e no artifact. O baseline NÃO foi atualizado."
+          exit 1
+
       # ── Copy latest to baseline ────────────────────────────────────────
       - name: Update baseline
         id: update

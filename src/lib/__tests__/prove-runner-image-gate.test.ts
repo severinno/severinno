@@ -51,22 +51,24 @@ afterAll(() => {
 
 /**
  * Raiz sintética com o MÍNIMO que o bring-up precisa resolver: ele mesmo, o
- * compose e o ensure. É o que permite mutar o bloqueio sem tocar no repositório.
+ * compose e os scripts que ele invoca. É o que permite mutar o bloqueio sem
+ * tocar no repositório.
+ *
+ * O diretório `scripts/` INTEIRO é copiado (e não só o ensure): o passo 0 do
+ * bring-up invoca `check-env-mirror.mjs`, que importa `check-registry-source`,
+ * `check-actrc-sync` e `check-bun-mirror` — copiar um subconjunto deixaria a
+ * raiz mutada sem o script, e TODOS os casos sairiam 1 pelo motivo errado.
  *
  * @param {(content: string) => string} mutate  recebe o gitea-up.sh e devolve o mutado
  */
 function mutatedRoot(mutate: (content: string) => string): string {
   const dir = makeDir()
   mkdirSync(join(dir, "deploy"), { recursive: true })
-  mkdirSync(join(dir, "scripts"), { recursive: true })
   cpSync(
     join(ROOT, "deploy", "docker-compose.gitea.yml"),
     join(dir, "deploy", "docker-compose.gitea.yml"),
   )
-  cpSync(
-    join(ROOT, "scripts", "ensure-runner-image.mjs"),
-    join(dir, "scripts", "ensure-runner-image.mjs"),
-  )
+  cpSync(join(ROOT, "scripts"), join(dir, "scripts"), { recursive: true })
   const bringUp = readFileSync(join(ROOT, BRING_UP), "utf8")
   writeFileSync(join(dir, BRING_UP), mutate(bringUp))
   return dir

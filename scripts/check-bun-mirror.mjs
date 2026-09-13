@@ -361,6 +361,12 @@ export const GITEA_BRING_UP = "deploy/gitea-up.sh"
 /** O instalador da forja — deve apontar para o bring-up, não subir o runner direto. */
 export const GITEA_SETUP = "deploy/setup-gitea.sh"
 
+/** O pré-requisito 0 do bring-up: o env do host espelha o template comitado. */
+export const ENV_MIRROR_SCRIPT = "scripts/check-env-mirror.mjs"
+
+/** O veredito de prontidão da forja — o terceiro pré-requisito da subida. */
+export const FORGE_DOCTOR = "scripts/forge-doctor.mjs"
+
 /**
  * A imagem do runner é PRÉ-REQUISITO da subida da stack?
  *
@@ -376,6 +382,34 @@ export const GITEA_SETUP = "deploy/setup-gitea.sh"
  * só contam linhas de comando (linhas de comentário são ignoradas), para que
  * explicar a regra num comentário não a satisfaça.
  *
+ * TRÊS PRÉ-REQUISITOS, nesta ordem (cada um foi acrescentado quando se
+ * percebeu que a regra existia mas dependia de alguém lembrar de rodá-la: o
+ * `check:registry-source` só rodava no CI, e o doctor — que responde a pergunta
+ * inteira — só rodava por vontade própria):
+ *
+ *   0. o env do host ESPELHA o template comitado, via `check-env-mirror.mjs`
+ *      com `--host` e `--template`, e com o `TEMPLATE_FILE` default apontando
+ *      para o template COMITADO. A ordem importa: o ensure resolve
+ *      BUN_VERSION do env, então conferir o espelho DEPOIS garantiria a imagem
+ *      de um env que não é o do repositório;
+ *   1. a imagem do runner existe no registry (`ensure-runner-image.mjs`);
+ *   2. a PRONTIDÃO está provada (`forge-doctor.mjs`), lendo o MESMO env
+ *      (`--gitea-env`) e com `--no-proof` — a prova do bloqueio do próprio
+ *      doctor EXECUTA o bring-up, então chamá-la daqui recursaria. O default de
+ *      `DOCTOR_SCRIPT` precisa ser o do repositório, a checagem passa
+ *      `--gitea-env "$ENV_FILE"`, e a ORDEM é contratual nos dois sentidos:
+ *      DEPOIS da garantia da imagem (o doctor trata a tag ausente como
+ *      violação, que é a condição que o passo 1 conserta — antes dele, o
+ *      remédio ficaria travado pelo estado que cura) e ANTES de qualquer `up`
+ *      (subir depois de um BLOQUEADA publicaria o estado que a checagem existe
+ *      para recusar).
+ *
+ * O que NÃO é conferido aqui (e por quê): o tratamento dos exit codes do doctor
+ * (0/1/2/>=3) é COMPORTAMENTO, provado por execução em
+ * `src/lib/__tests__/gitea-bring-up.test.ts` — onde um doctor dublê devolve cada
+ * código e o teste vê se a stack subiu ou não. Regex sobre `if/elif` provaria a
+ * forma do texto, não a decisão.
+ *
  * @param {string} bringUpContent  conteúdo de GITEA_BRING_UP ("" se ausente)
  * @param {string|undefined} setupContent  conteúdo de GITEA_SETUP
  * @returns {string[]} violações (vazia = ok)
@@ -388,6 +422,13 @@ export function checkGiteaBringUp(bringUpContent, setupContent) {
   }
 
   const violations = []
+  // Invocação REAL do mirror (não a menção num comentário) — mesmo desenho da
+  // do ensure: `node ... MIRROR_SCRIPT` ou o caminho literal do script. A
+  // regex pega a LINHA INTEIRA (`[^\n]*$`): `.*` pararia no nome da variável e
+  // as flags (--host/--template) ficariam fora do texto conferido.
+  const mirrorMatch = bringUpContent.match(
+    /^\s*node\s+[^\n]*(?:MIRROR_SCRIPT|check-env-mirror\.mjs)[^\n]*$/m,
+  )
   // Invocação REAL do ensure (não a menção num comentário): `node ... ENSURE_SCRIPT`
   // ou o caminho literal do script. `^\s*node` (sem `#`) descarta prosa.
   const ensureMatch = bringUpContent.match(
@@ -396,9 +437,37 @@ export function checkGiteaBringUp(bringUpContent, setupContent) {
   // Comando de subida do runner — `[^#\n]*` impede casar uma linha de comentário.
   const runnerMatch = bringUpContent.match(/^\s*[^#\n]*\bup\s+-d\s+runner\b/m)
 
+  if (!mirrorMatch) {
+    violations.push(
+      `${GITEA_BRING_UP}: não invoca ${ENV_MIRROR_SCRIPT} — sem a conferência o env do host pode divergir do template comitado e a stack sobe interpolando outra coisa (imagem/versão/segredo), dependendo de alguém lembrar de rodar o check:registry-source.`,
+    )
+  } else {
+    const invocation = mirrorMatch[0]
+    if (!/--host\b/.test(invocation) || !/--template\b/.test(invocation)) {
+      violations.push(
+        `${GITEA_BRING_UP}: a conferência do espelho não passa --host E --template — sem --host a descoberta pode achar um arquivo que esta subida não usa, e sem --template não há "o que o repositório declara" a comparar.`,
+      )
+    }
+  }
+  // O default do template tem de ser o COMITADO (não um arquivo qualquer):
+  // sobrescrever é teste, e um default que não é o do repositório faria a
+  // comparação medir outra coisa em silêncio.
+  if (!/^[^#\n]*TEMPLATE_FILE=.*env\.gitea\.example/m.test(bringUpContent)) {
+    violations.push(
+      `${GITEA_BRING_UP}: o default de TEMPLATE_FILE não aponta para ${GITEA_ENV_MIRROR} — a comparação mediria outro arquivo, e não "o que o repositório declara".`,
+    )
+  }
   if (!ensureMatch) {
     violations.push(
       `${GITEA_BRING_UP}: não invoca scripts/ensure-runner-image.mjs — sem a garantia, subir o runner depende de a tag já existir por sorte.`,
+    )
+  }
+  // A ORDEM entre os dois pré-requisitos: o espelho PRIMEIRO. O ensure resolve
+  // a imagem do env do host — com um env divergente ele garantiria a imagem
+  // errada, e a stack subiria apontando para ela.
+  if (mirrorMatch && ensureMatch && ensureMatch.index < mirrorMatch.index) {
+    violations.push(
+      `${GITEA_BRING_UP}: a conferência do espelho aparece DEPOIS da garantia da imagem — o ensure resolve BUN_VERSION/IMAGE_REGISTRY do env do host, então com um env divergente ele garante a imagem errada. Confira o espelho primeiro (${ENV_MIRROR_SCRIPT}).`,
     )
   }
   if (!runnerMatch) {
@@ -409,6 +478,52 @@ export function checkGiteaBringUp(bringUpContent, setupContent) {
   if (ensureMatch && runnerMatch && runnerMatch.index < ensureMatch.index) {
     violations.push(
       `${GITEA_BRING_UP}: 'up -d runner' aparece ANTES da garantia da imagem — a stack subiria e os jobs falhariam ao iniciar o container. Garanta a imagem primeiro (scripts/ensure-runner-image.mjs).`,
+    )
+  }
+
+  // ── 2. PRÉ-REQUISITO: a PRONTIDÃO (doctor) ────────────────────────────────
+  // Invocação REAL do doctor (não a menção num comentário) — mesmo desenho das
+  // outras duas: a linha inteira entra no texto conferido, para que as flags
+  // exigidas abaixo sejam medidas no mesmo lugar em que o comando roda.
+  const doctorMatch = bringUpContent.match(
+    /^\s*node\s+[^\n]*(?:DOCTOR_SCRIPT|forge-doctor\.mjs)[^\n]*$/m,
+  )
+  const doctorInvocation = doctorMatch?.[0] ?? ""
+  if (!doctorMatch) {
+    violations.push(
+      `${GITEA_BRING_UP}: não invoca ${FORGE_DOCTOR} — sem o veredito de prontidão a subida volta a depender de alguém lembrar de rodar o doctor, e a stack sobe num estado que pode não segurar o merge (branch protection furada, runner sem a imagem, espelho velho).`,
+    )
+  } else {
+    if (!/--gitea-env\b/.test(doctorInvocation) || !/\$ENV_FILE/.test(doctorInvocation)) {
+      violations.push(
+        `${GITEA_BRING_UP}: o doctor não recebe --gitea-env "$ENV_FILE" — ele leria outro arquivo, e o veredito mediria um estado que esta subida não usa.`,
+      )
+    }
+    if (!/--no-proof\b/.test(doctorInvocation)) {
+      violations.push(
+        `${GITEA_BRING_UP}: o doctor é chamado SEM --no-proof — a prova do bloqueio dele EXECUTA o deploy/gitea-up.sh, então isso é recursão (bring-up → doctor → prova → bring-up).`,
+      )
+    }
+  }
+  // O default tem de ser o doctor DO REPOSITÓRIO: sobrescrever é teste, e um
+  // default que não é o do repositório faria a subida medir outra coisa.
+  if (!/^[^#\n]*DOCTOR_SCRIPT=.*forge-doctor\.mjs/m.test(bringUpContent)) {
+    violations.push(
+      `${GITEA_BRING_UP}: o default de DOCTOR_SCRIPT não aponta para ${FORGE_DOCTOR} — a subida conferiria a prontidão com outro comando (ou com nenhum, na prática).`,
+    )
+  }
+  // A ORDEM: depois da garantia da imagem (que é pré-requisito do que ele
+  // prova) e antes de qualquer `up` — subir depois de um BLOQUEADA publicaria o
+  // estado que a checagem recusa.
+  if (doctorMatch && ensureMatch && doctorMatch.index < ensureMatch.index) {
+    violations.push(
+      `${GITEA_BRING_UP}: o doctor roda ANTES da garantia da imagem — a seção 1 (registry) ficaria por provar no momento do veredito, e o relatório diria BLOQUEADA/INDETERMINADA por um estado que esta própria subida ainda ia consertar.`,
+    )
+  }
+  const composeUpMatch = bringUpContent.match(/^\s*[^#\n]*\bup\s+-d\s+gitea\b/m)
+  if (doctorMatch && composeUpMatch && composeUpMatch.index < doctorMatch.index) {
+    violations.push(
+      `${GITEA_BRING_UP}: 'up -d gitea' aparece ANTES do veredito de prontidão — a stack subiria mesmo com o doctor dizendo BLOQUEADA.`,
     )
   }
 

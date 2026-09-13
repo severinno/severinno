@@ -68,6 +68,17 @@ import process from "node:process"
 import { pathToFileURL } from "node:url"
 
 import { mirrorDriftReport } from "./check-actrc-sync.mjs"
+import {
+  issueBodies,
+  hasAnyMarker as hasAnyMarkerOf,
+  hasMarker,
+  issueHasAnyMarker as issueHasAnyMarkerOf,
+  issueHasSignature as issueHasSignatureOf,
+  makeGithubBackend,
+  markerOf as markerOfId,
+  markerPrefixOf,
+  reconcileDebt as reconcileDebtShared,
+} from "./issue-publish.mjs"
 
 /** Label de triagem (dedup + filtro no board). */
 export const ISSUE_LABEL = "actrc-sync-drift"
@@ -94,9 +105,24 @@ export function signatureOf(report) {
   return [...(report?.warnings ?? [])].sort().join("\n")
 }
 
-/** Marcador HTML invisível que carrega a assinatura dentro do corpo da issue. */
+/**
+ * O identificador do marcador na issue (o dedup é POR publicador: um drift de
+ * espelhos nunca pode ser confundido com o veredito do doctor ou com o drift de
+ * branch protection).
+ */
+export const ACTRC_MARKER_ID = "actrc-sync-drift"
+
+/**
+ * Marcador HTML invisível que carrega a assinatura dentro do corpo da issue.
+ *
+ * A REGRA (formato do marcador + decisão de dedup + o ciclo de fechar quando
+ * resolve) é a de `issue-publish.mjs` — aqui fica só o id deste publicador, para
+ * a mecânica não ter duas cópias. Duas cópias divergem no dia em que o formato
+ * mudar, e aí o fechamento automático de um publicador para de enxergar as
+ * issues do outro.
+ */
 export function markerOf(signature) {
-  return `<!-- actrc-sync-drift:${Buffer.from(signature).toString("base64")} -->`
+  return markerOfId(ACTRC_MARKER_ID, signature)
 }
 
 /**
@@ -105,11 +131,11 @@ export function markerOf(signature) {
  * O chamador de issue usa `issueHasSignature`, que cobre corpo + comentários.
  */
 export function hasSignature(body, signature) {
-  return typeof body === "string" && body.includes(markerOf(signature))
+  return hasMarker(body, ACTRC_MARKER_ID, signature)
 }
 
 /** Prefixo de QUALQUER marcador nosso (a assinatura vem depois dos `:`). */
-export const MARKER_PREFIX = "<!-- actrc-sync-drift:"
+export const MARKER_PREFIX = markerPrefixOf(ACTRC_MARKER_ID)
 
 /**
  * `true` se o corpo foi escrito por ESTE script (carrega um marcador nosso, de
@@ -119,15 +145,11 @@ export const MARKER_PREFIX = "<!-- actrc-sync-drift:"
  * numa issue que não é de drift, e fechar ticket alheio por causa de uma etiqueta
  * é pior que deixar a dívida aberta. O marcador é a assinatura de quem escreveu.
  *
- * O tipo é `unknown` de propósito: o corpo vem do `gh` e pode não ser string
- * (campo ausente em JSON), e engolir isso em runtime sem declarar convidaria a
- * um `body.includes` que estoura no meio da reconciliação.
- *
  * @param {unknown} body
  * @returns {boolean}
  */
 export function hasAnyMarker(body) {
-  return typeof body === "string" && body.includes(MARKER_PREFIX)
+  return hasAnyMarkerOf(body, ACTRC_MARKER_ID)
 }
 
 /**
@@ -144,21 +166,19 @@ export function hasAnyMarker(body) {
  * corpos: uma issue nossa cujo marcador mora num comentário seria tratada como
  * ALHEIA e nunca fecharia.
  *
- * @param {{body?: string, comments?: {body?: string}[]}|undefined} issue
- * @returns {unknown[]}
+ * A implementação é a COMPARTILHADA (`issue-publish.mjs`) — reexportada para os
+ * testes e o `main` deste script não mudarem de contrato.
  */
-export function issueBodies(issue) {
-  return [issue?.body, ...((issue?.comments ?? []).map((c) => c?.body) ?? [])]
-}
+export { issueBodies }
 
 /** `true` se a issue já carrega ESTA assinatura (no corpo ou num comentário). */
 export function issueHasSignature(issue, signature) {
-  return issueBodies(issue).some((body) => hasSignature(body, signature))
+  return issueHasSignatureOf(issue, ACTRC_MARKER_ID, signature)
 }
 
 /** `true` se a issue foi escrita por ESTE script (marcador em qualquer corpo). */
 export function issueHasAnyMarker(issue) {
-  return issueBodies(issue).some((body) => hasAnyMarker(body))
+  return issueHasAnyMarkerOf(issue, ACTRC_MARKER_ID)
 }
 
 /**
@@ -377,54 +397,24 @@ function openIssuesWithLabel(ghFn = gh) {
  * @returns {{closed: number[], foreign: number[], alreadyClear: boolean}}
  */
 export function reconcileDebt({ report, gh: ghFn = gh, log = console.log } = {}) {
-  const open = openIssuesWithLabel(ghFn)
-  // `issueHasAnyMarker` (e não `hasAnyMarker(issue.body)`): o marcador de um
-  // drift que mudou está num COMENTÁRIO, e uma issue nossa confundida com alheia
-  // nunca seria fechada.
-  const ours = open.filter((issue) => issueHasAnyMarker(issue))
-  const foreign = open.filter((issue) => !issueHasAnyMarker(issue))
-
-  // Um label aplicado à mão numa issue que não é de drift NÃO pode ser fechado
-  // por automatismo — mas também não pode passar em silêncio, senão a dívida
-  // fica aberta sem ninguém saber por quê.
-  for (const issue of foreign) {
-    log(
-      `ℹ️  issue #${issue.number} carrega o label '${ISSUE_LABEL}' e NÃO foi aberta por este script (sem marcador) — não é fechada por automatismo; revise à mão.`,
-    )
-  }
-
-  if (ours.length === 0) {
-    log(
-      `✅ Sem drift e nenhuma dívida aberta com o label '${ISSUE_LABEL}'${foreign.length > 0 ? ` (${foreign.length} issue(s) alheia(s) com o label, deixada(s) intocada(s))` : ""}.`,
-    )
-    return { closed: [], foreign: foreign.map((i) => i.number), alreadyClear: true }
-  }
-
-  const closed = []
-  for (const issue of ours) {
-    const comment = ghFn([
-      "issue",
-      "comment",
-      String(issue.number),
-      "--body",
-      resolutionComment(report),
-    ])
-    if (comment.status !== 0) {
-      throw new Error(
-        `gh issue comment falhou na #${issue.number}: ${(comment.stderr ?? "").slice(0, 400)}`,
-      )
-    }
-    const close = ghFn(["issue", "close", String(issue.number), "--reason", "completed"])
-    if (close.status !== 0) {
-      throw new Error(
-        `gh issue close falhou na #${issue.number}: ${(close.stderr ?? "").slice(0, 400)}`,
-      )
-    }
-    closed.push(issue.number)
-    log(`✅ issue #${issue.number} fechada — os espelhos voltaram a concordar (dívida caducou).`)
-  }
-
-  return { closed, foreign: foreign.map((i) => i.number), alreadyClear: false }
+  // O ciclo (listar, separar o que é NOSSO do que é alheio, COMENTAR a prova,
+  // fechar, fail-closed nos dois passos) é o compartilhado de
+  // `issue-publish.mjs`. Aqui só entra o que é DESTE publicador: o label, o
+  // corpo de resolução e o motivo. O backend do GitHub é o mesmo dos demais —
+  // antes cada publicador tinha a sua cópia da chamada de `gh`.
+  const backend = makeGithubBackend({
+    gh: ghFn,
+    label: ISSUE_LABEL,
+    color: "FBCA04",
+    description: "Espelhos do BUN_VERSION divergentes de vars.BUN_VERSION",
+  })
+  return reconcileDebtShared({
+    backend,
+    isOurs: (issue) => issueHasAnyMarker(issue),
+    resolutionBody: resolutionComment(report),
+    reason: "os espelhos voltaram a concordar (dívida caducou)",
+    log,
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -445,7 +435,7 @@ function parseArgs(argv) {
   return options
 }
 
-function main() {
+async function main() {
   const options = parseArgs(process.argv.slice(2))
   if (options.help) {
     console.log(
@@ -480,7 +470,7 @@ function main() {
       )
       return 0
     }
-    const { closed } = reconcileDebt({ report })
+    const { closed } = await reconcileDebt({ report })
     if (closed.length > 0) {
       console.log(
         `🔒 Reconciliado: ${closed.length} issue(s) de drift fechada(s) — a dívida não fica aberta depois de resolvida.`,
@@ -546,10 +536,12 @@ const IS_DIRECT_RUN =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
 
 if (IS_DIRECT_RUN) {
+  let code = 1
   try {
-    process.exit(main())
+    code = await main()
   } catch (error) {
     console.error(`❌ ${error.message}`)
-    process.exit(1)
+    code = 1
   }
+  process.exit(code)
 }

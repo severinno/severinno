@@ -1,0 +1,204 @@
+{
+  "version": 1,
+  "rule": "Todo job de workflow AGENDADO declara, aqui, o CANAL do seu sinal fraco. Um job que pode terminar VERDE por desenho (::warning::/::notice::, continue-on-error, fail-closed que só avisa) sem canal acionável é um alerta MUDO: ninguém abre o log de um cron que passou. O guard `check:periodic-alerts` falha se um job agendado não estiver classificado, se o canal declarado não for `fail`/`issue`/`comment`, ou se a EVIDÊNCIA do canal não existir no bloco do job (ou no bloco de `via`).",
+  "channels": {
+    "fail": "o job fica VERMELHO no sinal (o step que falha é a evidência)",
+    "issue": "o job publica/comenta uma ISSUE acionável (o publicador é a evidência)",
+    "comment": "o job comenta num PR/ticket (o step de comentário é a evidência)"
+  },
+  "forges": {
+    "github": [
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "smoke",
+        "signal": "scripts/docs de benchmark ausentes",
+        "channel": "fail",
+        "evidence": "Check benchmark scripts exist"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "benchmark",
+        "signal": "regressão no benchmark PostGIS real",
+        "channel": "issue",
+        "evidence": "Create regression issue"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "setup-bun-warm",
+        "signal": "cache warm do setup-bun acima do limiar",
+        "channel": "fail",
+        "evidence": "check-setup-bun-warm.mjs"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "act-startup-bench",
+        "signal": "startup da imagem ubuntu-bun > +30% da baseline",
+        "channel": "fail",
+        "evidence": "--assert-pct 30"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "blob-crlf-history-audit",
+        "signal": "blob histórico de .sh/.bash com CRLF",
+        "channel": "fail",
+        "evidence": "audit-blob-crlf-history.sh"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "blob-crlf-all-text-alert",
+        "signal": "CRLF histórico em tipos com eol=lf (alcance)",
+        "channel": "fail",
+        "evidence": "Alertar sobre CRLF ou falha do audit"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "secret-leaks-audit",
+        "signal": "segredo NOVO no histórico",
+        "channel": "fail",
+        "evidence": "check-secret-leaks-baseline.mjs"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "readme-reverse-audit",
+        "signal": "drift semântico NOVO de link no README",
+        "channel": "issue",
+        "evidence": "scripts/readme-reverse-issue.mjs"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "actrc-sync",
+        "signal": "espelhos do BUN_VERSION divergentes da repository variable",
+        "channel": "issue",
+        "evidence": "scripts/actrc-sync-issue.mjs"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "seed-guards",
+        "signal": "contrato dos seeds (reusable workflow)",
+        "channel": "fail",
+        "evidence": "uses: ./.github/workflows/seed-guards.yml"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "default-branch-workflow-guard",
+        "signal": "workflow de medição ausente na branch default",
+        "channel": "fail",
+        "evidence": "check-default-branch-workflows.mjs"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "mutation-coord-timing",
+        "signal": "duração do step mutation-coord na faixa SOFT ou acima do teto duro",
+        "channel": "issue",
+        "via": "mutation-coord-alert",
+        "evidence": "scripts/mutation-trend-issue.mjs",
+        "why": "o aviso de faixa é NÃO-bloqueante por desenho; o canal é o job de alerta, que lê os DOIS relatórios (limiar aninhado não pode ser presumido)"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "mutation-coord-trend",
+        "signal": "drift relativo do mutation-coord acima do limiar por var",
+        "channel": "issue",
+        "via": "mutation-coord-alert",
+        "evidence": "scripts/mutation-trend-issue.mjs",
+        "why": "mesmo alerta de tendência do job de timing — o canal é compartilhado"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "mutation-coord-alert",
+        "signal": "o canal dos dois jobs acima (publica e fecha a dívida)",
+        "channel": "issue",
+        "evidence": "scripts/mutation-trend-issue.mjs"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-all-weekly.yml",
+        "job": "smoke",
+        "signal": "scripts/docs de benchmark ausentes",
+        "channel": "fail",
+        "evidence": "Check all benchmark scripts exist"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-all-weekly.yml",
+        "job": "benchmark-all",
+        "signal": "regressão >= threshold em qualquer um dos 6 benchmarks",
+        "channel": "fail",
+        "evidence": "Fail on regression",
+        "why": "também comenta no PR mais recente (Post summary comment on PR) — o vermelho é a garantia, o comentário é a cortesia"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-gist-weekly.yml",
+        "job": "smoke",
+        "signal": "scripts/docs de benchmark ausentes",
+        "channel": "fail",
+        "evidence": "Check benchmark scripts exist"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-gist-weekly.yml",
+        "job": "benchmark",
+        "signal": "crossover do GiST fora do limiar (steps/ratio)",
+        "channel": "fail",
+        "evidence": "Fail on crossover regression",
+        "why": "o step de validação usa continue-on-error (Sentry + summary rodam mesmo com drift); sem o fail o job terminava verde e o baseline era reescrito com a medição ruim"
+      },
+      {
+        "workflow": ".github/workflows/required-checks-drift.yml",
+        "job": "drift",
+        "signal": "branch protection ≠ ci/required-checks.json",
+        "channel": "issue",
+        "evidence": "scripts/required-checks-drift-issue.mjs"
+      },
+      {
+        "workflow": ".github/workflows/sync-bun-mirror.yml",
+        "job": "mirror",
+        "signal": "mirror do bun ausente/inservível no registry",
+        "channel": "fail",
+        "evidence": "Verify mirror digest"
+      },
+      {
+        "workflow": ".github/workflows/sync-postgis-mirror.yml",
+        "job": "mirror",
+        "signal": "mirror do postgis ausente/inservível no registry",
+        "channel": "fail",
+        "evidence": "Verify mirror digest"
+      },
+      {
+        "workflow": ".github/workflows/sync-ubuntu-bun-mirror.yml",
+        "job": "mirror",
+        "signal": "mirror da ubuntu-bun ausente/inservível no registry",
+        "channel": "fail",
+        "evidence": "Verify mirror digest"
+      },
+      {
+        "workflow": ".github/workflows/tier1-fastpath-guard.yml",
+        "job": "guard",
+        "signal": "fast path tier-1 do setup-bun desligado/lento no act",
+        "channel": "fail",
+        "evidence": "check-tier1-fastpath.mjs"
+      }
+    ],
+    "gitea": [
+      {
+        "workflow": ".gitea/workflows/actrc-sync.yml",
+        "job": "actrc-sync",
+        "signal": "espelhos do BUN_VERSION divergentes (inclui o env DESTE host)",
+        "channel": "fail",
+        "evidence": "--fail",
+        "why": "a forja não tem canal de issue próprio nesta pipeline: drift => run vermelho, que é o único sinal lido lá"
+      },
+      {
+        "workflow": ".gitea/workflows/forge-doctor.yml",
+        "job": "doctor",
+        "signal": "veredito de prontidão da forja ≠ PRONTA",
+        "channel": "issue",
+        "evidence": "scripts/forge-doctor-issue.mjs"
+      },
+      {
+        "workflow": ".gitea/workflows/required-checks-drift.yml",
+        "job": "drift",
+        "signal": "branch protection ≠ ci/required-checks.json",
+        "channel": "issue",
+        "evidence": "scripts/required-checks-drift-issue.mjs"
+      }
+    ]
+  }
+}

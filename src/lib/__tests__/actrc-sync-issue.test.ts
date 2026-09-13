@@ -296,9 +296,9 @@ describe("reconcileDebt — sem drift, o que este script abriu deixa de existir"
   const report = () => reportOf(forgeTree(), "1.3.14")
   const silent = () => {}
 
-  it("fecha a issue que abrimos, COMENTANDO ANTES (a prova entra antes do fechamento)", () => {
+  it("fecha a issue que abrimos, COMENTANDO ANTES (a prova entra antes do fechamento)", async () => {
     const gh = fakeGh({ open: [ours(7)] })
-    const res = reconcileDebt({ report: report(), gh: gh.fn, log: silent })
+    const res = await reconcileDebt({ report: report(), gh: gh.fn, log: silent })
     expect(res.closed).toEqual([7])
     const comment = gh.calls.findIndex((c) => c[1] === "comment")
     const close = gh.calls.findIndex((c) => c[1] === "close")
@@ -314,13 +314,13 @@ describe("reconcileDebt — sem drift, o que este script abriu deixa de existir"
     expect(gh.calls[close]).toEqual(["issue", "close", "7", "--reason", "completed"])
   })
 
-  it("fecha TODAS as nossas (ambas as forjas do relatório podem ter aberto)", () => {
+  it("fecha TODAS as nossas (ambas as forjas do relatório podem ter aberto)", async () => {
     const gh = fakeGh({ open: [ours(1), ours(2, "outra")] })
-    const res = reconcileDebt({ report: report(), gh: gh.fn, log: silent })
+    const res = await reconcileDebt({ report: report(), gh: gh.fn, log: silent })
     expect(res.closed).toEqual([1, 2])
   })
 
-  it("fecha a issue cujo marcador está em COMENTÁRIO (sem isso ela seria 'alheia')", () => {
+  it("fecha a issue cujo marcador está em COMENTÁRIO (sem isso ela seria 'alheia')", async () => {
     // É assim que fica a issue depois de um drift que MUDOU: o corpo perde o
     // marcador original e o novo mora num comentário.
     const gh = fakeGh({
@@ -333,47 +333,51 @@ describe("reconcileDebt — sem drift, o que este script abriu deixa de existir"
         },
       ],
     })
-    const res = reconcileDebt({ report: report(), gh: gh.fn, log: silent })
+    const res = await reconcileDebt({ report: report(), gh: gh.fn, log: silent })
     expect(res.closed).toEqual([3])
     expect(gh.calls.filter((c) => c[1] === "close")).toHaveLength(1)
   })
 
-  it("NÃO toca em issue alheia (label aplicado à mão) — e o diz no log", () => {
+  it("NÃO toca em issue alheia (label aplicado à mão) — e o diz no log", async () => {
     const gh = fakeGh({ open: [{ number: 9, title: "outra coisa", body: "sem marcador" }] })
     const logged: string[] = []
-    const res = reconcileDebt({ report: report(), gh: gh.fn, log: (m: string) => logged.push(m) })
+    const res = await reconcileDebt({
+      report: report(),
+      gh: gh.fn,
+      log: (m: string) => logged.push(m),
+    })
     expect(res.closed).toEqual([])
     expect(res.foreign).toEqual([9])
     expect(gh.calls.filter((c) => c[1] === "comment" || c[1] === "close")).toEqual([])
     expect(logged.join("\n")).toContain("NÃO foi aberta por este script")
   })
 
-  it("nada aberto → nada a fechar, e nenhuma chamada de escrita", () => {
+  it("nada aberto → nada a fechar, e nenhuma chamada de escrita", async () => {
     const gh = fakeGh({ open: [] })
-    const res = reconcileDebt({ report: report(), gh: gh.fn, log: silent })
+    const res = await reconcileDebt({ report: report(), gh: gh.fn, log: silent })
     expect(res).toEqual({ closed: [], foreign: [], alreadyClear: true })
     expect(gh.calls).toHaveLength(1)
     expect(gh.calls[0][1]).toBe("list")
   })
 
-  it("falha no COMENTÁRIO → erro, e a issue NÃO é fechada em silêncio", () => {
+  it("falha no COMENTÁRIO → erro, e a issue NÃO é fechada em silêncio", async () => {
     const gh = fakeGh({ open: [ours(7)], failOn: /issue comment/ })
-    expect(() => reconcileDebt({ report: report(), gh: gh.fn, log: silent })).toThrow(
+    await expect(reconcileDebt({ report: report(), gh: gh.fn, log: silent })).rejects.toThrow(
       /issue comment falhou/,
     )
     expect(gh.calls.some((c) => c[1] === "close")).toBe(false)
   })
 
-  it("falha no FECHAMENTO → erro (a dívida aberta tem de aparecer no run, não sumir)", () => {
+  it("falha no FECHAMENTO → erro (a dívida aberta tem de aparecer no run, não sumir)", async () => {
     const gh = fakeGh({ open: [ours(7)], failOn: /issue close/ })
-    expect(() => reconcileDebt({ report: report(), gh: gh.fn, log: silent })).toThrow(
+    await expect(reconcileDebt({ report: report(), gh: gh.fn, log: silent })).rejects.toThrow(
       /issue close falhou/,
     )
   })
 
-  it("a lista é pedida por LABEL e por estado ABERTO (não varre issues fechadas)", () => {
+  it("a lista é pedida por LABEL e por estado ABERTO (não varre issues fechadas)", async () => {
     const gh = fakeGh({ open: [] })
-    reconcileDebt({ report: report(), gh: gh.fn, log: silent })
+    await reconcileDebt({ report: report(), gh: gh.fn, log: silent })
     expect(gh.calls[0]).toEqual([
       "issue",
       "list",
@@ -385,7 +389,9 @@ describe("reconcileDebt — sem drift, o que este script abriu deixa de existir"
       "100",
       "--json",
       // `comments` ENTRA: é onde mora o marcador do segundo drift em diante.
-      "number,title,body,comments",
+      // `createdAt` também: "aberta há N dias" é o que separa uma dívida ativa
+      // de uma esquecida.
+      "number,title,body,comments,createdAt",
     ])
   })
 })
@@ -653,12 +659,12 @@ describe("CLI + gh dublê — runs repetidas do MESMO drift não duplicam issue"
     expect(fake.callsOf("close")).toHaveLength(1)
   })
 
-  it("o `list` pede os COMENTÁRIOS (sem eles o dedup e o fechamento seriam cegos)", () => {
+  it("o `list` pede os COMENTÁRIOS e a DATA (sem eles o dedup, o fechamento e a idade seriam cegos)", () => {
     const dir = forgeTree()
     const fake = makeFakeGh()
     run(dir, fake)
     const list = fake.callsOf("list")[0]
-    expect(list[list.indexOf("--json") + 1]).toBe("number,title,body,comments")
+    expect(list[list.indexOf("--json") + 1]).toBe("number,title,body,comments,createdAt")
   })
 })
 

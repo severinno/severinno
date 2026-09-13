@@ -159,13 +159,22 @@ export function startTestRegistry(mode) {
  * O `gh` sempre falha: sem `gh` autenticado o ensure não pode escolher o
  * workflow de publicação, e nenhum workflow de verdade é disparado.
  *
+ * O DOCTOR também é dublado (`exit 0`, via `DOCTOR_SCRIPT`), e por dois
+ * motivos: (1) o doctor roda ESTA prova (seção 4 dele), então um doctor real
+ * aqui dentro só fecharia o ciclo; (2) o doctor real responde por registry,
+ * guards e branch protection, que este harness sintético não tem — sem o
+ * dublê, todo caso que passa dos pré-requisitos mediria a prontidão em vez do
+ * contrato da imagem. A coordenação bring-up x doctor é provada por execução em
+ * `src/lib/__tests__/gitea-bring-up.test.ts` e, estruturalmente, pelo
+ * `checkGiteaBringUp`.
+ *
  * @param {string} parentDir
  * @param {{"absent"|"removable"|"stuck"}} [options]
  *   `absent`    — o volume do registro não existe (primeira subida do runner);
  *   `removable` — existe e o `docker volume rm` o remove de fato;
  *   `stuck`     — existe e CONTINUA existindo depois do `rm` (volume em uso) —
  *                 é o que separa "apagou o registro" de "disse que apagou".
- * @returns {{binDir: string, dockerCalls: () => string[]}}
+ * @returns {{binDir: string, doctorStub: string, dockerCalls: () => string[]}}
  */
 export function makeFakeBin(parentDir, { volume = "removable" } = {}) {
   const binDir = join(parentDir, "fake-bin")
@@ -206,9 +215,25 @@ export function makeFakeBin(parentDir, { volume = "removable" } = {}) {
     ["#!/usr/bin/env bash", 'echo "gh: indisponivel (fake)" >&2', "exit 1", ""].join("\n"),
     { mode: 0o755 },
   )
+  // Doctor dublado: PRONTA (exit 0). Ver o porquê no docstring acima.
+  //
+  // `.mjs` E NÃO `.sh`: o bring-up invoca o doctor com `node` (é um script Node,
+  // como os outros), então um dublê em bash morreria no parser do Node
+  // (`SyntaxError` → exit 1) e a prova acusaria "prontidão BLOQUEADA" por um
+  // dublê quebrado — medido. O dublê tem de falar a MESMA língua do alvo.
+  const doctorStub = join(binDir, "forge-doctor-stub.mjs")
+  writeFileSync(
+    doctorStub,
+    [
+      "// dublê da prova: a prontidão não é o alvo aqui (exit 0 = PRONTA)",
+      "process.exit(0)",
+      "",
+    ].join("\n"),
+  )
 
   return {
     binDir,
+    doctorStub,
     dockerCalls: () =>
       readFileSync(dockerLog, "utf8")
         .split("\n")
@@ -217,20 +242,38 @@ export function makeFakeBin(parentDir, { volume = "removable" } = {}) {
   }
 }
 
-/** Escreve o env do compose apontando para o registry de teste. */
+/**
+ * Escreve o env do compose apontando para o registry de teste, E o template
+ * GÊMEO que o passo 0 do bring-up confere.
+ *
+ * POR QUE O GÊMEO: o `deploy/gitea-up.sh` recusa subir quando o env do host
+ * diverge do template comitado, e `check-env-mirror.mjs` roda ANTES da garantia
+ * da imagem. O env da prova aponta para o registry de TESTE (porta efêmera), que
+ * o template do repositório não tem como declarar — então a prova injeta um
+ * template com os MESMOS valores — EXCETO o segredo, que no template é o
+ * PLACEHOLDER e no host o valor real (a regra tem essa assimetria: num segredo,
+ * IGUALAR é o defeito). Sem o gêmeo, todo caso sairia 1 na conferência do
+ * espelho e a prova mediria a divergência do próprio harness em vez do bloqueio
+ * da imagem. (A divergência REAL tem a sua prova em `gitea-bring-up.test.ts`.)
+ *
+ * @returns {{envFile: string, templateFile: string}}
+ */
 function writeProofEnv(dir, registryUrl) {
-  const path = join(dir, "gitea.env")
+  const content = [
+    `IMAGE_REGISTRY=${registryUrl}`,
+    "IMAGE_NAMESPACE=severinno",
+    `${VERSION_KEY}=${PROOF_VERSION}`,
+    "RUNNER_TOKEN=prova",
+    "",
+  ].join("\n")
+  const templateFile = join(dir, "env.gitea.example")
+  const envFile = join(dir, "gitea.env")
+  writeFileSync(envFile, content)
   writeFileSync(
-    path,
-    [
-      `IMAGE_REGISTRY=${registryUrl}`,
-      "IMAGE_NAMESPACE=severinno",
-      `${VERSION_KEY}=${PROOF_VERSION}`,
-      "RUNNER_TOKEN=prova",
-      "",
-    ].join("\n"),
+    templateFile,
+    content.replace("RUNNER_TOKEN=prova", "RUNNER_TOKEN=COLE_O_TOKEN_AQUI"),
   )
-  return path
+  return { envFile, templateFile }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -428,8 +471,8 @@ async function runCase(testCase, { cwd, bash, spawn }) {
   const tmp = mkdtempSync(join(tmpdir(), `prove-gate-${testCase.id}-`))
   const registry = await startTestRegistry(testCase.registry)
   try {
-    const { binDir, dockerCalls } = makeFakeBin(tmp, { volume: testCase.volume })
-    const envFile = writeProofEnv(tmp, registry.url)
+    const { binDir, doctorStub, dockerCalls } = makeFakeBin(tmp, { volume: testCase.volume })
+    const { envFile, templateFile } = writeProofEnv(tmp, registry.url)
 
     const res = await runProcess(
       spawn,
@@ -440,6 +483,12 @@ async function runCase(testCase, { cwd, bash, spawn }) {
         env: {
           ...process.env,
           PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
+          // O template GÊMEO do env de teste (ver writeProofEnv): sem ele o
+          // passo 0 acusaria a divergência do harness, não a do repo.
+          TEMPLATE_FILE: templateFile,
+          // O doctor dublado (ver `makeFakeBin`): a prova mede o bloqueio da
+          // IMAGEM, e o doctor roda a própria prova.
+          DOCTOR_SCRIPT: doctorStub,
           // O healthcheck do Gitea esperaria até 180s por um Gitea que não existe:
           // 1s (que vira ZERO iterações) tira a espera sem tirar o caminho.
           HEALTH_TIMEOUT: "1",

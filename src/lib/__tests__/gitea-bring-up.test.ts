@@ -11,12 +11,18 @@
 //      NÃO subida (o `up -d runner` nunca acontece);
 //   3. tag presente → a ORDEM é garantida + runner: a imagem é conferida ANTES
 //      dos `compose up`, e o runner sobe DEPOIS do Gitea;
-//   4. `--check-only` não toca em nada.
+//   4. `--check-only` não toca em nada;
+//   5. a PRONTIDÃO (doctor) recusa a subida: exit 1 (BLOQUEADA) e exit >=3 (não
+//      rodou) param ANTES de qualquer `compose up`; exit 2 (INDETERMINADA)
+//      segue, porque "não consegui provar" não é violação — e com
+//      `--re-register` o doctor é isentado do fato que aquele modo conserta.
 //
 // Método: `docker` e `gh` são SUBSTITUÍDOS por scripts no PATH que registram
 // cada chamada (o `gh` fake sempre falha — sem ele um `gh` real autenticado na
 // máquina do dev dispararia um workflow de verdade). O registry também é fake
-// (node:http em 127.0.0.1) e a conexão com ele é REAL.
+// (node:http em 127.0.0.1) e a conexão com ele é REAL. O doctor é um dublê
+// (`DOCTOR_SCRIPT`) que REGISTRA os argumentos e devolve o código escolhido —
+// é assim que se vê se a decisão é tomada pelo código dele, e não pela prosa.
 //
 // Usage:
 //   bunx vitest run --config vitest.config.unit.ts src/lib/__tests__/gitea-bring-up.test.ts
@@ -24,7 +30,7 @@
 
 import { createServer } from "node:http"
 import { spawn } from "node:child_process"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -157,17 +163,32 @@ function makeFakeCli(opts: FakeCliOptions = {}): FakeCli {
   }
 }
 
+/**
+ * O env do HOST do teste. Ele aponta para um registry LOCAL — e por isso DIVERGE
+ * do template comitado (o template não tem como declarar a porta efêmera). O
+ * irmão `<path>.template` reproduz os MESMOS valores EXCETO o segredo, e o
+ * `runBringUp` o injeta em `TEMPLATE_FILE`: assim o passo 0 (espelho) do bring-up
+ * passa com o par coerente, sem desligar a checagem. O bloqueio REAL — env do
+ * host x template COMITADO — é provado num teste à parte, que NÃO o injeta.
+ *
+ * O SEGREDO é a única diferença de propósito: a regra tem ASSIMETRIA — numa
+ * variável comum DIVERGIR é o defeito, num segredo IGUALAR é (o template é
+ * comitado e tem o placeholder; o host tem o valor real). Um gêmeo idêntico
+ * reprovaria por isso.
+ */
 function makeEnvFile(registryUrl: string): string {
   const path = join(makeTmp("env"), "gitea.env")
+  const content = [
+    `IMAGE_REGISTRY=${registryUrl}`,
+    "IMAGE_NAMESPACE=severinno",
+    "BUN_VERSION=1.3.14",
+    "RUNNER_TOKEN=fake",
+    "",
+  ].join("\n")
+  writeFileSync(path, content)
   writeFileSync(
-    path,
-    [
-      `IMAGE_REGISTRY=${registryUrl}`,
-      "IMAGE_NAMESPACE=severinno",
-      "BUN_VERSION=1.3.14",
-      "RUNNER_TOKEN=fake",
-      "",
-    ].join("\n"),
+    `${path}.template`,
+    content.replace("RUNNER_TOKEN=fake", "RUNNER_TOKEN=COLE_O_TOKEN_AQUI"),
   )
   return path
 }
@@ -177,10 +198,60 @@ interface RunResult {
   out: string
 }
 
+interface FakeDoctor {
+  path: string
+  calls: () => string[]
+}
+
+/**
+ * Doctor DUBLÊ: registra os argumentos e sai com o código escolhido.
+ *
+ * `.mjs` E NÃO `.sh`: o bring-up invoca o doctor com `node` (ele é um script
+ * Node). Um dublê em bash morreria no parser do Node (`SyntaxError` → exit 1) e
+ * o teste leria "BLOQUEADA" de um dublê quebrado — medido na prova do bloqueio.
+ */
+function makeFakeDoctor(code = 0): FakeDoctor {
+  const dir = makeTmp("doctor")
+  const logPath = join(dir, "doctor.log")
+  const path = join(dir, "forge-doctor-stub.mjs")
+  writeFileSync(logPath, "")
+  writeFileSync(
+    path,
+    [
+      'import { appendFileSync } from "node:fs"',
+      `appendFileSync(${JSON.stringify(logPath)}, process.argv.slice(2).join(" ") + "\\n")`,
+      `process.exit(${code})`,
+      "",
+    ].join("\n"),
+  )
+  return {
+    path,
+    calls: () =>
+      readFileSync(logPath, "utf8")
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean),
+  }
+}
+
 function runBringUp(
   args: string[],
-  opts: { pathPrefix: string; env?: Record<string, string> },
+  opts: {
+    pathPrefix: string
+    env?: Record<string, string>
+    template?: false
+    doctor?: FakeDoctor
+  },
 ): Promise<RunResult> {
+  const doctor = opts.doctor ?? makeFakeDoctor(0)
+  // O passo 0 compara o env do host com o TEMPLATE COMITADO. O env do teste
+  // aponta para o registry local, então o teste injeta o template gêmeo
+  // (escrito por `makeEnvFile`) — EXCETO quando o próprio teste mede a
+  // divergência (`template: false`, que deixa o default do repositório).
+  const envIdx = args.indexOf("--env-file")
+  const envPath = envIdx === -1 ? null : args[envIdx + 1]
+  const twin = envPath ? `${envPath}.template` : null
+  const templateFile = opts.template === false || !twin || !existsSync(twin) ? null : twin
   return new Promise((resolve) => {
     const child = spawn(resolveBash(), [BRING_UP, ...args], {
       cwd: ROOT,
@@ -189,6 +260,9 @@ function runBringUp(
         ...process.env,
         // node/curl/dirname seguem reais; docker e gh vêm do bin fake.
         PATH: `${opts.pathPrefix}:${process.env.PATH ?? ""}`,
+        ...(templateFile ? { TEMPLATE_FILE: templateFile } : {}),
+        // O doctor dublê: a prontidão é medida pelo CÓDIGO que ele devolve.
+        DOCTOR_SCRIPT: doctor.path,
         ...opts.env,
       },
     })
@@ -296,6 +370,29 @@ describe("deploy/gitea-up.sh — a imagem é pré-requisito da subida", () => {
     }
   })
 
+  it("env do host DIVERGE do template comitado → exit 1, com o remédio, e NENHUM 'compose' (nada sobe)", async () => {
+    const reg = await startRegistry("exists")
+    const fake = makeFakeCli()
+    try {
+      // `template: false` = NÃO injeta o gêmeo: o bring-up usa o template
+      // COMITADO, e o env de teste aponta para o registry local — divergência
+      // de IMAGE_REGISTRY. É o pré-requisito mecânico: sem rodar nenhum gate à
+      // mão, a subida recusa.
+      const { status, out } = await runBringUp(["--env-file", makeEnvFile(reg.url)], {
+        pathPrefix: fake.binDir,
+        template: false,
+        env: { HEALTH_TIMEOUT: "1" },
+      })
+      expect(status).toBe(EXIT.USAGE)
+      expect(out).toContain("NÃO espelha o template comitado")
+      expect(out).toContain("NADA foi subido")
+      // O bloqueio é TOTAL: nem o Gitea sobe, nem a imagem é conferida/puxada.
+      expect(fake.dockerCalls()).toEqual([])
+    } finally {
+      await reg.close()
+    }
+  })
+
   it("env ausente → exit 1 com o caminho e o remédio (nada é subido)", async () => {
     const fake = makeFakeCli()
     const { status, out } = await runBringUp(["--env-file", "deploy/nao-existe.env"], {
@@ -393,5 +490,160 @@ describe("deploy/gitea-up.sh --re-register — a garantia vale no re-registro", 
       expect(out).toContain("contraditórios")
     }
     expect(fake.dockerCalls()).toEqual([])
+  })
+})
+
+// ── a PRONTIDÃO como pré-requisito, não como lembrete ───────────────────────
+//
+// O doctor já responde à pergunta inteira; o que se prova AQUI é a decisão da
+// subida a partir do código que ele devolve. Sem estes casos, inserir o passo
+// não mudaria nada: um doctor chamado e ignorado teria a mesma aparência de um
+// doctor que recusa.
+
+describe("deploy/gitea-up.sh — a prontidão (doctor) é pré-requisito da subida", () => {
+  it("doctor BLOQUEADA (exit 1) → exit 1 e NENHUM 'compose up' (a stack não sobe)", async () => {
+    const reg = await startRegistry("exists")
+    const fake = makeFakeCli()
+    const doctor = makeFakeDoctor(1)
+    try {
+      const { status, out } = await runBringUp(["--env-file", makeEnvFile(reg.url)], {
+        pathPrefix: fake.binDir,
+        env: { HEALTH_TIMEOUT: "1" },
+        doctor,
+      })
+      expect(status).toBe(EXIT.USAGE)
+      expect(out).toContain("BLOQUEADA")
+      expect(out).toContain("NADA foi subido")
+      // Nem Gitea/Caddy nem runner: nada é criado depois de um veredito ruim.
+      expect(fake.dockerCalls().filter((c) => c.startsWith("compose"))).toEqual([])
+    } finally {
+      await reg.close()
+    }
+  })
+
+  it("o doctor recebe o ENV desta subida e morre com o código que ele devolver", async () => {
+    const reg = await startRegistry("exists")
+    const fake = makeFakeCli()
+    const doctor = makeFakeDoctor(0)
+    try {
+      const envFile = makeEnvFile(reg.url)
+      const { status, out } = await runBringUp(["--env-file", envFile], {
+        pathPrefix: fake.binDir,
+        env: { HEALTH_TIMEOUT: "1" },
+        doctor,
+      })
+      expect(status).toBe(EXIT.OK)
+      expect(out).toContain("PRONTA")
+      const calls = doctor.calls()
+      expect(calls).toHaveLength(1)
+      // O MESMO arquivo que o compose vai ler — senão o veredito mediria outro estado.
+      expect(calls[0]).toContain(`--gitea-env ${envFile}`)
+      // A prova do bloqueio do doctor EXECUTA este script: chamá-la daqui é recursão.
+      expect(calls[0]).toContain("--no-proof")
+    } finally {
+      await reg.close()
+    }
+  })
+
+  it("doctor INDETERMINADA (exit 2) → NÃO recusa: a stack sobe com o aviso", async () => {
+    const reg = await startRegistry("exists")
+    const fake = makeFakeCli()
+    const doctor = makeFakeDoctor(2)
+    try {
+      const { status, out } = await runBringUp(["--env-file", makeEnvFile(reg.url)], {
+        pathPrefix: fake.binDir,
+        env: { HEALTH_TIMEOUT: "1" },
+        doctor,
+      })
+      // "não consegui provar agora" (registry fora, sem token) não é violação:
+      // recusar aqui tornaria a subida impossível offline, e a forja ficaria
+      // sem como voltar.
+      expect(status).toBe(EXIT.OK)
+      expect(out).toContain("INDETERMINADA")
+      const calls = fake.dockerCalls()
+      expect(calls.some((c) => c.includes("up -d gitea caddy"))).toBe(true)
+      expect(calls.some((c) => c.includes("up -d runner"))).toBe(true)
+    } finally {
+      await reg.close()
+    }
+  })
+
+  it("doctor que nem rodou (exit 3) → exit 1 e nada sobe (sem veredito não há prontidão)", async () => {
+    const reg = await startRegistry("exists")
+    const fake = makeFakeCli()
+    const doctor = makeFakeDoctor(3)
+    try {
+      const { status, out } = await runBringUp(["--env-file", makeEnvFile(reg.url)], {
+        pathPrefix: fake.binDir,
+        env: { HEALTH_TIMEOUT: "1" },
+        doctor,
+      })
+      expect(status).toBe(EXIT.USAGE)
+      expect(out).toContain("não conseguiu rodar")
+      expect(fake.dockerCalls().filter((c) => c.startsWith("compose"))).toEqual([])
+    } finally {
+      await reg.close()
+    }
+  })
+
+  it("--check-only com doctor BLOQUEADA → exit 1 e nada é tocado", async () => {
+    const reg = await startRegistry("exists")
+    const fake = makeFakeCli()
+    const doctor = makeFakeDoctor(1)
+    try {
+      const { status, out } = await runBringUp(
+        ["--env-file", makeEnvFile(reg.url), "--check-only"],
+        { pathPrefix: fake.binDir, doctor },
+      )
+      // "--check-only" agora responde "dá para subir?" inteiro: ele também
+      // recusa com o veredito bloqueado, em vez de dizer "imagem em ordem" e
+      // deixar a subida real quebrar depois.
+      expect(status).toBe(EXIT.USAGE)
+      expect(out).toContain("BLOQUEADA")
+      expect(fake.dockerCalls()).toEqual([])
+    } finally {
+      await reg.close()
+    }
+  })
+
+  it("--re-register isenta o doctor do fato que ELE conserta (--no-runner-labels)", async () => {
+    const reg = await startRegistry("exists")
+    const fake = makeFakeCli()
+    // INDETERMINADA é o que o doctor devolve com --no-runner-labels: o registro
+    // gravado sai da conta, e por isso o remédio não fica travado pelo estado
+    // que ele cura.
+    const doctor = makeFakeDoctor(2)
+    try {
+      const { status, out } = await runBringUp(
+        ["--env-file", makeEnvFile(reg.url), "--re-register"],
+        { pathPrefix: fake.binDir, env: { HEALTH_TIMEOUT: "1" }, doctor },
+      )
+      expect(status).toBe(EXIT.OK)
+      expect(doctor.calls()[0]).toContain("--no-runner-labels")
+      // e o re-registro de fato aconteceu (o remédio não foi bloqueado)
+      const calls = fake.dockerCalls()
+      expect(calls.some((c) => c.includes("rm -sf runner"))).toBe(true)
+      expect(calls.some((c) => c.includes("up -d runner"))).toBe(true)
+      expect(out).toContain("RE-REGISTRADO")
+    } finally {
+      await reg.close()
+    }
+  })
+
+  it("--no-runner NÃO chama o doctor (nada desta seção é pré-requisito de nada)", async () => {
+    const reg = await startRegistry("missing")
+    const fake = makeFakeCli()
+    const doctor = makeFakeDoctor(1)
+    try {
+      const { status, out } = await runBringUp(
+        ["--env-file", makeEnvFile(reg.url), "--no-runner"],
+        { pathPrefix: fake.binDir, env: { HEALTH_TIMEOUT: "1" }, doctor },
+      )
+      expect(status).toBe(EXIT.OK)
+      expect(out).toContain("pulando o veredito de prontidão")
+      expect(doctor.calls()).toEqual([])
+    } finally {
+      await reg.close()
+    }
   })
 })

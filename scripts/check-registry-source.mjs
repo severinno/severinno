@@ -760,6 +760,19 @@ export const COMPOSE_SENTINELS = {
 export const UNSET_VAR_WARNING_RE = /The\s+(.+?)\s+variable is not set/i
 
 /**
+ * As MARCAS textuais do veredito da invariante 7 — o que o smoke (Prova 4) e a
+ * prova por mutacao (`smoke-render:prove`) procuram na saida para decidir se o
+ * render foi provado ou se a exigencia (`--require-compose`) mordeu.
+ *
+ * Exportadas para o consumidor nao REESCREVER a frase: quem mede o gate
+ * procurando um texto que o gate nao imprime mais passa a medir o vazio — e
+ * "nao achei a marca" viraria "esta tudo certo".
+ */
+export const COMPOSE_RENDER_PROVEN_MARK = "interpolacao do compose da forja provada"
+/** A marca da FALHA exigida por `--require-compose` (render nao provado). */
+export const REQUIRE_COMPOSE_FAIL_MARK = "NAO foi provado"
+
+/**
  * Nomes das variaveis que o docker reportou como NAO DEFINIDAS. E a deteccao
  * GENERICA de "variavel ficou vazia": vale para qualquer variavel que o compose
  * venha a referenciar, inclusive uma que este guard nao conhece.
@@ -2185,7 +2198,7 @@ if (isMain) {
   const unprovenRequired = requireCompose && !["proven", "violated"].includes(interpolation.state)
   if (unprovenRequired) {
     console.error(
-      `check-registry-source: ❌ --require-compose: o render do ${GITEA_COMPOSE} NAO foi provado (${interpolation.state}) — ${interpolation.detail}.`,
+      `check-registry-source: ❌ --require-compose: o render do ${GITEA_COMPOSE} ${REQUIRE_COMPOSE_FAIL_MARK} (${interpolation.state}) — ${interpolation.detail}.`,
     )
     console.error(
       "  Aqui o render nao e opcional: o job da forja roda numa imagem que EMBARCA o plugin `compose`" +
@@ -2238,7 +2251,7 @@ if (isMain) {
     )
     if (interpolation.state === "proven") {
       console.log(
-        `check-registry-source: ✅ interpolacao do compose da forja provada — ${interpolation.detail}`,
+        `check-registry-source: ✅ ${COMPOSE_RENDER_PROVEN_MARK} — ${interpolation.detail}`,
       )
       const hc = interpolation.hostCompare
       if (hc?.state === "in-sync") {

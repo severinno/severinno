@@ -12,6 +12,7 @@
 //   node scripts/forge-doctor.mjs --no-runner-labels # pula o registro do runner (as duas forjas)
 //   node scripts/forge-doctor.mjs --no-image-contract # pula o contrato da imagem PUBLICADA
 //   node scripts/forge-doctor.mjs --no-registry-probe # offline: nao consulta o registry
+//   node scripts/forge-doctor.mjs --no-open-debt  # offline: nao le o board (as issues abertas)
 //   node scripts/forge-doctor.mjs --expected 1.3.14 # valor de vars.BUN_VERSION
 //   node scripts/forge-doctor.mjs --gitea-env deploy/.env.gitea
 //   node scripts/forge-doctor.mjs --timeout 300   # segundos por guard (default 120)
@@ -31,7 +32,9 @@
 //       (sem o plugin `compose`, com OUTRA versão do Bun, ou com o Bun fora de
 //       /usr/local/bin) — o merge não pode ser confiado
 //   2 — INDETERMINADA: nada falhou, mas algo não pôde ser provado (registry
-//       inacessível, pacote privado sem credencial, ferramenta ausente)
+//       inacessível, pacote privado sem credencial, ferramenta ausente) OU há
+//       dívida ABERTA no board (uma issue de drift que ninguém fechou: o
+//       repositório já sabe do problema, e o veredito não pode ignorá-lo)
 //   3 — uso/erro interno (argumento inválido, pipeline ilegível)
 //
 // POR QUE EXISTE: os guards da forja passavam VERDES e a forja ainda não
@@ -52,6 +55,14 @@
 // ausente e com a tag presente, e afirma sobre o LOG do docker dublê. Sem ela, o
 // relatório afirmaria "a imagem está garantida" sem nunca ter visto o bloqueio
 // acontecer.
+//
+// QUEM O CHAMA, E POR QUE ISSO IMPORTA: o `deploy/gitea-up.sh` executa este
+// doctor como PRÉ-REQUISITO da subida da stack — veredito BLOQUEADA (e "não
+// consegui rodar": sem veredito não há prontidão) RECUSA a subida, e
+// INDETERMINADA avisa e segue, porque "não consegui provar agora" não é
+// violação. Ele o chama com `--no-proof`: a prova do bloqueio (seção 4) EXECUTA
+// aquele script, então chamá-la de dentro dele seria recursão — o `--no-proof`
+// é consequência do desenho, não uma escolha de quem sobe a forja.
 //
 // Com todos eles verdes, um runner sem a imagem publicada, ou um gate quebrado
 // no momento do merge, ainda travava o PR — e o diagnóstico chegava pelo
@@ -110,6 +121,15 @@
 // bloqueia; sem token/API é INDETERMINADA), porque o sintoma é o mesmo: o
 // workflow que pede um label que não está registrado não falha — ele ESPERA.
 //
+// A DÍVIDA ABERTA NO BOARD (seção 6) é o outro lado da moeda: tudo acima mede a
+// forja AGORA, e nada disso enxerga a issue que um cron já abriu e ninguém
+// fechou. Quem lê o board é `listIssuesByLabel`, a MESMA consulta dos
+// publicadores, e o assunto tem de ser NOSSO (o marcador, não só a label).
+// Dívida aberta NÃO bloqueia (não prova que o merge pode ser furado), mas
+// impede PRONTA — e as duas labels cujo assunto o doctor mede por conta própria
+// (`required-checks-drift` → proteção registrada, `actrc-sync-drift` → espelhos)
+// vêm com a medição ao lado, para a issue velha não passar por problema vivo.
+//
 // O que ele NÃO pode provar daqui, e por isso sai escrito no relatório:
 //   - a PERMISSÃO do token sobre a forja (sem ela, "não lida");
 //   - o smoke (tier-1 em runtime — é um job da própria forja);
@@ -131,6 +151,7 @@ import { checkComposeInterpolation, checkNonVersionedImageRefs } from "./check-r
 import { checkRunnerLabels } from "./check-runner-labels.mjs"
 import { GITEA_COMPOSE } from "./check-bun-mirror.mjs"
 import { GITEA_WORKFLOW_DIR } from "./forge-workflows.mjs"
+import { issueHasAnyMarker, listIssuesByLabel } from "./issue-publish.mjs"
 import {
   extractActrcBunVersion,
   extractEnvMirrorBunVersion,
@@ -413,7 +434,7 @@ export const VERDICT = {
  *                                 nem "bloqueada" (mentiria para o outro lado)
  *                                 → INDETERMINADA.
  *
- * @param {{contract: object, guards: object, image: object, proof: object, mirrors: object, skippedGuards?: boolean, skippedProof?: boolean}} facts
+ * @param {{contract: object, guards: object, image: object, proof: object, mirrors: object, openDebt?: object, skippedGuards?: boolean, skippedProof?: boolean, skippedOpenDebt?: boolean}} facts
  * @returns {{verdict: string, blockers: string[], unknowns: string[], unproven: string[]}}
  */
 export function summarize(facts) {
@@ -462,6 +483,19 @@ export function summarize(facts) {
     )
   } else if (facts.proof.status === "unavailable") {
     unknowns.push(`prova do bloqueio não executada: ${facts.proof.detail}`)
+  }
+
+  // A DÍVIDA ABERTA NO BOARD: uma issue de drift ABERTA é dívida não resolvida.
+  // Ela não PROVA que a forja falha em bloquear o merge (quem mede isso são os
+  // fatos acima), então não bloqueia — mas também não deixa o veredito PRONTA:
+  // é exatamente a informação que vivia só no board, e uma dívida esquecida não
+  // pode ser confundida com ausência de dívida.
+  if (facts.skippedOpenDebt) {
+    unknowns.push(
+      "a dívida aberta no board foi pulada (--no-open-debt): o veredito não cobre as issues de drift que os crons JÁ abriram",
+    )
+  } else {
+    for (const u of openDebtUnknowns(facts.openDebt)) unknowns.push(u)
   }
 
   // A interpolação do compose: variável vazia / valor literal BLOQUEIA (o
@@ -602,8 +636,33 @@ export function summarize(facts) {
   if (facts.skippedProtection) {
     unproven.unshift("a branch protection REGISTRADA na forja (pulada por --no-protection)")
   }
+  if (facts.skippedOpenDebt) {
+    unproven.unshift("a dívida aberta no board (pulada por --no-open-debt)")
+  }
 
   return { verdict, blockers, unknowns, unproven }
+}
+
+/**
+ * O que a dívida aberta ACRESCENTA ao veredito: uma linha por leitura que não
+ * aconteceu e uma por assunto com issue aberta.
+ *
+ * Por que cada assunto tem a PRÓPRIA linha (em vez de uma "há dívida aberta"
+ * agregada): o leitor precisa do número da issue e de há quanto tempo ela está
+ * aberta para agir — e "dívida há 47 dias" e "dívida de hoje" pedem decisões
+ * diferentes.
+ *
+ * @param {object|undefined} debt
+ * @returns {string[]}
+ */
+export function openDebtUnknowns(debt) {
+  const unknowns = []
+  if (!debt || debt.state === "skipped") return unknowns
+  for (const read of debt.reads ?? []) {
+    if (read.state !== "read") unknowns.push(read.detail)
+  }
+  for (const item of debt.items ?? []) unknowns.push(item.detail)
+  return unknowns
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1203,6 +1262,329 @@ export function githubRunnerLabelBlockers(labels) {
   ]
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 4b. A dívida ABERTA no board
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** As forjas cujo board pode carregar dívida (a forja primeiro: é ela a dona do merge). */
+const DEBT_FORGES = ["gitea", "github"]
+
+/** Um dia em ms — a IDADE da dívida é o que separa a ativa da esquecida. */
+const MS_PER_DAY = 86_400_000
+
+/**
+ * Os ASSUNTOS de dívida que o board carrega: uma label por publicador de issue
+ * deste repositório, com o marcador que identifica QUEM a escreveu.
+ *
+ * POR QUE UMA LISTA EXPLÍCITA (e não "toda issue aberta"): o board tem issue de
+ * produto, de cliente, de ideia — lê-las como dívida de forja encheria o veredito
+ * de ruído alheio, e um alerta que sempre acende é um alerta que ninguém lê. A
+ * lista é a de quem ABRE alerta por cron, e o `markerId` é o que separa o que é
+ * NOSSO do que ganhou a etiqueta à mão.
+ *
+ * A FONTE desta lista são os próprios publicadores (`ISSUE_LABEL` + o marcador de
+ * cada um): um teste percorre `scripts/*-issue.mjs` e FALHA se uma label nova não
+ * estiver aqui — a dívida de um cron novo não pode nascer invisível para a
+ * prontidão (que é o defeito que este fato existe para matar).
+ *
+ * `crossCheck` diz se o doctor MEDE o mesmo assunto por conta própria (e então
+ * pode dizer se a issue caducou, o outro lado da mesma moeda): `protection` e
+ * `mirrors` são fatos deste relatório; `null` é assunto que só o publicador vê.
+ * `forges` diz ONDE a label existe — ler a forja errada devolveria vazio e o
+ * vazio passaria por "sem dívida".
+ */
+export const DEBT_SUBJECTS = [
+  {
+    label: "required-checks-drift",
+    markerId: "required-checks-drift",
+    subject: "a branch protection REGISTRADA divergiu do manifesto de required checks",
+    forges: ["gitea", "github"],
+    crossCheck: "protection",
+  },
+  {
+    label: "actrc-sync-drift",
+    markerId: "actrc-sync-drift",
+    subject: "os espelhos do BUN_VERSION divergiram da repository variable",
+    forges: ["github"],
+    crossCheck: "mirrors",
+  },
+  {
+    label: "readme-drift",
+    markerId: "readme-drift",
+    subject: "a auditoria reversa do README achou um alvo que o repositório não serve mais",
+    forges: ["github"],
+    crossCheck: null,
+  },
+  {
+    label: "mutation-trend-drift",
+    markerId: "mutation-trend-drift",
+    subject: "o overhead da suíte passou do limiar (tendência ou timing)",
+    forges: ["github"],
+    crossCheck: null,
+  },
+]
+
+/**
+ * A label que fica FORA da leitura — e a razão, dita para não parecer esquecimento.
+ *
+ * É a saída DESTE comando: uma issue de veredito aberta existe porque o veredito
+ * não é PRONTA. Lê-la como dívida faria o doctor alimentar o próprio alerta —
+ * INDETERMINADA para sempre, por construção, e a decisão de publicar nunca mais
+ * voltaria a ser PRONTA nem depois de tudo resolvido. O ciclo do veredito é
+ * fechado pelo PUBLICADOR (que a abre e comenta), não pelo diagnóstico.
+ */
+export const DEBT_EXCLUDED = {
+  label: "forge-doctor-verdict",
+  why: "é a saída DESTE comando: ler o próprio veredito como dívida faria o doctor se alimentar",
+}
+
+/**
+ * A idade da issue, em dias, a partir do `createdAt` que o backend devolve.
+ *
+ * `days: null` quando a forja não deu a data — e não `0`, que se confundiria com
+ * "aberta hoje". O que não se sabe não vira número.
+ */
+function debtIssue(issue, nowMs) {
+  const createdAt = issue?.createdAt ?? null
+  const ts = createdAt ? Date.parse(createdAt) : Number.NaN
+  return {
+    number: issue?.number ?? null,
+    title: issue?.title ?? "",
+    createdAt,
+    days: Number.isFinite(ts) ? Math.max(0, Math.floor((nowMs - ts) / MS_PER_DAY)) : null,
+  }
+}
+
+/**
+ * A CADUCIDADE da issue: o doctor mede o mesmo assunto por conta própria?
+ *
+ * Três respostas, e nenhuma delas é um palpite: `true` (o doctor mede o assunto
+ * e ele está limpo AGORA — a issue provavelmente fala de um problema que já se
+ * foi), `false` (o doctor mede e o problema CONTINUA — a issue está certa) e
+ * `null` (o doctor NÃO mede esse assunto, ou não conseguiu medir nesta run: não
+ * dá para declarar caducidade daqui). `null` nunca vira `true`: dizer "caducou"
+ * sobre o que não se mediu é a dívida que mente, do outro lado.
+ */
+function debtStaleness(subject, forge, { protection, mirrors }) {
+  if (subject.crossCheck === "protection") {
+    const read = (protection?.forges ?? []).find((f) => f.forge === forge)
+    if (!read) {
+      return {
+        stale: null,
+        detail: `o doctor não leu a branch protection do ${forge} nesta run`,
+      }
+    }
+    if (read.state === "in-sync") {
+      return {
+        stale: true,
+        detail: `o doctor mede a branch protection do ${forge} EM SINCRONIA com ${REQUIRED_CHECKS_MANIFEST} — a issue fala de um problema que já não se vê (o publicador a fecha por assinatura quando o drift some)`,
+      }
+    }
+    return {
+      stale: false,
+      detail: `o doctor também mede a branch protection do ${forge} e ela NÃO está em sincronia (${read.state}) — a issue fala de um problema VIVO`,
+    }
+  }
+
+  if (subject.crossCheck === "mirrors") {
+    if (!mirrors?.expected) {
+      return {
+        stale: null,
+        detail:
+          "o VALOR dos espelhos não foi comparado nesta run (sem --expected) — o doctor não pode declarar a issue caducada",
+      }
+    }
+    const clean = (mirrors.blockers?.length ?? 0) === 0 && (mirrors.unknowns?.length ?? 0) === 0
+    return clean
+      ? {
+          stale: true,
+          detail: `o doctor mede os espelhos do BUN_VERSION em concordância com a variable '${mirrors.expected}'`,
+        }
+      : {
+          stale: false,
+          detail: "o doctor também mede os espelhos do BUN_VERSION e eles NÃO estão limpos agora",
+        }
+  }
+
+  return {
+    stale: null,
+    detail: `o assunto não é medido pelo doctor — a caducidade não pode ser declarada daqui`,
+  }
+}
+
+/** A frase de UM assunto com dívida aberta: quantas, quais, há quanto tempo, e se caducou. */
+function describeOpenDebt({ forge, subject, ours, alien, staleness }) {
+  const bits = []
+  if (ours.length > 0) {
+    bits.push(
+      `aberta(s) por este publicador: ${ours
+        .map((i) => `#${i.number}${i.days === null ? "" : ` (há ${i.days} dia(s))`}`)
+        .join(", ")}`,
+    )
+  }
+  if (alien.length > 0) {
+    bits.push(
+      `SEM o marcador do publicador: ${alien.map((i) => `#${i.number}`).join(", ")} — não foram os crons que as abriram, então um automatismo não pode fechá-las: revise à mão`,
+    )
+  }
+  const stale =
+    staleness.stale === true
+      ? `Parece CADUCADA: ${staleness.detail}`
+      : staleness.stale === false
+        ? `Fala de um problema VIVO: ${staleness.detail}`
+        : `Caducidade NÃO verificada: ${staleness.detail}`
+  return `${ours.length + alien.length} dívida(s) ABERTA(S) no ${forge} com a label '${subject.label}' (assunto: ${subject.subject}) — ${bits.join(" · ")}. ${stale}`
+}
+
+/**
+ * A DÍVIDA ABERTA NO BOARD — as issues que os crons deste repositório abriram e
+ * ninguém fechou.
+ *
+ * POR QUE ISTO É UM FATO DO VEREDITO: o doctor mede a forja AGORA (proteção
+ * registrada, registro do runner, tag no registry, espelhos). Nenhuma dessas
+ * medições vê o BOARD — e é ali que vive a dívida que alguém já identificou e não
+ * resolveu: um drift de README, um overhead que subiu, uma proteção que foi
+ * consertada à mão e cuja issue o publicador não conseguiu fechar. Sem este fato,
+ * "PRONTA PARA BLOQUEAR O MERGE" convive com uma issue aberta que diz o
+ * contrário, e o veredito responde sobre o que ele mesmo mediu, não sobre o que o
+ * repositório já sabe.
+ *
+ * POR QUE NÃO BLOQUEIA: uma issue aberta não prova que a forja falha em bloquear
+ * o merge — prova que existe dívida PENDENTE. Bloquear por ticket transformaria
+ * "alguém esqueceu de fechar" em "não confie o merge", e o operador aprenderia a
+ * ignorar o veredito. Não poder PRONTA é o peso certo: vira INDETERMINADA, com o
+ * número da issue e a idade para quem lê decidir.
+ *
+ * A LEITURA é a MESMA mecânica dos publicadores (`listIssuesByLabel`, de
+ * `issue-publish.mjs`): o leitor e quem escreve enxergam o mesmo board, com o
+ * mesmo marcador. Nunca lança — cada forja que não deu para ler vira `unread`, e
+ * "não consegui ler" é reportado como tal, jamais como "sem dívida".
+ *
+ * @param {{cwd?: string, env?: Record<string,string|undefined>, deps?: {list?: Function, now?: () => number}, protection?: object|null, mirrors?: object|null}} [args]
+ * @returns {Promise<{state: string, detail: string, reads: object[], items: object[], labels: string[], excluded: object}>}
+ */
+export async function readOpenDebt({
+  cwd = REPO_ROOT,
+  env = process.env,
+  deps = {},
+  protection = null,
+  mirrors = null,
+} = {}) {
+  const { list = listIssuesByLabel, now = () => Date.now() } = deps
+  const reads = []
+  const items = []
+
+  for (const forge of DEBT_FORGES) {
+    const subjects = DEBT_SUBJECTS.filter((s) => s.forges.includes(forge))
+    if (subjects.length === 0) continue
+    const labels = subjects.map((s) => s.label)
+
+    let listed
+    try {
+      listed = []
+      for (const subject of subjects) {
+        listed.push({
+          subject,
+          issues: (await list({ forge, label: subject.label, env, cwd })) ?? [],
+        })
+      }
+    } catch (err) {
+      // NÃO PODER LER NÃO É EVIDÊNCIA: é ausência de prova. O doctor diz isso com
+      // todas as letras em vez de presumir "sem dívida" — que é a falsa segurança
+      // que ele existe para não produzir.
+      //
+      // A mensagem vira UMA LINHA: o erro do `gh`/da API vem com quebras ("...\n
+      // Alternatively, populate...") e, cru, partiria o relatório no meio de uma
+      // frase — o log do doctor é lido em terminal e colado em issue.
+      const why = String(err?.message ?? err)
+        .replace(/\s+/g, " ")
+        .trim()
+      reads.push({
+        forge,
+        labels,
+        state: "unread",
+        open: 0,
+        foreign: 0,
+        detail: `a dívida aberta no ${forge} NÃO foi lida: ${why}`,
+      })
+      continue
+    }
+
+    let open = 0
+    let foreign = 0
+    const nowMs = now()
+    for (const { subject, issues } of listed) {
+      const ours = []
+      const alien = []
+      for (const issue of issues) {
+        // O MARCADOR, e não a label: label é etiqueta de triagem — alguém pode
+        // aplicá-la numa issue alheia, e lê-la como dívida NOSSA seria inventar um
+        // alerta que nenhum publicador abriu (o mesmo critério do fechamento
+        // automático, pelo mesmo motivo).
+        if (issueHasAnyMarker(issue, subject.markerId)) ours.push(debtIssue(issue, nowMs))
+        else alien.push({ number: issue?.number ?? null, title: issue?.title ?? "" })
+      }
+      if (ours.length === 0 && alien.length === 0) continue
+      const staleness = debtStaleness(subject, forge, { protection, mirrors })
+      open += ours.length + alien.length
+      foreign += alien.length
+      items.push({
+        forge,
+        label: subject.label,
+        markerId: subject.markerId,
+        subject: subject.subject,
+        ours: ours.length,
+        foreign: alien.length,
+        open: ours.length + alien.length,
+        issues: ours,
+        stale: staleness.stale,
+        staleDetail: staleness.detail,
+        detail: describeOpenDebt({ forge, subject, ours, alien, staleness }),
+      })
+    }
+
+    reads.push({
+      forge,
+      labels,
+      state: "read",
+      open,
+      foreign,
+      detail:
+        open === 0
+          ? `nenhuma dívida aberta (labels: ${labels.join(", ")})`
+          : `${open} dívida(s) ABERTA(S) nas labels ${labels.join(", ")}`,
+    })
+  }
+
+  const read = reads.filter((r) => r.state === "read")
+  const unread = reads.filter((r) => r.state !== "read")
+  const state =
+    read.length === 0
+      ? "unavailable"
+      : unread.length > 0
+        ? "partial"
+        : items.length > 0
+          ? "open"
+          : "clear"
+  const detail =
+    state === "clear"
+      ? `nenhuma dívida aberta nas labels ${DEBT_SUBJECTS.map((s) => s.label).join(", ")}`
+      : state === "open"
+        ? `${items.length} assunto(s) com dívida ABERTA no board`
+        : state === "partial"
+          ? `lida no ${read.map((r) => r.forge).join(" e ")}; NÃO lida no ${unread.map((r) => r.forge).join(" e ")}`
+          : `nenhuma forja pôde ser lida (${unread.map((r) => r.forge).join(", ")})`
+
+  return {
+    state,
+    detail,
+    reads,
+    items,
+    labels: DEBT_SUBJECTS.map((s) => s.label),
+    excluded: DEBT_EXCLUDED,
+  }
+}
+
 /**
  * A INTERPOLAÇÃO do compose da forja: o que o `docker compose config` resolve
  * para o label do runner (invariante 7 do `check:registry-source`).
@@ -1291,7 +1673,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // protection). Um manifesto validado com a forja em drift é o modo de falha
   // que este comando existe para não deixar passar.
   line()
-  line("  1/5  Contrato de merge (o que o repositório DECLARA × o que a forja REGISTRA)")
+  line("  1/6  Contrato de merge (o que o repositório DECLARA × o que a forja REGISTRA)")
   for (const f of facts.contract.forges) {
     const mark = f.exists && f.jobs > 0 ? MARK.ok() : MARK.fail()
     line(
@@ -1315,7 +1697,7 @@ export function renderReport(report, { emit = console.log } = {}) {
 
   // ── 2. Guards da forja ──────────────────────────────────────────────────
   line()
-  line(`  2/5  Guards da forja (derivados de ${MERGE_OWNER_PIPELINE})`)
+  line(`  2/6  Guards da forja (derivados de ${MERGE_OWNER_PIPELINE})`)
   if (facts.skippedGuards) {
     line(`       ${MARK.skip()} pulados por --no-guards (o veredito NÃO cobre os gates)`)
   } else if (facts.guards.error) {
@@ -1337,7 +1719,7 @@ export function renderReport(report, { emit = console.log } = {}) {
 
   // ── 3. Imagem do runner ─────────────────────────────────────────────────
   line()
-  line("  3/5  Imagem do runner (o que os jobs puxam para INICIAR)") // Só a AUSÊNCIA confirmada (exit 4) é falha da forja; o resto é falta de
+  line("  3/6  Imagem do runner (o que os jobs puxam para INICIAR)") // Só a AUSÊNCIA confirmada (exit 4) é falha da forja; o resto é falta de
   // prova (env ausente no checkout, registry inacessível, pacote privado).
   const imageMark =
     facts.image.code === 0
@@ -1467,7 +1849,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // A tag existir AGORA não prova que a subida depende dela. Esta seção executa
   // o caminho real contra um registry de teste e mostra o que o docker viu.
   line()
-  line("  4/5  Prova do bloqueio (registry de TESTE — o runner não sobe sem a imagem)")
+  line("  4/6  Prova do bloqueio (registry de TESTE — o runner não sobe sem a imagem)")
   if (facts.skippedProof) {
     line(`       ${MARK.skip()} pulada por --no-proof (o veredito NÃO cobre o bloqueio)`)
   } else {
@@ -1502,7 +1884,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // resto da seção só prova existência e concordância local — e o operador
   // precisa ver essa diferença sem ler o código.
   line()
-  line("  5/5  Espelhos da versão do Bun (sem rede)")
+  line("  5/6  Espelhos da versão do Bun (sem rede)")
   if (facts.mirrors.expected) {
     line(
       `       ${MARK.info()} comparados com vars.BUN_VERSION='${facts.mirrors.expected}' (--expected, mesma função do job semanal actrc-sync)`,
@@ -1532,6 +1914,45 @@ export function renderReport(report, { emit = console.log } = {}) {
   }
   for (const p of facts.mirrors.blockers) line(`       ${MARK.fail()} ${p}`)
   for (const p of facts.mirrors.unknowns) line(`       ${MARK.warn()} ${p}`)
+
+  // ── 6. Dívida aberta no board ───────────────────────────────────────────
+  // A única seção que fala do que o repositório JÁ SABE, em vez do que ele mede
+  // agora: as issues que os próprios crons abriram. Aqui uma dívida esquecida
+  // aparece com o número e a idade, em vez de viver só no board — e as duas que
+  // o doctor mede por conta própria vêm lado a lado com a MEDIÇÃO, para a issue
+  // velha não passar por problema vivo (nem o contrário).
+  line()
+  line("  6/6  Dívida aberta no board (issues de drift abertas, por forja)")
+  line(`       ${MARK.info()} labels lidas: ${(facts.openDebt?.labels ?? []).join(", ")}`)
+  if (facts.openDebt?.excluded) {
+    line(
+      `       ${MARK.info()} fora da leitura: '${facts.openDebt.excluded.label}' — ${facts.openDebt.excluded.why}`,
+    )
+  }
+  if (facts.skippedOpenDebt) {
+    line(
+      `       ${MARK.skip()} pulada por --no-open-debt (a dívida do board NÃO entra no veredito)`,
+    )
+  }
+  for (const read of facts.openDebt?.reads ?? []) {
+    const mark = read.state === "read" ? (read.open === 0 ? MARK.ok() : MARK.warn()) : MARK.warn()
+    line(`       ${mark} ${read.forge}: ${read.detail}`)
+  }
+  for (const item of facts.openDebt?.items ?? []) {
+    line(`           ${MARK.warn()} ${item.forge} · ${item.label} — ${item.subject}`)
+    for (const issue of item.issues) {
+      const when = issue.days === null ? "data desconhecida" : `aberta há ${issue.days} dia(s)`
+      line(`               ${color(C.gray, `#${issue.number} (${when}) — ${issue.title}`)}`)
+    }
+    if (item.foreign > 0) {
+      line(
+        `               ${color(C.gray, `${item.foreign} issue(s) com a label e SEM o marcador do publicador — um automatismo não pode fechá-la(s)`)}`,
+      )
+    }
+    const stale =
+      item.stale === true ? MARK.info() : item.stale === false ? MARK.warn() : MARK.skip()
+    line(`               ${stale} ${color(C.gray, item.staleDetail)}`)
+  }
 
   // ── Veredito ────────────────────────────────────────────────────────────
   line()
@@ -1585,6 +2006,11 @@ Opções:
   --no-registry-probe    não consulta o registry (offline): a tag que o repo
                          declara deixa de ser conferida — e o veredito não pode
                          fingir que foi
+  --no-open-debt         não lê o BOARD (offline): as issues de drift ABERTAS
+                         (required-checks-drift, actrc-sync-drift, readme-drift,
+                         mutation-trend-drift) deixam de aparecer no veredito —
+                         e a dívida que vive só no board volta a ser invisível
+                         para a prontidão
   --expected <versão>    valor de vars.BUN_VERSION (a repository variable): com
                          ele os espelhos do Bun são comparados com o VALOR
                          declarado, pelo mesmo código do job semanal
@@ -1610,6 +2036,7 @@ export function parseArgs(argv) {
     imageContract: true,
     composeRender: true,
     registryProbe: true,
+    openDebt: true,
     envFile: DEFAULT_ENV_FILE,
     expected: null,
     timeoutS: 120,
@@ -1626,6 +2053,7 @@ export function parseArgs(argv) {
     else if (arg === "--no-image-contract") opts.imageContract = false
     else if (arg === "--no-compose-render") opts.composeRender = false
     else if (arg === "--no-registry-probe") opts.registryProbe = false
+    else if (arg === "--no-open-debt") opts.openDebt = false
     else if (arg === "--json") opts.json = true
     else if (arg === "-h" || arg === "--help") opts.help = true
     else if (arg === "--expected") opts.expected = argv[++i] ?? ""
@@ -1665,6 +2093,8 @@ export function parseArgs(argv) {
  * @param {boolean} [options.runnerLabels] comparar o registro do act_runner com o compose (default: true)
  * @param {boolean} [options.imageContract] rodar o contrato DENTRO da imagem publicada (default: true)
  * @param {boolean} [options.composeRender] interpolar o compose da forja (default: true)
+ * @param {boolean} [options.registryProbe] consultar o registry (default: true)
+ * @param {boolean} [options.openDebt] ler o BOARD: as issues de drift abertas (default: true)
  * @param {number} [options.timeoutS]  limite por gate
  * @param {Function} [options.run]     `spawnSync` real ou dublê de teste
  * @param {object} [options.imageDeps] dependências repassadas ao check da imagem
@@ -1680,6 +2110,9 @@ export function parseArgs(argv) {
  * @param {object} [options.composeDeps] dependências repassadas à interpolação do compose
  * @param {object} [options.protectionDeps] dependências repassadas à leitura da branch protection
  * (`run` é o mesmo dublê dos gates: é por ele que a leitura da forja é injetada)
+ * @param {object} [options.openDebtDeps] dependências do fato da dívida aberta
+ * (`list` = a leitura do board, `now` = o relógio da idade) — o ponto de injeção
+ * do teste, e o que mantém a suíte fora da rede
  * (`{prove}` substitui a prova inteira — é o ponto de injeção do teste)
  * (sem `@returns` declarado de propósito: o formato dos fatos é o que o
  * `summarize` consome, e descrevê-lo aqui de novo só criaria duas verdades)
@@ -1696,6 +2129,7 @@ export async function diagnose({
   imageContract = true,
   composeRender = true,
   registryProbe = true,
+  openDebt = true,
   timeoutS = 120,
   run,
   imageDeps = {},
@@ -1706,6 +2140,7 @@ export async function diagnose({
   composeDeps = {},
   protectionDeps = {},
   imageContractDeps = {},
+  openDebtDeps = {},
 } = {}) {
   const contractRun = runGate(
     { label: "check:required-checks", command: "bun run check:required-checks" },
@@ -1734,97 +2169,122 @@ export async function diagnose({
   // `ref` resolvido pelo env é a fonte do alvo — uma leitura do env, não duas).
   const image = await readImage({ envFile, cwd, deps: imageDeps })
 
-  return {
-    facts: {
-      contract,
-      guards: { results, error: gatesResult.error ?? null, gates: gatesResult.gates },
-      image,
-      // A imagem publicada: exige a MESMA leitura do registry que o
-      // `--no-registry-probe` desliga (o digest da tag vem de lá) — a flag pula
-      // as duas, e o relatório diz qual das duas razões o fez ficar de fora.
-      imageContract:
-        imageContract && registryProbe
-          ? await readImageContract({ image, expected, cwd, env, deps: imageContractDeps })
-          : {
-              state: "skipped",
-              detail: imageContract
-                ? "pulada por --no-registry-probe (o digest que a tag serve vem do registry)"
-                : "pulada por --no-image-contract",
-              ref: image.ref ?? null,
-              digest: null,
-              target: null,
-              expectedVersion: expected,
-              findings: null,
-              remedies: [],
-            },
-      proof: proof
-        ? await readProof({ cwd, deps: proofDeps })
-        : { status: "skipped", ok: false, detail: "pulada por --no-proof", cases: [] },
-      compose: composeRender
-        ? await readComposeInterpolation({ cwd, hostEnv: envFile, deps: composeDeps })
-        : {
-            state: "skipped",
-            violations: [],
-            detail: "pulada por --no-compose-render",
-            hostCompare: { state: "skipped", detail: "pulada por --no-compose-render" },
-          },
-      // As forjas saem do MANIFESTO (uma fonte): um manifesto que ganhe uma
-      // terceira forja entra na leitura sozinho.
-      protection: protection
-        ? readProtection({
-            cwd,
-            forges: contract.forges.map((f) => f.forge),
-            run,
-            ...protectionDeps,
-          })
-        : { state: "skipped", detail: "pulada por --no-protection", forges: [] },
-      // SEM `envPath`: a DESCOBERTA do guard já cobre o template comitado E o
-      // `deploy/.env.gitea` do checkout quando ele existe — que é o caso do VPS,
-      // justamente onde os dois importam. Apontar um arquivo (`--gitea-env`)
-      // SUBSTITUI a descoberta (semântica do CLI do guard, para perguntar por
-      // OUTRO host), e aí o template sairia da comparação — regressão silenciosa
-      // no host onde o valor mais importa.
-      imageRefs: await readImageRefs({
+  // A proteção e os espelhos saem do literal porque o FATO DA DÍVIDA os consome:
+  // o cruzamento (a issue aberta contra o que o doctor mede agora) precisa das
+  // duas leituras, e recomputá-las para isso seriam DUAS medições do mesmo fato
+  // — que é como duas verdades começam a divergir.
+  const protectionFacts = protection
+    ? readProtection({
         cwd,
-        envFile,
-        deps: { probeRegistry: registryProbe, ...imageRefsDeps },
-      }),
-      // O `envFile` só é repassado quando NÃO é o default: o default do doctor
-      // (`deploy/.env.gitea`) significa "use a DESCOBERTA do guard" — e a
-      // descoberta prefere o arquivo do host e cai no template comitado quando
-      // ele não existe. Repassá-lo cru trocaria isso por `env-missing` em todo
-      // checkout que não seja o VPS (o guard não inventa um baseline).
-      runnerLabels: runnerLabels
-        ? readRunnerLabels({
-            cwd,
-            envFile: envFile === DEFAULT_ENV_FILE ? null : envFile,
-            deps: runnerLabelsDeps,
-          })
+        forges: contract.forges.map((f) => f.forge),
+        run,
+        ...protectionDeps,
+      })
+    : { state: "skipped", detail: "pulada por --no-protection", forges: [] }
+  const mirrorsFacts = readMirrors(cwd, { expected })
+  const openDebtFacts = openDebt
+    ? await readOpenDebt({
+        cwd,
+        env,
+        deps: openDebtDeps,
+        protection: protectionFacts,
+        mirrors: mirrorsFacts,
+      })
+    : {
+        state: "skipped",
+        detail: "pulada por --no-open-debt",
+        reads: [],
+        items: [],
+        labels: DEBT_SUBJECTS.map((s) => s.label),
+        excluded: DEBT_EXCLUDED,
+      }
+
+  const facts = {
+    contract,
+    guards: { results, error: gatesResult.error ?? null, gates: gatesResult.gates },
+    image,
+    // A imagem publicada: exige a MESMA leitura do registry que o
+    // `--no-registry-probe` desliga (o digest da tag vem de lá) — a flag pula
+    // as duas, e o relatório diz qual das duas razões o fez ficar de fora.
+    imageContract:
+      imageContract && registryProbe
+        ? await readImageContract({ image, expected, cwd, env, deps: imageContractDeps })
         : {
             state: "skipped",
-            detail: "pulada por --no-runner-labels",
-            violations: [],
+            detail: imageContract
+              ? "pulada por --no-registry-probe (o digest que a tag serve vem do registry)"
+              : "pulada por --no-image-contract",
+            ref: image.ref ?? null,
+            digest: null,
+            target: null,
+            expectedVersion: expected,
+            findings: null,
             remedies: [],
           },
-      // A outra forja, com a MESMA flag: as duas são "o registro do runner", e
-      // separá-las em duas flags faria a segunda ser esquecida.
-      githubRunnerLabels: runnerLabels
-        ? await readGithubRunnerLabels({ cwd, env, deps: githubRunnerLabelsDeps })
-        : {
-            state: "skipped",
-            detail: "pulada por --no-runner-labels",
-            violations: [],
-            remedies: [],
-          },
-      mirrors: readMirrors(cwd, { expected }),
-      skippedGuards: !guards,
-      skippedProof: !proof,
-      skippedProtection: !protection,
-      skippedRunnerLabels: !runnerLabels,
-      skippedRegistryProbe: !registryProbe,
-      skippedImageContract: !imageContract,
-    },
+    proof: proof
+      ? await readProof({ cwd, deps: proofDeps })
+      : { status: "skipped", ok: false, detail: "pulada por --no-proof", cases: [] },
+    compose: composeRender
+      ? await readComposeInterpolation({ cwd, hostEnv: envFile, deps: composeDeps })
+      : {
+          state: "skipped",
+          violations: [],
+          detail: "pulada por --no-compose-render",
+          hostCompare: { state: "skipped", detail: "pulada por --no-compose-render" },
+        },
+    // As forjas saem do MANIFESTO (uma fonte): um manifesto que ganhe uma
+    // terceira forja entra na leitura sozinho.
+    protection: protectionFacts,
+    // SEM `envPath`: a DESCOBERTA do guard já cobre o template comitado E o
+    // `deploy/.env.gitea` do checkout quando ele existe — que é o caso do VPS,
+    // justamente onde os dois importam. Apontar um arquivo (`--gitea-env`)
+    // SUBSTITUI a descoberta (semântica do CLI do guard, para perguntar por
+    // OUTRO host), e aí o template sairia da comparação — regressão silenciosa
+    // no host onde o valor mais importa.
+    imageRefs: await readImageRefs({
+      cwd,
+      envFile,
+      deps: { probeRegistry: registryProbe, ...imageRefsDeps },
+    }),
+    // O `envFile` só é repassado quando NÃO é o default: o default do doctor
+    // (`deploy/.env.gitea`) significa "use a DESCOBERTA do guard" — e a
+    // descoberta prefere o arquivo do host e cai no template comitado quando
+    // ele não existe. Repassá-lo cru trocaria isso por `env-missing` em todo
+    // checkout que não seja o VPS (o guard não inventa um baseline).
+    runnerLabels: runnerLabels
+      ? readRunnerLabels({
+          cwd,
+          envFile: envFile === DEFAULT_ENV_FILE ? null : envFile,
+          deps: runnerLabelsDeps,
+        })
+      : {
+          state: "skipped",
+          detail: "pulada por --no-runner-labels",
+          violations: [],
+          remedies: [],
+        },
+    // A outra forja, com a MESMA flag: as duas são "o registro do runner", e
+    // separá-las em duas flags faria a segunda ser esquecida.
+    githubRunnerLabels: runnerLabels
+      ? await readGithubRunnerLabels({ cwd, env, deps: githubRunnerLabelsDeps })
+      : {
+          state: "skipped",
+          detail: "pulada por --no-runner-labels",
+          violations: [],
+          remedies: [],
+        },
+    mirrors: mirrorsFacts,
+    openDebt: openDebtFacts,
+    skippedGuards: !guards,
+    skippedProof: !proof,
+    skippedProtection: !protection,
+    skippedRunnerLabels: !runnerLabels,
+    skippedRegistryProbe: !registryProbe,
+    skippedImageContract: !imageContract,
+    skippedOpenDebt: !openDebt,
   }
+
+  return { facts }
 }
 
 async function main() {

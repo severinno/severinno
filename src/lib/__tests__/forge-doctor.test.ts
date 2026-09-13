@@ -798,7 +798,7 @@ describe("renderReport — a seção dos espelhos diz CONTRA O QUE comparou", ()
 
   it("com o valor: nomeia a variável e cobra o veredito contra ela", () => {
     const text = render(facts())
-    expect(text).toContain("5/5  Espelhos da versão do Bun")
+    expect(text).toContain("5/6  Espelhos da versão do Bun")
     expect(text).toContain("comparados com vars.BUN_VERSION='1.3.14'")
   })
 
@@ -1785,6 +1785,17 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
     }),
   }
 
+  /**
+   * E o mesmo para o BOARD: a `list` dublê responde "nenhuma dívida aberta" sem
+   * `gh`, sem API e sem credencial. Sem isto o diagnóstico iria à rede de
+   * VERDADE, e o teste que fala do veredito passaria a depender de a máquina ter
+   * (ou não ter) um `gh` autenticado.
+   *
+   * Os estados da leitura em si (aberta, ilegível, caducada) têm os próprios
+   * testes, em forge-doctor-open-debt.test.ts.
+   */
+  const debtClear = { list: async () => [] }
+
   it("forja completa e registry 200 → PRONTA", async () => {
     const dir = forgeFixture()
     const { facts } = await diagnose({
@@ -1799,7 +1810,11 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       proofDeps: proofHolds,
       imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
+      openDebtDeps: debtClear,
     })
+    // O fato do board existe SEMPRE (mesmo vazio): um `diagnose` que esquecesse
+    // de montá-lo faria a dívida aberta sumir do veredito em silêncio.
+    expect(facts.openDebt.state).toBe("clear")
     expect(summarize(facts).verdict, JSON.stringify(summarize(facts).blockers)).toBe(VERDICT.READY)
   })
 
@@ -1817,6 +1832,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       proofDeps: proofHolds,
       imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
+      openDebtDeps: debtClear,
     })
     const v = summarize(facts)
     expect(v.verdict).toBe(VERDICT.BLOCKED)
@@ -1859,6 +1875,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       proofDeps: proofHolds,
       imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
+      openDebtDeps: debtClear,
     })
     const v = summarize(facts)
     expect(v.verdict).toBe(VERDICT.BLOCKED)
@@ -1884,6 +1901,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       proofDeps: proofHolds,
       imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
+      openDebtDeps: debtClear,
     })
     expect(facts.githubRunnerLabels.state).toBe("skipped")
     expect(facts.runnerLabels.state).toBe("skipped")
@@ -1910,6 +1928,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       proofDeps: proofHolds,
       imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
+      openDebtDeps: debtClear,
     })
     const v = summarize(facts)
     expect(v.verdict).toBe(VERDICT.BLOCKED)
@@ -1931,6 +1950,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       proofDeps: proofHolds,
       imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
+      openDebtDeps: debtClear,
     })
     const v = summarize(facts)
     expect(v.verdict).toBe(VERDICT.BLOCKED)
@@ -1958,6 +1978,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       // A leitura da forja tem o PRÓPRIO dublê: se ela usasse o `run` contado,
       // um `calls` alto deixaria de significar "a bateria rodou".
       protectionDeps: protectionInSync,
+      openDebtDeps: debtClear,
     })
     // Só o gate do CONTRATO roda; a bateria é pulada.
     expect(calls).toBe(1)
@@ -1979,6 +2000,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       proofDeps: proofViolated,
       imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
+      openDebtDeps: debtClear,
     })
     const v = summarize(facts)
     expect(v.verdict).toBe(VERDICT.BLOCKED)
@@ -1999,6 +2021,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       runnerLabelsDeps: labelsProven,
       githubRunnerLabelsDeps: githubLabelsProven,
       protectionDeps: protectionInSync,
+      openDebtDeps: debtClear,
       imageContractDeps: imageContractProven,
       proofDeps: {
         prove: async () => {
@@ -2032,6 +2055,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       proofDeps: proofHolds,
       imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
+      openDebtDeps: debtClear,
       composeDeps: { check: () => composeViolated },
     })
     const v = summarize(f)
@@ -2055,6 +2079,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       proofDeps: proofHolds,
       imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
+      openDebtDeps: debtClear,
       composeDeps: {
         check: () => {
           called++
@@ -2081,6 +2106,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       proofDeps: proofHolds,
       imageContractDeps: imageContractProven,
       protectionDeps: protectionDrift,
+      openDebtDeps: debtClear,
     })
     const v = summarize(f)
     expect(v.verdict).toBe(VERDICT.BLOCKED)
@@ -2101,6 +2127,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       proofDeps: proofHolds,
       imageContractDeps: imageContractProven,
       protectionDeps: protectionUnreadable,
+      openDebtDeps: debtClear,
     })
     const v = summarize(f)
     expect(v.verdict).toBe(VERDICT.UNKNOWN)
@@ -2129,6 +2156,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
           return { status: 0, stdout: applierJson({ forge }), stderr: "", signal: null }
         }) as never,
       },
+      openDebtDeps: debtClear,
     })
     expect(seen.sort()).toEqual(["gitea", "github"])
     expect((f.protection.forges as { forge: string }[]).map((x) => x.forge).sort()).toEqual([
@@ -2158,11 +2186,126 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
           return passRun()
         }) as never,
       },
+      openDebtDeps: debtClear,
     })
     expect(called).toBe(0)
     expect(f.protection.state).toBe("skipped")
     expect(summarize(f).verdict).toBe(VERDICT.UNKNOWN)
     expect(summarize(f).unproven[0]).toContain("--no-protection")
+  })
+
+  /**
+   * A dívida do board, dublada: uma issue ABERTA da auditoria reversa do README,
+   * aberta há 43 dias no relógio fixo do teste.
+   */
+  const debtWithReadme = {
+    list: async ({ label }: { label: string }) =>
+      label === "readme-drift"
+        ? [
+            {
+              number: 12,
+              title: "Alvo morto na tabela de scripts",
+              body: "corpo\n<!-- readme-drift:file:slug:label -->",
+              comments: [],
+              createdAt: "2026-08-01T00:00:00Z",
+            },
+          ]
+        : [],
+    now: () => Date.parse("2026-09-13T00:00:00Z"),
+  }
+
+  it("dívida ABERTA no board rebaixa o veredito mesmo com TODO o resto verde", async () => {
+    const dir = forgeFixture()
+    const { facts } = await diagnose({
+      cwd: dir,
+      envFile: "deploy/.env.gitea",
+      expected: "1.3.14",
+      run: passRun,
+      imageDeps: { fetchImpl: async () => oci(200) },
+      imageRefsDeps: refsProven,
+      runnerLabelsDeps: labelsProven,
+      githubRunnerLabelsDeps: githubLabelsProven,
+      proofDeps: proofHolds,
+      imageContractDeps: imageContractProven,
+      protectionDeps: protectionInSync,
+      openDebtDeps: debtWithReadme,
+    })
+    const v = summarize(facts)
+    // NÃO bloqueia — uma issue aberta não prova que a forja falha em bloquear o
+    // merge. Mas não deixa PRONTA: o repositório já sabe daquela dívida.
+    expect(v.blockers).toEqual([])
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    // O número e a IDADE são o que faz a dívida esquecida ser acionável.
+    expect(v.unknowns.join(" ")).toContain("#12")
+    expect(v.unknowns.join(" ")).toContain("43 dia(s)")
+    expect(v.unknowns.join(" ")).toContain("readme-drift")
+  })
+
+  it("a issue do assunto que o doctor MEDE vem com a medição ao lado (caducidade)", async () => {
+    const dir = forgeFixture()
+    const { facts } = await diagnose({
+      cwd: dir,
+      envFile: "deploy/.env.gitea",
+      expected: "1.3.14",
+      run: passRun,
+      imageDeps: { fetchImpl: async () => oci(200) },
+      imageRefsDeps: refsProven,
+      runnerLabelsDeps: labelsProven,
+      githubRunnerLabelsDeps: githubLabelsProven,
+      proofDeps: proofHolds,
+      imageContractDeps: imageContractProven,
+      // A proteção está EM SINCRONIA agora — e a issue de drift continua aberta:
+      // é esse cruzamento que revela a dívida que mente.
+      protectionDeps: protectionInSync,
+      openDebtDeps: {
+        list: async ({ forge, label }: { forge: string; label: string }) =>
+          forge === "gitea" && label === "required-checks-drift"
+            ? [
+                {
+                  number: 7,
+                  title: "Branch protection divergiu",
+                  body: "<!-- required-checks-drift:QUJD -->",
+                  comments: [],
+                  createdAt: "2026-09-12T00:00:00Z",
+                },
+              ]
+            : [],
+        now: () => Date.parse("2026-09-13T00:00:00Z"),
+      },
+    })
+    const item = facts.openDebt.items[0] as { stale: boolean | null; staleDetail: string }
+    expect(item.stale).toBe(true)
+    expect(item.staleDetail).toContain("EM SINCRONIA")
+    expect(summarize(facts).unknowns.join(" ")).toContain("CADUCADA")
+  })
+
+  it("--no-open-debt NÃO lê o board e rebaixa o veredito", async () => {
+    const dir = forgeFixture()
+    const { facts } = await diagnose({
+      cwd: dir,
+      envFile: "deploy/.env.gitea",
+      expected: "1.3.14",
+      openDebt: false,
+      run: passRun,
+      imageDeps: { fetchImpl: async () => oci(200) },
+      imageRefsDeps: refsProven,
+      runnerLabelsDeps: labelsProven,
+      githubRunnerLabelsDeps: githubLabelsProven,
+      proofDeps: proofHolds,
+      imageContractDeps: imageContractProven,
+      protectionDeps: protectionInSync,
+      openDebtDeps: {
+        list: async () => {
+          throw new Error("o board não pode ser lido com --no-open-debt")
+        },
+      },
+    })
+    expect(facts.openDebt.state).toBe("skipped")
+    expect(facts.skippedOpenDebt).toBe(true)
+    const v = summarize(facts)
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.unknowns.join(" ")).toContain("--no-open-debt")
+    expect(v.unproven.join(" ")).toContain("dívida aberta no board")
   })
 })
 

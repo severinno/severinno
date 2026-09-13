@@ -326,6 +326,46 @@ describe("workflow agendado de drift", () => {
       expect(requiredJobs, `job de cron "${job}" não pode ser required`).not.toContain(job)
     }
   })
+
+  it("publica a ISSUE nas duas forjas: a dívida não pode ficar só no log", () => {
+    // O alerta acionável é o ponto do workflow: um cron vermelho é alerta mudo.
+    // Aqui a invariante é travada como CÓDIGO — remover o step da issue deixa
+    // este teste vermelho, em vez de a dívida voltar a ser invisível.
+    for (const file of [DRIFT_WORKFLOW, GITEA_DRIFT_WORKFLOW]) {
+      const content = io.readFile(file)!
+      expect(content, `${file} deve chamar o publicador de issue`).toContain(
+        "scripts/required-checks-drift-issue.mjs",
+      )
+      // O step da issue roda SEMPRE — inclusive no run SEM drift. É o run em
+      // sincronia que RECONCILIA: fecha as issues que este publicador abriu,
+      // para a dívida não ficar ABERTA depois de resolvida. Condicioná-lo ao
+      // drift (`if: steps.drift.outputs.exit_code != '0'`) faria o fechamento
+      // sumir em silêncio, no único run que pode fechá-lo.
+      const publishStep = content.slice(
+        content.indexOf("Publish drift issue"),
+        content.indexOf("Fail on drift"),
+      )
+      expect(publishStep, `${file}: o step da issue precisa rodar em sincronia também`).toMatch(
+        /if: always\(\)/,
+      )
+      // O vermelho continua CONDICIONAL: sem drift o run fica verde — nenhum
+      // dos espelhos governa corretude de CI.
+      expect(content).toMatch(/if: steps\.drift\.outputs\.exit_code != '0'/)
+      // A checagem precisa EXPORTAR o veredito para o step da issue.
+      expect(content).toContain('echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"')
+    }
+
+    // A forja (dona do merge) não tem `gh`: o backend dela é a API do Gitea.
+    const gitea = io.readFile(GITEA_DRIFT_WORKFLOW)!
+    expect(gitea).toContain("--backend gitea")
+
+    // PUBLICAR ANTES DE FALHAR: se o step da issue viesse depois do `exit 1`,
+    // ele nunca rodaria no run que falha — exatamente o alerta mudo de antes.
+    const publishAt = gitea.indexOf("Publish drift issue")
+    const failAt = gitea.indexOf("Fail on drift")
+    expect(publishAt, "o workflow do Gitea precisa publicar a issue").toBeGreaterThan(-1)
+    expect(failAt).toBeGreaterThan(publishAt)
+  })
 })
 
 describe("issue de drift: assinatura e dedup", () => {

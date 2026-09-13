@@ -1065,3 +1065,66 @@ jobs:
               echo '⚠ Tendência não produziu JSON — veja o passo "Medir drift de tendência".'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Mutation coord ALERTA (semanal) — o CANAL dos ::warning:: ────────
+  # AUDITORIA DOS JOBS PERIÓDICOS: os dois jobs acima terminam VERDES de
+  # propósito quando o overhead sobe — o medidor de tendência emite
+  # `::warning::` e sai 0, e o medidor de budget faz o mesmo na faixa SOFT.
+  # Um aviso dentro de um run verde é alerta MUDO: ninguém abre o log de um
+  # cron que passou. Este job é o canal: publica o drift como ISSUE (label
+  # `mutation-trend-drift`, dedup por assinatura) e FECHA quando o overhead
+  # volta à faixa. O run continua verde — o alerta de TENDÊNCIA é
+  # deliberadamente não-bloqueante (transformar o soft no duro apagaria a
+  # distinção entre "observa o drift" e "estourou o budget").
+  #
+  # POR QUE UM JOB SEPARADO (e não um step em cada medidor): os dois medem o
+  # MESMO step com limiares diferentes (margem relativa vs drift % por var).
+  # Se cada um publicasse/reconciliasse por si, o mais frouxo fecharia a
+  # dívida que o mais estrito acabou de abrir — e o limiar é variável, então
+  # a aninhagem não pode ser presumida. Aqui os DOIS relatórios entram juntos:
+  # `warned` = algum fora da faixa; reconciliar exige TODOS medidos e NENHUM
+  # fora. `if: always()` + `needs` nos dois: mede também quando um deles
+  # falhou, porque o artifact é `if: always()` e a evidência existe.
+  mutation-coord-alert:
+    name: Mutation coord overhead (aviso → issue)
+    runs-on: self-hosted
+    needs: [mutation-coord-timing, mutation-coord-trend]
+    if: always()
+    timeout-minutes: 5
+
+    permissions:
+      contents: read
+      actions: read # download-artifact dos dois JSON de medição
+      issues: write # a issue é o canal do ::warning:: (o run fica verde)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Os dois relatórios, dos artifacts dos jobs de medição ─────────
+      - name: Baixar os relatórios de medição (artifacts)
+        if: always()
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mutation-coord-*
+          merge-multiple: true
+          path: /tmp/mutation-alert
+
+      # ── Publica (ou fecha) — e 'não medido' NUNCA passa como verde ────
+      # O `find` resolve a localização REAL dos JSON em vez de cravar um
+      # layout de artifact (o upload preserva pedaços do caminho absoluto);
+      # sem relatório nenhum o step FALHA — publicar (ou fechar) a partir de
+      # nada é a forma mais barata do alerta mudo que este job elimina.
+      - name: Publicar o overhead como Issue (fecha quando volta à faixa)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t REPORTS < <(find /tmp/mutation-alert -name 'mutation-*.json' | sort)
+          if [ "${#REPORTS[@]}" -eq 0 ]; then
+            echo "::error::Nenhum relatório de medição nos artifacts — sem medir, 'não medido' NÃO pode parecer verde."
+            exit 1
+          fi
+          ARGS=()
+          for report in "${REPORTS[@]}"; do ARGS+=(--report "$report"); done
+          node scripts/mutation-trend-issue.mjs "${ARGS[@]}"

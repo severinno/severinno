@@ -17,6 +17,8 @@ import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 
 import {
+  ENV_MIRROR_SCRIPT,
+  FORGE_DOCTOR,
   GITEA_BRING_UP,
   GITEA_COMPOSE,
   GITEA_DOC,
@@ -91,23 +93,149 @@ describe("checkGiteaRunnerImage — repositório real", () => {
 // ── Pré-requisito da subida: a imagem garantida ANTES do runner ──────────
 
 /** Bring-up MÍNIMO no formato real (com o comentário que a ordem exige). */
-function bringUp(ensureLine: string, runnerLine: string): string {
+function bringUp(
+  ensureLine: string,
+  runnerLine: string,
+  mirrorLine?: string,
+  doctorLine?: string,
+): string {
   return [
     "#!/usr/bin/env bash",
     "# o `up -d runner` NAO pode vir antes da garantia da imagem",
+    'TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/env.gitea.example}"',
+    'MIRROR_SCRIPT="${MIRROR_SCRIPT:-$REPO_DIR/scripts/check-env-mirror.mjs}"',
+    DOCTOR_DEFAULT,
+    mirrorLine ?? OK_MIRROR,
     ensureLine,
+    doctorLine ?? OK_DOCTOR,
     '"${DOCKER_COMPOSE[@]}" up -d gitea caddy',
     runnerLine,
   ].join("\n")
 }
 
+const OK_MIRROR = 'node "$MIRROR_SCRIPT" --host "$ENV_FILE" --template "$TEMPLATE_FILE"'
 const OK_ENSURE = 'node "$ENSURE_SCRIPT" --gitea-env "$ENV_FILE"'
+const DOCTOR_DEFAULT = 'DOCTOR_SCRIPT="${DOCTOR_SCRIPT:-$REPO_DIR/scripts/forge-doctor.mjs}"'
+const OK_DOCTOR = 'node "$DOCTOR_SCRIPT" --gitea-env "$ENV_FILE" --no-proof'
 const OK_RUNNER = '"${DOCKER_COMPOSE[@]}" up -d runner'
 const OK_SETUP = 'echo "  bash $REPO_DIR/deploy/gitea-up.sh"'
 
 describe("checkGiteaBringUp — a imagem é pré-requisito da subida", () => {
   it("garantia antes do runner + instalador apontando para o bring-up → zero violações", () => {
     expect(checkGiteaBringUp(bringUp(OK_ENSURE, OK_RUNNER), OK_SETUP)).toEqual([])
+  })
+
+  it("sem a conferência do espelho (só menção em comentário) → violação nomeando o script", () => {
+    const v = checkGiteaBringUp(
+      bringUp(OK_ENSURE, OK_RUNNER, "# conferimos o env com scripts/check-env-mirror.mjs"),
+      OK_SETUP,
+    )
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain(ENV_MIRROR_SCRIPT)
+  })
+
+  it("conferência do espelho sem --host/--template → violação (a comparação mediria outro arquivo)", () => {
+    const v = checkGiteaBringUp(bringUp(OK_ENSURE, OK_RUNNER, 'node "$MIRROR_SCRIPT"'), OK_SETUP)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("--host")
+    expect(v[0]).toContain("--template")
+  })
+
+  it("TEMPLATE_FILE default que NÃO é o template comitado → violação", () => {
+    const content = bringUp(OK_ENSURE, OK_RUNNER).replace(
+      'TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/env.gitea.example}"',
+      'TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/outro.env}"',
+    )
+    const v = checkGiteaBringUp(content, OK_SETUP)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("TEMPLATE_FILE")
+  })
+
+  it("a conferência do espelho DEPOIS da garantia da imagem → violação de ORDEM", () => {
+    // O ensure resolve a imagem DO ENV: conferir o espelho depois garantiria a
+    // imagem de um env que pode não ser o do repositório.
+    const content = [
+      "#!/usr/bin/env bash",
+      'TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/env.gitea.example}"',
+      DOCTOR_DEFAULT,
+      OK_ENSURE,
+      OK_MIRROR,
+      OK_DOCTOR,
+      OK_RUNNER,
+    ].join("\n")
+    const v = checkGiteaBringUp(content, OK_SETUP)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("DEPOIS da garantia")
+  })
+
+  // ── o doctor: a prontidão como pré-requisito, não como lembrete ──────────
+
+  it("sem invocar o doctor (só menção em comentário) → violação nomeando o script", () => {
+    const v = checkGiteaBringUp(
+      bringUp(OK_ENSURE, OK_RUNNER, undefined, "# o doctor responde a prontidão"),
+      OK_SETUP,
+    )
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain(FORGE_DOCTOR)
+  })
+
+  it("doctor chamado SEM --no-proof → violação (a prova dele executa o bring-up: recursão)", () => {
+    const v = checkGiteaBringUp(
+      bringUp(OK_ENSURE, OK_RUNNER, undefined, 'node "$DOCTOR_SCRIPT" --gitea-env "$ENV_FILE"'),
+      OK_SETUP,
+    )
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("--no-proof")
+  })
+
+  it('doctor sem --gitea-env "$ENV_FILE" → violação (ele leria outro env)', () => {
+    const v = checkGiteaBringUp(
+      bringUp(OK_ENSURE, OK_RUNNER, undefined, 'node "$DOCTOR_SCRIPT" --no-proof'),
+      OK_SETUP,
+    )
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("--gitea-env")
+  })
+
+  it("default de DOCTOR_SCRIPT que NÃO é o doctor comitado → violação", () => {
+    const content = bringUp(OK_ENSURE, OK_RUNNER).replace(
+      DOCTOR_DEFAULT,
+      'DOCTOR_SCRIPT="${DOCTOR_SCRIPT:-$REPO_DIR/scripts/meu-doctor.mjs}"',
+    )
+    const v = checkGiteaBringUp(content, OK_SETUP)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("DOCTOR_SCRIPT")
+  })
+
+  it("doctor ANTES da garantia da imagem → violação de ORDEM", () => {
+    const content = [
+      "#!/usr/bin/env bash",
+      'TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/env.gitea.example}"',
+      DOCTOR_DEFAULT,
+      OK_MIRROR,
+      OK_DOCTOR,
+      OK_ENSURE,
+      OK_RUNNER,
+    ].join("\n")
+    const v = checkGiteaBringUp(content, OK_SETUP)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("ANTES da garantia da imagem")
+  })
+
+  it("doctor DEPOIS do 'up -d gitea' → violação (a stack subiria com BLOQUEADA)", () => {
+    const content = [
+      "#!/usr/bin/env bash",
+      'TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/env.gitea.example}"',
+      DOCTOR_DEFAULT,
+      OK_MIRROR,
+      OK_ENSURE,
+      '"${DOCKER_COMPOSE[@]}" up -d gitea caddy',
+      OK_DOCTOR,
+      OK_RUNNER,
+    ].join("\n")
+    const v = checkGiteaBringUp(content, OK_SETUP)
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("ANTES do veredito de prontidão")
   })
 
   it("o COMENTÁRIO que menciona a ordem não conta como comando (prosa não satisfaz guard)", () => {
@@ -133,7 +261,19 @@ describe("checkGiteaBringUp — a imagem é pré-requisito da subida", () => {
   })
 
   it("'up -d runner' ANTES da garantia → violação de ORDEM", () => {
-    const v = checkGiteaBringUp(bringUp(OK_RUNNER, OK_ENSURE), OK_SETUP)
+    // Conteúdo explícito: aqui o que está fora de ordem é o RUNNER x o ENSURE,
+    // e o doctor fica no lugar certo (depois do ensure) para a violação ser uma
+    // só e nomear exatamente esse contrato.
+    const content = [
+      "#!/usr/bin/env bash",
+      'TEMPLATE_FILE="${TEMPLATE_FILE:-$SCRIPT_DIR/env.gitea.example}"',
+      DOCTOR_DEFAULT,
+      OK_MIRROR,
+      OK_RUNNER,
+      OK_ENSURE,
+      OK_DOCTOR,
+    ].join("\n")
+    const v = checkGiteaBringUp(content, OK_SETUP)
     expect(v.length).toBe(1)
     expect(v[0]).toContain("ANTES da garantia")
   })

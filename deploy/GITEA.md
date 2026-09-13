@@ -92,9 +92,18 @@ Aguarde a propagacao DNS (pode levar ate 48h, geralmente <1h).
 cd /opt/gitea
 sed -i 's|COLE_O_TOKEN_AQUI|SEU_TOKEN_AQUI|' .env
 # REPO = checkout deste repositorio na VPS (ex.: /home/deploy/severinno).
-# O gitea-up.sh GARANTE a imagem do runner (publica se faltar) ANTES de subir
-# a stack — um `docker compose up -d runner` seco subiria o container e todo
-# job falharia ao iniciar, longe da causa.
+# O gitea-up.sh tem TRES pre-requisitos, nesta ordem:
+#   0. o env do host ESPELHA o template comitado (`deploy/env.gitea.example`) —
+#      recusa a subida se divergir (antes garantia nada, porque o ensure resolve
+#      a imagem DESTE arquivo: com um env divergente ele garantiria a imagem
+#      errada). Ver `bun run env-mirror:check`;
+#   1. a imagem do runner EXISTE no registry (publica se faltar) — antes de
+#      subir a stack, porque um `docker compose up -d runner` seco subiria o
+#      container e todo job falharia ao iniciar, longe da causa;
+#   2. a PRONTIDAO da forja esta provada (`bun run doctor`) — veredito BLOQUEADA
+#      (exit 1) RECUSA a subida; INDETERMINADA (exit 2) avisa e segue, porque
+#      "nao consegui provar agora" nao e violacao e bloquear ali tornaria a
+#      subida impossivel offline.
 ENV_FILE=/opt/gitea/.env COMPOSE_FILE=/opt/gitea/docker-compose.yml \
   bash $REPO/deploy/gitea-up.sh
 ```
@@ -133,7 +142,7 @@ Pre-requisitos, NESTA ordem:
    E, para PROVAR que a subida depende dela — sem docker, sem rede externa,
    contra um registry de teste em `127.0.0.1`: `bun run runner-image:prove`
    (exit 0 = com a tag ausente o runner NAO sobe; o mesmo resultado entra no
-   `doctor`, secao `4/5`). A prova cobre **os dois caminhos**: a subida simples
+   `doctor`, secao `4/6`). A prova cobre **os dois caminhos**: a subida simples
    e o `--re-register` — nele, sem a imagem NADA e apagado, e com a imagem a
    ordem e `rm -sf runner` -> `volume rm` -> `up -d runner`.
    Estado **indeterminado** (registry inacessivel, ou pacote privado sem
@@ -189,12 +198,35 @@ Pre-requisitos, NESTA ordem:
 
    ```bash
    bun run doctor --gitea-env /opt/gitea/.env    # compara ESTE env com o template
+   bun run env-mirror:check --host /opt/gitea/.env   # a MESMA regra, isolada (exit 1 = diverge)
    node scripts/check-registry-source.mjs --gitea-env /opt/gitea/.env
    ```
+
+   **Isto deixou de depender de alguem lembrar de rodar o gate.** O
+   `deploy/gitea-up.sh` executa `scripts/check-env-mirror.mjs` como pre-requisito
+   0 — antes ate da garantia da imagem — e RECUSA a subida quando o env diverge
+   (exit 1, com o remedio; nada e subido). E a MESMA regra do gate (as funcoes de
+   comparacao sao as do `check-registry-source`), num comando que o bring-up
+   chama sozinho: quem sobe a stack nao precisa saber que o gate existe.
 
    E o proprio `doctor` confere o VALOR deste espelho contra a variavel, pela
    MESMA funcao do guard (`--expected "$(gh variable get BUN_VERSION)"`, secao
    `5/5`): divergir aqui **bloqueia**, porque e este arquivo que o compose le.
+
+   **O veredito do doctor tambem deixou de ser um lembrete.** O mesmo comando de
+   subida executa `scripts/forge-doctor.mjs` como pre-requisito **2**, depois da
+   garantia da imagem (que e pre-requisito do que ele prova) e antes de qualquer
+   `docker compose up`: **BLOQUEADA (exit 1) RECUSA** a subida, e um doctor que
+   nem rodou (exit >=3) tambem — sem veredito nao ha prontidao. `INDETERMINADA`
+   (exit 2) **avisa e segue**: e "nao consegui provar agora" (registry fora, sem
+   token), e recusar ali tornaria a subida impossivel offline, justamente quando
+   ela e o remedio. O doctor roda com `--no-proof` porque a prova do bloqueio
+   dele EXECUTA este script (chama-la daqui seria recursao), e com
+   `--no-runner-labels` no `--re-register` — o registro velho e exatamente o que
+   aquele modo conserta, e bloquea-lo aqui travaria o remedio pelo estado que ele
+   cura. `--no-runner` pula o veredito: sem runner, nada desta secao e
+   pre-requisito de nada. Para so conferir tudo (env + imagem + prontidao) sem
+   subir nada: `bash deploy/gitea-up.sh --check-only`.
 
 **A troca de label exige RE-REGISTRAR o runner.** O act_runner envia os labels
 no registro e depois usa os que ficaram gravados em `/data/.runner` — um
@@ -246,7 +278,12 @@ bun run doctor --gitea-env /opt/gitea/.env       # com o env DESTE host
 bun run doctor --json | jq .verdict              # para script/pipeline
 ```
 
-`--expected` e o valor de `vars.BUN_VERSION`, e sem ele a secao `5/5` so prova
+**E nao precisa lembrar de rodar isto antes de subir:** o `deploy/gitea-up.sh`
+executa o doctor sozinho (pre-requisito 2) e RECUSA a subida com o veredito
+BLOQUEADA — com exit >=3 (nem rodou) tambem. Para conferir sem subir nada:
+`bash deploy/gitea-up.sh --check-only`.
+
+`--expected` e o valor de `vars.BUN_VERSION`, e sem ele a secao `5/6` so prova
 que os espelhos existem e concordam entre si — dois espelhos iguais podem estar
 os DOIS velhos em relacao a variavel, e o veredito fica **INDETERMINADA** por
 isso (nunca "em sincronia" por omissao). Com o valor, a comparacao e a MESMA do
@@ -291,11 +328,11 @@ do Bun e o caminho `/usr/local/bin/bun` na imagem que o job realmente baixa (sem
 com a execucao o build e a label provam o ARQUIVO, nao o artefato; sem daemon ou
 sem credencial o veredito e INDETERMINADA e `--no-image-contract` pula
 rebaixando); consulta a tag da imagem do runner no
-registry e — na secao `4/5` — **prova que a subida depende dela**: roda o
+registry e — na secao `4/6` — **prova que a subida depende dela**: roda o
 `deploy/gitea-up.sh` real contra um registry de TESTE em `127.0.0.1`, com a tag
 ausente e com a tag presente, e afirma sobre o log do `docker` duble. A tag
 existir agora nao prova que o runner nao sobe sem ela; essa secao prova. Na
-secao `5/5` ele compara os espelhos do `BUN_VERSION` com o VALOR da variavel
+secao `5/6` ele compara os espelhos do `BUN_VERSION` com o VALOR da variavel
 (`--expected`), pela mesma funcao do job semanal. O exit
 code **e** o veredito: `0` pronta, `1` bloqueada, `2` indeterminada.
 
@@ -325,9 +362,27 @@ INDETERMINADA, nunca "em sincronia"; veja o requisito de token em
 host DIFERENTE deste checkout (o do proprio checkout o doctor compara com o
 template; outro host entra
 por `--gitea-env`, e sem o arquivo a secao do compose diz `host x template: …`
-em vez de fingir que conferiu). O que a secao `3/5` **prova** do render e o plugin
+em vez de fingir que conferiu). O que a secao `3/6` **prova** do render e o plugin
 `compose` no artefato publicado (o contrato acima); o que segue fora do alcance
 do doctor e o **socket** do job, e quem o exercita e a Prova 4 do smoke.
+
+A secao `6/6` le o **BOARD**: as issues de drift que os crons deste repositorio
+abriram e ninguem fechou (`required-checks-drift` nas duas forjas,
+`actrc-sync-drift`, `readme-drift`, `mutation-trend-drift`), pela mesma consulta
+dos publicadores. Uma divida ABERTA nao bloqueia (ela nao prova que o merge pode
+ser furado), mas **impede `pronta`** — e entra com o numero da issue e a IDADE,
+porque "aberta ha 47 dias" e o que separa a divida ativa da esquecida. Para os
+dois assuntos que o proprio doctor mede (branch protection e espelhos do
+`BUN_VERSION`), a secao mostra a MEDICAO ao lado da issue: `Parece CADUCADA`
+quando o doctor mede limpo agora, `Fala de um problema VIVO` quando mede e
+continua, e `Caducidade NAO verificada` quando nao mediu nesta run — dizer que
+caducou sem ter medido seria a divida que mente, do outro lado. A label do
+proprio veredito (`forge-doctor-verdict`) fica de fora, e o relatorio diz por que:
+le-la como divida faria o doctor alimentar o proprio alerta (INDETERMINADA para
+sempre, por construcao). No VPS a leitura usa `GITEA_TOKEN`/`GITEA_URL`/
+`GITEA_REPOSITORY` (os mesmos secrets do resto do cron); sem eles o fato sai como
+`NAO foi lida` — nunca como "sem divida" — e `--no-open-debt` pula a leitura
+rebaixando o veredito.
 
 **Nao ha fallback.** A `node:20-bullseye` existe no Docker Hub e sempre subia —
 lenta, mas sempre. A imagem custom troca isso por velocidade: tag errada,
@@ -516,6 +571,130 @@ os `name:` dos jobs — hoje `Lint`, `Repo Guards`, `TypeCheck`, `Tests`, `Build
 O guard `check:forge-parity` garante que um gate novo nao fique so em uma das
 pipelines (GitHub x esta forja).
 
+**Registrar o contexto NAO basta — a exigencia precisa estar LIGADA.** No Gitea,
+`status_check_contexts` guarda a LISTA exigida e `enable_status_check` e quem a
+transforma em bloqueio; o default da API e `false`. Com os contextos anotados e o
+booleano desligado, a protecao PARECE configurada e o merge passa com o gate
+vermelho — medido contra um Gitea 1.22 real: `Repo Guards=failure` mergeia (HTTP 200) com `enable_status_check=false`, e e recusado com
+`not allowed to merge [reason: Not all required status checks successful]` com o
+booleano ligado.
+
+Por isso o applier ENVIA `enable_status_check: true` no POST/PATCH e o trata como
+parte do drift: um `--check` que so compara a lista de contextos declara
+"sincronia" num branch protection que nao bloqueia nada. Um `info` do modo
+silencioso aparece no proprio relatorio do applier:
+`! enable_status_check=false — os contextos estao registrados e NAO bloqueiam`.
+
+**O drift da forja abre ISSUE, nao so falha o run.** Detectar e ficar vermelho nao
+basta: um cron vermelho e alerta MUDO (ninguem abre o log de um job que falhou).
+Quem BLOQUEIA o merge e esta forja, entao a divida precisa chegar onde alguem a
+veja. O job semanal `.gitea/workflows/required-checks-drift.yml` le a branch
+protection pelo MESMO aplicador (`--check --forge gitea --json`) e publica o
+resultado como **issue** (label `required-checks-drift`) pela API do Gitea:
+
+```bash
+bun scripts/required-checks-drift-issue.mjs --report /tmp/required-checks-drift.json --backend gitea
+```
+
+E o MESMO script que publica no GitHub (via CLI `gh`): o que decide o que e
+drift, o TEXTO da issue e a ASSINATURA de dedup sao o mesmo codigo — `--backend`
+so troca QUEM cria o ticket. A issue carrega o diff exato, o comando de correcao e,
+no modo silencioso, o aviso de que `enable_status_check` esta desligado.
+
+O `GITEA_TOKEN` precisa de **escrita em issues** alem da leitura do branch
+protection: sem a escrita o drift volta a ser cron vermelho. O dedup e por
+assinatura (duas runs do MESMO drift nao abrem duas issues; um drift DIFERENTE
+comenta na issue aberta) e a publicacao acontece ANTES do `exit 1` — se o step da
+issue viesse depois do step que falha, ele nunca rodaria.
+
+E o step da issue roda `always()`: no run **em sincronia** ele **FECHA** a
+divida, em vez de deixa-la aberta depois de resolvida. O publicador comenta a
+prova (o que foi comparado agora) e fecha as issues que ELE abriu — so o que
+carrega o marcador, nunca so o label — e, se o drift voltar, abre uma issue nova
+(o dedup e entre as ABERTAS). Condicionar o step ao drift (`exit_code != '0'`)
+faria o fechamento sumir em silencio, no unico run que pode fecha-lo.
+
+O cron **detecta e avisa**; nao aplica. Aplicar segue manual, com token de admin:
+`bun run ci:required-checks -- --apply`.
+
+**Provando que o merge MORDE (mutacao, sem tocar a forja de producao).** Que a
+exigencia nao seja decorativa e o que `bun run merge-gate:prove` prova: sobe um
+Gitea efemero, aplica o manifesto com o APLIADOR DE VERDADE e tenta mergear
+quatro PRs — controle com os checks verdes (mergeia), gate vermelho (recusado),
+gate ausente (recusado) e o MESMO gate vermelho com a exigencia desligada
+(mergeia: e a demonstracao de POR QUE o booleano importa). Exige docker.
+
+Saida esperada (verde):
+
+```
+  ✅ controle-verde         esperado: mergeia    obtido: merged (HTTP 200)
+  ✅ gate-vermelho          esperado: NAO mergeia obtido: blocked (HTTP 405)
+       motivo: Not all required status checks successful
+  ✅ gate-ausente           esperado: NAO mergeia obtido: blocked (HTTP 405)
+  ✅ exigencia-desligada    esperado: mergeia    obtido: merged (HTTP 200)
+
+  applier  : aplicou=true · --check em sincronia=true · --check ve exigencia desligada=true
+
+  ✅ PROVEN: verde mergeia; vermelho e ausente NAO mergeiam; e a exigencia desligada volta a mergear
+```
+
+Exit codes: `0` = provado · `1` = VIOLADO (o gate vermelho mergeou, o controle
+nao mergeou, ou o applier nao ligou a exigencia) · `2` = indeterminado (sem
+docker, API nao subiu) · `3` = uso invalido. Um `1` e o veredito que importa: ou
+a forja nao bloqueia, ou o applier regrediu — nos dois casos, nao confie o merge a
+esta forja. Ver `docs/GUARDS.md` secao 16.
+
+**O que ele NAO cobre:** o act_runner (os status sao postados pela API, que e o
+que o job faria), a forja de producao (o container e efemero e local) e o resto do
+branch protection (reviews obrigatorios, push restrito). Aplicar no VPS continua
+sendo manual: `bun run ci:required-checks -- --apply` com um token de admin.
+
+### O veredito do doctor vira ISSUE (cron semanal)
+
+O `doctor` responde a pergunta inteira (`docs/GUARDS.md` secao 13) e a subida da
+stack ja o usa como pre-requisito — mas a forja e um sistema VIVO, e ha coisa que
+muda sozinha DEPOIS que ela esta no ar: a branch protection registrada (alguem
+edita no painel), o registro gravado do runner (`/data/.runner`, no volume), a tag
+que o registry serve hoje, os espelhos do `BUN_VERSION` contra a variable.
+Nenhum PR ve isso, nenhum gate fica vermelho.
+
+O job semanal `.gitea/workflows/forge-doctor.yml` roda o doctor INTEIRO (sem
+`--no-*`, com `--expected "$BUN_VERSION"` para comparar o VALOR dos espelhos, nao
+so a existencia deles) e publica o veredito como **issue** (label
+`forge-doctor-verdict`) pela API do Gitea:
+
+```bash
+bun scripts/forge-doctor-issue.mjs --report /tmp/forge-doctor.json --backend gitea
+```
+
+**INDETERMINADA tambem abre issue**, de proposito: ela nao e violacao, e sim
+divida de PROVA — e e onde o drift se esconde (um fato que ninguem mediu nao pode
+estar certo nem errado). O corpo da issue distingue os dois casos, para ninguem
+consertar uma peca que nao esta quebrada. A publicacao acontece ANTES do `exit 1`
+(depois dele, o step da issue nunca rodaria — o cron vermelho sem ticket que este
+workflow elimina) e o dedup e por assinatura: a mesma run do mesmo veredito nao
+abre outra issue, e um veredito DIFERENTE comenta na issue aberta.
+
+Sem relatorio valido (doctor com exit 3, JSON invalido, arquivo ausente) o
+publicador **falha** em vez de publicar um corpo vazio: "nao consegui medir" nao
+pode sair como verde. `--dry-run` imprime o corpo sem tocar a forja e **nao exige
+credencial** (conferir localmente nao deveria precisar de token):
+
+```bash
+bun scripts/forge-doctor-issue.mjs --report /tmp/forge-doctor.json --backend gitea --dry-run
+```
+
+O `GITEA_TOKEN` precisa de **escrita em issues** (a leitura do branch protection
+usa o mesmo token). O cron **nao** esta e nao pode estar em
+`ci/required-checks.json`: roda por cron, nao em PR — exigi-lo travaria todo PR
+para sempre. Paridade: **nao ha** par no `.github/`, tambem de proposito — o
+veredito e sobre ESTA forja (dona do merge, onde a stack roda); o mesmo doctor no
+runner do GitHub responderia sobre outro ambiente.
+
+Como rodar: **Actions** -> **Forge Doctor** -> **Run workflow**
+(`workflow_dispatch`, na branch `main`). O cron roda sozinho na segunda 07:07 UTC,
+depois dos crons de drift (06:41) e de espelhos (06:23) para nao disputar runner.
+
 ### Smoke test da forja (manual)
 
 Os guards leem YAML; eles nao veem o RUNTIME desta forja. Quatro pressupostos so
@@ -577,6 +756,38 @@ IMAGE_REGISTRY   : ghcr.io (fallback = ghcr.io)
 
 O relatorio final imprime `IMAGE_REGISTRY` resolvido — resposta direta para
 "a variable do registry ja foi criada ou ainda estou no default?".
+
+**Provando que o passo 4 MORDE (mutacao, sem subir a forja).** Um passo que exige
+o render e passa numa imagem SEM o plugin `compose` e um gate decorativo — e o
+`--require-compose` so serve para impedir exatamente isso. Para ver o vermelho
+antes de confiar o merge a esta forja: `bun run smoke-render:prove`. Ele roda o
+comando do passo 4 (extraido do proprio `forge-smoke.yml`) duas vezes no MESMO
+container — uma com o plugin que a imagem embarca, outra com o plugin REMOVIDO —
+e cobra o par de resultados. Exige docker e a imagem do runner local (construida
+por `bun run forge-runtime:prove` / `--build`).
+
+Saida esperada (verde — o vermelho da MUTACAO e o RESULTADO, nao a falha):
+
+```
+  alvo   : ghcr.io/severinno/ubuntu-bun:1.3.14 (BUN_VERSION 1.3.14)
+  comando: bun run check:registry-source --require-compose
+
+  controle : ✅ proven — o render do compose foi PROVADO dentro do container
+             check-registry-source: ✅ interpolacao do compose da forja provada — 3 fases ok ...
+  mutacao  : ✅ not-provable — o render NAO foi provado (exit 1) e o gate acusou, como pedido
+             check-registry-source: ❌ --require-compose: o render do deploy/docker-compose.gitea.yml
+             NAO foi provado (unavailable) — docker compose indisponivel: docker: unknown command: docker compose.
+             error: script "check:registry-source" exited with code 1
+
+  ✅ PROVEN: com o plugin o deploy/docker-compose.gitea.yml renderiza; sem ele a Prova 4 fica VERMELHA
+```
+
+Exit codes: `0` = provado (o controle prova **e** o mutante morde) · `1` =
+VIOLADO (o mutante passou num container sem o plugin, ou o controle nao provou o
+render — atribuicao impossivel) · `2` = indeterminado (sem docker ou sem a imagem
+do runner). Um `1` na coluna `mutacao` significaria que a Prova 4 passaria numa
+imagem sem o plugin: o silencio que o passo existe para pegar. Ver
+`docs/GUARDS.md` secao 15.
 
 **NUNCA torne este job um required check.** Ele so roda por `workflow_dispatch`:
 um required check que nao reporta status num PR nao falha, ele faz o PR ESPERAR

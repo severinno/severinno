@@ -1,0 +1,169 @@
+# =============================================================================
+# .gitea/workflows/forge-doctor.yml
+#
+# Equivalente ao `bun run doctor` rodando como CRON: publica o VEREDITO de
+# prontidão da forja como ISSUE ACIONÁVEL quando ele não é PRONTA.
+#
+# POR QUE UM CRON (e por que a subida já não basta): o `deploy/gitea-up.sh` usa o
+# doctor como pré-requisito e recusa subir com veredito BLOQUEADA. Mas a forja é
+# um sistema VIVO: a branch protection registrada pode ser editada no painel, o
+# registro do runner (o `/data/.runner` do volume) pode ficar velho, a tag que o
+# registry serve hoje pode não ser a que o repositório declara, um espelho do
+# BUN_VERSION pode divergir da variable. Nada disso aparece num PR, nada disso
+# deixa um gate vermelho, e o doctor só é lido por quem lembrou de rodá-lo.
+#
+# POR QUE ISSUE (e não só o job vermelho): mesmo precedente dos outros alertas
+# deste repositório (`required-checks-drift-issue.mjs`, `actrc-sync.yml`) — um
+# cron que fica vermelho é alerta MUDO: ninguém abre o log de algo que rodou
+# sozinho às 5h. A issue carrega o veredito, cada bloqueador com o seu remédio e
+# a lista do que ficou SEM PROVA, e o dedup por assinatura evita repetir o mesmo
+# veredito toda semana.
+#
+# INDETERMINADA TAMBÉM ABRE ISSUE, de propósito: ela não é violação, mas é dívida
+# de PROVA — e é onde o drift se esconde (um fato que ninguém mediu não pode
+# estar certo nem errado). Deixá-la fora do alerta faria o cron ficar verde
+# justamente quando a medição está faltando. O corpo da issue distingue os dois
+# casos, para o leitor não consertar uma peça que não está quebrada.
+#
+# A ORDEM DOS PASSOS É CONTRATO: o step que falha é o ÚLTIMO. Se ele viesse
+# antes, o step da issue nunca rodaria e o alerta voltaria a ser cron vermelho
+# sem ticket — exatamente o defeito que este workflow existe para eliminar.
+# (Ordem travada por teste em src/lib/__tests__/forge-doctor-workflow.test.ts.)
+#
+# POR QUE SÓ NA FORJA (e não um par no .github/): o veredito é sobre ESTA forja —
+# ela é dona do merge, é onde a stack roda (docker, o volume do registro, o env
+# do host) e é onde a branch protection que bloqueia vive. O runner do GitHub é
+# outro ambiente: rodar o mesmo doctor lá responderia sobre o espelho, não sobre
+# quem segura o merge. A assimetria é intencional — não "complete" o par.
+#
+# Secrets: `GITEA_TOKEN` (leitura do branch protection, do registry, DO BOARD —
+#                       as issues de drift abertas, que o doctor lê pela mesma
+#                       consulta dos publicadores — e escrita em issues: sem a
+#                       escrita, o veredito não é publicado)
+#          `GITEA_URL`   (ex.: https://gitea.exemplo.com)
+#          `GITEA_REPOSITORY` (owner/repo — necessário para abrir a issue)
+# Ausentes, o doctor roda assim mesmo: ele reporta o que NÃO conseguiu medir
+# (`INDETERMINADA`) e a issue é publicada com essa lista — o mesmo fail-closed
+# do resto do repositório: um alerta que não pode ser publicado é o silêncio de
+# antes, só que parecendo verde.
+#
+# Este workflow NÃO pode estar em `ci/required-checks.json`: roda por cron, não
+# em PR — exigi-lo travaria todo PR para sempre. (Mesma invariante do
+# required-checks-drift.yml, travada em teste.)
+#
+# Usage:
+#   cron semanal (segunda 07:07 UTC) ou dispatch manual.
+#
+# Exit codes (dos steps):
+#   0 — veredito PRONTA (nada a reportar)
+#   1 — veredito BLOQUEADA / INDETERMINADA (a issue é publicada ANTES de falhar)
+# =============================================================================
+
+name: Forge Doctor
+
+on:
+  schedule:
+    # Segunda 07:07 UTC — depois dos crons de drift/espelhos (06:23-06:41) para
+    # não competir por runner; o resultado não depende deles, só o horário é
+    # quieto. Minuto que não coincide com os outros de propósito: um horário
+    # idêntico faria duas filas disputarem o mesmo runner no mesmo instante.
+    - cron: "7 7 * * 1"
+  workflow_dispatch:
+
+env:
+  # FONTE ÚNICA (variable do repositório) — não cravar a versão aqui. O `--expected`
+  # do doctor compara o VALOR dos espelhos com ela, não só a existência deles.
+  BUN_VERSION: ${{ vars.BUN_VERSION }}
+
+jobs:
+  doctor:
+    name: Forge doctor (prontidão da forja → issue)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Mesmo contrato da ci.yml: script + cache, sem composite local.
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+
+      # ── O pré-requisito que o job `guards` também tem ────────────────────
+      # O doctor EXECUTA a fatia de gates do job `guards` da ci.yml, e alguns
+      # deles (a auditoria de dependências, por exemplo) precisam de
+      # node_modules. Sem este passo, cada um deles viraria um BLOQUEADOR falso
+      # na issue toda semana — e um alerta que sempre acende é um alerta que
+      # ninguém lê. É o MESMO comando da ci.yml: o doctor mede o que o job mede.
+      - name: Install dependencies (frozen)
+        run: bun install --frozen-lockfile
+
+      # ── O veredito (relatório JSON gravado, exit code guardado) ───────────
+      # `bun <script>` direto (não `bun run doctor`): a entry do package.json
+      # invoca `node scripts/...`, e a imagem do runner Gitea não garante `node`
+      # no PATH — bun executa o .mjs nativamente (o doctor usa `process.execPath`
+      # nos subprocessos, então rodar por bun propaga a escolha).
+      #
+      # O step NÃO falha aqui: quem falha é o último. Um step que saísse 1 aqui
+      # mataria o step da issue, e o drift voltaria a ser cron vermelho sem
+      # ticket.
+      #
+      # O exit code do doctor É o veredito (0 pronta · 1 bloqueada · 2
+      # indeterminada · 3 uso/erro interno). Sem `--no-*`: o cron semanal é
+      # justamente onde vale pagar o doctor inteiro — inclusive a prova do
+      # bloqueio e o contrato da imagem publicada.
+      #
+      # `--expected` compara o VALOR dos espelhos com a repository variable, não
+      # só a existência deles. Só é passado com a variable resolvida: uma flag
+      # com valor vazio faria o espelho "divergir de ''", que é um diagnóstico
+      # falso em cima de uma falha real (o contexto `vars` não hidratou).
+      - name: Run doctor (report only)
+        id: doctor
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ secrets.GITEA_URL }}
+          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+        run: |
+          set +e
+          ARGS=(--json)
+          if [ -n "${BUN_VERSION:-}" ]; then
+            ARGS+=(--expected "$BUN_VERSION")
+          else
+            echo "::notice::vars.BUN_VERSION vazio — o veredito não cobrirá o VALOR dos espelhos."
+          fi
+          bun scripts/forge-doctor.mjs "${ARGS[@]}" > /tmp/forge-doctor.json 2>/tmp/forge-doctor.log
+          CODE=$?
+          set -e
+          cat /tmp/forge-doctor.log
+          echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
+          echo "  relatório: /tmp/forge-doctor.json ($(wc -c < /tmp/forge-doctor.json) bytes)"
+
+      # ── A ISSUE é o alerta; o vermelho abaixo é a lembrança ──────────────
+      # Roda ANTES de falhar, de propósito. O relatório já está pronto, então
+      # não há novo acesso à forja além da escrita da issue.
+      #
+      # Com exit 3 (uso/erro interno do doctor) não há relatório válido: o
+      # publicador FALHA em vez de publicar um corpo vazio — fail-closed, porque
+      # "não consegui medir" não pode sair como verde.
+      - name: Publish doctor verdict issue (Gitea)
+        if: steps.doctor.outputs.exit_code != '0'
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ secrets.GITEA_URL }}
+          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+        run: |
+          bun scripts/forge-doctor-issue.mjs \
+            --report /tmp/forge-doctor.json \
+            --backend gitea
+
+      # ── Falha o cron também: a issue é o alerta, o vermelho é a lembrança ──
+      - name: Fail on non-ready verdict
+        if: steps.doctor.outputs.exit_code != '0'
+        run: |
+          echo "::error::O veredito do forge doctor não é PRONTA. Veja a issue 'forge-doctor-verdict' (reprodução: bun run doctor)."
+          exit 1
