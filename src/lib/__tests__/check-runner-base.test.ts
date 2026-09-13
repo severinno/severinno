@@ -38,19 +38,25 @@ import { describe, expect, it } from "vitest"
 
 import {
   BUN_PATH,
+  CONTRACT_OK_MARK,
   DIGEST_RE,
   DOCKERFILE,
+  EVIDENCE_SCRIPT,
   EXIT,
   HUB_API,
   SANDBOX_MODES,
+  checkPublishedImageContract,
   checkRunnerBase,
+  classifyImageRun,
   contractBlock,
   contractShape,
+  digestTarget,
   dockerStub,
   evaluate,
   exitCodeFor,
   instructions,
   parseArgs,
+  parseEvidence,
   parseImageRef,
   pinMutations,
   proveContract,
@@ -60,6 +66,8 @@ import {
   replaceBaseRef,
   resolveTagDigests,
   runContractBlock,
+  runContractInImage,
+  runEvidence,
   writePin,
 } from "../../../scripts/check-runner-base.mjs"
 
@@ -800,5 +808,338 @@ describe("check-runner-base — CLI e exit codes", () => {
     expect(res.status).toBe(EXIT.OK)
     expect(res.stdout).toContain("check-runner-base")
     expect(res.stdout).toContain("3 — indeterminado")
+  })
+})
+
+// ── 12. o contrato da IMAGEM PUBLICADA (o artefato, não o build) ───────────
+
+/** Um `docker` dublê que responde por CHAMADA, e registra os argumentos. */
+function dockerStubRun(
+  responses: Record<string, { status: number; stdout?: string; stderr?: string }>,
+) {
+  const calls: string[][] = []
+  const run = (_cmd: string, args: string[]) => {
+    calls.push(args)
+    // A chave é o subcomando + a posição do alvo (o 1º argumento depois das flags).
+    const key = args[0] === "run" ? "run" : args[0]
+    const res = responses[key] ?? { status: 0, stdout: "" }
+    return { status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "" }
+  }
+  return { run, calls }
+}
+
+describe("digestTarget — o alvo imutável", () => {
+  it("troca a tag pelo digest (o que a tag serve hoje)", () => {
+    expect(digestTarget(`ghcr.io/severinno/ubuntu-bun:1.3.14`, PINNED)).toBe(
+      `ghcr.io/severinno/ubuntu-bun@${PINNED}`,
+    )
+  })
+
+  it("aceita scheme (registry local dos testes) e devolve o host sem ele", () => {
+    expect(digestTarget(`http://127.0.0.1:5000/ns/ubuntu-bun:1.3.14`, PINNED)).toBe(
+      `127.0.0.1:5000/ns/ubuntu-bun@${PINNED}`,
+    )
+  })
+})
+
+describe("parseEvidence / classifyImageRun — o veredito de UM docker run", () => {
+  it("lê os três fatos do script de evidência", () => {
+    expect(
+      parseEvidence(
+        `bun-path=${BUN_PATH}\nbun-version=1.3.14\ncompose=Docker Compose version 5.4.0-2\n`,
+      ),
+    ).toEqual({
+      bunPath: BUN_PATH,
+      bunVersion: "1.3.14",
+      composeVersion: "Docker Compose version 5.4.0-2",
+    })
+  })
+
+  it("chave ausente é null (não inventa um valor)", () => {
+    expect(parseEvidence("bun-version=1.3.14\n")).toMatchObject({
+      bunPath: null,
+      bunVersion: "1.3.14",
+      composeVersion: null,
+    })
+  })
+
+  it("`proven` só com a MARCA do bloco no stdout", () => {
+    expect(classifyImageRun({ code: 0, output: `  ✅ ${CONTRACT_OK_MARK}: plugin compose` })).toBe(
+      "proven",
+    )
+    // Saída 0 SEM a marca = o bloco que rodou não é o do contrato (um Dockerfile
+    // cujo RUN virou `true` também sairia 0) — é violação, não conformidade.
+    expect(classifyImageRun({ code: 0, output: "tudo certo" })).toBe("violated")
+  })
+
+  it("falha do CONTRATO (o container rodou e o bloco falhou) é violated", () => {
+    expect(
+      classifyImageRun({
+        code: 1,
+        output: "::error::o PLUGIN 'compose' não está na imagem (o CLI existe, o subcomando não).",
+      }),
+    ).toBe("violated")
+  })
+
+  it("falha do DOCKER (não chegou a rodar) é unavailable — nunca acusação", () => {
+    for (const output of [
+      "docker: Cannot connect to the Docker daemon at unix:///var/run/docker.sock.",
+      "docker: Error response from daemon: pull access denied for ghcr.io/x/y, repository does not exist or may require 'docker login'",
+      "docker: Error response from daemon: manifest unknown",
+      "dial tcp: lookup ghcr.io: no such host",
+      "docker: Error response from daemon: unauthorized",
+    ]) {
+      expect(classifyImageRun({ code: 125, output }), output).toBe("unavailable")
+    }
+  })
+
+  it("o corpus do dublê NÃO dispara o padrão de falha do docker", () => {
+    // O bloco do contrato fala em português e nomeia a consequência: se uma
+    // mensagem DELE casasse o regex de infra, uma violação real viraria
+    // INDETERMINADA (e o vermelho sumiria).
+    const res = runContractBlock({ block: contractBlock(REAL).block as string, mode: "no-plugin" })
+    expect(classifyImageRun(res)).toBe("violated")
+  })
+})
+
+describe("runContractInImage / runEvidence — o argv do docker", () => {
+  it("o alvo vem por DIGEST e a versão vai por -e (o bloco compara com ela)", () => {
+    const { run, calls } = dockerStubRun({
+      run: { status: 0, stdout: `✅ ${CONTRACT_OK_MARK}` },
+    })
+    runContractInImage({
+      target: `ghcr.io/severinno/ubuntu-bun@${PINNED}`,
+      block: "meu-bloco",
+      expectedVersion: "1.3.14",
+      run,
+    })
+    expect(calls[0]).toEqual([
+      "run",
+      "--rm",
+      "--entrypoint",
+      "bash",
+      "-e",
+      "BUN_VERSION=1.3.14",
+      `ghcr.io/severinno/ubuntu-bun@${PINNED}`,
+      "-c",
+      "meu-bloco",
+    ])
+  })
+
+  it("sem versão esperada o `-e` vai vazio (o bloco falha e o vermelho explica)", () => {
+    const { run, calls } = dockerStubRun({ run: { status: 1, stderr: "x" } })
+    const res = runContractInImage({ target: "img@sha256:x", block: "b", run })
+    expect(calls[0]).toContain("BUN_VERSION=")
+    expect(res.code).toBe(1)
+  })
+
+  it("processo morto (timeout/sem docker) não vira exit 0", () => {
+    const run = () => ({ status: null, stdout: "", stderr: "" })
+    expect(runContractInImage({ target: "i", block: "b", run }).code).toBe(125)
+    expect(runEvidence({ target: "i", run }).code).toBe(125)
+  })
+
+  it("a evidência é o MESMO script exportado (uma verdade só)", () => {
+    const { run, calls } = dockerStubRun({ run: { status: 0, stdout: "bun-version=1.3.14" } })
+    runEvidence({ target: "img@sha256:x", run })
+    expect(calls[0]).toEqual([
+      "run",
+      "--rm",
+      "--entrypoint",
+      "bash",
+      "img@sha256:x",
+      "-c",
+      EVIDENCE_SCRIPT,
+    ])
+  })
+})
+
+describe("checkPublishedImageContract — o build promete, o artefato prova", () => {
+  const REF = "ghcr.io/severinno/ubuntu-bun:1.3.14"
+  const OK_OUTPUT = `  ✅ ${CONTRACT_OK_MARK}: plugin compose (Docker Compose version 5.4.0-2) E tier-1 intacto`
+
+  it("sem ref não há artefato: unavailable (não é acusação)", async () => {
+    const res = await checkPublishedImageContract({ ref: null, text: REAL })
+    expect(res.state).toBe("unavailable")
+    expect(res.detail).toContain("nao foi resolvida")
+  })
+
+  it("Dockerfile sem o bloco do contrato não tem o que provar", async () => {
+    const res = await checkPublishedImageContract({ ref: REF, text: "FROM a/b:1\nRUN echo oi\n" })
+    expect(res.state).toBe("unavailable")
+    expect(res.detail).toContain("nenhum RUN confere")
+    expect(res.remedies.join(" ")).toContain("check:runner-base")
+  })
+
+  it("sem credencial o digest não sai — e o remédio é a credencial", async () => {
+    const resolveIdentity = async () => ({
+      state: "unauthorized",
+      digest: null,
+      version: null,
+      detail: "HTTP 401 em ghcr.io (pacote privado e sem credencial no ambiente)",
+    })
+    const { run, calls } = dockerStubRun({})
+    const res = await checkPublishedImageContract({ ref: REF, text: REAL, resolveIdentity, run })
+    expect(res.state).toBe("unavailable")
+    expect(res.remedies.join(" ")).toContain("GHCR_TOKEN")
+    // Sem digest NÃO se roda nada: `docker run` por tag provaria o cache local.
+    expect(calls).toEqual([])
+  })
+
+  it("o ARTEFATO prova o contrato: proven, com o alvo por digest", async () => {
+    const resolveIdentity = async () => ({
+      state: "proven",
+      digest: PINNED,
+      version: "1.3.14",
+      detail: "a tag serve o índice",
+    })
+    const { run, calls } = dockerStubRun({ run: { status: 0, stdout: OK_OUTPUT } })
+    const res = await checkPublishedImageContract({
+      ref: REF,
+      text: REAL,
+      expectedVersion: "1.3.14",
+      resolveIdentity,
+      run,
+    })
+    expect(res.state).toBe("proven")
+    expect(res.target).toBe(`ghcr.io/severinno/ubuntu-bun@${PINNED}`)
+    expect(res.digest).toBe(PINNED)
+    expect(res.detail).toContain("a imagem PUBLICADA")
+    expect(res.detail).toContain("a label da imagem declara 1.3.14")
+    // Uma única corrida no caminho verde (a evidência só roda para EXPLICAR vermelho).
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toContain(`ghcr.io/severinno/ubuntu-bun@${PINNED}`)
+  })
+
+  it("com o digest em mãos o probe do registry NÃO é consultado", async () => {
+    let called = 0
+    const resolveIdentity = async () => {
+      called++
+      return { state: "proven", digest: PINNED, version: null, detail: "" }
+    }
+    const { run } = dockerStubRun({ run: { status: 0, stdout: OK_OUTPUT } })
+    const res = await checkPublishedImageContract({
+      ref: REF,
+      digest: PINNED,
+      text: REAL,
+      resolveIdentity,
+      run,
+    })
+    expect(called).toBe(0)
+    expect(res.state).toBe("proven")
+  })
+
+  it("a label declarar OUTRA versão não impede a prova: quem decide é a execução", async () => {
+    // A label é DECLARAÇÃO (o invariante 9 compara com os espelhos). Aqui o que
+    // se prova é o binário dentro da imagem — e ele roda a versão pedida.
+    const resolveIdentity = async () => ({
+      state: "mismatch",
+      digest: PINNED,
+      version: "1.3.13",
+      detail: "declara outra versao",
+    })
+    const { run } = dockerStubRun({ run: { status: 0, stdout: OK_OUTPUT } })
+    const res = await checkPublishedImageContract({
+      ref: REF,
+      text: REAL,
+      expectedVersion: "1.3.14",
+      resolveIdentity,
+      run,
+    })
+    expect(res.state).toBe("proven")
+    expect(res.labelVersion).toBe("1.3.13")
+    expect(res.detail).toContain("a label da imagem declara 1.3.13")
+  })
+
+  it("a imagem RODOU e o contrato falhou: violated com os NÚMEROS", async () => {
+    const resolveIdentity = async () => ({
+      state: "proven",
+      digest: PINNED,
+      version: "1.3.14",
+      detail: "",
+    })
+    // Dublê SEQUENCIAL de propósito: o probe faz dois `docker run` (o bloco e,
+    // para explicar o vermelho, a evidência) e as respostas são distintas.
+    const seq = (() => {
+      const seen: string[][] = []
+      const fn = (_cmd: string, args: string[]) => {
+        seen.push(args)
+        if (seen.length === 1) {
+          return { status: 1, stdout: "", stderr: "::error::o PLUGIN 'compose' não está na imagem" }
+        }
+        return {
+          status: 0,
+          stdout: `bun-path=/opt/bun\nbun-version=1.3.13\ncompose=AUSENTE\n`,
+          stderr: "",
+        }
+      }
+      return { run: fn, seen }
+    })()
+    const res = await checkPublishedImageContract({
+      ref: REF,
+      text: REAL,
+      expectedVersion: "1.3.14",
+      resolveIdentity,
+      run: seq.run,
+    })
+    expect(res.state).toBe("violated")
+    expect(seq.seen).toHaveLength(2)
+    expect(res.findings).toEqual({
+      bunPath: "/opt/bun",
+      bunVersion: "1.3.13",
+      composeVersion: "AUSENTE",
+    })
+    // Os três defeitos, nomeados com os números medidos.
+    expect(res.detail).toContain(`bun resolve de '/opt/bun' (o contrato promete ${BUN_PATH})`)
+    expect(res.detail).toContain("bun --version = '1.3.13' (o esperado e '1.3.14')")
+    expect(res.detail).toContain("o PLUGIN 'compose' nao esta na imagem")
+    expect(res.remedies.join(" ")).toContain("runner-image:ensure")
+  })
+
+  it("sem os números (a evidência não respondeu), o vermelho cai na saída do bloco", async () => {
+    const resolveIdentity = async () => ({
+      state: "proven",
+      digest: PINNED,
+      version: null,
+      detail: "",
+    })
+    let n = 0
+    const run = () => {
+      n++
+      return n === 1
+        ? { status: 1, stdout: "", stderr: "" }
+        : { status: 125, stdout: "", stderr: "docker: Error response from daemon: oops" }
+    }
+    const res = await checkPublishedImageContract({ ref: REF, text: REAL, resolveIdentity, run })
+    expect(res.state).toBe("violated")
+    expect(res.findings).toMatchObject({ bunPath: null, bunVersion: null, composeVersion: null })
+    expect(res.detail).toContain("NAO executa o contrato")
+  })
+
+  it("o docker não consegue rodar (daemon/credencial): unavailable com remédio", async () => {
+    const resolveIdentity = async () => ({
+      state: "proven",
+      digest: PINNED,
+      version: null,
+      detail: "",
+    })
+    const { run } = dockerStubRun({
+      run: {
+        status: 125,
+        stderr:
+          "docker: Error response from daemon: pull access denied for ghcr.io/severinno/ubuntu-bun",
+      },
+    })
+    const res = await checkPublishedImageContract({ ref: REF, text: REAL, resolveIdentity, run })
+    expect(res.state).toBe("unavailable")
+    expect(res.detail).toContain("NAO conseguiu rodar")
+    expect(res.remedies.join(" ")).toContain("docker login")
+    expect(res.findings).toBeNull()
+  })
+
+  it("a marca do sucesso é a MESMA string que o bloco do Dockerfile imprime", () => {
+    // Sem esta amarra, renomear o `echo` do bloco faria o probe dizer
+    // 'violated' num artefato perfeito (e o oposto, se alguém afrouxasse a marca).
+    expect(contractBlock(REAL).block).toContain(CONTRACT_OK_MARK)
   })
 })

@@ -10,6 +10,7 @@
 //   node scripts/forge-doctor.mjs --no-proof      # pula a prova do bloqueio (mais rápido)
 //   node scripts/forge-doctor.mjs --no-protection # pula a leitura da forja (branch protection)
 //   node scripts/forge-doctor.mjs --no-runner-labels # pula o registro do runner (as duas forjas)
+//   node scripts/forge-doctor.mjs --no-image-contract # pula o contrato da imagem PUBLICADA
 //   node scripts/forge-doctor.mjs --no-registry-probe # offline: nao consulta o registry
 //   node scripts/forge-doctor.mjs --expected 1.3.14 # valor de vars.BUN_VERSION
 //   node scripts/forge-doctor.mjs --gitea-env deploy/.env.gitea
@@ -26,7 +27,9 @@
 //       divergindo do template, default do compose divergindo do declarado, tag
 //       re-tagada/ausente no registry), OU o REGISTRO do act_runner não é o do
 //       compose (label gravado apontando para outra imagem: o job roda o que não
-//       foi revisado) — o merge não pode ser confiado
+//       foi revisado), OU a imagem PUBLICADA não executa o contrato do build
+//       (sem o plugin `compose`, com OUTRA versão do Bun, ou com o Bun fora de
+//       /usr/local/bin) — o merge não pode ser confiado
 //   2 — INDETERMINADA: nada falhou, mas algo não pôde ser provado (registry
 //       inacessível, pacote privado sem credencial, ferramenta ausente)
 //   3 — uso/erro interno (argumento inválido, pipeline ilegível)
@@ -83,6 +86,16 @@
 // no dia do drift. Violação bloqueia; INDETERMINADO nunca vira "pronta"; e um
 // arquivo gitignored ausente (`absent`) não é pendência — é "não aplicável aqui".
 //
+// O CONTRATO DA IMAGEM PUBLICADA (seção 3) fecha o buraco que o build não
+// alcança: as provas do build (o pin por digest, o bloco fail-closed, as
+// mutações) continuam verdadeiras se a imagem que o registry serve for OUTRA
+// build — e o job baixa essa. Quem responde é `checkPublishedImageContract`:
+// resolve o DIGEST que a tag serve hoje e RODA o bloco do contrato DENTRO do
+// artefato (`docker run <repo>@<digest>`), lendo plugin `compose`, versão do Bun
+// e o caminho resolvido. Violação BLOQUEIA (o runner roda uma imagem que não
+// cumpre a promessa); "não conseguiu rodar" (sem daemon, sem credencial, pull
+// negado) é INDETERMINADA — e o custo é dito: o primeiro run baixa a imagem.
+//
 // O REGISTRO do act_runner (`/data/.runner`, seção 3) entra pela função do guard
 // da Prova 5 do smoke (`checkRunnerLabels`, o mesmo exit code) — existe para o
 // veredito não dizer "o compose PEDE a imagem certa" e ficar em silêncio sobre o
@@ -110,7 +123,8 @@ import { spawnSync } from "node:child_process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { discoverGates } from "./check-forge-parity.mjs"
-import { ensureRunnerImage, DEFAULT_ENV_FILE } from "./ensure-runner-image.mjs"
+import { checkPublishedImageContract } from "./check-runner-base.mjs"
+import { credentialsFromEnv, ensureRunnerImage, DEFAULT_ENV_FILE } from "./ensure-runner-image.mjs"
 import { GITHUB_RUNNER_SCRIPT, checkGithubRunnerLabels } from "./check-runner-labels.mjs"
 import { proveRunnerImageGate } from "./prove-runner-image-gate.mjs"
 import { checkComposeInterpolation, checkNonVersionedImageRefs } from "./check-registry-source.mjs"
@@ -512,6 +526,27 @@ export function summarize(facts) {
     )
   }
 
+  // O CONTRATO da imagem PUBLICADA: o build promete, o artefato prova. Violação
+  // BLOQUEIA — é o job rodando uma imagem que não cumpre a promessa (sem o
+  // plugin `compose`, com OUTRA versão do Bun, ou com o Bun fora do PATH) —, e
+  // "não consegui rodar" (sem daemon, sem credencial, pull negado) é
+  // INDETERMINADA: não poder provar não é acusação nem atestado.
+  if (facts.skippedImageContract) {
+    unknowns.push(
+      "o contrato da imagem PUBLICADA foi pulado (--no-image-contract): o veredito não cobre se o artefato que o job baixa cumpre o contrato do build",
+    )
+  } else if (facts.imageContract?.state === "violated") {
+    blockers.push(
+      `o contrato da imagem PUBLICADA FALHOU (${facts.imageContract.detail}) — o job roda uma imagem que NAO cumpre a promessa do build`,
+    )
+  } else if (facts.imageContract && facts.imageContract.state !== "proven") {
+    if (facts.imageContract.state !== "skipped") {
+      unknowns.push(
+        `o contrato da imagem PUBLICADA nao foi provado (${facts.imageContract.state}): ${facts.imageContract.detail}`,
+      )
+    }
+  }
+
   // O REGISTRO do act_runner: o que GRAVOU é o que decide a imagem de cada job.
   // Violação BLOQUEIA (a forja roda os jobs numa imagem que não é a revisada, ou
   // não os roda em imagem nenhuma); "não consegui ler" é INDETERMINADA — nunca
@@ -560,6 +595,9 @@ export function summarize(facts) {
     unproven.unshift(
       "o registro do act_runner e o do runner auto-hospedado do GitHub (pulados por --no-runner-labels)",
     )
+  }
+  if (facts.skippedImageContract) {
+    unproven.unshift("o contrato da imagem PUBLICADA (pulado por --no-image-contract)")
   }
   if (facts.skippedProtection) {
     unproven.unshift("a branch protection REGISTRADA na forja (pulada por --no-protection)")
@@ -925,6 +963,7 @@ export function readMirrors(cwd = REPO_ROOT, { expected = null, envPath = null }
 
 /** Roda o check da imagem (NUNCA publica) e guarda as linhas que ele emitiu. */
 export async function readImage({ envFile = DEFAULT_ENV_FILE, cwd = REPO_ROOT, deps = {} } = {}) {
+  // (o `readImageContract` logo abaixo consome o `ref` resolvido aqui)
   const lines = []
   const emit = {
     pass: (m) => lines.push(`✅ ${m}`),
@@ -938,6 +977,63 @@ export async function readImage({ envFile = DEFAULT_ENV_FILE, cwd = REPO_ROOT, d
   const res = await ensureRunnerImage({ check: true, envFile, cwd, ...deps, emit })
   return { code: res.code, ref: res.ref, state: res.state, detail: res.detail, lines }
 }
+
+/**
+ * O CONTRATO DA IMAGEM PUBLICADA — o que o build promete x o que a forja BAIXA.
+ *
+ * POR QUE O BUILD NÃO BASTA: o pin por digest, o bloco fail-closed e as mutações
+ * falhando provam o ARQUIVO e o bloco dele. Todas seguem verdadeiras se a imagem
+ * que o registry serve for OUTRA build — e é essa que o job baixa. Aqui o alvo é
+ * o DIGEST que a tag serve hoje (não a tag: rodar por tag provaria o cache DESTA
+ * máquina) e quem decide é o MESMO bloco do Dockerfile, executado DENTRO do
+ * artefato: plugin `compose`, versão do Bun e o caminho resolvido.
+ *
+ * A RESOLUÇÃO DO DIGEST sai do MESMO probe do invariante 9
+ * (`probeImageIdentity`), com a credencial do ambiente: sem ela o pacote privado
+ * responde 401 e o fato é INDETERMINADA — nunca "o contrato está certo".
+ *
+ * O `expected` é o valor de `vars.BUN_VERSION` (`--expected`) e, sem ele, a TAG
+ * que o compose declara (o env do runner é a fonte do ref): a comparação do
+ * valor entre os dois é do fato dos espelhos; aqui a pergunta é se a IMAGEM roda
+ * a versão que ela promete.
+ *
+ * @param {{image?: {ref?: string|null}, expected?: string|null, cwd?: string, env?: Record<string, string>, deps?: object}} [args]
+ * @returns {Promise<{state: string, detail: string, ref: string|null, digest: string|null, target: string|null, expectedVersion: string|null, findings: object|null, remedies: string[]}>}
+ */
+export async function readImageContract({
+  image = {},
+  expected = null,
+  cwd = REPO_ROOT,
+  env = {},
+  deps = {},
+} = {}) {
+  const ref = image?.ref ?? null
+  if (!ref) {
+    return {
+      state: "unavailable",
+      detail:
+        "a imagem declarada nao foi resolvida (env do runner ausente/invalido): nao ha artefato a provar contra o registry",
+      ref: null,
+      digest: null,
+      target: null,
+      expectedVersion: expected,
+      findings: null,
+      remedies: [],
+    }
+  }
+  const tag = ref.slice(ref.lastIndexOf(":") + 1)
+  const expectedVersion = expected ?? tag
+  const result = await checkPublishedImageContract({
+    ref,
+    expectedVersion,
+    credentials: credentialsFromEnv(env),
+    cwd,
+    ...deps,
+  })
+  return { ...result, expectedVersion, ref }
+}
+
+/**
 
 /**
  * A prova do bloqueio: EXECUTA o `deploy/gitea-up.sh` real contra um registry de
@@ -1283,6 +1379,30 @@ export function renderReport(report, { emit = console.log } = {}) {
     }
   }
 
+  // O CONTRATO DA IMAGEM PUBLICADA: a prova mais forte da seção. O build promete
+  // (pin por digest + bloco fail-closed) — aqui o ARTEFATO que o job BAIXA é
+  // executado e responde: plugin `compose`, versão do Bun e o caminho resolvido.
+  const ic = facts.imageContract
+  if (ic) {
+    const icMark =
+      ic.state === "proven"
+        ? MARK.ok()
+        : ic.state === "violated"
+          ? MARK.fail()
+          : ic.state === "skipped"
+            ? MARK.skip()
+            : MARK.warn()
+    line(`       ${icMark} contrato da imagem PUBLICADA: ${ic.detail}`)
+    if (ic.digest) line(`           ${color(C.gray, `alvo: ${ic.target}`)}`)
+    if (ic.findings) {
+      const f = ic.findings
+      line(
+        `           ${color(C.gray, `bun: ${f.bunPath ?? "?"} · versao: ${f.bunVersion ?? "?"} · compose: ${f.composeVersion ?? "?"}`)}`,
+      )
+    }
+    for (const r of ic.remedies ?? []) line(`           ${color(C.gray, `→ ${r}`)}`)
+  }
+
   // O que o runner GRAVOU (`/data/.runner`): os labels são ESTADO no volume, não
   // config do container — o `up -d runner` recria o container com o env novo e
   // deixa o registro velho no lugar, e o job cai na imagem antiga sem sintoma.
@@ -1455,6 +1575,12 @@ Opções:
                          GitHub (o registro vive no SERVIDOR: a API x o
                          RUNNER_LABELS de deploy/setup-github-runner.sh, que
                          exige token de self-hosted runners — sem ele é 3)
+  --no-image-contract    pula o contrato da imagem PUBLICADA: o doctor resolve o
+                         DIGEST que a tag serve e roda o bloco do contrato DENTRO
+                         do artefato (docker run <repo>@<digest>) — plugin
+                         \`compose\`, versão do Bun e o caminho resolvido. É a
+                         única prova do que o job REALMENTE baixa; o primeiro
+                         run baixa a imagem (minutos) se ela nao estiver local
   --no-compose-render    pula a interpolação do compose (docker compose config)
   --no-registry-probe    não consulta o registry (offline): a tag que o repo
                          declara deixa de ser conferida — e o veredito não pode
@@ -1481,6 +1607,7 @@ export function parseArgs(argv) {
     proof: true,
     protection: true,
     runnerLabels: true,
+    imageContract: true,
     composeRender: true,
     registryProbe: true,
     envFile: DEFAULT_ENV_FILE,
@@ -1496,6 +1623,7 @@ export function parseArgs(argv) {
     else if (arg === "--no-proof") opts.proof = false
     else if (arg === "--no-protection") opts.protection = false
     else if (arg === "--no-runner-labels") opts.runnerLabels = false
+    else if (arg === "--no-image-contract") opts.imageContract = false
     else if (arg === "--no-compose-render") opts.composeRender = false
     else if (arg === "--no-registry-probe") opts.registryProbe = false
     else if (arg === "--json") opts.json = true
@@ -1535,6 +1663,7 @@ export function parseArgs(argv) {
  * @param {boolean} [options.proof]    executar a prova do bloqueio (default: true)
  * @param {boolean} [options.protection] ler a branch protection registrada na forja (default: true)
  * @param {boolean} [options.runnerLabels] comparar o registro do act_runner com o compose (default: true)
+ * @param {boolean} [options.imageContract] rodar o contrato DENTRO da imagem publicada (default: true)
  * @param {boolean} [options.composeRender] interpolar o compose da forja (default: true)
  * @param {number} [options.timeoutS]  limite por gate
  * @param {Function} [options.run]     `spawnSync` real ou dublê de teste
@@ -1546,6 +1675,8 @@ export function parseArgs(argv) {
  * @param {object} [options.githubRunnerLabelsDeps] dependências do fato do
  * registro do runner do GitHub (`check`/`fetchImpl`/`env`) — o ponto de injeção do teste
  * @param {object} [options.proofDeps] dependências repassadas à prova do bloqueio
+ * @param {object} [options.imageContractDeps] dependências do fato do contrato publicado
+ * (`resolveIdentity`/`run`/`credentials`/`cwd`) — o ponto de injeção do teste
  * @param {object} [options.composeDeps] dependências repassadas à interpolação do compose
  * @param {object} [options.protectionDeps] dependências repassadas à leitura da branch protection
  * (`run` é o mesmo dublê dos gates: é por ele que a leitura da forja é injetada)
@@ -1562,6 +1693,7 @@ export async function diagnose({
   proof = true,
   protection = true,
   runnerLabels = true,
+  imageContract = true,
   composeRender = true,
   registryProbe = true,
   timeoutS = 120,
@@ -1573,6 +1705,7 @@ export async function diagnose({
   proofDeps = {},
   composeDeps = {},
   protectionDeps = {},
+  imageContractDeps = {},
 } = {}) {
   const contractRun = runGate(
     { label: "check:required-checks", command: "bun run check:required-checks" },
@@ -1597,11 +1730,33 @@ export async function diagnose({
 
   const results = guards ? runGuards(gatesResult.gates, { cwd, timeoutS, run }) : []
 
+  // O fato da imagem sai primeiro porque o CONTRATO PUBLICADO depende dele (o
+  // `ref` resolvido pelo env é a fonte do alvo — uma leitura do env, não duas).
+  const image = await readImage({ envFile, cwd, deps: imageDeps })
+
   return {
     facts: {
       contract,
       guards: { results, error: gatesResult.error ?? null, gates: gatesResult.gates },
-      image: await readImage({ envFile, cwd, deps: imageDeps }),
+      image,
+      // A imagem publicada: exige a MESMA leitura do registry que o
+      // `--no-registry-probe` desliga (o digest da tag vem de lá) — a flag pula
+      // as duas, e o relatório diz qual das duas razões o fez ficar de fora.
+      imageContract:
+        imageContract && registryProbe
+          ? await readImageContract({ image, expected, cwd, env, deps: imageContractDeps })
+          : {
+              state: "skipped",
+              detail: imageContract
+                ? "pulada por --no-registry-probe (o digest que a tag serve vem do registry)"
+                : "pulada por --no-image-contract",
+              ref: image.ref ?? null,
+              digest: null,
+              target: null,
+              expectedVersion: expected,
+              findings: null,
+              remedies: [],
+            },
       proof: proof
         ? await readProof({ cwd, deps: proofDeps })
         : { status: "skipped", ok: false, detail: "pulada por --no-proof", cases: [] },
@@ -1667,6 +1822,7 @@ export async function diagnose({
       skippedProtection: !protection,
       skippedRunnerLabels: !runnerLabels,
       skippedRegistryProbe: !registryProbe,
+      skippedImageContract: !imageContract,
     },
   }
 }

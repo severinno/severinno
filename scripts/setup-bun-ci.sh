@@ -23,7 +23,9 @@
 #      GitHub Releases) e, se o mirror faltar ou não houver docker, o download
 #      direto do release (~5-10s).
 #
-# Usage (o par canônico no workflow — key e versão vêm da fonte única):
+# O par canônico no workflow (a key e a versão vêm da fonte única):
+#
+# Usage:
 #   - uses: actions/cache@v4
 #     with:
 #       path: ~/.bun

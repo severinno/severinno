@@ -1,5 +1,26 @@
 set -eu
 
+# ── Agregação dos guards paralelos ────────────────────────────────────────
+# `wait pid1 pid2 ...` devolve o status de APENAS UM dos PIDs — o ÚLTIMO da
+# lista. Medido nas duas cascas que o husky usa (dash via `sh -e` e bash via
+# Git for Windows): `(exit 3) & a=$!; (exit 0) & b=$!; wait $a $b` sai 0.
+# Ou seja: um guard que NÃO seja o último da fase podia reprovar e o commit
+# seguia — o comentário prometia "fail immediately if any exits non-zero" e o
+# código não cumpria. Aqui esperamos cada PID e devolvemos o PRIMEIRO status
+# não-zero, de modo que o exit code do hook seja o do guard que reprovou,
+# seja qual for a posição dele na fase.
+wait_all() {
+  _status=0
+  for _pid in "$@"; do
+    _code=0
+    wait "$_pid" || _code=$?
+    if [ "$_code" -ne 0 ] && [ "$_status" -eq 0 ]; then
+      _status=$_code
+    fi
+  done
+  return "$_status"
+}
+
 # ============================================================================
 # Pre-commit hook — Severinno Marketplace
 #
@@ -27,8 +48,8 @@ PID_DEPS=$!
 node scripts/check-mutation-timing-contract.mjs --staged &
 PID_TIMING=$!
 
-# Wait for all Phase A jobs — fail immediately if any exits non-zero
-wait $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING
+# Aguarda a fase e agrega TODOS os status (wait_all — ver o topo do arquivo).
+wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING
 
 # ── Phase B: Global guards (parallel) ─────────────────────────────────────
 # Encoding guards, barrel lint, and prettier check are read-only and
@@ -73,7 +94,7 @@ PID_SCOPE=$!
 ) &
 PID_PRETTIER=$!
 
-wait $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE
+wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE
 
 # ── Phase C: Sequential checks (state-dependent) ─────────────────────────
 # These checks may modify files (lint-staged) or depend on the full project

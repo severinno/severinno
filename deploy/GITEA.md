@@ -284,7 +284,13 @@ ausente ou OFFLINE tambem bloqueia, porque os checks obrigatorios do GitHub so
 rodam nele); `--no-runner-labels` pula as **duas** leituras rebaixando o veredito; e sobe a
 consulta ao registry para o veredito — `--no-registry-probe` a desliga e **rebaixa** o
 veredito, porque um fato "provado" que nao olhou a tag diria `pronta` com a
-pergunta em aberto; consulta a tag da imagem do runner no
+pergunta em aberto; **roda o contrato do build DENTRO do artefato publicado** —
+resolve o DIGEST que a tag serve hoje e executa `docker run <repo>@<digest>` com
+o mesmo bloco `RUN` do `Dockerfile.ubuntu-bun`, provando plugin `compose`, versao
+do Bun e o caminho `/usr/local/bin/bun` na imagem que o job realmente baixa (sem
+com a execucao o build e a label provam o ARQUIVO, nao o artefato; sem daemon ou
+sem credencial o veredito e INDETERMINADA e `--no-image-contract` pula
+rebaixando); consulta a tag da imagem do runner no
 registry e — na secao `4/5` — **prova que a subida depende dela**: roda o
 `deploy/gitea-up.sh` real contra um registry de TESTE em `127.0.0.1`, com a tag
 ausente e com a tag presente, e afirma sobre o log do `docker` duble. A tag
@@ -319,7 +325,9 @@ INDETERMINADA, nunca "em sincronia"; veja o requisito de token em
 host DIFERENTE deste checkout (o do proprio checkout o doctor compara com o
 template; outro host entra
 por `--gitea-env`, e sem o arquivo a secao do compose diz `host x template: …`
-em vez de fingir que conferiu).
+em vez de fingir que conferiu). O que a secao `3/5` **prova** do render e o plugin
+`compose` no artefato publicado (o contrato acima); o que segue fora do alcance
+do doctor e o **socket** do job, e quem o exercita e a Prova 4 do smoke.
 
 **Nao ha fallback.** A `node:20-bullseye` existe no Docker Hub e sempre subia —
 lenta, mas sempre. A imagem custom troca isso por velocidade: tag errada,
@@ -367,6 +375,47 @@ do `actions/runner` nao guarda label nenhum —, entao o lado REGISTRADO vem da 
 `RUNNER_LABELS` de `deploy/setup-github-runner.sh`. Mesmos exit codes e mesma
 regra (sem token de self-hosted runners e **3**, nunca "em sincronia"; um runner
 registrado mas OFFLINE e divergente). Detalhes em `deploy/GITHUB_RUNNER.md`.
+
+### 3.3. Antes de publicar a imagem: `bun run forge-runtime:prove`
+
+O doctor mede o repositorio, o registry e ESTE host. Ele nao mede o **runtime do
+job**: os guards rodam num container, como outro usuario, com o `docker` do
+runner e o workspace montado em outro caminho. Enquanto isso nao for ensaiado,
+"os guards passam aqui" e uma promessa sobre a maquina de quem desenvolve.
+
+```bash
+bun run forge-runtime:prove                     # build + contrato + o job guards inteiro
+bun run forge-runtime:prove --install           # fiel tambem no node_modules (roda bun install dentro; o node_modules
+                                                # passa a pertencer ao usuario do container — use um clone de ensaio)
+bun run forge-runtime:prove --only check:runner-base
+bun run forge-runtime:prove --no-build          # reusa a imagem local (uma tag local pode estar velha)
+```
+
+Ele faz tres coisas, nesta ordem — e a ordem importa: **constroi** o
+`Dockerfile.ubuntu-bun` com o `BUN_VERSION` declarado e marca a imagem com a
+referencia que o compose pede; roda as **assercoes do contrato dentro do
+artefato** (o mesmo bloco `RUN`, pelo mesmo guard da base); e so entao roda o
+job `guards` **inteiro** dentro da imagem. Se o contrato nao passa, o job nem
+roda: ensaiar a bateria contra um artefato suspeito diria "os gates passam la"
+sobre a imagem errada.
+
+A bateria nao e uma lista aqui: sai do job `guards` da propria pipeline que
+decide o merge (`forgeRuntime:prove` usa a mesma derivacao do `doctor`), com o
+comando vindo da linha `run:` — as flags sobrevivem. O relatorio mostra o
+**ambiente** medido dentro do container (usuario, cwd, node, bun e caminho,
+docker, plugin `compose`, socket, git, node_modules) e um resultado POR GATE, com
+a saida do gate que falhou.
+
+O socket do docker do host e montado como o runner faz (`/var/run/docker.sock`):
+sem ele um gate que use o docker falharia por uma limitacao do ENSAIO, nao do
+runtime. `--no-docker-sock` desliga e o relatorio declara isso.
+
+Exit codes: `0` provado, `1` o contrato ou um gate quebrou dentro da imagem, `2`
+nao deu para ensaiar (sem docker, build falhou, imagem ausente). Todo desfecho
+tem o mesmo formato, entao `--json` serve de script. O que ele **nao** cobre esta
+escrito no relatorio: o runner em si (registro, labels, agendamento), o valor real
+de `vars.BUN_VERSION` (aqui vem do env local) e o `node_modules` da forja sem
+`--install`.
 
 ### 4. Importar Repositorio do GitHub
 
@@ -562,6 +611,9 @@ cd /opt/gitea && docker compose pull && docker compose up -d
 
 # Parar
 cd /opt/gitea && docker compose down
+
+# Ensaio do runtime (build + contrato + a bateria de guards DENTRO da imagem)
+bun run forge-runtime:prove
 ```
 
 ## Seguranca

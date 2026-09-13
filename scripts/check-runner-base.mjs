@@ -63,6 +63,18 @@
 //      CÓPIA em memória do arquivo e exige VIOLAÇÃO. Sem esta prova, "está
 //      pinado" seria uma afirmação sobre o arquivo de hoje, não sobre a regra.
 //
+// O CONTRATO DA IMAGEM PUBLICADA (`checkPublishedImageContract`) é a pergunta
+// que nenhuma das quatro acima responde — e a mais forte delas todas: elas
+// provam o ARQUIVO e o bloco dele executado em bases DUBLADAS. Todas seguem
+// verdadeiras se a imagem que o registry serve for OUTRA build — o pin atual, o
+// contrato fail-closed, as mutações falhando... e o job baixando uma imagem sem
+// o plugin. A única prova é RODAR o artefato: `docker run <repo>@<digest>` com o
+// MESMO bloco do Dockerfile. O alvo é o digest (rodar por tag provaria o cache
+// DESTA máquina), o sucesso exige a MARCA do bloco no stdout, e um vermelho vem
+// com os NÚMEROS (um segundo run lê caminho do bun, versão e plugin). Onde ele é
+// consumido hoje: o relatório de prontidão (`doctor`, seção 3/5), como fato
+// próprio — violação BLOQUEIA, "não consegui rodar" é INDETERMINADA.
+//
 // O SANDBOX E O SEU SHIM (a limitação, dita): a asserção do contrato confere
 // também que o Bun resolve de `/usr/local/bin/bun`, e o harness não pode criar
 // esse caminho (sem root). Então o harness define um `command` de shell que
@@ -85,6 +97,10 @@ import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import process from "node:process"
 import { pathToFileURL } from "node:url"
+
+// A única fonte para "o que o registry serve hoje" (o mesmo módulo que já
+// resolve a tag, lê o config blob e compara com a credencial do ambiente).
+import { probeImageIdentity, registryEndpoints } from "./ensure-runner-image.mjs"
 
 /** O Dockerfile da imagem que roda os jobs da forja. */
 export const DOCKERFILE = "Dockerfile.ubuntu-bun"
@@ -713,7 +729,337 @@ export async function resolveTagDigests({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 5. A decisão
+// 5. O contrato da IMAGEM PUBLICADA — o artefato, não o build
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// POR QUE ISTO É OUTRA PERGUNTA (e a mais forte das cinco): as invariantes 1–4
+// provam o ARQUIVO e o bloco dele EXECUTADO em bases dubladas. Todas continuam
+// verdadeiras se a imagem publicada no registry for OUTRA build: o pin atual, o
+// contrato fail-closed e as mutações falhando... e o job, no fim, PUXANDO uma
+// imagem sem o plugin. A única prova de que o artefato que a forja baixa cumpre
+// a promessa é RODAR esse artefato —
+// `docker run <repo>@<digest>` com o MESMO bloco do Dockerfile (nunca uma
+// cópia: duas verdades divergiriam no dia do bump).
+//
+// O alvo é o DIGEST que o registry serve para a tag, não a tag: rodar por tag
+// provaria o que o docker DESTA máquina tem em cache (possivelmente uma build
+// velha). E o vermelho vem com os NÚMEROS: quando o bloco falha, um segundo
+// `docker run` lê os três fatos (caminho do bun, versão do bun, plugin do
+// compose) para o relatório dizer QUAL deles quebrou — as duas `test` mudas do
+// bloco não têm mensagem própria.
+//
+// Tri-estado, como o resto: `proven` só com a MARCA de sucesso do bloco no
+// stdout; falha do CONTRATO é `violated`; falha do DOCKER (sem daemon, sem
+// credencial, pull negado, rede) é `unavailable` — não conseguir rodar nunca é
+// "o contrato está certo", e também não é acusação.
+
+/** O último `echo` do bloco do contrato — a âncora do `proven`. */
+export const CONTRACT_OK_MARK = "Contrato da imagem ok"
+
+/**
+ * A leitura dos TRÊS fatos dentro do container — só para EXPLICAR um vermelho.
+ *
+ * Não é uma segunda implementação do contrato (quem decide continua sendo o
+ * bloco do Dockerfile): é a evidência que falta quando uma das `test` mudas do
+ * bloco falha sem dizer qual.
+ */
+export const EVIDENCE_SCRIPT =
+  'printf "bun-path=%s\\nbun-version=%s\\ncompose=%s\\n" ' +
+  '"$(command -v bun 2>/dev/null || echo AUSENTE)" ' +
+  '"$(bun --version 2>/dev/null || echo AUSENTE)" ' +
+  '"$(docker compose version 2>/dev/null || echo AUSENTE)"'
+
+/**
+ * Lê a saída do `EVIDENCE_SCRIPT` em fatos nomeados.
+ *
+ * @param {string} output
+ * @returns {{bunPath: string|null, bunVersion: string|null, composeVersion: string|null}}
+ */
+export function parseEvidence(output) {
+  const pick = (key) => {
+    const m = new RegExp(`^${key}=(.*)$`, "m").exec(String(output ?? ""))
+    return m ? m[1].trim() : null
+  }
+  return {
+    bunPath: pick("bun-path"),
+    bunVersion: pick("bun-version"),
+    composeVersion: pick("compose"),
+  }
+}
+
+/**
+ * Falha do DOCKER (não do contrato): o container não chegou a rodar. As strings
+ * são do próprio docker; o bloco do contrato não as produz (as mensagens dele
+ * são em português e nomeiam "a imagem"/"o PLUGIN").
+ */
+export const DOCKER_FAILURE_RE =
+  /(Cannot connect to the Docker daemon|error during connect|Is the docker daemon running|pull access denied|unauthorized|denied: requested access|manifest unknown|no such host|dial tcp|i\/o timeout|context deadline exceeded|Error response from daemon|no matching manifest|permission denied while trying to connect)/i
+
+/**
+ * O veredito de UM `docker run` da imagem publicada.
+ *
+ * @param {{code: number, output: string}} res
+ * @returns {{"proven"|"violated"|"unavailable"}}
+ */
+export function classifyImageRun(res) {
+  const output = String(res?.output ?? "")
+  if (res?.code === 0 && output.includes(CONTRACT_OK_MARK)) return "proven"
+  if (res?.code === 0) return "violated" // saiu 0 sem a marca: o bloco não é o do contrato
+  if (DOCKER_FAILURE_RE.test(output)) return "unavailable"
+  return "violated"
+}
+
+/**
+ * Roda o bloco do contrato DENTRO da imagem publicada.
+ *
+ * @param {{target: string, block: string, expectedVersion?: string|null, run?: Function, docker?: string, timeoutMs?: number, cwd?: string}} args
+ * @returns {{code: number, output: string}}
+ */
+export function runContractInImage({
+  target = "",
+  block = "",
+  expectedVersion = null,
+  // Tipado FROUXO de propósito: quem injeta é o teste, com um dublê que devolve
+  // SÓ `status`/`stdout`/`stderr` — o que este código lê. Exigir o tipo inteiro
+  // do `spawnSync` obrigaria o dublê a inventar `pid`, `signal` e `output`.
+  run = /** @type {Function} */ (spawnSync),
+  docker = "docker",
+  timeoutMs = 180000,
+  cwd = process.cwd(),
+} = {}) {
+  if (target === "" || block === "") {
+    throw new Error("runContractInImage exige o alvo (target) e o bloco do contrato")
+  }
+  const res = run(
+    docker,
+    [
+      "run",
+      "--rm",
+      "--entrypoint",
+      "bash",
+      "-e",
+      `BUN_VERSION=${expectedVersion ?? ""}`,
+      target,
+      "-c",
+      block,
+    ],
+    { cwd, encoding: "utf8", timeout: timeoutMs },
+  )
+  return {
+    code: res?.status === null || res?.status === undefined ? 125 : res.status,
+    output: `${String(res?.stdout ?? "")}${String(res?.stderr ?? "")}`.trim(),
+  }
+}
+
+/**
+ * O destino IMUTÁVEL da imagem declarada: `host/repo@sha256:…`.
+ *
+ * @param {string} ref
+ * @param {string} digest
+ * @returns {string}
+ */
+export function digestTarget(ref, digest) {
+  const { host, repository } = registryEndpoints(ref)
+  return `${host}/${repository}@${digest}`
+}
+
+/**
+ * O CONTRATO DA IMAGEM PUBLICADA: a promessa do build, provada no artefato que
+ * o registry serve para a tag declarada.
+ *
+ * @param {{ref?: string|null, expectedVersion?: string|null, digest?: string|null, labelVersion?: string|null, resolveIdentity?: Function, credentials?: {user: string, token: string}|null, run?: Function, docker?: string, timeoutMs?: number, cwd?: string, text?: string|null}} args
+ * @returns {Promise<{state: "proven"|"violated"|"unavailable", detail: string, ref: string|null, digest: string|null, target: string|null, labelVersion: string|null, expectedVersion: string|null, findings: object|null, output: string, remedies: string[]}>}
+ */
+export async function checkPublishedImageContract({
+  ref = null,
+  expectedVersion = null,
+  digest = null,
+  labelVersion = null,
+  resolveIdentity = probeImageIdentity,
+  credentials = null,
+  run = /** @type {Function} */ (spawnSync),
+  docker = "docker",
+  timeoutMs = 180000,
+  cwd = process.cwd(),
+  text = null,
+} = {}) {
+  const empty = {
+    ref,
+    digest: null,
+    target: null,
+    labelVersion: null,
+    expectedVersion,
+    findings: null,
+    output: "",
+    remedies: [],
+  }
+  if (!ref) {
+    return {
+      ...empty,
+      state: "unavailable",
+      detail:
+        "a imagem declarada nao foi resolvida (env do runner ausente/invalido): sem ela nao ha artefato a provar",
+      remedies: ["aponte --gitea-env para o env da forja (o mesmo arquivo que o compose usa)"],
+    }
+  }
+
+  // O bloco sai do DOCKERFILE (a mesma âncora do build e da prova em sandbox).
+  let source = text
+  if (source === null) {
+    const path = join(cwd, DOCKERFILE)
+    if (!existsSync(path)) {
+      return {
+        ...empty,
+        state: "unavailable",
+        detail: `${DOCKERFILE} ausente em ${cwd}: o contrato a provar nao esta no repositorio`,
+      }
+    }
+    source = readFileSync(path, "utf8")
+  }
+  const found = contractBlock(source)
+  if (!found.ok) {
+    return {
+      ...empty,
+      state: "unavailable",
+      detail: `${found.detail} — sem ele nao ha o que provar contra a imagem publicada`,
+      remedies: ["rode `bun run check:runner-base`: o bloco do contrato tem guard proprio"],
+    }
+  }
+
+  // O DIGEST que a tag serve hoje (nunca a tag: rodar por tag provaria o cache
+  // DESTA máquina). É a mesma função do invariante 9 — sem segunda leitura.
+  let targetDigest = digest
+  let label = labelVersion
+  if (!targetDigest) {
+    const identity = await resolveIdentity(ref, { expectedVersion, credentials })
+    label = identity?.version ?? label
+    if (!identity?.digest) {
+      const unauthorized = identity?.state === "unauthorized"
+      return {
+        ...empty,
+        labelVersion: label,
+        state: "unavailable",
+        detail:
+          `o digest da tag nao foi resolvido (${identity?.state ?? "erro"}): ${identity?.detail ?? ""}`.trim(),
+        remedies: [
+          unauthorized
+            ? "exporte GHCR_TOKEN/GITHUB_TOKEN (ou faca `docker login`) para o doctor ler o que a tag serve hoje"
+            : "verifique rede/registry antes de afirmar qualquer coisa sobre a imagem",
+        ],
+      }
+    }
+    targetDigest = identity.digest
+  }
+
+  const target = digestTarget(ref, /** @type {string} */ (targetDigest))
+  const result = runContractInImage({
+    target,
+    block: found.block,
+    expectedVersion,
+    run,
+    docker,
+    timeoutMs,
+    cwd,
+  })
+  const state = classifyImageRun(result)
+
+  if (state === "proven") {
+    return {
+      ...empty,
+      state,
+      digest: targetDigest,
+      target,
+      labelVersion: label,
+      output: result.output,
+      detail:
+        `a imagem PUBLICADA (${target}) executa o contrato: plugin \`compose\`, bun ` +
+        `${expectedVersion ?? "?"} em ${BUN_PATH}` +
+        (label ? ` (a label da imagem declara ${label})` : ""),
+    }
+  }
+
+  if (state === "unavailable") {
+    return {
+      ...empty,
+      state,
+      digest: targetDigest,
+      target,
+      labelVersion: label,
+      output: result.output,
+      detail: `o docker NAO conseguiu rodar o contrato na imagem publicada (exit ${result.code}): ${firstLine(result.output) || "sem saida"}`,
+      remedies: [
+        "a credencial do docker decide aqui: `docker login ghcr.io` (ou GHCR_TOKEN) para o pacote privado",
+        "se a imagem nao esta local, o primeiro run a baixa (alguns minutos) — use --no-image-contract para pular",
+      ],
+    }
+  }
+
+  // VIOLADO: a imagem RODOU e o bloco falhou. A evidência nomeia o fato.
+  const evidence = runEvidence({ target, run, docker, timeoutMs, cwd })
+  const findings = parseEvidence(evidence.output)
+  const wrong = []
+  if (findings.bunPath && findings.bunPath !== BUN_PATH)
+    wrong.push(`bun resolve de '${findings.bunPath}' (o contrato promete ${BUN_PATH})`)
+  if (findings.bunVersion && findings.bunVersion !== (expectedVersion ?? ""))
+    wrong.push(
+      `bun --version = '${findings.bunVersion}' (o esperado e '${expectedVersion ?? "?"}')`,
+    )
+  if (findings.composeVersion === "AUSENTE")
+    wrong.push("o PLUGIN 'compose' nao esta na imagem (o job 'guards' da forja fica INDETERMINADO)")
+  return {
+    ...empty,
+    state,
+    digest: targetDigest,
+    target,
+    labelVersion: label,
+    findings,
+    output: result.output,
+    detail:
+      `a imagem PUBLICADA (${target}) NAO executa o contrato${label ? ` (a label declara ${label})` : ""}: ` +
+      (wrong.length > 0 ? wrong.join(" · ") : firstLine(result.output) || `exit ${result.code}`),
+    remedies: [
+      `republicar a imagem da versao declarada (variavel BUN_VERSION): bun run runner-image:ensure`,
+      "conferir o build: bun run check:runner-base (o contrato do Dockerfile tem guard proprio)",
+    ],
+  }
+}
+
+/**
+ * O segundo `docker run`: lê os três fatos dentro da imagem (só para explicar
+ * um vermelho — quem decide o contrato continua sendo o bloco do Dockerfile).
+ *
+ * @returns {{code: number, output: string}}
+ */
+export function runEvidence({
+  target = "",
+  run = /** @type {Function} */ (spawnSync),
+  docker = "docker",
+  timeoutMs = 180000,
+  cwd = process.cwd(),
+} = {}) {
+  const res = run(docker, ["run", "--rm", "--entrypoint", "bash", target, "-c", EVIDENCE_SCRIPT], {
+    cwd,
+    encoding: "utf8",
+    timeout: timeoutMs,
+  })
+  return {
+    code: res?.status === null || res?.status === undefined ? 125 : res.status,
+    output: `${String(res?.stdout ?? "")}${String(res?.stderr ?? "")}`.trim(),
+  }
+}
+
+/** A primeira linha não vazia de uma saída — o resumo de uma falha verbosa. */
+function firstLine(output) {
+  return (
+    String(output ?? "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)[0] ?? ""
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 6. A decisão
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
@@ -923,7 +1269,7 @@ export async function writePin({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 6. Relatório e CLI
+// 7. Relatório e CLI
 // ═══════════════════════════════════════════════════════════════════════════
 
 const MARK = { ok: "✅", fail: "❌", warn: "⚠️", info: "▸" }

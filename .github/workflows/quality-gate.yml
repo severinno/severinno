@@ -46,15 +46,15 @@ jobs:
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - run: bun install --frozen-lockfile
 
-      - name: Check barrel imports (fail) and script headers (warn)
-        run: |
-          node scripts/barrel-lint.mjs || exit_code=$?
-          if [ "${exit_code:-0}" -eq 1 ]; then
-            echo "❌ Barrel import violations found — failing."
-            exit 1
-          elif [ "${exit_code:-0}" -eq 3 ]; then
-            echo "⚠️  Script header documentation violations found — non-blocking (fix in progress)."
-          fi
+      # FAIL-CLOSED: o exit code do barrel-lint é o veredito, e só o 0 é verde.
+      # O `elif` que transformava o exit 3 em aviso saiu — ele fazia deste o
+      # gate que NUNCA falhava ("non-blocking (fix in progress)" ficou meses),
+      # exatamente o desenho que o resto do repo persegue.
+      #
+      # A alternativa (listar os códigos que falham) tem um buraco conhecido: os
+      # NÃO listados — inclusive o 2, de erro de infraestrutura — passariam.
+      - name: Barrel imports + script headers
+        run: node scripts/barrel-lint.mjs
 
   # ── Security Audit ───────────────────────────────────────────────────────
   # Checks for known vulnerabilities in dependencies.

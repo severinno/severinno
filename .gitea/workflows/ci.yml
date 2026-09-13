@@ -85,6 +85,20 @@ jobs:
       - name: Required checks manifest
         run: bun run check:required-checks
 
+      # Cabeçalho de script: `Usage:` + `Exit code` no BLOCO DE DOCUMENTAÇÃO
+      # LÍDER do arquivo (as linhas de comentário do topo, até a primeira linha
+      # de código — a posição dentro do bloco não importa).
+      #
+      # Por que é BLOQUEANTE aqui: o contrato existia só dentro do `barrel-lint`,
+      # cujo exit 3 o CI tratava como aviso e o pre-commit diluía (o `wait` de
+      # vários PIDs devolve o status do ÚLTIMO). Resultado: sete scripts sem
+      # cabeçalho válido passando por verde em toda parte. Um gate que decide o
+      # merge precisa FALHAR, não aconselhar.
+      #
+      # node direto: guard node-puro, sem node_modules e sem bun no PATH.
+      - name: Script header docs
+        run: node scripts/check-script-headers.mjs
+
       # Fonte única do registry OCI (imagens da app + mirrors de toolchain).
       # Impede o reacoplamento ao GHCR: um `ghcr.io/...` solto volta a exigir
       # cota de storage/egress do registry proprietário e quebra o flip de uma

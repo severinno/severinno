@@ -41,6 +41,7 @@ import {
   protectionBlockers,
   readComposeInterpolation,
   readGithubRunnerLabels,
+  readImageContract,
   readImageRefs,
   readMirrors,
   readProof,
@@ -118,10 +119,12 @@ function facts(overrides: Record<string, unknown> = {}) {
     imageRefs: refsFacts(),
     runnerLabels: runnerLabelFacts(),
     githubRunnerLabels: githubRunnerLabelFacts(),
+    imageContract: imageContractFacts(),
     skippedGuards: false,
     skippedProof: false,
     skippedProtection: false,
     skippedRunnerLabels: false,
+    skippedImageContract: false,
     ...overrides,
   }
 }
@@ -185,6 +188,27 @@ function runnerLabelFacts(over: Record<string, unknown> = {}) {
   }
 }
 
+/**
+ * O fato do CONTRATO da imagem PUBLICADA, no formato que o probe devolve.
+ *
+ * `proven` é o default porque é o único que não muda o veredito; os outros
+ * (violado / indisponível / pulado) são o que os testes exercitam.
+ */
+function imageContractFacts(over: Record<string, unknown> = {}) {
+  return {
+    state: "proven",
+    digest: `sha256:${"a".repeat(64)}`,
+    target: `ghcr.io/severinno/ubuntu-bun@sha256:${"a".repeat(64)}`,
+    expectedVersion: "1.3.14",
+    labelVersion: "1.3.14",
+    findings: null,
+    remedies: [],
+    detail:
+      "a imagem PUBLICADA (ghcr.io/severinno/ubuntu-bun@sha256:aaa…) executa o contrato: plugin `compose`, bun 1.3.14 em /usr/local/bin/bun (a label da imagem declara 1.3.14)",
+    ...over,
+  }
+}
+
 /** O fato IRMÃO: o registro do runner auto-hospedado do GitHub (a API). */
 function githubRunnerLabelFacts(over: Record<string, unknown> = {}) {
   return {
@@ -223,6 +247,22 @@ function protectionFacts(over: Record<string, unknown> = {}) {
 /** Prova que se sustenta, como dublê — o agregador não executa nada de verdade. */
 const proofHolds = {
   prove: async () => ({ ok: true, status: "holds", detail: "7 casos", cases: [] }),
+}
+
+/**
+ * O CONTRATO da imagem publicada, dublado: digest fixo (o probe do registry não
+ * é chamado) e `docker run` dublê devolvendo a MARCA do bloco. O TEXTO é o
+ * Dockerfile REAL — é dele que sai o bloco que o probe executa dentro da imagem,
+ * e trocá-lo por um fixture faria o teste provar outro contrato.
+ */
+const imageContractProven = {
+  digest: `sha256:${"a".repeat(64)}`,
+  text: readFileSync(join(ROOT, "Dockerfile.ubuntu-bun"), "utf8"),
+  run: () => ({
+    status: 0,
+    stdout: "  ✅ Contrato da imagem ok: plugin compose (Docker Compose version 5.4.0-2)",
+    stderr: "",
+  }),
 }
 
 /** Prova VIOLADA: a garantia da imagem existe no texto e não no comportamento. */
@@ -1757,6 +1797,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       runnerLabelsDeps: labelsProven,
       githubRunnerLabelsDeps: githubLabelsProven,
       proofDeps: proofHolds,
+      imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
     })
     expect(summarize(facts).verdict, JSON.stringify(summarize(facts).blockers)).toBe(VERDICT.READY)
@@ -1774,6 +1815,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       runnerLabelsDeps: labelsProven,
       githubRunnerLabelsDeps: githubLabelsProven,
       proofDeps: proofHolds,
+      imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
     })
     const v = summarize(facts)
@@ -1815,6 +1857,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       runnerLabelsDeps: labelsProven,
       githubRunnerLabelsDeps: githubLabelsStale,
       proofDeps: proofHolds,
+      imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
     })
     const v = summarize(facts)
@@ -1839,6 +1882,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
         },
       },
       proofDeps: proofHolds,
+      imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
     })
     expect(facts.githubRunnerLabels.state).toBe("skipped")
@@ -1864,6 +1908,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       runnerLabelsDeps: labelsProven,
       githubRunnerLabelsDeps: githubLabelsProven,
       proofDeps: proofHolds,
+      imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
     })
     const v = summarize(facts)
@@ -1884,6 +1929,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       runnerLabelsDeps: labelsProven,
       githubRunnerLabelsDeps: githubLabelsProven,
       proofDeps: proofHolds,
+      imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
     })
     const v = summarize(facts)
@@ -1908,6 +1954,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       runnerLabelsDeps: labelsProven,
       githubRunnerLabelsDeps: githubLabelsProven,
       proofDeps: proofHolds,
+      imageContractDeps: imageContractProven,
       // A leitura da forja tem o PRÓPRIO dublê: se ela usasse o `run` contado,
       // um `calls` alto deixaria de significar "a bateria rodou".
       protectionDeps: protectionInSync,
@@ -1930,6 +1977,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       runnerLabelsDeps: labelsProven,
       githubRunnerLabelsDeps: githubLabelsProven,
       proofDeps: proofViolated,
+      imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
     })
     const v = summarize(facts)
@@ -1951,6 +1999,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       runnerLabelsDeps: labelsProven,
       githubRunnerLabelsDeps: githubLabelsProven,
       protectionDeps: protectionInSync,
+      imageContractDeps: imageContractProven,
       proofDeps: {
         prove: async () => {
           called++
@@ -1981,6 +2030,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       runnerLabelsDeps: labelsProven,
       githubRunnerLabelsDeps: githubLabelsProven,
       proofDeps: proofHolds,
+      imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
       composeDeps: { check: () => composeViolated },
     })
@@ -2003,6 +2053,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       runnerLabelsDeps: labelsProven,
       githubRunnerLabelsDeps: githubLabelsProven,
       proofDeps: proofHolds,
+      imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
       composeDeps: {
         check: () => {
@@ -2028,6 +2079,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       runnerLabelsDeps: labelsProven,
       githubRunnerLabelsDeps: githubLabelsProven,
       proofDeps: proofHolds,
+      imageContractDeps: imageContractProven,
       protectionDeps: protectionDrift,
     })
     const v = summarize(f)
@@ -2047,6 +2099,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       runnerLabelsDeps: labelsProven,
       githubRunnerLabelsDeps: githubLabelsProven,
       proofDeps: proofHolds,
+      imageContractDeps: imageContractProven,
       protectionDeps: protectionUnreadable,
     })
     const v = summarize(f)
@@ -2068,6 +2121,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       runnerLabelsDeps: labelsProven,
       githubRunnerLabelsDeps: githubLabelsProven,
       proofDeps: proofHolds,
+      imageContractDeps: imageContractProven,
       protectionDeps: {
         run: ((_bin: string, args: string[]) => {
           const forge = forgeOf(args)
@@ -2097,6 +2151,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       runnerLabelsDeps: labelsProven,
       githubRunnerLabelsDeps: githubLabelsProven,
       proofDeps: proofHolds,
+      imageContractDeps: imageContractProven,
       protectionDeps: {
         run: (() => {
           called++
@@ -2108,5 +2163,175 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
     expect(f.protection.state).toBe("skipped")
     expect(summarize(f).verdict).toBe(VERDICT.UNKNOWN)
     expect(summarize(f).unproven[0]).toContain("--no-protection")
+  })
+})
+
+// ── o CONTRATO da imagem PUBLICADA ─────────────────────────────────────────
+
+describe("readImageContract — o fato, sem tocar no registry", () => {
+  it("sem o ref resolvido não há artefato: unavailable (não é falha)", async () => {
+    const res = await readImageContract({ image: { ref: null } })
+    expect(res.state).toBe("unavailable")
+    expect(res.detail).toContain("nao foi resolvida")
+  })
+
+  it("o valor esperado cai para a TAG que o compose declara quando não há --expected", async () => {
+    const seen: { ref: string; expectedVersion: string }[] = []
+    const res = await readImageContract({
+      image: { ref: "ghcr.io/severinno/ubuntu-bun:1.3.14" },
+      env: {},
+      deps: {
+        digest: `sha256:${"b".repeat(64)}`,
+        run: () => ({
+          status: 0,
+          stdout: "  ✅ Contrato da imagem ok: plugin compose",
+          stderr: "",
+        }),
+      },
+    })
+    expect(res.state).toBe("proven")
+    expect(res.expectedVersion).toBe("1.3.14")
+    void seen
+  })
+
+  it("--expected manda: é ele que a imagem tem de executar", async () => {
+    const res = await readImageContract({
+      image: { ref: "ghcr.io/severinno/ubuntu-bun:1.3.14" },
+      expected: "1.3.15",
+      deps: {
+        digest: `sha256:${"b".repeat(64)}`,
+        run: () => ({
+          status: 0,
+          stdout: "  ✅ Contrato da imagem ok: plugin compose",
+          stderr: "",
+        }),
+      },
+    })
+    expect(res.expectedVersion).toBe("1.3.15")
+  })
+
+  it("a credencial do ambiente entra no probe do digest (uma leitura só)", async () => {
+    let got: unknown = null
+    const res = await readImageContract({
+      image: { ref: "ghcr.io/severinno/ubuntu-bun:1.3.14" },
+      env: { GHCR_TOKEN: "segredo" },
+      deps: {
+        resolveIdentity: async (_ref: string, opts: { credentials?: unknown }) => {
+          got = opts.credentials
+          return { state: "unauthorized", digest: null, version: null, detail: "sem credencial" }
+        },
+        run: () => ({ status: 125, stdout: "", stderr: "docker: x" }),
+      },
+    })
+    expect(got).not.toBeNull()
+    expect(res.state).toBe("unavailable")
+  })
+})
+
+describe("summarize — o contrato da imagem PUBLICADA", () => {
+  it("proven não muda o veredito (o controle: o caminho verde existe)", () => {
+    expect(summarize(facts()).verdict).toBe(VERDICT.READY)
+  })
+
+  it("VIOLADO bloqueia: o job roda uma imagem que não cumpre a promessa do build", () => {
+    const v = summarize(
+      facts({
+        imageContract: imageContractFacts({
+          state: "violated",
+          detail:
+            "a imagem PUBLICADA (...) NAO executa o contrato: o PLUGIN 'compose' nao esta na imagem",
+        }),
+      }),
+    )
+    expect(v.verdict).toBe(VERDICT.BLOCKED)
+    expect(v.blockers.join(" ")).toContain("contrato da imagem PUBLICADA FALHOU")
+    expect(v.blockers.join(" ")).toContain("NAO cumpre a promessa do build")
+  })
+
+  it("INDETERMINADO não bloqueia e não vira pronta: é ausência de prova", () => {
+    const v = summarize(
+      facts({
+        imageContract: imageContractFacts({
+          state: "unavailable",
+          detail:
+            "o docker NAO conseguiu rodar o contrato na imagem publicada (exit 125): pull access denied",
+        }),
+      }),
+    )
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.blockers).toEqual([])
+    expect(v.unknowns.join(" ")).toContain("nao foi provado (unavailable)")
+  })
+
+  it("--no-image-contract rebaixa o veredito E entra no NÃO CUBRE", () => {
+    const v = summarize(
+      facts({
+        imageContract: imageContractFacts({
+          state: "skipped",
+          detail: "pulada por --no-image-contract",
+        }),
+        skippedImageContract: true,
+      }),
+    )
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.unknowns.join(" ")).toContain("pulado (--no-image-contract)")
+    expect(v.unproven.join(" ")).toContain("contrato da imagem PUBLICADA")
+  })
+})
+
+describe("renderReport — o contrato da imagem PUBLICADA", () => {
+  it("proven: alvo por digest e os três fatos medidos quando existem", () => {
+    const out: string[] = []
+    renderReport(
+      {
+        facts: facts({
+          imageContract: imageContractFacts({
+            findings: {
+              bunPath: "/usr/local/bin/bun",
+              bunVersion: "1.3.14",
+              composeVersion: "Docker Compose version 5.4.0-2",
+            },
+          }),
+        }),
+        verdict: summarize(facts()),
+      },
+      { emit: (s: string) => out.push(s) },
+    )
+    const report = out.join("\n")
+    expect(report).toContain("contrato da imagem PUBLICADA")
+    expect(report).toContain("alvo: ghcr.io/severinno/ubuntu-bun@sha256:")
+    expect(report).toContain("bun: /usr/local/bin/bun · versao: 1.3.14")
+  })
+
+  it("violado: ❌ com o remédio da republicação", () => {
+    const out: string[] = []
+    const ic = imageContractFacts({
+      state: "violated",
+      detail:
+        "a imagem PUBLICADA (x@sha256:aaa) NAO executa o contrato: o PLUGIN 'compose' nao esta na imagem",
+      remedies: [
+        "republicar a imagem da versao declarada (variavel BUN_VERSION): bun run runner-image:ensure",
+      ],
+    })
+    const f = facts({ imageContract: ic })
+    renderReport({ facts: f, verdict: summarize(f) }, { emit: (s: string) => out.push(s) })
+    const report = out.join("\n")
+    expect(report).toContain("❌ contrato da imagem PUBLICADA")
+    expect(report).toContain("runner-image:ensure")
+  })
+
+  it("pulado: ⊘ com a flag na cara (o silêncio seria o defeito)", () => {
+    const out: string[] = []
+    const f = facts({
+      imageContract: imageContractFacts({
+        state: "skipped",
+        detail: "pulada por --no-image-contract",
+      }),
+      skippedImageContract: true,
+    })
+    renderReport({ facts: f, verdict: summarize(f) }, { emit: (s: string) => out.push(s) })
+    // A marca do "pulado" é a mesma das outras seções; o que importa é a FLAG
+    // aparecer na linha (o silêncio seria o defeito).
+    expect(out.join("\n")).toContain("contrato da imagem PUBLICADA: pulada por --no-image-contract")
   })
 })

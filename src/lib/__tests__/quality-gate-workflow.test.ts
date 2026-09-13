@@ -144,6 +144,18 @@ describe("quality-gate.yml — fatos-chave", () => {
     )
   })
 
+  it("o step do barrel-lint é FAIL-CLOSED: um comando, cujo código de saída É o veredito", () => {
+    // O contrato morava aqui como AVISO: o `|| exit_code=$?` capturava o status
+    // e o ramo `-eq 3` o transformava em "non-blocking (fix in progress)" — um
+    // gate que NUNCA falhava. Capturar o status de novo (por qualquer motivo)
+    // reintroduz o problema, então o teste exige o comando PURO.
+    const run = jobRun("barrel-lint", "node scripts/barrel-lint.mjs")
+    expect(run.trim()).toBe("node scripts/barrel-lint.mjs")
+    expect(run).not.toContain("exit_code")
+    expect(run).not.toMatch(/-eq\s+\d/)
+    expect(run).not.toContain("non-blocking")
+  })
+
   it("security-audit roda bun run security:audit", () => {
     expect(jobRun("security-audit", "bun run security:audit")).toContain("bun run security:audit")
   })

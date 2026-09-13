@@ -27,15 +27,8 @@ exports[`quality-gate.yml — sintaxe YAML + snapshot > parseia como YAML válid
           "run": "bun install --frozen-lockfile",
         },
         {
-          "name": "Check barrel imports (fail) and script headers (warn)",
-          "run": "node scripts/barrel-lint.mjs || exit_code=$?
-if [ "\${exit_code:-0}" -eq 1 ]; then
-  echo "❌ Barrel import violations found — failing."
-  exit 1
-elif [ "\${exit_code:-0}" -eq 3 ]; then
-  echo "⚠️  Script header documentation violations found — non-blocking (fix in progress)."
-fi
-",
+          "name": "Barrel imports + script headers",
+          "run": "node scripts/barrel-lint.mjs",
         },
       ],
     },

@@ -257,6 +257,11 @@ export const CORE_INVARIANTS = [
     matches: /check[:-]no[:-]setup[:-]bun/,
     why: "o action externo re-baixa o release do Bun em todo job (~25-35s) — regressao ja corrigida que nao pode voltar",
   },
+  {
+    id: "script-headers",
+    matches: /check-script-headers/,
+    why: "script sem Usage/Exit code no cabecalho e operacao por adivinhacao: quem chama nao sabe o que ele devolve nem o que ele faz de efeito — e os gates que decidem o merge nao podem depender disso",
+  },
 ]
 
 /**

@@ -426,11 +426,12 @@ tabela acima quando medir.
 
 ---
 
-## 4. README/docs guards — `check-readme-anchors`, `check-readme-toc`, `check-readme-images`, `check-readme-reverse-baseline`, `check-readme-repro-marker`
+## 4. README/docs guards — `check-readme-anchors`, `check-readme-toc`, `check-readme-images`, `check-readme-reverse-baseline`, `check-readme-repro-marker`, `check-script-headers`
 
 **O que protege:** links internos (#slug) resolvem, TOCs apontam para headings
 reais, imagens existem, e o reverse (semântico) detecta label apontando para o
-heading errado.
+heading errado. `check-script-headers` estende a mesma ideia aos scripts: o
+arquivo tem de dizer de si MESMO como se usa e o que devolve.
 
 **Por que existe:** o README é a porta de entrada do repo; heading renomeado
 sem atualizar o link = link morto silencioso. O guard roda o algoritmo do
@@ -438,6 +439,44 @@ GitHub slugger exato (sem depender de lib externa).
 
 **Onde roda:** pre-commit (staged), pre-push, CI; `--reverse`/`--reverse-strict`
 em job semanal com baseline (alerta, não gate de PR).
+
+### 4.1. Cabeçalho de script — `check-script-headers` (`scripts/check-script-headers.mjs`)
+
+**O que protege:** todo script sob `scripts/` (extensões `.mjs`, `.ts`, `.sh`,
+`.py`, `.ps1`) documenta, no **BLOCO DE DOCUMENTAÇÃO LÍDER**, uma seção `Usage:`
+e uma seção `Exit code`. A região são as linhas de comentário do topo — até a
+PRIMEIRA linha de código; shebang não conta como código.
+
+**Por que o contrato é ESTRUTURAL, não posicional:** a regra anterior olhava as
+"primeiras 50 linhas". Isso media a POSIÇÃO do bloco, não o que o arquivo diz —
+e num repo onde o topo carrega o "por que existe" inteiro (decisões, defeitos
+cometidos, números medidos) um preamble honesto de 80 linhas reprovava, deixando
+como remédio óbvio mover a documentação para agradar o gate. A regra nova é mais
+rigorosa nas duas pontas: um cabeçalho de 200 linhas passa, e um `Usage:` citado
+no CORPO do arquivo — dentro de uma função — não conta, mesmo na linha 3.
+
+**Por que ele foi extraído do `barrel-lint` (o defeito que ele fecha):** o
+contrato morava dentro do agregador do hook, e o CI tratava o exit 3 dele como
+AVISO (`quality-gate.yml`: "non-blocking (fix in progress)"); no pre-commit o
+peso era nulo por outro motivo (o `wait` de vários PIDs devolve o status do
+ÚLTIMO). Era um contrato que nenhuma forja aplicava — o mesmo desenho de "gate
+que parece gate" que este catálogo persegue. Além disso, embutido no
+`barrel-lint`, ele era INVISÍVEL ao `check:forge-parity`: o nome não casa o
+prefixo `check-`, então o gate não era descoberto e não precisava de
+classificação. Extraído, ele virou gate do **CORE** — exigido nas duas
+pipelines, com o `quality-gate.yml` fail-closed (o exit code do `barrel-lint` é
+o veredito, e só o 0 é verde).
+
+**Uma fonte só:** o `barrel-lint` IMPORTA a regra daqui (não tem cópia própria),
+e a lista de exceções continua sendo o `.barrel-lint-ignore` (nome legado; a
+mesma lista lida pelos dois). O relatório sempre declara quantos arquivos ficaram
+fora do contrato: a diferença entre "documentado" e "não olhado" não pode ficar
+só no `--json`.
+
+**Onde roda:** job `guards` da forja dona do merge e `workflow-refs-guard` do
+`pr-check.yml` (as duas pipelines, `node` direto — guard node-puro, sem
+`node_modules`) e o `barrel-lint` do `quality-gate.yml`; localmente pelo hook,
+via `barrel-lint`.
 
 ---
 
@@ -990,20 +1029,56 @@ protection, e nunca "em sincronia". O relatório imprime as duas linhas lado a
 lado na seção 3/5 justamente para isso: uma forja em sincronia e a outra não é
 drift, e não pode ficar invisível.
 
+**O CONTRATO DA IMAGEM PUBLICADA (seção 3/5) — o build promete, o ARTEFATO
+prova:** todas as provas acima são sobre o **repositório** — o `FROM` pinado por
+digest, o bloco do contrato fail-closed, as mutações do pin, a identidade que a
+label declara. Nenhuma delas olha o que o job **baixa**, e todas continuam
+verdadeiras se a imagem que o registry serve for OUTRA build: o pin continua
+certo, o contrato continua fail-closed, a label pode até concordar — e o runner
+executa um artefato sem o plugin `compose` ou com outro Bun. Quem responde é
+`checkPublishedImageContract` (`scripts/check-runner-base.mjs`, o guard da base):
+ele resolve o **DIGEST** que a tag serve hoje — pela MESMA `probeImageIdentity`
+que o invariante 9 usa, com a credencial do ambiente — e **RODA**
+`docker run <host>/<repo>@<digest>` com o **mesmo bloco `RUN` do Dockerfile**
+(nunca uma cópia: o probe e o build veriam contratos diferentes no dia do bump),
+com `BUN_VERSION` passado por `-e`. O sucesso exige a **MARCA** que o bloco
+imprime no stdout (sair 0 sem ela é violação — um bloco que virou `true` também
+sai 0); o vermelho vem com os **NÚMEROS** (um segundo `docker run` lê caminho do
+Bun, versão e plugin — as duas `test` mudas do bloco não têm mensagem própria).
+
+Três decisões que esse fato carrega, e o que cada uma evita:
+
+| Decisão                                                                                | O que ela impede                                                                                                                                 |
+| :------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------- |
+| o alvo é o **digest** que a tag serve, não a tag                                       | `docker run <tag>` provaria o **cache desta máquina** — uma build velha local passaria como "o artefato publicado"                               |
+| **`proven` exige a marca do bloco** no stdout, não só `exit 0`                         | um `RUN` que deixou de conferir (virou `true`, perdeu o `exit 1`) sairia 0 e o relatório diria "o artefato cumpre o contrato"                    |
+| a falha do **docker** (`unavailable`) é separada da falha do **contrato** (`violated`) | sem credencial, sem daemon ou com pull negado o veredito seria uma **acusação falsa** — e o remédio é outro (`docker login ghcr.io`, GHCR_TOKEN) |
+
+A **label** entra no relatório como contexto, não como veredito: um `mismatch`
+de identidade **não** impede a prova (quem decide é a execução) e o doctor diz o
+que a label declara ao lado do que o binário responde — declaração e prova, na
+mesma linha. Violação **BLOQUEIA** (o job roda uma imagem que não cumpre a
+promessa do build: sem o plugin, o job `guards` fica INDETERMINADO lá dentro);
+não conseguir rodar é **INDETERMINADA**; `--no-image-contract` pula e rebaixa o
+veredito declarando-se no "NÃO cobre". O custo é dito: se a imagem não estiver
+local, o primeiro run a baixa.
+
 **Três veredictos, e a diferença é o ponto:** `BLOQUEADA` quando uma invariante
 falha, quando a imagem do runner está AUSENTE (sem imagem nenhum job inicia —
 não é um gate vermelho, é a fila parada), quando a branch protection REGISTRADA
 diverge do manifesto (o merge é bloqueado pelo motivo errado, ou não é
-bloqueado) ou quando a PROVA do bloqueio é violada
+bloqueado), quando o **contrato da imagem PUBLICADA** não é executado pelo
+artefato que o job baixa, ou quando a PROVA do bloqueio é violada
 (a garantia da imagem é decorativa); `INDETERMINADA` quando nada falhou mas
 algo não pôde ser provado (env ausente neste checkout, registry inacessível,
 gate não executado, guards pulados por `--no-guards`, prova pulada por
 `--no-proof`, branch protection não lida ou pulada por `--no-protection`,
-interpolação pulada/não provada, registro do act_runner **ou o do runner do
-GitHub** não lido (este também quando falta token de self-hosted runners) ou
-pulado por `--no-runner-labels`, ou prova não executável);
-`PRONTA` só com tudo provado. O exit code é o veredicto (0/1/2), então ele serve
-de gate de operação.
+interpolação pulada/não provada, o contrato publicado não provado (sem daemon,
+sem credencial, pull negado) ou pulado por `--no-image-contract`, registro do
+act_runner **ou o do runner do GitHub** não lido (este também quando falta token
+de self-hosted runners) ou pulado por `--no-runner-labels`, ou prova não
+executável); `PRONTA` só com tudo provado. O exit code é o veredicto (0/1/2),
+então ele serve de gate de operação.
 
 **O que ele NÃO cobre, e por isso está escrito no relatório:** o **valor de
 `vars.BUN_VERSION`** quando `--expected` não é passado (a seção 5/5 diz isso na
@@ -1016,15 +1091,79 @@ runtime é um job da própria forja), o `.env.gitea` de um host DIFERENTE deste
 checkout (o do próprio checkout ele compara com o template — invariante 7b —, e
 sem o arquivo a seção do compose diz que a comparação não aconteceu) e o render do
 compose feito com o **docker do runner** da forja — aqui o render usa este
-docker. O que faz aquele render funcionar está garantido em dois lugares: o
-**build** da imagem do job exige o plugin `compose` (`Dockerfile.ubuntu-bun`, e
-a `Verify mirror digest` do mirror confere na imagem PUBLICADA), e o **socket**
-do job é exercitado pela Prova 4 do smoke, que exige o render
+docker. O que faz aquele render funcionar está garantido em três lugares: o
+**build** da imagem do job exige o plugin `compose` (`Dockerfile.ubuntu-bun`), a
+`Verify mirror digest` do mirror confere na imagem PUBLICADA, e o contrato
+daquele artefato é **executado** pelo próprio doctor (o fato acima: plugin, Bun e
+caminho resolvido). O que segue fora do alcance daqui é o **socket** do job: é a
+Prova 4 do smoke que o exercita, no host, exigindo o render
 (`--require-compose`) em vez de aceitar o aviso.
 
 **Onde roda:** manual/operador (`bun run doctor`), antes de confiar o merge à
 forja e no runbook de deploy (`deploy/GITEA.md`). Fora do CI de propósito: ele
 depende do registry e do env do host.
+
+---
+
+## 14. O ensaio do runtime — `prove-forge-runtime` (`scripts/prove-forge-runtime.mjs`)
+
+**Isto também NÃO é um guard.** É o comando que responde à pergunta que o doctor
+NÃO responde: `bun run forge-runtime:prove`. E a diferença entre os dois é o
+sujeito da medição — o doctor mede o **repositório, o registry e o HOST** ("a
+forja pode bloquear o merge?"); este comando mede o **RUNTIME do job**: o job
+`guards` inteiro executado DENTRO da imagem que o runner usa, com o repositório
+montado, e não na máquina de quem desenvolve.
+
+**Por que a distância existe (cinco diferenças que nenhum guard estático vê):**
+
+| O que muda lá                                             | O que passa a ser falso aqui                                                                                |
+| :-------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------- |
+| o `docker` do RUNNER, com o **socket** montado            | sem o socket, um gate que use o docker falha por limitação do ENSAIO (alarme falso ensina a ignorar o gate) |
+| o plugin `compose` que a invariante 7 usa para renderizar | sem ele o render fica INDETERMINADO dentro de um job verde                                                  |
+| o `node`/`bun` que a imagem embarca (não os do host)      | um gate que dependa do runtime do host passa aqui e quebra lá                                               |
+| o workspace em OUTRO caminho, como OUTRO usuário          | `git` recusa o repo por _dubious ownership_; cwd relativo deixa de valer                                    |
+| o `node_modules` que a forja tem (ou não)                 | um gate que use uma dep instalada à mão passa só nesta máquina                                              |
+
+**As três etapas, em ordem — e a ordem é a decisão:**
+
+1. **CONSTRÓI** o `Dockerfile.ubuntu-bun` (com o `BUN_VERSION` declarado) e marca
+   a imagem com a referência que o compose pede (`resolveImageRef` — a MESMA
+   função do `runner-image:ensure`, então o alvo ensaiado é o alvo publicado);
+2. roda as **ASSERÇÕES do contrato DENTRO do artefato** — o mesmo bloco `RUN` do
+   Dockerfile, pelo mesmo `runContractInImage`/`classifyImageRun` do
+   `check:runner-base`. `proven` exige a MARCA do bloco, não só `exit 0`;
+3. só então roda o job `guards` INTEIRO no container, medindo o **ambiente**
+   (usuário, cwd, node, bun e caminho, docker, plugin, socket, git, node_modules)
+   e um resultado POR GATE, com a saída do gate que falhou.
+
+O **3 depois do 2** não é ordem de conveniência: ensaiar a bateria contra um
+artefato que não passou no contrato diria "os gates passam lá" sobre a imagem
+errada — o pior verde possível.
+
+**A bateria é DERIVADA, como no doctor:** sai do job `guards` da pipeline dona do
+merge (`forgeGates`), com o COMANDO vindo da linha `run:` (que preserva flags —
+`bun scripts/rotate-secrets.mjs --check` roda COM o `--check`; executar o rótulo
+rodaria a modalidade de EFEITO). Não existe lista paralela: um gate novo na
+pipeline entra no ensaio sozinho, e um gate cujo `run:` sumiu faz o ensaio
+**RECUSAR** (`unavailable`) em vez de rodar uma bateria menor do que ele diz.
+
+**Tri-estado, como o resto da família:** `proven` (exit 0) · `failed` (exit 1 — o
+contrato ou um gate quebrou DENTRO da imagem, nomeando qual) · `unavailable`
+(exit 2 — sem docker, build que falhou, imagem ausente: ausência de prova, nunca
+"está pronto"). Todo desfecho tem o MESMO formato (`rehearsalResult`), então o
+`--json` de um indeterminado não muda de shape.
+
+**O que ele NÃO cobre, e o relatório escreve isso:** o **RUNNER** em si (registro,
+labels, agendamento — é o job de verdade e o smoke), o **valor real de
+`vars.BUN_VERSION`** (aqui vem do env local ou de `--bun-version`) e o
+`node_modules` da forja quando `--install` não é passado (o container vê o do
+host). Sem socket, o relatório acrescenta uma linha própria: nenhum gate que use
+o docker foi provado ali.
+
+**Onde roda:** manual/operador (`bun run forge-runtime:prove`), antes de publicar
+a imagem do runner e no primeiro contato com uma forja nova. Fora do CI de
+propósito: ele constrói imagem, monta o socket do docker e pode rodar a bateria
+inteira — é ensaio, não gate.
 
 ---
 

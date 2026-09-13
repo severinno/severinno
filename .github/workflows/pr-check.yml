@@ -227,6 +227,17 @@ jobs:
       - name: Runner base pin (digest + contrato)
         run: node scripts/check-runner-base.mjs
 
+      # Cabeçalho de script: `Usage:` + `Exit code` no BLOCO DE DOCUMENTAÇÃO
+      # LÍDER (as linhas de comentário do topo, até a primeira linha de código —
+      # a posição dentro do bloco não importa).
+      #
+      # Estava embutido no `barrel-lint` e invisível como gate: o nome não casa o
+      # prefixo `check-` (o guard de paridade não o descobria, então ele não
+      # precisava de classificação) e o CI tratava o exit 3 como aviso. Extraído,
+      # ele passa a ser gate do CORE nas duas pipelines.
+      - name: Script header docs
+        run: node scripts/check-script-headers.mjs
+
       # Escopo dos guards: nenhum script pode cravar um diretório de forja.
       # Fecha a CLASSE de falha que deixou a pipeline dona do merge fora da
       # cobertura de 14 guards quando ela nasceu (e que produziu, na prática,
