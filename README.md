@@ -1202,8 +1202,14 @@ vivo sempre correto.
 > Como o run fica **verde** em qualquer cenário, a anotação não é canal de
 > ninguém: o step `if: always()` publica o drift como **issue**
 > (`scripts/actrc-sync-issue.mjs`, label `actrc-sync-drift`, dedup por
-> assinatura — a issue é o estado da dívida até ser fechada). Na forja, onde
-> não há canal de issue, o mesmo job roda com `--fail`.
+> assinatura no corpo **e nos comentários** — a issue é o estado da dívida até
+> ser fechada). E, quando os
+> espelhos **voltam a concordar**, o mesmo script comenta a prova e **fecha** a
+> issue: uma dívida resolvida que continua aberta mente no board, e o próximo
+> bump seria investigado duas vezes. Só fecha o que ele mesmo abriu (o marcador
+> da própria assinatura, não o label) e declara no comentário que o espelho do **host**
+> (`deploy/.env.gitea`, gitignored) não entra na comparação num runner do
+> GitHub. Na forja, onde não há canal de issue, o mesmo job roda com `--fail`.
 
 ## Local Workflow Validation (actionlint + act)
 

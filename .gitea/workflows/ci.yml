@@ -89,8 +89,33 @@ jobs:
       # Impede o reacoplamento ao GHCR: um `ghcr.io/...` solto volta a exigir
       # cota de storage/egress do registry proprietário e quebra o flip de uma
       # única variável (IMAGE_REGISTRY).
+      #
+      # As `vars` entram no AMBIENTE do passo de propósito: as referências da
+      # imagem moram em configuração não versionada, e é do ambiente que o guard
+      # lê o valor. Sem elas o passo só pode dizer INDETERMINADO ("não consegui
+      # provar") — e um gate verde sobre o que não foi provado é pior que um
+      # vermelho. Com elas, a repository variable é COMPARADA com o que o
+      # repositório declara (`.actrc`, `deploy/env.gitea.example`).
       - name: OCI registry single source
+        env:
+          IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+          BUN_VERSION: ${{ vars.BUN_VERSION }}
         run: bun run check:registry-source
+
+      # A BASE da imagem que roda ESTES jobs: pinada por digest e com o contrato
+      # da imagem provado por EXECUÇÃO (o bloco `RUN` real do Dockerfile, contra
+      # bases dubladas: com o plugin `compose` passa, sem ele FALHA — é a prova
+      # de que trocar o digest quebra o contrato, como o mutation prova).
+      #
+      # `catthehacker/ubuntu:act-latest` é uma tag FLUTUANTE: um rebuild troca a
+      # imagem inteira — inclusive o plugin `compose` que a invariante 7 usa para
+      # renderizar o compose da forja — sem nenhuma linha do repositório mudar.
+      #
+      # O probe da tag é o único passo que depende de rede: sem ele o passo
+      # continua verde DECLARANDO que não conferiu o pin contra a tag.
+      - name: Runner base pin (digest + contrato)
+        run: bun run check:runner-base
 
       # Nenhuma referência pendurada entre workflow → script/package.json.
       - name: Workflow references

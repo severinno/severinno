@@ -201,6 +201,11 @@ export const CORE_INVARIANTS = [
     why: "registry hardcoded reacopla o projeto a um registry proprietario com cota",
   },
   {
+    id: "runner-base",
+    matches: /check[:-]runner[:-]base/,
+    why: "a base do Dockerfile do runner e uma tag FLUTUANTE: um rebuild troca a imagem (e o plugin `compose` que a invariante 7 usa) sem nenhuma linha do repositorio mudar",
+  },
+  {
     id: "workflow-refs",
     matches: /check[:-]workflow[:-]refs/,
     why: "referencia pendurada entre workflow e script quebra a pipeline em runtime",

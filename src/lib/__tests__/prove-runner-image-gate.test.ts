@@ -109,11 +109,19 @@ describe("startTestRegistry", () => {
 // ── a prova, no repositório REAL ──────────────────────────────────────────
 
 describe("proveRunnerImageGate — no repositório real", () => {
-  it("a prova se sustenta: com a tag ausente o runner NÃO sobe e com a presente sobe", async () => {
+  it("a prova se sustenta: sem a imagem o runner NÃO sobe (subida e re-registro) e com ela sobe", async () => {
     const result = await proveRunnerImageGate({ cwd: ROOT })
     expect(result.status).toBe("holds")
     expect(result.ok).toBe(true)
-    expect(result.cases.map((c) => c.id)).toEqual(["check-only", "ausente", "presente"])
+    expect(result.cases.map((c) => c.id)).toEqual([
+      "check-only",
+      "ausente",
+      "presente",
+      "re-register-sem-imagem",
+      "re-register",
+      "re-register-primeira-vez",
+      "re-register-registro-preso",
+    ])
 
     const byId = Object.fromEntries(result.cases.map((c) => [c.id, c]))
     // A ausência confirmada desliga o docker inteiro.
@@ -133,11 +141,65 @@ describe("proveRunnerImageGate — no repositório real", () => {
     })
     // O CONTROLE: é ele que faz do "não subiu" uma prova.
     expect(byId.presente).toMatchObject({ exit: 0, ok: true, runnerUp: true })
-  }, 30000)
 
-  it("PROOF_CASES cobre os dois sentidos (bloqueio e contra-prova)", () => {
-    expect(PROOF_CASES.filter((c) => c.expectRunnerUp).length).toBe(1)
-    expect(PROOF_CASES.filter((c) => !c.expectRunnerUp).length).toBe(2)
+    // ── FAMÍLIA B: sem a imagem, o re-registro não pode DESTRUIR nada ──────
+    expect(byId["re-register-sem-imagem"]).toMatchObject({
+      exit: 5,
+      ok: true,
+      runnerUp: false,
+      composeCalls: 0,
+      published: true,
+      removal: false,
+      volumeRm: false,
+    })
+    // CONTROLE: com a imagem, apaga ANTES de subir (a ordem é o que faz valer).
+    expect(byId["re-register"]).toMatchObject({
+      exit: 0,
+      ok: true,
+      runnerUp: true,
+      removal: true,
+      volumeRm: true,
+      orderOk: true,
+    })
+    // Primeira subida: não há registro a apagar — e o comando não inventa um.
+    expect(byId["re-register-primeira-vez"]).toMatchObject({
+      exit: 0,
+      ok: true,
+      runnerUp: true,
+      removal: true,
+      volumeRm: false,
+      orderOk: true,
+    })
+    // O registro que NÃO sai: o runner não sobe com os labels velhos.
+    expect(byId["re-register-registro-preso"]).toMatchObject({
+      exit: 1,
+      ok: true,
+      runnerUp: false,
+      removal: true,
+      volumeRm: true,
+    })
+  }, 60000)
+
+  it("PROOF_CASES cobre os dois sentidos nas DUAS famílias (bloqueio e contra-prova)", () => {
+    // A subida simples.
+    const plain = PROOF_CASES.filter((c) => c.expectRemoval === undefined)
+    expect(plain.filter((c) => c.expectRunnerUp).length).toBe(1)
+    expect(plain.filter((c) => !c.expectRunnerUp).length).toBe(2)
+
+    // O re-registro: 4 casos, dos quais 2 controles (o runner SOBE) — é o
+    // contraste que faz do "não subiu" uma prova, e não um script quebrado.
+    const reRegister = PROOF_CASES.filter((c) => c.expectRemoval !== undefined)
+    expect(reRegister.length).toBe(4)
+    expect(reRegister.filter((c) => c.expectRunnerUp).length).toBe(2)
+
+    // Sem a imagem, o re-registro não pode destruir o registro que funciona.
+    expect(reRegister.find((c) => c.registry === "missing")).toMatchObject({
+      expectRunnerUp: false,
+      expectRemoval: false,
+      expectVolumeRm: false,
+    })
+    // Com a imagem, a ORDEM (apagar antes de subir) é parte do contrato do caso.
+    expect(reRegister.filter((c) => c.expectOrder).length).toBe(2)
     expect(PROOF_CASES.every((c) => c.why)).toBe(true)
   })
 })
@@ -170,9 +232,10 @@ describe("proveRunnerImageGate — detecta o bloqueio que deixou de existir", ()
     expect(byId.presente.ok).toBe(true)
   }, 30000)
 
-  it("bring-up quebrado (nunca sobe o runner) → o CONTROLE falha: 'não subiu' não basta", async () => {
-    // Sem o controle este caso seria reportado como "prova OK" — o runner não
-    // subiu em nenhum dos três, e um script quebrado também não sobe nada.
+  it("bring-up quebrado (nunca sobe o runner) → os CONTROLES falham: 'não subiu' não basta", async () => {
+    // Sem os controles este caso seria reportado como "prova OK" — o runner não
+    // subiu em nenhum caso, e um script quebrado também não sobe nada. Os dois
+    // controles do re-registro entram na mesma conta.
     const dir = mutatedRoot((content) =>
       content.replace(
         '"${DOCKER_COMPOSE[@]}" up -d runner || { fail "docker compose up (runner) falhou"; exit 1; }',
@@ -185,10 +248,85 @@ describe("proveRunnerImageGate — detecta o bloqueio que deixou de existir", ()
     const byId = Object.fromEntries(result.cases.map((c) => [c.id, c]))
     expect(byId.presente.ok).toBe(false)
     expect(byId.presente.failures.join(" | ")).toContain("faltou 'up -d runner'")
-    // Os dois casos de ausência continuam "ok" (o runner realmente não subiu).
+    expect(byId["re-register"].ok).toBe(false)
+    expect(byId["re-register-primeira-vez"].ok).toBe(false)
+    // Os casos de ausência continuam "ok" (o runner realmente não subiu).
     expect(byId["check-only"].ok).toBe(true)
     expect(byId.ausente.ok).toBe(true)
-  }, 30000)
+  }, 60000)
+})
+
+// ── o RE-REGISTRO também é provado por COMPORTAMENTO, não por asserção de texto ──
+//
+// A subida simples (`up -d runner` depois do ensure) já era provada. O
+// re-registro acrescenta duas promessas que só o comportamento entrega: ele
+// APAGA o registro gravado antes de subir, e ele se RECUSA a subir quando esse
+// registro sobrevive. As mutações abaixo mostram que cada promessa tem uma
+// asserção que cai junto com ela.
+
+describe("proveRunnerImageGate — as promessas do re-registro", () => {
+  it("bring-up que IGNORA o registro preso → o runner subiria com os labels velhos (pego)", async () => {
+    const dir = mutatedRoot((content) => {
+      const block =
+        "      fail \"o volume '$RUNNER_VOLUME' ainda existe — o registro antigo sobreviveria e os labels NÃO seriam aplicados\"\n" +
+        '      fail "Remédio: docker volume rm $RUNNER_VOLUME (com o container parado) e rode de novo."\n' +
+        "      exit 1"
+      expect(content, "o bloco do volume mudou de forma — atualize a mutação").toContain(block)
+      return content.replace(block, "      true # mutação: ignoro o registro preso")
+    })
+
+    const result = await proveRunnerImageGate({ cwd: dir })
+    expect(result.status).toBe("violated")
+    const preso = Object.fromEntries(result.cases.map((c) => [c.id, c]))[
+      "re-register-registro-preso"
+    ]
+    expect(preso.ok).toBe(false)
+    expect(preso.runnerUp).toBe(true)
+    expect(preso.failures.join(" | ")).toContain("runner SUBIU")
+  }, 60000)
+
+  it("bring-up que sobe o runner ANTES de apagar o registro → a ORDEM é pega", async () => {
+    const dir = mutatedRoot((content) => {
+      const anchor = 'if [ "$RE_REGISTER" -eq 1 ]; then'
+      expect(content, "o bloco do re-registro mudou de forma — atualize a mutação").toContain(
+        anchor,
+      )
+      return content.replace(
+        anchor,
+        '"${DOCKER_COMPOSE[@]}" up -d runner # mutação: sobe ANTES de apagar o registro\n' + anchor,
+      )
+    })
+
+    const result = await proveRunnerImageGate({ cwd: dir })
+    expect(result.status).toBe("violated")
+    const control = Object.fromEntries(result.cases.map((c) => [c.id, c]))["re-register"]
+    expect(control.ok).toBe(false)
+    expect(control.orderOk).toBe(false)
+    expect(control.failures.join(" | ")).toContain("subiu ANTES de o registro ser apagado")
+  }, 60000)
+
+  it("bring-up que apaga o registro ANTES de garantir a imagem → proteger o registro é pego", async () => {
+    const dir = mutatedRoot((content) => {
+      const anchor = "# ── 1. PRÉ-REQUISITO: a imagem do runner existe no registry ────────────────"
+      expect(content, "o passo 1 mudou de forma — atualize a mutação").toContain(anchor)
+      return content.replace(
+        anchor,
+        "# mutação: apago o registro ANTES de conferir a imagem\n" +
+          'docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" rm -sf runner\n' +
+          "docker volume rm gitea-runner-data >/dev/null 2>&1 || true\n" +
+          anchor,
+      )
+    })
+
+    const result = await proveRunnerImageGate({ cwd: dir })
+    expect(result.status).toBe("violated")
+    const semImagem = Object.fromEntries(result.cases.map((c) => [c.id, c]))[
+      "re-register-sem-imagem"
+    ]
+    expect(semImagem.ok).toBe(false)
+    expect(semImagem.removal).toBe(true)
+    expect(semImagem.failures.join(" | ")).toContain("APAGADO")
+  }, 60000)
 })
 
 // ── ausência de prova ≠ prova ─────────────────────────────────────────────
@@ -222,7 +360,11 @@ describe("renderProof / parseArgs", () => {
     expect(text).toContain("runner não subiu")
     expect(text).toContain("runner SUBIU")
     expect(text).toMatch(/prova do bloqueio/)
-  }, 30000)
+    // No re-registro o relatório diz o que foi APAGADO, não só o exit.
+    expect(text).toContain("registro apagado (rm -sf runner)")
+    expect(text).toContain("registro INTACTO")
+    expect(text).toContain("'volume rm' não emitido")
+  }, 60000)
 
   it("--cwd relativo vira absoluto; argumento desconhecido falha", () => {
     expect(parseArgs(["--cwd", "."]).cwd).toMatch(/^\//)

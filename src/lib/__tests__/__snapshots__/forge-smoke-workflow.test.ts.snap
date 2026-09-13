@@ -100,10 +100,12 @@ case "$CODE" in
     echo "✅ o registro do act_runner é o que o compose declara"
     ;;
   1)
-    echo "::error::REGISTRO VELHO: os labels gravados em /data/.runner não são os do compose."
+    echo "::error::REGISTRO VELHO ou VAZIO: os labels gravados em /data/.runner não são os do compose."
     echo "  O runner usa os labels do REGISTRO (não relê o compose): o job cai na imagem antiga,"
     echo "  sem o Bun pré-instalado, e o download do Bun volta em TODO job — sem outro sintoma."
-    echo "  Remédio: bash deploy/gitea-up.sh --re-register"
+    echo "  Um registro vazio (runner órfão) é o caso extremo: NENHUM job é atribuído a ele."
+    echo "  Remédio (em geral): bash deploy/gitea-up.sh --re-register"
+    echo "  O caso do COMPOSE sem a variável tem remédio próprio: declare os labels primeiro (linhas '→' acima)."
     echo "  Ver deploy/GITEA.md, seção 'Runner: a imagem que roda os jobs'."
     exit 1
     ;;

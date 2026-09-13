@@ -8,6 +8,10 @@
 //   node scripts/forge-doctor.mjs --json          # o mesmo, como dados
 //   node scripts/forge-doctor.mjs --no-guards     # pula a bateria (só contrato + imagem)
 //   node scripts/forge-doctor.mjs --no-proof      # pula a prova do bloqueio (mais rápido)
+//   node scripts/forge-doctor.mjs --no-protection # pula a leitura da forja (branch protection)
+//   node scripts/forge-doctor.mjs --no-runner-labels # pula o registro do runner (as duas forjas)
+//   node scripts/forge-doctor.mjs --no-registry-probe # offline: nao consulta o registry
+//   node scripts/forge-doctor.mjs --expected 1.3.14 # valor de vars.BUN_VERSION
 //   node scripts/forge-doctor.mjs --gitea-env deploy/.env.gitea
 //   node scripts/forge-doctor.mjs --timeout 300   # segundos por guard (default 120)
 //
@@ -15,7 +19,14 @@
 //   0 — PRONTA: tudo o que dá para provar localmente foi provado, e a imagem do
 //       runner existe e é puxável
 //   1 — BLOQUEADA: alguma invariante falhou, OU a imagem do runner não está no
-//       registry (sem ela NENHUM job inicia) — o merge não pode ser confiado
+//       registry (sem ela NENHUM job inicia), OU a branch protection REGISTRADA
+//       na forja diverge do manifesto (o merge é bloqueado pelo motivo errado, ou
+//       não é bloqueado), OU uma referência em config NÃO VERSIONADA foi provada
+//       errada (variável da forja divergindo dos espelhos, env do host da app
+//       divergindo do template, default do compose divergindo do declarado, tag
+//       re-tagada/ausente no registry), OU o REGISTRO do act_runner não é o do
+//       compose (label gravado apontando para outra imagem: o job roda o que não
+//       foi revisado) — o merge não pode ser confiado
 //   2 — INDETERMINADA: nada falhou, mas algo não pôde ser provado (registry
 //       inacessível, pacote privado sem credencial, ferramenta ausente)
 //   3 — uso/erro interno (argumento inválido, pipeline ilegível)
@@ -52,8 +63,42 @@
 // pipeline entra no doctor SOZINHO, e um guard removido de lá some daqui — não
 // existe lista paralela para envelhecer.
 //
+// A branch protection REGISTRADA na forja ele AGORA lê (seção 1, o outro lado do
+// contrato): quem lê é `scripts/apply-required-checks.mjs --check --json`, a
+// mesma comparação que o cron de drift usa — sem uma segunda implementação que
+// pudesse divergir da primeira justamente no dia do drift. Sem token de
+// administração (ou sem rede), o estado é "não lida" — NUNCA "em sincronia".
+//
+// Os ESPELHOS do BUN_VERSION têm as duas metades: a de sempre (os arquivos
+// existem e concordam entre si, sem rede) e a que faltava — cada um bate com o
+// VALOR de `vars.BUN_VERSION`, via `--expected`, pela MESMA função que o guard
+// periódico usa (`mirrorDriftReport`). Sem o valor, o doctor não inventa "em
+// sincronia": ele diz que o valor não foi comparado (e o veredito fica parcial),
+// porque dois espelhos que concordam entre si podem estar os DOIS velhos.
+//
+// As REFERÊNCIAS que não estão no repositório (invariante 9 do
+// `check-registry-source`) entram pela MESMA função do gate — repository
+// variables, env do host da aplicação e o que o registry serve para a tag. Ele
+// não reimplementa nada: um segundo comparador divergiria do primeiro justamente
+// no dia do drift. Violação bloqueia; INDETERMINADO nunca vira "pronta"; e um
+// arquivo gitignored ausente (`absent`) não é pendência — é "não aplicável aqui".
+//
+// O REGISTRO do act_runner (`/data/.runner`, seção 3) entra pela função do guard
+// da Prova 5 do smoke (`checkRunnerLabels`, o mesmo exit code) — existe para o
+// veredito não dizer "o compose PEDE a imagem certa" e ficar em silêncio sobre o
+// que o runner GRAVOU, que é o que decide a imagem de cada job. Registro velho,
+// vazio (runner órfão) ou compose sem os labels BLOQUEIAM; sem docker/container
+// ou registro ilegível é INDETERMINADA — "não consegui ler" nunca é "está certo".
+//
+// O REGISTRO do runner do GITHUB (`--forge github` do MESMO guard, seção 3) é o
+// fato irmão: lá o registro não tem arquivo (o `.runner` do actions/runner não
+// guarda label nenhum), então quem decide é a API — e o declarado é o
+// `RUNNER_LABELS` de `deploy/setup-github-runner.sh`. Mesmos pesos (violação
+// bloqueia; sem token/API é INDETERMINADA), porque o sintoma é o mesmo: o
+// workflow que pede um label que não está registrado não falha — ele ESPERA.
+//
 // O que ele NÃO pode provar daqui, e por isso sai escrito no relatório:
-//   - a branch protection REGISTRADA na forja (requer token/API dela);
+//   - a PERMISSÃO do token sobre a forja (sem ela, "não lida");
 //   - o smoke (tier-1 em runtime — é um job da própria forja);
 //   - o `.env.gitea` do VPS, que não existe neste checkout.
 // =============================================================================
@@ -66,14 +111,17 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { discoverGates } from "./check-forge-parity.mjs"
 import { ensureRunnerImage, DEFAULT_ENV_FILE } from "./ensure-runner-image.mjs"
+import { GITHUB_RUNNER_SCRIPT, checkGithubRunnerLabels } from "./check-runner-labels.mjs"
 import { proveRunnerImageGate } from "./prove-runner-image-gate.mjs"
-import { checkComposeInterpolation } from "./check-registry-source.mjs"
+import { checkComposeInterpolation, checkNonVersionedImageRefs } from "./check-registry-source.mjs"
+import { checkRunnerLabels } from "./check-runner-labels.mjs"
 import { GITEA_COMPOSE } from "./check-bun-mirror.mjs"
 import { GITEA_WORKFLOW_DIR } from "./forge-workflows.mjs"
 import {
   extractActrcBunVersion,
   extractEnvMirrorBunVersion,
   GITEA_ENV_MIRROR,
+  mirrorDriftReport,
 } from "./check-actrc-sync.mjs"
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
@@ -86,6 +134,12 @@ export const MERGE_OWNER_PIPELINE = `${GITEA_WORKFLOW_DIR}/ci.yml`
 
 /** O job dessa pipeline cujos gates formam a bateria da forja. */
 export const FORGE_GUARDS_JOB = "guards"
+
+/**
+ * O APLICADOR do contrato — a única implementação da comparação
+ * manifesto ↔ branch protection registrada (ver `readProtection`).
+ */
+export const REQUIRED_CHECKS_APPLIER = "scripts/apply-required-checks.mjs"
 
 /** Exit code do `runner-image:check` quando a tag NÃO existe (a única falha da forja). */
 const IMAGE_MISSING = 4
@@ -406,6 +460,88 @@ export function summarize(facts) {
     unknowns.push(`a interpolacao do compose da forja nao foi provada: ${compose.detail}`)
   }
 
+  // A outra metade da invariante 7: o env do HOST × o template comitado. Só
+  // faz sentido perguntar quando o render foi PROVADO (aí o compose existe e a
+  // comparação estava ao alcance); sem o arquivo do host ela não aconteceu — o
+  // VPS pode estar interpolando outra coisa, e isso é ausência de prova, nunca
+  // "pronta".
+  if (compose?.state === "proven" && compose.hostCompare?.state === "absent") {
+    unknowns.push(
+      `o env do HOST nao foi comparado com o template comitado: ${compose.hostCompare.detail}`,
+    )
+  }
+
+  // O contrato REGISTRADO na forja (o branch protection de verdade): o
+  // manifesto é a INTENÇÃO; isto é o que bloqueia o merge. Drift em qualquer
+  // forja BLOQUEIA — nos dois sentidos (check exigido que não existe trava todo
+  // PR para sempre; check do manifesto que não é exigido deixa o merge passar).
+  if (facts.skippedProtection) {
+    unknowns.push(
+      "a branch protection REGISTRADA na forja foi pulada (--no-protection): o veredito não cobre o que de fato bloqueia o merge",
+    )
+  } else if (facts.protection?.state === "drift") {
+    for (const b of protectionBlockers(facts.protection)) blockers.push(b)
+  } else if (facts.protection && facts.protection.state !== "in-sync") {
+    unknowns.push(`a branch protection REGISTRADA nao foi lida: ${facts.protection.detail}`)
+  }
+
+  // As referencias em configuracao NAO VERSIONADA: o que o repositorio NAO
+  // contem (repository variables, env do host, o que o registry serve). Uma
+  // violacao bloqueia; nao conseguir provar nunca vira "pronto".
+  // O skip da consulta ao registry é declarado: sem ele, um fato "proven" que
+  // pulou a única parte que olha a tag diria "pronta" com a pergunta em aberto.
+  if (facts.skippedRegistryProbe) {
+    unknowns.push(
+      "a consulta ao registry foi pulada (--no-registry-probe): a tag que o repositorio declara nao foi conferida",
+    )
+  }
+  const refs = facts.imageRefs
+  if (refs?.state === "violated") {
+    for (const v of refs.violations) blockers.push(v)
+  } else if (refs && refs.state !== "proven") {
+    // `absent` fica FORA do "pendente": e um arquivo gitignored que nao existe
+    // neste checkout, nao uma referencia que deixou de ser provada. Listar os
+    // dois juntos faria a lista de pendencia parecer maior do que e (e o
+    // operador procurar um problema onde nao ha).
+    const pending = (refs.items ?? [])
+      .filter((i) => i.state === "indeterminate" || i.state === "violated")
+      .map((i) => i.source)
+      .join(" · ")
+    unknowns.push(
+      `as referencias NAO VERSIONADAS da imagem nao foram provadas: ${refs.detail}${pending ? ` [${pending}]` : ""}`,
+    )
+  }
+
+  // O REGISTRO do act_runner: o que GRAVOU é o que decide a imagem de cada job.
+  // Violação BLOQUEIA (a forja roda os jobs numa imagem que não é a revisada, ou
+  // não os roda em imagem nenhuma); "não consegui ler" é INDETERMINADA — nunca
+  // "o registro está certo".
+  if (facts.skippedRunnerLabels) {
+    unknowns.push(
+      "o registro do runner foi pulado (--no-runner-labels): o veredito não cobre quais labels o act_runner GRAVOU nem os do runner auto-hospedado do GitHub",
+    )
+  } else {
+    if (facts.runnerLabels?.state === "violated") {
+      for (const b of runnerLabelBlockers(facts.runnerLabels)) blockers.push(b)
+    } else if (facts.runnerLabels && facts.runnerLabels.state !== "proven") {
+      unknowns.push(
+        `o registro do act_runner nao foi comparado com o compose (${facts.runnerLabels.state}): ${facts.runnerLabels.detail}`,
+      )
+    }
+    // A OUTRA forja: o mesmo registro velho, e no GitHub ele não tem arquivo —
+    // quem decide é a API. Mesmos estados, mesmos pesos: violação BLOQUEIA (o
+    // runner que existe pega os jobs numa configuração que o repositório não
+    // declara, ou não pega job nenhum), e o que não deu para ler é INDETERMINADA
+    // (sem token de self-hosted runners o doctor não finge "em sincronia").
+    if (facts.githubRunnerLabels?.state === "violated") {
+      for (const b of githubRunnerLabelBlockers(facts.githubRunnerLabels)) blockers.push(b)
+    } else if (facts.githubRunnerLabels && facts.githubRunnerLabels.state !== "proven") {
+      unknowns.push(
+        `o registro do runner do GitHub nao foi comparado com ${GITHUB_RUNNER_SCRIPT} (${facts.githubRunnerLabels.state}): ${facts.githubRunnerLabels.detail}`,
+      )
+    }
+  }
+
   for (const m of facts.mirrors.blockers) blockers.push(m)
   for (const m of facts.mirrors.unknowns) unknowns.push(m)
 
@@ -413,13 +549,21 @@ export function summarize(facts) {
     blockers.length > 0 ? VERDICT.BLOCKED : unknowns.length > 0 ? VERDICT.UNKNOWN : VERDICT.READY
 
   const unproven = [
-    `a branch protection REGISTRADA na forja (o manifesto ${REQUIRED_CHECKS_MANIFEST} é aplicado por scripts/apply-required-checks.mjs — o doctor lê o manifesto, não a forja)`,
+    `a PERMISSAO do token sobre a forja: o doctor lê a branch protection com o aplicador (${REQUIRED_CHECKS_APPLIER}) e, sem token de administração, ele diz "não lida" — nunca "em sincronia"`,
     "o smoke da forja: que o runner usa a imagem com o Bun da variable (tier-1 em runtime) — é um job da própria forja",
-    "o deploy/.env.gitea do VPS (não existe neste checkout; o doctor usa o que --gitea-env apontar)",
+    "o deploy/.env.gitea do VPS: o doctor COMPARA o env do host com o template comitado (invariante 7b) quando o arquivo existe — o que ele nao alcanca daqui e o env de um host DIFERENTE deste checkout (`--gitea-env` aponta outro)",
     `o render do compose com o DOCKER DO RUNNER da forja: aqui o render é feito com ESTE docker (${GITEA_COMPOSE}). A imagem do job da forja EMBARCA o plugin \`compose\` — medido: a base catthehacker/ubuntu:act-latest entrega /usr/libexec/docker/cli-plugins/docker-compose, e o build do Dockerfile.ubuntu-bun FALHA se isso mudar — e o smoke exige o render (--require-compose). O que segue fora do alcance daqui é o socket do job: é a Prova 4 do smoke que o exercita, no host.`,
   ]
   if (facts.skippedGuards) unproven.unshift("os guards da forja (pulados por --no-guards)")
   if (facts.skippedProof) unproven.unshift("a prova do bloqueio da imagem (pulada por --no-proof)")
+  if (facts.skippedRunnerLabels) {
+    unproven.unshift(
+      "o registro do act_runner e o do runner auto-hospedado do GitHub (pulados por --no-runner-labels)",
+    )
+  }
+  if (facts.skippedProtection) {
+    unproven.unshift("a branch protection REGISTRADA na forja (pulada por --no-protection)")
+  }
 
   return { verdict, blockers, unknowns, unproven }
 }
@@ -459,23 +603,264 @@ export function readContract(cwd = REPO_ROOT) {
   }
   if (forges.length === 0) failures.push(`${REQUIRED_CHECKS_MANIFEST}: nenhuma forja declarada`)
   return { forges, failures, unknown: null }
-} /**
- * Os espelhos LOCAIS da versão concordam entre si? (sem rede)
+}
+
+/**
+ * O OUTRO LADO do contrato de merge: o que a FORJA REGISTRA.
  *
- * A GRAVIDADE É DIFERENTE PARA CADA UM, e misturar os dois seria mentir:
- *   - `deploy/env.gitea.example` alimenta a label do runner. Sem ele a forja não
- *     sabe QUAL imagem rodar → BLOQUEIA (é config da forja);
- *   - `.actrc` é o espelho do act LOCAL. Divergir dele não impede a forja de
- *     bloquear merge nenhum — incomoda quem roda act na máquina → NÃO PROVADO.
- *     (O job semanal `actrc-sync` existe justamente porque este valor só é
- *     comparável com a variável remota, que aqui não existe.)
+ * POR QUE ESTE FATO EXISTE: a seção 1 prova que o manifesto é válido e aponta
+ * para jobs que existem; ela NÃO prova que a forja exige aqueles checks. Quem
+ * bloqueia o merge é a branch protection — estado da forja, invisível em review
+ * —, e o modo de falha é o pior: o `name:` de um job renomeado muda o CONTEXTO
+ * de status, o manifesto passa a exigir um check que nunca roda e o PR trava
+ * PARA SEMPRE. Nenhum teste de PR enxerga isso: no PR o job novo existe e passa.
+ *
+ * DE ONDE VEM A VERDADE: de `scripts/apply-required-checks.mjs --check --json`,
+ * o MESMO comando que o cron de drift usa nos dois lados
+ * (`required-checks-drift.yml`). Nada de uma segunda comparação aqui: o
+ * aplicador é o dono da regra (contextos resolvidos do manifesto, credencial por
+ * forja, drift por branch) e devolve o relatório em JSON. Um segundo comparador
+ * divergiria do primeiro justamente no dia do drift — o defeito que este
+ * repositório persegue.
+ *
+ * O QUE O TOKEN PRECISA: permissão de ADMINISTRAÇÃO no repo (PAT clássico com
+ * scope `repo`, ou fine-grained com 'Administration: read'). O `GITHUB_TOKEN`
+ * padrão NÃO tem esse escopo — e por isso "não consegui ler" é estado PRÓPRIO
+ * (`unavailable`), nunca "em sincronia". O cron semanal pula com um `::notice::`;
+ * aqui não ler significa NÃO PROVADO.
+ *
+ * @param {{cwd?: string, forges?: string[], run?: Function, nodePath?: string}} [args]
+ * @returns {{state: "in-sync"|"drift"|"unavailable", detail: string, forges: object[]}}
  */
-export function readMirrors(cwd = REPO_ROOT) {
+export function readProtection({
+  cwd = REPO_ROOT,
+  forges = [],
+  run = spawnSync,
+  nodePath = process.execPath,
+} = {}) {
+  const reads = forges.map((forge) => readForgeProtection({ cwd, forge, run, nodePath }))
+  return { ...summarizeProtection(reads), forges: reads }
+}
+
+/** Executa o aplicador para UMA forja e interpreta o relatório JSON. */
+function readForgeProtection({ cwd, forge, run, nodePath }) {
+  const args = [REQUIRED_CHECKS_APPLIER, "--check", "--forge", forge, "--json"]
+  const res = run(nodePath, args, { cwd, encoding: "utf8", timeout: 60_000, env: process.env })
+  const empty = { forge, state: "unavailable", desired: 0, branches: [], missing: [], extra: [] }
+
+  if (res.error) {
+    return { ...empty, detail: `nao consegui executar o aplicador (${res.error.message})` }
+  }
+  if (res.signal || res.status === null) {
+    return { ...empty, detail: "o aplicador nao terminou em 60s — trate como NAO verificado" }
+  }
+
+  let report = null
+  try {
+    report = JSON.parse(String(res.stdout ?? ""))
+  } catch {
+    report = null
+  }
+  const errors = report?.errors ?? []
+  if (errors.length > 0) {
+    // Falta de credencial/rede NÃO é evidência sobre a forja: é ausência de prova.
+    return { ...empty, detail: errors.map((e) => e.message).join("; ") }
+  }
+  const data = report?.forges?.[forge]
+  if (!data) {
+    return { ...empty, detail: `o aplicador nao reportou a forja '${forge}' (exit ${res.status})` }
+  }
+
+  const desired = data.desired?.length ?? 0
+  const branches = (data.branches ?? []).map((b) => ({
+    branch: b.branch,
+    configured: b.configured === true,
+    missing: b.missing ?? [],
+    extra: b.extra ?? [],
+  }))
+  const missing = [...new Set(branches.flatMap((b) => b.missing))]
+  const extra = [...new Set(branches.flatMap((b) => b.extra))]
+  // O veredito do APLICADOR manda: se ele diz drift e a derivação acima não viu
+  // nada, ainda é drift (e a mensagem diz que veio dele).
+  const drift = missing.length > 0 || extra.length > 0 || report.drift === true
+  return {
+    forge,
+    state: drift ? "drift" : "in-sync",
+    desired,
+    branches,
+    missing,
+    extra,
+    detail: describeProtection({
+      branches,
+      desired,
+      missing,
+      extra,
+      flagged: report.drift === true,
+    }),
+  }
+}
+
+/**
+ * Uma frase por branch, dita em termos do que o operador precisa fazer. A
+ * AUSÊNCIA de proteção é o caso mais grave (nenhum check bloqueia nada) e tem
+ * mensagem própria — "0 de N exigidos" não é o mesmo que "falta um".
+ */
+function describeProtection({ branches, desired, missing, extra, flagged }) {
+  if (branches.length === 0) return "nenhuma branch reportada pelo aplicador"
+  const parts = branches.map((b) => {
+    if (!b.configured) {
+      return `${b.branch} NAO tem protecao registrada (0 de ${desired} check(s) exigidos) — nenhum check bloqueia o merge`
+    }
+    if (b.missing.length === 0 && b.extra.length === 0) {
+      return `${b.branch} exige os ${desired} check(s) do manifesto`
+    }
+    const bits = []
+    if (b.missing.length > 0) bits.push(`falta(m) ${b.missing.map((c) => `'${c}'`).join(", ")}`)
+    if (b.extra.length > 0) bits.push(`sobra(m) ${b.extra.map((c) => `'${c}'`).join(", ")}`)
+    return `${b.branch} exige ${desired - b.missing.length} de ${desired} check(s): ${bits.join(" · ")}`
+  })
+  if (flagged && missing.length === 0 && extra.length === 0) {
+    parts.push("o aplicador reportou drift sem nomear contexto")
+  }
+  return parts.join(" · ")
+}
+
+/** O estado AGREGADO: um drift em qualquer forja domina; depois, falta de prova. */
+function summarizeProtection(reads) {
+  if (reads.length === 0) {
+    return {
+      state: "unavailable",
+      detail: `${REQUIRED_CHECKS_MANIFEST} nao declara forja nenhuma — nao ha o que comparar com a forja`,
+    }
+  }
+  const line = (r) => `${r.forge}: ${r.detail}`
+  if (reads.some((r) => r.state === "drift")) {
+    return { state: "drift", detail: reads.map(line).join(" · ") }
+  }
+  if (reads.some((r) => r.state !== "in-sync")) {
+    return { state: "unavailable", detail: reads.map(line).join(" · ") }
+  }
+  return { state: "in-sync", detail: reads.map(line).join(" · ") }
+}
+
+/**
+ * As mensagens de BLOQUEIO do contrato REGISTRADO — o que o veredito consome, e
+ * por isso exportado (o teste trava a frase que o operador lê).
+ */
+export function protectionBlockers(protection) {
+  return (protection?.forges ?? [])
+    .filter((f) => f.state === "drift")
+    .map(
+      (f) =>
+        `branch protection REGISTRADA no ${f.forge} divergiu de ${REQUIRED_CHECKS_MANIFEST}: ${f.detail}. Remédio: bun run ci:required-checks -- --apply (o manifesto é a fonte; a forja é quem obedece)`,
+    )
+}
+
+/**
+ * O bloqueio do REGISTRO do runner, com a localização do arquivo lido e o
+ * remédio do próprio guard.
+ *
+ * Um bloqueio só, e não um por divergência: todas as linhas do guard descrevem o
+ * MESMO problema (o registro não é o do compose) e o veredito lê melhor com uma
+ * frase que nomeia onde o arquivo está do que com N repetições do mesmo juízo.
+ *
+ * @param {object} labels
+ * @returns {string[]}
+ */
+export function runnerLabelBlockers(labels) {
+  const where = labels?.container
+    ? `${labels.container} · ${labels.stateFile}`
+    : "o registro do runner"
+  const remedies = (labels?.remedies ?? []).join(" ")
+  return [
+    `o registro do act_runner NAO é o do compose (${labels?.detail}): ${where} x ${GITEA_COMPOSE} — ${(labels?.violations ?? []).join(" · ")}${remedies ? ` ${remedies}` : ""}`,
+  ]
+}
+
+/**
+ * As referencias da imagem que vivem em configuracao NAO VERSIONADA
+ * (repository variables, env do host, o que o registry serve para a tag).
+ *
+ * POR QUE E UM FATO PROPRIO: nenhuma delas esta no repositorio — e por isso
+ * mesmo nao da para "ler e concluir". O guard devolve um tri-estado por
+ * referencia (`proven` / `indeterminate` / `violated`), e este fato so o
+ * transporta para o veredito: VIOLACAO bloqueia; INDETERMINADO nunca vira
+ * "pronto" — e o que o doctor chama de nao provado.
+ *
+ * `deps` e a fronteira de dependencia do teste (`env` e `probe`: o ambiente do
+ * processo e a consulta ao registry).
+ *
+ * @param {{cwd?: string, envFile?: string, deps?: object}} [args]
+ * @returns {Promise<{state: string, items: {source: string, state: string, detail: string}[], violations: string[], detail: string}>}
+ */
+export async function readImageRefs({
+  cwd = REPO_ROOT,
+  envFile = DEFAULT_ENV_FILE,
+  deps = {},
+} = {}) {
+  try {
+    return await checkNonVersionedImageRefs({ root: cwd, hostEnv: envFile, ...deps })
+  } catch (err) {
+    // Um fato nunca derruba o doctor: se a propria avaliacao falhou, isso e
+    // ausencia de prova (INDETERMINADA), nao "esta tudo certo".
+    return {
+      state: "unavailable",
+      items: [],
+      violations: [],
+      detail: `nao foi possivel avaliar as referencias nao versionadas: ${err?.message ?? String(err)}`,
+    }
+  }
+}
+
+/**
+ * Os espelhos da versão do Bun concordam com o que o repositório DECLARA?
+ *
+ * SÃO DUAS PERGUNTAS, e a segunda é a que faltava aqui:
+ *   1. os arquivos locais existem e concordam entre si? (sem rede, sempre possível)
+ *   2. cada um bate com o VALOR de `vars.BUN_VERSION`? (só com `--expected`: o
+ *      valor da variável não existe no checkout, ele vive no Actions)
+ *
+ * A pergunta 2 é a MESMA do guard periódico (`check-actrc-sync.mjs`, job semanal
+ * `actrc-sync`) — e por isso NÃO é reimplementada: este fato chama
+ * `mirrorDriftReport`, a função que o guard, o CLI dele e o publicador de issue
+ * já compartilham. A descoberta dos arquivos (template comitado + o `.env.gitea`
+ * do host quando existe, ou o `--gitea-env` apontado) e a leitura dos valores
+ * vêm de lá; uma segunda comparação aqui divergiria da primeira justamente no
+ * dia do drift.
+ *
+ * SEM `--expected` o que resta é a pergunta 1 — e ela é MAIS FRACA do que
+ * parece: dois espelhos que concordam entre si podem estar os DOIS velhos em
+ * relação à variável. É exatamente assim que o fast path de 0s do tier-1
+ * desliga na forja sem nenhum sintoma. Então, sem o valor, o doctor diz que o
+ * VALOR não foi comparado — em vez de chamar de "em sincronia" o que só provou
+ * existir.
+ *
+ * A GRAVIDADE É DIFERENTE PARA CADA ESPELHO, e misturar os dois seria mentir:
+ *   - o env da forja (`deploy/env.gitea.example`, e o `.env.gitea` do host)
+ *     alimenta a label do runner: ausente, a forja não sabe QUAL imagem rodar →
+ *     BLOQUEIA (é config da forja); divergente do valor declarado, o runner
+ *     roda OUTRA imagem → BLOQUEIA também (o tier-1 desliga em silêncio e o
+ *     setup funciona igual, só mais lento);
+ *   - `.actrc` é o espelho do act LOCAL: divergir dele não impede a forja de
+ *     bloquear merge nenhum — incomoda quem roda act na máquina → NÃO PROVADO.
+ *
+ * @param {string} [cwd]
+ * @param {{expected?: string|null, envPath?: string|null}} [options]
+ *   `expected`: valor de `vars.BUN_VERSION` (null = não perguntado — o VERDITO
+ *   do valor não foi feito); `envPath`: o env de um host específico
+ *   (`--gitea-env`), que SUBSTITUI a descoberta como no CLI do guard (para
+ *   inquirir OUTRO host). O doctor NÃO usa esta opção de propósito: ele quer o
+ *   template comitado E o host do checkout, e passar um caminho largaria o
+ *   template fora da comparação. O valor de outro host entra pela invariante
+ *   7b (host x template), que compara o env inteiro.
+ * @returns {{actrc: string|null, env: string|null, expected: string|null, mirrors: object[], warnings: string[], blockers: string[], unknowns: string[]}}
+ */
+export function readMirrors(cwd = REPO_ROOT, { expected = null, envPath = null } = {}) {
   const blockers = []
   const unknowns = []
 
-  const envPath = join(cwd, GITEA_ENV_MIRROR)
-  const env = existsSync(envPath) ? extractEnvMirrorBunVersion(readFileSync(envPath, "utf8")) : null
+  const envFile = join(cwd, GITEA_ENV_MIRROR)
+  const env = existsSync(envFile) ? extractEnvMirrorBunVersion(readFileSync(envFile, "utf8")) : null
   if (env === null) {
     blockers.push(
       `${GITEA_ENV_MIRROR} ausente ou sem BUN_VERSION — é ele que alimenta a label do runner: sem ele a forja não sabe qual imagem rodar`,
@@ -486,15 +871,56 @@ export function readMirrors(cwd = REPO_ROOT) {
   const actrc = existsSync(actrcPath)
     ? extractActrcBunVersion(readFileSync(actrcPath, "utf8"))
     : null
-  if (actrc === null) {
-    unknowns.push(".actrc ausente ou sem BUN_VERSION — o act local rodaria sem versão")
-  } else if (env !== null && actrc !== env) {
+
+  // Sem o valor da variável não há como dizer se o espelho está certo: o que se
+  // pode dizer é que os dois entre si divergem (um dos dois está velho) e que a
+  // pergunta do VALOR continua aberta.
+  if (expected === null) {
+    if (actrc === null) {
+      unknowns.push(".actrc ausente ou sem BUN_VERSION — o act local rodaria sem versão")
+    } else if (env !== null && actrc !== env) {
+      unknowns.push(
+        `os espelhos locais divergem: .actrc='${actrc}' vs ${GITEA_ENV_MIRROR}='${env}' — um dos dois está velho, e qual é o certo só a repository variable diz`,
+      )
+    }
     unknowns.push(
-      `os espelhos locais divergem: .actrc='${actrc}' vs ${GITEA_ENV_MIRROR}='${env}' — um dos dois está velho; qual é o certo só a repository variable diz (job semanal actrc-sync)`,
+      `o VALOR dos espelhos NAO foi comparado com vars.BUN_VERSION: a variável vive no Actions, não no checkout — passe --expected <versão> (ou, com credencial: --expected "$(gh variable get BUN_VERSION)"). Existência e concordância local não provam que o runner roda a versão declarada`,
+    )
+    return { actrc, env, expected, mirrors: [], warnings: [], blockers, unknowns }
+  }
+
+  // O env de um host apontado só entra quando EXISTE: o `mirrorDriftReport` lê o
+  // arquivo sem checar (o CLI do guard trata a ausência como erro de uso), e um
+  // doctor que estoura num fato não é um doctor. A ausência do arquivo já é
+  // reportada na seção da imagem, que lê o MESMO `--gitea-env`.
+  const host = envPath && existsSync(envPath) ? envPath : null
+  const report = mirrorDriftReport({ cwd, expected, ...(host ? { envPath: host } : {}) })
+
+  for (const mirror of report.mirrors) {
+    if (mirror.version === expected) continue
+    const kind = mirror.deployed ? "o env DESTE host" : "o template comitado"
+    blockers.push(
+      `${mirror.label} define BUN_VERSION='${mirror.version ?? "ausente"}' mas vars.BUN_VERSION='${expected}' — é ${kind} que alimenta a label do runner: o runner roda uma imagem com OUTRA versão do Bun e o fast path de 0s do tier-1 desliga em silêncio (o setup funciona igual, só mais lento). Remédio: bash scripts/bump-bun.sh ${expected}${mirror.deployed ? ", e re-registre o runner: bash deploy/gitea-up.sh --re-register" : ""}`,
     )
   }
 
-  return { actrc, env, blockers, unknowns }
+  if (report.actrcVersion !== expected) {
+    unknowns.push(
+      `.actrc define BUN_VERSION='${report.actrcVersion ?? "ausente"}' mas vars.BUN_VERSION='${expected}' — o act LOCAL testa outra versão (não é o merge, é a dev experience da máquina). Remédio: bash scripts/bump-bun.sh ${expected} (escreve a variável, o .actrc e o template de uma vez)`,
+    )
+  }
+
+  return {
+    actrc,
+    env,
+    expected,
+    mirrors: report.mirrors,
+    // Os avisos do GUARD, no texto dele: o log do doctor e a issue do job semanal
+    // não podem discordar, e é isso que a fonte única garante.
+    warnings: report.warnings,
+    blockers,
+    unknowns,
+  }
 }
 
 /** Roda o check da imagem (NUNCA publica) e guarda as linhas que ele emitiu. */
@@ -516,7 +942,11 @@ export async function readImage({ envFile = DEFAULT_ENV_FILE, cwd = REPO_ROOT, d
 /**
  * A prova do bloqueio: EXECUTA o `deploy/gitea-up.sh` real contra um registry de
  * TESTE (127.0.0.1) e afirma sobre o log do docker dublê — com a tag ausente o
- * runner não sobe, com a tag presente sobe.
+ * runner não sobe, com a tag presente sobe. Inclui a família do `--re-register`,
+ * que tem um risco PRÓPRIO: ele apaga o registro gravado antes de subir, então a
+ * prova exige que a falha da garantia não destrua nada, que a ordem seja
+ * `rm` → `volume rm` → `up -d runner` e que um registro que não sai não deixe o
+ * runner subir com os labels antigos.
  *
  * POR QUE ISTO É UM FATO DO VEREDITO e não uma nota de rodapé: o doctor podia
  * dizer "imagem garantida" com base apenas na EXISTÊNCIA da tag agora. Isso
@@ -546,6 +976,138 @@ export async function readProof({ cwd = REPO_ROOT, deps = {} } = {}) {
 }
 
 /**
+ * O REGISTRO do act_runner (`/data/.runner`) × o que o compose declara.
+ *
+ * POR QUE É UM FATO DO VEREDITO e não uma nota de rodapé: o render prova o que o
+ * compose PEDE; nada aqui prova o que o runner GRAVOU — e é o gravado que decide
+ * a imagem de todo job. Os labels são ESTADO (vivem no volume, enviados à
+ * instância no registro, nunca relidos do compose): um `up -d runner` recria o
+ * container com o env novo e deixa o registro velho no lugar. O sintoma é o pior
+ * tipo: o job roda, o setup funciona, os testes passam — na imagem antiga, sem o
+ * tier-1. Um registro VAZIO é o caso extremo: runner órfão, nenhum job atribuído
+ * a ele.
+ *
+ * NÃO reimplementa nada: chama `checkRunnerLabels` (o MESMO guard da Prova 5 do
+ * smoke, com o mesmo exit code) — um segundo comparador divergiria do primeiro
+ * justamente no dia do registro velho.
+ *
+ * Estados, e a diferença entre eles é o ponto: `proven` (é o do compose),
+ * `violated` (registro velho/vazio, ou compose sem os labels ⇒ BLOQUEIA) e
+ * `unavailable`/`env-missing` (sem docker, sem socket, sem container, registro
+ * ilegível ⇒ NÃO PROVADO). Nunca lança: ausência de prova não é prova de falha.
+ *
+ * `deps` é a fronteira de dependência do teste (`check` e o `run` do guard).
+ */
+export function readRunnerLabels({ cwd = REPO_ROOT, envFile = null, deps = {} } = {}) {
+  const { check = checkRunnerLabels, ...rest } = deps
+  const empty = {
+    violations: [],
+    remedies: [],
+    declared: [],
+    registered: [],
+    container: null,
+    stateFile: null,
+  }
+  try {
+    const res = check({ cwd, envFile, ...rest })
+    return {
+      state: res.state,
+      violations: res.violations ?? [],
+      remedies: res.remedies ?? [],
+      detail: res.detail,
+      declared: res.declared ?? [],
+      registered: res.registered ?? [],
+      container: res.container ?? null,
+      stateFile: res.stateFile ?? null,
+    }
+  } catch (err) {
+    return {
+      ...empty,
+      state: "unavailable",
+      detail: `o registro do act_runner nao pode ser lido: ${err?.message ?? String(err)}`,
+    }
+  }
+}
+
+/**
+ * O REGISTRO do runner AUTO-HOSPEDADO DO GITHUB — a outra forja, o MESMO
+ * registro velho, e aqui ele é invisível por CONSTRUÇÃO.
+ *
+ * POR QUE É UM FATO PRÓPRIO E NÃO UMA VARIAÇÃO DO ANTERIOR: a leitura não tem
+ * nada em comum com a da forja. O act_runner grava os labels no volume
+ * (`/data/.runner`, aliás `docker exec`); o runner do GitHub NÃO grava label
+ * nenhum (o `.runner` do actions/runner guarda AgentId/AgentName/PoolName/
+ * ServerUrl — nenhum campo de labels): o registro vive no SERVIDOR, e quem o lê
+ * é a API. Mesmos estados, mesmos remédios — a origem é outra.
+ *
+ * Não reimplementa nada: chama `checkGithubRunnerLabels` (o MESMO código do
+ * CLI `--forge github`). `violated` BLOQUEIA (o runner registrado pega os jobs
+ * numa configuração que o repositório não declara — ou não pega job nenhum, se
+ * o registro está vazio, ou o runner declarado não existe/está offline) e
+ * `unavailable`/`env-missing` são NÃO PROVADO (sem token de self-hosted runners
+ * ou sem repo, o doctor não finge "em sincronia"). Nunca lança: ausência de
+ * prova não é prova de falha.
+ *
+ * `deps` é a fronteira de dependência do teste (`check`).
+ */
+export async function readGithubRunnerLabels({
+  cwd = REPO_ROOT,
+  env = process.env,
+  deps = {},
+} = {}) {
+  const { check = checkGithubRunnerLabels, ...rest } = deps
+  const empty = {
+    violations: [],
+    remedies: [],
+    declared: [],
+    registered: [],
+    runner: null,
+    status: null,
+    repo: null,
+  }
+  try {
+    const res = await check({ cwd, env, ...rest })
+    return {
+      state: res.state,
+      violations: res.violations ?? [],
+      remedies: res.remedies ?? [],
+      detail: res.detail,
+      declared: res.declared ?? [],
+      registered: res.registered ?? [],
+      runner: res.runner ?? null,
+      status: res.status ?? null,
+      repo: res.repo ?? null,
+    }
+  } catch (err) {
+    return {
+      ...empty,
+      state: "unavailable",
+      detail: `o registro do runner do GitHub nao pode ser lido: ${err?.message ?? String(err)}`,
+    }
+  }
+}
+
+/**
+ * O bloqueio do REGISTRO do runner do GitHub, com o runner lido e o remédio.
+ *
+ * Um bloqueio só, pelo mesmo motivo do `runnerLabelBlockers`: todas as linhas do
+ * guard descrevem o MESMO problema (o registro não é o do setup) e
+ * `violations.length` tem de continuar significando "quantos problemas existem".
+ *
+ * @param {object} labels
+ * @returns {string[]}
+ */
+export function githubRunnerLabelBlockers(labels) {
+  const where = labels?.runner
+    ? `runner '${labels.runner}' (${labels.status}) · repos/${labels.repo}/actions/runners`
+    : `repos/${labels?.repo}/actions/runners`
+  const remedies = (labels?.remedies ?? []).join(" ")
+  return [
+    `o registro do runner do GITHUB NAO é o que o setup declara (${labels?.detail}): ${where} x ${GITHUB_RUNNER_SCRIPT} — ${(labels?.violations ?? []).join(" · ")}${remedies ? ` ${remedies}` : ""}`,
+  ]
+}
+
+/**
  * A INTERPOLAÇÃO do compose da forja: o que o `docker compose config` resolve
  * para o label do runner (invariante 7 do `check:registry-source`).
  *
@@ -557,17 +1119,41 @@ export async function readProof({ cwd = REPO_ROOT, deps = {} } = {}) {
  *
  * `state: 'unavailable'` (sem docker/compose, sem env) NÃO falha aqui — vira
  * "não provado", a mesma regra do resto do doctor.
+ *
+ * A comparação HOST × TEMPLATE (invariante 7b) viaja como fato PRÓPRIO
+ * (`hostCompare`): "conferido e em sincronia" não pode aparecer igual a "não
+ * havia o que conferir".
+ *
+ * @param {{cwd?: string, hostEnv?: string|null, deps?: {check?: (args: {cwd?: string, hostEnv?: string|null}) => {state: string, violations?: string[], detail: string, hostCompare?: {state: string, detail: string}}}}} [args]
  */
-export async function readComposeInterpolation({ cwd = REPO_ROOT, deps = {} } = {}) {
+export async function readComposeInterpolation({
+  cwd = REPO_ROOT,
+  hostEnv = null,
+  deps = {},
+} = {}) {
   const { check = checkComposeInterpolation } = deps
   try {
-    const res = check({ cwd })
-    return { state: res.state, violations: res.violations ?? [], detail: res.detail }
+    const res = check({ cwd, hostEnv })
+    return {
+      state: res.state,
+      violations: res.violations ?? [],
+      detail: res.detail,
+      // A comparação HOST × TEMPLATE é um fato PRÓPRIO: "conferido e em
+      // sincronia" não pode aparecer igual a "não havia o que conferir".
+      hostCompare: res.hostCompare ?? {
+        state: "absent",
+        detail: "a comparacao host x template nao devolveu estado",
+      },
+    }
   } catch (err) {
     return {
       state: "unavailable",
       violations: [],
       detail: `a interpolacao do compose nao pode ser avaliada: ${err?.message ?? String(err)}`,
+      hostCompare: {
+        state: "absent",
+        detail: `a interpolacao nao pode ser avaliada: ${err?.message ?? String(err)}`,
+      },
     }
   }
 }
@@ -604,8 +1190,12 @@ export function renderReport(report, { emit = console.log } = {}) {
   line(`  ${MARK.info()} manifesto     : ${REQUIRED_CHECKS_MANIFEST}`)
 
   // ── 1. Contrato de merge ────────────────────────────────────────────────
+  // Duas metades, lado a lado DE PROPÓSITO: o que o repositório DECLARA (o
+  // manifesto + os workflows que ele cita) e o que a forja REGISTRA (a branch
+  // protection). Um manifesto validado com a forja em drift é o modo de falha
+  // que este comando existe para não deixar passar.
   line()
-  line("  1/5  Contrato de merge")
+  line("  1/5  Contrato de merge (o que o repositório DECLARA × o que a forja REGISTRA)")
   for (const f of facts.contract.forges) {
     const mark = f.exists && f.jobs > 0 ? MARK.ok() : MARK.fail()
     line(
@@ -613,6 +1203,19 @@ export function renderReport(report, { emit = console.log } = {}) {
     )
   }
   for (const failure of facts.contract.failures) line(`       ${MARK.fail()} ${failure}`)
+
+  if (facts.skippedProtection) {
+    line(`       ${MARK.skip()} registrado: pulado por --no-protection`)
+  } else {
+    for (const f of facts.protection?.forges ?? []) {
+      const mark =
+        f.state === "in-sync" ? MARK.ok() : f.state === "drift" ? MARK.fail() : MARK.warn()
+      line(`       ${mark} ${f.forge.padEnd(7)} registrado: ${f.detail}`)
+    }
+    if ((facts.protection?.forges ?? []).length === 0) {
+      line(`       ${MARK.warn()} registrado: ${facts.protection?.detail ?? "nao lido"}`)
+    }
+  }
 
   // ── 2. Guards da forja ──────────────────────────────────────────────────
   line()
@@ -664,6 +1267,80 @@ export function renderReport(report, { emit = console.log } = {}) {
             : MARK.warn()
     line(`       ${ciMark} interpolacao do compose: ${ci.detail}`)
     for (const v of ci.violations) line(`           ${color(C.gray, v)}`)
+    // A outra metade: o env do HOST (o que o VPS interpola) contra o template
+    // comitado (o que o repositorio declara).
+    const hc = ci.hostCompare
+    if (hc) {
+      const hcMark =
+        hc.state === "in-sync"
+          ? MARK.ok()
+          : hc.state === "diverged"
+            ? MARK.fail()
+            : hc.state === "absent" || hc.state === "skipped"
+              ? MARK.skip()
+              : MARK.warn()
+      line(`       ${hcMark} host x template: ${hc.detail}`)
+    }
+  }
+
+  // O que o runner GRAVOU (`/data/.runner`): os labels são ESTADO no volume, não
+  // config do container — o `up -d runner` recria o container com o env novo e
+  // deixa o registro velho no lugar, e o job cai na imagem antiga sem sintoma.
+  const labels = facts.runnerLabels
+  if (labels) {
+    const labelsMark =
+      labels.state === "proven"
+        ? MARK.ok()
+        : labels.state === "violated"
+          ? MARK.fail()
+          : labels.state === "skipped"
+            ? MARK.skip()
+            : MARK.warn()
+    const where = labels.container ? ` (${labels.container} · ${labels.stateFile})` : ""
+    line(`       ${labelsMark} registro do act_runner${where}: ${labels.detail}`)
+    for (const v of labels.violations ?? []) line(`           ${color(C.gray, v)}`)
+    for (const r of labels.remedies ?? []) line(`           ${color(C.gray, `→ ${r}`)}`)
+  }
+
+  // A OUTRA forja, na MESMA seção: aqui não há arquivo a ler — o registro do
+  // runner do GitHub vive no servidor, e é a API que o revela. Mostrar as duas
+  // lado a lado é o ponto: uma forja em sincronia e a outra não é drift, e o
+  // relatório não pode deixar isso invisível.
+  const ghLabels = facts.githubRunnerLabels
+  if (ghLabels) {
+    const ghMark =
+      ghLabels.state === "proven"
+        ? MARK.ok()
+        : ghLabels.state === "violated"
+          ? MARK.fail()
+          : ghLabels.state === "skipped"
+            ? MARK.skip()
+            : MARK.warn()
+    const ghWhere = ghLabels.repo
+      ? ` (repos/${ghLabels.repo}/actions/runners${ghLabels.runner ? ` · ${ghLabels.runner} (${ghLabels.status})` : ""})`
+      : ""
+    line(`       ${ghMark} registro do runner (github)${ghWhere}: ${ghLabels.detail}`)
+    for (const v of ghLabels.violations ?? []) line(`           ${color(C.gray, v)}`)
+    for (const r of ghLabels.remedies ?? []) line(`           ${color(C.gray, `→ ${r}`)}`)
+  }
+
+  // As referencias que NAO estao no repositorio: o que ficou indeterminado
+  // aparece aqui, item por item — esconder isso num modo verboso seria o alerta
+  // mudo que este repo persegue.
+  const refs = facts.imageRefs
+  if (refs) {
+    const refsMark =
+      refs.state === "proven" ? MARK.ok() : refs.state === "violated" ? MARK.fail() : MARK.warn()
+    line(`       ${refsMark} referencias nao versionadas: ${refs.detail}`)
+    for (const item of refs.items ?? []) {
+      const mark =
+        item.state === "proven"
+          ? MARK.ok()
+          : item.state === "indeterminate" || item.state === "absent"
+            ? MARK.skip()
+            : MARK.fail()
+      line(`           ${mark} ${color(C.gray, `${item.source} — ${item.detail}`)}`)
+    }
   }
 
   // ── 4. Prova do bloqueio ────────────────────────────────────────────────
@@ -690,6 +1367,9 @@ export function renderReport(report, { emit = console.log } = {}) {
       line(
         `           ${color(C.gray, "tag ausente ⇒ NENHUM 'compose up'; tag presente ⇒ 'up -d runner' (controle)")}`,
       )
+      line(
+        `           ${color(C.gray, "re-registro: sem a imagem NADA é apagado; com ela, 'rm -sf runner' → 'volume rm' → 'up'; registro preso ⇒ o runner não sobe")}`,
+      )
     }
     for (const c of cases.filter((c) => !c.ok)) {
       line(`           ${MARK.fail()} ${c.title}`)
@@ -698,10 +1378,37 @@ export function renderReport(report, { emit = console.log } = {}) {
   }
 
   // ── 5. Espelhos locais ─────────────────────────────────────────────────
+  // A primeira linha diz CONTRA O QUE se comparou: sem o valor da variável, o
+  // resto da seção só prova existência e concordância local — e o operador
+  // precisa ver essa diferença sem ler o código.
   line()
-  line("  5/5  Espelhos locais da versão (sem rede)")
+  line("  5/5  Espelhos da versão do Bun (sem rede)")
+  if (facts.mirrors.expected) {
+    line(
+      `       ${MARK.info()} comparados com vars.BUN_VERSION='${facts.mirrors.expected}' (--expected, mesma função do job semanal actrc-sync)`,
+    )
+  } else {
+    line(
+      `       ${MARK.info()} o VALOR não foi comparado: sem --expected (vars.BUN_VERSION só existe no Actions)`,
+    )
+  }
   if (facts.mirrors.blockers.length === 0 && facts.mirrors.unknowns.length === 0) {
     line(`       ${MARK.ok()} .actrc e ${GITEA_ENV_MIRROR} concordam (${facts.mirrors.actrc})`)
+  }
+  for (const m of facts.mirrors.mirrors ?? []) {
+    const mark = m.version === facts.mirrors.expected ? MARK.ok() : MARK.fail()
+    line(
+      `           ${mark} ${m.label} (${m.deployed ? "host" : "template comitado"}): ${m.version ?? "<sem BUN_VERSION>"}`,
+    )
+  }
+  // Os avisos do GUARD, no texto dele: é o que o job semanal publica na issue, e
+  // vê-los aqui lado a lado com o bloqueio é o que faz o log do doctor e a issue
+  // não poderem discordar (a comparação é uma função só).
+  if ((facts.mirrors.warnings ?? []).length > 0) {
+    line(
+      `           ${color(C.gray, "aviso do guard periódico (o MESMO texto que o job semanal publica):")}`,
+    )
+    for (const w of facts.mirrors.warnings) line(`           ${color(C.gray, w)}`)
   }
   for (const p of facts.mirrors.blockers) line(`       ${MARK.fail()} ${p}`)
   for (const p of facts.mirrors.unknowns) line(`       ${MARK.warn()} ${p}`)
@@ -741,8 +1448,25 @@ Usage:
 Opções:
   --no-guards            pula a bateria de guards (mais rápido; o veredito fica parcial)
   --no-proof             pula a prova do bloqueio da imagem (mais rápido; o veredito fica parcial)
+  --no-protection        pula a leitura da branch protection registrada na forja
+  --no-runner-labels     pula a comparação do registro do runner NAS DUAS forjas:
+                         o act_runner (os labels são ESTADO no volume:
+                         /data/.runner x o compose) e o runner auto-hospedado do
+                         GitHub (o registro vive no SERVIDOR: a API x o
+                         RUNNER_LABELS de deploy/setup-github-runner.sh, que
+                         exige token de self-hosted runners — sem ele é 3)
   --no-compose-render    pula a interpolação do compose (docker compose config)
-  --gitea-env <path>     env do runner a checar (default: deploy/.env.gitea)
+  --no-registry-probe    não consulta o registry (offline): a tag que o repo
+                         declara deixa de ser conferida — e o veredito não pode
+                         fingir que foi
+  --expected <versão>    valor de vars.BUN_VERSION (a repository variable): com
+                         ele os espelhos do Bun são comparados com o VALOR
+                         declarado, pelo mesmo código do job semanal
+                         actrc-sync. Sem ele o doctor só prova que os espelhos
+                         existem e concordam entre si — e o veredito fica
+                         INDETERMINADA por isso
+  --gitea-env <path>     env do HOST (default: deploy/.env.gitea) — e ele que o
+                         doctor compara com o template comitado
   --timeout <segundos>   limite por gate (default: 120)
   --json                 sai como JSON (mesma informação do relatório)
   -h, --help             esta ajuda
@@ -755,8 +1479,12 @@ export function parseArgs(argv) {
   const opts = {
     guards: true,
     proof: true,
+    protection: true,
+    runnerLabels: true,
     composeRender: true,
+    registryProbe: true,
     envFile: DEFAULT_ENV_FILE,
+    expected: null,
     timeoutS: 120,
     json: false,
     help: false,
@@ -766,14 +1494,28 @@ export function parseArgs(argv) {
     const arg = argv[i]
     if (arg === "--no-guards") opts.guards = false
     else if (arg === "--no-proof") opts.proof = false
+    else if (arg === "--no-protection") opts.protection = false
+    else if (arg === "--no-runner-labels") opts.runnerLabels = false
     else if (arg === "--no-compose-render") opts.composeRender = false
+    else if (arg === "--no-registry-probe") opts.registryProbe = false
     else if (arg === "--json") opts.json = true
     else if (arg === "-h" || arg === "--help") opts.help = true
+    else if (arg === "--expected") opts.expected = argv[++i] ?? ""
     else if (arg === "--gitea-env") opts.envFile = argv[++i] ?? ""
     else if (arg === "--timeout") opts.timeoutS = Number(argv[++i])
     else opts.error = `argumento desconhecido: ${arg}`
   }
   if (!opts.envFile) opts.error = "--gitea-env exige um caminho"
+  // `--expected` SEM valor é erro de uso. A versão vazia (variável não criada) é
+  // drift REAL, mas quem o reporta é o guard periódico — um flag que aceita
+  // nada seria indistinguível de "não perguntei".
+  if (opts.expected === "") opts.error = "--expected exige uma versão (ex.: --expected 1.3.14)"
+  // Uma flag engolida como valor (`--expected --json`) seria comparada como se
+  // fosse uma versão — o espelho "divergiria de '--json'" e a mensagem mandaria
+  // o operador procurar um drift que não existe. Versão nenhuma começa com `--`.
+  if (typeof opts.expected === "string" && opts.expected.startsWith("--")) {
+    opts.error = `--expected exige uma versão, não uma flag (recebi '${opts.expected}')`
+  }
   if (!Number.isFinite(opts.timeoutS) || opts.timeoutS < 1) {
     opts.error = "--timeout exige um número de segundos >= 1"
   }
@@ -787,14 +1529,26 @@ export function parseArgs(argv) {
  * @param {object} [options]
  * @param {string} [options.cwd]
  * @param {string} [options.envFile]   env do runner (o mesmo do compose)
+ * @param {string|null} [options.expected] valor de `vars.BUN_VERSION` para
+ * comparar os espelhos do Bun (null = não comparado: o veredito fica parcial)
  * @param {boolean} [options.guards]   executar a bateria da forja (default: true)
  * @param {boolean} [options.proof]    executar a prova do bloqueio (default: true)
+ * @param {boolean} [options.protection] ler a branch protection registrada na forja (default: true)
+ * @param {boolean} [options.runnerLabels] comparar o registro do act_runner com o compose (default: true)
  * @param {boolean} [options.composeRender] interpolar o compose da forja (default: true)
  * @param {number} [options.timeoutS]  limite por gate
  * @param {Function} [options.run]     `spawnSync` real ou dublê de teste
  * @param {object} [options.imageDeps] dependências repassadas ao check da imagem
+ * @param {object} [options.imageRefsDeps] dependências do fato das referências
+ * não versionadas (`env`/`probe`) — o ponto de injeção do teste
+ * @param {object} [options.runnerLabelsDeps] dependências do fato do registro do
+ * runner (`check`/`run`) — o ponto de injeção do teste
+ * @param {object} [options.githubRunnerLabelsDeps] dependências do fato do
+ * registro do runner do GitHub (`check`/`fetchImpl`/`env`) — o ponto de injeção do teste
  * @param {object} [options.proofDeps] dependências repassadas à prova do bloqueio
  * @param {object} [options.composeDeps] dependências repassadas à interpolação do compose
+ * @param {object} [options.protectionDeps] dependências repassadas à leitura da branch protection
+ * (`run` é o mesmo dublê dos gates: é por ele que a leitura da forja é injetada)
  * (`{prove}` substitui a prova inteira — é o ponto de injeção do teste)
  * (sem `@returns` declarado de propósito: o formato dos fatos é o que o
  * `summarize` consome, e descrevê-lo aqui de novo só criaria duas verdades)
@@ -802,14 +1556,23 @@ export function parseArgs(argv) {
 export async function diagnose({
   cwd = REPO_ROOT,
   envFile = DEFAULT_ENV_FILE,
+  env = process.env,
+  expected = null,
   guards = true,
   proof = true,
+  protection = true,
+  runnerLabels = true,
   composeRender = true,
+  registryProbe = true,
   timeoutS = 120,
   run,
   imageDeps = {},
+  imageRefsDeps = {},
+  runnerLabelsDeps = {},
+  githubRunnerLabelsDeps = {},
   proofDeps = {},
   composeDeps = {},
+  protectionDeps = {},
 } = {}) {
   const contractRun = runGate(
     { label: "check:required-checks", command: "bun run check:required-checks" },
@@ -843,11 +1606,67 @@ export async function diagnose({
         ? await readProof({ cwd, deps: proofDeps })
         : { status: "skipped", ok: false, detail: "pulada por --no-proof", cases: [] },
       compose: composeRender
-        ? await readComposeInterpolation({ cwd, deps: composeDeps })
-        : { state: "skipped", violations: [], detail: "pulada por --no-compose-render" },
-      mirrors: readMirrors(cwd),
+        ? await readComposeInterpolation({ cwd, hostEnv: envFile, deps: composeDeps })
+        : {
+            state: "skipped",
+            violations: [],
+            detail: "pulada por --no-compose-render",
+            hostCompare: { state: "skipped", detail: "pulada por --no-compose-render" },
+          },
+      // As forjas saem do MANIFESTO (uma fonte): um manifesto que ganhe uma
+      // terceira forja entra na leitura sozinho.
+      protection: protection
+        ? readProtection({
+            cwd,
+            forges: contract.forges.map((f) => f.forge),
+            run,
+            ...protectionDeps,
+          })
+        : { state: "skipped", detail: "pulada por --no-protection", forges: [] },
+      // SEM `envPath`: a DESCOBERTA do guard já cobre o template comitado E o
+      // `deploy/.env.gitea` do checkout quando ele existe — que é o caso do VPS,
+      // justamente onde os dois importam. Apontar um arquivo (`--gitea-env`)
+      // SUBSTITUI a descoberta (semântica do CLI do guard, para perguntar por
+      // OUTRO host), e aí o template sairia da comparação — regressão silenciosa
+      // no host onde o valor mais importa.
+      imageRefs: await readImageRefs({
+        cwd,
+        envFile,
+        deps: { probeRegistry: registryProbe, ...imageRefsDeps },
+      }),
+      // O `envFile` só é repassado quando NÃO é o default: o default do doctor
+      // (`deploy/.env.gitea`) significa "use a DESCOBERTA do guard" — e a
+      // descoberta prefere o arquivo do host e cai no template comitado quando
+      // ele não existe. Repassá-lo cru trocaria isso por `env-missing` em todo
+      // checkout que não seja o VPS (o guard não inventa um baseline).
+      runnerLabels: runnerLabels
+        ? readRunnerLabels({
+            cwd,
+            envFile: envFile === DEFAULT_ENV_FILE ? null : envFile,
+            deps: runnerLabelsDeps,
+          })
+        : {
+            state: "skipped",
+            detail: "pulada por --no-runner-labels",
+            violations: [],
+            remedies: [],
+          },
+      // A outra forja, com a MESMA flag: as duas são "o registro do runner", e
+      // separá-las em duas flags faria a segunda ser esquecida.
+      githubRunnerLabels: runnerLabels
+        ? await readGithubRunnerLabels({ cwd, env, deps: githubRunnerLabelsDeps })
+        : {
+            state: "skipped",
+            detail: "pulada por --no-runner-labels",
+            violations: [],
+            remedies: [],
+          },
+      mirrors: readMirrors(cwd, { expected }),
       skippedGuards: !guards,
       skippedProof: !proof,
+      skippedProtection: !protection,
+      skippedRunnerLabels: !runnerLabels,
+      skippedRegistryProbe: !registryProbe,
     },
   }
 }

@@ -53,6 +53,7 @@ const REAL_LINES = [
   "      - run: bun run check:pii-gate",
   "      - run: bun run check:required-checks",
   "      - run: bun run check:registry-source",
+  "      - run: bun run check:runner-base",
   "      - run: bun scripts/check-workflow-refs.mjs --pkg-internal",
   "      - run: bun run check:forge-workflow-scope",
   "      - run: bun run check:bun-audit-baseline",

@@ -210,13 +210,36 @@ const MANIFEST_ACCEPT = [
 ].join(", ")
 
 /**
- * Pede um token anônimo a partir do desafio `WWW-Authenticate` do registry
- * (fluxo Bearer do Docker Distribution). Sem desafio, tenta o endpoint padrão
- * de token do host — é o que faz o GHCR e o registry do Gitea responderem.
+ * Credencial OPCIONAL para o registry, vinda do ambiente (nunca do repositório).
+ *
+ * POR QUE EXISTE: quando o pacote é PRIVADO, o fluxo anônimo devolve 401 e não
+ * há como provar NADA sobre o que a tag serve — o estado honesto é
+ * "indeterminado". Com um token no ambiente (o caso do CI, ou de quem rodou
+ * `docker login`/exportou um PAT), a mesma pergunta passa a ter resposta. `user`
+ * é irrelevante para o GHCR (qualquer valor serve com um PAT) e é exigido por
+ * registries que usam HTTP basic de verdade.
+ *
+ * @param {Record<string, string|undefined>} [env]
+ * @returns {{user: string, token: string}|null}
+ */
+export function credentialsFromEnv(env = process.env) {
+  const token = env.GHCR_TOKEN || env.GITHUB_TOKEN || env.GH_TOKEN || ""
+  if (!token.trim()) return null
+  return { user: env.GHCR_USER || env.GITHUB_ACTOR || "oauth2", token: token.trim() }
+}
+
+/**
+ * Pede um token ao registry a partir do desafio `WWW-Authenticate` (fluxo Bearer
+ * do Docker Distribution) — ANÔNIMO, ou autenticado quando há credencial. Sem
+ * desafio, tenta o endpoint padrão de token do host: é o que faz o GHCR e o
+ * registry do Gitea responderem.
  *
  * @returns {Promise<string|null>}
  */
-async function fetchAnonymousToken(challenge, { fetchImpl, timeoutMs, repository, host }) {
+async function fetchRegistryToken(
+  challenge,
+  { fetchImpl, timeoutMs, repository, host, credentials = null },
+) {
   const realm = /realm="([^"]+)"/.exec(challenge)?.[1]
   const service = /service="([^"]+)"/.exec(challenge)?.[1] ?? host
   const scope = /scope="([^"]+)"/.exec(challenge)?.[1] ?? `repository:${repository}:pull`
@@ -225,6 +248,13 @@ async function fetchAnonymousToken(challenge, { fetchImpl, timeoutMs, repository
   try {
     const res = await fetchImpl(url, {
       signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
+      ...(credentials
+        ? {
+            headers: {
+              authorization: `Basic ${Buffer.from(`${credentials.user}:${credentials.token}`).toString("base64")}`,
+            },
+          }
+        : {}),
     })
     if (!res.ok) return null
     const body = await res.json().catch(() => ({}))
@@ -254,7 +284,7 @@ async function fetchAnonymousToken(challenge, { fetchImpl, timeoutMs, repository
  */
 export async function checkTagExists(
   ref,
-  { fetchImpl = globalThis.fetch, timeoutMs = 20000 } = {},
+  { fetchImpl = globalThis.fetch, timeoutMs = 20000, credentials = null } = {},
 ) {
   const { base, host, repository, tag } = registryEndpoints(ref)
   const signal = () => (timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined)
@@ -288,7 +318,13 @@ export async function checkTagExists(
       return { state: "missing", detail: `HTTP 404 — ${tag} não está em ${host}` }
     if (res.status === 401 || res.status === 403) {
       const challenge = res.headers?.get?.("www-authenticate") ?? ""
-      const token = await fetchAnonymousToken(challenge, { fetchImpl, timeoutMs, repository, host })
+      const token = await fetchRegistryToken(challenge, {
+        fetchImpl,
+        timeoutMs,
+        repository,
+        host,
+        credentials,
+      })
       if (token) {
         const authed = await head(token)
         if (authed.status === 200)
@@ -308,6 +344,153 @@ export async function checkTagExists(
     return { state: "error", detail: `HTTP ${res.status} inesperado do registry ${host}` }
   } catch (err) {
     return { state: "unreachable", detail: err?.message ?? String(err) }
+  }
+}
+
+/**
+ * O QUE O REGISTRY SERVE HOJE para a tag — a IDENTIDADE da imagem, não a
+ * existência dela.
+ *
+ * POR QUE ISSO É OUTRA PERGUNTA: `checkTagExists` responde "dá para puxar?".
+ * Uma tag é um apelido MUTÁVEL: publicar OUTRA build sob a mesma versão
+ * (re-tag) troca o que todos os jobs rodam sem mudar uma linha do repositório —
+ * e o gate verde continua verde. A única resposta possível vem do próprio
+ * registry: o manifesto, o `config` blob e, nele, a label
+ * `org.opencontainers.image.version` que `Dockerfile.ubuntu-bun` grava.
+ *
+ * Estados (e a diferença entre eles é o ponto):
+ *   - `proven`       — a imagem servida DECLARA a versão esperada
+ *   - `mismatch`     — declara OUTRA versão: re-tag; o que roda não é o revisado
+ *   - `no-label`     — a imagem não declara versão: não dá para provar qual build é
+ *   - `missing`      — 404: o registry respondeu e a tag não está lá
+ *   - `unauthorized` — 401/403 sem credencial: NADA se sabe (nunca "ok")
+ *   - `unreachable`  — rede/DNS/timeout: NADA se sabe
+ *   - `error`        — resposta inesperada do registry
+ *
+ * `no-label` NÃO é `mismatch`: não saber é um estado próprio. Tratar os dois
+ * como iguais faria o guard acusar re-tag onde só falta a label (as imagens
+ * publicadas ANTES da label existir), e o remédio é outro — republicar.
+ *
+ * @param {string} ref
+ * @param {{expectedVersion?: string|null, fetchImpl?: Function, timeoutMs?: number, credentials?: {user: string, token: string}|null}} [deps]
+ * @returns {Promise<{state: string, digest: string|null, version: string|null, detail: string}>}
+ */
+export async function probeImageIdentity(
+  ref,
+  {
+    expectedVersion = null,
+    fetchImpl = globalThis.fetch,
+    timeoutMs = 20000,
+    credentials = null,
+  } = {},
+) {
+  const { base, host, repository, tag } = registryEndpoints(ref)
+  const signal = () => (timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined)
+  const empty = { digest: null, version: null }
+  const get = (url, token) =>
+    fetchImpl(url, {
+      headers: {
+        accept: MANIFEST_ACCEPT,
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+      },
+      signal: signal(),
+    })
+
+  try {
+    const manifestUrl = `${base}/v2/${repository}/manifests/${tag}`
+    let token = null
+    let res = await get(manifestUrl, null)
+    if (res.status === 401 || res.status === 403) {
+      token = await fetchRegistryToken(res.headers?.get?.("www-authenticate") ?? "", {
+        fetchImpl,
+        timeoutMs,
+        repository,
+        host,
+        credentials,
+      })
+      if (!token) {
+        return {
+          ...empty,
+          state: "unauthorized",
+          detail: `HTTP ${res.status} em ${host} (pacote privado e sem credencial no ambiente — exporte GHCR_TOKEN/GITHUB_TOKEN para provar)`,
+        }
+      }
+      res = await get(manifestUrl, token)
+    }
+    if (res.status === 404) {
+      return { ...empty, state: "missing", detail: `HTTP 404 — ${tag} não está em ${host}` }
+    }
+    if (res.status !== 200) {
+      return {
+        ...empty,
+        state: res.status === 401 || res.status === 403 ? "unauthorized" : "error",
+        detail: `HTTP ${res.status} do registry ${host} ao ler o manifesto de ${tag}`,
+      }
+    }
+
+    let digest = res.headers?.get?.("docker-content-digest") ?? null
+    let manifest = await res.json()
+
+    // Índice multi-arch: desce por UM filho (amd64 primeiro) — a identidade é a
+    // mesma build; escolher sempre o primeiro torna o resultado determinístico.
+    if (!manifest?.config && Array.isArray(manifest?.manifests)) {
+      const child =
+        manifest.manifests.find((m) => m?.platform?.architecture === "amd64") ??
+        manifest.manifests[0]
+      if (!child?.digest) {
+        return { ...empty, state: "error", detail: `índice de ${tag} sem children` }
+      }
+      digest = child.digest
+      const childRes = await get(`${base}/v2/${repository}/manifests/${child.digest}`, token)
+      if (childRes.status !== 200) {
+        return {
+          ...empty,
+          state: "error",
+          detail: `HTTP ${childRes.status} ao ler o manifesto filho de ${tag}`,
+        }
+      }
+      manifest = await childRes.json()
+    }
+
+    const configDigest = manifest?.config?.digest
+    if (!configDigest) {
+      return { ...empty, digest, state: "error", detail: `${tag} não devolveu um config blob` }
+    }
+    const configRes = await get(`${base}/v2/${repository}/blobs/${configDigest}`, token)
+    if (configRes.status !== 200) {
+      return {
+        ...empty,
+        digest,
+        state: "error",
+        detail: `HTTP ${configRes.status} ao ler o config blob de ${tag}`,
+      }
+    }
+    const config = await configRes.json()
+    const version = config?.config?.Labels?.["org.opencontainers.image.version"] ?? null
+    if (!version) {
+      return {
+        digest,
+        version: null,
+        state: "no-label",
+        detail: `a imagem servida por ${tag} não declara org.opencontainers.image.version — não dá para provar QUAL build ela é (republicada com a label?)`,
+      }
+    }
+    if (expectedVersion && version !== expectedVersion) {
+      return {
+        digest,
+        version,
+        state: "mismatch",
+        detail: `a tag ${tag} serve uma imagem que declara versão '${version}' (esperado '${expectedVersion}') — re-tag: o que roda não é o que foi revisado`,
+      }
+    }
+    return {
+      digest,
+      version,
+      state: "proven",
+      detail: `a tag ${tag} serve a build que declara ${version} em ${host}${digest ? ` (${digest.slice(0, 19)}…)` : ""}`,
+    }
+  } catch (err) {
+    return { ...empty, state: "unreachable", detail: err?.message ?? String(err) }
   }
 }
 

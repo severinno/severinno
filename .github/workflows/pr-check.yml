@@ -193,8 +193,39 @@ jobs:
       # `ghcr.io/...` solto volta a exigir cota de storage/egress do registry
       # proprietário e quebra o flip de UMA variável (IMAGE_REGISTRY).
       # node direto pelo mesmo motivo acima: guard node-puro, sem node_modules.
+      #
+      # O `env` explicitamente aqui NAO e redundancia: as referencias da imagem
+      # vivem em configuracao NAO VERSIONADA (as repository variables), e o guard
+      # le o valor do AMBIENTE. Sem entregar o valor, ele so pode dizer
+      # INDETERMINADO — "nao consegui provar" — e o gate verde esconderia isso.
+      # Entregando-o, o guard COMPARA a variable com o que o repositorio declara
+      # (`.actrc`, `deploy/env.gitea.example`, `.env.production.example`): um
+      # espelho velho deixa de ser invisivel aqui dentro.
+      # (Variavel nao criada: o env fica vazio e o passo volta a ser INDETERMINADO,
+      # que e o certo — nao da para comparar com o que nao existe.)
       - name: OCI registry single source
+        env:
+          IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+          BUN_VERSION: ${{ vars.BUN_VERSION }}
         run: node scripts/check-registry-source.mjs
+
+      # A BASE da imagem que roda ESTES jobs: pinada por digest e com o contrato
+      # da imagem provado por EXECUÇÃO (o bloco `RUN` real do Dockerfile, contra
+      # bases dubladas: com o plugin `compose` passa, sem ele FALHA).
+      #
+      # Por que aqui e não só no build do mirror: `catthehacker/ubuntu:act-latest`
+      # é uma tag FLUTUANTE. Um rebuild da base troca a imagem inteira — inclusive
+      # o plugin `compose` que a invariante 7 usa para renderizar o compose da
+      # forja — sem nenhuma linha do repositório mudar. O digest é o que torna o
+      # build reprodutível; a prova por mutação é o que impede um pin velho (ou de
+      # outra imagem) passar como pin.
+      #
+      # O probe da tag é o ÚNICO passo que depende de rede: sem ele o passo
+      # continua verde DIZENDO que não conferiu o pin contra o que a tag serve
+      # (o pin, o contrato e as mutações são offline).
+      - name: Runner base pin (digest + contrato)
+        run: node scripts/check-runner-base.mjs
 
       # Escopo dos guards: nenhum script pode cravar um diretório de forja.
       # Fecha a CLASSE de falha que deixou a pipeline dona do merge fora da

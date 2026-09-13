@@ -292,6 +292,10 @@ describe("forge-smoke.yml — as provas detectam a falha que anunciam", () => {
     expect(res.status).toBe(1)
     const out = `${res.stdout}${res.stderr}`
     expect(out).toContain("REGISTRO VELHO")
+    // O MESMO exit 1 cobre o registro VAZIO (runner órfão): a etapa diz isso, e o
+    // remédio de cada caso vem nas linhas '→' do próprio guard (impressas acima).
+    expect(out).toContain("VAZIO")
+    expect(out).toContain("runner órfão")
     expect(out).toContain("--re-register")
     // A saída do guard chega ANTES do diagnostico: quem le o log ve o diff.
     expect(out).toContain("1.0.0-antiga")

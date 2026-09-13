@@ -764,8 +764,18 @@ jobs:
       # divergência, por desenho). O script decide sozinho se há drift, com a
       # mesma função do guard, e deduplica por assinatura contra issues abertas
       # (a issue é o estado da dívida até ser fechada, não ruído semanal).
+      #
+      # E, quando NÃO há drift, ele RECONCILIA: comenta a prova e fecha as
+      # issues que ele mesmo abriu. Publicar sem fechar deixava uma dívida
+      # MENTINDO no board depois de resolvida — o alerta perderia o valor no
+      # próximo bump, que seria investigado duas vezes. Se o drift voltar, a
+      # mesma regra abre uma issue nova (o dedup é entre as ABERTAS).
+      #
+      # NUNCA passe --dry-run aqui: o modo não toca no `gh` de propósito (o
+      # contrato dele é não ter efeito nenhum), e a reconciliação sumiria em
+      # silêncio dentro de um run verde — o defeito de novo, na forma mais barata.
       # GH_TOKEN explícito: o `gh` do runner já usa o GITHUB_TOKEN por padrão.
-      - name: Publicar o drift como Issue acionável
+      - name: Publicar o drift como Issue acionável (e fechar quando resolver)
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}

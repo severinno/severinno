@@ -17,31 +17,49 @@
  *   npx vitest run --config vitest.config.unit.ts src/lib/__tests__/check-registry-source.test.ts
  */
 
-import { spawnSync } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { createServer } from "node:http"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
 import { afterAll, describe, expect, it } from "vitest"
 
 import {
+  APP_COMPOSE,
+  APP_ENV_HOSTS,
+  APP_ENV_TEMPLATE,
   COMPOSE_SENTINELS,
   DEPLOY_DIR,
   OUT_OF_SCOPE_ALLOWLIST,
+  REGISTRY_VARIABLES,
+  SECRET_ENV_VARIABLES,
   THIRD_PARTY_ALLOWLIST,
   analyzeDeclaredRender,
   analyzeSentinelRender,
   analyzeUnsetVersionRender,
   checkActrc,
+  checkComposeImageDefaults,
+  checkComposeImageDefaultsForRepo,
   checkComposeImageLine,
   checkComposeInterpolation,
   checkLiteralImageTag,
+  checkNonVersionedImageRefs,
   checkOutOfScopeTargets,
   checkRegistryLine,
+  classifyEnvVariable,
   collectFiles,
+  compareAppHostImageDeclarations,
+  compareEnvMirrorDeclarations,
+  compareImageTemplates,
+  compareRenderedLabels,
   composeAvailable,
+  composeEnvDefaults,
+  composeEnvVariables,
   controlledEnv,
+  declaredImageValues,
   findViolations,
+  forgeVariableRefs,
   imageRefsIn,
   isCommentLine,
   isComposeFile,
@@ -49,6 +67,7 @@ import {
   labelImageRefs,
   matchesScanTarget,
   parseComposeRender,
+  parseEnvAssignments,
   stripInlineComment,
   sweepOutOfScope,
   unsetVariables,
@@ -404,7 +423,14 @@ describe("repositório real", () => {
 describe("CLI (exit code)", () => {
   const SCRIPT = join(process.cwd(), "scripts", "check-registry-source.mjs")
 
-  function runIn(tree: Record<string, string>, args: string[] = ["--no-compose-render"]) {
+  // `--no-registry-probe`: esta bateria testa a varredura ESTATICA. O fato das
+  // referencias nao versionadas tem os proprios testes (acima, com o probe
+  // injetado, e abaixo, contra um registry de TESTE) — aqui uma consulta a rede
+  // so tornaria o teste lento e dependente de DNS.
+  function runIn(
+    tree: Record<string, string>,
+    args: string[] = ["--no-compose-render", "--no-registry-probe"],
+  ) {
     const dir = mkdtempSync(join(tmpdir(), "registry-source-"))
     try {
       for (const [rel, content] of Object.entries(tree)) {
@@ -830,6 +856,257 @@ describe("analyzeUnsetVersionRender — sem BUN_VERSION não pode haver tag", ()
   })
 })
 
+// ── INVARIANTE 7b: o env do HOST x o template COMITADO ────────────────────
+//
+// O buraco que estes testes prendem: as três fases provam que o env da forja é
+// AUTO-CONSISTENTE. Onde o arquivo do host existe (o VPS), ninguém provava que
+// ele era o MESMO que o repositório declara — o gate verde com o runner
+// registrando outra imagem.
+
+/** Nomes que o compose da forja realmente consome (derivados, não listados). */
+const CONSUMED = ["BUN_VERSION", "IMAGE_NAMESPACE", "IMAGE_REGISTRY", "RUNNER_TOKEN"]
+
+/** Template COMITADO: o token é o placeholder, como no arquivo real. */
+function templateEnv(): Map<string, string> {
+  return new Map([
+    ["RUNNER_TOKEN", "COLE_O_TOKEN_AQUI"],
+    ["IMAGE_REGISTRY", "ghcr.io"],
+    ["IMAGE_NAMESPACE", "severinno"],
+    ["BUN_VERSION", "1.3.14"],
+  ])
+}
+
+/** Env do HOST: o mesmo, com o token de VERDADE (é o único valor que difere). */
+function hostEnv(): Map<string, string> {
+  const env = templateEnv()
+  env.set("RUNNER_TOKEN", "TOKEN_REAL_DO_VPS")
+  return env
+}
+
+const TEMPLATE_LABEL = "deploy/env.gitea.example"
+const HOST_LABEL = "deploy/.env.gitea"
+
+describe("composeEnvVariables — as consumidas vêm do COMPOSE, não de uma lista à mão", () => {
+  it("deriva `${NOME}` e `${NOME:-default}` de linhas de código", () => {
+    expect(composeEnvVariables(COMPOSE_FIXTURE_CORRECT)).toEqual(CONSUMED)
+  })
+
+  it("prosa não é configuração: comentário de linha e inline não inventam variável", () => {
+    expect(
+      composeEnvVariables("# cita ${BUN_VERSION} e ${NAO_EXISTE}\nkey: valor # ${OUTRA}\n"),
+    ).toEqual([])
+  })
+
+  it("uma variável NOVA no compose entra na comparação sozinha (não há lista para envelhecer)", () => {
+    const comNova = `${COMPOSE_FIXTURE_CORRECT}      - NOVA_VAR=\${VARIAVEL_NOVA}\n`
+    expect(composeEnvVariables(comNova)).toContain("VARIAVEL_NOVA")
+  })
+
+  it("no compose REAL do repositório: as quatro variáveis do deploy, e só elas", () => {
+    const real = readFileSync(join(REPO_ROOT, "deploy", COMPOSE_BASENAME), "utf8")
+    expect(composeEnvVariables(real)).toEqual(CONSUMED)
+  })
+})
+
+describe("parseEnvAssignments — o mesmo que o `--env-file` do docker lê", () => {
+  it("lê NOME=valor, com `export` e com aspas", () => {
+    const env = parseEnvAssignments('export BUN_VERSION=1.3.14\nIMAGE_REGISTRY="ghcr.io"\n')
+    expect(env.get("BUN_VERSION")).toBe("1.3.14")
+    expect(env.get("IMAGE_REGISTRY")).toBe("ghcr.io")
+  })
+
+  it("descarta comentário de linha e inline (fora de aspas)", () => {
+    const env = parseEnvAssignments("# BUN_VERSION=0.0.0\nBUN_VERSION=1.3.14 # fixado\n")
+    expect(env.get("BUN_VERSION")).toBe("1.3.14")
+    expect(env.size).toBe(1)
+  })
+
+  it("valor com `#` DENTRO de aspas não é comentário", () => {
+    expect(parseEnvAssignments('X="a#b"\n').get("X")).toBe("a#b")
+  })
+
+  it("a ÚLTIMA ocorrência vence (semântica do `--env-file`) — comparar com o parser do docker", () => {
+    expect(parseEnvAssignments("X=1\nX=2\n").get("X")).toBe("2")
+  })
+})
+
+describe("classifyEnvVariable — o default é COMPARAR o valor", () => {
+  it("só o segredo é isento (nomeado, um por um)", () => {
+    expect(SECRET_ENV_VARIABLES).toEqual(["RUNNER_TOKEN"])
+    expect(classifyEnvVariable("RUNNER_TOKEN")).toBe("secret")
+  })
+
+  it("variável NOVA (não classificada) é conferida por valor — não existe isenção silenciosa", () => {
+    expect(classifyEnvVariable("QUALQUER_OUTRA")).toBe("value")
+  })
+})
+
+describe("compareEnvMirrorDeclarations — o que o VPS interpola x o que o repo declara", () => {
+  function compare(template: Map<string, string>, host: Map<string, string> | null) {
+    return compareEnvMirrorDeclarations({
+      template,
+      host,
+      templateLabel: TEMPLATE_LABEL,
+      hostLabel: HOST_LABEL,
+      consumed: CONSUMED,
+    })
+  }
+
+  it("em sincronia (token do host DIFERENTE do placeholder) → nenhuma violação", () => {
+    expect(compare(templateEnv(), hostEnv())).toEqual([])
+  })
+
+  it("valor divergente → violação que nomeia a variável e os DOIS valores", () => {
+    const host = hostEnv()
+    host.set("BUN_VERSION", "1.2.0")
+    const v = compare(templateEnv(), host)
+    expect(v).toHaveLength(1)
+    expect(v[0]).toContain("'BUN_VERSION'")
+    expect(v[0]).toContain("='1.3.14'")
+    expect(v[0]).toContain("host='1.2.0'")
+  })
+
+  it("variável do template AUSENTE no host → violação (o VPS cairia no DEFAULT do compose)", () => {
+    const host = hostEnv()
+    host.delete("IMAGE_NAMESPACE")
+    const v = compare(templateEnv(), host)
+    expect(v.join(" ")).toContain("'IMAGE_NAMESPACE'")
+    expect(v.join(" ")).toContain("default embutido")
+  })
+
+  it("variável SOBRANDO no host → violação (o estado do VPS não é reproduzível)", () => {
+    const host = hostEnv()
+    host.set("SO_BRASA", "1")
+    expect(compare(templateEnv(), host).join(" ")).toContain("'SO_BRASA'")
+  })
+
+  it("segredo VAZIO no host → violação (o container recebe string vazia)", () => {
+    const host = hostEnv()
+    host.set("RUNNER_TOKEN", "")
+    expect(compare(templateEnv(), host).join(" ")).toContain("VAZIA")
+  })
+
+  it("segredo IGUAL ao template → violação (placeholder não preenchido OU segredo versionado)", () => {
+    const host = hostEnv()
+    host.set("RUNNER_TOKEN", "COLE_O_TOKEN_AQUI")
+    const v = compare(templateEnv(), host)
+    expect(v).toHaveLength(1)
+    expect(v[0]).toContain("MESMO valor do template")
+  })
+
+  it("sem o arquivo do host → confere só o CONTRATO do repositório (a metade que roda no CI)", () => {
+    expect(compare(templateEnv(), null)).toEqual([])
+    const semImagem = templateEnv()
+    semImagem.delete("IMAGE_REGISTRY")
+    expect(compare(semImagem, null).join(" ")).toContain("nao esta declarada no template comitado")
+  })
+
+  it("no REPO REAL o template comitado declara TUDO o que o compose consome", () => {
+    const content = readFileSync(join(REPO_ROOT, "deploy", "env.gitea.example"), "utf8")
+    expect(compare(parseEnvAssignments(content), null)).toEqual([])
+  })
+})
+
+describe("compareRenderedLabels — o label renderizado dos dois lados", () => {
+  it("mesmo label → nenhuma violação", () => {
+    expect(
+      compareRenderedLabels({
+        templateRendered: rendered(["ghcr.io/severinno/ubuntu-bun:1.3.14"]),
+        hostRendered: rendered(["ghcr.io/severinno/ubuntu-bun:1.3.14"]),
+        templateLabel: TEMPLATE_LABEL,
+        hostLabel: HOST_LABEL,
+      }),
+    ).toEqual([])
+  })
+
+  it("label diferente → violação com as DUAS imagens (a que o VPS registra e a declarada)", () => {
+    const v = compareRenderedLabels({
+      templateRendered: rendered(["ghcr.io/severinno/ubuntu-bun:1.3.14"]),
+      hostRendered: rendered(["ghcr.io/outro-ns/ubuntu-bun:1.3.14"]),
+      templateLabel: TEMPLATE_LABEL,
+      hostLabel: HOST_LABEL,
+    })
+    expect(v).toHaveLength(1)
+    expect(v[0]).toContain("ghcr.io/outro-ns/ubuntu-bun:1.3.14")
+    expect(v[0]).toContain("ghcr.io/severinno/ubuntu-bun:1.3.14")
+    expect(v[0]).toContain("INTERPOLA diferente")
+  })
+
+  it("label ausente num dos lados → nada aqui (as fases 1 e 2 cobrem, com mensagem própria)", () => {
+    expect(
+      compareRenderedLabels({
+        templateRendered: null,
+        hostRendered: rendered(["ghcr.io/severinno/ubuntu-bun:1.3.14"]),
+        templateLabel: TEMPLATE_LABEL,
+        hostLabel: HOST_LABEL,
+      }),
+    ).toEqual([])
+  })
+})
+
+/**
+ * A comparação de ARQUIVOS não depende do docker: ela tem de falhar mesmo onde
+ * o plugin `compose` falta — senão o "não provei" do render esconderia o drift
+ * justamente na máquina onde ele importa.
+ */
+describe("checkComposeInterpolation — host x template SEM docker", () => {
+  const TEMPLATE =
+    "RUNNER_TOKEN=COLE_O_TOKEN_AQUI\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n"
+
+  function tree(hostContent: string | null): string {
+    const dir = mkdtempSync(join(tmpdir(), "registry-source-host-"))
+    const files: Record<string, string> = {
+      [`${DEPLOY_DIR}/${COMPOSE_BASENAME}`]: COMPOSE_FIXTURE_CORRECT,
+      [`${DEPLOY_DIR}/env.gitea.example`]: TEMPLATE,
+    }
+    if (hostContent !== null) files[`${DEPLOY_DIR}/.env.gitea`] = hostContent
+    for (const [rel, content] of Object.entries(files)) {
+      const full = join(dir, rel)
+      mkdirSync(join(full, ".."), { recursive: true })
+      writeFileSync(full, content, "utf8")
+    }
+    return dir
+  }
+
+  const noDocker = (() => ({ error: new Error("spawn docker ENOENT") })) as never
+
+  it("host DIVERGENTE falha mesmo sem docker (a comparação é de arquivos)", () => {
+    const dir = tree(TEMPLATE.replace("1.3.14", "1.2.0"))
+    try {
+      const r = checkComposeInterpolation({ cwd: dir, run: noDocker })
+      expect(r.state).toBe("violated")
+      expect(r.violations.join(" ")).toContain("'BUN_VERSION' DIVERGE")
+      expect(r.hostCompare.state).toBe("diverged")
+      expect(r.phases).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("host em sincronia: sem docker o render fica INDETERMINADO, mas a comparação já está provada", () => {
+    const dir = tree(TEMPLATE.replace("COLE_O_TOKEN_AQUI", "REAL"))
+    try {
+      const r = checkComposeInterpolation({ cwd: dir, run: noDocker })
+      expect(r.state).toBe("unavailable")
+      expect(r.violations).toEqual([])
+      expect(r.hostCompare.state).toBe("in-sync")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("sem o arquivo do host: 'absent' no campo (nunca 'em sincronia' por omissão)", () => {
+    const dir = tree(null)
+    try {
+      const r = checkComposeInterpolation({ cwd: dir, run: noDocker })
+      expect(r.hostCompare.state).toBe("absent")
+      expect(r.hostCompare.detail).toContain("deploy/.env.gitea")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 describe("composeAvailable e controlledEnv", () => {
   it("docker ausente (ENOENT) → indisponível, com o motivo", () => {
     const r = composeAvailable({
@@ -885,9 +1162,13 @@ describe("checkComposeInterpolation — estados sem docker", () => {
   })
 
   it("docker indisponível → 'unavailable' e NENHUMA violação (ausência de prova ≠ prova de falha)", () => {
+    // O template declara TUDO o que o compose consome: um template incompleto
+    // viraria 'violated' pelo CONTRATO (e com razão — é a metade que roda no
+    // CI). Aqui a intenção é medir só a ausência do docker.
     const dir = tree({
       [`${DEPLOY_DIR}/${COMPOSE_BASENAME}`]: COMPOSE_FIXTURE_CORRECT + "\n",
-      [`${DEPLOY_DIR}/env.gitea.example`]: "BUN_VERSION=1.3.14\n",
+      [`${DEPLOY_DIR}/env.gitea.example`]:
+        "RUNNER_TOKEN=COLE_O_TOKEN_AQUI\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n",
     })
     try {
       const r = checkComposeInterpolation({
@@ -1006,6 +1287,93 @@ describe.skipIf(!HAS_COMPOSE)("checkComposeInterpolation — docker real", () =>
       rmSync(good, { recursive: true, force: true })
     }
   })
+
+  // ── invariante 7b, com o docker REAL: o VPS x o repositório ──────────────
+
+  const TEMPLATE_ENV =
+    "RUNNER_TOKEN=COLE_O_TOKEN_AQUI\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n"
+
+  /** Árvore da forja com o par template + host (host `null` = só o template). */
+  function forgeTree(hostContent: string | null): string {
+    const files: Record<string, string> = {
+      [`${DEPLOY_DIR}/${COMPOSE_BASENAME}`]: COMPOSE_FIXTURE_CORRECT,
+      [`${DEPLOY_DIR}/env.gitea.example`]: TEMPLATE_ENV,
+      ".actrc": "--var IMAGE_REGISTRY=ghcr.io\n",
+    }
+    if (hostContent !== null) files[`${DEPLOY_DIR}/.env.gitea`] = hostContent
+    return tree(files)
+  }
+
+  it("host em SINCRONIA com o template → provado, e o par ganha o render do template", () => {
+    const dir = forgeTree(TEMPLATE_ENV.replace("COLE_O_TOKEN_AQUI", "TOKEN_REAL_DO_VPS"))
+    try {
+      const r = checkComposeInterpolation({ cwd: dir })
+      expect(r.violations, r.violations.join("\n")).toEqual([])
+      expect(r.state).toBe("proven")
+      expect(r.hostCompare.state).toBe("in-sync")
+      // O render do template entra na lista: são QUATRO renderizações quando há
+      // os dois arquivos (a fase 1 já é o host).
+      expect(r.phases).toContain("template=ok")
+      expect(r.phases).toHaveLength(4)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("host DIVERGENTE → 'violated' nas DUAS metades (declaração e label), e o CLI sai 1", () => {
+    const dir = forgeTree(
+      TEMPLATE_ENV.replace("IMAGE_NAMESPACE=severinno", "IMAGE_NAMESPACE=outro-ns").replace(
+        "COLE_O_TOKEN_AQUI",
+        "TOKEN_REAL_DO_VPS",
+      ),
+    )
+    try {
+      const r = checkComposeInterpolation({ cwd: dir })
+      expect(r.state).toBe("violated")
+      expect(r.hostCompare.state).toBe("diverged")
+      const text = r.violations.join("\n")
+      expect(text).toContain("'IMAGE_NAMESPACE' DIVERGE")
+      expect(text).toContain("INTERPOLA diferente")
+
+      const run = spawnSync(
+        process.execPath,
+        [join(REPO_ROOT, "scripts", "check-registry-source.mjs")],
+        { cwd: dir, encoding: "utf8" },
+      )
+      expect(run.status).toBe(1)
+      expect(run.stderr).toContain("nao e o que o repositorio declara")
+      expect(run.stderr).toContain("--re-register")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("--gitea-env compara o env APONTADO, e um caminho inexistente falha o uso (exit 2)", () => {
+    const dir = forgeTree(null)
+    const SCRIPT = join(REPO_ROOT, "scripts", "check-registry-source.mjs")
+    try {
+      writeFileSync(
+        join(dir, "host.env"),
+        TEMPLATE_ENV.replace("COLE_O_TOKEN_AQUI", "TOKEN_REAL_DO_VPS"),
+        "utf8",
+      )
+      const ok = spawnSync(process.execPath, [SCRIPT, "--gitea-env", "host.env"], {
+        cwd: dir,
+        encoding: "utf8",
+      })
+      expect(ok.status, ok.stderr).toBe(0)
+      expect(ok.stdout).toContain("host x template em sincronia")
+
+      const missing = spawnSync(process.execPath, [SCRIPT, "--gitea-env", "nao-existe.env"], {
+        cwd: dir,
+        encoding: "utf8",
+      })
+      expect(missing.status).toBe(2)
+      expect(missing.stderr).toContain("inexistente")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 // ── --require-compose: onde "não provei" TEM de doer ─────────────────────
@@ -1099,6 +1467,660 @@ describe("--require-compose", () => {
       })
       expect(r.status, r.stderr).toBe(0)
       expect(r.stdout).toContain("interpolacao do compose da forja provada")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INVARIANTE 9 — as referências que vivem FORA do repositório
+//
+// Três fontes que o repositório não contém: repository variables (`vars.*`), o
+// env do HOST da aplicação (gitignored) e o que o REGISTRY serve hoje para a
+// tag. Nos três, presumir é o defeito — o fato devolve tri-estado e o guard só
+// falha quando PROVOU que está errado; o resto sai escrito como não provado.
+//
+// O `probe` é injetado em TODOS estes testes: nenhum deles toca a rede, e é a
+// única fronteira de dependência da função (o resto é leitura de arquivos).
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Resposta falsa do `probeImageIdentity` — o formato que a função consome. */
+function probeStub(state: string, extra: Record<string, unknown> = {}) {
+  return async () => ({ state, detail: `stub:${state}`, digest: null, version: null, ...extra })
+}
+
+/** Árvore sintética com as DUAS stacks declaradas (o formato real dos arquivos). */
+function refsTree(
+  extra: Record<string, string> = {},
+  { forgeHost = null, appHost = null }: { forgeHost?: string | null; appHost?: string | null } = {},
+): string {
+  const dir = mkdtempSync(join(tmpdir(), "registry-refs-"))
+  const files: Record<string, string> = {
+    "deploy/env.gitea.example":
+      "RUNNER_TOKEN=COLE_O_TOKEN_AQUI\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n",
+    [APP_ENV_TEMPLATE]: "IMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\n",
+    ".gitea/workflows/ci.yml":
+      "jobs:\n  guards:\n    steps:\n      - run: echo ${{ vars.IMAGE_REGISTRY }}\n" +
+      "      - run: echo ${{ vars.IMAGE_NAMESPACE }}\n      - run: echo ${{ vars.BUN_VERSION }}\n",
+    [`${DEPLOY_DIR}/docker-compose.gitea.yml`]:
+      "services:\n  runner:\n    image: gitea/act_runner:latest\n    environment:\n" +
+      buildRunnerLabel("${BUN_VERSION}") +
+      "\n",
+    [APP_COMPOSE]:
+      "services:\n  realtime:\n    build:\n      args:\n        BUN_VERSION: ${BUN_VERSION:-1.3.14}\n" +
+      "    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-severinno}/realtime:latest\n",
+    ...extra,
+  }
+  if (forgeHost !== null) files["deploy/.env.gitea"] = forgeHost
+  if (appHost !== null) files[APP_ENV_HOSTS[0]] = appHost
+  for (const [rel, content] of Object.entries(files)) {
+    const full = join(dir, rel)
+    mkdirSync(join(full, ".."), { recursive: true })
+    writeFileSync(full, content, "utf8")
+  }
+  return dir
+}
+
+describe("invariante 9 — defaults do compose x o template comitado", () => {
+  const treeOf = (files: Record<string, string>) => {
+    const dir = mkdtempSync(join(tmpdir(), "registry-defaults-"))
+    for (const [rel, content] of Object.entries(files)) {
+      const full = join(dir, rel)
+      mkdirSync(join(full, ".."), { recursive: true })
+      writeFileSync(full, content, "utf8")
+    }
+    return dir
+  }
+
+  it("composeEnvDefaults lê `${NOME:-valor}` e ignora comentário", () => {
+    const content = [
+      "# IMAGE_REGISTRY:-antigo (prosa)",
+      "image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-severinno}/x:latest  # inline",
+      "tag: ${BUN_VERSION}",
+    ].join("\n")
+    expect(composeEnvDefaults(content)).toEqual([
+      { name: "IMAGE_REGISTRY", value: "ghcr.io" },
+      { name: "IMAGE_NAMESPACE", value: "severinno" },
+    ])
+  })
+
+  it("default igual ao declarado não é violação (o caso do repositório)", () => {
+    const dir = treeOf({
+      [APP_COMPOSE]:
+        "services:\n  x:\n    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-severinno}/x:latest\n",
+      [APP_ENV_TEMPLATE]: "IMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\n",
+    })
+    try {
+      expect(
+        checkComposeImageDefaults(dir, { compose: APP_COMPOSE, template: APP_ENV_TEMPLATE }),
+      ).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("default DIVERGENTE do declarado é violação — é ele que vale onde a variável não existe", () => {
+    const dir = treeOf({
+      [APP_COMPOSE]:
+        "services:\n  x:\n    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-severinno}/x:latest\n",
+      [APP_ENV_TEMPLATE]: "IMAGE_REGISTRY=git.severinno.cloud\nIMAGE_NAMESPACE=severinno\n",
+    })
+    try {
+      const v = checkComposeImageDefaults(dir, { compose: APP_COMPOSE, template: APP_ENV_TEMPLATE })
+      expect(v).toHaveLength(1)
+      expect(v[0]).toContain("ghcr.io")
+      expect(v[0]).toContain("git.severinno.cloud")
+      expect(v[0]).toContain("a imagem que roda nao e a que o repositorio declara")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("default de variável que o template NÃO declara é violação (o default vira a única fonte)", () => {
+    const dir = treeOf({
+      [APP_COMPOSE]:
+        "services:\n  x:\n    image: ${IMAGE_REGISTRY:-git.severinno.cloud}/x:latest\n",
+      // O template NAO declara IMAGE_REGISTRY: o default passa a ser a unica
+      // fonte do que roda naquele host.
+      [APP_ENV_TEMPLATE]: "NODE_ENV=production\n",
+    })
+    try {
+      const v = checkComposeImageDefaults(dir, { compose: APP_COMPOSE, template: APP_ENV_TEMPLATE })
+      expect(v).toHaveLength(1)
+      expect(v[0]).toContain("nao declara essa variavel")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("BUN_VERSION no compose da aplicação é BUILD ARG, não referência de imagem: fora do escopo", () => {
+    const dir = treeOf({
+      [APP_COMPOSE]:
+        "services:\n  realtime:\n    build:\n      args:\n        BUN_VERSION: ${BUN_VERSION:-1.3.14}\n",
+      [APP_ENV_TEMPLATE]: "IMAGE_REGISTRY=ghcr.io\n",
+    })
+    try {
+      expect(
+        checkComposeImageDefaults(dir, { compose: APP_COMPOSE, template: APP_ENV_TEMPLATE }),
+      ).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("as duas stacks são cobertas (o repo real não gera violação)", () => {
+    // O repositório de verdade: se isto quebrar, o guard está acusando o
+    // próprio commit — e um guard vermelho no default é um guard desligado.
+    expect(checkComposeImageDefaultsForRepo(REPO_ROOT)).toEqual([])
+  })
+})
+
+describe("invariante 9 — env do host da APLICAÇÃO x o template comitado", () => {
+  it("host com os mesmos valores não gera violação (e diz quantas comparou)", () => {
+    const dir = refsTree({}, { appHost: "IMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\n" })
+    try {
+      const r = compareAppHostImageDeclarations(dir)
+      expect(r.host).toBe(APP_ENV_HOSTS[0])
+      expect(r.checked).toBe(2)
+      expect(r.violations).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("host DIVERGENTE do template é violação (a app puxa de outro registry)", () => {
+    const dir = refsTree({}, { appHost: "IMAGE_REGISTRY=git.severinno.cloud\n" })
+    try {
+      const r = compareAppHostImageDeclarations(dir)
+      expect(r.violations).toHaveLength(1)
+      expect(r.violations[0]).toContain("git.severinno.cloud")
+      expect(r.violations[0]).toContain("ghcr.io")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("host que declara variável AUSENTE no template é violação (estado não reproduzível)", () => {
+    // O template so declara o registry; o host declara tambem o namespace. Um
+    // host novo (a partir do repositorio) nao teria essa variavel — o estado do
+    // VPS deixa de ser reproduzivel.
+    const dir = refsTree(
+      { [APP_ENV_TEMPLATE]: "IMAGE_REGISTRY=ghcr.io\n" },
+      { appHost: "IMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\n" },
+    )
+    try {
+      const r = compareAppHostImageDeclarations(dir)
+      expect(r.violations).toHaveLength(1)
+      expect(r.violations[0]).toContain("IMAGE_NAMESPACE")
+      expect(r.violations[0]).toContain("reproduzivel")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("o host NAO declarar uma variavel do template NAO e violacao (o default do compose cobre, e ele e conferido)", () => {
+    const dir = refsTree({}, { appHost: "IMAGE_REGISTRY=ghcr.io\n" })
+    try {
+      const r = compareAppHostImageDeclarations(dir)
+      expect(r.violations).toEqual([])
+      expect(r.checked).toBe(1)
+      expect(r.declared).toEqual(["IMAGE_REGISTRY"])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("host que NÃO declara nenhuma das variáveis: nada a comparar (checked = 0, sem violação)", () => {
+    const dir = refsTree({}, { appHost: "NODE_ENV=production\n" })
+    try {
+      const r = compareAppHostImageDeclarations(dir)
+      expect(r.checked).toBe(0)
+      expect(r.declared).toEqual([])
+      expect(r.violations).toEqual([])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("sem arquivo de host (.env.production.local nem .env) não há o que comparar", () => {
+    const dir = refsTree()
+    try {
+      expect(compareAppHostImageDeclarations(dir)).toEqual({
+        violations: [],
+        host: null,
+        checked: 0,
+        declared: [],
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("invariante 9 — o fato das referências não versionadas (sem rede)", () => {
+  const run = (dir: string, opts: Record<string, unknown> = {}) =>
+    checkNonVersionedImageRefs({ root: dir, env: {}, ...opts })
+
+  it("os usos de `vars.*` saem do YAML das duas forjas, com o fallback anotado", () => {
+    const dir = refsTree({
+      [".github/workflows/x.yml"]:
+        "jobs:\n  a:\n    steps:\n      - run: echo ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}\n      # - run: echo ${{ vars.IMAGE_NAMESPACE }} (comentário)\n",
+    })
+    try {
+      const refs = forgeVariableRefs(dir)
+      expect(
+        refs.some((r) => r.file === ".github/workflows/x.yml" && r.variable === "IMAGE_REGISTRY"),
+      ).toBe(true)
+      // O fallback é registrado como o que o REPOSITÓRIO declara — nunca como o valor.
+      expect(refs.find((r) => r.fallback !== null)?.fallback).toBe("ghcr.io")
+      expect(refs.every((r) => !r.file.endsWith("(comentário)"))).toBe(true)
+      expect(
+        refs.some((r) => r.variable === "IMAGE_NAMESPACE" && r.file === ".github/workflows/x.yml"),
+      ).toBe(false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("o valor VIVO no ambiente confere com o declarado → proven", async () => {
+    const dir = refsTree()
+    try {
+      const r = await run(dir, {
+        env: { IMAGE_REGISTRY: "ghcr.io", BUN_VERSION: "1.3.14" },
+        probe: probeStub("no-label"),
+      })
+      const registry = r.items.find((i) => i.source.includes("variable IMAGE_REGISTRY"))!
+      expect(registry.state).toBe("proven")
+      expect(registry.detail).toContain("confere com")
+      // IMAGE_NAMESPACE não foi exportado: continua NÃO PROVADO (nunca por omissão).
+      expect(r.items.find((i) => i.source.includes("variable IMAGE_NAMESPACE"))!.state).toBe(
+        "indeterminate",
+      )
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("o valor do ambiente DIVERGINDO do declarado é violação, e nomeia o arquivo", async () => {
+    const dir = refsTree()
+    try {
+      const r = await run(dir, { env: { IMAGE_REGISTRY: "git.severinno.cloud" } })
+      expect(r.state).toBe("violated")
+      expect(
+        r.violations.some(
+          (v) => v.includes("git.severinno.cloud") && v.includes("deploy/env.gitea.example"),
+        ),
+      ).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("sem o valor no ambiente: INDETERMINADO com o remédio escrito (nunca 'conforme')", async () => {
+    const dir = refsTree()
+    try {
+      const r = await run(dir, { env: {} })
+      const item = r.items.find((i) => i.source.includes("variable BUN_VERSION"))!
+      expect(item.state).toBe("indeterminate")
+      expect(item.detail).toContain("Settings -> Variables")
+      expect(item.detail).toContain("rode onde a variavel existe")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("env do host AUSENTE é `absent` (não aplicável), e NÃO conta como não provado", async () => {
+    const dir = refsTree()
+    try {
+      const r = await run(dir, { env: {}, probe: probeStub("proven") })
+      const host = r.items.find((i) => i.source === "env do host deploy/.env.gitea")!
+      expect(host.state).toBe("absent")
+      expect(host.detail).toContain("NAO APLICAVEL")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("com o env da forja no checkout a tag sai DELE (o host manda); sem ele, do template comitado", async () => {
+    const seen: string[] = []
+    const dir = refsTree(
+      {},
+      { forgeHost: "IMAGE_REGISTRY=git.severinno.cloud\nIMAGE_NAMESPACE=ns\nBUN_VERSION=9.9.9\n" },
+    )
+    try {
+      const r = await run(dir, {
+        env: {},
+        probe: async (ref: string) => {
+          seen.push(ref)
+          return { state: "proven", detail: "ok", digest: "sha256:x", version: "9.9.9" }
+        },
+      })
+      expect(seen).toEqual(["git.severinno.cloud/ns/ubuntu-bun:9.9.9"])
+      expect(r.items.some((i) => i.source.includes("registry") && i.state === "proven")).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+    const dir2 = refsTree()
+    try {
+      const seen2: string[] = []
+      await run(dir2, {
+        env: {},
+        probe: async (ref: string) => {
+          seen2.push(ref)
+          return { state: "proven", detail: "ok", digest: null, version: "1.3.14" }
+        },
+      })
+      expect(seen2).toEqual(["ghcr.io/severinno/ubuntu-bun:1.3.14"])
+    } finally {
+      rmSync(dir2, { recursive: true, force: true })
+    }
+  })
+
+  it("o estado do registry é traduzido: proven → conforme, mismatch/missing → VIOLADO", async () => {
+    const dir = refsTree()
+    try {
+      for (const state of ["mismatch", "missing"] as const) {
+        const r = await run(dir, { env: {}, probe: probeStub(state) })
+        expect(r.state, state).toBe("violated")
+        expect(r.items.find((i) => i.source.includes("registry"))!.state, state).toBe("violated")
+      }
+      const missing = await run(dir, { env: {}, probe: probeStub("missing") })
+      expect(missing.violations.join(" ")).toContain("runner-image:ensure")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("não-saber NUNCA vira violação: no-label/unauthorized/unreachable são NÃO PROVADOS", async () => {
+    const dir = refsTree()
+    try {
+      for (const state of ["no-label", "unauthorized", "unreachable", "error"]) {
+        const r = await run(dir, { env: {}, probe: probeStub(state) })
+        expect(r.state, state).toBe("indeterminate")
+        expect(r.violations, state).toEqual([])
+        expect(r.items.find((i) => i.source.includes("registry"))!.detail, state).toContain(
+          `[${state}]`,
+        )
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("`probeRegistry: false` pula a consulta (o probe NÃO é chamado) e o passo vira ausente", async () => {
+    const dir = refsTree()
+    try {
+      let called = 0
+      const r = await run(dir, {
+        probeRegistry: false,
+        probe: async () => {
+          called += 1
+          return { state: "proven", detail: "nunca deveria rodar", digest: null, version: null }
+        },
+      })
+      expect(called).toBe(0)
+      const registry = r.items.find((i) => i.source.includes("registry"))!
+      expect(registry.state).toBe("absent")
+      expect(registry.detail).toContain("--no-registry-probe")
+      // A tag declarada continua NOMEADA: pular a consulta não esconde qual era.
+      expect(registry.detail).toContain("ghcr.io/severinno/ubuntu-bun:1.3.14")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("o env da app divergente entra na MESMA lista de violações", async () => {
+    const dir = refsTree({}, { appHost: "IMAGE_REGISTRY=git.severinno.cloud\n" })
+    try {
+      const r = await run(dir, { env: {}, probe: probeStub("proven") })
+      expect(r.state).toBe("violated")
+      expect(r.violations.some((v) => v.startsWith("IMAGE_REGISTRY divergente"))).toBe(true)
+      expect(r.items.find((i) => i.source.startsWith("env do host da aplicacao"))!.state).toBe(
+        "violated",
+      )
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("o default do compose divergente entra na MESMA lista (é fato, não varredura estática)", async () => {
+    const dir = refsTree({
+      [APP_COMPOSE]: "services:\n  x:\n    image: ${IMAGE_REGISTRY:-ghcr.io}/x:latest\n",
+      [APP_ENV_TEMPLATE]: "IMAGE_REGISTRY=git.severinno.cloud\nIMAGE_NAMESPACE=severinno\n",
+    })
+    try {
+      const r = await run(dir, { env: {}, probe: probeStub("proven") })
+      expect(r.state).toBe("violated")
+      expect(r.violations.some((v) => v.includes(APP_COMPOSE))).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("os dois templates comitados discordando é violação (vale em qualquer checkout)", () => {
+    const dir = refsTree({
+      [APP_ENV_TEMPLATE]: "IMAGE_REGISTRY=git.severinno.cloud\nIMAGE_NAMESPACE=severinno\n",
+    })
+    try {
+      expect(compareImageTemplates(dir)).toHaveLength(1)
+      expect(compareImageTemplates(dir)[0]).toContain("git.severinno.cloud")
+      expect(declaredImageValues(dir).map((d) => d.label)).toContain(APP_ENV_TEMPLATE)
+      expect(REGISTRY_VARIABLES).toEqual(["IMAGE_REGISTRY", "IMAGE_NAMESPACE"])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+// ── --require-image: contra um REGISTRY de TESTE (HTTP de verdade) ────────
+
+/**
+ * A pergunta que a flag responde: "o registro da imagem foi PROVADO?" — e a
+ * única prova possível sobre a tag ser um apelido mutável vem do próprio
+ * registry. Por isso o teste sobe um registry OCI mínimo em 127.0.0.1 e roda o
+ * CLI de verdade: um dublê de `probe` provaria a função, não o gate.
+ */
+describe("--require-image (registry de TESTE, HTTP de verdade)", () => {
+  const SCRIPT = join(REPO_ROOT, "scripts", "check-registry-source.mjs")
+
+  /**
+   * Registry mínimo: manifesto (200 só para a tag `tag`) + config blob com a
+   * label OCI da versão SERVIDA (`version`). Os dois são SEPARADOS de propósito:
+   * é a diferença entre eles que caracteriza um RE-TAG (a tag existe, mas aponta
+   * para outra build). `null` → tudo 404 (a tag não existe).
+   */
+  function startRegistry(
+    served: { tag: string; version?: string } | null,
+  ): Promise<{ url: string; hits: string[]; close: () => Promise<void> }> {
+    const hits: string[] = []
+    const server = createServer((req, res) => {
+      const url = req.url ?? ""
+      hits.push(url)
+      const manifest = url.match(/^\/v2\/(.+)\/manifests\/(.+)$/)
+      if (manifest && served !== null && manifest[2] === served.tag) {
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "docker-content-digest": "sha256:MANIFEST",
+        })
+        res.end(JSON.stringify({ schemaVersion: 2, config: { digest: "sha256:CONFIG" } }))
+        return
+      }
+      if (manifest) {
+        res.writeHead(404, { "content-type": "application/json" })
+        res.end("{}")
+        return
+      }
+      if (/^\/v2\/.+\/blobs\/sha256:CONFIG$/.test(url)) {
+        res.writeHead(200, { "content-type": "application/json" })
+        res.end(
+          JSON.stringify({
+            config: {
+              Labels: { "org.opencontainers.image.version": served?.version ?? served?.tag ?? "" },
+            },
+          }),
+        )
+        return
+      }
+      res.writeHead(500)
+      res.end()
+    })
+    return new Promise((resolve, reject) => {
+      server.on("error", reject)
+      server.listen(0, "127.0.0.1", () => {
+        const addr = server.address()
+        const port = typeof addr === "object" && addr ? addr.port : 0
+        resolve({
+          url: `http://127.0.0.1:${port}`,
+          hits,
+          close: () => new Promise((done) => server.close(() => done())),
+        })
+      })
+    })
+  }
+
+  /** Árvore mínima: as referências da imagem vivem no env da forja (nenhum `vars.*`). */
+  function imageTree(registryUrl: string): string {
+    const dir = mkdtempSync(join(tmpdir(), "registry-image-"))
+    const files: Record<string, string> = {
+      "deploy/env.gitea.example": `IMAGE_REGISTRY=${registryUrl}\nIMAGE_NAMESPACE=ns\nBUN_VERSION=1.3.14\n`,
+      ".actrc": `--var IMAGE_REGISTRY=${registryUrl}\n--var BUN_VERSION=1.3.14\n`,
+    }
+    for (const [rel, content] of Object.entries(files)) {
+      const full = join(dir, rel)
+      mkdirSync(join(full, ".."), { recursive: true })
+      writeFileSync(full, content, "utf8")
+    }
+    return dir
+  }
+
+  /**
+   * SPAWN ASSÍNCRONO, não `spawnSync` — e isso não é estilo.
+   *
+   * O registry de teste roda NESTE processo. Com `spawnSync` o event loop do
+   * pai fica bloqueado enquanto o filho espera resposta: o servidor não atende,
+   * o `fetch` do guard estoura o timeout e o resultado vira `unreachable` — o
+   * teste mediria o bloqueio, não a regra. (A mesma armadilha já está
+   * documentada em `prove-runner-image-gate.mjs`, medida lá com `spawn`+await.)
+   */
+  function runGuard(
+    dir: string,
+    args: string[],
+    env: Record<string, string> = {},
+  ): Promise<{ status: number | null; stdout: string; stderr: string }> {
+    return new Promise((resolve) => {
+      const child = spawn(process.execPath, [SCRIPT, "--no-compose-render", ...args], {
+        cwd: dir,
+        env: { ...process.env, ...env },
+      })
+      let stdout = ""
+      let stderr = ""
+      child.stdout.on("data", (d) => (stdout += String(d)))
+      child.stderr.on("data", (d) => (stderr += String(d)))
+      child.on("close", (status) => resolve({ status, stdout, stderr }))
+    })
+  }
+
+  it("a tag declarada, servida na versão esperada → exit 0 (e o registry FOI consultado)", async () => {
+    const reg = await startRegistry({ tag: "1.3.14" })
+    const dir = imageTree(reg.url)
+    try {
+      const r = await runGuard(dir, ["--require-image"])
+      expect(r.status, r.stderr).toBe(0)
+      expect(r.stdout).toContain("serve a build que declara 1.3.14")
+      expect(reg.hits.some((h) => h.includes("/manifests/1.3.14"))).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      await reg.close()
+    }
+  })
+
+  it("RE-TAG: a tag serve OUTRA versão → exit 1 (o que roda não é o que foi revisado)", async () => {
+    const reg = await startRegistry({ tag: "1.3.14", version: "1.3.13" })
+    const dir = imageTree(reg.url)
+    try {
+      const r = await runGuard(dir, ["--require-image"])
+      expect(r.status).toBe(1)
+      expect(r.stderr).toContain("re-tag")
+      expect(r.stderr).toContain("1.3.13")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      await reg.close()
+    }
+  })
+
+  it("tag AUSENTE no registry → exit 1, com o remédio nomeado", async () => {
+    const reg = await startRegistry(null)
+    const dir = imageTree(reg.url)
+    try {
+      const r = await runGuard(dir, ["--require-image"])
+      expect(r.status).toBe(1)
+      expect(r.stderr).toContain("HTTP 404")
+      expect(r.stderr).toContain("runner-image:ensure")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      await reg.close()
+    }
+  })
+
+  it("com credencial ausente o registry responde 401: NÃO PROVADO — portátil sai 0, a flag falha", async () => {
+    // Um registry que exige Bearer sem credencial no ambiente: o guard não pode
+    // chamar isso de "errado" (não sabe), mas com --require-image não pode
+    // chamar de provado tampouco.
+    const hits: string[] = []
+    const server = createServer((req, res) => {
+      hits.push(req.url ?? "")
+      res.writeHead(401, {
+        "content-type": "application/json",
+        "www-authenticate": 'Bearer realm="http://127.0.0.1:1/token"',
+      })
+      res.end("{}")
+    })
+    const reg = await new Promise<{ url: string; close: () => Promise<void> }>(
+      (resolve, reject) => {
+        server.on("error", reject)
+        server.listen(0, "127.0.0.1", () => {
+          const addr = server.address()
+          const port = typeof addr === "object" && addr ? addr.port : 0
+          resolve({
+            url: `http://127.0.0.1:${port}`,
+            close: () => new Promise((done) => server.close(() => done())),
+          })
+        })
+      },
+    )
+    const dir = imageTree(reg.url)
+    // Sem credencial NENHUMA: um 401 aqui tem de ser "não sei", não "está
+    // errado" — e o ambiente do runner pode ter token, então o teste o limpa.
+    const noCreds = {
+      GHCR_TOKEN: "",
+      GITHUB_TOKEN: "",
+      GH_TOKEN: "",
+      GHCR_USER: "",
+      GITHUB_ACTOR: "",
+    }
+    try {
+      const portable = await runGuard(dir, [], noCreds)
+      expect(portable.status, portable.stderr).toBe(0)
+      expect(portable.stdout).toContain("NAO PROVADA")
+      expect(portable.stdout).toContain("[unauthorized]")
+
+      const strict = await runGuard(dir, ["--require-image"], noCreds)
+      expect(strict.status).toBe(1)
+      expect(strict.stderr).toContain("--require-image")
+      expect(strict.stderr).toContain("pior que um vermelho")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      await reg.close()
+    }
+  })
+
+  it("--require-image com --no-registry-probe é uso inválido (exit 3, sem precedência silenciosa)", async () => {
+    const dir = imageTree("ghcr.io")
+    try {
+      const r = await runGuard(dir, ["--require-image", "--no-registry-probe"])
+      expect(r.status).toBe(3)
+      expect(r.stderr).toContain("contraditorias")
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

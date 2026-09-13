@@ -17,6 +17,15 @@
 # para ubuntu-latest (README → Local Workflow Validation), com node 24 (para
 # JS actions como actions/checkout e actions/cache) + bash + curl/unzip.
 #
+# PINADA POR DIGEST (e a tag fica como documentação de ONDE o digest veio):
+# `act-latest` é uma tag FLUTUANTE — um rebuild/re-tag da base troca a imagem
+# inteira, inclusive o plugin `compose` que o contrato abaixo verifica, sem
+# nenhuma linha do repositório mudar. O digest é o que torna o artefato
+# imutável; a tag é por onde o operador atualiza.
+#   Atualizar o pin: `bun run runner-base:pin` (resolve a tag e reescreve o
+#   FROM); `bun run check:runner-base` acusa quando ele ficar velho — e o mesmo
+#   guard prova, por EXECUÇÃO, que este contrato abaixo é fail-closed.
+#
 # FONTE ÚNICA DA VERSÃO: repository variable BUN_VERSION (vars.BUN_VERSION).
 # O build recebe a versão via --build-arg BUN_VERSION (o workflow
 # sync-ubuntu-bun-mirror.yml passa ${{ vars.BUN_VERSION }}). Build local:
@@ -31,7 +40,7 @@
 #   0 — build ok (bun --version confirma a versão embarcada)
 #   1 — download/extração do binário falhou
 # =============================================================================
-FROM catthehacker/ubuntu:act-latest
+FROM catthehacker/ubuntu:act-latest@sha256:c58e2b364da03b0c804c7d660f2ecbedf2f221a382b9baa0b344b0144780ff43
 
 # Versão do Bun — FONTE ÚNICA: vars.BUN_VERSION (passada pelo workflow do
 # mirror). Sem default literal aqui para não criar segundo ponto de verdade:
@@ -54,6 +63,24 @@ RUN set -euo pipefail \
   && echo "  bun embarcado: $(bun --version)" \
   && test "$(bun --version)" = "${BUN_VERSION}" \
   && echo "  ✅ Tier-1 pronto: bun ${BUN_VERSION} no PATH (fast path do setup-bun)"
+
+# =============================================================================
+# IDENTIDADE DA IMAGEM: ela DECLARA versão e origem (não só a tag).
+# =============================================================================
+#
+# POR QUE A LABEL EXISTE: uma TAG é um apelido mutável no registry. O guard de
+# fonte única (`bun run check:registry-source`) consulta o manifesto da tag e lê
+# ESTA label para responder "o que o registry serve hoje é a build que o
+# repositório declara?" — sem ela, a única pergunta respondível é "a tag
+# existe?", e um RE-TAG (publicar outra build sob a mesma versão) muda o que
+# todos os jobs rodam sem que nenhum gate perceba.
+#
+# `version` = a versão do Bun embarcada (a mesma de `bun --version`, verificada
+# acima). `source`/`revision` dizem de onde a imagem veio — sem eles, um digest
+# resolvido no registry não é rastreável até um commit.
+LABEL org.opencontainers.image.title="ubuntu-bun (runner da forja)" \
+      org.opencontainers.image.version="${BUN_VERSION}" \
+      org.opencontainers.image.source="https://github.com/severinno/severinno"
 
 # =============================================================================
 # CONTRATO DA IMAGEM: ela precisa rodar os guards da PRÓPRIA forja.

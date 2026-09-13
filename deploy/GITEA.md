@@ -133,7 +133,9 @@ Pre-requisitos, NESTA ordem:
    E, para PROVAR que a subida depende dela — sem docker, sem rede externa,
    contra um registry de teste em `127.0.0.1`: `bun run runner-image:prove`
    (exit 0 = com a tag ausente o runner NAO sobe; o mesmo resultado entra no
-   `doctor`, secao `4/5`).
+   `doctor`, secao `4/5`). A prova cobre **os dois caminhos**: a subida simples
+   e o `--re-register` — nele, sem a imagem NADA e apagado, e com a imagem a
+   ordem e `rm -sf runner` -> `volume rm` -> `up -d runner`.
    Estado **indeterminado** (registry inacessivel, ou pacote privado sem
    credencial) nunca publica: o comando falha com o remedio, porque "nao sei"
    nao e "nao existe". Pacote privado e um erro por si: quem puxa a imagem e o
@@ -143,7 +145,9 @@ Pre-requisitos, NESTA ordem:
    guard `check-actrc-sync.mjs`, que roda **nos dois lados**: no GitHub pelo job
    semanal `actrc-sync` do `benchmark-weekly.yml` (modo aviso + **issue**, via
    `scripts/actrc-sync-issue.mjs` — o run fica verde de proposito, entao a
-   anotacao sozinha nao alerta ninguem) e na propria forja,
+   anotacao sozinha nao alerta ninguem; e quando os espelhos voltarem a
+   concordar, o MESMO script comenta a prova e FECHA a issue, porque divida
+   resolvida que continua aberta mente no board) e na propria forja,
    `.gitea/workflows/actrc-sync.yml` (mesmo cron, **modo `--fail`** — na forja
    nao ha canal de issue, entao o unico sinal lido e o status do run: drift =>
    run vermelho).
@@ -159,6 +163,38 @@ Pre-requisitos, NESTA ordem:
    Para conferir ARQUIVO por ARQUIVO (ex.: o `/opt/gitea/.env` de outro host):
    `node scripts/check-actrc-sync.mjs --expected <versao da variable> --gitea-env /opt/gitea/.env`.
    Em runtime, quem prova a igualdade e o smoke (Prova 3, abaixo).
+
+3. O `.env.gitea` DESTE host precisa estar em sincronia com o template comitado
+   (`deploy/env.gitea.example`) — **em todas** as variaveis, nao so no
+   `BUN_VERSION`. O gate de interpolacao (`bun run check:registry-source`)
+   compara os DOIS arquivos: o MESMO conjunto de nomes, os MESMOS valores nas
+   variaveis que o compose consome, e o label renderizado identico dos dois
+   lados (o render com este env x o render com o template). Divergir e exit 1,
+   com o remedio impresso — porque divergir aqui significa que **o que este host
+   interpola nao e o que o repositorio declara**: namespace trocado, versao
+   velha ou variavel que o template ja nao declara, tudo com o sintoma longe da
+   causa (o runner roda outra imagem — e o setup do Bun funciona igual, so mais
+   lento).
+
+   Numa variavel comum, DIVERGIR e o defeito; num **segredo** (o
+   `RUNNER_TOKEN`), IGUALAR e o defeito: o template e comitado, e o placeholder
+   dele nunca pode ir para o host — um runner que sobe com o placeholder **nao
+   se registra**. Por isso o segredo e conferido por PRESENCA (nao vazio) e por
+   DIFERENCA do template.
+
+   A metade do REPOSITORIO (o template declara tudo o que o compose consome)
+   vale em qualquer checkout, inclusive no CI — onde este arquivo nao existe. A
+   comparacao roda mesmo sem o plugin `compose`, e para apontar o env de outro
+   host (ex.: `/opt/gitea/.env`):
+
+   ```bash
+   bun run doctor --gitea-env /opt/gitea/.env    # compara ESTE env com o template
+   node scripts/check-registry-source.mjs --gitea-env /opt/gitea/.env
+   ```
+
+   E o proprio `doctor` confere o VALOR deste espelho contra a variavel, pela
+   MESMA funcao do guard (`--expected "$(gh variable get BUN_VERSION)"`, secao
+   `5/5`): divergir aqui **bloqueia**, porque e este arquivo que o compose le.
 
 **A troca de label exige RE-REGISTRAR o runner.** O act_runner envia os labels
 no registro e depois usa os que ficaram gravados em `/data/.runner` — um
@@ -185,6 +221,15 @@ subir, e para se nao conseguir. Ele tambem deriva o nome do volume do proprio
 compose (nao de uma copia aqui) e FALHA se o volume do registro sobreviver ao
 `rm` — em vez de subir o runner com os labels velhos.
 
+Essas duas promessas — _nada e apagado quando a imagem falta_ e _o runner nao
+sobe com o registro preso_ — sao provadas por COMPORTAMENTO, nao por leitura do
+script: o duble do docker tem estado de volume (`volume inspect`/`volume rm`,
+com um modo em que o docker diz que removeu e o volume continua la), e
+`bun run runner-image:prove` roda o caminho real nos quatro casos do
+re-registro. Uma mutacao que apague o registro antes de conferir a imagem, ou
+que suba o runner antes do `rm`, faz a prova cair — e o teste que exige isso
+esta em `src/lib/__tests__/prove-runner-image-gate.test.ts`.
+
 (Equivalente pela UI: **Site Administration -> Runners ->** apague `vps-runner`
 e crie outro, colando o token novo em `RUNNER_TOKEN`.)
 
@@ -196,20 +241,56 @@ peças num veredito:
 
 ```bash
 bun run doctor                                   # relatorio completo
+bun run doctor --expected "$(gh variable get BUN_VERSION)"   # + o VALOR da variavel
 bun run doctor --gitea-env /opt/gitea/.env       # com o env DESTE host
 bun run doctor --json | jq .verdict              # para script/pipeline
 ```
 
+`--expected` e o valor de `vars.BUN_VERSION`, e sem ele a secao `5/5` so prova
+que os espelhos existem e concordam entre si — dois espelhos iguais podem estar
+os DOIS velhos em relacao a variavel, e o veredito fica **INDETERMINADA** por
+isso (nunca "em sincronia" por omissao). Com o valor, a comparacao e a MESMA do
+job semanal `actrc-sync` (a funcao `mirrorDriftReport`), e divergir no env da
+forja **bloqueia**: o runner roda uma imagem com outra versao do Bun e o fast
+path de 0s do tier-1 desliga sem sintoma. Na forja, onde a variavel existe em
+runtime, o valor sai do proprio workflow (`vars.BUN_VERSION`).
+
 Ele executa a bateria de guards **derivada da propria pipeline** que decide o
-merge (o job `guards` de `.gitea/workflows/ci.yml`), confere o contrato de
-merge (`ci/required-checks.json`), **renderiza o compose da forja com o proprio
-docker** (`docker compose config`, a invariante 7 do `check:registry-source`: e
-assim que se descobre se a label do runner resolve para a versao da variavel ou
-para uma tag vazia/literal), consulta a tag da imagem do runner no
+merge (o job `guards` de `.gitea/workflows/ci.yml`). Confere o contrato de merge
+(`ci/required-checks.json`) **nos dois lados** — o que o repositorio DECLARA e o
+que a forja de fato REGISTRA: le a **branch protection** de cada forja pelo MESMO
+aplicador do cron de drift (`apply-required-checks.mjs --check --json`) e, se o
+registrado divergir do manifesto, o veredito e BLOQUEADA com o remedio
+(`bun run ci:required-checks -- --apply`). E o unico estado que faz um merge
+esperar; sem essa metade, renomear o `name:` de um job deixava o manifesto
+exigindo um check que nunca roda — o PR trava para sempre e nenhum teste de PR
+acusa (ver `docs/GUARDS.md`, secao 13).
+
+Depois dele vem o resto, e o doctor nao para no primeiro verde: **renderiza o
+compose da forja com o proprio docker** (`docker compose config`, a invariante 7
+do `check:registry-source`: e assim que se descobre se a label do runner resolve
+para a versao da variavel ou para uma tag vazia/literal) e, quando o `.env.gitea`
+do checkout existe, o compara com o template comitado (invariante 7b: o que o VPS
+interpola x o que o repositorio declara); le as referencias que vivem em
+**configuracao NAO VERSIONADA** (invariante 9: as repository variables x os
+espelhos comitados, o `.env.production.local`/`.env` da APLICACAO x o template
+dela, e o default embutido do compose x o valor declarado); compara o
+**registro do act_runner** (`/data/.runner`) com o que o compose declara — a
+mesma funcao da Prova 5 do smoke: um registro **velho ou vazio** (runner orfao)
+**bloqueia**, porque e ele que decide a imagem de cada job — e, pelo MESMO guard
+com `--forge github`, o **registro do runner auto-hospedado do GitHub** contra o
+`RUNNER_LABELS` do script de setup (la o registro vive no servidor: um runner
+ausente ou OFFLINE tambem bloqueia, porque os checks obrigatorios do GitHub so
+rodam nele); `--no-runner-labels` pula as **duas** leituras rebaixando o veredito; e sobe a
+consulta ao registry para o veredito — `--no-registry-probe` a desliga e **rebaixa** o
+veredito, porque um fato "provado" que nao olhou a tag diria `pronta` com a
+pergunta em aberto; consulta a tag da imagem do runner no
 registry e — na secao `4/5` — **prova que a subida depende dela**: roda o
 `deploy/gitea-up.sh` real contra um registry de TESTE em `127.0.0.1`, com a tag
 ausente e com a tag presente, e afirma sobre o log do `docker` duble. A tag
-existir agora nao prova que o runner nao sobe sem ela; essa secao prova. O exit
+existir agora nao prova que o runner nao sobe sem ela; essa secao prova. Na
+secao `5/5` ele compara os espelhos do `BUN_VERSION` com o VALOR da variavel
+(`--expected`), pela mesma funcao do job semanal. O exit
 code **e** o veredito: `0` pronta, `1` bloqueada, `2` indeterminada.
 
 Se quiser so a prova, sem o resto do relatorio:
@@ -221,13 +302,24 @@ bun run runner-image:prove     # exit 0 = com a tag ausente o runner NAO sobe
 Os tres estados nao sao decoracao. `BLOQUEADA` inclui a **imagem ausente**
 (exit 4): sem ela nenhum job inicia, entao nao existe gate nenhum rodando — o
 sintoma e a fila parada, longe da causa. `INDETERMINADA` e o estado de "nao
-consegui provar" (registry inacessivel, pacote privado, env ausente neste
-checkout, gate nao executado): ele nunca vira `pronta`, porque um veredito
-otimista aqui e pior que nenhum.
+consegui provar" (registry inacessivel, pacote privado sem credencial, variavel
+do repositorio que nao esta no ambiente deste processo, gate nao executado,
+branch protection nao lida por falta de token): ele nunca vira `pronta`, porque
+um veredito otimista aqui e pior que nenhum. O que faz a lista ser confiavel e a
+distincao que ela carrega: um arquivo **gitignored por desenho** (o `.env.gitea`,
+o `.env.production.local`) que nao existe neste checkout aparece como _nao
+aplicavel_ — nao como pendencia, senao a pendencia pareceria maior do que e (na
+VPS, onde os dois existem, eles sao comparados de verdade).
 
-O relatorio termina dizendo o que o veredito **nao** cobre, e vale ler: a branch
-protection efetivamente registrada na forja (o doctor le o manifesto, nao a
-forja), o smoke (tier-1 em runtime) e o `deploy/.env.gitea` do VPS.
+O relatorio termina dizendo o que o veredito **nao** cobre, e vale ler: a
+**permissao do token** sobre a forja (a protecao e lida com o aplicador, que
+exige escopo de administracao — sem ele o doctor diz `nao foi lida`, e isso e
+INDETERMINADA, nunca "em sincronia"; veja o requisito de token em
+`docs/GUARDS.md`, secao 13), o smoke (tier-1 em runtime) e o `.env.gitea` de um
+host DIFERENTE deste checkout (o do proprio checkout o doctor compara com o
+template; outro host entra
+por `--gitea-env`, e sem o arquivo a secao do compose diz `host x template: …`
+em vez de fingir que conferiu).
 
 **Nao ha fallback.** A `node:20-bullseye` existe no Docker Hub e sempre subia —
 lenta, mas sempre. A imagem custom troca isso por velocidade: tag errada,
@@ -250,13 +342,31 @@ e a **Prova 5**, que compara o `/data/.runner` com o compose. Ela tambem roda
 fora do smoke, sozinha:
 
 ```bash
-bun run runner-labels:check        # 0 provado · 1 registro velho · 3 nao provado
+bun run runner-labels:check        # 0 provado · 1 registro velho/vazio · 3 nao provado
 ```
+
+**Zero label de um lado e divergencia, nao sincronia.** Um runner no ar e
+registrado **sem label nenhum** e um runner ORFAO: existe na instancia e nao e
+atribuido a job algum (a fila para, e nada acusa). Pelo mesmo motivo, um compose
+que perdeu `GITEA_RUNNER_LABELS` nao tem o que comparar — e comparar vazio com
+vazio nunca provou que a stack esta no ar. Os dois saem **1** (DIVERGENTE), com o
+remedio de cada caso nas linhas `→` do relatorio: registro vazio ⇒
+`bash deploy/gitea-up.sh --re-register`; compose sem a variavel ⇒ declare os
+labels no servico `runner` e so entao re-registre (o registro so pega os labels
+na SUBIDA).
 
 A entrada e `runner-labels:check` (e nao `check:...`) DE PROPOSITO: um comando sob
 `check:` e lido como gate portatil, e este so tem sentido no **host da forja** (a
 mesma familia de `runner-image:ensure/check/prove`, que tambem dependem do
 ambiente). Fora da forja ele sai **3** — nao conhece o registro, e nao inventa.
+
+**O MESMO guard cobre o runner auto-hospedado do GITHUB** (`--forge github`, a
+entrada `runner-labels:check:github`): la o registro nao tem arquivo — o `.runner`
+do `actions/runner` nao guarda label nenhum —, entao o lado REGISTRADO vem da API
+(`GET /repos/<owner>/<repo>/actions/runners`) e o DECLARADO, do
+`RUNNER_LABELS` de `deploy/setup-github-runner.sh`. Mesmos exit codes e mesma
+regra (sem token de self-hosted runners e **3**, nunca "em sincronia"; um runner
+registrado mas OFFLINE e divergente). Detalhes em `deploy/GITHUB_RUNNER.md`.
 
 ### 4. Importar Repositorio do GitHub
 

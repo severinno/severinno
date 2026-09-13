@@ -48,15 +48,41 @@
 //      alguma variavel ficar VAZIA ou se o registry/tag resolver para um
 //      LITERAL. Sem o docker no ambiente, o passo fica INDETERMINADO (avisa,
 //      nao falha) — ver a secao "INVARIANTE 7" mais abaixo.
+//   7b. No VPS o env da forja e o arquivo do HOST (`deploy/.env.gitea`), e as
+//      tres fases acima provam que ELE e auto-consistente — nao que ele e o
+//      MESMO que o repositorio declara (`deploy/env.gitea.example`). A
+//      comparacao HOST x TEMPLATE fecha a diferenca: mesmo conjunto de nomes,
+//      mesmos valores nas variaveis que o compose CONSOME, e o label
+//      renderizado identico dos dois lados. Divergir e violacao (o gate
+//      FALHA). Sem o arquivo do host no checkout a metade do host fica "nao
+//      aplicavel" — mas a do REPOSITORIO (o template declara tudo o que o
+//      compose consome) vale em qualquer checkout, inclusive no CI.
 //   8. O escopo declarado (SCAN_TARGETS) e cego em diretorio NOVO. Todo arquivo
 //      FORA dele que referencie imagem NOSSA exige DECISAO ESCRITA
 //      (OUT_OF_SCOPE_ALLOWLIST, um arquivo por entrada, com o motivo); nao
 //      decidir e violacao, e decisao velha tambem — ver "INVARIANTE 8".
+//   9. Tudo o que a invariante 7 cobre vive em ARQUIVO comitado. Mas a
+//      referencia da imagem tambem vive em tres lugares que o repositorio NAO
+//      contem — repository variables (`vars.*`), o env do HOST da aplicacao
+//      (`.env.production.local`/`.env`, gitignored) e o que o REGISTRY serve
+//      hoje para a tag (a tag e um apelido mutavel: um re-tag troca a imagem
+//      de todos os jobs sem mudar uma linha). Nos tres, PRESUMIR e o defeito:
+//      o guard le quando pode e diz INDETERMINADO quando nao pode (nunca
+//      "conforme" por omissao) — ver "INVARIANTE 9".
 //
 // Usage:
 //   node scripts/check-registry-source.mjs
 //   node scripts/check-registry-source.mjs --no-compose-render   # so a varredura estatica
 //   node scripts/check-registry-source.mjs --require-compose     # o render e OBRIGATORIO (job da forja)
+//   node scripts/check-registry-source.mjs --gitea-env <caminho> # o env do HOST a comparar com o template
+//   node scripts/check-registry-source.mjs --require-image       # as referencias nao versionadas sao OBRIGATORIAS
+//   node scripts/check-registry-source.mjs --no-registry-probe   # nao consulta o registry (offline)
+//
+// --gitea-env: sem a flag o arquivo do host e DESCOBERTO (`deploy/.env.gitea`,
+// que so existe onde a stack roda — o VPS). Com a flag o operador diz onde ele
+// esta (ex.: `/opt/gitea/.env`), e um caminho INEXISTENTE falha (exit 2): quem
+// pediu aquele arquivo precisa saber que a comparacao NAO aconteceu, em vez de
+// ler "em sincronia" de uma comparacao que nao houve.
 //
 // --require-compose: por padrao, "nao consegui renderizar" e INDETERMINADO —
 // avisa e sai 0, para o gate nao ficar vermelho numa maquina sem docker (um gate
@@ -73,9 +99,15 @@
 //   0 — fonte unica respeitada (e, quando ha docker, composicao provada)
 //   1 — referencia hardcoded, espelho local ausente, compose sem a variavel,
 //       TAG LITERAL na imagem nossa em `deploy/` (invariante 6), interpolacao
-//       com variavel vazia / valor literal (invariante 7), alvo FORA do
-//       escopo sem decisao escrita / com decisao velha (invariante 8), ou
-//       --require-compose sem o render provado (inclui as flags contraditorias)
+//       com variavel vazia / valor literal (invariante 7), env do HOST
+//       divergindo do template comitado (invariante 7b), alvo FORA do escopo
+//       sem decisao escrita / com decisao velha (invariante 8), referencia nao
+//       versionada VIOLADA — default do compose divergindo do template, env do
+//       host da app divergindo, tag ausente/re-tagada no registry (invariante
+//       9) —, ou --require-compose / --require-image sem a prova (inclui as
+//       flags contraditorias)
+//   2 — uso invalido (`--gitea-env` sem caminho, ou apontando um arquivo que
+//       nao existe — a pergunta era explicita)
 // =============================================================================
 
 import { spawnSync } from "node:child_process"
@@ -88,10 +120,11 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs"
-import { basename, join, relative } from "node:path"
+import { basename, isAbsolute, join, relative } from "node:path"
 import { tmpdir } from "node:os"
 
-import { FORGE_ACTIONS_DIRS, FORGE_WORKFLOW_DIRS } from "./forge-workflows.mjs"
+import { FORGE_ACTIONS_DIRS, FORGE_WORKFLOW_DIRS, WORKFLOW_FILE_RE } from "./forge-workflows.mjs"
+import { credentialsFromEnv, probeImageIdentity, resolveImageRef } from "./ensure-runner-image.mjs"
 import { GITEA_COMPOSE } from "./check-bun-mirror.mjs"
 import {
   GITEA_ENV_DEPLOYED,
@@ -905,6 +938,237 @@ export function analyzeUnsetVersionRender({ ok, rendered }) {
   return violations
 }
 
+// ── HOST x TEMPLATE: o que o VPS interpola x o que o repositorio declara ────
+//
+// O buraco desta metade: as tres fases usam o env da forja — que e o arquivo do
+// HOST quando ele existe no checkout (`deploy/.env.gitea`, no VPS). Elas provam
+// que esse arquivo e AUTO-CONSISTENTE. Nao provam que ele e o MESMO que o
+// repositorio declara (`deploy/env.gitea.example`) — e onde o arquivo do host
+// existe, o template comitado deixava de ser renderizado por ninguem: o gate
+// dizia "interpolacao provada" enquanto a imagem que o runner registra podia
+// ser outra (namespace trocado, versao velha, variavel que o template ja nao
+// declara). Modo de falha favorito deste repositorio: verde, com o sintoma
+// longe da causa (o tier-1 desligado — so mais lento).
+//
+// DUAS COMPARACOES, com fontes diferentes de proposito:
+//   a. DECLARACOES (sem docker) — o conjunto de NOMES e os VALORES das
+//      variaveis que o COMPOSE CONSOME. A lista de consumidas e DERIVADA do
+//      proprio compose (`${NOME}` em linha de codigo), nao escrita a mao: uma
+//      variavel nova no compose entra na comparacao sozinha. Isentar exige uma
+//      linha em SECRET_ENV_VARIABLES — e o default e COMPARAR, porque o
+//      inverso (default isentar) deixaria a proxima variavel fora em silencio;
+//   b. O RENDER (com docker) — o label que o runner REGISTRA, renderizado com o
+//      env do host e com o template: e literalmente "o que o VPS interpola" x
+//      "o que o repositorio declara", e vale ate para um valor que a analise
+//      (a) nao saiba classificar.
+//
+// ASSIMETRIA DOS SEGREDOS (o desenho, nao um caso especial): numa variavel
+// comum DIVERGIR e o defeito; num SEGREDO, IGUALAR e o defeito — o template e
+// comitado e o host tem de ter o valor real. Comparar o valor de um segredo
+// exigiria versiona-lo (o oposto do que se quer), e um host que ficou com o
+// placeholder do template sobe um runner que nao se registra. Por isso o
+// segredo e conferido por PRESENCA (nao vazio) e por DIFERENCA do template.
+
+/**
+ * Variaveis cujo valor no template comitado e um PLACEHOLDER (o valor real e um
+ * segredo do host). O default do comparador e conferir o VALOR; nomear uma
+ * variavel aqui e uma decisao explicita de conferir so a presenca.
+ */
+export const SECRET_ENV_VARIABLES = ["RUNNER_TOKEN"]
+
+/**
+ * A variavel carrega segredo? `"secret"` (confere presenca) ou `"value"`
+ * (confere o valor — o default, que vale para qualquer variavel nova).
+ *
+ * @param {string} name
+ * @returns {"secret"|"value"}
+ */
+export function classifyEnvVariable(name) {
+  return SECRET_ENV_VARIABLES.includes(name) ? "secret" : "value"
+}
+
+/**
+ * As variaveis que o compose CONSOME, derivadas do PROPRIO compose.
+ *
+ * Por que derivar em vez de listar: uma lista escrita a mao envelhece — uma
+ * variavel nova no compose ficaria fora da comparacao host x template sem que
+ * nada acusasse, que e a classe de falha que o resto deste guard persegue.
+ * Linha de comentario e ignorada (e onde a prosa cita `${BUN_VERSION}`) e o
+ * default embutido (`${VAR:-valor}`) e descartado: o NOME e o que importa.
+ *
+ * @param {string} content  conteudo do compose
+ * @returns {string[]} nomes unicos, ordenados
+ */
+export function composeEnvVariables(content) {
+  const names = new Set()
+  for (const raw of String(content ?? "").split(/\r?\n/)) {
+    if (isCommentLine(raw)) continue
+    for (const m of stripInlineComment(raw).matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)/g)) {
+      names.add(m[1])
+    }
+  }
+  return [...names].sort()
+}
+
+/**
+ * Parser de um arquivo de env (formato shell, que e o que o `--env-file` do
+ * docker le): `NOME=valor`, `export` opcional, aspas envolvendo o valor, e `#`
+ * iniciando comentario (linha inteira, ou inline fora de aspas).
+ *
+ * ULTIMA ocorrencia vence — a semantica do `--env-file`: a comparacao tem de
+ * ler o arquivo do mesmo jeito que quem o consome.
+ *
+ * @param {string} content
+ * @returns {Map<string,string>}
+ */
+export function parseEnvAssignments(content) {
+  const out = new Map()
+  for (const raw of String(content ?? "").split(/\r?\n/)) {
+    const line = raw.trim()
+    if (line === "" || line.startsWith("#")) continue
+    const m = line.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/)
+    if (!m) continue
+    let value = m[2].trim()
+    const quoted =
+      value.length >= 2 &&
+      ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'")))
+    if (quoted) {
+      value = value.slice(1, -1)
+    } else {
+      value = value.replace(/\s+#.*$/, "").trim()
+    }
+    out.set(m[1], value)
+  }
+  return out
+}
+
+/**
+ * HOST x TEMPLATE — as DECLARACOES. Puro (nao precisa de docker).
+ *
+ * `host` ausente/null compara so o lado do REPOSITORIO: toda variavel que o
+ * compose consome tem de estar declarada no template comitado — o repositorio
+ * nao pode depender do default embutido do compose para dizer o que o VPS usa.
+ * Essa metade vale em QUALQUER checkout (inclusive no CI), porque o template e
+ * comitado; a metade do host so existe onde a stack roda.
+ *
+ * @param {{template: Map<string,string>, host: Map<string,string>|null, templateLabel: string, hostLabel?: string|null, consumed?: string[]}} args
+ * @returns {string[]}
+ */
+export function compareEnvMirrorDeclarations({
+  template,
+  host = null,
+  templateLabel,
+  hostLabel = null,
+  consumed = [],
+}) {
+  const violations = []
+
+  // CONTRATO DO REPOSITORIO: o que o compose consome tem de estar declarado no
+  // template. Sem isso, trocar o template nao muda nada do que roda — o compose
+  // resolve o default embutido e "o que o repositorio declara" deixa de existir.
+  for (const name of consumed) {
+    const declared = template.get(name)
+    if (declared === undefined || declared.trim() === "") {
+      violations.push(
+        `${templateLabel}: a variavel '${name}' do compose nao esta declarada no template comitado — o repositorio nao declara o que o VPS interpola (a interpolacao cairia no default embutido do compose, e trocar o template nao mudaria o que roda)`,
+      )
+    }
+  }
+
+  if (!host) return violations
+
+  // CONJUNTO de nomes, nas DUAS direcoes: faltando no host, o VPS roda o
+  // default do compose; sobrando, o estado do VPS nao e reproduzivel a partir
+  // do repositorio (um host novo nao teria aquela variavel).
+  for (const name of [...template.keys()].filter((n) => !host.has(n)).sort()) {
+    violations.push(
+      `${hostLabel}: a variavel '${name}' esta declarada em ${templateLabel} mas NAO no env do host — no VPS o compose resolve o default embutido (ou string vazia), e o que roda deixa de ser o que o repositorio declara`,
+    )
+  }
+  for (const name of [...host.keys()].filter((n) => !template.has(n)).sort()) {
+    violations.push(
+      `${hostLabel}: a variavel '${name}' existe no env do host e NAO em ${templateLabel} — o estado do VPS nao e reproduzivel a partir do repositorio (um host novo nao teria '${name}'); declare-a no template ou remova-a do host`,
+    )
+  }
+
+  for (const name of consumed) {
+    const hostValue = host.get(name)
+    if (hostValue === undefined) continue // ja reportado como ausente acima
+    const templateValue = template.get(name)
+    if (classifyEnvVariable(name) === "secret") {
+      if (hostValue.trim() === "") {
+        violations.push(
+          `${hostLabel}: a variavel '${name}' (segredo) esta VAZIA no env do host — o compose segue e o container recebe string vazia`,
+        )
+      } else if (hostValue === templateValue) {
+        violations.push(
+          `${hostLabel}: a variavel '${name}' (segredo) no host tem o MESMO valor do template comitado — ou o host ficou com o placeholder do template (e o recurso que depende dela nao funciona), ou um segredo de verdade foi versionado em ${templateLabel}`,
+        )
+      }
+      continue
+    }
+    if (templateValue !== undefined && hostValue !== templateValue) {
+      violations.push(
+        `${hostLabel}: '${name}' DIVERGE do template comitado: ${templateLabel}='${templateValue}' e host='${hostValue}' — o que o VPS interpola nao e o que o repositorio declara`,
+      )
+    }
+  }
+
+  return violations
+}
+
+/**
+ * HOST x TEMPLATE — o RENDER. Compara o que cada env INTERPOLA no label do
+ * runner (a imagem que o container recebe e que o runner REGISTRA).
+ *
+ * Complementa a comparacao de declaracoes: la a comparacao e por NOME de
+ * variavel, aqui e pelo EFEITO. Um valor que nao venha de variavel nenhuma
+ * (literal no compose) nao aparece na lista de consumidas, mas aparece aqui.
+ *
+ * Label ausente/vazio de um dos lados NAO gera violacao propria: quem cobre
+ * isso sao as fases 1 e 2, com mensagem mais especifica.
+ *
+ * @param {{templateRendered: object|null, hostRendered: object|null, templateLabel: string, hostLabel: string}} args
+ * @returns {string[]}
+ */
+export function compareRenderedLabels({
+  templateRendered,
+  hostRendered,
+  templateLabel,
+  hostLabel,
+}) {
+  const templateRefs = labelImageRefs(runnerEnvironment(templateRendered)?.GITEA_RUNNER_LABELS)
+  const hostRefs = labelImageRefs(runnerEnvironment(hostRendered)?.GITEA_RUNNER_LABELS)
+  if (templateRefs.length === 0 || hostRefs.length === 0) return []
+  if (templateRefs.join(",") === hostRefs.join(",")) return []
+  return [
+    `${GITEA_COMPOSE}: o label do runner INTERPOLA diferente com o env do host (${hostLabel}) e com o template comitado (${templateLabel}): host -> '${hostRefs.join(", ")}' vs template -> '${templateRefs.join(", ")}'. A imagem que o VPS registra nao e a imagem que o repositorio declara`,
+  ]
+}
+
+/**
+ * Um espelho APONTADO pelo operador (`--gitea-env`), que passa a ser o arquivo
+ * do host. Ausente devolve `null`: quem decide se a ausencia e erro de uso e o
+ * CLI (pergunta explicita), nao a analise.
+ */
+function mirrorAt(cwd, relPath, deployed) {
+  // Caminho ABSOLUTO (ex.: `/opt/gitea/.env`): `join` o grudaria na raiz do
+  // checkout e a ausencia seria reportada como drift — o arquivo existe, so nao
+  // onde o `join` procurou.
+  const path = isAbsolute(relPath) ? relPath : join(cwd, relPath)
+  return existsSync(path) ? { path, label: relPath, deployed } : null
+}
+
+/**
+ * O veredito da comparacao HOST x TEMPLATE como campo proprio do resultado: o
+ * doctor reporta "conferido e em sincronia" de "nao havia o que conferir" — a
+ * mesma distincao que separa `proven` de `unavailable` no resto do guard.
+ */
+function hostComparison(state, detail, { template = null, host = null, checked = 0 } = {}) {
+  return { state, detail, template, host, checked }
+}
+
 /**
  * O `docker compose` existe e funciona? (distinto de "a pilha renderiza": aqui
  * so interessa se a FERRAMENTA esta disponivel — inclusive o plugin `compose`,
@@ -976,47 +1240,113 @@ export function renderCompose({ cwd = ROOT, envFile, env, run = spawnSync }) {
  *   - `absent`      — o checkout nao tem a stack da forja (nada a interpolar);
  *   - `skipped`     — pulada por `--no-compose-render`.
  *
- * @param {{cwd?: string, run?: Function, tmpRoot?: string}} [args]
- * @returns {{state: string, violations: string[], detail: string, phases: string[]}}
+ * `hostCompare` diz o que a comparacao com o TEMPLATE COMITADO conseguiu:
+ *   - `in-sync`  — o env do host bate com o template (declaracoes e label);
+ *   - `diverged` — nao bate (BLOQUEIA: o VPS roda outra coisa que o repo declara);
+ *   - `absent`   — nao havia o arquivo do host (ou o template) para comparar. E o
+ *                  caso de TODO checkout que nao seja o VPS — por isso ele e
+ *                  reportado em vez de sumir em silencio.
+ *
+ * @param {{cwd?: string, run?: Function, tmpRoot?: string, hostEnv?: string|null}} [args]
+ * @returns {{state: string, violations: string[], detail: string, phases: string[], hostCompare: {state: string, detail: string, template: string|null, host: string|null, checked: number}}}
  */
 export function checkComposeInterpolation({
   cwd = ROOT,
   run = spawnSync,
   tmpRoot = tmpdir(),
+  hostEnv = null,
 } = {}) {
   if (!existsSync(join(cwd, GITEA_COMPOSE))) {
     return {
       state: "absent",
       violations: [],
       phases: [],
+      hostCompare: hostComparison("absent", `${GITEA_COMPOSE} nao existe neste checkout`),
       detail: `${GITEA_COMPOSE} nao existe neste checkout — nao ha stack da forja para interpolar`,
     }
   }
 
   const mirrors = discoverEnvMirrors(cwd)
-  const declared = mirrors.find((m) => m.deployed) ?? mirrors[0] ?? null
+  const template = mirrors.find((m) => !m.deployed) ?? null
+  // `hostEnv` EXPLICITO substitui a descoberta do arquivo do host: o operador
+  // sabe onde ele mora (ex.: /opt/gitea/.env). O template continua vindo do
+  // repositorio — e ele que representa "o que o repositorio declara".
+  const host = hostEnv ? mirrorAt(cwd, hostEnv, true) : (mirrors.find((m) => m.deployed) ?? null)
+  const declared = host ?? template
   if (!declared) {
     return {
       state: "unavailable",
       violations: [],
       phases: [],
+      hostCompare: hostComparison("absent", "nenhum env da forja no checkout"),
       detail: `nenhum env da forja no checkout (${GITEA_ENV_MIRROR} ou ${GITEA_ENV_DEPLOYED.join(", ")}) — sem o env nao ha o que comparar com o compose`,
     }
   }
 
+  // A comparacao host x template roda ANTES do docker DE PROPOSITO: e uma
+  // comparacao de ARQUIVOS, e uma divergencia tem de falhar mesmo onde o plugin
+  // `compose` nao esta instalado — num host sem ele, o "nao provei" de hoje
+  // esconderia justamente o drift que este gate existe para pegar.
+  const consumed = composeEnvVariables(readFileSync(join(cwd, GITEA_COMPOSE), "utf8"))
+  const comparisons = []
+  let hostState
+  let hostDetail
+  if (template && host) {
+    comparisons.push(
+      ...compareEnvMirrorDeclarations({
+        template: parseEnvAssignments(readFileSync(template.path, "utf8")),
+        host: parseEnvAssignments(readFileSync(host.path, "utf8")),
+        templateLabel: template.label,
+        hostLabel: host.label,
+        consumed,
+      }),
+    )
+    hostState = comparisons.length > 0 ? "diverged" : "in-sync"
+    hostDetail =
+      comparisons.length > 0
+        ? `${comparisons.length} divergencia(s) entre o env do HOST (${host.label}) e o template comitado (${template.label})`
+        : `host x template em sincronia: ${consumed.length} variavel(is) que o compose consome conferidas (${host.label} x ${template.label})`
+  } else if (template) {
+    // Metade do REPOSITORIO: vale em qualquer checkout, porque o template e
+    // comitado. Sem o host, e so ela que pode ser provada.
+    comparisons.push(
+      ...compareEnvMirrorDeclarations({
+        template: parseEnvAssignments(readFileSync(template.path, "utf8")),
+        host: null,
+        templateLabel: template.label,
+        consumed,
+      }),
+    )
+    hostState = "absent"
+    hostDetail = `o env do HOST (${GITEA_ENV_DEPLOYED.join(", ")}) nao existe neste checkout — e ele que o compose le onde a stack roda, entao a comparacao com o template comitado (${template.label}) so existe la`
+  } else {
+    hostState = "absent"
+    hostDetail = `${GITEA_ENV_MIRROR} (o template comitado) nao existe neste checkout — sem ele nao ha "o que o repositorio declara" para comparar`
+  }
+
   const docker = composeAvailable({ cwd, run })
   if (!docker.ok) {
+    const unique = [...new Set(comparisons)]
     return {
-      state: "unavailable",
-      violations: [],
+      state: unique.length > 0 ? "violated" : "unavailable",
+      violations: unique,
       phases: [],
-      detail: `docker compose indisponivel: ${docker.detail}`,
+      hostCompare: hostComparison(hostState, hostDetail, {
+        template: template?.label ?? null,
+        host: host?.label ?? null,
+        checked: consumed.length,
+      }),
+      detail:
+        unique.length > 0
+          ? `docker compose indisponivel (${docker.detail}) e ${hostDetail}`
+          : `docker compose indisponivel: ${docker.detail}`,
     }
   }
 
   const declaredVersion = extractEnvMirrorBunVersion(readFileSync(declared.path, "utf8"))
   const violations = []
   const phases = []
+  let declaredRendered = null
   const dir = mkdtempSync(join(tmpRoot, "registry-source-compose-"))
 
   try {
@@ -1039,11 +1369,11 @@ export function checkComposeInterpolation({
       )
       phases.push("declarado=erro")
     } else {
-      const rendered = parseComposeRender(declared_.stdout)
+      declaredRendered = parseComposeRender(declared_.stdout)
       violations.push(
-        ...(rendered
+        ...(declaredRendered
           ? analyzeDeclaredRender({
-              rendered,
+              rendered: declaredRendered,
               stderr: declared_.stderr,
               envLabel: declared.label,
               declaredVersion,
@@ -1053,6 +1383,43 @@ export function checkComposeInterpolation({
             ]),
       )
       phases.push(`declarado=${declared.label}`)
+    }
+
+    // 1b. O RENDER do TEMPLATE COMITADO, quando quem renderizou na fase 1 foi o
+    // env do host: e o par "o que o VPS interpola" x "o que o repositorio
+    // declara". Sem o arquivo do host este passo nao tem par (a fase 1 JA e o
+    // template); sem o template nao ha o que comparar.
+    if (host && template && host.path !== template.path) {
+      const template_ = renderCompose({
+        cwd,
+        envFile: template.path,
+        env: controlledEnv(process.env),
+        run,
+      })
+      if (!template_.ok) {
+        violations.push(
+          `${GITEA_COMPOSE}: o template comitado (${template.label}) nao renderiza: ${template_.detail} — sem ele nao ha "o que o repositorio declara" para comparar com o env do host`,
+        )
+        phases.push("template=erro")
+      } else {
+        const templateRendered = parseComposeRender(template_.stdout)
+        if (templateRendered && declaredRendered) {
+          const labelViolations = compareRenderedLabels({
+            templateRendered,
+            hostRendered: declaredRendered,
+            templateLabel: template.label,
+            hostLabel: host.label,
+          })
+          violations.push(...labelViolations)
+          // A divergencia daqui NAO passa pela comparacao de declaracoes: o
+          // estado do campo tem de acompanhar o que de fato foi encontrado.
+          if (labelViolations.length > 0) {
+            hostState = "diverged"
+            hostDetail += " · o RENDER do label tambem diverge"
+          }
+        }
+        phases.push("template=ok")
+      }
     }
 
     // 2. SENTINELA — prova que a imagem/token vem das VARIAVEIS.
@@ -1092,19 +1459,653 @@ export function checkComposeInterpolation({
     // apontando para a mesma imagem. Sem isso, uma violacao que vale para o
     // label inteiro aparece duas vezes e o relatorio vira eco — o numero de
     // violacoes deixa de significar "quantos problemas existem".
-    const unique = [...new Set(violations)]
+    // As divergencias host x template entram na MESMA lista: o estado, o exit
+    // code e o veredito do doctor nao precisam conhecer duas classes de
+    // problema — so quantas coisas ha para corrigir.
+    const unique = [...new Set([...violations, ...comparisons])]
 
     return {
       state: unique.length > 0 ? "violated" : "proven",
       violations: unique,
       phases,
+      hostCompare: hostComparison(hostState, hostDetail, {
+        template: template?.label ?? null,
+        host: host?.label ?? null,
+        checked: consumed.length,
+      }),
       detail:
         unique.length > 0
           ? `${unique.length} violacao(oes) na interpolacao`
-          : `3 fases ok (${phases.join(" · ")}) via ${GITEA_COMPOSE}`,
+          : hostState === "in-sync"
+            ? `3 fases ok (${phases.join(" · ")}) via ${GITEA_COMPOSE} · ${hostDetail}`
+            : `3 fases ok (${phases.join(" · ")}) via ${GITEA_COMPOSE}`,
     }
   } finally {
     rmSync(dir, { recursive: true, force: true })
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2b. Referencias em configuracao NAO VERSIONADA (o terceiro lugar da imagem)
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// O guard sempre soube ler o que esta NO REPOSITORIO (compose, Dockerfiles,
+// .actrc, templates). Mas a referencia da imagem tambem vive em TRES lugares
+// que o repositorio nao contem — e nos tres, presumir e o defeito:
+//
+//   1. REPOSITORY VARIABLES (`vars.IMAGE_REGISTRY`, `vars.IMAGE_NAMESPACE`,
+//      `vars.BUN_VERSION`): os workflows usam a EXPRESSAO; o valor mora na
+//      forja. Um fallback escrito no YAML (`|| 'ghcr.io'`) parece o valor e nao
+//      e — e uma presuncao que pode estar errada em silencio. O guard le o
+//      valor quando ele esta no AMBIENTE (que e o caso do CI, onde a variavel
+//      existe) e COMPARA com o que o repositorio declara; sem valor, o estado e
+//      INDETERMINADO, com o remedio escrito.
+//   2. ENV DO HOST (`.env.production`, `deploy/.env.gitea`): gitignored, existem
+//      so na VPS. Presentes, a comparacao com os templates comitados roda;
+//      ausentes (todo checkout que nao seja o host), INDETERMINADO — a stack do
+//      app e a da forja podem estar apontando para registries diferentes e
+//      ninguem veria.
+//   3. O QUE O REGISTRY SERVE HOJE PARA A TAG: tag e apelido mutavel; um
+//      RE-TAG troca a imagem que todos os jobs rodam sem mudar o repositorio. A
+//      prova vem do proprio registry (manifesto + label OCI `version` gravada no
+//      `Dockerfile.ubuntu-bun`): `proven`, `mismatch` (re-tag) ou INDETERMINADO
+//      quando nao ha rede/credencial/label.
+//
+// A agregacao tem a mesma gramatica do resto do guard: VIOLACAO quando provou e
+// esta errado; INDETERMINADO quando nao pode provar (nunca "ok"); so `proven`
+// quando de fato provou.
+
+/** As variaveis da imagem cujo VALOR vive fora do repositorio. */
+export const NON_VERSIONED_IMAGE_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE", "BUN_VERSION"]
+
+/**
+ * O ASSUNTO deste guard: ONDE a imagem mora (registry + namespace).
+ *
+ * `BUN_VERSION` fica de fora das comparacoes de ARQUIVO (template x template,
+ * template x host, default do compose x template) de proposito, e por DUAS
+ * razoes: (a) a versao do Bun tem guard proprio — o `check-bun-mirror` e o
+ * espelho periodico do BUN_VERSION, que comparam o MESMO conjunto de arquivos
+ * com a repository variable; e (b) no compose da APLICACAO o `BUN_VERSION` e um
+ * BUILD ARG do Dockerfile do servico (`args: BUN_VERSION: ...`), nao uma
+ * referencia de imagem — o valor que roda e o do builder, e acusa-lo aqui seria
+ * este guard opinando sobre outro assunto por tabela. Ele continua no conjunto
+ * acima porque o valor vive fora do repositorio e entra na comparacao com a
+ * repository variable.
+ */
+export const REGISTRY_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE"]
+
+/**
+ * Env do HOST da stack da aplicacao (gitignored) — o irmao do forge env.
+ *
+ * A ORDEM e a do `scripts/deploy.sh` (`.env.production.local`, e `.env` como
+ * fallback): o guard le os arquivos na mesma prioridade de quem SOBE a stack,
+ * senao ele leria um arquivo que o docker nao usa. Um `.env.production` sem
+ * sufixo nao existe em lugar nenhum do repositorio (o template manda copiar
+ * para `.env.production.local`): apontar para ele faria este fato ficar
+ * NAO APLICAVEL para sempre — um gate que nunca pode provar nada e um gate
+ * que ninguem le.
+ */
+export const APP_ENV_HOSTS = [".env.production.local", ".env"]
+
+/** O template COMITADO da stack da aplicacao (a fonte declarada dela). */
+export const APP_ENV_TEMPLATE = ".env.production.example"
+
+/**
+ * O compose da stack da aplicacao — o CONSUMIDOR das mesmas tres variaveis da
+ * imagem. E dele que sai a lista de nomes, nao de uma lista escrita a mao.
+ */
+export const APP_COMPOSE = "docker-compose.prod.yml"
+
+/**
+ * Os usos `vars.<VARIAVEL>` nos workflows DAS DUAS forjas.
+ *
+ * Por que ler os workflows em vez de sair do compose: e ali que a referencia
+ * NASCE (a label do runner e interpolada do env, mas os jobs recebem a variavel
+ * direto). O fallback (`|| 'ghcr.io'`) entra no item: e a unica coisa que o
+ * repositorio sabe sobre o valor — e por isso mesmo ele NAO pode ser tratado
+ * como valor.
+ *
+ * @param {string} [root]
+ * @returns {{file: string, line: number, variable: string, fallback: string|null}[]}
+ */
+export function forgeVariableRefs(root = ROOT) {
+  const refs = []
+  const re = new RegExp(
+    `\\$\\{\\{\\s*vars\\.(${NON_VERSIONED_IMAGE_VARIABLES.join("|")})\\s*(?:\\|\\|\\s*'([^']*)')?\\s*\\}\\}?`,
+    "g",
+  )
+  for (const dir of FORGE_WORKFLOW_DIRS) {
+    const abs = join(root, dir)
+    if (!existsSync(abs)) continue
+    for (const name of readdirSync(abs).filter((f) => WORKFLOW_FILE_RE.test(f))) {
+      const rel = `${dir}/${name}`
+      readFileSync(join(root, rel), "utf8")
+        .split(/\r?\n/)
+        .forEach((line, i) => {
+          if (isCommentLine(line)) return
+          for (const m of line.matchAll(re)) {
+            refs.push({
+              file: rel,
+              line: i + 1,
+              variable: m[1],
+              fallback: m[2] ?? null,
+            })
+          }
+        })
+    }
+  }
+  return refs
+}
+
+/**
+ * Os valores DECLARADOS no repositorio para cada variavel da imagem, por
+ * arquivo comitado. cobre os tres espelhos que o repositorio tem hoje:
+ * `.actrc` (o act local), o template da forja e o template da aplicacao.
+ *
+ * @param {string} [root]
+ * @returns {{label: string, values: Record<string, string>}[]}
+ */
+export function declaredImageValues(root = ROOT) {
+  const out = []
+  const actrc = join(root, ".actrc")
+  if (existsSync(actrc)) {
+    const values = {}
+    for (const line of readFileSync(actrc, "utf8").split(/\r?\n/)) {
+      const m = line.trim().match(/^--var\s+([A-Z_]+)\s*=\s*"?([^"\s#]+)"?/)
+      if (m && NON_VERSIONED_IMAGE_VARIABLES.includes(m[1])) values[m[1]] = m[2]
+    }
+    out.push({ label: ".actrc", values })
+  }
+  for (const [label, relPath] of [
+    [GITEA_ENV_MIRROR, GITEA_ENV_MIRROR],
+    [APP_ENV_TEMPLATE, APP_ENV_TEMPLATE],
+  ]) {
+    const path = join(root, relPath)
+    if (!existsSync(path)) continue
+    // `parseEnvAssignments` devolve um Map (a ULTIMA ocorrencia vence, como o
+    // `--env-file` do docker): ler como objeto daria `undefined` e faria o
+    // guard dizer "confere com nenhum espelho" — pior que nao comparar.
+    const raw = parseEnvAssignments(readFileSync(path, "utf8"))
+    const values = {}
+    for (const name of NON_VERSIONED_IMAGE_VARIABLES) {
+      if (raw.has(name)) values[name] = raw.get(name)
+    }
+    out.push({ label, values })
+  }
+  return out
+}
+
+/**
+ * A FONTE UNICA entre os templates COMITADOS (app x forja): os dois declaram o
+ * registry e o namespace das imagens que rodam. Divergir nao quebra teste
+ * nenhum — quebra a producao de um lado so: a app puxa do registry A e o runner
+ * do registry B, cada arquivo "certo" no seu contexto.
+ *
+ * Vale em QUALQUER checkout (sao arquivos comitados), e e por isso que ele roda
+ * sempre — inclusive no CI.
+ *
+ * @param {string} [root]
+ * @returns {string[]} violacoes
+ */
+export function compareImageTemplates(root = ROOT) {
+  return compareImageValues(root, GITEA_ENV_MIRROR, APP_ENV_TEMPLATE, {
+    first: GITEA_ENV_MIRROR,
+    second: APP_ENV_TEMPLATE,
+    missingInFirst: `os dois puxam imagem pelo mesmo registry, e ${GITEA_ENV_MIRROR} nao declara qual — declare-a la (o compose da forja nao tem default para esta variavel)`,
+    missingInSecond: `os dois puxam imagem pelo mesmo registry, e ${APP_ENV_TEMPLATE} nao declara qual — declare-a la`,
+  })
+}
+
+/**
+ * AS DUAS METADES que faltavam na comparacao entre DOIS arquivos.
+ *
+ * "Os dois concordam" so e uma prova se os dois lados DECLARAREM a variavel:
+ * uma variavel ausente de um lado nao e concordancia, e sim um lado em que o
+ * valor cai no default embutido do compose (ou em string vazia). Por isso a
+ * assimetria e reportada, e nao ignorada — no sentido do arquivo LIDO, tanto
+ * "nao declara" quanto "declara outro valor" tem o mesmo efeito: quem interpola
+ * com aquele arquivo puxa uma imagem que o repositorio nao declara.
+ *
+ * AUSENTE NAO E SEMPRE VIOLACAO, e quem decide e o CONSUMIDOR: `missingInFirst`
+ * e `missingInSecond` sao `null` quando aquele lado tem um DEFAULT embutido que
+ * resolve a mesma coisa (e `checkComposeImageDefaults` prova que o default E o
+ * valor declarado) — e sao um texto explicando a consequencia quando nao tem:
+ * ali o que roda deixa de ser o que o repositorio declara.
+ *
+ * @param {string} root
+ * @param {string} firstRel caminho do arquivo A (relativo a root)
+ * @param {string} secondRel caminho do arquivo B
+ * @param {{first: string, second: string, missingInFirst?: string|null, missingInSecond?: string|null}} labels
+ * @returns {string[]} violacoes
+ */
+export function compareImageValues(
+  root,
+  firstRel,
+  secondRel,
+  { first, second, missingInFirst = null, missingInSecond = null },
+) {
+  const read = (rel) => {
+    const abs = join(root, rel)
+    if (!existsSync(abs)) return null
+    const values = {}
+    for (const [name, value] of parseEnvAssignments(readFileSync(abs, "utf8"))) {
+      if (REGISTRY_VARIABLES.includes(name)) values[name] = value
+    }
+    return values
+  }
+  const a = read(firstRel)
+  const b = read(secondRel)
+  if (!a || !b) return []
+  const violations = []
+  for (const name of REGISTRY_VARIABLES) {
+    const av = a[name]
+    const bv = b[name]
+    if (av === undefined && bv === undefined) continue
+    if (av === undefined || bv === undefined) {
+      const missingName = av === undefined ? first : second
+      const rationale = av === undefined ? missingInFirst : missingInSecond
+      if (rationale !== null) {
+        violations.push(
+          `${name} esta declarada em apenas um dos dois arquivos (${missingName}) — ${rationale}`,
+        )
+      }
+      continue
+    }
+    if (av !== bv) {
+      violations.push(
+        `${name} divergente: ${first}='${av}' e ${second}='${bv}' — cada arquivo "certo" no seu contexto, e as imagens que rodam saem de registries/namespaces diferentes`,
+      )
+    }
+  }
+  return violations
+}
+
+/**
+ * Os DEFAULTS embutidos do compose: `${NOME:-valor}` em linha de codigo.
+ *
+ * `composeEnvVariables` descarta o default DE PROPOSITO (ele quer o nome). Aqui
+ * e o default que importa: ele e o valor que VALE quando o env nao declara o
+ * nome — ou seja, e ele que decide o que roda num host que nao tem a variavel.
+ *
+ * @param {string} content conteudo do compose
+ * @returns {{name: string, value: string}[]}
+ */
+export function composeEnvDefaults(content) {
+  const out = []
+  for (const raw of String(content ?? "").split(/\r?\n/)) {
+    if (isCommentLine(raw)) continue
+    for (const m of stripInlineComment(raw).matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*):-([^}]*)\}/g)) {
+      out.push({ name: m[1], value: m[2].trim() })
+    }
+  }
+  return out
+}
+
+/**
+ * O DEFAULT embutido do compose x o valor que o TEMPLATE declara.
+ *
+ * POR QUE ISSO E UMA INVARIANTE, e nao um detalhe de estilo: o default e o que
+ * vale onde a variavel NAO existe. Se o template declara `git.severinno.cloud`
+ * e a linha do compose continua `${IMAGE_REGISTRY:-ghcr.io}`, entao o host que
+ * nao declarar a variavel (o caso comum: `.env` sem a variavel) puxa do GHCR
+ * enquanto o repositorio "declara" o registry do Gitea — os dois arquivos
+ * certos, a imagem errada, e nada fica vermelho. E este projeto esta
+ * MIGRANDO de registry: o default velho e exatamente o que fica para tras.
+ *
+ * Ele tambem e o que torna legitimo o `missingInSecond: null` da comparacao
+ * host x template: se o default E o valor declarado, um host que nao declara a
+ * variavel interpola o MESMO resultado — a ausencia nao muda o efeito.
+ *
+ * @param {string} root
+ * @param {{compose: string, template: string}} files
+ * @returns {string[]} violacoes
+ */
+export function checkComposeImageDefaults(root, { compose, template }) {
+  const composePath = join(root, compose)
+  const templatePath = join(root, template)
+  if (!existsSync(composePath) || !existsSync(templatePath)) return []
+  const declared = {}
+  for (const [name, value] of parseEnvAssignments(readFileSync(templatePath, "utf8"))) {
+    if (REGISTRY_VARIABLES.includes(name)) declared[name] = value
+  }
+  const violations = []
+  for (const { name, value } of composeEnvDefaults(readFileSync(composePath, "utf8"))) {
+    if (!REGISTRY_VARIABLES.includes(name)) continue
+    if (declared[name] === undefined) {
+      violations.push(
+        `${compose} tem default '${value}' para ${name}, e o template ${template} nao declara essa variavel — o default passa a ser a unica fonte do que roda (declare-a em ${template})`,
+      )
+      continue
+    }
+    if (value !== declared[name]) {
+      violations.push(
+        `${compose}: o default de ${name} e '${value}' e o template ${template} declara '${declared[name]}' — onde a variavel nao existe (um env que nao a declara) o default vale, e a imagem que roda nao e a que o repositorio declara`,
+      )
+    }
+  }
+  return violations
+}
+
+/**
+ * Os DEFAULTS das duas stacks (a da aplicacao e a da forja).
+ *
+ * @param {string} [root]
+ * @returns {string[]} violacoes
+ */
+export function checkComposeImageDefaultsForRepo(root = ROOT) {
+  return [
+    ...checkComposeImageDefaults(root, { compose: APP_COMPOSE, template: APP_ENV_TEMPLATE }),
+    ...checkComposeImageDefaults(root, { compose: GITEA_COMPOSE, template: GITEA_ENV_MIRROR }),
+  ]
+}
+
+/**
+ * O env do HOST da APLICACAO x o template COMITADO dela.
+ *
+ * POR QUE ELE E UM GAP PROPRIO: a invariante 7b compara o env do host da FORJA
+ * com o template da forja (todas as variaveis que o compose da forja consome).
+ * Ninguem compara o env da APLICACAO com `.env.production.example` — e e ali
+ * que vive o `IMAGE_REGISTRY` que decide de ONDE a app puxa as imagens. Um VPS
+ * com `IMAGE_REGISTRY=git.severinno.cloud` no `.env.production.local` e
+ * `ghcr.io` no template comitado tem os dois lados verdes: a app puxa de um
+ * registry e o runner do outro, e trocar o template nao muda o que roda.
+ *
+ * ESCOPO DECLARADO: so as variaveis da IMAGEM entram. As outras ~49 que o
+ * compose da aplicacao consome tem regra propria (o preflight de deploy, o
+ * verify-env) — mistura-las aqui faria deste guard um segundo validador de env
+ * inteiro, e o defeito deste arquivo e justamente o de nao ter uma segunda
+ * implementacao que possa divergir da primeira.
+ *
+ * @param {string} [root]
+ * @returns {{violations: string[], host: string|null, checked: number, declared: string[]}} violacoes, o host lido e quantas variaveis foram de fato comparadas
+ */
+export function compareAppHostImageDeclarations(root = ROOT) {
+  const host = APP_ENV_HOSTS.map((rel) => ({ rel, abs: join(root, rel) })).find((c) =>
+    existsSync(c.abs),
+  )
+  if (!host) return { violations: [], host: null, checked: 0, declared: [] }
+  const declared = [...parseEnvAssignments(readFileSync(host.abs, "utf8")).keys()].filter((n) =>
+    REGISTRY_VARIABLES.includes(n),
+  )
+  return {
+    // `missingInSecond: null` — o compose da aplicacao TEM default para o
+    // registry e o namespace (`${IMAGE_REGISTRY:-ghcr.io}/...`), e
+    // `checkComposeImageDefaults` prova que esse default E o valor declarado no
+    // template. Um host que nao declara a variavel interpola o mesmo resultado:
+    // a ausencia nao muda o efeito, e acusa-la faria o guard reprovar todo `.env`
+    // de desenvolvimento (que nao tem IMAGE_REGISTRY porque nao precisa).
+    // `missingInFirst`: o host declarar uma variavel que o template nao tem e
+    // outra coisa — o estado daquele host deixa de ser reproduzivel a partir do
+    // repositorio (um host novo nao teria a variavel).
+    violations: compareImageValues(root, APP_ENV_TEMPLATE, host.rel, {
+      first: APP_ENV_TEMPLATE,
+      second: host.rel,
+      missingInFirst: `o que roda naquele host nao e reproduzivel a partir do repositorio: declare-a em ${APP_ENV_TEMPLATE} ou remova-a de ${host.rel}`,
+      missingInSecond: null,
+    }),
+    host: host.rel,
+    // QUANTAS variaveis foram de fato comparadas: um host que nao declara
+    // nenhuma delas nao "confere" — nao havia o que comparar (o compose resolve
+    // o default, e `checkComposeImageDefaults` prova que esse default E o valor
+    // declarado). Confundir "nao divergiu" com "conferiu" e o alerta mudo.
+    checked: declared.length,
+    declared,
+  }
+}
+
+/**
+ * O FATO: o que da para provar sobre as referencias que vivem fora do repo.
+ *
+ * `env` e `probe` sao as fronteiras de dependencia (o ambiente do processo e a
+ * consulta ao registry) — injetadas nos testes, nunca dubladas em producao.
+ *
+ * @param {{root?: string, env?: Record<string, string|undefined>, hostEnv?: string|null, probe?: Function, probeRegistry?: boolean, credentials?: object|null, timeoutMs?: number}} [args]
+ * @returns {Promise<{state: "proven"|"violated"|"indeterminate"|"absent", items: {source: string, state: string, detail: string, digest?: string|null}[], violations: string[], detail: string}>}
+ */
+export async function checkNonVersionedImageRefs({
+  root = ROOT,
+  env = process.env,
+  hostEnv = null,
+  probe = probeImageIdentity,
+  probeRegistry = true,
+  credentials = credentialsFromEnv(env),
+  timeoutMs = 20000,
+} = {}) {
+  const appDeclarations = compareAppHostImageDeclarations(root)
+  const violations = [
+    ...compareImageTemplates(root),
+    ...appDeclarations.violations,
+    ...checkComposeImageDefaultsForRepo(root),
+  ]
+  const items = []
+  if (appDeclarations.host) {
+    const diverged = appDeclarations.violations.length > 0
+    items.push({
+      source: `env do host da aplicacao ${appDeclarations.host}`,
+      state: diverged ? "violated" : appDeclarations.checked > 0 ? "proven" : "absent",
+      detail: diverged
+        ? `divergente do template comitado (${APP_ENV_TEMPLATE}) nas variaveis da imagem`
+        : appDeclarations.checked > 0
+          ? `confere com ${APP_ENV_TEMPLATE} em ${appDeclarations.checked} variavel(is) da imagem (${appDeclarations.declared.join(", ")})`
+          : `este host NAO declara nenhuma das variaveis da imagem (${REGISTRY_VARIABLES.join(", ")}) — o compose resolve o default, e o default x o template e conferido por \`checkComposeImageDefaults\`; aqui nao ha o que comparar`,
+    })
+  }
+
+  // 1. Repository variables: o valor vem do AMBIENTE quando existe (o CI exporta
+  //    a variable); sem ele, INDETERMINADO com o remedio — o fallback do YAML
+  //    nao entra como valor, entra como o que o repo declara.
+  const refs = forgeVariableRefs(root)
+  const declarations = declaredImageValues(root)
+  for (const name of NON_VERSIONED_IMAGE_VARIABLES) {
+    const uses = refs.filter((r) => r.variable === name)
+    if (uses.length === 0) continue
+    const where = `${uses.length} uso(s), ex.: ${uses[0].file}:${uses[0].line}`
+    const files = [...new Set(uses.map((u) => u.file))].length
+    const fallback = uses.find((u) => u.fallback !== null)?.fallback ?? null
+    const value = (env[name] ?? "").trim()
+    if (!value) {
+      items.push({
+        source: `repository variable ${name}`,
+        state: "indeterminate",
+        detail: `${where} — o valor vive na forja (Settings -> Variables) e NAO esta no ambiente deste processo: nao ha como provar que ele e o que os arquivos comitados declaram${fallback !== null ? ` (o YAML tem fallback '${fallback}', que e intencao declarada, nao valor)` : ""}. Remedio: rode onde a variavel existe (o job exporta \`${name}\`) ou exporte-a aqui`,
+      })
+      continue
+    }
+    const mirrors = declarations.filter((d) => d.values[name] !== undefined)
+    const divergent = mirrors.filter((d) => d.values[name] !== value)
+    for (const d of divergent) {
+      violations.push(
+        `${name}='${value}' (variavel da forja, do ambiente) diverge de ${d.label}='${d.values[name]}' — os jobs e o que o repositorio declara nao apontam para a mesma imagem`,
+      )
+    }
+    items.push({
+      source: `repository variable ${name}`,
+      state: divergent.length > 0 ? "violated" : mirrors.length > 0 ? "proven" : "indeterminate",
+      detail:
+        divergent.length > 0
+          ? `${where} — divergente de ${divergent.map((d) => d.label).join(", ")}`
+          : mirrors.length > 0
+            ? `${where} em ${files} arquivo(s) — '${value}' confere com ${mirrors.map((d) => d.label).join(", ")}`
+            : `${where} — o valor veio do ambiente, mas NENHUM arquivo comitado declara '${name}': sem espelho comitado nao ha o que comparar (declarar a variavel e o remedio)`,
+    })
+  }
+
+  // 2. Env do HOST: presente -> vira o `declared` da consulta ao registry;
+  //    ausente -> NAO APLICAVEL (gitignored por desenho).
+  //
+  //    So o env da FORJA resolve a imagem do RUNNER: `resolveImageRef` monta
+  //    `<registry>/<namespace>/ubuntu-bun:<BUN_VERSION>`, e o env da APLICACAO
+  //    nao declara BUN_VERSION nenhum (o template dela, conferido no repositorio,
+  //    tambem nao) — resolve-lo ali viraria "violacao" por uma variavel que
+  //    aquele arquivo nunca teve. As duas stacks entram na comparacao por
+  //    caminhos proprios: a da app por DECLARACAO (`compareAppHostImageDeclarations`),
+  //    a da forja pelo efeito (invariante 7b) e por esta consulta ao registry.
+  const forgeHost = hostEnv || GITEA_ENV_DEPLOYED.find((p) => existsSync(join(root, p))) || null
+  let hostRef = null
+  for (const candidate of [
+    ...GITEA_ENV_DEPLOYED.map((p) => ({ path: p, label: p })),
+    ...(hostEnv && !GITEA_ENV_DEPLOYED.includes(hostEnv)
+      ? [{ path: hostEnv, label: hostEnv }]
+      : []),
+    ...APP_ENV_HOSTS.map((p) => ({ path: p, label: p })),
+  ]) {
+    const abs = isAbsolute(candidate.path) ? candidate.path : join(root, candidate.path)
+    if (!existsSync(abs)) {
+      // AUSENTE nao e INDETERMINADO. Estes arquivos sao gitignored POR DESENHO:
+      // existem no host que roda a stack, nao em qualquer checkout. Tratar a
+      // ausencia como "nao provei" faria o fato ficar indeterminado em TODO
+      // checkout que nao seja o VPS — inclusive no CI, onde a variavel que
+      // importa (a da forja) esta ao alcance. E o mesmo vocabulario que a
+      // invariante 7b ja usa para o env do host: `absent` = NAO APLICAVEL aqui,
+      // reportado para nao sumir em silencio.
+      items.push({
+        source: `env do host ${candidate.label}`,
+        state: "absent",
+        detail: `nao existe neste checkout (gitignored por desenho) — NAO APLICAVEL aqui; onde a stack roda, e este arquivo que o compose le`,
+      })
+      continue
+    }
+    if (APP_ENV_HOSTS.includes(candidate.path)) {
+      // O env da APLICACAO que existe ja e reportado pelo item proprio dele
+      // (`compareAppHostImageDeclarations`): repetir aqui o mesmo arquivo como
+      // "lido" so engordaria a lista com a mesma informacao duas vezes.
+      continue
+    }
+    const values = Object.fromEntries(parseEnvAssignments(readFileSync(abs, "utf8")))
+    const isForgeHost = candidate.path === forgeHost
+    const resolved = isForgeHost ? resolveImageRef(values) : null
+    if (resolved?.error) {
+      violations.push(`${candidate.label}: ${resolved.error}`)
+      items.push({
+        source: `env do host ${candidate.label}`,
+        state: "violated",
+        detail: resolved.error,
+      })
+      continue
+    }
+    items.push({
+      source: `env do host ${candidate.label}`,
+      state: "proven",
+      detail: resolved
+        ? `lido (env da forja): a referencia do runner deste host e ${resolved.ref}`
+        : `lido (env da aplicacao): registry='${(values.IMAGE_REGISTRY ?? "").trim() || "<ausente>"}' namespace='${(values.IMAGE_NAMESPACE ?? "").trim() || "<ausente>"}'`,
+    })
+    if (isForgeHost && !hostRef) hostRef = resolved
+  }
+
+  // 3. O que o registry SERVE para a tag DECLARADA (a unica prova possivel sobre
+  //    a tag ser um apelido mutavel — um re-tag troca a imagem de todos os jobs
+  //    sem mudar uma linha do repositorio).
+  //
+  //    A tag vem do env do host da forja quando ele existe (e ELE que o compose
+  //    interpola onde a stack roda); sem ele, do TEMPLATE COMITADO — a imagem
+  //    que o repositorio declara e consultavel de qualquer checkout, inclusive
+  //    no CI. Sem essa segunda fonte, o fato ficaria NAO APLICAVEL em todo lugar
+  //    menos no VPS: a prova da tag sumiria justamente onde o drift de tag passa.
+  const declaredSource = hostRef
+    ? forgeHost
+    : existsSync(join(root, GITEA_ENV_MIRROR))
+      ? GITEA_ENV_MIRROR
+      : null
+  let declaredRef = null
+  let declaredVersion = null
+  if (!hostRef && declaredSource) {
+    const resolved = resolveImageRef(
+      Object.fromEntries(parseEnvAssignments(readFileSync(join(root, declaredSource), "utf8"))),
+    )
+    if (resolved.error) {
+      violations.push(`${declaredSource}: ${resolved.error}`)
+      items.push({
+        source: `env do host/template da forja ${declaredSource}`,
+        state: "violated",
+        detail: resolved.error,
+      })
+    } else {
+      declaredRef = resolved.ref
+      declaredVersion = resolved.version
+    }
+  }
+  if (hostRef) {
+    declaredRef = hostRef.ref
+    declaredVersion = hostRef.version
+  }
+
+  if (!probeRegistry) {
+    // `--no-registry-probe`: a consulta ao registry e a UNICA parte deste fato
+    // que depende de rede. Quem a desliga (o ambiente offline, um teste que
+    // isola as invariantes estaticas) declara-se aqui — o passo vira NAO
+    // APLICAVEL, nunca "conforme".
+    items.push({
+      source: "registry (o que a tag serve hoje)",
+      state: "absent",
+      detail: `consulta pulada (--no-registry-probe) — sem a resposta do registry a tag nao foi conferida${declaredRef ? ` (a tag declarada e ${declaredRef})` : ""}`,
+    })
+  } else if (!declaredRef) {
+    items.push({
+      source: "registry (o que a tag serve hoje)",
+      state: "indeterminate",
+      detail: `sem o env da forja neste checkout E sem ${GITEA_ENV_MIRROR} nao ha tag declarada para consultar — o estado das tags no registry fica fora do alcance`,
+    })
+  } else {
+    const probeResult = await probe(declaredRef, {
+      expectedVersion: declaredVersion,
+      credentials,
+      timeoutMs,
+    })
+    // `missing` e `mismatch` sao VIOLACOES (o registry respondeu e provou que a
+    // imagem que o repositorio declara nao esta la / nao e o que a tag aponta);
+    // `no-label`, `unauthorized`, `unreachable` e `error` sao NAO PROVADO —
+    // tratar "nao sei" como "esta errado" faria o gate acusar re-tag onde so
+    // falta credencial (o mesmo raciocinio da Prova das imagens antigas).
+    const state =
+      probeResult.state === "proven"
+        ? "proven"
+        : probeResult.state === "mismatch" || probeResult.state === "missing"
+          ? "violated"
+          : "indeterminate"
+    // O REMEDIO vai junto do veredito (na violacao E no item): uma tag que nao
+    // existe tem conserto conhecido, e obrigar a procurar o comando certo no
+    // runbook e o tipo de atrito que faz um gate ser desligado.
+    const remedy =
+      probeResult.state === "missing"
+        ? " — a tag que o repositorio declara nao existe: `bun run runner-image:ensure` publica (o workflow canonico e o sync-ubuntu-bun-mirror.yml)"
+        : ""
+    if (state === "violated") {
+      violations.push(
+        `${declaredRef} (o que ${declaredSource ?? "o env do host"} declara): ${probeResult.detail}${remedy}`,
+      )
+    }
+    items.push({
+      source: `registry (o que ${declaredRef} serve hoje)`,
+      state,
+      detail: `${probeResult.detail}${state === "proven" || state === "violated" ? "" : ` [${probeResult.state}]`}${remedy}`,
+      digest: probeResult.digest ?? null,
+    })
+  }
+
+  const indet = items.filter((i) => i.state === "indeterminate").length
+  const absent = items.filter((i) => i.state === "absent").length
+  const proven = items.filter((i) => i.state === "proven").length
+  const state =
+    violations.length > 0
+      ? "violated"
+      : indet > 0
+        ? "indeterminate"
+        : proven > 0
+          ? "proven"
+          : "absent"
+  return {
+    state,
+    items,
+    violations,
+    detail:
+      violations.length > 0
+        ? `${violations.length} violacao(oes) nas referencias nao versionadas`
+        : indet > 0
+          ? `${indet} referencia(s) NAO PROVADA(S) — nenhuma foi presumida${absent > 0 ? ` (${absent} nao aplicavel(is) neste checkout)` : ""}`
+          : state === "proven"
+            ? `${proven} referencia(s) nao versionada(s) provadas${absent > 0 ? `, ${absent} nao aplicavel(is) neste checkout` : ""}`
+            : `NADA A PROVAR neste checkout: nenhuma das ${items.length} referencia(s) e aplicavel aqui (sem env do host e sem uso de \`vars.*\` nos workflows) — ausencia de prova, nunca "conforme"`,
   }
 }
 
@@ -1113,19 +2114,68 @@ const isMain =
   !!process.argv[1] && process.argv[1].split(/[\\/]/).pop() === "check-registry-source.mjs"
 
 if (isMain) {
-  const skipRender = process.argv.includes("--no-compose-render")
-  const requireCompose = process.argv.includes("--require-compose")
-  const staticViolations = findViolations()
+  const argv = process.argv.slice(2)
+  const skipRender = argv.includes("--no-compose-render")
+  const requireCompose = argv.includes("--require-compose")
+  // `--require-image`: as referencias nao versionadas (variaveis da forja, env
+  // do host, o que o registry serve) NAO podem ficar indeterminadas. Onde isso
+  // e obrigatorio (o host que sobe a stack, um job com credencial) exigir a
+  // prova e o ponto; onde nao e (a maquina do dev), exigi-la viraria ruido que
+  // ninguem consegue silenciar.
+  const requireImage = argv.includes("--require-image")
+  // `--no-registry-probe`: nao consulta o registry (unica parte do fato que
+  // depende de rede). `--require-image` + `--no-registry-probe` e contraditorio
+  // — pedir a prova e pedir para nao prova-la —, e resolver a contradicao em
+  // silencio escolheria por quem pediu (mesma regra do --require-compose).
+  const skipProbe = argv.includes("--no-registry-probe")
+  // `--gitea-env <caminho>`: o env do HOST a comparar com o template comitado.
+  const hostEnvIdx = argv.indexOf("--gitea-env")
+  const hostEnv = hostEnvIdx === -1 ? null : argv[hostEnvIdx + 1] || ""
+  // Pergunta EXPLICITA ("compare ESTE arquivo"): um caminho ausente NAO pode
+  // virar "em sincronia" — seria ler o resultado de uma comparacao que nao
+  // houve. Mesmo contrato do --gitea-env do check-actrc-sync.
+  const hostEnvExists =
+    typeof hostEnv === "string" &&
+    hostEnv !== "" &&
+    existsSync(isAbsolute(hostEnv) ? hostEnv : join(process.cwd(), hostEnv))
+  if (hostEnvIdx !== -1 && !hostEnvExists) {
+    console.error(
+      `check-registry-source: --gitea-env aponta para um arquivo inexistente: ${hostEnv || "<vazio>"}`,
+    )
+    console.error(
+      "  Uso: node scripts/check-registry-source.mjs [--require-compose] [--no-compose-render] [--gitea-env <caminho>] [--require-image] [--no-registry-probe]",
+    )
+    process.exit(2)
+  }
+  if (requireImage && skipProbe) {
+    console.error(
+      "check-registry-source: ❌ --require-image com --no-registry-probe: pedir a prova das referencias nao versionadas E pedir para nao consultar o registry sao instrucoes contraditorias.",
+    )
+    console.error(
+      "  Escolha uma: `--require-image` (a prova e obrigatoria; o registry tem de responder) ou `--no-registry-probe` (rode offline e leia o que ficou NAO PROVADO).",
+    )
+    process.exit(3)
+  }
+  const staticViolations = [...findViolations(), ...compareImageTemplates()]
   const interpolation = skipRender
     ? {
         state: "skipped",
         violations: [],
         phases: [],
+        hostCompare: { state: "skipped", detail: "pulada por --no-compose-render" },
         detail: "pulada por --no-compose-render",
       }
-    : checkComposeInterpolation()
+    : checkComposeInterpolation({ hostEnv })
 
-  const violations = [...staticViolations, ...interpolation.violations]
+  const nonVersioned = await checkNonVersionedImageRefs({ hostEnv, probeRegistry: !skipProbe })
+  // As violacoes do fato novo entram na MESMA lista (o `compareImageTemplates`
+  // ja entrou acima por ser offline; aqui vem o resto: valor do ambiente que
+  // diverge dos espelhos, env do host sem imagem, re-tag no registry).
+  const violations = [
+    ...staticViolations,
+    ...interpolation.violations,
+    ...nonVersioned.violations.filter((v) => !staticViolations.includes(v)),
+  ]
 
   // Com --require-compose SO `proven` passa. `skipped` entra aqui de propósito:
   // pedir o render OBRIGATORIO e pedir para NAO renderizar sao instrucoes
@@ -1149,12 +2199,53 @@ if (isMain) {
     process.exit(1)
   }
 
+  // INDETERMINADO: o guard nao presume. Exigido (`--require-image`), falha; no
+  // modo portatil, ele DIZ o que nao provou — e a diferenca entre os dois modos
+  // e o ambiente, nao a regra.
+  const unprovenImage = requireImage && nonVersioned.state !== "proven"
+  if (unprovenImage) {
+    console.error(
+      `check-registry-source: ❌ --require-image: as referencias NAO VERSIONADAS da imagem NAO foram provadas (${nonVersioned.detail}).`,
+    )
+    // So o que NAO FOI PROVADO entra na lista de pendencias: um arquivo
+    // gitignored que nao existe neste checkout e "nao aplicavel", e lista-lo
+    // aqui faria a pendencia parecer maior do que e.
+    for (const item of nonVersioned.items.filter(
+      (i) => i.state === "indeterminate" || i.state === "violated",
+    )) {
+      console.error(`  - ${item.source} [${item.state}]: ${item.detail}`)
+    }
+    console.error(
+      "  Aqui a prova e exigida: rode onde o valor existe (o CI exporta `vars.*`) ou exporte as variaveis/credencial" +
+        " (IMAGE_REGISTRY, IMAGE_NAMESPACE, BUN_VERSION, GHCR_TOKEN). Sem isso a referencia da imagem fica NAO VERIFICADA —" +
+        " e um gate verde sobre o que nao foi verificado e pior que um vermelho.",
+    )
+    process.exit(1)
+  }
+
   if (violations.length === 0) {
     console.log("check-registry-source: ✅ registry com fonte unica (IMAGE_REGISTRY).")
+    // O fato novo sai SEMPRE (nao so quando ha violacao): e ele que diz o que
+    // ficou indeterminado — esconder isso num modo verboso seria o alerta mudo.
+    // `absent` NAO e ✅ (nao se provou nada) nem ❌ (nao ha nada errado aqui): o
+    // mesmo "·" dos outros nao aplicaveis, com o texto dizendo por que.
+    for (const item of nonVersioned.items) {
+      const mark = item.state === "proven" ? "✅" : item.state === "violated" ? "❌" : "·"
+      console.log(`check-registry-source: ${mark} ${item.source}: ${item.detail}`)
+    }
+    console.log(
+      `check-registry-source: ${nonVersioned.state === "proven" ? "✅" : "·"} referencias nao versionadas: ${nonVersioned.detail}`,
+    )
     if (interpolation.state === "proven") {
       console.log(
         `check-registry-source: ✅ interpolacao do compose da forja provada — ${interpolation.detail}`,
       )
+      const hc = interpolation.hostCompare
+      if (hc?.state === "in-sync") {
+        console.log(`check-registry-source: ✅ ${hc.detail}`)
+      } else if (hc?.state === "absent") {
+        console.log(`check-registry-source: · host x template nao aplicavel: ${hc.detail}`)
+      }
     } else if (interpolation.state === "skipped") {
       console.log(
         "check-registry-source: · interpolacao do compose da forja pulada (--no-compose-render)",
@@ -1177,5 +2268,12 @@ if (isMain) {
     `\n${violations.length} violacao(oes). A fonte unica e IMAGE_REGISTRY (repo variable + .env.production + .actrc),` +
       ` e a imagem do runner e resolvida pelo \`docker compose config\` do ${GITEA_COMPOSE}.`,
   )
+  if (interpolation.hostCompare?.state === "diverged") {
+    console.error(
+      `O env do HOST diverge do template comitado (${GITEA_ENV_MIRROR}) — o que o VPS interpola nao e o que o repositorio declara.` +
+        " Corrija o lado errado (ou aponte --gitea-env para o env certo), suba a stack de novo e RE-REGISTRE o runner:" +
+        " `bash deploy/gitea-up.sh --re-register` (os labels sao estado do registro, nao config do container).",
+    )
+  }
   process.exit(1)
 }

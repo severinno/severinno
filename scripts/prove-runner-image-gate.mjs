@@ -17,24 +17,40 @@
 //   O que se afirma é sobre o REGISTRO das chamadas: nenhum `compose up`
 //   aconteceu.
 //
-// A CONTRA-PROVA (por que são TRÊS casos e não um):
+// A CONTRA-PROVA (por que são VÁRIOS casos e não um):
 //   "não subiu" sozinho é evidência fraca — um script quebrado também não sobe
-//   nada. O terceiro caso é o CONTROLE: com a tag PRESENTE o runner sobe. É ele
-//   que transforma "não subiu" em "não subiu PORQUE a tag faltava".
+//   nada. É o caso de CONTROLE que transforma "não subiu" em "não subiu PORQUE
+//   a tag faltava".
 //
-//   Os três:
-//     A. --check-only + tag ausente        → exit 4, ZERO chamadas ao docker
-//     B. subida normal + tag ausente        → exit 5, o publisher "publica"
-//        (build+push ok) e a RELEITURA desmente; ZERO `compose up` — ou seja,
-//        nem um publisher que mente consegue subir o runner.
-//     C. CONTROLE: tag presente             → exit 0 e `up -d runner` observado
+//   FAMÍLIA A — a subida simples (3 casos):
+//     A1. --check-only + tag ausente    → exit 4, ZERO chamadas ao docker;
+//     A2. subida normal + tag ausente   → exit 5: o publisher "publica"
+//         (build+push ok) e a RELEITURA desmente; ZERO `compose up` — nem um
+//         publisher que mente consegue subir o runner;
+//     A3. CONTROLE: tag presente        → exit 0 e `up -d runner` observado.
 //
-//   No caso B a asserção inclui o `build`/`push` no log: sem isso, "exit 5" não
+//   FAMÍLIA B — o RE-REGISTRO (`--re-register`), onde o risco é MAIOR (4 casos).
+//   Ele APAGA o registro gravado antes de subir (o act_runner envia os labels no
+//   registro e depois usa os de /data/.runner), e um registro que fica para trás
+//   mantém os labels ANTIGOS com o tier-1 desligado — sem nenhum sintoma. Três
+//   coisas que só o COMPORTAMENTO diz, e nenhuma delas aparece no texto:
+//     B1. sem a imagem garantida NADA é destruído: nenhum `compose rm`, nenhum
+//         `volume rm` — a garantia falha sem levar consigo o registro que está
+//         funcionando (o oposto do runbook antigo, que apagava primeiro e
+//         conferia depois);
+//     B2. com a imagem, a ORDEM é `rm -sf runner` → `volume rm` → `up -d runner`;
+//         invertida, o runner sobe com o registro ANTIGO e nada acusa;
+//     B3. primeira subida (o volume do registro ainda não existe): não exige nada
+//         a apagar — ausência de volume não é erro;
+//     B4. registro que NÃO sai (volume em uso): o script RECUSA subir — o runner
+//         NÃO sobe com o registro velho.
+//
+//   No caso A2 a asserção inclui o `build`/`push` no log: sem isso, "exit 5" não
 //   distinguiria "bloqueou na releitura" de "não havia caminho de publicação" —
 //   dois mundos com o mesmo código de saída e significados opostos.
 //
 // O registry de teste é LOCAL e ESMERALDA: nenhuma rede externa, nenhum docker.
-// Roda em ~1s (o healthcheck do Gitea é desligado com HEALTH_TIMEOUT=1).
+// Roda em ~1s por caso (o healthcheck do Gitea é desligado com HEALTH_TIMEOUT=1).
 //
 // Usage:
 //   node scripts/prove-runner-image-gate.mjs          # prova; exit 0 = segura
@@ -42,7 +58,7 @@
 //   node scripts/prove-runner-image-gate.mjs --cwd <raiz>   # repo mutado (teste)
 //
 // Exit codes:
-//   0 — a prova SE SUSTENTA nos três casos
+//   0 — a prova SE SUSTENTA em todos os casos (bloqueio + controles)
 //   1 — a prova FALHOU (o bloqueio não existe, ou a contra-prova não sobe)
 //   2 — não consegui rodar a prova (sem bash, sem o script do bring-up)
 // =============================================================================
@@ -132,22 +148,32 @@ export function startTestRegistry(mode) {
  *
  * Semântica do dublê, deliberada:
  *   - `--version` sai 0 (as pré-condições do gitea-up.sh, que exigem docker);
- *   - `build`/`push` saem 0 — no caso B é ESSENCIAL: um publisher que "dá
+ *   - `build`/`push` saem 0 — no caso A2 é ESSENCIAL: um publisher que "dá
  *     certo" e mesmo assim não derruba o bloqueio;
  *   - `manifest` sai 1 (o docker não conhece a tag);
+ *   - `volume inspect` reflete o ESTADO do volume do registro (`volume` abaixo),
+ *     e `volume rm` o apaga — ou MENTE que apagou, no modo `stuck`, que é o
+ *     caminho em que o registro antigo sobrevive;
  *   - `commit`/`compose`/qualquer outra coisa sai 0.
  *
  * O `gh` sempre falha: sem `gh` autenticado o ensure não pode escolher o
  * workflow de publicação, e nenhum workflow de verdade é disparado.
  *
  * @param {string} parentDir
+ * @param {{"absent"|"removable"|"stuck"}} [options]
+ *   `absent`    — o volume do registro não existe (primeira subida do runner);
+ *   `removable` — existe e o `docker volume rm` o remove de fato;
+ *   `stuck`     — existe e CONTINUA existindo depois do `rm` (volume em uso) —
+ *                 é o que separa "apagou o registro" de "disse que apagou".
  * @returns {{binDir: string, dockerCalls: () => string[]}}
  */
-export function makeFakeBin(parentDir) {
+export function makeFakeBin(parentDir, { volume = "removable" } = {}) {
   const binDir = join(parentDir, "fake-bin")
   mkdirSync(binDir, { recursive: true })
   const dockerLog = join(binDir, "docker.log")
+  const volumeState = join(binDir, "volume.state")
   writeFileSync(dockerLog, "")
+  writeFileSync(volumeState, volume === "absent" ? "absent" : "present")
 
   writeFileSync(
     join(binDir, "docker"),
@@ -157,6 +183,18 @@ export function makeFakeBin(parentDir) {
       'case "$1" in',
       '  --version) echo "Docker version 27.0.0, build fake"; exit 0 ;;',
       "  manifest) exit 1 ;;",
+      "  volume)",
+      '    case "$2" in',
+      `      inspect) [ -f "${volumeState}" ] && [ "$(cat "${volumeState}")" = present ] && exit 0; exit 1 ;;`,
+      "      rm)",
+      `        [ -f "${volumeState}" ] || exit 0`,
+      `        [ "$(cat "${volumeState}")" = present ] || exit 0`,
+      // `stuck`: o docker DIZ que removeu e o volume continua lá — é o caminho
+      // em que o registro antigo sobrevive (volume em uso por um container).
+      `        if [ "${volume}" = stuck ]; then exit 0; fi`,
+      `        printf absent > "${volumeState}"`,
+      "        exit 0 ;;",
+      "    esac ;;",
       "esac",
       "exit 0",
       "",
@@ -196,7 +234,7 @@ function writeProofEnv(dir, registryUrl) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 3. Os três casos
+// 3. Os casos
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
@@ -215,6 +253,10 @@ function writeProofEnv(dir, registryUrl) {
  * @property {number} composeCalls
  * @property {boolean} published
  * @property {number} registryHits
+ * @property {boolean} reRegister       o caso é da família do re-registro?
+ * @property {boolean} removal          houve 'rm -sf runner' (o registro foi apagado)?
+ * @property {boolean} volumeRm         houve 'volume rm' (o volume do registro foi removido)?
+ * @property {boolean} orderOk          'rm -sf runner' veio ANTES de 'up -d runner'?
  * @property {string} tail
  */
 
@@ -229,6 +271,10 @@ function writeProofEnv(dir, registryUrl) {
  * @property {number|null} expectCompose  nº exato de chamadas 'compose' (null = não checa)
  * @property {boolean} expectPublish      o log deve conter build E push?
  * @property {boolean} expectBlockMsg     a saída deve conter 'NADA foi subido'?
+ * @property {"absent"|"removable"|"stuck"} [volume]  estado do volume do registro no dublê
+ * @property {boolean} [expectRemoval]    houve 'rm -sf runner'? (omitido = não opina)
+ * @property {boolean} [expectVolumeRm]   houve 'volume rm'? (omitido = não opina)
+ * @property {boolean} [expectOrder]      'rm' tem de vir ANTES do 'up -d runner'?
  * @property {string} why                 o que este caso prova
  */
 
@@ -270,6 +316,74 @@ export const PROOF_CASES = [
     expectBlockMsg: false,
     why: "com a tag presente a stack SOBE o runner — é isto que faz do 'não subiu' uma prova, e não um script quebrado",
   },
+
+  // ── FAMÍLIA B: o RE-REGISTRO (o caminho que troca os labels) ────────────
+  // Aqui o risco é maior que na subida simples: o re-registro APAGA o registro
+  // gravado antes de subir. Sem imagem, apagar seria destruir o que funciona; e
+  // com um registro que não sai, subir significaria rodar com os labels ANTIGOS
+  // (tier-1 desligado, sem sintoma).
+  {
+    id: "re-register-sem-imagem",
+    title: "tag AUSENTE + --re-register (a falha da garantia NÃO pode destruir o registro)",
+    registry: "missing",
+    args: ["--re-register", "--source", "local"],
+    volume: "removable",
+    expectExit: EXIT.PUBLISH_FAILED,
+    expectRunnerUp: false,
+    expectCompose: 0,
+    expectPublish: true,
+    expectBlockMsg: true,
+    expectRemoval: false,
+    expectVolumeRm: false,
+    why: "sem a imagem garantida o re-registro nem começa: nenhum 'compose rm' e nenhum 'volume rm' — a garantia falha SEM levar consigo o registro que está funcionando",
+  },
+  {
+    id: "re-register",
+    title: "CONTROLE — tag PRESENTE + --re-register (ordem rm → volume rm → up)",
+    registry: "exists",
+    args: ["--re-register"],
+    volume: "removable",
+    expectExit: EXIT.OK,
+    expectRunnerUp: true,
+    expectCompose: null,
+    expectPublish: false,
+    expectBlockMsg: false,
+    expectRemoval: true,
+    expectVolumeRm: true,
+    expectOrder: true,
+    why: "o registro gravado é apagado ANTES de o runner subir — invertida a ordem, o runner voltaria com os labels ANTIGOS e o tier-1 seguiria desligado, em silêncio",
+  },
+  {
+    id: "re-register-primeira-vez",
+    title: "tag PRESENTE + --re-register sem registro anterior (primeira subida)",
+    registry: "exists",
+    args: ["--re-register"],
+    volume: "absent",
+    expectExit: EXIT.OK,
+    expectRunnerUp: true,
+    expectCompose: null,
+    expectPublish: false,
+    expectBlockMsg: false,
+    expectRemoval: true,
+    expectVolumeRm: false,
+    expectOrder: true,
+    why: "sem volume do registro o comando não exige nada a apagar — a ausência do volume não é erro (o 'volume rm' só aparece quando há o que apagar)",
+  },
+  {
+    id: "re-register-registro-preso",
+    title: "tag PRESENTE + registro que NÃO sai (volume em uso)",
+    registry: "exists",
+    args: ["--re-register"],
+    volume: "stuck",
+    expectExit: 1,
+    expectRunnerUp: false,
+    expectCompose: null,
+    expectPublish: false,
+    expectBlockMsg: false,
+    expectRemoval: true,
+    expectVolumeRm: true,
+    why: "o runner NÃO sobe com o registro velho: se o volume do registro sobrevive, o script prefere falhar a re-registrar em silêncio",
+  },
 ]
 
 /**
@@ -280,7 +394,7 @@ export const PROOF_CASES = [
  * registry de teste, que roda NESTE processo (mesmo event loop). Com
  * `spawnSync` o event loop do pai ficaria bloqueado esperando o filho — que
  * espera o registry responder; o registry não responde porque o pai está
- * bloqueado, e o ensure fica 'unreachable' por timeout. Medido: os três casos
+ * bloqueado, e o ensure fica 'unreachable' por timeout. Medido: os casos da família A
  * saíam exit 3 (indeterminado) em vez de 4/5/0. `spawn` + await mantém o loop
  * vivo e o registry atende de verdade.
  *
@@ -314,7 +428,7 @@ async function runCase(testCase, { cwd, bash, spawn }) {
   const tmp = mkdtempSync(join(tmpdir(), `prove-gate-${testCase.id}-`))
   const registry = await startTestRegistry(testCase.registry)
   try {
-    const { binDir, dockerCalls } = makeFakeBin(tmp)
+    const { binDir, dockerCalls } = makeFakeBin(tmp, { volume: testCase.volume })
     const envFile = writeProofEnv(tmp, registry.url)
 
     const res = await runProcess(
@@ -336,7 +450,15 @@ async function runCase(testCase, { cwd, bash, spawn }) {
     const calls = dockerCalls()
     const out = res.out
     const composeCalls = calls.filter((c) => c.includes("compose"))
-    const runnerUp = calls.some((c) => c.includes("up -d runner"))
+    const removalIndex = calls.findIndex((c) => /(?:^|\s)rm -sf runner(?:\s|$)/.test(c))
+    const runnerIndex = calls.findIndex((c) => c.includes("up -d runner"))
+    const runnerUp = runnerIndex !== -1
+    const removal = removalIndex !== -1
+    const volumeRm = calls.some((c) => c.startsWith("volume rm "))
+    // A ORDEM é o que faz o re-registro VALER: apagar o registro depois de subir
+    // deixa o runner com os labels antigos — e nada acusa (o setup do Bun
+    // funciona igual, só mais lento).
+    const orderOk = removal && runnerUp && removalIndex < runnerIndex
     const published =
       calls.some((c) => c.startsWith("build")) && calls.some((c) => c.startsWith("push"))
 
@@ -364,6 +486,27 @@ async function runCase(testCase, { cwd, bash, spawn }) {
     if (testCase.expectBlockMsg && !out.includes("NADA foi subido")) {
       failures.push("a saída não traz a mensagem de bloqueio ('NADA foi subido')")
     }
+    if (testCase.expectRemoval !== undefined && removal !== testCase.expectRemoval) {
+      failures.push(
+        removal
+          ? "o registro foi APAGADO ('compose rm -sf runner' no log do docker) e não devia — a garantia falhou e levou consigo o registro que funcionava"
+          : "o registro NÃO foi apagado (faltou 'compose rm -sf runner' no log do docker) e devia",
+      )
+    }
+    if (testCase.expectVolumeRm !== undefined && volumeRm !== testCase.expectVolumeRm) {
+      failures.push(
+        volumeRm
+          ? "o volume do registro foi REMOVIDO ('volume rm' no log do docker) e não devia"
+          : "o volume do registro NÃO foi removido (faltou 'volume rm' no log do docker) e devia",
+      )
+    }
+    if (testCase.expectOrder && !orderOk) {
+      failures.push(
+        removal && runnerUp
+          ? "o runner subiu ANTES de o registro ser apagado ('up -d runner' antes de 'rm -sf runner') — subiria com os labels ANTIGOS, e nada acusaria"
+          : "não deu para conferir a ordem 'rm -sf runner' → 'up -d runner' (faltou uma das duas chamadas)",
+      )
+    }
 
     return {
       id: testCase.id,
@@ -377,6 +520,10 @@ async function runCase(testCase, { cwd, bash, spawn }) {
       composeCalls: composeCalls.length,
       published,
       registryHits: registry.hits.length,
+      reRegister: testCase.expectRemoval !== undefined,
+      removal,
+      volumeRm,
+      orderOk,
       // Um resumo curto e legível do que o docker viu — é o que se cita no relatório.
       tail: failures.length === 0 ? "" : out.trim().split("\n").slice(-6).join("\n"),
     }
@@ -391,7 +538,7 @@ async function runCase(testCase, { cwd, bash, spawn }) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Roda os três casos contra o registry de teste.
+ * Roda todos os casos contra o registry de teste.
  *
  * @param {object} [options]
  * @param {string} [options.cwd]    raiz do repositório (default: esta)
@@ -432,7 +579,7 @@ export async function proveRunnerImageGate({
     status: broken.length === 0 ? "holds" : "violated",
     detail:
       broken.length === 0
-        ? "com a tag ausente o runner NÃO sobe (2 casos) e, com a tag presente, sobe (controle)"
+        ? "com a tag ausente o runner NÃO sobe (4 casos: subida e re-registro) e, com a tag presente, sobe (3 controles) — e no re-registro o registro antigo é apagado ANTES de subir, ou o runner não sobe"
         : `${broken.length} caso(s) da prova falharam: ${broken.map((c) => c.id).join(", ")}`,
     cases,
   }
@@ -470,10 +617,20 @@ export function renderProof(result, { emit = console.log } = {}) {
   for (const c of result.cases) {
     const mark = c.ok ? `${C.green}✅${C.nc}` : `${C.red}❌${C.nc}`
     const runner = c.runnerUp ? "runner SUBIU" : "runner não subiu"
+    const parts = [
+      `exit ${c.exit} (esperado ${c.expectedExit})`,
+      runner,
+      `${c.composeCalls} 'compose'`,
+    ]
+    // No re-registro o que importa não é só "subiu": é o que foi APAGADO antes.
+    // `volumeRm` é a EMISSÃO do comando — no modo `stuck` o docker diz que
+    // removeu e o volume continua lá (é justamente o caso que o script recusa).
+    if (c.reRegister) {
+      parts.push(c.removal ? "registro apagado (rm -sf runner)" : "registro INTACTO")
+      parts.push(c.volumeRm ? "'volume rm' emitido" : "'volume rm' não emitido")
+    }
     line(`  ${mark} ${c.title}`)
-    line(
-      `       exit ${c.exit} (esperado ${c.expectedExit}) · ${runner} · ${c.composeCalls} 'compose'`,
-    )
+    line(`       ${parts.join(" · ")}`)
     line(`       ${C.cyan}▸${C.nc} ${c.why}`)
     for (const f of c.failures) line(`       ${C.red}✗${C.nc} ${f}`)
     if (c.tail) for (const l of c.tail.split("\n")) line(`         ${l}`)
