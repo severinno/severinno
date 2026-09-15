@@ -550,6 +550,72 @@ jobs:
             echo "| Cirúrgica: caminho saudável segue PRONTA e a violação segue bloqueando | ${{ steps.mutation.conclusion == 'success' && '✅ só o fio nomeado morreu' || '❌ falha não isolada' }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # ── MUTATION TEST — as TRÊS REGRAS do contrato de gates CORE ──────────
+  # O doctor responde "o que o manifesto EXIGE é CORE e roda o comando
+  # certo?", e essa pergunta tem três regras — cada uma com a sua regressão
+  # silenciosa: (A) a FORJA DECLARANTE (um contrato só é conferido contra as
+  # forjas que DECLARAM aquele job; sem o recorte, um job que só o GitHub exige
+  # vira violação da Gitea — falso positivo, que ensina o operador a ignorar o
+  # veredito); (B) a RÉGUA da invariante (`expectedCommand: inv.matches`, o
+  # MESMO comando nas duas forjas; enfraquecida, o merge volta a ser liberado
+  # pelo lado laxo — a assimetria que este repositório já pagou uma vez);
+  # (C) o CONTRATO por invariante×job (a chave `${inv.id}|${jid}`; por job,
+  # as SEIS invariantes que compartilham o `guards` da Gitea saem da lista e
+  # passam a "cobertas" sem terem sido medidas).
+  #
+  # O script muta UMA regra por vez IN-PLACE (backup + trap de restauração) e
+  # exige, para cada uma, a suíte VERMELHA pela âncora da PRÓPRIA REGRA e as
+  # âncoras INTACTAS PASSING (a outra regra do mesmo fato e o veredito seguem
+  # medindo), com o total de testes do controle conferido — um arquivo que não
+  # roda inteiro é infra, não detecção. Roda vitest REAL (precisa de
+  # node_modules) — por isso NÃO vai na matriz node-pura do master.
+  mutation-gate-contracts:
+    name: Mutation Test (as três regras do contrato de gates CORE)
+    runs-on: self-hosted
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Run mutation test (as três regras do contrato de gates CORE)
+        id: mutation
+        run: |
+          bun run test:mutation-gate-contracts
+          echo "  ✅ Mutation test passou — cada regra do contrato de gates CORE tem testemunha na suíte"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo '## 🧬 Mutation Test — as três regras do contrato de gates CORE'
+            echo ''
+            echo '| Check | Result |'
+            echo '|---|---|'
+            echo "| Controle: doctor íntegro → suíte verde (20 âncoras: 1 teste cada) | ${{ steps.mutation.conclusion == 'success' && '✅ cada regra tem a sua testemunha' || '❌ controle falhou' }} |"
+            echo "| A. a FORJA DECLARANTE (recorte do job exigido por uma forja só) → vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| B. a RÉGUA da invariante (qualquer comando satisfaz) → vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| C. o CONTRATO por invariante×job (a chave volta a ser o job) → vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| Cirúrgica: a outra regra e o veredito seguem medindo | ${{ steps.mutation.conclusion == 'success' && '✅ só a regra nomeada morreu' || '❌ falha não isolada' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # ── MUTATION TEST — as TRÊS metades da comparação do perfil `--ci` ────
   # O job de PR das DUAS forjas roda o `check-doctor-ci.mjs`, e a pergunta
   # dele é UMA: o VALOR das repository variables continua o que o repositório

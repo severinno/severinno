@@ -131,6 +131,7 @@
     "test:mutation-doctor-mirrors": "bash scripts/test-mutation-doctor-mirrors.sh",
     "test:mutation-doctor-facts": "bash scripts/test-mutation-doctor-facts.sh",
     "test:mutation-doctor-ci": "bash scripts/test-mutation-doctor-ci.sh",
+    "test:mutation-gate-contracts": "bash scripts/test-mutation-gate-contracts.sh",
     "test:mutation-env-mirror": "bash scripts/test-mutation-env-mirror.sh",
     "test:mutation-bun-literal": "bash scripts/test-mutation-bun-literal.sh",
     "test:mutation-bun-removal": "bash scripts/test-mutation-bun-removal.sh",
