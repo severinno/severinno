@@ -88,7 +88,7 @@ export function parseWorkflowJobs(content) {
     const jobId = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line)
     if (jobId) {
       current = jobId[1]
-      jobs.set(current, { name: null, if: null })
+      jobs.set(current, { name: null, if: null, uses: null })
       continue
     }
 
@@ -102,7 +102,17 @@ export function parseWorkflowJobs(content) {
 
     // `if:` do JOB (4 espaços). O `if:` de um step vive em 8 — ignorado.
     const condition = /^ {4}if:\s*(.+)$/.exec(line)
-    if (condition) jobs.get(current).if = scalar(condition[1])
+    if (condition) {
+      jobs.get(current).if = scalar(condition[1])
+      continue
+    }
+
+    // `uses:` — job que chama um reusable workflow.
+    // Quando um job usa `uses:`, os checks que aparecem são dos jobs
+    // DENTRO do reusable workflow, não deste job. O validator precisa
+    // seguir a referência para resolver os nomes reais.
+    const uses = /^ {4}uses:\s*(.+)$/.exec(line)
+    if (uses) jobs.get(current).uses = scalar(uses[1])
   }
 
   return jobs
@@ -171,6 +181,38 @@ export function validateManifest(manifest, io) {
         )
         continue
       }
+
+      // Job com `uses:` (reusable workflow): valida os jobs DENTRO do
+      // reusable workflow, não o job pai (que não produz check próprio).
+      if (job.uses) {
+        const reusablePath = job.uses.replace(/^\.\//, "")
+        const reusableContent = io.readFile(reusablePath)
+        if (reusableContent === null) {
+          fail(forge, `reusable workflow "${reusablePath}" (job "${jobId}") não existe`)
+          continue
+        }
+        const reusableJobs = parseWorkflowJobs(reusableContent)
+        for (const [rJobId, rJob] of reusableJobs) {
+          if (rJob.if) {
+            fail(
+              forge,
+              `job "${rJobId}" em ${reusablePath} é condicional (\`if: ${rJob.if}\`) — ` +
+                `um check obrigatório que pode pular não protege nada`,
+            )
+          }
+          const context = contextFor(rJobId, rJob)
+          if (seenContexts.has(context)) {
+            fail(
+              forge,
+              `contexto duplicado "${context}" (jobs "${seenContexts.get(context)}" e "${jobId}/${rJobId}")`,
+            )
+          } else {
+            seenContexts.set(context, `${jobId}/${rJobId}`)
+          }
+        }
+        continue
+      }
+
       if (job.if) {
         fail(
           forge,
@@ -200,15 +242,42 @@ export function resolveManifestContexts(manifest, io) {
     const content = io.readFile(config.workflow)
     if (content === null) continue
     const workflowJobs = parseWorkflowJobs(content)
+    const contexts = []
+
+    for (const jobId of config.jobs ?? []) {
+      const job = workflowJobs.get(jobId)
+      if (!job) continue
+
+      // Job com `uses:` (reusable workflow): os checks que aparecem na
+      // forja são dos jobs DENTRO do reusable workflow, não deste job.
+      // Seguimos a referência e resolvemos os nomes reais.
+      if (job.uses) {
+        const reusablePath = job.uses.replace(/^\.\//, "")
+        const reusableContent = io.readFile(reusablePath)
+        if (reusableContent) {
+          const reusableJobs = parseWorkflowJobs(reusableContent)
+          for (const [rJobId, rJob] of reusableJobs) {
+            // Pula jobs condicionais do reusable workflow
+            if (rJob.if) continue
+            contexts.push({
+              jobId: `${jobId}/${rJobId}`,
+              context: contextFor(rJobId, rJob),
+            })
+          }
+        } else {
+          // Reusable workflow não encontrado — mantém o job pai como fallback
+          contexts.push({ jobId, context: contextFor(jobId, job) })
+        }
+        continue
+      }
+
+      contexts.push({ jobId, context: contextFor(jobId, job) })
+    }
+
     resolved[forge] = {
       workflow: config.workflow,
       branches: manifest.branches ?? [],
-      contexts: (config.jobs ?? [])
-        .map((jobId) => {
-          const job = workflowJobs.get(jobId)
-          return job ? { jobId, context: contextFor(jobId, job) } : null
-        })
-        .filter(Boolean),
+      contexts,
     }
   }
   return resolved

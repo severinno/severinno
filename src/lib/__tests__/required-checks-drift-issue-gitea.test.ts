@@ -292,7 +292,9 @@ describe("issue de drift do Gitea (CLI real contra Gitea dublê)", () => {
       forges: {
         gitea: {
           workflow: ".gitea/workflows/ci.yml",
-          desired: [],
+          // `desired` REAL (e não vazio): é o lado do manifesto da prova — sem
+          // ele o comentário de fechamento não teria o que comparar.
+          desired: ["Repo Guards", "PII Allowlist Guard"],
           branches: [
             {
               branch: "main",
@@ -415,10 +417,22 @@ describe("issue de drift do Gitea (CLI real contra Gitea dublê)", () => {
     expect(proof).toContain("Resolvido")
     expect(proof).toContain("gitea")
     expect(proof).toContain("em sincronia")
+    // A prova é uma COMPARAÇÃO: nomeia o lado do manifesto e a diferença (nula).
+    expect(proof).toContain("exigidos pelo manifesto: `Repo Guards`, `PII Allowlist Guard`")
+    expect(proof).toContain("faltando: nenhum · a mais: nenhum")
 
     const patch = gitea.requests.find((r) => r.method === "PATCH")
     expect(patch?.path).toBe(`/api/v1/repos/${REPO}/issues/${opened}`)
     expect((patch?.body as { state?: string })?.state).toBe("closed")
+
+    // A ORDEM é parte do contrato: comentar ANTES de fechar. Fechar primeiro e
+    // falhar no comentário deixaria a issue fechada SEM dizer por quê.
+    const commentAt = gitea.requests.findIndex(
+      (r) => r.method === "POST" && r.path.endsWith(`/issues/${opened}/comments`),
+    )
+    const closeAt = gitea.requests.findIndex((r) => r.method === "PATCH")
+    expect(commentAt).toBeGreaterThanOrEqual(0)
+    expect(closeAt).toBeGreaterThan(commentAt)
   })
 
   it("a run seguinte não acha nada a fechar (idempotente, sem ruído semanal)", async () => {
@@ -590,6 +604,57 @@ describe("driftResolutionComment — o desfecho carrega a prova, não só 'resol
 
   it("avisa que o drift que voltar abre issue nova (o dedup é entre as ABERTAS)", () => {
     expect(driftResolutionComment(synced)).toContain("abre uma issue nova")
+  })
+
+  it("a prova é uma COMPARAÇÃO: nomeia os dois lados (manifesto × diferença medida)", () => {
+    const comment = driftResolutionComment({
+      forges: {
+        github: {
+          workflow: ".github/workflows/ci.yml",
+          desired: ["Repo Guards", "PII Allowlist Guard"],
+          branches: [{ branch: "main", inSync: true, missing: [], extra: [] }],
+        },
+      },
+    })
+    expect(comment).toContain("exigidos pelo manifesto: `Repo Guards`, `PII Allowlist Guard`")
+    expect(comment).toContain("faltando: nenhum · a mais: nenhum")
+  })
+
+  it("relatório que não traz o comparado DIZ isso — 'nenhum' não é omissão", () => {
+    // A diferença entre "a comparação não achou nada" e "não foi informada" é o
+    // que impede a prova de afirmar mais do que sabe.
+    const comment = driftResolutionComment({
+      forges: {
+        github: {
+          workflow: ".github/workflows/ci.yml",
+          branches: [{ branch: "main", inSync: true }],
+        },
+      },
+    })
+    expect(comment).toContain("exigidos pelo manifesto: não informado no relatório")
+    expect(comment).toContain("faltando: não informado no relatório")
+  })
+
+  it("um relatório que se diga 'em sincronia' com itens faltando é DESMENTIDO pela prova", () => {
+    // A diferença sai dos DADOS, nunca do veredito `inSync`: senão a própria
+    // linha que declara resolvido lavaria o drift.
+    const comment = driftResolutionComment({
+      forges: {
+        gitea: {
+          workflow: ".gitea/workflows/ci.yml",
+          desired: ["Repo Guards", "PII Allowlist Guard"],
+          branches: [
+            {
+              branch: "main",
+              inSync: true,
+              missing: ["PII Allowlist Guard"],
+              extra: ["Legacy Check"],
+            },
+          ],
+        },
+      },
+    })
+    expect(comment).toContain("faltando: `PII Allowlist Guard` · a mais: `Legacy Check`")
   })
 })
 
