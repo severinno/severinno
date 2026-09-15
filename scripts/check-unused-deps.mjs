@@ -9,10 +9,14 @@
 //   node scripts/check-unused-deps.mjs --json             # output JSON estruturado
 //   node scripts/check-unused-deps.mjs --staged           # só as deps NOVAS do diff --cached (pre-commit)
 //   node scripts/check-unused-deps.mjs --staged --root X  # staged num repo git do fixture
+//   node scripts/check-unused-deps.mjs --review           # decisão da ALLOWLIST SEM REVISÃO vira violação (job semanal)
 //
 // Exit codes:
-//   0 — todas as deps têm referência OU são allowlist (pass)
-//   1 — pelo menos uma dep órfã (fail — a mensagem lista cada uma)
+//   0 — todas as deps têm referência OU são allowlist, e (no scan completo) o
+//       registro/da janela da ALLOWLIST está em ordem
+//   1 — pelo menos uma dep órfã (fail — a mensagem lista cada uma); ou, no scan
+//       completo, entrada da ALLOWLIST sem `addedAt` válido (nos dois modos) ou
+//       SEM REVISÃO com `--review`
 //   2 — infra: package.json ausente/ilegível, root inválido, git indisponível (fail-closed)
 //
 // MODO --staged (pre-commit): verifica APENAS as deps ADICIONADAS ao
@@ -69,7 +73,25 @@
 //                     pacote npm; o runtime é @prisma/client, que É importado)
 //
 // (allowlist final: @types/*, bun-types, @vitest/coverage-v8, sharp, husky,
-// lint-staged, prisma — documentadas com o PORQUÊ acima.)
+// lint-staged, prisma, vite — documentadas com o PORQUÊ acima.)
+//
+// A DATA da decisão e a REVISÃO vencida (--review): cada entrada da ALLOWLIST
+// registra `addedAt` (ISO `YYYY-MM-DD`, o dia em que a isenção de uso implícito
+// foi concedida) — "isento" não tem prazo por natureza, então a lista inteira
+// envelhece. É o MESMO defeito (e a MESMA regra, do módulo compartilhado
+// `allowlist-review.mjs`) das decisões de escopo e de terceiros do
+// `check-registry-source`: passada a janela `UNUSED_DEPS_REVIEW_DAYS` (180
+// dias), a entrada está SEM REVISÃO. No scan completo o guard AVISA
+// (`::warning::`, porque uma data não pode bloquear o pre-commit/PR de todo
+// mundo) e o modo `--review` a escala a VIOLAÇÃO (exit 1) — é assim que o job
+// semanal `registry-allowlist-review` fecha o buraco do "alerta mudo". Sem o
+// registro da data (ausente/malformada/no futuro) a entrada é violação nos DOIS
+// modos: uma isenção sem data não tem como envelhecer, e "esqueci de registrar"
+// viraria o jeito de nunca precisar revisar.
+//
+// O modo `--staged` (pre-commit) NÃO roda a revisão: ele responde só "esta dep
+// NOVA é órfã?" e o custo do pre-commit é proporcional ao diff. O registro da
+// data e a janela são do scan completo (pr-check/CI) e do job semanal.
 //
 // O guard tem --update? NÃO — diferente dos guards de baseline (secrets,
 // jsdom, bun-audit), aqui a política é ZERO órfãs: adicionou dep, use-a ou
@@ -94,6 +116,13 @@ import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join, relative } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
+import {
+  DEFAULT_REVIEW_DAYS,
+  agedAddedAtViolation,
+  invalidAddedAtViolation,
+  reviewAddedAtEntries,
+} from "./allowlist-review.mjs"
+
 /** O próprio arquivo do guard — auto-excluído do scan (documenta órfãs no header). */
 const SELF = fileURLToPath(import.meta.url)
 
@@ -107,24 +136,52 @@ const SELF = fileURLToPath(import.meta.url)
  * Prefixos: "prefix:" casa o início do nome (ex.: "@types/" cobre todos).
  */
 export const ALLOWLIST = [
-  { match: "@types/", type: "prefix", why: "tipos TypeScript implícitos (tsconfig types)" },
-  { match: "bun-types", type: "exact", why: "tipos do runtime Bun via tsconfig (não importado)" },
+  {
+    match: "@types/",
+    type: "prefix",
+    addedAt: "2026-09-13",
+    why: "tipos TypeScript implícitos (tsconfig types)",
+  },
+  {
+    match: "bun-types",
+    type: "exact",
+    addedAt: "2026-09-13",
+    why: "tipos do runtime Bun via tsconfig (não importado)",
+  },
   {
     match: "@vitest/coverage-v8",
     type: "exact",
+    addedAt: "2026-09-13",
     why: 'provider de coverage do vitest (config "v8" — nome nunca no código)',
   },
   {
     match: "sharp",
     type: "exact",
+    addedAt: "2026-09-13",
     why: "uso implícito do Next.js image optimization (runtime, sem import)",
   },
-  { match: "husky", type: "exact", why: "CLI de hooks via package.json prepare + .husky/*" },
-  { match: "lint-staged", type: "exact", why: "CLI via .husky/pre-commit bunx lint-staged" },
-  { match: "prisma", type: "exact", why: "CLI via scripts (generate/migrate) + prisma.config.ts" },
+  {
+    match: "husky",
+    type: "exact",
+    addedAt: "2026-09-13",
+    why: "CLI de hooks via package.json prepare + .husky/*",
+  },
+  {
+    match: "lint-staged",
+    type: "exact",
+    addedAt: "2026-09-13",
+    why: "CLI via .husky/pre-commit bunx lint-staged",
+  },
+  {
+    match: "prisma",
+    type: "exact",
+    addedAt: "2026-09-13",
+    why: "CLI via scripts (generate/migrate) + prisma.config.ts",
+  },
   {
     match: "vite",
     type: "exact",
+    addedAt: "2026-09-13",
     why: "devDependency used internally by vitest (never imported directly)",
   },
 ]
@@ -276,6 +333,69 @@ export function isAllowlisted(dep) {
     if (a.type === "exact" && dep === a.match) return { allowed: true, why: a.why }
   }
   return { allowed: false }
+}
+
+/**
+ * Janela de REVISAO de uma entrada da ALLOWLIST, em dias. Mesmo numero (e mesma
+ * regra, do mesmo modulo) das outras duas allowlists do repositorio: passado
+ * esse tempo a isencao precisa ser REAFIRMADA (atualizando `addedAt`) ou
+ * REMOVIDA. O nome e proprio porque a pergunta e propria: aqui e "esta dep
+ * continua tendo uso IMPLICITO (nenhum import em codigo)?" — se ela passou a
+ * ser importada, a isencao nao e mais necessaria; se virou orfa de verdade, o
+ * lugar dela nao e a allowlist.
+ */
+export const UNUSED_DEPS_REVIEW_DAYS = DEFAULT_REVIEW_DAYS
+
+/**
+ * O veredito de DATA da ALLOWLIST: o que esta SEM REGISTRO (data
+ * ausente/malformada/no futuro — fail-closed, violacao nos dois modos) e o que
+ * esta SEM REVISAO (passou a janela).
+ *
+ * `now`/`reviewDays` sao injetaveis porque uma prova de envelhecimento nao pode
+ * depender do relogio da maquina que roda a suite (nem do dia em que ela roda).
+ *
+ * @param {{allowlist?: {match: string, why: string, addedAt?: string}[], now?: number, reviewDays?: number}} [options]
+ * @returns {{invalid: {id: string, why: string}[], aged: {id: string, addedAt: string, days: number, limit: number}[]}}
+ */
+export function sweepAllowlist({
+  allowlist = ALLOWLIST,
+  now = Date.now(),
+  reviewDays = UNUSED_DEPS_REVIEW_DAYS,
+} = {}) {
+  return reviewAddedAtEntries(allowlist, { idOf: (e) => e.match, now, reviewDays })
+}
+
+/**
+ * Converte o sweep da ALLOWLIST em violacoes. `failAged` e o modo `--review`
+ * (o canal do job semanal): o run normal nao bloqueia por uma data vencida —
+ * ele AVISA —, mas o registro ausente/invalido e violacao nos DOIS modos,
+ * porque uma isencao sem data nao tem como envelhecer.
+ *
+ * @param {{invalid: {id: string, why: string}[], aged: {id: string, addedAt: string, days: number, limit: number}[]}} sweep
+ * @param {{failAged?: boolean}} [options]
+ * @returns {string[]}
+ */
+export function allowlistReviewViolations(sweep, { failAged = false } = {}) {
+  const violations = []
+  for (const { id, why } of sweep.invalid) {
+    violations.push(invalidAddedAtViolation({ label: id, listName: "ALLOWLIST", why }))
+  }
+  if (failAged) {
+    for (const { id, addedAt, days, limit } of sweep.aged) {
+      violations.push(
+        agedAddedAtViolation({
+          label: id,
+          listName: "ALLOWLIST",
+          addedAt,
+          days,
+          limit,
+          remedy:
+            "reafirme a decisao (confirme que a dep continua de uso IMPLICITO — sem import em codigo — e atualize o `addedAt`) ou remova a entrada",
+        }),
+      )
+    }
+  }
+  return violations
 }
 
 /**
@@ -519,6 +639,12 @@ function main() {
   const args = process.argv.slice(2)
   const json = args.includes("--json")
   const staged = args.includes("--staged")
+  // `--review`: a decisao da ALLOWLIST SEM REVISAO (passada a janela de
+  // UNUSED_DEPS_REVIEW_DAYS) vira VIOLACAO — o exit 1 e o CANAL do job semanal
+  // `registry-allowlist-review`, porque um aviso dentro de um run verde nao e
+  // lido por ninguem (`check:periodic-alerts`). Fora do modo estrito ela so
+  // AVISA: uma data nao pode bloquear o pre-commit e o PR de todo mundo.
+  const reviewMode = args.includes("--review")
   const rootIdx = args.indexOf("--root")
   if (rootIdx !== -1 && args[rootIdx + 1] === undefined) {
     console.error("check-unused-deps: --root requer um path")
@@ -547,6 +673,24 @@ function main() {
 
   const { orphans, scanned, total } = result
 
+  // REGISTRO da decisao e REVISAO da ALLOWLIST (mesma regra das decisoes de
+  // escopo e de terceiros do check-registry-source, do modulo compartilhado
+  // `allowlist-review.mjs`): a lista inteira envelhece. Fora do `--review` a
+  // decisao vencida so AVISA — ela nao pode bloquear o pre-commit/PR de todo
+  // mundo por uma data; o registro ausente/invalido e violacao nos dois modos.
+  const review = sweepAllowlist()
+  if (!reviewMode) {
+    for (const a of review.aged) {
+      console.error(
+        `::warning:: check-unused-deps: ${a.id} esta na ALLOWLIST (decisao tomada em ${a.addedAt}) e esta SEM REVISAO ha ${a.days} dia(s) (janela de ${a.limit}).` +
+          " Confirme que a dep continua de uso IMPLICITO (nenhum import em codigo) e atualize o `addedAt`; se ela passou a ser importada ou virou orfa, remova a entrada." +
+          " Uma isencao que ninguem revisa vira permanente por esquecimento.",
+      )
+    }
+  }
+  const reviewViolations = allowlistReviewViolations(review, { failAged: reviewMode })
+  const failed = orphans.length > 0 || reviewViolations.length > 0
+
   if (json) {
     console.log(
       JSON.stringify(
@@ -556,32 +700,48 @@ function main() {
           scanned,
           orphanCount: orphans.length,
           orphans: orphans.map((o) => o.dep),
+          allowlist: {
+            invalid: review.invalid.map((e) => e.id),
+            aged: review.aged,
+            reviewDays: UNUSED_DEPS_REVIEW_DAYS,
+          },
         },
         null,
         2,
       ),
     )
-    process.exit(orphans.length > 0 ? 1 : 0)
+    process.exit(failed ? 1 : 0)
   }
 
-  if (orphans.length === 0) {
+  if (!failed) {
     console.log(
       `✅ check-unused-deps: ${total} deps — todas com referência no código (${scanned} arquivos escaneados).`,
     )
     process.exit(0)
   }
 
-  console.error(
-    `🔍 check-unused-deps: ${orphans.length} dep(s) de package.json SEM nenhuma referência no código:\n`,
-  )
-  for (const o of orphans) {
-    console.error(`   • ${o.dep}`)
+  if (orphans.length > 0) {
+    console.error(
+      `🔍 check-unused-deps: ${orphans.length} dep(s) de package.json SEM nenhuma referência no código:\n`,
+    )
+    for (const o of orphans) {
+      console.error(`   • ${o.dep}`)
+    }
+    console.error(
+      `\n   Use a dep em código (import/require/CLI) ou REMOVA-A do package.json.\n` +
+        `   Deps de uso implícito vão na ALLOWLIST (header do script) — ex.: sharp\n` +
+        `   (Next image optimization), @types/* (tipos), husky/lint-staged (CLIs).\n`,
+    )
   }
-  console.error(
-    `\n   Use a dep em código (import/require/CLI) ou REMOVA-A do package.json.\n` +
-      `   Deps de uso implícito vão na ALLOWLIST (header do script) — ex.: sharp\n` +
-      `   (Next image optimization), @types/* (tipos), husky/lint-staged (CLIs).\n`,
-  )
+  if (reviewViolations.length > 0) {
+    console.error(
+      `🔍 check-unused-deps: ${reviewViolations.length} entrada(s) da ALLOWLIST sem o registro da data ou SEM REVISÃO:\n`,
+    )
+    for (const v of reviewViolations) {
+      console.error(`   • ${v}`)
+    }
+    console.error("")
+  }
   process.exit(1)
 }
 

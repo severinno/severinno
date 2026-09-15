@@ -24,6 +24,8 @@ import {
   GITEA_DOC,
   GITEA_ENV_MIRROR,
   GITEA_SETUP,
+  PROOF_SCRIPT,
+  checkDoctorCycleCut,
   checkGiteaBringUp,
   checkGiteaRunnerImage,
   checkReRegisterPath,
@@ -116,7 +118,9 @@ function bringUp(
 const OK_MIRROR = 'node "$MIRROR_SCRIPT" --host "$ENV_FILE" --template "$TEMPLATE_FILE"'
 const OK_ENSURE = 'node "$ENSURE_SCRIPT" --gitea-env "$ENV_FILE"'
 const DOCTOR_DEFAULT = 'DOCTOR_SCRIPT="${DOCTOR_SCRIPT:-$REPO_DIR/scripts/forge-doctor.mjs}"'
-const OK_DOCTOR = 'node "$DOCTOR_SCRIPT" --gitea-env "$ENV_FILE" --no-proof'
+// O doctor roda INTEIRO (sem `--no-proof`): quem corta o ciclo bring-up → doctor
+// → prova é a dublagem do doctor dentro da prova (ver `checkDoctorCycleCut`).
+const OK_DOCTOR = 'node "$DOCTOR_SCRIPT" --gitea-env "$ENV_FILE" "${DOCTOR_ARGS[@]}"'
 const OK_RUNNER = '"${DOCKER_COMPOSE[@]}" up -d runner'
 const OK_SETUP = 'echo "  bash $REPO_DIR/deploy/gitea-up.sh"'
 
@@ -179,18 +183,25 @@ describe("checkGiteaBringUp — a imagem é pré-requisito da subida", () => {
     expect(v[0]).toContain(FORGE_DOCTOR)
   })
 
-  it("doctor chamado SEM --no-proof → violação (a prova dele executa o bring-up: recursão)", () => {
+  it("doctor chamado COM --no-proof → violação (o veredito fica parcial POR CONSTRUÇÃO)", () => {
     const v = checkGiteaBringUp(
-      bringUp(OK_ENSURE, OK_RUNNER, undefined, 'node "$DOCTOR_SCRIPT" --gitea-env "$ENV_FILE"'),
+      bringUp(
+        OK_ENSURE,
+        OK_RUNNER,
+        undefined,
+        'node "$DOCTOR_SCRIPT" --gitea-env "$ENV_FILE" --no-proof',
+      ),
       OK_SETUP,
     )
     expect(v.length).toBe(1)
     expect(v[0]).toContain("--no-proof")
+    // A mensagem aponta o REMÉDIO (a dublagem), e não só o defeito.
+    expect(v[0]).toContain("dublagem do doctor na prova")
   })
 
   it('doctor sem --gitea-env "$ENV_FILE" → violação (ele leria outro env)', () => {
     const v = checkGiteaBringUp(
-      bringUp(OK_ENSURE, OK_RUNNER, undefined, 'node "$DOCTOR_SCRIPT" --no-proof'),
+      bringUp(OK_ENSURE, OK_RUNNER, undefined, 'node "$DOCTOR_SCRIPT"'),
       OK_SETUP,
     )
     expect(v.length).toBe(1)
@@ -417,5 +428,73 @@ describe("checkReRegisterPath — repositório real", () => {
   it("o runbook real manda o operador pelo modo --re-register", () => {
     const doc = readFileSync(join(ROOT, GITEA_DOC), "utf8")
     expect(doc).toContain("gitea-up.sh --re-register")
+  })
+})
+
+// ── o CORTE do ciclo bring-up → doctor → prova ────────────────────────────
+//
+// O bring-up roda o doctor INTEIRO (regra acima), e quem faz a cadeia
+// `bring-up → doctor → prova → bring-up` terminar é a DUBLAGEM que a prova faz
+// do doctor. Aqui o guard prende AS DUAS metades dela — o dublê construído e o
+// `DOCTOR_SCRIPT` passado ao filho — porque apagar qualquer uma não dá erro:
+// dá uma forca de processos.
+
+describe("checkDoctorCycleCut — a dublagem que corta o ciclo", () => {
+  const OK_PROOF = [
+    'const doctorStub = join(binDir, "forge-doctor-stub.mjs")',
+    "env: {",
+    "  ...process.env,",
+    "  DOCTOR_SCRIPT: doctorStub,",
+    "},",
+  ].join("\n")
+
+  it("dublê construído + DOCTOR_SCRIPT no env do filho → zero violações", () => {
+    expect(checkDoctorCycleCut(OK_PROOF)).toEqual([])
+  })
+
+  it("prova ausente → violação (sem ela não há o que dublar)", () => {
+    const v = checkDoctorCycleCut("")
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain(PROOF_SCRIPT)
+  })
+
+  it("prova que NÃO constrói o dublê → violação (o filho chamaria o doctor real)", () => {
+    // A outra metade está de pé (DOCTOR_SCRIPT é passado); o que falta é o DUBLÊ.
+    const v = checkDoctorCycleCut("  DOCTOR_SCRIPT: algumDoctor,")
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("forge-doctor-stub.mjs")
+  })
+
+  it("dublê construído mas NÃO passado ao filho → violação (o corte não existe)", () => {
+    // É o modo de falha mais traiçoeiro: o dublê existe, a prova parece certa, e
+    // o bring-up dublado cai no default (o doctor do repositório).
+    const v = checkDoctorCycleCut('const doctorStub = "forge-doctor-stub.mjs"')
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("DOCTOR_SCRIPT")
+  })
+
+  it("DOCTOR_SCRIPT vazio no env do filho → violação (não aponta dublê nenhum)", () => {
+    const v = checkDoctorCycleCut(
+      'const doctorStub = "forge-doctor-stub.mjs"\n  DOCTOR_SCRIPT: "",',
+    )
+    expect(v.some((x) => x.includes("DOCTOR_SCRIPT"))).toBe(true)
+  })
+})
+
+describe("checkDoctorCycleCut — repositório real", () => {
+  it("a prova do repo dubla o doctor que ela passa ao bring-up", () => {
+    const v = checkDoctorCycleCut(readFileSync(join(ROOT, PROOF_SCRIPT), "utf8"))
+    expect(v, v.join("\n")).toEqual([])
+  })
+
+  it("e o bring-up do repo roda o doctor INTEIRO (o --no-proof não voltou)", () => {
+    const bringUpText = readFileSync(join(ROOT, GITEA_BRING_UP), "utf8")
+    const doctorLine = bringUpText
+      .split("\n")
+      .find((l) => l.trimStart().startsWith("node") && l.includes("DOCTOR_SCRIPT"))
+    expect(doctorLine, "a linha de invocação do doctor não foi encontrada").toBeTruthy()
+    expect(doctorLine).not.toContain("--no-proof")
+    // E o guard concorda: o bring-up real do repo passa em zero violações.
+    expect(checkGiteaBringUp(bringUpText, undefined)).toEqual([])
   })
 })

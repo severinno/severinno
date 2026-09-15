@@ -43,6 +43,7 @@ import {
   discoverEnvMirrors,
   GITEA_ENV_DEPLOYED,
   GITEA_ENV_MIRROR,
+  MIRROR_VARIABLES,
 } from "../../../scripts/check-actrc-sync.mjs"
 
 const CWD = process.cwd()
@@ -187,5 +188,77 @@ describe("forge actrc-sync — alcança o env do HOST", () => {
     )
     expect(deployed.every((d) => GITEA_ENV_DEPLOYED.includes(d))).toBe(true)
     expect(expectedDeployed.length).toBe(deployed.length)
+  })
+})
+
+// ── 6. nenhuma variável do compose fica só com a checagem de existência ───
+//
+// A comparação de VALOR só acontece se o workflow ENTREGAR o valor. Uma
+// variável que o compose consome e que não chega ao guard por flag volta em
+// silêncio ao regime antigo ("só existe") — exatamente o buraco que esta
+// extensão fecha, agora no nível do call site. A lista sai do REGISTRO
+// (`MIRROR_VARIABLES`), não de uma lista escrita à mão: uma variável nova no
+// compose falha AQUI até chegar aos três consumidores (o guard do GitHub, o
+// publicador da issue e o doctor da forja).
+
+describe("nenhuma variável do compose fica só com a checagem de existência", () => {
+  const DOCTOR_WF = join(CWD, ".gitea", "workflows", "forge-doctor.yml")
+  const doctorContent = readFileSync(DOCTOR_WF, "utf8")
+
+  /** As comparadas que NÃO usam o atalho da versão (`--expected`). */
+  const viaExpectedVar = MIRROR_VARIABLES.filter((n) => n !== "BUN_VERSION")
+
+  /** `${{ vars.NAME }}` — o valor vem da VARIABLE, nunca de um literal no YAML. */
+  const varExpr = (name: string) => "${{ vars." + name + " }}"
+
+  /** O argv esperado: `--expected-var NAME=$NAME` (o shell do runner). */
+  const flag = (name: string) => '--expected-var "' + name + "=$" + name + '"'
+
+  /** As linhas executáveis que invocam `entry` (comentário não é comando). */
+  const commands = (text: string, entry: string) =>
+    text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.includes(entry) && !l.startsWith("#"))
+
+  it("o guard do GitHub passa o valor de TODAS as variáveis do registro", () => {
+    const [line] = commands(githubContent, "check-actrc-sync.mjs")
+    expect(line, "a chamada do guard sumiu do benchmark-weekly.yml").toBeTruthy()
+    expect(line).toContain('--expected "${{ vars.BUN_VERSION }}"')
+    for (const name of viaExpectedVar) {
+      expect(line).toContain('--expected-var "' + name + "=" + varExpr(name) + '"')
+    }
+  })
+
+  it("a issue do GitHub carrega as MESMAS variáveis (o comando de reprodução não mente)", () => {
+    const [line] = commands(githubContent, "actrc-sync-issue.mjs")
+    expect(line, "o publicador da issue sumiu do benchmark-weekly.yml").toBeTruthy()
+    for (const name of viaExpectedVar) {
+      expect(line).toContain('--expected-var "' + name + "=" + varExpr(name) + '"')
+    }
+  })
+
+  it("a forja passa o valor das MESMAS variáveis (duas forjas, uma régua)", () => {
+    for (const name of viaExpectedVar) {
+      expect(parsed.env[name]).toBe(varExpr(name))
+      expect(guardLine()).toContain(flag(name))
+    }
+  })
+
+  it("o doctor da forja compara o MESMO conjunto (a prontidão não fica na existência)", () => {
+    const doctor = yaml.load(doctorContent) as { env: Record<string, string> }
+    for (const name of viaExpectedVar) {
+      expect(doctor.env[name]).toBe(varExpr(name))
+      expect(doctorContent).toContain(flag(name))
+    }
+  })
+
+  it("a versão entra por --expected nos DOIS lados (uma forma só de escrever o valor)", () => {
+    // O guard REJEITA `--expected-var BUN_VERSION=...` (exit 2 — precedência
+    // silenciosa entre duas formas): se algum call site passasse a versão por
+    // ali, o job morreria com erro de uso em vez de comparar.
+    expect(MIRROR_VARIABLES).toContain("BUN_VERSION")
+    expect(doctorContent).not.toContain('--expected-var "BUN_VERSION=')
+    expect(githubContent).not.toContain('--expected-var "BUN_VERSION=')
   })
 })

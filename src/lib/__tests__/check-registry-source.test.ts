@@ -32,9 +32,11 @@ import {
   COMPOSE_SENTINELS,
   DEPLOY_DIR,
   OUT_OF_SCOPE_ALLOWLIST,
+  OUT_OF_SCOPE_REVIEW_DAYS,
   REGISTRY_VARIABLES,
   SECRET_ENV_VARIABLES,
   THIRD_PARTY_ALLOWLIST,
+  THIRD_PARTY_REVIEW_DAYS,
   analyzeDeclaredRender,
   analyzeSentinelRender,
   analyzeUnsetVersionRender,
@@ -66,10 +68,14 @@ import {
   isRegistryVariableForm,
   labelImageRefs,
   matchesScanTarget,
+  outOfScopeViolations,
+  parseAddedAt,
   parseComposeRender,
   parseEnvAssignments,
   stripInlineComment,
   sweepOutOfScope,
+  sweepThirdPartyAllowlist,
+  thirdPartyAllowlistViolations,
   unsetVariables,
   withoutGitIgnored,
 } from "../../../scripts/check-registry-source.mjs"
@@ -179,7 +185,7 @@ describe("checkRegistryLine", () => {
   })
 
   it("aprova imagem de terceiros explicitamente allowlistada", () => {
-    const line = `    image: ${THIRD_PARTY_ALLOWLIST[0]}:latest`
+    const line = `    image: ${THIRD_PARTY_ALLOWLIST[0].prefix}:latest`
     expect(checkRegistryLine("docker-compose.dev.yml", 1, line)).toBeNull()
   })
 
@@ -287,7 +293,7 @@ describe("checkLiteralImageTag (invariante 6 — deploy/ sem tag literal)", () =
     // declarada fora de escopo. A allowlist vence.
     const line =
       "      - MIRROR=${IMAGE_REGISTRY:-ghcr.io}/x/bun:latest,extra=" +
-      THIRD_PARTY_ALLOWLIST[0] +
+      THIRD_PARTY_ALLOWLIST[0].prefix +
       ":latest"
     expect(checkLiteralImageTag("deploy/docker-compose.gitea.yml", 1, line)).toBeNull()
   })
@@ -574,6 +580,14 @@ describe("matchesScanTarget — o escopo declarado", () => {
 describe("checkOutOfScopeTargets — nenhum alvo novo fica invisível", () => {
   const IMAGE = "FROM ghcr.io/severinno/ubuntu-bun:1.3.14\n"
 
+  /**
+   * "Hoje" FIXO da bateria de registro/revisão: a data da decisão e a janela
+   * têm de ser comparadas contra um relógio INJETADO — uma prova que dependesse
+   * do dia em que a suíte roda envelheceria sozinha 180 dias depois.
+   */
+  const NOW = Date.parse("2026-09-13T00:00:00Z")
+  const TODAY = "2026-09-13"
+
   it("arquivo novo num diretório não varrido → VIOLAÇÃO (o buraco que a invariante fecha)", () => {
     const root = treeOf({ "ci-tools/Dockerfile.build": IMAGE })
     const v = checkOutOfScopeTargets(root, { allowlist: [] })
@@ -583,11 +597,18 @@ describe("checkOutOfScopeTargets — nenhum alvo novo fica invisível", () => {
     expect(v[0]).toContain("/severinno/ubuntu-bun:1.3.14")
   })
 
-  it("com a decisão escrita, passa — e a decisão precisa ter MOTIVO no lugar", () => {
+  it("com a decisão escrita (motivo + data), passa", () => {
     const root = treeOf({ "ci-tools/Dockerfile.build": IMAGE })
     expect(
       checkOutOfScopeTargets(root, {
-        allowlist: [{ path: "ci-tools/Dockerfile.build", reason: "build da imagem de teste" }],
+        allowlist: [
+          {
+            path: "ci-tools/Dockerfile.build",
+            reason: "build da imagem de teste",
+            addedAt: TODAY,
+          },
+        ],
+        now: NOW,
       }),
     ).toEqual([])
   })
@@ -595,7 +616,8 @@ describe("checkOutOfScopeTargets — nenhum alvo novo fica invisível", () => {
   it("decisão VELHA (o arquivo existe e deixou de referenciar a imagem) → violação", () => {
     const root = treeOf({ "ci-tools/Dockerfile.build": "FROM alpine:3.20\n" })
     const v = checkOutOfScopeTargets(root, {
-      allowlist: [{ path: "ci-tools/Dockerfile.build", reason: "era um alvo" }],
+      allowlist: [{ path: "ci-tools/Dockerfile.build", reason: "era um alvo", addedAt: TODAY }],
+      now: NOW,
     })
     expect(v.length).toBe(1)
     expect(v[0]).toContain("decisao velha")
@@ -606,7 +628,10 @@ describe("checkOutOfScopeTargets — nenhum alvo novo fica invisível", () => {
     // sem acusar as decisões do repositório como velhas.
     const root = treeOf({ "ci-tools/Dockerfile.build": IMAGE })
     const v = checkOutOfScopeTargets(root, {
-      allowlist: [{ path: "scripts/check-registry-source.mjs", reason: "x".repeat(50) }],
+      allowlist: [
+        { path: "scripts/check-registry-source.mjs", reason: "x".repeat(50), addedAt: TODAY },
+      ],
+      now: NOW,
     })
     expect(v.length).toBe(1)
     expect(v[0]).toContain("ci-tools/Dockerfile.build")
@@ -657,6 +682,218 @@ describe("checkOutOfScopeTargets — nenhum alvo novo fica invisível", () => {
       expect(entry.reason.length, `motivo escrito para ${entry.path}`).toBeGreaterThan(40)
     }
     expect(checkOutOfScopeTargets(REPO_ROOT)).toEqual([])
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INVARIANTE 8 (registro + revisão) — `addedAt` e a decisão SEM REVISÃO
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// POR QUE ESTES TESTES EXISTEM: uma allowlist sem data de entrada não tem como
+// envelhecer — e "esqueci de registrar" seria o jeito de nunca precisar
+// revisar. Aqui se prova (a) que a data é obrigatória e validada, (b) que a
+// janela é MEDIDA contra um relógio injetado e (c) que o modo `--review` (o
+// canal do job semanal) escala a decisão vencida a violação, enquanto o run
+// normal NÃO bloqueia pre-commit nem PR.
+
+describe("registro da decisão (addedAt) e revisão vencida (--review)", () => {
+  const IMAGE = "FROM ghcr.io/severinno/ubuntu-bun:1.3.14\n"
+  const NOW = Date.parse("2026-09-13T00:00:00Z")
+  const entryFor = (addedAt?: string) => [
+    {
+      path: "ci-tools/Dockerfile.build",
+      reason: "build da imagem de teste (motivo longo o bastante para o contrato)",
+      ...(addedAt === undefined ? {} : { addedAt }),
+    },
+  ]
+  const root = () => treeOf({ "ci-tools/Dockerfile.build": IMAGE })
+
+  it("parseAddedAt — aceita data civil ISO e rejeita o que não é", () => {
+    expect(parseAddedAt("2026-09-13")).toBe(NOW)
+    expect(parseAddedAt("2026-02-30")).toBeNull() // transborda para 2026-03-02
+    expect(parseAddedAt("13/09/2026")).toBeNull()
+    expect(parseAddedAt("2026-9-13")).toBeNull()
+    expect(parseAddedAt(20260913)).toBeNull()
+    expect(parseAddedAt(undefined)).toBeNull()
+  })
+
+  it("entrada SEM addedAt → VIOLAÇÃO nos dois modos (a isenção não foge da revisão)", () => {
+    const v = checkOutOfScopeTargets(root(), { allowlist: entryFor(), now: NOW })
+    expect(v.length).toBe(1)
+    expect(v[0]).toContain("sem `addedAt`")
+    expect(v[0]).toContain("esqueci de registrar")
+    // Modo --review: registro ausente não é "vencido", é INVÁLIDO — a mesma lista.
+    expect(
+      checkOutOfScopeTargets(root(), { allowlist: entryFor(), now: NOW, failAged: true }),
+    ).toEqual(v)
+  })
+
+  it("addedAt malformada, transbordada ou NO FUTURO → violação (data que o autor não digitou)", () => {
+    for (const [value, marker] of [
+      ["13/09/2026", "invalido"],
+      ["2026-02-30", "invalido"],
+      ["2026-12-31", "no FUTURO"],
+    ] as const) {
+      const v = checkOutOfScopeTargets(root(), { allowlist: entryFor(value), now: NOW })
+      expect(v.length, `addedAt=${value}`).toBe(1)
+      expect(v[0]).toContain(marker)
+    }
+  })
+
+  it("dentro da janela → sem aged e sem violação (o limite é INCLUSIVO)", () => {
+    const noLimite = new Date(NOW - OUT_OF_SCOPE_REVIEW_DAYS * 86_400_000)
+      .toISOString()
+      .slice(0, 10)
+    const sweep = sweepOutOfScope(root(), { allowlist: entryFor(noLimite), now: NOW })
+    expect(sweep.aged).toEqual([])
+    expect(sweep.invalid).toEqual([])
+    expect(checkOutOfScopeTargets(root(), { allowlist: entryFor(noLimite), now: NOW })).toEqual([])
+  })
+
+  it("PASSADA a janela → aged[] (o modo normal NÃO bloqueia; o --review FALHA)", () => {
+    const velha = new Date(NOW - (OUT_OF_SCOPE_REVIEW_DAYS + 20) * 86_400_000)
+      .toISOString()
+      .slice(0, 10)
+    const sweep = sweepOutOfScope(root(), { allowlist: entryFor(velha), now: NOW })
+    expect(sweep.aged).toHaveLength(1)
+    expect(sweep.aged[0]).toMatchObject({
+      path: "ci-tools/Dockerfile.build",
+      addedAt: velha,
+      limit: OUT_OF_SCOPE_REVIEW_DAYS,
+    })
+    expect(sweep.aged[0].days).toBeGreaterThan(OUT_OF_SCOPE_REVIEW_DAYS)
+
+    // Modo normal: o aviso é do CLI (::warning::) — a lista de violações fica vazia.
+    expect(checkOutOfScopeTargets(root(), { allowlist: entryFor(velha), now: NOW })).toEqual([])
+    // Modo --review: a MESMA decisão vira violação (o canal do job semanal).
+    const v = checkOutOfScopeTargets(root(), {
+      allowlist: entryFor(velha),
+      now: NOW,
+      failAged: true,
+    })
+    expect(v).toHaveLength(1)
+    expect(v[0]).toContain("SEM REVISAO")
+    expect(v[0]).toContain(velha)
+    expect(v[0]).toContain("permanente por esquecimento")
+  })
+
+  it("outOfScopeViolations — failAged SÓ acrescenta as vencidas, sem duplicar as demais", () => {
+    const sweep = sweepOutOfScope(root(), { allowlist: entryFor("2020-01-01"), now: NOW })
+    expect(outOfScopeViolations(sweep, { failAged: false })).toEqual([])
+    expect(outOfScopeViolations(sweep, { failAged: true })).toHaveLength(sweep.aged.length)
+  })
+
+  it("no REPO REAL: toda entrada tem addedAt válido e está DENTRO da janela", () => {
+    const sweep = sweepOutOfScope(REPO_ROOT)
+    expect(sweep.invalid, "entrada sem data / data inválida / no futuro").toEqual([])
+    expect(sweep.aged, "entrada sem revisão dentro da janela").toEqual([])
+    for (const entry of OUT_OF_SCOPE_ALLOWLIST) {
+      expect(parseAddedAt(entry.addedAt), `addedAt inválido em ${entry.path}`).not.toBeNull()
+    }
+  })
+
+  it("o comando do job semanal (--review, offline) roda no repo real e sai 0 hoje", () => {
+    const r = spawnSync(
+      process.execPath,
+      [
+        join(process.cwd(), "scripts", "check-registry-source.mjs"),
+        "--review",
+        "--no-compose-render",
+        "--no-registry-probe",
+      ],
+      { cwd: process.cwd(), encoding: "utf8" },
+    )
+    expect(r.status).toBe(0)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// A OUTRA ALLOWLIST — imagens de TERCEIROS envelhecem pela MESMA regra
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// A decisão é outra ("esta imagem não é nossa e o consumo é consciente"), mas o
+// defeito é o mesmo: uma isenção concedida há muito tempo continua valendo
+// porque ninguém voltou nela. O que NÃO pode ser copiado é a REGRA — ela vem de
+// `allowlist-review.mjs`, o mesmo módulo das decisões de escopo.
+
+describe("a allowlist de imagens de TERCEIROS (registro + revisão)", () => {
+  const NOW = Date.parse("2026-09-13T00:00:00Z")
+  const listFor = (addedAt?: string) => [
+    {
+      prefix: "ghcr.io/algum-terceiro/coisa",
+      reason: "imagem comunitaria consumida de proposito (motivo longo o bastante)",
+      ...(addedAt === undefined ? {} : { addedAt }),
+    },
+  ]
+  const diasAtras = (d: number) => new Date(NOW - d * 86_400_000).toISOString().slice(0, 10)
+
+  it("a data é obrigatória e validada fail-closed (ausente / malformada / no futuro)", () => {
+    for (const [value, marker] of [
+      [undefined, "sem `addedAt`"],
+      ["13/09/2026", "invalido"],
+      ["2026-02-30", "invalido"],
+      ["2026-12-31", "no FUTURO"],
+    ] as const) {
+      const sweep = sweepThirdPartyAllowlist({ allowlist: listFor(value), now: NOW })
+      const v = thirdPartyAllowlistViolations(sweep, { failAged: false })
+      expect(v.length, `addedAt=${String(value)}`).toBe(1)
+      expect(v[0]).toContain("THIRD_PARTY_ALLOWLIST")
+      expect(v[0]).toContain(marker)
+      // Registro inválido é violação nos DOIS modos — o `--review` não muda isso.
+      expect(thirdPartyAllowlistViolations(sweep, { failAged: true })).toEqual(v)
+    }
+  })
+
+  it("dentro da janela → nada; PASSADA a janela → aged (aviso) e o --review FALHA", () => {
+    const naJanela = sweepThirdPartyAllowlist({
+      allowlist: listFor(diasAtras(THIRD_PARTY_REVIEW_DAYS)),
+      now: NOW,
+    })
+    expect(naJanela).toEqual({ invalid: [], aged: [] })
+
+    const velha = diasAtras(THIRD_PARTY_REVIEW_DAYS + 20)
+    const sweep = sweepThirdPartyAllowlist({ allowlist: listFor(velha), now: NOW })
+    expect(sweep.invalid).toEqual([])
+    expect(sweep.aged).toHaveLength(1)
+    expect(sweep.aged[0]).toMatchObject({
+      id: "ghcr.io/algum-terceiro/coisa",
+      addedAt: velha,
+      limit: THIRD_PARTY_REVIEW_DAYS,
+    })
+    expect(sweep.aged[0].days).toBeGreaterThan(THIRD_PARTY_REVIEW_DAYS)
+
+    // Run normal: o aviso é do CLI (`::warning::`), não uma violação.
+    expect(thirdPartyAllowlistViolations(sweep, { failAged: false })).toEqual([])
+    // Modo --review (o job semanal): a mesma decisão vira violação.
+    const v = thirdPartyAllowlistViolations(sweep, { failAged: true })
+    expect(v).toHaveLength(1)
+    expect(v[0]).toContain("SEM REVISAO")
+    expect(v[0]).toContain(velha)
+    expect(v[0]).toContain("permanente por esquecimento")
+  })
+
+  it("o fio gate→violação está LIGADO (findViolations consome o sweep de terceiros)", () => {
+    // Sem isto a função existiria e o guard não a chamaria — a isenção de
+    // terceiros envelheceria em silêncio, que é o defeito que ela fecha.
+    const velha = diasAtras(THIRD_PARTY_REVIEW_DAYS + 20)
+    const injetado = sweepThirdPartyAllowlist({ allowlist: listFor(velha), now: NOW })
+    const v = findViolations(REPO_ROOT, { thirdPartySweep: injetado, failAged: true })
+    expect(v.some((m) => m.includes("THIRD_PARTY_ALLOWLIST"))).toBe(true)
+    // Sem `failAged`, o vencido NÃO entra (é o run normal: avisa, não bloqueia).
+    const semFail = findViolations(REPO_ROOT, { thirdPartySweep: injetado, failAged: false })
+    expect(semFail.some((m) => m.includes(velha))).toBe(false)
+  })
+
+  it("no REPO REAL: toda entrada tem addedAt válido, motivo escrito e está DENTRO da janela", () => {
+    const sweep = sweepThirdPartyAllowlist()
+    expect(sweep.invalid, "entrada sem data / data inválida / no futuro").toEqual([])
+    expect(sweep.aged, "entrada sem revisão dentro da janela").toEqual([])
+    for (const entry of THIRD_PARTY_ALLOWLIST) {
+      expect(parseAddedAt(entry.addedAt), `addedAt inválido em ${entry.prefix}`).not.toBeNull()
+      // O motivo é a decisão escrita — uma lista sem ele é uma isenção anônima
+      // (a mesma exigência das decisões de escopo).
+      expect(entry.reason.length, `motivo curto em ${entry.prefix}`).toBeGreaterThan(40)
+    }
   })
 })
 

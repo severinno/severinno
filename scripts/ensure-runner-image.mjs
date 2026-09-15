@@ -56,6 +56,18 @@
 // exatamente o caso em que a mensagem precisa ser a nossa: o env que o compose
 // usa não está lá.
 //
+// PARA O DOCTOR (exportado, sem CLI própria): `createRegistryIdentityCache`
+// MEMOIZA a resposta de `probeImageIdentity` por (ref, versão esperada,
+// presença de credencial) e deduplica chamadas CONCORRENTES — o doctor faz a
+// MESMA pergunta em dois fatos (referências não versionadas e contrato da
+// imagem publicada) e sem o cache cada um ia ao registry por conta própria
+// (manifesto + config blob, e token em pacote privado). Só a RESPOSTA
+// definitiva (`proven`/`mismatch`/`no-label`/`missing`/`unauthorized`) entra no
+// cache: os estados TRANSITÓRIOS (`unreachable`/`error`) e as exceções não —
+// cachear um timeout curto apagaria a prova de quem pediu com timeout maior. O
+// token nunca entra na chave (nem o `timeoutMs`: ver o doc de
+// `createRegistryIdentityCache`).
+//
 // Pré-requisito no compose:
 //   deploy/gitea-up.sh chama este script ANTES de `docker compose up -d runner`
 //   (ver o guard checkGiteaBringUp — a ordem é invariante, não documentação).
@@ -491,6 +503,76 @@ export async function probeImageIdentity(
     }
   } catch (err) {
     return { ...empty, state: "unreachable", detail: err?.message ?? String(err) }
+  }
+}
+
+/**
+ * Os estados que significam "o registry não respondeu" — indisponibilidade
+ * PASSAGEIRA, não resposta. NUNCA entram no cache: cachear um `unreachable`
+ * produzido por um timeout curto serviria "não sei" a um consumidor que pediu
+ * com timeout maior e teria como PROVAR. Otimização não pode apagar prova.
+ */
+export const TRANSIENT_IDENTITY_STATES = ["unreachable", "error"]
+
+/**
+ * MEMOIZA a identidade da imagem servida — o MESMO probe, uma ida ao registry.
+ *
+ * POR QUE: a mesma pergunta ("que build a tag serve hoje?") é feita por mais de
+ * um fato do doctor — o das referências não versionadas (invariante 9 do
+ * `check-registry-source`) e o contrato da imagem publicada
+ * (`checkPublishedImageContract`). Cada um chama `probeImageIdentity` para o
+ * MESMO `ref`, e o probe custa MANIFESTO + CONFIG BLOB (e, em pacote privado, um
+ * token): sem cache são duas idas idênticas à rede.
+ *
+ * O que NÃO se perde: o cache guarda o RESULTADO já classificado
+ * (`proven`/`mismatch`/`no-label`/`missing`/`unauthorized`), não um booleano —
+ * "não deu para saber" continua sendo devolvido como INDETERMINADO para cada
+ * consumidor. O que NÃO é cacheado:
+ *   - uma EXCEÇÃO (a próxima chamada tenta de novo); e
+ *   - os estados TRANSITÓRIOS (`TRANSIENT_IDENTITY_STATES`), que são ausência
+ *     de resposta, não resposta.
+ * Transformar uma falha passageira em veredito permanente seria desonestidade
+ * de estado, não otimização.
+ *
+ * A CHAVE é (`ref`, versão esperada, presença de credencial) — nunca o TOKEN em
+ * si (a identidade da tag não depende de quem pergunta; guardar o segredo numa
+ * chave de `Map` seria vazamento por descuido). `timeoutMs` NÃO entra, e isso é
+ * o ponto: os dois fatos perguntam com timeouts diferentes (o das referências
+ * usa 20s, o do contrato o default do probe) — com ele na chave o cache nunca
+ * acertaria e seria DECORATIVO. Quem absorve a diferença é a regra dos estados
+ * transitórios acima: só resposta definitiva é compartilhada.
+ *
+ * `inflight` deduplica chamadas CONCORRENTES do mesmo probe (a bateria e os
+ * fatos podem pedir a identidade ao mesmo tempo): a segunda espera a primeira em
+ * vez de abrir uma terceira conexão.
+ *
+ * @param {{probe?: Function}} [deps]  o probe real ou um dublê (testes)
+ * @returns {(ref: string, options?: object) => Promise<{state: string, digest: string|null, version: string|null, detail: string}>}
+ */
+export function createRegistryIdentityCache({ probe = probeImageIdentity } = {}) {
+  const done = new Map()
+  const inflight = new Map()
+  const keyOf = (ref, options = {}) =>
+    JSON.stringify([ref, options.expectedVersion ?? null, options.credentials ? "auth" : "anon"])
+
+  return async function cachedProbeImageIdentity(ref, options = {}) {
+    const key = keyOf(ref, options)
+    if (done.has(key)) return done.get(key)
+    if (inflight.has(key)) return inflight.get(key)
+    const pending = Promise.resolve()
+      .then(() => probe(ref, options))
+      .then((res) => {
+        if (!TRANSIENT_IDENTITY_STATES.includes(res?.state)) done.set(key, res)
+        inflight.delete(key)
+        return res
+      })
+      .catch((err) => {
+        // Exceção NÃO entra no cache: a próxima chamada tenta de novo.
+        inflight.delete(key)
+        throw err
+      })
+    inflight.set(key, pending)
+    return pending
   }
 }
 

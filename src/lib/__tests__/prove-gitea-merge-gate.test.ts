@@ -39,7 +39,14 @@ import {
   uniqueContainerName,
 } from "../../../scripts/prove-gitea-merge-gate.mjs"
 
-const CONTEXTS = ["Lint", "Repo Guards", "TypeCheck", "Tests", "Build"]
+const CONTEXTS = [
+  "Lint",
+  "Repo Guards",
+  "Bring-up Gate Proof (pré-requisito 0, por execução)",
+  "TypeCheck",
+  "Tests",
+  "Build",
+]
 const REPO = `${OWNER}/${REPO_NAME}`
 
 // ── 1. O plano ───────────────────────────────────────────────────────────

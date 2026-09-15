@@ -99,6 +99,9 @@ SUBTESTS=(
   "e2e-cache-budget|E2E Cache — gate de budget 600s (10 min) + drift exit 2 (SKIP até medidor)|scripts/test-mutation-e2e-cache-budget.sh"
   "lint-guard|Lint Guard — prettier --check + eslint --max-warnings 0 devem FALHAR (arquivo mal formatado / warning)|scripts/test-mutation-lint-guard.sh"
   "mutation-count|Count — drift do nº de sub-tests (job name/summary/README) deve FALHAR|scripts/test-mutation-mutation-count.sh"
+  "forge-parity|Forge-parity — CORE_INVARIANTS sem jobIds deve FALHAR|scripts/test-mutation-forge-parity.sh"
+  "no-setup-bun|No-setup-bun — guard de ação externa deve FALHAR|scripts/test-mutation-no-setup-bun.sh"
+  "runner-base|Runner-base — digest pinado deve ser detectado|scripts/test-mutation-runner-base.sh"
   "no-leaked-imports|No-leaked-imports — import resolvendo no node_modules do PAI + dep inexistente devem FALHAR (install pendente passa)|scripts/test-mutation-no-leaked-imports.sh"
 )
 

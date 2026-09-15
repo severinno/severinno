@@ -394,10 +394,16 @@ export const FORGE_DOCTOR = "scripts/forge-doctor.mjs"
  *      de um env que não é o do repositório;
  *   1. a imagem do runner existe no registry (`ensure-runner-image.mjs`);
  *   2. a PRONTIDÃO está provada (`forge-doctor.mjs`), lendo o MESMO env
- *      (`--gitea-env`) e com `--no-proof` — a prova do bloqueio do próprio
- *      doctor EXECUTA o bring-up, então chamá-la daqui recursaria. O default de
- *      `DOCTOR_SCRIPT` precisa ser o do repositório, a checagem passa
- *      `--gitea-env "$ENV_FILE"`, e a ORDEM é contratual nos dois sentidos:
+ *      (`--gitea-env`) e com o doctor INTEIRO — sem `--no-proof`. A prova do
+ *      bloqueio EXECUTA o bring-up, então desligá-la parecia a única forma de
+ *      não recursar; ela NÃO é: a prova DUBLA o doctor que passa ao bring-up
+ *      (`DOCTOR_SCRIPT`), e essa dublagem é que faz
+ *      `bring-up → doctor → prova → bring-up` terminar em UM nível. O veredito
+ *      parcial POR CONSTRUÇÃO sai de cena junto com o `--no-proof`, e o guard
+ *      que prende a dublagem (o que de fato sustenta o corte) é
+ *      `checkDoctorCycleCut`. O default de `DOCTOR_SCRIPT` precisa ser o do
+ *      repositório, a checagem passa `--gitea-env "$ENV_FILE"`, e a ORDEM é
+ *      contratual nos dois sentidos:
  *      DEPOIS da garantia da imagem (o doctor trata a tag ausente como
  *      violação, que é a condição que o passo 1 conserta — antes dele, o
  *      remédio ficaria travado pelo estado que cura) e ANTES de qualquer `up`
@@ -499,9 +505,15 @@ export function checkGiteaBringUp(bringUpContent, setupContent) {
         `${GITEA_BRING_UP}: o doctor não recebe --gitea-env "$ENV_FILE" — ele leria outro arquivo, e o veredito mediria um estado que esta subida não usa.`,
       )
     }
-    if (!/--no-proof\b/.test(doctorInvocation)) {
+    // O doctor roda INTEIRO. O ciclo `bring-up → doctor → prova → bring-up` é
+    // cortado pela DUBLAGEM que a prova faz do doctor — medida em cada caso da
+    // prova (`expectDoctorStub`) e na cadeia completa, por execução, em
+    // `src/lib/__tests__/prove-runner-image-gate.test.ts`. `--no-proof` aqui não
+    // é proteção contra recursão: é o veredito parcial POR CONSTRUÇÃO, e a
+    // subida volta a acontecer sem que o portão de bloqueio tenha sido provado.
+    if (/--no-proof\b/.test(doctorInvocation)) {
       violations.push(
-        `${GITEA_BRING_UP}: o doctor é chamado SEM --no-proof — a prova do bloqueio dele EXECUTA o deploy/gitea-up.sh, então isso é recursão (bring-up → doctor → prova → bring-up).`,
+        `${GITEA_BRING_UP}: o doctor é chamado com --no-proof — o veredito fica parcial POR CONSTRUÇÃO (a subida acontece sem provar o bloqueio da imagem). Rode o doctor INTEIRO: quem corta o ciclo é a dublagem do doctor na prova (${PROOF_SCRIPT}), não desligar a prova aqui.`,
       )
     }
   }
@@ -530,6 +542,58 @@ export function checkGiteaBringUp(bringUpContent, setupContent) {
   if (setupContent !== undefined && !setupContent.includes("gitea-up.sh")) {
     violations.push(
       `${GITEA_SETUP}: não aponta para ${GITEA_BRING_UP} — o instalador precisa levar o usuário pelo caminho que GARANTE a imagem, não por um 'docker compose up -d runner' seco.`,
+    )
+  }
+  return violations
+}
+
+/** A prova do bloqueio — a que o doctor executa (seção 4) e que DUBLA o doctor. */
+export const PROOF_SCRIPT = "scripts/prove-runner-image-gate.mjs"
+
+/**
+ * A DUBLAGEM do doctor na prova do bloqueio está de pé?
+ *
+ * POR QUE ISTO É UM GUARD DE TEXTO (e não só a prova de execução): o corte do
+ * ciclo é UMA linha — `DOCTOR_SCRIPT` no env do filho que a prova monta — e,
+ * com o bring-up rodando o doctor INTEIRO (o contrato de hoje), apagá-la faz a
+ * cadeia
+ *
+ *     bring-up → doctor → prova → bring-up → doctor → prova → …
+ *
+ * não ter profundidade limite. Não é um erro que aparece num diff: é uma forca
+ * de processos, e o sintoma chega tarde demais. A prova de execução mede o corte
+ * a cada rodada; este guard existe para o caminho em que alguém apaga a linha
+ * sem rodar a prova.
+ *
+ * @param {string} proofContent  conteúdo de PROOF_SCRIPT ("" se ausente)
+ * @returns {string[]} violações (vazia = ok)
+ */
+export function checkDoctorCycleCut(proofContent) {
+  if (!proofContent) {
+    return [
+      `${PROOF_SCRIPT}: ausente — é a prova que o doctor executa; sem ela não há o que dublar, e é a dublagem que torna o ciclo finito.`,
+    ]
+  }
+  const violations = []
+  // As DUAS metades do corte: o dublê tem de ser construído pela prova E
+  // passado ao filho. Sem a primeira não há dublê; sem a segunda o bring-up
+  // dublado cai no default (o doctor do repositório) e o ciclo volta a crescer.
+  if (!/forge-doctor-stub\.mjs/.test(proofContent)) {
+    violations.push(
+      `${PROOF_SCRIPT}: não constrói o dublê do doctor ("forge-doctor-stub.mjs") — o bring-up que a prova executa chamaria o doctor REAL, que executa a própria prova, e a cadeia deixaria de ter profundidade limite.`,
+    )
+  }
+  if (!/^\s*DOCTOR_SCRIPT:\s*\S+/m.test(proofContent)) {
+    violations.push(
+      `${PROOF_SCRIPT}: o env do FILHO não define DOCTOR_SCRIPT — é essa linha que aponta o bring-up dublado para o dublê. Sem ela o default do bring-up é o doctor do repositório, e o ciclo bring-up → doctor → prova não tem corte.`,
+    )
+  }
+  // `DOCTOR_SCRIPT: ""` passaria a checagem acima sem apontar dublê NENHUM. Não
+  // é o modo catastrófico (o bring-up falharia no `[ -f ]`), mas uma linha que
+  // diz apontar e não aponta não pode passar por corte.
+  if (/^\s*DOCTOR_SCRIPT:\s*["'`]\s*["'`]/m.test(proofContent)) {
+    violations.push(
+      `${PROOF_SCRIPT}: DOCTOR_SCRIPT aponta para uma string VAZIA no env do filho — sem dublê o ciclo bring-up → doctor → prova não tem corte.`,
     )
   }
   return violations
@@ -1912,6 +1976,14 @@ function main() {
         existsSync(bringUpPath) ? readFileSync(bringUpPath, "utf8") : "",
         existsSync(setupPath) ? readFileSync(setupPath, "utf8") : undefined,
       ),
+    )
+    // ── Forja: o ciclo bring-up → doctor → prova tem CORTE? ──────────
+    // O bring-up roda o doctor inteiro (a regra acima); quem impede a cadeia de
+    // crescer é a dublagem que a prova faz do doctor. É o único modo de falha
+    // deste desenho sem sintoma antes de ser catastrófico.
+    const proofPath = join(cwd, PROOF_SCRIPT)
+    violations.push(
+      ...checkDoctorCycleCut(existsSync(proofPath) ? readFileSync(proofPath, "utf8") : ""),
     )
     // ── Forja: o RE-REGISTRO também é um caminho garantido? ──────────
     // Trocar a label é justamente quando a tag pode faltar; o runbook não

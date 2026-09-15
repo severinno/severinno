@@ -538,8 +538,14 @@ describe("deploy/gitea-up.sh — a prontidão (doctor) é pré-requisito da subi
       expect(calls).toHaveLength(1)
       // O MESMO arquivo que o compose vai ler — senão o veredito mediria outro estado.
       expect(calls[0]).toContain(`--gitea-env ${envFile}`)
-      // A prova do bloqueio do doctor EXECUTA este script: chamá-la daqui é recursão.
-      expect(calls[0]).toContain("--no-proof")
+      // O doctor roda INTEIRO: `--no-proof` NÃO entra. Quem impede a recursão é a
+      // DUBLAGEM que a prova do bloqueio faz do doctor — o bring-up que ela
+      // executa recebe `DOCTOR_SCRIPT` apontando para um dublê que não roda a
+      // prova. Desligar a prova aqui devolveria o veredito parcial POR
+      // CONSTRUÇÃO: a subida aconteceria sem que o portão de bloqueio tivesse
+      // sido provado (a cadeia inteira é provada em
+      // `prove-runner-image-gate.test.ts`).
+      expect(calls[0]).not.toContain("--no-proof")
     } finally {
       await reg.close()
     }

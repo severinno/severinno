@@ -51,10 +51,11 @@ const EXPECTED_JOB_IDS: Record<string, string[]> = {
     "secrets-guard",
     "seed-hooks-guard",
     "workflow-refs-guard",
+    "bring-up-proof",
     "sentinel-producer-guard",
     "no-setup-bun-guard",
     "bun-mirror-guard",
-    "bun-mirror-staged-guard",
+    "doctor-mirrors-guard",
     "mutation-jobs-staged-guard",
     "mutation-guards",
     "hooks-symmetry-guard",
@@ -80,7 +81,7 @@ const EXPECTED_JOB_IDS: Record<string, string[]> = {
     "check",
     "pii-allowlist-guard",
   ],
-  [GITEA_CI]: ["lint", "guards", "typecheck", "test", "build", "deploy"],
+  [GITEA_CI]: ["lint", "guards", "bring-up-proof", "typecheck", "test", "build", "deploy"],
 }
 
 /** Jobs que de fato declaram `if:` (nível de job) em cada workflow. */
@@ -95,14 +96,34 @@ const EXPECTED_CONTEXTS: Record<string, string[]> = {
     "UTF-8 Check",
     "Secrets Guard (no .env tracked)",
     "Workflow References Guard (no dangling refs)",
+    "Bring-up Gate Proof (pré-requisito 0, por execução)",
     "Actionlint (workflow syntax)",
     "Lint Guard (prettier + eslint zero)",
     "TypeCheck (tsc --noEmit)",
     "check",
     "Security Headers",
     "PII Allowlist Guard (user payload projection)",
+    // mutation-guards: job direto no pr-check.yml
+    "Mutation guards master (15 node-pure mutation tests)",
+    // seed-guards: jobs resolvidos do reusable workflow seed-guards.yml
+    "Seed E2E ${{ matrix.seed }} · ${{ matrix.variant }}",
+    "Mutation Test (seed dev E2E pega regressões?)",
+    "Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)",
+    "Mutation Test (espelhos do doctor — comparação de valor)",
+    "Mutation Test (os três fios do veredito do doctor)",
+    "Mutation Test (perfil --ci do doctor — as 3 metades da comparação)",
+    "Mutation Test (defesas do check-env-mirror)",
+    "Seed Prod E2E (dev-env override)",
+    "Migrate Category Rename E2E",
   ],
-  gitea: ["Lint", "Repo Guards", "TypeCheck", "Tests", "Build"],
+  gitea: [
+    "Lint",
+    "Repo Guards",
+    "Bring-up Gate Proof (pré-requisito 0, por execução)",
+    "TypeCheck",
+    "Tests",
+    "Build",
+  ],
 }
 
 function workflowContent(file: string): string {

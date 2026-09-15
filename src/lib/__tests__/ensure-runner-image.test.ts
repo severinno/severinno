@@ -14,7 +14,11 @@
 //      token → 200/403), 404 e queda de conexão — validado contra um registry
 //      FAKE real (node:http) e não só com fetch injetado;
 //   4. a CLI real devolve os exit codes que o deploy/gitea-up.sh usa como
-//      contrato (0/2/3/4/5).
+//      contrato (0/2/3/4/5);
+//   5. o cache da identidade do doctor deduplica a MESMA pergunta (os dois fatos
+//      perguntam com timeouts diferentes — se o timeout entrasse na chave, o
+//      cache seria decorativo) sem transformar indisponibilidade passageira em
+//      resposta permanente.
 //
 // Usage:
 //   bunx vitest run --config vitest.config.unit.ts src/lib/__tests__/ensure-runner-image.test.ts
@@ -33,6 +37,7 @@ import {
   EXIT,
   checkTagExists,
   choosePublishSource,
+  createRegistryIdentityCache,
   ensureRunnerImage,
   parseArgs,
   parseEnvFile,
@@ -708,5 +713,159 @@ describe("CLI real (scripts/ensure-runner-image.mjs)", () => {
     } finally {
       await reg.close()
     }
+  })
+})
+
+// ── o cache da identidade: uma PERGUNTA, uma ida ao registry ──────────────
+//
+// O doctor faz a MESMA pergunta ("que build a tag serve hoje?") em DOIS fatos
+// (a invariante 9 das referências não versionadas e o contrato da imagem
+// publicada). Sem o cache eram duas idas idênticas — manifesto + config blob, e
+// token em pacote privado. O cache é OTIMIZAÇÃO, então o que estes testes
+// precisam provar não é "ficou rápido": é que ele NÃO muda o ESTADO devolvido.
+
+describe("createRegistryIdentityCache — uma pergunta, uma ida; o estado não muda", () => {
+  const REF = "http://127.0.0.1:0/severinno/ubuntu-bun:1.3.14"
+
+  it("a MESMA pergunta → o probe roda UMA vez e o objeto é o MESMO", async () => {
+    let calls = 0
+    const probe = async () => {
+      calls += 1
+      return { state: "proven", digest: "sha256:abc", version: "1.3.14", detail: "ok" }
+    }
+    const cached = createRegistryIdentityCache({ probe })
+    const [a, b, c] = await Promise.all([
+      cached(REF, { expectedVersion: "1.3.14" }),
+      cached(REF, { expectedVersion: "1.3.14" }),
+      cached(REF, { expectedVersion: "1.3.14" }),
+    ])
+    expect(calls).toBe(1)
+    expect(a).toBe(b)
+    expect(b).toBe(c)
+
+    const d = await cached(REF, { expectedVersion: "1.3.14" })
+    expect(calls).toBe(1)
+    expect(d).toBe(a)
+  })
+
+  it("chamadas CONCORRENTES deduplicam (a 2ª espera a 1ª, não abre outra conexão)", async () => {
+    let calls = 0
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const probe = async () => {
+      calls += 1
+      await gate
+      return { state: "missing", digest: null, version: null, detail: "HTTP 404" }
+    }
+    const cached = createRegistryIdentityCache({ probe })
+    const first = cached(REF, { expectedVersion: "1.3.14" })
+    const second = cached(REF, { expectedVersion: "1.3.14" })
+    await Promise.resolve() // deixa o probe (agendado em microtask) começar
+    // Com a 1ª AINDA EM VOO, a 2ª não pode ter aberto uma chamada própria: é
+    // esse o ponto — a segunda espera a primeira em vez de uma conexão nova.
+    expect(calls).toBe(1)
+    release()
+    const [a, b] = await Promise.all([first, second])
+    expect(calls).toBe(1)
+    expect(a).toBe(b)
+  })
+
+  it("ERRO não é cacheado: a próxima chamada tenta de novo (falha transitória ≠ veredito)", async () => {
+    let calls = 0
+    const probe = async () => {
+      calls += 1
+      if (calls === 1) throw new Error("rede caiu")
+      return { state: "proven", digest: "sha256:ok", version: "1.3.14", detail: "ok" }
+    }
+    const cached = createRegistryIdentityCache({ probe })
+    await expect(cached(REF)).rejects.toThrow("rede caiu")
+    const res = await cached(REF)
+    expect(res.state).toBe("proven")
+    expect(calls).toBe(2)
+    // Agora sim: o SUCESSO entra no cache.
+    await cached(REF)
+    expect(calls).toBe(2)
+  })
+
+  it("estado TRANSITÓRIO não é cacheado: 'eu não sei' não pode virar resposta permanente", async () => {
+    // `unreachable`/`error` são AUSÊNCIA de resposta, não resposta. Cachear um
+    // `unreachable` nascido de um timeout curto serviria "não sei" a um
+    // consumidor que pediu com timeout maior e teria como PROVAR — a otimização
+    // apagaria prova. Por isso o estado volta a ser tentado.
+    let calls = 0
+    const probe = async () => {
+      calls += 1
+      return { state: "unreachable", digest: null, version: null, detail: "timeout" }
+    }
+    const cached = createRegistryIdentityCache({ probe })
+    expect((await cached(REF)).state).toBe("unreachable")
+    expect((await cached(REF)).state).toBe("unreachable")
+    expect(calls).toBe(2)
+  })
+
+  it("a RESPOSTA definitiva É cacheada (inclusive 'missing' e 'unauthorized')", async () => {
+    let calls = 0
+    const probe = async () => {
+      calls += 1
+      return { state: "missing", digest: null, version: null, detail: "HTTP 404" }
+    }
+    const cached = createRegistryIdentityCache({ probe })
+    const a = await cached(REF)
+    const b = await cached(REF)
+    expect(calls).toBe(1)
+    expect(a).toBe(b)
+    expect(b.state).toBe("missing")
+  })
+
+  it("`timeoutMs` NÃO entra na chave — é o que faz a otimização existir de fato", async () => {
+    // Os DOIS fatos do doctor perguntam com timeouts DIFERENTES (o das
+    // referências usa 20s; o do contrato deixa o default do probe). Com o
+    // timeout na chave o cache NUNCA acertaria e seria DECORATIVO — uma
+    // "otimização" que não otimiza nada e não tem sintoma nenhum.
+    let calls = 0
+    const probe = async () => {
+      calls += 1
+      return { state: "proven", digest: "sha256:x", version: "1.3.14", detail: "ok" }
+    }
+    const cached = createRegistryIdentityCache({ probe })
+    // Exatamente como os dois consumidores reais chamam.
+    await cached(REF, { expectedVersion: "1.3.14", credentials: null, timeoutMs: 20000 })
+    await cached(REF, { expectedVersion: "1.3.14", credentials: null })
+    expect(calls).toBe(1)
+  })
+
+  it("a CHAVE separa o que muda a resposta: versão esperada e presença de credencial", async () => {
+    const seen: string[] = []
+    const probe = async (
+      _ref: string,
+      opts: { expectedVersion?: string | null; credentials?: unknown },
+    ) => {
+      seen.push(`${opts.expectedVersion ?? "-"}|${opts.credentials ? "auth" : "anon"}`)
+      return { state: "proven", digest: `sha256:${seen.length}`, version: "1.0.0", detail: "ok" }
+    }
+    const cached = createRegistryIdentityCache({ probe })
+    await cached(REF, { expectedVersion: "1.3.14" })
+    await cached(REF, { expectedVersion: "1.3.15" })
+    await cached(REF, { expectedVersion: "1.3.14", credentials: { user: "u", token: "s3cr3t" } })
+    // Repetição da 1ª: cacheada, não acrescenta.
+    await cached(REF, { expectedVersion: "1.3.14" })
+    expect(seen).toEqual(["1.3.14|anon", "1.3.15|anon", "1.3.14|auth"])
+  })
+
+  it("o TOKEN nunca entra na CHAVE (o segredo não vira identidade consultável)", async () => {
+    // Trocar o token do MESMO usuário não muda a pergunta. Se ele entrasse na
+    // chave, cada credencial viraria uma ida nova ao registry — e um segredo
+    // ficaria guardado numa chave de Map.
+    let calls = 0
+    const probe = async () => {
+      calls += 1
+      return { state: "proven", digest: "sha256:x", version: "1.0.0", detail: "ok" }
+    }
+    const cached = createRegistryIdentityCache({ probe })
+    await cached(REF, { credentials: { user: "u", token: "token-A" } })
+    await cached(REF, { credentials: { user: "u", token: "token-B" } })
+    expect(calls).toBe(1)
   })
 })

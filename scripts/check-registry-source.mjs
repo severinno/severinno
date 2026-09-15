@@ -24,7 +24,9 @@
 //   1. Nenhum `ghcr.io` fora da forma de default da variavel (compose,
 //      workflows, composite actions, woodpecker, setup scripts).
 //   2. Imagens de TERCEIROS consumidas do GHCR vivem em
-//      THIRD_PARTY_ALLOWLIST (explicitamente, uma por uma).
+//      THIRD_PARTY_ALLOWLIST (explicitamente, uma por uma, com motivo e a DATA
+//      da decisao — a regra de envelhecimento e a MESMA da invariante 8, vinda
+//      do modulo compartilhado `allowlist-review.mjs`).
 //   3. O .actrc define `--var IMAGE_REGISTRY=...` (espelho local do act — o
 //      act nao le as variables do repositorio sem --var).
 //   4. Todo `image:` de compose cujo path e nosso referencia `${IMAGE_REGISTRY`.
@@ -77,12 +79,27 @@
 //   node scripts/check-registry-source.mjs --gitea-env <caminho> # o env do HOST a comparar com o template
 //   node scripts/check-registry-source.mjs --require-image       # as referencias nao versionadas sao OBRIGATORIAS
 //   node scripts/check-registry-source.mjs --no-registry-probe   # nao consulta o registry (offline)
+//   node scripts/check-registry-source.mjs --review              # decisoes (escopo e TERCEIROS) SEM REVISAO viram violacao (job semanal)
 //
 // --gitea-env: sem a flag o arquivo do host e DESCOBERTO (`deploy/.env.gitea`,
 // que so existe onde a stack roda — o VPS). Com a flag o operador diz onde ele
 // esta (ex.: `/opt/gitea/.env`), e um caminho INEXISTENTE falha (exit 2): quem
 // pediu aquele arquivo precisa saber que a comparacao NAO aconteceu, em vez de
 // ler "em sincronia" de uma comparacao que nao houve.
+//
+// --review: cada entrada das DUAS allowlists deste guard (OUT_OF_SCOPE_ALLOWLIST
+// e THIRD_PARTY_ALLOWLIST) carrega `addedAt` (a data da decisao) — as duas
+// isencoes envelhecem igual: uma e "este arquivo pode referenciar imagem nossa
+// fora do escopo", a outra e "esta imagem de terceiros pode ser consumida do
+// GHCR". Passada a janela (OUT_OF_SCOPE_REVIEW_DAYS / THIRD_PARTY_REVIEW_DAYS,
+// o mesmo numero do modulo compartilhado), a decisao esta SEM REVISAO: no run
+// normal o guard AVISA (`::warning::`, para nao bloquear o pre-commit/PR de todo
+// mundo por uma data) e com --review ela vira VIOLACAO (exit 1). O job semanal
+// usa o modo estrito porque um aviso dentro de um run verde e alerta mudo —
+// ninguem abre o log de um cron que passou. Sem o registro da data (`addedAt`
+// ausente/invalida/no futuro) a entrada e violacao nos DOIS modos: uma isencao
+// sem data nao tem como envelhecer, e "esqueci de registrar" seria o jeito de
+// nunca precisar revisar.
 //
 // --require-compose: por padrao, "nao consegui renderizar" e INDETERMINADO —
 // avisa e sai 0, para o gate nao ficar vermelho numa maquina sem docker (um gate
@@ -101,11 +118,13 @@
 //       TAG LITERAL na imagem nossa em `deploy/` (invariante 6), interpolacao
 //       com variavel vazia / valor literal (invariante 7), env do HOST
 //       divergindo do template comitado (invariante 7b), alvo FORA do escopo
-//       sem decisao escrita / com decisao velha (invariante 8), referencia nao
-//       versionada VIOLADA — default do compose divergindo do template, env do
-//       host da app divergindo, tag ausente/re-tagada no registry (invariante
-//       9) —, ou --require-compose / --require-image sem a prova (inclui as
-//       flags contraditorias)
+//       sem decisao escrita / com decisao velha / SEM o registro da data
+//       `addedAt` (invariante 8), decisao SEM REVISAO com --review (invariante
+//       8 e a allowlist de TERCEIROS, que envelhece pela mesma regra),
+//       referencia nao versionada VIOLADA — default do compose divergindo
+//       do template, env do host da app divergindo, tag ausente/re-tagada no
+//       registry (invariante 9) —, ou --require-compose / --require-image sem
+//       a prova (inclui as flags contraditorias)
 //   2 — uso invalido (`--gitea-env` sem caminho, ou apontando um arquivo que
 //       nao existe — a pergunta era explicita)
 // =============================================================================
@@ -132,6 +151,20 @@ import {
   discoverEnvMirrors,
   extractEnvMirrorBunVersion,
 } from "./check-actrc-sync.mjs"
+import {
+  DEFAULT_REVIEW_DAYS,
+  agedAddedAtViolation,
+  invalidAddedAtViolation,
+  parseAddedAt,
+  reviewAddedAtEntries,
+} from "./allowlist-review.mjs"
+
+// A REGRA da data e da janela mora em UM lugar (`allowlist-review.mjs`), e as
+// TRES allowlists do repositorio a usam. `parseAddedAt` continua exportado
+// daqui porque era a porta de entrada dos consumidores (testes e o teste do
+// job semanal) — mover a implementacao sem mover a porta nao quebra quem
+// importa, e o dono da regra fica dito no import acima.
+export { parseAddedAt }
 
 const ROOT = process.cwd()
 
@@ -141,8 +174,17 @@ const ROOT = process.cwd()
  * significa "esta imagem nao e nossa e nao segue o IMAGE_REGISTRY".
  */
 export const THIRD_PARTY_ALLOWLIST = [
-  // OSRM (roteamento) — imagem comunitaria, sem espelho proprio.
-  "ghcr.io/project-osrm/osrm-backend",
+  {
+    // Prefixo de repositorio (sem tag) — e ele que `isAllowlistedThirdParty`
+    // casa na linha.
+    prefix: "ghcr.io/project-osrm/osrm-backend",
+    // Data em que a decisao foi tomada (ISO `YYYY-MM-DD`). REVISAR antes de
+    // reafirmar: se a imagem continua sendo de terceiros (e o projeto continua
+    // sem espelho proprio), atualize a data; se nao, remova a entrada.
+    addedAt: "2026-09-13",
+    reason:
+      "OSRM (roteamento) — imagem comunitaria do proprio projeto, sem espelho nosso no registry: o backend de roteamento nao e construido por nos, entao ele nao segue o IMAGE_REGISTRY. Consumir do GHCR publico e a decisao; o que precisa ser revisto de tempo em tempo e ela, nao o consumo",
+  },
 ]
 
 /**
@@ -225,7 +267,7 @@ export function isRegistryVariableForm(line) {
  * @returns {boolean}
  */
 export function isAllowlistedThirdParty(line) {
-  return THIRD_PARTY_ALLOWLIST.some((prefix) => line.includes(prefix))
+  return THIRD_PARTY_ALLOWLIST.some((entry) => line.includes(entry.prefix))
 }
 
 /**
@@ -353,11 +395,16 @@ export function checkActrc(content) {
 // passou a ser exigida.
 //
 // A REGRA: todo arquivo FORA do escopo que referencie uma imagem NOSSA precisa
-// de uma linha em OUT_OF_SCOPE_ALLOWLIST com o MOTIVO escrito. Nao decidir e
-// violacao. Decisao velha (o arquivo deixou de referenciar a imagem, ou sumiu)
-// TAMBEM e violacao — senao a lista envelhece escondendo arquivos que sairam de
-// cena, exatamente o defeito que o `check:forge-parity` descreve na
-// classificacao GITHUB_ONLY.
+// de uma linha em OUT_OF_SCOPE_ALLOWLIST com o MOTIVO escrito E A DATA em que a
+// decisao foi tomada (`addedAt`). Nao decidir e violacao. Decisao velha (o
+// arquivo deixou de referenciar a imagem, ou sumiu) TAMBEM e violacao — senao a
+// lista envelhece escondendo arquivos que sairam de cena, exatamente o defeito
+// que o `check:forge-parity` descreve na classificacao GITHUB_ONLY. E a mesma
+// lista envelhece pelo OUTRO lado quando ninguem revisa: uma isencao tomada ha
+// muito tempo (janela de OUT_OF_SCOPE_REVIEW_DAYS) precisa ser REAFIRMADA — o
+// run normal avisa (`::warning::`) e o job semanal roda `--review` e fica
+// VERMELHO (o canal acionavel), para a isencao nao virar permanente por
+// esquecimento.
 //
 // Exclusoes por REGRA (com razao escrita), e nao por lista de arquivo: prosa e
 // fixture de teste. As duas tem o mesmo traco — a string da imagem NAO e um
@@ -416,18 +463,48 @@ export const SWEEP_RULES = [
 /**
  * Arquivos FORA do escopo que referenciam imagem nossa e por isso carregam uma
  * DECISAO ESCRITA. Uma entrada por arquivo (nunca um prefixo de diretorio:
- * um glob esconderia o proximo alvo no mesmo diretorio).
+ * um glob esconderia o proximo alvo no mesmo diretorio) e com a DATA em que a
+ * decisao foi tomada.
  *
  * Se o arquivo deixar de referenciar a imagem, a entrada tem de SAIR — entrada
- * ociosa e violacao (ver `checkOutOfScopeTargets`).
+ * ociosa e violacao (ver `checkOutOfScopeTargets`). E uma isencao que ninguem
+ * revisa tambem: passada a janela de `OUT_OF_SCOPE_REVIEW_DAYS`, ela aparece no
+ * run normal como aviso e VIRA VIOLACAO no modo `--review` (o canal do job
+ * semanal). Sem a data, uma isencao nao tem como envelhecer — e "esqueci de
+ * registrar" seria o jeito de nunca precisar revisar.
  */
 export const OUT_OF_SCOPE_ALLOWLIST = [
   {
     path: "scripts/check-registry-source.mjs",
+    // Data em que a decisao foi tomada (ISO `YYYY-MM-DD`). REVISAR antes de
+    // reafirmar: se o motivo abaixo continua valendo, atualize a data; se nao,
+    // remova a entrada.
+    addedAt: "2026-09-13",
     reason:
       "e ESTE guard: o arquivo contem o proprio matcher (`imageRefsIn`) e a prosa que explica o defeito que a invariante 8 fechou (o literal que vivia em scripts/). Nao e um site de resolucao — e onde a forma da referencia e DEFINIDA. Fica aqui para o guard nao se dar uma isencao implicita: ele passa pela mesma regra que exige dos outros",
   },
 ]
+
+/**
+ * Janela de REVISAO de uma decisao de escopo, em dias. Passado esse tempo, a
+ * entrada precisa de uma revisao EXPLICITA (reafirmar, atualizando `addedAt`,
+ * ou remover): o modo `--review` escala as decisoes vencidas a violacao (o
+ * canal do job semanal), e o run normal as reporta como `::warning::`. O aviso
+ * nao pode ser mudo (`check:periodic-alerts`); a violacao nao pode morder o
+ * pre-commit e o PR de todo mundo — por isso o mesmo fato tem os dois modos.
+ */
+export const OUT_OF_SCOPE_REVIEW_DAYS = DEFAULT_REVIEW_DAYS
+
+/**
+ * Janela de REVISAO do consumo de imagem de TERCEIROS (`THIRD_PARTY_ALLOWLIST`),
+ * em dias. Mesmo numero da janela das decisoes de escopo — e mesma regra, do
+ * mesmo modulo (`allowlist-review.mjs`): passada a janela, a isencao precisa
+ * ser REAFIRMADA. O nome e proprio (e nao um alias solto no uso) porque a
+ * pergunta das duas listas e diferente: aqui e "esta imagem ainda e de
+ * terceiros e o consumo ainda e consciente?", e uma lista que precise de outra
+ * janela muda UMA linha.
+ */
+export const THIRD_PARTY_REVIEW_DAYS = DEFAULT_REVIEW_DAYS
 
 /**
  * A referencia da linha casa uma IMAGEM NOSSA?
@@ -536,14 +613,29 @@ function walkRepo(root) {
  * nao foi, e as decisoes que envelheceram.
  *
  * A allowlist e PARAMETRO (com o default sendo a do repo) para o teste exercitar
- * as tres situacoes — decidido, nao decidido, decisao velha — sem tocar na
+ * as situacoes — decidido, nao decidido, decisao velha, registro ausente,
+ * registro invalido, registro no futuro e decisao sem revisao — sem tocar na
  * constante do guard.
  *
+ * `now`/`reviewDays` tambem sao injetaveis: uma prova de envelhecimento nao
+ * pode depender do relogio da maquina que roda a suite (nem do dia em que ela
+ * roda).
+ *
  * @param {string} root
- * @param {{allowlist?: {path: string, reason: string}[]}} [options]
- * @returns {{found: Map<string, string>, undecided: string[], stale: string[]}}
+ * @param {{allowlist?: {path: string, reason: string, addedAt?: string}[], now?: number, reviewDays?: number}} [options]
+ * @returns {{found: Map<string, string>, undecided: string[], stale: string[], invalid: {path: string, why: string}[], aged: {path: string, addedAt: string, days: number, limit: number}[]}}
  */
-export function sweepOutOfScope(root = ROOT, { allowlist = OUT_OF_SCOPE_ALLOWLIST } = {}) {
+// A data e a janela sao do modulo compartilhado: esta funcao so diz QUAL campo
+// identifica a entrada aqui (`path`) e reescreve o resultado na forma que os
+// consumidores ja conhecem (`{path, why}` / `{path, ...}`).
+export function sweepOutOfScope(
+  root = ROOT,
+  {
+    allowlist = OUT_OF_SCOPE_ALLOWLIST,
+    now = Date.now(),
+    reviewDays = OUT_OF_SCOPE_REVIEW_DAYS,
+  } = {},
+) {
   const decided = new Map(allowlist.map((e) => [e.path, e.reason]))
   const found = new Map()
 
@@ -572,6 +664,20 @@ export function sweepOutOfScope(root = ROOT, { allowlist = OUT_OF_SCOPE_ALLOWLIS
     if (!kept.has(rel)) found.delete(rel)
   }
 
+  // REGISTRO da decisao e REVISAO: cada entrada carrega QUANDO foi tomada.
+  // Sem isso, uma isencao nao tem como envelhecer — e "nao registrei" viraria o
+  // jeito de nunca precisar revisar. Data ausente/malformada/no futuro e
+  // violacao HARD (fail-closed, como nao decidir); data dentro da janela passa;
+  // passada a janela (`reviewDays`), a decisao esta SEM REVISAO.
+  const dated = reviewAddedAtEntries(allowlist, { idOf: (e) => e.path, now, reviewDays })
+  const invalid = dated.invalid.map((e) => ({ path: e.id, why: e.why }))
+  const aged = dated.aged.map((e) => ({
+    path: e.id,
+    addedAt: e.addedAt,
+    days: e.days,
+    limit: e.limit,
+  }))
+
   return {
     found,
     undecided: [...found.keys()].filter((rel) => !decided.has(rel)).sort(),
@@ -586,18 +692,27 @@ export function sweepOutOfScope(root = ROOT, { allowlist = OUT_OF_SCOPE_ALLOWLIS
       .filter((e) => existsSync(join(root, e.path)) && !found.has(e.path))
       .map((e) => e.path)
       .sort(),
+    invalid,
+    aged,
   }
 }
 
 /**
- * Invariante 8: violacoes de escopo (alvo novo invisivel / decisao velha).
+ * Converte um sweep em violacoes legiveis.
  *
- * @param {string} root
- * @param {{allowlist?: {path: string, reason: string}[]}} [options]
+ * `failAged` escala a decisao SEM REVISAO a violacao — e o modo `--review`, cujo
+ * exit 1 e o CANAL do job semanal (um `::warning::` dentro de um run verde e
+ * alerta mudo, como o `check:periodic-alerts` exige). Sem `failAged` ela fica
+ * FORA das violacoes de proposito: uma decisao vencida nao pode bloquear o
+ * pre-commit e o PR de todo mundo — o run normal a reporta como aviso, e o modo
+ * `--review` a cobra.
+ *
+ * @param {{found: Map<string, string>, undecided: string[], stale: string[], invalid: {path: string, why: string}[], aged: {path: string, addedAt: string, days: number, limit: number}[]}} sweep
+ * @param {{failAged?: boolean}} [options]
  * @returns {string[]}
  */
-export function checkOutOfScopeTargets(root = ROOT, options = {}) {
-  const { found, undecided, stale } = sweepOutOfScope(root, options)
+export function outOfScopeViolations(sweep, { failAged = false } = {}) {
+  const { found, undecided, stale, invalid, aged } = sweep
   const violations = []
   for (const rel of undecided) {
     violations.push(
@@ -609,7 +724,91 @@ export function checkOutOfScopeTargets(root = ROOT, options = {}) {
       `${rel}: esta em OUT_OF_SCOPE_ALLOWLIST mas nao referencia mais imagem nossa (ou nao existe) — decisao velha esconde que o arquivo saiu de cena; remova a entrada.`,
     )
   }
+  for (const { path, why } of invalid) {
+    violations.push(
+      invalidAddedAtViolation({ label: path, listName: "OUT_OF_SCOPE_ALLOWLIST", why }),
+    )
+  }
+  if (failAged) {
+    for (const { path, addedAt, days, limit } of aged) {
+      violations.push(
+        agedAddedAtViolation({
+          label: path,
+          listName: "OUT_OF_SCOPE_ALLOWLIST",
+          addedAt,
+          days,
+          limit,
+          remedy: "reafirme a decisao (revise o motivo e atualize o `addedAt`) ou remova a entrada",
+        }),
+      )
+    }
+  }
   return violations
+}
+
+/**
+ * O mesmo veredito de DATA para a allowlist de imagens de TERCEIROS.
+ *
+ * A decisao aqui e outra ("esta imagem nao e nossa e o consumo e consciente"),
+ * mas o defeito e o mesmo: uma isencao concedida numa terceira-feira de 2024
+ * continua valendo porque ninguem voltou nela. `now`/`reviewDays` sao
+ * injetaveis pelo mesmo motivo das decisoes de escopo (provar envelhecimento
+ * sem depender do relogio da maquina).
+ *
+ * @param {{allowlist?: {prefix: string, reason: string, addedAt?: string}[], now?: number, reviewDays?: number}} [options]
+ * @returns {{invalid: {id: string, why: string}[], aged: {id: string, addedAt: string, days: number, limit: number}[]}}
+ */
+export function sweepThirdPartyAllowlist({
+  allowlist = THIRD_PARTY_ALLOWLIST,
+  now = Date.now(),
+  reviewDays = THIRD_PARTY_REVIEW_DAYS,
+} = {}) {
+  return reviewAddedAtEntries(allowlist, { idOf: (e) => e.prefix, now, reviewDays })
+}
+
+/**
+ * Converte o sweep de terceiros em violacoes. `failAged` e o modo `--review`:
+ * o mesmo contrato das decisoes de escopo (aviso no run normal, exit 1 no job
+ * semanal), porque um aviso dentro de um run verde e alerta mudo.
+ *
+ * @param {{invalid: {id: string, why: string}[], aged: {id: string, addedAt: string, days: number, limit: number}[]}} sweep
+ * @param {{failAged?: boolean}} [options]
+ * @returns {string[]}
+ */
+export function thirdPartyAllowlistViolations(sweep, { failAged = false } = {}) {
+  const violations = []
+  for (const { id, why } of sweep.invalid) {
+    violations.push(invalidAddedAtViolation({ label: id, listName: "THIRD_PARTY_ALLOWLIST", why }))
+  }
+  if (failAged) {
+    for (const { id, addedAt, days, limit } of sweep.aged) {
+      violations.push(
+        agedAddedAtViolation({
+          label: id,
+          listName: "THIRD_PARTY_ALLOWLIST",
+          addedAt,
+          days,
+          limit,
+          remedy:
+            "reafirme a decisao (confirme que a imagem continua sendo de TERCEIROS, sem espelho nosso, e atualize o `addedAt`) ou remova a entrada",
+        }),
+      )
+    }
+  }
+  return violations
+}
+
+/**
+ * Invariante 8: violacoes de escopo (alvo novo invisivel / decisao velha /
+ * decisao sem o registro da data). `failAged` (modo `--review`) inclui tambem
+ * as decisoes sem revisao — ver `outOfScopeViolations`.
+ *
+ * @param {string} root
+ * @param {{allowlist?: {path: string, reason: string, addedAt?: string}[], now?: number, reviewDays?: number, failAged?: boolean}} [options]
+ * @returns {string[]}
+ */
+export function checkOutOfScopeTargets(root = ROOT, options = {}) {
+  return outOfScopeViolations(sweepOutOfScope(root, options), options)
 }
 
 /**
@@ -653,10 +852,15 @@ export function collectFiles(root = ROOT) {
  * Varre tudo e devolve a lista de violacoes. Pura (recebe root e a lista de
  * arquivos) para poder ser testada com uma arvore temporaria.
  *
+ * `options.sweep` injeta o resultado da varredura de escopo (o CLI ja o calcula
+ * para reportar a revisao vencida — assim o repo e varrido UMA vez, nao duas);
+ * `options.failAged` escala as decisoes sem revisao a violacao (modo `--review`).
+ *
  * @param {string} root
+ * @param {{sweep?: object, failAged?: boolean, thirdPartySweep?: object, thirdPartyReviewDays?: number, now?: number, reviewDays?: number}} [options]
  * @returns {string[]}
  */
-export function findViolations(root = ROOT) {
+export function findViolations(root = ROOT, options = {}) {
   const violations = []
   for (const file of collectFiles(root)) {
     const isCompose = isComposeFile(file)
@@ -685,7 +889,21 @@ export function findViolations(root = ROOT) {
 
   // Invariante 8: nenhum alvo FORA do escopo pode referenciar imagem nossa sem
   // decisao escrita (ver o bloco do bloco acima).
-  violations.push(...checkOutOfScopeTargets(root))
+  violations.push(...outOfScopeViolations(options.sweep ?? sweepOutOfScope(root, options), options))
+  // A OUTRA allowlist deste guard tem o MESMO defeito de envelhecimento (uma
+  // imagem de terceiros consumida ha anos porque ninguem voltou na decisao) e
+  // por isso passa pela MESMA regra de data. As opcoes das decisoes de escopo
+  // NAO vazam para ca por padrao (`now`/`reviewDays`) — deixá-las vazar faria um
+  // teste de envelhecimento de escopo acusar a lista de terceiros por tabela —,
+  // mas o sweep pode ser INJETADO (`thirdPartySweep`) para o fio gate→violacao
+  // ser provavel sem tocar na constante do guard.
+  violations.push(
+    ...thirdPartyAllowlistViolations(
+      options.thirdPartySweep ??
+        sweepThirdPartyAllowlist({ reviewDays: options.thirdPartyReviewDays }),
+      options,
+    ),
+  )
   return violations
 }
 
@@ -2141,6 +2359,12 @@ if (isMain) {
   // — pedir a prova e pedir para nao prova-la —, e resolver a contradicao em
   // silencio escolheria por quem pediu (mesma regra do --require-compose).
   const skipProbe = argv.includes("--no-registry-probe")
+  // `--review`: as decisoes de escopo SEM REVISAO (passada a janela de
+  // OUT_OF_SCOPE_REVIEW_DAYS) viram VIOLACAO — o exit 1 e o CANAL do job
+  // semanal, porque um aviso dentro de um run verde nao e lido por ninguem.
+  // Fora do modo normal (pre-commit/PR) a decisao vencida so AVISA: ela nao
+  // pode bloquear o trabalho de todo mundo por uma data.
+  const reviewMode = argv.includes("--review")
   // `--gitea-env <caminho>`: o env do HOST a comparar com o template comitado.
   const hostEnvIdx = argv.indexOf("--gitea-env")
   const hostEnv = hostEnvIdx === -1 ? null : argv[hostEnvIdx + 1] || ""
@@ -2156,7 +2380,7 @@ if (isMain) {
       `check-registry-source: --gitea-env aponta para um arquivo inexistente: ${hostEnv || "<vazio>"}`,
     )
     console.error(
-      "  Uso: node scripts/check-registry-source.mjs [--require-compose] [--no-compose-render] [--gitea-env <caminho>] [--require-image] [--no-registry-probe]",
+      "  Uso: node scripts/check-registry-source.mjs [--require-compose] [--no-compose-render] [--gitea-env <caminho>] [--require-image] [--no-registry-probe] [--review]",
     )
     process.exit(2)
   }
@@ -2169,7 +2393,32 @@ if (isMain) {
     )
     process.exit(3)
   }
-  const staticViolations = [...findViolations(), ...compareImageTemplates()]
+  const scopeSweep = sweepOutOfScope()
+  // DECISAO SEM REVISAO: visivel em TODO run (o aviso sai mesmo quando outra
+  // violacao ja derruba o guard) e escalada a violacao por `--review`.
+  if (!reviewMode) {
+    for (const a of scopeSweep.aged) {
+      console.error(
+        `::warning:: check-registry-source: a decisao de escopo de ${a.path} (OUT_OF_SCOPE_ALLOWLIST, tomada em ${a.addedAt}) esta SEM REVISAO ha ${a.days} dia(s) (janela de ${a.limit}).` +
+          " Revise o motivo e, se ele continua valendo, atualize o `addedAt`; se nao, remova a entrada." +
+          " Uma isencao que ninguem revisa vira permanente por esquecimento.",
+      )
+    }
+    // A OUTRA allowlist deste guard envelhece igual: o aviso sai em TODO run
+    // (mesmo quando outra violacao ja derruba o guard) e o job semanal o escala
+    // a violacao por `--review`.
+    for (const a of sweepThirdPartyAllowlist().aged) {
+      console.error(
+        `::warning:: check-registry-source: o consumo da imagem de TERCEIROS ${a.id} (THIRD_PARTY_ALLOWLIST, decidido em ${a.addedAt}) esta SEM REVISAO ha ${a.days} dia(s) (janela de ${a.limit}).` +
+          " Confirme que a imagem continua sendo de terceiros (o projeto ainda nao publica espelho proprio) e atualize o `addedAt`; se o consumo acabou, remova a entrada." +
+          " Uma isencao que ninguem revisa vira permanente por esquecimento.",
+      )
+    }
+  }
+  const staticViolations = [
+    ...findViolations(ROOT, { sweep: scopeSweep, failAged: reviewMode }),
+    ...compareImageTemplates(),
+  ]
   const interpolation = skipRender
     ? {
         state: "skipped",
