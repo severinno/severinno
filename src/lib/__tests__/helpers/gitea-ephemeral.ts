@@ -53,7 +53,34 @@ function dockerRun(args: string[]): string {
 }
 
 function dockerRm(container: string): void {
-  spawnSync("docker", ["rm", "-f", container], { encoding: "utf8" })
+  const res = spawnSync("docker", ["rm", "-f", container], { encoding: "utf8" })
+  if (res.status === 0) return
+  // `docker rm` pode falhar com o container JÁ removido (corrida com outro
+  // sweep, remoção por fora): o alvo é "nenhum container vivo", então isso NÃO
+  // é falha. Confirmar pelo `inspect` não depende da mensagem do daemon.
+  const aindaExiste = spawnSync("docker", ["inspect", container], { encoding: "utf8" })
+  if (aindaExiste.status !== 0) return
+  // Um `rm` que falha em SILÊNCIO é como os containers vazavam: o sweep
+  // "roda", o container fica, e ninguém fica sabendo — o repositório juntou
+  // dezenas deles assim. O diagnóstico nomeia o container e o motivo.
+  process.stderr.write(
+    `gitea-ephemeral: FALHA ao remover ${container}: ${(res.stderr || "").trim()}\n`,
+  )
+}
+
+/**
+ * O `trap EXIT` do helper: remove o que ficou vivo e ESVAZIA o registro.
+ *
+ * Esvaziar é o que torna o sweep IDEMPOTENTE — e sem isso ele rodava DUAS vezes
+ * para o mesmo container: o handler do sinal chama `process.exit(130)`, o evento
+ * `exit` dispara em seguida e o segundo sweep tentava remover de novo (no caminho
+ * normal isso vira um "No such container" ruidoso; aqui, um falso diagnóstico de
+ * falha para um container que já tinha sido removido).
+ */
+function sweepLiveContainers(): void {
+  const pendentes = [...liveContainers]
+  liveContainers.clear()
+  for (const c of pendentes) dockerRm(c)
 }
 
 /**
@@ -73,28 +100,43 @@ function registerTeardown(): void {
   if (teardownRegistered) return
   teardownRegistered = true
   // `exit` roda na saída normal, no `process.exit()` e em exceção não tratada.
-  process.on("exit", () => {
-    for (const c of liveContainers) dockerRm(c)
-  })
+  process.on("exit", () => sweepLiveContainers())
   // Sinal NÃO dispara `exit` por padrão: sem estes handlers, um SIGTERM
   // (timeout do runner) mataria o processo sem passar pelo sweep — que é
   // exatamente como os containers vazaram até aqui.
   for (const sig of ["SIGINT", "SIGTERM"] as const) {
     process.on(sig, () => {
-      for (const c of liveContainers) dockerRm(c)
+      sweepLiveContainers()
       process.exit(130)
     })
   }
 }
 
+/**
+ * Prazo de UMA tentativa de HTTP. Sem ele o laço abaixo MENTE: `fetch` não tem
+ * timeout por padrão, e a porta publicada pelo docker aceita a conexão antes de
+ * o processo dentro do container escutar (o encaminhador do daemon abre o socket
+ * e só então descobre que não há backend) — a requisição fica pendurada para
+ * SEMPRE, o `await` nunca volta e o laço nunca reavalia o deadline. O efeito é o
+ * pior possível: o setup trava indefinidamente, o teste estoura o timeout do
+ * runner e o container sobra (é uma das formas de o vazamento acontecer), com a
+ * cara de "Gitea lento" em vez de "uma conexão pendurada".
+ */
+const HTTP_TIMEOUT_MS = 5_000
+
+/** Prazo de uma requisição da API (token, repo) — mesma razão. */
+const API_TIMEOUT_MS = 15_000
+
 async function waitForGitea(url: string, timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`${url}/api/v1/version`)
+      const res = await fetch(`${url}/api/v1/version`, {
+        signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+      })
       if (res.ok) return
     } catch {
-      // not ready yet
+      // not ready yet — inclui o abort do timeout acima
     }
     await new Promise((r) => setTimeout(r, 500))
   }
@@ -166,6 +208,7 @@ export async function makeEphemeralGitea(
   const portLine = portRes.stdout.trim().split("\n")[0] ?? ""
   const match = portLine.match(/:(\d+)$/)
   if (!match) {
+    liveContainers.delete(container)
     dockerRm(container)
     throw new Error(`Não conseguiu resolver a porta do container: ${portRes.stdout}`)
   }
@@ -215,6 +258,7 @@ export async function makeEphemeralGitea(
         name: `test-token-${suffix}`,
         scopes: ["all"],
       }),
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
     })
     if (!loginRes.ok) {
       const body = await loginRes.text()
@@ -237,6 +281,7 @@ export async function makeEphemeralGitea(
         default_branch: "main",
         description: "Repo efêmero para testes de issue-publish",
       }),
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
     })
     if (!createRepo.ok && createRepo.status !== 409) {
       const body = await createRepo.text()
@@ -254,6 +299,7 @@ export async function makeEphemeralGitea(
       },
     }
   } catch (err) {
+    liveContainers.delete(container)
     dockerRm(container)
     throw err
   }
