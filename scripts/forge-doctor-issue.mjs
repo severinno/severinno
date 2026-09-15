@@ -32,13 +32,29 @@
 // "quebrado": INDETERMINADA pede a credencial/acesso que falta, não o conserto
 // de uma peça.
 //
+// E inclui a RECURSÃO (o doctor invocado DENTRO da própria prova), que é um
+// veredito de natureza DIFERENTE — e por isso tem issue própria.
+//
+// POR QUE A RECURSÃO NÃO PODE SER UM "erro de uso": os dois saem com exit 3. O
+// que os separa é o RELATÓRIO: a recursão o emite (o fato `nestedGuard`, com os
+// canais que marcaram a invocação), o uso inválido não emite nada. Tratar os
+// dois pelo código do exit faz o alerta mais importante sumir justamente onde
+// ele é o ÚNICO que existe — não há veredito nenhum atrás dele para consultar.
+// E publicá-la como se fosse o veredito da forja mente na direção oposta: o
+// corpo genérico afirma "a forja pode não segurar o merge" e manda rodar o
+// doctor com credencial, quando o que houve foi o doctor recusar ANTES de medir
+// qualquer coisa. Por isso ela tem título, assinatura e prosa próprios, e a
+// assinatura nasce do FATO (não do exit code, que o `--report` nem tem).
+//
 // Fluxo:
 //   1. lê o relatório (--report FILE) ou roda o doctor agora (`--json`, com as
 //      flags do doctor repassadas: `--expected`, `--gitea-env`, `--no-*`);
 //   2. veredito PRONTA → sai 0 sem tocar a forja;
-//   3. ASSINATURA estável (veredito + bloqueadores + não-provados, ordenados) e
-//      dedup contra as issues ABERTAS com o label: o MESMO veredito não repete
-//      (cron semanal não vira ruído) e um veredito DIFERENTE comenta na aberta;
+//   3. ASSINATURA estável (veredito + bloqueadores + não-provados, ordenados —
+//      ou `nested:` + canais, na recursão) e dedup contra as issues ABERTAS com
+//      o label: o MESMO problema não repete (cron semanal não vira ruído) e um
+//      problema DIFERENTE comenta na aberta; a recursão tem TÍTULO próprio, e é
+//      ele que faz a dívida dela nascer separada da dívida do veredito;
 //   4. cria a issue (ou comenta) — sempre ANTES de o job falhar, porque um step
 //      que falha primeiro mata o step que publica.
 //
@@ -52,11 +68,19 @@
 //   gitea:  GITEA_TOKEN + GITEA_URL            (+ GITEA_REPOSITORY | --repo)
 //
 // Exit codes:
-//   0 — veredito PRONTA, ou issue criada/comentada, ou já reportada (ou dry-run)
+//   0 — veredito PRONTA, ou issue criada/comentada, ou já reportada (ou dry-run
+//       — INCLUSIVE da issue de recursão: publicá-la é sucesso, não erro)
 //   1 — erro real: relatório ausente/inválido, credencial ausente, backend fora,
-//       ou o doctor NÃO produziu relatório (exit 3 = uso/erro interno) —
-//       fail-closed: um alerta que não pode ser publicado é o mesmo silêncio de
-//       antes, só que parecendo verde
+//       ou o doctor NÃO produziu relatório — fail-closed: um alerta que não pode
+//       ser publicado é o mesmo silêncio de antes, só que parecendo verde
+//
+// O EXIT 3 DO DOCTOR TEM DOIS SIGNIFICADOS, e é o relatório que os separa:
+//   - COM relatório (`facts.nestedGuard.state === "fired"`) = RECURSÃO =
+//     veredito acionável, e é publicado como qualquer outro (exit 0);
+//   - SEM relatório = uso/erro interno = não houve medição, e um alerta que não
+//     pode ser publicado é o erro acima (exit 1).
+// Nunca os dois pelo mesmo caminho: foi assim que a recursão ficou parecendo
+// "erro de uso".
 // =============================================================================
 
 import { spawnSync } from "node:child_process"
@@ -65,7 +89,7 @@ import { dirname, resolve } from "node:path"
 import process from "node:process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
-import { VERDICT } from "./forge-doctor.mjs"
+import { NESTED_GUARD_ENV, NESTED_GUARD_EXIT, NESTED_GUARD_FLAG, VERDICT } from "./forge-doctor.mjs"
 import {
   defineDebtPublisher,
   publisherBody,
@@ -151,7 +175,7 @@ export const VERDICT_PUBLISHER = defineDebtPublisher({
   labelColor: ISSUE_LABEL_COLOR,
   labelDescription: ISSUE_LABEL_DESCRIPTION,
   marker: { id: VERDICT_MARKER_ID, format: "b64" },
-  title: () => doctorIssueTitle(),
+  title: (report) => doctorIssueTitle(report),
   signature: (report) => verdictSignatureOf(report),
   body: (report) => doctorIssueProse(report),
   actionable: (report) => isActionable(report),
@@ -163,7 +187,9 @@ export const VERDICT_PUBLISHER = defineDebtPublisher({
   prose: {
     inSync: () => "✅ Veredito PRONTA — nada a reportar.",
     actionable: (report) =>
-      `⚠️  Veredito ${verdictOf(report).toUpperCase()} — publicando issue acionável.`,
+      isNestedGuardReport(report)
+        ? `⚠️  RECURSÃO detectada (${nestedChannelNames(report)}) — publicando issue acionável própria.`
+        : `⚠️  Veredito ${verdictOf(report).toUpperCase()} — publicando issue acionável.`,
     alreadyReported: (issue) =>
       `ℹ️  Veredito idêntico já reportado na issue #${issue.number} — sem ruído.`,
     commented: (issue) => `✅ Comentário adicionado à issue #${issue.number} (veredito novo).`,
@@ -185,12 +211,118 @@ export function verdictOf(report) {
 }
 
 /**
+ * O título da dívida de RECURSÃO — um segundo título, de propósito.
+ *
+ * POR QUE NÃO REUSAR O TÍTULO DO VEREDITO: no contrato, o título é a SEGUNDA
+ * metade do dedup (`decidePublication`: assinatura → título → criar). Com o
+ * mesmo título, uma recursão que chegasse com o veredito da forja ABERTO viraria
+ * COMENTÁRIO naquela issue — a dívida da recursão se perderia dentro de um
+ * ticket sobre outro problema, e nem a assinatura dela seria reconhecida na run
+ * seguinte. Título próprio faz a recursão nasCER como issue própria, que é o que
+ * "veredito acionável próprio" quer dizer.
+ *
+ * "a prontidão NÃO foi medida" no título é o que não pode ficar implícito: o
+ * veredito da forja é uma MEDIÇÃO; isto é a recusa a medir.
+ */
+export const NESTED_RECURSION_TITLE =
+  "Forge doctor: RECURSÃO — a prontidão NÃO foi medida (doctor rodou dentro da própria prova)"
+
+/**
+ * O estado do fato `nestedGuard` que significa "o guard DISPAROU".
+ *
+ * Nomeado porque é CONTRATO entre os dois scripts (o doctor o emite, este
+ * publicador o lê) — e porque o mesmo fato tem os outros dois estados (`armed`,
+ * `disarmed`), que NÃO são recursão.
+ */
+export const NESTED_GUARD_FIRED = "fired"
+
+/**
+ * O fato da recursão, quando ela DISPAROU — `null` em qualquer outro caso.
+ *
+ * `state === "fired"` é a marca do disparo. O mesmo fato existe no relatório
+ * normal dizendo que a defesa está ARMADA (`armed`) ou pela metade
+ * (`disarmed`) — e nenhum dos dois é recursão: `armed` é o estado saudável, e
+ * `disarmed` é um defeito DA DEFESA, que viaja como bloqueador do veredito e
+ * tem de sair pela issue do veredito, com o remédio certo. Confundir os três
+ * faria o publicador publicar "recursão" onde não houve disparo nenhum.
+ *
+ * Lê o FATO, e não o exit code: pelo caminho `--report FILE` não há exit code
+ * nenhum para consultar, e o relatório é o mesmo objeto nos dois caminhos. Um
+ * guard que dependesse do código do exit simplesmente não existiria aqui.
+ *
+ * O `report` é `any` de propósito: o publicador recebe o JSON do doctor (e, no
+ * caminho `--report`, um arquivo que ele não escreveu), então o tipo não pode
+ * prometer mais do que o runtime verifica — quem valida é o `state ===
+ * "fired"` abaixo.
+ *
+ * @param {any} report
+ * @returns {{state?: string, channels?: {channel?: string, name?: string}[], envVar?: string, flag?: string, exit?: number} | null}
+ */
+export function nestedGuardOf(report) {
+  const nested = report?.facts?.nestedGuard
+  return nested?.state === NESTED_GUARD_FIRED ? nested : null
+}
+
+/**
+ * `true` quando este relatório é o da recursão (e não um veredito da forja).
+ *
+ * @param {any} report
+ */
+export function isNestedGuardReport(report) {
+  return nestedGuardOf(report) !== null
+}
+
+/**
+ * Os CANAIS que marcaram a invocação aninhada, como o relatório os declara:
+ * `[{channel: "env", name: "FORGE_DOCTOR_NESTED"}, {channel: "argv", name:
+ * "--proof-nested"}]`.
+ *
+ * Lista VAZIA quando o relatório não declarou o detalhe (versão antiga do
+ * doctor, ou um relatório escrito por terceiro): o corpo então diz que o canal
+ * não foi declarado, em vez de escolher um. Nomear o canal errado mandaria o
+ * operador procurar no lugar errado — e um canal inventado é pior que canal
+ * ausente.
+ *
+ * @param {any} report
+ * @returns {{channel: string, name: string}[]}
+ */
+export function markingChannels(report) {
+  const nested = nestedGuardOf(report)
+  if (!nested) return []
+  const declared = Array.isArray(nested.channels) ? nested.channels : []
+  return declared
+    .map((c) => ({ channel: String(c?.channel ?? ""), name: String(c?.name ?? "") }))
+    .filter((c) => c.channel !== "" || c.name !== "")
+}
+
+/**
+ * Os canais que marcaram, em prosa — para o log e para o corpo da issue:
+ * `` `FORGE_DOCTOR_NESTED` (env) ``.
+ *
+ * Sem canal declarado no relatório, a prosa DIZ isso: a issue precisa levar o
+ * operador ao canal certo, e um canal chutado levaria ao lugar errado.
+ *
+ * @param {any} report
+ * @returns {string}
+ */
+export function nestedChannelNames(report) {
+  const canais = markingChannels(report)
+  if (canais.length === 0) return "canal não declarado no relatório"
+  return canais.map((c) => `\`${c.name}\` (${c.channel})`).join(" + ")
+}
+
+/**
  * Título ESTÁVEL entre runs — de propósito NÃO inclui o veredito nem os fatos
  * (isso vai no corpo): um título que muda a cada veredito abriria uma issue nova
- * por run em vez de comentar na dívida já aberta.
+ * por run em vez de comentar na dívida já aberta. A recursão é a exceção, e por
+ * um motivo simétrico: ela tem o SEU título, estável, porque é outro problema.
+ *
+ * @param {any} [report]
  */
-export function doctorIssueTitle() {
-  return "Forge doctor: prontidão da forja ≠ PRONTA"
+export function doctorIssueTitle(report) {
+  return isNestedGuardReport(report)
+    ? NESTED_RECURSION_TITLE
+    : "Forge doctor: prontidão da forja ≠ PRONTA"
 }
 
 /**
@@ -199,9 +331,14 @@ export function doctorIssueTitle() {
  * INDETERMINADA entra de propósito. Ela não é violação, mas é o estado em que o
  * drift vive invisível (ninguém conseguiu medir); deixá-la fora do alerta faria
  * o cron semanal ficar verde justamente quando a prova está faltando.
+ *
+ * A recursão é acionável pelo SEU PRÓPRIO fato, e não por herdar "bloqueada" do
+ * veredito que ela carrega: se um dia o relatório da recursão mudar de veredito
+ * (ou vier sem veredito), a recusa em medir continua sendo dívida — e é a única
+ * coisa que este publicador tem para reportar nesse caso.
  */
 export function isActionable(report) {
-  return verdictOf(report) !== VERDICT.READY
+  return isNestedGuardReport(report) || verdictOf(report) !== VERDICT.READY
 }
 
 /**
@@ -214,11 +351,121 @@ export function isActionable(report) {
  * constante entre runs, e assinatura é sobre o que mudou.
  */
 export function verdictSignatureOf(report) {
+  // A recursão tem assinatura PRÓPRIA, e ela nasce do FATO `nestedGuard` — nunca
+  // do texto do bloqueador (que o doctor pode reescrever) nem do exit code (que
+  // o caminho `--report` não tem). O prefixo `nested:` garante que ela NUNCA
+  // colida com uma assinatura de veredito (`verdict:`): dois problemas de
+  // naturezas diferentes na mesma assinatura fariam um engolir o outro no dedup.
+  if (isNestedGuardReport(report)) {
+    const parts = [`nested:${NESTED_GUARD_FIRED}`]
+    const canais = [...markingChannels(report)].map((c) => `${c.channel}:${c.name}`).sort()
+    // Ordenado porque os canais podem vir em qualquer ordem (`env` e `argv`
+    // marcados juntos): a MESMA recursão tem de dar a MESMA assinatura.
+    if (canais.length > 0) for (const c of canais) parts.push(`channel:${c}`)
+    else parts.push(`channel:nao-declarado`)
+    return parts.join("\n")
+  }
   const verdict = report?.verdict ?? {}
   const parts = [`verdict:${verdict.verdict ?? "?"}`]
   for (const b of [...(verdict.blockers ?? [])].sort()) parts.push(`blocker:${b}`)
   for (const u of [...(verdict.unknowns ?? [])].sort()) parts.push(`unknown:${u}`)
   return parts.join("\n")
+}
+
+/**
+ * O corpo da issue de RECURSÃO — um corpo PRÓPRIO, e não o do veredito.
+ *
+ * POR QUE NÃO REUSAR O CORPO GENÉRICO: ele afirma "O veredito do `bun run doctor`
+ * não é PRONTA: a forja pode não segurar o merge" e manda reproduzir com
+ * `--expected "$(gh variable get BUN_VERSION)"`. Na recursão NADA disso vale —
+ * nenhuma seção foi coletada, então não há afirmação sobre a forja a fazer, e o
+ * remédio não é credencial: é cortar o ciclo. Um corpo genérico aqui não é
+ * impreciso, é ERRADO: manda consertar a peça errada.
+ *
+ * O que este corpo carrega, nesta ordem: que a prontidão NÃO foi medida (a
+ * distinção que o título já faz e o corpo explica), o CANAL que marcou a
+ * invocação aninhada, o ciclo que o guard cortou, onde procurar o corte, e a
+ * reprodução que realmente reproduz — pelos DOIS canais.
+ *
+ * @param {any} report
+ * @returns {string}
+ */
+export function nestedIssueProse(report) {
+  const nested = nestedGuardOf(report)
+  const canais = markingChannels(report)
+  const lines = []
+
+  lines.push("O `forge-doctor` **recusou antes de medir**: ele foi invocado de dentro da")
+  lines.push("própria prova (o ciclo `bring-up → doctor → prova → bring-up`) e o guard de")
+  lines.push("recursão cortou o ciclo. **Isto NÃO é um veredito sobre a forja** — nenhuma")
+  lines.push("seção foi coletada, então este relatório não diz se a forja pode ou não segurar")
+  lines.push("o merge. O que ele diz é que a prontidão **não foi medida**, e por quê.")
+  lines.push("")
+  lines.push(
+    `**FATO: \`nestedGuard.state = ${nested?.state ?? NESTED_GUARD_FIRED}\`** · ` +
+      `exit do doctor: \`${nested?.exit ?? NESTED_GUARD_EXIT}\``,
+  )
+  lines.push("")
+  lines.push("### Canal que marcou a invocação aninhada")
+  lines.push("")
+  if (canais.length > 0) {
+    for (const c of canais) lines.push(`- \`${c.name}\` (canal: ${c.channel})`)
+  } else {
+    lines.push("- o relatório **não declarou** qual canal marcou a invocação (versão")
+    lines.push("  anterior do doctor, ou relatório de terceiro). Procure pelos dois:")
+    lines.push(`  \`${NESTED_GUARD_ENV}\` no ambiente e \`${NESTED_GUARD_FLAG}\` no argv.`)
+  }
+  lines.push("")
+  lines.push("### O que fazer — cortar o CICLO (não é credencial nem peça quebrada)")
+  lines.push("")
+  lines.push("O corte **primário** do ciclo é a dublagem: quem executa o `deploy/gitea-up.sh`")
+  lines.push("dentro da prova passa `DOCTOR_SCRIPT` apontando para um dublê que **não** roda a")
+  lines.push("prova. Este guard é a defesa **em profundidade** — ele só dispara quando a")
+  lines.push("dublagem não chegou ao processo filho, e existem duas razões possíveis:")
+  lines.push("")
+  lines.push("1. um wrapper (ou um `spawn` que não propaga o ambiente) reexecutou o doctor")
+  lines.push("   com a marca da prova ainda no ambiente — o caso da env var;")
+  lines.push("2. alguém passou a flag `--proof-nested` numa linha de comando que não era a")
+  lines.push("   invocação aninhada — o caso do argv.")
+  lines.push("")
+  lines.push("Pontos de partida: `deploy/gitea-up.sh`, os scripts `prove-*` (o que dubla o")
+  lines.push("doctor) e o job que roda a bateria de guards.")
+  lines.push("")
+  lines.push("### Reproduzir")
+  lines.push("")
+  lines.push("```bash")
+  lines.push(`FORGE_DOCTOR_NESTED=1 bun scripts/forge-doctor.mjs   # recursão via env → exit 3`)
+  lines.push(`bun scripts/forge-doctor.mjs --proof-nested          # recursão via argv → exit 3`)
+  lines.push(
+    "bun scripts/forge-doctor.mjs                         # o veredito de verdade (exit 0 = PRONTA)",
+  )
+  lines.push("```")
+  lines.push("")
+
+  const unproven = report?.verdict?.unproven ?? []
+  if (unproven.length > 0) {
+    lines.push(
+      "<details><summary>O que este relatório NÃO cobre (o guard recusou antes de coletar)</summary>",
+    )
+    lines.push("")
+    for (const u of unproven) lines.push(`- ${u}`)
+    lines.push("")
+    lines.push("</details>")
+    lines.push("")
+  }
+
+  lines.push(
+    "> Recusar não é falhar em silêncio: o doctor **emite** o relatório justamente para" +
+      " este alerta existir. O `exit 3` sozinho é o mesmo código de uso inválido — é o" +
+      " relatório que separa 'recusou por recursão' de 'passaram uma flag errada'.",
+  )
+  lines.push("")
+  lines.push(
+    "> Esta issue é fechada automaticamente quando um run do cron voltar a **medir**" +
+      " (veredito de verdade), pelo mesmo ciclo de reconciliação dos outros alertas.",
+  )
+  lines.push("")
+  return lines.join("\n")
 }
 
 /**
@@ -229,8 +476,17 @@ export function verdictSignatureOf(report) {
 /**
  * A PROSA do corpo da issue — sem o marcador: quem o compõe é o contrato
  * (`publisherBody`), para o marcador ter UMA implementação.
+ *
+ * Duas prosas, UM despacho: o relatório de recursão não é um caso particular do
+ * veredito, é outro documento — e o despacho é o único lugar que decide qual.
  */
 function doctorIssueProse(report) {
+  if (isNestedGuardReport(report)) return nestedIssueProse(report)
+  return forgeVerdictProse(report)
+}
+
+/** A prosa do veredito da FORJA (o caso comum: o doctor mediu). */
+function forgeVerdictProse(report) {
   const verdict = report?.verdict ?? {}
   const blockers = verdict.blockers ?? []
   const unknowns = verdict.unknowns ?? []
@@ -360,6 +616,13 @@ export function parseArgs(argv) {
  *
  * Exit 1/2 do doctor são ESPERADOS (o veredito é o exit code) — o JSON vem no
  * stdout de qualquer forma. Já sem stdout não há veredito: erro, não "verde".
+ *
+ * O EXIT 3 PEDE CUIDADO, porque tem dois significados e só o RELATÓRIO os
+ * separa: a recursão (o doctor rodando dentro da própria prova) sai com 3 **e
+ * emite** o relatório `nestedGuard`; o uso inválido sai com 3 e não emite nada.
+ * O caminho da recursão é o de cima — stdout existe e o fato viaja. O de baixo
+ * (sem stdout) é uso inválido mesmo, e a mensagem NOMEIA a distinção para quem
+ * lê o log não achar que perdeu um alerta de recursão pelo caminho.
  */
 export function loadDoctorReport(options, { run = spawnSync, execPath = process.execPath } = {}) {
   if (options.report) {
@@ -377,8 +640,13 @@ export function loadDoctorReport(options, { run = spawnSync, execPath = process.
   const stdout = (res.stdout ?? "").trim()
   if (!stdout) {
     throw new Error(
-      `\`forge-doctor.mjs --json\` não produziu relatório (exit ${res.status}): ` +
-        `${(res.stderr ?? "").slice(0, 400)}`,
+      `\`forge-doctor.mjs --json\` não produziu relatório (exit ${res.status})` +
+        (res.status === NESTED_GUARD_EXIT
+          ? ` — exit ${NESTED_GUARD_EXIT} SEM relatório é uso/erro interno ` +
+            `(o exit ${NESTED_GUARD_EXIT} da RECURSÃO vem acompanhado do relatório \`nestedGuard\`, ` +
+            `que é publicado como issue própria; este é o OUTRO caso)`
+          : "") +
+        `: ${(res.stderr ?? "").slice(0, 400)}`,
     )
   }
   return JSON.parse(stdout)

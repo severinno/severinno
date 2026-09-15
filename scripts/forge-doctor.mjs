@@ -53,7 +53,11 @@
 //       inacessível, pacote privado sem credencial, ferramenta ausente) OU há
 //       dívida ABERTA no board (uma issue de drift que ninguém fechou: o
 //       repositório já sabe do problema, e o veredito não pode ignorá-lo)
-//   3 — uso/erro interno (argumento inválido, pipeline ilegível)
+//   3 — uso/erro interno (argumento inválido, pipeline ilegível) OU RECURSÃO
+//       detectada (o doctor rodando DENTRO da própria prova). Nos dois casos o
+//       doctor EMITE o relatório — no de recursão, com o fato `nestedGuard` e um
+//       bloqueador que nomeia a recursão —, para a causa não ficar só no stderr
+//       nem depender de distinguir "flag errada" de "recursão" pelo código.
 //
 // POR QUE EXISTE: os guards da forja passavam VERDES e a forja ainda não
 // bloqueava o merge. Cada peça tem seu guard, mas ninguém respondia a pergunta
@@ -268,6 +272,16 @@ export const NESTED_GUARD_ENV = "FORGE_DOCTOR_NESTED"
 export const NESTED_GUARD_FLAG = "--proof-nested"
 
 /**
+ * Exit code com que o doctor RECUSA quando detecta a recursão.
+ *
+ * Nomeado porque é CONTRATO (o `deploy/gitea-up.sh` e os consumidores leem o
+ * código) — e é o MESMO 3 do uso inválido. Essa coincidência é justamente o
+ * motivo do relatório abaixo: sem ele, quem lê o exit code não distinguia "o
+ * doctor foi rodado dentro da própria prova" de "passaram uma flag errada".
+ */
+export const NESTED_GUARD_EXIT = 3
+
+/**
  * O doctor está rodando DENTRO da própria prova (ou seja: recursão)?
  *
  * Pura e injetável (env/argv) de propósito: o teste exercita CADA canal sem
@@ -280,6 +294,148 @@ export const NESTED_GUARD_FLAG = "--proof-nested"
 export function isNestedDoctorInvocation({ env = process.env, argv = process.argv } = {}) {
   return Boolean(env[NESTED_GUARD_ENV]) || argv.includes(NESTED_GUARD_FLAG)
 }
+
+/**
+ * O RELATÓRIO da recursão — o que o guard passa a DIZER, em vez de só recusar.
+ *
+ * POR QUE EXISTE: o guard cortava o ciclo e saía com o código 3, com a causa
+ * no stderr. Quem consome a PRONTIDÃO (o `--json`, o publicador de issues, o
+ * operador que só vê o exit code) recebia um código OPACO — 3 é o mesmo código
+ * de uso inválido —, e a causa vivia fora do canal do relatório. Agora o fato
+ * viaja em stdout/`--json`, o mesmo canal do veredito, e o bloqueador o NOMEIA.
+ *
+ * SÓ o fato da recursão entra: as seções não foram coletadas, e preenchê-las
+ * como "ok" seria a falsa segurança que o resto do doctor existe para matar. O
+ * `unproven` declara exatamente isso, para o veredito não mentir para nenhum
+ * dos dois lados.
+ *
+ * Pura e injetável (env/argv) de propósito: o teste exercita CADA canal sem
+ * subprocesso, e o `main` só consome a resposta.
+ *
+ * O ESTADO `fired` (e não `violated`) porque este fato tem TRÊS perguntas e
+ * três respostas: `fired` = o guard disparou NESTA invocação; `armed` = o guard
+ * está no caminho e responde aos dois canais; `disarmed` = não responde a algum
+ * deles. `violated` diria o mesmo que "armed"/"disarmed" sem distinguir qual
+ * das duas — e um consumidor (o publicador de issue) precisa saber se o guard
+ * DISPAROU, não se ele está bem armado.
+ *
+ * @param {{env?: Record<string, string|undefined>, argv?: string[]}} [io]
+ * @returns {{facts: {nestedGuard: {state: string, channels: {channel: string, name: string}[], envVar: string, flag: string, exit: number}}, verdict: {verdict: string, blockers: string[], unknowns: string[], unproven: string[]}}}
+ */
+export function nestedGuardReport({ env = process.env, argv = process.argv } = {}) {
+  const channels = []
+  if (env[NESTED_GUARD_ENV]) channels.push({ channel: "env", name: NESTED_GUARD_ENV })
+  if (argv.includes(NESTED_GUARD_FLAG)) channels.push({ channel: "argv", name: NESTED_GUARD_FLAG })
+  const marcado =
+    channels.map((c) => `${c.name} (${c.channel})`).join(" e ") || "canal desconhecido"
+  return {
+    facts: {
+      nestedGuard: {
+        state: "fired",
+        channels,
+        envVar: NESTED_GUARD_ENV,
+        flag: NESTED_GUARD_FLAG,
+        exit: NESTED_GUARD_EXIT,
+      },
+    },
+    verdict: {
+      verdict: VERDICT.BLOCKED,
+      blockers: [
+        `RECURSAO: o doctor foi invocado DENTRO da propria prova (marcado por ${marcado}) — o ciclo bring-up → doctor → prova → bring-up foi interrompido por este guard antes de coletar qualquer fato`,
+      ],
+      unknowns: [],
+      unproven: [
+        "NENHUMA seção foi coletada: o guard de recursão recusou antes de rodar — este relatório cobre apenas o fato `nestedGuard`",
+      ],
+    },
+  }
+}
+
+/**
+ * O FATO do guard de recursão ARMADO — a outra metade de `nestedGuardReport`.
+ *
+ * POR QUE O RELATÓRIO NORMAL PRECISA DELE: o `nestedGuardReport` só existe
+ * quando o guard DISPARA. Sem este fato, um veredito não diz NADA sobre a
+ * DEFESA: se o `isNestedDoctorInvocation` sair do caminho quente, ou se um dos
+ * dois canais deixar de ser respondido, o relatório de uma forja saudável fica
+ * idêntico — a proteção do ciclo (bring-up → doctor → prova → bring-up) pode
+ * ter sumido sem que a prontidão mude uma linha. É cobertura de EXISTÊNCIA, e
+ * não só de disparo.
+ *
+ * O QUE ELE PROVA, E COM QUE FORÇA: sonda a MESMA função do caminho quente
+ * (`isNestedDoctorInvocation`), um canal por vez, com entradas sintéticas — não
+ * uma segunda implementação da regra, que mediria a si mesma (o defeito que o
+ * `--expected-var` e a comparação de espelhos já evitam no resto do doctor).
+ *
+ * O QUE ELE NÃO PROVA (e por isso está escrito no `detail`): a POSIÇÃO do
+ * corte — que o check roda ANTES de qualquer coleta. Essa metade não se mede de
+ * dentro: medir a defesa do ciclo dando a volta no ciclo é exatamente o que a
+ * defesa impede — um filho sem o corte É a recursão, e o diagnóstico não pode
+ * virar o defeito. Quem prende a posição são os testes que executam os DOIS
+ * canais de fora (o `--proof-nested` sai 3 antes de coletar) e o
+ * `checkGiteaBringUp`, que prende a invocação e a ordem.
+ *
+ * @param {{probe?: typeof isNestedDoctorInvocation}} [deps]
+ * @returns {{state: "armed"|"disarmed", channels: {channel: string, name: string}[], armed: Record<string, boolean>, envVar: string, flag: string, exit: number, detail: string, remedies: string[]}}
+ */
+export function recursionGuardFacts({ probe = isNestedDoctorInvocation } = {}) {
+  const channels = [
+    { channel: "env", name: NESTED_GUARD_ENV },
+    { channel: "argv", name: NESTED_GUARD_FLAG },
+  ]
+  const armed = Object.fromEntries(
+    channels.map((c) => [
+      c.channel,
+      probe(
+        c.channel === "env"
+          ? { env: { [NESTED_GUARD_ENV]: "1" }, argv: [] }
+          : { env: {}, argv: [NESTED_GUARD_FLAG] },
+      ) === true,
+    ]),
+  )
+  const desarmados = channels.filter((c) => !armed[c.channel])
+  const nomeados = channels.map((c) => `${c.name} (${c.channel})`).join(" + ")
+  const base = {
+    channels,
+    armed,
+    envVar: NESTED_GUARD_ENV,
+    flag: NESTED_GUARD_FLAG,
+    exit: NESTED_GUARD_EXIT,
+  }
+
+  if (desarmados.length === 0) {
+    return {
+      ...base,
+      state: "armed",
+      // "esta invocação não foi marcada por nenhum deles" é FATO, não suposição:
+      // se uma das marcas estivesse no ambiente/argv, o guard teria disparado
+      // antes de montar relatório nenhum.
+      detail: `o guard de recursão está armado nos dois canais (${nomeados}) e esta invocação não foi marcada por nenhum deles`,
+      remedies: [],
+    }
+  }
+
+  return {
+    ...base,
+    state: "disarmed",
+    detail: `o guard de recursão NÃO responde pelo(s) canal(is) ${desarmados
+      .map((c) => `${c.name} (${c.channel})`)
+      .join(
+        " e ",
+      )}: a defesa em profundidade do ciclo bring-up → doctor → prova → bring-up está armada PELA METADE`,
+    remedies: [
+      `scripts/forge-doctor.mjs: isNestedDoctorInvocation tem de responder a ${NESTED_GUARD_ENV} (env) E a ${NESTED_GUARD_FLAG} (argv) — os dois canais existem porque um chamador que NÃO controla o ambiente do filho (wrapper, spawn sem 'env') não tem como setar a env var, e sem a flag esse caminho ficaria sem defesa`,
+      `as duas metades têm de sair ${NESTED_GUARD_EXIT} antes de coletar qualquer fato: FORGE_DOCTOR_NESTED=1 node scripts/forge-doctor.mjs e node scripts/forge-doctor.mjs ${NESTED_GUARD_FLAG}`,
+    ],
+  }
+}
+
+/**
+ * Um `run:` que é SÓ o marcador de bloco multilinha do YAML (`>`, `>-`, `|`)
+ * — o comando vive nas linhas seguintes, que o extrator de linha única não vê.
+ * Existe para o DIAGNÓSTICO não imprimir `'>'` como se fosse um comando.
+ */
+const BLOCK_RUN = /^[>|][-+]?$/
 
 /** Exit code do `runner-image:check` quando a tag NÃO existe (a única falha da forja). */
 const IMAGE_MISSING = 4
@@ -651,6 +807,28 @@ export const VERDICT = {
 export function summarize(facts) {
   const blockers = []
   const unknowns = []
+
+  // O GUARD DE RECURSÃO ARMADO — o fato que diz se a DEFESA existe, e não só se
+  // ela disparou. Desarmado em QUALQUER canal BLOQUEIA: pelo canal que deixou de
+  // ser respondido, o ciclo (bring-up → doctor → prova → bring-up) volta a
+  // recursar até a exaustão de processos, e um veredito "PRONTA" com a defesa
+  // pela metade é a falsa segurança que este comando existe para não produzir.
+  //
+  // Ausente NÃO é verde: um relatório sem o fato não cobre a existência da
+  // defesa — e dizer "pronta" sobre o que não foi olhado é exatamente o que
+  // este doctor recusa. (Relação montada à mão em teste precisa do fato:
+  // mesma disciplina do resto dos fixtures.)
+  if (facts.nestedGuard?.state === "disarmed") {
+    blockers.push(`o guard de recursao esta DESARMADO — ${facts.nestedGuard.detail}`)
+  } else if (facts.nestedGuard && facts.nestedGuard.state !== "armed") {
+    unknowns.push(
+      `o guard de recursão não foi conferido (state '${facts.nestedGuard.state}'): ${facts.nestedGuard.detail ?? "sem detalhe"}`,
+    )
+  } else if (!facts.nestedGuard) {
+    unknowns.push(
+      "o guard de recursão (a defesa em profundidade contra o ciclo bring-up → doctor → prova) não está declarado no relatório: o veredito não cobre se a defesa está armada nem por quais canais ela responde",
+    )
+  }
 
   for (const f of facts.contract.failures) blockers.push(f)
   if (facts.contract.unknown) unknowns.push(facts.contract.unknown)
@@ -1193,6 +1371,18 @@ export function readBringUpGate({
  * contra o rótulo do gate (que descarta flags). Isso impede que um gate
  * decorativo (job existe mas roda outra coisa) passe em silêncio.
  *
+ * A RÉGUA É UMA SÓ, e é a da invariante — não da forja. Uma tabela de
+ * sobrescrita por forja (`matchesByForge`) existiu aqui para acomodar o dia em
+ * que o job `lint-guard` do GitHub rodava prettier + `eslint . --max-warnings 0`
+ * INLINE enquanto a Gitea rodava `bun run lint` (= `eslint .`, sem o teto de
+ * warnings e sem prettier). Ela descrevia a assimetria com precisão e, ao
+ * fazê-lo, a transformava em contrato: o mesmo commit passava no merge de uma
+ * forja e era rejeitado na outra, e quem liberava o merge era o lado mais
+ * fraco. Hoje o comando compartilhado vive no script `lint` do package.json e
+ * as duas forjas rodam o MESMO `bun run lint`; se um dia uma forja precisar de
+ * outra coisa, o conserto é mudar o comando COMPARTILHADO — declarar uma
+ * segunda régua é reabrir o furo.
+ *
  * @param {{jobId: string, expectedCommand: RegExp, invariantId: string,
  *   cwd?: string, contract?: object, protection?: object}} args
  * @returns {{state: "proven"|"violated"|"unavailable", jobId: string,
@@ -1246,6 +1436,8 @@ export function readGateContract({
       })
       continue
     }
+    // A régua é a da INVARIANTE, a mesma para toda forja que declara o job.
+    const expected = expectedCommand
     const path = join(cwd, f.workflow)
     if (!existsSync(path)) {
       unread = `${f.forge}: ${f.workflow} ausente deste checkout — não dá para ler o que o job '${jobId}' RODA`
@@ -1283,17 +1475,18 @@ export function readGateContract({
       const m = line.match(/^(?:-\s*)?run:\s*(.+)$/)
       if (m) allRunLines.push(m[1].trim())
     }
-    // Primeiro tenta o gateRunLine (que procura o label na linha) — funciona
-    // para jobs composited onde o label aparece no `run:`.
-    let command = gateRunLine(jobLines, jobId)
-    // Se não encontrou, procura em TODOS os `run:` se ALGUM casa com o padrão.
+    // A PERGUNTA É "o job RODA o comando esperado?" — então a busca pelo
+    // comando vem ANTES de qualquer palpite por rótulo. `gateRunLine` casa
+    // pelo NOME do passo, e o nome é escrito por quem escreve o workflow: no
+    // job `check` do GitHub existe o passo "Guard: no @ts-nocheck", cujo
+    // rótulo contém "check" — pelo rótulo, o gate `tests` era acusado de
+    // rodar `bun run check:ts-nocheck` mesmo com `bun run test:unit` no
+    // mesmo job. Um palpite virando VIOLAÇÃO é pior que não ter o teste.
+    let command = allRunLines.find((runCmd) => expected.test(runCmd)) ?? null
+    // Só quando NENHUM `run:` casa: aí o rótulo serve para DIAGNOSTICAR
+    // (nomear a linha que o gate realmente executa na violação).
     if (command === null) {
-      for (const runCmd of allRunLines) {
-        if (expectedCommand.test(runCmd)) {
-          command = runCmd
-          break
-        }
-      }
+      command = gateRunLine(jobLines, jobId)
     }
     // Último recurso: usa o primeiro `run:` (para jobs standalone).
     if (command === null && allRunLines.length > 0) {
@@ -1311,8 +1504,20 @@ export function readGateContract({
       })
       continue
     }
-    if (!expectedCommand.test(command)) {
-      const detail = `${f.forge}: o job '${jobId}' em ${f.workflow} executa '${command}' que NÃO casa com ${expectedCommand} — o gate pode ter sido trocado por outro`
+    if (!expected.test(command)) {
+      // Aqui NENHUM `run:` do job casa a régua (o `find` acima já testou todas):
+      // `command` é o palpite do rótulo, ou a primeira linha, e nomear UMA
+      // delas é apontar para um lugar que pode não ter nada a ver com o gate —
+      // no job `lint-guard` era o passo de setup do Bun, que nunca foi o gate.
+      // A violação lista TODOS os `run:` do job: quem lê vê o comando de
+      // verdade sem abrir o YAML, e não sai procurando o problema no setup.
+      const rodam =
+        allRunLines.length > 0
+          ? `NENHUM dos ${allRunLines.length} 'run:' do job casa com ${expected} — o job roda: ${allRunLines
+              .map((c) => (BLOCK_RUN.test(c) ? "<bloco multilinha>" : `'${c}'`))
+              .join(" · ")}`
+          : `não tem nenhum 'run:' que case com ${expected}`
+      const detail = `${f.forge}: o job '${jobId}' em ${f.workflow}: ${rodam} — o gate pode ter sido trocado por outro`
       violations.push(detail)
       entries.push({ forge: f.forge, workflow: f.workflow, command, registered: null, detail })
       continue
@@ -1410,20 +1615,36 @@ export function readGateContract({
  * `CORE_INVARIANTS` (uma fonte só) — adicionar uma invariante com `jobIds`
  * a essa lista a torna automaticamente verificável no veredito do doctor.
  *
- * @returns {{invariantId: string, jobId: string, expectedCommand: RegExp}[]}
+ * @returns {{invariantId: string, jobId: string, forge: string,
+ *   expectedCommand: RegExp}[]}
  */
 export function coreGateContracts() {
   const contracts = []
+  // A chave é (invariante × job) — NÃO só o job. SEIS invariantes (ts-nocheck,
+  // required-checks, registry-source, runner-base, forge-parity,
+  // forge-workflow-scope) compartilham o job `guards` da Gitea: deduplicando
+  // pelo job, cinco delas ficavam fora da lista de contratos e cinco regras
+  // CORE apareciam como "cobertas" sem nunca terem sido medidas. Cada
+  // invariante tem a SUA régua e tem de ser conferida.
   const seen = new Set()
   for (const inv of CORE_INVARIANTS) {
     if (!inv.jobIds) continue
-    // Cada invariante pode ter VÁRIOS jobIds (um por forja). Cada jobId
-    // ÚNICO vira um contrato — se a Gitea tem `lint` e o GitHub tem
-    // `lint-guard`, são dois contratos distintos.
-    for (const jid of Object.values(inv.jobIds)) {
-      if (seen.has(jid)) continue
-      seen.add(jid)
-      contracts.push({ invariantId: inv.id, jobId: jid, expectedCommand: inv.matches })
+    // Cada invariante pode ter VÁRIOS jobIds (um por forja). Cada par único
+    // (invariante, jobId) vira um contrato — se a Gitea tem `lint` e o GitHub
+    // tem `lint-guard`, são dois contratos distintos da MESMA invariante.
+    for (const [forge, jid] of Object.entries(inv.jobIds)) {
+      const key = `${inv.id}|${jid}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      contracts.push({
+        invariantId: inv.id,
+        jobId: jid,
+        forge,
+        // A régua do JOB: o `matches` da invariante, o MESMO para toda forja
+        // que declara aquele jobId (é o que impede o merge de ser liberado por
+        // uma régua mais fraca de um dos lados).
+        expectedCommand: inv.matches,
+      })
     }
   }
   return contracts
@@ -1446,37 +1667,40 @@ export function readAllGateContracts({
   protection = null,
 } = {}) {
   const allContracts = coreGateContracts()
-  // Indexa os contratos por jobId para busca rápida.
-  const byJobId = new Map()
-  for (const c of allContracts) {
-    if (!byJobId.has(c.jobId)) byJobId.set(c.jobId, c)
-  }
-
+  const declared = contract?.forges ?? []
   const results = []
   const allViolations = []
 
-  // Itera os jobs do manifesto (não os invariantes): só os que o manifesto
-  // exige são verificados aqui. Um job do manifesto que NÃO casa com nenhuma
-  // invariante CORE é ignorado (pode ser GITHUB_ONLY ou não-classificado).
-  const declared = contract?.forges ?? []
-  const checkedJobIds = new Set()
-  for (const f of declared) {
-    for (const jobId of f.jobIds ?? []) {
-      if (checkedJobIds.has(jobId)) continue
-      checkedJobIds.add(jobId)
-      const c = byJobId.get(jobId)
-      if (!c) continue // não é CORE (ou não tem `jobIds`)
-      const r = readGateContract({
-        jobId: c.jobId,
-        expectedCommand: c.expectedCommand,
-        invariantId: c.invariantId,
-        cwd,
-        contract,
-        protection,
-      })
-      results.push(r)
-      if (r.state === "violated") allViolations.push(...r.violations)
-    }
+  // Itera os CONTRATOS (invariante × jobId) — não os jobs do manifesto, e sem
+  // deduplicar por jobId. As duas coisas juntas eram um furo silencioso: SEIS
+  // invariantes (ts-nocheck, required-checks, registry-source, runner-base,
+  // forge-parity, forge-workflow-scope) compartilham o job `guards` da Gitea, e
+  // o dedup por jobId conferia a régua da PRIMEIRA delas e descartava as outras
+  // cinco — cinco invariantes CORE "cobertas" pelo fato sem nunca terem sido
+  // olhadas. Cada invariante declara a sua régua; cada uma tem de ser medida.
+  //
+  // Um contrato cujo job o manifesto NÃO exige é PULADO aqui (é o
+  // check:forge-parity que compara o que o CORE pede com o que existe em cada
+  // pipeline). A pergunta deste fato é: "o que o manifesto EXIGE é CORE e roda
+  // o comando certo?"
+  for (const c of allContracts) {
+    // O contrato é RECORTADO para as forjas que DECLARAM o job. Uma invariante
+    // que só existe numa forja (por desenho — as isenções GitHub-only com razão
+    // escrita) declarava o outro lado como violação: "a forja X NÃO exige o job
+    // 'lint'", quando 'lint' é o job da Gitea e o manifesto do GitHub
+    // corretamente não o exige.
+    const declaring = declared.filter((df) => (df.jobIds ?? []).includes(c.jobId))
+    if (declaring.length === 0) continue
+    const r = readGateContract({
+      jobId: c.jobId,
+      expectedCommand: c.expectedCommand,
+      invariantId: c.invariantId,
+      cwd,
+      contract: { ...contract, forges: declaring },
+      protection,
+    })
+    results.push(r)
+    if (r.state === "violated") allViolations.push(...r.violations)
   }
 
   return {
@@ -2767,6 +2991,9 @@ const VERDICT_LINE = {
   [VERDICT.UNKNOWN]: () => `${MARK.warn()} INDETERMINADA — nada falhou, mas há coisa não provada`,
 }
 
+/** A barra do cabeçalho do relatório — uma só, para o recorte de recursão usar a mesma. */
+const REPORT_BAR = "  ═════════════════════════════════════════════════════════════════"
+
 /**
  * @param {object} report  { facts, verdict }
  * @param {{emit: Function}} deps
@@ -2775,10 +3002,37 @@ export function renderReport(report, { emit = console.log } = {}) {
   const { facts, verdict } = report
   const line = (s = "") => emit(s)
 
+  // ── RECURSÃO DETECTADA (nenhuma seção coletada) ────────────────────────
+  // O doctor foi invocado DENTRO da própria prova: o guard cortou o ciclo e o
+  // relatório existe para o FATO chegar em quem lê a prontidão — antes ele saía
+  // com exit 3 e a causa vivia só no stderr, fora do canal do relatório (e o 3
+  // é o MESMO código de uso inválido, então nem dava para distinguir os dois).
+  const nested = facts.nestedGuard
+  if (nested?.state === "fired") {
+    line()
+    line(REPORT_BAR)
+    line("   🩺 DOCTOR DA FORJA — RECURSÃO DETECTADA (nenhuma seção coletada)")
+    line(REPORT_BAR)
+    line()
+    line(
+      `  ${MARK.fail()} o doctor está rodando DENTRO da própria prova (exit ${NESTED_GUARD_EXIT})`,
+    )
+    for (const c of nested.channels ?? []) {
+      line(`  ${MARK.info()} marcado por: ${c.name} (canal ${c.channel})`)
+    }
+    line()
+    for (const b of verdict.blockers) line(`  ${MARK.fail()} ${b}`)
+    line()
+    line("  O relatório NÃO cobre (o guard recusou antes de coletar):")
+    for (const u of verdict.unproven) line(`  ${MARK.skip()} ${u}`)
+    line()
+    return
+  }
+
   line()
-  line("  ═════════════════════════════════════════════════════════════════")
+  line(REPORT_BAR)
   line("   🩺 DOCTOR DA FORJA — prontidão para bloquear o merge")
-  line("  ═════════════════════════════════════════════════════════════════")
+  line(REPORT_BAR)
   line()
   line(`  ${MARK.info()} dona do merge : ${MERGE_OWNER_PIPELINE} (job '${FORGE_GUARDS_JOB}')`)
   line(`  ${MARK.info()} manifesto     : ${REQUIRED_CHECKS_MANIFEST}`)
@@ -2993,6 +3247,29 @@ export function renderReport(report, { emit = console.log } = {}) {
     for (const c of cases.filter((c) => !c.ok)) {
       line(`           ${MARK.fail()} ${c.title}`)
       for (const f of c.failures ?? []) line(`               ${color(C.gray, f)}`)
+    }
+  }
+
+  // O GUARD DE RECURSÃO: a defesa contra o ciclo que ESTA seção provoca — a
+  // prova executa o bring-up, que executa o doctor. O fato é declarado no
+  // relatório NORMAL porque a prontidão tem de cobrir a EXISTÊNCIA da defesa (e
+  // por quais canais ela responde), e não só o disparo dela: o disparo tem
+  // relatório próprio, com o estado `fired`.
+  const guard = facts.nestedGuard
+  if (!guard) {
+    line(
+      `       ${MARK.warn()} guard de recursão: NÃO declarado no relatório — o veredito não cobre a defesa do ciclo bring-up → doctor → prova`,
+    )
+  } else {
+    const guardMark =
+      guard.state === "armed" ? MARK.ok() : guard.state === "disarmed" ? MARK.fail() : MARK.warn()
+    const canais = (guard.channels ?? []).map((c) => `${c.name} (${c.channel})`).join(" + ")
+    line(
+      `       ${guardMark} guard de recursão: ${guard.state}${canais ? ` — responde a ${canais}` : ""}`,
+    )
+    line(`           ${color(C.gray, guard.detail)}`)
+    if (guard.state !== "armed") {
+      for (const r of guard.remedies ?? []) line(`           ${color(C.gray, `→ ${r}`)}`)
     }
   }
 
@@ -3272,13 +3549,19 @@ Opções:
   --proof-nested         DEFESA (não é opção de uso): declara que ESTA
                          invocação roda DENTRO da prova. O doctor falha com
                          exit 3 em vez de recursar (bring-up → doctor →
-                         prova → bring-up). É o gêmeo da env
-                         \`FORGE_DOCTOR_NESTED\`, para quem reexecuta o doctor
-                         por linha de comando SEM controlar o ambiente do filho
+                         prova → bring-up) e EMITE o relatório de recursão
+                         (stdout, ou o JSON de --json) — o mesmo canal do
+                         veredito, para a causa não viver só no stderr. É o
+                         gêmeo da env \`FORGE_DOCTOR_NESTED\`, para quem
+                         reexecuta o doctor por linha de comando SEM
+                         controlar o ambiente do filho
   -h, --help             esta ajuda
 
 Exit codes (o veredito é o exit code — dá para usar em pipeline):
-  0 — pronta   1 — bloqueada   2 — indeterminada   3 — uso/erro interno
+  0 — pronta   1 — bloqueada   2 — indeterminada
+  3 — uso/erro interno OU recursão detectada (o doctor rodando DENTRO da
+      própria prova). Em ambos sai o RELATÓRIO; no caso da recursão ele traz
+      o fato \`nestedGuard\` e um bloqueador que a nomeia
 
 No perfil --ci o veredito NORMAL é 2 (INDETERMINADA): as seções de rede e de
 HOST ficam para o cron. Quem roda em pipeline trata 0 e 2 como "sem violação" e
@@ -3658,6 +3941,10 @@ async function main() {
   // A marca vale por DOIS canais (env var OU flag): quem não controla o
   // ambiente do filho passa `--proof-nested` e tem a mesma defesa.
   if (isNestedDoctorInvocation()) {
+    // O corte continua IMEDIATO (antes do parseArgs, para o ciclo não avançar
+    // nem um passo). O que muda é que a causa passa a sair no canal do
+    // RELATÓRIO (stdout, ou o JSON de `--json`) — antes ela vivia só no stderr,
+    // e o exit 3 (o mesmo de uso inválido) não dizia QUAL dos dois era.
     console.error(
       `forge-doctor: DETECTADO RECURSAO — ${NESTED_GUARD_ENV} definido ou ` +
         `${NESTED_GUARD_FLAG} passado. ` +
@@ -3665,7 +3952,10 @@ async function main() {
         `bring-up → doctor → prova → bring-up foi interrompido por este ` +
         `guard (defesa em profundidade contra o corte via DOCTOR_SCRIPT).`,
     )
-    process.exit(3)
+    const report = nestedGuardReport()
+    if (process.argv.includes("--json")) console.log(JSON.stringify(report, null, 2))
+    else renderReport(report)
+    process.exit(NESTED_GUARD_EXIT)
   }
   const opts = parseArgs(process.argv.slice(2))
   if (opts.error) {

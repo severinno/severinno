@@ -59,15 +59,20 @@ import yaml from "js-yaml"
 import { resolveBash } from "@/lib/__tests__/helpers/bash-resolver"
 
 import { VERDICT } from "../../../scripts/forge-doctor.mjs"
-import { markerOf } from "../../../scripts/issue-publish.mjs"
+import { decidePublication, markerOf } from "../../../scripts/issue-publish.mjs"
 import {
   ISSUE_LABEL,
   ISSUE_LABEL_COLOR,
+  NESTED_RECURSION_TITLE,
   VERDICT_MARKER_ID,
   doctorIssueBody,
   doctorIssueTitle,
   isActionable,
+  isNestedGuardReport,
   loadDoctorReport,
+  markingChannels,
+  nestedChannelNames,
+  nestedGuardOf,
   parseArgs,
   verdictOf,
   verdictSignatureOf,
@@ -99,6 +104,52 @@ function doctorReport(verdict: Record<string, unknown> = {}) {
       unproven: ["os guards da forja (pulados por --no-guards)"],
       ...verdict,
     },
+  }
+}
+
+/**
+ * O relatório de RECURSÃO, com a mesma FORMA do `--json` real: o fato
+ * `nestedGuard` com `state: fired` (mais os CANAIS que marcaram a invocação) e o
+ * veredito bloqueado que o doctor emite junto — o guard corta antes de medir
+ * seção nenhuma, então é o ÚNICO fato que existe.
+ */
+function nestedReport(
+  channels: { channel: string; name: string }[] = [{ channel: "env", name: "FORGE_DOCTOR_NESTED" }],
+) {
+  const marcado =
+    channels.map((c) => `${c.name} (${c.channel})`).join(" e ") || "canal desconhecido"
+  return {
+    facts: {
+      nestedGuard: {
+        state: "fired",
+        channels,
+        envVar: "FORGE_DOCTOR_NESTED",
+        flag: "--proof-nested",
+        exit: 3,
+      },
+    },
+    verdict: {
+      verdict: VERDICT.BLOCKED,
+      blockers: [
+        `RECURSAO: o doctor foi invocado DENTRO da propria prova (marcado por ${marcado}) — o ciclo bring-up → doctor → prova → bring-up foi interrompido por este guard antes de coletar qualquer fato`,
+      ],
+      unknowns: [],
+      unproven: [
+        "NENHUMA seção foi coletada: o guard de recursão recusou antes de rodar — este relatório cobre apenas o fato `nestedGuard`",
+      ],
+    },
+  }
+}
+
+/**
+ * A issue que o backend criaria para um relatório — mesmo título, mesmo corpo.
+ * É o que permite exercitar o DEDUP (`decidePublication`) sem servidor.
+ */
+function issueFor(report: Record<string, unknown>, number = 1) {
+  return {
+    number,
+    title: doctorIssueTitle(report),
+    body: doctorIssueBody(report),
   }
 }
 
@@ -337,6 +388,146 @@ describe("forge-doctor-issue — argumentos", () => {
   })
 })
 
+// ── 1b. A RECURSÃO É UM VEREDITO PRÓPRIO ───────────────────────────────────
+//
+// O exit 3 tem DOIS significados e só o RELATÓRIO os separa: a RECURSÃO (o
+// doctor rodando dentro da própria prova) sai com 3 e EMITE o fato
+// `nestedGuard`; o uso inválido sai com 3 e não emite nada. Tratar os dois pelo
+// código do exit faz o alerta sumir justamente onde ele é o ÚNICO que existe —
+// atrás dele não há veredito nenhum para consultar. E publicá-lo como se fosse
+// o veredito da forja mente: o corpo genérico afirma "a forja pode não segurar o
+// merge" e manda reproduzir com credencial, quando o que houve foi o doctor
+// recusar ANTES de medir.
+
+describe("forge-doctor-issue — a RECURSÃO é um veredito PRÓPRIO", () => {
+  it("reconhecida pelo FATO, não pelo exit code (que o caminho --report nem tem)", () => {
+    expect(isNestedGuardReport(nestedReport())).toBe(true)
+    expect(nestedGuardOf(nestedReport())?.state).toBe("fired")
+    expect(isNestedGuardReport(doctorReport())).toBe(false)
+    expect(nestedGuardOf(doctorReport())).toBeNull()
+    // Bloqueador que FALA em recursão não é o fato: o fato é a chave
+    // `facts.nestedGuard`. Um `--report` de terceiro com o texto certo continua
+    // sendo um veredito da forja.
+    expect(
+      isNestedGuardReport({
+        facts: {},
+        verdict: { verdict: VERDICT.BLOCKED, blockers: ["RECURSAO: algo"] },
+      }),
+    ).toBe(false)
+  })
+
+  it("é acionável pelo SEU próprio fato (não por herdar 'bloqueada' do veredito)", () => {
+    expect(isActionable({ facts: { nestedGuard: { state: "fired" } } })).toBe(true)
+  })
+
+  it("o fato ARMADO (que todo relatório normal carrega) NÃO é recursão", () => {
+    // O doctor passou a declarar a DEFESA em todo relatório (`armed`/`disarmed`,
+    // no relatório normal; `fired`, no da recursão). Ler o nome do fato em vez do
+    // ESTADO faria o publicador abrir issue de recursão em cima de um veredito
+    // saudável — ou deixar de abrir no único caso em que ela existe.
+    const armed = { facts: { nestedGuard: { state: "armed" } } }
+    const disarmed = { facts: { nestedGuard: { state: "disarmed" } } }
+    expect(isNestedGuardReport(armed)).toBe(false)
+    expect(nestedGuardOf(armed)).toBeNull()
+    expect(isNestedGuardReport(disarmed)).toBe(false)
+    expect(nestedGuardOf(disarmed)).toBeNull()
+    // ... e um fato DESARMADO continua acionável, mas pelo veredito que o doctor
+    // emite junto (o bloqueador do guard), não pela via da recursão.
+    expect(isActionable({ facts: disarmed.facts, verdict: { verdict: VERDICT.BLOCKED } })).toBe(
+      true,
+    )
+  })
+
+  it("o CANAL que marcou entra na assinatura e no corpo — env e argv", () => {
+    const env = nestedReport([{ channel: "env", name: "FORGE_DOCTOR_NESTED" }])
+    const argv = nestedReport([{ channel: "argv", name: "--proof-nested" }])
+
+    expect(verdictSignatureOf(env)).toContain("channel:env:FORGE_DOCTOR_NESTED")
+    expect(verdictSignatureOf(argv)).toContain("channel:argv:--proof-nested")
+    expect(doctorIssueBody(env)).toContain("`FORGE_DOCTOR_NESTED` (canal: env)")
+    expect(doctorIssueBody(argv)).toContain("`--proof-nested` (canal: argv)")
+    expect(nestedChannelNames(argv)).toContain("`--proof-nested` (argv)")
+  })
+
+  it("a MESMA recursão dá a MESMA assinatura, e a ordem dos canais não a muda", () => {
+    const dois = [
+      { channel: "env", name: "FORGE_DOCTOR_NESTED" },
+      { channel: "argv", name: "--proof-nested" },
+    ]
+    expect(verdictSignatureOf(nestedReport(dois))).toBe(
+      verdictSignatureOf(nestedReport([...dois].reverse())),
+    )
+  })
+
+  it("a assinatura da recursão NUNCA colide com a do veredito da forja", () => {
+    const nested = verdictSignatureOf(nestedReport())
+    const verdict = verdictSignatureOf(doctorReport())
+    expect(nested).not.toBe(verdict)
+    expect(nested.startsWith("nested:")).toBe(true)
+    expect(verdict.startsWith("verdict:")).toBe(true)
+  })
+
+  it("TÍTULO próprio: a dívida nasce SEPARADA, em vez de virar comentário na issue do veredito", () => {
+    expect(doctorIssueTitle(nestedReport())).toBe(NESTED_RECURSION_TITLE)
+    expect(doctorIssueTitle(nestedReport())).not.toBe(doctorIssueTitle(doctorReport()))
+
+    // O contrato do dedup, exercitado de verdade: com a issue do VEREDITO
+    // ABERTA, uma recursão NÃO pode ser engolida como comentário dela.
+    const decisao = decidePublication({
+      existing: [issueFor(doctorReport())],
+      title: doctorIssueTitle(nestedReport()),
+      signature: verdictSignatureOf(nestedReport()),
+      markerId: VERDICT_MARKER_ID,
+    })
+    expect(decisao.action).toBe("create")
+
+    // ... e a recursão REPETIDA é reconhecida (o dedup continua funcionando no
+    // próprio canal dela: nada de issue nova toda semana).
+    expect(
+      decidePublication({
+        existing: [issueFor(nestedReport())],
+        title: doctorIssueTitle(nestedReport()),
+        signature: verdictSignatureOf(nestedReport()),
+        markerId: VERDICT_MARKER_ID,
+      }).action,
+    ).toBe("already-reported")
+  })
+
+  it("o corpo diz que NADA foi medido e manda cortar o CICLO, não buscar credencial", () => {
+    const body = doctorIssueBody(nestedReport())
+    expect(body).toContain("Isto NÃO é um veredito sobre a forja")
+    expect(body).toContain("a prontidão **não foi medida**")
+    expect(body).toContain("nestedGuard.state = fired")
+    expect(body).toContain("bring-up → doctor → prova → bring-up")
+    // O corte PRIMÁRIO é a dublagem — é onde o operador tem de olhar.
+    expect(body).toContain("DOCTOR_SCRIPT")
+    expect(body).toContain("FORGE_DOCTOR_NESTED=1")
+    expect(body).toContain("--proof-nested")
+    // O remédio do VEREDITO não aparece aqui: ele manda consertar a peça errada.
+    expect(body).not.toContain("IMAGE_REGISTRY=$(gh variable get IMAGE_REGISTRY)")
+    expect(body).not.toContain("**VEREDITO: BLOQUEADA**")
+    expect(body).not.toContain("INDETERMINADA não é violação")
+  })
+
+  it("relatório SEM o detalhe do canal NÃO inventa um canal (e segue estável)", () => {
+    const semCanal = {
+      ...nestedReport([]),
+      facts: { nestedGuard: { state: "fired" } },
+    }
+    expect(markingChannels(semCanal)).toEqual([])
+    expect(nestedChannelNames(semCanal)).toContain("não declarado")
+
+    const body = doctorIssueBody(semCanal)
+    // Diz que o relatório não declarou — e nomeia os DOIS canais possíveis em vez
+    // de escolher um, porque um canal chutado leva ao lugar errado.
+    expect(body).toContain("**não declarou**")
+    expect(body).toContain("FORGE_DOCTOR_NESTED")
+    expect(body).toContain("--proof-nested")
+    // A assinatura continua a mesma entre runs (o FATO é o mesmo).
+    expect(verdictSignatureOf(semCanal)).toContain("channel:nao-declarado")
+  })
+})
+
 // ── 2. CONTRATO ENTRE OS MÓDULOS (doctor real → publicador) ─────────────────
 
 describe("forge-doctor-issue — o relatório REAL do doctor", () => {
@@ -373,6 +564,15 @@ describe("forge-doctor-issue — o relatório REAL do doctor", () => {
     }
     expect(Object.values(VERDICT)).toContain(report.verdict.verdict)
     expect(isActionable(report)).toBe(true)
+
+    // E o fato `nestedGuard` passou a existir em TODO relatório (a defesa
+    // declarada como fato próprio). A metade que isto prende: um relatório
+    // VERDADEIRO nunca pode ser lido como recursão — se algum dia o fato nascer
+    // com outro estado, o publicador abriria a issue de recursão em cima de um
+    // veredito comum, com o corpo e o título errados.
+    expect(report.facts.nestedGuard?.state).toBe("armed")
+    expect(isNestedGuardReport(report)).toBe(false)
+    expect(nestedGuardOf(report)).toBeNull()
   })
 
   it("o CORPO da issue carrega os não-provados do relatório real", () => {
@@ -937,6 +1137,20 @@ describe("forge-doctor.yml — o fechamento é ALCANÇÁVEL na run PRONTA", () =
     })
   }
 
+  /**
+   * Reescreve `${{ steps.<id>.outputs.<nome> }}` com o que os steps JÁ gravaram.
+   *
+   * O runner resolve essa expressão antes de rodar o script; sem isto o texto
+   * `${{ … }}` chegaria ao bash e o teste mediria um erro de SINTAXE em vez do
+   * condicionamento — o modo de falha que este bloco existe para não repetir.
+   */
+  function resolveStepExpressions(value: string, outputs: Record<string, string>): string {
+    return value.replace(
+      /\$\{\{\s*steps\.([\w-]+)\.outputs\.([\w-]+)\s*\}\}/g,
+      (_all, id, name) => outputs[`${id}.${name}`] ?? "",
+    )
+  }
+
   /** O log das invocações que chegaram ao publicador (`null` = nenhuma). */
   let publishInvocations: string[] = []
 
@@ -958,6 +1172,13 @@ describe("forge-doctor.yml — o fechamento é ALCANÇÁVEL na run PRONTA", () =
     exit: number
     /** Os FATOS do relatório: o que a prova do fechamento cita. */
     facts?: Record<string, unknown>
+    /**
+     * O relatório que o doctor GRAVA. Sem ele, o default segue o exit code: 3 →
+     * vazio (o doctor real não escreve nada quando falha em USO) e os demais → o
+     * relatório canônico. Um exit 3 COM relatório é a RECURSÃO, e é justamente
+     * por isso que ela precisa ser pedida explicitamente aqui.
+     */
+    report?: Record<string, unknown> | null
   }): Promise<StepRun> {
     const dir = mkdtempSync(join(tmpdir(), "doctor-cron-"))
     tmpDirs.push(dir)
@@ -966,11 +1187,10 @@ describe("forge-doctor.yml — o fechamento é ALCANÇÁVEL na run PRONTA", () =
     // no teste estático acima — o que se mede aqui é o CONDICIONAMENTO do step.
     const local = dir.split("\\").join("/")
     const reportPath = join(dir, "forge-doctor.json")
-    // Exit 3 é USO/erro interno: o doctor real não escreve relatório nenhum — e
-    // é justamente a ausência dele que o workflow usa para NÃO publicar.
     const cannedReport = join(dir, "veredito.json")
     const canned = { ...doctorReport(run.verdict), ...(run.facts ? { facts: run.facts } : {}) }
-    writeFileSync(cannedReport, run.exit === 3 ? "" : JSON.stringify(canned), "utf8")
+    const gravado = run.report !== undefined ? run.report : run.exit === 3 ? null : canned
+    writeFileSync(cannedReport, gravado === null ? "" : JSON.stringify(gravado), "utf8")
 
     publishInvocations = []
     const publishLog = join(dir, "publish.log")
@@ -1016,9 +1236,15 @@ describe("forge-doctor.yml — o fechamento é ALCANÇÁVEL na run PRONTA", () =
       if (!conditionHolds(step, outputs)) continue
       writeFileSync(outputsFile, "", "utf8") // o runner dá um arquivo por step
       const stepEnv = Object.fromEntries(
-        Object.entries(step.env ?? {}).map(([name, value]) => [name, resolveExpressions(value)]),
+        Object.entries(step.env ?? {}).map(([name, value]) => [
+          name,
+          resolveStepExpressions(resolveExpressions(value), outputs),
+        ]),
       )
-      const script = (step.run ?? "").replaceAll("/tmp/forge-doctor", `${local}/forge-doctor`)
+      const script = resolveStepExpressions(
+        (step.run ?? "").replaceAll("/tmp/forge-doctor", `${local}/forge-doctor`),
+        outputs,
+      )
       const status = await execFileAsync(resolveBash(), ["-c", script], {
         encoding: "utf8",
         cwd: CWD,
@@ -1106,9 +1332,57 @@ describe("forge-doctor.yml — o fechamento é ALCANÇÁVEL na run PRONTA", () =
     // ausente — o `if:` do publicador compara com '1', então os dois casos
     // pulam; o que não pode é o workflow chamar de "medição" o exit 3.
     expect(run.outputs["doctor.report"]).toBe("0")
+    // E o workflow NOMEIA qual dos dois exit 3 foi este: uso inválido, não
+    // recursão (`nested=0`), para o vermelho não mandar procurar o ciclo.
+    expect(run.outputs["doctor.nested"]).toBe("0")
     expect(run.ran).not.toContain("Publish doctor verdict issue (Gitea)")
     expect(publishInvocations).toEqual([])
     expect(gitea.requests).toEqual([])
     expect(run.codes["Fail on non-ready verdict"]).toBe(1)
+  })
+
+  it("exit 3 COM relatório (RECURSÃO) PUBLICA issue própria, nomeando o canal que a marcou", async () => {
+    // A MESMA saída de código, o outro significado — e o relatório é o que
+    // separa. Sem esta metade, o exit 3 era "erro de uso" em todos os casos: a
+    // recursão (o único alerta que existe quando o doctor recusa antes de medir)
+    // nunca chegaria ao board.
+    const run = await runCron({ verdict: {}, exit: 3, report: nestedReport() })
+
+    expect(readFileSync(run.report, "utf8")).toContain("nestedGuard")
+    expect(run.outputs["doctor.exit_code"]).toBe("3")
+    expect(run.outputs["doctor.report"]).toBe("1")
+    expect(run.outputs["doctor.nested"]).toBe("1")
+    expect(run.ran).toContain("Publish doctor verdict issue (Gitea)")
+    expect(publishInvocations, "a recursão não chegou ao publicador").toHaveLength(1)
+
+    // O efeito no board, pelo CLI real contra o Gitea dublê: UMA issue, com o
+    // título da recursão e o CANAL no corpo.
+    expect(gitea.issues).toHaveLength(1)
+    expect(gitea.issues[0].title).toBe(NESTED_RECURSION_TITLE)
+    expect(gitea.issues[0].body).toContain("FORGE_DOCTOR_NESTED")
+    expect(gitea.issues[0].body).toContain("Isto NÃO é um veredito sobre a forja")
+
+    // O vermelho continua vindo por último (o alerta é a issue).
+    expect(run.codes["Fail on non-ready verdict"]).toBe(1)
+  })
+
+  it("a recursão NÃO é engolida pela issue do veredito já aberta (nem a engole)", async () => {
+    // Run 1: um veredito bloqueado de verdade abre a issue DELE.
+    await runCron({ verdict: {}, exit: 1 })
+    expect(gitea.issues).toHaveLength(1)
+    const verdictIssue = gitea.issues[0].number
+
+    // Run 2: o doctor recusa por RECURSÃO. É outro problema, com outra
+    // assinatura e outro título — a dívida dela tem de nascer numa issue NOVA,
+    // não como comentário num ticket sobre outra coisa.
+    const run = await runCron({ verdict: {}, exit: 3, report: nestedReport() })
+    expect(run.ran).toContain("Publish doctor verdict issue (Gitea)")
+    expect(gitea.issues).toHaveLength(2)
+    expect(gitea.issues[1].title).toBe(NESTED_RECURSION_TITLE)
+    expect(gitea.issues[0].number).toBe(verdictIssue)
+    expect(
+      gitea.issues[0].comments,
+      "a issue do veredito ganhou comentário da recursão",
+    ).toHaveLength(0)
   })
 })

@@ -22,6 +22,11 @@
 # metade nova (a flag) também tem a sua — sem isso, a flag poderia deixar de
 # funcionar em silêncio e o caminho sem env voltaria a recursar.
 #
+# A SUÍTE também testemunha o RELATÓRIO da recursão (o fato `nestedGuard` em
+# stdout / `--json`): com o guard removido (mutação A), o doctor volta a
+# processar a invocação aninhada e o relatório deixa de existir — então a
+# metade do fato cai junto com a metade do corte.
+#
 # COMO: muta o guard IN-PLACE (backup + trap EXIT de restauração) e exige que a
 # suíte filtrada por `NESTED_GUARD_ENV` fique VERMELHA em cada mutação.
 # =============================================================================
@@ -103,7 +108,7 @@ python3 -c "
 import re, sys
 src = open('$DOCTOR').read()
 pat = re.compile(
-    r'\n\s*// DEFESA EM PROFUNDIDADE[\s\S]*?if \(isNestedDoctorInvocation\(\)\) \{[\s\S]*?process\.exit\(3\)\s*\}\n',
+    r'\n\s*// DEFESA EM PROFUNDIDADE[\s\S]*?if \(isNestedDoctorInvocation\(\)\) \{[\s\S]*?process\.exit\((?:NESTED_GUARD_EXIT|3)\)\s*\}\n',
     re.MULTILINE,
 )
 if not pat.search(src):
@@ -147,8 +152,11 @@ src = pat.sub('return Boolean(env[NESTED_GUARD_ENV]) // MUTATION-NESTED-ARGV', s
 open('$DOCTOR', 'w').write(src)
 "
 
-if grep -qF "argv.includes(NESTED_GUARD_FLAG)" "$DOCTOR"; then
-  fail "MUTAÇÃO B NÃO APLICOU: o argv ainda é consultado em $DOCTOR"
+# A verificação olha o PREDICADO mutado (não a presença da substring no
+# arquivo): `nestedGuardReport` também consulta o argv para NOMEAR o canal no
+# relatório, e essa consulta é reporting, não defesa — ela deve continuar lá.
+if ! grep -qF "return Boolean(env[NESTED_GUARD_ENV]) // MUTATION-NESTED-ARGV" "$DOCTOR"; then
+  fail "MUTAÇÃO B NÃO APLICOU: o predicado mutado não está em $DOCTOR"
   exit 1
 fi
 if ! node --check "$DOCTOR" >/dev/null 2>&1; then

@@ -36,6 +36,8 @@ import {
   REQUIRED_CHECKS_MANIFEST,
   VERDICT,
   readBringUpGate,
+  readAllGateContracts,
+  readContract,
   diagnose,
   parseArgs,
   forgeGates,
@@ -1696,6 +1698,248 @@ describe("readBringUpGate — o gate do bring-up no contrato de merge", () => {
     })
     expect(r.state).toBe("proven")
     expect(r.forges.map((f) => f.forge)).toEqual(["gitea"])
+  })
+})
+
+// ── o contrato de CADA gate CORE: a régua é da INVARIANTE, e o comando é do JOB ─
+
+/**
+ * Fixture FIEL às duas pipelines REAIS (uma por forja), não uma pipeline só
+ * repetida: cada job roda o comando que ele roda lá.
+ *
+ * POR QUE ISTO EXISTE: a fixture antiga (`pipeline()`) escrevia uma pipeline só
+ * e a repetia para as duas forjas, então o fato podia acusar o repositório REAL
+ * de violações que a suíte nunca viu — um fixture que arruma a realidade que o
+ * teste deveria medir não mede nada.
+ *
+ * O lint é o caso onde a fidelidade tem CONTEÚDO: até esta passada cada forja
+ * rodava o seu próprio comando (a Gitea `bun run lint` = `eslint .`; o GitHub o
+ * par prettier+eslint inline), e era essa diferença que fazia o mesmo commit
+ * passar no merge de uma e ser rejeitado na outra. Hoje as duas rodam o MESMO
+ * `bun run lint`, e é isso que a fixture declara — o parâmetro `lintDoGithub`
+ * existe para o CONTROLE reproduzir a régua própria e exigir a violação.
+ */
+const GITHUB_PIPELINE = ".github/workflows/pr-check.yml"
+
+function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: string } = {}): string {
+  const sem = opts.semComandoDoGate ?? null
+  // O comando do gate de lint da forja do GitHub. O default é o MESMO da Gitea
+  // (`bun run lint`): a régua é da invariante, não da forja. O parâmetro existe
+  // para o CONTROLE reproduzir a régua própria que a assimetria antiga
+  // legitimava (eslint inline, sem prettier) e exigir a violação.
+  const lintGithub = opts.lintDoGithub ?? "bun run lint"
+  const dir = makeDir()
+  mkdirSync(join(dir, ".gitea", "workflows"), { recursive: true })
+  mkdirSync(join(dir, ".github", "workflows"), { recursive: true })
+  mkdirSync(join(dir, "ci"), { recursive: true })
+
+  // O job `guards` da Gitea roda OITO invariantes CORE: cada uma declara a sua
+  // régua e cada uma tem de ser medida — o dedup por jobId conferia só a
+  // primeira da lista e dava as outras sete por cobertas.
+  const guardCommands: [string, string][] = [
+    ["ts-nocheck", "bun run check:ts-nocheck"],
+    ["required-checks", "bun run check:required-checks"],
+    ["registry-source", "bun run check:registry-source"],
+    ["runner-base", "bun run check:runner-base"],
+    ["forge-workflow-scope", "bun run check:forge-workflow-scope"],
+    ["forge-parity", "bun run check:forge-parity"],
+    ["script-headers", "node scripts/check-script-headers.mjs"],
+    ["prove-docs", "bun run check:prove-docs"],
+    ["pipefail-sigpipe", "node scripts/check-pipefail-sigpipe.mjs"],
+  ]
+  writeFileSync(
+    join(dir, MERGE_OWNER_PIPELINE),
+    [
+      "on:",
+      "  pull_request:",
+      "jobs:",
+      `  ${FORGE_GUARDS_JOB}:`,
+      "    steps:",
+      "      - run: bun install --frozen-lockfile",
+      ...guardCommands.flatMap(([nome, cmd]) =>
+        nome === sem ? [] : [`      - name: ${nome}`, `        run: ${cmd}`],
+      ),
+      `  ${BRING_UP_GATE_JOB}:`,
+      "    steps:",
+      "      - run: node scripts/prove-runner-image-gate.mjs",
+      "  typecheck:",
+      "    steps:",
+      "      - run: bunx tsc --noEmit",
+      "  lint:",
+      "    steps:",
+      "      - run: bun run lint",
+      "  test:",
+      "    steps:",
+      "      - run: bun run test:unit",
+      "",
+    ].join("\n"),
+  )
+  writeFileSync(
+    join(dir, GITHUB_PIPELINE),
+    [
+      "on:",
+      "  pull_request:",
+      "jobs:",
+      "  secrets-guard:",
+      "    steps:",
+      "      - run: node scripts/rotate-secrets.mjs --check",
+      "  workflow-refs-guard:",
+      "    steps:",
+      "      - run: node scripts/check-workflow-refs.mjs --pkg-internal",
+      // O gate da classe SIGPIPE roda nas DUAS forjas; na fixture ele vive no
+      // job que carrega os guards node-puros do GitHub (como no repositório).
+      "      - run: node scripts/check-pipefail-sigpipe.mjs",
+      "  pii-allowlist-guard:",
+      "    steps:",
+      '      - run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"',
+      "      - run: bun run check:pii-allowlist",
+      "      - run: bun run check:pii-gate",
+      `  ${BRING_UP_GATE_JOB}:`,
+      "    steps:",
+      "      - run: node scripts/prove-runner-image-gate.mjs",
+      "  typecheck:",
+      "    steps:",
+      "      - run: bunx tsc --noEmit",
+      // O job REAL: o MESMO comando do job `lint` da Gitea — o par
+      // (prettier + eslint zero) mora no script `lint` do package.json, e a
+      // forja não tem régua própria. Um comando inline aqui seria a assimetria
+      // de volta.
+      "  lint-guard:",
+      "    steps:",
+      '      - run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"',
+      "      - run: bun install --frozen-lockfile",
+      "      - name: Check lint (prettier + eslint zero)",
+      `        run: ${lintGithub}`,
+      // O job REAL de testes: um passo cujo RÓTULO contém "check" ANTES do
+      // passo que roda a suíte — o rótulo não pode sequestrar a régua.
+      "  check:",
+      "    steps:",
+      "      - run: bun install --frozen-lockfile",
+      // O rótulo REAL do repositório, montado em pedaços: escrito inteiro aqui,
+      // a própria diretiva (o comentário que desliga o typecheck do arquivo)
+      // apareceria no texto deste arquivo e o `check:ts-nocheck` acusaria ESTE
+      // teste. O alvo do teste é o rótulo conter "check" — e é isso que a
+      // concatenação preserva.
+      `      - name: "Guard: no ${["@ts", "-", "nocheck"].join("")} in non-generated files"`,
+      "        run: bun run check:ts-nocheck",
+      ...(sem === "tests" ? [] : ["      - name: Unit tests", "        run: bun run test:unit"]),
+      "",
+    ].join("\n"),
+  )
+  writeFileSync(
+    join(dir, REQUIRED_CHECKS_MANIFEST),
+    JSON.stringify({
+      version: 1,
+      branches: ["main"],
+      forges: {
+        gitea: {
+          workflow: MERGE_OWNER_PIPELINE,
+          jobs: [FORGE_GUARDS_JOB, BRING_UP_GATE_JOB, "typecheck", "lint", "test"],
+        },
+        github: {
+          workflow: GITHUB_PIPELINE,
+          jobs: [
+            "secrets-guard",
+            "workflow-refs-guard",
+            "pii-allowlist-guard",
+            BRING_UP_GATE_JOB,
+            "typecheck",
+            "lint-guard",
+            "check",
+          ],
+        },
+      },
+    }),
+  )
+  return dir
+}
+
+/** O retorno do `.mjs` chega como `object`: o teste estreita o que ele lê. */
+type GateContractResult = {
+  invariantId: string
+  jobId: string
+  state: string
+  violations: string[]
+  forges: { forge: string; command: string | null }[]
+}
+
+function contractResults(dir: string): GateContractResult[] {
+  return readAllGateContracts({ cwd: dir, contract: readContract(dir) })
+    .results as unknown as GateContractResult[]
+}
+
+describe("readAllGateContracts — o job EXIGIDO roda a régua da INVARIANTE, a MESMA nas duas forjas", () => {
+  it("a régua é UMA: as duas forjas rodam o MESMO `bun run lint`", () => {
+    const lint = contractResults(twoForgeFixture()).filter((x) => x.invariantId === "lint")
+    expect(lint.map((x) => x.jobId).sort()).toEqual(["lint", "lint-guard"])
+    expect(lint.map((x) => x.state)).toEqual(["proven", "proven"])
+    // E o COMANDO é o mesmo dos dois lados — é isto que impede o merge de ser
+    // liberado pela régua mais fraca de uma das forjas.
+    for (const c of lint) expect(c.forges.map((f) => f.command)).toEqual(["bun run lint"])
+  })
+
+  it("CONTROLE: uma forja com régua PRÓPRIA (só eslint, sem prettier) é VIOLAÇÃO", () => {
+    // A assimetria que este fato passou a PROIBIR, reproduzida no formato que
+    // ela tinha: o GitHub rodando `eslint . --max-warnings 0` inline enquanto a
+    // Gitea rodava o script do repo. O fato tem de acusar — sem isso, a régua
+    // poderia voltar a divergir sem ninguém ver.
+    const dir = twoForgeFixture({ lintDoGithub: "npx eslint . --max-warnings 0" })
+    const lint = contractResults(dir).filter((x) => x.invariantId === "lint")
+    const github = lint.find((x) => x.jobId === "lint-guard")!
+    expect(github.state).toBe("violated")
+    expect(github.violations[0]).toContain("npx eslint . --max-warnings 0")
+    // O OUTRO lado segue provado: a violação é do comando, não do fixture.
+    expect(lint.find((x) => x.jobId === "lint")!.state).toBe("proven")
+    expect(readAllGateContracts({ cwd: dir, contract: readContract(dir) }).allProven).toBe(false)
+  })
+
+  it("a forja que NÃO declara o job não vira violação (isso é do check:forge-parity)", () => {
+    const dir = twoForgeFixture()
+    const r = readAllGateContracts({ cwd: dir, contract: readContract(dir) })
+    // `lint-guard` só existe no manifesto do GitHub: a conferência da Gitea
+    // acusava "a forja gitea NÃO exige o job 'lint-guard'" — e o mesmo ao
+    // contrário para `lint`. Nenhuma das duas é violação deste fato.
+    const giteaOnly = contractResults(dir).find(
+      (x) => x.invariantId === "lint" && x.jobId === "lint",
+    )!
+    expect(giteaOnly.forges.map((f) => f.forge)).toEqual(["gitea"])
+    expect(r.violations.filter((v) => v.includes("NÃO exige o job"))).toEqual([])
+  })
+
+  it("um passo com 'check' no RÓTULO não sequestra o comando do gate", () => {
+    const testes = contractResults(twoForgeFixture()).find(
+      (x) => x.invariantId === "tests" && x.jobId === "check",
+    )!
+    expect(testes.state).toBe("proven")
+    expect(testes.forges[0].command).toBe("bun run test:unit")
+  })
+
+  it("CONTROLE: sem o comando da régua, o fato acusa o gate trocado (o teste tem dentes)", () => {
+    const dir = twoForgeFixture({ semComandoDoGate: "tests" })
+    const testes = contractResults(dir).find(
+      (x) => x.invariantId === "tests" && x.jobId === "check",
+    )!
+    expect(testes.state).toBe("violated")
+    // A violação NOMEIA a linha que o job realmente executa.
+    expect(testes.violations[0]).toContain("bun run check:ts-nocheck")
+    expect(readAllGateContracts({ cwd: dir, contract: readContract(dir) }).allProven).toBe(false)
+  })
+
+  it("cada invariante que compartilha o job 'guards' tem a SUA régua medida", () => {
+    const dir = twoForgeFixture()
+    const noMesmoJob = contractResults(dir).filter((x) => x.jobId === FORGE_GUARDS_JOB)
+    // NOVE invariantes CORE vivem no mesmo job: deduplicando pelo job, oito
+    // ficavam fora da lista de contratos e apareciam como cobertas.
+    expect(noMesmoJob.length).toBe(9)
+    expect(new Set(noMesmoJob.map((x) => x.invariantId)).size).toBe(9)
+    expect(noMesmoJob.every((x) => x.state === "proven")).toBe(true)
+    // E cada uma responde pela SUA remoção — não pela do vizinho.
+    const semRequired = twoForgeFixture({ semComandoDoGate: "required-checks" })
+    const r2 = contractResults(semRequired)
+    const pick = (id: string) =>
+      r2.find((x) => x.invariantId === id && x.jobId === FORGE_GUARDS_JOB)!
+    expect(pick("required-checks").state).toBe("violated")
+    expect(pick("ts-nocheck").state).toBe("proven")
   })
 })
 
@@ -3416,11 +3660,16 @@ describe("NESTED_GUARD_ENV — defesa em profundidade contra recursão", () => {
       timeout: 10_000,
     })
     // Exit 3 = detecção de recursão (diferente de 0=help, 1=bloqueada, 2=indeterminada)
-    expect(res.status).toBe(3)
+    expect(res.status).toBe(NESTED_GUARD_EXIT)
     expect(res.stderr).toContain("DETECTADO RECURSAO")
     expect(res.stderr).toContain(NESTED_GUARD_ENV)
-    // O doctor NÃO deve ter processado o --help nem escrito a USAGE:
-    expect(res.stdout).toBe("")
+    // O relatório da recursão vai para o MESMO canal do veredito (stdout), com o
+    // fato nomeado — antes ele saía 3 e a causa vivia só no stderr, e o 3 é o
+    // mesmo código de uso inválido (não dava para distinguir os dois).
+    expect(res.stdout).toContain("RECURSÃO DETECTADA")
+    expect(res.stdout).toContain(NESTED_GUARD_ENV)
+    // ...mas o doctor NÃO processou o --help: a USAGE não foi impressa.
+    expect(res.stdout).not.toContain("sai como JSON")
   })
 
   it("${NESTED_GUARD_ENV} ausente → doctor funciona normalmente (help)", () => {
@@ -3448,11 +3697,53 @@ describe("NESTED_GUARD_ENV — defesa em profundidade contra recursão", () => {
       encoding: "utf8",
       timeout: 10_000,
     })
-    expect(res.status).toBe(3)
+    expect(res.status).toBe(NESTED_GUARD_EXIT)
     expect(res.stderr).toContain("DETECTADO RECURSAO")
     expect(res.stderr).toContain(NESTED_GUARD_FLAG)
-    // O doctor NÃO deve ter processado o --help nem escrito a USAGE:
-    expect(res.stdout).toBe("")
+    // O relatório de recursão sai em stdout e NOMEIA o canal que marcou:
+    expect(res.stdout).toContain("RECURSÃO DETECTADA")
+    expect(res.stdout).toContain("canal argv")
+    expect(res.stdout).not.toContain("sai como JSON")
+  })
+
+  it("--json → o relatório de recursão sai como DADOS (mesmo canal do veredito)", () => {
+    const env = { ...process.env }
+    delete env[NESTED_GUARD_ENV]
+    const res = spawnSync(process.execPath, [DOCTOR, NESTED_GUARD_FLAG, "--json"], {
+      cwd: ROOT,
+      env,
+      encoding: "utf8",
+      timeout: 10_000,
+    })
+    expect(res.status).toBe(NESTED_GUARD_EXIT)
+    const report = JSON.parse(res.stdout)
+    expect(report.verdict.verdict).toBe("bloqueada")
+    expect(report.facts.nestedGuard.state).toBe("fired")
+    expect(report.facts.nestedGuard.channels).toEqual([
+      { channel: "argv", name: NESTED_GUARD_FLAG },
+    ])
+    // O bloqueador NOMEIA a recursão: é o que o consumidor da prontidão lê.
+    expect(report.verdict.blockers.join(" ")).toContain("RECURSAO")
+    expect(report.verdict.unproven.join(" ")).toContain("NENHUMA")
+  })
+
+  it("nestedGuardReport é puro e nomeia o(s) canal(is) que marcaram a recursão", () => {
+    const viaEnv = nestedGuardReport({ env: { [NESTED_GUARD_ENV]: "1" }, argv: [] })
+    expect(viaEnv.facts.nestedGuard.channels).toEqual([{ channel: "env", name: NESTED_GUARD_ENV }])
+    expect(viaEnv.verdict.verdict).toBe("bloqueada")
+
+    const viaArgv = nestedGuardReport({ env: {}, argv: [NESTED_GUARD_FLAG] })
+    expect(viaArgv.facts.nestedGuard.channels).toEqual([
+      { channel: "argv", name: NESTED_GUARD_FLAG },
+    ])
+
+    // Os DOIS canais ao mesmo tempo aparecem os dois (não escolhe um).
+    const ambos = nestedGuardReport({
+      env: { [NESTED_GUARD_ENV]: "1" },
+      argv: [NESTED_GUARD_FLAG],
+    })
+    expect(ambos.facts.nestedGuard.channels).toHaveLength(2)
+    expect(ambos.facts.nestedGuard.exit).toBe(NESTED_GUARD_EXIT)
   })
 
   it("isNestedDoctorInvocation cobre os DOIS canais (env OU flag) e só eles", () => {
@@ -3469,5 +3760,84 @@ describe("NESTED_GUARD_ENV — defesa em profundidade contra recursão", () => {
   it("constantes exportadas: env var E flag têm os nomes esperados", () => {
     expect(NESTED_GUARD_ENV).toBe("FORGE_DOCTOR_NESTED")
     expect(NESTED_GUARD_FLAG).toBe("--proof-nested")
+  })
+
+  it("o relatório NORMAL declara a defesa ARMADA e por quais canais (existência, não só disparo)", () => {
+    // O `nestedGuardReport` só existe quando o guard dispara: sem este fato, o
+    // veredito de uma forja saudável não diria NADA sobre a defesa — se o
+    // `isNestedDoctorInvocation` saísse do caminho quente, o relatório ficaria
+    // idêntico e a prontidão não mudaria uma linha.
+    const armed = recursionGuardFacts()
+    expect(armed.state).toBe("armed")
+    expect(armed.channels).toEqual([
+      { channel: "env", name: NESTED_GUARD_ENV },
+      { channel: "argv", name: NESTED_GUARD_FLAG },
+    ])
+    expect(armed.armed).toEqual({ env: true, argv: true })
+    expect(armed.exit).toBe(NESTED_GUARD_EXIT)
+    expect(armed.remedies).toEqual([])
+    expect(armed.detail).toContain("não foi marcada por nenhum deles")
+    // O estado do disparo é OUTRO: os três estados do mesmo fato não se
+    // confundem (`fired` disparou, `armed`/`disarmed` são sobre a DEFESA).
+    expect(nestedGuardReport().facts.nestedGuard.state).toBe("fired")
+  })
+
+  it("desarmado em QUALQUER canal é DESARMADO, e nomeia o canal que não responde", () => {
+    // A sonda é a MESMA função do caminho quente — aqui ela é injetada para
+    // exercitar o canal que deixou de responder (é a mutação que o fato existe
+    // para pegar: metade da defesa caindo sem o relatório mudar).
+    const soEnv = recursionGuardFacts({
+      probe: (io) => Boolean(io?.env?.[NESTED_GUARD_ENV]),
+    })
+    expect(soEnv.state).toBe("disarmed")
+    expect(soEnv.armed).toEqual({ env: true, argv: false })
+    expect(soEnv.detail).toContain(NESTED_GUARD_FLAG)
+    expect(soEnv.detail).toContain("PELA METADE")
+    expect(soEnv.remedies.join(" ")).toContain(NESTED_GUARD_ENV)
+
+    const nenhum = recursionGuardFacts({ probe: () => false })
+    expect(nenhum.state).toBe("disarmed")
+    expect(nenhum.armed).toEqual({ env: false, argv: false })
+  })
+
+  it("o relatório IMPRESSO declara o fato: armado (✅ + canais) e desarmado (❌ + remédio)", () => {
+    const render = (f: ReturnType<typeof facts>) => {
+      const lines: string[] = []
+      renderReport({ facts: f, verdict: summarize(f) }, { emit: (s = "") => lines.push(s) })
+      return lines.join("\n")
+    }
+
+    const armado = render(facts())
+    expect(armado).toContain("guard de recursão: armed")
+    expect(armado).toContain(NESTED_GUARD_ENV)
+    expect(armado).toContain(NESTED_GUARD_FLAG)
+
+    const desarmado = render(facts({ nestedGuard: recursionGuardFacts({ probe: () => false }) }))
+    expect(desarmado).toContain("guard de recursão: disarmed")
+    expect(desarmado).toContain("PELA METADE")
+    // O remédio viaja com a violação: a linha do ❌ sozinha não diz o que fazer.
+    expect(desarmado).toContain("isNestedDoctorInvocation")
+
+    // Sem o fato, o relatório DIZ que não está declarado — em vez de omitir a
+    // seção (o silêncio é o que faria a defesa sumir sem ninguém ver).
+    const semFato = render(facts({ nestedGuard: undefined }))
+    expect(semFato).toContain("guard de recursão: NÃO declarado no relatório")
+  })
+
+  it("DESARMADO bloqueia o veredito; AUSENTE não vira 'pronta' por omissão", () => {
+    const v = summarize(facts({ nestedGuard: recursionGuardFacts({ probe: () => false }) }))
+    expect(v.verdict).toBe(VERDICT.BLOCKED)
+    expect(v.blockers.join(" ")).toContain("guard de recursao esta DESARMADO")
+
+    // Sem o fato, o veredito NÃO cobre a defesa: dizer "pronta" sobre o que não
+    // foi olhado é a falsa segurança que este comando existe para não produzir.
+    const semFato = summarize(facts({ nestedGuard: undefined }))
+    expect(semFato.verdict).toBe(VERDICT.UNKNOWN)
+    expect(semFato.unknowns.join(" ")).toContain("não está declarado no relatório")
+
+    // ... e ARMADO não acrescenta nada (fato provado, não ruído).
+    const armado = summarize(facts())
+    expect(armado.verdict).toBe(VERDICT.READY)
+    expect(armado.unknowns.join(" ")).not.toContain("guard de recursão")
   })
 })

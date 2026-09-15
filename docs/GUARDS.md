@@ -1037,7 +1037,36 @@ quebra do dublê. Ela vale por **dois canais** — a env var `FORGE_DOCTOR_NESTE
 `--proof-nested` no argv (para um wrapper, um `spawn` que não propaga o `env` ou
 um script de diagnóstico) —, e os dois caem no mesmo `isNestedDoctorInvocation`
 (exit 3). Sem o canal do argv, o caminho que não seta env ficava SEM a defesa e o
-ciclo aparecia como exaustão de processos, não como a causa. Cada promessa dessas tem teste de execução —
+ciclo aparecia como exaustão de processos, não como a causa. E o guard não fica
+em **silêncio**: ele EMITE o relatório da recursão no mesmo canal do veredito
+(stdout, ou o JSON de `--json`), com o fato `nestedGuard` e um bloqueador que a
+nomeia — o exit 3 sozinho é o MESMO código de uso inválido, então sem o relatório
+quem lê a prontidão não distinguia a recursão de uma flag errada. Só esse fato
+entra: as seções não foram coletadas, e o `unproven` declara isso em vez de
+fingir cobertura.
+
+**O mesmo fato diz que a defesa EXISTE — e não só que ela disparou.** O
+`nestedGuard` tem **três estados**, porque são três perguntas diferentes:
+`fired` (o guard disparou NESTA invocação — o relatório da recursão, acima),
+`armed` (o guard está no caminho e responde aos dois canais — o relatório
+NORMAL) e `disarmed` (algum canal deixou de ser respondido). O relatório normal
+declara `armed` com os **canais nomeados**, e o fato é MEDIDO: o doctor sonda a
+MESMA função do caminho quente (`isNestedDoctorInvocation`) com uma entrada
+sintética por canal, em vez de reimplementar a regra (uma segunda implementação
+mediria a si mesma). Sem esse fato, um veredito de forja saudável não dizia nada
+sobre a defesa: se o guard saísse do caminho quente, ou se um dos canais
+deixasse de responder, o relatório ficaria idêntico e a prontidão não mudaria uma
+linha. Desarmado em qualquer canal **BLOQUEIA** (pelo canal que não responde, o
+ciclo recursa até a exaustão de processos) e ausente vira **INDETERMINADA**
+("pronta" sobre o que não foi olhado é a falsa segurança que este doctor recusa).
+O que o fato **não** prova está escrito no próprio `detail`: a POSIÇÃO do corte
+— que o check roda antes de coletar. Essa metade não se mede de dentro: medir a
+defesa dando a volta no ciclo é o que a defesa impede (um filho sem o corte É a
+recursão), e o diagnóstico não pode virar o defeito; quem prende a posição são
+os testes que executam os dois canais de fora.
+
+**O que a subida da stack promete, e como isso é executado:** cada uma dessas
+promessas tem teste de execução —
 o doctor é dublado por `DOCTOR_SCRIPT` e devolve 0/1/2/3, e o teste vê se a stack
 subiu — e o `checkGiteaBringUp` prende a invocação, as flags e a **ordem** (depois
 da imagem, antes de qualquer `up`). Um dublê em bash, e não `.mjs`, morreria no
@@ -1048,6 +1077,20 @@ que se confundem: tag **existe** (puxável anônima), tag **ausente** (publica e
 **reconfere** no registry) e **indeterminado** (registry inacessível, ou pacote
 privado — 401 é a resposta do GHCR tanto para pacote privado quanto para pacote
 inexistente). Indeterminado nunca publica: "não sei" não é "não existe".
+
+As **duas metades** da cadeia são provadas por execução, e não só a que dá certo.
+Com a dublagem no lugar, o teste do irmão mede o CORTE PRIMÁRIO: o doctor real é
+invocado **uma** vez e todas as descidas vão para o dublê da prova. E com a
+dublagem **ausente** (`DOCTOR_SCRIPT` não passado — a falha que a defesa em
+profundidade existe para cobrir), o `gitea-bring-up-recursion.test.ts` roda o
+`deploy/gitea-up.sh` REAL com o doctor **COMITADO**, o `docker` dublado e um
+registry de teste, e exige: a cadeia TERMINA, o **relatório de recursão sai no
+stdout** com o canal que a marcou, **nenhuma seção foi coletada**, o bring-up **não
+desceu** um segundo nível (a contagem é a prova do corte), **nenhum `up`** chegou
+ao docker e **nenhum sintoma de exaustão** (`EAGAIN`, `ENOMEM`, `Maximum call
+stack`, `fork: retry`) aparece no output. Um controle com o guard DESLIGADO na
+cópia do doctor prende a CAUSA: a mesma invocação marcada passa a **coletar** em
+vez de recusar, então o verde do teste principal não pode vir do ambiente.
 
 **O limite desta família, e o que cobre o resto:** guard estático lê **texto**.
 Ele não vê o `vars` do act_runner hidratando, nem `./.github/actions/setup-bun`
@@ -1314,6 +1357,53 @@ os checks que faltam na branch protection, a violação é nomeada. O fato respo
 independente da prova ter rodado agora: `--no-proof` (removida) **não** escondia um gate
 fora do contrato. `--no-protection` faz o fato cair em `unavailable` (a
 proteção não foi lida, o registro não pode ser confirmado).
+
+**E o mesmo contrato vale para TODO gate CORE, não só o bring-up.** O fato é
+DERIVADO dos `CORE_INVARIANTS` (uma fonte só): cada invariante que declara
+`jobIds` vira um contrato verificável, e o doctor responde a mesma tríade para
+cada um — o job está no manifesto? o job RODA o comando? a proteção o registra?
+Três regras fazem a resposta ser sobre o job REAL, e cada uma nasceu de um falso
+positivo que deixava o veredito **BLOQUEADO para sempre** — e um veredito que
+sempre acende não bloqueia nada (o bring-up recusa subir, o cron abre issue toda
+semana, e a violação verdadeira se perde no meio):
+
+1. **só as forjas que DECLARAM o job.** Uma invariante pode existir numa pipeline
+   e não na outra (as isenções GitHub-only, com razão escrita, do
+   `check:forge-parity`): conferir o `lint` da Gitea no manifesto do GitHub acusava
+   "a forja github NÃO exige o job 'lint'" — verdade inútil, e oito delas de uma vez.
+   **O que FALTA numa pipeline é pergunta do `check:forge-parity`**; este fato
+   pergunta pelo que o manifesto EXIGE e se o exigido roda o que promete.
+2. **a régua é DA INVARIANTE — a MESMA nas duas forjas.** O comando compartilhado é
+   o script `lint` do `package.json` — prettier --check MAIS eslint com
+   `--max-warnings 0`, na mesma linha —, e as duas forjas rodam exatamente
+   `bun run lint`. Houve aqui uma tabela de
+   régua por forja (`matchesByForge`, no `CORE_INVARIANTS`) que declarava o comando
+   de cada lado — e ela EXISTIA porque os comandos eram de fato diferentes: o
+   `lint` do `package.json` era só `eslint .` (sem o teto de warnings, sem
+   prettier) e o par completo vivia INLINE no job `lint-guard` do GitHub. O
+   resultado era o pior desenho possível de um gate: o mesmo commit passava no
+   merge da Gitea e era rejeitado no GitHub — dois vereditos para um merge só, e
+   quem liberava era o lado mais fraco. A tabela descrevia a assimetria com
+   precisão e, ao fazê-lo, a transformava em contrato. Hoje a régua mora em UM
+   lugar e as duas forjas a INVOCAM; se um dia uma forja precisar de outra coisa,
+   o conserto é mudar o comando COMPARTILHADO — reabrir a segunda régua é reabrir
+   o furo.
+3. **um contrato por (invariante × job), não por job.** Oito invariantes CORE
+   vivem no MESMO job `guards` da Gitea: deduplicando pelo job, sete apareciam como
+   cobertas sem nunca terem sido medidas — a régua da primeira respondia pelas
+   outras sete. Hoje as 18 pontas (invariante × job declarado no manifesto) são
+   conferidas uma a uma, e a remoção do comando de UMA derruba a régua daquela, não
+   a do vizinho.
+
+E o comando vem do JOB, não do RÓTULO do passo: o job `check` do GitHub tem o
+passo "Guard: no @ts-nocheck in non-generated files" ANTES do que roda a suíte, e
+casar pelo rótulo acusava de "gate trocado" um job que executa `bun run test:unit`
+— a busca pela régua vem primeiro e o rótulo só serve para NOMEAR a linha na
+violação. A suíte (`forge-doctor.test.ts`) mede isso contra uma fixture FIEL às
+duas pipelines — duas pipelines, uma por forja, cada job com o comando que roda
+lá —, com o CONTROLE que remove o comando e exige a violação: o fixture antigo
+escrevia os jobs do GitHub com os comandos da Gitea, e era por isso que este fato
+podia acusar o repositório real sem que a suíte visse nada.
 
 **E o PRÉ-REQUISITO 0 (família `env-mirror`):** três casos rodam com o env do host
 DIVERGENTE e a imagem PRESENTE — a subida normal, o `--check-only` e o SEGREDO com
@@ -1654,15 +1744,33 @@ assinatura) e `.gitea/workflows/forge-doctor.yml` o roda como **cron semanal**
 (segunda 07:07 UTC) com `--expected "$BUN_VERSION"` — o valor, não só a
 existência.
 
-Cinco decisões, e o que cada uma evita:
+Seis decisões, e o que cada uma evita:
 
-| Decisão                                                                                                               | O que ela impede                                                                                                                                 |
-| :-------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **INDETERMINADA também abre issue**                                                                                   | o cron ficar verde justamente quando a medição está faltando — um fato não medido não pode estar certo nem errado, e é onde o drift se esconde   |
-| a publicação vem **antes do `exit 1`**                                                                                | o step da issue nunca rodar no run que falha — o cron vermelho sem ticket que este workflow elimina                                              |
-| o step da issue roda nos **DOIS sentidos** (`always()`, modulado pelo RELATÓRIO existir — nunca pelo exit code)       | o FECHAMENTO ser inalcançável: condicionado ao exit code, o step só rodava no run que abre a dívida, nunca no único que pode fechá-la            |
-| a assinatura **exclui `unproven`** (constante entre runs) e inclui o veredito + bloqueadores + não-provados ordenados | o dedup não reconhecer a dívida já reportada (issue nova toda semana) ou, no extremo oposto, um bloqueador NOVO virar comentário numa issue lida |
-| **sem relatório o publicador FALHA** (exit 3 do doctor, JSON inválido, arquivo ausente)                               | um corpo vazio sair como alerta publicado: "não consegui medir" não pode parecer verde                                                           |
+| Decisão                                                                                                               | O que ela impede                                                                                                                                                                                                                                                      |
+| :-------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **INDETERMINADA também abre issue**                                                                                   | o cron ficar verde justamente quando a medição está faltando — um fato não medido não pode estar certo nem errado, e é onde o drift se esconde                                                                                                                        |
+| a publicação vem **antes do `exit 1`**                                                                                | o step da issue nunca rodar no run que falha — o cron vermelho sem ticket que este workflow elimina                                                                                                                                                                   |
+| o step da issue roda nos **DOIS sentidos** (`always()`, modulado pelo RELATÓRIO existir — nunca pelo exit code)       | o FECHAMENTO ser inalcançável: condicionado ao exit code, o step só rodava no run que abre a dívida, nunca no único que pode fechá-la                                                                                                                                 |
+| a assinatura **exclui `unproven`** (constante entre runs) e inclui o veredito + bloqueadores + não-provados ordenados | o dedup não reconhecer a dívida já reportada (issue nova toda semana) ou, no extremo oposto, um bloqueador NOVO virar comentário numa issue lida                                                                                                                      |
+| **sem relatório o publicador FALHA** (exit 3 SEM relatório, JSON inválido, arquivo ausente)                           | um corpo vazio sair como alerta publicado: "não consegui medir" não pode parecer verde                                                                                                                                                                                |
+| a **RECURSÃO tem veredito, título e assinatura próprios** (o fato `nestedGuard`, com o canal que a marcou)            | (a) o alerta mais importante sumir: o `exit 3` é o MESMO código de uso inválido, e tratá-lo por código transformava a recusa em "erro de uso"; (b) a dívida da recursão se perder dentro da issue do veredito — com o título do veredito, ela viraria COMENTÁRIO nele |
+
+**O `exit 3` do doctor tem DOIS significados, e quem os separa é o RELATÓRIO**
+— não o código, que é o mesmo. Com o fato `nestedGuard` em `state: fired`, é
+**recursão**: o doctor
+rodou DENTRO da própria prova, o guard cortou o ciclo antes de coletar qualquer
+seção, e o que existe é um alerta acionável — a prontidão não foi MEDIDA. Sem
+relatório, é **uso/erro interno**, e aí não há medição nenhuma a publicar. Os dois
+caem em caminhos diferentes de propósito: o publicador lê o FATO (o caminho
+`--report` nem tem exit code para consultar) e o workflow grava `nested=1|0` só
+para o vermelho nomear qual dos dois foi — um log que dissesse "o veredito não é
+PRONTA" na recursão mandaria procurar o problema no lugar errado, porque ali não
+houve veredito. A issue da recursão **nomeia o canal que marcou a invocação**
+(`FORGE_DOCTOR_NESTED` no ambiente ou `--proof-nested` no argv) e manda cortar o
+ciclo na dublagem (`DOCTOR_SCRIPT`) — nunca nos comandos de credencial do veredito,
+que seriam o remédio da peça errada. Sem o detalhe do canal no relatório, o corpo
+diz que ele **não foi declarado** e nomeia os dois candidatos: canal chutado leva ao
+lugar errado.
 
 A mecânica de issue (o marcador invisível que carrega a assinatura, a decisão de
 dedup e os backends do `gh` e da API do Gitea) **não é deste publicador**: mora em
@@ -1683,19 +1791,48 @@ inventado (dizer `proven` de um fato não medido é a mesma mentira, ao contrár
 step da issue rodava com `if: steps.doctor.outputs.exit_code != '0'`, ou seja, só
 no run que ABRE a dívida — nunca no único run capaz de fechá-la. O fechamento
 estava provado no publicador e nunca chegava a rodar no cron. Hoje quem o modula é
-o **RELATÓRIO existir** (`report`, gravado pelo step do doctor; `exit 3` = uso/erro
-interno não produz medição) e a alegação "o step roda no run PRONTA" é provada por
+o **RELATÓRIO existir** (`report`, gravado pelo step do doctor; `exit 3` **sem**
+relatório = uso/erro interno, que não produz medição — `exit 3` **com** o relatório
+é a recursão, e essa PUBLICA) e a alegação "o step roda no run PRONTA" é provada por
 **EXECUÇÃO**, não por leitura do YAML: um teste roda as etapas do cron nos dois
 sentidos, com o script extraído do próprio workflow, o `bun` dublado (devolve o
 relatório canônico e o exit code do veredito) e o publicador REAL contra o Gitea
 dublê — e exige o comentário com a prova e a issue FECHADA.
 
-**A DÍVIDA ABERTA NO BOARD (seção 6/6):** tudo o mais mede a forja AGORA; nada
-disso enxerga a issue que um cron já abriu e ninguém fechou. Então o doctor LÊ o
-board — `required-checks-drift` (nas duas forjas), `actrc-sync-drift`,
-`readme-drift` e `mutation-trend-drift` — pela **mesma consulta dos
-publicadores** (`listIssuesByLabel`, de `issue-publish.mjs`; o leitor e quem
-escreve enxergam o mesmo board). Três escolhas, todas com o mesmo motivo:
+**A DÍVIDA CONHECIDA (seção 6/6) tem DUAS metades** — o que o repositório já
+sabe que deve (DECLARADA) e o que um cron já publicou (ABERTA no board) —, e as
+duas ficam no MESMO lugar justamente para uma não passar pela outra: a medição
+diz se o problema é vivo, a issue diz que alguém foi avisado.
+
+**A DECLARADA (a IDADE das isenções)** é o outro lado do que o repositório já
+decidiu não consertar agora: as duas listas do `check-registry-source`, a
+`ALLOWLIST` do `check-unused-deps` e a dívida declarada do
+`check-pipefail-sigpipe`. Cada uma registra QUANDO a decisão foi tomada
+(`addedAt`/`declaredAt`) e a janela de revisão (180 dias, do módulo
+compartilhado `allowlist-review.mjs`), mas essa idade só existia no run semanal
+que as revisa: o PR, o doctor e o board viam "nada a fazer", e a isenção a
+**179 dias** (ou vencida ontem) era invisível fora dali.
+
+O doctor lê esse fato pelo **mesmo módulo que o publicador da issue consome**
+(`scripts/declared-debt.mjs` → `collectDeclaredDebt`, a MESMA função nos dois),
+sobre os **donos** das listas (o `entries()` de cada guard, não uma cópia em
+disco): uma leitura a mais divergiria no dia em que alguém ajustasse uma delas.
+Quatro estados, e nenhum deles é otimista: `proven` (datas presentes e dentro da
+janela), `aged` (alguma venceu — vira `::warning::` no run normal e VIOLAÇÃO no
+job semanal, e é o que a issue publica), `invalid` (decisão **sem registro**: não
+há como envelhecer, então BLOQUEIA), `unread` (a lista não pôde ser lida —
+ausência de prova, **jamais "sem dívida"**). Uma lista vazia é `sem-divida`, que
+não é um estado melhor: é a AUSÊNCIA de declaração. No relatório, a seção nomeia
+cada lista com o estado, a idade da entrada mais antiga e a janela; e o fato
+entra até no perfil `--ci` (é leitura de arquivo, sem rede), porque é no PR que a
+isenção vencida precisa aparecer — não só no cron.
+
+**A ABERTA NO BOARD:** tudo o mais mede a forja AGORA; nada disso enxerga a issue
+que um cron já abriu e ninguém fechou. Então o doctor LÊ o board — as labels do
+registro `DEBT_SUBJECTS` (a fonte única, varrida contra os `scripts/*-issue.mjs`
+por um teste), pela **mesma consulta dos publicadores** (`listIssuesByLabel`, de
+`issue-publish.mjs`; o leitor e quem escreve enxergam o mesmo board). Três
+escolhas, todas com o mesmo motivo:
 
 **Ler o board do GitHub DE DENTRO da forja exigiu canal próprio — e é onde a
 seção antes falhava em silêncio.** `readme-drift` e `mutation-trend-drift` são

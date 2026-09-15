@@ -139,7 +139,8 @@ jobs:
       # ticket.
       #
       # O exit code do doctor É o veredito (0 pronta · 1 bloqueada · 2
-      # indeterminada · 3 uso/erro interno). Sem `--no-*`: o cron semanal é
+      # indeterminada) — e 3 é RECUSA, com dois significados (recursão, que traz
+      # relatório, e uso inválido, que não traz). Sem `--no-*`: o cron semanal é
       # justamente onde vale pagar o doctor inteiro — inclusive a prova do
       # bloqueio e o contrato da imagem publicada.
       #
@@ -183,12 +184,33 @@ jobs:
           echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
           # O RELATÓRIO existe? É o que MODULA o step da issue — e não o exit
           # code: com veredito 0/1/2 o JSON existe (o veredito É o exit code) e o
-          # publicador roda nos DOIS sentidos (publicar dívida, fechar dívida);
-          # com exit 3 (uso/erro interno) não há medição nenhuma.
+          # publicador roda nos DOIS sentidos (publicar dívida, fechar dívida).
+          #
+          # E o exit 3 NÃO é "sem medição": ele tem DOIS significados, e quem os
+          # separa é o relatório. A RECURSÃO (o doctor rodando dentro da própria
+          # prova) sai com 3 e EMITE o fato `nestedGuard` com `state: fired` —
+          # publicado como issue PRÓPRIA, com o canal que marcou a invocação. O
+          # uso inválido sai com 3 e não emite nada: aí sim não há medição, e o
+          # publicador não roda.
           if [ -s /tmp/forge-doctor.json ]; then
             echo "report=1" >> "$GITHUB_OUTPUT"
           else
             echo "report=0" >> "$GITHUB_OUTPUT"
+          fi
+          # Qual dos dois exit 3 foi este. A regra sai do CONTRATO e não de
+          # parsear o JSON no YAML: o ÚNICO caminho que sai 3 COM relatório é a
+          # recursão — o uso inválido sai 3 sem escrever nada (é o `-s` acima) —,
+          # e o relatório da recursão é justamente o que o publicador lê.
+          #
+          # O fato `nestedGuard` NÃO serve mais de sentinela aqui: ele passou a
+          # existir em TODO relatório (dizendo `armed`, `disarmed` ou `fired`, o
+          # guard declarado como fato próprio) — quem lembrava de um sinal de
+          # disparo "grepando" o nome acabaria marcando `nested=1` num veredito
+          # normal.
+          if [ "$CODE" = "3" ] && [ -s /tmp/forge-doctor.json ]; then
+            echo "nested=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "nested=0" >> "$GITHUB_OUTPUT"
           fi
           echo "  relatório: /tmp/forge-doctor.json ($(wc -c < /tmp/forge-doctor.json) bytes)"
 
@@ -205,10 +227,14 @@ jobs:
       # exatamente o que acontecia aqui: o fechamento estava PROVADO no
       # publicador e nunca chegava a rodar no cron.
       #
-      # Quem modula é o RELATÓRIO existir: com exit 3 não há medição — e sem
-      # medição não há o que publicar nem o que fechar. O job segue vermelho pelo
-      # step final, então pular aqui não afrouxa nada ("não consegui medir" nunca
-      # vira verde).
+      # Quem modula é o RELATÓRIO existir. Com exit 3 SEM relatório (uso/erro
+      # interno) não há medição — e sem medição não há o que publicar nem o que
+      # fechar. O job segue vermelho pelo step final, então pular aqui não afrouxa
+      # nada ("não consegui medir" nunca vira verde).
+      #
+      # Com exit 3 COM relatório (RECURSÃO) há o que publicar: o relatório da
+      # recursão é um veredito acionável próprio — o publicador o abre numa issue
+      # separada, nomeando o canal que marcou a invocação aninhada.
       - name: Publish doctor verdict issue (Gitea)
         if: always() && steps.doctor.outputs.report == '1'
         env:
@@ -224,5 +250,14 @@ jobs:
       - name: Fail on non-ready verdict
         if: steps.doctor.outputs.exit_code != '0'
         run: |
-          echo "::error::O veredito do forge doctor não é PRONTA. Veja a issue 'forge-doctor-verdict' (reprodução: bun run doctor)."
+          # A issue é o alerta; este vermelho é a lembrança. Os dois casos de
+          # exit 3 são ditos pelo NOME, porque "o veredito não é PRONTA" seria
+          # falso na recursão: ali não houve veredito nenhum (o doctor recusou
+          # antes de medir), e um log que afirmasse o contrário mandaria procurar
+          # o problema no lugar errado.
+          if [ "${{ steps.doctor.outputs.nested }}" = "1" ]; then
+            echo "::error::O forge doctor RECUSOU por RECURSÃO (rodou dentro da própria prova): a prontidão NÃO foi medida. Veja a issue 'forge-doctor-verdict' — o corpo dela nomeia o canal que marcou a invocação (reprodução: bun run doctor)."
+          else
+            echo "::error::O veredito do forge doctor não é PRONTA. Veja a issue 'forge-doctor-verdict' (reprodução: bun run doctor)."
+          fi
           exit 1
