@@ -821,7 +821,7 @@ export const MARKER_FORMATS = ["b64", "plain"]
  * defeito que este contrato existe para não deixar passar despercebido.
  *
  * @param {object} spec
- * @returns {object} o publicador normalizado
+ * @returns {Record<string, any> & {labelColor: string, labelDescription: string}} o publicador normalizado
  */
 export function defineDebtPublisher(spec = {}) {
   const required = ["name", "label", "title", "signature", "body", "actionable", "scope"]
@@ -1152,6 +1152,7 @@ export async function reconcilePublisherDebt({
  * evidência de "resolvido", então quem não conseguiu medir não fecha nada.
  *
  * @param {{publisher: object, input: unknown, backend: object, dryRun?: boolean, reconcile?: boolean, log?: Function}} params
+ * @returns {Promise<{status: string, ref?: string, number?: number, created?: number, closed?: number[], stale?: number[]}>}
  */
 export async function runDebtPublisher({
   publisher,

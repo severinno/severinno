@@ -201,6 +201,7 @@ import {
 import { GITHUB_RUNNER_SCRIPT, checkGithubRunnerLabels } from "./check-runner-labels.mjs"
 import { proveRunnerImageGate } from "./prove-runner-image-gate.mjs"
 import { checkComposeInterpolation, checkNonVersionedImageRefs } from "./check-registry-source.mjs"
+import { collectDeclaredDebt, textoFonteVencida } from "./declared-debt.mjs"
 import { checkRunnerLabels } from "./check-runner-labels.mjs"
 import {
   ENV_MIRROR_SCRIPT,
@@ -912,6 +913,26 @@ export function summarize(facts) {
     for (const u of openDebtUnknowns(facts.openDebt)) unknowns.push(u)
   }
 
+  // A DÍVIDA DECLARADA (a IDADE das isenções): o outro lado do que o repositório
+  // já sabe que deve. `invalid` BLOQUEIA (decisão sem registro não tem como
+  // envelhecer) e `aged` não deixa PRONTA (a isenção venceu e ninguém revisou) —
+  // a cobrança é a issue do publicador, não o veredito.
+  if (facts.skippedDeclaredDebt) {
+    unknowns.push(
+      "a dívida DECLARADA no repositório foi pulada (--no-declared-debt): o veredito não cobre a IDADE das isenções (nem se alguma venceu a janela)",
+    )
+  } else if (!facts.declaredDebt) {
+    // Ausente NÃO é verde — mesma disciplina do fato do guard de recursão: um
+    // relatório sem o fato não cobre a idade das isenções, e dizer "pronta" sobre
+    // o que não foi olhado é o que este doctor recusa.
+    unknowns.push(
+      "a dívida DECLARADA (a IDADE das isenções com data e janela) não está declarada no relatório: o veredito não cobre se alguma passou a janela de revisão",
+    )
+  } else {
+    for (const b of declaredDebtBlockers(facts.declaredDebt)) blockers.push(b)
+    for (const u of declaredDebtUnknowns(facts.declaredDebt)) unknowns.push(u)
+  }
+
   // A interpolação do compose: variável vazia / valor literal BLOQUEIA (o
   // runner roda uma imagem que não é a declarada). Não conseguir renderizar é
   // ausência de prova — nunca "pronta".
@@ -1065,6 +1086,9 @@ export function summarize(facts) {
   }
   if (facts.skippedOpenDebt) {
     unproven.unshift("a dívida aberta no board (pulada por --no-open-debt)")
+  }
+  if (facts.skippedDeclaredDebt) {
+    unproven.unshift("a IDADE da dívida declarada (pulada por --no-declared-debt)")
   }
   if (facts.skippedProof) {
     unproven.unshift(
@@ -2433,6 +2457,19 @@ export const DEBT_SUBJECTS = [
     // presumir caducidade.
     crossCheck: null,
   },
+  {
+    label: "declared-debt-review",
+    markerId: "declared-debt-review",
+    subject:
+      "uma isenção DECLARADA (data + janela de revisão) venceu sem ser reafirmada, ou ficou SEM REGISTRO",
+    forges: ["github"],
+    // O doctor MEDE o mesmo assunto por conta própria: o fato `declaredDebt`
+    // (a MESMA função `collectDeclaredDebt` que o publicador consome) dá a
+    // idade das isenções a cada run. É o cruzamento mais forte deste registro —
+    // e é por isso que a leitura da issue NÃO substitui o fato: a issue diz que
+    // alguém foi avisado, o fato diz se ainda é verdade.
+    crossCheck: "declaredDebt",
+  },
 ]
 
 /**
@@ -2476,7 +2513,7 @@ function debtIssue(issue, nowMs) {
  * dá para declarar caducidade daqui). `null` nunca vira `true`: dizer "caducou"
  * sobre o que não se mediu é a dívida que mente, do outro lado.
  */
-function debtStaleness(subject, forge, { protection, mirrors }) {
+function debtStaleness(subject, forge, { protection, mirrors, declaredDebt }) {
   if (subject.crossCheck === "protection") {
     const read = (protection?.forges ?? []).find((f) => f.forge === forge)
     if (!read) {
@@ -2521,6 +2558,31 @@ function debtStaleness(subject, forge, { protection, mirrors }) {
           stale: false,
           detail: `o doctor também mede os espelhos das variáveis da imagem (${compared.join(", ")}) e eles NÃO estão limpos agora`,
         }
+  }
+
+  if (subject.crossCheck === "declaredDebt") {
+    // Só o que foi de fato MEDIDO conta: sem o fato (ausente, pulado por
+    // `--no-declared-debt`, ou `unread` porque uma lista não pôde ser lida) a
+    // resposta honesta é `null` — dizer "caducou" sobre o que não se mediu é a
+    // dívida que mente, do outro lado.
+    if (!declaredDebt || declaredDebt.state === "skipped" || declaredDebt.state === "unread") {
+      return {
+        stale: null,
+        detail:
+          "a idade das isenções declaradas não foi medida nesta run — o doctor não pode declarar a issue caducada",
+      }
+    }
+    const vivas = (declaredDebt.aged?.length ?? 0) + (declaredDebt.invalid?.length ?? 0)
+    if (vivas === 0) {
+      return {
+        stale: true,
+        detail: `o doctor mede as MESMAS isenções agora (${declaredDebt.total} decisão(ões) em ${declaredDebt.sources.length} lista(s)) e nenhuma passou a janela — a issue fala de um problema que já não se vê (o publicador a fecha por assinatura quando a dívida some)`,
+      }
+    }
+    return {
+      stale: false,
+      detail: `o doctor também mede as isenções declaradas e ${vivas} delas ainda estão vencidas (ou Sem REGISTRO) — a issue fala de um problema VIVO`,
+    }
   }
 
   return {
@@ -2584,7 +2646,7 @@ function describeOpenDebt({ forge, subject, ours, alien, staleness }) {
  * (`githubReadConfig`) — o relatório não pode declarar um canal que não foi o
  * usado.
  *
- * @param {{cwd?: string, env?: Record<string,string|undefined>, deps?: {list?: Function, now?: () => number, githubChannel?: Function}, protection?: object|null, mirrors?: object|null}} [args]
+ * @param {{cwd?: string, env?: Record<string,string|undefined>, deps?: {list?: Function, now?: () => number, githubChannel?: Function}, protection?: object|null, mirrors?: object|null, declaredDebt?: object|null}} [args]
  * @returns {Promise<{state: string, detail: string, reads: object[], items: object[], labels: string[], excluded: object}>}
  */
 export async function readOpenDebt({
@@ -2593,6 +2655,7 @@ export async function readOpenDebt({
   deps = {},
   protection = null,
   mirrors = null,
+  declaredDebt = null,
 } = {}) {
   const {
     list = listIssuesByLabel,
@@ -2659,7 +2722,7 @@ export async function readOpenDebt({
         else alien.push({ number: issue?.number ?? null, title: issue?.title ?? "" })
       }
       if (ours.length === 0 && alien.length === 0) continue
-      const staleness = debtStaleness(subject, forge, { protection, mirrors })
+      const staleness = debtStaleness(subject, forge, { protection, mirrors, declaredDebt })
       open += ours.length + alien.length
       foreign += alien.length
       items.push({
@@ -2979,6 +3042,133 @@ export async function runGatesConcurrent(
   }
   await Promise.all(Array.from({ length: workers }, worker))
   return results
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 4c. A dívida DECLARADA (a IDADE das isenções)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * A IDADE das isenções declaradas — o quanto falta para a decisão vencer.
+ *
+ * POR QUE ISTO É UM FATO DO VEREDITO: as quatro listas do repositório
+ * (`OUT_OF_SCOPE_ALLOWLIST`, `THIRD_PARTY_ALLOWLIST`, `ALLOWLIST` do
+ * `check-unused-deps` e o baseline do SIGPIPE) são decisões escritas de "não
+ * consertar agora", com DATA e JANELA de revisão. O canal que as revisa é o job
+ * semanal (`--review`), e é lá que a decisão vencida vira VIOLAÇÃO. O doctor mede
+ * a forja inteira e não sabia NADA disso: uma isenção de 179 dias e uma que
+ * venceu ontem davam o mesmo "PRONTA", e o vencimento só existia como run
+ * vermelho de um cron.
+ *
+ * A MEDIÇÃO é a do módulo compartilhado (`declared-debt.mjs`), que lê as listas
+ * dos DONOS delas e aplica a regra do `allowlist-review.mjs` — a mesma que os
+ * guards usam. Este fato NÃO reimplementa janela, data nem leitura: duas contas
+ * para a mesma pergunta divergem no primeiro ajuste feito de um lado só.
+ *
+ * PESO (e por quê):
+ *   - `invalid` (decisão SEM registro: data ausente/impossível) BLOQUEIA — uma
+ *     isenção sem data não tem como envelhecer, e é violação nos dois modos nos
+ *     próprios guards (fail-closed). Aqui o veredito diz o mesmo, com o nome da
+ *     lista;
+ *   - `aged` (passou a janela) NÃO PRONTA (INDETERMINADA): a isenção venceu e
+ *     ninguém a revisou, mas uma data vencida não prova que a forja falha em
+ *     bloquear o merge — bloquear transformaria "alguém esqueceu de reafirmar"
+ *     em "não confie o merge", que é o peso errado (mesma régua da dívida do
+ *     board). O canal de cobrança é a ISSUE do publicador
+ *     (`scripts/declared-debt-issue.mjs`), não o veredito;
+ *   - `unread` (a lista não pôde ser lida) é ausência de prova: nunca "sem
+ *     dívida", nunca "pronta" — é o mesmo estado que o doctor usa para o resto.
+ *
+ * @param {{cwd?: string, deps?: {collect?: Function, now?: number}}} [args]
+ *
+ * O retorno do caminho de PROGRAMA (o coletor lançou) é o MESMO shape, com
+ * `error` dito: quem não conseguiu medir tem de poder nomear o motivo em vez de
+ * devolver um fato vazio, que se leria como "nenhuma lista declarada".
+ * @returns {{state: string, sources: Array<{
+ *   id: string, listName: string, owner: string, kind?: string, remedy?: string,
+ *   reviewDays?: number|null, where?: string, state: string, total: number,
+ *   declaredAt?: string|null, reason?: string|null,
+ *   aged: Array<{id: string, addedAt?: string, days: number, limit?: number}>,
+ *   invalid: Array<{id: string, why: string}>,
+ *   oldest: {id: string, addedAt: string, days: number}|null,
+ *   detail: string,
+ * }>, aged: object[], invalid: object[], unread: object[], total: number, error?: string}}
+ */
+export function readDeclaredDebt({ cwd = REPO_ROOT, deps = {} } = {}) {
+  const collect = deps.collect ?? collectDeclaredDebt
+  try {
+    return collect({ root: cwd, ...(deps.now === undefined ? {} : { now: deps.now }) })
+  } catch (err) {
+    // O coletor NUNCA lança por lista ilegível (isso vira `unread` na fonte);
+    // isto aqui é a rede para um erro de PROGRAMA, que não pode virar "sem
+    // dívida" — quem não conseguiu medir não diz que está tudo bem.
+    return {
+      state: "unread",
+      sources: [],
+      aged: [],
+      invalid: [],
+      unread: [],
+      total: 0,
+      error: String(err?.message ?? err),
+    }
+  }
+}
+
+/**
+ * O que a dívida DECLARADA acrescenta ao veredito como AUSÊNCIA DE PROVA: as
+ * decisões vencidas (uma linha por lista, com a idade e o remédio) e as listas
+ * que não puderam ser lidas.
+ *
+ * Uma linha por LISTA (e não um agregado): quem lê precisa saber QUAL decisão
+ * reafirmar — "há dívida vencida" mandaria procurar em quatro lugares.
+ *
+ * @param {object|undefined} fato
+ * @returns {string[]}
+ */
+export function declaredDebtUnknowns(fato) {
+  if (!fato || fato.state === "proven" || fato.state === "sem-divida") return []
+  const unknowns = []
+  for (const fonte of fato.sources) {
+    if (fonte.state === "aged") {
+      const [maisVelha] = [...fonte.aged].sort((a, b) => b.days - a.days)
+      unknowns.push(
+        `a dívida DECLARADA venceu a janela de revisão: ${textoFonteVencida(fonte)} ` +
+          `(vencida há ${maisVelha.days - maisVelha.limit} dia(s))`,
+      )
+    }
+    if (fonte.state === "unread") {
+      unknowns.push(
+        `a dívida DECLARADA em '${fonte.listName}' NÃO pôde ser lida: ${fonte.detail ?? "sem detalhe"} — não ler não é o mesmo que não haver`,
+      )
+    }
+  }
+  // Um erro de PROGRAMA no coletor (sem fontes medidas) tem de aparecer: um fato
+  // vazio pareceria "nenhuma lista declarada", que é uma afirmação forte demais.
+  if (fato.sources.length === 0 && fato.error) {
+    unknowns.push(`a dívida DECLARADA não foi coletada: ${fato.error}`)
+  }
+  return unknowns
+}
+
+/**
+ * O que a dívida DECLARADA tem de BLOQUEANTE: uma decisão sem registro — o
+ * fail-closed dos próprios guards, dito no veredito.
+ *
+ * @param {object|undefined} fato
+ * @returns {string[]}
+ */
+export function declaredDebtBlockers(fato) {
+  if (!fato || fato.state !== "invalid") return []
+  return fato.sources
+    .filter((fonte) => fonte.state === "invalid")
+    .map(
+      (fonte) =>
+        `a dívida DECLARADA em '${fonte.listName}' está SEM REGISTRO (${fonte.invalid
+          .map((i) => `${i.id}: ${i.why}`)
+          .join(
+            "; ",
+          )}): uma isenção sem data não tem como envelhecer, então não há janela que a revise`,
+    )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3428,7 +3618,36 @@ export function renderReport(report, { emit = console.log } = {}) {
   // o doctor mede por conta própria vêm lado a lado com a MEDIÇÃO, para a issue
   // velha não passar por problema vivo (nem o contrário).
   line()
-  line("  6/6  Dívida aberta no board (issues de drift abertas, por forja)")
+  line("  6/6  Dívida conhecida (DECLARADA no repositório × ABERTA no board)")
+  // ── a DECLARADA: a IDADE das isenções (data + janela de revisão) ────────
+  if (facts.skippedDeclaredDebt) {
+    line(
+      `       ${MARK.skip()} dívida declarada pulada por --no-declared-debt (a IDADE das isenções fica fora do veredito)`,
+    )
+  } else {
+    for (const fonte of facts.declaredDebt?.sources ?? []) {
+      const mark =
+        fonte.state === "proven"
+          ? MARK.ok()
+          : fonte.state === "sem-divida"
+            ? MARK.info()
+            : fonte.state === "aged"
+              ? MARK.warn()
+              : MARK.fail()
+      const idade = fonte.oldest ? ` — a mais antiga há ${fonte.oldest.days} dia(s)` : ""
+      const janela = fonte.reviewDays ? ` (janela de ${fonte.reviewDays} dia(s))` : ""
+      line(`       ${mark} ${fonte.listName} [${fonte.state}]${idade}: ${fonte.detail}${janela}`)
+      if (fonte.state === "aged" || fonte.state === "invalid") {
+        line(`           ${color(C.gray, textoFonteVencida(fonte))}`)
+      }
+    }
+    if ((facts.declaredDebt?.sources ?? []).length === 0) {
+      line(
+        `       ${MARK.warn()} a dívida declarada NÃO foi coletada: ${facts.declaredDebt?.error ?? "sem detalhe"}`,
+      )
+    }
+  }
+  // ── a ABERTA no board: o que os crons já publicaram ────────────────────
   line(`       ${MARK.info()} labels lidas: ${(facts.openDebt?.labels ?? []).join(", ")}`)
   if (facts.openDebt?.excluded) {
     line(
@@ -3522,6 +3741,11 @@ Opções:
                          mutation-trend-drift) deixam de aparecer no veredito —
                          e a dívida que vive só no board volta a ser invisível
                          para a prontidão
+  --no-declared-debt     pula a IDADE da dívida DECLARADA (as isenções com data
+                         e janela de revisão: OUT_OF_SCOPE_ALLOWLIST,
+                         THIRD_PARTY_ALLOWLIST, ALLOWLIST e o baseline do
+                         SIGPIPE). NÃO é preciso em rede/credencial: é leitura
+                         do checkout, e por isso roda ATÉ no perfil --ci
   --expected <versão>    valor de vars.BUN_VERSION (a repository variable): com
                          ele os espelhos do Bun são comparados com o VALOR
                          declarado, pelo mesmo código do job semanal
@@ -3612,6 +3836,7 @@ export function parseArgs(argv) {
     registryProbe: true,
     gateContractsCheck: true,
     openDebt: true,
+    declaredDebt: true,
     envFile: DEFAULT_ENV_FILE,
     expected: null,
     expectedVars: {},
@@ -3632,6 +3857,7 @@ export function parseArgs(argv) {
     else if (arg === "--no-compose-render") opts.composeRender = false
     else if (arg === "--no-registry-probe") opts.registryProbe = false
     else if (arg === "--no-open-debt") opts.openDebt = false
+    else if (arg === "--no-declared-debt") opts.declaredDebt = false
     else if (arg === "--json") opts.json = true
     else if (arg === "-h" || arg === "--help") opts.help = true
     else if (arg === "--expected") opts.expected = argv[++i] ?? ""
@@ -3739,17 +3965,22 @@ export async function diagnose({
   registryProbe = true,
   gateContractsCheck = true,
   openDebt = true,
+  declaredDebt = true,
   timeoutS = 120,
   run,
   imageDeps = {},
   imageRefsDeps = {},
   runnerLabelsDeps = {},
+  /** Injeção do FATO do guard de recursão (`probe`) — o teste exercita os canais sem subprocesso. */
+  nestedGuardDeps = {},
   githubRunnerLabelsDeps = {},
   proofDeps = {},
   composeDeps = {},
   protectionDeps = {},
   imageContractDeps = {},
   openDebtDeps = {},
+  /** Injeção do FATO da dívida declarada (`collect`/`now`) — o teste mede o envelhecimento sem depender do relógio. */
+  declaredDebtDeps = {},
   identityProbe,
   gateContractsDeps = {},
 } = {}) {
@@ -3817,6 +4048,22 @@ export async function diagnose({
   // Aqui só os espelhos e a dívida dependem das duas leituras — não recompute
   // a proteção (duas medições do mesmo fato começam a divergir).
   const mirrorsFacts = readMirrors(cwd, { expected, expectedVars })
+  // A IDADE da dívida DECLARADA sai ANTES da leitura do board: o próprio board
+  // a usa como segunda testemunha (a issue do publicador caduca quando o doctor
+  // mede as mesmas isenções e nenhuma venceu). Computar depois faria a leitura
+  // do board responder com um fato que ainda não existe — ou pior, com uma
+  // segunda medição do mesmo dado.
+  const declaredDebtFacts = declaredDebt
+    ? readDeclaredDebt({ cwd, deps: declaredDebtDeps })
+    : {
+        state: "skipped",
+        detail: "pulada por --no-declared-debt",
+        sources: [],
+        aged: [],
+        invalid: [],
+        unread: [],
+        total: 0,
+      }
   const openDebtFacts = openDebt
     ? await readOpenDebt({
         cwd,
@@ -3824,6 +4071,7 @@ export async function diagnose({
         deps: openDebtDeps,
         protection: protectionFacts,
         mirrors: mirrorsFacts,
+        declaredDebt: declaredDebtFacts,
       })
     : {
         state: "skipped",
@@ -3918,6 +4166,15 @@ export async function diagnose({
         },
     mirrors: mirrorsFacts,
     openDebt: openDebtFacts,
+    // A IDADE da dívida DECLARADA: pura leitura de arquivo (sem rede, credencial
+    // ou estado do HOST), então ela entra ATÉ no perfil --ci — é no PR que a
+    // isenção vencida precisa aparecer, não só no cron. MEDIDA UMA VEZ (acima):
+    // o mesmo objeto serve ao veredito e à caducidade da issue do board.
+    declaredDebt: declaredDebtFacts,
+    // O GUARD DE RECURSÃO, como fato do relatório NORMAL: a prontidão declara a
+    // EXISTÊNCIA da defesa (e por quais canais ela responde), não só o disparo
+    // dela — que vira um relatório à parte, com o estado `fired`.
+    nestedGuard: recursionGuardFacts(nestedGuardDeps),
     ciProfile,
     skippedGuards: !guards,
     skippedProtection: !protection,
@@ -3925,6 +4182,7 @@ export async function diagnose({
     skippedRegistryProbe: !registryProbe,
     skippedImageContract: !imageContract,
     skippedOpenDebt: !openDebt,
+    skippedDeclaredDebt: !declaredDebt,
     skippedGateContracts: !gateContractsCheck,
     skippedProof: !proof,
   }

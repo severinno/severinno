@@ -9,6 +9,7 @@ import {
   openDebtUnknowns,
   parseArgs,
   readOpenDebt,
+  recursionGuardFacts,
   renderReport,
   summarize,
   VERDICT,
@@ -94,7 +95,7 @@ describe("o REGISTRO da dívida é o dos publicadores (fonte única)", () => {
     for (const subject of DEBT_SUBJECTS) {
       expect(subject.forges.length).toBeGreaterThan(0)
       expect(subject.subject.length).toBeGreaterThan(10)
-      expect([null, "protection", "mirrors"]).toContain(subject.crossCheck)
+      expect([null, "protection", "mirrors", "declaredDebt"]).toContain(subject.crossCheck)
     }
   })
 })
@@ -127,9 +128,11 @@ describe("readOpenDebt — a leitura do board", () => {
     // vazio, e o vazio passaria por "sem dívida" num board que nunca foi lido.
     expect(stub.asked.sort()).toEqual(
       [
+        "gitea:env-mirror-drift",
         "gitea:required-checks-drift",
         "github:actrc-sync-drift",
         "github:crlf-scope-drift",
+        "github:declared-debt-review",
         "github:mutation-trend-drift",
         "github:readme-drift",
         "github:required-checks-drift",
@@ -214,6 +217,9 @@ describe("readOpenDebt — a leitura do board", () => {
 
 const DRIFT_ISSUE = { "required-checks-drift": [issue(7, "<!-- required-checks-drift:QUJD -->")] }
 const MIRROR_ISSUE = { "actrc-sync-drift": [issue(9, "<!-- actrc-sync-drift:QUJD -->")] }
+const DEBT_REVIEW_ISSUE = {
+  "declared-debt-review": [issue(21, "<!-- declared-debt-review:QUJD -->")],
+}
 
 describe("readOpenDebt — a issue velha não passa por problema vivo", () => {
   it("proteção EM SINCRONIA agora + issue de drift aberta → caducada", async () => {
@@ -274,6 +280,51 @@ describe("readOpenDebt — a issue velha não passa por problema vivo", () => {
     expect(item.stale).toBeNull()
     expect(item.detail).toContain("não é medido pelo doctor")
   })
+
+  it("isenções DENTRO da janela + issue aberta → caducada; alguma vencida → VIVA", async () => {
+    const stub = listStub(DEBT_REVIEW_ISSUE)
+    const limpo = await readOpenDebt({
+      deps: { list: stub.list, now: () => NOW },
+      declaredDebt: { state: "proven", sources: [{}, {}], aged: [], invalid: [], total: 4 },
+    })
+    const caduca = limpo.items[0] as { stale: boolean | null; detail: string }
+    expect(caduca.stale).toBe(true)
+    expect(caduca.detail).toContain("MESMAS isenções")
+
+    const vencido = await readOpenDebt({
+      deps: { list: stub.list, now: () => NOW },
+      declaredDebt: {
+        state: "aged",
+        sources: [{}],
+        aged: [{ id: "a", days: 200 }],
+        invalid: [],
+        total: 4,
+      },
+    })
+    const viva = vencido.items[0] as { stale: boolean | null; detail: string }
+    expect(viva.stale).toBe(false)
+    expect(viva.detail).toContain("VIVO")
+  })
+
+  it('isenções NÃO medidas nesta run → caducidade NÃO verificada (nunca "caducou")', async () => {
+    const stub = listStub(DEBT_REVIEW_ISSUE)
+    // Três caminhos, e os três têm de responder `null`: o fato ausente, o
+    // pulado por flag, e o `unread` (uma lista que não pôde ser lida). Dizer
+    // "caducou" em qualquer um deles seria a dívida que mente, do outro lado.
+    for (const declaredDebt of [
+      null,
+      { state: "skipped", sources: [], aged: [], invalid: [], total: 0 },
+      { state: "unread", sources: [], aged: [], invalid: [], total: 0 },
+    ]) {
+      const debt = await readOpenDebt({
+        deps: { list: stub.list, now: () => NOW },
+        declaredDebt,
+      })
+      const item = debt.items[0] as { stale: boolean | null; detail: string }
+      expect(item.stale, `declaredDebt=${JSON.stringify(declaredDebt)}`).toBeNull()
+      expect(item.detail).toContain("não foi medida nesta run")
+    }
+  })
 })
 
 // ── 4. O PESO NO VEREDITO e o relatório ───────────────────────────────────
@@ -287,6 +338,34 @@ function baseFacts() {
     proof: { status: "holds", cases: [] },
     mirrors: { expected: "1.3.14", blockers: [], unknowns: [], mirrors: [], warnings: [] },
     protection: { state: "in-sync", detail: "em sincronia", forges: [] },
+    // O guard de recursão armado — o `summarize` também o lê (existência da
+    // defesa, e não só o disparo dela): sem o fato, o veredito fica
+    // INDETERMINADA, e a fixture diria que "o mínimo" era menor do que é.
+    nestedGuard: recursionGuardFacts(),
+    // A idade das isenções: o `summarize` também a lê (a isenção vencida não
+    // deixa o veredito PRONTA), e a leitura do board a usa como SEGUNDA
+    // TESTEMUNHA — sem o fato, a fixture não seria "o mínimo" que o doctor lê.
+    declaredDebt: {
+      state: "proven",
+      sources: [
+        {
+          id: "out-of-scope",
+          listName: "OUT_OF_SCOPE_ALLOWLIST",
+          owner: "scripts/check-registry-source.mjs",
+          state: "proven",
+          total: 1,
+          reviewDays: 180,
+          aged: [],
+          invalid: [],
+          oldest: { id: "docs/quality/x.md", addedAt: "2026-08-01", days: 43 },
+          detail: "scripts/check-registry-source.mjs: 1 decisão(ões) na OUT_OF_SCOPE_ALLOWLIST",
+        },
+      ],
+      aged: [],
+      invalid: [],
+      unread: [],
+      total: 1,
+    },
     openDebt: {
       state: "clear",
       detail: "sem dívida",
@@ -395,7 +474,7 @@ describe("renderReport — a dívida tem seção própria", () => {
 
   it("a seção 6/6 nomeia as labels, a exclusão, a issue e a IDADE", () => {
     const out = report({ ...baseFacts(), openDebt: OPEN_DEBT })
-    expect(out).toContain("6/6  Dívida aberta no board")
+    expect(out).toContain("6/6  Dívida conhecida (DECLARADA no repositório × ABERTA no board)")
     expect(out).toContain(DEBT_SUBJECTS.map((s) => s.label).join(", "))
     expect(out).toContain(DEBT_EXCLUDED.label)
     expect(out).toContain("#12")

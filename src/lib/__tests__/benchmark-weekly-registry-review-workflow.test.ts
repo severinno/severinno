@@ -15,7 +15,9 @@
  * linhas (ou um dos passos for removido, ou o job for renomeado sem atualizar o
  * manifesto), a isenção daquela lista volta a envelhecer em silêncio — e nada no
  * CI reclamaria. Aqui as peças ficam presas juntas: o job, os comandos (um por
- * guard) e a classificação no `ci/periodic-alerts.json`.
+ * guard), o PUBLICADOR da dívida declarada (a quarta decisão, o baseline do
+ * check-pipefail-sigpipe) e a classificação no `ci/periodic-alerts.json` — que
+ * declara o canal ACIONÁVEL (a issue), com o run vermelho como lembrete.
  *
  * O comando é HERMÉTICO de propósito (`--no-compose-render`, sem rede e com as
  * vars do registry esvaziadas): a pergunta do job é só a revisão da isenção —
@@ -39,7 +41,7 @@ const JOB = "registry-allowlist-review"
 
 const wfContent = (): string => readFileSync(join(CWD, WF_PATH), "utf8")
 
-type Step = { name?: string; env?: Record<string, string>; run?: string }
+type Step = { name?: string; env?: Record<string, string>; run?: string; if?: string }
 type Workflow = { jobs: Record<string, { name?: string; steps: Step[] }> }
 
 /** Os passos do job (o gate tem um por allowlist — a falha de um não cobre a outra). */
@@ -86,18 +88,54 @@ describe("o job de revisão das decisões de escopo é o canal do aviso mudo", (
     expect(env.IMAGE_NAMESPACE).toBe("")
   })
 
-  it("o canal está DECLARADO (fail) e a evidência existe no bloco do job", () => {
+  it("o canal está DECLARADO como ISSUE, com razão escrita e a evidência no bloco do job", () => {
     const manifest = JSON.parse(readFileSync(join(CWD, MANIFEST_PATH), "utf8")) as {
-      forges: { github: { workflow: string; job: string; channel?: string; evidence?: string }[] }
+      forges: {
+        github: {
+          workflow: string
+          job: string
+          channel?: string
+          evidence?: string
+          why?: string
+        }[]
+      }
     }
     const entry = manifest.forges.github.find((e) => e.job === JOB)
     expect(entry, `${JOB} sem entrada no ${MANIFEST_PATH}`).toBeTruthy()
     expect(entry?.workflow).toBe(WF_PATH)
-    expect(entry?.channel).toBe("fail")
-    // A evidência precisa VIVER no bloco do job (não no arquivo): é o que o
-    // check:periodic-alerts cobra — um canal declarado e não implementado é o
-    // defeito que o guard existe para pegar.
+    // O canal é a ISSUE — o TICKET que alguém lê no board. O run vermelho (os
+    // passos `--review`, travados acima) continua, mas declarar `fail` aqui
+    // seria classificar como acionável aquilo que este repositório já tratou
+    // como alerta MUDO: ninguém abre o log de um cron que ficou vermelho.
+    expect(entry?.channel).toBe("issue")
+    // Um canal declarado e não implementado é o defeito que o guard existe para
+    // pegar — por isso a evidência tem de VIVER no bloco do job.
     expect(jobBlock(wfContent(), JOB)).toContain(entry?.evidence ?? "\u0000")
+    // E a decisão vem ESCRITA: trocar o canal de um job que já existe não pode
+    // ser convenção de quem escreveu o YAML.
+    expect(entry?.why?.length ?? 0).toBeGreaterThan(40)
+  })
+
+  it("revisa TAMBÉM a dívida declarada da classe SIGPIPE, no modo --review", () => {
+    // A quarta decisão do repositório (o baseline do check-pipefail-sigpipe) é a
+    // única que NÃO é uma lista de entradas: ela é uma declaração única, com data
+    // e janela próprias. Sem este passo, ela envelheceria em silêncio dentro do
+    // job que existe justamente para revisar as outras três.
+    const step = steps().find((s) => (s.run ?? "").includes("check-pipefail-sigpipe.mjs"))
+    expect(step, `o passo da dívida do SIGPIPE sumiu de ${WF_PATH} (job ${JOB})`).toBeTruthy()
+    expect(step?.run ?? "").toContain("--review")
+  })
+
+  it("PUBLICA a decisão vencida como issue (o canal que o manifesto declara)", () => {
+    // O passo do publicador é a evidência declarada no manifesto: ele abre a
+    // issue na decisão vencida e FECHA quando nenhuma vence — publicar sem
+    // fechar deixaria a dívida aberta depois de resolvida.
+    const step = steps().find((s) => (s.run ?? "").includes("declared-debt-issue.mjs"))
+    expect(step, `o publicador da dívida declarada sumiu de ${WF_PATH} (job ${JOB})`).toBeTruthy()
+    // `always()`: o publicador roda TAMBÉM quando o gate acima falhou (é o caso
+    // da decisão vencida) — se ele só rodasse no caminho verde, o ticket nunca
+    // seria aberto justamente no cenário para o qual existe.
+    expect(step?.if ?? "").toContain("always()")
   })
 
   it("a janela de revisão existe e é um número positivo de dias", () => {

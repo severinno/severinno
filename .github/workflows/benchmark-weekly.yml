@@ -879,12 +879,17 @@ jobs:
   #     um arquivo FORA do escopo que referencia imagem NOSSA; uma imagem de
   #     TERCEIROS consumida do GHCR;
   #   · ALLOWLIST (check-unused-deps): uma dep de uso IMPLÍCITO, que nunca
-  #     aparece como import (`sharp`, `@types/*`, CLIs).
+  #     aparece como import (`sharp`, `@types/*`, CLIs);
+  #   · a DÍVIDA declarada do `check-pipefail-sigpipe` (classe SIGPIPE): hoje
+  #     ZERO — o baseline foi removido depois que o `--fix` aposentou as 216
+  #     ocorrências —, mas o `--update` pode reabri-la com a razão escrita, e
+  #     uma dívida que ninguém revisa volta a ser permanente. Como as outras
+  #     três, ela vence.
   #
   # Cada entrada registra `addedAt` (a data da decisão) e este job revalida a
   # JANELA (180 dias, do módulo compartilhado `allowlist-review.mjs`).
   #
-  # O job roda os dois guards no modo `--review`: passada a janela, a decisão
+  # O job roda os guards no modo `--review`: passada a janela, a decisão
   # vencida vira VIOLAÇÃO (exit 1). O modo normal (pre-commit/PR) apenas AVISA
   # (`::warning::`) — uma data não pode bloquear o commit e o PR de todo mundo.
   # Mas um aviso dentro de um run VERDE é alerta MUDO (é a razão do
@@ -900,6 +905,9 @@ jobs:
     name: Revisão das allowlists (decisão vencida)
     runs-on: self-hosted
     timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write # gh issue create/close para a decisão declarada VENCIDA
 
     steps:
       - uses: actions/checkout@v4
@@ -921,8 +929,33 @@ jobs:
       - name: Revisar a allowlist de deps de uso implícito (--review)
         run: node scripts/check-unused-deps.mjs --review
 
+      # ── GATE: a DÍVIDA do SIGPIPE (baseline) SEM REVISÃO falha o run ──
+      # No run normal (PR/pre-commit) essa decisão vencida é `::warning::` —
+      # uma data não pode travar o PR de todo mundo. Aqui ela é VIOLAÇÃO, que é
+      # o que faz a janela valer: sem este passo, a janela de 180 dias seria
+      # decorativa e a dívida venceria em silêncio.
+      - name: Revisar a dívida declarada da classe SIGPIPE (--review)
+        run: node scripts/check-pipefail-sigpipe.mjs --review
+
+      # ── CANAL: a decisão VENCIDA vira ISSUE ACIONÁVEL (e some quando revisada) ──
+      # O run vermelho acima é o GATE; ele sozinho é o alerta MUDO que este
+      # repositório já trocou por issue em quatro outros lugares
+      # (actrc-sync, required-checks-drift, readme-reverse, env-mirror-drift):
+      # ninguém abre o log de um cron que ficou vermelho, e a issue é o ticket
+      # que alguém abre, atribui e cobra.
+      #
+      # A MEDIÇÃO é a MESMA do doctor (o fato da seção 6/6, de
+      # scripts/declared-debt.mjs): uma medição, dois consumidores. O publicador
+      # também FECHA a issue quando nenhuma decisão está vencida (reafirmada com
+      # data nova, ou aposentada) — publicar sem fechar deixa a dívida mentindo.
+      - name: Publicar a dívida declarada sem revisão (issue acionável)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/declared-debt-issue.mjs
+
       - name: Summary
-        run: echo "✅ Nenhuma isenção (escopo, imagem de terceiros ou dep de uso implícito) sem revisão dentro da janela."
+        run: echo "✅ Nenhuma isenção (escopo, imagem de terceiros, dep de uso implícito) nem dívida declarada (SIGPIPE) sem revisão dentro da janela."
 
   # ── Seed Guards E2E (semanal) ────────────────────────────────────────
   # Revalida SEMANALMENTE que os DOIS seeds (prod + dev) continuam

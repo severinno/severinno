@@ -63,7 +63,13 @@ import {
   ENV_MIRROR_CHECK,
   NESTED_GUARD_ENV,
   NESTED_GUARD_FLAG,
+  NESTED_GUARD_EXIT,
   isNestedDoctorInvocation,
+  nestedGuardReport,
+  recursionGuardFacts,
+  declaredDebtBlockers,
+  declaredDebtUnknowns,
+  readDeclaredDebt,
   deriveBringUpEnv,
 } from "../../../scripts/forge-doctor.mjs"
 
@@ -132,6 +138,37 @@ function pipeline(opts: { guardLines?: string[]; extraJob?: boolean } = {}): str
   ].join("\n")
 }
 
+/**
+ * O fato da dívida DECLARADA, medido e dentro da janela — ponto de partida dos
+ * testes de peso (cada um estraga a lista que quer medir).
+ */
+function declaredDebtFacts(overrides: Record<string, unknown> = {}) {
+  return {
+    state: "proven",
+    sources: [
+      {
+        id: "unused-deps",
+        listName: "ALLOWLIST",
+        owner: "scripts/check-unused-deps.mjs",
+        kind: "entries",
+        remedy: "reafirme a exceção atualizando `addedAt`",
+        reviewDays: 180,
+        state: "proven",
+        total: 1,
+        oldest: { id: "sharp", addedAt: "2026-09-01", days: 2 },
+        aged: [],
+        invalid: [],
+        detail: "scripts/check-unused-deps.mjs: 1 decisão(ões) na ALLOWLIST",
+      },
+    ],
+    aged: [],
+    invalid: [],
+    unread: [],
+    total: 1,
+    ...overrides,
+  }
+}
+
 /** Fatores do veredito, todos "verdes" — cada teste estraga um. */
 function facts(overrides: Record<string, unknown> = {}) {
   return {
@@ -161,6 +198,13 @@ function facts(overrides: Record<string, unknown> = {}) {
     runnerLabels: runnerLabelFacts(),
     githubRunnerLabels: githubRunnerLabelFacts(),
     imageContract: imageContractFacts(),
+    // O guard de recursão ARMADO, como o `diagnose` o declara em todo relatório
+    // (o disparo é que vira um relatório à parte, com `state: fired`).
+    nestedGuard: recursionGuardFacts(),
+    // A dívida DECLARADA medida e DENTRO da janela: com o fato presente e limpo,
+    // o veredito não ganha nem bloqueio nem dúvida (cada teste estraga o que quer
+    // medir). Ausente, ele passa a INDETERMINADA — como o guard de recursão.
+    declaredDebt: declaredDebtFacts(),
     skippedGuards: false,
     skippedProof: false,
     skippedProtection: false,
@@ -756,6 +800,181 @@ describe("summarize — o veredito", () => {
     expect(v.unproven.join(" ")).toContain("branch protection")
     expect(v.unproven.join(" ")).toContain("smoke")
     expect(v.unproven.join(" ")).toContain(".env.gitea")
+  })
+})
+
+// ── a DÍVIDA DECLARADA (a IDADE das isenções) ────────────────────────────
+
+/**
+ * A isenção que sustenta um verde tem PRAZO — e a idade dela vira fato do
+ * veredito.
+ *
+ * POR QUE ISTO EXISTE: cada lista de dívida declarada do repositório registra
+ * quando a decisão foi tomada e a janela de revisão, mas essa idade só existia
+ * no run semanal que a revisa. O doctor media a forja inteira e não sabia que a
+ * isenção que sustenta o verde está a 179 dias — nem que venceu ontem. Aqui a
+ * ISENÇÃO SEM REGISTRO (que não tem como envelhecer) BLOQUEIA, a VENCIDA impede
+ * PRONTA sem bloquear (a cobrança é a issue do publicador, não o veredito), e a
+ * lista ILEGÍVEL é ausência de prova — nunca "sem dívida".
+ */
+describe("summarize — a IDADE da dívida declarada", () => {
+  it("decisão VENCIDA → INDETERMINADA, com a idade e o remédio (zero bloqueios)", () => {
+    const vencida = declaredDebtFacts({
+      state: "aged",
+      aged: [{ id: "sharp", days: 200, limit: 180 }],
+      sources: [
+        {
+          id: "unused-deps",
+          listName: "ALLOWLIST",
+          owner: "scripts/check-unused-deps.mjs",
+          state: "aged",
+          total: 1,
+          reviewDays: 180,
+          aged: [{ id: "sharp", addedAt: "2026-01-01", days: 200, limit: 180 }],
+          invalid: [],
+          oldest: { id: "sharp", addedAt: "2026-01-01", days: 200 },
+          detail: "scripts/check-unused-deps.mjs: 1 decisão(ões) na ALLOWLIST",
+        },
+      ],
+    })
+    const v = summarize(facts({ declaredDebt: vencida }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.blockers).toEqual([])
+    expect(v.unknowns.join(" ")).toContain("200 dia(s)")
+    expect(v.unknowns.join(" ")).toContain("sharp")
+  })
+
+  it("decisão SEM REGISTRO → BLOQUEIA (sem data não há como envelhecer)", () => {
+    const semRegistro = declaredDebtFacts({
+      state: "invalid",
+      invalid: [{ id: "docs/quality/x.md", why: "addedAt ausente" }],
+      sources: [
+        {
+          id: "out-of-scope",
+          listName: "OUT_OF_SCOPE_ALLOWLIST",
+          owner: "scripts/check-registry-source.mjs",
+          state: "invalid",
+          total: 1,
+          reviewDays: 180,
+          aged: [],
+          invalid: [{ id: "docs/quality/x.md", why: "addedAt ausente" }],
+          oldest: null,
+          detail: "doc",
+        },
+      ],
+    })
+    const v = summarize(facts({ declaredDebt: semRegistro }))
+    expect(v.verdict).toBe(VERDICT.BLOCKED)
+    expect(v.blockers.join(" ")).toContain("addedAt ausente")
+  })
+
+  it("lista ILEGÍVEL → INDETERMINADA: ausência de prova, jamais 'sem dívida'", () => {
+    const ilegivel = declaredDebtFacts({
+      state: "unread",
+      unread: [{ id: "sigpipe", listName: "docs/quality/pipefail-sigpipe-baseline.json" }],
+      sources: [
+        {
+          id: "sigpipe",
+          listName: "docs/quality/pipefail-sigpipe-baseline.json",
+          owner: "scripts/check-pipefail-sigpipe.mjs",
+          state: "unread",
+          total: 0,
+          reviewDays: null,
+          aged: [],
+          invalid: [],
+          oldest: null,
+          detail: "JSON inválido",
+        },
+      ],
+    })
+    const v = summarize(facts({ declaredDebt: ilegivel }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.blockers).toEqual([])
+    expect(v.unknowns.join(" ")).toContain("NÃO pôde ser lida")
+    expect(v.unknowns.join(" ")).toContain("docs/quality/pipefail-sigpipe-baseline.json")
+  })
+
+  it("fato AUSENTE do relatório → INDETERMINADA, dizendo o que ficou fora (nunca omitir)", () => {
+    const { declaredDebt: _omitido, ...semFato } = facts()
+    const v = summarize(semFato as never)
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.unknowns.join(" ")).toContain("não está declarada no relatório")
+  })
+
+  it("--no-declared-debt aparece dito, em vez de a idade sumir calada", () => {
+    const v = summarize(facts({ skippedDeclaredDebt: true }))
+    expect(v.unknowns.join(" ")).toContain("--no-declared-debt")
+    expect(v.unproven.join(" ")).toContain("IDADE da dívida declarada")
+  })
+
+  it("o peso vem das funções do FATO (fonte única com o relatório)", () => {
+    // As duas funções são o que o `summarize` consulta: uma segunda regra aqui
+    // divergiria da que a seção 6/6 imprime. O fato LIMPO não pesa em nada; a
+    // fonte VENCIDA vira dúvida, e a SEM REGISTRO vira bloqueio.
+    expect(declaredDebtBlockers(declaredDebtFacts())).toEqual([])
+    expect(declaredDebtUnknowns(declaredDebtFacts())).toEqual([])
+    const vencida = declaredDebtFacts({
+      state: "aged",
+      aged: [{ id: "sharp", days: 200, limit: 180 }],
+      sources: [
+        {
+          id: "unused-deps",
+          listName: "ALLOWLIST",
+          owner: "scripts/check-unused-deps.mjs",
+          state: "aged",
+          total: 1,
+          reviewDays: 180,
+          aged: [{ id: "sharp", addedAt: "2026-01-01", days: 200, limit: 180 }],
+          invalid: [],
+          oldest: { id: "sharp", addedAt: "2026-01-01", days: 200 },
+          detail: "scripts/check-unused-deps.mjs: 1 decisão(ões) na ALLOWLIST",
+        },
+      ],
+    })
+    expect(declaredDebtBlockers(vencida)).toEqual([])
+    expect(declaredDebtUnknowns(vencida).length).toBeGreaterThan(0)
+    const semRegistro = declaredDebtFacts({
+      state: "invalid",
+      invalid: [{ id: "sharp", why: "addedAt ausente" }],
+      sources: [
+        {
+          id: "unused-deps",
+          listName: "ALLOWLIST",
+          owner: "scripts/check-unused-deps.mjs",
+          state: "invalid",
+          total: 1,
+          reviewDays: 180,
+          aged: [],
+          invalid: [{ id: "sharp", why: "addedAt ausente" }],
+          oldest: null,
+          detail: "scripts/check-unused-deps.mjs: 1 decisão(ões) na ALLOWLIST",
+        },
+      ],
+    })
+    expect(declaredDebtBlockers(semRegistro).length).toBeGreaterThan(0)
+  })
+
+  it("readDeclaredDebt mede o checkout de verdade e NUNCA confunde lista ilegível com sem dívida", () => {
+    // O caminho de PROGRAMA (erro do coletor) é o único que a rede de segurança
+    // pega: o coletor devolve `unread` na fonte para lista ilegível, e um erro de
+    // programa não pode virar "está tudo bem".
+    const quebrado = readDeclaredDebt({
+      cwd: process.cwd(),
+      deps: {
+        collect: () => {
+          throw new Error("baseline corrompido")
+        },
+      },
+    })
+    expect(quebrado.state).toBe("unread")
+    expect(quebrado.aged).toEqual([])
+    expect(quebrado.error).toContain("baseline corrompido")
+
+    // E o caminho real: o repositório mede o próprio fato (este é o dado que o
+    // relatório publica e que a issue consome).
+    const real = readDeclaredDebt({ cwd: process.cwd() })
+    expect(["proven", "sem-divida", "aged", "invalid", "unread"]).toContain(real.state)
+    expect(real.sources.map((s: { listName: string }) => s.listName)).toContain("ALLOWLIST")
   })
 })
 

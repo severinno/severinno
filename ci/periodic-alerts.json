@@ -75,9 +75,10 @@
       {
         "workflow": ".github/workflows/benchmark-weekly.yml",
         "job": "registry-allowlist-review",
-        "signal": "isenção (escopo, imagem de terceiros ou dep de uso implícito) sem revisão dentro da janela",
-        "channel": "fail",
-        "evidence": "Revisar a allowlist de deps de uso implícito (--review)"
+        "signal": "isenção (escopo, imagem de terceiros ou dep de uso implícito) ou dívida declarada (SIGPIPE) sem revisão dentro da janela",
+        "channel": "issue",
+        "evidence": "Publicar a dívida declarada sem revisão (issue acionável)",
+        "why": "as quatro decisões têm a MESMA janela e o MESMO readout (`--review`), e o run vermelho continua como lembrança; mas um cron vermelho é alerta MUDO (é a razão de existir deste manifesto) — o canal declarado é o TICKET, como no blob-crlf-all-text-alert"
       },
       {
         "workflow": ".github/workflows/benchmark-weekly.yml",

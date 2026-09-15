@@ -510,6 +510,36 @@ rodam o **vitest REAL** e por isso vivem em jobs próprios do
   impede o buraco. Nenhuma das metades passa em silêncio, e nenhuma abre buraco
   no merge;
 
+- `scripts/test-mutation-gate-contracts.sh` (job `mutation-gate-contracts`) —
+  as **três regras** do contrato de gates CORE, que é o que o doctor responde na
+  seção 1/6 ("o que o manifesto EXIGE é CORE e roda o comando certo?"):
+  **(A) a FORJA DECLARANTE** — um contrato só é conferido contra as forjas que
+  **declaram** aquele job (`declared.filter(df => df.jobIds.includes(jobId))`).
+  Sem o recorte, um job que só o GitHub exige (o `lint-guard`) passa a ser
+  cobrado da Gitea ("a forja gitea NÃO exige o job 'lint-guard'") e o fato
+  acusa um defeito que não existe — **falso positivo num gate de merge** é o
+  pior desfecho para um diagnóstico, porque ensina o operador a ignorá-lo;
+  **(B) a RÉGUA** — `expectedCommand: inv.matches`, o **mesmo comando** para
+  toda forja que declara aquele job. Enfraquecê-la (aceitar qualquer `run:`)
+  reabre a assimetria que o repositório já pagou uma vez: o mesmo commit
+  aprovado no merge da Gitea e rejeitado no GitHub, liberado pelo lado **laxo**;
+  **(C) o CONTRATO por INVARIANTE×JOB** — a chave é `${inv.id}|${jid}`, não o
+  job: **seis** invariantes (ts-nocheck, required-checks, registry-source,
+  runner-base, forge-parity, forge-workflow-scope) compartilham o job `guards`
+  da Gitea, e deduplicando pelo job cinco delas saem da lista de contratos e
+  passam a aparecer como **cobertas sem nunca terem sido medidas**.
+
+  Para CADA regra a suíte `forge-doctor.test.ts` tem de ficar **VERMELHA** pelo
+  âncora da **própria regra** e as âncoras **INTACTAS** seguindo verdes (a outra
+  regra do mesmo fato e o veredito — `summarize`), o que prova que a mutação é
+  cirúrgica e não matou o arquivo: a forja declarante derruba 3 de 204 testes
+  com 3 intactas, a régua derruba 5 com 2 intactas, e a chave invariante×job
+  derruba **exatamente 1** com 6 intactas — a mutação mais cirúrgica das três, e
+  a que mede a regressão mais barata de cometer (o relatório segue dizendo que
+  mediu). Cada âncora casa **exatamente um** teste (renomear um teste falha no
+  CONTROLE, em vez de a detecção virar vácuo) e o total de testes do controle é
+  conferido;
+
 - `scripts/test-mutation-env-mirror.sh` (job `mutation-env-mirror`) — as
   **quatro defesas** do `check-env-mirror.mjs`, uma mutação cada: **(A) o portão
   da conta** (`applyFix` recusa escrever quando sobra violação que o plano não
@@ -1869,13 +1899,15 @@ relatório não pode declarar um canal que não foi o usado.
   bloqueá-la ensinaria o operador a ignorar o veredito. Ela entra como
   INDETERMINADA **com o número e a IDADE** ("aberta há 47 dias" é o que separa a
   dívida ativa da esquecida);
-- **a issue velha não passa por problema vivo**: para as duas labels cujo assunto
-  o doctor mede por conta própria (`required-checks-drift` → a branch protection
-  REGISTRADA, `actrc-sync-drift` → os espelhos do `BUN_VERSION`) a seção mostra a
-  MEDIÇÃO ao lado da issue — `Parece CADUCADA` (o doctor mede limpo agora),
-  `Fala de um problema VIVO` (mede e continua) ou `Caducidade NÃO verificada`
-  (não mediu nesta run: **nunca vira "caducou"** — dizer que caducou sem ter
-  medido é a dívida que mente, do outro lado).
+- **a issue velha não passa por problema vivo**: para as labels cujo assunto o
+  doctor mede por conta própria (`required-checks-drift` → a branch protection
+  REGISTRADA, `actrc-sync-drift` → os espelhos do `BUN_VERSION`,
+  `declared-debt-review` → a IDADE das isenções, o cruzamento mais forte do
+  registro) a seção mostra a MEDIÇÃO ao lado da issue — `Parece CADUCADA` (o
+  doctor mede limpo agora), `Fala de um problema VIVO` (mede e continua) ou
+  `Caducidade NÃO verificada` (não mediu nesta run: **nunca vira "caducou"** —
+  dizer que caducou sem ter medido é a dívida que mente, do outro lado). Não
+  medir inclui o fato `unread`: uma lista ilegível não vira "a dívida acabou".
 
 A label do **próprio veredito** (`forge-doctor-verdict`) fica FORA da leitura, e a
 razão vai escrita no relatório: ela existe porque o veredito não é PRONTA, então
