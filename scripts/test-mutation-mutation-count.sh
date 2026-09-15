@@ -152,7 +152,7 @@ if [ "$EXIT" -eq 0 ]; then
   fail "GUARD CEGO (name): matriz 14 com name do job 13 passou (exit 0)."
   exit 1
 fi
-if ! echo "$OUTPUT" | grep -Fq "name do job"; then
+if ! grep -Fq "name do job" <<<"$OUTPUT"; then
   fail "O guard falhou (exit $EXIT) mas NÃO citou o name do job."
   exit 1
 fi
@@ -176,7 +176,7 @@ if [ "$EXIT" -eq 0 ]; then
   fail "GUARD CEGO (summary): matriz 14 com summary 13 passou (exit 0)."
   exit 1
 fi
-if ! echo "$OUTPUT" | grep -Fq "summary"; then
+if ! grep -Fq "summary" <<<"$OUTPUT"; then
   fail "O guard falhou (exit $EXIT) mas NÃO citou o summary."
   exit 1
 fi
@@ -200,7 +200,7 @@ if [ "$EXIT" -eq 0 ]; then
   fail "GUARD CEGO (README): matriz 14 com README 13 passou (exit 0)."
   exit 1
 fi
-if ! echo "$OUTPUT" | grep -Fq "README.md:"; then
+if ! grep -Fq "README.md:" <<<"$OUTPUT"; then
   fail "O guard falhou (exit $EXIT) mas NÃO citou o README.md com linha."
   exit 1
 fi

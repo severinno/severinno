@@ -243,7 +243,9 @@ for entry in "${SUBTESTS[@]}"; do
   # PASSED: com todos os sub-tests falhando, PASSED=0 — um gate `$PASSED
   # -gt 0 &&` faria a condição curto-circuitar e TODAS as linhas sairiam
   # como PASS no momento exato em que tudo falhou).
-  if printf '%s\n' "${FAILED_LIST[@]}" | grep -qx "$id"; then
+  # Herestring (não pipe): sob `set -o pipefail`, `printf | grep -qx` pode
+  # falhar por SIGPIPE (o grep -q fecha o stdin cedo) — flaky pelo tamanho.
+  if grep -qx "$id" <<<"$(printf '%s\n' "${FAILED_LIST[@]}")"; then
     printf "   %-10s ${RED}%-6s${NC} ❌\n" "$id" "FAIL"
   else
     printf "   %-10s ${GREEN}%-6s${NC} ✅\n" "$id" "PASS"

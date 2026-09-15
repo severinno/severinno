@@ -160,7 +160,7 @@ if [ "$EXIT" -eq 0 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO citou o arquivo da mutação.
-if ! echo "$OUTPUT" | grep -Fq "bad-format.ts"; then
+if ! grep -Fq "bad-format.ts" <<<"$OUTPUT"; then
   fail "prettier --check falhou (exit $EXIT) mas NÃO citou bad-format.ts."
   fail "Falha pode ser outro invariante do fixture — veja o output acima."
   exit 1
@@ -188,7 +188,7 @@ if [ "$EXIT" -eq 0 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO citou o warning da mutação.
-if ! echo "$OUTPUT" | grep -Fq "bad-lint.ts"; then
+if ! grep -Fq "bad-lint.ts" <<<"$OUTPUT"; then
   fail "eslint --max-warnings 0 falhou (exit $EXIT) mas NÃO citou bad-lint.ts."
   fail "Falha pode ser outro invariante do fixture — veja o output acima."
   exit 1
@@ -268,7 +268,7 @@ if [ "$EXIT" -eq 0 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO citou o arquivo staged da mutação.
-if ! echo "$OUTPUT" | grep -Fq "bad-staged.ts"; then
+if ! grep -Fq "bad-staged.ts" <<<"$OUTPUT"; then
   fail "O bloco falhou (exit $EXIT) mas NÃO citou bad-staged.ts."
   fail "Falha pode ser outro invariante do fixture — veja o output acima."
   exit 1
@@ -287,14 +287,14 @@ printf '\x89PNG\r\n\x1a\n' > "$TMP_DIR/src/pic.png"
 git -C "$TMP_DIR" add src/pic.png
 
 STAGED_RAW=$(git -C "$TMP_DIR" diff --cached --name-only --diff-filter=ACMR)
-STAGED_FORMAT=$(echo "$STAGED_RAW" | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
+STAGED_FORMAT=$(grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' <<<"$STAGED_RAW" || true)
 
-if ! echo "$STAGED_RAW" | grep -Fq "pic.png"; then
+if ! grep -Fq "pic.png" <<<"$STAGED_RAW"; then
   fail "O .png NÃO está staged (git diff --cached não o lista) — o fixture"
   fail "do teste do binário não está montado."
   exit 1
 fi
-if echo "$STAGED_FORMAT" | grep -Fq "pic.png"; then
+if grep -Fq "pic.png" <<<"$STAGED_FORMAT"; then
   fail "O filtro de binários NÃO excluiu pic.png do STAGED_FORMAT — o"
   fail "grep -vE do pre-commit está quebrado (o prettier rodaria no binário)."
   exit 1

@@ -184,7 +184,7 @@ C2_INTACT=(
 C3_RED=(
   "os quatro limites de desenho (token, smoke, env de outro host, socket do job)|sempre declara o que NÃO cobre (branch protection, smoke, env do VPS)"
   "guards pulados por --no-guards|--no-guards rebaixa o veredito a INDETERMINADA e o diz no relatório"
-  "a_DECLARAÇÃO do que NÃO cobre|remover a lista de unproven esconde o limite do veredito"
+  "a_DECLARAÇÃO do que NÃO cobre|skippedGateContracts declara no 'NÃO cobre'"
   "o recorte do perfil --ci|o veredito NOMEIA o perfil no topo do não-provado (não parece flag esquecida no YAML)"
   "render pulado por --no-compose-render|pulada por --no-compose-render → INDETERMINADA, e o relatório diz o que ficou de fora"
   "protection pulada por --no-protection|pulada por --no-protection → INDETERMINADA e o relatório diz o que ficou de fora"
@@ -288,9 +288,12 @@ assert_anchors() {
     count="${report%%|*}"
     statuses="${report#*|}"
     if [ "$count" != "1" ] || [ "$statuses" != "$expected" ]; then
-      fail "âncora do fato '$name' fora do estado esperado."
-      fail "  \"$sub\" → $count teste(s) casaram, status '$statuses' (esperado 1 casando, '$expected')"
-      fail "Renomeou/removeu/duplicou um teste? Atualize as âncoras DESTE script."
+      # Os diagnósticos vão para STDERR: `assert_anchors` roda dentro de um
+      # `$(...)` (o stdout é o CONTADOR de âncoras conferidas), então um `fail`
+      # no stdout seria ENGOLIDO — a falha apareceria sem dizer QUAL âncora caiu.
+      fail "âncora do fato '$name' fora do estado esperado." >&2
+      fail "  \"$sub\" → $count teste(s) casaram, status '$statuses' (esperado 1 casando, '$expected')" >&2
+      fail "Renomeou/removeu/duplicou um teste? Atualize as âncoras DESTE script." >&2
       return 1
     fi
     checked=$((checked + 1))

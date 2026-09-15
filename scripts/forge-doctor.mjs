@@ -254,6 +254,33 @@ export const BRING_UP_GATE_JOB = "bring-up-proof"
  * recusa em vez de recursar infinitamente. Exit 3 = detecção de recursão.\ */
 export const NESTED_GUARD_ENV = "FORGE_DOCTOR_NESTED"
 
+/**
+ * Flag EQUIVALENTE à env var, para quem não controla o AMBIENTE do filho.
+ *
+ * POR QUE OS DOIS CANAIS: a prova marca a invocação aninhada com a env var
+ * (o padrão). Mas um chamador que reexecuta o doctor por linha de comando —
+ * um wrapper, um `spawn` que não propaga o `env`, um script de diagnóstico —
+ * não tem como setá-la. Sem a flag, esse caminho ficava SEM a defesa: o
+ * doctor recursava até o limite de processos, e o erro real (o ciclo
+ * bring-up → doctor → prova → bring-up) aparecia como exaustão de recursos.
+ * Com os dois canais, a defesa cobre os dois jeitos de marcar a invocação.
+ */
+export const NESTED_GUARD_FLAG = "--proof-nested"
+
+/**
+ * O doctor está rodando DENTRO da própria prova (ou seja: recursão)?
+ *
+ * Pura e injetável (env/argv) de propósito: o teste exercita CADA canal sem
+ * subprocesso, e o `main` só consome a resposta — a regra (env OU flag) vive
+ * num lugar só.
+ *
+ * @param {{env?: Record<string, string|undefined>, argv?: string[]}} [io]
+ * @returns {boolean}
+ */
+export function isNestedDoctorInvocation({ env = process.env, argv = process.argv } = {}) {
+  return Boolean(env[NESTED_GUARD_ENV]) || argv.includes(NESTED_GUARD_FLAG)
+}
+
 /** Exit code do `runner-image:check` quando a tag NÃO existe (a única falha da forja). */
 const IMAGE_MISSING = 4
 /** Exit code do `runner-image:check` quando o env está ausente/inválido. */
@@ -3228,6 +3255,12 @@ Opções:
                          é baixar a régua: com --expected/--expected-var o VALOR
                          das variáveis é comparado e uma divergência BLOQUEIA;
                          cada seção fora do perfil sai na lista de não provado
+  --proof-nested         DEFESA (não é opção de uso): declara que ESTA
+                         invocação roda DENTRO da prova. O doctor falha com
+                         exit 3 em vez de recursar (bring-up → doctor →
+                         prova → bring-up). É o gêmeo da env
+                         \`FORGE_DOCTOR_NESTED\`, para quem reexecuta o doctor
+                         por linha de comando SEM controlar o ambiente do filho
   -h, --help             esta ajuda
 
 Exit codes (o veredito é o exit code — dá para usar em pipeline):
@@ -3607,9 +3640,13 @@ async function main() {
   // bring-up, que executa o doctor. O corte primário é o DOCTOR_SCRIPT
   // (dublagem), mas este guard é a segunda camada — se o stub falhar ou
   // for removido, o doctor recusa em vez de recursar infinitamente.
-  if (process.env[NESTED_GUARD_ENV]) {
+  //
+  // A marca vale por DOIS canais (env var OU flag): quem não controla o
+  // ambiente do filho passa `--proof-nested` e tem a mesma defesa.
+  if (isNestedDoctorInvocation()) {
     console.error(
-      `forge-doctor: DETECTADO RECURSAO — ${NESTED_GUARD_ENV} esta definido. ` +
+      `forge-doctor: DETECTADO RECURSAO — ${NESTED_GUARD_ENV} definido ou ` +
+        `${NESTED_GUARD_FLAG} passado. ` +
         `O doctor ja esta rodando DENTRO da propria prova. O ciclo ` +
         `bring-up → doctor → prova → bring-up foi interrompido por este ` +
         `guard (defesa em profundidade contra o corte via DOCTOR_SCRIPT).`,

@@ -217,7 +217,7 @@ fi
 
 # Caso 2 — falhou, mas NÃO pela asserção esperada (outro invariante quebrou,
 # não o literal). Não dá para confirmar que o guard pega ESTA regressão.
-if ! echo "$GUARD_OUTPUT" | grep -Fq "$EXPECTED_FAILURE"; then
+if ! grep -Fq "$EXPECTED_FAILURE" <<<"$GUARD_OUTPUT"; then
   fail "Guard falhou (exit $GUARD_EXIT) mas NÃO pela asserção esperada:"
   fail "  esperava:  $EXPECTED_FAILURE"
   fail "Falha pode ser outro invariante do fixture — veja o output acima."

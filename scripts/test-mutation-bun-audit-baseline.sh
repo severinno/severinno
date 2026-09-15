@@ -180,7 +180,7 @@ if [ "$EXIT" -eq 0 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO pela asserção esperada (outro invariante quebrou).
-if ! echo "$OUTPUT" | grep -Fq "$EXPECTED_BLOCKING" || ! echo "$OUTPUT" | grep -Fq "$EXPECTED_HIGH_FILE"; then
+if ! grep -Fq "$EXPECTED_BLOCKING" <<<"$OUTPUT" || ! grep -Fq "$EXPECTED_HIGH_FILE" <<<"$OUTPUT"; then
   fail "Guard falhou (exit $EXIT) mas NÃO pela asserção esperada:"
   fail "  esperava (mensagem): $EXPECTED_BLOCKING"
   fail "  esperava (arquivo):  $EXPECTED_HIGH_FILE"
@@ -224,7 +224,7 @@ if [ "$EXIT" -ne 0 ]; then
 fi
 
 # Caso 2 — passou, mas SEM o aviso de severidade menor (guard mudo).
-if ! echo "$OUTPUT" | grep -Fq "$EXPECTED_WARNING" || ! echo "$OUTPUT" | grep -Fq "$EXPECTED_MODERATE_FILE"; then
+if ! grep -Fq "$EXPECTED_WARNING" <<<"$OUTPUT" || ! grep -Fq "$EXPECTED_MODERATE_FILE" <<<"$OUTPUT"; then
   fail "Guard passou (exit 0) mas NÃO emitiu o aviso esperado:"
   fail "  esperava (aviso): $EXPECTED_WARNING"
   fail "  esperava (pacote): $EXPECTED_MODERATE_FILE"

@@ -154,7 +154,7 @@ BACKUP_DIR="$(mktemp -d)"
 #    do ternary prod morre; o dev ('162') fica, isolando a falha em prod)
 MUTATION_SED=(
   "s/127 checks/N checks/g"
-  "s/'128'/'N'/g"
+  "s/'127'/'N'/g"
 )
 
 # Asserção que o teste DEVE emitir quando a mutação da doc é detectada
@@ -168,8 +168,8 @@ EXPECTED_FAILURE_DOC="piso prod violado"
 # ("sanidade: prod=128 e dev=162 no estado atual"). Mutá-lo para 129 faz a
 # asserção falhar: a derivação real continua 128. (Dev é 162 — intocado,
 # isolando a falha em prod, como no cenário A.)
-ANCHOR_PATTERN=').toBe(128)'
-ANCHOR_REPLACEMENT=').toBe(129)'
+ANCHOR_PATTERN=').toBe(127)'
+ANCHOR_REPLACEMENT=').toBe(128)'
 
 # Asserção que o teste DEVE emitir quando a âncora é mutada (sanidade prod).
 EXPECTED_FAILURE_ANCHOR="anchor prod desatualizado"
@@ -219,7 +219,7 @@ EXPECTED_FAILURE_INDEPENDENCE="piso prod violado"
 # (.toBe(162)) ficam INTACTAS — a falha vem SÓ da doc de dev.
 MUTATION_SED_DEV=(
   "s/161 checks/N checks/g"
-  "s/'162'/'N'/g"
+  "s/'161'/'N'/g"
 )
 
 # Asserção que o teste DEVE emitir quando a doc de dev é mutada (piso dev).
@@ -229,7 +229,7 @@ EXPECTED_FAILURE_DEV="piso dev violado"
 
 # Âncora de DEV no TEST_FILE — usada para provar que a âncora NÃO foi tocada
 # (a falha do cenário E vem SÓ da doc de dev, não de um anchor leak).
-DEV_ANCHOR_PATTERN=').toBe(162)'
+DEV_ANCHOR_PATTERN=').toBe(161)'
 
 # ── Colors ────────────────────────────────────────────────────────────────
 
@@ -322,7 +322,13 @@ expect_failure() {
     exit 1
   fi
 
-  if ! echo "$output" | grep -Fq "$expected"; then
+  # HERESTRING, não pipe: com `set -o pipefail`, `echo | grep -q` é FLAKY —
+  # o `grep -q` fecha o stdin ao achar o 1º casamento, o `echo` leva SIGPIPE
+  # e o pipeline termina 141 (falha) mesmo com o casamento ENCONTRADO. O
+  # tamanho do output decide se o escritor ainda estava escrevendo quando o
+  # leitor saiu — daí a intermitência (passa com output curto, falha com
+  # longo). A herestring não cria pipeline, então não há SIGPIPE.
+  if ! grep -Fq "$expected" <<<"$output"; then
     fail "Teste falhou (exit $exitcode) mas NÃO pela asserção esperada:"
     fail "  esperava:  $expected"
     fail "Falha pode ser infra/outra asserção — veja o output acima."

@@ -1006,7 +1006,14 @@ corte é **medido**, não prometido — cada caso da prova exige que o doctor
 invocado tenha sido o dublê, e a cadeia completa (com o doctor REAL dentro do
 bring-up) é provada por execução —, e o `checkDoctorCycleCut` prende as duas
 metades da dublagem, porque o modo de falha dela (a forca de processos) não dá
-sintoma antes de ser catastrófico. Cada promessa dessas tem teste de execução —
+sintoma antes de ser catastrófico. A dublagem é o corte **primário**; a marca de
+recursão que a prova grava é uma **defesa em profundidade** que sobrevive à
+quebra do dublê. Ela vale por **dois canais** — a env var `FORGE_DOCTOR_NESTED`
+(o padrão, para quem controla o ambiente do filho) **ou** a flag
+`--proof-nested` no argv (para um wrapper, um `spawn` que não propaga o `env` ou
+um script de diagnóstico) —, e os dois caem no mesmo `isNestedDoctorInvocation`
+(exit 3). Sem o canal do argv, o caminho que não seta env ficava SEM a defesa e o
+ciclo aparecia como exaustão de processos, não como a causa. Cada promessa dessas tem teste de execução —
 o doctor é dublado por `DOCTOR_SCRIPT` e devolve 0/1/2/3, e o teste vê se a stack
 subiu — e o `checkGiteaBringUp` prende a invocação, as flags e a **ordem** (depois
 da imagem, antes de qualquer `up`). Um dublê em bash, e não `.mjs`, morreria no

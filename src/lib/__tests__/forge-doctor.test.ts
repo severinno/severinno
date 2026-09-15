@@ -60,6 +60,8 @@ import {
   summarize,
   ENV_MIRROR_CHECK,
   NESTED_GUARD_ENV,
+  NESTED_GUARD_FLAG,
+  isNestedDoctorInvocation,
   deriveBringUpEnv,
 } from "../../../scripts/forge-doctor.mjs"
 
@@ -3398,8 +3400,9 @@ describe("runGatesConcurrent — o paralelismo não muda o significado da bateri
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DEFESA EM PROFUNDIDADE contra recursão: o doctor recusa quando
-// FORGE_DOCTOR_NESTED está definido — a dublagem (DOCTOR_SCRIPT) é o
-// corte primário, mas este guard é a segunda camada.
+// FORGE_DOCTOR_NESTED está definido (env) OU --proof-nested é passado (argv)
+// — a dublagem (DOCTOR_SCRIPT) é o corte primário, mas este guard é a segunda
+// camada. Os DOIS canais cobrem quem não controla o ambiente do filho.
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("NESTED_GUARD_ENV — defesa em profundidade contra recursão", () => {
@@ -3434,7 +3437,37 @@ describe("NESTED_GUARD_ENV — defesa em profundidade contra recursão", () => {
     expect(res.stderr).toBe("")
   })
 
-  it("constante NESTED_GUARD_ENV exportada e tem o nome esperado", () => {
+  it("flag ${NESTED_GUARD_FLAG} no argv → MESMA defesa (exit 3), sem depender do env", () => {
+    // O canal do argv: a env var fica AUSENTE de propósito, para provar que a
+    // defesa não depende de quem chamou ter controlado o ambiente do filho.
+    const env = { ...process.env }
+    delete env[NESTED_GUARD_ENV]
+    const res = spawnSync(process.execPath, [DOCTOR, NESTED_GUARD_FLAG, "--help"], {
+      cwd: ROOT,
+      env,
+      encoding: "utf8",
+      timeout: 10_000,
+    })
+    expect(res.status).toBe(3)
+    expect(res.stderr).toContain("DETECTADO RECURSAO")
+    expect(res.stderr).toContain(NESTED_GUARD_FLAG)
+    // O doctor NÃO deve ter processado o --help nem escrito a USAGE:
+    expect(res.stdout).toBe("")
+  })
+
+  it("isNestedDoctorInvocation cobre os DOIS canais (env OU flag) e só eles", () => {
+    // Pura e injetável: a regra vive num lugar só e o `main` só a consome.
+    expect(isNestedDoctorInvocation({ env: { [NESTED_GUARD_ENV]: "1" }, argv: [] })).toBe(true)
+    expect(isNestedDoctorInvocation({ env: {}, argv: [NESTED_GUARD_FLAG] })).toBe(true)
+    expect(isNestedDoctorInvocation({ env: {}, argv: [] })).toBe(false)
+    // Var DEFINIDA mas VAZIA não marca (mesma semântica de antes: `""` é falsy).
+    expect(isNestedDoctorInvocation({ env: { [NESTED_GUARD_ENV]: "" }, argv: [] })).toBe(false)
+    // Um argv que não contém a flag exata (ex.: prefixo) também não marca.
+    expect(isNestedDoctorInvocation({ env: {}, argv: ["--proof-nested-x"] })).toBe(false)
+  })
+
+  it("constantes exportadas: env var E flag têm os nomes esperados", () => {
     expect(NESTED_GUARD_ENV).toBe("FORGE_DOCTOR_NESTED")
+    expect(NESTED_GUARD_FLAG).toBe("--proof-nested")
   })
 })

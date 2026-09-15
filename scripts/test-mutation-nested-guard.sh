@@ -1,21 +1,29 @@
 #!/usr/bin/env bash
 # =============================================================================
-# scripts/test-mutation-nested-guard.sh — Mutation test do NESTED_GUARD_ENV
+# scripts/test-mutation-nested-guard.sh — Mutation test da defesa contra recursão
 #
 # Usage:
 #   ./scripts/test-mutation-nested-guard.sh
 #
 # Exit codes:
-#   0 — mutação DETECTADA: o guard removido faz o teste de recursão ficar VERMELHO
+#   0 — AS DUAS mutações DETECTADAS: o guard removido (e a metade do argv
+#       neutralizada) fazem a suíte de recursão ficar VERMELHA
 #   1 — suíte CEGA / a mutação não aplicou / infra ❌
 #
-# POR QUE: o doctor tem uma DEFESA EM PROFUNDIDADE contra recursão:
-# FORGE_DOCTOR_NESTED impede que o doctor rode DENTRO da própria prova.
-# Cortar esse guard e a dublagem (DOCTOR_SCRIPT) é o ÚNICO corte — se ela
-# falhar, o ciclo bring-up → doctor → prova → bring-up recursa infinitamente.
+# POR QUE: o doctor tem uma DEFESA EM PROFUNDIDADE contra recursão. O corte
+# PRIMÁRIO é a dublagem (DOCTOR_SCRIPT); esta é a segunda camada, e ela é
+# marcada por DOIS canais — a env var `FORGE_DOCTOR_NESTED` (o padrão da prova)
+# e a flag `--proof-nested` (para quem reexecuta o doctor por linha de comando
+# sem controlar o ambiente do filho). Se o guard cair, o ciclo
+# bring-up → doctor → prova → bring-up recursa até exaustão de recursos.
 #
-# COMO: muta o guard IN-PLACE (backup + trap EXIT de restauração) e prova
-# que o teste de recursão fica VERMELHO.
+# UMA MUTAÇÃO POR METADE (a unidade é o canal, não o arquivo): derrubar o bloco
+# inteiro prova que a defesa tem testemunha; neutralizar SÓ o argv prova que a
+# metade nova (a flag) também tem a sua — sem isso, a flag poderia deixar de
+# funcionar em silêncio e o caminho sem env voltaria a recursar.
+#
+# COMO: muta o guard IN-PLACE (backup + trap EXIT de restauração) e exige que a
+# suíte filtrada por `NESTED_GUARD_ENV` fique VERMELHA em cada mutação.
 # =============================================================================
 
 set -euo pipefail
@@ -40,7 +48,7 @@ pass() { echo -e "  ${GREEN}✅${NC} $1"; }
 fail() { echo -e "  ${RED}❌${NC} $1"; }
 info() { echo -e "  ${YELLOW}ℹ️${NC} $1"; }
 
-# ── Restore ──────────────────────────────────────────────────────────────
+# ── Restore (trap EXIT — SEMPRE restaura, mesmo com falha) ────────────────
 restore() {
   if [ -f "$BACKUP" ]; then
     cp "$BACKUP" "$DOCTOR"
@@ -50,76 +58,115 @@ restore() {
 }
 trap restore EXIT
 
-# ── Backup ───────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────
+# run_suite: roda a suíte filtrada e devolve o exit code do vitest.
+run_suite() {
+  rm -f "$RESULTS"
+  local code=0
+  set +e
+  bun x vitest run --config vitest.config.unit.ts --reporter=json \
+    --outputFile="$RESULTS" "$SUITE" -t "NESTED_GUARD_ENV" 2>&1 | tail -5
+  code=$?
+  set -e
+  return "$code"
+}
+
+# expect_red <rótulo>: a suíte filtrada tem de ficar VERMELHA (mutação vista).
+expect_red() {
+  local label="$1" code=0
+  info "MUTAÇÃO $label — suíte deve ficar VERMELHA..."
+  run_suite || code=$?
+  if [ "$code" -eq 0 ]; then
+    fail "SUÍTE CEGA: passou (exit 0) com a mutação '$label' aplicada."
+    fail "A defesa em profundidade não seria exercitada — a regressão passa no CI."
+    return 1
+  fi
+  pass "Mutação $label DETECTADA (suíte vermelha, exit $code)"
+  return 0
+}
+
 cp "$DOCTOR" "$BACKUP"
 pass "Backup: $DOCTOR"
 
-# ── CONTROLE: suite VERDE ─────────────────────────────────────────────────
-info "CONTROLE — suite deve ficar VERDE..."
-set +e
-bun x vitest run --config vitest.config.unit.ts --reporter=json --outputFile="$RESULTS" \
-  "$SUITE" -t "NESTED_GUARD_ENV" 2>&1 | tail -5
-CTRL_EXIT=$?
-set -e
-
-if [ "$CTRL_EXIT" -ne 0 ]; then
+# ── CONTROLE — suíte VERDE com o guard íntegro ────────────────────────────
+info "CONTROLE — suíte deve ficar VERDE..."
+if ! run_suite; then
   fail "CONTROLE FALHOU: a suíte do doctor não ficou verde no estado íntegro."
+  fail "O mutation test não pode prosseguir (fixture base inválido)."
   exit 1
 fi
 pass "Controle OK — suíte verde com o guard intacto"
 
-# ── MUTAÇÃO: remove o guard (regex preciso no bloco) ──────────────────────
-info "MUTAÇÃO — removendo o NESTED_GUARD_ENV guard de forge-doctor.mjs..."
+# ── MUTAÇÃO A — remove o bloco do guard em main() ─────────────────────────
+info "MUTAÇÃO A — removendo o bloco do guard em main()..."
 python3 -c "
 import re, sys
 src = open('$DOCTOR').read()
 pat = re.compile(
-    r'\n\s*// DEFESA EM PROFUNDIDADE[\s\S]*?if \(process\.env\[NESTED_GUARD_ENV\]\) \{[\s\S]*?process\.exit\(3\)\s*\}\n',
+    r'\n\s*// DEFESA EM PROFUNDIDADE[\s\S]*?if \(isNestedDoctorInvocation\(\)\) \{[\s\S]*?process\.exit\(3\)\s*\}\n',
     re.MULTILINE,
 )
 if not pat.search(src):
-    print('MUTACAO NAO APLICOU: padrao nao encontrado', file=sys.stderr)
+    print('MUTACAO A NAO APLICOU: padrao nao encontrado', file=sys.stderr)
     sys.exit(1)
 src = pat.sub('\n  // MUTATION-NESTED-GUARD: guard desativado\n', src)
 open('$DOCTOR', 'w').write(src)
 "
 
-# Verifica que o guard sumiu e o arquivo é válido
 if grep -qF "DETECTADO RECURSAO" "$DOCTOR"; then
-  fail "MUTAÇÃO NÃO APLICOU: 'DETECTADO RECURSAO' ainda existe em $DOCTOR"
+  fail "MUTAÇÃO A NÃO APLICOU: 'DETECTADO RECURSAO' ainda existe em $DOCTOR"
   exit 1
 fi
 if ! node --check "$DOCTOR" >/dev/null 2>&1; then
-  fail "MUTAÇÃO NÃO-CIRÚRGICA: o arquivo mutado não é válido sintaticamente."
+  fail "MUTAÇÃO A NÃO-CIRÚRGICA: o arquivo mutado não é válido sintaticamente."
   exit 1
 fi
-pass "Guard removido (sintaxe válida)"
+pass "Bloco do guard removido (sintaxe válida)"
 
-# ── MUTAÇÃO: suíte VERMELHA ──────────────────────────────────────────────
-info "MUTAÇÃO — suíte deve ficar VERMELHA (o teste de recursão agora falha)..."
-rm -f "$RESULTS"
-set +e
-bun x vitest run --config vitest.config.unit.ts --reporter=json --outputFile="$RESULTS" \
-  "$SUITE" -t "NESTED_GUARD_ENV" 2>&1 | tail -5
-MUT_EXIT=$?
-set -e
+expect_red "A (bloco removido)" || exit 1
 
-if [ "$MUT_EXIT" -eq 0 ]; then
-  fail "SUÍTE CEGA: passou (exit 0) com o guard MUTADO."
-  fail "A remoção voltaria em silêncio — a defesa em profundidade não seria exercitada."
+cp "$BACKUP" "$DOCTOR"
+pass "Guard restaurado — base íntegra para a mutação B"
+
+# ── MUTAÇÃO B — neutraliza SÓ a metade do argv do predicado ───────────────
+# A defesa tem dois canais. Derrubar o bloco inteiro (A) não prova que a
+# METADE nova (a flag) tem testemunha própria: se `argv.includes(...)` sumisse
+# da condição, o caminho sem env voltaria a recursar — e a suíte precisa
+# acender mesmo assim.
+info "MUTAÇÃO B — removendo a metade do argv de isNestedDoctorInvocation..."
+python3 -c "
+import re, sys
+src = open('$DOCTOR').read()
+pat = re.compile(
+    r'return Boolean\(env\[NESTED_GUARD_ENV\]\) \|\| argv\.includes\(NESTED_GUARD_FLAG\)'
+)
+if not pat.search(src):
+    print('MUTACAO B NAO APLICOU: padrao nao encontrado', file=sys.stderr)
+    sys.exit(1)
+src = pat.sub('return Boolean(env[NESTED_GUARD_ENV]) // MUTATION-NESTED-ARGV', src)
+open('$DOCTOR', 'w').write(src)
+"
+
+if grep -qF "argv.includes(NESTED_GUARD_FLAG)" "$DOCTOR"; then
+  fail "MUTAÇÃO B NÃO APLICOU: o argv ainda é consultado em $DOCTOR"
   exit 1
 fi
+if ! node --check "$DOCTOR" >/dev/null 2>&1; then
+  fail "MUTAÇÃO B NÃO-CIRÚRGICA: o arquivo mutado não é válido sintaticamente."
+  exit 1
+fi
+pass "Metade do argv removida do predicado (sintaxe válida)"
 
-pass "Mutação DETECTADA: o NESTED_GUARD_ENV guard removido faz o doctor aceitar"
-pass "  a recursão — o teste de defesa em profundidade ficou VERMELHO."
+expect_red "B (argv neutralizado)" || exit 1
 
 # ═════════════════════════════════════════════════════════════════════════
-# Result (restore roda no trap EXIT)
+# Result (o restore roda no trap EXIT)
 # ═════════════════════════════════════════════════════════════════════════
 
 echo ""
-pass "MUTATION TEST PASSED — o NESTED_GUARD_ENV (defesa em profundidade contra recursão)"
-pass "  tem testemunha: a suíte fica VERMELHA quando o guard é removido."
+pass "MUTATION TEST PASSED — a defesa contra recursão tem testemunha nas DUAS"
+pass "  metades: o bloco do guard E o canal do argv (--proof-nested)."
 pass "  • controle: suíte verde com o guard intacto"
-pass "  • mutação: guard removido → teste de recursão FALHA"
+pass "  • mutação A: guard removido → teste de recursão FALHA"
+pass "  • mutação B: só a flag neutralizada → teste da flag FALHA"
 exit 0
