@@ -29,7 +29,10 @@ describe("auth store", () => {
   it("setUser updates state", async () => {
     const { useAuthStore } = await import("../auth")
     useAuthStore.getState().setUser({
-      id: "u1", name: "Test", email: "t@t.com", role: "CLIENT",
+      id: "u1",
+      name: "Test",
+      email: "t@t.com",
+      role: "CLIENT",
     })
     expect(useAuthStore.getState().user?.id).toBe("u1")
   })

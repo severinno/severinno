@@ -97,7 +97,8 @@ function createPrismaClient() {
         mergedQueries[model][op] = async ({ args, query }: QueryArgs) => {
           return monitorFn({
             args,
-            query: async (innerArgs: Record<string, unknown>) => softDeleteFn({ args: innerArgs, query }),
+            query: async (innerArgs: Record<string, unknown>) =>
+              softDeleteFn({ args: innerArgs, query }),
           })
         }
       } else if (monitorFn) {

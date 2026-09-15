@@ -75,10 +75,10 @@ export default function ProviderSpotlightGeo({ onQuote, onBook, onView, classNam
 
   return (
     <section
-      className={cn("mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-4 sm:py-6", className)}
+      className={cn("mx-auto w-full max-w-7xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8", className)}
       aria-label="Prestadores próximos a você"
     >
-      <div className="relative overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-emerald-50/70 via-card to-emerald-100/20 p-5 sm:p-6 shadow-xs dark:border-emerald-900/40 dark:from-emerald-950/20 dark:to-emerald-900/10">
+      <div className="via-card relative overflow-hidden rounded-2xl border border-emerald-200/60 bg-gradient-to-br from-emerald-50/70 to-emerald-100/20 p-5 shadow-xs sm:p-6 dark:border-emerald-900/40 dark:from-emerald-950/20 dark:to-emerald-900/10">
         {/* Subtle decorative elements */}
         <div
           aria-hidden
@@ -110,10 +110,7 @@ export default function ProviderSpotlightGeo({ onQuote, onBook, onView, classNam
         {nearbyQuery.isLoading ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div
-                key={i}
-                className="rounded-xl border border-border/60 bg-card p-4 shadow-xs"
-              >
+              <div key={i} className="border-border/60 bg-card rounded-xl border p-4 shadow-xs">
                 <div className="flex items-center gap-3">
                   <Skeleton className="size-10 rounded-full" />
                   <div className="flex-1 space-y-1.5">
@@ -222,7 +219,7 @@ function SpotlightCard({
   return (
     <div
       className={cn(
-        "group relative flex flex-col justify-between rounded-xl border border-border/60 bg-card p-4 shadow-xs transition-all duration-200",
+        "group border-border/60 bg-card relative flex flex-col justify-between rounded-xl border p-4 shadow-xs transition-all duration-200",
         "hover:border-primary/40 hover:shadow-md",
         isNearby && "ring-1 ring-emerald-400/30",
       )}
@@ -256,7 +253,7 @@ function SpotlightCard({
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold transition-colors group-hover:text-primary">
+              <p className="group-hover:text-primary truncate text-sm font-semibold transition-colors">
                 {provider.name}
               </p>
               <div className="text-muted-foreground flex items-center gap-1 text-[11px]">
@@ -306,7 +303,7 @@ function SpotlightCard({
           type="button"
           size="sm"
           onClick={() => onBook?.(provider.id)}
-          className="h-8 flex-1 gap-1 bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+          className="bg-primary text-primary-foreground hover:bg-primary/90 h-8 flex-1 gap-1 text-xs font-semibold"
         >
           Agendar
           <ChevronRight className="size-3" />

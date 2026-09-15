@@ -39,11 +39,11 @@ export default function HowItWorks() {
   const openAuth = useUIStore((s) => s.openAuth)
 
   return (
-    <section className="border-border/40 border-t bg-background py-20 sm:py-24">
+    <section className="border-border/40 bg-background border-t py-20 sm:py-24">
       <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mx-auto mb-14 max-w-2xl text-center">
-          <p className="text-primary mb-3 text-xs font-semibold uppercase tracking-widest">
+          <p className="text-primary mb-3 text-xs font-semibold tracking-widest uppercase">
             Como funciona
           </p>
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
@@ -72,9 +72,9 @@ export default function HowItWorks() {
                 )}
               >
                 {/* Icon Circle */}
-                <div className="relative mb-5 flex size-16 items-center justify-center rounded-full border border-primary/20 bg-primary/8 ring-4 ring-background">
+                <div className="border-primary/20 bg-primary/8 ring-background relative mb-5 flex size-16 items-center justify-center rounded-full border ring-4">
                   <Icon className="text-primary size-7" />
-                  <span className="absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground tabular-nums">
+                  <span className="bg-primary text-primary-foreground absolute -top-2 -right-2 flex size-6 items-center justify-center rounded-full text-[10px] font-bold tabular-nums">
                     {i + 1}
                   </span>
                 </div>
@@ -92,7 +92,7 @@ export default function HowItWorks() {
         <div className="mt-12 flex justify-center">
           <Button
             size="lg"
-            className="rounded-full bg-primary px-8 font-semibold text-primary-foreground hover:bg-primary/90"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-full px-8 font-semibold"
             onClick={() => openAuth("register", "CLIENT")}
           >
             Começar agora

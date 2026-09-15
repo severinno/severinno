@@ -31,7 +31,9 @@ import VitrineResults from "./vitrine-results"
 import Footer from "../shared/footer"
 
 // Lazy-loaded below-the-fold components (code-split)
-const RecentlyViewed = React.lazy(() => import("./recently-viewed").then((m) => ({ default: m.RecentlyViewed })))
+const RecentlyViewed = React.lazy(() =>
+  import("./recently-viewed").then((m) => ({ default: m.RecentlyViewed })),
+)
 const NearbyProviders = React.lazy(() => import("./nearby-providers"))
 const ProviderSpotlightGeo = React.lazy(() => import("./provider-spotlight-geo"))
 const CompareBar = React.lazy(() => import("./compare-bar"))
@@ -82,7 +84,7 @@ function LazySection({ children }: { children: React.ReactNode }) {
     <Suspense
       fallback={
         <div className="flex items-center justify-center py-12">
-          <div className="size-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <div className="border-primary size-5 animate-spin rounded-full border-2 border-t-transparent" />
         </div>
       }
     >

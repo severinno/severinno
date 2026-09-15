@@ -71,7 +71,10 @@ export async function register() {
         logger.info({ count }, "instrumentation: geo spatial index seeded")
       })
       .catch((err: unknown) => {
-        logger.warn({ err }, "instrumentation: geo spatial index seed failed — falling through to PostGIS")
+        logger.warn(
+          { err },
+          "instrumentation: geo spatial index seed failed — falling through to PostGIS",
+        )
       })
 
     // ── Geo cache warming (post-restart) ────────────────────────────────

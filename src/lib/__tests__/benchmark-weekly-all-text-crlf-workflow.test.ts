@@ -37,25 +37,6 @@ const job = getJob(wf, JOB_KEY)
 const steps = getSteps(job)
 const ctx = buildRepoContext()
 
-/**
- * Nega uma condicional do GitHub Actions `if:` via De Morgan.
- */
-function negateConditional(cond: string): string {
-  const negateSide = (side: string) =>
-    side.includes("==")
-      ? side.replace(/==\s*'[^']*'/, (m) => m.replace("==", "!="))
-      : side.replace(/!=\s*'[^']*'/, (m) => m.replace("!=", "=="))
-  return cond
-    .split(/\s*\|\|\s*/)
-    .map((group) =>
-      group
-        .split(/\s*&&\s*/)
-        .map(negateSide)
-        .join(" || "),
-    )
-    .join(" && ")
-}
-
 // ── 1. Sintaxe YAML + snapshot da estrutura do job ──────────────────────
 
 describe("benchmark-weekly.yml — job blob-crlf-all-text-alert (sintaxe YAML + snapshot)", () => {

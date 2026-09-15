@@ -19,7 +19,6 @@ import {
   CalendarCheck,
   CalendarDays,
   CheckCircle2,
-  Clock,
   FileText,
   Loader2,
   MapPin,
@@ -27,7 +26,6 @@ import {
   Send,
   Star,
   Wallet,
-  XCircle,
 } from "lucide-react"
 import {
   eachDayOfInterval,
@@ -43,7 +41,7 @@ import {
 import { ptBR } from "date-fns/locale"
 
 import { apiGet } from "@/lib/api"
-import { BOOKING_STATUS_LABELS, type BookingStatus } from "@/lib/constants"
+import { type BookingStatus } from "@/lib/constants"
 import { formatBRL, formatDateTime, formatTime } from "@/lib/format"
 import { useAuthStore } from "@/store/auth"
 import { useViewStore } from "@/store/view"

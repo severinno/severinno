@@ -18,7 +18,11 @@
  */
 
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node"
-import { BatchSpanProcessor, SimpleSpanProcessor, ConsoleSpanExporter } from "@opentelemetry/sdk-trace-base"
+import {
+  BatchSpanProcessor,
+  SimpleSpanProcessor,
+  ConsoleSpanExporter,
+} from "@opentelemetry/sdk-trace-base"
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http"
 import { resourceFromAttributes } from "@opentelemetry/resources"
 import { HttpInstrumentation } from "@opentelemetry/instrumentation-http"
@@ -73,12 +77,14 @@ export function initTracing(): void {
     // 3. Build span processors
     const spanProcessors = config.devMode
       ? [new SimpleSpanProcessor(new ConsoleSpanExporter())]
-      : [new BatchSpanProcessor(otlpExporter, {
-          maxQueueSize: 2048,
-          maxExportBatchSize: 512,
-          scheduledDelayMillis: 5000,
-          exportTimeoutMillis: 30000,
-        })]
+      : [
+          new BatchSpanProcessor(otlpExporter, {
+            maxQueueSize: 2048,
+            maxExportBatchSize: 512,
+            scheduledDelayMillis: 5000,
+            exportTimeoutMillis: 30000,
+          }),
+        ]
 
     // 4. Instrumentations
     const instrumentations = [
@@ -213,7 +219,10 @@ export function getCurrentSpan(): Span | undefined {
 /**
  * Add an event to the current active span.
  */
-export function addSpanEvent(name: string, attributes?: Record<string, string | number | boolean>): void {
+export function addSpanEvent(
+  name: string,
+  attributes?: Record<string, string | number | boolean>,
+): void {
   const span = trace.getActiveSpan()
   if (span) span.addEvent(name, attributes)
 }
@@ -273,7 +282,7 @@ export function getTraceHeaders(): Record<string, string> {
   const ctx = traceStorage.getStore()
   if (!ctx) return {}
   return {
-    "traceparent": `00-${ctx.traceId}-${ctx.spanId}-01`,
+    traceparent: `00-${ctx.traceId}-${ctx.spanId}-01`,
     "x-trace-id": ctx.traceId,
     "x-span-id": ctx.spanId,
   }
@@ -284,7 +293,10 @@ export function endSpan(status: "ok" | "error" = "ok"): void {
   if (!ctx) return
   const duration = Date.now() - ctx.startTime
   if (status === "error" || duration > 1000) {
-    logger.info({ traceId: ctx.traceId, spanId: ctx.spanId, operation: ctx.operation, duration, status }, "trace span completed")
+    logger.info(
+      { traceId: ctx.traceId, spanId: ctx.spanId, operation: ctx.operation, duration, status },
+      "trace span completed",
+    )
   }
 }
 

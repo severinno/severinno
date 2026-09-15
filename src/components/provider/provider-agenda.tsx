@@ -2,16 +2,7 @@
 
 import * as React from "react"
 import { useQuery } from "@tanstack/react-query"
-import {
-  CalendarDays,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Clock,
-  Loader2,
-  MapPin,
-  XCircle,
-} from "lucide-react"
+import { CalendarDays, ChevronLeft, ChevronRight, MapPin } from "lucide-react"
 import {
   addDays,
   addMonths,
@@ -27,12 +18,11 @@ import {
 import { ptBR } from "date-fns/locale"
 
 import { apiGet } from "@/lib/api"
-import { BOOKING_STATUS_LABELS, type BookingStatus } from "@/lib/constants"
+import { type BookingStatus } from "@/lib/constants"
 import { formatBRL, formatTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"

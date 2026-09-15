@@ -42,7 +42,6 @@ import {
   buildRepoContext,
   expectAllRefs,
   filterExecutableSteps,
-  resolveCondition,
 } from "./helpers/workflow-execution"
 
 const WF_NAME = "benchmark-weekly.yml"

@@ -9,9 +9,7 @@ if (dsn) {
     tracesSampleRate: process.env.NODE_ENV === "production" ? 0.1 : 1.0,
     replaysSessionSampleRate: 0,
     replaysOnErrorSampleRate: 0.5,
-    integrations: [
-      Sentry.prismaIntegration(),
-    ],
+    integrations: [Sentry.prismaIntegration()],
 
     // ── Error filtering (server-side) ────────────────────────────────────────
     beforeSend(event) {

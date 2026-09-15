@@ -110,7 +110,7 @@ export function TotpVerifyModal({
               placeholder={isBackupCode ? "00000000" : "000000"}
               value={code}
               onChange={(e) => handleCodeChange(e.target.value)}
-              className="font-mono text-center text-lg tracking-widest"
+              className="text-center font-mono text-lg tracking-widest"
               autoFocus
               disabled={verifyMutation.isPending}
             />
@@ -120,8 +120,7 @@ export function TotpVerifyModal({
             type="submit"
             className="w-full"
             disabled={
-              verifyMutation.isPending ||
-              (isBackupCode ? code.length !== 8 : code.length !== 6)
+              verifyMutation.isPending || (isBackupCode ? code.length !== 8 : code.length !== 6)
             }
           >
             {verifyMutation.isPending ? (
@@ -141,9 +140,7 @@ export function TotpVerifyModal({
                 setCode("")
               }}
             >
-              {isBackupCode
-                ? "Usar código do autenticador"
-                : "Usar código de backup"}
+              {isBackupCode ? "Usar código do autenticador" : "Usar código de backup"}
             </button>
           </div>
         </form>

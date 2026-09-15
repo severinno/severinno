@@ -42,7 +42,10 @@ export function LoginPageClient() {
 
   const loginMutation = useMutation({
     mutationFn: (data: { email: string; password: string; role: string }) =>
-      apiPost<{ user?: AuthUser | null; requires2FA?: boolean; tempToken?: string }>("/api/auth/login", data),
+      apiPost<{ user?: AuthUser | null; requires2FA?: boolean; tempToken?: string }>(
+        "/api/auth/login",
+        data,
+      ),
     onSuccess: (data) => {
       if (data.requires2FA && data.tempToken) {
         setTwoFAToken(data.tempToken)

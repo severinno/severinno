@@ -111,9 +111,10 @@ export async function getSession(): Promise<SessionPayload | null> {
       if (!userId || !role || !expiresAtStr || !signature) return null
       if (parts.length === 5 && isNaN(sessionVersion)) return null
 
-      const payload = parts.length === 5
-        ? `${userId}.${role}.${expiresAtStr}.${sessionVersion}`
-        : `${userId}.${role}.${expiresAtStr}`
+      const payload =
+        parts.length === 5
+          ? `${userId}.${role}.${expiresAtStr}.${sessionVersion}`
+          : `${userId}.${role}.${expiresAtStr}`
       const expected = sign(payload)
 
       const a = Buffer.from(signature, "hex")

@@ -15,18 +15,32 @@ export function recordRequest(isError: boolean): void {
   }
 }
 
-export function getErrorBudget(): { target: number; actual: number | null; remaining: number | null; exhausted: boolean } {
-  if (state.requests < 100) return { target: TARGET_UPTIME, actual: null, remaining: null, exhausted: false }
+export function getErrorBudget(): {
+  target: number
+  actual: number | null
+  remaining: number | null
+  exhausted: boolean
+} {
+  if (state.requests < 100)
+    return { target: TARGET_UPTIME, actual: null, remaining: null, exhausted: false }
   const actual = 1 - state.errors / state.requests
   const remaining = actual - TARGET_UPTIME
   const exhausted = remaining < 0
-  return { target: TARGET_UPTIME, actual: +actual.toFixed(6), remaining: +remaining.toFixed(6), exhausted }
+  return {
+    target: TARGET_UPTIME,
+    actual: +actual.toFixed(6),
+    remaining: +remaining.toFixed(6),
+    exhausted,
+  }
 }
 
 export function checkErrorBudgetAndAutoMitigate(): void {
   const budget = getErrorBudget()
   if (!budget.exhausted || budget.actual === null) return
-  logger.error({ actual: budget.actual, target: budget.target }, "🚨 Error budget EXHAUSTED — auto-mitigating non-critical features")
+  logger.error(
+    { actual: budget.actual, target: budget.target },
+    "🚨 Error budget EXHAUSTED — auto-mitigating non-critical features",
+  )
   if (isEnabled("circuit-breaker-nominatim")) setFlag("circuit-breaker-nominatim", true)
   if (isEnabled("circuit-breaker-osrm")) setFlag("circuit-breaker-osrm", true)
 }

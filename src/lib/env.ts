@@ -60,7 +60,10 @@ const envSchema = z.object({
   LYTEX_SANDBOX_URL: z.string().default("https://sandbox-api.lytex.com.br/v1"),
   LYTEX_CLIENT_ID: z.string().optional(),
   LYTEX_CLIENT_SECRET: z.string().optional(),
-  PAYMENT_WEBHOOK_SECRET: z.string().min(16, "PAYMENT_WEBHOOK_SECRET must be at least 16 characters in production").optional(),
+  PAYMENT_WEBHOOK_SECRET: z
+    .string()
+    .min(16, "PAYMENT_WEBHOOK_SECRET must be at least 16 characters in production")
+    .optional(),
 
   // Cron
   CRON_SECRET: z.string().optional(),
@@ -81,7 +84,10 @@ const envSchema = z.object({
   EVOLUTION_API_URL: z.string().optional(),
   EVOLUTION_API_KEY: z.string().optional(),
   EVOLUTION_INSTANCE: z.string().default("severinno"),
-  EVOLUTION_WEBHOOK_SECRET: z.string().min(16, "EVOLUTION_WEBHOOK_SECRET must be at least 16 characters in production").optional(),
+  EVOLUTION_WEBHOOK_SECRET: z
+    .string()
+    .min(16, "EVOLUTION_WEBHOOK_SECRET must be at least 16 characters in production")
+    .optional(),
 
   // Search index consumer (queue workers)
   POLL_INTERVAL_MS: z.coerce.number().default(5000),

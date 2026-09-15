@@ -13,7 +13,11 @@ import { useUIStore } from "@/store/ui"
 import { cn } from "@/lib/utils"
 
 const CLIENT_BENEFITS = ["Cadastro gratuito", "Orçamento sem compromisso", "Pagamento protegido"]
-const PROVIDER_BENEFITS = ["Receba clientes qualificados", "Agenda integrada", "Pagamento garantido"]
+const PROVIDER_BENEFITS = [
+  "Receba clientes qualificados",
+  "Agenda integrada",
+  "Pagamento garantido",
+]
 
 export default function CtaBanner() {
   const { user } = useAuthStore()
@@ -23,9 +27,9 @@ export default function CtaBanner() {
   const isLoggedIn = !!user
 
   return (
-    <section className="border-border/40 border-t bg-background py-20 sm:py-24">
+    <section className="border-border/40 bg-background border-t py-20 sm:py-24">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-        <div className="overflow-hidden rounded-3xl bg-primary text-primary-foreground">
+        <div className="bg-primary text-primary-foreground overflow-hidden rounded-3xl">
           <div className="px-8 py-12 sm:px-12 sm:py-16">
             {/* Tabs */}
             <div className="mb-8 flex items-center justify-center">
@@ -36,7 +40,7 @@ export default function CtaBanner() {
                   className={cn(
                     "flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-all",
                     tab === "client"
-                      ? "bg-white text-primary shadow-xs"
+                      ? "text-primary bg-white shadow-xs"
                       : "text-primary-foreground/80 hover:text-primary-foreground",
                   )}
                 >
@@ -49,7 +53,7 @@ export default function CtaBanner() {
                   className={cn(
                     "flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-all",
                     tab === "provider"
-                      ? "bg-white text-primary shadow-xs"
+                      ? "text-primary bg-white shadow-xs"
                       : "text-primary-foreground/80 hover:text-primary-foreground",
                   )}
                 >
@@ -66,12 +70,15 @@ export default function CtaBanner() {
                   <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
                     Encontre o profissional certo
                   </h2>
-                  <p className="mt-3 text-base text-primary-foreground/80">
+                  <p className="text-primary-foreground/80 mt-3 text-base">
                     Prestadores verificados, avaliações reais, pagamento protegido.
                   </p>
                   <ul className="mt-6 flex flex-col items-center gap-2 sm:flex-row sm:justify-center">
                     {CLIENT_BENEFITS.map((b) => (
-                      <li key={b} className="flex items-center gap-2 text-sm text-primary-foreground/90">
+                      <li
+                        key={b}
+                        className="text-primary-foreground/90 flex items-center gap-2 text-sm"
+                      >
                         <CheckCircle2 className="size-4 text-white/70" />
                         {b}
                       </li>
@@ -81,7 +88,7 @@ export default function CtaBanner() {
                     {isLoggedIn ? (
                       <Button
                         size="lg"
-                        className="rounded-full bg-white font-semibold text-primary shadow-sm hover:bg-white/90"
+                        className="text-primary rounded-full bg-white font-semibold shadow-sm hover:bg-white/90"
                         onClick={() => {
                           const el = document.getElementById("vitrine-resultados")
                           el?.scrollIntoView({ behavior: "smooth" })
@@ -94,7 +101,7 @@ export default function CtaBanner() {
                       <>
                         <Button
                           size="lg"
-                          className="rounded-full bg-white font-semibold text-primary shadow-sm hover:bg-white/90"
+                          className="text-primary rounded-full bg-white font-semibold shadow-sm hover:bg-white/90"
                           onClick={() => openAuth("register", "CLIENT")}
                         >
                           Criar conta grátis
@@ -103,7 +110,7 @@ export default function CtaBanner() {
                         <Button
                           variant="ghost"
                           size="lg"
-                          className="rounded-full text-primary-foreground/80 hover:bg-white/10 hover:text-primary-foreground"
+                          className="text-primary-foreground/80 hover:text-primary-foreground rounded-full hover:bg-white/10"
                           onClick={() => openAuth("login", "CLIENT")}
                         >
                           Já tenho conta
@@ -117,12 +124,15 @@ export default function CtaBanner() {
                   <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
                     Expanda sua clientela
                   </h2>
-                  <p className="mt-3 text-base text-primary-foreground/80">
+                  <p className="text-primary-foreground/80 mt-3 text-base">
                     Clientes qualificados prontos para contratar seus serviços.
                   </p>
                   <ul className="mt-6 flex flex-col items-center gap-2 sm:flex-row sm:justify-center">
                     {PROVIDER_BENEFITS.map((b) => (
-                      <li key={b} className="flex items-center gap-2 text-sm text-primary-foreground/90">
+                      <li
+                        key={b}
+                        className="text-primary-foreground/90 flex items-center gap-2 text-sm"
+                      >
                         <CheckCircle2 className="size-4 text-white/70" />
                         {b}
                       </li>
@@ -132,7 +142,7 @@ export default function CtaBanner() {
                     {isLoggedIn ? (
                       <Button
                         size="lg"
-                        className="rounded-full bg-white font-semibold text-primary shadow-sm hover:bg-white/90"
+                        className="text-primary rounded-full bg-white font-semibold shadow-sm hover:bg-white/90"
                         onClick={() => openAuth("register", "PROVIDER")}
                       >
                         Ir para meu painel
@@ -142,7 +152,7 @@ export default function CtaBanner() {
                       <>
                         <Button
                           size="lg"
-                          className="rounded-full bg-white font-semibold text-primary shadow-sm hover:bg-white/90"
+                          className="text-primary rounded-full bg-white font-semibold shadow-sm hover:bg-white/90"
                           onClick={() => openAuth("register", "PROVIDER")}
                         >
                           Cadastrar como prestador
@@ -151,7 +161,7 @@ export default function CtaBanner() {
                         <Button
                           variant="ghost"
                           size="lg"
-                          className="rounded-full text-primary-foreground/80 hover:bg-white/10 hover:text-primary-foreground"
+                          className="text-primary-foreground/80 hover:text-primary-foreground rounded-full hover:bg-white/10"
                           onClick={() => openAuth("login", "PROVIDER")}
                         >
                           Já tenho conta

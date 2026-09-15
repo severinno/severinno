@@ -191,7 +191,11 @@ describe("resolveImport", () => {
     const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"))
     pkg.dependencies["@nonexistent/test-pkg-for-leak-guard"] = "^1.0.0"
     writeFileSync(join(dir, "package.json"), JSON.stringify(pkg, null, 2), "utf8")
-    const r = resolveImport("@nonexistent/test-pkg-for-leak-guard", join(dir, "src", "index.ts"), dir)
+    const r = resolveImport(
+      "@nonexistent/test-pkg-for-leak-guard",
+      join(dir, "src", "index.ts"),
+      dir,
+    )
     expect(r.kind).toBe("pending-install")
     expect(r.leaked).toBe(false)
   })

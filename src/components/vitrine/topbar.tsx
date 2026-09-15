@@ -389,8 +389,6 @@ export default function Topbar({
             : "bg-background/70 supports-[backdrop-filter]:bg-background/55 border-b border-transparent backdrop-blur-md",
         )}
       >
-
-
         {/* ── Main bar ─────────────────────────────────────────────────────── */}
         <div
           className={cn(
@@ -402,7 +400,7 @@ export default function Topbar({
           <button
             type="button"
             onClick={() => onSelectCategory(null)}
-            className="hover:opacity-85 focus-visible:ring-ring flex shrink-0 items-center rounded-lg px-1.5 py-1.5 transition-opacity outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            className="focus-visible:ring-ring flex shrink-0 items-center rounded-lg px-1.5 py-1.5 transition-opacity outline-none hover:opacity-85 focus-visible:ring-2 focus-visible:ring-offset-2"
             aria-label="Severinno — página inicial"
           >
             <Image

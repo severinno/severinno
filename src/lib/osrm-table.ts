@@ -60,29 +60,29 @@ export async function calculate1xNDistanceMatrix(
     })
 
     if (data.code === "Ok" && data.durations?.[0] && data.distances?.[0]) {
-        const durations = data.durations[0] // in seconds
-        const distances = data.distances[0] // in meters
+      const durations = data.durations[0] // in seconds
+      const distances = data.distances[0] // in meters
 
-        return destinations.map((dest, idx) => {
-          const distMeters = distances[idx] ?? 0
-          const durSec = durations[idx] ?? 0
+      return destinations.map((dest, idx) => {
+        const distMeters = distances[idx] ?? 0
+        const durSec = durations[idx] ?? 0
 
-          const distanceKm = Number((distMeters / 1000).toFixed(2))
-          const durationMinutes = Math.max(1, Math.round(durSec / 60))
+        const distanceKm = Number((distMeters / 1000).toFixed(2))
+        const durationMinutes = Math.max(1, Math.round(durSec / 60))
 
-          // Traffic level estimation based on effective speed
-          const effectiveSpeed = distanceKm / (durationMinutes / 60)
-          const trafficLevel =
-            effectiveSpeed < 18 ? "HEAVY" : effectiveSpeed < 32 ? "MODERATE" : "LOW"
+        // Traffic level estimation based on effective speed
+        const effectiveSpeed = distanceKm / (durationMinutes / 60)
+        const trafficLevel =
+          effectiveSpeed < 18 ? "HEAVY" : effectiveSpeed < 32 ? "MODERATE" : "LOW"
 
-          return {
-            id: dest.id,
-            distanceKm,
-            durationMinutes,
-            source: "osrm-table" as const,
-            trafficLevel,
-          }
-        })
+        return {
+          id: dest.id,
+          distanceKm,
+          durationMinutes,
+          source: "osrm-table" as const,
+          trafficLevel,
+        }
+      })
     }
   } catch {
     // Fallback gracefully on timeout or offline mode

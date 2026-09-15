@@ -10,10 +10,18 @@ vi.mock("zustand/middleware", () => ({
 }))
 
 const mockProvider = {
-  id: "p1", name: "Provider 1", role: "PROVIDER" as const,
-  avatarUrl: null, city: "SP", state: "SP",
-  avgRating: 4.5, reviewCount: 10, verified: true, active: true,
-  services: [], distanceKm: null,
+  id: "p1",
+  name: "Provider 1",
+  role: "PROVIDER" as const,
+  avatarUrl: null,
+  city: "SP",
+  state: "SP",
+  avgRating: 4.5,
+  reviewCount: 10,
+  verified: true,
+  active: true,
+  services: [],
+  distanceKm: null,
 }
 
 describe("recently-viewed store", () => {

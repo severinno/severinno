@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest"
-import { buildQueryMonitorExtensions, getSlowQueryMetrics, resetQueryMetrics } from "../db-query-monitor"
+import {
+  buildQueryMonitorExtensions,
+  getSlowQueryMetrics,
+  resetQueryMetrics,
+} from "../db-query-monitor"
 
 describe("db-query-monitor", () => {
   beforeEach(() => {
@@ -43,7 +47,8 @@ describe("db-query-monitor", () => {
 
     // Need fresh module to pick up the env change
     vi.resetModules()
-    const { buildQueryMonitorExtensions: freshBuild, getSlowQueryMetrics: freshMetrics } = await import("../db-query-monitor")
+    const { buildQueryMonitorExtensions: freshBuild, getSlowQueryMetrics: freshMetrics } =
+      await import("../db-query-monitor")
     const extensions = freshBuild()
 
     const query = vi.fn().mockImplementation(async () => {

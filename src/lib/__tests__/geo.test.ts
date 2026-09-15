@@ -222,7 +222,8 @@ describe("geocodeSearch", () => {
 
   it("retries once on 429 before falling back to local DB", async () => {
     // geoFetchWithRetry retries once on 429, so mock both attempts
-    const fetchSpy = vi.spyOn(globalThis, "fetch")
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce({
         ok: false,
         status: 429,
@@ -245,7 +246,8 @@ describe("geocodeSearch", () => {
   })
 
   it("retries once on network error before falling back to local DB", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch")
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
       .mockRejectedValueOnce(new Error("ECONNRESET"))
       .mockRejectedValueOnce(new Error("ECONNRESET"))
 
@@ -434,7 +436,8 @@ describe("geocodeSearchStructured", () => {
   })
 
   it("retries on 502 before falling back to local DB", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch")
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce({
         ok: false,
         status: 502,

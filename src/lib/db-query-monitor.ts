@@ -33,8 +33,21 @@ type QueryArgs = {
  * Usage with $extends:
  *   prisma.$extends({ name: "query-monitor", query: buildQueryMonitorExtensions() })
  */
-export function buildQueryMonitorExtensions(): Record<string, Record<string, (opts: QueryArgs) => Promise<unknown>>> {
-  const models = ["user", "service", "booking", "review", "category", "message", "notification", "walletTransaction", "quoteRequest"]
+export function buildQueryMonitorExtensions(): Record<
+  string,
+  Record<string, (opts: QueryArgs) => Promise<unknown>>
+> {
+  const models = [
+    "user",
+    "service",
+    "booking",
+    "review",
+    "category",
+    "message",
+    "notification",
+    "walletTransaction",
+    "quoteRequest",
+  ]
   const extensions: Record<string, Record<string, (opts: QueryArgs) => Promise<unknown>>> = {}
 
   for (const model of models) {
@@ -66,7 +79,12 @@ function monitorQuery(model: string, operation: string) {
       }
 
       logger.warn(
-        { model: metric.model, operation: metric.operation, durationMs, threshold: SLOW_QUERY_THRESHOLD_MS },
+        {
+          model: metric.model,
+          operation: metric.operation,
+          durationMs,
+          threshold: SLOW_QUERY_THRESHOLD_MS,
+        },
         `Slow DB query: ${model}.${operation} took ${durationMs}ms`,
       )
 

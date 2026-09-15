@@ -41,7 +41,6 @@ import { markerOf } from "../../../scripts/issue-publish.mjs"
 import {
   ISSUE_LABEL,
   VERDICT_MARKER_ID,
-  doctorIssueBody,
   doctorIssueTitle,
   verdictSignatureOf,
 } from "../../../scripts/forge-doctor-issue.mjs"

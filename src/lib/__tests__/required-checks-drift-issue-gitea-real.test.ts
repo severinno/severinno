@@ -33,8 +33,6 @@ import {
 
 import {
   ISSUE_LABEL,
-  ISSUE_LABEL_COLOR,
-  driftBody,
   driftTitle,
   markerOf,
   signatureOf,

@@ -74,18 +74,21 @@ export async function sendMessage(
   try {
     const client = getClient()
     if (client) {
-      await client.publish("chat:messages", JSON.stringify({
-        type: "new_message",
-        message: {
-          id: message.id,
-          fromId,
-          toId,
-          content,
-          read: false,
-          bookingId: message.bookingId ?? undefined,
-          createdAt: message.createdAt.toISOString(),
-        },
-      }))
+      await client.publish(
+        "chat:messages",
+        JSON.stringify({
+          type: "new_message",
+          message: {
+            id: message.id,
+            fromId,
+            toId,
+            content,
+            read: false,
+            bookingId: message.bookingId ?? undefined,
+            createdAt: message.createdAt.toISOString(),
+          },
+        }),
+      )
     }
   } catch {
     // Redis unavailable
@@ -142,9 +145,7 @@ export async function getUserConversations(userId: string): Promise<ChatConversa
     if (!partner) continue
 
     const lastMsg = msgs[0]!
-    const unreadCount = msgs.filter(
-      (m) => m.toId === userId && !m.read,
-    ).length
+    const unreadCount = msgs.filter((m) => m.toId === userId && !m.read).length
 
     conversations.push({
       partnerId,
@@ -261,9 +262,17 @@ export async function isTyping(userId: string, partnerId: string): Promise<boole
 // ── Spam Detection ────────────────────────────────────────────────────────
 
 const SPAM_KEYWORDS = [
-  "compre agora", "clique aqui", "oferta imperdível", "grátis",
-  "ganhe dinheiro", "trabalhe de casa", "renda extra",
-  "whatsapp", "telegram", "instagram", "link na bio",
+  "compre agora",
+  "clique aqui",
+  "oferta imperdível",
+  "grátis",
+  "ganhe dinheiro",
+  "trabalhe de casa",
+  "renda extra",
+  "whatsapp",
+  "telegram",
+  "instagram",
+  "link na bio",
 ]
 
 async function checkSpam(content: string): Promise<boolean> {

@@ -66,7 +66,11 @@ const DEFAULT_FLAGS: Record<FeatureFlag, boolean> = {
 
 // ── Env parsing (cached, computed once at module init) ──────────────────────
 
-function parseEnvFlags(): { enabled: Set<string>; disabled: Set<string>; rollouts: Map<string, number> } {
+function parseEnvFlags(): {
+  enabled: Set<string>
+  disabled: Set<string>
+  rollouts: Map<string, number>
+} {
   const enabled = new Set(
     (process.env.FEATURE_FLAGS ?? "")
       .split(",")
@@ -161,7 +165,10 @@ export function getAllFlags(): Record<string, { enabled: boolean; source: string
     } else if (envFlags.disabled.has(flag)) {
       result[flag] = { enabled: false, source: "env-disabled" }
     } else if (envFlags.rollouts.has(flag)) {
-      result[flag] = { enabled: isEnabled(flag as FeatureFlag), source: `rollout-${envFlags.rollouts.get(flag)}%` }
+      result[flag] = {
+        enabled: isEnabled(flag as FeatureFlag),
+        source: `rollout-${envFlags.rollouts.get(flag)}%`,
+      }
     } else {
       result[flag] = { enabled: defaultValue, source: "default" }
     }

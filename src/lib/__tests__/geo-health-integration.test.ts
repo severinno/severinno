@@ -49,8 +49,16 @@ const mockLoggerError = vi.hoisted(() => vi.fn())
 // In-memory Redis mock for debounce (notifyGeoAlert uses cacheGet/cacheSet/cacheInvalidate)
 const redisStore = new Map<string, unknown>()
 const mockCacheGet = vi.hoisted(() => vi.fn(async (key: string) => redisStore.get(key) ?? null))
-const mockCacheSet = vi.hoisted(() => vi.fn(async (key: string, value: unknown, _ttl: number) => { redisStore.set(key, value) }))
-const mockCacheInvalidate = vi.hoisted(() => vi.fn(async (key: string) => { redisStore.delete(key) }))
+const mockCacheSet = vi.hoisted(() =>
+  vi.fn(async (key: string, value: unknown, _ttl: number) => {
+    redisStore.set(key, value)
+  }),
+)
+const mockCacheInvalidate = vi.hoisted(() =>
+  vi.fn(async (key: string) => {
+    redisStore.delete(key)
+  }),
+)
 
 // Sentry
 vi.mock("@/lib/sentry", () => ({

@@ -46,9 +46,7 @@ export default function PwaUpdateBanner({ visible, onUpdate }: Props) {
         >
           <div className="mx-auto flex max-w-7xl items-center justify-center gap-3 px-4 py-2">
             <RefreshCw className="size-4 animate-spin" />
-            <span className="text-sm font-medium">
-              Nova versão disponível!
-            </span>
+            <span className="text-sm font-medium">Nova versão disponível!</span>
             <button
               onClick={onUpdate}
               className="rounded-lg bg-white/20 px-3 py-1 text-xs font-bold text-white transition-colors hover:bg-white/30"
