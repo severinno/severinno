@@ -72,10 +72,9 @@ import process from "node:process"
 import { pathToFileURL } from "node:url"
 
 import {
-  decidePublication,
-  issueHasAnyMarker,
-  markerOf,
-  reconcileDebt,
+  defineDebtPublisher,
+  publisherBody,
+  runDebtPublisher,
   selectIssueBackend,
 } from "./issue-publish.mjs"
 
@@ -211,7 +210,7 @@ function reportLines(reports) {
  *
  * @param {object[]} reports
  */
-export function trendBody(reports) {
+function trendProse(reports) {
   const lines = []
   lines.push("O overhead do **mutation-coord** passou do limiar de tendência nos jobs semanais.")
   lines.push("")
@@ -240,8 +239,12 @@ export function trendBody(reports) {
       " run isolado); dependência nova encareceu o `bun install` do job.",
   )
   lines.push("")
-  lines.push(markerOf(MARKER_ID, signatureOf(reports)))
   return lines.join("\n")
+}
+
+/** O corpo COMPLETO da issue: a prosa + o marcador, como o contrato os compõe. */
+export function trendBody(reports) {
+  return publisherBody(MUTATION_TREND_PUBLISHER, reports)
 }
 
 /**
@@ -270,7 +273,62 @@ export function resolutionComment(reports) {
 // ---------------------------------------------------------------------------
 
 /**
+ * O CONTRATO deste publicador (`issue-publish.mjs`): o ciclo (publicar,
+ * deduplicar por assinatura, comentar no título já aberto, criar, COMENTAR a
+ * prova antes de fechar) mora no contrato, um só para todos os publicadores.
+ *
+ * O QUE FICA DECLARADO AQUI: a etiqueta, o FORMATO do marcador (`b64`), o título
+ * estável, a assinatura por FAIXA (a duração oscila a cada run — o número exato
+ * comentaria toda semana), a prosa, quando há dívida, o ESCOPO (uma issue para o
+ * problema: o overhead é UM estado, não um item por step) e o FECHAMENTO (a prova
+ * do comentário + o motivo).
+ *
+ * A GUARDA DO FECHAMENTO é `allMeasured`: um medidor quebrado não é evidência de
+ * que o overhead voltou ao normal, então quem não conseguiu medir não fecha nada
+ * — é o `resolution.when` do contrato.
+ */
+export const MUTATION_TREND_PUBLISHER = defineDebtPublisher({
+  name: MARKER_ID,
+  label: ISSUE_LABEL,
+  labelColor: ISSUE_LABEL_COLOR,
+  labelDescription: ISSUE_LABEL_DESCRIPTION,
+  marker: { id: MARKER_ID, format: "b64" },
+  title: () => trendTitle(),
+  signature: (reports) => signatureOf(reports),
+  body: (reports) => trendProse(reports),
+  actionable: (reports) => isActionable(reports),
+  scope: { kind: "single" },
+  resolution: {
+    when: (reports) => allMeasured(reports),
+    comment: (reports) => resolutionComment(reports),
+    reason: "o overhead voltou para dentro do limiar de tendência",
+  },
+  prose: {
+    actionable: (reports) =>
+      `⚠️  Overhead acima do limiar (${reports.length} relatório(s)) — publicando issue acionável.`,
+    inSync: (reports) =>
+      allMeasured(reports)
+        ? "✅ Overhead dentro do limiar de tendência."
+        : "ℹ️  Overhead sem medição completa neste run.",
+    alreadyReported: (issue) =>
+      `ℹ️  Drift de overhead idêntico já reportado na issue #${issue.number} — sem ruído.`,
+    commented: (issue) => `✅ Comentário adicionado à issue #${issue.number} (drift novo).`,
+    created: (ref) => `✅ Issue criada: ${ref}`,
+    reconciled: (count) =>
+      `🔒 Reconciliado: ${count} issue(s) de overhead fechada(s) — a dívida não fica aberta depois de resolvida.`,
+    dryRunTail: (backendName) => `\n(dry-run: nenhuma chamada ao backend '${backendName}')`,
+    dryRunReconcile: (backendName) =>
+      `   (dry-run: nenhuma chamada ao backend '${backendName}' — a reconciliação fecharia as issues abertas por este publicador)`,
+  },
+})
+
+/**
  * Publica o drift de overhead (ou reconcilia quando dentro da faixa).
+ *
+ * O CICLO é o do contrato: `runDebtPublisher` decide a ordem (ação quando há
+ * dívida; reconciliação quando não há E a medição permite provar que voltou).
+ * Antes essa ordem era reimplementada aqui, com uma cópia da mecânica de dedup e
+ * de fechamento que podia divergir das demais sem nenhum teste vermelho.
  *
  * @param {object} params
  * @param {object[]} params.reports            relatórios dos medidores (1+)
@@ -286,71 +344,14 @@ export async function publishTrendIssue({
   reconcile = true,
   log = console.log,
 }) {
-  if (isActionable(reports)) {
-    log("⚠️  Overhead acima do limiar — publicando issue acionável.")
-    if (dryRun) {
-      log(trendBody(reports))
-      log(`\n(dry-run: nenhuma chamada ao backend '${backend.name}')`)
-      return { status: "dry-run" }
-    }
-    await backend.ensureLabel()
-    const title = trendTitle()
-    const body = trendBody(reports)
-    const decision = decidePublication({
-      existing: await backend.openIssues(),
-      title,
-      signature: signatureOf(reports),
-      markerId: MARKER_ID,
-    })
-    if (decision.action === "already-reported") {
-      log(
-        `ℹ️  Drift de overhead idêntico já reportado na issue #${decision.issue.number} — sem ruído.`,
-      )
-      return { status: "already-reported", number: decision.issue.number }
-    }
-    if (decision.action === "comment") {
-      await backend.comment(decision.issue.number, body)
-      log(`✅ Comentário adicionado à issue #${decision.issue.number} (drift novo).`)
-      return { status: "commented", number: decision.issue.number }
-    }
-    const ref = await backend.create(title, body)
-    log(`✅ Issue criada: ${ref}`)
-    return { status: "created", ref }
-  }
-
-  if (!allMeasured(reports)) {
-    // "Não medido" NÃO é "resolvido": reconciliar aqui fecharia a dívida por um
-    // mecanismo de medição quebrado. O run já ficou vermelho pelo medidor.
-    log("⚠️  Medição ausente/incompleta — NÃO reconciliando (não medido ≠ resolvido).")
-    return { status: "unmeasured" }
-  }
-
-  log("✅ Overhead dentro do limiar de tendência.")
-  if (dryRun) {
-    log(
-      `   (dry-run: nenhuma chamada ao backend '${backend.name}' — a reconciliação fecharia as issues abertas por este publicador)`,
-    )
-    return { status: "in-threshold" }
-  }
-  if (!reconcile) {
-    log("   (--no-reconcile: o fechamento é do job que conhece TODOS os relatórios)")
-    return { status: "in-threshold" }
-  }
-  const { closed } = await reconcileDebt({
+  return runDebtPublisher({
+    publisher: MUTATION_TREND_PUBLISHER,
+    input: reports,
     backend,
-    // Só o que é NOSSO: uma issue que ganhou o label por engano não pode ser
-    // fechada por automatismo.
-    isOurs: (issue) => issueHasAnyMarker(issue, MARKER_ID),
-    resolutionBody: resolutionComment(reports),
-    reason: "o overhead voltou para dentro do limiar de tendência",
+    dryRun,
+    reconcile,
     log,
   })
-  if (closed.length > 0) {
-    log(
-      `🔒 Reconciliado: ${closed.length} issue(s) fechada(s) — a dívida não fica aberta depois de resolvida.`,
-    )
-  }
-  return { status: "in-threshold", closed }
 }
 
 // ---------------------------------------------------------------------------

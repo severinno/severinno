@@ -66,7 +66,12 @@ import process from "node:process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { VERDICT } from "./forge-doctor.mjs"
-import { decidePublication, markerOf, selectIssueBackend } from "./issue-publish.mjs"
+import {
+  defineDebtPublisher,
+  publisherBody,
+  runDebtPublisher,
+  selectIssueBackend,
+} from "./issue-publish.mjs"
 
 /** Label de triagem das issues de veredito (dedup + filtro no board). */
 export const ISSUE_LABEL = "forge-doctor-verdict"
@@ -80,6 +85,92 @@ export const ISSUE_LABEL_DESCRIPTION =
 
 /** Id do marcador invisível que carrega a assinatura (dedup por publicador). */
 export const VERDICT_MARKER_ID = "forge-doctor-verdict"
+
+/**
+ * O comentário de RESOLUÇÃO — a PROVA de que o veredito voltou a PRONTA.
+ *
+ * Era a metade que faltava deste publicador: ele abria a issue e nunca a
+ * fechava, então a dívida do veredito ficava no board depois de resolvida (a
+ * mesma "dívida que mente" que o resto do repositório já corrigia). Agora o
+ * fechamento vem do CONTRATO — e a prova diz o que foi medido agora, para quem
+ * chegar depois não ter de reconstruir o estado da forja na data do fechamento.
+ *
+ * @param {{facts?: object, verdict?: object}} report
+ * @returns {string}
+ */
+export function verdictResolutionComment(report) {
+  const lines = []
+  lines.push("✅ **Resolvido** — o veredito do doctor voltou a **PRONTA**.")
+  lines.push("")
+  lines.push("### O que foi medido agora (a prova)")
+  lines.push("")
+  lines.push("- veredito: `pronta` (nenhum bloqueador, nada que o doctor não tenha provado)")
+  const facts = report?.facts ?? {}
+  // Só os fatos que o relatório de fato trouxe: a prova não inventa medição que
+  // não aconteceu (um fato ausente num relatório antigo não vira "provado").
+  const saida = [
+    ["branch protection REGISTRADA", facts.protection?.state],
+    ["interpolação do compose", facts.compose?.state],
+    ["registro do act_runner", facts.runnerLabels?.state],
+    ["registro do runner do GitHub", facts.githubRunnerLabels?.state],
+    ["dívida aberta no board", facts.openDebt?.state],
+  ].filter(([, state]) => state !== undefined)
+  for (const [label, state] of saida) lines.push(`- ${label}: \`${state}\``)
+  if (facts.mirrors?.expected !== undefined) {
+    lines.push(`- espelhos do BUN_VERSION: comparados com \`${facts.mirrors.expected}\``)
+  }
+  if (report?.verdict?.unproven?.length) {
+    lines.push(
+      `- o veredito NÃO cobre ${report.verdict.unproven.length} coisa(s) por desenho (ver o relatório)`,
+    )
+  }
+  lines.push("")
+  lines.push("```bash")
+  lines.push("bun run doctor   # exit 0 = PRONTA (o mesmo comando do cron)")
+  lines.push("```")
+  lines.push("")
+  lines.push(
+    "> Fechada automaticamente: se o veredito voltar a não ser PRONTA, a mesma" +
+      " regra abre uma issue nova com a assinatura do momento (o dedup é entre as" +
+      " ABERTAS).",
+  )
+  return lines.join("\n")
+}
+
+/**
+ * O CONTRATO deste publicador (`issue-publish.mjs`).
+ *
+ * ESCOPO `single`: o veredito é UM estado da forja (bloqueadores + não-provados
+ * ordenados), não um item por achado. FECHAMENTO: o veredito voltou a PRONTA —
+ * aí a issue deste publicador já não representa dívida nenhuma, e o contrato
+ * comenta a prova e fecha.
+ */
+export const VERDICT_PUBLISHER = defineDebtPublisher({
+  name: VERDICT_MARKER_ID,
+  label: ISSUE_LABEL,
+  labelColor: ISSUE_LABEL_COLOR,
+  labelDescription: ISSUE_LABEL_DESCRIPTION,
+  marker: { id: VERDICT_MARKER_ID, format: "b64" },
+  title: () => doctorIssueTitle(),
+  signature: (report) => verdictSignatureOf(report),
+  body: (report) => doctorIssueProse(report),
+  actionable: (report) => isActionable(report),
+  scope: { kind: "single" },
+  resolution: {
+    comment: (report) => verdictResolutionComment(report),
+    reason: "o veredito do doctor voltou a PRONTA",
+  },
+  prose: {
+    inSync: () => "✅ Veredito PRONTA — nada a reportar.",
+    actionable: (report) =>
+      `⚠️  Veredito ${verdictOf(report).toUpperCase()} — publicando issue acionável.`,
+    alreadyReported: (issue) =>
+      `ℹ️  Veredito idêntico já reportado na issue #${issue.number} — sem ruído.`,
+    commented: (issue) => `✅ Comentário adicionado à issue #${issue.number} (veredito novo).`,
+    reconciled: (count) =>
+      `🔒 Reconciliado: ${count} issue(s) de veredito fechada(s) — a dívida não fica aberta depois de resolvida.`,
+  },
+})
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const DOCTOR_PATH = resolve(REPO_ROOT, "scripts", "forge-doctor.mjs")
@@ -135,7 +226,11 @@ export function verdictSignatureOf(report) {
  * remédio) e o que ficou sem prova. Sem isso a issue só diz "não está pronta" e
  * transfere a investigação para quem lê.
  */
-export function doctorIssueBody(report) {
+/**
+ * A PROSA do corpo da issue — sem o marcador: quem o compõe é o contrato
+ * (`publisherBody`), para o marcador ter UMA implementação.
+ */
+function doctorIssueProse(report) {
   const verdict = report?.verdict ?? {}
   const blockers = verdict.blockers ?? []
   const unknowns = verdict.unknowns ?? []
@@ -187,7 +282,13 @@ export function doctorIssueBody(report) {
   lines.push("")
   lines.push("```bash")
   lines.push("bun run doctor                              # o relatório completo")
-  lines.push('bun run doctor --expected "$(gh variable get BUN_VERSION)"   # + o VALOR da variável')
+  lines.push(
+    [
+      'bun run doctor --expected "$(gh variable get BUN_VERSION)" \\',
+      '  --expected-var "IMAGE_REGISTRY=$(gh variable get IMAGE_REGISTRY)" \\',
+      '  --expected-var "IMAGE_NAMESPACE=$(gh variable get IMAGE_NAMESPACE)"   # + o VALOR das três',
+    ].join("\n"),
+  )
   lines.push("bun run doctor --gitea-env <o env DESTE host>  # com o env do host da forja")
   lines.push("```")
   lines.push("")
@@ -197,17 +298,12 @@ export function doctorIssueBody(report) {
       " os alertas por assunto não olham.",
   )
   lines.push("")
-  lines.push(markerOfSignature(report))
   return lines.join("\n")
 }
 
-/** Marcador do veredito (a assinatura vai dentro dele — formato de `issue-publish`). */
-function markerOfSignature(report) {
-  // O FORMATO do marcador é a mecânica compartilhada: escrever `<!-- id:base64 -->`
-  // aqui seria uma segunda cópia do contrato, e ela divergiria no dia em que o
-  // formato mudasse — o dedup do publicador de drift e o deste parariam de se
-  // reconhecer sem nenhum teste vermelho.
-  return markerOf(VERDICT_MARKER_ID, verdictSignatureOf(report))
+/** O corpo COMPLETO da issue: a prosa + o marcador, como o contrato os compõe. */
+export function doctorIssueBody(report) {
+  return publisherBody(VERDICT_PUBLISHER, report)
 }
 
 // ---------------------------------------------------------------------------
@@ -215,7 +311,7 @@ function markerOfSignature(report) {
 // ---------------------------------------------------------------------------
 
 const OWN_VALUE_FLAGS = new Set(["--report", "--backend", "--repo"])
-const DOCTOR_VALUE_FLAGS = new Set(["--expected", "--gitea-env", "--timeout"])
+const DOCTOR_VALUE_FLAGS = new Set(["--expected", "--expected-var", "--gitea-env", "--timeout"])
 
 /**
  * Argumentos: os DESTE publicador são poucos e explícitos; qualquer outra flag
@@ -299,43 +395,16 @@ export function loadDoctorReport(options, { run = spawnSync, execPath = process.
  * @returns {Promise<{status: string, number?: number, ref?: string}>}
  */
 export async function publishDoctorVerdict({ report, backend, dryRun = false, log = console.log }) {
-  if (!isActionable(report)) {
-    log(`✅ Veredito ${verdictOf(report).toUpperCase()} — nada a reportar.`)
-    return { status: "ready" }
-  }
-
-  log(`⚠️  Veredito ${verdictOf(report).toUpperCase()} — publicando issue acionável.`)
-  if (dryRun) {
-    log(doctorIssueBody(report))
-    log(`\n(dry-run: nenhuma chamada ao backend '${backend.name}')`)
-    return { status: "dry-run" }
-  }
-
-  await backend.ensureLabel()
-
-  const title = doctorIssueTitle()
-  const body = doctorIssueBody(report)
-  const decision = decidePublication({
-    existing: await backend.openIssues(),
-    title,
-    signature: verdictSignatureOf(report),
-    markerId: VERDICT_MARKER_ID,
+  // O ciclo inteiro é do contrato — inclusive o FECHAMENTO, que era a metade
+  // deste publicador que faltava: com o veredito de volta em PRONTA, a issue
+  // é fechada com a prova no comentário em vez de ficar mentindo no board.
+  return runDebtPublisher({
+    publisher: VERDICT_PUBLISHER,
+    input: report,
+    backend,
+    dryRun,
+    log,
   })
-
-  if (decision.action === "already-reported") {
-    log(`ℹ️  Veredito idêntico já reportado na issue #${decision.issue.number} — sem ruído.`)
-    return { status: "already-reported", number: decision.issue.number }
-  }
-
-  if (decision.action === "comment") {
-    await backend.comment(decision.issue.number, body)
-    log(`✅ Comentário adicionado à issue #${decision.issue.number} (veredito novo).`)
-    return { status: "commented", number: decision.issue.number }
-  }
-
-  const ref = await backend.create(title, body)
-  log(`✅ Issue criada: ${ref}`)
-  return { status: "created", ref }
 }
 
 const USAGE =

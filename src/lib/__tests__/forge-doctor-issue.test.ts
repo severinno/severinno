@@ -13,7 +13,7 @@
  * que rodou sozinho). A issue é o canal, e o dedup por assinatura é o que
  * impede a dívida de virar ruído semanal.
  *
- * QUATRO camadas, de propósito:
+ * CINCO camadas, de propósito:
  *
  *   1. FUNÇÕES PURAS — a assinatura (o contrato do dedup), o corpo, a decisão
  *      de "há o que reportar". INDETERMINADA conta como acionável: ela não é
@@ -31,16 +31,32 @@
  *      alerta existir: publicar ANTES de falhar. Invertida, o step da issue
  *      nunca roda no run que dá errado — exatamente o cron vermelho sem ticket
  *      que este workflow elimina.
+ *   5. O FECHAMENTO É ALCANÇÁVEL — o step da issue é RODADO (script extraído do
+ *      YAML, `bun` dublado, Gitea dublê) nos DOIS sentidos, para provar que a
+ *      run PRONTA EXECUTA o publicador. O fechamento do contrato estava provado
+ *      e era INALCANÇÁVEL: com `if: exit_code != '0'` o step só rodava no run
+ *      que ABRE a dívida, nunca no que pode FECHÁ-LA. Ler o YAML não bastava — a
+ *      alcançabilidade é um fato de EXECUÇÃO.
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
 import { execFile, spawnSync } from "node:child_process"
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http"
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { promisify } from "node:util"
 import yaml from "js-yaml"
+
+import { resolveBash } from "@/lib/__tests__/helpers/bash-resolver"
 
 import { VERDICT } from "../../../scripts/forge-doctor.mjs"
 import { markerOf } from "../../../scripts/issue-publish.mjs"
@@ -99,6 +115,8 @@ interface FakeIssue {
   body: string
   labels: FakeLabel[]
   comments: { body: string }[]
+  /** O estado da issue — o fechamento do ciclo depende dele. */
+  state: "open" | "closed"
 }
 
 function makeFakeGitea() {
@@ -141,7 +159,13 @@ function makeFakeGitea() {
         return json(201, label)
       }
 
-      if (req.method === "GET" && path === issuesPath) return json(200, issues)
+      // A listagem FILTRA por estado: o backend pede `state=open`, e devolver as
+      // fechadas faria o dedup achar "já reportado" numa issue que já foi
+      // fechada — o defeito que o ciclo é feito para não ter.
+      if (req.method === "GET" && path === issuesPath) {
+        const wanted = new URL(req.url ?? "/", "http://127.0.0.1").searchParams.get("state")
+        return json(200, wanted ? issues.filter((i) => i.state === wanted) : issues)
+      }
 
       if (req.method === "POST" && path === issuesPath) {
         const payload = (body ?? {}) as { title?: string; body?: string; labels?: number[] }
@@ -151,6 +175,7 @@ function makeFakeGitea() {
           body: payload.body ?? "",
           labels: labels.filter((l) => (payload.labels ?? []).includes(l.id)),
           comments: [],
+          state: "open",
         }
         issues.push(issue)
         return json(201, {
@@ -164,6 +189,17 @@ function makeFakeGitea() {
         if (!issue) return json(404, null)
         issue.comments.push({ body: (body as { body?: string })?.body ?? "" })
         return json(201, { id: issue.comments.length })
+      }
+
+      // Fechar é `PATCH /issues/{index}` com `{state:"closed"}` (o que a API do
+      // Gitea responde 201) — o ciclo do publicador depende desta rota.
+      const issueMatch = path.match(new RegExp(`^/api/v1/repos/${REPO}/issues/(\\d+)$`))
+      if (req.method === "PATCH" && issueMatch) {
+        const issue = issues.find((i) => i.number === Number(issueMatch[1]))
+        if (!issue) return json(404, null)
+        const payload = (body ?? {}) as { state?: "open" | "closed" }
+        if (payload.state) issue.state = payload.state
+        return json(201, issue)
       }
 
       return json(404, null)
@@ -481,15 +517,61 @@ describe("forge-doctor-issue — CLI real contra Gitea dublê", () => {
     expect(gitea.issues[0].comments[0].body).toContain("porta 3000 ocupada")
   })
 
-  it("veredito PRONTA sai 0 SEM tocar a API (nem label, nem listagem)", async () => {
+  it("veredito PRONTA sem dívida aberta: sai 0, LISTA o board e não escreve nada", async () => {
     const res = await publish(
       writeReport(doctorReport({ verdict: VERDICT.READY, blockers: [], unknowns: [] })),
     )
 
     expect(res.status, res.stderr).toBe(0)
     expect(res.stdout).toContain("nada a reportar")
-    expect(gitea.requests).toEqual([])
     expect(gitea.issues).toEqual([])
+    // A leitura do board faz parte do veredito (é lá que vive a dívida aberta);
+    // o que NÃO pode acontecer com PRONTA e nada a fechar é ESCRITA.
+    expect(gitea.requests.map((r) => r.method)).toEqual(["GET"])
+  })
+
+  it("veredito PRONTA com a issue ABERTA: comenta a prova e FECHA (a dívida não fica mentindo)", async () => {
+    expect((await publish(writeReport(doctorReport()))).status).toBe(0)
+    expect(gitea.issues).toHaveLength(1)
+    expect(gitea.issues[0].state).toBe("open")
+
+    /** O veredito de volta a PRONTA, com os FATOS que a prova do fechamento cita. */
+    const ready = () => ({
+      ...doctorReport({ verdict: VERDICT.READY, blockers: [], unknowns: [] }),
+      facts: {
+        protection: { state: "proven" },
+        runnerLabels: { state: "proven" },
+        openDebt: { state: "proven" },
+      },
+    })
+
+    const res = await publish(writeReport(ready()))
+
+    expect(res.status, res.stderr).toBe(0)
+    expect(res.stdout).toContain("fechada") // o fechamento é dito no log
+    expect(gitea.issues[0].state).toBe("closed")
+    // A PROVA entra numa issue AINDA aberta (comentar antes de fechar): o pior
+    // caso é dívida aberta COM a prova, nunca fechada em silêncio.
+    const proof = gitea.issues[0].comments.at(-1)?.body ?? ""
+    expect(proof).toContain("**Resolvido**")
+    expect(proof).toContain("voltou a **PRONTA**")
+    // A prova é MEDIDA, não afirmada: cada fato que o relatório trouxe sai com
+    // o ESTADO medido — é o que permite a quem chegar depois auditar o
+    // fechamento sem reconstruir a forja na data dele.
+    expect(proof).toContain("branch protection REGISTRADA: `proven`")
+    expect(proof).toContain("registro do act_runner: `proven`")
+    // ... e um fato que o relatório NÃO trouxe não é inventado: `compose` não
+    // veio, então a prova não diz nada sobre a interpolação (dizer `proven` ali
+    // seria afirmar uma medição que não aconteceu).
+    expect(proof).not.toContain("interpolação do compose")
+    // O que o veredito não cobre continua nomeado no comentário.
+    expect(proof).toMatch(/NÃO cobre \d+ coisa\(s\) por desenho/)
+
+    // A run seguinte não acha nada a fechar nem abre outra: o ciclo fecha.
+    const again = await publish(writeReport(ready()))
+    expect(again.status, again.stderr).toBe(0)
+    expect(gitea.issues).toHaveLength(1)
+    expect(again.stdout).toContain("nenhuma dívida aberta")
   })
 
   it("dry-run imprime o corpo e não escreve nada, nem exige credencial", async () => {
@@ -618,6 +700,21 @@ describe("forge-doctor.yml — contrato do workflow agendado", () => {
     expect(publishStep.env?.GITEA_TOKEN).toBe("${{ secrets.GITEA_TOKEN }}")
   })
 
+  it("dá ao cron o canal do board do GITHUB (as dívidas de README e de overhead vivem lá)", () => {
+    const doctorStep = job.steps[idxOf("forge-doctor.mjs")]
+    // A seção 6/6 lê as DUAS forjas, e as issues de `readme-drift` /
+    // `mutation-trend-drift` existem SÓ no board do GitHub. Sem estes dois, a
+    // leitura de lá sai como NÃO lida em todo cron — e um alerta que sempre
+    // acende é um alerta que ninguém lê.
+    expect(doctorStep.env?.GH_TOKEN).toBe("${{ secrets.GH_TOKEN }}")
+    expect(doctorStep.env?.GH_REPOSITORY).toBe("${{ vars.GH_REPOSITORY }}")
+    // `GH_*`, nunca `GITHUB_*`: este runner EMULA o contexto do GitHub, e ali
+    // GITHUB_REPOSITORY/GITHUB_TOKEN são o repositório e o token do GITEA.
+    // Aceitá-los apontaria a leitura para o board errado.
+    expect(Object.keys(doctorStep.env ?? {})).not.toContain("GITHUB_REPOSITORY")
+    expect(Object.keys(doctorStep.env ?? {})).not.toContain("GITHUB_TOKEN")
+  })
+
   it("A ORDEM É A INVARIANTE: publicar ANTES de falhar", () => {
     const runDoctor = stepIndex((s) => (s.run ?? "").includes("forge-doctor.mjs"))
     const publishIssue = stepIndex((s) => (s.run ?? "").includes("forge-doctor-issue.mjs"))
@@ -628,13 +725,283 @@ describe("forge-doctor.yml — contrato do workflow agendado", () => {
     expect(failStep).toBeGreaterThan(publishIssue)
   })
 
-  it("só publica quando o veredito NÃO é PRONTA (exit 0 não abre issue)", () => {
+  it("o step da issue roda nos DOIS sentidos: é o RELATÓRIO que o modula, não o veredito", () => {
     const publishStep = job.steps[idxOf("forge-doctor-issue.mjs")]
-    expect(publishStep.if).toBe("steps.doctor.outputs.exit_code != '0'")
+    const doctorStep = job.steps[idxOf("forge-doctor.mjs")]
+
+    // PRONTA → RECONCILIA (comenta a prova e FECHA); não-PRONTA → PUBLICA. É o
+    // MESMO ciclo dos alertas de drift, cuja mecânica vive em `issue-publish.mjs`.
+    // Condicionar este step ao exit code desligava o fechamento no ÚNICO run
+    // capaz de fechá-lo — e em silêncio, porque o run ficava verde.
+    expect(publishStep.if).toBe("always() && steps.doctor.outputs.report == '1'")
+    // Quem modula é o RELATÓRIO existir, e quem o publica como output é o step
+    // do doctor, a partir do ARQUIVO: com exit 3 (uso/erro interno) não há
+    // medição — e sem medição não há o que publicar nem o que fechar.
+    expect(doctorStep.run).toContain("-s /tmp/forge-doctor.json")
+    expect(doctorStep.run).toContain('echo "report=1" >> "$GITHUB_OUTPUT"')
   })
 
   it("o erro final carrega o remédio e o nome da issue", () => {
     expect(content).toContain("bun run doctor")
     expect(content).toContain(ISSUE_LABEL)
+  })
+})
+
+// ── 5. O FECHAMENTO É ALCANÇÁVEL (a run PRONTA EXECUTA o publicador) ────────
+//
+// O DEFEITO que este bloco existe para não deixar voltar: o fechamento do
+// contrato (o publicador comenta a prova e FECHA a issue quando o veredito volta
+// a PRONTA) estava PROVADO — e era INALCANÇÁVEL. O step da issue só rodava com
+// `exit_code != '0'`, então o ÚNICO run capaz de fechar a dívida era justamente
+// o único em que ele era pulado: a issue ficava aberta no board para sempre,
+// mentindo.
+//
+// POR QUE RODAR (e não ler o YAML): "o step roda na run PRONTA" é um fato de
+// EXECUÇÃO. Um `always()` lido no arquivo diz o que alguém escreveu; o que
+// importa é que o publicador seja de fato INVOCADO com o veredito PRONTA. Aqui
+// as etapas do cron são executadas como o runner as executa — condição avaliada,
+// script do YAML extraído, saída em `$GITHUB_OUTPUT` —, com o `bun` DUBLADO (o
+// `forge-doctor.mjs` devolve o relatório canônico e o exit code do veredito) e o
+// publicador REAL falando com o Gitea dublê. Mutar o `if:` de volta para o exit
+// code deixa a issue ABERTA e o log de invocações VAZIO: o teste cai.
+
+interface StepRun {
+  /** Os `steps.<id>.outputs.<nome>` que os steps gravaram. */
+  outputs: Record<string, string>
+  /** Os steps que a condição deixou RODAR, na ordem. */
+  ran: string[]
+  /** O exit code de cada step executado. */
+  codes: Record<string, number>
+  /** O relatório que o step do doctor gravou (o caminho reescrito do teste). */
+  report: string
+}
+
+describe("forge-doctor.yml — o fechamento é ALCANÇÁVEL na run PRONTA", () => {
+  let gitea: ReturnType<typeof makeFakeGitea>
+  let baseUrl = ""
+  const tmpDirs: string[] = []
+
+  beforeAll(async () => {
+    gitea = makeFakeGitea()
+    baseUrl = await gitea.listen()
+  })
+
+  afterAll(async () => {
+    await gitea.close()
+    for (const dir of tmpDirs) rmSync(dir, { recursive: true, force: true })
+  })
+
+  beforeEach(() => {
+    gitea.labels.length = 0
+    gitea.issues.length = 0
+    gitea.requests.length = 0
+  })
+
+  /**
+   * O subconjunto de `if:` que este workflow usa, avaliado como o runner avalia:
+   * `always()`, as comparações `steps.<id>.outputs.<nome> (==|!=) '<valor>'` e a
+   * conjunção por `&&`. Uma condição fora do subconjunto é ERRO — e não
+   * "verdade por omissão": um `if:` que este dublê não entende é um `if:` que o
+   * teste não está medindo, e medir errado é pior do que não medir.
+   */
+  function conditionHolds(step: Step, outputs: Record<string, string>): boolean {
+    if (step.if === undefined) return true
+    return step.if
+      .split("&&")
+      .map((clause) => clause.trim())
+      .every((clause) => {
+        if (clause === "always()") return true
+        const match = clause.match(/^steps\.([\w-]+)\.outputs\.([\w-]+) (==|!=) '([^']*)'$/)
+        if (!match) throw new Error(`if: fora do subconjunto suportado pelo teste: '${clause}'`)
+        const [, id, name, op, expected] = match
+        const actual = outputs[`${id}.${name}`] ?? ""
+        return op === "==" ? actual === expected : actual !== expected
+      })
+  }
+
+  /** Reescreve as expressões `${{ … }}` que ESTE workflow usa (vars e secrets). */
+  function resolveExpressions(value: string): string {
+    const scope: Record<string, Record<string, string>> = {
+      vars: { BUN_VERSION: "1.3.14", IMAGE_REGISTRY: "ghcr.io/acme", IMAGE_NAMESPACE: "acme" },
+      secrets: { GITEA_TOKEN: "token-de-teste", GITEA_URL: baseUrl, GITEA_REPOSITORY: REPO },
+    }
+    return value.replace(/\$\{\{\s*(vars|secrets)\.([\w.-]+)\s*\}\}/g, (_all, kind, name) => {
+      return scope[kind as string][name as string] ?? ""
+    })
+  }
+
+  /** O log das invocações que chegaram ao publicador (`null` = nenhuma). */
+  let publishInvocations: string[] = []
+
+  /**
+   * Executa as etapas do cron como o runner as executa, e devolve o que a run
+   * deixou: os outputs, quais steps rodaram e os exit codes.
+   *
+   * As etapas de ambiente (checkout, cache, setup do Bun, `bun install`) já são
+   * cobertas em outros testes e NÃO produzem output nem condição: as três etapas
+   * executadas aqui são exatamente as três cujo contrato este bloco prova — o
+   * doctor, o publicador e o vermelho.
+   *
+   * ASSÍNCRONO de propósito: o publicador REAL fala com o Gitea dublê que roda
+   * NESTE processo, então um `spawnSync` bloquearia o event loop e o servidor
+   * nunca responderia (o defeito que já travou o teste irmão do drift).
+   */
+  async function runCron(run: {
+    verdict: Record<string, unknown>
+    exit: number
+    /** Os FATOS do relatório: o que a prova do fechamento cita. */
+    facts?: Record<string, unknown>
+  }): Promise<StepRun> {
+    const dir = mkdtempSync(join(tmpdir(), "doctor-cron-"))
+    tmpDirs.push(dir)
+    // Os caminhos do workflow (`/tmp/...`) são reescritos para o diretório do
+    // teste: no Windows `/tmp` nem existe, e o LITERAL do caminho já é travado
+    // no teste estático acima — o que se mede aqui é o CONDICIONAMENTO do step.
+    const local = dir.split("\\").join("/")
+    const reportPath = join(dir, "forge-doctor.json")
+    // Exit 3 é USO/erro interno: o doctor real não escreve relatório nenhum — e
+    // é justamente a ausência dele que o workflow usa para NÃO publicar.
+    const cannedReport = join(dir, "veredito.json")
+    const canned = { ...doctorReport(run.verdict), ...(run.facts ? { facts: run.facts } : {}) }
+    writeFileSync(cannedReport, run.exit === 3 ? "" : JSON.stringify(canned), "utf8")
+
+    publishInvocations = []
+    const publishLog = join(dir, "publish.log")
+    writeFileSync(publishLog, "", "utf8")
+    const stubDir = join(dir, "bin")
+    mkdirSync(stubDir, { recursive: true })
+    const stub = join(stubDir, "bun")
+    writeFileSync(
+      stub,
+      [
+        "#!/usr/bin/env bash",
+        "# Dublê do `bun` para a run do cron: só os dois scripts do doctor chegam aqui.",
+        'if [ "$1" = "scripts/forge-doctor.mjs" ]; then',
+        '  cat "$STUB_DOCTOR_REPORT"',
+        '  exit "${STUB_DOCTOR_EXIT:-0}"',
+        "fi",
+        'if [ "$1" = "scripts/forge-doctor-issue.mjs" ]; then',
+        '  printf \'%s\\n\' "$*" >> "$STUB_PUBLISH_LOG"',
+        '  exec "$STUB_NODE" "$@"',
+        "fi",
+        'echo "dublê do bun não esperava: $*" >&2',
+        "exit 97",
+      ].join("\n"),
+      "utf8",
+    )
+    chmodSync(stub, 0o755)
+
+    const jobEnv = Object.fromEntries(
+      Object.entries(parsed.env).map(([name, value]) => [name, resolveExpressions(value)]),
+    )
+    const doctorStep = job.steps[idxOf("forge-doctor.mjs")]
+    const publishStep = job.steps[idxOf("forge-doctor-issue.mjs")]
+    const failStep = job.steps[stepIndex((s) => (s.run ?? "").includes("exit 1"))]
+    const executed = [doctorStep, publishStep, failStep]
+
+    const outputs: Record<string, string> = {}
+    const ran: string[] = []
+    const codes: Record<string, number> = {}
+    const outputsFile = join(dir, "github-output")
+
+    for (const step of job.steps) {
+      if (!executed.includes(step)) continue
+      if (!conditionHolds(step, outputs)) continue
+      writeFileSync(outputsFile, "", "utf8") // o runner dá um arquivo por step
+      const stepEnv = Object.fromEntries(
+        Object.entries(step.env ?? {}).map(([name, value]) => [name, resolveExpressions(value)]),
+      )
+      const script = (step.run ?? "").replaceAll("/tmp/forge-doctor", `${local}/forge-doctor`)
+      const status = await execFileAsync(resolveBash(), ["-c", script], {
+        encoding: "utf8",
+        cwd: CWD,
+        timeout: 60_000,
+        env: {
+          ...process.env,
+          ...jobEnv,
+          ...stepEnv,
+          PATH: `${stubDir}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}`,
+          GITHUB_OUTPUT: outputsFile,
+          STUB_DOCTOR_REPORT: cannedReport,
+          STUB_DOCTOR_EXIT: String(run.exit),
+          STUB_PUBLISH_LOG: publishLog,
+          STUB_NODE: process.execPath,
+        },
+      }).then(
+        () => 0,
+        (error: { code?: number }) => error.code ?? -1,
+      )
+      for (const line of readFileSync(outputsFile, "utf8").split("\n")) {
+        const eq = line.indexOf("=")
+        if (step.id && eq > 0) outputs[`${step.id}.${line.slice(0, eq)}`] = line.slice(eq + 1)
+      }
+      ran.push(step.name ?? "?")
+      codes[step.name ?? "?"] = status
+    }
+
+    publishInvocations = readFileSync(publishLog, "utf8").split("\n").filter(Boolean)
+    return { outputs, ran, codes, report: reportPath }
+  }
+
+  it("a run PRONTA EXECUTA o publicador e FECHA a issue que ela mesma abriu", async () => {
+    // Run 1 — o veredito que ABRE a dívida.
+    const first = await runCron({ verdict: {}, exit: 1 })
+
+    expect(existsSync(first.report), "o step do doctor não gravou o relatório").toBe(true)
+    expect(readFileSync(first.report, "utf8")).toContain("bloqueada")
+    expect(first.outputs["doctor.exit_code"]).toBe("1")
+    expect(first.outputs["doctor.report"]).toBe("1")
+    expect(first.ran).toContain("Publish doctor verdict issue (Gitea)")
+    expect(publishInvocations, "a run não-PRONTA tem de PUBLICAR a dívida").toHaveLength(1)
+    expect(gitea.issues).toHaveLength(1)
+    expect(gitea.issues[0].state).toBe("open")
+    // O vermelho é a lembrança — e vem DEPOIS de publicar.
+    expect(first.codes["Fail on non-ready verdict"]).toBe(1)
+
+    // Run 2 — o veredito de volta a PRONTA. É AQUI que o fechamento vive.
+    const second = await runCron({
+      verdict: { verdict: VERDICT.READY, blockers: [], unknowns: [] },
+      exit: 0,
+      facts: { protection: { state: "proven" }, runnerLabels: { state: "proven" } },
+    })
+    expect(second.outputs["doctor.exit_code"]).toBe("0")
+    expect(second.outputs["doctor.report"]).toBe("1")
+
+    // A PROVA: o publicador FOI EXECUTADO nesta run. Com o
+    // `if: exit_code != '0'` de antes, o log ficaria VAZIO e a issue ABERTA.
+    expect(second.ran, "a run PRONTA pulou o publicador: a dívida nunca fecharia").toContain(
+      "Publish doctor verdict issue (Gitea)",
+    )
+    expect(publishInvocations, "o publicador não foi invocado na run PRONTA").toHaveLength(1)
+
+    // ... e o EFEITO no board, pelo CLI real contra o Gitea dublê: a prova
+    // entrou no comentário e a issue foi FECHADA.
+    expect(gitea.issues[0].state).toBe("closed")
+    const proof = gitea.issues[0].comments.at(-1)?.body ?? ""
+    expect(proof).toContain("**Resolvido**")
+    // A prova COMPARADA viajou com o fechamento: os estados medidos agora.
+    expect(proof).toContain("branch protection REGISTRADA: `proven`")
+    const patch = gitea.requests.find((r) => r.method === "PATCH")
+    expect((patch?.body as { state?: string })?.state).toBe("closed")
+
+    // O run PRONTA fica VERDE: o step do vermelho é pulado (nada a lembrar).
+    expect(second.ran).not.toContain("Fail on non-ready verdict")
+  })
+
+  it("sem RELATÓRIO o publicador não é invocado nem no run PRONTA (exit 3 não é medição)", async () => {
+    // O doctor falhou em USO (exit 3): não há JSON, então não há `report=1`.
+    // O publicador não roda — e o job segue vermelho pelo step final, então
+    // pular aqui não afrouxa nada ("não consegui medir" nunca vira verde).
+    const run = await runCron({ verdict: {}, exit: 3 })
+
+    expect(existsSync(run.report) ? readFileSync(run.report, "utf8") : "").toBe("")
+    // O step DIZ que não houve relatório (`report=0`) em vez de deixar o output
+    // ausente — o `if:` do publicador compara com '1', então os dois casos
+    // pulam; o que não pode é o workflow chamar de "medição" o exit 3.
+    expect(run.outputs["doctor.report"]).toBe("0")
+    expect(run.ran).not.toContain("Publish doctor verdict issue (Gitea)")
+    expect(publishInvocations).toEqual([])
+    expect(gitea.requests).toEqual([])
+    expect(run.codes["Fail on non-ready verdict"]).toBe(1)
   })
 })

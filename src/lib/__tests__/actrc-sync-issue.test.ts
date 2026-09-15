@@ -714,7 +714,11 @@ describe("CLI (--dry-run): decide sozinho, sem depender do exit code do guard", 
 describe("fonte única das regras e contrato dos workflows", () => {
   it("o script IMPORTa mirrorDriftReport do guard (a issue não reimplementa a comparação)", () => {
     const source = readFileSync(SCRIPT, "utf8")
-    expect(source).toContain('import { mirrorDriftReport } from "./check-actrc-sync.mjs"')
+    // Regex (e não a linha literal): o import pode crescer — a asserção é que
+    // `mirrorDriftReport` venha do GUARD, e nunca de uma segunda comparação.
+    expect(source).toMatch(
+      /import \{[^}]*\bmirrorDriftReport\b[^}]*\} from "\.\/check-actrc-sync\.mjs"/,
+    )
     // E o guard exporta a função que o CLI dele também usa.
     expect(readFileSync(GUARD, "utf8")).toContain("export function mirrorDriftReport")
   })

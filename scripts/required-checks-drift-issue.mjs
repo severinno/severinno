@@ -70,11 +70,11 @@ import { dirname, resolve } from "node:path"
 import process from "node:process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import {
-  decidePublication,
-  hasMarker,
-  issueHasAnyMarker,
-  markerOf as markerOfId,
-  reconcileDebt,
+  bodyHasSignature,
+  defineDebtPublisher,
+  publisherBody,
+  publisherMarker,
+  runDebtPublisher,
   selectIssueBackend,
 } from "./issue-publish.mjs"
 
@@ -137,18 +137,56 @@ export function signatureOf(report) {
 export const DRIFT_MARKER_ID = "required-checks-drift"
 
 /**
+ * O CONTRATO deste publicador (`issue-publish.mjs`).
+ *
+ * O CICLO (label idempotente, dedup por assinatura no corpo E nos comentários,
+ * comentar no título já aberto, criar, e RECONCILIAR quando o drift sumiu —
+ * comentando a prova e fechando só o que é NOSSO) deixou de ser código deste
+ * arquivo. O que fica declarado aqui: a etiqueta, o formato do marcador (`b64`: a
+ * assinatura cobre forja/branch/contextos e pode ter quebra de linha), o título
+ * estável, a assinatura (o drift de agora), a prosa, quando há dívida, o ESCOPO
+ * (uma issue para o drift — ele é um ESTADO das forjas, não um item por check) e o
+ * FECHAMENTO (a prova + o motivo).
+ */
+export const DRIFT_PUBLISHER = defineDebtPublisher({
+  name: DRIFT_MARKER_ID,
+  label: ISSUE_LABEL,
+  labelColor: ISSUE_LABEL_COLOR,
+  labelDescription: ISSUE_LABEL_DESCRIPTION,
+  marker: { id: DRIFT_MARKER_ID, format: "b64" },
+  title: () => driftTitle(),
+  signature: (report) => signatureOf(report),
+  body: (report) => driftProse(report),
+  actionable: (report) => signatureOf(report) !== "",
+  scope: { kind: "single" },
+  resolution: {
+    comment: (report) => driftResolutionComment(report),
+    reason: "o branch protection voltou a corresponder ao manifesto",
+  },
+  prose: {
+    inSync: () => "✅ Sem drift: o branch protection corresponde ao manifesto.",
+    actionable: () => "⚠️  Drift detectado — publicando issue acionável.",
+    alreadyReported: (issue) =>
+      `ℹ️  Drift idêntico já reportado na issue #${issue.number} — sem ruído.`,
+    commented: (issue) => `✅ Comentário adicionado à issue #${issue.number} (drift novo).`,
+    reconciled: (count) =>
+      `🔒 Reconciliado: ${count} issue(s) de drift fechada(s) — a dívida não fica aberta depois de resolvida.`,
+  },
+})
+
+/**
  * Marcador HTML invisível que carrega a assinatura dentro do corpo da issue.
  *
  * A REGRA (formato do marcador + decisão de dedup) é a de `issue-publish.mjs`:
  * aqui fica só o id deste publicador, para a mecânica não ter duas cópias.
  */
 export function markerOf(signature) {
-  return markerOfId(DRIFT_MARKER_ID, signature)
+  return publisherMarker(DRIFT_PUBLISHER, signature)
 }
 
 /** `true` se `body` já carrega o marcador desta assinatura. */
 export function hasSignature(body, signature) {
-  return hasMarker(body, DRIFT_MARKER_ID, signature)
+  return bodyHasSignature(DRIFT_PUBLISHER, body, signature)
 }
 
 /**
@@ -156,7 +194,12 @@ export function hasSignature(body, signature) {
  * que resolve. Sem isso a issue só diz "tem drift" e transfere o trabalho de
  * investigação para quem lê.
  */
-export function driftBody(report) {
+/**
+ * A PROSA do corpo da issue — sem o marcador: quem o compõe é o contrato
+ * (`publisherBody`), para o marcador ter UMA implementação (e um publicador não
+ * publicar uma dívida que o fechamento automático depois não reconheça).
+ */
+function driftProse(report) {
   const lines = []
   lines.push("O branch protection não corresponde a `ci/required-checks.json`.")
   lines.push("")
@@ -215,8 +258,26 @@ export function driftBody(report) {
       " aplicar: exigir um contexto que não existe é pior que não exigir nada.",
   )
   lines.push("")
-  lines.push(markerOf(signatureOf(report)))
   return lines.join("\n")
+}
+
+/** O corpo COMPLETO da issue: a prosa + o marcador, como o contrato os compõe. */
+export function driftBody(report) {
+  return publisherBody(DRIFT_PUBLISHER, report)
+}
+
+/**
+ * Uma lista de contextos para a prova.
+ *
+ * `nenhum` só quando a lista veio VAZIA de fato. Uma lista AUSENTE no relatório
+ * não é a mesma coisa que "a comparação não achou nada" — dizer "nenhum" nos
+ * dois casos faria a prova afirmar mais do que sabe, que é exatamente o que o
+ * fechamento automático não pode fazer.
+ */
+function contextsOrNone(list) {
+  if (!Array.isArray(list)) return "não informado no relatório"
+  if (list.length === 0) return "nenhum"
+  return list.map((context) => `\`${context}\``).join(", ")
 }
 
 /**
@@ -226,6 +287,13 @@ export function driftBody(report) {
  * chegar depois lê o desfecho sem reconstruir o estado do mundo na data do
  * fechamento. E diz o ESCOPO do fechamento (o que este script NÃO olha), porque
  * um "resolvido" sem escopo mente por omissão.
+ *
+ * E a prova é uma COMPARAÇÃO, não uma afirmação: "em sincronia" sozinho manda
+ * quem lê confiar. Por isso o comentário nomeia os DOIS lados — o que o
+ * manifesto exigia (`desired`) e a diferença medida em cada branch (`missing`/
+ * `extra`) — e a diferença sai dos DADOS, nunca do veredito `inSync`: um
+ * relatório que se diga "em sincronia" com itens faltando não pode ser lavado
+ * pela própria linha que o declara resolvido.
  *
  * @param {object} report  relatório do `apply-required-checks --check --json`
  * @returns {string}
@@ -241,11 +309,17 @@ export function driftResolutionComment(report) {
   const forges = Object.entries(report?.forges ?? {})
   for (const [forge, data] of forges) {
     lines.push(`- **${forge}** (\`${data.workflow ?? "-"}\`)`)
+    // O LADO DO MANIFESTO: sem nomear o que era EXIGIDO, a prova é só a
+    // afirmação de quem fechou.
+    lines.push(`  - exigidos pelo manifesto: ${contextsOrNone(data.desired)}`)
     for (const branch of data.branches ?? []) {
       lines.push(
         branch.inSync
           ? `  - \`${branch.branch}\`: em sincronia (exige exatamente os checks do manifesto)`
           : `  - \`${branch.branch}\`: ainda diverge`,
+      )
+      lines.push(
+        `    - faltando: ${contextsOrNone(branch.missing)} · a mais: ${contextsOrNone(branch.extra)}`,
       )
     }
   }
@@ -281,67 +355,17 @@ export function driftResolutionComment(report) {
  * @returns {Promise<{status: string, number?: number, ref?: string}>}
  */
 export async function publishDriftIssue({ report, backend, dryRun = false, log = console.log }) {
-  const signature = signatureOf(report)
-  if (signature === "") {
-    log("✅ Sem drift: o branch protection corresponde ao manifesto.")
-    // O outro lado da dívida: sem drift, o que este publicador abriu já não
-    // existe. `--dry-run` continua sem tocar no backend (o contrato do modo é
-    // não ter efeito nenhum) — ele DIZ o que faria.
-    if (dryRun) {
-      log(
-        `   (dry-run: nenhuma chamada ao backend '${backend.name}' — a reconciliação fecharia as issues abertas por este publicador, com a prova no comentário)`,
-      )
-      return { status: "in-sync" }
-    }
-    const { closed } = await reconcileDebt({
-      backend,
-      // Só o que é NOSSO: uma issue que ganhou o label por engano não pode ser
-      // fechada por automatismo.
-      isOurs: (issue) => issueHasAnyMarker(issue, DRIFT_MARKER_ID),
-      resolutionBody: driftResolutionComment(report),
-      reason: "o branch protection voltou a corresponder ao manifesto",
-      log,
-    })
-    if (closed.length > 0) {
-      log(
-        `🔒 Reconciliado: ${closed.length} issue(s) de drift fechada(s) — a dívida não fica aberta depois de resolvida.`,
-      )
-    }
-    return { status: "in-sync", closed }
-  }
-
-  log("⚠️  Drift detectado — publicando issue acionável.")
-  if (dryRun) {
-    log(driftBody(report))
-    log(`\n(dry-run: nenhuma chamada ao backend '${backend.name}')`)
-    return { status: "dry-run" }
-  }
-
-  await backend.ensureLabel()
-
-  const title = driftTitle()
-  const body = driftBody(report)
-  const decision = decidePublication({
-    existing: await backend.openIssues(),
-    title,
-    signature,
-    markerId: DRIFT_MARKER_ID,
+  // O ciclo inteiro é do contrato: publicar (dedup por assinatura, comentar no
+  // título já aberto, criar) ou RECONCILIAR (comentar a prova e fechar o que
+  // este publicador abriu). Antes eram ~60 linhas aqui, e a única diferença
+  // entre os publicadores era a prosa — que agora é declarada no spec.
+  return runDebtPublisher({
+    publisher: DRIFT_PUBLISHER,
+    input: report,
+    backend,
+    dryRun,
+    log,
   })
-
-  if (decision.action === "already-reported") {
-    log(`ℹ️  Drift idêntico já reportado na issue #${decision.issue.number} — sem ruído.`)
-    return { status: "already-reported", number: decision.issue.number }
-  }
-
-  if (decision.action === "comment") {
-    await backend.comment(decision.issue.number, body)
-    log(`✅ Comentário adicionado à issue #${decision.issue.number} (drift novo).`)
-    return { status: "commented", number: decision.issue.number }
-  }
-
-  const ref = await backend.create(title, body)
-  log(`✅ Issue criada: ${ref}`)
-  return { status: "created", ref }
 }
 
 // ---------------------------------------------------------------------------
@@ -408,9 +432,9 @@ function loadReport(options) {
  */
 export function backendFor(options, env = process.env) {
   return selectIssueBackend(options, env, {
-    label: ISSUE_LABEL,
-    color: ISSUE_LABEL_COLOR,
-    description: ISSUE_LABEL_DESCRIPTION,
+    label: DRIFT_PUBLISHER.label,
+    color: DRIFT_PUBLISHER.labelColor,
+    description: DRIFT_PUBLISHER.labelDescription,
   })
 }
 

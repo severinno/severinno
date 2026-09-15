@@ -50,7 +50,8 @@
 //   4. cria a issue (ou comenta numa aberta) com o que divergiu e o remédio.
 //
 // Usage:
-//   node scripts/actrc-sync-issue.mjs --expected 1.3.14
+//   node scripts/actrc-sync-issue.mjs --expected 1.3.14 \
+//     --expected-var IMAGE_REGISTRY=ghcr.io --expected-var IMAGE_NAMESPACE=severinno
 //   node scripts/actrc-sync-issue.mjs --expected 1.3.14 --gitea-env /opt/gitea/.env
 //   node scripts/actrc-sync-issue.mjs --expected 1.3.14 --dry-run
 //
@@ -67,17 +68,20 @@ import { spawnSync } from "node:child_process"
 import process from "node:process"
 import { pathToFileURL } from "node:url"
 
-import { mirrorDriftReport } from "./check-actrc-sync.mjs"
+import { MIRROR_VARIABLES, mirrorDriftReport } from "./check-actrc-sync.mjs"
 import {
+  bodyHasMarker,
+  bodyHasSignature,
+  defineDebtPublisher,
   issueBodies,
-  hasAnyMarker as hasAnyMarkerOf,
-  hasMarker,
-  issueHasAnyMarker as issueHasAnyMarkerOf,
-  issueHasSignature as issueHasSignatureOf,
   makeGithubBackend,
-  markerOf as markerOfId,
-  markerPrefixOf,
-  reconcileDebt as reconcileDebtShared,
+  publisherBody,
+  publisherHasSignature,
+  publisherMarker,
+  publisherMarkerPrefix,
+  publisherOwns,
+  reconcilePublisherDebt,
+  runDebtPublisher,
 } from "./issue-publish.mjs"
 
 /** Label de triagem (dedup + filtro no board). */
@@ -89,7 +93,10 @@ export const ISSUE_LABEL = "actrc-sync-drift"
  * issue nova por drift em vez de comentar na dívida já aberta.
  */
 export function driftTitle() {
-  return "Espelhos do BUN_VERSION fora de sincronia com vars.BUN_VERSION"
+  return (
+    "Espelhos da imagem do runner (BUN_VERSION, IMAGE_REGISTRY, IMAGE_NAMESPACE)" +
+    " fora de sincronia com as repository variables"
+  )
 }
 
 /**
@@ -113,6 +120,64 @@ export function signatureOf(report) {
 export const ACTRC_MARKER_ID = "actrc-sync-drift"
 
 /**
+ * O CONTRATO deste publicador (`issue-publish.mjs`).
+ *
+ * POR QUE ELE EXISTE: o ciclo (publicar, deduplicar por assinatura, comentar no
+ * título já aberto, criar, COMENTAR a prova antes de fechar) não mora mais
+ * neste arquivo — mora no contrato, um só para todos os publicadores.
+ *
+ * O QUE FICA DECLARADO AQUI: a etiqueta, o FORMATO do marcador (`b64`: a
+ * assinatura são os avisos, que têm quebra de linha), o título estável, a
+ * assinatura (os próprios avisos, ordenados), a prosa, quando há dívida, o
+ * ESCOPO (uma issue para o problema — o drift é UM estado, não um item por
+ * arquivo) e o FECHAMENTO (o comentário de prova + o motivo).
+ */
+export const ACTRC_PUBLISHER = defineDebtPublisher({
+  name: ACTRC_MARKER_ID,
+  label: ISSUE_LABEL,
+  labelColor: "FBCA04",
+  labelDescription:
+    "Espelhos (BUN_VERSION/IMAGE_REGISTRY/IMAGE_NAMESPACE) divergentes das repository variables",
+  marker: { id: ACTRC_MARKER_ID, format: "b64" },
+  title: () => driftTitle(),
+  signature: (report) => signatureOf(report),
+  body: (report) => driftProse(report),
+  actionable: (report) => signatureOf(report) !== "",
+  scope: { kind: "single" },
+  resolution: {
+    comment: (report) => resolutionComment(report),
+    reason: "os espelhos voltaram a concordar (dívida caducou)",
+  },
+  prose: {
+    actionable: (report) =>
+      `⚠️  Drift detectado (${(report?.warnings ?? []).length} aviso(s)) — publicando issue acionável.`,
+    inSync: (report) =>
+      "✅ Sem drift: os espelhos concordam com as repository variables comparadas" +
+      ` (${Object.keys(report?.expectedVars ?? {})
+        .filter((n) => report.expectedVars[n] !== null && report.expectedVars[n] !== "")
+        .join(", ")}).`,
+    alreadyReported: (issue) =>
+      `ℹ️  Drift idêntico já reportado na issue #${issue.number} — sem ruído.`,
+    commented: (issue) => `✅ Comentário adicionado à issue #${issue.number} (drift novo).`,
+    reconciled: (count) =>
+      `🔒 Reconciliado: ${count} issue(s) de drift fechada(s) — a dívida não fica aberta depois de resolvida.`,
+    dryRunTail: () => "\n(dry-run: nenhuma chamada ao gh)",
+    dryRunReconcile: () =>
+      `   (dry-run: nenhuma chamada ao gh — a reconciliação fecharia as issues abertas por este script, label '${ISSUE_LABEL}', com a prova no comentário)`,
+  },
+})
+
+/** O backend do GitHub com a etiqueta DESTE publicador (uma fonte: o contrato). */
+function githubBackendFor(ghFn = gh) {
+  return makeGithubBackend({
+    gh: ghFn,
+    label: ACTRC_PUBLISHER.label,
+    color: ACTRC_PUBLISHER.labelColor,
+    description: ACTRC_PUBLISHER.labelDescription,
+  })
+}
+
+/**
  * Marcador HTML invisível que carrega a assinatura dentro do corpo da issue.
  *
  * A REGRA (formato do marcador + decisão de dedup + o ciclo de fechar quando
@@ -122,7 +187,7 @@ export const ACTRC_MARKER_ID = "actrc-sync-drift"
  * issues do outro.
  */
 export function markerOf(signature) {
-  return markerOfId(ACTRC_MARKER_ID, signature)
+  return publisherMarker(ACTRC_PUBLISHER, signature)
 }
 
 /**
@@ -131,11 +196,11 @@ export function markerOf(signature) {
  * O chamador de issue usa `issueHasSignature`, que cobre corpo + comentários.
  */
 export function hasSignature(body, signature) {
-  return hasMarker(body, ACTRC_MARKER_ID, signature)
+  return bodyHasSignature(ACTRC_PUBLISHER, body, signature)
 }
 
 /** Prefixo de QUALQUER marcador nosso (a assinatura vem depois dos `:`). */
-export const MARKER_PREFIX = markerPrefixOf(ACTRC_MARKER_ID)
+export const MARKER_PREFIX = publisherMarkerPrefix(ACTRC_PUBLISHER)
 
 /**
  * `true` se o corpo foi escrito por ESTE script (carrega um marcador nosso, de
@@ -149,7 +214,7 @@ export const MARKER_PREFIX = markerPrefixOf(ACTRC_MARKER_ID)
  * @returns {boolean}
  */
 export function hasAnyMarker(body) {
-  return hasAnyMarkerOf(body, ACTRC_MARKER_ID)
+  return bodyHasMarker(ACTRC_PUBLISHER, body)
 }
 
 /**
@@ -173,12 +238,12 @@ export { issueBodies }
 
 /** `true` se a issue já carrega ESTA assinatura (no corpo ou num comentário). */
 export function issueHasSignature(issue, signature) {
-  return issueHasSignatureOf(issue, ACTRC_MARKER_ID, signature)
+  return publisherHasSignature(issue, ACTRC_PUBLISHER, signature)
 }
 
 /** `true` se a issue foi escrita por ESTE script (marcador em qualquer corpo). */
 export function issueHasAnyMarker(issue) {
-  return issueHasAnyMarkerOf(issue, ACTRC_MARKER_ID)
+  return publisherOwns(issue, ACTRC_PUBLISHER)
 }
 
 /**
@@ -189,10 +254,15 @@ export function issueHasAnyMarker(issue) {
  *     re-registrar** o runner: os labels são estado do REGISTRO (`/data/.runner`),
  *     então `restart` não aplica a troca.
  *
+ * `names` são as variáveis que driftaram NAQUELE espelho: o `bump-bun.sh` só
+ * escreve a VERSÃO — para `IMAGE_REGISTRY`/`IMAGE_NAMESPACE` não há script de
+ * bump, e mandar rodá-lo resolveria uma variável e deixaria a outra.
+ *
  * @param {{deployed: boolean}} mirror
+ * @param {string[]} [names] variáveis divergentes no espelho (default: a versão)
  * @returns {string}
  */
-export function remedyFor(mirror) {
+export function remedyFor(mirror, names = ["BUN_VERSION"]) {
   if (mirror.deployed) {
     return (
       "`deploy/.env.gitea` é o arquivo que o compose lê (`--env-file`) — atualize-o" +
@@ -200,30 +270,125 @@ export function remedyFor(mirror) {
       " são estado do registro em `/data/.runner`, então um `restart` não aplica a troca."
     )
   }
-  return (
-    "`deploy/env.gitea.example` é o template comitado de onde o `.env.gitea` do VPS" +
-    " deriva — `bash scripts/bump-bun.sh <versão>` escreve a variável e os dois espelhos" +
-    " de uma vez."
-  )
+  const bun =
+    "`bash scripts/bump-bun.sh <versão>` escreve a variável e os dois espelhos" + " de uma vez."
+  const imagem =
+    "`IMAGE_REGISTRY`/`IMAGE_NAMESPACE` **não têm script de bump**: ajuste o template," +
+    " mantenha o `.env.gitea` do host igual a ele (é o arquivo que o compose lê) e" +
+    " alinhe a repository variable."
+  const parts = [
+    "`deploy/env.gitea.example` é o template comitado de onde o `.env.gitea` do VPS deriva.",
+  ]
+  if (names.includes("BUN_VERSION")) parts.push(bun)
+  if (names.some((n) => n !== "BUN_VERSION")) parts.push(imagem)
+  return parts.join(" ")
 }
 
 /**
- * Corpo da issue em markdown: o que divergiu (por espelho), a consequência e o
- * comando que resolve. Sem isso a issue só diz "tem drift" e transfere a
- * investigação para quem lê.
+ * As flags que REPRODUZEM a comparação desta run.
  *
- * @param {{expected: string, actrcVersion: string|null, mirrors: {label: string, deployed: boolean, version: string|null}[], warnings: string[]}} report
- * @returns {string}
+ * POR QUE NÃO SÓ `--expected`: o guard compara TODAS as variáveis que o compose
+ * consome. Um comando que passa apenas a versão reproduz uma comparação MENOR
+ * que a que abriu a issue — quem o seguir pode não achar o drift e concluir que
+ * a dívida não existe. As variáveis SEM valor ficam de fora de propósito:
+ * `null` é "não perguntado", e escrevê-las como `NOME=` as apresentaria como
+ * drift de variável não configurada.
+ *
+ * @param {{expectedVars?: Record<string, string|null>}} report
+ * @returns {string} " --expected-var NOME=VALOR ..." (vazio quando não há)
  */
-export function driftBody(report) {
+export function expectedVarFlags(report) {
+  const flags = []
+  for (const [name, value] of Object.entries(report?.expectedVars ?? {})) {
+    if (name === "BUN_VERSION") continue
+    if (value === null || value === undefined || value === "") continue
+    flags.push(`--expected-var ${name}=${value}`)
+  }
+  return flags.length > 0 ? ` ${flags.join(" ")}` : ""
+}
+
+/**
+ * As variáveis da imagem comparadas por VALOR, com o valor de CADA espelho (a
+ * prova de que a comparação de valor deixou de ser só da versão).
+ *
+ * @param {object} report
+ * @returns {string[]}
+ */
+export function comparedImageLines(report) {
+  const lines = []
+  for (const [name, expected] of Object.entries(report?.expectedVars ?? {})) {
+    if (name === "BUN_VERSION") continue
+    if (expected === null || expected === undefined || expected === "") continue
+    const mirrors = (report.mirrors ?? []).map(
+      (m) => `\`${m.label}\`=\`${m.values?.[name] ?? "<ausente>"}\``,
+    )
+    lines.push(
+      `- \`${name}\`: esperado \`${expected}\` — ${
+        mirrors.length > 0 ? mirrors.join(", ") : "nenhum espelho de env descoberto"
+      }`,
+    )
+  }
+  return lines
+}
+
+/**
+ * O espelho diverge de ALGUMA variável com valor esperado? (decide o remédio por
+ * espelho — um espelho sem divergência não ganha um passo de correção).
+ *
+ * @param {{values?: Record<string, string|null>, version?: string|null, deployed?: boolean}} mirror
+ * @param {object} report
+ * @returns {boolean}
+ */
+function mirrorDiverges(mirror, report) {
+  // O veredito por espelho vem DO GUARD (`mirror.drift`): recomparar aqui seria
+  // a segunda comparação que este repositório recusa.
+  if (Array.isArray(mirror?.drift)) return mirror.drift.length > 0
+  const expected = report?.expectedVars ?? { BUN_VERSION: report?.expected ?? null }
+  for (const [name, want] of Object.entries(expected)) {
+    if (want === null || want === undefined || want === "") continue
+    const got = mirror?.values
+      ? (mirror.values[name] ?? null)
+      : name === "BUN_VERSION"
+        ? (mirror?.version ?? null)
+        : undefined
+    if (got === undefined) continue
+    if (got !== want) return true
+  }
+  return false
+}
+
+/**
+ * As variáveis que a run NÃO comparou (sem valor passado) — o escopo que o
+ * fechamento e a publicação têm de declarar: "os espelhos concordam" só é prova
+ * do que foi de fato comparado.
+ *
+ * @param {object} report
+ * @returns {string[]}
+ */
+export function unprovenVariables(report) {
+  return [...(report?.unproven ?? [])]
+}
+
+/**
+ * A PROSA do corpo da issue — sem o marcador: quem o compõe é o contrato
+ * (`publisherBody`), para não existir um publicador que esqueça de escrevê-lo e
+ * publique uma dívida que o fechamento automático depois não reconheça.
+ */
+function driftProse(report) {
   const lines = []
   // Variável AUSENTE é o drift mais grave E pede remédio diferente: não há
   // "versão certa" para alinhar os espelhos (o `bump-bun.sh` com versão vazia
   // seria uma instrução sem sentido). O que falta é CRIAR a variável.
+  const comparedNames = Object.entries(report?.expectedVars ?? {})
+    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+    .map(([name]) => name)
   lines.push(
     report.expected
-      ? `Os espelhos do Bun divergem de **\`vars.BUN_VERSION='${report.expected}'\`**` +
-          " (repository variable — a fonte única)."
+      ? `Os espelhos do runner divergem de **\`vars.BUN_VERSION='${report.expected}'\`**` +
+          (comparedNames.length > 1
+            ? ` — o guard compara o VALOR de todas as variaveis que o compose consome (\`${comparedNames.join("`, `")}\`)`
+            : "") +
+          " (repository variables — a fonte única)."
       : "A repository variable **`vars.BUN_VERSION` NÃO está configurada** no repositório" +
           " — e os espelhos apontam para uma versão que ninguém declarou.",
   )
@@ -231,10 +396,11 @@ export function driftBody(report) {
   lines.push(
     "Nenhum dos espelhos governa corretude de CI: o `.actrc` é a dev experience do" +
       " `act`, e o env da forja alimenta a **label do runner**. Divergir não deixa" +
-      " nenhum gate vermelho — só faz o `act` testar outra versão e o **tier-1**" +
-      " (fast path de 0s) do setup-bun **desligar** na forja, com todo job voltando a" +
-      " pagar o download (~1-3s pelo mirror, ~5-10s pelo release). O sintoma aparece" +
-      " longe da causa.",
+      " nenhum gate vermelho — só faz o `act` testar outro caminho (versão/registry) e" +
+      " a **label do runner** apontar para uma imagem que o repositório não declara:" +
+      " o **tier-1** (fast path de 0s) do setup-bun desliga em silêncio (todo job" +
+      " volta a pagar o download, ~1-3s pelo mirror, ~5-10s pelo release) e o pull da" +
+      " imagem só falha quando um job tenta iniciar. O sintoma aparece longe da causa.",
   )
   lines.push("")
 
@@ -245,6 +411,17 @@ export function driftBody(report) {
     const kind = mirror.deployed ? "host" : "template comitado"
     lines.push(`- \`${mirror.label}\` (${kind}): \`${mirror.version ?? "<sem BUN_VERSION>"}\``)
   }
+  // As OUTRAS variáveis que o compose consome e cujo valor foi comparado — a
+  // comparação deixou de ser só da versão, e o ticket tem de mostrar isso.
+  lines.push(...comparedImageLines(report))
+  const unproven = unprovenVariables(report)
+  if (unproven.length > 0) {
+    lines.push(
+      `- \u26a0\ufe0f o VALOR de \`${unproven.join("`, `")}\` **NÃO foi comparado nesta run**` +
+        ` (nenhum valor passado: \`--expected-var NOME=VALOR\`) — a comparação de valor` +
+        " deixaria de cobrir essas variáveis em silêncio",
+    )
+  }
   lines.push("")
 
   lines.push("### Divergências")
@@ -252,12 +429,20 @@ export function driftBody(report) {
   for (const warning of report.warnings) lines.push(`- ${warning}`)
   lines.push("")
 
-  const drifted = report.mirrors.filter((m) => m.version !== report.expected)
+  const drifted = report.mirrors.filter((m) => mirrorDiverges(m, report))
   if (drifted.length > 0) {
     lines.push("### Corrigir (o remédio difere por espelho)")
     lines.push("")
     for (const mirror of drifted) {
-      lines.push(`- \`${mirror.label}\`: ${remedyFor(mirror)}`)
+      // Quais variáveis driftaram NAQUELE arquivo: o `bump-bun.sh` só escreve a
+      // versão — mandá-lo para um drift de registry/namespace resolveria uma
+      // variável e deixaria a outra.
+      const names = [
+        ...new Set((report.drift ?? []).filter((d) => d.label === mirror.label).map((d) => d.name)),
+      ]
+      lines.push(
+        `- \`${mirror.label}\`: ${remedyFor(mirror, names.length > 0 ? names : ["BUN_VERSION"])}`,
+      )
     }
     lines.push("")
   }
@@ -266,7 +451,10 @@ export function driftBody(report) {
     lines.push("```bash")
     lines.push(`bash scripts/bump-bun.sh ${report.expected}   # variável + os dois espelhos`)
     lines.push(
-      "node scripts/check-actrc-sync.mjs --expected " + report.expected + "   # reexibe este drift",
+      "node scripts/check-actrc-sync.mjs --expected " +
+        report.expected +
+        expectedVarFlags(report) +
+        "   # reexibe este drift",
     )
     lines.push("```")
     lines.push("")
@@ -286,8 +474,20 @@ export function driftBody(report) {
     )
   }
   lines.push("")
-  lines.push(markerOf(signatureOf(report)))
   return lines.join("\n")
+}
+
+/** O corpo COMPLETO da issue: a prosa + o marcador, como o contrato os compõe. */
+/**
+ * Corpo da issue em markdown: o que divergiu (por espelho), a consequência e o
+ * comando que resolve. Sem isso a issue só diz "tem drift" e transfere a
+ * investigação para quem lê.
+ *
+ * @param {import("./check-actrc-sync.mjs").MirrorDriftReport} report
+ * @returns {string}
+ */
+export function driftBody(report) {
+  return publisherBody(ACTRC_PUBLISHER, report)
 }
 
 /**
@@ -301,13 +501,14 @@ export function driftBody(report) {
  * fica fora da comparação — e isso é uma limitação do fechamento, não um
  * detalhe.
  *
- * @param {{expected: string, actrcVersion: string|null, mirrors: {label: string, deployed: boolean, version: string|null}[], warnings: string[]}} report
+ * @param {import("./check-actrc-sync.mjs").MirrorDriftReport} report
  * @returns {string}
  */
 export function resolutionComment(report) {
   const lines = []
   lines.push(
-    `✅ **Resolvido** — os espelhos voltaram a concordar com \`vars.BUN_VERSION='${report.expected}'\`.`,
+    `✅ **Resolvido** — os espelhos voltaram a concordar com \`vars.BUN_VERSION='${report.expected}'\`` +
+      " e com as demais variáveis listadas na prova abaixo.",
   )
   lines.push("")
   lines.push("### O que foi comparado agora (a prova)")
@@ -317,15 +518,24 @@ export function resolutionComment(report) {
     const kind = mirror.deployed ? "host" : "template comitado"
     lines.push(`- \`${mirror.label}\` (${kind}): \`${mirror.version ?? "<sem BUN_VERSION>"}\``)
   }
+  lines.push(...comparedImageLines(report))
   if (report.mirrors.length === 0) {
     lines.push(
       "- nenhum arquivo de env da forja foi descoberto neste checkout — só o `.actrc` entrou na comparação",
     )
   }
+  const unproven = unprovenVariables(report)
+  if (unproven.length > 0) {
+    lines.push(
+      `- o VALOR de \`${unproven.join("`, `")}\` **não entrou** nesta comparação` +
+        " (nenhum valor passado) — o fechamento vale para o que foi COMPARADO, e o" +
+        " resto segue aberto: confira com `--expected-var NOME=VALOR`",
+    )
+  }
   lines.push("")
   lines.push("```bash")
   lines.push(
-    `node scripts/check-actrc-sync.mjs --expected ${report.expected}   # exit 0 = em sincronia`,
+    `node scripts/check-actrc-sync.mjs --expected ${report.expected}${expectedVarFlags(report)}   # exit 0 = em sincronia`,
   )
   lines.push("```")
   lines.push("")
@@ -354,38 +564,6 @@ function gh(args, { input } = {}) {
 }
 
 /**
- * As issues ABERTAS com o label — com corpo E comentários.
- *
- * Os comentários entram no `--json` porque é neles que mora o marcador do
- * segundo drift em diante (ver `issueBodies`): sem eles, o dedup por assinatura
- * e a identificação do que é NOSSO só enxergariam o primeiro drift.
- */
-function openIssuesWithLabel(ghFn = gh) {
-  const res = ghFn([
-    "issue",
-    "list",
-    "--label",
-    ISSUE_LABEL,
-    "--state",
-    "open",
-    "--limit",
-    "100",
-    "--json",
-    "number,title,body,comments",
-  ])
-  if (res.status !== 0) {
-    // `status` nulo com stderr vazio significa que o `gh` NEM EXECUTOU (não
-    // está no PATH). Dizer só `exit null` manda o operador procurar um erro do
-    // GitHub que não existe — a causa é local.
-    const why = res.error?.message
-      ? ` (${res.error.message})`
-      : `: ${(res.stderr ?? "").slice(0, 400)}`
-    throw new Error(`gh issue list falhou (exit ${res.status})${why}`)
-  }
-  return JSON.parse(res.stdout || "[]")
-}
-
-/**
  * A RECONCILIAÇÃO: sem aviso nenhum, a dívida que a issue representa caducou.
  *
  * COMENTA ANTES DE FECHAR, e de propósito: o comentário é a prova, e ele entra
@@ -398,21 +576,14 @@ function openIssuesWithLabel(ghFn = gh) {
  */
 export function reconcileDebt({ report, gh: ghFn = gh, log = console.log } = {}) {
   // O ciclo (listar, separar o que é NOSSO do que é alheio, COMENTAR a prova,
-  // fechar, fail-closed nos dois passos) é o compartilhado de
-  // `issue-publish.mjs`. Aqui só entra o que é DESTE publicador: o label, o
-  // corpo de resolução e o motivo. O backend do GitHub é o mesmo dos demais —
-  // antes cada publicador tinha a sua cópia da chamada de `gh`.
-  const backend = makeGithubBackend({
-    gh: ghFn,
-    label: ISSUE_LABEL,
-    color: "FBCA04",
-    description: "Espelhos do BUN_VERSION divergentes de vars.BUN_VERSION",
-  })
-  return reconcileDebtShared({
-    backend,
-    isOurs: (issue) => issueHasAnyMarker(issue),
-    resolutionBody: resolutionComment(report),
-    reason: "os espelhos voltaram a concordar (dívida caducou)",
+  // fechar, fail-closed nos dois passos) é do CONTRATO: quem define o que é
+  // nosso (o marcador declarado), o que caducou (o escopo: `single` fecha todas
+  // as minhas quando o drift sumiu) e a prova é o `ACTRC_PUBLISHER`. O `gh`
+  // continua injetável porque os testes do ciclo o dublam.
+  return reconcilePublisherDebt({
+    publisher: ACTRC_PUBLISHER,
+    input: report,
+    backend: githubBackendFor(ghFn),
     log,
   })
 }
@@ -422,11 +593,33 @@ export function reconcileDebt({ report, gh: ghFn = gh, log = console.log } = {})
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const options = { expected: null, actrc: null, envFile: null, dryRun: false, help: false }
+  const options = {
+    expected: null,
+    expectedVars: {},
+    actrc: null,
+    envFile: null,
+    dryRun: false,
+    help: false,
+  }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === "--expected") options.expected = argv[++i] ?? null
-    else if (arg === "--actrc") options.actrc = argv[++i] ?? null
+    else if (arg === "--expected-var") {
+      // O mesmo formato/validação do guard: um nome fora do conjunto comparado
+      // seria uma variável "conferida" que ninguém lê de espelho nenhum.
+      const raw = argv[++i] ?? ""
+      const eq = raw.indexOf("=")
+      const name = eq > 0 ? raw.slice(0, eq) : ""
+      if (!MIRROR_VARIABLES.includes(name)) {
+        throw new Error(
+          `--expected-var exige NOME=VALOR com NOME em ${MIRROR_VARIABLES.join(", ")} (recebi '${raw}')`,
+        )
+      }
+      if (name === "BUN_VERSION") {
+        throw new Error("--expected-var: BUN_VERSION entra por --expected")
+      }
+      options.expectedVars[name] = raw.slice(eq + 1)
+    } else if (arg === "--actrc") options.actrc = argv[++i] ?? null
     else if (arg === "--gitea-env") options.envFile = argv[++i] ?? null
     else if (arg === "--dry-run") options.dryRun = true
     else if (arg === "--help" || arg === "-h") options.help = true
@@ -439,7 +632,8 @@ async function main() {
   const options = parseArgs(process.argv.slice(2))
   if (options.help) {
     console.log(
-      "Uso: node scripts/actrc-sync-issue.mjs --expected <versão> [--actrc <path>] [--gitea-env <path>] [--dry-run]\n" +
+      "Uso: node scripts/actrc-sync-issue.mjs --expected <versão> [--expected-var NOME=VALOR]...\n" +
+        "       [--actrc <path>] [--gitea-env <path>] [--dry-run]\n" +
         "  Com drift: publica/comenta a issue.\n" +
         "  Sem drift: FECHA as issues que este script abriu (dívida resolvida), com a prova no comentário.",
     )
@@ -455,80 +649,23 @@ async function main() {
 
   const report = mirrorDriftReport({
     expected: options.expected,
+    expectedVars: options.expectedVars,
     ...(options.actrc ? { actrcPath: options.actrc } : {}),
     ...(options.envFile ? { envPath: options.envFile } : {}),
   })
 
-  if (report.warnings.length === 0) {
-    console.log(`✅ Sem drift: os espelhos concordam com vars.BUN_VERSION='${report.expected}'.`)
-    // O outro lado da dívida: sem drift, o que este script abriu já não existe.
-    // `--dry-run` continua sem tocar no `gh` (o contrato do modo é não ter
-    // efeito nenhum) — ele DIZ o que faria.
-    if (options.dryRun) {
-      console.log(
-        `   (dry-run: nenhuma chamada ao gh — a reconciliação fecharia as issues abertas por este script, label '${ISSUE_LABEL}', com a prova no comentário)`,
-      )
-      return 0
-    }
-    const { closed } = await reconcileDebt({ report })
-    if (closed.length > 0) {
-      console.log(
-        `🔒 Reconciliado: ${closed.length} issue(s) de drift fechada(s) — a dívida não fica aberta depois de resolvida.`,
-      )
-    }
-    return 0
-  }
-
-  console.log(
-    `⚠️  Drift detectado (${report.warnings.length} aviso(s)) — publicando issue acionável.`,
-  )
-  if (options.dryRun) {
-    console.log(driftBody(report))
-    console.log("\n(dry-run: nenhuma chamada ao gh)")
-    return 0
-  }
-
-  const signature = signatureOf(report)
-
-  // `--force` torna a criação do label idempotente (não falha se já existir).
-  gh([
-    "label",
-    "create",
-    ISSUE_LABEL,
-    "--force",
-    "--color",
-    "FBCA04",
-    "--description",
-    "Espelhos do BUN_VERSION divergentes de vars.BUN_VERSION",
-  ])
-
-  const existing = openIssuesWithLabel()
-  // Corpo **e comentários**: sem os comentários, um drift que mudou uma vez
-  // seria comentado a cada run semanal para sempre (ver `issueBodies`).
-  const alreadyReported = existing.find((issue) => issueHasSignature(issue, signature))
-  if (alreadyReported) {
-    console.log(`ℹ️  Drift idêntico já reportado na issue #${alreadyReported.number} — sem ruído.`)
-    return 0
-  }
-
-  const title = driftTitle()
-  const body = driftBody(report)
-  const openWithTitle = existing.find((issue) => issue.title === title)
-
-  if (openWithTitle) {
-    const res = gh(["issue", "comment", String(openWithTitle.number), "--body", body])
-    if (res.status !== 0) {
-      throw new Error(`gh issue comment falhou: ${(res.stderr ?? "").slice(0, 400)}`)
-    }
-    console.log(`✅ Comentário adicionado à issue #${openWithTitle.number} (drift novo).`)
-    return 0
-  }
-
-  const res = gh(["issue", "create", "--title", title, "--body", body, "--label", ISSUE_LABEL])
-  if (res.status !== 0) {
-    throw new Error(`gh issue create falhou: ${(res.stderr ?? "").slice(0, 400)}`)
-  }
-  console.log(`✅ Issue criada: ${(res.stdout ?? "").trim()}`)
+  // O CICLO INTEIRO (label idempotente, dedup por assinatura no corpo E nos
+  // comentários, comentar no título já aberto, criar, e RECONCILIAR — comentando
+  // a prova e fechando o que este publicador abriu quando o drift sumiu) é o do
+  // contrato. Antes ele era reimplementado aqui, e essa era a única cópia que
+  // não passava por `decidePublication`: o dedup e o fechamento dos dois lados
+  // eram regras paralelas que podiam divergir sem nenhum teste vermelho.
+  await runDebtPublisher({
+    publisher: ACTRC_PUBLISHER,
+    input: report,
+    backend: githubBackendFor(),
+    dryRun: options.dryRun,
+  })
   return 0
 }
 
