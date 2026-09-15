@@ -311,7 +311,7 @@ imprime (a de subida e a de `--check-only`): elas sao extraidas dele e rodadas,
 com `$GITEA_DIR`/`$REPO_DIR` resolvidos — "mencionar o gitea-up.sh" deixou de ser
 a prova de que o caminho que se copia funciona. E as flags que o bring-up PASSA
 (`--host`/`--template` ao espelho, `--gitea-env` ao ensure e ao doctor, sem
-`--no-proof`, e `--no-runner-labels` no `--re-register`) sao medidas no argv do
+`--no-runner-labels` no `--re-register`) sao medidas no argv do
 processo que rodou — espioes em volta do espelho e do ensure, que continuam
 DELEGANDO ao script real.
 

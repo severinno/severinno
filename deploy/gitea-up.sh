@@ -36,11 +36,11 @@
 #      lembrar de rodar o doctor: a stack subia num estado que não segura o merge,
 #      e o único sinal era um comando que ninguém rodou.
 #
-# O doctor é chamado INTEIRO (sem `--no-proof`) e com `--no-runner-labels`
+# O doctor é chamado INTEIRO (sem flags --no-* que escondam fatos) e com `--no-runner-labels`
 # quando --re-register — o registro velho é EXATAMENTE o que o re-registro
 # conserta, e bloquear aqui travaria o remédio pelo estado que ele cura.
 #
-# POR QUE O DOCTOR INTEIRO (e não `--no-proof`): a prova do bloqueio dele EXECUTA
+# POR QUE O DOCTOR INTEIRO (sem --no-proof — flag removida): a prova do bloqueio dele EXECUTA
 # este script, então desligá-la parecia a única forma de não recursar. Não é: a
 # prova DUBLA o doctor que ela passa ao bring-up (`DOCTOR_SCRIPT` apontando para
 # um dublê que NÃO executa a prova), e é essa dublagem que faz
@@ -108,6 +108,9 @@ pass() { echo -e "  ${GREEN}✅${NC} $1"; }
 fail() { echo -e "  ${RED}❌${NC} $1"; }
 warn() { echo -e "  ${YELLOW}⚠️${NC} $1"; }
 info() { echo -e "  ${CYAN}▸${NC} $1"; }
+
+# Wall time total da subida (医療 bulletin ao final do script)
+SECONDS=0
 
 # Imprime o header de comentário INTEIRO (do 2º separador '# ====' para trás).
 # Não usar uma faixa fixa de linhas: ela corta o bloco Usage quando o header
@@ -248,7 +251,7 @@ fi
 # As flags base ficam NA linha da invocação (e não só num array) para que a
 # regra seja legível e conferível por quem lê o script: `--gitea-env` para o
 # doctor ler o MESMO arquivo que o compose vai ler. E o doctor roda INTEIRO —
-# `--no-proof` está AUSENTE de propósito: o ciclo é cortado pela dublagem do
+# O doctor roda INTEIRO — o ciclo é cortado pela dublagem do
 # doctor dentro da prova (ver o header), e desligar a prova aqui trocaria isso
 # por um veredito parcial POR CONSTRUÇÃO — a subida aconteceria sem que o portão
 # de bloqueio tivesse sido provado.
@@ -263,26 +266,28 @@ if [ "$SKIP_RUNNER_PREREQS" -eq 1 ]; then
 else
   info "checando a prontidão da forja (doctor)..."
   echo ""
+  DOCTOR_START=$SECONDS
   node "$DOCTOR_SCRIPT" --gitea-env "$ENV_FILE" "${DOCTOR_ARGS[@]}"
   DOCTOR_CODE=$?
+  DOCTOR_ELAPSED=$(( SECONDS - DOCTOR_START ))
   echo ""
   if [ "$DOCTOR_CODE" -eq 0 ]; then
-    pass "prontidão da forja: PRONTA (doctor exit 0)"
+    pass "prontidão da forja: PRONTA (doctor exit 0) — ${DOCTOR_ELAPSED}s"
   elif [ "$DOCTOR_CODE" -eq 2 ]; then
     # "não consegui provar agora" (registry fora, sem token, um recorte pedido
     # pelo operador) NÃO é violação. O aviso é honesto, não ruído: diz que o
     # portão de hoje é "nenhuma violação", e o que isso NÃO cobre. E o veredito
     # já não é parcial por construção: a prova do bloqueio roda aqui dentro (o
     # ciclo é cortado pela dublagem do doctor na prova).
-    warn "prontidão INDETERMINADA (doctor exit 2): nenhuma violação, mas algo não ficou provado."
+    warn "prontidão INDETERMINADA (doctor exit 2, ${DOCTOR_ELAPSED}s): nenhuma violação, mas algo não ficou provado."
     warn "Sigo porque INDETERMINADA não é violação — recusar aqui tornaria a subida impossível offline."
   elif [ "$DOCTOR_CODE" -eq 1 ]; then
-    fail "a prontidão da forja está BLOQUEADA (doctor exit 1) — NADA foi subido."
+    fail "a prontidão da forja está BLOQUEADA (doctor exit 1, ${DOCTOR_ELAPSED}s) — NADA foi subido."
     fail "Subir assim publicaria uma forja num estado que NÃO segura o merge."
     fail "Relatório completo: node scripts/forge-doctor.mjs --gitea-env \"$ENV_FILE\""
     exit 1
   else
-    fail "o doctor não conseguiu rodar (exit ${DOCTOR_CODE}) — sem veredito não há prontidão, e NADA foi subido."
+    fail "o doctor não conseguiu rodar (exit ${DOCTOR_CODE}, ${DOCTOR_ELAPSED}s) — sem veredito não há prontidão, e NADA foi subido."
     fail "Relatório: node scripts/forge-doctor.mjs --gitea-env \"$ENV_FILE\""
     exit 1
   fi
@@ -365,4 +370,7 @@ else
   pass "stack no ar — runner rodando a imagem com o Bun pré-instalado (tier-1 ativo)"
 fi
 info "confirme em: Site Administration → Runners (o runner envia os labels no REGISTRO)"
+
+echo ""
+info "wall time total da subida: ${SECONDS}s (doctor: ${DOCTOR_ELAPSED:-N/A}s)"
 info "smoke da forja: rode o workflow 'Forge Smoke' e leia a prova do tier-1"

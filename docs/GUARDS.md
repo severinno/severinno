@@ -1260,7 +1260,7 @@ o check**. Três frestas, todas fechadas:
 As duas primeiras são o `readBringUpGate` original; a terceira cruza o gate com
 o `readProtection` (seção 1) — se o contexto do `bring-up-proof` aparece entre
 os checks que faltam na branch protection, a violação é nomeada. O fato responde
-independente da prova ter rodado agora: `--no-proof` **não** esconde um gate
+independente da prova ter rodado agora: `--no-proof` (removida) **não** escondia um gate
 fora do contrato. `--no-protection` faz o fato cair em `unavailable` (a
 proteção não foi lida, o registro não pode ser confirmado).
 
@@ -1293,7 +1293,7 @@ mutação do `gitea-up.sh`, e o teste exige que a prova caia junto com ela.
 
 **E as FLAGS deixaram de ser uma leitura do texto.** O guard `checkGiteaBringUp`
 prende no TEXTO do `gitea-up.sh` que a linha do espelho tem `--host`/`--template`,
-que a do doctor tem `--gitea-env` e não tem `--no-proof`, e que o `--re-register`
+que a do doctor tem `--gitea-env` (sem flags --no-* que escondam fatos), e que o `--re-register`
 acrescenta `--no-runner-labels`. A prova agora mede isso no **argv do processo que
 rodou**: o espelho e o ensure são envolvidos por **espiões** (que delegam ao script
 REAL do repositório — a família `env-mirror` julga o comportamento deles, e um
@@ -1324,7 +1324,7 @@ subida e a de conferência) e uma do runbook — nenhuma delas "menciona", todas
 Uma prova VIOLADA bloqueia o veredito — é o caso mais grave da família, porque o
 remédio não é publicar imagem nenhuma, é consertar a
 subida. Sem `bash`/bring-up o estado é `unavailable` (INDETERMINADA), nunca
-"provada"; `--no-proof` também rebaixa o veredito e é declarado no "NÃO cobre".
+"provada"; a prova sempre roda em invocação manual — quem precisa de recorte usa --ci.
 
 **AS DUAS METADES do contrato de merge (seção 1/6):** a seção 1 mostra, lado a
 lado, o que o repositório **DECLARA** e o que a forja **REGISTRA**. A primeira
@@ -1458,8 +1458,7 @@ isso que o runner registra no `/data/.runner`. O doctor chama
 lado do estado da imagem. Uma interpolação **VIOLADA bloqueia** (variável vazia
 ou valor literal: com a tag existindo no registry, o runner puxa outra imagem);
 sem docker/compose no ambiente o estado é `unavailable` → **INDETERMINADA**, e
-`--no-compose-render` rebaixa o veredito do mesmo jeito que `--no-guards` e
-`--no-proof`.
+`--no-compose-render` rebaixa o veredito do mesmo jeito que `--no-guards`.
 
 Junto vem a **outra metade (invariante 7b)**: `hostCompare` diz se o env do
 **HOST** foi comparado com o template comitado (`in-sync` / `diverged` /
@@ -1564,7 +1563,7 @@ artefato que o job baixa, ou quando a PROVA do bloqueio é violada
 (a garantia da imagem é decorativa); `INDETERMINADA` quando nada falhou mas
 algo não pôde ser provado (env ausente neste checkout, registry inacessível,
 gate não executado, guards pulados por `--no-guards`, prova pulada por
-`--no-proof`, branch protection não lida ou pulada por `--no-protection`,
+branch protection não lida ou pulada por `--no-protection`,
 interpolação pulada/não provada, o contrato publicado não provado (sem daemon,
 sem credencial, pull negado) ou pulado por `--no-image-contract`, registro do
 act_runner **ou o do runner do GitHub** não lido (este também quando falta token
