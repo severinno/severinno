@@ -20,9 +20,9 @@
 //      e tirar o bloqueio derruba a prova, e o CI junto.
 //   6. a CADEIA bring-up → doctor → prova → bring-up é FINITA, e quem a torna
 //      finita é a DUBLAGEM do doctor na prova. Sem esta prova, o único jeito
-//      "seguro" de o bring-up chamar o doctor seria pedir-lhe `--no-proof` — que
-//      devolve o veredito parcial POR CONSTRUÇÃO (a subida acontece sem que o
-//      portão de bloqueio tenha sido provado). O teste mede o CORTE, não o
+//      "seguro" de o bring-up chamar o doctor seria desligar a prova — mas
+//      a flag --no-proof foi removida: quem precisa de um recorte usa --ci
+//      (declaração explícita). O teste mede o CORTE, não o
 //      promete: o doctor real é envolvido por um contador e a contagem tem de
 //      ser EXATAMENTE 1.
 //
@@ -260,7 +260,7 @@ describe("proveRunnerImageGate — no repositório real", () => {
     expect(byId.presente.ensureArgs).toContain("--gitea-env")
     expect(byId.presente.ensureArgs).not.toContain("--env-file")
     expect(byId.presente.doctorArgs).toContain("--gitea-env")
-    expect(byId.presente.doctorArgs).not.toContain("--no-proof")
+    // --no-proof foi removido: o doctor sempre roda completo em invocação manual
     // O `--no-runner-labels` é do REMÉDIO, não da subida normal.
     expect(byId.presente.doctorArgs).not.toContain("--no-runner-labels")
     expect(byId["re-register"].doctorArgs).toContain("--no-runner-labels")
@@ -651,27 +651,25 @@ describe("renderProof / parseArgs", () => {
 // forkar, o que é o que torna a mutação executável.
 //
 describe("o ciclo bring-up → doctor → prova termina (a dublagem do doctor o corta)", () => {
-  it("bring-up com o doctor REAL (sem --no-proof) termina, a prova RODA dentro dele e o doctor real é invocado 1x", async () => {
-    // A mutação NÃO tira o ciclo: ela tira o `--no-proof` (que é o estado que o
-    // repositório passou a exigir) e desliga as seções que NÃO são o ciclo — o
-    // teste mede o CICLO, não a bateria de guards, e a seção da PROVA (a que
+  it("bring-up com o doctor REAL termina, a prova RODA dentro dele e o doctor real é invocado 1x", async () => {
+    // A mutação NÃO tira o ciclo: ela desliga as seções que NÃO são o ciclo —
+    // o teste mede o CICLO, não a bateria de guards, e a seção da PROVA (a que
     // fecha o ciclo) é justamente a que fica ligada.
     const dir = mutatedRoot((content) => {
       const anchor = '--gitea-env "$ENV_FILE" "${DOCTOR_ARGS[@]}"'
       expect(content, "a linha do doctor mudou de forma — atualize a mutação").toContain(anchor)
       return content.replace(
         anchor,
-        '--gitea-env "$ENV_FILE" --no-guards --no-protection --no-registry-probe --no-image-contract --no-runner-labels --no-open-debt --no-compose-render "${DOCTOR_ARGS[@]}"',
+        '--gitea-env "$ENV_FILE" --ci --no-compose-render "${DOCTOR_ARGS[@]}"',
       )
     })
-    // A INVOCAÇÃO (não o arquivo): o header do gitea-up.sh explica POR QUE o
-    // `--no-proof` está ausente, então a asserção tem de olhar a linha que roda.
+    // A INVOCAÇÃO (não o arquivo): o doctor é chamado com --gitea-env e SEM
+    // flags --no-* que escondam fatos (exceto as do profiles e --no-runner-labels).
     const bringUpText = readFileSync(join(dir, BRING_UP), "utf8")
     const doctorLine = bringUpText
       .split("\n")
       .find((l) => l.trimStart().startsWith("node") && l.includes("DOCTOR_SCRIPT"))
     expect(doctorLine, "a linha de invocação do doctor não foi encontrada").toBeTruthy()
-    expect(doctorLine).not.toContain("--no-proof")
     expect(doctorLine).toContain("--no-compose-render")
 
     const reg = await startTestRegistry("exists")
@@ -749,10 +747,9 @@ describe("o ciclo bring-up → doctor → prova termina (a dublagem do doctor o 
     // "terminando" por ter pulado justamente a seção que fecha o ciclo.
     expect(out).toContain("Prova do bloqueio")
     expect(out).toMatch(/\d+ caso\(s\):/)
-    expect(out).not.toContain("pulada por --no-proof")
+    // --no-proof foi removido: a prova sempre roda em invocação manual.
     // O CORTE medido: o doctor REAL rodou UMA vez (o de cima). Todas as descidas
-    // foram para o DUBLÊ da prova — é isto que torna a cadeia finita, e é isto
-    // que permite ao bring-up rodar o doctor INTEIRO em vez de `--no-proof`.
+    // foram para o DUBLÊ da prova — é isto que torna a cadeia finita.
     const runs = readFileSync(doctorLog, "utf8").split("\n").filter(Boolean)
     expect(runs, out).toHaveLength(1)
   }, 130000)

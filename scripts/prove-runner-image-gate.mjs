@@ -80,7 +80,7 @@
 //   Cada caso declara o que o bring-up TEM de ter passado — `--host`/`--template`
 //   apontando para os arquivos DESTA subida, `--gitea-env <env>` (e nunca
 //   `--env-file`, que é flag do Node e mataria o processo com exit 9),
-//   `--check` no `--check-only`, o doctor com `--gitea-env` e SEM `--no-proof`,
+//   `--check` no `--check-only`, o doctor com `--gitea-env` e SEM flags --no-* que escondam fatos,
 //   e `--no-runner-labels` no `--re-register` — e o relatório MOSTRA a linha que
 //   cada filho recebeu. Sem isso, "o bring-up passa --host" continuava sendo uma
 //   asserção sobre o texto dele; com isso, é o argv medido do processo que rodou.
@@ -97,7 +97,7 @@
 //   `expectDoctorStub` e o dublê grava a própria invocação: o corte deixa de ser
 //   um comentário e passa a ser um fato ASSERTADO em cada caso que chega ao passo
 //   2 — e, nos que recusam antes, que o doctor NÃO foi invocado (a ordem provada
-//   é a que executa). Sem isso, `--no-proof` no bring-up pareceria a única forma
+//   é a que executa). Sem isso, --no-proof no bring-up pareceria a única forma
 //   de não recursar; com isso, o bring-up pode rodar o doctor INTEIRO. A cadeia
 //   completa, com o doctor REAL dentro do bring-up, é provada por execução em
 //   `src/lib/__tests__/prove-runner-image-gate.test.ts`.
@@ -730,7 +730,7 @@ export function runbookInvocation(content) {
  *                                          `--check` no `--check-only` e NUNCA
  *                                          `--env-file`)? `not` = o caso recusa
  *                                          ANTES do passo 1 (a ORDEM)
- * @property {{giteaEnv?: boolean, noProof?: boolean, noRunnerLabels?: boolean}} [expectDoctorArgs]
+ * @property {{giteaEnv?: boolean, noRunnerLabels?: boolean}} [expectDoctorArgs]
  *                                          o argv que o doctor TEM de ter recebido
  * @property {boolean} [expectDoctorBeforeStack]  o doctor tem de aparecer ANTES do
  *                                          'up -d gitea' no registro ORDENADO
@@ -863,7 +863,7 @@ export const PROOF_CASES = [
     expectMirrorMsg: false,
     expectMirrorFlags: true,
     expectEnsureFlags: "invoked",
-    expectDoctorArgs: { giteaEnv: true, noProof: false, noRunnerLabels: false },
+    expectDoctorArgs: { giteaEnv: true, noRunnerLabels: false },
     expectDoctorBeforeStack: true,
     why: "com a tag presente E o env em sincronia a stack SOBE o runner — é isto que faz do 'não subiu' uma prova (vale para a imagem e para o passo 0), e não um script quebrado",
   },
@@ -910,7 +910,7 @@ export const PROOF_CASES = [
     expectOrder: true,
     expectMirrorFlags: true,
     expectEnsureFlags: "invoked",
-    expectDoctorArgs: { giteaEnv: true, noProof: false, noRunnerLabels: true },
+    expectDoctorArgs: { giteaEnv: true, noRunnerLabels: true },
     expectDoctorBeforeStack: true,
     why: "o registro gravado é apagado ANTES de o runner subir — invertida a ordem, o runner voltaria com os labels ANTIGOS e o tier-1 seguiria desligado, em silêncio",
   },
@@ -932,7 +932,7 @@ export const PROOF_CASES = [
     expectOrder: true,
     expectMirrorFlags: true,
     expectEnsureFlags: "invoked",
-    expectDoctorArgs: { giteaEnv: true, noProof: false, noRunnerLabels: true },
+    expectDoctorArgs: { giteaEnv: true, noRunnerLabels: true },
     why: "sem volume do registro o comando não exige nada a apagar — a ausência do volume não é erro (o 'volume rm' só aparece quando há o que apagar)",
   },
   {
@@ -952,7 +952,7 @@ export const PROOF_CASES = [
     expectVolumeRm: true,
     expectMirrorFlags: true,
     expectEnsureFlags: "invoked",
-    expectDoctorArgs: { giteaEnv: true, noProof: false, noRunnerLabels: true },
+    expectDoctorArgs: { giteaEnv: true, noRunnerLabels: true },
     expectDoctorBeforeStack: true,
     why: "o runner NÃO sobe com o registro velho: se o volume do registro sobrevive, o script prefere falhar a re-registrar em silêncio",
   },
@@ -979,7 +979,7 @@ export const PROOF_CASES = [
     expectMirrorMsg: false,
     expectMirrorFlags: true,
     expectEnsureFlags: "invoked",
-    expectDoctorArgs: { giteaEnv: true, noProof: false },
+    expectDoctorArgs: { giteaEnv: true },
     why: "a instrução que o instalador imprime é EXTRAÍDA dele e executada com os `$GITEA_DIR`/`$REPO_DIR` dele: o caminho que o operador copia passa pelos três pré-requisitos e NÃO sobe nada — 'menciona o gitea-up.sh' não distinguia isso de um comando quebrado",
   },
   {
@@ -999,7 +999,7 @@ export const PROOF_CASES = [
     expectMirrorMsg: false,
     expectMirrorFlags: true,
     expectEnsureFlags: "invoked",
-    expectDoctorArgs: { giteaEnv: true, noProof: false, noRunnerLabels: false },
+    expectDoctorArgs: { giteaEnv: true, noRunnerLabels: false },
     expectDoctorBeforeStack: true,
     why: "a OUTRA instrução do instalador (a que sobe) também é executada: com ela a stack sobe — o `COMPOSE_FILE=$GITEA_DIR/docker-compose.yml` que ela exporta resolve no arquivo que o instalador copia (passo 4), e o veredito de prontidão vem ANTES de qualquer `up`",
   },
@@ -1023,7 +1023,7 @@ export const PROOF_CASES = [
     expectOrder: true,
     expectMirrorFlags: true,
     expectEnsureFlags: "invoked",
-    expectDoctorArgs: { giteaEnv: true, noProof: false, noRunnerLabels: true },
+    expectDoctorArgs: { giteaEnv: true, noRunnerLabels: true },
     expectDoctorBeforeStack: true,
     why: "as flags saem do bloco CERCADO do `deploy/GITEA.md` (o que se copia) e são executadas: o comando que o runbook ensina re-registra DE FATO (apaga o registro antes de subir) e passa `--no-runner-labels` ao doctor — a prosa podia citar `--re-register` e ainda ensinar uma flag que o bring-up recusa",
   },
@@ -1327,8 +1327,11 @@ async function runCase(testCase, { cwd, bash, spawn }) {
         // passo 0 acusaria a divergência do harness, não a do repo.
         TEMPLATE_FILE: templateFile,
         // O doctor dublado (ver `makeFakeBin`): a prova mede o bloqueio da
-        // IMAGEM, e o doctor roda a própria prova.
+        // IMAGEM, e o doctor roda a própria prova. O dublê é o corte
+        // PRIMÁRIO do ciclo; FORGE_DOCTOR_NESTED é a DEFESA EM
+        // PROFUNDIDADE — se o stub falhar, o doctor recusa em vez de recursar.
         DOCTOR_SCRIPT: doctorStub,
+        FORGE_DOCTOR_NESTED: "1",
         // Os ESPIÕES (ver `makeFakeBin`): medem o argv que o bring-up passa ao
         // mirror e ao ensure, delegando ao script REAL.
         MIRROR_SCRIPT: mirrorSpy,
@@ -1543,11 +1546,6 @@ async function runCase(testCase, { cwd, bash, spawn }) {
             `o doctor recebeu ${giteaEnv === null ? "sem --gitea-env" : `--gitea-env '${giteaEnv}'`} e esta subida usa '${envFile}' — o veredito mediria outro arquivo`,
           )
         }
-        if (want.noProof === false && doctorArgs.includes("--no-proof")) {
-          failures.push(
-            `o doctor recebeu --no-proof ('${doctorArgs.join(" ")}') — o veredito fica parcial POR CONSTRUÇÃO: a subida acontece sem que o portão de bloqueio tenha sido provado`,
-          )
-        }
         if (want.noRunnerLabels === true && !doctorArgs.includes("--no-runner-labels")) {
           failures.push(
             `o doctor NÃO recebeu --no-runner-labels ('${doctorArgs.join(" ")}'): o registro gravado velho é exatamente o que este modo conserta — o remédio ficaria travado pelo estado que ele cura`,
@@ -1660,7 +1658,7 @@ export async function proveRunnerImageGate({
     status: broken.length === 0 ? "holds" : "violated",
     detail:
       broken.length === 0
-        ? "com a tag ausente o runner NÃO sobe (subida e re-registro) e, com a tag presente, sobe (controles) — no re-registro o registro antigo é apagado ANTES de subir; com o env do host DIVERGENTE o passo 0 RECUSA antes de qualquer docker (sem tocar no registry); e as INSTRUÇÕES do instalador e do runbook são EXTRAÍDAS dos documentos e EXECUTADAS — o comando que o operador copia funciona, com as flags medidas no argv de cada filho (--host/--template no espelho, --gitea-env no ensure e no doctor, sem --no-proof, e --no-runner-labels no --re-register)"
+        ? "com a tag ausente o runner NÃO sobe (subida e re-registro) e, com a tag presente, sobe (controles) — no re-registro o registro antigo é apagado ANTES de subir; com o env do host DIVERGENTE o passo 0 RECUSA antes de qualquer docker (sem tocar no registry); e as INSTRUÇÕES do instalador e do runbook são EXTRAÍDAS dos documentos e EXECUTADAS — o comando que o operador copia funciona, com as flags medidas no argv de cada filho (--host/--template no espelho, --gitea-env no ensure e no doctor, e --no-runner-labels no --re-register)"
         : `${broken.length} caso(s) da prova falharam: ${broken.map((c) => c.id).join(", ")}`,
     cases,
   }

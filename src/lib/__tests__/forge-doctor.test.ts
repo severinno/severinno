@@ -59,6 +59,7 @@ import {
   sliceJob,
   summarize,
   ENV_MIRROR_CHECK,
+  NESTED_GUARD_ENV,
   deriveBringUpEnv,
 } from "../../../scripts/forge-doctor.mjs"
 
@@ -741,11 +742,9 @@ describe("summarize — o veredito", () => {
     expect(v.unknowns.join(" ")).toContain("prova do bloqueio não executada")
   })
 
-  it("--no-proof rebaixa o veredito e o declara no 'NÃO cobre'", () => {
-    const v = summarize(facts({ skippedProof: true }))
-    expect(v.verdict).toBe(VERDICT.UNKNOWN)
-    expect(v.unknowns.join(" ")).toContain("--no-proof")
-    expect(v.unproven[0]).toContain("--no-proof")
+  it("skippedGateContracts declara no 'NÃO cobre' (o veredito não é alterado — é declaração, não violação)", () => {
+    const v = summarize(facts({ skippedGateContracts: true }))
+    expect(v.unproven[0]).toContain("gates CORE no contrato de merge")
   })
 
   it("sempre declara o que NÃO cobre (branch protection, smoke, env do VPS)", () => {
@@ -1007,13 +1006,13 @@ describe("renderReport — a seção dos espelhos diz CONTRA O QUE comparou", ()
     expect(text).not.toContain("devolva o job")
   })
 
-  it("o gate VIOLADO aparece com o remédio, mesmo quando a prova foi pulada", () => {
-    // O gate responde outra pergunta — `--no-proof` não pode esconder um contrato
-    // que deixou de exigir o job.
+  it("o gate VIOLADO aparece com o remédio, mesmo quando a verificação de gates foi pulada", () => {
+    // O gate responde outra pergunta — puladar gates não pode esconder um
+    // contrato que deixou de exigir o job.
     const text = render(
       facts({
-        skippedProof: true,
-        proof: { status: "skipped", ok: false, detail: "pulada por --no-proof", cases: [] },
+        skippedGateContracts: true,
+        gateContracts: null,
         bringUpGate: {
           state: "violated",
           job: BRING_UP_GATE_JOB,
@@ -1032,7 +1031,7 @@ describe("renderReport — a seção dos espelhos diz CONTRA O QUE comparou", ()
         },
       }),
     )
-    expect(text).toContain("pulada por --no-proof")
+    expect(text).toContain("gates CORE pulada por --ci")
     expect(text).toContain("no contrato de merge): violated")
     expect(text).toContain("NAO exige o job")
     expect(text).toContain("devolva o job a lista da forja")
@@ -1068,13 +1067,7 @@ describe("CLI — o valor esperado entra por flag e é validado", () => {
     })
 
   it("--expected sem valor → exit 3 (uso inválido), e o erro diz o formato", () => {
-    const res = run(
-      "--no-guards",
-      "--no-proof",
-      "--no-compose-render",
-      "--no-protection",
-      "--expected",
-    )
+    const res = run("--no-guards", "--no-compose-render", "--no-protection", "--expected")
     expect(res.status).toBe(3)
     expect(res.stderr).toContain("--expected exige uma versão")
   })
@@ -1104,18 +1097,19 @@ describe("CLI — o valor esperado entra por flag e é validado", () => {
 describe("perfil --ci — o recorte local, com a régua inteira", () => {
   it("as sete seções do perfil são exatamente as que um PR não prova", () => {
     // A lista É o contrato. `guards` é o job que chama o doctor (rodar a bateria
-    // aqui seria recursão) e `proof` executa o `gitea-up.sh`, que executa este
-    // doctor (recursão de novo); as outras cinco precisam de rede, credencial de
-    // administração ou o estado do HOST.
+    // aqui seria recursão). `proof` NÃO entra aqui: a prova é a defesa em
+    // profundidade contra recursão (NESTED_GUARD_ENV) e o corte do ciclo
+    // (DOCTOR_SCRIPT) — sem ela o veredito diz "sem prova" sem nunca ter
+    // tentado. As outras sete precisam de rede, credencial ou o estado do HOST.
     expect([...CI_PROFILE_SKIPS].sort()).toEqual(
       [
         "guards",
-        "proof",
         "protection",
         "runnerLabels",
         "imageContract",
         "registryProbe",
         "openDebt",
+        "gateContractsCheck",
       ].sort(),
     )
   })
@@ -1135,10 +1129,10 @@ describe("perfil --ci — o recorte local, com a régua inteira", () => {
   })
 
   it("o veredito NOMEIA o perfil no topo do não-provado (não parece flag esquecida no YAML)", () => {
-    const v = summarize(facts({ ciProfile: true, skippedGuards: true, skippedProof: true }))
+    const v = summarize(facts({ ciProfile: true, skippedGuards: true }))
     expect(v.unproven[0]).toContain("PERFIL --ci")
     expect(v.unproven[0]).toContain("cron")
-    // As sete linhas de skip continuam lá: o perfil é um atalho, não um silêncio.
+    // As oito linhas de skip continuam lá: o perfil é um atalho, não um silêncio.
     expect(v.unproven.join(" ")).toContain("pulados por --no-guards")
   })
 
@@ -2782,7 +2776,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
     expect(v.blockers.join(" ")).toContain("PROVA do bloqueio")
   })
 
-  it("--no-proof NÃO executa a prova e rebaixa o veredito (falsa segurança é o alvo)", async () => {
+  it("--ci desliga a prova e rebaixa o veredito (falsa segurança é o alvo)", async () => {
     const dir = forgeFixture()
     let called = 0
     const { facts } = await diagnose({
@@ -2790,6 +2784,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       cwd: dir,
       envFile: "deploy/.env.gitea",
       expected: "1.3.14",
+      ciProfile: true,
       proof: false,
       run: passRun,
       imageDeps: { fetchImpl: async () => oci(200) },
@@ -3398,5 +3393,48 @@ describe("runGatesConcurrent — o paralelismo não muda o significado da bateri
     expect(asyncRes.code).toBeNull()
     expect(syncRes.error).toContain("não achei a linha 'run:'")
     expect(asyncRes.error).toBe(syncRes.error)
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DEFESA EM PROFUNDIDADE contra recursão: o doctor recusa quando
+// FORGE_DOCTOR_NESTED está definido — a dublagem (DOCTOR_SCRIPT) é o
+// corte primário, mas este guard é a segunda camada.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("NESTED_GUARD_ENV — defesa em profundidade contra recursão", () => {
+  const DOCTOR = join(ROOT, "scripts/forge-doctor.mjs")
+
+  it("${NESTED_GUARD_ENV} definido → exit 3, erro de recursão no stderr", () => {
+    const res = spawnSync(process.execPath, [DOCTOR, "--help"], {
+      cwd: ROOT,
+      env: { ...process.env, [NESTED_GUARD_ENV]: "1" },
+      encoding: "utf8",
+      timeout: 10_000,
+    })
+    // Exit 3 = detecção de recursão (diferente de 0=help, 1=bloqueada, 2=indeterminada)
+    expect(res.status).toBe(3)
+    expect(res.stderr).toContain("DETECTADO RECURSAO")
+    expect(res.stderr).toContain(NESTED_GUARD_ENV)
+    // O doctor NÃO deve ter processado o --help nem escrito a USAGE:
+    expect(res.stdout).toBe("")
+  })
+
+  it("${NESTED_GUARD_ENV} ausente → doctor funciona normalmente (help)", () => {
+    const env = { ...process.env }
+    delete env[NESTED_GUARD_ENV]
+    const res = spawnSync(process.execPath, [DOCTOR, "--help"], {
+      cwd: ROOT,
+      env,
+      encoding: "utf8",
+      timeout: 10_000,
+    })
+    expect(res.status).toBe(0)
+    expect(res.stdout).toContain("forge-doctor")
+    expect(res.stderr).toBe("")
+  })
+
+  it("constante NESTED_GUARD_ENV exportada e tem o nome esperado", () => {
+    expect(NESTED_GUARD_ENV).toBe("FORGE_DOCTOR_NESTED")
   })
 })

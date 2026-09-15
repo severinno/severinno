@@ -11,7 +11,7 @@
 //                                                # o PERFIL de pipeline (job guards):
 //                                                # fatia local, sem rede/credencial
 //   node scripts/forge-doctor.mjs --no-guards     # pula a bateria (só contrato + imagem)
-//   node scripts/forge-doctor.mjs --no-proof      # pula a prova do bloqueio (mais rápido)
+//   node scripts/forge-doctor.mjs --ci          # perfil CI (recortes explícitos, veredito honesto)
 //   node scripts/forge-doctor.mjs --no-protection # pula a leitura da forja (branch protection)
 //   node scripts/forge-doctor.mjs --no-runner-labels # pula o registro do runner (as duas forjas)
 //   node scripts/forge-doctor.mjs --no-image-contract # pula o contrato da imagem PUBLICADA
@@ -87,11 +87,10 @@
 // bring-up` só é finita porque a prova DUBLA o doctor que ela passa ao bring-up
 // dublado (`DOCTOR_SCRIPT`); o corte é medido em cada caso dela
 // (`expectDoctorStub`) e a cadeia completa é provada por execução em
-// `src/lib/__tests__/prove-runner-image-gate.test.ts`. `--no-proof` segue
-// existindo para os recortes manuais (e para o publicador de issue), mas NÃO para
-// a subida: desligá-la ali trocaria o corte por um veredito parcial POR
-// CONSTRUÇÃO — a subida aconteceria sem que o portão de bloqueio tivesse sido
-// provado.
+// `src/lib/__tests__/prove-runner-image-gate.test.ts`. A prova NÃO pode ser
+// desligada numa invocação manual — quem precisa de um recorte usa `--ci` (que
+// declara cada seção pulada explicitamente) ou flags individuais
+// (`--no-guards`, `--no-protection`, etc.).
 //
 // Com todos eles verdes, um runner sem a imagem publicada, ou um gate quebrado
 // no momento do merge, ainda travava o PR — e o diagnóstico chegava pelo
@@ -245,6 +244,13 @@ export const REQUIRED_CHECKS_APPLIER = "scripts/apply-required-checks.mjs"
  * protegido; mesma regra do manifesto).
  */
 export const BRING_UP_GATE_JOB = "bring-up-proof"
+
+/**\ * Env var que a PROVA seta no bring-up dublado. Se o doctor detecta este
+ * valor, sabe que está rodando DENTRO da própria prova (recursão) e falha
+ * alto — a dublagem (DOCTOR_SCRIPT) é o corte PRIMÁRIO, mas este guard é
+ * o DEFESA EM PROFUNDAZURA: se o stub falhar ou for removido, o doctor
+ * recusa em vez de recursar infinitamente. Exit 3 = detecção de recursão.\ */
+export const NESTED_GUARD_ENV = "FORGE_DOCTOR_NESTED"
 
 /** Exit code do `runner-image:check` quando a tag NÃO existe (a única falha da forja). */
 const IMAGE_MISSING = 4
@@ -610,7 +616,7 @@ export const VERDICT = {
  *                                 o check-forge-parity foi escrito para matar)
  *                                 nem "bloqueada" (mentiria para o outro lado)
  *                                 → INDETERMINADA.
- * * @param {{contract: object, gateContracts?: {results: object[], violations: string[]}, bringUpGate?: object, guards: object, image: object, proof: object, mirrors: object, openDebt?: object, skippedGuards?: boolean, skippedProof?: boolean, skippedOpenDebt?: boolean}} facts
+ * * @param {{contract: object, gateContracts?: {results: object[], violations: string[]}, bringUpGate?: object, guards: object, image: object, proof: object, mirrors: object, openDebt?: object, skippedGuards?: boolean, skippedOpenDebt?: boolean, skippedGateContracts?: boolean}} facts
  * @returns {{verdict: string, blockers: string[], unknowns: string[], unproven: string[]}}
  */
 export function summarize(facts) {
@@ -678,11 +684,7 @@ export function summarize(facts) {
   // A prova do bloqueio: só a VIOLAÇÃO é defeito (a garantia existe no texto e
   // não no comportamento). Não conseguir rodá-la é ausência de prova — nunca
   // "pronta", pelo mesmo motivo de sempre.
-  if (facts.skippedProof) {
-    unknowns.push(
-      "a prova do bloqueio foi pulada (--no-proof): o veredito não cobre se a subida da stack realmente exige a imagem",
-    )
-  } else if (facts.proof.status === "violated") {
+  if (facts.proof.status === "violated") {
     blockers.push(
       `a PROVA do bloqueio da imagem FALHOU (${facts.proof.detail}): com a tag ausente o runner SOBE — o pré-requisito da imagem é decorativo`,
     )
@@ -840,7 +842,9 @@ export function summarize(facts) {
     `o render do compose com o DOCKER DO RUNNER da forja: aqui o render é feito com ESTE docker (${GITEA_COMPOSE}). A imagem do job da forja EMBARCA o plugin \`compose\` — medido: a base catthehacker/ubuntu:act-latest entrega /usr/libexec/docker/cli-plugins/docker-compose, e o build do Dockerfile.ubuntu-bun FALHA se isso mudar — e o smoke exige o render (--require-compose). O que segue fora do alcance daqui é o socket do job: é a Prova 4 do smoke que o exercita, no host.`,
   ]
   if (facts.skippedGuards) unproven.unshift("os guards da forja (pulados por --no-guards)")
-  if (facts.skippedProof) unproven.unshift("a prova do bloqueio da imagem (pulada por --no-proof)")
+  if (facts.skippedGateContracts)
+    unproven.unshift("a verificação dos gates CORE no contrato de merge (pulada por --ci)")
+
   if (facts.skippedRunnerLabels) {
     unproven.unshift(
       "o registro do act_runner e o do runner auto-hospedado do GitHub (pulados por --no-runner-labels)",
@@ -854,6 +858,11 @@ export function summarize(facts) {
   }
   if (facts.skippedOpenDebt) {
     unproven.unshift("a dívida aberta no board (pulada por --no-open-debt)")
+  }
+  if (facts.skippedProof) {
+    unproven.unshift(
+      "a PROVA do bloqueio da imagem (pulada — sem ela, o veredito não garante que o runner não sobe sem a tag)",
+    )
   }
   if (facts.ciProfile) {
     // O PERFIL entra como uma linha PRÓPRIA, no TOPO das sete de skip (cada
@@ -2871,9 +2880,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // prova mede o comportamento, o gate mede a OBRIGAÇÃO.
   line()
   line("  4/6  Prova do bloqueio (registry de TESTE) + o GATE que a cobra no merge")
-  if (facts.skippedProof) {
-    line(`       ${MARK.skip()} pulada por --no-proof (o veredito NÃO cobre o bloqueio)`)
-  } else {
+  {
     const proofMark =
       facts.proof.status === "holds"
         ? MARK.ok()
@@ -2907,7 +2914,11 @@ export function renderReport(report, { emit = console.log } = {}) {
   // `gateContracts` é a lista genérica; `bringUpGate` é mantido para
   // compatibilidade (e já é coberto pela lista genérica).
   const gc = facts.gateContracts
-  if (gc?.results?.length > 0) {
+  if (facts.skippedGateContracts) {
+    line(
+      `       ${MARK.skip()} verificação dos gates CORE pulada por --ci (o veredito NÃO cobre se os gates CORE estão no contrato de merge)`,
+    )
+  } else if (gc?.results?.length > 0) {
     const violated = gc.results.filter((r) => r.state === "violated")
     const unavailable = gc.results.filter((r) => r.state === "unavailable")
     const proven = gc.results.filter((r) => r.state === "proven")
@@ -3123,7 +3134,6 @@ sondar de novo seria uma segunda verdade sobre o mesmo arquivo.
 
 Opções:
   --no-guards            pula a bateria de guards (mais rápido; o veredito fica parcial)
-  --no-proof             pula a prova do bloqueio da imagem (mais rápido; o veredito fica parcial)
   --no-protection        pula a leitura da branch protection registrada na forja
   --no-runner-labels     pula a comparação do registro do runner NAS DUAS forjas:
                          o act_runner (os labels são ESTADO no volume:
@@ -3164,8 +3174,8 @@ Opções:
   --json                 sai como JSON (mesma informação do relatório)
   --ci                   PERFIL de pipeline (o job \`guards\` da forja, a cada PR):
                          a fatia que não precisa de rede, credencial nem do
-                         HOST — equivale a --no-guards --no-proof
-                         --no-protection --no-runner-labels --no-image-contract
+                         HOST — equivale a --no-guards --no-protection
+                         --no-runner-labels --no-image-contract
                          --no-registry-probe --no-open-debt. O que ele NÃO faz
                          é baixar a régua: com --expected/--expected-var o VALOR
                          das variáveis é comparado e uma divergência BLOQUEIA;
@@ -3200,12 +3210,16 @@ lê a lista \`unproven\` do relatório (ou o log) para saber o que NÃO foi cobe
  */
 export const CI_PROFILE_SKIPS = [
   "guards",
-  "proof",
+  // "proof" NÃO entra aqui: a prova do bloqueio é a defesa em
+  // profundidade contra recursão (NESTED_GUARD_ENV) e o corte do ciclo
+  // (DOCTOR_SCRIPT). Sem ela, o veredito diz "sem prova" sem nunca
+  // ter tentado — e a subida da stack leva o runner ao ar sem a tag.
   "protection",
   "runnerLabels",
   "imageContract",
   "registryProbe",
   "openDebt",
+  "gateContractsCheck",
 ]
 
 export function parseArgs(argv) {
@@ -3218,6 +3232,7 @@ export function parseArgs(argv) {
     imageContract: true,
     composeRender: true,
     registryProbe: true,
+    gateContractsCheck: true,
     openDebt: true,
     envFile: DEFAULT_ENV_FILE,
     expected: null,
@@ -3233,7 +3248,6 @@ export function parseArgs(argv) {
       opts.ciProfile = true
       for (const name of CI_PROFILE_SKIPS) opts[name] = false
     } else if (arg === "--no-guards") opts.guards = false
-    else if (arg === "--no-proof") opts.proof = false
     else if (arg === "--no-protection") opts.protection = false
     else if (arg === "--no-runner-labels") opts.runnerLabels = false
     else if (arg === "--no-image-contract") opts.imageContract = false
@@ -3345,6 +3359,7 @@ export async function diagnose({
   imageContract = true,
   composeRender = true,
   registryProbe = true,
+  gateContractsCheck = true,
   openDebt = true,
   timeoutS = 120,
   run,
@@ -3385,7 +3400,9 @@ export async function diagnose({
   // TODOS os gates CORE: o verificador genérico itera os `CORE_INVARIANTS` que
   // têm `jobIds` e confere, para cada um, o manifesto + pipeline + proteção.
   const readAllGates = gateContractsDeps.readAllGateContracts ?? readAllGateContracts
-  const gateContracts = readAllGates({ cwd, contract, protection: protectionFacts })
+  const gateContracts = gateContractsCheck
+    ? readAllGates({ cwd, contract, protection: protectionFacts })
+    : null
   if (contractRun.code !== 0) {
     contract.failures.push(
       contractRun.code === null
@@ -3471,7 +3488,7 @@ export async function diagnose({
           },
     proof: proof
       ? await readProof({ cwd, deps: proofDeps })
-      : { status: "skipped", ok: false, detail: "pulada por --no-proof", cases: [] },
+      : { status: "skipped", detail: "prova do bloqueio pulada (proof=false)", cases: [] },
     compose: composeRender
       ? await readComposeInterpolation({ cwd, hostEnv: envFile, deps: composeDeps })
       : {
@@ -3525,18 +3542,32 @@ export async function diagnose({
     openDebt: openDebtFacts,
     ciProfile,
     skippedGuards: !guards,
-    skippedProof: !proof,
     skippedProtection: !protection,
     skippedRunnerLabels: !runnerLabels,
     skippedRegistryProbe: !registryProbe,
     skippedImageContract: !imageContract,
     skippedOpenDebt: !openDebt,
+    skippedGateContracts: !gateContractsCheck,
+    skippedProof: !proof,
   }
 
   return { facts }
 }
 
 async function main() {
+  // DEFESA EM PROFUNDIDADE contra recursão: a prova (seção 4) executa o
+  // bring-up, que executa o doctor. O corte primário é o DOCTOR_SCRIPT
+  // (dublagem), mas este guard é a segunda camada — se o stub falhar ou
+  // for removido, o doctor recusa em vez de recursar infinitamente.
+  if (process.env[NESTED_GUARD_ENV]) {
+    console.error(
+      `forge-doctor: DETECTADO RECURSAO — ${NESTED_GUARD_ENV} esta definido. ` +
+        `O doctor ja esta rodando DENTRO da propria prova. O ciclo ` +
+        `bring-up → doctor → prova → bring-up foi interrompido por este ` +
+        `guard (defesa em profundidade contra o corte via DOCTOR_SCRIPT).`,
+    )
+    process.exit(3)
+  }
   const opts = parseArgs(process.argv.slice(2))
   if (opts.error) {
     console.error(`forge-doctor: ${opts.error}`)

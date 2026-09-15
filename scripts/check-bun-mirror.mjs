@@ -394,14 +394,11 @@ export const FORGE_DOCTOR = "scripts/forge-doctor.mjs"
  *      de um env que não é o do repositório;
  *   1. a imagem do runner existe no registry (`ensure-runner-image.mjs`);
  *   2. a PRONTIDÃO está provada (`forge-doctor.mjs`), lendo o MESMO env
- *      (`--gitea-env`) e com o doctor INTEIRO — sem `--no-proof`. A prova do
- *      bloqueio EXECUTA o bring-up, então desligá-la parecia a única forma de
- *      não recursar; ela NÃO é: a prova DUBLA o doctor que passa ao bring-up
- *      (`DOCTOR_SCRIPT`), e essa dublagem é que faz
- *      `bring-up → doctor → prova → bring-up` terminar em UM nível. O veredito
- *      parcial POR CONSTRUÇÃO sai de cena junto com o `--no-proof`, e o guard
- *      que prende a dublagem (o que de fato sustenta o corte) é
- *      `checkDoctorCycleCut`. O default de `DOCTOR_SCRIPT` precisa ser o do
+ *      (`--gitea-env`) e com o doctor INTEIRO (sem flags --no-* que escondam
+ *      fatos). A prova do bloqueio EXECUTA o bring-up, então a recursão é
+ *      cortada pela DUBLAGEM que a prova faz do doctor — medida em cada caso
+ *      (`expectDoctorStub`) e na cadeia completa, por execução. O guard
+ *      `checkDoctorCycleCut` prende a dublagem (o que de fato sustenta o corte). O default de `DOCTOR_SCRIPT` precisa ser o do
  *      repositório, a checagem passa `--gitea-env "$ENV_FILE"`, e a ORDEM é
  *      contratual nos dois sentidos:
  *      DEPOIS da garantia da imagem (o doctor trata a tag ausente como
@@ -508,14 +505,9 @@ export function checkGiteaBringUp(bringUpContent, setupContent) {
     // O doctor roda INTEIRO. O ciclo `bring-up → doctor → prova → bring-up` é
     // cortado pela DUBLAGEM que a prova faz do doctor — medida em cada caso da
     // prova (`expectDoctorStub`) e na cadeia completa, por execução, em
-    // `src/lib/__tests__/prove-runner-image-gate.test.ts`. `--no-proof` aqui não
-    // é proteção contra recursão: é o veredito parcial POR CONSTRUÇÃO, e a
-    // subida volta a acontecer sem que o portão de bloqueio tenha sido provado.
-    if (/--no-proof\b/.test(doctorInvocation)) {
-      violations.push(
-        `${GITEA_BRING_UP}: o doctor é chamado com --no-proof — o veredito fica parcial POR CONSTRUÇÃO (a subida acontece sem provar o bloqueio da imagem). Rode o doctor INTEIRO: quem corta o ciclo é a dublagem do doctor na prova (${PROOF_SCRIPT}), não desligar a prova aqui.`,
-      )
-    }
+    // `src/lib/__tests__/prove-runner-image-gate.test.ts`. A flag --no-proof
+    // foi removida: quem precisa de um recorte usa --ci (declaração explícita)
+    // ou flags individuais (--no-guards, --no-protection, etc.).
   }
   // O default tem de ser o doctor DO REPOSITÓRIO: sobrescrever é teste, e um
   // default que não é o do repositório faria a subida medir outra coisa.

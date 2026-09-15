@@ -103,6 +103,8 @@ SUBTESTS=(
   "no-setup-bun|No-setup-bun — guard de ação externa deve FALHAR|scripts/test-mutation-no-setup-bun.sh"
   "runner-base|Runner-base — digest pinado deve ser detectado|scripts/test-mutation-runner-base.sh"
   "no-leaked-imports|No-leaked-imports — import resolvendo no node_modules do PAI + dep inexistente devem FALHAR (install pendente passa)|scripts/test-mutation-no-leaked-imports.sh"
+  "reconciliation|Reconciliation — fechamento de issues de dívida (reconcileDebt close) deve ser detectado|scripts/test-mutation-reconciliation.sh"
+  "nested-guard|Nested guard — NESTED_GUARD_ENV (defesa em profundidade contra recursão) deve ser detectado|scripts/test-mutation-nested-guard.sh"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────
@@ -262,5 +264,7 @@ pass "README anchors/toc/images + reverse, docs anchor, produtor sentinel,"
 pass "mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget [240/180/100s + drift exit 2 + mediana],"
 pass "e2e-cache-budget [600s/10 min + drift exit 2], lint-guard [prettier + eslint],"
 pass "mutation-count [drift do nº de sub-tests do master], no-leaked-imports [leak do"
-pass "node_modules do pai + dep inexistente + install pendente]) detectam todas as mutações."
+pass "node_modules do pai + dep inexistente + install pendente],"
+pass "reconciliation [fechamento de issues de dívida via reconcileDebt]) e"
+pass "nested-guard [NESTED_GUARD_ENV — defesa em profundidade contra recursão]) detectam todas as mutações."
 exit 0

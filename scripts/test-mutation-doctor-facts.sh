@@ -184,7 +184,7 @@ C2_INTACT=(
 C3_RED=(
   "os quatro limites de desenho (token, smoke, env de outro host, socket do job)|sempre declara o que NÃO cobre (branch protection, smoke, env do VPS)"
   "guards pulados por --no-guards|--no-guards rebaixa o veredito a INDETERMINADA e o diz no relatório"
-  "prova pulada por --no-proof|--no-proof rebaixa o veredito e o declara no 'NÃO cobre'"
+  "a_DECLARAÇÃO do que NÃO cobre|remover a lista de unproven esconde o limite do veredito"
   "o recorte do perfil --ci|o veredito NOMEIA o perfil no topo do não-provado (não parece flag esquecida no YAML)"
   "render pulado por --no-compose-render|pulada por --no-compose-render → INDETERMINADA, e o relatório diz o que ficou de fora"
   "protection pulada por --no-protection|pulada por --no-protection → INDETERMINADA e o relatório diz o que ficou de fora"
