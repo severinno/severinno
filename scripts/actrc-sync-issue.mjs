@@ -54,6 +54,7 @@
 //     --expected-var IMAGE_REGISTRY=ghcr.io --expected-var IMAGE_NAMESPACE=severinno
 //   node scripts/actrc-sync-issue.mjs --expected 1.3.14 --gitea-env /opt/gitea/.env
 //   node scripts/actrc-sync-issue.mjs --expected 1.3.14 --dry-run
+//   node scripts/actrc-sync-issue.mjs --report /tmp/actrc-sync-drift.json --backend gitea
 //
 // Exit codes:
 //   0 — sem drift (e a dívida aberta foi fechada), ou issue criada/comentada,
@@ -67,6 +68,7 @@
 import { spawnSync } from "node:child_process"
 import process from "node:process"
 import { pathToFileURL } from "node:url"
+import { readFileSync, existsSync } from "node:fs"
 
 import { MIRROR_VARIABLES, mirrorDriftReport } from "./check-actrc-sync.mjs"
 import {
@@ -75,6 +77,7 @@ import {
   defineDebtPublisher,
   issueBodies,
   makeGithubBackend,
+  selectIssueBackend,
   publisherBody,
   publisherHasSignature,
   publisherMarker,
@@ -86,6 +89,9 @@ import {
 
 /** Label de triagem (dedup + filtro no board). */
 export const ISSUE_LABEL = "actrc-sync-drift"
+export const ISSUE_LABEL_COLOR = "D93F0B"
+export const ISSUE_LABEL_DESCRIPTION =
+  "Drift dos espelhos de BUN_VERSION entre .actrc, env.gitea.example e repository variables"
 
 /**
  * Título ESTÁVEL entre runs — de propósito NÃO inclui a versão nem os arquivos
@@ -256,7 +262,7 @@ export function issueHasAnyMarker(issue) {
  *
  * `names` são as variáveis que driftaram NAQUELE espelho: o `bump-bun.sh` só
  * escreve a VERSÃO — para `IMAGE_REGISTRY`/`IMAGE_NAMESPACE` não há script de
- * bump, e mandar rodá-lo resolveria uma variável e deixaria a outra.
+ * bump, e mandá-lo resolveria uma variável e deixaria a outra.
  *
  * @param {{deployed: boolean}} mirror
  * @param {string[]} [names] variáveis divergentes no espelho (default: a versão)
@@ -571,10 +577,10 @@ function gh(args, { input } = {}) {
  * aberta COM a prova anexada (nada mentiu), nunca uma issue fechada em silêncio
  * sem dizer por quê.
  *
- * @param {{report: object, gh?: Function, log?: Function}} args
+ * @param {{report: object, gh?: Function, backend?: object, log?: Function}} args
  * @returns {{closed: number[], foreign: number[], alreadyClear: boolean}}
  */
-export function reconcileDebt({ report, gh: ghFn = gh, log = console.log } = {}) {
+export function reconcileDebt({ report, gh: ghFn = gh, backend, log = console.log } = {}) {
   // O ciclo (listar, separar o que é NOSSO do que é alheio, COMENTAR a prova,
   // fechar, fail-closed nos dois passos) é do CONTRATO: quem define o que é
   // nosso (o marcador declarado), o que caducou (o escopo: `single` fecha todas
@@ -583,7 +589,7 @@ export function reconcileDebt({ report, gh: ghFn = gh, log = console.log } = {})
   return reconcilePublisherDebt({
     publisher: ACTRC_PUBLISHER,
     input: report,
-    backend: githubBackendFor(ghFn),
+    backend: backend ?? githubBackendFor(ghFn),
     log,
   })
 }
@@ -592,6 +598,28 @@ export function reconcileDebt({ report, gh: ghFn = gh, log = console.log } = {})
 // Main
 // ---------------------------------------------------------------------------
 
+/**
+ * Lê um relatório JSON produzido por `check-actrc-sync.mjs --json`.
+ *
+ * O formato espelha `MirrorDriftReport` mas pode ter campos extras do JSON
+ * (como `hasDrift`, `exitCode`). Extraímos só o que o ciclo de issue precisa.
+ *
+ * @param {string} reportPath
+ * @returns {import("./check-actrc-sync.mjs").MirrorDriftReport}
+ */
+function readReportFile(reportPath) {
+  if (!existsSync(reportPath)) {
+    throw new Error(`relatório não encontrado: ${reportPath}`)
+  }
+  const raw = readFileSync(reportPath, "utf8")
+  const json = JSON.parse(raw)
+  // Validação mínima: o relatório precisa ter a forma de MirrorDriftReport
+  if (!Array.isArray(json.warnings)) {
+    throw new Error(`relatório inválido: campo 'warnings' não é array (${reportPath})`)
+  }
+  return json
+}
+
 function parseArgs(argv) {
   const options = {
     expected: null,
@@ -599,6 +627,8 @@ function parseArgs(argv) {
     actrc: null,
     envFile: null,
     dryRun: false,
+    backend: "github",
+    report: null,
     help: false,
   }
   for (let i = 0; i < argv.length; i++) {
@@ -619,9 +649,16 @@ function parseArgs(argv) {
         throw new Error("--expected-var: BUN_VERSION entra por --expected")
       }
       options.expectedVars[name] = raw.slice(eq + 1)
+    } else if (arg === "--backend") {
+      const value = argv[++i] ?? ""
+      if (!["github", "gitea"].includes(value)) {
+        throw new Error(`--backend deve ser github|gitea (recebi '${value}')`)
+      }
+      options.backend = value
     } else if (arg === "--actrc") options.actrc = argv[++i] ?? null
     else if (arg === "--gitea-env") options.envFile = argv[++i] ?? null
     else if (arg === "--dry-run") options.dryRun = true
+    else if (arg === "--report") options.report = argv[++i] ?? null
     else if (arg === "--help" || arg === "-h") options.help = true
     else throw new Error(`Argumento desconhecido: ${arg}`)
   }
@@ -633,26 +670,46 @@ async function main() {
   if (options.help) {
     console.log(
       "Uso: node scripts/actrc-sync-issue.mjs --expected <versão> [--expected-var NOME=VALOR]...\n" +
-        "       [--actrc <path>] [--gitea-env <path>] [--dry-run]\n" +
+        "       [--actrc <path>] [--gitea-env <path>] [--backend github|gitea] [--dry-run]\n" +
+        "       [--report /path/to/report.json]\n" +
         "  Com drift: publica/comenta a issue.\n" +
-        "  Sem drift: FECHA as issues que este script abriu (dívida resolvida), com a prova no comentário.",
+        "  Sem drift: FECHA as issues que este script abriu (dívida resolvida), com a prova no comentário.\n\n" +
+        "  --report: lê o diagnóstico de um JSON (produzido por check-actrc-sync.mjs --json)\n" +
+        "            em vez de rodar a comparação novamente.",
     )
     return 0
   }
-  // `--expected` AUSENTE é erro de uso. VAZIO (`--expected ""`) não é: significa
-  // a repository variable não criada — o drift mais grave, que vira issue.
-  if (options.expected === null) {
-    throw new Error(
-      "falta --expected <versão> (use --expected \"\" para 'variável não configurada')",
-    )
-  }
 
-  const report = mirrorDriftReport({
-    expected: options.expected,
-    expectedVars: options.expectedVars,
-    ...(options.actrc ? { actrcPath: options.actrc } : {}),
-    ...(options.envFile ? { envPath: options.envFile } : {}),
-  })
+  // `--report` lê o diagnóstico de um JSON já pronto (produzido pelo
+  // `check-actrc-sync.mjs --json`). `--expected` é OBRIGATÓRIO quando NÃO há
+  // `--report` (é a régua da comparação).
+  let report
+  if (options.report) {
+    report = readReportFile(options.report)
+    // `--expected` pode ser passado junto com `--report` para que o
+    // re-execute (--expected "1.3.14 --json /tmp/r.json") use o mesmo
+    // diagnóstico. Mas o report já carrega o `expected` original.
+    if (options.expected === null && report.expected !== undefined) {
+      options.expected = report.expected
+    }
+    if (options.expected === null) {
+      throw new Error("--report requer --expected ou o relatório deve conter o campo 'expected'")
+    }
+  } else {
+    // `--expected` AUSENTE é erro de uso. VAZIO (`--expected ""`) não é: significa
+    // a repository variable não criada — o drift mais grave, que vira issue.
+    if (options.expected === null) {
+      throw new Error(
+        "falta --expected <versão> (use --expected \"\" para 'variável não configurada')",
+      )
+    }
+    report = mirrorDriftReport({
+      expected: options.expected,
+      expectedVars: options.expectedVars,
+      ...(options.actrc ? { actrcPath: options.actrc } : {}),
+      ...(options.envFile ? { envPath: options.envFile } : {}),
+    })
+  }
 
   // O CICLO INTEIRO (label idempotente, dedup por assinatura no corpo E nos
   // comentários, comentar no título já aberto, criar, e RECONCILIAR — comentando
@@ -660,10 +717,17 @@ async function main() {
   // contrato. Antes ele era reimplementado aqui, e essa era a única cópia que
   // não passava por `decidePublication`: o dedup e o fechamento dos dois lados
   // eram regras paralelas que podiam divergir sem nenhum teste vermelho.
+  const backend = options.dryRun
+    ? { name: options.backend }
+    : selectIssueBackend(options, process.env, {
+        label: ISSUE_LABEL,
+        color: ISSUE_LABEL_COLOR,
+        description: ISSUE_LABEL_DESCRIPTION,
+      })
   await runDebtPublisher({
     publisher: ACTRC_PUBLISHER,
     input: report,
-    backend: githubBackendFor(),
+    backend,
     dryRun: options.dryRun,
   })
   return 0

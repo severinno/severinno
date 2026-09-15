@@ -9,12 +9,13 @@
 //
 // POR QUE EXISTE (auditoria dos jobs periódicos): um job de cron que termina
 // VERDE por desenho e só emite `::warning::` é um alerta MUDO — ninguém abre o
-// log de um run que passou. O repositório já trata isso como defeito em cinco
+// log de um run que passou. O repositório já trata isso como defeito em seis
 // lugares (`actrc-sync-issue.mjs`, `readme-reverse-issue.mjs`,
 // `required-checks-drift-issue.mjs`, `forge-doctor-issue.mjs`,
-// `mutation-trend-issue.mjs`), mas a regra vivia só na cabeça de quem escreveu
-// cada job: um `continue-on-error` novo, ou um guard que "só avisa", voltava a
-// abrir a mesma lacuna em silêncio. Aqui a decisão é ESCRITA e verificável.
+// `mutation-trend-issue.mjs`, `blob-crlf-scope-issue.mjs`), mas a regra vivia só
+// na cabeça de quem escreveu cada job: um `continue-on-error` novo, ou um guard
+// que "só avisa", voltava a abrir a mesma lacuna em silêncio. Aqui a decisão é
+// ESCRITA e verificável.
 //
 // A DECISÃO É ESCRITA (como no `ci/required-checks.json`): o manifesto
 // `ci/periodic-alerts.json` lista cada job agendado com o SEU canal e uma

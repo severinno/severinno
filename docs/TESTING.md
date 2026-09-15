@@ -353,6 +353,18 @@ gate) e **grepa o output pelo sentinel `'com CRLF'`**: se o mapeamento revelar
 CRLF em qualquer tipo `text eol=lf` do `.gitattributes`, o job falha com aviso
 (vira incidente visível no Actions em vez de mapeamento silencioso).
 
+> **A issue é o canal acionável** (o vermelho do run é a lembrança): o mesmo job
+> roda `scripts/blob-crlf-scope-issue.mjs`, que lê o relatório teed
+> (`--report all-text-report.txt`) + o exit do audit (`--audit-exit`), publica
+> **uma** issue (label `crlf-scope-drift`) com os blobs/tipos ofensores e o
+> remédio (`git filter-repo`), deduplica por assinatura do conjunto de paths e
+> **fecha** a issue quando o audit volta a reportar 0 CRLF. Para reproduzir sem o
+> cron:
+>
+> ```bash
+> node scripts/blob-crlf-scope-issue.mjs --dry-run   # roda o audit e imprime o que faria
+> ```
+
 > **🚀 Fluxo automatizado em 1 comando:** o procedimento completo abaixo
 > (fixture git real + REPORT + réplica do gate) está automatizado em
 > `scripts/validate-all-text-alert.sh` — roda no CI (job `all-text-alert-validation`

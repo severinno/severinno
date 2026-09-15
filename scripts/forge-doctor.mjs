@@ -206,10 +206,12 @@ import {
 } from "./check-bun-mirror.mjs"
 import { GITEA_WORKFLOW_DIR } from "./forge-workflows.mjs"
 import {
+  clearStaleClosure,
   describeGithubRead,
   githubReadConfig,
   issueHasAnyMarker,
   listIssuesByLabel,
+  readStaleClosures,
 } from "./issue-publish.mjs"
 import {
   ENV_MIRROR_COSTS,
@@ -1391,7 +1393,7 @@ export function coreGateContracts() {
     // Cada invariante pode ter VÁRIOS jobIds (um por forja). Cada jobId
     // ÚNICO vira um contrato — se a Gitea tem `lint` e o GitHub tem
     // `lint-guard`, são dois contratos distintos.
-    for (const [forge, jid] of Object.entries(inv.jobIds)) {
+    for (const jid of Object.values(inv.jobIds)) {
       if (seen.has(jid)) continue
       seen.add(jid)
       contracts.push({ invariantId: inv.id, jobId: jid, expectedCommand: inv.matches })
@@ -2154,6 +2156,18 @@ export const DEBT_SUBJECTS = [
     forges: ["github"],
     crossCheck: null,
   },
+  {
+    label: "crlf-scope-drift",
+    markerId: "blob-crlf-scope-drift",
+    subject:
+      "o alcance do CRLF no histórico cresceu (blobs em tipos `text eol=lf` além do gate `.sh`/`.bash`)",
+    forges: ["github"],
+    // O doctor NÃO varre a história do git por CRLF — o alcance é assunto que
+    // só o publicador vê (a correção é reescrita deliberada, não um fato do
+    // diagnóstico de prontidão). Declarar `null` é dizer isso, e nunca
+    // presumir caducidade.
+    crossCheck: null,
+  },
 ]
 
 /**
@@ -2431,6 +2445,40 @@ export async function readOpenDebt({
         : state === "partial"
           ? `lida no ${read.map((r) => r.forge).join(" e ")}; NÃO lida no ${unread.map((r) => r.forge).join(" e ")}`
           : `nenhuma forja pôde ser lida (${unread.map((r) => r.forge).join(", ")})`
+
+  // FECHAMENTOS SILENCIOSOS: issues que o publicador tentou fechar mas
+  // ainda estão abertas. O doctor surfacea como fato próprio — sem isso,
+  // um fechamento que não pegou deixaria a dívida aberta sem ninguém saber,
+  // e o doctor diria "pronta" quando a dívida ainda vive.
+  const staleClosures = readStaleClosures()
+  if (staleClosures.length > 0) {
+    for (const sc of staleClosures) {
+      // Remove registros cuja issue já não está aberta
+      const isOpen = items.some(
+        (item) => item.number === sc.issueNumber && item.forge === sc.publisher,
+      )
+      if (!isOpen) {
+        clearStaleClosure(sc.publisher, sc.issueNumber)
+      } else {
+        const staleDetail = `fechamento silencioso detectado: o publicador '${sc.publisher}' tentou fechar a issue #${sc.issueNumber} ${sc.count} vez(es) desde ${sc.detectedAt} mas ela continua aberta`
+        items.push({
+          forge: sc.publisher,
+          label: "stale-closure",
+          markerId: null,
+          subject: `fechamento silencioso: issue #${sc.issueNumber} deveria ter sido fechada pelo publicador '${sc.publisher}' mas ainda está aberta (${sc.count} tentativa(s) desde ${sc.detectedAt})`,
+          issues: [
+            {
+              number: sc.issueNumber,
+              title: "",
+              age: 0,
+              detail: staleDetail,
+            },
+          ],
+          detail: staleDetail,
+        })
+      }
+    }
+  }
 
   return {
     state,

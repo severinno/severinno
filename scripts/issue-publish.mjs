@@ -44,8 +44,95 @@
 //    elas lançam em erro em vez de sair: quem decide o exit code é o publicador)
 // =============================================================================
 
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs"
+import { dirname, join } from "node:path"
 import { spawnSync } from "node:child_process"
 import process from "node:process"
+import { fileURLToPath } from "node:url"
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+const REPO_ROOT = join(__dirname, "..")
+
+// ---------------------------------------------------------------------------
+// Fechamentos silenciosos (stale closures)
+// ---------------------------------------------------------------------------
+
+/**
+ * Arquivo que registra fechamentos que não pegaram (o backend respondeu
+ * sucesso mas a issue continua aberta). O doctor lê este arquivo para
+ * surfacear fechamentos silenciosos no relatório de prontidão.
+ */
+const STALE_CLOSURES_FILE = join(REPO_ROOT, ".forge-doctor", "stale-closures.json")
+
+/**
+ * Registra fechamentos silenciosos (issues que deveriam ter sido fechadas
+ * mas ainda estão abertas). Cada entrada tem { publisher, issueNumber,
+ * detectedAt }.
+ */
+export function recordStaleClosures(publisher, staleNumbers) {
+  if (staleNumbers.length === 0) return
+  const dir = dirname(STALE_CLOSURES_FILE)
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+
+  let existing = []
+  try {
+    existing = JSON.parse(readFileSync(STALE_CLOSURES_FILE, "utf8"))
+  } catch {
+    // arquivo não existe ou inválido — começa vazio
+  }
+
+  const now = new Date().toISOString()
+  for (const num of staleNumbers) {
+    // Atualiza ou adiciona
+    const idx = existing.findIndex((e) => e.publisher === publisher && e.issueNumber === num)
+    if (idx >= 0) {
+      existing[idx].detectedAt = now
+      existing[idx].count = (existing[idx].count ?? 1) + 1
+    } else {
+      existing.push({ publisher, issueNumber: num, detectedAt: now, count: 1 })
+    }
+  }
+
+  writeFileSync(STALE_CLOSURES_FILE, JSON.stringify(existing, null, 2), "utf8")
+}
+
+/**
+ * Remove fechamentos silenciosos que já foram resolvidos (issue não está
+ * mais aberta). Chamado pelo doctor depois de ler o arquivo.
+ */
+export function clearStaleClosure(publisher, issueNumber) {
+  let existing = []
+  try {
+    existing = JSON.parse(readFileSync(STALE_CLOSURES_FILE, "utf8"))
+  } catch {
+    return
+  }
+  const filtered = existing.filter(
+    (e) => !(e.publisher === publisher && e.issueNumber === issueNumber),
+  )
+  if (filtered.length === 0) {
+    try {
+      unlinkSync(STALE_CLOSURES_FILE)
+    } catch {
+      // arquivo já removido
+    }
+  } else {
+    writeFileSync(STALE_CLOSURES_FILE, JSON.stringify(filtered, null, 2), "utf8")
+  }
+}
+
+/**
+ * Lê os fechamentos silenciosos registrados. Usado pelo doctor para
+ * surfacear no relatório de prontidão.
+ */
+export function readStaleClosures() {
+  try {
+    return JSON.parse(readFileSync(STALE_CLOSURES_FILE, "utf8"))
+  } catch {
+    return []
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Marcador e decisão (puros — sem rede, sem gh)
@@ -636,7 +723,7 @@ export function selectIssueBackend(options, env = process.env, issue) {
  * @param {string | ((issue: object) => string)} params.resolutionBody  a prova
  * @param {string} [params.reason]               por que a dívida caducou (entra no log)
  * @param {(msg: string) => void} [params.log]
- * @returns {Promise<{closed: number[], foreign: number[], alreadyClear: boolean}>}
+ * @returns {Promise<{closed: number[], stale: number[], foreign: number[], alreadyClear: boolean}>}
  */
 export async function reconcileDebt({
   backend,
@@ -664,7 +751,7 @@ export async function reconcileDebt({
     log(
       `✅ nenhuma dívida aberta com o label '${backend.label}'${foreign.length > 0 ? ` (${foreign.length} issue(s) alheia(s) com o label, deixada(s) intocada(s))` : ""}.`,
     )
-    return { closed: [], foreign: foreign.map((i) => i.number), alreadyClear: true }
+    return { closed: [], stale: [], foreign: foreign.map((i) => i.number), alreadyClear: true }
   }
 
   const closed = []
@@ -679,7 +766,30 @@ export async function reconcileDebt({
     log(`✅ issue #${issue.number} fechada — ${reason}.`)
   }
 
-  return { closed, foreign: foreign.map((i) => i.number), alreadyClear: false }
+  // VERIFICAÇÃO PÓS-FECHAMENTO: re-lista as issues abertas e detecta fechamentos
+  // que não pegaram (o backend respondeu sucesso mas a issue continua aberta).
+  // Sem isso, um fechamento silencioso (permissão, race condition, bug do
+  // servidor) deixaria a dívida aberta sem ninguém saber — e o doctor diria
+  // "pronta" quando a dívida ainda vive.
+  const stale = []
+  if (closed.length > 0) {
+    const stillOpen = (await backend.openIssues()).map((i) => i.number)
+    for (const num of closed) {
+      if (stillOpen.includes(num)) {
+        stale.push(num)
+        log(
+          `⚠️  issue #${num} deveria ter sido fechada mas AINDA ESTÁ ABERTA — o fechamento falhou em silêncio. Revise manualmente.`,
+        )
+      }
+    }
+  }
+
+  // Registra fechamentos silenciosos em arquivo para o doctor surfacear.
+  if (stale.length > 0 && backend.name) {
+    recordStaleClosures(backend.name, stale)
+  }
+
+  return { closed, stale, foreign: foreign.map((i) => i.number), alreadyClear: false }
 }
 
 // ---------------------------------------------------------------------------
@@ -1020,6 +1130,11 @@ export async function reconcilePublisherDebt({
   })
 
   if (result.closed.length > 0) log(publisher.prose.reconciled(result.closed.length, input))
+  if (result.stale.length > 0) {
+    log(
+      `⚠️  ${result.stale.length} issue(s) deveria(m) ter sido fechada(s) mas ainda ESTÁ(aberta(s) — o fechamento falhou em silêncio: ${result.stale.map((n) => `#${n}`).join(", ")}.`,
+    )
+  }
   return result
 }
 
@@ -1048,9 +1163,9 @@ export async function runDebtPublisher({
 }) {
   if (publisher.scope.kind === "per-item") {
     if (dryRun) return publishDebt({ publisher, input, backend, dryRun, log })
-    const { closed } = await reconcilePublisherDebt({ publisher, input, backend, log })
+    const { closed, stale } = await reconcilePublisherDebt({ publisher, input, backend, log })
     const published = await publishDebt({ publisher, input, backend, log })
-    return { ...published, closed }
+    return { ...published, closed, stale }
   }
 
   if (publisher.actionable(input)) {
@@ -1071,6 +1186,6 @@ export async function runDebtPublisher({
     log(publisher.prose.reconcileDeferred())
     return { status: "in-sync" }
   }
-  const { closed } = await reconcilePublisherDebt({ publisher, input, backend, log })
-  return { status: "in-sync", closed }
+  const { closed, stale } = await reconcilePublisherDebt({ publisher, input, backend, log })
+  return { status: "in-sync", closed, stale }
 }

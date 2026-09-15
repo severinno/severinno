@@ -355,7 +355,7 @@ describe("reconcileDebt — sem drift, o que este script abriu deixa de existir"
   it("nada aberto → nada a fechar, e nenhuma chamada de escrita", async () => {
     const gh = fakeGh({ open: [] })
     const res = await reconcileDebt({ report: report(), gh: gh.fn, log: silent })
-    expect(res).toEqual({ closed: [], foreign: [], alreadyClear: true })
+    expect(res).toEqual({ closed: [], foreign: [], alreadyClear: true, stale: [] })
     expect(gh.calls).toHaveLength(1)
     expect(gh.calls[0][1]).toBe("list")
   })
@@ -714,11 +714,15 @@ describe("CLI (--dry-run): decide sozinho, sem depender do exit code do guard", 
 describe("fonte única das regras e contrato dos workflows", () => {
   it("o script IMPORTa mirrorDriftReport do guard (a issue não reimplementa a comparação)", () => {
     const source = readFileSync(SCRIPT, "utf8")
-    // Regex (e não a linha literal): o import pode crescer — a asserção é que
-    // `mirrorDriftReport` venha do GUARD, e nunca de uma segunda comparação.
-    expect(source).toMatch(
-      /import \{[^}]*\bmirrorDriftReport\b[^}]*\} from "\.\/check-actrc-sync\.mjs"/,
-    )
+    // A linha do import é LOCALIZADA e asserida por partes (em vez de um regex
+    // literal com `from "..."` dentro): o regex literal é lido como import REAL
+    // por `check-no-leaked-imports` (falso positivo de resolução). Asserir a
+    // linha inteira é mais forte que o regex: fixa NOME e ORIGEM.
+    const importLine = source
+      .split("\n")
+      .find((line) => line.startsWith("import") && line.includes("mirrorDriftReport"))
+    expect(importLine).toBeDefined()
+    expect(importLine).toContain('from "./check-actrc-sync.mjs"')
     // E o guard exporta a função que o CLI dele também usa.
     expect(readFileSync(GUARD, "utf8")).toContain("export function mirrorDriftReport")
   })
@@ -749,9 +753,10 @@ describe("fonte única das regras e contrato dos workflows", () => {
     expect(job).not.toContain("--fail")
   })
 
-  it("a FORJA não usa o publicador de issue (lá não há canal de issue: ela falha o run)", () => {
+  it("a FORJA usa o publicador de issue com --backend gitea", () => {
     const forge = readFileSync(join(ROOT, ".gitea", "workflows", "actrc-sync.yml"), "utf8")
-    expect(forge).not.toContain("actrc-sync-issue.mjs")
+    expect(forge).toContain("actrc-sync-issue.mjs")
+    expect(forge).toContain("--backend gitea")
     expect(forge).toContain("--fail")
   })
 })

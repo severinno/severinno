@@ -47,8 +47,9 @@
         "workflow": ".github/workflows/benchmark-weekly.yml",
         "job": "blob-crlf-all-text-alert",
         "signal": "CRLF histórico em tipos com eol=lf (alcance)",
-        "channel": "fail",
-        "evidence": "Alertar sobre CRLF ou falha do audit"
+        "channel": "issue",
+        "evidence": "scripts/blob-crlf-scope-issue.mjs",
+        "why": "o alcance é dívida de HISTÓRICO (correção = reescrita deliberada, não um bug de PR): a issue é o ticket que alguém lê no board; o vermelho do step de alerta continua como lembrança do run"
       },
       {
         "workflow": ".github/workflows/benchmark-weekly.yml",
@@ -188,9 +189,9 @@
         "workflow": ".gitea/workflows/actrc-sync.yml",
         "job": "actrc-sync",
         "signal": "espelhos do BUN_VERSION divergentes (inclui o env DESTE host)",
-        "channel": "fail",
-        "evidence": "--fail",
-        "why": "a forja não tem canal de issue próprio nesta pipeline: drift => run vermelho, que é o único sinal lido lá"
+        "channel": "issue",
+        "evidence": "scripts/actrc-sync-issue.mjs",
+        "why": "a forja ganhou canal de issue (`--backend gitea`, mesma regra do lado GitHub): o step publica/comenta/fecha o drift; o run vermelho do `Fail on drift` continua como lembrança"
       },
       {
         "workflow": ".gitea/workflows/forge-doctor.yml",

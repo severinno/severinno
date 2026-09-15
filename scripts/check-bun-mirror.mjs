@@ -508,6 +508,17 @@ export function checkGiteaBringUp(bringUpContent, setupContent) {
     // `src/lib/__tests__/prove-runner-image-gate.test.ts`. A flag --no-proof
     // foi removida: quem precisa de um recorte usa --ci (declaração explícita)
     // ou flags individuais (--no-guards, --no-protection, etc.).
+    //
+    // A regra FICA: uma flag REMOVIDA que volta ao bring-up é o mesmo defeito
+    // por outro caminho — um texto antigo (runbook, cópia de outra máquina)
+    // faria o veredito ficar parcial por construção; e, como a flag não existe
+    // mais, o doctor a recusa em runtime e a subida morre por um comando
+    // desatualizado. O remédio aponta o corte de verdade (a dublagem na prova).
+    if (/--no-proof\b/.test(doctorInvocation)) {
+      violations.push(
+        `${GITEA_BRING_UP}: o doctor é invocado com --no-proof (flag REMOVIDA — o veredito ficaria parcial por construção, e o doctor a recusa em runtime). Rode o doctor INTEIRO: quem corta o ciclo bring-up → doctor → prova é a dublagem do doctor na prova (scripts/prove-runner-image-gate.mjs).`,
+      )
+    }
   }
   // O default tem de ser o doctor DO REPOSITÓRIO: sobrescrever é teste, e um
   // default que não é o do repositório faria a subida medir outra coisa.

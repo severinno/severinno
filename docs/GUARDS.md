@@ -1942,19 +1942,19 @@ Uso inválido sai **3**; um `--keep` deixa o container no ar para inspeção.
 **O que protege:** que nenhum job de workflow AGENDADO termine VERDE por
 DESENHO sem canal acionável. Um `::warning::` (ou um `continue-on-error`, ou um
 guard que "só avisa") dentro de um run que passou é alerta **MUDO** — ninguém
-abre o log de um cron verde. É o mesmo defeito que o repositório corrigiu cinco
+abre o log de um cron verde. É o mesmo defeito que o repositório corrigiu seis
 vezes (`actrc-sync-issue.mjs`, `readme-reverse-issue.mjs`,
 `required-checks-drift-issue.mjs`, `forge-doctor-issue.mjs`,
-`mutation-trend-issue.mjs`) — mas a REGRA vivia na cabeça de quem escreveu cada
-job, então o sexto caso entrava em silêncio.
+`mutation-trend-issue.mjs`, `blob-crlf-scope-issue.mjs`) — mas a REGRA vivia na
+cabeça de quem escreveu cada job, então o sétimo caso entrava em silêncio.
 
 **A auditoria (26 jobs em 11 workflows agendados, duas forjas).** O que foi
 encontrado e o desfecho de cada um:
 
-| Canal       | Jobs                                                                                                                                                                                                                                                                    | Por que                                                                                                            |
-| :---------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------- |
-| **`issue`** | `benchmark` (regressão PostGIS), `readme-reverse-audit`, `actrc-sync`, `mutation-coord-timing` + `mutation-coord-trend` (via `mutation-coord-alert`), `drift` (GitHub e Gitea), `doctor` (forja)                                                                        | o run fica verde de propósito (tendência/aviso não bloqueia); a issue é o canal, com dedup e fechamento automático |
-| **`fail`**  | `smoke`, `setup-bun-warm`, `act-startup-bench`, `blob-crlf-history-audit`, `blob-crlf-all-text-alert`, `secret-leaks-audit`, `seed-guards`, `default-branch-workflow-guard`, `benchmark-all`, `benchmark` (GiST), `mirror` (×3), `guard` (tier-1), `actrc-sync` (forja) | o sinal é violação de corretude/configuração: o run vermelho é a resposta certa                                    |
+| Canal       | Jobs                                                                                                                                                                                                                                               | Por que                                                                                                            |
+| :---------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------- |
+| **`issue`** | `benchmark` (regressão PostGIS), `readme-reverse-audit`, `actrc-sync`, `mutation-coord-timing` + `mutation-coord-trend` (via `mutation-coord-alert`), `drift` (GitHub e Gitea), `doctor` (forja), `blob-crlf-all-text-alert`, `actrc-sync` (forja) | o run fica verde de propósito (tendência/aviso não bloqueia); a issue é o canal, com dedup e fechamento automático |
+| **`fail`**  | `smoke`, `setup-bun-warm`, `act-startup-bench`, `blob-crlf-history-audit`, `secret-leaks-audit`, `seed-guards`, `default-branch-workflow-guard`, `benchmark-all`, `benchmark` (GiST), `mirror` (×3), `guard` (tier-1)                              | o sinal é violação de corretude/configuração: o run vermelho é a resposta certa                                    |
 
 **Os dois defeitos que a auditoria fechou (não eram só teóricos):**
 

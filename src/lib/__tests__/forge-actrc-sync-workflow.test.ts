@@ -136,14 +136,22 @@ describe("forge actrc-sync — paridade com o GitHub", () => {
     expect(githubBlock).toContain('--expected "${{ vars.BUN_VERSION }}"')
   })
 
-  it("a DIFERENÇA permitida é só o modo: --fail na forja, aviso no GitHub", () => {
-    expect(guardLine()).toContain("--fail")
+  it("a forja usa o MESMO canal de issue do GitHub (`--backend gitea`), nunca `::warning::`", () => {
+    // A diferença entre as forjas NÃO é mais o MODO de falha: as duas
+    // publicam a ISSUE (o canal acionável) e as duas falham o run como
+    // lembrança. O que muda é só QUEM cria o ticket — `--backend gitea` na
+    // forja —, e nenhum dos lados usa um aviso dentro de um run verde.
+    expect(guardLine()).not.toContain("--fail")
     expect(guardLine()).not.toContain("::warning::")
+    const issueStep = steps.find((s) => (s.run ?? "").includes("actrc-sync-issue.mjs"))
+    expect(issueStep, "o publicador de issue sumiu do job da forja").toBeDefined()
+    expect(issueStep?.run ?? "").toContain("--backend gitea")
   })
 
   it("o erro da forja carrega o remédio (não só 'falhou')", () => {
-    const annotations = runLines().filter((l) => l.startsWith('echo "::error::'))
-    expect(annotations.length).toBeGreaterThanOrEqual(2)
+    const failStep = steps.find((s) => s.name?.includes("Fail on drift"))
+    expect(failStep, "o step que falha o run sumiu").toBeDefined()
+    expect(failStep?.run ?? "").toContain("gitea-up.sh --re-register")
     expect(content).toContain("gitea-up.sh --re-register")
   })
 })

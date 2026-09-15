@@ -187,6 +187,16 @@ function makeFakeGitea() {
       if (req.method === "POST" && commentMatch) {
         const issue = issues.find((i) => i.number === Number(commentMatch[1]))
         if (!issue) return json(404, null)
+        // A PROVA (comentário) tem de entrar numa issue AINDA aberta: o
+        // fechamento é o ÚLTIMO passo do ciclo. Comentar numa issue já
+        // fechada significaria que a prova não chegou a tempo — o ciclo
+        // está invertido (close antes de comment) e a dívida mente.
+        if (issue.state === "closed") {
+          return json(403, {
+            message:
+              "cannot comment on closed issue — order violation: comment must happen before close",
+          })
+        }
         issue.comments.push({ body: (body as { body?: string })?.body ?? "" })
         return json(201, { id: issue.comments.length })
       }
@@ -338,7 +348,8 @@ describe("forge-doctor-issue — o relatório REAL do doctor", () => {
   const HERMETIC = [
     "--json",
     "--no-guards",
-    "--no-proof",
+    // --no-proof foi removido: a prova é a defesa em profundidade contra
+    // recursão e sempre roda em invocação manual
     "--no-protection",
     "--no-runner-labels",
     "--no-image-contract",
@@ -572,6 +583,102 @@ describe("forge-doctor-issue — CLI real contra Gitea dublê", () => {
     expect(again.status, again.stderr).toBe(0)
     expect(gitea.issues).toHaveLength(1)
     expect(again.stdout).toContain("nenhuma dívida aberta")
+  })
+
+  it("stale-closure: fechamento que não pega é detectado", async () => {
+    // Cria um servidor Gitea que MENTE: responde 200 ao close mas NÃO muda
+    // o estado da issue (simula bug do servidor ou permissão).
+    const lyingIssues: any[] = []
+    let lyingNextNumber = 1
+    const lyingServer = createServer((req, res) => {
+      const chunks: Buffer[] = []
+      req.on("data", (c: Buffer) => chunks.push(c))
+      req.on("end", () => {
+        const raw = Buffer.concat(chunks).toString("utf8")
+        const body = raw ? JSON.parse(raw) : null
+        const path = new URL(req.url ?? "/", "http://127.0.0.1").pathname
+        const json = (s: number, p: unknown) => {
+          res.writeHead(s, { "Content-Type": "application/json" })
+          res.end(p === null ? "" : JSON.stringify(p))
+        }
+        const issuesPath = `/api/v1/repos/${REPO}/issues`
+        const commentMatch = path.match(
+          new RegExp(`^/api/v1/repos/${REPO}/issues/(\\d+)/comments$`),
+        )
+        const issueMatch = path.match(new RegExp(`^/api/v1/repos/${REPO}/issues/(\\d+)$`))
+        if (req.method === "GET" && path === `/api/v1/repos/${REPO}/labels`) {
+          return json(200, [{ id: 1, name: ISSUE_LABEL, color: `#${ISSUE_LABEL_COLOR}` }])
+        }
+        if (req.method === "POST" && path === `/api/v1/repos/${REPO}/labels`) {
+          return json(409, null)
+        }
+        if (req.method === "GET" && path === issuesPath) {
+          return json(200, lyingIssues)
+        }
+        if (req.method === "POST" && path === issuesPath) {
+          const issue = {
+            number: lyingNextNumber++,
+            title: body?.title ?? "",
+            body: body?.body ?? "",
+            comments: [] as any[],
+            state: "open",
+            labels: [{ id: 1, name: ISSUE_LABEL }],
+          }
+          lyingIssues.push(issue)
+          return json(201, { number: issue.number })
+        }
+        if (req.method === "POST" && commentMatch) {
+          const issue = lyingIssues.find((i) => i.number === Number(commentMatch[1]))
+          if (!issue) return json(404, null)
+          issue.comments.push({ body: body?.body ?? "" })
+          return json(201, { id: issue.comments.length })
+        }
+        // PATCH: responde 200 MAS NÃO muda o estado (fechamento que não pega)
+        if (req.method === "PATCH" && issueMatch) {
+          return json(200, { state: "open" })
+        }
+        return json(404, null)
+      })
+    })
+    const lyingUrl = await new Promise<string>((resolve) => {
+      lyingServer.listen(0, "127.0.0.1", () => {
+        const addr = lyingServer.address()
+        resolve(`http://127.0.0.1:${typeof addr === "object" && addr ? addr.port : 0}`)
+      })
+    })
+
+    // Abre a dívida no server que mente
+    const createRes = await runCli(
+      ["--report", writeReport(doctorReport()), "--backend", "gitea"],
+      { GITEA_URL: lyingUrl },
+    )
+    expect(createRes.status, createRes.stderr).toBe(0)
+    expect(lyingIssues).toHaveLength(1)
+
+    // O veredito volta a PRONTA — o publicador tenta fechar
+    const readyReport = writeReport(
+      doctorReport({
+        verdict: VERDICT.READY,
+        blockers: [],
+        unknowns: [],
+        facts: {
+          protection: { state: "proven" },
+          runnerLabels: { state: "proven" },
+          openDebt: { state: "proven" },
+        },
+      }),
+    )
+    const reconcile = await runCli(["--report", readyReport, "--backend", "gitea"], {
+      GITEA_URL: lyingUrl,
+    })
+
+    // O publicador deve ter detectado o stale-closure
+    expect(reconcile.stdout).toContain("deveria ter sido fechada")
+    expect(reconcile.stdout).toContain("AINDA ESTÁ ABERTA")
+    // A issue continua aberta (o fechamento falhou)
+    expect(lyingIssues[0].state).toBe("open")
+
+    await new Promise<void>((done) => lyingServer.close(() => done()))
   })
 
   it("dry-run imprime o corpo e não escreve nada, nem exige credencial", async () => {

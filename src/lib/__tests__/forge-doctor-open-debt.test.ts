@@ -129,6 +129,7 @@ describe("readOpenDebt — a leitura do board", () => {
       [
         "gitea:required-checks-drift",
         "github:actrc-sync-drift",
+        "github:crlf-scope-drift",
         "github:mutation-trend-drift",
         "github:readme-drift",
         "github:required-checks-drift",

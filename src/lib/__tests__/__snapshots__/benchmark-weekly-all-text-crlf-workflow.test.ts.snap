@@ -2,7 +2,11 @@
 
 exports[`benchmark-weekly.yml — job blob-crlf-all-text-alert (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
 {
-  "name": "Blob CRLF all-text (alcance, aviso)",
+  "name": "Blob CRLF all-text (alcance, aviso + issue)",
+  "permissions": {
+    "contents": "read",
+    "issues": "write",
+  },
   "runs-on": "self-hosted",
   "steps": [
     {
@@ -25,6 +29,14 @@ else
   echo "found_crlf=false" >> "$GITHUB_OUTPUT"
 fi
 ",
+    },
+    {
+      "env": {
+        "GH_TOKEN": "\${{ github.token }}",
+      },
+      "if": "always()",
+      "name": "Publicar o alcance do CRLF como Issue acionável (e fechar quando resolver)",
+      "run": "node scripts/blob-crlf-scope-issue.mjs --report all-text-report.txt --audit-exit "\${{ steps.alltext.outputs.report_exit }}"",
     },
     {
       "if": "steps.alltext.outputs.report_exit != '0' || steps.alltext.outputs.found_crlf == 'true'",

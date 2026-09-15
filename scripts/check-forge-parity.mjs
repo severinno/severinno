@@ -6,6 +6,7 @@
 // Usage:
 //   node scripts/check-forge-parity.mjs
 //   node scripts/check-forge-parity.mjs --gates      # lista os gates descobertos
+//   node scripts/check-forge-parity.mjs --root X     # fixture (mutation test)
 //
 // Exit code:
 //   0 — classificacao completa e paridade do CORE mantida
@@ -65,7 +66,7 @@
 // =============================================================================
 
 import { existsSync, readFileSync } from "node:fs"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
 
 const ROOT = process.cwd()
 
@@ -573,7 +574,16 @@ const isMain =
   !!process.argv[1] && process.argv[1].split(/[\\/]/).pop() === "check-forge-parity.mjs"
 
 if (isMain) {
-  const read = defaultReadFile()
+  // `--root X` roda o guard contra um diretório (fixture dos mutation tests) em
+  // vez do cwd: a evidência do mutation test passa a ser o exit code do GUARD
+  // real contra o fixture, e não uma sondagem da função pura.
+  const rootIdx = process.argv.indexOf("--root")
+  if (rootIdx !== -1 && !process.argv[rootIdx + 1]) {
+    console.error("check-forge-parity: ❌ --root exige um diretório (fail-closed)")
+    process.exit(2)
+  }
+  const read =
+    rootIdx !== -1 ? defaultReadFile(resolve(process.argv[rootIdx + 1])) : defaultReadFile()
 
   // Modo inventario: mostra o que o guard enxerga, para a classificacao ser
   // revisavel de fato (e nao um ato de fe).

@@ -6,7 +6,7 @@
  *
  * O defeito que isto impede: um cron que termina VERDE por desenho e só emite
  * `::warning::` é alerta MUDO (ninguém abre o log de um run que passou). O
- * repositório já corrigiu isso em cinco publicadores; sem um guard, o SEIS
+ * repositório já corrigiu isso em seis publicadores; sem um guard, o SÉTIMO
  * volta na próxima vez que alguém escrever `continue-on-error` ou "só avisa".
  *
  * Duas camadas:

@@ -18,6 +18,16 @@
 // O job semanal `actrc-sync` do benchmark-weekly.yml passa os valores reais via
 // `--expected` (o atalho de `BUN_VERSION`) e `--expected-var NOME=VALOR`.
 //
+// DUAS PERGUNTAS, UMA RÉGUA POR VARIÁVEL. O guard estático
+// (`scripts/check-bun-mirror.mjs`, `scripts/check-registry-source.mjs`) valida a
+// EXISTÊNCIA: que cada espelho DEFINE a variável (a linha `--var BUN_VERSION=`,
+// a flag `--var IMAGE_REGISTRY=`, o template declarando o NOME). O VALOR não é
+// verificável estaticamente — a repository variable só existe em runtime (no
+// Actions, na forja) — e é este script que o compara, para TODAS as variáveis
+// que o compose consome: `BUN_VERSION`, `IMAGE_REGISTRY` e `IMAGE_NAMESPACE`.
+// O job semanal `actrc-sync` do benchmark-weekly.yml passa os valores reais via
+// `--expected` (o atalho de `BUN_VERSION`) e `--expected-var NOME=VALOR`.
+//
 // POR QUE TODAS (e não só a versão): até esta extensão, `IMAGE_REGISTRY` e
 // `IMAGE_NAMESPACE` ficavam com a checagem de existência do guard estático — um
 // valor trocado (registry ou namespace) passava por tudo em silêncio.
@@ -70,6 +80,7 @@
 //   node scripts/check-actrc-sync.mjs --expected "${{ vars.BUN_VERSION }}" --fail
 //   node scripts/check-actrc-sync.mjs --expected 1.3.14 --actrc /tmp/.actrc
 //   node scripts/check-actrc-sync.mjs --expected 1.3.14 --gitea-env /tmp/env.gitea
+//   node scripts/check-actrc-sync.mjs --expected 1.3.14 --json /tmp/report.json
 //
 // Escopo: lê o .actrc e os arquivos de env da forja. Os de env são DESCOBERTOS
 // no workspace: o template comitado (deploy/env.gitea.example) sempre que
@@ -78,11 +89,11 @@
 // apontar um arquivo específico (ex.: /opt/gitea/.env). Um espelho AUSENTE é
 // ignorado — a ausência do arquivo não é o drift que este guard caça (o
 // estático é que exige a linha). Uma variável cujo valor NÃO foi passado não é
-// comparada, e o script DIZ isso (nunca a apresenta como conferida).
-// Node puro, sem deps, <1s.
+// comparada, e o script DIZ isso (nunca a apresenta como conferida). Node puro,
+// sem deps, <1s.
 // =============================================================================
 
-import { readFileSync, existsSync } from "node:fs"
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs"
 import { join } from "node:path"
 
 /**
@@ -619,6 +630,7 @@ if (isMain) {
   // os arquivos do host que existirem no workspace.
   let envPath = null
   let failMode = false
+  let jsonOutput = null
   const expectedVars = {}
   let usageError = null
 
@@ -655,7 +667,7 @@ if (isMain) {
     if (args[i] === "--expected") {
       expected = args[i + 1] ?? ""
       // Uma flag engolida como valor (`--expected --fail`) seria comparada como
-      // se fosse uma versao — o espelho "divergiria de '--fail'" e a mensagem
+      // se fosse uma versao — o espelho "divergiria de '--fail'` e a mensagem
       // mandaria o operador procurar um drift que nao existe.
       if (expected.startsWith("--")) {
         usageError = `--expected exige uma versao, nao uma flag (recebi '${expected}')`
@@ -665,19 +677,20 @@ if (isMain) {
     if (args[i] === "--actrc") actrcPath = args[i + 1] || actrcPath
     if (args[i] === "--gitea-env") envPath = args[i + 1] || envPath
     if (args[i] === "--fail") failMode = true
+    if (args[i] === "--json") jsonOutput = args[i + 1] || "/dev/stdout"
   }
 
   if (usageError) {
     console.error(`check-actrc-sync: ${usageError}`)
     console.error(
-      "  Uso: node scripts/check-actrc-sync.mjs --expected <versão> [--expected-var NOME=VALOR]... [--fail] [--actrc <path>] [--gitea-env <path>]",
+      "  Uso: node scripts/check-actrc-sync.mjs --expected <versão> [--expected-var NOME=VALOR]... [--fail] [--actrc <path>] [--gitea-env <path>] [--json]",
     )
     process.exit(2)
   }
   if (args.indexOf("--expected") === -1) {
     console.error("check-actrc-sync: uso inválido — falta --expected <versão>")
     console.error(
-      "  Uso: node scripts/check-actrc-sync.mjs --expected <versão> [--expected-var NOME=VALOR]... [--fail] [--actrc <path>] [--gitea-env <path>]",
+      "  Uso: node scripts/check-actrc-sync.mjs --expected <versão> [--expected-var NOME=VALOR]... [--fail] [--actrc <path>] [--gitea-env <path>] [--json]",
     )
     process.exit(2)
   }
@@ -715,6 +728,28 @@ if (isMain) {
       `check-actrc-sync: · sem valor para comparar (${report.unproven.join(", ")}) — ` +
         report.unproven.map((n) => `--expected-var ${n}=<valor>`).join(" "),
     )
+  }
+
+  // ── JSON output (para automação / issue publisher) ──────────────────────
+  if (jsonOutput) {
+    const jsonReport = {
+      ...report,
+      hasDrift: report.warnings.length > 0,
+      checkedLabels,
+      exitCode: failMode && report.warnings.length > 0 ? 1 : 0,
+    }
+    try {
+      if (jsonOutput !== "/dev/stdout") {
+        const dir = jsonOutput.replace(/[/\\][^/\\]+$/, "")
+        if (dir && !existsSync(dir)) mkdirSync(dir, { recursive: true })
+        writeFileSync(jsonOutput, JSON.stringify(jsonReport, null, 2), "utf8")
+        console.error(`check-actrc-sync: relatório JSON salvo em ${jsonOutput}`)
+      } else {
+        console.log(JSON.stringify(jsonReport, null, 2))
+      }
+    } catch (e) {
+      console.error(`check-actrc-sync: falha ao salvar JSON: ${e.message}`)
+    }
   }
 
   if (report.warnings.length === 0) {

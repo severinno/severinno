@@ -22,15 +22,17 @@
 // Node puro, sem deps, <1s.
 //
 // Usage:
-//   node scripts/check-no-setup-bun.mjs
+//   node scripts/check-no-setup-bun.mjs              # repo atual (cwd)
+//   node scripts/check-no-setup-bun.mjs --root X     # fixture (mutation test)
 //
 // Exit codes:
 //   0 — nenhuma ocorrência (pass)
 //   1 — pelo menos uma ocorrência (fail)
+//   2 — infra: --root sem valor / diretório inexistente (fail-closed)
 // =============================================================================
 
-import { readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
+import { join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { existingWorkflowDirs } from "./forge-workflows.mjs"
@@ -85,7 +87,17 @@ export function scanAllForges(root) {
 }
 
 function main() {
-  const cwd = process.cwd()
+  const argv = process.argv.slice(2)
+  const rootIdx = argv.indexOf("--root")
+  if (rootIdx !== -1 && !argv[rootIdx + 1]) {
+    console.error("❌ --root exige um diretório (fail-closed)")
+    process.exit(2)
+  }
+  const cwd = rootIdx !== -1 ? resolve(argv[rootIdx + 1]) : process.cwd()
+  if (!existsSync(cwd)) {
+    console.error(`❌ --root inexistente: ${cwd}`)
+    process.exit(2)
+  }
   const dirs = existingWorkflowDirs(cwd)
   const results = scanAllForges(cwd)
 

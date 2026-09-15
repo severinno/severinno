@@ -319,6 +319,54 @@ jobs:
               \"diff\": $(echo "$DIFF_TRUNCATED" | jq -Rs .)
             }" || echo "  ⚠ Webhook failed (non-critical)"
 
+      # ── Close regression issue when baseline returns to stable ───────
+      # When the comparison succeeds (no regression), close any open issue
+      # with the benchmark-regression label. The dívida não fica aberta
+      # depois de resolvida.
+      - name: Close regression issue (baseline stable)
+        if: steps.compare.outcome == 'success' || steps.baseline.outputs.baseline_exists != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const repo = context.repo;
+            const runUrl = `${context.serverUrl}/${repo.owner}/${repo.repo}/actions/runs/${context.runId}`;
+            const threshold = '${{ steps.changes.outputs.threshold }}';
+
+            // Find open issues with the regression label
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: repo.owner,
+              repo: repo.repo,
+              state: 'open',
+              labels: 'benchmark-regression',
+              per_page: 10
+            });
+
+            if (issues.length === 0) {
+              console.log('  ✅ No open regression issues to close');
+              return;
+            }
+
+            for (const issue of issues) {
+              await github.rest.issues.createComment({
+                owner: repo.owner,
+                repo: repo.repo,
+                issue_number: issue.number,
+                body: `### ✅ Baseline returned to stable (${new Date().toISOString()})\n\n` +
+                  `The weekly PostGIS benchmark ran without regression (threshold: ${threshold}%).\n\n` +
+                  `**Workflow**: [Benchmark Weekly](${runUrl})\n` +
+                  `**Run**: ${context.runId}\n\n` +
+                  `Closing this issue automatically.`
+              });
+              await github.rest.issues.update({
+                owner: repo.owner,
+                repo: repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+                state_reason: 'completed'
+              });
+              console.log(`  🔒 Closed regression issue #${issue.number}`);
+            }
+
       # ── Copy latest to baseline ────────────────────────────────────────
       - name: Update baseline
         id: update
@@ -576,12 +624,25 @@ jobs:
   # ao escopo. Se o histórico estiver limpo, o sentinel 'com CRLF' não
   # aparece e o job passa silenciosamente.
   #
+  # A ISSUE É O CANAL, não o `::error::`: um cron que só fica vermelho é
+  # alerta MUDO (ninguém abre o log de um run que já falhou). O step
+  # `if: always()` roda `scripts/blob-crlf-scope-issue.mjs`, que REUSA o
+  # MESMO audit (lendo o relatório teed + o exit code declarado — fonte
+  # única) e publica/comenta UMA issue por alcance, com dedup por assinatura
+  # do CONJUNTO de paths ofensores; quando o audit volta a reportar 0 CRLF,
+  # ele RECONCILIA (comenta a prova e fecha o que ele abriu). O vermelho do
+  # step de alerta continua sendo a LEMBRANÇA; a issue é o que alguém lê.
+  #
   # Requer o histórico completo (fetch-depth: 0). Node/Bun não são
-  # necessários — só git + python3, como o job irmão acima.
+  # necessários para o audit — só git + python3, como o job irmão acima —,
+  # mas o publicador roda o wrapper num shell (`bash`), que o runner tem.
   blob-crlf-all-text-alert:
-    name: Blob CRLF all-text (alcance, aviso)
+    name: Blob CRLF all-text (alcance, aviso + issue)
     runs-on: self-hosted
     timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write # a issue é o canal acionável do alcance (o vermelho é a lembrança)
 
     steps:
       - uses: actions/checkout@v4
@@ -606,7 +667,27 @@ jobs:
             echo "found_crlf=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # ── ISSUE: o alcance cresceu → ticket acionável ──────────────────
+      # if: always() — roda TAMBÉM quando o REPORT achou CRLF (que é o caso
+      # em crescimento) E quando não achou (aí RECONCILIA: comenta a prova e
+      # fecha as issues que ELE abriu — publicar sem fechar deixaria a dívida
+      # MENTINDO no board depois de resolvida).
+      #
+      # O relatório é o MESMO arquivo teed acima (`--report all-text-report.txt`)
+      # e o exit code do audit é passado junto (`--audit-exit`): assim o
+      # publicador não re-varre o histórico E mantém a guarda 'não medido ≠
+      # resolvido' — um audit quebrado (exit 2, stream truncado) NÃO pode
+      # fechar a dívida como se o histórico estivesse limpo.
+      # NUNCA passe --dry-run aqui: o contrato dele é não ter efeito nenhum, e
+      # a reconciliação sumiria em silêncio.
+      - name: Publicar o alcance do CRLF como Issue acionável (e fechar quando resolver)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/blob-crlf-scope-issue.mjs --report all-text-report.txt --audit-exit "${{ steps.alltext.outputs.report_exit }}"
+
       # ── ALERTA: achados no REPORT OU falha do audit → falha com aviso.
+      # A ISSUE acima é o canal acionável; este vermelho é a LEMBRANÇA no run.
       # O report_exit está no gate: exit 2 (erro de git / stream cat-file
       # truncado) SEM o sentinel 'com CRLF' não pode passar como limpo —
       # 'não achado' não é evidência de 'limpo' (mesma classe de falso

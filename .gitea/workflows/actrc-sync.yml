@@ -18,16 +18,19 @@
 #     vermelho — ela só DESLIGA o fast path de 0s do tier-1, e todo job da forja
 #     volta a pagar o download.
 #
-# SEMÂNTICA DIFERENTE DO LADO GITHUB, de propósito: lá o guard roda sem --fail e
-# emite `::warning::` (exit 0), porque o alerta acionável é a issue aberta pelo
-# job irmão. Aqui não há `gh` nem issue: o ÚNICO canal visível é o status do run
-# agendado, e um `::warning::` dentro de um run VERDE não é lido por ninguém.
-# Então aqui o job roda com `--fail`: drift => run vermelho, com o remédio no
-# log. (Mesmo raciocínio do required-checks-drift.yml, que falha em vez de
-# abrir issue neste lado.)
+# ALERTA ACIONÁVEL (defeito corrigido): antes este job só FALHAVA com o diff no
+# log — e um cron vermelho é alerta MUDO (ninguém abre o log). Como esta forja é
+# a DONA DO MERGE, a dívida precisa chegar onde alguém a veja: o job publica uma
+# ISSUE (label `actrc-sync-drift`, com dedup por assinatura) pela API do
+# Gitea, com o MESMO diagnóstico/assinatura usados no lado GitHub — `--backend
+# gitea` só troca QUEM cria o ticket, não o que é drift.
 #
-# Este workflow NÃO pode estar em `ci/required-checks.json`: roda por cron, não
-# em PR — exigi-lo travaria todo PR para sempre.
+# Secrets: `GITEA_TOKEN`  (leitura de issues E escrita — sem a escrita o drift
+#                          volta a ser alerta mudo)
+#          `GITEA_URL`    (ex.: https://gitea.exemplo.com)
+#          `GITEA_REPOSITORY` (owner/repo — necessário para abrir a issue)
+# O job é pulado com aviso quando os secrets não existem — não falha por falta
+# de espelho configurado, só por drift real.
 #
 # Usage:
 #   cron semanal (segunda 06:23 UTC) ou dispatch manual.
@@ -68,13 +71,58 @@ jobs:
       # (deploy/env.gitea.example) e o arquivo do host (deploy/.env.gitea), que
       # neste checkout existe e é o que o compose lê. Cada um é comparado e
       # nomeado no aviso — e é isso que faz este job valer mais que o do GitHub.
-      - name: Comparar espelhos com as repository variables
+      #
+      # O step NÃO falha aqui: quem falha é o último. Se este saísse 1, o step
+      # da issue nunca rodaria e o drift voltaria a ser cron vermelho sem ticket
+      # — o alerta mudo que este workflow existe para eliminar.
+      - name: Check drift (report only)
+        id: drift
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ secrets.GITEA_URL }}
+          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
         run: |
-          bun scripts/check-actrc-sync.mjs --expected "$BUN_VERSION" --expected-var "IMAGE_REGISTRY=$IMAGE_REGISTRY" --expected-var "IMAGE_NAMESPACE=$IMAGE_NAMESPACE" --fail || {
-            echo "::error::Drift entre os espelhos (BUN_VERSION/IMAGE_REGISTRY/IMAGE_NAMESPACE) e as repository variables."
-            echo "::error::Remédio: alinhe o .actrc e o deploy/env.gitea.example (template comitado) e o deploy/.env.gitea DESTE host; se o env mudou, re-registre o runner: bash deploy/gitea-up.sh --re-register"
-            exit 1
-          }
+          set +e
+          if [ -z "${GITEA_TOKEN:-}" ]; then
+            echo "notice::GITEA_TOKEN ausente — pulando a checagem de drift do Gitea."
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+            echo "publish=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Sem token não há nem medição nem canal (a issue precisa da ESCRITA
+          # em issues) — por isso `publish` sai daqui e não do exit code.
+          echo "publish=1" >> "$GITHUB_OUTPUT"
+          bun scripts/check-actrc-sync.mjs --expected "$BUN_VERSION" --expected-var "IMAGE_REGISTRY=$IMAGE_REGISTRY" --expected-var "IMAGE_NAMESPACE=$IMAGE_NAMESPACE" --json \
+            > /tmp/actrc-sync-drift.json
+          CODE=$?
+          set -e
+          cat /tmp/actrc-sync-drift.json
+          echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
+
+      # ── A ISSUE é o alerta; o vermelho abaixo é a lembrança ────────────────
+      # Roda ANTES de falhar, de propósito. O relatório já está pronto, então
+      # não há novo acesso à forja além da escrita da issue.
+      #
+      # `always()`: com drift ele PUBLICA; sem drift ele RECONCILIA — fecha as
+      # issues que ele mesmo abriu (com a prova no comentário), para a dívida
+      # não ficar ABERTA depois de resolvida. Condicionar a step ao drift faria
+      # o fechamento sumir em silêncio no único run que pode fechá-lo.
+      - name: Publish drift issue (Gitea)
+        if: always() && steps.drift.outputs.publish == '1'
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ secrets.GITEA_URL }}
+          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+        run: |
+          bun scripts/actrc-sync-issue.mjs \
+            --report /tmp/actrc-sync-drift.json \
+            --backend gitea
+
+      - name: Fail on drift
+        if: steps.drift.outputs.exit_code != '0'
+        run: |
+          echo "::error::Espelhos do BUN_VERSION/IMAGE_REGISTRY/IMAGE_NAMESPACE divergem das repository variables. Veja a issue 'actrc-sync-drift' (correção: alinhe .actrc, deploy/env.gitea.example e deploy/.env.gitea; se o env mudou, re-registre o runner: bash deploy/gitea-up.sh --re-register)."
+          exit 1
 
 env:
   # FONTE ÚNICA (variables do repositório) — não cravar valor nenhum aqui. As
