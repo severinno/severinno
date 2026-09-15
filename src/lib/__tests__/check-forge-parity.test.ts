@@ -53,6 +53,7 @@ const REAL_LINES = [
   "      - run: bun run check:pii-gate",
   "      - run: bun run check:required-checks",
   "      - run: node scripts/check-script-headers.mjs",
+  "      - run: bun run check:prove-docs",
   "      - run: bun run check:registry-source",
   "      - run: bun run check:runner-base",
   "      - run: bun scripts/check-workflow-refs.mjs --pkg-internal",
@@ -65,6 +66,8 @@ const REAL_LINES = [
   "      - run: bun run check:no-setup-bun",
   "      - run: bun run check:forge-parity",
   "      - run: bun scripts/check-hooks-symmetry.mjs",
+  "      - run: bun scripts/check-doctor-ci.mjs",
+  "      - run: node scripts/prove-runner-image-gate.mjs",
 ]
 
 /** Pipeline sintética que executa TODOS os invariantes do CORE. */
@@ -149,6 +152,15 @@ describe("classifyGate", () => {
 
   it("devolve null para gate não classificado (é o que vira violação)", () => {
     expect(classifyGate("scripts/check-alguma-coisa-nova.mjs")).toBeNull()
+  })
+
+  it("o gate do doctor é CORE, e os scripts do CRON (doctor/publicador) não são gates", () => {
+    expect(classifyGate("scripts/check-doctor-ci.mjs")).toBe("core")
+    // O doctor é o motor e o publicador é do cron: nenhum dos dois é um gate de
+    // PR — se alguém os chamar numa pipeline, a descoberta acusa NÃO
+    // CLASSIFICADO em vez de deixar passar como se fosse o gate.
+    expect(classifyGate("scripts/forge-doctor.mjs")).toBeNull()
+    expect(classifyGate("scripts/forge-doctor-issue.mjs")).toBeNull()
   })
 
   it("toda isenção tem uma razão não trivial", () => {
@@ -264,6 +276,32 @@ describe("repositório real", () => {
   it("a forja é declarada como dona do merge (o desenho não pode inverter sozinho)", () => {
     expect(PIPELINES.filter((p) => p.mergeOwner)).toHaveLength(1)
     expect(PIPELINES.find((p) => p.mergeOwner)?.forge).toBe("gitea")
+  })
+
+  // MUTAÇÃO: o gate `bring-up-proof` (a prova do PRÉ-REQUISITO 0) é o que roda o
+  // bring-up REAL contra um env divergente. Ele não pode sair de UMA pipeline em
+  // silêncio — e é aqui que o "em silêncio" é fechado: o guard que o descobre é o
+  // mesmo que o exige nas duas. A mutação opera sobre o TEXTO REAL do ci.yml (não
+  // sobre a fixture), então renomear/reapontar o passo também cai nesta rede.
+  it("MUTAÇÃO: remover o gate do bring-up da forja vira drift de CORE (não passa em silêncio)", () => {
+    const forge = read(PIPELINES[0].file)
+    const mirror = read(PIPELINES[1].file)
+    expect(forge, "o ci.yml da forja sumiu — a mutação não tem onde operar").not.toBeNull()
+    expect(mirror).not.toBeNull()
+
+    const gate = /^\s*run: node scripts\/prove-runner-image-gate\.mjs\s*$/m
+    expect(forge, "o passo do gate mudou de forma — atualize a mutação").toMatch(gate)
+    const mutated = forge!.replace(gate, "        # mutação: o gate do bring-up foi removido")
+
+    const readFiles = (files: Record<string, string | null>) => (path: string) =>
+      files[path] ?? null
+    const violations = findParityViolations(
+      readFiles({ [PIPELINES[0].file]: mutated, [PIPELINES[1].file]: mirror }),
+    )
+    expect(violations.join(" | ")).toContain("bring-up-env-gate-proof")
+    // E o diagnóstico é ACIONÁVEL: nomeia a pipeline, o papel e o porquê.
+    expect(violations.join(" | ")).toContain(PIPELINES[0].file)
+    expect(violations.join(" | ")).toContain("dona do merge")
   })
 
   it("todo gate descoberto no repositório real está classificado", () => {

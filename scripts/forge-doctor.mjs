@@ -6,6 +6,10 @@
 // Usage:
 //   node scripts/forge-doctor.mjs                 # relatório de prontidão da forja
 //   node scripts/forge-doctor.mjs --json          # o mesmo, como dados
+//   node scripts/forge-doctor.mjs --ci --expected "$BUN_VERSION" \
+//     --expected-var IMAGE_REGISTRY=... --expected-var IMAGE_NAMESPACE=...
+//                                                # o PERFIL de pipeline (job guards):
+//                                                # fatia local, sem rede/credencial
 //   node scripts/forge-doctor.mjs --no-guards     # pula a bateria (só contrato + imagem)
 //   node scripts/forge-doctor.mjs --no-proof      # pula a prova do bloqueio (mais rápido)
 //   node scripts/forge-doctor.mjs --no-protection # pula a leitura da forja (branch protection)
@@ -13,9 +17,23 @@
 //   node scripts/forge-doctor.mjs --no-image-contract # pula o contrato da imagem PUBLICADA
 //   node scripts/forge-doctor.mjs --no-registry-probe # offline: nao consulta o registry
 //   node scripts/forge-doctor.mjs --no-open-debt  # offline: nao le o board (as issues abertas)
-//   node scripts/forge-doctor.mjs --expected 1.3.14 # valor de vars.BUN_VERSION
+//   node scripts/forge-doctor.mjs --expected 1.3.14   # valor de vars.BUN_VERSION
+//   node scripts/forge-doctor.mjs --expected 1.3.14 \
+//     --expected-var IMAGE_REGISTRY=... --expected-var IMAGE_NAMESPACE=...
 //   node scripts/forge-doctor.mjs --gitea-env deploy/.env.gitea
 //   node scripts/forge-doctor.mjs --timeout 300   # segundos por guard (default 120)
+//
+// O PERFIL `--ci` (e por que ele existe): o job `guards` da forja roda o doctor
+// a CADA PR para o VALOR das repository variables ser conferido no merge e não
+// só no cron. O que muda é o ESCOPO, nunca a régua: as seções caras/privilegiadas
+// saem (a bateria de guards — que É aquele job —, a prova do bloqueio — que
+// executa o `gitea-up.sh`, que por sua vez executa este doctor —, a branch
+// protection registrada, o registro do runner, o contrato da imagem publicada,
+// o probe do registry e o board), e ficam as que um runner de PR prova sem
+// credencial: contrato de merge, env mirror, render do compose e o VALOR dos
+// espelhos. Uma divergência de valor BLOQUEIA (exit 1); o que sobrou fora do
+// escopo sai NOMEADO como não provado (a lista `unproven`), e é isso que faz o
+// veredito do perfil ser INDETERMINADA sem mentir.
 //
 // Exit codes:
 //   0 — PRONTA: tudo o que dá para provar localmente foi provado, e a imagem do
@@ -45,7 +63,11 @@
 //     do CORE. Ele não prova que elas PASSAM agora, nem que a branch protection
 //     as exige, nem que o runner consegue iniciar um job;
 //   - `check:required-checks` prova que o manifesto aponta para jobs que
-//     EXISTEM. Ele não prova que a forja aplicou aquele manifesto;
+//     EXISTEM. Ele não prova que a forja aplicou aquele manifesto — nem que um
+//     job ESPECÍFICO esteja no manifesto: o contrato pode ficar válido e MENOR,
+//     deixando a prova do bring-up verde e o merge livre; e um job exigido cuja
+//     linha `run:` deixou de rodar a prova fica verde sem medir nada. É o fato
+//     `bringUpGate` (seção 4), derivado do MESMO manifesto que o contrato lê;
 //   - `runner-image:ensure` prova a imagem. Ele não sabe nada sobre os guards.
 //
 // E a garantia da imagem tinha um buraco próprio: `runner-image:check` diz se a
@@ -60,9 +82,16 @@
 // doctor como PRÉ-REQUISITO da subida da stack — veredito BLOQUEADA (e "não
 // consegui rodar": sem veredito não há prontidão) RECUSA a subida, e
 // INDETERMINADA avisa e segue, porque "não consegui provar agora" não é
-// violação. Ele o chama com `--no-proof`: a prova do bloqueio (seção 4) EXECUTA
-// aquele script, então chamá-la de dentro dele seria recursão — o `--no-proof`
-// é consequência do desenho, não uma escolha de quem sobe a forja.
+// violação. Ele o chama INTEIRO — a seção 4 (a prova do bloqueio) roda junto. A
+// prova EXECUTA aquele script, então a cadeia `bring-up → doctor → prova →
+// bring-up` só é finita porque a prova DUBLA o doctor que ela passa ao bring-up
+// dublado (`DOCTOR_SCRIPT`); o corte é medido em cada caso dela
+// (`expectDoctorStub`) e a cadeia completa é provada por execução em
+// `src/lib/__tests__/prove-runner-image-gate.test.ts`. `--no-proof` segue
+// existindo para os recortes manuais (e para o publicador de issue), mas NÃO para
+// a subida: desligá-la ali trocaria o corte por um veredito parcial POR
+// CONSTRUÇÃO — a subida aconteceria sem que o portão de bloqueio tivesse sido
+// provado.
 //
 // Com todos eles verdes, um runner sem a imagem publicada, ou um gate quebrado
 // no momento do merge, ainda travava o PR — e o diagnóstico chegava pelo
@@ -83,12 +112,28 @@
 // pudesse divergir da primeira justamente no dia do drift. Sem token de
 // administração (ou sem rede), o estado é "não lida" — NUNCA "em sincronia".
 //
-// Os ESPELHOS do BUN_VERSION têm as duas metades: a de sempre (os arquivos
-// existem e concordam entre si, sem rede) e a que faltava — cada um bate com o
-// VALOR de `vars.BUN_VERSION`, via `--expected`, pela MESMA função que o guard
-// periódico usa (`mirrorDriftReport`). Sem o valor, o doctor não inventa "em
-// sincronia": ele diz que o valor não foi comparado (e o veredito fica parcial),
-// porque dois espelhos que concordam entre si podem estar os DOIS velhos.
+// Os ESPELHOS das variáveis da imagem têm as duas metades: a de sempre (os
+// arquivos existem e concordam entre si, sem rede) e a que faltava — cada um bate
+// com o VALOR declarado, `vars.BUN_VERSION` por `--expected` e as demais
+// (`IMAGE_REGISTRY`, `IMAGE_NAMESPACE`) por `--expected-var`, pela MESMA função
+// que o guard periódico usa (`mirrorDriftReport`). Sem o valor, o doctor não
+// inventa "em sincronia": ele diz que o valor não foi comparado (e o veredito
+// fica parcial), porque dois espelhos que concordam entre si podem estar os DOIS
+// velhos.
+//
+// O TEMPO, e por que a otimização NÃO muda o veredito: a bateria de guards roda
+// com PARALELISMO LIMITADO (`runGatesConcurrent`, `DEFAULT_GATE_CONCURRENCY`),
+// porque ela é uma lista de perguntas INDEPENDENTES — o teto do tempo passa a ser
+// o gate mais lento, não a soma. Os resultados voltam na ORDEM da bateria e um
+// gate que estoura vira NÃO VERIFICADO (o mesmo `code: null` de sempre), então o
+// significado de cada gate é idêntico ao do caminho sequencial (`runGuards`, que
+// segue existindo para quem injeta um `run` síncrono). E a identidade da imagem
+// servida pela tag é MEMOIZADA (`createRegistryIdentityCache`): os DOIS fatos que
+// fazem a mesma pergunta (referências não versionadas e contrato da imagem
+// publicada) dividem UMA ida ao registry; erro não é cacheado, e um estado de
+// incerteza (`unreachable`, `unauthorized`) continua sendo devolvido como
+// INDETERMINADO a cada consumidor — cachear resposta é atalho, cachear dúvida
+// seria mentir.
 //
 // As REFERÊNCIAS que não estão no repositório (invariante 9 do
 // `check-registry-source`) entram pela MESMA função do gate — repository
@@ -139,24 +184,42 @@
 import { existsSync, readFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import process from "node:process"
-import { spawnSync } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
-import { discoverGates } from "./check-forge-parity.mjs"
+import { CORE_INVARIANTS, discoverGates } from "./check-forge-parity.mjs"
 import { checkPublishedImageContract } from "./check-runner-base.mjs"
-import { credentialsFromEnv, ensureRunnerImage, DEFAULT_ENV_FILE } from "./ensure-runner-image.mjs"
+import {
+  createRegistryIdentityCache,
+  credentialsFromEnv,
+  ensureRunnerImage,
+  DEFAULT_ENV_FILE,
+} from "./ensure-runner-image.mjs"
 import { GITHUB_RUNNER_SCRIPT, checkGithubRunnerLabels } from "./check-runner-labels.mjs"
 import { proveRunnerImageGate } from "./prove-runner-image-gate.mjs"
 import { checkComposeInterpolation, checkNonVersionedImageRefs } from "./check-registry-source.mjs"
 import { checkRunnerLabels } from "./check-runner-labels.mjs"
-import { GITEA_COMPOSE } from "./check-bun-mirror.mjs"
-import { GITEA_WORKFLOW_DIR } from "./forge-workflows.mjs"
-import { issueHasAnyMarker, listIssuesByLabel } from "./issue-publish.mjs"
 import {
+  ENV_MIRROR_SCRIPT,
+  GITEA_BRING_UP,
+  GITEA_COMPOSE,
+  PROOF_SCRIPT,
+} from "./check-bun-mirror.mjs"
+import { GITEA_WORKFLOW_DIR } from "./forge-workflows.mjs"
+import {
+  describeGithubRead,
+  githubReadConfig,
+  issueHasAnyMarker,
+  listIssuesByLabel,
+} from "./issue-publish.mjs"
+import {
+  ENV_MIRROR_COSTS,
   extractActrcBunVersion,
-  extractEnvMirrorBunVersion,
   GITEA_ENV_MIRROR,
+  MIRROR_VARIABLES,
   mirrorDriftReport,
+  normalizeExpectedVars,
+  readMirrorVariableValues,
 } from "./check-actrc-sync.mjs"
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
@@ -175,6 +238,13 @@ export const FORGE_GUARDS_JOB = "guards"
  * manifesto ↔ branch protection registrada (ver `readProtection`).
  */
 export const REQUIRED_CHECKS_APPLIER = "scripts/apply-required-checks.mjs"
+
+/**
+ * O job que COBRA o bring-up no merge — o ID do job, não o `name:` exibido
+ * (renomear o `name:` muda o contexto de status e não pode mexer no que está
+ * protegido; mesma regra do manifesto).
+ */
+export const BRING_UP_GATE_JOB = "bring-up-proof"
 
 /** Exit code do `runner-image:check` quando a tag NÃO existe (a única falha da forja). */
 const IMAGE_MISSING = 4
@@ -319,6 +389,24 @@ export function gateRunLine(lines, label) {
 }
 
 /**
+ * Primeira linha `run:` de um job — sem exigir que ela contenha o label.
+ * Usado por `readGateContract` para jobs standalone (não composited como
+ * `guards`), onde o `run:` é o comando inteiro e não inclui o ID do job.
+ *
+ * @param {string[]} lines  linhas do bloco do job
+ * @returns {string|null}
+ */
+export function firstRunLine(lines) {
+  for (const raw of lines) {
+    const line = raw.trim()
+    if (line.startsWith("#")) continue
+    const m = line.match(/^(?:-\s*)?run:\s*(.+)$/)
+    if (m) return m[1].trim()
+  }
+  return null
+}
+
+/**
  * Os gates da bateria da forja, derivados da pipeline dona do merge.
  *
  * O CONJUNTO vem do descobridor do `check-forge-parity` (mesma classificação,
@@ -361,28 +449,23 @@ export function forgeGates(content) {
  * @param {{cwd?: string, timeoutS?: number, run?: Function}} [deps]
  * @returns {{gate: string, code: number|null, seconds: number, error?: string, tail?: string}}
  */
-export function runGate(gate, { cwd = REPO_ROOT, timeoutS = 120, run = spawnSync } = {}) {
-  const label = gate.label
+function gateSpawn(gate) {
   if (!gate.command) {
     return {
-      gate: label,
-      code: null,
-      seconds: 0,
       error: `não achei a linha 'run:' que executa este gate em ${MERGE_OWNER_PIPELINE} — não executo o rótulo cru (sem as flags ele roda em modo de efeito)`,
     }
   }
   const parsed = gateCommand(gate.command)
-  if (parsed.error) return { gate: label, code: null, seconds: 0, error: parsed.error }
+  if (parsed.error) return { error: parsed.error }
+  return { cmd: parsed.cmd, args: parsed.args }
+}
 
-  const started = Date.now()
-  const res = run(parsed.cmd, parsed.args, {
-    cwd,
-    encoding: "utf8",
-    timeout: timeoutS * 1000,
-    env: process.env,
-  })
-  const seconds = (Date.now() - started) / 1000
-
+/**
+ * O resultado cru de um gate a partir do retorno do spawn (sync OU async). Um
+ * lugar só: o caminho síncrono (dublê injetado) e o concorrente têm de produzir
+ * o MESMO shape — senão o veredito passaria a depender de qual caminho rodou.
+ */
+function shapeGateResult(label, res, seconds, timeoutS) {
   if (res.error) {
     // ENOENT (binário ausente) chega aqui — é "não executado", não "falhou".
     return { gate: label, code: null, seconds, error: res.error.message }
@@ -402,6 +485,95 @@ export function runGate(gate, { cwd = REPO_ROOT, timeoutS = 120, run = spawnSync
     seconds,
     tail: res.status === 0 ? undefined : out.split("\n").slice(-12).join("\n"),
   }
+}
+
+/**
+ * Roda um gate da bateria de forma SÍNCRONA. `code === null` significa que o
+ * processo não terminou (timeout/sinal) ou não pôde ser executado — que NÃO é
+ * "passou".
+ *
+ * É o caminho do `run` INJETADO (dublê dos testes, que é síncrono): a bateria
+ * concorrente (`runGatesConcurrent`) só existe em produção, onde não há dublê.
+ *
+ * @param {{label: string, command: string|null}} gate
+ * @param {{cwd?: string, timeoutS?: number, run?: Function}} [deps]
+ * @returns {{gate: string, code: number|null, seconds: number, error?: string, tail?: string}}
+ */
+export function runGate(gate, { cwd = REPO_ROOT, timeoutS = 120, run = spawnSync } = {}) {
+  const spawn0 = gateSpawn(gate)
+  if (spawn0.error) return { gate: gate.label, code: null, seconds: 0, error: spawn0.error }
+
+  const started = Date.now()
+  const res = run(spawn0.cmd, spawn0.args, {
+    cwd,
+    encoding: "utf8",
+    timeout: timeoutS * 1000,
+    env: process.env,
+  })
+  return shapeGateResult(gate.label, res, (Date.now() - started) / 1000, timeoutS)
+}
+
+/**
+ * `spawn` → a MESMA forma que o `spawnSync` devolve
+ * (`status`/`signal`/`stdout`/`stderr`/`error`), para o shape do gate não mudar
+ * entre os dois caminhos. Nunca rejeita: um binário ausente chega pelo evento
+ * `error`, um timeout pelo `SIGTERM`.
+ */
+function spawnGate(cmd, args, { cwd, timeoutMs }) {
+  return new Promise((resolve) => {
+    let child
+    try {
+      child = spawn(cmd, args, { cwd, env: process.env, stdio: ["ignore", "pipe", "pipe"] })
+    } catch (err) {
+      resolve({ error: err })
+      return
+    }
+    let stdout = ""
+    let stderr = ""
+    let done = false
+    let timer = null
+    const finish = (res) => {
+      if (done) return
+      done = true
+      if (timer) clearTimeout(timer)
+      resolve(res)
+    }
+    timer = timeoutMs
+      ? setTimeout(() => {
+          try {
+            child.kill("SIGTERM")
+          } catch {
+            // Já morreu entre o timeout e o kill — o evento close cuida do resto.
+          }
+        }, timeoutMs)
+      : null
+    child.stdout?.setEncoding?.("utf8")
+    child.stderr?.setEncoding?.("utf8")
+    child.stdout?.on("data", (d) => {
+      stdout += d
+    })
+    child.stderr?.on("data", (d) => {
+      stderr += d
+    })
+    child.on("error", (err) => finish({ error: err }))
+    child.on("close", (status, signal) => finish({ status, signal, stdout, stderr }))
+  })
+}
+
+/**
+ * O mesmo gate, por spawn ASSÍNCRONO — é o que permite rodar a bateria em
+ * paralelo sem bloquear o event loop. Mesmo shape.
+ *
+ * @param {{label: string, command: string|null}} gate
+ * @param {{cwd?: string, timeoutS?: number}} [deps]
+ * @returns {Promise<{gate: string, code: number|null, seconds: number, error?: string, tail?: string}>}
+ */
+export async function runGateAsync(gate, { cwd = REPO_ROOT, timeoutS = 120 } = {}) {
+  const spawn0 = gateSpawn(gate)
+  if (spawn0.error) return { gate: gate.label, code: null, seconds: 0, error: spawn0.error }
+  const started = Date.now()
+  const res = await spawnGate(spawn0.cmd, spawn0.args, { cwd, timeoutMs: timeoutS * 1000 })
+  return shapeGateResult(gate.label, res, (Date.now() - started) / 1000, timeoutS)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -428,13 +600,17 @@ export const VERDICT = {
  *                                 e mais grave que a imagem ausente — ali o
  *                                 remédio é publicar a imagem, aqui é consertar
  *                                 a própria subida;
+ *   - o GATE do bring-up sai    → a prova continua rodando e o merge deixa de ser
+ *     do contrato de merge        bloqueado por ela (o contrato menor deixa a
+ *     (ou o job deixa de rodar    proteção em sincronia): o PR passa sem a
+ *     a prova)                    prova. BLOQUEADA — é o elo que liga o fato da
+ *                                 seção 4 ao que a forja de fato exige;
  *   - algo não deu para        → não é falha, é ausência de prova. Não pode
  *     determinar                  virar "pronta" (seria a falsa segurança que
  *                                 o check-forge-parity foi escrito para matar)
  *                                 nem "bloqueada" (mentiria para o outro lado)
  *                                 → INDETERMINADA.
- *
- * @param {{contract: object, guards: object, image: object, proof: object, mirrors: object, openDebt?: object, skippedGuards?: boolean, skippedProof?: boolean, skippedOpenDebt?: boolean}} facts
+ * * @param {{contract: object, gateContracts?: {results: object[], violations: string[]}, bringUpGate?: object, guards: object, image: object, proof: object, mirrors: object, openDebt?: object, skippedGuards?: boolean, skippedProof?: boolean, skippedOpenDebt?: boolean}} facts
  * @returns {{verdict: string, blockers: string[], unknowns: string[], unproven: string[]}}
  */
 export function summarize(facts) {
@@ -443,6 +619,35 @@ export function summarize(facts) {
 
   for (const f of facts.contract.failures) blockers.push(f)
   if (facts.contract.unknown) unknowns.push(facts.contract.unknown)
+
+  // OS GATES CORE NO CONTRATO DE MERGE: cada gate classificado como CORE que
+  // tem `jobIds` é verificado — o job está no manifesto, o job roda o comando
+  // esperado e a branch protection o registra. Violação em qualquer gate
+  // bloqueia: o merge passaria sem a verificação exigida.
+  //
+  // `gateContracts` é a lista genérica (readAllGateContracts);
+  // `bringUpGate` é o legado (readBringUpGate, mantido para compatibilidade).
+  const gc = facts.gateContracts
+  if (gc?.violations?.length > 0) {
+    for (const v of gc.violations) blockers.push(`gate CORE nao esta cobrado no merge — ${v}`)
+  }
+  if (gc?.results) {
+    for (const r of gc.results) {
+      if (r.state !== "proven" && r.state !== "violated") {
+        unknowns.push(
+          `gate '${r.jobId}' (invariante '${r.invariantId}') não foi conferido: ${r.detail}`,
+        )
+      }
+    }
+  }
+  // Compatibilidade: o bringUpGate legado continua sendo verificado.
+  const gate = facts.bringUpGate
+  if (gate?.state === "violated") {
+    for (const v of gate.violations)
+      blockers.push(`o GATE do bring-up nao esta cobrado no merge — ${v}`)
+  } else if (gate && gate.state !== "proven" && !gc) {
+    unknowns.push(`o gate do bring-up (job '${gate.job}') nao foi conferido: ${gate.detail}`)
+  }
 
   if (facts.skippedGuards) {
     // Pular a bateria NÃO pode dar PRONTA: seria dizer "pode confiar o merge"
@@ -508,15 +713,25 @@ export function summarize(facts) {
     unknowns.push(`a interpolacao do compose da forja nao foi provada: ${compose.detail}`)
   }
 
-  // A outra metade da invariante 7: o env do HOST × o template comitado. Só
-  // faz sentido perguntar quando o render foi PROVADO (aí o compose existe e a
-  // comparação estava ao alcance); sem o arquivo do host ela não aconteceu — o
-  // VPS pode estar interpolando outra coisa, e isso é ausência de prova, nunca
-  // "pronta".
-  if (compose?.state === "proven" && compose.hostCompare?.state === "absent") {
-    unknowns.push(
-      `o env do HOST nao foi comparado com o template comitado: ${compose.hostCompare.detail}`,
+  // O PRÉ-REQUISITO 0 do bring-up, como FATO PRÓPRIO: o `deploy/gitea-up.sh`
+  // RECUSA a subida quando o env do host não espelha o template comitado. Ele é
+  // DERIVADO da MESMA medição que a seção acima fez (host × template — uma
+  // pergunta, uma resposta; sondar de novo seria a segunda verdade), e o que ele
+  // acrescenta ao veredito é o NOME do pré-requisito, o COMANDO que o reproduz e
+  // o REMÉDIO.
+  //
+  // Violado BLOQUEIA — e o texto diz que é a CONSEQUÊNCIA da divergência já
+  // listada acima, não um segundo problema (as violações em si viajam pela
+  // comparação e continuam sendo as linhas de bloqueio do detalhe). Não
+  // conseguir comparar NESTE checkout (o env do host é gitignored e mora no host
+  // de deploy) é INDETERMINADA, nunca "pronta" por omissão.
+  const bringUp = deriveBringUpEnv(compose)
+  if (bringUp.state === "violated") {
+    blockers.push(
+      `por causa da divergencia acima, o PRE-REQUISITO 0 do ${GITEA_BRING_UP} esta violado: a subida da stack RECUSA (o ensure resolveria a imagem do env divergente). Comando: ${bringUp.command} · Remedio: ${ENV_MIRROR_CHECK} --fix`,
     )
+  } else if (bringUp.state === "absent" || bringUp.state === "unavailable") {
+    unknowns.push(bringUp.detail)
   }
 
   // O contrato REGISTRADO na forja (o branch protection de verdade): o
@@ -619,8 +834,9 @@ export function summarize(facts) {
 
   const unproven = [
     `a PERMISSAO do token sobre a forja: o doctor lê a branch protection com o aplicador (${REQUIRED_CHECKS_APPLIER}) e, sem token de administração, ele diz "não lida" — nunca "em sincronia"`,
+    `o historico da forja: se o job '${BRING_UP_GATE_JOB}' PASSOU no ultimo PR — o doctor mede o contrato e o registro, mas nao o resultado da ultima execucao`,
     "o smoke da forja: que o runner usa a imagem com o Bun da variable (tier-1 em runtime) — é um job da própria forja",
-    "o deploy/.env.gitea do VPS: o doctor COMPARA o env do host com o template comitado (invariante 7b) quando o arquivo existe — o que ele nao alcanca daqui e o env de um host DIFERENTE deste checkout (`--gitea-env` aponta outro)",
+    "o deploy/.env.gitea do VPS: o doctor COMPARA o env do host com o template comitado (invariante 7b, e o PRE-REQUISITO 0 do gitea-up.sh) quando o arquivo existe, e diz o estado + o comando (`bun run env-mirror:check`, com `--fix` para reconciliar) — o que ele nao alcanca daqui e o env de um host DIFERENTE deste checkout (`--gitea-env` aponta outro)",
     `o render do compose com o DOCKER DO RUNNER da forja: aqui o render é feito com ESTE docker (${GITEA_COMPOSE}). A imagem do job da forja EMBARCA o plugin \`compose\` — medido: a base catthehacker/ubuntu:act-latest entrega /usr/libexec/docker/cli-plugins/docker-compose, e o build do Dockerfile.ubuntu-bun FALHA se isso mudar — e o smoke exige o render (--require-compose). O que segue fora do alcance daqui é o socket do job: é a Prova 4 do smoke que o exercita, no host.`,
   ]
   if (facts.skippedGuards) unproven.unshift("os guards da forja (pulados por --no-guards)")
@@ -638,6 +854,15 @@ export function summarize(facts) {
   }
   if (facts.skippedOpenDebt) {
     unproven.unshift("a dívida aberta no board (pulada por --no-open-debt)")
+  }
+  if (facts.ciProfile) {
+    // O PERFIL entra como uma linha PRÓPRIA, no TOPO das sete de skip (cada
+    // `unshift` seguinte ficaria acima): quem lê o veredito num PR precisa saber
+    // que o recorte foi DELIBERADO (o cron já cobre o resto) e não que sete flags
+    // foram esquecidas no YAML.
+    unproven.unshift(
+      "o PERFIL --ci: o recorte local (sem rede, credencial ou estado do HOST) é o que roda no job `guards` a cada PR — as seções abaixo ficam para o cron semanal",
+    )
   }
 
   return { verdict, blockers, unknowns, unproven }
@@ -696,10 +921,531 @@ export function readContract(cwd = REPO_ROOT) {
     const exists = existsSync(join(cwd, cfg.workflow))
     if (!exists) failures.push(`${forge}: workflow obrigatório ausente (${cfg.workflow})`)
     if (jobs.length === 0) failures.push(`${forge}: nenhum job obrigatório no manifesto`)
-    forges.push({ forge, workflow: cfg.workflow, jobs: jobs.length, exists })
+    // `jobs` continua sendo a CONTAGEM (o relatório da seção 1 a mostra) e
+    // `jobIds` são os IDS — o fato do gate do bring-up pergunta *quais* são, e
+    // uma segunda leitura do manifesto para a mesma pergunta seria a segunda
+    // verdade sobre o mesmo arquivo.
+    forges.push({ forge, workflow: cfg.workflow, jobs: jobs.length, jobIds: [...jobs], exists })
   }
   if (forges.length === 0) failures.push(`${REQUIRED_CHECKS_MANIFEST}: nenhuma forja declarada`)
   return { forges, failures, unknown: null }
+}
+
+/**
+ * O GATE do bring-up no CONTRATO DE MERGE, como fato próprio.
+ *
+ * POR QUE ESTE FATO EXISTE (o buraco entre "a prova roda" e "o merge é
+ * bloqueado por ela"): a seção 4 mede se a subida da stack REALMENTE exige a
+ * imagem, e o job `bring-up-proof` roda essa prova nas duas pipelines. Mas o
+ * doctor não cobria o elo que faz dela um GATE: o job estar no **contrato de
+ * merge**. Os guardas existentes têm, cada um, uma metade:
+ *
+ *   - `check:required-checks` valida o manifesto CONTRA os workflows (o job
+ *     existe, não é condicional, não duplica contexto) — ele nunca exige que
+ *     um job específico ESTEJA no manifesto. Tirar `bring-up-proof` de lá deixa
+ *     o manifesto válido, a proteção em sincronia com um contrato MENOR e a
+ *     prova verde na pipeline: o PR passaria sem passar por ela, e o doctor
+ *     diria PRONTA;
+ *   - `check:forge-parity` garante que a invariante do CORE roda nas DUAS
+ *     pipelines (por descoberta do comando) — mas ele não sabe se o CONTRATO de
+ *     merge exige o job, nem se quem carrega a prova é o job exigido.
+ *
+ * O outro lado do mesmo buraco é o gate DECORATIVO: o job exigido cujo `run:`
+ * deixou de executar a prova — o check fica verde no merge e nada foi medido.
+ *
+ * O QUE ELE AGORA RESPONDE (e o `unproven` não precisa mais dizer): se a
+ * forja REGISTRA o check na branch protection. Quando `protection` é passado
+ * (o mesmo que a seção 1 já leu), o fato cruza o gate com a proteção:
+ * `proven` exige que o contrato exija O GATE O GATE E QUE A FORJA O REGISTRE;
+ * `violated` quando a branch protection está em drift e o contexto do gate
+ * está entre os que faltam; `unavailable` quando a proteção não foi lida.
+ *
+ * @param {{cwd?: string, contract?: object, protection?: object}} [args]
+ * @returns {{state: "proven"|"violated"|"unavailable", job: string, script: string,
+ *   detail: string, forges: {forge: string, workflow: string, command: string|null, detail: string, registered: boolean|null}[],
+ *   violations: string[], remedies: string[]}}
+ */
+export function readBringUpGate({
+  cwd = REPO_ROOT,
+  contract = readContract(cwd),
+  protection = null,
+} = {}) {
+  const base = {
+    job: BRING_UP_GATE_JOB,
+    script: PROOF_SCRIPT,
+    forges: [],
+    violations: [],
+    // O REMÉDIO fecha os dois modos de falha do fato: o gate fora do contrato
+    // (o manifesto é a fonte e o aplicador é quem escreve na forja) e o gate
+    // decorativo (a linha `run:` é o que faz o job medir algo).
+    remedies: [
+      `ci/required-checks.json: devolva '${BRING_UP_GATE_JOB}' a lista de jobs da forja — sem o job exigido, o PR passa sem a prova (aplique com: bun run ci:required-checks -- --apply)`,
+      `a linha 'run:' do job '${BRING_UP_GATE_JOB}' tem de executar ${PROOF_SCRIPT} — um check verde que nao roda a prova nao bloqueia nada`,
+    ],
+  }
+  const declared = contract?.forges ?? []
+  if (declared.length === 0) {
+    return {
+      ...base,
+      state: "unavailable",
+      detail: `o GATE do bring-up nao foi conferido: ${REQUIRED_CHECKS_MANIFEST} nao declara forja nenhuma (${(contract?.failures ?? []).join(" · ") || "manifesto ilegivel"}) — sem o contrato de merge nao ha gate a exigir`,
+    }
+  }
+
+  const entries = []
+  const violations = []
+  let unread = null
+  for (const f of declared) {
+    if (!(f.jobIds ?? []).includes(BRING_UP_GATE_JOB)) {
+      const detail = `${f.forge}: o contrato de merge NAO exige o job '${BRING_UP_GATE_JOB}' — a prova roda na pipeline e no doctor, mas nenhum PR e obrigado a passa-la antes do merge`
+      violations.push(detail)
+      entries.push({ forge: f.forge, workflow: f.workflow, command: null, detail })
+      continue
+    }
+    const path = join(cwd, f.workflow)
+    if (!existsSync(path)) {
+      unread = `${f.forge}: ${f.workflow} ausente deste checkout — nao da para ler o que o job exigido RODA`
+      entries.push({ forge: f.forge, workflow: f.workflow, command: null, detail: unread })
+      continue
+    }
+    const job = sliceJob(readFileSync(path, "utf8"), BRING_UP_GATE_JOB)
+    if (job === null) {
+      const detail = `${f.forge}: o contrato exige '${BRING_UP_GATE_JOB}', mas o job nao existe em ${f.workflow} — o check exigido nunca roda (quem cobra existencia e condicionalidade e o check:required-checks)`
+      violations.push(detail)
+      entries.push({ forge: f.forge, workflow: f.workflow, command: null, detail })
+      continue
+    }
+    // O comando vem da LINHA `run:` (não do rótulo): é o que o job de fato roda.
+    const command = gateRunLine(job.split(/\r?\n/), PROOF_SCRIPT)
+    if (command === null) {
+      const detail = `${f.forge}: o job '${BRING_UP_GATE_JOB}' existe em ${f.workflow} e nenhum 'run:' executa ${PROOF_SCRIPT} — o check fica verde sem medir a prova (gate decorativo: o merge deixa de ser bloqueado por ela)`
+      violations.push(detail)
+      entries.push({ forge: f.forge, workflow: f.workflow, command: null, detail })
+      continue
+    }
+    entries.push({
+      forge: f.forge,
+      workflow: f.workflow,
+      command,
+      detail: `${f.forge}: '${BRING_UP_GATE_JOB}' em ${f.workflow} roda '${command}'`,
+      // O campo `registered` é preenchido DEPOIS que as entradas estão prontas
+      // (abaixo, após o loop) — aqui fica null como placeholder.
+      registered: null,
+    })
+  }
+
+  if (violations.length > 0) {
+    return {
+      ...base,
+      state: "violated",
+      forges: entries,
+      violations,
+      // A forja que NAO deu para ler entra na mesma frase: uma violacao provada
+      // nao pode esconder a ausencia de prova das outras. Sem isso, uma forja
+      // ilegivel sairia como "cobre as duas" num relatorio que leu uma so.
+      detail: `${violations.join(" · ")}${unread ? ` | NAO lido: ${unread}` : ""}`,
+    }
+  }
+  if (unread !== null) {
+    return { ...base, state: "unavailable", forges: entries, detail: unread }
+  }
+
+  // ── CRUZAMENTO COM A BRANCH PROTECTION ──────────────────────────────────
+  // Agora que o manifesto e as pipelines estão OK (sem violações), o fato cruza
+  // com a branch protection REGISTRADA na forja: o gate pode estar no manifesto
+  // e o job pode rodar a prova, mas se a branch protection NÃO exige o check,
+  // o merge passa sem passar pela prova. É o mesmo modo de falha do gate
+  // decorativo — só que do outro lado (a proteção não cobre o manifesto).
+  //
+  // A fonte da verdade é `protection.forges[].missing[]` — a lista de checks que
+  // o manifesto exige mas a branch protection NÃO registrou. Se o contexto
+  // resolvido do `bring-up-proof` está nessa lista, a violação é nomeada.
+  // Proteção em sincronia → todos os checks exigidos estão registrados → o
+  // gate também. Proteção indisponível → não dá para provar → `unavailable`.
+  //
+  // Quando `protection` é null (doctor sem --protection, ou teste unitário),
+  // o cruzamento NÃO acontece — o estado é proven pela manifest/pipeline.
+  if (protection && protection.state !== "skipped" && protection.forges) {
+    const missingByForge = new Map()
+    for (const pf of protection.forges) {
+      missingByForge.set(pf.forge, pf.missing)
+    }
+
+    const protectionViolations = []
+    for (const e of entries) {
+      const missing = missingByForge.get(e.forge)
+      if (missing === undefined) {
+        // Proteção não reportada para esta forja → registered é null.
+        e.registered = null
+      } else if (missing === null) {
+        // Proteção indisponível (missing=null = não lido) → não pode provar.
+        e.registered = null
+      } else if (missing.length === 0) {
+        // Proteção em sincronia (missing=[] = tudo registrado) → o gate está registrado.
+        e.registered = true
+      } else {
+        // Proteção em drift: verificar se o contexto do gate está entre os que faltam.
+        const isMissing = missing.some(
+          (m) => m === BRING_UP_GATE_JOB || m.toLowerCase().includes("bring-up-proof"),
+        )
+        e.registered = !isMissing
+        if (isMissing) {
+          protectionViolations.push(
+            `${e.forge}: o gate '${BRING_UP_GATE_JOB}' esta no contrato de merge mas a branch protection NAO o registra — o merge passa sem a prova (missing: ${missing.map((c) => `'${c}'`).join(", ")})`,
+          )
+        }
+      }
+    }
+
+    // Se a proteção não foi lida para NENHUMA forja → unavailable.
+    if (entries.length > 0 && entries.every((e) => e.registered === null)) {
+      return {
+        ...base,
+        state: "unavailable",
+        forges: entries,
+        detail: `o gate esta no contrato e o job roda a prova, mas a branch protection REGISTRADA nao foi lida — o fato nao pode confirmar que a forja exige o check (proteção: ${protection.detail})`,
+      }
+    }
+
+    if (protectionViolations.length > 0) {
+      return {
+        ...base,
+        state: "violated",
+        forges: entries,
+        violations: protectionViolations,
+        remedies: [
+          ...base.remedies,
+          `bun run ci:required-checks -- --apply: aplique o manifesto na branch protection para que a forja exija o gate de merge`,
+        ],
+        detail: protectionViolations.join(" · "),
+      }
+    }
+
+    return {
+      ...base,
+      state: "proven",
+      forges: entries,
+      detail: `o gate do bring-up esta no contrato de merge das ${entries.length} forja(s) E o job roda a prova E a branch protection o registra — ${entries.map((e) => e.detail).join(" · ")}`,
+    }
+  }
+
+  return {
+    ...base,
+    state: "proven",
+    forges: entries,
+    detail: `o gate do bring-up esta no contrato de merge das ${entries.length} forja(s) E o job roda a prova — ${entries.map((e) => e.detail).join(" · ")}`,
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 1b. Verificador genérico de gates CORE no contrato de merge
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Contrato de UM gate CORE no contrato de merge: manifesto + pipeline +
+ * branch protection. Generaliza `readBringUpGate` para qualquer gate que
+ * tenha `jobIds` no `CORE_INVARIANTS`.
+ *
+ * Para cada forja declarada no manifesto, o verificador:
+ *   1. confere que o job está no manifesto (a lista de jobs obrigatórios);
+ *   2. confere que o job tem um `run:` que executa o comando esperado;
+ *   3. cruza com a branch protection registrada (o check está exigido?).
+ *
+ * O `expectedCommand` é um regex testado contra a linha `run:` do job — não
+ * contra o rótulo do gate (que descarta flags). Isso impede que um gate
+ * decorativo (job existe mas roda outra coisa) passe em silêncio.
+ *
+ * @param {{jobId: string, expectedCommand: RegExp, invariantId: string,
+ *   cwd?: string, contract?: object, protection?: object}} args
+ * @returns {{state: "proven"|"violated"|"unavailable", jobId: string,
+ *   invariantId: string, script: string, detail: string,
+ *   forges: {forge: string, workflow: string, command: string|null,
+ *     registered: boolean|null, detail: string}[],
+ *   violations: string[], remedies: string[]}}
+ */
+export function readGateContract({
+  jobId,
+  expectedCommand,
+  invariantId,
+  cwd = REPO_ROOT,
+  contract = readContract(cwd),
+  protection = null,
+}) {
+  const base = {
+    jobId,
+    invariantId,
+    script: PROOF_SCRIPT,
+    forges: [],
+    violations: [],
+    remedies: [
+      `ci/required-checks.json: devolva '${jobId}' à lista de jobs da forja — sem o job exigido, o PR passa sem a verificação (aplique com: bun run ci:required-checks -- --apply)`,
+      `a linha 'run:' do job '${jobId}' tem de executar um comando que casa com ${expectedCommand} — um check verde que não executa a verificação não bloqueia nada`,
+    ],
+  }
+
+  const declared = contract?.forges ?? []
+  if (declared.length === 0) {
+    return {
+      ...base,
+      state: "unavailable",
+      detail: `o gate '${jobId}' não foi conferido: ${REQUIRED_CHECKS_MANIFEST} não declara forja nenhuma`,
+    }
+  }
+
+  const entries = []
+  const violations = []
+  let unread = null
+  for (const f of declared) {
+    if (!(f.jobIds ?? []).includes(jobId)) {
+      const detail = `${f.forge}: o contrato de merge NÃO exige o job '${jobId}' — a verificação roda na pipeline mas nenhum PR é obrigado a passa-la antes do merge`
+      violations.push(detail)
+      entries.push({
+        forge: f.forge,
+        workflow: f.workflow,
+        command: null,
+        registered: null,
+        detail,
+      })
+      continue
+    }
+    const path = join(cwd, f.workflow)
+    if (!existsSync(path)) {
+      unread = `${f.forge}: ${f.workflow} ausente deste checkout — não dá para ler o que o job '${jobId}' RODA`
+      entries.push({
+        forge: f.forge,
+        workflow: f.workflow,
+        command: null,
+        registered: null,
+        detail: unread,
+      })
+      continue
+    }
+    const job = sliceJob(readFileSync(path, "utf8"), jobId)
+    if (job === null) {
+      const detail = `${f.forge}: o contrato exige '${jobId}', mas o job não existe em ${f.workflow} — o check exigido nunca roda`
+      violations.push(detail)
+      entries.push({
+        forge: f.forge,
+        workflow: f.workflow,
+        command: null,
+        registered: null,
+        detail,
+      })
+      continue
+    }
+    // Para jobs STANDALONE (typecheck, lint, etc.), o `run:` é o comando
+    // inteiro. Para jobs COMPOSTOS (guards), há MÚLTIPLOS `run:` — o primeiro
+    // pode ser um setup script. Procuramos TODOS os `run:` e verificamos se
+    // ALGUM casa com o padrão esperado.
+    const jobLines = job.split(/\r?\n/)
+    const allRunLines = []
+    for (const raw of jobLines) {
+      const line = raw.trim()
+      if (line.startsWith("#")) continue
+      const m = line.match(/^(?:-\s*)?run:\s*(.+)$/)
+      if (m) allRunLines.push(m[1].trim())
+    }
+    // Primeiro tenta o gateRunLine (que procura o label na linha) — funciona
+    // para jobs composited onde o label aparece no `run:`.
+    let command = gateRunLine(jobLines, jobId)
+    // Se não encontrou, procura em TODOS os `run:` se ALGUM casa com o padrão.
+    if (command === null) {
+      for (const runCmd of allRunLines) {
+        if (expectedCommand.test(runCmd)) {
+          command = runCmd
+          break
+        }
+      }
+    }
+    // Último recurso: usa o primeiro `run:` (para jobs standalone).
+    if (command === null && allRunLines.length > 0) {
+      command = allRunLines[0]
+    }
+    if (command === null) {
+      const detail = `${f.forge}: o job '${jobId}' existe em ${f.workflow} mas nenhum 'run:' foi encontrado — o check fica verde sem medir nada (gate decorativo)`
+      violations.push(detail)
+      entries.push({
+        forge: f.forge,
+        workflow: f.workflow,
+        command: null,
+        registered: null,
+        detail,
+      })
+      continue
+    }
+    if (!expectedCommand.test(command)) {
+      const detail = `${f.forge}: o job '${jobId}' em ${f.workflow} executa '${command}' que NÃO casa com ${expectedCommand} — o gate pode ter sido trocado por outro`
+      violations.push(detail)
+      entries.push({ forge: f.forge, workflow: f.workflow, command, registered: null, detail })
+      continue
+    }
+    entries.push({
+      forge: f.forge,
+      workflow: f.workflow,
+      command,
+      registered: null,
+      detail: `${f.forge}: '${jobId}' em ${f.workflow} executa '${command}'`,
+    })
+  }
+
+  if (violations.length > 0) {
+    return {
+      ...base,
+      state: "violated",
+      forges: entries,
+      violations,
+      detail: `${violations.join(" · ")}${unread ? ` | NÃO lido: ${unread}` : ""}`,
+    }
+  }
+  if (unread !== null) {
+    return { ...base, state: "unavailable", forges: entries, detail: unread }
+  }
+
+  // ── CRUZAMENTO COM A BRANCH PROTECTION ──────────────────────────────────
+  // O gate está no manifesto e o job roda o comando esperado; agora confere
+  // se a branch protection da forja REGISTRA o check. O `missing` do applier
+  // lista os checks que o manifesto exige mas a proteção NÃO registrou.
+  if (protection && protection.state !== "skipped" && protection.forges) {
+    const missingByForge = new Map()
+    for (const pf of protection.forges) {
+      missingByForge.set(pf.forge, pf.missing ?? [])
+    }
+    const protectionViolations = []
+    for (const e of entries) {
+      const missing = missingByForge.get(e.forge)
+      if (missing === undefined || missing === null) {
+        e.registered = null
+      } else if (missing.length === 0) {
+        e.registered = true
+      } else {
+        const isMissing = missing.some(
+          (m) => m === jobId || m.toLowerCase().includes(jobId.toLowerCase()),
+        )
+        e.registered = !isMissing
+        if (isMissing) {
+          protectionViolations.push(
+            `${e.forge}: o gate '${jobId}' está no contrato mas a branch protection NÃO o registra — o merge passa sem a verificação (missing: ${missing.map((c) => `'${c}'`).join(", ")})`,
+          )
+        }
+      }
+    }
+    if (entries.length > 0 && entries.every((e) => e.registered === null)) {
+      return {
+        ...base,
+        state: "unavailable",
+        forges: entries,
+        detail: `o gate '${jobId}' está no contrato e o job roda o comando, mas a branch protection não foi lida — o registro não pode ser confirmado`,
+      }
+    }
+    if (protectionViolations.length > 0) {
+      return {
+        ...base,
+        state: "violated",
+        forges: entries,
+        violations: protectionViolations,
+        remedies: [
+          ...base.remedies,
+          `bun run ci:required-checks -- --apply: aplique o manifesto na branch protection`,
+        ],
+        detail: protectionViolations.join(" · "),
+      }
+    }
+    return {
+      ...base,
+      state: "proven",
+      forges: entries,
+      detail: `o gate '${jobId}' está no contrato das ${entries.length} forja(s) e o job roda o comando e a branch protection o registra`,
+    }
+  }
+
+  return {
+    ...base,
+    state: "proven",
+    forges: entries,
+    detail: `o gate '${jobId}' está no contrato das ${entries.length} forja(s) e o job roda o comando esperado`,
+  }
+}
+
+/**
+ * A lista CENTRAL dos contratos de gates CORE: cada invariante que tem
+ * `jobIds` vira um contrato verificável. A lista é DERIVADA dos
+ * `CORE_INVARIANTS` (uma fonte só) — adicionar uma invariante com `jobIds`
+ * a essa lista a torna automaticamente verificável no veredito do doctor.
+ *
+ * @returns {{invariantId: string, jobId: string, expectedCommand: RegExp}[]}
+ */
+export function coreGateContracts() {
+  const contracts = []
+  const seen = new Set()
+  for (const inv of CORE_INVARIANTS) {
+    if (!inv.jobIds) continue
+    // Cada invariante pode ter VÁRIOS jobIds (um por forja). Cada jobId
+    // ÚNICO vira um contrato — se a Gitea tem `lint` e o GitHub tem
+    // `lint-guard`, são dois contratos distintos.
+    for (const [forge, jid] of Object.entries(inv.jobIds)) {
+      if (seen.has(jid)) continue
+      seen.add(jid)
+      contracts.push({ invariantId: inv.id, jobId: jid, expectedCommand: inv.matches })
+    }
+  }
+  return contracts
+}
+
+/**
+ * Verifica TODOS os gates CORE que estão no manifesto de uma vez: lê o
+ * manifesto UMA vez, cruza com a proteção UMA vez, e chama `readGateContract`
+ * para cada job do manifesto que casa com uma invariante CORE.
+ *
+ * A pergunta é: "o que o manifesto EXIGE é CORE e está correto?" — não
+ * "o que é CORE está no manifesto?" (a segunda pergunta é do check:forge-parity).
+ *
+ * @param {{cwd?: string, contract?: object, protection?: object}} args
+ * @returns {{results: object[], allProven: boolean, violations: string[]}}
+ */
+export function readAllGateContracts({
+  cwd = REPO_ROOT,
+  contract = readContract(cwd),
+  protection = null,
+} = {}) {
+  const allContracts = coreGateContracts()
+  // Indexa os contratos por jobId para busca rápida.
+  const byJobId = new Map()
+  for (const c of allContracts) {
+    if (!byJobId.has(c.jobId)) byJobId.set(c.jobId, c)
+  }
+
+  const results = []
+  const allViolations = []
+
+  // Itera os jobs do manifesto (não os invariantes): só os que o manifesto
+  // exige são verificados aqui. Um job do manifesto que NÃO casa com nenhuma
+  // invariante CORE é ignorado (pode ser GITHUB_ONLY ou não-classificado).
+  const declared = contract?.forges ?? []
+  const checkedJobIds = new Set()
+  for (const f of declared) {
+    for (const jobId of f.jobIds ?? []) {
+      if (checkedJobIds.has(jobId)) continue
+      checkedJobIds.add(jobId)
+      const c = byJobId.get(jobId)
+      if (!c) continue // não é CORE (ou não tem `jobIds`)
+      const r = readGateContract({
+        jobId: c.jobId,
+        expectedCommand: c.expectedCommand,
+        invariantId: c.invariantId,
+        cwd,
+        contract,
+        protection,
+      })
+      results.push(r)
+      if (r.state === "violated") allViolations.push(...r.violations)
+    }
+  }
+
+  return {
+    results,
+    allProven: results.every((r) => r.state === "proven"),
+    violations: allViolations,
+  }
 }
 
 /**
@@ -941,23 +1687,37 @@ export async function readImageRefs({
  *   - `.actrc` é o espelho do act LOCAL: divergir dele não impede a forja de
  *     bloquear merge nenhum — incomoda quem roda act na máquina → NÃO PROVADO.
  *
+ * COMO O VALOR CHEGA: `--expected` traz `vars.BUN_VERSION` e `--expected-var
+ * NOME=VALOR` traz as DEMAIS variáveis que o compose consome
+ * (`IMAGE_REGISTRY`/`IMAGE_NAMESPACE`). As ausentes ficam em `unknowns`,
+ * nominalmente: a metade que prova existência não pode passar por prova de
+ * valor, e uma variável sem valor passado não pode sumir em silêncio.
+ *
  * @param {string} [cwd]
- * @param {{expected?: string|null, envPath?: string|null}} [options]
+ * @param {{expected?: string|null, expectedVars?: Record<string, string|null>, envPath?: string|null}} [options]
  *   `expected`: valor de `vars.BUN_VERSION` (null = não perguntado — o VERDITO
- *   do valor não foi feito); `envPath`: o env de um host específico
+ *   do valor não foi feito); `expectedVars`: os valores das outras variáveis
+ *   comparadas; `envPath`: o env de um host específico
  *   (`--gitea-env`), que SUBSTITUI a descoberta como no CLI do guard (para
  *   inquirir OUTRO host). O doctor NÃO usa esta opção de propósito: ele quer o
  *   template comitado E o host do checkout, e passar um caminho largaria o
  *   template fora da comparação. O valor de outro host entra pela invariante
  *   7b (host x template), que compara o env inteiro.
- * @returns {{actrc: string|null, env: string|null, expected: string|null, mirrors: object[], warnings: string[], blockers: string[], unknowns: string[]}}
+ * @returns {{actrc: string|null, env: string|null, expected: string|null, expectedVars: Record<string, string|null>, mirrors: object[], warnings: string[], blockers: string[], unknowns: string[]}}
  */
-export function readMirrors(cwd = REPO_ROOT, { expected = null, envPath = null } = {}) {
+export function readMirrors(
+  cwd = REPO_ROOT,
+  { expected = null, expectedVars = {}, envPath = null } = {},
+) {
   const blockers = []
   const unknowns = []
 
+  const wanted = normalizeExpectedVars({ expected, expectedVars })
   const envFile = join(cwd, GITEA_ENV_MIRROR)
-  const env = existsSync(envFile) ? extractEnvMirrorBunVersion(readFileSync(envFile, "utf8")) : null
+  const envValues = existsSync(envFile)
+    ? readMirrorVariableValues(readFileSync(envFile, "utf8"), "env")
+    : null
+  const env = envValues?.BUN_VERSION ?? null
   if (env === null) {
     blockers.push(
       `${GITEA_ENV_MIRROR} ausente ou sem BUN_VERSION — é ele que alimenta a label do runner: sem ele a forja não sabe qual imagem rodar`,
@@ -969,10 +1729,11 @@ export function readMirrors(cwd = REPO_ROOT, { expected = null, envPath = null }
     ? extractActrcBunVersion(readFileSync(actrcPath, "utf8"))
     : null
 
-  // Sem o valor da variável não há como dizer se o espelho está certo: o que se
-  // pode dizer é que os dois entre si divergem (um dos dois está velho) e que a
+  // Sem RÉGUA NENHUMA não há como dizer se o espelho está certo: o que se pode
+  // dizer é que os dois entre si divergem (um dos dois está velho) e que a
   // pergunta do VALOR continua aberta.
-  if (expected === null) {
+  const comparable = MIRROR_VARIABLES.some((name) => wanted[name] !== null && wanted[name] !== "")
+  if (!comparable) {
     if (actrc === null) {
       unknowns.push(".actrc ausente ou sem BUN_VERSION — o act local rodaria sem versão")
     } else if (env !== null && actrc !== env) {
@@ -981,9 +1742,18 @@ export function readMirrors(cwd = REPO_ROOT, { expected = null, envPath = null }
       )
     }
     unknowns.push(
-      `o VALOR dos espelhos NAO foi comparado com vars.BUN_VERSION: a variável vive no Actions, não no checkout — passe --expected <versão> (ou, com credencial: --expected "$(gh variable get BUN_VERSION)"). Existência e concordância local não provam que o runner roda a versão declarada`,
+      `o VALOR dos espelhos NAO foi comparado com vars.BUN_VERSION: a variável vive no Actions, não no checkout — passe --expected <versão> (ou, com credencial: --expected "$(gh variable get BUN_VERSION)") e --expected-var para as demais variáveis da imagem. Existência e concordância local não provam que o runner roda o que está declarado`,
     )
-    return { actrc, env, expected, mirrors: [], warnings: [], blockers, unknowns }
+    return {
+      actrc,
+      env,
+      expected,
+      expectedVars: wanted,
+      mirrors: [],
+      warnings: [],
+      blockers,
+      unknowns,
+    }
   }
 
   // O env de um host apontado só entra quando EXISTE: o `mirrorDriftReport` lê o
@@ -991,19 +1761,41 @@ export function readMirrors(cwd = REPO_ROOT, { expected = null, envPath = null }
   // doctor que estoura num fato não é um doctor. A ausência do arquivo já é
   // reportada na seção da imagem, que lê o MESMO `--gitea-env`.
   const host = envPath && existsSync(envPath) ? envPath : null
-  const report = mirrorDriftReport({ cwd, expected, ...(host ? { envPath: host } : {}) })
+  const report = mirrorDriftReport({
+    cwd,
+    expected,
+    expectedVars,
+    ...(host ? { envPath: host } : {}),
+  })
 
-  for (const mirror of report.mirrors) {
-    if (mirror.version === expected) continue
-    const kind = mirror.deployed ? "o env DESTE host" : "o template comitado"
-    blockers.push(
-      `${mirror.label} define BUN_VERSION='${mirror.version ?? "ausente"}' mas vars.BUN_VERSION='${expected}' — é ${kind} que alimenta a label do runner: o runner roda uma imagem com OUTRA versão do Bun e o fast path de 0s do tier-1 desliga em silêncio (o setup funciona igual, só mais lento). Remédio: bash scripts/bump-bun.sh ${expected}${mirror.deployed ? ", e re-registre o runner: bash deploy/gitea-up.sh --re-register" : ""}`,
-    )
+  for (const d of report.drift) {
+    if (d.kind === "env") {
+      const kind = d.deployed ? "o env DESTE host" : "o template comitado"
+      blockers.push(
+        `${d.label} define ${d.name}='${d.value ?? "ausente"}' mas vars.${d.name}='${d.expected}' — é ${kind} que alimenta a label do runner: ${ENV_MIRROR_COSTS[d.name] ?? "a imagem que roda nao e a declarada"}. Remédio: ${doctorEnvRemedy(d)}`,
+      )
+    } else {
+      // O `.actrc` é o espelho do act LOCAL: divergir dele não impede a forja de
+      // bloquear merge nenhum — incomoda quem roda act na máquina → NÃO PROVADO.
+      const remedy =
+        d.name === "BUN_VERSION"
+          ? `bash scripts/bump-bun.sh ${d.expected} (escreve a variável, o .actrc e o template de uma vez)`
+          : `atualize o --var ${d.name} no .actrc (o act local lê o espelho, não a variável)`
+      unknowns.push(
+        `.actrc define ${d.name}='${d.value ?? "ausente"}' mas vars.${d.name}='${d.expected}' — o act LOCAL usa outro valor (não é o merge, é a dev experience da máquina). Remédio: ${remedy}`,
+      )
+    }
   }
 
-  if (report.actrcVersion !== expected) {
+  // Variável SEM valor passado: a comparação não aconteceu para ela, e o doctor
+  // DIZ qual — sem isso o veredito chamaria de "conferido" o que só teve a
+  // existência olhada (a regra que o resto do doctor já aplica ao valor da
+  // versão).
+  if (report.unproven.length > 0) {
     unknowns.push(
-      `.actrc define BUN_VERSION='${report.actrcVersion ?? "ausente"}' mas vars.BUN_VERSION='${expected}' — o act LOCAL testa outra versão (não é o merge, é a dev experience da máquina). Remédio: bash scripts/bump-bun.sh ${expected} (escreve a variável, o .actrc e o template de uma vez)`,
+      `o VALOR de ${report.unproven.join(", ")} nao foi comparado com a repository variable: passe ${report.unproven
+        .map((n) => `--expected-var ${n}=<valor>`)
+        .join(" ")} (sem isso a comparacao dos espelhos fica so na versao)`,
     )
   }
 
@@ -1011,6 +1803,7 @@ export function readMirrors(cwd = REPO_ROOT, { expected = null, envPath = null }
     actrc,
     env,
     expected,
+    expectedVars: wanted,
     mirrors: report.mirrors,
     // Os avisos do GUARD, no texto dele: o log do doctor e a issue do job semanal
     // não podem discordar, e é isso que a fonte única garante.
@@ -1018,6 +1811,23 @@ export function readMirrors(cwd = REPO_ROOT, { expected = null, envPath = null }
     blockers,
     unknowns,
   }
+}
+
+/**
+ * O remédio de um drift de env, por variável: só a VERSÃO tem script de bump.
+ *
+ * @param {{name: string, label: string, deployed: boolean, expected: string}} d
+ * @returns {string}
+ */
+function doctorEnvRemedy(d) {
+  if (d.name === "BUN_VERSION") {
+    return d.deployed
+      ? `bash scripts/bump-bun.sh ${d.expected}, e re-registre o runner: bash deploy/gitea-up.sh --re-register`
+      : `bash scripts/bump-bun.sh ${d.expected}`
+  }
+  return d.deployed
+    ? `atualize ${d.label} e re-registre o runner: bash deploy/gitea-up.sh --re-register`
+    : `atualize ${d.label} (o template comitado) e a repository variable`
 }
 
 /** Roda o check da imagem (NUNCA publica) e guarda as linhas que ele emitiu. */
@@ -1267,6 +2077,19 @@ export function githubRunnerLabelBlockers(labels) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** As forjas cujo board pode carregar dívida (a forja primeiro: é ela a dona do merge). */
+/**
+ * As forjas cujo board o doctor lê.
+ *
+ * POR QUE AS DUAS, mesmo o doctor rodando na forja: nem toda dívida nasce aqui.
+ * A auditoria reversa do README e a tendência de mutação são crons do
+ * `.github/` — as issues delas existem SÓ no board do GitHub. Lê-las é o que
+ * impede a prontidão de dizer "sem dívida" sobre um board que ela nunca olhou.
+ *
+ * O GITHUB EXIGE CANAL PRÓPRIO (`GH_TOKEN` + `GH_REPOSITORY`, ver
+ * `githubReadConfig` em `issue-publish.mjs`): o runner da forja não tem a CLI
+ * `gh`, e `GITHUB_*` ali aponta para o repositório do GITEA. Sem o canal, a
+ * leitura do GitHub sai como NÃO lida — nunca como "sem dívida".
+ */
 const DEBT_FORGES = ["gitea", "github"]
 
 /** Um dia em ms — a IDADE da dívida é o que separa a ativa da esquecida. */
@@ -1387,22 +2210,28 @@ function debtStaleness(subject, forge, { protection, mirrors }) {
   }
 
   if (subject.crossCheck === "mirrors") {
-    if (!mirrors?.expected) {
+    // O que conta é o que foi de fato COMPARADO: as fatos antigos trazem só
+    // `expected` (a versão), os novos trazem `expectedVars` (as três).
+    const wanted = mirrors?.expectedVars ?? { BUN_VERSION: mirrors?.expected ?? null }
+    const compared = MIRROR_VARIABLES.filter(
+      (name) => wanted[name] !== null && wanted[name] !== undefined && wanted[name] !== "",
+    )
+    if (compared.length === 0) {
       return {
         stale: null,
         detail:
-          "o VALOR dos espelhos não foi comparado nesta run (sem --expected) — o doctor não pode declarar a issue caducada",
+          "o VALOR dos espelhos não foi comparado nesta run (sem --expected/--expected-var) — o doctor não pode declarar a issue caducada",
       }
     }
     const clean = (mirrors.blockers?.length ?? 0) === 0 && (mirrors.unknowns?.length ?? 0) === 0
     return clean
       ? {
           stale: true,
-          detail: `o doctor mede os espelhos do BUN_VERSION em concordância com a variable '${mirrors.expected}'`,
+          detail: `o doctor mede os espelhos das variáveis da imagem (${compared.join(", ")}) em concordância com as repository variables`,
         }
       : {
           stale: false,
-          detail: "o doctor também mede os espelhos do BUN_VERSION e eles NÃO estão limpos agora",
+          detail: `o doctor também mede os espelhos das variáveis da imagem (${compared.join(", ")}) e eles NÃO estão limpos agora`,
         }
   }
 
@@ -1460,7 +2289,14 @@ function describeOpenDebt({ forge, subject, ours, alien, staleness }) {
  * mesmo marcador. Nunca lança — cada forja que não deu para ler vira `unread`, e
  * "não consegui ler" é reportado como tal, jamais como "sem dívida".
  *
- * @param {{cwd?: string, env?: Record<string,string|undefined>, deps?: {list?: Function, now?: () => number}, protection?: object|null, mirrors?: object|null}} [args]
+ * COMO se leu é um FATO do relatório (`via`), não detalhe interno: no runner da
+ * forja o `gh` não existe, e a diferença entre "li o board do GitHub pela API e
+ * não há dívida" e "não consegui ler" é exatamente o que o veredito existe para
+ * não borrar. O canal sai do MESMO resolvedor que a leitura usa
+ * (`githubReadConfig`) — o relatório não pode declarar um canal que não foi o
+ * usado.
+ *
+ * @param {{cwd?: string, env?: Record<string,string|undefined>, deps?: {list?: Function, now?: () => number, githubChannel?: Function}, protection?: object|null, mirrors?: object|null}} [args]
  * @returns {Promise<{state: string, detail: string, reads: object[], items: object[], labels: string[], excluded: object}>}
  */
 export async function readOpenDebt({
@@ -1470,7 +2306,11 @@ export async function readOpenDebt({
   protection = null,
   mirrors = null,
 } = {}) {
-  const { list = listIssuesByLabel, now = () => Date.now() } = deps
+  const {
+    list = listIssuesByLabel,
+    now = () => Date.now(),
+    githubChannel = githubReadConfig,
+  } = deps
   const reads = []
   const items = []
 
@@ -1478,6 +2318,9 @@ export async function readOpenDebt({
     const subjects = DEBT_SUBJECTS.filter((s) => s.forges.includes(forge))
     if (subjects.length === 0) continue
     const labels = subjects.map((s) => s.label)
+    // Só o GitHub tem dois canais (a API e o `gh`): a forja lê pela API de
+    // issues dela, sempre, e declarar um "canal" ali seria inventar diferença.
+    const channel = forge === "github" ? githubChannel({ env }) : null
 
     let listed
     try {
@@ -1503,8 +2346,11 @@ export async function readOpenDebt({
         forge,
         labels,
         state: "unread",
+        via: null,
         open: 0,
         foreign: 0,
+        // A mensagem do erro já NOMEIA os dois canais e o que falta em cada um
+        // (é construída lá, onde a regra vive) — aqui não há segunda versão dela.
         detail: `a dívida aberta no ${forge} NÃO foi lida: ${why}`,
       })
       continue
@@ -1547,12 +2393,14 @@ export async function readOpenDebt({
       forge,
       labels,
       state: "read",
+      via: channel?.via ?? null,
       open,
       foreign,
       detail:
-        open === 0
+        (open === 0
           ? `nenhuma dívida aberta (labels: ${labels.join(", ")})`
-          : `${open} dívida(s) ABERTA(S) nas labels ${labels.join(", ")}`,
+          : `${open} dívida(s) ABERTA(S) nas labels ${labels.join(", ")}`) +
+        (channel ? ` — lida por ${describeGithubRead(channel)}` : ""),
     })
   }
 
@@ -1636,9 +2484,179 @@ export async function readComposeInterpolation({
   }
 }
 
-/** Executa a bateria de gates da forja. */
+/** O comando do operador que responde — e cura — a pergunta do pré-requisito 0. */
+export const ENV_MIRROR_CHECK = "bun run env-mirror:check"
+
+/**
+ * O PRÉ-REQUISITO 0 do bring-up como FATO PRÓPRIO — e DERIVADO, nunca remedido.
+ *
+ * O `deploy/gitea-up.sh` RECUSA a subida antes de tudo quando o env do host não
+ * espelha o template comitado, e esse pré-requisito existe porque o
+ * `ensure-runner-image` resolve a imagem DESTE arquivo: com um env divergente a
+ * subida garantiria a imagem ERRADA. Quem responde essa pergunta já foi medido —
+ * é a metade host × template da interpolação do compose
+ * (`compose.hostCompare`), que usa a MESMA função do comando que o operador roda
+ * (`compareEnvMirrorDeclarations`, a fonte única da regra).
+ *
+ * POR QUE DERIVAR EM VEZ DE SONDAAR DE NOVO: medir a mesma pergunta duas vezes é
+ * como duas verdades começam a divergir (o repo já pagou esse preço uma vez, e o
+ * comentário dos espelhos no `diagnose` registra isso). O que faltava não era a
+ * medição — era o **NOME** do pré-requisito, o **COMANDO** que o reproduz e o
+ * **REMÉDIO**, e é exatamente isso que este fato acrescenta ao veredito.
+ *
+ * Os estados são os do resto do doctor: `proven` (a subida passa), `violated`
+ * (a subida RECUSA), `absent` (não há o env do host NESTE checkout — falta de
+ * prova, nunca prova de falha), `skipped` (a seção que mede foi pulada) e
+ * `not-applicable` (não há stack da forja neste checkout: nada a exigir).
+ *
+ * @param {{state?: string, violations?: string[], detail?: string, hostCompare?: {state?: string, detail?: string, host?: string|null, template?: string|null}}} [compose]
+ * @returns {{state: string, detail: string, command: string, remedies: string[], refuses: boolean, readsFrom: string}}
+ */
+export function deriveBringUpEnv(compose = {}) {
+  const hc = compose?.hostCompare ?? {}
+  const host = hc.host ?? null
+  const template = hc.template ?? GITEA_ENV_MIRROR
+  // Quando a comparação NOMEIA os dois arquivos, o comando é o que os reproduz;
+  // quando não (o env do host não existe aqui), o comando é o de DESCOBERTA — o
+  // que o operador roda ONDE o arquivo existe.
+  const command = host
+    ? `${ENV_MIRROR_CHECK} --host ${host} --template ${template}`
+    : ENV_MIRROR_CHECK
+  const remedies = [
+    `${ENV_MIRROR_CHECK} --patch   # ve o diff que reconcilia o host`,
+    `${ENV_MIRROR_CHECK} --fix     # aplica (atomico; nunca toca no segredo)`,
+  ]
+  const base = { command, remedies, refuses: false, readsFrom: "compose.hostCompare" }
+
+  // Sem a stack da forja neste checkout não há pré-requisito a exigir: o
+  // "ausente" aqui é do ARQUIVO da stack, não do env do host (e cobrar o env de
+  // quem não tem a stack encheria a lista de pendências com um problema que não
+  // existe).
+  if (!compose || compose.state === "absent" || compose.state === undefined) {
+    return {
+      ...base,
+      state: "not-applicable",
+      detail: `nao ha a stack da forja neste checkout (${GITEA_COMPOSE}) — o pre-requisito 0 nao existe aqui`,
+    }
+  }
+
+  if (hc.state === "in-sync") {
+    return {
+      ...base,
+      state: "proven",
+      detail: `o env do host espelha o template comitado: a subida do ${GITEA_BRING_UP} passa pelo pre-requisito 0 (${hc.detail ?? "em sincronia"})`,
+    }
+  }
+
+  if (hc.state === "diverged") {
+    return {
+      ...base,
+      state: "violated",
+      refuses: true,
+      detail: `o env do host NAO espelha o template comitado: o ${GITEA_BRING_UP} RECUSA a subida (pre-requisito 0) — e o ensure resolveria a imagem do arquivo divergente. Comando: ${command}`,
+    }
+  }
+
+  if (hc.state === "absent") {
+    return {
+      ...base,
+      state: "absent",
+      detail: `o PRE-REQUISITO 0 do ${GITEA_BRING_UP} nao foi coberto: o env do HOST nao foi comparado com o template comitado (${hc.detail ?? "o arquivo nao existe neste checkout"}). Comando: ${command} — rode-o no host onde o arquivo existe (${ENV_MIRROR_SCRIPT})`,
+    }
+  }
+
+  if (hc.state === "skipped") {
+    return {
+      ...base,
+      state: "skipped",
+      detail: `o pre-requisito 0 nao foi medido: ${hc.detail ?? "a secao que o mede foi pulada"}`,
+    }
+  }
+
+  return {
+    ...base,
+    state: "unavailable",
+    detail: `o PRE-REQUISITO 0 do ${GITEA_BRING_UP} nao foi coberto: a comparacao host x template nao devolveu estado (${hc.detail ?? "sem detalhe"}). Comando: ${command}`,
+  }
+}
+
+/**
+ * Executa a bateria de gates da forja SEQUENCIALMENTE (caminho síncrono).
+ *
+ * Continua existindo porque é o contrato de quem injeta um `run` síncrono (os
+ * testes e qualquer chamada que precise de determinismo de ordem de chamada).
+ * A produção usa `runGatesConcurrent`.
+ */
 export function runGuards(gates, { cwd = REPO_ROOT, timeoutS = 120, run } = {}) {
   return gates.map((gate) => runGate(gate, { cwd, timeoutS, run: run ?? spawnSync }))
+}
+
+/**
+ * Quantos gates rodam ao mesmo tempo por padrão.
+ *
+ * POR QUE NÃO `cpus()`: os gates são processos `bun`/`node` que já usam vários
+ * cores cada um; abrir um por core satura a máquina e faz cada um ficar MAIS
+ * lento (o wall time total piora). Quatro é conservador o bastante para caber
+ * num runner compartilhado e já derruba o tempo da bateria (o teto passa a ser o
+ * gate mais lento, não a soma).
+ */
+export const DEFAULT_GATE_CONCURRENCY = 4
+
+/**
+ * Executa a bateria de gates com PARALELISMO LIMITADO.
+ *
+ * POR QUE É SEGURO: todos os gates da bateria são de VERIFICAÇÃO
+ * (`gateCommand` recusa modo de efeito) e não têm ordem entre si — a bateria é
+ * uma lista de perguntas independentes, não um pipeline. Nada aqui muda o
+ * SIGNIFICADO de um gate: o resultado volta na ORDEM DA BATERIA
+ * (`results[i] = ...`), o shape é o mesmo do caminho síncrono
+ * (`shapeGateResult`) e um gate que estoura NÃO derruba os outros — ele vira
+ * `code: null` ("não verificado"), que é o que o veredito já sabia ler.
+ *
+ * O `run` INJETADO desvia para o caminho sequencial de propósito: um dublê é
+ * síncrono e determinístico, e paralelizá-lo não traria ganho nenhum — só
+ * mudaria a ordem de chamada que os testes observam.
+ *
+ * @param {{label: string, command: string|null}[]} gates
+ * @param {{cwd?: string, timeoutS?: number, run?: Function, concurrency?: number, gateAsync?: Function}} [deps]
+ * @returns {Promise<{gate: string, code: number|null, seconds: number, error?: string, tail?: string}[]>}
+ */
+export async function runGatesConcurrent(
+  gates,
+  {
+    cwd = REPO_ROOT,
+    timeoutS = 120,
+    run,
+    concurrency = DEFAULT_GATE_CONCURRENCY,
+    gateAsync = runGateAsync,
+  } = {},
+) {
+  if (run) return runGuards(gates, { cwd, timeoutS, run })
+
+  const results = new Array(gates.length)
+  const workers = Math.max(1, Math.min(concurrency, gates.length))
+  let next = 0
+  const worker = async () => {
+    for (;;) {
+      const i = next
+      next += 1
+      if (i >= gates.length) return
+      try {
+        results[i] = await gateAsync(gates[i], { cwd, timeoutS })
+      } catch (err) {
+        // Um gate que estoura (spawn do interpretador, dublê) não pode derrubar
+        // a bateria inteira: vira NÃO verificado, como qualquer falha de exec.
+        results[i] = {
+          gate: gates[i].label,
+          code: null,
+          seconds: 0,
+          error: `não foi possível executar o gate: ${err?.message ?? String(err)}`,
+        }
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: workers }, worker))
+  return results
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1845,11 +2863,14 @@ export function renderReport(report, { emit = console.log } = {}) {
     }
   }
 
-  // ── 4. Prova do bloqueio ────────────────────────────────────────────────
+  // ── 4. Prova do bloqueio + o GATE que a cobra no merge ──────────────────
   // A tag existir AGORA não prova que a subida depende dela. Esta seção executa
-  // o caminho real contra um registry de teste e mostra o que o docker viu.
+  // o caminho real contra um registry de teste e mostra o que o docker viu — e,
+  // logo abaixo, diz o que o CONTRATO DE MERGE exige e o que o job exigido RODA.
+  // As duas metades juntas é que respondem "o merge é bloqueado por isto?": a
+  // prova mede o comportamento, o gate mede a OBRIGAÇÃO.
   line()
-  line("  4/6  Prova do bloqueio (registry de TESTE — o runner não sobe sem a imagem)")
+  line("  4/6  Prova do bloqueio (registry de TESTE) + o GATE que a cobra no merge")
   if (facts.skippedProof) {
     line(`       ${MARK.skip()} pulada por --no-proof (o veredito NÃO cobre o bloqueio)`)
   } else {
@@ -1879,28 +2900,108 @@ export function renderReport(report, { emit = console.log } = {}) {
     }
   }
 
+  // OS GATES CORE NO CONTRATO DE MERGE: cada gate classificado como CORE é
+  // verificado — o job está no manifesto, o job roda o comando esperado e a
+  // branch protection o registra. Violação em qualquer um bloqueia.
+  //
+  // `gateContracts` é a lista genérica; `bringUpGate` é mantido para
+  // compatibilidade (e já é coberto pela lista genérica).
+  const gc = facts.gateContracts
+  if (gc?.results?.length > 0) {
+    const violated = gc.results.filter((r) => r.state === "violated")
+    const unavailable = gc.results.filter((r) => r.state === "unavailable")
+    const proven = gc.results.filter((r) => r.state === "proven")
+    line(
+      `       ${violated.length > 0 ? MARK.fail() : MARK.ok()} Gates CORE no contrato de merge: ${proven.length} provado(s), ${violated.length} violado(s), ${unavailable.length} não conferido(s)`,
+    )
+    for (const r of gc.results) {
+      if (r.state === "proven") continue // só mostra violações e indisponíveis
+      const gMark = r.state === "violated" ? MARK.fail() : MARK.warn()
+      line(`           ${gMark} [${r.invariantId}] job '${r.jobId}': ${r.state}`)
+      for (const f of r.forges ?? []) {
+        if (f.registered === false) {
+          line(`               ${color(C.red, f.detail)} [NAO REGISTRADO]`)
+        } else if (f.command === null) {
+          line(`               ${color(C.yellow, f.detail)}`)
+        }
+      }
+      if (r.state !== "proven") {
+        for (const v of r.violations ?? []) line(`               ${color(C.gray, v)}`)
+        for (const rem of r.remedies ?? []) line(`               ${color(C.gray, `→ ${rem}`)}`)
+      }
+    }
+  }
+  // Compatibilidade: o bringUpGate legado continua sendo exibido.
+  const gate = facts.bringUpGate
+  if (gate && !gc) {
+    const gMark =
+      gate.state === "proven" ? MARK.ok() : gate.state === "violated" ? MARK.fail() : MARK.warn()
+    line(`       ${gMark} GATE do bring-up (job '${gate.job}' no contrato de merge): ${gate.state}`)
+    for (const f of gate.forges ?? []) {
+      const reg =
+        f.registered === true ? " [registrado]" : f.registered === false ? " [NAO REGISTRADO]" : ""
+      line(
+        `           ${color(C.gray, f.detail)}${color(f.registered === false ? C.red : C.gray, reg)}`,
+      )
+    }
+    if (
+      gate.state !== "proven" &&
+      !(gate.forges ?? []).every((f) => gate.detail.includes(f.detail))
+    ) {
+      line(`           ${color(C.gray, gate.detail)}`)
+    }
+    if (gate.state !== "proven") {
+      for (const r of gate.remedies ?? []) line(`           ${color(C.gray, `→ ${r}`)}`)
+    }
+  }
+
   // ── 5. Espelhos locais ─────────────────────────────────────────────────
   // A primeira linha diz CONTRA O QUE se comparou: sem o valor da variável, o
   // resto da seção só prova existência e concordância local — e o operador
   // precisa ver essa diferença sem ler o código.
   line()
-  line("  5/6  Espelhos da versão do Bun (sem rede)")
-  if (facts.mirrors.expected) {
+  line("  5/6  Espelhos das variáveis da imagem — o VALOR (sem rede)")
+  // O conjunto COMPARADO vem do fato (não de uma lista escrita aqui): as
+  // variáveis sem valor passado aparecem em `unknowns`, com o nome.
+  // `expectedVars` com fallback em `expected`: um fato montado à mão (teste,
+  // chamador antigo) continua dizendo o que comparou, em vez de sair como "nada
+  // foi comparado" com o valor na mão.
+  const wantedVars = facts.mirrors.expectedVars ?? {
+    BUN_VERSION: facts.mirrors.expected ?? null,
+  }
+  const comparedVars = MIRROR_VARIABLES.filter(
+    (name) =>
+      wantedVars[name] !== null && wantedVars[name] !== undefined && wantedVars[name] !== "",
+  )
+  if (comparedVars.length > 0) {
     line(
-      `       ${MARK.info()} comparados com vars.BUN_VERSION='${facts.mirrors.expected}' (--expected, mesma função do job semanal actrc-sync)`,
+      `       ${MARK.info()} comparados com ${comparedVars
+        .map((name) => `vars.${name}='${wantedVars[name]}'`)
+        .join(" · ")} (--expected/--expected-var, mesma função do job semanal actrc-sync)`,
     )
   } else {
     line(
-      `       ${MARK.info()} o VALOR não foi comparado: sem --expected (vars.BUN_VERSION só existe no Actions)`,
+      `       ${MARK.info()} o VALOR não foi comparado: sem --expected/--expected-var (as repository variables só existem no Actions/na forja)`,
     )
   }
   if (facts.mirrors.blockers.length === 0 && facts.mirrors.unknowns.length === 0) {
     line(`       ${MARK.ok()} .actrc e ${GITEA_ENV_MIRROR} concordam (${facts.mirrors.actrc})`)
   }
   for (const m of facts.mirrors.mirrors ?? []) {
-    const mark = m.version === facts.mirrors.expected ? MARK.ok() : MARK.fail()
+    const mark = Array.isArray(m.drift)
+      ? m.drift.length > 0
+        ? MARK.fail()
+        : MARK.ok()
+      : m.version === (facts.mirrors.expected ?? null)
+        ? MARK.ok()
+        : MARK.fail()
+    const others = comparedVars.filter((name) => name !== "BUN_VERSION")
+    const values = [
+      `BUN_VERSION=${m.version ?? "<sem BUN_VERSION>"}`,
+      ...others.map((name) => `${name}=${m.values?.[name] ?? "<ausente>"}`),
+    ]
     line(
-      `           ${mark} ${m.label} (${m.deployed ? "host" : "template comitado"}): ${m.version ?? "<sem BUN_VERSION>"}`,
+      `           ${mark} ${m.label} (${m.deployed ? "host" : "template comitado"}): ${values.join(" · ")}`,
     )
   }
   // Os avisos do GUARD, no texto dele: é o que o job semanal publica na issue, e
@@ -1914,6 +3015,34 @@ export function renderReport(report, { emit = console.log } = {}) {
   }
   for (const p of facts.mirrors.blockers) line(`       ${MARK.fail()} ${p}`)
   for (const p of facts.mirrors.unknowns) line(`       ${MARK.warn()} ${p}`)
+
+  // O PRÉ-REQUISITO 0 do bring-up, na seção dos espelhos: é aqui que ele vive
+  // (o comando é o mesmo), e a linha diz as três coisas que faltavam no
+  // relatório — que o `gitea-up.sh` EXIGE isto, o COMANDO que o responde e o
+  // estado em que ele está AGORA. O estado vem da MESMA medição da seção 3
+  // (`compose.hostCompare`): uma pergunta, uma resposta.
+  const bringUp = deriveBringUpEnv(facts.compose)
+  if (bringUp.state !== "not-applicable") {
+    const bMark =
+      bringUp.state === "proven"
+        ? MARK.ok()
+        : bringUp.state === "violated"
+          ? MARK.fail()
+          : bringUp.state === "skipped"
+            ? MARK.skip()
+            : MARK.warn()
+    line(
+      `       ${bMark} PRE-REQUISITO 0 do ${GITEA_BRING_UP} (o env do host espelha o template): ${bringUp.state}`,
+    )
+    // O comando sai em linha PROPRIA só quando o detalhe não o traz: o detalhe é
+    // a mesma string que viaja no veredito (e no `--json`), então ele tem de ser
+    // auto-contido — mas imprimir os dois lado a lado seria eco.
+    if (!bringUp.detail.includes(bringUp.command)) {
+      line(`           ${color(C.gray, `comando: ${bringUp.command}`)}`)
+    }
+    line(`           ${color(C.gray, bringUp.detail)}`)
+    for (const r of bringUp.remedies) line(`           ${color(C.gray, `→ ${r}`)}`)
+  }
 
   // ── 6. Dívida aberta no board ───────────────────────────────────────────
   // A única seção que fala do que o repositório JÁ SABE, em vez do que ele mede
@@ -1986,6 +3115,12 @@ export const USAGE = `forge-doctor — relatório de prontidão da forja para bl
 Usage:
   node scripts/forge-doctor.mjs [opções]
 
+O relatório NOMEIA o PRE-REQUISITO 0 do deploy/gitea-up.sh (o env do host tem de
+espelhar o template comitado) com o ESTADO dele, o COMANDO que o reproduz e o
+REMEDIO (bun run env-mirror:check --patch | --fix). Ele é DERIVADO da MESMA
+comparação host x template da seção da imagem — uma pergunta, uma resposta:
+sondar de novo seria uma segunda verdade sobre o mesmo arquivo.
+
 Opções:
   --no-guards            pula a bateria de guards (mais rápido; o veredito fica parcial)
   --no-proof             pula a prova do bloqueio da imagem (mais rápido; o veredito fica parcial)
@@ -2017,18 +3152,65 @@ Opções:
                          actrc-sync. Sem ele o doctor só prova que os espelhos
                          existem e concordam entre si — e o veredito fica
                          INDETERMINADA por isso
+  --expected-var NOME=VALUE
+                         o valor de OUTRA variável que o compose consome
+                         (IMAGE_REGISTRY, IMAGE_NAMESPACE): o guard periódico
+                         compara o valor de TODAS elas, e uma sem valor passado
+                         deixa o veredito INDETERMINADA com o nome dito.
+                         Repetível; BUN_VERSION entra por --expected
   --gitea-env <path>     env do HOST (default: deploy/.env.gitea) — e ele que o
                          doctor compara com o template comitado
   --timeout <segundos>   limite por gate (default: 120)
   --json                 sai como JSON (mesma informação do relatório)
+  --ci                   PERFIL de pipeline (o job \`guards\` da forja, a cada PR):
+                         a fatia que não precisa de rede, credencial nem do
+                         HOST — equivale a --no-guards --no-proof
+                         --no-protection --no-runner-labels --no-image-contract
+                         --no-registry-probe --no-open-debt. O que ele NÃO faz
+                         é baixar a régua: com --expected/--expected-var o VALOR
+                         das variáveis é comparado e uma divergência BLOQUEIA;
+                         cada seção fora do perfil sai na lista de não provado
   -h, --help             esta ajuda
 
 Exit codes (o veredito é o exit code — dá para usar em pipeline):
   0 — pronta   1 — bloqueada   2 — indeterminada   3 — uso/erro interno
+
+No perfil --ci o veredito NORMAL é 2 (INDETERMINADA): as seções de rede e de
+HOST ficam para o cron. Quem roda em pipeline trata 0 e 2 como "sem violação" e
+lê a lista \`unproven\` do relatório (ou o log) para saber o que NÃO foi coberto.
 `
+
+/**
+ * O RECORTE do doctor que um runner de PR prova — e por isso o que pode rodar no
+ * job `guards` a cada PR (`.gitea/workflows/ci.yml` e o espelho do GitHub).
+ *
+ * POR QUE ESTAS SETE, e não uma a menos: cada uma precisa de algo que um runner
+ * de PR não tem (rede, credencial de administração, o estado do HOST) ou é
+ * RECURSIVA ali dentro — a bateria de guards É o job que chama o doctor, e a
+ * prova do bloqueio executa o `deploy/gitea-up.sh`, que por sua vez executa este
+ * doctor. Ficam de fora do recorte apenas as seções que o PR consegue provar: o
+ * contrato de merge, o env mirror, o render do compose e o VALOR das variáveis
+ * nos espelhos e nas referências não versionadas.
+ *
+ * O que ele NÃO faz é esconder o que saiu: cada chave daqui vira uma linha da
+ * lista `unproven` (e todas elas já existem para as flags manuais — este perfil
+ * não inventou um segundo mecanismo).
+ *
+ * @type {string[]} os nomes das seções que o `--ci` DESLIGA
+ */
+export const CI_PROFILE_SKIPS = [
+  "guards",
+  "proof",
+  "protection",
+  "runnerLabels",
+  "imageContract",
+  "registryProbe",
+  "openDebt",
+]
 
 export function parseArgs(argv) {
   const opts = {
+    ciProfile: false,
     guards: true,
     proof: true,
     protection: true,
@@ -2039,6 +3221,7 @@ export function parseArgs(argv) {
     openDebt: true,
     envFile: DEFAULT_ENV_FILE,
     expected: null,
+    expectedVars: {},
     timeoutS: 120,
     json: false,
     help: false,
@@ -2046,7 +3229,10 @@ export function parseArgs(argv) {
   }
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
-    if (arg === "--no-guards") opts.guards = false
+    if (arg === "--ci") {
+      opts.ciProfile = true
+      for (const name of CI_PROFILE_SKIPS) opts[name] = false
+    } else if (arg === "--no-guards") opts.guards = false
     else if (arg === "--no-proof") opts.proof = false
     else if (arg === "--no-protection") opts.protection = false
     else if (arg === "--no-runner-labels") opts.runnerLabels = false
@@ -2057,7 +3243,20 @@ export function parseArgs(argv) {
     else if (arg === "--json") opts.json = true
     else if (arg === "-h" || arg === "--help") opts.help = true
     else if (arg === "--expected") opts.expected = argv[++i] ?? ""
-    else if (arg === "--gitea-env") opts.envFile = argv[++i] ?? ""
+    else if (arg === "--expected-var") {
+      const raw = argv[++i] ?? ""
+      const eq = raw.indexOf("=")
+      const name = eq > 0 ? raw.slice(0, eq) : ""
+      if (!MIRROR_VARIABLES.includes(name)) {
+        opts.error = `--expected-var exige NOME=VALOR com NOME em ${MIRROR_VARIABLES.join(", ")} (recebi '${raw}')`
+      } else if (name === "BUN_VERSION") {
+        opts.error = "--expected-var: BUN_VERSION entra por --expected"
+      } else if (raw.slice(eq + 1).startsWith("--")) {
+        opts.error = `--expected-var exige um valor, nao uma flag (recebi '${raw.slice(eq + 1)}' para ${name})`
+      } else {
+        opts.expectedVars[name] = raw.slice(eq + 1)
+      }
+    } else if (arg === "--gitea-env") opts.envFile = argv[++i] ?? ""
     else if (arg === "--timeout") opts.timeoutS = Number(argv[++i])
     else opts.error = `argumento desconhecido: ${arg}`
   }
@@ -2087,6 +3286,13 @@ export function parseArgs(argv) {
  * @param {string} [options.envFile]   env do runner (o mesmo do compose)
  * @param {string|null} [options.expected] valor de `vars.BUN_VERSION` para
  * comparar os espelhos do Bun (null = não comparado: o veredito fica parcial)
+ * @param {Record<string, string|null>} [options.expectedVars] os valores das
+ * outras variáveis comparadas (`--expected-var`): as sem valor entram como
+ * dúvida nominal ("o VALOR de X não foi comparado"), nunca como conferidas
+ * @param {boolean} [options.ciProfile] PERFIL de pipeline (`--ci`): marca o
+ * relatório como o recorte local e acrescenta a linha própria em `unproven`.
+ * Quem desliga as seções é `CI_PROFILE_SKIPS` (no `parseArgs`), não este flag
+ * (aqui ele só DECLARA o recorte no relatório)
  * @param {boolean} [options.guards]   executar a bateria da forja (default: true)
  * @param {boolean} [options.proof]    executar a prova do bloqueio (default: true)
  * @param {boolean} [options.protection] ler a branch protection registrada na forja (default: true)
@@ -2110,10 +3316,18 @@ export function parseArgs(argv) {
  * @param {object} [options.composeDeps] dependências repassadas à interpolação do compose
  * @param {object} [options.protectionDeps] dependências repassadas à leitura da branch protection
  * (`run` é o mesmo dublê dos gates: é por ele que a leitura da forja é injetada)
+ * @param {Function} [options.identityProbe] o probe CRU da identidade da imagem
+ * (default: `probeImageIdentity`) — o doutor o embrulha no cache COMPARTILHADO
+ * pelos dois fatos que perguntam a mesma coisa; é por aqui que o teste conta
+ * quantas idas ao registry a mesma pergunta custou
  * @param {object} [options.openDebtDeps] dependências do fato da dívida aberta
  * (`list` = a leitura do board, `now` = o relógio da idade) — o ponto de injeção
  * do teste, e o que mantém a suíte fora da rede
  * (`{prove}` substitui a prova inteira — é o ponto de injeção do teste)
+ * @param {object} [options.identityProbe] quando fornecido, dispara o probe de
+ * identidade do registry (cacheada entre os fatos que a perguntam)
+ * @param {object} [options.gateContractsDeps] dependências do verificador
+ * reutilizável de gates CORE (`readAllGateContracts` = dublê de teste)
  * (sem `@returns` declarado de propósito: o formato dos fatos é o que o
  * `summarize` consome, e descrevê-lo aqui de novo só criaria duas verdades)
  */
@@ -2122,6 +3336,8 @@ export async function diagnose({
   envFile = DEFAULT_ENV_FILE,
   env = process.env,
   expected = null,
+  expectedVars = {},
+  ciProfile = false,
   guards = true,
   proof = true,
   protection = true,
@@ -2141,12 +3357,35 @@ export async function diagnose({
   protectionDeps = {},
   imageContractDeps = {},
   openDebtDeps = {},
+  identityProbe,
+  gateContractsDeps = {},
 } = {}) {
   const contractRun = runGate(
     { label: "check:required-checks", command: "bun run check:required-checks" },
     { cwd, timeoutS, run },
   )
   const contract = readContract(cwd)
+  // A branch protection REGISTRADA é lida ANTES do gate do bring-up: o gate
+  // cruza o contrato de merge com a proteção da forja (o check está registrado?),
+  // e para isso precisa dos dados da proteção — a MESMA leitura que a seção 1
+  // já faria, extraída para frente por dependência.
+  const protectionFacts = protection
+    ? readProtection({
+        cwd,
+        forges: contract.forges.map((f) => f.forge),
+        run,
+        ...protectionDeps,
+      })
+    : { state: "skipped", detail: "pulada por --no-protection", forges: [] }
+  // O GATE do bring-up pergunta QUAIS jobs o contrato exige — a leitura do
+  // manifesto é a MESMA (`readContract`, uma leitura de arquivo): o fato recebe
+  // o que já foi lido e acrescenta só a linha `run:` das pipelines. Agora ele
+  // TAMBÉM cruza com a branch protection registrada (o check está registrado?).
+  const bringUpGate = readBringUpGate({ cwd, contract, protection: protectionFacts })
+  // TODOS os gates CORE: o verificador genérico itera os `CORE_INVARIANTS` que
+  // têm `jobIds` e confere, para cada um, o manifesto + pipeline + proteção.
+  const readAllGates = gateContractsDeps.readAllGateContracts ?? readAllGateContracts
+  const gateContracts = readAllGates({ cwd, contract, protection: protectionFacts })
   if (contractRun.code !== 0) {
     contract.failures.push(
       contractRun.code === null
@@ -2163,25 +3402,26 @@ export async function diagnose({
     gatesResult = { gates: [], error: `${MERGE_OWNER_PIPELINE}: ausente` }
   }
 
-  const results = guards ? runGuards(gatesResult.gates, { cwd, timeoutS, run }) : []
+  // A bateria roda CONCORRENTE (ordem dos resultados preservada). Um `run`
+  // injetado — dublê síncrono dos testes — volta ao caminho sequencial.
+  const results = guards ? await runGatesConcurrent(gatesResult.gates, { cwd, timeoutS, run }) : []
+
+  // UMA identidade do registry para os DOIS fatos que a perguntam (invariante 9
+  // e o contrato da imagem publicada): sem o cache, o mesmo manifesto + config
+  // blob eram lidos duas vezes. O probe cacheado entra como DEPENDÊNCIA — o que
+  // um teste injetar em `imageRefsDeps`/`imageContractDeps` continua ganhando.
+  const registryIdentity = createRegistryIdentityCache(
+    identityProbe ? { probe: identityProbe } : {},
+  )
 
   // O fato da imagem sai primeiro porque o CONTRATO PUBLICADO depende dele (o
   // `ref` resolvido pelo env é a fonte do alvo — uma leitura do env, não duas).
   const image = await readImage({ envFile, cwd, deps: imageDeps })
 
-  // A proteção e os espelhos saem do literal porque o FATO DA DÍVIDA os consome:
-  // o cruzamento (a issue aberta contra o que o doctor mede agora) precisa das
-  // duas leituras, e recomputá-las para isso seriam DUAS medições do mesmo fato
-  // — que é como duas verdades começam a divergir.
-  const protectionFacts = protection
-    ? readProtection({
-        cwd,
-        forges: contract.forges.map((f) => f.forge),
-        run,
-        ...protectionDeps,
-      })
-    : { state: "skipped", detail: "pulada por --no-protection", forges: [] }
-  const mirrorsFacts = readMirrors(cwd, { expected })
+  // `protectionFacts` já foi computado ANTES do gate (o gate cruza com ele).
+  // Aqui só os espelhos e a dívida dependem das duas leituras — não recompute
+  // a proteção (duas medições do mesmo fato começam a divergir).
+  const mirrorsFacts = readMirrors(cwd, { expected, expectedVars })
   const openDebtFacts = openDebt
     ? await readOpenDebt({
         cwd,
@@ -2201,6 +3441,8 @@ export async function diagnose({
 
   const facts = {
     contract,
+    bringUpGate,
+    gateContracts,
     guards: { results, error: gatesResult.error ?? null, gates: gatesResult.gates },
     image,
     // A imagem publicada: exige a MESMA leitura do registry que o
@@ -2208,7 +3450,13 @@ export async function diagnose({
     // as duas, e o relatório diz qual das duas razões o fez ficar de fora.
     imageContract:
       imageContract && registryProbe
-        ? await readImageContract({ image, expected, cwd, env, deps: imageContractDeps })
+        ? await readImageContract({
+            image,
+            expected,
+            cwd,
+            env,
+            deps: { resolveIdentity: registryIdentity, ...imageContractDeps },
+          })
         : {
             state: "skipped",
             detail: imageContract
@@ -2244,7 +3492,7 @@ export async function diagnose({
     imageRefs: await readImageRefs({
       cwd,
       envFile,
-      deps: { probeRegistry: registryProbe, ...imageRefsDeps },
+      deps: { probeRegistry: registryProbe, probe: registryIdentity, ...imageRefsDeps },
     }),
     // O `envFile` só é repassado quando NÃO é o default: o default do doctor
     // (`deploy/.env.gitea`) significa "use a DESCOBERTA do guard" — e a
@@ -2275,6 +3523,7 @@ export async function diagnose({
         },
     mirrors: mirrorsFacts,
     openDebt: openDebtFacts,
+    ciProfile,
     skippedGuards: !guards,
     skippedProof: !proof,
     skippedProtection: !protection,

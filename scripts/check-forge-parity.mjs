@@ -47,7 +47,11 @@
 //   3. `bun run <entry>` com entry check:/validate:/test-mutation:/lint/test:*;
 //   4. `tsc --noEmit` (typecheck);
 //   5. `uses: ./<forge>/workflows/<arquivo>.yml` (workflow reutilizavel local =
-//      ponto de entrada de gates).
+//      ponto de entrada de gates);
+//   6. `bun run <x>:prove` / `node scripts/prove-*.mjs` — a familia das PROVAS
+//      por EXECUCAO ("o comportamento e este", medido rodando o caminho real).
+//      Entram pelo mesmo motivo das outras: uma prova que roda numa forja e nao
+//      na outra deixa o PR verde por onde rodou.
 // Plumbing (install, db:generate, build, docker ...) NAO e gate: nao declara
 // verificacao. Se um comando de verificacao nao se encaixa, ele entra por
 // `--check` ou por um novo prefixo aqui — nunca por uma excecao ad hoc.
@@ -90,10 +94,19 @@ const ENTRY_RE = /\bbun\s+run\s+([a-z0-9][a-z0-9:_-]*)/g
 const REUSABLE_RE = /uses:\s*(\.\/\.[A-Za-z0-9_.-]+\/workflows\/[A-Za-z0-9_.-]+\.ya?ml)/g
 
 /** Prefixos de basename de script que declaram verificacao. */
-export const GATE_SCRIPT_PREFIX_RE = /^(check|validate|audit|test-mutation|run)-/
+export const GATE_SCRIPT_PREFIX_RE = /^(check|validate|audit|test-mutation|run|prove)-/
 
 /** Prefixos de entry do package.json que declaram verificacao. */
 export const GATE_ENTRY_PREFIX_RE = /^(check|validate|test-mutation):/
+
+/**
+ * Entries de PROVA POR EXECUCAO (`<contexto>:prove`).
+ *
+ * O prefixo NAO pode ser `check:`: `runner-image:prove` nomeia o CONTEXTO que a
+ * prova exercita, nao a familia do comando — renomea-lo para caber na lista
+ * anterior seria ajustar o nome ao guard, e nao o guard ao nome.
+ */
+export const GATE_ENTRY_PROVE_RE = /^[a-z0-9][a-z0-9-]*:prove$/
 
 /** Entries estruturais (as tres invariantes basicas de qualquer projeto). */
 export const STRUCTURAL_ENTRIES = ["lint", "test:unit", "test:run", "test:ci"]
@@ -135,7 +148,11 @@ export function discoverGates(content) {
     }
     for (const m of line.matchAll(ENTRY_RE)) {
       const entry = m[1]
-      if (GATE_ENTRY_PREFIX_RE.test(entry) || STRUCTURAL_ENTRIES.includes(entry)) {
+      if (
+        GATE_ENTRY_PREFIX_RE.test(entry) ||
+        STRUCTURAL_ENTRIES.includes(entry) ||
+        GATE_ENTRY_PROVE_RE.test(entry)
+      ) {
         gates.add(`bun run ${entry}`)
       }
     }
@@ -157,11 +174,31 @@ export function discoverGates(content) {
  *
  * @type {{ id: string, matches: RegExp, why: string }[]}
  */
+/**
+ * Invariantes que DEVEM rodar nas duas pipelines: agnosticas de forja e capazes
+ * de quebrar o software (correcao) ou a seguranca se puladas.
+ *
+ * `matches` é testado contra o ROTULO do gate descoberto (ex.:
+ * "scripts/check-bun-mirror.mjs", "bun run lint", "tsc --noEmit"), por isso as
+ * regexes aceitam as duas sintaxes (`check-x.mjs` e `check:x`).
+ *
+ * `jobIds` mapeia a invariante ao(s) job(s)对应的 no manifesto de merge
+ * (`ci/required-checks.json`), por forja. Quando um job é composto (ex.:
+ * o `guards` da Gitea que roda vários scripts), a invariante aponta para esse
+ * job e o doctor confere se o COMANDO do gate aparece na linha `run:` dele.
+ * Invariantes sem `jobIds` (ex.: as que rodam só no GitHub como mutation tests)
+ * são verificadas apenas pelo classifyGate — o contrato de merge não as lista
+ * como jobs individuais.
+ *
+ * @type {{ id: string, matches: RegExp, why: string,
+ *   jobIds?: Record<string, string> }[]}
+ */
 export const CORE_INVARIANTS = [
   {
     id: "typecheck",
     matches: /tsc --noEmit/,
     why: "tipo errado que compila e o modo classico de bug silencioso em producao",
+    jobIds: { gitea: "typecheck", github: "typecheck" },
   },
   {
     id: "lint",
@@ -169,51 +206,80 @@ export const CORE_INVARIANTS = [
     // E contra o conteudo inteiro da pipeline (multi-linha) em missingInvariants.
     matches: /^bun run lint$/m,
     why: "regra de lint que so existe no editor deixa o repositorio divergir do padrao",
+    jobIds: { gitea: "lint", github: "lint-guard" },
   },
   {
     id: "tests",
     matches: /^bun run test:(unit|run|ci)$/m,
     why: "a suite e a rede de seguranca das outras invariantes",
+    jobIds: { gitea: "test", github: "check" },
   },
   {
     id: "ts-nocheck",
     matches: /check[:-]ts[:-]nocheck/,
     why: "@ts-nocheck desliga a verificacao de tipos do arquivo — a porta dos fundos do typecheck",
+    jobIds: { gitea: "guards" },
   },
   {
     id: "pii-allowlist",
     matches: /check[:-]pii[:-]allowlist/,
     why: "vazamento de campo sensivel em payload de usuario (CPF/e-mail/endereco)",
+    jobIds: { github: "pii-allowlist-guard" },
   },
   {
     id: "pii-gate-self-test",
     matches: /check[:-]pii[:-]gate/,
     why: "sem a auto-prova, o guard de PII pode estar verde por nunca ter disparado",
+    jobIds: { github: "pii-allowlist-guard" },
   },
   {
     id: "required-checks",
     matches: /check[:-]required[:-]checks/,
     why: "required check inexistente NAO falha: faz o PR esperar para sempre",
+    jobIds: { gitea: "guards" },
+  },
+  {
+    id: "bring-up-env-gate-proof",
+    // O PRÉ-REQUISITO 0 do bring-up (o env do host espelha o template comitado),
+    // provado por EXECUÇÃO: o `gitea-up.sh` real roda contra um env divergente e
+    // tem de RECUSAR antes de qualquer docker. O `checkGiteaBringUp` prende a
+    // ORDEM no texto do script — e texto não distingue bloquear de estar
+    // quebrado (um script que aborta por qualquer motivo também não sobe nada).
+    matches: /runner-image:prove|prove-runner-image-gate/,
+    why: "sem a prova executada, 'o passo 0 recusa' volta a ser uma afirmação sobre o TEXTO do gitea-up.sh",
+    jobIds: { gitea: "bring-up-proof", github: "bring-up-proof" },
   },
   {
     id: "registry-source",
     matches: /check[:-]registry[:-]source/,
     why: "registry hardcoded reacopla o projeto a um registry proprietario com cota",
+    jobIds: { gitea: "guards" },
+  },
+  {
+    id: "doctor-ci",
+    // O GATE de PR (`check-doctor-ci.mjs`), não o doctor em si: o doctor é o
+    // motor, e o publicador da issue (`forge-doctor-issue.mjs`) é do cron.
+    matches: /check[:-]doctor[:-]ci/,
+    why: "o VALOR das repository variables nos espelhos e nas referencias nao versionadas é o que um PR esquece de acompanhar: o espelho velho nao quebra nada visivel (o setup-bun funciona igual, só mais lento, e o pull da imagem só falha quando um job inicia). O doctor no perfil --ci compara esse valor a CADA PR e BLOQUEIA na divergencia, em vez de deixar a pergunta para o cron semanal",
+    jobIds: { github: "doctor-mirrors-guard" },
   },
   {
     id: "runner-base",
     matches: /check[:-]runner[:-]base/,
     why: "a base do Dockerfile do runner e uma tag FLUTUANTE: um rebuild troca a imagem (e o plugin `compose` que a invariante 7 usa) sem nenhuma linha do repositorio mudar",
+    jobIds: { gitea: "guards" },
   },
   {
     id: "workflow-refs",
     matches: /check[:-]workflow[:-]refs/,
     why: "referencia pendurada entre workflow e script quebra a pipeline em runtime",
+    jobIds: { github: "workflow-refs-guard" },
   },
   {
     id: "forge-workflow-scope",
     matches: /check[:-]forge[:-]workflow[:-]scope/,
     why: "cravar um diretorio de forja deixa as OUTRAS forjas fora da varredura dos guards",
+    jobIds: { gitea: "guards" },
   },
   {
     id: "bun-audit",
@@ -226,41 +292,55 @@ export const CORE_INVARIANTS = [
     id: "forge-parity",
     matches: /check[:-]forge[:-]parity/,
     why: "o proprio contrato de merge (esta lista) precisa ser verificado onde o merge acontece, senao a forja bloqueia por um contrato que ninguem audita",
+    jobIds: { gitea: "guards" },
   },
   {
     id: "hooks-symmetry",
     matches: /check[:-]hooks[:-]symmetry/,
     why: "hook/guard documentado que nao existe no repositorio e uma protecao FANTASMA: o README promete o que o codigo nao faz",
+    jobIds: { github: "hooks-symmetry-guard" },
   },
   {
     id: "secret-leaks",
     matches: /rotate-secrets/,
     why: "segredo versionado por engano (.env, chave, token) — vazamento permanente no historico",
+    jobIds: { github: "secrets-guard" },
   },
   {
     id: "seed-hooks",
     matches: /check[:-]seed[:-]hooks/,
     why: "SEED_SPEC_PATCH/PROD_SEED_ALLOW_DEV sao TEST-ONLY: vazando para o caminho de DEPLOY, o seed de producao roda com spec patchado",
+    jobIds: { github: "seed-hooks-guard" },
   },
   {
     id: "sentinel-producer",
     matches: /check[:-]sentinel[:-]producer/,
     why: "sentinel orfao cria guarda CEGA: o grep nunca acende e 'nao achou' vira falso positivo de 'limpo'",
+    jobIds: { github: "sentinel-producer-guard" },
   },
   {
     id: "bun-mirror",
     matches: /check[:-]bun[:-]mirror/,
     why: "versao do Bun com multiplos pontos de verdade faz duas pipelines construirem runtimes diferentes",
+    jobIds: { github: "bun-mirror-guard" },
   },
   {
     id: "no-setup-bun",
     matches: /check[:-]no[:-]setup[:-]bun/,
     why: "o action externo re-baixa o release do Bun em todo job (~25-35s) — regressao ja corrigida que nao pode voltar",
+    jobIds: { github: "no-setup-bun-guard" },
   },
   {
     id: "script-headers",
     matches: /check-script-headers/,
     why: "script sem Usage/Exit code no cabecalho e operacao por adivinhacao: quem chama nao sabe o que ele devolve nem o que ele faz de efeito — e os gates que decidem o merge nao podem depender disso",
+    jobIds: { gitea: "guards" },
+  },
+  {
+    id: "prove-docs",
+    matches: /check[:-]prove[:-]docs/,
+    why: "a familia prove-*/doctor e o que responde 'a forja pode confiar o merge a este gate?': uma doc que descreve a saida de ANTES mente com aparencia de rigor, e quem opera a forja decide sobre ela — o guard e hermetico (~1s) e roda com o docker ausente de proposito nas provas que exigem docker",
+    jobIds: { gitea: "guards" },
   },
 ]
 
@@ -317,6 +397,12 @@ export const GITHUB_ONLY = [
     matches: /check[:-]seed[:-]count[:-]literals/,
     reason:
       "confere literais de contagem nos arquivos de seed/CI do pipeline do GitHub (sujeito = pipeline, nao o produto)",
+  },
+  {
+    id: "seed-e2e",
+    matches: /Seed E2E|seed-guards/,
+    reason:
+      "E2E de seed (prod+dev) com PostGIS efemero — so roda no GitHub self-hosted com service containers; a forja nao tem o cenario",
   },
   {
     id: "jsdom-baseline",
