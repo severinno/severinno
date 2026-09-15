@@ -2170,6 +2170,20 @@ export const DEBT_SUBJECTS = [
     crossCheck: "mirrors",
   },
   {
+    label: "env-mirror-drift",
+    markerId: "env-mirror-drift",
+    subject:
+      "o env do HOST da forja (deploy/.env.gitea) divergiu do template comitado (deploy/env.gitea.example)",
+    forges: ["gitea"],
+    // O doctor MEDE o mesmo par (`compose.hostCompare`, e o pré-requisito 0 que
+    // deriva dele) — mas aquele fato é calculado DEPOIS da leitura do board e
+    // carrega o MESMO limite de visibilidade deste publicador (o env do host é
+    // gitignored e existe só onde a stack roda). Usá-lo como segunda testemunha
+    // exigiria reordenar o `diagnose`, e não acrescentaria independência: os dois
+    // leem a mesma descoberta. `null` é a resposta honesta.
+    crossCheck: null,
+  },
+  {
     label: "readme-drift",
     markerId: "readme-drift",
     subject: "a auditoria reversa do README achou um alvo que o repositório não serve mais",

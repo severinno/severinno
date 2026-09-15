@@ -194,6 +194,14 @@
         "why": "a forja ganhou canal de issue (`--backend gitea`, mesma regra do lado GitHub): o step publica/comenta/fecha o drift; o run vermelho do `Fail on drift` continua como lembrança"
       },
       {
+        "workflow": ".gitea/workflows/env-mirror-drift.yml",
+        "job": "env-mirror-drift",
+        "signal": "env do HOST da forja (deploy/.env.gitea) divergiu do template comitado — drift de OPERAÇÃO, sem PR",
+        "channel": "issue",
+        "evidence": "scripts/env-mirror-drift-issue.mjs",
+        "why": "o único evento que compara host x template é o PR e o pré-requisito 0 do gitea-up.sh; depois do merge o env do VPS muda sem PR nenhum, e é o cron que vira ticket. `absent` (não consegui comparar) não abre issue — mas FALHA o run: um cron que não mediu não pode passar por verde"
+      },
+      {
         "workflow": ".gitea/workflows/forge-doctor.yml",
         "job": "doctor",
         "signal": "veredito de prontidão da forja ≠ PRONTA",
