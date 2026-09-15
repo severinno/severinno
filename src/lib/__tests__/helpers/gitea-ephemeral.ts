@@ -52,15 +52,39 @@ function dockerRun(args: string[]): string {
   return res.stdout.trim()
 }
 
-function dockerExec(
-  container: string,
-  args: string[],
-): { stdout: string; stderr: string; status: number | null } {
-  return spawnSync("docker", ["exec", container, ...args], { encoding: "utf8" })
-}
-
 function dockerRm(container: string): void {
   spawnSync("docker", ["rm", "-f", container], { encoding: "utf8" })
+}
+
+/**
+ * Containers criados NESTA execução e ainda vivos.
+ *
+ * O `cleanup()` devolvido ao teste é o caminho normal, mas ele NÃO roda quando
+ * o processo é ABORTADO (timeout do runner, SIGINT/SIGTERM, crash do vitest):
+ * aí o container fica órfão PARA SEMPRE (~80MB cada; dezenas se acumulam em
+ * alguns runs interrompidos). Este registro é o `trap EXIT` do helper — o
+ * MESMO padrão que os scripts de mutação do repo usam no shell.
+ */
+const liveContainers = new Set<string>()
+let teardownRegistered = false
+
+/** Registra o sweep de containers no fim do processo (idempotente). */
+function registerTeardown(): void {
+  if (teardownRegistered) return
+  teardownRegistered = true
+  // `exit` roda na saída normal, no `process.exit()` e em exceção não tratada.
+  process.on("exit", () => {
+    for (const c of liveContainers) dockerRm(c)
+  })
+  // Sinal NÃO dispara `exit` por padrão: sem estes handlers, um SIGTERM
+  // (timeout do runner) mataria o processo sem passar pelo sweep — que é
+  // exatamente como os containers vazaram até aqui.
+  for (const sig of ["SIGINT", "SIGTERM"] as const) {
+    process.on(sig, () => {
+      for (const c of liveContainers) dockerRm(c)
+      process.exit(130)
+    })
+  }
 }
 
 async function waitForGitea(url: string, timeoutMs = 30_000): Promise<void> {
@@ -131,6 +155,10 @@ export async function makeEphemeralGitea(
     `${port}:3000`,
     image,
   ])
+  // A partir daqui o container EXISTE: registrar o sweep antes do 1º passo que
+  // pode falhar garante que um erro no meio do setup também não vaze.
+  liveContainers.add(container)
+  registerTeardown()
 
   // Resolve a porta real
   const portRes = spawnSync("docker", ["port", container, "3000/tcp"], { encoding: "utf8" })
@@ -220,7 +248,10 @@ export async function makeEphemeralGitea(
       token,
       repo: `${adminUser}/${repoName}`,
       adminUser,
-      cleanup: async () => dockerRm(container),
+      cleanup: async () => {
+        liveContainers.delete(container)
+        dockerRm(container)
+      },
     }
   } catch (err) {
     dockerRm(container)
