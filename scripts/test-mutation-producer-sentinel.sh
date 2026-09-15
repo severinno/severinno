@@ -137,7 +137,7 @@ assert_control() {
     fail "O fixture/produtor base não é válido — o mutation test não pode prosseguir."
     exit 1
   fi
-  if ! echo "$REPORT_OUTPUT" | grep -Fq "$SENTINEL"; then
+  if ! grep -Fq "$SENTINEL" <<< "$REPORT_OUTPUT"; then
     fail "CONTROLE FALHOU: produtor REAL não imprimiu o sentinel '$SENTINEL' com o blob CRLF."
     fail "O fixture não acende o gate — a mutação não teria o que quebrar."
     exit 1
@@ -162,7 +162,7 @@ assert_mutation() {
 
   # Caso 1 — a varredura segue achando o ofensor (o blob é listado): prova
   # que a mutação removeu SÓ a linha do sentinel, não o mapeamento.
-  if ! echo "$REPORT_OUTPUT" | grep -Fq "fake.md"; then
+  if ! grep -Fq "fake.md" <<< "$REPORT_OUTPUT"; then
     fail "MUTAÇÃO NÃO-CIRÚRGICA: o blob ofensor 'fake.md' não foi listado."
     fail "A remoção quebrou o mapeamento — o teste falharia por motivo errado."
     exit 1
@@ -171,7 +171,7 @@ assert_mutation() {
   # Caso 2 — GUARD CEGA: o produtor mutado AINDA emite o sentinel → o teste
   # validate-all-text-alert.test.ts passaria mesmo com a regressão (o grep do
   # job acharia) — exatamente a cegueira que este cenário existe para matar.
-  if echo "$REPORT_OUTPUT" | grep -Fq "$SENTINEL"; then
+  if grep -Fq "$SENTINEL" <<< "$REPORT_OUTPUT"; then
     fail "GUARD CEGA: produtor MUTADO ainda emite '$SENTINEL'."
     fail "O validate-all-text-alert.test.ts passaria MESMO com a regressão — o teste"
     fail "não pega a remoção do sentinel. A asserção found_crlf=true não quebraria."
@@ -208,7 +208,7 @@ build_fixture
 
 # Byte-check do blob (o MESMO do validate-all-text-alert.sh — `od -An -c` +
 # grep do literal '\r': portável Linux/MSYS, sem a tradução de pipe do grep).
-if git -C "$FIXTURE_DIR" show HEAD:fake.md | od -An -c | grep -Fq '\r'; then
+if grep -Fq '\r' <<< "$(git -C "$FIXTURE_DIR" show HEAD:fake.md | od -An -c)"; then
   pass "Fixture válido: blob fake.md commitado com bytes CRLF (autocrlf=false)"
 else
   fail "Fixture INVALIDO: blob fake.md sem CRLF — autocrlf interferiu?"

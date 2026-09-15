@@ -167,7 +167,7 @@ git -C "$TMP_DIR" add .github/workflows/fake.yml
 
 # Fail-fast: o diff staged DEVE conter a remoção da chamada do setup (se não,
 # a mutação não produziu o cenário que o guard precisa ver).
-if git -C "$TMP_DIR" diff --cached -- .github/workflows/fake.yml | grep -Fq -- '-        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"'; then
+if grep -Fq -- '-        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"' <<< "$(git -C "$TMP_DIR" diff --cached -- .github/workflows/fake.yml)"; then
   pass "Mutação aplicada: a chamada do setup foi REMOVIDA (o job sobrevive)"
 else
   fail "Mutação não aplicou (a linha da chamada não aparece como remoção no diff staged)."

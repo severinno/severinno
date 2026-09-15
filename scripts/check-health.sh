@@ -50,11 +50,11 @@ step() { echo ""; echo "${GRAY}════════════════�
 port_in_use() {
     local port=$1
     if command -v ss >/dev/null 2>&1; then
-        ss -tlnp "sport = :$port" 2>/dev/null | grep -qE "pid=[0-9]+" && return 0
+        grep -qE "pid=[0-9]+" <<< "$(ss -tlnp "sport = :$port" 2>/dev/null)" && return 0
     elif command -v lsof >/dev/null 2>&1; then
-        lsof -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | grep -qv "com.docker" && return 0
+        grep -qv "com.docker" <<< "$(lsof -iTCP:"$port" -sTCP:LISTEN 2>/dev/null)" && return 0
     elif command -v netstat >/dev/null 2>&1; then
-        netstat -ano 2>/dev/null | grep ":${port}" | grep -qi "LISTEN" && return 0
+        grep -qi "LISTEN" <<< "$(netstat -ano 2>/dev/null | grep ":${port}")" && return 0
     fi
     return 1
 }
@@ -110,11 +110,11 @@ run_health_check() {
     # Node modules
     if [ -d "node_modules" ]; then
         # Check using bun which handles pnpm hoisting correctly
-        if bun run next --version 2>/dev/null | grep -qE "^Next\.js"; then
+        if grep -qE "^Next\.js" <<< "$(bun run next --version 2>/dev/null)"; then
             pass "node_modules: Next.js $(bun run next --version 2>/dev/null | head -1)"
         elif [ -f "node_modules/next/package.json" ]; then
             pass "node_modules: Next.js encontrado"
-        elif [ -d "node_modules/.pnpm" ] && ls node_modules/.pnpm/next* 2>/dev/null | head -1 | grep -q "next"; then
+        elif [ -d "node_modules/.pnpm" ] && grep -q "next" <<< "$(ls node_modules/.pnpm/next* 2>/dev/null | head -1)"; then
             pass "node_modules: Next.js (pnpm hoisted)"
         else
             warn "node_modules: estrutura incompleta"
@@ -236,13 +236,13 @@ run_health_check() {
     else
         local healthy=0 unhealthy=0 others=0
         while IFS='||' read -r name image status; do
-            if echo "$status" | grep -qi "healthy"; then
+            if grep -qi "healthy" <<< "$status"; then
                 echo "     ${GREEN}$name${RESET}  [${status}]"
                 healthy=$((healthy + 1))
-            elif echo "$status" | grep -qi "unhealthy"; then
+            elif grep -qi "unhealthy" <<< "$status"; then
                 echo "     ${RED}$name  [UNHEALTHY]${RESET}"
                 unhealthy=$((unhealthy + 1))
-            elif echo "$status" | grep -qiE "Exit|exited"; then
+            elif grep -qiE "Exit|exited" <<< "$status"; then
                 echo "     ${RED}$name  [EXITED]${RESET}"
                 unhealthy=$((unhealthy + 1))
             else
@@ -259,7 +259,7 @@ run_health_check() {
 
         # Verificar containers essenciais
         for required in postgres postgis; do
-            if echo "$containers" | grep -qi "$required"; then
+            if grep -qi "$required" <<< "$containers"; then
                 pass "Container $required: presente"
                 break
             fi
@@ -269,7 +269,7 @@ run_health_check() {
         }
 
         for required in redis; do
-            if echo "$containers" | grep -qi "redis\|valkey"; then
+            if grep -qi "redis\|valkey" <<< "$containers"; then
                 pass "Container Redis/Valkey: presente"
                 break
             fi
@@ -278,7 +278,7 @@ run_health_check() {
         }
 
         # Verificar se tem PostGIS (não só PostgreSQL vanilla)
-        if echo "$containers" | grep -qi "postgis"; then
+        if grep -qi "postgis" <<< "$containers"; then
             pass "PostGIS detectado"
         fi
     fi
@@ -312,7 +312,7 @@ else:
     print('OK')
 " 2>&1) || true
 
-        if echo "$utf8_result" | grep -q "^OK$"; then
+        if grep -q "^OK$" <<< "$utf8_result"; then
             pass "Encoding UTF-8: todos os source files válidos"
         else
             local count
@@ -369,11 +369,11 @@ with open('$file', 'wb') as f:
     pg_container=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -iE "postgis|postgres" | head -1 || true)
 
     if [ -n "$pg_container" ]; then
-        if docker exec "$pg_container" pg_isready -U "${POSTGRES_USER:-severinno}" -d "${POSTGRES_DB:-severinno}" 2>/dev/null | grep -q "accepting"; then
+        if grep -q "accepting" <<< "$(docker exec "$pg_container" pg_isready -U "${POSTGRES_USER:-severinno}" -d "${POSTGRES_DB:-severinno}" 2>/dev/null)"; then
             pass "PostgreSQL aceitando conexões"
             
             # Verificar extensão PostGIS
-            if docker exec "$pg_container" psql -U "${POSTGRES_USER:-severinno}" -d "${POSTGRES_DB:-severinno}" -Atc "SELECT PostGIS_Version()" 2>/dev/null | grep -qE "^[0-9]"; then
+            if grep -qE "^[0-9]" <<< "$(docker exec "$pg_container" psql -U "${POSTGRES_USER:-severinno}" -d "${POSTGRES_DB:-severinno}" -Atc "SELECT PostGIS_Version()" 2>/dev/null)"; then
                 pass "Extensão PostGIS ativa"
             else
                 warn "PostGIS não está habilitado — migrations geoespaciais falharão"
@@ -409,11 +409,11 @@ with open('$file', 'wb') as f:
     if [ -n "$redis_container" ]; then
         local redis_cmd="redis-cli"
         # Check if it's valkey
-        if echo "$redis_container" | grep -qi "valkey"; then
+        if grep -qi "valkey" <<< "$redis_container"; then
             redis_cmd="valkey-cli"
         fi
 
-        if docker exec "$redis_container" $redis_cmd ping 2>/dev/null | grep -q "PONG"; then
+        if grep -q "PONG" <<< "$(docker exec "$redis_container" $redis_cmd ping 2>/dev/null)"; then
             pass "Redis/Valkey: PONG"
         else
             warn "Redis: ping falhou"
@@ -428,7 +428,7 @@ with open('$file', 'wb') as f:
     step "8. API Health"
 
     if command -v curl >/dev/null 2>&1; then
-        if curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 http://localhost:3000 2>/dev/null | grep -q "200"; then
+        if grep -q "200" <<< "$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 http://localhost:3000 2>/dev/null)"; then
             pass "Next.js respondendo em http://localhost:3000"
 
             # Health endpoint específico

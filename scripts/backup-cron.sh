@@ -52,7 +52,7 @@ mkdir -p "$BACKUP_DIR" "$(dirname "$LOG_FILE")"
 log "📦 Starting backup of database '${POSTGRES_DB}'..."
 
 # 1. pg_dump
-if docker ps --format '{{.Names}}' | grep -q "$POSTGRES_CONTAINER"; then
+if grep -q "$POSTGRES_CONTAINER" <<< "$(docker ps --format '{{.Names}}')"; then
     docker exec -t "$POSTGRES_CONTAINER" \
         pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --clean --if-exists \
         | gzip > "$BACKUP_FILE"

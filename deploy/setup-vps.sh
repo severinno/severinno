@@ -134,7 +134,7 @@ ufw allow 80/tcp   # HTTP
 ufw allow 443/tcp  # HTTPS
 
 # Enable UFW if not already
-if ! ufw status | grep -q "Status: active"; then
+if ! grep -q "Status: active" <<< "$(ufw status)"; then
   echo "y" | ufw enable
 fi
 

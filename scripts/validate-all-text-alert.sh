@@ -129,7 +129,7 @@ fi
 
 # O sentinel NÃO pode aparecer no estado limpo (senão o job CI acenderia em
 # falso — um falso positivo que tornaria o alerta inútil).
-if echo "$REPORT_OUTPUT" | grep -Fq "$SENTINEL"; then
+if grep -Fq "$SENTINEL" <<< "$REPORT_OUTPUT"; then
   fail "FALSO POSITIVO: sentinel '$SENTINEL' apareceu com histórico LIMPO."
   fail "O job CI alertaria sem motivo — verifique a saída acima."
   exit 1
@@ -141,7 +141,7 @@ fi
 # quebraria localmente no Windows mesmo com o produtor correto. O assert usa
 # o discriminador ASCII 'sem CRLF' (presente no caminho limpo, ausente no
 # caminho de achados) — portável Linux/Windows e igualmente source-coupled.
-if ! echo "$REPORT_OUTPUT" | grep -Fq "sem CRLF"; then
+if ! grep -Fq "sem CRLF" <<< "$REPORT_OUTPUT"; then
   fail "CONTROLE FALHOU: estado limpo não imprimiu 'sem CRLF'."
   fail "A saída do audit mudou — o assert source-coupled abaixo quebrou."
   exit 1
@@ -178,7 +178,7 @@ printf '*.md text eol=lf\n' > "$TMP_DIR/.gitattributes"
 # `grep -q $'\r'` falha silenciosamente no MSYS — retorna 0 mesmo em arquivos
 # LF por tradução de pipe). `od -An -c` imprime CR como a sequência ASCII
 # '\r' (2 chars) — o grep -Fq casa o literal, portável Linux/Windows.
-if git -C "$TMP_DIR" show HEAD:fake.md | od -An -c | grep -Fq '\r'; then
+if grep -Fq '\r' <<< "$(git -C "$TMP_DIR" show HEAD:fake.md | od -An -c)"; then
   pass "Mutação aplicada: blob fake.md commitado com bytes CRLF"
 else
   fail "Mutação NÃO aplicou (blob fake.md sem CRLF) — autocrlf interferiu?"
@@ -199,7 +199,7 @@ if [ "$REPORT_EXIT" -ne 0 ]; then
   exit 1
 fi
 
-if echo "$REPORT_OUTPUT" | grep -Fq "$SENTINEL"; then
+if grep -Fq "$SENTINEL" <<< "$REPORT_OUTPUT"; then
   pass "Sentinel '$SENTINEL' PRESENTE — o job ALERTARIA (found_crlf=true)"
 else
   fail "GUARD CEGA: sentinel '$SENTINEL' AUSENTE com blob CRLF commitado."

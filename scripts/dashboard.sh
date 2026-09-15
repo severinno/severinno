@@ -84,19 +84,19 @@ render_dashboard() {
         while IFS='|' read -r name status ports; do
             local icon status_text
 
-            if echo "$status" | grep -qi "healthy"; then
+            if grep -qi "healthy" <<< "$status"; then
                 icon=$(status_icon "healthy")
                 status_text="${GREEN}healthy${RESET}"
                 pass=$((pass + 1))
-            elif echo "$status" | grep -qi "unhealthy"; then
+            elif grep -qi "unhealthy" <<< "$status"; then
                 icon=$(status_icon "unhealthy")
                 status_text="${RED}unhealthy${RESET}"
                 fail=$((fail + 1))
-            elif echo "$status" | grep -qi "starting"; then
+            elif grep -qi "starting" <<< "$status"; then
                 icon=$(status_icon "starting")
                 status_text="${YELLOW}starting${RESET}"
                 warn=$((warn + 1))
-            elif echo "$status" | grep -qi "Exit"; then
+            elif grep -qi "Exit" <<< "$status"; then
                 icon=$(status_icon "error")
                 status_text="${RED}exited${RESET}"
                 fail=$((fail + 1))
@@ -124,12 +124,12 @@ render_dashboard() {
     pg_container=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -iE "postgis|postgres" | head -1 || true)
 
     if [ -n "$pg_container" ]; then
-        if docker exec "$pg_container" pg_isready -U severinno -d severinno 2>/dev/null | grep -q "accepting"; then
+        if grep -q "accepting" <<< "$(docker exec "$pg_container" pg_isready -U severinno -d severinno 2>/dev/null)"; then
             local tables postgis_ver
             tables=$(docker exec "$pg_container" psql -U severinno -d severinno -Atc "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public';" 2>/dev/null || echo "?")
             postgis_ver=$(docker exec "$pg_container" psql -U severinno -d severinno -Atc "SELECT PostGIS_Version()" 2>/dev/null || echo "off")
 
-            if echo "$postgis_ver" | grep -qE "^[0-9]"; then
+            if grep -qE "^[0-9]" <<< "$postgis_ver"; then
                 echo "  $(status_icon ok)  PostgreSQL    │ ${BOLD}$tables${RESET} tabelas │ PostGIS ${postgis_ver%% *}"
             else
                 echo "  $(status_icon ok)  PostgreSQL    │ ${BOLD}$tables${RESET} tabelas │ ${YELLOW}sem PostGIS${RESET}"
@@ -150,8 +150,8 @@ render_dashboard() {
 
     if [ -n "$redis_container" ]; then
         local redis_cmd="redis-cli"
-        echo "$redis_container" | grep -qi "valkey" && redis_cmd="valkey-cli"
-        if docker exec "$redis_container" $redis_cmd ping 2>/dev/null | grep -q "PONG"; then
+        grep -qi "valkey" <<< "$redis_container" && redis_cmd="valkey-cli"
+        if grep -q "PONG" <<< "$(docker exec "$redis_container" $redis_cmd ping 2>/dev/null)"; then
             echo "  $(status_icon ok)  Redis/Valkey  │ ${GREEN}PONG${RESET}"
             pass=$((pass + 1))
         else
@@ -229,8 +229,8 @@ render_dashboard() {
             disk_avail=$(echo "$disk_info" | awk '{print $3}')
             disk_pct=$(echo "$disk_info" | awk '{print $4}')
             local disk_color="$GREEN"
-            echo "$disk_pct" | grep -qE "^[8-9][0-9]%|100%" && disk_color="$RED"
-            echo "$disk_pct" | grep -qE "^[6-7][0-9]%" && disk_color="$YELLOW"
+            grep -qE "^[8-9][0-9]%|100%" <<< "$disk_pct" && disk_color="$RED"
+            grep -qE "^[6-7][0-9]%" <<< "$disk_pct" && disk_color="$YELLOW"
             printf "  ${BOLD}%-20s${RESET} %s used of %s (${disk_color}%s${RESET})  %s free\n" "Disk (/)" "$disk_used" "$disk_total" "$disk_pct" "$disk_avail"
         fi
     fi

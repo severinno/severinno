@@ -98,7 +98,7 @@ if [ -z "$NEW_VERSION" ]; then
   echo "Usage: $0 [opções] <X.Y.Z>" >&2
   exit 2
 fi
-if ! printf '%s' "$NEW_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+if ! grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' <<< "$(printf '%s' "$NEW_VERSION")"; then
   echo "bump-bun: versão '$NEW_VERSION' inválida — use semver X.Y.Z completo (ex.: 1.3.15)" >&2
   exit 2
 fi

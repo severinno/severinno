@@ -251,7 +251,7 @@ assert_mutation_fail() {
 
   # Caso 3 — falhou com exit 1, mas NÃO pela asserção esperada (outro
   # invariante quebrou no fixture).
-  if ! echo "$out" | grep -Fq "$EXPECTED_FAILURE"; then
+  if ! grep -Fq "$EXPECTED_FAILURE" <<< "$out"; then
     fail "Guard falhou (exit 1) mas NÃO pela asserção esperada:"
     fail "  esperava:  $EXPECTED_FAILURE"
     fail "Falha pode ser outro invariante do fixture — veja o output acima."
@@ -262,7 +262,7 @@ assert_mutation_fail() {
   # semanticamente errado acusou outro heading como candidato, ou o algoritmo
   # de sugestão perdeu o '#crlf-guard'). A sugestão é o artefato que o job
   # semanal transforma em issue — sem ela o achado não é acionável.
-  if ! echo "$out" | grep -Fq "$EXPECTED_SUGGESTION"; then
+  if ! grep -Fq "$EXPECTED_SUGGESTION" <<< "$out"; then
     fail "Guard falhou (exit 1) mas SEM a sugestão esperada:"
     fail "  esperava:  $EXPECTED_SUGGESTION"
     fail "Verifique se a sugestão do reverse ainda aponta para o heading dono do label."
@@ -288,7 +288,7 @@ assert_issue_dry_run_control() {
     echo "$out" | tail -6
     exit 1
   fi
-  if ! echo "$out" | grep -Fq "nenhum achado NOVO"; then
+  if ! grep -Fq "nenhum achado NOVO" <<< "$out"; then
     fail "CONTROLE DO FLUXO FALHOU: esperado 'nenhum achado NOVO' com fixture limpo."
     echo "$out" | tail -6
     exit 1
@@ -321,7 +321,7 @@ assert_issue_dry_run() {
 
   # Caso 1 — pipeline CEGO: o achado mutado não virou issue (baseline guard
   # não detectou o drift, ou o dry-run engoliu o achado).
-  if ! echo "$out" | grep -Fq "criaria issue:"; then
+  if ! grep -Fq "criaria issue:" <<< "$out"; then
     fail "PIPELINE CEGO: --dry-run não imprimiu 'criaria issue' com o achado mutado."
     fail "Esperado: '$EXPECTED_ISSUE_SUMMARY' + a linha 'criaria issue'."
     exit 1
@@ -330,7 +330,7 @@ assert_issue_dry_run() {
   # Caso 1b — resumo com a contagem errada (achados extras/faltantes): o
   # contrato do fluxo é EXATAMENTE 1 achado novo → 1 issue (o fixture tem um
   # único link; >1 achado = duplicação do guard/parser quebraria o dedup).
-  if ! echo "$out" | grep -Fq "$EXPECTED_ISSUE_SUMMARY"; then
+  if ! grep -Fq "$EXPECTED_ISSUE_SUMMARY" <<< "$out"; then
     fail "Resumo da issue incorreto:"
     fail "  esperava:  $EXPECTED_ISSUE_SUMMARY"
     fail "A contagem 1→1 é parte do contrato (dedup por assinatura no job real)."
@@ -339,7 +339,7 @@ assert_issue_dry_run() {
 
   # Caso 2 — TÍTULO incorreto (buildIssueTitle driftou do contrato
   # file+slug+label — o link errado seria identificado errado na issue).
-  if ! echo "$out" | grep -Fq "$EXPECTED_ISSUE_TITLE"; then
+  if ! grep -Fq "$EXPECTED_ISSUE_TITLE" <<< "$out"; then
     fail "Título da issue incorreto:"
     fail "  esperava:  $EXPECTED_ISSUE_TITLE"
     fail "Veja a linha '[dry-run] criaria issue:' acima."
@@ -348,7 +348,7 @@ assert_issue_dry_run() {
 
   # Caso 3 — BODY incorreto: sem o heading atual + a sugestão '#crlf-guard'
   # (o artefato acionável que aponta o heading correto na issue).
-  if ! echo "$out" | grep -Fq "$EXPECTED_ISSUE_BODY"; then
+  if ! grep -Fq "$EXPECTED_ISSUE_BODY" <<< "$out"; then
     fail "Body da issue incorreto:"
     fail "  esperava:  $EXPECTED_ISSUE_BODY"
     fail "A issue não seria acionável sem a sugestão do heading correto."
@@ -357,7 +357,7 @@ assert_issue_dry_run() {
 
   # Caso 4 — dry-run chamou gh (deveria ser puro): o marcador final garante
   # que nenhuma chamada gh foi feita — sem rede, sem credenciais.
-  if ! echo "$out" | grep -Fq "nenhuma chamada gh feita"; then
+  if ! grep -Fq "nenhuma chamada gh feita" <<< "$out"; then
     fail "Dry-run não é puro: faltou o marcador final '(dry-run — nenhuma chamada gh feita)'."
     exit 1
   fi
@@ -401,7 +401,7 @@ assert_broken_link_fail() {
 
   # Caso 2 — exit 2 mas NÃO pela mensagem de infra esperada (outro invariante
   # quebrou no fixture, ou a mensagem foi reformulada sem atualizar o teste).
-  if ! echo "$out" | grep -Fq "$EXPECTED_BROKEN_MESSAGE"; then
+  if ! grep -Fq "$EXPECTED_BROKEN_MESSAGE" <<< "$out"; then
     fail "Guard falhou (exit 2) mas SEM a mensagem de infra esperada:"
     fail "  esperava:  $EXPECTED_BROKEN_MESSAGE"
     fail "Falha pode ser outro invariante do fixture — veja o output acima."
@@ -410,7 +410,7 @@ assert_broken_link_fail() {
 
   # Caso 3 — a mensagem não lista o link quebrado específico (o diagnóstico
   # não identifica o link morto — sem isso o dev não sabe o que corrigir).
-  if ! echo "$out" | grep -Fq "$EXPECTED_BROKEN_LINK"; then
+  if ! grep -Fq "$EXPECTED_BROKEN_LINK" <<< "$out"; then
     fail "Mensagem de infra sem o link quebrado específico:"
     fail "  esperava:  $EXPECTED_BROKEN_LINK"
     fail "O diagnóstico deve listar o link morto para ação imediata."
@@ -419,7 +419,7 @@ assert_broken_link_fail() {
 
   # Caso 4 — a mensagem não explica a distinção exit 2 vs exit 1 (o contrato
   # de assinatura de falha que o job semanal usa para decidir criar issue).
-  if ! echo "$out" | grep -Fq "$EXPECTED_BROKEN_SIGNATURE"; then
+  if ! grep -Fq "$EXPECTED_BROKEN_SIGNATURE" <<< "$out"; then
     fail "Mensagem de infra sem a distinção de assinatura esperada:"
     fail "  esperava:  $EXPECTED_BROKEN_SIGNATURE"
     fail "A mensagem deve explicar que exit 2 ≠ exit 1 (issue só no exit 1)."

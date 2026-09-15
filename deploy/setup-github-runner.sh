@@ -120,8 +120,7 @@ log "Iniciando serviço..."
 
 # ── Verificar status ───────────────────────────────────────────────────────
 sleep 2
-if systemctl is-active --quiet "actions.runner.*.service" 2>/dev/null || \
-   systemctl list-units --type=service | grep -q "actions.runner"; then
+if systemctl is-active --quiet "actions.runner.*.service" 2>/dev/null ||    grep -q "actions.runner" <<< "$(systemctl list-units --type=service)"; then
   log "Runner instalado e rodando!"
 else
   warn "Serviço pode não estar rodando. Verifique: systemctl status actions.runner.*"

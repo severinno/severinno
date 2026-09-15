@@ -238,11 +238,11 @@ if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "O gate está over-eager — payload saudável não deveria falhar."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"exceeded": false'; then
+if ! grep -q '"exceeded": false' <<< "$GUARD_OUTPUT"; then
   fail "CONTROLE FALHOU: report.exceeded não é false para 35s."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"zone": "ok"'; then
+if ! grep -q '"zone": "ok"' <<< "$GUARD_OUTPUT"; then
   fail "CONTROLE FALHOU: report.zone não é 'ok' para 35s."
   exit 1
 fi
@@ -261,11 +261,11 @@ if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "Ruído de runner intermediário não deveria falhar o CI — só alertar."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q "::warning::budget de payload na faixa de WARN"; then
+if ! grep -q "::warning::budget de payload na faixa de WARN" <<< "$GUARD_OUTPUT"; then
   fail "FAIXA WARN FALHOU: ::warning:: da faixa soft ausente para 200s."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"zone": "warn"'; then
+if ! grep -q '"zone": "warn"' <<< "$GUARD_OUTPUT"; then
   fail "FAIXA WARN FALHOU: report.zone não é 'warn' para 200s."
   exit 1
 fi
@@ -284,15 +284,15 @@ if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "A escalada suave (faixa notice) não deveria bloquear — só noticiar o drift cedo."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q "::notice::budget de payload na faixa de NOTICE"; then
+if ! grep -q "::notice::budget de payload na faixa de NOTICE" <<< "$GUARD_OUTPUT"; then
   fail "FAIXA NOTICE FALHOU: ::notice:: da faixa suave ausente para 120s."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"zone": "notice"'; then
+if ! grep -q '"zone": "notice"' <<< "$GUARD_OUTPUT"; then
   fail "FAIXA NOTICE FALHOU: report.zone não é 'notice' para 120s."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"noticed": true'; then
+if ! grep -q '"noticed": true' <<< "$GUARD_OUTPUT"; then
   fail "FAIXA NOTICE FALHOU: report.noticed não é true para 120s."
   exit 1
 fi
@@ -314,7 +314,7 @@ if [ "$GUARD_EXIT" -ne 2 ]; then
   fail "A faixa notice vazia não é detectada — a escalada suave aceitaria config quebrada."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q -- "--alert deve ser MENOR que --warn"; then
+if ! grep -q -- "--alert deve ser MENOR que --warn" <<< "$GUARD_OUTPUT"; then
   fail "VALIDAÇÃO FALHOU: mensagem '--alert deve ser MENOR que --warn' ausente."
   exit 1
 fi
@@ -340,15 +340,15 @@ if [ "$GUARD_EXIT" -ne 1 ]; then
   fi
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q "budget de payload EXCEDIDO"; then
+if ! grep -q "budget de payload EXCEDIDO" <<< "$GUARD_OUTPUT"; then
   fail "GUARD CEGA: mensagem 'budget de payload EXCEDIDO' ausente no exit 1."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"exceeded": true'; then
+if ! grep -q '"exceeded": true' <<< "$GUARD_OUTPUT"; then
   fail "GUARD CEGA: report.exceeded não é true para 300s."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"zone": "fail"'; then
+if ! grep -q '"zone": "fail"' <<< "$GUARD_OUTPUT"; then
   fail "GUARD CEGA: report.zone não é 'fail' para 300s."
   exit 1
 fi
@@ -373,15 +373,15 @@ if [ "$GUARD_EXIT" -ne 1 ]; then
   fail "falharia em silêncio em PRs sem seed-guards na default. Mutation test falha."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q "budget de payload EXCEDIDO"; then
+if ! grep -q "budget de payload EXCEDIDO" <<< "$GUARD_OUTPUT"; then
   fail "ACT-LOG CEGO: mensagem 'budget de payload EXCEDIDO' ausente no exit 1."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"exceeded": true'; then
+if ! grep -q '"exceeded": true' <<< "$GUARD_OUTPUT"; then
   fail "ACT-LOG CEGO: report.exceeded não é true para o log de 300s."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"zone": "fail"'; then
+if ! grep -q '"zone": "fail"' <<< "$GUARD_OUTPUT"; then
   fail "ACT-LOG CEGO: report.zone não é 'fail' para o log de 300s."
   exit 1
 fi
@@ -399,7 +399,7 @@ if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "ACT-LOG OVER-EAGER: log de 35s saiu com exit $GUARD_EXIT (esperado 0)."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"zone": "ok"'; then
+if ! grep -q '"zone": "ok"' <<< "$GUARD_OUTPUT"; then
   fail "ACT-LOG OVER-EAGER: report.zone não é 'ok' para o log de 35s."
   exit 1
 fi
@@ -421,7 +421,7 @@ if [ "$GUARD_EXIT" -ne 1 ]; then
   fail "O diagnóstico de act morto-antes-do-step não está funcionando."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q "act falhou ANTES do step"; then
+if ! grep -q "act falhou ANTES do step" <<< "$GUARD_OUTPUT"; then
   fail "ACT-LOG INFRA: mensagem 'act falhou ANTES do step' ausente."
   exit 1
 fi
@@ -474,11 +474,11 @@ if [ "$GUARD_EXIT" -ne 2 ]; then
   fail "medição vazia — o medidor não acusa o drift de contrato. Mutation test falha."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q "drift de contrato"; then
+if ! grep -q "drift de contrato" <<< "$GUARD_OUTPUT"; then
   fail "DRIFT CEGO: mensagem 'drift de contrato' ausente no exit 2."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"found": false'; then
+if ! grep -q '"found": false' <<< "$GUARD_OUTPUT"; then
   fail "DRIFT CEGO: report.found não é false no exit 2."
   exit 1
 fi
@@ -509,11 +509,11 @@ if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "PUBLISH FALHOU: 35s + --publish-baseline saiu com exit $GUARD_EXIT (esperado 0)."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '\[dry-run\] gh variable set MUTATION_TIMING_BASELINE 42'; then
+if ! grep -q '\[dry-run\] gh variable set MUTATION_TIMING_BASELINE 42' <<< "$GUARD_OUTPUT"; then
   fail "PUBLISH FALHOU: ::notice:: do dry-run com valor 42 ausente (margem 0.2 sobre 35s)."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"published": "dry-run"'; then
+if ! grep -q '"published": "dry-run"' <<< "$GUARD_OUTPUT"; then
   fail "PUBLISH FALHOU: report.baseline.published não é dry-run."
   exit 1
 fi
@@ -527,7 +527,7 @@ if [ "$GUARD_EXIT" -ne 1 ]; then
   fail "PUBLISH-FAIL FALHOU: 300s + --publish-baseline saiu com exit $GUARD_EXIT (esperado 1 — gate)."
   exit 1
 fi
-if echo "$GUARD_OUTPUT" | grep -q 'gh variable set'; then
+if grep -q 'gh variable set' <<< "$GUARD_OUTPUT"; then
   fail "PUBLISH-FAIL FALHOU: publicou baseline com o budget EXCEDIDO — run lento viraria o novo normal."
   exit 1
 fi
@@ -542,7 +542,7 @@ if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "WARN-ONLY FALHOU: --warn-only saiu com exit $GUARD_EXIT (esperado 0)."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q "::warning::budget de payload EXCEDIDO"; then
+if ! grep -q "::warning::budget de payload EXCEDIDO" <<< "$GUARD_OUTPUT"; then
   fail "WARN-ONLY FALHOU: ::warning:: ausente no modo não-bloqueante."
   exit 1
 fi
@@ -603,15 +603,15 @@ if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "A derivação pela mediana está over-eager — payload saudável não deveria falhar."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"warnSource": "median"'; then
+if ! grep -q '"warnSource": "median"' <<< "$GUARD_OUTPUT"; then
   fail "MEDIAN CONTROLE FALHOU: report.warnSource não é 'median' — a derivação não está ativa."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"warnSecs": 75'; then
+if ! grep -q '"warnSecs": 75' <<< "$GUARD_OUTPUT"; then
   fail "MEDIAN CONTROLE FALHOU: warnSecs derivado não é 75 (mediana 62.5 * 1.2 = ceil 75)."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"zone": "ok"'; then
+if ! grep -q '"zone": "ok"' <<< "$GUARD_OUTPUT"; then
   fail "MEDIAN CONTROLE FALHOU: report.zone não é 'ok' para 35s."
   exit 1
 fi
@@ -630,11 +630,11 @@ if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "O soft derivado deveria alertar, não falhar (ruído tolerado)."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q "::warning::budget de payload na faixa de WARN"; then
+if ! grep -q "::warning::budget de payload na faixa de WARN" <<< "$GUARD_OUTPUT"; then
   fail "MEDIAN WARN FALHOU: ::warning:: da faixa soft derivada ausente para 80s."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"zone": "warn"'; then
+if ! grep -q '"zone": "warn"' <<< "$GUARD_OUTPUT"; then
   fail "MEDIAN WARN FALHOU: report.zone não é 'warn' para 80s."
   exit 1
 fi
@@ -650,7 +650,7 @@ if [ "$GUARD_EXIT" -ne 1 ]; then
   fail "A derivação da faixa soft NÃO pode mover o budget duro — o gate continua 240s."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q "budget de payload EXCEDIDO"; then
+if ! grep -q "budget de payload EXCEDIDO" <<< "$GUARD_OUTPUT"; then
   fail "MEDIAN MUTAÇÃO FALHOU: mensagem 'budget de payload EXCEDIDO' ausente."
   exit 1
 fi
@@ -669,7 +669,7 @@ if [ "$GUARD_EXIT" -ne 2 ]; then
   fail "O CLI aceitaria duas fontes de faixa soft concorrentes — ambíguo."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q "não pode ser combinado com --warn"; then
+if ! grep -q "não pode ser combinado com --warn" <<< "$GUARD_OUTPUT"; then
   fail "MEDIAN VALIDAÇÃO FALHOU: mensagem de exclusividade --warn-median/--warn ausente."
   exit 1
 fi
@@ -716,15 +716,15 @@ if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "Drift negativo é saudável — o gate de drift relativo não deveria falhar."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"driftSource": "median"'; then
+if ! grep -q '"driftSource": "median"' <<< "$GUARD_OUTPUT"; then
   fail "DRIFT CONTROLE FALHOU: report.driftSource não é 'median' — o gate de drift não está ativo."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"drifted": false'; then
+if ! grep -q '"drifted": false' <<< "$GUARD_OUTPUT"; then
   fail "DRIFT CONTROLE FALHOU: drifted deveria ser false para 35s (-44% < 50%)."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"zone": "ok"'; then
+if ! grep -q '"zone": "ok"' <<< "$GUARD_OUTPUT"; then
   fail "DRIFT CONTROLE FALHOU: report.zone não é 'ok' para 35s."
   exit 1
 fi
@@ -740,7 +740,7 @@ if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "+28% está ABAIXO do threshold 50% — variação normal de runner não pode falhar o PR."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"drifted": false'; then
+if ! grep -q '"drifted": false' <<< "$GUARD_OUTPUT"; then
   fail "DRIFT OK FALHOU: drifted deveria ser false para 80s (+28% < 50%)."
   exit 1
 fi
@@ -759,11 +759,11 @@ if [ "$GUARD_EXIT" -ne 1 ]; then
   fail "O drift relativo de +60% deveria falhar MESMO ABAIXO do teto de 240s — é exatamente a regressão lenta que o --max nunca vê."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"drifted": true'; then
+if ! grep -q '"drifted": true' <<< "$GUARD_OUTPUT"; then
   fail "DRIFT MUTAÇÃO FALHOU: drifted deveria ser true para 100s (+60% > 50%)."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q 'drift relativo EXCEDIDO'; then
+if ! grep -q 'drift relativo EXCEDIDO' <<< "$GUARD_OUTPUT"; then
   fail "DRIFT MUTAÇÃO FALHOU: mensagem de drift relativo EXCEDIDO ausente."
   exit 1
 fi
@@ -799,15 +799,15 @@ if [ "$GUARD_EXIT" -ne 1 ]; then
   fail "O teto absoluto --max 240 continua sendo a rede final — 300s falha SEMPRE."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"exceeded": true'; then
+if ! grep -q '"exceeded": true' <<< "$GUARD_OUTPUT"; then
   fail "DRIFT TETO FALHOU: exceeded deveria ser true para 300s (teto absoluto)."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"drifted": false'; then
+if ! grep -q '"drifted": false' <<< "$GUARD_OUTPUT"; then
   fail "DRIFT TETO FALHOU: drifted deveria ser FALSE — 300s tem drift +31.8% < 50%; a causa é só o TETO."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q "budget de payload EXCEDIDO"; then
+if ! grep -q "budget de payload EXCEDIDO" <<< "$GUARD_OUTPUT"; then
   fail "DRIFT TETO FALHOU: mensagem 'budget de payload EXCEDIDO' (teto) ausente."
   exit 1
 fi
@@ -826,7 +826,7 @@ if [ "$GUARD_EXIT" -ne 2 ]; then
   fail "O CLI aceitaria duas semânticas de gate concorrentes — ambíguo."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q "não pode ser combinado com --warn"; then
+if ! grep -q "não pode ser combinado com --warn" <<< "$GUARD_OUTPUT"; then
   fail "DRIFT VALIDAÇÃO FALHOU: mensagem de exclusividade --fail-drift/--warn ausente."
   exit 1
 fi
@@ -855,11 +855,11 @@ if [ "$GUARD_EXIT" -ne 1 ]; then
   fail "seed-guards na default passariam em silêncio. Mutation test falha."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"drifted": true'; then
+if ! grep -q '"drifted": true' <<< "$GUARD_OUTPUT"; then
   fail "DRIFT ACT-LOG FALHOU: drifted deveria ser true para 100s (+60% > 50%)."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q 'drift relativo EXCEDIDO'; then
+if ! grep -q 'drift relativo EXCEDIDO' <<< "$GUARD_OUTPUT"; then
   fail "DRIFT ACT-LOG FALHOU: mensagem 'drift relativo EXCEDIDO' ausente no exit 1."
   exit 1
 fi

@@ -85,7 +85,7 @@ echo "      ✅ SQLs customizados aplicados"
 echo "[3/5] Marcando migrations como aplicadas (migrate resolve)..."
 find "$PROJECT_DIR/prisma/migrations" -maxdepth 1 -type d ! -name "migrations" | sort | while IFS= read -r mig_dir; do
   mig_name=$(basename "$mig_dir")
-  if bunx prisma migrate status 2>/dev/null | grep -q "$mig_name"; then
+  if grep -q "$mig_name" <<< "$(bunx prisma migrate status 2>/dev/null)"; then
     echo "      $mig_name: já aplicada"
   else
     bunx prisma migrate resolve --applied "$mig_name" >/dev/null 2>&1 && \

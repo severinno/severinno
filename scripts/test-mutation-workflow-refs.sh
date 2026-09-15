@@ -218,7 +218,7 @@ if [ "$GUARD_EXIT" -ne 1 ]; then
 fi
 
 # Caso 3 — falhou, mas NÃO pela asserção esperada (outro invariante quebrou).
-if ! echo "$GUARD_OUTPUT" | grep -Fq "$EXPECTED_FAILURE_TRANSITIVE"; then
+if ! grep -Fq "$EXPECTED_FAILURE_TRANSITIVE" <<< "$GUARD_OUTPUT"; then
   fail "Guard falhou (exit $GUARD_EXIT) mas NÃO pela asserção transitiva esperada:"
   fail "  esperava:  $EXPECTED_FAILURE_TRANSITIVE"
   fail "Falha pode ser outro invariante do fixture — veja o output acima."
@@ -227,7 +227,7 @@ fi
 
 # Caso 4 — defensivo: a violação deve citar a ENTRY pelo nome (não outra
 # ref do mesmo fixture).
-if ! echo "$GUARD_OUTPUT" | grep -Fq "$TRANSITIVE_ENTRY"; then
+if ! grep -Fq "$TRANSITIVE_ENTRY" <<< "$GUARD_OUTPUT"; then
   fail "Guard falhou (exit $GUARD_EXIT) mas NÃO citou a entry mutada:"
   fail "  esperava:  linha contendo '$TRANSITIVE_ENTRY'"
   fail "A violação apontou outra ref — veja o output acima."
@@ -238,7 +238,7 @@ fi
 # mensagem E o artefato mutado): a violação deve citar também o ALVO deletado
 # pelo nome — prova que o guard resolveu a entry → alvo e apontou o script
 # específico (não uma entry certa com o alvo errado).
-if ! echo "$GUARD_OUTPUT" | grep -Fq "$TRANSITIVE_TARGET"; then
+if ! grep -Fq "$TRANSITIVE_TARGET" <<< "$GUARD_OUTPUT"; then
   fail "Guard falhou (exit $GUARD_EXIT) mas NÃO citou o alvo deletado:"
   fail "  esperava:  linha contendo '$TRANSITIVE_TARGET'"
   fail "A violação citou a entry mas não o alvo — veja o output acima."
@@ -330,7 +330,7 @@ if [ "$INTERNAL_EXIT" -ne 1 ]; then
 fi
 
 # Caso 3 — falhou, mas NÃO pela asserção interna esperada.
-if ! echo "$INTERNAL_OUTPUT" | grep -Fq "$EXPECTED_FAILURE_INTERNAL"; then
+if ! grep -Fq "$EXPECTED_FAILURE_INTERNAL" <<< "$INTERNAL_OUTPUT"; then
   fail "Guard --pkg-internal falhou (exit $INTERNAL_EXIT) mas NÃO pela asserção"
   fail "interna esperada:"
   fail "  esperava:  $EXPECTED_FAILURE_INTERNAL"
@@ -339,7 +339,7 @@ if ! echo "$INTERNAL_OUTPUT" | grep -Fq "$EXPECTED_FAILURE_INTERNAL"; then
 fi
 
 # Caso 4 — defensivo: a violação deve citar a ENTRY órfã pelo nome.
-if ! echo "$INTERNAL_OUTPUT" | grep -Fq "$ORPHAN_ENTRY"; then
+if ! grep -Fq "$ORPHAN_ENTRY" <<< "$INTERNAL_OUTPUT"; then
   fail "Guard --pkg-internal falhou (exit $INTERNAL_EXIT) mas NÃO citou a entry"
   fail "órfã mutada:"
   fail "  esperava:  linha contendo '$ORPHAN_ENTRY'"

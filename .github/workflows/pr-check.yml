@@ -1161,7 +1161,7 @@ jobs:
           MANUAL_INPUT=${{ github.event.inputs.threshold || 0 }}
           if [ "$MANUAL_INPUT" -gt 0 ] 2>/dev/null; then
             echo "threshold=$MANUAL_INPUT" >> "$GITHUB_OUTPUT"
-          elif git diff --name-only origin/main...HEAD | grep -qE '^(src/lib/(geo-shared|distance-fallback|radius-expansion|fetch-providers-data|fetch-unrestricted-results|sql-builder)\.ts|src/app/api/providers/route\.ts|scripts/(geo-benchmark|compare-benchmarks|run-benchmark)\.mjs)$'; then
+          elif grep -qE '^(src/lib/(geo-shared|distance-fallback|radius-expansion|fetch-providers-data|fetch-unrestricted-results|sql-builder)\.ts|src/app/api/providers/route\.ts|scripts/(geo-benchmark|compare-benchmarks|run-benchmark)\.mjs)$' <<< "$(git diff --name-only origin/main...HEAD)"; then
             echo "threshold=10" >> "$GITHUB_OUTPUT"
           else
             echo "threshold=5" >> "$GITHUB_OUTPUT"
@@ -1287,8 +1287,7 @@ jobs:
           # com fallback de criação (IF NOT EXISTS + re-verificação).
           POSTGIS_READY=0
           for _ in $(seq 1 30); do
-            if docker exec ${{ job.services.postgis.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if grep -qx 1 <<< "$(docker exec ${{ job.services.postgis.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               POSTGIS_READY=1
               break
             fi
@@ -1297,8 +1296,7 @@ jobs:
           if [ "$POSTGIS_READY" != "1" ]; then
             docker exec ${{ job.services.postgis.id }} \
               psql -U severinno -d severinno -c "CREATE EXTENSION IF NOT EXISTS postgis" >/dev/null 2>&1 || true
-            if ! docker exec ${{ job.services.postgis.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if ! grep -qx 1 <<< "$(docker exec ${{ job.services.postgis.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               echo "❌ postgis não disponível após espera/fallback"
               exit 1
             fi
@@ -1362,7 +1360,7 @@ jobs:
       - name: Detect PR scope
         id: scope
         run: |
-          if git diff --name-only origin/main...HEAD | grep -qE '^(scripts/(geo-benchmark-gist|validate-gist-crossover)\.mjs|src/lib/(geo-shared|postgis|distance-fallback)\.ts)'; then
+          if grep -qE '^(scripts/(geo-benchmark-gist|validate-gist-crossover)\.mjs|src/lib/(geo-shared|postgis|distance-fallback)\.ts)' <<< "$(git diff --name-only origin/main...HEAD)"; then
             echo "threshold_steps=3" >> "$GITHUB_OUTPUT"
             echo "threshold_ratio=30" >> "$GITHUB_OUTPUT"
             echo "  ℹ  PR touches GiST code — widened thresholds (3 steps / 30pp)"

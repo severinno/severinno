@@ -113,9 +113,9 @@ fi
 # de `digest-trocado`. Exigir os quatro ids força isso a ser explícito.
 MUT_LINE="$(grep 'mutações' "$CTRL_OUT" | head -1 || true)"
 MUT_OK=1
-echo "$MUT_LINE" | grep -q '✅' || MUT_OK=0
+grep -q '✅' <<< "$MUT_LINE" || MUT_OK=0
 for id in sem-digest digest-malformado digest-trocado contrato-afrouxado; do
-  echo "$MUT_LINE" | grep -q "$id" || MUT_OK=0
+  grep -q "$id" <<< "$MUT_LINE" || MUT_OK=0
 done
 if [ "$MUT_OK" -eq 1 ]; then
   pass "prova interna de mutação viva (os 4 ids, incl. digest-trocado — satisfeito só contra o registry)"

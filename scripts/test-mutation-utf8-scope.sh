@@ -240,7 +240,7 @@ fi
 
 # Caso 2 — falhou, mas NÃO pela asserção esperada (outro invariante quebrou).
 # Exige a MENSAGEM (escopo trocado/removido) E o ARQUIVO mutado no output.
-if ! echo "$GUARD_OUTPUT" | grep -Fq "$EXPECTED_FAILURE_YML" || ! echo "$GUARD_OUTPUT" | grep -Fq "$EXPECTED_FILE_YML"; then
+if ! grep -Fq "$EXPECTED_FAILURE_YML" <<< "$GUARD_OUTPUT" || ! grep -Fq "$EXPECTED_FILE_YML" <<< "$GUARD_OUTPUT"; then
   fail "Guard falhou (exit $GUARD_EXIT) mas NÃO pela asserção esperada:"
   fail "  esperava (mensagem): $EXPECTED_FAILURE_YML"
   fail "  esperava (arquivo):  $EXPECTED_FILE_YML"
@@ -289,7 +289,7 @@ fi
 
 # Caso 2 — falhou, mas NÃO pela asserção esperada.
 # Exige a MENSAGEM (SEM argumento) E o ARQUIVO mutado no output.
-if ! echo "$RUNNER_OUTPUT" | grep -Fq "$EXPECTED_FAILURE_RUNNER" || ! echo "$RUNNER_OUTPUT" | grep -Fq "$EXPECTED_FILE_RUNNER"; then
+if ! grep -Fq "$EXPECTED_FAILURE_RUNNER" <<< "$RUNNER_OUTPUT" || ! grep -Fq "$EXPECTED_FILE_RUNNER" <<< "$RUNNER_OUTPUT"; then
   fail "Guard falhou (exit $RUNNER_EXIT) mas NÃO pela asserção esperada:"
   fail "  esperava (mensagem): $EXPECTED_FAILURE_RUNNER"
   fail "  esperava (arquivo):  $EXPECTED_FILE_RUNNER"

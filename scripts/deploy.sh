@@ -301,7 +301,7 @@ run_migrations() {
     info "Verificando conexão com banco..."
 
     # Tenta via container app com bunx prisma
-    if docker compose -f "$COMPOSE_FILE" ps --status running postgres 2>/dev/null | grep -q "Up"; then
+    if grep -q "Up" <<< "$(docker compose -f "$COMPOSE_FILE" ps --status running postgres 2>/dev/null)"; then
         ok "PostgreSQL está rodando"
     else
         warn "PostgreSQL não está rodando ainda — tentando iniciar..."
@@ -317,7 +317,7 @@ run_migrations() {
     migrate_exit=$?
     echo "$migrate_output" | tail -10
 
-    if [ "$migrate_exit" -eq 0 ] || echo "$migrate_output" | grep -qi "already completed\|already been\|success"; then
+    if [ "$migrate_exit" -eq 0 ] || grep -qi "already completed\|already been\|success" <<< "$migrate_output"; then
         ok "Migrations executadas com sucesso!"
     else
         # Fallback: db push
@@ -328,7 +328,7 @@ run_migrations() {
         push_exit=$?
         echo "$push_output" | tail -5
 
-        if [ "$push_exit" -eq 0 ] || echo "$push_output" | grep -qi "success\|already\|applied"; then
+        if [ "$push_exit" -eq 0 ] || grep -qi "success\|already\|applied" <<< "$push_output"; then
             warn "db push usado como fallback — schema atualizado"
         else
             err "Falha nas migrations do banco!"
@@ -413,7 +413,7 @@ healthcheck() {
             echo ""
             echo "  ${GREEN}Serviços ativos:${RESET}"
             echo "$status" | while IFS='||' read -r name st; do
-                if echo "$st" | grep -qi "up\|healthy"; then
+                if grep -qi "up\|healthy" <<< "$st"; then
                     echo "    ${GREEN}✔${RESET} $name"
                 else
                     echo "    ${RED}✘${RESET} $name ($st)"

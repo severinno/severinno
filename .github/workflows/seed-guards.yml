@@ -163,8 +163,7 @@ jobs:
           # com fallback de criação (IF NOT EXISTS + re-verificação).
           POSTGIS_READY=0
           for _ in $(seq 1 30); do
-            if docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               POSTGIS_READY=1
               break
             fi
@@ -173,8 +172,7 @@ jobs:
           if [ "$POSTGIS_READY" != "1" ]; then
             docker exec ${{ job.services.postgres.id }} \
               psql -U severinno -d severinno -c "CREATE EXTENSION IF NOT EXISTS postgis" >/dev/null 2>&1 || true
-            if ! docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if ! grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               echo "❌ postgis não disponível após espera/fallback"
               exit 1
             fi
@@ -287,8 +285,7 @@ jobs:
           # com fallback de criação (IF NOT EXISTS + re-verificação).
           POSTGIS_READY=0
           for _ in $(seq 1 30); do
-            if docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               POSTGIS_READY=1
               break
             fi
@@ -297,8 +294,7 @@ jobs:
           if [ "$POSTGIS_READY" != "1" ]; then
             docker exec ${{ job.services.postgres.id }} \
               psql -U severinno -d severinno -c "CREATE EXTENSION IF NOT EXISTS postgis" >/dev/null 2>&1 || true
-            if ! docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if ! grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               echo "❌ postgis não disponível após espera/fallback"
               exit 1
             fi
@@ -779,8 +775,7 @@ jobs:
           # com fallback de criação (IF NOT EXISTS + re-verificação).
           POSTGIS_READY=0
           for _ in $(seq 1 30); do
-            if docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               POSTGIS_READY=1
               break
             fi
@@ -789,8 +784,7 @@ jobs:
           if [ "$POSTGIS_READY" != "1" ]; then
             docker exec ${{ job.services.postgres.id }} \
               psql -U severinno -d severinno -c "CREATE EXTENSION IF NOT EXISTS postgis" >/dev/null 2>&1 || true
-            if ! docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if ! grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               echo "❌ postgis não disponível após espera/fallback"
               exit 1
             fi
@@ -827,7 +821,7 @@ jobs:
         run: |
           OUT=$(bun run db:seed:prod 2>&1)
           echo "$OUT"
-          if ! echo "$OUT" | grep -q "Seed de produção concluído"; then
+          if ! grep -q "Seed de produção concluído" <<< "$OUT"; then
             echo "❌ db:seed:prod não concluiu com override — veja output acima"
             exit 1
           fi
@@ -918,8 +912,7 @@ jobs:
           # com fallback de criação (IF NOT EXISTS + re-verificação).
           POSTGIS_READY=0
           for _ in $(seq 1 30); do
-            if docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               POSTGIS_READY=1
               break
             fi
@@ -928,8 +921,7 @@ jobs:
           if [ "$POSTGIS_READY" != "1" ]; then
             docker exec ${{ job.services.postgres.id }} \
               psql -U severinno -d severinno -c "CREATE EXTENSION IF NOT EXISTS postgis" >/dev/null 2>&1 || true
-            if ! docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if ! grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               echo "❌ postgis não disponível após espera/fallback"
               exit 1
             fi

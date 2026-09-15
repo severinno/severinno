@@ -141,7 +141,7 @@ unban_ip_all_jails() {
 check_ip_banned_in_jail() {
   local jail="$1"
   local ip="$2"
-  fail2ban-cmd status "$jail" 2>/dev/null | grep -q "$ip"
+  grep -q "$ip" <<< "$(fail2ban-cmd status "$jail" 2>/dev/null)"
 }
 
 
@@ -499,7 +499,7 @@ cmd_cleanup() {
   for jail in sshd caddy-access caddy-badbots caddy-404-scan recidive; do
     local banned_ips=$(fail2ban-cmd status "$jail" 2>/dev/null | grep -oP '\d+\.\d+\.\d+\.\d+' || true)
     for ip in $banned_ips; do
-      if echo "$ip" | grep -q '^10\.254\.'; then
+      if grep -q '^10\.254\.' <<< "$ip"; then
         if $DRY_RUN; then
           echo "    (dry-run) unban $ip do jail $jail"
         else

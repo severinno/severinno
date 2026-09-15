@@ -180,7 +180,7 @@ assert_mutation_fail() {
   fi
 
   # Caso 2 — falhou, mas NÃO pela asserção esperada (outro invariante quebrou).
-  if ! echo "$out" | grep -Fq "$expected"; then
+  if ! grep -Fq "$expected" <<< "$out"; then
     fail "Guard falhou (exit $exit_code) mas NÃO pela asserção reverse esperada ($label):"
     fail "  esperava:  $expected"
     fail "Falha pode ser outro invariante do fixture — veja o output acima."

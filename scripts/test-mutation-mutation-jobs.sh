@@ -226,7 +226,7 @@ if [ "$GUARD_EXIT" -eq 0 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO pela asserção esperada (outro invariante quebrou).
-if ! echo "$GUARD_OUTPUT" | grep -Fq "$EXPECTED_FAILURE_FORWARD"; then
+if ! grep -Fq "$EXPECTED_FAILURE_FORWARD" <<< "$GUARD_OUTPUT"; then
   fail "Guard falhou (exit $GUARD_EXIT) mas NÃO pela asserção forward esperada:"
   fail "  esperava:  $EXPECTED_FAILURE_FORWARD"
   fail "Falha pode ser outro invariante do fixture — veja o output acima."
@@ -235,7 +235,7 @@ fi
 
 # Caso 3 — defensivo: a violação deve citar o SCRIPT mutado pelo nome (não
 # outra violação de cobertura do mesmo fixture).
-if ! echo "$GUARD_OUTPUT" | grep -Fq "$ORPHAN_SCRIPT"; then
+if ! grep -Fq "$ORPHAN_SCRIPT" <<< "$GUARD_OUTPUT"; then
   fail "Guard falhou (exit $GUARD_EXIT) mas NÃO citou o script órfão:"
   fail "  esperava:  linha contendo '$ORPHAN_SCRIPT'"
   fail "A violação apontou outro script — veja o output acima."
@@ -287,7 +287,7 @@ if [ "$REVERSE_EXIT" -eq 0 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO pela asserção esperada.
-if ! echo "$REVERSE_OUTPUT" | grep -Fq "$EXPECTED_FAILURE_REVERSE"; then
+if ! grep -Fq "$EXPECTED_FAILURE_REVERSE" <<< "$REVERSE_OUTPUT"; then
   fail "Guard falhou (exit $REVERSE_EXIT) mas NÃO pela asserção reverse esperada:"
   fail "  esperava:  $EXPECTED_FAILURE_REVERSE"
   fail "Falha pode ser outro invariante do fixture — veja o output acima."
@@ -296,7 +296,7 @@ fi
 
 # Caso 3 — defensivo: a violação deve citar a REF QUEBRADA pelo nome (não
 # outra violação de cobertura do mesmo fixture).
-if ! echo "$REVERSE_OUTPUT" | grep -Fq "$GHOST_REF"; then
+if ! grep -Fq "$GHOST_REF" <<< "$REVERSE_OUTPUT"; then
   fail "Guard falhou (exit $REVERSE_EXIT) mas NÃO citou a ref quebrada:"
   fail "  esperava:  linha contendo '$GHOST_REF'"
   fail "A violação apontou outro script — veja o output acima."
@@ -352,7 +352,7 @@ if [ "$WF_EXIT" -eq 0 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO pela asserção esperada.
-if ! echo "$WF_OUTPUT" | grep -Fq "$EXPECTED_FAILURE_REVERSE_WORKFLOW"; then
+if ! grep -Fq "$EXPECTED_FAILURE_REVERSE_WORKFLOW" <<< "$WF_OUTPUT"; then
   fail "Guard falhou (exit $WF_EXIT) mas NÃO pela asserção reverse-workflow:"
   fail "  esperava:  $EXPECTED_FAILURE_REVERSE_WORKFLOW"
   fail "Falha pode ser outro invariante do fixture — veja o output acima."
@@ -360,7 +360,7 @@ if ! echo "$WF_OUTPUT" | grep -Fq "$EXPECTED_FAILURE_REVERSE_WORKFLOW"; then
 fi
 
 # Caso 3 — defensivo: a violação deve citar a REF QUEBRADA pelo nome.
-if ! echo "$WF_OUTPUT" | grep -Fq "$GHOST_REF"; then
+if ! grep -Fq "$GHOST_REF" <<< "$WF_OUTPUT"; then
   fail "Guard falhou (exit $WF_EXIT) mas NÃO citou a ref quebrada de workflow:"
   fail "  esperava:  linha contendo '$GHOST_REF'"
   fail "A violação apontou outra ref — veja o output acima."
@@ -491,7 +491,7 @@ if [ "$STAGED_EXIT" -ne 1 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO pela asserção esperada.
-if ! echo "$STAGED_OUTPUT" | grep -Fq "$EXPECTED_FAILURE_REVERSE_WORKFLOW"; then
+if ! grep -Fq "$EXPECTED_FAILURE_REVERSE_WORKFLOW" <<< "$STAGED_OUTPUT"; then
   fail "Guard --staged falhou (exit $STAGED_EXIT) mas NÃO pela asserção"
   fail "reverse-workflow esperada:"
   fail "  esperava:  $EXPECTED_FAILURE_REVERSE_WORKFLOW"
@@ -500,7 +500,7 @@ if ! echo "$STAGED_OUTPUT" | grep -Fq "$EXPECTED_FAILURE_REVERSE_WORKFLOW"; then
 fi
 
 # Caso 3 — defensivo: a violação deve citar a REF QUEBRADA pelo nome.
-if ! echo "$STAGED_OUTPUT" | grep -Fq "$GHOST_REF"; then
+if ! grep -Fq "$GHOST_REF" <<< "$STAGED_OUTPUT"; then
   fail "Guard --staged falhou (exit $STAGED_EXIT) mas NÃO citou a ref quebrada"
   fail "de workflow introduzida pelo diff:"
   fail "  esperava:  linha contendo '$GHOST_REF'"

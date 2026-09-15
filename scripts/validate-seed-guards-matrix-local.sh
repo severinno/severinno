@@ -116,8 +116,7 @@ run_cell() {
   # aparecer (a imagem SEMPRE carrega), com fallback de criação.
   local has=0 i
   for i in $(seq 1 30); do
-    if docker exec "$name" psql -U "$DB_USER" -d "$DB_NAME" -tAc \
-      "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+    if grep -qx 1 <<< "$(docker exec "$name" psql -U "$DB_USER" -d "$DB_NAME" -tAc       "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
       has=1
       break
     fi
@@ -128,8 +127,7 @@ run_cell() {
     # EXISTS (no-op se presente; tolera erro de race re-verificando depois).
     docker exec "$name" psql -U "$DB_USER" -d "$DB_NAME" \
       -c "CREATE EXTENSION IF NOT EXISTS postgis" >/dev/null 2>&1 || true
-    if ! docker exec "$name" psql -U "$DB_USER" -d "$DB_NAME" -tAc \
-      "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+    if ! grep -qx 1 <<< "$(docker exec "$name" psql -U "$DB_USER" -d "$DB_NAME" -tAc       "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
       fail "extensão postgis não disponível após espera/fallback"
       RESULT["$label"]="FAIL(postgis)"
       return 1

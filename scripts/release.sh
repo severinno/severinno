@@ -137,7 +137,7 @@ fi
 
 # Update package.json
 # Detect GNU sed vs BSD sed (macOS)
-if sed --version 2>/dev/null | grep -q GNU; then
+if grep -q GNU <<< "$(sed --version 2>/dev/null)"; then
   SED_INLINE=(-i)
 else
   SED_INLINE=(-i '')

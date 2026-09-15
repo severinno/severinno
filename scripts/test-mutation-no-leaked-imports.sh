@@ -173,7 +173,7 @@ if [ "$EXIT" -eq 0 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO citou a dep vazada esperada.
-if ! echo "$OUTPUT" | grep -Fq "$EXPECTED_LEAK"; then
+if ! grep -Fq "$EXPECTED_LEAK" <<< "$OUTPUT"; then
   fail "Guard falhou (exit $EXIT) mas NÃO citou a dep vazada esperada:"
   fail "  esperava (dep): $EXPECTED_LEAK"
   fail "Falha pode ser outro invariante do fixture — veja o output acima."
@@ -203,7 +203,7 @@ if [ "$EXIT" -eq 0 ]; then
   exit 1
 fi
 
-if ! echo "$OUTPUT" | grep -Fq "$EXPECTED_UNDECLARED"; then
+if ! grep -Fq "$EXPECTED_UNDECLARED" <<< "$OUTPUT"; then
   fail "Guard falhou (exit $EXIT) mas NÃO citou a dep $EXPECTED_UNDECLARED."
   fail "Falha pode ser outro invariante do fixture — veja o output acima."
   exit 1
@@ -249,7 +249,7 @@ if [ "$EXIT" -ne 0 ]; then
   exit 1
 fi
 
-if ! echo "$OUTPUT" | grep -Fiq "bun install"; then
+if ! grep -Fiq "bun install" <<< "$OUTPUT"; then
   fail "Cenário C passou (exit 0) mas NÃO orientou o bun install na mensagem."
   fail "  esperava: menção a 'bun install'"
   echo "$OUTPUT" | tail -6
