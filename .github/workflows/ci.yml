@@ -2,7 +2,9 @@
 # GitHub Actions CI/CD — Severinno Marketplace
 #
 # Pipeline:
-#   lint       → ESLint
+#   lint       → bun run lint (prettier --check + eslint --max-warnings 0)
+#                — o MESMO comando do job `lint-guard` (pr-check.yml) e do `lint`
+#                da Gitea: a régua vive no script `lint` do package.json.
 #   typecheck  → tsc --noEmit
 #   utf8-check → iconv-based UTF-8 validation on all .ts files
 #   test       → vitest run

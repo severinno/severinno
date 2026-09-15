@@ -4,7 +4,11 @@
 # Gitea Actions - compatível com GitHub Actions
 #
 # Pipeline:
-#   lint       → ESLint
+#   lint       → bun run lint (prettier --check + eslint --max-warnings 0)
+#                — o MESMO comando do job `lint-guard` do GitHub: a régua vive no
+#                script `lint` do package.json, não em cada pipeline. Antes daqui
+#                saía só `eslint .` (sem o teto de warnings, sem prettier) e o
+#                mesmo commit passava neste merge e era rejeitado no GitHub.
 #   typecheck  → tsc --noEmit
 #   test       → vitest run
 #   build      → next build

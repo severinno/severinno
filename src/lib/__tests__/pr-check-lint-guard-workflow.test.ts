@@ -13,11 +13,17 @@
  *      no job (step renomeado, args do prettier/eslint alterados, job
  *      removido) exige revisão consciente do snapshot — impede drift
  *      silencioso entre o que o CI executa e o que a Fase 3 travou.
- *   2. Fatos-chave — o job roda `npx prettier --check --ignore-unknown` com
- *      o escopo explícito (src/ scripts/ docs/ prisma/ .github/ configs) E
- *      `npx eslint . --max-warnings 0` — os DOIS gates que zeram a camada
- *      3 do parecer. O escopo do prettier é o MESMO validado localmente na
- *      Fase 3 (um `prettier --check .` puro quebraria em globs *.prisma).
+ *   2. UM COMANDO SÓ, NAS DUAS FORJAS — o fato central deste arquivo. O job
+ *      roda `bun run lint`, e é o MESMO comando do job `lint` da Gitea: a
+ *      régua (prettier --check + `eslint . --max-warnings 0`) vive no script
+ *      `lint` do package.json, a única fonte. O teste também exige que NENHUM
+ *      passo traga o par inline (`npx prettier`/`npx eslint`) e que o script
+ *      compartilhado contenha as duas metades — sem isso a assimetria volta:
+ *      o job `lint` da Gitea rodava `bun run lint` = `eslint .` (sem o teto de
+ *      warnings, sem prettier), e o mesmo commit passava no merge lá e era
+ *      rejeitado aqui. O escopo do prettier (src/ scripts/ docs/ prisma/
+ *      .github/ configs) é o MESMO validado na Fase 3 (um `prettier --check .`
+ *      puro quebraria em globs *.prisma).
  *   3. Refs contra o check-workflow-refs — extractScriptRefs /
  *      extractPkgScriptRefs / extractWorkflowUses / extractActionUses rodam
  *      no conteúdo REAL, e cada ref é validada contra o repo real
@@ -45,6 +51,7 @@ import {
   extractWorkflowUses,
   extractActionUses,
 } from "../../../scripts/check-workflow-refs.mjs"
+import { sliceJob } from "../../../scripts/forge-doctor.mjs"
 
 // js-yaml é dep transitiva SEM @types — a declaração ambiente mínima vive em
 // js-yaml.d.ts (mesmo diretório; .d.ts global, não inline, para evitar TS2665).
@@ -100,7 +107,10 @@ describe("pr-check.yml — job lint-guard (sintaxe YAML + snapshot)", () => {
     expect(job).toMatchSnapshot()
   })
 
-  it("estrutura mínima: checkout, setup-bun, cache, install, prettier, eslint, summary", () => {
+  it("estrutura mínima: checkout, setup-bun, cache, install, lint, summary", () => {
+    // O `name:` é o CONTEXTO do required check no GitHub: renomear o job muda o
+    // contexto de status e o manifesto passaria a exigir um check que não roda
+    // (o PR trava para sempre). Ele descreve o par — a régua —, não o jeito.
     expect(job?.name).toBe("Lint Guard (prettier + eslint zero)")
     expect(steps.length).toBeGreaterThanOrEqual(7)
   })
@@ -138,19 +148,55 @@ describe("pr-check.yml — lint-guard (gate de lint/prettier)", () => {
     return s.run ?? ""
   }
 
-  it("roda prettier --check --ignore-unknown (falha em qualquer arquivo fora do padrão)", () => {
-    const run = stepRun("Check prettier formatting")
-    expect(run).toContain("npx prettier --check --ignore-unknown")
-    // Escopo explícito = o mesmo validado localmente na Fase 3 — um
-    // `prettier --check .` puro quebraria em globs *.prisma/*.sql na raiz.
-    expect(run).toContain(
-      "'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'",
+  it("roda UM comando só: `bun run lint` — o MESMO do job `lint` da Gitea", () => {
+    const run = stepRun("Check lint")
+    expect(run.trim()).toBe("bun run lint")
+    // E o MESMO comando literal aparece na pipeline da outra forja: é o que
+    // torna o veredito do merge igual dos dois lados. A leitura é do job REAL
+    // da Gitea (não de uma constante): se um lado mudar a régua, este teste cai.
+    const giteaJob = sliceJob(
+      readFileSync(join(CWD, ".gitea", "workflows", "ci.yml"), "utf8"),
+      "lint",
     )
+    expect(giteaJob, "job 'lint' da Gitea").toBeTruthy()
+    expect(giteaJob).toContain(run.trim())
   })
 
-  it("roda eslint . --max-warnings 0 (falha em QUALQUER warning/erro)", () => {
-    const run = stepRun("Check eslint")
-    expect(run).toContain("npx eslint . --max-warnings 0")
+  it("NÃO tem régua inline: nenhum passo de comando chama prettier/eslint direto", () => {
+    // A assimetria de volta tem uma forma exata: o par (prettier + eslint zero)
+    // duplicado no YAML de UMA das forjas. Dois comandos para a mesma
+    // invariante divergem com o tempo — e quem libera o merge é o lado mais
+    // fraco. Aqui a régua mora em UM lugar (package.json > lint) e o workflow
+    // só a INVOCA.
+    //
+    // O filtro tira os passos de `echo`: eles são MENSAGEM, não gate — o
+    // resumo do job cita "prettier" e "eslint" no texto, e acusar isso seria
+    // acusar a própria descrição do contrato.
+    const gateSteps = steps.filter((s) => !/^\s*echo\b/.test(s.run ?? ""))
+    expect(gateSteps.length).toBeGreaterThan(0)
+    for (const s of gateSteps) {
+      const run = s.run ?? ""
+      expect(run, `passo '${s.name}' roda a régua inline`).not.toMatch(
+        /(^|\s|-)(npx\s+)?(prettier|eslint)\s/,
+      )
+    }
+  })
+
+  it("o comando compartilhado (package.json > lint) é o par prettier + eslint zero", () => {
+    // Sem esta asserção, o teste acima poderia passar com um script `lint`
+    // esvaziado de uma das metades (ex.: `eslint .` — o estado ANTERIOR, que é
+    // justamente o que liberava o merge na Gitea).
+    const pkg = JSON.parse(readFileSync(join(CWD, "package.json"), "utf8")) as {
+      scripts?: Record<string, string>
+    }
+    const lint = String(pkg.scripts?.lint ?? "")
+    expect(lint).toContain("prettier --check --ignore-unknown")
+    expect(lint).toContain("eslint . --max-warnings 0")
+    // Escopo explícito = o mesmo validado localmente na Fase 3 — um
+    // `prettier --check .` puro quebraria em globs *.prisma/*.sql na raiz.
+    expect(lint).toContain(
+      "'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'",
+    )
   })
 
   it("instala deps antes dos checks (bun install --frozen-lockfile)", () => {

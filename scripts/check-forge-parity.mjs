@@ -206,6 +206,19 @@ export const CORE_INVARIANTS = [
     // Flag `m`: o mesmo regex e testado contra o ROTULO de um gate (linha unica)
     // E contra o conteudo inteiro da pipeline (multi-linha) em missingInvariants.
     matches: /^bun run lint$/m,
+    // UM COMANDO SO, NAS DUAS FORJAS — SEM REGUA POR FORJA.
+    //
+    // A regua (prettier --check + `eslint . --max-warnings 0`) vive no script
+    // `lint` do package.json, e as duas forjas rodam exatamente `bun run lint`:
+    // mesma entrada, um veredito so. Antes o par estava INLINE no job
+    // `lint-guard` do GitHub e o `lint` do package.json era so `eslint .` (sem
+    // o teto de warnings, sem prettier) — o mesmo commit passava no merge da
+    // Gitea e era rejeitado no GitHub, e quem decidia o merge era o lado LAXO.
+    // A tabela `matchesByForge` existia para descrever essa diferenca como se
+    // ela fosse um contrato; o que ela fazia era legitimar o furo. Hoje o
+    // `matches` responde "o lint esta na pipeline?" e o doctor responde "o job
+    // EXIGIDO roda ESTE comando?" — sem uma segunda regua para manter em
+    // sincronia (`scripts/forge-doctor.mjs`, `coreGateContracts`).
     why: "regra de lint que so existe no editor deixa o repositorio divergir do padrao",
     jobIds: { gitea: "lint", github: "lint-guard" },
   },

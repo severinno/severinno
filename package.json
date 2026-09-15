@@ -19,7 +19,7 @@
     "search:reindex": "node scripts/search-reindex.mjs",
     "start": "NODE_ENV=production node .next/standalone/server.js",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
+    "lint": "prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**' && eslint . --max-warnings 0",
     "qa": "node scripts/qa.mjs",
     "qa:parallel": "node scripts/qa.mjs --parallel",
     "qa:sequential": "node scripts/qa.mjs --sequential",

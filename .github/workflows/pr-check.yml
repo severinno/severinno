@@ -878,13 +878,19 @@ jobs:
   # --max-warnings 0 no working tree completo do PR, com arquivo:linha
   # na falha.
   #
-  # Prettier cobre TODO o repo (src/, scripts/, docs/, prisma/,
-  # .github/workflows/*.yml, configs raiz) via .prettierignore (artefatos
-  # gerados/runtime excluídos — lhci-reports, tool-results, secrets,
-  # download, upload, agent-ctx, *.pid, *.err). O escopo abaixo é o mesmo
-  # validado localmente na Fase 3 — `prettier --check .` puro não
-  # funcina (glob errors em *.prisma/*.sql na raiz), então o escopo é
-  # explícito.
+  # UM COMANDO SÓ, NAS DUAS FORJAS: o par (prettier + eslint zero) mora no
+  # script `lint` do package.json — a ÚNICA fonte da régua — e este job roda
+  # exatamente `bun run lint`, o MESMO comando do job `lint` da Gitea.
+  #
+  # Antes o par estava INLINE aqui e o `lint` do package.json era só
+  # `eslint .` (sem o teto de warnings, sem prettier): o mesmo commit passava
+  # no merge da Gitea e era rejeitado aqui — dois vereditos para um merge só,
+  # e o pior deles era o que liberava. O escopo do prettier (src/ scripts/
+  # docs/ prisma/ configs raiz — artefatos gerados excluídos pelo
+  # .prettierignore; `prettier --check .` puro quebra em globs *.prisma/*.sql da
+  # raiz) é o mesmo que a Fase 3 validou — a diferença é só ONDE ele vive. Quem prende a simetria é o invariante `lint`
+  # do check:forge-parity (UM `matches`, sem régua por forja) e os contratos
+  # do forge-doctor (o job exigido tem de RODAR este comando).
   lint-guard:
     name: Lint Guard (prettier + eslint zero)
     runs-on: self-hosted
@@ -909,18 +915,18 @@ jobs:
       - name: Install deps
         run: bun install --frozen-lockfile
 
-      - name: Check prettier formatting (all matched files)
-        run: >
-          npx prettier --check --ignore-unknown
-          'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'
+      # O comando INTEIRO (prettier --check + eslint . --max-warnings 0) — o
+      # mesmo que o job `lint` da Gitea executa e o mesmo que qualquer pessoa
+      # roda na máquina. Nenhum passo inline: um comando duplicado em dois
+      # lugares é um comando que vai divergir no dia em que alguém apertar um
+      # dos lados.
+      - name: Check lint (prettier + eslint zero)
+        run: bun run lint
 
-      - name: Check eslint (max-warnings 0)
-        run: npx eslint . --max-warnings 0
-
-      # CONTRATO REPO-WIDE (não PR-scope): eslint . --max-warnings 0 cobre
-      # TODO o repo — um warning introduzido em QUALQUER arquivo (mesmo via
-      # merge de base com warning, sem o PR tocar o arquivo) falha o job.
-      # Semântica intencional da Fase 3/4: zero warnings é contrato duro.
+      # CONTRATO REPO-WIDE (não PR-scope): o `eslint . --max-warnings 0` do
+      # script cobre TODO o repo — um warning introduzido em QUALQUER arquivo
+      # (mesmo via merge de base com warning, sem o PR tocar o arquivo) falha o
+      # job. Semântica intencional da Fase 3/4: zero warnings é contrato duro.
 
       - name: Summary
         run: echo "✅ All files formatted (prettier) and zero eslint warnings/errors."

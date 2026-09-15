@@ -35,13 +35,8 @@ exports[`pr-check.yml — job lint-guard (sintaxe YAML + snapshot) > parseia com
       "run": "bun install --frozen-lockfile",
     },
     {
-      "name": "Check prettier formatting (all matched files)",
-      "run": "npx prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'
-",
-    },
-    {
-      "name": "Check eslint (max-warnings 0)",
-      "run": "npx eslint . --max-warnings 0",
+      "name": "Check lint (prettier + eslint zero)",
+      "run": "bun run lint",
     },
     {
       "name": "Summary",
