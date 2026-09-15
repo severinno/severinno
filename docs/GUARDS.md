@@ -2297,6 +2297,181 @@ ele se propõe.
 
 ---
 
+## 20. A classe SIGPIPE — `check-pipefail-sigpipe` (`scripts/check-pipefail-sigpipe.mjs`)
+
+**O que protege:** num contexto com `set -o pipefail`, `algo | grep -q PADRAO`
+pode terminar **141 (SIGPIPE) MESMO com o padrão encontrado** — e de forma
+**intermitente**.
+
+**Por que existe (a mecânica, porque o defeito parece impossível):** `grep -q`
+fecha o stdin no PRIMEIRO casamento (é o ponto de `-q`: parar de ler). Se o
+produtor ainda tem bytes para escrever quando o leitor some, o kernel entrega
+SIGPIPE a ele: o produtor morre com 141 e, sob `pipefail`, a soma do pipeline
+passa a 141. Com pouco texto não acontece nada (tudo cabe no buffer do pipe e o
+`write` termina antes de o grep sair) — e é por isso que o defeito SOBREVIVE: ele
+depende do TAMANHO da saída (> `PIPE_BUF`, 4 KiB, basta para o `write` ser
+fatiado). No mesmo script, uma rodada passa e a seguinte falha.
+
+**O defeito real (09/2026):** os `test-mutation-*.sh` capturam a saída do
+`vitest`/`bash` em variável e a empurram para um grep quieto
+(`echo "$OUTPUT" | grep -Fq ...`). Com a suíte grande, o
+`test-mutation-coord-update.sh` era vermelho em ~1 de cada 3 execuções, e o
+diagnóstico apontava para asserções de CONTAGEM — a causa (SIGPIPE) não aparecia
+em lugar nenhum da mensagem. A correção foi **herestring** (`grep -Fq PADRAO <<< "$OUTPUT"`):
+nenhum pipe, nenhum produtor para levar o sinal, a mesma asserção.
+
+**O remédio, e por que não `|| true`:** `<<< "$VAR"` entrega o texto por um
+descritor que o PRÓPRIO bash preenche; não existe processo produtor para levar
+SIGPIPE. `|| true` desliga a asserção junto com o defeito. Produtor vivo
+(`docker ps | grep -q x`) é CAPTURADO antes: `out=$(docker ps); grep -q x <<< "$out"`.
+O guard imprime a linha reescrita, não só a regra.
+
+**Onde roda:** job `guards` da forja (dona do merge) e job `workflow-refs-guard`
+do GitHub — as duas pontas do CORE, classificadas no `check:forge-parity`. A
+JANELA da dívida declarada (quando existir) roda no job semanal
+`registry-allowlist-review`, com `--review` (o gate vermelho) **e** com o
+publicador `scripts/declared-debt-issue.mjs` (o canal acionável) — ao lado das
+outras três allowlists. A IDADE da mesma decisão é também um fato do `doctor`
+(seção 6/6) — ver "As três condições", abaixo.
+
+**Escopo (declarado, porque gate que varre menos do que parece mente):**
+
+1. `.sh`/`.bash` que **declaram** pipefail — sem pipefail a soma do pipeline é o
+   status do grep e o SIGPIPE do produtor não é observado, então não é a classe;
+   um `set +o pipefail` (que DESLIGA) também não é acusado;
+2. os hooks do `.husky/` (arquivos SEM extensão que o git roda) — são scripts
+   como os outros, e um deles (`post-checkout`) já tinha a classe;
+3. os corpos `run:` dos workflows das **duas** forjas
+   (`scripts/forge-workflows.mjs`), inclusive os passos escritos com a chave na
+   própria linha do item (`- run: ...`, 36 no repositório), quando o pipefail
+   está ativo: `shell: bash` no passo (o runner gera
+   `bash --noprofile --norc -eo pipefail {0}`), um `defaults: run: shell:` que
+   **liga** o pipefail, ou o próprio corpo fazendo `set -o pipefail`. O passo
+   **sem** pipefail não fica fora: ele reprova pelo mesmo padrão, porque a
+   segurança dele dependeria do shell default do **runner** (hoje `bash -e`) —
+   uma premissa que não é deste repositório.
+
+**A premissa do shell default é FATO, não suposição.** `defaults: run: shell:`
+(no arquivo e no job) é lido, e uma declaração que **liga** o pipefail **FALHA** o
+gate — nomeando o escopo e quantos passos ela reclassificou **de uma vez**, porque
+ela troca a premissa de todos os passos do escopo numa linha, sem que um passo
+sequer mude no diff. O remédio é dizer no passo (`shell: bash`, que é onde a
+classe é esperada) ou remover a declaração. A forma **inline**
+(`defaults: {run: {shell: bash}}`) sai **INDETERMINADA**: não ler não é o mesmo
+que não haver, e presumir "sem pipefail" ali seria a mesma aposta que este guard
+existe para acabar. O relatório diz, passo a passo, de **onde** vem o shell: do
+passo, do `defaults:` do job, do `defaults:` do arquivo ou do runner.
+
+Duas armadilhas de varredura textual que o guard trata, porque errá-las produz
+falso positivo em massa: a linha de continuação (`\` no fim — o `|` mora na linha
+seguinte) é juntada antes da análise; e o corpo de **heredoc** é TEXTO, não código
+— sem isso o guard acusaria os próprios mutation tests, que escrevem fixtures com
+o padrão dentro.
+
+**A dívida foi DECLARADA e depois APOSENTADA — o gate hoje é ABSOLUTO:** o
+padrão já estava no repositório quando o gate nasceu (216 ocorrências em 47
+arquivos, 95 delas nos mutation tests). Corrigir tudo de uma vez seria uma
+reescrita de ~200 linhas, então a dívida primeiro foi **declarada** —
+`docs/quality/pipefail-sigpipe-baseline.json`, com **quantidade por arquivo**
+(nunca por linha: uma linha nova acima não pode acusar dívida que não mudou) — e
+o guard falhava só no que passasse da cota.
+
+O `--fix` então aposentou o caso mecânico e o baseline foi **REMOVIDO**: não há
+mais cota, allowlist nem exceção — **qualquer** ocorrência reprova o PR, em
+qualquer arquivo. O mecanismo de baseline continua no código (`--update` ainda
+cria um) para o dia em que exista um caso que realmente não possa ser consertado
+agora — declarado, justificado por escrito e com revisão vencível.
+
+**As três condições deixaram de ser prosa e viraram mecanismo** (a comporta que
+podia reabrir a dívida por digitação agora exige decisão):
+
+1. **DECLARADO** — `--update` com alguma ocorrência a declarar **recusa sem
+   `--reason`** (exit 3) e **não grava nada**; a mensagem oferece as duas saídas
+   (consertar com `--fix`, ou declarar dizendo o porquê). Quem quer só "deixar o
+   gate verde" tem de escolher entre consertar e se explicar;
+2. **JUSTIFICADO** — a razão vai para o **arquivo** (`reason`), não para a caixa
+   de entrada de quem rodou o comando: uma justificativa que só existe na máquina
+   de quem declarou não é decisão registrada. Dívida com `total > 0` e sem
+   `reason` é **violação nos dois modos** (fail-closed) — apagar o campo seria o
+   jeito silencioso de declarar exceção sem decidir nada;
+3. **VENCÍVEL** — a data e a janela vêm do módulo **compartilhado**
+   (`allowlist-review.mjs`, 180 dias — a MESMA regra das outras três allowlists,
+   e o MESMO parser: `2026-02-30` é recusado, porque `Date.UTC` transborda para
+   `2026-03-02` e um guard que aceita a data que o autor não digitou mede outra
+   coisa). Passada a janela, o run normal emite **`::warning::`** e o
+   `--review` — que roda no job semanal `registry-allowlist-review`, ao lado das
+   outras allowlists — faz da decisão vencida **VIOLAÇÃO**. Sem esse degrau, a
+   janela seria decorativa: a dívida venceria em silêncio, que é o defeito que
+   uma cota sem prazo tem.
+
+**A janela tem DOIS consumidores, e nenhum deles é o operador lembrando:** o
+run semanal faz dela um gate vermelho E publica a decisão vencida como **ISSUE
+ACIONÁVEL** (`scripts/declared-debt-issue.mjs`, com o ciclo de reconciliação do
+`issue-publish.mjs` — ela também **FECHA** quando nenhuma decisão está vencida,
+porque publicar sem fechar deixa a dívida mentindo no board). E o **doctor** a
+carrega como fato próprio da seção 6/6 (`--no-declared-debt` a pula, e aí o
+veredito diz que pulou em vez de omitir): a isenção a **179 dias** aparece na
+prontidão, no PR e no cron, em vez de só no run semanal.
+
+**O `--fix` aposenta a dívida em vez de conviver com ela**
+(`node scripts/check-pipefail-sigpipe.mjs --fix`). Ele troca
+`PRODUTOR | grep -q PADRAO` por `grep -q PADRAO <<< "$(PRODUTOR)"` — a mesma
+semântica (o texto do produtor vira a entrada do grep) sem o pipe que dá SIGPIPE
+ao produtor — e é conservador de propósito:
+
+- só toca **CÓDIGO**: corpo de heredoc é texto (nos mutation tests ele contém o
+  padrão como FIXTURE) — ele nunca reescreve o que o guard não acusa;
+- é **fail-closed**: cada reescrita tem de REDUZIR a contagem de ocorrências do
+  comando **e** preservar as **expressões do runner** (`${{ ... }}`) na ordem —
+  perder, duplicar ou reordenar uma muda o comando sem mudar nada que o bash
+  veja. O arquivo não é gravado se qualquer das duas não se cumprir;
+- **comprime** a linha de continuação (`\`) numa linha: o `\` existia para o
+  pipeline caber, e o remédio tira o pipeline;
+- é uso **LOCAL**, como o `--update`: o PR que aposenta dívida revisa o diff.
+
+**A prova de que ele morde** (`scripts/test-mutation-pipefail-sigpipe.sh`, matriz
+do master): o guard roda contra fixtures, e a evidência é o EXIT CODE dele —
+mutação A (`.sh` com pipefail + `echo "$OUT" | grep -Fq`) tem de FALHAR nomeando
+arquivo e sugerindo o herestring; mutação B (`shell: bash` + pipe quieto no
+workflow) tem de FALHAR; mutação C (duas ocorrências com cota 1 no baseline) tem
+de FALHAR só o excedente; a **mutação F** cobre a premissa do shell default
+(fixtures com passos **limpos**, para o exit 1 só poder vir da declaração):
+`defaults:` no arquivo e no job ligando o pipefail têm de FALHAR nomeando escopo e
+contagem, a forma inline tem de sair INDETERMINADA, e o passo `- run: |` com
+`shell:` depois do corpo tem de entrar na varredura com o rótulo certo — com o
+controle de `defaults: run: shell: bash -e {0}`, que **passa** e diz que a fonte é
+a declaração. E os controles provam que ele NÃO acusa o que não é a classe:
+herestring, script sem pipefail, heredoc que escreve o padrão, e cota igual à
+dívida declarada. Já o passo **sem** `shell:` **reprova** por desenho, e a
+ocorrência sai marcada como premissa do **runner** (é esse o controle que mede o
+rótulo, não a tolerância).
+
+A **mutação G** prova a outra metade do `--fix`: o produtor com expressão do
+runner (`docker exec ${{ job.services.postgres.id }} psql ... | grep -qx 1`) tem
+de sair **inteiro** dentro de `<<< "$(...)"`. O defeito real que ela prende veio
+deste próprio trabalho: a extração shell-aware lia `{{`/`}}` como estrutura e
+reescrevia `if docker exec ${{ grep -qx 1 <<< "$(job.services.postgres.id }} ...`
+— reduzia a contagem, passava no fail-closed e quebrava o workflow no runner. O
+conserto é a **máscara** das expressões, e a prova desfaz a máscara com `sed` e
+exige que a reescrita **saia corrompida**: se ela não sair, o caso G não estaria
+medindo a máscara (o teste tem de morder).
+
+A **mutação E** prova o outro lado — que a dívida não se re-declara em silêncio,
+executando o comando real contra fixtures e medindo o EXIT CODE: `--update` sem
+`--reason` sai **3** e **não cria arquivo**; com `--reason`, grava razão + data +
+a janela **lida do módulo compartilhado** (o teste lê `DEFAULT_REVIEW_DAYS`, não
+repete o número); uma decisão declarada há `janela + 30` dias passa no run normal
+com **`::warning::`** e **sai 1** no `--review`; dívida sem `reason` e dívida com
+`declaredAt` impossível (`2026-02-30`) saem **1**; e `--reason ""` sai **3**.
+
+O `--fix` tem as mesmas provas, pelo mesmo método: ele REESCREVE o caso mecânico
+(produtor vivo incluso) e o guard então sai 0; ele **não** toca o corpo de
+heredoc (o fixture continua com o padrão, e a contagem cai exatamente do que foi
+reescrito); ele **comprime** a continuação; e ele **não grava** quando a
+reescrita não reduz (fail-closed).
+
+---
+
 ## Regra de ouro para guards novos
 
 1. **Cabe numa família existente?** Se sim, estenda a família (com teste +

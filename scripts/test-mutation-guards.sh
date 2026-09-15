@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 20 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 21 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -105,6 +105,7 @@ SUBTESTS=(
   "no-leaked-imports|No-leaked-imports — import resolvendo no node_modules do PAI + dep inexistente devem FALHAR (install pendente passa)|scripts/test-mutation-no-leaked-imports.sh"
   "reconciliation|Reconciliation — fechamento de issues de dívida (reconcileDebt close) deve ser detectado|scripts/test-mutation-reconciliation.sh"
   "nested-guard|Nested guard — NESTED_GUARD_ENV (defesa em profundidade contra recursão) deve ser detectado|scripts/test-mutation-nested-guard.sh"
+  "pipefail-sigpipe|SIGPIPE — pipe para grep quieto deve ser detectado nos DOIS contextos (pipefail declarado E passo sem shell, com a marca da premissa do runner); a declaracao 'defaults: run: shell:' que LIGA o pipefail FALHA o gate; herestring/heredoc/script sem pipefail/cota do baseline nao acendem; o --fix aposenta o caso mecanico e nao corrompe expressao do runner|scripts/test-mutation-pipefail-sigpipe.sh"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────

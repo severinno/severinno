@@ -31,6 +31,7 @@
     "check:registry-source": "node scripts/check-registry-source.mjs",
     "check:runner-base": "node scripts/check-runner-base.mjs",
     "check:script-headers": "node scripts/check-script-headers.mjs",
+    "check:pipefail-sigpipe": "node scripts/check-pipefail-sigpipe.mjs",
     "check:prove-docs": "node scripts/check-prove-docs.mjs",
     "runner-base:pin": "node scripts/check-runner-base.mjs --write",
     "check:forge-parity": "node scripts/check-forge-parity.mjs",

@@ -1,0 +1,964 @@
+#!/usr/bin/env bash
+# =============================================================================
+# scripts/test-mutation-pipefail-sigpipe.sh — Mutation test do guard
+# check-pipefail-sigpipe
+#
+# Prova que o scripts/check-pipefail-sigpipe.mjs REALMENTE pega a VOLTA da
+# classe SIGPIPE — e que ele não acusa o que não é a classe.
+#
+# O DEFEITO QUE ISTO PROTEGE: sob `set -o pipefail`, `algo | grep -q PADRAO`
+# pode terminar 141 MESMO com o padrão encontrado (`grep -q` fecha o stdin no
+# primeiro casamento; o produtor leva SIGPIPE se ainda tiver bytes para
+# escrever). É INTERMITENTE — depende do tamanho da saída — e o sintoma aponta
+# para a asserção que ACHOU o texto. Foi assim que 11 `test-mutation-*.sh`
+# ficaram vermelhos sem causa aparente (09/2026).
+#
+# COMO (e por que assim): o guard é executado com `--root` contra um FIXTURE
+# (nunca no worktree), e a evidência é o EXIT CODE dele — não a leitura do
+# código do guard. Um harness que lê o código mede a intenção; este mede o
+# comportamento.
+#
+# Pipeline:
+#   1. CONTROLE (repo real): guard passa — hoje SEM dívida declarada (o baseline
+#      foi removido depois que o `--fix` aposentou as 216 ocorrências)
+#   2. CONTROLE (fixture com HERESTRING): não acende — o remédio passa
+#   3. CONTROLE (script .sh SEM pipefail): não acende — sem pipefail a soma do
+#      pipeline é o status do grep, e não é esta classe
+#   4. CONTROLE (heredoc que ESCREVE o padrão): não acende — corpo de heredoc é
+#      TEXTO, não código (senão o guard acusaria os próprios fixtures)
+#   5. MUTAÇÃO A (.sh com pipefail + `echo "$OUT" | grep -Fq`): DEVE FALHAR
+#      (exit 1), nomeando arquivo+linha e sugerindo o herestring
+#   6. MUTAÇÃO B (workflow `shell: bash` + run com pipe para grep quieto):
+#      DEVE FALHAR — `shell: bash` é o gatilho do pipefail no runner
+#   7. CONTROLE (o MESMO workflow SEM `shell:`): REPROVA, e a ocorrência sai
+#      marcada como a premissa do RUNNER — o passo sem pipefail não é poupado (a
+#      segurança dele dependeria de uma premissa que não é deste repositório)
+#   7b. MUTAÇÃO F (a premissa do shell default, com passos LIMPOS para o exit 1
+#      só poder vir da DECLARAÇÃO): `defaults:` no arquivo e no job ligando o
+#      pipefail FALHAM nomeando o escopo e a contagem; a forma INLINE sai
+#      INDETERMINADA; o passo `- run: |` com `shell:` depois do corpo entra na
+#      varredura com o rótulo certo; e `defaults:` sem pipefail PASSA dizendo que
+#      a fonte é a declaração
+#   7c. MUTAÇÃO G (o `--fix` não corrompe a expressão do runner): o produtor com
+#      `${{ ... }}` fica INTEIRO dentro da captura; a PROVA desfaz a máscara com
+#      `sed` e exige que a reescrita saia corrompida (o teste tem de morder)
+#   8. MUTAÇÃO C (baseline): cota igual PASSA; uma ocorrência ACIMA da cota
+#      FALHA — a dívida declarada não pode esconder crescimento
+#   9. MUTAÇÃO D (--fix): reescreve o caso mecânico — echo E produtor vivo — e
+#      COMPRIME a continuação; o guard então sai 0. Prova também o que ele NÃO
+#      toca (corpo de heredoc, grep não-quieto) e que é IDEMPOTENTE
+#  10. MUTAÇÃO E (a dívida não se RE-DECLARA em silêncio): `--update` sem
+#      `--reason` recusa e NÃO grava; com razão, grava razão + data + a JANELA do
+#      módulo compartilhado; decisão VENCIDA vira `::warning::` no run normal e
+#      VIOLAÇÃO no `--review` (o job semanal); sem razão escrita OU com data
+#      impossível é violação nos DOIS modos (fail-closed)
+#  11. INFRA: --root inexistente → exit 2 · flag desconhecida → exit 3
+#  12. Cleanup (trap EXIT)
+#
+# Usage:
+#   ./scripts/test-mutation-pipefail-sigpipe.sh
+#
+# Exit codes:
+#   0 — mutações DETECTADAS + controles passam ✅
+#   1 — guard CEGO (mutação passou) OU controle falso-positivo ❌
+# =============================================================================
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+GUARD="$SCRIPT_DIR/scripts/check-pipefail-sigpipe.mjs"
+
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+pass() { echo -e "  ${GREEN}✅${NC} $1"; }
+fail() { echo -e "  ${RED}❌${NC} $1"; }
+header() { echo -e "\n${CYAN}═══ $1 ═══${NC}"; }
+
+echo ""
+echo "  ═════════════════════════════════════════════════════════════════"
+echo "   🧪 SEVERINNO — MUTATION TEST (pipefail x grep quieto deve GATEAR)"
+echo "  ═════════════════════════════════════════════════════════════════"
+
+# ── CONTROLE 1: repo real ─────────────────────────────────────────────────
+
+header "CONTROLE: guard passa no repo real (sem dívida declarada)"
+if node "$GUARD" > "$TMP_DIR/ctrl-real.txt" 2>&1; then
+  pass "guard PASS no repo real (exit 0)"
+else
+  ctrl_exit=$?
+  fail "guard FALHOU no repo real (exit $ctrl_exit)"
+  cat "$TMP_DIR/ctrl-real.txt"
+  exit 1
+fi
+
+# ── helpers de fixture ────────────────────────────────────────────────────
+
+nova_raiz() {
+  rm -rf "${TMP_DIR:?}/fx"
+  mkdir -p "$TMP_DIR/fx/scripts"
+  echo "$TMP_DIR/fx"
+}
+
+rodar() {
+  local raiz="$1" saida="$2"
+  set +e
+  node "$GUARD" --root "$raiz" > "$saida" 2>&1
+  echo $?
+  set -e
+}
+
+# `--review`: o modo do CRON (decisão vencida é violação).
+rodar_review() {
+  local raiz="$1" saida="$2"
+  set +e
+  node "$GUARD" --root "$raiz" --review > "$saida" 2>&1
+  echo $?
+  set -e
+}
+
+# Datas DINÂMICAS: a janela de revisão precisa de uma base que não envelheça com
+# o arquivo do teste — um `declaredAt` literal de hoje vence em 6 meses e o caso
+# passaria a medir a idade da fixture em vez do que ele quer medir.
+hoje() { node -e 'process.stdout.write(new Date().toISOString().slice(0, 10))'; }
+dias_atras() {
+  node -e "process.stdout.write(new Date(Date.now() - $1 * 86400000).toISOString().slice(0, 10))"
+}
+# A janela NÃO é escrita aqui: é lida do módulo compartilhado que a define
+# (`allowlist-review.mjs`). Duas janelas para a mesma pergunta divergem no dia em
+# que alguém ajustar uma delas — e o teste passaria a provar a cópia.
+JANELA="$(node --input-type=module -e "import { DEFAULT_REVIEW_DAYS } from '$SCRIPT_DIR/scripts/allowlist-review.mjs'; process.stdout.write(String(DEFAULT_REVIEW_DAYS))")"
+
+# ── CONTROLE 2: herestring não acende ─────────────────────────────────────
+
+header "CONTROLE: o REMÉDIO (herestring) não acende o guard"
+raiz="$(nova_raiz)"
+cat > "$raiz/scripts/ok.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+OUT=$(echo oi)
+if grep -Fq "oi" <<< "$OUT"; then
+  echo achou
+fi
+SH
+exit_code="$(rodar "$raiz" "$TMP_DIR/ctrl-herestring.txt")"
+if [ "$exit_code" -ne 0 ]; then
+  fail "FALSO POSITIVO: herestring rejeitado (exit $exit_code)"
+  cat "$TMP_DIR/ctrl-herestring.txt"
+  exit 1
+fi
+pass "herestring passa (exit 0) — o gate mede o PIPE, não o grep"
+
+# ── CONTROLE 3: sem pipefail não é a classe ───────────────────────────────
+
+header "CONTROLE: script SEM pipefail não acende (não é a classe)"
+raiz="$(nova_raiz)"
+cat > "$raiz/scripts/sem-pipefail.sh" <<'SH'
+#!/usr/bin/env bash
+set -eu
+OUT=$(echo oi)
+if echo "$OUT" | grep -Fq "oi"; then
+  echo achou
+fi
+SH
+exit_code="$(rodar "$raiz" "$TMP_DIR/ctrl-sem-pipefail.txt")"
+if [ "$exit_code" -ne 0 ]; then
+  fail "FALSO POSITIVO: sem pipefail o SIGPIPE do produtor não é observado (exit $exit_code)"
+  cat "$TMP_DIR/ctrl-sem-pipefail.txt"
+  exit 1
+fi
+pass "sem pipefail passa (exit 0) — o escopo é o pipefail, não o texto"
+
+# ── CONTROLE 4: corpo de heredoc é TEXTO ──────────────────────────────────
+
+header "CONTROLE: heredoc que ESCREVE o padrão não acende (fixture != código)"
+raiz="$(nova_raiz)"
+cat > "$raiz/scripts/gera-fixture.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+cat > /tmp/fixture-gerado.sh <<'FIXTURE'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "$OUT" | grep -Fq "padrao"
+FIXTURE
+echo escrito
+SH
+exit_code="$(rodar "$raiz" "$TMP_DIR/ctrl-heredoc.txt")"
+if [ "$exit_code" -ne 0 ]; then
+  fail "FALSO POSITIVO: o corpo do heredoc foi lido como código (exit $exit_code)"
+  cat "$TMP_DIR/ctrl-heredoc.txt"
+  exit 1
+fi
+pass "heredoc passa (exit 0) — fixture dentro de heredoc não é execução"
+
+# ── MUTAÇÃO A: .sh com pipefail + pipe para grep quieto ───────────────────
+
+header 'MUTAÇÃO A: echo "$OUT" | grep -Fq sob pipefail'
+raiz="$(nova_raiz)"
+cat > "$raiz/scripts/mutado.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+OUT=$(echo oi)
+if ! echo "$OUT" | grep -Fq "oi"; then
+  exit 1
+fi
+SH
+exit_code="$(rodar "$raiz" "$TMP_DIR/mut-a.txt")"
+if [ "$exit_code" -ne 1 ]; then
+  fail "guard CEGO: não falhou com o pipe sob pipefail (exit $exit_code)"
+  cat "$TMP_DIR/mut-a.txt"
+  exit 1
+fi
+if ! grep -qF "scripts/mutado.sh" "$TMP_DIR/mut-a.txt"; then
+  fail "falhou, mas NÃO nomeou o arquivo da violação"
+  cat "$TMP_DIR/mut-a.txt"
+  exit 1
+fi
+if ! grep -qF '<<< "$OUT"' "$TMP_DIR/mut-a.txt"; then
+  fail "falhou, mas NÃO sugeriu o herestring (o remédio é o valor do guard)"
+  cat "$TMP_DIR/mut-a.txt"
+  exit 1
+fi
+if ! grep -qF "SIGPIPE" "$TMP_DIR/mut-a.txt"; then
+  fail "falhou sem nomear a causa (SIGPIPE) — diagnóstico opaco"
+  cat "$TMP_DIR/mut-a.txt"
+  exit 1
+fi
+pass "mutação A DETECTADA: pipe quieto sob pipefail falha, nomeia arquivo e sugere herestring"
+
+# ── MUTAÇÃO B / CONTROLE 5: o gatilho é `shell: bash` ─────────────────────
+
+header 'MUTAÇÃO B: workflow com shell bash e pipe para grep quieto'
+montar_workflow() {
+  local raiz="$1" shell_linha="$2"
+  mkdir -p "$raiz/.github/workflows"
+  if [ -n "$shell_linha" ]; then
+    cat > "$raiz/.github/workflows/ci.yml" <<YAML
+name: Fake CI
+
+on:
+  push:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Passo com pipe quieto
+$shell_linha
+        run: |
+          OUT=\$(echo oi)
+          if echo "\$OUT" | grep -q "oi"; then
+            echo achou
+          fi
+YAML
+  else
+    cat > "$raiz/.github/workflows/ci.yml" <<'YAML'
+name: Fake CI
+
+on:
+  push:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Passo SEM shell declarado
+        run: |
+          OUT=$(echo oi)
+          if echo "$OUT" | grep -q "oi"; then
+            echo achou
+          fi
+YAML
+  fi
+}
+
+raiz="$(nova_raiz)"
+montar_workflow "$raiz" "        shell: bash"
+exit_code="$(rodar "$raiz" "$TMP_DIR/mut-b.txt")"
+if [ "$exit_code" -ne 1 ]; then
+  fail "guard CEGO: não falhou com o pipe quieto no workflow com shell bash (exit $exit_code)"
+  cat "$TMP_DIR/mut-b.txt"
+  exit 1
+fi
+if ! grep -qF ".github/workflows/ci.yml" "$TMP_DIR/mut-b.txt"; then
+  fail "falhou, mas NÃO nomeou o workflow (a varredura das forjas está fora?)"
+  cat "$TMP_DIR/mut-b.txt"
+  exit 1
+fi
+pass "mutação B DETECTADA: o shell bash liga o pipefail e o pipeline é acusado"
+
+header "CONTROLE: o MESMO workflow SEM `shell:` declarado TAMBÉM reprova (marca própria)"
+# ATENÇÃO ao que este controle mede HOJE: o passo sem `shell:` NÃO é poupado —
+# a varredura cobre os dois contextos, porque a segurança dele dependeria do
+# shell default do RUNNER (uma premissa que não é deste repositório). O que o
+# teste prova é que a MARCA distingue os dois casos: a causa é a mesma, o
+# diagnóstico (e o valor da ocorrência) não.
+raiz="$(nova_raiz)"
+montar_workflow "$raiz" ""
+exit_code="$(rodar "$raiz" "$TMP_DIR/ctrl-shell-default.txt")"
+if [ "$exit_code" -ne 1 ]; then
+  fail "guard CEGO: o passo sem `shell:` (premissa do runner) passou (exit $exit_code)"
+  cat "$TMP_DIR/ctrl-shell-default.txt"
+  exit 1
+fi
+if ! grep -qF 'SHELL DEFAULT do runner' "$TMP_DIR/ctrl-shell-default.txt"; then
+  fail 'acusou sem marcar que o contexto é a premissa do RUNNER (diagnóstico no lugar errado)'
+  cat "$TMP_DIR/ctrl-shell-default.txt"
+  exit 1
+fi
+pass 'o passo sem shell declarado reprova e a ocorrência sai marcada como premissa do RUNNER (exit 1)'
+
+# ── MUTAÇÃO F: a PREMISSA do shell default ──────────────────────────────
+#
+# O passo sem `shell:` é lido como o default do RUNNER (`bash -e`) — uma
+# premissa que NÃO é deste repositório. Um `defaults: run: shell:` é a única
+# forma de trocá-la DAQUI, e ele reclassifica o escopo inteiro numa linha, sem
+# que nenhum passo mude no diff. Por isso os fixtures abaixo têm passos LIMPOS:
+# o exit 1 só pode vir da PREMISSA, não de uma ocorrência de pipe.
+
+header 'MUTAÇÃO F1: `defaults:` do ARQUIVO ligando o pipefail DEVE FALHAR (passos limpos)'
+raiz="$(nova_raiz)"
+mkdir -p "$raiz/.github/workflows"
+cat > "$raiz/.github/workflows/ci.yml" <<'YAML'
+name: Fake CI
+
+on:
+  push:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Limpo
+        run: echo oi
+      - name: Outro limpo
+        run: |
+          OUT=$(echo oi)
+          echo "$OUT"
+YAML
+exit_code="$(rodar "$raiz" "$TMP_DIR/mut-f1.txt")"
+if [ "$exit_code" -ne 1 ]; then
+  fail "guard CEGO: a declaração ligou o pipefail para o escopo e o gate passou (exit $exit_code)"
+  cat "$TMP_DIR/mut-f1.txt"
+  exit 1
+fi
+for agulha in 'A PREMISSA DO SHELL DEFAULT MUDOU' 'shell: bash' 'workflow inteiro' '2 passo(s)'; do
+  if ! grep -qF -- "$agulha" "$TMP_DIR/mut-f1.txt"; then
+    fail "falhou, mas não nomeou '$agulha' — o fato tem de ser acionável"
+    cat "$TMP_DIR/mut-f1.txt"
+    exit 1
+  fi
+done
+pass 'mutação F1 DETECTADA: a declaração que liga o pipefail FALHA nomeando o escopo e os passos'
+
+header 'MUTAÇÃO F2: `defaults:` do JOB DEVE FALHAR (e só o job dele é reclassificado)'
+raiz="$(nova_raiz)"
+mkdir -p "$raiz/.github/workflows"
+cat > "$raiz/.github/workflows/ci.yml" <<'YAML'
+name: Fake CI
+
+on:
+  push:
+
+jobs:
+  comDefault:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -leo pipefail
+    steps:
+      - name: Limpo
+        run: echo oi
+  semDefault:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Limpo
+        run: echo oi
+YAML
+exit_code="$(rodar "$raiz" "$TMP_DIR/mut-f2.txt")"
+if [ "$exit_code" -ne 1 ]; then
+  fail "guard CEGO: a declaração do JOB não falhou o gate (exit $exit_code)"
+  cat "$TMP_DIR/mut-f2.txt"
+  exit 1
+fi
+if ! grep -qF -- 'job `comDefault`' "$TMP_DIR/mut-f2.txt"; then
+  fail 'falhou, mas não nomeou o JOB — sem isso o operador procura no lugar errado'
+  cat "$TMP_DIR/mut-f2.txt"
+  exit 1
+fi
+if ! grep -qF -- '1 passo(s)' "$TMP_DIR/mut-f2.txt"; then
+  fail 'o fato não contou os passos reclassificados (a conta é o valor do relatório)'
+  cat "$TMP_DIR/mut-f2.txt"
+  exit 1
+fi
+pass 'mutação F2 DETECTADA: o escopo da declaração do job sai nomeado, com a conta de passos'
+
+header 'CONTROLE: `defaults:` que NÃO liga o pipefail passa — mas a fonte é DITA'
+raiz="$(nova_raiz)"
+mkdir -p "$raiz/.github/workflows"
+cat > "$raiz/.github/workflows/ci.yml" <<'YAML'
+name: Fake CI
+
+on:
+  push:
+
+defaults:
+  run:
+    shell: bash -e {0}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Limpo
+        run: echo oi
+YAML
+exit_code="$(rodar "$raiz" "$TMP_DIR/ctrl-default-neutro.txt")"
+if [ "$exit_code" -ne 0 ]; then
+  fail "FALSO POSITIVO: `defaults:` sem pipefail não é premissa mudada (exit $exit_code)"
+  cat "$TMP_DIR/ctrl-default-neutro.txt"
+  exit 1
+fi
+if ! grep -qF 'por `defaults:` do repositório' "$TMP_DIR/ctrl-default-neutro.txt"; then
+  fail 'passou, mas não atribuiu o passo à declaração — a fonte tem de ser dita, não presumida'
+  cat "$TMP_DIR/ctrl-default-neutro.txt"
+  exit 1
+fi
+pass 'defaults sem pipefail passa (exit 0) e o relatório diz que a fonte é a DECLARAÇÃO'
+
+header 'MUTAÇÃO F3: `defaults:` INLINE é INDETERMINADO (não ler ≠ não haver)'
+raiz="$(nova_raiz)"
+mkdir -p "$raiz/.github/workflows"
+cat > "$raiz/.github/workflows/ci.yml" <<'YAML'
+name: Fake CI
+
+on:
+  push:
+
+defaults: {run: {shell: bash}}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Limpo
+        run: echo oi
+YAML
+exit_code="$(rodar "$raiz" "$TMP_DIR/mut-f3.txt")"
+if [ "$exit_code" -ne 1 ]; then
+  fail "guard CEGO: forma inline não lida passou como se não houvesse declaração (exit $exit_code)"
+  cat "$TMP_DIR/mut-f3.txt"
+  exit 1
+fi
+if ! grep -qF 'INLINE' "$TMP_DIR/mut-f3.txt"; then
+  fail 'falhou, mas não nomeou a forma que ele não lê'
+  cat "$TMP_DIR/mut-f3.txt"
+  exit 1
+fi
+pass 'mutação F3 DETECTADA: a forma inline sai INDETERMINADA, com o remédio em bloco'
+
+header 'MUTAÇÃO F4: passo com a CHAVE na própria linha (`- run:`) é varrido'
+raiz="$(nova_raiz)"
+mkdir -p "$raiz/.github/workflows"
+cat > "$raiz/.github/workflows/ci.yml" <<'YAML'
+name: Fake CI
+
+on:
+  push:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          OUT=$(echo oi)
+          if echo "$OUT" | grep -q "oi"; then
+            echo achou
+          fi
+        shell: bash
+YAML
+exit_code="$(rodar "$raiz" "$TMP_DIR/mut-f4.txt")"
+if [ "$exit_code" -ne 1 ]; then
+  fail "guard CEGO: o passo `- run:` (forma de 36 dos passos do repo) ficou INVISÍVEL (exit $exit_code)"
+  cat "$TMP_DIR/mut-f4.txt"
+  exit 1
+fi
+if ! grep -qF 'pipefail declarado' "$TMP_DIR/mut-f4.txt"; then
+  fail 'acusou, mas não leu o `shell:` DEPOIS do corpo (o rótulo diria que é o runner)'
+  cat "$TMP_DIR/mut-f4.txt"
+  exit 1
+fi
+pass 'mutação F4 DETECTADA: o passo com a chave na linha do item entra na varredura'
+
+# ── MUTAÇÃO G: o --fix não pode CORROMPER a expressão do runner ──────────
+
+header 'MUTAÇÃO G: --fix mantém o PRODUTOR com `${{ }}` inteiro dentro da captura'
+raiz="$(nova_raiz)"
+mkdir -p "$raiz/.github/workflows"
+cat > "$raiz/.github/workflows/ci.yml" <<'YAML'
+name: Fake CI
+
+on:
+  push:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+    steps:
+      - name: Espera
+        shell: bash
+        run: |
+          for _ in $(seq 1 30); do
+            if docker exec ${{ job.services.postgres.id }} \
+              psql -U u -d d -tAc "SELECT 1" 2>/dev/null | grep -qx 1; then
+              echo pronto
+            fi
+          done
+YAML
+set +e
+node "$GUARD" --root "$raiz" --fix > "$TMP_DIR/fix-g.txt" 2>&1
+FIX_EXIT=$?
+set -e
+if [ "$FIX_EXIT" -ne 0 ]; then
+  fail "--fix saiu $FIX_EXIT no caso com expressão (esperado 0)"
+  cat "$TMP_DIR/fix-g.txt"
+  exit 1
+fi
+corrigido="$raiz/.github/workflows/ci.yml"
+if ! grep -qF '<<< "$(docker exec ${{ job.services.postgres.id }} psql' "$corrigido"; then
+  fail 'o --fix deixou o `docker exec` FORA da captura (o defeito dos 12 passos com shell default)'
+  cat "$corrigido"
+  exit 1
+fi
+exit_code="$(rodar "$raiz" "$TMP_DIR/fix-g-depois.txt")"
+if [ "$exit_code" -ne 0 ]; then
+  fail "guard ainda acusa depois do --fix no passo com expressão (exit $exit_code)"
+  cat "$TMP_DIR/fix-g-depois.txt"
+  exit 1
+fi
+pass 'mutação G DETECTADA: a expressão fica dentro do produtor capturado e o guard fecha em 0'
+
+header 'PROVA: sem a MÁSCARA o --fix corrompe — o caso acima morde'
+GUARD_SEM_MASCARA="$TMP_DIR/guard-sem-mascara.mjs"
+sed 's|splitPipelines(maskGithubExpressions(command))|splitPipelines(command)|g' \
+  "$GUARD" > "$GUARD_SEM_MASCARA"
+if cmp -s "$GUARD" "$GUARD_SEM_MASCARA"; then
+  fail 'a mutação não mudou o guard (o sed não casou — o caso G deixaria de provar a máscara)'
+  exit 1
+fi
+raiz="$(nova_raiz)"
+mkdir -p "$raiz/.github/workflows"
+cat > "$raiz/.github/workflows/ci.yml" <<'YAML'
+name: Fake CI
+
+on:
+  push:
+
+jobs:
+  check:
+    steps:
+      - name: Espera
+        shell: bash
+        run: |
+          if docker exec ${{ job.services.postgres.id }} \
+            psql -U u -d d -tAc "SELECT 1" 2>/dev/null | grep -qx 1; then
+            echo pronto
+          fi
+YAML
+set +e
+node "$GUARD_SEM_MASCARA" --root "$raiz" --fix > "$TMP_DIR/fix-g-mutado.txt" 2>&1
+set -e
+if grep -qF '<<< "$(docker exec ${{ job.services.postgres.id }} psql' "$raiz/.github/workflows/ci.yml"; then
+  fail 'a máscara não é load-bearing: sem ela o --fix acertou igual (o caso G não mede nada)'
+  cat "$raiz/.github/workflows/ci.yml"
+  exit 1
+fi
+pass 'sem a máscara a reescrita SAI CORROMPIDA — é a máscara que mantém o caso G verde'
+
+# ── MUTAÇÃO C: a dívida declarada não esconde crescimento ─────────────────
+
+header "MUTAÇÃO C: baseline com cota 1 + DUAS ocorrências DEVE FALHAR"
+raiz="$(nova_raiz)"
+mkdir -p "$raiz/docs/quality"
+cat > "$raiz/scripts/duas.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+A=$(echo a)
+B=$(echo b)
+if echo "$A" | grep -q "a"; then echo ok; fi
+if echo "$B" | grep -q "b"; then echo ok; fi
+SH
+cat > "$raiz/docs/quality/pipefail-sigpipe-baseline.json" <<JSON
+{
+  "version": 1,
+  "declaredAt": "$(hoje)",
+  "reason": "fixture do mutation test: a cota existe para o caso ACIMA dela",
+  "reviewAfterDays": $JANELA,
+  "total": 1,
+  "files": { "scripts/duas.sh": 1 }
+}
+JSON
+if grep -qF "docs/quality/pipefail-sigpipe-baseline.json" "$GUARD"; then
+  pass "o guard lê o baseline do caminho declarado"
+else
+  fail "o guard não conhece o caminho do baseline"
+  exit 1
+fi
+exit_code="$(rodar "$raiz" "$TMP_DIR/mut-c.txt")"
+if [ "$exit_code" -ne 1 ]; then
+  fail "baseline ESCONDEU crescimento: cota 1 com 2 ocorrências passou (exit $exit_code)"
+  cat "$TMP_DIR/mut-c.txt"
+  exit 1
+fi
+if ! grep -qF "scripts/duas.sh" "$TMP_DIR/mut-c.txt"; then
+  fail "falhou sem nomear o arquivo com a ocorrência acima da cota"
+  cat "$TMP_DIR/mut-c.txt"
+  exit 1
+fi
+pass "mutação C DETECTADA: ocorrência ACIMA da cota falha mesmo com dívida declarada"
+
+header "CONTROLE: cota IGUAL às ocorrências passa (a dívida declarada é respeitada)"
+cat > "$raiz/docs/quality/pipefail-sigpipe-baseline.json" <<JSON
+{
+  "version": 1,
+  "declaredAt": "$(hoje)",
+  "reason": "fixture do mutation test: cota igual às ocorrências",
+  "reviewAfterDays": $JANELA,
+  "total": 2,
+  "files": { "scripts/duas.sh": 2 }
+}
+JSON
+exit_code="$(rodar "$raiz" "$TMP_DIR/ctrl-cota.txt")"
+if [ "$exit_code" -ne 0 ]; then
+  fail "a cota declarada foi ignorada (exit $exit_code)"
+  cat "$TMP_DIR/ctrl-cota.txt"
+  exit 1
+fi
+pass "cota igual passa (exit 0) — dívida declarada não vira ruído vermelho"
+
+# ── MUTAÇÃO D: o --fix aposenta o caso mecânico ───────────────────────────
+
+header 'MUTAÇÃO D: --fix reescreve o caso mecânico (e SÓ ele)'
+raiz="$(nova_raiz)"
+cat > "$raiz/scripts/devido.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+OUT=$(echo oi)
+if ! echo "$OUT" | grep -Fq "oi"; then
+  exit 1
+fi
+if docker ps | grep -q "alive"; then
+  echo vivo
+fi
+if docker compose ps \
+      | grep -qi "healthy"; then
+  echo saudavel
+fi
+echo "$OUT" | grep -n "leitura" >/dev/null
+cat > /tmp/fixture-gerado.sh <<'FIXTURE'
+echo "$X" | grep -q "texto de fixture"
+FIXTURE
+SH
+antes="$(rodar "$raiz" "$TMP_DIR/fix-antes.txt")"
+if [ "$antes" -ne 1 ]; then
+  fail "fixture mal montada: esperado exit 1 ANTES do --fix, obtido $antes"
+  cat "$TMP_DIR/fix-antes.txt"
+  exit 1
+fi
+set +e
+node "$GUARD" --root "$raiz" --fix > "$TMP_DIR/fix-saida.txt" 2>&1
+FIX_EXIT=$?
+set -e
+if [ "$FIX_EXIT" -ne 0 ]; then
+  fail "--fix saiu $FIX_EXIT (esperado 0)"
+  cat "$TMP_DIR/fix-saida.txt"
+  exit 1
+fi
+corrigido="$raiz/scripts/devido.sh"
+if ! grep -qF '<<< "$OUT"' "$corrigido"; then
+  fail "--fix não reescreveu o produtor echo (o caso real do defeito de 09/2026)"
+  cat "$corrigido"
+  exit 1
+fi
+if ! grep -qF '<<< "$(docker ps)"' "$corrigido"; then
+  fail "--fix não reescreveu o produtor VIVO (docker ps) — o caso que só tem pipe"
+  cat "$corrigido"
+  exit 1
+fi
+if ! grep -qF 'grep -qi "healthy" <<< "$(docker compose ps)"' "$corrigido"; then
+  fail "--fix não COMPRIMIU a continuação (o \\\\ existia para o pipeline caber)"
+  cat "$corrigido"
+  exit 1
+fi
+if ! grep -qF 'echo "$X" | grep -q "texto de fixture"' "$corrigido"; then
+  fail "--fix reescreveu o CORPO DO HEREDOC (fixture é texto, não código)"
+  cat "$corrigido"
+  exit 1
+fi
+if ! grep -qF 'grep -n "leitura"' "$corrigido"; then
+  fail "--fix mexeu num grep NÃO-quieto (fora do escopo da classe)"
+  cat "$corrigido"
+  exit 1
+fi
+pass "--fix reescreveu echo + produtor vivo + continuação, sem tocar heredoc nem grep de leitura"
+
+depois="$(rodar "$raiz" "$TMP_DIR/fix-depois.txt")"
+if [ "$depois" -ne 0 ]; then
+  fail "guard ainda acusa depois do --fix (exit $depois) — o remédio não fechou a classe"
+  cat "$TMP_DIR/fix-depois.txt"
+  exit 1
+fi
+pass "o guard sai 0 no fixture depois do --fix (a reescrita fechou a ocorrência)"
+
+header "CONTROLE: --fix é IDEMPOTENTE (não grava de novo o que já está corrigido)"
+antes_hash="$(cksum < "$corrigido")"
+set +e
+node "$GUARD" --root "$raiz" --fix > "$TMP_DIR/fix-2a.txt" 2>&1
+SEGUNDA_EXIT=$?
+set -e
+if [ "$SEGUNDA_EXIT" -ne 0 ]; then
+  fail "a segunda execução de --fix saiu $SEGUNDA_EXIT"
+  cat "$TMP_DIR/fix-2a.txt"
+  exit 1
+fi
+if [ "$antes_hash" != "$(cksum < "$corrigido")" ]; then
+  fail "--fix reescreveu um arquivo que já estava correto"
+  exit 1
+fi
+if ! grep -qF -- "0 linha(s) reescrita(s)" "$TMP_DIR/fix-2a.txt"; then
+  fail "--fix não declarou que não houve o que reescrever"
+  cat "$TMP_DIR/fix-2a.txt"
+  exit 1
+fi
+pass "segunda execução não grava nada (idempotente e fail-closed por construção)"
+
+# ── INFRA ─────────────────────────────────────────────────────────────────
+
+# ── MUTAÇÃO E: a dívida declarada não se re-declara em silêncio ───────────
+#
+# O baseline foi APOSENTADO (216 → 0, arquivo removido) e o `--update` é a
+# comporta que poderia reabri-lo: sem estas provas, um comando devolvia 200
+# exceções, o gate ficava verde, e a dívida voltava por DIGITAÇÃO em vez de
+# decisão. As três condições são as que o guard prometia em prosa — declarado,
+# justificado, vencível — e que agora são mecanismo.
+
+header "MUTAÇÃO E1: --update SEM --reason RECUSA e não grava nada (fail-closed)"
+raiz="$(nova_raiz)"
+cat > "$raiz/scripts/devido.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+OUT=$(echo oi)
+if ! echo "$OUT" | grep -Fq "oi"; then
+  exit 1
+fi
+SH
+BASELINE_FX="$raiz/docs/quality/pipefail-sigpipe-baseline.json"
+set +e
+node "$GUARD" --root "$raiz" --update > "$TMP_DIR/e1.txt" 2>&1
+E1_EXIT=$?
+set -e
+if [ "$E1_EXIT" -ne 3 ]; then
+  fail "esperado exit 3 (uso inválido) para --update sem --reason, obtido $E1_EXIT"
+  cat "$TMP_DIR/e1.txt"
+  exit 1
+fi
+if [ -e "$BASELINE_FX" ]; then
+  fail "o baseline foi GRAVADO apesar da recusa — a dívida reabriria em silêncio"
+  cat "$BASELINE_FX"
+  exit 1
+fi
+if ! grep -qF -- "--reason" "$TMP_DIR/e1.txt"; then
+  fail "recusou sem nomear a decisão escrita (--reason)"
+  cat "$TMP_DIR/e1.txt"
+  exit 1
+fi
+if ! grep -qF -- "--fix" "$TMP_DIR/e1.txt"; then
+  fail "recusou sem oferecer a alternativa barata (consertar com --fix)"
+  cat "$TMP_DIR/e1.txt"
+  exit 1
+fi
+pass "mutação E1 DETECTADA: declarar dívida exige a razão escrita, e a recusa não grava nada"
+
+header "MUTAÇÃO E2: --update --reason declara, com a JANELA do módulo compartilhado"
+set +e
+node "$GUARD" --root "$raiz" --update --reason "fixture: produtor vivo, revisao humana" > "$TMP_DIR/e2.txt" 2>&1
+E2_EXIT=$?
+set -e
+if [ "$E2_EXIT" -ne 0 ]; then
+  fail "--update COM --reason deveria declarar (exit 0), obtido $E2_EXIT"
+  cat "$TMP_DIR/e2.txt"
+  exit 1
+fi
+if [ ! -f "$BASELINE_FX" ]; then
+  fail "--update --reason não gravou o baseline"
+  exit 1
+fi
+if ! grep -qF '"reason": "fixture: produtor vivo, revisao humana"' "$BASELINE_FX"; then
+  fail "a RAZÃO não foi para o arquivo — justificativa que só existe na caixa de entrada não é decisão registrada"
+  cat "$BASELINE_FX"
+  exit 1
+fi
+if ! grep -qF "\"reviewAfterDays\": $JANELA" "$BASELINE_FX"; then
+  fail "a janela gravada NÃO é a do módulo compartilhado ($JANELA) — segunda janela para a mesma pergunta"
+  cat "$BASELINE_FX"
+  exit 1
+fi
+if ! grep -qF "\"declaredAt\": \"$(hoje)\"" "$BASELINE_FX"; then
+  fail "a data da decisão não foi registrada (é ela que a janela mede)"
+  cat "$BASELINE_FX"
+  exit 1
+fi
+pass "mutação E2 DETECTADA: a dívida fica DECLARADA (razão + data + janela compartilhada) no arquivo"
+
+header "MUTAÇÃO E3: decisão VENCIDA avisa no run normal e BLOQUEIA no --review"
+cat > "$BASELINE_FX" <<JSON
+{
+  "version": 1,
+  "declaredAt": "$(dias_atras $((JANELA + 30)))",
+  "reason": "fixture: decisao antiga de proposito",
+  "reviewAfterDays": $JANELA,
+  "total": 1,
+  "files": { "scripts/devido.sh": 1 }
+}
+JSON
+# Cota IGUAL às ocorrências: a única coisa fora da janela é a DATA. Se o run
+# normal bloqueasse aqui, uma data travaria o PR de todo mundo (o oposto do
+# desenho); se saísse verde e MUDO, a dívida venceria sem ninguém ver.
+exit_code="$(rodar "$raiz" "$TMP_DIR/e3-normal.txt")"
+if [ "$exit_code" -ne 0 ]; then
+  fail "run normal BLOQUEOU a decisão vencida (exit $exit_code) — uma data não pode travar o PR de todos"
+  cat "$TMP_DIR/e3-normal.txt"
+  exit 1
+fi
+if ! grep -qF "::warning::" "$TMP_DIR/e3-normal.txt"; then
+  fail "run normal passou em SILÊNCIO sobre a decisão vencida (a dívida venceria sem ninguém ver)"
+  cat "$TMP_DIR/e3-normal.txt"
+  exit 1
+fi
+if ! grep -qF "VENCEU" "$TMP_DIR/e3-normal.txt"; then
+  fail "o aviso não nomeia o estado (VENCEU) nem a janela"
+  cat "$TMP_DIR/e3-normal.txt"
+  exit 1
+fi
+exit_code="$(rodar_review "$raiz" "$TMP_DIR/e3-review.txt")"
+if [ "$exit_code" -ne 1 ]; then
+  fail "--review NÃO escalou a decisão vencida (exit $exit_code) — o cron ficaria verde"
+  cat "$TMP_DIR/e3-review.txt"
+  exit 1
+fi
+if ! grep -qF "SEM REVISÃO" "$TMP_DIR/e3-review.txt"; then
+  fail "--review falhou sem nomear o que falta (a revisão da decisão)"
+  cat "$TMP_DIR/e3-review.txt"
+  exit 1
+fi
+pass "mutação E3 DETECTADA: vencida = ::warning:: no PR e violação no job semanal"
+
+header "MUTAÇÃO E4: dívida SEM razão escrita é violação nos DOIS modos (fail-closed)"
+cat > "$BASELINE_FX" <<JSON
+{
+  "version": 1,
+  "declaredAt": "$(hoje)",
+  "reviewAfterDays": $JANELA,
+  "total": 1,
+  "files": { "scripts/devido.sh": 1 }
+}
+JSON
+exit_code="$(rodar "$raiz" "$TMP_DIR/e4-normal.txt")"
+if [ "$exit_code" -ne 1 ]; then
+  fail "dívida SEM reason passou no run normal (exit $exit_code) — apagar a razão seria o jeito de nunca decidir"
+  cat "$TMP_DIR/e4-normal.txt"
+  exit 1
+fi
+if ! grep -qF "reason" "$TMP_DIR/e4-normal.txt"; then
+  fail "a violação não nomeia o campo que falta (reason)"
+  cat "$TMP_DIR/e4-normal.txt"
+  exit 1
+fi
+exit_code="$(rodar_review "$raiz" "$TMP_DIR/e4-review.txt")"
+if [ "$exit_code" -ne 1 ]; then
+  fail "dívida SEM reason passou no --review (exit $exit_code)"
+  cat "$TMP_DIR/e4-review.txt"
+  exit 1
+fi
+pass "mutação E4 DETECTADA: sem razão escrita a dívida não se sustenta em modo nenhum"
+
+header "MUTAÇÃO E5: data civil impossível ('2026-02-30') é violação"
+cat > "$BASELINE_FX" <<JSON
+{
+  "version": 1,
+  "declaredAt": "2026-02-30",
+  "reason": "fixture: data impossivel de proposito",
+  "reviewAfterDays": $JANELA,
+  "total": 1,
+  "files": { "scripts/devido.sh": 1 }
+}
+JSON
+exit_code="$(rodar "$raiz" "$TMP_DIR/e5.txt")"
+if [ "$exit_code" -ne 1 ]; then
+  fail "data impossível (2026-02-30) foi ACEITA (exit $exit_code) — o guard estaria medindo outra data"
+  cat "$TMP_DIR/e5.txt"
+  exit 1
+fi
+if ! grep -qF "2026-02-30" "$TMP_DIR/e5.txt"; then
+  fail "a violação não cita a data inválida (diagnóstico opaco)"
+  cat "$TMP_DIR/e5.txt"
+  exit 1
+fi
+pass "mutação E5 DETECTADA: data civil impossível não passa (parser do módulo compartilhado)"
+
+header "CONTROLE: --reason com texto VAZIO é uso inválido (não declara em branco)"
+set +e
+node "$GUARD" --root "$raiz" --update --reason "" > "$TMP_DIR/e6.txt" 2>&1
+E6_EXIT=$?
+set -e
+if [ "$E6_EXIT" -ne 3 ]; then
+  fail "razão vazia deveria ser uso inválido (exit 3), obtido $E6_EXIT"
+  cat "$TMP_DIR/e6.txt"
+  exit 1
+fi
+pass "razão vazia é recusada (exit 3) — 'declarei' sem dizer nada não é decisão"
+
+header "INFRA: --root inexistente e flag desconhecida são fail-closed"
+exit_code="$(rodar "$TMP_DIR/nao-existe" "$TMP_DIR/infra.txt")"
+if [ "$exit_code" -ne 2 ]; then
+  fail "esperado exit 2 (infra) para --root inexistente, obtido $exit_code"
+  cat "$TMP_DIR/infra.txt"
+  exit 1
+fi
+pass "'--root' inexistente é fail-closed (exit 2)"
+
+set +e
+node "$GUARD" --nao-existe > "$TMP_DIR/uso.txt" 2>&1
+USO_EXIT=$?
+set -e
+if [ "$USO_EXIT" -ne 3 ]; then
+  fail "esperado exit 3 (uso inválido) para flag desconhecida, obtido $USO_EXIT"
+  cat "$TMP_DIR/uso.txt"
+  exit 1
+fi
+pass "flag desconhecida é uso inválido (exit 3)"
+
+header "VEREDITO"
+pass "MUTATION TEST PASSED — o guard pega o pipe quieto sob pipefail (script E"
+pass 'workflow com shell bash E no passo sem shell declarado, com a marca da premissa),'
+pass "reprova a DECLARAÇÃO de shell default que liga o pipefail (nomeando escopo e"
+pass "passos reclassificados) sem acusar herestring/script sem pipefail/heredoc,"
+pass "respeita a cota do baseline sem esconder crescimento, e o --fix aposenta o"
+pass "caso mecânico sem tocar fixture, sem perder expressão do runner e sem mexer"
+pass "em grep de leitura."
+pass "E a dívida NÃO se re-declara em silêncio: --update sem --reason não"
+pass "grava nada, e uma decisão vencida/sem razão/ com data impossível não"
+pass "passa em modo nenhum — o cron (--review) é quem a escala para violação."
+exit 0

@@ -99,6 +99,20 @@ jobs:
       - name: Script header docs
         run: node scripts/check-script-headers.mjs
 
+      # A classe SIGPIPE: sob `set -o pipefail`, `algo | grep -q PADRAO` pode
+      # passar a 141 MESMO com o padrão encontrado — `grep -q` fecha o stdin no
+      # primeiro casamento e o produtor leva SIGPIPE se ainda tiver o que
+      # escrever. É INTERMITENTE (depende do tamanho da saída), então o sintoma
+      # aparece na asserção que ACHOU o texto, não na causa. O remédio é
+      # herestring (`grep -q X <<< "$OUT"`): nenhum pipe, nenhum produtor para
+      # levar o sinal.
+      #
+      # Sem cota, sem allowlist: a dívida foi APOSENTADA (o `--fix` do guard
+      # reescreveu as 216 ocorrências mecânicas) e o baseline foi removido —
+      # QUALQUER ocorrência reprova o PR, em qualquer arquivo.
+      - name: Pipefail x grep quieto (SIGPIPE)
+        run: node scripts/check-pipefail-sigpipe.mjs
+
       # Contrato de documentação das PROVAS (família `prove-*`/`doctor`): exige,
       # para CADA comando, um bloco com o resultado esperado — e CONFRONTA esse
       # bloco com a saída real (exit declarado + linhas exigidas). Uma doc que

@@ -338,6 +338,18 @@ export const CORE_INVARIANTS = [
     jobIds: { gitea: "guards" },
   },
   {
+    id: "pipefail-sigpipe",
+    // A classe que JA mordeu este repositorio: sob `set -o pipefail`,
+    // `algo | grep -q PADRAO` pode terminar 141 (SIGPIPE) MESMO com o padrao
+    // encontrado — `grep -q` fecha o stdin no primeiro casamento e o produtor
+    // leva o sinal se ainda tiver bytes para escrever. Intermitente por
+    // construcao (depende do tamanho da saida) e o sintoma aponta para a
+    // assercao que ACHOU o texto. O remedio e herestring.
+    matches: /check[:-]pipefail[:-]sigpipe/,
+    why: "o defeito e INTERMITENTE e se disfarca de assercao de contagem: sem o gate, a proxima correcao 'resolve' o sintoma e a classe volta — ela ja voltou uma vez, em 11 test-mutation-*.sh ao mesmo tempo",
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
+  },
+  {
     id: "prove-docs",
     matches: /check[:-]prove[:-]docs/,
     why: "a familia prove-*/doctor e o que responde 'a forja pode confiar o merge a este gate?': uma doc que descreve a saida de ANTES mente com aparencia de rigor, e quem opera a forja decide sobre ela — o guard e hermetico (~1s) e roda com o docker ausente de proposito nas provas que exigem docker",
