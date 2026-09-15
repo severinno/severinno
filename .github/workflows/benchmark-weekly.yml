@@ -712,9 +712,12 @@ jobs:
   # git. O histórico JÁ tem vazamentos conhecidos (baseline commitado
   # docs/security/secret-leaks-baseline.json — 141 achados em 2026-08; a
   # remediação é filter-repo + rotação, operação deliberada, não CI). Este
-  # guard falha SOMENTE se achados NOVOS aparecerem (comparação por
-  # assinatura commit+file+line+id+key) — alertando sobre vazamentos
-  # futuros antes de virarem incidente.
+  # guard falha SOMENTE se CONTEÚDO novo aparecer (assinatura
+  # arquivo:linha:padrão:chave:valor-mascarado — o COMMIT NÃO entra), alertando
+  # sobre vazamentos futuros antes de virarem incidente. A reescrita de história
+  # (filter-repo/rebase/amend) é reportada como MOTIVO PRÓPRIO, junto da
+  # proveniência do baseline — com o commit na assinatura, ela acusava o
+  # baseline inteiro de "achado novo".
   #
   # Node puro (sem bun/docker) — o audit usa git log -p --all + regex.
   # Requer o histórico completo (fetch-depth: 0), como o blob-crlf-history.

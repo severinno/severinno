@@ -1046,9 +1046,29 @@ QUALQUER achado NOVO falha o job semanal — o gate já cobre TODOS os de
 severidade ALTA (chaves privadas, tokens sk-*), que era o pedido do parecer.
 
 **Por que existe:** um segredo commitado uma vez fica no histórico para sempre
-(filter-repo + rotação são operações deliberadas). O baseline documenta os 141
-vazamentos conhecidos; o guard protege o FUTURO comparando por assinatura
-(commit+file+line+id+key). NOTA (parecer 08/2026): a premissa "hoje gateia só
+(filter-repo + rotação são operações deliberadas). O baseline documenta os
+vazamentos JÁ conhecidos
+(`docs/security/secret-leaks-baseline.json` — **o número vive no arquivo, nunca
+nesta prosa**: ele é derivado, e `--update` o regenera); o guard
+protege o FUTURO comparando por **assinatura de conteúdo**
+(`arquivo:linha:padrão:chave:valor-mascarado` — o **commit NÃO entra**). O commit
+fica no baseline só como **proveniência**, e quando ele deixa de ser alcançável
+o guard reporta isso como **motivo próprio** no relatório, em vez de acusar os
+achados conhecidos como NOVOS — antes, com o commit dentro da assinatura, um
+rebase/filter-repo transformava o baseline inteiro em "assinatura desconhecida"
+e só um `--update` apagava o sintoma (destruindo a evidência de que a história
+tinha mudado).
+
+A proveniência ausente tem **quatro** estados, e dois deles são separados de
+propósito: `intacta` (todo commit do baseline alcançável), `indeterminado` (não
+deu para listar — git ausente), `reescrita` (história reescrita / branch apagado)
+e **`raso`** — o mesmo fato num **clone raso** (`git rev-parse
+--is-shallow-repository` = true). Eles não se colapsam porque a AÇÃO é outra: um
+manda rodar `git fetch --unshallow`, o outro manda procurar o filter-repo.
+Colapsar os dois faria o relatório mandar caçar uma reescrita que nunca
+aconteceu — diagnóstico errado é pior que diagnóstico ausente, porque é seguido.
+**Nenhum dos quatro falha o gate:** o que falha é conteúdo novo, e só isso.
+NOTA (parecer 08/2026): a premissa "hoje gateia só
 o total" era FALSA — o guard já falhava em qualquer achado novo por
 assinatura, não por count. Por isso o job semanal roda o DEFAULT (falha em
 tudo, incluindo alta) e NÃO usa `--min-severity alta` (isso ENFRAQUECERIA o

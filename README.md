@@ -346,10 +346,16 @@ vazamento.
 > `secret-leaks-audit` do `benchmark-weekly.yml`): roda a auditoria contra o
 > histórico completo (`git log -p --all`, `fetch-depth: 0`) e compara com o
 > baseline commitado [`docs/security/secret-leaks-baseline.json`](docs/security/secret-leaks-baseline.json)
-> — **141 achados conhecidos** (2026-08). Falha (exit 1) **somente se achados
-> NOVOS aparecerem**, por assinatura `commit+file+line+id+key` (não por count:
-> linha trocada com count igual ainda é detectada como novo; achado removido
-> por reescrita de história não falha). O count do baseline é **derivado**, nunca
+> (o número de achados conhecidos vive no ARQUIVO, nunca aqui: ele é derivado).
+> Falha (exit 1) **somente se CONTEÚDO novo aparecer**, por assinatura
+> `arquivo:linha:padrão:chave:valor-mascarado` — o **commit não entra** (não por
+> count: linha trocada com count igual ainda é detectada como novo; achado
+> removido não falha). A **proveniência do baseline** é reportada como **motivo
+> próprio** — `intacta`, `indeterminado`, `reescrita` (filter-repo/rebase/amend ou
+> branch apagado) e **`raso`** (clone raso: o commit existe no remoto e só não foi
+> baixado, então a ação é `git fetch --unshallow` e não caçar uma reescrita
+> inexistente) — em vez de acusar os achados conhecidos como novos. Nenhum dos
+> quatro falha o gate. O count do baseline é **derivado**, nunca
 > literal: `node scripts/check-secret-leaks-baseline.mjs --update` regenera o
 > arquivo a partir do audit real (mesmo princípio do badge de encoding guards).
 > Após remediar um vazamento novo (rotação), rode `--update` para adotar o novo
