@@ -50,17 +50,39 @@ verdade — bump da variável não invalidava caches nem imagens. O guard caça
 literais em workflows, Dockerfiles, .actrc e lockfiles estrangeiros
 (package-lock.json/pnpm-lock.yaml são proibidos; só bun.lock).
 
-**O valor, que o estático não alcança:** a variável tem espelhos no working
-tree — `.actrc` (o act local não lê as variables do repositório) e o env da
-forja: `deploy/env.gitea.example` (o template comitado) e `deploy/.env.gitea`
-(o arquivo do HOST que o compose lê de verdade, gitignored — logo só existe no
-checkout que roda a stack). O `check-actrc-sync` compara os VALORES de cada um
-com `vars.BUN_VERSION` (a variável remota só existe em runtime, então nenhum
-guard estático pode fazer isso) e DESCOBRE o env do host quando ele está
-presente; um aviso que não nomeia QUAL arquivo drifta não é acionável.
+**O valor, que o estático não alcança:** as variáveis que o compose da forja
+consome têm espelhos no working tree — `.actrc` (o act local não lê as
+variables do repositório) e o env da forja: `deploy/env.gitea.example` (o
+template comitado) e `deploy/.env.gitea` (o arquivo do HOST que o compose lê de
+verdade, gitignored — logo só existe nocheckout que roda a stack). O `check-actrc-sync` compara os VALORES de cada um com a repository variable
+correspondente (a variável remota só existe em runtime, então nenhum guard
+estático pode fazer isso) e DESCOBRE o env do host quando ele está presente; um
+aviso que não nomeia QUAL arquivo drifta não é acionável.
 Aqui os modos de falha são silenciosos: o `.actrc` desatualizado faz o act
 testar outra versão, e o env desatualizado desliga o fast path de 0s do tier-1
 da forja sem deixar o CI vermelho (o setup-bun funciona igual, só mais lento).
+
+**Não é só a versão — TODA variável do compose tem o VALOR comparado.**
+`BUN_VERSION`, `IMAGE_REGISTRY` e `IMAGE_NAMESPACE` são as três que o compose
+da forja consome (`${...}` em `deploy/docker-compose.gitea.yml`) e montam a tag
+da imagem do runner. Até esta extensão, registry e namespace só passavam pelo
+`check-registry-source` (que exige a **existência** da flag no `.actrc` e a
+declaração do nome no template): um valor trocado — outro registry, outro
+namespace — atravessava tudo em silêncio, e o sintoma é o pior tipo, porque o
+pull da imagem só falha quando um job tenta iniciar, longe da causa. O conjunto
+comparado não é lista à mão: sai de `COMPOSE_ENV_VARIABLES` (derivado das
+referências do compose) menos o segredo declarado, e um teste FALHA se um nome
+novo no compose não estiver classificado — variável nova não entra apenas com a
+checagem de existência. Onde cada variável é espelhada é uma decisão escrita
+(`MIRROR_VARIABLE_RULES`): `IMAGE_NAMESPACE` **não** vive no `.actrc` (os
+workflows a usam com fallback `vars.IMAGE_NAMESPACE || github.repository_owner`
+e o act local resolve pelo fallback) — cobrá-la ali seria um aviso permanente
+que o procedimento documentado não consegue silenciar. `RUNNER_TOKEN` fica
+FORA e a exclusão é declarada (`SECRET_MIRROR_VARIABLES`): no template é
+placeholder e no host é o token real — comparar valor exigiria versioná-lo
+(quem confere presença e diferença é o `check-env-mirror.mjs`, no bring-up).
+Uma variável cujo valor NÃO foi passado à run sai como NÃO COMPARADA e é
+nomeada no log — nunca apresentada como conferida.
 
 **Roda nos DOIS lados, com o mesmo script e as mesmas regras:** no GitHub pelo
 job semanal `actrc-sync` (`benchmark-weekly.yml`) e na forja por
@@ -183,7 +205,11 @@ pipelines das outras forjas.
 
 **Imagens de terceiros:** consumo do GHCR que NÃO é nosso (ex.:
 `ghcr.io/project-osrm/osrm-backend`) vive em `THIRD_PARTY_ALLOWLIST`, uma por
-uma — allowlist por prefixo de host esconderia a regressão.
+uma — allowlist por prefixo de host esconderia a regressão. Cada entrada
+também registra `addedAt` e envelhece pela MESMA regra das decisões de escopo
+(ver "A data da decisão e a revisão vencida", abaixo) — a pergunta é outra
+("esta imagem ainda é de terceiros e o consumo ainda é consciente?"), o
+defeito é o mesmo.
 
 **A metade dinâmica (mesmo gate, invariante 7):** além da varredura do texto, o
 gate renderiza `deploy/docker-compose.gitea.yml` com o `docker compose config` e
@@ -212,6 +238,32 @@ escopo estrito de propósito, por causa da prosa das mensagens de erro). Prosa e
 fixture de teste são excluídas **por regra**, com razão escrita (a string da
 imagem ali não resolve nada) — uma entrada por arquivo de teste viraria uma
 lista que envelhece a cada teste novo.
+
+**A data da decisão e a revisão vencida (invariante 8 e as três allowlists):**
+cada entrada de `OUT_OF_SCOPE_ALLOWLIST` registra também `addedAt` (ISO
+`YYYY-MM-DD`, quando a decisão foi tomada) — uma isenção sem data não tem como
+envelhecer, e "esqueci de registrar" seria o jeito de nunca precisar revisar. A
+data é validada fail-closed (ausente, malformada, transbordada como
+`2026-02-30`, ou **no futuro** = violação, nos dois modos). Passada a janela
+(180 dias), a decisão está **SEM REVISÃO**:
+
+- **run normal** (pre-commit, pr-check, forja) — o guard **avisa**
+  (`::warning::`) e segue verde: uma data não pode bloquear o commit e o PR de
+  todo mundo;
+- **modo `--review`** — a decisão vencida vira **violação** (exit 1). É o canal
+  do job semanal `registry-allowlist-review` (`benchmark-weekly.yml`), porque um
+  aviso dentro de um run verde é **alerta mudo** — exatamente a classe que o
+  `check:periodic-alerts` proíbe. Reafirmar é revisar o motivo e atualizar o
+  `addedAt`; se o motivo caducou, a entrada sai.
+
+A REGRA não é copiada: mora em `scripts/allowlist-review.mjs` (parser da data,
+janela, e a prosa das duas violações) e as **três allowlists do repositório** a
+usam — `OUT_OF_SCOPE_ALLOWLIST` e `THIRD_PARTY_ALLOWLIST` (este guard) e a
+`ALLOWLIST` de uso implícito do `check-unused-deps` (seção 12). Três cópias do
+parser divergem no dia em que uma aceita `2026-02-30`; o job semanal roda os
+dois guards no modo estrito (uma linha por guard), e o registro
+ausente/inválido é violação em **qualquer** modo — só a janela vencida tem
+dois desfechos, porque uma data não bloqueia o PR de todo mundo.
 
 **Referências em configuração NÃO versionada (invariante 9): o que o repositório
 não contém.** Tudo o que as invariantes 6, 7 e 7b provam vive em arquivo
@@ -366,6 +418,118 @@ pr-check; `check-mutation-jobs` valida que todo mutation script TEM job no
 pr-check (um mutation novo sem job = falha).
 
 **Onde roda:** CI (pr-check), local (`bash scripts/test-mutation-guards.sh`).
+
+#### Mutation tests que precisam de `node_modules` (fora da matriz node-pura)
+
+A matriz do master é **node-pura** (não instala deps). Cinco mutation tests
+rodam o **vitest REAL** e por isso vivem em jobs próprios do
+`seed-guards.yml` (reusable chamado pelo pr-check, com `bun install`):
+
+- `scripts/test-mutation-coord-update.sh` (job `mutation-coord-update`) — o
+  contrato coordenado doc↔anchor↔código dos counts E2E;
+- `scripts/test-mutation-doctor-mirrors.sh` (job `mutation-doctor-mirrors`) —
+  remove a **comparação de valor** dos espelhos do `forge-doctor.mjs`
+  (`.actrc`, `deploy/env.gitea.example` e o `.env.gitea` do host contra as
+  repository variables) e exige a suíte `forge-doctor.test.ts` **VERMELHA**,
+  com o teste do valor DECLARADO falhando e o de EXISTÊNCIA seguindo verde
+  (mutação cirúrgica). Sem essa comparação, dois espelhos que concordam entre
+  si mas estão os dois velhos passam por "em sincronia" e o fast path de 0s do
+  tier-1 desliga sem sintoma;
+- `scripts/test-mutation-doctor-facts.sh` (job `mutation-doctor-facts`) —
+  corta os **três fios do veredito**, um por vez, com uma mutação cada:
+  **(A) violação→bloqueio** — troca o coletor `const blockers = []` DENTRO de
+  `summarize` por um objeto com `push` no-op, o que neutraliza TODO
+  `blockers.push(...)` de uma vez (é o mesmo fio: as seções só diferem no que
+  empurram). O doctor continua rodando e imprimindo tudo — passa a dizer
+  **PRONTA com a forja quebrada**, e nenhum fato acusa sozinho porque quem
+  acusa é a SOMA. **(B) a honestidade do veredito** — o ternário do veredito
+  deixa de consultar `unknowns.length`: o relatório segue LISTANDO cada fato não
+  provado (gate que não executou, env ausente, prova indisponível, registro
+  ilegível, protection sem token, dívida aberta no board) e o veredito passa a
+  dizer PRONTA sobre o que o doctor **não conseguiu medir** — a falsa segurança
+  que nenhum bloqueio errado iguala, porque "bloqueada" alguém investiga e
+  "pronta" ninguém olha. **(C) o que o relatório NÃO cobre** — o retorno de
+  `summarize` passa a devolver `unproven: []`: o veredito fica **intacto** de
+  propósito (PRONTA segue PRONTA, BLOQUEADA segue BLOQUEADA) e só some a
+  declaração do limite (a permissão do token, o smoke, o env de outro host, o
+  socket do job, o recorte do `--ci` e cada seção pulada por flag).
+
+  Para CADA fio a suíte tem de ficar **VERMELHA** com o âncora de CADA FATO
+  falhando — os mesmos fatos, vistos dos dois lados: **13** violações
+  (contrato de merge, guards, imagem ausente, prova do bloqueio, o gate do
+  bring-up no contrato de merge, espelhos, referências não versionadas,
+  contrato da imagem publicada, registro do act_runner, registro do runner do
+  GitHub, interpolação do compose, branch protection registrada e o
+  pré-requisito 0 do bring-up), **13** não-provados
+  (o caminho honesto de cada uma dessas seções) e **10** limites declarados —,
+  e as âncoras **CIRÚRGICAS** seguindo verdes: o caminho **SAUDÁVEL**
+  (`forja completa e registry 200 → PRONTA`) e o da **VIOLAÇÃO**
+  (`check:required-checks` vermelho BLOQUEIA pelo contrato). Sem as intactas, o
+  que morreu poderia ter sido o veredito inteiro em vez do fio nomeado. Cada
+  âncora tem de casar **exatamente um** teste: uma âncora renomeada (ou
+  ambígua) faz o script falhar no CONTROLE, em vez de a detecção virar vácuo. O
+  outro `const blockers = []` do arquivo (o do `readMirrors`) é conferido para
+  SOBREVIVER — se o patch pegasse os dois, a mutação não seria cirúrgica;
+
+- `scripts/test-mutation-doctor-ci.sh` (job `mutation-doctor-ci`) — o irmão do
+  anterior **para o perfil `--ci`**, e o único que sai da suíte e **executa o
+  job de PR das duas forjas**. O `check-doctor-ci.mjs` é o gate que roda a cada
+  PR na forja (`guards`) e no GitHub (`doctor-mirrors-guard`), e a pergunta
+  dele é uma: o **VALOR** das repository variables continua o que o repositório
+  declara? Essa comparação tem **três metades**, e cada uma degrada em
+  **silêncio** se for mexida sozinha:
+  1. **a régua entregue pelo gate** — `doctorFlags` monta
+     `--expected`/`--expected-var` com o valor das `vars.*`; sem elas o doctor
+     não estoura, ele cai no ramo "não comparado" e o relatório continua
+     verde. A mutação esvazia essa entrega (`return { flags, missing }` →
+     `flags: []`, preservando `missing`);
+  2. **o critério do "não comparado"** — o `unproven` do `mirrorDriftReport`
+     (a função COMPARTILHADA: mesmo código do guard semanal, do CLI dele e do
+     publicador de issue) diz QUAIS variáveis ficaram sem valor passado.
+     Removê-lo não falha nada: o relatório simplesmente para de dizer o que não
+     foi comparado, e "não medi" passa a parecer "está certo";
+  3. **a troca da função compartilhada** — `mirrorDriftReport(...)` substituído
+     por uma versão local que devolve "sem drift": mata o bloqueio do espelho E
+     o `unproven` de uma vez, e o doctor diz que comparou sem comparar.
+
+  Para CADA metade a prova tem duas testemunhas. A **suíte** — do gate para a
+  metade 1, do doctor para as metades 2 e 3 — fica **VERMELHA** com as âncoras
+  da metade falhando e as cirúrgicas (nome da variável ausente, caminho
+  saudável, tradução do veredito, bloqueio direto do espelho ausente) seguindo
+  verdes; cada âncora tem de casar exatamente um teste, e o total de testes do
+  controle é conferido (arquivo que não roda inteiro é infra, não detecção). E o
+  **job**: a linha `run:` que cada forja de fato executa — **extraída do YAML**,
+  não escrita à mão — roda nos três modos e o que se mede é o FATO, não o texto:
+  valor DECLARADO → 0; `vars.BUN_VERSION` ERRADO → ≠ 0 nomeando a variável, com
+  as duas réguas no relatório; env PARCIAL → 0 com o `::warning::` e o **naming**
+  do que não foi comparado. Com a metade 1 removida o job de cada forja
+  **continua vermelho** (a régua some do relatório e a segunda régua bloqueia);
+  com a metade 2 o veredito fica **intacto** e o naming some (o silêncio é
+  medido, e a suíte é a única testemunha); com a metade 3 a régua **chega**
+  (`▸ comparados com vars.…`) e o bloqueio **não sai** — de novo a segunda régua
+  impede o buraco. Nenhuma das metades passa em silêncio, e nenhuma abre buraco
+  no merge;
+
+- `scripts/test-mutation-env-mirror.sh` (job `mutation-env-mirror`) — as
+  **quatro defesas** do `check-env-mirror.mjs`, uma mutação cada: **(A) o portão
+  da conta** (`applyFix` recusa escrever quando sobra violação que o plano não
+  explicou — sem ele, a dúvida é apagada por uma escrita); **(B) a defesa do
+  segredo** (`applyFix` recusa qualquer plano que inclua um nome de
+  `SECRET_ENV_VARIABLES` — o único valor que o host receberia é o placeholder
+  comitado); **(C) `maskSecrets`** (o valor real de um segredo que caia no
+  CONTEXTO do diff sai mascarado — sem a máscara ele viaja no patch, para o
+  terminal, o PR ou o chat); e **(D) o segredo ausente no host**, que vira
+  decisão humana e nunca `add` com o valor do template (num segredo, o
+  placeholder). Nenhuma delas muda o exit code do caso comum — quem as mede são
+  a suíte e o `--fix` —, então a prova exige a suíte **VERMELHA** pela âncora da
+  prova mutada (duas no caso C: a unidade e a ponta da CLI) e as **INTACTAS**
+  PASSING, que são as outras três defesas e o caminho saudável (`plano que fecha
+a conta → escreve`): sem elas, o que teria morrido poderia ser o comando
+  inteiro, não a defesa nomeada. São **13 âncoras** conferidas no controle (4
+  provas + 9 intactas — a mesma intacta se repete em casos diferentes, porque
+  cada caso confere por si). O ramo do segredo-ausente é mutado com escopo de
+  laço e o script CONFERE que a mesma linha do passo 4 SOBREVIVEU — se o patch
+  pegasse as duas, a mutação mediria outra coisa.
 
 #### Overhead por PR do job `mutation-coord-update` (medido 08/2026)
 
@@ -766,6 +930,59 @@ passou a prender os quatro: a invocação **existe** (linha de comando, não pro
 passa `--host` **e** `--template`, aponta o default de `TEMPLATE_FILE` para o
 template comitado, e vem **antes** da garantia da imagem.
 
+**E a ORDEM virou COMPORTAMENTO, não só texto.** `checkGiteaBringUp` prende a
+ordem e os argumentos no **TEXTO** do `gitea-up.sh` — e texto não distingue
+"recusa" de "está quebrado": um bring-up que aborta por qualquer outro motivo
+também não sobe o runner, e passaria. Quem fecha isso é o job **`bring-up-proof`**,
+nas **duas** forjas: ele executa o bring-up REAL contra um env **DIVERGENTE** (com
+a imagem PRESENTE, de propósito — se a stack não sobe com a imagem no registry, a
+causa só pode ser o passo 0) e falha se o passo 0 não recusar. As asserções são
+sobre o REGISTRO das chamadas, não sobre a saída: **zero** `compose up`, **zero**
+idas ao registry e **zero** chamadas ao binário `docker` — e é o zero de idas ao
+registry que prova a ORDEM (a recusa veio ANTES do ensure, não depois). O job é
+required check (está no `ci/required-checks.json`, nas duas forjas) e a invariante
+do CORE `bring-up-env-gate-proof` obriga as duas pipelines a mantê-lo: tirá-lo de
+uma delas vira drift no `check:forge-parity`, não silêncio. Quem editar o
+`gitea-up.sh` e remover o passo 0 derruba este job.
+
+**E o operador deixou de corrigir o env à mão.** O comando ganhou `--patch` (o
+diff que reconcilia o host; o **STDOUT leva só o patch** e o relatório vai para o
+STDERR, para `--patch > fix.patch` produzir um arquivo com o diff) e `--fix`
+(aplica ao host, **atômico** — tmp + rename no mesmo diretório — e idempotente).
+O plano sai da **mesma** regra lida ao contrário, e cada achado tem um destino
+explícito: **edição mecânica** (variável comum que diverge passa a valer o valor
+do template; variável declarada no template e ausente no host é acrescentada no
+**fim**, de onde o `--env-file` a lê — no meio ela ficaria sombreada pela última
+ocorrência, que é a que vence) ou **decisão humana**, que o comando recusa por
+escrito: o **segredo** (nunca escrito, nunca copiado do template — o valor real só
+o operador tem), a variável **a mais** no host (apagar configuração de quem opera
+não é reconciliar) e o **template** que não declara o que o compose consome (o
+lado a corrigir não é o host). Três invariantes prendem isso, e as três são
+testadas por cenário: cada edição fecha **exatamente uma** violação e nenhuma
+cria; o que sobra é exatamente o que o plano nomeou como manual; e o que sobra é
+**subconjunto** do que havia — o plano pode fazer violação **sumir**, nunca trocar
+uma por outra (uma edição que "consertasse" a contagem substituindo `não existe`
+por `igual ao placeholder` passaria na conta e estaria errada). O `--fix` só
+escreve quando essa conta fecha: uma divergência que ele não explique **não vira
+escrita silenciosa**, e a defesa em profundidade recusa qualquer plano que inclua
+um nome de `SECRET_ENV_VARIABLES`. O patch é **byte-exato** (aplicável com
+`git apply -p0`) enquanto nenhum segredo cair no **contexto** do diff; quando cai
+— o segredo a menos de três linhas de uma correção —, o valor sai **mascarado** e
+o patch passa a ser artefato de **revisão**, porque mascarar o contexto é o que
+preserva o segredo e custa a aplicabilidade literal.Nos dois casos quem aplica é o
+`--fix`. **A prova por mutação deixou de ser manual:** o job
+`mutation-env-mirror` (`scripts/test-mutation-env-mirror.sh`, no reusable
+`seed-guards.yml` chamado pelo pr-check) muta cada defesa — o portão da conta
+vira no-op, a defesa do segredo vira no-op, `maskSecrets` vira no-op e o segredo
+ausente vira `add` (gravaria o placeholder no host) — e exige a suíte
+**VERMELHA** pela âncora da prova mutada, com as outras três defesas e o caminho
+saudável seguindo **verdes**. Antes o argumento vivia na prosa; agora uma
+degradação que corte qualquer uma das quatro falha o PR.
+
+As âncoras do controle casam exatamente um teste cada (13 conferidas, entre
+provas e intactas) e as quatro mutações são cirúrgicas: o que cai é a defesa
+nomeada, não o comando.
+
 **E a PRONTIDÃO inteira virou pré-requisito da subida — não um comando que
 alguém precisa lembrar de rodar.** O doctor responde à pergunta completa (guards,
 contrato de merge registrado, registry, imagem publicada, registro do runner) e
@@ -778,14 +995,21 @@ depois de um `BLOQUEADA` publicaria o estado que a checagem existe para recusar.
 (exit 1) e um doctor que nem rodou (exit >=3). `INDETERMINADA` (exit 2) **avisa e
 segue** — um veredito que recusasse também o "não consegui provar agora"
 tornaria a subida impossível offline, que é justamente quando ela é o remédio. Os
-dois detalhes que o desenho exige: o doctor é chamado com `--no-proof` (a prova
-do bloqueio dele **executa** o `gitea-up.sh`: sem isso, bring-up → doctor → prova
-→ bring-up seria recursão) e com `--no-runner-labels` no `--re-register` (o
-registro gravado é o que aquele modo conserta; a isenção é do fato que ele cura,
-não do resto do veredito). Cada promessa dessas tem teste de execução — o doctor
-é dublado por `DOCTOR_SCRIPT` e devolve 0/1/2/3, e o teste vê se a stack subiu —
-e o `checkGiteaBringUp` prende a invocação, as flags e a **ordem** (depois da
-imagem, antes de qualquer `up`). Um dublê em bash, e não `.mjs`, morreria no
+dois detalhes que o desenho exige: o doctor é chamado **INTEIRO** — a seção 4
+dele (a prova do bloqueio) roda junto — e com `--no-runner-labels` no
+`--re-register` (o registro gravado é o que aquele modo conserta; a isenção é do
+fato que ele cura, não do resto do veredito). Rodar o doctor inteiro dentro do
+bring-up só é possível porque a prova **DUBLA o doctor** que passa ao bring-up
+que ela executa (`DOCTOR_SCRIPT` apontando para um dublê que não roda a prova): é
+isso que faz `bring-up → doctor → prova → bring-up` terminar em **um** nível. O
+corte é **medido**, não prometido — cada caso da prova exige que o doctor
+invocado tenha sido o dublê, e a cadeia completa (com o doctor REAL dentro do
+bring-up) é provada por execução —, e o `checkDoctorCycleCut` prende as duas
+metades da dublagem, porque o modo de falha dela (a forca de processos) não dá
+sintoma antes de ser catastrófico. Cada promessa dessas tem teste de execução —
+o doctor é dublado por `DOCTOR_SCRIPT` e devolve 0/1/2/3, e o teste vê se a stack
+subiu — e o `checkGiteaBringUp` prende a invocação, as flags e a **ordem** (depois
+da imagem, antes de qualquer `up`). Um dublê em bash, e não `.mjs`, morreria no
 parser do Node (`SyntaxError` → exit 1) e o teste leria "BLOQUEADA" de um dublê
 quebrado: o dublê tem de falar a mesma língua do alvo. O guard lê **linhas de comando**
 (comentário que explica a ordem não a satisfaz) e o comando separa três estados
@@ -871,6 +1095,27 @@ manter o hook <1s).
 **Onde roda:** cron (benchmark-weekly.yml), CI (tier1-fastpath-guard em PR que
 toca Dockerfile/setup-bun).
 
+**`bench:guard-timing` (`scripts/bench-guard-timing.mjs`)** — benchmark de
+wall time do doctor (perfil --ci) e de CADA guard individual. Mede o tempo
+real de execução de cada gate da bateria (18 guards) e do doctor, registra
+em JSON versionado (`docs/benchmarks/guard-timing-{latest,baseline}.json`)
+com commit hash + timestamp, e compara contra um baseline com limiar de 20%
+para detecção de regressão.
+
+**Por que existe:** a suíte do doctor e a bateria de guards são os gates que
+decidem o merge. Uma regressão de tempo nelas afeta CADA PR — mas sem
+medição versionada, a degradação é impressão, não dado comparável entre
+commits. O benchmark transforma o wall time em dado estruturado: cada guard
+tem o seu tempo, o doctor tem o seu, e a comparação nomeia QUAL guard
+piorou e de quanto.
+
+**Usage:** `bun run bench:guard-timing` (mede) · `bun run bench:guard-timing:baseline`
+(salva baseline) · `bun run bench:guard-timing:compare` (compara) ·
+`bun run bench:guard-timing:full` (salva + compara)
+
+**Onde roda:** manual, periodicamente, e em cron (benchmark-weekly.yml).
+O exit 1 na comparação indica regressão >20% em algum guard ou no doctor.
+
 ---
 
 ## 11. Fuzz / encoding runtime — `run-all-fuzz`, `run-encoding-guards.sh`
@@ -902,6 +1147,20 @@ política é ZERO-órfãs, não "N órfãs toleradas".
 `test-mutation-unused-deps.sh` + guard real) — fora do pre-commit por ser um
 scan repo-wide mais lento; checagem local pontual: `bun run check:unused-deps`.
 
+**A data da decisão e a revisão vencida (`--review`):** cada entrada da
+`ALLOWLIST` registra `addedAt` (ISO `YYYY-MM-DD`) — "esta dep tem uso
+IMPLÍCITO, não a importe" não tem prazo por natureza, e uma isenção concedida
+hoje continua valendo amanhã porque ninguém voltou nela. A regra é a MESMA das
+outras duas allowlists, do módulo compartilhado `allowlist-review.mjs`. O
+registro ausente/inválido/no futuro é **violação nos dois modos** (fail-closed);
+passada a janela `UNUSED_DEPS_REVIEW_DAYS` (180 dias) a entrada está **SEM
+REVISÃO** — o scan normal **avisa** (`::warning::`) e o modo `--review` a
+escala a **violação** (exit 1). É o canal do job semanal
+`registry-allowlist-review` (`benchmark-weekly.yml`), que roda este guard ao
+lado do `check-registry-source` — um aviso dentro de um run verde é alerta
+mudo. O modo `--staged` (pre-commit) **não** roda a revisão: ele responde só
+"esta dep NOVA é órfã?", com custo proporcional ao diff.
+
 **Política completa (fluxo ao adicionar dep: use / remova / allowlist com
 razão; allowlist de uso implícito; as 5 deps removidas no bump 0.4.0; as
 limitações do scan):** veja a seção [Auditoria de dependências — política
@@ -928,6 +1187,42 @@ estão lá, usando a mesma classificação do `check-forge-parity`
 (`discoverGates`). Um guard novo na pipeline entra no doctor sozinho; um guard
 removido de lá some daqui. Não existe lista paralela para envelhecer.
 
+**A bateria roda CONCORRENTE, e a otimização não muda o veredito:** os gates
+saem do mesmo `discoverGates` e rodam com **paralelismo limitado**
+(`runGatesConcurrent`, `DEFAULT_GATE_CONCURRENCY = 4` — processos `bun`/`node`
+que já usam vários cores cada um; um por core satura a máquina e piora o wall
+time). Quatro é conservador para caber num runner compartilhado e suficiente
+para o teto do tempo passar a ser o gate mais lento, não a soma das durações
+(medido aqui: a bateria de 16 gates cai de **3,8s para 1,3s**). O que faz disso
+uma otimização e não uma mudança de contrato: os resultados voltam na **ordem da
+bateria** (`results[i]`, não por ordem de conclusão), o shape é o mesmo do
+caminho síncrono (`shapeGateResult`), um gate que estoura vira **NÃO
+VERIFICADO** (`code: null`) sem derrubar os outros, e o `run` **injetado** (o
+dublê síncrono dos testes) desvia para o caminho sequencial (`runGuards`) — um
+dublê é determinístico e observa a ordem de chamada; paralelizá-lo só mudaria o
+que os testes veem.
+
+**E a identidade da imagem é MEMOIZADA:** a mesma pergunta ("que build a tag
+serve hoje?") era feita por **dois** fatos (a invariante 9 das referências e o
+contrato da imagem publicada), cada um abrindo a própria ida ao registry
+(manifesto + config blob, e token em pacote privado). Agora os dois dividem
+`createRegistryIdentityCache` — e o cache guarda a **resposta classificada**
+(`proven`/`mismatch`/`no-label`/`missing`/`unauthorized`), não um booleano:
+"não deu para saber" continua sendo devolvido como **INDETERMINADO** a cada
+consumidor. A chave inclui `ref`, a versão esperada e se
+há credencial — **nunca o token**; **exceção** e os estados **transitórios**
+(`unreachable`/`error`, que são ausência de resposta) não são cacheados — uma
+falha passageira não pode virar veredito permanente, e cachear o `unreachable`
+de um timeout curto apagaria a prova de quem pediu com timeout maior; e chamadas
+**concorrentes** do mesmo probe deduplicam (a segunda espera a primeira).
+
+O `timeoutMs` fica **fora** da chave de propósito, e é o que faz o cache existir
+de fato: o fato das referências pergunta com 20s e o do contrato com o default do
+probe — com o timeout na chave o cache **nunca acertaria** e seria decorativo, sem
+nenhum sintoma. Há um teste que conta as idas ao registry pelos **dois** fatos e
+exige **uma** (com o `timeoutMs` de volta na chave ele fica vermelho: provado por
+mutação).
+
 **A trava que ele carrega (defeito real, cometido e corrigido):** o rótulo que
 o descobridor devolve para uma invocação direta é só o CAMINHO —
 `bun scripts/rotate-secrets.mjs --check` vira o rótulo `scripts/rotate-secrets.mjs`,
@@ -948,6 +1243,36 @@ ausente NENHUM `compose up` acontece; com a tag presente, `up -d runner` sim. É
 CONTROLE que faz disso uma prova: sem ele, "o runner não subiu" seria satisfeito
 por um script quebrado.
 
+**E o GATE que a cobra no merge (o outro lado do item 4/6):** a prova acima mede
+o COMPORTAMENTO da subida, mas o doctor não cobria o elo que faz dela um gate —
+o job `bring-up-proof` estar no **contrato de merge** (`ci/required-checks.json`),
+a linha `run:` do job executar a prova **E a branch protection da forja REGISTRAR
+o check**. Três frestas, todas fechadas:
+
+1. o manifesto deixa de exigir o job → o PR passa sem a prova (o manifesto fica
+   **válido e menor**, a proteção em sincronia com ele e o check verde);
+2. o job exigido deixou de executar a prova → o check fica verde sem medir nada
+   (gate decorativo);
+3. o contrato exige o job E o job roda a prova, mas a branch protection da forja
+   **NÃO registra o check** → o merge passa sem a prova (o manifesto é a
+   intenção; a proteção é quem obedece).
+
+As duas primeiras são o `readBringUpGate` original; a terceira cruza o gate com
+o `readProtection` (seção 1) — se o contexto do `bring-up-proof` aparece entre
+os checks que faltam na branch protection, a violação é nomeada. O fato responde
+independente da prova ter rodado agora: `--no-proof` **não** esconde um gate
+fora do contrato. `--no-protection` faz o fato cair em `unavailable` (a
+proteção não foi lida, o registro não pode ser confirmado).
+
+**E o PRÉ-REQUISITO 0 (família `env-mirror`):** três casos rodam com o env do host
+DIVERGENTE e a imagem PRESENTE — a subida normal, o `--check-only` e o SEGREDO com
+o mesmo valor do placeholder do template (a assimetria da regra: num segredo,
+IGUALAR é o defeito). A imagem está lá de propósito: se a stack não sobe mesmo
+assim, a causa só pode ser o passo 0 — e o zero de idas ao registry prova que a
+recusa veio ANTES do ensure. A mutação que tira o bloqueio do passo 0 (`if false`
+no lugar da recusa) derruba os três casos, e o teste da prova exige exatamente
+isso.
+
 **E o RE-REGISTRO (o caminho que troca os labels):** ele APAGA o registro gravado
 antes de subir, e um registro que fica para trás mantém os labels antigos com o
 tier-1 desligado — sem sintoma. A prova cobre esse caminho com **quatro casos**, e
@@ -965,6 +1290,36 @@ Invertida a ordem, o runner sobe com o registro ANTIGO e nada acusa; apagado
 antes da garantia, a falha leva consigo o registro que funcionava (o oposto do
 runbook antigo, que apagava primeiro e conferia depois). Cada promessa tem a sua
 mutação do `gitea-up.sh`, e o teste exige que a prova caia junto com ela.
+
+**E as FLAGS deixaram de ser uma leitura do texto.** O guard `checkGiteaBringUp`
+prende no TEXTO do `gitea-up.sh` que a linha do espelho tem `--host`/`--template`,
+que a do doctor tem `--gitea-env` e não tem `--no-proof`, e que o `--re-register`
+acrescenta `--no-runner-labels`. A prova agora mede isso no **argv do processo que
+rodou**: o espelho e o ensure são envolvidos por **espiões** (que delegam ao script
+REAL do repositório — a família `env-mirror` julga o comportamento deles, e um
+dublê que só gravasse o argv trocaria a recusa por um "sim") e o dublê do doctor já
+gravava a própria invocação. Cada caso declara o que o bring-up TINHA de ter
+passado, com os arquivos DESTA subida — um `--gitea-env` apontado para outro arquivo
+**passa no desfecho e cai na medida** (é o teste que existe para isso), e
+`--env-file` no ensure é violação explícita (é flag do Node: com o arquivo ausente
+ela mata o processo em exit 9, sem a mensagem do bring-up). O relatório imprime a
+linha recebida por cada filho, junto de "parou ANTES do passo 2" quando o caso
+recusa antes do doctor — a ORDEM (espelho → ensure → doctor → `up`) vira um fato do
+registro ordenado, e não uma inferência do exit.
+
+**E as INSTRUÇÕES (família `instructions`): o comando que se copia é EXECUTADO.**
+O instalador (`deploy/setup-gitea.sh`) e o runbook (`deploy/GITEA.md`) trazem os
+comandos prontos, e o guard de texto só provava que eles **mencionavam** o
+bring-up — o que não distingue "o caminho que ele imprime funciona" de "está
+quebrado". A prova agora **extrai** a instrução do documento (só linhas de `echo`
+no instalador, só o bloco CERCADO no runbook; forma inesperada **não é executada**:
+é erro) e a **roda**: o instalador com `$GITEA_DIR`/`$REPO_DIR` resolvidos nos
+diretórios do caso (com o compose copiado e o `.env` criados, que é o estado que a
+instrução pressupõe), o runbook com as FLAGS que ele ensina contra o registry de
+teste. Um `--re-register --turbo` ensinado na doc **continua contendo a string que
+o guard de texto exige** e mesmo assim derruba a prova: o bring-up recusa a flag, e
+o relatório diz de qual instrução ela veio. Duas instruções do instalador (a de
+subida e a de conferência) e uma do runbook — nenhuma delas "menciona", todas rodam.
 
 Uma prova VIOLADA bloqueia o veredito — é o caso mais grave da família, porque o
 remédio não é publicar imagem nenhuma, é consertar a
@@ -1007,6 +1362,24 @@ duas vezes. Só fecha o que é NOSSO (marcador, nunca só o label), comenta ANTE
 fechar (uma falha no meio deixa a dívida aberta COM a prova, nunca fechada em
 silêncio) e, se o drift voltar, abre uma issue nova (o dedup é entre as ABERTAS).
 
+**A prova do fechamento é uma COMPARAÇÃO, não uma afirmação.** O comentário não
+diz só "resolvido": ele nomeia os **dois lados** — os contextos que o manifesto
+exigia (`desired`) e a diferença medida em cada branch (`faltando` / `a mais`).
+A diferença sai dos **dados**, nunca do veredito `inSync`: um relatório que se
+diga "em sincronia" com itens faltando é **desmentido pela própria prova** que o
+fecha. E uma lista **ausente** no relatório sai como "não informado no relatório":
+`nenhum` é reservado para a lista que veio **vazia de fato** — a prova não pode
+afirmar mais do que sabe.
+
+O fechamento é provado **nas duas forjas**, cada metade com a técnica que enxerga
+o defeito dela: na **forja**, o CLI real contra um Gitea dublê com estado
+(`required-checks-drift-issue-gitea.test.ts`); no **GitHub**, o CLI real com um
+`gh` dublê no `PATH` e estado entre runs
+(`required-checks-drift-issue-github.test.ts`) — o default do CLI e do workflow,
+onde antes só havia a asserção de que o backend é _selecionado_, e selecionar não
+é fechar. As duas provam o ciclo **entre runs** (a run 2 enxerga o que a run 1
+deixou) e a **ordem** (comentar antes de fechar).
+
 Três resultados, e eles não se confundem: **drift** (falta um check, sobra um, ou
 o aplicador sinaliza drift sem nomear contexto) **BLOQUEIA**, nomeando a forja e
 o remédio (`bun run ci:required-checks -- --apply`); **em sincronia** não muda o
@@ -1029,16 +1402,20 @@ pendências: listá-lo faria a pendência parecer maior do que é. `--no-registr
 pula só a consulta ao registry e **rebaixa o veredito declarando-se** — sem isso,
 um fato "provado" que não olhou a tag diria "pronta" com a pergunta em aberto.
 
-**OS ESPELHOS DA VERSÃO, contra o VALOR declarado (seção 5/6):** o doctor já
-sabia que os espelhos do `BUN_VERSION` existem e concordam entre si — o que
-**não** é a mesma pergunta que o guard periódico faz. Dois espelhos que
-concordam entre si podem estar os **dois velhos** em relação à
-`vars.BUN_VERSION`, e é exatamente assim que o tier-1 (fast path de 0s) desliga
-na forja sem sintoma nenhum. Então o doctor aceita o valor por flag —
-`--expected <versão>` — e compara com ele usando `mirrorDriftReport`, a **mesma
+**OS ESPELHOS DAS VARIÁVEIS DA IMAGEM, contra o VALOR declarado (seção 5/6):** o
+doctor já sabia que os espelhos existem e concordam entre si — o que **não** é a
+mesma pergunta que o guard periódico faz. Dois espelhos que concordam entre si
+podem estar os **dois velhos** em relação à repository variable, e é exatamente
+assim que o tier-1 (fast path de 0s) desliga na forja sem sintoma nenhum (ou o
+runner puxa de outro registry, e o pull só falha quando um job tenta iniciar).
+Então o doctor aceita os valores por flag — `--expected <versão>` para o atalho
+histórico e `--expected-var NOME=VALOR` para as demais (`IMAGE_REGISTRY`,
+`IMAGE_NAMESPACE`) — e compara com eles usando `mirrorDriftReport`, a **mesma
 função** do `check-actrc-sync.mjs` (job semanal `actrc-sync`) e do publicador de
 issue. Nada de uma segunda comparação: os avisos viajam no fato, no texto do
-guard, para o log do doctor e a issue não poderem discordar.
+guard, para o log do doctor e a issue não poderem discordar. Uma variável **sem
+valor passado** fica em `unproven`, nominalmente — a metade que prova existência
+nunca passa por prova de valor.
 
 A **gravidade segue o espelho**, como antes (misturar os dois seria mentir): o
 env da forja divergente (`deploy/env.gitea.example`, e o `deploy/.env.gitea` do
@@ -1052,6 +1429,26 @@ host onde ele importa.
 E **sem** o valor o doctor não inventa "em sincronia": ele diz que o VALOR não
 foi comparado (a variável vive no Actions, não no checkout) e o veredito fica
 INDETERMINADA. Existência não é valor.
+
+**E o PRÉ-REQUISITO 0 do bring-up entrou no veredito — nomeado, com o comando e
+com o remédio (seção 5/6):** o `deploy/gitea-up.sh` **RECUSA** a subida quando o
+env do host não espelha o template comitado. É o pré-requisito 0, e ele existe
+porque o `ensure-runner-image` resolve a imagem **DESTE** arquivo: com um env
+divergente a subida garantiria a imagem **ERRADA**. O doctor já **media** isso (a
+metade host × template da interpolação, seção 3/6); o que faltava não era a
+medição, era o **nome** do pré-requisito, o **comando** que o reproduz e o
+**remédio** — e é isso que o fato derivado acrescenta. Ele é **DERIVADO** de
+`compose.hostCompare`, nunca uma segunda sonda: medir a mesma pergunta duas vezes
+é como duas verdades começam a divergir (e o repo já pagou esse preço uma vez).
+Os estados são os do resto do doctor, com o peso de cada um: **`violated`**
+(divergente) **BLOQUEIA** — e a linha diz que é a **consequência** da divergência
+já listada, não um segundo problema —; **`absent`** (o env do host é gitignored e
+mora no host de deploy) é **INDETERMINADA**, nomeando o comando **e onde rodá-lo**;
+**`proven`** não rebaixa; **`skipped`** declara a omissão; e
+**`not-applicable`** (não há a stack neste checkout) não cobra nada de quem não a
+tem. O relatório imprime o **estado**, o **comando** e o **remédio**
+(`bun run env-mirror:check --patch` para revisar, `--fix` para aplicar) — o mesmo
+par que o `deploy/gitea-up.sh` sugere quando recusa.
 
 **A INTERPOLAÇÃO do compose (na seção 3/6):** a seção da imagem responde "dá
 para puxar a tag?". Ela não responde **"o compose PEDE a tag certa?"** — e é
@@ -1138,6 +1535,26 @@ não conseguir rodar é **INDETERMINADA**; `--no-image-contract` pula e rebaixa 
 veredito declarando-se no "NÃO cobre". O custo é dito: se a imagem não estiver
 local, o primeiro run a baixa.
 
+**E a MEDIÇÃO é provada por execução — `image-contract:prove`.** Todo o acima
+descreve o CAMINHO (resolver o digest, puxar por digest, rodar o bloco dentro do
+artefato). Até esta prova, quem o exercitava era a suíte unitária, que **injeta
+um `run` dublê** — e um dublê não valida a invocação do docker: um `--entrypoint`
+errado, uma flag no lugar errado ou um alvo resolvido para a TAG (em vez do
+digest) passariam com a suíte inteira verde. O comando sobe um **registry de
+verdade** (`registry:2`, porta sorteada, efêmero), empurra o artefato e roda o
+`checkPublishedImageContract` **real** com o docker **real**, em cinco casos: o
+CONTROLE (tem de sair `proven`, e os três fatos são MEDIDOS dentro do artefato —
+bun-path, bun-version e o plugin —, não narrados), três sabotagens cirúrgicas
+(sem o plugin, com o Bun fora de `/usr/local/bin`, e a versão divergindo) e a tag
+existente **no registry** mas não publicada (`unavailable` — o 404 nunca vira
+veredito). Cada sabotagem tem de ficar vermelha **nomeando o fato sabotado**: um
+vermelho genérico provaria que algo quebrou, não que ESTE fato é verificado. O
+caminho provado exige docker e a imagem do runner (`bun run image-contract:prove`);
+sem eles a prova é `INDETERMINADA`, nunca "está certo" — e o que ela NÃO cobre é
+dito no relatório: aqui o "publicado" é um artefato empurrado para um registry
+LOCAL, sem TLS nem a credencial do pacote privado; quem mede a build que o GHCR
+serve hoje é o doctor no cron, com a credencial da forja.
+
 **Três veredictos, e a diferença é o ponto:** `BLOQUEADA` quando uma invariante
 falha, quando a imagem do runner está AUSENTE (sem imagem nenhum job inicia —
 não é um gate vermelho, é a fila parada), quando a branch protection REGISTRADA
@@ -1187,12 +1604,13 @@ assinatura) e `.gitea/workflows/forge-doctor.yml` o roda como **cron semanal**
 (segunda 07:07 UTC) com `--expected "$BUN_VERSION"` — o valor, não só a
 existência.
 
-Quatro decisões, e o que cada uma evita:
+Cinco decisões, e o que cada uma evita:
 
 | Decisão                                                                                                               | O que ela impede                                                                                                                                 |
 | :-------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------- |
 | **INDETERMINADA também abre issue**                                                                                   | o cron ficar verde justamente quando a medição está faltando — um fato não medido não pode estar certo nem errado, e é onde o drift se esconde   |
 | a publicação vem **antes do `exit 1`**                                                                                | o step da issue nunca rodar no run que falha — o cron vermelho sem ticket que este workflow elimina                                              |
+| o step da issue roda nos **DOIS sentidos** (`always()`, modulado pelo RELATÓRIO existir — nunca pelo exit code)       | o FECHAMENTO ser inalcançável: condicionado ao exit code, o step só rodava no run que abre a dívida, nunca no único que pode fechá-la            |
 | a assinatura **exclui `unproven`** (constante entre runs) e inclui o veredito + bloqueadores + não-provados ordenados | o dedup não reconhecer a dívida já reportada (issue nova toda semana) ou, no extremo oposto, um bloqueador NOVO virar comentário numa issue lida |
 | **sem relatório o publicador FALHA** (exit 3 do doctor, JSON inválido, arquivo ausente)                               | um corpo vazio sair como alerta publicado: "não consegui medir" não pode parecer verde                                                           |
 
@@ -1205,8 +1623,22 @@ título (um problema novo comenta na issue aberta em vez de abrir uma segunda).
 IGUALMENTE compartilhado é o **fechamento** (`reconcileDebt`): comentar a prova e
 fechar o que é nosso, com o recorte do publicador (`isExpired`) — o publicador do
 README, que abre uma issue por achado, fecha só as que caducaram. **O veredito do
-doctor ainda NÃO fecha** quando volta a PRONTA — é o mesmo ciclo e a mesma
-lacuna, declarada aqui em vez de escondida.
+doctor fecha pelo mesmo ciclo:** quando volta a PRONTA, o step da issue RECONCILIA
+e o publicador comenta a prova e FECHA, para a dívida não ficar aberta mentindo no
+board. A prova que viaja com o fechamento é MEDIDA, não afirmada: cada fato que o
+relatório trouxe sai com o estado medido agora, e um fato que ele NÃO trouxe não é
+inventado (dizer `proven` de um fato não medido é a mesma mentira, ao contrário).
+
+**O fechamento era INALCANÇÁVEL — e esse era o defeito, não a falta dele:** o
+step da issue rodava com `if: steps.doctor.outputs.exit_code != '0'`, ou seja, só
+no run que ABRE a dívida — nunca no único run capaz de fechá-la. O fechamento
+estava provado no publicador e nunca chegava a rodar no cron. Hoje quem o modula é
+o **RELATÓRIO existir** (`report`, gravado pelo step do doctor; `exit 3` = uso/erro
+interno não produz medição) e a alegação "o step roda no run PRONTA" é provada por
+**EXECUÇÃO**, não por leitura do YAML: um teste roda as etapas do cron nos dois
+sentidos, com o script extraído do próprio workflow, o `bun` dublado (devolve o
+relatório canônico e o exit code do veredito) e o publicador REAL contra o Gitea
+dublê — e exige o comentário com a prova e a issue FECHADA.
 
 **A DÍVIDA ABERTA NO BOARD (seção 6/6):** tudo o mais mede a forja AGORA; nada
 disso enxerga a issue que um cron já abriu e ninguém fechou. Então o doctor LÊ o
@@ -1214,6 +1646,33 @@ board — `required-checks-drift` (nas duas forjas), `actrc-sync-drift`,
 `readme-drift` e `mutation-trend-drift` — pela **mesma consulta dos
 publicadores** (`listIssuesByLabel`, de `issue-publish.mjs`; o leitor e quem
 escreve enxergam o mesmo board). Três escolhas, todas com o mesmo motivo:
+
+**Ler o board do GitHub DE DENTRO da forja exigiu canal próprio — e é onde a
+seção antes falhava em silêncio.** `readme-drift` e `mutation-trend-drift` são
+crons do `.github/`: as issues delas existem SÓ lá, e o runner da forja não tem a
+CLI `gh`. A leitura daquele board saía `NÃO lida` em todo cron, com duas dívidas
+reais escondidas atrás do aviso. Agora `listIssuesByLabel` escolhe o canal de
+forma explícita: a **API REST** com `GH_TOKEN` + `GH_REPOSITORY` quando os dois
+existem (o único canal possível na forja), a **CLI `gh`** quando não existem.
+Quatro decisões, todas fail-closed:
+
+- os nomes são **`GH_*` e nunca `GITHUB_*`** — o runner da forja EMULA o contexto
+  do GitHub, e ali `GITHUB_REPOSITORY`/`GITHUB_TOKEN` são o repositório e o token
+  do **GITEA**: aceitá-los apontaria a leitura para o board errado, e a falha
+  apareceria como "não lida" sem dizer por quê;
+- **PULL REQUEST não é dívida** — no modelo do GitHub ela também é uma issue, e o
+  campo `pull_request` é o que a denuncia. Sem esse filtro, o PR que CONSERTA o
+  alvo morto viraria "dívida nova" justamente quando alguém a resolve;
+- os **comentários** entram (uma chamada por issue, como no backend do Gitea): é
+  neles que mora o marcador de um problema que MUDOU, e sem eles o fechamento
+  automático ficaria cego para uma issue NOSSA;
+- **sem nenhum dos dois canais o erro nomeia os dois** e o que falta em cada um
+  (`sem GH_TOKEN e GH_REPOSITORY para a API, e a CLI \`gh\` falhou (…)`), e a seção
+  sai como NÃO lida (INDETERMINADA) — nunca como "sem dívida".
+
+**COMO se leu** é fato do relatório (`via`: `api` ou `cli`, dito na própria linha
+da seção), e sai do MESMO resolvedor que a leitura usa (`githubReadConfig`): um
+relatório não pode declarar um canal que não foi o usado.
 
 - **Só o que é NOSSO conta como dívida** (o marcador do publicador, não a label):
   uma label aplicada à mão numa issue alheia é REPORTADA, mas nunca fechada por
@@ -1240,16 +1699,56 @@ diagnóstico. É esse o único assunto que exige uma exclusão: um teste percorr
 registro nem numa exclusão declarada.
 
 **Onde roda:** manual/operador (`bun run doctor`) antes de confiar o merge à
-forja e no runbook de deploy (`deploy/GITEA.md`), e **como cron semanal na forja**
+forja e no runbook de deploy (`deploy/GITEA.md`), **como cron semanal na forja**
 (`.gitea/workflows/forge-doctor.yml`), que publica a issue quando o veredito não
-é PRONTA. O cron roda o doctor INTEIRO (sem `--no-*`), que é onde vale pagar a
-prova do bloqueio e o contrato da imagem publicada. Ele fica **fora do CI de PR**
-de propósito: depende do registry e do env do host, e um job agendado nunca
-reporta status num PR (exigi-lo como required check travaria todo PR para
-sempre — invariante travada em `src/lib/__tests__/forge-doctor-issue.test.ts`).
-Sem par no `.github/`, também de propósito: o veredito é sobre ESTA forja — dona
-do merge, onde a stack roda e onde a branch protection que bloqueia vive; rodar o
-mesmo doctor no espelho responderia sobre outro ambiente.
+é PRONTA e a FECHA quando ele volta a PRONTA, e — só na fatia local — **no CI de
+PR, pelo perfil `--ci`** (abaixo). O
+cron roda o doctor INTEIRO (sem `--no-*`), que é onde vale pagar a prova do
+bloqueio e o contrato da imagem publicada. O VEREDITO INTEIRO fica **fora do CI
+de PR** de propósito: depende do registry, de credencial de administração e do
+env do host, e um job agendado nunca reporta status num PR (exigi-lo como
+required check travaria todo PR para sempre — invariante travada em
+`src/lib/__tests__/forge-doctor-issue.test.ts`). O veredito completo, como
+veredito, também não tem par no `.github/`: ele é sobre ESTA forja — dona do
+merge, onde a stack roda e onde a branch protection que bloqueia vive.
+
+**O PERFIL `--ci` — a fatia que roda a CADA PR (e o que ela acrescenta):** a
+pergunta "o espelho ainda diz o que a repository variable diz?" era do cron
+semanal — e um PR que mexe no template (ou uma variable trocada na forja) podia
+esperar dias pelo veredito, com o defeito silencioso esse tempo todo. O doctor
+ganhou o perfil `--ci` (`CI_PROFILE_SKIPS`): ele DESLIGA as sete seções que um
+runner de PR não prova — a bateria de guards (é o próprio job que o chama:
+recursão), a prova do bloqueio (executa o `gitea-up.sh`, que executa o doctor:
+recursão), a branch protection registrada, o registro do runner, o contrato da
+imagem publicada, o probe do registry e o board — e mantém o que um PR consegue
+medir: contrato de merge, env mirror, render do compose e o **VALOR** das
+variáveis nos espelhos e nas referências não versionadas. O perfil reduz o
+ESCOPO, nunca a régua: uma divergência de valor continua BLOQUEANDO, e cada
+seção que saiu aparece NOMEADA em `unproven` (com uma linha própria dizendo que
+o recorte foi do PERFIL, e não de sete flags esquecidas no YAML).
+
+O **gate** que o liga é `scripts/check-doctor-ci.mjs`
+(`bun scripts/check-doctor-ci.mjs`), invariante **CORE** do `check:forge-parity`:
+roda no job `guards` de `.gitea/workflows/ci.yml` (onde a resposta decide o merge)
+e num job próprio do `.github/workflows/pr-check.yml` (a MESMA pergunta é
+agnóstica de forja). Ele lê os valores do AMBIENTE (o workflow exporta `vars.*`
+sem fallback — comparar contra um `|| 'ghcr.io'` do YAML é comparar contra
+intenção), **nomeia** a variável que não chegou (`::warning::`, porque um
+comparador com régua vazia diria "não perguntado") e traduz o veredito do doctor
+em decisão de pipeline: `0`/`2` → **segue** (2 é o INDETERMINADA por DESENHO do
+perfil — as seções do cron estão declaradas; tratá-lo como fracasso faria todo PR
+nascer vermelho), `1` (BLOQUEADA) → **bloqueia**, e `3`/outros → **bloqueia**
+(sem veredito não há gate). A lógica mora no script, e não no `run:` do YAML, por
+um motivo estrutural: o doctor executa a bateria do job `guards` por **lista de
+argumentos** e exige que cada gate seja uma linha `run: <cmd>` — um `run: |` com
+o comando dentro é INVISÍVEL para ele (teste em
+`src/lib/__tests__/doctor-ci-workflow.test.ts`).
+
+**O que o gate de PR NÃO promete**: ele não prova a imagem publicada, a branch
+protection registrada, o registro do runner, o board nem o bloqueio da subida —
+isso é do cron e do `deploy/gitea-up.sh`. E quando uma variável não está criada
+em uma das forjas, o valor dela não é conferido: o gate fica verde **dizendo
+qual** ficou de fora (o guard semanal acusa o mesmo, em modo `--fail` na forja).
 
 ---
 
@@ -1501,6 +2000,294 @@ testes É o gate, e um job novo só somaria superfície.
 **Fonte única das pastas:** a varredura usa `allWorkflowFiles` de
 `scripts/forge-workflows.mjs` — a mesma lista que a paridade e o escopo de forja
 usam, então uma forja nova entra na auditoria sozinha.
+
+---
+
+## 18. O contrato de documentação das provas — `check:prove-docs`
+
+**O que protege:** a família `prove-*`/`doctor` só vale pelo que ela PROMETE —
+"a forja pode confiar o merge a este gate?". Cada comando dessa família devolve
+um tri-estado (provado / violado / indeterminado) e um texto que quem opera a
+forja lê. Duas coisas dão errado em silêncio:
+
+1. **COBERTURA** — um comando novo entra sem resultado esperado documentado: quem
+   lê a doc não sabe o que ele imprime nem o que cada desfecho significa, e o
+   comando passa a se explicar só para quem o roda;
+2. **FIDELIDADE** — a doc continua descrevendo a saída de ANTES (um `--json` que
+   trocou de shape, um veredito que passou a sair por outro caminho). A doc vira
+   uma mentira com aparência de rigor — pior que a ausência dela, porque quem
+   confia no bloco documentado confia em nada.
+
+**Por que existe:** as duas falhas acima não têm sintoma. O bloco documentado
+não é prosa: é a **asserção**. O guard EXECUTA o comando e compara com ela.
+
+**A família é DERIVADA, não listada:** os scripts de `package.json` que invocam
+uma prova (`scripts/prove-*.mjs`), o `--prove` do `ensure-runner-image.mjs` (a
+prova do bloqueio da imagem) ou o `forge-doctor.mjs`. Um comando novo entra
+sozinho — e falha até alguém escrever o bloco dele. O inverso também fecha: um
+bloco que aponta para comando fora da família é violação (doc descrevendo o que
+não existe). O `doctor:issue` fica de fora de propósito: ele PUBLICA o veredito,
+não o mede.
+
+**O bloco (formato):** imediatamente antes da cerca de saída esperada, em
+qualquer Markdown de `docs/` (ou no README):
+
+````md
+<!-- prove-doc: <nome do comando em package.json>
+     run: <argumentos acrescentados ao comando>
+     exit: <n>|<n>...
+     cenario: ambiente|docker-ausente
+     desfecho: provado|indeterminado
+-->
+
+```text
+<linha que tem de aparecer na saída REAL>
+```
+````
+
+O guard exige: **um** bloco por comando (nem zero, nem dois), campos válidos,
+cerca não vazia, e — o confronto — `exit` real entre os declarados e **cada**
+linha exigida presente na saída (substring, com espaços normalizados, para o
+pretty-print não virar falso negativo). Divergir é exit 1, com o diff dito.
+
+### Os seis blocos
+
+**`doctor`** — o perfil `--ci` (o recorte que roda a cada PR). As duas linhas
+prendem o que o perfil NÃO pode perder: que ele se declara (o `ciProfile`) e que
+NOMEIA o recorte em `unproven` (nenhuma seção some por omissão). O exit admite
+`2` (INDETERMINADA por desenho do perfil) e `1` (BLOQUEADA, quando um fato do
+escopo local acusa).
+
+<!-- prove-doc: doctor
+     run: --ci --json
+     exit: 1|2
+     cenario: ambiente
+     desfecho: indeterminado
+-->
+
+```text
+"ciProfile": true
+o PERFIL --ci: o recorte local (sem rede, credencial ou estado do HOST)
+```
+
+**`runner-image:prove`** — a prova do bloqueio da imagem, do PRÉ-REQUISITO 0 e
+DAS INSTRUÇÕES do bring-up. É a única da família completa sem docker NEM imagem
+local: ela sobe um registry de TESTE em `127.0.0.1` e um `docker` dublê, e por
+isso é `desfecho: provado` aqui. As linhas prendem os dois lados do que ela
+afirma: o veredito (`ok`/`holds`) e as SEIS famílias de caso — a subida simples
+(`check-only`), o RE-REGISTRO (`re-register`), que é onde o risco mora, o passo 0
+(`env-divergente`), que é o que roda no gate `bring-up-proof` das duas forjas, as
+INSTRUÇÕES (`installer-check-only`), que são extraídas do instalador e do
+runbook e EXECUTADAS — `"invokedAs"` é a linha que diz QUAL comando do documento
+produziu aquele exit (é o `--re-register` do `deploy/GITEA.md`, e não a prosa que
+citava a flag, que está em execução) — e o MODO `--no-runner` (`no-runner`),
+que sobe Gitea+Caddy pula os pré-requisitos do runner, provando que o
+`SKIP_RUNNER_PREREQS` funciona como a flag manda (ZERO idas ao registry, ZERO
+chamadas ao docker para o runner). As COMBINAÇÕES CONTRADITÓRIAS
+(`re-register-check-only`, `re-register-no-runner`) recusam ANTES de QUALQUER
+docker — ZERO chamadas ao binário, ZERO idas ao registry, com o motivo na saída.
+
+<!-- prove-doc: runner-image:prove
+     run: --json
+     exit: 0
+     cenario: ambiente
+     desfecho: provado
+-->
+
+```text
+"ok": true
+"status": "holds"
+"id": "check-only"
+"id": "re-register"
+"id": "env-divergente"
+"id": "installer-check-only"
+"id": "no-runner"
+"id": "re-register-check-only"
+"invokedAs": "runbook --re-register"
+```
+
+**`forge-runtime:prove`** — o ensaio do job `guards` DENTRO da imagem do runner.
+Exige docker e a imagem; o guard o executa em `--no-build` com o docker
+**ausente de propósito** e cobra o desfecho que ele DOCUMENTA ter aí.
+
+<!-- prove-doc: forge-runtime:prove
+     run: --no-build --json
+     exit: 2
+     cenario: docker-ausente
+     desfecho: indeterminado
+-->
+
+```text
+"verdict": "unavailable"
+--no-build pedido
+```
+
+**`smoke-render:prove`** — a Prova 4 do smoke sob mutação (container sem o plugin
+`compose`). Exige docker e a imagem do runner.
+
+<!-- prove-doc: smoke-render:prove
+     run: --json
+     exit: 2
+     cenario: docker-ausente
+     desfecho: indeterminado
+-->
+
+```text
+"verdict": "unavailable"
+NAO existe localmente
+```
+
+**`merge-gate:prove`** — o merge bloqueia mesmo? Sobe um Gitea efêmero (docker).
+
+<!-- prove-doc: merge-gate:prove
+     run: --json
+     exit: 2
+     cenario: docker-ausente
+     desfecho: indeterminado
+-->
+
+```text
+"verdict": "unavailable"
+o container nao subiu
+```
+
+**`image-contract:prove`** — o contrato da imagem PUBLICADA contra um registry de
+verdade (e não contra um `run` dublado). Exige docker e a imagem do runner.
+
+<!-- prove-doc: image-contract:prove
+     run: --json
+     exit: 2
+     cenario: docker-ausente
+     desfecho: indeterminado
+-->
+
+```text
+"verdict": "unavailable"
+sem docker
+```
+
+### `cenario: docker-ausente` — por que quatro blocos o declaram
+
+Quatro provas da família exigem docker, imagem do runner ou um Gitea efêmero —
+não são reproduzíveis num runner de PR. O guard **não finge** que são: ele as
+EXECUTA com um `docker` de mentira (exit 127) no começo do PATH e exige o
+desfecho `indeterminado` que elas declaram ter nesse cenário. A invariante
+verificada é a que este repositório mais trata como regra: **ausência de prova
+NUNCA vira sucesso**. Um comando que passe a sair `0` sem ter provado nada é pego
+AQUI, de forma hermética e em ~1s. O caminho PROVADO dessas quatro exige docker e
+é do operador (`bun run forge-runtime:prove`, `bun run smoke-render:prove`,
+`bun run image-contract:prove`, `bun run merge-gate:prove`) — a doc de cada uma diz
+o que ele exige.
+
+**O desfecho é REPORTADO, nunca presumido:** um bloco `desfecho: indeterminado`
+que casa conta como "indeterminado (declarado)" e NÃO como "a prova passou" — o
+relatório separa as duas contagens, porque a única mentira que este guard não
+pode cometer é a que ele existe para impedir.
+
+**Recursão dita:** o guard executa `doctor --ci`, e o doctor no perfil `--ci`
+PULA a bateria de guards (é a mesma razão do `--no-guards` do perfil) — por isso
+este gate não se chama a si mesmo nem quando o doctor roda a bateria inteira.
+
+**Onde roda:** job `guards` das duas forjas (`.gitea/workflows/ci.yml` e
+`.github/workflows/pr-check.yml`) — e, por estar lá, entra sozinho na bateria que
+o próprio `doctor` executa. Local: `bun run check:prove-docs`.
+
+---
+
+## 19. O smoke inteiro contra um act_runner efêmero — `forge-smoke:prove` (`scripts/prove-forge-smoke-ephemeral.mjs`)
+
+**O buraco.** O `.gitea/workflows/forge-smoke.yml` prova cinco pressupostos de
+AMBIENTE que nenhum guard estático enxerga: (1) o contexto `vars` hidrata, (2) o
+setup por `run:` engaja o tier-1 da imagem do runner, (3) o runtime é o da
+variable, (4) o job roda os guards por inteiro — inclusive o render do compose
+com `--require-compose` — e (5) o REGISTRO do runner (`/data/.runner`) é o que o
+compose declara. O `forge-runtime:prove` cobre o runtime do container, mas roda
+na máquina de quem o executa e não tem runner nenhum. E o smoke é
+`workflow_dispatch`: num PR ele não roda (um dispatch não reporta status, e
+viraria um required check que ESPERA para sempre). Na prática, as cinco provas
+dependiam de alguém clicar "Run workflow" na forja de PRODUÇÃO e ler o log a olho.
+
+**O que este comando faz.** Sobe uma stack EFÊMERA — Gitea + act_runner — a
+partir do MESMO `deploy/docker-compose.gitea.yml`, empurra um snapshot do
+repositório (worktree, ou `HEAD` com `--source`) e roda o smoke COMITADO de
+ponta a ponta, lendo o veredito de onde ele é de fato gravado.
+
+- **a stack é DERIVADA, não redeclarada.** O override é gerado e contém só o que
+  precisa ser efêmero: nomes de volume do projeto, uma porta local livre
+  (127.0.0.1) e o nome do container do Gitea (o declarado pode estar ocupado por
+  um container PARADO no host, e o ensaio não remove container alheio). Labels,
+  imagens e serviços continuam vindo do compose real. O **runner NÃO é
+  renomeado** de propósito: é o nome dele que a Prova 5 procura;
+- **o env sai do template comitado** (`deploy/env.gitea.example`), com o
+  `RUNNER_TOKEN` que o PRÓPRIO Gitea efêmero gerou. As repository variables do
+  ensaio são as `vars.<NOME>` que o workflow USA (derivadas do arquivo) e o valor
+  vem do template: um `vars.X` novo no smoke entra sozinho — e o ensaio recusa
+  rodar se ele não existir no template, em vez de inventar valor;
+- **o veredito não é texto.** Ele vem de `action_task.status` no banco do Gitea
+  efêmero (1 = sucesso, 2 = falha; MEDIDO na série 1.22 — e todo outro código é
+  "ainda não terminou", incluindo o 6, que aparece com o job rodando) e o log
+  COMPLETO do job, que o Gitea guarda (`actions_log/<log_filename>`);
+- **as expectativas vêm do arquivo.** O ensaio exige cada passo (`⭐ Run Main
+<nome>`) e cada `echo "✅ …"` do smoke, e proíbe cada `echo "::error:: …"` —
+  tudo truncado na primeira interpolação, porque é a parte literal que dá para
+  exigir. Um `✅` novo passa a ser exigido sozinho; um passo que não rodou vira
+  vermelho DIZENDO qual;
+- **o gatilho é a ÚNICA diferença do arquivo empurrado.** O Gitea 1.22 não tem
+  `workflow_dispatch` — nem UI, nem API (medido: 404 em todas as rotas de
+  dispatch da instância, e nenhuma delas existe no swagger). O ensaio ACRESCENTA
+  `push: branches: [prova/smoke]` ao bloco `on:` e confere linha a linha que o
+  resto é idêntico (`assertOnlyAddition`). O que se prova é o CORPO do smoke, e o
+  relatório DIZ isso — em vez de dar a impressão de que o dispatch foi exercitado;
+- **a prova é falsificável (a sentinela).** Antes do smoke, o ensaio empurra em
+  `prova/sentinela` um workflow que FALHA de propósito e exige que o canal o veja
+  como falha (status 2 + o marcador no log). Se o runner não executar
+  job ALGUM, o desfecho é INDETERMINADO — não "o canal está cego" nem "a forja
+  está quebrada": uma falha SEM nenhum passo rodado é problema de HOST, e o
+  ensaio nomeia isso;
+- **`--mutacao-labels` (fase 2).** Re-registra o runner com um label A MAIS que
+  o compose não declara — o defeito invisível da Prova 5 (um label que ninguém
+  usa não é visto pelas provas 2 e 3) — e exige o smoke VERMELHO com as provas
+  1–4 ainda verdes.
+
+**Desvios declarados (o relatório lista todos).** O gatilho acrescentado; a
+sentinela (artefato do ensaio, não do repositório); o container do Gitea
+renomeado; e — só com `--sem-no-new-privileges` — a stack do ensaio DIFERE da
+produção em uma linha: `security_opt: no-new-privileges:true` do serviço
+`runner`. A flag existe porque em hosts com confinamento do daemon (medido:
+Docker 29 sob snap) esse hardening impede QUALQUER `exec` dentro do container —
+`tini`, `sh` e o `alpine` puro falham com `operation not permitted` — e o runner
+nunca sobe. Sem a flag o ensaio DIZ isso, com o estado do container e a última
+linha do log no veredito, e sai INDETERMINADO.
+
+**Exit codes.** 0 = as provas rodaram e fecharam verdes (e a sentinela provou que
+um vermelho é visto); 1 = alguma prova não deixou o desfecho positivo (ou a
+sentinela não foi vista, ou a mutação de labels não derrubou a Prova 5); 2 =
+não deu para ensaiar (sem docker/compose/imagem, produção no host, runner que não
+registra, job que não termina a tempo); 3 = uso inválido.
+
+**Onde roda.** Manual/operador — `bun run forge-smoke:prove` — com docker; em CI
+de runner com docker disponível. O caminho `docker-ausente` é coberto a cada PR
+pelo `check:prove-docs`, que o EXECUTA com um `docker` de mentira e cobra o
+INDETERMINADO que ele documenta ter aí.
+
+<!-- prove-doc: forge-smoke:prove
+     run: --json
+     exit: 2
+     cenario: docker-ausente
+     desfecho: indeterminado
+-->
+
+```text
+"verdict": "unavailable"
+docker indisponível
+```
+
+**O que NÃO cobre** (dito no relatório, não escondido): o gatilho
+`workflow_dispatch` (não existe na série 1.22); a forja de PRODUÇÃO (o ensaio
+RECUSA rodar se houver stack da forja no host — container `gitea-runner`
+ocupado, ou projeto `deploy` RODANDO); TLS/Caddy, DNS e firewall (a stack sobe só
+`gitea` + `runner`); e os jobs `guards`/CI reais — aqui roda o smoke, que é o que
+ele se propõe.
 
 ---
 

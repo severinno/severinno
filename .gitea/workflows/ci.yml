@@ -99,6 +99,19 @@ jobs:
       - name: Script header docs
         run: node scripts/check-script-headers.mjs
 
+      # Contrato de documentação das PROVAS (família `prove-*`/`doctor`): exige,
+      # para CADA comando, um bloco com o resultado esperado — e CONFRONTA esse
+      # bloco com a saída real (exit declarado + linhas exigidas). Uma doc que
+      # descreve a saída de ANTES mente com aparência de rigor, o que é pior que
+      # a ausência dela: quem confia no bloco documentado confia em nada.
+      #
+      # As provas que exigem docker/imagem (runtime, smoke-render, merge-gate) o
+      # guard executa com o `docker` AUSENTE de propósito e cobra o desfecho
+      # INDETERMINADO que elas DOCUMENTAM ter aí — a invariante verificada é
+      # "ausência de prova nunca vira sucesso", e ela roda hermeticamente (~1s).
+      - name: Probe docs contract
+        run: bun run check:prove-docs
+
       # Fonte única do registry OCI (imagens da app + mirrors de toolchain).
       # Impede o reacoplamento ao GHCR: um `ghcr.io/...` solto volta a exigir
       # cota de storage/egress do registry proprietário e quebra o flip de uma
@@ -116,6 +129,50 @@ jobs:
           IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
           BUN_VERSION: ${{ vars.BUN_VERSION }}
         run: bun run check:registry-source
+
+      # ── O VALOR das variables, conferido a CADA PR (o doctor, perfil --ci) ──
+      # O job semanal `actrc-sync` faz esta pergunta, mas ele é SEMANAL: um PR que
+      # mexe no template (ou uma variable trocada na forja) espera dias pelo
+      # veredito — e o defeito é silencioso (o espelho velho não quebra nada
+      # visível). Aqui a MESMA pergunta roda no merge, pelo doctor, que chama a
+      # MESMA função do guard periódico (`mirrorDriftReport`) e por isso não pode
+      # discordar do log dele.
+      #
+      # POR QUE O PERFIL `--ci`, e não o doctor inteiro:
+      #   - a bateria de guards É este job (rodá-la aqui seria recursão);
+      #   - a prova do bloqueio executa o `deploy/gitea-up.sh`, que executa ESTE
+      #     doctor (recursão de novo);
+      #   - a branch protection registrada, o registro do runner, o contrato da
+      #     imagem publicada, o probe do registry e o board exigem credencial de
+      #     administração, rede ou o estado do HOST — quem os cobre é o cron
+      #     (`.gitea/workflows/forge-doctor.yml`).
+      # O recorte é DELIBERADO e o relatório NOMEIA cada seção que ficou fora
+      # (lista de "não provado"): nenhuma some por omissão.
+      #
+      # AS `vars` ENTRAM PELO AMBIENTE **E** PELAS FLAGS, e são duas perguntas
+      # diferentes: no AMBIENTE, a invariante 7c do check-registry-source compara
+      # o valor com o que o repositório declara; nas FLAGS
+      # (`--expected`/`--expected-var`), o doctor compara os ESPELHOS (`.actrc`, o
+      # template e o `deploy/.env.gitea` do host quando ele existe) com o MESMO
+      # código do job semanal.
+      #
+      # A LÓGICA (montar as flags, recusar régua vazia, traduzir o veredito em
+      # exit code) mora em `scripts/check-doctor-ci.mjs`, e a linha aqui é uma só
+      # de propósito: o próprio doctor executa esta bateria a partir do job — e
+      # ele exige que todo gate da pipeline dona do merge seja uma linha
+      # `run: <cmd>` que ele consiga rodar por LISTA DE ARGUMENTOS (um `run: |`
+      # com o comando lá dentro é invisível para ele e falharia o teste que prova
+      # isso). O script nomeia a variável não criada (`::warning::`), roda o doctor
+      # e faz 1 (BLOQUEADA) valer 1 e o INDETERMINADA do perfil valer 0 — um PR
+      # vermelho por seção que o cron cobre seria o "gate que sempre acende".
+      - name: Doctor Ci (o VALOR das repository variables nos espelhos)
+        # BUN_VERSION já vem do env do workflow (a MESMA variável que o
+        # setup-bun usou); as outras duas são declaradas aqui, sem fallback: um
+        # `|| 'ghcr.io'` no YAML é intenção declarada, nunca o valor.
+        env:
+          IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+        run: bun scripts/check-doctor-ci.mjs
 
       # A BASE da imagem que roda ESTES jobs: pinada por digest e com o contrato
       # da imagem provado por EXECUÇÃO (o bloco `RUN` real do Dockerfile, contra
@@ -184,6 +241,37 @@ jobs:
       # README prometendo um hook que não existe = proteção fantasma.
       - name: Hook symmetry (README ↔ hooks reais)
         run: bun scripts/check-hooks-symmetry.mjs
+
+  # ── Prova do PRÉ-REQUISITO 0 do bring-up (por EXECUÇÃO, não por texto) ─────
+  # O `guards` prova a ORDEM no TEXTO do `deploy/gitea-up.sh` (`checkGiteaBringUp`)
+  # e o ensure tem testes unitários dos seus estados. Nada disso distingue "o
+  # passo 0 RECUSA" de "o passo 0 está QUEBRADO": um bring-up que aborta por
+  # qualquer outro motivo também não sobe o runner — e passaria. Aqui o bring-up
+  # REAL roda contra um env DIVERGENTE (a imagem existe e a stack MESMO ASSIM não
+  # sobe), com um registry de teste em 127.0.0.1 e um `docker` dublê: sem rede
+  # externa, sem docker real, ~10s. Quem mexer no `gitea-up.sh` e quebrar o passo
+  # 0 derruba ESTE job — o bloqueio deixa de depender de alguém lembrar de rodar
+  # a prova.
+  #
+  # POR QUE UM JOB PRÓPRIO (e não um passo do `guards`): o doctor EXECUTA a
+  # bateria do job `guards` como fato, e o `gitea-up.sh` chama o doctor com
+  # `--no-proof` justamente para não chamar de volta a prova que executa ELE. Se
+  # a prova entrasse na bateria do `guards`, o `--no-proof` perderia o efeito e
+  # cada subida rodaria a prova de si mesma, dez vezes. Como job próprio ela é o
+  # gate de merge, e o doctor continua medindo o fato pela seção `proof` — sem
+  # circularidade. (A paridade nas duas forjas é cobrada pelo `check:forge-parity`,
+  # cuja invariante `bring-up-env-gate-proof` casa esta linha.)
+  bring-up-proof:
+    name: Bring-up Gate Proof (pré-requisito 0, por execução)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # `node` direto: o guard é node-puro (sem node_modules) e já EXIGE node — o
+      # próprio `deploy/gitea-up.sh` aborta sem ele (`command -v node`), e é ele
+      # quem executa o caminho real aqui dentro.
+      - name: Bring-up contra env divergente (a stack não sobe)
+        run: node scripts/prove-runner-image-gate.mjs
 
   # ── TypeScript check ─────────────────────────────────────────────────────
   typecheck:

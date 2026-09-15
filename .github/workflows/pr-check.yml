@@ -238,6 +238,17 @@ jobs:
       - name: Script header docs
         run: node scripts/check-script-headers.mjs
 
+      # Contrato de documentação das PROVAS (família `prove-*`/`doctor`): exige,
+      # para CADA comando, um bloco com o resultado esperado — e CONFRONTA esse
+      # bloco com a saída real (exit declarado + linhas exigidas). É o mesmo gate
+      # do CORE nas duas forjas (a família não tem nada de GitHub).
+      #
+      # As provas que exigem docker/imagem rodam com o `docker` AUSENTE de
+      # propósito, cobrando o desfecho INDETERMINADO que elas DOCUMENTAM: a
+      # invariante é "ausência de prova nunca vira sucesso" (~1s, hermético).
+      - name: Probe docs contract
+        run: node scripts/check-prove-docs.mjs
+
       # Escopo dos guards: nenhum script pode cravar um diretório de forja.
       # Fecha a CLASSE de falha que deixou a pipeline dona do merge fora da
       # cobertura de 14 guards quando ela nasceu (e que produziu, na prática,
@@ -253,6 +264,33 @@ jobs:
 
       - name: Summary
         run: echo "✅ No dangling references between workflows and scripts/package.json (incl. internal pkg targets); required checks, registry de imagens e escopo de forja consistentes."
+
+  # ── Bring-up Gate Proof (o PRÉ-REQUISITO 0, por EXECUÇÃO) ──────────────
+  # O mesmo invariante do CORE da forja, provado aqui pelo caminho real: o
+  # `deploy/gitea-up.sh` executa contra um env DIVERGENTE (com a imagem
+  # PRESENTE) e tem de RECUSAR antes de qualquer docker. As asserções são sobre
+  # o REGISTRO das chamadas: zero `compose up`, zero idas ao registry, zero
+  # chamadas ao binário `docker`.
+  #
+  # POR QUE UM JOB PRÓPRIO (e não um passo do `workflow-refs-guard`): o doctor
+  # EXECUTA a bateria do job `guards` da forja como fato, e o próprio
+  # `deploy/gitea-up.sh` chama o doctor com `--no-proof` para não chamar de volta
+  # a prova que executa ELE. A prova é a contrapartida executável do
+  # `checkGiteaBringUp` (que só lê o TEXTO do script) — e é ela que transforma
+  # "o passo 0 recusa" de afirmação sobre texto em comportamento medido.
+  bring-up-proof:
+    name: Bring-up Gate Proof (pré-requisito 0, por execução)
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      # `node` direto: guard node-puro (sem node_modules) e node é requisito do
+      # próprio caminho executado (`command -v node` no gitea-up.sh).
+      - name: Bring-up contra env divergente (a stack não sobe)
+        run: node scripts/prove-runner-image-gate.mjs
+
+      - name: Summary
+        run: echo "✅ O passo 0 do bring-up RECUSA um env divergente (medido executando o gitea-up.sh real) — a imagem existe e a stack mesmo assim não sobe."
 
   # ── Sentinel Producer Guard ────────────────────────────────────────────
   # Fast gate (node puro, <1s): GENERALIZA a consistência produtor↔job de
@@ -334,30 +372,45 @@ jobs:
       - name: Summary
         run: echo "✅ Bun version single-source (vars.BUN_VERSION) + GHCR mirror in sync."
 
-  # ── Bun Mirror Guard (staged diff) ──────────────────────────────────
-  # Fast gate (node puro, <1s): roda o check de cache keys e literais do
-  # Bun contra o DIFF DO PR (git diff origin/main...HEAD) em vez do working
-  # tree inteiro — detecta keys antigas (ex.: bun-1.3.14-...) ou literais
-  # INTRODUZIDOS PELO PR antes do merge, mesmo que o restante do
-  # repositório já esteja migrado. Só linhas ADICIONADAS (+ no diff) são
-  # avaliadas — violações pré-existentes do base não poluem o PR.
+  # ── Doctor Guard (o VALOR das repository variables, a cada PR) ────────
+  # O job semanal `actrc-sync` (benchmark-weekly.yml) faz esta pergunta, mas
+  # ele é SEMANAL: um PR que mexe num espelho (ou uma variable trocada na
+  # forja) espera dias pelo veredito — e o defeito é SILENCIOSO (o espelho
+  # velho não quebra nada visível: o setup-bun funciona igual, só mais lento,
+  # e o pull da imagem só falha quando um job tenta iniciar). Aqui a MESMA
+  # pergunta roda no merge, pelo doctor, que chama a MESMA função do guard
+  # periódico (`mirrorDriftReport`) — o log deste job e a issue do semanal não
+  # podem discordar, porque quem decide o que é drift é uma função só.
   #
-  # Requer fetch-depth: 0 para o git diff base...HEAD funcionar (mesmo
-  # padrão do job benchmark). Local/pre-commit: node scripts/check-bun-mirror.mjs
-  # --staged usa git diff --cached.
-  bun-mirror-staged-guard:
-    name: Bun Mirror Guard (staged diff)
+  # A LÓGICA MORA EM `scripts/check-doctor-ci.mjs`, e a linha aqui é uma só:
+  # o doctor exige que todo gate da pipeline dona do merge seja uma linha
+  # `run: <cmd>` executável por LISTA DE ARGUMENTOS (é assim que ele roda a
+  # bateria a partir do job `guards` da forja) — um `run: |` com o comando lá
+  # dentro ficaria invisível para ele.
+  #
+  # ESPELHO DA FORJA: o MESMO gate roda no job `guards` de
+  # `.gitea/workflows/ci.yml`, onde a resposta decide o merge de verdade. É
+  # invariante CORE do `check:forge-parity`: dois lados, uma régua.
+  #
+  # O `env` explícito (sem fallback) não é redundância: no AMBIENTE a
+  # invariante 7c do check-registry-source compara o valor com o que o
+  # repositório declara — e herdá-lo do env do workflow (`|| 'ghcr.io'`) seria
+  # comparar contra um FALLBACK, que é intenção declarada, nunca valor.
+  doctor-mirrors-guard:
+    name: Doctor Guard (valor das repository variables nos espelhos)
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # needed for origin/main...HEAD diff
 
-      - name: Check bun single-source on the PR diff
-        run: node scripts/check-bun-mirror.mjs --staged --base origin/main
+      - name: Doctor Ci (o VALOR das repository variables nos espelhos)
+        env:
+          BUN_VERSION: ${{ vars.BUN_VERSION }}
+          IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+        run: node scripts/check-doctor-ci.mjs
 
       - name: Summary
-        run: echo "✅ No stale bun cache keys/literals introduced by this PR diff."
+        run: echo "✅ Espelhos (imagem do runner) conferidos contra as repository variables."
 
   # ── Mutation Jobs Guard (staged diff) ───────────────────────────────
   # Fast gate (node puro, <1s): roda o check de cobertura de mutation tests
@@ -1398,16 +1451,21 @@ jobs:
   # também pelo cron semanal (benchmark-weekly.yml) para revalidar contra
   # um banco efêmero sem duplicar a lógica.
   #
-  # O reusable workflow define TRÊS jobs: (1) seed-guards — MATRIX 2×2
-  # seed×imagem: prod e dev E2E rodam contra as DUAS variantes do PostGIS
-  # (alpine + full — 4 combinações: prod×alpine, prod×full, dev×alpine,
-  # dev×full), validando a compatibilidade de ambas as imagens em PRs, não só
-  # em cron/deploy; (2) seed-prod-e2e-dev-env — o prod E2E com
-  # PROD_SEED_ALLOW_DEV=1 NO AMBIENTE do job (container próprio), cobrindo o
-  # fluxo de override de banco efêmero em dev que o CI de produção não
-  # exercita (a produção roda NODE_ENV=production sem override);
-  # (3) mutation-seed-dev-e2e — MUTATION TEST: introduz um bug conhecido no
-  # prisma/seed.ts, roda o dev E2E e exige que ele FALHE (guard cego → falha).
+  # O reusable workflow define DUAS famílias de job (a lista viva está no
+  # próprio seed-guards.yml):
+  #   • SEED E2E — (1) seed-guards, a MATRIX 2×2 seed×imagem: prod e dev E2E
+  #     rodam contra as DUAS variantes do PostGIS (alpine + full — 4
+  #     combinações: prod×alpine, prod×full, dev×alpine, dev×full), validando a
+  #     compatibilidade de ambas as imagens em PRs, não só em cron/deploy;
+  #     (2) seed-prod-e2e-dev-env, o prod E2E com PROD_SEED_ALLOW_DEV=1 NO
+  #     AMBIENTE do job (container próprio), cobrindo o fluxo de override de
+  #     banco efêmero em dev que o CI de produção não exercita (a produção roda
+  #     NODE_ENV=production sem override);
+  #   • MUTATION TESTS que precisam do vitest REAL (node_modules) — o seed dev
+  #     E2E, o contrato coordenado, os três fios do doctor, o perfil --ci e as
+  #     quatro defesas do check-env-mirror. Cada um introduz a regressão
+  #     conhecida e exige que a suíte fique VERMELHA pela âncora certa (guarda
+  #     cego → job falha).
   seed-guards:
     name: Seed Guards (prod + dev E2E)
     uses: ./.github/workflows/seed-guards.yml

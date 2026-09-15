@@ -716,9 +716,13 @@ jobs:
       - name: Summary
         run: echo "✅ Nenhum drift semântico de links no README (baseline docs/security/readme-reverse-baseline.json)."
 
-  # ── .actrc ↔ vars.BUN_VERSION sync (semanal) ────────────────────────
-  # Revalida SEMANALMENTE que o espelho LOCAL do act (.actrc) está em
-  # sincronia com a repository variable BUN_VERSION do GitHub.
+  # ── espelhos ↔ repository variables (semanal) ───────────────────────
+  # Revalida SEMANALMENTE que os espelhos LOCAIS (.actrc e o env da forja) estão
+  # em sincronia com as repository variables que o compose da forja consome:
+  # BUN_VERSION, IMAGE_REGISTRY e IMAGE_NAMESPACE. As duas últimas ficavam só
+  # com a checagem de EXISTÊNCIA do guard estático — um registry/namespace
+  # trocado passava por tudo em silêncio (a label do runner puxa de outro lugar,
+  # e o pull só falha quando um job tenta iniciar).
   #
   # O guard estático scripts/check-bun-mirror.mjs só valida que o .actrc
   # DEFINE BUN_VERSION — o VALOR é impossível de conferir estaticamente (a
@@ -746,7 +750,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ── Compara os DOIS espelhos do working tree com vars.BUN_VERSION ──
+      # ── Compara os espelhos do working tree com as repository variables ──
       # `.actrc` e `deploy/env.gitea.example` (o arquivo comitado de onde o
       # deploy/.env.gitea do VPS deriva). Node puro (sem deps) — não precisa
       # de bun para o aviso. O exit 0 em divergência é INTENCIONAL:
@@ -755,9 +759,9 @@ jobs:
       # do runner da forja). Vale a pena avisar mesmo assim porque os dois
       # falham em SILÊNCIO: o env desatualizado deixa o CI igualzinho, só
       # sem o fast path de 0s do tier-1.
-      - name: Comparar espelhos (.actrc + env da forja) com vars.BUN_VERSION
+      - name: Comparar espelhos (.actrc + env da forja) com as repository variables
         run: |
-          node scripts/check-actrc-sync.mjs --expected "${{ vars.BUN_VERSION }}"
+          node scripts/check-actrc-sync.mjs --expected "${{ vars.BUN_VERSION }}" --expected-var "IMAGE_REGISTRY=${{ vars.IMAGE_REGISTRY }}" --expected-var "IMAGE_NAMESPACE=${{ vars.IMAGE_NAMESPACE }}"
 
       # ── ISSUE: o aviso acima vira ticket acionável ────────────────────────
       # if: always() — roda TAMBÉM quando o guard sai 0 (que é o caso em
@@ -779,7 +783,62 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/actrc-sync-issue.mjs --expected "${{ vars.BUN_VERSION }}"
+        run: node scripts/actrc-sync-issue.mjs --expected "${{ vars.BUN_VERSION }}" --expected-var "IMAGE_REGISTRY=${{ vars.IMAGE_REGISTRY }}" --expected-var "IMAGE_NAMESPACE=${{ vars.IMAGE_NAMESPACE }}"
+
+  # ── Revisão das allowlists (semanal) ────────────────────────────────
+  # As ISENÇÕES do repositório envelhecem: "isento" não tem prazo por natureza,
+  # e o motivo que era verdadeiro quando a entrada nasceu pode não ser mais.
+  # São três listas com o MESMO defeito estrutural, e este job é o canal que as
+  # revisa:
+  #
+  #   · OUT_OF_SCOPE_ALLOWLIST + THIRD_PARTY_ALLOWLIST (check-registry-source):
+  #     um arquivo FORA do escopo que referencia imagem NOSSA; uma imagem de
+  #     TERCEIROS consumida do GHCR;
+  #   · ALLOWLIST (check-unused-deps): uma dep de uso IMPLÍCITO, que nunca
+  #     aparece como import (`sharp`, `@types/*`, CLIs).
+  #
+  # Cada entrada registra `addedAt` (a data da decisão) e este job revalida a
+  # JANELA (180 dias, do módulo compartilhado `allowlist-review.mjs`).
+  #
+  # O job roda os dois guards no modo `--review`: passada a janela, a decisão
+  # vencida vira VIOLAÇÃO (exit 1). O modo normal (pre-commit/PR) apenas AVISA
+  # (`::warning::`) — uma data não pode bloquear o commit e o PR de todo mundo.
+  # Mas um aviso dentro de um run VERDE é alerta MUDO (é a razão do
+  # `check:periodic-alerts`): por isso o canal é o run VERMELHO daqui, não uma
+  # anotação que ninguém lê. O registro da data AUSENTE/inválida é violação nos
+  # dois modos (fail-closed) — uma isenção sem data não tem como envelhecer.
+  #
+  # Sem docker e sem rede DE PROPÓSITO (`--no-compose-render --no-registry-probe`)
+  # e com as vars do registry ESVAZIADAS: a pergunta deste job é só a revisão das
+  # isenções. As outras invariantes do guard têm os seus próprios gates (o job
+  # `guards` da forja, o pr-check e o `forge-smoke`), com o ambiente real.
+  registry-allowlist-review:
+    name: Revisão das allowlists (decisão vencida)
+    runs-on: self-hosted
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── GATE: decisão de escopo/imagem de terceiros SEM REVISÃO falha o run ──
+      - name: Revisar decisões de escopo e imagens de terceiros (--review)
+        env:
+          # Esvaziadas: sem valor, a invariante 9 (o valor do AMBIENTE × os
+          # espelhos) fica fora da conta — ela é coberta onde o valor real
+          # existe (a forja/o CI). Aqui a pergunta é só a revisão da isenção.
+          IMAGE_REGISTRY: ""
+          IMAGE_NAMESPACE: ""
+        run: node scripts/check-registry-source.mjs --review --no-compose-render --no-registry-probe
+
+      # ── GATE: dep de uso IMPLÍCITO (ALLOWLIST) SEM REVISÃO falha o run ──
+      # O outro guard tem o MESMO defeito e o MESMO canal: o scan completo do
+      # `check-unused-deps` valida `addedAt` (ausente/inválido = violação nos
+      # dois modos) e a JANELA — `--review` escala a decisão vencida.
+      - name: Revisar a allowlist de deps de uso implícito (--review)
+        run: node scripts/check-unused-deps.mjs --review
+
+      - name: Summary
+        run: echo "✅ Nenhuma isenção (escopo, imagem de terceiros ou dep de uso implícito) sem revisão dentro da janela."
 
   # ── Seed Guards E2E (semanal) ────────────────────────────────────────
   # Revalida SEMANALMENTE que os DOIS seeds (prod + dev) continuam

@@ -96,7 +96,8 @@ sed -i 's|COLE_O_TOKEN_AQUI|SEU_TOKEN_AQUI|' .env
 #   0. o env do host ESPELHA o template comitado (`deploy/env.gitea.example`) —
 #      recusa a subida se divergir (antes garantia nada, porque o ensure resolve
 #      a imagem DESTE arquivo: com um env divergente ele garantiria a imagem
-#      errada). Ver `bun run env-mirror:check`;
+#      errada). Ver `bun run env-mirror:check`; o remedio e
+#      `bun run env-mirror:check --patch` (ver o diff) ou `--fix` (aplicar);
 #   1. a imagem do runner EXISTE no registry (publica se faltar) — antes de
 #      subir a stack, porque um `docker compose up -d runner` seco subiria o
 #      container e todo job falharia ao iniciar, longe da causa;
@@ -149,9 +150,11 @@ Pre-requisitos, NESTA ordem:
    credencial) nunca publica: o comando falha com o remedio, porque "nao sei"
    nao e "nao existe". Pacote privado e um erro por si: quem puxa a imagem e o
    daemon do runner, **sem credencial**.
-2. `BUN_VERSION` no `.env.gitea` precisa ser **igual** a repository variable
-   `BUN_VERSION` do repositorio. Os espelhos da variavel sao comparados pelo
-   guard `check-actrc-sync.mjs`, que roda **nos dois lados**: no GitHub pelo job
+2. `BUN_VERSION`, `IMAGE_REGISTRY` e `IMAGE_NAMESPACE` no `.env.gitea`
+   precisam ser **iguais** as repository variables de mesmo nome do repositorio
+   (as tres montam a tag da imagem do runner). Os espelhos das variaveis sao
+   comparados pelo guard `check-actrc-sync.mjs`, que roda **nos dois lados**: no
+   GitHub pelo job
    semanal `actrc-sync` do `benchmark-weekly.yml` (modo aviso + **issue**, via
    `scripts/actrc-sync-issue.mjs` — o run fica verde de proposito, entao a
    anotacao sozinha nao alerta ninguem; e quando os espelhos voltarem a
@@ -169,8 +172,17 @@ Pre-requisitos, NESTA ordem:
    so o template e dizia "em sincronia" enquanto a versao que o runner usa de
    verdade podia estar outra.
 
+   O mesmo valor e conferido **a cada PR**, e nao so no cron: o job `guards`
+   da `ci.yml` roda `bun scripts/check-doctor-ci.mjs` (o doctor no perfil
+   `--ci`), que compara os espelhos com `vars.*` e BLOQUEIA o merge quando
+   divergem. Trocar uma variable sem alinhar os espelhos deixa de esperar o
+   semanal para aparecer.
+
    Para conferir ARQUIVO por ARQUIVO (ex.: o `/opt/gitea/.env` de outro host):
-   `node scripts/check-actrc-sync.mjs --expected <versao da variable> --gitea-env /opt/gitea/.env`.
+   `node scripts/check-actrc-sync.mjs --expected <versao da variable>
+--expected-var IMAGE_REGISTRY=<host> --expected-var IMAGE_NAMESPACE=<namespace>
+--gitea-env /opt/gitea/.env`. As tres tem o VALOR comparado; uma variavel sem
+   `--expected-var` sai como NAO COMPARADA no log, nunca como conferida.
    Em runtime, quem prova a igualdade e o smoke (Prova 3, abaixo).
 
 3. O `.env.gitea` DESTE host precisa estar em sincronia com o template comitado
@@ -202,12 +214,33 @@ Pre-requisitos, NESTA ordem:
    node scripts/check-registry-source.mjs --gitea-env /opt/gitea/.env
    ```
 
+   **E o remedio deixou de ser edicao a mao.** O mesmo comando emite o diff que
+   reconcilia o host, e aplica:
+
+   ```bash
+   bun run env-mirror:check --patch > fix.patch   # STDOUT = so o diff (revisao)
+   bun run env-mirror:check --fix                 # aplica (atomico, idempotente)
+   ```
+
+   O `--fix` corrige o que e mecanico (variavel comum que diverge; variavel do
+   template ausente no host) e **RECUSA** o que exige decisao: o `RUNNER_TOKEN`
+   (nunca e escrito nem copiado do template — no patch o valor sai **mascarado**),
+   uma variavel a **mais** no host e o template que nao declara o que o compose
+   consome. O exit code responde "depois disto o host espelha?": 0 quando nao
+   sobra nada, 1 quando sobrou decisao humana. Rodar duas vezes e inofensivo.
+
    **Isto deixou de depender de alguem lembrar de rodar o gate.** O
    `deploy/gitea-up.sh` executa `scripts/check-env-mirror.mjs` como pre-requisito
    0 — antes ate da garantia da imagem — e RECUSA a subida quando o env diverge
    (exit 1, com o remedio; nada e subido). E a MESMA regra do gate (as funcoes de
    comparacao sao as do `check-registry-source`), num comando que o bring-up
    chama sozinho: quem sobe a stack nao precisa saber que o gate existe.
+
+   E o `bun run doctor` passou a reportar ESTE pre-requisito como fato proprio —
+   **PRE-REQUISITO 0 do `gitea-up.sh`** — com o **estado** (provado / violado /
+   nao coberto neste checkout), o **comando** que o reproduz e o **remedio**
+   (`--patch` para revisar, `--fix` para aplicar). Ele e DERIVADO da mesma
+   comparacao host x template da secao da imagem: uma medicao, dois papeis.
 
    E o proprio `doctor` confere o VALOR deste espelho contra a variavel, pela
    MESMA funcao do guard (`--expected "$(gh variable get BUN_VERSION)"`, secao
@@ -220,11 +253,18 @@ Pre-requisitos, NESTA ordem:
    nem rodou (exit >=3) tambem — sem veredito nao ha prontidao. `INDETERMINADA`
    (exit 2) **avisa e segue**: e "nao consegui provar agora" (registry fora, sem
    token), e recusar ali tornaria a subida impossivel offline, justamente quando
-   ela e o remedio. O doctor roda com `--no-proof` porque a prova do bloqueio
-   dele EXECUTA este script (chama-la daqui seria recursao), e com
-   `--no-runner-labels` no `--re-register` — o registro velho e exatamente o que
-   aquele modo conserta, e bloquea-lo aqui travaria o remedio pelo estado que ele
-   cura. `--no-runner` pula o veredito: sem runner, nada desta secao e
+   ela e o remedio. O doctor roda **INTEIRO** — a secao 4 dele (a prova do
+   bloqueio) roda junto — e com `--no-runner-labels` no `--re-register`: o
+   registro velho e exatamente o que aquele modo conserta, e bloquea-lo aqui
+   travaria o remedio pelo estado que ele cura. Rodar o doctor inteiro aqui so e
+   possivel porque a prova do bloqueio **dubla** o doctor que ela passa ao
+   bring-up dublado (`DOCTOR_SCRIPT` apontando para um duble que NAO roda a
+   prova): e isso que faz `bring-up -> doctor -> prova -> bring-up` terminar em
+   UM nivel. O corte e medido (cada caso da prova exige que o doctor invocado
+   tenha sido o duble) e a cadeia inteira, com o doctor REAL dentro do bring-up,
+   e provada por execucao em `src/lib/__tests__/prove-runner-image-gate.test.ts`;
+   o `checkDoctorCycleCut` prende a dublagem, que e o unico elo sem sintoma antes
+   de virar forca de processos. `--no-runner` pula o veredito: sem runner, nada desta secao e
    pre-requisito de nada. Para so conferir tudo (env + imagem + prontidao) sem
    subir nada: `bash deploy/gitea-up.sh --check-only`.
 
@@ -261,6 +301,19 @@ com um modo em que o docker diz que removeu e o volume continua la), e
 re-registro. Uma mutacao que apague o registro antes de conferir a imagem, ou
 que suba o runner antes do `rm`, faz a prova cair — e o teste que exige isso
 esta em `src/lib/__tests__/prove-runner-image-gate.test.ts`.
+
+E o comando do bloco ACIMA nao e so texto: a prova o EXTRAI daqui (o bloco
+cercado, nao a prosa que cita a flag) e o executa contra o registry de teste —
+se alguem ensinar aqui uma flag que o bring-up nao conhece, o caso
+`runbook-re-register` fica vermelho mesmo que a string `--re-register` continue
+presente. O mesmo vale para as duas instrucoes que o `deploy/setup-gitea.sh`
+imprime (a de subida e a de `--check-only`): elas sao extraidas dele e rodadas,
+com `$GITEA_DIR`/`$REPO_DIR` resolvidos — "mencionar o gitea-up.sh" deixou de ser
+a prova de que o caminho que se copia funciona. E as flags que o bring-up PASSA
+(`--host`/`--template` ao espelho, `--gitea-env` ao ensure e ao doctor, sem
+`--no-proof`, e `--no-runner-labels` no `--re-register`) sao medidas no argv do
+processo que rodou — espioes em volta do espelho e do ensure, que continuam
+DELEGANDO ao script real.
 
 (Equivalente pela UI: **Site Administration -> Runners ->** apague `vps-runner`
 e crie outro, colando o token novo em `RUNNER_TOKEN`.)
@@ -497,12 +550,13 @@ Adicione:
 
 Para que o CI/CD funcione igual ao GitHub, copie estes secrets:
 
-| Secret GitHub | Secret Gitea  | Valor                    |
-| ------------- | ------------- | ------------------------ |
-| `DEPLOY_HOST` | `DEPLOY_HOST` | IP do VPS                |
-| `DEPLOY_USER` | `DEPLOY_USER` | `deploy`                 |
-| `DEPLOY_KEY`  | `DEPLOY_KEY`  | Chave SSH privada        |
-| `DEPLOY_PATH` | `DEPLOY_PATH` | `/home/deploy/severinno` |
+| Secret GitHub  | Secret Gitea  | Valor                                                                                  |
+| -------------- | ------------- | -------------------------------------------------------------------------------------- |
+| `DEPLOY_HOST`  | `DEPLOY_HOST` | IP do VPS                                                                              |
+| `DEPLOY_USER`  | `DEPLOY_USER` | `deploy`                                                                               |
+| `DEPLOY_KEY`   | `DEPLOY_KEY`  | Chave SSH privada                                                                      |
+| `DEPLOY_PATH`  | `DEPLOY_PATH` | `/home/deploy/severinno`                                                               |
+| `(token novo)` | `GH_TOKEN`    | PAT com `issues:read` no repositorio do **GitHub** — o cron do doctor le o board de la |
 
 ## Workflow CI/CD
 
@@ -614,6 +668,18 @@ carrega o marcador, nunca so o label — e, se o drift voltar, abre uma issue no
 (o dedup e entre as ABERTAS). Condicionar o step ao drift (`exit_code != '0'`)
 faria o fechamento sumir em silencio, no unico run que pode fecha-lo.
 
+E a prova e uma COMPARACAO, nao uma afirmacao: o comentario nomeia os contextos
+que o manifesto exigia (`desired`) e a diferenca medida em cada branch
+(`faltando` / `a mais`), tirada dos DADOS e nunca do veredito `inSync` — um
+relatorio que se diga "em sincronia" com itens faltando e desmentido pela propria
+prova que o fecha, e uma lista AUSENTE sai como "nao informado", nunca como
+"nenhum" (que e reservado para a lista vazia de fato).
+
+O ciclo (abrir -> comentar a prova -> fechar) e provado com o CLI real contra um
+Gitea duble com estado (`required-checks-drift-issue-gitea.test.ts`) e, no lado
+GitHub, contra um `gh` duble no `PATH` com estado entre runs
+(`required-checks-drift-issue-github.test.ts`) — o default do CLI e do workflow.
+
 O cron **detecta e avisa**; nao aplica. Aplicar segue manual, com token de admin:
 `bun run ci:required-checks -- --apply`.
 
@@ -675,6 +741,19 @@ consertar uma peca que nao esta quebrada. A publicacao acontece ANTES do `exit 1
 workflow elimina) e o dedup e por assinatura: a mesma run do mesmo veredito nao
 abre outra issue, e um veredito DIFERENTE comenta na issue aberta.
 
+O outro lado da divida e o MESMO step: com o veredito de volta em **PRONTA** ele
+**FECHA** a issue que ele mesmo abriu, comentando a PROVA — cada fato com o estado
+medido agora, e um fato que o relatorio nao trouxe nao e citado (dizer `proven` de
+algo nao medido seria a mesma mentira, ao contrario). A mecanica e uma so, a do
+`issue-publish.mjs`, compartilhada com os alertas de drift. Isso exige que o step
+rode nos DOIS sentidos — modulado pelo RELATORIO existir (`report`, do step do
+doctor), nunca pelo exit code. Condicionado ao exit code, como era ate agora, o
+fechamento era **INALCANCAVEL**: o step so rodava no run que ABRE a divida, nunca
+no unico run capaz de fecha-la. A prova disso e por **EXECUCAO**, nao por leitura
+do YAML: um teste roda as etapas do cron nos dois sentidos (script extraido do
+workflow, `bun` dublado, publicador REAL contra o Gitea duble) e exige o
+comentario com a prova e a issue fechada — `src/lib/__tests__/forge-doctor-issue.test.ts`.
+
 Sem relatorio valido (doctor com exit 3, JSON invalido, arquivo ausente) o
 publicador **falha** em vez de publicar um corpo vazio: "nao consegui medir" nao
 pode sair como verde. `--dry-run` imprime o corpo sem tocar a forja e **nao exige
@@ -683,6 +762,23 @@ credencial** (conferir localmente nao deveria precisar de token):
 ```bash
 bun scripts/forge-doctor-issue.mjs --report /tmp/forge-doctor.json --backend gitea --dry-run
 ```
+
+A secao `6/6` le as **DUAS forjas**, e e o unico fato do veredito que fala de um
+board que nao e esta forja — de proposito: as dividas de `readme-drift` e
+`mutation-trend-drift` sao crons do `.github/` e existem **so no board do
+GitHub**. Como o runner da forja **nao tem a CLI `gh`**, a leitura de la usa a
+**API REST**, e isso exige dois ajustes na forja:
+
+| O que    | Nome            | Valor                                                     |
+| -------- | --------------- | --------------------------------------------------------- |
+| Secret   | `GH_TOKEN`      | PAT com `issues:read` no repositorio do **GitHub**        |
+| Variable | `GH_REPOSITORY` | `owner/repo` **NO GITHUB** (nao confundir com o do Gitea) |
+
+Sem eles o doctor DIZ que nao conseguiu ler — a secao sai como `NAO lida` no
+github, com o remedio na propria linha, e o veredito vira INDETERMINADA — o que
+ele **nunca** faz e tratar o board nao lido como board vazio. Os nomes sao `GH_*`
+de proposito: o runner **emula** `GITHUB_REPOSITORY`/`GITHUB_TOKEN` com os
+valores DA FORJA, e aceita-los apontaria a leitura para o repositorio errado.
 
 O `GITEA_TOKEN` precisa de **escrita em issues** (a leitura do branch protection
 usa o mesmo token). O cron **nao** esta e nao pode estar em

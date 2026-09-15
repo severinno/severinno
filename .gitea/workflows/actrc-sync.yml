@@ -2,7 +2,10 @@
 # .gitea/workflows/actrc-sync.yml
 #
 # Equivalente Gitea do job `actrc-sync` do `.github/workflows/benchmark-weekly.yml`:
-# compara os espelhos locais da repository variable BUN_VERSION com o valor dela.
+# compara os espelhos locais (`.actrc` + o env da forja) com o VALOR das
+# repository variables que o compose da forja consome — BUN_VERSION,
+# IMAGE_REGISTRY e IMAGE_NAMESPACE (antes, só a versão tinha comparação de
+# valor; registry e namespace só tinham a checagem de existência).
 #
 # POR QUE A FORJA PRECISA DISSO (e por que o lado GitHub não bastava):
 #   - a forja é DONA DO MERGE e é onde a stack roda. O `deploy/.env.gitea` do
@@ -39,7 +42,7 @@ on:
 
 jobs:
   actrc-sync:
-    name: Espelhos ↔ vars.BUN_VERSION (.actrc + env da forja)
+    name: Espelhos ↔ repository variables (.actrc + env da forja)
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -65,14 +68,24 @@ jobs:
       # (deploy/env.gitea.example) e o arquivo do host (deploy/.env.gitea), que
       # neste checkout existe e é o que o compose lê. Cada um é comparado e
       # nomeado no aviso — e é isso que faz este job valer mais que o do GitHub.
-      - name: Comparar espelhos com vars.BUN_VERSION
+      - name: Comparar espelhos com as repository variables
         run: |
-          bun scripts/check-actrc-sync.mjs --expected "$BUN_VERSION" --fail || {
-            echo "::error::Drift entre os espelhos da versão do Bun e a repository variable BUN_VERSION."
+          bun scripts/check-actrc-sync.mjs --expected "$BUN_VERSION" --expected-var "IMAGE_REGISTRY=$IMAGE_REGISTRY" --expected-var "IMAGE_NAMESPACE=$IMAGE_NAMESPACE" --fail || {
+            echo "::error::Drift entre os espelhos (BUN_VERSION/IMAGE_REGISTRY/IMAGE_NAMESPACE) e as repository variables."
             echo "::error::Remédio: alinhe o .actrc e o deploy/env.gitea.example (template comitado) e o deploy/.env.gitea DESTE host; se o env mudou, re-registre o runner: bash deploy/gitea-up.sh --re-register"
             exit 1
           }
 
 env:
-  # FONTE ÚNICA (variable do repositório) — não cravar a versão aqui.
+  # FONTE ÚNICA (variables do repositório) — não cravar valor nenhum aqui. As
+  # três são as que o compose da forja consome e as que a label do runner usa
+  # para montar a tag da imagem: o guard compara o VALOR de todas.
+  #
+  # As flags são passadas SEMPRE (e não sob `if [ -n ... ]` como no
+  # forge-doctor.yml, que precisa medir sem os valores): aqui a régua ausente é
+  # o defeito — uma variable não criada na forja resolve para string vazia e sai
+  # como "NÃO configurada" (drift, run vermelho no modo --fail), nunca como
+  # "conferida".
   BUN_VERSION: ${{ vars.BUN_VERSION }}
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+  IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}

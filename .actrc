@@ -19,5 +19,7 @@
 # variables → Actions) e este arquivo é apenas o espelho local do act.
 # Sem o --var, o act local resolveria a variável vazia e cairia no default
 # 'ghcr.io' de cada workflow (o que ainda funciona, mas deixa de provar o
-# caminho do registry próprio). Mantenha em sincronia.
+# caminho do registry próprio). Mantenha em sincronia: o guard semanal
+# check-actrc-sync.mjs compara o VALOR desta linha com vars.IMAGE_REGISTRY (o
+# guard estático check-registry-source só exige que a flag EXISTA).
 --var IMAGE_REGISTRY=ghcr.io

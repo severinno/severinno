@@ -1028,6 +1028,13 @@ header do guard.
 > do guard real — a política é revalidada a cada PR (o pre-commit não o roda;
 > o scan repo-wide é responsabilidade do CI). Para checagem local pontual:
 > `bun run check:unused-deps`.
+>
+> **Revisão vencida:** cada entrada da allowlist registra a data da decisão
+> (`addedAt`) e, passada a janela de 180 dias, está **SEM REVISÃO** — o scan
+> normal avisa e o job semanal `registry-allowlist-review` a escala a violação
+> (a mesma regra das allowlists do `check-registry-source`, do módulo
+> compartilhado `allowlist-review.mjs`). É o que impede uma isenção antiga de
+> virar permanente por esquecimento.
 
 ### Typecheck — gate de tipo do PR
 
@@ -1189,15 +1196,29 @@ vivo sempre correto.
 > `check-bun-mirror.mjs` só valida que cada espelho DEFINE `BUN_VERSION` — o
 > VALOR é impossível de conferir estaticamente (a variável remota só existe em
 > runtime). O job `actrc-sync` do `benchmark-weekly.yml` compara os **dois**
-> espelhos do working tree com `vars.BUN_VERSION` (via
-> `scripts/check-actrc-sync.mjs --expected "${{ vars.BUN_VERSION }}"`) e emite
-> `::warning::` (NÃO-bloqueante) se divergirem: o `.actrc`, onde o act local
-> passaria a testar uma versão diferente da produção; e
-> `deploy/env.gitea.example`, que alimenta a label do runner da forja — ali o
-> sintoma é pior, porque o setup-bun funciona igual com ou sem Bun
-> pré-instalado, então a divergência só desliga o fast path de 0s do tier-1 em
-> silêncio (todo job volta a pagar o download). Variável ausente no repositório
-> também vira `::warning::` (exit 0), não falha o job.
+> espelhos do working tree com o valor de **cada variável que o compose da forja
+> consome** — `vars.BUN_VERSION`, `vars.IMAGE_REGISTRY` e
+> `vars.IMAGE_NAMESPACE`. O guard recebe o valor da versão por `--expected` e o
+> das outras duas por `--expected-var NOME=VALOR`, e emite `::warning::`
+> (NÃO-bloqueante) se divergirem: o `.actrc`, onde o act local passaria a testar
+> uma versão (ou um
+> registry) diferente da produção; e `deploy/env.gitea.example`, que alimenta a
+> label do runner da forja — ali o sintoma é pior, porque o setup-bun funciona
+> igual com ou sem Bun pré-instalado, então a divergência só desliga o fast path
+> de 0s do tier-1 em silêncio (todo job volta a pagar o download), e um
+> registry/namespace trocado só aparece quando um job tenta puxar a imagem.
+> Para registry e namespace, antes só existia a checagem de existência
+> (`check-registry-source`); agora o valor é comparado. Uma variável sem valor
+> passado à run sai como **NÃO COMPARADA** (nomeada no log, nunca conferida), e
+> variável ausente no repositório também vira `::warning::` (exit 0), não falha
+> o job.
+>
+> **E o mesmo valor é conferido a cada PR, não só no cron:** o job `guards` da
+> forja e um job do `pr-check.yml` rodam `scripts/check-doctor-ci.mjs` — o
+> doctor no perfil `--ci` (a fatia local: contrato, env mirror, render do
+> compose e o VALOR dos espelhos). Ele BLOQUEIA o PR quando o valor diverge do
+> que os espelhos declaram, e **nomeia** a variável que não chegou (régua vazia
+> seria "não perguntado", e um verde que não conferiu nada é o defeito).
 >
 > Como o run fica **verde** em qualquer cenário, a anotação não é canal de
 > ninguém: o step `if: always()` publica o drift como **issue**

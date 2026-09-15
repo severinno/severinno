@@ -73,6 +73,13 @@
       },
       {
         "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "registry-allowlist-review",
+        "signal": "isenção (escopo, imagem de terceiros ou dep de uso implícito) sem revisão dentro da janela",
+        "channel": "fail",
+        "evidence": "Revisar a allowlist de deps de uso implícito (--review)"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
         "job": "seed-guards",
         "signal": "contrato dos seeds (reusable workflow)",
         "channel": "fail",

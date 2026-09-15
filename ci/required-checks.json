@@ -19,17 +19,20 @@
         "utf8-check",
         "secrets-guard",
         "workflow-refs-guard",
+        "bring-up-proof",
         "actionlint",
         "lint-guard",
         "typecheck",
         "check",
         "security-headers",
-        "pii-allowlist-guard"
+        "pii-allowlist-guard",
+        "mutation-guards",
+        "seed-guards"
       ]
     },
     "gitea": {
       "workflow": ".gitea/workflows/ci.yml",
-      "jobs": ["lint", "guards", "typecheck", "test", "build"]
+      "jobs": ["lint", "guards", "bring-up-proof", "typecheck", "test", "build"]
     }
   }
 }

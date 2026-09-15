@@ -28,7 +28,13 @@
 # A ORDEM DOS PASSOS É CONTRATO: o step que falha é o ÚLTIMO. Se ele viesse
 # antes, o step da issue nunca rodaria e o alerta voltaria a ser cron vermelho
 # sem ticket — exatamente o defeito que este workflow existe para eliminar.
-# (Ordem travada por teste em src/lib/__tests__/forge-doctor-workflow.test.ts.)
+# (Ordem travada por teste em src/lib/__tests__/forge-doctor-issue.test.ts.)
+#
+# O OUTRO LADO DA DÍVIDA: com o veredito de volta em PRONTA o MESMO step FECHA
+# as issues que ele abriu (com a prova no comentário), em vez de deixá-las
+# abertas mentindo no board. Por isso ele roda em `always()` e não só quando o
+# veredito é ruim: era o único run capaz de fechar, e era o único em que ele não
+# rodava. O que modula o step é o RELATÓRIO existir (exit 3 não produz um).
 #
 # POR QUE SÓ NA FORJA (e não um par no .github/): o veredito é sobre ESTA forja —
 # ela é dona do merge, é onde a stack roda (docker, o volume do registro, o env
@@ -36,12 +42,28 @@
 # outro ambiente: rodar o mesmo doctor lá responderia sobre o espelho, não sobre
 # quem segura o merge. A assimetria é intencional — não "complete" o par.
 #
+# MAS O BOARD DO GITHUB ENTRA NA LEITURA (seção 6/6), e é a única coisa do
+# veredito que NÃO é sobre esta forja — de propósito: nem toda dívida nasce aqui.
+# A auditoria reversa do README e a tendência de mutação são crons do `.github/`,
+# e as issues delas existem SÓ no board de lá. Sem `GH_TOKEN` + `GH_REPOSITORY` a
+# leitura dessa parte sai como NÃO lida (INDETERMINADA, com o motivo) — nunca
+# como "sem dívida", que é o falso verde que a seção existe para não produzir.
+# Os nomes são `GH_*` e não `GITHUB_*` pelo mesmo motivo escrito no
+# `githubReadConfig`: este runner EMULA o contexto do GitHub, e ali
+# `GITHUB_REPOSITORY`/`GITHUB_TOKEN` são o repositório e o token do GITEA.
+#
 # Secrets: `GITEA_TOKEN` (leitura do branch protection, do registry, DO BOARD —
 #                       as issues de drift abertas, que o doctor lê pela mesma
 #                       consulta dos publicadores — e escrita em issues: sem a
 #                       escrita, o veredito não é publicado)
 #          `GITEA_URL`   (ex.: https://gitea.exemplo.com)
 #          `GITEA_REPOSITORY` (owner/repo — necessário para abrir a issue)
+#          `GH_TOKEN`   (LEITURA do board do GITHUB: as issues de 'readme-drift' e
+#                        'mutation-trend-drift' vivem só lá. Token com
+#                        `issues:read` — é o único canal possível aqui, porque o
+#                        runner da forja não tem a CLI `gh`)
+#          `GH_REPOSITORY` (owner/repo NO GITHUB — não confundir com o do Gitea;
+#                        sem ele a API não tem alvo e a leitura sai como NÃO lida)
 # Ausentes, o doctor roda assim mesmo: ele reporta o que NÃO conseguiu medir
 # (`INDETERMINADA`) e a issue é publicada com essa lista — o mesmo fail-closed
 # do resto do repositório: um alerta que não pode ser publicado é o silêncio de
@@ -71,9 +93,12 @@ on:
   workflow_dispatch:
 
 env:
-  # FONTE ÚNICA (variable do repositório) — não cravar a versão aqui. O `--expected`
-  # do doctor compara o VALOR dos espelhos com ela, não só a existência deles.
+  # FONTE ÚNICA (variables do repositório) — não cravar valor nenhum aqui. O
+  # `--expected` compara o VALOR da versão e o `--expected-var` o das outras
+  # variáveis que o compose da forja consome, não só a existência delas.
   BUN_VERSION: ${{ vars.BUN_VERSION }}
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+  IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
 
 jobs:
   doctor:
@@ -128,6 +153,11 @@ jobs:
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
           GITEA_URL: ${{ secrets.GITEA_URL }}
           GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+          # O board do GitHub (a seção 6/6 lê as duas forjas). Ausentes, o doctor
+          # DIZ que não conseguiu ler (e o veredito vira INDETERMINADA) — o que
+          # ele nunca faz é tratar o board não lido como board vazio.
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_REPOSITORY: ${{ vars.GH_REPOSITORY }}
         run: |
           set +e
           ARGS=(--json)
@@ -136,22 +166,51 @@ jobs:
           else
             echo "::notice::vars.BUN_VERSION vazio — o veredito não cobrirá o VALOR dos espelhos."
           fi
+          # Cada variável da imagem entra SÓ com o valor resolvido: uma flag com
+          # valor vazio faria o espelho "divergir de ''", um diagnóstico falso
+          # em cima de uma falha real (o contexto `vars` não hidratou). O doctor
+          # DIZ qual variável ficou sem valor, então nenhuma some em silêncio.
+          if [ -n "${IMAGE_REGISTRY:-}" ]; then
+            ARGS+=(--expected-var "IMAGE_REGISTRY=$IMAGE_REGISTRY")
+          fi
+          if [ -n "${IMAGE_NAMESPACE:-}" ]; then
+            ARGS+=(--expected-var "IMAGE_NAMESPACE=$IMAGE_NAMESPACE")
+          fi
           bun scripts/forge-doctor.mjs "${ARGS[@]}" > /tmp/forge-doctor.json 2>/tmp/forge-doctor.log
           CODE=$?
           set -e
           cat /tmp/forge-doctor.log
           echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
+          # O RELATÓRIO existe? É o que MODULA o step da issue — e não o exit
+          # code: com veredito 0/1/2 o JSON existe (o veredito É o exit code) e o
+          # publicador roda nos DOIS sentidos (publicar dívida, fechar dívida);
+          # com exit 3 (uso/erro interno) não há medição nenhuma.
+          if [ -s /tmp/forge-doctor.json ]; then
+            echo "report=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "report=0" >> "$GITHUB_OUTPUT"
+          fi
           echo "  relatório: /tmp/forge-doctor.json ($(wc -c < /tmp/forge-doctor.json) bytes)"
 
       # ── A ISSUE é o alerta; o vermelho abaixo é a lembrança ──────────────
       # Roda ANTES de falhar, de propósito. O relatório já está pronto, então
       # não há novo acesso à forja além da escrita da issue.
       #
-      # Com exit 3 (uso/erro interno do doctor) não há relatório válido: o
-      # publicador FALHA em vez de publicar um corpo vazio — fail-closed, porque
-      # "não consegui medir" não pode sair como verde.
+      # `always()` — E NÃO `exit_code != '0'`: com veredito não-PRONTA este step
+      # PUBLICA; com PRONTA ele RECONCILIA — comenta a prova e FECHA as issues
+      # que ELE abriu, para a dívida não ficar ABERTA depois de resolvida. É o
+      # MESMO ciclo de reconciliação dos alertas de drift (a mecânica é uma só,
+      # em `issue-publish.mjs`), e condicionar este step ao veredito ruim faria o
+      # fechamento sumir em SILÊNCIO no único run que pode fechá-lo — que era
+      # exatamente o que acontecia aqui: o fechamento estava PROVADO no
+      # publicador e nunca chegava a rodar no cron.
+      #
+      # Quem modula é o RELATÓRIO existir: com exit 3 não há medição — e sem
+      # medição não há o que publicar nem o que fechar. O job segue vermelho pelo
+      # step final, então pular aqui não afrouxa nada ("não consegui medir" nunca
+      # vira verde).
       - name: Publish doctor verdict issue (Gitea)
-        if: steps.doctor.outputs.exit_code != '0'
+        if: always() && steps.doctor.outputs.report == '1'
         env:
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
           GITEA_URL: ${{ secrets.GITEA_URL }}

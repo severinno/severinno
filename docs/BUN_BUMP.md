@@ -265,7 +265,10 @@ Validação local antes de abrir PR:
 ```bash
 node scripts/check-bun-mirror.mjs            # invariantes globais
 node scripts/check-bun-mirror.mjs --staged   # diff staged (1º passo do pre-commit)
-node scripts/check-actrc-sync.mjs --expected "$(gh variable get BUN_VERSION -R <owner>/<repo> || echo 1.3.14)"  # os DOIS espelhos vs variável real
+node scripts/check-actrc-sync.mjs \
+  --expected "$(gh variable get BUN_VERSION -R <owner>/<repo> || echo 1.3.14)" \
+  --expected-var "IMAGE_REGISTRY=$(gh variable get IMAGE_REGISTRY -R <owner>/<repo> || echo ghcr.io)" \
+  --expected-var "IMAGE_NAMESPACE=$(gh variable get IMAGE_NAMESPACE -R <owner>/<repo> || echo <owner>)"  # os espelhos vs as 3 variáveis reais
 ```
 
 ---
@@ -273,24 +276,30 @@ node scripts/check-actrc-sync.mjs --expected "$(gh variable get BUN_VERSION -R <
 ## 6. Aviso semanal de drift (`actrc-sync`)
 
 O job `actrc-sync` do `benchmark-weekly.yml` (node-puro, sem setup-bun) compara
-os **dois espelhos** do working tree com `vars.BUN_VERSION` e emite `::warning::`
-**não-bloqueante** (exit 0) se divergirem — cobre o caso que o guard estático
-não alcança (o VALOR, não a existência da linha):
+os **espelhos** do working tree com o valor de **cada variável que o compose da
+forja consome** — `vars.BUN_VERSION`, `vars.IMAGE_REGISTRY` e
+`vars.IMAGE_NAMESPACE` — e emite `::warning::` **não-bloqueante** (exit 0) se
+divergirem. Cobre o caso que os guards estáticos não alcançam (o VALOR, não a
+existência da linha/flag):
 
-| Espelho                    | Quem lê                                                      | O que custa divergir                                                                                                                                                       |
-| :------------------------- | :----------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.actrc`                   | o act local (ele não lê as variables do repositório)         | o act testa uma versão diferente da produção                                                                                                                               |
-| `deploy/env.gitea.example` | a label do runner da forja (a imagem que roda TODOS os jobs) | a imagem embarca outra versão do Bun e o fast path de 0s do tier-1 desliga **em silêncio** — o setup-bun funciona igual, só mais lento (todo job volta a pagar o download) |
+| Espelho                    | Quem lê                                                      | O que custa divergir                                                                                                                                                                                                                                                                                    |
+| :------------------------- | :----------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `.actrc`                   | o act local (ele não lê as variables do repositório)         | o act testa uma **versão** ou um **registry** diferente da produção (o `.actrc` espelha `BUN_VERSION` e `IMAGE_REGISTRY` — o namespace não vive ali: os workflows o usam com fallback)                                                                                                                  |
+| `deploy/env.gitea.example` | a label do runner da forja (a imagem que roda TODOS os jobs) | a imagem embarca outra **versão** do Bun e o fast path de 0s do tier-1 desliga **em silêncio** — o setup-bun funciona igual, só mais lento (todo job volta a pagar o download); um **registry/namespace** trocado só aparece quando um job tenta puxar a imagem (antes só havia checagem de existência) |
 
 Um espelho ausente é **ignorado**, não acusado: ausência de arquivo não é o
 drift que este job caça (o guard estático é que exige a linha dentro dele), e
-um checkout parcial não deve virar aviso. Variável ausente no repositório
-também vira `::warning::`. Simulação local:
+um checkout parcial não deve virar aviso. A variável `RUNNER_TOKEN` fica FORA da
+comparação (é segredo — o template comitado traz placeholder e o host o token
+real; presença e diferença do template são do `check-env-mirror.mjs`). Variável
+ausente no repositório vira `::warning::`, e uma variável **sem valor passado à
+run** sai como NÃO COMPARADA — nomeada no log, nunca como conferida. Simulação
+local:
 
 ```bash
-node scripts/check-actrc-sync.mjs --expected 1.3.15          # exit 0 (ok)
+node scripts/check-actrc-sync.mjs --expected 1.3.15 --expected-var IMAGE_REGISTRY=ghcr.io --expected-var IMAGE_NAMESPACE=severinno   # exit 0 (ok)
 node scripts/check-actrc-sync.mjs --expected 1.3.14 --fail   # exit 1 (drift)
-node scripts/check-actrc-sync.mjs --expected 1.3.15 --gitea-env deploy/.env.gitea  # o env do VPS
+node scripts/check-actrc-sync.mjs --expected 1.3.15 --gitea-env deploy/.env.gitea  # o env do VPS (sem --expected-var: registry/namespace saem NÃO COMPARADAS)
 ```
 
 ---

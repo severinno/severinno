@@ -36,16 +36,26 @@
 #      lembrar de rodar o doctor: a stack subia num estado que não segura o merge,
 #      e o único sinal era um comando que ninguém rodou.
 #
-# O doctor é chamado com `--no-proof` (a prova do bloqueio dele EXECUTA este
-# script: chamá-la daqui seria recursão) e com `--no-runner-labels` quando
-# --re-register — o registro velho é EXATAMENTE o que o re-registro conserta, e
-# bloquear aqui travaria o remédio pelo estado que ele cura.
+# O doctor é chamado INTEIRO (sem `--no-proof`) e com `--no-runner-labels`
+# quando --re-register — o registro velho é EXATAMENTE o que o re-registro
+# conserta, e bloquear aqui travaria o remédio pelo estado que ele cura.
+#
+# POR QUE O DOCTOR INTEIRO (e não `--no-proof`): a prova do bloqueio dele EXECUTA
+# este script, então desligá-la parecia a única forma de não recursar. Não é: a
+# prova DUBLA o doctor que ela passa ao bring-up (`DOCTOR_SCRIPT` apontando para
+# um dublê que NÃO executa a prova), e é essa dublagem que faz
+# `bring-up → doctor → prova → bring-up` terminar em UM nível. O corte é MEDIDO,
+# não prometido: cada caso da prova exige que o doctor invocado tenha sido o
+# dublê, e a cadeia inteira — com o doctor REAL aqui dentro — é provada por
+# execução em `src/lib/__tests__/prove-runner-image-gate.test.ts`. Com a prova
+# ligada o veredito desta subida deixa de ser parcial POR CONSTRUÇÃO: ele cobre o
+# próprio portão que garante a imagem.
 #
 # INDETERMINADA (exit 2) NÃO recusa: é "não consegui provar agora" (registry
-# fora, sem token), e bloquear aí tornaria a subida impossível offline. Com
-# `--no-proof` o 2 é o esperado — o veredito fica parcial POR CONSTRUÇÃO, e o
-# aviso diz o que o portão de hoje não cobre. Quem recusa é a violação provada.
-# Um doctor que nem rodou (exit >=3) recusa: sem veredito não há prontidão.
+# fora, sem token, um recorte pedido pelo operador), e bloquear aí tornaria a
+# subida impossível offline — o aviso diz o que o portão de hoje não cobre. Quem
+# recusa é a violação provada. Um doctor que nem rodou (exit >=3) recusa: sem
+# veredito não há prontidão.
 #
 # --re-register: para quem TROCOU os labels (ou a BUN_VERSION) e precisa que o
 # runner envie o registro de novo. O act_runner envia os labels NO REGISTRO e
@@ -189,7 +199,12 @@ else
   if [ "$MIRROR_CODE" -ne 0 ]; then
     fail "o env do host NÃO espelha o template comitado (exit ${MIRROR_CODE}) — NADA foi subido."
     fail "A stack interpolaria outra coisa que o repositório declara (imagem, versão, segredo)."
-    fail "Corrija o lado errado e rode de novo. Relatório completo: bun run check:registry-source"
+    fail "Relatório completo: bun run check:registry-source"
+    # O REMÉDIO (para não corrigir à mão): --patch mostra o diff que reconcilia o
+    # host; --fix aplica (atômico). Ele nunca escreve o segredo — isso fica para
+    # quem tem o valor real, e o relatório acima já nomeia o que ficou pendente.
+    fail "Veja o que muda:  bun run env-mirror:check --patch"
+    fail "Aplique o diff:    bun run env-mirror:check --fix   (o segredo nunca é tocado)"
     exit 1
   fi
 fi
@@ -232,8 +247,11 @@ fi
 # veredito de prontidão.
 # As flags base ficam NA linha da invocação (e não só num array) para que a
 # regra seja legível e conferível por quem lê o script: `--gitea-env` para o
-# doctor ler o MESMO arquivo que o compose vai ler, `--no-proof` para não
-# chamar de volta a prova que executa este script.
+# doctor ler o MESMO arquivo que o compose vai ler. E o doctor roda INTEIRO —
+# `--no-proof` está AUSENTE de propósito: o ciclo é cortado pela dublagem do
+# doctor dentro da prova (ver o header), e desligar a prova aqui trocaria isso
+# por um veredito parcial POR CONSTRUÇÃO — a subida aconteceria sem que o portão
+# de bloqueio tivesse sido provado.
 DOCTOR_ARGS=()
 # --re-register: o label GRAVADO em /data/.runner é o que este modo conserta.
 # Sem esta isenção, o doctor diria BLOQUEADA pelo registro velho e o remédio
@@ -245,18 +263,18 @@ if [ "$SKIP_RUNNER_PREREQS" -eq 1 ]; then
 else
   info "checando a prontidão da forja (doctor)..."
   echo ""
-  node "$DOCTOR_SCRIPT" --gitea-env "$ENV_FILE" --no-proof "${DOCTOR_ARGS[@]}"
+  node "$DOCTOR_SCRIPT" --gitea-env "$ENV_FILE" "${DOCTOR_ARGS[@]}"
   DOCTOR_CODE=$?
   echo ""
   if [ "$DOCTOR_CODE" -eq 0 ]; then
     pass "prontidão da forja: PRONTA (doctor exit 0)"
   elif [ "$DOCTOR_CODE" -eq 2 ]; then
-    # Com --no-proof isto é o esperado: a prova do bloqueio é um fato sobre ESTA
-    # subida (e ela acabou de acontecer no passo 1), então o doctor a declara não
-    # provada e o veredito fica parcial. O aviso é honesto, não ruído: diz que o
-    # portão de hoje é "nenhuma violação", e o que isso NÃO cobre.
+    # "não consegui provar agora" (registry fora, sem token, um recorte pedido
+    # pelo operador) NÃO é violação. O aviso é honesto, não ruído: diz que o
+    # portão de hoje é "nenhuma violação", e o que isso NÃO cobre. E o veredito
+    # já não é parcial por construção: a prova do bloqueio roda aqui dentro (o
+    # ciclo é cortado pela dublagem do doctor na prova).
     warn "prontidão INDETERMINADA (doctor exit 2): nenhuma violação, mas algo não ficou provado."
-    warn "Parte disso é esperada aqui: o doctor roda com --no-proof (a prova do bloqueio executa ESTA subida)."
     warn "Sigo porque INDETERMINADA não é violação — recusar aqui tornaria a subida impossível offline."
   elif [ "$DOCTOR_CODE" -eq 1 ]; then
     fail "a prontidão da forja está BLOQUEADA (doctor exit 1) — NADA foi subido."
