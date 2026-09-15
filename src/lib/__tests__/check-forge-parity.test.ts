@@ -53,6 +53,7 @@ const REAL_LINES = [
   "      - run: bun run check:pii-gate",
   "      - run: bun run check:required-checks",
   "      - run: node scripts/check-script-headers.mjs",
+  "      - run: node scripts/check-pipefail-sigpipe.mjs",
   "      - run: bun run check:prove-docs",
   "      - run: bun run check:registry-source",
   "      - run: bun run check:runner-base",
