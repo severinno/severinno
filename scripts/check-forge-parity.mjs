@@ -435,6 +435,25 @@ export const CORE_INVARIANTS = [
     jobIds: { gitea: "guards", github: "hooks-symmetry-guard" },
   },
   {
+    id: "merge-latency",
+    // O número que o repositório PUBLICA sobre o custo dos gates. A tabela de
+    // overhead lista cada gate e convida a somar — mas o PR não paga a soma: ele
+    // paga o caminho crítico e a FILA. Sem este gate, um job novo entra na
+    // pipeline do PR sem duração e a latência publicada passa a cobrir menos
+    // pipeline do que existe, em silêncio (o denominador encolhe, e o número
+    // fica MENOR justamente quando ficou mais incompleto).
+    //
+    // MESMO COMANDO NAS DUAS: o `--check` julga o DONO DO MERGE
+    // independentemente de onde roda — a forja é quem mergeia, e um PR do
+    // GitHub também edita `.gitea/workflows/ci.yml`. Julgar o espelho com
+    // `--forge github` travaria o merge para sempre (o espelho declara jobs sem
+    // medição de propósito).
+    matches: /merge[:-]latency/,
+    command: /^node scripts\/merge-latency\.mjs --check$/m,
+    why: "a latência de merge publicada mede menos pipeline do que existe quando um job do PR entra sem duração — e o número fica MENOR quanto mais incompleto",
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
+  },
+  {
     id: "secret-leaks",
     matches: /rotate-secrets/,
     command: /^node scripts\/rotate-secrets\.mjs --check$/m,

@@ -291,8 +291,17 @@ jobs:
       - name: Hook x CI parity
         run: node scripts/check-hook-ci-parity.mjs
 
+      # A LATÊNCIA DE MERGE do dono do merge: todo job do PR da FORJA tem
+      # duração declarada ou derivada. O espelho pode declarar jobs sem medição
+      # (é um fato, não uma promessa) — o dono do merge não, senão o número que
+      # o repositório publica passa a cobrir menos pipeline do que existe. Roda
+      # aqui também porque um PR do GitHub pode editar `.gitea/workflows/ci.yml`
+      # e deixar a conta da forja furada sem nada falhar. Node-puro, <1s.
+      - name: Merge latency (o dono do merge cobre o PR?)
+        run: node scripts/merge-latency.mjs --check
+
       - name: Summary
-        run: echo "✅ No dangling references between workflows and scripts/package.json (incl. internal pkg targets); required checks, registry de imagens, escopo de forja e paridade hook↔CI consistentes."
+        run: echo "✅ No dangling references between workflows and scripts/package.json (incl. internal pkg targets); required checks, registry de imagens, escopo de forja, paridade hook↔CI e latência de merge do dono consistentes."
 
   # ── Workflow run syntax (bash -n) — JOB PRÓPRIO ───────────────────────
   # O corpo de um `run:` é SHELL, e um shell que não faz parsing morre no
@@ -520,7 +529,7 @@ jobs:
         run: echo "✅ No orphan test-mutation-*.sh and no broken workflow ref introduced by this PR diff."
 
   # ── Mutation Guards MASTER (consolidado) ────────────────────────────
-  # Roda os 23 mutation tests node-puro dos guards de CI num JOB SÓ via
+  # Roda os 24 mutation tests node-puro dos guards de CI num JOB SÓ via
   # scripts/test-mutation-guards.sh — matriz de sub-tests que orquestra os
   # scripts granulares (que continuam sendo a fonte única de
   # fixtures/mutações/asserções de cada guard):
@@ -583,7 +592,7 @@ jobs:
   # (--scenario <id> roda um sub-test isolado para diagnóstico local).
   # Node-puro, <9s total, sem docker.
   mutation-guards:
-    name: Mutation guards master (23 node-pure mutation tests)
+    name: Mutation guards master (24 node-pure mutation tests)
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
@@ -592,7 +601,7 @@ jobs:
         run: bash scripts/test-mutation-guards.sh
 
       - name: Summary
-        run: echo "✅ All 23 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard, mutation-count, no-leaked-imports, pipefail-sigpipe, paridade hook↔CI, defaults de shell, sintaxe dos corpos `run:`)."
+        run: echo "✅ All 24 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard, mutation-count, no-leaked-imports, pipefail-sigpipe, paridade hook↔CI, defaults de shell, sintaxe dos corpos `run:`, latência de merge)."
 
   # ── Forge Parity Mutation (job DEDICADO, fora do master) ────────────────
   # A prova por mutação das TRÊS regras de classificação do

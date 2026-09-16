@@ -1699,6 +1699,81 @@ medição, não uma troca de hardware; uma baseline velha debaixo de um runner n
 aparece como regressão até alguém mover a baseline DE PROPÓSITO
 (`bench:guard-timing:baseline`), que é decisão registrada, não efeito do tempo.
 
+### 10.1. Latência de MERGE — `bench:merge-latency` (`scripts/merge-latency.mjs`)
+
+**O que protege:** o número que o repositório PUBLICA sobre o custo dos gates.
+A tabela de overhead abaixo lista o custo de cada gate e convida a **somar** —
+mas o PR não paga a soma: ele paga o **caminho crítico** do grafo `needs:` e, com
+poucos runners, a **fila**. São duas contas diferentes, e a segunda é a que
+decide se alguém espera 3 minutos ou 12.
+
+**Por que existe:** um job novo na pipeline do PR sem duração declarada (nem
+derivável do benchmark) faz a latência publicada **encolher** em silêncio — o
+denominador diminui, e o número fica MENOR justamente quando ficou mais
+incompleto. É a mesma classe que a soma de gates independentes já escondia.
+
+**Como mede — três decisões que o desenho carrega:**
+
+1. **O grafo sai da pipeline REAL** (`.gitea/workflows/ci.yml`,
+   `.github/workflows/pr-check.yml`), não de uma cópia aqui: renomear um job ou
+   acrescentar um `needs:` muda a latência sem este arquivo ser tocado — e uma
+   cópia envelheceria em silêncio. A leitura do YAML é a MESMA dos outros guards
+   (`forge-workflows.mjs`), não uma segunda régua.
+2. **A duração tem PROCEDÊNCIA.** `ci/merge-latency.json` declara `ms` + `fonte` +
+   `data`; o benchmark versionado (`docs/benchmarks/guard-timing-latest.json`) é a
+   SEGUNDA fonte, usada para CONFRONTAR o declarado. Divergência além de 25% sai
+   como aviso — e o derivado é marcado como **PISO** quando o job tem passo fora
+   do benchmark (um alarme que sempre toca não é alarme).
+3. **Os dois extremos são reportados.** Com 1 runner (o `act_runner` que o
+   compose da forja sobe) o makespan degenera na SOMA e o paralelismo não
+   economiza nada; com runners de sobra ele converge para o caminho crítico. Um
+   número só seria uma aposta entre os dois.
+
+**O gate (`--check`) julga SÓ o dono do merge.** O espelho PODE declarar jobs sem
+medição — isso é um fato declarado, não uma promessa; o dono do merge, não, senão
+o PR espera por um número que não cobre o que ele roda. O `--check` roda com o
+MESMO COMANDO nas duas forjas (`node scripts/merge-latency.mjs --check`), e é o
+que impede um PR do GitHub de furar a conta da forja editando
+`.gitea/workflows/ci.yml` sem nada falhar.
+
+**Onde roda:** passo do job `guards` da forja + passo do `workflow-refs-guard` do
+GitHub (invariante `merge-latency` do CORE). No pre-commit é
+**lacuna declarada** (`HOOK_NOT_RUN`): o veredito é uma propriedade da pipeline
+INTEIRA, não do commit — um commit de componente não o muda, e não há recorte,
+porque o `--check` lê os dois arquivos fixos de qualquer jeito.
+
+**Como testar:** `bun run bench:merge-latency` (relatório), `bun run
+bench:merge-latency:json` (o `mergeOwner` sai como fato próprio), `bun run
+check:merge-latency` (o veredito do gate). Testes unitários em
+`src/lib/__tests__/merge-latency.test.ts` (33 casos), com repositório SINTÉTICO
+para injetar o defeito que o gate existe para pegar.
+
+**Prova por mutação** (`scripts/test-mutation-merge-latency.sh`, sub-test
+`merge-latency` do master): as TRÊS metades do gate são load-bearing, e cada
+uma tem de ser vista por uma das duas testemunhas independentes — o **gate por
+EXECUÇÃO** (`--check --root <fixture sintética>`, com um job do PR sem duração)
+e a **suíte unitária**. M1 remove a DETECÇÃO da cobertura (`missing.push`) ⇒ o
+gate sai 0 (cego) e a suíte fica vermelha; M2 fixa o EXIT CODE do `--check` em 0
+⇒ o CI passa com o veredito INDETERMINADA; M3 troca o PAPEL do dono do merge ⇒
+o gate deixa de recusar quem mergeia e passa a julgar o espelho. Cada mutação é
+CIRÚRGICA (o injetor recusa alvo ausente/ambíguo, o arquivo mutado tem de seguir
+com sintaxe válida) e é restaurada entre as medições, com o gate mordendo de
+novo no controle final.
+
+**O que NÃO prova:**
+
+- a latência de **wall clock** real do runner. O modelo é construído sobre
+  durações declaradas/derivadas de medições LOCAIS; ele diz a FORMA da conta
+  (quem espera por quem) e o nº de runners declarado no modelo, não o tempo que o
+  runner da forja leva.
+- a cobertura do **espelho**: 19 dos 36 jobs do PR do `pr-check.yml` seguem sem
+  medição (fuzz, benchmark, os mutation de coordenação, os guards que só existem
+  lá). O veredito do GitHub é INDETERMINADO de propósito, e o relatório NOMEIA
+  cada um — o que não é medido não vira zero.
+- o **overhead por job** (checkout + cache + setup): não tem medição própria
+  neste repositório. O `overhead.perJobMs` do modelo é 0 e diz isso; o derivado do
+  benchmark é a soma dos comandos conhecidos, então leia-o como PISO.
+
 ---
 
 ## 11. Fuzz / encoding runtime — `run-all-fuzz`, `run-encoding-guards.sh`

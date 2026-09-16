@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 23 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 24 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -115,6 +115,7 @@ SUBTESTS=(
   "hook-ci-parity|Hooks x CI — a segunda regua no hook (bunx tsc sem o heap), o comando novo sem decisao, o recorte sem razao, a declaracao que envelheceu, o gate do CORE sumido e o hook fantasma devem FALHAR|scripts/test-mutation-hook-ci-parity.sh"
   "workflow-defaults|Defaults — a declaracao defaults:run:shell: nao pode virar passo/gate/ref/comando do job nos guards que leem YAML de workflow (leitura unica compartilhada); cada metade dessa leitura mutada FALHA o guard sendo medido|scripts/test-mutation-workflow-defaults.sh"
   "workflow-run-syntax|Sintaxe dos run: — a metade do AVISO, o stdin do bash e o limite da mascara de expressao devem CEGAR o guard quando mutados (cada mutacao cirurgica)|scripts/test-mutation-workflow-run-syntax.sh"
+  "merge-latency|Latencia de merge — a DETECCAO da cobertura, o EXIT CODE do --check e o PAPEL do dono do merge devem CEGAR o gate (por execucao) e/ou a suite unitaria; cada mutacao cirurgica, com controlo final|scripts/test-mutation-merge-latency.sh"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────

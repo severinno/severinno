@@ -305,6 +305,17 @@ jobs:
       - name: Hook symmetry (README ↔ hooks reais)
         run: node scripts/check-hooks-symmetry.mjs
 
+      # A LATÊNCIA DE MERGE do DONO DO MERGE fecha a conta: todo job que roda
+      # neste PR tem duração (declarada em ci/merge-latency.json ou derivada do
+      # benchmark). A tabela de overhead do README lista o custo de cada gate e
+      # convida a SOMAR, mas o PR não paga a soma — ele paga o caminho crítico e
+      # a fila, e este gate existe para esse número não encolher em SILÊNCIO: um
+      # job novo sem medição sai aqui NOMEADO, em vez de a latência publicada
+      # passar a cobrir menos pipeline do que existe. O espelho pode ter jobs
+      # sem medição (é um fato declarado); o dono do merge, não.
+      - name: Merge latency (o dono do merge cobre o PR?)
+        run: node scripts/merge-latency.mjs --check
+
   # ── Prova do PRÉ-REQUISITO 0 do bring-up (por EXECUÇÃO, não por texto) ─────
   # O `guards` prova a ORDEM no TEXTO do `deploy/gitea-up.sh` (`checkGiteaBringUp`)
   # e o ensure tem testes unitários dos seus estados. Nada disso distingue "o

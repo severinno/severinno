@@ -782,7 +782,7 @@ single-grep). Os testes entram apenas quando arquivos-fonte mudaram
 
 **Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
 rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
-**23 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
+**24 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
 bun remoção, hooks simetria, readme anchors/toc/images, README reverse, docs
 anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo,
 timing-budget, e2e-cache-budget, lint-guard, mutation-count,
@@ -828,7 +828,7 @@ local, mediana de 3 runs warm):
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (23 sub-tests)³  |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
+| master `mutation-guards` (24 sub-tests)³  |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
 | checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
 | Summary                                   |             —              |           0.34s           |
 
@@ -847,7 +847,7 @@ utf8-check em 7.46s). O custo escala com o nº de sub-tests — cada um cria
 fixtures e roda o guard contra a mutação —, então o valor antigo (15.8s)
 era de 5 sub-tests e o timing-budget (~1s) foi adicionado após a medição de 10.
 ³Medição da MUDANÇA (host Linux, 09/2026, mediana de 3 runs warm): o master
-com **23 sub-tests** mede ≈ **17.2s** (17.16–17.20). Antes disso a matriz tinha
+com **24 sub-tests** mede ≈ **17.2s** (17.16–17.20). Antes disso a matriz tinha
 22 e mediu ≈18.6s (18.20–19.02) — a volta da 23ª (a prova de mutação do gate de
 sintaxe, ≈1.5s sozinha, que substituiu a versão de ≈0.2s) não muda a ordem do
 número, e a diferença entre as duas medições é do host/cache, não do recorte. A
@@ -1003,7 +1003,7 @@ runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 | 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |                      — (n/a)                       |         <2s         |
 | `utf8-check` (837 arquivos, `--ci src/`)          |        ≈ **0.92s**         |                     **7.46s**                      |    ~2-5s (est.)     |
 | `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |                     **3.61s**                      |    ~1-2s (est.)     |
-| `mutation-guards` (23 sub-tests node-puro)³       |         ≈ **39s**          |                     **9.1s**²                      |   ~15-25s (est.)    |
+| `mutation-guards` (24 sub-tests node-puro)³       |         ≈ **39s**          |                     **9.1s**²                      |   ~15-25s (est.)    |
 | `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |                    **4m37.6s**                     |   ~35-45s (est.)³   |
 | `unused-deps-guard` (mutation test + guard real)  |        ≈ **0.5s**⁴         |          **26.8s** cold / **20.9s** warm⁴          |   ~10-15s (est.)    |
 | `lint-guard` (prettier --check + eslint zero)     |     ~**4min** (local)⁵     | **7m22s** 1ª run / **6m23s** 2ª run (lint total)⁴  |   ~4-7 min (est.)   |
@@ -1045,6 +1045,30 @@ de cache. Os demais gates somam ≈ **1m32s** no pior caso
 (mutation-guards 39s + coord-update 51s local) contra ≈ **3.2s** dos 16 fast
 guards — por design: cada mutation test roda o guard REAL contra uma mutação
 (não é node-puro) e o coord-update roda vitest real + guard estático por cenário.
+
+**LATÊNCIA DE MERGE — o que o PR espera (não a soma)** — a tabela acima é um
+catálogo de custos e convida a somar, mas o PR não paga a soma: ele paga o
+**caminho crítico** do grafo `needs:` e, com poucos runners, a **fila**.
+`bun run bench:merge-latency` mede as duas contas a partir da pipeline real
+(`.gitea/workflows/ci.yml`, `.github/workflows/pr-check.yml`) + o modelo
+`ci/merge-latency.json` (duração por job com fonte e data, confrontada contra o
+benchmark versionado). Medido em 16/09/2026:
+
+| Forja                                     | Soma dos gates |         Caminho crítico | **Latência de merge** |        O que a concorrência economiza |
+| :---------------------------------------- | -------------: | ----------------------: | --------------------: | ------------------------------------: |
+| Gitea (dona do merge, **1** `act_runner`) |         470.0s | 377.5s (`test → build`) |            **470.0s** | 0s — com 1 runner a pipeline é SERIAL |     | GitHub (espelho, 19 de 36 jobs sem medição) | —   | —   | indeterminada | —   |
+
+Ou seja: o PR da forja espera **7m50s**, e o **teto** do ganho com runners
+de sobra é **92.5s** (470.0 − 377.5) — o `build` (246s) e o `test` (131.5s)
+dominam a cadeia, e todo o resto (lint, guards, typecheck, bring-up-proof) roda
+**em paralelo a eles** quando há runner livre. Com 1 runner nada disso importa: a
+latência É a soma. É essa diferença que a tabela de custos não dizia.
+
+O gate `check:merge-latency` (mesmo comando nas duas forjas) fecha a conta do
+dono do merge: um job do PR **sem duração** sai NOMEADO em vez de a latência
+publicada encolher em silêncio. O espelho pode declarar jobs sem medição (é um
+fato, não uma promessa) e o relatório nomeia cada um — ver `docs/GUARDS.md`
+§10.1 para o que o modelo NÃO prova.
 
 > **Por que o pre-push não repete typecheck/lint-staged?** O pre-commit já os
 > rodou em cada commit da branch — reexecutá-los no push seria redundante. O

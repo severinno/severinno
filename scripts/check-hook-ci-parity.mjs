@@ -200,6 +200,10 @@ export const HOOK_NOT_RUN = [
     why: "varre TODOS os scripts do repositorio (nao o commit): o defeito e intermitente e nao muda por commit de codigo; ~1s no CI, ruido no caminho de cada commit.",
   },
   {
+    ids: ["merge-latency"],
+    why: "mede a pipeline INTEIRA (o grafo de `needs:` + o modelo de duracao), nao o commit: um commit que nao toca a pipeline nem o modelo nao muda o veredito — e nao existe recorte dele, porque o `--check` le os dois arquivos fixos de qualquer jeito. Quem muda o veredito e exatamente o commit de CI/pipeline, e esse o hook ja cobre pelo gate de paridade de gates.",
+  },
+  {
     ids: ["required-checks", "workflow-refs"],
     why: "relacao entre WORKFLOWS e scripts/package.json (referencia pendurada, check exigido inexistente): so um commit de CI a muda — e nesse caso o hook ja roda o check de PARIDADE DE GATES, que e o gate que pega o efeito.",
   },

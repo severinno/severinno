@@ -1,0 +1,62 @@
+{
+  "meta": {
+    "tool": "merge-latency",
+    "version": 1,
+    "date": "2026-09-16",
+    "why": "O custo dos gates em LATÊNCIA DE MERGE. A tabela de overhead do repositório lista o custo de cada gate e convida a somar — mas o PR não paga a soma: ele paga o caminho crítico e a FILA. Este arquivo é o que não dá para derivar da pipeline (grafo e comandos saem de lá); o que ele declara carrega FONTE e DATA, e o benchmark confronta o que ele cobre."
+  },
+  "overhead": {
+    "perJobMs": 0,
+    "source": "NÃO MEDIDO — o overhead por job (checkout + cache + setup) não tem medição própria neste repositório. O valor declarado de um job JÁ o inclui; o DERIVADO do benchmark é só a soma dos comandos conhecidos, então leia o derivado como PISO, não como igual.",
+    "date": "2026-09-16"
+  },
+  "concurrency": {
+    "gitea": {
+      "runners": 1,
+      "source": "o compose da forja sobe UM act_runner (deploy/docker-compose.gitea.yml, serviço 'runner') — com 1 runner a pipeline é SERIAL: a latência de merge é a soma, e o paralelismo do grafo não economiza nada",
+      "date": "2026-09-16"
+    }
+  },
+  "jobs": {
+    "gitea": {
+      "guards": {
+        "ms": 16900,
+        "provenance": "derivado",
+        "source": "docs/benchmarks/guard-timing-latest.json summary.totalMs (guards + doctor --ci) — PISO: os guards mais novos (pipefail-sigpipe, workflow-run-syntax) ainda NÃO estão no benchmark, e o job também roda install/checkout",
+        "date": "2026-09-16"
+      },
+      "build": {
+        "ms": 246000,
+        "provenance": "declarado",
+        "source": "README.md (build Next.js, 4m6s, 1 run, host local) — o mesmo número do bloco do job `e2e-cache`",
+        "date": "2026-09-16"
+      }
+    },
+    "github": {
+      "utf8-check": {
+        "ms": 920,
+        "provenance": "declarado",
+        "source": "README.md (utf8-check, 837 arquivos, ≈0.92s local)",
+        "date": "2026-09-16"
+      },
+      "actionlint": {
+        "ms": 510,
+        "provenance": "declarado",
+        "source": "README.md (actionlint via docker, ≈0.51s local)",
+        "date": "2026-09-16"
+      },
+      "mutation-guards": {
+        "ms": 39000,
+        "provenance": "declarado",
+        "source": "README.md (master `mutation-guards`, 23 sub-tests, ≈39s — mediana de 3 runs)",
+        "date": "2026-09-16"
+      },
+      "unused-deps-guard": {
+        "ms": 500,
+        "provenance": "declarado",
+        "source": "README.md (unused-deps-guard, ≈0.5s local)",
+        "date": "2026-09-16"
+      }
+    }
+  }
+}
