@@ -46,9 +46,9 @@ import { pathToFileURL } from "node:url"
 // ── Padrões de segredos ───────────────────────────────────────────────────
 // Cada entrada: { id, severity, re } — o regex DEVE capturar um grupo (a parte
 // a mascarar). Adicionar um padrão novo = adicionar uma linha aqui.
-// severity: "alta" | "média" | "baixa" — usada pelo guard semanal
-// (check-secret-leaks-baseline.mjs --min-severity) para falhar em QUALQUER
-// achado novo de classificação alta, não só no total.
+// severity: "alta" | "média" | "baixa" — consumida pelo guard semanal
+// (check-secret-leaks-baseline.mjs) no filtro --min-severity, que só RELAXA o
+// gate: o default falha em QUALQUER achado novo, de qualquer severidade.
 
 /** Chaves privadas (header PEM ou corpo base64 do OPENSSH). — severidade ALTA */
 const PRIVATE_KEY_RE = {
@@ -210,9 +210,11 @@ PADRÕES DETECTADOS (com severidade p/ o guard semanal):
   - atribuições de secrets (SESSION_SECRET=, DB_PASSWORD=, API_KEY=, TOKEN=, …)
     — severidade MÉDIA
 
-SEVERIDADE: cada achado carrega severity (alta/média/baixa) no JSON — o guard
-semanal check-secret-leaks-baseline.mjs --min-severity alta falha em QUALQUER
-achado NOVO de severidade alta, não só no total.
+SEVERIDADE: cada achado carrega severity (alta/média/baixa) no JSON. O guard
+semanal (check-secret-leaks-baseline.mjs) roda SEM --min-severity: o default é
+falhar em QUALQUER achado NOVO, qualquer severidade. --min-severity alta existe
+para RELAXAR o gate deliberadamente (tolerar ruído médio), nunca para apertá-lo
+— usá-lo no job semanal ENFRAQUECERIA o gate.
 
 SEGURANÇA: o output mascarada os segredos (8 primeiros chars + "…"). Para
 remediar um achado, ROTACIONE o valor (scripts/rotate-secrets.mjs) — apagar do
