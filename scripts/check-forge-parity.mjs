@@ -109,11 +109,23 @@ export const GATE_ENTRY_PREFIX_RE = /^(check|validate|test-mutation):/
  */
 export const GATE_ENTRY_PROVE_RE = /^[a-z0-9][a-z0-9-]*:prove$/
 
-/** Entries estruturais (as tres invariantes basicas de qualquer projeto). */
-export const STRUCTURAL_ENTRIES = ["lint", "test:unit", "test:run", "test:ci"]
+/**
+ * Entries estruturais (as invariantes basicas de qualquer projeto).
+ *
+ * `typecheck` entra aqui pelo mesmo motivo de `lint`/`test:run`: o comando tem
+ * de viver em UM lugar (o script do package.json) e as duas forjas o INVOCAM —
+ * um `bunx tsc --noEmit` escrito em cada pipeline e uma segunda regua, e foi
+ * assim que o heap deste repositorio divergiu entre elas (o NODE_OPTIONS vivia
+ * so no step do GitHub: o mesmo commit podia estourar a memoria na forja dona
+ * do merge e passar no espelho).
+ */
+export const STRUCTURAL_ENTRIES = ["lint", "typecheck", "test:unit", "test:run", "test:ci"]
 
 /** Modo de verificacao explicito — promove o comando a gate. */
 const CHECK_FLAG_RE = /--(?:check|ci)\b/
+
+/** Corpo de `run:` em bloco (`|`, `>`, `|-` ...) — o comando nao esta na linha. */
+const BLOCK_RUN_RE = /^[|>][-+]?\d*$/
 
 /** Typecheck: `bunx tsc --noEmit` / `tsc --noEmit`. */
 const TSC_RE = /\btsc\s+--noEmit\b/
@@ -163,41 +175,83 @@ export function discoverGates(content) {
   return [...gates].sort()
 }
 
+/**
+ * Os COMANDOS que a pipeline EXECUTA — uma entrada por linha de `run:`.
+ *
+ * E o complemento de `discoverGates`: aquele responde "QUE gates a pipeline
+ * tem?" (rotulos para classificar), este responde "COMO cada um e invocado?"
+ * (o literal, argumentos inclusos). A regua de cada invariante e ancorada neste
+ * segundo dado, porque e ele que decide o veredito: `node scripts/x.mjs` e
+ * `node scripts/x.mjs --so-um-modo` sao o mesmo gate com recortes diferentes.
+ *
+ * O bloco multi-linha (`run: |`/`run: >`) NAO entra: o comando nao esta na
+ * linha, e adivinhar o corpo faria a presenca ser medida por um texto que a
+ * pipeline nao executa como uma linha so.
+ *
+ * @param {string} content  conteudo do arquivo de workflow
+ * @returns {string[]} comandos, na ordem em que aparecem
+ */
+export function runCommands(content) {
+  const commands = []
+  for (const line of executableLines(content.split(/\r?\n/))) {
+    // A indentacao faz parte da linha (executableLines preserva a coluna), entao
+    // a chave pode vir depois de espacos — e o item de lista (`- run: cmd`) e a
+    // forma que ja deixou um gate INVISIVEL para outro parser deste repositorio.
+    const m = line.match(/^\s*(?:-\s*)?run:\s*(.+)$/)
+    if (!m) continue
+    const cmd = m[1].trim()
+    if (cmd === "" || BLOCK_RUN_RE.test(cmd)) continue
+    commands.push(cmd)
+  }
+  return commands
+}
+
 // ── Classificacao ──────────────────────────────────────────────────────────
 
 /**
  * Invariantes que DEVEM rodar nas duas pipelines: agnosticas de forja e capazes
  * de quebrar o software (correcao) ou a seguranca se puladas.
  *
- * `matches` e testado contra o ROTULO do gate descoberto (ex.:
- * "scripts/check-bun-mirror.mjs", "bun run lint", "tsc --noEmit"), por isso as
- * regexes aceitam as duas sintaxes (`check-x.mjs` e `check:x`).
+ * CADA INVARIANTE TEM DUAS REGUAS, e elas respondem perguntas DIFERENTES:
  *
- * @type {{ id: string, matches: RegExp, why: string }[]}
- */
-/**
- * Invariantes que DEVEM rodar nas duas pipelines: agnosticas de forja e capazes
- * de quebrar o software (correcao) ou a seguranca se puladas.
+ *   `matches` — IDENTIDADE do gate. Testado contra o ROTULO que `discoverGates`
+ *     devolve (`scripts/check-x.mjs`, `bun run check:x`, `tsc --noEmit`), por
+ *     isso aceita as duas sintaxes. Responde "este gate esta classificado?"
+ *     (`classifyGate`). E deliberadamente FROUXO: aqui nao se decide veredito
+ *     de merge — so se o gate foi nomeado.
  *
- * `matches` é testado contra o ROTULO do gate descoberto (ex.:
- * "scripts/check-bun-mirror.mjs", "bun run lint", "tsc --noEmit"), por isso as
- * regexes aceitam as duas sintaxes (`check-x.mjs` e `check:x`).
+ *   `command` — O COMANDO CANONICO, com argumentos, ancorado nas duas pontas.
+ *     Testado contra as linhas de `run:` das DUAS pipelines (`missingInvariants`)
+ *     E contra o `run:` do job exigido no manifesto (`forge-doctor.mjs`,
+ *     `coreGateContracts`). E ele que faz "um comando so nas duas forjas" ser
+ *     uma invariante MEDIDA e nao uma promessa: `node scripts/x.mjs` e
+ *     `node scripts/x.mjs --outro-modo` sao o mesmo gate invocado com reguas
+ *     diferentes — e o lado mais fraco liberava o merge.
  *
- * `jobIds` mapeia a invariante ao(s) job(s)对应的 no manifesto de merge
- * (`ci/required-checks.json`), por forja. Quando um job é composto (ex.:
- * o `guards` da Gitea que roda vários scripts), a invariante aponta para esse
+ * UM COMANDO SO, SEM REGUA POR FORJA: quando as duas pipelines divergiam
+ * (`bunx tsc --noEmit` de um lado e `bun run typecheck` do outro; `test:unit`
+ * numa e `test:run` na outra), o mesmo commit tinha dois vereditos. A tabela
+ * `matchesByForge` existiu aqui para DESCREVER essa diferenca como se ela fosse
+ * um contrato; o que ela fazia era legitima-la. Hoje a regua e um literal so —
+ * o `command` — presente nas DUAS pipelines, e o job exigido no manifesto roda
+ * exatamente ele.
+ *
+ * `jobIds` mapeia a invariante ao(s) job(s) correspondentes no manifesto de
+ * merge (`ci/required-checks.json`), por forja. Quando um job e composto (ex.:
+ * o `guards` da Gitea que roda varios scripts), a invariante aponta para esse
  * job e o doctor confere se o COMANDO do gate aparece na linha `run:` dele.
- * Invariantes sem `jobIds` (ex.: as que rodam só no GitHub como mutation tests)
- * são verificadas apenas pelo classifyGate — o contrato de merge não as lista
+ * Invariantes sem `jobIds` (ex.: as que rodam so no GitHub como mutation tests)
+ * sao verificadas apenas pelo classifyGate — o contrato de merge nao as lista
  * como jobs individuais.
  *
- * @type {{ id: string, matches: RegExp, why: string,
+ * @type {{ id: string, matches: RegExp, command: RegExp, why: string,
  *   jobIds?: Record<string, string> }[]}
  */
 export const CORE_INVARIANTS = [
   {
     id: "typecheck",
-    matches: /tsc --noEmit/,
+    matches: /^bun run typecheck$|tsc --noEmit/,
+    command: /^bun run typecheck$/m,
     why: "tipo errado que compila e o modo classico de bug silencioso em producao",
     jobIds: { gitea: "typecheck", github: "typecheck" },
   },
@@ -205,7 +259,8 @@ export const CORE_INVARIANTS = [
     id: "lint",
     // Flag `m`: o mesmo regex e testado contra o ROTULO de um gate (linha unica)
     // E contra o conteudo inteiro da pipeline (multi-linha) em missingInvariants.
-    matches: /^bun run lint$/m,
+    matches: /^bun run lint$/,
+    command: /^bun run lint$/m,
     // UM COMANDO SO, NAS DUAS FORJAS — SEM REGUA POR FORJA.
     //
     // A regua (prettier --check + `eslint . --max-warnings 0`) vive no script
@@ -224,33 +279,38 @@ export const CORE_INVARIANTS = [
   },
   {
     id: "tests",
-    matches: /^bun run test:(unit|run|ci)$/m,
+    matches: /^bun run test:(run|unit|ci)$/,
+    command: /^bun run test:run$/m,
     why: "a suite e a rede de seguranca das outras invariantes",
     jobIds: { gitea: "test", github: "check" },
   },
   {
     id: "ts-nocheck",
     matches: /check[:-]ts[:-]nocheck/,
+    command: /^bun run check:ts-nocheck$/m,
     why: "@ts-nocheck desliga a verificacao de tipos do arquivo — a porta dos fundos do typecheck",
-    jobIds: { gitea: "guards" },
+    jobIds: { gitea: "guards", github: "check" },
   },
   {
     id: "pii-allowlist",
     matches: /check[:-]pii[:-]allowlist/,
+    command: /^bun run check:pii-allowlist$/m,
     why: "vazamento de campo sensivel em payload de usuario (CPF/e-mail/endereco)",
-    jobIds: { github: "pii-allowlist-guard" },
+    jobIds: { gitea: "test", github: "pii-allowlist-guard" },
   },
   {
     id: "pii-gate-self-test",
     matches: /check[:-]pii[:-]gate/,
+    command: /^bun run check:pii-gate$/m,
     why: "sem a auto-prova, o guard de PII pode estar verde por nunca ter disparado",
-    jobIds: { github: "pii-allowlist-guard" },
+    jobIds: { gitea: "test", github: "pii-allowlist-guard" },
   },
   {
     id: "required-checks",
     matches: /check[:-]required[:-]checks/,
+    command: /^node scripts\/check-required-checks\.mjs$/m,
     why: "required check inexistente NAO falha: faz o PR esperar para sempre",
-    jobIds: { gitea: "guards" },
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {
     id: "bring-up-env-gate-proof",
@@ -260,95 +320,124 @@ export const CORE_INVARIANTS = [
     // ORDEM no texto do script — e texto não distingue bloquear de estar
     // quebrado (um script que aborta por qualquer motivo também não sobe nada).
     matches: /runner-image:prove|prove-runner-image-gate/,
+    command: /^node scripts\/prove-runner-image-gate\.mjs$/m,
     why: "sem a prova executada, 'o passo 0 recusa' volta a ser uma afirmação sobre o TEXTO do gitea-up.sh",
     jobIds: { gitea: "bring-up-proof", github: "bring-up-proof" },
   },
   {
     id: "registry-source",
     matches: /check[:-]registry[:-]source/,
+    command: /^node scripts\/check-registry-source\.mjs$/m,
     why: "registry hardcoded reacopla o projeto a um registry proprietario com cota",
-    jobIds: { gitea: "guards" },
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {
     id: "doctor-ci",
     // O GATE de PR (`check-doctor-ci.mjs`), não o doctor em si: o doctor é o
     // motor, e o publicador da issue (`forge-doctor-issue.mjs`) é do cron.
     matches: /check[:-]doctor[:-]ci/,
+    command: /^node scripts\/check-doctor-ci\.mjs$/m,
     why: "o VALOR das repository variables nos espelhos e nas referencias nao versionadas é o que um PR esquece de acompanhar: o espelho velho nao quebra nada visivel (o setup-bun funciona igual, só mais lento, e o pull da imagem só falha quando um job inicia). O doctor no perfil --ci compara esse valor a CADA PR e BLOQUEIA na divergencia, em vez de deixar a pergunta para o cron semanal",
-    jobIds: { github: "doctor-mirrors-guard" },
+    jobIds: { gitea: "guards", github: "doctor-mirrors-guard" },
   },
   {
     id: "runner-base",
     matches: /check[:-]runner[:-]base/,
+    command: /^node scripts\/check-runner-base\.mjs$/m,
     why: "a base do Dockerfile do runner e uma tag FLUTUANTE: um rebuild troca a imagem (e o plugin `compose` que a invariante 7 usa) sem nenhuma linha do repositorio mudar",
-    jobIds: { gitea: "guards" },
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {
     id: "workflow-refs",
     matches: /check[:-]workflow[:-]refs/,
+    command: /^node scripts\/check-workflow-refs\.mjs --pkg-internal$/m,
     why: "referencia pendurada entre workflow e script quebra a pipeline em runtime",
-    jobIds: { github: "workflow-refs-guard" },
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {
     id: "forge-workflow-scope",
     matches: /check[:-]forge[:-]workflow[:-]scope/,
+    command: /^node scripts\/check-forge-workflow-scope\.mjs$/m,
     why: "cravar um diretorio de forja deixa as OUTRAS forjas fora da varredura dos guards",
-    jobIds: { gitea: "guards" },
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {
     id: "bun-audit",
     // Ancorado em `check-...`/`check:`: o test-mutation-bun-audit-baseline.sh é
     // o TESTE do guard (roda só onde o mutation roda), não o guard em si.
     matches: /check[:-]bun[:-]audit/,
+    command: /^node scripts\/check-bun-audit-baseline\.mjs$/m,
     why: "dependencia com vulnerabilidade conhecida entrando pelo merge",
+    jobIds: { gitea: "guards", github: "bun-audit-guard" },
   },
   {
     id: "forge-parity",
     matches: /check[:-]forge[:-]parity/,
+    command: /^node scripts\/check-forge-parity\.mjs$/m,
     why: "o proprio contrato de merge (esta lista) precisa ser verificado onde o merge acontece, senao a forja bloqueia por um contrato que ninguem audita",
-    jobIds: { gitea: "guards" },
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
+  },
+  {
+    id: "hook-ci-parity",
+    // O veredito LOCAL (os hooks) e o do MERGE (esta pipeline) são dois
+    // conjuntos de comandos escritos em dois lugares. Enquanto a duplicação
+    // for invisível, ela diverge em SILÊNCIO — e o sintoma é sempre o mesmo:
+    // "passou aqui e quebrou lá". O caso REAL: `.husky/pre-push` rodava
+    // `bunx tsc --noEmit` SEM o heap de 4GB que o script `typecheck` carrega
+    // (dois lados citando "o typecheck", duas réguas).
+    matches: /check[:-]hook[:-]ci[:-]parity/,
+    command: /^node scripts\/check-hook-ci-parity\.mjs$/m,
+    why: "dois conjuntos de comandos para o mesmo veredito divergem em silencio: 'passou aqui e quebrou la' (ou 'travou aqui e nem era o gate do CI')",
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {
     id: "hooks-symmetry",
     matches: /check[:-]hooks[:-]symmetry/,
+    command: /^node scripts\/check-hooks-symmetry\.mjs$/m,
     why: "hook/guard documentado que nao existe no repositorio e uma protecao FANTASMA: o README promete o que o codigo nao faz",
-    jobIds: { github: "hooks-symmetry-guard" },
+    jobIds: { gitea: "guards", github: "hooks-symmetry-guard" },
   },
   {
     id: "secret-leaks",
     matches: /rotate-secrets/,
+    command: /^node scripts\/rotate-secrets\.mjs --check$/m,
     why: "segredo versionado por engano (.env, chave, token) — vazamento permanente no historico",
-    jobIds: { github: "secrets-guard" },
+    jobIds: { gitea: "guards", github: "secrets-guard" },
   },
   {
     id: "seed-hooks",
     matches: /check[:-]seed[:-]hooks/,
+    command: /^node scripts\/check-seed-hooks\.mjs$/m,
     why: "SEED_SPEC_PATCH/PROD_SEED_ALLOW_DEV sao TEST-ONLY: vazando para o caminho de DEPLOY, o seed de producao roda com spec patchado",
-    jobIds: { github: "seed-hooks-guard" },
+    jobIds: { gitea: "guards", github: "seed-hooks-guard" },
   },
   {
     id: "sentinel-producer",
     matches: /check[:-]sentinel[:-]producer/,
+    command: /^node scripts\/check-sentinel-producer\.mjs$/m,
     why: "sentinel orfao cria guarda CEGA: o grep nunca acende e 'nao achou' vira falso positivo de 'limpo'",
-    jobIds: { github: "sentinel-producer-guard" },
+    jobIds: { gitea: "guards", github: "sentinel-producer-guard" },
   },
   {
     id: "bun-mirror",
     matches: /check[:-]bun[:-]mirror/,
+    command: /^node scripts\/check-bun-mirror\.mjs$/m,
     why: "versao do Bun com multiplos pontos de verdade faz duas pipelines construirem runtimes diferentes",
-    jobIds: { github: "bun-mirror-guard" },
+    jobIds: { gitea: "guards", github: "bun-mirror-guard" },
   },
   {
     id: "no-setup-bun",
     matches: /check[:-]no[:-]setup[:-]bun/,
+    command: /^node scripts\/check-no-setup-bun\.mjs$/m,
     why: "o action externo re-baixa o release do Bun em todo job (~25-35s) — regressao ja corrigida que nao pode voltar",
-    jobIds: { github: "no-setup-bun-guard" },
+    jobIds: { gitea: "guards", github: "no-setup-bun-guard" },
   },
   {
     id: "script-headers",
     matches: /check-script-headers/,
+    command: /^node scripts\/check-script-headers\.mjs$/m,
     why: "script sem Usage/Exit code no cabecalho e operacao por adivinhacao: quem chama nao sabe o que ele devolve nem o que ele faz de efeito — e os gates que decidem o merge nao podem depender disso",
-    jobIds: { gitea: "guards" },
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {
     id: "pipefail-sigpipe",
@@ -359,14 +448,16 @@ export const CORE_INVARIANTS = [
     // construcao (depende do tamanho da saida) e o sintoma aponta para a
     // assercao que ACHOU o texto. O remedio e herestring.
     matches: /check[:-]pipefail[:-]sigpipe/,
+    command: /^node scripts\/check-pipefail-sigpipe\.mjs$/m,
     why: "o defeito e INTERMITENTE e se disfarca de assercao de contagem: sem o gate, a proxima correcao 'resolve' o sintoma e a classe volta — ela ja voltou uma vez, em 11 test-mutation-*.sh ao mesmo tempo",
     jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {
     id: "prove-docs",
     matches: /check[:-]prove[:-]docs/,
+    command: /^node scripts\/check-prove-docs\.mjs$/m,
     why: "a familia prove-*/doctor e o que responde 'a forja pode confiar o merge a este gate?': uma doc que descreve a saida de ANTES mente com aparencia de rigor, e quem opera a forja decide sobre ela — o guard e hermetico (~1s) e roda com o docker ausente de proposito nas provas que exigem docker",
-    jobIds: { gitea: "guards" },
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
 ]
 
@@ -516,21 +607,44 @@ export function classifyGate(gate) {
 }
 
 /**
- * Invariantes do CORE ausentes numa pipeline (mantida por compatibilidade com o
- * contrato anterior do guard/testes).
+ * A forma IMPRESSA do comando canonico de uma invariante. O `source` de um
+ * regex ancorado (`^node scripts\/check-x\.mjs$`) nao se le num diagnostico;
+ * o que quem opera a forja precisa ver e a linha de `run:` que falta.
+ *
+ * @param {{ command: RegExp }} inv
+ * @returns {string}
+ */
+export function canonicalCommandOf(inv) {
+  return inv.command.source
+    .replace(/\^/g, "")
+    .replace(/\$/g, "")
+    .replace(/\\\//g, "/")
+    .replace(/\\\./g, ".")
+}
+
+/**
+ * Invariantes do CORE ausentes numa pipeline.
+ *
+ * PRESENCA = O COMANDO CANONICO, medido nas linhas de `run:` — o MESMO dado que
+ * o doctor usa (`readGateContract`, que testa a regua contra o `run:` do job).
+ * A versao anterior media pelo ROTULO do gate descoberto (`scripts/check-x.mjs`,
+ * sem argumentos) com uma regua FROUXA (`/check[:-]registry[:-]source/`), e por
+ * isso tres divergencias passavam por ela: a invocacao indireta
+ * (`bun run check:registry-source`), a invocacao com argumentos DIFERENTES
+ * (`node scripts/check-workflow-refs.mjs` sem o `--pkg-internal`) e o comando
+ * trocado por outro que ainda casasse a substring. Com o `command` ancorado nas
+ * duas pontas, um gate so esta presente se a linha EXECUTAR exatamente o
+ * comando canonico — e as duas forjas passam a ter um veredito so.
  *
  * @param {string} content
- * @param {{ id: string, matches: RegExp }[]} invariants
+ * @param {{ id: string, command: RegExp }[]} invariants
  * @returns {string[]} ids ausentes
  */
 export function missingInvariants(content, invariants = CORE_INVARIANTS) {
-  // Presenca e definida pelos GATES DESCOBERTOS, nao pelo texto cru: o mesmo
-  // regex e testado contra o rotulo normalizado ("bun run lint") e o rotulo nao
-  // carrega o `- run: ` do YAML. Testar contra o conteudo cru obrigaria a
-  // regex a casar indentacao e prefixo — e foi assim que `lint`/`tests`
-  // apareceram como ausentes nas duas pipelines ao mesmo tempo.
-  const gates = discoverGates(content)
-  return invariants.filter((inv) => !gates.some((g) => inv.matches.test(g))).map((inv) => inv.id)
+  const commands = runCommands(content)
+  return invariants
+    .filter((inv) => !commands.some((cmd) => inv.command.test(cmd)))
+    .map((inv) => inv.id)
 }
 
 /**
@@ -574,11 +688,14 @@ export function findParityViolations(readFile, pipelines = PIPELINES) {
       }
     }
 
-    // 2. Obrigacao: todo invariante do CORE roda aqui.
+    // 2. Obrigacao: todo invariante do CORE roda aqui COM O COMANDO CANONICO.
+    //    A linha esperada vai no diagnostico: sem ela, "nao roda aqui" faz quem
+    //    le procurar um gate que ESTA la (so invocado por outra forma).
     for (const id of missingInvariants(content)) {
       const inv = CORE_INVARIANTS.find((i) => i.id === id)
+      const expected = inv ? canonicalCommandOf(inv) : "?"
       violations.push(
-        `${pipeline.file} (${pipeline.forge}, ${role}): invariante do CORE '${id}' NAO roda aqui — ${inv?.why ?? "invariante do CORE"}`,
+        `${pipeline.file} (${pipeline.forge}, ${role}): invariante do CORE '${id}' NAO roda aqui com o comando canonico — esperado: \`${expected}\` (a regua e uma so nas duas forjas; a invocacao indireta ou com outros argumentos conta como divergencia) — ${inv?.why ?? "invariante do CORE"}`,
       )
     }
   }

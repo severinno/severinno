@@ -173,8 +173,9 @@ Pre-requisitos, NESTA ordem:
    verdade podia estar outra.
 
    O mesmo valor e conferido **a cada PR**, e nao so no cron: o job `guards`
-   da `ci.yml` roda `bun scripts/check-doctor-ci.mjs` (o doctor no perfil
-   `--ci`), que compara os espelhos com `vars.*` e BLOQUEIA o merge quando
+   da `ci.yml` roda `node scripts/check-doctor-ci.mjs` (o doctor no perfil
+   `--ci`) — o **comando canonico**, identico ao do espelho do GitHub —, que
+   compara os espelhos com `vars.*` e BLOQUEIA o merge quando
    divergem. Trocar uma variable sem alinhar os espelhos deixa de esperar o
    semanal para aparecer.
 

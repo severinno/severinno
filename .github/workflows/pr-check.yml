@@ -276,8 +276,23 @@ jobs:
       - name: Forge gate parity
         run: node scripts/check-forge-parity.mjs
 
+      # Paridade hook ↔ CI (nas DUAS direções): cada comando que os hooks
+      # locais executam tem de ser o MESMO comando do CI ou um recorte/local
+      # com DECISÃO ESCRITA em HOOK_DECLARED; e cada invariante do CORE tem de
+      # rodar em algum hook ou estar declarado em HOOK_NOT_RUN.
+      #
+      # Por que é gate e não convenção: o veredito local (o hook) e o do
+      # merge (esta pipeline) são dois conjuntos de comandos escritos em dois
+      # arquivos. Divergindo, o sintoma é "passou aqui e quebrou lá" — ou
+      # pior, "travou aqui e nem era o gate do CI": `.husky/pre-push` rodava
+      # `bunx tsc --noEmit` SEM o heap de 4GB do script `typecheck`, então o
+      # MESMO commit estourava a memória no push (SIGABRT, 134) e passava no
+      # merge. Dois lados citando "o typecheck", duas réguas.
+      - name: Hook x CI parity
+        run: node scripts/check-hook-ci-parity.mjs
+
       - name: Summary
-        run: echo "✅ No dangling references between workflows and scripts/package.json (incl. internal pkg targets); required checks, registry de imagens e escopo de forja consistentes."
+        run: echo "✅ No dangling references between workflows and scripts/package.json (incl. internal pkg targets); required checks, registry de imagens, escopo de forja e paridade hook↔CI consistentes."
 
   # ── Bring-up Gate Proof (o PRÉ-REQUISITO 0, por EXECUÇÃO) ──────────────
   # O mesmo invariante do CORE da forja, provado aqui pelo caminho real: o
@@ -458,7 +473,7 @@ jobs:
         run: echo "✅ No orphan test-mutation-*.sh and no broken workflow ref introduced by this PR diff."
 
   # ── Mutation Guards MASTER (consolidado) ────────────────────────────
-  # Roda os 21 mutation tests node-puro dos guards de CI num JOB SÓ via
+  # Roda os 22 mutation tests node-puro dos guards de CI num JOB SÓ via
   # scripts/test-mutation-guards.sh — matriz de sub-tests que orquestra os
   # scripts granulares (que continuam sendo a fonte única de
   # fixtures/mutações/asserções de cada guard):
@@ -516,7 +531,7 @@ jobs:
   # (--scenario <id> roda um sub-test isolado para diagnóstico local).
   # Node-puro, <9s total, sem docker.
   mutation-guards:
-    name: Mutation guards master (21 node-pure mutation tests)
+    name: Mutation guards master (22 node-pure mutation tests)
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
@@ -525,7 +540,7 @@ jobs:
         run: bash scripts/test-mutation-guards.sh
 
       - name: Summary
-        run: echo "✅ All 21 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard, mutation-count, no-leaked-imports, pipefail-sigpipe)."
+        run: echo "✅ All 22 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard, mutation-count, no-leaked-imports, pipefail-sigpipe, paridade hook↔CI)."
 
   # ── Hooks Symmetry Guard (dedicado) ─────────────────────────────────
   # Fast gate (node puro, <1s): roda o guard REAL de simetria
@@ -1803,17 +1818,22 @@ jobs:
       - name: Generate Prisma client
         run: bunx prisma generate
 
+      # UM COMANDO SÓ, NAS DUAS FORJAS. O comando INTEIRO vive no script
+      # `typecheck` do package.json — inclusive o heap de 4GB, que era passado
+      # INLINE aqui e só aqui. Um `NODE_OPTIONS` no step e outro no script são
+      # DUAS réguas para a mesma invariante: o mesmo commit podia estourar a
+      # memória na forja dona do merge e passar neste espelho (e vice-versa,
+      # quando um dos lados mudasse o valor).
+      #
       # O heap default do Node (~1.4GB) é insuficiente para o tsc neste
       # codebase — o processo crasha com 'JavaScript heap out of memory'
       # (SIGABRT exit 134, não erro de tipo). Reproduzido e validado em
       # 08/2026: com 4096MB o typecheck passa limpo em ~2min.
       - name: Type check
-        run: bunx tsc --noEmit
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
+        run: bun run typecheck
 
       - name: Summary
-        run: echo "✅ TypeScript typecheck (tsc --noEmit, heap 4096MB) passed."
+        run: echo "✅ TypeScript typecheck (bun run typecheck — tsc --noEmit com heap 4096MB, uma régua só) passed."
 
   check:
     runs-on: self-hosted
@@ -1847,9 +1867,18 @@ jobs:
       - name: "Guard: no @ts-nocheck in non-generated files"
         run: bun run check:ts-nocheck
 
-      # ── Unit tests ──────────────────────────────────────────────────
+      # ── A suíte — o MESMO comando da forja dona do merge ────────────
+      #
+      # `bun run test:run` (= `vitest run`, config do app: `src/**/*.test.{ts,tsx}`
+      # INCLUINDO `src/components/**`) e `bun run test:unit` (config unit, que
+      # EXCLUI `src/components/**`) são DUAS réguas para a MESMA invariante: a
+      # forja rodava a mais ampla e este espelho a mais estreita — o PR podia
+      # estar verde aqui e vermelho no merge (e o check exigido do GitHub era o
+      # lado mais FRACO do par). Quem decide o merge roda a suíte completa, então
+      # `test:run` é o comando canônico, e as duas forjas passam a rodá-lo.
+      #
       # Cobertura do contrato de escopo CRLF revalidada a CADA PR: o glob
-      # do test:unit (src/**/*.test.{ts,tsx}) inclui check-blob-crlf.test.ts
+      # do test:run (src/**/*.test.{ts,tsx}) inclui check-blob-crlf.test.ts
       # (12 testes — blob CRLF via hash-object --literally, --fix, e o
       # contrato de escopo .ts-fora), check-crlf.test.ts e
       # validate-all-text-alert.test.ts (a semântica do alerta all-text —
@@ -1860,7 +1889,7 @@ jobs:
       # via bash script. Este job revalida a MESMA semântica em vitest a cada
       # PR (e no pre-push via test:unit do smart-skip quando fonte mudou).
       - name: Unit tests
-        run: bun run test:unit
+        run: bun run test:run
 
   # ── Allowlist de dados de usuário (PII) ───────────────────────────────────
   #

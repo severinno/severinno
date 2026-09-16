@@ -757,6 +757,7 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 | Bun staged diff (`check-bun-mirror.mjs --staged`)                              |     ✅     |       —       |
 | Ícones lucide (`scan-lucide-icons.mjs --check`)                                |     ✅     |      ✅       |
 | Hooks symmetry (`check-hooks-symmetry.mjs`)                                    |     ✅     |      ✅       |
+| Paridade hook ↔ CI (`check-hook-ci-parity.mjs`)                                |     ✅     |       —       |
 | Mutation jobs CI (`check-mutation-jobs.mjs`)                                   |     ✅     |      ✅       |
 | Mutation jobs staged diff (`check-mutation-jobs.mjs --staged`)                 |     ✅     |       —       |
 | Unused-deps staged diff (`check-unused-deps.mjs --staged`)                     |     ✅     |       —       |
@@ -765,7 +766,7 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 | Format + lint (lint-staged: prettier + eslint --fix)                           |     ✅     |       —       |
 | Imports diretos (check:direct-rtl-import + barrel-lint)                        |     ✅     |       —       |
 | Barrel lint (`barrel-lint`)                                                    |     ✅     |       —       |
-| Typecheck (`tsc --noEmit`)                                                     |     ✅     |       —       |
+| Typecheck (`bun run typecheck`)                                                |     ✅     |      ✅       |
 | Snapshots (quando `.snap`/snapshot tests alterados)                            |  ✅ cond.  |       —       |
 | Testes unitários + fuzz (`test:unit`/`fuzz:ci`/`fuzz`)                         |     —      | ✅ smart-skip |
 
@@ -780,12 +781,12 @@ single-grep). Os testes entram apenas quando arquivos-fonte mudaram
 
 **Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
 rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
-**21 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
+**22 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
 bun remoção, hooks simetria, readme anchors/toc/images, README reverse, docs
 anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo,
 timing-budget, e2e-cache-budget, lint-guard, mutation-count, forge-parity,
-no-setup-bun, runner-base, no-leaked-imports, reconciliation, nested-guard e
-pipefail-sigpipe). ⚠️ Não
+no-setup-bun, runner-base, no-leaked-imports, reconciliation, nested-guard,
+paridade hook↔CI e pipefail-sigpipe). ⚠️ Não
 existe um job `readme-toc-mutation-guard` ISOLADO — o cenário de TOC roda
 dentro da matriz aninhada `test-mutation-readme-guards.sh` (anchors + toc +
 images, 1 sub-test do master). Custo medido em 08/2026 (Windows host, worktree
@@ -795,7 +796,7 @@ local, mediana de 3 runs warm):
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (21 sub-tests)   |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
+| master `mutation-guards` (22 sub-tests)   |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
 | checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
 | Summary                                   |             —              |           0.34s           |
 
@@ -959,7 +960,7 @@ runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 | 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |                      — (n/a)                       |         <2s         |
 | `utf8-check` (837 arquivos, `--ci src/`)          |        ≈ **0.92s**         |                     **7.46s**                      |    ~2-5s (est.)     |
 | `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |                     **3.61s**                      |    ~1-2s (est.)     |
-| `mutation-guards` (21 sub-tests node-puro)        |         ≈ **39s**          |                     **9.1s**²                      |   ~15-25s (est.)    |
+| `mutation-guards` (22 sub-tests node-puro)        |         ≈ **39s**          |                     **9.1s**²                      |   ~15-25s (est.)    |
 | `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |                    **4m37.6s**                     |   ~35-45s (est.)³   |
 | `unused-deps-guard` (mutation test + guard real)  |        ≈ **0.5s**⁴         |          **26.8s** cold / **20.9s** warm⁴          |   ~10-15s (est.)    |     | `lint-guard` (prettier --check + eslint zero) | ~**4min** (local)⁵ | **7m22s** 1ª run / **6m23s** 2ª run (lint total)⁴ | ~4-7 min (est.) |
 | `typecheck` (tsc --noEmit, heap 4096MB)           |     **~2min** (local)      | **3m52s** cold / **2m31s** warm (step Type check)⁴ |   ~2-3 min (est.)   |

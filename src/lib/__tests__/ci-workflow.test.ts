@@ -145,12 +145,15 @@ describe("ci.yml — fatos-chave", () => {
     expect(jobRun("lint", "bun run lint")).toContain("bun run lint")
   })
 
-  it("typecheck: tsc --noEmit com heap 4096MB (o crash de OOM documentado)", () => {
+  it("typecheck: o comando CANÔNICO `bun run typecheck` (heap no script, uma régua só)", () => {
     const steps = parsed.jobs?.typecheck?.steps ?? []
     const tc = steps.find((s) => s.name?.startsWith("Type check"))
     expect(tc).toBeDefined()
-    expect(tc?.run).toContain("bunx tsc --noEmit")
-    expect(tc?.env).toMatchObject({ NODE_OPTIONS: "--max-old-space-size=4096" })
+    // O heap de 4096MB vive no script `typecheck` do package.json, junto com o
+    // `tsc --noEmit` — o MESMO comando que o espelho do GitHub executa. O env
+    // declarado aqui seria uma SEGUNDA régua para o mesmo valor.
+    expect(tc?.run).toBe("bun run typecheck")
+    expect(tc?.env, "o heap voltou a ser declarado no step").toBeUndefined()
   })
 
   it("utf8-check e quality-gate usam os reusables locais (não steps inline)", () => {

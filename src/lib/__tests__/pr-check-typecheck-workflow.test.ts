@@ -12,10 +12,11 @@
  *
  *   1. Sintaxe YAML — js-yaml parse do conteúdo REAL do arquivo + snapshot
  *      da estrutura do JOB.
- *   2. Fatos-chave — o job roda `bunx tsc --noEmit` com heap 4096MB
- *      (o crash de OOM documentado), com prisma generate antes (o tsc
- *      requer o client), e o job check NÃO tem mais o step Type check
- *      (o typecheck vive APENAS no job paralelo).
+ *   2. Fatos-chave — o job roda `bun run typecheck`, o comando CANÔNICO (o
+ *      mesmo da forja dona do merge), cujo script carrega o heap de 4096MB (o
+ *      crash de OOM documentado) em UM lugar só; prisma generate vem antes (o
+ *      tsc requer o client); e o job check NÃO tem o step Type check (o
+ *      typecheck vive APENAS no job paralelo).
  *   3. Refs contra o check-workflow-refs — extractScriptRefs /
  *      extractPkgScriptRefs rodam no conteúdo REAL e cada ref é validada.
  *
@@ -67,17 +68,30 @@ describe(`pr-check.yml — job ${JOB_KEY} (typecheck paralelo)`, () => {
     expect(job).toMatchSnapshot()
   })
 
-  it("roda bunx tsc --noEmit com heap 4096MB (o crash de OOM documentado)", () => {
+  it("roda o comando CANÔNICO `bun run typecheck` (a mesma régua da forja)", () => {
     const tc = steps.find((s) => s.name?.startsWith("Type check"))
     expect(tc).toBeDefined()
-    expect(tc?.run).toContain("bunx tsc --noEmit")
-    expect(tc?.env).toMatchObject({ NODE_OPTIONS: "--max-old-space-size=4096" })
+    expect(tc?.run).toBe("bun run typecheck")
+    // O heap NÃO é declarado aqui: ele vive no script `typecheck` do
+    // package.json, junto com o `tsc --noEmit`. Dois lugares para o mesmo valor
+    // eram duas réguas — o mesmo commit podia estourar a memória numa forja e
+    // passar na outra.
+    expect(tc?.env, "o heap voltou a ser declarado no step").toBeUndefined()
   })
 
-  it("gera o prisma client ANTES do tsc (o client é pré-requisito do typecheck)", () => {
+  it("o heap de 4096MB e o `tsc --noEmit` vivem no script do package.json (fonte única)", () => {
+    const pkg = JSON.parse(readFileSync(join(CWD, "package.json"), "utf8")) as {
+      scripts: Record<string, string>
+    }
+    const script = pkg.scripts.typecheck ?? ""
+    expect(script).toContain("tsc --noEmit")
+    expect(script).toContain("--max-old-space-size=4096")
+  })
+
+  it("gera o prisma client ANTES do typecheck (o client é pré-requisito)", () => {
     const runs = steps.map((s) => s.run ?? "")
     const genIdx = runs.findIndex((r) => r.includes("prisma generate"))
-    const tcIdx = runs.findIndex((r) => r.includes("tsc --noEmit"))
+    const tcIdx = runs.findIndex((r) => r.includes("bun run typecheck"))
     expect(genIdx).toBeGreaterThanOrEqual(0)
     expect(tcIdx).toBeGreaterThan(genIdx)
   })

@@ -252,11 +252,8 @@ fi
           "run": "bun run db:generate",
         },
         {
-          "env": {
-            "NODE_OPTIONS": "--max-old-space-size=4096",
-          },
           "name": "Type check",
-          "run": "bunx tsc --noEmit",
+          "run": "bun run typecheck",
         },
       ],
     },

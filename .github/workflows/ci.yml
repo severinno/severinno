@@ -67,14 +67,14 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run db:generate
 
-      # O heap default do Node (~1.4GB) é insuficiente para o tsc neste
-      # codebase — o processo crasha com 'JavaScript heap out of memory'
-      # (SIGABRT exit 134, não erro de tipo). Reproduzido e validado em
-      # 08/2026: com 4096MB o typecheck passa limpo em ~2min.
+      # O comando INTEIRO vive no script `typecheck` do package.json, inclusive
+      # o heap de 4GB (o crash de OOM documentado: o heap default do Node,
+      # ~1.4GB, é insuficiente para o tsc neste codebase — SIGABRT exit 134, não
+      # erro de tipo). Declarar `NODE_OPTIONS` TAMBÉM aqui seria uma segunda
+      # régua para o mesmo valor: é este mesmo comando que a forja dona do merge
+      # e o espelho do GitHub executam.
       - name: Type check
-        run: bunx tsc --noEmit
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
+        run: bun run typecheck
 
     # UTF-8 Encoding Check ----------------------------------------------------
   # Reusable via .github/workflows/utf8-check.yml

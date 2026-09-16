@@ -83,11 +83,28 @@ jobs:
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - run: bun install --frozen-lockfile
 
+      # ── OS GATES DESTE JOB E A FORJA ESPELHO ─────────────────────────────
+      # Cada gate abaixo é invocado pela MESMA linha que o espelho do GitHub
+      # (`.github/workflows/pr-check.yml`): `node scripts/<arquivo>.mjs` com os
+      # MESMOS argumentos. A forma indireta (`bun run check:<entry>`) passava
+      # pelo `matches` frouxo de cada invariante e escondia uma SEGUNDA RÉGUA:
+      # o `--pkg-internal` de um lado e a ausência dele do outro davam o mesmo
+      # "presente". Hoje o invariante do CORE é o LITERAL do comando, e o
+      # `check-forge-parity` mede presença pelas linhas de `run:` (é o mesmo
+      # dado que o doctor usa) — a régua é uma só por construção.
+      #
+      # Três invariantes seguem pela entry do package.json, e não pelo caminho
+      # do script: `lint`, `typecheck` e `test:run` (o comando é composto ou
+      # carrega opções de runtime que NÃO existem na linha — o heap do tsc), e
+      # `check:pii-allowlist`/`check:pii-gate` (o comando é um `vitest` com a
+      # lista de arquivos). Ali a entry É a fonte única: o comando não existe
+      # fora dela.
+
       # O manifesto dos required checks precisa apontar para jobs REAIS e
       # incondicionais — um required check inexistente não falha, ele faz o PR
       # ESPERAR para sempre (diagnóstico opaco, PR travado sem causa visível).
       - name: Required checks manifest
-        run: bun run check:required-checks
+        run: node scripts/check-required-checks.mjs
 
       # Cabeçalho de script: `Usage:` + `Exit code` no BLOCO DE DOCUMENTAÇÃO
       # LÍDER do arquivo (as linhas de comentário do topo, até a primeira linha
@@ -99,7 +116,9 @@ jobs:
       # cabeçalho válido passando por verde em toda parte. Um gate que decide o
       # merge precisa FALHAR, não aconselhar.
       #
-      # node direto: guard node-puro, sem node_modules e sem bun no PATH.
+      # node direto: guard node-puro, sem node_modules — e é a forma canônica
+      # de todo gate de um script só (o espelho do GitHub invoca o mesmo
+      # literal, sem depender de `bun` no PATH).
       - name: Script header docs
         run: node scripts/check-script-headers.mjs
 
@@ -128,7 +147,7 @@ jobs:
       # INDETERMINADO que elas DOCUMENTAM ter aí — a invariante verificada é
       # "ausência de prova nunca vira sucesso", e ela roda hermeticamente (~1s).
       - name: Probe docs contract
-        run: bun run check:prove-docs
+        run: node scripts/check-prove-docs.mjs
 
       # Fonte única do registry OCI (imagens da app + mirrors de toolchain).
       # Impede o reacoplamento ao GHCR: um `ghcr.io/...` solto volta a exigir
@@ -146,7 +165,7 @@ jobs:
           IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
           IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
           BUN_VERSION: ${{ vars.BUN_VERSION }}
-        run: bun run check:registry-source
+        run: node scripts/check-registry-source.mjs
 
       # ── O VALOR das variables, conferido a CADA PR (o doctor, perfil --ci) ──
       # O job semanal `actrc-sync` faz esta pergunta, mas ele é SEMANAL: um PR que
@@ -190,7 +209,7 @@ jobs:
         env:
           IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
           IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
-        run: bun scripts/check-doctor-ci.mjs
+        run: node scripts/check-doctor-ci.mjs
 
       # A BASE da imagem que roda ESTES jobs: pinada por digest e com o contrato
       # da imagem provado por EXECUÇÃO (o bloco `RUN` real do Dockerfile, contra
@@ -204,11 +223,25 @@ jobs:
       # O probe da tag é o único passo que depende de rede: sem ele o passo
       # continua verde DECLARANDO que não conferiu o pin contra a tag.
       - name: Runner base pin (digest + contrato)
-        run: bun run check:runner-base
+        run: node scripts/check-runner-base.mjs
 
       # Nenhuma referência pendurada entre workflow → script/package.json.
       - name: Workflow references
-        run: bun run check:workflow-refs:internal
+        run: node scripts/check-workflow-refs.mjs --pkg-internal
+
+      # PARIDADE hook ↔ CI: o veredito LOCAL e o do MERGE são dois conjuntos de
+      # comandos escritos em dois lugares — e enquanto a duplicação for
+      # invisível, ela diverge em silêncio ("passou aqui e quebrou lá"). O caso
+      # REAL: `.husky/pre-push` rodava `bunx tsc --noEmit` SEM o heap de 4GB que
+      # o script `typecheck` carrega — o mesmo commit estourava a memória no
+      # push (SIGABRT, 134) e passava no merge, por uma régua que só o hook
+      # tinha. Aqui cada comando dos hooks é resolvido (a entrada do
+      # package.json) e comparado com o comando CANÔNICO do CORE; o que não é o
+      # mesmo comando exige DECISÃO ESCRITA, e o que o hook não roda exige
+      # entrada em HOOK_NOT_RUN — um gate do contrato de merge não entra em
+      # silêncio em nenhum dos dois lados.
+      - name: Hook x CI parity
+        run: node scripts/check-hook-ci-parity.mjs
 
       # @ts-nocheck desliga a verificação de tipos do arquivo — é a porta dos
       # fundos do typecheck. Sem este gate na forja, um arquivo poderia entrar
@@ -219,12 +252,12 @@ jobs:
       # Escopo dos guards: nenhum script pode cravar um diretório de forja —
       # é o que garante que ESTA pipeline não volte a ficar fora da cobertura.
       - name: Forge workflow scope
-        run: bun run check:forge-workflow-scope
+        run: node scripts/check-forge-workflow-scope.mjs
 
       # Paridade de gates entre esta pipeline (dona do merge) e o espelho do
       # GitHub: um gate do CORE que roda em só uma delas é buraco silencioso.
       - name: Forge gate parity
-        run: bun run check:forge-parity
+        run: node scripts/check-forge-parity.mjs
 
       # ── Segurança: gates que existiam APENAS no espelho do GitHub ────────
       # Descobertos pela classificação obrigatória do check:forge-parity. Estar
@@ -233,32 +266,32 @@ jobs:
       # de seed não têm nada de GitHub — só moravam lá. A forja é dona do merge,
       # então ela é quem precisa bloquear neles.
       - name: Dependency audit baseline (vulnerabilidades novas)
-        run: bun run check:bun-audit-baseline
+        run: node scripts/check-bun-audit-baseline.mjs
 
       - name: Secrets baseline (nenhum segredo versionado)
-        run: bun scripts/rotate-secrets.mjs --check
+        run: node scripts/rotate-secrets.mjs --check
 
       # SEED_SPEC_PATCH/PROD_SEED_ALLOW_DEV são TEST-ONLY: vazando para um
       # caminho de deploy, o seed de produção roda com spec patchado. A forja
       # TEM um deploy — este é o gate que mais faz sentido estar aqui.
       - name: Seed test hooks (fora do caminho de deploy)
-        run: bun run check:seed-hooks
+        run: node scripts/check-seed-hooks.mjs
 
       # Sentinel órfão = guarda CEGA (o grep nunca acende e 'não achou' vira
       # falso positivo de 'limpo').
       - name: Sentinel producer
-        run: bun run check:sentinel-producer
+        run: node scripts/check-sentinel-producer.mjs
 
       # ── Fonte única / consistência do repositório ─────────────────────────
       - name: Bun single source (mirror + call sites)
-        run: bun run check:bun-mirror
+        run: node scripts/check-bun-mirror.mjs
 
       - name: No oven-sh/setup-bun
-        run: bun run check:no-setup-bun
+        run: node scripts/check-no-setup-bun.mjs
 
       # README prometendo um hook que não existe = proteção fantasma.
       - name: Hook symmetry (README ↔ hooks reais)
-        run: bun scripts/check-hooks-symmetry.mjs
+        run: node scripts/check-hooks-symmetry.mjs
 
   # ── Prova do PRÉ-REQUISITO 0 do bring-up (por EXECUÇÃO, não por texto) ─────
   # O `guards` prova a ORDEM no TEXTO do `deploy/gitea-up.sh` (`checkGiteaBringUp`)
@@ -311,10 +344,13 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run db:generate
 
+      # O comando INTEIRO vive no script `typecheck` do package.json — inclusive
+      # o heap de 4GB. Passá-lo TAMBÉM como `env:` aqui criaria uma segunda
+      # régua: dois lugares para o mesmo valor, e o commit podia divergir entre
+      # as forjas sem nenhuma linha de workflow mudar. O job `typecheck` do
+      # espelho do GitHub executa este MESMO `bun run typecheck`.
       - name: Type check
-        run: bunx tsc --noEmit
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
+        run: bun run typecheck
 
   # ── Tests ─────────────────────────────────────────────────────────────────
   test:

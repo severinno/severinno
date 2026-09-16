@@ -519,9 +519,13 @@ rodam o **vitest REAL** e por isso vivem em jobs próprios do
   cobrado da Gitea ("a forja gitea NÃO exige o job 'lint-guard'") e o fato
   acusa um defeito que não existe — **falso positivo num gate de merge** é o
   pior desfecho para um diagnóstico, porque ensina o operador a ignorá-lo;
-  **(B) a RÉGUA** — `expectedCommand: inv.matches`, o **mesmo comando** para
-  toda forja que declara aquele job. Enfraquecê-la (aceitar qualquer `run:`)
-  reabre a assimetria que o repositório já pagou uma vez: o mesmo commit
+  **(B) a RÉGUA** — `expectedCommand: inv.command`, o **COMANDO CANÔNICO** (com
+  os argumentos), o **mesmo** para toda forja que declara aquele job. É o
+  `command` da invariante, não o `matches`: este é a **identidade** do gate
+  (deliberadamente frouxo, responde "o gate está classificado?"), e trocá-lo
+  pela régua do job deixaria passar a invocação com **outros argumentos** — a
+  mesma assimetria, por outro caminho. Enfraquecer a régua (aceitar qualquer
+  `run:`) reabre a assimetria que o repositório já pagou uma vez: o mesmo commit
   aprovado no merge da Gitea e rejeitado no GitHub, liberado pelo lado **laxo**;
   **(C) o CONTRATO por INVARIANTE×JOB** — a chave é `${inv.id}|${jid}`, não o
   job: **seis** invariantes (ts-nocheck, required-checks, registry-source,
@@ -890,6 +894,43 @@ entradas estruturais (`lint`, `test:*`); `tsc --noEmit`; e
 **Prosa não conta:** o guard remove comentários antes de casar — mencionar o
 gate num comentário não é o gate rodando.
 
+**Cada invariante do CORE tem DUAS réguas, e elas respondem perguntas
+diferentes** (é o que o `CORE_INVARIANTS` declara por invariante):
+
+| Campo     | Contra o quê é testado                            | Responde                                            |
+| :-------- | :------------------------------------------------ | :-------------------------------------------------- |
+| `matches` | o **rótulo** do gate descoberto (`discoverGates`) | "este gate está **classificado**?" (`classifyGate`) |
+| `command` | as linhas de **`run:`** das duas pipelines        | "a invariante roda **com o comando canônico**?"     |
+
+O `matches` é **frouxo de propósito**: ali só se decide se o gate foi
+**nomeado** (CORE, GITHUB_ONLY ou nada), e uma regex que exigisse o literal
+inteiro acusaria "gate não classificado" para a mesma coisa invocada por outro
+caminho. O `command` é **ancorado nas duas pontas** (`^…$`) e é a régua que
+decide: ele é medido nas **duas** pipelines **e** contra o `run:` do job exigido
+no manifesto (o `forge-doctor`, via `coreGateContracts`). Sem essa separação,
+uma régua só teria de servir aos dois papéis — e servia mal aos dois.
+
+**Um comando só, nas duas forjas.** Duas divergências reais foram fechadas por
+essa régua:
+
+- **`typecheck`** — a forja rodava `bun run typecheck` e o espelho rodava
+  `bunx tsc --noEmit` com o heap de 4GB declarado **inline no step** (`env:
+NODE_OPTIONS`). O comando (e o heap) passaram para o script `typecheck` do
+  `package.json`, e **três** workflows que repetiam a forma inline
+  (`pr-check.yml`, `.github/workflows/ci.yml`, `release-deploy.yml`) passaram a
+  invocar o script — uma fonte só, uma régua só;
+- **`tests`** — a forja rodava `bun run test:run` (`vitest run`, que
+  **inclui** `src/components/**`) e o espelho rodava `bun run test:unit` (config
+  unit, que **exclui** os componentes). O comando canônico é o **mais amplo**, o
+  da forja dona do merge: o espelho não pode ser o lado **mais fraco** do par.
+
+O diagnóstico da invariante ausente **imprime o comando esperado**, porque "não
+roda aqui" faz quem lê procurar um gate que está lá — só invocado por outra
+forma. A invocação **indireta** (`bun run check:x`) e a **com argumentos
+diferentes** (`node scripts/check-workflow-refs.mjs` sem o `--pkg-internal`) são
+divergências: o guard não pode comparar a entrada do `package.json` com a linha
+sem interpretá-la, e aceitar as duas formas é reabrir a segunda régua.
+
 **Inventário:** `node scripts/check-forge-parity.mjs --gates` lista o que o
 guard enxerga, com a classificação de cada gate — para a decisão ser revisável,
 não um ato de fé.
@@ -1189,6 +1230,63 @@ que o guard existe; linha stale = doc promete proteção que não existe.
 
 **Onde roda:** pre-commit, pre-push, CI.
 
+**`check-hook-ci-parity` (`scripts/check-hook-ci-parity.mjs`) — o veredito LOCAL e o do MERGE não
+podem divergir.** A tabela do README prova que o guard está **documentado**; este
+prova que ele roda o **MESMO COMANDO** do CI. Para cada comando que
+`.husky/pre-commit` e `.husky/pre-push` executam, o guard **resolve a entrada do
+package.json** (`bun run X` → o script real) e compara com o comando **canônico**
+do invariante do CORE — a MESMA fonte que o `forge-doctor` usa (`inv.command`).
+Três desfechos:
+
+- **mesmo-comando** — não precisa declaração: não existem dois comandos para
+  divergir;
+- **recorte** — o MESMO instrumento com outro escopo (`--staged`), que exige
+  **decisão escrita** em `HOOK_DECLARED`;
+- **local** — o CI não roda, ou roda por outro caminho (um reusable), que também
+  exige decisão.
+
+Na direção oposta, todo invariante do CORE que o hook **não** roda precisa estar
+em `HOOK_NOT_RUN` com a razão: um gate novo do contrato de merge não pode entrar
+sem que alguém decida se o hook o executa. Reconhecer o recorte tem duas metades
+e o guard cobra as duas: o **instrumento** (`subjectOf` — outro script/binário é
+**outro gate**, não um recorte) e a **razão** (um `why` de menos de 40 caracteres
+não é decisão).
+
+**Por que existe (o caso real):** `.husky/pre-push` rodava `bunx tsc --noEmit` —
+**sem** o heap de 4GB que o script `typecheck` carrega. Os dois lados citavam "o
+typecheck" e tinham **réguas diferentes**: o mesmo commit estourava a memória no
+push (SIGABRT, exit **134**) e passava no merge. O hook existe para **antecipar**
+o veredito do CI; com duas réguas ele antecipa **outro** veredito, e o sintoma
+("passou aqui e quebrou lá") aponta para o commit, não para a divergência.
+
+**O que NÃO promete:** um recorte declarado continua sendo um recorte — o hook
+mede **menos** que o CI (`--staged` vê o índice, não a árvore inteira). A
+declaração não iguala os vereditos; torna a **diferença visível e revisável**, que
+é o que uma decisão de escopo precisa ser.
+
+**Prova por mutação:** `bash scripts/test-mutation-hook-ci-parity.sh` — sub-test
+`hook-ci-parity` do master `mutation-guards` (o 22º). Seis mutações, cada uma
+exigindo a asserção da **própria regra** e medindo as irmãs (as linhas do
+relatório não podem encolher: um guard que aborta cedo também "falha", só que
+por não ter medido):
+
+| Mutação | O que volta                                                                | Detecção                                                                             |
+| ------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| A       | `bun run typecheck` → `bunx tsc --noEmit` nos dois hooks (a segunda régua) | **dupla**: o comando não é o do CI **E** o invariante `typecheck` fica sem cobertura |
+| B       | comando novo no hook sem entrada em `HOOK_DECLARED`                        | 1 violação, nomeando o comando                                                       |
+| C       | `why` de um recorte esvaziado                                              | 1 violação "SEM razão escrita"; o recorte segue reconhecido como o MESMO instrumento |
+| D       | `match` de uma entrada que não casa com comando nenhum                     | 2 violações: a declaração **stale** e o comando que perdeu a decisão                 |
+| E       | id removido de `HOOK_NOT_RUN`                                              | 1 violação: gate do CORE que não roda em lugar nenhum                                |
+| F       | `HOOKS` aponta para um hook inexistente                                    | 1 violação (fail-closed: não se varre o que não se leu)                              |
+
+A árvore é restaurada por backup + `trap` (nunca `git checkout`) e conferida por
+`cksum` contra o hash de origem — um mutation test que deixa o worktree sujo é
+pior que nenhum.
+
+**Onde roda:** pre-commit (~0.05s, node puro, na fase paralela) e as **duas**
+pipelines — job `guards` da forja (dona do merge) e `workflow-refs-guard` do
+espelho.
+
 ---
 
 ## 9. Sentinel / producer — `check-sentinel-producer`, `validate-all-text-alert`
@@ -1349,8 +1447,8 @@ mutação).
 
 **A trava que ele carrega (defeito real, cometido e corrigido):** o rótulo que
 o descobridor devolve para uma invocação direta é só o CAMINHO —
-`bun scripts/rotate-secrets.mjs --check` vira o rótulo `scripts/rotate-secrets.mjs`,
-com a flag descartada. Executar o rótulo como comando rodaria o script na
+`node scripts/rotate-secrets.mjs --check` vira o rótulo `scripts/rotate-secrets.mjs`,
+com o lançador e a flag descartados. Executar o rótulo como comando rodaria o script na
 modalidade de EFEITO (no caso do `rotate-secrets`, preparando uma rotação de
 segredos como efeito colateral de um relatório). Por isso o doctor executa a
 LINHA `run:` (que preserva as flags) e ainda exige um modo de verificação
@@ -1427,7 +1525,7 @@ semana, e a violação verdadeira se perde no meio):
 
 E o comando vem do JOB, não do RÓTULO do passo: o job `check` do GitHub tem o
 passo "Guard: no @ts-nocheck in non-generated files" ANTES do que roda a suíte, e
-casar pelo rótulo acusava de "gate trocado" um job que executa `bun run test:unit`
+casar pelo rótulo acusava de "gate trocado" um job que executa `bun run test:run`
 — a busca pela régua vem primeiro e o rótulo só serve para NOMEAR a linha na
 violação. A suíte (`forge-doctor.test.ts`) mede isso contra uma fixture FIEL às
 duas pipelines — duas pipelines, uma por forja, cada job com o comando que roda
@@ -1947,7 +2045,8 @@ seção que saiu aparece NOMEADA em `unproven` (com uma linha própria dizendo q
 o recorte foi do PERFIL, e não de sete flags esquecidas no YAML).
 
 O **gate** que o liga é `scripts/check-doctor-ci.mjs`
-(`bun scripts/check-doctor-ci.mjs`), invariante **CORE** do `check:forge-parity`:
+(`node scripts/check-doctor-ci.mjs` — o **comando canônico**, o MESMO literal nas
+duas forjas), invariante **CORE** do `check:forge-parity`:
 roda no job `guards` de `.gitea/workflows/ci.yml` (onde a resposta decide o merge)
 e num job próprio do `.github/workflows/pr-check.yml` (a MESMA pergunta é
 agnóstica de forja). Ele lê os valores do AMBIENTE (o workflow exporta `vars.*`
@@ -2008,7 +2107,7 @@ errada — o pior verde possível.
 
 **A bateria é DERIVADA, como no doctor:** sai do job `guards` da pipeline dona do
 merge (`forgeGates`), com o COMANDO vindo da linha `run:` (que preserva flags —
-`bun scripts/rotate-secrets.mjs --check` roda COM o `--check`; executar o rótulo
+`node scripts/rotate-secrets.mjs --check` roda COM o `--check`; executar o rótulo
 rodaria a modalidade de EFEITO). Não existe lista paralela: um gate novo na
 pipeline entra no ensaio sozinho, e um gate cujo `run:` sumiu faz o ensaio
 **RECUSAR** (`unavailable`) em vez de rodar uma bateria menor do que ele diz.

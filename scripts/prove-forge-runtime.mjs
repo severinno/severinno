@@ -6,7 +6,7 @@
 //   node scripts/prove-forge-runtime.mjs                  # build + asserções + o job guards
 //   node scripts/prove-forge-runtime.mjs --no-build        # reusa a imagem local (não constrói)
 //   node scripts/prove-forge-runtime.mjs --install         # roda `bun install --frozen-lockfile` antes
-//   node scripts/prove-forge-runtime.mjs --only check:registry-source
+//   node scripts/prove-forge-runtime.mjs --only check-registry-source
 //   node scripts/prove-forge-runtime.mjs --gitea-env deploy/.env.gitea
 //   node scripts/prove-forge-runtime.mjs --bun-version 1.3.14 --timeout 300
 //   node scripts/prove-forge-runtime.mjs --json
@@ -684,7 +684,9 @@ Opções:
                        (é o ensaio fiel do job: o node_modules passa a ser o da imagem. ATENCAO:
                        ele é escrito no workspace MONTADO pelo usuário do container (root),
                        então use-o num clone de ensaio, não no checkout de trabalho)
-  --only <trecho>      roda só os gates cujo rótulo contém o trecho (depuração)
+  --only <trecho>      roda só os gates cujo rótulo (a identidade do gate — o
+                       caminho do script, ex.: check-registry-source) contém o
+                       trecho (depuração)
   --gitea-env <path>   env de onde saem registry/namespace/BUN_VERSION
                        (default: ${DEFAULT_ENV_FILE})
   --bun-version <v>    sobrescreve a versão declarada no env (o que \`vars.BUN_VERSION\` daria)

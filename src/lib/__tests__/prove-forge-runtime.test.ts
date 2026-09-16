@@ -102,7 +102,7 @@ jobs:
     name: Repo Guards
     runs-on: ubuntu-latest
     steps:
-      - run: bun run check:registry-source
+      - run: node scripts/check-registry-source.mjs
 `
 
 // ── o dublê do `run` (spawnSync) ────────────────────────────────────────────
@@ -398,8 +398,11 @@ describe("forgeGatesForRuntime", () => {
     expect(derived.gates.length).toBeGreaterThan(10)
     expect(derived.gates.every((g) => g.command)).toBe(true)
     expect(derived.detail).toContain("job 'guards'")
-    // Um gate conhecido está lá — e com o comando da LINHA, não o rótulo.
-    expect(derived.gates.some((g) => g.command === "bun run check:registry-source")).toBe(true)
+    // Um gate conhecido está lá — e com o comando CANÔNICO da LINHA, não o
+    // rótulo (que é a identidade do gate, sem lançador nem argumentos).
+    expect(derived.gates.some((g) => g.command === "node scripts/check-registry-source.mjs")).toBe(
+      true,
+    )
   })
 
   it("o ensaio NÃO tem uma segunda lista: o fonte não cita gate algum", () => {
@@ -410,12 +413,12 @@ describe("forgeGatesForRuntime", () => {
   })
 
   it("renomear um gate na pipeline muda a bateria ensaiada (mutação)", () => {
-    const mutated = MINI_PIPELINE.replace("check:registry-source", "check:inventado")
+    const mutated = MINI_PIPELINE.replace("check-registry-source.mjs", "check-inventado.mjs")
     const { dir, cleanup } = sandbox({ pipeline: mutated })
     try {
       const derived = forgeGatesForRuntime(dir)
       expect(derived.ok).toBe(true)
-      expect(derived.gates.map((g) => g.command)).toEqual(["bun run check:inventado"])
+      expect(derived.gates.map((g) => g.command)).toEqual(["node scripts/check-inventado.mjs"])
     } finally {
       cleanup()
     }
@@ -922,12 +925,14 @@ describe("rehearse", () => {
     const { dir, cleanup } = sandbox()
     try {
       const { run, calls } = forgeRun()
-      const res = await rehearse({ cwd: dir, run, only: "check:runner-base" })
+      // `--only` casa o RÓTULO (a identidade do gate = o caminho do script).
+      const res = await rehearse({ cwd: dir, run, only: "check-runner-base" })
       expect(res.verdict).toBe("proven")
-      expect(res.gates.map((g) => g.command)).toEqual(["bun run check:runner-base"])
+      expect(res.gates.map((g) => g.command)).toEqual(["node scripts/check-runner-base.mjs"])
       expect(res.job?.parsed.gates.length).toBe(1)
-      // e o container recebeu só esse gate
-      expect(scriptLabels(scriptOf(calls[2].args))).toEqual(["bun run check:runner-base"])
+      // e o container recebeu só esse gate (a marca do script é o RÓTULO — a
+      // identidade do gate; a linha executada é o `command`).
+      expect(scriptLabels(scriptOf(calls[2].args))).toEqual(["scripts/check-runner-base.mjs"])
     } finally {
       cleanup()
     }

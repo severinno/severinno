@@ -85,6 +85,14 @@ PID_FORGE=$!
 bun run check:forge-workflow-scope &
 PID_SCOPE=$!
 
+# Paridade hook ↔ CI: cada comando DESTE arquivo tem de ser o MESMO comando do
+# CI (ou um recorte com decisao escrita). O caso real: o pre-push rodava
+# `bunx tsc --noEmit` SEM o heap de 4GB do script `typecheck` — o mesmo commit
+# estourava a memoria no push e passava no merge. Node puro, ~0.05s: falha aqui
+# evitando um commit cujo veredito local nao e o do CI.
+node scripts/check-hook-ci-parity.mjs &
+PID_HOOKPARITY=$!
+
 # Prettier check STAGED — feedback de formatação ANTES do lint-staged
 (
   STAGED_FORMAT=$(git diff --cached --name-only --diff-filter=ACMR | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
@@ -94,7 +102,7 @@ PID_SCOPE=$!
 ) &
 PID_PRETTIER=$!
 
-wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE
+wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY
 
 # ── Phase C: Sequential checks (state-dependent) ─────────────────────────
 # These checks may modify files (lint-staged) or depend on the full project

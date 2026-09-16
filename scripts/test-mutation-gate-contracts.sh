@@ -26,12 +26,16 @@
 #      merge ensina o operador a ignorar o veredito, que é o pior desfecho
 #      possível para um diagnóstico.
 #
-#   B) a RÉGUA. O comando esperado de cada contrato é o `matches` da
-#      INVARIANTE (`expectedCommand: inv.matches`), o MESMO para toda forja que
-#      declara aquele job. Enfraquecer essa régua (aceitar qualquer comando) é
-#      o que reabre a assimetria que este repositório já pagou uma vez: o mesmo
-#      commit aprovado no merge da Gitea e rejeitado no GitHub, liberado pelo
-#      lado LAXO — a régua do job deixa de ser medida e o gate vira decorativo.
+#   B) a RÉGUA. O comando esperado de cada contrato é o `command` da
+#      INVARIANTE (`expectedCommand: inv.command`) — o COMANDO CANÔNICO, com os
+#      argumentos, o MESMO para toda forja que declara aquele job. Enfraquecer
+#      essa régua (aceitar qualquer comando) é o que reabre a assimetria que
+#      este repositório já pagou uma vez: o mesmo commit aprovado no merge da
+#      Gitea e rejeitado no GitHub, liberado pelo lado LAXO — a régua do job
+#      deixa de ser medida e o gate vira decorativo. Trocar o `command` pelo
+#      `matches` (a IDENTIDADE do gate, frouxa de propósito) reabre a mesma
+#      assimetria por outro caminho: qualquer invocação do script passa,
+#      inclusive sem o argumento que o canônico carrega.
 #
 #   C) o CONTRATO POR INVARIANTE×JOB. A chave do contrato é `${inv.id}|${jid}`,
 #      não o job: SEIS invariantes (ts-nocheck, required-checks,
@@ -57,7 +61,7 @@
 #       OUTRA regra deste mesmo fato e o veredito seguem medindo.
 #
 # ⚠️ Source-coupled (como os demais test-mutation-*.sh): o sed ancora em linhas
-# literais (`const declaring = declared.filter`, `expectedCommand: inv.matches`
+# literais (`const declaring = declared.filter`, `expectedCommand: inv.command`
 # e `const key = \`${inv.id}|${jid}\``) e as asserções nos TÍTULOS dos testes de
 # `src/lib/__tests__/forge-doctor.test.ts`. Reformular qualquer uma delas ou
 # renomear um teste exige atualizar ESTE script junto — e ele FALHA (exit 1) em
@@ -93,11 +97,11 @@ C1_LEFTOVER="(df.jobIds ?? []).includes(c.jobId)"
 C1_LEFTOVER_EXPECTED="1"
 
 # ── Caso B — a RÉGUA da invariante ───────────────────────────────────────
-# `expectedCommand: inv.matches` vira `/./`: QUALQUER `run:` do job satisfaz o
+# `expectedCommand: inv.command` vira `/./`: QUALQUER `run:` do job satisfaz o
 # contrato, então a régua para de ser medida — o furo que deixava o merge ser
 # liberado pelo lado mais fraco.
-C2_ANCHOR_DOC="expectedCommand: inv.matches,"
-C2_SED='/expectedCommand: inv\.matches,/ s/.*/        expectedCommand: \/.\/, \/\/ MUTATION-GATE-RULER/'
+C2_ANCHOR_DOC="expectedCommand: inv.command,"
+C2_SED='/expectedCommand: inv\.command,/ s/.*/        expectedCommand: \/.\/, \/\/ MUTATION-GATE-RULER/'
 C2_MARKER="// MUTATION-GATE-RULER"
 C2_LEFTOVER=""
 C2_LEFTOVER_EXPECTED="0"
@@ -399,7 +403,7 @@ echo ""
 echo "  ═════════════════════════════════════════════════════════════════"
 echo "   🧪 SEVERINNO — MUTATION TEST (as três regras do contrato de gates CORE)"
 echo "   A. o recorte da forja DECLARANTE (job exigido por uma forja só)"
-echo "   B. a RÉGUA da invariante (expectedCommand = inv.matches)"
+echo "   B. a RÉGUA da invariante (expectedCommand = inv.command)"
 echo "   C. o CONTRATO por invariante×job (a chave \${inv.id}|\${jid})"
 echo "   (scripts/forge-doctor.mjs IN-PLACE, backup + trap de restauração)"
 echo "  ═════════════════════════════════════════════════════════════════"

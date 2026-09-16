@@ -32,42 +32,49 @@ import {
   CORE_INVARIANTS,
   GITHUB_ONLY,
   PIPELINES,
+  canonicalCommandOf,
   classifyGate,
   discoverGates,
   executableLines,
   findParityViolations,
   missingInvariants,
+  runCommands,
 } from "../../../scripts/check-forge-parity.mjs"
 
 /**
- * Linhas com o comando REAL de CADA invariante do CORE (uma por invariante).
+ * Linhas com o COMANDO CANÔNICO de cada invariante do CORE (uma por invariante).
  * Lista-golden: quando o CORE ganha um invariante, o teste falha até a linha
  * correspondente aparecer aqui — o mesmo contrato do required-checks.
+ *
+ * As linhas são o `command` do invariante, e são as MESMAS nas duas forjas —
+ * não existe mais uma variante por lado (`bunx tsc --noEmit` aqui, `bun run
+ * typecheck` ali; `test:unit` numa e `test:run` na outra).
  */
 const REAL_LINES = [
-  "      - run: bunx tsc --noEmit",
+  "      - run: bun run typecheck",
   "      - run: bun run lint",
-  "      - run: bun run test:unit",
+  "      - run: bun run test:run",
   "      - run: bun run check:ts-nocheck",
   "      - run: bun run check:pii-allowlist",
   "      - run: bun run check:pii-gate",
-  "      - run: bun run check:required-checks",
+  "      - run: node scripts/check-required-checks.mjs",
   "      - run: node scripts/check-script-headers.mjs",
   "      - run: node scripts/check-pipefail-sigpipe.mjs",
-  "      - run: bun run check:prove-docs",
-  "      - run: bun run check:registry-source",
-  "      - run: bun run check:runner-base",
-  "      - run: bun scripts/check-workflow-refs.mjs --pkg-internal",
-  "      - run: bun run check:forge-workflow-scope",
-  "      - run: bun run check:bun-audit-baseline",
-  "      - run: bun scripts/rotate-secrets.mjs --check",
-  "      - run: bun run check:seed-hooks",
-  "      - run: bun run check:sentinel-producer",
-  "      - run: bun run check:bun-mirror",
-  "      - run: bun run check:no-setup-bun",
-  "      - run: bun run check:forge-parity",
-  "      - run: bun scripts/check-hooks-symmetry.mjs",
-  "      - run: bun scripts/check-doctor-ci.mjs",
+  "      - run: node scripts/check-prove-docs.mjs",
+  "      - run: node scripts/check-registry-source.mjs",
+  "      - run: node scripts/check-runner-base.mjs",
+  "      - run: node scripts/check-workflow-refs.mjs --pkg-internal",
+  "      - run: node scripts/check-forge-workflow-scope.mjs",
+  "      - run: node scripts/check-bun-audit-baseline.mjs",
+  "      - run: node scripts/rotate-secrets.mjs --check",
+  "      - run: node scripts/check-seed-hooks.mjs",
+  "      - run: node scripts/check-sentinel-producer.mjs",
+  "      - run: node scripts/check-bun-mirror.mjs",
+  "      - run: node scripts/check-no-setup-bun.mjs",
+  "      - run: node scripts/check-forge-parity.mjs",
+  "      - run: node scripts/check-hooks-symmetry.mjs",
+  "      - run: node scripts/check-hook-ci-parity.mjs",
+  "      - run: node scripts/check-doctor-ci.mjs",
   "      - run: node scripts/prove-runner-image-gate.mjs",
 ]
 
@@ -171,15 +178,61 @@ describe("classifyGate", () => {
   })
 })
 
+describe("o comando canônico de cada invariante", () => {
+  it("toda invariante do CORE declara um `command` ancorado nas duas pontas", () => {
+    // Contrato de manutenção: uma invariante nova sem `command` cairia em
+    // `undefined.test` no meio do guard; sem a âncora, uma linha que apenas
+    // CONTÉM o comando (um `echo` que o cita, um comentário promovido a passo)
+    // passaria por ele — e a régua voltaria a ser aproximada.
+    for (const inv of CORE_INVARIANTS) {
+      expect(inv.command, `invariante '${inv.id}' sem command`).toBeInstanceOf(RegExp)
+      expect(inv.command.source.startsWith("^"), `'${inv.id}': command sem ^`).toBe(true)
+      expect(inv.command.source.endsWith("$"), `'${inv.id}': command sem $`).toBe(true)
+    }
+  })
+
+  it("a forma impressa é a linha de `run:`, não o `source` do regex", () => {
+    const inv = CORE_INVARIANTS.find((i) => i.id === "registry-source")!
+    expect(canonicalCommandOf(inv)).toBe("node scripts/check-registry-source.mjs")
+  })
+
+  it("cada `command` casa EXATAMENTE uma linha da lista-golden (sem sobra)", () => {
+    const commands = runCommands(REALISTIC)
+    for (const inv of CORE_INVARIANTS) {
+      const hits = commands.filter((c) => inv.command.test(c))
+      expect(hits, `'${inv.id}' casou ${hits.length} comandos`).toHaveLength(1)
+    }
+  })
+})
+
 describe("missingInvariants", () => {
-  it("reconhece os comandos reais das duas forjas (sintaxes diferentes)", () => {
+  it("reconhece os comandos canônicos das duas forjas", () => {
     expect(missingInvariants(REALISTIC)).toEqual([])
   })
 
-  it("reconhece o alias com ':' (bun run check:foo)", () => {
-    expect(missingInvariants("run: bun run check:workflow-refs:internal")).not.toContain(
+  it("recusa a invocação INDIRETA e a com argumentos diferentes (a régua é o COMANDO)", () => {
+    // Três formas do MESMO gate, e só a canônica conta:
+    //   - pela entrada do package.json: o guard não pode comparar a entrada com
+    //     o comando (isso exigiria ler o package.json e interpretar a entrada);
+    //   - pelo script SEM o argumento que o canônico carrega: é o caso que
+    //     liberava o merge com uma régua mais fraca;
+    //   - pelo script COM o argumento: presente.
+    expect(missingInvariants("run: bun run check:workflow-refs:internal")).toContain(
       "workflow-refs",
     )
+    expect(missingInvariants("run: node scripts/check-workflow-refs.mjs")).toContain(
+      "workflow-refs",
+    )
+    expect(
+      missingInvariants("run: node scripts/check-workflow-refs.mjs --pkg-internal"),
+    ).not.toContain("workflow-refs")
+  })
+
+  it("não confunde a CITAÇÃO do comando com a execução dele", () => {
+    // Um `echo` que cita a linha canônica é uma linha de `run:` que NÃO executa
+    // o gate — a âncora em `run:` mantém a citação fora da medição.
+    const quoted = `      - run: echo "rode: node scripts/check-registry-source.mjs"`
+    expect(missingInvariants(quoted)).toContain("registry-source")
   })
 
   it("detecta o invariante ausente", () => {

@@ -93,9 +93,12 @@ afterAll(() => {
 
 /** Pipeline sintética no formato real (2 níveis, `run:` executável). */
 function pipeline(opts: { guardLines?: string[]; extraJob?: boolean } = {}): string {
+  // Os comandos CANÔNICOS (o `command` de cada invariante): é a linha que as
+  // duas forjas executam. Uma fixture com a forma indireta (`bun run check:x`)
+  // ou com um argumento a menos mediria um contrato que não existe mais.
   const guards = opts.guardLines ?? [
-    "bun run check:bun-mirror",
-    "bun scripts/rotate-secrets.mjs --check",
+    "node scripts/check-bun-mirror.mjs",
+    "node scripts/rotate-secrets.mjs --check",
   ]
   const steps = guards.flatMap((g, i) => [`      - name: Gate ${i + 1}`, `        run: ${g}`])
   return [
@@ -110,7 +113,7 @@ function pipeline(opts: { guardLines?: string[]; extraJob?: boolean } = {}): str
     ...steps,
     ...(opts.extraJob === false
       ? []
-      : ["  typecheck:", "    steps:", "      - run: bunx tsc --noEmit"]),
+      : ["  typecheck:", "    steps:", "      - run: bun run typecheck"]),
     // O GATE do bring-up faz parte de uma forja SAUDÁVEL: sem este job (e sem o
     // id dele no manifesto, ver `forgeFixture`), o fato `bringUpGate` acusa — e
     // toda fixture de doctor que se diga completa tem de carregá-lo.
@@ -127,13 +130,13 @@ function pipeline(opts: { guardLines?: string[]; extraJob?: boolean } = {}): str
     "      - run: bun run lint",
     "  test:",
     "    steps:",
-    "      - run: bun run test:unit",
+    "      - run: bun run test:run",
     "  lint-guard:",
     "    steps:",
     "      - run: bun run lint",
     "  check:",
     "    steps:",
-    "      - run: bun run test:unit",
+    "      - run: bun run test:run",
     "",
   ].join("\n")
 }
@@ -499,9 +502,9 @@ const protectionUnreadable = {
 describe("sliceJob", () => {
   it("fatia o job e para no próximo job", () => {
     const job = sliceJob(pipeline(), FORGE_GUARDS_JOB)
-    expect(job).toContain("check:bun-mirror")
+    expect(job).toContain("check-bun-mirror.mjs")
     expect(job).toContain("rotate-secrets.mjs --check")
-    expect(job).not.toContain("tsc --noEmit")
+    expect(job).not.toContain("bun run typecheck")
   })
 
   it("job inexistente → null", () => {
@@ -513,13 +516,19 @@ describe("sliceJob", () => {
       "    runs-on: ubuntu-latest",
       "    runs-on: ubuntu-latest\n# nota",
     )
-    expect(sliceJob(comComment, FORGE_GUARDS_JOB)).toContain("check:bun-mirror")
+    expect(sliceJob(comComment, FORGE_GUARDS_JOB)).toContain("check-bun-mirror.mjs")
   })
 
   it("na pipeline REAL: a fatia do job de guards tem os invariantes da forja", () => {
     const job = sliceJob(readFileSync(join(ROOT, MERGE_OWNER_PIPELINE), "utf8"), FORGE_GUARDS_JOB)
     expect(job, "job de guards não encontrado na pipeline real").not.toBeNull()
-    for (const expected of ["check:bun-mirror", "check:forge-parity", "check:registry-source"]) {
+    // Os COMANDOS canônicos, um a um — não as entradas do package.json
+    // (`bun run check:x`) que a forja usava antes do contrato de régua única.
+    for (const expected of [
+      "node scripts/check-bun-mirror.mjs",
+      "node scripts/check-forge-parity.mjs",
+      "node scripts/check-registry-source.mjs",
+    ]) {
       expect(job).toContain(expected)
     }
   })
@@ -565,7 +574,7 @@ describe("gateRunLine — o comando vem da linha, não do rótulo", () => {
   it("preserva a flag que o rótulo descarta", () => {
     const lines = pipeline().split("\n")
     expect(gateRunLine(lines, "scripts/rotate-secrets.mjs")).toBe(
-      "bun scripts/rotate-secrets.mjs --check",
+      "node scripts/rotate-secrets.mjs --check",
     )
   })
 
@@ -587,9 +596,12 @@ describe("gateRunLine — o comando vem da linha, não do rótulo", () => {
 describe("forgeGates — a bateria vem da pipeline dona do merge", () => {
   it("devolve o par rótulo+comando, com a flag preservada", () => {
     const { gates } = forgeGates(pipeline())
-    expect(gates.map((g) => g.label)).toContain("bun run check:bun-mirror")
+    // O RÓTULO é a identidade do gate (o caminho do script); o COMANDO é a
+    // linha canônica, com o lançador e os argumentos — é ela que a bateria
+    // executa dentro da imagem, e é ela que as duas forjas compartilham.
+    expect(gates.map((g) => g.label)).toContain("scripts/check-bun-mirror.mjs")
     const rotate = gates.find((g) => g.label === "scripts/rotate-secrets.mjs")
-    expect(rotate?.command).toBe("bun scripts/rotate-secrets.mjs --check")
+    expect(rotate?.command).toBe("node scripts/rotate-secrets.mjs --check")
   })
 
   it("job ausente → erro explicando que a bateria não tem de onde ser derivada", () => {
@@ -1952,19 +1964,35 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
   mkdirSync(join(dir, ".github", "workflows"), { recursive: true })
   mkdirSync(join(dir, "ci"), { recursive: true })
 
-  // O job `guards` da Gitea roda OITO invariantes CORE: cada uma declara a sua
-  // régua e cada uma tem de ser medida — o dedup por jobId conferia só a
-  // primeira da lista e dava as outras sete por cobertas.
+  // O job `guards` da Gitea roda as invariantes CORE que ali moram: cada uma
+  // declara a sua régua e cada uma tem de ser medida — o dedup por jobId
+  // conferia só a primeira da lista e dava as outras por cobertas. Os comandos
+  // aqui são os CANÔNICOS (o `command` de cada invariante): `node scripts/x.mjs`
+  // com os MESMOS argumentos do espelho do GitHub.
   const guardCommands: [string, string][] = [
     ["ts-nocheck", "bun run check:ts-nocheck"],
-    ["required-checks", "bun run check:required-checks"],
-    ["registry-source", "bun run check:registry-source"],
-    ["runner-base", "bun run check:runner-base"],
-    ["forge-workflow-scope", "bun run check:forge-workflow-scope"],
-    ["forge-parity", "bun run check:forge-parity"],
+    ["required-checks", "node scripts/check-required-checks.mjs"],
+    ["registry-source", "node scripts/check-registry-source.mjs"],
+    ["runner-base", "node scripts/check-runner-base.mjs"],
+    ["forge-workflow-scope", "node scripts/check-forge-workflow-scope.mjs"],
+    ["forge-parity", "node scripts/check-forge-parity.mjs"],
     ["script-headers", "node scripts/check-script-headers.mjs"],
-    ["prove-docs", "bun run check:prove-docs"],
+    ["prove-docs", "node scripts/check-prove-docs.mjs"],
     ["pipefail-sigpipe", "node scripts/check-pipefail-sigpipe.mjs"],
+    // As nove que passaram a ser invocadas pela MESMA linha canônica do
+    // espelho dentro do job `guards` (antes rodavam na forja por outra forma,
+    // ou não rodavam): o manifesto EXIGE o job `guards` para cada uma delas, e
+    // o fato tem de medir a régua de cada uma — não a do vizinho.
+    ["doctor-ci", "node scripts/check-doctor-ci.mjs"],
+    ["workflow-refs", "node scripts/check-workflow-refs.mjs --pkg-internal"],
+    ["bun-audit", "node scripts/check-bun-audit-baseline.mjs"],
+    ["hooks-symmetry", "node scripts/check-hooks-symmetry.mjs"],
+    ["secret-leaks", "node scripts/rotate-secrets.mjs --check"],
+    ["seed-hooks", "node scripts/check-seed-hooks.mjs"],
+    ["sentinel-producer", "node scripts/check-sentinel-producer.mjs"],
+    ["bun-mirror", "node scripts/check-bun-mirror.mjs"],
+    ["no-setup-bun", "node scripts/check-no-setup-bun.mjs"],
+    ["hook-ci-parity", "node scripts/check-hook-ci-parity.mjs"],
   ]
   writeFileSync(
     join(dir, MERGE_OWNER_PIPELINE),
@@ -1983,13 +2011,13 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
       "      - run: node scripts/prove-runner-image-gate.mjs",
       "  typecheck:",
       "    steps:",
-      "      - run: bunx tsc --noEmit",
+      "      - run: bun run typecheck",
       "  lint:",
       "    steps:",
       "      - run: bun run lint",
       "  test:",
       "    steps:",
-      "      - run: bun run test:unit",
+      "      - run: bun run test:run",
       "",
     ].join("\n"),
   )
@@ -2005,6 +2033,9 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
       "  workflow-refs-guard:",
       "    steps:",
       "      - run: node scripts/check-workflow-refs.mjs --pkg-internal",
+      // O gate de paridade hook↔CI roda nas DUAS forjas (o veredito local e o
+      // do merge são dois conjuntos de comandos em dois arquivos).
+      "      - run: node scripts/check-hook-ci-parity.mjs",
       // O gate da classe SIGPIPE roda nas DUAS forjas; na fixture ele vive no
       // job que carrega os guards node-puros do GitHub (como no repositório).
       "      - run: node scripts/check-pipefail-sigpipe.mjs",
@@ -2018,7 +2049,7 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
       "      - run: node scripts/prove-runner-image-gate.mjs",
       "  typecheck:",
       "    steps:",
-      "      - run: bunx tsc --noEmit",
+      "      - run: bun run typecheck",
       // O job REAL: o MESMO comando do job `lint` da Gitea — o par
       // (prettier + eslint zero) mora no script `lint` do package.json, e a
       // forja não tem régua própria. Um comando inline aqui seria a assimetria
@@ -2041,7 +2072,7 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
       // concatenação preserva.
       `      - name: "Guard: no ${["@ts", "-", "nocheck"].join("")} in non-generated files"`,
       "        run: bun run check:ts-nocheck",
-      ...(sem === "tests" ? [] : ["      - name: Unit tests", "        run: bun run test:unit"]),
+      ...(sem === "tests" ? [] : ["      - name: Unit tests", "        run: bun run test:run"]),
       "",
     ].join("\n"),
   )
@@ -2130,7 +2161,7 @@ describe("readAllGateContracts — o job EXIGIDO roda a régua da INVARIANTE, a 
       (x) => x.invariantId === "tests" && x.jobId === "check",
     )!
     expect(testes.state).toBe("proven")
-    expect(testes.forges[0].command).toBe("bun run test:unit")
+    expect(testes.forges[0].command).toBe("bun run test:run")
   })
 
   it("CONTROLE: sem o comando da régua, o fato acusa o gate trocado (o teste tem dentes)", () => {
@@ -2147,10 +2178,13 @@ describe("readAllGateContracts — o job EXIGIDO roda a régua da INVARIANTE, a 
   it("cada invariante que compartilha o job 'guards' tem a SUA régua medida", () => {
     const dir = twoForgeFixture()
     const noMesmoJob = contractResults(dir).filter((x) => x.jobId === FORGE_GUARDS_JOB)
-    // NOVE invariantes CORE vivem no mesmo job: deduplicando pelo job, oito
-    // ficavam fora da lista de contratos e apareciam como cobertas.
-    expect(noMesmoJob.length).toBe(9)
-    expect(new Set(noMesmoJob.map((x) => x.invariantId)).size).toBe(9)
+    // DEZENOVE invariantes CORE vivem no mesmo job `guards`: nove que sempre
+    // estiveram ali e dez que passaram a ser invocadas pela MESMA linha
+    // canônica do espelho (antes rodavam na forja por outra forma, ou não
+    // rodavam). Deduplicando pelo job, dezoito ficavam fora da lista de
+    // contratos e apareciam como cobertas sem nunca terem sido medidas.
+    expect(noMesmoJob.length).toBe(19)
+    expect(new Set(noMesmoJob.map((x) => x.invariantId)).size).toBe(19)
     expect(noMesmoJob.every((x) => x.state === "proven")).toBe(true)
     // E cada uma responde pela SUA remoção — não pela do vizinho.
     const semRequired = twoForgeFixture({ semComandoDoGate: "required-checks" })
@@ -3143,7 +3177,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
   it("um gate vermelho → BLOQUEADA e o relatório nomeia o gate", async () => {
     const dir = forgeFixture()
     const failing = (cmd: string, args: string[]) =>
-      args.includes("check:bun-mirror")
+      args.some((a) => a.includes("check-bun-mirror"))
         ? { status: 1, stdout: "", stderr: "❌ violação", signal: null }
         : passRun()
     const { facts } = await diagnose({
@@ -3163,7 +3197,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
     })
     const v = summarize(facts)
     expect(v.verdict).toBe(VERDICT.BLOCKED)
-    expect(v.blockers[0]).toContain("check:bun-mirror")
+    expect(v.blockers[0]).toContain("check-bun-mirror")
   })
 
   it("check:required-checks vermelho BLOQUEIA pelo contrato (e não só pelos gates)", async () => {

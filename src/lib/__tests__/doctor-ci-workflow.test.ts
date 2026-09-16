@@ -46,9 +46,20 @@ type Workflow = {
   jobs: Record<string, { name?: string; steps: Step[] }>
 }
 
-/** Os pipelines comparados, com o interpretador que cada imagem garante. */
+/**
+ * Os pipelines comparados, com o interpretador que cada imagem garante.
+ *
+ * Os dois lados invocam o gate pelo MESMO literal (`node scripts/check-doctor-ci.mjs`)
+ * — era `bun scripts/...` na forja e `node scripts/...` no espelho, duas formas
+ * do mesmo script. `node` é garantido nas duas imagens: a base
+ * `catthehacker/ubuntu:act-latest` do runner da forja já embarca node 24 (é o
+ * interpretador das JS actions como actions/checkout e actions/cache — ver
+ * `Dockerfile.ubuntu-bun`), e o self-hosted do espelho também o tem. `node`
+ * também não depende de `bun` estar no PATH: a régua não é o lançador, é o
+ * script e os argumentos.
+ */
 const PIPELINES = [
-  { file: ".gitea/workflows/ci.yml", job: "guards", interpreter: "bun" },
+  { file: ".gitea/workflows/ci.yml", job: "guards", interpreter: "node" },
   { file: ".github/workflows/pr-check.yml", job: "doctor-mirrors-guard", interpreter: "node" },
 ] as const
 
@@ -78,6 +89,13 @@ describe("o gate do doctor existe nos DOIS pipelines (invariante CORE)", () => {
       expect(run.includes("\n"), `${pipeline.file}: o gate virou bloco`).toBe(false)
       expect(run.trim().split(/\s+/)[0]).toBe(pipeline.interpreter)
     }
+  })
+
+  it("o comando é IDÊNTICO nas duas forjas (não só o script)", () => {
+    // A metade que escapava: os dois lados citavam o mesmo script, mas um pelo
+    // caminho e outro pela entrada do package.json. A régua agora é o LITERAL.
+    const runs = PIPELINES.map((p) => (gateStep(p).run ?? "").trim())
+    expect(runs[0]).toBe(runs[1])
   })
 
   it("a classificação é CORE (e não uma isenção GitHub-only escondida)", () => {

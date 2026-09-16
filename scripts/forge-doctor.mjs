@@ -1391,9 +1391,13 @@ export function readBringUpGate({
  *   2. confere que o job tem um `run:` que executa o comando esperado;
  *   3. cruza com a branch protection registrada (o check está exigido?).
  *
- * O `expectedCommand` é um regex testado contra a linha `run:` do job — não
- * contra o rótulo do gate (que descarta flags). Isso impede que um gate
- * decorativo (job existe mas roda outra coisa) passe em silêncio.
+ * O `expectedCommand` é um regex ANCORADO nas duas pontas e testado contra a
+ * linha `run:` do job — não contra o rótulo do gate (que descarta flags). Isso
+ * impede que um gate decorativo (job existe mas roda outra coisa) passe em
+ * silêncio — e pega a divergência mais sutil: o MESMO script invocado com
+ * argumentos diferentes (`node scripts/x.mjs` de um lado, com `--pkg-internal`
+ * do outro), que é o que fazia o merge de uma forja e o da outra medirem coisas
+ * diferentes com o mesmo nome de invariante.
  *
  * A RÉGUA É UMA SÓ, e é a da invariante — não da forja. Uma tabela de
  * sobrescrita por forja (`matchesByForge`) existiu aqui para acomodar o dia em
@@ -1639,6 +1643,10 @@ export function readGateContract({
  * `CORE_INVARIANTS` (uma fonte só) — adicionar uma invariante com `jobIds`
  * a essa lista a torna automaticamente verificável no veredito do doctor.
  *
+ * `expectedCommand` é o `command` de cada invariante — a régua CANÔNICA, uma só
+ * por gate —, NÃO o `matches`, que responde "o gate está classificado?" e é
+ * deliberadamente frouxo.
+ *
  * @returns {{invariantId: string, jobId: string, forge: string,
  *   expectedCommand: RegExp}[]}
  */
@@ -1664,10 +1672,14 @@ export function coreGateContracts() {
         invariantId: inv.id,
         jobId: jid,
         forge,
-        // A régua do JOB: o `matches` da invariante, o MESMO para toda forja
-        // que declara aquele jobId (é o que impede o merge de ser liberado por
-        // uma régua mais fraca de um dos lados).
-        expectedCommand: inv.matches,
+        // A régua do JOB: o `command` da invariante (o COMANDO CANÔNICO, com
+        // argumentos, ancorado nas duas pontas), o MESMO para toda forja que
+        // declara aquele jobId. É o que impede o merge de ser liberado por uma
+        // régua mais fraca de um dos lados E o que pega a invocação indireta ou
+        // com argumentos diferentes (`node scripts/x.mjs` sem a flag que o
+        // canônico carrega) — o `matches` da invariante é a IDENTIDADE do gate,
+        // deliberadamente frouxo, e não serve como régua de job.
+        expectedCommand: inv.command,
       })
     }
   }

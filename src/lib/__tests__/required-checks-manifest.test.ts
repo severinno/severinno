@@ -104,7 +104,7 @@ const EXPECTED_CONTEXTS: Record<string, string[]> = {
     "Security Headers",
     "PII Allowlist Guard (user payload projection)",
     // mutation-guards: job direto no pr-check.yml
-    "Mutation guards master (21 node-pure mutation tests)",
+    "Mutation guards master (22 node-pure mutation tests)",
     // seed-guards: jobs resolvidos do reusable workflow seed-guards.yml
     "Seed E2E ${{ matrix.seed }} · ${{ matrix.variant }}",
     "Mutation Test (seed dev E2E pega regressões?)",

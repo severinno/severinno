@@ -3,8 +3,13 @@ set -eu
 # ── Fast encoding guards (sempre rodam, ~2s) ──────────────────────────────
 bash scripts/run-encoding-guards.sh
 
-# ── Typecheck (~3s) ──────────────────────────────────────────────────────
-bunx tsc --noEmit
+# ── Typecheck — o MESMO comando do CI ──────────────────────────────────────────────────────
+# `bun run typecheck` (NAO `bunx tsc --noEmit`): o script carrega o heap de 4GB
+# que o tsc precisa. Sem ele o MESMO commit estourava a memoria aqui (SIGABRT,
+# exit 134) e passava no CI — o hook travava o push por um motivo que o merge
+# nunca veria. E o comando canonico do CI, e o check:hook-ci-parity recusa a
+# forma divergente.
+bun run typecheck
 
 # ── NOTE: CLI guard tests (test:guards, ~55s) run in CI only ──────────────
 # They're too slow for pre-push. Run locally before PR if needed:
@@ -65,7 +70,7 @@ if [ "$SHOULD_RUN_TESTS" = true ]; then
     bun run vitest run --reporter=verbose $AFFECTED_TESTS 2>&1 | tail -5
   else
     echo "⚡ Nenhum teste afetado — rodando typecheck rápido"
-    bunx tsc --noEmit 2>&1 | head -5
+    bun run typecheck 2>&1 | head -5
   fi
 
   # Fuzz tests só rodam no CI (sao lentos demais pra push)
