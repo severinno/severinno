@@ -283,12 +283,14 @@ async function notifyGeofenceEvent(
         title: `🚗 ${providerName} está chegando!`,
         body: `${providerName} está ${distanceText} do seu endereço. Fique de prontidão!`,
         url: `/?view=client.bookings&id=${event.bookingId}`,
-      }).then(() => {
-        recordGeofenceWhatsApp(true)
-      }).catch((err) => {
-        recordGeofenceWhatsApp(false)
-        logger.debug({ err, bookingId: event.bookingId }, "geofencing: WhatsApp send failed")
       })
+        .then(() => {
+          recordGeofenceWhatsApp(true)
+        })
+        .catch((err) => {
+          recordGeofenceWhatsApp(false)
+          logger.debug({ err, bookingId: event.bookingId }, "geofencing: WhatsApp send failed")
+        })
     }
   } catch (err) {
     logger.warn({ err, event }, "geofence: notification failed")
