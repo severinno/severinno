@@ -68,6 +68,8 @@
 import { existsSync, readFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 
+import { defaultsRunLines } from "./forge-workflows.mjs"
+
 const ROOT = process.cwd()
 
 /**
@@ -134,12 +136,22 @@ const TSC_RE = /\btsc\s+--noEmit\b/
  * Remove comentario de YAML: linha inteira (`# ...`) e inline (`chave: v # ...`).
  * O `#` so inicia comentario precedido de espaco (ou no inicio da linha).
  *
+ * `skipLines` (1-based, opcional) sao linhas cujo CONTEUDO nao e um passo —
+ * hoje so a declaracao `defaults.run`, que e SHELL DEFAULT: ler `defaults: {run:
+ * bash}` como comando fabrica um passo que a pipeline nao executa, e ler
+ * `defaults: run: node scripts/check-x.mjs` fabrica um GATE — a invariante seria
+ * satisfeita por uma declaracao de shell.
+ *
  * @param {string[]} lines
+ * @param {Set<number>|null} [skipLines]
  * @returns {string[]} as linhas executaveis
  */
-export function executableLines(lines) {
+export function executableLines(lines, skipLines = null) {
   return lines
-    .map((line) => (line.trim().startsWith("#") ? "" : line.replace(/(^|\s)#.*$/, "$1").trimEnd()))
+    .map((line, i) => {
+      if (skipLines !== null && skipLines.has(i + 1)) return ""
+      return line.trim().startsWith("#") ? "" : line.replace(/(^|\s)#.*$/, "$1").trimEnd()
+    })
     .filter((line) => line.trim() !== "")
 }
 
@@ -152,7 +164,11 @@ export function executableLines(lines) {
  */
 export function discoverGates(content) {
   const gates = new Set()
-  for (const line of executableLines(content.split(/\r?\n/))) {
+  // `defaults.run` e DECLARACAO (shell default), nunca passo: sem excluir as
+  // linhas dela, `defaults: run: node scripts/check-x.mjs` entrega o rotulo de um
+  // gate que a pipeline nao roda.
+  const linhas = executableLines(content.split(/\r?\n/), defaultsRunLines(content))
+  for (const line of linhas) {
     for (const m of line.matchAll(SCRIPT_INVOCATION_RE)) {
       const path = m[1]
       const base = path.split("/").pop()
@@ -193,7 +209,11 @@ export function discoverGates(content) {
  */
 export function runCommands(content) {
   const commands = []
-  for (const line of executableLines(content.split(/\r?\n/))) {
+  // Mesma exclusao do `discoverGates`: a declaracao `defaults.run` nao produz
+  // comando — `defaults:\n  run: bash` virava o comando literal "bash", e a
+  // regua canonica de uma invariante podia vir de uma linha que nao roda nada.
+  const linhas = executableLines(content.split(/\r?\n/), defaultsRunLines(content))
+  for (const line of linhas) {
     // A indentacao faz parte da linha (executableLines preserva a coluna), entao
     // a chave pode vir depois de espacos — e o item de lista (`- run: cmd`) e a
     // forma que ja deixou um gate INVISIVEL para outro parser deste repositorio.

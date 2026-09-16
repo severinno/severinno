@@ -53,7 +53,12 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 
-import { FORGE_ACTIONS_DIRS, allWorkflowFiles, existingWorkflowDirs } from "./forge-workflows.mjs"
+import {
+  FORGE_ACTIONS_DIRS,
+  allWorkflowFiles,
+  defaultsRunLines,
+  existingWorkflowDirs,
+} from "./forge-workflows.mjs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -119,7 +124,12 @@ function scannableLine(trimmed) {
 export function extractScriptRefs(content) {
   const refs = []
   const lines = content.split(/\r?\n/)
+  // `defaults.run` e DECLARACAO (o shell default do escopo), nao passo: uma ref
+  // achada ali aponta para um script que a pipeline NUNCA executa — validar (ou
+  // deixar de validar) por ela e medir o que nao roda.
+  const defaults = defaultsRunLines(content)
   for (let i = 0; i < lines.length; i++) {
+    if (defaults.has(i + 1)) continue
     const trimmed = lines[i].trim()
     const scan = scannableLine(trimmed)
     if (scan === null) continue
@@ -140,7 +150,12 @@ export function extractScriptRefs(content) {
 export function extractPkgScriptRefs(content) {
   const refs = []
   const lines = content.split(/\r?\n/)
+  // `defaults.run` e DECLARACAO (o shell default do escopo), nao passo: uma ref
+  // achada ali aponta para um script que a pipeline NUNCA executa — validar (ou
+  // deixar de validar) por ela e medir o que nao roda.
+  const defaults = defaultsRunLines(content)
   for (let i = 0; i < lines.length; i++) {
+    if (defaults.has(i + 1)) continue
     const trimmed = lines[i].trim()
     const scan = scannableLine(trimmed)
     if (scan === null) continue
@@ -161,7 +176,12 @@ export function extractPkgScriptRefs(content) {
 export function extractWorkflowUses(content) {
   const refs = []
   const lines = content.split(/\r?\n/)
+  // `defaults.run` e DECLARACAO (o shell default do escopo), nao passo: uma ref
+  // achada ali aponta para um script que a pipeline NUNCA executa — validar (ou
+  // deixar de validar) por ela e medir o que nao roda.
+  const defaults = defaultsRunLines(content)
   for (let i = 0; i < lines.length; i++) {
+    if (defaults.has(i + 1)) continue
     const trimmed = lines[i].trim()
     const scan = scannableLine(trimmed)
     if (scan === null) continue
@@ -182,7 +202,12 @@ export function extractWorkflowUses(content) {
 export function extractActionUses(content) {
   const refs = []
   const lines = content.split(/\r?\n/)
+  // `defaults.run` e DECLARACAO (o shell default do escopo), nao passo: uma ref
+  // achada ali aponta para um script que a pipeline NUNCA executa — validar (ou
+  // deixar de validar) por ela e medir o que nao roda.
+  const defaults = defaultsRunLines(content)
   for (let i = 0; i < lines.length; i++) {
+    if (defaults.has(i + 1)) continue
     const trimmed = lines[i].trim()
     const scan = scannableLine(trimmed)
     if (scan === null) continue

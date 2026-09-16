@@ -625,3 +625,52 @@ describe("checkMutationJobs — regressão real do repo", () => {
     expect(violations).toEqual([])
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `defaults: run:` NÃO é passo — e a direção do erro aqui é o guard AFIRMAR
+// cobertura: `defaults:\n  run: bash scripts/test-mutation-x.sh` fazia um
+// mutation test que NENHUM job roda contar como coberto.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("extractWorkflowRunRefs — a declaração `defaults.run` não é cobertura", () => {
+  const WF = [
+    "name: x",
+    "on: [push]",
+    "jobs:",
+    "  a:",
+    "    runs-on: ubuntu-latest",
+    "    defaults:",
+    "      run: bash scripts/test-mutation-inventado.sh",
+    "    steps:",
+    "      - run: echo nada",
+  ].join("\n")
+
+  it("não conta a ref da declaração de shell default", () => {
+    expect(extractWorkflowRunRefs(WF)).toEqual([])
+  })
+
+  it("a forma em bloco (`shell:` no default) idem", () => {
+    const bloco = [
+      "jobs:",
+      "  a:",
+      "    defaults:",
+      "      run:",
+      "        shell: bash",
+      "    steps:",
+      "      - run: bash scripts/test-mutation-real.sh",
+    ].join("\n")
+    expect(extractWorkflowRunRefs(bloco)).toEqual(["test-mutation-real.sh"])
+  })
+
+  it("o comando do PASSO continua sendo lido", () => {
+    const comPasso = [
+      "jobs:",
+      "  a:",
+      "    defaults:",
+      "      run: bash scripts/test-mutation-inventado.sh",
+      "    steps:",
+      "      - run: bash scripts/test-mutation-de-verdade.sh",
+    ].join("\n")
+    expect(extractWorkflowRunRefs(comPasso)).toEqual(["test-mutation-de-verdade.sh"])
+  })
+})

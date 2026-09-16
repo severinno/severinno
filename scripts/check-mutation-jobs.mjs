@@ -64,7 +64,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { DIFF_CONTEXT, isValidGitRef, parseDiffLines } from "./check-bun-mirror.mjs"
-import { existingWorkflowDirs } from "./forge-workflows.mjs"
+import { defaultsRunLines, existingWorkflowDirs } from "./forge-workflows.mjs"
 
 /**
  * Invocação com PREFIXO de comando (`bash scripts/test-mutation-X.sh`): exige
@@ -119,8 +119,14 @@ export function extractWorkflowRunRefs(content, pkgScripts = {}) {
   }
 
   const lines = content.split(/\r?\n/)
+  // `defaults.run` é SHELL DEFAULT, não passo: uma cobertura derivada de uma
+  // declaração de `defaults:` seria cobertura FALSA (o mutation test não roda
+  // ali). A direção do erro sem esta linha é o guard AFIRMANDO cobertura.
+  const defaults = defaultsRunLines(content)
   let blockIndent = -1
-  for (const line of lines) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (defaults.has(i + 1)) continue
     if (blockIndent >= 0) {
       const indent = (line.match(/^\s*/) ?? [""])[0].length
       if (line.trim() === "" || indent > blockIndent) {

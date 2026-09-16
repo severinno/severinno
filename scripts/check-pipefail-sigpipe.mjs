@@ -125,7 +125,7 @@ import { dirname, join, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { DEFAULT_REVIEW_DAYS, MS_PER_DAY, parseAddedAt } from "./allowlist-review.mjs"
-import { allWorkflowFiles } from "./forge-workflows.mjs"
+import { allWorkflowFiles, defaultsBlocks, jobKeyName, jobsLayout } from "./forge-workflows.mjs"
 
 /** Exit codes — o contrato da CLI. */
 export const EXIT = {
@@ -725,76 +725,20 @@ function yamlChildKey(lines, headIdx, headIndent, key) {
  * "shell default" e (b) diria no relatório uma premissa que não é mais a do
  * runner — o diagnóstico apontaria para o lugar errado.
  *
+ * A LEITURA VEM DE `forge-workflows.mjs` (`defaultsBlocks`), a fonte única do
+ * que é uma declaração de `defaults:` — este guard acrescenta o que é SÓ dele:
+ * se o shell declarado LIGA o pipefail. Ter a leitura em um lugar é o que
+ * impede o shell default de virar passo fantasma nos OUTROS guards de workflow
+ * (a classe que a extensão de `defaultsRunLines` fechou).
+ *
  * @param {string} content
- * @returns {{scope: "workflow"|"job", job: string | null, shell: string, line: number, pipefail: boolean}[]}
+ * @returns {{scope: "workflow"|"job", job: string | null, shell: string, line: number, runLine: number | null, inline: boolean, unparsed?: true, pipefail: boolean}[]}
  */
 export function workflowDefaultShells(content) {
-  const lines = content.split(/\r?\n/)
-  const { jobsIdx, jobIndent } = jobsLayout(lines)
-  const out = []
-  let jobAtual = null
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i]
-    if (l.trim() === "" || l.trim().startsWith("#")) continue
-    const indent = l.match(/^[ \t]*/)[0].length
-    const escopo = indent === 0 ? "workflow" : "job"
-    const dono = indent === 0 ? null : jobAtual
-    if (jobsIdx !== -1 && jobIndent !== null && i > jobsIdx && indent === jobIndent) {
-      jobAtual = jobKeyName(l, jobIndent) ?? jobAtual
-      continue
-    }
-    // FORMA INLINE (`defaults: {run: {shell: bash}}`): o guard não a lê. Não ler
-    // NÃO é o mesmo que não haver — é um veredito INDETERMINADO, e presumir
-    // "sem pipefail" ali seria a mesma aposta que este guard existe para acabar.
-    const inline = /^(\s*)defaults:\s*(\S.*)$/.exec(l)
-    if (inline) {
-      out.push({
-        scope: escopo,
-        job: dono,
-        shell: inline[2].trim(),
-        line: i + 1,
-        pipefail: false,
-        unparsed: true,
-      })
-      continue
-    }
-    const header = /^(\s*)defaults:\s*$/.exec(l)
-    if (!header) continue
-    const dup = header[1].length
-    const runIdx = yamlChildKey(lines, i, dup, "run")
-    if (runIdx === null) continue
-    const runIndent = lines[runIdx].match(/^[ \t]*/)[0].length
-    const restoRun = lines[runIdx]
-      .replace(/^\s*run:\s*/, "")
-      .replace(/\s+#.*$/, "")
-      .trim()
-    if (restoRun !== "" && !/^[|>]/.test(restoRun)) {
-      out.push({
-        scope: escopo,
-        job: dono,
-        shell: restoRun,
-        line: runIdx + 1,
-        pipefail: false,
-        unparsed: true,
-      })
-      continue
-    }
-    const shellIdx = yamlChildKey(lines, runIdx, runIndent, "shell")
-    if (shellIdx === null) continue
-    const shell = lines[shellIdx]
-      .replace(/^\s*shell:\s*/, "")
-      .replace(/\s+#.*$/, "")
-      .trim()
-      .replace(/^['"]|['"]$/g, "")
-    out.push({
-      scope: escopo,
-      job: dono,
-      shell,
-      line: shellIdx + 1,
-      pipefail: shellEnablesPipefail(shell),
-    })
-  }
-  return out
+  return defaultsBlocks(content).map((d) => ({
+    ...d,
+    pipefail: shellEnablesPipefail(d.shell),
+  }))
 }
 
 /**

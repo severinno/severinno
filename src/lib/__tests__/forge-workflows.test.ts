@@ -27,6 +27,8 @@ import {
   GITEA_WORKFLOW_DIR,
   GITHUB_WORKFLOW_DIR,
   allWorkflowFiles,
+  defaultsBlocks,
+  defaultsRunLines,
   existingWorkflowDirs,
   isForgeWorkflowDir,
   isForgeWorkflowPath,
@@ -160,5 +162,112 @@ describe("repositório real", () => {
     expect(paths).toContain(".gitea/workflows/ci.yml")
     expect(paths).toContain(".gitea/workflows/required-checks-drift.yml")
     expect(paths).toContain(".github/workflows/pr-check.yml")
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `defaults: run: shell:` — a leitura é UMA, e ela decide o que NÃO é passo
+//
+// O defeito que estes testes travam: `defaults:` declara o shell do escopo, e a
+// forma escalar (`defaults:\n  run: bash`) é lida por qualquer scanner de `run:`
+// como um COMANDO. Não é ruído: `defaults:\n  run: node scripts/check-x.mjs`
+// fazia o guard de paridade achar que a pipeline rodava um gate que ela não
+// roda, e o doctor aceitar a declaração como o comando do job de merge.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("defaultsBlocks — o shell default como FATO lido (workflow e job)", () => {
+  const WF = [
+    "name: x",
+    "on: [push]",
+    "defaults:",
+    "  run:",
+    "    shell: bash",
+    "jobs:",
+    "  guardas:",
+    "    defaults:",
+    "      run:",
+    "        shell: bash -eo pipefail",
+    "    steps:",
+    "      - run: echo ok",
+  ].join("\n")
+
+  it("lê o escopo do ARQUIVO e o do JOB, com o nome do job", () => {
+    expect(defaultsBlocks(WF)).toEqual([
+      { scope: "workflow", job: null, shell: "bash", line: 5, runLine: 4, inline: false },
+      {
+        scope: "job",
+        job: "guardas",
+        shell: "bash -eo pipefail",
+        line: 10,
+        runLine: 9,
+        inline: false,
+      },
+    ])
+  })
+
+  it("a forma em LINHA sai `unparsed` — não ler NÃO é o mesmo que não haver", () => {
+    expect(defaultsBlocks("defaults: {run: {shell: pwsh}}\n")).toEqual([
+      {
+        scope: "workflow",
+        job: null,
+        shell: "{run: {shell: pwsh}}",
+        line: 1,
+        runLine: 1,
+        inline: true,
+        unparsed: true,
+      },
+    ])
+  })
+
+  it("valor escalar no `run:` sai `unparsed` (é a forma que vira passo fantasma)", () => {
+    const [d] = defaultsBlocks("defaults:\n  run: bash\njobs:\n  a:\n    steps: []\n")
+    expect(d).toMatchObject({ unparsed: true, shell: "bash", line: 2, runLine: 2 })
+  })
+
+  it("um `defaults:` sem `run:` não declara nada", () => {
+    expect(defaultsBlocks("defaults:\n  foo: bar\n")).toEqual([])
+  })
+
+  it("workflow sem `defaults:` não inventa declaração", () => {
+    expect(defaultsBlocks("jobs:\n  a:\n    steps:\n      - run: echo ok\n")).toEqual([])
+  })
+})
+
+describe("defaultsRunLines — a declaração que nenhum guard pode ler como passo", () => {
+  it("cobre a chave `run:` e os filhos diretos (`shell:`, `working-directory:`)", () => {
+    const wf = [
+      "name: x",
+      "defaults:",
+      "  run:",
+      "    shell: bash",
+      "    working-directory: /tmp",
+      "jobs:",
+      "  a:",
+      "    steps:",
+      "      - run: echo ok",
+    ].join("\n")
+    expect([...defaultsRunLines(wf)].sort((a, b) => a - b)).toEqual([3, 4, 5])
+  })
+
+  it("o passo do job NÃO entra (a declaração termina na primeira linha menos profunda)", () => {
+    const wf = [
+      "defaults:",
+      "  run: bash",
+      "jobs:",
+      "  a:",
+      "    defaults:",
+      "      run: bash",
+      "    steps:",
+      "      - run: echo ok",
+    ].join("\n")
+    expect([...defaultsRunLines(wf)].sort((a, b) => a - b)).toEqual([2, 6])
+  })
+
+  it("a forma em LINHA é a própria declaração", () => {
+    expect([...defaultsRunLines("defaults: {run: {shell: pwsh}}\n")]).toEqual([1])
+  })
+
+  it("sem `defaults:` é vazio (nenhum passo é engolido)", () => {
+    expect(defaultsRunLines("jobs:\n  a:\n    steps:\n      - run: echo ok\n").size).toBe(0)
   })
 })
