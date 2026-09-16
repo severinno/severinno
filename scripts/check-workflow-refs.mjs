@@ -32,7 +32,9 @@
 // referência exata (arquivo:linha) e o artefato faltante.
 //
 // Escopo:
-//   - Ignora linhas de comentário (#) e linhas em branco
+//   - Ignora comentário — a LINHA toda e o de FIM DE LINHA (`run: # ...`): os
+//     dois não executam nada, e uma ref vinda de um comentário valida código
+//     morto. Mesma leitura do `check-forge-parity` (`executableLines`).
 //   - REMOVE expressões ${{ ... }} (DINÂMICAS — não resolvíveis estaticamente)
 //     mas continua validando refs ESTÁTICAS na mesma linha (ex.:
 //     `node scripts/run-benchmark.mjs ${{ matrix.type }}` valida o script)
@@ -106,12 +108,22 @@ const DYNAMIC_EXPR_RE = /\$\{\{[^}]*\}\}/g
 // ---------------------------------------------------------------------------
 
 /**
- * Prepara uma linha para scan: retorna a linha com ${{ }} removidos, ou
- * `null` se for comentário (#), vazia ou só contiver expressões dinâmicas.
+ * Prepara uma linha para scan: retorna a linha com comentário de FIM DE LINHA e
+ * ${{ }} removidos, ou `null` se for linha de comentário (#), vazia ou só
+ * contiver expressões dinâmicas.
+ *
+ * O comentário de FIM DE LINHA entra pela MESMA razão que a linha inteira de
+ * comentário: `- run: # node scripts/x.mjs` não executa nada (em YAML, `#`
+ * depois de espaço inicia comentário, e o `run:` fica vazio) — e uma ref
+ * extraída daí VALIDA um script que a pipeline nunca roda. A direção do erro é
+ * pior que a de uma ref não validada: o guard afirma conserto sobre código
+ * morto. É a MESMA leitura do `check-forge-parity` (`executableLines`), que já
+ * ignorava comentário de fim de linha — uma régua só para "o que executa".
  */
 function scannableLine(trimmed) {
   if (trimmed === "" || trimmed.startsWith("#")) return null
-  const stripped = trimmed.replace(DYNAMIC_EXPR_RE, "").trim()
+  const semComentario = trimmed.replace(/(^|\s)#.*$/, "$1").trim()
+  const stripped = semComentario.replace(DYNAMIC_EXPR_RE, "").trim()
   return stripped === "" ? null : stripped
 }
 

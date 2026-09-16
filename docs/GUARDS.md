@@ -722,6 +722,13 @@ quebrado no runtime, descoberto só no push. O guard pega no PR, antes do merge.
 
 **Onde roda:** pre-push, CI.
 
+**Comentário não é referência:** o guard ignora a LINHA de comentário e o
+comentário de **FIM DE LINHA** (`- run: # node scripts/x.mjs`) — os dois não
+executam nada, e uma ref vinda daí VALIDA um script que a pipeline nunca roda. A
+leitura é a mesma do `check-forge-parity` (`executableLines`), que já ignorava o
+comentário de fim de linha; a divergência entre os dois era o furo (um passo
+comentado virava ref validada e, se o arquivo não existisse, uma violação falsa).
+
 ---
 
 **`check:registry-source` (mesma família — fonte única do registry OCI):**
