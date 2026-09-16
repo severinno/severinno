@@ -1,10 +1,15 @@
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach, vi, afterEach } from "vitest"
 import { memoryStore, startCleanupTimer } from "@/lib/redis/memory"
 import { configMode } from "@/lib/redis/config"
 
 describe("redis/memory", () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] })
     memoryStore.clear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it("armazena e recupera valor", () => {
@@ -15,21 +20,22 @@ describe("redis/memory", () => {
   })
 
   it("respeita TTL - expira entrada", () => {
+    const now = Date.now()
     memoryStore.set("expired", {
       value: "x",
-      expiresAt: Date.now() - 1000,
+      expiresAt: now - 1000,
     })
     const item = memoryStore.get("expired")
     expect(item).toBeDefined()
-    expect(item!.expiresAt! < Date.now()).toBe(true)
+    expect(item!.expiresAt!).toBeLessThan(now)
   })
 
   it("remove entrada expirada no cleanup", () => {
-    memoryStore.set("old", { value: "x", expiresAt: Date.now() - 5000 })
-    memoryStore.set("new", { value: "y", expiresAt: Date.now() + 60000 })
+    const now = Date.now()
+    memoryStore.set("old", { value: "x", expiresAt: now - 5000 })
+    memoryStore.set("new", { value: "y", expiresAt: now + 60000 })
 
     // Simulate cleanup
-    const now = Date.now()
     for (const [key, item] of memoryStore) {
       if (item.expiresAt !== null && item.expiresAt < now) {
         memoryStore.delete(key)
