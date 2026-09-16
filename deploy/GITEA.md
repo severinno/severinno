@@ -143,7 +143,7 @@ Pre-requisitos, NESTA ordem:
    E, para PROVAR que a subida depende dela — sem docker, sem rede externa,
    contra um registry de teste em `127.0.0.1`: `bun run runner-image:prove`
    (exit 0 = com a tag ausente o runner NAO sobe; o mesmo resultado entra no
-   `doctor`, secao `4/6`). A prova cobre **os dois caminhos**: a subida simples
+   `doctor`, secao `4/7`). A prova cobre **os dois caminhos**: a subida simples
    e o `--re-register` — nele, sem a imagem NADA e apagado, e com a imagem a
    ordem e `rm -sf runner` -> `volume rm` -> `up -d runner`.
    Estado **indeterminado** (registry inacessivel, ou pacote privado sem
@@ -337,7 +337,7 @@ executa o doctor sozinho (pre-requisito 2) e RECUSA a subida com o veredito
 BLOQUEADA — com exit >=3 (nem rodou) tambem. Para conferir sem subir nada:
 `bash deploy/gitea-up.sh --check-only`.
 
-`--expected` e o valor de `vars.BUN_VERSION`, e sem ele a secao `5/6` so prova
+`--expected` e o valor de `vars.BUN_VERSION`, e sem ele a secao `5/7` so prova
 que os espelhos existem e concordam entre si — dois espelhos iguais podem estar
 os DOIS velhos em relacao a variavel, e o veredito fica **INDETERMINADA** por
 isso (nunca "em sincronia" por omissao). Com o valor, a comparacao e a MESMA do
@@ -382,11 +382,11 @@ do Bun e o caminho `/usr/local/bin/bun` na imagem que o job realmente baixa (sem
 com a execucao o build e a label provam o ARQUIVO, nao o artefato; sem daemon ou
 sem credencial o veredito e INDETERMINADA e `--no-image-contract` pula
 rebaixando); consulta a tag da imagem do runner no
-registry e — na secao `4/6` — **prova que a subida depende dela**: roda o
+registry e — na secao `4/7` — **prova que a subida depende dela**: roda o
 `deploy/gitea-up.sh` real contra um registry de TESTE em `127.0.0.1`, com a tag
 ausente e com a tag presente, e afirma sobre o log do `docker` duble. A tag
 existir agora nao prova que o runner nao sobe sem ela; essa secao prova. Na
-secao `5/6` ele compara os espelhos do `BUN_VERSION` com o VALOR da variavel
+secao `5/7` ele compara os espelhos do `BUN_VERSION` com o VALOR da variavel
 (`--expected`), pela mesma funcao do job semanal. O exit
 code **e** o veredito: `0` pronta, `1` bloqueada, `2` indeterminada.
 
@@ -416,11 +416,11 @@ INDETERMINADA, nunca "em sincronia"; veja o requisito de token em
 host DIFERENTE deste checkout (o do proprio checkout o doctor compara com o
 template; outro host entra
 por `--gitea-env`, e sem o arquivo a secao do compose diz `host x template: …`
-em vez de fingir que conferiu). O que a secao `3/6` **prova** do render e o plugin
+em vez de fingir que conferiu). O que a secao `3/7` **prova** do render e o plugin
 `compose` no artefato publicado (o contrato acima); o que segue fora do alcance
 do doctor e o **socket** do job, e quem o exercita e a Prova 4 do smoke.
 
-A secao `6/6` le o **BOARD**: as issues de drift que os crons deste repositorio
+A secao `6/7` le o **BOARD**: as issues de drift que os crons deste repositorio
 abriram e ninguem fechou (`required-checks-drift` nas duas forjas,
 `actrc-sync-drift`, `readme-drift`, `mutation-trend-drift`), pela mesma consulta
 dos publicadores. Uma divida ABERTA nao bloqueia (ela nao prova que o merge pode
@@ -764,7 +764,7 @@ credencial** (conferir localmente nao deveria precisar de token):
 bun scripts/forge-doctor-issue.mjs --report /tmp/forge-doctor.json --backend gitea --dry-run
 ```
 
-A secao `6/6` le as **DUAS forjas**, e e o unico fato do veredito que fala de um
+A secao `6/7` le as **DUAS forjas**, e e o unico fato do veredito que fala de um
 board que nao e esta forja — de proposito: as dividas de `readme-drift` e
 `mutation-trend-drift` sao crons do `.github/` e existem **so no board do
 GitHub**. Como o runner da forja **nao tem a CLI `gh`**, a leitura de la usa a
