@@ -491,6 +491,16 @@ describe("workflowDefaultShells — a declaração é FATO lido, não premissa p
   it("workflow sem `defaults:` não inventa declaração", () => {
     expect(workflowDefaultShells("jobs:\n  a:\n    steps:\n      - run: echo ok\n")).toEqual([])
   })
+
+  it("a declaração carrega a LINHA da chave `run:` (o dado que os outros guards usam)", () => {
+    // `runLine` vem de `defaultsBlocks` (forge-workflows.mjs), a leitura única: é
+    // por essa linha que os guards de workflow sabem o que NÃO é passo. Um guard
+    // que passasse a ler `defaults:` por conta própria perderia este campo — e a
+    // prova de que a leitura é uma só é o campo existir aqui.
+    const [d] = workflowDefaultShells(WF_DEFAULT_LIGADO)
+    expect(d.runLine).toBe(3)
+    expect(d.inline).toBe(false)
+  })
 })
 
 describe("workflowRunSteps — a FONTE do shell de cada passo é dita", () => {

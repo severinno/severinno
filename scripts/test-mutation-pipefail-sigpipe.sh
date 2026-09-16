@@ -52,8 +52,16 @@
 #      módulo compartilhado; decisão VENCIDA vira `::warning::` no run normal e
 #      VIOLAÇÃO no `--review` (o job semanal); sem razão escrita OU com data
 #      impossível é violação nos DOIS modos (fail-closed)
+# 7d. CONTROLE H1 + MUTAÇÕES H2/H3 (o ESCOPO da varredura): um workflow que
+#      mistura todas as formas (`defaults:` de arquivo e de job, `- uses:`,
+#      `- run:` inline, `- run: |` com continuação, heredoc, corpo vazio e
+#      `shell:` DEPOIS do `run:`) tem o passo de corpo VAZIO nomeado — e a soma
+#      FECHA (julgados + vazios = declarados, contados DA FIXTURE). A H2 remove a
+#      conta do corpo vazio do guard e exige que o passo suma do relatório; a H3
+#      limita a leitura do `run:` inline à PRIMEIRA linha e exige que a
+#      ocorrência da continuação suma — as duas provam que H1/H3 têm dentes.
 #  11. INFRA: --root inexistente → exit 2 · flag desconhecida → exit 3
-#  12. Cleanup (trap EXIT)
+#  12. Cleanup (trap EXIT) — que TAMBÉM restaura o guard mutado por H2/H3
 #
 # Usage:
 #   ./scripts/test-mutation-pipefail-sigpipe.sh
@@ -950,6 +958,201 @@ if [ "$USO_EXIT" -ne 3 ]; then
 fi
 pass "flag desconhecida é uso inválido (exit 3)"
 
+# ── MUTAÇÃO H: o ESCOPO da varredura — nada some em silêncio ──────────────
+#
+# O valor do guard não é o que ele ACUSA: é o que ele NÃO acusa. Duas classes de
+# "varre menos do que parece" moravam no mesmo lugar:
+#
+#   (a) o `run:` DECLARADO com corpo VAZIO — não há o que julgar, mas o passo
+#       não pode SUMIR da conta: um passo a menos no denominador é um gate que
+#       varre menos do que diz;
+#   (b) o `- run:` INLINE com continuação — o YAML dobra `run: cmd` + as linhas
+#       mais indentadas num escalar ÚNICO (a quebra vira espaço), e ler só a
+#       primeira linha julga o passo por METADE: o `| grep -q` da segunda ficava
+#       invisível.
+#
+# H1 mede a CONTA contra um workflow que mistura TODAS as formas — e a fixture é
+# LIMPA de propósito: o relatório do escopo só sai no caminho verde, que é
+# justamente onde um gate que varre menos do que parece se esconde. H2 e H3 mutam
+# o GUARD (no lugar, com restauração no trap) para provar que as asserções
+# MORDEM: a mutação é detectada pelo que ele deixa de DIZER.
+
+header 'CONTROLE H1: corpo `run:` vazio sai NOMEADO e a soma da varredura FECHA'
+raiz="$(nova_raiz)"
+mkdir -p "$raiz/.gitea/workflows"
+cat > "$raiz/.gitea/workflows/misto.yml" <<'YML'
+on:
+  pull_request:
+defaults:
+  run:
+    shell: bash -e {0}
+jobs:
+  a:
+    defaults:
+      run:
+        shell: bash -e {0}
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo limpo-a
+      - run: |
+          docker compose ps --format '{{.Names}}' \
+            | grep -i runner
+      - run: |
+          cat <<'EOF'
+          echo "$OUT" | grep -q padrao
+          EOF
+      - run: |
+  b:
+    steps:
+      - run: echo limpo-b
+      - run: printf '%s' "$X" | grep -c valor
+        shell: bash
+YML
+# A CONTA vem DA FIXTURE, não de um número escrito à mão: o denominador é o que o
+# arquivo declara como passo `run:`. Um literal aqui envelheceria em silêncio no
+# dia em que a fixture mudasse — e a prova passaria a medir a si mesma.
+DECLARADOS="$(grep -c '^ *- run:' "$raiz/.gitea/workflows/misto.yml")"
+LINHA_VAZIA="$(grep -n '^ *- run: |$' "$raiz/.gitea/workflows/misto.yml" | tail -1 | cut -d: -f1)"
+exit_code="$(rodar "$raiz" "$TMP_DIR/h1.txt")"
+if [ "$exit_code" -ne 0 ]; then
+  fail "a fixture LIMPA deveria passar (exit $exit_code) — a conta do escopo não é violação"
+  cat "$TMP_DIR/h1.txt"
+  exit 1
+fi
+if ! grep -qF "fora do escopo da varredura" "$TMP_DIR/h1.txt"; then
+  fail "o passo de corpo VAZIO não foi NOMEADO — 'N passos' sem dizer QUAIS não distingue 'não havia o que julgar' de 'o gate não olhou'"
+  cat "$TMP_DIR/h1.txt"
+  exit 1
+fi
+if ! grep -qF "misto.yml:$LINHA_VAZIA" "$TMP_DIR/h1.txt"; then
+  fail "o relatório não aponta a LINHA do passo vazio (esperado misto.yml:$LINHA_VAZIA)"
+  cat "$TMP_DIR/h1.txt"
+  exit 1
+fi
+set +e
+node "$GUARD" --root "$raiz" --json > "$TMP_DIR/h1.json" 2>&1
+set -e
+if ! DECLARADOS="$DECLARADOS" LINHA_VAZIA="$LINHA_VAZIA" node -e '
+  const fs = require("node:fs")
+  const j = JSON.parse(fs.readFileSync(process.argv[1], "utf8"))
+  const declarados = Number(process.env.DECLARADOS)
+  const linhaVazia = Number(process.env.LINHA_VAZIA)
+  const s = j.scanned
+  const soma = s.runStepsComPipefail + s.runStepsSemPipefail + s.passosCorpoVazio
+  const erro = []
+  if (soma !== declarados)
+    erro.push(`a soma NAO FECHA: ${s.runStepsComPipefail}+${s.runStepsSemPipefail}+${s.passosCorpoVazio}=${soma} != ${declarados} passo(s) declarados`)
+  if (s.passosCorpoVazio !== 1) erro.push(`passosCorpoVazio=${s.passosCorpoVazio} (esperado 1)`)
+  if (j.foraDoEscopo.length !== 1)
+    erro.push(`foraDoEscopo=${j.foraDoEscopo.length} entrada(s) (esperado 1)`)
+  else {
+    if (j.foraDoEscopo[0].line !== linhaVazia)
+      erro.push(`foraDoEscopo[0].line=${j.foraDoEscopo[0].line} != ${linhaVazia}`)
+    if (!/VAZIO/.test(j.foraDoEscopo[0].motivo))
+      erro.push(`o motivo nao nomeia a classe: ${j.foraDoEscopo[0].motivo}`)
+  }
+  if (s.passosComShellNoPasso !== 1)
+    erro.push(`passosComShellNoPasso=${s.passosComShellNoPasso} — o shell: DEPOIS do run: nao foi lido como do PASSO`)
+  if (erro.length) {
+    console.error(erro.join("\n"))
+    process.exit(1)
+  }
+' "$TMP_DIR/h1.json"; then
+  fail "o relatório --json da varredura não fecha a conta (acima)"
+  cat "$TMP_DIR/h1.json"
+  exit 1
+fi
+pass "controle H1: o corpo vazio sai nomeado com arquivo+linha, a soma fecha contra os $DECLARADOS passo(s) da própria fixture, e o shell: depois do run: é do PASSO"
+
+# A partir daqui o GUARD é mutado NO LUGAR (o `--root` é do fixture, o arquivo
+# mutado é o do repositório): o backup e a restauração verificada entram no MESMO
+# trap, porque um `exit` no meio do caminho não pode deixar a árvore com a
+# mutação dentro.
+guard_backup="$TMP_DIR/guard.original.mjs"
+cp "$GUARD" "$guard_backup"
+guard_sum="$(cksum "$GUARD" | cut -d' ' -f1)"
+trap 'cp -f "$guard_backup" "$GUARD" 2>/dev/null || true; rm -rf "$TMP_DIR"' EXIT
+restaurar_guard() {
+  cp -f "$guard_backup" "$GUARD"
+  if [ "$(cksum "$GUARD" | cut -d' ' -f1)" != "$guard_sum" ]; then
+    fail "RESTAURAÇÃO do guard FALHOU (checksum diverge) — restaure a partir de $guard_backup"
+    exit 1
+  fi
+}
+mutar_guard() {
+  GUARD="$GUARD" ALVO="$1" NOVO="$2" python3 - <<'PY'
+import os
+p = os.environ["GUARD"]
+old, new = os.environ["ALVO"], os.environ["NOVO"]
+s = open(p).read()
+n = s.count(old)
+if n != 1:
+    raise SystemExit(f"mutacao nao-cirurgica no guard: {n} ocorrencia(s) do alvo (esperado 1)")
+open(p, "w").write(s.replace(old, new))
+PY
+  if ! grep -qF 'MUTACAO H' "$GUARD"; then
+    fail "a mutação não aplicou no guard (nada a medir)"
+    exit 1
+  fi
+}
+
+header "MUTAÇÃO H2: sem a conta do corpo vazio o passo SOME do relatório"
+mutar_guard '    passosCorpoVazio += counts.corpoVazio' '    passosCorpoVazio += 0 // MUTACAO H2'
+mutar_guard '    for (const v of passosVazios) {' '    for (const v of []) { // MUTACAO H2'
+exit_code="$(rodar "$raiz" "$TMP_DIR/h2.txt")"
+if [ "$exit_code" -ne 0 ]; then
+  fail "com o corpo vazio fora da conta o guard mudou de veredito (exit $exit_code) — a conta não é violação, a mutação tinha de ser silenciosa no exit"
+  cat "$TMP_DIR/h2.txt"
+  exit 1
+fi
+if grep -qF "fora do escopo da varredura" "$TMP_DIR/h2.txt"; then
+  fail "mutação H2 NÃO detectada: sem a conta do corpo vazio o relatório AINDA nomeia o passo — o controle H1 não morde"
+  cat "$TMP_DIR/h2.txt"
+  exit 1
+fi
+pass "mutação H2 DETECTADA: o corpo vazio desaparece do relatório junto com a conta — é o que a asserção do controle H1 prende"
+restaurar_guard
+
+header 'CONTROLE H3: o `- run:` inline com continuação entra na varredura INTEIRO'
+raiz3="$(nova_raiz)"
+mkdir -p "$raiz3/.github/workflows"
+cat > "$raiz3/.github/workflows/inline.yml" <<'YML'
+on:
+  pull_request:
+jobs:
+  unico:
+    steps:
+      - run: docker ps \
+          | grep -q runner
+YML
+exit_code="$(rodar "$raiz3" "$TMP_DIR/h3.txt")"
+if [ "$exit_code" -ne 1 ]; then
+  fail "o passo inline com CONTINUAÇÃO passou (exit $exit_code) — o \`| grep -q\` da segunda linha ficou invisível (o passo julgado por METADE)"
+  cat "$TMP_DIR/h3.txt"
+  exit 1
+fi
+if ! grep -qF 'grep -q runner <<< "$(docker ps)"' "$TMP_DIR/h3.txt"; then
+  fail "a ocorrência não saiu com as DUAS metades do pipeline dobrado (o remédio tem de ser o comando inteiro)"
+  cat "$TMP_DIR/h3.txt"
+  exit 1
+fi
+pass "controle H3: o pipeline dobrado pelo YAML é lido INTEIRO e o remédio carrega as duas metades"
+
+header 'MUTAÇÃO H3: ler só a PRIMEIRA linha do `run:` inline torna o passo invisível'
+mutar_guard '      const partes = [runInline]
+      let k = runIdx + 1
+      for (; k < bloco.length; k++) {' '      const partes = [runInline]
+      let k = runIdx + 1
+      for (; k < runIdx + 1; k++) { // MUTACAO H3'
+exit_code="$(rodar "$raiz3" "$TMP_DIR/h3-mut.txt")"
+if [ "$exit_code" -ne 0 ]; then
+  fail "mutação H3 NÃO detectada: com a leitura limitada à primeira linha o guard AINDA achou a ocorrência"
+  cat "$TMP_DIR/h3-mut.txt"
+  exit 1
+fi
+pass "mutação H3 DETECTADA: a leitura da continuação é o que faz a ocorrência aparecer — é a regressão que o controle H3 prende"
+restaurar_guard
+
 header "VEREDITO"
 pass "MUTATION TEST PASSED — o guard pega o pipe quieto sob pipefail (script E"
 pass 'workflow com shell bash E no passo sem shell declarado, com a marca da premissa),'
@@ -961,4 +1164,7 @@ pass "em grep de leitura."
 pass "E a dívida NÃO se re-declara em silêncio: --update sem --reason não"
 pass "grava nada, e uma decisão vencida/sem razão/ com data impossível não"
 pass "passa em modo nenhum — o cron (--review) é quem a escala para violação."
+pass "E o ESCOPO da varredura é medido: o passo de corpo vazio sai nomeado e a"
+pass "soma fecha contra a própria fixture, a leitura da continuação inline é o que"
+pass "faz a ocorrência aparecer, e tirar qualquer das duas do guard derruba a prova."
 exit 0

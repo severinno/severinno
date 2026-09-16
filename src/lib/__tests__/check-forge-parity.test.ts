@@ -74,6 +74,7 @@ const REAL_LINES = [
   "      - run: node scripts/check-forge-parity.mjs",
   "      - run: node scripts/check-hooks-symmetry.mjs",
   "      - run: node scripts/check-hook-ci-parity.mjs",
+  "      - run: node scripts/check-workflow-run-syntax.mjs",
   "      - run: node scripts/check-doctor-ci.mjs",
   "      - run: node scripts/prove-runner-image-gate.mjs",
 ]
@@ -368,5 +369,61 @@ describe("repositório real", () => {
       }
     }
     expect(unclassified).toEqual([])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `defaults: run:` NÃO é passo — a declaração de shell default não pode
+// satisfazer uma invariante
+//
+// A invariante do CORE é medida pelo COMANDO canônico na linha de `run:`. Um
+// scanner que lê qualquer `run:` do arquivo aceitava a DECLARAÇÃO de shell como
+// o gate: `defaults:\n  run: node scripts/check-workflow-refs.mjs
+// --pkg-internal` dizia que a pipeline rodava o guard de refs sem rodar nada, e
+// a forma escalar fabricava o comando literal `bash`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("a declaração `defaults: run:` não é passo (o gate não pode ser forjado)", () => {
+  const FORJADO = [
+    "name: x",
+    "on: [push]",
+    "defaults:",
+    "  run: node scripts/check-workflow-refs.mjs --pkg-internal",
+    "jobs:",
+    "  guardas:",
+    "    runs-on: ubuntu-latest",
+    "    steps:",
+    "      - run: echo nada",
+  ].join("\n")
+
+  it("`runCommands` não devolve o comando da declaração", () => {
+    expect(runCommands(FORJADO)).toEqual(["echo nada"])
+  })
+
+  it("`discoverGates` não descobre o gate da declaração", () => {
+    expect(discoverGates(FORJADO)).toEqual([])
+  })
+
+  it("a declaração NÃO satisfaz a invariante do CORE (ela não roda)", () => {
+    expect(missingInvariants(FORJADO)).toContain("workflow-refs")
+  })
+
+  it("a forma escalar (`defaults:\n  run: bash`) não vira o comando literal `bash`", () => {
+    const wf = "defaults:\n  run: bash\njobs:\n  a:\n    steps:\n      - run: echo ok\n"
+    expect(runCommands(wf)).toEqual(["echo ok"])
+  })
+
+  it("o `defaults:` do JOB também é declaração, não passo", () => {
+    const wf = [
+      "jobs:",
+      "  a:",
+      "    runs-on: ubuntu-latest",
+      "    defaults:",
+      "      run: node scripts/check-x-y-z.mjs",
+      "    steps:",
+      "      - run: echo ok",
+    ].join("\n")
+    expect(runCommands(wf)).toEqual(["echo ok"])
+    expect(discoverGates(wf)).toEqual([])
   })
 })

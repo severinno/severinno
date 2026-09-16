@@ -2864,6 +2864,44 @@ seguinte) é juntada antes da análise; e o corpo de **heredoc** é TEXTO, não 
 — sem isso o guard acusaria os próprios mutation tests, que escrevem fixtures com
 o padrão dentro.
 
+**O ESCOPO da varredura é medido, e o que fica fora sai NOMEADO** — porque o valor
+deste guard não é o que ele acusa, é o que ele _não_ acusa. Duas classes de "varre
+menos do que parece" fecharam aqui, e as duas eram invisíveis no caminho **verde**
+(que é exatamente onde um gate que olha de menos se esconde):
+
+1. **`run:` DECLARADO com corpo VAZIO** — não há sintaxe a julgar, mas o passo
+   também não pode sumir da conta: um passo a menos no denominador é um gate que
+   varre menos do que diz. Ele entra em `foraDoEscopo` com arquivo, linha, job e
+   motivo, e o relatório imprime a lista ("N passo(s) DECLARADO(s) fora do escopo").
+   O invariante é a **soma**: `comPipefail + semPipefail + corpoVazio = passos
+`run:` declarados` — medido hoje no repositório: **87 + 384 + 0 = 471**;
+2. **`- run:` INLINE com continuação** — o YAML dobra `run: cmd` + as linhas mais
+   indentadas num escalar ÚNICO (a quebra vira espaço), e ler só a PRIMEIRA linha
+   julgava o passo por METADE: o `| grep -q` da segunda ficava invisível. O corpo
+   agora é lido até a primeira linha no nível da chave, e a `\` de continuação é
+   removida antes do remédio (mantê-la gravaria `<<< "$(docker ps \)"` — um
+   conselho que o `--fix` escreveria no arquivo). Medido no repositório: **0
+   casos hoje** — e é por isso que a prova abaixo precisa de fixture sintético.
+
+**A prova de cobertura** (`src/lib/__tests__/check-pipefail-sigpipe-cobertura.test.ts`,
+13 testes, roda na suíte unit do merge) é **diferencial**: um workflow que mistura
+`defaults:` de arquivo e de job, `- uses:`, `- run:` inline, `- run: |` com
+continuação, heredoc, corpo vazio e `shell:` DEPOIS do `run:` — e cada passo
+DECLARA o que ele é (de onde vem o shell, se liga pipefail, se o corpo tem a
+classe). O guard tem de concordar com a declaração passo a passo, nenhuma violação
+pode cair numa linha que não seja de um passo `run:` (passo FANTASMA), e a soma
+fecha contra a própria fixture em vez de contra um número escrito à mão.
+
+**E a prova morde — medido por mutação do próprio guard** (a seção `H` do
+`scripts/test-mutation-pipefail-sigpipe.sh`, matriz do master): tirar a conta do
+corpo vazio faz o passo **desaparecer** do relatório (H2), e limitar a leitura do
+`run:` inline à primeira linha faz a ocorrência da continuação **desaparecer**
+(H3) — nos dois casos o controle correspondente (H1/H3 com o guard intacto) vai a
+vermelho, que é o que transforma "a prova passa" em "a prova prende a regressão".
+O H1 conta os passos declarados **da própria fixture** (`grep -c '^ *- run:'`): um
+literal no teste envelheceria em silêncio no dia em que a fixture mudasse, e a
+prova passaria a medir a si mesma.
+
 **A dívida foi DECLARADA e depois APOSENTADA — o gate hoje é ABSOLUTO:** o
 padrão já estava no repositório quando o gate nasceu (216 ocorrências em 47
 arquivos, 95 delas nos mutation tests). Corrigir tudo de uma vez seria uma
@@ -2965,6 +3003,151 @@ O `--fix` tem as mesmas provas, pelo mesmo método: ele REESCREVE o caso mecâni
 heredoc (o fixture continua com o padrão, e a contagem cai exatamente do que foi
 reescrito); ele **comprime** a continuação; e ele **não grava** quando a
 reescrita não reduz (fail-closed).
+
+A **seção H** prova a COBERTURA da varredura — o que ela não julga e o que ela lê
+pela metade —, e a evidência é o que o guard DEIXA de dizer. **H1** roda o guard
+INTEIRO contra a fixture mista (limpa de propósito: o relatório do escopo só sai
+no caminho verde) e exige que o corpo vazio saia nomeado com arquivo e linha, que
+a soma feche contra os passos `run:` **contados da própria fixture** (`grep -c
+'^ *- run:'`, nunca um literal) e que o `shell:` depois do `run:` seja lido como do
+PASSO. **H2** tira a conta do corpo vazio do guard e exige que o nome **suma** do
+relatório; **H3** limita a leitura do `run:` inline à primeira linha e exige que a
+ocorrência da continuação **suma**. O guard é mutado NO LUGAR (o `--root` é do
+fixture; o arquivo mutado é o do repositório), com backup e restauração conferida
+por `cksum` no MESMO `trap` — um `exit` no meio do caminho não pode deixar a
+mutação na árvore.
+
+---
+
+## 21. O que NÃO é passo — `defaults: run: shell:` (`scripts/forge-workflows.mjs`)
+
+**O que protege:** `defaults:` declara o **shell do escopo** (do arquivo ou do
+job) — e declaração não é passo. Uma leitura única (`defaultsBlocks` +
+`defaultsRunLines`, em `forge-workflows.mjs`, a mesma casa da lista de
+diretórios de workflow) diz a TODOS os guards que leem YAML de workflow quais
+linhas são a declaração.
+
+**Por que existe (o defeito não é ruído, é gate falso):** os guards extraem
+comandos de `run:` por regex, linha a linha. A forma escalar que o YAML aceita
+(`defaults:\n  run: <comando>`) é lida por qualquer um desses scaners como um
+COMANDO — e o pior caso não é o passo fantasma (`defaults:\n  run: bash` virava
+o comando literal `bash`), é a **forja de gate**:
+
+```yaml
+defaults:
+  run: node scripts/check-workflow-refs.mjs --pkg-internal
+```
+
+fazia `runCommands`/`discoverGates` relatarem um gate que a pipeline **não
+executa** (a invariante do CORE satisfeita por uma declaração de shell), o
+`extractWorkflowRunRefs` contar cobertura de mutation test que nenhum job roda, o
+`extractScriptRefs` validar um script que nunca é chamado, e o **doctor** aceitar
+a linha como "o job RODA o comando esperado" — o veredito de prontidão para
+bloquear o merge saindo de uma declaração.
+
+**As três formas, e o que o guard faz com cada uma:**
+
+| forma                                        | leitura                                                                             |
+| :------------------------------------------- | :---------------------------------------------------------------------------------- |
+| `defaults:` / `run:` / `shell: bash` (bloco) | o shell é LIDO (`workflowDefaultShells`, do `check-pipefail-sigpipe`, compõe daqui) |
+| `defaults: {run: {shell: bash}}` (em linha)  | `unparsed: true` — não ler **não** é o mesmo que não haver                          |
+| `defaults:` / `run: <comando>` (escalar)     | `unparsed: true`, e **nunca** passo: é a forma que fabrica gate                     |
+
+**Quem consulta a leitura:** `check-forge-parity` (`runCommands` e
+`discoverGates`, via `executableLines(lines, defaultsRunLines(content))`),
+`forge-doctor` (`gateRunLine`, `firstRunLine` e o inventário de `run:` do job que
+alimenta o contrato de merge), `check-mutation-jobs` (`extractWorkflowRunRefs`) e
+`check-workflow-refs` (os quatro extratores). O `check-pipefail-sigpipe` compõe o
+shell default daqui, para a premissa do runner não ter duas implementações.
+
+**Quem NÃO consulta, e por quê:** `check-script-headers` **não lê YAML de
+workflow** — ele varre um diretório (`scripts/`) —, então o shell default não tem
+como virar passo para ele. Está registrado aqui para o próximo leitor não sair
+procurando a fiação que não existe.
+
+**Onde roda:** local (`bash scripts/test-mutation-workflow-defaults.sh`) e na
+matriz node-pura do master (`workflow-defaults`, o 23º sub-test).
+
+**A prova de que ele morde** (`scripts/test-mutation-workflow-defaults.sh`): a
+árvore de julgamento é GERADA a partir das invariantes do CORE
+(`canonicalCommandOf`), de modo que o fixture de controle é **verde de
+verdade** — a única diferença entre o verde e o vermelho é a linha proibida e a
+mutação. Os **dois controles**: (1) a declaração LEGAL em bloco (arquivo e job)
+→ exit 0, senão adotar `defaults: run: shell:` seria impossível; (2) a declaração
+escalar no escopo do JOB → nenhum dos cinco guards a vê como passo, gate, ref ou
+comando, e o comando do PASSO segue visível. As **cinco mutações**, cada uma
+red pela asserção da própria regra:
+
+| mutação | o que ela degrada                                                                                   | como o guard acusa                                                                                                              |
+| :------ | :-------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------ |
+| **A**   | `defaultsRunLines` devolve vazio (a leitura compartilhada para de ler)                              | `--root` sai 1 com `gate 'scripts/check-fantasma.mjs' NAO CLASSIFICADO` nas DUAS pipelines, e o `--gates` nomeia o fantasma     |
+| **B**   | o guard de paridade deixa de CONSULTAR (o argumento some de `executableLines`, nos DOIS call sites) | o mesmo 1 — leitura certa num módulo não protege guard que não a chama                                                          |
+| **C**   | o doctor deixa de pular (3 sites: `gateRunLine`, `firstRunLine`, o inventário do job)               | `firstRunLine`/`gateRunLine` passam a devolver a linha da declaração                                                            |
+| **D**   | os guards de ref deixam de pular (`check-mutation-jobs` + `check-workflow-refs`, os 4 extratores)   | a declaração vira ref de script E cobertura de mutation test — e o guard de paridade (intacto) segue pulando, provando cirurgia |
+| **E**   | a leitura só vê o escopo do ARQUIVO                                                                 | a declaração do JOB volta a virar passo → 1 nomeando o fantasma                                                                 |
+
+As mutações são IN-PLACE nos módulos REAIS (é o módulo real que os guards
+importam; um mutante numa cópia mediria outro guard), com backup + trap, e a
+restauração é **provada** por `cksum` arquivo a arquivo.
+
+**Limite declarado:** o fixture exercita as funções que DECIDEM (`firstRunLine`,
+`gateRunLine`, os extratores) por execução; o CLI do doctor não é invocado no
+mutation test porque ele exige a forja inteira (env, credencial, docker) — o
+contrato do doctor com a declaração está travado nos testes unitários
+(`forge-doctor.test.ts`) e a paridade do guard é medida pelo CLI real contra o
+fixture.
+
+**A COBERTURA dos quatro guards é medida por um invariante só** —
+`src/lib/__tests__/workflow-yaml-guards-cobertura.test.ts` (17 testes, roda na
+suíte unit do merge), irmão do
+`check-pipefail-sigpipe-cobertura.test.ts`. Um gate que leia MENOS do que diz fica
+verde pelo mesmo motivo que um gate honesto: nada falhou — e os quatro leem o
+mesmo texto com o mesmo ponto cego. O invariante é um só, e é uma SOMA:
+
+```
+julgados + fora do escopo (NOMEADOS) = declarados
+```
+
+O lado direito é o que o arquivo DECLARA; o esquerdo tem de fechar. Quando uma
+forma nova de escrever um passo/job/ref não entra em nenhum dos dois, ela não
+aparece como violação — ela **SOME**, e o denominador encolhe em silêncio. Cada
+guard tem a sua versão da conta, e cada uma é medida contra a PRÓPRIA fixture
+(nunca contra um número escrito à mão, que envelheceria calado):
+
+| guard                    | a soma                                                                                           | o que ela prende                                                                                                     |
+| :----------------------- | :----------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------- |
+| `check-forge-parity`     | classificados + NÃO classificados = gates descobertos, e descoberta = declaração                 | o gate que a descoberta não acha nunca precisa de classificação — então um gate novo pula a forja sem que nada falhe |
+| `check-mutation-jobs`    | cobertos + órfãos NOMEADOS = scripts declarados (partição fechada; a cobertura transitiva conta) | o script que existe e não é referenciado por nada tem de sair nomeado, em vez de sumir do denominador                |
+| `check-workflow-refs`    | extraídas = declaradas, e resolvidas + quebradas = extraídas                                     | a ref que não é julgada nem reportada — e, pior, a ref FABRICADA a partir de uma linha que não executa               |
+| `check-pipefail-sigpipe` | julgados + corpo vazio = passos `run:` declarados                                                | o passo que sai da conta em vez de sair nomeado                                                                      |
+
+Além da soma, dois invariantes de ATRIBUIÇÃO em cada guard, porque apontar para
+o lugar errado é pior que calar: **nenhuma violação pode cair numa linha que não
+seja de um elemento declarado** (o elemento FANTASMA do lado do diagnóstico), e
+todo nome citado numa violação tem de existir no fixture ou na lista declarada do
+repositório (nenhum id inventado pela régua).
+
+O que fica FORA do escopo é medido como DECISÃO, não como esquecimento: a
+fixture declara cada linha fora (a declaração `defaults.run`, o comentário solto,
+o comentário bash dentro do bloco, a linha só com `${{ }}`) e o teste cobra que
+ela **não produza elemento nenhum** — e, quando a leitura compartilhada existe
+(`defaultsRunLines`), que a linha seja VISTA como declaração. O último bloco do
+arquivo fecha o ciclo: o MESMO `defaults: run: <comando>` é submetido aos quatro
+guards e nenhum deles o lê como passo — a prova de que a leitura é uma só.
+
+Duas correções nasceram desta prova (o fixture sintético é onde a classe
+aparece):
+
+1. **`check-workflow-refs` validava ref de COMENTÁRIO DE FIM DE LINHA.**
+   `- run: # node scripts/comentario.mjs` é um passo que não executa nada, e a
+   ref extraída dali era validada (ou acusada) como se a pipeline a rodasse — o
+   guard afirmando conserto sobre código morto. O `scannableLine` passou a
+   remover o comentário de fim de linha, a MESMA leitura do `executableLines` do
+   `check-forge-parity` (que já a fazia): uma régua só para "o que EXECUTA".
+2. **o fixture só vale se ele misturar as formas** — cada bloco começa
+   afirmando que a mistura existe (os três desfechos de classificação, as duas
+   origens de ref, as duas classes que não podem contar); sem isso a prova
+   passaria medindo a si mesma.
 
 ---
 

@@ -660,60 +660,6 @@ export function shellEnablesPipefail(shell) {
 }
 
 /**
- * O LAYOUT de `jobs:` de um workflow: onde começa e qual a indentação das
- * chaves de job.
- *
- * A indentação é MEDIDA, não presumida `2`: um workflow escrito com outro
- * recuo faria o guard classificar passos no job errado — e a classificação é o
- * que decide se um `| grep -q` é a classe SIGPIPE.
- *
- * @param {string[]} lines
- * @returns {{jobsIdx: number, jobIndent: number | null}}
- */
-function jobsLayout(lines) {
-  const jobsIdx = lines.findIndex((l) => /^jobs:\s*$/.test(l))
-  if (jobsIdx === -1) return { jobsIdx: -1, jobIndent: null }
-  for (let k = jobsIdx + 1; k < lines.length; k++) {
-    const l = lines[k]
-    if (l.trim() === "" || l.trim().startsWith("#")) continue
-    if (!/^\s/.test(l)) return { jobsIdx, jobIndent: null }
-    return { jobsIdx, jobIndent: l.match(/^[ \t]*/)[0].length }
-  }
-  return { jobsIdx, jobIndent: null }
-}
-
-/** O nome do job que uma linha de CHAVE de job (`  guardas:`) declara. */
-function jobKeyName(line, jobIndent) {
-  const m = new RegExp(`^\\s{${jobIndent}}([^\\s:#][^:]*):\\s*(?:#.*)?$`).exec(line)
-  return m ? m[1].trim().replace(/^["']|["']$/g, "") : null
-}
-
-/**
- * A CHAVE filha direta de um bloco YAML (o primeiro nível abaixo do cabeçalho).
- *
- * @param {string[]} lines
- * @param {number} headIdx
- * @param {number} headIndent
- * @param {string} key
- * @returns {number | null}
- */
-function yamlChildKey(lines, headIdx, headIndent, key) {
-  let childIndent = null
-  for (let k = headIdx + 1; k < lines.length; k++) {
-    const l = lines[k]
-    if (l.trim() === "" || l.trim().startsWith("#")) continue
-    const ind = l.match(/^[ \t]*/)[0].length
-    if (ind <= headIndent) return null
-    const m = /^\s*([A-Za-z_][A-Za-z0-9_.-]*):/.exec(l)
-    if (!m) continue
-    if (childIndent === null) childIndent = ind
-    if (ind !== childIndent) continue
-    if (m[1] === key) return k
-  }
-  return null
-}
-
-/**
  * As DECLARAÇÕES de shell default de um workflow: `defaults: run: shell:` no
  * nível do ARQUIVO e no nível de cada JOB.
  *
@@ -832,7 +778,41 @@ export function workflowRunSteps(content, defaults = workflowDefaultShells(conte
       bodyEnd = k
       body = corpo.join("\n")
     } else {
-      body = runInline
+      // O `run:` ESCALAR CONTINUA nas linhas seguintes — e por isso o corpo é
+      // lido ATÉ a primeira linha no nível da chave, não só a primeira linha:
+      // o YAML dobra `run: cmd` + as linhas mais indentadas do item num escalar
+      // ÚNICO (a quebra vira espaço), e é esse texto que o runner escreve no
+      // script. Ler só a primeira linha julgava o passo por METADE — um
+      // `| grep -q` na continuação passava invisível, que é a mesma classe de
+      // gate que varre menos do que parece (medido: 0 casos no repositório hoje,
+      // e é justamente por isso que a prova precisa do fixture sintético).
+      //
+      // O `\` no fim de cada pedaço é REMOVIDO: ele era a tentativa do autor de
+      // continuar em shell, e na dobra o YAML o transforma em `\ ` seguido da
+      // linha de baixo (o bash lê um espaço escapado e o MESMO pipeline).
+      // Mantê-lo faria o remédio sair com uma barra no meio
+      // (`<<< "$(docker ps \)"`) — um conselho que o `--fix` gravaria no arquivo.
+      const runIndent =
+        bloco[runIdx].match(/^[ \t]*/)[0].length + (/^\s*-\s+/.test(bloco[runIdx]) ? 2 : 0)
+      const partes = [runInline]
+      let k = runIdx + 1
+      for (; k < bloco.length; k++) {
+        const l = bloco[k]
+        // Linha em BRANCO dentro do escalar é um PARÁGRAFO: o YAML mantém a
+        // quebra ali (não dobra), então ela não vira espaço.
+        if (l.trim() === "") {
+          partes.push("\n")
+          continue
+        }
+        if (l.match(/^\s*/)[0].length <= runIndent) break
+        partes.push(l.trim())
+      }
+      bodyEnd = k
+      body = partes
+        .map((p) => p.replace(/\\\s*$/, "").trimEnd())
+        .join(" ")
+        .replace(/ *\n */g, "\n")
+        .trim()
     }
     // `shell:` pode vir DEPOIS do `run:` (a ordem das chaves do passo é livre no
     // YAML): olhar só até o `run:` faria o gate ler o shell do RUNNER onde o
@@ -886,6 +866,85 @@ export function workflowRunSteps(content, defaults = workflowDefaultShells(conte
   return steps
 }
 
+/**
+ * A HERANÇA DE SHELL de UM workflow: de ONDE vem o shell de cada passo, o que as
+ * declarações de `defaults:` fazem com eles, e quantos passos ficaram sob
+ * pipefail.
+ *
+ * É A MESMA MEDIÇÃO que o gate usa (`scanRoot` chama esta função, item a item) e
+ * que o `forge-doctor` publica como FATO da prontidão: duas leituras do mesmo
+ * YAML divergem no primeiro ajuste — e a que ninguém confere é justamente a que
+ * vai para o relatório de quem decide se pode confiar o merge.
+ *
+ * A conta por FONTE é a resposta à pergunta que o relatório do guard faz em
+ * prosa e que o veredito de prontidão não tinha como cobrar:
+ *   - `noPasso`            — o passo declara `shell:` (a classe é DITA ali);
+ *   - `porDefaultDoJob`    — o shell vem do `defaults:` do JOB;
+ *   - `porDefaultDoArquivo`— o shell vem do `defaults:` do ARQUIVO;
+ *   - `peloRunner`         — NINGUÉM declarou: a premissa é o shell default do
+ *                            runner (`bash -e`), que não é deste repositório.
+ *
+ * `premissas` são as declarações que LIGAM o pipefail (o guard as reprova: elas
+ * reclassificam todos os passos do escopo numa linha, e nenhum passo muda no
+ * diff) — cada uma com quantos passos sem `shell:` ela passou a cobrir;
+ * `ilegiveis` são as que o guard não consegue LER (forma inline), onde presumir
+ * "sem pipefail" seria a aposta que este arquivo existe para acabar.
+ *
+ * `passosVazios` são os `run:` DECLARADOS com corpo vazio: não há sintaxe a
+ * julgar (não rodam nada), mas eles são CONTADOS e DEVOLVIDOS à parte em vez de
+ * sumirem — um passo que a varredura esquece em silêncio é a mesma mentira de um
+ * gate que varre menos do que parece.
+ *
+ * @param {string} content
+ * @returns {{steps: object[], passosVazios: object[], declaracoes: object[], premissas: object[], ilegiveis: object[], counts: {total: number, corpoVazio: number, noPasso: number, porDefaultDoJob: number, porDefaultDoArquivo: number, porDefault: number, peloRunner: number, comPipefail: number}}}
+ */
+export function workflowShellInheritance(content) {
+  const defaults = workflowDefaultShells(content)
+  const todos = workflowRunSteps(content, defaults)
+  // O passo SEM corpo não é julgado (não roda nada) — e NÃO some da conta: ele
+  // sai em `passosVazios` para o relatório poder nomeá-lo.
+  const steps = todos.filter((s) => s.body.trim() !== "")
+  const passosVazios = todos
+    .filter((s) => s.body.trim() === "")
+    .map((s) => ({ line: s.line, job: s.job, shell: s.shell, shellFonte: s.shellFonte }))
+  const declaracoes = defaults.map((d) => ({ ...d, passos: 0 }))
+  const counts = {
+    total: steps.length,
+    corpoVazio: passosVazios.length,
+    noPasso: 0,
+    porDefaultDoJob: 0,
+    porDefaultDoArquivo: 0,
+    porDefault: 0,
+    peloRunner: 0,
+    comPipefail: 0,
+  }
+  for (const step of steps) {
+    if (step.pipefail) counts.comPipefail++
+    if (step.shellFonte === "step") counts.noPasso++
+    else if (step.shellFonte === "job-default") counts.porDefaultDoJob++
+    else if (step.shellFonte === "workflow-default") counts.porDefaultDoArquivo++
+    else counts.peloRunner++
+    // A DECLARAÇÃO QUE LIGA O PIPEFAIL RECLASSIFICOU ESTE PASSO numa linha do
+    // YAML: a conta vai para ela, que é o que o guard reprova — sem isso o
+    // operador teria de deduzir quantos passos mudaram de significado de uma vez.
+    if (step.shellFonte !== "job-default" && step.shellFonte !== "workflow-default") continue
+    const escopo = step.shellFonte === "job-default" ? "job" : "workflow"
+    const dono = declaracoes.find(
+      (d) => d.scope === escopo && !d.unparsed && (escopo === "workflow" || d.job === step.job),
+    )
+    if (dono && dono.pipefail) dono.passos++
+  }
+  counts.porDefault = counts.porDefaultDoJob + counts.porDefaultDoArquivo
+  return {
+    steps,
+    passosVazios,
+    declaracoes,
+    premissas: declaracoes.filter((d) => !d.unparsed && d.pipefail),
+    ilegiveis: declaracoes.filter((d) => d.unparsed === true),
+    counts,
+  }
+}
+
 /** É um script de shell pela extensão OU por ser hook do `.husky/`? */
 export function isShellScript(relPath) {
   const parts = relPath.split(sep)
@@ -915,7 +974,7 @@ export function listShellScripts(root, { dir = "", out = [] } = {}) {
  * A varredura inteira: scripts de shell + os `run:` dos workflows das forjas.
  *
  * @param {string} root
- * @returns {{files: string[], violations: object[], premissas: object[], ilegiveis: object[], scanned: object}}
+ * @returns {{files: string[], violations: object[], foraDoEscopo: object[], premissas: object[], ilegiveis: object[], scanned: object}}
  */
 export function scanRoot(root) {
   const files = listShellScripts(root)
@@ -936,14 +995,36 @@ export function scanRoot(root) {
   let passosDoRunner = 0
   let passosComDefaultDeclarado = 0
   let passosComShellNoPasso = 0
+  let passosCorpoVazio = 0
+  /**
+   * Os passos DECLARADOS que a varredura NÃO julga, com o motivo. A lista existe
+   * para o relatório poder dizer quantos e QUAIS — um passo fora do escopo sem
+   * nome é a diferença entre "não havia o que julgar" e "o gate não olhou".
+   * @type {{file: string, line: number, job: string | null, motivo: string}[]}
+   */
+  const foraDoEscopo = []
   /** @type {Map<string, {file: string, line: number, scope: string, job: string | null, shell: string, passos: number}>} */
   const premissas = new Map()
   const ilegiveis = []
   const chaveDe = (rel, m) => `${rel}\u0000${m.line}\u0000${m.job ?? ""}`
   for (const rel of workflowFiles) {
     const conteudo = readFileSync(join(root, rel), "utf8")
-    const defaults = workflowDefaultShells(conteudo)
-    for (const d of defaults) {
+    // A LEITURA E A CONTA SÃO DE `workflowShellInheritance` — a MESMA medição
+    // que o `forge-doctor` publica como fato da prontidão. O que esta varredura
+    // acrescenta é a CLASSIFICAÇÃO do texto (`findViolations`), não uma segunda
+    // leitura do YAML: duas leituras do mesmo workflow divergem no primeiro
+    // ajuste, e a que vai para o relatório de prontidão seria a que ninguém vê.
+    const { steps, passosVazios, declaracoes, counts } = workflowShellInheritance(conteudo)
+    passosCorpoVazio += counts.corpoVazio
+    for (const v of passosVazios) {
+      foraDoEscopo.push({
+        file: rel,
+        line: v.line,
+        job: v.job,
+        motivo: "corpo `run:` VAZIO — nada executa, nada a julgar",
+      })
+    }
+    for (const d of declaracoes) {
       if (d.unparsed) {
         ilegiveis.push({ file: rel, ...d })
         continue
@@ -958,27 +1039,15 @@ export function scanRoot(root) {
           scope: d.scope,
           job: d.job,
           shell: d.shell,
-          passos: 0,
+          passos: d.passos,
         })
     }
-    for (const step of workflowRunSteps(conteudo, defaults)) {
-      if (step.body.trim() === "") continue
-      if (step.pipefail) runStepsComPipefail++
-      else runStepsSemPipefail++
-      if (step.shellFonte === "runner") passosDoRunner++
-      else if (step.shellFonte === "step") passosComShellNoPasso++
-      else passosComDefaultDeclarado++
-      // A declaração que liga o pipefail RECLASSIFICOU este passo em UMA linha do
-      // YAML: a conta vai para a premissa, que é o que FALHA — sem isso o operador
-      // teria de deduzir quantos passos mudaram de significado.
-      if (step.shellFonte === "job-default" || step.shellFonte === "workflow-default") {
-        const escopoAlvo = step.shellFonte === "job-default" ? "job" : "workflow"
-        const d = defaults.find(
-          (x) => x.scope === escopoAlvo && (escopoAlvo === "workflow" || x.job === step.job),
-        )
-        const alvo = d ? premissas.get(chaveDe(rel, d)) : null
-        if (alvo) alvo.passos++
-      }
+    runStepsComPipefail += counts.comPipefail
+    runStepsSemPipefail += counts.total - counts.comPipefail
+    passosDoRunner += counts.peloRunner
+    passosComDefaultDeclarado += counts.porDefault
+    passosComShellNoPasso += counts.noPasso
+    for (const step of steps) {
       // O PADRÃO REPROVA NO STEP INTEIRO — com pipefail declarado E no shell
       // DEFAULT. Antes, o passo sem pipefail era apenas CONTADO e ficava fora
       // do gate: a segurança dele dependia de uma premissa que não é nossa (o
@@ -1008,9 +1077,13 @@ export function scanRoot(root) {
   }
 
   violations.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line)
+  // Os passos fora do escopo saem ORDENADOS e como FATO próprio: quem lê o
+  // relatório sabe quantos passos a varredura não julgou, e por quê.
+  foraDoEscopo.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line)
   return {
     files: [...files, ...workflowFiles].sort(),
     violations,
+    foraDoEscopo,
     premissas: [...premissas.values()].sort(
       (a, b) => a.file.localeCompare(b.file) || a.line - b.line,
     ),
@@ -1021,6 +1094,7 @@ export function scanRoot(root) {
       workflows: workflowFiles.length,
       runStepsComPipefail,
       runStepsSemPipefail,
+      passosCorpoVazio,
       passosDoRunner,
       passosComDefaultDeclarado,
       passosComShellNoPasso,
@@ -1384,7 +1458,7 @@ function main() {
     process.exit(EXIT.UNAVAILABLE)
   }
 
-  const { files, violations, premissas, ilegiveis, scanned } = scanRoot(root)
+  const { files, violations, foraDoEscopo, premissas, ilegiveis, scanned } = scanRoot(root)
   const json = argv.includes("--json")
 
   if (argv.includes("--list")) {
@@ -1497,6 +1571,9 @@ function main() {
           // passos de uma vez" — o remédio de cada uma é outro.
           premissas,
           ilegiveis,
+          // O QUE A VARREDURA NÃO JULGOU, nomeado: sem esta lista, "N passos" no
+          // relatório não distingue "não havia o que julgar" de "o gate não olhou".
+          foraDoEscopo,
           novas,
           reduzidas,
           total: violations.length,
@@ -1571,11 +1648,26 @@ function main() {
     )
   }
 
+  // O ESCOPO DECLARADO: os passos que a varredura NÃO julgou, um a um. Um gate
+  // que varre menos do que parece mente pelo que NÃO diz — e o passo com
+  // `run:` vazio é o caso em que há um passo declarado e nada a julgar.
+  if (foraDoEscopo.length > 0) {
+    console.log(
+      `ℹ️  ${foraDoEscopo.length} passo(s) DECLARADO(s) fora do escopo da varredura (nada a julgar):`,
+    )
+    for (const f of foraDoEscopo) {
+      console.log(`     ${f.file}:${f.line}${f.job ? ` (job \`${f.job}\`)` : ""} — ${f.motivo}`)
+    }
+  }
+
   console.log(
     `✅ Nenhuma ocorrência NOVA de \`| grep -q\` — o padrão é varrido nos DOIS contextos: ` +
       `${scanned.shellScriptsComPipefail}/${scanned.shellScripts} script(s) com pipefail + ` +
       `${scanned.runStepsComPipefail} passo(s) de workflow com pipefail (shell: bash, \`defaults:\` ou set -o pipefail) + ` +
-      `${scanned.runStepsSemPipefail} passo(s) de ${scanned.workflows} workflow(s) SEM pipefail. ` +
+      `${scanned.runStepsSemPipefail} passo(s) de ${scanned.workflows} workflow(s) SEM pipefail` +
+      (scanned.passosCorpoVazio > 0
+        ? ` (+ ${scanned.passosCorpoVazio} passo(s) de corpo VAZIO, FORA do escopo: nada executa) `
+        : ". ") +
       `A FONTE do shell está dita passo a passo: ${scanned.passosComShellNoPasso} no próprio passo, ` +
       `${scanned.passosComDefaultDeclarado} por \`defaults:\` do repositório (nenhuma ligando pipefail — as que ` +
       `ligam FALHAM o gate), ${scanned.passosDoRunner} pelo default do RUNNER (\`bash -e\`, que não é deste ` +
