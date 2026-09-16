@@ -1318,11 +1318,13 @@ manter o hook <1s).
 toca Dockerfile/setup-bun).
 
 **`bench:guard-timing` (`scripts/bench-guard-timing.mjs`)** — benchmark de
-wall time do doctor (perfil --ci) e de CADA guard individual. Mede o tempo
-real de execução de cada gate da bateria (18 guards) e do doctor, registra
-em JSON versionado (`docs/benchmarks/guard-timing-{latest,baseline}.json`)
-com commit hash + timestamp, e compara contra um baseline com limiar de 20%
-para detecção de regressão.
+wall time do doctor (perfil --ci), de CADA guard individual e do **custo da
+unificação do lint**. Mede o tempo real de execução de cada gate da bateria
+(18 guards), do doctor e de TRÊS formas do lint (o par completo, a régua
+anterior e a metade nova isolada), registra em JSON versionado
+(`docs/benchmarks/guard-timing-{latest,baseline}.json`) com commit hash +
+timestamp, e compara contra um baseline com limiar de 20% para detecção de
+regressão.
 
 **Por que existe:** a suíte do doctor e a bateria de guards são os gates que
 decidem o merge. Uma regressão de tempo nelas afeta CADA PR — mas sem
@@ -1331,12 +1333,50 @@ commits. O benchmark transforma o wall time em dado estruturado: cada guard
 tem o seu tempo, o doctor tem o seu, e a comparação nomeia QUAL guard
 piorou e de quanto.
 
-**Usage:** `bun run bench:guard-timing` (mede) · `bun run bench:guard-timing:baseline`
-(salva baseline) · `bun run bench:guard-timing:compare` (compara) ·
+**Custo da unificação do lint — medido, não impresso:** desde `586b7c07` o
+`lint` deixou de ser `eslint .` (sem prettier, sem teto de warnings) e passou a
+ser o par completo (`bun run lint`), que as DUAS forjas invocam. Quatro call
+sites passaram a pagar a metade que não pagavam — o `lint` da Gitea, o `lint` do
+`ci.yml` do GitHub, o passo `Lint` do job `check` do `pr-check.yml` e o
+`release-deploy`; o `lint-guard` do MESMO `pr-check.yml` já rodava o par inline
+(era a única fonte da régua) e por isso não entra na conta. Medido em `586b7c07`
+com 3 amostras por forma (mediana alta):
+
+| forma medida                                     | wall time  |
+| ------------------------------------------------ | ---------- |
+| par completo (`bun run lint`)                    | 52.3s      |
+| régua anterior (`eslint .`)                      | 31.5s      |
+| **acrescentado por call site**                   | **+20.8s** |
+| **acrescentado por rodada de CI (4 call sites)** | **+83.3s** |
+| `prettier --check` isolado (a metade nova)       | 20.9s      |
+
+O número VIVO é o do JSON versionado
+(`docs/benchmarks/guard-timing-latest.json`, seção `lint`), refeito a cada
+execução do benchmark — a tabela acima é a leitura da rodada registrada. O delta
+por call site variou entre **20,1s e 20,8s** em rodadas da mesma sessão, na mesma
+máquina: é essa a resolução do instrumento, e por isso o que a conta afirma é a
+ORDEM de grandeza (a metade do prettier), não o décimo de segundo.
+
+A ATRIBUIÇÃO é conferida pelo próprio script: se o delta medido não fechar com a
+metade nova (tolerância de 10%, campo `attributionMatches`), o número tem outra
+causa e o relatório diz que NÃO confere — em vez de apresentar o total como
+preço da unificação. Dois fatos que sustentam a conta são MEDIDOS, não
+presumidos: a lista de call sites vem dos próprios workflows (`runCommands`
+sobre os diretórios da fonte única `forge-workflows`), e cada arquivo declarado
+como pagante é provado contra ela; e a régua laxa não pode aparecer em workflow
+nenhum — se aparecer, a unificação está incompleta, o delta tem mais de uma
+causa e o relatório lista a violação.
+
+**Usage:** `bun run bench:guard-timing` (mede) · `--no-lint` (só guards +
+doctor) · `--samples N` (amostras por forma de lint; padrão 2) ·
+`bun run bench:guard-timing:baseline` (salva baseline) ·
+`bun run bench:guard-timing:compare` (compara) ·
 `bun run bench:guard-timing:full` (salva + compara)
 
-**Onde roda:** manual, periodicamente, e em cron (benchmark-weekly.yml).
-O exit 1 na comparação indica regressão >20% em algum guard ou no doctor.
+**Onde roda:** manual, periodicamente — o `--json` versiona o resultado em
+`guard-timing-latest.json`. NÃO há cron: o `benchmark-weekly.yml` cobre os
+benchmarks de geo/DB, não este. O exit 1 na comparação indica regressão >20% em
+algum guard, no doctor ou no custo do lint por rodada.
 
 ---
 

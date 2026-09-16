@@ -1,145 +1,147 @@
 {
   "meta": {
     "tool": "bench-guard-timing",
-    "version": 1,
-    "commit": "3ba8dd37",
-    "commitDate": "2026-09-13 09:08:26 -0300",
-    "timestamp": "2026-09-14T23:50:45.602Z",
+    "version": 2,
+    "commit": "586b7c07",
+    "commitDate": "2026-09-15 18:59:25 -0300",
+    "timestamp": "2026-09-16T00:52:36.122Z",
     "nodeVersion": "v20.20.2",
     "platform": "linux",
     "arch": "x64"
   },
   "summary": {
     "guardsCount": 18,
-    "guardsTotalMs": 9836,
-    "doctorMs": 287,
-    "doctorExit": 1,
-    "totalMs": 10123
+    "guardsTotalMs": 15698,
+    "doctorMs": 2860,
+    "doctorExit": 2,
+    "totalMs": 18558,
+    "lintAddedPerSiteMs": 20821,
+    "lintAddedPerFanOutMs": 83284
   },
   "guards": [
     {
       "label": "check:required-checks",
       "cmd": "bun run check:required-checks",
-      "ms": 40,
+      "ms": 48,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:script-headers",
       "cmd": "node scripts/check-script-headers.mjs",
-      "ms": 56,
-      "exit": 1,
-      "ok": false
+      "ms": 84,
+      "exit": 0,
+      "ok": true
     },
     {
       "label": "check:prove-docs",
       "cmd": "bun run check:prove-docs",
-      "ms": 3040,
+      "ms": 5858,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:registry-source",
       "cmd": "bun run check:registry-source",
-      "ms": 1211,
+      "ms": 1582,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:doctor-ci",
       "cmd": "bun scripts/check-doctor-ci.mjs",
-      "ms": 595,
-      "exit": 1,
-      "ok": false
+      "ms": 3290,
+      "exit": 0,
+      "ok": true
     },
     {
       "label": "check:runner-base",
       "cmd": "bun run check:runner-base",
-      "ms": 1597,
+      "ms": 1250,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:workflow-refs",
       "cmd": "bun run check:workflow-refs:internal",
-      "ms": 53,
+      "ms": 56,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:ts-nocheck",
       "cmd": "bun run check:ts-nocheck",
-      "ms": 50,
+      "ms": 151,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:forge-workflow-scope",
       "cmd": "bun run check:forge-workflow-scope",
-      "ms": 110,
+      "ms": 109,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:forge-parity",
       "cmd": "bun run check:forge-parity",
-      "ms": 41,
+      "ms": 39,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:bun-audit",
       "cmd": "bun run check:bun-audit-baseline",
-      "ms": 338,
+      "ms": 396,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:secret-leaks",
       "cmd": "bun scripts/rotate-secrets.mjs --check",
-      "ms": 43,
+      "ms": 60,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:seed-hooks",
       "cmd": "bun run check:seed-hooks",
-      "ms": 33,
+      "ms": 34,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:sentinel-producer",
       "cmd": "bun run check:sentinel-producer",
-      "ms": 44,
+      "ms": 47,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:bun-mirror",
       "cmd": "bun run check:bun-mirror",
-      "ms": 63,
+      "ms": 66,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:no-setup-bun",
       "cmd": "bun run check:no-setup-bun",
-      "ms": 36,
+      "ms": 34,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:hooks-symmetry",
       "cmd": "bun scripts/check-hooks-symmetry.mjs",
-      "ms": 15,
+      "ms": 17,
       "exit": 0,
       "ok": true
     },
     {
       "label": "runner-image:prove",
       "cmd": "node scripts/prove-runner-image-gate.mjs",
-      "ms": 2471,
+      "ms": 2577,
       "exit": 0,
       "ok": true
     }
@@ -147,8 +149,133 @@
   "doctor": {
     "label": "doctor --ci",
     "cmd": "node scripts/forge-doctor.mjs --ci --json --expected 1.3.14 --expected-var IMAGE_REGISTRY=ghcr.io --expected-var IMAGE_NAMESPACE=severinno",
-    "ms": 287,
-    "exit": 1,
-    "ok": false
+    "ms": 2860,
+    "exit": 2,
+    "ok": true
+  },
+  "lint": {
+    "canonicalCmd": "bun run lint",
+    "legacyCmd": "bunx eslint .",
+    "prettierCmd": "bunx prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'",
+    "samplesPerForm": 3,
+    "forms": [
+      {
+        "role": "current",
+        "label": "lint (par completo — hoje)",
+        "cmd": "bun run lint",
+        "ms": 52279,
+        "minMs": 52262,
+        "maxMs": 53909,
+        "runs": [
+          {
+            "ms": 53909,
+            "exit": 0
+          },
+          {
+            "ms": 52279,
+            "exit": 0
+          },
+          {
+            "ms": 52262,
+            "exit": 0
+          }
+        ],
+        "exit": 0,
+        "ok": true
+      },
+      {
+        "role": "legacy",
+        "label": "lint (regua anterior — contrafactual)",
+        "cmd": "bunx eslint .",
+        "ms": 31458,
+        "minMs": 31430,
+        "maxMs": 31836,
+        "runs": [
+          {
+            "ms": 31458,
+            "exit": 0
+          },
+          {
+            "ms": 31836,
+            "exit": 0
+          },
+          {
+            "ms": 31430,
+            "exit": 0
+          }
+        ],
+        "exit": 0,
+        "ok": true
+      },
+      {
+        "role": "added-half",
+        "label": "prettier --check (a metade nova)",
+        "cmd": "bunx prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'",
+        "ms": 20947,
+        "minMs": 20696,
+        "maxMs": 21040,
+        "runs": [
+          {
+            "ms": 20696,
+            "exit": 0
+          },
+          {
+            "ms": 21040,
+            "exit": 0
+          },
+          {
+            "ms": 20947,
+            "exit": 0
+          }
+        ],
+        "exit": 0,
+        "ok": true
+      }
+    ],
+    "sites": [
+      {
+        "file": ".github/workflows/ci.yml",
+        "count": 1
+      },
+      {
+        "file": ".github/workflows/pr-check.yml",
+        "count": 2
+      },
+      {
+        "file": ".github/workflows/release-deploy.yml",
+        "count": 1
+      },
+      {
+        "file": ".gitea/workflows/ci.yml",
+        "count": 1
+      }
+    ],
+    "pipelineFiles": 4,
+    "callSites": 5,
+    "upgraded": [
+      {
+        "file": ".gitea/workflows/ci.yml",
+        "where": "job `lint` (forja dona do merge)"
+      },
+      {
+        "file": ".github/workflows/ci.yml",
+        "where": "job `lint` (espelho)"
+      },
+      {
+        "file": ".github/workflows/pr-check.yml",
+        "where": "job `check`, passo `Lint`"
+      },
+      {
+        "file": ".github/workflows/release-deploy.yml",
+        "where": "passo de lint do deploy"
+      }
+    ],
+    "upgradedSites": 4,
+    "addedPerSiteMs": 20821,
+    "addedHalfMs": 20947,
+    "attributionPct": 0.006,
+    "attributionMatches": true,
+    "addedPerFanOutMs": 83284,
+    "violations": []
   }
 }
