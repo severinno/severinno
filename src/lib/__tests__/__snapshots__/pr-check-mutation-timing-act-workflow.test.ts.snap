@@ -7,7 +7,7 @@ exports[`pr-check.yml — job mutation-coord-timing-act-guard (sintaxe YAML + sn
     "contents": "read",
     "packages": "read",
   },
-  "runs-on": "ubuntu-latest",
+  "runs-on": "self-hosted",
   "steps": [
     {
       "uses": "actions/checkout@v4",

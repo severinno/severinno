@@ -3,7 +3,7 @@
 exports[`pr-check.yml — job unused-deps-guard > snapshot da estrutura do job (mudança estrutural exige revisão consciente) 1`] = `
 {
   "name": "Unused Deps Guard (package.json hygiene)",
-  "runs-on": "ubuntu-latest",
+  "runs-on": "self-hosted",
   "steps": [
     {
       "uses": "actions/checkout@v4",

@@ -3,7 +3,7 @@
 exports[`benchmark-weekly.yml — job blob-crlf-all-text-alert (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
 {
   "name": "Blob CRLF all-text (alcance, aviso)",
-  "runs-on": "ubuntu-latest",
+  "runs-on": "self-hosted",
   "steps": [
     {
       "uses": "actions/checkout@v4",
