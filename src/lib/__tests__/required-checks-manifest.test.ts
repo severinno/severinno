@@ -51,6 +51,7 @@ const EXPECTED_JOB_IDS: Record<string, string[]> = {
     "secrets-guard",
     "seed-hooks-guard",
     "workflow-refs-guard",
+    "workflow-run-syntax",
     "bring-up-proof",
     "sentinel-producer-guard",
     "no-setup-bun-guard",
@@ -58,6 +59,7 @@ const EXPECTED_JOB_IDS: Record<string, string[]> = {
     "doctor-mirrors-guard",
     "mutation-jobs-staged-guard",
     "mutation-guards",
+    "forge-parity-mutation",
     "hooks-symmetry-guard",
     "mutation-jobs-guard",
     "readme-reverse-strict-alert",
@@ -96,6 +98,10 @@ const EXPECTED_CONTEXTS: Record<string, string[]> = {
     "UTF-8 Check",
     "Secrets Guard (no .env tracked)",
     "Workflow References Guard (no dangling refs)",
+    // workflow-run-syntax: a sintaxe dos corpos `run:` é job PRÓPRIO — o check
+    // DIZ o defeito (a classe que nasce de reescrita mecânica em massa) em vez
+    // de derrubar um job que cobre seis invariantes.
+    "Workflow run syntax (bash -n)",
     "Bring-up Gate Proof (pré-requisito 0, por execução)",
     "Actionlint (workflow syntax)",
     "Lint Guard (prettier + eslint zero)",
@@ -104,7 +110,10 @@ const EXPECTED_CONTEXTS: Record<string, string[]> = {
     "Security Headers",
     "PII Allowlist Guard (user payload projection)",
     // mutation-guards: job direto no pr-check.yml
-    "Mutation guards master (22 node-pure mutation tests)",
+    "Mutation guards master (23 node-pure mutation tests)",
+    // forge-parity-mutation: a prova da classificação é job PRÓPRIO (diz qual
+    // regra do contrato de merge quebrou, em vez de ser uma linha da matriz)
+    "Forge Parity Mutation (regras de classificação)",
     // seed-guards: jobs resolvidos do reusable workflow seed-guards.yml
     "Seed E2E ${{ matrix.seed }} · ${{ matrix.variant }}",
     "Mutation Test (seed dev E2E pega regressões?)",

@@ -19,6 +19,7 @@
         "utf8-check",
         "secrets-guard",
         "workflow-refs-guard",
+        "workflow-run-syntax",
         "bring-up-proof",
         "actionlint",
         "lint-guard",

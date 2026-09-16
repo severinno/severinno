@@ -294,6 +294,53 @@ jobs:
       - name: Summary
         run: echo "✅ No dangling references between workflows and scripts/package.json (incl. internal pkg targets); required checks, registry de imagens, escopo de forja e paridade hook↔CI consistentes."
 
+  # ── Workflow run syntax (bash -n) — JOB PRÓPRIO ───────────────────────
+  # O corpo de um `run:` é SHELL, e um shell que não faz parsing morre no
+  # RUNNER — no meio do job, depois de minutos de setup, longe da causa. O
+  # repositório reescreve corpo de `run:` por MÁQUINA de propósito (o `--fix`
+  # do check-pipefail-sigpipe reescreveu 216 ocorrências), e é exatamente onde
+  # entra um `<<<` desbalanceado, um `"` a mais ou um heredoc sem terminador.
+  # Os guards que LEEM o YAML não veem isso: para eles um corpo quebrado
+  # continua sendo um `run:` válido. `bash -n` faz o PARSING sem executar nada
+  # — o gate é o parsing, não a semântica; um passo com `shell:` não-bash é
+  # contado e NOMEADO (nunca pulado em silêncio).
+  #
+  # POR QUE UM JOB PRÓPRIO (e não um passo do `workflow-refs-guard`): o veredito
+  # passa a ser um CHECK com o nome do defeito. Um PR que quebra um corpo `run:`
+  # — a classe que nasce de reescrita mecânica em massa — falha num check que
+  # DIZ o que houve, em vez de derrubar um job que cobre seis invariantes e
+  # obrigar quem revisa a procurar no log QUAL delas caiu; e o check entra no
+  # manifesto de required checks, então renomear ou remover o job deixa de ser
+  # drift silencioso no contrato de merge. Node-puro (<1s e hermético), roda em
+  # paralelo com os demais fast gates e nada é medido duas vezes.
+  #
+  # NA FORJA o invariante roda como PASSO do job `guards` (que é o gate único
+  # dela por desenho: 40 guards num job só, um runner). O que o contrato de
+  # paridade exige é o MESMO COMANDO nas duas pipelines, e é isso que o
+  # `jobIds` por forja declara em check-forge-parity.
+  workflow-run-syntax:
+    name: Workflow run syntax (bash -n)
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      # O gate REAL contra o working tree do PR: todos os corpos `run:` das duas
+      # forjas, com a expressão do runner mascarada e o AVISO contando tanto
+      # quanto o erro (um heredoc sem terminador sai 0 do bash e o corpo
+      # truncado rodaria outra coisa).
+      - name: Workflow run syntax (bash -n)
+        run: node scripts/check-workflow-run-syntax.mjs
+
+      # A prova de SENSIBILIDADE, no mesmo job: o guard REAL roda no PR (acima) e
+      # o mutation test prova que ele MORDE — erro de sintaxe, aviso que o bash
+      # aprova, e o mascaramento preservando contexto — contra um fixture. Sem
+      # isto, um guard que virasse no-op passaria verde para sempre.
+      - name: Mutation test — o guard deve FALHAR nas 3 classes
+        run: bash scripts/test-mutation-workflow-run-syntax.sh
+
+      - name: Summary
+        run: echo "✅ Todo corpo de passo dos workflows das duas forjas faz PARSING (bash -n, sem erro E sem aviso; passo não-bash é contado e nomeado) e o mutation test prova que o guard morde nas três classes."
+
   # ── Bring-up Gate Proof (o PRÉ-REQUISITO 0, por EXECUÇÃO) ──────────────
   # O mesmo invariante do CORE da forja, provado aqui pelo caminho real: o
   # `deploy/gitea-up.sh` executa contra um env DIVERGENTE (com a imagem
@@ -519,6 +566,11 @@ jobs:
   #                    (import resolvendo no node_modules do PAI — o bug do
   #                    z-ai-web-dev-sdk — + dep inexistente devem FALHAR;
   #                    dep declarada com install pendente deve PASSAR)
+  #   workflow-run-syntax → test-mutation-workflow-run-syntax.sh
+  #                    (a metade do AVISO, o stdin do bash e o LIMITE da máscara
+  #                    de `${{ }}` devem CEGAR o gate de sintaxe dos corpos
+  #                    `run:` — cada mutação cirúrgica; o job próprio deste
+  #                    mesmo gate segue abaixo, rodando o guard REAL)
   # Cada sub-test roda SEMPRE (fail-CONTINUE) e o harness imprime o output
   # completo do script granular + verdict por sub-test + tabela final —
   # granularidade de diagnóstico preservada. Exit final agregado: 0 se

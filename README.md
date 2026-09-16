@@ -763,6 +763,7 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 | Unused-deps staged diff (`check-unused-deps.mjs --staged`)                     |     ✅     |       —       |
 | Contrato mutation-coord (`check-mutation-timing-contract.mjs`)                 |     ✅     |      ✅       |
 | Contrato mutation-coord staged (`check-mutation-timing-contract.mjs --staged`) |     ✅     |       —       |
+| Sintaxe `run:` staged diff (`check-workflow-run-syntax.mjs --staged`)          |     ✅     |       —       |
 | Format + lint (lint-staged: prettier + eslint --fix)                           |     ✅     |       —       |
 | Imports diretos (check:direct-rtl-import + barrel-lint)                        |     ✅     |       —       |
 | Barrel lint (`barrel-lint`)                                                    |     ✅     |       —       |

@@ -867,6 +867,14 @@ export function workflowRunSteps(content, defaults = workflowDefaultShells(conte
             : null
     steps.push({
       line: bodyLine,
+      // A ÚLTIMA linha do corpo, em número de linha 1-based (numa forma de bloco
+      // `run: |` é a última linha indentada; um corpo que termina com linhas em
+      // branco inclui-as). Existe para quem precisa ESCREVER de volta na linha
+      // certa — o `--fix` do `check-workflow-run-syntax` remenda UMA linha do
+      // corpo, e recomputar o fim do bloco aqui seria uma segunda regra de
+      // layout: o `-` do item, a coluna da chave e a indentação do corpo são
+      // MEDIDOS acima, e é este o número que sai da medição.
+      bodyEndLine: i + bodyEnd,
       body,
       job: jobAtual,
       shell: shellEfetivo,

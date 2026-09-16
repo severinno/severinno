@@ -116,6 +116,11 @@ export const HOOK_DECLARED = [
     why: "recorte --staged: o contrato e do repo, mas a violacao tem de estar no COMMIT para bloquea-lo. O comando inteiro roda no reusable utf8-check.yml.",
   },
   {
+    match: /^node scripts\/check-workflow-run-syntax\.mjs --staged$/,
+    of: "workflow-run-syntax",
+    why: "recorte --staged: julga os workflows do INDICE (com o CONTEUDO do commit, via `git show :path`), nao a arvore de trabalho. O corpo quebrado nasce de uma reescrita mecanica em massa ANTES do commit e e o commit que o carrega; a arvore pode ter WIP que nao faz parte dele. O CI roda o comando inteiro sobre o conteudo mergeado (480 corpos das duas forjas) — a diferenca e de ESCOPO, e o instrumento (o mesmo script) e o do CI.",
+  },
+  {
     match: /^bash scripts\/run-encoding-guards\.sh$/,
     of: null,
     ciMirror: null,

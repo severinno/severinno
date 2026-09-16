@@ -136,6 +136,18 @@ jobs:
       - name: Pipefail x grep quieto (SIGPIPE)
         run: node scripts/check-pipefail-sigpipe.mjs
 
+      # O corpo de um `run:` é SHELL, e um shell que não faz parsing morre no
+      # RUNNER — no meio do job, depois de minutos de setup, longe da causa. O
+      # repositório reescreve corpo de `run:` por MÁQUINA de propósito (o
+      # `--fix` do guard acima reescreveu 216 ocorrências), e é exatamente onde
+      # entra um `<<<` desbalanceado, um `"` a mais ou um heredoc sem
+      # terminador. Os guards que LEEM o YAML não veem isso: para eles um corpo
+      # quebrado continua sendo um `run:` válido. `bash -n` faz o PARSING sem
+      # executar nada — o gate é o parsing, não a semântica; um passo com
+      # `shell:` não-bash é contado e NOMEADO (nunca pulado em silêncio).
+      - name: Workflow run syntax (bash -n)
+        run: node scripts/check-workflow-run-syntax.mjs
+
       # Contrato de documentação das PROVAS (família `prove-*`/`doctor`): exige,
       # para CADA comando, um bloco com o resultado esperado — e CONFRONTA esse
       # bloco com a saída real (exit declarado + linhas exigidas). Uma doc que

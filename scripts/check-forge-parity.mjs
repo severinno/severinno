@@ -382,6 +382,23 @@ export const CORE_INVARIANTS = [
     jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {
+    id: "workflow-run-syntax",
+    // O corpo de um `run:` é SHELL. Os guards que LEEM o YAML (este, o
+    // `check-workflow-refs`, o doctor) classificam TEXTO: um corpo que não faz
+    // mais parsing continua sendo um `run:` válido para todos eles, e o defeito
+    // só aparece quando o runner tenta executá-lo — depois de minutos de setup,
+    // no meio do job, longe da causa. A reescrita mecânica em massa (o `--fix`
+    // do `check-pipefail-sigpipe` tocou 216 ocorrências) é onde essa classe
+    // nasce, e `bash -n` a pega no PR.
+    matches: /check[:-]workflow[:-]run[:-]syntax/,
+    command: /^node scripts\/check-workflow-run-syntax\.mjs$/m,
+    why: "reescrita mecânica de corpo `run:` que deixa de ser shell válido morre no RUNNER, não no PR",
+    // No GitHub é um JOB PRÓPRIO (o check DIZ o defeito em vez de derrubar um
+    // job de seis invariantes); na forja é passo do `guards`, que é o gate
+    // único dela por desenho. O contrato exige o mesmo COMANDO nas duas.
+    jobIds: { gitea: "guards", github: "workflow-run-syntax" },
+  },
+  {
     id: "bun-audit",
     // Ancorado em `check-...`/`check:`: o test-mutation-bun-audit-baseline.sh é
     // o TESTE do guard (roda só onde o mutation roda), não o guard em si.

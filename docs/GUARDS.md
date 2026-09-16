@@ -1177,6 +1177,142 @@ required check travaria todo PR (travado em teste). Contrato e remédios em
 
 ---
 
+### 6.1. Sintaxe do corpo `run:` — `check-workflow-run-syntax` (`scripts/check-workflow-run-syntax.mjs`)
+
+**O que protege:** todo corpo `run:` dos workflows das DUAS forjas faz **parsing
+em `bash -n`** (passos de 2026-09). O modo **`--staged`** julga só os workflows
+que o **ÍNDICE** tem, lendo o conteúdo **do commit** (`git show :path`) e não o
+working tree — é o recorte do pre-commit (`HOOK_DECLARED` do
+`check-hook-ci-parity`), e sem git/índice ele é **fail-closed** (exit 2), porque
+"0 violações" sem ter lido o índice seria uma afirmação sobre nada.
+
+**Por que existe:** o repositório reescreve corpo de `run:` por MÁQUINA, de
+propósito — o `--fix` do `check-pipefail-sigpipe` (seção 20) trocou **216**
+ocorrências de `PRODUTOR | grep -q P` por `grep -q P <<< "$(PRODUTOR)"`. É
+exatamente onde entra um `<<<` desbalanceado, um `"` a mais, uma continuação
+(`\`) que engoliu a linha seguinte ou um `<<'EOF'` sem terminador — e nenhum
+guard que LÊ o YAML enxerga isso: para o `check-workflow-refs`, o
+`check-forge-parity` e o doctor, um corpo sintaticamente quebrado continua sendo
+um `run:` válido. O erro só aparecia quando o runner executava o passo: depois do
+setup (minutos), no meio do job e longe da causa.
+
+**Como mede:** os corpos saem da MESMA leitura dos outros guards
+(`workflowRunSteps`/`workflowDefaultShells` e a lista de
+`scripts/forge-workflows.mjs`), e a CLI roda `bash -n` com o corpo no stdin.
+Três decisões que são o gate:
+
+1. **o AVISO conta tanto quanto o ERRO.** `bash -n` sai **0** para um heredoc sem
+   terminador (é aviso, não erro) — e um corpo truncado é um passo que roda outra
+   coisa. Julgar pelo exit code deixaria passar a classe que a reescrita mecânica
+   mais produz, então `ok` exige exit 0 **E** stderr vazio (medido: 0 avisos hoje);
+2. **a expressão do runner (`${{ ... }}`) é MASCARADA.** Ela não é sintaxe de
+   shell — o runner a resolve antes de o bash existir —, então julgar as chaves
+   seria julgar um texto que nunca chega ao interpretador. A máscara é uma
+   PALAVRA (preserva o contexto: um erro real em volta continua sendo pego; há
+   teste para as duas metades);
+3. **`LC_ALL=C` pinado:** a mensagem do parser vai para o relatório e para os
+   testes; "erro de sintaxe" vs "syntax error" conforme o `LANG` do runner faria
+   o diagnóstico depender do ambiente de quem roda.
+
+**O `shell:` declarado é julgado contra o que o runner MEDIU** — é a classe que o
+parsing não pega: `bash -n` julga o CORPO, não a existência do interpretador, e
+um passo com `shell: pwsh` num runner sem `pwsh` saía como "pulado" e morria com
+`command not found` DEPOIS do setup, no meio do job. Três desfechos:
+
+| `shell:` declarado                                   | desfecho                                                  |
+| :--------------------------------------------------- | :-------------------------------------------------------- |
+| `bash`/`sh`/ausente                                  | o corpo é PARSEADO (a premissa do runner é `bash -e {0}`) |
+| não-bash **presente** na imagem                      | PULADO **e nomeado**, com o caminho medido                |
+| nome que a medição achou **AUSENTE** (`pwsh`, `zsh`) | **VIOLAÇÃO** (exit 1), com o que o runner faria           |
+| nome **fora da medição** (`mytool {0}`)              | **INDETERMINADO** — nomeado, nunca presumido              |
+
+O conjunto não é presumido do documentado nem do `command -v` de quem roda o
+guard (isso publicaria como fato do repositório uma propriedade da MÁQUINA): ele
+tem **ref, digest, data e o comando que mediu**, impressos por `--shells` — o
+dia em que a base mudar, o caminho é RE-MEDIR, não ajustar o número no olho. A
+forma CUSTOM (`perl {0}`) não é um quarto desfecho: o que o gate julga é o NOME
+que ela invoca (`perl {0}` passa; `pwsh {0}` reprova).
+
+Sem allowlist: o repositório passa inteiro (480 corpos, e todos os `shell:`
+declarados existem), e um gate que nasce absoluto não tem cota para envelhecer —
+cota aqui significaria declarar que um corpo quebrado pode ficar quebrado.
+
+**O `--fix` remenda a cicatriz MECÂNICA — e mede o efeito antes e depois de
+gravar.** A cicatriz é um **operador pendente** no fim do corpo (`\`, `&&`,
+`||`, `|`, `<<`, `<<<`, `>`, `>>`, `<`) — a impressão digital de uma linha
+ENGOLIDA pela reescrita, onde o bash sai com `unexpected end of file`. `&` e `;`
+ficam **fora**: eles FECHAM comando (`sleep 1 &` é válido) e remendar um deles
+inventaria intenção. Ele NUNCA reconstrói a linha engolida — tira a cicatriz que
+impedia o parsing e diz que o diff é o que se revisa.
+
+Quatro condições, e nenhuma é opcional: (1) o corpo só é tocado em bloco
+**LITERAL** (`run: |`), onde a linha do arquivo É a linha do corpo — a forma
+dobrada (`>`) e a escalar inline juntam/dividem linhas; (2) a última linha do
+corpo tem de casar com a linha do arquivo; (3) o corpo remendado tem de voltar a
+fazer parsing, medido em memória; (4) **depois de gravar**, o arquivo é RELIDO e
+re-julgado — e a gravação é **DESFEITA** se o corpo no disco não passar. As
+recusas saem **com motivo escrito** (heredoc: o texto é DADO; forma não-literal;
+`then` sem `fi`: a intenção não é reconstruível dali; remendo que deixaria o
+corpo VAZIO: o passo deixaria de rodar o que diz). `--fix` com `--staged` ou
+`--json` é uso inválido (exit 3) — ele escreve na ÁRVORE e relata em texto.
+
+**Onde roda:** job **`workflow-run-syntax`** do `pr-check.yml` (espelho) e job
+`guards` da forja (dona do merge) — o mesmo literal nas duas, como invariante do
+CORE (`workflow-run-syntax`); o `check:forge-parity` declara o `jobIds` por forja
+e cobra o comando canônico no job declarado. Como a bateria do doctor é DERIVADA
+do job `guards`, o gate entra no relatório de prontidão sozinho. E o
+**pre-commit** roda o recorte `--staged` na fase paralela: o commit que introduz
+o corpo quebrado é bloqueado **antes** de virar PR — recorte DECLARADO, com o
+escopo escrito no `why` (o CI continua sendo a varredura inteira das duas forjas).
+
+**Por que um job PRÓPRIO no espelho:** o veredito do PR passa a ser um check com o
+NOME do defeito. Antes ele era um passo dentro do `workflow-refs-guard`, que cobre
+seis invariantes: um PR que quebrava um corpo `run:` derrubava um job que não diz
+qual delas caiu. E, sendo job, ele entra no `ci/required-checks.json` — renomear
+ou remover deixa de ser drift silencioso no contrato de merge. Na forja o
+invariante continua sendo passo do `guards`, que é o gate único dela por desenho
+(um runner, 40 guards); o que a paridade exige é o MESMO COMANDO, não a mesma
+granularidade de job.
+
+**Como testar:** `src/lib/__tests__/check-workflow-run-syntax.test.ts` — leitura
+dos corpos (escalar/bloco/vazio, e o `defaults: run:` fora), as duas metades da
+máscara, o aviso do heredoc, o `unavailable` fail-closed (bash que não executa) e
+os exit codes da CLI (1/2/3), a semântica do `shell:` (os três desfechos, a forma
+CUSTOM julgada pelo nome, o `--shells` com a proveniência e o `--json` dos três)
+e o `--fix` (o remendo gravado, as recusas com motivo, o arquivo INTACTO na
+recusa e a gravação DESFEITA quando o corpo no disco não passa), além do
+repositório inteiro. O recorte `--staged`
+tem teste PRÓPRIO, contra um repo git REAL:
+`src/lib/__tests__/check-workflow-run-syntax-staged-cli.test.ts` prova as DUAS
+direções do escopo (corpo quebrado no índice reprova **mesmo** com a árvore já
+corrigida; defeito só na árvore passa o recorte e o gate da árvore reprova o
+mesmo repo) e o fail-closed fora de um repositório git.
+**Prova por mutação:** `scripts/test-mutation-workflow-run-syntax.sh` (roda NO
+JOB, depois do gate real, e também como sub-test da matriz do master) tem DUAS
+metades. (A) SENSIBILIDADE — o guard REAL reprova as fixtures de defeito e passa
+no corpo são: `if` sem `fi` (ERRO, citando arquivo e linha), heredoc sem terminador
+(AVISO: o script MEDE que o `bash -n` sai **0** e só avisa — um gate que olhasse
+só o exit code o aprovaria) e o defeito entre DUAS expressões do runner (prova
+que a máscara para no primeiro `}}`). (B) MUTAÇÃO DO PRÓPRIO GUARD, aplicada no
+lugar com backup e restauração VERIFICADA por checksum: matar a metade do AVISO
+(`ok` só pelo exit code) CEGA o guard no heredoc e nada mais; tirar o corpo do
+STDIN do `bash -n` CEGA todas as classes (o bash julga um programa vazio);
+tornar a máscara GULOSA (`[^}]*` → `[\s\S]*`) engole o defeito que estivesse
+entre duas expressões e CEGA o guard também; ler a **ÁRVORE** onde o recorte
+deve ler o **ÍNDICE** CEGA o pre-commit (o commit com o corpo quebrado passa
+porque o editor já consertou o arquivo — e só o recorte o pegaria); aceitar
+qualquer nome como **presente na imagem** CEGA a metade semântica (o passo com
+`shell: pwsh` passa com a headline de sucesso); e remover a **guarda do corpo
+vazio** no `--fix` CEGA o fixer de um jeito que se paga no gate — ele grava um
+corpo vazio, o vazio deixa de ter sintaxe a julgar e o passo que já não roda nada
+sai como ✅. Cada mutação é CIRÚRGICA — as outras metades seguem mordendo — e o
+script exige a cegueira: um mecanismo que, mutado, não muda o veredito é decoração
+e falha o PR (exit 1). (Medido: remover a máscara por inteiro **não** muda o
+veredito — `bash -n` aceita `${{ ... }}` —, por isso a mutação da máscara é o seu
+LIMITE, não a sua ausência.)
+
+---
+
 ## 7. Segredos — `audit-secret-leaks`, `check-secret-leaks-baseline`, `rotate-secrets`
 
 **O que protege:** segredos NÃO entram no histórico (rotina de rotação);

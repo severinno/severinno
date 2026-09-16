@@ -48,8 +48,17 @@ PID_DEPS=$!
 node scripts/check-mutation-timing-contract.mjs --staged &
 PID_TIMING=$!
 
+# Sintaxe dos corpos `run:` — RECORTE --staged, declarado em HOOK_DECLARED do
+# check-hook-ci-parity: julga os workflows do INDICE, lendo o conteudo do
+# commit (`git show :path`), nao o working tree. O corpo quebrado nasce de uma
+# reescrita mecanica em massa ANTES do commit e e o COMMIT que o carrega; a
+# arvore pode ter WIP que nao faz parte dele. A varredura inteira (480 corpos
+# das duas forjas) continua sendo o veredito do CI.
+node scripts/check-workflow-run-syntax.mjs --staged &
+PID_RUNSYNTAX=$!
+
 # Aguarda a fase e agrega TODOS os status (wait_all — ver o topo do arquivo).
-wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING
+wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_RUNSYNTAX
 
 # ── Phase B: Global guards (parallel) ─────────────────────────────────────
 # Encoding guards, barrel lint, and prettier check are read-only and
