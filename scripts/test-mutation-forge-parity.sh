@@ -2,8 +2,8 @@
 # =============================================================================
 # scripts/test-mutation-forge-parity.sh — Mutation test do check-forge-parity
 #
-# Prova que o scripts/check-forge-parity.mjs REALMENTE falha nas DUAS classes de
-# defeito que ele existe para pegar:
+# Prova que o scripts/check-forge-parity.mjs REALMENTE falha nas TRÊS regras de
+# classificação que ele existe para fazer cumprir:
 #
 #   A) gate NOVO na forja DONA DO MERGE sem classificação  → NAO CLASSIFICADO
 #      (a regressão que motivou o guard: um gate novo pulando a forja em
@@ -11,6 +11,14 @@
 #   B) gate NOVO no espelho GitHub sem classificação       → NAO CLASSIFICADO
 #   C) gate classificado como GITHUB_ONLY que RODA na forja → classificação
 #      stale (o gate roda lá ou a classificação mente)
+#   D) invariante do CORE AUSENTE numa pipeline (o comando canônico removido) →
+#      "invariante do CORE 'X' NAO roda aqui" — o buraco silencioso clássico: a
+#      invariante desaparece de uma forja e o PR passa verde por onde ela ficou
+#   E) o invariante PRESENTE por outra FORMA (chamada indireta `bun run
+#      check:X`, ou o mesmo comando SEM o argumento canônico) → a régua é
+#      ANCORADA: presença não é "casou a substring", é executar o comando
+#      canônico. Sem estas duas, um gate enfraquecido (ou invocado por um
+#      atalho que roda outra coisa) passaria como paridade
 #
 # COMO (e por que assim): o guard roda com `--root` contra um FIXTURE que é uma
 # CÓPIA dos dois pipelines REAIS (`.gitea/workflows/ci.yml`, o dono do merge, e
@@ -26,7 +34,12 @@
 #   3. MUTAÇÃO A: gate não classificado na forja (dona do merge) → DEVE FALHAR
 #   4. MUTAÇÃO B: gate não classificado no espelho GitHub → DEVE FALHAR
 #   5. MUTAÇÃO C: gate GITHUB_ONLY rodando na forja → DEVE FALHAR (stale)
-#   6. Cleanup (trap EXIT)
+#   6. MUTAÇÃO D: invariante do CORE com o comando canônico REMOVIDO → DEVE
+#      FALHAR nomeando o invariante, a pipeline e a linha esperada
+#   7. MUTAÇÃO E: invariante PRESENTE por outra forma (indireta, e sem o
+#      argumento canônico) → DEVE FALHAR com a MESMA mensagem, e NÃO como gate
+#      não classificado (a classificação casou: o que falhou foi a RÉGUA)
+#   8. Cleanup (trap EXIT)
 #
 # Usage:
 #   ./scripts/test-mutation-forge-parity.sh
@@ -90,6 +103,49 @@ run_guard() {
   node "$GUARD" --root "$FIXTURE" > "$TMP_DIR/out.txt" 2>&1
   GUARD_EXIT=$?
   set -e
+}
+
+# `remover_comando <workflow> <comando>` — remove a LINHA EXATA
+# `        run: <comando>` do fixture, recusando alvo ausente ou AMBÍGUO: uma
+# mutação que aplica em dois lugares (ou em nenhum) não mede a regra que ela diz
+# medir — ela mede outra coisa (ou nada) e o harness se declara detetor.
+remover_comando() {
+  WF="$1" CMD="$2" FIXTURE="$FIXTURE" python3 - <<'PY'
+import os
+p = os.path.join(os.environ["FIXTURE"], os.environ["WF"])
+s = open(p).read()
+old = "        run: " + os.environ["CMD"] + "\n"
+n = s.count(old)
+if n != 1:
+    raise SystemExit(f"mutacao nao-cirurgica em {os.environ['WF']}: {n} ocorrencia(s) de {old.strip()!r}")
+open(p, "w").write(s.replace(old, ""))
+PY
+  if grep -qF "        run: $2" "$FIXTURE/$1"; then
+    fail "a remoção não aplicou em $1 (nada a medir)"
+    exit 1
+  fi
+}
+
+# `trocar_comando <workflow> <comando> <forma-divergente>` — troca a linha exata
+# de `run:` por OUTRA forma de invocar o mesmo gate. É a mutação que mede a
+# RÉGUA (ancorada no comando), não a classificação: a forma divergente continua
+# casando o `matches` do invariante, e o que tem de reprovar é o `command`.
+trocar_comando() {
+  WF="$1" CMD="$2" NOVO="$3" FIXTURE="$FIXTURE" python3 - <<'PY'
+import os
+p = os.path.join(os.environ["FIXTURE"], os.environ["WF"])
+s = open(p).read()
+old = "        run: " + os.environ["CMD"] + "\n"
+new = "        run: " + os.environ["NOVO"] + "\n"
+n = s.count(old)
+if n != 1:
+    raise SystemExit(f"mutacao nao-cirurgica em {os.environ['WF']}: {n} ocorrencia(s) de {old.strip()!r}")
+open(p, "w").write(s.replace(old, new))
+PY
+  if ! grep -qF "        run: $3" "$FIXTURE/$1"; then
+    fail "a troca não aplicou em $1 (nada a medir)"
+    exit 1
+  fi
 }
 
 # ── CONTROLE ──────────────────────────────────────────────────────────────
@@ -163,7 +219,99 @@ if ! grep -qF "classificado como GITHUB_ONLY mas RODA aqui" "$TMP_DIR/out.txt"; 
 fi
 pass "mutação C DETECTADA: a isenção não pode mentir sobre onde o gate roda (exit $GUARD_EXIT)"
 
+# ── MUTAÇÃO D: invariante do CORE ausente numa pipeline ───────────────────
+#
+# A TERCEIRA regra: além de nenhum gate ficar sem classificação e nenhuma isenção
+# mentir sobre onde roda, todo invariante do CORE tem de RODAR nas DUAS pipelines
+# com o COMANDO CANÔNICO. A mutação remove a linha do comando de uma forja — o
+# buraco silencioso clássico: a invariante desaparece de uma pipeline e o PR
+# passa verde pela outra, sem que nada no diff diga isso.
+#
+# A asserção inclui o COMANDO ESPERADO no diagnóstico: "não roda aqui" sem dizer
+# o que falta faz quem lê procurar um gate que ESTÁ lá (invocado de outra forma).
+
+header "MUTAÇÃO D: invariante do CORE AUSENTE na forja (comando canônico removido)"
+make_fixture
+remover_comando "$GITEA_WF" "node scripts/check-registry-source.mjs"
+run_guard
+
+if [ "$GUARD_EXIT" -eq 0 ]; then
+  fail "guard CEGO: passou com o invariante 'registry-source' AUSENTE na forja (exit 0)"
+  exit 1
+fi
+if ! grep -qF "invariante do CORE 'registry-source' NAO roda aqui" "$TMP_DIR/out.txt"; then
+  fail "guard falhou (exit $GUARD_EXIT) mas NÃO nomeou o invariante ausente"
+  sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
+  exit 1
+fi
+if ! grep -qF "node scripts/check-registry-source.mjs" "$TMP_DIR/out.txt"; then
+  fail "o diagnóstico não imprimiu a LINHA ESPERADA (quem lê procuraria um gate que existe)"
+  sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
+  exit 1
+fi
+if ! grep -qF "$GITEA_WF" "$TMP_DIR/out.txt"; then
+  fail "o diagnóstico não nomeou a PIPELINE onde o invariante falta"
+  sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
+  exit 1
+fi
+pass "mutação D DETECTADA: invariante ausente falha nomeando o invariante, a pipeline e a linha esperada (exit $GUARD_EXIT)"
+
+# ── MUTAÇÃO E: a régua é ANCORADA (o invariante PRESENTE por outra forma) ──
+#
+# As três divergências que a régua frouxa anterior (`/check[:-]registry[:-]source/`)
+# aceitava: a invocação INDIRETA, a invocação com outros ARGUMENTOS, e o comando
+# trocado por outro que ainda casasse a substring. As duas mutações abaixo são as
+# duas primeiras — e as duas exigem, além da mensagem, que o gate NÃO saia como
+# "NAO CLASSIFICADO": a classificação casou (o `matches` do invariante reconhece
+# as três formas), então o que reprovou foi a RÉGUA. Se saísse como classificação,
+# o guard estaria pegando o defeito por outro motivo — e a prova mediria a
+# regra errada.
+
+header "MUTAÇÃO E1: invariante invocado de forma INDIRETA (bun run check:...)"
+make_fixture
+trocar_comando "$GITHUB_WF" "node scripts/check-workflow-refs.mjs --pkg-internal" "bun run check:workflow-refs"
+run_guard
+
+if [ "$GUARD_EXIT" -eq 0 ]; then
+  fail "guard CEGO: aceitou o invariante pela forma indireta (exit 0) — a régua não é ancorada no comando canônico"
+  exit 1
+fi
+if grep -qF "NAO CLASSIFICADO" "$TMP_DIR/out.txt"; then
+  fail "a mutação E1 saiu como gate NÃO CLASSIFICADO: ela mediria a classificação, não a RÉGUA do comando"
+  sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
+  exit 1
+fi
+if ! grep -qF "invariante do CORE 'workflow-refs' NAO roda aqui" "$TMP_DIR/out.txt"; then
+  fail "guard falhou (exit $GUARD_EXIT) mas NÃO nomeou o invariante fora da forma canônica"
+  sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
+  exit 1
+fi
+pass "mutação E1 DETECTADA: a invocação indireta conta como divergência, e o defeito é da RÉGUA (não da classificação)"
+
+header "MUTAÇÃO E2: invariante presente SEM o argumento canônico (mesma substring)"
+make_fixture
+trocar_comando "$GITHUB_WF" "node scripts/check-workflow-refs.mjs --pkg-internal" "node scripts/check-workflow-refs.mjs"
+run_guard
+
+if [ "$GUARD_EXIT" -eq 0 ]; then
+  fail "guard CEGO: aceitou o comando canônico ENFRAQUECIDO (sem --pkg-internal) — invocação com outros argumentos passaria como paridade"
+  exit 1
+fi
+if grep -qF "NAO CLASSIFICADO" "$TMP_DIR/out.txt"; then
+  fail "a mutação E2 saiu como gate NÃO CLASSIFICADO: ela mediria a classificação, não a RÉGUA do comando"
+  sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
+  exit 1
+fi
+if ! grep -qF 'node scripts/check-workflow-refs.mjs --pkg-internal' "$TMP_DIR/out.txt"; then
+  fail "o diagnóstico não imprimiu o comando canônico COMPLETO (a linha esperada é o valor do remédio)"
+  sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
+  exit 1
+fi
+pass "mutação E2 DETECTADA: o mesmo comando com argumentos diferentes é divergência, e o diagnóstico imprime a linha canônica completa"
+
 header "VEREDITO"
 pass "MUTATION TEST PASSED — check-forge-parity pega gate novo sem classificação"
-pass "(forja E espelho) e isenção stale, com o fixture como única entrada."
+pass "(forja E espelho), isenção stale, invariante do CORE AUSENTE de uma"
+pass "pipeline e o invariante PRESENTE por outra forma (indireta ou com outros"
+pass "argumentos) — a régua é ancorada no comando canônico, não na substring."
 exit 0

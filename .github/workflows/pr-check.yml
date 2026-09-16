@@ -520,7 +520,7 @@ jobs:
         run: echo "✅ No orphan test-mutation-*.sh and no broken workflow ref introduced by this PR diff."
 
   # ── Mutation Guards MASTER (consolidado) ────────────────────────────
-  # Roda os 22 mutation tests node-puro dos guards de CI num JOB SÓ via
+  # Roda os 23 mutation tests node-puro dos guards de CI num JOB SÓ via
   # scripts/test-mutation-guards.sh — matriz de sub-tests que orquestra os
   # scripts granulares (que continuam sendo a fonte única de
   # fixtures/mutações/asserções de cada guard):
@@ -583,7 +583,7 @@ jobs:
   # (--scenario <id> roda um sub-test isolado para diagnóstico local).
   # Node-puro, <9s total, sem docker.
   mutation-guards:
-    name: Mutation guards master (22 node-pure mutation tests)
+    name: Mutation guards master (23 node-pure mutation tests)
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
@@ -592,7 +592,33 @@ jobs:
         run: bash scripts/test-mutation-guards.sh
 
       - name: Summary
-        run: echo "✅ All 22 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard, mutation-count, no-leaked-imports, pipefail-sigpipe, paridade hook↔CI)."
+        run: echo "✅ All 23 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard, mutation-count, no-leaked-imports, pipefail-sigpipe, paridade hook↔CI, defaults de shell, sintaxe dos corpos `run:`)."
+
+  # ── Forge Parity Mutation (job DEDICADO, fora do master) ────────────────
+  # A prova por mutação das TRÊS regras de classificação do
+  # check-forge-parity: (1) nenhum gate sem classificação — na forja dona do
+  # merge E no espelho; (2) nenhuma isenção GITHUB_ONLY pode RODAR na forja
+  # (classificação stale); (3) todo invariante do CORE roda nas DUAS pipelines
+  # COM O COMANDO CANÔNICO — nem invocação indireta, nem o mesmo comando sem
+  # os argumentos canônicos.
+  #
+  # Por que DEDICADO (e não mais um sub-test do master): esta é a única prova
+  # do repositório cujo sujeito é o CONTRATO DE MERGE em si — quais gates podem
+  # pular uma forja e com qual forma de comando. Um vermelho dela dentro de uma
+  # matriz de 22 sub-tests diz "alguma mutação falhou"; como job próprio ela diz
+  # QUAL regra de classificação quebrou, e vira check com nome no contrato de
+  # merge (ci/required-checks.json). Custo: ~2s node-puro, sem docker.
+  forge-parity-mutation:
+    name: Forge Parity Mutation (regras de classificação)
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mutation test — as três regras de classificação devem FALHAR
+        run: bash scripts/test-mutation-forge-parity.sh
+
+      - name: Summary
+        run: echo "✅ check-forge-parity pega gate sem classificação (nas DUAS pipelines), isenção GITHUB_ONLY rodando na forja, invariante do CORE ausente e o invariante presente fora da forma canônica."
 
   # ── Hooks Symmetry Guard (dedicado) ─────────────────────────────────
   # Fast gate (node puro, <1s): roda o guard REAL de simetria

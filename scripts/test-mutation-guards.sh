@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 22 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 23 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -67,6 +67,13 @@
 #                    do PAI (worktree aninhado — o bug do z-ai-web-dev-sdk)
 #                    deve FALHAR; dep inexistente deve FALHAR; dep declarada
 #                    com install pendente deve PASSAR (exit 0)
+#   workflow-run-syntax → scripts/test-mutation-workflow-run-syntax.sh
+#                    os TRÊS mecanismos do gate de sintaxe dos `run:` devem ser
+#                    LOAD-BEARING: mutar a metade do AVISO (o heredoc que o
+#                    bash aprova, exit 0), o STDIN do bash (o corpo julgado) ou
+#                    o LIMITE da máscara de `${{ }}` (lazy → gulosa) tem de
+#                    CEGAR o guard — e cada mutação é cirúrgica (as outras
+#                    metades seguem mordendo)
 #
 # Cada script granular é a FONTE ÚNICA do seu cenário (sem duplicação de
 # fixtures/mutações/asserções — o harness só orquestra). TODOS os sub-tests
@@ -99,7 +106,6 @@ SUBTESTS=(
   "e2e-cache-budget|E2E Cache — gate de budget 600s (10 min) + drift exit 2 (SKIP até medidor)|scripts/test-mutation-e2e-cache-budget.sh"
   "lint-guard|Lint Guard — prettier --check + eslint --max-warnings 0 devem FALHAR (arquivo mal formatado / warning)|scripts/test-mutation-lint-guard.sh"
   "mutation-count|Count — drift do nº de sub-tests (job name/summary/README) deve FALHAR|scripts/test-mutation-mutation-count.sh"
-  "forge-parity|Forge-parity — CORE_INVARIANTS sem jobIds deve FALHAR|scripts/test-mutation-forge-parity.sh"
   "no-setup-bun|No-setup-bun — guard de ação externa deve FALHAR|scripts/test-mutation-no-setup-bun.sh"
   "runner-base|Runner-base — digest pinado deve ser detectado|scripts/test-mutation-runner-base.sh"
   "no-leaked-imports|No-leaked-imports — import resolvendo no node_modules do PAI + dep inexistente devem FALHAR (install pendente passa)|scripts/test-mutation-no-leaked-imports.sh"
@@ -107,6 +113,8 @@ SUBTESTS=(
   "nested-guard|Nested guard — NESTED_GUARD_ENV (defesa em profundidade contra recursão) deve ser detectado|scripts/test-mutation-nested-guard.sh"
   "pipefail-sigpipe|SIGPIPE — pipe para grep quieto deve ser detectado nos DOIS contextos (pipefail declarado E passo sem shell, com a marca da premissa do runner); a declaracao 'defaults: run: shell:' que LIGA o pipefail FALHA o gate; herestring/heredoc/script sem pipefail/cota do baseline nao acendem; o --fix aposenta o caso mecanico e nao corrompe expressao do runner|scripts/test-mutation-pipefail-sigpipe.sh"
   "hook-ci-parity|Hooks x CI — a segunda regua no hook (bunx tsc sem o heap), o comando novo sem decisao, o recorte sem razao, a declaracao que envelheceu, o gate do CORE sumido e o hook fantasma devem FALHAR|scripts/test-mutation-hook-ci-parity.sh"
+  "workflow-defaults|Defaults — a declaracao defaults:run:shell: nao pode virar passo/gate/ref/comando do job nos guards que leem YAML de workflow (leitura unica compartilhada); cada metade dessa leitura mutada FALHA o guard sendo medido|scripts/test-mutation-workflow-defaults.sh"
+  "workflow-run-syntax|Sintaxe dos run: — a metade do AVISO, o stdin do bash e o limite da mascara de expressao devem CEGAR o guard quando mutados (cada mutacao cirurgica)|scripts/test-mutation-workflow-run-syntax.sh"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────

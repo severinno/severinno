@@ -782,12 +782,43 @@ single-grep). Os testes entram apenas quando arquivos-fonte mudaram
 
 **Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
 rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
-**22 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
+**23 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
 bun remoção, hooks simetria, readme anchors/toc/images, README reverse, docs
 anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo,
-timing-budget, e2e-cache-budget, lint-guard, mutation-count, forge-parity,
+timing-budget, e2e-cache-budget, lint-guard, mutation-count,
 no-setup-bun, runner-base, no-leaked-imports, reconciliation, nested-guard,
-paridade hook↔CI e pipefail-sigpipe). ⚠️ Não
+paridade hook↔CI, pipefail-sigpipe, defaults de shell e sintaxe dos corpos
+`run:`). A prova da
+CLASSIFICAÇÃO do `check-forge-parity` também é um job próprio
+(`forge-parity-mutation`): ela mede o contrato de merge em si — quais gates
+podem pular uma forja e com que forma de comando — e por isso diz QUAL regra
+quebrou em vez de ser mais uma linha da matriz.
+
+A MESMA ideia rege o gate de sintaxe dos corpos `run:`: o job
+`workflow-run-syntax` roda o guard REAL contra o working tree do PR e, no MESMO
+job, `scripts/test-mutation-workflow-run-syntax.sh` prova por MUTAÇÃO que cada
+mecanismo do gate é load-bearing: matar a metade do AVISO (o heredoc truncado que
+o `bash` aprova, exit 0), tirar o corpo do STDIN do `bash`, alargar o LIMITE da
+máscara de `${{ }}`, ler a ÁRVORE onde o recorte `--staged` deve ler o ÍNDICE,
+aceitar qualquer `shell:` como presente na imagem do runner ou remover a guarda
+do corpo vazio no `--fix` têm de CEGAR o guard — e cada mutação é cirúrgica (as
+outras metades seguem mordendo). O `check-workflow-run-syntax.mjs` julga, além do
+PARSING, o `shell:` declarado contra o que a imagem do runner MEDIU (ref, digest,
+data e o comando em `--shells`): um passo com `shell: pwsh` num runner sem `pwsh`
+morria com `command not found` DEPOIS do setup, e nenhum parser pega essa classe;
+`--fix` remenda a cicatriz mecânica (operador pendente no fim do corpo) e só grava
+depois de o corpo voltar a fazer parsing — medido em memória E relendo o arquivo
+do disco, com a gravação DESFEITA se o disco não passar. O MESMO guard roda no
+pre-commit como RECORTE `--staged` (declarado em `HOOK_DECLARED`): julga os
+workflows do ÍNDICE, com o conteúdo do commit — custa ≈**0.03s** no caminho comum
+(nada de workflow staged: um `git diff --cached` e mais nada), o que o põe no
+orçamento de um hook que roda a CADA commit sem duplicar a varredura do CI. Custo
+medido neste host (Linux, 09/2026, mediana de 3 runs warm): o guard ≈ **0.90s**
+(0.88–0.94) e a prova de mutação ≈ **2.02s** (1.99–2.05) — ela subiu de ≈0.16s
+porque deixou de só re-executar o guard contra fixtures e passou a mutar o PRÓPRIO
+guard (6 mutações, ~25 execuções do gate, um fixture com git de verdade e a
+restauração verificada por checksum), ambos
+node-puro + um `bash -n` por cenário, sem docker e sem `node_modules`. ⚠️ Não
 existe um job `readme-toc-mutation-guard` ISOLADO — o cenário de TOC roda
 dentro da matriz aninhada `test-mutation-readme-guards.sh` (anchors + toc +
 images, 1 sub-test do master). Custo medido em 08/2026 (Windows host, worktree
@@ -797,7 +828,7 @@ local, mediana de 3 runs warm):
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (22 sub-tests)   |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
+| master `mutation-guards` (23 sub-tests)³  |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
 | checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
 | Summary                                   |             —              |           0.34s           |
 
@@ -815,6 +846,17 @@ sub-tests, e não foi re-medido (o mesmo act mediu o actionlint em 3.6s e o
 utf8-check em 7.46s). O custo escala com o nº de sub-tests — cada um cria
 fixtures e roda o guard contra a mutação —, então o valor antigo (15.8s)
 era de 5 sub-tests e o timing-budget (~1s) foi adicionado após a medição de 10.
+³Medição da MUDANÇA (host Linux, 09/2026, mediana de 3 runs warm): o master
+com **23 sub-tests** mede ≈ **17.2s** (17.16–17.20). Antes disso a matriz tinha
+22 e mediu ≈18.6s (18.20–19.02) — a volta da 23ª (a prova de mutação do gate de
+sintaxe, ≈1.5s sozinha, que substituiu a versão de ≈0.2s) não muda a ordem do
+número, e a diferença entre as duas medições é do host/cache, não do recorte. A
+sub-test que saiu da matriz — a prova de classificação do `check-forge-parity`,
+agora o job próprio `forge-parity-mutation` — custa ≈ **0.33s** (0.32–0.39)
+sozinha. O **39s** da tabela era de **23 sub-tests** no host original (Windows) e
+continua válido como referência dele. O job novo é node-puro, sem docker e sem
+node_modules: o PR ganha um job de ≈0.3s e a prova passa a ser um check com NOME
+no contrato de merge, em vez de uma linha da matriz.
 *O checkout no act é overhead de EMULAÇÃO (docker cp do worktree inteiro):
 **32.2s na 1ª run fria** (volume não cacheado) vs **~0.03s nas runs seguintes**
 (volume quente — os steps de 9.1s/7.46s/3.61s destas tabelas foram medidos com
@@ -961,9 +1003,10 @@ runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 | 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |                      — (n/a)                       |         <2s         |
 | `utf8-check` (837 arquivos, `--ci src/`)          |        ≈ **0.92s**         |                     **7.46s**                      |    ~2-5s (est.)     |
 | `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |                     **3.61s**                      |    ~1-2s (est.)     |
-| `mutation-guards` (22 sub-tests node-puro)        |         ≈ **39s**          |                     **9.1s**²                      |   ~15-25s (est.)    |
+| `mutation-guards` (23 sub-tests node-puro)³       |         ≈ **39s**          |                     **9.1s**²                      |   ~15-25s (est.)    |
 | `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |                    **4m37.6s**                     |   ~35-45s (est.)³   |
-| `unused-deps-guard` (mutation test + guard real)  |        ≈ **0.5s**⁴         |          **26.8s** cold / **20.9s** warm⁴          |   ~10-15s (est.)    |     | `lint-guard` (prettier --check + eslint zero) | ~**4min** (local)⁵ | **7m22s** 1ª run / **6m23s** 2ª run (lint total)⁴ | ~4-7 min (est.) |
+| `unused-deps-guard` (mutation test + guard real)  |        ≈ **0.5s**⁴         |          **26.8s** cold / **20.9s** warm⁴          |   ~10-15s (est.)    |
+| `lint-guard` (prettier --check + eslint zero)     |     ~**4min** (local)⁵     | **7m22s** 1ª run / **6m23s** 2ª run (lint total)⁴  |   ~4-7 min (est.)   |
 | `typecheck` (tsc --noEmit, heap 4096MB)           |     **~2min** (local)      | **3m52s** cold / **2m31s** warm (step Type check)⁴ |   ~2-3 min (est.)   |
 | `e2e-cache` (build Next.js + playwright cache)    |  **4m6s** (build, 1 run)   |                — (requer serviços)                 | **~6-9 min (est.)** |
 

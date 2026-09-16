@@ -2013,6 +2013,7 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
     ["bun-mirror", "node scripts/check-bun-mirror.mjs"],
     ["no-setup-bun", "node scripts/check-no-setup-bun.mjs"],
     ["hook-ci-parity", "node scripts/check-hook-ci-parity.mjs"],
+    ["workflow-run-syntax", "node scripts/check-workflow-run-syntax.mjs"],
   ]
   writeFileSync(
     join(dir, MERGE_OWNER_PIPELINE),
@@ -2059,6 +2060,9 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
       // O gate da classe SIGPIPE roda nas DUAS forjas; na fixture ele vive no
       // job que carrega os guards node-puros do GitHub (como no repositório).
       "      - run: node scripts/check-pipefail-sigpipe.mjs",
+      // A SINTAXE do corpo `run:` — o outro guard node-puro de workflow, no
+      // MESMO job do espelho (e pelo mesmo literal da forja).
+      "      - run: node scripts/check-workflow-run-syntax.mjs",
       "  pii-allowlist-guard:",
       "    steps:",
       '      - run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"',
@@ -2198,13 +2202,14 @@ describe("readAllGateContracts — o job EXIGIDO roda a régua da INVARIANTE, a 
   it("cada invariante que compartilha o job 'guards' tem a SUA régua medida", () => {
     const dir = twoForgeFixture()
     const noMesmoJob = contractResults(dir).filter((x) => x.jobId === FORGE_GUARDS_JOB)
-    // DEZENOVE invariantes CORE vivem no mesmo job `guards`: nove que sempre
-    // estiveram ali e dez que passaram a ser invocadas pela MESMA linha
-    // canônica do espelho (antes rodavam na forja por outra forma, ou não
-    // rodavam). Deduplicando pelo job, dezoito ficavam fora da lista de
-    // contratos e apareciam como cobertas sem nunca terem sido medidas.
-    expect(noMesmoJob.length).toBe(19)
-    expect(new Set(noMesmoJob.map((x) => x.invariantId)).size).toBe(19)
+    // VINTE invariantes CORE vivem no mesmo job `guards`: nove que sempre
+    // estiveram ali, dez que passaram a ser invocadas pela MESMA linha canônica
+    // do espelho (antes rodavam na forja por outra forma, ou não rodavam) e a
+    // da SINTAXE do corpo `run:` (a última a entrar). Deduplicando pelo job,
+    // dezenove ficariam fora da lista de contratos e apareceriam como cobertas
+    // sem nunca terem sido medidas.
+    expect(noMesmoJob.length).toBe(20)
+    expect(new Set(noMesmoJob.map((x) => x.invariantId)).size).toBe(20)
     expect(noMesmoJob.every((x) => x.state === "proven")).toBe(true)
     // E cada uma responde pela SUA remoção — não pela do vizinho.
     const semRequired = twoForgeFixture({ semComandoDoGate: "required-checks" })

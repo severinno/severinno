@@ -938,6 +938,36 @@ diferentes** (`node scripts/check-workflow-refs.mjs` sem o `--pkg-internal`) sã
 divergências: o guard não pode comparar a entrada do `package.json` com a linha
 sem interpretá-la, e aceitar as duas formas é reabrir a segunda régua.
 
+**A prova por mutação das TRÊS regras — e o job que a carrega.**
+`scripts/test-mutation-forge-parity.sh` roda o guard **real** contra uma cópia
+fiel das duas pipelines (`--root`), e o **CONTROLE** (cópia sem mutação → exit 0)
+prova que o fixture é fiel: sem ele, um guard que falhasse "de qualquer jeito"
+passaria como detecção. Seis mutações, cada uma derivando uma regra:
+
+| mutação | o que injeta na cópia                                             | o que o guard tem de dizer                                                 |
+| :------ | :---------------------------------------------------------------- | :------------------------------------------------------------------------- |
+| **A**   | gate novo **sem classificação** na forja (dona do merge)          | `NAO CLASSIFICADO`, nomeando o gate                                        |
+| **B**   | gate novo **sem classificação** no espelho GitHub                 | `NAO CLASSIFICADO`                                                         |
+| **C**   | gate `GITHUB_ONLY` **rodando** na forja                           | classificação **stale**                                                    |
+| **D**   | invariante do CORE com o **comando canônico removido**            | `invariante do CORE 'X' NAO roda aqui` + a **linha esperada** e a pipeline |
+| **E1**  | o mesmo invariante por invocação **indireta** (`bun run check:…`) | a **mesma** mensagem — e **não** `NAO CLASSIFICADO`                        |
+| **E2**  | o comando canônico **sem o argumento** (`--pkg-internal`)         | idem, com a linha canônica **completa** no diagnóstico                     |
+
+As duas últimas medem a **régua**, não a classificação: a forma divergente continua
+casando o `matches` do invariante, então o gate sai classificado e quem reprova é o
+`command`. O script **exige** que o veredito de E1/E2 não contenha `NAO CLASSIFICADO`
+— se contivesse, a prova estaria pegando o defeito pela regra errada (e passaria a
+provar a classificação enquanto diz medir a régua).
+
+**Onde roda, e por que em job PRÓPRIO (fora do master):** job
+`forge-parity-mutation` do `pr-check.yml`, com entrada em `ci/required-checks.json`.
+Ela era um sub-test da matriz do master (**23 → 22** naquela medição); saiu porque é
+a única prova do repositório cujo sujeito é o **contrato de merge em si** — quais
+gates podem pular uma forja e com que forma de comando. Um vermelho dentro da matriz
+diz "alguma mutação falhou"; como job próprio ela diz **qual** regra de classificação
+quebrou, e vira check **com nome** no contrato de merge. Custo medido: ≈**0.33s**
+(node-puro, sem docker, sem `node_modules`).
+
 **Inventário:** `node scripts/check-forge-parity.mjs --gates` lista o que o
 guard enxerga, com a classificação de cada gate — para a decisão ser revisável,
 não um ato de fé.
@@ -1408,7 +1438,7 @@ declaração não iguala os vereditos; torna a **diferença visível e revisáve
 é o que uma decisão de escopo precisa ser.
 
 **Prova por mutação:** `bash scripts/test-mutation-hook-ci-parity.sh` — sub-test
-`hook-ci-parity` do master `mutation-guards` (o 22º). Seis mutações, cada uma
+`hook-ci-parity` do master `mutation-guards`. Seis mutações, cada uma
 exigindo a asserção da **própria regra** e medindo as irmãs (as linhas do
 relatório não podem encolher: um guard que aborta cedo também "falha", só que
 por não ter medido):

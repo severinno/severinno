@@ -28,6 +28,7 @@
         "security-headers",
         "pii-allowlist-guard",
         "mutation-guards",
+        "forge-parity-mutation",
         "seed-guards"
       ]
     },
