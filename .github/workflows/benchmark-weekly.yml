@@ -37,6 +37,11 @@ on:
         required: false
         default: ""
         type: string
+      no_lint:
+        description: "Pular a medição do custo do lint no guard-timing (a seção mais cara)"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: benchmark-weekly-${{ github.ref }}
@@ -944,7 +949,7 @@ jobs:
       # ninguém abre o log de um cron que ficou vermelho, e a issue é o ticket
       # que alguém abre, atribui e cobra.
       #
-      # A MEDIÇÃO é a MESMA do doctor (o fato da seção 6/6, de
+      # A MEDIÇÃO é a MESMA do doctor (o fato da seção 6/7, de
       # scripts/declared-debt.mjs): uma medição, dois consumidores. O publicador
       # também FECHA a issue quando nenhuma decisão está vencida (reafirmada com
       # data nova, ou aposentada) — publicar sem fechar deixa a dívida mentindo.
@@ -1304,3 +1309,102 @@ jobs:
           ARGS=()
           for report in "${REPORTS[@]}"; do ARGS+=(--report "$report"); done
           node scripts/mutation-trend-issue.mjs "${ARGS[@]}"
+
+  # ── Guard timing (bench) → ISSUE (semanal) ────────────────────────────────
+  # AUDITORIA DOS JOBS PERIÓDICOS: o `bench-guard-timing` media o wall time dos
+  # guards e do doctor e comparava com a baseline, mas o número só existia quando
+  # alguém lembrava de rodar `bun run bench:guard-timing:compare` à mão — e um
+  # `--compare` vermelho num cron seria alerta MUDO (ninguém abre o log de um run
+  # que passou). Este job dá CANAL ao número: mede, publica a regressão como
+  # ISSUE (label `guard-timing-regression`, dedup por assinatura de faixa) e
+  # FECHA quando o tempo volta para dentro do limiar.
+  #
+  # POR QUE O RUN CONTINUA VERDE: tempo de execução NÃO é corretude. Transformar
+  # o `--compare` num gate vermelho apagaria a distinção entre "o overhead subiu"
+  # e "o build quebrou" — e é por isso que este job NÃO usa `--compare` para o
+  # veredito: a régua é a MESMA função (`compareTimings`), consumida pelo
+  # publicador, que decide abrir/comentar/fechar.
+  #
+  # A BASELINE NÃO É MOVIDA AQUI: `docs/benchmarks/guard-timing-baseline.json` é
+  # o número que a issue cobra, e movê-la é decisão registrada (o remédio está no
+  # corpo da própria issue: `bun run bench:guard-timing:baseline`, deliberado).
+  # O run medido sobe como artifact para o histórico; o worktree não é commitado.
+  guard-timing-alert:
+    name: Guard timing bench (regressão → issue)
+    runs-on: self-hosted
+    # 45min: o bench mede COMANDOS INTEIROS nas famílias de régua desde 09/2026 —
+    # um typecheck FRIO e a suíte `test:run` (além do lint). A régua ANTERIOR da
+    # suíte (7min, maxWorkers 1) NÃO entra no default: ela roda em pipeline
+    # nenhuma, e o `--counterfactual` a mede sob demanda.
+    timeout-minutes: 45
+
+    permissions:
+      contents: read
+      issues: write # a issue é o canal (o run fica verde)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # ── Mede (guards + doctor + custo do lint) e salva o run ───────────
+      # O `--no-lint` do dispatch pula a seção mais cara (~3-4 min); o default
+      # mede tudo, porque a unificação do lint foi COMPRADA com wall time de CI e
+      # uma regressão dela também é dívida.
+      - name: Medir o wall time dos guards, do doctor e do lint
+        env:
+          BUN_VERSION: ${{ vars.BUN_VERSION }}
+          IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+        run: |
+          if [ "${{ github.event.inputs.no_lint }}" = "true" ]; then
+            node scripts/bench-guard-timing.mjs --json --no-lint
+          else
+            node scripts/bench-guard-timing.mjs --json
+          fi
+
+      # ── Publica (ou fecha) — 'não medido' NUNCA passa como verde ───────
+      # Sem o relatório ou sem a baseline o publicador sai 1: publicar (ou
+      # fechar) a partir de nada é a forma mais barata do alerta mudo.
+      - name: Publicar a regressão de tempo como Issue (fecha quando volta à baseline)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/guard-timing-issue.mjs
+
+      # ── Evidência: o run medido (o corpo da issue cita este JSON) ──────
+      - name: Upload do run medido (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guard-timing-latest
+          path: docs/benchmarks/guard-timing-latest.json
+          if-no-files-found: ignore
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## ⏱️ Guard timing — regressão vs baseline'
+            echo ''
+            if [ -f docs/benchmarks/guard-timing-latest.json ]; then
+              echo 'O relatório completo do run está no log do passo de medição.'
+              echo 'O canal da dívida é a issue com o label `guard-timing-regression`.'
+            else
+              echo '⚠ O run não produziu relatório — veja o passo de medição.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

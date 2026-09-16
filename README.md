@@ -1110,6 +1110,31 @@ pre-commit, mesma semântica). O contrato do job é travado por
 `pr-check-typecheck-workflow.test.ts` (snapshot + verificação de que o job `check`
 NÃO mantém o step serial).
 
+**O comando é UM só (`bun run typecheck`), e o preço dele está medido** desde
+`f8d4ce7d`, que levou o comando INTEIRO — inclusive o heap de 4GB — para dentro
+do script do package.json: 4 workflows pagavam o heap num `env: NODE_OPTIONS`
+inline e o hook de push rodava o `tsc` **sem** heap. O benchmark
+(`bun run bench:guard-timing`, ver `docs/GUARDS.md` §10 e
+docs/benchmarks/guard-timing-latest.json) separa as duas metades e mede
+COLD (o `tsconfig.tsbuildinfo` é removido antes de cada amostra):
+
+- nas pipelines o acrescentado é **ruído** (+0.1s por call site) — o MESMO
+  comando com o MESMO heap: a unificação moveu um valor, não trabalho;
+- no hook, o acrescentado foi o HEAP — e ele só muda algo onde o default do node
+  é menor que o do script (o default vem da RAM da máquina). O relatório mede o
+  default (aqui: 4144MB) e o exit da régua sem heap, e diz **INDETERMINADO**
+  sobre o SIGABRT 134 do runner em vez de afirmá-lo.
+
+A mesma unificação (`f8d4ce7d`) fez as duas forjas rodarem a régua **mais
+ampla** da suíte (`bun run test:run`, que INCLUI `src/components/**`) — o check
+exigido do GitHub rodava a mais estreita (`test:unit`, que a EXCLUI). O custo do
+job que upgrade, medido em 16/09/2026 numa máquina Linux de 16 cpus / 32GB (o
+JSON registra cpus, RAM e o heap default do node — sem isso um wall time não é
+comparável): a suíte completa custa **131.5s** com 781 testes A MAIS, e as
+**433.5s** da régua anterior não são pagas mais — o job ficou **302s mais
+BARATO**, porque o config do app roda com 4 workers e o unit com 1 (a atribuição
+é reportada como NÃO conferida, e é para isso que a conferência existe).
+
 ## Regression Guards
 
 Testes que protegem contra regressões em condições de contorno — alterar a lógica

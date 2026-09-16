@@ -2500,6 +2500,19 @@ export const DEBT_SUBJECTS = [
     crossCheck: null,
   },
   {
+    label: "guard-timing-regression",
+    markerId: "guard-timing-regression",
+    subject:
+      "o wall time dos guards/doctor (e do custo do lint) passou do limiar do bench-guard-timing",
+    forges: ["github"],
+    // O doctor NÃO mede o bench de wall time: ele roda os gates para julgar
+    // CORRETUDE, e cronometrá-los aqui mediria a máquina deste run contra
+    // BASELINE de outra máquina — comparar os dois daria "caducidade" a partir de
+    // um número que não é comparável. `null` é o mesmo que o `crlf-scope-drift`
+    // declara: assunto que só o publicador vê, e nunca presumir caducidade.
+    crossCheck: null,
+  },
+  {
     label: "declared-debt-review",
     markerId: "declared-debt-review",
     subject:

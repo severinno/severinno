@@ -1491,13 +1491,16 @@ manter o hook <1s).
 toca Dockerfile/setup-bun).
 
 **`bench:guard-timing` (`scripts/bench-guard-timing.mjs`)** — benchmark de
-wall time do doctor (perfil --ci), de CADA guard individual e do **custo da
-unificação do lint**. Mede o tempo real de execução de cada gate da bateria
-(18 guards), do doctor e de TRÊS formas do lint (o par completo, a régua
+wall time do doctor (perfil --ci), de CADA guard individual e do **custo das TRÊS
+unificações de régua**: o lint, o typecheck (o comando inteiro, com o heap,
+dentro do script) e a suíte de testes (`bun run test:run`, que INCLUI
+`src/components/**`). Mede o tempo real de execução de cada gate da bateria
+(18 guards), do doctor e das formas de cada família (a régua de hoje, a régua
 anterior e a metade nova isolada), registra em JSON versionado
 (`docs/benchmarks/guard-timing-{latest,baseline}.json`) com commit hash +
-timestamp, e compara contra um baseline com limiar de 20% para detecção de
-regressão.
+timestamp + as características da MÁQUINA (cpus, RAM, heap default do node — um
+wall time sem elas não é comparável entre runners), e compara contra um baseline
+com limiar de 20% para detecção de regressão.
 
 **Por que existe:** a suíte do doctor e a bateria de guards são os gates que
 decidem o merge. Uma regressão de tempo nelas afeta CADA PR — mas sem
@@ -1540,16 +1543,161 @@ como pagante é provado contra ela; e a régua laxa não pode aparecer em workfl
 nenhum — se aparecer, a unificação está incompleta, o delta tem mais de uma
 causa e o relatório lista a violação.
 
-**Usage:** `bun run bench:guard-timing` (mede) · `--no-lint` (só guards +
-doctor) · `--samples N` (amostras por forma de lint; padrão 2) ·
+**Custo da unificação do typecheck — medido, e ele NÃO é wall time.** Desde
+`f8d4ce7d` o `typecheck` é UM comando nas duas forjas e no veredito local: o
+comando INTEIRO (o `tsc` com o heap de 4GB) vive no script `typecheck` do
+package.json. Antes, o heap era um `env: NODE_OPTIONS` inline em QUATRO
+workflows, e o hook de push rodava `bunx tsc --noEmit` SEM o heap. A medição
+separa as duas metades da pergunta — e a resposta muda de sentido entre elas:
+
+| forma medida (FRIA: o cache do tsc é removido antes de cada amostra) | wall time |
+| -------------------------------------------------------------------- | --------- |
+| script de hoje (`bun run typecheck`, heap 4096MB no script)          | 24.3s     |
+| heap INLINE em `env:` (contrafactual dos 4 workflows)                | 24.2s     |
+| **acrescentado por call site (4 pipelines)**                         | **+0.1s** |
+| sem heap nenhum (`bunx tsc --noEmit` — a régua que só o hook tinha)  | 24.2s     |
+
+O que a unificação acrescentou de wall time nas pipelines é **ruído**: o
+MESMO comando com o MESMO heap — ela moveu um VALOR, não trabalho. O que ela
+acrescentou no **hook** (`.husky/pre-push`) foi o **heap**, e isso só muda algo
+onde o default do node NÃO basta: o default vem da RAM da máquina. Por isso o
+relatório mede os dois — o heap default do node (aqui: **4144MB**) e o exit code
+da régua sem heap (**0 = COMPLETOU**) — e diz **INDETERMINADO** para o SIGABRT
+134 do runner em vez de afirmá-lo: a régua sem heap completa nesta máquina e
+morre naquela, e um número que só vale numa delas não pode ser publicado como
+fato do repositório. Em qualquer das duas, o hook roda o comando canônico: é
+essa a asserção que o benchmark prende.
+
+**Custo da unificação da suíte — medido, e o sinal é NEGATIVO.** Desde
+`f8d4ce7d` as duas forjas rodam `bun run test:run` (config do app, que INCLUI
+`src/components/**`); o check EXIGIDO do GitHub rodava `bun run test:unit`
+(config unit, que EXCLUI `src/components/**`) — o lado mais FRACO do par era o
+que decidia o merge no espelho. A conta, medida em 16/09/2026 nesta máquina
+(16 cpus, 32GB, sem contrafactual nenhum presumido):
+
+| forma medida                                | wall time   |
+| ------------------------------------------- | ----------- |
+| suíte completa de hoje (`bun run test:run`) | 131.5s      |
+| metade nova isolada (`src/components/**`)   | 17.9s       |
+| régua anterior (`bun run test:unit`)        | 433.5s      |
+| **acrescentado por rodada (1 call site)**   | **−302.0s** |
+
+O job que upgrade não ficou mais caro: ele ficou **302s mais BARATO**, apesar de
+passar a rodar 781 testes a mais. O que explica o sinal não é o escopo (a metade
+nova custa 17.9s) e sim a CONFIG: o `vitest.config.unit.ts` roda com
+`maxWorkers: 1` e o config do app com `maxWorkers: 4` — o delta tem mais de uma
+causa, e por isso a atribuição é reportada como **NÃO conferida**
+(`attributionMatches: false`, 1786% de diferença) em vez de a suíte de
+componentes levar o crédito. É o exemplo exato do que a conferência existe para
+pegar: sem ela, o número publicado diria "+17.9s" e a realidade é "−302s".
+
+O **contrafactual da suíte** roda com `maxWorkers: 1`: são ~7min sozinho, e ele
+NÃO roda em pipeline nenhuma (é uma régua aposentada). Por isso ele é medido sob
+demanda (`--counterfactual`) e o JSON registra qual foi o caso — sem ele o delta
+e a atribuição saem `null` (INDETERMINADO), nunca preenchidos com um número de
+outra rodada.
+
+**Medir em partes (máquina lenta / timeout de runner).** As duas famílias novas
+medem comandos INTEIROS e uma rodada completa tem dezenas de minutos. Três
+afirmações resolvem isso sem enfraquecer a procedência: `--only FAMÍLIA` mede só
+aquelas famílias (e pula a bateria de guards+doctor); `--merge` HERDA do arquivo
+o que esta rodada não mediu; e o que foi herdado vai para `meta.reused` com o
+**commit e o timestamp de origem**, aparece nomeado no relatório e é **excluído do
+veredito** — um número de outro momento não pode passar por "a medição de
+agora", e é justamente o que um veredito otimista esconderia.
+
+A mesma regra vale nas duas **pontas** do veredito, não só na lista de formas:
+uma família herdada não julga o **TOTAL** (que é a soma de guards+doctor, e esse
+número é de ontem) e deixa a comparação `measured: false`, o que **recusa o
+fechamento** da issue de tempo; e uma família que a baseline tem e a rodada não
+mediu _nem herdou_ (o `--no-lint` do dispatch) faz o mesmo. Herdar continua
+permitido; **fechar a dívida com número herdado, não** — sem isso, um
+`--only tests --merge` daria por resolvida uma dívida de guards que aquela rodada
+nunca mediu.
+
+**Forma não medida nunca é REGRESSÃO — nem com o ms acima do limiar.** Um guard
+que não terminou (`ok: false`) tem o ms do pedaço que rodou; se esse pedaço for
+maior que a baseline, o número passa do limiar e _não_ é medição. A régua marca a
+forma `unmeasured` E a exclui do julgamento, e o motivo da comparação **nomeia** a
+família que faltou (`bateria (guards+doctor)`, `lint`, `typecheck`, `suíte`) —
+"medição incompleta" sem o nome transfere a investigação para quem lê a issue.
+As famílias
+typecheck e suíte medem **uma amostra por forma** (`samplesPerForm: 1`),
+declarado: cada amostra é um comando inteiro. O `--samples` continua sendo o
+controle da mediana das formas de lint, que rodam em segundos.
+
+**O estado de cada família é EXPLÍCITO no JSON:** `counterfactual`
+(`measured`/`not-measured`), `cold: true` + `cacheFile` na do typecheck, o exit
+da régua sem heap (`legacyBareExit`) e o heap default do node
+(`nodeHeapLimitMb`). Um campo `null` significa **não medido** — nunca zero, e
+nunca um valor herdado sem a marca de procedência.
+
+**A comparação das famílias novas é do COMANDO CANÔNICO**, não do delta: aqui
+"regressão de tempo" significa "o gate ficou mais lento", e o contrafactual não
+roda mais em pipeline nenhuma. (No lint a forma comparada continua sendo o custo
+por rodada, que é o que a unificação acrescentou lá.) Uma suíte VERMELHA deixa a
+família `unmeasured` — e a comparação inteira fica `measured: false`, o que
+segura o fechamento automático da issue de tempo: se o gate que decide o merge
+está vermelho, o tempo dele não é a pergunta.
+
+**O que o doctor NÃO mede aqui:** o registro `DEBT_SUBJECTS` traz
+`guard-timing-regression` com `crossCheck: null` — o doctor não cronometra os
+gates (mediria esta máquina contra uma baseline de outra), então a issue de tempo
+aparece na prontidão sem cruzamento de caducidade, e isso está dito lá.
+
+**Usage:** `bun run bench:guard-timing` (mede) · `--no-lint` /
+`--no-typecheck` / `--no-tests` (pula famílias) · `--only FAMÍLIA` (mede só
+elas, sem a bateria) · `--counterfactual` (mede também a régua anterior da
+suíte, ~7min) · `--merge` (herda do arquivo o que não foi medido, marcado e
+fora do veredito) · `--samples N` (amostras por forma de lint; padrão 2) ·
 `bun run bench:guard-timing:baseline` (salva baseline) ·
 `bun run bench:guard-timing:compare` (compara) ·
 `bun run bench:guard-timing:full` (salva + compara)
 
-**Onde roda:** manual, periodicamente — o `--json` versiona o resultado em
-`guard-timing-latest.json`. NÃO há cron: o `benchmark-weekly.yml` cobre os
-benchmarks de geo/DB, não este. O exit 1 na comparação indica regressão >20% em
-algum guard, no doctor ou no custo do lint por rodada.
+**Onde roda:** o job **`guard-timing-alert`** (`benchmark-weekly.yml`, semanal)
+mede (`--json`, versionando o run em `guard-timing-latest.json`) e publica a
+regressão como **issue** (`scripts/guard-timing-issue.mjs`). Manual:
+`bun run bench:guard-timing` / `:compare` / `:full`. O exit 1 do `--compare`
+continua sendo o sinal de regressão >20% em algum guard, no doctor, no custo do
+lint por rodada ou no comando canônico das famílias nova — mas ele NÃO é o canal
+do cron: tempo de execução não é
+corretude, e um cron que termina vermelho por overhead apaga a diferença entre "o
+overhead subiu" e "o build quebrou".
+
+**A régua é UMA só (`compareTimings`).** O relatório impresso e o publicador da
+issue leem a MESMA função — inclusive o **piso de ruído** de 50ms
+além do percentual (duas réguas para a mesma pergunta divergem no dia em que
+alguém ajustar uma delas, e a divergência apareceria como "o CI diz regressão e a
+issue está fechada", sem teste vermelho). O piso existe porque a bateria é medida
+com UMA amostra por guard: 20% de 40ms são 8ms, que é escalonamento do sistema
+operacional — sem ele, o canal semanal abriria dívida para `check:barato +50%`
+(40ms → 60ms) toda semana, e um alerta que mente é o alerta mudo com outro nome.
+
+**O TOTAL é DERIVADO, não medido:** ele só é julgado quando todas as formas que
+ele soma foram. Uma bateria com um guard que não terminou (`ok: false`) tem um
+total menor por um motivo que não é velocidade — julgá-lo daria "melhoria no
+agregado" com regressão nas partes, duas leituras contraditórias do mesmo run.
+
+**O ciclo da dívida é o do contrato de issues** (`issue-publish.mjs`, como
+`actrc-sync-issue`, `required-checks-drift-issue`, `mutation-trend-issue` e
+`blob-crlf-scope-issue`):
+
+- **abre** a issue com o guard, o **delta** (segundos e %) e a medição inteira —
+  "está lento" sem o delta transfere a investigação;
+- **deduplica por FAIXA** (dezena do pior % acima do limiar), não pelo número:
+  o wall time oscila a cada run e uma assinatura pelo valor exato comentaria toda
+  semana. A faixa muda só quando a severidade muda de ordem — e aí comentar é o
+  certo. QUAL forma piorou vai no corpo, que é onde quem investiga lê;
+- **comenta a prova e FECHA** quando nenhuma forma medida passa do limiar. A
+  guarda do fechamento é `comparison.measured`: baseline ausente, forma sem número
+  ou comando que não terminou **não** fecham a dívida ("não medido" não é
+  evidência de que o tempo voltou ao normal).
+
+**O que NÃO prova:** que a máquina do runner é a mesma do baseline. A baseline é
+UM run, não uma mediana — o limiar de 20% e o piso de 50ms absorvem ruído de
+medição, não uma troca de hardware; uma baseline velha debaixo de um runner novo
+aparece como regressão até alguém mover a baseline DE PROPÓSITO
+(`bench:guard-timing:baseline`), que é decisão registrada, não efeito do tempo.
 
 ---
 
@@ -2504,16 +2652,16 @@ abre o log de um cron verde. É o mesmo defeito que o repositório corrigiu sete
 vezes (`actrc-sync-issue.mjs`, `readme-reverse-issue.mjs`,
 `required-checks-drift-issue.mjs`, `forge-doctor-issue.mjs`,
 `mutation-trend-issue.mjs`, `blob-crlf-scope-issue.mjs`,
-`env-mirror-drift-issue.mjs`) — mas a REGRA vivia na cabeça de quem escreveu cada
-job, então o oitavo caso entraria em silêncio.
+`env-mirror-drift-issue.mjs`, `guard-timing-issue.mjs`) — mas a REGRA vivia na
+cabeça de quem escreveu cada job, então o nono caso entraria em silêncio.
 
-**A auditoria (28 jobs em 12 workflows agendados, duas forjas).** O que foi
+**A auditoria (29 jobs em 12 workflows agendados, duas forjas).** O que foi
 encontrado e o desfecho de cada um:
 
-| Canal       | Jobs                                                                                                                                                                                                                                                                           | Por que                                                                                                            |
-| :---------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------- |
-| **`issue`** | `benchmark` (regressão PostGIS), `readme-reverse-audit`, `actrc-sync`, `mutation-coord-timing` + `mutation-coord-trend` (via `mutation-coord-alert`), `drift` (GitHub e Gitea), `doctor` (forja), `blob-crlf-all-text-alert`, `actrc-sync` (forja), `env-mirror-drift` (forja) | o run fica verde de propósito (tendência/aviso não bloqueia); a issue é o canal, com dedup e fechamento automático |
-| **`fail`**  | `smoke`, `setup-bun-warm`, `act-startup-bench`, `blob-crlf-history-audit`, `secret-leaks-audit`, `seed-guards`, `default-branch-workflow-guard`, `benchmark-all`, `benchmark` (GiST), `mirror` (×3), `guard` (tier-1)                                                          | o sinal é violação de corretude/configuração: o run vermelho é a resposta certa                                    |
+| Canal       | Jobs                                                                                                                                                                                                                                                                                                 | Por que                                                                                                            |
+| :---------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------- |
+| **`issue`** | `benchmark` (regressão PostGIS), `readme-reverse-audit`, `actrc-sync`, `mutation-coord-timing` + `mutation-coord-trend` (via `mutation-coord-alert`), `drift` (GitHub e Gitea), `doctor` (forja), `blob-crlf-all-text-alert`, `actrc-sync` (forja), `env-mirror-drift` (forja), `guard-timing-alert` | o run fica verde de propósito (tendência/aviso não bloqueia); a issue é o canal, com dedup e fechamento automático |
+| **`fail`**  | `smoke`, `setup-bun-warm`, `act-startup-bench`, `blob-crlf-history-audit`, `secret-leaks-audit`, `seed-guards`, `default-branch-workflow-guard`, `benchmark-all`, `benchmark` (GiST), `mirror` (×3), `guard` (tier-1)                                                                                | o sinal é violação de corretude/configuração: o run vermelho é a resposta certa                                    |
 
 **Os dois defeitos que a auditoria fechou (não eram só teóricos):**
 
@@ -2541,7 +2689,7 @@ outro job do mesmo workflow (é o caso dos dois medidores → `mutation-coord-al
 e aí a evidência é procurada no bloco do `via`.
 
 **A COBERTURA é a parte que impede a regressão:** um job agendado sem entrada no
-manifesto **falha** o guard, e o teste trava a contagem (**28**). Um cron novo no
+manifesto **falha** o guard, e o teste trava a contagem (**29**). Um cron novo no
 `.github/` ou no `.gitea/` não entra em silêncio — ele obriga alguém a escrever
 qual é o canal dele, ou a descobrir que não tem nenhum.
 

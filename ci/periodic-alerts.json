@@ -120,6 +120,14 @@
         "evidence": "scripts/mutation-trend-issue.mjs"
       },
       {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "guard-timing-alert",
+        "signal": "wall time dos guards/doctor (e do custo do lint) acima do limiar vs a baseline",
+        "channel": "issue",
+        "evidence": "scripts/guard-timing-issue.mjs",
+        "why": "tempo de execução NÃO é corretude: o run semanal fica verde de propósito (transformar `--compare` em gate vermelho apagaria a distinção entre 'o overhead subiu' e 'o build quebrou') e a issue é o canal — ela se fecha sozinha quando o número volta à baseline, e o cabeçalho da doc registrava que este bench não tinha cron NENHUM"
+      },
+      {
         "workflow": ".github/workflows/benchmark-all-weekly.yml",
         "job": "smoke",
         "signal": "scripts/docs de benchmark ausentes",

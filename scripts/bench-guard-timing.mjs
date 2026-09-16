@@ -6,10 +6,13 @@
 // decidem o merge. Uma regressão de tempo nelas afeta CADA PR — mas sem
 // medição versionada, a degradação é impressão, não dado comparável entre
 // commits. Este script mede o wall time de cada guard individual, do doctor
-// (perfil --ci) e do CUSTO DA UNIFICACAO DO LINT — o que a régua completa
-// (prettier --check + eslint . --max-warnings 0) passou a acrescentar em cada
-// call site que antes rodava só `eslint .` — registra em JSON versionado
-// (commit + timestamp) e permite comparação contra um baseline.
+// (perfil --ci) e o CUSTO DAS TRES UNIFICAÇÕES DE RÉGUA — as que trocaram a
+// régua por UMA só e passaram a ser pagas onde antes havia (ou não havia)
+// outra: o lint (`prettier --check` + `eslint . --max-warnings 0`), o
+// typecheck (o comando inteiro, com o heap, dentro do script do package.json) e
+// a suíte de testes (`bun run test:run`, que INCLUI `src/components/**`).
+// Registra em JSON versionado (commit + timestamp + a máquina) e permite
+// comparação contra um baseline.
 //
 // Usage:
 //   node scripts/bench-guard-timing.mjs                # mede e imprime
@@ -19,7 +22,23 @@
 //   node scripts/bench-guard-timing.mjs --baseline     # salva como baseline
 //   node scripts/bench-guard-timing.mjs --json --compare  # salva + compara
 //   node scripts/bench-guard-timing.mjs --samples 3    # amostras por forma de lint
-//   node scripts/bench-guard-timing.mjs --no-lint      # só guards + doctor
+//   node scripts/bench-guard-timing.mjs --no-lint      # só guards + doctor + réguas
+//   node scripts/bench-guard-timing.mjs --no-typecheck # pula a família do typecheck
+//   node scripts/bench-guard-timing.mjs --no-tests     # pula a família da suíte
+//   node scripts/bench-guard-timing.mjs --counterfactual  # mede a régua estreita da suíte (~7min)
+//   node scripts/bench-guard-timing.mjs --only tests   # só a família da suíte (sem a bateria)
+//   node scripts/bench-guard-timing.mjs --json --merge # herda do arquivo o que não mediu
+//
+// CUSTO: as duas famílias novas medem COMANDOS INTEIROS (um typecheck frio e as
+// suítes), então uma rodada completa leva minutos. Elas medem UMA amostra por
+// forma, de propósito e declarado (`samplesPerForm: 1`): o `--samples` continua
+// sendo o controle da mediana das formas de lint, que rodam em segundos. O
+// `--merge` existe para medir em partes em máquina lenta (ou sob timeout de
+// runner), herdando do arquivo as famílias não medidas — marcadas e fora do
+// veredito. Fora do veredito nas DUAS pontas: a família herdada não julga o
+// TOTAL (que é a soma de guards+doctor) nem serve de prova para FECHAR a dívida
+// de tempo (`measured: false`); uma família que a baseline tem e a rodada não
+// mediu NEM herdou faz o mesmo (`--no-lint` no dispatch).
 //
 // Exit codes:
 //   0 — benchmark completo
@@ -28,7 +47,8 @@
 // =============================================================================
 
 import { spawnSync } from "node:child_process"
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { cpus, totalmem } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -133,22 +153,37 @@ function lintEntry() {
 export const LINT_PRETTIER_CMD = `bunx ${lintEntry().split(" && ")[0].trim()}`
 
 /**
- * Os call sites de `bun run lint` HOJE — derivados dos workflows do repositorio,
- * nao cravados: quantas pipelines pagam o custo e um FATO medido.
+ * Os call sites de um comando canonico HOJE — derivados dos workflows do
+ * repositorio, nao cravados: quantas pipelines pagam o custo e um FATO medido.
+ *
+ * E a MESMA leitura para as tres familias de regua (lint, typecheck, suite):
+ * tres varreduras com a mesma pergunta, cada uma com a sua copia do loop, e uma
+ * delas medindo outra coisa no dia em que o layout de workflow mudar.
+ *
+ * @param {string} cmd
+ * @param {string} [root]
+ * @returns {{file: string, count: number}[]}
+ */
+export function canonicalCallSites(cmd, root = REPO_ROOT) {
+  const sites = []
+  for (const dir of existingWorkflowDirs(root)) {
+    for (const name of workflowFileNames(root, dir)) {
+      const content = readFileSync(join(root, dir, name), "utf8")
+      const count = runCommands(content).filter((c) => c.trim() === cmd).length
+      if (count > 0) sites.push({ file: `${dir}/${name}`, count })
+    }
+  }
+  return sites
+}
+
+/**
+ * Os call sites de `bun run lint` HOJE.
  *
  * @param {string} [root]
  * @returns {{file: string, count: number}[]}
  */
 export function lintCallSites(root = REPO_ROOT) {
-  const sites = []
-  for (const dir of existingWorkflowDirs(root)) {
-    for (const name of workflowFileNames(root, dir)) {
-      const content = readFileSync(join(root, dir, name), "utf8")
-      const count = runCommands(content).filter((c) => c.trim() === LINT_CANONICAL_CMD).length
-      if (count > 0) sites.push({ file: `${dir}/${name}`, count })
-    }
-  }
-  return sites
+  return canonicalCallSites(LINT_CANONICAL_CMD, root)
 }
 
 /**
@@ -169,25 +204,38 @@ export const LINT_UPGRADED_SITES = [
 ]
 
 /**
- * Arquivos que AINDA executam a regua laxa (`eslint .` puro). Depois da
+ * Arquivos de WORKFLOW que ainda executam uma regua ANTERIOR. Depois da
  * unificacao a lista tem de estar VAZIA: e a prova de que o "antes" medido
  * deixou de existir nas pipelines (e nao de que o benchmark comparou duas coisas
  * que rodam ao mesmo tempo).
  *
+ * Só WORKFLOW: um hook local pode rodar um recorte por decisao escrita (o
+ * `test:unit` do smart-skip, por exemplo) — essa pergunta e do
+ * `check-hook-ci-parity`, que exige a declaracao. Duas reguas no CI, nao.
+ *
+ * @param {string} cmd
  * @param {string} [root]
  * @returns {string[]}
  */
-export function legacyCallSites(root = REPO_ROOT) {
+export function legacyRulerFiles(cmd, root = REPO_ROOT) {
   const files = []
   for (const dir of existingWorkflowDirs(root)) {
     for (const name of workflowFileNames(root, dir)) {
       const content = readFileSync(join(root, dir, name), "utf8")
-      if (runCommands(content).some((c) => c.trim() === LINT_LEGACY_CMD)) {
+      if (runCommands(content).some((c) => c.trim() === cmd)) {
         files.push(`${dir}/${name}`)
       }
     }
   }
   return files
+}
+
+/**
+ * @param {string} [root]
+ * @returns {string[]}
+ */
+export function legacyCallSites(root = REPO_ROOT) {
+  return legacyRulerFiles(LINT_LEGACY_CMD, root)
 }
 
 /**
@@ -203,13 +251,21 @@ export function legacyCallSites(root = REPO_ROOT) {
  * numa linha, o `JSON.stringify(…, 2)` nao, e o arquivo versionado passa a
  * REPROVAR o lint de quem o commitar (aconteceu).
  *
+ * `before` roda ANTES de cada amostra: e o gancho das formas que tem CACHE (o
+ * `tsconfig.tsbuildinfo` do tsc). Sem ele, a segunda amostra mediria o cache e
+ * nao o gate.
+ *
  * @param {string} cmd
  * @param {number} samples
+ * @param {{before?: () => void}} [options]
  * @returns {{ms: number, minMs: number, maxMs: number, runs: {ms: number, exit: number}[], exit: number, ok: boolean}}
  */
-function measureRepeats(cmd, samples) {
+function measureRepeats(cmd, samples, { before } = {}) {
   const raw = []
-  for (let i = 0; i < samples; i++) raw.push(measure(cmd, { timeoutMs: 600_000 }))
+  for (let i = 0; i < samples; i++) {
+    if (before) before()
+    raw.push(measure(cmd, { timeoutMs: 600_000 }))
+  }
   const sorted = raw.map((r) => r.ms).sort((a, b) => a - b)
   return {
     ms: sorted[Math.floor(sorted.length / 2)],
@@ -300,6 +356,594 @@ export function measureLintCost(samples = 2) {
   }
 }
 
+// ── Typecheck: o custo da unificacao ──────────────────────────────────────
+//
+// POR QUE MEDIR AQUI: o `typecheck` passou a ser UM comando nas duas forjas e
+// no veredito local — o comando INTEIRO (o tsc com o heap de 4GB) dentro do
+// script `typecheck` do package.json. Antes, o heap era um `env: NODE_OPTIONS`
+// inline repetido em QUATRO workflows, e o hook de push rodava
+// `bunx tsc --noEmit` SEM o heap. As duas metades desta medicao respondem a
+// perguntas diferentes:
+//
+//   a) o que a unificacao ACRESCENTOU de wall time nos workflows? A forma
+//      `legacy-inline` (o MESMO comando com o MESMO heap) e o contrafactual
+//      exato: se o delta for ~0, a unificacao moveu um VALOR, nao um trabalho;
+//   b) o que ela acrescentou no HOOK? O heap. E o heap so muda algo onde o
+//      default do node NAO basta — por isso a forma `legacy-bare` (o comando sem
+//      o heap) e medida junto, e o heap default da maquina tambem: onde o
+//      default ja e maior que o do script, a regua sem heap COMPLETA e o
+//      relatorio diz INDETERMINADO sobre o 134 do runner em vez de presumi-lo.
+//
+// A MEDICAO E FRIA (`cold: true`): `tsconfig.json` tem `incremental: true` e o
+// `tsconfig.tsbuildinfo` (gitignored) faz o tsc responder em SEGUNDOS com o
+// trabalho ja feito. Medir o cache nao mede o gate — o step do CI comeca frio.
+
+/** O invariante do CORE que declara a regua do typecheck. */
+const TYPECHECK_INVARIANT = CORE_INVARIANTS.find((i) => i.id === "typecheck")
+if (!TYPECHECK_INVARIANT) {
+  throw new Error(
+    "CORE_INVARIANTS nao declara o invariante 'typecheck' — sem ele nao ha regua canonica para medir",
+  )
+}
+
+/** O comando canonico do typecheck, resolvido da MESMA fonte que o CI usa. */
+export const TYPECHECK_CANONICAL_CMD = canonicalCommandOf(TYPECHECK_INVARIANT)
+
+/** O cache do tsc — o que faz uma medicao quente medir outra coisa. */
+export const TSC_CACHE_FILE = "tsconfig.tsbuildinfo"
+
+/** O script `typecheck` do package.json — a fonte unica da regua. */
+function typecheckEntry() {
+  const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8"))
+  const entry = pkg.scripts?.typecheck
+  if (typeof entry !== "string" || entry.trim() === "") {
+    throw new Error("package.json sem o script 'typecheck' — o benchmark mede a regua declarada")
+  }
+  return entry
+}
+
+/**
+ * O heap do script, LIDO da entry do package.json (nao digitado): se o valor
+ * mudar la, a forma contrafactual acompanha — e a conta continua sendo do MESMO
+ * comando, que e o que a pergunta (a) precisa para valer.
+ */
+export const TYPECHECK_HEAP_MB = (() => {
+  const m = /--max-old-space-size=(\d+)/.exec(typecheckEntry())
+  if (!m) {
+    throw new Error(
+      "o script 'typecheck' do package.json nao declara --max-old-space-size: a unificacao medida e a do heap dentro do script",
+    )
+  }
+  return Number(m[1])
+})()
+
+/** A regua ANTERIOR dos workflows: o MESMO comando, com o heap passado INLINE. */
+export const TYPECHECK_LEGACY_INLINE_CMD = `NODE_OPTIONS=--max-old-space-size=${TYPECHECK_HEAP_MB} bunx tsc --noEmit`
+
+/** A regua ANTERIOR do hook: o mesmo comando SEM o heap. */
+export const TYPECHECK_LEGACY_BARE_CMD = "bunx tsc --noEmit"
+
+/**
+ * Os call sites que pagaram a unificacao do typecheck: os QUATRO workflows que
+ * declaravam o heap inline (`env: NODE_OPTIONS`) e passaram a chamar o script.
+ *
+ * @type {{file: string, where: string}[]}
+ */
+export const TYPECHECK_UPGRADED_SITES = [
+  { file: ".gitea/workflows/ci.yml", where: "job `typecheck` (forja dona do merge)" },
+  { file: ".github/workflows/ci.yml", where: "job `typecheck` (espelho)" },
+  { file: ".github/workflows/pr-check.yml", where: "job `typecheck` (espelho do PR)" },
+  { file: ".github/workflows/release-deploy.yml", where: "passo de typecheck do deploy" },
+]
+
+/**
+ * O hook onde o heap FALTAVA — a outra metade da unificacao, e a unica onde o
+ * valor mudou de verdade (nos workflows o comando ja era o mesmo).
+ *
+ * A prova destes fatos e o CONTEUDO do arquivo (nao ha `run:` de workflow para
+ * ler): `hookRulerFacts` confere as duas linhas. O hook entra na conta com
+ * `kind: "hook"` porque um arquivo de workflow a menos na lista e um lugar
+ * invisivel a mais.
+ */
+export const TYPECHECK_HEAP_ADDED_AT = {
+  file: ".husky/pre-push",
+  where: "hook de push — rodava o tsc SEM o heap (o 134 que o merge nunca via)",
+  kind: "hook",
+}
+
+/**
+ * Arquivos de workflow cujo CONTEUDO casa um padrao.
+ *
+ * Existe para as declaracoes que nao sao um `run:` — o heap era um `env:`, e um
+ * `env:` nao aparece em `runCommands`. Varrer so as linhas de `run:` deixaria a
+ * segunda regua do `NODE_OPTIONS` invisivel justamente onde ela morava.
+ *
+ * @param {RegExp} pattern
+ * @param {string} [root]
+ * @returns {string[]}
+ */
+export function workflowFilesMatching(pattern, root = REPO_ROOT) {
+  const files = []
+  for (const dir of existingWorkflowDirs(root)) {
+    for (const name of workflowFileNames(root, dir)) {
+      const content = readFileSync(join(root, dir, name), "utf8")
+      if (pattern.test(content)) files.push(`${dir}/${name}`)
+    }
+  }
+  return files
+}
+
+/**
+ * Remove o cache do tsc. O arquivo e GERADO e gitignored: removerlo nao mexe no
+ * repositorio, e e o que faz cada amostra comecar fria (como o step do CI).
+ *
+ * @param {string} [root]
+ * @returns {string} o caminho do cache (declarado no relatorio)
+ */
+export function clearTscCache(root = REPO_ROOT) {
+  const file = join(root, TSC_CACHE_FILE)
+  if (existsSync(file)) rmSync(file, { force: true })
+  return file
+}
+
+/**
+ * O heap default do NODE — nao o do runtime que executa o benchmark (o `bunx`
+ * dispara `node_modules/.bin/tsc`, cujo shebang e `env node`; medido: com
+ * `NODE_OPTIONS=--max-old-space-size=16` o processo morre com 134).
+ *
+ * E o numero que decide se a regua SEM o heap morre nesta maquina: o default do
+ * node vem da RAM disponivel, e por isso o mesmo commit da 134 no runner e passa
+ * num desktop grande. `null` quando o node nao puder ser interrogado
+ * (INDETERMINADO, nunca "nao existe").
+ */
+/**
+ * As familias de custo de unificacao que o benchmark conhece. E a lista que
+ * `--only` aceita, e a mesma que `reuseFamilies` sabe herdar.
+ */
+export const RULER_FAMILIES = ["lint", "typecheck", "tests"]
+
+/**
+ * Le a lista de `--only`. Família desconhecida e ERRO (nao um silencio que mede
+ * tudo): medir a família errada por um typo custaria minutos de runner.
+ *
+ * @param {string} raw
+ * @returns {{families: string[]|null, error: string|null}}
+ */
+export function parseOnly(raw) {
+  if (raw === undefined) return { families: null, error: null }
+  const parts = String(raw)
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean)
+  const unknown = parts.filter((p) => !RULER_FAMILIES.includes(p))
+  if (parts.length === 0 || unknown.length > 0) {
+    return {
+      families: null,
+      error: `--only aceita ${RULER_FAMILIES.join("|")} (recebido: ${raw || "nada"})`,
+    }
+  }
+  return { families: parts, error: null }
+}
+
+/**
+ * @param {{only?: string[]|null}} [opts]
+ */
+function familiesToRun({ only = null } = {}) {
+  return {
+    lint: only === null || only.includes("lint"),
+    typecheck: only === null || only.includes("typecheck"),
+    tests: only === null || only.includes("tests"),
+  }
+}
+
+export function nodeHeapLimitMb() {
+  const res = spawnSync(
+    "node",
+    [
+      "-e",
+      "const v8=require('node:v8');process.stdout.write(String(Math.round(v8.getHeapStatistics().heap_size_limit/1048576)))",
+    ],
+    { encoding: "utf8", timeout: 15_000 },
+  )
+  const n = Number((res.stdout ?? "").trim())
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+/**
+ * Os fatos do hook: ele roda o comando CANONICO? ainda roda a regua SEM o heap?
+ *
+ * @param {string} [file]
+ * @param {string} [root]
+ */
+export function hookRulerFacts(file = TYPECHECK_HEAP_ADDED_AT.file, root = REPO_ROOT) {
+  const path = join(root, file)
+  if (!existsSync(path)) return { file, exists: false, hasCanonical: false, hasBare: false }
+  const lines = readFileSync(path, "utf8")
+    .split("\n")
+    .map((line) => line.trim())
+  return {
+    file,
+    exists: true,
+    hasCanonical: lines.includes(TYPECHECK_CANONICAL_CMD),
+    hasBare: lines.includes(TYPECHECK_LEGACY_BARE_CMD),
+  }
+}
+
+/**
+ * As violacoes do contrato da unificacao do typecheck.
+ *
+ * Recebe o que foi MEDIDO (sites, hook, heap fora do script) em vez de medir: e
+ * o que permite provar a conferencia sem rodar um typecheck. A unica varredura
+ * que ela faz por conta propria e a da regua ANTIGA nos workflows — o estado do
+ * repositorio que a conta precisa negar.
+ *
+ * @param {{sites?: {file: string}[], hook?: object|null, heapOutside?: string[]}} [measured]
+ * @returns {string[]}
+ */
+export function typecheckCostViolations({ sites = [], hook = null, heapOutside = [] } = {}) {
+  const violations = []
+
+  // A declaracao dos pagantes e PROVADA: um arquivo declarado que nao chama mais
+  // o script faria a conta medir um lugar onde o typecheck nao roda.
+  const siteFiles = new Set(sites.map((s) => s.file))
+  for (const declared of TYPECHECK_UPGRADED_SITES) {
+    if (!siteFiles.has(declared.file)) {
+      violations.push(
+        `${declared.file}: declarado como pagante da unificacao do typecheck, mas nenhum 'run:' executa ${TYPECHECK_CANONICAL_CMD}`,
+      )
+    }
+  }
+
+  // O heap NAO pode voltar a ser declarado fora do script: e a SEGUNDA REGUA do
+  // mesmo invariante (o `env:` que a unificacao removeu), e ela nao aparece em
+  // `runCommands` — por isso a varredura do CONTEUDO.
+  for (const file of heapOutside) {
+    violations.push(
+      `${file}: declara o heap do tsc (--max-old-space-size) FORA do script 'typecheck' — segunda regua para a mesma invariante`,
+    )
+  }
+
+  // A regua SEM heap nao pode voltar a workflow nenhum.
+  for (const file of legacyRulerFiles(TYPECHECK_LEGACY_BARE_CMD)) {
+    violations.push(
+      `${file}: executa ${TYPECHECK_LEGACY_BARE_CMD} — a regua que morre com 134 onde o default do node nao basta`,
+    )
+  }
+
+  // E o hook, o lugar de onde o valor faltava, tem de rodar o comando canonico.
+  if (hook) {
+    if (!hook.exists) {
+      violations.push(
+        `${hook.file}: o hook declarado nao existe — o valor acrescentado la nao pode ser conferido`,
+      )
+    } else {
+      if (!hook.hasCanonical) {
+        violations.push(
+          `${hook.file}: o hook declarado como beneficiario do heap nao executa ${TYPECHECK_CANONICAL_CMD}`,
+        )
+      }
+      if (hook.hasBare) {
+        violations.push(
+          `${hook.file}: ainda executa ${TYPECHECK_LEGACY_BARE_CMD} SEM o heap — a regua que so o veredito local tinha voltou`,
+        )
+      }
+    }
+  }
+
+  return violations
+}
+
+/**
+ * O que a unificacao do typecheck acrescentou ONDE ela agora roda — derivado dos
+ * fatos medidos, nao escrito a mao.
+ *
+ * @param {{addedPerSiteMs: number, legacyBare: object, heapMb: number, nodeHeapLimitMb: number|null, upgradedSites: number}} f
+ */
+export function typecheckWhatItAdded({
+  addedPerSiteMs,
+  legacyBare,
+  heapMb,
+  nodeHeapLimitMb,
+  upgradedSites,
+}) {
+  const semCusto = Math.abs(addedPerSiteMs) <= Math.max(1_000, (legacyBare?.ms ?? 0) * 0.1)
+  const wall = `${signedSeconds(addedPerSiteMs)} por call site (${upgradedSites} workflows)`
+  const custo = semCusto
+    ? `${wall} — o MESMO comando com o MESMO heap: a unificacao moveu o VALOR, nao o trabalho`
+    : `${wall} de trabalho novo`
+  const heap =
+    nodeHeapLimitMb === null
+      ? `o heap default do node NAO foi medido — se a regua sem o heap morre ou completa aqui fica INDETERMINADO`
+      : nodeHeapLimitMb >= heapMb
+        ? `o heap default do node nesta maquina (${nodeHeapLimitMb}MB) ja e >= os ${heapMb}MB do script, entao a regua SEM o heap completou aqui (exit ${legacyBare?.exit}): o 134 do runner NAO se reproduz nesta maquina — INDETERMINADO, nao "nao existe"`
+        : `o heap e o que faz o gate COMPLETAR: o default do node nesta maquina (${nodeHeapLimitMb}MB) nao basta e a regua sem o heap morreu (exit ${legacyBare?.exit})`
+  return `${custo}. No hook ${TYPECHECK_HEAP_ADDED_AT.file} o acrescentado foi o HEAP: ${heap}.`
+}
+
+/**
+ * Mede o custo da unificacao do typecheck: as tres formas (frias), os call sites
+ * medidos, os pagantes declarados (provados) e o que a unificacao acrescentou.
+ *
+ * @param {{samples?: number}} [opts]
+ * @returns {object}
+ */
+export function measureTypecheckCost({ samples = 1 } = {}) {
+  const forms = [
+    { role: "current", label: "typecheck (script, hoje)", cmd: TYPECHECK_CANONICAL_CMD },
+    {
+      role: "legacy-inline",
+      label: "typecheck (heap inline — contrafactual)",
+      cmd: TYPECHECK_LEGACY_INLINE_CMD,
+    },
+    {
+      role: "legacy-bare",
+      label: "typecheck (SEM heap — a regua do hook)",
+      cmd: TYPECHECK_LEGACY_BARE_CMD,
+    },
+  ]
+  const measured = forms.map((form) => ({
+    ...form,
+    ...measureRepeats(form.cmd, samples, { before: () => clearTscCache() }),
+  }))
+  const byRole = (role) => measured.find((m) => m.role === role)
+  const current = byRole("current")
+  const legacyInline = byRole("legacy-inline")
+  const legacyBare = byRole("legacy-bare")
+
+  const sites = canonicalCallSites(TYPECHECK_CANONICAL_CMD)
+  const heapOutside = workflowFilesMatching(/max-old-space-size/)
+  const hook = hookRulerFacts()
+  const violations = typecheckCostViolations({ sites, hook, heapOutside })
+  const heap = nodeHeapLimitMb()
+  const addedPerSiteMs = current.ms - legacyInline.ms
+
+  return {
+    invariant: "typecheck",
+    canonicalCmd: TYPECHECK_CANONICAL_CMD,
+    legacyInlineCmd: TYPECHECK_LEGACY_INLINE_CMD,
+    legacyBareCmd: TYPECHECK_LEGACY_BARE_CMD,
+    heapMb: TYPECHECK_HEAP_MB,
+    samplesPerForm: samples,
+    cold: true,
+    cacheFile: TSC_CACHE_FILE,
+    forms: measured,
+    canonicalMs: current.ms,
+    sites,
+    pipelineFiles: sites.length,
+    callSites: sites.reduce((acc, s) => acc + s.count, 0),
+    upgraded: TYPECHECK_UPGRADED_SITES,
+    upgradedSites: TYPECHECK_UPGRADED_SITES.length,
+    heapAddedAt: TYPECHECK_HEAP_ADDED_AT,
+    hook,
+    heapDeclaredOutside: heapOutside,
+    nodeHeapLimitMb: heap,
+    legacyBareExit: legacyBare.exit,
+    legacyBareMs: legacyBare.ms,
+    legacyBareCompleted: legacyBare.exit === 0,
+    addedPerSiteMs,
+    addedPerFanOutMs: addedPerSiteMs * TYPECHECK_UPGRADED_SITES.length,
+    violations,
+    whatItAdded: typecheckWhatItAdded({
+      addedPerSiteMs,
+      legacyBare,
+      heapMb: TYPECHECK_HEAP_MB,
+      nodeHeapLimitMb: heap,
+      upgradedSites: TYPECHECK_UPGRADED_SITES.length,
+    }),
+  }
+}
+
+// ── Suite de testes: o custo da unificacao ────────────────────────────────
+//
+// POR QUE MEDIR AQUI: `bun run test:run` (config do app: `src/**/*.test.{ts,tsx}`
+// INCLUINDO `src/components/**`) e `bun run test:unit` (config unit, que EXCLUI
+// `src/components/**`) eram DUAS reguas para a mesma invariante: a forja rodava a
+// mais ampla e o check EXIGIDO do GitHub a mais estreita — o lado mais fraco do
+// par era o que decidia o merge no espelho. A unificacao levou a mais ampla aos
+// dois, e o preco esta no call site que upgrade.
+//
+// A METADE NOVA E DERIVADA, nao digitada: o escopo que a config unit EXCLUI e
+// lido do `vitest.config.unit.ts` — mudar o `exclude` la muda o que este
+// benchmark mede, em vez de deixar a conta medindo um escopo que nao existe mais.
+//
+// A ATRIBUICAO E CONFERIDA, e pode NAO fechar: as duas reguas diferem em mais de
+// escopo (o app roda com 4 workers e o unit com 1, e o setup do vitrine entra so
+// no app) — o relatorio diz "NAO confere" e mostra a diferenca em vez de
+// apresentar o delta como se fosse so a suite de componentes.
+
+/** O invariante do CORE que declara a regua da suite. */
+const TESTS_INVARIANT = CORE_INVARIANTS.find((i) => i.id === "tests")
+if (!TESTS_INVARIANT) {
+  throw new Error(
+    "CORE_INVARIANTS nao declara o invariante 'tests' — sem ele nao ha regua canonica para medir",
+  )
+}
+
+/** O comando canonico da suite, resolvido da MESMA fonte que o CI usa. */
+export const TEST_CANONICAL_CMD = canonicalCommandOf(TESTS_INVARIANT)
+
+/** A regua ANTERIOR do check exigido do GitHub (`vitest.config.unit.ts`). */
+export const TEST_LEGACY_CMD = "bun run test:unit"
+
+/** A config que a regua anterior usava (a fonte do escopo que ela EXCLUI). */
+export const TEST_LEGACY_CONFIG = "vitest.config.unit.ts"
+
+/**
+ * O diretorio que a regua anterior EXCLUI, lido da propria config: e a metade
+ * que a unificacao acrescentou no call site que upgrade.
+ *
+ * @param {string} [root]
+ * @returns {string}
+ */
+export function excludedScopeDir(root = REPO_ROOT) {
+  const cfg = readFileSync(join(root, TEST_LEGACY_CONFIG), "utf8")
+  const block = /exclude:\s*\[([\s\S]*?)\]/.exec(cfg)?.[1] ?? ""
+  const first = /"([^"]+)"/.exec(block)?.[1] ?? null
+  if (!first) {
+    throw new Error(
+      `${TEST_LEGACY_CONFIG} sem 'exclude' legivel — a metade medida da unificacao da suite nao pode ser derivada`,
+    )
+  }
+  return first.split("/*")[0]
+}
+
+/** O comando que roda SO a metade nova (a suite de componentes, config do app). */
+export const TEST_ADDED_HALF_CMD = `bunx vitest run ${excludedScopeDir()}`
+
+/**
+ * O call site que pagou a unificacao da suite: o job `check` do espelho do
+ * GitHub, que rodava a regua ESTREITA. A forja ja rodava o `test:run`.
+ *
+ * @type {{file: string, where: string}[]}
+ */
+export const TEST_UPGRADED_SITES = [
+  {
+    file: ".github/workflows/pr-check.yml",
+    where: "job `check`, passo `Unit tests` (rodava `test:unit`, que EXCLUI src/components)",
+  },
+]
+
+/**
+ * As violacoes do contrato da unificacao da suite. Pura: recebe o medido.
+ *
+ * @param {{sites?: {file: string}[]}} [measured]
+ * @returns {string[]}
+ */
+export function testCostViolations({ sites = [] } = {}) {
+  const violations = []
+  const siteFiles = new Set(sites.map((s) => s.file))
+  for (const declared of TEST_UPGRADED_SITES) {
+    if (!siteFiles.has(declared.file)) {
+      violations.push(
+        `${declared.file}: declarado como pagante da unificacao da suite, mas nenhum 'run:' executa ${TEST_CANONICAL_CMD}`,
+      )
+    }
+  }
+
+  // A regua ESTREITA nao pode voltar a workflow nenhum: se voltar, o lado mais
+  // fraco do par volta a ser um veredito de merge.
+  for (const file of legacyRulerFiles(TEST_LEGACY_CMD)) {
+    violations.push(
+      `${file}: executa ${TEST_LEGACY_CMD} — a regua ESTREITA (EXCLUI ${excludedScopeDir()}) nao pode ser veredito de merge`,
+    )
+  }
+
+  return violations
+}
+
+/**
+ * O que a unificacao da suite acrescentou ONDE ela agora roda — derivado do
+ * medido, com a atribuicao conferida (ou declarada como NAO conferida).
+ *
+ * `addedPerSiteMs === null` e o caso do contrafactual NAO medido nesta rodada
+ * (ver `--no-counterfactual`): o que a unificacao acrescentou de ESCOPO continua
+ * medido (a metade nova), mas o delta contra a regua anterior fica INDETERMINADO
+ * — e o relatorio diz isso, em vez de apresentar a metade nova como se fosse o
+ * delta.
+ *
+ * @param {{addedPerSiteMs: number|null, addedHalfMs: number, upgradedSites: number, scopeDir: string}} f
+ */
+export function testWhatItAdded({ addedPerSiteMs, addedHalfMs, upgradedSites, scopeDir }) {
+  const escopo =
+    `a suite \`${scopeDir}/**\`, que a regua anterior EXCLUIA, medida em ` +
+    `${signedSeconds(addedHalfMs)} isolada`
+  if (addedPerSiteMs === null) {
+    return (
+      `a regua anterior NAO foi medida nesta rodada, entao o DELTA no call site que upgrade (${upgradedSites}) ` +
+      `fica INDETERMINADO. O que a unificacao acrescentou de ESCOPO esta medido: ${escopo}.`
+    )
+  }
+  const confere = addedHalfMs > 0 && Math.abs(addedPerSiteMs - addedHalfMs) / addedHalfMs <= 0.1
+  return (
+    `${signedSeconds(addedPerSiteMs)} por rodada no call site que upgrade (${upgradedSites}) — ${escopo}` +
+    (confere
+      ? `, e ela fecha com o delta`
+      : ` (o delta NAO e so ela: as duas reguas diferem tambem em workers e setup)`)
+  )
+}
+
+/**
+ * Mede o custo da unificacao da suite: a canonica, a metade nova isolada e —
+ * quando o contrafactual e medido — a regua estreita (a que o check do GitHub
+ * rodava).
+ *
+ * O CONTRAFACTUAL E OPCIONAL, e a razao e WALL TIME, nao conveniencia: a regua
+ * estreita roda com `maxWorkers: 1` (declarado no `vitest.config.unit.ts`) e leva
+ * ~7min sozinha, contra ~2min da canonica. Medir tudo junto passa de um timeout
+ * de runner com facilidade. Quando ele NAO e medido, o JSON diz
+ * `counterfactual: "not-measured"` e o delta sai `null` — o campo nao fica com um
+ * numero de outra rodada.
+ *
+ * @param {{samples?: number, counterfactual?: boolean}} [opts]
+ * @returns {object}
+ */
+export function measureTestCost({ samples = 1, counterfactual = false } = {}) {
+  const scopeDir = excludedScopeDir()
+  const forms = [
+    { role: "current", label: "suite completa (hoje: test:run)", cmd: TEST_CANONICAL_CMD },
+    { role: "added-half", label: `suite de ${scopeDir} (a metade nova)`, cmd: TEST_ADDED_HALF_CMD },
+  ]
+  if (counterfactual) {
+    forms.push({
+      role: "legacy",
+      label: "suite estreita (test:unit — contrafactual)",
+      cmd: TEST_LEGACY_CMD,
+    })
+  }
+  const measured = forms.map((form) => ({ ...form, ...measureRepeats(form.cmd, samples) }))
+  const byRole = (role) => measured.find((m) => m.role === role)
+  const current = byRole("current")
+  const legacy = byRole("legacy")
+  const addedHalf = byRole("added-half")
+
+  const sites = canonicalCallSites(TEST_CANONICAL_CMD)
+  const violations = testCostViolations({ sites })
+  const addedPerSiteMs = legacy ? current.ms - legacy.ms : null
+  const attributionPct =
+    addedPerSiteMs === null
+      ? null
+      : addedHalf.ms > 0
+        ? Math.abs(addedPerSiteMs - addedHalf.ms) / addedHalf.ms
+        : 1
+
+  return {
+    invariant: "tests",
+    canonicalCmd: TEST_CANONICAL_CMD,
+    legacyCmd: TEST_LEGACY_CMD,
+    legacyConfig: TEST_LEGACY_CONFIG,
+    addedHalfCmd: TEST_ADDED_HALF_CMD,
+    addedHalfLabel: scopeDir,
+    samplesPerForm: samples,
+    counterfactual: counterfactual ? "measured" : "not-measured",
+    forms: measured,
+    canonicalMs: current.ms,
+    legacyMs: legacy?.ms ?? null,
+    sites,
+    pipelineFiles: sites.length,
+    callSites: sites.reduce((acc, s) => acc + s.count, 0),
+    upgraded: TEST_UPGRADED_SITES,
+    upgradedSites: TEST_UPGRADED_SITES.length,
+    addedPerSiteMs,
+    addedHalfMs: addedHalf.ms,
+    attributionPct: attributionPct === null ? null : Number(attributionPct.toFixed(4)),
+    attributionMatches: attributionPct === null ? null : attributionPct <= 0.1,
+    addedPerFanOutMs: addedPerSiteMs === null ? null : addedPerSiteMs * TEST_UPGRADED_SITES.length,
+    violations,
+    whatItAdded: testWhatItAdded({
+      addedPerSiteMs,
+      addedHalfMs: addedHalf.ms,
+      upgradedSites: TEST_UPGRADED_SITES.length,
+      scopeDir,
+    }),
+  }
+}
+
+/** `+20.8s` / `-3.1s` / `+0.0s` — o sinal sempre explicito. */
+function signedSeconds(ms) {
+  const value = (ms ?? 0) / 1000
+  return `${value > 0 ? "+" : ""}${value.toFixed(1)}s`
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function getCommitHash() {
@@ -350,9 +994,16 @@ function measure(cmd, { timeoutMs = 120_000, env = process.env } = {}) {
 // ── Benchmark ─────────────────────────────────────────────────────────────
 
 /**
- * @param {{samples?: number, lint?: boolean}} [opts]
+ * @param {{samples?: number, lint?: boolean, typecheck?: boolean, tests?: boolean, counterfactual?: boolean, battery?: boolean}} [opts]
  */
-function runBenchmark({ samples = 2, lint = true } = {}) {
+function runBenchmark({
+  samples = 2,
+  lint = true,
+  typecheck = true,
+  tests = true,
+  counterfactual = false,
+  battery = true,
+} = {}) {
   const commit = getCommitHash()
   const commitDate = getCommitTimestamp()
   const timestamp = new Date().toISOString()
@@ -372,59 +1023,85 @@ function runBenchmark({ samples = 2, lint = true } = {}) {
   // ── Guards individuais ──────────────────────────────────────────────────
   const guards = []
   let guardsTotalMs = 0
-  for (const g of GUARDS) {
-    const r = measure(g.cmd)
-    guards.push({
-      label: g.label,
-      cmd: g.cmd,
-      ms: r.ms,
-      exit: r.exit,
-      ok: r.ok,
-    })
-    guardsTotalMs += r.ms
+  if (battery) {
+    for (const g of GUARDS) {
+      const r = measure(g.cmd)
+      guards.push({
+        label: g.label,
+        cmd: g.cmd,
+        ms: r.ms,
+        exit: r.exit,
+        ok: r.ok,
+      })
+      guardsTotalMs += r.ms
+    }
   }
 
   // ── Doctor (perfil --ci) ────────────────────────────────────────────────
   const doctorCmd = DOCTOR_CMD.replace(/\$\{BUN_VERSION\}/g, bunVersion)
     .replace(/\$\{IMAGE_REGISTRY\}/g, imageRegistry)
     .replace(/\$\{IMAGE_NAMESPACE\}/g, imageNamespace)
-  const doctorResult = measure(doctorCmd, { env: doctorEnv })
+  const doctorResult = battery ? measure(doctorCmd, { env: doctorEnv }) : null
 
   // ── Lint: o custo da unificacao ─────────────────────────────────────────
   const lintCost = lint ? measureLintCost(samples) : null
 
+  // ── As outras duas unificacoes de regua ─────────────────────────────────
+  // Custam MINUTOS por forma (comandos inteiros): uma amostra cada, declarada.
+  const typecheckCost = typecheck ? measureTypecheckCost({ samples: 1 }) : null
+  const testsCost = tests ? measureTestCost({ samples: 1, counterfactual }) : null
+
   // ── Soma total ─────────────────────────────────────────────────────────
-  const totalMs = guardsTotalMs + doctorResult.ms
+  // Guards + doctor: os gates que rodam em TODO PR. As familias de regua ficam
+  // FORA do total de proposito — elas medem o custo de rodada (que a comparacao
+  // acompanha por forma), nao a bateria do dia a dia.
+  const totalMs = guardsTotalMs + (doctorResult?.ms ?? 0)
 
   const result = {
     meta: {
       tool: "bench-guard-timing",
-      version: 2,
+      version: 3,
       commit,
       commitDate,
       timestamp,
       nodeVersion: process.version,
       platform: process.platform,
       arch: process.arch,
+      // A maquina entra no relatorio: um numero de wall time sem ela nao e
+      // comparavel entre runners (e o heap default do node VEM da RAM).
+      cpus: cpus().length,
+      totalMemMb: Math.round(totalmem() / 1048576),
+      // Familias herdadas de uma rodada ANTERIOR por `--merge` (objeto vazio no
+      // caso normal). Elas ficam FORA do veredito em todas as pontas: nao entram
+      // como forma, nao julgam o TOTAL e impedem o FECHAMENTO da issue - um
+      // numero de outro momento nao e "a medicao de agora" (ver `compareTimings`).
+      reused: {},
     },
     summary: {
       guardsCount: guards.length,
       guardsTotalMs,
-      doctorMs: doctorResult.ms,
-      doctorExit: doctorResult.exit,
+      doctorMs: doctorResult?.ms ?? null,
+      doctorExit: doctorResult?.exit ?? null,
       totalMs,
       lintAddedPerSiteMs: lintCost?.addedPerSiteMs ?? null,
       lintAddedPerFanOutMs: lintCost?.addedPerFanOutMs ?? null,
+      typecheckMs: typecheckCost?.canonicalMs ?? null,
+      typecheckAddedPerFanOutMs: typecheckCost?.addedPerFanOutMs ?? null,
+      testsMs: testsCost?.canonicalMs ?? null,
+      testsAddedPerFanOutMs: testsCost?.addedPerFanOutMs ?? null,
     },
     guards,
-    doctor: {
-      label: "doctor --ci",
-      cmd: doctorCmd,
-      ms: doctorResult.ms,
-      exit: doctorResult.exit,
-      ok: doctorResult.ok,
-    },
+    doctor: doctorResult
+      ? {
+          label: "doctor --ci",
+          cmd: doctorCmd,
+          ms: doctorResult.ms,
+          exit: doctorResult.exit,
+          ok: doctorResult.ok,
+        }
+      : null,
     lint: lintCost,
+    rulers: { typecheck: typecheckCost, tests: testsCost },
   }
 
   return result
@@ -433,15 +1110,22 @@ function runBenchmark({ samples = 2, lint = true } = {}) {
 // ── Relatório legível ─────────────────────────────────────────────────────
 
 /**
- * Imprime a secao do custo do lint: as tres formas, os call sites medidos, os
- * que pagaram o custo novo e a atribuicao conferida.
+ * Imprime uma familia de custo de unificacao: as formas medidas, os call sites
+ * (medidos), os pagantes (declarados), o delta por call site e por rodada, o que
+ * ela acrescentou ONDE agora roda e as violacoes do contrato.
  *
- * @param {object} lint  resultado de measureLintCost
+ * `extra` carrega os fatos que so aquela familia tem (a metade nova, o heap, o
+ * exit da regua que morre) — o que e comum as tres nao e reescrito em tres
+ * lugares que divergem.
+ *
+ * @param {string} title
+ * @param {object} ruler  resultado de measureLintCost/measureTypecheckCost/measureTestCost
+ * @param {string[]} [extra]
  */
-function printLintReport(lint) {
-  console.log("  Lint — o custo da unificacao (uma regua so nas duas forjas):")
+function printRulerReport(title, ruler, extra = []) {
+  console.log(`  ${title}:`)
   console.log("  ─────────────────────────────────────────────────────")
-  for (const form of lint.forms) {
+  for (const form of ruler.forms) {
     const mark = form.ok ? "✅" : "⚠️ "
     const time = `${(form.ms / 1000).toFixed(1)}s`
     const samples = form.runs.map((r) => (r.ms / 1000).toFixed(1)).join("/")
@@ -451,27 +1135,129 @@ function printLintReport(lint) {
   }
   console.log("  ─────────────────────────────────────────────────────")
   console.log(
-    `    call sites de \`${lint.canonicalCmd}\`: ${lint.callSites} em ${lint.pipelineFiles} pipelines`,
+    `    call sites de \`${ruler.canonicalCmd}\`: ${ruler.callSites} em ${ruler.pipelineFiles} pipelines`,
   )
-  for (const site of lint.sites) {
+  for (const site of ruler.sites) {
     console.log(`      · ${site.file}${site.count > 1 ? ` (${site.count} call sites)` : ""}`)
   }
-  console.log(`    pagaram o custo novo (regua laxa -> par completo): ${lint.upgradedSites}`)
-  for (const site of lint.upgraded) console.log(`      · ${site.file} — ${site.where}`)
+  console.log(`    pagaram o custo novo: ${ruler.upgradedSites}`)
+  for (const site of ruler.upgraded) console.log(`      · ${site.file} — ${site.where}`)
   console.log()
-  console.log(`    acrescentado por call site: +${(lint.addedPerSiteMs / 1000).toFixed(1)}s`)
+  // `null` é o delta NÃO medido (o contrafactual é opcional na família da
+  // suíte). Imprimi-lo como "0.0s" seria o pior erro possível aqui: diria "não
+  // acrescentou nada" onde a resposta é "não foi medido".
+  const delta = (ms) =>
+    ms === null || ms === undefined ? "nao medido nesta rodada" : signedSeconds(ms)
+  console.log(`    acrescentado por call site: ${delta(ruler.addedPerSiteMs)}`)
   console.log(
-    `    acrescentado por rodada de CI (${lint.upgradedSites} call sites): +${(lint.addedPerFanOutMs / 1000).toFixed(1)}s`,
+    `    acrescentado por rodada de CI (${ruler.upgradedSites} call sites): ${delta(ruler.addedPerFanOutMs)}`,
   )
-  console.log(
-    `    a metade nova isolada (prettier): ${(lint.addedHalfMs / 1000).toFixed(1)}s — atribuicao ${lint.attributionMatches ? "confere" : "NAO confere"} (${(lint.attributionPct * 100).toFixed(0)}% de diferenca)`,
-  )
-  for (const violation of lint.violations) console.log(`    ❌ ${violation}`)
+  for (const line of extra) console.log(`    ${line}`)
+  if (ruler.whatItAdded) {
+    console.log()
+    console.log(`    o que acrescentou ONDE agora roda: ${ruler.whatItAdded}`)
+  }
+  for (const violation of ruler.violations) console.log(`    ❌ ${violation}`)
   console.log()
 }
 
+/**
+ * Herda as familias que ESTA rodada nao mediu do arquivo anterior (`--merge`).
+ *
+ * POR QUE ISTO EXISTE: uma rodada completa mede comandos inteiros — um typecheck
+ * FRIO e tres suites — e em maquina lenta (ou sob um timeout de runner) isso nao
+ * cabe num passo so. Sem o merge, medir em partes significaria APAGAR o que ja
+ * estava medido; com ele, a parte de agora entra e o resto e herdado.
+ *
+ * A HONESTIDADE ESTA NA PROCEDENCIA: cada familia herdada vai para
+ * `meta.reused` com o commit e o timestamp de ORIGEM, o relatorio a NOMEIA, e a
+ * comparacao a EXCLUI do veredito — um numero de outro momento nao pode passar
+ * por "a medicao de agora".
+ *
+ * Pura em relacao ao relogio e ao disco: recebe os dois relatorios.
+ *
+ * @param {object} result    o que esta rodada mediu (familias nao medidas = null)
+ * @param {object|null} previous  o arquivo anterior
+ * @returns {object}
+ */
+export function reuseFamilies(result, previous) {
+  if (!previous) return result
+  const reused = {}
+
+  const pick = (family, current, old) => {
+    if (current !== null && current !== undefined) return current
+    if (old === null || old === undefined) return current ?? null
+    reused[family] = {
+      commit: previous?.meta?.commit ?? null,
+      timestamp: previous?.meta?.timestamp ?? null,
+    }
+    return old
+  }
+
+  const lint = pick("lint", result.lint, previous.lint)
+  const typecheck = pick(
+    "typecheck",
+    result.rulers?.typecheck ?? null,
+    previous.rulers?.typecheck ?? null,
+  )
+  const tests = pick("tests", result.rulers?.tests ?? null, previous.rulers?.tests ?? null)
+
+  // A BATERIA (guards + doctor): numa rodada de uma familia so (`--only`) ela
+  // nao e medida, e gravar vazio apagaria a leitura que ja existia. Herdada, ela
+  // vale a mesma regra das familias: marcada em `meta.reused` e fora do veredito.
+  const bateriaVazia = (result.guards?.length ?? 0) === 0 && result.doctor === null
+  const guardasHerdadas = bateriaVazia && (previous.guards?.length ?? 0) > 0
+  const guards = guardasHerdadas ? previous.guards : result.guards
+  const doctor = bateriaVazia && previous.doctor ? previous.doctor : result.doctor
+  if (guardasHerdadas) {
+    reused.battery = {
+      commit: previous?.meta?.commit ?? null,
+      timestamp: previous?.meta?.timestamp ?? null,
+    }
+  }
+  const guardsTotalMs = (guards ?? []).reduce((acc, g) => acc + (g.ms ?? 0), 0)
+
+  return {
+    ...result,
+    guards,
+    doctor,
+    lint,
+    rulers: { typecheck, tests },
+    meta: { ...result.meta, reused },
+    // O resumo tem de descrever o arquivo que esta sendo gravado, nao metade
+    // dele: um `summary.testsMs: null` ao lado de uma secao `tests` cheia seria
+    // uma incoerencia gerada pelo proprio benchmark.
+    summary: {
+      ...result.summary,
+      guardsCount: (guards ?? []).length,
+      guardsTotalMs,
+      doctorMs: doctor?.ms ?? null,
+      doctorExit: doctor?.exit ?? null,
+      totalMs: guardsTotalMs + (doctor?.ms ?? 0),
+      lintAddedPerSiteMs: lint?.addedPerSiteMs ?? null,
+      lintAddedPerFanOutMs: lint?.addedPerFanOutMs ?? null,
+      typecheckMs: typecheck?.canonicalMs ?? null,
+      typecheckAddedPerFanOutMs: typecheck?.addedPerFanOutMs ?? null,
+      testsMs: tests?.canonicalMs ?? null,
+      testsAddedPerFanOutMs: tests?.addedPerFanOutMs ?? null,
+    },
+  }
+}
+
+/**
+ * A secao do lint: as tres formas, os call sites, os pagantes e a atribuicao
+ * conferida contra a metade nova (`prettier --check`).
+ *
+ * @param {object} lint  resultado de measureLintCost
+ */
+function printLintReport(lint) {
+  printRulerReport("Lint — o custo da unificacao (uma regua so nas duas forjas)", lint, [
+    `a metade nova isolada (prettier): ${(lint.addedHalfMs / 1000).toFixed(1)}s — atribuicao ${lint.attributionMatches ? "confere" : "NAO confere"} (${(lint.attributionPct * 100).toFixed(0)}% de diferenca)`,
+  ])
+}
+
 function printReport(result) {
-  const { meta, summary, guards, doctor, lint } = result
+  const { meta, summary, guards, doctor, lint, rulers } = result
   console.log()
   console.log("  ═══════════════════════════════════════════════════════════════")
   console.log("   ⏱  BENCH — wall time do doctor e guards")
@@ -496,12 +1282,52 @@ function printReport(result) {
   console.log()
 
   // Doctor
-  const dMark = doctor.ok ? "✅" : "❌"
-  console.log(`  Doctor (--ci): ${dMark} ${(doctor.ms / 1000).toFixed(1)}s (exit ${doctor.exit})`)
+  if (doctor) {
+    const dMark = doctor.ok ? "✅" : "❌"
+    console.log(`  Doctor (--ci): ${dMark} ${(doctor.ms / 1000).toFixed(1)}s (exit ${doctor.exit})`)
+  } else {
+    console.log("  Doctor (--ci): nao medido nesta rodada (--only)")
+  }
   console.log()
 
   // Lint (custo da unificacao)
   if (lint) printLintReport(lint)
+
+  // Typecheck (o comando inteiro dentro do script)
+  const tc = rulers?.typecheck
+  if (tc) {
+    printRulerReport(
+      "Typecheck — o custo da unificacao (o comando inteiro no script do package.json)",
+      tc,
+      [
+        `medicao FRIA: o cache ${tc.cacheFile} (gitignored, gerado) e removido antes de cada amostra`,
+        `a regua SEM o heap (${tc.legacyBareCmd}): exit ${tc.legacyBareExit} em ${(tc.legacyBareMs / 1000).toFixed(1)}s (${tc.legacyBareCompleted ? "COMPLETOU" : "morreu"})`,
+        `o heap default do node nesta maquina: ${tc.nodeHeapLimitMb === null ? "NAO medido (INDETERMINADO)" : `${tc.nodeHeapLimitMb}MB`} · o heap do script: ${tc.heapMb}MB`,
+        `o hook ${tc.heapAddedAt.file}: roda o comando canonico? ${tc.hook?.hasCanonical ? "sim" : "NAO"} · ainda roda a regua sem o heap? ${tc.hook?.hasBare ? "SIM" : "nao"}`,
+      ],
+    )
+  }
+
+  // Suite de testes (a regua mais AMPLA nas duas forjas)
+  const ts = rulers?.tests
+  if (ts) {
+    printRulerReport("Suite — o custo da unificacao (a regua mais AMPLA nas duas forjas)", ts, [
+      `a regua anterior (${ts.legacyCmd}) usa \`${ts.legacyConfig}\`, que EXCLUI \`${ts.addedHalfLabel}/**\``,
+      ts.attributionPct === null
+        ? `a metade nova isolada (${ts.addedHalfLabel}): ${(ts.addedHalfMs / 1000).toFixed(1)}s — o contrafactual NAO foi medido nesta rodada, entao o delta e a atribuicao ficam INDETERMINADOS`
+        : `a metade nova isolada (${ts.addedHalfLabel}): ${(ts.addedHalfMs / 1000).toFixed(1)}s — atribuicao ${ts.attributionMatches ? "confere" : "NAO confere"} (${(ts.attributionPct * 100).toFixed(0)}% de diferenca)`,
+    ])
+  }
+
+  // Familias herdadas de uma rodada anterior (`--merge`)
+  const reusedFamilies = Object.entries(meta.reused ?? {})
+  if (reusedFamilies.length > 0) {
+    console.log("  Familias HERDADAS (nao medidas nesta rodada — fora do veredito):")
+    for (const [family, from] of reusedFamilies) {
+      console.log(`    · ${family} — medida em ${from.commit} (${from.timestamp})`)
+    }
+    console.log()
+  }
 
   // Total
   console.log(`  TOTAL: ${(summary.totalMs / 1000).toFixed(1)}s`)
@@ -520,10 +1346,261 @@ function loadBaseline() {
   }
 }
 
+/**
+ * O limiar de regressão: 20% de piora numa forma medida já é regressão.
+ *
+ * É FONTE ÚNICA: o relatório impresso usa este número e o publicador da issue
+ * (`guard-timing-issue.mjs`) decide por ele. Duas réguas para a mesma pergunta
+ * divergem no dia em que alguém ajustar uma delas — e a divergência passaria a
+ * ser "regressão no CI, sem regressão na issue" (ou o inverso), sem teste vermelho.
+ */
+export const REGRESSION_THRESHOLD_PCT = 0.2
+
+/**
+ * O PISO DE RUÍDO, em milissegundos: além do percentual, a piora tem de ser
+ * pelo menos isto em absoluto para contar como regressão.
+ *
+ * POR QUE EXISTE: a bateria de guards é medida com UMA amostra por forma, e os
+ * guards baratos rodam em dezenas de ms — 20% de 40ms são 8ms, que é ruído de
+ * escalonamento do sistema operacional, não regressão. Sem o piso, o canal
+ * semanal (o publicador de issue) abriria dívida para `check:secret-leaks +50%`
+ * (40ms → 60ms) toda semana; um alerta que mente é o alerta mudo com outro nome.
+ *
+ * O piso é da RÉGUA, não do consumidor: o relatório impresso e o publicador da
+ * issue leem os dois daqui.
+ */
+export const REGRESSION_MIN_DELTA_MS = 50
+
+/**
+ * O nome HUMANO de cada família que `reuseFamilies` sabe herdar. A comparação
+ * que NÃO julgou uma família herdada precisa dizer QUAL — "medição incompleta"
+ * sem o nome transfere a investigação para quem lê a issue, que não tem como
+ * saber se o que falou foi o lint ou a bateria de guards.
+ */
+export const REUSED_FAMILY_LABELS = {
+  battery: "bateria (guards+doctor)",
+  lint: "lint",
+  typecheck: "typecheck",
+  tests: "suíte",
+}
+
+/**
+ * A COMPARAÇÃO do run atual contra a baseline, como DADO — não como texto.
+ *
+ * POR QUE ISTO É UMA FUNÇÃO E NÃO O `console.log` QUE ELE ALIMENTA: o cron
+ * semanal precisa da MESMA comparação para decidir se abre (ou fecha) a issue,
+ * e um publicador que recalculasse o delta por conta própria teria a sua própria
+ * régua. Aqui a régua é uma: o relatório imprime daqui, o publicador consome
+ * daqui.
+ *
+ * `unmeasured` marca a forma que NÃO pode ser julgada: sem número, ou medida por
+ * um comando que não terminou (`ok: false` — ele pode ter ficado RÁPIDO por ter
+ * morrido antes de fazer o trabalho, que é o pior jeito de "melhorar", e pode
+ * ficar LENTO pelo mesmo motivo, que é o pior jeito de "piorar"). Forma não
+ * medida nunca é regressão — nem quando o ms dela passa do limiar —, e a
+ * comparação inteira fica `measured: false`, que é o `resolution.when` do
+ * publicador (não medido ≠ resolvido).
+ *
+ * `measured` é o veredito INTEIRO, então ele exige mais do que "nenhuma forma
+ * não medida": exige COBERTURA. Família herdada por `--merge` (fora do veredito,
+ * ver `reuseFamilies`) e família que a baseline tem e esta rodada não mediu nem
+ * herdou deixam o veredito PARCIAL, e o motivo NOMEIA qual faltou. Herdar é
+ * permitido; dar a dívida por resolvida com número herdado, não.
+ *
+ * O TOTAL é DERIVADO, não medido: ele só é julgado quando todas as formas que ele
+ * soma foram — e quando a BATERIA é desta rodada. Herdada por `--merge`, o total
+ * dela é de outro momento, e compará-lo como "agora" publicaria uma regressão sem
+ * medição (ver abaixo).
+ *
+ * @param {object} current   relatório do `runBenchmark`
+ * @param {object|null} baseline  relatório salvo como baseline
+ * @param {{thresholdPct?: number, minDeltaMs?: number}} [options]
+ * @returns {{measured: boolean, reason: string|null, thresholdPct: number, minDeltaMs: number, baselineCommit: string|null, currentCommit: string|null, forms: object[], regressions: object[], total: object|null}}
+ */
+export function compareTimings(
+  current,
+  baseline,
+  { thresholdPct = REGRESSION_THRESHOLD_PCT, minDeltaMs = REGRESSION_MIN_DELTA_MS } = {},
+) {
+  const baselineGuards = new Map((baseline?.guards ?? []).map((g) => [g.label, g]))
+  const forms = []
+
+  const comparar = ({ kind, label, currentMs, baselineMs, ok = true }) => {
+    const temNumero = Number.isFinite(currentMs)
+    const temBaseline = Number.isFinite(baselineMs) && baselineMs > 0
+    const deltaMs = temNumero && temBaseline ? currentMs - baselineMs : null
+    const pct = deltaMs === null ? null : deltaMs / baselineMs
+    // Uma forma NÃO JULGÁVEL (sem número, ou medida por um comando que não
+    // terminou, ou de uma rodada herdada) não pode ser REGRESSÃO nem quando o
+    // número dela passou do limiar: um guard que MORREU no meio tem o ms do
+    // pedaço que rodou, e chamar isso de "o gate ficou mais lento" publica uma
+    // dívida que ninguém consegue fechar (o número não se reproduz). O piso e o
+    // percentual decidem entre as formas JULGÁVEIS; `unmeasured` decide quem
+    // entra no julgamento.
+    const unmeasured = !temNumero || ok === false
+    const form = {
+      kind,
+      label,
+      currentMs: temNumero ? currentMs : null,
+      baselineMs: temBaseline ? baselineMs : null,
+      deltaMs,
+      pct,
+      isNew: temNumero && !temBaseline,
+      unmeasured,
+      // Percentual E piso absoluto: o piso é o que separa regressão de ruído de
+      // medição nos guards baratos (uma amostra por forma).
+      regression: !unmeasured && pct !== null && pct > thresholdPct && (deltaMs ?? 0) >= minDeltaMs,
+    }
+    forms.push(form)
+    return form
+  }
+
+  // Uma familia (ou a bateria) HERDADA de outra rodada nao entra no veredito: o
+  // numero e de outro momento, e compara-lo com a baseline como se fosse a
+  // medicao de agora esconderia exatamente a regressao que o canal existe para
+  // achar. Herdar e permitido; fingir que e de agora, nao.
+  const reused = current?.meta?.reused ?? {}
+  const isReused = (family) => Boolean(reused[family])
+
+  if (!isReused("battery")) {
+    for (const guard of current?.guards ?? []) {
+      comparar({
+        kind: "guard",
+        label: guard.label,
+        currentMs: guard.ms,
+        baselineMs: baselineGuards.get(guard.label)?.ms,
+        ok: guard.ok !== false,
+      })
+    }
+
+    if (current?.doctor) {
+      comparar({
+        kind: "doctor",
+        label: "doctor --ci",
+        currentMs: current.doctor.ms,
+        baselineMs: baseline?.doctor?.ms,
+        ok: current.doctor.ok !== false,
+      })
+    }
+  }
+
+  // Lint (custo da unificacao). O baseline v1 nao tem a secao: sem ela, a forma
+  // sai como NOVA (e o relatorio anota isso) em vez de inventar comparacao.
+  if (current?.lint && !isReused("lint")) {
+    comparar({
+      kind: "lint",
+      label: "lint (custo por rodada)",
+      currentMs: current.lint.addedPerFanOutMs,
+      baselineMs: baseline?.lint?.addedPerFanOutMs,
+    })
+  }
+
+  // As outras duas familias comparam o COMANDO CANONICO (a regua em si), e nao
+  // o delta contra o contrafactual: aqui "regressao de tempo" significa "o gate
+  // ficou mais lento", e o contrafactual nao roda mais em pipeline nenhuma.
+  if (current?.rulers?.typecheck && !isReused("typecheck")) {
+    comparar({
+      kind: "typecheck",
+      label: "typecheck (script com heap, frio)",
+      currentMs: current.rulers.typecheck.canonicalMs,
+      baselineMs: baseline?.rulers?.typecheck?.canonicalMs,
+    })
+  }
+  if (current?.rulers?.tests && !isReused("tests")) {
+    comparar({
+      kind: "tests",
+      label: "test:run (a suite do merge)",
+      currentMs: current.rulers.tests.canonicalMs,
+      baselineMs: baseline?.rulers?.tests?.canonicalMs,
+    })
+  }
+
+  // O TOTAL soma as formas acima: ele só é julgável quando TODAS elas foram.
+  // Uma bateria com um guard que não terminou tem um total menor por um motivo
+  // que não é velocidade (o guard morreu antes de fazer o trabalho), então
+  // julgá-lo contra a baseline produziria "melhoria" no agregado e regressão
+  // nas partes — duas leituras contraditórias do mesmo run. O total é derivado
+  // (não medido independente): se alguma parte não foi medida, ele também não é.
+  // A BATERIA HERDADA É O TOTAL: `summary.totalMs` é a soma de guards + doctor,
+  // e quando ela vem de outra rodada (`--merge`) esse número é de OUTRO momento.
+  // Julgá-lo como "o total de agora" produz exatamente a regressão que o canal
+  // não pode publicar: o delta existe, a medição não.
+  const partesMedidas = forms.filter((form) => form.unmeasured).length === 0
+  const total = comparar({
+    kind: "total",
+    label: "TOTAL",
+    currentMs: current?.summary?.totalMs,
+    baselineMs: baseline?.summary?.totalMs,
+    ok: partesMedidas && !isReused("battery"),
+  })
+
+  const naoMedidas = forms.filter((form) => form.unmeasured)
+  // O motivo NOMEIA as formas partes que faltaram; o TOTAL só entra quando é a
+  // única coisa não medida (senão o motivo repetiria a bateria que já foi dita).
+  const nomeadas = naoMedidas.filter((form) => form.kind !== "total")
+  // A FAMÍLIA HERDADA também é medição que não é de AGORA. Ela já sai do veredito
+  // (acima), mas `measured` é a guarda de FECHAMENTO da issue de tempo: com ele
+  // true, um `--only tests --merge` FECHARIA a dívida de guards que esta rodada
+  // nunca mediu. Herdar segue permitido; dar a dívida por resolvida com número
+  // herdado, não.
+  const herdadas = Object.keys(reused)
+  // COBERTURA: se a BASELINE tem uma família que esta rodada NÃO mediu (pulada
+  // por `--no-lint`/`--only`), o veredito é PARCIAL — e a dívida pode ser
+  // justamente sobre ela. Herdar não cai aqui: a família herdada está presente
+  // (com a procedência marcada), o que falta é a que não foi medida NEM herdada.
+  const temBateria = (report) => (report?.guards?.length ?? 0) > 0 || report?.doctor != null
+  const faltantes = [
+    ["lint", baseline?.lint != null, current?.lint != null],
+    ["typecheck", baseline?.rulers?.typecheck != null, current?.rulers?.typecheck != null],
+    ["tests", baseline?.rulers?.tests != null, current?.rulers?.tests != null],
+    ["battery", temBateria(baseline), temBateria(current)],
+  ]
+    .filter(([, naBase, agora]) => naBase && !agora)
+    .map(([family]) => family)
+
+  const motivos = []
+  if (!baseline) motivos.push("sem baseline para comparar")
+  if (naoMedidas.length > 0) {
+    motivos.push(
+      `forma não medida: ${(nomeadas.length > 0 ? nomeadas : naoMedidas).map((f) => f.label).join(", ")}`,
+    )
+  }
+  if (herdadas.length > 0) {
+    motivos.push(
+      `família herdada de outra rodada (fora do veredito): ${herdadas
+        .map((family) => REUSED_FAMILY_LABELS[family] ?? family)
+        .join(", ")}`,
+    )
+  }
+  if (faltantes.length > 0) {
+    motivos.push(
+      `família da baseline não medida nesta rodada: ${faltantes
+        .map((family) => REUSED_FAMILY_LABELS[family] ?? family)
+        .join(", ")}`,
+    )
+  }
+  const measured = Boolean(baseline) && forms.length > 0 && motivos.length === 0
+  const reason = motivos.length > 0 ? motivos.join(" · ") : null
+
+  return {
+    measured,
+    reason,
+    thresholdPct,
+    minDeltaMs,
+    baselineCommit: baseline?.meta?.commit ?? null,
+    currentCommit: current?.meta?.commit ?? null,
+    forms,
+    regressions: forms.filter((form) => form.regression),
+    total,
+    reused: Object.keys(reused),
+  }
+}
+
 function compareReport(current, baseline) {
+  const cmp = compareTimings(current, baseline)
   if (!baseline) {
     console.log("  ⚠️  Sem baseline para comparar. Execute com --baseline primeiro.")
-    return { regression: false }
+    return { regression: false, comparison: cmp }
   }
 
   console.log("  ═══════════════════════════════════════════════════════════════")
@@ -534,81 +1611,74 @@ function compareReport(current, baseline) {
   console.log(`  atual:    ${current.meta.commit} (${current.meta.timestamp})`)
   console.log()
 
-  const THRESHOLD = 0.2 // 20% de piora é regressão
-  let regression = false
+  const arrowOf = (form) =>
+    form.isNew ? "➕" : (form.deltaMs ?? 0) > 0 ? "📈" : (form.deltaMs ?? 0) < 0 ? "📉" : "  "
+  const flagOf = (form) => (form.regression ? " ⚠️  REGRESSÃO" : "")
+  const deltaOf = (form, pad) => {
+    const sign = (form.deltaMs ?? 0) > 0 ? "+" : ""
+    return (
+      `${arrowOf(form)} ${form.label.padEnd(pad)} ${(form.currentMs / 1000).toFixed(1)}s (` +
+      `${sign}${((form.deltaMs ?? 0) / 1000).toFixed(1)}s, ${sign}${((form.pct ?? 0) * 100).toFixed(0)}%)` +
+      `${flagOf(form)}`
+    )
+  }
 
-  // Guards individuais
-  const baselineGuards = new Map((baseline.guards ?? []).map((g) => [g.label, g]))
   console.log("  Guards:")
   console.log("  ─────────────────────────────────────────────────────")
-  for (const g of current.guards) {
-    const b = baselineGuards.get(g.label)
-    if (!b) {
-      console.log(`    ➕ ${g.label.padEnd(30)} ${(g.ms / 1000).toFixed(1)}s (novo)`)
-      continue
-    }
-    const diff = g.ms - b.ms
-    const pct = b.ms > 0 ? diff / b.ms : 0
-    const arrow = diff > 0 ? "📈" : diff < 0 ? "📉" : "  "
-    const sign = diff > 0 ? "+" : ""
-    const flag = pct > THRESHOLD ? " ⚠️  REGRESSÃO" : ""
+  for (const form of cmp.forms.filter((f) => f.kind === "guard")) {
     console.log(
-      `    ${arrow} ${g.label.padEnd(30)} ${(g.ms / 1000).toFixed(1)}s (${sign}${(diff / 1000).toFixed(1)}s, ${sign}${(pct * 100).toFixed(0)}%)${flag}`,
+      form.isNew
+        ? `    ➕ ${form.label.padEnd(30)} ${(form.currentMs / 1000).toFixed(1)}s (novo)`
+        : `    ${deltaOf(form, 30)}`,
     )
-    if (pct > THRESHOLD) regression = true
   }
   console.log("  ─────────────────────────────────────────────────────")
 
-  // Doctor
-  const bDoctor = baseline.doctor
-  if (bDoctor) {
-    const diff = current.doctor.ms - bDoctor.ms
-    const pct = bDoctor.ms > 0 ? diff / bDoctor.ms : 0
-    const arrow = diff > 0 ? "📈" : diff < 0 ? "📉" : "  "
-    const sign = diff > 0 ? "+" : ""
-    const flag = pct > THRESHOLD ? " ⚠️  REGRESSÃO" : ""
+  const doctor = cmp.forms.find((f) => f.kind === "doctor")
+  if (doctor && !doctor.isNew) {
+    const sign = (doctor.deltaMs ?? 0) > 0 ? "+" : ""
     console.log(
-      `    ${arrow} doctor --ci${" ".repeat(20)} ${(current.doctor.ms / 1000).toFixed(1)}s (${sign}${(diff / 1000).toFixed(1)}s, ${sign}${(pct * 100).toFixed(0)}%)${flag}`,
+      `    ${arrowOf(doctor)} doctor --ci${" ".repeat(20)} ${(doctor.currentMs / 1000).toFixed(1)}s (${sign}${((doctor.deltaMs ?? 0) / 1000).toFixed(1)}s, ${sign}${((doctor.pct ?? 0) * 100).toFixed(0)}%)${flagOf(doctor)}`,
     )
-    if (pct > THRESHOLD) regression = true
   }
 
-  // Lint (custo da unificacao). O baseline v1 nao tem a secao: sem ela, anota
-  // que o numero e novo em vez de inventar uma comparacao.
-  if (current.lint) {
-    const bLint = baseline.lint
-    if (bLint) {
-      const diff = current.lint.addedPerFanOutMs - bLint.addedPerFanOutMs
-      const pct = bLint.addedPerFanOutMs > 0 ? diff / bLint.addedPerFanOutMs : 0
-      const sign = diff > 0 ? "+" : ""
-      const flag = pct > THRESHOLD ? " ⚠️  REGRESSÃO" : ""
+  // As formas de custo de rodada (as tres familias de regua). A primeira vez que
+  // elas aparecem elas sao NOVAS (o baseline nao as tinha) — dito no relatorio,
+  // em vez de inventar um delta contra um numero que nao existia.
+  for (const { kind, label, pad } of [
+    { kind: "lint", label: "lint (custo por rodada)", pad: 7 },
+    { kind: "typecheck", label: "typecheck (script com heap, frio)", pad: 0 },
+    { kind: "tests", label: "test:run (a suite do merge)", pad: 0 },
+  ]) {
+    const form = cmp.forms.find((f) => f.kind === kind)
+    if (!form) continue
+    if (form.isNew) {
       console.log(
-        `    ${diff > 0 ? "📈" : diff < 0 ? "📉" : "  "} lint (custo por rodada)${" ".repeat(7)} ${(current.lint.addedPerFanOutMs / 1000).toFixed(1)}s (${sign}${(diff / 1000).toFixed(1)}s, ${sign}${(pct * 100).toFixed(0)}%)${flag}`,
+        `    ➕ ${label}${" ".repeat(pad)} ${(form.currentMs / 1000).toFixed(1)}s (novo no baseline)`,
       )
-      if (pct > THRESHOLD) regression = true
     } else {
+      const sign = (form.deltaMs ?? 0) > 0 ? "+" : ""
       console.log(
-        `    ➕ lint (custo por rodada)${" ".repeat(7)} ${(current.lint.addedPerFanOutMs / 1000).toFixed(1)}s (novo no baseline)`,
+        `    ${arrowOf(form)} ${label}${" ".repeat(pad)} ${(form.currentMs / 1000).toFixed(1)}s (${sign}${((form.deltaMs ?? 0) / 1000).toFixed(1)}s, ${sign}${((form.pct ?? 0) * 100).toFixed(0)}%)${flagOf(form)}`,
       )
     }
   }
 
-  // Total
-  const bTotal = baseline.summary?.totalMs ?? 0
-  const totalDiff = current.summary.totalMs - bTotal
-  const totalPct = bTotal > 0 ? totalDiff / bTotal : 0
-  const totalSign = totalDiff > 0 ? "+" : ""
+  if ((cmp.reused ?? []).length > 0) {
+    console.log(`  (familias herdadas, FORA do veredito desta rodada: ${cmp.reused.join(", ")})`)
+  }
+
+  const total = cmp.total
   console.log()
   console.log(
-    `  TOTAL: ${(current.summary.totalMs / 1000).toFixed(1)}s (${totalSign}${(totalDiff / 1000).toFixed(1)}s vs baseline)`,
+    `  TOTAL: ${(total.currentMs / 1000).toFixed(1)}s (${(total.deltaMs ?? 0) > 0 ? "+" : ""}${((total.deltaMs ?? 0) / 1000).toFixed(1)}s vs baseline)`,
   )
-  if (totalPct > THRESHOLD) {
-    console.log(`  ⚠️  REGRESSÃO DE TEMPO: +${(totalPct * 100).toFixed(0)}% (limiar: 20%)`)
-    regression = true
+  if (total.regression) {
+    console.log(`  ⚠️  REGRESSÃO DE TEMPO: +${((total.pct ?? 0) * 100).toFixed(0)}% (limiar: 20%)`)
   }
 
   console.log()
-  return { regression }
+  return { regression: cmp.regressions.length > 0, comparison: cmp }
 }
 
 // ── CLI ───────────────────────────────────────────────────────────────────
@@ -620,6 +1690,11 @@ function parseArgs(argv) {
     baseline: false,
     compare: false,
     lint: true,
+    typecheck: true,
+    tests: true,
+    counterfactual: false,
+    merge: false,
+    only: null,
     samples: 2,
     help: false,
     error: null,
@@ -631,6 +1706,17 @@ function parseArgs(argv) {
     else if (arg === "--baseline") opts.baseline = true
     else if (arg === "--compare") opts.compare = true
     else if (arg === "--no-lint") opts.lint = false
+    else if (arg === "--no-typecheck") opts.typecheck = false
+    else if (arg === "--no-tests") opts.tests = false
+    else if (arg === "--counterfactual") opts.counterfactual = true
+    else if (arg === "--only") {
+      const parsed = parseOnly(argv[++i])
+      if (parsed.error) {
+        opts.error = parsed.error
+        return opts
+      }
+      opts.only = parsed.families
+    } else if (arg === "--merge") opts.merge = true
     else if (arg === "--samples") {
       const raw = argv[++i]
       const n = Number(raw)
@@ -643,6 +1729,14 @@ function parseArgs(argv) {
     else opts.error = `argumento desconhecido: ${arg}`
   }
   return opts
+}
+
+/**
+ * Roda tambem a BATERIA (guards + doctor)? Numa rodada de UMA familia so, a
+ * bateria e ruido — e ela e herdada com `--merge`, nao apagada.
+ */
+export function runsBattery({ only } = {}) {
+  return only === null || only === undefined
 }
 
 function main() {
@@ -658,7 +1752,25 @@ Usage:
   node scripts/bench-guard-timing.mjs --compare      # compara vs baseline
   node scripts/bench-guard-timing.mjs --json --compare  # salva + compara
   node scripts/bench-guard-timing.mjs --samples 3    # amostras por forma de lint
-  node scripts/bench-guard-timing.mjs --no-lint      # só guards + doctor
+  node scripts/bench-guard-timing.mjs --no-lint      # sem a família do lint
+  node scripts/bench-guard-timing.mjs --no-typecheck # sem a família do typecheck
+  node scripts/bench-guard-timing.mjs --no-tests     # sem a família da suíte
+  node scripts/bench-guard-timing.mjs --counterfactual # mede também a régua ANTERIOR da suíte (~7min)
+  node scripts/bench-guard-timing.mjs --only tests # só a família da suíte (sem a bateria)
+  node scripts/bench-guard-timing.mjs --json --merge # herda as famílias não medidas do arquivo
+
+As famílias typecheck e suíte medem COMANDOS INTEIROS (um typecheck FRIO e as
+suítes): uma amostra cada, de propósito. Sem as três, a rodada é a bateria de
+guards + doctor (segundos).
+
+O CONTRAFACTUAL da suíte (bun run test:unit, a régua que o check do GitHub
+rodava antes, com maxWorkers 1) leva ~7min sozinho e NÃO roda em pipeline
+nenhuma: ele é medido sob demanda (--counterfactual), e sem ele o delta sai null
+(INDETERMINADO) em vez de vir de outra rodada. Com --only FAMILIA a rodada mede
+só aquelas famílias e PULA a bateria; com --merge, o que esta rodada NÃO mediu é
+herdado do arquivo, marcado em meta.reused e deixado FORA do veredito — a família
+herdada (ou pulada) NÃO julga o TOTAL e torna a comparação measured: false, o que
+recusa o fechamento da issue de tempo (herdar não é medir agora).
 
 Exit codes: 0 sucesso · 1 falha/regressão · 2 argumento inválido`)
     return 0
@@ -668,7 +1780,21 @@ Exit codes: 0 sucesso · 1 falha/regressão · 2 argumento inválido`)
     return 2
   }
 
-  const result = runBenchmark({ samples: opts.samples, lint: opts.lint })
+  const familias = familiesToRun({ only: opts.only })
+  let result = runBenchmark({
+    samples: opts.samples,
+    lint: opts.lint && familias.lint,
+    typecheck: opts.typecheck && familias.typecheck,
+    tests: opts.tests && familias.tests,
+    counterfactual: opts.counterfactual,
+    battery: runsBattery({ only: opts.only }),
+  })
+  if (opts.merge) {
+    const previous = existsSync(join(BENCH_DIR, LATEST_FILE))
+      ? JSON.parse(readFileSync(join(BENCH_DIR, LATEST_FILE), "utf8"))
+      : null
+    result = reuseFamilies(result, previous)
+  }
   printReport(result)
 
   // Salvar

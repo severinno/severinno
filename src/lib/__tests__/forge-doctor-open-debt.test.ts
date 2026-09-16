@@ -133,6 +133,7 @@ describe("readOpenDebt — a leitura do board", () => {
         "github:actrc-sync-drift",
         "github:crlf-scope-drift",
         "github:declared-debt-review",
+        "github:guard-timing-regression",
         "github:mutation-trend-drift",
         "github:readme-drift",
         "github:required-checks-drift",

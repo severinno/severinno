@@ -1,119 +1,139 @@
 {
   "meta": {
     "tool": "bench-guard-timing",
-    "version": 2,
-    "commit": "586b7c07",
-    "commitDate": "2026-09-15 18:59:25 -0300",
-    "timestamp": "2026-09-16T00:52:36.122Z",
+    "version": 3,
+    "commit": "c669417a",
+    "commitDate": "2026-09-15 22:13:41 -0300",
+    "timestamp": "2026-09-16T11:21:08.451Z",
     "nodeVersion": "v20.20.2",
     "platform": "linux",
-    "arch": "x64"
+    "arch": "x64",
+    "cpus": 16,
+    "totalMemMb": 32011,
+    "reused": {
+      "lint": {
+        "commit": "c669417a",
+        "timestamp": "2026-09-16T11:06:49.222Z"
+      },
+      "typecheck": {
+        "commit": "c669417a",
+        "timestamp": "2026-09-16T11:06:49.222Z"
+      },
+      "battery": {
+        "commit": "c669417a",
+        "timestamp": "2026-09-16T11:06:49.222Z"
+      }
+    }
   },
   "summary": {
     "guardsCount": 18,
-    "guardsTotalMs": 15698,
-    "doctorMs": 2860,
+    "guardsTotalMs": 14189,
+    "doctorMs": 2711,
     "doctorExit": 2,
-    "totalMs": 18558,
-    "lintAddedPerSiteMs": 20821,
-    "lintAddedPerFanOutMs": 83284
+    "totalMs": 16900,
+    "lintAddedPerSiteMs": 20381,
+    "lintAddedPerFanOutMs": 81524,
+    "typecheckMs": 24291,
+    "typecheckAddedPerFanOutMs": 224,
+    "testsMs": 131514,
+    "testsAddedPerFanOutMs": -301994
   },
   "guards": [
     {
       "label": "check:required-checks",
       "cmd": "bun run check:required-checks",
-      "ms": 48,
+      "ms": 41,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:script-headers",
       "cmd": "node scripts/check-script-headers.mjs",
-      "ms": 84,
+      "ms": 58,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:prove-docs",
       "cmd": "bun run check:prove-docs",
-      "ms": 5858,
+      "ms": 5416,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:registry-source",
       "cmd": "bun run check:registry-source",
-      "ms": 1582,
+      "ms": 1277,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:doctor-ci",
       "cmd": "bun scripts/check-doctor-ci.mjs",
-      "ms": 3290,
+      "ms": 3075,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:runner-base",
       "cmd": "bun run check:runner-base",
-      "ms": 1250,
+      "ms": 1101,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:workflow-refs",
       "cmd": "bun run check:workflow-refs:internal",
-      "ms": 56,
+      "ms": 60,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:ts-nocheck",
       "cmd": "bun run check:ts-nocheck",
-      "ms": 151,
+      "ms": 44,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:forge-workflow-scope",
       "cmd": "bun run check:forge-workflow-scope",
-      "ms": 109,
+      "ms": 99,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:forge-parity",
       "cmd": "bun run check:forge-parity",
-      "ms": 39,
+      "ms": 38,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:bun-audit",
       "cmd": "bun run check:bun-audit-baseline",
-      "ms": 396,
+      "ms": 333,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:secret-leaks",
       "cmd": "bun scripts/rotate-secrets.mjs --check",
-      "ms": 60,
+      "ms": 40,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:seed-hooks",
       "cmd": "bun run check:seed-hooks",
-      "ms": 34,
+      "ms": 35,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:sentinel-producer",
       "cmd": "bun run check:sentinel-producer",
-      "ms": 47,
+      "ms": 41,
       "exit": 0,
       "ok": true
     },
@@ -127,21 +147,21 @@
     {
       "label": "check:no-setup-bun",
       "cmd": "bun run check:no-setup-bun",
-      "ms": 34,
+      "ms": 33,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:hooks-symmetry",
       "cmd": "bun scripts/check-hooks-symmetry.mjs",
-      "ms": 17,
+      "ms": 15,
       "exit": 0,
       "ok": true
     },
     {
       "label": "runner-image:prove",
       "cmd": "node scripts/prove-runner-image-gate.mjs",
-      "ms": 2577,
+      "ms": 2417,
       "exit": 0,
       "ok": true
     }
@@ -149,7 +169,7 @@
   "doctor": {
     "label": "doctor --ci",
     "cmd": "node scripts/forge-doctor.mjs --ci --json --expected 1.3.14 --expected-var IMAGE_REGISTRY=ghcr.io --expected-var IMAGE_NAMESPACE=severinno",
-    "ms": 2860,
+    "ms": 2711,
     "exit": 2,
     "ok": true
   },
@@ -157,26 +177,18 @@
     "canonicalCmd": "bun run lint",
     "legacyCmd": "bunx eslint .",
     "prettierCmd": "bunx prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'",
-    "samplesPerForm": 3,
+    "samplesPerForm": 1,
     "forms": [
       {
         "role": "current",
         "label": "lint (par completo — hoje)",
         "cmd": "bun run lint",
-        "ms": 52279,
-        "minMs": 52262,
-        "maxMs": 53909,
+        "ms": 48920,
+        "minMs": 48920,
+        "maxMs": 48920,
         "runs": [
           {
-            "ms": 53909,
-            "exit": 0
-          },
-          {
-            "ms": 52279,
-            "exit": 0
-          },
-          {
-            "ms": 52262,
+            "ms": 48920,
             "exit": 0
           }
         ],
@@ -187,20 +199,12 @@
         "role": "legacy",
         "label": "lint (regua anterior — contrafactual)",
         "cmd": "bunx eslint .",
-        "ms": 31458,
-        "minMs": 31430,
-        "maxMs": 31836,
+        "ms": 28539,
+        "minMs": 28539,
+        "maxMs": 28539,
         "runs": [
           {
-            "ms": 31458,
-            "exit": 0
-          },
-          {
-            "ms": 31836,
-            "exit": 0
-          },
-          {
-            "ms": 31430,
+            "ms": 28539,
             "exit": 0
           }
         ],
@@ -211,20 +215,12 @@
         "role": "added-half",
         "label": "prettier --check (a metade nova)",
         "cmd": "bunx prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'",
-        "ms": 20947,
-        "minMs": 20696,
-        "maxMs": 21040,
+        "ms": 19610,
+        "minMs": 19610,
+        "maxMs": 19610,
         "runs": [
           {
-            "ms": 20696,
-            "exit": 0
-          },
-          {
-            "ms": 21040,
-            "exit": 0
-          },
-          {
-            "ms": 20947,
+            "ms": 19610,
             "exit": 0
           }
         ],
@@ -271,11 +267,229 @@
       }
     ],
     "upgradedSites": 4,
-    "addedPerSiteMs": 20821,
-    "addedHalfMs": 20947,
-    "attributionPct": 0.006,
+    "addedPerSiteMs": 20381,
+    "addedHalfMs": 19610,
+    "attributionPct": 0.0393,
     "attributionMatches": true,
-    "addedPerFanOutMs": 83284,
+    "addedPerFanOutMs": 81524,
     "violations": []
+  },
+  "rulers": {
+    "typecheck": {
+      "invariant": "typecheck",
+      "canonicalCmd": "bun run typecheck",
+      "legacyInlineCmd": "NODE_OPTIONS=--max-old-space-size=4096 bunx tsc --noEmit",
+      "legacyBareCmd": "bunx tsc --noEmit",
+      "heapMb": 4096,
+      "samplesPerForm": 1,
+      "cold": true,
+      "cacheFile": "tsconfig.tsbuildinfo",
+      "forms": [
+        {
+          "role": "current",
+          "label": "typecheck (script, hoje)",
+          "cmd": "bun run typecheck",
+          "ms": 24291,
+          "minMs": 24291,
+          "maxMs": 24291,
+          "runs": [
+            {
+              "ms": 24291,
+              "exit": 0
+            }
+          ],
+          "exit": 0,
+          "ok": true
+        },
+        {
+          "role": "legacy-inline",
+          "label": "typecheck (heap inline — contrafactual)",
+          "cmd": "NODE_OPTIONS=--max-old-space-size=4096 bunx tsc --noEmit",
+          "ms": 24235,
+          "minMs": 24235,
+          "maxMs": 24235,
+          "runs": [
+            {
+              "ms": 24235,
+              "exit": 0
+            }
+          ],
+          "exit": 0,
+          "ok": true
+        },
+        {
+          "role": "legacy-bare",
+          "label": "typecheck (SEM heap — a regua do hook)",
+          "cmd": "bunx tsc --noEmit",
+          "ms": 24240,
+          "minMs": 24240,
+          "maxMs": 24240,
+          "runs": [
+            {
+              "ms": 24240,
+              "exit": 0
+            }
+          ],
+          "exit": 0,
+          "ok": true
+        }
+      ],
+      "canonicalMs": 24291,
+      "sites": [
+        {
+          "file": ".github/workflows/ci.yml",
+          "count": 1
+        },
+        {
+          "file": ".github/workflows/pr-check.yml",
+          "count": 1
+        },
+        {
+          "file": ".github/workflows/release-deploy.yml",
+          "count": 1
+        },
+        {
+          "file": ".gitea/workflows/ci.yml",
+          "count": 1
+        }
+      ],
+      "pipelineFiles": 4,
+      "callSites": 4,
+      "upgraded": [
+        {
+          "file": ".gitea/workflows/ci.yml",
+          "where": "job `typecheck` (forja dona do merge)"
+        },
+        {
+          "file": ".github/workflows/ci.yml",
+          "where": "job `typecheck` (espelho)"
+        },
+        {
+          "file": ".github/workflows/pr-check.yml",
+          "where": "job `typecheck` (espelho do PR)"
+        },
+        {
+          "file": ".github/workflows/release-deploy.yml",
+          "where": "passo de typecheck do deploy"
+        }
+      ],
+      "upgradedSites": 4,
+      "heapAddedAt": {
+        "file": ".husky/pre-push",
+        "where": "hook de push — rodava o tsc SEM o heap (o 134 que o merge nunca via)",
+        "kind": "hook"
+      },
+      "hook": {
+        "file": ".husky/pre-push",
+        "exists": true,
+        "hasCanonical": true,
+        "hasBare": false
+      },
+      "heapDeclaredOutside": [],
+      "nodeHeapLimitMb": 4144,
+      "legacyBareExit": 0,
+      "legacyBareMs": 24240,
+      "legacyBareCompleted": true,
+      "addedPerSiteMs": 56,
+      "addedPerFanOutMs": 224,
+      "violations": [],
+      "whatItAdded": "+0.1s por call site (4 workflows) — o MESMO comando com o MESMO heap: a unificacao moveu o VALOR, nao o trabalho. No hook .husky/pre-push o acrescentado foi o HEAP: o heap default do node nesta maquina (4144MB) ja e >= os 4096MB do script, entao a regua SEM o heap completou aqui (exit 0): o 134 do runner NAO se reproduz nesta maquina — INDETERMINADO, nao \"nao existe\"."
+    },
+    "tests": {
+      "invariant": "tests",
+      "canonicalCmd": "bun run test:run",
+      "legacyCmd": "bun run test:unit",
+      "legacyConfig": "vitest.config.unit.ts",
+      "addedHalfCmd": "bunx vitest run src/components",
+      "addedHalfLabel": "src/components",
+      "samplesPerForm": 1,
+      "counterfactual": "measured",
+      "forms": [
+        {
+          "role": "current",
+          "label": "suite completa (hoje: test:run)",
+          "cmd": "bun run test:run",
+          "ms": 131514,
+          "minMs": 131514,
+          "maxMs": 131514,
+          "runs": [
+            {
+              "ms": 131514,
+              "exit": 0
+            }
+          ],
+          "exit": 0,
+          "ok": true
+        },
+        {
+          "role": "added-half",
+          "label": "suite de src/components (a metade nova)",
+          "cmd": "bunx vitest run src/components",
+          "ms": 17917,
+          "minMs": 17917,
+          "maxMs": 17917,
+          "runs": [
+            {
+              "ms": 17917,
+              "exit": 0
+            }
+          ],
+          "exit": 0,
+          "ok": true
+        },
+        {
+          "role": "legacy",
+          "label": "suite estreita (test:unit — contrafactual)",
+          "cmd": "bun run test:unit",
+          "ms": 433508,
+          "minMs": 433508,
+          "maxMs": 433508,
+          "runs": [
+            {
+              "ms": 433508,
+              "exit": 0
+            }
+          ],
+          "exit": 0,
+          "ok": true
+        }
+      ],
+      "canonicalMs": 131514,
+      "legacyMs": 433508,
+      "sites": [
+        {
+          "file": ".github/workflows/ci.yml",
+          "count": 1
+        },
+        {
+          "file": ".github/workflows/pr-check.yml",
+          "count": 1
+        },
+        {
+          "file": ".github/workflows/release-deploy.yml",
+          "count": 1
+        },
+        {
+          "file": ".gitea/workflows/ci.yml",
+          "count": 1
+        }
+      ],
+      "pipelineFiles": 4,
+      "callSites": 4,
+      "upgraded": [
+        {
+          "file": ".github/workflows/pr-check.yml",
+          "where": "job `check`, passo `Unit tests` (rodava `test:unit`, que EXCLUI src/components)"
+        }
+      ],
+      "upgradedSites": 1,
+      "addedPerSiteMs": -301994,
+      "addedHalfMs": 17917,
+      "attributionPct": 17.8552,
+      "attributionMatches": false,
+      "addedPerFanOutMs": -301994,
+      "violations": [],
+      "whatItAdded": "-302.0s por rodada no call site que upgrade (1) — a suite `src/components/**`, que a regua anterior EXCLUIA, medida em +17.9s isolada (o delta NAO e so ela: as duas reguas diferem tambem em workers e setup)"
+    }
   }
 }
