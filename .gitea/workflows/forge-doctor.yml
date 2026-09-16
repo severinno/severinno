@@ -42,7 +42,7 @@
 # outro ambiente: rodar o mesmo doctor lá responderia sobre o espelho, não sobre
 # quem segura o merge. A assimetria é intencional — não "complete" o par.
 #
-# MAS O BOARD DO GITHUB ENTRA NA LEITURA (seção 6/6), e é a única coisa do
+# MAS O BOARD DO GITHUB ENTRA NA LEITURA (seção 6/7), e é a única coisa do
 # veredito que NÃO é sobre esta forja — de propósito: nem toda dívida nasce aqui.
 # A auditoria reversa do README e a tendência de mutação são crons do `.github/`,
 # e as issues delas existem SÓ no board de lá. Sem `GH_TOKEN` + `GH_REPOSITORY` a
@@ -154,7 +154,7 @@ jobs:
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
           GITEA_URL: ${{ secrets.GITEA_URL }}
           GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
-          # O board do GitHub (a seção 6/6 lê as duas forjas). Ausentes, o doctor
+          # O board do GitHub (a seção 6/7 lê as duas forjas). Ausentes, o doctor
           # DIZ que não conseguiu ler (e o veredito vira INDETERMINADA) — o que
           # ele nunca faz é tratar o board não lido como board vazio.
           GH_TOKEN: ${{ secrets.GH_TOKEN }}

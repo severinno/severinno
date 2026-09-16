@@ -512,7 +512,7 @@ rodam o **vitest REAL** e por isso vivem em jobs próprios do
 
 - `scripts/test-mutation-gate-contracts.sh` (job `mutation-gate-contracts`) —
   as **três regras** do contrato de gates CORE, que é o que o doctor responde na
-  seção 1/6 ("o que o manifesto EXIGE é CORE e roda o comando certo?"):
+  seção 1/7 ("o que o manifesto EXIGE é CORE e roda o comando certo?"):
   **(A) a FORJA DECLARANTE** — um contrato só é conferido contra as forjas que
   **declaram** aquele job (`declared.filter(df => df.jobIds.includes(jobId))`).
   Sem o recorte, um job que só o GitHub exige (o `lint-guard`) passa a ser
@@ -1638,7 +1638,7 @@ LINHA `run:` (que preserva as flags) e ainda exige um modo de verificação
 (`--check`/`--ci`, entrada `check:`, ou script `check-`/`validate-`/`audit-`/
 `test-mutation-`/`run-`) — sem isso ele NÃO executa, e diz por quê.
 
-**A PROVA do bloqueio (seção 4/6 do relatório):** a seção da imagem dizia se a
+**A PROVA do bloqueio (seção 4/7 do relatório):** a seção da imagem dizia se a
 tag existe AGORA — o que não responde "a subida da stack depende dela?", que é a
 pergunta que importa. O doctor executa então `proveRunnerImageGate`
 (`scripts/prove-runner-image-gate.mjs`, o mesmo que `runner-image:prove`): ele roda o
@@ -1648,7 +1648,7 @@ ausente NENHUM `compose up` acontece; com a tag presente, `up -d runner` sim. É
 CONTROLE que faz disso uma prova: sem ele, "o runner não subiu" seria satisfeito
 por um script quebrado.
 
-**E o GATE que a cobra no merge (o outro lado do item 4/6):** a prova acima mede
+**E o GATE que a cobra no merge (o outro lado do item 4/7):** a prova acima mede
 o COMPORTAMENTO da subida, mas o doctor não cobria o elo que faz dela um gate —
 o job `bring-up-proof` estar no **contrato de merge** (`ci/required-checks.json`),
 a linha `run:` do job executar a prova **E a branch protection da forja REGISTRAR
@@ -1778,7 +1778,7 @@ remédio não é publicar imagem nenhuma, é consertar a
 subida. Sem `bash`/bring-up o estado é `unavailable` (INDETERMINADA), nunca
 "provada"; a prova sempre roda em invocação manual — quem precisa de recorte usa --ci.
 
-**AS DUAS METADES do contrato de merge (seção 1/6):** a seção 1 mostra, lado a
+**AS DUAS METADES do contrato de merge (seção 1/7):** a seção 1 mostra, lado a
 lado, o que o repositório **DECLARA** e o que a forja **REGISTRA**. A primeira
 metade é o manifesto (`check:required-checks`); a segunda — `readProtection` — é
 o **branch protection de verdade**, o único estado que faz um merge esperar.
@@ -1842,7 +1842,7 @@ a mentira otimista. O token precisa de permissão de **administração** no repo
 `--no-protection` pula a leitura e rebaixa o veredito, declarando-se no "NÃO
 cobre".
 
-**AS REFERÊNCIAS NÃO VERSIONADAS, no veredito (seção 3/6):** o doctor transporta o
+**AS REFERÊNCIAS NÃO VERSIONADAS, no veredito (seção 3/7):** o doctor transporta o
 fato da **invariante 9** (repository variables × espelhos, env do host da
 aplicação × template, e o que o **registry** serve para a tag declarada) para o
 veredito, sem reimplementar nada: quem decide é `checkNonVersionedImageRefs`, a
@@ -1854,7 +1854,7 @@ pendências: listá-lo faria a pendência parecer maior do que é. `--no-registr
 pula só a consulta ao registry e **rebaixa o veredito declarando-se** — sem isso,
 um fato "provado" que não olhou a tag diria "pronta" com a pergunta em aberto.
 
-**OS ESPELHOS DAS VARIÁVEIS DA IMAGEM, contra o VALOR declarado (seção 5/6):** o
+**OS ESPELHOS DAS VARIÁVEIS DA IMAGEM, contra o VALOR declarado (seção 5/7):** o
 doctor já sabia que os espelhos existem e concordam entre si — o que **não** é a
 mesma pergunta que o guard periódico faz. Dois espelhos que concordam entre si
 podem estar os **dois velhos** em relação à repository variable, e é exatamente
@@ -1883,11 +1883,11 @@ foi comparado (a variável vive no Actions, não no checkout) e o veredito fica
 INDETERMINADA. Existência não é valor.
 
 **E o PRÉ-REQUISITO 0 do bring-up entrou no veredito — nomeado, com o comando e
-com o remédio (seção 5/6):** o `deploy/gitea-up.sh` **RECUSA** a subida quando o
+com o remédio (seção 5/7):** o `deploy/gitea-up.sh` **RECUSA** a subida quando o
 env do host não espelha o template comitado. É o pré-requisito 0, e ele existe
 porque o `ensure-runner-image` resolve a imagem **DESTE** arquivo: com um env
 divergente a subida garantiria a imagem **ERRADA**. O doctor já **media** isso (a
-metade host × template da interpolação, seção 3/6); o que faltava não era a
+metade host × template da interpolação, seção 3/7); o que faltava não era a
 medição, era o **nome** do pré-requisito, o **comando** que o reproduz e o
 **remédio** — e é isso que o fato derivado acrescenta. Ele é **DERIVADO** de
 `compose.hostCompare`, nunca uma segunda sonda: medir a mesma pergunta duas vezes
@@ -1902,7 +1902,7 @@ tem. O relatório imprime o **estado**, o **comando** e o **remédio**
 (`bun run env-mirror:check --patch` para revisar, `--fix` para aplicar) — o mesmo
 par que o `deploy/gitea-up.sh` sugere quando recusa.
 
-**A INTERPOLAÇÃO do compose (na seção 3/6):** a seção da imagem responde "dá
+**A INTERPOLAÇÃO do compose (na seção 3/7):** a seção da imagem responde "dá
 para puxar a tag?". Ela não responde **"o compose PEDE a tag certa?"** — e é
 isso que o runner registra no `/data/.runner`. O doctor chama
 `checkComposeInterpolation` (o mesmo código da invariante 7 do
@@ -1920,7 +1920,7 @@ checkout que não seja o VPS) é reportado como **não provado**, nunca escondid
 quem aponta outro arquivo é `--gitea-env <caminho>`, que já existia para a
 imagem e agora alimenta também esta comparação (uma flag, um env).
 
-**OS REGISTROS DO RUNNER (na seção 3/6) — as DUAS forjas:** o doctor carrega o
+**OS REGISTROS DO RUNNER (na seção 3/7) — as DUAS forjas:** o doctor carrega o
 registro do act_runner E o do runner auto-hospedado do GitHub, pelos MESMOS
 `checkRunnerLabels` / `checkGithubRunnerLabels` que os CLIs usam (uma fonte por
 forja; um segundo comparador divergiria no dia do registro velho). Os pesos são
@@ -1949,10 +1949,10 @@ carrega `checkGithubRunnerLabels` — o declarado é o `RUNNER_LABELS` de
 runner ausente ou OFFLINE **BLOQUEIA**; sem token de self-hosted runners (ou com
 a API fora) é `unavailable` → **INDETERMINADA**, a mesma regra da branch
 protection, e nunca "em sincronia". O relatório imprime as duas linhas lado a
-lado na seção 3/6 justamente para isso: uma forja em sincronia e a outra não é
+lado na seção 3/7 justamente para isso: uma forja em sincronia e a outra não é
 drift, e não pode ficar invisível.
 
-**O CONTRATO DA IMAGEM PUBLICADA (seção 3/6) — o build promete, o ARTEFATO
+**O CONTRATO DA IMAGEM PUBLICADA (seção 3/7) — o build promete, o ARTEFATO
 prova:** todas as provas acima são sobre o **repositório** — o `FROM` pinado por
 digest, o bloco do contrato fail-closed, as mutações do pin, a identidade que a
 label declara. Nenhuma delas olha o que o job **baixa**, e todas continuam
@@ -2026,7 +2026,7 @@ por `--no-open-debt`, ou prova não executável); `PRONTA` só com tudo provado.
 então ele serve de gate de operação.
 
 **O que ele NÃO cobre, e por isso está escrito no relatório:** o **valor de
-`vars.BUN_VERSION`** quando `--expected` não é passado (a seção 5/6 diz isso na
+`vars.BUN_VERSION`** quando `--expected` não é passado (a seção 5/7 diz isso na
 primeira linha, e o veredito fica parcial — a existência dos espelhos não prova
 o valor que o runner usa), a **PERMISSÃO do
 token** sobre a forja (o doctor lê a protection COM o aplicador; sem token de
@@ -2110,7 +2110,7 @@ sentidos, com o script extraído do próprio workflow, o `bun` dublado (devolve 
 relatório canônico e o exit code do veredito) e o publicador REAL contra o Gitea
 dublê — e exige o comentário com a prova e a issue FECHADA.
 
-**A DÍVIDA CONHECIDA (seção 6/6) tem DUAS metades** — o que o repositório já
+**A DÍVIDA CONHECIDA (seção 6/7) tem DUAS metades** — o que o repositório já
 sabe que deve (DECLARADA) e o que um cron já publicou (ABERTA no board) —, e as
 duas ficam no MESMO lugar justamente para uma não passar pela outra: a medição
 diz se o problema é vivo, a issue diz que alguém foi avisado.
@@ -2250,6 +2250,32 @@ protection registrada, o registro do runner, o board nem o bloqueio da subida �
 isso é do cron e do `deploy/gitea-up.sh`. E quando uma variável não está criada
 em uma das forjas, o valor dela não é conferido: o gate fica verde **dizendo
 qual** ficou de fora (o guard semanal acusa o mesmo, em modo `--fail` na forja).
+
+**A HERANÇA DE SHELL DOS WORKFLOWS (seção 7/7): o que a prontidão passou a cobrar
+que antes vivia só no relatório do guard.** O `check-pipefail-sigpipe` (seção 20)
+diz, no relatório dele, de ONDE vem o shell de cada passo — do `shell:` do
+PRÓPRIO passo, do `defaults:` do JOB, do `defaults:` do ARQUIVO, ou do shell
+default do RUNNER (a premissa `bash -e`, que **não é deste repositório**) — e
+reprova a declaração de `defaults:` que LIGA o pipefail, porque ela reclassifica
+todos os passos do escopo numa linha sem que um passo sequer mude no diff. Essa
+promessa era **invisível para o veredito**: quem decide se o merge pode ser
+confiado à forja não tinha como saber que a premissa de um escopo inteiro mudou
+de uma vez — e no perfil `--ci`, onde a bateria de guards está pulada, ela só
+apareceria no cron semanal.
+
+O doctor publica esse fato por **WORKFLOW**, e a medição é a **MESMA** função
+(`workflowShellInheritance`, exportada pelo guard — o `scanRoot` a chama item a
+item): não existe uma segunda leitura do YAML, e um teste exige que os
+contadores dos dois coincidam sobre a mesma árvore. Três estados, com o peso de
+sempre: `proven` (todos os arquivos lidos e nenhuma declaração que ligue o
+pipefail — e o relatório diz a CONTA: quantos passos por cada fonte, quantos sob
+pipefail), `violated` (**BLOQUEIA**: a declaração que liga o pipefail, ou a de
+forma INLINE que o guard não consegue ler — fail-closed: presumir "sem pipefail"
+ali seria uma aposta), e `unread` (**INDETERMINADA**: a lista ou um arquivo não
+pôde ser lido — nunca "o repositório não declara shell default nenhum"). O fato
+entra ATÉ no perfil `--ci` (é leitura de checkout, sem rede nem credencial), e a
+AUSÊNCIA dele no relatório também vira dúvida, como a do guard de recursão: dizer
+"pronta" sobre o que não foi olhado é o que este doctor recusa.
 
 ---
 
@@ -2828,7 +2854,7 @@ JANELA da dívida declarada (quando existir) roda no job semanal
 `registry-allowlist-review`, com `--review` (o gate vermelho) **e** com o
 publicador `scripts/declared-debt-issue.mjs` (o canal acionável) — ao lado das
 outras três allowlists. A IDADE da mesma decisão é também um fato do `doctor`
-(seção 6/6) — ver "As três condições", abaixo.
+(seção 6/7) — ver "As três condições", abaixo.
 
 **Escopo (declarado, porque gate que varre menos do que parece mente):**
 
@@ -2943,7 +2969,7 @@ run semanal faz dela um gate vermelho E publica a decisão vencida como **ISSUE
 ACIONÁVEL** (`scripts/declared-debt-issue.mjs`, com o ciclo de reconciliação do
 `issue-publish.mjs` — ela também **FECHA** quando nenhuma decisão está vencida,
 porque publicar sem fechar deixa a dívida mentindo no board). E o **doctor** a
-carrega como fato próprio da seção 6/6 (`--no-declared-debt` a pula, e aí o
+carrega como fato próprio da seção 6/7 (`--no-declared-debt` a pula, e aí o
 veredito diz que pulou em vez de omitir): a isenção a **179 dias** aparece na
 prontidão, no PR e no cron, em vez de só no run semanal.
 

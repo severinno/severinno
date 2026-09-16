@@ -205,8 +205,8 @@ describe("o bring-up REAL, com o doctor de VERDADE e SEM dublê, é cortado pelo
       // 3. O CORTE FOI ANTES DE COLETAR: nenhuma seção do veredito saiu. É a
       //    diferença entre "recusou" e "mediu e não gostou" — e a razão de o
       //    guard existir (o ciclo é cortado ANTES de avançar um passo).
-      expect(out).not.toContain("1/6")
-      expect(out).not.toContain("4/6")
+      expect(out).not.toContain("1/7")
+      expect(out).not.toContain("4/7")
       expect(out).not.toContain("Prova do bloqueio")
 
       // 4. O CORTE FOI NO PRIMEIRO NÍVEL: o bring-up não desceu uma segunda vez.
@@ -289,7 +289,7 @@ describe("o bring-up REAL, com o doctor de VERDADE e SEM dublê, é cortado pelo
       // aconteceu.
       expect(out).not.toContain("RECURSÃO DETECTADA")
       expect(out).toContain("prontidão para bloquear o merge")
-      expect(out).toContain("1/6")
+      expect(out).toContain("1/7")
       // A recusa do guard é exit 3; o veredito é 0/1/2.
       expect(code).not.toBe(NESTED_GUARD_EXIT)
     } finally {

@@ -21,7 +21,7 @@
 // a issue é o canal que alguém ABRE, atribui e cobra.
 //
 // FONTE ÚNICA: este publicador NÃO reimplementa a medição da idade — ele consome
-// o `declared-debt.mjs` (o mesmo fato que o doctor publica na seção 6/6), que por
+// o `declared-debt.mjs` (o mesmo fato que o doctor publica na seção 6/7), que por
 // sua vez lê as listas dos DONOS e aplica `reviewAddedAtEntries` /
 // `baselineProblems`. A issue e o veredito não podem discordar sobre a idade.
 //
@@ -161,7 +161,7 @@ export function reviewProse(fato) {
   for (const fonte of fato.sources.filter((f) => f.state === "aged")) {
     linhas.push(`### \`${fonte.listName}\` — ${fonte.aged.length} decisão(ões) vencida(s)`)
     linhas.push("")
-    // A MESMA prosa do relatório do guard e da seção 6/6 do doctor: dono, a mais
+    // A MESMA prosa do relatório do guard e da seção 6/7 do doctor: dono, a mais
     // antiga, a idade, a janela e o remédio DO DONO da lista — uma frase, uma
     // fonte. A tabela abaixo é o detalhe POR ENTRADA (o que a frase resume).
     linhas.push(textoFonteVencida(fonte))
@@ -179,7 +179,7 @@ export function reviewProse(fato) {
   linhas.push("node scripts/declared-debt.mjs           # o fato em texto (a IDADE de cada lista)")
   linhas.push("node scripts/declared-debt.mjs --json    # o mesmo, estruturado")
   linhas.push(
-    "bun run doctor                           # o fato no veredito de prontidão (seção 6/6)",
+    "bun run doctor                           # o fato no veredito de prontidão (seção 6/7)",
   )
   linhas.push("```")
   linhas.push("")

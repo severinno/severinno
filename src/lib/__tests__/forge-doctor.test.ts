@@ -40,6 +40,7 @@ import {
   readContract,
   diagnose,
   parseArgs,
+  firstRunLine,
   forgeGates,
   gateCommand,
   gateRunLine,
@@ -71,10 +72,15 @@ import {
   declaredDebtUnknowns,
   readDeclaredDebt,
   deriveBringUpEnv,
+  readShellInheritance,
+  shellInheritanceBlockers,
+  shellInheritanceUnknowns,
+  describeShellScope,
 } from "../../../scripts/forge-doctor.mjs"
 
 import { GITEA_BRING_UP, GITEA_COMPOSE } from "../../../scripts/check-bun-mirror.mjs"
 import { GITEA_ENV_MIRROR } from "../../../scripts/check-actrc-sync.mjs"
+import { scanRoot } from "../../../scripts/check-pipefail-sigpipe.mjs"
 
 const ROOT = process.cwd()
 const tmpDirs: string[] = []
@@ -172,6 +178,17 @@ function declaredDebtFacts(overrides: Record<string, unknown> = {}) {
   }
 }
 
+/**
+ * A herança de shell dos workflows, MEDIDA num checkout sem workflow nenhum: o
+ * `proven` de zero passo, que é o mínimo que o veredito lê.
+ *
+ * Ela NÃO pode ser omitida da fixture: ausente, o fato vira dúvida ("não está
+ * declarada no relatório") — e uma fixture que diz "tudo verde" com menos fatos
+ * do que o relatório real carrega mede outra coisa. Os testes do PRÓPRIO fato
+ * usam YAML de verdade, em fixtures com `workflows()`.
+ */
+const SHELL_INHERITANCE_LIMPA = readShellInheritance({ cwd: makeDir() }) as unknown as object
+
 /** Fatores do veredito, todos "verdes" — cada teste estraga um. */
 function facts(overrides: Record<string, unknown> = {}) {
   return {
@@ -208,6 +225,9 @@ function facts(overrides: Record<string, unknown> = {}) {
     // o veredito não ganha nem bloqueio nem dúvida (cada teste estraga o que quer
     // medir). Ausente, ele passa a INDETERMINADA — como o guard de recursão.
     declaredDebt: declaredDebtFacts(),
+    // A herança de shell dos workflows (de onde vem o shell de CADA passo):
+    // presente e limpa. Cada teste estraga o que quer medir.
+    shellInheritance: SHELL_INHERITANCE_LIMPA,
     skippedGuards: false,
     skippedProof: false,
     skippedProtection: false,
@@ -921,7 +941,7 @@ describe("summarize — a IDADE da dívida declarada", () => {
 
   it("o peso vem das funções do FATO (fonte única com o relatório)", () => {
     // As duas funções são o que o `summarize` consulta: uma segunda regra aqui
-    // divergiria da que a seção 6/6 imprime. O fato LIMPO não pesa em nada; a
+    // divergiria da que a seção 6/7 imprime. O fato LIMPO não pesa em nada; a
     // fonte VENCIDA vira dúvida, e a SEM REGISTRO vira bloqueio.
     expect(declaredDebtBlockers(declaredDebtFacts())).toEqual([])
     expect(declaredDebtUnknowns(declaredDebtFacts())).toEqual([])
@@ -1168,7 +1188,7 @@ describe("renderReport — a seção dos espelhos diz CONTRA O QUE comparou", ()
 
   it("com o valor: nomeia a variável e cobra o veredito contra ela", () => {
     const text = render(facts())
-    expect(text).toContain("5/6  Espelhos das variáveis da imagem")
+    expect(text).toContain("5/7  Espelhos das variáveis da imagem")
     expect(text).toContain("comparados com vars.BUN_VERSION='1.3.14'")
   })
 
@@ -1232,7 +1252,7 @@ describe("renderReport — a seção dos espelhos diz CONTRA O QUE comparou", ()
         },
       }),
     )
-    expect(text).toContain("4/6  Prova do bloqueio")
+    expect(text).toContain("4/7  Prova do bloqueio")
     expect(text).toContain(
       `GATE do bring-up (job '${BRING_UP_GATE_JOB}' no contrato de merge): proven`,
     )
@@ -4092,5 +4112,296 @@ describe("NESTED_GUARD_ENV — defesa em profundidade contra recursão", () => {
     const armado = summarize(facts())
     expect(armado.verdict).toBe(VERDICT.READY)
     expect(armado.unknowns.join(" ")).not.toContain("guard de recursão")
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `defaults: run:` NÃO é comando do job
+//
+// O contrato de merge pergunta "o job RODA o comando esperado?". A resposta
+// vinha de qualquer linha `run:` do job — inclusive da declaracao de shell
+// default, que nao roda nada. `defaults: {run: bun run check:x}` fazia o doctor
+// AFIRMAR que o job executava o gate, e a prontidao para bloquear o merge saia
+// de uma declaracao.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("gateRunLine/firstRunLine — a declaracao `defaults.run` nao e comando", () => {
+  const job = (linhas: string[]) =>
+    ["  guardas:", "    runs-on: ubuntu-latest", ...linhas].join("\n").split("\n")
+
+  it("`firstRunLine` pula a declaracao e acha o comando do PASSO", () => {
+    const lines = job([
+      "    defaults:",
+      "      run: bun run check:fantasma",
+      "    steps:",
+      "      - run: bun run test:run",
+    ])
+    expect(firstRunLine(lines)).toBe("bun run test:run")
+  })
+
+  it("`firstRunLine` devolve null quando so ha a declaracao (job sem passo)", () => {
+    const lines = job(["    defaults:", "      run: bun run check:fantasma"])
+    expect(firstRunLine(lines)).toBeNull()
+  })
+
+  it("`gateRunLine` nao casa o rotulo dentro da declaracao", () => {
+    const lines = job([
+      "    defaults:",
+      "      run: node scripts/check-workflow-refs.mjs --pkg-internal",
+      "    steps:",
+      "      - run: echo nada",
+    ])
+    expect(gateRunLine(lines, "workflow-refs")).toBeNull()
+  })
+
+  it("a forma em BLOCO (`run:` com `shell:`) tambem nao e comando", () => {
+    const lines = job([
+      "    defaults:",
+      "      run:",
+      "        shell: bash",
+      "    steps:",
+      "      - run: echo ok",
+    ])
+    expect(firstRunLine(lines)).toBe("echo ok")
+  })
+})
+
+describe("readShellInheritance — a herança de shell de CADA workflow", () => {
+  /** O módulo é .mjs (JS): o teste tipa só o que consome do fato. */
+  type FatoHeranca = {
+    state: string
+    workflows: {
+      file: string
+      state: string
+      detail: string
+      counts: Record<string, number> | null
+      premissas: {
+        scope: string
+        job: string | null
+        shell: string
+        line: number
+        passos: number
+      }[]
+      ilegiveis: { scope: string; job: string | null; shell: string; line: number }[]
+    }[]
+    totals: Record<string, number>
+    violations: string[]
+    detail: string
+    error: string | null
+  }
+  const heranca = (opts: Record<string, unknown> = {}) =>
+    readShellInheritance(opts) as unknown as FatoHeranca
+
+  /** Uma árvore de fixture com UM workflow (o conteúdo é do teste). */
+  const tree = (conteudo: string, caminho = ".gitea/workflows/ci.yml") => {
+    const root = makeDir()
+    mkdirSync(join(root, dirname(caminho)), { recursive: true })
+    writeFileSync(join(root, caminho), conteudo)
+    return root
+  }
+
+  /** A régua EXPLÍCITA: um shell declarado sem `-o pipefail` não liga o modo. */
+  const SEM_PIPEFAIL = "bash -e {0}"
+
+  it("mede de ONDE vem o shell de cada passo: o passo, o `defaults:` do job, o do arquivo, o RUNNER", () => {
+    // O que o guard diz em prosa e o veredito de prontidão não tinha como cobrar:
+    // CADA passo tem uma FONTE de shell, e a quarta — o runner — é uma PREMISSA
+    // que não é deste repositório.
+    // DOIS arquivos porque a fonte é do ESCOPO: o `defaults:` do ARQUIVO vale
+    // para todos os jobs DELE — um só arquivo com default no topo não conseguiria
+    // ter, ao mesmo tempo, um passo que cai no default do runner.
+    const root = tree(
+      [
+        "on:",
+        "  push:",
+        "jobs:",
+        "  a:",
+        "    defaults:",
+        "      run:",
+        `        shell: ${SEM_PIPEFAIL}`,
+        "    steps:",
+        "      - run: echo do-default-do-job",
+        "      - name: com shell no passo",
+        "        shell: bash",
+        "        run: echo do-passo",
+        "  b:",
+        "    steps:",
+        "      - run: echo do-runner",
+        "",
+      ].join("\n"),
+    )
+    writeFileSync(
+      join(root, ".gitea/workflows/outro.yml"),
+      [
+        "on:",
+        "  push:",
+        "defaults:",
+        "  run:",
+        `    shell: ${SEM_PIPEFAIL}`,
+        "jobs:",
+        "  a:",
+        "    steps:",
+        "      - run: echo do-default-do-arquivo",
+        "",
+      ].join("\n"),
+    )
+    const f = heranca({ cwd: root })
+    expect(f.state).toBe("proven")
+    expect(f.totals).toMatchObject({
+      workflows: 2,
+      steps: 4,
+      porDefaultDoJob: 1,
+      porDefaultDoArquivo: 1,
+      noPasso: 1,
+      peloRunner: 1,
+      premissas: 0,
+      ilegiveis: 0,
+    })
+    // `shell: bash -e {0}` NÃO liga o pipefail (é uma régua explícita): o passo
+    // continua no mesmo contexto, e a declaração não vira premissa mudada.
+    expect(f.workflows.every((w) => w.state === "proven")).toBe(true)
+    expect(f.detail).toContain("pelo default do RUNNER")
+  })
+
+  it("`describeShellScope` nomeia o escopo — a MESMA prosa na violação e no relatório", () => {
+    expect(describeShellScope({ scope: "workflow", job: null })).toBe("workflow inteiro")
+    expect(describeShellScope({ scope: "job", job: "guards" })).toBe("job `guards`")
+  })
+
+  it("`defaults: run: shell: bash` → VIOLADO, nomeando o escopo e os passos reclassificados", () => {
+    const root = tree(
+      [
+        "on:",
+        "  push:",
+        "defaults:",
+        "  run:",
+        "    shell: bash",
+        "jobs:",
+        "  a:",
+        "    steps:",
+        "      - run: echo um",
+        "      - run: echo dois",
+        "",
+      ].join("\n"),
+    )
+    const f = heranca({ cwd: root })
+    expect(f.state).toBe("violated")
+    expect(f.workflows[0].premissas[0]).toMatchObject({
+      scope: "workflow",
+      job: null,
+      shell: "bash",
+      passos: 2,
+    })
+    expect(f.violations[0]).toContain("workflow inteiro")
+    expect(f.violations[0]).toContain("LIGA o pipefail para 2 passo(s)")
+    // A premissa mudada não fica só no relatório do guard: ela BLOQUEIA.
+    const v = summarize(facts({ shellInheritance: f }))
+    expect(v.verdict).toBe(VERDICT.BLOCKED)
+    expect(shellInheritanceBlockers(f)[0]).toContain("HERANCA DE SHELL")
+  })
+
+  it("a forma INLINE é VIOLAÇÃO (fail-closed): não ler não é o mesmo que não haver", () => {
+    const root = tree(
+      [
+        "on:",
+        "  push:",
+        "jobs:",
+        "  a:",
+        "    defaults: {run: {shell: bash}}",
+        "    steps:",
+        "      - run: echo um",
+        "",
+      ].join("\n"),
+    )
+    const f = heranca({ cwd: root })
+    expect(f.state).toBe("violated")
+    expect(f.violations[0]).toContain("FORMA INLINE")
+    expect(f.violations[0]).toContain("NÃO foi lida")
+    expect(f.workflows[0].ilegiveis[0]).toMatchObject({ job: "a" })
+  })
+
+  it("arquivo ILEGÍVEL → `unread`, e a dúvida diz QUAL arquivo (nunca 'nenhum shell declarado')", () => {
+    const root = tree("on:\n  push:\njobs: {}\n")
+    const f = heranca({
+      cwd: root,
+      deps: {
+        readFile: () => {
+          throw new Error("EACCES")
+        },
+      },
+    })
+    expect(f.state).toBe("unread")
+    expect(f.totals.unread).toBe(1)
+    const v = summarize(facts({ shellInheritance: f }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.unknowns.some((u) => u.includes("NAO foi lida"))).toBe(true)
+  })
+
+  it("o fato AUSENTE do relatório → INDETERMINADA, dizendo o que ficou fora", () => {
+    const v = summarize(facts({ shellInheritance: undefined }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(shellInheritanceUnknowns(undefined)[0]).toContain("herança de shell")
+  })
+
+  it("o doctor e o GUARD medem a MESMA coisa (a leitura é a do guard, não uma segunda)", () => {
+    // A prova de que não existem duas leituras do mesmo YAML: os contadores do
+    // guard (`scanRoot`) e os do fato do doctor, sobre a MESMA árvore.
+    const root = tree(
+      [
+        "on:",
+        "  push:",
+        "jobs:",
+        "  a:",
+        "    steps:",
+        "      - run: echo um",
+        "        shell: bash",
+        "      - run: |",
+        "          echo dois",
+        "  b:",
+        "    steps:",
+        "      - run: echo tres",
+        "",
+      ].join("\n"),
+    )
+    const f = heranca({ cwd: root })
+    // O `scanned` do guard é um objeto de contadores (módulo .mjs): o teste o
+    // tipa como o mapa que ele é.
+    const g = scanRoot(root).scanned as unknown as Record<string, number>
+    expect(f.totals.steps).toBe(g.runStepsComPipefail + g.runStepsSemPipefail)
+    expect(f.totals.peloRunner).toBe(g.passosDoRunner)
+    expect(f.totals.noPasso).toBe(g.passosComShellNoPasso)
+    expect(f.totals.porDefaultDoJob + f.totals.porDefaultDoArquivo).toBe(
+      g.passosComDefaultDeclarado,
+    )
+  })
+
+  it("a seção 7/7 imprime a origem por workflow, a violação e o remédio", () => {
+    const root = tree(
+      [
+        "on:",
+        "  push:",
+        "defaults:",
+        "  run:",
+        "    shell: bash",
+        "jobs:",
+        "  a:",
+        "    steps:",
+        "      - run: echo um",
+        "",
+      ].join("\n"),
+    )
+    const f = heranca({ cwd: root })
+    const linhas: string[] = []
+    renderReport(
+      { facts: facts({ shellInheritance: f }), verdict: summarize(facts({ shellInheritance: f })) },
+      { emit: (s = "") => linhas.push(s) },
+    )
+    const texto = linhas.join("\n")
+    expect(texto).toContain("7/7  Herança de shell dos workflows")
+    expect(texto).toContain(".gitea/workflows/ci.yml")
+    expect(texto).toContain("origem: 0 pelo RUNNER")
+    expect(texto).toContain("LIGA o pipefail para 1 passo(s) sem `shell:`")
+    expect(texto).toContain("a premissa não é herdada, é DITA")
+    expect(texto).toContain("declare `shell: bash` em cada passo afetado")
   })
 })

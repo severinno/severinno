@@ -24,7 +24,7 @@ import {
  *      uma label nova/renomeada não pode nascer invisível;
  *   2. a LEITURA (`readOpenDebt`) com a `list` dublada — estados, idade,
  *      marcador, e o cruzamento com o que o doctor mede agora (caducidade);
- *   3. o PESO no veredito e o que aparece na seção 6/6 do relatório.
+ *   3. o PESO no veredito e o que aparece na seção 6/7 do relatório.
  */
 
 const REPO_ROOT = resolve(__dirname, "..", "..", "..")
@@ -365,6 +365,28 @@ function baseFacts() {
       invalid: [],
       unread: [],
       total: 1,
+    }, // A herança de shell dos workflows: presente e LIMPA. Ausente, o fato vira
+    // dúvida ("não está declarada no relatório") — e a fixture que se diz "o
+    // mínimo que o summarize lê" tem de carregar tudo o que ele lê. O próprio
+    // fato tem testes em `forge-doctor.test.ts`.
+    shellInheritance: {
+      state: "proven",
+      workflows: [],
+      totals: {
+        workflows: 0,
+        steps: 0,
+        noPasso: 0,
+        porDefaultDoJob: 0,
+        porDefaultDoArquivo: 0,
+        peloRunner: 0,
+        comPipefail: 0,
+        premissas: 0,
+        ilegiveis: 0,
+        unread: 0,
+      },
+      violations: [],
+      detail: "0 workflow(s) de forja neste checkout",
+      error: null,
     },
     openDebt: {
       state: "clear",
@@ -472,18 +494,22 @@ describe("renderReport — a dívida tem seção própria", () => {
     return lines.join("\n")
   }
 
-  it("a seção 6/6 nomeia as labels, a exclusão, a issue e a IDADE", () => {
+  it("a seção 6/7 nomeia as labels, a exclusão, a issue e a IDADE", () => {
     const out = report({ ...baseFacts(), openDebt: OPEN_DEBT })
-    expect(out).toContain("6/6  Dívida conhecida (DECLARADA no repositório × ABERTA no board)")
+    expect(out).toContain("6/7  Dívida conhecida (DECLARADA no repositório × ABERTA no board)")
     expect(out).toContain(DEBT_SUBJECTS.map((s) => s.label).join(", "))
     expect(out).toContain(DEBT_EXCLUDED.label)
     expect(out).toContain("#12")
     expect(out).toContain("aberta há 43 dia(s)")
   })
 
-  it("as outras cinco seções continuam numeradas contra o MESMO total", () => {
+  it("as OUTRAS seções continuam numeradas contra o MESMO total", () => {
+    // O denominador é UM só para o relatório inteiro: uma seção nova (a herança
+    // de shell, a 7ª) que não entrasse na conta deixaria as outras seis dizendo
+    // "/6" para um relatório de sete — e o leitor contaria as seções para
+    // descobrir qual está mentindo.
     const out = report({ ...baseFacts(), openDebt: OPEN_DEBT })
-    for (const n of [1, 2, 3, 4, 5]) expect(out).toContain(`  ${n}/6  `)
+    for (const n of [1, 2, 3, 4, 5, 6, 7]) expect(out).toContain(`  ${n}/7  `)
   })
 
   it("--no-open-debt aparece dito, em vez de a seção sumir calada", () => {

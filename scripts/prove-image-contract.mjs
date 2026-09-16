@@ -53,7 +53,7 @@
 // digest pelo OCI v2, puxar por digest, rodar o bloco do Dockerfile dentro do
 // artefato. O que um registry local NAO exercita e o TLS e a credencial do pacote
 // privado do GHCR; quem mede o artefato de PRODUCAO e o doctor no cron semanal,
-// com a credencial da forja (secao 3/6 do relatorio de prontidao).
+// com a credencial da forja (secao 3/7 do relatorio de prontidao).
 // =============================================================================
 
 import { spawnSync } from "node:child_process"
@@ -740,7 +740,7 @@ export function renderReport(result, { emit = console.log } = {}) {
   line(
     "      rodar o bloco DENTRO do artefato). A build que o GHCR serve HOJE quem mede e o doctor",
   )
-  line("      no cron semanal, com a credencial da forja (secao 3/6 do relatorio de prontidao)")
+  line("      no cron semanal, com a credencial da forja (secao 3/7 do relatorio de prontidao)")
   line("    · o TLS e a CREDENCIAL do pacote privado: o registry local e anonimo e HTTP — o mesmo")
   line("      codigo de probe, mas sem o 401 do GHCR para exercitar")
   line(

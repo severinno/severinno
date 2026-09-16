@@ -1009,7 +1009,7 @@ describe("forge-doctor.yml — contrato do workflow agendado", () => {
 
   it("dá ao cron o canal do board do GITHUB (as dívidas de README e de overhead vivem lá)", () => {
     const doctorStep = job.steps[idxOf("forge-doctor.mjs")]
-    // A seção 6/6 lê as DUAS forjas, e as issues de `readme-drift` /
+    // A seção 6/7 lê as DUAS forjas, e as issues de `readme-drift` /
     // `mutation-trend-drift` existem SÓ no board do GitHub. Sem estes dois, a
     // leitura de lá sai como NÃO lida em todo cron — e um alerta que sempre
     // acende é um alerta que ninguém lê.

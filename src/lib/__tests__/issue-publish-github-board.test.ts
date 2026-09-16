@@ -6,7 +6,7 @@
  *
  * POR QUE ESTE TESTE EXISTE: nem toda dívida nasce na forja. A auditoria reversa
  * do README e a tendência de mutação são crons do `.github/`, e as issues delas
- * existem SÓ no board do GitHub. O doctor lê os dois boards (seção 6/6) pela
+ * existem SÓ no board do GitHub. O doctor lê os dois boards (seção 6/7) pela
  * MESMA mecânica dos publicadores (`listIssuesByLabel`) — e no runner da forja o
  * único canal possível é a API. Sem ele, a leitura daquele board falhava e a
  * prontidão reportava "NÃO foi lida" todo santo cron, com duas dívidas reais

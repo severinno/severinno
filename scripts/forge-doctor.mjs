@@ -209,7 +209,8 @@ import {
   GITEA_COMPOSE,
   PROOF_SCRIPT,
 } from "./check-bun-mirror.mjs"
-import { GITEA_WORKFLOW_DIR } from "./forge-workflows.mjs"
+import { GITEA_WORKFLOW_DIR, allWorkflowFiles, defaultsRunLines } from "./forge-workflows.mjs"
+import { workflowShellInheritance } from "./check-pipefail-sigpipe.mjs"
 import {
   clearStaleClosure,
   describeGithubRead,
@@ -570,8 +571,12 @@ export function gateCommand(command) {
  * @returns {string|null}
  */
 export function gateRunLine(lines, label) {
-  for (const raw of lines) {
-    const line = raw.trim()
+  const defaults = defaultsRunLines(lines.join("\n"))
+  for (let i = 0; i < lines.length; i++) {
+    // `defaults.run` é SHELL DEFAULT: aceitar a linha dela como O COMANDO do job
+    // deixa o contrato de merge ser satisfeito por uma declaração que não roda.
+    if (defaults.has(i + 1)) continue
+    const line = lines[i].trim()
     if (line.startsWith("#") || !line.includes(label)) continue
     // `- run: <cmd>` ou `run: <cmd>` — pega o que vem depois do marcador.
     const m = line.match(/^(?:-\s*)?run:\s*(.+)$/)
@@ -589,8 +594,10 @@ export function gateRunLine(lines, label) {
  * @returns {string|null}
  */
 export function firstRunLine(lines) {
-  for (const raw of lines) {
-    const line = raw.trim()
+  const defaults = defaultsRunLines(lines.join("\n"))
+  for (let i = 0; i < lines.length; i++) {
+    if (defaults.has(i + 1)) continue
+    const line = lines[i].trim()
     if (line.startsWith("#")) continue
     const m = line.match(/^(?:-\s*)?run:\s*(.+)$/)
     if (m) return m[1].trim()
@@ -802,7 +809,7 @@ export const VERDICT = {
  *                                 o check-forge-parity foi escrito para matar)
  *                                 nem "bloqueada" (mentiria para o outro lado)
  *                                 → INDETERMINADA.
- * * @param {{contract: object, gateContracts?: {results: object[], violations: string[]}, bringUpGate?: object, guards: object, image: object, proof: object, mirrors: object, openDebt?: object, skippedGuards?: boolean, skippedOpenDebt?: boolean, skippedGateContracts?: boolean}} facts
+ * * @param {{contract: object, gateContracts?: {results: object[], violations: string[]}, bringUpGate?: object, guards: object, image: object, proof: object, mirrors: object, openDebt?: object, declaredDebt?: object, shellInheritance?: object, skippedGuards?: boolean, skippedOpenDebt?: boolean, skippedGateContracts?: boolean}} facts
  * @returns {{verdict: string, blockers: string[], unknowns: string[], unproven: string[]}}
  */
 export function summarize(facts) {
@@ -1058,6 +1065,23 @@ export function summarize(facts) {
 
   for (const m of facts.mirrors.blockers) blockers.push(m)
   for (const m of facts.mirrors.unknowns) unknowns.push(m)
+
+  // A HERANÇA DE SHELL dos workflows: de ONDE vem o shell de CADA passo.
+  //
+  // Uma declaração de `defaults:` que LIGA o pipefail BLOQUEIA — ela troca a
+  // premissa de todos os passos do escopo numa linha, e o passo que passa a ser
+  // a classe SIGPIPE não mudou no diff; a declaração ilegível (forma inline)
+  // bloqueia pelo mesmo motivo do gate (fail-closed: presumir "sem pipefail"
+  // ali seria uma aposta). Não conseguir ler é AUSÊNCIA DE PROVA, nunca "o
+  // repositório não declara shell default nenhum".
+  //
+  // AUSENTE não é verde — mesma disciplina do guard de recursão e da dívida
+  // declarada: um relatório sem o fato não cobre a premissa que decide se um
+  // pipeline pode virar 141. E o fato entra por ÚLTIMO de propósito: acrescentar
+  // uma linha ao veredito não pode REORDENAR as que já estavam lá (a lista é lida
+  // de cima para baixo, e quem diagnostica vai pela primeira que aparece).
+  for (const b of shellInheritanceBlockers(facts.shellInheritance)) blockers.push(b)
+  for (const u of shellInheritanceUnknowns(facts.shellInheritance)) unknowns.push(u)
 
   const verdict =
     blockers.length > 0 ? VERDICT.BLOCKED : unknowns.length > 0 ? VERDICT.UNKNOWN : VERDICT.READY
@@ -1497,8 +1521,14 @@ export function readGateContract({
     // ALGUM casa com o padrão esperado.
     const jobLines = job.split(/\r?\n/)
     const allRunLines = []
-    for (const raw of jobLines) {
-      const line = raw.trim()
+    // A declaração `defaults.run` do job NÃO é um comando do job: sem excluí-la,
+    // `defaults: {run: bun run check:x}` faria o doctor afirmar que o job RODA o
+    // comando esperado — o veredito de prontidão para bloquear o merge sairia de
+    // uma linha que nenhuma pipeline executa.
+    const jobDefaults = defaultsRunLines(job)
+    for (let i = 0; i < jobLines.length; i++) {
+      if (jobDefaults.has(i + 1)) continue
+      const line = jobLines[i].trim()
       if (line.startsWith("#")) continue
       const m = line.match(/^(?:-\s*)?run:\s*(.+)$/)
       if (m) allRunLines.push(m[1].trim())
@@ -3184,6 +3214,208 @@ export function declaredDebtBlockers(fato) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// 4a. A herança de shell dos workflows
+//
+// A PROMESSA QUE VIVIA SÓ NO GUARD: o `check-pipefail-sigpipe` diz, no relatório
+// dele, de ONDE vem o shell de cada passo — do `shell:` do próprio passo, do
+// `defaults:` do JOB, do `defaults:` do ARQUIVO, ou do shell default do RUNNER
+// (a premissa `bash -e`, que não é deste repositório). E reprova a declaração de
+// `defaults:` que LIGA o pipefail: ela reclassifica todos os passos do escopo
+// numa linha, sem que um passo sequer mude no diff.
+//
+// Aqui essa medição entra no veredito de prontidão como FATO PRÓPRIO, por
+// WORKFLOW — e ela é a MESMA (`workflowShellInheritance`, do guard: o `scanRoot`
+// a chama item a item). O que o fato acrescenta ao veredito não é uma segunda
+// leitura do YAML (duas divergem no primeiro ajuste): é a conta NOMEADA, passo a
+// passo, que faz do pré-requisito uma cobrança. Ele roda ATÉ no perfil `--ci` —
+// é leitura de checkout —, e é justamente ali que ele mais importa: no PR a
+// bateria de guards está pulada, e sem este fato uma premissa mudada viajaria
+// em silêncio até o cron semanal.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Onde a declaração de `defaults:` vive, em prosa (a MESMA nos dois canais). */
+export function describeShellScope({ scope, job }) {
+  return scope === "workflow" ? "workflow inteiro" : `job \`${job ?? "?"}\``
+}
+
+/**
+ * A HERANÇA DE SHELL dos workflows do repositório, como fato do relatório.
+ *
+ * Os estados são os do guard, ditos no vocabulário do doctor:
+ *   - `violated` — há uma declaração que NÃO SE PODE CONFIAR: a que LIGA o
+ *     pipefail (a premissa mudou numa linha, o gate a reprova) ou a que o guard
+ *     não consegue LER (forma inline — não ler não é o mesmo que não haver, e o
+ *     fail-closed das duas é exit 1 lá). BLOQUEIA;
+ *   - `unread`  — a lista de workflows ou um arquivo não pôde ser lido: AUSÊNCIA
+ *     DE PROVA (INDETERMINADA), nunca "o repositório não declara shell default
+ *     nenhum";
+ *   - `proven`  — todos os workflows lidos e nenhuma declaração que ligue o
+ *     pipefail. Diz a CONTA por fonte, que é o que o veredito passa a cobrir.
+ *
+ * @param {{cwd?: string, deps?: {list?: Function, readFile?: Function}}} [options]
+ * @returns {{state: string, workflows: object[], totals: object, violations: string[], detail: string, error: string|null}}
+ */
+export function readShellInheritance({ cwd = REPO_ROOT, deps = {} } = {}) {
+  const list = deps.list ?? ((root) => allWorkflowFiles(root))
+  const read = deps.readFile ?? ((path) => readFileSync(path, "utf8"))
+  const vazio = {
+    state: "proven",
+    workflows: [],
+    totals: {
+      workflows: 0,
+      steps: 0,
+      corpoVazio: 0,
+      noPasso: 0,
+      porDefaultDoJob: 0,
+      porDefaultDoArquivo: 0,
+      peloRunner: 0,
+      comPipefail: 0,
+      premissas: 0,
+      ilegiveis: 0,
+      unread: 0,
+    },
+    violations: [],
+    detail: "0 workflow(s) de forja neste checkout",
+    error: null,
+  }
+  let arquivos
+  try {
+    arquivos = list(cwd)
+  } catch (err) {
+    // Um erro de PROGRAMA não pode virar "sem workflow": quem não conseguiu
+    // listar não diz que está tudo bem.
+    return {
+      ...vazio,
+      state: "unread",
+      detail: "a lista de workflows não foi lida",
+      error: String(err?.message ?? err),
+    }
+  }
+
+  const workflows = []
+  const violations = []
+  const totals = { ...vazio.totals, workflows: arquivos.length }
+  for (const w of arquivos) {
+    let content
+    try {
+      content = read(join(cwd, w.path))
+    } catch (err) {
+      totals.unread++
+      workflows.push({
+        file: w.path,
+        state: "unread",
+        detail: `o arquivo não foi lido: ${String(err?.message ?? err)}`,
+        counts: null,
+        premissas: [],
+        ilegiveis: [],
+      })
+      continue
+    }
+    const { declaracoes, counts } = workflowShellInheritance(String(content))
+    const premissas = declaracoes
+      .filter((d) => !d.unparsed && d.pipefail)
+      .map((d) => ({
+        scope: d.scope,
+        job: d.job,
+        shell: d.shell,
+        line: d.line,
+        passos: d.passos,
+      }))
+    const ilegiveis = declaracoes
+      .filter((d) => d.unparsed === true)
+      .map((d) => ({ scope: d.scope, job: d.job, shell: d.shell, line: d.line }))
+    for (const p of premissas) {
+      violations.push(
+        `${w.path}:${p.line} \`defaults:\` (${describeShellScope(p)}) declara \`shell: ${p.shell}\`, que LIGA o pipefail para ${p.passos} passo(s) sem \`shell:\` — a premissa do escopo inteiro mudou numa linha, sem o passo mudar no diff`,
+      )
+    }
+    for (const d of ilegiveis) {
+      violations.push(
+        `${w.path}:${d.line} \`defaults:\` (${describeShellScope(d)}) está em FORMA INLINE (\`${d.shell}\`) — a premissa do shell default NÃO foi lida (escreva em bloco: \`defaults:\` → \`run:\` → \`shell:\`)`,
+      )
+    }
+    totals.steps += counts.total
+    // O `run:` VAZIO é declarado e NÃO julgado (nada executa): a conta viaja com
+    // o resto da origem do shell, para a prontidão não omitir a categoria que o
+    // guard NOMEIA — a mesma disciplina de não varrer menos do que parece.
+    totals.corpoVazio += counts.corpoVazio
+    totals.noPasso += counts.noPasso
+    totals.porDefaultDoJob += counts.porDefaultDoJob
+    totals.porDefaultDoArquivo += counts.porDefaultDoArquivo
+    totals.peloRunner += counts.peloRunner
+    totals.comPipefail += counts.comPipefail
+    totals.premissas += premissas.length
+    totals.ilegiveis += ilegiveis.length
+    workflows.push({
+      file: w.path,
+      state: premissas.length > 0 || ilegiveis.length > 0 ? "violated" : "proven",
+      detail:
+        premissas.length > 0 || ilegiveis.length > 0
+          ? `${premissas.length} declaração(ões) ligando o pipefail, ${ilegiveis.length} ilegível(is)`
+          : "nenhuma declaração de `defaults:` que ligue o pipefail",
+      counts,
+      premissas,
+      ilegiveis,
+    })
+  }
+
+  const state = violations.length > 0 ? "violated" : totals.unread > 0 ? "unread" : "proven"
+  const detail =
+    `${totals.workflows} workflow(s), ${totals.steps} passo(s): ` +
+    `${totals.noPasso} pelo \`shell:\` do passo, ${totals.porDefaultDoJob + totals.porDefaultDoArquivo} por \`defaults:\` do repositório ` +
+    `(${totals.porDefaultDoJob} do job, ${totals.porDefaultDoArquivo} do arquivo), ${totals.peloRunner} pelo default do RUNNER ` +
+    `(premissa \`bash -e\`, que NÃO é deste repositório); ${totals.comPipefail} passo(s) sob pipefail` +
+    (totals.corpoVazio > 0
+      ? `; ${totals.corpoVazio} passo(s) com \`run:\` VAZIO (fora do escopo: nada executa)`
+      : "")
+  return { state, workflows, totals, violations, detail, error: null }
+}
+
+/**
+ * O que a herança de shell tem de BLOQUEANTE: a declaração que liga o pipefail
+ * (a premissa não é herdada, é dita) e a que não pôde ser lida — as DUAS classes
+ * que o guard reprova com exit 1, agora NOMEADAS no veredito de prontidão em vez
+ * de viverem só no relatório do gate.
+ *
+ * @param {object|undefined} fato
+ * @returns {string[]}
+ */
+export function shellInheritanceBlockers(fato) {
+  if (!fato || fato.state !== "violated") return []
+  return fato.violations.map((v) => `a HERANCA DE SHELL dos workflows esta violada — ${v}`)
+}
+
+/**
+ * O que a herança de shell NÃO pôde provar: a lista ou um arquivo ilegível.
+ *
+ * Ausência do FATO também é ausência de prova (mesma disciplina do guard de
+ * recursão e da dívida declarada): um relatório sem o fato não cobre se uma
+ * linha de `defaults:` mudou a premissa de todos os passos de um escopo, e dizer
+ * "pronta" sobre o que não foi olhado é o que este doctor recusa.
+ *
+ * @param {object|undefined} fato
+ * @returns {string[]}
+ */
+export function shellInheritanceUnknowns(fato) {
+  if (!fato) {
+    return [
+      "a herança de shell dos workflows (de onde vem o shell de cada passo: o `shell:` do passo, o `defaults:` do job, o `defaults:` do arquivo ou a premissa `bash -e` do runner) não está declarada no relatório: o veredito não cobre se uma linha de `defaults:` mudou a premissa de um escopo inteiro",
+    ]
+  }
+  if (fato.state === "proven") return []
+  const out = []
+  if (fato.state === "unread" && fato.error) {
+    out.push(`a heranca de shell dos workflows NAO foi lida: ${fato.error}`)
+  }
+  for (const w of fato.workflows ?? []) {
+    if (w.state === "unread") {
+      out.push(`a heranca de shell de '${w.file}' NAO foi lida: ${w.detail}`)
+    }
+  }
+  return out
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 5. Relatório
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -3245,7 +3477,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // protection). Um manifesto validado com a forja em drift é o modo de falha
   // que este comando existe para não deixar passar.
   line()
-  line("  1/6  Contrato de merge (o que o repositório DECLARA × o que a forja REGISTRA)")
+  line("  1/7  Contrato de merge (o que o repositório DECLARA × o que a forja REGISTRA)")
   for (const f of facts.contract.forges) {
     const mark = f.exists && f.jobs > 0 ? MARK.ok() : MARK.fail()
     line(
@@ -3269,7 +3501,7 @@ export function renderReport(report, { emit = console.log } = {}) {
 
   // ── 2. Guards da forja ──────────────────────────────────────────────────
   line()
-  line(`  2/6  Guards da forja (derivados de ${MERGE_OWNER_PIPELINE})`)
+  line(`  2/7  Guards da forja (derivados de ${MERGE_OWNER_PIPELINE})`)
   if (facts.skippedGuards) {
     line(`       ${MARK.skip()} pulados por --no-guards (o veredito NÃO cobre os gates)`)
   } else if (facts.guards.error) {
@@ -3291,7 +3523,7 @@ export function renderReport(report, { emit = console.log } = {}) {
 
   // ── 3. Imagem do runner ─────────────────────────────────────────────────
   line()
-  line("  3/6  Imagem do runner (o que os jobs puxam para INICIAR)") // Só a AUSÊNCIA confirmada (exit 4) é falha da forja; o resto é falta de
+  line("  3/7  Imagem do runner (o que os jobs puxam para INICIAR)") // Só a AUSÊNCIA confirmada (exit 4) é falha da forja; o resto é falta de
   // prova (env ausente no checkout, registry inacessível, pacote privado).
   const imageMark =
     facts.image.code === 0
@@ -3424,7 +3656,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // As duas metades juntas é que respondem "o merge é bloqueado por isto?": a
   // prova mede o comportamento, o gate mede a OBRIGAÇÃO.
   line()
-  line("  4/6  Prova do bloqueio (registry de TESTE) + o GATE que a cobra no merge")
+  line("  4/7  Prova do bloqueio (registry de TESTE) + o GATE que a cobra no merge")
   {
     const proofMark =
       facts.proof.status === "holds"
@@ -3539,7 +3771,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // resto da seção só prova existência e concordância local — e o operador
   // precisa ver essa diferença sem ler o código.
   line()
-  line("  5/6  Espelhos das variáveis da imagem — o VALOR (sem rede)")
+  line("  5/7  Espelhos das variáveis da imagem — o VALOR (sem rede)")
   // O conjunto COMPARADO vem do fato (não de uma lista escrita aqui): as
   // variáveis sem valor passado aparecem em `unknowns`, com o nome.
   // `expectedVars` com fallback em `expected`: um fato montado à mão (teste,
@@ -3630,7 +3862,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // o doctor mede por conta própria vêm lado a lado com a MEDIÇÃO, para a issue
   // velha não passar por problema vivo (nem o contrário).
   line()
-  line("  6/6  Dívida conhecida (DECLARADA no repositório × ABERTA no board)")
+  line("  6/7  Dívida conhecida (DECLARADA no repositório × ABERTA no board)")
   // ── a DECLARADA: a IDADE das isenções (data + janela de revisão) ────────
   if (facts.skippedDeclaredDebt) {
     line(
@@ -3689,6 +3921,72 @@ export function renderReport(report, { emit = console.log } = {}) {
     const stale =
       item.stale === true ? MARK.info() : item.stale === false ? MARK.warn() : MARK.skip()
     line(`               ${stale} ${color(C.gray, item.staleDetail)}`)
+  }
+
+  // ── 7. Herança de shell dos workflows ───────────────────────────────────
+  // A promessa que vivia SÓ no relatório do `check-pipefail-sigpipe`: de ONDE
+  // vem o shell de cada passo. A medição é a MESMA (`workflowShellInheritance`,
+  // a função que o gate usa item a item), e o fato entra ATÉ no perfil `--ci` —
+  // é leitura de checkout, e no PR a bateria de guards está pulada: sem esta
+  // seção, uma declaração de `defaults:` que ligue o pipefail viajaria em
+  // silêncio no veredito de quem decide se o merge pode ser confiado à forja.
+  line()
+  line("  7/7  Herança de shell dos workflows (de ONDE vem o shell de CADA passo)")
+  const si = facts.shellInheritance
+  if (!si) {
+    line(
+      `       ${MARK.warn()} o fato não está no relatório — a premissa do shell default fica fora do veredito`,
+    )
+  } else {
+    for (const w of si.workflows) {
+      const mark =
+        w.state === "proven" ? MARK.ok() : w.state === "violated" ? MARK.fail() : MARK.warn()
+      line(`       ${mark} ${w.file}`)
+      if (w.counts) {
+        line(
+          `           ${color(C.gray, `origem: ${w.counts.peloRunner} pelo RUNNER (\`bash -e\`, premissa) · ${w.counts.noPasso} no próprio passo · ${w.counts.porDefaultDoJob} por \`defaults:\` do job · ${w.counts.porDefaultDoArquivo} por \`defaults:\` do arquivo`)}`,
+        )
+        line(
+          `           ${color(C.gray, `pipefail: ${w.counts.comPipefail} de ${w.counts.total} passo(s) com o pipefail ATIVO (declarado no passo, por \`defaults:\` ou por \`set -o pipefail\` no corpo)`)}`,
+        )
+      } else {
+        line(`           ${color(C.gray, w.detail)}`)
+      }
+      for (const p of w.premissas) {
+        line(
+          `           ${MARK.fail()} :${p.line} \`defaults:\` (${describeShellScope(p)}) → \`shell: ${p.shell}\` LIGA o pipefail para ${p.passos} passo(s) sem \`shell:\``,
+        )
+      }
+      for (const d of w.ilegiveis) {
+        line(
+          `           ${MARK.fail()} :${d.line} \`defaults:\` (${describeShellScope(d)}) em FORMA INLINE (\`${d.shell}\`) — a premissa não foi lida`,
+        )
+      }
+    }
+    const marca =
+      si.violations.length > 0 ? MARK.fail() : si.totals.unread > 0 ? MARK.warn() : MARK.ok()
+    line(`       ${marca} total: ${si.detail}`)
+    if (si.totals.corpoVazio > 0) {
+      line(
+        `       ${MARK.info()} ${si.totals.corpoVazio} passo(s) com \`run:\` VAZIO: declarados e NÃO julgados — o guard os conta e os nomeia em vez de deixá-los sumir`,
+      )
+    }
+    line(
+      `       ${MARK.info()} o default do RUNNER (\`bash -e\`) NÃO é deste repositório: é uma PREMISSA — por isso o guard julga os passos nos DOIS contextos (com e sem pipefail), e uma declaração de \`defaults:\` que ligue o pipefail é falha própria: a premissa não é herdada, é DITA`,
+    )
+    if (si.violations.length > 0) {
+      line(
+        `       ${MARK.info()} remédio: declare \`shell: bash\` em cada passo afetado (a classe fica visível em quem revisa o PASSO) ou remova o \`defaults:\` e mantenha o default do runner`,
+      )
+      line(
+        `       ${MARK.info()} gate: node scripts/check-pipefail-sigpipe.mjs reprova as duas classes (exit 1) — aqui elas aparecem NOMEADAS no veredito de prontidão`,
+      )
+    }
+    if (si.totals.unread > 0) {
+      line(
+        `       ${MARK.warn()} ${si.totals.unread} arquivo(s) não lido(s): não ler NÃO é o mesmo que não haver shell default declarado`,
+      )
+    }
   }
 
   // ── Veredito ────────────────────────────────────────────────────────────
@@ -3993,6 +4291,8 @@ export async function diagnose({
   openDebtDeps = {},
   /** Injeção do FATO da dívida declarada (`collect`/`now`) — o teste mede o envelhecimento sem depender do relógio. */
   declaredDebtDeps = {},
+  /** Injeção do FATO da herança de shell (`list`/`readFile`) — o teste mede os estados sem um checkout de verdade. */
+  shellInheritanceDeps = {},
   identityProbe,
   gateContractsDeps = {},
 } = {}) {
@@ -4183,6 +4483,12 @@ export async function diagnose({
     // isenção vencida precisa aparecer, não só no cron. MEDIDA UMA VEZ (acima):
     // o mesmo objeto serve ao veredito e à caducidade da issue do board.
     declaredDebt: declaredDebtFacts,
+    // A HERANÇA DE SHELL dos workflows: leitura de checkout (sem rede, sem
+    // credencial, sem estado do HOST), então ela entra ATÉ no perfil `--ci` — e
+    // é ali que ela mais serve: no PR a bateria de guards está pulada, e sem
+    // este fato uma declaração de `defaults:` que ligue o pipefail viajaria em
+    // silêncio até o cron semanal.
+    shellInheritance: readShellInheritance({ cwd, deps: shellInheritanceDeps }),
     // O GUARD DE RECURSÃO, como fato do relatório NORMAL: a prontidão declara a
     // EXISTÊNCIA da defesa (e por quais canais ela responde), não só o disparo
     // dela — que vira um relatório à parte, com o estado `fired`.
