@@ -797,7 +797,8 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 | Unused-deps staged diff (`check-unused-deps.mjs --staged`)                     |     ✅     |       —       |
 | Contrato mutation-coord (`check-mutation-timing-contract.mjs`)                 |     ✅     |      ✅       |
 | Contrato mutation-coord staged (`check-mutation-timing-contract.mjs --staged`) |     ✅     |       —       |
-| Sintaxe `run:` staged diff (`check-workflow-run-syntax.mjs --staged`)          |     ✅     |       —       |
+| Sintaxe shell staged diff (`check-workflow-run-syntax.mjs --staged`)           |     ✅     |       —       |
+| Remédio do commit (`pre-commit-run-syntax-remedy.mjs`, com confirmação)        |     ✅     |       —       |
 | Format + lint (lint-staged: prettier + eslint --fix)                           |     ✅     |       —       |
 | Imports diretos (check:direct-rtl-import + barrel-lint)                        |     ✅     |       —       |
 | Barrel lint (`barrel-lint`)                                                    |     ✅     |       —       |
@@ -828,35 +829,65 @@ CLASSIFICAÇÃO do `check-forge-parity` também é um job próprio
 podem pular uma forja e com que forma de comando — e por isso diz QUAL regra
 quebrou em vez de ser mais uma linha da matriz.
 
-A MESMA ideia rege o gate de sintaxe dos corpos `run:`: o job
+A MESMA ideia rege o gate de sintaxe do shell do repositório: o job
 `workflow-run-syntax` roda o guard REAL contra o working tree do PR e, no MESMO
 job, `scripts/test-mutation-workflow-run-syntax.sh` prova por MUTAÇÃO que cada
 mecanismo do gate é load-bearing: matar a metade do AVISO (o heredoc truncado que
 o `bash` aprova, exit 0), tirar o corpo do STDIN do `bash`, alargar o LIMITE da
 máscara de `${{ }}`, ler a ÁRVORE onde o recorte `--staged` deve ler o ÍNDICE,
-aceitar qualquer `shell:` como presente na imagem do runner ou remover a guarda
-do corpo vazio no `--fix` têm de CEGAR o guard — e cada mutação é cirúrgica (as
-outras metades seguem mordendo). O `check-workflow-run-syntax.mjs` julga, além do
-PARSING, o `shell:` declarado contra o que a imagem do runner MEDIU (ref, digest,
-data e o comando em `--shells`): um passo com `shell: pwsh` num runner sem `pwsh`
-morria com `command not found` DEPOIS do setup, e nenhum parser pega essa classe;
-`--fix` remenda a cicatriz mecânica (operador pendente no fim do corpo) e só grava
-depois de o corpo voltar a fazer parsing — medido em memória E relendo o arquivo
-do disco, com a gravação DESFEITA se o disco não passar. O MESMO guard roda no
-pre-commit como RECORTE `--staged` (declarado em `HOOK_DECLARED`): julga os
-workflows do ÍNDICE, com o conteúdo do commit — custa ≈**0.03s** no caminho comum
-(nada de workflow staged: um `git diff --cached` e mais nada), o que o põe no
-orçamento de um hook que roda a CADA commit sem duplicar a varredura do CI. Custo
-medido neste host (Linux, 09/2026, mediana de 3 runs warm): o guard ≈ **0.90s**
-(0.88–0.94) e a prova de mutação ≈ **2.02s** (1.99–2.05) — ela subiu de ≈0.16s
-porque deixou de só re-executar o guard contra fixtures e passou a mutar o PRÓPRIO
-guard (6 mutações, ~25 execuções do gate, um fixture com git de verdade e a
-restauração verificada por checksum), ambos
-node-puro + um `bash -n` por cenário, sem docker e sem `node_modules`. ⚠️ Não
-existe um job `readme-toc-mutation-guard` ISOLADO — o cenário de TOC roda
-dentro da matriz aninhada `test-mutation-readme-guards.sh` (anchors + toc +
-images, 1 sub-test do master). Custo medido em 08/2026 (Windows host, worktree
-local, mediana de 3 runs warm):
+aceitar qualquer `shell:` como presente na imagem do runner, remover a guarda do
+corpo vazio no `--fix`, tirar a SEGUNDA FONTE (a varredura dos scripts de shell
+que o passo executa com `bash scripts/x.sh`) ou forçar `isBashShell` a julgar todo
+passo como bash (o passo python legítimo vira violação FALSA) têm de mudar o
+veredito do gate — e cada mutação é cirúrgica (as outras metades seguem mordendo).
+A última tem DUAS testemunhas: o gate por EXECUÇÃO e a **suíte unitária**, que tem
+de ficar VERMELHA (a segunda roda quando o `vitest` está instalado e DIZ quando
+não está — uma testemunha que falha por ambiente seria lida como mutante morto).
+
+O `check-workflow-run-syntax.mjs` julga, além do PARSING, o `shell:` declarado
+contra o que a imagem do runner MEDIU (ref, digest, data e o comando em
+`--shells`): um passo com `shell: pwsh` num runner sem `pwsh` morria com
+`command not found` DEPOIS do setup, e nenhum parser pega essa classe; `--fix`
+remenda a cicatriz mecânica (operador pendente no fim do corpo) e só grava depois
+de o corpo voltar a fazer parsing — medido em memória E relendo o arquivo do
+disco, com a gravação DESFEITA se o disco não passar; num ARQUIVO de shell ele
+**recusa** com motivo escrito (a cicatriz que ele conhece é uma linha ancorada no
+`run: |`) — recusa é veredito (exit 1), não um `✓` que esconde o script.
+
+O MESMO guard roda no pre-commit como RECORTE `--staged` (declarado em
+`HOOK_DECLARED`): julga os workflows E os scripts do ÍNDICE, com o conteúdo do
+commit. Quando ele reprova, o hook **OFERECE o remendo da cicatriz mecânica**
+(`scripts/pre-commit-run-syntax-remedy.mjs`, comando `LOCAL` declarado): o preview
+usa o MESMO fixer do `--fix` (`dry`, nada gravado), a pergunta diz os três efeitos
+do "sim" (remenda a ÁRVORE, re-estagia, REVALIDA o índice) e o veredito final é o
+do gate rodado de verdade. O `git add` é RETIDO em arquivo que já tinha WIP (o
+remendo fica na árvore e o operador é avisado), e **sem terminal não há pergunta**:
+imprime o caminho à mão e o commit segue bloqueado. O bloqueio é do HOOK: a
+variável que autoriza o commit nasce "não provou nada" e só o **exit 0** do remédio
+a zera — o remédio pode LEVANTAR a falha do gate, nunca criá-la. Que o hook
+**bloqueia de verdade** não é medido por leitura do arquivo:
+`src/lib/__tests__/pre-commit-run-syntax-blocks.test.ts` EXECUTA o
+`.husky/pre-commit` real num repo temporário com o defeito staged e exige exit 1
+apontando arquivo e linha (e 0 + a manchete do guard no corpo são, que é o que
+desmente um não-zero por motivo errado). Quatro mutações cobrem as metades que a
+leitura não vê: deixar de chamar o guard, perder o `--staged`, **deixar de chamar
+o remédio** (o commit continua bloqueado — o bloqueio é do hook, não do remédio) e
+**perder o veredito do gate** (aí o commit com a cicatriz entra); e a direção
+oposta é medida também: com o remédio afirmado como exit 0, o hook **levanta** a
+falha e o commit segue. Custa ≈**0.03s**
+no caminho comum (nada de corpo nem script staged: um `git diff --cached` e mais
+nada), o que o põe no orçamento de um hook que roda a CADA commit sem duplicar a
+varredura do CI. Custo medido neste host (Linux,
+09/2026, mediana de 3 runs warm): o guard ≈ **2.11s** (2.07–2.12) — ele passou a
+julgar TAMBÉM os **124 arquivos de shell** (121 `*.sh` e os 3 hooks do `.husky/`),
+um `bash -n` por arquivo — e a prova de mutação ≈ **3.4s** com o gate sozinho, ou
+≈ **21.3s** onde o `vitest` está instalado (as duas rodadas da suíte unitária do
+M8 são ~17s disso): o caminho do gate é node-puro (um `bash -n` por cenário, sem
+docker) e a suíte só roda onde há dependências. ⚠️ Não existe um job
+`readme-toc-mutation-guard` ISOLADO — o cenário de TOC roda dentro da matriz
+aninhada `test-mutation-readme-guards.sh` (anchors + toc + images, 1 sub-test do
+master). Custo medido em 08/2026 (Windows host, worktree local, mediana de 3 runs
+warm):
 
 | Item                                      | Local (Windows, node frio) | act (proxy CI, container) |
 | :---------------------------------------- | :------------------------: | :-----------------------: |

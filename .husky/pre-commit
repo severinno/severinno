@@ -57,8 +57,50 @@ PID_TIMING=$!
 node scripts/check-workflow-run-syntax.mjs --staged &
 PID_RUNSYNTAX=$!
 
-# Aguarda a fase e agrega TODOS os status (wait_all — ver o topo do arquivo).
-wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_RUNSYNTAX
+# Aguarda os QUATRO SEM REMEDIO e agrega os status deles (wait_all — topo).
+#
+# O de sintaxe fica FORA desta lista de proposito: o `wait_all` devolve o PRIMEIRO
+# status nao-zero, entao ele diz QUE a fase falhou, nao QUAL guard falhou — e o de
+# sintaxe e o unico da fase com REMEDIO (o remendo da cicatriz mecanica, abaixo).
+# O `||` e obrigatorio aqui: com `set -e` um `wait_all` que devolvesse nao-zero
+# ENCERRAVA o hook neste ponto, e as duas linhas abaixo (o remedio e o veredito da
+# fase) nunca rodariam — a agregacao continuaria sendo a mesma, mas o codigo
+# abaixo dela mentiria sobre o que mede.
+FASE_A=0
+wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING || FASE_A=$?
+
+# Espera o de sintaxe ANTES de qualquer pergunta: os cinco ja terminaram e o
+# output assentou — um prompt competindo com quatro guards escrevendo e um prompt
+# que ninguem le.
+SINTAXE=0
+wait "$PID_RUNSYNTAX" || SINTAXE=$?
+
+if [ "$SINTAXE" -ne 0 ]; then
+  # OFERECE o remendo, com confirmacao explicita: o repositorio reescreve corpo de
+  # `run:` por MAQUINA e a cicatriz que sobra e mecanica — o fixer do gate ja sabe
+  # remenda-la e ja prova o remendo antes de gravar. Sem este passo o operador
+  # reescrevia a mao exatamente a linha que a maquina remenda, com a chance de
+  # introduzir um erro NOVO na mesma linha.
+  #
+  # SEM TERMINAL ele NAO pergunta — imprime o caminho a mao e mantem o commit
+  # bloqueado (fail-closed). Ele nao existe no CI (la nao ha operador para confirmar
+  # nada): e declarado LOCAL em HOOK_DECLARED.
+  #
+  # `REMEDIO` NASCE 1 ("nao provou nada") e o `&&` o vira 0 SO com exit 0: e o
+  # unico jeito de distinguir "o remedio revalidou o INDICE" de "a chamada sumiu"
+  # — o `|| VAR=$?` registra o FRACASSO, nunca o sucesso. O `|| true` mantem o
+  # `set -e` fora do caminho: o veredito e a linha de baixo, com o exit do GATE.
+  REMEDIO=1
+  node scripts/pre-commit-run-syntax-remedy.mjs && REMEDIO=0 || true
+  # O veredito da falha e o do GATE (o exit do guard), nao o do remedio — e esta
+  # linha e a REDE do caso perigoso: com a chamada acima ausente, `REMEDIO` fica
+  # 1 e o commit com o corpo quebrado NAO passa.
+  [ "$REMEDIO" -eq 0 ] || exit "$SINTAXE"
+fi
+
+# A falha dos quatro sem remedio segue bloqueando o commit — o mesmo veredito de
+# antes, agora dito em vez de deixado para o `set -e`.
+[ "$FASE_A" -eq 0 ] || exit "$FASE_A"
 
 # ── Phase B: Global guards (parallel) ─────────────────────────────────────
 # Encoding guards, barrel lint, and prettier check are read-only and

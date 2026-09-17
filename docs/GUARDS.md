@@ -1288,14 +1288,23 @@ required check travaria todo PR (travado em teste). Contrato e remédios em
 
 ---
 
-### 6.1. Sintaxe do corpo `run:` — `check-workflow-run-syntax` (`scripts/check-workflow-run-syntax.mjs`)
+### 6.1. Sintaxe do shell — corpo `run:` E scripts versionados — `check-workflow-run-syntax` (`scripts/check-workflow-run-syntax.mjs`)
 
-**O que protege:** todo corpo `run:` dos workflows das DUAS forjas faz **parsing
-em `bash -n`** (passos de 2026-09). O modo **`--staged`** julga só os workflows
-que o **ÍNDICE** tem, lendo o conteúdo **do commit** (`git show :path`) e não o
-working tree — é o recorte do pre-commit (`HOOK_DECLARED` do
-`check-hook-ci-parity`), e sem git/índice ele é **fail-closed** (exit 2), porque
-"0 violações" sem ter lido o índice seria uma afirmação sobre nada.
+**O que protege:** TODO o shell versionado do repositório faz **parsing em
+`bash -n`** (2026-09), nos DOIS escopos, com UM parser e UM veredito:
+
+1. os **corpos `run:`** dos workflows das duas forjas;
+2. os **scripts de shell** — `*.sh`/`*.bash` + os hooks do `.husky/` (arquivos
+   SEM extensão e ainda assim shell), pela MESMA lista do `check-pipefail-sigpipe`
+   (`listShellScripts`): o corpo de um passo morre no RUNNER, e um script morre no
+   **PASSO que o executa** (`bash scripts/x.sh`), depois do setup e longe da
+   causa — a mesma classe de defeito, um passo adiante.
+
+O modo **`--staged`** julga só o que o **ÍNDICE** tem (workflows E scripts),
+lendo o conteúdo **do commit** (`git show :path`) e não o working tree — é o
+recorte do pre-commit (`HOOK_DECLARED` do `check-hook-ci-parity`), e sem
+git/índice ele é **fail-closed** (exit 2), porque "0 violações" sem ter lido o
+índice seria uma afirmação sobre nada.
 
 **Por que existe:** o repositório reescreve corpo de `run:` por MÁQUINA, de
 propósito — o `--fix` do `check-pipefail-sigpipe` (seção 20) trocou **216**
@@ -1344,9 +1353,23 @@ dia em que a base mudar, o caminho é RE-MEDIR, não ajustar o número no olho. 
 forma CUSTOM (`perl {0}`) não é um quarto desfecho: o que o gate julga é o NOME
 que ela invoca (`perl {0}` passa; `pwsh {0}` reprova).
 
-Sem allowlist: o repositório passa inteiro (480 corpos, e todos os `shell:`
-declarados existem), e um gate que nasce absoluto não tem cota para envelhecer —
-cota aqui significaria declarar que um corpo quebrado pode ficar quebrado.
+**Nos ARQUIVOS, quem declara o interpretador é o SHEBANG** — o análogo do
+`shell:` de um passo, que num arquivo não existe (a declaração muda de FONTE: de
+uma chave de YAML para a primeira linha do arquivo). Quatro desfechos, nenhum
+silencioso: shebang bash/sh é julgado pelo **MESMO** `isBashShell`; shebang de
+outra linguagem (`python3` num `*.sh`) é **PULADO e nomeado** (o `bash -n` não
+julga o que não é bash); arquivo **sem shebang** (o caso dos hooks do husky, que
+os roda com `sh -e`) cai na **premissa** e é julgado; e arquivo **VAZIO** sai
+nomeado (nada executa, não há sintaxe a julgar). Duas diferenças deliberadas em
+relação aos corpos: o arquivo vai ao parser **CRU** (num script não há runner para
+resolver `${{ ... }}` antes do bash — a máscara existe do lado do TEMPLATE, não do
+lado do arquivo) e o que se julga é o **ARQUIVO INTEIRO**, não um passo.
+
+Sem allowlist: o repositório passa inteiro — **482 corpos** das duas forjas (e
+todos os `shell:` declarados existem) **e 124 arquivos de shell** (121 `*.sh` + os
+3 hooks do `.husky/`), sem erro E sem aviso. Um gate que nasce absoluto não tem
+cota para envelhecer — cota aqui significaria declarar que um corpo (ou um script)
+quebrado pode ficar quebrado.
 
 **O `--fix` remenda a cicatriz MECÂNICA — e mede o efeito antes e depois de
 gravar.** A cicatriz é um **operador pendente** no fim do corpo (`\`, `&&`,
@@ -1364,8 +1387,56 @@ fazer parsing, medido em memória; (4) **depois de gravar**, o arquivo é RELIDO
 re-julgado — e a gravação é **DESFEITA** se o corpo no disco não passar. As
 recusas saem **com motivo escrito** (heredoc: o texto é DADO; forma não-literal;
 `then` sem `fi`: a intenção não é reconstruível dali; remendo que deixaria o
-corpo VAZIO: o passo deixaria de rodar o que diz). `--fix` com `--staged` ou
-`--json` é uso inválido (exit 3) — ele escreve na ÁRVORE e relata em texto.
+corpo VAZIO: o passo deixaria de rodar o que diz). Num **arquivo de shell** o
+fixer **RECUSA**, com motivo escrito: a cicatriz que ele conhece é UMA linha
+ancorada no bloco `run: |`, e num arquivo a reescrita pode ter engolido qualquer
+linha — remendar a última sem ver a causa inventaria intenção. A recusa é
+**veredito** (exit 1), nunca um `✓` que esconde o script quebrado. `--fix` com
+`--staged` ou `--json` é uso inválido (exit 3) — ele escreve na ÁRVORE e relata em
+texto.
+
+**O pre-commit OFERECE esse remendo — quando o recorte `--staged` reprova o
+commit, com confirmação explícita.** `scripts/pre-commit-run-syntax-remedy.mjs`
+(o comando `LOCAL` declarado em `HOOK_DECLARED`) é o caminho pelo qual o operador
+chega ao fixer NO MOMENTO em que a cicatriz aparece: sem ele, o hook reprovava o
+commit e a correção era reescrever à mão exatamente a linha que a máquina remenda
+— com a chance de introduzir um erro NOVO na mesma linha. A sequência é dita
+ANTES da pergunta, porque é ela que o "sim" autoriza:
+
+1. **PREVIEW** com o MESMO caminho de decisão do fixer (`fixAll` com `dry`): o que
+   o preview promete é o que a gravação faz — uma régua paralela prometeria um remendo
+   que a gravação recusaria. **Nada é gravado aqui** (e há teste medindo isso);
+2. **sem cicatriz remendável ele NÃO pergunta** (uma pergunta cuja resposta não
+   muda nada ensina o operador a responder sem ler): sai vermelho com o motivo da
+   recusa por arquivo — inclusive para a classe que este fixer não toca (`shell:` que
+   o runner não tem). Índice **verde** é o único caso em que ele sai 0 sem remendar;
+3. **pergunta** (s/n; o default é o NÃO), dizendo os TRÊS efeitos: remenda a
+   ÁRVORE, re-estagia (`git add`) os arquivos e **revalida o recorte `--staged`**;
+4. **aplica, re-estagia SÓ o que não tinha modificação não estagiada ANTES do
+   remendo** — num arquivo com WIP o `git add` levaria para dentro do commit
+   trabalho que não é dele (o remendo fica na árvore e o operador é avisado para
+   revisar);
+5. **REVALIDA rodando o guard DE VERDADE** (`--staged`, em subprocesso): o
+   veredito e o relatório finais são os do gate, não uma segunda implementação do
+   veredito aqui. Quando o índice e a árvore divergem de linha, quem recusa é o
+   próprio fixer (a linha do arquivo não é a do corpo) — o remédio não grava na
+   linha errada nem com o índice deslocado.
+
+**SEM TERMINAL não há pergunta** — o remédio **não** lê de um stdin que não é um
+terminal (num hook ele pode ser um pipe, ou o terminal de outro processo: um
+prompt ali trava o commit ou consome entrada que não é dele). Nesse caso ele
+imprime a lista e o **caminho à mão** (`--fix` + o `git add` que leva o remendo ao
+commit) e mantém o commit **bloqueado**, fail-closed. O fim do stdin (Ctrl-D)
+resolve como **NÃO**, em vez de pendurar o commit esperando uma resposta que não
+vem.
+
+E o bloqueio é do **HOOK**, não do remédio: a variável que autoriza o commit nasce
+"não provou nada" e só é zerada pelo **exit 0** do remédio (é por isso que a linha
+do hook é `node … && REMEDIO=0 || true`: o `|| VAR=$?` registraria o FRACASSO,
+nunca o sucesso, e o `|| true` mantém o `set -e` fora do caminho para o veredito
+explícito — que sai com o código do GATE — ser quem decide). As duas direções são
+medidas: o remédio que sai 0 **LEVANTA** a falha (o hook segue) e **apagar a
+chamada não aprova o commit** (sem ela, ninguém zerou a variável).
 
 **Onde roda:** job **`workflow-run-syntax`** do `pr-check.yml` (espelho) e job
 `guards` da forja (dona do merge) — o mesmo literal nas duas, como invariante do
@@ -1373,8 +1444,12 @@ CORE (`workflow-run-syntax`); o `check:forge-parity` declara o `jobIds` por forj
 e cobra o comando canônico no job declarado. Como a bateria do doctor é DERIVADA
 do job `guards`, o gate entra no relatório de prontidão sozinho. E o
 **pre-commit** roda o recorte `--staged` na fase paralela: o commit que introduz
-o corpo quebrado é bloqueado **antes** de virar PR — recorte DECLARADO, com o
-escopo escrito no `why` (o CI continua sendo a varredura inteira das duas forjas).
+o corpo (ou o script) quebrado é bloqueado **antes** de virar PR — recorte
+DECLARADO, com o escopo escrito no `why` (o CI continua sendo a varredura inteira:
+as duas forjas + todos os scripts). O status do gate é capturado SEPARADO dos
+outros quatro da fase (o `wait_all` devolve o primeiro não-zero, e só o de sintaxe
+tem remédio) e a pergunta vem depois de os cinco terem terminado — um prompt
+competindo com quatro guards escrevendo é um prompt que ninguém lê.
 
 **Por que um job PRÓPRIO no espelho:** o veredito do PR passa a ser um check com o
 NOME do defeito. Antes ele era um passo dentro do `workflow-refs-guard`, que cobre
@@ -1392,12 +1467,55 @@ os exit codes da CLI (1/2/3), a semântica do `shell:` (os três desfechos, a fo
 CUSTOM julgada pelo nome, o `--shells` com a proveniência e o `--json` dos três)
 e o `--fix` (o remendo gravado, as recusas com motivo, o arquivo INTACTO na
 recusa e a gravação DESFEITA quando o corpo no disco não passa), além do
-repositório inteiro. O recorte `--staged`
+repositório inteiro. A **segunda fonte** tem testes próprios: o shebang como
+declaração (`env` desembrulhado, `python3` pulado com motivo, sem shebang caindo
+na premissa), o arquivo vazio nomeado, o escopo que NÃO desce em
+`node_modules`/artefato, o aviso do heredoc contando num arquivo, o `--fix` que
+recusa sem tocar no arquivo e o `--json` com os dois escopos no mesmo payload. O
+recorte `--staged`
 tem teste PRÓPRIO, contra um repo git REAL:
 `src/lib/__tests__/check-workflow-run-syntax-staged-cli.test.ts` prova as DUAS
 direções do escopo (corpo quebrado no índice reprova **mesmo** com a árvore já
 corrigida; defeito só na árvore passa o recorte e o gate da árvore reprova o
 mesmo repo) e o fail-closed fora de um repositório git.
+O **HOOK** tem prova por EXECUÇÃO, e não por leitura:
+`src/lib/__tests__/pre-commit-run-syntax-blocks.test.ts` soma o `.husky/pre-commit`
+REAL num repositório temporário com o defeito STAGED e exige o exit **VIOLATIONS**
+(1) nomeando arquivo e linha — e o mesmo repo com o corpo são sai 0 **imprimindo a
+manchete do guard no modo `--staged`** (é essa segunda metade que impede o falso
+positivo: um hook que falhasse por "script não encontrado" também sairia não-zero).
+O guard roda com o `node` real e o fecho transitivo copiado; o que é dublê está
+DECLARADO (os irmãos de fase e o `bun` devolvem 0 — num repo temporário eles não
+existem, e não são o assunto; e o desfecho do REMÉDIO é afirmável por um dublê,
+`REMEDY_STUB`, porque no harness o stdin do hook é um pipe e o remédio real nunca
+sai 0). O fecho copiado são os `.mjs` — e, com eles, o **`node_modules` real do
+repositório** (link no fixture, não `NODE_PATH`): o `require` do guard resolve
+pelo diretório do próprio arquivo, e sem o parser de YAML TODO workflow passa a
+NÃO JULGÁVEL (exit 2), de modo que o veredito medido seria do fixture e não do
+defeito. Não é presumido: a premissa LÊ os especificadores não relativos do fecho
+no próprio fonte e MEDE, num `node` real com o diretório do fixture, que cada um
+resolve e que o parser de fato parseia — uma dependência nova entra nessa conta
+sozinha, em vez de degradar o guard em silêncio. QUATRO mutações provam as metades que a leitura não vê: deixar de CHAMAR o
+guard e perder o `--staged` (esta última sobre o defeito que só o ÍNDICE carrega,
+o commit que a árvore consertada esconde); e, na metade do remédio, deixar de
+CHAMAR o remédio (o commit continua bloqueado — o remédio é conveniência, não o
+caminho do bloqueio) e perder o **veredito do gate** (aí o commit com a cicatriz
+entra: é o bloco que reergue a falha do guard). Cada mutação exige, além de
+`mutado !== original`, que o hook mutado **ainda faça parsing** (`bash -n`): uma
+mutação que quebrasse a sintaxe do hook sairia vermelha por PARSING, não pelo
+veredito que ela mede. O mesmo arquivo exercita o remédio DENTRO do hook nas DUAS
+direções: com a cicatriz no índice e **sem terminal** (o stdin do hook é um pipe),
+o hook sai 1, **não pergunta** e imprime o caminho à mão; e com o remédio
+AFIRMADO como exit 0, o hook **levanta** a falha e o commit segue.
+
+`src/lib/__tests__/pre-commit-run-syntax-remedy.test.ts` é a prova do REMÉDIO, com
+o caminho INTERATIVO exercitado pela função (deps injetadas — num subprocesso o
+stdin nunca é um terminal): "sim" com arquivo limpo remenda, re-estagia e revalida
+o ÍNDICE (exit 0); "não" e resposta vazia não tocam em nada; sem cicatriz
+remendável **não pergunta**; índice verde sai 0 sem remendar; WIP na árvore faz o
+`git add` ser RETIDO (o WIP não sobe para o commit e a árvore fica remendada);
+a árvore DESLOCADA faz o fixer recusar sozinho; e a CLI prova o contrato do exit
+code (usage 3, infra 2, o `--help` e o **SEM TERMINAL**).
 **Prova por mutação:** `scripts/test-mutation-workflow-run-syntax.sh` (roda NO
 JOB, depois do gate real, e também como sub-test da matriz do master) tem DUAS
 metades. (A) SENSIBILIDADE — o guard REAL reprova as fixtures de defeito e passa
@@ -1416,9 +1534,19 @@ qualquer nome como **presente na imagem** CEGA a metade semântica (o passo com
 `shell: pwsh` passa com a headline de sucesso); e remover a **guarda do corpo
 vazio** no `--fix` CEGA o fixer de um jeito que se paga no gate — ele grava um
 corpo vazio, o vazio deixa de ter sintaxe a julgar e o passo que já não roda nada
-sai como ✅. Cada mutação é CIRÚRGICA — as outras metades seguem mordendo — e o
-script exige a cegueira: um mecanismo que, mutado, não muda o veredito é decoração
-e falha o PR (exit 1). (Medido: remover a máscara por inteiro **não** muda o
+sai como ✅; tirar a **segunda fonte** (a varredura dos arquivos de shell) CEGA o
+gate para o script quebrado — que passa a sair com a headline de sucesso contando
+os arquivos que NÃO julgou; e forçar `isBashShell` a `true` julga o passo python
+legítimo (o corpo do fixture é `print(1)`) e o gate **ACUSA quem não tem defeito**
+— a assinatura INVERSA das outras mutações: não é cegueira, é violação FALSA, com
+o pulo nomeado desaparecendo do relatório. Cada mutação é CIRÚRGICA — as outras
+metades seguem mordendo — e o script exige que o veredito MUDE: um mecanismo que,
+mutado, não muda nada é decoração e falha o PR (exit 1). A mutação do pulo nomeado
+tem **duas testemunhas**: o gate por EXECUÇÃO (node-puro, sempre roda) e a **suíte
+unitária**, que tem de ficar VERMELHA — ela roda quando o `vitest` está instalado
+e, onde não está, o script DIZ que não julgou essa metade (uma testemunha vermelha
+por ambiente "mataria" o mutante, e o teste passaria por engano). (Medido: remover
+a máscara por inteiro **não** muda o
 veredito — `bash -n` aceita `${{ ... }}` —, por isso a mutação da máscara é o seu
 LIMITE, não a sua ausência.)
 

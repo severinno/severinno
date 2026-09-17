@@ -7,7 +7,8 @@
 #   ./scripts/test-mutation-workflow-run-syntax.sh
 #
 # Exit codes:
-#   0 — as SEIS mutações CEGARAM o guard (e os controles passaram) ✅
+#   0 — as OITO mutações foram DETECTADAS (pelo gate e/ou pela suíte) e os
+#       controles passaram ✅
 #   1 — guard INDIFERENTE a alguma mutação (não cegou) OU controle falso ❌
 #
 # O QUE ISTO PROVA (e por que não basta o guard passar hoje)
@@ -17,7 +18,7 @@
 # mutar um deles não muda o veredito, aquele mecanismo não sustenta nada (é
 # decoração), e some do repositório no primeiro refactor sem ninguém notar.
 #
-# Os três mecanismos que a varredura promete e que são medidos aqui:
+# Os mecanismos que a varredura promete e que são medidos aqui:
 #
 #   M1 — A METADE DO AVISO (`ok` exige exit 0 E stderr vazio). `bash -n` sai 0
 #        para um heredoc SEM terminador: é AVISO, não erro, e o corpo truncado
@@ -52,6 +53,25 @@
 #        corpo vazio deixa de ser julgado (não há sintaxe a julgar) e o gate sai
 #        VERDE com o passo que já não roda mais nada. É a diferença entre
 #        "remendar a cicatriz" e "apagar o passo".
+#   M7 — A SEGUNDA FONTE (os scripts de shell versionados). O MESMO `bash -n`
+#        julga, além dos corpos `run:`, os arquivos que o passo EXECUTA
+#        (`bash scripts/x.sh`) — a lista é a do `listShellScripts`. Tirar essa
+#        metade da varredura CEGA o gate para um script quebrado: ele passa a
+#        publicar a headline de sucesso contando os arquivos que NÃO julgou
+#        ("124 arquivo(s) de shell passam") — a pior forma de mentira, a que
+#        conta o que não olhou. A metade dos corpos segue mordendo (cirúrgica).
+#        Assinatura da mutação: o gate fica VERMELHO (violação falsa), não cego.
+#   M8 — O PULO NOMEADO do passo NÃO-bash (`isBashShell`). O gate julga o corpo
+#        de um passo pelo interpretador que ele DECLARA: `shell: python3` num
+#        corpo python é legítimo e sai como PULADO e NOMEADO (com o caminho
+#        medido na imagem). Forçar `isBashShell` a `true` faz o gate julgar todo
+#        corpo como bash — e o passo python legítimo vira uma VIOLAÇÃO FALSA
+#        (o `bash -n` recusa `print(1)`). É a assinatura INVERSA das outras
+#        mutações: aqui o gate não fica cego, ele acusa quem não tem defeito.
+#        DUAS testemunhas: o GATE por execução (node-puro, sempre) e a SUÍTE
+#        UNITÁRIA, que tem de ficar VERMELHA — a segunda roda quando o vitest
+#        está instalado e DIZ quando não está, porque uma testemunha que falha
+#        por ambiente seria lida como "mutante morto".
 #
 # NOTA HONESTA sobre M3 (medido, não suposto): remover a máscara POR INTEIRO
 # NÃO cega o guard — `bash -n` aceita `[ "${{ vars.MODE || 'a}b' }}" = "1" ]`
@@ -89,9 +109,14 @@
 #      o passo com `shell: pwsh` passa (CEGO) e o `if` sem `fi` segue reprovado
 #   8. MUTAÇÃO M6 (a guarda do corpo vazio no `--fix`) — grava um corpo VAZIO:
 #      o passo que já não roda nada passa a sair como ✅ (CEGO)
-#   9. Restauração VERIFICADA (checksum) + CONTROLE FINAL: o guard volta a
+#   9. MUTAÇÃO M7 (a SEGUNDA fonte) — tira a varredura dos arquivos de shell:
+#      o script quebrado passa (CEGO) e o corpo `run:` quebrado segue reprovado
+#  10. MUTAÇÃO M8 (o PULO NOMEADO) — `isBashShell` sempre true: o passo python
+#      legítimo passa a ser ACUSADO (violação falsa) com a suíte unitária
+#      VERMELHA, e o corpo bash quebrado segue reprovado (cirúrgica)
+#  11. Restauração VERIFICADA (checksum) + CONTROLE FINAL: o guard volta a
 #      reprovar o `if` sem `fi`, provando que a árvore ficou como estava
-#  10. Cleanup (trap EXIT — restaura o guard e remove o temp, mesmo com falha)
+#  12. Cleanup (trap EXIT — restaura o guard e remove o temp, mesmo com falha)
 # =============================================================================
 
 set -euo pipefail
@@ -100,6 +125,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 GUARD="$SCRIPT_DIR/scripts/check-workflow-run-syntax.mjs"
+# A RÉGUA do que EXECUTA (comentário fora, expressão do runner) vive na FONTE
+# ÚNICA, e o M3 muta ELA, não o guard: o guard importa `DYNAMIC_EXPR_RE` de lá,
+# então mutar o PADRAO só muda o veredito se o guard de fato o consome — uma
+# cópia local sobreviveria à mutação e o script falharia como CEGO. É essa a
+# prova de que a máscara é uma só.
+RULER="$SCRIPT_DIR/scripts/forge-workflows.mjs"
 
 TMP_DIR="$(mktemp -d)"
 FX="$TMP_DIR/fx"
@@ -125,6 +156,15 @@ EXPECTED_SHELL_MOTIVO="command not found"
 # O remendo recusado por deixar o corpo VAZIO (M6) e o desfecho do fixer.
 EXPECTED_FIX_OK="remendo aplicado"
 EXPECTED_FIX_VAZIO="VAZIO"
+# A SEGUNDA fonte (M7): a headline dos ARQUIVOS de shell — o relatório separa as
+# duas classes, e é a dos arquivos que tem de sair (a dos corpos `run:` não
+# provaria nada sobre um `.sh`).
+EXPECTED_SCRIPTS='arquivo(s) de shell NÃO passam'
+# O PULO NOMEADO do passo não-bash (M8): a headline que o gate REAL emite para o
+# passo que ele NÃO julga — e que a mutação tem de FAZER DESAPARECER.
+EXPECTED_PULAR='shell NÃO-bash PRESENTE no runner'
+# A segunda testemunha do M8: o arquivo que a suíte unitária julga.
+SUITE_ARQUIVO="src/lib/__tests__/check-workflow-run-syntax.test.ts"
 
 # ── Colors ────────────────────────────────────────────────────────────────
 
@@ -139,24 +179,31 @@ fail() { echo -e "  ${RED}❌${NC} $1"; }
 info() { echo -e "  ${YELLOW}ℹ️${NC} $1"; }
 header() { echo -e "\n${CYAN}═══ $1 ═══${NC}"; }
 
-# ── Backup do guard + restauração VERIFICADA (trap EXIT) ──────────────────
-# As mutações são aplicadas NO LUGAR (o `--root` é da fixture; o arquivo
-# mutado é o do repositório). O backup e a restauração entram no MESMO trap,
-# porque um `exit` no meio do caminho não pode deixar a árvore mutada.
+# ── Backup das FONTES + restauração VERIFICADA (trap EXIT) ────────────────
+# As mutações são aplicadas NO LUGAR (o `--root` é da fixture; os arquivos
+# mutados são os do repositório). O backup e a restauração entram no MESMO trap,
+# porque um `exit` no meio do caminho não pode deixar a árvore mutada. O backup
+# mora em $TMP_DIR porque NADA aqui apaga esse diretório no meio da prova (só o
+# cleanup, depois de restaurar).
 guard_backup="$TMP_DIR/guard.original.mjs"
+ruler_backup="$TMP_DIR/ruler.original.mjs"
 cp "$GUARD" "$guard_backup"
+cp "$RULER" "$ruler_backup"
 guard_sum="$(cksum "$GUARD" | cut -d' ' -f1)"
+ruler_sum="$(cksum "$RULER" | cut -d' ' -f1)"
 
 cleanup() {
   cp -f "$guard_backup" "$GUARD" 2>/dev/null || true
+  cp -f "$ruler_backup" "$RULER" 2>/dev/null || true
   rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
 
-restaurar_guard() {
+restaurar_originais() {
   cp -f "$guard_backup" "$GUARD"
-  if [ "$(cksum "$GUARD" | cut -d' ' -f1)" != "$guard_sum" ]; then
-    fail "RESTAURAÇÃO do guard FALHOU (checksum diverge) — restaure a partir de $guard_backup"
+  cp -f "$ruler_backup" "$RULER"
+  if [ "$(cksum "$GUARD" | cut -d' ' -f1)" != "$guard_sum" ] || [ "$(cksum "$RULER" | cut -d' ' -f1)" != "$ruler_sum" ]; then
+    fail "RESTAURAÇÃO FALHOU (checksum diverge) — restaure a partir de $TMP_DIR"
     exit 1
   fi
 }
@@ -182,6 +229,30 @@ PY
   fi
   if [ "$(cksum "$GUARD" | cut -d' ' -f1)" = "$guard_sum" ]; then
     fail "a mutação não alterou o guard (checksum idêntico) — o alvo casou mas a escrita não"
+    exit 1
+  fi
+}
+
+# ── mutar_regua: o mesmo contrato, mas sobre a RÉGUA (fonte única) ────────
+# Usado pelo M3: o alvo é a LINHA DA RÉGUA, e o checksum de referência é o
+# DELA — sem isso, uma mutação que não aplicasse passaria como "guard imune".
+mutar_regua() {
+  ARQ="$RULER" ALVO="$1" NOVO="$2" python3 - <<'PY'
+import os
+p = os.environ["ARQ"]
+old, new = os.environ["ALVO"], os.environ["NOVO"]
+s = open(p).read()
+n = s.count(old)
+if n != 1:
+    raise SystemExit(f"mutacao nao-cirurgica na regua: {n} ocorrencia(s) do alvo (esperado 1)")
+open(p, "w").write(s.replace(old, new))
+PY
+  if ! grep -qF 'MUTACAO M' "$RULER"; then
+    fail "a mutação não aplicou na régua (nada a medir)"
+    exit 1
+  fi
+  if [ "$(cksum "$RULER" | cut -d' ' -f1)" = "$ruler_sum" ]; then
+    fail "a mutação não alterou a régua (checksum idêntico) — o alvo casou mas a escrita não"
     exit 1
   fi
 }
@@ -221,6 +292,111 @@ rodar_staged() {
   GUARD_OUT="$(node "$GUARD" --staged --root "$1" 2>&1)"
   GUARD_EXIT=$?
   set -e
+}
+
+# ── rodar_guard_em: igual ao rodar_guard, mas contra OUTRA raiz ───────────
+# A fixture da segunda fonte (M7) não pode ser a dos corpos: o veredito que
+# sobra tem de ser o do ARQUIVO, e não o de um `run:` quebrado do mesmo lado.
+rodar_guard_em() {
+  set +e
+  GUARD_OUT="$(node "$GUARD" --root "$1" 2>&1)"
+  GUARD_EXIT=$?
+  set -e
+}
+
+# ── rodar_suite: a segunda testemunha do M8 (a suíte unitária do guard) ────
+# Devolve o exit code do vitest em SUITE_EXIT e as últimas linhas em SUITE_OUT.
+# Só é CHAMADA quando o vitest está instalado: sem ele a suíte não julga o
+# invariante, e tratar "não rodou" como "mutante morto" seria a mentira mais
+# fácil de todas (uma suíte vermelha por ambiente mata qualquer mutação).
+rodar_suite() {
+  set +e
+  SUITE_OUT="$(cd "$SCRIPT_DIR" && bun x vitest run --config vitest.config.unit.ts "$SUITE_ARQUIVO" 2>&1 | tail -8)"
+  SUITE_EXIT=$?
+  set -e
+}
+
+# ── exigir_pulado_nomeado: o passo não-bash PASSA e sai NOMEADO como pulado ──
+exigir_pulado_nomeado() {
+  local cenario="$1"
+  if [ "$GUARD_EXIT" -ne 0 ]; then
+    fail "CONTROLE FALSO ($cenario): o gate REPROVOU um passo python legítimo (exit $GUARD_EXIT)."
+    fail "Sem um pulo correto, o 'virou violação falsa' do M8 mede nada."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if ! grep -qF "$EXPECTED_PULAR" <<<"$GUARD_OUT"; then
+    fail "$cenario: passou, mas SEM nomear o pulo ('$EXPECTED_PULAR')."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if ! grep -qF "python3" <<<"$GUARD_OUT"; then
+    fail "$cenario: o pulo não diz QUAL shell foi pulado (nem que a imagem o tem)."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+}
+
+# ── exigir_falso_positivo: com a mutação o gate tem de ACUSAR o que pulava ──
+# A assinatura aqui é o INVERSO das outras mutações: o gate não fica verde, ele
+# inventa uma violação para um passo legítimo. As DUAS metades são exigidas (a
+# violação pelo PARSING e o pulo nomeado DESAPARECIDO) — só uma delas deixaria
+# passar um gate que acusasse por outro motivo, ou que acusasse E pulasse junto.
+exigir_falso_positivo() {
+  local cenario="$1"
+  if [ "$GUARD_EXIT" -eq 0 ]; then
+    fail "GUARD INDIFERENTE ($cenario): com isBashShell forçado a true o gate AINDA"
+    fail "passou (exit 0) — o pulo nomeado não é o que sustenta este veredito."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if [ "$GUARD_EXIT" -ne 1 ]; then
+    fail "$cenario: exit $GUARD_EXIT — o contrato é 1 (violação), não infra errada."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if ! grep -qF "$EXPECTED_ERRO" <<<"$GUARD_OUT"; then
+    fail "$cenario: reprovou, mas NÃO pela asserção do parsing ('$EXPECTED_ERRO')."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if grep -qF "$EXPECTED_PULAR" <<<"$GUARD_OUT"; then
+    fail "$cenario: o pulo nomeado SAINDO junto com a violação é contraditório —"
+    fail "o gate julgou o passo E disse que o pulou."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+}
+
+# ── exigir_reprovado_script: reprovado pela SEGUNDA fonte, pelo motivo certo ──
+exigir_reprovado_script() {
+  local cenario="$1"
+  if [ "$GUARD_EXIT" -eq 0 ]; then
+    fail "CONTROLE FALSO ($cenario): o PARSE do arquivo de shell PASSOU (exit 0)."
+    fail "Sem esta metade o 'ficou cego' do M7 mede nada (um gate já cego passaria)."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if [ "$GUARD_EXIT" -ne 1 ]; then
+    fail "$cenario: exit $GUARD_EXIT — o contrato é 1 (violação), não infra errada."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if ! grep -qF "$EXPECTED_SCRIPTS" <<<"$GUARD_OUT"; then
+    fail "$cenario: reprovou, mas NÃO pela asserção do arquivo ('$EXPECTED_SCRIPTS')."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if ! grep -qF "scripts/quebrado.sh" <<<"$GUARD_OUT"; then
+    fail "$cenario: reprovou, mas NÃO citou o ARQUIVO do script."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if ! grep -qF 'interpretador: `bash`' <<<"$GUARD_OUT"; then
+    fail "$cenario: reprovou, mas não disse QUAL interpretador julgou o arquivo."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
 }
 
 # ── exigir_reprovado: o guard REAL tem de REPROVAR, pelo motivo certo ─────
@@ -427,8 +603,8 @@ rodar_guard
 exigir_reprovado "M1 cirúrgica" "$EXPECTED_ERRO"
 pass "M1 CIRÚRGICA: o ERRO de sintaxe continua reprovado — morreu só a metade do AVISO"
 
-restaurar_guard
-pass "guard RESTAURADO (checksum confere)"
+restaurar_originais
+pass "fontes RESTAURADAS (os dois checksums conferem)"
 
 # ═════════════════════════════════════════════════════════════════════════
 # MUTAÇÃO M2 — o STDIN do bash (o corpo como `input` do `bash -n`)
@@ -457,8 +633,8 @@ if [ "$GUARD_EXIT" -ne 0 ]; then
 fi
 pass "M2 não inventa violação: o corpo SÃO segue passando (a cegueira é só para baixo)"
 
-restaurar_guard
-pass "guard RESTAURADO (checksum confere)"
+restaurar_originais
+pass "fontes RESTAURADAS (os dois checksums conferem)"
 
 # ═════════════════════════════════════════════════════════════════════════
 # MUTAÇÃO M3 — a MÁSCARA gulosa (`[^}]*` → `[\s\S]*`)
@@ -466,8 +642,7 @@ pass "guard RESTAURADO (checksum confere)"
 
 header "MUTAÇÃO M3: com a máscara gulosa o defeito entre expressões desaparece"
 
-mutar_guard '  return String(text ?? "").replace(/\$\{\{[^}]*\}\}/g, "EXPRESSAO")' '  // MUTACAO M3: mascaramento GULOSO (engole alem da expressao)
-  return String(text ?? "").replace(/\$\{\{[\s\S]*\}\}/g, "EXPRESSAO")'
+mutar_regua 'export const DYNAMIC_EXPR_RE = /\$\{\{[^}]*\}\}/g' 'export const DYNAMIC_EXPR_RE = /\$\{\{[\s\S]*\}\}/g /* MUTACAO M3: mascara GULOSA (engole alem da expressao) */'
 
 mkfixture "Defeito entre expressões" "$TMP_DIR/b-mascara.sh"
 rodar_guard
@@ -486,8 +661,8 @@ if [ "$GUARD_EXIT" -ne 0 ]; then
 fi
 pass "M3 CIRÚRGICA: o ERRO de sintaxe segue reprovado e o corpo SÃO segue passando"
 
-restaurar_guard
-pass "guard RESTAURADO (checksum confere)"
+restaurar_originais
+pass "fontes RESTAURADAS (os dois checksums conferem)"
 
 # ═════════════════════════════════════════════════════════════════════════
 # MUTAÇÃO M4 — o ÍNDICE do recorte `--staged` (o modo do pre-commit)
@@ -517,7 +692,7 @@ rodar_staged "$FXS"
 exigir_reprovado "CONTROLE M4 (índice quebrado, árvore corrigida)" "$EXPECTED_ERRO"
 pass "CONTROLE M4: o recorte reprova o corpo do ÍNDICE mesmo com a árvore corrigida"
 
-mutar_guard '      conteudo = staged ? readIndexFile(root, w.path) : readFileSync(join(root, w.path), "utf8")' '      conteudo = readFileSync(join(root, w.path), "utf8") // MUTACAO M4: a arvore, nao o indice'
+mutar_guard '      conteudo = staged ? readIndexFile(root, w.path) : readJudgedFile(join(root, w.path), w.path)' '      conteudo = readJudgedFile(join(root, w.path), w.path) // MUTACAO M4: a arvore, nao o indice'
 rodar_staged "$FXS"
 exigir_cego "M4 no recorte --staged"
 pass "M4 DETECTADA: lendo a árvore, o recorte APROVA o commit que ainda carrega o defeito (CEGO)"
@@ -529,8 +704,8 @@ rodar_guard
 exigir_reprovado "M4 cirúrgica (árvore)" "$EXPECTED_ERRO"
 pass "M4 CIRÚRGICA: o gate da ÁRVORE segue reprovando (a mutação matou só o índice)"
 
-restaurar_guard
-pass "guard RESTAURADO (checksum confere)"
+restaurar_originais
+pass "fontes RESTAURADAS (os dois checksums conferem)"
 
 # ═════════════════════════════════════════════════════════════════════════
 # MUTAÇÃO M5 — o CONJUNTO DE SHELLS (o `shell:` declarado existe no runner?)
@@ -571,8 +746,8 @@ rodar_guard
 exigir_reprovado "M5 cirúrgica (parsing)" "$EXPECTED_ERRO"
 pass "M5 CIRÚRGICA: o ERRO de sintaxe segue reprovado (a mutação matou só a semântica)"
 
-restaurar_guard
-pass "guard RESTAURADO (checksum confere)"
+restaurar_originais
+pass "fontes RESTAURADAS (os dois checksums conferem)"
 
 # ═════════════════════════════════════════════════════════════════════════
 # MUTAÇÃO M6 — a GUARDA DO CORPO VAZIO no `--fix`
@@ -637,8 +812,117 @@ if grep -qF '&&' "$WF"; then
 fi
 pass "M6 DETECTADA: o passo foi ESVAZIADO e o gate passa a dar VERDE para ele (CEGO)"
 
-restaurar_guard
-pass "guard RESTAURADO (checksum confere)"
+restaurar_originais
+pass "fontes RESTAURADAS (os dois checksums conferem)"
+
+# ═════════════════════════════════════════════════════════════════════════
+# MUTAÇÃO M7 — a SEGUNDA FONTE (os scripts de shell que o passo executa)
+# ═════════════════════════════════════════════════════════════════════════
+
+header "MUTAÇÃO M7: tirar a segunda fonte cega o gate para um script quebrado"
+
+# Fixture PRÓPRIA: UM script quebrado e NENHUM workflow. O veredito que sobra é
+# o da segunda fonte — o que o repositório tinha fora do radar, porque
+# `bash scripts/x.sh` morre no PASSO (depois do setup) e nenhum parser de YAML
+# vê isso.
+FXS2="$TMP_DIR/fx-script"
+mkdir -p "$FXS2/scripts"
+cat > "$FXS2/scripts/quebrado.sh" <<'BODY'
+#!/usr/bin/env bash
+if [ 1 = 1 ]; then
+  echo sem fi
+BODY
+
+rodar_guard_em "$FXS2"
+exigir_reprovado_script "CONTROLE M7 (script sem fi)"
+pass "CONTROLE M7: o ARQUIVO de shell é REPROVADO (com o arquivo e o interpretador)"
+
+mutar_guard '    for (const script of arquivos.scripts) {' '    for (const script of []) { // MUTACAO M7: a segunda fonte fora da varredura'
+
+rodar_guard_em "$FXS2"
+exigir_cego "M7 no script quebrado"
+pass "M7 DETECTADA: sem a segunda fonte o gate APROVA o script quebrado (CEGO)"
+
+# Cirúrgica: a mutação matou só a segunda fonte — o parsing dos corpos `run:`
+# (a metade que já existia) segue reprovando o mesmo tipo de defeito.
+mkfixture "If sem fi" "$TMP_DIR/b-sem-fi.sh"
+rodar_guard
+exigir_reprovado "M7 cirúrgica (corpo run:)" "$EXPECTED_ERRO"
+pass "M7 CIRÚRGICA: o corpo \`run:\` quebrado segue reprovado (morreu só o arquivo)"
+
+restaurar_originais
+pass "fontes RESTAURADAS (os dois checksums conferem)"
+
+# ═════════════════════════════════════════════════════════════════════════
+# MUTAÇÃO M8 — o PULO NOMEADO do passo NÃO-bash (`isBashShell`)
+# ═════════════════════════════════════════════════════════════════════════
+
+header "MUTAÇÃO M8: forçar isBashShell a true julga o passo que deveria ser PULADO"
+
+# O fixture: um passo com `shell: python3` — um shell que a imagem MEDIDA tem —
+# e um corpo que o PYTHON aceita e o BASH recusa (`print(1)`). É esse par que
+# separa "julgar" de "pular": o corpo é legítimo no interpretador DELE, e
+# julgar todo shell como bash inventaria uma violação para um passo são.
+cat > "$TMP_DIR/b-python.sh" <<'BODY'
+print(1)
+BODY
+
+mkfixture_python() {
+  mkdir -p "$FX/.github/workflows"
+  {
+    printf 'jobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n'
+    printf '      - name: passo python legitimo\n        shell: python3\n        run: |\n'
+    sed 's/^/          /' "$TMP_DIR/b-python.sh"
+  } > "$WF"
+}
+
+mkfixture_python
+rodar_guard
+exigir_pulado_nomeado "CONTROLE M8 (passo python legítimo)"
+pass "CONTROLE M8: o passo python PASSA e sai NOMEADO como pulado (com o shell que o runner tem)"
+
+# A SEGUNDA TESTEMUNHA precisa estar VIVA antes de medir: uma suíte que já está
+# vermelha por ambiente "mata" qualquer mutante, e o teste passaria por engano.
+# Onde o vitest não está instalado, o motivo é DITO (nunca silencioso).
+suite_disponivel() { [ -d "$SCRIPT_DIR/node_modules/vitest" ]; }
+suite_disponivel && rodar_suite
+if suite_disponivel; then
+  if [ "$SUITE_EXIT" -ne 0 ]; then
+    fail "CONTROLE M8 (suíte): a suíte unitária está VERMELHA com o guard INTACTO (exit $SUITE_EXIT)."
+    fail "Uma testemunha já vermelha mata qualquer mutante — ela mediria nada."
+    echo "$SUITE_OUT"
+    exit 1
+  fi
+  pass "CONTROLE M8 (suíte): VERDE com o guard intacto — a segunda testemunha está viva"
+else
+  info "CONTROLE M8 (suíte): NÃO julgada — node_modules/vitest ausente neste job (declarado, nunca silencioso)"
+fi
+
+mutar_guard '  return /^(?:[\w./-]*\/)?(?:bash|sh)(?:\s|$)/.test(s)' '  return true // MUTACAO M8: todo shell passa por bash'
+
+mkfixture_python
+rodar_guard
+exigir_falso_positivo "M8 no passo python"
+pass "M8 DETECTADA pelo GATE: com todo shell virando bash ele ACUSA o passo python (violação FALSA)"
+
+if suite_disponivel; then
+  rodar_suite
+  if [ "$SUITE_EXIT" -eq 0 ]; then
+    fail "M8 NÃO DETECTADA pela suíte: a testemunha unitária PASSOU com isBashShell forçado a true."
+    echo "$SUITE_OUT"
+    exit 1
+  fi
+  pass "M8 DETECTADA também pela SUÍTE (exit $SUITE_EXIT) — as duas testemunhas concordam"
+fi
+
+# Cirúrgica: a mutação matou só o PULO — o parsing dos corpos segue mordendo.
+mkfixture "If sem fi" "$TMP_DIR/b-sem-fi.sh"
+rodar_guard
+exigir_reprovado "M8 cirúrgica (corpo bash)" "$EXPECTED_ERRO"
+pass "M8 CIRÚRGICA: o corpo bash quebrado segue reprovado (a mutação matou só o pulo)"
+
+restaurar_originais
+pass "fontes RESTAURADAS (os dois checksums conferem)"
 
 # ═════════════════════════════════════════════════════════════════════════
 # CONTROLE FINAL — a árvore voltou ao comportamento original
@@ -649,19 +933,21 @@ header "CONTROLE FINAL: o guard restaurado volta a reprovar o \`if\` sem \`fi\`"
 mkfixture "If sem fi" "$TMP_DIR/b-sem-fi.sh"
 rodar_guard
 exigir_reprovado "CONTROLE FINAL" "$EXPECTED_ERRO"
-pass "CONTROLE FINAL: depois das SEIS mutações o guard reprova de novo (árvore íntegra)"
+pass "CONTROLE FINAL: depois das OITO mutações o guard reprova de novo (árvore íntegra)"
 
 # ── Veredito ──────────────────────────────────────────────────────────────
 
 echo ""
 echo "  ═════════════════════════════════════════════════════════════════"
-echo -e "   ${GREEN}✅ MUTATION TEST PASSOU${NC} — os SEIS mecanismos são LOAD-BEARING:"
+echo -e "   ${GREEN}✅ MUTATION TEST PASSOU${NC} — os OITO mecanismos são LOAD-BEARING:"
 echo "      • a metade do AVISO (heredoc truncado, bash sai 0) → mutá-la cega"
 echo "      • o stdin do bash (o corpo julgado) → mutá-lo cega tudo"
 echo "      • a máscara LAZY (para no primeiro }}) → torná-la gulosa cega"
 echo "      • o ÍNDICE do recorte --staged (o commit) → ler a árvore cega o hook"
 echo "      • o conjunto de SHELLS medido na imagem → aceitar qualquer nome cega"
 echo "      • a guarda do corpo VAZIO no --fix → sem ela o fixer apaga o passo"
+echo "      • a SEGUNDA fonte (os scripts de shell) → tirá-la cega o arquivo que o passo executa"
+echo "      • o PULO NOMEADO do passo não-bash → forçá-lo a julgar ACUSA um passo são"
 echo "      e cada mutação é CIRÚRGICA: as outras metades seguem mordendo."
 echo "  ═════════════════════════════════════════════════════════════════"
 echo ""
