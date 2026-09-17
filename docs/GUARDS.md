@@ -459,6 +459,21 @@ pr-check (um mutation novo sem job = falha).
 
 **Onde roda:** CI (pr-check), local (`bash scripts/test-mutation-guards.sh`).
 
+#### A TESTEMUNHA de uma mutação não é o exit code (09/2026)
+
+Quando a suíte é a testemunha, "o comando saiu ≠ 0" **não** é veredito: o
+exit code é não-zero por ambiente sem `node_modules`, por `bun` fora do PATH,
+por import quebrado e por filtro que não casa teste nenhum — e ler isso como
+"mutação detectada" faz o script **passar verde provando nada**. A regra é a
+mesma em todas as suítes que usam ferramenta instalada: a testemunha é lida
+pelo **JSON do vitest** (`--reporter=json` → `status`) ou pela **mensagem
+específica** do guard, e a **ÂNCORA é exigida VIVA** (presente uma única vez — o
+número de testes que casam é conferido — e PASSANDO com a fonte íntegra) antes
+de o mutante ser injetado; sem isso a detecção seria vácuo. Foi medido em
+`test-mutation-reconciliation.sh`, o único que lia exit code como veredito: com
+`bun`/vitest indisponíveis ele imprimia "3 mutações DETECTADAS / MUTATION TEST
+PASSED" sem a suíte existir.
+
 #### Mutation tests que precisam de `node_modules` (fora da matriz node-pura)
 
 A matriz do master é **node-pura** (não instala deps). Cinco mutation tests
@@ -604,6 +619,31 @@ a conta → escreve`): sem elas, o que teria morrido poderia ser o comando
   cada caso confere por si). O ramo do segredo-ausente é mutado com escopo de
   laço e o script CONFERE que a mesma linha do passo 4 SOBREVIVEU — se o patch
   pegasse as duas, a mutação mediria outra coisa.
+
+#### O que EXIGE deps fora dos jobs com `bun install` (medido em checkout limpo)
+
+Em um worktree limpo (checkout de `HEAD` **sem** `node_modules`, 09/2026) a
+matriz do master **não é node-pura de ponta a ponta: 12 dos 24 sub-tests
+falham** (medido: `rc=1` do master, com a metade restante verde). Metade
+deles exige ferramenta instalada — `lint-guard` (prettier/eslint),
+`reconciliation`, `nested-guard` e `merge-latency` (vitest),
+`workflow-run-syntax` (o guard importa `js-yaml`; a metade da suíte usa vitest)
+— e a outra metade roda um guard que lê YAML e morre com `exit 2 — YAML NAO
+VALIDADO (rode bun install)`: `workflow-refs`, `mutation-jobs`,
+`pipefail-sigpipe`, `workflow-defaults`, `hook-ci-parity` (importa
+`check-forge-parity`), `bun-literal` (`check-bun-mirror`) e `no-setup-bun`.
+Nenhum deles degrada em silêncio: **saem ≠ 0 nomeando o ambiente** (e cada um
+exige a mensagem certa do guard, então um guard que morre por ambiente não é
+confundido com "mutação detectada"), nunca verdes.
+
+Consequência declarada: onde o job **não** instala deps, o comando morre no
+ambiente antes de medir a mutação. No `pr-check.yml` são sete jobs nessa
+condição (nenhum passo instala e nenhum engole a falha — sem
+`continue-on-error`, sem `|| true`): `workflow-refs-guard`,
+`workflow-run-syntax`, `no-setup-bun-guard`, `bun-mirror-guard`,
+`mutation-jobs-staged-guard`, `mutation-jobs-guard` e `mutation-guards`. Verde
+honesto eles não dão nunca; medem de verdade nos jobs com `bun install`
+(`seed-guards.yml` e o job `guards` da forja).
 
 #### Overhead por PR do job `mutation-coord-update` (medido 08/2026)
 
