@@ -333,22 +333,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # O gate REAL contra o working tree do PR: todos os corpos `run:` das duas
-      # forjas, com a expressão do runner mascarada e o AVISO contando tanto
-      # quanto o erro (um heredoc sem terminador sai 0 do bash e o corpo
-      # truncado rodaria outra coisa).
+      # O gate REAL contra o working tree do PR: os DOIS escopos de shell do
+      # repositório — todos os corpos `run:` das duas forjas (com a expressão do
+      # runner mascarada e o AVISO contando tanto quanto o erro: um heredoc sem
+      # terminador sai 0 do bash e o corpo truncado rodaria outra coisa) e todos
+      # os scripts de shell versionados (`*.sh`/`*.bash` + hooks do `.husky/`, a
+      # mesma lista do check:pipefail-sigpipe), que morrem no PASSO que os executa.
       - name: Workflow run syntax (bash -n)
         run: node scripts/check-workflow-run-syntax.mjs
 
       # A prova de SENSIBILIDADE, no mesmo job: o guard REAL roda no PR (acima) e
       # o mutation test prova que ele MORDE — erro de sintaxe, aviso que o bash
-      # aprova, e o mascaramento preservando contexto — contra um fixture. Sem
-      # isto, um guard que virasse no-op passaria verde para sempre.
-      - name: Mutation test — o guard deve FALHAR nas 3 classes
+      # aprova, o mascaramento preservando contexto, o índice do recorte, a
+      # semântica do `shell:`, a guarda do fixer, a segunda fonte (os scripts) e o
+      # PULO NOMEADO do passo não-bash (forçá-lo a julgar ACUSA um passo são) —
+      # contra fixtures. A última mutação tem duas testemunhas: o gate por
+      # EXECUÇÃO e a suíte unitária, que tem de ficar VERMELHA (onde o vitest
+      # está instalado; onde não está, o script DIZ que não julgou essa metade).
+      # Sem isto, um guard que virasse no-op passaria verde para sempre.
+      - name: Mutation test — o guard deve FALHAR nas 8 metades
         run: bash scripts/test-mutation-workflow-run-syntax.sh
 
       - name: Summary
-        run: echo "✅ Todo corpo de passo dos workflows das duas forjas faz PARSING (bash -n, sem erro E sem aviso; passo não-bash é contado e nomeado) e o mutation test prova que o guard morde nas três classes."
+        run: echo "✅ Todo corpo de passo dos workflows das duas forjas E todo script de shell versionado fazem PARSING (bash -n, sem erro E sem aviso; passo não-bash e script de shebang não-bash são contados e nomeados) e o mutation test prova que o guard morde nas oito metades."
 
   # ── Bring-up Gate Proof (o PRÉ-REQUISITO 0, por EXECUÇÃO) ──────────────
   # O mesmo invariante do CORE da forja, provado aqui pelo caminho real: o
@@ -576,10 +583,12 @@ jobs:
   #                    z-ai-web-dev-sdk — + dep inexistente devem FALHAR;
   #                    dep declarada com install pendente deve PASSAR)
   #   workflow-run-syntax → test-mutation-workflow-run-syntax.sh
-  #                    (a metade do AVISO, o stdin do bash e o LIMITE da máscara
-  #                    de `${{ }}` devem CEGAR o gate de sintaxe dos corpos
-  #                    `run:` — cada mutação cirúrgica; o job próprio deste
-  #                    mesmo gate segue abaixo, rodando o guard REAL)
+  #                    (oito metades — a do AVISO, o stdin do bash, o LIMITE da
+  #                    máscara, o índice do `--staged`, os shells medidos, a
+  #                    guarda do fixer, a SEGUNDA fonte e o PULO NOMEADO do passo
+  #                    não-bash — cada mutação cirúrgica; a do pulo exige a suíte
+  #                    unitária VERMELHA e o job próprio deste mesmo gate segue
+  #                    abaixo, rodando o guard REAL)
   # Cada sub-test roda SEMPRE (fail-CONTINUE) e o harness imprime o output
   # completo do script granular + verdict por sub-test + tabela final —
   # granularidade de diagnóstico preservada. Exit final agregado: 0 se

@@ -12,7 +12,13 @@
 //   3. shell declarado NÃO-bash é PULADO com o motivo dito — nunca contado como
 //      conferido, nem escondido;
 //   4. INFRA fail-closed: um `bash` que não executa não pode virar "0 violações";
-//   5. o repositório inteiro passa (o gate nasce ABSOLUTO: sem allowlist).
+//   5. o repositório inteiro passa (o gate nasce ABSOLUTO: sem allowlist);
+//   6. a SEGUNDA fonte: os SCRIPTS DE SHELL do repositório (a lista do
+//      `listShellScripts`, a mesma do check:pipefail-sigpipe) passam pelo MESMO
+//      parser — o shebang é a declaração (python pula com motivo, sem-shebang cai
+//      na premissa de quem o executa), o arquivo VAZIO é nomeado, o escopo não
+//      desce em node_modules/artefato, e o `--fix` RECUSA remendar arquivo sem
+//      tocar nele (a cicatriz que ele conhece é de uma linha ancorada em `run: |`).
 //
 // Sem rede. O `run` (spawnSync) é injetado onde o teste precisa do desfecho de
 // infra; o resto usa o bash de verdade (é ele que julga).
@@ -33,8 +39,10 @@ import {
   RUNNER_SHELLS_MISSING,
   checkBody as checkBodyBruto,
   collectRunBodies as collectBruto,
+  collectShellScripts as collectShellScriptsBruto,
   fixAll as fixAllBruto,
   fixWorkflow,
+  interpreterOf,
   isBashShell,
   maskExpressions,
   mendBody,
@@ -68,6 +76,8 @@ type Coleta = {
   indeterminate: Pulado[]
   shellFailures: FalhaDeShell[]
   unread: { file: string; detail: string }[]
+  /** Workflows que EXISTEM e não fazem parsing em YAML (§ "A OUTRA PORTA"). */
+  yamlInvalido: { file: string; detail: string }[]
 }
 type Remendo = {
   fixed: boolean
@@ -84,8 +94,20 @@ type Mendado = {
   depois?: string
   body?: string
 }
+type ArquivoDeShell = { file: string; body: string; interpreter: string; fonte: string }
+type PuladoDeShell = { file: string; detail: string }
+type ColetaDeShell = {
+  files: string[]
+  scripts: ArquivoDeShell[]
+  skipped: PuladoDeShell[]
+  unread: { file: string; detail: string }[]
+}
 type ResultadoScan = Coleta & {
   failures: (Corpo & { kind: string; error: string })[]
+  shellFiles: string[]
+  shellScripts: ArquivoDeShell[]
+  scriptSkipped: PuladoDeShell[]
+  scriptFailures: (ArquivoDeShell & { kind: string; error: string })[]
   indisponivel: string | null
 }
 type Veredito = {
@@ -97,6 +119,8 @@ type Veredito = {
 }
 
 const collectRunBodies = (root: string) => collectBruto(root) as Coleta
+const collectShellScripts = (root: string, opts: Record<string, unknown> = {}) =>
+  collectShellScriptsBruto(root, opts) as ColetaDeShell
 const scan = (root: string, opts: Record<string, unknown> = {}) =>
   scanBruto(root, opts) as ResultadoScan
 const checkBody = (body: string, opts: Record<string, unknown> = {}) =>
@@ -314,7 +338,7 @@ describe("CLI — exit codes", () => {
     })
     const r = cli(["--root", root])
     expect(r.code).toBe(EXIT.OK)
-    expect(r.out).toContain("1 corpo(s) `run:` passam em")
+    expect(r.out).toContain("1 corpo(s) `run:` E 0 arquivo(s) de shell passam em")
     expect(r.out).toContain("shell NÃO-bash PRESENTE no runner")
     expect(r.out).toContain("python")
   })
@@ -343,6 +367,44 @@ describe("CLI — exit codes", () => {
     const r = cli(["--root", root, "--bash", "bash-que-nao-existe-xyz"])
     expect(r.code).toBe(EXIT.UNAVAILABLE)
     expect(r.err).toContain("não há parsing")
+  })
+
+  it("YAML que NÃO faz parsing → exit 2, NOMEADO (não é '0 corpos reprovados')", () => {
+    // A outra metade do "não consegui julgar": o arquivo ABRE (não é I/O nem
+    // encoding) e não é um workflow. As linhas dele existem, mas nenhum passo
+    // delas chega ao runner — julgar `bash -n` ali não mede nada.
+    const root = tree({
+      ".gitea/workflows/quebrado.yml": ["on:", "  push:", "jobs:", "\ta:", ""].join("\n"),
+      ".gitea/workflows/ok.yml": "on:\n  push:\njobs:\n  a:\n    steps:\n      - run: echo ok\n",
+    })
+    const r = cli(["--root", root])
+    expect(r.code).toBe(EXIT.UNAVAILABLE)
+    expect(r.err).toContain(".gitea/workflows/quebrado.yml")
+    expect(r.err).toContain("NÃO fazem parsing em YAML")
+    // O workflow VÁLIDO do mesmo diretório continua julgado: a recusa é do
+    // arquivo, não do escopo inteiro.
+    expect(r.out).not.toContain("0 corpo(s) ")
+    // E o `--fix` também não remenda num arquivo que não é workflow.
+    const comFix = cli(["--root", root, "--fix"])
+    expect(comFix.code).toBe(EXIT.UNAVAILABLE)
+  })
+
+  it("ilegível (não é UTF-8) → exit 2 — o `readFileSync` antigo devolvia mojibake", () => {
+    const root = mkdtempSync(join(tmpdir(), "run-syntax-utf8-"))
+    tmpDirs.push(root)
+    mkdirSync(join(root, ".gitea", "workflows"), { recursive: true })
+    writeFileSync(
+      join(root, ".gitea", "workflows", "ilegivel.yml"),
+      Buffer.concat([
+        Buffer.from("on:\n  push:\njobs:\n  a:\n    steps:\n      - run: echo "),
+        Buffer.from([0xff, 0xfe]),
+        Buffer.from("\n"),
+      ]),
+    )
+    const r = cli(["--root", root])
+    expect(r.code).toBe(EXIT.UNAVAILABLE)
+    expect(r.err).toContain("ilegivel.yml")
+    expect(r.err).toContain("UTF-8")
   })
 })
 
@@ -671,6 +733,54 @@ describe("fixWorkflow — o remendo só é gravado quando ele MEDE o efeito", ()
     expect(cli(["--fix", "--staged"]).err).toContain("ÁRVORE")
   })
 
+  it("`dry` é PREVIEW: prevê o remendo e NÃO escreve — e a previsão é a mesma da gravação", () => {
+    // O preview existe para quem precisa da CONFIRMAÇÃO antes de tocar no arquivo
+    // (o remédio do pre-commit). Ele julga pelo MESMO caminho de decisão: o que
+    // ele promete é o que a gravação faz — senão a pergunta seria sobre outra coisa.
+    const root = tree({ ".gitea/workflows/ci.yml": SCAR_UM })
+    const caminho = join(root, ".gitea/workflows/ci.yml")
+    const antes = readFileSync(caminho, "utf8")
+    const previsto = fixAllBruto(root, { dry: true }) as {
+      fixed: (Remendo & { applied?: boolean })[]
+      refused: unknown[]
+    }
+    expect(previsto.fixed).toHaveLength(2)
+    expect(previsto.fixed.every((f) => f.applied === false)).toBe(true)
+    expect(readFileSync(caminho, "utf8")).toBe(antes) // NADA escrito
+
+    const aplicado = fixAllBruto(root) as { fixed: (Remendo & { applied?: boolean })[] }
+    expect(aplicado.fixed.map((f) => f.antes)).toEqual(previsto.fixed.map((f) => f.antes))
+    expect(aplicado.fixed.map((f) => f.depois)).toEqual(previsto.fixed.map((f) => f.depois))
+    expect(aplicado.fixed.every((f) => f.applied === true)).toBe(true)
+    expect(readFileSync(caminho, "utf8")).not.toBe(antes)
+  })
+
+  it("`dry` NÃO inventa remendável: o refusal continua refusal (nada previsto, nada escrito)", () => {
+    const root = tree({
+      ".gitea/workflows/ci.yml": [
+        "on:",
+        "  push:",
+        "jobs:",
+        "  a:",
+        "    steps:",
+        "      - run: |",
+        "          if [ -f x ]; then",
+        "            echo a",
+        "",
+      ].join("\n"),
+    })
+    const caminho = join(root, ".gitea/workflows/ci.yml")
+    const antes = readFileSync(caminho, "utf8")
+    const r = fixAllBruto(root, { dry: true }) as {
+      fixed: unknown[]
+      refused: { reason: string }[]
+    }
+    expect(r.fixed).toEqual([])
+    expect(r.refused).toHaveLength(1)
+    expect(r.refused[0]?.reason).toContain("OPERADOR PENDENTE")
+    expect(readFileSync(caminho, "utf8")).toBe(antes)
+  })
+
   it("fixAll: `fixed` e `refused` cobrem TODA falha de parsing (nenhuma some em silêncio)", () => {
     const root = tree({
       ".gitea/workflows/ci.yml": [
@@ -691,5 +801,140 @@ describe("fixWorkflow — o remendo só é gravado quando ele MEDE o efeito", ()
     const r = fixAllBruto(root) as { fixed: unknown[]; refused: unknown[] }
     expect(s.failures.length).toBe(2)
     expect(r.fixed.length + r.refused.length).toBe(s.failures.length)
+  })
+})
+
+// ── 9. A SEGUNDA fonte: os scripts de shell do repositório ────────────────
+//
+// O corpo de um passo morre no runner; um script morre no PASSO que o executa.
+// É a mesma classe de defeito e o mesmo parser — o que muda é a FONTE do texto
+// (e, por isso, a declaração do interpretador: `shell:` num passo, SHEBANG num
+// arquivo).
+
+describe("a SEGUNDA fonte — os scripts de shell, pelo mesmo `bash -n`", () => {
+  it("interpreterOf: o shebang é a DECLARAÇÃO (env desembrulhado, basename como identidade)", () => {
+    expect(interpreterOf("#!/usr/bin/env bash\necho oi\n")).toEqual({
+      raw: "#!/usr/bin/env bash",
+      command: "bash",
+      declared: true,
+    })
+    expect(interpreterOf("#!/bin/sh\n").command).toBe("sh")
+    expect(interpreterOf("#!/bin/bash -e\n").command).toBe("bash")
+    expect(interpreterOf("#!/usr/bin/env python3\n").command).toBe("python3")
+    // Sem shebang NÃO há declaração: cai na premissa do `isBashShell`, como o
+    // passo sem `shell:` cai na premissa do runner.
+    expect(interpreterOf("set -eu\necho oi\n")).toEqual({
+      raw: null,
+      command: null,
+      declared: false,
+    })
+  })
+
+  it("três desfechos, nenhum silencioso: bash JULGA, python PULA com motivo, vazio NOMEIA", () => {
+    const root = tree({
+      "scripts/bom.sh": "#!/usr/bin/env bash\necho oi\n",
+      "scripts/py.sh": "#!/usr/bin/env python3\nprint('oi')\n",
+      "scripts/vazio.sh": "",
+      ".husky/pre-commit": "set -eu\necho hook\n",
+    })
+    const c = collectShellScripts(root)
+    expect(c.files).toEqual([
+      ".husky/pre-commit",
+      "scripts/bom.sh",
+      "scripts/py.sh",
+      "scripts/vazio.sh",
+    ])
+    expect(c.scripts.map((s) => s.file)).toEqual([".husky/pre-commit", "scripts/bom.sh"])
+    // O hook do husky não tem shebang e é JULGADO (o husky o roda com `sh`):
+    // tratar "sem declaração" como "fora do escopo" seria varrer menos do que diz.
+    const hook = c.scripts.find((s) => s.file === ".husky/pre-commit")
+    expect(hook?.fonte).toBe("premissa")
+    expect(hook?.interpreter).toBe("sh")
+    expect(c.skipped.find((s) => s.file === "scripts/py.sh")?.detail).toContain("NÃO é bash")
+    expect(c.skipped.find((s) => s.file === "scripts/vazio.sh")?.detail).toContain("VAZIO")
+  })
+
+  it("o escopo é o do `listShellScripts`: node_modules e artefato de build NÃO entram", () => {
+    const root = tree({
+      "scripts/bom.sh": "#!/usr/bin/env bash\necho oi\n",
+      "node_modules/x/ruim.sh": "#!/usr/bin/env bash\nif [ -f x ]; then\n",
+      "coverage/y/ruim.sh": "#!/usr/bin/env bash\nif [ -f x ]; then\n",
+    })
+    const c = collectShellScripts(root)
+    expect(c.files).toEqual(["scripts/bom.sh"])
+    expect(scan(root).scriptFailures).toEqual([])
+  })
+
+  it("o arquivo quebrado é acusado como ARQUIVO (com o erro do bash e o interpretador)", () => {
+    const root = tree({ "scripts/quebrado.sh": "#!/usr/bin/env bash\nif [ -f x ]; then\necho a\n" })
+    const s = scan(root)
+    expect(s.failures).toEqual([])
+    expect(s.scriptFailures).toHaveLength(1)
+    expect(s.scriptFailures[0]?.file).toBe("scripts/quebrado.sh")
+    expect(s.scriptFailures[0]?.kind).toBe("erro")
+    expect(s.scriptFailures[0]?.interpreter).toBe("bash")
+    expect(s.scriptFailures[0]?.error).toContain("unexpected end of file")
+  })
+
+  it("no arquivo o AVISO também reprova (heredoc sem terminador: o bash sai 0)", () => {
+    const root = tree({ "scripts/h.sh": "#!/usr/bin/env bash\ncat <<'EOF'\n" })
+    const s = scan(root)
+    expect(s.scriptFailures).toHaveLength(1)
+    expect(s.scriptFailures[0]?.kind).toBe("aviso")
+  })
+
+  it("FAIL-CLOSED: `--staged` sem repositório git NÃO vira '0 violações'", () => {
+    const root = tree({ "scripts/bom.sh": "#!/usr/bin/env bash\necho oi\n" })
+    expect(scan(root, { staged: true }).unread.length).toBeGreaterThan(0)
+    expect(cli(["--root", root, "--staged"]).code).toBe(EXIT.UNAVAILABLE)
+  })
+
+  it("CLI: arquivo quebrado → exit 1 nomeando o ARQUIVO (a mesma classe do corpo)", () => {
+    const root = tree({ "scripts/quebrado.sh": "#!/usr/bin/env bash\nif [ -x ]; then\n" })
+    const r = cli(["--root", root])
+    expect(r.code).toBe(EXIT.VIOLATIONS)
+    expect(r.err).toContain("arquivo(s) de shell")
+    expect(r.err).toContain("scripts/quebrado.sh")
+    expect(r.err).toContain("interpretador: `bash`")
+  })
+
+  it("CLI --json: os DOIS escopos no mesmo payload (e o mesmo exit code)", () => {
+    const root = tree({
+      "scripts/bom.sh": "#!/usr/bin/env bash\necho oi\n",
+      ".husky/pre-commit": "set -eu\necho h\n",
+    })
+    const ok = cli(["--root", root, "--json"])
+    const j = JSON.parse(ok.out)
+    expect(ok.code).toBe(EXIT.OK)
+    expect(j.arquivosDeShell).toEqual([".husky/pre-commit", "scripts/bom.sh"])
+    expect(j.scripts).toBe(2)
+    expect(j.scriptFailures).toEqual([])
+  })
+
+  it("`--fix` RECUSA remendar arquivo de shell — e NÃO toca no arquivo", () => {
+    const root = tree({ "scripts/quebrado.sh": "#!/usr/bin/env bash\nif [ -x ]; then\n" })
+    const alvo = join(root, "scripts/quebrado.sh")
+    const antes = readFileSync(alvo, "utf8")
+    const r = cli(["--root", root, "--fix"])
+    // Recusa é VEREDITO, não sucesso: um "✓" aqui esconderia um script quebrado.
+    expect(r.code).toBe(EXIT.VIOLATIONS)
+    expect(r.err).toContain("NÃO remendado")
+    expect(r.err).toContain("arquivo de shell")
+    expect(readFileSync(alvo, "utf8")).toBe(antes)
+  })
+
+  it("o repositório real: TODO script de shell versionado faz parsing (sem allowlist)", () => {
+    const { shellFiles, shellScripts, scriptSkipped, scriptFailures } = scan(ROOT, {
+      bash: DEFAULT_BASH,
+    })
+    expect(scriptFailures).toEqual([])
+    expect(scriptSkipped).toEqual([])
+    // A lista do `listShellScripts` é a MESMA da varredura do SIGPIPE: os
+    // `*.sh` e os hooks do `.husky/` (sem extensão, e ainda assim shell).
+    expect(shellScripts.length).toBe(shellFiles.length)
+    expect(shellFiles).toContain("scripts/check-utf8.sh")
+    expect(shellFiles).toContain(".husky/pre-commit")
+    // Um piso que também pega o gate "verde por não ter varrido nada".
+    expect(shellFiles.length).toBeGreaterThan(100)
   })
 })

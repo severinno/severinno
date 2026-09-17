@@ -145,6 +145,11 @@ jobs:
       # quebrado continua sendo um `run:` válido. `bash -n` faz o PARSING sem
       # executar nada — o gate é o parsing, não a semântica; um passo com
       # `shell:` não-bash é contado e NOMEADO (nunca pulado em silêncio).
+      # A SEGUNDA fonte é a mesma classe de defeito um passo adiante: os SCRIPTS
+      # DE SHELL versionados (`*.sh`/`*.bash` + hooks do `.husky/`, a lista do
+      # check:pipefail-sigpipe) morrem no PASSO que os executa (`bash x.sh`),
+      # depois do setup e longe da causa. Os dois escopos são o MESMO parser, o
+      # MESMO relatório e o MESMO exit code (um comando, não dois).
       - name: Workflow run syntax (bash -n)
         run: node scripts/check-workflow-run-syntax.mjs
 

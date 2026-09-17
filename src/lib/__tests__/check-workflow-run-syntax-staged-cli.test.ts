@@ -220,8 +220,43 @@ describe("--staged — o recorte julga o ÍNDICE (o commit), não a árvore", ()
 
     const r = cli(dir)
     expect(r.status).toBe(EXIT.OK)
-    expect(r.out).toContain("nenhum workflow no ÍNDICE")
-    expect(r.out).toContain("0 workflow(s) do commit")
+    expect(r.out).toContain("nenhum workflow NEM script no ÍNDICE")
+    expect(r.out).toContain("0 workflow(s) + 0 script(s) do commit")
+  })
+
+  it("script de shell quebrado NO ÍNDICE reprova o recorte (a segunda fonte entra no commit)", () => {
+    const dir = makeRepo()
+    writeWorkflow(dir, "scripts/quebrado.sh", "#!/usr/bin/env bash\nif [ -f x ]; then\n")
+    stage(dir, "scripts/quebrado.sh")
+
+    const r = cli(dir)
+    expect(r.status).toBe(EXIT.VIOLATIONS)
+    expect(r.err).toContain("scripts/quebrado.sh")
+    expect(r.err).toContain("interpretador: `bash`")
+  })
+
+  it("o hook do `.husky/` (SEM extensão) também é julgado — o recorte usa o mesmo `isShellScript`", () => {
+    const dir = makeRepo()
+    writeWorkflow(dir, ".husky/pre-commit", "set -eu\nif [ -f x ]; then\n")
+    stage(dir, ".husky/pre-commit")
+
+    const r = cli(dir)
+    expect(r.status).toBe(EXIT.VIOLATIONS)
+    expect(r.err).toContain(".husky/pre-commit")
+    // E o `fonte` DIZ de onde veio a declaração: o hook não tem shebang, então a
+    // premissa é a de quem o executa — nunca "fora do escopo" em silêncio.
+    expect(r.err).toContain("premissa")
+  })
+
+  it("um `.sh` com shebang de OUTRA linguagem é PULADO e NOMEADO (o gate não julga o que não é bash)", () => {
+    const dir = makeRepo()
+    writeWorkflow(dir, "scripts/nao-bash.sh", "#!/usr/bin/env python3\nprint(1)\n")
+    stage(dir, "scripts/nao-bash.sh")
+
+    const r = cli(dir)
+    expect(r.status).toBe(EXIT.OK)
+    expect(r.out).toContain("fora do parsing")
+    expect(r.out).toContain("scripts/nao-bash.sh")
   })
 
   it("um YAML fora de diretório de forja NÃO entra na varredura do recorte", () => {
@@ -231,7 +266,19 @@ describe("--staged — o recorte julga o ÍNDICE (o commit), não a árvore", ()
 
     const r = cli(dir)
     expect(r.status).toBe(EXIT.OK)
-    expect(r.out).toContain("0 workflow(s) do commit")
+    expect(r.out).toContain("0 workflow(s) + 0 script(s) do commit")
+  })
+
+  it("um `.sh` quebrado só NA ÁRVORE não reprova o recorte (o escopo é o índice)", () => {
+    const dir = makeRepo()
+    writeWorkflow(dir, "scripts/bom.sh", "#!/usr/bin/env bash\necho oi\n")
+    stage(dir, "scripts/bom.sh")
+    // O defeito passa a existir SÓ no working tree: não é deste commit.
+    writeWorkflow(dir, "scripts/bom.sh", "#!/usr/bin/env bash\nif [ -f x ]; then\n")
+
+    expect(cli(dir).status).toBe(EXIT.OK)
+    // A contraprova: o gate da ÁRVORE reprova o mesmo repositório (escopo, não cegueira).
+    expect(cli(dir, [], false).status).toBe(EXIT.VIOLATIONS)
   })
 
   it("fora de um repositório git → exit 2 (fail-closed: sem índice não há recorte)", () => {

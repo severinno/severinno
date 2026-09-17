@@ -58,7 +58,7 @@
 //      reescrita mecânica em massa acontece antes de commitar) e a árvore de
 //      trabalho pode carregar WIP que NÃO faz parte dele. Um defeito que só
 //      exista no working tree não é deste commit — e a varredura inteira (os
-//      480 corpos das duas forjas) continua sendo o veredito do CI. Sem
+//      482 corpos das duas forjas) continua sendo o veredito do CI. Sem
 //      git/índice o modo é FAIL-CLOSED (exit 2): "0 violações" sem ter lido o
 //      índice seria a mesma mentira de um gate que varre menos do que diz.
 //   8. o SHELL declarado é julgado contra o que o RUNNER tem — a única coisa que
@@ -91,32 +91,55 @@
 //      arquivo não é a linha do corpo; operador que não é cicatriz — `then` sem
 //      `fi`: a intenção não é reconstruível dali). Ele NUNCA reconstrói uma linha
 //      engolida — tira a cicatriz que impedia o parsing e diz que o diff é o que
-//      se revisa.
+//      se revisa. O MESMO fixer atende o pre-commit pelo
+//      `pre-commit-run-syntax-remedy.mjs`, que o usa em modo PREVIEW (`fixAll`
+//      com `dry`: nada é gravado) antes de perguntar e só então grava — o
+//      preview decide pelo MESMO caminho, senão prometeria um remendo que a
+//      gravação recusaria.
 //
-// SEM ALLOWLIST: o repositório inteiro passa em `bash -n` hoje (480 corpos, os
-// dois diretórios de forja). Um gate que nasce absoluto não tem cota para
-// envelhecer — e uma cota aqui significaria declarar que um corpo quebrado pode
-// ficar quebrado.
+//  10. o MESMO parser julga a SEGUNDA fonte de shell do repositório: os SCRIPTS
+//      VERSIONADOS (`*.sh`, `*.bash` e os hooks sem extensão do `.husky/`), pela
+//      MESMA lista que o `check:pipefail-sigpipe` usa (`listShellScripts`) — o
+//      que é "script do repositório" tem UMA definição, não duas. O motivo é o
+//      mesmo dos corpos: o corpo de um passo morre no runner; um script morre no
+//      PASSO que o executa (`bash scripts/x.sh`), depois do setup e longe da
+//      causa. Três diferenças DELIBERADAS em relação aos corpos:
+//      (a) o ARQUIVO INTEIRO é o corpo, então NÃO há mascaramento de `${{ ... }}`:
+//      num script não existe runner para resolvê-la ANTES do bash — o texto vai
+//      ao interpretador como está, e a máscara julgaria um texto que não existe
+//      no arquivo (os `${{ }}` que há em `.sh` hoje estão em comentário e dentro
+//      de quote simples, onde são DADO; medido: os 124 passam sem máscara); (b) o
+//      interpretador é o que o SHEBANG declara, não um `shell:` de YAML — shebang
+//      bash/sh é julgado (o mesmo `isBashShell`), shebang de outra linguagem é
+//      PULADO com o motivo dito, e arquivo SEM shebang usa a premissa de quem o
+//      executa (`sh`, como o husky roda os hooks); (c) arquivo VAZIO não é
+//      sintaxe a julgar (nada executa) e sai nomeado, como o corpo vazio.
+//
+// SEM ALLOWLIST: o repositório inteiro passa em `bash -n` hoje — 482 corpos das
+// duas forjas e os 124 scripts de shell que o `listShellScripts` enumera (121
+// `*.sh` + os 3 hooks do `.husky/`), todos sem ERRO e sem AVISO. Um gate que
+// nasce absoluto não tem cota para envelhecer — e uma cota aqui significaria
+// declarar que um corpo quebrado pode ficar quebrado.
 //
 // Usage:
 //   node scripts/check-workflow-run-syntax.mjs              # o gate
-//   node scripts/check-workflow-run-syntax.mjs --staged     # só os workflows do ÍNDICE (pre-commit)
+//   node scripts/check-workflow-run-syntax.mjs --staged     # só o que o ÍNDICE tem (workflows + scripts)
 //   node scripts/check-workflow-run-syntax.mjs --fix        # REMENDA a cicatriz mecânica (LOCAL)
 //   node scripts/check-workflow-run-syntax.mjs --shells     # o que a imagem do runner tem, e a prova
 //   node scripts/check-workflow-run-syntax.mjs --json       # saída estruturada
-//   node scripts/check-workflow-run-syntax.mjs --list       # só os corpos varridos
+//   node scripts/check-workflow-run-syntax.mjs --list       # só o que foi varrido (corpos e arquivos)
 //   node scripts/check-workflow-run-syntax.mjs --root X     # fixture (testes)
 //   node scripts/check-workflow-run-syntax.mjs --bash /bin/bash  # outro interpretador
 //
 // Exit codes:
-//   0 — todo corpo `run:` passa em `bash -n` sem erro E sem aviso (os passos
-//       não-bash são contados e nomeados) e todo `shell:` declarado existe no
-//       runner medido
-//   1 — violação: o corpo de um passo não faz parsing, OU o parser emitiu aviso
-//       (com a mensagem do bash, o arquivo e a linha do passo), OU o passo
-//       declara um `shell:` que o runner não tem
+//   0 — todo corpo `run:` E todo script de shell passam em `bash -n` sem erro E
+//       sem aviso (os passos não-bash e os scripts de shebang não-bash são
+//       contados e nomeados) e todo `shell:` declarado existe no runner medido
+//   1 — violação: o corpo de um passo OU um arquivo de shell não faz parsing, OU
+//       o parser emitiu aviso (com a mensagem do bash, o arquivo e a linha do
+//       passo), OU o passo declara um `shell:` que o runner não tem
 //   2 — infra: `bash` não pôde ser executado, `--root` inexistente, `--staged`
-//       sem índice git (fora de um repositório), ou um workflow não pôde ser
+//       sem índice git (fora de um repositório), ou um arquivo não pôde ser
 //       lido (fail-closed: sem medição não há veredito — nunca "0 violações" por
 //       não ter conseguido rodar)
 //   3 — uso inválido (flag desconhecida, `--root`/`--bash` sem valor, `--fix`
@@ -130,9 +153,20 @@ import { join, resolve } from "node:path"
 import process from "node:process"
 import { pathToFileURL } from "node:url"
 
-import { workflowDefaultShells, workflowRunSteps } from "./check-pipefail-sigpipe.mjs"
+import {
+  isShellScript,
+  listShellScripts,
+  workflowDefaultShells,
+  workflowRunSteps,
+} from "./check-pipefail-sigpipe.mjs"
 import { resolveImageRef } from "./ensure-runner-image.mjs"
-import { allWorkflowFiles, isForgeWorkflowPath } from "./forge-workflows.mjs"
+import {
+  DYNAMIC_EXPR_RE,
+  allWorkflowFiles,
+  isForgeWorkflowPath,
+  readJudgedFile,
+  workflowYamlValidity,
+} from "./forge-workflows.mjs"
 
 /** Exit codes — o contrato da CLI. */
 export const EXIT = {
@@ -162,7 +196,12 @@ export const DEFAULT_BASH = "bash"
  * @returns {string}
  */
 export function maskExpressions(text) {
-  return String(text ?? "").replace(/\$\{\{[^}]*\}\}/g, "EXPRESSAO")
+  // O PADRAO da expressao dinamica vem da fonte unica (`DYNAMIC_EXPR_RE`). O
+  // que muda aqui e a INTENCAO: remover (`executableLine`) deixa a linha como o
+  // shell a veria; MASCARAR com um placeholder preserva a linha para o `bash -n`
+  // (um `${{ }}` cru no meio de um comando viraria erro de sintaxe do bash, e o
+  // gate acusaria o autor por uma expressao do runner).
+  return String(text ?? "").replace(DYNAMIC_EXPR_RE, "EXPRESSAO")
 }
 
 /**
@@ -359,15 +398,27 @@ export function mendBody(body) {
  *      DESFEITA se o corpo no disco não passar. Um remendo que não mede o efeito
  *      é o jeito mais fácil de o arquivo mentir.
  *
+ * `dry` é o PREVIEW: devolve `fixed: true, applied: false` sem tocar no arquivo.
+ * Ele prova tudo o que (1) e (2) provam em memória — é o que um chamador que
+ * precisa da CONFIRMAÇÃO do operador antes de gravar (o remédio do pre-commit)
+ * mostra. Julgar o preview por outra régua prometeria um remendo que a gravação
+ * recusaria; por isso o caminho de decisão é este, o mesmo.
+ *
  * @param {string} root
  * @param {{file: string, line: number, bodyEndLine: number, body: string}} failure
- * @param {{bash?: string, run?: Function, write?: Function, read?: Function}} [deps]
- * @returns {{fixed: boolean, reason?: string, operador?: string, antes?: string, depois?: string}}
+ * @param {{bash?: string, run?: Function, write?: Function, read?: Function, dry?: boolean}} [deps]
+ * @returns {{fixed: boolean, applied?: boolean, reason?: string, operador?: string, antes?: string, depois?: string}}
  */
 export function fixWorkflow(
   root,
   failure,
-  { bash = DEFAULT_BASH, run = spawnSync, write = writeFileSync, read = readFileSync } = {},
+  {
+    bash = DEFAULT_BASH,
+    run = spawnSync,
+    write = writeFileSync,
+    read = readFileSync,
+    dry = false,
+  } = {},
 ) {
   const abs = join(root, failure.file)
   let conteudo
@@ -430,6 +481,14 @@ export function fixWorkflow(
     }
   }
 
+  // (2b) PREVIEW: sem gravar, o remendo está provado até onde se pode provar em
+  // memória (o alvo existe, é bloco literal, a linha é a do corpo, o corpo
+  // remendado faz parsing). O que falta — a releitura do disco — é exatamente o
+  // que só a gravação pode medir, e é por isso que ela não é pulada depois.
+  if (dry) {
+    return { fixed: true, applied: false, operador: m.operador, antes: m.antes, depois: m.depois }
+  }
+
   // (3) grava e RE-MEDE no disco; desfaz se o disco não passar.
   const antes = conteudo
   linhas[idx] = alvo.replace(PENDING_OPERATOR, "").replace(/\s+$/, "")
@@ -458,7 +517,7 @@ export function fixWorkflow(
         `gravação DESFEITA (o arquivo está como estava)`,
     }
   }
-  return { fixed: true, operador: m.operador, antes: m.antes, depois: m.depois }
+  return { fixed: true, applied: true, operador: m.operador, antes: m.antes, depois: m.depois }
 }
 
 /**
@@ -491,12 +550,12 @@ function gitFailureDetail(r) {
 }
 
 /**
- * Os workflows com conteúdo no ÍNDICE, em ordem.
+ * Os caminhos com conteúdo no ÍNDICE, em ordem — a lista crua do `--staged`.
  *
- * `--diff-filter=ACMR` de propósito: um workflow DELETADO não tem corpo a
- * julgar — o que entra no commit é o que entra na varredura. O filtro é de
- * caminho de forja (`isForgeWorkflowPath`, a fonte única): um YAML qualquer
- * staged não é um workflow, e julgar o que não é workflow seria ruído no commit.
+ * `--diff-filter=ACMR` de propósito: um arquivo DELETADO não tem corpo a julgar
+ * — o que entra no commit é o que entra na varredura. Os DOIS filtros de escopo
+ * (workflow de forja e script de shell) são aplicados sobre esta lista, para o
+ * recorte não virar uma segunda régua do que é um arquivo.
  *
  * LANÇA quando o git não responde (fora de repositório, git ausente, índice
  * ilegível): o caller transforma em exit 2. Um recorte que não conseguiu ler o
@@ -505,15 +564,39 @@ function gitFailureDetail(r) {
  * @param {string} root
  * @returns {string[]}
  */
-export function stagedWorkflowPaths(root) {
+export function stagedPaths(root) {
   const r = runGit(root, ["diff", "--cached", "--name-only", "--diff-filter=ACMR"])
   if (r.error || r.status !== 0) {
     throw new Error(`git diff --cached indisponível (${gitFailureDetail(r)})`)
   }
   return String(r.stdout ?? "")
     .split(/\r?\n/)
-    .filter((p) => isForgeWorkflowPath(p))
+    .filter((p) => p !== "")
     .sort()
+}
+
+/**
+ * Os WORKFLOWS no ÍNDICE. O filtro é de caminho de forja (`isForgeWorkflowPath`,
+ * a fonte única): um YAML qualquer staged não é um workflow, e julgar o que não
+ * é workflow seria ruído no commit.
+ *
+ * @param {string} root
+ * @returns {string[]}
+ */
+export function stagedWorkflowPaths(root) {
+  return stagedPaths(root).filter((p) => isForgeWorkflowPath(p))
+}
+
+/**
+ * Os SCRIPTS DE SHELL no ÍNDICE. O filtro é o `isShellScript` da varredura
+ * inteira (`*.sh`/`*.bash` + os hooks do `.husky/`): o recorte do pre-commit vê
+ * exatamente a mesma definição de "script do repositório" que o CI.
+ *
+ * @param {string} root
+ * @returns {string[]}
+ */
+export function stagedShellScriptPaths(root) {
+  return stagedPaths(root).filter((p) => isShellScript(p))
 }
 
 /**
@@ -537,6 +620,109 @@ export function readIndexFile(root, path) {
 }
 
 /**
+ * O INTERPRETADOR que o SHEBANG declara — a fonte única do "é bash?" de um
+ * arquivo (o análogo do `shell:` de um passo, que não existe num arquivo).
+ *
+ * A forma do repositório é `#!/usr/bin/env <prog>` ou `#!<caminho>/<prog>`; o
+ * `env` é desembrulhado porque quem o kernel executa depois dele é o PROGRAMA, e
+ * é ele que decide se o `bash -n` julga o arquivo. O `command` é o basename
+ * (mesma identidade que o `shellCommandOf` usa).
+ *
+ * LIMITE DECLARADO: opções do `env` que consomem valor (`-u FOO`, `-i`) não são
+ * interpretadas — não há nenhuma no repositório, e adivinhar ali seria pior que
+ * dizer o limite. Sem shebang, `command` é `null` e o arquivo cai na PREMISSA do
+ * `isBashShell` (como o passo sem `shell:` cai na premissa do runner).
+ *
+ * @param {string} content
+ * @returns {{raw: string|null, command: string|null, declared: boolean}}
+ */
+export function interpreterOf(content) {
+  const primeira = String(content ?? "").split(/\r?\n/, 1)[0] ?? ""
+  const m = primeira.match(/^#!\s*(\S+)(?:\s+(.*))?$/)
+  if (!m) return { raw: null, command: null, declared: false }
+  let prog = m[1]
+  const resto = (m[2] ?? "").trim()
+  if (/(^|\/)env$/.test(prog)) {
+    prog = resto.split(/\s+/).filter((p) => p !== "" && !p.startsWith("-"))[0] ?? ""
+  }
+  const command = prog === "" ? null : (prog.split("/").pop() ?? prog)
+  return { raw: primeira.trim(), command, declared: true }
+}
+
+/**
+ * Os SCRIPTS DE SHELL que o repositório versiona, com o desfecho de cada um.
+ *
+ * A LISTA vem de `listShellScripts` — a MESMA do `check:pipefail-sigpipe`: o que
+ * é "script do repositório" (`*.sh`, `*.bash`, os hooks sem extensão do
+ * `.husky/`) tem UMA definição, e a varredura que a usa já nasceu escopada (não
+ * desce em `node_modules`, artefato de build nem no runtime interno do husky).
+ * Com `staged`, a lista E o conteúdo vêm do ÍNDICE, como os workflows.
+ *
+ * Três desfechos, e NENHUM é silencioso:
+ *   · JULGADO — o interpretador declarado (ou a premissa, quando não há shebang)
+ *     é bash/sh: o arquivo INTEIRO vai ao `bash -n`;
+ *   · PULADO — shebang de outra linguagem, com o motivo DITO (o gate não julga o
+ *     que não é bash, e um script de `python3` com nome `.sh` não é esta classe);
+ *   · VAZIO — nomeado: nada executa, então não há sintaxe a julgar.
+ *
+ * @param {string} root
+ * @param {{staged?: boolean}} [opts]
+ * @returns {{files: string[], scripts: object[], skipped: object[], unread: object[]}}
+ */
+export function collectShellScripts(root, { staged = false } = {}) {
+  const files = []
+  const scripts = []
+  const skipped = []
+  const unread = []
+  let lista
+  try {
+    lista = staged ? stagedShellScriptPaths(root) : listShellScripts(root)
+  } catch (err) {
+    return {
+      files,
+      scripts,
+      skipped,
+      unread: [{ file: root, detail: String(err?.message ?? err) }],
+    }
+  }
+  for (const rel of lista) {
+    files.push(rel)
+    let conteudo
+    try {
+      // `readJudgedFile` (a leitura fail-closed do repositório) no lugar do
+      // `readFileSync(..., "utf8")`: o segundo NÃO falha com byte inválido — ele
+      // o troca por U+FFFD, e o arquivo entrava no `bash -n` como mojibake. Um
+      // script cujo texto ninguém escreveu não é "um script que faz parsing".
+      conteudo = staged ? readIndexFile(root, rel) : readJudgedFile(join(root, rel), rel)
+    } catch (err) {
+      unread.push({ file: rel, detail: err?.motivo ?? String(err?.message ?? err) })
+      continue
+    }
+    if (conteudo.trim() === "") {
+      skipped.push({ file: rel, detail: "arquivo VAZIO — nada executa, nada a julgar" })
+      continue
+    }
+    const interp = interpreterOf(conteudo)
+    if (!isBashShell(interp.command)) {
+      skipped.push({
+        file: rel,
+        detail:
+          `shebang \`${interp.raw}\` — \`${interp.command}\` NÃO é bash, e o \`bash -n\` não julga o ` +
+          `que não é bash (a declaração do ARQUIVO é a fonte, como o \`shell:\` de um passo)`,
+      })
+      continue
+    }
+    scripts.push({
+      file: rel,
+      body: conteudo,
+      interpreter: interp.command ?? "sh",
+      fonte: interp.declared ? "shebang" : "premissa",
+    })
+  }
+  return { files, scripts, skipped, unread }
+}
+
+/**
  * TODOS os corpos `run:` das duas forjas, com o arquivo e a linha do passo.
  *
  * A leitura vem de `workflowRunSteps` (a mesma do `check-pipefail-sigpipe` e do
@@ -554,7 +740,7 @@ export function readIndexFile(root, path) {
  *
  * @param {string} root
  * @param {{staged?: boolean}} [opts]
- * @returns {{files: string[], steps: object[], skipped: object[], indeterminate: object[], shellFailures: object[], unread: object[]}}
+ * @returns {{files: string[], steps: object[], skipped: object[], indeterminate: object[], shellFailures: object[], unread: object[], yamlInvalido: object[]}}
  */
 export function collectRunBodies(root, { staged = false } = {}) {
   const files = []
@@ -563,6 +749,14 @@ export function collectRunBodies(root, { staged = false } = {}) {
   const indeterminate = []
   const shellFailures = []
   const unread = []
+  /**
+   * Os workflows que EXISTEM e não fazem parsing em YAML — o segundo jeito de
+   * "não consegui julgar". Eles são SEPARADOS do `unread` porque o motivo é
+   * outro (o texto foi lido inteiro), e a mensagem de cada um tem de dizer a
+   * classe certa: um YAML inválido não é um arquivo ilegível.
+   * @type {{file: string, detail: string}[]}
+   */
+  const yamlInvalido = []
   let arquivos
   try {
     arquivos = staged ? stagedWorkflowPaths(root).map((path) => ({ path })) : allWorkflowFiles(root)
@@ -574,15 +768,25 @@ export function collectRunBodies(root, { staged = false } = {}) {
       indeterminate,
       shellFailures,
       unread: [{ file: root, detail: String(err?.message ?? err) }],
+      yamlInvalido,
     }
   }
   for (const w of arquivos) {
     files.push(w.path)
     let conteudo
     try {
-      conteudo = staged ? readIndexFile(root, w.path) : readFileSync(join(root, w.path), "utf8")
+      conteudo = staged ? readIndexFile(root, w.path) : readJudgedFile(join(root, w.path), w.path)
     } catch (err) {
-      unread.push({ file: w.path, detail: String(err?.message ?? err) })
+      unread.push({ file: w.path, detail: err?.motivo ?? String(err?.message ?? err) })
+      continue
+    }
+    // O YAML inválido é a MESMA classe do ilegível, por outra porta: as linhas
+    // existem, mas nenhum passo delas chega ao runner — então `bash -n` sobre
+    // elas não mede nada. Declarado, nunca presumido: um workflow que não é
+    // workflow não pode sair do gate como "0 corpos reprovados".
+    const yaml = workflowYamlValidity(conteudo)
+    if (!yaml.ok) {
+      yamlInvalido.push({ file: w.path, detail: yaml.motivo })
       continue
     }
     const defaults = workflowDefaultShells(conteudo)
@@ -642,7 +846,7 @@ export function collectRunBodies(root, { staged = false } = {}) {
       })
     }
   }
-  return { files, steps, skipped, indeterminate, shellFailures, unread }
+  return { files, steps, skipped, indeterminate, shellFailures, unread, yamlInvalido }
 }
 
 /**
@@ -689,12 +893,26 @@ export function checkBody(body, { bash = DEFAULT_BASH, run = spawnSync } = {}) {
   }
 }
 
-/** A varredura inteira: coleta + `bash -n` em cada corpo. */
+/**
+ * A varredura inteira: coleta + `bash -n` em cada corpo E em cada script.
+ *
+ * Duas fontes, UM parser e UM veredito. O que MUDA entre elas é o texto julgado,
+ * e a diferença é a razão de a máscara existir de um lado e não do outro:
+ *   · corpo `run:` — vai MASCARADO (`${{ ... }}` é resolvido pelo runner ANTES de
+ *     o bash existir; julgar as chaves seria julgar texto que nunca chega lá);
+ *   · arquivo de shell — vai CRU (não há runner entre o arquivo e o bash: o texto
+ *     que o interpretador recebe é o DO ARQUIVO, byte a byte).
+ *
+ * O exit code e o relatório SOMAM as duas: um script quebrado é a mesma classe
+ * que um corpo quebrado, e separá-los em dois vereditos deixaria o CI verde por
+ * metade.
+ */
 export function scan(root, { bash = DEFAULT_BASH, run = spawnSync, staged = false } = {}) {
-  const { files, steps, skipped, indeterminate, shellFailures, unread } = collectRunBodies(root, {
-    staged,
-  })
+  const { files, steps, skipped, indeterminate, shellFailures, unread, yamlInvalido } =
+    collectRunBodies(root, { staged })
+  const arquivos = collectShellScripts(root, { staged })
   const failures = []
+  const scriptFailures = []
   let indisponivel = null
   for (const step of steps) {
     const r = checkBody(maskExpressions(step.body), { bash, run })
@@ -704,7 +922,31 @@ export function scan(root, { bash = DEFAULT_BASH, run = spawnSync, staged = fals
     }
     if (!r.ok) failures.push({ ...step, kind: r.kind ?? "erro", error: r.detail })
   }
-  return { files, steps, skipped, indeterminate, shellFailures, unread, failures, indisponivel }
+  if (!indisponivel) {
+    for (const script of arquivos.scripts) {
+      const r = checkBody(script.body, { bash, run })
+      if (r.unavailable) {
+        indisponivel = r.detail
+        break
+      }
+      if (!r.ok) scriptFailures.push({ ...script, kind: r.kind ?? "erro", error: r.detail })
+    }
+  }
+  return {
+    files,
+    steps,
+    skipped,
+    indeterminate,
+    shellFailures,
+    unread: [...unread, ...arquivos.unread],
+    yamlInvalido,
+    shellFiles: arquivos.files,
+    shellScripts: arquivos.scripts,
+    scriptSkipped: arquivos.skipped,
+    failures,
+    scriptFailures,
+    indisponivel,
+  }
 }
 
 const USAGE = `check-workflow-run-syntax — todo corpo \`run:\` dos workflows faz parsing em \`bash -n\`,
@@ -712,22 +954,24 @@ e todo \`shell:\` declarado existe no runner medido
 
 Usage:
   node scripts/check-workflow-run-syntax.mjs              # o gate
-  node scripts/check-workflow-run-syntax.mjs --staged     # só os workflows do ÍNDICE (pre-commit)
+  node scripts/check-workflow-run-syntax.mjs --staged     # só o que o ÍNDICE tem (workflows + scripts)
   node scripts/check-workflow-run-syntax.mjs --fix        # REMENDA a cicatriz mecânica (LOCAL)
   node scripts/check-workflow-run-syntax.mjs --shells     # o que a imagem do runner tem, e a prova
   node scripts/check-workflow-run-syntax.mjs --json       # saída estruturada
-  node scripts/check-workflow-run-syntax.mjs --list       # só os corpos varridos
+  node scripts/check-workflow-run-syntax.mjs --list       # só o que foi varrido (corpos e arquivos)
   node scripts/check-workflow-run-syntax.mjs --root X     # fixture (testes)
   node scripts/check-workflow-run-syntax.mjs --bash CMD   # outro interpretador
 
 Exit codes:
-  0 — todo corpo passa SEM erro e SEM aviso; os passos não-bash saem NOMEADOS e
-      os de shell fora da medição saem como INDETERMINADO
-  1 — violação: um corpo não faz parsing (erro) ou o parser avisou (ex.: heredoc
-      sem terminador, que o bash reporta como AVISO e sai 0), OU um passo declara
-      um \`shell:\` que o runner NÃO tem (\`command not found\` no meio do job)
+  0 — todo corpo de passo E todo script de shell passam SEM erro e SEM aviso; os
+      passos não-bash saem NOMEADOS, os scripts de shebang não-bash também, e os
+      de shell fora da medição saem como INDETERMINADO
+  1 — violação: um corpo OU um script não faz parsing (erro), ou o parser avisou
+      (ex.: heredoc sem terminador, que o bash reporta como AVISO e sai 0), OU um
+      passo declara um \`shell:\` que o runner NÃO tem (\`command not found\`)
   2 — infra: bash não executou, --root inexistente, --staged fora de um repo
-      git (sem índice não há recorte), ou workflow ilegível
+      git (sem índice não há recorte), arquivo ilegível, ou workflow que NÃO faz
+      parsing em YAML (um arquivo que não é workflow não tem corpo a julgar)
   3 — uso inválido (\`--fix\` com \`--staged\`/\`--json\`, flag desconhecida,
       \`--root\`/\`--bash\` sem valor)
 `
@@ -763,17 +1007,45 @@ export function printShells(log = console.log, env = process.env) {
  * `fixed` e `refused` são disjuntos e cobrem TODA falha de parsing: um fixer que
  * não remenda em silêncio seria o pior dos dois mundos.
  *
+ * `staged` escolhe a FONTE das falhas: por padrão a ÁRVORE (o `--fix` da CLI),
+ * e com `staged` os corpos que falham no ÍNDICE — que é o conjunto do remédio do
+ * pre-commit (`pre-commit-run-syntax-remedy.mjs`): o alvo é desbloquear o COMMIT,
+ * e o commit carrega o índice. A falha vem do índice e o arquivo remendado é o da
+ * árvore: quando os dois divergem, o `fixWorkflow` recusa sozinho (a linha do
+ * arquivo não é a do corpo) em vez de gravar na linha errada.
+ *
+ * `dry` repassa o PREVIEW ao `fixWorkflow` (nada é gravado).
+ *
  * @param {string} root
- * @param {{bash?: string, run?: Function, write?: Function, read?: Function}} [deps]
+ * @param {{bash?: string, run?: Function, write?: Function, read?: Function, staged?: boolean, dry?: boolean}} [deps]
  */
-export function fixAll(root, { bash = DEFAULT_BASH, run = spawnSync, write, read } = {}) {
-  const resultado = scan(root, { bash, run })
+export function fixAll(
+  root,
+  { bash = DEFAULT_BASH, run = spawnSync, write, read, staged = false, dry = false } = {},
+) {
+  const resultado = scan(root, { bash, run, staged })
   const fixed = []
   const refused = []
   for (const f of resultado.failures) {
-    const r = fixWorkflow(root, f, { bash, run, write, read })
+    const r = fixWorkflow(root, f, { bash, run, write, read, dry })
     if (r.fixed) fixed.push({ ...f, ...r })
     else refused.push({ ...f, ...r })
+  }
+  // Os ARQUIVOS DE SHELL não são remendados por este fixer, e o motivo é
+  // ESCRITO em vez de omitido: a cicatriz que ele conhece é "uma linha, ancorada
+  // no bloco `run: |`" — um modelo de WORKFLOW. Num arquivo a reescrita pode ter
+  // engolido QUALQUER linha, e remendar a última sem ver a causa inventaria
+  // intenção. A recusa é veredito (exit 1): um "✓" aqui esconderia um script
+  // quebrado que o operador acharia ter consertado.
+  for (const f of resultado.scriptFailures) {
+    refused.push({
+      ...f,
+      fixed: false,
+      reason:
+        "arquivo de shell: este fixer remenda UMA linha ancorada no bloco `run: |` (linha + " +
+        "corpo). Num arquivo, a reescrita pode ter engolido QUALQUER linha, e remendar a " +
+        "última sem ver a causa inventaria intenção — remende à mão (o diff é o que se revisa)",
+    })
   }
   return { ...resultado, fixed, refused }
 }
@@ -848,15 +1120,28 @@ function main() {
     const r = fixAll(root, { bash })
     if (r.indisponivel) {
       console.error(
-        `❌ ${r.indisponivel}\n   Sem interpretador não há parsing: nenhum corpo foi julgado.`,
+        `❌ ${r.indisponivel}\n   Sem interpretador não há parsing: nenhum corpo NEM arquivo foi julgado.`,
       )
       process.exit(EXIT.UNAVAILABLE)
     }
     if (r.unread.length > 0) {
       console.error(
-        `❌ workflow(s) ILEGÍVEL(is) — não ler um corpo não é o mesmo que ele ser válido:`,
+        `❌ arquivo(s) ILEGÍVEL(is) — não ler um corpo/script não é o mesmo que ele ser válido:`,
       )
       for (const u of r.unread) console.error(`     ${u.file}: ${u.detail}`)
+      process.exit(EXIT.UNAVAILABLE)
+    }
+    // YAML inválido TRAVA o `--fix` antes de remendar: a cicatriz que ele
+    // remenda é a ÚLTIMA linha de um bloco `run: |`, e o bloco de um arquivo que
+    // não é workflow tem linha e corpo que o parser do YAML nunca entregaria ao
+    // runner. Remendar ali gravaria texto num arquivo que nenhum gate julga — e
+    // o "✓" esconderia exatamente isso.
+    if (r.yamlInvalido.length > 0) {
+      console.error(
+        `❌ workflow(s) que NÃO fazem parsing em YAML — não há corpo de ` +
+          "`run:` a remendar num arquivo que não é workflow:",
+      )
+      for (const y of r.yamlInvalido) console.error(`     ${y.file}: ${y.detail}`)
       process.exit(EXIT.UNAVAILABLE)
     }
     for (const f of r.fixed) {
@@ -870,8 +1155,14 @@ function main() {
       console.error(`✖ ${f.file}:${f.line} — ${f.error}`)
     }
     for (const f of r.refused) {
-      console.error(`⛔ ${f.file}:${f.line} — NÃO remendado: ${f.reason}`)
-      console.error(`     ${String(f.body).split("\n").pop()?.slice(0, 120) ?? ""}`)
+      console.error(`⛔ ${f.line ? `${f.file}:${f.line}` : f.file} — NÃO remendado: ${f.reason}`)
+      // A última linha COM CONTEÚDO: num arquivo inteiro a última linha costuma
+      // ser vazia, e imprimir o vazio não mostra a linha que o bash apontou.
+      const ultima = String(f.body)
+        .split("\n")
+        .filter((l) => l.trim() !== "")
+        .pop()
+      console.error(`     ${String(ultima ?? "").slice(0, 120)}`)
     }
     if (r.fixed.length > 0) {
       console.log(
@@ -890,11 +1181,25 @@ function main() {
     process.exit(EXIT.VIOLATIONS)
   }
 
-  const { files, steps, skipped, indeterminate, shellFailures, unread, failures, indisponivel } =
-    scan(root, { bash, staged })
+  const {
+    files,
+    steps,
+    skipped,
+    indeterminate,
+    shellFailures,
+    unread,
+    yamlInvalido,
+    shellFiles,
+    shellScripts,
+    scriptSkipped,
+    failures,
+    scriptFailures,
+    indisponivel,
+  } = scan(root, { bash, staged })
 
   if (argv.includes("--list")) {
     for (const s of steps) console.log(`${s.file}:${s.line}`)
+    for (const s of shellScripts) console.log(s.file)
     process.exit(EXIT.OK)
   }
 
@@ -911,6 +1216,17 @@ function main() {
           indeterminate,
           shellFailures,
           unread,
+          yamlInvalido,
+          arquivosDeShell: shellFiles,
+          scripts: shellScripts.length,
+          scriptSkipped,
+          scriptFailures: scriptFailures.map((f) => ({
+            file: f.file,
+            interpreter: f.interpreter,
+            fonte: f.fonte,
+            kind: f.kind,
+            error: f.error,
+          })),
           failures: failures.map((f) => ({
             file: f.file,
             line: f.line,
@@ -925,7 +1241,12 @@ function main() {
       ),
     )
     const falhou =
-      failures.length > 0 || shellFailures.length > 0 || unread.length > 0 || indisponivel !== null
+      failures.length > 0 ||
+      scriptFailures.length > 0 ||
+      shellFailures.length > 0 ||
+      unread.length > 0 ||
+      yamlInvalido.length > 0 ||
+      indisponivel !== null
     process.exit(falhou ? EXIT.VIOLATIONS : EXIT.OK)
   }
 
@@ -933,8 +1254,19 @@ function main() {
   // sobre nada — e é justamente o veredito que este guard não pode cunhar.
   if (indisponivel) {
     console.error(
-      `❌ ${indisponivel}\n   Sem interpretador não há parsing: nenhum corpo foi julgado.`,
+      `❌ ${indisponivel}\n   Sem interpretador não há parsing: nenhum corpo NEM arquivo foi julgado.`,
     )
+    process.exit(EXIT.UNAVAILABLE)
+  }
+  // O YAML inválido tem mensagem PRÓPRIA: dizer "ilegível" para um arquivo lido
+  // inteiro mandaria o autor procurar permissão/encoding onde o defeito é o
+  // texto. As duas classes bloqueiam igual (UNAVAILABLE), mas nomeiam o motivo.
+  if (yamlInvalido.length > 0) {
+    console.error(
+      `❌ workflow(s) que NÃO fazem parsing em YAML — um arquivo que não é workflow não tem corpo\n` +
+        `   a julgar, e "0 corpos reprovados" sobre ele seria uma afirmação sobre nada:\n`,
+    )
+    for (const y of yamlInvalido) console.error(`     ${y.file}: ${y.detail}`)
     process.exit(EXIT.UNAVAILABLE)
   }
   if (unread.length > 0) {
@@ -970,8 +1302,32 @@ function main() {
         `   resolve antes de o bash existir). Corrija a reescrita — a causa costuma estar a poucas\n` +
         `   linhas de onde o bash apontou, e vale conferir o passo INTEIRO, não só a linha.\n`,
     )
-    process.exit(EXIT.VIOLATIONS)
   }
+
+  // A SEGUNDA fonte: o ARQUIVO de shell. As duas são o MESMO veredito, e o
+  // relatório das duas sai ANTES do exit — uma execução com as duas classes não
+  // pode esconder a segunda (o operador consertaria os corpos, rodaria de novo e
+  // só então veria os arquivos). O gate diz tudo o que ele mediu, numa passada.
+  if (scriptFailures.length > 0) {
+    const graves = scriptFailures.filter((f) => f.kind === "erro").length
+    console.error(
+      `❌ ${scriptFailures.length} arquivo(s) de shell NÃO passam em \`bash -n\` — ${graves} com ERRO de\n` +
+        `   sintaxe, ${scriptFailures.length - graves} com AVISO (o bash sai 0; o arquivo truncado roda\n` +
+        `   outra coisa):\n`,
+    )
+    for (const f of scriptFailures) {
+      console.error(
+        `   ${f.kind === "aviso" ? "⚠" : "✖"} ${f.file}  (interpretador: \`${f.interpreter}\`, ${f.fonte})`,
+      )
+      console.error(`     ${f.error.split("\n").join("\n     ")}`)
+    }
+    console.error(
+      `\n   O arquivo INTEIRO é o corpo, e vai CRU ao parser: num script não há runner para resolver\n` +
+        `   \`\${{ ... }}\` antes de o bash existir. Corrija a reescrita — a causa costuma estar a poucas\n` +
+        `   linhas de onde o bash apontou. É a MESMA classe que morre no passo que executa o script.\n`,
+    )
+  }
+  if (failures.length > 0 || scriptFailures.length > 0) process.exit(EXIT.VIOLATIONS)
 
   // A classe que NENHUM parser pega: o corpo é válido, mas o interpretador que o
   // passo pede não existe no runner. Sem esta metade, o passo saía como
@@ -1000,6 +1356,12 @@ function main() {
     )
     for (const s of skipped) console.log(`     ${s.file}:${s.line}  ${s.detail}`)
   }
+  if (scriptSkipped.length > 0) {
+    console.log(
+      `⏭ ${scriptSkipped.length} arquivo(s) de shell fora do parsing — NOMEADO(s) (o \`bash -n\` não julga o que não é bash, e arquivo VAZIO não executa nada):`,
+    )
+    for (const s of scriptSkipped) console.log(`     ${s.file}  ${s.detail}`)
+  }
   if (indeterminate.length > 0) {
     console.log(
       `◐ ${indeterminate.length} passo(s) com shell FORA DA MEDIÇÃO — INDETERMINADO (o gate não prova nem que o runner o tem, nem que não tem):`,
@@ -1007,21 +1369,23 @@ function main() {
     for (const s of indeterminate) console.log(`     ${s.file}:${s.line}  ${s.detail}`)
   }
   if (staged) {
-    if (files.length === 0) {
+    if (files.length === 0 && shellFiles.length === 0) {
       console.log(
-        "   (nenhum workflow no ÍNDICE — nada a julgar neste commit; este recorte NÃO é a varredura do repo)",
+        "   (nenhum workflow NEM script no ÍNDICE — nada a julgar neste commit; este recorte NÃO é a varredura do repo)",
       )
     }
     console.log(
-      `✅ ${steps.length} corpo(s) \`run:\` DO ÍNDICE (${files.length} workflow(s) do commit) passam em \`${bash} -n\`: ` +
-        `sem erro E sem aviso. O recorte é o COMMIT; a varredura inteira (todas as forjas) é o veredito do CI.`,
+      `✅ ${steps.length} corpo(s) \`run:\` e ${shellScripts.length} arquivo(s) de shell DO ÍNDICE ` +
+        `(${files.length} workflow(s) + ${shellFiles.length} script(s) do commit) passam em \`${bash} -n\`: sem erro E ` +
+        `sem aviso. O recorte é o COMMIT; a varredura inteira (as duas forjas + todos os scripts) é o veredito do CI.`,
     )
     process.exit(EXIT.OK)
   }
   console.log(
-    `✅ ${steps.length} corpo(s) \`run:\` passam em \`${bash} -n\` (as duas forjas, sem allowlist): ` +
-      `sem erro E sem aviso — e todo \`shell:\` declarado existe no runner medido. ` +
-      `O gate prova que o passo faz PARSING e que o interpretador existe; NÃO prova que o corpo faz o que diz.`,
+    `✅ ${steps.length} corpo(s) \`run:\` E ${shellScripts.length} arquivo(s) de shell passam em \`${bash} -n\` ` +
+      `(as duas forjas + os scripts versionados, sem allowlist): sem erro E sem aviso — e todo \`shell:\` ` +
+      `declarado existe no runner medido. O gate prova que o corpo e o arquivo fazem PARSING, e que o ` +
+      `interpretador existe; NÃO prova que eles fazem o que dizem.`,
   )
   process.exit(EXIT.OK)
 }
