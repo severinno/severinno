@@ -90,6 +90,13 @@ const GUARD_CLOSURE = [
   "ensure-runner-image.mjs",
   "forge-workflows.mjs",
   "allowlist-review.mjs",
+  // A TERCEIRA FONTE puxou estas duas: a régua do que é um COMPOSE
+  // (`COMPOSE_FILE_RE`) vem do `check-bun-mirror`, que por sua vez deriva a
+  // versão do Bun da fonte única (`bun-version`). Sem elas o fecho morre com
+  // "module not found" e o não-zero do hook seria do FIXTURE, não do defeito —
+  // é exatamente o que o teste de completude abaixo existe para pegar.
+  "check-bun-mirror.mjs",
+  "bun-version.mjs",
 ]
 
 const WORKFLOW = ".github/workflows/ci.yml"

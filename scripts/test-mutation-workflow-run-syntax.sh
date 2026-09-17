@@ -7,7 +7,7 @@
 #   ./scripts/test-mutation-workflow-run-syntax.sh
 #
 # Exit codes:
-#   0 — as OITO mutações foram DETECTADAS (pelo gate e/ou pela suíte) e os
+#   0 — as TREZE mutações foram DETECTADAS (pelo gate e/ou pela suíte) e os
 #       controles passaram ✅
 #   1 — guard INDIFERENTE a alguma mutação (não cegou) OU controle falso ❌
 #
@@ -72,6 +72,30 @@
 #        UNITÁRIA, que tem de ficar VERMELHA — a segunda roda quando o vitest
 #        está instalado e DIZ quando não está, porque uma testemunha que falha
 #        por ambiente seria lida como "mutante morto".
+#   M9 — A TERCEIRA FONTE, metade do BUILD (a instrução `RUN` de um Dockerfile).
+#        O shell do build é o texto da instrução JUNTADO (a continuação `\` faz
+#        parte) e entregue a `/bin/sh -c`: a cicatriz mecânica de uma reescrita
+#        (`&& \` que engole a linha seguinte) só aparece no meio de um build de
+#        minutos. Tirar esta fonte CEGA o gate: o Dockerfile quebrado passa.
+#   M10 — A TERCEIRA FONTE, metade do PAYLOAD (o `sh -c` embutido num script).
+#        Para o `bash -n` do arquivo que o contém o payload é uma STRING — é por
+#        isso que ele passava por todos os outros gates. Desligar a varredura de
+#        payload CEGA o gate: o script com o payload quebrado passa, com o
+#        `bash -n` do próprio arquivo verde ao lado.
+#   M11 — A LEITURA DO YAML (o `entrypoint:` de um compose). O shell de um
+#        compose mora num ELEMENTO de lista (`- /bin/sh` / `- -c` / `- |`): ler o
+#        arquivo como TEXTO entrega a sintaxe do YAML (`-`) em vez do script, e
+#        um flow (`["CMD", "python3", "-c", ...]`) não entrega nada. Tirar a
+#        leitura por ESTRUTURA cega o gate para o compose.
+#   M12 — O ESCAPE DO COMPOSE (`$$` → `$`). A assinatura é o FALSO POSITIVO: sem
+#        desfazer o escape, o gate julga `$$(curl ...)` (que para o bash seria
+#        PID + parêntese solto) em vez do `$(curl ...)` que o shell RECEBE. É uma
+#        premissa MEDIDA: foi assim que esta meia-linha nasceu (o repositório
+#        acusou um payload são em `docker-compose.prod.yml`).
+#   M13 — O PULO DO HEREDOC (o corpo é DADO, não código). A assinatura também é
+#        o FALSO POSITIVO, e ele cai em cima de quem escreve FIXTURE: os próprios
+#        mutation tests do repositório escrevem shell quebrado dentro de heredoc
+#        de propósito. Sem o pulo, o gate acusa um script são.
 #
 # NOTA HONESTA sobre M3 (medido, não suposto): remover a máscara POR INTEIRO
 # NÃO cega o guard — `bash -n` aceita `[ "${{ vars.MODE || 'a}b' }}" = "1" ]`
@@ -165,6 +189,10 @@ EXPECTED_SCRIPTS='arquivo(s) de shell NÃO passam'
 EXPECTED_PULAR='shell NÃO-bash PRESENTE no runner'
 # A segunda testemunha do M8: o arquivo que a suíte unitária julga.
 SUITE_ARQUIVO="src/lib/__tests__/check-workflow-run-syntax.test.ts"
+# A TERCEIRA fonte (o shell EMBUTIDO): as duas headlines próprias — a do shell do
+# BUILD (a instrução `RUN`) e a do payload de um `sh -c`.
+EXPECTED_EMBUTIDO_RUN='instrução(ões) EMBUTIDA(s)'
+EXPECTED_EMBUTIDO_PAYLOAD='payload(s) de `sh -c`/`bash -c`'
 
 # ── Colors ────────────────────────────────────────────────────────────────
 
@@ -363,6 +391,80 @@ exigir_falso_positivo() {
   if grep -qF "$EXPECTED_PULAR" <<<"$GUARD_OUT"; then
     fail "$cenario: o pulo nomeado SAINDO junto com a violação é contraditório —"
     fail "o gate julgou o passo E disse que o pulou."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+}
+
+# ── exigir_aprovado: CONTROLE — a fixture passa, com a headline de sucesso ──
+# É o par do `exigir_cego` para as mutações cuja assinatura é o FALSO POSITIVO
+# (M12/M13): antes de medir que a mutação acusa, é preciso provar que SEM ela o
+# mesmo fixture passa — o defeito medido é o do gate, não o da fixture.
+exigir_aprovado() {
+  local cenario="$1"
+  if [ "$GUARD_EXIT" -ne 0 ]; then
+    fail "CONTROLE FALSO ($cenario): o gate REPROVOU uma fixture sem defeito de parsing (exit $GUARD_EXIT)."
+    fail "Sem este verde, o 'virou violação falsa' da mutação mede nada."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if ! grep -qF "$EXPECTED_PASS" <<<"$GUARD_OUT"; then
+    fail "$cenario: exit 0, mas SEM a headline de sucesso — o 0 veio de outro caminho."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+}
+
+# ── exigir_reprovado_embutido: reprovado pela TERCEIRA fonte (headline própria) ──
+# As duas metades que identificam a classe: a headline do shell EMBUTIDO (`RUN`
+# ou payload) e o ARQUIVO que o contém — sem o arquivo, o vermelho poderia vir
+# de outra das três fontes e a mutação passaria medindo outra coisa.
+exigir_reprovado_embutido() {
+  local cenario="$1" headline="$2" arquivo="$3"
+  if [ "$GUARD_EXIT" -eq 0 ]; then
+    fail "CONTROLE FALSO ($cenario): o shell EMBUTIDO PASSOU (exit 0)."
+    fail "Sem esta metade o 'ficou cego' da mutação mede nada (um gate já cego passaria)."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if [ "$GUARD_EXIT" -ne 1 ]; then
+    fail "$cenario: exit $GUARD_EXIT — o contrato é 1 (violação), não infra errada."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if ! grep -qF "$headline" <<<"$GUARD_OUT"; then
+    fail "$cenario: reprovou, mas NÃO pela headline da terceira fonte ('$headline')."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if ! grep -qF "$arquivo" <<<"$GUARD_OUT"; then
+    fail "$cenario: reprovou, mas NÃO citou o arquivo do texto embutido ('$arquivo')."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+}
+
+# ── exigir_falso_positivo_embutido: a mutação ACUSA um texto que é SÃO ────────
+# A assinatura é o INVERSO da cegueira (M9-M11): o gate não fica verde, ele
+# inventa uma violação de shell EMBUTIDO para um texto que o shell recebe sem
+# defeito nenhum. A headline é a da terceira fonte — exigir a dos corpos `run:`
+# mediria outra coisa (a mensagem de lá quebra em duas linhas, e por isso o
+# `EXPECTED_ERRO` não serve aqui: o veredito é o do shell embutido).
+exigir_falso_positivo_embutido() {
+  local cenario="$1"
+  if [ "$GUARD_EXIT" -eq 0 ]; then
+    fail "GUARD INDIFERENTE ($cenario): com a mutação aplicada o gate AINDA passou (exit 0)."
+    fail "Então o mecanismo mutado não é o que sustenta o 'não acusar' do veredito normal."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if [ "$GUARD_EXIT" -ne 1 ]; then
+    fail "$cenario: exit $GUARD_EXIT — o contrato é 1 (violação), não infra errada."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if ! grep -qF "$EXPECTED_EMBUTIDO_PAYLOAD" <<<"$GUARD_OUT"; then
+    fail "$cenario: reprovou, mas NÃO pela headline do shell embutido ('$EXPECTED_EMBUTIDO_PAYLOAD')."
     echo "$GUARD_OUT" | tail -12
     exit 1
   fi
@@ -925,6 +1027,187 @@ restaurar_originais
 pass "fontes RESTAURADAS (os dois checksums conferem)"
 
 # ═════════════════════════════════════════════════════════════════════════
+# MUTAÇÃO M9 — a TERCEIRA FONTE: a instrução `RUN` de um Dockerfile
+# ═════════════════════════════════════════════════════════════════════════
+
+header "MUTAÇÃO M9: tirar o \`RUN\` da varredura cega o gate no shell do BUILD"
+
+# Fixture PRÓPRIA: UM Dockerfile com a cicatriz MECÂNICA que a reescrita produz
+# (a continuação `\` que engole a linha seguinte) e NENHUM workflow. O veredito
+# que sobra é o do shell EMBUTIDO — o texto que morre no MEIO de um
+# `docker build`, depois de minutos, e que nenhum guard que LÊ o Dockerfile vê
+# (o arquivo continua sendo um Dockerfile válido).
+FXDF="$TMP_DIR/fx-dockerfile"
+mkdir -p "$FXDF"
+cat > "$FXDF/Dockerfile" <<'DOCKERFILE'
+FROM alpine
+RUN set -euo pipefail && \
+  echo dois &&
+DOCKERFILE
+
+rodar_guard_em "$FXDF"
+exigir_reprovado_embutido "CONTROLE M9 (RUN com operador pendente)" "$EXPECTED_EMBUTIDO_RUN" "Dockerfile:2"
+pass "CONTROLE M9: a instrução RUN é REPROVADA (a continuação é juntada antes do bash)"
+
+mutar_guard '    if (DOCKERFILE_RE.test(rel)) {' '    if (false) { // MUTACAO M9: o RUN do Dockerfile fora da varredura'
+
+rodar_guard_em "$FXDF"
+exigir_cego "M9 no RUN quebrado"
+pass "M9 DETECTADA: sem o shell do BUILD na varredura o gate APROVA o Dockerfile (CEGO)"
+
+# Cirúrgica: morreu só o `RUN` — o corpo `run:` sem `fi` (a PRIMEIRA fonte) segue
+# reprovando o mesmo tipo de defeito.
+mkfixture "If sem fi" "$TMP_DIR/b-sem-fi.sh"
+rodar_guard
+exigir_reprovado "M9 cirúrgica (corpo run:)" "$EXPECTED_ERRO"
+pass "M9 CIRÚRGICA: o corpo \`run:\` quebrado segue reprovado (morreu só o Dockerfile)"
+
+restaurar_originais
+pass "fontes RESTAURADAS (os dois checksums conferem)"
+
+# ═════════════════════════════════════════════════════════════════════════
+# MUTAÇÃO M10 — o PAYLOAD de um `sh -c` embutido num SCRIPT
+# ═════════════════════════════════════════════════════════════════════════
+
+header "MUTAÇÃO M10: tirar o payload da varredura cega o gate para o shell embutido"
+
+# Fixture PRÓPRIA: UM script cujo `bash -n` PASSA (a metade da segunda fonte
+# fica verde) e cujo payload de `sh -c` NÃO faz parsing. É exatamente o buraco:
+# para o parser do arquivo, o payload é uma STRING — nenhum dos oito guards
+# anteriores o julga.
+FXPL="$TMP_DIR/fx-payload"
+mkdir -p "$FXPL/scripts"
+cat > "$FXPL/scripts/quebra.sh" <<'BODY'
+#!/usr/bin/env bash
+set -euo pipefail
+sh -c "if [ 1 = 1 ]; then echo sem fi"
+BODY
+
+rodar_guard_em "$FXPL"
+exigir_reprovado_embutido "CONTROLE M10 (payload com if sem fi)" "$EXPECTED_EMBUTIDO_PAYLOAD" "scripts/quebra.sh:3"
+pass "CONTROLE M10: o PAYLOAD é REPROVADO (e o arquivo que o contém passa no \`bash -n\`)"
+
+mutar_guard '      emb = embeddedPayloads(conteudo)' '      emb = { payloads: [], pular: [], indeterminado: [] } // MUTACAO M10: o payload fora da varredura'
+
+rodar_guard_em "$FXPL"
+exigir_cego "M10 no payload embutido"
+pass "M10 DETECTADA: sem a terceira fonte o gate APROVA o script com o payload quebrado"
+
+# Cirúrgica: os corpos `run:` seguem mordendo.
+mkfixture "If sem fi" "$TMP_DIR/b-sem-fi.sh"
+rodar_guard
+exigir_reprovado "M10 cirúrgica (corpo run:)" "$EXPECTED_ERRO"
+pass "M10 CIRÚRGICA: o corpo \`run:\` quebrado segue reprovado (morreu só o payload)"
+
+restaurar_originais
+pass "fontes RESTAURADAS (os dois checksums conferem)"
+
+# ═════════════════════════════════════════════════════════════════════════
+# MUTAÇÃO M11 — o payload de um COMPOSE (a leitura do YAML)
+# ═════════════════════════════════════════════════════════════════════════
+
+header "MUTAÇÃO M11: tirar a leitura do YAML cega o gate no \`entrypoint:\` do compose"
+
+# O `entrypoint` em LISTA é o caso que uma varredura de TEXTO erra: ela lê a
+# sintaxe do YAML (`- /bin/sh`, `- -c`, `- |`) como se fosse shell. Aqui o texto
+# do script é um elemento de lista, e é ele que tem de ser julgado.
+FXCP="$TMP_DIR/fx-compose"
+mkdir -p "$FXCP"
+cat > "$FXCP/docker-compose.dev.yml" <<'BODY'
+services:
+  a:
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        if [ 1 = 1 ]; then
+          echo sem fi
+BODY
+
+rodar_guard_em "$FXCP"
+exigir_reprovado_embutido "CONTROLE M11 (entrypoint em lista)" "$EXPECTED_EMBUTIDO_PAYLOAD" "docker-compose.dev.yml"
+pass "CONTROLE M11: o CORPO do \`- |\` é REPROVADO (não a marca de lista do YAML)"
+
+mutar_guard '      emb = yamlEmbeddedPayloads(parsed.doc, conteudo)' '      emb = { payloads: [], pular: [], indeterminado: [] } // MUTACAO M11: o YAML nao entra na varredura'
+
+rodar_guard_em "$FXCP"
+exigir_cego "M11 no entrypoint em lista"
+pass "M11 DETECTADA: sem a leitura do YAML o gate APROVA o compose quebrado"
+
+restaurar_originais
+pass "fontes RESTAURADAS (os dois checksums conferem)"
+
+# ═════════════════════════════════════════════════════════════════════════
+# MUTAÇÃO M12 — o ESCAPE do compose (`$$`) não é sintaxe de shell
+# ═════════════════════════════════════════════════════════════════════════
+
+header "MUTAÇÃO M12: sem desfazer o \`\$\$\` do compose o gate ACUSA um texto são"
+
+# A assinatura desta mutação é o FALSO POSITIVO (como o M8): sem desfazer o
+# escape, o texto que o shell RECEBE (`$(...)`) é julgado como está escrito
+# (`$$(...)`) — e para o bash `$$` é o PID, então o parêntese fica solto. Medido
+# no repositório: é exatamente o que aconteceu em `docker-compose.prod.yml`
+# antes desta metade existir.
+FXESC="$TMP_DIR/fx-escape"
+mkdir -p "$FXESC"
+cat > "$FXESC/docker-compose.dev.yml" <<'BODY'
+services:
+  a:
+    entrypoint: >
+      /bin/sh -c "
+      RESPONSE=$$(curl -s http://x)
+      "
+BODY
+
+rodar_guard_em "$FXESC"
+exigir_aprovado "CONTROLE M12 (payload com o escape do compose)"
+pass "CONTROLE M12: o payload com \`\$\$\` PASSA (o shell do container recebe \`\$(...)\`)"
+
+mutar_guard '  return String(text ?? "").replace(/\$\$/g, "$")' '  return String(text ?? "") // MUTACAO M12: o escape do compose nao e desfeito'
+
+rodar_guard_em "$FXESC"
+exigir_falso_positivo_embutido "M12 no payload com $$ do compose"
+pass "M12 DETECTADA pelo GATE: sem o de-escape ele ACUSA um payload são (violação FALSA)"
+
+restaurar_originais
+pass "fontes RESTAURADAS (os dois checksums conferem)"
+
+# ═════════════════════════════════════════════════════════════════════════
+# MUTAÇÃO M13 — o corpo do HEREDOC é DADO, não código
+# ═════════════════════════════════════════════════════════════════════════
+
+header "MUTAÇÃO M13: ler o heredoc como código ACUSA os fixtures que escrevem shell"
+
+# Sem o pulo do heredoc, o TEXTO de dado vira programa — e o falso positivo cai
+# em cima de quem escreve fixture: os próprio mutation tests do repositório
+# escrevem shell quebrado DENTRO de heredoc de propósito (o caso do M10 acima).
+# A fixture é a MESMA do M10: um script cujo heredoc contém o payload quebrado e
+# cujo código NÃO tem defeito nenhum.
+FXHD="$TMP_DIR/fx-heredoc"
+mkdir -p "$FXHD/scripts"
+cat > "$FXHD/scripts/fixture.sh" <<'BODY'
+#!/usr/bin/env bash
+set -euo pipefail
+cat > /tmp/x.sh <<'FIXTURE'
+sh -c "if [ 1 = 1 ]; then echo sem fi"
+FIXTURE
+bash -n /tmp/x.sh
+BODY
+
+rodar_guard_em "$FXHD"
+exigir_aprovado "CONTROLE M13 (heredoc com shell quebrado como DADO)"
+pass "CONTROLE M13: o heredoc com shell quebrado dentro NÃO vira violação (é dado)"
+
+mutar_guard '      if (heredocs.length > 0) pulaHeredoc()' '      if (false) pulaHeredoc() // MUTACAO M13: o corpo do heredoc vira codigo'
+
+rodar_guard_em "$FXHD"
+exigir_falso_positivo_embutido "M13 no heredoc"
+pass "M13 DETECTADA pelo GATE: sem o pulo ele ACUSA o heredoc de um fixture são"
+
+restaurar_originais
+pass "fontes RESTAURADAS (os dois checksums conferem)"
+
+# ═════════════════════════════════════════════════════════════════════════
 # CONTROLE FINAL — a árvore voltou ao comportamento original
 # ═════════════════════════════════════════════════════════════════════════
 
@@ -933,13 +1216,13 @@ header "CONTROLE FINAL: o guard restaurado volta a reprovar o \`if\` sem \`fi\`"
 mkfixture "If sem fi" "$TMP_DIR/b-sem-fi.sh"
 rodar_guard
 exigir_reprovado "CONTROLE FINAL" "$EXPECTED_ERRO"
-pass "CONTROLE FINAL: depois das OITO mutações o guard reprova de novo (árvore íntegra)"
+pass "CONTROLE FINAL: depois das TREZE mutações o guard reprova de novo (árvore íntegra)"
 
 # ── Veredito ──────────────────────────────────────────────────────────────
 
 echo ""
 echo "  ═════════════════════════════════════════════════════════════════"
-echo -e "   ${GREEN}✅ MUTATION TEST PASSOU${NC} — os OITO mecanismos são LOAD-BEARING:"
+echo -e "   ${GREEN}✅ MUTATION TEST PASSOU${NC} — os TREZE mecanismos são LOAD-BEARING:"
 echo "      • a metade do AVISO (heredoc truncado, bash sai 0) → mutá-la cega"
 echo "      • o stdin do bash (o corpo julgado) → mutá-lo cega tudo"
 echo "      • a máscara LAZY (para no primeiro }}) → torná-la gulosa cega"
@@ -948,6 +1231,11 @@ echo "      • o conjunto de SHELLS medido na imagem → aceitar qualquer nome 
 echo "      • a guarda do corpo VAZIO no --fix → sem ela o fixer apaga o passo"
 echo "      • a SEGUNDA fonte (os scripts de shell) → tirá-la cega o arquivo que o passo executa"
 echo "      • o PULO NOMEADO do passo não-bash → forçá-lo a julgar ACUSA um passo são"
+echo "      • a TERCEIRA fonte, o RUN do Dockerfile → tirá-la cega o shell do BUILD"
+echo "      • a TERCEIRA fonte, o payload do sh -c → tirá-la cega o que o bash -n do arquivo não vê"
+echo "      • a leitura por ESTRUTURA do YAML → ler o texto lê a sintaxe do YAML no lugar do script"
+echo "      • o de-escape do compose (\$\$) → sem ele o gate julga o texto que o shell NÃO recebe"
+echo "      • o pulo do HEREDOC (o corpo é dado) → sem ele o gate acusa os próprios fixtures"
 echo "      e cada mutação é CIRÚRGICA: as outras metades seguem mordendo."
 echo "  ═════════════════════════════════════════════════════════════════"
 echo ""

@@ -1365,11 +1365,41 @@ relação aos corpos: o arquivo vai ao parser **CRU** (num script não há runne
 resolver `${{ ... }}` antes do bash — a máscara existe do lado do TEMPLATE, não do
 lado do arquivo) e o que se julga é o **ARQUIVO INTEIRO**, não um passo.
 
+**E o shell EMBUTIDO** — o texto que não é corpo de passo nem arquivo, e que por
+isso não era julgado por NINGUÉM: a instrução **`RUN` de um Dockerfile** (o shell
+do BUILD, entregue a `/bin/sh -c`: uma cicatriz mecânica ali só aparece no meio
+de um build de minutos, e o Dockerfile continua sendo um Dockerfile válido) e o
+**payload LITERAL de um `sh -c`/`bash -c`** (num script, num corpo `run:` ou num
+`entrypoint:` de compose — para o `bash -n` do arquivo que o contém ele é uma
+STRING, e é por isso que um `bash -c "if [ x ]; then"` truncado passava por todos
+os gates anteriores). As premissas mudam por FONTE, e é isso que mantém o veredito
+honesto:
+
+| fonte do texto               | o que o shell recebe                                                                                                                        |
+| :--------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------ |
+| `RUN` de Dockerfile          | a instrução **JUNTADA** (a continuação `\` faz parte, o comentário dela é descartado como o docker faz) e sem as flags `--mount=` do docker |
+| payload de `run:`            | o texto com `${{ ... }}` **mascarado** (o runner resolve antes)                                                                             |
+| payload de compose           | o texto com `$$` **desescapado** (a interpolação do compose resolve antes)                                                                  |
+| payload de script/Dockerfile | o texto **CRU**                                                                                                                             |
+
+Um **compose** é lido por ESTRUTURA (`js-yaml`, a mesma porta dos workflows):
+varrer o TEXTO leria a sintaxe do YAML como programa — medido, um `entrypoint:`
+em lista (três elementos, o último um bloco `\|`) entregava a marca de lista (`-`)
+e um flow (`["CMD", "python3", "-c", ...]`) não entregava nada. A lista de
+Dockerfiles vem da **ÁRVORE** (qualquer `Dockerfile*`, em qualquer diretório), não
+de uma lista à mão: um Dockerfile novo cai na varredura sem editar nada. Um
+payload que só existe em runtime (`bash -c "$cmd"`) sai **INDETERMINADO** (com o
+motivo), a forma EXEC sem shell e o `-c` de um `python3` saem **PULADOS e
+nomeados**, e o corpo de um **heredoc** é DADO (nunca programa).
+
 Sem allowlist: o repositório passa inteiro — **482 corpos** das duas forjas (e
-todos os `shell:` declarados existem) **e 124 arquivos de shell** (121 `*.sh` + os
-3 hooks do `.husky/`), sem erro E sem aviso. Um gate que nasce absoluto não tem
-cota para envelhecer — cota aqui significaria declarar que um corpo (ou um script)
-quebrado pode ficar quebrado.
+todos os `shell:` declarados existem), **124 arquivos de shell** (121 `*.sh` + os
+3 hooks do `.husky/`) **e 33 textos de shell embutido** (14 instruções `RUN` +
+19 payloads de `sh -c`, com 2 indeterminados nomeados: os dois `bash -c "$cmd"`
+dos scripts de banco, cujo texto é montado em execução), sem erro E sem aviso. Um
+gate que nasce absoluto não tem cota para envelhecer — cota aqui significaria
+declarar que um corpo (ou um script, ou um `RUN` de build) quebrado pode ficar
+quebrado.
 
 **O `--fix` remenda a cicatriz MECÂNICA — e mede o efeito antes e depois de
 gravar.** A cicatriz é um **operador pendente** no fim do corpo (`\`, `&&`,

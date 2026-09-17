@@ -139,9 +139,10 @@ describe("--staged — o recorte julga o ÍNDICE (o commit), não a árvore", ()
     expect(r.status).toBe(EXIT.VIOLATIONS)
     expect(r.err).toContain(WF)
     expect(r.err).toContain("ERRO de sintaxe")
-    // O relatório DIZ de onde veio o veredito (o recorte é visível, não mudo).
+    // O relatório DIZ de onde veio o veredito (o recorte é visível, não mudo) —
+    // e nomeia as TRÊS fontes do recorte, não só os workflows.
     expect(r.err).toContain("recorte --staged")
-    expect(r.err).toContain("1 workflow(s) do ÍNDICE")
+    expect(r.err).toContain("1 workflow(s) + 0 script(s) + 0 Dockerfile(s)/compose(s) do ÍNDICE")
   })
 
   it("o MESMO defeito só na ÁRVORE passa o recorte — e o gate da árvore reprova (o escopo é o índice)", () => {
@@ -220,8 +221,8 @@ describe("--staged — o recorte julga o ÍNDICE (o commit), não a árvore", ()
 
     const r = cli(dir)
     expect(r.status).toBe(EXIT.OK)
-    expect(r.out).toContain("nenhum workflow NEM script no ÍNDICE")
-    expect(r.out).toContain("0 workflow(s) + 0 script(s) do commit")
+    expect(r.out).toContain("nenhum workflow, script NEM Dockerfile/compose no ÍNDICE")
+    expect(r.out).toContain("0 workflow(s) + 0 script(s) + 0 Dockerfile(s)/compose(s) do commit")
   })
 
   it("script de shell quebrado NO ÍNDICE reprova o recorte (a segunda fonte entra no commit)", () => {
@@ -266,7 +267,7 @@ describe("--staged — o recorte julga o ÍNDICE (o commit), não a árvore", ()
 
     const r = cli(dir)
     expect(r.status).toBe(EXIT.OK)
-    expect(r.out).toContain("0 workflow(s) + 0 script(s) do commit")
+    expect(r.out).toContain("0 workflow(s) + 0 script(s) + 0 Dockerfile(s)/compose(s) do commit")
   })
 
   it("um `.sh` quebrado só NA ÁRVORE não reprova o recorte (o escopo é o índice)", () => {
@@ -312,5 +313,55 @@ describe("--staged — o recorte julga o ÍNDICE (o commit), não a árvore", ()
     const r = spawnSync(process.execPath, [SCRIPT, "--staged", "--root", dir], { encoding: "utf8" })
     expect(r.status).toBe(EXIT.VIOLATIONS)
     expect(r.stderr).toContain(WF)
+  })
+
+  // ── A TERCEIRA FONTE (o shell EMBUTIDO) no recorte ──────────────────────
+  //
+  // O `RUN` de um Dockerfile e o payload de um `sh -c` entram no MESMO recorte
+  // que os workflows e os scripts: o commit é quem carrega o texto quebrado, e
+  // o escopo do pre-commit não pode ficar cego justamente na classe que a
+  // reescrita mecânica produz com mais frequência (o `&& \` engolido).
+
+  it("`RUN` de Dockerfile quebrado NO ÍNDICE reprova — mesmo com a árvore corrigida", () => {
+    const dir = makeRepo()
+    writeWorkflow(dir, "Dockerfile", "FROM alpine\nRUN set -euo pipefail && \\\n  echo dois &&\n")
+    stage(dir, "Dockerfile")
+    // A árvore é corrigida DEPOIS do `git add`: o que vai ao commit é o índice.
+    writeWorkflow(dir, "Dockerfile", "FROM alpine\nRUN echo ok\n")
+
+    const r = cli(dir)
+    expect(r.status).toBe(EXIT.VIOLATIONS)
+    expect(r.err).toContain("instrução(ões) EMBUTIDA(s)")
+    expect(r.err).toContain("Dockerfile:2")
+  })
+
+  it("payload de `sh -c` quebrado num SCRIPT do índice reprova (e o `bash -n` do arquivo passaria)", () => {
+    const dir = makeRepo()
+    writeWorkflow(
+      dir,
+      "scripts/quebra.sh",
+      '#!/usr/bin/env bash\nset -euo pipefail\nsh -c "if [ 1 = 1 ]; then echo sem fi"\n',
+    )
+    stage(dir, "scripts/quebra.sh")
+
+    const r = cli(dir)
+    expect(r.status).toBe(EXIT.VIOLATIONS)
+    expect(r.err).toContain("payload(s) de `sh -c`/`bash -c`")
+    expect(r.err).toContain("scripts/quebra.sh:3")
+  })
+
+  it("um Dockerfile de fora dos diretórios varridos entra pela NOME (nenhum alvo invisível no recorte)", () => {
+    const dir = makeRepo()
+    writeWorkflow(dir, "servicos/novo/Dockerfile.svc", "FROM alpine\nRUN echo ok\n")
+    stage(dir, "servicos/novo/Dockerfile.svc")
+
+    const r = cli(dir, ["--json"])
+    expect(r.status).toBe(EXIT.OK)
+    const data = JSON.parse(r.out) as {
+      arquivosEmbutidos: string[]
+      instrucoesEmbutidas: unknown[]
+    }
+    expect(data.arquivosEmbutidos).toEqual(["servicos/novo/Dockerfile.svc"])
+    expect(data.instrucoesEmbutidas).toHaveLength(1)
   })
 })

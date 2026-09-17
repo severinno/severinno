@@ -37,18 +37,27 @@ import {
   RUNNER_IMAGE,
   RUNNER_SHELLS,
   RUNNER_SHELLS_MISSING,
+  argvPayload,
   checkBody as checkBodyBruto,
+  collectEmbeddedShell as collectEmbeddedShellBruto,
   collectRunBodies as collectBruto,
   collectShellScripts as collectShellScriptsBruto,
+  dockerfileRunUnits,
+  embeddedPaths,
+  embeddedPayloads,
   fixAll as fixAllBruto,
   fixWorkflow,
   interpreterOf,
   isBashShell,
+  lineOfText,
+  maskComposeEscapes,
   maskExpressions,
   mendBody,
   runnerImageRef,
   scan as scanBruto,
   shellCommandOf,
+  shellTokens,
+  yamlEmbeddedPayloads,
 } from "../../../scripts/check-workflow-run-syntax.mjs"
 
 /** O módulo é .mjs: o teste tipa só o que consome (o resto é o runtime). */
@@ -108,6 +117,13 @@ type ResultadoScan = Coleta & {
   shellScripts: ArquivoDeShell[]
   scriptSkipped: PuladoDeShell[]
   scriptFailures: (ArquivoDeShell & { kind: string; error: string })[]
+  embeddedFiles: string[]
+  embeddedUnits: UnidadeEmbutida[]
+  embeddedPayloads: PayloadEmbutido[]
+  embeddedSkipped: PuladoEmbutido[]
+  embeddedIndeterminate: PuladoEmbutido[]
+  embeddedFailures: (UnidadeEmbutida & { kind: string; error: string })[]
+  payloadFailures: (PayloadEmbutido & { kind: string; error: string })[]
   indisponivel: string | null
 }
 type Veredito = {
@@ -117,12 +133,31 @@ type Veredito = {
   kind: "erro" | "aviso" | null
   detail: string
 }
+type UnidadeEmbutida = { file: string; line: number; body: string; fonte: string }
+type PayloadEmbutido = {
+  file: string
+  line: number | null
+  body: string
+  fonte: string
+  mascara: "runner" | "compose" | null
+}
+type PuladoEmbutido = { file: string; line: number | null; detail: string }
+type ResultadoEmbutido = {
+  files: string[]
+  units: UnidadeEmbutida[]
+  payloads: PayloadEmbutido[]
+  skipped: PuladoEmbutido[]
+  indeterminate: PuladoEmbutido[]
+  unread: { file: string; detail: string }[]
+}
 
 const collectRunBodies = (root: string) => collectBruto(root) as Coleta
 const collectShellScripts = (root: string, opts: Record<string, unknown> = {}) =>
   collectShellScriptsBruto(root, opts) as ColetaDeShell
 const scan = (root: string, opts: Record<string, unknown> = {}) =>
   scanBruto(root, opts) as ResultadoScan
+const collectEmbeddedShell = (root: string, opts: Record<string, unknown> = {}) =>
+  collectEmbeddedShellBruto(root, opts) as ResultadoEmbutido
 const checkBody = (body: string, opts: Record<string, unknown> = {}) =>
   checkBodyBruto(body, opts) as Veredito
 
@@ -338,7 +373,9 @@ describe("CLI — exit codes", () => {
     })
     const r = cli(["--root", root])
     expect(r.code).toBe(EXIT.OK)
-    expect(r.out).toContain("1 corpo(s) `run:` E 0 arquivo(s) de shell passam em")
+    expect(r.out).toContain(
+      "1 corpo(s) `run:`, 0 arquivo(s) de shell E 0 texto(s) de shell EMBUTIDO",
+    )
     expect(r.out).toContain("shell NÃO-bash PRESENTE no runner")
     expect(r.out).toContain("python")
   })
@@ -936,5 +973,295 @@ describe("a SEGUNDA fonte — os scripts de shell, pelo mesmo `bash -n`", () => 
     expect(shellFiles).toContain(".husky/pre-commit")
     // Um piso que também pega o gate "verde por não ter varrido nada".
     expect(shellFiles.length).toBeGreaterThan(100)
+  })
+})
+
+// ── 9. A TERCEIRA FONTE: o shell EMBUTIDO ──────────────────────────────────
+//
+// O texto que não é corpo de passo nem arquivo de script — e que por isso não
+// era julgado por NINGUÉM: a instrução `RUN` de um Dockerfile (o shell do BUILD)
+// e o payload de um `sh -c` (uma STRING para o parser do arquivo que o contém).
+// O que precisa ser provado é o que cada desfecho PROMETE: o que é julgado, o
+// que sai NOMEADO, o que sai INDETERMINADO — e que nada vira "0 violações" por
+// ter ficado de fora em silêncio.
+
+describe("dockerfileRunUnits — o shell do BUILD", () => {
+  it("junta a CONTINUAÇÃO: o texto julgado é o da INSTRUÇÃO, não o da primeira linha", () => {
+    const dockerfile = [
+      "FROM alpine",
+      "RUN set -euo pipefail \\",
+      "  && echo um \\",
+      "  && echo dois",
+      "",
+    ].join("\n")
+    const { units } = dockerfileRunUnits(dockerfile, { file: "Dockerfile" })
+    expect(units).toHaveLength(1)
+    expect(units[0]).toMatchObject({ file: "Dockerfile", line: 2, fonte: "RUN (forma shell)" })
+    expect(units[0].body).toContain("set -euo pipefail")
+    expect(units[0].body).toContain("echo dois")
+    // A LINHA é a da instrução (o começo), não a da última linha da continuação:
+    // é ali que o operador procura a causa.
+    expect(units[0].line).toBe(2)
+  })
+
+  it("descarta o COMENTÁRIO dentro da continuação (o docker o descarta antes do shell)", () => {
+    const dockerfile = [
+      "FROM alpine",
+      "RUN echo um \\",
+      "  # nota do autor \\",
+      "  && echo dois",
+      "",
+    ].join("\n")
+    const { units } = dockerfileRunUnits(dockerfile, { file: "Dockerfile" })
+    expect(units[0].body).toBe("echo um  && echo dois")
+    expect(units[0].body).not.toContain("nota do autor")
+  })
+
+  it("tira as FLAGS do docker (`--mount=`) — elas não chegam ao shell", () => {
+    const { units } = dockerfileRunUnits(
+      ["FROM alpine", "RUN --mount=type=cache,target=/root/.cache apt-get update", ""].join("\n"),
+      { file: "Dockerfile" },
+    )
+    expect(units[0].body).toBe("apt-get update")
+  })
+
+  it("forma HEREDOC: o CORPO é o script (e o terminador não entra no texto julgado)", () => {
+    const dockerfile = [
+      "FROM alpine",
+      "RUN <<'EOF'",
+      "set -euo pipefail",
+      "echo um",
+      "EOF",
+      "CMD echo fim",
+      "",
+    ].join("\n")
+    const { units } = dockerfileRunUnits(dockerfile, { file: "Dockerfile" })
+    expect(units).toHaveLength(1)
+    expect(units[0].fonte).toContain("heredoc")
+    expect(units[0].body).toBe("set -euo pipefail\necho um")
+  })
+
+  it("heredoc SEM terminador → INDETERMINADO (nomeado), nunca 'nada a julgar'", () => {
+    const dockerfile = ["FROM alpine", "RUN <<'EOF'", "echo um", ""].join("\n")
+    const { units, indeterminate } = dockerfileRunUnits(dockerfile, { file: "Dockerfile" })
+    expect(units).toEqual([])
+    expect(indeterminate).toHaveLength(1)
+    expect(indeterminate[0].detail).toContain("terminador")
+  })
+
+  it("forma EXEC: o `-c` de um shell é julgado (o arg é LITERAL) e o resto sai PULADO e nomeado", () => {
+    const comShell = dockerfileRunUnits(
+      'FROM alpine\nRUN ["bash", "-c", "if [ 1 = 1 ]; then echo sem fi"]\n',
+      { file: "Dockerfile" },
+    )
+    expect(comShell.units).toHaveLength(1)
+    expect(comShell.units[0].body).toBe("if [ 1 = 1 ]; then echo sem fi")
+    expect(comShell.units[0].fonte).toContain("EXEC")
+    // `$` num ARGV é TEXTO (quem expande é o shell INTERNO): julga-se ele.
+    expect(argvPayload(["bash", "-c", "echo $cmd"])?.payload?.body).toBe("echo $cmd")
+    const semShell = dockerfileRunUnits('FROM alpine\nRUN ["apk", "add", "bash"]\n', {
+      file: "Dockerfile",
+    })
+    expect(semShell.units).toEqual([])
+    expect(semShell.skipped).toHaveLength(1)
+    expect(semShell.skipped[0].detail).toContain("execve")
+  })
+
+  it("EXEC que não faz parsing em JSON → INDETERMINADO (o gate não sabe o que o docker rodaria)", () => {
+    const { units, indeterminate } = dockerfileRunUnits('FROM alpine\nRUN [bash, -c, "x"]\n', {
+      file: "Dockerfile",
+    })
+    expect(units).toEqual([])
+    expect(indeterminate).toHaveLength(1)
+  })
+})
+
+describe("embeddedPayloads — o payload do `sh -c`", () => {
+  it("payload LITERAL é julgado, com a LINHA do token", () => {
+    const texto = ["set -euo pipefail", 'bash -c "if [ -f x ]; then"', "echo depois"].join("\n")
+    const { payloads } = embeddedPayloads(texto)
+    expect(payloads).toHaveLength(1)
+    expect(payloads[0].body).toBe("if [ -f x ]; then")
+    expect(payloads[0].linha).toBe(2)
+    expect(checkBody(payloads[0].body).ok).toBe(false)
+  })
+
+  it("payload de VARIÁVEL sai INDETERMINADO — o texto só existe em runtime", () => {
+    const { payloads, indeterminado } = embeddedPayloads('bash -c "$cmd"')
+    expect(payloads).toEqual([])
+    expect(indeterminado).toHaveLength(1)
+    expect(indeterminado[0].detail).toContain("runtime")
+  })
+
+  it("quote SIMPLES é literal por definição (o `$` não é do shell externo)", () => {
+    const { payloads, indeterminado } = embeddedPayloads("sh -c 'echo $cmd'")
+    expect(indeterminado).toEqual([])
+    expect(payloads).toHaveLength(1)
+    expect(payloads[0].body).toBe("echo $cmd")
+  })
+
+  it("`python3 -c` NÃO é shell (não vira alvo — e não inventa violação)", () => {
+    const { payloads, indeterminado, pular } = embeddedPayloads(
+      'python3 -c "import urllib.request; urllib.request.urlopen(1)"',
+    )
+    expect(payloads).toEqual([])
+    expect(indeterminado).toEqual([])
+    expect(pular).toEqual([])
+  })
+
+  it("COMENTÁRIO e corpo de HEREDOC não são código: nenhum alvo ali", () => {
+    const comentario = ['# bash -c "if [ 1 ]; then"', 'echo "ok"'].join("\n")
+    expect(embeddedPayloads(comentario).payloads).toEqual([])
+    const heredoc = ["cat <<'EOF'", 'bash -c "if [ 1 ]; then"', "EOF"].join("\n")
+    expect(embeddedPayloads(heredoc).payloads).toEqual([])
+    // A CONTRA-PROVA: fora do heredoc, o mesmo texto é alvo.
+    const fora = ["cat <<'EOF'", 'bash -c "if [ 1 ]; then"', "EOF", 'sh -c "if [ 2 ]; then"'].join(
+      "\n",
+    )
+    expect(embeddedPayloads(fora).payloads).toHaveLength(1)
+    expect(embeddedPayloads(fora).payloads[0].linha).toBe(4)
+  })
+
+  it("tokenização: a quote atravessa LINHAS (o payload multi-linha é um token só)", () => {
+    const toks = shellTokens('sh -c "linha um\nlinha dois"')
+    expect(toks).toHaveLength(3)
+    expect(toks[2].inner).toBe("linha um\nlinha dois")
+    expect(shellTokens("echo 'a b' c")[0].valor).toBe("echo")
+  })
+
+  it("`-c` sem texto adiante → INDETERMINADO (a flag está lá e o payload não)", () => {
+    expect(embeddedPayloads("bash -c").indeterminado).toHaveLength(1)
+  })
+})
+
+describe("yamlEmbeddedPayloads — o shell embutido do YAML", () => {
+  const raw = [
+    "services:",
+    "  minio-init:",
+    "    entrypoint:",
+    "      - /bin/sh",
+    "      - -c",
+    "      - |",
+    '        echo "oi"',
+    "        command -v mc",
+    "",
+  ].join("\n")
+  const doc = {
+    services: { "minio-init": { entrypoint: ["/bin/sh", "-c", 'echo "oi"\ncommand -v mc'] } },
+  }
+
+  it("lista em BLOCO entrega o CORPO do script, não a marca de lista do YAML", () => {
+    const { payloads } = yamlEmbeddedPayloads(doc, raw)
+    expect(payloads).toHaveLength(1)
+    expect(payloads[0].body).toBe('echo "oi"\ncommand -v mc')
+    // A linha vem da LOCALIZAÇÃO do texto no arquivo (o js-yaml dá valor, não marca).
+    expect(payloads[0].linha).toBe(7)
+  })
+
+  it("lista em FLOW e `CMD-SHELL` são shell embutido; `-c` de python NÃO é", () => {
+    const flow = { test: ["CMD", "sh", "-c", "pg_isready -U x"] }
+    expect(yamlEmbeddedPayloads(flow, "").payloads[0].body).toBe("pg_isready -U x")
+    const cmdShell = { test: ["CMD-SHELL", "wget -q -O /dev/null http://x || exit 1"] }
+    const r = yamlEmbeddedPayloads(cmdShell, "")
+    expect(r.payloads[0].body).toContain("wget")
+    expect(r.payloads[0].fonte).toContain("CMD-SHELL")
+    const python = { test: ["CMD", "python3", "-c", "import urllib.request"] }
+    expect(yamlEmbeddedPayloads(python, "").payloads).toEqual([])
+  })
+
+  it("escalar (`entrypoint: >`) é TEXT de shell — e o limite da variável é o do TEXTO INTEIRO", () => {
+    // Payload que é SÓ a variável: o texto não está escrito em lugar nenhum.
+    expect(
+      yamlEmbeddedPayloads({ entrypoint: '/bin/sh -c "$cmd"' }, "").indeterminado,
+    ).toHaveLength(1)
+    // Payload com TEXTO em volta: o shell INTERNO recebe texto (a variável do
+    // meio é um valor, não sintaxe) — julgar os dois é o mesmo contrato.
+    const r = yamlEmbeddedPayloads({ entrypoint: '/bin/sh -c "echo $cmd"' }, "")
+    expect(r.indeterminado).toEqual([])
+    expect(r.payloads[0].body).toBe("echo $cmd")
+  })
+})
+
+describe("A TERCEIRA FONTE no veredito (e nenhum alvo invisível)", () => {
+  it("um Dockerfile NOVO num diretório novo entra na varredura (por NOME, não por lista à mão)", () => {
+    const root = tree({ "servicos/novo/Dockerfile.svc": "FROM alpine\nRUN echo oi\n" })
+    expect(embeddedPaths(root)).toContain("servicos/novo/Dockerfile.svc")
+    const r = scan(root, { bash: DEFAULT_BASH })
+    expect(r.embeddedUnits.map((u) => u.file)).toEqual(["servicos/novo/Dockerfile.svc"])
+  })
+
+  it("`RUN` quebrado → exit 1, com a headline PRÓPRIA e o arquivo:linha", () => {
+    const root = tree({ Dockerfile: "FROM alpine\nRUN echo um && \\\n  echo dois &&\n" })
+    const r = cli(["--root", root])
+    expect(r.code).toBe(EXIT.VIOLATIONS)
+    expect(r.err).toContain("instrução(ões) EMBUTIDA(s)")
+    expect(r.err).toContain("Dockerfile:2")
+  })
+
+  it("payload quebrado → exit 1, com a headline PRÓPRIA (o arquivo que o contém é válido)", () => {
+    const root = tree({
+      "scripts/quebra.sh":
+        '#!/usr/bin/env bash\nset -euo pipefail\nbash -c "if [ 1 = 1 ]; then echo sem fi"\n',
+    })
+    const r = cli(["--root", root])
+    expect(r.code).toBe(EXIT.VIOLATIONS)
+    // O `bash -n` do ARQUIVO passa (a metade das duas primeiras fontes fica verde):
+    // é exatamente o buraco que esta fonte fecha.
+    expect(r.err).toContain("payload(s) de `sh -c`/`bash -c`")
+    expect(r.err).toContain("scripts/quebra.sh:3")
+  })
+
+  it("o `$$` do compose é ESCAPE: o shell do container recebe o `$` desescapado", () => {
+    expect(maskComposeEscapes("RESPONSE=$$(curl -s http://x)")).toBe("RESPONSE=$(curl -s http://x)")
+    const root = tree({
+      "docker-compose.dev.yml": [
+        "services:",
+        "  a:",
+        "    entrypoint: >",
+        '      /bin/sh -c "',
+        "      RESPONSE=$$(curl -s http://x)",
+        '      "',
+        "",
+      ].join("\n"),
+    })
+    expect(cli(["--root", root]).code).toBe(EXIT.OK)
+  })
+
+  it("`--fix` RECUSA remendar shell embutido — e NÃO toca no arquivo", () => {
+    const root = tree({ Dockerfile: "FROM alpine\nRUN echo um &&\n" })
+    const alvo = join(root, "Dockerfile")
+    const antes = readFileSync(alvo, "utf8")
+    const r = cli(["--root", root, "--fix"])
+    expect(r.code).toBe(EXIT.VIOLATIONS)
+    expect(r.err).toContain("NÃO remendado")
+    expect(r.err).toContain("shell embutido")
+    expect(readFileSync(alvo, "utf8")).toBe(antes)
+  })
+
+  it("o repositório real: nenhum `RUN` nem payload reprovado — e os dois conjuntos NÃO estão vazios", () => {
+    const r = collectEmbeddedShell(ROOT, {})
+    expect(r.unread).toEqual([])
+    const s = scan(ROOT, { bash: DEFAULT_BASH })
+    expect(s.embeddedFailures).toEqual([])
+    expect(s.payloadFailures).toEqual([])
+    // Um piso para o gate "verde por não ter varrido nada": os Dockerfiles do
+    // repositório têm instruções de shell, e os composes têm `entrypoint`.
+    expect(s.embeddedUnits.length).toBeGreaterThan(10)
+    expect(s.embeddedPayloads.length).toBeGreaterThan(10)
+    expect(s.embeddedFiles).toContain("Dockerfile.ubuntu-bun")
+    expect(s.embeddedFiles).toContain("deploy/docker-compose.gitea.yml")
+    // O que o gate NÃO julga, ele DIZ: o payload montado em runtime fica nomeado.
+    expect(s.embeddedIndeterminate.length).toBeGreaterThan(0)
+  })
+})
+
+// ── 10. A régua compartilhada (heredoc) ────────────────────────────────────
+
+describe("lineOfText — a linha de um texto dentro do arquivo", () => {
+  it("acha a linha pela primeira linha DISTINTIVA, e é `null` quando é ambíguo", () => {
+    const raw = ["a", "set -e", "b", "set -e", "assinatura unica"].join("\n")
+    expect(lineOfText(raw, "set -e\nassinatura unica")).toBe(5)
+    // Nenhuma linha do texto é única: dizer `null` é honesto, apontar a errada não.
+    expect(lineOfText(raw, "set -e")).toBeNull()
   })
 })

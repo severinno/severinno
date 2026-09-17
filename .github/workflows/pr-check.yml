@@ -351,11 +351,11 @@ jobs:
       # EXECUÇÃO e a suíte unitária, que tem de ficar VERMELHA (onde o vitest
       # está instalado; onde não está, o script DIZ que não julgou essa metade).
       # Sem isto, um guard que virasse no-op passaria verde para sempre.
-      - name: Mutation test — o guard deve FALHAR nas 8 metades
+      - name: Mutation test — o guard deve FALHAR nas 13 metades
         run: bash scripts/test-mutation-workflow-run-syntax.sh
 
       - name: Summary
-        run: echo "✅ Todo corpo de passo dos workflows das duas forjas E todo script de shell versionado fazem PARSING (bash -n, sem erro E sem aviso; passo não-bash e script de shebang não-bash são contados e nomeados) e o mutation test prova que o guard morde nas oito metades."
+        run: echo "✅ Todo corpo de passo dos workflows das duas forjas, todo script de shell versionado E todo texto de shell EMBUTIDO (o `RUN` de um Dockerfile e o payload de um `sh -c`) fazem PARSING (bash -n, sem erro E sem aviso; passo não-bash, script de shebang não-bash e shell embutido indeterminado são contados e nomeados) e o mutation test prova que o guard morde nas treze metades."
 
   # ── Bring-up Gate Proof (o PRÉ-REQUISITO 0, por EXECUÇÃO) ──────────────
   # O mesmo invariante do CORE da forja, provado aqui pelo caminho real: o
@@ -583,12 +583,15 @@ jobs:
   #                    z-ai-web-dev-sdk — + dep inexistente devem FALHAR;
   #                    dep declarada com install pendente deve PASSAR)
   #   workflow-run-syntax → test-mutation-workflow-run-syntax.sh
-  #                    (oito metades — a do AVISO, o stdin do bash, o LIMITE da
+  #                    (treze metades — a do AVISO, o stdin do bash, o LIMITE da
   #                    máscara, o índice do `--staged`, os shells medidos, a
-  #                    guarda do fixer, a SEGUNDA fonte e o PULO NOMEADO do passo
-  #                    não-bash — cada mutação cirúrgica; a do pulo exige a suíte
-  #                    unitária VERMELHA e o job próprio deste mesmo gate segue
-  #                    abaixo, rodando o guard REAL)
+  #                    guarda do fixer, a SEGUNDA fonte, o PULO NOMEADO do passo
+  #                    não-bash e as CINCO da terceira fonte: o `RUN` do
+  #                    Dockerfile, o payload do `sh -c`, a leitura por ESTRUTURA
+  #                    do YAML, o de-escape do `$$` do compose e o pulo do heredoc
+  #                    — cada mutação cirúrgica; a do pulo exige a suíte unitária
+  #                    VERMELHA e o job próprio deste mesmo gate segue abaixo,
+  #                    rodando o guard REAL)
   # Cada sub-test roda SEMPRE (fail-CONTINUE) e o harness imprime o output
   # completo do script granular + verdict por sub-test + tabela final —
   # granularidade de diagnóstico preservada. Exit final agregado: 0 se

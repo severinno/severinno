@@ -115,29 +115,57 @@
 //      executa (`sh`, como o husky roda os hooks); (c) arquivo VAZIO não é
 //      sintaxe a julgar (nada executa) e sai nomeado, como o corpo vazio.
 //
+//  11. a TERCEIRA fonte é o shell EMBUTIDO — o texto que não é corpo de passo nem
+//      arquivo, e que por isso NENHUM parser do repositório julgava: a instrução
+//      `RUN` de um Dockerfile (o shell do BUILD, entregue a `/bin/sh -c`) e o
+//      payload LITERAL de um `sh -c`/`bash -c` (que, para o `bash -n` do arquivo
+//      que o contém, é uma STRING — um `sh -c "if [ x ]; then"` truncado passava
+//      por todos os gates). As premissas mudam por FONTE, e é essa diferença que
+//      mantém o veredito honesto: o texto de um `RUN` é a instrução JUNTADA (a
+//      continuação `\` faz parte, o comentário dela é descartado como o docker
+//      faz, e as flags `--mount=` não chegam ao shell); um payload vindo de
+//      workflow é MASCARADO (`${{ ... }}`), um vindo de compose tem o `$$`
+//      DESESCAPADO (a interpolação resolve antes do shell — medido: sem isso o
+//      gate acusava `RESPONSE=$$(curl ...)` em `docker-compose.prod.yml`), e num
+//      script/Dockerfile o texto vai CRU. Um compose é lido por ESTRUTURA (o
+//      `js-yaml`, pela mesma porta dos workflows): varrer o TEXTO leria a sintaxe
+//      do YAML como programa — um `entrypoint:` em lista entregava a marca de
+//      lista (`-`) e um flow não entregava nada. Um payload que só existe em
+//      runtime (`bash -c "$cmd"`) sai INDETERMINADO, e o que não é shell (a forma
+//      EXEC sem shell, o `-c` de um `python3`) sai PULADO e NOMEADO. A lista de
+//      Dockerfiles vem da ÁRVORE (qualquer `Dockerfile*`), não de uma lista à mão:
+//      um Dockerfile novo num diretório novo entra na varredura sem editar nada.
+//
 // SEM ALLOWLIST: o repositório inteiro passa em `bash -n` hoje — 482 corpos das
-// duas forjas e os 124 scripts de shell que o `listShellScripts` enumera (121
-// `*.sh` + os 3 hooks do `.husky/`), todos sem ERRO e sem AVISO. Um gate que
-// nasce absoluto não tem cota para envelhecer — e uma cota aqui significaria
-// declarar que um corpo quebrado pode ficar quebrado.
+// duas forjas, os 124 scripts de shell que o `listShellScripts` enumera (121
+// `*.sh` + os 3 hooks do `.husky/`) e 33 textos de shell EMBUTIDO (14 instruções
+// `RUN` de Dockerfile + 19 payloads de `sh -c`, com 2 INDETERMINADOS nomeados:
+// os dois `bash -c "$cmd"` dos scripts de banco, cujo texto é montado em
+// execução), todos sem ERRO e sem AVISO. Um gate que nasce absoluto não tem cota
+// para envelhecer — e uma cota aqui significaria declarar que um corpo quebrado
+// pode ficar quebrado.
 //
 // Usage:
 //   node scripts/check-workflow-run-syntax.mjs              # o gate
-//   node scripts/check-workflow-run-syntax.mjs --staged     # só o que o ÍNDICE tem (workflows + scripts)
+//   node scripts/check-workflow-run-syntax.mjs --staged     # só o que o ÍNDICE tem (workflows + scripts + Dockerfiles/composes)
 //   node scripts/check-workflow-run-syntax.mjs --fix        # REMENDA a cicatriz mecânica (LOCAL)
 //   node scripts/check-workflow-run-syntax.mjs --shells     # o que a imagem do runner tem, e a prova
 //   node scripts/check-workflow-run-syntax.mjs --json       # saída estruturada
-//   node scripts/check-workflow-run-syntax.mjs --list       # só o que foi varrido (corpos e arquivos)
+//   node scripts/check-workflow-run-syntax.mjs --list       # só o que foi varrido (corpos, arquivos e shell embutido)
 //   node scripts/check-workflow-run-syntax.mjs --root X     # fixture (testes)
 //   node scripts/check-workflow-run-syntax.mjs --bash /bin/bash  # outro interpretador
 //
 // Exit codes:
-//   0 — todo corpo `run:` E todo script de shell passam em `bash -n` sem erro E
-//       sem aviso (os passos não-bash e os scripts de shebang não-bash são
-//       contados e nomeados) e todo `shell:` declarado existe no runner medido
-//   1 — violação: o corpo de um passo OU um arquivo de shell não faz parsing, OU
-//       o parser emitiu aviso (com a mensagem do bash, o arquivo e a linha do
-//       passo), OU o passo declara um `shell:` que o runner não tem
+//   0 — todo corpo `run:`, todo script de shell E todo texto de shell EMBUTIDO
+//       (a instrução `RUN` de um Dockerfile e o payload de um `sh -c`) passam em
+//       `bash -n` sem erro E sem aviso (os passos não-bash, os scripts de shebang
+//       não-bash, o shell embutido fora do escopo e os payloads que só existem em
+//       runtime são contados e nomeados) e todo `shell:` declarado existe no
+//       runner medido
+//   1 — violação: o corpo de um passo, um arquivo de shell OU um texto de shell
+//       embutido não faz parsing, OU o parser emitiu aviso (com a mensagem do
+//       bash, o arquivo e a linha do passo), OU o passo declara um `shell:` que o
+//       runner não tem
 //   2 — infra: `bash` não pôde ser executado, `--root` inexistente, `--staged`
 //       sem índice git (fora de um repositório), ou um arquivo não pôde ser
 //       lido (fail-closed: sem medição não há veredito — nunca "0 violações" por
@@ -148,12 +176,18 @@
 // =============================================================================
 
 import { spawnSync } from "node:child_process"
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs"
-import { join, resolve } from "node:path"
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs"
+import { basename, join, resolve } from "node:path"
 import process from "node:process"
 import { pathToFileURL } from "node:url"
 
+// A régua do que é um COMPOSE do repositório vem do guard que já a define
+// (`check-bun-mirror`, invariante 16): uma segunda expressão aqui divergiria
+// na primeira vez que um `docker-compose.*.yml` novo aparecesse.
+import { COMPOSE_FILE_RE } from "./check-bun-mirror.mjs"
 import {
+  SKIP_DIRS,
+  heredocDelimiters,
   isShellScript,
   listShellScripts,
   workflowDefaultShells,
@@ -164,6 +198,7 @@ import {
   DYNAMIC_EXPR_RE,
   allWorkflowFiles,
   isForgeWorkflowPath,
+  parseYamlDocument,
   readJudgedFile,
   workflowYamlValidity,
 } from "./forge-workflows.mjs"
@@ -195,6 +230,24 @@ export const DEFAULT_BASH = "bash"
  * @param {string} text
  * @returns {string}
  */
+/**
+ * O ESCAPE do compose (`$$`) vira um `$` — a interpolação do compose resolve
+ * ANTES do shell.
+ *
+ * É a máscara do MESMO tipo que a do `${{ ... }}` (um texto que o shell nunca
+ * vê), e ela foi MEDIDA: sem esta meia-linha, o gate acusou
+ * `RESPONSE=$$(curl -s ...)` em `docker-compose.prod.yml` como erro de sintaxe —
+ * porque para o bash `$$` é o PID e `$$(` abre um parêntese solto. Para o shell
+ * do container o que chega é `$(curl -s ...)`, que é a substituição de comando
+ * que o autor escreveu: o defeito era do gate, não do compose.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+export function maskComposeEscapes(text) {
+  return String(text ?? "").replace(/\$\$/g, "$")
+}
+
 export function maskExpressions(text) {
   // O PADRAO da expressao dinamica vem da fonte unica (`DYNAMIC_EXPR_RE`). O
   // que muda aqui e a INTENCAO: remover (`executableLine`) deixa a linha como o
@@ -649,6 +702,749 @@ export function interpreterOf(content) {
   return { raw: primeira.trim(), command, declared: true }
 }
 
+// =============================================================================
+// A TERCEIRA FONTE: o shell EMBUTIDO
+// =============================================================================
+//
+// As duas primeiras fontes julgam o texto INTEIRO de alguma coisa: um corpo
+// `run:` e um arquivo de script. Esta julga o texto que não é nenhum dos dois —
+// o shell que vive DENTRO de outro artefato e só existe quando ele roda:
+//
+//   · a instrução `RUN` de um Dockerfile (o shell do BUILD, entregue a
+//     `/bin/sh -c`: um `&& \` engolido por uma reescrita só aparece no meio de
+//     um build de minutos, e nenhum guard que LÊ o Dockerfile vê isso — o
+//     Dockerfile continua sendo um Dockerfile válido);
+//   · o payload LITERAL de um `sh -c`/`bash -c` — num script, num corpo `run:`
+//     ou num `entrypoint:` de compose. Para o parser do arquivo que o contém,
+//     esse payload é uma STRING: o `bash -n` não desce nele, e um
+//     `sh -c "if [ x ]; then"` truncado passa por TODOS os gates do repositório.
+//
+// Três desfechos, e nenhum é silencioso: o payload LITERAL é julgado; o payload
+// que só existe em RUNTIME (`bash -c "$cmd"`, cujo texto é montado em execução)
+// sai INDETERMINADO com o motivo; e o que não é shell (a forma EXEC de um `RUN`
+// sem shell, um `python3 -c`) sai PULADO e NOMEADO.
+
+export const SHELL_INTERPRETERS = ["sh", "bash", "dash", "zsh", "ksh", "ash"]
+
+/**
+ * O payload de `-c` que NÃO é literal no texto: um `$VAR`, `${VAR}` ou `$(...)`
+ * que ocupa o argumento inteiro. O texto dele só existe em runtime — julgá-lo
+ * aqui seria julgar o vazio, e chamá-lo de "válido" seria a mentira do gate que
+ * conta o que não olhou.
+ */
+export const RUNTIME_PAYLOAD_RE = /^\$(?:[A-Za-z_][A-Za-z0-9_]*|\{[^}]*\}|\([\s\S]*\))$/
+
+/** É um Dockerfile — em QUALQUER diretório? */
+export const DOCKERFILE_RE = /(^|\/)Dockerfile[^/]*$/
+
+/** O que SEPARA tokens de shell (operador — `#` não está aqui de propósito). */
+const SHELL_OPERATORS = ["|", "&", ";", "<", ">"]
+
+/**
+ * O VALOR de uma palavra: as quotes fora e os escapes desfeitos.
+ *
+ * É uma aproximação declarada — ela existe para responder UMA pergunta (o nome
+ * que o token invoca é um shell? e o payload começa em `$`?), e não para
+ * reconstituir o que o shell faria com `\` dentro de quote dupla.
+ *
+ * @param {string} raw
+ * @returns {string}
+ */
+export function tokenValue(raw) {
+  return String(raw ?? "")
+    .replace(/['"]/g, "")
+    .replace(/\\(.)/g, "$1")
+}
+
+/**
+ * Os TOKENS de um texto de shell, cada um com a LINHA onde começa.
+ *
+ * Um token é uma PALAVRA (com quotes dentro, possivelmente multi-linha — o shell
+ * aceita quote aberta por várias linhas, e um payload de `-c` é escrito assim)
+ * ou um OPERADOR. O que o scanner NÃO pode fazer é olhar dentro de strings: por
+ * isso a detecção do shell embutido é feita entre TOKENS (o token do payload é
+ * o VIZINHO da flag `-c`), e um exemplo dentro de uma quote
+ * (`echo "use sh -c 'x'"`) não vira um alvo — ele é UM token, e o token anterior
+ * não é uma flag.
+ *
+ * Duas coisas que uma varredura linha-a-linha erraria, e que aqui valem porque
+ * são a MESMA régua que o `check-pipefail-sigpipe` usa (`heredocDelimiters`):
+ *   · COMENTÁRIO (`#` só comença comentário no INÍCIO de uma palavra, como no
+ *     shell) — um `# sh -c "exemplo quebrado"` num script não é código;
+ *   · HEREDOC — o corpo de um `<<'EOF'` é DADO. Os mutation tests do repositório
+ *     escrevem fixtures de shell DENTRO de heredoc de propósito; lê-los como
+ *     programa viraria uma violação falsa em cima de quem prova o gate.
+ *
+ * @param {string} text
+ * @param {{startLine?: number}} [opts]
+ * @returns {{tipo: "palavra"|"citada"|"op", raw: string, valor: string, linha: number, quote?: "'"|"\"", inner?: string, fechada?: boolean}[]}
+ */
+export function shellTokens(text, { startLine = 1 } = {}) {
+  const src = String(text ?? "")
+  const out = []
+  let i = 0
+  let line = startLine
+  /** Os delimitadores de heredoc ABERTOS: o corpo deles é DADO, não programa. */
+  const heredocs = []
+  /** O próximo token é o DELIMITADOR de um `<<`? */
+  let esperaDelim = false
+
+  const consome = (n) => {
+    for (const ch of src.slice(i, i + n)) if (ch === "\n") line++
+    i += n
+  }
+  // Pula o CORPO de um heredoc aberto (as linhas de dado, até o delimitador).
+  const pulaHeredoc = () => {
+    while (heredocs.length > 0 && i < src.length) {
+      const fim = src.indexOf("\n", i)
+      const linha = src.slice(i, fim === -1 ? src.length : fim)
+      consome(linha.length)
+      if (fim !== -1) consome(1)
+      if (linha.trim() === heredocs[0] || linha.replace(/^\t+/, "") === heredocs[0])
+        heredocs.shift()
+    }
+  }
+
+  const lePalavra = (linhaIni) => {
+    let raw = ""
+    /** A quote que envolve a palavra INTEIRA (só ela) — o caso do payload. */
+    let somenteQuote = null
+    while (i < src.length) {
+      const c = src[i]
+      if (c === " " || c === "\t" || c === "\n" || c === "\r" || SHELL_OPERATORS.includes(c)) break
+      if (c === "\\" && i + 1 < src.length && src[i + 1] !== "\n") {
+        raw += src.slice(i, i + 2)
+        consome(2)
+        continue
+      }
+      if (c === "'" || c === '"') {
+        const abre = raw.length
+        raw += c
+        consome(1)
+        let fechou = false
+        while (i < src.length) {
+          const d = src[i]
+          if (d === c) {
+            raw += d
+            consome(1)
+            fechou = true
+            break
+          }
+          if (d === "\\" && c === '"' && i + 1 < src.length) {
+            raw += src.slice(i, i + 2)
+            consome(2)
+            continue
+          }
+          raw += d
+          consome(1)
+        }
+        // A quote não fecha dentro do texto lido: o que resta é o conteúdo dela.
+        if (!fechou) {
+          return {
+            tipo: "citada",
+            raw,
+            valor: raw.slice(1),
+            inner: raw.slice(1),
+            quote: c,
+            linha: linhaIni,
+            fechada: false,
+          }
+        }
+        if (abre === 0 && somenteQuote === null) somenteQuote = { quote: c, fim: raw.length }
+        continue
+      }
+      raw += c
+      consome(1)
+    }
+    if (somenteQuote !== null && raw.length === somenteQuote.fim) {
+      return {
+        tipo: "citada",
+        raw,
+        valor: raw.slice(1, -1),
+        inner: raw.slice(1, -1),
+        quote: somenteQuote.quote,
+        linha: linhaIni,
+        fechada: true,
+      }
+    }
+    return { tipo: "palavra", raw, valor: tokenValue(raw), linha: linhaIni }
+  }
+
+  while (i < src.length) {
+    const c = src[i]
+    if (c === "\n") {
+      consome(1)
+      if (heredocs.length > 0) pulaHeredoc()
+      continue
+    }
+    if (c === " " || c === "\t" || c === "\r") {
+      consome(1)
+      continue
+    }
+    if (c === "\\" && src[i + 1] === "\n") {
+      consome(2)
+      continue
+    }
+    // Comentário: POSIX, o `#` só abre um quando INICIA uma palavra.
+    if (c === "#") {
+      const fim = src.indexOf("\n", i)
+      consome((fim === -1 ? src.length : fim) - i)
+      continue
+    }
+    const linhaIni = line
+    if (SHELL_OPERATORS.includes(c)) {
+      let raw = c
+      consome(1)
+      if (c === "<" && src[i] === "<") {
+        raw += "<"
+        consome(1)
+      }
+      if (c === "<" && raw === "<<" && src[i] === "-") {
+        raw += "-"
+        consome(1)
+      }
+      if (c === "<" && raw === "<<" && src[i] === "<") {
+        raw += "<"
+        consome(1)
+      }
+      if (raw === "<<" || raw === "<<-") esperaDelim = true
+      out.push({ tipo: "op", raw, valor: raw, linha: linhaIni })
+      continue
+    }
+    const t = lePalavra(linhaIni)
+    out.push(t)
+    if (esperaDelim) {
+      heredocs.push(tokenValue(t.raw))
+      esperaDelim = false
+    }
+  }
+  return out
+}
+
+/**
+ * O shell EMBUTIDO de um texto: os payloads de `sh -c`/`bash -c` com TEXTO
+ * LITERAL, o que só existe em runtime e o que não é shell.
+ *
+ * A detecção é entre TOKENS (ver `shellTokens`): um token cujo valor é um shell
+ * conhecido, seguido de uma flag com `c` (`-c`, `-ec`), seguido do payload. A
+ * flag é procurada adiante porque `bash --norc -c "..."` existe; e o `--` fecha
+ * a busca (depois dele vem comando, não opção).
+ *
+ * @param {string} text
+ * @param {{startLine?: number}} [opts]
+ * @returns {{payloads: {linha: number, body: string, fonte: string}[], pular: {linha: number, detail: string}[], indeterminado: {linha: number, detail: string}[]}}
+ */
+export function embeddedPayloads(text, { startLine = 1 } = {}) {
+  const toks = shellTokens(text, { startLine })
+  const payloads = []
+  const pular = []
+  const indeterminado = []
+  for (let k = 0; k < toks.length; k++) {
+    const t = toks[k]
+    if (t.tipo === "op") continue
+    if (!SHELL_INTERPRETERS.includes(basename(t.valor))) continue
+    let flag = -1
+    for (let j = k + 1; j < toks.length && toks[j].tipo === "palavra"; j++) {
+      const v = toks[j].valor
+      if (v === "--" || !v.startsWith("-")) break
+      if (/^-[A-Za-z]*c[A-Za-z]*$/.test(v)) {
+        flag = j
+        break
+      }
+    }
+    if (flag === -1) continue
+    const alvo = toks[flag + 1]
+    if (!alvo || alvo.tipo === "op") {
+      indeterminado.push({
+        linha: t.linha,
+        detail: `\`${t.valor} -c\` SEM o texto adiante — a flag está lá e o payload não`,
+      })
+      k = flag
+      continue
+    }
+    k = flag + 1
+    if (alvo.tipo === "citada") {
+      if (!alvo.fechada) {
+        indeterminado.push({
+          linha: t.linha,
+          detail:
+            `\`${t.valor} -c\`: a quote do payload não fecha no texto lido — o gate não ` +
+            `consegue delimitar o que julgar (e o \`bash -n\` do arquivo que o contém não desce nele)`,
+        })
+        continue
+      }
+      const trim = alvo.inner.trim()
+      if (alvo.quote === "'") {
+        if (trim === "") {
+          pular.push({
+            linha: t.linha,
+            detail: `\`${t.valor} -c ''\` — payload VAZIO, nada executa`,
+          })
+          continue
+        }
+        payloads.push({ linha: t.linha, body: alvo.inner, fonte: "quote simples (literal)" })
+        continue
+      }
+      if (trim === "") {
+        pular.push({
+          linha: t.linha,
+          detail: `\`${t.valor} -c ""\` — payload VAZIO, nada executa`,
+        })
+        continue
+      }
+      if (RUNTIME_PAYLOAD_RE.test(trim)) {
+        indeterminado.push({
+          linha: t.linha,
+          detail:
+            `\`${t.valor} -c\`: o payload é \`${trim}\` — o TEXTO só existe em runtime ` +
+            `(o gate julga TEXTO, e presumir o valor publicaria um fato que ninguém mediu)`,
+        })
+        continue
+      }
+      payloads.push({ linha: t.linha, body: alvo.inner, fonte: "quote dupla" })
+      continue
+    }
+    if (alvo.valor === "") {
+      pular.push({ linha: t.linha, detail: `\`${t.valor} -c\` — payload vazio, nada executa` })
+      continue
+    }
+    if (alvo.valor.startsWith("$") || alvo.valor.includes("$(") || alvo.valor.includes("`")) {
+      indeterminado.push({
+        linha: t.linha,
+        detail:
+          `\`${t.valor} -c ${alvo.valor}\` — o payload é RESOLVIDO em runtime (variável ou ` +
+          `substituição), e o texto que o shell vai julgar não está escrito aqui`,
+      })
+      continue
+    }
+    payloads.push({ linha: t.linha, body: alvo.valor, fonte: "palavra" })
+  }
+  return { payloads, pular, indeterminado }
+}
+
+/**
+ * A LINHA de um texto DENTRO de um arquivo, achada pelo seu primeiro trecho não
+ * vazio.
+ *
+ * O `js-yaml` entrega VALORES, não marcas: um payload extraído de um escalar não
+ * sabe em que linha do arquivo ele está. A busca é pela primeira linha não vazia
+ * do texto, e o desfecho AMBÍGUO é `null` — apontar a linha errada é pior que
+ * dizer que não se sabe, porque manda o operador procurar no lugar errado (e o
+ * relatório imprime só o arquivo quando a linha é `null`).
+ *
+ * @param {string} raw
+ * @param {string} texto
+ * @returns {number|null}
+ */
+export function lineOfText(raw, texto) {
+  const linhas = String(raw ?? "").split(/\r?\n/)
+  // Tenta as linhas do texto UMA a uma: a primeira costuma ser a certa, mas uma
+  // linha genérica (`set -euo pipefail` aparece 5x num workflow) não é pista de
+  // nada — e a PRIMEIRA linha que casa uma vez só já localiza o trecho (todas
+  // as linhas tentadas pertencem ao texto, então a linha achada é dele).
+  for (const candidata of String(texto ?? "").split(/\r?\n/)) {
+    const alvo = candidata.trim()
+    if (alvo === "") continue
+    const achados = []
+    linhas.forEach((l, i) => {
+      if (l.trim().includes(alvo)) achados.push(i + 1)
+    })
+    if (achados.length === 1) return achados[0]
+  }
+  return null
+}
+
+/**
+ * O payload de um `-c` que chega por ARGV (a forma EXEC de um `RUN`, uma lista
+ * do YAML): aqui o texto é LITERAL por CONSTRUÇÃO.
+ *
+ * É a diferença que separa este caminho do tokenizador, e ela não é sutil: no
+ * TEXTO de shell, `sh -c "$cmd"` tem o `$cmd` expandido pelo shell EXTERNO antes
+ * de o interno existir (logo, o texto julgado não está escrito em lugar nenhum);
+ * num ARGV, o `$cmd` é o TEXTO que o shell interno vai receber e expandir — ele
+ * está escrito, é literal, e julga-se ele.
+ *
+ * @param {string[]} argv
+ * @returns {{payload?: {body: string, fonte: string}, pular?: string, indeterminado?: string}|null}
+ */
+export function argvPayload(argv) {
+  for (let i = 0; i < argv.length; i++) {
+    if (typeof argv[i] !== "string") continue
+    if (!SHELL_INTERPRETERS.includes(basename(argv[i]))) continue
+    const nome = basename(argv[i])
+    for (let j = i + 1; j < argv.length; j++) {
+      if (typeof argv[j] !== "string" || argv[j] === "--") break
+      if (!/^-[A-Za-z]*c[A-Za-z]*$/.test(argv[j])) continue
+      const payload = argv[j + 1]
+      if (typeof payload !== "string") {
+        return { indeterminado: `\`${nome} -c\` sem o texto no argumento seguinte` }
+      }
+      if (payload.trim() === "") return { pular: `\`${nome} -c ""\` — payload VAZIO, nada executa` }
+      return { payload: { body: payload, fonte: `argv de \`${nome} -c\`` } }
+    }
+  }
+  return null
+}
+
+/**
+ * O shell embutido de um YAML (workflow de forja ou compose): o payload
+ * LITERAL de um `sh -c`, pela ESTRUTURA do documento — nunca pela sintaxe.
+ *
+ * POR QUE PELA ESTRUTURA: varrer o texto de um YAML como se fosse shell lê a
+ * sintaxe do YAML como se fosse programa. Medido neste repositório antes desta
+ * versão: um `entrypoint:` em lista
+ * (`- /bin/sh` / `- -c` / `- |` + o script) entregou um payload `-` (a marca de
+ * lista) e um flow (`["CMD", "python3", "-c", "import urllib..."]`) não
+ * entregou payload nenhum — nos dois casos o gate diria "0 violações" sobre um
+ * texto que ele nunca julgou.
+ *
+ * Três formas, e as três são shell de verdade:
+ *   · ESCALAR (`entrypoint: >` num compose, o corpo de um `run:`) — o compose
+ *     roda a forma string via `sh -c`, e o corpo de um `run:` é um arquivo de
+ *     script: nos dois há um shell EXTERNO, então o texto é julgado como texto
+ *     de shell (o `"$cmd"` do meio é um valor que o externo resolve);
+ *   · LISTA (`["/bin/sh", "-c", "..."]`, em flow ou em bloco) — o argv vai
+ *     direto ao `execve`, e o texto do `-c` é literal (ver `argvPayload`);
+ *   · `CMD-SHELL` (`test: ["CMD-SHELL", "pg_isready ..."]`) — o docker roda o
+ *     elemento seguinte via `sh -c` por DEFINIÇÃO: é o mesmo shell embutido,
+ *     dito por um rótulo em vez de por um binário.
+ *
+ * @param {any} doc  o documento YAML já parseado
+ * @param {string} raw  o TEXTO do arquivo (para LOCALIZAR a linha do payload)
+ * @returns {{payloads: {linha: number|null, body: string, fonte: string}[], pular: {linha: number|null, detail: string}[], indeterminado: {linha: number|null, detail: string}[]}}
+ */
+export function yamlEmbeddedPayloads(doc, raw) {
+  const payloads = []
+  const pular = []
+  const indeterminado = []
+  const add = (destino, p) => destino.push({ ...p, linha: lineOfText(raw, p.body ?? "") })
+  const visitar = (no) => {
+    if (typeof no === "string") {
+      // ESCALAR: texto de shell (o shell externo existe nas duas formas).
+      const e = embeddedPayloads(no)
+      for (const p of e.payloads) add(payloads, p)
+      for (const p of e.pular) add(pular, p)
+      for (const p of e.indeterminado) add(indeterminado, p)
+      return
+    }
+    if (Array.isArray(no)) {
+      const strs = no.filter((x) => typeof x === "string")
+      if (strs.length === no.length && strs.length > 1) {
+        const r = argvPayload(strs)
+        if (r?.payload) add(payloads, r.payload)
+        else if (r?.pular) add(pular, { detail: r.pular })
+        else if (r?.indeterminado) add(indeterminado, { detail: r.indeterminado })
+        if (strs[0] === "CMD-SHELL" && strs.length > 1) {
+          add(payloads, {
+            body: strs[1],
+            fonte: "`CMD-SHELL` (o docker roda o texto do elemento seguinte via `sh -c`)",
+          })
+        }
+      }
+      for (const el of no) visitar(el)
+      return
+    }
+    if (no !== null && typeof no === "object") {
+      for (const v of Object.values(no)) visitar(v)
+    }
+  }
+  visitar(doc)
+  return { payloads, pular, indeterminado }
+}
+
+/**
+ * As instruções `RUN` de um Dockerfile, com o texto de shell que cada uma
+ * entrega — e os desfechos que NÃO são shell, nomeados.
+ *
+ * O que esta leitura precisa acertar (e o que uma regex por linha erraria):
+ *   · CONTINUAÇÃO (`\` no fim): o Dockerfile junta as linhas ANTES de entregar
+ *     o texto a `/bin/sh -c`. Julgar linha a linha julgaria um programa que não
+ *     existe — e `&& \` no fim é a forma mais comum de todas;
+ *   · COMENTÁRIO dentro de uma continuação: o Dockerfile o DESCARTA (não faz
+ *     parte do comando), então ele não pode virar texto de shell aqui;
+ *   · FLAGS do docker (`--mount=`, `--network=`, `--security=`) vêm ANTES do
+ *     comando e NÃO chegam ao shell — sem tirá-las, o `bash -n` receberia
+ *     `--mount=type=cache,...` como se fosse um comando;
+ *   · forma EXEC (`RUN ["bash", "-c", "..."]`): o argv vai direto ao `execve`,
+ *     sem shell — MAS um `-c` de shell ali é o MESMO texto embutido, e ele é
+ *     julgado (o JSON já resolveu as quotes); sem shell, o desfecho é PULADO;
+ *   · forma HEREDOC do BuildKit (`RUN <<'EOF'`): o corpo do heredoc É o script
+ *     que roda — é shell embutido no sentido mais literal, e é julgado.
+ *
+ * @param {string} content  o Dockerfile inteiro
+ * @param {{file?: string}} [opts]
+ * @returns {{units: {file: string, line: number, body: string, fonte: string}[], skipped: {file: string, line: number, detail: string}[], indeterminate: {file: string, line: number, detail: string}[]}}
+ */
+export function dockerfileRunUnits(content, { file = "Dockerfile" } = {}) {
+  const linhas = String(content ?? "").split(/\r?\n/)
+  const units = []
+  const skipped = []
+  const indeterminate = []
+  for (let i = 0; i < linhas.length; i++) {
+    const m = /^[ \t]*RUN\b(.*)$/.exec(linhas[i])
+    if (!m) continue
+    const linhaIni = i + 1
+    let corpo = (m[1] ?? "").replace(/^\s+/, "")
+    // (1) continuação: o texto do shell é a SOMA das linhas, não a primeira.
+    while (/\\\s*$/.test(corpo) && i + 1 < linhas.length) {
+      corpo = corpo.replace(/\\\s*$/, "")
+      i++
+      let prox = linhas[i]
+      // O Dockerfile descarta linhas de COMENTÁRIO dentro de uma continuação.
+      while (/^[ \t]*#/.test(prox) && i + 1 < linhas.length) prox = linhas[++i]
+      corpo += ` ${prox.trim()}`
+    }
+    corpo = corpo.trim()
+    if (corpo === "") {
+      skipped.push({ file, line: linhaIni, detail: "`RUN` sem comando — nada executa" })
+      continue
+    }
+    // (2) heredoc do BuildKit: o CORPO é o script.
+    if (corpo.startsWith("<<")) {
+      const delim = heredocDelimiters(corpo)[0]
+      if (!delim) {
+        indeterminate.push({
+          file,
+          line: linhaIni,
+          detail: "`RUN <<` sem delimitador legível — o gate não sabe onde o script termina",
+        })
+        continue
+      }
+      const linhasDoCorpo = []
+      let achou = false
+      for (i++; i < linhas.length; i++) {
+        if (linhas[i].trim() === delim || linhas[i].replace(/^\t+/, "") === delim) {
+          achou = true
+          break
+        }
+        linhasDoCorpo.push(linhas[i])
+      }
+      if (!achou) {
+        indeterminate.push({
+          file,
+          line: linhaIni,
+          detail: `heredoc \`<<${delim}\` sem o terminador — o script não fecha e o gate não tem o texto inteiro`,
+        })
+        continue
+      }
+      units.push({
+        file,
+        line: linhaIni,
+        body: linhasDoCorpo.join("\n"),
+        fonte: `heredoc <<${delim}`,
+      })
+      continue
+    }
+    // (3) forma EXEC (JSON).
+    if (corpo.startsWith("[")) {
+      let argv = null
+      try {
+        argv = JSON.parse(corpo)
+      } catch {
+        argv = null
+      }
+      if (!Array.isArray(argv) || argv.some((a) => typeof a !== "string")) {
+        indeterminate.push({
+          file,
+          line: linhaIni,
+          detail:
+            "a forma EXEC (JSON) não faz parsing — o gate não sabe o que o docker `execve`aria",
+        })
+        continue
+      }
+      const r = argvPayload(argv)
+      if (r?.payload) {
+        units.push({
+          file,
+          line: linhaIni,
+          body: r.payload.body,
+          fonte: `EXEC — ${r.payload.fonte}`,
+        })
+      } else if (r?.pular) {
+        skipped.push({ file, line: linhaIni, detail: r.pular })
+      } else if (r?.indeterminado) {
+        indeterminate.push({ file, line: linhaIni, detail: r.indeterminado })
+      } else {
+        skipped.push({
+          file,
+          line: linhaIni,
+          detail:
+            `forma EXEC (JSON): o argv vai direto ao \`execve\`, sem shell e sem \`-c\` de shell ` +
+            `(primeiro elemento: \`${basename(String(argv[0] ?? ""))}\`) — não há texto de shell a julgar`,
+        })
+      }
+      continue
+    }
+    // (4) forma shell: as flags do docker saem da frente, o resto é o comando.
+    const mFlag = /^(?:--[A-Za-z][A-Za-z-]*(?:=\S*)?\s+)+/.exec(corpo)
+    const texto = mFlag ? corpo.slice(mFlag[0].length).trim() : corpo
+    if (texto === "") {
+      skipped.push({
+        file,
+        line: linhaIni,
+        detail: "`RUN` só com flags do docker — nada chega ao shell",
+      })
+      continue
+    }
+    units.push({ file, line: linhaIni, body: texto, fonte: "RUN (forma shell)" })
+  }
+  return { units, skipped, indeterminate }
+}
+
+/**
+ * Os arquivos que carregam shell EMBUTIDO: os Dockerfiles (por NOME, em qualquer
+ * diretório) e os composes do repositório.
+ *
+ * A enumeração caminha a ÁRVORE em vez de ler uma lista à mão: um `Dockerfile`
+ * novo num diretório novo entra na varredura sem editar nada aqui — a lista
+ * fixa é justamente como um alvo fica invisível (o `DOCKERFILES` do
+ * `check-bun-mirror` é uma lista de OUTRO assunto, e este gate não depende dela).
+ *
+ * @param {string} root
+ * @returns {string[]}
+ */
+export function embeddedPaths(root) {
+  const out = []
+  const walk = (dir) => {
+    const abs = dir === "" ? root : join(root, dir)
+    if (!existsSync(abs)) return
+    for (const entry of readdirSync(abs, { withFileTypes: true })) {
+      const rel = dir === "" ? entry.name : `${dir}/${entry.name}`
+      if (entry.isDirectory()) {
+        if (SKIP_DIRS.has(entry.name)) continue
+        walk(rel)
+        continue
+      }
+      if (!entry.isFile()) continue
+      if (DOCKERFILE_RE.test(rel) || COMPOSE_FILE_RE.test(rel)) out.push(rel)
+    }
+  }
+  walk("")
+  return out.sort()
+}
+
+/**
+ * A terceira fonte inteira: o shell embutido dos Dockerfiles, dos composes, dos
+ * corpos `run:` e dos scripts de shell.
+ *
+ * Os DOIS primeiros conjuntos trazem texto de shell PRÓPRIO (a instrução `RUN`);
+ * os quatro são varridos por `sh -c` LITERAL — o payload que o parser do arquivo
+ * que o contém não desce. Com `staged`, tudo vem do ÍNDICE, como as outras
+ * fontes: o recorte do commit julga o COMMIT.
+ *
+ * `donos` são os arquivos que TÊM texto de shell próprio (os Dockerfiles e os
+ * composes lidos por estrutura); `files` são TODOS os arquivos em que a terceira
+ * fonte procurou (donos + workflows + scripts), porque um `sh -c` literal pode
+ * viver em qualquer um deles. Os dois números são diferentes e o relatório os
+ * nomeia pelo que cada um é — chamar os dois de "Dockerfiles" seria publicar uma
+ * contagem que não mede o que o rótulo diz.
+ *
+ * Os campos de cada unidade e de cada payload são NOMEADOS na assinatura pelo
+ * mesmo motivo das outras duas fontes: o `embeddedFailures`/`payloadFailures` do
+ * `scan()` é este tipo somado a `kind`/`error`.
+ *
+ * @param {string} root
+ * @param {{staged?: boolean}} [opts]
+ * @returns {{files: string[], donos: string[], units: {file: string, line: number, body: string, fonte: string}[], payloads: {file: string, line: number|null, body: string, fonte: string, mascara: "runner"|"compose"|null}[], skipped: {file: string, line: number|null, detail: string}[], indeterminate: {file: string, line: number|null, detail: string}[], unread: {file: string, detail: string}[]}}
+ */
+export function collectEmbeddedShell(root, { staged = false } = {}) {
+  const files = []
+  const donos = []
+  const units = []
+  const payloads = []
+  const skipped = []
+  const indeterminate = []
+  const unread = []
+  let alvos
+  try {
+    const donosVarridos = staged ? embeddedStagedPaths(root) : embeddedPaths(root)
+    donos.push(...donosVarridos)
+    const workflows = staged ? stagedWorkflowPaths(root) : allWorkflowFiles(root).map((w) => w.path)
+    const scripts = staged ? stagedShellScriptPaths(root) : listShellScripts(root)
+    alvos = [...new Set([...donosVarridos, ...workflows, ...scripts])].sort()
+  } catch (err) {
+    return {
+      files,
+      donos,
+      units,
+      payloads,
+      skipped,
+      indeterminate,
+      unread: [{ file: root, detail: String(err?.message ?? err) }],
+    }
+  }
+  for (const rel of alvos) {
+    let conteudo
+    try {
+      conteudo = staged ? readIndexFile(root, rel) : readJudgedFile(join(root, rel), rel)
+    } catch (err) {
+      unread.push({ file: rel, detail: err?.motivo ?? String(err?.message ?? err) })
+      continue
+    }
+    files.push(rel)
+    if (DOCKERFILE_RE.test(rel)) {
+      const r = dockerfileRunUnits(conteudo, { file: rel })
+      units.push(...r.units)
+      skipped.push(...r.skipped)
+      indeterminate.push(...r.indeterminate)
+    }
+    // A MÁSCARA é a do que o shell REALMENTE recebe, e ela muda por FONTE:
+    //   · workflow — `${{ ... }}` é resolvido pelo runner ANTES de o shell existir;
+    //   · compose — `$$` é o escape da interpolação do compose, que também
+    //     resolve antes (o shell do container recebe `$`);
+    //   · script e Dockerfile — não há nada entre o texto e o shell: o que está
+    //     escrito é o que o interpretador julga (o `$VAR` de um `RUN` é
+    //     substituído pelo BUILDER, mas o que chega ao shell é um VALOR, e a
+    //     gramática não muda por isso).
+    const mascara = isForgeWorkflowPath(rel)
+      ? "runner"
+      : COMPOSE_FILE_RE.test(rel)
+        ? "compose"
+        : null
+    let emb
+    if (mascara || COMPOSE_FILE_RE.test(rel)) {
+      const parsed = parseYamlDocument(conteudo)
+      if (!parsed.ok) {
+        // Um workflow que não faz parsing em YAML já é FATO do outro coletor
+        // (`yamlInvalido`, exit 2): repetir aqui só duplicaria a mensagem. Num
+        // COMPOSE ninguém mais responde por ele — e "não consegui ler" não pode
+        // virar "nenhum payload" em silêncio.
+        if (!mascara) {
+          indeterminate.push({
+            file: rel,
+            line: null,
+            detail: `YAML que não faz parsing (${parsed.motivo}) — o shell embutido deste arquivo não pôde ser lido`,
+          })
+        }
+        continue
+      }
+      emb = yamlEmbeddedPayloads(parsed.doc, conteudo)
+    } else {
+      emb = embeddedPayloads(conteudo)
+    }
+    for (const p of emb.payloads) {
+      payloads.push({ file: rel, line: p.linha, body: p.body, fonte: p.fonte, mascara })
+    }
+    for (const s of emb.pular) skipped.push({ file: rel, line: s.linha, detail: s.detail })
+    for (const s of emb.indeterminado) {
+      indeterminate.push({ file: rel, line: s.linha, detail: s.detail })
+    }
+  }
+  return { files, donos, units, payloads, skipped, indeterminate, unread }
+}
+
+/**
+ * Os Dockerfiles e composes do ÍNDICE — o recorte do commit para a terceira
+ * fonte. Dockerfile é reconhecido por NOME em qualquer diretório (a mesma régua
+ * da varredura inteira); compose, pela régua compartilhada do `check-bun-mirror`.
+ *
+ * @param {string} root
+ * @returns {string[]}
+ */
+export function embeddedStagedPaths(root) {
+  return stagedPaths(root).filter((p) => DOCKERFILE_RE.test(p) || COMPOSE_FILE_RE.test(p))
+}
+
 /**
  * Os SCRIPTS DE SHELL que o repositório versiona, com o desfecho de cada um.
  *
@@ -665,9 +1461,14 @@ export function interpreterOf(content) {
  *     que não é bash, e um script de `python3` com nome `.sh` não é esta classe);
  *   · VAZIO — nomeado: nada executa, então não há sintaxe a julgar.
  *
+ * Os campos de cada script (arquivo, corpo, interpretador e a FONTE dele) são
+ * NOMEADOS na assinatura pelo mesmo motivo do `collectRunBodies`: o
+ * `scriptFailures` do `scan()` é este tipo somado a `kind`/`error`, e `object[]`
+ * apagaria de onde veio a violação.
+ *
  * @param {string} root
  * @param {{staged?: boolean}} [opts]
- * @returns {{files: string[], scripts: object[], skipped: object[], unread: object[]}}
+ * @returns {{files: string[], scripts: {file: string, body: string, interpreter: string, fonte: string}[], skipped: {file: string, detail: string}[], unread: {file: string, detail: string}[]}}
  */
 export function collectShellScripts(root, { staged = false } = {}) {
   const files = []
@@ -738,9 +1539,14 @@ export function collectShellScripts(root, { staged = false } = {}) {
  * PASSO, não sobre o corpo: um passo cujo shell o runner não tem é uma violação
  * mesmo que o corpo seja bash válido — é a classe que o parsing não pega.
  *
+ * Os campos de cada passo são NOMEADOS na assinatura (e não `object`): o
+ * `failures` do `scan()` é este tipo somado ao `kind`/`error`, e um `object[]`
+ * aqui apagaria a única coisa que quem consome o resultado precisa saber — de
+ * qual passo veio a violação.
+ *
  * @param {string} root
  * @param {{staged?: boolean}} [opts]
- * @returns {{files: string[], steps: object[], skipped: object[], indeterminate: object[], shellFailures: object[], unread: object[], yamlInvalido: object[]}}
+ * @returns {{files: string[], steps: {file: string, line: number, bodyEndLine: number, job: string|null, shell: string|null, shellFonte: string, body: string}[], skipped: {file: string, line: number, bodyEndLine: number, job: string|null, shell: string|null, shellFonte: string, detail: string}[], indeterminate: {file: string, line: number, bodyEndLine: number, job: string|null, shell: string|null, shellFonte: string, detail: string}[], shellFailures: {file: string, line: number, bodyEndLine: number, job: string|null, shell: string|null, shellFonte: string, kind: string, command: string, error: string}[], unread: {file: string, detail: string}[], yamlInvalido: {file: string, detail: string}[]}}
  */
 export function collectRunBodies(root, { staged = false } = {}) {
   const files = []
@@ -894,25 +1700,32 @@ export function checkBody(body, { bash = DEFAULT_BASH, run = spawnSync } = {}) {
 }
 
 /**
- * A varredura inteira: coleta + `bash -n` em cada corpo E em cada script.
+ * A varredura inteira: coleta + `bash -n` em cada corpo, cada script e cada
+ * texto de shell EMBUTIDO.
  *
- * Duas fontes, UM parser e UM veredito. O que MUDA entre elas é o texto julgado,
+ * TRÊS fontes, UM parser e UM veredito. O que MUDA entre elas é o texto julgado,
  * e a diferença é a razão de a máscara existir de um lado e não do outro:
  *   · corpo `run:` — vai MASCARADO (`${{ ... }}` é resolvido pelo runner ANTES de
  *     o bash existir; julgar as chaves seria julgar texto que nunca chega lá);
  *   · arquivo de shell — vai CRU (não há runner entre o arquivo e o bash: o texto
- *     que o interpretador recebe é o DO ARQUIVO, byte a byte).
+ *     que o interpretador recebe é o DO ARQUIVO, byte a byte);
+ *   · shell EMBUTIDO — a instrução `RUN` de um Dockerfile vai CRUA (o BUILD não
+ *     tem template de runner), e o payload de um `sh -c` segue a fonte que o
+ *     contém: num workflow, mascarado; num script/Dockerfile/compose, cru.
  *
- * O exit code e o relatório SOMAM as duas: um script quebrado é a mesma classe
- * que um corpo quebrado, e separá-los em dois vereditos deixaria o CI verde por
- * metade.
+ * O exit code e o relatório SOMAM as três: um script quebrado é a mesma classe
+ * que um corpo quebrado, e separá-los em vereditos separados deixaria o CI verde
+ * por metade.
  */
 export function scan(root, { bash = DEFAULT_BASH, run = spawnSync, staged = false } = {}) {
   const { files, steps, skipped, indeterminate, shellFailures, unread, yamlInvalido } =
     collectRunBodies(root, { staged })
   const arquivos = collectShellScripts(root, { staged })
+  const embutido = collectEmbeddedShell(root, { staged })
   const failures = []
   const scriptFailures = []
+  const embeddedFailures = []
+  const payloadFailures = []
   let indisponivel = null
   for (const step of steps) {
     const r = checkBody(maskExpressions(step.body), { bash, run })
@@ -932,43 +1745,92 @@ export function scan(root, { bash = DEFAULT_BASH, run = spawnSync, staged = fals
       if (!r.ok) scriptFailures.push({ ...script, kind: r.kind ?? "erro", error: r.detail })
     }
   }
+  if (!indisponivel) {
+    for (const unidade of embutido.units) {
+      const r = checkBody(unidade.body, { bash, run })
+      if (r.unavailable) {
+        indisponivel = r.detail
+        break
+      }
+      if (!r.ok) embeddedFailures.push({ ...unidade, kind: r.kind ?? "erro", error: r.detail })
+    }
+  }
+  if (!indisponivel) {
+    for (const payload of embutido.payloads) {
+      const textoDoPayload =
+        payload.mascara === "runner"
+          ? maskExpressions(payload.body)
+          : payload.mascara === "compose"
+            ? maskComposeEscapes(payload.body)
+            : payload.body
+      const r = checkBody(textoDoPayload, { bash, run })
+      if (r.unavailable) {
+        indisponivel = r.detail
+        break
+      }
+      if (!r.ok) payloadFailures.push({ ...payload, kind: r.kind ?? "erro", error: r.detail })
+    }
+  }
+  // O `unread` das três fontes é o MESMO arquivo lido por dois coletores (um
+  // workflow é lido pelos corpos e pela varredura de embutido): a mensagem de
+  // "não consegui ler" sai UMA vez por arquivo, senão a lista infla e o operador
+  // procura dois problemas onde há um.
+  const unreadTodos = []
+  const visto = new Set()
+  for (const u of [...unread, ...arquivos.unread, ...embutido.unread]) {
+    if (visto.has(u.file)) continue
+    visto.add(u.file)
+    unreadTodos.push(u)
+  }
   return {
     files,
     steps,
     skipped,
     indeterminate,
     shellFailures,
-    unread: [...unread, ...arquivos.unread],
+    unread: unreadTodos,
     yamlInvalido,
     shellFiles: arquivos.files,
     shellScripts: arquivos.scripts,
     scriptSkipped: arquivos.skipped,
+    embeddedFiles: embutido.files,
+    embeddedDonos: embutido.donos,
+    embeddedUnits: embutido.units,
+    embeddedPayloads: embutido.payloads,
+    embeddedSkipped: embutido.skipped,
+    embeddedIndeterminate: embutido.indeterminate,
     failures,
     scriptFailures,
+    embeddedFailures,
+    payloadFailures,
     indisponivel,
   }
 }
 
-const USAGE = `check-workflow-run-syntax — todo corpo \`run:\` dos workflows faz parsing em \`bash -n\`,
-e todo \`shell:\` declarado existe no runner medido
+const USAGE = `check-workflow-run-syntax — o shell do repositório faz parsing em \`bash -n\`:
+todo corpo \`run:\`, todo script versionado E todo texto de shell EMBUTIDO (o
+\`RUN\` de um Dockerfile e o payload de um \`sh -c\`), e todo \`shell:\` declarado
+existe no runner medido
 
 Usage:
   node scripts/check-workflow-run-syntax.mjs              # o gate
-  node scripts/check-workflow-run-syntax.mjs --staged     # só o que o ÍNDICE tem (workflows + scripts)
+  node scripts/check-workflow-run-syntax.mjs --staged     # só o que o ÍNDICE tem (workflows + scripts + Dockerfiles/composes)
   node scripts/check-workflow-run-syntax.mjs --fix        # REMENDA a cicatriz mecânica (LOCAL)
   node scripts/check-workflow-run-syntax.mjs --shells     # o que a imagem do runner tem, e a prova
   node scripts/check-workflow-run-syntax.mjs --json       # saída estruturada
-  node scripts/check-workflow-run-syntax.mjs --list       # só o que foi varrido (corpos e arquivos)
+  node scripts/check-workflow-run-syntax.mjs --list       # só o que foi varrido (corpos, arquivos e shell embutido)
   node scripts/check-workflow-run-syntax.mjs --root X     # fixture (testes)
   node scripts/check-workflow-run-syntax.mjs --bash CMD   # outro interpretador
 
 Exit codes:
-  0 — todo corpo de passo E todo script de shell passam SEM erro e SEM aviso; os
-      passos não-bash saem NOMEADOS, os scripts de shebang não-bash também, e os
-      de shell fora da medição saem como INDETERMINADO
-  1 — violação: um corpo OU um script não faz parsing (erro), ou o parser avisou
-      (ex.: heredoc sem terminador, que o bash reporta como AVISO e sai 0), OU um
-      passo declara um \`shell:\` que o runner NÃO tem (\`command not found\`)
+  0 — todo corpo de passo, todo script de shell E todo texto de shell embutido
+      passam SEM erro e SEM aviso; os passos não-bash saem NOMEADOS, os scripts
+      de shebang não-bash também, os payloads que só existem em runtime saem como
+      INDETERMINADO (nomeados) e o shell embutido fora do escopo sai PULADO
+  1 — violação: um corpo, um script OU um texto embutido não faz parsing (erro),
+      ou o parser avisou (ex.: heredoc sem terminador, que o bash reporta como
+      AVISO e sai 0), OU um passo declara um \`shell:\` que o runner NÃO tem
+      (\`command not found\`)
   2 — infra: bash não executou, --root inexistente, --staged fora de um repo
       git (sem índice não há recorte), arquivo ilegível, ou workflow que NÃO faz
       parsing em YAML (um arquivo que não é workflow não tem corpo a julgar)
@@ -1045,6 +1907,22 @@ export function fixAll(
         "arquivo de shell: este fixer remenda UMA linha ancorada no bloco `run: |` (linha + " +
         "corpo). Num arquivo, a reescrita pode ter engolido QUALQUER linha, e remendar a " +
         "última sem ver a causa inventaria intenção — remende à mão (o diff é o que se revisa)",
+    })
+  }
+  // O shell EMBUTIDO tem recusa PRÓPRIA, e escrita: um `RUN` é uma instrução com
+  // continuação (`\`) — emendar a última linha dela mexeria em DUAS linhas do
+  // arquivo —, e um payload de `sh -c` pode viver em qualquer coluna (num
+  // `entrypoint:` de compose, num `test:` de healthcheck): o modelo do fixer
+  // (uma linha, ancorada no bloco `run: |`) não vale ali, e remendar sem ver a
+  // causa inventaria intenção.
+  for (const f of [...resultado.embeddedFailures, ...resultado.payloadFailures]) {
+    refused.push({
+      ...f,
+      fixed: false,
+      reason:
+        `shell embutido (${f.fonte}): o remendo do fixer é de UMA linha ancorada no bloco ` +
+        "`run: |` de um workflow. Aqui o texto é uma instrução com continuação ou um payload " +
+        "dentro de outro artefato — remende à mão (o diff é o que se revisa)",
     })
   }
   return { ...resultado, fixed, refused }
@@ -1154,6 +2032,11 @@ function main() {
     for (const f of r.shellFailures) {
       console.error(`✖ ${f.file}:${f.line} — ${f.error}`)
     }
+    // As duas fontes de shell EMBUTIDO também saem no relatório do `--fix`:
+    // nenhuma delas é remendada (o fixer recusa, e a recusa vai para `refused`).
+    for (const f of [...r.embeddedFailures, ...r.payloadFailures]) {
+      console.error(`✖ ${f.line ? `${f.file}:${f.line}` : f.file} — ${f.error}`)
+    }
     for (const f of r.refused) {
       console.error(`⛔ ${f.line ? `${f.file}:${f.line}` : f.file} — NÃO remendado: ${f.reason}`)
       // A última linha COM CONTEÚDO: num arquivo inteiro a última linha costuma
@@ -1170,7 +2053,8 @@ function main() {
           `   o diff é o que se revisa. O corpo voltou a fazer \`bash -n\` em memória E no disco.`,
       )
     }
-    if (r.refused.length === 0 && r.shellFailures.length === 0) {
+    const embutidoReprovado = r.embeddedFailures.length + r.payloadFailures.length
+    if (r.refused.length === 0 && r.shellFailures.length === 0 && embutidoReprovado === 0) {
       console.log(
         r.fixed.length === 0
           ? `✅ nenhum corpo reprovado — não há cicatriz para remendar.`
@@ -1192,14 +2076,24 @@ function main() {
     shellFiles,
     shellScripts,
     scriptSkipped,
+    embeddedFiles,
+    embeddedDonos,
+    embeddedUnits,
+    embeddedPayloads,
+    embeddedSkipped,
+    embeddedIndeterminate,
     failures,
     scriptFailures,
+    embeddedFailures,
+    payloadFailures,
     indisponivel,
   } = scan(root, { bash, staged })
 
   if (argv.includes("--list")) {
     for (const s of steps) console.log(`${s.file}:${s.line}`)
     for (const s of shellScripts) console.log(s.file)
+    for (const u of embeddedUnits) console.log(`${u.file}:${u.line}`)
+    for (const p of embeddedPayloads) console.log(p.line ? `${p.file}:${p.line}` : p.file)
     process.exit(EXIT.OK)
   }
 
@@ -1220,6 +2114,35 @@ function main() {
           arquivosDeShell: shellFiles,
           scripts: shellScripts.length,
           scriptSkipped,
+          arquivosEmbutidos: embeddedFiles,
+          donosEmbutidos: embeddedDonos,
+          instrucoesEmbutidas: embeddedUnits.map((u) => ({
+            file: u.file,
+            line: u.line,
+            fonte: u.fonte,
+          })),
+          embeddedPayloads: embeddedPayloads.map((p) => ({
+            file: p.file,
+            line: p.line,
+            fonte: p.fonte,
+            mascara: p.mascara,
+          })),
+          embeddedSkipped,
+          embeddedIndeterminate,
+          embeddedFailures: embeddedFailures.map((f) => ({
+            file: f.file,
+            line: f.line,
+            fonte: f.fonte,
+            kind: f.kind,
+            error: f.error,
+          })),
+          payloadFailures: payloadFailures.map((f) => ({
+            file: f.file,
+            line: f.line,
+            fonte: f.fonte,
+            kind: f.kind,
+            error: f.error,
+          })),
           scriptFailures: scriptFailures.map((f) => ({
             file: f.file,
             interpreter: f.interpreter,
@@ -1244,6 +2167,8 @@ function main() {
       failures.length > 0 ||
       scriptFailures.length > 0 ||
       shellFailures.length > 0 ||
+      embeddedFailures.length > 0 ||
+      payloadFailures.length > 0 ||
       unread.length > 0 ||
       yamlInvalido.length > 0 ||
       indisponivel !== null
@@ -1254,7 +2179,7 @@ function main() {
   // sobre nada — e é justamente o veredito que este guard não pode cunhar.
   if (indisponivel) {
     console.error(
-      `❌ ${indisponivel}\n   Sem interpretador não há parsing: nenhum corpo NEM arquivo foi julgado.`,
+      `❌ ${indisponivel}\n   Sem interpretador não há parsing: nenhum corpo, arquivo NEM shell embutido foi julgado.`,
     )
     process.exit(EXIT.UNAVAILABLE)
   }
@@ -1288,7 +2213,7 @@ function main() {
     )
     if (staged) {
       console.error(
-        `   (recorte --staged: ${files.length} workflow(s) do ÍNDICE, lidos do commit)\n`,
+        `   (recorte --staged: ${files.length} workflow(s) + ${shellFiles.length} script(s) + ${embeddedDonos.length} Dockerfile(s)/compose(s) do ÍNDICE, lidos do commit)\n`,
       )
     }
     for (const f of failures) {
@@ -1327,7 +2252,45 @@ function main() {
         `   linhas de onde o bash apontou. É a MESMA classe que morre no passo que executa o script.\n`,
     )
   }
+  // A TERCEIRA fonte: o shell EMBUTIDO. O `RUN` de um Dockerfile e o payload de
+  // um `sh -c` são a MESMA classe das outras duas (texto de shell que morre no
+  // runtime, longe da causa) — e o relatório deles sai antes do exit, como os
+  // das outras, para uma execução com as três classes não esconder duas.
+  if (embeddedFailures.length > 0) {
+    const graves = embeddedFailures.filter((f) => f.kind === "erro").length
+    console.error(
+      `❌ ${embeddedFailures.length} instrução(ões) EMBUTIDA(s) (\`RUN\` de Dockerfile) NÃO passam em \`bash -n\` —\n` +
+        `   ${graves} com ERRO de sintaxe, ${embeddedFailures.length - graves} com AVISO (o build deixa de rodar o\n` +
+        `   que o texto diz, e o Dockerfile continua sendo um Dockerfile válido):\n`,
+    )
+    for (const f of embeddedFailures) {
+      console.error(`   ${f.kind === "aviso" ? "⚠" : "✖"} ${f.file}:${f.line}  (${f.fonte})`)
+      console.error(`     ${f.error.split("\n").join("\n     ")}`)
+    }
+    console.error(
+      `\n   O shell do BUILD é o texto da instrução JUNTADO (a continuação \`\\\` faz parte) e entregue a\n` +
+        `   \`/bin/sh -c\`: a causa costuma estar a poucas linhas de onde o shell apontou.\n`,
+    )
+  }
+  if (payloadFailures.length > 0) {
+    const graves = payloadFailures.filter((f) => f.kind === "erro").length
+    console.error(
+      `❌ ${payloadFailures.length} payload(s) de \`sh -c\`/\`bash -c\` NÃO passam em \`bash -n\` — ${graves} com ERRO\n` +
+        `   de sintaxe, ${payloadFailures.length - graves} com AVISO (o shell interno morre ao ser invocado, e o\n` +
+        `   arquivo que o contém é válido: nem o YAML nem o \`bash -n\` do arquivo descem no payload):\n`,
+    )
+    for (const f of payloadFailures) {
+      const onde = f.line ? `${f.file}:${f.line}` : f.file
+      console.error(`   ${f.kind === "aviso" ? "⚠" : "✖"} ${onde}  (${f.fonte})`)
+      console.error(`     ${f.error.split("\n").join("\n     ")}`)
+    }
+    console.error(
+      `\n   O payload é o TEXTO que o shell INTERNO recebe; para o parser do arquivo que o contém ele é uma\n` +
+        `   STRING (é por isso que ele passava por todos os outros gates). Corrija a reescrita.\n`,
+    )
+  }
   if (failures.length > 0 || scriptFailures.length > 0) process.exit(EXIT.VIOLATIONS)
+  if (embeddedFailures.length > 0 || payloadFailures.length > 0) process.exit(EXIT.VIOLATIONS)
 
   // A classe que NENHUM parser pega: o corpo é válido, mas o interpretador que o
   // passo pede não existe no runner. Sem esta metade, o passo saía como
@@ -1368,23 +2331,40 @@ function main() {
     )
     for (const s of indeterminate) console.log(`     ${s.file}:${s.line}  ${s.detail}`)
   }
+  if (embeddedSkipped.length > 0) {
+    console.log(
+      `⏭ ${embeddedSkipped.length} texto(s) de shell EMBUTIDO fora do parsing — NOMEADO(s) (o gate não julga o que não é shell, e payload VAZIO não executa nada):`,
+    )
+    for (const s of embeddedSkipped) {
+      console.log(`     ${s.line ? `${s.file}:${s.line}` : s.file}  ${s.detail}`)
+    }
+  }
+  if (embeddedIndeterminate.length > 0) {
+    console.log(
+      `◐ ${embeddedIndeterminate.length} texto(s) de shell EMBUTIDO INDETERMINADO(s) (o gate não prova o que o shell vai receber, e presumir seria publicar o que ninguém mediu):`,
+    )
+    for (const s of embeddedIndeterminate) {
+      console.log(`     ${s.line ? `${s.file}:${s.line}` : s.file}  ${s.detail}`)
+    }
+  }
   if (staged) {
-    if (files.length === 0 && shellFiles.length === 0) {
+    if (files.length === 0 && shellFiles.length === 0 && embeddedUnits.length === 0) {
       console.log(
-        "   (nenhum workflow NEM script no ÍNDICE — nada a julgar neste commit; este recorte NÃO é a varredura do repo)",
+        "   (nenhum workflow, script NEM Dockerfile/compose no ÍNDICE — nada a julgar neste commit; este recorte NÃO é a varredura do repo)",
       )
     }
     console.log(
-      `✅ ${steps.length} corpo(s) \`run:\` e ${shellScripts.length} arquivo(s) de shell DO ÍNDICE ` +
-        `(${files.length} workflow(s) + ${shellFiles.length} script(s) do commit) passam em \`${bash} -n\`: sem erro E ` +
-        `sem aviso. O recorte é o COMMIT; a varredura inteira (as duas forjas + todos os scripts) é o veredito do CI.`,
+      `✅ ${steps.length} corpo(s) \`run:\`, ${shellScripts.length} arquivo(s) de shell e ${embeddedUnits.length + embeddedPayloads.length} texto(s) de shell EMBUTIDO DO ÍNDICE ` +
+        `(${files.length} workflow(s) + ${shellFiles.length} script(s) + ${embeddedDonos.length} Dockerfile(s)/compose(s) do commit; o texto embutido foi procurado em ${embeddedFiles.length} arquivo(s)) passam em \`${bash} -n\`: sem erro E ` +
+        `sem aviso. O recorte é o COMMIT; a varredura inteira (as duas forjas + todos os scripts + o shell embutido) é o veredito do CI.`,
     )
     process.exit(EXIT.OK)
   }
   console.log(
-    `✅ ${steps.length} corpo(s) \`run:\` E ${shellScripts.length} arquivo(s) de shell passam em \`${bash} -n\` ` +
-      `(as duas forjas + os scripts versionados, sem allowlist): sem erro E sem aviso — e todo \`shell:\` ` +
-      `declarado existe no runner medido. O gate prova que o corpo e o arquivo fazem PARSING, e que o ` +
+    `✅ ${steps.length} corpo(s) \`run:\`, ${shellScripts.length} arquivo(s) de shell E ${embeddedUnits.length + embeddedPayloads.length} texto(s) de shell EMBUTIDO ` +
+      `(${embeddedUnits.length} instrução(ões) \`RUN\` de Dockerfile + ${embeddedPayloads.length} payload(s) de \`sh -c\`) passam em \`${bash} -n\` ` +
+      `(as duas forjas + os scripts versionados + os Dockerfiles e composes, sem allowlist): sem erro E sem aviso — e todo \`shell:\` ` +
+      `declarado existe no runner medido. O gate prova que o corpo, o arquivo e o texto embutido fazem PARSING, e que o ` +
       `interpretador existe; NÃO prova que eles fazem o que dizem.`,
   )
   process.exit(EXIT.OK)
