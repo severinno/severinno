@@ -43,7 +43,9 @@ export default function HeatmapOverlay({
         try {
           if (map.getLayer(HEATMAP_LAYER_ID)) map.removeLayer(HEATMAP_LAYER_ID)
           if (map.getSource(HEATMAP_SOURCE_ID)) map.removeSource(HEATMAP_SOURCE_ID)
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         sourceAdded.current = false
       }
       return
@@ -56,8 +58,8 @@ export default function HeatmapOverlay({
       const geojson = {
         type: "FeatureCollection" as const,
         features: providers
-          .filter(p => typeof p.lat === "number" && typeof p.lng === "number")
-          .map(p => ({
+          .filter((p) => typeof p.lat === "number" && typeof p.lng === "number")
+          .map((p) => ({
             type: "Feature" as const,
             geometry: {
               type: "Point" as const,
@@ -70,7 +72,8 @@ export default function HeatmapOverlay({
           })),
       }
 
-      const source = map.getSource(HEATMAP_SOURCE_ID) as { setData: (data: typeof geojson) => void } | undefined
+      const source = map.getSource(HEATMAP_SOURCE_ID) as
+        { setData: (data: typeof geojson) => void } | undefined
       if (source) {
         source.setData(geojson)
         return
@@ -81,67 +84,49 @@ export default function HeatmapOverlay({
         data: geojson,
       })
 
-    map.addLayer({
-      id: HEATMAP_LAYER_ID,
-      type: "heatmap",
-      source: HEATMAP_SOURCE_ID,
-      paint: {
-        // Weight by provider rating/review density
-        "heatmap-weight": ["get", "weight"],
-        // Color ramp: green → yellow → orange → red
-        "heatmap-color": [
-          "interpolate",
-          ["linear"],
-          ["heatmap-density"],
-          0,
-          "rgba(16, 185, 129, 0)",      // transparent
-          0.2,
-          "rgba(16, 185, 129, 0.3)",     // light green
-          0.4,
-          "rgba(234, 179, 8, 0.5)",      // yellow
-          0.6,
-          "rgba(249, 115, 22, 0.6)",     // orange
-          0.8,
-          "rgba(239, 68, 68, 0.7)",      // red
-          1,
-          "rgba(220, 38, 38, 0.8)",      // dark red
-        ],
-        // Radius in pixels — increases with zoom
-        "heatmap-radius": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          10,
-          radius * 0.5,
-          15,
-          radius,
-          20,
-          radius * 1.5,
-        ],
-        // Intensity
-        "heatmap-intensity": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          10,
-          0.8,
-          15,
-          1.2,
-          20,
-          1.5,
-        ],
-        // Opacity
-        "heatmap-opacity": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          12,
-          0.7,
-          18,
-          0.4,
-        ],
-      },
-    })
+      map.addLayer({
+        id: HEATMAP_LAYER_ID,
+        type: "heatmap",
+        source: HEATMAP_SOURCE_ID,
+        paint: {
+          // Weight by provider rating/review density
+          "heatmap-weight": ["get", "weight"],
+          // Color ramp: green → yellow → orange → red
+          "heatmap-color": [
+            "interpolate",
+            ["linear"],
+            ["heatmap-density"],
+            0,
+            "rgba(16, 185, 129, 0)", // transparent
+            0.2,
+            "rgba(16, 185, 129, 0.3)", // light green
+            0.4,
+            "rgba(234, 179, 8, 0.5)", // yellow
+            0.6,
+            "rgba(249, 115, 22, 0.6)", // orange
+            0.8,
+            "rgba(239, 68, 68, 0.7)", // red
+            1,
+            "rgba(220, 38, 38, 0.8)", // dark red
+          ],
+          // Radius in pixels — increases with zoom
+          "heatmap-radius": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            10,
+            radius * 0.5,
+            15,
+            radius,
+            20,
+            radius * 1.5,
+          ],
+          // Intensity
+          "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 10, 0.8, 15, 1.2, 20, 1.5],
+          // Opacity
+          "heatmap-opacity": ["interpolate", ["linear"], ["zoom"], 12, 0.7, 18, 0.4],
+        },
+      })
 
       sourceAdded.current = true
     }
@@ -159,7 +144,9 @@ export default function HeatmapOverlay({
         if (map.getLayer(HEATMAP_LAYER_ID)) map.removeLayer(HEATMAP_LAYER_ID)
         if (map.getSource(HEATMAP_SOURCE_ID)) map.removeSource(HEATMAP_SOURCE_ID)
         sourceAdded.current = false
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }, [map, providers, enabled, radius, maxRadius])
 
