@@ -25,11 +25,15 @@
  *      desapareceu" admitiria qualquer explicação (docker caiu, outra suíte
  *      removeu); com ele, a única diferença entre os dois é o registro.
  *   4. DUAS testemunhas para o mesmo fato, porque o AMBIENTE nem sempre permite
- *      a primeira: onde o daemon consegue remover containers, a testemunha é o
- *      RESULTADO (o do helper some, o controle fica); onde o daemon nega o kill
- *      (sandbox com docker restrito), é o RELATÓRIO do sweep — e aí o teste
- *      exige que a falha tenha sido REPORTADA, para um container que fica vivo
- *      nunca passar em silêncio;
+ *      a primeira: onde o container PODE ser removido, a testemunha é o
+ *      RESULTADO (o do helper some, o controle fica); onde nem o caminho por
+ *      dentro do teardown consegue tirá-lo (sandbox com docker restrito), é o
+ *      RELATÓRIO do sweep — e aí o teste exige que a falha tenha sido REPORTADA
+ *      e que o código de saída o denuncie (131), para um container que fica
+ *      vivo nunca passar em silêncio. A sonda de remoção usa a MESMA porta do
+ *      teardown de produção (`removerContainer`), com o caminho por dentro
+ *      junto: medir a capacidade do host com um `rm -f` cru acusaria de
+ *      "indeterminado" um host em que o helper limpa tudo.
  *   5. as duas JANELAS em que o vazamento acontecia: durante o SETUP (o
  *      `cleanup()` ainda nem voltou para o teste) e durante a CORRIDA (servidor
  *      no ar, teste de integração rodando).
@@ -47,7 +51,11 @@ import { createInterface } from "node:readline"
 
 import { afterEach, describe, expect, it } from "vitest"
 
-import { isDockerAvailable } from "./helpers/gitea-ephemeral"
+import {
+  EXIT_SINAL_COM_TEARDOWN_FALHO,
+  isDockerAvailable,
+  removerContainer,
+} from "./helpers/gitea-ephemeral"
 
 const ROOT = process.cwd()
 const FILHO = resolve(ROOT, "src", "lib", "__tests__", "helpers", "gitea-ephemeral-signal-child.ts")
@@ -62,23 +70,24 @@ function dockerTem(nome: string): boolean {
   return spawnSync("docker", ["inspect", nome], { encoding: "utf8" }).status === 0
 }
 
-function dockerRm(nome: string): void {
-  spawnSync("docker", ["rm", "-f", nome], { encoding: "utf8" })
-}
-
 /**
  * O AMBIENTE consegue remover um container? Não é retórica: há sandboxes em que
  * o daemon nega o `kill` (docker restrito) e NENHUM container é removível, por
  * mais correto que o código esteja. Sem separar isso, o teste acusaria o helper
  * por uma limitação da plataforma.
+ *
+ * A pergunta é feita à PORTA DO TEARDOWN (`removerContainer`, com o caminho por
+ * dentro junto), não a um `rm -f` cru: num host que nega o kill mas cujo
+ * container para por dentro — este — o teardown de produção FUNCIONA, e medir
+ * com o caminho cru daria "indeterminado" para uma capacidade que existe.
  */
 function remocaoDisponivel(): boolean {
   const nome = `gitea-ephemeral-sonda-${randomBytes(4).toString("hex")}`
   const criado = spawnSync("docker", ["run", "-d", "--name", nome, IMAGEM], { encoding: "utf8" })
   if (criado.status !== 0) return false
-  const rm = spawnSync("docker", ["rm", "-f", nome], { encoding: "utf8" })
+  const remocao = removerContainer(nome)
   const sumiu = spawnSync("docker", ["inspect", nome], { encoding: "utf8" }).status !== 0
-  return rm.status === 0 && sumiu
+  return remocao.ok && sumiu
 }
 
 /** Espera o container sumir (folga contra corrida do daemon, não a prova em si). */
@@ -157,7 +166,10 @@ describeReal("gitea-ephemeral — o sweep sobrevive a um sinal no meio do teste"
     if (filho && filho.exitCode === null && filho.signalCode === null) filho.kill("SIGKILL")
     filho = null
     if (remocaoOk) {
-      for (const nome of paraLimpar) dockerRm(nome)
+      // A mesma porta do teardown de produção: se ela falhar aqui, o relatório
+      // nomeia o container e o `afterEach` de um teste que mede vazamento não
+      // vaza em silêncio.
+      for (const nome of paraLimpar) removerContainer(nome)
     } else if (paraLimpar.size > 0) {
       // Retentar uma remoção que o daemon já recusou custa 10s por container
       // (o timeout de stop do `docker rm -f`) e não muda o resultado. O que
@@ -187,7 +199,14 @@ describeReal("gitea-ephemeral — o sweep sobrevive a um sinal no meio do teste"
       alvo.signalCode,
       "o processo morreu pelo sinal default: nenhum handler de sinal do helper rodou",
     ).toBeNull()
-    expect(alvo.exitCode, `exit inesperado. stderr: ${alvo.stderr}`).toBe(130)
+    // 130 = abortado com o teardown LIMPO; 131 = abortado E com teardown FALHO
+    // (o helper soma 1 para o vermelho do teardown não se confundir com o do
+    // sinal). Sem handler o processo encerraria por SINAL, com `code` nulo —
+    // então os dois códigos provam que o handler rodou.
+    expect(
+      [130, EXIT_SINAL_COM_TEARDOWN_FALHO],
+      `exit inesperado. stderr: ${alvo.stderr}`,
+    ).toContain(alvo.exitCode)
 
     // ── 2. O ESCOPO: só o registro é alvo ──────────────────────────────────
     if (remocaoOk) {
@@ -203,13 +222,17 @@ describeReal("gitea-ephemeral — o sweep sobrevive a um sinal no meio do teste"
     }
 
     // ── 2'. Sem remoção possível, a testemunha é o RELATÓRIO do sweep ──────
-    // O ambiente nega o kill para QUALQUER container, então "sumiu" não é
-    // mensurável aqui. O que continua mensurável — e é o que o helper controla —
-    // é que o sweep TENTOU remover o container registrado, e SÓ ele, e que a
-    // falha foi REPORTADA em vez de virar silêncio.
+    // O ambiente recusa a remoção até pelo caminho por dentro, então "sumiu"
+    // não é mensurável aqui. O que continua mensurável — e é o que o helper
+    // controla — é que o sweep TENTOU remover o container registrado, e SÓ ele,
+    // e que a falha foi REPORTADA (e denunciada no código de saída) em vez de
+    // virar silêncio.
     console.warn(
-      "⚠️  INDETERMINADO: este ambiente não consegue remover containers (o daemon nega o kill) — " +
+      "⚠️  INDETERMINADO: este ambiente não consegue remover containers nem pelo caminho por dentro — " +
         "a metade de RESULTADO do teste não é mensurável aqui; a prova usada é o relatório do sweep.",
+    )
+    expect(alvo.exitCode, "o teardown falhou e o processo saiu como se tivesse limpado").toBe(
+      EXIT_SINAL_COM_TEARDOWN_FALHO,
     )
     expect(alvo.stderr).toContain(`FALHA ao remover ${alvo.helper}`)
     expect(alvo.stderr, "o sweep tocou um container que NÃO está no registro dele").not.toContain(

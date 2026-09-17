@@ -163,11 +163,17 @@ describeReal("forge-doctor-issue — Gitea real em Docker (integração)", () =>
     gitea = await makeEphemeralGitea()
   }, 30_000)
 
+  /**
+   * 60s de orçamento: quando o daemon nega o kill, o teardown gasta o timeout de
+   * stop dele antes de o caminho por dentro rodar — com o padrão do vitest (10s)
+   * o hook morreria por TIMEOUT, deixando o container vivo e o vermelho longe da
+   * causa (ver o bloco do teardown em `helpers/gitea-ephemeral.ts`).
+   */
   afterAll(async () => {
     await gitea.cleanup()
     for (const dir of tmpDirs) rmSync(dir, { recursive: true, force: true })
     tmpDirs = []
-  })
+  }, 60_000)
 
   // ── Cenário 1: criar + marcador ─────────────────────────────────────────
 
