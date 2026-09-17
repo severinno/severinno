@@ -879,7 +879,27 @@ leitura não vê: deixar de chamar o guard, perder o `--staged`, **deixar de cha
 o remédio** (o commit continua bloqueado — o bloqueio é do hook, não do remédio) e
 **perder o veredito do gate** (aí o commit com a cicatriz entra); e a direção
 oposta é medida também: com o remédio afirmado como exit 0, o hook **levanta** a
-falha e o commit segue. Custa ≈**0.03s**
+falha e o commit segue. A camada de baixo tem prova própria
+(`src/lib/__tests__/pre-commit-git-commit-blocks.test.ts`): um `git commit` de
+verdade com `core.hooksPath` apontando para os hooks, e o veredito medido no
+**objeto** — corpo quebrado no índice ⇒ falha e **zero objeto de commit**
+(`git cat-file`), corpo são ⇒ 1 objeto e a manchete do guard no modo `--staged`;
+sem a chamada ao guard ou sem o `--staged` o defeito é **commitado**, e um hook
+sem o bit de execução é ignorado por git (o commit entra) — as provas do hook
+usam o MESMO simulador (`helpers/hook-simulator.ts`: repo git temporário, dublê
+com passagem declarada para o processo real, medições no banco do git), e
+`helpers/pre-commit-fixture.ts` é a camada com as constantes do `pre-commit`. O
+`pre-push` tem prova própria na mesma máquina
+(`src/lib/__tests__/pre-push-git-push-blocks.test.ts`): um `git push` de verdade
+para um remoto **bare**, com o typecheck reprovando pelo CONTEÚDO versionado do
+fixture e o veredito medido do outro lado — recusado ⇒ **zero ref e zero objeto**
+no remoto, verde ⇒ o ref e o conteúdo chegando; quatro mutações (sem a chamada ao
+typecheck, `hooksPath` para outro diretório, hook sem bit de execução e o dublê
+**deixando de liberar** o processo real) medem, uma a uma, que essas metades são
+load-bearing. ⚠️ Achado medido (não consertado aqui): no fast path do smart-skip o
+typecheck roda como `bun run typecheck 2>&1 | head -5` e, sem `pipefail`, o status
+da pipeline é o do `head` — o não-zero dele é MASCARADO (o payload reprova e o
+push entra); quem segura o push é só a linha da fase 2. Custa ≈**0.03s**
 no caminho comum (nada de corpo nem script staged: um `git diff --cached` e mais
 nada), o que o põe no orçamento de um hook que roda a CADA commit sem duplicar a
 varredura do CI. Custo medido neste host (Linux,

@@ -1518,7 +1518,52 @@ O guard roda com o `node` real e o fecho transitivo copiado; o que é dublê est
 DECLARADO (os irmãos de fase e o `bun` devolvem 0 — num repo temporário eles não
 existem, e não são o assunto; e o desfecho do REMÉDIO é afirmável por um dublê,
 `REMEDY_STUB`, porque no harness o stdin do hook é um pipe e o remédio real nunca
-sai 0). O fecho copiado são os `.mjs` — e, com eles, o **`node_modules` real do
+sai 0).
+O elo de BAIXO — o que o GIT faz com o exit code do hook — tem prova própria:
+`src/lib/__tests__/pre-commit-git-commit-blocks.test.ts` roda um `git commit` de
+VERDADE num repo temporário com `core.hooksPath` apontando para os hooks, e mede o
+veredito no **OBJETO**: com o corpo `run:` quebrado no índice o commit falha e
+`git cat-file --batch-all-objects` conta **ZERO objeto de commit** (só `commit` —
+blobs e árvores do `git add` já existem e não são o que se promete), com o índice
+intacto; o CONTROLE exige o commit **criado** (1 objeto) e a manchete do guard no
+modo `--staged`, e o MESMO repo aceita o commit quando o defeito é corrigido — é
+o que desmente uma recusa por ambiente (identidade, hooks, índice). Duas mutações
+mostram o outro lado: sem a chamada ao guard e sem o `--staged` o defeito é
+**COMMITADO** (o conteúdo do objeto é lido com `git show HEAD:`), e as DUAS
+premissas que fariam a prova medir o vazio são medidas na direção contrária: um
+`pre-commit` sem o modo 0755 é IGNORADO por git (o commit entra com o defeito — por
+isso o fixture aplica o modo e o teste o confere) e um `core.hooksPath` apontado
+para outro diretório faz git NÃO procurar o hook (também entra).
+As provas do hook usam a MESMA régua: o **simulador** compartilhado
+(`helpers/hook-simulator.ts` — repositório git temporário, dublê com passagem
+declarada para o processo real e as medições no banco do git) e, sobre ele, uma
+camada fina com as constantes de cada hook (`helpers/pre-commit-fixture.ts` traz
+o guard, o remédio, o fecho e as linhas de comando do `.husky/pre-commit`) — uma
+cópia por prova divergiria no dia em que uma delas fosse ajustada.
+O **`pre-push`** tem prova de EXECUÇÃO na mesma máquina
+(`src/lib/__tests__/pre-push-git-push-blocks.test.ts`): um `git push` de verdade
+para um remoto **bare**, com `core.hooksPath` apontando para os hooks, e a
+promessa medida do outro lado — o git consulta o remoto ANTES de rodar o hook e
+só manda o pack DEPOIS dele, então o que se mede é o que CHEGOU. Typecheck
+reprovando (o defeito é o CONTEÚDO versionado, `ERRO_DE_TIPO` no `src/foo.ts` do
+fixture) ⇒ o push falha, o hook morre antes do sentinela e o remoto fica com
+**zero ref e zero objeto** (`refsOf`/`countObjects`); a árvore verde ⇒ o ref
+`refs/heads/main`, o conteúdo e o sentinela chegam, e o MESMO repo aceita o push
+quando o defeito é corrigido (o que desmente uma recusa por ambiente). O que é
+REAL e o que é dublê é declarado: `bun run typecheck` roda o binário de verdade e
+o `package.json` do fixture aponta o script para um payload que REGISTRA cada
+invocação (é o rastro que prova que o processo rodou — o CONTROLE conta 2, a fase
+2 e o fast path), enquanto o runner dos encoding guards e o `curl` do advisory do
+Lighthouse são funções que devolvem 0 e 1. QUATRO mutações provam as metades:
+deixar de CHAMAR o typecheck (o defeito é PUSHADO, e o conteúdo vermelho é lido no
+ref do remoto), o `hooksPath` para outro diretório (o hook não é procurado), o
+hook sem o modo 0755 (git o ignora em silêncio) e o dublê **deixando de liberar**
+o processo real (a árvore vermelha passa e o payload nunca roda — é a passagem que
+torna o veredito o do comando, não o de um dublê). ⚠️ **Achado medido, não
+consertado aqui:** no fast path do smart-skip o typecheck roda como
+`bun run typecheck 2>&1 | head -5` e, sem `pipefail`, o status da pipeline é o do
+`head` — o não-zero dele é MASCARADO (medido na mutação M1: o payload reprova com
+o rastro da invocação e o push entra); quem segura o push é só a linha da fase 2. O fecho copiado são os `.mjs` — e, com eles, o **`node_modules` real do
 repositório** (link no fixture, não `NODE_PATH`): o `require` do guard resolve
 pelo diretório do próprio arquivo, e sem o parser de YAML TODO workflow passa a
 NÃO JULGÁVEL (exit 2), de modo que o veredito medido seria do fixture e não do
