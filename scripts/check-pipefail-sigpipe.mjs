@@ -176,6 +176,29 @@ export const SKIP_DIRS = new Set([
 ])
 
 /**
+ * Os DELIMITADORES de heredoc ABERTOS numa linha: `<<WORD`, `<<'WORD'`, `<<-WORD`.
+ *
+ * `<<<` (herestring) NÃO é heredoc — é um `<<` seguido de outro `<`, e tratá-lo
+ * como heredoc faria o parser engolir o resto do arquivo como texto.
+ *
+ * A régua mora AQUI (e não em cada leitor) porque o que é um heredoc é a mesma
+ * pergunta em todos eles: o `logicalCommands` daqui usa para não julgar TEXTO
+ * como código, e o `check-workflow-run-syntax` (que julga shell EMBUTIDO) usa
+ * para não ler um fixture como se fosse o programa. Duas cópias divergiriam
+ * exatamente no caso que importa: a quote do delimitador (`<<'EOF'`).
+ *
+ * @param {string} raw  a linha crua
+ * @returns {string[]} os delimitadores abertos nela, na ordem
+ */
+export function heredocDelimiters(raw) {
+  const out = []
+  const re = /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/g
+  let m
+  while ((m = re.exec(String(raw ?? ""))) !== null) out.push(m[2])
+  return out
+}
+
+/**
  * O arquivo LIGA o pipefail? A linha é um `set` (comentário não conta), tem uma
  * flag que liga o modo (`-o`, `-eo`, `-euo`, `-uo`, `-e -u -o`…) e nomeia
  * `pipefail`.
@@ -617,10 +640,9 @@ export function logicalCommands(source) {
     }
     const raw = lines[i]
     if (raw.trim().startsWith("#")) continue
-    // `<<WORD` / `<<'WORD'` / `<<-WORD` — `<<<` (herestring) NÃO é heredoc.
-    const re = /<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1/g
-    let m
-    while ((m = re.exec(raw)) !== null) pending.push(m[2])
+    // `<<WORD` / `<<'WORD'` / `<<-WORD` — a régua vem do `heredocDelimiters`
+    // (fonte única): `<<<` (herestring) NÃO é heredoc.
+    for (const delim of heredocDelimiters(raw)) pending.push(delim)
   }
 
   const out = []
