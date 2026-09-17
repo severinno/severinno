@@ -77,6 +77,7 @@ const REAL_LINES = [
   "      - run: node scripts/check-forge-parity.mjs",
   "      - run: node scripts/check-hooks-symmetry.mjs",
   "      - run: node scripts/check-hook-ci-parity.mjs",
+  "      - run: node scripts/check-hook-commands.mjs",
   "      - run: node scripts/check-workflow-run-syntax.mjs",
   "      - run: node scripts/check-doctor-ci.mjs",
   "      - run: node scripts/prove-runner-image-gate.mjs",

@@ -110,7 +110,7 @@ const EXPECTED_CONTEXTS: Record<string, string[]> = {
     "Security Headers",
     "PII Allowlist Guard (user payload projection)",
     // mutation-guards: job direto no pr-check.yml
-    "Mutation guards master (24 node-pure mutation tests)",
+    "Mutation guards master (25 node-pure mutation tests)",
     // forge-parity-mutation: a prova da classificação é job PRÓPRIO (diz qual
     // regra do contrato de merge quebrou, em vez de ser uma linha da matriz)
     "Forge Parity Mutation (regras de classificação)",

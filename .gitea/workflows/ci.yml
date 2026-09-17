@@ -260,6 +260,15 @@ jobs:
       - name: Hook x CI parity
         run: node scripts/check-hook-ci-parity.mjs
 
+      # Os COMANDOS que os hooks executam: cada caminho citado (script de
+      # `node`/`bash`, entrada de `bun run`, binário de `bun x`, arquivo de
+      # `source`) tem de EXISTIR. Um caminho com erro de digitação no hook não é
+      # "um script que não roda": é um PASSO que nunca roda — e o sintoma nunca
+      # diz o nome dele. Roda também no próprio hook (mesma linha, node-puro):
+      # o defeito nasce lá, e é lá que ele custa mais caro.
+      - name: Hook commands resolve (arquivo/entrada real)
+        run: node scripts/check-hook-commands.mjs
+
       # @ts-nocheck desliga a verificação de tipos do arquivo — é a porta dos
       # fundos do typecheck. Sem este gate na forja, um arquivo poderia entrar
       # aqui com os tipos desligados e a pipeline passaria verde.

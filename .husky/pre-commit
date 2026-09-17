@@ -144,6 +144,15 @@ PID_SCOPE=$!
 node scripts/check-hook-ci-parity.mjs &
 PID_HOOKPARITY=$!
 
+# Os COMANDOS que os hooks executam: cada caminho citado (script de node/bash,
+# entrada do package.json, binario de bun x, arquivo de source) tem de EXISTIR.
+# Um caminho com erro de digitacao num hook nao e "um script que nao roda": e um
+# PASSO que nunca roda — e o sintoma nunca diz o nome dele. A linha e a MESMA do
+# CI (o comando canonico do CORE), entao este passo nao precisa de declaracao no
+# check-hook-ci-parity. Node puro, read-only, <0.1s.
+node scripts/check-hook-commands.mjs &
+PID_HOOKCMD=$!
+
 # Prettier check STAGED — feedback de formatação ANTES do lint-staged
 (
   STAGED_FORMAT=$(git diff --cached --name-only --diff-filter=ACMR | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
@@ -153,7 +162,7 @@ PID_HOOKPARITY=$!
 ) &
 PID_PRETTIER=$!
 
-wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY
+wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY $PID_HOOKCMD
 
 # ── Phase C: Sequential checks (state-dependent) ─────────────────────────
 # These checks may modify files (lint-staged) or depend on the full project

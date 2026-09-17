@@ -478,6 +478,18 @@ export const CORE_INVARIANTS = [
     jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {
+    id: "hook-commands",
+    // O hook e o unico lugar do repositorio onde um comando aponta para um
+    // arquivo do PROPRIO repositorio e nada o confere. Um caminho errado ali
+    // nao e "um script que nao roda": e um PASSO que nunca roda — e o sintoma
+    // nunca diz o nome dele (o commit passa achando que foi verificado, e o
+    // veredito local fica mais fraco que o do merge sem nada dizer).
+    matches: /check[:-]hook[:-]commands/,
+    command: /^node scripts\/check-hook-commands\.mjs$/m,
+    why: "comando de hook que aponta para arquivo/entrada que nao existe e um passo que nunca roda: o veredito LOCAL fica mais fraco que o do merge em silencio",
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
+  },
+  {
     id: "hooks-symmetry",
     matches: /check[:-]hooks[:-]symmetry/,
     command: /^node scripts\/check-hooks-symmetry\.mjs$/m,

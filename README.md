@@ -792,6 +792,7 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 | Ícones lucide (`scan-lucide-icons.mjs --check`)                                |     ✅     |      ✅       |
 | Hooks symmetry (`check-hooks-symmetry.mjs`)                                    |     ✅     |      ✅       |
 | Paridade hook ↔ CI (`check-hook-ci-parity.mjs`)                                |     ✅     |       —       |
+| Comandos do hook resolvem (`check-hook-commands.mjs`)                          |     ✅     |       —       |
 | Mutation jobs CI (`check-mutation-jobs.mjs`)                                   |     ✅     |      ✅       |
 | Mutation jobs staged diff (`check-mutation-jobs.mjs --staged`)                 |     ✅     |       —       |
 | Unused-deps staged diff (`check-unused-deps.mjs --staged`)                     |     ✅     |       —       |
@@ -817,12 +818,13 @@ single-grep). Os testes entram apenas quando arquivos-fonte mudaram
 
 **Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
 rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
-**24 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
+**25 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
 bun remoção, hooks simetria, readme anchors/toc/images, README reverse, docs
 anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo,
 timing-budget, e2e-cache-budget, lint-guard, mutation-count,
 no-setup-bun, runner-base, no-leaked-imports, reconciliation, nested-guard,
-paridade hook↔CI, pipefail-sigpipe, defaults de shell e sintaxe dos corpos
+paridade hook↔CI, comandos dos hooks, pipefail-sigpipe, defaults de shell e
+sintaxe dos corpos
 `run:`). A prova da
 CLASSIFICAÇÃO do `check-forge-parity` também é um job próprio
 (`forge-parity-mutation`): ela mede o contrato de merge em si — quais gates
@@ -898,7 +900,7 @@ warm):
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (24 sub-tests)³  |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
+| master `mutation-guards` (25 sub-tests)³  |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
 | checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
 | Summary                                   |             —              |           0.34s           |
 
@@ -916,10 +918,15 @@ sub-tests, e não foi re-medido (o mesmo act mediu o actionlint em 3.6s e o
 utf8-check em 7.46s). O custo escala com o nº de sub-tests — cada um cria
 fixtures e roda o guard contra a mutação —, então o valor antigo (15.8s)
 era de 5 sub-tests e o timing-budget (~1s) foi adicionado após a medição de 10.
-³Medição da MUDANÇA (host Linux, 09/2026, mediana de 3 runs warm): o master
-com **24 sub-tests** mede ≈ **17.2s** (17.16–17.20). Antes disso a matriz tinha
-22 e mediu ≈18.6s (18.20–19.02) — a volta da 23ª (a prova de mutação do gate de
-sintaxe, ≈1.5s sozinha, que substituiu a versão de ≈0.2s) não muda a ordem do
+³Medição da MUDANÇA (host Linux 16 cpus, 09/2026, mediana de 3 runs warm): o
+master com **25 sub-tests** mede ≈ **87.3s** (87.0–87.4) NESTE host — e o número
+é do host, não do recorte: dos 25, a prova de mutação do gate de sintaxe custa
+≈58.5s sozinha, e a 25ª (comandos dos hooks, ≈6s: quatro mutações, cada uma com
+o veredito do CLI e a suíte unitária como testemunhas) levou o total de ≈81.3s
+para ≈87.3s. O **17.2s** com 24 sub-tests era de outro host (17.16–17.20). Antes
+disso a matriz tinha 22 e mediu ≈18.6s (18.20–19.02) — a volta da 23ª (a prova
+de mutação do gate de sintaxe, ≈1.5s sozinha, que substituiu a versão de ≈0.2s)
+não muda a ordem do
 número, e a diferença entre as duas medições é do host/cache, não do recorte. A
 sub-test que saiu da matriz — a prova de classificação do `check-forge-parity`,
 agora o job próprio `forge-parity-mutation` — custa ≈ **0.33s** (0.32–0.39)
@@ -1073,7 +1080,7 @@ runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 | 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |                      — (n/a)                       |         <2s         |
 | `utf8-check` (837 arquivos, `--ci src/`)          |        ≈ **0.92s**         |                     **7.46s**                      |    ~2-5s (est.)     |
 | `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |                     **3.61s**                      |    ~1-2s (est.)     |
-| `mutation-guards` (24 sub-tests node-puro)³       |         ≈ **39s**          |                     **9.1s**²                      |   ~15-25s (est.)    |
+| `mutation-guards` (25 sub-tests node-puro)³       |         ≈ **39s**          |                     **9.1s**²                      |   ~15-25s (est.)    |
 | `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |                    **4m37.6s**                     |   ~35-45s (est.)³   |
 | `unused-deps-guard` (mutation test + guard real)  |        ≈ **0.5s**⁴         |          **26.8s** cold / **20.9s** warm⁴          |   ~10-15s (est.)    |
 | `lint-guard` (prettier --check + eslint zero)     |     ~**4min** (local)⁵     | **7m22s** 1ª run / **6m23s** 2ª run (lint total)⁴  |   ~4-7 min (est.)   |

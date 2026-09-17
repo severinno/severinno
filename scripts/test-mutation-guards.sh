@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 24 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 25 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -117,8 +117,9 @@ SUBTESTS=(
   "nested-guard|Nested guard — NESTED_GUARD_ENV (defesa em profundidade contra recursão) deve ser detectado|scripts/test-mutation-nested-guard.sh"
   "pipefail-sigpipe|SIGPIPE — pipe para grep quieto deve ser detectado nos DOIS contextos (pipefail declarado E passo sem shell, com a marca da premissa do runner); a declaracao 'defaults: run: shell:' que LIGA o pipefail FALHA o gate; herestring/heredoc/script sem pipefail/cota do baseline nao acendem; o --fix aposenta o caso mecanico e nao corrompe expressao do runner|scripts/test-mutation-pipefail-sigpipe.sh"
   "hook-ci-parity|Hooks x CI — a segunda regua no hook (bunx tsc sem o heap), o comando novo sem decisao, o recorte sem razao, a declaracao que envelheceu, o gate do CORE sumido e o hook fantasma devem FALHAR|scripts/test-mutation-hook-ci-parity.sh"
+  "hook-commands|Comandos dos hooks — o caminho tipado, a entrada de scripts ausente e o indeterminado nao declarado devem CEGAR o guard, e a funcao do proprio hook deve ACUSAR o sao (violacao falsa no hook real); cada mutacao cirurgica, com a suite unitaria VERMELHA|scripts/test-mutation-hook-commands.sh"
   "workflow-defaults|Defaults — a declaracao defaults:run:shell: nao pode virar passo/gate/ref/comando do job nos guards que leem YAML de workflow (leitura unica compartilhada); cada metade dessa leitura mutada FALHA o guard sendo medido|scripts/test-mutation-workflow-defaults.sh"
-  "workflow-run-syntax|Sintaxe dos run: E dos scripts — as OITO metades (aviso, stdin do bash, limite da mascara, indice do --staged, shells medidos, guarda do fixer, segunda fonte e pulo nomeado) devem CEGAR o guard ou ACUSAR o passo sao (violacao falsa do M8, com a suite unitaria VERMELHA quando o vitest esta instalado); cada mutacao cirurgica|scripts/test-mutation-workflow-run-syntax.sh"
+  "workflow-run-syntax|Sintaxe dos run: E dos scripts — as CATORZE mutacoes (o aviso, o stdin do bash, o limite da mascara, o indice do --staged, os shells medidos, a guarda do fixer, a segunda fonte, o PULO NOMEADO do passo nao-bash, o PULO NOMEADO do ARQUIVO de shebang nao-bash — a simetria do anterior pela decisao da outra fonte — e as cinco da terceira fonte) devem CEGAR o guard ou ACUSAR o sao (violacao falsa do M8/M14, com a suite unitaria VERMELHA quando o vitest esta instalado); cada mutacao cirurgica|scripts/test-mutation-workflow-run-syntax.sh"
   "merge-latency|Latencia de merge — a DETECCAO da cobertura, o EXIT CODE do --check e o PAPEL do dono do merge devem CEGAR o gate (por execucao) e/ou a suite unitaria; cada mutacao cirurgica, com controlo final|scripts/test-mutation-merge-latency.sh"
 )
 

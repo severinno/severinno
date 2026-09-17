@@ -3913,6 +3913,89 @@ como "INDETERMINADA" porque a media com um `rm -f` cru.
 
 ---
 
+## 24. Os comandos que os hooks executam têm de RESOLVER — `check-hook-commands` (`scripts/check-hook-commands.mjs`)
+
+**O que protege:** todo comando de `.husky/` aponta para algo que EXISTE — o
+script de um `node`/`bash`, a entrada de `bun run` (e o que ela executa), o
+binário de `bun x`, o arquivo de um `source`, a função do próprio hook.
+
+**Por que existe (a classe):** o hook é o único lugar do repositório onde um
+comando aponta para um arquivo do PRÓPRIO repositório e nada o confere. Um
+caminho errado ali não é "um script que não roda": é um **PASSO que nunca roda**
+— e o sintoma nunca diz o nome dele. Quatro casos concretos:
+
+1. `node scripts/check-bun-mirrorX.mjs --staged` (typo): o guard do índice deixa
+   de existir e o commit passa achando que foi verificado;
+2. um script do `package.json` apontando para um arquivo RENOMEADO
+   (`"fuzz": "bash scripts/run-fuzz.sh"` com o `.sh` movido): o hook chama
+   `bun run fuzz` e executa um caminho que não existe mais;
+3. uma função do hook chamada e não definida (`wait_all` com o corpo removido
+   num refactor): a fase vira um "command not found" que o `set -e` só reporta
+   depois de metade dela ter rodado;
+4. `source scripts/x.sh` de um arquivo que sumiu: as definições que ele traz não
+   existem, e cada uso falha em outro lugar, longe da causa.
+
+**O que mede (e a régua):** a extração é a de **tokens de shell** compartilhada
+(`shellTokens`, a mesma do gate de sintaxe — comentário, heredoc, quote
+multi-linha e operador resolvidos) mais a segmentação nos operadores de lista, o
+redirecionamento descartado (`2>/dev/null` não é um comando chamado `2`) e o
+`$( ... )` julgado como comando próprio (ele EXECUTA: `X=$(node scripts/typo.mjs)`
+não escapa por estar à direita de um `=`). Cada comando resolvido sai com a
+PROVENIÊNCIA (`script do node`, `entrada \`fuzz\` do package.json`, `binário de
+dependência (prettier)`, `função do próprio hook`, `ferramenta externa
+declarada`), e uma violação nomeia arquivo, linha e o **vizinho mais próximo**
+(`o mais próximo é \`check-bun-mirror.mjs\``) — o erro de digitação se corrige
+sozinho com a mensagem.
+
+**O que NÃO promete (escopo declarado):** julga o COMANDO, não os argumentos de
+ferramentas externas — um `find .next/static/chunks` cita um caminho que não
+existe por DESENHO (artefato de build, gitignored), e julgar argumentos exigiria
+uma allowlist de caminhos-que-não-existem (um guard que reclama de `.next/` é
+desligado pela equipe). Dos argumentos só o que INVOCA algo é julgado.
+
+**Runtime é DECISÃO, não silêncio:** o que não se prova por leitura
+(`bash -c "$cmd"`, `node -e`, caminho em `$VAR`) tem de estar em
+`INDETERMINATE` com `addedAt` + motivo; sem a entrada, é VIOLAÇÃO. As duas
+listas (`ALLOWLIST` para o que existe fora do repositório — hoje o
+`bunx @lhci/cli` do advisory do Lighthouse — e `INDETERMINATE` para o payload
+inline — hoje o `python3 -c` do mesmo bloco) usam a data e a JANELA de revisão do
+módulo compartilhado (`allowlist-review.mjs`, 180 dias): uma isenção sem revisão
+vira violação nomeada em vez de permanente por esquecimento.
+
+**Onde roda:** o pre-commit (fase paralela, node-puro e read-only, ~0,1s) e o CI
+nas duas pontas do CORE — job `guards` da forja (dona do merge) e job
+`workflow-refs-guard` do GitHub — classificados no `check:forge-parity` com o
+MESMO literal de comando nas duas. O `post-checkout` também entra (a lista é lida
+DO DIRETÓRIO: um hook novo é julgado sem ninguém lembrar de uma lista à mão); o
+`.husky/_` fica fora (são shims do husky, não comandos nossos).
+
+**Como é provado:** `src/lib/__tests__/check-hook-commands.test.ts` — cada classe
+de violação tem um caso (caminho, entrada de `scripts`, entrada apontando para
+arquivo removido, função ausente, `source` ausente, binário sem fornecedor,
+payload não declarado) e cada um tem o CONTROLE na direção oposta (o mesmo
+fixture sem o defeito sai verde), que é o que desmente um não-zero vindo do
+FIXTURE. A régua de extração é medida separadamente (comentário, heredoc, quebra
+de linha, `$( )`, `case`, função, continuação). E o repositório REAL é julgado com
+um **PISO de cobertura** (`comandos >= 60` e os três hooks nomeados): se a
+extração parar de funcionar, a contagem vai a zero e o guard "passa" — o piso é o
+que impede o verde por vazio. Em produção: **92 comandos** em 3 hooks, 91
+resolvidos e 1 indeterminado DECLARADO.
+
+**Prova por mutação:** `scripts/test-mutation-hook-commands.sh` muta o próprio
+guard em QUATRO direções, cada uma com duas testemunhas (o veredito do CLI sobre
+uma fixture e a suíte unitária, que tem de ficar VERMELHA): três na direção de
+CEGAR — `arquivoExiste` devolvendo sempre `true` (o caminho tipado passa), a
+entrada de `scripts` ausente aceita (o `bun run tipecheck` que ninguém criou
+passa) e o indeterminado devolvido sem olhar a lista (o payload de runtime não
+declarado passa) — e UMA na direção OPOSTA: ignorar a regra da função do próprio
+hook faz o guard ACUSAR O SÃO no hook real (`wait_all` do `pre-commit` vira
+violação). Cada mutação é cirúrgica (as outras metades seguem reprovando), o
+arquivo é restaurado por checksum e o total roda em ~6s. A regressão que
+reintroduzir qualquer uma dessas quatro metades morre no job, não no hook de quem
+commita.
+
+---
+
 ## Regra de ouro para guards novos
 
 1. **Cabe numa família existente?** Se sim, estenda a família (com teste +
