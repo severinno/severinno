@@ -672,6 +672,41 @@ function yamlParser() {
 }
 
 /**
+ * O DOCUMENTO de um texto YAML — o MESMO parser, os MESMOS desfechos e a MESMA
+ * mensagem do `workflowYamlValidity`, mas com o documento na mão.
+ *
+ * POR QUE ESTA PORTA EXISTE: quem precisa dos VALORES (e não só do "é válido?")
+ * — os guards de shell embutido procurando um `sh -c` num `entrypoint:` de
+ * compose, por exemplo — tinha duas saídas ruins: reler o YAML com um segundo
+ * parser (e divergir no dia em que o formato mudasse) ou varrer o TEXTO
+ * linha-a-linha (e ler a SINTAXE do YAML como se fosse shell: uma lista
+ * `- /bin/sh` / `- -c` não é um programa, e um `["sh", "-c", ...]` de flow não
+ * é um comando). O desfecho é um objeto, como no irmão.
+ *
+ * @param {string} text
+ * @returns {{ok: boolean, doc?: any, motivo?: string}}
+ */
+export function parseYamlDocument(text) {
+  const yaml = yamlParser()
+  if (yaml === null) {
+    return {
+      ok: false,
+      motivo:
+        "YAML NAO VALIDADO — o parser (`js-yaml`) nao pode ser carregado: este arquivo nao " +
+        "pode ser julgado (rode `bun install`)",
+    }
+  }
+  try {
+    return { ok: true, doc: yaml.load(String(text ?? ""), { json: true }) }
+  } catch (err) {
+    const linha = err?.mark?.line
+    const onde = typeof linha === "number" ? ` (linha ${linha + 1})` : ""
+    const razao = String(err?.reason ?? err?.message ?? err).split("\n")[0]
+    return { ok: false, motivo: `YAML INVALIDO${onde}: ${razao}` }
+  }
+}
+
+/**
  * O workflow e' YAML VALIDO — e um MAPA de chaves (nao um escalar, uma lista ou
  * um documento vazio)?
  *
@@ -692,24 +727,9 @@ function yamlParser() {
  * @returns {{ok: boolean, motivo?: string}}
  */
 export function workflowYamlValidity(text) {
-  const yaml = yamlParser()
-  if (yaml === null) {
-    return {
-      ok: false,
-      motivo:
-        "YAML NAO VALIDADO — o parser (`js-yaml`) nao pode ser carregado: este workflow nao " +
-        "pode ser julgado (rode `bun install`)",
-    }
-  }
-  let doc
-  try {
-    doc = yaml.load(String(text ?? ""), { json: true })
-  } catch (err) {
-    const linha = err?.mark?.line
-    const onde = typeof linha === "number" ? ` (linha ${linha + 1})` : ""
-    const razao = String(err?.reason ?? err?.message ?? err).split("\n")[0]
-    return { ok: false, motivo: `YAML INVALIDO${onde}: ${razao}` }
-  }
+  const parsed = parseYamlDocument(text)
+  if (!parsed.ok) return { ok: false, motivo: parsed.motivo }
+  const doc = parsed.doc
   if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
     return {
       ok: false,
