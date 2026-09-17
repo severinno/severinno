@@ -51,9 +51,9 @@
         "date": "2026-09-16"
       },
       "mutation-guards": {
-        "ms": 87300,
+        "ms": 101100,
         "provenance": "medido (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17, mediana de 3 runs warm: `bash scripts/test-mutation-guards.sh` 87.0–87.4s com 25 sub-tests (era MEDIDO 39s em outro host, com 23). O que domina o job é UMA sub-test: a prova de mutação do gate de sintaxe custa ≈58.5s sozinha (medida no mesmo dia); a 25ª (comandos dos hooks) é ≈6s. O número antigo de 39s pedia o mesmo do host de origem dele (Windows) e ficou abaixo de uma das sub-tests que ele contém — o valor declarado de um job não pode ser menor que o de um passo dentro dele.",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/test-mutation-guards.sh` 101.1s com 26 sub-tests (87.0–87.4s com 25 antes desta rodada; era MEDIDO 39s em outro host, com 23). O que domina o job é UMA sub-test: a prova de mutação do gate de sintaxe custa ≈58.5s sozinha; a 25ª (comandos dos hooks) é ≈6s e a 26ª (defaults do registry/namespace: seis mutações, cada uma com o veredito do gate contra um fixture — ou com o repositório real — e a suíte unitária em recorte declarado) mediu 14.1s. O número de 39s pedia o host de origem dele (Windows) e ficou abaixo de uma das sub-tests que o job contém — o valor declarado de um job não pode ser menor que o de um passo dentro dele.",
         "date": "2026-09-17"
       },
       "unused-deps-guard": {

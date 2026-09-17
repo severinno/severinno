@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 25 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 26 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -121,6 +121,7 @@ SUBTESTS=(
   "workflow-defaults|Defaults — a declaracao defaults:run:shell: nao pode virar passo/gate/ref/comando do job nos guards que leem YAML de workflow (leitura unica compartilhada); cada metade dessa leitura mutada FALHA o guard sendo medido|scripts/test-mutation-workflow-defaults.sh"
   "workflow-run-syntax|Sintaxe dos run: E dos scripts — as CATORZE mutacoes (o aviso, o stdin do bash, o limite da mascara, o indice do --staged, os shells medidos, a guarda do fixer, a segunda fonte, o PULO NOMEADO do passo nao-bash, o PULO NOMEADO do ARQUIVO de shebang nao-bash — a simetria do anterior pela decisao da outra fonte — e as cinco da terceira fonte) devem CEGAR o guard ou ACUSAR o sao (violacao falsa do M8/M14, com a suite unitaria VERMELHA quando o vitest esta instalado); cada mutacao cirurgica|scripts/test-mutation-workflow-run-syntax.sh"
   "merge-latency|Latencia de merge — a DETECCAO da cobertura, o EXIT CODE do --check e o PAPEL do dono do merge devem CEGAR o gate (por execucao) e/ou a suite unitaria; cada mutacao cirurgica, com controlo final|scripts/test-mutation-merge-latency.sh"
+  "registry-defaults|Defaults do registry/namespace — a COMPARACAO de valor, a REGRA do script JS (o resolvedor obrigatorio), a REGUA DE COMENTARIO por linguagem, o VALOR VAZIO (que nao e default), o LITERAL DE RESERVA do resolvedor e o FALLBACK LITERAL do workflow devem CEGAR o gate ou ACUSAR o sao (violacao falsa), cada um com a suite unitaria VERMELHA no recorte que mede o mecanismo|scripts/test-mutation-registry-defaults.sh"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────
@@ -284,6 +285,7 @@ pass "UTF-8 escopo, timing-budget [240/180/100s + drift exit 2 + mediana],"
 pass "e2e-cache-budget [600s/10 min + drift exit 2], lint-guard [prettier + eslint],"
 pass "mutation-count [drift do nº de sub-tests do master], no-leaked-imports [leak do"
 pass "node_modules do pai + dep inexistente + install pendente],"
-pass "reconciliation [fechamento de issues de dívida via reconcileDebt]) e"
-pass "nested-guard [NESTED_GUARD_ENV — defesa em profundidade contra recursão]) detectam todas as mutações."
+pass "reconciliation [fechamento de issues de dívida via reconcileDebt]),"
+pass "nested-guard [NESTED_GUARD_ENV — defesa em profundidade contra recursão] e"
+pass "registry-defaults [valor do default, script JS, régua de comentário, valor vazio, literal do resolvedor e fallback do YAML]) detectam todas as mutações."
 exit 0

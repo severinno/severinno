@@ -549,7 +549,7 @@ jobs:
         run: echo "✅ No orphan test-mutation-*.sh and no broken workflow ref introduced by this PR diff."
 
   # ── Mutation Guards MASTER (consolidado) ────────────────────────────
-  # Roda os 25 mutation tests node-puro dos guards de CI num JOB SÓ via
+  # Roda os 26 mutation tests node-puro dos guards de CI num JOB SÓ via
   # scripts/test-mutation-guards.sh — matriz de sub-tests que orquestra os
   # scripts granulares (que continuam sendo a fonte única de
   # fixtures/mutações/asserções de cada guard):
@@ -626,7 +626,7 @@ jobs:
   # (--scenario <id> roda um sub-test isolado para diagnóstico local).
   # Node-puro, <9s total, sem docker.
   mutation-guards:
-    name: Mutation guards master (25 node-pure mutation tests)
+    name: Mutation guards master (26 node-pure mutation tests)
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
@@ -635,7 +635,7 @@ jobs:
         run: bash scripts/test-mutation-guards.sh
 
       - name: Summary
-        run: echo "✅ All 25 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard, mutation-count, no-leaked-imports, pipefail-sigpipe, paridade hook↔CI, comandos dos hooks, defaults de shell, sintaxe dos corpos `run:`, latência de merge)."
+        run: echo "✅ All 26 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard, mutation-count, no-leaked-imports, pipefail-sigpipe, paridade hook↔CI, comandos dos hooks, defaults de shell, sintaxe dos corpos `run:`, latência de merge, defaults do registry/namespace)."
 
   # ── Forge Parity Mutation (job DEDICADO, fora do master) ────────────────
   # A prova por mutação das TRÊS regras de classificação do

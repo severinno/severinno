@@ -818,12 +818,13 @@ single-grep). Os testes entram apenas quando arquivos-fonte mudaram
 
 **Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
 rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
-**25 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
+**26 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
 bun remoção, hooks simetria, readme anchors/toc/images, README reverse, docs
 anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo,
 timing-budget, e2e-cache-budget, lint-guard, mutation-count,
 no-setup-bun, runner-base, no-leaked-imports, reconciliation, nested-guard,
-paridade hook↔CI, comandos dos hooks, pipefail-sigpipe, defaults de shell e
+paridade hook↔CI, comandos dos hooks, pipefail-sigpipe, defaults de shell,
+defaults do registry/namespace e
 sintaxe dos corpos
 `run:`). A prova da
 CLASSIFICAÇÃO do `check-forge-parity` também é um job próprio
@@ -920,7 +921,7 @@ warm):
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (25 sub-tests)³  |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
+| master `mutation-guards` (26 sub-tests)³  |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
 | checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
 | Summary                                   |             —              |           0.34s           |
 
@@ -939,11 +940,14 @@ utf8-check em 7.46s). O custo escala com o nº de sub-tests — cada um cria
 fixtures e roda o guard contra a mutação —, então o valor antigo (15.8s)
 era de 5 sub-tests e o timing-budget (~1s) foi adicionado após a medição de 10.
 ³Medição da MUDANÇA (host Linux 16 cpus, 09/2026, mediana de 3 runs warm): o
-master com **25 sub-tests** mede ≈ **87.3s** (87.0–87.4) NESTE host — e o número
-é do host, não do recorte: dos 25, a prova de mutação do gate de sintaxe custa
-≈58.5s sozinha, e a 25ª (comandos dos hooks, ≈6s: quatro mutações, cada uma com
-o veredito do CLI e a suíte unitária como testemunhas) levou o total de ≈81.3s
-para ≈87.3s. O **17.2s** com 24 sub-tests era de outro host (17.16–17.20). Antes
+master com **26 sub-tests** mede ≈ **101.1s** — e o número é do host, não do
+recorte: dos 26, a prova de mutação do gate de sintaxe custa ≈58.5s sozinha, a
+25ª (comandos dos hooks, ≈6s: quatro mutações, cada uma com o veredito do CLI e a
+suíte unitária como testemunhas) levou o total de ≈81.3s para ≈87.3s, e a 26ª
+(defaults do registry/namespace, ≈14.1s: seis mutações, cada uma com o veredito
+do gate contra um fixture — ou com o repositório real — e a suíte unitária em
+recorte declarado) levou ≈87.3s para ≈101.1s. O **17.2s** com 24 sub-tests era de
+outro host (17.16–17.20). Antes
 disso a matriz tinha 22 e mediu ≈18.6s (18.20–19.02) — a volta da 23ª (a prova
 de mutação do gate de sintaxe, ≈1.5s sozinha, que substituiu a versão de ≈0.2s)
 não muda a ordem do
@@ -1100,7 +1104,7 @@ runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 | 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |                      — (n/a)                       |         <2s         |
 | `utf8-check` (837 arquivos, `--ci src/`)          |        ≈ **0.92s**         |                     **7.46s**                      |    ~2-5s (est.)     |
 | `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |                     **3.61s**                      |    ~1-2s (est.)     |
-| `mutation-guards` (25 sub-tests node-puro)³       |         ≈ **39s**          |                     **9.1s**²                      |   ~15-25s (est.)    |
+| `mutation-guards` (26 sub-tests node-puro)³       |         ≈ **39s**          |                     **9.1s**²                      |   ~15-25s (est.)    |
 | `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |                    **4m37.6s**                     |   ~35-45s (est.)³   |
 | `unused-deps-guard` (mutation test + guard real)  |        ≈ **0.5s**⁴         |          **26.8s** cold / **20.9s** warm⁴          |   ~10-15s (est.)    |
 | `lint-guard` (prettier --check + eslint zero)     |     ~**4min** (local)⁵     | **7m22s** 1ª run / **6m23s** 2ª run (lint total)⁴  |   ~4-7 min (est.)   |
@@ -1472,6 +1476,22 @@ vivo sempre correto.
 > passado à run sai como **NÃO COMPARADA** (nomeada no log, nunca conferida), e
 > variável ausente no repositório também vira `::warning::` (exit 0), não falha
 > o job.
+>
+> **E os scripts deixaram de cravar o literal por conta própria:** o valor que
+> eles usam vem do mesmo resolvedor (`scripts/registry-source.mjs`) — ambiente
+> primeiro, **espelho comitado** depois (`.actrc`, `deploy/env.gitea.example`,
+> `.env.production.example`), e nada se não houver nenhum dos dois (não existe
+> default de reserva de propósito: ele sobrevive à troca de registry, o script
+> continua puxando do host VELHO, e como a imagem continua existindo lá, nada
+> fica vermelho). A varredura da invariante 9 cobre quatro **famílias** de
+> arquivo — todo compose com default (inclusive uma stack nova que ninguém
+> cadastrou em par), o shell de `scripts/` e `deploy/`, o `.mjs` (que não pode
+> ter literal: use o resolvedor) e o fallback do YAML dos workflows — e cada
+> forma de default vale na SUA família: `${NOME:-x}` em compose/shell,
+> `X || "valor"` em JS, `vars.NOME || 'valor'` em YAML. O que casa a forma de
+> outra família (mensagem de erro, payload de uma prova) é contado e dito no
+> relatório, **nunca** julgado como valor — e cada metade disso tem a sua
+> mutação (`scripts/test-mutation-registry-defaults.sh`, sub-test 26 do master).
 >
 > **E o mesmo valor é conferido a cada PR, não só no cron:** o job `guards` da
 > forja e um job do `pr-check.yml` rodam `scripts/check-doctor-ci.mjs` — o

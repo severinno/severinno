@@ -331,6 +331,36 @@ deste gate: ela tem guard próprio (família 10, `check-bun-mirror` + o espelho
 períódico), e no compose da aplicação é `build.args` do Dockerfile, não
 referência de imagem.
 
+**A varredura dos defaults EM ARQUIVO (`sweepImageDefaultValues`): a mesma régua,
+em quatro famílias.** A comparação por par sabe qual template é a fonte, mas só
+cobre as duas stacks que alguém cadastrou. A varredura cobre o que **não** tem par
+— e é aí que um default velho sobrevive a uma migração de registry:
+
+| Família                                       | O que é default                 | O que a violação significa                                                                                                                                   |
+| :-------------------------------------------- | :------------------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **compose** (QUALQUER `*.yml` com `compose`)  | `${NOME:-valor}`                | uma stack nova (ex.: `docker-compose.hostinger.yml`) entra sem lista à mão; os dois pares declarados seguem com a comparação por par, que sabe a fonte deles |
+| **shell** (`scripts/` e `deploy/`, `*.sh`)    | `${NOME:-valor}`                | o pull/push de um script passa a vir do host velho — e como a imagem continua existindo lá, nada fica vermelho                                               |
+| **script JS** (`scripts/`, `deploy/`, `.mjs`) | `X \|\| "valor"` (ou `??`)      | **violação mesmo com o valor certo**: o repositório tem resolvedor (`registry-source.mjs`), e o literal volta a envelhecer na próxima migração               |
+| **workflow** (YAML das duas forjas)           | `${{ vars.NOME \|\| 'valor' }}` | o fallback do YAML vira o valor onde a variable não existe; o fallback **dinâmico** (`\|\| github.repository_owner`) é contado como fora da comparação       |
+
+Três coisas são CONTADAS e ditas no log, nunca julgadas como valor: a forma que
+casa em OUTRA família (o `${NOME:-x}` dentro de uma mensagem de erro é prosa, não
+default — a forma vale por família, e era um falso positivo real do guard), o
+fallback dinâmico do YAML e os arquivos de **prova por mutação** (`scripts/test-mutation-*.sh`,
+cujo texto é o PAYLOAD que alimenta o guard — a exclusão é declarada e estreita:
+`deploy/*.sh` com o mesmo texto continua sendo julgado). O veredito é o de sempre
+(`proven`/`violated`/`indeterminate`): sem nenhum arquivo comitado declarando a
+variável o default passa a ser a única fonte, e isso sai como aviso com o remédio,
+**nunca** como "conforme".
+
+**O RESOLVEDOR (`scripts/registry-source.mjs`)** é o caminho pelo qual um script
+descobre de onde puxar: **ambiente → espelho comitado → erro**. Não existe default
+de reserva, e isso é o contrato: o literal de reserva sobrevive à troca de
+registry (o script continua puxando do host VELHO, e a imagem velha continua
+lá — o sintoma aparece longe da causa). `requireImageSource` **lança** nomeando as
+variáveis e os espelhos onde declará-las, e o `ensure-runner-image` usa o valor
+declarado como default do compose em vez de uma constante.
+
 O gate é **portátil**: sem docker ou sem rede ele avisa e sai 0 — mas a consulta
 ao registry é a única parte que depende de rede, e `--no-registry-probe` a
 desliga **declarando-se** (`absent`, nunca "conforme"). Onde a prova é
@@ -867,10 +897,23 @@ escopo inclui **`deploy/`**: o compose da forja entrou no mesmo gate, e **tag
 literal** na imagem nossa ali é violação — a tag tem de vir da variável
 (`ubuntu-bun:${BUN_VERSION}`, não `ubuntu-bun:1.3.14`), senão o runner roda uma
 imagem que não corresponde à versão declarada e o fast path do setup desliga em
-silêncio. `scripts/*.mjs` ficam FORA de
-propósito: neles a mesma string aparece em prosa de mensagem de erro, e um guard
-com falso positivo acaba desligado. O caminho de código real dos scripts honra
-`process.env.IMAGE_REGISTRY`.
+silêncio.
+
+**O escopo de SCRIPT entrou com a invariante 9 — e não pela string solta.**
+`scripts/**.mjs` era mantido FORA de propósito: nele a mesma `ghcr.io` aparece em
+prosa de mensagem de erro e em comentário, e um guard com falso positivo acaba
+desligado. O que entrou foi o **default embutido**
+(`process.env.IMAGE_REGISTRY || "ghcr.io"`), que é violação mesmo com o valor
+certo — o repositório tem resolvedor (`registry-source.mjs`) e o literal volta a
+envelhecer no dia da próxima migração. As duas armadilhas que sustentavam a
+exclusão estão resolvidas **e medidas**: a régua do comentário segue a LINGUAGEM
+do arquivo (`//`, `/*` e o `*` de doc num `.mjs`; só `#` em YAML/shell/compose — o
+header que ENSINA o resolvedor era acusado como se fosse um default), e cada
+forma de default vale na SUA família (`${NOME:-x}` em compose/shell,
+`X || "valor"` em JS, `vars.NOME || 'valor'` em YAML). Cada mecanismo tem mutação
+própria (`scripts/test-mutation-registry-defaults.sh`, sub-test 26 do master):
+remover a régua do comentário ACUSA o são, desligar a regra do script JS CEGA o
+gate, e as duas direções são exigidas em cada rodada.
 
 **A metade DINÂMICA (invariante 7): `docker compose config` no compose da
 forja.** A varredura acima prova que a linha do label **referencia**
