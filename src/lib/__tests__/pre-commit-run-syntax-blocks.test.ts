@@ -25,6 +25,13 @@
  * guard no modo `--staged` — se o guard não rodasse de verdade, não haveria
  * manchete e o controle ficaria vermelho.
  *
+ * A MESMA régua (repositório, dublê, fecho e linhas de comando) vive em
+ * `helpers/pre-commit-fixture.ts` e é compartilhada com
+ * `pre-commit-git-commit-blocks.test.ts` — o irmão onde o GIT invoca o hook por
+ * `core.hooksPath` e o veredito é medido no OBJETO de commit. Duas cópias da
+ * régua divergem no dia em que uma delas for ajustada; por isso os defeitos e o
+ * fecho são importados, e a completude do fecho é ASSERIDA aqui.
+ *
  * O defeito medido era invisível porque o hook só era conferido por leitura: a
  * prova por leitura acha a linha, não prova que ela roda nem que o exit code sai
  * diferente de zero. As mutações abaixo mostram as duas metades que a leitura
@@ -34,283 +41,45 @@
  *   npx vitest run --config vitest.config.unit.ts src/lib/__tests__/pre-commit-run-syntax-blocks.test.ts
  */
 
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs"
-import { tmpdir } from "node:os"
-import { dirname, join } from "node:path"
+import { existsSync, readFileSync } from "node:fs"
+import { join } from "node:path"
 import { spawnSync } from "node:child_process"
 import { afterAll, describe, expect, it } from "vitest"
-import { resolveBash } from "@/lib/__tests__/helpers/bash-resolver"
+// A máquina de simular o hook (repo git temporário, dublê declarado, medições) e
+// as CONSTANTES do hook sob teste vêm de camadas diferentes de propósito: o
+// simulador é genérico e o compartilham os dois hooks; a camada de baixo conhece
+// o `.husky/pre-commit` (o guard, o remédio e o fecho transitivo).
+import {
+  COMPLETOU,
+  MODULES,
+  REPO_ROOT,
+  cleanupFixtures,
+  shellParses,
+  stage,
+  touch,
+} from "@/lib/__tests__/helpers/hook-simulator"
+import {
+  GUARD,
+  GUARD_COMMAND,
+  HOOK_SOURCE,
+  REMEDY,
+  REMEDY_COMMAND,
+  SHELL_QUEBRADO,
+  SHELL_SCRIPT,
+  WORKFLOW,
+  WORKFLOW_CICATRIZ,
+  WORKFLOW_QUEBRADO,
+  WORKFLOW_VALIDO,
+  closureProblems,
+  naoRelativos,
+  novoRepo,
+  runHook,
+} from "@/lib/__tests__/helpers/pre-commit-fixture"
 import { EXIT } from "../../../scripts/check-workflow-run-syntax.mjs"
 
-const REPO_ROOT = process.cwd()
-/**
- * O `node_modules` REAL do repositório. O fixture precisa dele para o guard
- * conseguir JULGAR: sem o parser de YAML, todo workflow vira "não julgável".
- */
-const MODULES = join(REPO_ROOT, "node_modules")
-const HOOK = join(REPO_ROOT, ".husky", "pre-commit")
-const HOOK_SOURCE = readFileSync(HOOK, "utf8")
-
-/** O sentinela: só é impresso se o hook ATRAVESSOU todas as fases. */
-const COMPLETOU = "HOOK_COMPLETOU"
-
-const GUARD = "check-workflow-run-syntax.mjs"
-/** O REMÉDIO que o hook oferece quando o guard acima reprova (com confirmação). */
-const REMEDY = "pre-commit-run-syntax-remedy.mjs"
-
-/**
- * A linha do hook que torna o guard REAL no fixture. Se ela mudar, o fixture
- * deixa de tornar real o comando certo — e as mutações viram no-op silencioso.
- * Por isso ela é asserida, não presumida.
- */
-const GUARD_COMMAND = `node scripts/${GUARD} --staged &`
-
-/** A linha do hook que torna o REMÉDIO real no fixture (é ele que elege o veredito). */
-const REMEDY_COMMAND = `node scripts/${REMEDY} && REMEDIO=0 || true`
-
-/**
- * O fecho transitivo do guard (ele + os imports locais). É o que o fixture
- * copia: sem o fecho completo o guard morreria com "module not found" e o
- * não-zero do hook seria do fixture, não do defeito. O remédio entra aqui porque
- * ele IMPORTA o guard e SPAWNA o guard — as duas metades do veredito do hook.
- */
-const GUARD_CLOSURE = [
-  GUARD,
-  REMEDY,
-  "check-pipefail-sigpipe.mjs",
-  "ensure-runner-image.mjs",
-  "forge-workflows.mjs",
-  "allowlist-review.mjs",
-  // A TERCEIRA FONTE puxou estas duas: a régua do que é um COMPOSE
-  // (`COMPOSE_FILE_RE`) vem do `check-bun-mirror`, que por sua vez deriva a
-  // versão do Bun da fonte única (`bun-version`). Sem elas o fecho morre com
-  // "module not found" e o não-zero do hook seria do FIXTURE, não do defeito —
-  // é exatamente o que o teste de completude abaixo existe para pegar.
-  "check-bun-mirror.mjs",
-  "bun-version.mjs",
-]
-
-const WORKFLOW = ".github/workflows/ci.yml"
-const SHELL_SCRIPT = "scripts/quebrado.sh"
-
-/**
- * A cicatriz MECÂNICA no índice: bloco literal cujo corpo termina em operador
- * pendente. É o único defeito que o remédio SABE remendar — e é por isso que ele
- * separa "o hook bloqueia" de "o hook bloqueia e ainda oferece o caminho".
- */
-const WORKFLOW_CICATRIZ =
-  "name: CI\n" +
-  "on: [push]\n" +
-  "jobs:\n" +
-  "  build:\n" +
-  "    runs-on: ubuntu-latest\n" +
-  "    steps:\n" +
-  "      - run: |\n" +
-  '          echo "um" &&\n'
-
-/** `if` sem `fi` — a reescrita mecânica que trunca o corpo de um `run: |`. */
-const WORKFLOW_QUEBRADO =
-  "name: CI\n" +
-  "on: [push]\n" +
-  "jobs:\n" +
-  "  build:\n" +
-  "    runs-on: ubuntu-latest\n" +
-  "    steps:\n" +
-  "      - run: |\n" +
-  "          if [ -f x ]; then\n" +
-  "          echo oi\n"
-
-/** O mesmo corpo, fechado. */
-const WORKFLOW_VALIDO =
-  "name: CI\n" +
-  "on: [push]\n" +
-  "jobs:\n" +
-  "  build:\n" +
-  "    runs-on: ubuntu-latest\n" +
-  "    steps:\n" +
-  "      - run: |\n" +
-  "          if [ -f x ]; then\n" +
-  "            echo oi\n" +
-  "          fi\n"
-
-/** `if` sem `fi` num arquivo de shell — a outra metade do mesmo guard. */
-const SHELL_QUEBRADO = "#!/usr/bin/env bash\nset -eu\nif [ -f x ]; then\necho oi\n"
-
-/**
- * Soma o hook real depois de trocar os binários por funções.
- *
- * `node` só é real para o GUARD sob teste; para os irmãos de fase ele devolve 0
- * (declarado — eles não são o assunto). `command node` atravessa a função, o
- * que mantém o interpretador verdadeiro (e não uma segunda implementação do
- * `node`) no caminho do guard.
- */
-const WRAPPER = `set -eu
-
-node() {
-  for _a in "$@"; do
-    case "$_a" in
-      *${REMEDY}*)
-        # \`REMEDY_STUB\` afirma o desfecho do REMÉDIO sem rodá-lo (é o único jeito
-        # de exercitar a DIREÇÃO "o remédio saiu 0": no harness o stdin do hook é
-        # um pipe e o remédio real nunca sai 0). Declarado, e usado por um teste.
-        if [ -n "${"$"}{REMEDY_STUB:-}" ]; then return "$REMEDY_STUB"; fi
-        command node "$@"; return $? ;;
-      *${GUARD}*) command node "$@"; return $? ;;
-    esac
-  done
-  return 0
-}
-bun() { return 0; }
-bash() { return 0; }
-
-. "$HOOK_UNDER_TEST"
-echo "${COMPLETOU}"
-`
-
-const dirs: string[] = []
-
 afterAll(() => {
-  for (const dir of dirs) rmSync(dir, { recursive: true, force: true })
+  cleanupFixtures()
 })
-
-interface RunResult {
-  status: number | null
-  output: string
-}
-
-function git(dir: string, args: string[]): void {
-  const r = spawnSync("git", args, { cwd: dir, encoding: "utf8" })
-  if (r.status !== 0) {
-    throw new Error(`git ${args.join(" ")} falhou (${r.status}): ${r.stderr ?? ""}`)
-  }
-}
-
-/**
- * O `bash` do harness também no PATH dos processos que o GUARD spawna: no
- * Windows o `bash` do PATH pode resolver para o WSL (exit 1 sempre, timeout
- * longo), enquanto o hook roda com o do Git Bash. Não muda a linha de comando
- * do hook — só faz o `bash` que ela resolve ser o mesmo dos dois lados.
- */
-function harnessPath(): string {
-  const bash = resolveBash()
-  const base = process.env.PATH ?? ""
-  if (bash === "bash") return base
-  return `${dirname(bash)}${process.platform === "win32" ? ";" : ":"}${base}`
-}
-
-/**
- * As dependências NÃO relativas do fecho (o que o fixture tem de RESOLVER).
- *
- * Um `import`/`require` de pacote é a outra metade do fecho que a lista acima
- * não vê: copiar só os `.mjs` deixa o guard sem o parser, e o não-zero que o
- * teste mediria seria do fixture. Aqui elas são LIDAS do fonte (não declaradas
- * à mão), então uma dependência nova aparece sozinha no probe abaixo.
- */
-function naoRelativos(): string[] {
-  const achados = new Set<string>()
-  const formas = [
-    /\bfrom\s+"([^"]+)"/g,
-    /\brequire\(\s*"([^"]+)"\s*\)/g,
-    /\bimport\(\s*"([^"]+)"\s*\)/g,
-  ]
-  for (const f of GUARD_CLOSURE) {
-    // Comentário fora: prosa que CITA um pacote não é dependência dele.
-    const fonte = readFileSync(join(REPO_ROOT, "scripts", f), "utf8")
-      .split("\n")
-      .filter((l) => !/^\s*(\/\/|\/\*|\*)/.test(l))
-      .join("\n")
-    for (const re of formas) {
-      for (const m of fonte.matchAll(re)) {
-        const spec = m[1]!
-        if (spec.startsWith(".") || spec.startsWith("/") || spec.startsWith("node:")) continue
-        achados.add(spec)
-      }
-    }
-  }
-  return [...achados].sort()
-}
-
-/**
- * O `node_modules` do repositório DENTRO do fixture, pelo caminho NORMAL de
- * resolução (link, não `NODE_PATH`): o guard resolve o parser pelo diretório do
- * próprio arquivo (`createRequire(import.meta.url)`), então o link em
- * `<fixture>/node_modules` o alcança exatamente como no processo real.
- *
- * Sem ele o guard não carrega o `js-yaml` e passa a NÃO JULGAR todo workflow —
- * o exit vira `2` (não julgável) em vez de `1` (violação), e o teste mediria o
- * fixture, não o defeito. Não é dublê: é o mesmo pacote, da mesma instalação.
- */
-function linkModules(dir: string): void {
-  symlinkSync(MODULES, join(dir, "node_modules"), process.platform === "win32" ? "junction" : "dir")
-}
-
-/** Um repositório git de verdade com o fecho do guard e o wrapper. */
-function novoRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), "pre-commit-runsyntax-"))
-  dirs.push(dir)
-  mkdirSync(join(dir, "scripts"), { recursive: true })
-  mkdirSync(join(dir, ".github", "workflows"), { recursive: true })
-  linkModules(dir)
-  for (const f of GUARD_CLOSURE) {
-    copyFileSync(join(REPO_ROOT, "scripts", f), join(dir, "scripts", f))
-  }
-  writeFileSync(join(dir, "wrapper.sh"), WRAPPER, "utf8")
-  git(dir, ["init", "-q"])
-  git(dir, ["config", "user.email", "hook@test.local"])
-  git(dir, ["config", "user.name", "hook test"])
-  return dir
-}
-
-/** Escreve no ÍNDICE — o que o commit vai gravar. */
-function stage(dir: string, rel: string, content: string): void {
-  writeFileSync(join(dir, rel), content, "utf8")
-  git(dir, ["add", rel])
-}
-
-/** Escreve só na ÁRVORE, deixando o índice como está. */
-function touch(dir: string, rel: string, content: string): void {
-  writeFileSync(join(dir, rel), content, "utf8")
-}
-
-/**
- * O shell MUTADO faz parsing? Uma mutação de texto pode quebrar a sintaxe do
- * próprio hook — e aí o não-zero seria de PARSING, não do veredito que a mutação
- * existe para medir (o mesmo falso positivo que o CONTROLE desmente do outro
- * lado). Medido com o mesmo bash do harness.
- */
-function shellParses(source: string): boolean {
-  const r = spawnSync(resolveBash(), ["-n"], { encoding: "utf8", input: source })
-  return r.status === 0
-}
-
-/** Roda o hook (real ou mutado) com o repo temporário como CWD. */
-function runHook(
-  dir: string,
-  hookSource: string = HOOK_SOURCE,
-  extraEnv: Record<string, string> = {},
-): RunResult {
-  const hookPath = join(dir, "hook-under-test")
-  writeFileSync(hookPath, hookSource, "utf8")
-  const res = spawnSync(resolveBash(), [join(dir, "wrapper.sh")], {
-    cwd: dir,
-    encoding: "utf8",
-    timeout: 60_000,
-    env: { ...process.env, PATH: harnessPath(), HOOK_UNDER_TEST: hookPath, ...extraEnv },
-  })
-  return {
-    status: res.status,
-    output: `${res.stdout ?? ""}${res.stderr ?? ""}`,
-  }
-}
 
 // ── premissa ─────────────────────────────────────────────────────────────
 
@@ -333,16 +102,7 @@ describe("a premissa do harness", () => {
     // guard falha) e o não-zero do hook seria do fixture, não do defeito. Uma
     // referência nova — `from "./x.mjs"` OU `new URL("./x.mjs", ...)` — aparece
     // AQUI, nomeada, em vez de virar um controle verde por acidente.
-    const faltando: string[] = []
-    for (const f of GUARD_CLOSURE) {
-      const src = readFileSync(join(REPO_ROOT, "scripts", f), "utf8")
-      for (const re of [/from\s+"\.\/([^"]+\.mjs)"/g, /new URL\("\.\/([^"]+\.mjs)"/g]) {
-        for (const m of src.matchAll(re)) {
-          if (!GUARD_CLOSURE.includes(m[1]!)) faltando.push(`${f} → ${m[1]}`)
-        }
-      }
-    }
-    expect(faltando).toEqual([])
+    expect(closureProblems()).toEqual([])
   })
 
   it("o fixture RESOLVE as dependências não relativas do fecho — senão o guard não JULGA nada", () => {
