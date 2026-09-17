@@ -116,18 +116,58 @@
 //      pnpm-lock.yaml (raiz e mini-services/*) são proibidos (a unificação
 //      é travada: um `npm install` acidental regenera o npm lockfile e o
 //      guard falha no PR).
+//  15. NENHUM SCRIPT do repositório (`scripts/**` + os hooks do `.husky/**`)
+//      carrega espelho LITERAL da versão do Bun nem da TAG da imagem do runner
+//      — as duas formas que sobrevivem ao bump em silêncio, porque o script
+//      continua FUNCIONANDO (só roda/mede outra versão):
+//        a. a versão PREFIXADA pelo nome — `bun-1.3.14`, `bun@1.2.3`,
+//           `bun-v1.3.14`, `oven/bun:1.3.14`, `<...>/ubuntu-bun:1.3.14`;
+//        b. um semver COMPLETO (X.Y.Z) numa linha de CÓDIGO que fala do Bun
+//           (`process.env.BUN_VERSION || "1.3.14"`, `ACTRC_BUN="${ACTRC_BUN:-1.3.14}"`,
+//           `bunVersion = "1.3.14"`).
+//      Linhas de COMENTÁRIO ficam de fora (é onde o comportamento aparece como
+//      exemplo) e a SENTINELA fica de fora: um valor com sufixo não-numérico
+//      (`9.9.9-sentinel`) não é uma AFIRMAÇÃO de versão — é o escape hatch
+//      declarado para fixtures que precisam de um valor falso, a mesma
+//      convenção do COMPOSE_SENTINELS do check-registry-source. Um literal que
+//      não se pode derivar (uma fixture, por exemplo) usa sentinela; o que não
+//      pode é um número que se parece com a versão da vez.
+//      A varredura roda no modo global E no `--staged` (linhas ADICIONADAS): o
+//      literal nasce numa EDIÇÃO, e é no commit que ele precisa ser barrado.
+//  16. O MESMO para os COMPOSES (`docker-compose*.yml` da raiz e de `deploy/`),
+//      onde o `BUN_VERSION` é um build arg/env: um valor LITERAL puro
+//      (`BUN_VERSION: "1.4.0"`, sem `${...}`) é violação SEMPRE — não é
+//      espelho, é um segundo valor, e nenhum bump o alcança; um default
+//      (`${BUN_VERSION:-<x>}`) é violação quando DIVERGE do valor declarado nos
+//      espelhos. O default é o que vale onde a variável não existe, então ele
+//      não pode ser a única fonte do que roda (o mesmo raciocínio do
+//      checkComposeImageDefaults do check-registry-source, aplicado à versão).
+//      O DIAGNÓSTICO desta rodada (a auditoria que criou 15/16): três arquivos
+//      tinham derivado — `docker-compose.hostinger.yml` (1.4.0) e
+//      `docker-compose.staging.yml` (literal puro, em dois serviços) — enquanto
+//      o repositório declara 1.3.14.
 //
 // Escopo: lê .github/workflows/sync-bun-mirror.yml + .github/actions/
 // setup-bun/action.yml + Dockerfile.bun-mirror + os workflows de TODAS as
 // forjas (scripts/forge-workflows.mjs)
 // E *.yaml (cache keys + literais) + .actrc + Dockerfiles (Dockerfile,
 // Dockerfile.worker, Dockerfile.ubuntu-bun, mini-services/realtime/Dockerfile)
-// + lockfiles estrangeiros. Node puro, sem deps, <1s.
+// + os SCRIPTS e os COMPOSES (invariantes 15/16) + lockfiles estrangeiros.
+// Node puro, sem deps, <1s.
 // =============================================================================
 
 import { readFileSync, existsSync, readdirSync } from "node:fs"
 
-import { FORGE_WORKFLOW_DIRS, existingWorkflowDirs, workflowFileNames } from "./forge-workflows.mjs"
+import { BUN_MIRRORS, mirrorListText, readMirrorValues } from "./bun-version.mjs"
+import {
+  FORGE_WORKFLOW_DIRS,
+  codeLine,
+  existingWorkflowDirs,
+  exitOnUnjudgeable,
+  isCommentLine,
+  readWorkflowScan,
+  workflowFileNames,
+} from "./forge-workflows.mjs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { execFileSync } from "node:child_process"
@@ -181,6 +221,9 @@ export const CACHE_USES_RE = /^\s*(?:-\s+)?uses:\s+actions\/cache/
  * não escapa dos checks, e um fix aqui vale para todos os scans, sem drift.
  */
 export const WORKFLOW_FILE_RE = /\.ya?ml$/
+
+/** O predicado de "é um workflow" — o default do parser de diff. */
+const isWorkflowPath = (path) => WORKFLOW_FILE_RE.test(path)
 
 /**
  * Dockerfiles do repo que PINAM/instalam o Bun — todos escaneados por
@@ -242,10 +285,18 @@ export function extractEnvVersion(content, name = "BUN_VERSION") {
  * PODE falhar é pior que checagem ausente: parece prova.
  */
 export function findBunLiteralDefaultInScript(scriptContent) {
-  // Comentários ficam de fora: é onde o comportamento aparece como exemplo.
+  // Comentários ficam de fora: é onde o comportamento aparece como exemplo. A
+  // RÉGUA é a única do repositório (`codeLine`): comentário de LINHA e de FIM DE
+  // LINHA fora — em shell, `#` precedido de espaço é comentário.
+  //
+  // O QUE MUDA NO VEREDITO: uma linha de código com `# ... 1.3.14` no fim
+  // (`echo "${BUN_VERSION:-1.3.14}" # exemplo`) deixava o 1.3.14 do FIM DA LINHA
+  // valer como default do script — prosa de fim de linha já era ignorada nos
+  // guards de workflow, e este era o último lugar que a lia como código.
   const code = scriptContent
     .split(/\r?\n/)
-    .filter((line) => !line.trim().startsWith("#"))
+    .map((line) => codeLine(line))
+    .filter((line) => line.trim() !== "")
     .join("\n")
   const substitution = code.match(/\$\{1:-\s*["']?(\d+\.\d+\.\d+)/)
   if (substitution) return substitution[1]
@@ -290,7 +341,7 @@ export function hasPreinstalledMarker(scriptContent) {
   return scriptContent.includes("Usando Bun pré-instalado:")
 }
 
-/** Versão LITERAL do Bun dentro do script (ex.: bun-v1.3.14) — ou null. */
+/** Versão LITERAL do Bun dentro do script (ex.: bun-v<X.Y.Z>) — ou null. */
 export function findBunLiteralInScript(scriptContent) {
   const m = scriptContent.match(/bun-v(\d+\.\d+\.\d+)/)
   return m ? m[1] : null
@@ -632,10 +683,14 @@ export const GITEA_DOC = "deploy/GITEA.md"
  */
 export function checkReRegisterPath(bringUpContent, docContent) {
   const violations = []
+  // A MESMA régua do resto do guard (`codeLine`): comentário fora, inclusive
+  // o de fim de linha — a prosa de um `#` no fim de uma linha de shell não é
+  // codigo.
   const code = (s) =>
     s
       .split(/\r?\n/)
-      .filter((line) => !line.trim().startsWith("#"))
+      .map((line) => codeLine(line))
+      .filter((line) => line.trim() !== "")
       .join("\n")
 
   const bringsUp = /^\s*[^#\n]*\bup\s+-d\s+runner\b/m.test(bringUpContent)
@@ -862,8 +917,13 @@ export function parseCacheBlock(blockLines) {
   let multiKind = null // "path" | "restore" — qual campo multi-linha está sendo coletado
   for (const line of blockLines) {
     const indent = line.match(/^\s*/)[0].length
-    const trimmed = line.trim()
-    if (trimmed === "" || trimmed.startsWith("#")) continue
+    // A RÉGUA ÚNICA decide o conteúdo da linha do bloco.
+    //
+    // O QUE MUDA NO VEREDITO: um `path:` (ou `restore-keys:`) com `# nota` no
+    // fim entrava INTEIRO na comparação de toolchain — o guard acusava um path
+    // que a pipeline não declara. Agora a prosa de fim de linha sai.
+    const trimmed = codeLine(line).trim()
+    if (trimmed === "") continue
     if (multiIndent >= 0) {
       // coleciona linhas MAIS indentadas que o `path: |` / `restore-keys: |`
       // — até a indentação voltar ao nível do campo (mesmo nível do path:)
@@ -1026,8 +1086,10 @@ export function checkCachePaths(workflowsDir, rules) {
     const lines = readFileSync(join(workflowsDir, file), "utf8").split("\n")
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
-      if (line.trim() === "" || line.trim().startsWith("#")) continue
-      if (!line.match(CACHE_USES_RE)) continue
+      // A RÉGUA ÚNICA: comentário de linha/fim de linha não é código. A COLUNA
+      // continua vindo da linha crua (`usesIndent`), porque recuo é dado.
+      if (codeLine(line).trim() === "") continue
+      if (!codeLine(line).match(CACHE_USES_RE)) continue
       const usesIndent = line.match(/^\s*/)[0].length
       const block = []
       for (let j = i + 1; j < lines.length && block.length < CACHE_BLOCK_WINDOW; j++) {
@@ -1091,13 +1153,19 @@ export function checkCacheKeys(workflowsDir, rules) {
  * @returns {string|null}
  */
 export function checkLiteralBunLine(file, lineNo, content) {
-  if (content.trim().startsWith("#")) return null // ignora comentários
+  // A RÉGUA ÚNICA decide o código da linha (comentário de linha E de fim de
+  // linha fora). O QUE MUDA NO VEREDITO: `bun-version: 1.3.14 # pinar` deixava
+  // o literal da PROSA valer como declaração do workflow (a regra local só
+  // olhava o INÍCIO da linha, e a casa já ignorava fim de linha nos outros
+  // guards).
+  const codigo = codeLine(content)
+  if (codigo.trim() === "") return null
   // Versão semântica 1.x.y — casa bun-version: <ver>, BUN_VERSION: <ver> e
   // qualquer cache key com literal (bun-1.3.14-...).
   const literalRe =
     /\b(?:bun-version|BUN_VERSION):\s*["']?(\d+\.\d+\.\d+)|(?:bun|prisma)-(\d+\.\d+\.\d+)-/g
   literalRe.lastIndex = 0
-  const m = literalRe.exec(content)
+  const m = literalRe.exec(codigo)
   if (!m) return null
   const literal = m[1] || m[2]
   const context = m[0].trim()
@@ -1271,8 +1339,11 @@ export function checkSetupBunCallSites(workflowsDir) {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
       // Ignora comentários — prosa que MENCIONA o script não é uma chamada
-      // real (mesmo tratamento do check-no-setup-bun.mjs).
-      if (line.trim() === "" || line.trim().startsWith("#")) continue
+      // real. A régua é a MESMA do `check-no-setup-bun.mjs` (era um alinhamento
+      // mantido à mão, e é isso que o próximo ajuste quebra): `codeLine`, e a
+      // EXPRESSÃO fica inteira no conteúdo entregue ao `checkSetupBunRunLine`,
+      // que compara o argumento com `${{ vars.BUN_VERSION }}`.
+      if (codeLine(line).trim() === "") continue
       const v = checkSetupBunRunLine(file, i + 1, line)
       if (v) violations.push(v)
     }
@@ -1299,7 +1370,7 @@ export function checkSetupBunCallSites(workflowsDir) {
  * @param {string} diffText  saída de `git diff ... -- .github/workflows`
  * @returns {Map<string, {lineNo: number, content: string, added: boolean}[]>}
  */
-export function parseDiffLines(diffText) {
+export function parseDiffLines(diffText, isTarget = isWorkflowPath) {
   const perFile = new Map()
   let currentFile = null
   let lineNo = 0
@@ -1309,7 +1380,7 @@ export function parseDiffLines(diffText) {
       // "+++ b/.github/workflows/pr-check.yml" → caminho do arquivo NOVO
       // (aceita .yml E .yaml — extensão alternativa não escapa do scan)
       const path = line.slice(4).replace(/^b\//, "")
-      currentFile = WORKFLOW_FILE_RE.test(path) ? path : null
+      currentFile = isTarget(path) ? path : null
       lineNo = 0
       continue
     }
@@ -1357,9 +1428,9 @@ export function parseDiffLines(diffText) {
  * @param {string} diffText  saída de `git diff ... -- .github/workflows`
  * @returns {Map<string, {lineNo: number, content: string}[]>}
  */
-export function parseDiffAddedLines(diffText) {
+export function parseDiffAddedLines(diffText, isTarget = isWorkflowPath) {
   const perFile = new Map()
-  for (const [file, lines] of parseDiffLines(diffText)) {
+  for (const [file, lines] of parseDiffLines(diffText, isTarget)) {
     const added = lines.filter((l) => l.added).map(({ lineNo, content }) => ({ lineNo, content }))
     if (added.length > 0) perFile.set(file, added)
   }
@@ -1428,8 +1499,8 @@ export function checkStagedCachePaths(diffText, rules) {
     for (let i = 0; i < lines.length; i++) {
       const { lineNo, content, added } = lines[i]
       if (!added) continue // só blocos INTRODUZIDOS por este diff
-      if (content.trim() === "" || content.trim().startsWith("#")) continue
-      if (!content.match(CACHE_USES_RE)) continue
+      if (codeLine(content).trim() === "") continue
+      if (!codeLine(content).match(CACHE_USES_RE)) continue
 
       // Janela de até CACHE_BLOCK_WINDOW linhas depois do uses (mesma do
       // scan global) — varre adicionadas E contexto do mesmo arquivo. Linhas
@@ -1462,7 +1533,7 @@ export function checkStagedSetupBunCallSites(diffText) {
   for (const [file, lines] of parseDiffLines(diffText)) {
     for (const { lineNo, content, removed } of lines) {
       if (removed) continue // linha removida não existe no arquivo novo
-      if (content.trim() === "" || content.trim().startsWith("#")) continue
+      if (codeLine(content).trim() === "") continue
       const v = checkSetupBunRunLine(file, lineNo, content)
       if (v) violations.push(v)
     }
@@ -1540,8 +1611,8 @@ export function checkStagedRemovedCacheBlockFields(diffText) {
       // presente — contexto ou adicionado). `uses:` REMOVIDO = bloco inteiro
       // removido (step deletado) — sem contrato a impor.
       if (removed) continue
-      if (content.trim() === "" || content.trim().startsWith("#")) continue
-      if (!content.match(CACHE_USES_RE)) continue
+      if (codeLine(content).trim() === "") continue
+      if (!codeLine(content).match(CACHE_USES_RE)) continue
 
       // Janela seguinte (mesma do checkStagedCachePaths) — procura um
       // `path:`/`key:` REMOVIDO e, na MESMA janela, um SOBREVIVENTE.
@@ -1607,7 +1678,7 @@ export function checkStagedRemovedLiterals(diffText) {
       const anchor = lines[i]
       // âncora: literal REMOVIDO pelo diff (linha `-`) — o PR está migrando
       if (!anchor.removed) continue
-      if (anchor.content.trim() === "" || anchor.content.trim().startsWith("#")) continue
+      if (codeLine(anchor.content).trim() === "") continue
       if (checkLiteralBunLine(file, anchor.lineNo, anchor.content) === null) continue
 
       // região (mesma janela do cache block) em AMBAS as direções — um
@@ -1617,8 +1688,7 @@ export function checkStagedRemovedLiterals(diffText) {
           j !== i &&
           !l.removed &&
           Math.abs((l.lineNo ?? anchor.lineNo) - anchor.lineNo) <= CACHE_BLOCK_WINDOW &&
-          l.content.trim() !== "" &&
-          !l.content.trim().startsWith("#") &&
+          codeLine(l.content).trim() !== "" &&
           checkLiteralBunLine(file, l.lineNo ?? anchor.lineNo, l.content) !== null,
       )
       if (!surviving) continue
@@ -1664,18 +1734,40 @@ export function isValidGitRef(ref) {
  * @returns {string|null} texto do diff ou null (infra failure)
  */
 export function gitDiffWorkflows(base) {
+  return gitDiffPaths(base, FORGE_WORKFLOW_DIRS)
+}
+
+/**
+ * O diff do recorte `--staged`/`--base` para um conjunto de PATHSPECS.
+ *
+ * Existe separado do `gitDiffWorkflows` porque a varredura da fonte única
+ * passou a ter dois escopos com caminhos diferentes (os workflows das forjas e
+ * os scripts/composes) — e a MESMA semântica de `-U` (DIFF_CONTEXT), de base
+ * válida e de "git indisponível ⇒ null" tem de valer nos dois. Um `git diff`
+ * por escopo, um só lugar que monta o comando.
+ *
+ * @param {string|null} base
+ * @param {string[]} pathspecs
+ * @returns {string|null}
+ */
+export function gitDiffPaths(base, pathspecs) {
   if (base !== null && !isValidGitRef(base)) return null
   // Pathspec de TODAS as forjas: no modo --staged/--base o guard precisa ver o
   // que o PR introduz em qualquer pipeline — limitar ao GitHub foi o que deixou
   // a forja dona do merge sem cobertura de fonte única.
   const args = base
-    ? ["diff", `-U${DIFF_CONTEXT}`, `${base}...HEAD`, "--", ...FORGE_WORKFLOW_DIRS]
-    : ["diff", `-U${DIFF_CONTEXT}`, "--cached", "--", ...FORGE_WORKFLOW_DIRS]
+    ? ["diff", `-U${DIFF_CONTEXT}`, `${base}...HEAD`, "--", ...pathspecs]
+    : ["diff", `-U${DIFF_CONTEXT}`, "--cached", "--", ...pathspecs]
   try {
     return execFileSync("git", args, { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 })
   } catch {
     return null
   }
+}
+
+/** O diff do recorte para os scripts/composes (invariantes 15/16). */
+export function gitDiffSingleSource(base) {
+  return gitDiffPaths(base, SINGLE_SOURCE_PATHS)
 }
 
 /**
@@ -1714,7 +1806,11 @@ export function checkActrc(actrcPath) {
  * @returns {string|null}
  */
 export function checkDockerfileBunLine(file, lineNo, content) {
-  if (content.trim().startsWith("#")) return null // ignora comentários
+  // A régua ÚNICA para o comentário de LINHA. Em Dockerfile o `#` só é
+  // comentário no INÍCIO da linha, então a prosa de fim de linha NÃO sai daqui
+  // (diferente do YAML/shell): `RUN echo bun-1.2 # nota` é comando inteiro, e
+  // tratá-lo como comentário cegaria o guard.
+  if (isCommentLine(content)) return null // ignora comentários
   // Casa bun@<tag>, FROM oven/bun:<tag> E o padrão curl de download
   // (bun-v<tag> — ex.: Dockerfile.ubuntu-bun baixa de
   // .../releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip) — a tag
@@ -1869,6 +1965,255 @@ export function validateMirror(workflowPath, implPath, dockerfilePath) {
   return violations
 }
 
+// ── Invariantes 15/16: espelhos literais FORA dos workflows ─────────────────
+
+/** Onde os espelhos literais são caçados fora dos workflows (scripts e hooks). */
+export const SCRIPT_SCAN_DIRS = ["scripts", ".husky"]
+
+/**
+ * Um arquivo de SCRIPT do repositório — o alvo da invariante 15. `.husky/_/**`
+ * fica de fora: é o runtime do próprio husky, não código nosso.
+ */
+export const SCRIPT_FILE_RE = /^(?:scripts\/[^/]+|\.husky\/[^/]+)$/
+
+/** Um compose do repositório — o alvo da invariante 16 (raiz e `deploy/`). */
+export const COMPOSE_FILE_RE = /^(?:docker-compose[^/]*\.ya?ml|deploy\/docker-compose[^/]*\.ya?ml)$/
+
+/**
+ * A definição de "alvo" desta varredura — UMA só, usada pela enumeração global
+ * e pelo recorte `--staged`: duas listas divergiriam, e o modo do commit veria
+ * um conjunto diferente do modo do PR.
+ */
+export function isSingleSourcePath(rel) {
+  return SCRIPT_FILE_RE.test(rel) || COMPOSE_FILE_RE.test(rel)
+}
+
+/**
+ * O pathspec (git) da varredura nova — o irmão de `FORGE_WORKFLOW_DIRS`.
+ * Globs de propósito: um compose novo na raiz cai na varredura sem editar nada.
+ */
+export const SINGLE_SOURCE_PATHS = [
+  ...SCRIPT_SCAN_DIRS,
+  "docker-compose*.yml",
+  "docker-compose*.yaml",
+  "deploy/docker-compose*.yml",
+  "deploy/docker-compose*.yaml",
+]
+
+/**
+ * Um SEMVER COMPLETO — a forma que se confunde com a versão da vez.
+ *
+ * O lookahead NEGATIVO é o coração da regra: `9.9.9-sentinel` NÃO casa (o `-`
+ * logo depois), então uma SENTINELA nunca é acusada. Sem ele o escape hatch
+ * declarado para fixtures seria impossível — o guard estaria exigindo que uma
+ * fixture cravasse justamente o número que se parece com a versão real, que é
+ * o defeito. Com ele, a distinção é estrutural: `X.Y.Z` é uma AFIRMAÇÃO de
+ * versão; `X.Y.Z-<sufixo>` é um valor falso que se declara falso.
+ */
+export const COMPLETE_SEMVER_RE = /(?<![\d.])\d+\.\d+\.\d+(?![\dA-Za-z_.-])/
+
+/**
+ * A versão PREFIXADA pelo nome do Bun — casa `bun-1.3.14` (cache key),
+ * `bun@1.2.3` (`npm install -g bun@`), `bun-v1.3.14` (release do GitHub),
+ * `oven/bun:1.3.14` (imagem oficial) e `<…>/ubuntu-bun:1.3.14` (a imagem do
+ * runner — a TAG literal que este guard existe para impedir).
+ */
+export const BUN_PREFIXED_VERSION_RE = /\bbun[-@:/]v?\d+\.\d+\.\d+/
+
+/**
+ * "Esta linha fala do Bun?"
+ *
+ * NÃO é `/\bbun/i`: o `\b` não existe entre `_` e `B`, então `ACTRC_BUN` — um
+ * dos nomes reais desta classe — ficaria de fora (medido: foi o que a primeira
+ * versão desta função deixou passar). E não é `/bun/i` solto: `bundle` (que
+ * aparece em `analyze-bundle.mjs`, `check-bundle-size.sh` e num monte de prosa)
+ * viraria falso positivo a cada dependência de front com versão própria.
+ * O negativo `(?!dle)` é o que separa "fala do Bun" de "fala de bundle".
+ */
+export const BUN_MENTION_RE = /(?:^|[^A-Za-z0-9])bun(?!dle)/i
+
+/** O default de `BUN_VERSION` num compose: `${BUN_VERSION:-<valor>}`. */
+export const COMPOSE_VERSION_DEFAULT_RE = /\$\{BUN_VERSION:-([^}]*)\}/
+
+/** A forma de VARIÁVEL do compose (com ou sem default/erro), sem literal. */
+export const COMPOSE_VERSION_VAR_RE = /\$\{BUN_VERSION(?::[-?+][^}]*)?\}/
+
+/** O valor LITERAL puro de `BUN_VERSION:` num compose (sem `${...}`). */
+export const COMPOSE_VERSION_LITERAL_RE = /BUN_VERSION\s*:\s*["']?([^"'\s#]+)/
+
+/**
+ * Comentário de script: `#`, `//`, bloco `/*` e a continuação `*` do JSDoc.
+ *
+ * A SINTAXE vem declarada na régua única (`isCommentLine(…, { slash: true })`) —
+ * esta era a quinta cópia da mesma função, e a única diferença entre as cópias
+ * era ACIDENTAL (uma sem `//`, outra sem `/#`).
+ */
+const isCommentOrDocLine = (line) => isCommentLine(line, { slash: true })
+
+/**
+ * Os arquivos da varredura nova, ordenados.
+ *
+ * A enumeração usa os MESMOS predicados que o modo `--staged`
+ * (`isSingleSourcePath`), então o modo do commit e o modo do PR não podem
+ * divergir sobre o que é um alvo.
+ *
+ * @param {string} [root]
+ * @returns {string[]}
+ */
+export function singleSourceFiles(root = process.cwd()) {
+  const out = []
+  for (const dir of ["", ...SCRIPT_SCAN_DIRS]) {
+    const abs = dir === "" ? root : join(root, dir)
+    if (!existsSync(abs)) continue
+    for (const entry of readdirSync(abs, { withFileTypes: true })) {
+      if (!entry.isFile()) continue
+      const rel = dir === "" ? entry.name : `${dir}/${entry.name}`
+      if (isSingleSourcePath(rel)) out.push(rel)
+    }
+  }
+  return out.sort()
+}
+
+/** O valor que os espelhos DECLARAM hoje (`.actrc` / o env da forja) — ou null. */
+export function declaredBunVersion(root = process.cwd()) {
+  const declared = readMirrorValues(root, BUN_MIRRORS)
+  return declared.length > 0 ? declared[0].value : null
+}
+
+/**
+ * A linha de um SCRIPT carrega um literal do Bun? (invariante 15)
+ *
+ * @param {string} line
+ * @returns {{kind: string, hit: string}|null}
+ */
+export function findBunLiteralInLine(line) {
+  if (isCommentOrDocLine(line)) return null
+  const prefixed = line.match(BUN_PREFIXED_VERSION_RE)
+  if (prefixed) return { kind: "prefixada pelo nome do Bun", hit: prefixed[0] }
+  const semver = line.match(COMPLETE_SEMVER_RE)
+  if (semver && BUN_MENTION_RE.test(line)) {
+    return { kind: "emparelhada com o nome do Bun", hit: semver[0] }
+  }
+  return null
+}
+
+/**
+ * A linha de um COMPOSE carrega um valor que não deriva? (invariante 16)
+ *
+ * @param {string} line
+ * @param {string|null} declared  valor declarado nos espelhos
+ * @returns {{kind: string, value: string}|null}
+ */
+export function findComposeVersionLiteral(line, declared) {
+  if (isCommentOrDocLine(line)) return null
+  if (!/BUN_VERSION/.test(line)) return null
+  const def = line.match(COMPOSE_VERSION_DEFAULT_RE)
+  if (def) {
+    const value = def[1].trim()
+    if (declared !== null && value === declared) return null
+    return { kind: "default", value }
+  }
+  if (COMPOSE_VERSION_VAR_RE.test(line)) return null
+  const lit = line.match(COMPOSE_VERSION_LITERAL_RE)
+  return lit ? { kind: "literal", value: lit[1] } : null
+}
+
+/**
+ * Invariante 15 — nenhum SCRIPT com espelho literal da versão/tag.
+ *
+ * @param {string} [root]
+ * @returns {string[]} violações
+ */
+export function checkScriptLiterals(root = process.cwd()) {
+  const violations = []
+  for (const rel of singleSourceFiles(root)) {
+    if (!SCRIPT_FILE_RE.test(rel)) continue
+    const content = readFileSync(join(root, rel), "utf8")
+    content.split(/\r?\n/).forEach((line, i) => {
+      const hit = findBunLiteralInLine(line)
+      if (!hit) return
+      violations.push(
+        `${rel}:${i + 1}: versão LITERAL do Bun ('${hit.hit}', ${hit.kind}) — a versão vive em ` +
+          `${BUN_VERSION_VAR} e os scripts a resolvem dos espelhos declarados (${mirrorListText(BUN_MIRRORS)}). ` +
+          `Um literal aqui ENVELHECE em silêncio: o script continua funcionando depois do bump, só ` +
+          `rodando/medindo a versão antiga. Derive com o módulo scripts/bun-version.mjs; numa FIXTURE, ` +
+          `use uma sentinela (ex.: 9.9.9-sentinel — não é uma afirmação de versão).`,
+      )
+    })
+  }
+  return violations
+}
+
+/**
+ * Invariante 16 — nenhum COMPOSE com valor de BUN_VERSION que não derive.
+ *
+ * @param {string} [root]
+ * @param {string|null} [declared]  default: o declarado nos espelhos
+ * @returns {string[]} violações
+ */
+export function checkComposeVersionLiterals(
+  root = process.cwd(),
+  declared = declaredBunVersion(root),
+) {
+  const violations = []
+  const alvo = declared ?? "<o valor declarado nos espelhos>"
+  for (const rel of singleSourceFiles(root)) {
+    if (!COMPOSE_FILE_RE.test(rel)) continue
+    const content = readFileSync(join(root, rel), "utf8")
+    content.split(/\r?\n/).forEach((line, i) => {
+      const hit = findComposeVersionLiteral(line, declared)
+      if (!hit) return
+      violations.push(
+        hit.kind === "literal"
+          ? `${rel}:${i + 1}: BUN_VERSION com valor LITERAL '${hit.value}' — não é espelho, é um ` +
+              `SEGUNDO valor: nenhum bump da variável o alcança e o build usa o Bun que ficou escrito ` +
+              `ali. Use \`\${BUN_VERSION:-${alvo}}\` (o default é o que vale onde a variável não existe).`
+          : `${rel}:${i + 1}: o default '${hit.value}' de BUN_VERSION diverge do declarado ` +
+              `(${declared ?? "nenhum espelho declara a versão"}) em ${mirrorListText(BUN_MIRRORS)} — ` +
+              `onde a variável não existe o default é o que RODA, então o build sai com outra versão ` +
+              `sem nada acusar. Alinhe com o espelho (ou remova o default).`,
+      )
+    })
+  }
+  return violations
+}
+
+/**
+ * As duas invariantes sobre as linhas ADICIONADAS de um diff — é na EDIÇÃO que
+ * o literal nasce, então é aí que ele tem de ser barrado.
+ *
+ * @param {string} diffText
+ * @param {string|null} [declared]
+ * @returns {string[]} violações
+ */
+export function checkStagedSingleSourceLiterals(diffText, declared = declaredBunVersion()) {
+  const violations = []
+  for (const [file, lines] of parseDiffAddedLines(diffText, isSingleSourcePath)) {
+    const isCompose = COMPOSE_FILE_RE.test(file)
+    for (const { lineNo, content } of lines) {
+      if (isCompose) {
+        const hit = findComposeVersionLiteral(content, declared)
+        if (hit) {
+          violations.push(
+            hit.kind === "literal"
+              ? `${file}:${lineNo}: BUN_VERSION com valor LITERAL '${hit.value}' introduzido por este diff — use a variável (\`\${BUN_VERSION:-<declarado>}\`).`
+              : `${file}:${lineNo}: default '${hit.value}' de BUN_VERSION introduzido por este diff, divergindo do declarado (${declared ?? "nenhum espelho"}).`,
+          )
+        }
+      } else {
+        const hit = findBunLiteralInLine(content)
+        if (hit) {
+          violations.push(
+            `${file}:${lineNo}: versão LITERAL do Bun ('${hit.hit}') introduzida por este diff — ` +
+              `derive (scripts/bun-version.mjs) ou use uma sentinela (9.9.9-sentinel).`,
+          )
+        }
+      }
+    }
+  }
+  return violations
+}
+
 function main() {
   const args = process.argv.slice(2)
   const staged = args.includes("--staged")
@@ -1889,7 +2234,8 @@ function main() {
 
   if (staged) {
     const diffText = gitDiffWorkflows(base)
-    if (diffText === null) {
+    const diffFonte = gitDiffSingleSource(base)
+    if (diffText === null || diffFonte === null) {
       console.error(
         `❌ Modo --staged: git diff indisponível` +
           (base ? ` (base ${base})` : ` (nada staged? rode 'git add' primeiro)`),
@@ -1904,6 +2250,9 @@ function main() {
       ...checkStagedCachePaths(diffText, DEFAULT_CACHE_KEY_RULES()),
       ...checkStagedRemovedCacheBlockFields(diffText),
       ...checkStagedRemovedLiterals(diffText),
+      // Invariantes 15/16: a MESMA varredura, agora sobre os scripts e os
+      // composes que o diff toca — é na EDIÇÃO que o literal nasce.
+      ...checkStagedSingleSourceLiterals(diffFonte),
     ]
     if (violations.length > 0) {
       console.error(
@@ -1913,7 +2262,7 @@ function main() {
       console.error(
         `\n   Cache keys, literais, chamadas do setup e pares key↔path introduzidos por este diff` +
           `\n   precisam usar a fonte única ${BUN_VERSION_VAR} — um literal` +
-          `\n   (bun-1.3.14-...) não seria invalidado pela troca da variável, e um` +
+          `\n   (bun-X.Y.Z-...) não seria invalidado pela troca da variável, e um` +
           `\n   path de outra toolchain (ex.: node_modules/.prisma com key bun-...)` +
           `\n   quebraria o cache. E REMOVER a chamada do setup de um job é` +
           `\n   regressão — o job ficaria sem Bun.`,
@@ -1940,6 +2289,12 @@ function main() {
   // é prefixado com o diretório da forja para que o diagnóstico diga em qual
   // pipeline a fonte única foi violada — foi essa ausência que deixou
   // `BUN_VERSION: "1.4.0"` literal viver na pipeline dona do merge.
+  // Um workflow de forja que não abre NÃO vira "nenhuma violação": a varredura
+  // aqui é a COMPARTILHADA (fonte única) e roda ANTES de qualquer veredito — o
+  // arquivo sai NOMEADO e o guard para com 2. Sem esta porta, o
+  // `readFileSync` cru dos checks abaixo estourava com stack trace (exit 1,
+  // "violação") e o autor ia caçar literal de Bun onde o problema era leitura.
+  exitOnUnjudgeable(readWorkflowScan(cwd).unjudgeable)
   for (const dir of existingWorkflowDirs(cwd)) {
     const workflowsDir = join(cwd, dir)
     const names = workflowFileNames(cwd, dir)
@@ -2019,6 +2374,14 @@ function main() {
   violations.push(...checkDockerfiles(cwd))
   violations.push(...checkNoForeignLockfiles(cwd))
 
+  // ── Invariantes 15/16: os espelhos literais FORA dos workflows ────────
+  // O defeito que estas duas caçam não aparece em nenhum diff de workflow:
+  // o script/compose continua FUNCIONANDO com a versão antiga, então nada
+  // fica vermelho — só o comportamento fica velho.
+  const alvos = singleSourceFiles(cwd)
+  violations.push(...checkScriptLiterals(cwd))
+  violations.push(...checkComposeVersionLiterals(cwd))
+
   if (violations.length > 0) {
     console.error(`❌ Fonte única do Bun com ${violations.length} violação(ões):\n`)
     for (const v of violations) console.error(`   - ${v}`)
@@ -2035,6 +2398,13 @@ function main() {
   }
 
   console.log(`✅ Fonte única do Bun ok (BUN_VERSION=${BUN_VERSION_VAR}).`)
+  const nScripts = alvos.filter((f) => SCRIPT_FILE_RE.test(f)).length
+  const nComposes = alvos.filter((f) => COMPOSE_FILE_RE.test(f)).length
+  console.log(
+    `   ${nScripts} script(s) e ${nComposes} compose(s) varridos — nenhum literal ` +
+      `da versão do Bun nem da tag da imagem do runner (o valor declarado é ` +
+      `${declaredBunVersion(cwd) ?? "<nenhum espelho>"}).`,
+  )
   process.exit(0)
 }
 

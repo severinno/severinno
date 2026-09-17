@@ -50,6 +50,34 @@ verdade — bump da variável não invalidava caches nem imagens. O guard caça
 literais em workflows, Dockerfiles, .actrc e lockfiles estrangeiros
 (package-lock.json/pnpm-lock.yaml são proibidos; só bun.lock).
 
+**A varredura que faltava: SCRIPTS e COMPOSES (invariantes 15/16).** O workflow
+já era caçado, mas o **script** e o **compose** não — e o sintoma deles é o pior
+possível, porque nada fica vermelho: o script continua FUNCIONANDO depois do
+bump (só com a versão antiga) e o compose continua subindo (só com o build arg
+errado). Medido na auditoria de 09/2026: 11 literais vivos, entre eles
+`process.env.BUN_VERSION || "1.3.14"`, `ACTRC_BUN="${ACTRC_BUN:-1.3.14}"`,
+`bunVersion = "1.3.14"` num sandbox, exemplos de ajuda que se passavam por
+versão vigente, e **dois composes divergentes** — `docker-compose.hostinger.yml`
+com default `1.4.0` e `docker-compose.staging.yml` com `BUN_VERSION: "1.4.0"`
+PURO (sem `${...}`: nenhum bump jamais o alcançaria) enquanto o repositório
+declara 1.3.14.
+
+A regra: literal **PREFIXADO** pelo nome (`bun-1.3.14`, `bun@1.2.3`,
+`bun-v1.3.14`, `ubuntu-bun:1.3.14`) ou semver **COMPLETO** numa linha de código
+que fala do Bun (`|| "1.3.14"`, `:-1.3.14`, `= "1.3.14"`). Duas exclusões são
+estruturais e escritas no header: **comentário** (é onde o comportamento aparece
+como exemplo) e **SENTINELA** — um valor com sufixo não-numérico
+(`9.9.9-sentinel`) não é uma AFIRMAÇÃO de versão, e é assim que uma fixture
+precisa de um valor falso sem cravar o número da vez. O remédio dos scripts é o
+módulo `scripts/bun-version.mjs`: `requireBunVersion()` resolve env → `.actrc` →
+`deploy/env.gitea.example` e **LANÇA** quando não há declaração — o default
+silencioso era justamente o defeito. Nos composes, o default continua permitido
+(mesmo desenho do `checkComposeImageDefaults` do `check-registry-source`), mas
+só se for **igual ao declarado** no espelho; um literal puro é violação sempre.
+Os defaults dos composes entraram no `bump-bun.sh` (o default é um espelho: se o
+bump não o escrevesse, o próprio bump terminaria vermelho). A varredura roda no
+modo global E no `--staged` — é na EDIÇÃO que o literal nasce.
+
 **O valor, que o estático não alcança:** as variáveis que o compose da forja
 consome têm espelhos no working tree — `.actrc` (o act local não lê as
 variables do repositório) e o env da forja: `deploy/env.gitea.example` (o
@@ -169,6 +197,18 @@ Sem drift, o publicador do GitHub também **fecha** a dívida que ele abriu
 
 **Família relacionada:** `check-tier1-fastpath`, `check-tier2-cache-restore`
 (performance do setup-bun — ver família 10).
+
+**Como testar:** `src/lib/__tests__/check-bun-mirror.test.ts` (as formas e o
+escopo das invariantes 15/16, o recorte `--staged` delas e o veredito contra o
+REPOSITÓRIO real — "nenhum literal nos scripts nem nos composes" é asserção,
+não promessa) e `src/lib/__tests__/bun-version.test.ts` (a cadeia de resolução do
+resolvedor: env → espelhos, e o LANÇAR em vez de um default).
+**Prova por mutação:** `scripts/test-mutation-bun-literal.sh` — três fases: (A)
+o literal de workflow, (B) o CONTROLE do guard limpo, (C) `M3`: um script do
+fixture com literal é reprovado, e a MESMA cópia do guard SEM a chamada da
+invariante 15 passa (a varredura é load-bearing) — enquanto o literal de
+workflow segue reprovado na cópia mutada (a mutação é cirúrgica, e não deixa
+resíduo: o guard real nunca é tocado).
 
 **`check:registry-source` (mesma família — fonte única, agora do registry OCI):**
 

@@ -94,12 +94,14 @@ done
 # Mesma forma do parseActrcVersion do check-bun-mirror.mjs (X.Y.Z completo +
 # lookahead negativo): rejeita 1.3, 1.3.14.. e 1.3.14-beta.
 if [ -z "$NEW_VERSION" ]; then
-  echo "bump-bun: versão nova é OBRIGATÓRIA (ex.: ./scripts/bump-bun.sh 1.3.15)" >&2
+  # Os exemplos NÃO têm número de propósito: uma versão concreta na mensagem
+  # envelhece sozinha depois do bump e passa a parecer a versão vigente.
+  echo "bump-bun: versão nova é OBRIGATÓRIA (ex.: ./scripts/bump-bun.sh X.Y.Z)" >&2
   echo "Usage: $0 [opções] <X.Y.Z>" >&2
   exit 2
 fi
 if ! grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$' <<< "$(printf '%s' "$NEW_VERSION")"; then
-  echo "bump-bun: versão '$NEW_VERSION' inválida — use semver X.Y.Z completo (ex.: 1.3.15)" >&2
+  echo "bump-bun: versão '$NEW_VERSION' inválida — use semver X.Y.Z completo" >&2
   exit 2
 fi
 
@@ -260,6 +262,38 @@ else
   echo "      sem Bun pré-instalado — o que muda é o fast path de 0s do tier-1, que"
   echo "      DESLIGA em silêncio (todo job da forja volta a pagar o download)."
 fi
+
+# ── 2c. defaults de BUN_VERSION nos composes (build args da versão) ────────
+# O default de `${BUN_VERSION:-<x>}` é o que VALE onde a variável não existe, e
+# o guard check-bun-mirror exige que ele seja IGUAL ao valor declarado no
+# espelho. Sem esta escrita o bump deixaria 4 composes para trás e o próprio
+# bump terminaria vermelho (ele roda o guard no fim) — o default é um espelho,
+# e espelho de bump se escreve no bump.
+#
+# Um `BUN_VERSION: "1.4.0"` (literal PURO, sem `${...}`) NÃO é alcançado por
+# esta reescrita de propósito: ele não é espelho, é um segundo valor — o guard
+# o recusa e o conserto é à mão (trocar pela forma derivada).
+echo ""
+echo "  ── defaults de BUN_VERSION nos composes (espelho derivado) ──"
+COMPOSE_ALVOS=0
+for _f in "$REPO_ROOT"/docker-compose*.yml "$REPO_ROOT"/docker-compose*.yaml \
+          "$REPO_ROOT"/deploy/docker-compose*.yml "$REPO_ROOT"/deploy/docker-compose*.yaml; do
+  [ -f "$_f" ] || continue
+  grep -qE '\$\{BUN_VERSION:-' "$_f" || continue
+  COMPOSE_ALVOS=$((COMPOSE_ALVOS + 1))
+  if [ "$DRY_RUN" = "1" ]; then
+    echo "  [dry-run] ${_f#"$REPO_ROOT"/}: default de BUN_VERSION → $NEW_VERSION"
+    continue
+  fi
+  awk -v new="$NEW_VERSION" '{ if ($0 ~ /\$\{BUN_VERSION:-/) sub(/\$\{BUN_VERSION:-[^}]*\}/, "${BUN_VERSION:-" new "}"); print }' "$_f" > "$_f.tmp"
+  mv "$_f.tmp" "$_f"
+  if ! grep -qE "\$\{BUN_VERSION:-$NEW_VERSION\}" "$_f"; then
+    echo "bump-bun: falha ao atualizar o default de BUN_VERSION em $_f (reescrita não pegou)" >&2
+    exit 1
+  fi
+  echo "  ${_f#"$REPO_ROOT"/} → \${BUN_VERSION:-$NEW_VERSION}"
+done
+[ "$COMPOSE_ALVOS" = "0" ] && echo "  (nenhum compose com default de BUN_VERSION)"
 
 # ── Passo 3: re-dispatch dos mirrors GHCR ──────────────────────────────────
 echo ""

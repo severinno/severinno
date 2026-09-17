@@ -20,6 +20,10 @@
  *      o formato do action EXTERNO continua caçado, para ele não voltar com
  *      versão pinada).
  *   9. O .actrc define BUN_VERSION (act local).
+ *  15. Nenhum SCRIPT (`scripts/**` + hooks do `.husky/**`) carrega espelho
+ *      LITERAL da versão do Bun nem da tag da imagem do runner.
+ *  16. Nenhum COMPOSE com valor de BUN_VERSION que não derive (literal puro, ou
+ *      default divergente do declarado nos espelhos).
  *
  * ATENÇÃO (esbuild): dentro de template literals, `${{` do GitHub Actions
  * precisa de escape (`\${{`) — senão o esbuild lê `${` como início de
@@ -32,6 +36,9 @@
  *   - checkCacheKeys (cache keys com literal vs. referência à variável)
  *   - checkNoLiteralBunVersion (caça literais em workflows)
  *   - checkActrc (arquivo local do act)
+ *   - findBunLiteralInLine / checkScriptLiterals (invariante 15)
+ *   - findComposeVersionLiteral / checkComposeVersionLiterals (invariante 16)
+ *   - checkStagedSingleSourceLiterals (o recorte do commit das duas)
  */
 
 import { describe, it, expect, afterAll } from "vitest"
@@ -76,7 +83,20 @@ import {
   isValidGitRef,
   DEFAULT_CACHE_KEY_RULES,
   BUN_VERSION_VAR,
+  findBunLiteralInLine,
+  findComposeVersionLiteral,
+  checkScriptLiterals,
+  checkComposeVersionLiterals,
+  checkStagedSingleSourceLiterals,
+  singleSourceFiles,
+  declaredBunVersion,
+  isSingleSourcePath,
+  COMPLETE_SEMVER_RE,
+  COMPOSE_FILE_RE,
+  SCRIPT_FILE_RE,
+  SINGLE_SOURCE_PATHS,
 } from "../../../scripts/check-bun-mirror.mjs"
+import { mirrorFiles } from "../../../scripts/bun-version.mjs"
 
 const tmpDirs: string[] = []
 
@@ -487,6 +507,20 @@ describe("parseCacheBlock", () => {
     ])
     expect(paths).toEqual(["node_modules"])
     expect(keyPrefix).toBe("bun")
+  })
+
+  it("a prosa de fim de linha não vira PATH (a régua única decide o código)", () => {
+    // O QUE MUDA NO VEREDITO: a regra local só descartava a linha INTEIRA de
+    // comentário, então um `# nota` no fim de um path entrava na comparação de
+    // toolchain como se a pipeline declarasse aquele caminho — o guard acusava
+    // um path inexistente.
+    const { paths } = parseCacheBlock([
+      `        with:`,
+      `          path: |`,
+      `            node_modules # harness local só`,
+      `          key: bun-\${{ vars.BUN_VERSION }}-ok`,
+    ])
+    expect(paths).toEqual(["node_modules"])
   })
 
   it("sem key → keyPrefix null", () => {
@@ -1999,6 +2033,26 @@ describe("checkLiteralBunLine", () => {
     ).toBeNull()
     expect(checkLiteralBunLine("a.yml", 2, `# bun-version: 1.3.14`)).toBeNull()
   })
+
+  it("literal SÓ na prosa de fim de linha → null (antes era violação)", () => {
+    // O QUE MUDA NO VEREDITO com a régua única: a regra local só olhava o
+    // INÍCIO da linha, então a prosa de um `#` no fim valia como declaração do
+    // workflow — o guard acusava uma versão literal que a pipeline não usa. A
+    // régua da casa (comentário de fim de linha fora) já era a dos outros
+    // guards; aqui ela virou a mesma.
+    expect(
+      checkLiteralBunLine(
+        "a.yml",
+        2,
+        `          bun-version: \${{ vars.BUN_VERSION }} # legado: 1.3.14`,
+      ),
+    ).toBeNull()
+    // E o literal no CÓDIGO da mesma linha continua sendo violação (a régua
+    // tira a prosa, não a linha).
+    expect(checkLiteralBunLine("a.yml", 3, `          bun-version: 1.3.14 # nota`)).toContain(
+      "1.3.14",
+    )
+  })
 })
 
 // ── checkDockerfileBunLine ───────────────────────────────────────────────
@@ -2175,5 +2229,223 @@ describe("Dockerfile.ubuntu-bun — contrato da imagem do runner", () => {
     // um literal — a mesma regra do BUN_VERSION.
     expect(dockerfile).not.toMatch(/docker-compose-plugin=[0-9]/)
     expect(dockerfile).not.toMatch(/docker\/compose\/releases\/download\/v[0-9]/)
+  })
+})
+
+// ── Invariantes 15/16: literais FORA dos workflows ───────────────────────
+//
+// A classe que a auditoria de espelhos abriu: o workflow já era caçado, mas o
+// SCRIPT e o COMPOSE não — e o sintoma deles é o pior possível, porque nada
+// fica vermelho. O script continua funcionando (só com a versão antiga); o
+// compose continua subindo (só com o build arg errado).
+
+describe("as formas e o escopo das invariantes 15/16", () => {
+  it("COMPLETE_SEMVER_RE: X.Y.Z completo sim, sentinela e versão curta não", () => {
+    // É a régua que separa "afirmação de versão" de "valor falso declarado".
+    expect(COMPLETE_SEMVER_RE.test("1.3.14")).toBe(true)
+    expect(COMPLETE_SEMVER_RE.test("9.9.9-sentinel")).toBe(false)
+    expect(COMPLETE_SEMVER_RE.test("1.3")).toBe(false)
+    expect(COMPLETE_SEMVER_RE.test("24.19.0")).toBe(true) // vizinho sem bun: quem filtra é a menção
+  })
+
+  it("SCRIPT_FILE_RE / COMPOSE_FILE_RE / isSingleSourcePath: o escopo é o declarado", () => {
+    expect(SCRIPT_FILE_RE.test("scripts/check-bun-mirror.mjs")).toBe(true)
+    expect(SCRIPT_FILE_RE.test("scripts/x.sh")).toBe(true)
+    expect(SCRIPT_FILE_RE.test(".husky/pre-commit")).toBe(true)
+    expect(SCRIPT_FILE_RE.test(".husky/_/husky.sh")).toBe(false) // runtime do husky
+    expect(COMPOSE_FILE_RE.test("docker-compose.prod.yml")).toBe(true)
+    expect(COMPOSE_FILE_RE.test("deploy/docker-compose.gitea.yml")).toBe(true)
+    expect(COMPOSE_FILE_RE.test("docker-compose.staging.yaml")).toBe(true)
+    expect(COMPOSE_FILE_RE.test(".woodpecker.yml")).toBe(false)
+    expect(isSingleSourcePath("scripts/x.mjs")).toBe(true)
+    expect(isSingleSourcePath("docker-compose.yml")).toBe(true)
+    expect(isSingleSourcePath("package.json")).toBe(false)
+    expect(isSingleSourcePath("src/index.ts")).toBe(false)
+  })
+
+  it("SINGLE_SOURCE_PATHS cobre os dois diretórios e os composes (glob, não lista à mão)", () => {
+    // O pathspec do --staged sai daqui: perder um caminho aqui seria o modo
+    // silencioso de o recorte do commit deixar de ver uma classe inteira.
+    expect(SINGLE_SOURCE_PATHS).toContain("scripts")
+    expect(SINGLE_SOURCE_PATHS).toContain(".husky")
+    expect(SINGLE_SOURCE_PATHS.some((p) => p.startsWith("docker-compose*"))).toBe(true)
+    expect(SINGLE_SOURCE_PATHS.some((p) => p.startsWith("deploy/docker-compose*"))).toBe(true)
+  })
+})
+
+describe("findComposeVersionLiteral (invariante 16)", () => {
+  const declared = "1.3.14"
+
+  it("literal puro → violação; default igual ao declarado → ok", () => {
+    expect(findComposeVersionLiteral('BUN_VERSION: "1.4.0"', declared)).toEqual({
+      kind: "literal",
+      value: "1.4.0",
+    })
+    expect(findComposeVersionLiteral("BUN_VERSION: ${BUN_VERSION:-1.3.14}", declared)).toBeNull()
+  })
+
+  it("default divergente → violação; forma de variável e comentário → ok", () => {
+    expect(findComposeVersionLiteral("BUN_VERSION: ${BUN_VERSION:-1.4.0}", declared)).toEqual({
+      kind: "default",
+      value: "1.4.0",
+    })
+    expect(findComposeVersionLiteral("BUN_VERSION: ${BUN_VERSION}", declared)).toBeNull()
+    expect(findComposeVersionLiteral("L=ubuntu-bun:${BUN_VERSION}", declared)).toBeNull()
+    expect(findComposeVersionLiteral("# BUN_VERSION: 1.4.0", declared)).toBeNull()
+    expect(findComposeVersionLiteral("IMAGE_REGISTRY: ghcr.io", declared)).toBeNull()
+  })
+})
+
+describe("findBunLiteralInLine (invariante 15)", () => {
+  it("pega a versão PREFIXADA pelo nome: cache key, npm, release e imagem", () => {
+    expect(findBunLiteralInLine("key: bun-1.3.14-hash")?.hit).toBe("bun-1.3.14")
+    expect(findBunLiteralInLine("RUN npm install -g bun@1.2.3")?.hit).toBe("bun@1.2.3")
+    expect(findBunLiteralInLine("curl .../download/bun-v1.3.14/bun.zip")?.hit).toBe("bun-v1.3.14")
+    expect(findBunLiteralInLine("FROM oven/bun:1.3.14")?.hit).toBe("bun:1.3.14")
+    // A TAG da imagem do runner — o alvo que a auditoria encontrou em compose.
+    expect(findBunLiteralInLine("IMG=ghcr.io/x/ubuntu-bun:1.3.14")?.hit).toBe("bun:1.3.14")
+  })
+
+  it("pega o semver COMPLETO emparelhado com o nome do Bun (o fallback que envelhece)", () => {
+    expect(findBunLiteralInLine('const v = process.env.BUN_VERSION || "1.3.14"')?.hit).toBe(
+      "1.3.14",
+    )
+    expect(findBunLiteralInLine('ACTRC_BUN="${ACTRC_BUN:-1.3.14}"')?.hit).toBe("1.3.14")
+    expect(findBunLiteralInLine('bunVersion = "1.3.14"')?.hit).toBe("1.3.14")
+  })
+
+  it("NÃO pega comentário, SENTINELA, versão via ARG nem linha sem bun", () => {
+    // Comentário é onde o comportamento aparece como exemplo.
+    expect(findBunLiteralInLine("# ex.: bun-v1.3.14")).toBeNull()
+    expect(findBunLiteralInLine("// x = 1.3.14 com bun")).toBeNull()
+    expect(findBunLiteralInLine(" * bun 1.3.14")).toBeNull()
+    // O escape hatch declarado para fixtures: o sufixo prova que não é versão.
+    expect(findBunLiteralInLine('BUN_VERSION: "9.9.9-sentinel"')).toBeNull()
+    // Forma derivada e vizinhos sem relação.
+    expect(findBunLiteralInLine('MIRROR="ghcr.io/x/bun:${BUN_VERSION}"')).toBeNull()
+    expect(findBunLiteralInLine('echo "Docker version 29.7.2"')).toBeNull()
+  })
+})
+
+describe("checkScriptLiterals (invariante 15)", () => {
+  it("flagra o literal num script, nomeando ARQUIVO e LINHA", () => {
+    const dir = makeDir()
+    mkdirSync(join(dir, "scripts"))
+    writeFileSync(join(dir, "scripts/x.sh"), 'set -eu\nVERSION="${BUN_VERSION:-1.3.14}"\n')
+    const violations = checkScriptLiterals(dir)
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toContain("scripts/x.sh:2")
+    expect(violations[0]).toContain("1.3.14")
+    // A mensagem tem de apontar as DUAS saídas (derivar ou sentinela) — uma
+    // violação sem remédio é a que a equipe aprende a ignorar.
+    expect(violations[0]).toContain("bun-version.mjs")
+    expect(violations[0]).toContain("9.9.9-sentinel")
+  })
+
+  it("pega o literal nos HOOKS do .husky/ (sem extensão) e ignora o runtime `_`", () => {
+    const dir = makeDir()
+    mkdirSync(join(dir, ".husky", "_"), { recursive: true })
+    writeFileSync(join(dir, ".husky", "pre-commit"), 'BUN_VERSION="1.3.14" bun test\n')
+    writeFileSync(join(dir, ".husky", "_", "husky.sh"), "BUN_VERSION=1.3.14\n")
+    const violations = checkScriptLiterals(dir)
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toContain(".husky/pre-commit:1")
+    expect(violations.join("\n")).not.toContain("husky.sh")
+  })
+
+  it("script que DERIVA da fonte única não é violação", () => {
+    const dir = makeDir()
+    mkdirSync(join(dir, "scripts"))
+    writeFileSync(
+      join(dir, "scripts/x.mjs"),
+      "import { requireBunVersion } from './bun-version.mjs'\n",
+    )
+    expect(checkScriptLiterals(dir)).toEqual([])
+  })
+})
+
+describe("checkComposeVersionLiterals (invariante 16)", () => {
+  const declared = "1.3.14"
+
+  it("literal PURO é violação (não é espelho, é um segundo valor)", () => {
+    const dir = makeDir()
+    writeFileSync(join(dir, "docker-compose.a.yml"), '        BUN_VERSION: "1.4.0"\n')
+    const violations = checkComposeVersionLiterals(dir, declared)
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toContain("docker-compose.a.yml:1")
+    expect(violations[0]).toContain("1.4.0")
+    expect(violations[0]).toContain("SEGUNDO valor")
+  })
+
+  it("default DIVERGENTE do declarado é violação; IGUAL passa", () => {
+    const dir = makeDir()
+    writeFileSync(join(dir, "docker-compose.a.yml"), "BUN_VERSION: ${BUN_VERSION:-1.4.0}\n")
+    writeFileSync(join(dir, "docker-compose.b.yml"), "BUN_VERSION: ${BUN_VERSION:-1.3.14}\n")
+    const violations = checkComposeVersionLiterals(dir, declared)
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toContain("docker-compose.a.yml")
+    expect(violations[0]).toContain("diverge do declarado")
+  })
+
+  it("a forma de VARIÁVEL pura passa, e `deploy/` está no escopo", () => {
+    const dir = makeDir()
+    mkdirSync(join(dir, "deploy"))
+    writeFileSync(join(dir, "docker-compose.yml"), "BUN_VERSION: ${BUN_VERSION}\n")
+    writeFileSync(join(dir, "deploy", "docker-compose.gitea.yml"), "L=ubuntu-bun:${BUN_VERSION}\n")
+    expect(checkComposeVersionLiterals(dir, declared)).toEqual([])
+  })
+})
+
+describe("a varredura 15/16 no REPOSITÓRIO real", () => {
+  it("nenhum literal nos scripts nem nos composes (a auditoria fecha verde)", () => {
+    expect(checkScriptLiterals(process.cwd())).toEqual([])
+    expect(checkComposeVersionLiterals(process.cwd())).toEqual([])
+  })
+
+  it("o escopo é o declarado: scripts + hooks + composes (e nada mais)", () => {
+    const alvos = singleSourceFiles(process.cwd())
+    expect(alvos).toContain(".husky/pre-commit")
+    expect(alvos).toContain("scripts/check-bun-mirror.mjs")
+    expect(alvos).toContain("scripts/bun-version.mjs")
+    expect(alvos).toContain("docker-compose.prod.yml")
+    expect(alvos).not.toContain("package.json")
+    expect(alvos.some((f) => f.startsWith(".husky/_/"))).toBe(false)
+  })
+
+  it("o valor declarado é lido dos espelhos (a mesma lista do resolvedor)", () => {
+    expect(declaredBunVersion(process.cwd())).toBe("1.3.14")
+    expect(mirrorFiles()).toEqual([".actrc", "deploy/env.gitea.example"])
+  })
+})
+
+describe("o recorte --staged das invariantes 15/16", () => {
+  it("julga as linhas ADICIONADAS de um script", () => {
+    const diff = [
+      "diff --git a/scripts/x.sh b/scripts/x.sh",
+      "--- /dev/null",
+      "+++ b/scripts/x.sh",
+      "@@ -0,0 +1,2 @@",
+      '+BUN_VERSION="1.3.14"',
+      "+# bun 1.3.14 (comentário: fora)",
+    ].join("\n")
+    const violations = checkStagedSingleSourceLiterals(diff, "1.3.14")
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toContain("scripts/x.sh:1")
+  })
+
+  it("julga um compose adicionado e ignora workflow (escopo próprio)", () => {
+    const diff = [
+      "diff --git a/docker-compose.novo.yml b/docker-compose.novo.yml",
+      "+++ b/docker-compose.novo.yml",
+      "@@ -0,0 +1 @@",
+      '+        BUN_VERSION: "9.9.14"',
+      "diff --git a/.github/workflows/x.yml b/.github/workflows/x.yml",
+      "+++ b/.github/workflows/x.yml",
+      "@@ -0,0 +1 @@",
+      "+      - run: bun-version: 1.3.14",
+    ].join("\n")
+    const violations = checkStagedSingleSourceLiterals(diff, "1.3.14")
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toContain("docker-compose.novo.yml:1")
   })
 })

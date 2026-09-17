@@ -1223,13 +1223,15 @@ gh variable set BUN_VERSION 1.3.14
 
 Como a versão flui:
 
-| Onde                                    | Como lê a versão                                                                 |
-| --------------------------------------- | -------------------------------------------------------------------------------- |
-| Workflows (`bun-version:` no setup-bun) | `${{ vars.BUN_VERSION }}`                                                        |
-| Cache keys `bun-`/`prisma-`             | `bun-${{ vars.BUN_VERSION }}-${{ hashFiles(...) }}`                              |
-| Mirror GHCR (`sync-bun-mirror.yml` env) | `BUN_VERSION: ${{ vars.BUN_VERSION }}`                                           |
-| Composite action `setup-bun`            | resolve do input `bun-version` (callers resolvem `vars.BUN_VERSION` no workflow) |
-| Act local (`.actrc`)                    | `--var BUN_VERSION=<versão>` (espelho local da variável)                         |
+| Onde                                         | Como lê a versão                                                                                                                                |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workflows (`bun-version:` no setup-bun)      | `${{ vars.BUN_VERSION }}`                                                                                                                       |
+| Cache keys `bun-`/`prisma-`                  | `bun-${{ vars.BUN_VERSION }}-${{ hashFiles(...) }}`                                                                                             |
+| Mirror GHCR (`sync-bun-mirror.yml` env)      | `BUN_VERSION: ${{ vars.BUN_VERSION }}`                                                                                                          |
+| Composite action `setup-bun`                 | resolve do input `bun-version` (callers resolvem `vars.BUN_VERSION` no workflow)                                                                |
+| Act local (`.actrc`)                         | `--var BUN_VERSION=<versão>` (espelho local da variável)                                                                                        |
+| Scripts (`scripts/**`, hooks do `.husky/**`) | `requireBunVersion()` (`scripts/bun-version.mjs`): env → `.actrc` → `deploy/env.gitea.example`, e ERRO se não houver — nunca um default literal |
+| Composes (build arg/env)                     | `${BUN_VERSION:-<valor declarado>}` — o default só pode ser o valor do espelho (um literal puro é violação)                                     |
 
 Por que o action não tem `default:` no input? Metadata de action (`action.yml`)
 é **estática** — `default: ${{ ... }}` NÃO é avaliado (seria o literal
@@ -1253,7 +1255,16 @@ O guard `scripts/check-bun-mirror.mjs` (PR Check + `utf8-check.yml`) falha se:
   (bun → `node_modules`/`~/.bun`; prisma → `node_modules/.prisma` +
   `node_modules/@prisma/client`) — ex.: path de outra toolchain sob a key
   errada, path desconhecido ou bloco sem path;
-- o `.actrc` não definir `BUN_VERSION` (o act local quebraria).
+- o `.actrc` não definir `BUN_VERSION` (o act local quebraria);
+- algum **SCRIPT** (`scripts/**` + hooks do `.husky/**`) carregar literal da
+  versão ou da TAG da imagem do runner (`bun-1.3.14`, `bun@1.2.3`, `bun-v1.3.14`,
+  `ubuntu-bun:1.3.14`, `process.env.BUN_VERSION || "1.3.14"`) — a classe que a
+  auditoria de 09/2026 abriu: o script continua FUNCIONANDO depois do bump, só
+  com a versão antiga, então nada fica vermelho sozinho. Fixtures usam uma
+  **sentinela** (`9.9.9-sentinel`), que não é uma afirmação de versão;
+- algum **COMPOSE** der um valor a `BUN_VERSION` que não derive: literal puro
+  (`BUN_VERSION: "1.4.0"`) ou default divergente do declarado no espelho. O
+  default é o que RODA onde a variável não existe.
 
 ### A regra real do Prisma (exemplo vivo)
 

@@ -45,13 +45,25 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 GUARD="$SCRIPT_DIR/scripts/check-bun-mirror.mjs"
 
+# A versão do FIXTURE vem do ESPELHO do repositório (.actrc), não de um literal:
+# este script ESCREVE a versão em repos temporários e a cita na asserção, então
+# um literal aqui envelhece em silêncio (depois do bump o mutation test passaria
+# a injetar/esperar uma versão que o repositório não declara). Fail-closed: sem
+# a linha no .actrc o script PARA em vez de inventar uma reserva.
+FIXTURE_VERSION="$(sed -n 's/^--var BUN_VERSION=//p' "$SCRIPT_DIR/.actrc" 2>/dev/null | head -1 || true)"
+if [ -z "$FIXTURE_VERSION" ]; then
+  echo "❌ .actrc não declara '--var BUN_VERSION=' — o fixture precisa de uma versão DECLARADA" >&2
+  echo "   (um literal de reserva aqui envelheceria e o mutation test testaria outra versão)." >&2
+  exit 1
+fi
+
 TMP_DIR="$(mktemp -d)"
 
 # ── Mutação (bug conhecido) ───────────────────────────────────────────────
 # A chamada correta usa a fonte única; a mutação é o LITERAL da versão.
 # Asserção que o guard DEVE emitir quando detecta a mutação. Fonte:
 # checkSetupBunRunLine em scripts/check-bun-mirror.mjs.
-EXPECTED_FAILURE="com versão '1.3.14'"
+EXPECTED_FAILURE="com versão '$FIXTURE_VERSION'"
 
 # ── Colors ────────────────────────────────────────────────────────────────
 
@@ -67,6 +79,8 @@ info() { echo -e "  ${YELLOW}ℹ️${NC} $1"; }
 # ── Cleanup (trap EXIT — SEMPRE remove o temp, mesmo com falha) ──────────
 cleanup() {
   rm -rf "$TMP_DIR"
+  # Cópia mutada do guard (STEP 6) — nunca o arquivo real, e sem resíduo.
+  rm -f "$SCRIPT_DIR/scripts/.tmp-mutation-guard.mjs"
 }
 trap cleanup EXIT
 
@@ -132,7 +146,7 @@ cat > "$TMP_DIR/mini-services/realtime/Dockerfile" <<'EOF'
 ARG BUN_VERSION
 FROM oven/bun:${BUN_VERSION}
 EOF
-printf -- '--var BUN_VERSION=1.3.14\n' > "$TMP_DIR/.actrc"
+printf -- '--var BUN_VERSION=%s\n' "$FIXTURE_VERSION" > "$TMP_DIR/.actrc"
 
 pass "Fixture criado (mirror + script do setup + Dockerfile + .actrc)"
 
@@ -172,7 +186,10 @@ pass "Controle OK — fixture limpo passa no guard (exit 0)"
 
 info "STEP 3: Aplicando mutação (versão 1.3.14 literal no argumento)..."
 
-cat > "$TMP_DIR/.github/workflows/fake.yml" <<'EOF'
+# Heredoc SEM quotes: a versão do fixture é DERIVADA (ver o topo) e precisa
+# expandir aqui. A mutação é o LITERAL no argumento do setup — o valor vem do
+# espelho, a literalidade é o próprio defeito injetado.
+cat > "$TMP_DIR/.github/workflows/fake.yml" <<EOF
 name: Fake
 jobs:
   check:
@@ -180,10 +197,10 @@ jobs:
     steps:
       - name: Setup Bun
         shell: bash
-        run: bash scripts/setup-bun-ci.sh "1.3.14"
+        run: bash scripts/setup-bun-ci.sh "$FIXTURE_VERSION"
 EOF
 
-pass "Mutação aplicada: a chamada do setup passa a versão 1.3.14 literal"
+pass "Mutação aplicada: a chamada do setup passa a versão $FIXTURE_VERSION literal"
 
 # ═════════════════════════════════════════════════════════════════════════
 # STEP 4 — Guard contra o fixture MUTADO (deve FALHAR)
@@ -227,6 +244,119 @@ fi
 # Caso 3 — ✅ mutação detectada: guard falhou com a mensagem do literal.
 pass "Mutação DETECTADA: guard falhou com '❌ $EXPECTED_FAILURE' (exit $GUARD_EXIT)"
 pass "O guard check-bun-mirror está sensível a regressões de drift."
+
+# ═════════════════════════════════════════════════════════════════════════
+# STEP 6 — M3: a varredura dos SCRIPTS (invariante 15) é load-bearing?
+# ═════════════════════════════════════════════════════════════════════════
+#
+# A classe que a auditoria de espelhos abriu: o literal num SCRIPT não aparece
+# em nenhum diff de workflow, e o script CONTINUA FUNCIONANDO com a versão
+# antiga (é o defeito que não fica vermelho sozinho). Aqui a prova é dupla:
+#
+#   - CONTROLE: o fixture (limpo do literal de workflow) + UM script com
+#     literal → o guard REPROVA, nomeando o arquivo;
+#   - M3: tirando a CHAMADA da invariante numa cópia do guard, o MESMO fixture
+#     passa (exit 0) — e o literal de workflow do STEP 3 continua sendo pego na
+#     mesma cópia (a mutação é cirúrgica: cega uma metade, não as outras).
+
+info "STEP 6: M3 — a invariante 15 (literal num script) é load-bearing?"
+
+# Devolve o workflow do STEP 3 à forma correta: o fixture do M3 tem de ter UM
+# defeito só (o script), senão não dá para atribuir o veredito à metade certa.
+cat > "$TMP_DIR/.github/workflows/fake.yml" <<EOF
+name: Fake
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "\${{ vars.BUN_VERSION }}"
+EOF
+mkdir -p "$TMP_DIR/scripts"
+# Heredoc SEM quotes: o literal injetado é o valor DERIVADO do espelho (o
+# fixture é o defeito, não a versão). O script-fonte não crava número nenhum.
+cat > "$TMP_DIR/scripts/com-literal.sh" <<SH
+set -eu
+VERSION="\${BUN_VERSION:-$FIXTURE_VERSION}"
+SH
+
+set +e
+M3_CTRL_OUT="$(cd "$TMP_DIR" && node "$GUARD" 2>&1)"
+M3_CTRL_EXIT=$?
+set -e
+
+if [ "$M3_CTRL_EXIT" -eq 0 ]; then
+  fail "CONTROLE M3: o guard passou com um SCRIPT carregando literal (exit 0) —"
+  fail "a invariante 15 não está julgando os scripts."
+  exit 1
+fi
+if ! grep -q "scripts/com-literal.sh" <<<"$M3_CTRL_OUT"; then
+  fail "o guard reprovou (exit $M3_CTRL_EXIT) mas SEM nomear o script — a violação"
+  fail "pode ser outro invariante do fixture. Veja o output:"
+  echo "$M3_CTRL_OUT" | tail -8
+  exit 1
+fi
+pass "Controle M3 OK — o guard reprova o literal num script (exit $M3_CTRL_EXIT)"
+
+# ── A mutação: uma CÓPIA do guard sem a chamada da invariante 15 ──────────
+# Cópia em `scripts/` (não na temp): os imports relativos do guard
+# (`./bun-version.mjs`, `./forge-workflows.mjs`) precisam resolver do lado dele.
+MUT_GUARD="$SCRIPT_DIR/scripts/.tmp-mutation-guard.mjs"
+sed 's|violations.push(\.\.\.checkScriptLiterals(cwd))|void 0 // M3: invariante 15 removida|' \
+  "$GUARD" > "$MUT_GUARD"
+if cmp -s "$GUARD" "$MUT_GUARD"; then
+  fail "A mutação M3 NÃO se aplicou (a chamada mudou de forma?) — renomeie o alvo do sed."
+  exit 1
+fi
+
+set +e
+M3_OUT="$(cd "$TMP_DIR" && node "$MUT_GUARD" 2>&1)"
+M3_EXIT=$?
+set -e
+
+rm -f "$MUT_GUARD"
+
+if [ "$M3_EXIT" -ne 0 ]; then
+  fail "A mutação M3 NÃO cegou o guard (exit $M3_EXIT) — o veredito não mudou com a"
+  fail "chamada removida: a varredura dos scripts não é a que reprova (mecanismo decorativo)."
+  echo "$M3_OUT" | tail -8
+  exit 1
+fi
+pass "M3 DETECTADA: sem a chamada, o script com literal passa (exit 0) — varredura load-bearing"
+
+# ── Cirúrgica: a metade dos WORKFLOWS continua mordendo na cópia mutada ──
+# (o literal de workflow do STEP 3 volta ao fixture e tem de ser pego mesmo na
+# cópia sem a invariante 15).
+cat > "$TMP_DIR/scripts/com-literal.sh" <<'SH'
+set -eu
+SH
+sed 's|violations.push(\.\.\.checkScriptLiterals(cwd))|void 0 // M3|' "$GUARD" > "$MUT_GUARD"
+cat > "$TMP_DIR/.github/workflows/fake.yml" <<EOF
+name: Fake
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "$FIXTURE_VERSION"
+EOF
+set +e
+M3_SURG_OUT="$(cd "$TMP_DIR" && node "$MUT_GUARD" 2>&1)"
+M3_SURG_EXIT=$?
+set -e
+rm -f "$MUT_GUARD"
+if [ "$M3_SURG_EXIT" -eq 0 ]; then
+  fail "A mutação da invariante 15 também cegou a metade dos WORKFLOWS — ela não é cirúrgica."
+  exit 1
+fi
+pass "Mutação CIRÚRGICA — o literal de workflow segue reprovado na cópia mutada"
+if [ -f "$MUT_GUARD" ]; then
+  fail "resíduo: a cópia mutada do guard ficou em disco."
+  exit 1
+fi
+pass "Sem resíduo — o guard real do repositório nunca foi tocado"
 
 # ═════════════════════════════════════════════════════════════════════════
 # Result (cleanup roda no trap EXIT)

@@ -117,6 +117,31 @@ valor; quem compara os VALORES é o job semanal `actrc-sync`
 (`benchmark-weekly.yml`), que avisa via `::warning::`
 (ver [seção 6](#6-aviso-semanal-de-drift-actrc-sync)).
 
+### 3.2b — Os DEFAULTS dos composes (espelhos derivados)
+
+Além dos dois arquivos acima, os composes dão um default a `BUN_VERSION` nos
+build args (`dev`, `test`, `prod`, `hostinger`):
+
+```yaml
+BUN_VERSION: ${BUN_VERSION:-1.3.15}
+```
+
+O default é o que **vale onde a variável não existe** (um host sem
+`BUN_VERSION` no `.env`), então ele é um espelho como os outros — e o
+`check-bun-mirror` exige que ele seja **igual** ao valor declarado em
+`deploy/env.gitea.example`. `./scripts/bump-bun.sh` reescreve esses defaults no
+mesmo passo (é o que mantém o bump verde no fim: o script roda o guard).
+
+Um `BUN_VERSION: "1.4.0"` **sem** `${...}` não é espelho, é um segundo valor:
+nem o bump o alcança, nem nenhum guard o via até a auditoria de 09/2026 — o
+compose builda com o Bun que ficou escrito ali, em silêncio. O conserto é à mão
+(trocar pela forma derivada).
+
+O mesmo vale para os **scripts** do repositório: eles resolvem a versão com
+`scripts/bun-version.mjs` (`requireBunVersion()`, cadeia env → `.actrc` →
+env da forja, com erro se não houver) — nenhum default literal de reserva, e
+fixtures usam uma sentinela (`9.9.9-sentinel`).
+
 ### 3.3 — Re-sincronizar os mirrors GHCR
 
 Os dois mirrors leem `vars.BUN_VERSION` — basta **re-dispará-los** (o cron
@@ -258,7 +283,12 @@ ${{ vars.BUN_VERSION }}` (omitir o input ou usar literal é violação — o
 11. (modo `--staged` / PR diff) cache keys, literais, call sites e pares
     key↔path **introduzidos pelo diff** não seguirem a fonte única — uma key
     antiga adicionada pelo próprio PR falha antes do merge. O pre-commit
-    local executa este modo como **primeiro passo** (ver seção 3.6).
+    local executa este modo como **primeiro passo** (ver seção 3.6);
+12. algum **script** (`scripts/**` + hooks do `.husky/**`) carregar literal da
+    versão do Bun ou da TAG da imagem do runner (invariante 15) — o único caso
+    em que o defeito não aparece em nenhum diff de workflow;
+13. algum **compose** com valor de `BUN_VERSION` que não derive (invariante
+    16): literal puro, ou default divergente do declarado nos espelhos.
 
 Validação local antes de abrir PR:
 

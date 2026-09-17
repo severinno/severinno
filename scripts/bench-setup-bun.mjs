@@ -278,7 +278,9 @@ const USAGE = `Uso:
   --runs N          execuções do act por imagem (default: 1; run 2+ = warm)
   --timeout S       timeout por run do act em segundos (default: 240)
   --json FILE       salva as linhas da tabela em JSON
-  --custom-tag T    override da imagem custom ubuntu-bun (ex.: ghcr.io/x/ubuntu-bun:1.3.14)
+  --custom-tag T    override da imagem custom ubuntu-bun (ex.: ghcr.io/<owner>/ubuntu-bun:<X.Y.Z>)
+                    — a tag real vem da variável BUN_VERSION; o exemplo não tem
+                    versão de propósito (um exemplo com versão envelhece sozinho)
   -h, --help        mostra esta ajuda
 
 Exit codes: 0 = PASS (tabela impressa, evidência em todas as imagens),

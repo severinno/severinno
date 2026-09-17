@@ -128,6 +128,24 @@ export const RUNNER_PLATFORM = { os: "linux", architecture: "amd64" }
 export const BUN_PATH = "/usr/local/bin/bun"
 
 /**
+ * A versão do Bun que o SANDBOX responde em `bun -v` — uma SENTINELA, de
+ * propósito, e não a versão da vez.
+ *
+ * Duas razões, e as duas são de honestidade da prova:
+ *
+ *   (a) a fixture NÃO pode derivar da versão real: ela mede o contrato do
+ *       Dockerfile, e ler a mesma fonte que o Dockerfile usa faria a prova
+ *       concordar consigo mesma (circular — um digest/base trocado passaria);
+ *   (b) um literal com a versão da vez ENVELHECE em silêncio: o sandbox
+ *       responderia `1.3.14` para sempre, e quem lê o relatório entende isso
+ *       como "a versão da imagem". O `-sentinel` é a mesma convenção do
+ *       `COMPOSE_SENTINELS` do check-registry-source — e é o sufixo que o guard
+ *       `check-bun-mirror` usa para distinguir uma AFIRMAÇÃO de versão de um
+ *       valor falso declarado.
+ */
+export const SANDBOX_BUN_VERSION = "9.9.9-sentinel"
+
+/**
  * Os aceites de manifesto: começa pelo ÍNDICE para o registry devolver o
  * digest do multi-arch (o que `docker images --digests` mostra).
  */
@@ -405,7 +423,7 @@ export function runContractBlock({
   cwd = process.cwd(),
   run = spawnSync,
   timeoutMs = 30000,
-  bunVersion = "1.3.14",
+  bunVersion = SANDBOX_BUN_VERSION,
 } = {}) {
   if (!SANDBOX_MODES.includes(mode)) throw new Error(`modo desconhecido: ${mode}`)
   const dir = mkdtempSync(join(tmpdir(), "runner-base-"))

@@ -61,7 +61,18 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 # ── Configuração (com overrides por env) ─────────────────────────────────────
 OWNER="${OWNER:-$(git -C "$SCRIPT_DIR" remote get-url origin 2>/dev/null | sed -E 's#.*[:/]([^/:]+)/[^/]+(\.git)?$#\1#')}"
-VERSION="${BUN_VERSION:-1.3.14}"
+# A TAG da imagem publicada: da variável do ambiente (quando passada) ou do
+# ESPELHO do repositório (.actrc — a versão declarada, escrita pelo bump-bun e
+# comparada com a repository variable pelo guard semanal). NUNCA de um literal
+# de reserva: um `:-1.3.14` aqui sobrevive ao bump e este script passa a
+# publicar/conferir a tag ANTIGA em silêncio (o script funciona igual).
+VERSION="${BUN_VERSION:-$(sed -n 's/^--var BUN_VERSION=//p' "$SCRIPT_DIR/.actrc" 2>/dev/null | head -1 || true)}"
+if [ -z "$VERSION" ]; then
+  echo "publish-ubuntu-bun: nenhuma versão declarada — nem BUN_VERSION no ambiente, nem '--var BUN_VERSION=' em $SCRIPT_DIR/.actrc" >&2
+  echo "  (o literal de reserva foi removido de propósito: ele sobrevive ao bump e a tag fica velha sem sintoma)." >&2
+  echo "  Declare em .actrc ou passe BUN_VERSION=<X.Y.Z> no comando." >&2
+  exit 2
+fi
 IMAGE="ghcr.io/${OWNER}/ubuntu-bun:${VERSION}"
 ACT_BIN="${ACT_BIN:-$SCRIPT_DIR/tool-results/act/act.exe}"
 ACT_TIMEOUT="${ACT_TIMEOUT:-600}"

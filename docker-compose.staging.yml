@@ -312,7 +312,10 @@ services:
       context: .
       dockerfile: Dockerfile.worker
       args:
-        BUN_VERSION: "1.4.0"
+        # Derivado da variável (default = o valor declarado no espelho). Um
+        # literal puro aqui é um SEGUNDO valor: nenhum bump o alcança, e o
+        # build da staging saía com um Bun que o repositório não declara.
+        BUN_VERSION: ${BUN_VERSION:-1.3.14}
     container_name: severinno-email-worker-staging
     restart: unless-stopped
     security_opt:
@@ -339,7 +342,10 @@ services:
       context: .
       dockerfile: Dockerfile.worker
       args:
-        BUN_VERSION: "1.4.0"
+        # Derivado da variável (default = o valor declarado no espelho). Um
+        # literal puro aqui é um SEGUNDO valor: nenhum bump o alcança, e o
+        # build da staging saía com um Bun que o repositório não declara.
+        BUN_VERSION: ${BUN_VERSION:-1.3.14}
     container_name: severinno-notification-worker-staging
     restart: unless-stopped
     security_opt:

@@ -52,6 +52,7 @@ import { cpus, totalmem } from "node:os"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
+import { requireBunVersion } from "./bun-version.mjs"
 import { CORE_INVARIANTS, canonicalCommandOf, runCommands } from "./check-forge-parity.mjs"
 import { existingWorkflowDirs, workflowFileNames } from "./forge-workflows.mjs"
 
@@ -1008,8 +1009,18 @@ function runBenchmark({
   const commitDate = getCommitTimestamp()
   const timestamp = new Date().toISOString()
 
-  // Envia vars do ambiente ou fallbacks para o doctor --ci
-  const bunVersion = process.env.BUN_VERSION || "1.3.14"
+  // A versão do Bun do doctor: da variável (quando o job a passa pelo env) ou
+  // dos espelhos DECLARADOS no repositório (.actrc / deploy/env.gitea.example),
+  // via o resolvedor único — SEM literal de reserva. O `|| "1.3.14"` que vivia
+  // aqui sobrevivia ao bump: o doctor seria medido contra uma versão que o
+  // repositório não declara, e o número no benchmark envelheceria em silêncio.
+  let bunVersion
+  try {
+    bunVersion = requireBunVersion({ root: REPO_ROOT }).version
+  } catch (e) {
+    console.error(`❌ bench-guard-timing: ${e.message}`)
+    process.exit(2)
+  }
   const imageRegistry = process.env.IMAGE_REGISTRY || "ghcr.io"
   const imageNamespace = process.env.IMAGE_NAMESPACE || "severinno"
 

@@ -284,7 +284,10 @@ services:
       context: ./mini-services/realtime
       dockerfile: Dockerfile
       args:
-        BUN_VERSION: ${BUN_VERSION:-1.4.0}
+        # O default é o valor DECLARADO no espelho (deploy/env.gitea.example);
+        # `check:bun-mirror` falha se ele divergir — antes da auditoria ele
+        # dizia 1.4.0 enquanto o repositório declarava outra versão.
+        BUN_VERSION: ${BUN_VERSION:-1.3.14}
     image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-severinno}/realtime:latest
     restart: unless-stopped
     security_opt:

@@ -135,8 +135,9 @@ if [ "$API_OK" = "1" ]; then
     echo "bench-setup-bun: vars.BUN_VERSION NÃO EXISTE em $GH_REPO — exit 3 (variável ausente, não erro de auth/uso)" >&2
     echo "  Crie a repository variable (FONTE ÚNICA da versão do Bun):" >&2
     echo "    URL: https://github.com/$GH_REPO/settings/variables/actions" >&2
-    echo "    Nome: BUN_VERSION   Valor: ex.: 1.3.14" >&2
-    echo "  Ou via CLI (mesmo efeito): gh variable set BUN_VERSION 1.3.14 -R $GH_REPO" >&2
+    echo "    Nome: BUN_VERSION   Valor: ex.: X.Y.Z  (o exemplo não tem versão de propósito:" >&2
+    echo "        um número aqui envelheceria e passaria a parecer a versão vigente)" >&2
+    echo "  Ou via CLI (mesmo efeito): gh variable set BUN_VERSION X.Y.Z -R $GH_REPO" >&2
     echo "  Depois re-rode. Sem a variável, TODO CI que usa o setup-bun também falha em runtime (Resolve Bun version)." >&2
     exit 3
   fi
