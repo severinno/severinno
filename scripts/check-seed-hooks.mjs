@@ -31,11 +31,14 @@
 //   1 — pelo menos um hook de teste encontrado em workflow de produção (fail)
 // =============================================================================
 
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { existingWorkflowDirs, workflowFileNames } from "./forge-workflows.mjs"
+import {
+  existingWorkflowDirs,
+  exitOnUnjudgeable,
+  readWorkflowScan,
+  reportEmptyWorkflows,
+} from "./forge-workflows.mjs"
 
 // ---------------------------------------------------------------------------
 // Config — hooks de teste e allowlist fail-closed
@@ -125,17 +128,18 @@ function main() {
   // varremos por diretório e prefixamos o rótulo só no diagnóstico. Um hook de
   // teste vazando para o workflow de DEPLOY da forja é exatamente o que este
   // guard existe para impedir, e ele só via o lado do GitHub.
+  // A varredura é a COMPARTILHADA: o rótulo continua `<dir>/<arquivo>` (o
+  // allowlist é indexado pelo basename) e o que não pôde ser lido sai NOMEADO.
+  // Antes, um arquivo ilegível parava o guard com exit 1 ("violação") citando o
+  // DIRETÓRIO — o autor ia procurar hook de seed onde o problema era leitura.
+  const scan = readWorkflowScan(root)
+  exitOnUnjudgeable(scan.unjudgeable)
+  reportEmptyWorkflows(scan.vazios)
   const violations = []
-  for (const dir of dirs) {
-    let names
-    try {
-      names = workflowFileNames(root, dir)
-    } catch (e) {
-      console.error(`❌ Não foi possível ler ${join(root, dir)}: ${e.message}`)
-      process.exit(1)
-    }
-    const files = names.map((n) => ({ name: n, content: readFileSync(join(root, dir, n), "utf8") }))
-    for (const v of scanWorkflows(files)) violations.push({ ...v, file: `${dir}/${v.file}` })
+  for (const w of scan.files) {
+    // Por ARQUIVO, com o rótulo `<dir>/<arquivo>`: a checagem é pelo BASENAME
+    // (o allowlist é indexado por ele) e o diagnóstico leva a forja junto.
+    for (const v of checkWorkflowFile(w.name, w.text)) violations.push({ ...v, file: w.path })
   }
 
   if (violations.length > 0) {

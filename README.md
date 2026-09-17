@@ -494,13 +494,14 @@ bun run e2e
 
 Quatro camadas de proteção previnem que arquivos com encoding corrompido (ex: byte `0x97` Windows-1252) cheguem ao repositório:
 
-**Índice da seção (8 sub-blocos):**
+**Índice da seção (9 sub-blocos):**
 
 - [CRLF Guard](#crlf-guard) — working tree `.sh`/`.bash`
 - [Normalizador](#normalizador) — fix de uma vez em novos checkouts
 - [Blob CRLF Guard](#blob-crlf-guard) — blobs commitados (`i/` EOL)
 - [CRLF Scope Guard](#crlf-scope-guard) — escopo travado em `.sh`/`.bash`
 - [UTF-8 Scope Guard](#utf-8-scope-guard) — escopo do check-utf8 travado em `src/`
+- [A régua única de leitura de YAML (`scripts/forge-workflows.mjs`)](#a-régua-única-de-leitura-de-yaml-scriptsforge-workflowsmjs) — linha, passo e declaração numa casa só
 - [Por que `.sh`-only? (decisão ESCOPO INTENCIONAL)](#por-que-o-guard-de-crlf-é-sh-only-decisão-escopo-intencional)
 - [Auditoria histórica de blobs CRLF](#auditoria-histórica-de-blobs-crlf) — histórico completo (`rev-list --all`)
 - [Single-line out= Guard](#single-line-out-guard) — `cmd "..." out=$(...)` em 1 linha
@@ -559,6 +560,39 @@ SEMPRE receber `src/` como argumento de diretório. O guard falha (exit 1) se
 o argumento for removido (varredura sem diretório — potencialmente varrendo
 `node_modules/` ou `.next/`) ou trocado para outro diretório. Espelho do
 `check-crlf-scope.mjs`.
+
+### A régua única de leitura de YAML (`scripts/forge-workflows.mjs`)
+
+Os guards que leem workflow YAML (paridade de forja, refs, sintaxe dos `run:`,
+cobertura de mutation test, sentinel, SIGPIPE, escopo de CRLF/UTF-8, espelhos do
+Bun e call sites do setup do Bun) perguntam todos a MESMA coisa — _esta linha
+executa? isto é um passo? isto é declaração?_ — e cada um respondia com a própria
+cópia. Eram **quatro** leituras de passo e **oito** cópias da regra de
+comentário, e as cópias já divergiam: duas não conheciam `/*`, uma só conhecia
+`#`, e o comentário de FIM DE LINHA era ignorado em um guard e não no outro. Duas consequências medidas: o mesmo YAML dava **dois
+vereditos dentro do `check-forge-parity`** (a régua de rótulo lia o corpo do
+`run: |` e a de comando não — **11 arquivos** com gate visível sem comando
+correspondente), e a correção do comentário de fim de linha teve de ser aplicada
+duas vezes.
+
+Hoje a régua é uma: `executableLine`/`executableLines` (comentário de linha e de
+fim de linha fora, `${{ ... }}` do runner mascarado), `codeLine` (a MESMA régua
+sem o mascaramento — para quem precisa da expressão INTEIRA como valor, como o
+comparador de argumento do setup do Bun), `isCommentLine(line, { slash })` (a
+SINTAXE é declarada no call site) e `workflowRunBodies` (item de lista, `- run:`
+na mesma linha, bloco `|` **e** `>`, `shell:` antes ou depois do `run:`, fim do
+corpo medido). Os últimos a chegar foram os scanners de linha do
+`check-bun-mirror` (cinco cópias, uma delas com o alinhamento escrito no código
+na forma _"mesmo tratamento do check-no-setup-bun.mjs"_) e o `check-no-setup-bun`:
+a diferença não era de opinião, era de POSIÇÃO no arquivo — todos ignoravam só a
+linha INTEIRA de comentário, então a prosa de um `#` no fim de linha valia como
+declaração de versão, como path de cache ou como uso REAL do action. O que muda
+no veredito está tabelado em
+`docs/GUARDS.md` §22; a prova é `src/lib/__tests__/forge-workflows-ruler.test.ts`,
+que além de medir a leitura de cada guard exige que ela continue vindo de um
+lugar só (o regex do comentário de fim de linha e o padrão da expressão existem
+em UM arquivo, e a varredura é sobre `scripts/*.mjs` inteiro — um guard novo com
+a cópia derruba o teste sem ninguém registrá-lo).
 
 ### Por que o guard de CRLF é `.sh`-only (decisão ESCOPO INTENCIONAL)
 

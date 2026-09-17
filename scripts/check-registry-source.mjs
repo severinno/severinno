@@ -142,7 +142,18 @@ import {
 import { basename, isAbsolute, join, relative } from "node:path"
 import { tmpdir } from "node:os"
 
-import { FORGE_ACTIONS_DIRS, FORGE_WORKFLOW_DIRS, WORKFLOW_FILE_RE } from "./forge-workflows.mjs"
+import {
+  FORGE_ACTIONS_DIRS,
+  FORGE_WORKFLOW_DIRS,
+  DYNAMIC_EXPR_RE,
+  // As duas reguas de comentario deste guard vem da FONTE UNICA (aqui com o
+  // nome local que o veredito ja usa). A sintaxe declarada e `#` sozinho:
+  // este guard varre YAML/compose/shell, onde `*` e alias (nao comentario).
+  exitOnUnjudgeable,
+  isHashComment as isCommentLine,
+  readWorkflowScan,
+  stripTrailingComment as stripInlineComment,
+} from "./forge-workflows.mjs"
 import { credentialsFromEnv, probeImageIdentity, resolveImageRef } from "./ensure-runner-image.mjs"
 import { GITEA_COMPOSE } from "./check-bun-mirror.mjs"
 import {
@@ -225,12 +236,15 @@ export const SCAN_TARGETS = [
  * registry, e um guard que reclamasse de prosa bloquearia a propria
  * documentacao da invariante.
  *
+ * A IMPLEMENTACAO e a REGUA DE COMENTARIO unica (`forge-workflows.mjs`). Aqui
+ * a SINTAXE e declarada: este guard varre YAML/compose/shell, onde `*` e alias
+ * (nao comentario) — por isso `#` sozinho, e nao a variante `{slash:true}` que
+ * os guards de JS/TS usam.
+ *
  * @param {string} line
  * @returns {boolean}
  */
-export function isCommentLine(line) {
-  return line.trim().startsWith("#")
-}
+export { isCommentLine }
 
 /**
  * Remove comentario INLINE de YAML (`key: valor # prosa`) — em YAML o `#` so
@@ -239,12 +253,14 @@ export function isCommentLine(line) {
  * seria lida como referencia de codigo (foi exatamente o caso real que este
  * guard encontrou).
  *
+ * A IMPLEMENTACAO e a REGUA de `forge-workflows.mjs` (`stripTrailingComment`):
+ * a regra do comentario de FIM DE LINHA estava escrita aqui E no
+ * `check-forge-parity` (`executableLine`), com o MESMO regex copiado.
+ *
  * @param {string} line
  * @returns {string} a linha sem a parte comentada
  */
-export function stripInlineComment(line) {
-  return line.replace(/(^|\s)#.*$/, "$1").trimEnd()
-}
+export { stripInlineComment }
 
 /**
  * A linha usa o registry pela variavel (default embutido)? As duas formas
@@ -340,7 +356,10 @@ export function checkLiteralImageTag(file, lineNo, line) {
   const code = stripInlineComment(line)
   if (!isRegistryVariableForm(code)) return null
   if (isAllowlistedThirdParty(code)) return null
-  const withoutVars = code.replace(/\$\{\{[^}]*\}\}/g, "\u0000").replace(/\$\{[^}]*\}/g, "\u0000")
+  // A primeira substituicao e a expressao do runner — o PADRAO vem da fonte
+  // unica (`DYNAMIC_EXPR_RE`). A segunda e o `${VAR}` de shell/compose, que e
+  // outro construto (uma chave, nao duas) e por isso vive aqui.
+  const withoutVars = code.replace(DYNAMIC_EXPR_RE, "\u0000").replace(/\$\{[^}]*\}/g, "\u0000")
   const m = withoutVars.match(/\/([A-Za-z0-9][A-Za-z0-9._-]*):([A-Za-z0-9][A-Za-z0-9._-]*)/)
   if (!m) return null
   return (
@@ -1805,25 +1824,22 @@ export function forgeVariableRefs(root = ROOT) {
     `\\$\\{\\{\\s*vars\\.(${NON_VERSIONED_IMAGE_VARIABLES.join("|")})\\s*(?:\\|\\|\\s*'([^']*)')?\\s*\\}\\}?`,
     "g",
   )
-  for (const dir of FORGE_WORKFLOW_DIRS) {
-    const abs = join(root, dir)
-    if (!existsSync(abs)) continue
-    for (const name of readdirSync(abs).filter((f) => WORKFLOW_FILE_RE.test(f))) {
-      const rel = `${dir}/${name}`
-      readFileSync(join(root, rel), "utf8")
-        .split(/\r?\n/)
-        .forEach((line, i) => {
-          if (isCommentLine(line)) return
-          for (const m of line.matchAll(re)) {
-            refs.push({
-              file: rel,
-              line: i + 1,
-              variable: m[1],
-              fallback: m[2] ?? null,
-            })
-          }
+  // A varredura COMPARTILHADA (fonte única): o rótulo é o mesmo `<dir>/<nome>`,
+  // e um arquivo que não abre LANÇA com o nome dele (o CLI acrescenta a porta
+  // fail-closed que transforma isso em exit 2 — sem ler o workflow não há como
+  // afirmar de quais variáveis a pipeline depende).
+  for (const w of readWorkflowScan(root).files) {
+    w.text.split(/\r?\n/).forEach((line, i) => {
+      if (isCommentLine(line)) return
+      for (const m of line.matchAll(re)) {
+        refs.push({
+          file: w.path,
+          line: i + 1,
+          variable: m[1],
+          fallback: m[2] ?? null,
         })
-    }
+      }
+    })
   }
   return refs
 }
@@ -2393,6 +2409,12 @@ if (isMain) {
     )
     process.exit(3)
   }
+  // Um workflow de forja que não abre não vira "nenhuma referência": a fonte
+  // única não pode ser AFIRMADA sobre um arquivo que o guard não leu. A
+  // varredura é a COMPARTILHADA (fonte única) e o guard para com 2, nomeando o
+  // arquivo (antes, o `readFileSync` de `forgeVariableRefs` estourava com stack
+  // trace — exit 1, "violação", que aqui significa referência hardcoded).
+  exitOnUnjudgeable(readWorkflowScan(ROOT).unjudgeable)
   const scopeSweep = sweepOutOfScope()
   // DECISAO SEM REVISAO: visivel em TODO run (o aviso sai mesmo quando outra
   // violacao ja derruba o guard) e escalada a violacao por `--review`.

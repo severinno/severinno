@@ -68,6 +68,19 @@ const WORKFLOW_COMMENT_ONLY = `jobs:
         run: echo "usa scripts/test-mutation-ghost.sh? não"
 `
 
+// O comentário de FIM DE LINHA dentro do bloco `run:`: a régua única corta a
+// prosa, e é isso que impede cobertura FALSA (o script parecer coberto por
+// viver num `#`).
+const WORKFLOW_TRAILING_COMMENT = `jobs:
+  mutation-guards:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mutation tests
+        run: |
+          bash scripts/test-mutation-guards.sh
+          echo ok # bash scripts/test-mutation-ghost.sh
+`
+
 const PKG_SCRIPTS = {
   "test:mutation-seed-dev-e2e": "bash scripts/test-mutation-seed-dev-e2e.sh",
   "test:mutation-guards": "bash scripts/test-mutation-guards.sh",
@@ -148,6 +161,17 @@ describe("extractWorkflowRunRefs", () => {
   it("NÃO trata comentário que cita script como cobertura", () => {
     const refs = extractWorkflowRunRefs(WORKFLOW_COMMENT_ONLY, PKG_SCRIPTS)
     expect(refs).toEqual([])
+  })
+
+  it("NÃO trata comentário de FIM DE LINHA como cobertura (a régua é a única)", () => {
+    // A metade que faltava: antes só a linha INTEIRA de comentário saía, e uma
+    // invocação REAL dentro da prosa (`echo ok # bash scripts/ghost.sh`) contava
+    // como cobertura — o guard declarava um script de mutation test coberto por
+    // uma linha que a pipeline nunca roda, e o vizinho ficava descoberto em
+    // silêncio. `executableLine` corta o `#` de fim de linha.
+    const refs = extractWorkflowRunRefs(WORKFLOW_TRAILING_COMMENT, PKG_SCRIPTS)
+    expect(refs).toEqual(["test-mutation-guards.sh"])
+    expect(refs).not.toContain("test-mutation-ghost.sh")
   })
 
   it("não mapeia bun run sem entrada correspondente em package.json", () => {

@@ -729,6 +729,40 @@ leitura é a mesma do `check-forge-parity` (`executableLines`), que já ignorava
 comentário de fim de linha; a divergência entre os dois era o furo (um passo
 comentado virava ref validada e, se o arquivo não existisse, uma violação falsa).
 
+**Como testar:** `src/lib/__tests__/check-workflow-refs.test.ts` (os quatro
+extratores, incluindo o comentário de linha e o de fim de linha) e
+`src/lib/__tests__/check-workflow-refs-cli.test.ts` (a CLI e o `--pkg-internal`).
+
+**O YAML do arquivo, hoje, é julgado pela porta do ESCOPO** —
+`workflowYamlValidity` no `readWorkflowScan` (§21, "A OUTRA PORTA"): um workflow
+que não faz parsing sai NOMEADO e o guard sai 2, em vez de ler linha a linha um
+arquivo que o runner nunca executa. Medido: o `scripts/validate-workflows.py`
+(YAML syntax + uses + órfão + âncora) **não é invocado por pipeline nenhuma** —
+`grep` em `.github/`, `.gitea/` e `package.json` não acha call site —, e ele cobre
+só `.github/workflows`; a porta do escopo cobre as DUAS forjas e é o que os
+guards de workflow de fato consultam antes de cunhar veredito.
+
+**Prova por mutação:** `scripts/test-mutation-workflow-refs.sh` (sub-test
+`workflow-refs` da matriz do master). Os Cenários 1 e 2 mutam a **fixture** e
+cobram o vermelho do guard (par transitivo workflow → entry → script; entry órfã
+do `--pkg-internal`). O Cenário 3 muta o **próprio guard** (com backup e
+restauração **conferida por checksum** — a mutação é aplicada no lugar, porque o
+objeto da prova é o arquivo real) e prende os **dois sentidos** da regra de
+comentário de fim de linha, um por fixture:
+
+| Mutação                                                      | Fixture                                            | Guard real                                                      | Guard mutado                                                                                   |
+| :----------------------------------------------------------- | :------------------------------------------------- | :-------------------------------------------------------------- | :--------------------------------------------------------------------------------------------- |
+| **M1** — a regra REMOVIDA (`replace(/(^\|\s)#.*$/, …)`)      | `run: echo ok # node scripts/ghost-comentario.mjs` | **PASSA** (o comentário não gera ref)                           | **ACUSA** a ref do comentário (`pr-check.yml:6`) — o veredito deixa de ser sobre o que EXECUTA |
+| **M2** — a regra perde a ÂNCORA de espaço (`(^\|\s)#` → `#`) | `run: echo "a#b" ; node scripts/ghost-real.mjs`    | **REPROVA** (o `#` entre aspas não é comentário: a ref executa) | **PASSA** com a referência quebrada — **CEGO**                                                 |
+
+As duas direções têm nome, e são diferentes de propósito: o M1 é um **FALSO
+POSITIVO** (o guard não fica verde, ele inventa violação para código morto) e o
+M2 é a **CEGUEIRA** da casa (verde onde deveria reprovar). Um controle do guard
+real ANTES e OUTRO depois de restaurar fecha cada cenário — sem eles, um guard
+que já falhasse por outro motivo faria o PASS do mutado parecer a cegueira que
+ele mede. E é o M2 que dá preço à âncora: sem o `(^|\s)`, a regra corta no `#` de
+DENTRO de aspas e o guard perde a ref que executa.
+
 ---
 
 **`check:registry-source` (mesma família — fonte única do registry OCI):**
@@ -3354,16 +3388,17 @@ verdade** — a única diferença entre o verde e o vermelho é a linha proibida
 mutação. Os **dois controles**: (1) a declaração LEGAL em bloco (arquivo e job)
 → exit 0, senão adotar `defaults: run: shell:` seria impossível; (2) a declaração
 escalar no escopo do JOB → nenhum dos cinco guards a vê como passo, gate, ref ou
-comando, e o comando do PASSO segue visível. As **cinco mutações**, cada uma
+comando, e o comando do PASSO segue visível. As **seis mutações**, cada uma
 red pela asserção da própria regra:
 
-| mutação | o que ela degrada                                                                                   | como o guard acusa                                                                                                              |
-| :------ | :-------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------ |
-| **A**   | `defaultsRunLines` devolve vazio (a leitura compartilhada para de ler)                              | `--root` sai 1 com `gate 'scripts/check-fantasma.mjs' NAO CLASSIFICADO` nas DUAS pipelines, e o `--gates` nomeia o fantasma     |
-| **B**   | o guard de paridade deixa de CONSULTAR (o argumento some de `executableLines`, nos DOIS call sites) | o mesmo 1 — leitura certa num módulo não protege guard que não a chama                                                          |
-| **C**   | o doctor deixa de pular (3 sites: `gateRunLine`, `firstRunLine`, o inventário do job)               | `firstRunLine`/`gateRunLine` passam a devolver a linha da declaração                                                            |
-| **D**   | os guards de ref deixam de pular (`check-mutation-jobs` + `check-workflow-refs`, os 4 extratores)   | a declaração vira ref de script E cobertura de mutation test — e o guard de paridade (intacto) segue pulando, provando cirurgia |
-| **E**   | a leitura só vê o escopo do ARQUIVO                                                                 | a declaração do JOB volta a virar passo → 1 nomeando o fantasma                                                                 |
+| mutação | o que ela degrada                                                                                   | como o guard acusa                                                                                                                                                                                                  |
+| :------ | :-------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **A**   | `defaultsRunLines` devolve vazio (a leitura compartilhada para de ler)                              | `--root` sai 1 com `gate 'scripts/check-fantasma.mjs' NAO CLASSIFICADO` nas DUAS pipelines, e o `--gates` nomeia o fantasma                                                                                         |
+| **B**   | o guard de paridade deixa de CONSULTAR (o argumento some de `executableLines`, nos DOIS call sites) | o mesmo 1 — leitura certa num módulo não protege guard que não a chama                                                                                                                                              |
+| **C**   | o doctor deixa de pular (3 sites: `gateRunLine`, `firstRunLine`, o inventário do job)               | `firstRunLine`/`gateRunLine` passam a devolver a linha da declaração                                                                                                                                                |
+| **D1**  | o `check-workflow-refs` volta a ler a declaração (o pulo próprio, nos 4 call sites)                 | a declaração vira ref de script — e o CONTROLE da metade prende que a cobertura de mutation test segue limpa: o `check-mutation-jobs` NÃO tem pulo próprio, a imunidade dele é a régua                              |
+| **D2**  | a régua de PASSO deixa de exigir ITEM DE LISTA (`workflowRunBodies`)                                | a declaração vira passo para quem a consome e `extractWorkflowRunRefs` passa a contar a ref fantasma como COBERTURA — com o guard de refs (intacto) seguindo limpo, provando que as duas leituras são independentes |
+| **E**   | a leitura só vê o escopo do ARQUIVO                                                                 | a declaração do JOB volta a virar passo → 1 nomeando o fantasma                                                                                                                                                     |
 
 As mutações são IN-PLACE nos módulos REAIS (é o módulo real que os guards
 importam; um mutante numa cópia mediria outro guard), com backup + trap, e a
@@ -3377,7 +3412,7 @@ contrato do doctor com a declaração está travado nos testes unitários
 fixture.
 
 **A COBERTURA dos quatro guards é medida por um invariante só** —
-`src/lib/__tests__/workflow-yaml-guards-cobertura.test.ts` (17 testes, roda na
+`src/lib/__tests__/workflow-yaml-guards-cobertura.test.ts` (42 testes, roda na
 suíte unit do merge), irmão do
 `check-pipefail-sigpipe-cobertura.test.ts`. Um gate que leia MENOS do que diz fica
 verde pelo mesmo motivo que um gate honesto: nada falhou — e os quatro leem o
@@ -3427,6 +3462,204 @@ aparece):
    afirmando que a mistura existe (os três desfechos de classificação, as duas
    origens de ref, as duas classes que não podem contar); sem isso a prova
    passaria medindo a si mesma.
+
+### A OUTRA PORTA: o arquivo que o guard **não consegue** julgar
+
+A soma acima prova o que cada gate VÊ. Ela não diz nada sobre o arquivo que ele
+**não viu** — e é aí que a mesma conta se perde, porque a soma fecha em cima de um
+escopo que o guard leu: o que ficou ilegível não entra nem num lado nem no outro,
+entra como **verde**. Duas classes, uma saída errada só:
+
+| classe            | o que é                                                        | o que os guards faziam antes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| :---------------- | :------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ILEGÍVEL**      | o arquivo existe e não abre (permissão), ou não é UTF-8 válido | o `readFileSync(..., "utf8")` **não falha** com byte inválido: ele troca por U+FFFD e entrega ao guard um texto que ninguém escreveu. Medido: `check-workflow-refs`, `check-mutation-jobs`, `check-pipefail-sigpipe`, `check-no-setup-bun`, `check-sentinel-producer`, `check-seed-hooks`, `check-registry-source`, `check-bun-mirror` e `check-hook-ci-parity` já saíam 2 NOMEANDO — a leitura fail-closed (`readJudgedFile`) já existia. Os dois que liam o workflow por conta própria, **não**: `check-forge-parity` (mojibake silencioso) e `check-workflow-run-syntax` (idem) |
+| **YAML INVÁLIDO** | o texto abre inteiro, mas não faz parsing em YAML              | **nenhum** guard perguntava. Como a leitura é LINHA a LINHA (o §22), as linhas de um arquivo que não é workflow eram julgadas como passos — medido: os NOVE guards que varrem workflow por `cwd` saíam **0** com um YAML quebrado no escopo, e a paridade julgava a pipeline declarada como se tivesse um contrato                                                                                                                                                                                                                                                                 |
+
+**Onde a recusa mora:** numa porta só — `workflowYamlValidity` (em
+`forge-workflows.mjs`, validando com o `js-yaml` — que os testes já usavam como
+dep transitiva e que esta porta tornou **declarado** no `package.json`, para o
+parser não depender de quem o instala por tabela) chamada
+pelo `readWorkflowScan`, de modo que os guardas que consomem a varredura
+compartilhada herdam a recusa sem código novo. O desfecho é um OBJETO
+(`{ok:false, motivo}`), nunca um booleano: o motivo viaja até o relatório, com a
+linha do erro quando o parser a dá. O parser indisponível também é `ok:false` —
+"não pude provar que o YAML é válido" não é "o YAML é válido" —, e o guard prefere
+o vermelho explicado ao verde presumido. Os dois guards com leitor próprio passaram
+a usar a **mesma** porta (`check-forge-parity` na sua sonda do escopo declarado,
+`check-workflow-run-syntax` no corpo e no `--fix`), e o
+`check-sentinel-producer` — que também varre por conta própria — idem.
+
+**O que muda no veredito:** o arquivo ilegível ou sem parsing deixa de ser "0
+violações" e passa a **NÃO JULGÁVEL — exit 2**, com o arquivo NOMEADO. Na
+paridade, os três desfechos de um arquivo declarado ficam distintos: **ausente** é
+violação do contrato (exit 1, "pipeline declarada nao existe"), **ilegível/YAML
+inválido** é ausência de veredito (exit 2). No repositório real: **0 mudanças** —
+os 33 workflows das duas forjas fazem parsing (medido), então a porta fecha sobre
+um escopo que já era legível.
+
+**Como a prova mede isso:** por EXECUÇÃO do guard real (processo + exit code)
+sobre fixtures **diferenciais** — o mesmo guard no fixture LIMPO e no SUJO, que só
+diferem pelo arquivo ruim. Onde o limpo é verde, o sujo tem de **deixar de ser**;
+quando o fixture mínimo não basta para o guard (ele sai não-zero por outro motivo),
+o fato medido é a **CITAÇÃO** do arquivo — que é o ponto: o guard NOMEOU o que não
+julgou. O fixture limpo também é o CONTROLE do diferencial: se ele citasse o
+arquivo ruim, a citação do sujo não provaria nada. Somam-se as provas por mutação
+da porta (medidas: remover a validade do leitor compartilhado deixa **9 testes**
+vermelhos, um por guard; devolver o `readFileSync(..., "utf8")` ao
+`check-workflow-run-syntax` e a leitura crua à paridade deixa **2**).
+
+---
+
+## 22. A régua única de leitura de YAML — linha, passo, declaração (`scripts/forge-workflows.mjs`)
+
+**O que protege:** a pergunta _"esta linha de workflow EXECUTA algo?"_ tem **uma**
+resposta no repositório. Comentário (de linha e de fim de linha), expressão do
+runner (`${{ ... }}`), item de lista, corpo de bloco (`|` e `>`), `shell:` do
+passo e declaração de `defaults:` — cada um desses constructos é lido **num
+lugar só**, e cada guard diz qual SINTAXE varre em vez de reimplementar a regra.
+
+**O que existia antes (medido, não hipotético):** QUATRO funções diferentes para
+ler um passo e CINCO cópias da regra de comentário, e as cópias já divergiam
+entre si:
+
+| guard                            | o que considerava comentário                                                                                                                                                                            |
+| :------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `check-crlf-scope`               | `#`, `//`, `*`                                                                                                                                                                                          |
+| `check-utf8-scope`               | `#`, `//`, `*`                                                                                                                                                                                          |
+| `check-forge-workflow-scope`     | `//`, `/*`, `*`, `#`                                                                                                                                                                                    |
+| `check-registry-source`          | só `#`                                                                                                                                                                                                  |
+| `check-registry-source` (inline) | `stripTrailingComment` — o MESMO regex do `parity`                                                                                                                                                      |
+| `check-pipefail-sigpipe`         | `workflowRunSteps` (leitura de passo própria)                                                                                                                                                           |
+| `check-mutation-jobs`            | `RUN_SINGLE_RE`/`RUN_BLOCK_RE` (só `run: \|`, sem `>`)                                                                                                                                                  |
+| `check-forge-parity`             | `executableLines` + `runCommands` (pula o corpo)                                                                                                                                                        |
+| `check-workflow-run-syntax`      | reusa o `workflowRunSteps`, mas com a sua máscara                                                                                                                                                       |
+| `check-bun-mirror`               | `trim().startsWith("#")` — em CINCO scanners de linha de workflow, e um deles com o alinhamento escrito no código (_"mesmo tratamento do check-no-setup-bun.mjs"_), que é o que o próximo ajuste quebra |
+| `check-no-setup-bun`             | `trim().startsWith("#")`                                                                                                                                                                                |
+| `check-mutation-jobs` (corpo)    | segunda regra de comentário dentro do `collect` — morta pelo `executableLine` do chamador, mas capaz de voltar a divergir                                                                               |
+
+**O que a régua é, agora:**
+
+| função (em `forge-workflows.mjs`)                    | responde                                                                     |
+| :--------------------------------------------------- | :--------------------------------------------------------------------------- |
+| `stripTrailingComment(line)`                         | onde termina o código na linha (`#` precedido de espaço)                     |
+| `codeLine(line)`                                     | o CÓDIGO da linha, com a EXPRESSÃO preservada (a porta de quem quer o valor) |
+| `executableLine(line)` / `executableLines(lines, ?)` | a linha como o runner a executaria (comentário fora, expressão fora)         |
+| `isCommentLine(line, {slash})`                       | é comentário? — a SINTAXE é declarada no call site (`//`, `/*`, `*`)         |
+| `DYNAMIC_EXPR_RE`                                    | o padrão da expressão do runner (remover, mascarar, desmascarar)             |
+| `workflowRunBodies(content)`                         | os passos com `run:`: item, coluna, bloco (`\|`/`>`), `shell:`, fim          |
+| `defaultsBlocks` / `defaultsRunLines`                | §21 — o que é DECLARAÇÃO e não pode ser passo                                |
+
+**O que muda no veredito** (cada linha foi medida antes e depois, contra o
+repositório real e contra fixture próprio):
+
+| mudança                                                                  | veredito                                                                                                                                                                                                                                                                                                                                                                                        |
+| :----------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| a régua de COMANDO passa a ver o corpo do `run: \|`                      | um gate invocado **só** dentro de um bloco deixa de ser invisível. Medido: **11 arquivos** tinham gate com rótulo (`discoverGates`) SEM comando correspondente (`runCommands`) — o mesmo YAML com dois vereditos no mesmo guard. O `check-forge-parity` segue verde no repositório (nenhuma invariante do CORE vivia só em bloco), e a fixture do teste prova o caso que passaria a ser acusado |
+| a régua de LINHA mascara `${{ ... }}`                                    | um alvo lido de dentro da expressão do runner deixa de ser afirmação do repositório — e uma linha que só tem expressão deixa de executar. No repositório: **0 mudanças de veredito** (medido)                                                                                                                                                                                                   |
+| `stripTrailingComment` mantém o `trimEnd` das duas implementações        | nenhuma — é o que preserva o texto que o `check-registry-source` já comparava                                                                                                                                                                                                                                                                                                                   |
+| a régua de PASSO passa a conhecer o bloco DOBRADO (`run: >`)             | a cobertura de mutation test passa a contar o alvo dentro de um `>` (antes: invisível). No repositório: **0 casos** — é hardening com fixture                                                                                                                                                                                                                                                   |
+| `check-sentinel-producer` passa a ignorar comentário de FIM DE LINHA     | um `run: echo ok # grep -Fq 'x' arquivo` deixa de ser **demanda** de sentinel (era violação falsa: o guard cobrava do producer um sentinel que ninguém pede). No repositório: **0 casos** — as ocorrências reais são linha de comentário inteira, que já era pulada                                                                                                                             |
+| `check-hook-ci-parity` compara os comandos **executados**                | a comparação hook ↔ CI passa a enxergar os comandos que vivem em bloco (o lado do CI só GANHA comandos → menos falso "não roda"). No repositório: verde antes e depois                                                                                                                                                                                                                          |
+| as quatro `isCommentLine` viram uma, com a sintaxe declarada             | três respostas para a mesma pergunta viram uma; `/*` passa a ser comentário também em `check-crlf-scope`/`check-utf8-scope` (declarado, e sem nenhuma linha desses arquivos com `/*`)                                                                                                                                                                                                           |
+| `checkLiteralBunLine` lê o CÓDIGO da linha (`codeLine`)                  | a prosa de um `#` no fim deixa de valer como DECLARAÇÃO: `bun-version: ${{ vars.BUN_VERSION }} # legado: 1.3.14` deixa de ser violação de literal (era a regra local só olhando o INÍCIO da linha). O literal no código da mesma linha continua violação — a régua tira a prosa, não a linha. No repositório: **0 casos** (medido)                                                              |
+| `check-no-setup-bun` lê o código da linha, sem mascaramento              | um `#` de fim de linha com a key `uses:` deixa de fabricar violação (`run: echo ok # uses: oven-sh/setup-bun@v2` era acusado como uso REAL). O mascaramento do `executableLine` **não** entra aqui de propósito: a expressão fica inteira porque o guard quer vê-la                                                                                                                             |
+| o bloco de `actions/cache` lê `path:`/`restore-keys:` pelo código        | um `# nota` no fim de um path entrava INTEIRO na comparação de toolchain e o guard acusava um path que a pipeline não declara. No repositório: **0 casos** (medido) — é hardening com fixture                                                                                                                                                                                                   |
+| `findBunLiteralDefaultInScript` / `checkReRegisterPath` (`.sh`)          | o `1.3.14` de um `# exemplo` no fim de uma linha de shell deixa de valer como default do script (em shell, `#` precedido de espaço é comentário). No repositório: **0 casos** (medido)                                                                                                                                                                                                          |
+| o `collect` do `check-mutation-jobs` perde a segunda regra de comentário | a invocação real DENTRO da prosa (`echo ok # bash scripts/test-mutation-x.sh`) já não conta como cobertura (o chamador entrega o corpo pelo `executableLine`) — era o caso em que um script de mutation test parecia coberto por uma linha que a pipeline nunca roda                                                                                                                            |
+| `isCommentOrDocLine` do `check-bun-mirror` vira a régua declarada        | `isCommentLine(…, { slash: true })` — a quinta cópia da função, cuja diferença com as outras era ACIDENTAL (uma sem `//`, outra sem `#`)                                                                                                                                                                                                                                                        |
+| Dockerfile fica FORA do corte de fim de linha                            | declarado: em Dockerfile o `#` só é comentário no INÍCIO da linha, então `RUN echo bun-1.2 # nota` é comando inteiro e tratá-lo como prosa cegaria o guard                                                                                                                                                                                                                                      |
+
+**Onde roda:** é módulo puro — não tem CLI nem job próprio. Ele decide o
+veredito de quem o consome, e é por isso que a prova é sobre os CONSUMIDORES.
+
+**Como testar:** `src/lib/__tests__/forge-workflows-ruler.test.ts` (19 testes) —
+um fixture com TODOS os constructos, o veredito de cada guard conferido contra
+ele, e três invariantes estruturais que fazem a unificação não poder voltar:
+
+1. cada guard importa a régua (o teste falha quando o import volta a ser cópia);
+2. o regex do comentário de fim de linha existe em **um** arquivo;
+3. o padrão da expressão dinâmica existe em **um** arquivo.
+
+As três invariantes varrem `scripts/*.mjs` inteiro — nenhuma lista à mão —, de
+modo que um guard NOVO que nasça com a cópia do regex derruba o teste sem que
+ninguém precise registrá-lo aqui.
+
+**Limite declarado:** a régua decide o que EXECUTA, não o que o shell faz com o
+comando (o `logicalCommands` do `check-pipefail-sigpipe` segue dono de heredoc e
+continuação dentro de um corpo), e a leitura continua sendo **linha a linha** por
+regex: um passo montado por lógica de matriz (`${{ matrix.cmd }}` resolvendo o
+comando) é expressão do runner, e por desenho não é prova de execução.
+
+A régua também NÃO é um parser de YAML: a validade do arquivo é uma PORTA DO
+ESCOPO (`workflowYamlValidity`, aplicada no `readWorkflowScan` e nos dois guards
+com leitor próprio), não uma segunda leitura dos passos. Um arquivo que não faz
+parsing sai NOMEADO como não-julgável — ele nunca chega a ser lido linha a linha,
+que é o defeito que essa porta fecha (ver "A OUTRA PORTA", §21).
+
+---
+
+## 23. O teardown do Gitea efêmero é VEREDITO — `helpers/gitea-ephemeral.ts`
+
+Os suites de integração do Gitea real (issue de drift, actrc, doctor,
+env-mirror-drift) sobem um container por arquivo e o removem em `afterAll`. O que
+existia: `docker rm -f` e, quando ele falhava, **uma linha no stderr** — o
+container ficava de pé e o arquivo terminava **VERDE**. MEDIDO neste host: 669
+containers `gitea-ephemeral-*` Up de uma vez (~33GB, swap esgotado), e a suíte
+inteira passou a morrer por OOM com o vermelho LONGE da causa (`Worker exited
+unexpectedly`, sem nenhum teste reprovado). O `rm` que falha em silêncio era o
+defeito; a linha de aviso já existia e não bastava.
+
+**Três desfechos, nenhum em silêncio:**
+
+| desfecho            | quando                                                                                             | veredito                                                                                                                                                                                                                    |
+| :------------------ | :------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rm`                | o `docker rm -f` funciona (ou o container já não existe)                                           | removido (caminho normal)                                                                                                                                                                                                   |
+| `parada-por-dentro` | o daemon NÃO consegue matar, mas o PID 1 do container TRATA SIGTERM (o `s6-svscan` do gitea trata) | removido: `docker exec <c> sh -c 'kill -TERM 1'`, o container sai 0 sozinho, e um container PARADO é removido sem `-f`                                                                                                      |
+| `nao-removido`      | nem um nem outro                                                                                   | **FALHA**: o `cleanup()` LANÇA (o arquivo reprova), o sweep deixa o código de saída da execução em `1` (`131` se o processo foi abortado por sinal) e o relatório nomeia container, motivo do daemon e a RECEITA de limpeza |
+
+**Por que o daemon nega (medido, não suposto):** neste host `docker rm -f`,
+`docker kill` e `docker stop` falham com `could not kill container: permission
+denied` para QUALQUER container — inclusive um recém-criado pelo próprio daemon.
+Duas consequências medidas: toda tentativa de kill gasta o timeout de stop do
+daemon (10,02s cronometrados por chamada) e, por isso, o `rm -f` tem orçamento de
+3s — o teardown dos quatro arquivos de integração roda em `afterAll`, que passou
+a ter **60s** de orçamento próprio: com o padrão do vitest (10s) o hook morreria
+por TIMEOUT antes de o caminho por dentro rodar, deixando o container vivo e o
+vermelho apontando para o lugar errado (a mesma classe de falha que este bloco
+existe para eliminar).
+
+**O veredito não é "não" na primeira negativa:** a remoção pode estar EM CURSO
+(o `rm -f` do daemon continua do lado dele depois do abort, e o `rm` seguinte
+responde "removal in progress"), então há uma **checagem final** que espera o
+container sumir antes de reprovar — reprovar na primeira resposta negativa daria
+um vermelho FALSO sobre um container que sai sozinho um instante depois, e
+vermelho falso ensina a ignorar vermelho.
+
+**Provas:** `src/lib/__tests__/gitea-ephemeral-teardown-falha.test.ts` (8 testes)
+executa o caminho REAL com um docker dublê roteirizado (daemon que nega o kill;
+container que para por dentro × container que não para) e mede: a ORDEM das
+chamadas, o motivo LITERAL do daemon, o `cleanup()` que LANÇA, o CONTROLE (com a
+remoção funcionando, nada é reportado nem se tenta uma segunda porta) e o CÓDIGO
+DE SAÍDA de um processo de verdade
+(`helpers/gitea-ephemeral-teardown-child.ts`). O bloco do docker real mede a
+premissa do host pelo PRÓPRIO veredito (`caminho`): onde ele é
+`parada-por-dentro`, o sucesso só é explicável por esse caminho — sem sonda extra
+e sem +10s de timeout do daemon.
+
+**A mutação é da própria prova:** silenciar o retorno de falha numa CÓPIA do
+helper faz o processo voltar a sair `0` com o container vivo — a metade do código
+de saída deixa de morder, que é exatamente o defeito original. O alvo da mutação
+é asserido ANTES de aplicar (alvo que sumiu = prova que passaria medindo o código
+original). E, no sentido oposto, qualquer regressão de verdade no veredito
+reprova o arquivo: o `it` do helper real exige código `1`, `reprovou: true` e o
+relatório nomeando o container no stderr.
+
+**Onde roda:** `test:run` nas duas forjas (é teste de unidade; os blocos que
+exigem docker se declaram sem docker, no padrão dos outros testes Gitea). O teste
+de SINAL (`gitea-ephemeral-signal.test.ts`) passou a medir a capacidade do host
+pela MESMA porta (`removerContainer`) e aceita 130 (sweep limpo) ou 131 (sweep
+com falha, que exige o relatório nomeado) — antes ele dava a remoção deste host
+como "INDETERMINADA" porque a media com um `rm -f` cru.
 
 ---
 

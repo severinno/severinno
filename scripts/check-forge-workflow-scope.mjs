@@ -39,7 +39,7 @@
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 
-import { FORGE_WORKFLOW_DIRS } from "./forge-workflows.mjs"
+import { FORGE_WORKFLOW_DIRS, isCommentLine as reguaDeComentario } from "./forge-workflows.mjs"
 
 /** Modulo da fonte unica — unico lugar que PODE declarar os diretorios. */
 export const SOURCE_OF_TRUTH = "forge-workflows.mjs"
@@ -87,8 +87,11 @@ export function hardcodedForgeDir(line) {
  * @returns {boolean}
  */
 export function isCommentLine(line) {
-  const t = line.trim()
-  return t.startsWith("//") || t.startsWith("/*") || t.startsWith("*") || t.startsWith("#")
+  // A REGUA e uma so (`forge-workflows.mjs`); o que este call site DECLARA e a
+  // SINTAXE que ele varre. Antes de unificar, cada guard tinha a sua copia, e
+  // as tres respostas para a mesma pergunta eram diferentes (uma sem `/*`,
+  // outra sem `//`): a diferenca era acidente de copia, nao decisao.
+  return reguaDeComentario(line, { slash: true })
 }
 
 /**

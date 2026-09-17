@@ -42,6 +42,7 @@
 import { readFileSync, existsSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
+import { isCommentLine as reguaDeComentario } from "./forge-workflows.mjs"
 
 /** Arquivos dos guards CRLF cujo escopo de varredura é travado por este guard. */
 export const CRLF_SCOPE_FILES = [
@@ -56,8 +57,11 @@ export const ALLOWED_CRLF_SCOPE_EXTENSIONS = ["sh", "bash"]
 
 /** Linha de código (não comentário)? Comentários são `#`/`//`/`*` iniciais. */
 export function isCommentLine(line) {
-  const t = line.trim()
-  return t.startsWith("#") || t.startsWith("//") || t.startsWith("*")
+  // A REGUA e uma so (`forge-workflows.mjs`); o que este call site DECLARA e a
+  // SINTAXE que ele varre. Antes de unificar, cada guard tinha a sua copia, e
+  // as tres respostas para a mesma pergunta eram diferentes (uma sem `/*`,
+  // outra sem `//`): a diferenca era acidente de copia, nao decisao.
+  return reguaDeComentario(line, { slash: true })
 }
 
 /**

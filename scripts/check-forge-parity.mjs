@@ -11,6 +11,15 @@
 // Exit code:
 //   0 — classificacao completa e paridade do CORE mantida
 //   1 — gate nao classificado, invariante do CORE ausente ou classificacao stale
+//   2 — uma pipeline DECLARADA em PIPELINES existe mas NAO PODE SER JULGADA
+//       (ilegivel, nao e UTF-8, ou nao faz parsing em YAML): sem ler o contrato
+//       nao ha veredito de paridade a cunhar
+//
+// A LEITURA E FAIL-CLOSED pelo `readJudgedFile` (a mesma do resto do repositorio).
+// O `readFileSync(..., "utf8")` cru deste guard trocava byte invalido por U+FFFD
+// e julgava um texto que ninguem escreveu — e um YAML que nao faz parsing era
+// lido LINHA a LINHA como se fosse um workflow. Os dois casos davam o mesmo
+// desfecho: "0 violacoes de paridade" sobre um contrato que o guard nao leu.
 //
 // Guard da PARIDADE DE GATES entre a forja que e dona do merge (Gitea/Forgejo,
 // .gitea/workflows/ci.yml) e o espelho no GitHub (.github/workflows/pr-check.yml)
@@ -65,10 +74,18 @@
 //   4. Comentarios sao ignorados (o guard protege o que EXECUTA).
 // =============================================================================
 
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync } from "node:fs"
 import { join, resolve } from "node:path"
 
-import { defaultsRunLines } from "./forge-workflows.mjs"
+import {
+  defaultsRunLines,
+  executableLine,
+  executableLines,
+  exitOnUnjudgeable,
+  readJudgedFile,
+  workflowRunBodies,
+  workflowYamlValidity,
+} from "./forge-workflows.mjs"
 
 const ROOT = process.cwd()
 
@@ -133,27 +150,14 @@ const BLOCK_RUN_RE = /^[|>][-+]?\d*$/
 const TSC_RE = /\btsc\s+--noEmit\b/
 
 /**
- * Remove comentario de YAML: linha inteira (`# ...`) e inline (`chave: v # ...`).
- * O `#` so inicia comentario precedido de espaco (ou no inicio da linha).
- *
- * `skipLines` (1-based, opcional) sao linhas cujo CONTEUDO nao e um passo —
- * hoje so a declaracao `defaults.run`, que e SHELL DEFAULT: ler `defaults: {run:
- * bash}` como comando fabrica um passo que a pipeline nao executa, e ler
- * `defaults: run: node scripts/check-x.mjs` fabrica um GATE — a invariante seria
- * satisfeita por uma declaracao de shell.
- *
- * @param {string[]} lines
- * @param {Set<number>|null} [skipLines]
- * @returns {string[]} as linhas executaveis
+ * A REGUA DE LINHA vem de `forge-workflows.mjs` — comentario (linha e fim de
+ * linha) e expressao dinamica do runner (`${{ ... }}`) mascarada. Era uma
+ * implementacao AQUI e outra no `check-workflow-refs`; a correcao do comentario
+ * de fim de linha teve de ser aplicada duas vezes, e as duas reguas ja
+ * divergiam num ponto (so o de refs mascarava `${{ }}`). Reexportada para nao
+ * quebrar quem importa daqui (testes e guards) — a fonte e uma so.
  */
-export function executableLines(lines, skipLines = null) {
-  return lines
-    .map((line, i) => {
-      if (skipLines !== null && skipLines.has(i + 1)) return ""
-      return line.trim().startsWith("#") ? "" : line.replace(/(^|\s)#.*$/, "$1").trimEnd()
-    })
-    .filter((line) => line.trim() !== "")
-}
+export { executableLines }
 
 /**
  * Descobre os gates executados por uma pipeline. Retorna rotulos legiveis (o
@@ -208,6 +212,47 @@ export function discoverGates(content) {
  * @returns {string[]} comandos, na ordem em que aparecem
  */
 export function runCommands(content) {
+  return runKeyCommands(content)
+}
+
+/**
+ * O que a pipeline EXECUTA, linha a linha: todo corpo de `run:` — escalar
+ * (com as continuacoes DOBRADAS que o YAML junta) e bloco (`|`/`>`) — com
+ * comentario e expressao dinamica fora.
+ *
+ * E a regua do VEREDITO de invariante: `missingInvariants` pergunta "este
+ * comando EXECUTA nesta pipeline?", e a resposta nao pode depender de o autor
+ * ter escrito o gate em `run: cmd` ou dentro de um `run: |`.
+ *
+ * POR QUE ELA SUBSTITUIU `runCommands` NO VEREDITO: `runCommands` le UMA linha
+ * por chave `run:` e DELIBERADAMENTE pula o indicador de bloco ("o comando nao
+ * esta na linha"). O efeito medido era o mesmo YAML com dois vereditos dentro
+ * deste arquivo: `discoverGates` (rotulo, varre todas as linhas executaveis)
+ * via o gate DENTRO do bloco, e `runCommands` (comando) nao via — oito
+ * workflows tinham gate invocado so dentro de `run: |` sem comando
+ * correspondente. Uma invariante do CORE invocada ali era relatada como AUSENTE
+ * (violacao falsa) enquanto o proprio arquivo ja a tinha reconhecido como
+ * presente.
+ *
+ * `runCommands` continua existindo porque responde OUTRA pergunta ("qual e o
+ * literal do `run:` deste passo?"), que e o que o `bench-guard-timing` mede por
+ * comando e o que o `check-hook-ci-parity` compara com o hook.
+ *
+ * @param {string} content
+ * @returns {string[]} linhas executaveis dos corpos de `run:`, na ordem
+ */
+export function executedCommands(content) {
+  const out = []
+  for (const passo of workflowRunBodies(content)) {
+    for (const linha of passo.body.split("\n")) {
+      const cmd = executableLine(linha).trim()
+      if (cmd !== "") out.push(cmd)
+    }
+  }
+  return out
+}
+
+function runKeyCommands(content) {
   const commands = []
   // Mesma exclusao do `discoverGates`: a declaracao `defaults.run` nao produz
   // comando — `defaults:\n  run: bash` virava o comando literal "bash", e a
@@ -697,7 +742,11 @@ export function canonicalCommandOf(inv) {
  * @returns {string[]} ids ausentes
  */
 export function missingInvariants(content, invariants = CORE_INVARIANTS) {
-  const commands = runCommands(content)
+  // A PRESENCA e medida no que EXECUTA (`executedCommands`), nao no que a
+  // chave `run:` tem na propria linha: um `run: |` que invoca o comando
+  // canonico EXECUTA a invariante, e o veredito tem de concordar com o
+  // `discoverGates` do MESMO arquivo (que ja le o corpo do bloco).
+  const commands = executedCommands(content)
   return invariants
     .filter((inv) => !commands.some((cmd) => inv.command.test(cmd)))
     .map((inv) => inv.id)
@@ -759,11 +808,39 @@ export function findParityViolations(readFile, pipelines = PIPELINES) {
   return violations
 }
 
-/** Leitor padrão: lê do repositório, devolvendo null para arquivo ausente. */
-export function defaultReadFile(root = ROOT) {
+/**
+ * Leitor padrão do guard — fail-closed, e com DOIS desfechos que não se
+ * confundem:
+ *
+ *   · `null`  → a pipeline NAO EXISTE. É uma violação NOMEADA do contrato (a
+ *     forja foi removida e PIPELINES ficou apontando para um arquivo fantasma),
+ *     então o `null` preserva a mensagem que já existia.
+ *   · `nomeado em unjudgeable` → a pipeline EXISTE e NÃO PODE SER JULGADA
+ *     (permissão, não é UTF-8, YAML que não faz parsing). O arquivo sai da
+ *     conta e o guard NÃO cunha veredito: um `null` aqui seria lido como
+ *     "pipeline ausente" — o diagnóstico apontaria para o lugar errado.
+ *
+ * @param {string} [root]
+ * @param {{path: string, motivo: string}[]} [unjudgeable] coletor do que não pôde ser julgado
+ * @returns {(path: string) => string | null}
+ */
+export function defaultReadFile(root = ROOT, unjudgeable = []) {
   return (path) => {
     const full = join(root, path)
-    return existsSync(full) ? readFileSync(full, "utf8") : null
+    if (!existsSync(full)) return null
+    let text
+    try {
+      text = readJudgedFile(full, path)
+    } catch (err) {
+      unjudgeable.push({ path, motivo: err?.motivo ?? String(err?.message ?? err) })
+      return null
+    }
+    const yaml = workflowYamlValidity(text)
+    if (!yaml.ok) {
+      unjudgeable.push({ path, motivo: yaml.motivo })
+      return null
+    }
+    return text
   }
 }
 
@@ -780,8 +857,24 @@ if (isMain) {
     console.error("check-forge-parity: ❌ --root exige um diretório (fail-closed)")
     process.exit(2)
   }
+  /**
+   * O que a varredura NAO conseguiu julgar, NOMEADO. Vive fora do leitor porque
+   * o veredito tem de ser barrado ANTES de ser cunhado.
+   * @type {{path: string, motivo: string}[]}
+   */
+  const unjudgeable = []
   const read =
-    rootIdx !== -1 ? defaultReadFile(resolve(process.argv[rootIdx + 1])) : defaultReadFile()
+    rootIdx !== -1
+      ? defaultReadFile(resolve(process.argv[rootIdx + 1]), unjudgeable)
+      : defaultReadFile(ROOT, unjudgeable)
+
+  // A SONDA do escopo declarado: nenhum veredito (nem o inventario do --gates)
+  // existe antes de LER as duas pipelines. Sem esta passada, um arquivo que
+  // existe e nao abre era apenas "mais uma leitura" — e o guard respondia sobre
+  // um contrato que nao leu. `exitOnUnjudgeable` sai 2 e nomeia o arquivo: nada
+  // de "verde por nao saber".
+  for (const pipeline of PIPELINES) read(pipeline.file)
+  exitOnUnjudgeable(unjudgeable)
 
   // Modo inventario: mostra o que o guard enxerga, para a classificacao ser
   // revisavel de fato (e nao um ato de fe).

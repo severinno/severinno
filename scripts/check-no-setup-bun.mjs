@@ -31,11 +31,18 @@
 //   2 — infra: --root sem valor / diretório inexistente (fail-closed)
 // =============================================================================
 
-import { existsSync, readdirSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 
-import { existingWorkflowDirs } from "./forge-workflows.mjs"
+import {
+  codeLine,
+  existingWorkflowDirs,
+  exitOnUnjudgeable,
+  readJudgedFile,
+  readWorkflowScan,
+  reportEmptyWorkflows,
+} from "./forge-workflows.mjs"
 
 /** Identifica USOS de oven-sh/setup-bun em um conteúdo de workflow. */
 export function findSetupBunRefs(content) {
@@ -43,25 +50,41 @@ export function findSetupBunRefs(content) {
   const lines = content.split(/\r?\n/)
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
-    // Ignora comentários, mas detecta usages reais mesmo com prefixo ${{ }}
-    if (line.trim() === "" || line.trim().startsWith("#")) continue
+    // A RÉGUA ÚNICA decide o que é comentário (`codeLine`): comentário de LINHA
+    // e de FIM DE LINHA fora, e a EXPRESSÃO preservada (o guard detecta usages
+    // reais mesmo com prefixo `${{ }}`, então o mascaramento do
+    // `executableLine` NÃO é o que ele quer).
+    //
+    // O QUE MUDA NO VEREDITO: um `#` de fim de linha com a key `uses:` não
+    // fabrica mais violação (`run: echo ok # uses: oven-sh/setup-bun` era
+    // acusado como uso REAL).
+    const codigo = codeLine(line).trim()
+    if (codigo === "") continue
     // Casa APENAS a sintaxe `uses: oven-sh/setup-bun` (key `uses:` + o action
     // externo). Menções em prosa (ex.: nome de step, comentário inline sem a
     // key `uses:`) NÃO casam — evita falso positivo do próprio guard.
-    const idx = line.search(/uses\s*:\s*oven-sh\/setup-bun/)
+    const idx = codigo.search(/uses\s*:\s*oven-sh\/setup-bun/)
     if (idx !== -1) {
-      refs.push({ line: i + 1, text: line.trim().slice(0, 80) })
+      refs.push({ line: i + 1, text: codigo.slice(0, 80) })
     }
   }
   return refs
 }
 
-/** Varre todos os workflows de um diretório (retorna refs por arquivo). */
+/**
+ * Varre todos os workflows de um diretório (retorna refs por arquivo).
+ *
+ * A leitura é a FAIL-CLOSED da fonte única: um arquivo que não abre (ou não é
+ * UTF-8) LANÇA `WorkflowReadError` em vez de sumir da lista — "não encontrei
+ * `oven-sh/setup-bun` no arquivo que não li" é o veredito que este guard não
+ * pode cunhar.
+ */
 export function scanWorkflowDir(dir) {
   const files = readdirSync(dir).filter((f) => f.endsWith(".yml"))
   const results = []
   for (const f of files) {
-    const content = readFileSync(join(dir, f), "utf8")
+    const rel = join(dir, f)
+    const content = readJudgedFile(rel)
     const refs = findSetupBunRefs(content)
     if (refs.length > 0) results.push({ file: f, refs })
   }
@@ -69,21 +92,23 @@ export function scanWorkflowDir(dir) {
 }
 
 /**
- * Varre TODAS as forjas. O rótulo do arquivo vem com o diretório da forja
- * (`<dir>/<arquivo>`) para que a violação diga em QUAL pipeline está — a
- * informação que faltava quando o guard só olhava o GitHub.
+ * Varre TODAS as forjas pela leitura COMPARTILHADA (fonte única). O rótulo do
+ * arquivo vem com o diretório da forja (`<dir>/<arquivo>`) para que a violação
+ * diga em QUAL pipeline está — a informação que faltava quando o guard só olhava
+ * o GitHub —, e o que NÃO pôde ser lido volta NOMEADO em `unjudgeable` (nunca
+ * sumido da varredura).
  *
  * @param {string} root
- * @returns {{ file: string, refs: { line: number, text: string }[] }[]}
+ * @returns {{results: {file: string, refs: {line: number, text: string}[]}[], unjudgeable: {path: string, motivo: string}[], vazios: {path: string, motivo: string}[]}}
  */
-export function scanAllForges(root) {
+export function scanForgesJudged(root) {
+  const scan = readWorkflowScan(root)
   const results = []
-  for (const dir of existingWorkflowDirs(root)) {
-    for (const r of scanWorkflowDir(join(root, dir))) {
-      results.push({ file: `${dir}/${r.file}`, refs: r.refs })
-    }
+  for (const w of scan.files) {
+    const refs = findSetupBunRefs(w.text)
+    if (refs.length > 0) results.push({ file: w.path, refs })
   }
-  return results
+  return { results, unjudgeable: scan.unjudgeable, vazios: scan.vazios }
 }
 
 function main() {
@@ -99,7 +124,12 @@ function main() {
     process.exit(2)
   }
   const dirs = existingWorkflowDirs(cwd)
-  const results = scanAllForges(cwd)
+  // A ordem do contrato: NÃO JULGÁVEL primeiro. Sem ter lido todo o escopo,
+  // "nenhum `oven-sh/setup-bun` encontrado" seria uma afirmação sobre o que o
+  // guard não leu (antes o `readFileSync` cru estourava com stack trace).
+  const { results, unjudgeable, vazios } = scanForgesJudged(cwd)
+  exitOnUnjudgeable(unjudgeable)
+  reportEmptyWorkflows(vazios)
 
   if (results.length > 0) {
     console.error(`❌ oven-sh/setup-bun@v2 encontrado em ${results.length} workflow(s):\n`)

@@ -60,8 +60,14 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join, resolve } from "node:path"
 
-import { CORE_INVARIANTS, canonicalCommandOf, runCommands } from "./check-forge-parity.mjs"
-import { existingWorkflowDirs, WORKFLOW_FILE_RE } from "./forge-workflows.mjs"
+import { CORE_INVARIANTS, canonicalCommandOf, executedCommands } from "./check-forge-parity.mjs"
+import {
+  WORKFLOW_FILE_RE,
+  existingWorkflowDirs,
+  exitOnUnjudgeable,
+  readJudgedText,
+  readWorkflowScan,
+} from "./forge-workflows.mjs"
 
 const ROOT = process.cwd()
 
@@ -119,6 +125,16 @@ export const HOOK_DECLARED = [
     match: /^node scripts\/check-workflow-run-syntax\.mjs --staged$/,
     of: "workflow-run-syntax",
     why: "recorte --staged: julga os workflows do INDICE (com o CONTEUDO do commit, via `git show :path`), nao a arvore de trabalho. O corpo quebrado nasce de uma reescrita mecanica em massa ANTES do commit e e o commit que o carrega; a arvore pode ter WIP que nao faz parte dele. O CI roda o comando inteiro sobre o conteudo mergeado (480 corpos das duas forjas) — a diferenca e de ESCOPO, e o instrumento (o mesmo script) e o do CI.",
+  },
+  {
+    // A cauda e o CAPTURA do veredito (`&& REMEDIO=0`): o hook precisa
+    // distinguir o remedio que provou o indice da chamada que sumiu, e o
+    // extrator nao descarta o `&&` — entao a declaracao o reconhece em vez de
+    // fingir que o comando e outro.
+    match: /^node scripts\/pre-commit-run-syntax-remedy\.mjs(?: && REMEDIO=0)?$/,
+    of: null,
+    ciMirror: null,
+    why: "LOCAL: o remedio INTERATIVO do gate acima — quando o recorte --staged reprova, ele OFERECE o remendo da cicatriz mecanica com confirmacao explicita (o fixer do gate ja o prova antes de gravar), re-estagia os arquivos e REVALIDA rodando o proprio guard. Nao existe no CI porque la nao ha operador para confirmar: sem terminal ele nao pergunta e o commit segue bloqueado (fail-closed). O CI cobra o MESMO veredito pelo gate de sintaxe; este comando nao acrescenta gate nenhum, so o caminho de quem opera.",
   },
   {
     match: /^bash scripts\/run-encoding-guards\.sh$/,
@@ -366,8 +382,10 @@ export function allWorkflowCommands(root) {
     const full = join(root, dir)
     for (const name of readdirSync(full)) {
       if (!WORKFLOW_FILE_RE.test(name)) continue
-      const content = readFileSync(join(full, name), "utf8")
-      commands.push(...runCommands(content))
+      // Leitura fail-closed (fonte única): o arquivo que não abre LANÇA com o
+      // nome dele, em vez de contribuir zero comando para a comparação.
+      const content = readJudgedText(root, `${dir}/${name}`)
+      commands.push(...executedCommands(content))
     }
   }
   return commands
@@ -420,7 +438,7 @@ export function analyze({ root = ROOT } = {}) {
       violations.push(`${file}: pipeline do contrato ausente — sem ela nao ha com o que comparar`)
       continue
     }
-    for (const c of runCommands(content).map(normalizeCommand)) rawPipeline.add(c)
+    for (const c of executedCommands(content).map(normalizeCommand)) rawPipeline.add(c)
   }
   const resolvedPipeline = new Set([...rawPipeline].map((c) => resolveCommand(c, scripts)))
   const isPipeline = (raw, resolved) => rawPipeline.has(raw) || resolvedPipeline.has(resolved)
@@ -570,6 +588,11 @@ if (isMain) {
     process.exit(2)
   }
   const root = rootIdx !== -1 ? resolve(process.argv[rootIdx + 1]) : ROOT
+  // Um workflow que não abre NÃO vira "nenhum comando": a varredura é a
+  // compartilhada (fonte única), o arquivo sai NOMEADO e o guard para com 2
+  // antes de comparar hook × CI — comparar contra um escopo que não foi lido
+  // produziria "comando não encontrado no CI" por um motivo que não é do autor.
+  exitOnUnjudgeable(readWorkflowScan(root).unjudgeable)
   const json = process.argv.includes("--json")
   const report = analyze({ root })
 

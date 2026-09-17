@@ -23,10 +23,11 @@
  *   npx vitest run --config vitest.config.unit.ts src/lib/__tests__/check-forge-parity.test.ts
  */
 
-import { existsSync, readFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { describe, expect, it } from "vitest"
+import { afterAll, describe, expect, it } from "vitest"
 
 import {
   CORE_INVARIANTS,
@@ -34,8 +35,10 @@ import {
   PIPELINES,
   canonicalCommandOf,
   classifyGate,
+  defaultReadFile,
   discoverGates,
   executableLines,
+  executedCommands,
   findParityViolations,
   missingInvariants,
   runCommands,
@@ -219,15 +222,44 @@ describe("missingInvariants", () => {
     //   - pelo script SEM o argumento que o canônico carrega: é o caso que
     //     liberava o merge com uma régua mais fraca;
     //   - pelo script COM o argumento: presente.
-    expect(missingInvariants("run: bun run check:workflow-refs:internal")).toContain(
+    //
+    // Os fixtures são PASSOS de verdade (`- run: ...`): a régua da presença é o
+    // que EXECUTA, e um passo é um item de lista do YAML — uma linha `run:`
+    // solta não é um passo e o guard diria "ausente" por não haver passo algum.
+    expect(missingInvariants("      - run: bun run check:workflow-refs:internal")).toContain(
       "workflow-refs",
     )
-    expect(missingInvariants("run: node scripts/check-workflow-refs.mjs")).toContain(
+    expect(missingInvariants("      - run: node scripts/check-workflow-refs.mjs")).toContain(
       "workflow-refs",
     )
     expect(
-      missingInvariants("run: node scripts/check-workflow-refs.mjs --pkg-internal"),
+      missingInvariants("      - run: node scripts/check-workflow-refs.mjs --pkg-internal"),
     ).not.toContain("workflow-refs")
+  })
+
+  it("o gate invocado DENTRO de `run: |` roda: a presença não depende da forma do passo", () => {
+    // A divergência que a régua única fechou: `discoverGates` (rótulo) lia o
+    // corpo do bloco e `runCommands` (comando) não — o MESMO arquivo dava dois
+    // vereditos, e a invariante invocada só dentro de um bloco saía como
+    // AUSENTE (violação falsa) enquanto o rótulo dela já estava classificado.
+    const bloco = [
+      "    steps:",
+      "      - name: tiers",
+      "        run: |",
+      "          bun run typecheck",
+      "          node scripts/check-registry-source.mjs",
+      "",
+      "      - run: node scripts/check-required-checks.mjs",
+    ].join("\n")
+    expect(runCommands(bloco)).toEqual(["node scripts/check-required-checks.mjs"])
+    expect(executedCommands(bloco)).toEqual([
+      "bun run typecheck",
+      "node scripts/check-registry-source.mjs",
+      "node scripts/check-required-checks.mjs",
+    ])
+    // O comando canônico executado no bloco SATISFAZ a invariante.
+    expect(missingInvariants(bloco)).not.toContain("registry-source")
+    expect(missingInvariants(bloco)).not.toContain("typecheck")
   })
 
   it("não confunde a CITAÇÃO do comando com a execução dele", () => {
@@ -426,5 +458,64 @@ describe("a declaração `defaults: run:` não é passo (o gate não pode ser fo
     ].join("\n")
     expect(runCommands(wf)).toEqual(["echo ok"])
     expect(discoverGates(wf)).toEqual([])
+  })
+})
+
+// ── a leitura da pipeline DECLARADA: ausente × não julgável ─────────────────
+//
+// A paridade não varre o diretório: ela lê os arquivos que PIPELINES declara. Os
+// dois desfechos de "não li" têm de ser DISTINTOS — uma pipeline que existe e
+// não abre não é uma forja removida, e um `null` para os dois faria o
+// diagnóstico mandar procurar um arquivo que está lá.
+
+describe("`defaultReadFile` — lido, AUSENTE ou NÃO JULGÁVEL (nunca os três como um)", () => {
+  const tmpDirs: string[] = []
+  afterAll(() => {
+    for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  })
+
+  function raiz(conteudo: string | Buffer): string {
+    const root = mkdtempSync(join(tmpdir(), "parity-read-"))
+    tmpDirs.push(root)
+    mkdirSync(join(root, ".gitea", "workflows"), { recursive: true })
+    writeFileSync(join(root, ".gitea", "workflows", "ci.yml"), conteudo)
+    return root
+  }
+
+  it("arquivo ausente → `null` (o contrato antigo, que vira violação NOMEADA)", () => {
+    const root = mkdtempSync(join(tmpdir(), "parity-vazio-"))
+    tmpDirs.push(root)
+    const unjudgeable: { path: string; motivo: string }[] = []
+    expect(defaultReadFile(root, unjudgeable)(".gitea/workflows/ci.yml")).toBeNull()
+    // Ausência NÃO é "não julgável": não há arquivo a julgar, e o chamador tem
+    // a mensagem própria para esse caso.
+    expect(unjudgeable).toEqual([])
+  })
+
+  it("não é UTF-8 ou não é YAML → NOMEADO, e a leitura devolve null", () => {
+    const casos: [string, string | Buffer][] = [
+      [
+        "não é UTF-8",
+        Buffer.concat([Buffer.from("on:\n  push:\njobs:\n"), Buffer.from([0xff, 0xfe])]),
+      ],
+      ["YAML inválido", ["on:", "  push:", "jobs:", "\ta:", ""].join("\n")],
+    ]
+    for (const [nome, conteudo] of casos) {
+      const unjudgeable: { path: string; motivo: string }[] = []
+      const ler = defaultReadFile(raiz(conteudo), unjudgeable)
+      expect(ler(".gitea/workflows/ci.yml"), nome).toBeNull()
+      expect(
+        unjudgeable.map((u) => u.path),
+        nome,
+      ).toEqual([".gitea/workflows/ci.yml"])
+      expect(unjudgeable[0]!.motivo, nome).toMatch(/UTF-8|YAML/)
+    }
+  })
+
+  it("arquivo válido → o texto (a sonda não inventa recusa)", () => {
+    const unjudgeable: { path: string; motivo: string }[] = []
+    const conteudo = "on:\n  push:\njobs:\n  a:\n    steps:\n      - run: echo ok\n"
+    expect(defaultReadFile(raiz(conteudo), unjudgeable)(".gitea/workflows/ci.yml")).toBe(conteudo)
+    expect(unjudgeable).toEqual([])
   })
 })

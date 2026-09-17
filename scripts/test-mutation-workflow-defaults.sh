@@ -7,8 +7,9 @@
 #   ./scripts/test-mutation-workflow-defaults.sh
 #
 # Exit codes:
-#   0 — as CINCO mutações DETECTADAS: cada uma deixa um guard VERMELHO pela
-#       asserção da PRÓPRIA regra, com as regras irmãs seguindo de pé ✅
+#   0 — as SEIS mutações DETECTADAS (D desdobrada em D1/D2): cada uma deixa um
+#       guard VERMELHO pela asserção da PRÓPRIA regra, com as regras irmãs
+#       seguindo de pé ✅
 #   1 — guard CEGO (verde com a mutação) / falhou por outra regra / a mutação
 #       não aplicou (não-cirúrgica) / a árvore não voltou ao original / infra ❌
 #
@@ -25,7 +26,7 @@
 #   DECLARAÇÃO de shell como o comando do job de merge (o veredito de
 #   prontidão para bloquear o merge saindo de uma linha que nada executa).
 #
-# AS CINCO REGRESSÕES (cada uma degrada em silêncio, por um caminho diferente):
+# AS SEIS REGRESSÕES (cada uma degrada em silêncio, por um caminho diferente):
 #
 #   A) A LEITURA COMPARTILHADA PARA DE LER. `defaultsRunLines` devolve vazio: a
 #      declaração volta a ser passo para TODOS os guards de uma vez — o
@@ -36,9 +37,17 @@
 #   C) O DOCTOR NÃO PULA A DECLARAÇÃO. `firstRunLine`/`gateRunLine` aceitam a
 #      linha de `defaults.run` como o comando do job: o contrato "o job roda o
 #      comando esperado" é satisfeito sem que o job rode nada.
-#   D) OS GUARDS DE REF VOLTAM A LER A DECLARAÇÃO. `extractWorkflowRunRefs` e
-#      `extractScriptRefs` contam a ref da declaração: cobertura FALSA de
-#      mutation test e validação de um script que a pipeline nunca executa.
+#   D1) O GUARD DE REFS VOLTA A LER A DECLARAÇÃO. `extractScriptRefs` conta a
+#       ref da declaração: validação de um script que a pipeline nunca executa.
+#       O CONTROLE desta metade prova onde mora a imunidade do
+#       `extractWorkflowRunRefs`: ele NÃO tem pulo próprio (a régua compartilhada
+#       é que não reconhece declaração como passo), então remover o pulo do
+#       vizinho não o contamina.
+#   D2) A RÉGUA DE PASSO DEIXA DE EXIGIR ITEM DE LISTA. Mutar a régua em
+#       `workflowRunBodies` faz a declaração virar passo para quem a consome —
+#       e `extractWorkflowRunRefs` passa a contar a ref fantasma como COBERTURA
+#       de mutation test. Era a única forma de medir essa metade depois que o
+#       skip local do guard morreu na unificação.
 #   E) A LEITURA SÓ VÊ O ESCOPO DO ARQUIVO. A declaração do JOB (`defaults:`
 #      dentro do job) volta a virar passo — a metade que a leitura precisa
 #      cobrir é a que opera a forja escreve.
@@ -70,7 +79,10 @@ cd "$SCRIPT_DIR"
 PARITY="scripts/check-forge-parity.mjs"
 WORKFLOWS="scripts/forge-workflows.mjs"
 DOCTOR="scripts/forge-doctor.mjs"
-MUT_JOBS="scripts/check-mutation-jobs.mjs"
+# NÃO há backup de `check-mutation-jobs.mjs` aqui de propósito: desde a
+# unificação ele não tem pulo próprio da declaração (a imunidade dele é a régua
+# compartilhada), e é justamente isso que o CONTROLE da D1 prende. Um arquivo no
+# backup que nunca é mutado faria a mensagem final mentir sobre o que foi tocado.
 WORKFLOW_REFS="scripts/check-workflow-refs.mjs"
 
 TMP_DIR="$(mktemp -d)"
@@ -90,7 +102,7 @@ header() { echo -e "\n${CYAN}═══ $1 ═══${NC}"; }
 
 # ── Backup + hash de origem (a restauração é PROVADA, não prometida) ──────
 
-TRACKED=("$PARITY" "$WORKFLOWS" "$DOCTOR" "$MUT_JOBS" "$WORKFLOW_REFS")
+TRACKED=("$PARITY" "$WORKFLOWS" "$DOCTOR" "$WORKFLOW_REFS")
 declare -a ORIG_HASH=()
 
 for f in "${TRACKED[@]}"; do
@@ -393,32 +405,75 @@ pass 'o contrato "o job RODA o comando esperado" seria satisfeito por uma declar
 restore
 
 # ── MUTAÇÃO D: os guards de REF voltam a contar a declaração ──────────────
+#
+# DUAS metades INDEPENDENTES, porque as duas perguntas são diferentes:
+#
+#   D1 — o `check-workflow-refs` tem um PULO PRÓPRIO (`defaults.has(i + 1)`) em
+#        quatro call sites. Mutá-lo mede a leitura daquele guard. O
+#        `check-mutation-jobs` NÃO tem esse pulo: a imunidade dele vem da régua
+#        compartilhada (`workflowRunBodies` só reconhece ITEM DE LISTA como
+#        passo, e uma declaração não é um) — e é isso que o CONTROLE do D1
+#        prende: com o pulo do vizinho removido, a cobertura de mutation test
+#        segue LIMPA. Antes as duas mutações eram aplicadas juntas, e a metade do
+#        `check-mutation-jobs` mutava uma linha que já não existia (o skip
+#        local morreu na unificação) — o script parava em
+#        "mutacao nao-cirurgica" em vez de medir.
+#
+#   D2 — a régua: mutar a detecção de PASSO faz a declaração virar passo para
+#        TODOS os que a consomem, e a cobertura de mutation test conta a ref
+#        fantasma. O `check-workflow-refs` (intacto aqui) continua pulando — o
+#        que prova que as duas leituras são independentes de verdade.
 
-header 'MUTAÇÃO D: as refs da declaração voltam a contar → cobertura FALSA'
+header 'MUTAÇÃO D1: o pulo da declaração no guard de REFS volta → cobertura FALSA'
 extratores "$WF_REFS_HOSTIL" "$FATIA_HOSTIL" "$TMP_DIR/mut-d-ctrl.json" check-fantasma
 if grep -qF 'test-mutation-fantasma.sh' "$TMP_DIR/mut-d-ctrl.json"; then
   fail 'a ref da declaração já aparecia com os guards intactos'
   cat "$TMP_DIR/mut-d-ctrl.json"
   exit 1
 fi
-mutar "$MUT_JOBS" 'if (defaults.has(i + 1)) continue' 'if (false) continue // MUTACAO D'
 mutar "$WORKFLOW_REFS" 'if (defaults.has(i + 1)) continue' 'if (false) continue // MUTACAO D' 4
-extratores "$WF_REFS_HOSTIL" "$FATIA_HOSTIL" "$TMP_DIR/mut-d.json" check-fantasma
-for agulha in '"scriptRefs":["test-mutation-fantasma.sh"]' '"mutationRefs":["test-mutation-fantasma.sh"]'; do
-  if ! grep -qF -- "$agulha" "$TMP_DIR/mut-d.json"; then
-    fail "a mutação não mede: falta $agulha"
-    cat "$TMP_DIR/mut-d.json"
-    exit 1
-  fi
-done
-# As regras IRMÃS seguem de pé: o guard de paridade (NÃO mutado) continua pulando
-# a declaração — a mutação mediu a cobertura falsa, não derrubou a árvore.
-if ! grep -qF '"comandos":["echo nada"]' "$TMP_DIR/mut-d.json"; then
-  fail 'o guard de paridade (intacto) deixou de pular a declaração'
-  cat "$TMP_DIR/mut-d.json"
+extratores "$WF_REFS_HOSTIL" "$FATIA_HOSTIL" "$TMP_DIR/mut-d1.json" check-fantasma
+if ! grep -qF '"scriptRefs":["test-mutation-fantasma.sh"]' "$TMP_DIR/mut-d1.json"; then
+  fail 'a mutação não mede: falta a ref de script do guard de refs'
+  cat "$TMP_DIR/mut-d1.json"
   exit 1
 fi
-pass 'a declaração vira ref de script E cobertura de mutation test quando os guards não a pulam'
+# A metade que prova ONDE mora a imunidade do vizinho: sem o pulo próprio, o
+# guard de refs acusa; o de mutation test (que não tem pulo para perder)
+# continua limpo porque quem pula a declaração é a RÉGUA.
+if grep -qF '"mutationRefs":["test-mutation-fantasma.sh"]' "$TMP_DIR/mut-d1.json"; then
+  fail 'o guard de mutation test passou a contar a declaração SEM ter sido mutado'
+  fail '— ele tem um pulo próprio de novo (o skip local voltou)?'
+  cat "$TMP_DIR/mut-d1.json"
+  exit 1
+fi
+pass 'D1: a ref da declaração volta a contar no guard de REFS, e só nele (o pulo do vizinho é a régua)'
+restore
+
+header 'MUTAÇÃO D2: a régua deixa de exigir ITEM DE LISTA → a declaração vira passo'
+mutar "$WORKFLOWS" '    const item = lines[i].match(/^(\s*)-\s/)' '    const item = lines[i].match(/^(\s*)(?:-\s|run:)/) // MUTACAO D'
+extratores "$WF_REFS_HOSTIL" "$FATIA_HOSTIL" "$TMP_DIR/mut-d2.json" check-fantasma
+if ! grep -qF '"mutationRefs":["test-mutation-fantasma.sh"]' "$TMP_DIR/mut-d2.json"; then
+  fail 'a mutação não mede: falta a cobertura de mutation test da declaração'
+  cat "$TMP_DIR/mut-d2.json"
+  exit 1
+fi
+# O guard de refs NÃO foi mutado aqui: ele segue pulando pela própria régua de
+# linha. Se ele passasse a acusar também, a mutação teria derrubado a árvore em
+# vez de medir a cobertura falsa de um consumidor da régua de PASSO.
+if grep -qF '"scriptRefs":["test-mutation-fantasma.sh"]' "$TMP_DIR/mut-d2.json"; then
+  fail 'o guard de refs (intacto) passou a contar a declaração com a régua de passo mutada'
+  cat "$TMP_DIR/mut-d2.json"
+  exit 1
+fi
+# As regras IRMÃS seguem de pé: o guard de paridade (NÃO mutado) continua pulando
+# a declaração — a mutação mediu a cobertura falsa, não derrubou a árvore.
+if ! grep -qF '"comandos":["echo nada"]' "$TMP_DIR/mut-d2.json"; then
+  fail 'o guard de paridade (intacto) deixou de pular a declaração'
+  cat "$TMP_DIR/mut-d2.json"
+  exit 1
+fi
+pass 'D2: mutar a régua de PASSO faz a declaração virar cobertura de mutation test (a leitura é compartilhada)'
 restore
 
 # ── MUTAÇÃO E: a leitura cega para o escopo do JOB ────────────────────────
@@ -450,7 +505,7 @@ if ! verify_restored; then
   fail "a árvore não voltou ao estado original"
   exit 1
 fi
-pass 'os 5 arquivos tocados voltaram byte a byte ao original'
+pass 'os 4 arquivos tocados voltaram byte a byte ao original'
 
 echo
-echo -e "${GREEN}✅ test-mutation-workflow-defaults: 5 mutações detectadas, 2 controles verdes, árvore restaurada${NC}"
+echo -e "${GREEN}✅ test-mutation-workflow-defaults: 6 mutações detectadas, 2 controles verdes, árvore restaurada${NC}"

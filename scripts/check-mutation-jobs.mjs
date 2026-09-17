@@ -64,7 +64,14 @@ import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 import { DIFF_CONTEXT, isValidGitRef, parseDiffLines } from "./check-bun-mirror.mjs"
-import { defaultsRunLines, existingWorkflowDirs } from "./forge-workflows.mjs"
+import {
+  executableLine,
+  existingWorkflowDirs,
+  exitOnUnjudgeable,
+  readWorkflowScan,
+  reportEmptyWorkflows,
+  workflowRunBodies,
+} from "./forge-workflows.mjs"
 
 /**
  * Invocação com PREFIXO de comando (`bash scripts/test-mutation-X.sh`): exige
@@ -80,20 +87,10 @@ const BUN_RUN_RE = /\bbun run (test:mutation-[a-z0-9_-]+)/
 /** Path de um script de mutation test no diff (scripts/test-mutation-X.sh). */
 const MUTATION_SCRIPT_PATH_RE = /^scripts\/(test-mutation-[a-z0-9._-]+\.sh)$/
 /**
- * Início de um step run single-line no YAML. O `-` (marker de lista) fica na
- * linha do `name:`/`uses:` — o `run:` é uma linha própria (`        run: bash
- * scripts/test-mutation-guards.sh`), mas `- run: cmd` (dash na MESMA linha)
- * também é YAML válido. O prefixo `- ` é OPCIONAL: exigir `- run:` no MESMO
- * line quebraria o formato real dos workflows (bug pego em teste real).
- */
-const RUN_SINGLE_RE = /^\s*(?:-\s+)?run:\s*(.+)$/
-/** Início de um step run em bloco (run: | ...). */
-const RUN_BLOCK_RE = /^\s*(?:-\s+)?run:\s*\|/
-
-/**
  * Extrai as refs a scripts de mutation test dos `run:` de um workflow
- * (single-line E bloco), mapeando `bun run test:mutation-X` via package.json.
- * Comentários do workflow NÃO contam — só o que está em `run:` é cobertura.
+ * (escalar E bloco, literal ou dobrado), mapeando `bun run test:mutation-X`
+ * via package.json. Comentários do workflow NÃO contam — só o que está em
+ * `run:` é cobertura.
  *
  * @param {string} content  conteúdo do workflow
  * @param {Record<string,string>} pkgScripts  scripts de package.json
@@ -102,9 +99,11 @@ const RUN_BLOCK_RE = /^\s*(?:-\s+)?run:\s*\|/
 export function extractWorkflowRunRefs(content, pkgScripts = {}) {
   const refs = new Set()
   const collect = (cmd) => {
-    // linha de comentário bash DENTRO de um bloco run não é executada — não
-    // pode gerar cobertura falsa (ex.: um `# usa scripts/test-mutation-x.sh`)
-    if (cmd.trim().startsWith("#")) return
+    // NÃO há aqui uma segunda regra de comentário: o chamador já entrega o
+    // conteúdo pela RÉGUA ÚNICA (`executableLine`), que devolve `""` para
+    // comentário de linha e corta o de fim de linha — era esta a diferença que
+    // deixava `echo ok # scripts/test-mutation-x.sh` contar como COBERTURA
+    // enquanto o vizinho declarava o script descoberto.
     const m = cmd.match(CMD_SCRIPT_RE)
     if (m) {
       refs.add(m[1])
@@ -118,34 +117,17 @@ export function extractWorkflowRunRefs(content, pkgScripts = {}) {
     }
   }
 
-  const lines = content.split(/\r?\n/)
-  // `defaults.run` é SHELL DEFAULT, não passo: uma cobertura derivada de uma
-  // declaração de `defaults:` seria cobertura FALSA (o mutation test não roda
-  // ali). A direção do erro sem esta linha é o guard AFIRMANDO cobertura.
-  const defaults = defaultsRunLines(content)
-  let blockIndent = -1
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (defaults.has(i + 1)) continue
-    if (blockIndent >= 0) {
-      const indent = (line.match(/^\s*/) ?? [""])[0].length
-      if (line.trim() === "" || indent > blockIndent) {
-        collect(line)
-        continue
-      }
-      blockIndent = -1 // dedentou → fim do bloco run
-    }
-    // run:| DEVE ser checado ANTES de run single-line: o RUN_SINGLE_RE casa
-    // `run: |` capturando `|` como comando, então o modo bloco nunca entraria
-    // (bug real: extractWorkflowRunRefs retornava [] no seed-guards.yml)
-    if (RUN_BLOCK_RE.test(line)) {
-      blockIndent = (line.match(/^\s*/) ?? [""])[0].length
-      continue
-    }
-    const single = line.match(RUN_SINGLE_RE)
-    if (single) {
-      collect(single[1])
-      continue
+  // A leitura do passo (item de lista, `- run:`, bloco `|`/`>`, escala com as
+  // continuacoes DOBRADAS) vem da fonte unica (`workflowRunBodies`): a parada
+  // de bloco por recuo que existia aqui era uma QUARTA regua do mesmo YAML —
+  // e ela so conhecia `run: |` (a forma dobrada `run: >` ficava invisivel, e
+  // as linhas de continuacao de um escalar tambem). `defaults.run` nao precisa
+  // de exclusao explicita: declaracao nao e item de lista, entao nao vira passo
+  // — a exclusao que existia era um segundo jeito de dizer a mesma coisa.
+  for (const passo of workflowRunBodies(content)) {
+    for (const linha of passo.body.split("\n")) {
+      const cmd = executableLine(linha).trim()
+      if (cmd !== "") collect(cmd)
     }
   }
   return [...refs]
@@ -394,17 +376,19 @@ function collectRepoState() {
   // Ampliar a varredura só pode ENCONTRAR mais jobs (nunca menos), então a
   // semântica do guard não afrouxa — e o caso "o job existe só na forja" passa
   // a ser enxergado em vez de virar falso positivo.
+  // A varredura é a COMPARTILHADA (`readWorkflowScan`): um arquivo com nome de
+  // workflow que não abre (ou não é UTF-8) não vira "nenhuma ref" — ele sai
+  // NOMEADO e o guard não cunha veredito. Aqui a diferença é material: sem isso
+  // o scan estourava com stack trace e o exit code (1) dizia VIOLAÇÃO, mandando
+  // o autor procurar uma cobertura quebrada que não existe.
+  const scan = readWorkflowScan(cwd)
+  exitOnUnjudgeable(scan.unjudgeable)
+  reportEmptyWorkflows(scan.vazios)
+
   const directRefs = new Set()
-  for (const rel of forgeDirs) {
-    const workflowsDir = join(cwd, rel)
-    for (const wf of readdirSync(workflowsDir)) {
-      if (!/\.ya?ml$/i.test(wf)) continue
-      for (const ref of extractWorkflowRunRefs(
-        readFileSync(join(workflowsDir, wf), "utf8"),
-        pkgScripts,
-      )) {
-        directRefs.add(ref)
-      }
+  for (const wf of scan.files) {
+    for (const ref of extractWorkflowRunRefs(wf.text, pkgScripts)) {
+      directRefs.add(ref)
     }
   }
 

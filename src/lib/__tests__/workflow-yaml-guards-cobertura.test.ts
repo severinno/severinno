@@ -43,10 +43,33 @@
 // o teste cobra do guard exatamente isso. As contas não são números mágicos —
 // são derivadas do fixture, e é isso que faz a soma fechar como PROVA.
 //
+// A QUINTA SEÇÃO MEDE A OUTRA PORTA: o arquivo que o guard NÃO CONSEGUE julgar.
+// A cobertura acima prova o que cada gate vê; ela não diz nada sobre o arquivo
+// que ele não viu — e é aí que o veredito perde o sentido, porque guard nenhum
+// reclama do que não leu. Duas classes, uma mesma saída errada:
+//
+//   ILEGÍVEL — existe e não abre (permissão), ou não é UTF-8 válido. O
+//     `readFileSync(..., "utf8")` NÃO falha com byte inválido: ele troca por
+//     U+FFFD e entrega um texto que ninguém escreveu para o guard julgar.
+//
+//   YAML INVÁLIDO — abre inteiro, mas não faz parsing. Os guards deste
+//     repositório leem LINHA (o YAML é a fonte, mas o parser não participa),
+//     então as linhas de um arquivo que não é workflow eram julgadas como se
+//     fossem passos — e nenhum deles é executado pelo runner.
+//
+// As duas terminam em "0 violações", que sobre um arquivo não julgado é a
+// afirmação que este arquivo recusa. A prova roda o GUARD REAL (processo, exit
+// code) sobre fixtures diferenciais: o mesmo guard no fixture LIMPO e no SUJO,
+// que só diferem pelo arquivo ruim. Onde o limpo é verde, o sujo tem de deixar
+// de ser; onde o fixture mínimo já não é verde (o guard exige mais do que ele),
+// o fato medido é a CITAÇÃO do arquivo — que é o ponto: o guard NOMEOU o que
+// não julgou, em vez de cunhar verde por ausência.
+//
 // Sem docker, sem rede, sem rodar gate: funções puras + fixtures em tmpdir.
 // =============================================================================
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { spawnSync } from "node:child_process"
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 
@@ -74,7 +97,18 @@ import {
   extractWorkflowUses,
   scanWorkflows,
 } from "../../../scripts/check-workflow-refs.mjs"
-import { defaultsRunLines } from "../../../scripts/forge-workflows.mjs"
+import {
+  WorkflowReadError,
+  defaultsRunLines,
+  exitOnUnjudgeable,
+  readJudgedFile,
+  readWorkflowScan,
+  reportUnjudgeable,
+  workflowYamlValidity,
+} from "../../../scripts/forge-workflows.mjs"
+
+/** A raiz do repositório — os guards invocados são os REAIS, não cópias. */
+const ROOT = join(import.meta.dirname, "../../..")
 
 const tmpDirs: string[] = []
 
@@ -773,5 +807,315 @@ describe("a leitura de YAML é UMA SÓ: os quatro guards veem o mesmo `defaults.
     // ...e a linha que EXECUTA continua sendo vista por todos.
     expect(discoverGates(conteudo)).toContain("scripts/check-registry-source.mjs")
     expect(extractScriptRefs(conteudo).map((r) => r.ref)).toContain("check-registry-source.mjs")
+  })
+})
+
+// ── 5. ILEGÍVEL e YAML INVÁLIDO: "não consegui ler" nunca é "nada a julgar" ──
+
+/** O workflow VÁLIDO que faz o escopo das fixtures não ser vazio. */
+const WORKFLOW_SAUDAVEL = [
+  "on:",
+  "  pull_request:",
+  "jobs:",
+  "  a:",
+  "    steps:",
+  "      - run: echo ok",
+  "",
+].join("\n")
+
+/**
+ * Bytes que NÃO são UTF-8 válido, dentro de um workflow que seria válido se não
+ * fossem eles. É o caso que o `readFileSync(..., "utf8")` engolia: ele NÃO
+ * falha com byte inválido — troca por U+FFFD e devolve um texto que ninguém
+ * escreveu, para o guard julgar linha a linha.
+ */
+const BYTES_ILEGIVEIS = Buffer.concat([
+  Buffer.from("on:\n  pull_request:\njobs:\n  a:\n    steps:\n      - run: node scripts/x"),
+  Buffer.from([0xff, 0xfe]),
+  Buffer.from(".mjs\n"),
+])
+
+/**
+ * YAML que NÃO faz parsing: tab na indentação (`jobs:` fica com um filho que o
+ * parser recusa) e um mapa aberto. Todo parser reprova — e nenhum guard deste
+ * repositório chamava um parser.
+ */
+const YAML_QUEBRADO = ["on:", "  pull_request:", "jobs:", "\ta:", ""].join("\n")
+
+const DIR_FORJAS = ".github/workflows"
+const ARQUIVO_RUIM = "ruim.yml"
+
+/**
+ * O escopo MÍNIMO que os guards que varrem por `cwd` exigem para cunhar veredito
+ * — `scripts/` e `package.json` existem (sem eles o desfecho seria 2 por
+ * infraestrutura, e a prova mediria outra coisa), e há UM workflow válido: o
+ * "verde" no fixture limpo precisa ser uma afirmação sobre algo.
+ *
+ * `classe: null` é o fixture LIMPO — a mesma árvore sem o arquivo ruim, e o
+ * outro lado da diferença que faz isto ser prova.
+ */
+function escopo(classe: ClasseDeArquivoRuim | null) {
+  const root = mkdtempSync(join(tmpdir(), "yaml-nao-julgavel-"))
+  tmpDirs.push(root)
+  mkdirSync(join(root, "scripts"), { recursive: true })
+  writeFileSync(join(root, "package.json"), JSON.stringify({ name: "fixture", scripts: {} }))
+  mkdirSync(join(root, DIR_FORJAS), { recursive: true })
+  writeFileSync(join(root, DIR_FORJAS, "ok.yml"), WORKFLOW_SAUDAVEL)
+  if (classe === "utf8") writeFileSync(join(root, DIR_FORJAS, ARQUIVO_RUIM), BYTES_ILEGIVEIS)
+  if (classe === "yaml") writeFileSync(join(root, DIR_FORJAS, ARQUIVO_RUIM), YAML_QUEBRADO)
+  return root
+}
+
+type ClasseDeArquivoRuim = "utf8" | "yaml"
+
+/** Roda o guard REAL (processo + exit code) sobre uma raiz de fixture. */
+function rodarGuard(script: string, root: string, ...args: string[]) {
+  return spawnSync(process.execPath, [join(ROOT, "scripts", script), ...args], {
+    cwd: root,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      IMAGE_REGISTRY: "ghcr.io",
+      IMAGE_NAMESPACE: "severinno",
+      BUN_VERSION: "1.3.14",
+    },
+  })
+}
+
+/** stdout + stderr de um guard — o veredito é texto E exit code. */
+function texto(r: { stdout?: string | null; stderr?: string | null }) {
+  return `${r.stdout ?? ""}${r.stderr ?? ""}`
+}
+
+/**
+ * Os guards que varrem os workflows das forjas por `cwd`, com o desfecho que
+ * cada um declara no fixture LIMPO:
+ *
+ *   `verde: true`  → o fixture mínimo basta e o guard sai 0. A prova exige
+ *     TAMBÉM que o arquivo ruim TIRE o verde (o veredito não pode sobreviver à
+ *     perda do escopo).
+ *   `verde: false` → o guard exige mais do que o fixture tem, então ele já sai
+ *     não-zero no limpo. Aqui o fato medido é a CITAÇÃO: o guard NOMEOU o
+ *     arquivo que não julgou. Sem isso o teste passaria medindo o motivo errado
+ *     (o vermelho do fixture, não o do arquivo).
+ */
+const GUARDS_CWD: { script: string; verde: boolean }[] = [
+  { script: "check-workflow-refs.mjs", verde: true },
+  { script: "check-mutation-jobs.mjs", verde: true },
+  { script: "check-pipefail-sigpipe.mjs", verde: true },
+  { script: "check-no-setup-bun.mjs", verde: true },
+  { script: "check-sentinel-producer.mjs", verde: true },
+  { script: "check-seed-hooks.mjs", verde: true },
+  { script: "check-registry-source.mjs", verde: true },
+  { script: "check-bun-mirror.mjs", verde: false },
+  { script: "check-hook-ci-parity.mjs", verde: false },
+]
+
+/** Fecha a conta do escopo declarado, seja qual for o desfecho de cada arquivo. */
+function declarados(root: string) {
+  return readdirSync(join(root, DIR_FORJAS))
+    .filter((f) => /\.ya?ml$/.test(f))
+    .sort()
+}
+
+describe("ILEGÍVEL — o arquivo que existe e não abre não vira 'nada a julgar'", () => {
+  it("a LEITURA COMPARTILHADA nomeia o ilegível, e a soma do escopo fecha", () => {
+    const root = escopo("utf8")
+    const scan = readWorkflowScan(root) as {
+      files: { path: string }[]
+      unjudgeable: { path: string; motivo: string }[]
+      vazios: { path: string }[]
+    }
+    // O arquivo ilegível EXISTE e é do escopo: ele sai NOMEADO, com o motivo.
+    expect(scan.unjudgeable.map((u) => u.path)).toEqual([`${DIR_FORJAS}/${ARQUIVO_RUIM}`])
+    expect(scan.unjudgeable[0]!.motivo).toMatch(/UTF-8/)
+    // E o outro lado: o arquivo VÁLIDO continua julgado (o ilegível não
+    // derruba a varredura inteira nem a esvazia em silêncio).
+    expect(scan.files.map((f) => f.path)).toEqual([`${DIR_FORJAS}/ok.yml`])
+    // O invariante da prova, na porta do NÃO JULGADO: todo arquivo declarado
+    // tem desfecho — julgado, não-julgável ou vazio. Nenhum some.
+    expect(scan.files.length + scan.unjudgeable.length + scan.vazios.length).toBe(
+      declarados(root).length,
+    )
+  })
+
+  it("`readJudgedFile` ESTOURA nomeado — nunca devolve texto vazio para um arquivo ilegível", () => {
+    const root = escopo("utf8")
+    let capturado: unknown
+    try {
+      readJudgedFile(join(root, DIR_FORJAS, ARQUIVO_RUIM), `${DIR_FORJAS}/${ARQUIVO_RUIM}`)
+    } catch (err) {
+      capturado = err
+    }
+    expect(capturado).toBeInstanceOf(WorkflowReadError)
+    // O nome e o motivo viajam com o erro: o guard não precisa inventar o
+    // diagnóstico, e o relatório diz QUAL arquivo e POR QUÊ.
+    expect((capturado as WorkflowReadError).rel).toBe(`${DIR_FORJAS}/${ARQUIVO_RUIM}`)
+    expect((capturado as WorkflowReadError).motivo).toMatch(/UTF-8/)
+    // Ausente também é nomeado (e não é a mesma coisa que vazio).
+    expect(() => readJudgedFile(join(root, "nao-existe.yml"), "nao-existe.yml")).toThrow(
+      WorkflowReadError,
+    )
+  })
+
+  it("o bloco do relatório NOMEIA o arquivo e o motivo (o veredito também é texto)", () => {
+    const linhas: string[] = []
+    reportUnjudgeable([{ path: "W/ilegivel.yml", motivo: "não é UTF-8 válido" }], (l) =>
+      linhas.push(l),
+    )
+    expect(linhas.join("\n")).toContain("W/ilegivel.yml")
+    expect(linhas.join("\n")).toContain("não é UTF-8 válido")
+    // E o contrato de CLI: com algo não julgável, o guard NÃO cunha veredito.
+    expect(exitOnUnjudgeable([], () => {})).toBe(false)
+  })
+
+  for (const { script, verde } of GUARDS_CWD) {
+    it(`${script}: NOMEIA o ilegível e não cunha veredito sobre o escopo perdido`, () => {
+      const limpo = rodarGuard(script, escopo(null))
+      const sujo = rodarGuard(script, escopo("utf8"))
+      // A DIFERENÇA: o limpo não cita o arquivo ruim (a citação do sujo vem
+      // dele, e não de um artefato do fixture).
+      expect(texto(limpo), `${script} (limpo)`).not.toContain(ARQUIVO_RUIM)
+      expect(texto(sujo), `${script} (ilegível)`).toContain(ARQUIVO_RUIM)
+      expect(texto(sujo), `${script} (ilegível)`).toMatch(/UTF-8|ILEGÍVEL/)
+      // O guard sai 2 (NÃO JULGÁVEL), nunca 0 — e onde o limpo era verde, o
+      // verde tem de CAIR: é o veredito que este arquivo recusa.
+      expect(sujo.status, `${script} (ilegível)`).not.toBe(0)
+      if (verde) expect(limpo.status, `${script} (limpo)`).toBe(0)
+    })
+  }
+})
+
+describe("YAML INVÁLIDO — o arquivo que não faz parsing não é julgado linha a linha", () => {
+  it("a LEITURA COMPARTILHADA recusa o YAML inválido, com o motivo NOMEADO", () => {
+    const root = escopo("yaml")
+    const scan = readWorkflowScan(root) as {
+      files: { path: string }[]
+      unjudgeable: { path: string; motivo: string }[]
+      vazios: { path: string }[]
+    }
+    expect(scan.unjudgeable.map((u) => u.path)).toEqual([`${DIR_FORJAS}/${ARQUIVO_RUIM}`])
+    expect(scan.unjudgeable[0]!.motivo).toMatch(/YAML INVALIDO/)
+    expect(scan.files.map((f) => f.path)).toEqual([`${DIR_FORJAS}/ok.yml`])
+    expect(scan.files.length + scan.unjudgeable.length + scan.vazios.length).toBe(
+      declarados(root).length,
+    )
+    // O irmão legítimo: o arquivo VAZIO continua sendo "vazio" (nada a julgar)
+    // e NÃO vira "YAML inválido" — as duas coisas são diferentes, e a saída
+    // tem de dizer qual é qual.
+    const vazio = mkdtempSync(join(tmpdir(), "yaml-vazio-"))
+    tmpDirs.push(vazio)
+    mkdirSync(join(vazio, DIR_FORJAS), { recursive: true })
+    writeFileSync(join(vazio, DIR_FORJAS, "vazio.yml"), "")
+    const scanVazio = readWorkflowScan(vazio) as {
+      unjudgeable: unknown[]
+      vazios: { path: string }[]
+    }
+    expect(scanVazio.vazios.map((v) => v.path)).toEqual([`${DIR_FORJAS}/vazio.yml`])
+    expect(scanVazio.unjudgeable).toEqual([])
+  })
+
+  it("`workflowYamlValidity` não mente nos dois sentidos (válido é válido, lixo é lixo)", () => {
+    // O que é YAML de workflow — inclusive as formas que este repositório usa
+    // e um validador ingênuo reprovaria: âncora/alias, expressão do runner,
+    // bloco literal e a declaração de shell em linha.
+    const validos = [
+      WORKFLOW_SAUDAVEL,
+      [
+        "on: push",
+        "x: &a 1",
+        "defaults: {run: {shell: bash}}",
+        "jobs:",
+        "  a:",
+        "    steps:",
+        "      - run: |",
+        "          echo ${{ vars.BUN_VERSION }}",
+        "        env:",
+        "          V: *a",
+        "",
+      ].join("\n"),
+    ]
+    for (const valido of validos) expect(workflowYamlValidity(valido).ok, valido).toBe(true)
+    // O que NÃO é workflow: YAML quebrado, texto escalar e vazio. Nos três, o
+    // motivo é DITO — e o vazio é recusado aqui porque vazio não é um mapa de
+    // chaves (o arquivo VAZIO tem o seu desfecho próprio, o `vazios`).
+    for (const invalido of [YAML_QUEBRADO, "apenas um texto", ""]) {
+      const v = workflowYamlValidity(invalido)
+      expect(v.ok, JSON.stringify(invalido)).toBe(false)
+      expect(v.motivo, JSON.stringify(invalido)).toBeTruthy()
+    }
+    expect(workflowYamlValidity(YAML_QUEBRADO).motivo).toMatch(/linha 4/)
+  })
+
+  for (const { script, verde } of GUARDS_CWD) {
+    it(`${script}: NOMEIA o YAML inválido e não cunha veredito sobre o escopo perdido`, () => {
+      const limpo = rodarGuard(script, escopo(null))
+      const sujo = rodarGuard(script, escopo("yaml"))
+      expect(texto(limpo), `${script} (limpo)`).not.toContain(ARQUIVO_RUIM)
+      expect(texto(sujo), `${script} (YAML inválido)`).toContain(ARQUIVO_RUIM)
+      expect(texto(sujo), `${script} (YAML inválido)`).toMatch(/YAML/)
+      expect(sujo.status, `${script} (YAML inválido)`).not.toBe(0)
+      if (verde) expect(limpo.status, `${script} (limpo)`).toBe(0)
+    })
+  }
+
+  it("o guard do escopo DECLARADO separa AUSENTE de NÃO JULGÁVEL (não são o mesmo vermelho)", () => {
+    // A paridade não varre o diretório: ela lê as pipelines que PIPELINES
+    // declara. Os três desfechos de um arquivo declarado têm de ser distintos —
+    // um `null` para "não pude julgar" faria o diagnóstico apontar para uma
+    // forja removida que está lá.
+    const montar = (classe: ClasseDeArquivoRuim | null, semGitea = false) => {
+      const root = mkdtempSync(join(tmpdir(), "parity-escopo-"))
+      tmpDirs.push(root)
+      mkdirSync(join(root, ".github", "workflows"), { recursive: true })
+      mkdirSync(join(root, ".gitea", "workflows"), { recursive: true })
+      writeFileSync(join(root, ".github", "workflows", "pr-check.yml"), WORKFLOW_SAUDAVEL)
+      if (!semGitea) {
+        const conteudo =
+          classe === "utf8"
+            ? BYTES_ILEGIVEIS
+            : classe === "yaml"
+              ? YAML_QUEBRADO
+              : WORKFLOW_SAUDAVEL
+        writeFileSync(join(root, ".gitea", "workflows", "ci.yml"), conteudo)
+      }
+      return root
+    }
+    const rodar = (root: string) => rodarGuard("check-forge-parity.mjs", root, "--root", root)
+
+    // AUSENTE → violação NOMEADA do contrato (exit 1), com a instrução certa.
+    const ausente = rodar(montar(null, true))
+    expect(ausente.status).toBe(1)
+    expect(texto(ausente)).toContain("pipeline declarada nao existe")
+    // ILEGÍVEL e YAML INVÁLIDO → NÃO JULGÁVEL (exit 2), citando o arquivo.
+    for (const classe of ["utf8", "yaml"] as const) {
+      const r = rodar(montar(classe))
+      expect(r.status, classe).toBe(2)
+      expect(texto(r), classe).toContain(".gitea/workflows/ci.yml")
+      expect(texto(r), classe).toMatch(/NÃO JULGÁVEL/)
+      // A distinção é o ponto: não é o vermelho do contrato (1), é o vermelho
+      // de "não dá para julgar".
+      expect(texto(r), classe).not.toContain("pipeline declarada nao existe")
+    }
+  })
+
+  it("run-syntax: I/O, encoding e YAML levam ao MESMO desfecho nomeado (exit 2)", () => {
+    // Este guard lia com `readFileSync(..., "utf8")` e não perguntava por YAML:
+    // o ilegível entrava como mojibake e o YAML quebrado como "0 corpos".
+    const raizLimpa = escopo(null)
+    const limpo = rodarGuard("check-workflow-run-syntax.mjs", raizLimpa, "--root", raizLimpa)
+    expect(limpo.status).toBe(0)
+    for (const classe of ["utf8", "yaml"] as const) {
+      const root = escopo(classe)
+      const r = rodarGuard("check-workflow-run-syntax.mjs", root, "--root", root)
+      expect(r.status, classe).toBe(2)
+      expect(texto(r), classe).toContain(ARQUIVO_RUIM)
+      // Nem o recorte do pre-commit nem o `--fix` podem cunhar verde sobre o
+      // arquivo que nenhum deles julgou.
+      for (const extra of [["--json"], ["--fix"]] as const) {
+        const variante = rodarGuard("check-workflow-run-syntax.mjs", root, "--root", root, ...extra)
+        expect(variante.status, `${classe} ${extra[0]}`).not.toBe(0)
+      }
+    }
   })
 })

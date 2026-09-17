@@ -75,6 +75,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 GUARD="$SCRIPT_DIR/scripts/check-pipefail-sigpipe.mjs"
+# A RÉGUA DOS PASSOS (o corpo do `run:`, bloco × escalar, a dobra da continuação)
+# vive na FONTE ÚNICA, e é ELA que o H3 muta: o guard importa `workflowRunBodies`
+# de lá, então mutar a leitura do passo só muda o veredito se o guard de fato a
+# consome — uma cópia local sobreviveria à mutação e o script falharia como CEGO.
+RULER="$SCRIPT_DIR/scripts/forge-workflows.mjs"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -1064,18 +1069,23 @@ if ! DECLARADOS="$DECLARADOS" LINHA_VAZIA="$LINHA_VAZIA" node -e '
 fi
 pass "controle H1: o corpo vazio sai nomeado com arquivo+linha, a soma fecha contra os $DECLARADOS passo(s) da própria fixture, e o shell: depois do run: é do PASSO"
 
-# A partir daqui o GUARD é mutado NO LUGAR (o `--root` é do fixture, o arquivo
-# mutado é o do repositório): o backup e a restauração verificada entram no MESMO
-# trap, porque um `exit` no meio do caminho não pode deixar a árvore com a
-# mutação dentro.
+# A partir daqui as FONTES são mutadas NO LUGAR (o `--root` é do fixture, os
+# arquivos mutados são os do repositório): o backup e a restauração verificada
+# entram no MESMO trap, porque um `exit` no meio do caminho não pode deixar a
+# árvore com a mutação dentro. O backup mora em $TMP_DIR porque NADA aqui apaga
+# esse diretório no meio da prova (só o cleanup, depois de restaurar).
 guard_backup="$TMP_DIR/guard.original.mjs"
+ruler_backup="$TMP_DIR/ruler.original.mjs"
 cp "$GUARD" "$guard_backup"
+cp "$RULER" "$ruler_backup"
 guard_sum="$(cksum "$GUARD" | cut -d' ' -f1)"
-trap 'cp -f "$guard_backup" "$GUARD" 2>/dev/null || true; rm -rf "$TMP_DIR"' EXIT
-restaurar_guard() {
+ruler_sum="$(cksum "$RULER" | cut -d' ' -f1)"
+trap 'cp -f "$guard_backup" "$GUARD" 2>/dev/null || true; cp -f "$ruler_backup" "$RULER" 2>/dev/null || true; rm -rf "$TMP_DIR"' EXIT
+restaurar_originais() {
   cp -f "$guard_backup" "$GUARD"
-  if [ "$(cksum "$GUARD" | cut -d' ' -f1)" != "$guard_sum" ]; then
-    fail "RESTAURAÇÃO do guard FALHOU (checksum diverge) — restaure a partir de $guard_backup"
+  cp -f "$ruler_backup" "$RULER"
+  if [ "$(cksum "$GUARD" | cut -d' ' -f1)" != "$guard_sum" ] || [ "$(cksum "$RULER" | cut -d' ' -f1)" != "$ruler_sum" ]; then
+    fail "RESTAURAÇÃO FALHOU (checksum diverge) — restaure a partir de $TMP_DIR"
     exit 1
   fi
 }
@@ -1095,6 +1105,29 @@ PY
     exit 1
   fi
 }
+# ── mutar_regua: o mesmo contrato, mas sobre a RÉGUA (fonte única) ────────
+# Usado pelo H3: o alvo é a LINHA DA RÉGUA, e o checksum de referência é o DELA
+# — sem isso, uma mutação que não aplicasse passaria como "guard imune".
+mutar_regua() {
+  ARQ="$RULER" ALVO="$1" NOVO="$2" python3 - <<'PY'
+import os
+p = os.environ["ARQ"]
+old, new = os.environ["ALVO"], os.environ["NOVO"]
+s = open(p).read()
+n = s.count(old)
+if n != 1:
+    raise SystemExit(f"mutacao nao-cirurgica na regua: {n} ocorrencia(s) do alvo (esperado 1)")
+open(p, "w").write(s.replace(old, new))
+PY
+  if ! grep -qF 'MUTACAO H' "$RULER"; then
+    fail "a mutação não aplicou na régua (nada a medir)"
+    exit 1
+  fi
+  if [ "$(cksum "$RULER" | cut -d' ' -f1)" = "$ruler_sum" ]; then
+    fail "a mutação não alterou a régua (checksum idêntico) — o alvo casou mas a escrita não"
+    exit 1
+  fi
+}
 
 header "MUTAÇÃO H2: sem a conta do corpo vazio o passo SOME do relatório"
 mutar_guard '    passosCorpoVazio += counts.corpoVazio' '    passosCorpoVazio += 0 // MUTACAO H2'
@@ -1111,7 +1144,7 @@ if grep -qF "fora do escopo da varredura" "$TMP_DIR/h2.txt"; then
   exit 1
 fi
 pass "mutação H2 DETECTADA: o corpo vazio desaparece do relatório junto com a conta — é o que a asserção do controle H1 prende"
-restaurar_guard
+restaurar_originais
 
 header 'CONTROLE H3: o `- run:` inline com continuação entra na varredura INTEIRO'
 raiz3="$(nova_raiz)"
@@ -1139,7 +1172,10 @@ fi
 pass "controle H3: o pipeline dobrado pelo YAML é lido INTEIRO e o remédio carrega as duas metades"
 
 header 'MUTAÇÃO H3: ler só a PRIMEIRA linha do `run:` inline torna o passo invisível'
-mutar_guard '      const partes = [runInline]
+# O alvo é a RÉGUA: a leitura do escalar dobrado (o `run: cmd \` + a continuação)
+# mora na fonte única, e o guard a consome por `workflowRunBodies` — mutar a cópia
+# local (se ela voltasse a existir) deixaria a prova verde e o script como CEGO.
+mutar_regua '      const partes = [runInline]
       let k = runIdx + 1
       for (; k < bloco.length; k++) {' '      const partes = [runInline]
       let k = runIdx + 1
@@ -1151,7 +1187,7 @@ if [ "$exit_code" -ne 0 ]; then
   exit 1
 fi
 pass "mutação H3 DETECTADA: a leitura da continuação é o que faz a ocorrência aparecer — é a regressão que o controle H3 prende"
-restaurar_guard
+restaurar_originais
 
 header "VEREDITO"
 pass "MUTATION TEST PASSED — o guard pega o pipe quieto sob pipefail (script E"

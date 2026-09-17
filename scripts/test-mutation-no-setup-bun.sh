@@ -39,6 +39,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 GUARD="$SCRIPT_DIR/scripts/check-no-setup-bun.mjs"
 
+# A versão do FIXTURE vem do ESPELHO do repositório (.actrc) — o call site do
+# fixture cita uma versão, e um literal aqui envelheceria sozinho depois do bump
+# (o fixture passaria a testar uma versão que o repo não declara). Fail-closed:
+# sem a linha, o script PARA em vez de inventar uma reserva.
+FIXTURE_VERSION="$(sed -n 's/^--var BUN_VERSION=//p' "$SCRIPT_DIR/.actrc" 2>/dev/null | head -1 || true)"
+if [ -z "$FIXTURE_VERSION" ]; then
+  echo "❌ .actrc não declara '--var BUN_VERSION=' — o fixture precisa de uma versão DECLARADA" >&2
+  exit 1
+fi
+
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -93,7 +103,8 @@ jobs:
       - run: bun test
 YAML
   else
-    cat > "$TMP_DIR/fixture/$forge_dir/ci.yml" <<'YAML'
+    # Heredoc SEM quotes: a versão do fixture é DERIVADA (ver o topo).
+    cat > "$TMP_DIR/fixture/$forge_dir/ci.yml" <<YAML
 name: Fake CI
 
 on:
@@ -104,7 +115,7 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-      - run: bash scripts/setup-bun-ci.sh 1.3.14
+      - run: bash scripts/setup-bun-ci.sh $FIXTURE_VERSION
 YAML
   fi
 }

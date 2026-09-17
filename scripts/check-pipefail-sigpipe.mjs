@@ -118,6 +118,11 @@
 //       (fail-closed, nos dois modos), ou decisão VENCIDA em `--review`
 //   2 — infra: --root sem valor / diretório inexistente (fail-closed)
 //   3 — uso inválido (flag desconhecida, `--update` sem `--reason`)
+//
+// O exit 2 também cobre o escopo NÃO JULGÁVEL: um `.sh` do repositório ou um
+// workflow de forja que não abre (ou não é UTF-8) sai NOMEADO, e o guard não
+// cunha veredito — "nenhuma ocorrência nova" sobre um arquivo não lido é a
+// falsa segurança que ele recusa em todas as outras dimensões.
 // =============================================================================
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs"
@@ -125,7 +130,14 @@ import { dirname, join, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { DEFAULT_REVIEW_DAYS, MS_PER_DAY, parseAddedAt } from "./allowlist-review.mjs"
-import { allWorkflowFiles, defaultsBlocks, jobKeyName, jobsLayout } from "./forge-workflows.mjs"
+import {
+  DYNAMIC_EXPR_RE,
+  defaultsBlocks,
+  exitOnUnjudgeable,
+  readJudgedText,
+  readWorkflowScan,
+  workflowRunBodies,
+} from "./forge-workflows.mjs"
 
 /** Exit codes — o contrato da CLI. */
 export const EXIT = {
@@ -321,10 +333,10 @@ const EXPR_CLOSE = "\u0002"
  * @returns {string}
  */
 export function maskGithubExpressions(text) {
-  return String(text).replace(
-    /\$\{\{[^}]*\}\}/g,
-    (m) => `${EXPR_OPEN}${m.slice(3, -2)}${EXPR_CLOSE}`,
-  )
+  // O PADRAO da expressao vem da fonte unica (`DYNAMIC_EXPR_RE`); o que e
+  // daqui e a INTENCAO — mascarar com sentinela para poder DESMASCARAR depois
+  // (o remedio impresso tem de sair com a expressao real).
+  return String(text).replace(DYNAMIC_EXPR_RE, (m) => `${EXPR_OPEN}${m.slice(3, -2)}${EXPR_CLOSE}`)
 }
 
 /** Desfaz `maskGithubExpressions` (o remédio impresso sai com a expressão REAL). */
@@ -695,136 +707,24 @@ export function workflowDefaultShells(content) {
  * `bash --noprofile --norc -eo pipefail {0}` (um `shell:` com string própria é
  * usado VERBATIM — sem `-o pipefail` nela, não há pipefail).
  *
+ * A LEITURA DO PASSO (item de lista, coluna da chave, recuo do corpo, forma
+ * escalar × bloco, `- run:` na mesma linha, `shell:` antes ou depois do `run:`)
+ * VEM DE `forge-workflows.mjs` (`workflowRunBodies`), a fonte única do layout:
+ * é ela que o `check-workflow-run-syntax`, o `check-mutation-jobs` e o
+ * `check-forge-parity` consultam. O que fica AQUI é o que só este guard sabe:
+ * se o shell EFETIVO do passo liga o pipefail, e de ONDE ele veio.
+ *
  * @param {string} content
  * @returns {{line: number, body: string, job: string | null, shell: string | null, shellFonte: "step"|"job-default"|"workflow-default"|"runner", pipefail: boolean}[]}
  */
 export function workflowRunSteps(content, defaults = workflowDefaultShells(content)) {
-  const lines = content.split(/\r?\n/)
-  const steps = []
-  const { jobsIdx, jobIndent } = jobsLayout(lines)
   const wfDefault = defaults.find((d) => d.scope === "workflow" && !d.unparsed) ?? null
   const jobDefaults = new Map(
     defaults.filter((d) => d.scope === "job" && !d.unparsed).map((d) => [d.job, d]),
   )
-  let jobAtual = null
-  for (let i = 0; i < lines.length; i++) {
-    if (
-      jobsIdx !== -1 &&
-      jobIndent !== null &&
-      i > jobsIdx &&
-      /^[ \t]*/.exec(lines[i])[0].length === jobIndent
-    ) {
-      const nome = jobKeyName(lines[i], jobIndent)
-      if (nome !== null) jobAtual = nome
-    }
-    const item = lines[i].match(/^(\s*)-\s/)
-    if (!item) continue
-    const itemIndent = item[1].length
-    const keyIndentMin = itemIndent + 2
-    // O item vai até o próximo `- ` no MESMO nível (ou uma linha menos profunda).
-    let end = lines.length
-    for (let k = i + 1; k < lines.length; k++) {
-      const l = lines[k]
-      if (l.trim() === "") continue
-      const indent = l.match(/^\s*/)[0].length
-      if (indent < keyIndentMin && !/^\s*-\s/.test(l)) {
-        end = k
-        break
-      }
-      if (/^\s*-\s/.test(l) && indent <= itemIndent) {
-        end = k
-        break
-      }
-    }
-    const bloco = lines.slice(i, end)
-    let shell = null
-    let runIdx = -1
-    let runInline = null
-    for (let k = 0; k < bloco.length; k++) {
-      // O item pode trazer a CHAVE na própria linha (`- run: ...`), forma comum
-      // no repositório (36 passos): sem tirar o `- `, o `run:` não casava e o
-      // passo ficava INVISÍVEL para o gate — a mesma classe de buraco que a
-      // varredura dos passos sem pipefail fechou.
-      const chave = bloco[k].replace(/^(\s*)-\s+/, "$1")
-      const s = chave.match(/^\s*shell:\s*(.+)$/)
-      if (s) shell = s[1].trim().replace(/^['"]|['"]$/g, "")
-      const r = chave.match(/^\s*run:\s*(.*)$/)
-      if (r) {
-        runIdx = k
-        runInline = r[1].trim()
-        break
-      }
-    }
-    if (runIdx === -1) continue
-    let body
-    let bodyEnd = runIdx + 1
-    const bodyLine = i + runIdx + 1
-    if (/^[|>][-+]?\d*$/.test(runInline)) {
-      // A COLUNA da chave, não a do item: em `- run: |` o corpo é indentado em
-      // relação ao `run:`, dois espaços depois do `- `.
-      const runIndent =
-        bloco[runIdx].match(/^[ \t]*/)[0].length + (/^\s*-\s+/.test(bloco[runIdx]) ? 2 : 0)
-      const corpo = []
-      let k = runIdx + 1
-      for (; k < bloco.length; k++) {
-        const l = bloco[k]
-        if (l.trim() === "") {
-          corpo.push("")
-          continue
-        }
-        if (l.match(/^\s*/)[0].length <= runIndent) break
-        corpo.push(l.replace(new RegExp(`^\\s{0,${runIndent + 2}}`), ""))
-      }
-      bodyEnd = k
-      body = corpo.join("\n")
-    } else {
-      // O `run:` ESCALAR CONTINUA nas linhas seguintes — e por isso o corpo é
-      // lido ATÉ a primeira linha no nível da chave, não só a primeira linha:
-      // o YAML dobra `run: cmd` + as linhas mais indentadas do item num escalar
-      // ÚNICO (a quebra vira espaço), e é esse texto que o runner escreve no
-      // script. Ler só a primeira linha julgava o passo por METADE — um
-      // `| grep -q` na continuação passava invisível, que é a mesma classe de
-      // gate que varre menos do que parece (medido: 0 casos no repositório hoje,
-      // e é justamente por isso que a prova precisa do fixture sintético).
-      //
-      // O `\` no fim de cada pedaço é REMOVIDO: ele era a tentativa do autor de
-      // continuar em shell, e na dobra o YAML o transforma em `\ ` seguido da
-      // linha de baixo (o bash lê um espaço escapado e o MESMO pipeline).
-      // Mantê-lo faria o remédio sair com uma barra no meio
-      // (`<<< "$(docker ps \)"`) — um conselho que o `--fix` gravaria no arquivo.
-      const runIndent =
-        bloco[runIdx].match(/^[ \t]*/)[0].length + (/^\s*-\s+/.test(bloco[runIdx]) ? 2 : 0)
-      const partes = [runInline]
-      let k = runIdx + 1
-      for (; k < bloco.length; k++) {
-        const l = bloco[k]
-        // Linha em BRANCO dentro do escalar é um PARÁGRAFO: o YAML mantém a
-        // quebra ali (não dobra), então ela não vira espaço.
-        if (l.trim() === "") {
-          partes.push("\n")
-          continue
-        }
-        if (l.match(/^\s*/)[0].length <= runIndent) break
-        partes.push(l.trim())
-      }
-      bodyEnd = k
-      body = partes
-        .map((p) => p.replace(/\\\s*$/, "").trimEnd())
-        .join(" ")
-        .replace(/ *\n */g, "\n")
-        .trim()
-    }
-    // `shell:` pode vir DEPOIS do `run:` (a ordem das chaves do passo é livre no
-    // YAML): olhar só até o `run:` faria o gate ler o shell do RUNNER onde o
-    // workflow declara o contrário — o rótulo errado é o começo do diagnóstico errado.
-    for (let k = bodyEnd; k < bloco.length; k++) {
-      const s = bloco[k].replace(/^(\s*)-\s+/, "$1").match(/^\s*shell:\s*(.+)$/)
-      if (s) {
-        shell = s[1].trim().replace(/^['"]|['"]$/g, "")
-        break
-      }
-    }
-    const inline = hasPipefail(body)
+  return workflowRunBodies(content).map((passo) => {
+    const shell = passo.shell
+    const inline = hasPipefail(passo.body)
     // A DECLARAÇÃO SINTA DA FONTE do shell: o passo, o `defaults:` do job, o
     // `defaults:` do arquivo, ou o runner. O relatório diz QUAL — e é isso que
     // impede um `defaults:` novo de ser absorvido como se fosse o default do
@@ -832,7 +732,7 @@ export function workflowRunSteps(content, defaults = workflowDefaultShells(conte
     const shellFonte =
       shell !== null && shell !== ""
         ? "step"
-        : jobDefaults.has(jobAtual)
+        : jobDefaults.has(passo.job)
           ? "job-default"
           : wfDefault
             ? "workflow-default"
@@ -841,29 +741,26 @@ export function workflowRunSteps(content, defaults = workflowDefaultShells(conte
       shellFonte === "step"
         ? shell
         : shellFonte === "job-default"
-          ? jobDefaults.get(jobAtual).shell
+          ? jobDefaults.get(passo.job).shell
           : shellFonte === "workflow-default"
             ? wfDefault.shell
             : null
-    steps.push({
-      line: bodyLine,
+    return {
+      line: passo.line,
       // A ÚLTIMA linha do corpo, em número de linha 1-based (numa forma de bloco
       // `run: |` é a última linha indentada; um corpo que termina com linhas em
       // branco inclui-as). Existe para quem precisa ESCREVER de volta na linha
       // certa — o `--fix` do `check-workflow-run-syntax` remenda UMA linha do
       // corpo, e recomputar o fim do bloco aqui seria uma segunda regra de
-      // layout: o `-` do item, a coluna da chave e a indentação do corpo são
-      // MEDIDOS acima, e é este o número que sai da medição.
-      bodyEndLine: i + bodyEnd,
-      body,
-      job: jobAtual,
+      // layout.
+      bodyEndLine: passo.bodyEndLine,
+      body: passo.body,
+      job: passo.job,
       shell: shellEfetivo,
       shellFonte,
       pipefail: shellEnablesPipefail(shellEfetivo) || inline,
-    })
-    i = end - 1
-  }
-  return steps
+    }
+  })
 }
 
 /**
@@ -979,9 +876,22 @@ export function listShellScripts(root, { dir = "", out = [] } = {}) {
 export function scanRoot(root) {
   const files = listShellScripts(root)
   const violations = []
+  // O que a varredura NÃO conseguiu ler, NOMEADO: as duas fontes do guard (o
+  // `.sh` do repositório e o workflow das forjas). Antes o `readFileSync` cru
+  // estourava com stack trace nas duas — fail-closed por acidente, com exit 1
+  // (que aqui significa VIOLAÇÃO) e sem dizer qual arquivo nem por quê. O
+  // veredito de "nenhuma ocorrência nova" sobre um arquivo não lido é a falsa
+  // segurança que este guard recusa em todas as outras dimensões.
+  const naoLidos = []
   let scriptsComPipefail = 0
   for (const rel of files) {
-    const content = readFileSync(join(root, rel), "utf8")
+    let content
+    try {
+      content = readJudgedText(root, rel)
+    } catch (err) {
+      naoLidos.push({ path: rel, motivo: err?.motivo ?? String(err?.message ?? err) })
+      continue
+    }
     if (!hasPipefail(content)) continue
     scriptsComPipefail++
     for (const v of findViolations(content, { pipefail: true })) {
@@ -989,7 +899,9 @@ export function scanRoot(root) {
     }
   }
 
-  const workflowFiles = allWorkflowFiles(root).map((w) => w.path)
+  const workflowScan = readWorkflowScan(root)
+  naoLidos.push(...workflowScan.unjudgeable)
+  const workflowFiles = workflowScan.files.map((w) => w.path)
   let runStepsComPipefail = 0
   let runStepsSemPipefail = 0
   let passosDoRunner = 0
@@ -1007,8 +919,9 @@ export function scanRoot(root) {
   const premissas = new Map()
   const ilegiveis = []
   const chaveDe = (rel, m) => `${rel}\u0000${m.line}\u0000${m.job ?? ""}`
-  for (const rel of workflowFiles) {
-    const conteudo = readFileSync(join(root, rel), "utf8")
+  for (const wf of workflowScan.files) {
+    const rel = wf.path
+    const conteudo = wf.text
     // A LEITURA E A CONTA SÃO DE `workflowShellInheritance` — a MESMA medição
     // que o `forge-doctor` publica como fato da prontidão. O que esta varredura
     // acrescenta é a CLASSIFICAÇÃO do texto (`findViolations`), não uma segunda
@@ -1088,6 +1001,7 @@ export function scanRoot(root) {
       (a, b) => a.file.localeCompare(b.file) || a.line - b.line,
     ),
     ilegiveis,
+    naoLidos: naoLidos.sort((a, b) => a.path.localeCompare(b.path)),
     scanned: {
       shellScripts: files.length,
       shellScriptsComPipefail: scriptsComPipefail,
@@ -1458,7 +1372,12 @@ function main() {
     process.exit(EXIT.UNAVAILABLE)
   }
 
-  const { files, violations, foraDoEscopo, premissas, ilegiveis, scanned } = scanRoot(root)
+  const { files, violations, foraDoEscopo, premissas, ilegiveis, naoLidos, scanned } =
+    scanRoot(root)
+  // NÃO SEI JULGAR vem primeiro, em qualquer modo de saída: sem ter lido todo o
+  // escopo, "nenhuma ocorrência nova" (e o JSON que o doctor publica) seria uma
+  // afirmação sobre o que o guard não viu.
+  exitOnUnjudgeable(naoLidos)
   const json = argv.includes("--json")
 
   if (argv.includes("--list")) {
@@ -1571,6 +1490,7 @@ function main() {
           // passos de uma vez" — o remédio de cada uma é outro.
           premissas,
           ilegiveis,
+          naoLidos,
           // O QUE A VARREDURA NÃO JULGOU, nomeado: sem esta lista, "N passos" no
           // relatório não distingue "não havia o que julgar" de "o gate não olhou".
           foraDoEscopo,

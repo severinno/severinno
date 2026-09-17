@@ -51,15 +51,22 @@
 // Exit codes:
 //   0 — nenhuma referência quebrada (pass)
 //   1 — pelo menos uma referência quebrada (fail)
+//   2 — infra: workflow DECLARADO e NÃO JULGÁVEL (ilegível / não-UTF-8) — não
+//       ler um arquivo não é o mesmo que ele não ter refs a validar. Um arquivo
+//       com nome de workflow que não abre sai NOMEADO e o guard NÃO cunha
+//       veredito: o verde por ausência VALIDARIA o que a pipeline nunca roda.
 // =============================================================================
 
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 
 import {
   FORGE_ACTIONS_DIRS,
-  allWorkflowFiles,
   defaultsRunLines,
+  executableLine,
   existingWorkflowDirs,
+  exitOnUnjudgeable,
+  readWorkflowScan,
+  reportEmptyWorkflows,
 } from "./forge-workflows.mjs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
@@ -97,34 +104,24 @@ const USES_LOCAL_RE = /uses:\s*\.\/\.[A-Za-z0-9_.-]+\/workflows\/([A-Za-z0-9_.-]
 /** Composite action local: `uses: ./<forge>/actions/<name>`. */
 const USES_ACTION_RE = /uses:\s*\.\/\.[A-Za-z0-9_.-]+\/actions\/([A-Za-z0-9_.-]+)/g
 
-/**
- * Expressão DINÂMICA do GitHub Actions (`${{ ... }}`) — não resolvível
- * estaticamente. É REMOVIDA da linha antes do scan (não pula a linha toda).
- */
-const DYNAMIC_EXPR_RE = /\$\{\{[^}]*\}\}/g
-
 // ---------------------------------------------------------------------------
 // Funções puras (exportadas para teste unitário)
 // ---------------------------------------------------------------------------
 
 /**
- * Prepara uma linha para scan: retorna a linha com comentário de FIM DE LINHA e
- * ${{ }} removidos, ou `null` se for linha de comentário (#), vazia ou só
- * contiver expressões dinâmicas.
+ * Prepara uma linha para scan pela REGUA UNICA (`executableLine`, de
+ * `forge-workflows.mjs`): comentário de LINHA e de FIM DE LINHA fora, `${{ }}`
+ * mascarado. Devolve `null` quando não sobra nada para escanear.
  *
- * O comentário de FIM DE LINHA entra pela MESMA razão que a linha inteira de
- * comentário: `- run: # node scripts/x.mjs` não executa nada (em YAML, `#`
- * depois de espaço inicia comentário, e o `run:` fica vazio) — e uma ref
- * extraída daí VALIDA um script que a pipeline nunca roda. A direção do erro é
- * pior que a de uma ref não validada: o guard afirma conserto sobre código
- * morto. É a MESMA leitura do `check-forge-parity` (`executableLines`), que já
- * ignorava comentário de fim de linha — uma régua só para "o que executa".
+ * A régua é a MESMA do `check-forge-parity` porque a pergunta é a mesma ("esta
+ * linha executa algo?") e a resposta tem de ser a mesma nos dois guards: quando
+ * eram duas implementações, o `check-workflow-refs` continuou validando
+ * referência de comentário de fim de linha enquanto o `check-forge-parity` já a
+ * ignorava — um guard afirmando conserto sobre código morto.
  */
-function scannableLine(trimmed) {
-  if (trimmed === "" || trimmed.startsWith("#")) return null
-  const semComentario = trimmed.replace(/(^|\s)#.*$/, "$1").trim()
-  const stripped = semComentario.replace(DYNAMIC_EXPR_RE, "").trim()
-  return stripped === "" ? null : stripped
+function scannableLine(line) {
+  const scan = executableLine(line).trim()
+  return scan === "" ? null : scan
 }
 
 /**
@@ -143,7 +140,7 @@ export function extractScriptRefs(content) {
   for (let i = 0; i < lines.length; i++) {
     if (defaults.has(i + 1)) continue
     const trimmed = lines[i].trim()
-    const scan = scannableLine(trimmed)
+    const scan = scannableLine(lines[i])
     if (scan === null) continue
     // matchAll clona a regex /g — lastIndex do módulo nunca avança (seguro).
     for (const m of scan.matchAll(SCRIPT_INVOKE_RE)) {
@@ -169,7 +166,7 @@ export function extractPkgScriptRefs(content) {
   for (let i = 0; i < lines.length; i++) {
     if (defaults.has(i + 1)) continue
     const trimmed = lines[i].trim()
-    const scan = scannableLine(trimmed)
+    const scan = scannableLine(lines[i])
     if (scan === null) continue
     // matchAll clona a regex /g — lastIndex do módulo nunca avança (seguro).
     for (const m of scan.matchAll(PKG_RUN_RE)) {
@@ -195,7 +192,7 @@ export function extractWorkflowUses(content) {
   for (let i = 0; i < lines.length; i++) {
     if (defaults.has(i + 1)) continue
     const trimmed = lines[i].trim()
-    const scan = scannableLine(trimmed)
+    const scan = scannableLine(lines[i])
     if (scan === null) continue
     // matchAll clona a regex /g — lastIndex do módulo nunca avança (seguro).
     for (const m of scan.matchAll(USES_LOCAL_RE)) {
@@ -221,7 +218,7 @@ export function extractActionUses(content) {
   for (let i = 0; i < lines.length; i++) {
     if (defaults.has(i + 1)) continue
     const trimmed = lines[i].trim()
-    const scan = scannableLine(trimmed)
+    const scan = scannableLine(lines[i])
     if (scan === null) continue
     // matchAll clona a regex /g — lastIndex do módulo nunca avança (seguro).
     for (const m of scan.matchAll(USES_ACTION_RE)) {
@@ -428,12 +425,14 @@ function main() {
   // Leitura única de TODAS as forjas. O conjunto `workflows` é a UNIÃO dos
   // basenames: uma ref `uses: ./<forge>/workflows/X.yml` resolve se X.yml
   // existir em qualquer forja (o nome é o contrato; a forja é o endereço).
-  const all = allWorkflowFiles(cwd)
-  const read = all.map((w) => ({
-    dir: w.dir,
-    name: w.name,
-    content: readFileSync(join(cwd, w.path), "utf8"),
-  }))
+  const scan = readWorkflowScan(cwd)
+  // O escopo é o que o DIRETÓRIO declara: um arquivo com nome de workflow que
+  // não abre é do escopo, e não poder julgá-lo não é o mesmo que não haver nada
+  // a julgar (o `readFileSync` cru estourava com stack trace — fail-closed por
+  // acidente, e sem dizer QUAL arquivo nem por quê).
+  exitOnUnjudgeable(scan.unjudgeable)
+  reportEmptyWorkflows(scan.vazios)
+  const read = scan.files.map((w) => ({ dir: w.dir, name: w.name, content: w.text }))
   const scripts = new Set(listDir(join(cwd, "scripts")))
   const { pkgScripts, pkgTargets, pkgEntries, rawText } = readPkgScripts(cwd)
   const workflows = new Set(read.map((f) => f.name))

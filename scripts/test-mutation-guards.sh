@@ -42,7 +42,11 @@
 #                    check-mutation-jobs devem FALHAR
 #   workflow-refs  → scripts/test-mutation-workflow-refs.sh
 #                    alvo TRANSITIVO de entry deletado (workflow bun run →
-#                    scripts/X) + entry órfã do --pkg-internal devem FALHAR
+#                    scripts/X) + entry órfã do --pkg-internal devem FALHAR; e
+#                    as DUAS metades da regra de comentário de FIM DE LINHA
+#                    (stripping removido: o guard ACUSA código morto; regra sem
+#                    a âncora de espaço: o guard fica CEGO na ref que EXECUTA),
+#                    com o guard real mutado no lugar e restaurado por checksum
 #   utf8-scope     → scripts/test-mutation-utf8-scope.sh
 #                    call site sem src/ deve FALHAR
 #   timing-budget  → scripts/test-mutation-timing-budget.sh
@@ -100,7 +104,7 @@ SUBTESTS=(
   "docs-anchor|Docs — âncora quebrada em docs/*.md (fixture com docs/)|scripts/test-mutation-readme-docs-anchor.sh"
   "producer-sent|Produtor — sentinel 'com CRLF' removido do audit all-text|scripts/test-mutation-producer-sentinel.sh"
   "mutation-jobs|Mutation-jobs — script órfão + matriz quebrada|scripts/test-mutation-mutation-jobs.sh"
-  "workflow-refs|Workflow-refs — alvo transitivo deletado + entry órfã|scripts/test-mutation-workflow-refs.sh"
+  "workflow-refs|Workflow-refs — alvo transitivo deletado + entry órfã + as duas metades da regra de comentário de fim de linha (stripping removido ACUSA código morto; regra sem a âncora de espaço fica CEGA na ref que EXECUTA)|scripts/test-mutation-workflow-refs.sh"
   "utf8-scope|UTF-8 — call site sem src/|scripts/test-mutation-utf8-scope.sh"
   "timing-budget|Timing — gate de budget 240/180/100s (três faixas) + drift exit 2 + faixa soft derivada da mediana (--warn-median) + gate de drift relativo (--fail-drift) do mutation-coord|scripts/test-mutation-timing-budget.sh"
   "e2e-cache-budget|E2E Cache — gate de budget 600s (10 min) + drift exit 2 (SKIP até medidor)|scripts/test-mutation-e2e-cache-budget.sh"
@@ -274,7 +278,8 @@ fi
 
 pass "MUTATION TESTS PASSED — os guards (bun literal, bun remoção, hooks simetria,"
 pass "README anchors/toc/images + reverse, docs anchor, produtor sentinel,"
-pass "mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget [240/180/100s + drift exit 2 + mediana],"
+pass "mutation-jobs, workflow-refs [transitivo + órfã + comentário de fim de linha nas duas metades],"
+pass "UTF-8 escopo, timing-budget [240/180/100s + drift exit 2 + mediana],"
 pass "e2e-cache-budget [600s/10 min + drift exit 2], lint-guard [prettier + eslint],"
 pass "mutation-count [drift do nº de sub-tests do master], no-leaked-imports [leak do"
 pass "node_modules do pai + dep inexistente + install pendente],"

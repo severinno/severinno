@@ -55,7 +55,7 @@ import process from "node:process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { parseWorkflowJobs } from "./check-required-checks.mjs"
-import { allWorkflowFiles } from "./forge-workflows.mjs"
+import { allWorkflowFiles, exitOnUnjudgeable, readWorkflowScan } from "./forge-workflows.mjs"
 
 /** O manifesto da auditoria (única fonte das decisões). */
 export const MANIFEST_PATH = "ci/periodic-alerts.json"
@@ -254,6 +254,11 @@ function main() {
     return 2
   }
 
+  // Um job agendado vive num workflow: se um deles não abre, a auditoria não
+  // pode concluir "todo job tem canal" — a ausência de canal num arquivo não
+  // lido seria indistinguivel de um arquivo sem canal. A varredura é a
+  // COMPARTILHADA (fonte única) e o guard PARA com 2, nomeando o arquivo.
+  exitOnUnjudgeable(readWorkflowScan(REPO_ROOT).unjudgeable)
   const io = defaultIo()
   const manifest = loadManifest(REPO_ROOT)
   const violations = validatePeriodicAlerts(manifest, io)

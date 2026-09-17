@@ -67,6 +67,19 @@ describe("findSetupBunRefs", () => {
     expect(findSetupBunRefs(content)).toEqual([])
   })
 
+  it("comentário de FIM DE LINHA com a key `uses:` não vira uso (régua única)", () => {
+    // O QUE MUDA NO VEREDITO: a regra local só ignorava a linha INTEIRA de
+    // comentário, então a prosa de um `#` no fim da linha valia como uso REAL —
+    // o guard acusava uma violação que a pipeline não comete. A régua é a mesma
+    // do resto da casa (`codeLine`), e o mascaramento de `${{ }}` do
+    // `executableLine` NÃO se aplica: este guard quer ver a expressão.
+    const content = `- name: guard\n  run: echo ok # uses: oven-sh/setup-bun@v2\n`
+    expect(findSetupBunRefs(content)).toEqual([])
+    // E o `uses:` no CÓDIGO da mesma linha continua sendo violação.
+    const real = `- uses: oven-sh/setup-bun@v2 # legado\n`
+    expect(findSetupBunRefs(real)).toHaveLength(1)
+  })
+
   it("menção em prosa (nome de step) sem a key `uses:` não casa", () => {
     // Regressão do falso positivo real: o próprio step de guard tem o nome
     // 'Check no workflow uses oven-sh/setup-bun' — deve passar limpo.
