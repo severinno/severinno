@@ -62,7 +62,7 @@ No GitHub → **Settings** → **Secrets and variables** → **Actions**:
 
 Variables:
 
-- [ ] `BUN_VERSION` = `1.4.0`
+- [ ] `BUN_VERSION` = `1.3.14`
 
 ---
 

@@ -1339,6 +1339,8 @@ Como a versão flui:
 | Act local (`.actrc`)                         | `--var BUN_VERSION=<versão>` (espelho local da variável)                                                                                        |
 | Scripts (`scripts/**`, hooks do `.husky/**`) | `requireBunVersion()` (`scripts/bun-version.mjs`): env → `.actrc` → `deploy/env.gitea.example`, e ERRO se não houver — nunca um default literal |
 | Composes (build arg/env)                     | `${BUN_VERSION:-<valor declarado>}` — o default só pode ser o valor do espelho (um literal puro é violação)                                     |
+| Build da app/worker (`--build-arg`)          | `BUN_VERSION: ${{ vars.BUN_VERSION }}` na pipeline; o Dockerfile **não** tem default e todo build site PASSA o arg (invariante 18)              |
+| Toolchain declarado (`package.json`)         | `"packageManager": "bun@1.3.14"` — o mesmo valor dos espelhos (o bump o escreve)                                                                |
 
 Por que o action não tem `default:` no input? Metadata de action (`action.yml`)
 é **estática** — `default: ${{ ... }}` NÃO é avaliado (seria o literal
@@ -1364,14 +1366,36 @@ O guard `scripts/check-bun-mirror.mjs` (PR Check + `utf8-check.yml`) falha se:
   errada, path desconhecido ou bloco sem path;
 - o `.actrc` não definir `BUN_VERSION` (o act local quebraria);
 - algum **SCRIPT** (`scripts/**` + hooks do `.husky/**`) carregar literal da
-  versão ou da TAG da imagem do runner (`bun-1.3.14`, `bun@1.2.3`, `bun-v1.3.14`,
+  versão ou da TAG da imagem do runner (`bun-1.3.14`, `bun@1.3.14`, `bun-v1.3.14`,
   `ubuntu-bun:1.3.14`, `process.env.BUN_VERSION || "1.3.14"`) — a classe que a
   auditoria de 09/2026 abriu: o script continua FUNCIONANDO depois do bump, só
   com a versão antiga, então nada fica vermelho sozinho. Fixtures usam uma
   **sentinela** (`9.9.9-sentinel`), que não é uma afirmação de versão;
 - algum **COMPOSE** der um valor a `BUN_VERSION` que não derive: literal puro
-  (`BUN_VERSION: "1.4.0"`) ou default divergente do declarado no espelho. O
-  default é o que RODA onde a variável não existe.
+  (`BUN_VERSION: "1.4.0"` [divergente]) ou default divergente do declarado no espelho. O
+  default é o que RODA onde a variável não existe;
+- algum **EXEMPLO DE VERSÃO EM PROSA** (cabeçalho de script, README, docs) não
+  bater com o valor declarado — `BUN_VERSION=1.3.14`, `--expected 1.3.14`,
+  `ubuntu-bun:1.3.14`, o argumento do setup. O sintoma é o mesmo dos scripts
+  (nada fica vermelho, porque doc não executa), deslocado para quem LÊ a doc:
+  quem copia o comando roda/mede a versão antiga. Um exemplo que precisa
+  divergir declara o papel na própria linha — `[divergente]` (contra-exemplo,
+  tem de DIFERIR do vigente) ou `[próxima]` (alvo do bump, tem de ser MAIOR); a
+  **sentinela** (`9.9.9-sentinel`) segue fora, semver que não fala do Bun
+  (`act 0.2.89`, `lodash 4.17.21`) não é julgado, e `docs/BUN_BUMP.md` é um
+  cenário declarado (walkthrough do bump: vale o vigente ou um valor maior);
+- algum **DOCKERFILE** declarar VALOR para a versão (invariante 18a): o default
+  do ARG (`ARG BUN_VERSION=<v>`) ou um default embutido na referência
+  (`${BUN_VERSION:-<v>}`) — é o valor que TODO build que não passa o arg herda
+  em silêncio, e que nenhum bump alcança. Sem default, um build sem o arg falha
+  alto em vez de rodar outro Bun;
+- algum **BUILD SITE** (compose) de um Dockerfile com `ARG BUN_VERSION` não
+  passar o arg (invariante 18b), ou o **`packageManager`** do `package.json`
+  divergir do valor declarado (invariante 18c). Era este o buraco da classe:
+  um build site que não passa o arg não tem valor escrito NENHUM, então as
+  varreduras de literal não tinham o que julgar enquanto ele herdava o default —
+  o app da staging rodava um Bun que nenhum arquivo da cadeia de deploy
+  declarava, e nada ficava vermelho.
 
 ### A regra real do Prisma (exemplo vivo)
 
@@ -1435,11 +1459,11 @@ auditável (comandos `gh` + re-sync dos mirrors + troubleshooting) em
 
 | #   | Passo                           | O que fazer                                                                                                                 | Edita algo?                                        |
 | --- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| 1   | **Variável**                    | `gh variable set BUN_VERSION 1.3.15`                                                                                        | ✅ única edição OBRIGATÓRIA no CI (fonte única)    |
+| 1   | **Variável**                    | `gh variable set BUN_VERSION 1.3.15` [próxima]                                                                              | ✅ única edição OBRIGATÓRIA no CI (fonte única)    |
 | 2   | **Mirrors GHCR**                | re-dispatch `sync-bun-mirror.yml` + `sync-ubuntu-bun-mirror.yml` (leem `vars.BUN_VERSION`; o cron semanal roda sozinho)     | ❌ leem a variável — só re-rodar                   |
 | 3   | **Cache keys `prisma-`/`bun-`** | nada — derivam de `${{ vars.BUN_VERSION }}`; as keys antigas viram cache miss automaticamente (toolchain nova ≠ chave nova) | ❌ automático (é exatamente o que o guard protege) |
 | 4   | **`action.yml`**                | nada — sem `default:`, resolve do input `bun-version` em runtime                                                            | ❌ metadata estática                               |
-| 5   | **`.actrc` local**              | `--var BUN_VERSION=1.3.15` (espelho local para o act)                                                                       | ✅ local apenas                                    |
+| 5   | **`.actrc` local**              | `--var BUN_VERSION=1.3.15` [próxima] (espelho local para o act)                                                             | ✅ local apenas                                    |
 | 6   | **Call sites do setup-bun**     | nada — todos passam `bun-version: ${{ vars.BUN_VERSION }}` (o guard exige)                                                  | ❌ automático                                      |
 
 A 1ª execução do CI após o bump roda com **cache miss em todas as keys

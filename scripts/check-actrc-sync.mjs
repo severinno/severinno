@@ -291,7 +291,7 @@ export function extractActrcBunVersion(content) {
  *
  * Mesma defesa do .actrc: linha ancorada + comentários descartados ANTES do
  * match — o arquivo é quase todo prosa, e um comentário do tipo
- * `# BUN_VERSION=1.4.0` (exemplo desatualizado no header) não pode gerar falso
+ * `# BUN_VERSION=1.4.0` [divergente] (exemplo desatualizado no header) não pode gerar falso
  * drift pegando o valor errado.
  *
  * @param {string} content  conteúdo do arquivo de env

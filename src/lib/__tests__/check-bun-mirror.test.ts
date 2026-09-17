@@ -24,6 +24,9 @@
  *      LITERAL da versão do Bun nem da tag da imagem do runner.
  *  16. Nenhum COMPOSE com valor de BUN_VERSION que não derive (literal puro, ou
  *      default divergente do declarado nos espelhos).
+ *  17. Os EXEMPLOS de versão que vivem em PROSA (README, docs, comentários de
+ *      script) dizem o valor vigente — ou declaram o papel (`[divergente]` /
+ *      `[próxima]`); testes próprios em check-bun-mirror-prose.test.ts.
  *
  * ATENÇÃO (esbuild): dentro de template literals, `${{` do GitHub Actions
  * precisa de escape (`\${{`) — senão o esbuild lê `${` como início de
@@ -2137,10 +2140,19 @@ describe("checkDockerfileBunLine", () => {
     ).toBeNull()
   })
 
-  it("tag com DEFAULT do ARG (${BUN_VERSION:-x}) → null (edge do startsWith exato)", () => {
-    expect(
-      checkDockerfileBunLine("Dockerfile", 5, "FROM oven/bun:${BUN_VERSION:-1.3.14} AS runner"),
-    ).toBeNull()
+  // MUDANÇA DE DOUTRINA (invariante 18): esta forma ERA aceita como "edge do
+  // startsWith exato" — e era o buraco pelo qual o valor de HOJE entrava no
+  // arquivo que deveria só consumir a variável. O default embutido é a mesma
+  // coisa que o default do ARG: onde a variável não existe, é ele que roda, e
+  // nenhum bump o alcança. Um default VAZIO (\`${BUN_VERSION:-}\`) segue ok.
+  it("tag com DEFAULT do ARG (${BUN_VERSION:-x}) → violação (o buraco fechado)", () => {
+    const v = checkDockerfileBunLine(
+      "Dockerfile",
+      5,
+      "FROM oven/bun:${BUN_VERSION:-1.3.14} AS runner",
+    )
+    expect(v).toContain("embute")
+    expect(v).toContain("1.3.14")
   })
 
   it("comentário com literal → null (ignorado)", () => {

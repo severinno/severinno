@@ -2902,7 +2902,7 @@ export async function readOpenDebt({
  * POR QUE É UM FATO DO VEREDITO: a seção 3 mostra que a tag existe no registry,
  * e a seção 4 que a subida depende dela. Nenhuma das duas lê o que o compose
  * REALMENTE pede — um `${BUN_VERSIO}` (typo) resolve para string vazia e um
- * `${BUN_VERSION:-1.4.0}` resolve para um literal: nos dois casos a tag do
+ * `${BUN_VERSION:-1.4.0}` [divergente] resolve para um literal: nos dois casos a tag do
  * registry pode até existir, e o runner registra/puxa OUTRA imagem.
  *
  * `state: 'unavailable'` (sem docker/compose, sem env) NÃO falha aqui — vira

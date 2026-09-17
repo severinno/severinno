@@ -9,7 +9,7 @@
 // CLASSE. 14 guards do repositorio tinham `.github/workflows` cravado no
 // escopo; quando a forja Gitea/Forgejo virou dona do merge, a pipeline que
 // decide o merge ficou fora da cobertura de TODOS eles de uma vez. O resultado
-// observado: `BUN_VERSION: "1.4.0"` literal, `oven-sh/setup-bun@v2` em 6 call
+// observado: `BUN_VERSION: "1.4.0"` [divergente] literal, `oven-sh/setup-bun@v2` em 6 call
 // sites e `check:ts-nocheck` ausente na forja, sem um unico guard reclamar.
 //
 // Corrigir os 14 casos um a um resolve o sintoma. Este guard resolve a classe:

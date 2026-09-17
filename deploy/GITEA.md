@@ -608,7 +608,7 @@ escopo que referencie imagem nossa. E,
 na mesma passada, renderiza o `deploy/docker-compose.gitea.yml` com o
 `docker compose config` para provar o que a label do runner **resolve**:
 variavel vazia (um `${BUN_VERSIO}` de typo) ou tag literal (um
-`${BUN_VERSION:-1.4.0}`) sao violacao, mesmo com o texto do compose parecendo
+`${BUN_VERSION:-1.4.0}` [divergente]) sao violacao, mesmo com o texto do compose parecendo
 correto. Sem a ferramenta no ambiente o passo fica INDETERMINADO — avisa, nao
 falha, e o `doctor` registra "interpolacao nao provada" —, **mas nao na forja**:
 la o render e exigido (`--require-compose`, usado pela Prova 4 do smoke), porque

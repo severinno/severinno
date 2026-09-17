@@ -12,7 +12,7 @@
 // oven-sh/setup-bun, hooks de seed, referencias workflow->script, sentinels...).
 //
 // Nao e hipotetico — foi assim que viveram na forja, sem nenhum guard reclamar:
-//   - `BUN_VERSION: "1.4.0"` literal em 2 workflows (o repo proibe literais);
+//   - `BUN_VERSION: "1.4.0"` [divergente] literal em 2 workflows (o repo proibe literais);
 //   - `oven-sh/setup-bun@v2` em 3 call sites (o repo migrou para o composite
 //     local justamente para eliminar esse action);
 //   - `check:ts-nocheck` ausente da pipeline dona do merge.

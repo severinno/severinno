@@ -58,17 +58,19 @@ errado). Medido na auditoria de 09/2026: 11 literais vivos, entre eles
 `process.env.BUN_VERSION || "1.3.14"`, `ACTRC_BUN="${ACTRC_BUN:-1.3.14}"`,
 `bunVersion = "1.3.14"` num sandbox, exemplos de ajuda que se passavam por
 versão vigente, e **dois composes divergentes** — `docker-compose.hostinger.yml`
-com default `1.4.0` e `docker-compose.staging.yml` com `BUN_VERSION: "1.4.0"`
+com default `1.4.0` [divergente] e `docker-compose.staging.yml` com
+`BUN_VERSION: "1.4.0"` [divergente]
 PURO (sem `${...}`: nenhum bump jamais o alcançaria) enquanto o repositório
 declara 1.3.14.
 
-A regra: literal **PREFIXADO** pelo nome (`bun-1.3.14`, `bun@1.2.3`,
+A regra do CÓDIGO: literal **PREFIXADO** pelo nome (`bun-1.3.14`, `bun@1.3.14`,
 `bun-v1.3.14`, `ubuntu-bun:1.3.14`) ou semver **COMPLETO** numa linha de código
 que fala do Bun (`|| "1.3.14"`, `:-1.3.14`, `= "1.3.14"`). Duas exclusões são
 estruturais e escritas no header: **comentário** (é onde o comportamento aparece
-como exemplo) e **SENTINELA** — um valor com sufixo não-numérico
-(`9.9.9-sentinel`) não é uma AFIRMAÇÃO de versão, e é assim que uma fixture
-precisa de um valor falso sem cravar o número da vez. O remédio dos scripts é o
+como exemplo — e é julgado pela invariante 17, abaixo) e **SENTINELA** — um valor
+com sufixo não-numérico (`9.9.9-sentinel`) não é uma AFIRMAÇÃO de versão, e é
+assim que uma fixture precisa de um valor falso sem cravar o número da vez. O
+remédio dos scripts é o
 módulo `scripts/bun-version.mjs`: `requireBunVersion()` resolve env → `.actrc` →
 `deploy/env.gitea.example` e **LANÇA** quando não há declaração — o default
 silencioso era justamente o defeito. Nos composes, o default continua permitido
@@ -77,6 +79,37 @@ só se for **igual ao declarado** no espelho; um literal puro é violação semp
 Os defaults dos composes entraram no `bump-bun.sh` (o default é um espelho: se o
 bump não o escrevesse, o próprio bump terminaria vermelho). A varredura roda no
 modo global E no `--staged` — é na EDIÇÃO que o literal nasce.
+
+**A metade que sobrava: os EXEMPLOS DE VERSÃO EM PROSA (invariante 17).** O
+comentário era excluído da regra de código de propósito — e é exatamente onde o
+cabeçalho de um script, o README e este doc ENSINAM o comando. Depois do bump a
+doc seguia imprimindo `BUN_VERSION=1.3.14`, `--expected 1.3.14`,
+`ubuntu-bun:1.3.14`, e **nada ficava vermelho**: doc não executa, então o sintoma
+é quem copia o exemplo medir/rodar a versão antiga. A regra aqui é a INVERSÃO da
+invariante 15 — na prosa a menção **ancorada** (o valor preso a um token do Bun:
+`BUN_VERSION=…`/`: …`/`${…:-…}`, `bun-version: …`, `--expected`/`--bun-version`,
+`bun[-@:/]v?X.Y.Z` — inclusive `ubuntu-bun:` —, o argumento do `setup-bun-ci.sh`,
+o argumento do `bump-bun.sh` e a transição `1.3.14 → 1.3.15`) tem de **bater com
+o valor declarado** nos espelhos. Semver solto que não fala do Bun
+(`act 0.2.89`, `lodash 4.17.21`, `release/v0.4.0`) não é exemplo da versão e não
+é julgado — exigir a coincidência de todo semver faria o guard brigar com a
+prosa que ele existe para proteger. Um exemplo que precisa divergir declara o
+PAPEL na própria linha, e o papel é checado nos DOIS sentidos (marcar o vigente
+como contra-exemplo é tão falso quanto o exemplo velho sem marca):
+**`[divergente]`** = contra-exemplo (tem de DIFERIR do vigente);
+**`[próxima]`** = alvo do bump (tem de ser MAIOR, em comparação semver — um alvo
+igual ao vigente é um exemplo que não faz nada). O doc `docs/BUN_BUMP.md` é um
+**cenário declarado** (`PROSE_SCENARIO_DOCS`, com data e motivo no header): o
+walkthrough cita o alvo ponta a ponta, então ali vale o vigente OU um valor
+maior, e nada mais — uma decisão datada em vez de 15 marcadores no meio do
+procedimento. As fontes são os `*.md` do worktree (menos `PROSE_IGNORED_DIRS`:
+saída de build/medição não é doc do repo) e os **comentários** dos scripts,
+inclusive o de FIM DE LINHA; um doc canônico que existe e para de citar a versão
+derruba o piso de cobertura (verde por vazio é o defeito, não a ausência de
+exemplo). **Prova por mutação** (`test-mutation-bun-literal.sh`, STEP 7): no repo
+fixture, um exemplo desatualizado no README reprova o guard nomeando o arquivo, e
+a cópia do guard sem a chamada da varredura passa — enquanto o literal de
+workflow segue reprovado na mesma cópia (a mutação é cirúrgica).
 
 **O valor, que o estático não alcança:** as variáveis que o compose da forja
 consome têm espelhos no working tree — `.actrc` (o act local não lê as
@@ -195,20 +228,71 @@ comparando o valor de todos os espelhos descobertos, incluindo o env do host.
 Sem drift, o publicador do GitHub também **fecha** a dívida que ele abriu
 (ver acima) — um canal sem o outro lado é meia-volta.
 
+**A PONTA QUE NINGUÉM VIA: a CADEIA DE BUILD (invariante 18).** As invariantes
+13/15/16 julgam o valor ESCRITO (no Dockerfile, no script, no compose) — e um
+build site que **não passa o arg** não tem valor escrito NENHUM, então não havia
+o que julgar enquanto ele herdava o default do Dockerfile, em silêncio. Foi esta
+a origem do `1.4.0` [divergente] que viveu em staging, hostinger, package.json e
+no pipeline arquivado: a versão nunca foi ESCOLHIDA — ela entrou como **default do
+`ARG BUN_VERSION`** do Dockerfile (introduzido para _remover_ um literal
+hardcoded, com o valor do dia preenchendo o default) e foi copiada, na mesma
+semana, por quem precisava passar o arg. Na staging, o app
+(`web-staging`) buildava o `Dockerfile` **sem** `args:` — o valor rodava sem
+estar escrito em nenhum arquivo da cadeia de deploy —, enquanto os dois workers
+da MESMA stack já tinham o literal. A auditoria de 15/16 alinhou os workers e
+deixou o app no default: a stack passou a buildar com **dois Buns** e nada ficou
+vermelho (a assimetria era invisível — nenhum arquivo dizia a versão do app).
+
+A régua, nas duas pontas: **(a)** nenhum Dockerfile declara VALOR para a versão —
+nem o default do ARG (`ARG BUN_VERSION=<v>`) nem um default embutido na
+referência (`${BUN_VERSION:-<v>}`), que a rodada anterior **aceitava** como
+"forma válida do ARG" (era o buraco: o valor de hoje entrava no arquivo que
+deveria só consumir a variável); sem default, um build que não passa o arg
+**falha alto** (`oven/bun:-alpine`) em vez de rodar outro Bun. **(b)** todo build
+site de um Dockerfile que declara `ARG BUN_VERSION` tem de **PASSAR** o arg,
+derivado da variável — e o fallback do compose é comparado por VALOR pela
+invariante 16, como todo compose. **(c)** a declaração de TOOLCHAIN
+(`"packageManager"` do `package.json`) diz o valor declarado: nada a consome em
+tempo de build (o bun não a impõe), então ela envelhecia sem sintoma — e é o
+primeiro campo que alguém lê para saber qual Bun o repo usa. No `--staged` da
+(a) o alvo é a lista `DOCKERFILES` (o default nasce num commit, como todo
+literal); o recorte da (b) é **declarado**: os blocos de build que o DIFF toca,
+lidos do **ÍNDICE** (o `args:` e o `dockerfile:` são linhas diferentes, e o
+pre-commit julga o que será commitado, não o disco) — uma REMOÇÃO do arg não é
+pega ali (o bloco não ganha linha nenhuma) e quem a pega é a varredura global,
+que roda no PR.
+
 **Família relacionada:** `check-tier1-fastpath`, `check-tier2-cache-restore`
 (performance do setup-bun — ver família 10).
 
 **Como testar:** `src/lib/__tests__/check-bun-mirror.test.ts` (as formas e o
 escopo das invariantes 15/16, o recorte `--staged` delas e o veredito contra o
 REPOSITÓRIO real — "nenhum literal nos scripts nem nos composes" é asserção,
-não promessa) e `src/lib/__tests__/bun-version.test.ts` (a cadeia de resolução do
-resolvedor: env → espelhos, e o LANÇAR em vez de um default).
-**Prova por mutação:** `scripts/test-mutation-bun-literal.sh` — três fases: (A)
+não promessa), `src/lib/__tests__/check-bun-mirror-prose.test.ts` (a invariante
+17: as formas ancoradas, os dois papéis checados nos dois sentidos, o cenário
+declarado, o piso do doc canônico e o `--staged`),
+`src/lib/__tests__/check-bun-mirror-build-chain.test.ts` (a invariante 18: o
+`embeddedVersionDefault`, o default do ARG e o embutido na referência, o parser
+dos build sites, o recorte `addedLines`, o ÍNDICE do `--staged` — incluindo o
+"não consegui ler" —, o `packageManager`, e o REPOSITÓRIO real: a remoção do arg
+de um build site de verdade reprova NOMEANDO o serviço) e
+`src/lib/__tests__/bun-version.test.ts` (a cadeia de resolução do resolvedor:
+env → espelhos, e o LANÇAR em vez de um default).
+**Prova por mutação:** `scripts/test-mutation-bun-literal.sh` — cinco fases: (A)
 o literal de workflow, (B) o CONTROLE do guard limpo, (C) `M3`: um script do
 fixture com literal é reprovado, e a MESMA cópia do guard SEM a chamada da
 invariante 15 passa (a varredura é load-bearing) — enquanto o literal de
 workflow segue reprovado na cópia mutada (a mutação é cirúrgica, e não deixa
-resíduo: o guard real nunca é tocado).
+resíduo: o guard real nunca é tocado), e (D) `M4`: um exemplo de versão
+DESATUALIZADO no README do fixture reprova nomeando o arquivo, e a cópia sem a
+chamada da invariante 17 passa — a mesma dupla, para a metade que julga a prosa,
+e (E) `M5`: as QUATRO metades da cadeia de build (o default do ARG de volta, o
+build site sem o arg, o `packageManager` divergente e o default embutido na
+referência) reprovam com as quatro mensagens, o build site NOVO sem o arg é
+recusado já no `--staged` (o pre-commit nomeia o serviço), e a cópia do guard com
+as quatro linhas neutralizadas passa com as quatro em disco — cada metade é
+load-bearing, e a mutação é cirúrgica (o literal de workflow segue reprovado na
+mesma cópia).
 
 **`check:registry-source` (mesma família — fonte única, agora do registry OCI):**
 
@@ -920,10 +1004,10 @@ forja.** A varredura acima prova que a linha do label **referencia**
 `${BUN_VERSION}`. Ela não prova o que a interpolação **resolve** — e os dois
 modos de falha que sobram são invisíveis no texto:
 
-| Defeito no compose                        | O que o texto parece         | O que o docker resolve                                                 |
-| :---------------------------------------- | :--------------------------- | :--------------------------------------------------------------------- |
-| `${BUN_VERSIO}` (typo / variável órfã)    | correto ("tem uma variável") | `ubuntu-bun:` — **tag vazia**; o runner registra imagem que não existe |
-| `${BUN_VERSION:-1.4.0}` (default literal) | correto ("tem BUN_VERSION")  | `ubuntu-bun:1.4.0` — a variável **deixou** de ser fonte única          |
+| Defeito no compose                                     | O que o texto parece         | O que o docker resolve                                                     |
+| :----------------------------------------------------- | :--------------------------- | :------------------------------------------------------------------------- |
+| `${BUN_VERSIO}` (typo / variável órfã)                 | correto ("tem uma variável") | `ubuntu-bun:` — **tag vazia**; o runner registra imagem que não existe     |
+| `${BUN_VERSION:-1.4.0}` [divergente] (default literal) | correto ("tem BUN_VERSION")  | `ubuntu-bun:1.4.0` [divergente] — a variável **deixou** de ser fonte única |
 
 Por isso o gate renderiza o compose com o **próprio docker** (quem interpola em
 produção) em três fases, com ambiente **controlado** (um `BUN_VERSION` exportado
@@ -1007,7 +1091,7 @@ comparação que não houve seria pior que falhar. Sem o arquivo do host o estad
 reporta como não provado.
 
 **Prova por mutação** (arquivo real, restaurado byte-idêntico por sha256):
-`${BUN_VERSION:-1.4.0}` → exit 1 com "DEFAULT LITERAL"; `${BUN_VERSIO}` → exit 1
+`${BUN_VERSION:-1.4.0}` [divergente] → exit 1 com "DEFAULT LITERAL"; `${BUN_VERSIO}` → exit 1
 nomeando a variável; registry literal no label → exit 1 pelas duas metades
 (estática e dinâmica); token literal no compose → exit 1 (segredo versionado).
 Para a 7b, com o host sintético: `BUN_VERSION` diferente → exit 1 nomeando o
@@ -1148,11 +1232,11 @@ self-hosted (Gitea/Forgejo) passou a ser **dona do merge**, a pipeline que
 decide o merge ficou fora da cobertura de todos eles de uma vez. O resultado
 observado, sem um único guard reclamar:
 
-| Sintoma na forja                             | Guard que deveria pegar |
-| :------------------------------------------- | :---------------------- |
-| `BUN_VERSION: "1.4.0"` literal (2 workflows) | `check-bun-mirror`      |
-| `oven-sh/setup-bun@v2` em 6 call sites       | `check-no-setup-bun`    |
-| `check:ts-nocheck` ausente da pipeline       | _nenhum_                |
+| Sintoma na forja                                          | Guard que deveria pegar |
+| :-------------------------------------------------------- | :---------------------- |
+| `BUN_VERSION: "1.4.0"` [divergente] literal (2 workflows) | `check-bun-mirror`      |
+| `oven-sh/setup-bun@v2` em 6 call sites                    | `check-no-setup-bun`    |
+| `check:ts-nocheck` ausente da pipeline                    | _nenhum_                |
 
 Corrigir os 14 casos resolve o sintoma; este guard resolve a classe — inclusive
 para a próxima forja que nascer.

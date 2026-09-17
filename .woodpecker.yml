@@ -16,6 +16,14 @@
 #      (plugins do Woodpecker são imagens Docker lidas via `settings:`) — o
 #      equivalente é `appleboy/drone-ssh`.
 # O registry abaixo vem de secret (`image_registry`), não hardcoded.
+#
+# As imagens `oven/bun:<versão>` deste rascunho NÃO são um pin: são o valor do
+# dia em que ele foi escrito (09/2026), copiado do default do `ARG BUN_VERSION`
+# do Dockerfile — o mesmo valor que se espalhou por staging/hostinger/package.json
+# e que a auditoria de 09/2026 removeu (invariante 18 do check-bun-mirror). Se o
+# Woodpecker voltar a ser o caminho, a versão tem de ser DERIVADA da fonte única,
+# como no `.gitea/workflows/` (o arquivo segue fora da varredura do guard porque
+# está arquivado — não copie os literais daqui).
 # =============================================================================
 
 # ── Pipeline de CI (pull requests e push) ──────────────────────────────────

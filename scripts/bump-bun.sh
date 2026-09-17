@@ -12,7 +12,11 @@
 #   2. Atualizar os DOIS espelhos da versao (.actrc para o act local; e
 #      deploy/env.gitea.example para o runner da forja) — o guard estático só
 #      valida a EXISTÊNCIA da linha, não o valor; o job semanal actrc-sync
-#      avisa via ::warning:: se qualquer um dos dois divergir
+#      avisa via ::warning:: se qualquer um dos dois divergir. No MESMO passo,
+#      escreve os espelhos DERIVADOS: os defaults de `${BUN_VERSION:-…}` dos
+#      composes (2c) e o `packageManager` do package.json (2d, invariante 18c
+#      do check-bun-mirror) — sem isso o bump terminaria vermelho no guard que
+#      ele mesmo roda no fim
 #   3. Re-disparar os DOIS mirrors GHCR     (sync-bun-mirror.yml = binário
 #      scratch tier-3; sync-ubuntu-bun-mirror.yml = imagem runner tier-1) e
 #      aguardar conclusão via POLLING do gh run list + check de conclusion
@@ -270,7 +274,7 @@ fi
 # bump terminaria vermelho (ele roda o guard no fim) — o default é um espelho,
 # e espelho de bump se escreve no bump.
 #
-# Um `BUN_VERSION: "1.4.0"` (literal PURO, sem `${...}`) NÃO é alcançado por
+# Um `BUN_VERSION: "1.4.0"` [divergente] (literal PURO, sem `${...}`) NÃO é alcançado por
 # esta reescrita de propósito: ele não é espelho, é um segundo valor — o guard
 # o recusa e o conserto é à mão (trocar pela forma derivada).
 echo ""
@@ -294,6 +298,26 @@ for _f in "$REPO_ROOT"/docker-compose*.yml "$REPO_ROOT"/docker-compose*.yaml \
   echo "  ${_f#"$REPO_ROOT"/} → \${BUN_VERSION:-$NEW_VERSION}"
 done
 [ "$COMPOSE_ALVOS" = "0" ] && echo "  (nenhum compose com default de BUN_VERSION)"
+
+# ── 2d. packageManager do package.json (declaração do TOOLCHAIN) ──────────
+# A versão declarada aqui é o que alguém lê (e o que uma máquina com corepack/
+# mise instala) para saber qual Bun este repo usa — e NADA a consome no build,
+# então ela envelhecia sem sintoma. A invariante 18(c) do check-bun-mirror
+# exige o MESMO valor dos espelhos; sem esta escrita o bump terminaria vermelho
+# no próprio guard que ele roda no fim.
+echo ""
+echo "  ── packageManager do package.json (toolchain declarado) ──"
+PACKAGE_JSON_PATH="$REPO_ROOT/package.json"
+PACKAGE_MANAGER_LINE="  \"packageManager\": \"bun@$NEW_VERSION\","
+if [ ! -f "$PACKAGE_JSON_PATH" ]; then
+  echo "bump-bun: $PACKAGE_JSON_PATH ausente — sem ele não há declaração de toolchain" >&2
+  exit 2
+elif ! grep -qE '^[[:space:]]*"packageManager"[[:space:]]*:' "$PACKAGE_JSON_PATH"; then
+  echo "bump-bun: $PACKAGE_JSON_PATH não declara o campo 'packageManager' — adicione '$PACKAGE_MANAGER_LINE' (o guard exige o campo: é ele que diz o toolchain do repo)" >&2
+  exit 2
+else
+  update_mirror "$PACKAGE_JSON_PATH" '^[[:space:]]*"packageManager"[[:space:]]*:' "$PACKAGE_MANAGER_LINE"
+fi
 
 # ── Passo 3: re-dispatch dos mirrors GHCR ──────────────────────────────────
 echo ""
