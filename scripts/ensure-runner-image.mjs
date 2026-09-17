@@ -86,9 +86,9 @@ import { existsSync, readFileSync } from "node:fs"
 import { dirname, isAbsolute, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
+import { declaredImageValue } from "./registry-source.mjs"
+
 export const DEFAULT_ENV_FILE = "deploy/.env.gitea"
-export const DEFAULT_REGISTRY = "ghcr.io"
-export const DEFAULT_NAMESPACE = "severinno"
 export const RUNNER_IMAGE_REPO = "ubuntu-bun"
 export const SYNC_WORKFLOW = "sync-ubuntu-bun-mirror.yml"
 export const DOCKERFILE = "Dockerfile.ubuntu-bun"
@@ -155,18 +155,50 @@ export function parseEnvFile(content) {
 }
 
 /**
+ * Os DEFAULTS do compose, lidos do VALOR DECLARADO — não de um literal.
+ *
+ * `resolveImageRef` resolve como o compose resolve: o env do arquivo primeiro, e
+ * o default depois. O default NÃO é uma constante escrita aqui: é o valor que os
+ * arquivos comitados declaram (`.actrc`, `deploy/env.gitea.example`,
+ * `.env.production.example`), pela MESMA leitura que o `registry-source.mjs`
+ * expõe aos outros scripts. Um literal de reserva sobreviveria à migração de
+ * registry — o pull continuaria vindo do host velho, e nada ficaria vermelho.
+ *
+ * @param {string} [root]
+ * @returns {{IMAGE_REGISTRY: string|null, IMAGE_NAMESPACE: string|null}}
+ */
+export function defaultImageValues(root = REPO_ROOT) {
+  return {
+    IMAGE_REGISTRY: declaredImageValue(root, "IMAGE_REGISTRY")?.value ?? null,
+    IMAGE_NAMESPACE: declaredImageValue(root, "IMAGE_NAMESPACE")?.value ?? null,
+  }
+}
+
+/**
  * Monta a referência da imagem a partir do env, com os MESMOS defaults do
- * compose (`${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-severinno}/ubuntu-bun`).
+ * compose (`${IMAGE_REGISTRY:-<declarado>}/${IMAGE_NAMESPACE:-<declarado>}/ubuntu-bun`).
  * `BUN_VERSION` NÃO tem default: sem ele o compose montaria uma tag vazia —
  * falha explícita é melhor que uma imagem implícita.
  *
  * @param {Record<string, string>} values
+ * @param {{root?: string}} [opts]
  * @returns {{ref: string, registry: string, namespace: string, version: string}|{error: string}}
  */
-export function resolveImageRef(values) {
-  const registry = (values.IMAGE_REGISTRY || "").trim() || DEFAULT_REGISTRY
-  const namespace = (values.IMAGE_NAMESPACE || "").trim() || DEFAULT_NAMESPACE
+export function resolveImageRef(values, { root = REPO_ROOT } = {}) {
+  const declared = defaultImageValues(root)
+  const registry = (values.IMAGE_REGISTRY || "").trim() || declared.IMAGE_REGISTRY
+  const namespace = (values.IMAGE_NAMESPACE || "").trim() || declared.IMAGE_NAMESPACE
   const version = (values.BUN_VERSION || "").trim()
+  const missingImage = []
+  if (!registry) missingImage.push("IMAGE_REGISTRY")
+  if (!namespace) missingImage.push("IMAGE_NAMESPACE")
+  if (missingImage.length > 0) {
+    return {
+      error:
+        `${missingImage.join(" e ")} ausente(s) no env E nenhum arquivo comitado declara o valor — ` +
+        "o compose usa o default embutido, que não existe aqui: declare a variável no env (ou no template comitado) antes de resolver a imagem.",
+    }
+  }
   if (version === "") {
     return {
       error:

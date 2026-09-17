@@ -58,6 +58,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { extractFastPathEvidence, extractTierEngagement } from "./check-tier1-fastpath.mjs"
+import { requireImageSource } from "./registry-source.mjs"
 import { extractCacheRestoreEvidence } from "./check-tier2-cache-restore.mjs"
 import { GITHUB_WORKFLOW_DIR } from "./forge-workflows.mjs"
 
@@ -355,9 +356,16 @@ function main() {
   }).stdout.trim()
   const owner = deriveGhcrOwner(remoteUrl, process.env.BENCH_OWNER || "")
   // Registry da imagem custom — FONTE ÚNICA (env IMAGE_REGISTRY, mesmo
-  // contrato dos workflows e do .env.production); default = comportamento
-  // historico (ghcr.io). Ver scripts/check-registry-source.mjs.
-  const registry = process.env.IMAGE_REGISTRY || "ghcr.io"
+  // contrato dos workflows e do .env.production). O valor vem do RESOLVEDOR
+  // (`registry-source.mjs`): env e, na falta dele, o espelho DECLARADO — nunca
+  // um literal de reserva, que sobreviveria à troca de registry em silêncio.
+  let registry
+  try {
+    registry = requireImageSource({ root: REPO_ROOT }).registry
+  } catch (e) {
+    console.error(`❌ bench-setup-bun: ${e.message}`)
+    process.exit(2)
+  }
   const customTag = args.customTag || `${registry}/${owner}/ubuntu-bun:${bunVersion}`
   const imageTags = [
     { id: "default", tag: IMAGE_DEFAULT, label: `act + ${IMAGE_DEFAULT}` },

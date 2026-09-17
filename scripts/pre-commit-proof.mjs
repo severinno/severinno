@@ -99,6 +99,11 @@ export const GUARD_CLOSURE = [
   // exatamente o que o teste de completude existe para pegar.
   "check-bun-mirror.mjs",
   "bun-version.mjs",
+  // E o RESOLVEDOR do registry/namespace entrou pelo `ensure-runner-image` (que
+  // deixou de cravar o literal de reserva e passa a ler o valor DECLARADO por
+  // ele): é a mesma régua do teste de completude — uma referência nova aparece
+  // nomeada, em vez de virar um controle verde por acidente.
+  "registry-source.mjs",
 ]
 
 export const WORKFLOW = `${GITHUB_WORKFLOW_DIR}/ci.yml`

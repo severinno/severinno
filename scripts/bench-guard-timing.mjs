@@ -53,6 +53,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
 import { requireBunVersion } from "./bun-version.mjs"
+import { requireImageSource } from "./registry-source.mjs"
 import { CORE_INVARIANTS, canonicalCommandOf, runCommands } from "./check-forge-parity.mjs"
 import { existingWorkflowDirs, workflowFileNames } from "./forge-workflows.mjs"
 
@@ -1021,8 +1022,20 @@ function runBenchmark({
     console.error(`❌ bench-guard-timing: ${e.message}`)
     process.exit(2)
   }
-  const imageRegistry = process.env.IMAGE_REGISTRY || "ghcr.io"
-  const imageNamespace = process.env.IMAGE_NAMESPACE || "severinno"
+  // O registry/namespace que o doctor recebe vêm do RESOLVEDOR (`registry-source
+  // .mjs`): env e, na falta dele, o espelho DECLARADO. O `|| "ghcr.io"` que
+  // vivia aqui era o default literal que a varredura de espelhos caça — ele
+  // sobrevive à troca de registry e o doctor passaria a ser medido contra uma
+  // imagem que o repositório não declara.
+  let image
+  try {
+    image = requireImageSource({ root: REPO_ROOT })
+  } catch (e) {
+    console.error(`❌ bench-guard-timing: ${e.message}`)
+    process.exit(2)
+  }
+  const imageRegistry = image.registry
+  const imageNamespace = image.namespace
 
   const doctorEnv = {
     ...process.env,
