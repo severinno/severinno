@@ -1119,9 +1119,10 @@ catálogo de custos e convida a somar, mas o PR não paga a soma: ele paga o
 `ci/merge-latency.json` (duração por job com fonte e data, confrontada contra o
 benchmark versionado). Medido em 16/09/2026:
 
-| Forja                                     | Soma dos gates |         Caminho crítico | **Latência de merge** |        O que a concorrência economiza |
-| :---------------------------------------- | -------------: | ----------------------: | --------------------: | ------------------------------------: |
-| Gitea (dona do merge, **1** `act_runner`) |         470.0s | 377.5s (`test → build`) |            **470.0s** | 0s — com 1 runner a pipeline é SERIAL |     | GitHub (espelho, 19 de 36 jobs sem medição) | —   | —   | indeterminada | —   |
+| Forja                                      | Soma dos gates |               Caminho crítico |                **Latência de merge** |        O que a concorrência economiza |
+| :----------------------------------------- | -------------: | ----------------------------: | -----------------------------------: | ------------------------------------: |
+| Gitea (dona do merge, **1** `act_runner`)  |         470.0s |       377.5s (`test → build`) |                           **470.0s** | 0s — com 1 runner a pipeline é SERIAL |
+| GitHub (espelho, **1** runner self-hosted) |     ≤ 11045.6s | 7200.0s (`seed-guards`, teto) | ≤ **11045.6s** (545.6s sem os TETOs) |             0s — SERIAL, como a forja |
 
 Ou seja: o PR da forja espera **7m50s**, e o **teto** do ganho com runners
 de sobra é **92.5s** (470.0 − 377.5) — o `build` (246s) e o `test` (131.5s)
@@ -1129,11 +1130,21 @@ dominam a cadeia, e todo o resto (lint, guards, typecheck, bring-up-proof) roda
 **em paralelo a eles** quando há runner livre. Com 1 runner nada disso importa: a
 latência É a soma. É essa diferença que a tabela de custos não dizia.
 
+O espelho tem os 36 jobs do PR cobertos desde 17/09/2026 — 13 por **medição**
+neste repositório (com os comandos na fonte e a data), 2 por **PISO** (o passo
+de fora NOMEADO: `security-headers` faz requisições ao alvo do CI, que é produção;
+`benchmark-gist` depende do módulo de geo, que vive em outro branch) e 4 por
+**TETO** (`tier1-fastpath-guard`, `mutation-coord-timing-act-guard`,
+`seed-guards` e `mutation-coord-timing-guard`, cujo custo é dominado por `act`,
+PostGIS e matrix). O TETO é o `timeout-minutes` que a própria pipeline escreve no
+job: um LIMITE SUPERIOR, não uma medição — o relatório imprime os quatro
+nomeados, publica a **soma sem os tetos** ao lado e o veredito diz que a latência
+do espelho é um limite.
+
 O gate `check:merge-latency` (mesmo comando nas duas forjas) fecha a conta do
-dono do merge: um job do PR **sem duração** sai NOMEADO em vez de a latência
-publicada encolher em silêncio. O espelho pode declarar jobs sem medição (é um
-fato, não uma promessa) e o relatório nomeia cada um — ver `docs/GUARDS.md`
-§10.1 para o que o modelo NÃO prova.
+dono do merge: um job do PR **sem duração** (e sem `timeout-minutes` que o
+cubra) sai NOMEADO em vez de a latência publicada encolher em silêncio — ver
+`docs/GUARDS.md` §10.1 para o que o modelo NÃO prova.
 
 > **Por que o pre-push não repete typecheck/lint-staged?** O pre-commit já os
 > rodou em cada commit da branch — reexecutá-los no push seria redundante. O

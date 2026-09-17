@@ -6,7 +6,7 @@
 #   ./scripts/test-mutation-merge-latency.sh
 #
 # Exit codes:
-#   0 — as TRÊS mutações DETECTADAS (o gate cega e/ou a suíte fica vermelha)
+#   0 — as QUATRO mutações DETECTADAS (o gate cega e/ou a suíte fica vermelha)
 #   1 — gate/suíte CEGO (a mutação não foi vista) / mutação não-cirúrgica / infra
 #
 # POR QUE: o gate `--check` é o que impede a latência de merge PUBLICADA de
@@ -29,6 +29,10 @@
 #   M3 — o PAPEL do dono do merge: com o papel trocado, o veredito passa a
 #        julgar a forja ERRADA (o espelho declara jobs sem medição de
 #        propósito) e o gate trava, ou libera, quem não devia.
+#   M4 — a RÉGUA do `if:` (a chave filha DIRETA do job): lendo qualquer `if:`
+#        do corpo, o `if:` de um PASSO vira o do job — um job incondicional
+#        passa a parecer condicional e o veredito fica indeterminado por causa
+#        de um passo. Witness: o RELATÓRIO do espelho (execução) + a suíte.
 #
 # CADA mutação é CIRÚRGICA: o injetor recusa alvo ausente, e o arquivo mutado
 # tem de continuar com sintaxe válida — aplicar no lugar errado mediria outra
@@ -91,6 +95,9 @@ jobs:
       - run: bun run algo-que-ninguem-mede
 YAML
 
+  # O `espelho` tem um `if:` — mas no PASSO (`steps.…`), não no job: é o par
+  # exato que a mutação M4 explora, e o controle exige que ele NÃO seja lido
+  # como se fosse do job (o job roda em todo PR).
   cat >"$FIXTURE/.github/workflows/pr-check.yml" <<'YAML'
 name: pr-check
 on:
@@ -99,6 +106,7 @@ jobs:
   espelho:
     steps:
       - run: node scripts/check-bun-mirror.mjs
+        if: steps.changes.outputs.changed == 'true'
 YAML
 
   # O benchmark não conhece nenhum dos comandos: nada é derivado.
@@ -128,6 +136,16 @@ JSON
 run_gate() {
   local code=0
   node "$GUARD" --check --root "$FIXTURE" >"$TMP_DIR/gate.out" 2>&1 || code=$?
+  return "$code"
+}
+
+# run_mirror: o RELATÓRIO do espelho por execução (`--forge github`). É a
+# testemunha de execução da régua do `if:`: o job `espelho` tem um `if:` de
+# PASSO, e o veredito do espelho só fica PRONTA se esse `if:` NÃO for lido como
+# o do job.
+run_mirror() {
+  local code=0
+  node "$GUARD" --forge github --root "$FIXTURE" >"$TMP_DIR/mirror.out" 2>&1 || code=$?
   return "$code"
 }
 
@@ -194,6 +212,23 @@ if ! run_suite; then
   exit 1
 fi
 pass "Controle OK — suíte unitária verde com o guard intacto"
+
+# O controle do ESPELHO: o `if:` de PASSO do job `espelho` não pode fazer o job
+# parecer condicional. Sem esta asserção, a mutação M4 não teria testemunha de
+# execução (o gate do dono já sai 2 por outro job, então ele não distingue).
+MIRROR_EXIT=0
+run_mirror || MIRROR_EXIT=$?
+if [ "$MIRROR_EXIT" -ne 0 ]; then
+  fail "CONTROLE FALHOU: o espelho saiu $MIRROR_EXIT — o \`if:\` de um PASSO foi lido como o do job."
+  echo "----- saída do relatório -----"
+  cat "$TMP_DIR/mirror.out"
+  exit 1
+fi
+if grep -q "não dá para classificar" "$TMP_DIR/mirror.out"; then
+  fail "CONTROLE FALHOU: o espelho acusou \`if:\` não classificável num job sem \`if:\` de job."
+  exit 1
+fi
+pass "Controle OK — o \`if:\` do PASSO não é lido como o \`if:\` do job (espelho PRONTA)"
 
 # ── MUTAÇÃO M1 — a DETECÇÃO da cobertura ──────────────────────────────────
 # `missing.push(job.name)` é o que transforma "não medido" em veredito. Sem
@@ -272,6 +307,40 @@ fi
 pass "M3 DETECTADA pelo GATE: com o dono trocado, o gate deixou de recusar quem mergeia"
 
 cp "$BACKUP" "$GUARD"
+pass "Guard restaurado — base íntegra para a mutação M4"
+
+# ── MUTAÇÃO M4 — a RÉGUA do `if:` (chave filha DIRETA) ────────────────────
+# Lendo qualquer `if:` do corpo do job (a régua antiga), o `if:` de um PASSO
+# vira o do job: `espelho` passa a "poder ou não rodar" e o veredito fica
+# INDETERMINADO por causa de um passo. A testemunha de execução é o RELATÓRIO do
+# espelho (o gate do dono não distingue: ele já sai 2 por outro job).
+header "MUTAÇÃO M4 — a régua do \`if:\` (filho DIRETO do job)"
+info "Fazendo o leitor aceitar \`if:\` de QUALQUER profundidade..."
+mutar '  const idx = yamlChildKey(lines, headerIdx, jobIndent, key)' \
+  '  const idx = lines.findIndex((l, k) => k > headerIdx && /^\s*if:/.test(l)) // MUTACAO M4: qualquer profundidade'
+pass "Mutação M4 aplicada (sintaxe válida)"
+
+MIRROR_EXIT=0
+run_mirror || MIRROR_EXIT=$?
+if [ "$MIRROR_EXIT" -eq 0 ]; then
+  fail "M4 NÃO DETECTADA: o espelho ainda ficou PRONTA com o \`if:\` do PASSO lido como o do job."
+  exit 1
+fi
+if ! grep -q "não dá para classificar" "$TMP_DIR/mirror.out"; then
+  fail "M4 DETECTADA parcialmente: o espelho recusou, mas não NOMEOU o \`if:\` que não entende."
+  exit 1
+fi
+pass "M4 DETECTADA pelo RELATÓRIO do espelho (exit $MIRROR_EXIT, com o \`if:\` nomeado)"
+
+SUITE_EXIT=0
+run_suite || SUITE_EXIT=$?
+if [ "$SUITE_EXIT" -eq 0 ]; then
+  fail "M4 NÃO DETECTADA pela suíte: o \`if:\` de passo como o do job passou em silêncio."
+  exit 1
+fi
+pass "M4 DETECTADA também pela suíte unitária (exit $SUITE_EXIT)"
+
+cp "$BACKUP" "$GUARD"
 pass "Guard RESTAURADO (checksum conferido abaixo)"
 
 # ── CONTROLE FINAL — a árvore voltou ao comportamento original ────────────
@@ -291,10 +360,11 @@ pass "Controle final OK — o guard restaurado recusa de novo (exit 2)"
 # ── Veredito ──────────────────────────────────────────────────────────────
 echo ""
 echo "  ═════════════════════════════════════════════════════════════════"
-echo -e "   ${GREEN}✅ MUTATION TEST PASSOU${NC} — as TRÊS metades são LOAD-BEARING:"
+echo -e "   ${GREEN}✅ MUTATION TEST PASSOU${NC} — as QUATRO metades são LOAD-BEARING:"
 echo "      • a DETECÇÃO da cobertura (missing) → mutá-la cega o gate"
 echo "      • o EXIT CODE do --check → fixá-lo em 0 desliga o bloqueio do CI"
 echo "      • o PAPEL do dono do merge → trocá-lo julga a forja errada"
+echo "      • a RÉGUA do \`if:\` (filho direto) → ler o de um PASSO indetermina à toa"
 echo "      e cada mutação é CIRÚRGICA: restaurada entre as medições, com o"
 echo "      gate mordendo de novo no controle final."
 echo "  ═════════════════════════════════════════════════════════════════"
