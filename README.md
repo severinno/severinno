@@ -881,11 +881,13 @@ falha e o commit segue. Custa ≈**0.03s**
 no caminho comum (nada de corpo nem script staged: um `git diff --cached` e mais
 nada), o que o põe no orçamento de um hook que roda a CADA commit sem duplicar a
 varredura do CI. Custo medido neste host (Linux,
-09/2026, mediana de 3 runs warm): o guard ≈ **2.11s** (2.07–2.12) — ele passou a
-julgar TAMBÉM os **124 arquivos de shell** (121 `*.sh` e os 3 hooks do `.husky/`),
-um `bash -n` por arquivo — e a prova de mutação ≈ **3.4s** com o gate sozinho, ou
-≈ **21.3s** onde o `vitest` está instalado (as duas rodadas da suíte unitária do
-M8 são ~17s disso): o caminho do gate é node-puro (um `bash -n` por cenário, sem
+09/2026, mediana de 3 runs warm): o guard ≈ **2.46s** (2.46–2.48) — ele julga os
+**124 arquivos de shell** (121 `*.sh` e os 3 hooks do `.husky/`) e os **33 textos
+de shell EMBUTIDO** (o `RUN` dos Dockerfiles e o payload dos `sh -c`), um
+`bash -n` por texto — e a prova de mutação ≈ **30.8s** onde o `vitest` está
+instalado (as duas rodadas da suíte unitária do M8 são ~24.9s disso, o que põe o
+gate sozinho em ≈ **5.9s**: aritmética sobre duas medições deste host, não uma
+nova medição): o caminho do gate é node-puro (um `bash -n` por cenário, sem
 docker) e a suíte só roda onde há dependências. ⚠️ Não existe um job
 `readme-toc-mutation-guard` ISOLADO — o cenário de TOC roda dentro da matriz
 aninhada `test-mutation-readme-guards.sh` (anchors + toc + images, 1 sub-test do
@@ -1120,15 +1122,15 @@ catálogo de custos e convida a somar, mas o PR não paga a soma: ele paga o
 `bun run bench:merge-latency` mede as duas contas a partir da pipeline real
 (`.gitea/workflows/ci.yml`, `.github/workflows/pr-check.yml`) + o modelo
 `ci/merge-latency.json` (duração por job com fonte e data, confrontada contra o
-benchmark versionado). Medido em 16/09/2026:
+benchmark versionado). Medido em 17/09/2026:
 
 | Forja                                      | Soma dos gates |               Caminho crítico |                **Latência de merge** |        O que a concorrência economiza |
 | :----------------------------------------- | -------------: | ----------------------------: | -----------------------------------: | ------------------------------------: |
-| Gitea (dona do merge, **1** `act_runner`)  |         470.0s |       377.5s (`test → build`) |                           **470.0s** | 0s — com 1 runner a pipeline é SERIAL |
-| GitHub (espelho, **1** runner self-hosted) |     ≤ 11045.6s | 7200.0s (`seed-guards`, teto) | ≤ **11045.6s** (545.6s sem os TETOs) |             0s — SERIAL, como a forja |
+| Gitea (dona do merge, **1** `act_runner`)  |         472.5s |       377.5s (`test → build`) |                           **472.5s** | 0s — com 1 runner a pipeline é SERIAL |
+| GitHub (espelho, **1** runner self-hosted) |     ≤ 11053.9s | 7200.0s (`seed-guards`, teto) | ≤ **11053.9s** (553.9s sem os TETOs) |             0s — SERIAL, como a forja |
 
-Ou seja: o PR da forja espera **7m50s**, e o **teto** do ganho com runners
-de sobra é **92.5s** (470.0 − 377.5) — o `build` (246s) e o `test` (131.5s)
+Ou seja: o PR da forja espera **7m52s**, e o **teto** do ganho com runners
+de sobra é **95.0s** (472.5 − 377.5) — o `build` (246s) e o `test` (131.5s)
 dominam a cadeia, e todo o resto (lint, guards, typecheck, bring-up-proof) roda
 **em paralelo a eles** quando há runner livre. Com 1 runner nada disso importa: a
 latência É a soma. É essa diferença que a tabela de custos não dizia.
@@ -1143,6 +1145,33 @@ PostGIS e matrix). O TETO é o `timeout-minutes` que a própria pipeline escreve
 job: um LIMITE SUPERIOR, não uma medição — o relatório imprime os quatro
 nomeados, publica a **soma sem os tetos** ao lado e o veredito diz que a latência
 do espelho é um limite.
+
+O gate de sintaxe julga três fontes: os **482 corpos** `run:` das duas forjas, os
+**124 scripts de shell** versionados e — desde a terceira fonte — **33 textos de
+shell EMBUTIDO**: as 14 instruções `RUN` dos Dockerfiles (o shell do BUILD, com a
+continuação `\` juntada antes do parser) e os 19 payloads de `sh -c` de scripts,
+corpos e composes (que para o `bash -n` do arquivo que os contém são uma STRING).
+O escopo cresceu de novo e o custo acompanhou **apenas em parte**: o guard foi
+2280ms → **2464ms** (os composes e os Dockerfiles entram na leitura, e o `bash -n`
+deles é marginal), enquanto o mutation test — dominante no job, 93% — subiu de 8
+para **13 metades** (22850ms → **30817ms**: as novas rodam o gate contra fixtures
+próprias, uma por mecanismo). No job do espelho isso é 25,1s → **33,3s**; no
+`guards` da forja a soma declarada foi de 19.2s → **19.4s** (ainda PISO:
+`check:pipefail-sigpipe`, `install` e checkout seguem fora). O caminho crítico de
+NENHUMA das duas forjas muda — o que muda é o total serial, em 0,2s na forja e
+8,2s no espelho.
+
+Uma premissa por FONTE, e é ela que evita o falso positivo: o texto de um `RUN` é
+a instrução JUNTADA (a continuação `\` faz parte, o comentário dela é descartado
+como o docker faz, e as flags `--mount=` não chegam ao shell); um payload de
+workflow leva `${{ ... }}` mascarado; um de compose leva o `$$` **desescapado**
+(medido: sem isso o gate acusava `RESPONSE=$$(curl ...)` em
+`docker-compose.prod.yml` — para o bash `$$` é o PID, e o parêntese ficaria solto);
+e num script o texto vai cru. Um compose é lido por ESTRUTURA (`js-yaml`), não por
+texto: a lista de um `entrypoint:` entrega o CORPO do script, não a marca de lista
+do YAML. O que o gate NÃO julga, ele nomeia: payload que só existe em runtime
+(`bash -c "$cmd"`), forma EXEC sem shell, `-c` de `python3` e corpo de heredoc
+(dado, não programa).
 
 O gate `check:merge-latency` (mesmo comando nas duas forjas) fecha a conta do
 dono do merge: um job do PR **sem duração** (e sem `timeout-minutes` que o

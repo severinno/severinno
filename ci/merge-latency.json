@@ -25,10 +25,10 @@
   "jobs": {
     "gitea": {
       "guards": {
-        "ms": 16900,
-        "provenance": "derivado",
-        "source": "docs/benchmarks/guard-timing-latest.json summary.totalMs (guards + doctor --ci) — PISO: os guards mais novos (pipefail-sigpipe, workflow-run-syntax) ainda NÃO estão no benchmark, e o job também roda install/checkout",
-        "date": "2026-09-16"
+        "ms": 19364,
+        "provenance": "declarado (PISO: passo não medido)",
+        "source": "docs/benchmarks/guard-timing-latest.json summary.totalMs (16900ms = guards + doctor --ci, medido em 16/09/2026) + o gate de sintaxe, MEDIDO em 17/09/2026 (2464ms, agora com o shell EMBUTIDO na varredura: era 2280ms antes da terceira fonte): o benchmark versionado NÃO cobre `check:workflow-run-syntax` nem `check:pipefail-sigpipe`. O que segue FORA da soma — e é por isso que este é um PISO, não um ponto medido — é o `check:pipefail-sigpipe`, o `bun install --frozen-lockfile` e o checkout.",
+        "date": "2026-09-17"
       },
       "build": {
         "ms": 246000,
@@ -75,9 +75,9 @@
         "date": "2026-09-17"
       },
       "workflow-run-syntax": {
-        "ms": 25016,
+        "ms": 33300,
         "provenance": "declarado (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `node scripts/check-workflow-run-syntax.mjs` 2274ms + `bash scripts/test-mutation-workflow-run-syntax.sh` 22742ms — o mutation test é o custo dominante",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17, mediana de 3 runs: `node scripts/check-workflow-run-syntax.mjs` 2464ms (era 2280ms: a TERCEIRA fonte, o shell EMBUTIDO, lê mais 50 arquivos — os Dockerfiles, os composes e os textos que carregam `sh -c`) + `bash scripts/test-mutation-workflow-run-syntax.sh` 30817ms (era 22850ms: as metades subiram de 8 para 13, e as novas rodam o gate contra fixtures próprias). O mutation test é o custo dominante (93% do job): o guard julga 482 corpos, 124 arquivos de shell e 33 textos de shell embutido, e o que pesa nele é o PROGRAMA A JULGAR, não o número de fontes.",
         "date": "2026-09-17"
       },
       "mutation-jobs-staged-guard": {
