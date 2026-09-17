@@ -62,6 +62,8 @@ import {
   declaredImageValues,
   findViolations,
   forgeVariableRefs,
+  imageDefaultFixtureRule,
+  sweepImageDefaultValues,
   imageRefsIn,
   isCommentLine,
   isComposeFile,
@@ -2361,5 +2363,314 @@ describe("--require-image (registry de TESTE, HTTP de verdade)", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+// ── invariante 9: a VARREDURA (todo compose, shell e script JS) ─────────────
+//
+// A comparação por PAR sabe QUAL template é a fonte de cada stack declarada; a
+// varredura cobre o que NÃO tem par — um compose novo, um shell, um script JS,
+// o fallback de um workflow. Sem ela, uma stack que ninguém cadastrou entra com
+// o default velho e nada fica vermelho (a imagem velha continua existindo no
+// registry velho: o pull funciona, só puxa do lugar errado).
+
+describe("invariante 9 — a VARREDURA dos defaults embutidos", () => {
+  /** Árvore sintética com os arquivos que a varredura lê. */
+  const sweepTree = (files: Record<string, string>) => {
+    const dir = mkdtempSync(join(tmpdir(), "registry-sweep-"))
+    for (const [rel, content] of Object.entries(files)) {
+      const full = join(dir, rel)
+      mkdirSync(join(full, ".."), { recursive: true })
+      writeFileSync(full, content, "utf8")
+    }
+    return dir
+  }
+
+  /** Os dois valores declarados, no template que a leitura do espelho encontra. */
+  const DECLARADO = {
+    [APP_ENV_TEMPLATE]: "IMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\n",
+  }
+
+  /** Um compose de stack NÃO declarada (não tem par) — o caso que vivia fora. */
+  const COMPOSE_SEM_PAR = "services:\n  x:\n    image: ${IMAGE_REGISTRY:-ghcr.io}/x/y:latest\n"
+
+  const withTree = <T>(files: Record<string, string>, fn: (dir: string) => T): T => {
+    const dir = sweepTree(files)
+    try {
+      return fn(dir)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  it("um compose SEM PAR entra na varredura — e o default divergente acusa", () => {
+    withTree(
+      {
+        ...DECLARADO,
+        "docker-compose.hostinger.yml": COMPOSE_SEM_PAR.replace("ghcr.io", "registry.velho"),
+      },
+      (dir) => {
+        const r = sweepImageDefaultValues(dir)
+        expect(r.violations).toHaveLength(1)
+        expect(r.violations[0]).toContain("docker-compose.hostinger.yml")
+        expect(r.violations[0]).toContain("registry.velho")
+        expect(r.violations[0]).toContain("ghcr.io")
+        expect(r.files).toContain("docker-compose.hostinger.yml")
+      },
+    )
+  })
+
+  it("o mesmo compose com o valor DECLARADO não acusa (e conta como comparado)", () => {
+    withTree({ ...DECLARADO, "docker-compose.hostinger.yml": COMPOSE_SEM_PAR }, (dir) => {
+      const r = sweepImageDefaultValues(dir)
+      expect(r.violations).toEqual([])
+      expect(r.compared).toBeGreaterThan(0)
+    })
+  })
+
+  it("os dois pares DECLARADOS não são relatados duas vezes (é a comparação por par que os julga)", () => {
+    withTree(
+      {
+        ...DECLARADO,
+        [APP_COMPOSE]: COMPOSE_SEM_PAR.replace("ghcr.io", "registry.velho"),
+      },
+      (dir) => {
+        // A varredura não acusa: quem acusa este arquivo é o guard do par (que
+        // sabe qual template é a fonte dele) — o mesmo defeito em duas listas
+        // faria o relatório mentir sobre quantos arquivos estão errados.
+        expect(sweepImageDefaultValues(dir).violations).toEqual([])
+        expect(
+          checkComposeImageDefaults(dir, { compose: APP_COMPOSE, template: APP_ENV_TEMPLATE }),
+        ).toHaveLength(1)
+      },
+    )
+  })
+
+  it("um SCRIPT SHELL entra pela mesma régua de valor", () => {
+    withTree(
+      { ...DECLARADO, "deploy/pull.sh": "docker pull ${IMAGE_REGISTRY:-ghcr.io}/x/y:1\n" },
+      (dir) => {
+        expect(sweepImageDefaultValues(dir).violations).toEqual([])
+      },
+    )
+    withTree(
+      { ...DECLARADO, "deploy/pull.sh": "docker pull ${IMAGE_REGISTRY:-registry.velho}/x/y:1\n" },
+      (dir) => {
+        const r = sweepImageDefaultValues(dir)
+        expect(r.violations).toHaveLength(1)
+        expect(r.violations[0]).toContain("deploy/pull.sh")
+      },
+    )
+  })
+
+  it("um SCRIPT JS com default literal é violação MESMO com o valor certo (há resolvedor)", () => {
+    withTree(
+      {
+        ...DECLARADO,
+        "scripts/x.mjs": 'const r = process.env.IMAGE_REGISTRY || "ghcr.io"\n',
+      },
+      (dir) => {
+        const r = sweepImageDefaultValues(dir)
+        expect(r.violations).toHaveLength(1)
+        expect(r.violations[0]).toContain("use o RESOLVEDOR")
+        expect(r.violations[0]).toContain("registry-source.mjs")
+        // O valor está CERTO (confere com o declarado): a violação é a existência
+        // do literal — ele é o que envelhece no dia da próxima migração.
+        expect(r.violations[0]).not.toContain("já diverge")
+      },
+    )
+  })
+
+  it("o mesmo literal divergente diz as duas coisas (a forma E o valor)", () => {
+    withTree(
+      {
+        ...DECLARADO,
+        "scripts/x.mjs": 'const r = process.env.IMAGE_REGISTRY || "registry.velho"\n',
+      },
+      (dir) => {
+        expect(sweepImageDefaultValues(dir).violations[0]).toContain("já diverge")
+      },
+    )
+  })
+
+  it("COMENTÁRIO em script JS não é código: nem `//`, nem o `*` de doc", () => {
+    withTree(
+      {
+        ...DECLARADO,
+        "scripts/x.mjs": [
+          '// o default antigo era process.env.IMAGE_REGISTRY || "registry.velho"',
+          "/*",
+          " * e o compose usava ${IMAGE_REGISTRY:-registry.velho}",
+          " */",
+          'const ok = 1 // process.env.IMAGE_REGISTRY || "outro"',
+        ].join("\n"),
+      },
+      (dir) => {
+        const r = sweepImageDefaultValues(dir)
+        expect(r.violations).toEqual([])
+        expect(r.prose).toBe(0) // prosa não é default NEM prosa contada: é comentário
+      },
+    )
+  })
+
+  it("`${NOME:-x}` dentro de MENSAGEM de script JS é PROSA — contada, não comparada", () => {
+    withTree(
+      {
+        ...DECLARADO,
+        "scripts/x.mjs":
+          "console.error(`declare IMAGE_REGISTRY (ex.: ${IMAGE_REGISTRY:-ghcr.io})`)\n",
+      },
+      (dir) => {
+        const r = sweepImageDefaultValues(dir)
+        // Não é default (não há valor rodando para envelhecer) e também não é
+        // silêncio: o relatório diz quantas ocorrências ficaram fora.
+        expect(r.violations).toEqual([])
+        expect(r.prose).toBe(1)
+        expect(r.compared).toBe(0)
+      },
+    )
+  })
+
+  it("uma URL `//` numa string NÃO engole o código que vem depois", () => {
+    // O falso NEGATIVO é a classe proibida: cortar a linha no `//` de uma URL
+    // esconderia o default que vive no resto dela.
+    withTree(
+      {
+        ...DECLARADO,
+        "scripts/x.mjs":
+          'const u = "https://exemplo/x" + (process.env.IMAGE_REGISTRY || "registry.velho")\n',
+      },
+      (dir) => {
+        const r = sweepImageDefaultValues(dir)
+        expect(r.violations).toHaveLength(1)
+        expect(r.violations[0]).toContain("registry.velho")
+      },
+    )
+  })
+
+  it("literal VAZIO não é default (não há valor para envelhecer)", () => {
+    withTree(
+      {
+        ...DECLARADO,
+        "scripts/x.mjs": 'const r = process.env.IMAGE_REGISTRY || ""\n',
+        "deploy/y.sh": "docker pull ${IMAGE_REGISTRY:-}/x:1\n",
+      },
+      (dir) => {
+        const r = sweepImageDefaultValues(dir)
+        expect(r.violations).toEqual([])
+        expect(r.compared).toBe(0)
+      },
+    )
+  })
+
+  it("sem espelho declarando a variável o default é INDETERMINADO (nunca um ✅ por omissão)", () => {
+    withTree({ "docker-compose.hostinger.yml": COMPOSE_SEM_PAR }, (dir) => {
+      const r = sweepImageDefaultValues(dir)
+      expect(r.violations).toEqual([])
+      expect(r.indeterminate).toHaveLength(1)
+      expect(r.indeterminate[0]).toContain("não há contra o que comparar")
+      expect(r.indeterminate[0]).toContain(".env.production.example")
+    })
+  })
+
+  it("o fallback LITERAL de workflow é comparado por valor; o DINÂMICO é contado, não julgado", () => {
+    const workflow = (expr: string) => "jobs:\n  x:\n    steps:\n      - run: echo " + expr + "\n"
+    withTree(
+      {
+        ...DECLARADO,
+        ".gitea/workflows/ci.yml": workflow("${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}"),
+      },
+      (dir) => {
+        expect(sweepImageDefaultValues(dir).violations).toEqual([])
+      },
+    )
+    withTree(
+      {
+        ...DECLARADO,
+        ".gitea/workflows/ci.yml": workflow("${{ vars.IMAGE_REGISTRY || 'registry.velho' }}"),
+      },
+      (dir) => {
+        const r = sweepImageDefaultValues(dir)
+        expect(r.violations).toHaveLength(1)
+        expect(r.violations[0]).toContain("registry.velho")
+      },
+    )
+    withTree(
+      {
+        ...DECLARADO,
+        ".gitea/workflows/ci.yml": workflow(
+          "${{ vars.IMAGE_REGISTRY || github.repository_owner }}",
+        ),
+      },
+      (dir) => {
+        const r = sweepImageDefaultValues(dir)
+        // Não é afirmação de valor: é CONTADO como fora da comparação.
+        expect(r.violations).toEqual([])
+        expect(r.dynamic).toBe(1)
+      },
+    )
+  })
+
+  it("a forma de default vale por FAMÍLIA: o texto de outra família é prosa, não valor", () => {
+    // As quatro famílias, cada uma com o SEU defeito (a mesma divergência), e
+    // depois a versão CRUZADA: o texto de uma família dentro do arquivo de
+    // outra. Cruzado não é default — é prosa (o payload de um teste, a mensagem
+    // de um erro) — e contá-lo como valor foi um defeito REAL do guard: ele
+    // acusava o `printf` de um script shell como se fosse o fallback do YAML.
+    withTree(
+      {
+        ...DECLARADO,
+        "docker-compose.hostinger.yml": COMPOSE_SEM_PAR.replace("ghcr.io", "registry.velho"),
+        "deploy/pull.sh": "docker pull ${IMAGE_REGISTRY:-registry.velho}/x/y:1\n",
+        "scripts/x.mjs": 'const r = process.env.IMAGE_REGISTRY || "registry.velho"\n',
+        ".gitea/workflows/ci.yml":
+          "jobs:\n  x:\n    steps:\n      - run: echo ${{ vars.IMAGE_REGISTRY || 'registry.velho' }}\n",
+      },
+      (dir) => {
+        expect(sweepImageDefaultValues(dir).violations).toHaveLength(4)
+      },
+    )
+    withTree(
+      {
+        ...DECLARADO,
+        // `${NOME:-valor}` num `.mjs` (mensagem) e `vars.NOME || 'valor'` num
+        // `.sh` (payload de prova): nenhum dos dois é default daquela família.
+        "scripts/x.mjs": "console.error(`declare ${IMAGE_REGISTRY:-registry.velho}`)\n",
+        "deploy/y.sh": "printf 'echo ${{ vars.IMAGE_REGISTRY || 'registry.velho' }}'\n",
+      },
+      (dir) => {
+        const r = sweepImageDefaultValues(dir)
+        expect(r.violations).toEqual([])
+        expect(r.compared).toBe(0)
+        expect(r.prose).toBe(2)
+      },
+    )
+  })
+
+  it("o repositório REAL não tem nenhum default divergente (e o verde não vem por vazio)", () => {
+    const r = sweepImageDefaultValues(REPO_ROOT)
+    expect(r.violations).toEqual([])
+    expect(r.compared).toBeGreaterThan(0)
+    expect(r.files.length).toBeGreaterThan(0)
+  })
+
+  it("os arquivos de PROVA POR MUTAÇÃO são fixture DECLARADO — e a exclusão é estreita", () => {
+    // O texto de uma prova por mutação é o PAYLOAD que alimenta o guard: julgá-lo
+    // seria o guard acusando o teste que o exercita — e a saída do autor seria
+    // mutar o fixture para escapar da régua (cegando o guard onde ele é medido).
+    expect(imageDefaultFixtureRule("scripts/test-mutation-registry-defaults.sh")).not.toBeNull()
+    expect(imageDefaultFixtureRule("scripts/test-mutation-registry-defaults.sh")!.reason).toContain(
+      "PAYLOAD",
+    )
+    // ESTREITA: um `deploy/*.sh` ou um `scripts/*.mjs` com o mesmo texto é
+    // julgado (é o CONTROLE B3/B2 da prova por mutação).
+    expect(imageDefaultFixtureRule("deploy/pull.sh")).toBeNull()
+    expect(imageDefaultFixtureRule("scripts/check-registry-source.mjs")).toBeNull()
+    expect(imageDefaultFixtureRule("scripts/test-mutation-registry-defaults.mjs")).toBeNull()
+
+    const r = sweepImageDefaultValues(REPO_ROOT)
+    expect(r.fixtures.length).toBeGreaterThan(0)
+    // As duas listas são DISJUNTAS: o que foi varrido não é o que foi excluído.
+    expect(r.fixtures.filter((f) => r.files.includes(f))).toEqual([])
   })
 })

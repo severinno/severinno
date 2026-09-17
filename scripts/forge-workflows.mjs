@@ -379,6 +379,49 @@ export function stripTrailingComment(line) {
 }
 
 /**
+ * A linha de JS/TS sem o comentario de FIM DE LINHA — a irma de
+ * `stripTrailingComment` para a OUTRA linguagem.
+ *
+ * POR QUE PRECISA EXISTIR: quem varre `.mjs` com a regua do `#` le a PROSA como
+ * codigo — o `check-registry-source` acusava o proprio texto que ENSINA a usar o
+ * resolvedor (`use \`requireImageSource()\` ... \`${IMAGE_REGISTRY:-ghcr.io}\`` num
+ * comentario de header) como se fosse um default embutido. A regua do comentario
+ * e a mesma pergunta nas duas linguagens; a resposta muda com a SINTAXE.
+ *
+ * O scanner respeita STRINGS: um `//` dentro de `"https://..."` nao corta nada
+ * (cortar ali esconderia codigo de verdade — um default depois de uma URL
+ * passaria despercebido, que e o falso NEGATIVO que o guard nao pode ter).
+ *
+ * @param {string} line
+ * @returns {string} a linha sem o comentario de fim de linha
+ */
+export function stripSlashComment(line) {
+  const text = String(line ?? "")
+  let quote = null
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]
+    if (quote !== null) {
+      if (ch === "\\") {
+        i += 1
+        continue
+      }
+      if (ch === quote) quote = null
+      continue
+    }
+    if (ch === "'" || ch === '"' || ch === "`") {
+      quote = ch
+      continue
+    }
+    if (ch === "/" && text[i + 1] === "/") return text.slice(0, i).trimEnd()
+    if (ch === "/" && text[i + 1] === "*") {
+      const end = text.indexOf("*/", i + 2)
+      return (text.slice(0, i) + (end === -1 ? "" : text.slice(end + 2))).trimEnd()
+    }
+  }
+  return text
+}
+
+/**
  * A linha e um comentario de `#` (YAML, shell, Python, Makefile, Dockerfile)?
  *
  * E o comentario das LINGUAGENS DE DADO/E SCRIPT que este repositorio varre nos

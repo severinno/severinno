@@ -35,6 +35,7 @@ import {
   executableLine,
   executableLines,
   isCommentLine,
+  stripSlashComment,
   stripTrailingComment,
   workflowRunBodies,
 } from "../../../scripts/forge-workflows.mjs"
@@ -125,6 +126,26 @@ describe("a régua de LINHA — comentário, expressão, coluna", () => {
     expect(stripTrailingComment("        run: cmd # prosa")).toBe("        run: cmd")
     expect(stripTrailingComment('        run: echo "a#b"')).toBe('        run: echo "a#b"')
     expect(executableLine("        run: cmd # node scripts/ghost.mjs")).toBe("        run: cmd")
+  })
+
+  it("`stripSlashComment` é a irmã de JS: corta `//` e `/* */` e RESPEITA strings", () => {
+    // A mesma pergunta do `#`, com a sintaxe da outra linguagem: quem varre
+    // `.mjs` com a régua do `#` lê PROSA como código (o guard do registry acusava
+    // o header que ENSINA o resolvedor como se fosse um default embutido).
+    expect(stripSlashComment("  const x = 1 // prosa")).toBe("  const x = 1")
+    expect(stripSlashComment("  import x /* em linha */ ")).toBe("  import x")
+    expect(stripSlashComment('  const u = "https://x/y" // prosa')).toBe(
+      '  const u = "https://x/y"',
+    )
+    // O falso NEGATIVO é a classe proibida: cortar no `//` de uma URL esconderia
+    // o código que vem DEPOIS dela (um default depois de uma URL passaria em
+    // silêncio — justamente o que o guard não pode ter).
+    expect(stripSlashComment('  const u = "https://x" + a')).toBe('  const u = "https://x" + a')
+    expect(stripSlashComment('  const u = "a//b"')).toBe('  const u = "a//b"')
+    expect(stripSlashComment("  const s = `a//b`")).toBe("  const s = `a//b`")
+    expect(stripSlashComment("  const q = 'it\\'s' // prosa")).toBe("  const q = 'it\\'s'")
+    // Sem comentário, a linha volta INTEIRA (só o `trimEnd` da régua).
+    expect(stripSlashComment("  const y = 2")).toBe("  const y = 2")
   })
 
   it("a expressão do runner é mascarada — e uma linha que SÓ tem ela não executa", () => {

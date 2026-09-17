@@ -146,16 +146,32 @@ import {
   FORGE_ACTIONS_DIRS,
   FORGE_WORKFLOW_DIRS,
   DYNAMIC_EXPR_RE,
-  // As duas reguas de comentario deste guard vem da FONTE UNICA (aqui com o
-  // nome local que o veredito ja usa). A sintaxe declarada e `#` sozinho:
-  // este guard varre YAML/compose/shell, onde `*` e alias (nao comentario).
+  // As réguas de comentário deste guard vêm da FONTE ÚNICA, e a SINTAXE é
+  // declarada no call site porque este guard varre DUAS linguagens:
+  //
+  //   - YAML/compose/shell — `#` sozinho (aqui com o nome local que o veredito
+  //     já usa): nestas linguagens `*` é ancoragem de YAML, não comentário;
+  //   - `.mjs` — `//`, `/*` e `*` de doc, via `isCommentLine(line,{slash:true})`
+  //     e o `stripSlashComment` do fim de linha. Varrer JS com a régua do `#`
+  //     fazia o guard acusar a PRÓPRIA prosa que ensina o resolvedor.
   exitOnUnjudgeable,
+  isCommentLine as isCommentLineOf,
   isHashComment as isCommentLine,
   readWorkflowScan,
+  stripSlashComment as stripJsInlineComment,
   stripTrailingComment as stripInlineComment,
 } from "./forge-workflows.mjs"
 import { credentialsFromEnv, probeImageIdentity, resolveImageRef } from "./ensure-runner-image.mjs"
 import { GITEA_COMPOSE } from "./check-bun-mirror.mjs"
+// A COMPARAÇÃO DE VALOR e a leitura do valor DECLARADO vivem no resolvedor
+// (`registry-source.mjs`), não aqui: o guard, os scripts e o doctor têm de
+// comparar contra o MESMO valor, pela MESMA régua.
+import {
+  DEFAULT_FORMS_BY_FAMILY,
+  IMAGE_VARIABLES,
+  defaultValueVerdict,
+  defaultsInLine,
+} from "./registry-source.mjs"
 import {
   GITEA_ENV_DEPLOYED,
   GITEA_ENV_MIRROR,
@@ -876,7 +892,7 @@ export function collectFiles(root = ROOT) {
  * `options.failAged` escala as decisoes sem revisao a violacao (modo `--review`).
  *
  * @param {string} root
- * @param {{sweep?: object, failAged?: boolean, thirdPartySweep?: object, thirdPartyReviewDays?: number, now?: number, reviewDays?: number}} [options]
+ * @param {{sweep?: object, failAged?: boolean, thirdPartySweep?: object, thirdPartyReviewDays?: number, now?: number, reviewDays?: number, imageDefaults?: object}} [options]
  * @returns {string[]}
  */
 export function findViolations(root = ROOT, options = {}) {
@@ -923,6 +939,10 @@ export function findViolations(root = ROOT, options = {}) {
       options,
     ),
   )
+  // INVARIANTE 9: o default embutido das variáveis da imagem tem de ser o valor
+  // DECLARADO (e, em script JS, vir do resolvedor). Injetável para o CLI varrer
+  // UMA vez e usar o MESMO resultado no relatório do indeterminado.
+  violations.push(...(options.imageDefaults ?? sweepImageDefaultValues(root)).violations)
   return violations
 }
 
@@ -1782,7 +1802,7 @@ export const NON_VERSIONED_IMAGE_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE
  * acima porque o valor vive fora do repositorio e entra na comparacao com a
  * repository variable.
  */
-export const REGISTRY_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE"]
+export const REGISTRY_VARIABLES = [...IMAGE_VARIABLES]
 
 /**
  * Env do HOST da stack da aplicacao (gitignored) — o irmao do forge env.
@@ -1820,8 +1840,14 @@ export const APP_COMPOSE = "docker-compose.prod.yml"
  */
 export function forgeVariableRefs(root = ROOT) {
   const refs = []
+  // O FALLBACK pode ser um LITERAL (`|| 'ghcr.io'`) ou uma EXPRESSAO dinamica
+  // (`|| github.repository_owner`). Os dois casam o padrao, de proposito: o
+  // literal e comparado por valor e o dinamico e CONTADO como fora da
+  // comparacao. Antes o dinamico nem casava — ele desaparecia da conta, e um
+  // fallback que ninguem ve e exatamente o silencio que este guard existe para
+  // fechar (o `IMAGE_NAMESPACE` dos workflows e desse tipo).
   const re = new RegExp(
-    `\\$\\{\\{\\s*vars\\.(${NON_VERSIONED_IMAGE_VARIABLES.join("|")})\\s*(?:\\|\\|\\s*'([^']*)')?\\s*\\}\\}?`,
+    `\\$\\{\\{\\s*vars\\.(${NON_VERSIONED_IMAGE_VARIABLES.join("|")})\\s*(?:\\|\\|\\s*(?:'([^']*)'|([^}\\s]+)))?\\s*\\}\\}?`,
     "g",
   )
   // A varredura COMPARTILHADA (fonte única): o rótulo é o mesmo `<dir>/<nome>`,
@@ -2046,6 +2072,197 @@ export function checkComposeImageDefaultsForRepo(root = ROOT) {
   ]
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// INVARIANTE 9 — o DEFAULT de registry/namespace é o valor DECLARADO
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// O DEFEITO (e ele é silencioso por desenho): depois de trocar de registry, um
+// default embutido que ficou para trás continua valendo onde a variável não
+// existe — e como a imagem VELHA continua existindo no registry VELHO, nada
+// fica vermelho: o pull funciona, só puxa do lugar errado. É a mesma classe do
+// literal de versão do Bun (`process.env.BUN_VERSION || "1.3.14"`), com um
+// agravante: aqui o host pode continuar respondendo (só com outra imagem).
+//
+// A RÉGUA é UMA (`defaultValueVerdict`, do `registry-source.mjs`): cada forma
+// canônica de default é comparada por VALOR contra o que os arquivos comitados
+// declaram — e o veredito tem três estados, nunca dois:
+//
+//   - `proven`        — o default é igual ao declarado (nomeia o arquivo);
+//   - `violated`      — diverge: os dois valores são nomeados, e o efeito é dito;
+//   - `indeterminate` — NENHUM arquivo comitado declara a variável: não há
+//     contra o que comparar. O guard NÃO presume: isto vira `::warning::` com o
+//     remédio (declarar a variável no espelho), nunca um ✅ por omissão.
+//
+// ONDE, e por que cada lugar tem a sua forma:
+//
+//   1. COMPOSE (`${IMAGE_REGISTRY:-ghcr.io}`) — o default é legítimo (é o que
+//      vale num host que não declara a variável), mas o VALOR é comparado. A
+//      varredura cobre TODO compose com default, inclusive os que não têm par
+//      declarado (o `docker-compose.hostinger.yml` vivia fora da comparação por
+//      par): uma stack nova entra sem lista à mão. Os dois pares declarados
+//      (app × `.env.production.example`, forja × `deploy/env.gitea.example`)
+//      seguem com a comparação por par, que é quem sabe QUAL template é a fonte;
+//   2. SHELL (`${IMAGE_REGISTRY:-ghcr.io}` em `scripts/**` e `deploy/**`) — o
+//      shell não importa módulo JS: a forma canônica é a do compose, e o que o
+//      guard exige é o VALOR;
+//   3. SCRIPT JS (`.mjs`) — o default literal é VIOLAÇÃO sempre, mesmo com o
+//      valor certo: o repositório tem resolvedor (`requireImageSource` de
+//      `scripts/registry-source.mjs`), e um literal aqui volta a envelhecer em
+//      silêncio no dia da próxima migração. A mensagem nomeia o módulo.
+//      Aqui a FORMA importa: só `X || "valor"` é default — o `${NOME:-x}` num
+//      `.mjs` vive dentro de MENSAGEM (não é JS válido fora de string), e é
+//      CONTADO e nomeado como prosa, não lido como valor. E a régua do
+//      comentário é a da linguagem: `//`, `/*` e `*` de doc comentam (varrer JS
+//      com a régua do `#` fazia o guard acusar a prosa que ensina o resolvedor);
+//   4. WORKFLOW — o fallback LITERAL (`${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}`)
+//      é comparado por valor. O fallback DINÂMICO (`|| github.repository_owner`)
+//      NÃO é afirmação de valor: ele é CONTADO como fora da comparação e o
+//      relatório declara quantos são (tratá-lo como valor seria o guard
+//      opinando sobre o que não leu; omiti-lo da conta seria pior — um fallback
+//      que não aparece em lugar nenhum é o silêncio que este guard fecha).
+//
+// `.husky/**` fica fora: os hooks não montam referência de imagem (não há
+// default a comparar) — e um escopo declarado é mais honesto que um glob largo
+// que ninguém consegue justificar.
+
+/** Os pares compose↔template com a comparação POR PAR (as duas stacks declaradas). */
+export const COMPOSE_STACK_PAIRS = [APP_COMPOSE, GITEA_COMPOSE]
+
+/** O escopo de SCRIPTS da invariante 9: onde um default embutido pode viver. */
+export const IMAGE_DEFAULT_SCRIPT_RE = /^(?:scripts|deploy)\/[^/]+\.(?:sh|mjs)$/
+
+/**
+ * Os arquivos cujo TEXTO é FIXTURE da própria prova — não um site de resolução.
+ *
+ * Mesma classe (e mesmo raciocínio) do `SWEEP_RULES.test-fixture`: a string de
+ * imagem (aqui, o `${NOME:-valor}`) é o SUJEITO da prova — o payload que a prova
+ * por mutação entrega ao guard. Julgá-la seria o guard acusando o teste que o
+ * exercita, e a saída óbvia seria mutar o fixture para escapar da régua (pior:
+ * cegaria o guard exatamente onde ele é exercitado).
+ *
+ * A exclusão é DECLARADA (nomeada no relatório) e ESTREITA (um `deploy/*.sh`
+ * com o mesmo texto continua sendo julgado — é o que o CONTROLE B3 da prova
+ * por mutação mede).
+ */
+export const IMAGE_DEFAULT_FIXTURE_RULES = [
+  {
+    id: "mutation-proof",
+    matches: (rel) => /^scripts\/test-mutation-[^/]+\.sh$/.test(rel),
+    reason: "prova por mutação: as linhas `${NOME:-valor}` ali são o PAYLOAD que alimenta o guard",
+  },
+]
+
+/** A regra de fixture que cobre um caminho (ou `null`). */
+export function imageDefaultFixtureRule(rel) {
+  return IMAGE_DEFAULT_FIXTURE_RULES.find((rule) => rule.matches(rel)) ?? null
+}
+
+/**
+ * A varredura da invariante 9: cada default embutido das variáveis da imagem,
+ * comparado por VALOR contra o que o repositório declara.
+ *
+ * Pura em relação ao relógio e à rede (só lê arquivos), e devolve também o que
+ * NÃO foi provado — um guard que só devolvesse violações faria o indeterminado
+ * desaparecer no caminho.
+ *
+ * @param {string} [root]
+ * @returns {{violations: string[], indeterminate: string[], compared: number, prose: number, fixtures: string[], files: string[], dynamic: number}}
+ */
+export function sweepImageDefaultValues(root = ROOT) {
+  const violations = []
+  const indeterminate = []
+  const files = new Set()
+  const fixtures = []
+  let compared = 0
+  let prose = 0
+  let dynamic = 0
+
+  /** O veredito de UM default, na forma que o guard reporta. */
+  const judge = (file, lineNo, name, value) => {
+    const verdict = defaultValueVerdict(name, value, { root })
+    compared += 1
+    files.add(file)
+    if (verdict.state === "violated") {
+      violations.push(`${file}:${lineNo}: ${verdict.detail}`)
+      return
+    }
+    if (verdict.state === "indeterminate")
+      indeterminate.push(`${file}:${lineNo}: ${verdict.detail}`)
+  }
+
+  for (const file of walkRepo(root)) {
+    const isCompose = isComposeFile(file)
+    const isScript = IMAGE_DEFAULT_SCRIPT_RE.test(file)
+    if (!isCompose && !isScript) continue
+    // Os dois pares declarados passam pela comparação por PAR (que sabe qual
+    // template é a fonte); aqui eles sairiam duplicados na mesma lista.
+    if (isCompose && COMPOSE_STACK_PAIRS.includes(file)) continue
+    // Fixture da própria prova: DECLARADO (e nomeado no relatório), não varrido.
+    if (imageDefaultFixtureRule(file) !== null) {
+      fixtures.push(file)
+      continue
+    }
+    const isJs = file.endsWith(".mjs")
+    const family = isJs ? "js" : isCompose ? "compose" : "shell"
+    const lines = readFileSync(join(root, file), "utf8").split(/\r?\n/)
+    lines.forEach((line, idx) => {
+      // A regua do comentario segue a LINGUAGEM do arquivo (a sintaxe e
+      // escolhida aqui, e a funcao e a mesma): num `.mjs` o `//` e o `*` de doc
+      // comentam; num compose/shell nao.
+      if (isJs ? isCommentLineOf(line, { slash: true }) : isCommentLine(line)) return
+      const code = isJs ? stripJsInlineComment(line) : stripInlineComment(line)
+      for (const name of REGISTRY_VARIABLES) {
+        for (const d of defaultsInLine(name, code)) {
+          // A FORMA vale por FAMÍLIA de arquivo (`DEFAULT_FORMS_BY_FAMILY`): no
+          // script JS só `X || "valor"` é default (o `${NOME:-x}` ali vive
+          // dentro de MENSAGEM, não é JS válido fora de string), no shell só
+          // `${NOME:-valor}`, no YAML do runner só `vars.NOME || 'valor'`.
+          // O que casa uma forma de OUTRA família é prosa/fixture — CONTADO e
+          // dito no relatório, nunca julgado como valor nem sumido.
+          if (!DEFAULT_FORMS_BY_FAMILY[family].includes(d.form)) {
+            prose += 1
+            continue
+          }
+          if (isScript && isJs) {
+            compared += 1
+            files.add(file)
+            violations.push(
+              `${file}:${idx + 1}: default literal '${d.value}' para ${name} em script JS — use o RESOLVEDOR ` +
+                "(`requireImageSource()` de `scripts/registry-source.mjs`): o literal sobrevive à troca de registry " +
+                "(o script continua puxando do host VELHO, e como a imagem continua existindo lá, nada fica vermelho)." +
+                (defaultValueVerdict(name, d.value, { root }).state === "violated"
+                  ? " Aqui ele já diverge do valor declarado — os dois lados aparecem no relatório do guard."
+                  : ""),
+            )
+            continue
+          }
+          judge(file, idx + 1, name, d.value)
+        }
+      }
+    })
+  }
+
+  // 3. WORKFLOWS — os fallbacks literais das duas forjas (a leitura é a
+  // COMPARTILHADA das workflows; o `fallback` já sai separado do nome).
+  for (const ref of forgeVariableRefs(root)) {
+    if (ref.fallback === null) {
+      dynamic += 1
+      continue
+    }
+    judge(ref.file, ref.line, ref.variable, ref.fallback)
+  }
+
+  return {
+    violations,
+    indeterminate,
+    compared,
+    prose,
+    fixtures: fixtures.sort(),
+    files: [...files].sort(),
+    dynamic,
+  }
+}
+
 /**
  * O env do HOST da APLICACAO x o template COMITADO dela.
  *
@@ -2123,6 +2340,10 @@ export async function checkNonVersionedImageRefs({
     ...compareImageTemplates(root),
     ...appDeclarations.violations,
     ...checkComposeImageDefaultsForRepo(root),
+    // Invariante 9 (por VALOR, todo compose/script/workflow com default): um
+    // default velho depois da migração BLOQUEIA a prontidão — ele é exatamente
+    // o modo de falha silencioso que este fato existe para nomear.
+    ...sweepImageDefaultValues(root).violations,
   ]
   const items = []
   if (appDeclarations.host) {
@@ -2437,8 +2658,17 @@ if (isMain) {
       )
     }
   }
+  // INVARIANTE 9: a varredura por VALOR roda UMA vez — o mesmo resultado vai
+  // para a lista de violações e para o relatório do que ficou INDETERMINADO.
+  const imageDefaults = sweepImageDefaultValues(ROOT)
+  for (const item of imageDefaults.indeterminate) {
+    console.error(
+      `::warning:: check-registry-source: default INDETERMINADO — ${item}.` +
+        " O guard não presume: sem o valor declarado não há comparação, e um ✅ aqui seria pior que o aviso.",
+    )
+  }
   const staticViolations = [
-    ...findViolations(ROOT, { sweep: scopeSweep, failAged: reviewMode }),
+    ...findViolations(ROOT, { sweep: scopeSweep, failAged: reviewMode, imageDefaults }),
     ...compareImageTemplates(),
   ]
   const interpolation = skipRender
@@ -2519,6 +2749,25 @@ if (isMain) {
     }
     console.log(
       `check-registry-source: ${nonVersioned.state === "proven" ? "✅" : "·"} referencias nao versionadas: ${nonVersioned.detail}`,
+    )
+    // O fato da invariante 9 sai SEMPRE (nao so quando ha violacao): e ele que
+    // diz quantos defaults foram conferidos por valor, e quantos ficaram FORA da
+    // comparação (dinâmicos) — esconder isso num modo verboso seria o alerta mudo.
+    console.log(
+      `check-registry-source: ✅ defaults de ${REGISTRY_VARIABLES.join("/")} conferidos por VALOR: ` +
+        `${imageDefaults.compared} default(s) em ${imageDefaults.files.length} arquivo(s), nenhum divergente do declarado` +
+        (imageDefaults.dynamic > 0
+          ? ` (${imageDefaults.dynamic} fallback(s) DINAMICO(s) fora da comparacao: nao sao afirmacao de valor)`
+          : "") +
+        (imageDefaults.prose > 0
+          ? ` (${imageDefaults.prose} ocorrencia(s) na forma de OUTRA familia (mensagem/fixture) — contadas, nao comparadas: nao ha valor rodando para envelhecer)`
+          : "") +
+        (imageDefaults.fixtures.length > 0
+          ? ` (${imageDefaults.fixtures.length} arquivo(s) de FIXTURE fora da varredura pela regra ${IMAGE_DEFAULT_FIXTURE_RULES.map((r) => `\`${r.id}\``).join(", ")} — ex.: ${imageDefaults.fixtures[0]}: o texto deles e o PAYLOAD das provas por mutacao, nao um site de resolucao)`
+          : "") +
+        (imageDefaults.indeterminate.length > 0
+          ? ` — ${imageDefaults.indeterminate.length} INDETERMINADO(s), nomeado(s) nos avisos`
+          : ""),
     )
     if (interpolation.state === "proven") {
       console.log(
