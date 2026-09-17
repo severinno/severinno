@@ -228,6 +228,11 @@ import {
   normalizeExpectedVars,
   readMirrorVariableValues,
 } from "./check-actrc-sync.mjs"
+// A PROVA do bloqueio LOCAL (o pre-commit recusa um corpo `run:` quebrado no
+// ÍNDICE): ela mora em `scripts/pre-commit-proof.mjs` junto com a camada do hook
+// que os testes dos hooks usam — a régua é UMA só, e o doctor a EXECUTA em vez de
+// confiar na existência do teste que a mede.
+import { proveCommitBlocks } from "./pre-commit-proof.mjs"
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -1082,6 +1087,18 @@ export function summarize(facts) {
   // de cima para baixo, e quem diagnostica vai pela primeira que aparece).
   for (const b of shellInheritanceBlockers(facts.shellInheritance)) blockers.push(b)
   for (const u of shellInheritanceUnknowns(facts.shellInheritance)) unknowns.push(u)
+  // A PROVA DO BLOQUEIO LOCAL: o hook deixando passar o corpo quebrado BLOQUEIA
+  // (o defeito entra no histórico), e não ter conseguido provar vira falta de
+  // prova NOMEADA — nunca verde. Pular com a flag é falta de prova DITA (a mesma
+  // disciplina do resto: um fato que não foi medido não deixa o veredito PRONTA).
+  if (facts.skippedPreCommitProof) {
+    unknowns.push(
+      "a prova do bloqueio LOCAL foi pulada (--no-pre-commit-proof): o veredito não cobre se um corpo `run:` quebrado no ÍNDICE pode virar um commit local",
+    )
+  } else {
+    for (const b of preCommitBlockBlockers(facts.preCommitBlock)) blockers.push(b)
+    for (const u of preCommitBlockUnknowns(facts.preCommitBlock)) unknowns.push(u)
+  }
 
   const verdict =
     blockers.length > 0 ? VERDICT.BLOCKED : unknowns.length > 0 ? VERDICT.UNKNOWN : VERDICT.READY
@@ -1119,10 +1136,15 @@ export function summarize(facts) {
       "a PROVA do bloqueio da imagem (pulada — sem ela, o veredito não garante que o runner não sobe sem a tag)",
     )
   }
+  if (facts.skippedPreCommitProof) {
+    unproven.unshift(
+      "a prova do bloqueio LOCAL (pre-commit) — pulada por --no-pre-commit-proof: sem ela, o veredito não garante que um corpo `run:` quebrado no índice não vire commit",
+    )
+  }
   if (facts.ciProfile) {
-    // O PERFIL entra como uma linha PRÓPRIA, no TOPO das sete de skip (cada
+    // O PERFIL entra como uma linha PRÓPRIA, no TOPO das OITO de skip (cada
     // `unshift` seguinte ficaria acima): quem lê o veredito num PR precisa saber
-    // que o recorte foi DELIBERADO (o cron já cobre o resto) e não que sete flags
+    // que o recorte foi DELIBERADO (o cron já cobre o resto) e não que oito flags
     // foram esquecidas no YAML.
     unproven.unshift(
       "o PERFIL --ci: o recorte local (sem rede, credencial ou estado do HOST) é o que roda no job `guards` a cada PR — as seções abaixo ficam para o cron semanal",
@@ -3385,6 +3407,95 @@ export function readShellInheritance({ cwd = REPO_ROOT, deps = {} } = {}) {
 }
 
 /**
+ * A PROVA DO BLOQUEIO LOCAL como FATO do relatório — a garantia de que o
+ * `pre-commit` recusa um corpo `run:` quebrado no ÍNDICE.
+ *
+ * POR QUE ISTO VIROU FATO (e não ficou só no teste): a garantia vivia em
+ * `src/lib/__tests__/pre-commit-git-commit-blocks.test.ts`, e um teste que só
+ * roda em `bun run test` é uma promessa sobre quem lembra de rodá-lo. Aqui o
+ * doctor EXECUTA a mesma prova (`proveCommitBlocks`, o mesmo módulo que o teste
+ * importa) e publica o desfecho no vocabulário do resto do relatório:
+ *
+ *   - `proven`      — um `git commit` de verdade com o corpo QUEBRADO no índice é
+ *                     recusado E o mesmo commit com o corpo fechado entra (a
+ *                     segunda metade é o CONTROLE: sem ela, "não commitou" seria
+ *                     indistinguível de um fixture que não sabe commitar);
+ *   - `violated`    — o defeito ENTROU no histórico (o hook deixou passar): o
+ *                     commit de quem confia no hook carrega o corpo quebrado;
+ *   - `unavailable` — não deu para provar (sem `.husky/pre-commit`, sem o fecho do
+ *                     guard, sem `node_modules`, sem git/bash) — NUNCA verde.
+ *
+ * `deps.prove` é o ponto de injeção: o teste mede os TRÊS estados sem depender do
+ * hook do checkout (e a prova REAL continua sendo a do default, exercitada pelo
+ * teste de integração e pelo próprio doctor).
+ *
+ * @param {{cwd?: string, deps?: {prove?: (opts: {root: string}) => object}}} [args]
+ * @returns {{state: string, detail: string, evidence: object|null, remedies: string[]}}
+ */
+export function readPreCommitBlock({
+  cwd = REPO_ROOT,
+  deps = /** @type {{prove?: (opts: {root: string}) => any}} */ ({}),
+} = {}) {
+  const prove = deps.prove ?? ((opts) => proveCommitBlocks({ root: opts.root }))
+  try {
+    const r = prove({ root: cwd })
+    if (r === null || r === undefined || typeof r.state !== "string") {
+      return {
+        state: "unavailable",
+        detail: "a prova do bloqueio local nao devolveu estado (nem 'proven', nem 'violated')",
+        evidence: null,
+        remedies: [],
+      }
+    }
+    return {
+      state: r.state,
+      detail: r.detail ?? "sem detalhe",
+      evidence: r.evidence ?? null,
+      remedies: r.remedies ?? [],
+    }
+  } catch (err) {
+    return {
+      state: "unavailable",
+      detail: `a prova do bloqueio local nao pode rodar: ${err instanceof Error ? err.message : String(err)}`,
+      evidence: null,
+      remedies: [],
+    }
+  }
+}
+
+/**
+ * O que a prova do bloqueio local tem de BLOQUEANTE: o hook deixou passar o
+ * defeito (o corpo `run:` quebrado virou commit).
+ *
+ * @param {object|undefined} fato
+ * @returns {string[]}
+ */
+export function preCommitBlockBlockers(fato) {
+  if (!fato || fato.state !== "violated") return []
+  return [`o PRE-COMMIT nao bloqueia um corpo 'run:' quebrado no indice — ${fato.detail}`]
+}
+
+/**
+ * O que a prova do bloqueio local NAO pôde provar. Ausência do FATO também é
+ * ausência de prova (mesma disciplina do guard de recursão, da herança de shell e
+ * da dívida declarada): um relatório sem o fato não cobre se o commit de quem
+ * confia no hook carrega um corpo quebrado, e dizer "pronta" sobre o que não foi
+ * olhado é o que este doctor recusa.
+ *
+ * @param {object|undefined} fato
+ * @returns {string[]}
+ */
+export function preCommitBlockUnknowns(fato) {
+  if (!fato) {
+    return [
+      "a prova do bloqueio LOCAL (o pre-commit recusando um corpo `run:` quebrado no ÍNDICE) não está declarada no relatório: o veredito não cobre se um commit local pode carregar um corpo que nunca rodaria",
+    ]
+  }
+  if (fato.state === "proven" || fato.state === "skipped") return []
+  return [`o bloqueio LOCAL do pre-commit nao foi provado (state '${fato.state}'): ${fato.detail}`]
+}
+
+/**
  * O que a herança de shell tem de BLOQUEANTE: a declaração que liga o pipefail
  * (a premissa não é herdada, é dita) e a que não pôde ser lida — as DUAS classes
  * que o guard reprova com exit 1, agora NOMEADAS no veredito de prontidão em vez
@@ -3669,7 +3780,13 @@ export function renderReport(report, { emit = console.log } = {}) {
   // As duas metades juntas é que respondem "o merge é bloqueado por isto?": a
   // prova mede o comportamento, o gate mede a OBRIGAÇÃO.
   line()
-  line("  4/7  Prova do bloqueio (registry de TESTE) + o GATE que a cobra no merge")
+  // A seção abriga DUAS provas de bloqueio — a do bring-up (registry de TESTE) e
+  // a do commit LOCAL (o pre-commit recusando um corpo `run:` quebrado no
+  // ÍNDICE) — mais o(s) GATE(s) que as cobram no merge. O título mantém o
+  // começo de antes para o número da seção seguir sendo a âncora de quem lê.
+  line(
+    "  4/7  Prova do bloqueio (registry de TESTE) + a prova do commit LOCAL (pre-commit) + o GATE que as cobra no merge",
+  )
   {
     const proofMark =
       facts.proof.status === "holds"
@@ -3694,6 +3811,48 @@ export function renderReport(report, { emit = console.log } = {}) {
     for (const c of cases.filter((c) => !c.ok)) {
       line(`           ${MARK.fail()} ${c.title}`)
       for (const f of c.failures ?? []) line(`               ${color(C.gray, f)}`)
+    }
+  }
+
+  // A PROVA DO BLOQUEIO LOCAL (pre-commit): o doctor EXECUTA um `git commit` de
+  // verdade duas vezes — com o corpo `run:` quebrado no índice (tem de ser
+  // RECUSADO) e com o corpo fechado (tem de ENTRAR). A garantia deixou de viver
+  // no teste: ela é MEDIDA aqui, com o vocabulário de estados do resto do
+  // relatório, e o veredito a cobre como qualquer outro fato.
+  {
+    const pc = facts.preCommitBlock
+    if (facts.skippedPreCommitProof) {
+      line(
+        `       ${MARK.skip()} prova do bloqueio LOCAL pulada por --no-pre-commit-proof (o veredito NÃO cobre o corpo quebrado no commit local)`,
+      )
+    } else if (!pc) {
+      line(
+        `       ${MARK.warn()} prova do bloqueio LOCAL: NÃO declarada no relatório — o veredito não cobre o pre-commit`,
+      )
+    } else {
+      const pcMark =
+        pc.state === "proven" ? MARK.ok() : pc.state === "violated" ? MARK.fail() : MARK.warn()
+      line(
+        `       ${pcMark} prova do bloqueio LOCAL (pre-commit): ${pc.state} — o corpo \`run:\` quebrado no índice não vira commit`,
+      )
+      line(`           ${color(C.gray, pc.detail)}`)
+      const ev = pc.evidence
+      if (ev?.defeito) {
+        line(
+          `           ${color(C.gray, `defeito no índice: exit ${ev.defeito.status}, ${ev.defeito.objetosDeCommit} objeto(s) de commit, HEAD ${ev.defeito.headExiste ? "existe" : "ausente"}${ev.defeito.conteudoEmHead ? `, conteúdo em HEAD: ${ev.defeito.conteudoEmHead}` : ""}`)}`,
+        )
+      }
+      if (ev?.controle) {
+        line(
+          `           ${color(C.gray, `CONTROLE com o corpo fechado: exit ${ev.controle.status}, ${ev.controle.objetosDeCommit} objeto(s) — sem ele, "não commitou" não distinguiria defeito de fixture quebrado`)}`,
+        )
+      }
+      line(
+        `           ${color(C.gray, "quem cobra: o PRÓPRIO hook (.husky/pre-commit, fase paralela) — o CI não o executa; o contrato que o cobre é o check-hook-commands (todo comando do hook tem de resolver)")}`,
+      )
+      if (pc.state !== "proven") {
+        for (const rem of pc.remedies ?? []) line(`           ${color(C.gray, `→ ${rem}`)}`)
+      }
     }
   }
 
@@ -4069,6 +4228,13 @@ Opções:
                          THIRD_PARTY_ALLOWLIST, ALLOWLIST e o baseline do
                          SIGPIPE). NÃO é preciso em rede/credencial: é leitura
                          do checkout, e por isso roda ATÉ no perfil --ci
+  --no-pre-commit-proof  pula a PROVA DO BLOQUEIO LOCAL: o doctor deixa de
+                         executar o 'git commit' de verdade que mede se o
+                         pre-commit recusa um corpo 'run:' quebrado no ÍNDICE
+                         (e o controle com o corpo fechado). É local e barata
+                         (~0,3s: git + o hook real, com o fecho do guard) e por
+                         isso roda ATÉ no perfil --ci — pular deixa o veredito
+                         INDETERMINADA nomeando o fato que ficou fora
   --expected <versão>    valor de vars.BUN_VERSION (a repository variable): com
                          ele os espelhos do Bun são comparados com o VALOR
                          declarado, pelo mesmo código do job semanal
@@ -4160,6 +4326,7 @@ export function parseArgs(argv) {
     gateContractsCheck: true,
     openDebt: true,
     declaredDebt: true,
+    preCommitProof: true,
     envFile: DEFAULT_ENV_FILE,
     expected: null,
     expectedVars: {},
@@ -4181,6 +4348,7 @@ export function parseArgs(argv) {
     else if (arg === "--no-registry-probe") opts.registryProbe = false
     else if (arg === "--no-open-debt") opts.openDebt = false
     else if (arg === "--no-declared-debt") opts.declaredDebt = false
+    else if (arg === "--no-pre-commit-proof") opts.preCommitProof = false
     else if (arg === "--json") opts.json = true
     else if (arg === "-h" || arg === "--help") opts.help = true
     else if (arg === "--expected") opts.expected = argv[++i] ?? ""
@@ -4269,6 +4437,12 @@ export function parseArgs(argv) {
  * identidade do registry (cacheada entre os fatos que a perguntam)
  * @param {object} [options.gateContractsDeps] dependências do verificador
  * reutilizável de gates CORE (`readAllGateContracts` = dublê de teste)
+ * @param {boolean} [options.preCommitProof] executar a PROVA DO BLOQUEIO LOCAL
+ * (o `git commit` de verdade que mede se o pre-commit recusa um corpo `run:`
+ * quebrado no ÍNDICE, default: true)
+ * @param {object} [options.preCommitBlockDeps] dependências do fato da prova do
+ * bloqueio local (`prove` substitui a prova inteira) — o ponto de injeção do
+ * teste, e o que mantém o fluxo do veredito fora do git real
  * (sem `@returns` declarado de propósito: o formato dos fatos é o que o
  * `summarize` consome, e descrevê-lo aqui de novo só criaria duas verdades)
  */
@@ -4289,6 +4463,7 @@ export async function diagnose({
   gateContractsCheck = true,
   openDebt = true,
   declaredDebt = true,
+  preCommitProof = true,
   timeoutS = 120,
   run,
   imageDeps = {},
@@ -4306,6 +4481,8 @@ export async function diagnose({
   declaredDebtDeps = {},
   /** Injeção do FATO da herança de shell (`list`/`readFile`) — o teste mede os estados sem um checkout de verdade. */
   shellInheritanceDeps = {},
+  /** Injeção do FATO da prova do bloqueio local (`prove`) — o teste mede os três estados sem rodar git. */
+  preCommitBlockDeps = {},
   identityProbe,
   gateContractsDeps = {},
 } = {}) {
@@ -4502,6 +4679,19 @@ export async function diagnose({
     // este fato uma declaração de `defaults:` que ligue o pipefail viajaria em
     // silêncio até o cron semanal.
     shellInheritance: readShellInheritance({ cwd, deps: shellInheritanceDeps }),
+    // A PROVA DO BLOQUEIO LOCAL, EXECUTADA aqui: um `git commit` de verdade, duas
+    // vezes (o corpo quebrado no índice e o controle com o corpo fechado). Local
+    // de ponta a ponta (sem rede, sem credencial, sem estado do HOST) e ~0,3s —
+    // entra ATÉ no perfil `--ci`, porque é no PR que a promessa do hook importa
+    // (o hook roda na máquina de quem commita; o CI não o executa).
+    preCommitBlock: preCommitProof
+      ? readPreCommitBlock({ cwd, deps: preCommitBlockDeps })
+      : {
+          state: "skipped",
+          detail: "pulada por --no-pre-commit-proof",
+          evidence: null,
+          remedies: [],
+        },
     // O GUARD DE RECURSÃO, como fato do relatório NORMAL: a prontidão declara a
     // EXISTÊNCIA da defesa (e por quais canais ela responde), não só o disparo
     // dela — que vira um relatório à parte, com o estado `fired`.
@@ -4516,6 +4706,7 @@ export async function diagnose({
     skippedDeclaredDebt: !declaredDebt,
     skippedGateContracts: !gateContractsCheck,
     skippedProof: !proof,
+    skippedPreCommitProof: !preCommitProof,
   }
 
   return { facts }

@@ -76,7 +76,15 @@ import {
   shellInheritanceBlockers,
   shellInheritanceUnknowns,
   describeShellScope,
+  readPreCommitBlock,
+  preCommitBlockBlockers,
+  preCommitBlockUnknowns,
 } from "../../../scripts/forge-doctor.mjs"
+
+// A prova EXECUTADA pelo doctor e as constantes do hook que ela usa: o teste mede
+// a MESMA função que o relatório chama (e é por isso que a mutação do hook aqui
+// embaixo muda o veredito do fato).
+import { GUARD_COMMAND, hookSource, proveCommitBlocks } from "../../../scripts/pre-commit-proof.mjs"
 
 import { GITEA_BRING_UP, GITEA_COMPOSE } from "../../../scripts/check-bun-mirror.mjs"
 import { GITEA_ENV_MIRROR } from "../../../scripts/check-actrc-sync.mjs"
@@ -189,6 +197,18 @@ function declaredDebtFacts(overrides: Record<string, unknown> = {}) {
  */
 const SHELL_INHERITANCE_LIMPA = readShellInheritance({ cwd: makeDir() }) as unknown as object
 
+/**
+ * A prova do bloqueio LOCAL, provada — o default do fixture. Ela é um OBJETO
+ * escrito à mão (e não a execução real) porque os fatores do veredito têm de ser
+ * determinísticos: o teste de integração da prova é um só, e roda de verdade.
+ */
+const PRE_COMMIT_BLOCK_PROVEN = {
+  state: "proven",
+  detail: "um 'git commit' com o corpo quebrado é recusado e o controle entra",
+  evidence: null,
+  remedies: [],
+}
+
 /** Fatores do veredito, todos "verdes" — cada teste estraga um. */
 function facts(overrides: Record<string, unknown> = {}) {
   return {
@@ -228,11 +248,13 @@ function facts(overrides: Record<string, unknown> = {}) {
     // A herança de shell dos workflows (de onde vem o shell de CADA passo):
     // presente e limpa. Cada teste estraga o que quer medir.
     shellInheritance: SHELL_INHERITANCE_LIMPA,
+    preCommitBlock: PRE_COMMIT_BLOCK_PROVEN,
     skippedGuards: false,
     skippedProof: false,
     skippedProtection: false,
     skippedRunnerLabels: false,
     skippedImageContract: false,
+    skippedPreCommitProof: false,
     ...overrides,
   }
 }
@@ -2013,6 +2035,7 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
     ["bun-mirror", "node scripts/check-bun-mirror.mjs"],
     ["no-setup-bun", "node scripts/check-no-setup-bun.mjs"],
     ["hook-ci-parity", "node scripts/check-hook-ci-parity.mjs"],
+    ["hook-commands", "node scripts/check-hook-commands.mjs"],
     ["workflow-run-syntax", "node scripts/check-workflow-run-syntax.mjs"],
     ["merge-latency", "node scripts/merge-latency.mjs --check"],
   ]
@@ -2206,14 +2229,14 @@ describe("readAllGateContracts — o job EXIGIDO roda a régua da INVARIANTE, a 
   it("cada invariante que compartilha o job 'guards' tem a SUA régua medida", () => {
     const dir = twoForgeFixture()
     const noMesmoJob = contractResults(dir).filter((x) => x.jobId === FORGE_GUARDS_JOB)
-    // VINTE E UMA invariantes CORE vivem no mesmo job `guards`: nove que sempre
+    // VINTE E DUAS invariantes CORE vivem no mesmo job `guards`: nove que sempre
     // estiveram ali, dez que passaram a ser invocadas pela MESMA linha canônica
     // do espelho (antes rodavam na forja por outra forma, ou não rodavam), a da
-    // SINTAXE do corpo `run:` e a da LATÊNCIA de merge (a última a entrar).
-    // Deduplicando pelo job, vinte ficariam fora da lista de contratos e
-    // apareceriam como cobertas sem nunca terem sido medidas.
-    expect(noMesmoJob.length).toBe(21)
-    expect(new Set(noMesmoJob.map((x) => x.invariantId)).size).toBe(21)
+    // SINTAXE do corpo `run:`, a da LATÊNCIA de merge e a dos COMANDOS DOS HOOKS
+    // (a última a entrar). Deduplicando pelo job, vinte e uma ficariam fora da
+    // lista de contratos e apareceriam como cobertas sem nunca terem sido medidas.
+    expect(noMesmoJob.length).toBe(22)
+    expect(new Set(noMesmoJob.map((x) => x.invariantId)).size).toBe(22)
     expect(noMesmoJob.every((x) => x.state === "proven")).toBe(true)
     // E cada uma responde pela SUA remoção — não pela do vizinho.
     const semRequired = twoForgeFixture({ semComandoDoGate: "required-checks" })
@@ -3008,6 +3031,18 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
       openDebtDeps: debtClear,
+      // A prova do bloqueio LOCAL: o `cwd` deste fluxo é uma fixture SEM
+      // `.husky/pre-commit`, onde a prova real sai INDISPONÍVEL (e com razão —
+      // não há o que provar). O FLUXO aqui é o do veredito, então a prova entra
+      // dublada, como todos os outros fatos; a prova REAL tem teste próprio.
+      preCommitBlockDeps: {
+        prove: () => ({
+          state: "proven",
+          detail: "prova dublada do fluxo",
+          evidence: null,
+          remedies: [],
+        }),
+      },
     })
     // O fato do board existe SEMPRE (mesmo vazio): um `diagnose` que esquecesse
     // de montá-lo faria a dívida aberta sumir do veredito em silêncio.
@@ -4412,5 +4447,180 @@ describe("readShellInheritance — a herança de shell de CADA workflow", () => 
     expect(texto).toContain("LIGA o pipefail para 1 passo(s) sem `shell:`")
     expect(texto).toContain("a premissa não é herdada, é DITA")
     expect(texto).toContain("declare `shell: bash` em cada passo afetado")
+  })
+})
+
+// ── a prova do bloqueio LOCAL (o pre-commit × o corpo `run:` quebrado) ────
+
+/** O fato do doctor com a prova INJETADA — é assim que os três estados são medidos
+ * sem depender do hook do checkout (a prova REAL tem teste próprio, abaixo). */
+const prova = (saida: unknown) =>
+  readPreCommitBlock({
+    // O cast é DELIBERADO: metade destes casos injeta uma saída que a prova real
+    // nunca devolveria (nada, `{}`, sem estado) — é o fail-closed do fato que
+    // está sendo medido.
+    deps: { prove: (() => saida) as (opts: { root: string }) => object },
+  })
+
+describe("a prova do bloqueio LOCAL como FATO do relatório", () => {
+  it("o estado da prova vira o estado do FATO (proven/violated/unavailable)", () => {
+    expect(
+      prova({ state: "proven", detail: "bloqueou", evidence: { a: 1 }, remedies: ["r"] }).state,
+    ).toBe("proven")
+    expect(prova({ state: "violated", detail: "passou", evidence: null, remedies: [] }).state).toBe(
+      "violated",
+    )
+    const ind = prova({ state: "unavailable", detail: "sem git", evidence: null, remedies: [] })
+    expect(ind.state).toBe("unavailable")
+    // O detalhe e os remédios ATRAVESSAM: o relatório tem de dizer o motivo que a
+    // prova deu, e não um "não provado" genérico que ninguém consegue acionar.
+    expect(ind.detail).toBe("sem git")
+  })
+
+  it("uma prova que não devolve estado é INDISPONÍVEL, nunca verde", () => {
+    for (const saida of [undefined, null, {}, { detail: "sem estado" }]) {
+      const f = prova(saida)
+      expect(f.state).toBe("unavailable")
+      expect(f.detail).toContain("nao devolveu estado")
+    }
+  })
+
+  it("um erro na prova é INDISPONÍVEL, com a mensagem do erro no detalhe", () => {
+    const f = readPreCommitBlock({
+      deps: {
+        prove: (): object => {
+          throw new Error("git ausente")
+        },
+      },
+    })
+    expect(f.state).toBe("unavailable")
+    expect(f.detail).toContain("git ausente")
+  })
+
+  it("VIOLADO bloqueia o veredito; INDISPONÍVEL vira falta de prova NOMEADA", () => {
+    const violado = facts({
+      preCommitBlock: { state: "violated", detail: "o defeito entrou em HEAD", remedies: [] },
+    })
+    const v1 = summarize(violado)
+    expect(v1.verdict).toBe(VERDICT.BLOCKED)
+    expect(v1.blockers.some((b) => b.includes("PRE-COMMIT nao bloqueia"))).toBe(true)
+    expect(preCommitBlockBlockers(violado.preCommitBlock)[0]).toContain("indice")
+
+    const indeterminado = facts({
+      preCommitBlock: { state: "unavailable", detail: "sem git no PATH", remedies: [] },
+    })
+    const v2 = summarize(indeterminado)
+    expect(v2.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v2.unknowns.some((u) => u.includes("bloqueio LOCAL do pre-commit"))).toBe(true)
+    expect(v2.unknowns.some((u) => u.includes("sem git no PATH"))).toBe(true)
+    // Nem bloqueio nem dúvida no caminho FELIZ: o veredito não pode ficar mais
+    // caro por causa do fato novo.
+    expect(preCommitBlockBlockers(PRE_COMMIT_BLOCK_PROVEN)).toEqual([])
+    expect(preCommitBlockUnknowns(PRE_COMMIT_BLOCK_PROVEN)).toEqual([])
+    expect(summarize(facts()).verdict).not.toBe(VERDICT.UNKNOWN)
+  })
+
+  it("o fato AUSENTE do relatório é falta de prova (mesma disciplina do resto)", () => {
+    const v = summarize(facts({ preCommitBlock: undefined }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(preCommitBlockUnknowns(undefined)[0]).toContain("bloqueio LOCAL")
+  })
+
+  it("pular por --no-pre-commit-proof NÃO vira pendência, mas o relatório DIZ", () => {
+    const v = summarize(
+      facts({
+        preCommitBlock: { state: "skipped", detail: "pulada" },
+        skippedPreCommitProof: true,
+      }),
+    )
+    expect(preCommitBlockUnknowns({ state: "skipped", detail: "pulada" })).toEqual([])
+    const linhas: string[] = []
+    const fPulado = facts({
+      preCommitBlock: { state: "skipped", detail: "pulada" },
+      skippedPreCommitProof: true,
+    })
+    renderReport(
+      { facts: fPulado, verdict: summarize(fPulado) },
+      { emit: (s = "") => linhas.push(s) },
+    )
+    expect(linhas.join("\n")).toContain("prova do bloqueio LOCAL pulada por --no-pre-commit-proof")
+    expect(v.verdict).toBe(VERDICT.UNKNOWN) // as outras seções do fixture continuam
+  })
+
+  it("a seção 4/7 imprime o estado, a evidência das DUAS metades e quem cobra", () => {
+    const f = {
+      state: "proven",
+      detail: "recusou o quebrado e deixou entrar o controle",
+      evidence: {
+        defeito: { status: 1, objetosDeCommit: 0, headExiste: false },
+        controle: { status: 0, objetosDeCommit: 1 },
+      },
+      remedies: [],
+    }
+    const linhas: string[] = []
+    const fProvado = facts({ preCommitBlock: f })
+    renderReport(
+      { facts: fProvado, verdict: summarize(fProvado) },
+      {
+        emit: (s = "") => linhas.push(s),
+      },
+    )
+    const texto = linhas.join("\n")
+    expect(texto).toContain("4/7  Prova do bloqueio")
+    expect(texto).toContain("prova do bloqueio LOCAL (pre-commit): proven")
+    expect(texto).toContain("defeito no índice: exit 1, 0 objeto(s) de commit, HEAD ausente")
+    expect(texto).toContain("CONTROLE com o corpo fechado: exit 0, 1 objeto(s)")
+    expect(texto).toContain("quem cobra: o PRÓPRIO hook")
+  })
+
+  it("VIOLADO aparece na seção com o remédio (o que devolver ao hook)", () => {
+    const linhas: string[] = []
+    const fViolado = facts({
+      preCommitBlock: {
+        state: "violated",
+        detail: "o corpo quebrado foi GRAVADO em HEAD",
+        evidence: { defeito: { status: 0, objetosDeCommit: 1, headExiste: true } },
+        remedies: ["o pre-commit tem de rodar o guard do ÍNDICE"],
+      },
+    })
+    renderReport(
+      { facts: fViolado, verdict: summarize(fViolado) },
+      { emit: (s = "") => linhas.push(s) },
+    )
+    const texto = linhas.join("\n")
+    expect(texto).toContain("prova do bloqueio LOCAL (pre-commit): violated")
+    expect(texto).toContain("o pre-commit tem de rodar o guard do ÍNDICE")
+  })
+})
+
+describe("a prova REAL do bloqueio local (executada, não lida)", () => {
+  it("no repositório, o corpo `run:` quebrado no índice NÃO vira commit (e o controle vira)", () => {
+    const r = proveCommitBlocks()
+    expect(r.state).toBe("proven")
+    expect(r.evidence!.defeito.objetosDeCommit).toBe(0)
+    expect(r.evidence!.defeito.headExiste).toBe(false)
+    expect(r.evidence!.controle!.status).toBe(0)
+    expect(r.evidence!.controle!.objetosDeCommit).toBe(1)
+    // E o FATO do doctor é a mesma medição: o doctor não reimplementa a prova.
+    expect(readPreCommitBlock().state).toBe("proven")
+  })
+
+  it("SENSIBILIDADE: tirar o guard do hook muda o veredito (provado → violado)", () => {
+    const src = hookSource() ?? ""
+    expect(src).toContain(GUARD_COMMAND)
+    const r = proveCommitBlocks({
+      hookSourceTexto: src.replace(GUARD_COMMAND, "# mutação do teste"),
+    })
+    expect(r.state).toBe("violated")
+    expect(r.evidence!.defeito.headExiste).toBe(true)
+    expect(r.evidence!.defeito.conteudoEmHead).toBe("igual ao corpo quebrado")
+    expect(r.detail).toContain("não executa mais")
+  })
+
+  it("INDISPONÍVEL: um checkout sem o hook não é verde (diz o que faltou)", () => {
+    const r = readPreCommitBlock({ cwd: makeDir(), deps: {} })
+    expect(r.state).toBe("unavailable")
+    expect(r.detail).toContain("não existe neste checkout")
+    expect(r.remedies.length).toBeGreaterThan(0)
   })
 })

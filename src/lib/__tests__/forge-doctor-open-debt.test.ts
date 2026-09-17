@@ -389,6 +389,17 @@ function baseFacts() {
       detail: "0 workflow(s) de forja neste checkout",
       error: null,
     },
+    // A prova do bloqueio LOCAL (o pre-commit × o corpo `run:` quebrado):
+    // presente e PROVADA. Ausente, o fato vira dúvida — a mesma disciplina da
+    // herança de shell acima, e a razão de a fixture "o mínimo que o summarize
+    // lê" carregar tudo o que ele lê. O próprio fato tem testes em
+    // `forge-doctor.test.ts`.
+    preCommitBlock: {
+      state: "proven",
+      detail: "um 'git commit' com o corpo quebrado é recusado e o controle entra",
+      evidence: null,
+      remedies: [],
+    },
     openDebt: {
       state: "clear",
       detail: "sem dívida",

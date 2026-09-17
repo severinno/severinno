@@ -2251,6 +2251,36 @@ independente da prova ter rodado agora: `--no-proof` (removida) **não** escondi
 fora do contrato. `--no-protection` faz o fato cair em `unavailable` (a
 proteção não foi lida, o registro não pode ser confirmado).
 
+**E A PROVA DO BLOQUEIO LOCAL (a outra metade da seção 4/7): o pre-commit × o
+corpo `run:` quebrado no ÍNDICE.** A garantia de que um `git commit` carregando
+um corpo `run:` quebrado no índice é RECUSADO existia só em
+`src/lib/__tests__/pre-commit-git-commit-blocks.test.ts` — uma promessa sobre
+quem lembra de rodar a suíte, invisível para o veredito de prontidão. Agora o
+doctor **executa a mesma prova** (`proveCommitBlocks`, de
+`scripts/pre-commit-proof.mjs`, o MÓDULO que o teste importa: uma régua, dois
+consumidores) e publica o desfecho com o vocabulário de sempre:
+
+- `proven` — um `git commit` de verdade com o corpo quebrado no índice é
+  recusado (exit ≠ 0, **zero objetos de commit**, HEAD ausente) **E** o mesmo
+  commit com o corpo fechado ENTRA (exit 0, um objeto, conteúdo conferido em
+  HEAD). A segunda metade é o CONTROLE: sem ela, "não commitou" seria
+  indistinguível de um fixture que não sabe commitar;
+- `violated` — o defeito ENTROU no histórico (o hook deixou passar): BLOQUEIA o
+  veredito, com a prova de que o corpo quebrado está em HEAD (e, se o hook não
+  executa mais a linha do guard, o relatório diz isso também);
+- `unavailable` — não deu para provar: sem `.husky/pre-commit`, sem o fecho do
+  guard, sem `node_modules`, sem git/bash, ou CONTROLE que não comitou. Vira
+  falta de prova NOMEADA, nunca verde.
+
+O que a prova NÃO presume: ela mede o COMPORTAMENTO, não a linha literal — um
+hook reestruturado que continue bloqueando segue `proven` (e o relatório diz que
+o caminho não é mais a linha conhecida). O que ela não alcança está dito: quem
+cobra o comando do hook no contrato de merge é o `check-hook-commands` (seção
+24), e o CI **não** executa o hook — a prova é local, e é justamente por isso que
+ela entra ATÉ no perfil `--ci` (barata: ~0,3s, sem rede e sem credencial).
+`--no-pre-commit-proof` a pula e o veredito fica INDETERMINADA nomeando o fato
+que ficou fora.
+
 **E o mesmo contrato vale para TODO gate CORE, não só o bring-up.** O fato é
 DERIVADO dos `CORE_INVARIANTS` (uma fonte só): cada invariante que declara
 `jobIds` vira um contrato verificável, e o doctor responde a mesma tríade para
@@ -4038,6 +4068,15 @@ violação). Cada mutação é cirúrgica (as outras metades seguem reprovando),
 arquivo é restaurado por checksum e o total roda em ~6s. A regressão que
 reintroduzir qualquer uma dessas quatro metades morre no job, não no hook de quem
 commita.
+
+**E o doctor EXECUTA a outra prova (a de ponta a ponta).** Este guard responde
+"todo comando do hook RESOLVE?" — que é diferente de "o hook de fato BLOQUEIA o
+commit defeituoso?". A segunda pergunta era respondida só pelo teste
+`pre-commit-git-commit-blocks.test.ts` (um `git commit` de verdade, com o veredito
+lido no objeto); ela agora é o fato `preCommitBlock` da seção 4/7 do relatório de
+prontidão — o doctor roda o MESMO `proveCommitBlocks()` de
+`scripts/pre-commit-proof.mjs` que o teste importa (régua única, dois
+consumidores) e publica provado/violado/indisponível. Ver a §13.
 
 ---
 
