@@ -1984,6 +1984,14 @@ do PR (os 19 que faltavam ganharam MEDIDO, PISO ou TETO, e a concorrência dele 
 PRONTO **com 4 jobs por TETO**: a latência publicada do espelho é um LIMITE
 SUPERIOR, e a soma sem os tetos aparece ao lado. O dono do merge, não: se ele não
 cobrir todos os jobs do PR, o número publicado mede menos pipeline do que existe.
+
+No dono, o job `guards` é o PISO declarado: o benchmark versionado não cobre
+`check:workflow-run-syntax` nem `check:pipefail-sigpipe`, e o job também roda
+`install`/checkout. O gate de sintaxe entrou na soma com os **2464ms MEDIDOS**
+(17/09/2026, quando ele passou a julgar TAMBÉM o shell embutido — os 124 scripts
+de shell vinham da mudança anterior, e eram 2280ms), e o que segue fora é NOMEADO
+na fonte: os dois guards que o benchmark não tem e o `install`/checkout. PISO não
+é ponto medido: é a soma do que se mediu, com o que falta dito.
 O `--check` roda com o
 MESMO COMANDO nas duas forjas (`node scripts/merge-latency.mjs --check`), e é o
 que impede um PR do GitHub de furar a conta da forja editando
