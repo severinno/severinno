@@ -14,7 +14,13 @@
  *   4. o MESMO gate invocado de duas formas (`bun run check:x` × `node
  *      scripts/check-x.mjs`) é um instrumento só — sem isso o confronto
  *      declarado × derivado acusaria todo job, e alarme que sempre toca não é
- *      alarme.
+ *      alarme;
+ *   5. o `if:` lido é o do JOB (chave filha direta), NUNCA o de um passo: um
+ *      `if:` dentro de `steps:` fazia um job incondicional parecer condicional,
+ *      e o veredito ficava indeterminado por causa de um passo;
+ *   6. o TETO (`timeout-minutes` do próprio job) é a última porta antes de "não
+ *      sei" — o número entra como LIMITE SUPERIOR, NOMEADO, e é CONFRONTADO com
+ *      o `timeout-minutes` da pipeline para a cópia não envelhecer em silêncio.
  */
 
 import { describe, expect, it } from "vitest"
@@ -69,8 +75,10 @@ const PIPELINE = [
   "    steps:",
   "      - run: node scripts/check-bun-mirror.mjs",
   "      - run: node scripts/check-que-nao-existe.mjs",
+  "        if: steps.changes.outputs.changed == 'true'",
   "  build:",
   "    needs: [lint, guards]",
+  "    timeout-minutes: 3",
   "    if: always()",
   "    steps:",
   "      - run: bun run build",
@@ -105,6 +113,23 @@ describe("parseJobs — o que É job e o que não é", () => {
     expect(jobs.find((j) => j.name === "deploy")?.needs).toEqual(["build"])
     expect(jobs.find((j) => j.name === "lint")?.ifLine).toBeNull()
     expect(jobs.find((j) => j.name === "build")?.ifLine).toContain("always()")
+  })
+
+  it("o `if:` de um PASSO não é o `if:` do job", () => {
+    // O defeito que isto prende: `guards` TEM um `if:` — mas dentro de `steps:`,
+    // no passo. Lido como se fosse do job, ele fazia o job inteiro parecer
+    // condicional (e o veredito ficava indeterminado por causa de um passo).
+    const jobs = parseJobs(PIPELINE)
+    expect(jobs.find((j) => j.name === "guards")?.ifLine).toBeNull()
+    expect(classifyOnPr(jobs.find((j) => j.name === "guards")!).onPr).toBe(true)
+    // O `if:` do job continua sendo lido onde ele É do job.
+    expect(jobs.find((j) => j.name === "deploy")?.ifLine).toContain("refs/heads/main")
+  })
+
+  it("o `timeout-minutes` do job é lido (a régua do teto)", () => {
+    const jobs = parseJobs(PIPELINE)
+    expect(jobs.find((j) => j.name === "build")?.timeoutMinutes).toBe(3)
+    expect(jobs.find((j) => j.name === "lint")?.timeoutMinutes).toBeNull()
   })
 
   it("os comandos `run:` são lidos, com e sem `- `", () => {
@@ -209,6 +234,34 @@ describe("resolveDurations — declarado manda, derivado confronta", () => {
     const { byJob } = resolveDurations(jobs, m, "x", benchIndex(bench))
     expect(byJob.get("guards")!.ms).toBe(100)
     expect(byJob.get("guards")!.diverges).toBe(false)
+  })
+
+  it("o TETO declarado é confrontado com o `timeout-minutes` da pipeline", () => {
+    const m = (ms: number) => ({
+      meta: { date: "2026-09-17" },
+      overhead: { perJobMs: 0 },
+      jobs: {
+        x: {
+          build: {
+            ms,
+            provenance: "declarado (TETO: timeout-minutes)",
+            ceiling: true,
+            source: "s",
+          },
+        },
+      },
+    })
+    // Confere com o `timeout-minutes: 3` da fixture: é teto, e não está velho.
+    const ok = resolveDurations(jobs, m(180_000), "x", benchIndex(bench))
+    expect(ok.byJob.get("build")!.ceiling).toBe(true)
+    expect(ok.byJob.get("build")!.ceilingAged).toBeUndefined()
+    // O teto declarado com OUTRO número (o job mudou o orçamento): a cópia
+    // envelheceu — e o fato é nomeado, não aceito por decurso.
+    const velho = resolveDurations(jobs, m(60_000), "x", benchIndex(bench))
+    expect(velho.byJob.get("build")!.ceilingAged).toEqual({
+      declaredMs: 60_000,
+      pipelineMs: 180_000,
+    })
   })
 
   it("divergência além da tolerância é sinalizada, com o derivado marcado como PISO", () => {
@@ -333,16 +386,44 @@ describe("measureForge — a pipeline real, com o modelo real", () => {
 const FORCES_RUNNERS = 8
 
 describe("measure — o relatório das duas forjas", () => {
-  it("a forja dona do merge é PRONTA; o espelho declara o que ainda não mediu", () => {
+  it("as DUAS forjas são PRONTAS: todo job do PR tem duração (com procedência)", () => {
     const report = measure(model())
     const gitea = report.sections.find((s) => s.forge === "gitea")!
     const github = report.sections.find((s) => s.forge === "github")!
     expect(gitea.state).toBe(STATE.READY)
-    // O espelho tem jobs de PR sem medição: o veredito é INDETERMINADO e os
-    // nomes aparecem — em vez de o número sair de um zero silencioso.
+    expect(github.state).toBe(STATE.READY)
+    expect(github.missing).toEqual([])
+    expect(gitea.missing).toEqual([])
+    // Nenhum job pode ficar SEM procedência declarada: o número publicado tem
+    // de dizer de onde veio (medido, derivado, piso ou teto).
+    for (const s of report.sections) {
+      for (const j of s.jobs) expect(j.provenance).toBeTruthy()
+    }
+  })
+
+  it("o espelho NOMEIA os jobs que entraram por TETO — a latência é um limite", () => {
+    const report = measure(model())
+    const github = report.sections.find((s) => s.forge === "github")!
+    // O custo que só se conhece pelo orçamento do runner (act, PostGIS, matrix
+    // do seed) entra pelo `timeout-minutes` — e o relatório diz isso em vez de
+    // deixar o número parecer medido.
+    expect(github.ceilings.length).toBeGreaterThan(0)
+    for (const c of github.ceilings)
+      expect(c.timeoutMinutes === null || c.ms % 60_000 === 0).toBe(true)
+    // Sem os tetos, a soma é a que continua comparável com uma medição.
+    expect(github.sumWithoutCeilingsMs).toBeLessThan(github.sumOfGatesMs)
+  })
+
+  it("sem a declaração do espelho, o veredito dele volta a ser INDETERMINADO", () => {
+    // A outra face: o que faz o espelho ser PRONTO é a declaração de cada job.
+    // Apagando as durações, os nomes aparecem — nenhum job vira zero silencioso.
+    const m = model()
+    m.jobs.github = {}
+    const report = measure(m)
+    const github = report.sections.find((s) => s.forge === "github")!
     expect(github.state).toBe(STATE.UNKNOWN)
     expect(github.missing.length).toBeGreaterThan(0)
-    expect(github.unknowns.some((u) => u.includes("benchmark"))).toBe(true)
+    expect(github.unknowns.some((u) => u.includes("tem duração"))).toBe(true)
   })
 
   it("`--runners 1` no --json: a latência é a soma, e o caminho crítico continua medido", () => {

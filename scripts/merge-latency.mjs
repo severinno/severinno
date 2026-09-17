@@ -28,7 +28,17 @@
 //
 // O `if:` de um job que não se consegue classificar (roda no PR? não roda?)
 // também indetermina o veredito: incluir um job que não roda infla a latência, e
-// excluir um que roda a esconde — nenhuma das duas é uma medida.
+// excluir um que roda a esconde — nenhuma das duas é uma medida. E o `if:` que
+// este arquivo lê é o do JOB (chave filha direta, o nível de `runs-on:`), não o
+// de um PASSO: ler o de dentro de `steps:` fazia um job incondicional parecer
+// condicional — e o veredito ficava indeterminado por causa de um passo.
+//
+// A ÚLTIMA PORTA antes de "não sei" é o TETO que a PRÓPRIA pipeline declara:
+// `timeout-minutes` do job. Um job cujo custo é dominado por um passo que não
+// se mede fora do runner (baixar/rodar `act`, serviço de PostGIS) entra pelo
+// teto — um LIMITE SUPERIOR, nomeado como tal — em vez de faltar. O que a porta
+// NÃO cobre: job sem duração E sem teto. Esse continua indeterminando o
+// veredito, que é o ponto (um gate que não foi medido não é instantâneo).
 //
 // O MODO `--check` é o que torna isto MECANICO: ele julga SÓ o dono do merge e
 // fecha a conta — se um job novo entra na pipeline do PR sem duração declarada
@@ -57,7 +67,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { jobsLayout, jobKeyName } from "./forge-workflows.mjs"
+import { jobsLayout, jobKeyName, yamlChildKey } from "./forge-workflows.mjs"
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = resolve(HERE, "..")
@@ -101,6 +111,9 @@ export const MERGE_OWNER_ROLE = "dona do merge"
  * @property {string} [provenance]  "declarado" ou "derivado (benchmark)"
  * @property {string} [source]  a fonte escrita do número declarado
  * @property {boolean} [diverges]  declarado × derivado além da tolerância
+ * @property {boolean} [ceiling]  o número é um TETO (`timeout-minutes` do job), não uma medição
+ * @property {number} [timeoutMinutes]  o `timeout-minutes` de onde o teto saiu
+ * @property {{declaredMs: number, pipelineMs: number}} [ceilingAged]  o teto declarado divergiu do `timeout-minutes` da pipeline
  * @property {number} [derivedMs]  a soma dos passos que o benchmark conhece
  * @property {boolean} [derivedIsFloor]  o derivado é PISO (tem passo fora do benchmark)
  * @property {number} [derivedUnmatched]  quantos passos ficaram fora
@@ -121,7 +134,9 @@ export const MERGE_OWNER_ROLE = "dona do merge"
  * @property {{name: string, why: string}[]} unclassified  `if:` que não se entende
  * @property {string[]} missing  jobs do PR sem duração — o que indetermina
  * @property {{name: string, declaredMs: number, derivedMs: number, derivedIsFloor: boolean, derivedUnmatched: number, factor: number}[]} divergences
+ * @property {{name: string, ms: number, timeoutMinutes: number}[]} ceilings  jobs que entraram pelo TETO da pipeline (limite, não medição)
  * @property {number} sumOfGatesMs
+ * @property {number} sumWithoutCeilingsMs  a soma SEM os jobs que entraram por TETO
  * @property {boolean} sumComplete
  * @property {number|null} criticalPathMs
  * @property {string[]|null} criticalPath
@@ -147,8 +162,41 @@ export const MERGE_OWNER_ROLE = "dona do merge"
 // ── leitura do YAML (mesma leitura de jobs do resto do repositório) ─────────
 
 /**
- * Os jobs de uma pipeline: nome, `needs`, a linha do `if:` (se houver) e os
- * comandos `run:` de cada passo.
+ * A linha de uma CHAVE filha direta de um job — o mesmo nível de `runs-on:` e
+ * `steps:`. Delega ao `yamlChildKey` (`forge-workflows.mjs`), que MEDE a
+ * indentação em vez de presumir 2 e ignora o que vive mais fundo: é por isso que
+ * um `if:` de PASSO (dentro de `steps:`) não é confundido com o do job.
+ *
+ * @param {string[]} lines
+ * @param {number} headerIdx
+ * @param {number} jobIndent
+ * @param {string} key
+ * @returns {string|null}
+ */
+function jobChildLine(lines, headerIdx, jobIndent, key) {
+  const idx = yamlChildKey(lines, headerIdx, jobIndent, key)
+  return idx === null ? null : lines[idx].trim()
+}
+
+/**
+ * O `timeout-minutes` do job, se ele declarar um — o TETO declarado pela própria
+ * pipeline, lido (não copiado aqui).
+ *
+ * @param {string[]} lines
+ * @param {number} headerIdx
+ * @param {number} jobIndent
+ * @returns {number|null}
+ */
+function jobTimeoutMinutes(lines, headerIdx, jobIndent) {
+  const raw = jobChildLine(lines, headerIdx, jobIndent, "timeout-minutes")
+  if (raw === null) return null
+  const m = /^timeout-minutes:\s*(\d+)\s*(?:#.*)?$/.exec(raw)
+  return m ? Number(m[1]) : null
+}
+
+/**
+ * Os jobs de uma pipeline: nome, `needs`, a linha do `if:` DO JOB (se houver), o
+ * `timeout-minutes` declarado e os comandos `run:` de cada passo.
  *
  * A leitura é deliberadamente rasa (indentação + chaves), como a do
  * `forge-workflows.mjs`: não é um parser de YAML, é o suficiente para responder
@@ -156,7 +204,7 @@ export const MERGE_OWNER_ROLE = "dona do merge"
  * outros guards usam, para não existir uma segunda régua de YAML no repositório.
  *
  * @param {string} content
- * @returns {{name: string, needs: string[], ifLine: string|null, runLines: string[]}[]}
+ * @returns {{name: string, needs: string[], ifLine: string|null, timeoutMinutes: number|null, runLines: string[]}[]}
  */
 export function parseJobs(content) {
   const lines = content.split(/\r?\n/)
@@ -177,7 +225,16 @@ export function parseJobs(content) {
     if (indent === jobIndent) {
       const name = jobKeyName(line, jobIndent)
       if (name) {
-        current = { name, needs: [], ifLine: null, runLines: [] }
+        current = {
+          name,
+          needs: [],
+          // O `if:` do JOB — chave filha DIRETA. Um `if:` de passo vive dentro
+          // de `steps:`, mais fundo: lê-lo aqui fazia o job parecer condicional
+          // por causa de um passo e indeterminava o veredito à toa.
+          ifLine: jobChildLine(lines, i, jobIndent, "if"),
+          timeoutMinutes: jobTimeoutMinutes(lines, i, jobIndent),
+          runLines: [],
+        }
         jobs.push(current)
         continue
       }
@@ -204,10 +261,6 @@ export function parseJobs(content) {
         if (item) current.needs.push(item[1].replace(/^["']|["']$/g, ""))
         else if (!child.trim().startsWith("-")) break
       }
-      continue
-    }
-    if (/^if:/.test(trimmed) && current.ifLine === null) {
-      current.ifLine = trimmed
       continue
     }
     const run = /^(?:-\s*)?run:\s*(.+)$/.exec(trimmed)
@@ -367,6 +420,13 @@ export function resolveDurations(jobs, model, forge, index) {
       const diverges =
         typeof derived.ms === "number" &&
         Math.abs(derived.ms - entry.ms) / Math.max(derived.ms, entry.ms) > DIVERGENCE_TOLERANCE
+      // Um TETO declarado é CONFRONTADO com o `timeout-minutes` da própria
+      // pipeline: uma cópia que envelheceu (o job mudou o orçamento e o modelo
+      // não) vira fato visível, como a divergência do derivado — nunca verdade
+      // por decurso.
+      const ceiling = entry.ceiling === true
+      const pipelineTimeout =
+        typeof job.timeoutMinutes === "number" ? job.timeoutMinutes * 60_000 : null
       byJob.set(job.name, {
         ms: entry.ms,
         provenance: entry.provenance ?? "declared",
@@ -375,6 +435,10 @@ export function resolveDurations(jobs, model, forge, index) {
         derivedMs: derived.ms,
         derivedUnmatched: derived.unmatched.length,
         diverges,
+        ...(ceiling ? { ceiling: true, timeoutMinutes: job.timeoutMinutes } : {}),
+        ...(ceiling && pipelineTimeout !== null && pipelineTimeout !== entry.ms
+          ? { ceilingAged: { declaredMs: entry.ms, pipelineMs: pipelineTimeout } }
+          : {}),
       })
       continue
     }
@@ -387,6 +451,25 @@ export function resolveDurations(jobs, model, forge, index) {
         derivedMs: derived.ms,
         derivedUnmatched: derived.unmatched.length,
         diverges: false,
+      })
+      continue
+    }
+    // Última porta antes de "não sei": o TETO que a própria pipeline declara no
+    // job. Ela existe porque há custo que não se mede fora do runner (baixar e
+    // rodar `act`, serviço de PostGIS) — e um job desses tem `timeout-minutes`
+    // justamente porque o orçamento é do runner. O número é um LIMITE SUPERIOR:
+    // entra NOMEADO como teto (`ceiling`), nunca confundido com uma medição.
+    if (typeof job.timeoutMinutes === "number" && job.timeoutMinutes > 0) {
+      byJob.set(job.name, {
+        ms: job.timeoutMinutes * 60_000,
+        provenance: "declarado (TETO: timeout-minutes)",
+        source: `${FORGES.find((f) => f.id === forge)?.file ?? "a pipeline"} — o próprio job declara timeout-minutes: ${job.timeoutMinutes}`,
+        date: model?.meta?.date ?? null,
+        derivedMs: derived.ms,
+        derivedUnmatched: derived.unmatched.length,
+        diverges: false,
+        ceiling: true,
+        timeoutMinutes: job.timeoutMinutes,
       })
       continue
     }
@@ -529,6 +612,13 @@ export function measureForge({ forge, content, model, bench, runners = null }) {
   const declaredRunners = typeof configured === "number" && configured > 0
   const effectiveRunners = runners ?? (declaredRunners ? configured : 1)
   const sumOfGatesMs = jobs.reduce((acc, j) => acc + (byJob.get(j.name)?.ms ?? 0), 0)
+  // A soma SEM os tetos: é o número que continua comparável com uma medição.
+  // Sem ele, um job cujo custo só se conhece pelo orçamento do runner inflaria
+  // a única linha publicada, e ela deixaria de dizer qualquer coisa.
+  const sumWithoutCeilingsMs = jobs.reduce(
+    (acc, j) => acc + (byJob.get(j.name)?.ceiling ? 0 : (byJob.get(j.name)?.ms ?? 0)),
+    0,
+  )
   const path = criticalPath(jobs, byJob)
   const latencyMs = makespan(jobs, byJob, effectiveRunners)
 
@@ -546,6 +636,20 @@ export function measureForge({ forge, content, model, bench, runners = null }) {
       derivedIsFloor: d.derivedUnmatched > 0,
       derivedUnmatched: d.derivedUnmatched,
       factor: Number((d.derivedMs / d.ms).toFixed(2)),
+    }))
+
+  // Os jobs que entraram por TETO: a pipeline declara o orçamento e não há
+  // medição possível fora do runner. Eles NÃO indeterminam o veredito (o custo
+  // está coberto por um limite), mas o fato viaja NOMEADO no relatório — senão
+  // o número publicado pareceria medido por inteiro.
+  const ceilings = jobs
+    .map((j) => ({ name: j.name, ...byJob.get(j.name) }))
+    .filter((d) => d.ceiling)
+    .map((d) => ({
+      name: d.name,
+      ms: d.ms,
+      timeoutMinutes: d.timeoutMinutes,
+      ...(d.ceilingAged ? { aged: d.ceilingAged } : {}),
     }))
 
   const unknowns = []
@@ -586,7 +690,9 @@ export function measureForge({ forge, content, model, bench, runners = null }) {
     unclassified,
     missing,
     divergences,
+    ceilings,
     sumOfGatesMs,
+    sumWithoutCeilingsMs,
     sumComplete,
     criticalPathMs: path?.ms ?? null,
     criticalPath: path?.path ?? null,
@@ -638,6 +744,7 @@ export function measure(
           latencyMs: owner.latencyMs,
           missing: owner.missing,
           unclassified: owner.unclassified.map((u) => u.name),
+          ceilings: owner.ceilings.map((c) => c.name),
         }
       : null,
     state: sections.every((s) => s.state === STATE.READY) ? STATE.READY : STATE.UNKNOWN,
@@ -686,6 +793,11 @@ export function renderReport(report, { emit = console.log } = {}) {
       `    caminho crítico (o grafo manda)       ${secs(s.criticalPathMs)}${s.criticalPath ? ` — ${s.criticalPath.join(" → ")}` : ""}`,
     )
     line(`    LATÊNCIA DE MERGE (fila incluída)     ${secs(s.latencyMs)}`)
+    if (s.ceilings.length) {
+      line(
+        `    soma só dos MEDIDOS/declarados        ${secs(s.sumWithoutCeilingsMs)} (sem os ${s.ceilings.length} TETO(s))`,
+      )
+    }
     if (s.parallelismSavingMs !== null) {
       line(
         `    o que a concorrência economiza        ${secs(s.parallelismSavingMs)}` +
@@ -701,9 +813,26 @@ export function renderReport(report, { emit = console.log } = {}) {
       )
     }
     for (const u of s.unknowns) line(`    ⚠ ${u}`)
+    for (const c of s.ceilings) {
+      const onde =
+        c.timeoutMinutes === null
+          ? "o teto vem do workflow REUTILIZÁVEL que o job chama (o `uses:` deste job não declara `timeout-minutes`)"
+          : `\`timeout-minutes: ${c.timeoutMinutes}\``
+      line(
+        `    ⚠ '${c.name}': TETO declarado pela pipeline (${onde} = ${secs(c.ms)}) — o job entra pelo LIMITE, não por medição`,
+      )
+      if (c.aged) {
+        line(
+          `      ↳ mas o teto declarado (${secs(c.aged.declaredMs)}) DIVERGIU do \`timeout-minutes\` da pipeline (${secs(c.aged.pipelineMs)}): a cópia envelheceu`,
+        )
+      }
+    }
     line()
     line(
-      `    → ${s.state === STATE.READY ? "PRONTA: a latência cobre todos os jobs do PR" : "INDETERMINADA: falta medir o que está nomeado acima (um job não medido não é instantâneo)"}`,
+      `    → ${s.state === STATE.READY ? "PRONTA: a latência cobre todos os jobs do PR" : "INDETERMINADA: falta medir o que está nomeado acima (um job não medido não é instantâneo)"}` +
+        (s.ceilings.length
+          ? ` — ${s.ceilings.length} job(s) por TETO: a latência é um LIMITE SUPERIOR, não um ponto medido`
+          : ""),
     )
   }
 
