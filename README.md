@@ -837,9 +837,12 @@ o `bash` aprova, exit 0), tirar o corpo do STDIN do `bash`, alargar o LIMITE da
 máscara de `${{ }}`, ler a ÁRVORE onde o recorte `--staged` deve ler o ÍNDICE,
 aceitar qualquer `shell:` como presente na imagem do runner, remover a guarda do
 corpo vazio no `--fix`, tirar a SEGUNDA FONTE (a varredura dos scripts de shell
-que o passo executa com `bash scripts/x.sh`) ou forçar `isBashShell` a julgar todo
-passo como bash (o passo python legítimo vira violação FALSA) têm de mudar o
-veredito do gate — e cada mutação é cirúrgica (as outras metades seguem mordendo).
+que o passo executa com `bash scripts/x.sh`), tirar cada metade da TERCEIRA (o
+`RUN` do Dockerfile e o payload do `sh -c`), ler o YAML como texto no lugar da
+estrutura, não desfazer o `$$` do compose, ler o heredoc como código ou forçar
+`isBashShell` a julgar todo passo como bash (o passo python legítimo vira violação
+FALSA) têm de mudar o veredito do gate — e cada mutação é cirúrgica (as outras
+metades seguem mordendo).
 A última tem DUAS testemunhas: o gate por EXECUÇÃO e a **suíte unitária**, que tem
 de ficar VERMELHA (a segunda roda quando o `vitest` está instalado e DIZ quando
 não está — uma testemunha que falha por ambiente seria lida como mutante morto).

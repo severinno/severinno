@@ -434,7 +434,12 @@ export const CORE_INVARIANTS = [
     // só aparece quando o runner tenta executá-lo — depois de minutos de setup,
     // no meio do job, longe da causa. A reescrita mecânica em massa (o `--fix`
     // do `check-pipefail-sigpipe` tocou 216 ocorrências) é onde essa classe
-    // nasce, e `bash -n` a pega no PR.
+    // nasce, e `bash -n` a pega no PR. O MESMO gate julga as TRÊS fontes de
+    // shell do repositório — o corpo `run:`, o ARQUIVO versionado que o passo
+    // executa (`bash scripts/x.sh`) e o texto EMBUTIDO (a instrução `RUN` de um
+    // Dockerfile e o payload literal de um `sh -c`), que nem o YAML nem o
+    // `bash -n` do arquivo que o contém descem. É a mesma classe: o defeito
+    // morre no runtime, longe da causa.
     matches: /check[:-]workflow[:-]run[:-]syntax/,
     command: /^node scripts\/check-workflow-run-syntax\.mjs$/m,
     why: "reescrita mecânica de corpo `run:` que deixa de ser shell válido morre no RUNNER, não no PR",
