@@ -346,16 +346,18 @@ jobs:
       # o mutation test prova que ele MORDE — erro de sintaxe, aviso que o bash
       # aprova, o mascaramento preservando contexto, o índice do recorte, a
       # semântica do `shell:`, a guarda do fixer, a segunda fonte (os scripts) e o
-      # PULO NOMEADO do passo não-bash (forçá-lo a julgar ACUSA um passo são) —
-      # contra fixtures. A última mutação tem duas testemunhas: o gate por
-      # EXECUÇÃO e a suíte unitária, que tem de ficar VERMELHA (onde o vitest
-      # está instalado; onde não está, o script DIZ que não julgou essa metade).
-      # Sem isto, um guard que virasse no-op passaria verde para sempre.
-      - name: Mutation test — o guard deve FALHAR nas 13 metades
+      # PULO NOMEADO — duas vezes, porque a decisão tem DUAS fontes: o `shell:` do
+      # passo não-bash e o SHEBANG do arquivo não-bash (julgar qualquer um deles
+      # ACUSA quem não tem defeito) — contra fixtures. As DUAS mutações do pulo
+      # nomeado têm duas testemunhas cada: o gate por EXECUÇÃO e a suíte unitária,
+      # que tem de ficar VERMELHA (onde o vitest está instalado; onde não está, o
+      # script DIZ que não julgou essa metade). Sem isto, um guard que virasse
+      # no-op passaria verde para sempre.
+      - name: Mutation test — o guard deve FALHAR nas 14 metades
         run: bash scripts/test-mutation-workflow-run-syntax.sh
 
       - name: Summary
-        run: echo "✅ Todo corpo de passo dos workflows das duas forjas, todo script de shell versionado E todo texto de shell EMBUTIDO (o `RUN` de um Dockerfile e o payload de um `sh -c`) fazem PARSING (bash -n, sem erro E sem aviso; passo não-bash, script de shebang não-bash e shell embutido indeterminado são contados e nomeados) e o mutation test prova que o guard morde nas treze metades."
+        run: echo "✅ Todo corpo de passo dos workflows das duas forjas, todo script de shell versionado E todo texto de shell EMBUTIDO (o `RUN` de um Dockerfile e o payload de um `sh -c`) fazem PARSING (bash -n, sem erro E sem aviso; passo não-bash, script de shebang não-bash e shell embutido indeterminado são contados e nomeados) e o mutation test prova que o guard morde nas catorze metades."
 
   # ── Bring-up Gate Proof (o PRÉ-REQUISITO 0, por EXECUÇÃO) ──────────────
   # O mesmo invariante do CORE da forja, provado aqui pelo caminho real: o

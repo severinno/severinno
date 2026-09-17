@@ -7,7 +7,7 @@
 #   ./scripts/test-mutation-workflow-run-syntax.sh
 #
 # Exit codes:
-#   0 — as TREZE mutações foram DETECTADAS (pelo gate e/ou pela suíte) e os
+#   0 — as QUATORZE mutações foram DETECTADAS (pelo gate e/ou pela suíte) e os
 #       controles passaram ✅
 #   1 — guard INDIFERENTE a alguma mutação (não cegou) OU controle falso ❌
 #
@@ -96,6 +96,16 @@
 #        o FALSO POSITIVO, e ele cai em cima de quem escreve FIXTURE: os próprios
 #        mutation tests do repositório escrevem shell quebrado dentro de heredoc
 #        de propósito. Sem o pulo, o gate acusa um script são.
+#   M14 — O PULO NOMEADO do ARQUIVO de shebang NÃO-bash — a SIMETRIA do M8. O
+#        `shell:` de um passo e o SHEBANG de um arquivo são a MESMA decisão
+#        (`isBashShell`) com FONTES diferentes; o M8 muta a FUNÇÃO, este muta a
+#        DECISÃO DO ARQUIVO (`if (!isBashShell(interp.command))` → `if (false)`),
+#        o que deixa o passo não-bash pulado ao lado. Um `.sh` que declara
+#        `#!/usr/bin/env python3` é legítimo no interpretador DELE e inválido
+#        para o bash: julgá-lo inventa uma violação para um arquivo são, e o
+#        repositório perderia a única classificação que distingue "script de
+#        outra linguagem com nome .sh" de "script bash quebrado". DUAS
+#        testemunhas (gate e suíte), como o M8.
 #
 # NOTA HONESTA sobre M3 (medido, não suposto): remover a máscara POR INTEIRO
 # NÃO cega o guard — `bash -n` aceita `[ "${{ vars.MODE || 'a}b' }}" = "1" ]`
@@ -187,6 +197,9 @@ EXPECTED_SCRIPTS='arquivo(s) de shell NÃO passam'
 # O PULO NOMEADO do passo não-bash (M8): a headline que o gate REAL emite para o
 # passo que ele NÃO julga — e que a mutação tem de FAZER DESAPARECER.
 EXPECTED_PULAR='shell NÃO-bash PRESENTE no runner'
+# O PULO NOMEADO do ARQUIVO de shebang não-bash (M14): a OUTRA headline de pulo,
+# a dos arquivos — a do passo não serve aqui (a régua é a mesma, a fonte é outra).
+EXPECTED_PULAR_ARQUIVO='arquivo(s) de shell fora do parsing'
 # A segunda testemunha do M8: o arquivo que a suíte unitária julga.
 SUITE_ARQUIVO="src/lib/__tests__/check-workflow-run-syntax.test.ts"
 # A TERCEIRA fonte (o shell EMBUTIDO): as duas headlines próprias — a do shell do
@@ -391,6 +404,79 @@ exigir_falso_positivo() {
   if grep -qF "$EXPECTED_PULAR" <<<"$GUARD_OUT"; then
     fail "$cenario: o pulo nomeado SAINDO junto com a violação é contraditório —"
     fail "o gate julgou o passo E disse que o pulou."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+}
+
+# ── exigir_arquivo_pulado: o ARQUIVO não-bash PASSA e sai NOMEADO como pulado ──
+# O espelho do `exigir_pulado_nomeado` do outro lado da régua: lá a fonte da
+# decisão é o `shell:` do passo, aqui é o SHEBANG do arquivo. As mesmas três
+# asserções — passou, NOMEIA o pulo e diz QUAL interpretador ficou fora —, e a
+# headline é a dos ARQUIVOS (a do passo não provaria nada sobre um `.sh`).
+exigir_arquivo_pulado() {
+  local cenario="$1" arquivo="$2"
+  if [ "$GUARD_EXIT" -ne 0 ]; then
+    fail "CONTROLE FALSO ($cenario): o gate REPROVOU um arquivo de shebang legítimo (exit $GUARD_EXIT)."
+    fail "Sem um pulo correto, o 'virou violação falsa' do M14 mede nada."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if ! grep -qF "$EXPECTED_PULAR_ARQUIVO" <<<"$GUARD_OUT"; then
+    fail "$cenario: passou, mas SEM nomear o pulo do ARQUIVO ('$EXPECTED_PULAR_ARQUIVO')."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if ! grep -qF "$arquivo" <<<"$GUARD_OUT"; then
+    fail "$cenario: o pulo não diz QUAL arquivo ficou fora do parsing."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if ! grep -qF "python3" <<<"$GUARD_OUT"; then
+    fail "$cenario: o pulo não diz QUAL interpretador o shebang declara."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+}
+
+# ── exigir_arquivo_acusado: com a mutação o gate ACUSA o arquivo que pulava ──
+# Inverso do anterior, e as DUAS metades são exigidas: a violação pelo PARSING
+# com o interpretador DITO (o falso positivo explícito — o gate sabe que o
+# shebang declara `python3` e julga com bash mesmo assim) e o pulo nomeado
+# DESAPARECIDO. Só uma delas deixaria passar um gate que acusasse por outro
+# motivo, ou que acusasse E pulasse junto.
+exigir_arquivo_acusado() {
+  local cenario="$1" arquivo="$2"
+  if [ "$GUARD_EXIT" -eq 0 ]; then
+    fail "INDIFERENTE ($cenario): com a decisão do ARQUIVO mutada o gate AINDA passou"
+    fail "(exit 0) — o pulo nomeado do shebang não sustenta este veredito."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if [ "$GUARD_EXIT" -ne 1 ]; then
+    fail "$cenario: exit $GUARD_EXIT — o contrato é 1 (violação), não infra errada."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if ! grep -qF "$EXPECTED_SCRIPTS" <<<"$GUARD_OUT"; then
+    fail "$cenario: reprovou, mas NÃO pela asserção do ARQUIVO ('$EXPECTED_SCRIPTS')."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if ! grep -qF "$arquivo" <<<"$GUARD_OUT"; then
+    fail "$cenario: reprovou, mas NÃO citou o ARQUIVO pulado."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if ! grep -qF 'interpretador: `python3`' <<<"$GUARD_OUT"; then
+    fail "$cenario: o falso positivo não é explícito — o relatório não diz que o arquivo"
+    fail "acusado declara \`python3\` (é o gate julgando o que ele VIU que não é bash)."
+    echo "$GUARD_OUT" | tail -12
+    exit 1
+  fi
+  if grep -qF "$EXPECTED_PULAR_ARQUIVO" <<<"$GUARD_OUT"; then
+    fail "$cenario: o pulo nomeado SAINDO junto com a violação é contraditório —"
+    fail "o gate julgou o arquivo E disse que o pulou."
     echo "$GUARD_OUT" | tail -12
     exit 1
   fi
@@ -1208,6 +1294,92 @@ restaurar_originais
 pass "fontes RESTAURADAS (os dois checksums conferem)"
 
 # ═════════════════════════════════════════════════════════════════════════
+# MUTAÇÃO M14 — o PULO NOMEADO do ARQUIVO de shebang NÃO-bash
+# ═════════════════════════════════════════════════════════════════════════
+
+header "MUTAÇÃO M14: julgar o ARQUIVO de shebang não-bash em vez de pulá-lo"
+
+# A SIMETRIA do M8, do outro lado da régua: o `shell:` de um passo e o SHEBANG
+# de um arquivo são a MESMA decisão (`isBashShell`) com FONTES diferentes — o
+# passo declara no YAML, o arquivo declara na primeira linha. O M8 muta a FUNÇÃO
+# (que atende os dois); aqui a mutação é a DECISÃO DO ARQUIVO
+# (`if (!isBashShell(interp.command))` → `if (false)`), e é isso que a torna
+# cirúrgica para o outro lado: o pulo do PASSO segue vivo ao lado.
+#
+# O fixture repete o par do M8 — um arquivo LEGÍTIMO no interpretador declarado
+# e INVÁLIDO para o bash (`print(1)` é `syntax error near unexpected token`), e
+# com nome `.sh` porque é assim que um script de outra linguagem entra na lista
+# do `listShellScripts` no dia em que alguém o escreve.
+FXPY="$TMP_DIR/fx-shebang"
+mkdir -p "$FXPY/scripts"
+cat > "$FXPY/scripts/legitimo.sh" <<'BODY'
+#!/usr/bin/env python3
+print(1)
+BODY
+
+rodar_guard_em "$FXPY"
+exigir_arquivo_pulado "CONTROLE M14 (arquivo python legítimo)" "scripts/legitimo.sh"
+pass "CONTROLE M14: o ARQUIVO python PASSA e sai NOMEADO como pulado (com o shebang dito)"
+
+# A SEGUNDA TESTEMUNHA (como no M8): viva antes de medir, vermelha com a
+# mutação. A suíte cobre o pulo por shebang em `collectShellScripts` — e onde o
+# vitest não está instalado o silêncio não é permitido: o motivo é DITO.
+suite_disponivel && rodar_suite
+if suite_disponivel; then
+  if [ "$SUITE_EXIT" -ne 0 ]; then
+    fail "CONTROLE M14 (suíte): a suíte unitária está VERMELHA com a fonte ÍNTEGRA (exit $SUITE_EXIT)."
+    fail "Uma testemunha já vermelha mata qualquer mutante — ela mediria nada."
+    echo "$SUITE_OUT"
+    exit 1
+  fi
+  pass "CONTROLE M14 (suíte): VERDE com a fonte íntegra — a segunda testemunha está viva"
+else
+  info "CONTROLE M14 (suíte): NÃO julgada — node_modules/vitest ausente neste job (declarado, nunca silencioso)"
+fi
+
+mutar_guard '    if (!isBashShell(interp.command)) {' '    if (false) { // MUTACAO M14: o shebang do ARQUIVO fora da decisao'
+
+rodar_guard_em "$FXPY"
+exigir_arquivo_acusado "M14 no arquivo python" "scripts/legitimo.sh"
+pass "M14 DETECTADA pelo GATE: sem a decisão do arquivo ele ACUSA o script legítimo (violação FALSA, com o interpretador dito)"
+
+if suite_disponivel; then
+  rodar_suite
+  if [ "$SUITE_EXIT" -eq 0 ]; then
+    fail "M14 NÃO DETECTADA pela suíte: a testemunha unitária PASSOU com o pulo do shebang removido."
+    echo "$SUITE_OUT"
+    exit 1
+  fi
+  pass "M14 DETECTADA também pela SUÍTE (exit $SUITE_EXIT) — as duas testemunhas concordam"
+fi
+
+# Cirúrgica, lado 1: a OUTRA fonte da MESMA decisão. Com a mutação aplicada, o
+# passo `shell: python3` continua PULADO e nomeado — morreu o pulo do ARQUIVO,
+# não o do passo (é a simetria do M8 medida ao contrário).
+mkfixture_python
+rodar_guard
+exigir_pulado_nomeado "M14 cirúrgica (passo python)"
+pass "M14 CIRÚRGICA: o passo não-bash segue PULADO e nomeado (morreu só a decisão do arquivo)"
+
+# Cirúrgica, lado 2: o parsing segue mordendo. Um arquivo BASH quebrado no mesmo
+# tipo de fixture (só a segunda fonte) segue reprovado com a mutação aplicada —
+# se ele passasse, o que teria morrido seria a varredura, não o pulo.
+FXBS="$TMP_DIR/fx-shebang-bash"
+mkdir -p "$FXBS/scripts"
+cat > "$FXBS/scripts/quebrado.sh" <<'BODY'
+#!/usr/bin/env bash
+if [ 1 = 1 ]; then
+  echo sem fi
+BODY
+
+rodar_guard_em "$FXBS"
+exigir_reprovado_script "M14 cirúrgica (arquivo bash)"
+pass "M14 CIRÚRGICA: o ARQUIVO bash quebrado segue reprovado (a segunda fonte segue viva)"
+
+restaurar_originais
+pass "fontes RESTAURADAS (os dois checksums conferem)"
+
+# ═════════════════════════════════════════════════════════════════════════
 # CONTROLE FINAL — a árvore voltou ao comportamento original
 # ═════════════════════════════════════════════════════════════════════════
 
@@ -1216,13 +1388,13 @@ header "CONTROLE FINAL: o guard restaurado volta a reprovar o \`if\` sem \`fi\`"
 mkfixture "If sem fi" "$TMP_DIR/b-sem-fi.sh"
 rodar_guard
 exigir_reprovado "CONTROLE FINAL" "$EXPECTED_ERRO"
-pass "CONTROLE FINAL: depois das TREZE mutações o guard reprova de novo (árvore íntegra)"
+pass "CONTROLE FINAL: depois das QUATORZE mutações o guard reprova de novo (árvore íntegra)"
 
 # ── Veredito ──────────────────────────────────────────────────────────────
 
 echo ""
 echo "  ═════════════════════════════════════════════════════════════════"
-echo -e "   ${GREEN}✅ MUTATION TEST PASSOU${NC} — os TREZE mecanismos são LOAD-BEARING:"
+echo -e "   ${GREEN}✅ MUTATION TEST PASSOU${NC} — os QUATORZE mecanismos são LOAD-BEARING:"
 echo "      • a metade do AVISO (heredoc truncado, bash sai 0) → mutá-la cega"
 echo "      • o stdin do bash (o corpo julgado) → mutá-lo cega tudo"
 echo "      • a máscara LAZY (para no primeiro }}) → torná-la gulosa cega"
@@ -1231,6 +1403,7 @@ echo "      • o conjunto de SHELLS medido na imagem → aceitar qualquer nome 
 echo "      • a guarda do corpo VAZIO no --fix → sem ela o fixer apaga o passo"
 echo "      • a SEGUNDA fonte (os scripts de shell) → tirá-la cega o arquivo que o passo executa"
 echo "      • o PULO NOMEADO do passo não-bash → forçá-lo a julgar ACUSA um passo são"
+echo "      • o PULO NOMEADO do ARQUIVO de shebang não-bash → julgá-lo ACUSA um script são"
 echo "      • a TERCEIRA fonte, o RUN do Dockerfile → tirá-la cega o shell do BUILD"
 echo "      • a TERCEIRA fonte, o payload do sh -c → tirá-la cega o que o bash -n do arquivo não vê"
 echo "      • a leitura por ESTRUTURA do YAML → ler o texto lê a sintaxe do YAML no lugar do script"

@@ -1127,7 +1127,7 @@ benchmark versionado). Medido em 17/09/2026:
 | Forja                                      | Soma dos gates |               Caminho crítico |                **Latência de merge** |        O que a concorrência economiza |
 | :----------------------------------------- | -------------: | ----------------------------: | -----------------------------------: | ------------------------------------: |
 | Gitea (dona do merge, **1** `act_runner`)  |         472.5s |       377.5s (`test → build`) |                           **472.5s** | 0s — com 1 runner a pipeline é SERIAL |
-| GitHub (espelho, **1** runner self-hosted) |     ≤ 11053.9s | 7200.0s (`seed-guards`, teto) | ≤ **11053.9s** (553.9s sem os TETOs) |             0s — SERIAL, como a forja |
+| GitHub (espelho, **1** runner self-hosted) |     ≤ 11081.5s | 7200.0s (`seed-guards`, teto) | ≤ **11081.5s** (581.5s sem os TETOs) |             0s — SERIAL, como a forja |
 
 Ou seja: o PR da forja espera **7m52s**, e o **teto** do ganho com runners
 de sobra é **95.0s** (472.5 − 377.5) — o `build` (246s) e o `test` (131.5s)
@@ -1152,14 +1152,16 @@ shell EMBUTIDO**: as 14 instruções `RUN` dos Dockerfiles (o shell do BUILD, co
 continuação `\` juntada antes do parser) e os 19 payloads de `sh -c` de scripts,
 corpos e composes (que para o `bash -n` do arquivo que os contém são uma STRING).
 O escopo cresceu de novo e o custo acompanhou **apenas em parte**: o guard foi
-2280ms → **2464ms** (os composes e os Dockerfiles entram na leitura, e o `bash -n`
-deles é marginal), enquanto o mutation test — dominante no job, 93% — subiu de 8
-para **13 metades** (22850ms → **30817ms**: as novas rodam o gate contra fixtures
-próprias, uma por mecanismo). No job do espelho isso é 25,1s → **33,3s**; no
-`guards` da forja a soma declarada foi de 19.2s → **19.4s** (ainda PISO:
-`check:pipefail-sigpipe`, `install` e checkout seguem fora). O caminho crítico de
-NENHUMA das duas forjas muda — o que muda é o total serial, em 0,2s na forja e
-8,2s no espelho.
+2280ms → 2464ms → **2496ms** (os composes e os Dockerfiles entram na leitura, e o
+`bash -n` deles é marginal), enquanto o mutation test — dominante no job, 96% —
+subiu de 8 para **14 metades** (22850ms → 30817ms → **58457ms**: o que move o
+custo dele agora é o número de INVOCAÇÕES da suíte unitária, não o programa a
+julgar — as duas metades com testemunha unitária rodam o vitest 2× cada, 13,3s
+por run neste host). No job do espelho isso é 25,1s → 33,3s → **61,0s**; no
+`guards` da forja a soma declarada segue **19.4s**, porque ele roda o GUARD e não
+o mutation test (ainda PISO: `check:pipefail-sigpipe`, `install` e checkout
+seguem fora). O caminho crítico de NENHUMA das duas forjas muda — o que muda é o
+total serial, em 0,2s na forja e 35,9s no espelho.
 
 Uma premissa por FONTE, e é ela que evita o falso positivo: o texto de um `RUN` é
 a instrução JUNTADA (a continuação `\` faz parte, o comentário dela é descartado

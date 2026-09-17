@@ -75,9 +75,9 @@
         "date": "2026-09-17"
       },
       "workflow-run-syntax": {
-        "ms": 33300,
+        "ms": 60950,
         "provenance": "declarado (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17, mediana de 3 runs: `node scripts/check-workflow-run-syntax.mjs` 2464ms (era 2280ms: a TERCEIRA fonte, o shell EMBUTIDO, lê mais 50 arquivos — os Dockerfiles, os composes e os textos que carregam `sh -c`) + `bash scripts/test-mutation-workflow-run-syntax.sh` 30817ms (era 22850ms: as metades subiram de 8 para 13, e as novas rodam o gate contra fixtures próprias). O mutation test é o custo dominante (93% do job): o guard julga 482 corpos, 124 arquivos de shell e 33 textos de shell embutido, e o que pesa nele é o PROGRAMA A JULGAR, não o número de fontes.",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17, mediana de 3 runs: `node scripts/check-workflow-run-syntax.mjs` 2496ms + `bash scripts/test-mutation-workflow-run-syntax.sh` 58457ms (era 30817ms: as metades subiram de 13 para 14, e a nova é o pulo nomeado do ARQUIVO de shebang não-bash — o espelho do M8 no outro lado da régua, com as MESMAS duas testemunhas: o gate por execução e a suíte unitária). O mutation test é o custo dominante (96% do job) e o que o move agora é o número de INVOCAÇÕES da suíte (2 por metade com testemunha unitária — 4 no total, 13,3s cada neste host), não o programa a julgar: o guard segue julgando 482 corpos, 124 arquivos de shell e 33 textos de shell embutido, e o custo dele ficou parado (2280 → 2464 → 2496ms).",
         "date": "2026-09-17"
       },
       "mutation-jobs-staged-guard": {

@@ -1566,16 +1566,27 @@ vazio** no `--fix` CEGA o fixer de um jeito que se paga no gate — ele grava um
 corpo vazio, o vazio deixa de ter sintaxe a julgar e o passo que já não roda nada
 sai como ✅; tirar a **segunda fonte** (a varredura dos arquivos de shell) CEGA o
 gate para o script quebrado — que passa a sair com a headline de sucesso contando
-os arquivos que NÃO julgou; e forçar `isBashShell` a `true` julga o passo python
+os arquivos que NÃO julgou; forçar `isBashShell` a `true` julga o passo python
 legítimo (o corpo do fixture é `print(1)`) e o gate **ACUSA quem não tem defeito**
 — a assinatura INVERSA das outras mutações: não é cegueira, é violação FALSA, com
-o pulo nomeado desaparecendo do relatório. Cada mutação é CIRÚRGICA — as outras
-metades seguem mordendo — e o script exige que o veredito MUDE: um mecanismo que,
-mutado, não muda nada é decoração e falha o PR (exit 1). A mutação do pulo nomeado
-tem **duas testemunhas**: o gate por EXECUÇÃO (node-puro, sempre roda) e a **suíte
-unitária**, que tem de ficar VERMELHA — ela roda quando o `vitest` está instalado
-e, onde não está, o script DIZ que não julgou essa metade (uma testemunha vermelha
-por ambiente "mataria" o mutante, e o teste passaria por engano). (Medido: remover
+o pulo nomeado desaparecendo do relatório; e tirar a **decisão do ARQUIVO**
+(`if (!isBashShell(interp.command))` → `if (false)`) faz o mesmo com o outro lado
+da régua — um `.sh` que declara `#!/usr/bin/env python3` é legítimo no
+interpretador DELE e inválido para o bash, e julgá-lo inventa uma violação para um
+arquivo são (o relatório acusa citando `interpretador: python3`, e o repositório
+perde a única classificação que distingue "script de outra linguagem com nome
+`.sh`" de "script bash quebrado"). Essa é a **simetria** da anterior: o `shell:`
+de um passo e o SHEBANG de um arquivo são a mesma decisão com FONTES diferentes —
+uma mutação muda a função (que atende os dois), a outra muda só a decisão do
+ARQUIVO, e cada uma exige a outra metade VIVA ao lado (o passo não-bash segue
+pulado e nomeado; o arquivo bash quebrado segue reprovado). Cada mutação é
+CIRÚRGICA — as outras metades seguem mordendo — e o script exige que o veredito
+MUDE: um mecanismo que, mutado, não muda nada é decoração e falha o PR (exit 1).
+As DUAS mutações do pulo nomeado (o passo e o arquivo) têm **duas testemunhas**
+cada: o gate por EXECUÇÃO (node-puro, sempre roda) e a **suíte unitária**, que tem
+de ficar VERMELHA — ela roda quando o `vitest` está instalado e, onde não está, o
+script DIZ que não julgou essa metade (uma testemunha vermelha por ambiente
+"mataria" o mutante, e o teste passaria por engano). (Medido: remover
 a máscara por inteiro **não** muda o
 veredito — `bash -n` aceita `${{ ... }}` —, por isso a mutação da máscara é o seu
 LIMITE, não a sua ausência.)
