@@ -4447,6 +4447,21 @@ dívida declarada. Já o passo **sem** `shell:` **reprova** por desenho, e a
 ocorrência sai marcada como premissa do **runner** (é esse o controle que mede o
 rótulo, não a tolerância).
 
+A **seção R** mede o CANAL — a outra ponta do `--fix`, e a que vai ao PR: **R1**
+exige que o patch do preview **APLIQUE** pelo `git apply` (num repo git de
+verdade, com a cicatriz no MEIO do arquivo, e que o gate saia **0** no repo
+remendado); a mutação correspondente tira o **contexto** do hunk
+(`unified-patch.mjs`) e exige que o `git apply` **recuse** — o mutante prova que
+é o contexto que torna o remendo aplicável. **R2** exige que o preview **NÃO
+grave** (a cicatriz segue no arquivo e o checksum é o mesmo); a mutação troca o
+`dry: true` do `remedyPatch` por `dry: false` e exige que a árvore **mude**. **R3**
+roda a reconciliação contra um canal dublê com o comentário do `bash -n` (id 11) e
+o do SIGPIPE (id 22) no MESMO PR, com a cicatriz do SIGPIPE já resolvida: com
+marcadores próprios SÓ o 22 sai; a mutação iguala os marcadores e exige que o
+comentário do **outro** gate (id 11) caia junto. As três fontes mutadas
+(`check-pipefail-sigpipe.mjs`, `unified-patch.mjs` e `pr-remedy-comment.mjs`) têm
+cópia de segurança com `cksum` no `trap`, como o guard e a régua.
+
 A **mutação G** prova a outra metade do `--fix`: o produtor com expressão do
 runner (`docker exec ${{ job.services.postgres.id }} psql ... | grep -qx 1`) tem
 de sair **inteiro** dentro de `<<< "$(...)"`. O defeito real que ela prende veio

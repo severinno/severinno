@@ -63,10 +63,10 @@
         "date": "2026-09-16"
       },
       "mutation-guards": {
-        "ms": 101100,
+        "ms": 188600,
         "provenance": "medido (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/test-mutation-guards.sh` 101.1s com 26 sub-tests (87.0–87.4s com 25 antes desta rodada; era MEDIDO 39s em outro host, com 23). O que domina o job é UMA sub-test: a prova de mutação do gate de sintaxe custa ≈58.5s sozinha; a 25ª (comandos dos hooks) é ≈6s e a 26ª (defaults do registry/namespace: seis mutações, cada uma com o veredito do gate contra um fixture — ou com o repositório real — e a suíte unitária em recorte declarado) mediu 14.1s. O número de 39s pedia o host de origem dele (Windows) e ficou abaixo de uma das sub-tests que o job contém — o valor declarado de um job não pode ser menor que o de um passo dentro dele.",
-        "date": "2026-09-17"
+        "source": "medido neste host (Linux, 16 cpus, 31 GB), 2026-09-18, mediana de 3 runs WARM da matriz COMPLETA, TODAS com 29/29 sub-tests verdes: `bash scripts/test-mutation-guards.sh` 188.6s com 29 sub-tests (188.2 · 188.6 · 188.8). A 29ª entrou nesta rodada e é o contrato dos required checks APLICADOS (renomear o `name:` de um required check sem a reaplicação declarada deixa o PR vermelho; as seis metades que sustentam isso — as duas réguas da comparação, o fio em main(), o fail-closed da declaração ausente, o alvo do --forge e o carimbo sem churn — caem cada uma no seu fato quando mutadas): mediana de 3 pelo caminho do master (`--scenario required-applied`: 9.87 · 9.88 · 9.90). A composição fecha ≈174.9 + 9.9 = ≈184.8s esperados contra os 188.6 medidos — os ≈3.8s de excesso estão na ordem da deriva de HOST que as rodadas anteriores já registravam (≈10s com a mesma carga), e o que domina o job segue sendo UMA sub-test, a prova de mutação do gate de sintaxe (≈58.5s sozinha). O `39s` (Windows, 23 sub-tests, 08/2026) segue RETIRADO como valor vivo: era de outro host, com sub-tests a menos, e ficava abaixo de UMA das sub-tests que o job contém — o valor declarado de um job não pode ser menor que o de um passo dentro dele.",
+        "date": "2026-09-18"
       },
       "unused-deps-guard": {
         "ms": 500,

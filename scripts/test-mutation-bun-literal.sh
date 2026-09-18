@@ -33,7 +33,14 @@
 #   7. M4: os EXEMPLOS DE VERSÃO na PROSA (invariante 17) — mesma dupla: o
 #      README do fixture com um exemplo DESATUALIZADO reprova, e a cópia do
 #      guard sem a chamada da prosa passa (a metade que mede a doc é load-bearing)
-#   8. Cleanup (trap EXIT — rm -rf do temp)
+#   8. M5/M6 (STEP 7/8): a CADEIA DE BUILD (invariante 18) e os USOS da versão
+#      num pipeline de TERCEIRO (invariante 19) — cada metade com CONTROLE,
+#      mutante e cópia cirúrgica do guard; o M6 cobre a comparação por valor, a
+#      exclusão do comentário (a prosa do cabeçalho) e o recorte `--staged`.
+#      O M5 cobre as duas direções do commit na cadeia de build: o arg e a
+#      declaração de toolchain que ele APAGA (M5e/M5f, comparando o bloco do
+#      ÍNDICE com o de HEAD — o que o commit tira não ganha linha adicionada)
+#   9. Cleanup (trap EXIT — rm -rf do temp)
 #
 # Usage:
 #   ./scripts/test-mutation-bun-literal.sh
@@ -515,9 +522,16 @@ fi
 #   M5b o build site NÃO passa o arg (o defeito original);
 #   M5c o `packageManager` diz OUTRA versão;
 #   M5d o default volta EMBUTIDO na referência (`\${BUN_VERSION:-<v>}`).
-# A cópia do guard com as QUATRO linhas neutralizadas passa com as quatro em
-# disco (cada metade responde pelo próprio veredito), e o recorte `--staged`
+# A cópia do guard com as SEIS linhas neutralizadas passa com todas em disco
+# (cada metade responde pelo próprio veredito), e o recorte `--staged`
 # (o pre-commit) pega o M5b — é no COMMIT que o build site nasce.
+#
+# Duas linhas a mais medem a OUTRA direção do recorte (o que o commit APAGA,
+# e que nenhuma linha adicionada mostra):
+#   M5e o arg de um build site REMOVIDO de um bloco que sobrevive;
+#   M5f a declaração de TOOLCHAIN (`packageManager`) REMOVIDA — a 18(c) só
+#       existia na varredura global, e o `package.json` não era alvo de
+#       nenhuma pathspec do recorte.
 
 info "STEP 7: M5 — a cadeia de build (invariante 18) é load-bearing?"
 
@@ -676,20 +690,108 @@ if ! grep -Fq "'worker-novo' builda 'Dockerfile.worker'" <<<"$M5_STAGED_OUT"; th
 fi
 pass "M5 --staged: o commit do build site NOVO sem o arg é RECUSADO, nomeando 'worker-novo'"
 
-# ── A cópia do guard com as quatro linhas neutralizadas ─────────────────
+# ── M5e: a REMOÇÃO do arg (a direção que o recorte das linhas + não via) ──
+#
+# Um bloco que só PERDE o arg não ganha linha ADICIONADA nenhuma, então o recorte
+# dos "blocos que o diff toca" não tinha o que julgar: remover o arg de um build
+# site passava o commit e só encontrava a varredura global (que roda no PR). A
+# régua compara o bloco do ÍNDICE com o de HEAD — e é isso que este passo mede,
+# com o estado base COMITADO (sem HEAD não há "bloco anterior").
+# O estado base JÁ é o do HEAD do passo anterior (o commit do build site
+# DERIVADO, com o arg). O defeito é o MESMO serviço, com o bloco sem o arg —
+# nenhum commit novo é necessário: o que a régua compara é o ÍNDICE contra o
+# HEAD que já existe.
+cat > "$TMP_DIR/docker-compose.yml" <<YML
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+YML
+git -C "$TMP_DIR" add docker-compose.yml
+set +e
+M5_DEL_OUT="$(cd "$TMP_DIR" && node "$GUARD" --staged 2>&1)"
+M5_DEL_EXIT=$?
+set -e
+if [ "$M5_DEL_EXIT" -eq 0 ]; then
+  fail "o recorte --staged passou com o arg REMOVIDO do build site (exit 0) — o commit"
+  fail "que apaga a única declaração de versão daquele build entraria no histórico."
+  exit 1
+fi
+for M5_DEL_ESPERADO in "docker-compose.yml:" "REMOVE o arg do bloco" "'web'"; do
+  if ! grep -Fq "$M5_DEL_ESPERADO" <<<"$M5_DEL_OUT"; then
+    fail "o guard reprovou (exit $M5_DEL_EXIT) mas SEM a asserção esperada: $M5_DEL_ESPERADO"
+    echo "$M5_DEL_OUT" | tail -8
+    exit 1
+  fi
+done
+pass "M5e --staged (REMOÇÃO): o commit que APAGA o arg do build site é RECUSADO, nomeando 'web'"
+
+# ── M5f: a REMOÇÃO da declaração de TOOLCHAIN (a última ponta da 18 no commit) ──
+#
+# O `package.json` não é alvo de NENHUMA outra pathspec do recorte, então a
+# 18(c) só existia na varredura GLOBAL: apagar o `packageManager` passava o
+# commit e só encontrava o PR. É a mesma cegueira do M5e (o que o commit TIRA
+# não aparece em linha adicionada nenhuma), agora no toolchain — o campo que é a
+# PRIMEIRA coisa que alguém lê para saber qual Bun este repo usa.
+# Fixture PRÓPRIO: o defeito do M5e está staged no $TMP_DIR e um segundo defeito
+# no mesmo índice tornaria as duas leituras indistinguíveis.
+M5F_DIR="$TMP_DIR/pm-toolchain"
+mkdir -p "$M5F_DIR"
+git -C "$M5F_DIR" init -q
+printf '{ "name": "fixture", "packageManager": "bun@%s" }\n' "$FIXTURE_VERSION" \
+  > "$M5F_DIR/package.json"
+git -C "$M5F_DIR" add -A
+git -C "$M5F_DIR" -c user.email=fixture@local -c user.name=fixture \
+  commit --no-verify -qm "fixture válido (toolchain declarado)"
+set +e
+M5F_CTRL_OUT="$(cd "$M5F_DIR" && node "$GUARD" --staged 2>&1)"
+M5F_CTRL_EXIT=$?
+set -e
+if [ "$M5F_CTRL_EXIT" -ne 0 ]; then
+  fail "CONTROLE M5f FALHOU: o fixture com o toolchain declarado e o índice limpo"
+  fail "reprova (exit $M5F_CTRL_EXIT) — a mutação mediria outra coisa."
+  echo "$M5F_CTRL_OUT" | tail -8
+  exit 1
+fi
+pass "Controle M5f OK — toolchain declarado, nada staged: o recorte passa (exit 0)"
+# O defeito que um commit introduziria: o campo APAGADO (nenhuma linha `+`).
+printf '{ "name": "fixture" }\n' > "$M5F_DIR/package.json"
+git -C "$M5F_DIR" add package.json
+set +e
+M5F_OUT="$(cd "$M5F_DIR" && node "$GUARD" --staged 2>&1)"
+M5F_EXIT=$?
+set -e
+if [ "$M5F_EXIT" -eq 0 ]; then
+  fail "o recorte --staged passou com a declaração de TOOLCHAIN REMOVIDA (exit 0) —"
+  fail "o commit que apaga qual Bun este repo usa entraria no histórico."
+  exit 1
+fi
+for M5F_ESPERADO in "package.json" "REMOVIDA" "packageManager"; do
+  if ! grep -Fq "$M5F_ESPERADO" <<<"$M5F_OUT"; then
+    fail "o guard reprovou (exit $M5F_EXIT) mas SEM a asserção esperada: $M5F_ESPERADO"
+    echo "$M5F_OUT" | tail -8
+    exit 1
+  fi
+done
+pass "M5f --staged (REMOÇÃO do toolchain): o commit que APAGA o packageManager é RECUSADO"
+
+# ── A cópia do guard com as SEIS linhas neutralizadas (M5a–d + M5e/M5f) ──
 MUT_GUARD="$SCRIPT_DIR/scripts/.tmp-mutation-guard.mjs"
 sed \
   -e 's|if (!deriva \|\| embutido) {|if (false) { // M5a: default do ARG cegado|' \
   -e 's|return { kind: m\[1\] === "-" ? "default" : "operador próprio", value: m\[2\] }|return null // M5d: default embutido cegado|' \
   -e 's|violations.push(\.\.\.checkComposeBuildArgs(rel, content, dockerfilesComArg))|void 0 // M5b: build site cegado|' \
   -e 's|violations.push(\.\.\.checkPackageManagerVersion(cwd))|void 0 // M5c: toolchain cegado|' \
+  -e 's|\.\.\.argsRemovidos\.violations,|// M5e: remoção do arg cegada|' \
+  -e 's|\.\.\.toolchain\.violations,|// M5f: remoção do toolchain cegada|' \
   "$GUARD" > "$MUT_GUARD"
 if cmp -s "$GUARD" "$MUT_GUARD"; then
-  fail "A mutação M5 NÃO se aplicou (uma das quatro linhas mudou de forma?) —"
+  fail "A mutação M5 NÃO se aplicou (uma das seis linhas mudou de forma?) —"
   fail "reveja os alvos do sed."
   exit 1
 fi
-for M5_SUB in "void 0 // M5b" "void 0 // M5c" "if (false) { // M5a" "return null // M5d"; do
+for M5_SUB in "void 0 // M5b" "void 0 // M5c" "if (false) { // M5a" "return null // M5d" "// M5e: remoção do arg cegada" "// M5f: remoção do toolchain cegada"; do
   if ! grep -Fq "$M5_SUB" "$MUT_GUARD"; then
     fail "a cópia mutada não contém '$M5_SUB' — a metade correspondente NÃO foi cegada."
     rm -f "$MUT_GUARD"
@@ -700,16 +802,45 @@ done
 set +e
 M5_SURG_OUT="$(cd "$TMP_DIR" && node "$MUT_GUARD" 2>&1)"
 M5_SURG_EXIT=$?
+# A metade da REMOÇÃO é medida no MESMO recorte que o commit usa: o defeito
+# continua staged e a cópia cega (que também perdeu a comparação ÍNDICE×HEAD)
+# passa — é o que prova que a rodada do commit deixou de ser cega por causa dela.
+# (Antes do `rm`: a cópia ainda tem de existir para ser executada.)
+M5_DEL_SURG_OUT="$(cd "$TMP_DIR" && node "$MUT_GUARD" --staged 2>&1)"
+M5_DEL_SURG_EXIT=$?
+# O MESMO recorte do commit, agora contra o fixture do M5f (o toolchain apagado):
+M5F_SURG_OUT="$(cd "$M5F_DIR" && node "$MUT_GUARD" --staged 2>&1)"
+M5F_SURG_EXIT=$?
 set -e
 rm -f "$MUT_GUARD"
 
 if [ "$M5_SURG_EXIT" -ne 0 ]; then
   fail "A mutação M5 NÃO cegou o guard (exit $M5_SURG_EXIT) — o veredito não mudou"
-  fail "com as quatro linhas removidas: alguma das metades é decorativa."
+  fail "com as seis linhas removidas: alguma das metades é decorativa."
   echo "$M5_SURG_OUT" | tail -10
   exit 1
 fi
-pass "M5 CIRÚRGICA: sem as quatro linhas, as quatro metades passam (exit 0)"
+pass "M5 CIRÚRGICA: sem as seis linhas, as metades passam (exit 0)"
+
+if [ "$M5_DEL_SURG_EXIT" -ne 0 ]; then
+  fail "A mutação da REMOÇÃO não cegou o recorte do commit (exit $M5_DEL_SURG_EXIT) —"
+  fail "a metade é decorativa: outra régua está mordendo no lugar dela."
+  echo "$M5_DEL_SURG_OUT" | tail -8
+  rm -f "$MUT_GUARD"
+  exit 1
+fi
+pass "M5 CIRÚRGICA (REMOÇÃO): sem a linha ÍNDICE×HEAD, o commit que apaga o arg passa (exit 0)"
+
+if [ "$M5F_SURG_EXIT" -ne 0 ]; then
+  fail "A mutação do TOOLCHAIN não cegou o recorte do commit (exit $M5F_SURG_EXIT) —"
+  fail "a metade é decorativa: outra régua está mordendo no lugar dela."
+  echo "$M5F_SURG_OUT" | tail -8
+  exit 1
+fi
+pass "M5f CIRÚRGICA (REMOÇÃO do toolchain): sem a linha registrada no recorte, o commit que apaga o packageManager passa (exit 0)"
+# O fixture do M5f morre aqui: ele é um REPO aninhado, e o `git add -A` do M6 o
+# veria como repo embutido (o git avisa e staged um gitlink). Já cumpriu o papel.
+rm -rf "$M5F_DIR"
 
 # ── E o guard REAL segue reprovando o workflow literal (cirúrgica, inversa) ─
 cat > "$TMP_DIR/.github/workflows/fake.yml" <<EOF
@@ -732,6 +863,299 @@ if [ "$M5_INV_EXIT" -eq 0 ]; then
   exit 1
 fi
 pass "Mutação CIRÚRGICA — o literal do workflow segue reprovado no guard REAL"
+if [ -f "$MUT_GUARD" ]; then
+  fail "resíduo: a cópia mutada do guard ficou em disco."
+  exit 1
+fi
+
+# ═════════════════════════════════════════════════════════════════════════
+# STEP 8 — M6: os USOS da versão no pipeline de TERCEIRO (invariante 19) são
+#          load-bearing?
+# ═════════════════════════════════════════════════════════════════════════
+#
+# O caso que originou a regra: `.woodpecker.yml` ficou FORA de toda varredura (a
+# isenção estava escrita no próprio cabeçalho do arquivo: "arquivado — não copie
+# os literais daqui") e os treze usos da versão envelheceram SETE versões atrás
+# do repositório sem que nada ficasse vermelho.
+#
+# Três metades, todas no fixture:
+#   M6a a COMPARAÇÃO POR VALOR (um uso diz OUTRA versão);
+#   M6b a EXCLUSÃO DO COMENTÁRIO (o cabeçalho cita a versão em prosa);
+#   M6c o RECORTE `--staged` (o número nasce no commit).
+# A cópia do guard com a linha de cada metade neutralizada passa com o defeito
+# em disco — é isso que prova que a metade é load-bearing, e não decorativa.
+
+info "STEP 8: M6 — os usos da versão no pipeline de terceiro (invariante 19) são load-bearing?"
+
+# O fixture chega aqui com o defeito do M5 em disco; o CONTROLE do M6 mede o
+# pipeline de terceiro, então o resto volta à forma válida (o defeito medido tem
+# de ser DESTE step).
+cat > "$TMP_DIR/.github/workflows/fake.yml" <<'EOF'
+name: Fake
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+EOF
+cat > "$TMP_DIR/Dockerfile.worker" <<'EOF'
+ARG BUN_VERSION
+FROM oven/bun:${BUN_VERSION}
+EOF
+cat > "$TMP_DIR/docker-compose.yml" <<YML
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        BUN_VERSION: \${BUN_VERSION:-$FIXTURE_VERSION}
+YML
+printf '{ "name": "fixture", "packageManager": "bun@%s" }\n' "$FIXTURE_VERSION" \
+  > "$TMP_DIR/package.json"
+
+# A versão divergente é DERIVADA (patch+1), como no M5: um literal aqui
+# envelheceria junto com o espelho — o defeito do fixture é dizer OUTRA versão.
+VERSION_DIVERGENTE="$(echo "$FIXTURE_VERSION" | awk -F. '{print $1"."$2"."$3+1}')"
+
+# O pipeline de terceiro do fixture: os usos no valor DECLARADO, uma forma
+# DERIVADA (que tem de passar) e um CABEÇALHO EM PROSA citando a versão velha —
+# o caso do arquivo real, onde a prosa é da invariante 17, não desta régua.
+cat > "$TMP_DIR/.woodpecker.yml" <<YML
+# Rascunho arquivado: as imagens oven/bun:1.4.0 [divergente] vieram do valor
+# do dia — a prosa deste cabeçalho NÃO é um uso da versão.
+pipeline:
+  lint:
+    image: oven/bun:$FIXTURE_VERSION
+    commands:
+      - bun run lint
+  typecheck:
+    image: oven/bun:\${BUN_VERSION}
+    commands:
+      - bunx tsc --noEmit
+deploy:
+  docker-build:
+    settings:
+      build_args:
+        - BUN_VERSION=$FIXTURE_VERSION
+YML
+
+set +e
+M6_CTRL_OUT="$(cd "$TMP_DIR" && node "$GUARD" 2>&1)"
+M6_CTRL_EXIT=$?
+set -e
+if [ "$M6_CTRL_EXIT" -ne 0 ]; then
+  fail "CONTROLE M6 FALHOU: o fixture com o pipeline de terceiro ALINHADO reprova (exit $M6_CTRL_EXIT)."
+  echo "$M6_CTRL_OUT" | tail -10
+  fail "O fixture do M6 não é válido — a mutação mediria outra coisa."
+  exit 1
+fi
+# O relatório tem de NOMEAR a classe: um arquivo fora da enumeração deixaria a
+# régua verde por VACUIDADE — o defeito silencioso que este passo existe para
+# pegar.
+if ! grep -Fq "Pipelines de terceiro: 1 arquivo(s) (.woodpecker.yml)" <<<"$M6_CTRL_OUT"; then
+  fail "o CONTROLE passou mas o relatório NÃO nomeia o pipeline de terceiro varrido:"
+  echo "$M6_CTRL_OUT" | tail -8
+  exit 1
+fi
+pass "Controle M6 OK — o pipeline alinhado passa e o relatório nomeia a classe (1 arquivo)"
+
+# ── M6a: a COMPARAÇÃO POR VALOR ─────────────────────────────────────────
+cat > "$TMP_DIR/.woodpecker.yml" <<YML
+# Rascunho arquivado: as imagens oven/bun:1.4.0 [divergente] vieram do valor
+# do dia — a prosa deste cabeçalho NÃO é um uso da versão.
+pipeline:
+  lint:
+    image: oven/bun:$VERSION_DIVERGENTE
+    commands:
+      - bun run lint
+  typecheck:
+    image: oven/bun:\${BUN_VERSION}
+    commands:
+      - bunx tsc --noEmit
+deploy:
+  docker-build:
+    settings:
+      build_args:
+        - BUN_VERSION=$VERSION_DIVERGENTE
+YML
+set +e
+M6A_OUT="$(cd "$TMP_DIR" && node "$GUARD" 2>&1)"
+M6A_EXIT=$?
+set -e
+if [ "$M6A_EXIT" -eq 0 ]; then
+  fail "GUARD CEGO: um pipeline de terceiro com OUTRA versão passou (exit 0) — o"
+  fail "arquivo afirma uma versão que o repositório não declara, em dois lugares."
+  exit 1
+fi
+for M6A_ESPERADO in ".woodpecker.yml:" "CONSUMIDOR da versão" "$VERSION_DIVERGENTE" "$FIXTURE_VERSION"; do
+  if ! grep -Fq "$M6A_ESPERADO" <<<"$M6A_OUT"; then
+    fail "o guard reprovou (exit $M6A_EXIT) mas SEM a asserção esperada: $M6A_ESPERADO"
+    echo "$M6A_OUT" | tail -10
+    exit 1
+  fi
+done
+# Dois usos divergentes ⇒ duas linhas: o julgamento é POR USO, não por arquivo
+# (um "resumo por arquivo" deixaria o segundo uso passar).
+M6A_HITS="$(grep -c "\.woodpecker\.yml:" <<<"$M6A_OUT" || true)"
+if [ "$M6A_HITS" -lt 2 ]; then
+  fail "esperava os DOIS usos reprovados (imagem + build arg); o guard citou $M6A_HITS."
+  exit 1
+fi
+pass "M6a DETECTADA: imagem e build arg divergentes reprovam citando usado x declarado (exit $M6A_EXIT)"
+
+# ── M6b: a EXCLUSÃO DO COMENTÁRIO (a prosa do cabeçalho) ────────────────
+# O CONTROLE do M6 já provou o lado de cá: com o arquivo ALINHADO e o cabeçalho
+# citando a versão velha, o guard REAL passa. Aqui a cópia SEM a exclusão tem de
+# reprovar — e na LINHA do cabeçalho.
+MUT_GUARD="$SCRIPT_DIR/scripts/.tmp-mutation-guard.mjs"
+sed \
+  -e 's|const pipelineLineIsProse = (line) => isCommentOrDocLine(line)|const pipelineLineIsProse = () => false // M6b: exclusão do comentário cegada|' \
+  "$GUARD" > "$MUT_GUARD"
+if cmp -s "$GUARD" "$MUT_GUARD"; then
+  fail "A mutação M6b NÃO se aplicou (a exclusão do comentário mudou de forma?) —"
+  fail "reveja o alvo do sed."
+  rm -f "$MUT_GUARD"
+  exit 1
+fi
+cat > "$TMP_DIR/.woodpecker.yml" <<YML
+# Rascunho arquivado: as imagens oven/bun:1.4.0 [divergente] vieram do valor
+# do dia. A tag 'oven/bun:<v>' e os 'BUN_VERSION=<v>' de build_args dizem o
+# declarado — o contra-exemplo abaixo está COMENTADO (não roda):
+#    image: oven/bun:1.4.0 [divergente]
+pipeline:
+  lint:
+    image: oven/bun:$FIXTURE_VERSION
+    commands:
+      - bun run lint
+deploy:
+  docker-build:
+    settings:
+      build_args:
+        - BUN_VERSION=$FIXTURE_VERSION
+YML
+set +e
+M6B_OUT="$(cd "$TMP_DIR" && node "$MUT_GUARD" 2>&1)"
+M6B_EXIT=$?
+set -e
+if [ "$M6B_EXIT" -eq 0 ]; then
+  fail "a cópia SEM a exclusão do comentário passou (exit 0) — a exclusão é"
+  fail "decorativa, ou a prosa do cabeçalho deixou de ser alcançada pelo extrator."
+  rm -f "$MUT_GUARD"
+  exit 1
+fi
+for M6B_LINHA in ".woodpecker.yml:2" ".woodpecker.yml:4"; do
+  if ! grep -Fq "$M6B_LINHA" <<<"$M6B_OUT"; then
+    fail "a reprovação não citou $M6B_LINHA — a exclusão cobre a prosa que NOMEIA a"
+    fail "forma ('BUN_VERSION=<v>') e o passo COMENTADO, que são os dois casos reais."
+    echo "$M6B_OUT" | tail -8
+    rm -f "$MUT_GUARD"
+    exit 1
+  fi
+done
+rm -f "$MUT_GUARD"
+pass "M6b DETECTADA: sem a exclusão, a prosa que nomeia a FORMA e o passo COMENTADO reprovam"
+
+# ── M6c: o RECORTE `--staged` (o pre-commit) ────────────────────────────
+# É no COMMIT que o número nasce. O fixture é um repo git de verdade: o
+# controle é o índice LIMPO (nada staged ⇒ exit 0) e o defeito é a LINHA nova
+# com outra versão.
+if [ ! -d "$TMP_DIR/.git" ]; then
+  fail "o fixture do M6 perdeu o .git (o recorte --staged precisa do índice)."
+  exit 1
+fi
+git -C "$TMP_DIR" add -A
+git -C "$TMP_DIR" -c user.email=fixture@local -c user.name=fixture \
+  commit --no-verify -qm "fixture válido (pipeline de terceiro alinhado)"
+set +e
+M6C_CTRL_OUT="$(cd "$TMP_DIR" && node "$GUARD" --staged 2>&1)"
+M6C_CTRL_EXIT=$?
+set -e
+if [ "$M6C_CTRL_EXIT" -ne 0 ]; then
+  fail "CONTROLE M6c FALHOU: um diff VAZIO reprova no --staged (exit $M6C_CTRL_EXIT)."
+  echo "$M6C_CTRL_OUT" | tail -8
+  exit 1
+fi
+# O defeito que um commit introduziria: a tag trocada numa linha (awk de
+# propósito: `sed -i` não é portável entre GNU e BSD).
+awk -v old="$FIXTURE_VERSION" -v new="$VERSION_DIVERGENTE" \
+  '{ if ($0 ~ /oven\/bun:/) sub("oven/bun:" old, "oven/bun:" new); print }' \
+  "$TMP_DIR/.woodpecker.yml" > "$TMP_DIR/.woodpecker.yml.tmp"
+mv "$TMP_DIR/.woodpecker.yml.tmp" "$TMP_DIR/.woodpecker.yml"
+git -C "$TMP_DIR" add .woodpecker.yml
+set +e
+M6C_OUT="$(cd "$TMP_DIR" && node "$GUARD" --staged 2>&1)"
+M6C_EXIT=$?
+set -e
+if [ "$M6C_EXIT" -eq 0 ]; then
+  fail "o recorte --staged passou com a tag divergente staged (exit 0) — o defeito"
+  fail "só apareceria no PR, não no commit."
+  exit 1
+fi
+if ! grep -Fq ".woodpecker.yml:" <<<"$M6C_OUT"; then
+  fail "o --staged reprovou (exit $M6C_EXIT) mas sem citar o pipeline:"
+  echo "$M6C_OUT" | tail -8
+  exit 1
+fi
+pass "M6c --staged: a linha NOVA com outra versão é RECUSADA no commit"
+
+# ── A cópia do guard com as duas linhas neutralizadas (M6a + M6c) ───────
+MUT_GUARD="$SCRIPT_DIR/scripts/.tmp-mutation-guard.mjs"
+sed \
+  -e 's|if (declared !== null && hit.value === declared) return \[\]|if (true) return [] // M6a: comparação por valor cegada|' \
+  -e 's|\.\.\.checkStagedThirdPartyPipelineVersions(diffTerceiros),|// M6c: recorte do commit cegado|' \
+  "$GUARD" > "$MUT_GUARD"
+if cmp -s "$GUARD" "$MUT_GUARD"; then
+  fail "A mutação M6 NÃO se aplicou (uma das duas linhas mudou de forma?) — reveja os alvos do sed."
+  rm -f "$MUT_GUARD"
+  exit 1
+fi
+for M6_SUB in "// M6c: recorte do commit cegado" "if (true) return [] // M6a"; do
+  if ! grep -Fq "$M6_SUB" "$MUT_GUARD"; then
+    fail "a cópia mutada não contém '$M6_SUB' — a metade correspondente NÃO foi cegada."
+    rm -f "$MUT_GUARD"
+    exit 1
+  fi
+done
+# Com o defeito AINDA em disco (e staged), a cópia cega passa nas DUAS metades:
+# nem a varredura global (M6a) nem o recorte do commit (M6c) mordem.
+set +e
+M6_SURG_OUT="$(cd "$TMP_DIR" && node "$MUT_GUARD" 2>&1)"
+M6_SURG_EXIT=$?
+set -e
+if [ "$M6_SURG_EXIT" -ne 0 ]; then
+  fail "A mutação M6a NÃO cegou o guard (exit $M6_SURG_EXIT) — o veredito não mudou"
+  fail "com a linha da comparação removida: a metade é decorativa."
+  echo "$M6_SURG_OUT" | tail -10
+  rm -f "$MUT_GUARD"
+  exit 1
+fi
+set +e
+M6_SURG_STAGED_OUT="$(cd "$TMP_DIR" && node "$MUT_GUARD" --staged 2>&1)"
+M6_SURG_STAGED_EXIT=$?
+set -e
+if [ "$M6_SURG_STAGED_EXIT" -ne 0 ]; then
+  fail "A mutação M6c NÃO cegou o recorte do commit (exit $M6_SURG_STAGED_EXIT):"
+  echo "$M6_SURG_STAGED_OUT" | tail -8
+  rm -f "$MUT_GUARD"
+  exit 1
+fi
+rm -f "$MUT_GUARD"
+pass "M6 CIRÚRGICA: sem as duas linhas, o defeito passa no global E no --staged (exit 0)"
+
+# ── E o guard REAL segue reprovando (cirúrgica, inversa) ────────────────
+set +e
+M6_INV_OUT="$(cd "$TMP_DIR" && node "$GUARD" 2>&1)"
+M6_INV_EXIT=$?
+set -e
+if [ "$M6_INV_EXIT" -eq 0 ]; then
+  fail "o guard REAL passou com o pipeline divergente em disco — a metade dos"
+  fail "pipelines de terceiro parou de morder."
+  exit 1
+fi
+pass "Mutação CIRÚRGICA — o pipeline divergente segue reprovado no guard REAL"
 if [ -f "$MUT_GUARD" ]; then
   fail "resíduo: a cópia mutada do guard ficou em disco."
   exit 1

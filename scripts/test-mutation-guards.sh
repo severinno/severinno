@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 26 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 29 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -115,13 +115,16 @@ SUBTESTS=(
   "no-leaked-imports|No-leaked-imports — import resolvendo no node_modules do PAI + dep inexistente devem FALHAR (install pendente passa)|scripts/test-mutation-no-leaked-imports.sh"
   "reconciliation|Reconciliation — fechamento de issues de dívida (reconcileDebt close) deve ser detectado|scripts/test-mutation-reconciliation.sh"
   "nested-guard|Nested guard — NESTED_GUARD_ENV (defesa em profundidade contra recursão) deve ser detectado|scripts/test-mutation-nested-guard.sh"
-  "pipefail-sigpipe|SIGPIPE — pipe para grep quieto deve ser detectado nos DOIS contextos (pipefail declarado E passo sem shell, com a marca da premissa do runner); a declaracao 'defaults: run: shell:' que LIGA o pipefail FALHA o gate; herestring/heredoc/script sem pipefail/cota do baseline nao acendem; o --fix aposenta o caso mecanico e nao corrompe expressao do runner|scripts/test-mutation-pipefail-sigpipe.sh"
+  "pipefail-sigpipe|SIGPIPE — pipe para grep quieto deve ser detectado nos DOIS contextos (pipefail declarado E passo sem shell, com a marca da premissa do runner); a declaracao 'defaults: run: shell:' que LIGA o pipefail FALHA o gate; herestring/heredoc/script sem pipefail/cota do baseline nao acendem; o --fix aposenta o caso mecanico e nao corrompe expressao do runner; e o CANAL DO REMEDIO (o patch que vai ao PR) tem as tres metades medidas: o patch APLICA pelo git apply e fecha o gate, o preview NAO grava (quem grava e o --fix), e cada fixer tem marcador PROPRIO (um marcador comum faria a reconciliacao de um retirar o comentario do outro)|scripts/test-mutation-pipefail-sigpipe.sh"
   "hook-ci-parity|Hooks x CI — a segunda regua no hook (bunx tsc sem o heap), o comando novo sem decisao, o recorte sem razao, a declaracao que envelheceu, o gate do CORE sumido e o hook fantasma devem FALHAR|scripts/test-mutation-hook-ci-parity.sh"
   "hook-commands|Comandos dos hooks — o caminho tipado, a entrada de scripts ausente e o indeterminado nao declarado devem CEGAR o guard, e a funcao do proprio hook deve ACUSAR o sao (violacao falsa no hook real); cada mutacao cirurgica, com a suite unitaria VERMELHA|scripts/test-mutation-hook-commands.sh"
   "workflow-defaults|Defaults — a declaracao defaults:run:shell: nao pode virar passo/gate/ref/comando do job nos guards que leem YAML de workflow (leitura unica compartilhada); cada metade dessa leitura mutada FALHA o guard sendo medido|scripts/test-mutation-workflow-defaults.sh"
-  "workflow-run-syntax|Sintaxe dos run: E dos scripts — as CATORZE mutacoes (o aviso, o stdin do bash, o limite da mascara, o indice do --staged, os shells medidos, a guarda do fixer, a segunda fonte, o PULO NOMEADO do passo nao-bash, o PULO NOMEADO do ARQUIVO de shebang nao-bash — a simetria do anterior pela decisao da outra fonte — e as cinco da terceira fonte) devem CEGAR o guard ou ACUSAR o sao (violacao falsa do M8/M14, com a suite unitaria VERMELHA quando o vitest esta instalado); cada mutacao cirurgica|scripts/test-mutation-workflow-run-syntax.sh"
+  "workflow-run-syntax|Sintaxe dos run: E dos scripts — as QUINZE mutacoes (o aviso, o stdin do bash, o limite da mascara, o indice do --staged, os shells medidos, a guarda do fixer, a segunda fonte, o PULO NOMEADO do passo nao-bash, o PULO NOMEADO do ARQUIVO de shebang nao-bash — a simetria do anterior pela decisao da outra fonte —, as cinco da terceira fonte e a GARANTIA DO PREVIEW do --fix --dry-run) devem CEGAR o guard ou ACUSAR o sao (violacao falsa do M8/M14) ou GRAVAR no preview; cada mutacao cirurgica|scripts/test-mutation-workflow-run-syntax.sh"
   "merge-latency|Latencia de merge — a DETECCAO da cobertura, o EXIT CODE do --check e o PAPEL do dono do merge devem CEGAR o gate (por execucao) e/ou a suite unitaria; cada mutacao cirurgica, com controlo final|scripts/test-mutation-merge-latency.sh"
   "registry-defaults|Defaults do registry/namespace — a COMPARACAO de valor, a REGRA do script JS (o resolvedor obrigatorio), a REGUA DE COMENTARIO por linguagem, o VALOR VAZIO (que nao e default), o LITERAL DE RESERVA do resolvedor e o FALLBACK LITERAL do workflow devem CEGAR o gate ou ACUSAR o sao (violacao falsa), cada um com a suite unitaria VERMELHA no recorte que mede o mecanismo|scripts/test-mutation-registry-defaults.sh"
+  "job-deps|Dependencias dos jobs — o job que RODA comando dependente de node_modules SEM instalar deve FALHAR (e a isencao declarada o salva); mutar a leitura do grafo (import de topo vira tardio), o install some, o addedAt some, a regra do sem-objeto e a escalada do --review devem CEGAR o guard, cada um com a suite unitaria VERMELHA; cirurgico, com o guard restaurado por checksum|scripts/test-mutation-job-deps.sh"
+  "remedy-tty|Resposta do remedio (o TERMINAL DE CONTROLE) — as DUAS metades que a trazem (a funcao que abre o /dev/tty e o ponto que a CHAMA) devem deixar a suite do pty VERMELHA nas ancoras do fluxo do operador (o 'sim' no terminal faz o commit entrar, o 'nao' bloqueia, a FASE B reexecuta), com o fail-closed SEGUINDO VERDE — e o pty e o vitest declarados quando faltam, nunca um verde por omissao|scripts/test-mutation-remedy-tty.sh"
+  "required-applied|Required checks APLICADOS — o RENAME do name: de um job que e required check SEM a reaplicacao declarada (e o check novo, e o orfao, e a declaracao ausente) deve deixar o PR VERMELHO: as QUATRO metades que sustentam isso (a regua do contexto derivado, a regua do orfao, o fio que as julga em main() e o fail-closed do carregamento) e as DUAS do applier (o ALVO do --forge e o CARIMBO sem churn) caem cada uma no SEU fato, com as outras metades SEGUINDO verdes — cirurgico, com o guard restaurado por checksum|scripts/test-mutation-required-checks-applied.sh"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────
@@ -287,5 +290,10 @@ pass "mutation-count [drift do nº de sub-tests do master], no-leaked-imports [l
 pass "node_modules do pai + dep inexistente + install pendente],"
 pass "reconciliation [fechamento de issues de dívida via reconcileDebt]),"
 pass "nested-guard [NESTED_GUARD_ENV — defesa em profundidade contra recursão] e"
-pass "registry-defaults [valor do default, script JS, régua de comentário, valor vazio, literal do resolvedor e fallback do YAML]) detectam todas as mutações."
+pass "registry-defaults [valor do default, script JS, régua de comentário, valor vazio, literal do resolvedor e fallback do YAML]) e"
+pass "job-deps [install ou isenção declarada; grafo de imports, addedAt, regra do sem-objeto e a revisão do --review],"
+pass "required-applied [o RENAME sem a reaplicação declarada: as duas réguas da"
+pass "comparação, o fio em main(), o fail-closed da declaração ausente, o alvo do"
+pass "--forge e o carimbo sem churn]"
+pass "detectam todas as mutações."
 exit 0

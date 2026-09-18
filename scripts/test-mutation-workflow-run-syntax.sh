@@ -7,7 +7,7 @@
 #   ./scripts/test-mutation-workflow-run-syntax.sh
 #
 # Exit codes:
-#   0 — as QUATORZE mutações foram DETECTADAS (pelo gate e/ou pela suíte) e os
+#   0 — as QUINZE mutações foram DETECTADAS (pelo gate e/ou pela suíte) e os
 #       controles passaram ✅
 #   1 — guard INDIFERENTE a alguma mutação (não cegou) OU controle falso ❌
 #
@@ -106,6 +106,14 @@
 #        repositório perderia a única classificação que distingue "script de
 #        outra linguagem com nome .sh" de "script bash quebrado". DUAS
 #        testemunhas (gate e suíte), como o M8.
+#   M15 — A GARANTIA DO PREVIEW (`--fix --dry-run` NÃO grava). O patch que o
+#        comentário do PR publica vale por ser o que o `--fix` GRAVARIA sem
+#        gravar: quem aplica é o autor, depois de revisar o diff. Desligar o
+#        `dry` na fonte (`if (dry)` → `if (false)`) faz o preview GRAVAR — e o
+#        comentário passa a descrever uma árvore que o run já mudou (invisível
+#        num runner isolado, que é justamente onde ele roda). DUAS testemunhas: o
+#        GATE por execução (o arquivo muda depois do `--dry-run`) e a SUÍTE do
+#        modo `--dry-run`, que tem de ficar VERMELHA.
 #
 # NOTA HONESTA sobre M3 (medido, não suposto): remover a máscara POR INTEIRO
 # NÃO cega o guard — `bash -n` aceita `[ "${{ vars.MODE || 'a}b' }}" = "1" ]`
@@ -1380,6 +1388,119 @@ restaurar_originais
 pass "fontes RESTAURADAS (os dois checksums conferem)"
 
 # ═════════════════════════════════════════════════════════════════════════
+# MUTAÇÃO M15 — o PREVIEW do `--fix --dry-run` (o patch que vai ao PR)
+# ═════════════════════════════════════════════════════════════════════════
+
+header "MUTAÇÃO M15: o preview do --dry-run GRAVARIA (deixaria de ser preview)"
+
+# O `--fix --dry-run` existe para levar o remendo ATÉ o PR: o job
+# `workflow-run-syntax` publica o patch dele como COMENTÁRIO, e quem aplica é o
+# autor, depois de revisar o diff. A garantia que faz isso valer é NÃO GRAVAR
+# NADA — se o "preview" gravasse, o comentário descreveria uma árvore que o run
+# do CI já mudou (e num runner isolado isso é invisível). A mutação desliga a
+# garantia na fonte (`if (dry) {` → `if (false) {`).
+
+FXDRY="$TMP_DIR/fx-dry-run"
+mkdir -p "$FXDRY/.github/workflows"
+cat > "$FXDRY/.github/workflows/pr-check.yml" <<'BODY'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: passo com a cicatriz
+        run: |
+          echo hello &&
+BODY
+
+soma_arquivo() { cksum "$1" | cut -d' ' -f1; }
+SOMA_ANTES="$(soma_arquivo "$FXDRY/.github/workflows/pr-check.yml")"
+
+# CONTROLE: com a fonte ÍNTEGRA o preview imprime o PATCH e o arquivo fica
+# INTACTO. Sem esta metade, "o arquivo mudou" com a mutação mediria nada.
+set +e
+DRY_OUT="$(node "$GUARD" --fix --dry-run --root "$FXDRY" 2>/dev/null)"
+DRY_EXIT=$?
+set -e
+if [ "$DRY_EXIT" -ne 0 ]; then
+  fail "CONTROLE M15: o preview saiu com exit $DRY_EXIT (esperado 0)."
+  exit 1
+fi
+if ! grep -qF -- '--- a/.github/workflows/pr-check.yml' <<<"$DRY_OUT"; then
+  fail "CONTROLE M15: o STDOUT do preview não é um patch — o comentário do PR não teria o que publicar."
+  exit 1
+fi
+if [ "$(soma_arquivo "$FXDRY/.github/workflows/pr-check.yml")" != "$SOMA_ANTES" ]; then
+  fail "CONTROLE M15: o preview GRAVOU com a fonte íntegra — a régua já está quebrada."
+  exit 1
+fi
+pass "CONTROLE M15: o preview imprime o patch, o arquivo fica INTACTO e o exit é 0"
+
+# A SEGUNDA TESTEMUNHA (como no M8/M14): a suíte do modo `--dry-run`, viva antes
+# de medir — ela mede exatamente esta garantia (arquivo intacto + patch
+# aplicável). Onde o vitest não está instalado o silêncio não é permitido.
+SUITE_ARQUIVO="src/lib/__tests__/check-workflow-run-syntax-dry-run.test.ts"
+suite_disponivel && rodar_suite
+if suite_disponivel; then
+  if [ "$SUITE_EXIT" -ne 0 ]; then
+    fail "CONTROLE M15 (suíte): VERMELHA com a fonte ÍNTEGRA (exit $SUITE_EXIT) — uma testemunha já vermelha mede nada."
+    echo "$SUITE_OUT"
+    exit 1
+  fi
+  pass "CONTROLE M15 (suíte): VERDE com a fonte íntegra — a segunda testemunha está viva"
+else
+  info "CONTROLE M15 (suíte): NÃO julgada — node_modules/vitest ausente neste job (declarado, nunca silencioso)"
+fi
+
+mutar_guard '  if (dry) {' '  if (false) { // MUTACAO M15: o preview grava'
+
+set +e
+node "$GUARD" --fix --dry-run --root "$FXDRY" >/dev/null 2>&1
+set -e
+if [ "$(soma_arquivo "$FXDRY/.github/workflows/pr-check.yml")" = "$SOMA_ANTES" ]; then
+  fail "M15 NÃO DETECTADA: com o preview mutado para GRAVAR o arquivo não mudou."
+  exit 1
+fi
+pass "M15 DETECTADA pelo GATE: o preview GRAVOU — a garantia de 'nada foi gravado' é load-bearing"
+
+if suite_disponivel; then
+  rodar_suite
+  if [ "$SUITE_EXIT" -eq 0 ]; then
+    fail "M15 NÃO DETECTADA pela suíte: a testemunha unitária PASSOU com o preview gravando."
+    echo "$SUITE_OUT"
+    exit 1
+  fi
+  pass "M15 DETECTADA também pela SUÍTE (exit $SUITE_EXIT) — as duas testemunhas concordam"
+fi
+
+# Cirúrgica: com a MESMA mutação o `--fix` REAL continua remendando. A fixture é
+# recriada com a cicatriz porque o preview mutado já a mendou (é o que se está
+# medindo) — e o veredito é o do gate depois do remendo.
+cat > "$FXDRY/.github/workflows/pr-check.yml" <<'BODY'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: passo com a cicatriz
+        run: |
+          echo hello &&
+BODY
+
+set +e
+node "$GUARD" --fix --root "$FXDRY" >/dev/null 2>&1
+FIX_EXIT=$?
+set -e
+if [ "$FIX_EXIT" -ne 0 ]; then
+  fail "M15 cirúrgica: o --fix REAL saiu com exit $FIX_EXIT com a mutação aplicada (morreu o remendo, não o preview)."
+  exit 1
+fi
+rodar_guard_em "$FXDRY"
+exigir_aprovado "M15 cirúrgica (o remendo real segue vivo)"
+pass "M15 CIRÚRGICA: o --fix real remenda e o gate aprova — morreu só a garantia do preview"
+
+restaurar_originais
+pass "fontes RESTAURADAS (os dois checksums conferem)"
+
+# ═════════════════════════════════════════════════════════════════════════
 # CONTROLE FINAL — a árvore voltou ao comportamento original
 # ═════════════════════════════════════════════════════════════════════════
 
@@ -1388,13 +1509,13 @@ header "CONTROLE FINAL: o guard restaurado volta a reprovar o \`if\` sem \`fi\`"
 mkfixture "If sem fi" "$TMP_DIR/b-sem-fi.sh"
 rodar_guard
 exigir_reprovado "CONTROLE FINAL" "$EXPECTED_ERRO"
-pass "CONTROLE FINAL: depois das QUATORZE mutações o guard reprova de novo (árvore íntegra)"
+pass "CONTROLE FINAL: depois das QUINZE mutações o guard reprova de novo (árvore íntegra)"
 
 # ── Veredito ──────────────────────────────────────────────────────────────
 
 echo ""
 echo "  ═════════════════════════════════════════════════════════════════"
-echo -e "   ${GREEN}✅ MUTATION TEST PASSOU${NC} — os QUATORZE mecanismos são LOAD-BEARING:"
+echo -e "   ${GREEN}✅ MUTATION TEST PASSOU${NC} — os QUINZE mecanismos são LOAD-BEARING:"
 echo "      • a metade do AVISO (heredoc truncado, bash sai 0) → mutá-la cega"
 echo "      • o stdin do bash (o corpo julgado) → mutá-lo cega tudo"
 echo "      • a máscara LAZY (para no primeiro }}) → torná-la gulosa cega"
@@ -1409,6 +1530,7 @@ echo "      • a TERCEIRA fonte, o payload do sh -c → tirá-la cega o que o b
 echo "      • a leitura por ESTRUTURA do YAML → ler o texto lê a sintaxe do YAML no lugar do script"
 echo "      • o de-escape do compose (\$\$) → sem ele o gate julga o texto que o shell NÃO recebe"
 echo "      • o pulo do HEREDOC (o corpo é dado) → sem ele o gate acusa os próprios fixtures"
+echo "      • a garantia do PREVIEW (--fix --dry-run não grava) → sem ela o comentário do PR descreve uma árvore já mudada"
 echo "      e cada mutação é CIRÚRGICA: as outras metades seguem mordendo."
 echo "  ═════════════════════════════════════════════════════════════════"
 echo ""

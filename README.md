@@ -825,15 +825,20 @@ single-grep). Os testes entram apenas quando arquivos-fonte mudaram
 
 **Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
 rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
-**26 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
+**29 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
 bun remoção, hooks simetria, readme anchors/toc/images, README reverse, docs
 anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo,
 timing-budget, e2e-cache-budget, lint-guard, mutation-count,
 no-setup-bun, runner-base, no-leaked-imports, reconciliation, nested-guard,
 paridade hook↔CI, comandos dos hooks, pipefail-sigpipe, defaults de shell,
-defaults do registry/namespace e
+defaults do registry/namespace, dependências dos jobs,
 sintaxe dos corpos
-`run:`). A prova da
+`run:` e a resposta do remédio no TTY). O 29º mede o outro lado do mesmo
+contrato de merge: o `name:` de um required check renomeado sem a reaplicação
+DECLARADA deixa o PR vermelho (e mutar cada uma das seis metades que sustentam
+isso — as duas réguas da comparação, o fio em `main()`, o fail-closed da
+declaração ausente, o alvo do `--forge` e o carimbo sem churn — deixa a suíte
+vermelha no fato certo). A prova da
 CLASSIFICAÇÃO do `check-forge-parity` também é um job próprio
 (`forge-parity-mutation`): ela mede o contrato de merge em si — quais gates
 podem pular uma forja e com que forma de comando — e por isso diz QUAL regra
@@ -1074,13 +1079,15 @@ warm):
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (26 sub-tests)³  |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
+| master `mutation-guards` (29 sub-tests)³  | **188.6s** (188.2–188.8)³  |     **step ≈ 9.1s**²      |
 | checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
 | Summary                                   |             —              |           0.34s           |
 
-O gap **9.1s (act) vs 39s (local)** no master sugere que o node no container
-roda mais rápido que o Windows local (warm cache/FS — não é causa provada, é
-observação).
+O gap **9.1s (act) vs 188.6s (local)** no master sugere que o node no container
+roda mais rápido que o host local (warm cache/FS — não é causa provada, é
+observação). A coluna "Local (Windows)" desta tabela é de 08/2026: para o master
+o valor VIVO é o de ³ (este host, Linux) — o número do Windows fica só como
+histórico do instrumento dele, nunca como o custo declarado do job.
 ²Medido em 08/2026 (era de 15 sub-tests — o e2e-cache-budget roda em
 SKIP — exit 0 enquanto measure-e2e-cache.mjs não existir —, custo ~0s;
 ⚠️ a medição local foi com 12 — o lint-guard (13º), o mutation-count (14º)
@@ -1094,25 +1101,35 @@ sub-tests, e não foi re-medido (o mesmo act mediu o actionlint em 3.6s e o
 utf8-check em 7.46s). O custo escala com o nº de sub-tests — cada um cria
 fixtures e roda o guard contra a mutação —, então o valor antigo (15.8s)
 era de 5 sub-tests e o timing-budget (~1s) foi adicionado após a medição de 10.
-³Medição da MUDANÇA (host Linux 16 cpus, 09/2026, mediana de 3 runs warm): o
-master com **26 sub-tests** mede ≈ **101.1s** — e o número é do host, não do
-recorte: dos 26, a prova de mutação do gate de sintaxe custa ≈58.5s sozinha, a
-25ª (comandos dos hooks, ≈6s: quatro mutações, cada uma com o veredito do CLI e a
-suíte unitária como testemunhas) levou o total de ≈81.3s para ≈87.3s, e a 26ª
-(defaults do registry/namespace, ≈14.1s: seis mutações, cada uma com o veredito
-do gate contra um fixture — ou com o repositório real — e a suíte unitária em
-recorte declarado) levou ≈87.3s para ≈101.1s. O **17.2s** com 24 sub-tests era de
-outro host (17.16–17.20). Antes
-disso a matriz tinha 22 e mediu ≈18.6s (18.20–19.02) — a volta da 23ª (a prova
-de mutação do gate de sintaxe, ≈1.5s sozinha, que substituiu a versão de ≈0.2s)
-não muda a ordem do
-número, e a diferença entre as duas medições é do host/cache, não do recorte. A
-sub-test que saiu da matriz — a prova de classificação do `check-forge-parity`,
-agora o job próprio `forge-parity-mutation` — custa ≈ **0.33s** (0.32–0.39)
-sozinha. O **39s** da tabela era de **23 sub-tests** no host original (Windows) e
-continua válido como referência dele. O job novo é node-puro, sem docker e sem
-node_modules: o PR ganha um job de ≈0.3s e a prova passa a ser um check com NOME
-no contrato de merge, em vez de uma linha da matriz.
+³Medição da MUDANÇA (host Linux 16 cpus / 31 GB, 09/2026, mediana de 3 runs
+warm, TODAS com 29/29 verdes): o master com **29 sub-tests** mede ≈ **188.6s**
+(188.2 · 188.6 · 188.8) — o valor VIVO do job, o MESMO que
+`ci/merge-latency.json` declara. A 29ª (o contrato dos required checks
+APLICADOS: renomear o `name:` de um required check sem a reaplicação declarada
+deixa o PR vermelho, e as seis metades que sustentam isso caem cada uma no seu
+fato quando mutadas; mediana de 3 pelo caminho do master, `--scenario
+required-applied`: 9.87 · 9.88 · 9.90) entrou nesta rodada, então a medição
+anterior (≈174.9s com 28) mais 9.9 dava ≈ 184.8s esperados — e os 188.6 medidos
+ficam ≈3.8s acima, na mesma ordem da deriva de HOST que as rodadas anteriores já
+registravam (≈10s; o que domina o job segue sendo UMA sub-test — a prova de
+mutação do gate de sintaxe custa ≈58.5s sozinha). A 28ª (a prova da RESPOSTA do
+remédio no TTY, mediana de 3 pelo caminho do master: 27.2 · 27.1 · 27.1) segue
+dentro do total. Uma rodada de OUTRA medição foi DESCARTADA da mediana (171.1s):
+ela rodou com duas sub-tests vermelhas no CONTROLE (o recorte era outro), e um
+número medido sobre a árvore quebrada não descreve o job. O **39s**
+(Windows, 23 sub-tests, 08/2026) está **RETIRADO como valor**: era de outro
+host, com quatro sub-tests a menos, e ficava abaixo de UMA das sub-tests que o
+job contém — o valor declarado de um job não pode ser menor que o de um passo
+dentro dele. As rodadas intermediárias (≈101.1s com 26; ≈87.3s com 25; ≈81.3s
+com 24 — e o **17.2s** de 24, esse de outro host) são HISTÓRICO do crescimento
+da matriz, não o custo de hoje; a medição de 23 sub-tests (a prova de mutação do
+gate de sintaxe, ≈1.5s sozinha, que substituiu a versão de ≈0.2s) mostra que a
+diferença entre rodadas é do host/cache, não do recorte. A sub-test que saiu da
+matriz — a prova de classificação do `check-forge-parity`, agora o job próprio
+`forge-parity-mutation` — custa ≈ **0.33s** (0.32–0.39) sozinha. O job novo é
+node-puro, sem docker e sem node_modules: o PR ganha um job de ≈0.3s e a prova
+passa a ser um check com NOME no contrato de merge, em vez de uma linha da
+matriz.
 *O checkout no act é overhead de EMULAÇÃO (docker cp do worktree inteiro):
 **32.2s na 1ª run fria** (volume não cacheado) vs **~0.03s nas runs seguintes**
 (volume quente — os steps de 9.1s/7.46s/3.61s destas tabelas foram medidos com
@@ -1259,7 +1276,7 @@ runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 | 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |                      — (n/a)                       |         <2s         |
 | `utf8-check` (837 arquivos, `--ci src/`)          |        ≈ **0.92s**         |                     **7.46s**                      |    ~2-5s (est.)     |
 | `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |                     **3.61s**                      |    ~1-2s (est.)     |
-| `mutation-guards` (26 sub-tests node-puro)³       |         ≈ **39s**          |                     **9.1s**²                      |   ~15-25s (est.)    |
+| `mutation-guards` (29 sub-tests node-puro)³       |        **188.6s**³         |                     **9.1s**²                      |   ~15-25s (est.)    |
 | `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |                    **4m37.6s**                     |   ~35-45s (est.)³   |
 | `unused-deps-guard` (mutation test + guard real)  |        ≈ **0.5s**⁴         |          **26.8s** cold / **20.9s** warm⁴          |   ~10-15s (est.)    |
 | `lint-guard` (prettier --check + eslint zero)     |     ~**4min** (local)⁵     | **7m22s** 1ª run / **6m23s** 2ª run (lint total)⁴  |   ~4-7 min (est.)   |

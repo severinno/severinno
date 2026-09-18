@@ -422,11 +422,11 @@ jobs:
       # que tem de ficar VERMELHA (onde o vitest está instalado; onde não está, o
       # script DIZ que não julgou essa metade). Sem isto, um guard que virasse
       # no-op passaria verde para sempre.
-      - name: Mutation test — o guard deve FALHAR nas 14 metades
+      - name: Mutation test — o guard deve FALHAR nas 15 metades
         run: bash scripts/test-mutation-workflow-run-syntax.sh
 
       - name: Summary
-        run: echo "✅ Todo corpo de passo dos workflows das duas forjas, todo script de shell versionado E todo texto de shell EMBUTIDO (o `RUN` de um Dockerfile e o payload de um `sh -c`) fazem PARSING (bash -n, sem erro E sem aviso; passo não-bash, script de shebang não-bash e shell embutido indeterminado são contados e nomeados) e o mutation test prova que o guard morde nas catorze metades."
+        run: echo "✅ Todo corpo de passo dos workflows das duas forjas, todo script de shell versionado E todo texto de shell EMBUTIDO (o `RUN` de um Dockerfile e o payload de um `sh -c`) fazem PARSING (bash -n, sem erro E sem aviso; passo não-bash, script de shebang não-bash e shell embutido indeterminado são contados e nomeados) e o mutation test prova que o guard morde nas quinze metades."
 
   # ── Bring-up Gate Proof (o PRÉ-REQUISITO 0, por EXECUÇÃO) ──────────────
   # O mesmo invariante do CORE da forja, provado aqui pelo caminho real: o
@@ -675,7 +675,7 @@ jobs:
         run: echo "✅ No orphan test-mutation-*.sh and no broken workflow ref introduced by this PR diff."
 
   # ── Mutation Guards MASTER (consolidado) ────────────────────────────
-  # Roda os 26 mutation tests node-puro dos guards de CI num JOB SÓ via
+  # Roda os 29 mutation tests node-puro dos guards de CI num JOB SÓ via
   # scripts/test-mutation-guards.sh — matriz de sub-tests que orquestra os
   # scripts granulares (que continuam sendo a fonte única de
   # fixtures/mutações/asserções de cada guard):
@@ -722,17 +722,18 @@ jobs:
   #                    z-ai-web-dev-sdk — + dep inexistente devem FALHAR;
   #                    dep declarada com install pendente deve PASSAR)
   #   workflow-run-syntax → test-mutation-workflow-run-syntax.sh
-  #                    (catorze metades — a do AVISO, o stdin do bash, o LIMITE da
+  #                    (quinze metades — a do AVISO, o stdin do bash, o LIMITE da
   #                    máscara, o índice do `--staged`, os shells medidos, a
   #                    guarda do fixer, a SEGUNDA fonte, o PULO NOMEADO do passo
   #                    não-bash, o PULO NOMEADO do ARQUIVO de shebang não-bash — a
   #                    simetria do anterior, com a decisão da outra fonte — e as
   #                    CINCO da terceira fonte: o `RUN` do Dockerfile, o payload
   #                    do `sh -c`, a leitura por ESTRUTURA do YAML, o de-escape do
-  #                    `$$` do compose e o pulo do heredoc — cada mutação
-  #                    cirúrgica; as DUAS do pulo exigem a suíte unitária VERMELHA
-  #                    e o job próprio deste mesmo gate segue abaixo, rodando o
-  #                    guard REAL)
+  #                    `$$` do compose e o pulo do heredoc), mais a GARANTIA DO
+  #                    PREVIEW (`--fix --dry-run` não grava o patch que publica no
+  #                    PR) — cada mutação cirúrgica; as DUAS do pulo e a do
+  #                    preview exigem a suíte unitária VERMELHA e o job próprio
+  #                    deste mesmo gate segue abaixo, rodando o guard REAL)
   #   hook-commands  → test-mutation-hook-commands.sh
   #                    (o comando que os hooks EXECUTAM tem de resolver: o
   #                    caminho tipado, a entrada de `scripts` ausente e o
@@ -777,7 +778,7 @@ jobs:
         run: bash scripts/test-mutation-guards.sh
 
       - name: Summary
-        run: echo "✅ All 26 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard, mutation-count, no-leaked-imports, pipefail-sigpipe, paridade hook↔CI, comandos dos hooks, defaults de shell, sintaxe dos corpos `run:`, latência de merge, defaults do registry/namespace)."
+        run: echo "✅ All 29 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard, mutation-count, no-leaked-imports, pipefail-sigpipe, paridade hook↔CI, comandos dos hooks, defaults de shell, sintaxe dos corpos `run:`, latência de merge, defaults do registry/namespace, dependências dos jobs, resposta do remédio no TTY, contrato dos required checks APLICADOS — o rename sem a reaplicação declarada)."
 
   # ── Forge Parity Mutation (job DEDICADO, fora do master) ────────────────
   # A prova por mutação das TRÊS regras de classificação do

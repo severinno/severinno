@@ -60,8 +60,16 @@
 #      conta do corpo vazio do guard e exige que o passo suma do relatório; a H3
 #      limita a leitura do `run:` inline à PRIMEIRA linha e exige que a
 #      ocorrência da continuação suma — as duas provam que H1/H3 têm dentes.
-#  11. INFRA: --root inexistente → exit 2 · flag desconhecida → exit 3
-#  12. Cleanup (trap EXIT) — que TAMBÉM restaura o guard mutado por H2/H3
+#  11. MUTAÇÕES R1/R2/R3 (o CANAL do remédio, a outra ponta do `--fix`): o patch
+#      que o `pr-remedy-comment` publica no PR tem de APLICAR pelo `git apply`
+#      (o hunk sem contexto é recusado — e o comentário prometeria um remendo
+#      inaplicável em silêncio), o preview NÃO pode gravar (quem grava é o
+#      `--fix`), e os dois fixers têm de ter marcadores PRÓPRIOS (um marcador
+#      comum faria a reconciliação de um retirar o comentário do outro)
+#  12. INFRA: --root inexistente → exit 2 · flag desconhecida → exit 3
+#  13. Cleanup (trap EXIT) — que TAMBÉM restaura as fontes mutadas por H2/H3 e
+#      pelo CANAL (unified-patch.mjs e pr-remedy-comment.mjs entram na cópia de
+#      segurança com checksum, como o guard e a régua)
 #
 # Usage:
 #   ./scripts/test-mutation-pipefail-sigpipe.sh
@@ -75,6 +83,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 GUARD="$SCRIPT_DIR/scripts/check-pipefail-sigpipe.mjs"
+# As outras duas fontes do CANAL do remédio: a construção do diff (compartilhada
+# com o gate do `bash -n`) e o publicador que leva o patch ao PR.
+UNIFIED="$SCRIPT_DIR/scripts/unified-patch.mjs"
+PUBLISHER="$SCRIPT_DIR/scripts/pr-remedy-comment.mjs"
 # A RÉGUA DOS PASSOS (o corpo do `run:`, bloco × escalar, a dobra da continuação)
 # vive na FONTE ÚNICA, e é ELA que o H3 muta: o guard importa `workflowRunBodies`
 # de lá, então mutar a leitura do passo só muda o veredito se o guard de fato a
@@ -305,7 +317,7 @@ if ! grep -qF ".github/workflows/ci.yml" "$TMP_DIR/mut-b.txt"; then
 fi
 pass "mutação B DETECTADA: o shell bash liga o pipefail e o pipeline é acusado"
 
-header "CONTROLE: o MESMO workflow SEM `shell:` declarado TAMBÉM reprova (marca própria)"
+header "CONTROLE: o MESMO workflow SEM \`shell:\` declarado TAMBÉM reprova (marca própria)"
 # ATENÇÃO ao que este controle mede HOJE: o passo sem `shell:` NÃO é poupado —
 # a varredura cobre os dois contextos, porque a segurança dele dependeria do
 # shell default do RUNNER (uma premissa que não é deste repositório). O que o
@@ -315,7 +327,7 @@ raiz="$(nova_raiz)"
 montar_workflow "$raiz" ""
 exit_code="$(rodar "$raiz" "$TMP_DIR/ctrl-shell-default.txt")"
 if [ "$exit_code" -ne 1 ]; then
-  fail "guard CEGO: o passo sem `shell:` (premissa do runner) passou (exit $exit_code)"
+  fail "guard CEGO: o passo sem \`shell:\` (premissa do runner) passou (exit $exit_code)"
   cat "$TMP_DIR/ctrl-shell-default.txt"
   exit 1
 fi
@@ -437,7 +449,7 @@ jobs:
 YAML
 exit_code="$(rodar "$raiz" "$TMP_DIR/ctrl-default-neutro.txt")"
 if [ "$exit_code" -ne 0 ]; then
-  fail "FALSO POSITIVO: `defaults:` sem pipefail não é premissa mudada (exit $exit_code)"
+  fail "FALSO POSITIVO: \`defaults:\` sem pipefail não é premissa mudada (exit $exit_code)"
   cat "$TMP_DIR/ctrl-default-neutro.txt"
   exit 1
 fi
@@ -501,7 +513,7 @@ jobs:
 YAML
 exit_code="$(rodar "$raiz" "$TMP_DIR/mut-f4.txt")"
 if [ "$exit_code" -ne 1 ]; then
-  fail "guard CEGO: o passo `- run:` (forma de 36 dos passos do repo) ficou INVISÍVEL (exit $exit_code)"
+  fail "guard CEGO: o passo \`- run:\` (forma de 36 dos passos do repo) ficou INVISÍVEL (exit $exit_code)"
   cat "$TMP_DIR/mut-f4.txt"
   exit 1
 fi
@@ -1076,16 +1088,44 @@ pass "controle H1: o corpo vazio sai nomeado com arquivo+linha, a soma fecha con
 # esse diretório no meio da prova (só o cleanup, depois de restaurar).
 guard_backup="$TMP_DIR/guard.original.mjs"
 ruler_backup="$TMP_DIR/ruler.original.mjs"
+unified_backup="$TMP_DIR/unified.original.mjs"
+publisher_backup="$TMP_DIR/publisher.original.mjs"
 cp "$GUARD" "$guard_backup"
 cp "$RULER" "$ruler_backup"
+cp "$UNIFIED" "$unified_backup"
+cp "$PUBLISHER" "$publisher_backup"
 guard_sum="$(cksum "$GUARD" | cut -d' ' -f1)"
 ruler_sum="$(cksum "$RULER" | cut -d' ' -f1)"
-trap 'cp -f "$guard_backup" "$GUARD" 2>/dev/null || true; cp -f "$ruler_backup" "$RULER" 2>/dev/null || true; rm -rf "$TMP_DIR"' EXIT
+unified_sum="$(cksum "$UNIFIED" | cut -d' ' -f1)"
+publisher_sum="$(cksum "$PUBLISHER" | cut -d' ' -f1)"
+trap 'cp -f "$guard_backup" "$GUARD" 2>/dev/null || true; cp -f "$ruler_backup" "$RULER" 2>/dev/null || true; cp -f "$unified_backup" "$UNIFIED" 2>/dev/null || true; cp -f "$publisher_backup" "$PUBLISHER" 2>/dev/null || true; rm -rf "$TMP_DIR"' EXIT
 restaurar_originais() {
   cp -f "$guard_backup" "$GUARD"
   cp -f "$ruler_backup" "$RULER"
-  if [ "$(cksum "$GUARD" | cut -d' ' -f1)" != "$guard_sum" ] || [ "$(cksum "$RULER" | cut -d' ' -f1)" != "$ruler_sum" ]; then
+  cp -f "$unified_backup" "$UNIFIED"
+  cp -f "$publisher_backup" "$PUBLISHER"
+  if [ "$(cksum "$GUARD" | cut -d' ' -f1)" != "$guard_sum" ] || [ "$(cksum "$RULER" | cut -d' ' -f1)" != "$ruler_sum" ] || [ "$(cksum "$UNIFIED" | cut -d' ' -f1)" != "$unified_sum" ] || [ "$(cksum "$PUBLISHER" | cut -d' ' -f1)" != "$publisher_sum" ]; then
     fail "RESTAURAÇÃO FALHOU (checksum diverge) — restaure a partir de $TMP_DIR"
+    exit 1
+  fi
+}
+# ── mutar_arquivo: o mesmo contrato do `mutar_guard`, para as OUTRAS fontes
+# que o canal do remédio usa (a construção do patch e o publicador). O alvo é
+# conferido (exatamente 1 ocorrência) e a escrita é CONFERIDA pelo checksum: uma
+# mutação que não aplicasse passaria como "arquivo imune".
+mutar_arquivo() {
+  ARQ="$1" ALVO="$2" NOVO="$3" REF="$4" python3 - <<'PY'
+import os
+p = os.environ["ARQ"]
+old, new = os.environ["ALVO"], os.environ["NOVO"]
+s = open(p).read()
+n = s.count(old)
+if n != 1:
+    raise SystemExit(f"mutacao nao-cirurgica em {p}: {n} ocorrencia(s) do alvo (esperado 1)")
+open(p, "w").write(s.replace(old, new))
+PY
+  if [ "$(cksum "$1" | cut -d' ' -f1)" = "$4" ]; then
+    fail "a mutação não alterou $1 (checksum idêntico) — o alvo casou mas a escrita não"
     exit 1
   fi
 }
@@ -1189,6 +1229,192 @@ fi
 pass "mutação H3 DETECTADA: a leitura da continuação é o que faz a ocorrência aparecer — é a regressão que o controle H3 prende"
 restaurar_originais
 
+# ══════════════════════════════════════════════════════════════════════════
+# O CANAL DO REMÉDIO (R): o preview que vai AO PR tem de ser o MESMO remendo
+# ══════════════════════════════════════════════════════════════════════════
+# O `--fix` já era provado (caso D). O que NÃO era medido é a OUTRA ponta do
+# mesmo remédio: o patch que o `pr-remedy-comment` publica como comentário no PR.
+# Três propriedades, cada uma com o seu mutante:
+#
+#   R1 — o patch APLICA byte a byte (`git apply`), com a cicatriz no MEIO do
+#        arquivo: um hunk SEM contexto é recusado pelo `git apply`, e o
+#        comentário do PR prometeria um remendo inaplicável — em SILÊNCIO,
+#        porque quem lê o comentário só descobriria ao aplicar;
+#   R2 — o preview NÃO grava: quem grava é o `--fix`. Um `dry: false` aqui
+#        mudaria a árvore de quem só pediu para VER o patch;
+#   R3 — os dois fixers têm marcadores PRÓPRIOS: a reconciliação de um não pode
+#        escolher (nem retirar) o comentário do outro. Um marcador comum faz
+#        exatamente isso, e o aviso do outro gate some do PR sem ninguém notar.
+
+nova_raiz_r() {
+  rm -rf "${TMP_DIR:?}/fxr"
+  mkdir -p "$TMP_DIR/fxr/scripts"
+  cat > "$TMP_DIR/fxr/scripts/alvo.sh" <<'SHR'
+#!/usr/bin/env bash
+set -euo pipefail
+
+antes=1
+echo "$OUT" | grep -q "runner"
+depois=2
+SHR
+  echo "$TMP_DIR/fxr"
+}
+
+# O patch do PREVIEW, pelo MESMO caminho que o publicador usa (`remedyPatch`).
+# Ecoa o nº de remendos e grava o patch em $2.
+preview_patch() {
+  RAIZ="$1" SAIDA="$2" GUARD_PATH="$GUARD" node --input-type=module -e '
+import { writeFileSync } from "node:fs"
+const { remedyPatch } = await import(process.env.GUARD_PATH)
+const r = remedyPatch(process.env.RAIZ)
+writeFileSync(process.env.SAIDA, r.patch)
+process.stdout.write(String((r.fixed ?? []).length))
+'
+}
+
+# Um repo git com o fixture NO ÍNDICE: é contra ele que o `git apply` do
+# operador roda (o patch é relativo à raiz do repositório).
+repo_com_alvo() {
+  local destino
+  destino="$(mktemp -d "$TMP_DIR/$1.XXXXXX")"
+  mkdir -p "$destino/scripts"
+  cp "$RAIZ_R/scripts/alvo.sh" "$destino/scripts/alvo.sh"
+  git -C "$destino" init -q
+  git -C "$destino" add -A
+  git -C "$destino" -c user.email=t@t -c user.name=t commit -qm base
+  echo "$destino"
+}
+
+header 'CONTROLE R1: o patch do PREVIEW aplica pelo `git apply` (cicatriz no MEIO do arquivo)'
+RAIZ_R="$(nova_raiz_r)"
+repo_r1="$(repo_com_alvo repo-r1)"
+remendos="$(preview_patch "$RAIZ_R" "$TMP_DIR/r1.patch")"
+if [ "$remendos" != "1" ]; then
+  fail "o preview do SIGPIPE não remendou o caso mecânico (fixed=$remendos) — nada a provar sobre aplicar"
+  exit 1
+fi
+set +e
+git -C "$repo_r1" apply "$TMP_DIR/r1.patch" > "$TMP_DIR/r1-apply.txt" 2>&1
+apply_exit=$?
+set -e
+if [ "$apply_exit" -ne 0 ]; then
+  fail "o patch publicado NÃO aplica (exit $apply_exit) — o comentário prometeria um remendo inaplicável"
+  cat "$TMP_DIR/r1-apply.txt"
+  exit 1
+fi
+if ! grep -qF 'grep -q "runner" <<< "$OUT"' "$repo_r1/scripts/alvo.sh"; then
+  fail "o patch aplicou mas o arquivo não ficou com o herestring — o remendo publicado não é o do --fix"
+  cat "$repo_r1/scripts/alvo.sh"
+  exit 1
+fi
+# A ponta que importa: depois de aplicar, o gate SAI 0 — o remédio do PR
+# realmente fecha a cicatriz, e não só "aplica".
+exit_r1="$(rodar "$repo_r1" "$TMP_DIR/r1-pos.txt")"
+if [ "$exit_r1" -ne 0 ]; then
+  fail "depois de aplicar o patch o gate AINDA reprova (exit $exit_r1) — o remendo fecharia o comentário e não o defeito"
+  cat "$TMP_DIR/r1-pos.txt"
+  exit 1
+fi
+pass 'controle R1: o patch do preview aplica pelo `git apply` E o gate no repo remendado fecha em 0'
+
+header 'MUTAÇÃO R1: sem CONTEXTO no hunk o patch do preview deixa de aplicar'
+mutar_arquivo "$UNIFIED" '{ file, contexto = 3 } = {}' '{ file, contexto = 0 } = {}' "$unified_sum"
+repo_r1m="$(repo_com_alvo repo-r1m)"
+preview_patch "$RAIZ_R" "$TMP_DIR/r1m.patch" > /dev/null
+set +e
+git -C "$repo_r1m" apply "$TMP_DIR/r1m.patch" > "$TMP_DIR/r1m-apply.txt" 2>&1
+apply_mut=$?
+set -e
+if [ "$apply_mut" -eq 0 ]; then
+  fail "mutação R1 NÃO detectada: sem contexto o patch AINDA aplicou — o contexto do hunk não é o que faz o remendo aplicar"
+  cat "$TMP_DIR/r1m.patch"
+  exit 1
+fi
+pass "mutação R1 DETECTADA: sem contexto o \`git apply\` recusa o patch do preview (exit $apply_mut) — é o CONTEXTO que o torna aplicável"
+restaurar_originais
+
+header 'CONTROLE R2: o PREVIEW não grava — quem grava é o `--fix`'
+preview_patch "$RAIZ_R" "$TMP_DIR/r2.patch" > /dev/null
+sum_intacto="$(cksum "$RAIZ_R/scripts/alvo.sh" | cut -d' ' -f1)"
+if ! grep -qF '| grep -q "runner"' "$RAIZ_R/scripts/alvo.sh"; then
+  fail "o preview GRAVOU no arquivo (a cicatriz já não está lá) — o canal de aviso não pode mexer na árvore"
+  cat "$RAIZ_R/scripts/alvo.sh"
+  exit 1
+fi
+pass 'controle R2: o preview monta o patch e NÃO grava (a cicatriz segue no arquivo, o mesmo checksum)'
+
+header 'MUTAÇÃO R2: o preview com `dry: false` GRAVA — é o `dry` que separa MEDIR de GRAVAR'
+mutar_arquivo "$GUARD" 'const r = fixAll(root, { dry: true })' 'const r = fixAll(root, { dry: false })' "$guard_sum"
+preview_patch "$RAIZ_R" "$TMP_DIR/r2m.patch" > /dev/null
+sum_mutado="$(cksum "$RAIZ_R/scripts/alvo.sh" | cut -d' ' -f1)"
+if [ "$sum_mutado" = "$sum_intacto" ]; then
+  fail "mutação R2 NÃO detectada: com \`dry: false\` o arquivo segue intacto — o alvo não casou no guard"
+  exit 1
+fi
+pass 'mutação R2 DETECTADA: com `dry: false` o preview GRAVA no repositório — o canal de aviso vira remédio aplicado sem pedir'
+restaurar_originais
+
+# ── R3: os dois fixers no MESMO PR ────────────────────────────────────────
+# A reconciliação roda contra um canal DUBLÊ: a lista traz o comentário do gate
+# do `bash -n` (id 11) e o do SIGPIPE (id 22), e o SIGPIPE é reconciliado com
+# `body: null` (a cicatriz dele sumiu). Com marcadores próprios, SÓ o 22 sai.
+reconcilia_pipefail() {
+  PUBLISHER="$PUBLISHER" node --input-type=module -e '
+const { reconcileRemedy, FIXERS } = await import(process.env.PUBLISHER)
+const comentarios = [
+  { id: 11, body: "aviso do gate bash -n\n<!-- run-syntax-remedy -->" },
+  { id: 22, body: "aviso do gate SIGPIPE\n<!-- pipefail-sigpipe-remedy -->" },
+]
+const chamadas = []
+const request = async (_c, method, path) => {
+  chamadas.push(method + " " + path)
+  if (method === "GET") return { status: 200, data: comentarios }
+  return { status: method === "DELETE" ? 204 : 201, data: {} }
+}
+const r = await reconcileRemedy({
+  request,
+  config: {},
+  kind: "github",
+  pr: 7,
+  body: null,
+  marker: FIXERS["pipefail-sigpipe"].marker,
+})
+process.stdout.write(JSON.stringify({ action: r.action, id: r.id, chamadas }))
+'
+}
+
+# Lê o JSON da reconciliação (gravado em $1) e ecoa as exclusões, uma por ' | '.
+delecoes_de() {
+  node -e 'const j = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))
+process.stdout.write(j.chamadas.filter((c) => c.startsWith("DELETE")).join(" | "))' "$1"
+}
+
+header 'CONTROLE R3: marcadores PRÓPRIOS — reconciliar o SIGPIPE não toca o comentário do `bash -n`'
+reconcilia_pipefail > "$TMP_DIR/r3.json"
+del_controle="$(delecoes_de "$TMP_DIR/r3.json")"
+if [ "$del_controle" != "DELETE /issues/comments/22" ]; then
+  fail "a reconciliação do SIGPIPE não retirou EXATAMENTE o comentário dele (exclusões: '$del_controle')"
+  cat "$TMP_DIR/r3.json"
+  exit 1
+fi
+pass 'controle R3: a cicatriz do SIGPIPE sumiu e SÓ o comentário do SIGPIPE foi retirado (id 22) — o do `bash -n` (id 11) fica'
+
+header 'MUTAÇÃO R3: um marcador COMUM faz a reconciliação retirar o comentário do OUTRO gate'
+mutar_arquivo "$PUBLISHER" 'marker: "<!-- pipefail-sigpipe-remedy -->",' 'marker: "<!-- run-syntax-remedy -->",' "$publisher_sum"
+reconcilia_pipefail > "$TMP_DIR/r3m.json"
+del_mutado="$(delecoes_de "$TMP_DIR/r3m.json")"
+case "$del_mutado" in
+  *"/issues/comments/11"*)
+    pass 'mutação R3 DETECTADA: com o marcador comum o comentário do `bash -n` (id 11) é retirado junto — um aviso que ainda valia some do PR'
+    ;;
+  *)
+    fail "mutação R3 NÃO detectada: com o marcador comum as exclusões foram '$del_mutado' (o comentário do outro gate devia cair)"
+    cat "$TMP_DIR/r3m.json"
+    exit 1
+    ;;
+esac
+restaurar_originais
+
 header "VEREDITO"
 pass "MUTATION TEST PASSED — o guard pega o pipe quieto sob pipefail (script E"
 pass 'workflow com shell bash E no passo sem shell declarado, com a marca da premissa),'
@@ -1203,4 +1429,8 @@ pass "passa em modo nenhum — o cron (--review) é quem a escala para violaçã
 pass "E o ESCOPO da varredura é medido: o passo de corpo vazio sai nomeado e a"
 pass "soma fecha contra a própria fixture, a leitura da continuação inline é o que"
 pass "faz a ocorrência aparecer, e tirar qualquer das duas do guard derruba a prova."
+pass "E o CANAL do remédio (o patch que vai ao PR) é medido nas três metades: o"
+pass "patch APLICA pelo git apply e fecha o gate, o preview NÃO grava (é o --fix"
+pass "que grava), e cada fixer tem marcador PRÓPRIO — tirar qualquer uma das três"
+pass "derruba o script."
 exit 0
