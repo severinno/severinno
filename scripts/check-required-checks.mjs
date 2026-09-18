@@ -18,9 +18,18 @@
 //   3. lista um job com `if:` (obrigatório não pode ser condicional);
 //   4. produz dois checks com o MESMO contexto (contexto é a chave do
 //      branch protection — duplicata deixa um deles órfão);
+//   5. tem um required check cujo CONTEXTO carrega uma CONTAGEM — "(27
+//      node-pure mutation tests)", ", 5 cenários", "(40 guards)".
 //
-// Os itens do manifesto são IDs DE JOB (não nomes exibidos): renomear o
-// `name:` de um job não deve mexer no que está protegido.
+// Os itens do manifesto são IDs DE JOB, mas o CONTEXTO que a forja exige é o
+// `name:` do job (ou o id, quando não há `name:`). Logo renomear um job MUDA o
+// contrato de merge — e um nome com CONTAGEM o muda quando o número muda. Esses
+// números neste repositório são DERIVADOS e crescem (a matriz de mutation tests
+// ganhou a 27ª sub-test numa sessão; o contrato coordenado ganha um cenário por
+// release): a proteção da forja passa a exigir um check que já não existe e o
+// PR trava para sempre, sem nenhuma linha de gate parecer errada. A regra 5
+// recusa o padrão; o count continua no summary/comentário/README, onde é
+// diagnóstico, e nos guards que o comparam com o derivado.
 //
 // NOTA: parser de YAML deliberadamente caseiro (indentação de 2 níveis).
 // Este job do CI NÃO instala node_modules, então `node scripts/...` não pode
@@ -29,10 +38,12 @@
 // resultado com o do parser real nas MESMAS duas workflows.
 //
 // Usage:
-//   node scripts/check-required-checks.mjs
+//   node scripts/check-required-checks.mjs            # repo atual (default)
+//   node scripts/check-required-checks.mjs --root X   # fixture (mutation test)
 // Exit codes:
 //   0 — manifesto consistente com os workflows (pass)
 //   1 — divergência encontrada (fail)
+//   2 — uso inválido (flag desconhecida)
 // =============================================================================
 
 import { existsSync, readFileSync } from "node:fs"
@@ -123,6 +134,34 @@ export function contextFor(jobId, job) {
   return job.name && job.name.length > 0 ? job.name : jobId
 }
 
+// ── CONTEXTO ESTÁVEL: nenhum required check carrega uma CONTAGEM no nome ────
+//
+// O contexto de um status check é o `name:` do job (ou o id), e é ele que o
+// branch protection exige. Um número que descreve uma CONTAGEM no nome — "27
+// node-pure mutation tests", "5 cenários", "40 guards" — faz o CONTRATO DE
+// MERGE mudar quando o número muda. E neste repositório esses números são
+// DERIVADOS e crescem: a matriz de mutation tests ganhou a 27ª sub-test numa
+// única sessão. A proteção aplicada na forja passa então a exigir um check que
+// já não existe e o PR trava para sempre — sem nenhuma linha de workflow
+// parecer errada, porque o defeito não está no gate e sim no NOME dele.
+//
+// O count continua onde é DIAGNÓSTICO (summary do job, comentário, header,
+// README) e onde um guard o compara com o derivado; o CONTEXTO fica estável.
+// `TypeCheck (tsc --noEmit)` passa de propósito: o parêntese não é contagem.
+const CONTAGEM_NO_CONTEXTO =
+  /\([^)]*\b\d+\s*(?:node-pure|mutation|sub-?tests?|testes?|tests?|cen[aá]rios?|guards?|jobs?|checks?|passos?|steps?)[^)]*\)/i
+
+/**
+ * Trecho de CONTAGEM dentro de um contexto, ou null se o contexto é estável.
+ *
+ * @param {string} context contexto de status (o `name:` do job, ou o id).
+ * @returns {string|null}
+ */
+export function contagemNoContexto(context) {
+  const m = CONTAGEM_NO_CONTEXTO.exec(context ?? "")
+  return m ? m[0] : null
+}
+
 // ---------------------------------------------------------------------------
 // Validação do manifesto
 // ---------------------------------------------------------------------------
@@ -201,6 +240,15 @@ export function validateManifest(manifest, io) {
             )
           }
           const context = contextFor(rJobId, rJob)
+          const contagem = contagemNoContexto(context)
+          if (contagem) {
+            fail(
+              forge,
+              `contexto "${context}" (job "${jobId}/${rJobId}") carrega uma CONTAGEM ("${contagem}") — ` +
+                `o contrato de merge passaria a mudar quando o número mudar, e a forja exigiria um ` +
+                `check inexistente (o PR trava). Tire o count do \`name:\`; ele vai no summary/comentário/README`,
+            )
+          }
           if (seenContexts.has(context)) {
             fail(
               forge,
@@ -221,6 +269,15 @@ export function validateManifest(manifest, io) {
         )
       }
       const context = contextFor(jobId, job)
+      const contagem = contagemNoContexto(context)
+      if (contagem) {
+        fail(
+          forge,
+          `contexto "${context}" (job "${jobId}") carrega uma CONTAGEM ("${contagem}") — ` +
+            `o contrato de merge passaria a mudar quando o número mudar, e a forja exigiria um ` +
+            `check inexistente (o PR trava). Tire o count do \`name:\`; ele vai no summary/comentário/README`,
+        )
+      }
       if (seenContexts.has(context)) {
         fail(
           forge,
@@ -303,7 +360,19 @@ export function loadManifest(root, io) {
 }
 
 function main() {
-  const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
+  // `--root X` existe para o mutation test: o guard julgava só a árvore real e a
+  // regra do contexto (abaixo) não tinha como ser provada por EXECUÇÃO contra um
+  // fixture — mesma convenção do check-mutation-count. Sem flag, o root é o repo.
+  const argv = process.argv.slice(2)
+  let root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === "--root") {
+      root = resolve(argv[++i] ?? "")
+    } else {
+      console.error(`flag desconhecida: ${argv[i]} (use --root X)`)
+      process.exit(2)
+    }
+  }
   const io = defaultIo(root)
 
   let manifest
@@ -321,7 +390,9 @@ function main() {
     for (const v of violations) console.error(`   - [${v.forge}] ${v.problem}`)
     console.error(
       `\n   Ação: corrija o manifesto OU restaure/renomeie o job. ` +
-        `Fonte dos contextos: os IDs de job — não os \`name:\` exibidos.`,
+        `Os itens do manifesto são IDs de job, mas o CONTEXTO exigido na forja é o ` +
+        `\`name:\` do job — renomear muda o contrato de merge, e um nome com ` +
+        `CONTAGEM muda o contrato quando o número muda (por isso ele é recusado).`,
     )
     process.exit(1)
   }

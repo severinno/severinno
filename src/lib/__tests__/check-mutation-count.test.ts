@@ -10,7 +10,12 @@ import { run } from "../../../scripts/check-mutation-count.mjs"
  */
 interface FixtureOpts {
   count?: number
-  workflowName?: number | null
+  /**
+   * Sufixo do `name:` do job. O DEFAULT é vazio — o contexto do required check
+   * é COUNT-FREE de propósito: um número aqui re-acopla o tamanho da matriz ao
+   * contrato de merge (o branch protection exige o nome do job como contexto).
+   */
+  workflowNameSuffix?: string
   workflowSummary?: number | null
   workflowComment?: number | null
   masterHeader?: number | null
@@ -22,7 +27,7 @@ interface FixtureOpts {
 
 function makeFixture({
   count = 13,
-  workflowName = null,
+  workflowNameSuffix = "",
   workflowSummary = null,
   workflowComment = null,
   masterHeader = null,
@@ -47,7 +52,7 @@ ${entries.join("\n")}
 
   const prCheck = `jobs:
   mutation-guards:
-    name: Mutation guards master (${workflowName ?? count} node-pure mutation tests)
+    name: Mutation guards master${workflowNameSuffix}
     steps:
       - run: bash scripts/test-mutation-guards.sh
       - name: Summary
@@ -91,11 +96,39 @@ describe("check-mutation-count", () => {
     expect(r.derivedCount).toBe(5)
   })
 
-  it("falha quando o name do job diverge (12 no job, 13 derivado)", () => {
-    const dir = makeFixture({ workflowName: 12 })
+  it("passa com o name do job COUNT-FREE (o contexto do required check é estável)", () => {
+    const dir = makeFixture()
+    const r = run(dir)
+    expect(r.ok).toBe(true)
+    expect(r.refs.prCheck.context).toBe("Mutation guards master")
+  })
+
+  it("falha quando o name do job volta a carregar o count (matriz 13)", () => {
+    const dir = makeFixture({ workflowNameSuffix: " (13 node-pure mutation tests)" })
     const r = run(dir)
     expect(r.ok).toBe(false)
     expect(r.derivedCount).toBe(13)
+    // A violação NOMEIA o acoplamento: o contexto protegido passaria a mudar a
+    // cada bump de matriz.
+    expect(
+      r.violations.some((v) => v.includes("name do job") && v.includes("required check")),
+    ).toBe(true)
+  })
+
+  it("falha mesmo com o count CERTO no name — nenhum número pode viver ali", () => {
+    // O caso que o guard antigo APROVAVA: name coerente com a matriz. O contrato
+    // de merge muda do mesmo jeito quando a matriz sobe, então o número é
+    // proibido independentemente de estar correto hoje.
+    const dir = makeFixture({ count: 14, workflowNameSuffix: " (14 node-pure mutation tests)" })
+    const r = run(dir)
+    expect(r.ok).toBe(false)
+    expect(r.violations.some((v) => v.includes("name do job"))).toBe(true)
+  })
+
+  it("falha quando o name do job é outro texto (contexto renomeado ou job ausente)", () => {
+    const dir = makeFixture({ workflowNameSuffix: " (renomeado)" })
+    const r = run(dir)
+    expect(r.ok).toBe(false)
     expect(r.violations.some((v) => v.includes("name do job"))).toBe(true)
   })
 
