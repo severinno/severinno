@@ -276,6 +276,18 @@ jobs:
       - name: Forge gate parity
         run: node scripts/check-forge-parity.mjs
 
+      # DEPENDÊNCIAS DOS JOBS: um job que roda comando cujo VEREDITO exige
+      # `node_modules` tem de INSTALAR as dependências ou declarar a isenção
+      # (com data e janela de revisão). A classe é medida, não suposta: oito
+      # guards "node puro" leem YAML com `js-yaml` e, sem o pacote, saem 2
+      # ("NÃO JULGÁVEL") — o verde deles num job sem install não tem causa no
+      # repositório, depende do `node_modules` do ambiente, e o sintoma que o
+      # operador vê não diz isto. A isenção é verificada contra o grafo de
+      # imports: dizer "não precisa" para um `import` de topo ou um binário de
+      # dependência é provadamente falso.
+      - name: Job dependencies (install or declared exemption)
+        run: node scripts/check-job-deps.mjs
+
       # Paridade hook ↔ CI (nas DUAS direções): cada comando que os hooks
       # locais executam tem de ser o MESMO comando do CI ou um recorte/local
       # com DECISÃO ESCRITA em HOOK_DECLARED; e cada invariante do CORE tem de

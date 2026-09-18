@@ -2413,6 +2413,79 @@ limitações do scan):** veja a seção [Auditoria de dependências — polític
 ZERO-órfãs](../README.md#auditoria-de-dependências-política-zero-órfãs) —
 fonte única, sem duplicação neste catálogo para não driftar.
 
+### 12.1. As dependências de um JOB — `check-job-deps` (`scripts/check-job-deps.mjs`)
+
+**O que protege:** um job que RODA um comando cujo veredito exige
+`node_modules` tem de INSTALAR as dependências — ou a isenção tem de estar
+**DECLARADA** com data e janela de revisão. Sem `bun install` no job e sem
+isenção, é violação (exit 1).
+
+**Por que existe (a classe é MEDIDA, não suposta):** `node
+scripts/check-*.mjs` PARECE "node puro" — os guards leem LINHA, e a prosa dos
+workflows diz literalmente "node puro, sem bun install; roda em <5s". Mas oito
+deles perguntam ao `js-yaml` se o YAML é válido (`readWorkflowScan` →
+`workflowYamlValidity`, a porta fail-closed da classe do "não consegui
+julgar"). Num checkout SEM `node_modules`, medido guard por guard, esses oito
+saem **exit 2** ("NÃO JULGÁVEL") e os `test-mutation-*.sh` morrem no binário
+ausente. O mesmo comando tem, portanto, DOIS desfechos sem dependências — e
+nenhum deles está escrito no workflow. O verde de um job que não instala não
+tem causa no repositório; tem causa no `node_modules` do AMBIENTE (o workspace
+de outro job, ou a máquina de quem roda o runner). O sintoma que o operador vê
+é "NÃO JULGÁVEL", nunca "faltou instalar". Este guard transforma a prosa em
+CONTRATO — e é o **par do `check-no-setup-bun`**: aquele proíbe a ação externa
+que ninguém declarou, este exige a DECLARAÇÃO de onde o `node_modules` vem.
+
+**O que ele decide, por job:**
+
+- **INSTALA** (`bun install`, `npm ci`, … em qualquer passo do job) → OK;
+- **NÃO INSTALA** e nenhum comando exige `node_modules` → OK, medido;
+- **NÃO INSTALA** e algum comando exige → a isenção tem de estar em
+  `JOB_DEPS_ALLOWLIST` com `addedAt` e motivo escrito; sem isso é VIOLAÇÃO;
+- **isenção VERIFICADA contra o grafo de imports**: `semDeps: "passa"` é
+  provadamente FALSA se o grafo tem um `import` de TOPO ou um BINÁRIO de
+  dependência — os dois carregam no START, sem caminho alternativo. Uma isenção
+  que não pode ser verdadeira não pode ser declarada;
+- **isenção SEM OBJETO** (o job passou a não exigir nada) também é violação: a
+  declaração que sobrou mente sobre o presente.
+
+**O GRAU é um FATO, não um detalhe:** `binario` (o binário do `node_modules`:
+`vitest`, `tsc`), `estatico` (`import` de topo — carrega sempre, o desfecho sem
+deps é o CRASH `ERR_MODULE_NOT_FOUND`) e `tardio` (specifier alcançado só
+dentro de função: pode nunca ser percorrido, e por isso admite `passa`).
+
+**A data da decisão e a revisão vencida (`--review`):** a `JOB_DEPS_ALLOWLIST`
+segue a MESMA regra das outras allowlists, do módulo compartilhado
+`allowlist-review.mjs` — registro ausente/inválido/no futuro é violação nos
+dois modos (fail-closed); passada a janela `JOB_DEPS_REVIEW_DAYS` (180 dias), o
+scan normal **avisa** (`::warning::`) e o `--review` escala a **violação**. É o
+canal do job semanal `registry-allowlist-review` (`benchmark-weekly.yml`), ao
+lado dos outros quatro; e a lista entra no `declared-debt.mjs` (a idade da
+dívida aparece no relatório do doctor).
+
+**O QUE FICA FORA, declarado e nomeado na saída (nunca escondido):** comando
+cujo alvo o guard não classifica (programa desconhecido, alvo montado em
+`${{ }}`) sai em `foraDoEscopo` com a CATEGORIA e o motivo — um job que só tem
+comandos fora do escopo NÃO ganha isenção implícita; `sh -c`/`node -e`
+(payload inline) ficam fora, porque não há transitividade de dependência a
+seguir; e o estado REAL do runner (se a imagem embarca `node_modules`) fica
+fora por construção — o guard lê o REPOSITÓRIO, e é exatamente por isso que a
+isenção precisa de motivo: quem responde "de onde vem" é quem assina a
+decisão.
+
+**Onde roda:** passo `Job dependencies (install or declared exemption)` do job
+`guards` nas DUAS forjas (`ci.yml` da Gitea e `pr-check.yml` do GitHub) — a
+Gitea instala, o GitHub espelha, e a varredura cobre os jobs das duas (a
+assimetria é justamente o que o gate torna mecânica). A revisão vencida roda no
+job semanal. Mutation test: `scripts/test-mutation-job-deps.sh` (7 mutações — o
+install que some, o `addedAt` que some, a leitura do grafo de imports, a regra
+do sem-objeto e a escalada do `--review`), na matriz do master. Leitura
+fail-closed de sempre (arquivo ilegível ou YAML inválido NÃO vira "nada a
+julgar") e a MESMA extração de comandos
+([`shellCommands`](#24-os-comandos-que-os-hooks-executam-têm-de-resolver--check-hook-commands-scriptscheck-hook-commandsmjs))
+e o MESMO resolvedor de bare specifiers
+(`extractBareSpecifiers`/`resolveImport`) — não existe uma segunda régua do que
+é um comando nem do que é um import.
+
 ---
 
 ## 13. O agregador de prontidão — `doctor` (`scripts/forge-doctor.mjs`)

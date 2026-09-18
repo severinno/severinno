@@ -285,6 +285,16 @@ jobs:
       - name: Forge gate parity
         run: node scripts/check-forge-parity.mjs
 
+      # DEPENDÊNCIAS DOS JOBS: um job que roda comando cujo VEREDITO exige
+      # `node_modules` tem de INSTALAR as dependências ou declarar a isenção
+      # (com data e janela de revisão). Esta pipeline instala — é o parâmetro do
+      # que o gate exige — e a varredura cobre as DUAS forjas: os jobs do GitHub
+      # que rodam os mesmos guards sem install são a assimetria que o gate torna
+      # mecânica (e a isenção de cada um é verificada contra o grafo de imports
+      # do comando, não contra a prosa do workflow).
+      - name: Job dependencies (install or declared exemption)
+        run: node scripts/check-job-deps.mjs
+
       # ── Segurança: gates que existiam APENAS no espelho do GitHub ────────
       # Descobertos pela classificação obrigatória do check:forge-parity. Estar
       # "no arquivo do GitHub" foi confundido com "ser específico do GitHub":

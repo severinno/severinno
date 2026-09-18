@@ -1036,6 +1036,15 @@ jobs:
       - name: Revisar a dívida declarada da classe SIGPIPE (--review)
         run: node scripts/check-pipefail-sigpipe.mjs --review
 
+      # ── GATE: a ISENÇÃO de dependências de um job SEM REVISÃO falha o run ──
+      # A JOB_DEPS_ALLOWLIST declara os jobs que rodam comando dependente de
+      # `node_modules` sem instalar. No run normal essa decisão vencida é
+      # `::warning::` (uma data não trava o PR de todo mundo); aqui é VIOLAÇÃO —
+      # sem este passo a janela de 180 dias seria decorativa e o job seguiria
+      # dependendo do `node_modules` do AMBIENTE em silêncio, por anos.
+      - name: Revisar as isenções de dependências dos jobs (--review)
+        run: node scripts/check-job-deps.mjs --review
+
       # ── CANAL: a decisão VENCIDA vira ISSUE ACIONÁVEL (e some quando revisada) ──
       # O run vermelho acima é o GATE; ele sozinho é o alerta MUDO que este
       # repositório já trocou por issue em quatro outros lugares
@@ -1054,7 +1063,7 @@ jobs:
         run: node scripts/declared-debt-issue.mjs
 
       - name: Summary
-        run: echo "✅ Nenhuma isenção (escopo, imagem de terceiros, dep de uso implícito) nem dívida declarada (SIGPIPE) sem revisão dentro da janela."
+        run: echo "✅ Nenhuma isenção (escopo, imagem de terceiros, dep de uso implícito, dependências de job) nem dívida declarada (SIGPIPE) sem revisão dentro da janela."
 
   # ── Seed Guards E2E (semanal) ────────────────────────────────────────
   # Revalida SEMANALMENTE que os DOIS seeds (prod + dev) continuam

@@ -44,6 +44,7 @@
     "check:seed-hooks": "node scripts/check-seed-hooks.mjs",
     "check:workflow-refs": "node scripts/check-workflow-refs.mjs",
     "check:workflow-refs:internal": "node scripts/check-workflow-refs.mjs --pkg-internal",
+    "check:job-deps": "node scripts/check-job-deps.mjs",
     "check:no-setup-bun": "node scripts/check-no-setup-bun.mjs",
     "check:bun-mirror": "node scripts/check-bun-mirror.mjs",
     "runner-image:ensure": "node scripts/ensure-runner-image.mjs",

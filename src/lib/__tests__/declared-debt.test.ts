@@ -282,15 +282,21 @@ describe("a prosa — a mesma medição contada para o veredito e para a issue",
 })
 
 describe("o repositório REAL — a rede de segurança contra uma decisão sem data", () => {
-  it("mede as quatro fontes declaradas, sem nenhuma ilegível ou sem registro", () => {
-    const fato = collectDeclaredDebt({ now: HOJE })
+  it("mede as cinco fontes declaradas, sem nenhuma ilegível ou sem registro", () => {
+    // O RELÓGIO é o de VERDADE, não o `HOJE` fixo dos testes sintéticos: esta é
+    // a rede de segurança do repositório REAL, e uma data fixa no passado
+    // transforma toda decisão tomada depois dela num falso "addedAt no FUTURO"
+    // (o fail-closed dispara no motivo errado — foi assim que a `job-deps`,
+    // registrada em 2026-09-17, fez 14 entradas legítimas virarem `invalid`).
+    const fato = collectDeclaredDebt({ now: Date.now() })
     expect(DECLARED_DEBT_SOURCES.map((s: any) => s.id)).toEqual([
       "out-of-scope",
       "third-party",
       "unused-deps",
+      "job-deps",
       "sigpipe",
     ])
-    expect(fato.sources).toHaveLength(4)
+    expect(fato.sources).toHaveLength(5)
     // `invalid`/`unread` aqui são o MESMO fail-closed dos guards — o portão já
     // existe nos dois modos; esta linha só impede que ele passe despercebido.
     expect(fato.invalid).toEqual([])

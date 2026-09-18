@@ -1294,6 +1294,27 @@ header do guard.
 > compartilhado `allowlist-review.mjs`). É o que impede uma isenção antiga de
 > virar permanente por esquecimento.
 
+#### As dependências de um JOB — `check-job-deps.mjs`
+
+O `check-unused-deps` pergunta se uma dep do `package.json` tem uso. O
+`check-job-deps` (passo `Job dependencies (install or declared exemption)` do job
+`guards`, nas DUAS forjas) pergunta a outra metade: **um job que RODA um comando
+cujo veredito exige `node_modules` INSTALA as dependências** — ou a isenção está
+DECLARADA, com data e janela de revisão — porque o verde de um job que não
+instala não tem causa no repositório.
+
+A classe foi MEDIDA, não suposta: `node scripts/check-*.mjs` PARECE "node puro"
+(a prosa dos workflows diz isso), mas oito guards leem YAML com `js-yaml` e, num
+checkout SEM `node_modules`, saem **exit 2** ("NÃO JULGÁVEL") — o mesmo comando
+tem DOIS desfechos e nenhum está escrito no workflow. O sintoma que o operador
+vê é "NÃO JULGÁVEL", nunca "faltou instalar". Quem responde "de onde vem o
+`node_modules`" é quem assina a decisão em `JOB_DEPS_ALLOWLIST`, e a isenção é
+**verificada contra o grafo de imports**: dizer "não precisa" para um `import` de
+topo ou um binário de dependência é provadamente falso. Isenção sem `addedAt`,
+mentirosa, sem objeto (o job passou a não exigir nada) ou vencida (`--review`, no
+job semanal, ao lado das outras quatro allowlists) é violação. Ver
+docs/GUARDS.md §12.1.
+
 ### Typecheck — gate de tipo do PR
 
 O `tsc --noEmit` (com `prisma generate` antes — o client é requisito do typecheck)

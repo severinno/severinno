@@ -2036,6 +2036,7 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
     ["no-setup-bun", "node scripts/check-no-setup-bun.mjs"],
     ["hook-ci-parity", "node scripts/check-hook-ci-parity.mjs"],
     ["hook-commands", "node scripts/check-hook-commands.mjs"],
+    ["job-deps", "node scripts/check-job-deps.mjs"],
     ["workflow-run-syntax", "node scripts/check-workflow-run-syntax.mjs"],
     ["merge-latency", "node scripts/merge-latency.mjs --check"],
   ]
@@ -2229,14 +2230,15 @@ describe("readAllGateContracts — o job EXIGIDO roda a régua da INVARIANTE, a 
   it("cada invariante que compartilha o job 'guards' tem a SUA régua medida", () => {
     const dir = twoForgeFixture()
     const noMesmoJob = contractResults(dir).filter((x) => x.jobId === FORGE_GUARDS_JOB)
-    // VINTE E DUAS invariantes CORE vivem no mesmo job `guards`: nove que sempre
+    // VINTE E TRÊS invariantes CORE vivem no mesmo job `guards`: nove que sempre
     // estiveram ali, dez que passaram a ser invocadas pela MESMA linha canônica
     // do espelho (antes rodavam na forja por outra forma, ou não rodavam), a da
-    // SINTAXE do corpo `run:`, a da LATÊNCIA de merge e a dos COMANDOS DOS HOOKS
-    // (a última a entrar). Deduplicando pelo job, vinte e uma ficariam fora da
-    // lista de contratos e apareceriam como cobertas sem nunca terem sido medidas.
-    expect(noMesmoJob.length).toBe(22)
-    expect(new Set(noMesmoJob.map((x) => x.invariantId)).size).toBe(22)
+    // SINTAXE do corpo `run:`, a da LATÊNCIA de merge, a dos COMANDOS DOS HOOKS
+    // e a das DEPENDÊNCIAS DOS JOBS (a última a entrar). Deduplicando pelo job,
+    // vinte e duas ficariam fora da lista de contratos e apareceriam como
+    // cobertas sem nunca terem sido medidas.
+    expect(noMesmoJob.length).toBe(23)
+    expect(new Set(noMesmoJob.map((x) => x.invariantId)).size).toBe(23)
     expect(noMesmoJob.every((x) => x.state === "proven")).toBe(true)
     // E cada uma responde pela SUA remoção — não pela do vizinho.
     const semRequired = twoForgeFixture({ semComandoDoGate: "required-checks" })

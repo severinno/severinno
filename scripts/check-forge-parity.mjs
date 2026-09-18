@@ -371,6 +371,23 @@ export const CORE_INVARIANTS = [
     jobIds: { gitea: "test", github: "pii-allowlist-guard" },
   },
   {
+    id: "job-deps",
+    // O job que roda comando dependente de `node_modules` sem INSTALAR tem o
+    // verde sustentado pelo AMBIENTE (o `node_modules` da imagem do runner ou de
+    // um workspace reusado): a mesma linha `node scripts/X.mjs` sai 2 ("NAO
+    // JULGAVEL") num runner limpo, e oito guards do repositorio dependem de
+    // `js-yaml`. E um invariante do CORE porque o defeito e ASSIMETRICO por
+    // forja: a forja (dona do merge) instala no job `guards`; os jobs do espelho
+    // rodavam os mesmos guards sem install, com a prosa "node puro, sem bun
+    // install" que ninguem confere. O gate verific a isencao declarada contra o
+    // grafo de imports do comando — uma isencao que diz "nao precisa" para um
+    // `import` de topo e provadamente falsa.
+    matches: /check[:-]job[:-]deps/,
+    command: /^node scripts\/check-job-deps\.mjs$/m,
+    why: "sem o gate, o verde de um job sem install fica sustentado por um node_modules que ninguem declarou — e a falha so aparece quando o runner esta limpo",
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
+  },
+  {
     id: "required-checks",
     matches: /check[:-]required[:-]checks/,
     command: /^node scripts\/check-required-checks\.mjs$/m,
