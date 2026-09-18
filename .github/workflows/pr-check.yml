@@ -603,8 +603,24 @@ jobs:
   # consolidar reduz o setup por job sem perder a granularidade
   # (--scenario <id> roda um sub-test isolado para diagnóstico local).
   # Node-puro, <9s total, sem docker.
+  #
+  # Um sub-test NOVO se soma à matriz sem tocar o CONTEXTO do required check
+  # (o `name:` acima é count-free) — é o `check-mutation-count` que cobra o
+  # count onde ele é diagnóstico: summary, comentário, header e README.
+  #
+  # ⚠️ O `name:` ABAIXO NÃO CARREGA O COUNT — DE PROPÓSITO.
+  # O nome de um job é o CONTEXTO do status check na forja, e o branch
+  # protection exige esse contexto (ci/required-checks.json →
+  # scripts/apply-required-checks.mjs). Enquanto o nome dizia
+  # "(27 node-pure mutation tests)", CADA bump da matriz reescrevia o contexto
+  # protegido: a proteção aplicada na forja passava a exigir um check que já não
+  # existe, e o PR travava esperando para sempre — bastava adicionar um sub-test.
+  # O count é DIAGNÓSTICO: vive no summary e no comentário abaixo, no header do
+  # master e no README, e o `check-mutation-count` compara todos com o derivado.
+  # Aqui ele é PROIBIDO (o guard falha se um número voltar): o contrato de merge
+  # não pode depender do tamanho da matriz.
   mutation-guards:
-    name: Mutation guards master (24 node-pure mutation tests)
+    name: Mutation guards master
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4

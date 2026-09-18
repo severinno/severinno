@@ -363,8 +363,16 @@ jobs:
   # node-pura do master mutation-guards; este job com bun install é o home
   # do contrato. Sem postgis: o teste é unitário (só derivação + leitura dos
   # SCAN_FILES), não toca banco.
+  # ⚠️ O `name:` ABAIXO NÃO CARREGA O COUNT — DE PROPÓSITO.
+  # O nome de um job é o CONTEXTO do status check, e este é required check em
+  # `ci/required-checks.json`. O nome dizia "..., 5 cenários" e o contrato
+  # coordenado GANHA UM CENÁRIO POR RELEASE: cada cenário novo reescrevia o
+  # contexto protegido, a proteção da forja passava a exigir um check que não
+  # existe e o PR travava — sem nenhuma linha de gate parecer errada. A
+  # contagem continua no NOME DO STEP ("— 5 cenários, 2 elos"), onde é
+  # diagnóstico, e o `check-required-checks` recusa um número que volte para cá.
   mutation-coord-update:
-    name: Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)
+    name: Mutation Test (contrato coordenado — doc↔anchor↔código)
     runs-on: self-hosted
     timeout-minutes: 15
 

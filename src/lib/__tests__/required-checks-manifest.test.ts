@@ -17,6 +17,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import {
   MANIFEST_PATH,
+  contagemNoContexto,
   contextFor,
   defaultIo,
   loadManifest,
@@ -109,15 +110,21 @@ const EXPECTED_CONTEXTS: Record<string, string[]> = {
     "check",
     "Security Headers",
     "PII Allowlist Guard (user payload projection)",
-    // mutation-guards: job direto no pr-check.yml
-    "Mutation guards master (24 node-pure mutation tests)",
+    // mutation-guards: job direto no pr-check.yml. O nome é COUNT-FREE de
+    // propósito: ele é o CONTEXTO protegido, e um número ali faria cada bump da
+    // matriz de mutation tests reescrever o contrato de merge (o
+    // `check-mutation-count` falha se um count voltar ao name).
+    "Mutation guards master",
     // forge-parity-mutation: a prova da classificação é job PRÓPRIO (diz qual
     // regra do contrato de merge quebrou, em vez de ser uma linha da matriz)
     "Forge Parity Mutation (regras de classificação)",
     // seed-guards: jobs resolvidos do reusable workflow seed-guards.yml
     "Seed E2E ${{ matrix.seed }} · ${{ matrix.variant }}",
     "Mutation Test (seed dev E2E pega regressões?)",
-    "Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)",
+    // o `name:` deste job também é COUNT-FREE: o "5 cenários" era uma contagem
+    // que CRESCE (o contrato coordenado ganha um cenário por release) dentro do
+    // CONTEXTO protegido — o mesmo defeito do master de mutation tests.
+    "Mutation Test (contrato coordenado — doc↔anchor↔código)",
     "Mutation Test (espelhos do doctor — comparação de valor)",
     "Mutation Test (os três fios do veredito do doctor)",
     "Mutation Test (as três regras do contrato de gates CORE)",
@@ -164,6 +171,56 @@ describe("parser de `jobs:` (sem deps)", () => {
     const jobs = parseWorkflowJobs(workflowContent(PR_CHECK))
     expect(contextFor("check", jobs.get("check")!)).toBe("check")
     expect(contextFor("typecheck", jobs.get("typecheck")!)).toBe("TypeCheck (tsc --noEmit)")
+  })
+})
+
+/**
+ * O CONTEXTO do required check é derivado do `name:` do job — logo um número
+ * que descreve uma CONTAGEM ali faz o contrato de merge mudar quando o número
+ * muda (a matriz de mutation tests cresce a cada guard novo). Estes são os
+ * casos que decidem se o guard pega o acoplamento ou o deixa passar.
+ */
+describe("contexto estável de required check (sem CONTAGEM)", () => {
+  it("pega os contextos que acoplam o contrato de merge a uma contagem", () => {
+    expect(contagemNoContexto("Mutation guards master (27 node-pure mutation tests)")).toBe(
+      "(27 node-pure mutation tests)",
+    )
+    expect(contagemNoContexto("Mutation Test (contrato coordenado, 5 cenários)")).toBe(
+      "(contrato coordenado, 5 cenários)",
+    )
+    expect(contagemNoContexto("Repo Guards (40 guards)")).toBe("(40 guards)")
+  })
+
+  it("deixa passar contextos cujo parêntese não é contagem", () => {
+    expect(contagemNoContexto("Mutation guards master")).toBeNull()
+    expect(contagemNoContexto("TypeCheck (tsc --noEmit)")).toBeNull()
+    expect(contagemNoContexto("Workflow run syntax (bash -n)")).toBeNull()
+    expect(contagemNoContexto("Bring-up Gate Proof (pré-requisito 0, por execução)")).toBeNull()
+    expect(contagemNoContexto("Seed E2E ${{ matrix.seed }} · ${{ matrix.variant }}")).toBeNull()
+  })
+
+  it("recusa um manifesto cujo job de required check carrega o count no name", () => {
+    const broken = `
+name: Fixture
+jobs:
+  mutation-guards:
+    name: Mutation guards master (27 node-pure mutation tests)
+    runs-on: self-hosted
+    steps:
+      - run: echo ok
+`
+    const violations = validateManifest(
+      {
+        version: 1,
+        branches: ["main"],
+        forges: {
+          github: { workflow: ".github/workflows/pr-check.yml", jobs: ["mutation-guards"] },
+        },
+      },
+      fakeIo({ ".github/workflows/pr-check.yml": broken }),
+    )
+    expect(violations).toHaveLength(1)
+    expect(violations[0].problem).toContain("CONTAGEM")
   })
 })
 

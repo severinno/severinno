@@ -4,13 +4,26 @@
 # (check-mutation-count.mjs — nº de sub-tests do master)
 #
 # Prova que o guard de drift de counts REALMENTE falha nas regressões que ele
-# existe para bloquear — o bug que aconteceu de verdade (12→13 em 08/2026,
-# corrigido à mão em 5+ lugares): alguém adiciona um sub-test na matriz do
-# master e NÃO atualiza o pr-check.yml e o README.
+# existe para bloquear. Duas classes, e a PRIMEIRA é a que acopla o contrato de
+# merge:
 #
-#   Cenário A (JOB NAME):   adiciona 1 sub-test na matriz (14) mas o name do
-#                           job mutation-guards fica "(13 node-pure...)" → o
-#                           guard DEVE FALHAR (exit 1) citando o name.
+#   Cenário F (A CLASSE):  o `check-required-checks` recusa um required check
+#                           cujo `name:` carrega uma CONTAGEM — no job DIRETO e
+#                           no job de um REUSABLE workflow (que é como o
+#                           segundo caso real apareceu: ", 5 cenários").
+#   CONTROLE F:             os mesmos jobs com `name:` COUNT-FREE → exit 0.
+#   Cenário A (JOB NAME CARREGA O COUNT): o `name:` do job mutation-guards volta
+#                           a dizer "Mutation guards master (13 node-pure
+#                           mutation tests)". O nome de um job é o CONTEXTO do
+#                           status check, e o branch protection exige esse
+#                           contexto — então um número ali faz CADA bump de
+#                           matriz reescrever o contrato de merge e a proteção
+#                           da forja passar a exigir um check que não existe.
+#                           O guard DEVE FALHAR (exit 1) citando o name.
+#   CONTROLE E (BUMP LEGÍTIMO): matriz 14 com name COUNT-FREE + summary/README
+#                           em 14 → o guard DEVE PASSAR (exit 0). É o defeito
+#                           original virado do avesso: subir a matriz deixou de
+#                           mexer no contexto protegido.
 #   Cenário B (SUMMARY):    o summary fica "All 13..." com matriz 14 → DEVE
 #                           FALHAR citando o summary.
 #   Cenário C (README):     o README fica com "13 sub-tests" e a matriz vira
@@ -27,11 +40,15 @@
 # Pipeline:
 #   1. Cria fixture consistente (matriz 13 + refs 13 em pr-check/README)
 #   2. CONTROLE: guard --root fixture → exit 0
-#   3. MUTAÇÃO A: matriz 14 (name 13) → guard DEVE FALHAR (exit 1) citando name
-#   4. MUTAÇÃO B: matriz 14 (summary 13) → guard DEVE FALHAR citando summary
-#   5. MUTAÇÃO C: matriz 14 (README 13) → guard DEVE FALHAR citando README.md
-#   6. CONTROLE D: ref histórica "era de 5" com matriz 13 → exit 0 (não-falso-positivo)
-#   7. Cleanup (trap EXIT — rm -rf do temp)
+#   3. MUTAÇÃO A: o name do job volta a carregar o count → DEVE FALHAR
+#   4. CONTROLE E: matriz 14 com name COUNT-FREE + refs 14 → exit 0 (bump legítimo)
+#   5. MUTAÇÃO B: matriz 14 (summary 13, resto 14) → guard DEVE FALHAR
+#   6. MUTAÇÃO C: matriz 14 (README 13, resto 14) → guard DEVE FALHAR
+#   7. CONTROLE D: ref histórica "era de 5" com matriz 13 → exit 0 (não-falso-positivo)
+#   8. MUTAÇÃO F: required check com CONTAGEM no name (job direto + reusable) →
+#      DEVE FALHAR citando CONTAGEM; CONTROLE F com os mesmos jobs count-free →
+#      exit 0
+#   9. Cleanup (trap EXIT — rm -rf do temp)
 #
 # Usage:
 #   ./scripts/test-mutation-mutation-count.sh
@@ -47,6 +64,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 GUARD="node $SCRIPT_DIR/scripts/check-mutation-count.mjs --root"
+REQUIRED_GUARD="node $SCRIPT_DIR/scripts/check-required-checks.mjs --root"
 
 TMP_DIR="$(mktemp -d)"
 
@@ -66,10 +84,11 @@ cleanup() {
 trap cleanup EXIT
 
 # ── make_fixture: cria os 3 arquivos que o guard lê ───────────────────────
-# $1 = count da matriz | $2 = count do job name | $3 = count do summary
-# $4 = count do README | $5 = (opcional) ref histórica extra no README
+# $1 = count da matriz | $2 = SUFIXO do name do job (default: "" — count-free)
+# $3 = count do summary | $4 = count do README
+# $5 = (opcional) ref histórica extra no README
 make_fixture() {
-  local matrix_count="$1" job_name="$2" summary="$3" readme_count="$4"
+  local matrix_count="$1" job_suffix="${2:-}" summary="$3" readme_count="$4"
   local historical="${5:-}"
 
   rm -rf "$TMP_DIR/scripts" "$TMP_DIR/.github" "$TMP_DIR/README.md"
@@ -86,12 +105,13 @@ make_fixture() {
     echo ')'
   } > "$TMP_DIR/scripts/test-mutation-guards.sh"
 
-  # pr-check.yml com o job mutation-guards
+  # pr-check.yml com o job mutation-guards (name COUNT-FREE por default — é o
+  # CONTEXTO do required check, e não pode carregar o tamanho da matriz)
   {
     echo "# Roda os $matrix_count mutation tests node-puro dos guards de CI num JOB SÓ via"
     echo 'jobs:'
     echo '  mutation-guards:'
-    echo "    name: Mutation guards master ($job_name node-pure mutation tests)"
+    echo "    name: Mutation guards master$job_suffix"
     echo '    steps:'
     echo '      - run: bash scripts/test-mutation-guards.sh'
     echo '      - name: Summary'
@@ -119,8 +139,8 @@ echo ""
 # STEP 1+2 — Fixture consistente (matriz 13 + refs 13) → CONTROLE exit 0
 # ═════════════════════════════════════════════════════════════════════════
 
-info "STEP 1: Criando fixture consistente (matriz 13 + refs 13)..."
-make_fixture 13 13 13 13
+info "STEP 1: Criando fixture consistente (matriz 13 + name count-free + refs 13)..."
+make_fixture 13 "" 13 13
 
 info "STEP 2: Controle — guard contra fixture consistente deve PASS (exit 0)..."
 set +e
@@ -135,11 +155,12 @@ fi
 pass "Controle OK — fixture consistente passa (exit 0)"
 
 # ═════════════════════════════════════════════════════════════════════════
-# STEP 3+4 — MUTAÇÃO A (job name stale): matriz 14, name 13 → DEVE FALHAR
+# STEP 3+4 — MUTAÇÃO A (count no NAME): o contexto do required check volta a
+# depender do tamanho da matriz → DEVE FALHAR
 # ═════════════════════════════════════════════════════════════════════════
 
-info "STEP 3: MUTAÇÃO A — adiciona 1 sub-test na matriz (14) sem tocar o name (13)..."
-make_fixture 14 13 13 13
+info "STEP 3: MUTAÇÃO A — o name do job volta a carregar o count (13)..."
+make_fixture 13 " (13 node-pure mutation tests)" 13 13
 
 info "STEP 4: Rodando o guard contra a mutação A..."
 set +e
@@ -149,23 +170,51 @@ set -e
 echo "$OUTPUT" | grep -E '^   - ' | head -3
 
 if [ "$EXIT" -eq 0 ]; then
-  fail "GUARD CEGO (name): matriz 14 com name do job 13 passou (exit 0)."
+  fail "GUARD CEGO (name): o count de volta no name do job passou (exit 0) — o"
+  fail "CONTEXTO do required check voltaria a mudar a cada bump de matriz."
   exit 1
 fi
 if ! grep -Fq "name do job" <<<"$OUTPUT"; then
   fail "O guard falhou (exit $EXIT) mas NÃO citou o name do job."
   exit 1
 fi
-pass "Mutação A DETECTADA: guard falhou citando o name do job (exit $EXIT)"
+if ! grep -Fq "required check" <<<"$OUTPUT"; then
+  fail "O guard citou o name mas NÃO nomeou o acoplamento ao required check."
+  exit 1
+fi
+pass "Mutação A DETECTADA: guard falhou citando o name e o required check (exit $EXIT)"
 
 # ═════════════════════════════════════════════════════════════════════════
-# STEP 5+6 — MUTAÇÃO B (summary stale): matriz 14, summary 13 → DEVE FALHAR
+# STEP 5+6 — CONTROLE E (bump legítimo): matriz 14 com name count-free e refs
+# 14 → exit 0. Subir a matriz deixou de mexer no contrato de merge.
 # ═════════════════════════════════════════════════════════════════════════
 
-info "STEP 5: MUTAÇÃO B — matriz 14 com summary 13 (e name 14 para isolar)..."
-make_fixture 14 14 13 13
+info "STEP 5: CONTROLE E — matriz 14, name COUNT-FREE, summary/README 14..."
+make_fixture 14 "" 14 14
 
-info "STEP 6: Rodando o guard contra a mutação B..."
+info "STEP 6: Guard contra o bump legítimo de matriz..."
+set +e
+OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
+EXIT=$?
+set -e
+
+if [ "$EXIT" -ne 0 ]; then
+  fail "FALSO POSITIVO: um bump de matriz que NÃO toca o name do job fez o guard"
+  fail "falhar (exit $EXIT) — o contrato de merge não pode depender da matriz."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+pass "Controle E OK — bump de matriz passa sem tocar o contexto do required check"
+
+# ═════════════════════════════════════════════════════════════════════════
+# STEP 7+8 — MUTAÇÃO B (summary stale): matriz 14, summary 13 (resto 14) →
+# DEVE FALHAR
+# ═════════════════════════════════════════════════════════════════════════
+
+info "STEP 7: MUTAÇÃO B — matriz 14 com summary 13 (name count-free, README 14)..."
+make_fixture 14 "" 13 14
+
+info "STEP 8: Rodando o guard contra a mutação B..."
 set +e
 OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
 EXIT=$?
@@ -183,13 +232,14 @@ fi
 pass "Mutação B DETECTADA: guard falhou citando o summary (exit $EXIT)"
 
 # ═════════════════════════════════════════════════════════════════════════
-# STEP 7+8 — MUTAÇÃO C (README stale): matriz 14, README 13 → DEVE FALHAR
+# STEP 9+10 — MUTAÇÃO C (README stale): matriz 14, README 13 (resto 14) →
+# DEVE FALHAR
 # ═════════════════════════════════════════════════════════════════════════
 
-info "STEP 7: MUTAÇÃO C — matriz 14 com README 13 (e pr-check 14 para isolar)..."
-make_fixture 14 14 14 13
+info "STEP 9: MUTAÇÃO C — matriz 14 com README 13 (name count-free, summary 14)..."
+make_fixture 14 "" 14 13
 
-info "STEP 8: Rodando o guard contra a mutação C..."
+info "STEP 10: Rodando o guard contra a mutação C..."
 set +e
 OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
 EXIT=$?
@@ -207,13 +257,13 @@ fi
 pass "Mutação C DETECTADA: guard falhou citando README.md:linha (exit $EXIT)"
 
 # ═════════════════════════════════════════════════════════════════════════
-# STEP 9+10 — CONTROLE D (ref histórica): "era de 5" com matriz 13 → exit 0
+# STEP 11+12 — CONTROLE D (ref histórica): "era de 5" com matriz 13 → exit 0
 # ═════════════════════════════════════════════════════════════════════════
 
-info "STEP 9: CONTROLE D — ref HISTÓRICA 'era de 5 sub-tests' com matriz 13..."
-make_fixture 13 13 13 13 "5"
+info "STEP 11: CONTROLE D — ref HISTÓRICA 'era de 5 sub-tests' com matriz 13..."
+make_fixture 13 "" 13 13 "5"
 
-info "STEP 10: Guard contra o fixture com ref histórica..."
+info "STEP 12: Guard contra o fixture com ref histórica..."
 set +e
 OUTPUT=$($GUARD "$TMP_DIR" 2>&1)
 EXIT=$?
@@ -231,8 +281,101 @@ pass "Controle D OK — ref histórica é ignorada (exit 0, sem falso positivo)"
 # Result (cleanup roda no trap EXIT)
 # ═════════════════════════════════════════════════════════════════════════
 
+# ═════════════════════════════════════════════════════════════════════════
+# STEP 13+14+15 — MUTAÇÃO F (a CLASSE): o `check-required-checks` recusa um
+# required check cujo `name:` carrega CONTAGEM — no job direto E no job de um
+# REUSABLE workflow (o caminho pelo qual o segundo caso real apareceu).
+# ═════════════════════════════════════════════════════════════════════════
+
+# ── Fixture do manifesto: jobs/direct + reusable, com name parametrizável ──
+# $1 = name do job direto | $2 = name do job do reusable
+make_required_fixture() {
+  local direct_name="$1" reusable_name="$2"
+  rm -rf "$TMP_DIR/rc"
+  mkdir -p "$TMP_DIR/rc/ci" "$TMP_DIR/rc/.github/workflows"
+
+  {
+    echo '{'
+    echo '  "version": 1,'
+    echo '  "branches": ["main"],'
+    echo '  "forges": {'
+    echo '    "github": {'
+    echo '      "workflow": ".github/workflows/pr.yml",'
+    echo '      "jobs": ["master", "seed"]'
+    echo '    }'
+    echo '  }'
+    echo '}'
+  } > "$TMP_DIR/rc/ci/required-checks.json"
+
+  {
+    echo 'name: Fixture'
+    echo 'jobs:'
+    echo '  master:'
+    echo "    name: $direct_name"
+    echo '    runs-on: self-hosted'
+    echo '    steps:'
+    echo '      - run: echo ok'
+    echo '  seed:'
+    echo '    uses: ./.github/workflows/reusable.yml'
+  } > "$TMP_DIR/rc/.github/workflows/pr.yml"
+
+  {
+    echo 'name: Reusable'
+    echo 'on:'
+    echo '  workflow_call:'
+    echo 'jobs:'
+    echo '  coord:'
+    echo "    name: $reusable_name"
+    echo '    runs-on: self-hosted'
+    echo '    steps:'
+    echo '      - run: echo ok'
+  } > "$TMP_DIR/rc/.github/workflows/reusable.yml"
+}
+
+info "STEP 13: CONTROLE F — os mesmos required checks com name COUNT-FREE..."
+make_required_fixture "Mutation guards master" "Mutation Test (contrato coordenado — doc↔anchor↔código)"
+set +e
+OUTPUT=$($REQUIRED_GUARD "$TMP_DIR/rc" 2>&1)
+EXIT=$?
+set -e
+if [ "$EXIT" -ne 0 ]; then
+  fail "FALSO POSITIVO: required checks count-free foram rejeitados (exit $EXIT)."
+  echo "$OUTPUT" | tail -4
+  exit 1
+fi
+pass "Controle F OK — contextos count-free passam (exit 0)"
+
+info "STEP 14: MUTAÇÃO F — CONTAGEM no name do job DIRETO e do REUSABLE..."
+make_required_fixture "Mutation guards master (27 node-pure mutation tests)" \
+  "Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)"
+set +e
+OUTPUT=$($REQUIRED_GUARD "$TMP_DIR/rc" 2>&1)
+EXIT=$?
+set -e
+echo "$OUTPUT" | grep -E '^   - ' | head -3
+
+if [ "$EXIT" -eq 0 ]; then
+  fail "GUARD CEGO (classe): um required check com CONTAGEM no name passou (exit 0)."
+  fail "O contexto protegido voltaria a mudar quando o número mudasse."
+  exit 1
+fi
+for alvo in "Mutation guards master (27 node-pure mutation tests)" \
+  "Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)"; do
+  if ! grep -Fq "$alvo" <<<"$OUTPUT"; then
+    fail "O guard falhou (exit $EXIT) mas NÃO acusou o contexto '$alvo'"
+    fail "(o caminho do reusable tem de ser coberto como o do job direto)."
+    exit 1
+  fi
+done
+if ! grep -Fq "CONTAGEM" <<<"$OUTPUT"; then
+  fail "O guard falhou (exit $EXIT) mas NÃO nomeou a CONTAGEM como o defeito."
+  exit 1
+fi
+pass "Mutação F DETECTADA: os DOIS contextos com contagem falham, nomeando CONTAGEM (exit $EXIT)"
+
 echo ""
-pass "MUTATION TEST PASSED — check-mutation-count pega drift de count no"
-pass "job name, no summary e no README (todos exit 1) + não falso-positiva"
-pass "em refs históricas."
+pass "MUTATION TEST PASSED — check-mutation-count pega o count de volta no NAME"
+pass "do job (o contexto do required check não pode depender da matriz), no"
+pass "summary e no README; check-required-checks recusa a CONTAGEM no name de"
+pass "um required check (job direto E reusable); e nenhum dos dois falso-positiva."
 exit 0
