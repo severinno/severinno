@@ -26,16 +26,17 @@ A versão pinada do Bun é a **repository variable** `BUN_VERSION`
 em **um lugar** — nada de editar 40+ ocorrências. Todos os consumidores
 derivam dela:
 
-| Consumidor                              | Como lê a versão                                                                                                              |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Workflows (`bun-version:` no setup-bun) | `${{ vars.BUN_VERSION }}`                                                                                                     |
-| Cache keys `bun-`/`prisma-`             | `bun-${{ vars.BUN_VERSION }}-${{ hashFiles(...) }}`                                                                           |
-| Mirror GHCR (`sync-bun-mirror.yml` env) | `BUN_VERSION: ${{ vars.BUN_VERSION }}`                                                                                        |
-| Mirror ubuntu-bun (`--build-arg`)       | `BUN_VERSION: ${{ vars.BUN_VERSION }}` (Dockerfile falha sem ela)                                                             |
-| Composite action `setup-bun`            | resolve do input `bun-version` (callers resolvem `vars.BUN_VERSION` no workflow)                                              |
-| Act local (`.actrc`)                    | `--var BUN_VERSION=<versão>` (espelho local da variável)                                                                      |
-| Build da app/worker (`--build-arg`)     | `BUN_VERSION: ${{ vars.BUN_VERSION }}` na pipeline; nos composes, `${BUN_VERSION:-1.3.14}` — o Dockerfile **não** tem default |
-| Toolchain declarado (`package.json`)    | `"packageManager": "bun@1.3.14"` (o `check-bun-mirror` exige o MESMO valor dos espelhos; o bump o escreve no passo 2d)        |
+| Consumidor                               | Como lê a versão                                                                                                                       |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Workflows (`bun-version:` no setup-bun)  | `${{ vars.BUN_VERSION }}`                                                                                                              |
+| Cache keys `bun-`/`prisma-`              | `bun-${{ vars.BUN_VERSION }}-${{ hashFiles(...) }}`                                                                                    |
+| Mirror GHCR (`sync-bun-mirror.yml` env)  | `BUN_VERSION: ${{ vars.BUN_VERSION }}`                                                                                                 |
+| Mirror ubuntu-bun (`--build-arg`)        | `BUN_VERSION: ${{ vars.BUN_VERSION }}` (Dockerfile falha sem ela)                                                                      |
+| Composite action `setup-bun`             | resolve do input `bun-version` (callers resolvem `vars.BUN_VERSION` no workflow)                                                       |
+| Act local (`.actrc`)                     | `--var BUN_VERSION=<versão>` (espelho local da variável)                                                                               |
+| Build da app/worker (`--build-arg`)      | `BUN_VERSION: ${{ vars.BUN_VERSION }}` na pipeline; nos composes, `${BUN_VERSION:-1.3.14}` — o Dockerfile **não** tem default          |
+| Toolchain declarado (`package.json`)     | `"packageManager": "bun@1.3.14"` (o `check-bun-mirror` exige o MESMO valor dos espelhos; o bump o escreve no passo 2d)                 |
+| Pipeline de terceiro (`.woodpecker.yml`) | treze usos: a tag `oven/bun:<v>` de cada passo e os `BUN_VERSION=<v>` de `build_args` (o bump os reescreve no passo 2e; invariante 19) |
 
 O guard `scripts/check-bun-mirror.mjs` (PR Check + `utf8-check.yml` + pre-commit
 
@@ -151,6 +152,10 @@ Duas obrigações a mais que o bump precisa deixar no lugar:
 - **todo serviço de compose que builda um Dockerfile com `ARG BUN_VERSION` tem de
   PASSAR o arg** (`args: BUN_VERSION: ${BUN_VERSION:-…}`). Um serviço sem o arg
   não tem valor escrito NENHUM: ele herda o default do Dockerfile em SILÊNCIO.
+  A régua vale nas duas direções: o build site que NASCE sem o arg é reprovado no
+  bloco que o diff toca, e o que **PERDE** o arg é reprovado comparando o bloco do
+  ÍNDICE com o de HEAD (uma remoção pura não adiciona linha nenhuma, então o
+  recorte das linhas adicionadas não a veria).
   Foi assim que o app da staging passou a rodar um Bun que nenhum arquivo da
   cadeia de deploy declarava — enquanto os dois workers da MESMA stack já tinham
   o literal alinhado, e nada ficava vermelho (a stack buildava com DOIS Buns e a
@@ -161,6 +166,27 @@ Duas obrigações a mais que o bump precisa deixar no lugar:
   consome em tempo de build (o bun não o impõe), então ele envelhecia sem
   sintoma — e é o primeiro campo que alguém lê para saber qual Bun este repo usa.
   `./scripts/bump-bun.sh` o reescreve no mesmo passo dos outros espelhos (2d).
+
+### 3.2d — Os usos da versão no pipeline de TERCEIRO (invariante 19)
+
+O `.woodpecker.yml` (a alternativa de CI arquivada) não tem UMA linha de
+versão: ele tem **treze** — a tag `oven/bun:<v>` de cada passo e os
+`BUN_VERSION=<v>` dos `build_args`. Por isso ele ficou fora de toda varredura
+com uma isenção escrita no próprio cabeçalho, e os treze usos envelheceram
+**sete versões** atrás do repositório (`1.4.0` [divergente] contra o `1.3.14`
+declarado) sem que nada ficasse vermelho.
+
+O bump os reescreve no passo **2e** e em seguida **CONFERE** a reescrita: o que
+sobrar apontando outro número é `exit 1` do script, não um `::warning::` que o
+próximo bump herda. A régua é a mesma dos composes (comparação por VALOR):
+`${BUN_VERSION}` é derivação e passa, `${BUN_VERSION:-<x>}` passa quando o
+fallback é o declarado, e um literal tem de ser o declarado — a diferença é que
+num `image:` o literal **igual** é a forma válida (não existe ali a variável do
+operador que a invariante 16 protege).
+
+Se o Woodpecker for retomado, nada a fazer na versão: ela já acompanha o
+repositório. O que os dois pontos pendentes exigem é a correção descrita em
+`deploy/WOODPECKER.md`.
 
 ### 3.3 — Re-sincronizar os mirrors GHCR
 
@@ -301,6 +327,7 @@ próximo bump falha o PR nomeando arquivo e linha.
 | `Dockerfile.bun-mirror` / `Dockerfile.ubuntu-bun`               | versionados pela variável no build, não hardcoded                                                     |
 | `Dockerfile` / `Dockerfile.worker` / `realtime`                 | só `ARG BUN_VERSION` + `${BUN_VERSION}` (sem default: o valor entra pelo build site — invariante 18b) |
 | `scripts/check-bun-mirror.mjs` / `scripts/check-actrc-sync.mjs` | lógica, não versão                                                                                    |
+| `.woodpecker.yml` (os treze usos da versão)                     | reescritos pelo passo 2e do bump; o `check-bun-mirror` falha se algum divergir (invariante 19)        |
 
 > **Exceção que deixou de existir:** a PROSA (cabeçalhos de ajuda, README,
 > docs) que cita a versão antiga agora **precisa** ser editada — ver §3.7. O
@@ -351,8 +378,17 @@ ${{ vars.BUN_VERSION }}` (omitir o input ou usar literal é violação — o
 15. algum **build site** de um Dockerfile com `ARG BUN_VERSION` não passar o arg
     (invariante 18b), ou o **`packageManager`** do `package.json` divergir do
     valor declarado (invariante 18c). No `--staged`, o recorte da (b) são os
-    blocos que o diff TOCA (lidos do ÍNDICE); a REMOÇÃO do arg é pega pela
-    varredura global, que roda no PR.
+    blocos que o diff TOCA (lidos do ÍNDICE) e a **REMOÇÃO** do arg, que compara
+    o bloco do ÍNDICE com o de HEAD (`git show HEAD:<arquivo>`); e a (c) tem
+    recorte próprio pelo mesmo par — o `package.json` não é alvo de mais nenhuma
+    pathspec do commit. Os dois commits que APAGAM algo é que o pre-commit
+    recusa: o arg de um build site e a própria declaração de toolchain, não só a
+    varredura global do PR;
+16. algum uso da versão no **pipeline de terceiro** (`.woodpecker.yml`) divergir
+    do declarado (invariante 19): a tag `oven/bun:<v>` ou o build arg
+    `BUN_VERSION=<v>`. O valor literal IGUAL ao declarado passa (num `image:` o
+    valor tem de estar escrito); um pipeline que existe e não pode ser LIDO é
+    violação, e a varredura roda também no `--staged`.
 
 Validação local antes de abrir PR:
 

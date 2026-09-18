@@ -66,6 +66,16 @@ export function hookSource(root = REPO_ROOT) {
 }
 
 export const GUARD = "check-workflow-run-syntax.mjs"
+
+/**
+ * O OUTRO guard de fase A que a prova passa pelo dublê: o da fonte única do Bun.
+ *
+ * Ele já está no fecho (a régua do que é um COMPOSE vem dele), então atravessá-lo
+ * não custa uma cópia a mais — e é o que permite provar no hook REAL o defeito
+ * que o recorte das linhas ADICIONADAS não vê: o commit que REMOVE o arg de um
+ * build site (a régua compara o bloco do ÍNDICE com o de HEAD).
+ */
+export const BUN_GUARD = "check-bun-mirror.mjs"
 /** O REMÉDIO que o hook oferece quando o guard acima reprova (com confirmação). */
 export const REMEDY = "pre-commit-run-syntax-remedy.mjs"
 
@@ -75,6 +85,9 @@ export const REMEDY = "pre-commit-run-syntax-remedy.mjs"
  * Por isso ela é asserida, não presumida.
  */
 export const GUARD_COMMAND = `node scripts/${GUARD} --staged &`
+
+/** A linha do hook que roda o guard do Bun no modo do índice. */
+export const BUN_GUARD_COMMAND = `node scripts/${BUN_GUARD} --staged &`
 
 /** A linha do hook que torna o REMÉDIO real no fixture (é ele que elege o veredito). */
 export const REMEDY_COMMAND = `node scripts/${REMEDY} && REMEDIO=0 || true`
@@ -160,31 +173,52 @@ export const SHELL_QUEBRADO = "#!/usr/bin/env bash\nset -eu\nif [ -f x ]; then\n
  * que mantém o interpretador verdadeiro (e não uma segunda implementação do
  * `node`) no caminho do guard.
  */
-export const WRAPPER_SOURCE = wrapperSource([
-  {
-    tool: "node",
-    match: REMEDY,
-    // O dublê da DIREÇÃO: `REMEDY_STUB` afirma o desfecho do remédio sem rodá-lo.
-    overrideVar: "REMEDY_STUB",
-    why:
-      "`REMEDY_STUB` afirma o desfecho do REMÉDIO sem rodá-lo (é o único jeito\n" +
-      'de exercitar a DIREÇÃO "o remédio saiu 0": no harness o stdin do hook é\n' +
-      "um pipe e o remédio real nunca sai 0). Declarado, e usado por um teste.",
-  },
-  { tool: "node", match: GUARD },
-  { tool: "bun" },
-  { tool: "bash" },
-])
+/**
+ * Os dublês do hook, com os guards que a prova atravessa (os REAIS).
+ *
+ * `passthrough` é o que muda por prova: o guard de sintaxe dos `run:` está SEMPRE
+ * no caminho (é o contrato histórico), e uma prova do recorte de compose passa o
+ * guard do Bun junto — sem que isso mude o fixture dos outros testes (um irmão de
+ * fase a mais rodando de verdade reprovaria controles que não são o assunto dele).
+ */
+function specsDoWrapper(passthrough = []) {
+  return [
+    {
+      tool: "node",
+      match: REMEDY,
+      // O dublê da DIREÇÃO: `REMEDY_STUB` afirma o desfecho do remédio sem rodá-lo.
+      overrideVar: "REMEDY_STUB",
+      why:
+        "`REMEDY_STUB` afirma o desfecho do REMÉDIO sem rodá-lo (é o único jeito\n" +
+        'de exercitar a DIREÇÃO "o remédio saiu 0": no harness o stdin do hook é\n' +
+        "um pipe e o remédio real nunca sai 0). Declarado, e usado por um teste.",
+    },
+    { tool: "node", match: GUARD },
+    ...passthrough.map((match) => ({ tool: "node", match })),
+    { tool: "bun" },
+    { tool: "bash" },
+  ]
+}
+
+export const WRAPPER_SOURCE = wrapperSource(specsDoWrapper())
 
 /** O diretório que `core.hooksPath` aponta — relativo à raiz do fixture. */
 export const HOOKS_DIR = ".husky"
 
-/** Um repositório git de verdade com o fecho do guard e o dublê do hook. */
-export function novoRepo() {
+/**
+ * Um repositório git de verdade com o fecho do guard e o dublê do hook.
+ *
+ * `passthrough` soma guards REAIS ao dublê (o default não muda nenhuma prova
+ * existente); o fecho copiado é o MESMO — ele já contém os dois.
+ *
+ * @param {{passthrough?: string[], prefix?: string}} [opts]
+ * @returns {string}
+ */
+export function novoRepo({ passthrough = [], prefix = "pre-commit-runsyntax-" } = {}) {
   return novoRepoSim({
-    prefix: "pre-commit-runsyntax-",
+    prefix,
     closure: GUARD_CLOSURE,
-    wrapper: WRAPPER_SOURCE,
+    wrapper: passthrough.length === 0 ? WRAPPER_SOURCE : wrapperSource(specsDoWrapper(passthrough)),
     dirs: [GITHUB_WORKFLOW_DIR],
   })
 }

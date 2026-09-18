@@ -884,7 +884,15 @@ a zera — o remédio pode LEVANTAR a falha do gate, nunca criá-la. Que o hook
 `src/lib/__tests__/pre-commit-run-syntax-blocks.test.ts` EXECUTA o
 `.husky/pre-commit` real num repo temporário com o defeito staged e exige exit 1
 apontando arquivo e linha (e 0 + a manchete do guard no corpo são, que é o que
-desmente um não-zero por motivo errado). Quatro mutações cobrem as metades que a
+desmente um não-zero por motivo errado). O mesmo harness prova o recorte de
+compose (`src/lib/__tests__/pre-commit-compose-arg-removal-blocks.test.ts`): o
+commit que **REMOVE** o `BUN_VERSION` de um build site é recusado nomeando o
+serviço, contra o estado base comitado — e sem a comparação bloco-do-índice ×
+bloco-de-HEAD o commit passa. O irmão dele
+(`src/lib/__tests__/pre-commit-toolchain-removal-blocks.test.ts`) mede a outra
+declaração que um commit pode apagar: o `packageManager` do `package.json`
+sai do índice e o hook real recusa, nomeando o campo e o valor declarado — sem o
+recorte registrado no guard, o commit passa. Quatro mutações cobrem as metades que a
 leitura não vê: deixar de chamar o guard, perder o `--staged`, **deixar de chamar
 o remédio** (o commit continua bloqueado — o bloqueio é do hook, não do remédio) e
 **perder o veredito do gate** (aí o commit com a cicatriz entra); e a direção
@@ -1339,17 +1347,18 @@ gh variable set BUN_VERSION 1.3.14
 
 Como a versão flui:
 
-| Onde                                         | Como lê a versão                                                                                                                                |
-| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Workflows (`bun-version:` no setup-bun)      | `${{ vars.BUN_VERSION }}`                                                                                                                       |
-| Cache keys `bun-`/`prisma-`                  | `bun-${{ vars.BUN_VERSION }}-${{ hashFiles(...) }}`                                                                                             |
-| Mirror GHCR (`sync-bun-mirror.yml` env)      | `BUN_VERSION: ${{ vars.BUN_VERSION }}`                                                                                                          |
-| Composite action `setup-bun`                 | resolve do input `bun-version` (callers resolvem `vars.BUN_VERSION` no workflow)                                                                |
-| Act local (`.actrc`)                         | `--var BUN_VERSION=<versão>` (espelho local da variável)                                                                                        |
-| Scripts (`scripts/**`, hooks do `.husky/**`) | `requireBunVersion()` (`scripts/bun-version.mjs`): env → `.actrc` → `deploy/env.gitea.example`, e ERRO se não houver — nunca um default literal |
-| Composes (build arg/env)                     | `${BUN_VERSION:-<valor declarado>}` — o default só pode ser o valor do espelho (um literal puro é violação)                                     |
-| Build da app/worker (`--build-arg`)          | `BUN_VERSION: ${{ vars.BUN_VERSION }}` na pipeline; o Dockerfile **não** tem default e todo build site PASSA o arg (invariante 18)              |
-| Toolchain declarado (`package.json`)         | `"packageManager": "bun@1.3.14"` — o mesmo valor dos espelhos (o bump o escreve)                                                                |
+| Onde                                         | Como lê a versão                                                                                                                                  |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workflows (`bun-version:` no setup-bun)      | `${{ vars.BUN_VERSION }}`                                                                                                                         |
+| Cache keys `bun-`/`prisma-`                  | `bun-${{ vars.BUN_VERSION }}-${{ hashFiles(...) }}`                                                                                               |
+| Mirror GHCR (`sync-bun-mirror.yml` env)      | `BUN_VERSION: ${{ vars.BUN_VERSION }}`                                                                                                            |
+| Composite action `setup-bun`                 | resolve do input `bun-version` (callers resolvem `vars.BUN_VERSION` no workflow)                                                                  |
+| Act local (`.actrc`)                         | `--var BUN_VERSION=<versão>` (espelho local da variável)                                                                                          |
+| Scripts (`scripts/**`, hooks do `.husky/**`) | `requireBunVersion()` (`scripts/bun-version.mjs`): env → `.actrc` → `deploy/env.gitea.example`, e ERRO se não houver — nunca um default literal   |
+| Composes (build arg/env)                     | `${BUN_VERSION:-<valor declarado>}` — o default só pode ser o valor do espelho (um literal puro é violação)                                       |
+| Build da app/worker (`--build-arg`)          | `BUN_VERSION: ${{ vars.BUN_VERSION }}` na pipeline; o Dockerfile **não** tem default e todo build site PASSA o arg (invariante 18)                |
+| Toolchain declarado (`package.json`)         | `"packageManager": "bun@1.3.14"` — o mesmo valor dos espelhos (o bump o escreve)                                                                  |
+| Pipeline de terceiro (`.woodpecker.yml`)     | a tag `oven/bun:<v>` de cada passo e os `BUN_VERSION=<v>` de `build_args` dizem o valor declarado; o bump reescreve os treze usos (invariante 19) |
 
 Por que o action não tem `default:` no input? Metadata de action (`action.yml`)
 é **estática** — `default: ${{ ... }}` NÃO é avaliado (seria o literal
@@ -1400,11 +1409,24 @@ O guard `scripts/check-bun-mirror.mjs` (PR Check + `utf8-check.yml`) falha se:
   alto em vez de rodar outro Bun;
 - algum **BUILD SITE** (compose) de um Dockerfile com `ARG BUN_VERSION` não
   passar o arg (invariante 18b), ou o **`packageManager`** do `package.json`
-  divergir do valor declarado (invariante 18c). Era este o buraco da classe:
+  divergir do valor declarado (invariante 18c). As duas têm recorte no commit:
+  o pre-commit julga os blocos de build que o diff TOCA (lidos do ÍNDICE) e, na
+  outra direção, o que o commit **APAGA** — o arg de um build site que
+  sobrevive e a própria declaração de toolchain, comparando o bloco do ÍNDICE
+  com o de HEAD (o que o commit tira não ganha linha adicionada nenhuma, e era
+  por ali que remover tanto um quanto o outro passava o pre-commit e só
+  encontrava o PR). Era este o buraco da classe:
   um build site que não passa o arg não tem valor escrito NENHUM, então as
   varreduras de literal não tinham o que julgar enquanto ele herdava o default —
   o app da staging rodava um Bun que nenhum arquivo da cadeia de deploy
-  declarava, e nada ficava vermelho.
+  declarava, e nada ficava vermelho;
+- algum uso da versão no **pipeline de terceiro** (`.woodpecker.yml`, a
+  alternativa arquivada) divergir do declarado (invariante 19): a tag da imagem
+  ou o build arg. Foram **treze usos** que envelheceram sete versões atrás do
+  repositório enquanto o arquivo tinha uma isenção escrita no próprio cabeçalho —
+  aqui um literal **igual** ao declarado passa (num `image:` o valor tem de estar
+  escrito), o que não pode é ser OUTRO número; o bump os reescreve (seção 2e) e
+  confere a reescrita.
 
 ### A regra real do Prisma (exemplo vivo)
 

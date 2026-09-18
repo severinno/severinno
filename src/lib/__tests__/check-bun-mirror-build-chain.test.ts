@@ -25,7 +25,10 @@
  * Cobre: embeddedVersionDefault, a régua do ARG/referência em
  * checkDockerfileBunLine, composeBuildSites, checkComposeBuildArgs (incluindo o
  * recorte `addedLines` e o mapa inline), checkStagedComposeBuildArgs (índice,
- * incluindo o "não consegui ler") e checkPackageManagerVersion — mais o
+ * incluindo o "não consegui ler"), checkPackageManagerVersion,
+ * checkStagedPackageManagerVersion (a 18c no recorte: o campo REMOVIDO pelo
+ * commit e a linha que ele ADICIONA) e judgePackageManager (a régua do valor
+ * que o global e o recorte compartilham) — mais o
  * REPOSITÓRIO REAL (o piso: hoje as quatro regras fecham verdes, e a remoção do
  * arg de um build site real reprova NOMEANDO o serviço).
  *
@@ -46,9 +49,13 @@ import {
   checkDockerfileBunLine,
   checkPackageManagerVersion,
   checkStagedComposeBuildArgs,
+  checkStagedPackageManagerVersion,
+  checkStagedRemovedBuildArgs,
   composeBuildSites,
   declaredBunVersion,
   embeddedVersionDefault,
+  gitPathInHead,
+  judgePackageManager,
 } from "../../../scripts/check-bun-mirror.mjs"
 
 const ROOT_TMP = mkdtempSync(join(tmpdir(), "cbun-build-chain-"))
@@ -334,6 +341,141 @@ describe("checkStagedComposeBuildArgs — o índice, não o disco", () => {
   })
 })
 
+// ── checkStagedRemovedBuildArgs (a direção que faltava) ──────────────────
+//
+// O recorte das linhas ADICIONADAS não vê uma remoção pura: um bloco que só
+// PERDE o `BUN_VERSION` não ganha linha nenhuma. A régua compara o bloco do
+// ÍNDICE (o que o commit vai gravar) com o de HEAD.
+
+describe("checkStagedRemovedBuildArgs — o arg que o commit APAGA", () => {
+  const BUN_DFS = ["Dockerfile", "Dockerfile.worker"]
+  const DIFF = [
+    "diff --git a/docker-compose.yml b/docker-compose.yml",
+    "--- a/docker-compose.yml",
+    "+++ b/docker-compose.yml",
+    "@@ -1,8 +1,7 @@",
+    " services:",
+    "-",
+    "",
+  ].join("\n")
+  /** O bloco ACIMA é o de HEAD; a única diferença do índice é o arg. */
+  const comArg = [
+    "services:",
+    "  web-staging:",
+    "    build:",
+    "      context: .",
+    "      dockerfile: Dockerfile.worker",
+    "      args:",
+    "        BUN_VERSION: \\${BUN_VERSION:-1.3.14}",
+    "",
+  ].join("\n")
+  const semArg = comArg.split("\n").slice(0, 5).join("\n") + "\n"
+
+  it("o serviço que PASSAVA o arg e não passa mais reprova, nomeando arquivo, linha e serviço", () => {
+    const out = checkStagedRemovedBuildArgs(DIFF, BUN_DFS, {
+      readIndex: () => semArg,
+      readHead: () => comArg,
+      inHead: () => true,
+    })
+    expect(out.unreadable).toEqual([])
+    expect(out.violations).toHaveLength(1)
+    expect(out.violations[0]).toContain("docker-compose.yml:")
+    expect(out.violations[0]).toContain("'web-staging'")
+    expect(out.violations[0]).toContain("Dockerfile.worker")
+    expect(out.violations[0]).toContain("REMOVE o arg")
+  })
+
+  it("a direção INVERSA não é desta régua: o bloco que só GANHA o arg passa", () => {
+    const out = checkStagedRemovedBuildArgs(DIFF, BUN_DFS, {
+      readIndex: () => comArg,
+      readHead: () => semArg,
+      inHead: () => true,
+    })
+    expect(out).toEqual({ violations: [], unreadable: [] })
+  })
+
+  it("o SERVIÇO removido não é violação (outra decisão, outro veredito)", () => {
+    const out = checkStagedRemovedBuildArgs(DIFF, BUN_DFS, {
+      readIndex: () => ["services:", "  outra-coisa:", "    image: nginx", ""].join("\n"),
+      readHead: () => comArg,
+      inHead: () => true,
+    })
+    expect(out).toEqual({ violations: [], unreadable: [] })
+  })
+
+  it("o bloco que deixou de buildar um Dockerfile que EXIGE o arg não é violação", () => {
+    const out = checkStagedRemovedBuildArgs(DIFF, BUN_DFS, {
+      readIndex: () =>
+        [
+          "services:",
+          "  web-staging:",
+          "    build:",
+          "      context: .",
+          "      dockerfile: Dockerfile.sem-arg",
+          "",
+        ].join("\n"),
+      readHead: () => comArg,
+      inHead: () => true,
+    })
+    expect(out).toEqual({ violations: [], unreadable: [] })
+  })
+
+  it("arquivo NOVO não tem de onde remover — e não é lido em HEAD", () => {
+    let leuHead = false
+    const out = checkStagedRemovedBuildArgs(DIFF, BUN_DFS, {
+      readIndex: () => comArg,
+      readHead: () => {
+        leuHead = true
+        return null
+      },
+      inHead: () => false,
+    })
+    expect(out).toEqual({ violations: [], unreadable: [] })
+    expect(leuHead).toBe(false)
+  })
+
+  it("índice ilegível é `unreadable` (o commit PARA com 2 — nunca 'nada a julgar')", () => {
+    const out = checkStagedRemovedBuildArgs(DIFF, BUN_DFS, {
+      readIndex: () => null,
+      readHead: () => comArg,
+      inHead: () => true,
+    })
+    expect(out.violations).toEqual([])
+    expect(out.unreadable).toEqual(["docker-compose.yml"])
+  })
+
+  it("HEAD ilegível num arquivo que EXISTE lá também é `unreadable`", () => {
+    const out = checkStagedRemovedBuildArgs(DIFF, BUN_DFS, {
+      readIndex: () => semArg,
+      readHead: () => null,
+      inHead: () => true,
+    })
+    expect(out.violations).toEqual([])
+    expect(out.unreadable).toEqual(["docker-compose.yml"])
+  })
+
+  it("um arquivo fora do recorte nem é lido", () => {
+    let leu = false
+    const out = checkStagedRemovedBuildArgs(
+      ["diff --git a/scripts/x.mjs b/scripts/x.mjs", "+const a = 1", ""].join("\n"),
+      BUN_DFS,
+      {
+        readIndex: () => {
+          leu = true
+          return null
+        },
+      },
+    )
+    expect(out).toEqual({ violations: [], unreadable: [] })
+    expect(leu).toBe(false)
+  })
+
+  it("o probe do HEAD responde por EXIT CODE no repositório real (sem depender de texto de erro)", () => {
+    expect(gitPathInHead("docker-compose.yml")).toBe(true)
+    expect(gitPathInHead("nao-existe.yml")).toBe(false)
+  })
+})
+
 // ── checkPackageManagerVersion (invariante 18c) ──────────────────────────
 
 describe("checkPackageManagerVersion — o toolchain diz o valor declarado", () => {
@@ -369,6 +511,199 @@ describe("checkPackageManagerVersion — o toolchain diz o valor declarado", () 
     expect(
       checkPackageManagerVersion(fixture('{"name": "x", "packageManager": "npm@10.0.0"}')),
     ).toEqual([])
+  })
+})
+
+// ── judgePackageManager (a régua que os dois modos compartilham) ─────────
+
+describe("judgePackageManager — uma régua só para o global e para o recorte", () => {
+  it("julga o arquivo inteiro e julga UMA linha (o recorte) com o mesmo valor de referência", () => {
+    const arquivo = '{\n  "name": "x",\n  "packageManager": "bun@1.4.0"\n}'
+    const linha = '  "packageManager": "bun@1.4.0",'
+    expect(judgePackageManager(arquivo, "1.3.14")).toEqual(judgePackageManager(linha, "1.3.14"))
+    expect(judgePackageManager(arquivo, "1.3.14")).toHaveLength(1)
+  })
+
+  it("o rótulo diz onde julgar (arquivo inteiro vs linha do arquivo)", () => {
+    expect(
+      judgePackageManager('  "packageManager": "bun@1.4.0",', "1.3.14", "package.json:3")[0],
+    ).toContain("package.json:3")
+    expect(judgePackageManager("{", null)[0]).toContain("package.json:")
+    expect(judgePackageManager("{", null)[0]).not.toContain("package.json:0")
+  })
+})
+
+// ── checkStagedPackageManagerVersion (a última ponta da 18 no commit) ────
+//
+// O `package.json` não era alvo de NENHUMA pathspec do `--staged`, então a
+// 18(c) só existia na varredura global: remover o `packageManager` passava o
+// commit e só encontrava o PR. É a mesma cegueira que a 18(b) tinha — o que o
+// commit TIRA não aparece em linha adicionada nenhuma.
+
+describe("checkStagedPackageManagerVersion — a declaração que o commit APAGA ou MUDA", () => {
+  /** O diff do `package.json` com uma linha REMOVIDA (sem nenhuma adicionada). */
+  const DIFF_REMOVE = [
+    "diff --git a/package.json b/package.json",
+    "--- a/package.json",
+    "+++ b/package.json",
+    "@@ -2,4 +2,3 @@",
+    '   "name": "x",',
+    '-  "packageManager": "bun@1.3.14",',
+    "",
+  ].join("\n")
+  /** O diff que ADICIONA a declaração (o valor nasce na edição). */
+  const DIFF_ADD = [
+    "diff --git a/package.json b/package.json",
+    "--- a/package.json",
+    "+++ b/package.json",
+    "@@ -1,3 +1,4 @@",
+    " {",
+    '   "name": "x",',
+    '+  "packageManager": "bun@1.4.0",',
+    '   "version": "1.0.0"',
+    "",
+  ].join("\n")
+  /** O mesmo diff, mas o valor da linha adicionada é o DECLARADO. */
+  const DIFF_ADD_OK = DIFF_ADD.replace("bun@1.4.0", "bun@1.3.14")
+
+  const comCampo = '{\n  "name": "x",\n  "packageManager": "bun@1.3.14",\n  "version": "1.0.0"\n}'
+  const semCampo = '{\n  "name": "x",\n  "version": "1.0.0"\n}'
+  const comValorVelho = comCampo.replace("bun@1.3.14", "bun@1.4.0")
+  const declared = "1.3.14"
+
+  it("o campo REMOVIDO pelo commit reprova, dizendo que o ÍNDICE não tem e o HEAD tinha", () => {
+    const out = checkStagedPackageManagerVersion(DIFF_REMOVE, {
+      declared,
+      readIndex: () => semCampo,
+      readHead: () => comCampo,
+      inHead: () => true,
+    })
+    expect(out.unreadable).toEqual([])
+    expect(out.violations).toHaveLength(1)
+    expect(out.violations[0]).toContain("package.json")
+    expect(out.violations[0]).toContain("REMOVIDA")
+    expect(out.violations[0]).toContain("packageManager")
+    // A mensagem NOMEIA o remédio com o valor declarado — não deixa o operador adivinhar.
+    expect(out.violations[0]).toContain("bun@1.3.14")
+  })
+
+  it("o campo que SOBREVIVE ao commit não é desta régua (quem julga o valor é o global)", () => {
+    const out = checkStagedPackageManagerVersion(DIFF_REMOVE, {
+      declared,
+      readIndex: () => comValorVelho,
+      readHead: () => comValorVelho,
+      inHead: () => true,
+    })
+    expect(out).toEqual({ violations: [], unreadable: [] })
+  })
+
+  it("o arquivo que NUNCA teve o campo não vira violação aqui (o commit não introduz a ausência)", () => {
+    const out = checkStagedPackageManagerVersion(DIFF_REMOVE, {
+      declared,
+      readIndex: () => semCampo,
+      readHead: () => semCampo,
+      inHead: () => true,
+    })
+    expect(out).toEqual({ violations: [], unreadable: [] })
+  })
+
+  it("a linha que o diff ADICIONA com outro valor reprova, nomeando a linha do arquivo novo", () => {
+    const out = checkStagedPackageManagerVersion(DIFF_ADD, {
+      declared,
+      readIndex: () => comValorVelho,
+      readHead: () => semCampo,
+      inHead: () => true,
+    })
+    expect(out.violations).toHaveLength(1)
+    expect(out.violations[0]).toContain("package.json:3")
+    expect(out.violations[0]).toContain("1.4.0")
+    expect(out.violations[0]).toContain("1.3.14")
+  })
+
+  it("a linha ADICIONADA com o valor declarado passa", () => {
+    const out = checkStagedPackageManagerVersion(DIFF_ADD_OK, {
+      declared,
+      readIndex: () => comCampo,
+      readHead: () => semCampo,
+      inHead: () => true,
+    })
+    expect(out).toEqual({ violations: [], unreadable: [] })
+  })
+
+  it("arquivo NOVO com o valor errado é pego pela linha adicionada (e o HEAD nem é lido)", () => {
+    let leuHead = false
+    const out = checkStagedPackageManagerVersion(DIFF_ADD, {
+      declared,
+      readIndex: () => comValorVelho,
+      readHead: () => {
+        leuHead = true
+        return null
+      },
+      inHead: () => false,
+    })
+    expect(out.violations).toHaveLength(1)
+    expect(out.violations[0]).toContain("package.json:3")
+    expect(leuHead).toBe(false)
+  })
+
+  it("índice ilegível é `unreadable` (o commit PARA com 2 — nunca 'nada a julgar')", () => {
+    const out = checkStagedPackageManagerVersion(DIFF_REMOVE, {
+      declared,
+      readIndex: () => null,
+      readHead: () => comCampo,
+      inHead: () => true,
+    })
+    expect(out.violations).toEqual([])
+    expect(out.unreadable).toEqual(["package.json"])
+  })
+
+  it("HEAD ilegível num arquivo que EXISTE lá também é `unreadable`", () => {
+    const out = checkStagedPackageManagerVersion(DIFF_REMOVE, {
+      declared,
+      readIndex: () => semCampo,
+      readHead: () => null,
+      inHead: () => true,
+    })
+    expect(out.violations).toEqual([])
+    expect(out.unreadable).toEqual(["package.json"])
+  })
+
+  it("um arquivo fora do recorte nem é lido (a pathspec é declarada, não herdada)", () => {
+    let leu = false
+    const out = checkStagedPackageManagerVersion(
+      [
+        "diff --git a/scripts/x.mjs b/scripts/x.mjs",
+        "--- a/scripts/x.mjs",
+        "+++ b/scripts/x.mjs",
+        "@@ -1 +1,2 @@",
+        "+const a = 1",
+        "",
+      ].join("\n"),
+      {
+        declared,
+        readIndex: () => {
+          leu = true
+          return null
+        },
+      },
+    )
+    expect(out).toEqual({ violations: [], unreadable: [] })
+    expect(leu).toBe(false)
+  })
+
+  it("o toolchain SEM valor de referência julga contra a ausência de espelho (fail-closed, não 'passou')", () => {
+    const out = checkStagedPackageManagerVersion(DIFF_ADD, {
+      declared: null,
+      readIndex: () => comValorVelho,
+      readHead: () => semCampo,
+      inHead: () => true,
+    })
+    expect(out.violations).toHaveLength(1)
+    expect(out.violations[0]).toContain("nenhum espelho declara a vigente")
+  })
+
+  it("o repositório REAL está verde neste recorte (o piso)", () => {
+    expect(checkPackageManagerVersion(process.cwd())).toEqual([])
   })
 })
 

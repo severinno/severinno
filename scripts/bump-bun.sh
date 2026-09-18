@@ -14,9 +14,10 @@
 #      valida a EXISTÊNCIA da linha, não o valor; o job semanal actrc-sync
 #      avisa via ::warning:: se qualquer um dos dois divergir. No MESMO passo,
 #      escreve os espelhos DERIVADOS: os defaults de `${BUN_VERSION:-…}` dos
-#      composes (2c) e o `packageManager` do package.json (2d, invariante 18c
-#      do check-bun-mirror) — sem isso o bump terminaria vermelho no guard que
-#      ele mesmo roda no fim
+#      composes (2c), o `packageManager` do package.json (2d, invariante 18c do
+#      check-bun-mirror) e os usos da versão no pipeline de terceiro arquivado
+#      (2e, `.woodpecker.yml`, invariante 19) — sem isso o bump terminaria
+#      vermelho no guard que ele mesmo roda no fim
 #   3. Re-disparar os DOIS mirrors GHCR     (sync-bun-mirror.yml = binário
 #      scratch tier-3; sync-ubuntu-bun-mirror.yml = imagem runner tier-1) e
 #      aguardar conclusão via POLLING do gh run list + check de conclusion
@@ -317,6 +318,55 @@ elif ! grep -qE '^[[:space:]]*"packageManager"[[:space:]]*:' "$PACKAGE_JSON_PATH
   exit 2
 else
   update_mirror "$PACKAGE_JSON_PATH" '^[[:space:]]*"packageManager"[[:space:]]*:' "$PACKAGE_MANAGER_LINE"
+fi
+
+# ── 2e. os usos da versão no pipeline de TERCEIRO (.woodpecker.yml) ────────
+# Este arquivo NÃO é um espelho declarado: não há UMA linha para reescrever, e
+# sim TREZE usos — a tag `oven/bun:<v>` de cada passo e os `BUN_VERSION=<v>`
+# dos `build_args`. Fora de toda varredura até a invariante 19 do
+# check-bun-mirror, eles envelheceram SETE versões atrás do repositório sem que
+# nada ficasse vermelho. Aqui eles são reescritos (o ESCRITOR que faz do
+# literal uma derivação) e, no fim, CONFERIDOS: uma reescrita que não pegou é
+# erro deste script (exit 1), nunca um ::warning:: que o próximo bump herda.
+#
+# Só o que carrega um NÚMERO é reescrito: uma forma derivada
+# (`oven/bun:${BUN_VERSION}`) é deixada como está, e o fallback de
+# `${BUN_VERSION:-<x>}` acompanha o bump (é o que a invariante 19 compara por
+# valor, como a 16 faz nos composes).
+echo ""
+echo "  ── usos da versão no pipeline de terceiro (.woodpecker.yml) ──"
+WOODPECKER_PATH="$REPO_ROOT/.woodpecker.yml"
+if [ ! -f "$WOODPECKER_PATH" ]; then
+  echo "  (sem .woodpecker.yml — nada a reescrever: a invariante 19 só julga o arquivo se ele existir)"
+elif ! grep -qE 'oven/bun:|BUN_VERSION=' "$WOODPECKER_PATH"; then
+  echo "  (.woodpecker.yml sem uso da versão do Bun — nada a reescrever)"
+elif [ "$DRY_RUN" = "1" ]; then
+  echo "  [dry-run] todos os usos da versão em .woodpecker.yml → $NEW_VERSION"
+else
+  awk -v new="$NEW_VERSION" '
+    {
+      if ($0 ~ /oven\/bun:\$\{BUN_VERSION:-[^}]*\}/) {
+        sub(/oven\/bun:\$\{BUN_VERSION:-[^}]*\}/, "oven/bun:${BUN_VERSION:-" new "}")
+      } else if ($0 ~ /oven\/bun:[0-9]/) {
+        sub(/oven\/bun:[0-9][^ \t#\r]*/, "oven/bun:" new)
+      }
+      if ($0 ~ /^[ \t]*-[ \t]*BUN_VERSION=\$\{BUN_VERSION:-[^}]*\}/) {
+        sub(/BUN_VERSION=\$\{BUN_VERSION:-[^}]*\}/, "BUN_VERSION=${BUN_VERSION:-" new "}")
+      } else if ($0 ~ /^[ \t]*-[ \t]*BUN_VERSION=[0-9]/) {
+        sub(/BUN_VERSION=[^ \t#\r]*/, "BUN_VERSION=" new)
+      }
+      print
+    }' "$WOODPECKER_PATH" > "$WOODPECKER_PATH.tmp"
+  mv "$WOODPECKER_PATH.tmp" "$WOODPECKER_PATH"
+  RESTOU="$(grep -nE 'oven/bun:[0-9]|BUN_VERSION=[0-9]' "$WOODPECKER_PATH" \
+    | grep -vE "oven/bun:${NEW_VERSION}([^0-9.]|$)|BUN_VERSION=${NEW_VERSION}([^0-9.]|$)" || true)"
+  if [ -n "$RESTOU" ]; then
+    echo "bump-bun: a reescrita NÃO cobriu todos os usos da versão em $WOODPECKER_PATH:" >&2
+    echo "$RESTOU" >&2
+    echo "            (o guard do fim apontaria o arquivo; o culpado é esta seção — conserte antes de seguir)" >&2
+    exit 1
+  fi
+  echo "  .woodpecker.yml → todos os usos da versão em $NEW_VERSION"
 fi
 
 # ── Passo 3: re-dispatch dos mirrors GHCR ──────────────────────────────────

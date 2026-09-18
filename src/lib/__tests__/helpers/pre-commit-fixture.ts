@@ -33,6 +33,8 @@ import {
 } from "../../../../scripts/pre-commit-proof.mjs"
 
 export {
+  BUN_GUARD,
+  BUN_GUARD_COMMAND,
   GUARD,
   GUARD_CLOSURE,
   GUARD_COMMAND,

@@ -254,13 +254,56 @@ derivado da variável — e o fallback do compose é comparado por VALOR pela
 invariante 16, como todo compose. **(c)** a declaração de TOOLCHAIN
 (`"packageManager"` do `package.json`) diz o valor declarado: nada a consome em
 tempo de build (o bun não a impõe), então ela envelhecia sem sintoma — e é o
-primeiro campo que alguém lê para saber qual Bun o repo usa. No `--staged` da
+primeiro campo que alguém lê para saber qual Bun o repo usa. Ela tem recorte
+PRÓPRIO no `--staged` (`checkStagedPackageManagerVersion`), porque mais nenhuma
+pathspec do recorte olha o `package.json`: a **linha** que o diff introduz com
+outro valor reprova nomeando arquivo e linha, e a **REMOÇÃO** do campo — o
+ÍNDICE sem ele contra o HEAD com ele — também, que é a mesma cegueira da (b)
+(o que o commit TIRA não aparece em linha adicionada nenhuma) e era por ali que
+apagar a única declaração de qual Bun este repo usa passava o commit e só
+encontrava o PR. O arquivo que NUNCA teve o campo e é editado por outro motivo
+não vira violação AQUI (o commit não introduz a ausência) — quem cobra a
+existência da declaração é a varredura global, e a régua do valor é UMA só
+(`judgePackageManager`) para os dois modos. No `--staged` da
 (a) o alvo é a lista `DOCKERFILES` (o default nasce num commit, como todo
 literal); o recorte da (b) é **declarado**: os blocos de build que o DIFF toca,
 lidos do **ÍNDICE** (o `args:` e o `dockerfile:` são linhas diferentes, e o
-pre-commit julga o que será commitado, não o disco) — uma REMOÇÃO do arg não é
-pega ali (o bloco não ganha linha nenhuma) e quem a pega é a varredura global,
-que roda no PR.
+pre-commit julga o que será commitado, não o disco). E a **REMOÇÃO** do arg tem
+régua própria (`checkStagedRemovedBuildArgs`): ela compara o bloco do **ÍNDICE**
+com o bloco de **HEAD** e reprova o serviço que passava o arg num Dockerfile que
+o exige e não passa mais — o recorte das linhas ADICIONADAS não veria uma
+remoção pura (o bloco perde uma linha e não ganha nenhuma), e era por ali que
+remover o arg passava o commit e só encontrava a varredura global do PR. Remover
+o `args:` inteiro, trocar o serviço por um que builda um Dockerfile sem
+`ARG BUN_VERSION`, apagar o serviço e adicionar um arquivo NOVO não são
+violação; índice ou HEAD ilegível para o veredito com exit 2, como sempre.
+
+**A CLASSE QUE ESTAVA FORA: os usos da versão num pipeline de TERCEIRO
+(invariante 19).** O `.woodpecker.yml` já era alvo do `check:registry-source`
+(o host do registry), mas a VERSÃO do Bun nele não era julgada por ninguém: lá
+a versão aparece como **tag de imagem** (`image: oven/bun:<v>`, uma vez por
+passo) e como **build arg** (`BUN_VERSION=<v>`), espalhada em TREZE usos — e foi
+por isso que o arquivo acabou com uma ISENÇÃO escrita no próprio cabeçalho
+("arquivado — não copie os literais daqui"). Fora da varredura, os treze usos
+envelheceram **sete versões** atrás do repositório (`1.4.0` [divergente] contra
+o `1.3.14` declarado) sem que nada ficasse vermelho. A régua é a MESMA da
+invariante 16 — comparação por VALOR contra o espelho: `${BUN_VERSION}` é
+derivação e passa, `${BUN_VERSION:-<x>}` passa quando o fallback é o declarado,
+e um valor literal tem de ser o declarado. A diferença vem do FORMATO e fica
+escrita: num `image:` de pipeline de terceiro o literal **igual** ao declarado
+PASSA — ali não existe a variável do operador que a 16 protege, o valor tem de
+estar escrito; o que não pode é ser OUTRO número (um pipeline de terceiro é
+**consumidor** da versão, não um segundo ponto de verdade). Como nos espelhos
+declarados, o que faz do literal uma derivação é o par **escritor** +
+**comparação por valor**: a seção 2e do `bump-bun.sh` reescreve os treze usos no
+mesmo passo dos outros espelhos e CONFERE a reescrita (o que sobrar com outro
+número é exit 1 do bump, nunca um `::warning::` que o próximo bump herda).
+Fail-closed na LEITURA: um pipeline que existe e não pode ser lido é violação
+(e um symlink entra na enumeração com o alvo ausente só para sair NOMEADO, em
+vez de desaparecer da varredura) — enquanto a AUSÊNCIA do arquivo não é
+violação, porque a alternativa arquivada pode ser apagada. Comentário fica fora,
+inclusive o passo COMENTADO e a prosa que NOMEIA as formas (`image: oven/bun:<v>`,
+`BUN_VERSION=<v>`) — que é exatamente o que o cabeçalho do arquivo real faz.
 
 **Família relacionada:** `check-tier1-fastpath`, `check-tier2-cache-restore`
 (performance do setup-bun — ver família 10).
@@ -274,8 +317,20 @@ declarado, o piso do doc canônico e o `--staged`),
 `src/lib/__tests__/check-bun-mirror-build-chain.test.ts` (a invariante 18: o
 `embeddedVersionDefault`, o default do ARG e o embutido na referência, o parser
 dos build sites, o recorte `addedLines`, o ÍNDICE do `--staged` — incluindo o
-"não consegui ler" —, o `packageManager`, e o REPOSITÓRIO real: a remoção do arg
-de um build site de verdade reprova NOMEANDO o serviço) e
+"não consegui ler" —, a **REMOÇÃO** do arg comparando o bloco do índice com o de
+HEAD (o serviço removido, o bloco que deixou de buildar um Dockerfile que exige o
+arg e o arquivo novo não são violação), o `packageManager` (o global e a régua
+`judgePackageManager` que ele compartilha com o recorte),
+`checkStagedPackageManagerVersion` (o campo REMOVIDO pelo commit, a linha
+ADICIONADA com outro valor, o campo que sobrevive, o arquivo que nunca teve o
+campo, o arquivo novo, o índice/HEAD ilegível e o fora do recorte) e o REPOSITÓRIO real:
+a remoção do arg de um build site de verdade reprova NOMEANDO o serviço),
+`src/lib/__tests__/check-bun-mirror-third-party-pipeline.test.ts` (a invariante
+19: o extrator das duas formas — imagem e build arg — e dos NÃO-usos, o literal
+igual ao declarado que passa, o divergente que reprova por uso, a derivação e o
+fallback comparado por valor, o comentário e o passo comentado, o pipeline
+ilegível e o repo real: os treze usos no valor declarado e UM número trocado
+derrubando o guard com arquivo e linha) e
 `src/lib/__tests__/bun-version.test.ts` (a cadeia de resolução do resolvedor:
 env → espelhos, e o LANÇAR em vez de um default).
 **Prova por mutação:** `scripts/test-mutation-bun-literal.sh` — cinco fases: (A)
@@ -290,9 +345,25 @@ e (E) `M5`: as QUATRO metades da cadeia de build (o default do ARG de volta, o
 build site sem o arg, o `packageManager` divergente e o default embutido na
 referência) reprovam com as quatro mensagens, o build site NOVO sem o arg é
 recusado já no `--staged` (o pre-commit nomeia o serviço), e a cópia do guard com
-as quatro linhas neutralizadas passa com as quatro em disco — cada metade é
+as SEIS linhas neutralizadas (as quatro do `M5a–d` mais as duas das remoções)
+passa com todas em disco — cada metade é
 load-bearing, e a mutação é cirúrgica (o literal de workflow segue reprovado na
-mesma cópia).
+mesma cópia) —, mais o `M5e` no MESMO passo: o commit que **REMOVE** o arg de um
+build site é recusado no `--staged` (o recorte que o pre-commit roda) nomeando o
+serviço, e a cópia sem a comparação ÍNDICE×HEAD o deixa passar (a metade da
+remoção é load-bearing, e é ela que fez o commit deixar de ser cego), e o `M5f`
+no MESMO passo, em fixture PRÓPRIO (o defeito do `M5e` está staged e um segundo
+defeito no mesmo índice tornaria as duas leituras indistinguíveis): o commit que
+**APAGA** a declaração de TOOLCHAIN (`"packageManager"`) é recusado no
+`--staged` nomeando o arquivo, e a cópia sem a linha registrada no recorte o
+deixa passar — a última ponta da 18 no commit deixa de ser cega —, e (F) `M6`: as três metades da invariante 19 — a comparação por
+VALOR (imagem e build arg divergentes reprovam, e a cópia com a comparação
+cegada passa), a EXCLUSÃO do comentário (o fixture com o cabeçalho citando a
+versão velha passa no guard real e reprova na cópia sem a exclusão, citando a
+linha da prosa e a do passo comentado) e o recorte `--staged` (a linha nova com
+outra versão é recusada no commit, e a cópia sem o recorte passa) — mais o
+CONTROLE que exige o relatório NOMEANDO a classe varrida, porque um arquivo fora
+da enumeração deixaria a régua verde por vacuidade.
 
 **`check:registry-source` (mesma família — fonte única, agora do registry OCI):**
 

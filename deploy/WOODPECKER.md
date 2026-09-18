@@ -12,6 +12,13 @@
 > `plugins/docker` está descontinuado (use `woodpeckerci/plugin-docker-buildx`) e
 > `appleboy/ssh-action` é um GitHub Action, não um plugin Woodpecker.
 >
+> **A versão do Bun NÃO é um desses pontos.** Os treze usos do rascunho (a tag
+> `oven/bun:<v>` de cada passo e os `BUN_VERSION=<v>` dos `build_args`) são
+> espelhos da fonte única: o `check-bun-mirror` compara cada um por VALOR com o
+> valor declarado (invariante 19) e o `bump-bun.sh` os reescreve no mesmo passo
+> dos outros espelhos (seção 2e). Se o Woodpecker for retomado, o pipeline entra
+> como está — a versão já acompanha o repositório.
+>
 > **Se o Woodpecker for retomado, corrija primeiro a Etapa 1 abaixo:** ela manda
 > criar um **OAuth App no GitHub** e configurar `WOODPECKER_GITHUB_CLIENT`. Isso
 > contradiz o objetivo da migração — o login deve usar **OAuth do Gitea/Forgejo**
