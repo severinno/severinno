@@ -4925,20 +4925,90 @@ consumidores) e publica provado/violado/indisponível. Ver a §13.
 
 ---
 
-A **seção R** mede o CANAL — a outra ponta do `--fix`, e a que vai ao PR: **R1**
-exige que o patch do preview **APLIQUE** pelo `git apply` (num repo git de
-verdade, com a cicatriz no MEIO do arquivo, e que o gate saia **0** no repo
-remendado); a mutação correspondente tira o **contexto** do hunk
-(`unified-patch.mjs`) e exige que o `git apply` **recuse** — o mutante prova que
-é o contexto que torna o remendo aplicável. **R2** exige que o preview **NÃO
-grave** (a cicatriz segue no arquivo e o checksum é o mesmo); a mutação troca o
-`dry: true` do `remedyPatch` por `dry: false` e exige que a árvore **mude**. **R3**
-roda a reconciliação contra um canal dublê com o comentário do `bash -n` (id 11) e
-o do SIGPIPE (id 22) no MESMO PR, com a cicatriz do SIGPIPE já resolvida: com
-marcadores próprios SÓ o 22 sai; a mutação iguala os marcadores e exige que o
-comentário do **outro** gate (id 11) caia junto. As três fontes mutadas
-(`check-pipefail-sigpipe.mjs`, `unified-patch.mjs` e `pr-remedy-comment.mjs`) têm
-cópia de segurança com `cksum` no `trap`, como o guard e a régua.
+## 25. A prova do bloqueio do pre-commit DENTRO da imagem do runner — `pre-commit-in-runner:prove` (`scripts/prove-pre-commit-in-runner.mjs`)
+
+**O que protege:** a promessa "um corpo `run:` quebrado no índice não vira
+commit" — medida no **runtime que julga o merge**, e não só na máquina de quem
+commita.
+
+**Por que existe (a distância entre os dois ambientes).** O doctor já publica o
+fato do bloqueio do pre-commit e EXECUTA a prova de verdade
+(`proveCommitBlocks`, de `pre-commit-proof.mjs`); a suíte dos hooks importa o
+mesmo módulo. Mas os dois rodam ONDE o operador roda. E a diferença entre a
+máquina dele e o CI é exatamente onde esta classe já mordeu: `git` ausente, um
+`bash` de outra implementação, o `node` de outro caminho, o hook sem bit de
+execução — que o git **ignora em SILÊNCIO** (o commit entra como se o hook
+tivesse passado). Aqui o MESMO módulo de prova é lançado dentro da imagem do
+runner (`Dockerfile.ubuntu-bun`), com um `git commit` de verdade invocando o
+hook REAL do checkout.
+
+**O lugar é ESCOLHIDO E DECLARADO** (é o que o comando acrescenta ao módulo da
+prova):
+
+1. **Já dentro da imagem** — o caso do job da FORJA. O label `docker://` do
+   `GITEA_RUNNER_LABELS` faz o job rodar NO container da imagem, e o socket do
+   docker **não** está montado nele: a prova roda em lugar, e o docker não é
+   consultado. Os marcadores do runtime são **verificados**, nunca presumidos —
+   estar num container (`/.dockerenv` ou `/run/.containerenv`) E sobre a base do
+   runner (`/opt/acttoolcache`, o mesmo caminho que a medição dos shells
+   registrou para o `node`). Faltando um, `--in-image` **RECUSA** (exit 2): um
+   `--in-image` numa máquina hospedeira devolveria `proven` para uma medição
+   feita no lugar errado;
+2. **`docker run`** — o caso do espelho do GitHub, cujo runner self-hosted é uma
+   MÁQUINA com docker (`self-hosted,linux,x64,docker`): o mesmo comando roda com
+   `--in-image` DENTRO de um container da ref derivada
+   (`runnerImageRef`: `IMAGE_REGISTRY`/`IMAGE_NAMESPACE`/`BUN_VERSION`), com o
+   checkout montado **NO MESMO CAMINHO** — o `node_modules` do fixture é um link
+   ABSOLUTO, e montar em outro caminho faria o guard morrer de "module not
+   found", com o não-zero vindo do fixture em vez do defeito.
+
+**A ponte entre os dois processos.** O processo de dentro (que roda no
+container) imprime linhas `PROVA-<CHAVE>=<valor>` — modo, estado, marcadores, o
+runtime MEDIDO (`/opt/acttoolcache/node/<versão>/x64/bin/node`, o `git` da
+imagem, o `bash` do harness), o defeito e o controle. O **exit code** continua
+sendo o veículo do veredito (o docker o propaga) e as linhas são a
+proveniência: `null` de exit (timeout, sinal) e código desconhecido (125 do
+docker, 127 de binário ausente) são **INDETERMINADO**, nunca verde.
+
+**Provas.** Os dois modos rodaram DE VERDADE: `--in-image` fora do runtime
+RECUSA nomeando os dois marcadores que faltaram, e o modo automático neste host
+(sem marcadores, com docker) lançou o container da imagem e fechou **exit 0**
+com o defeito recusado (exit 1, zero objetos de commit) e o CONTROLE entrando
+(exit 0, um objeto, conteúdo conferido em HEAD) — o `git version 2.55.0` da
+evidência é o da IMAGEM (o do host é 2.43.0), o que por si só mostra onde o
+commit aconteceu. No CI o job roda nas duas forjas (é CORE: invariante
+`pre-commit-in-runner-proof`, o mesmo comando nas duas pipelines) e o doctor
+confirma o contrato: o job está no manifesto e roda a régua da invariante.
+
+**O que NÃO cobre (declarado no relatório, não escondido):** os guards IRMÃOS do
+hook rodam no dublê declarado do simulador (`bun`/`bash`/`node` deles devolvem 0) — quem roda de verdade é o guard do defeito, com o `node` REAL do runtime;
+o repositório da prova é o FIXTURE do simulador, não o checkout do PR; a ref é a
+DECLARADA (o digest sai como proveniência medida, mas quem prova qual imagem o
+runner registrou é o `check-runner-labels`/o smoke); e no modo `docker run` a
+imagem tem de estar local ou ser baixável — pull que falha é INDETERMINADO com
+a dica da credencial.
+
+**Onde roda.** Job `pre-commit-in-runner-proof` (nome `Pre-commit Proof (dentro
+da imagem do runner)`) nas duas pipelines, e é **required check**
+(`ci/required-checks.json`). No espelho, `permissions: packages: read` para o
+pull da imagem privada, e `bun install --frozen-lockfile` — a prova precisa do
+`node_modules` (o guard importa o parser), e é o `check-job-deps` quem cobra isso
+de todo job.
+
+<!-- prove-doc: pre-commit-in-runner:prove
+     run: --json
+     exit: 2
+     cenario: docker-ausente
+     desfecho: indeterminado
+-->
+
+```text
+"state": "unavailable"
+não dá para provar o bloqueio dentro do runtime do CI
+o docker não respondeu
+```
+
+---
 
 ## Regra de ouro para guards novos
 

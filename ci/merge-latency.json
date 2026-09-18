@@ -30,6 +30,12 @@
         "source": "docs/benchmarks/guard-timing-latest.json summary.totalMs (16900ms = guards + doctor --ci, medido em 16/09/2026) + o gate de sintaxe, MEDIDO em 17/09/2026 (2464ms, agora com o shell EMBUTIDO na varredura: era 2280ms antes da terceira fonte): o benchmark versionado NÃO cobre `check:workflow-run-syntax` nem `check:pipefail-sigpipe`. O que segue FORA da soma — e é por isso que este é um PISO, não um ponto medido — é o `check:pipefail-sigpipe`, o `bun install --frozen-lockfile` e o checkout.",
         "date": "2026-09-17"
       },
+      "pre-commit-in-runner-proof": {
+        "ms": 800,
+        "provenance": "declarado (PISO: passo não medido)",
+        "source": "medido neste host (Linux, 2026-09-18, mediana de 3 runs WARM): a prova EM LUGAR dentro da imagem (o modo que a forja paga, sem docker e sem socket) 0,67-0,69s — 0,67 · 0,67 · 0,69 — somada ao `bun install --frozen-lockfile` com o node_modules presente (≈60ms). O que fica FORA da soma, e é por isso que o número é um PISO, é o checkout, o `bash scripts/setup-bun-ci.sh` (tier-1: a imagem JÁ embarca o Bun, então o fast path responde em ~0-2s) e o cache do Bun.",
+        "date": "2026-09-18"
+      },
       "build": {
         "ms": 246000,
         "provenance": "declarado",
@@ -43,6 +49,12 @@
         "provenance": "declarado",
         "source": "README.md (utf8-check, 837 arquivos, ≈0.92s local)",
         "date": "2026-09-16"
+      },
+      "pre-commit-in-runner-proof": {
+        "ms": 900,
+        "provenance": "declarado (PISO: passo não medido)",
+        "source": "medido neste host (Linux, 2026-09-18, mediana de 3 runs WARM, imagem do runner LOCAL): o comando INTEIRO no modo `docker run` 0,79-0,82s — 0,79 · 0,80 · 0,82 — somado ao `bun install --frozen-lockfile` com o node_modules presente (≈60ms). Ficam FORA da soma, e é por isso que ele é um PISO: o checkout, o `bash scripts/setup-bun-ci.sh`, o cache do Bun, o restore do cache de node_modules e o PULL da imagem (que num runner que ainda não a tem custa a camada baixada; nos jobs atuais ela já está local porque o act/tier-1 a puxa).",
+        "date": "2026-09-18"
       },
       "actionlint": {
         "ms": 510,

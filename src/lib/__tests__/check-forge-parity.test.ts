@@ -82,6 +82,7 @@ const REAL_LINES = [
   "      - run: node scripts/check-workflow-run-syntax.mjs",
   "      - run: node scripts/check-doctor-ci.mjs",
   "      - run: node scripts/prove-runner-image-gate.mjs",
+  "      - run: node scripts/prove-pre-commit-in-runner.mjs",
   "      - run: node scripts/merge-latency.mjs --check",
 ]
 

@@ -60,6 +60,7 @@
     "smoke-render:prove": "node scripts/prove-smoke-render-gate.mjs",
     "image-contract:prove": "node scripts/prove-image-contract.mjs",
     "merge-gate:prove": "node scripts/prove-gitea-merge-gate.mjs",
+    "pre-commit-in-runner:prove": "node scripts/prove-pre-commit-in-runner.mjs",
     "check:e2e-counts": "node scripts/check-e2e-counts.mjs",
     "check:seed-count-literals": "node scripts/check-seed-count-literals.mjs",
     "check:encoding-guards-badge": "node scripts/check-encoding-guards-badge.mjs",

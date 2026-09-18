@@ -43,6 +43,7 @@ const CONTEXTS = [
   "Lint",
   "Repo Guards",
   "Bring-up Gate Proof (pré-requisito 0, por execução)",
+  "Pre-commit Proof (dentro da imagem do runner)",
   "TypeCheck",
   "Tests",
   "Build",

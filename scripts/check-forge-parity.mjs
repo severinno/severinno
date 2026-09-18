@@ -568,6 +568,21 @@ export const CORE_INVARIANTS = [
     jobIds: { gitea: "guards", github: "no-setup-bun-guard" },
   },
   {
+    id: "pre-commit-in-runner-proof",
+    // A prova do bloqueio do pre-commit tem de rodar no RUNTIME DO CI, não na
+    // máquina do operador: o mesmo `proveCommitBlocks` que o doctor executa é
+    // lançado DENTRO da imagem do runner (em lugar no job da forja, onde o
+    // label `docker://` põe o job no container da imagem; por `docker run` no
+    // espelho, cujo runner é uma máquina com docker). O que a invariante exige
+    // nas DUAS pipelines é o MESMO comando — quem escolhe o lugar e declara o
+    // modo é o script, e o que ele não conseguiu medir sai INDETERMINADO
+    // (exit 2) nomeando o que faltou, nunca verde.
+    matches: /prove-pre-commit-in-runner/,
+    command: /^node scripts\/prove-pre-commit-in-runner\.mjs$/m,
+    why: "um bloqueio medido só na máquina de quem commita não é o veredito do merge: a promessa do hook vale quando um 'git commit' de verdade acontece no runtime que julga o PR",
+    jobIds: { gitea: "pre-commit-in-runner-proof", github: "pre-commit-in-runner-proof" },
+  },
+  {
     id: "script-headers",
     matches: /check-script-headers/,
     command: /^node scripts\/check-script-headers\.mjs$/m,

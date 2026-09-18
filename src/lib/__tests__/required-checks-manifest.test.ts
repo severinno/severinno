@@ -54,6 +54,7 @@ const EXPECTED_JOB_IDS: Record<string, string[]> = {
     "workflow-refs-guard",
     "workflow-run-syntax",
     "bring-up-proof",
+    "pre-commit-in-runner-proof",
     "sentinel-producer-guard",
     "no-setup-bun-guard",
     "bun-mirror-guard",
@@ -84,7 +85,16 @@ const EXPECTED_JOB_IDS: Record<string, string[]> = {
     "check",
     "pii-allowlist-guard",
   ],
-  [GITEA_CI]: ["lint", "guards", "bring-up-proof", "typecheck", "test", "build", "deploy"],
+  [GITEA_CI]: [
+    "lint",
+    "guards",
+    "bring-up-proof",
+    "pre-commit-in-runner-proof",
+    "typecheck",
+    "test",
+    "build",
+    "deploy",
+  ],
 }
 
 /** Jobs que de fato declaram `if:` (nível de job) em cada workflow. */
@@ -104,6 +114,11 @@ const EXPECTED_CONTEXTS: Record<string, string[]> = {
     // de derrubar um job que cobre seis invariantes.
     "Workflow run syntax (bash -n)",
     "Bring-up Gate Proof (pré-requisito 0, por execução)",
+    // pre-commit-in-runner-proof: a prova do bloqueio do pre-commit DENTRO do
+    // runtime do CI. O check DIZ o que foi medido (e onde) em vez de se diluir
+    // num job que cobre vários invariantes — e o mesmo comando roda nas duas
+    // pipelines (invariante CORE homônima no check-forge-parity).
+    "Pre-commit Proof (dentro da imagem do runner)",
     "Actionlint (workflow syntax)",
     "Lint Guard (prettier + eslint zero)",
     "TypeCheck (tsc --noEmit)",
@@ -137,6 +152,7 @@ const EXPECTED_CONTEXTS: Record<string, string[]> = {
     "Lint",
     "Repo Guards",
     "Bring-up Gate Proof (pré-requisito 0, por execução)",
+    "Pre-commit Proof (dentro da imagem do runner)",
     "TypeCheck",
     "Tests",
     "Build",

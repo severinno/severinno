@@ -455,6 +455,74 @@ jobs:
       - name: Summary
         run: echo "✅ O passo 0 do bring-up RECUSA um env divergente (medido executando o gitea-up.sh real) — a imagem existe e a stack mesmo assim não sobe."
 
+  # ── Prova do bloqueio do PRE-COMMIT dentro da imagem do runner ────────
+  # O doctor publica o fato do bloqueio do pre-commit e EXECUTA a prova de
+  # verdade (`proveCommitBlocks`) — mas ele roda onde o doctor roda: na máquina
+  # de quem opera. A mesma promessa vale para a suíte dos hooks. Ou seja: "um
+  # corpo `run:` quebrado no índice não vira commit" era medido num ambiente que
+  # NÃO é o que julga o merge — e a diferença entre os dois é exatamente onde a
+  # classe já mordeu (git ausente, `bash` de outra implementação, o `node` de
+  # outro caminho, hook sem bit de execução, que o git IGNORA em silêncio).
+  #
+  # Aqui o MESMO módulo de prova roda dentro da imagem do runner: neste runner o
+  # job é executado numa MÁQUINA com docker (labels `self-hosted,linux,x64,docker`),
+  # então a prova é lançada com `docker run` na imagem (`Dockerfile.ubuntu-bun`),
+  # com o checkout montado NO MESMO CAMINHO — o `node_modules` do fixture é um
+  # link ABSOLUTO, e montar em outro caminho faria o guard morrer de "module not
+  # found" (o não-zero seria do fixture, não do defeito). Na forja, onde o job JÁ
+  # roda no container da imagem (label `docker://` do act_runner, sem o socket do
+  # docker montado), o MESMO comando prova em lugar e declara o modo — é o
+  # `placeReport` que escolhe e diz onde; os marcadores do runtime
+  # (`/.dockerenv` + `/opt/acttoolcache`) são VERIFICADOS, nunca presumidos.
+  #
+  # O que ele NÃO conseguiu medir sai como INDETERMINADO (exit 2) nomeando o que
+  # faltou — nunca verde. É o mesmo tri-estado do doctor.
+  #
+  # POR QUE UM JOB PRÓPRIO: a prova precisa de `node_modules` (o guard importa o
+  # parser) e de um docker que responda, e o veredito passa a ser um CHECK com o
+  # nome do que ele cobre. E `node_modules` aqui significa INSTALAR — é o
+  # `check-job-deps` quem cobra isso de todo job que roda script dependente de
+  # pacotes.
+  pre-commit-in-runner-proof:
+    name: Pre-commit Proof (dentro da imagem do runner)
+    runs-on: self-hosted
+    # packages: read — pull da imagem PRIVADA ghcr.io/<owner>/ubuntu-bun quando
+    # ela ainda não estiver local (auth automático do runner; mesmo contrato do
+    # tier1-fastpath-guard e do mutation-coord-timing-act-guard).
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: A prova do bloqueio do pre-commit (dentro da imagem do runner)
+        env:
+          IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+          BUN_VERSION: ${{ vars.BUN_VERSION }}
+        run: node scripts/prove-pre-commit-in-runner.mjs
+
+      - name: Summary
+        run: echo "✅ Um 'git commit' de verdade DENTRO do runtime do CI invocou o hook REAL do checkout — o corpo 'run:' quebrado no índice foi RECUSADO (zero objetos de commit) e o mesmo commit com o corpo fechado ENTROU (o CONTROLE)."
+
   # ── Sentinel Producer Guard ────────────────────────────────────────────
   # Fast gate (node puro, <1s): GENERALIZA a consistência produtor↔job de
   # sentinels — verifica que TODO `grep -Fq '<sentinel>' <file>` nos

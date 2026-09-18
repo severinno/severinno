@@ -29,6 +29,7 @@
         "workflow-refs-guard",
         "workflow-run-syntax",
         "bring-up-proof",
+        "pre-commit-in-runner-proof",
         "actionlint",
         "lint-guard",
         "typecheck",
@@ -42,7 +43,15 @@
     },
     "gitea": {
       "workflow": ".gitea/workflows/ci.yml",
-      "jobs": ["lint", "guards", "bring-up-proof", "typecheck", "test", "build"]
+      "jobs": [
+        "lint",
+        "guards",
+        "bring-up-proof",
+        "pre-commit-in-runner-proof",
+        "typecheck",
+        "test",
+        "build"
+      ]
     }
   }
 }

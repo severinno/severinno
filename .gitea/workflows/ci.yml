@@ -404,6 +404,54 @@ jobs:
       - name: Bring-up contra env divergente (a stack não sobe)
         run: node scripts/prove-runner-image-gate.mjs
 
+  # ── Prova do bloqueio do PRE-COMMIT DENTRO da imagem do runner ────────────
+  # O doctor publica o fato do bloqueio do pre-commit e EXECUTA a prova
+  # (`proveCommitBlocks`), mas ele roda onde o doctor roda: na máquina do
+  # operador. Aqui o MESMO módulo roda no runtime que julga o merge.
+  #
+  # NA FORJA ISTO É LITERAL: o label `ubuntu-latest` do act_runner resolve para
+  # `docker://<IMAGE_REGISTRY>/<IMAGE_NAMESPACE>/ubuntu-bun:<BUN_VERSION>`
+  # (GITEA_RUNNER_LABELS, no compose da forja), então ESTE job roda DENTRO do
+  # container da imagem — e o socket do docker NÃO está montado nele. Por isso o
+  # comando prova EM LUGAR e VERIFICA os marcadores do runtime
+  # (`/.dockerenv` + `/opt/acttoolcache`) antes de valer como prova: um
+  # `--in-image` numa máquina hospedeira RECUSA (exit 2) em vez de dizer
+  # "provado" para uma medição feita no lugar errado.
+  #
+  # O que ele não conseguiu medir sai INDETERMINADO (exit 2) nomeando o que
+  # faltou — nunca verde. A paridade com o espelho é cobrada pelo
+  # `check:forge-parity` (o invariante CORE `pre-commit-in-runner-proof` casa
+  # esta linha nas duas pipelines).
+  pre-commit-in-runner-proof:
+    name: Pre-commit Proof (dentro da imagem do runner)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Script (não composite action): `run:` não passa pelo resolvedor de
+      # actions locais do runner — ver scripts/setup-bun-ci.sh.
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      # `node_modules` é o que o fixture precisa (o guard importa o parser): o
+      # job INSTALA em vez de contar com o cache do runner.
+      - run: bun install --frozen-lockfile
+
+      - name: A prova do bloqueio do pre-commit (dentro da imagem do runner)
+        env:
+          IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+          BUN_VERSION: ${{ vars.BUN_VERSION }}
+        run: node scripts/prove-pre-commit-in-runner.mjs
+
+      - name: Summary
+        run: echo "✅ Um 'git commit' de verdade DENTRO do container do runner invocou o hook REAL do checkout — o corpo 'run:' quebrado no índice foi RECUSADO (zero objetos de commit) e o mesmo commit com o corpo fechado ENTROU (o CONTROLE)."
+
   # ── TypeScript check ─────────────────────────────────────────────────────
   typecheck:
     name: TypeCheck

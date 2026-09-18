@@ -200,8 +200,8 @@ export const HOOK_DECLARED = [
  */
 export const HOOK_NOT_RUN = [
   {
-    ids: ["bring-up-env-gate-proof", "runner-base", "prove-docs"],
-    why: "exigem DOCKER e/ou REDE (a imagem do runner, o registry, a execucao real do bring-up): nao cabem num hook local. Rodam nas DUAS pipelines (jobs bring-up-proof e workflow-refs-guard).",
+    ids: ["bring-up-env-gate-proof", "runner-base", "prove-docs", "pre-commit-in-runner-proof"],
+    why: "exigem DOCKER e/ou REDE (a imagem do runner, o registry, a execucao real do bring-up): nao cabem num hook local. Rodam nas DUAS pipelines (jobs bring-up-proof e workflow-refs-guard). O `pre-commit-in-runner-proof` entra por aqui pelo motivo mais literal do grupo: ele mede o bloqueio do pre-commit DENTRO do runtime que julga o PR (o `proveCommitBlocks` lancado na imagem do runner) — o hook nao pode rodar a propria prova dentro de uma imagem, e quem prova o hook no runtime do merge e o job `pre-commit-in-runner-proof` das duas forjas.",
   },
   {
     ids: ["bun-audit"],
