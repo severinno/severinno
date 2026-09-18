@@ -92,10 +92,28 @@
 //      `fi`: a intenção não é reconstruível dali). Ele NUNCA reconstrói uma linha
 //      engolida — tira a cicatriz que impedia o parsing e diz que o diff é o que
 //      se revisa. O MESMO fixer atende o pre-commit pelo
-//      `pre-commit-run-syntax-remedy.mjs`, que o usa em modo PREVIEW (`fixAll`
+//      `pre-commit-remedy.mjs`, que o usa em modo PREVIEW (`fixAll`
 //      com `dry`: nada é gravado) antes de perguntar e só então grava — o
 //      preview decide pelo MESMO caminho, senão prometeria um remendo que a
 //      gravação recusaria.
+//
+//  12. `--fix --dry-run` é esse MESMO preview na CLI, e o que ele imprime é o
+//      PATCH exato do remendo — não um resumo: as linhas `--- a/…`, `+++ b/…` e
+//      o hunk de uma linha (`-`antes/`+`depois) saem dos MESMOS bytes que a
+//      gravação escreveria (as duas pontas vêm do `fixWorkflow`, não de uma
+//      segunda conta — o `remedyPatch` aplica `patchOf` no que o `dry` provou).
+//      O patch vai para STDOUT LIMPO (`… --fix --dry-run | git apply` aplica o
+//      remendo sem arquivo intermediário) e o relatório inteiro para STDERR: em
+//      `--dry-run` o STDOUT é só o patch, e um "✅" no meio dele quebraria o
+//      `|`. Nada é gravado — quem grava é o `--fix`.
+//
+//      POR QUE O PATCH, E NÃO UM "Apply suggestion": o GitHub e o Gitea só
+//      oferecem o botão em comentário de REVISÃO ancorado na linha do diff, e
+//      uma âncora errada aplicaria uma edição ERRADA com um clique — o pior modo
+//      de falha deste caminho, e ele seria silencioso. O patch se aplica
+//      IDENTICAMENTE nas duas forjas e é byte a byte o que o `--fix` faria.
+//      Quem publica o patch no PR é o `pr-remedy-comment.mjs` (o mesmo módulo,
+//      nunca o texto do relatório): lá está o contrato do comentário.
 //
 //  10. o MESMO parser julga a SEGUNDA fonte de shell do repositório: os SCRIPTS
 //      VERSIONADOS (`*.sh`, `*.bash` e os hooks sem extensão do `.husky/`), pela
@@ -149,6 +167,7 @@
 //   node scripts/check-workflow-run-syntax.mjs              # o gate
 //   node scripts/check-workflow-run-syntax.mjs --staged     # só o que o ÍNDICE tem (workflows + scripts + Dockerfiles/composes)
 //   node scripts/check-workflow-run-syntax.mjs --fix        # REMENDA a cicatriz mecânica (LOCAL)
+//   node scripts/check-workflow-run-syntax.mjs --fix --dry-run  # o PATCH exato do remendo (NADA é gravado)
 //   node scripts/check-workflow-run-syntax.mjs --shells     # o que a imagem do runner tem, e a prova
 //   node scripts/check-workflow-run-syntax.mjs --json       # saída estruturada
 //   node scripts/check-workflow-run-syntax.mjs --list       # só o que foi varrido (corpos, arquivos e shell embutido)
@@ -171,8 +190,8 @@
 //       lido (fail-closed: sem medição não há veredito — nunca "0 violações" por
 //       não ter conseguido rodar)
 //   3 — uso inválido (flag desconhecida, `--root`/`--bash` sem valor, `--fix`
-//       combinado com `--staged` ou `--json` — combinações que o comando não
-//       promete)
+//       combinado com `--staged` ou `--json`, `--dry-run` sem `--fix` —
+//       combinações que o comando não promete)
 // =============================================================================
 
 import { spawnSync } from "node:child_process"
@@ -185,6 +204,7 @@ import { pathToFileURL } from "node:url"
 // (`check-bun-mirror`, invariante 16): uma segunda expressão aqui divergiria
 // na primeira vez que um `docker-compose.*.yml` novo aparecesse.
 import { COMPOSE_FILE_RE } from "./check-bun-mirror.mjs"
+import { linhasDe, patchPorArquivo } from "./unified-patch.mjs"
 import {
   SKIP_DIRS,
   heredocDelimiters,
@@ -193,7 +213,17 @@ import {
   workflowDefaultShells,
   workflowRunSteps,
 } from "./check-pipefail-sigpipe.mjs"
-import { resolveImageRef } from "./ensure-runner-image.mjs"
+// A DECLARAÇÃO dos shells do runner e a REF que a identifica vêm do módulo dono
+// da MEDIÇÃO (`runner-shells.mjs`), que também gera o comando declarado a partir
+// do MESMO probe que o cron executa. Uma cópia aqui divergiria no dia em que
+// alguém ajustasse uma — e aí o `--shells` imprimiria um comando que ninguém
+// roda e a issue do drift julgaria um conjunto que este gate não usa.
+import {
+  RUNNER_IMAGE,
+  RUNNER_SHELLS,
+  RUNNER_SHELLS_MISSING,
+  runnerImageRef,
+} from "./runner-shells.mjs"
 import {
   DYNAMIC_EXPR_RE,
   allWorkflowFiles,
@@ -274,78 +304,21 @@ export function isBashShell(shell) {
 }
 
 /**
- * A IMAGEM DO RUNNER — e o comando que MEDIU o que ela embarca.
+ * A IMAGEM DO RUNNER — a MEDIÇÃO (digest, data e o comando que a produziu).
  *
- * O conjunto de shells abaixo é uma MEDIÇÃO, não uma presunção: a alternativa
+ * O conjunto de shells é uma MEDIÇÃO, não uma presunção: a alternativa
  * (presumir do documentado, ou perguntar ao `command -v` de quem roda o guard)
  * publicaria como fato do repositório uma propriedade da MÁQUINA — a mesma
  * classe de erro que já custou caro aqui (um tamanho de heap lido do host virou
  * "o runner estoura a memória"). A ref e o digest ficam escritos para o dia em
- * que a base mudar: aí o caminho é RE-MEDIR (`--shells` imprime este bloco e o
- * comando pronto), não ajustar o número no olho.
+ * que a base mudar: aí o caminho é RE-MEDIR, e agora quem re-mede é um CRON
+ * (`runner-shells.mjs`, que também gera o `command` abaixo — não há cópia dele
+ * aqui), com issue acionável quando a medição diverge desta declaração.
+ *
+ * RE-EXPORTADO do dono da medição: os testes e o `--shells` continuam lendo
+ * daqui, mas a fonte é uma só.
  */
-export const RUNNER_IMAGE = {
-  digest: "sha256:fd027ee77b520fbc4eed1e24091bbe277cb242c1c04ea9ccfd62cc6903dbb852",
-  measuredAt: "2026-09-16",
-  command:
-    `docker run --rm --entrypoint /bin/sh <ref> -c ` +
-    `'for s in bash sh dash zsh fish ksh python python3 pwsh node cmd powershell perl ruby; do ` +
-    `printf "%-12s %s\\n" "$s" "$(command -v "$s" 2>/dev/null || echo AUSENTE)"; done'`,
-}
-
-/**
- * A REF (com tag) da imagem do runner — DERIVADA, nunca literal.
- *
- * A tag é `.../ubuntu-bun:<BUN_VERSION>`: escrevê-la aqui seria um espelho de
- * `BUN_VERSION` envelhecendo em silêncio — exatamente a classe que o
- * `check:registry-source` persegue (e ele ACUSA o literal: foi assim que esta
- * linha nasceu). O resolver é o MESMO do `ensure-runner-image` e do compose
- * (`IMAGE_REGISTRY`/`IMAGE_NAMESPACE` com os defaults do compose, e
- * `BUN_VERSION` sem default).
- *
- * Sem `BUN_VERSION` no ambiente NÃO há ref: devolve `null`, e o relatório diz
- * INDETERMINADO em vez de presumir qual imagem foi medida. O que não se deriva
- * fica registrado: o DIGEST (a tag é um apelido mutável; o digest identifica o
- * artefato que a medição tocou), a data e o comando.
- *
- * @param {Record<string, string|undefined>} [env]
- * @returns {string|null}
- */
-export function runnerImageRef(env = process.env) {
-  const r = resolveImageRef({
-    IMAGE_REGISTRY: env.IMAGE_REGISTRY,
-    IMAGE_NAMESPACE: env.IMAGE_NAMESPACE,
-    BUN_VERSION: env.BUN_VERSION,
-  })
-  return typeof r.ref === "string" ? r.ref : null
-}
-
-/**
- * Os interpretadores que a imagem do runner TEM — com o CAMINHO medido.
- *
- * O caminho não é decorativo: ele é o que o relatório cita quando o passo declara
- * o shell, e é o que prova que a medição foi feita (em vez de "deve ter").
- *
- * @type {Record<string, string>}
- */
-export const RUNNER_SHELLS = {
-  bash: "/usr/bin/bash",
-  sh: "/usr/bin/sh",
-  dash: "/usr/bin/dash",
-  python: "/usr/local/bin/python",
-  python3: "/usr/bin/python3",
-  node: "/opt/acttoolcache/node/24.19.0/x64/bin/node",
-  perl: "/usr/bin/perl",
-}
-
-/**
- * Os que a MESMA medição achou AUSENTES. Fica declarado porque é o lado que o
- * gate REPROVA: quando um passo declara `pwsh`, a mensagem precisa poder dizer
- * "medido: ausente nesta imagem" em vez de "o gate acha que não tem".
- *
- * @type {string[]}
- */
-export const RUNNER_SHELLS_MISSING = ["zsh", "fish", "ksh", "pwsh", "powershell", "cmd", "ruby"]
+export { RUNNER_IMAGE, RUNNER_SHELLS, RUNNER_SHELLS_MISSING, runnerImageRef }
 
 /**
  * O COMANDO de um `shell:` declarado — e se ele é a forma CUSTOM.
@@ -460,7 +433,7 @@ export function mendBody(body) {
  * @param {string} root
  * @param {{file: string, line: number, bodyEndLine: number, body: string}} failure
  * @param {{bash?: string, run?: Function, write?: Function, read?: Function, dry?: boolean}} [deps]
- * @returns {{fixed: boolean, applied?: boolean, reason?: string, operador?: string, antes?: string, depois?: string}}
+ * @returns {{fixed: boolean, applied?: boolean, reason?: string, operador?: string, antes?: string, depois?: string, linhaArquivo?: number, linhaAntes?: string, linhaDepois?: string}}
  */
 export function fixWorkflow(
   root,
@@ -534,17 +507,34 @@ export function fixWorkflow(
     }
   }
 
+  // A LINHA DO ARQUIVO, antes e depois — a conta que a gravação faz, feita UMA
+  // vez. É dela que sai o patch do `--dry-run` (uma régua, dois consumidores):
+  // `m.antes`/`m.depois` são as linhas do CORPO, e a indentação do arquivo pode
+  // diferir da do bloco — um diff construído com a linha do corpo não acharia o
+  // texto no arquivo e o `git apply` recusaria o patch que o preview mostrou.
+  const linhaAntes = alvo
+  const linhaDepois = linhaAntes.replace(PENDING_OPERATOR, "").replace(/\s+$/, "")
+
   // (2b) PREVIEW: sem gravar, o remendo está provado até onde se pode provar em
   // memória (o alvo existe, é bloco literal, a linha é a do corpo, o corpo
   // remendado faz parsing). O que falta — a releitura do disco — é exatamente o
   // que só a gravação pode medir, e é por isso que ela não é pulada depois.
   if (dry) {
-    return { fixed: true, applied: false, operador: m.operador, antes: m.antes, depois: m.depois }
+    return {
+      fixed: true,
+      applied: false,
+      operador: m.operador,
+      antes: m.antes,
+      depois: m.depois,
+      linhaArquivo: idx + 1,
+      linhaAntes,
+      linhaDepois,
+    }
   }
 
   // (3) grava e RE-MEDE no disco; desfaz se o disco não passar.
   const antes = conteudo
-  linhas[idx] = alvo.replace(PENDING_OPERATOR, "").replace(/\s+$/, "")
+  linhas[idx] = linhaDepois
   try {
     write(abs, linhas.join(eol), "utf8")
   } catch (err) {
@@ -570,7 +560,94 @@ export function fixWorkflow(
         `gravação DESFEITA (o arquivo está como estava)`,
     }
   }
-  return { fixed: true, applied: true, operador: m.operador, antes: m.antes, depois: m.depois }
+  return {
+    fixed: true,
+    applied: true,
+    operador: m.operador,
+    antes: m.antes,
+    depois: m.depois,
+    linhaArquivo: idx + 1,
+    linhaAntes,
+    linhaDepois,
+  }
+}
+
+/**
+ * O patch de UM remendo — diff unificado de uma linha, o formato que o
+ * `git apply` consome.
+ *
+ * `linhaAntes`/`linhaDepois` vêm do `fixWorkflow` (os MESMOS bytes que a
+ * gravação escreveria) e a indentação é a do ARQUIVO, que é o que faz o patch
+ * ACHAR o texto: um diff montado com a linha do corpo (sem a indentação do
+ * YAML) não aplicaria.
+ *
+ * @param {{file: string, linhaArquivo: number, linhaAntes: string, linhaDepois: string}} f
+ * @returns {string}
+ */
+export function patchOf(f) {
+  return (
+    `--- a/${f.file}\n` +
+    `+++ b/${f.file}\n` +
+    `@@ -${f.linhaArquivo},1 +${f.linhaArquivo},1 @@\n` +
+    `-${f.linhaAntes}\n` +
+    `+${f.linhaDepois}\n`
+  )
+}
+
+/**
+ * O patch das cicatrizes com CONTEXTO — a construção do `unified-patch.mjs`, a
+ * MESMA do outro fixer mecânico (`check-pipefail-sigpipe`).
+ *
+ * O `patchOf` acima (hunk sem contexto) foi a primeira forma, e ela só aplica
+ * quando a cicatriz cai no FIM do arquivo: o `git apply` recusa hunk sem
+ * contexto, e a única exceção é o hunk ancorado no fim do arquivo (medido nesta
+ * máquina, git 2.43: `@@ -1,1 +1,1 @@` e `@@ -3,1 +3,1 @@` num arquivo de 5
+ * linhas falham com "patch does not apply"; o mesmo patch na linha 5 aplica).
+ * Um passo quebrado no MEIO do workflow — o caso comum, com passos depois dele —
+ * gerava um patch que o operador colava no terminal e o `git apply` recusava:
+ * o remendo publicado no PR não era um remendo.
+ *
+ * @param {object[]} fixed  as entradas de `fixAll` (`linhaArquivo`/`linhaAntes`/`linhaDepois`)
+ * @param {{root?: string, read?: Function}} [opts]
+ * @returns {string}
+ */
+export function workflowPatch(fixed, { root = process.cwd(), read = readFileSync } = {}) {
+  const { patch } = patchPorArquivo(
+    fixed.map((f) => ({
+      file: f.file,
+      line: f.linhaArquivo,
+      linhasAntes: [f.linhaAntes],
+      linhaDepois: f.linhaDepois,
+    })),
+    { ler: (file) => linhasDe(read(join(root, file), "utf8")) },
+  )
+  return patch
+}
+
+/**
+ * O PATCH do remendo — o que o `--fix` GRAVARIA, como diff que o `git apply`
+ * aceita, sem gravar nada.
+ *
+ * TRÊS DECISÕES, e o motivo de cada uma:
+ *
+ *   1. ele sai do MESMO `fixWorkflow` que a gravação usa (`fixAll` com `dry`,
+ *      o mesmo caminho de decisão do remédio do pre-commit) — um preview que
+ *      julgasse por outra régua prometeria um remendo que a gravação recusaria;
+ *   2. ele é um PATCH e não um "Apply suggestion": o botão das duas forjas só
+ *      existe em comentário de REVISÃO ancorado na linha do diff, e uma âncora
+ *      errada aplicaria uma edição errada com um clique — silenciosamente. O
+ *      patch se aplica IDENTICAMENTE nas duas forjas;
+ *   3. as RECUSAS vão junto (`refused`, `shellFailures`, `embeddedFailures`,
+ *      `payloadFailures`): o patch cobre o que o fixer remenda, e publicar só
+ *      ele esconderia o que não foi remendado nem por quê.
+ *
+ * @param {string} root
+ * @param {{bash?: string, run?: Function, read?: Function}} [deps]
+ * @returns {{patch: string, fixed: object[], refused: object[], shellFailures: object[], embeddedFailures: object[], payloadFailures: object[], unread: object[], yamlInvalido: object[], indisponivel?: string|null}} o resultado do `fixAll` em modo preview, com `patch` a mais
+ */
+export function remedyPatch(root, { bash = DEFAULT_BASH, run = spawnSync, read } = {}) {
+  const r = fixAll(root, { bash, run, read, dry: true })
+  return { ...r, patch: workflowPatch(r.fixed, { root, read }) }
 }
 
 /**
@@ -1816,11 +1893,15 @@ Usage:
   node scripts/check-workflow-run-syntax.mjs              # o gate
   node scripts/check-workflow-run-syntax.mjs --staged     # só o que o ÍNDICE tem (workflows + scripts + Dockerfiles/composes)
   node scripts/check-workflow-run-syntax.mjs --fix        # REMENDA a cicatriz mecânica (LOCAL)
+  node scripts/check-workflow-run-syntax.mjs --fix --dry-run  # o PATCH exato (STDOUT limpo); NADA é gravado
   node scripts/check-workflow-run-syntax.mjs --shells     # o que a imagem do runner tem, e a prova
   node scripts/check-workflow-run-syntax.mjs --json       # saída estruturada
   node scripts/check-workflow-run-syntax.mjs --list       # só o que foi varrido (corpos, arquivos e shell embutido)
   node scripts/check-workflow-run-syntax.mjs --root X     # fixture (testes)
   node scripts/check-workflow-run-syntax.mjs --bash CMD   # outro interpretador
+
+Em \`--fix --dry-run\` os códigos são os MESMOS do \`--fix\`: o que muda é que NADA é
+gravado — o patch sai em STDOUT (limpo, para \`| git apply\`) e o relatório em STDERR.
 
 Exit codes:
   0 — todo corpo de passo, todo script de shell E todo texto de shell embutido
@@ -1834,10 +1915,21 @@ Exit codes:
   2 — infra: bash não executou, --root inexistente, --staged fora de um repo
       git (sem índice não há recorte), arquivo ilegível, ou workflow que NÃO faz
       parsing em YAML (um arquivo que não é workflow não tem corpo a julgar)
-  3 — uso inválido (\`--fix\` com \`--staged\`/\`--json\`, flag desconhecida,
-      \`--root\`/\`--bash\` sem valor)
+  3 — uso inválido (\`--fix\` com \`--staged\`/\`--json\`, \`--dry-run\` sem \`--fix\`,
+      flag desconhecida, \`--root\`/\`--bash\` sem valor)
 `
 
+/**
+ * O `--shells`: o que a imagem do runner tem, a prova e o canal do CRON.
+ *
+ * O relatório aponta o comando de RE-MEDIÇÃO e o script que publica a
+ * divergência: `--shells` responde "o que está declarado hoje"; quem responde
+ * "isso ainda é verdade?" é o job periódico (`runner-shells.mjs`), e quem lê a
+ * resposta é a issue.
+ *
+ * @param {Function} [log]
+ * @param {Record<string, string|undefined>} [env]
+ */
 export function printShells(log = console.log, env = process.env) {
   const ref = runnerImageRef(env)
   log(
@@ -1860,6 +1952,13 @@ export function printShells(log = console.log, env = process.env) {
       `A forma CUSTOM (\`perl {0}\`) é julgada pelo NOME que invoca: \`perl {0}\` passa,\n` +
       `\`pwsh {0}\` é violação. Fora da medição, o desfecho é INDETERMINADO — nunca presumido.`,
   )
+  log(
+    `\nESTA declaração é RE-MEDIDA pelo cron semanal (\`scripts/runner-shells.mjs\`, job\n` +
+      `\`runner-shells-drift\`): ele roda o mesmo comando dentro da imagem, compara com o que\n` +
+      `este bloco declara e abre issue acionável quando diverge (fechando quando voltar a\n` +
+      `bater). Rodar o comando acima à mão continua valendo — mas o verde deixou de\n` +
+      `depender de alguém lembrar.`,
+  )
 }
 
 /**
@@ -1871,7 +1970,7 @@ export function printShells(log = console.log, env = process.env) {
  *
  * `staged` escolhe a FONTE das falhas: por padrão a ÁRVORE (o `--fix` da CLI),
  * e com `staged` os corpos que falham no ÍNDICE — que é o conjunto do remédio do
- * pre-commit (`pre-commit-run-syntax-remedy.mjs`): o alvo é desbloquear o COMMIT,
+ * pre-commit (`pre-commit-remedy.mjs`): o alvo é desbloquear o COMMIT,
  * e o commit carrega o índice. A falha vem do índice e o arquivo remendado é o da
  * árvore: quando os dois divergem, o `fixWorkflow` recusa sozinho (a linha do
  * arquivo não é a do corpo) em vez de gravar na linha errada.
@@ -1937,6 +2036,7 @@ function main() {
     "--bash",
     "--staged",
     "--fix",
+    "--dry-run",
     "--shells",
     "-h",
     "--help",
@@ -1980,6 +2080,15 @@ function main() {
   const staged = argv.includes("--staged")
   const json = argv.includes("--json")
   const fix = argv.includes("--fix")
+  const dryRun = argv.includes("--dry-run")
+  // O preview DESCREVE o que o `--fix` gravaria — sozinho ele não tem o que
+  // pré-visualizar, e aceitá-lo em silêncio faria o operador achar que mediu um
+  // remendo que ninguém calculou.
+  if (dryRun && !fix) {
+    console.error("❌ --dry-run sem --fix: o preview descreve o que o `--fix` GRAVARIA")
+    console.error(USAGE)
+    process.exit(EXIT.USAGE)
+  }
   // Combinações que o comando NÃO promete: `--fix` escreve na ÁRVORE e relata
   // em texto (antes/depois), e `--staged` julga o ÍNDICE — remendar o índice
   // mexeria no commit que o operador já montou.
@@ -1995,7 +2104,10 @@ function main() {
   }
 
   if (fix) {
-    const r = fixAll(root, { bash })
+    // O preview passa pelo MESMO caminho de decisão (`fixAll` com `dry`) — não
+    // por uma régua paralela: um preview que prometesse um remendo que a gravação
+    // recusaria seria pior que nenhum preview.
+    const r = dryRun ? remedyPatch(root, { bash }) : fixAll(root, { bash })
     if (r.indisponivel) {
       console.error(
         `❌ ${r.indisponivel}\n   Sem interpretador não há parsing: nenhum corpo NEM arquivo foi julgado.`,
@@ -2022,12 +2134,22 @@ function main() {
       for (const y of r.yamlInvalido) console.error(`     ${y.file}: ${y.detail}`)
       process.exit(EXIT.UNAVAILABLE)
     }
+    // Em `--dry-run` o STDOUT é SÓ o patch (o `| git apply` depende disso, e um
+    // "✅" no meio dele quebraria o `|`): o relatório inteiro vai para STDERR.
+    const relato = dryRun ? console.error : console.log
+    if (dryRun) process.stdout.write(r.patch)
     for (const f of r.fixed) {
-      console.log(
+      if (dryRun) {
+        relato(
+          `◦ ${f.file}:${f.linhaArquivo} — pré-visualizado: o operador pendente \`${f.operador}\` seria removido`,
+        )
+        continue
+      }
+      relato(
         `✔ ${f.file}:${f.line} — remendo aplicado: operador pendente \`${f.operador}\` removido`,
       )
-      console.log(`     antes:  ${f.antes}`)
-      console.log(`     depois: ${f.depois}`)
+      relato(`     antes:  ${f.antes}`)
+      relato(`     depois: ${f.depois}`)
     }
     for (const f of r.shellFailures) {
       console.error(`✖ ${f.file}:${f.line} — ${f.error}`)
@@ -2048,17 +2170,24 @@ function main() {
       console.error(`     ${String(ultima ?? "").slice(0, 120)}`)
     }
     if (r.fixed.length > 0) {
-      console.log(
-        `\n   O remendo tira a CICATRIZ que impedia o parsing — ele NÃO reconstrói a linha engolida:\n` +
-          `   o diff é o que se revisa. O corpo voltou a fazer \`bash -n\` em memória E no disco.`,
+      relato(
+        dryRun
+          ? `\n   O patch acima é o que o \`--fix\` GRAVARIA — NADA foi gravado. Aplicar:\n` +
+              `   \`node scripts/check-workflow-run-syntax.mjs --fix --dry-run | git apply\` (o patch sai em STDOUT)\n` +
+              `   ou o \`--fix\` direto. O remendo tira a CICATRIZ que impedia o parsing — ele NÃO\n` +
+              `   reconstrói a linha engolida: o diff é o que se revisa.`
+          : `\n   O remendo tira a CICATRIZ que impedia o parsing — ele NÃO reconstrói a linha engolida:\n` +
+              `   o diff é o que se revisa. O corpo voltou a fazer \`bash -n\` em memória E no disco.`,
       )
     }
     const embutidoReprovado = r.embeddedFailures.length + r.payloadFailures.length
     if (r.refused.length === 0 && r.shellFailures.length === 0 && embutidoReprovado === 0) {
-      console.log(
+      relato(
         r.fixed.length === 0
           ? `✅ nenhum corpo reprovado — não há cicatriz para remendar.`
-          : `✅ ${r.fixed.length} corpo(s) remendado(s) — rode o gate de novo para o veredito da árvore.`,
+          : dryRun
+            ? `✅ ${r.fixed.length} remendo(s) pré-visualizado(s) — NADA foi gravado.`
+            : `✅ ${r.fixed.length} corpo(s) remendado(s) — rode o gate de novo para o veredito da árvore.`,
       )
       process.exit(EXIT.OK)
     }

@@ -841,6 +841,12 @@ describe("fixSource — o que o --fix toca e o que ele deixa em paz", () => {
       line: 3,
       before: 'if echo "$A" | grep -q "a"; then',
       after: 'if grep -q "a" <<< "$A"; then',
+      // As LINHAS CRUAS e a linha GRAVADA: o patch do PR (o mesmo que
+      // `--fix --dry-run` imprime) precisa dos bytes do arquivo para achar o
+      // texto e para aplicar — um diff montado com o comando já colapsado não
+      // acharia a continuação.
+      linhasAntes: ['if echo "$A" | grep -q "a"; then'],
+      linhaDepois: 'if grep -q "a" <<< "$A"; then',
     })
   })
 })

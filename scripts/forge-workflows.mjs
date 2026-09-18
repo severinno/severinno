@@ -670,6 +670,14 @@ export function workflowRunBodies(content) {
     steps.push({
       line: bodyLine,
       runLine: i + runIdx + 1,
+      // A LINHA DO RUN: `line` é a linha da CHAVE (`run: …`), e o corpo começa
+      // ali mesmo só na forma INLINE. Num BLOCO (`run: |`, `run: >`) o texto
+      // começa na linha SEGUINTE — quem soma `line - 1 + k` para achar a linha
+      // de arquivo da k-ésima linha do corpo acerta o inline e erra o bloco por
+      // um, e o erro sai como NÚMERO no relatório de quem depende dele (o gate
+      // do SIGPIPE publica `arquivo:linha` no comentário do PR). O campo é
+      // ADITIVO: quem já usava `line` continua com a mesma semântica.
+      bodyStartLine: /^[|>][-+]?\d*$/.test(runInline) ? bodyLine + 1 : bodyLine,
       bodyEndLine: i + bodyEnd,
       body,
       job: jobAtual,

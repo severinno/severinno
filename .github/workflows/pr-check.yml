@@ -353,6 +353,14 @@ jobs:
   workflow-run-syntax:
     name: Workflow run syntax (bash -n)
     runs-on: self-hosted
+    # O remendo chega ao PR como COMENTÁRIO (passo abaixo): comentar é escrita,
+    # e permissão implícita faria o canal depender da configuração da instância.
+    # Sem ela (ou num PR de fork) o publicador trata o 403 como AVISO nomeado e
+    # sai 0 — o GATE é o veredito, o comentário é o canal a mais.
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@v4
 
@@ -364,6 +372,44 @@ jobs:
       # mesma lista do check:pipefail-sigpipe), que morrem no PASSO que os executa.
       - name: Workflow run syntax (bash -n)
         run: node scripts/check-workflow-run-syntax.mjs
+
+      # O REMÉDIO vai ao PR, não só ao log do job: o passo acima imprime a
+      # mensagem do bash, e quem abriu o PR reescreveria à mão a cicatriz que o
+      # `--fix` já sabe remendar — é o MESMO defeito mecânico que o remédio do
+      # pre-commit oferece com confirmação, no momento do commit. Aqui o
+      # publicador manda o PATCH exato (`--fix --dry-run`, o mesmo fixer) como
+      # COMENTÁRIO no PR — copiar o bloco e colar no terminal aplica — e o
+      # RECONCILIA: quando a cicatriz sumir, o comentário é RETIRADO sozinho.
+      #
+      # `always()` porque o caso de uso é exatamente o gate VERMELHO (sem ele o
+      # passo seria pulado quando mais importa); com o gate verde ele apenas
+      # retira um comentário que ficou para trás. A decisão do que publicar é do
+      # SCRIPT, não de um `if:` aqui: um passo condicionado a `failure()` deixaria
+      # o comentário velho aberto no PR que já consertou o defeito.
+      - name: Publicar o remendo como comentário no PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          REMEDY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node scripts/pr-remedy-comment.mjs --backend github
+
+      # O MESMO canal para o SEGUNDO fixer mecânico: o `--fix` do SIGPIPE troca
+      # `PRODUTOR | grep -q P` por `grep -q P <<< "$(PRODUTOR)"`, e quem abre o PR
+      # via só a mensagem do gate (que aponta para a asserção que ACHOU o texto,
+      # não para a causa). O `--fixer` escolhe o DEFEITO; cada um tem o seu
+      # marcador, então os dois comentários convivem no mesmo PR e cada um é
+      # retirado quando o SEU defeito some.
+      #
+      # `always()` pelo mesmo motivo do irmão; o `--backend` da forja da vez
+      # também (no espelho este job é o mesmo, com o token do GitHub).
+      - name: Publicar o remendo do SIGPIPE como comentário no PR
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          REMEDY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node scripts/pr-remedy-comment.mjs --backend github --fixer pipefail-sigpipe
 
       # A prova de SENSIBILIDADE, no mesmo job: o guard REAL roda no PR (acima) e
       # o mutation test prova que ele MORDE — erro de sintaxe, aviso que o bash

@@ -3952,6 +3952,20 @@ ao produtor — e é conservador de propósito:
   pipeline caber, e o remédio tira o pipeline;
 - é uso **LOCAL**, como o `--update`: o PR que aposenta dívida revisa o diff.
 
+**O mesmo remédio chega ao PR (o canal é UM só, com dois fixers).**
+`--fix --dry-run` imprime o **PATCH exato** que o `--fix` gravaria (as linhas
+`--- a/…`, `+++ b/…` e os hunks saem do MESMO `fixAll` da gravação — "uma régua,
+dois consumidores"; `dry` decide só se o arquivo é gravado) e ele vai para
+**STDOUT limpo**, para `… --fix --dry-run | git apply` aplicar sem arquivo
+intermediário. A construção do diff é a **mesma** do outro fixer
+(`scripts/unified-patch.mjs`): um cabeçalho por arquivo, o **contexto** de cada
+hunk e a fusão de janelas vizinhas. Sem contexto o `git apply` **recusa** o hunk
+— e antes disso o patch do comentário aplicava só quando a cicatriz era a ÚLTIMA
+linha do arquivo. `scripts/pr-remedy-comment.mjs` publica esse patch como
+comentário no PR com `--fixer pipefail-sigpipe`, e **cada fixer tem o SEU
+marcador**: um marcador comum faria a reconciliação de um retirar o comentário do
+outro, que ainda valia.
+
 **A prova de que ele morde** (`scripts/test-mutation-pipefail-sigpipe.sh`, matriz
 do master): o guard roda contra fixtures, e a evidência é o EXIT CODE dele —
 mutação A (`.sh` com pipefail + `echo "$OUT" | grep -Fq`) tem de FALHAR nomeando
@@ -4416,6 +4430,20 @@ CEGAR — `arquivoExiste` devolvendo sempre `true` (o caminho tipado passa), a
 entrada de `scripts` ausente aceita (o `bun run tipecheck` que ninguém criou
 passa) e o indeterminado devolvido sem olhar a lista (o payload de runtime não
 declarado passa) — e UMA na direção OPOSTA: ignorar a regra da função do próprio
+**O mesmo remédio chega ao PR (o canal é UM só, com dois fixers).**
+`--fix --dry-run` imprime o **PATCH exato** que o `--fix` gravaria (as linhas
+`--- a/…`, `+++ b/…` e os hunks saem do MESMO `fixAll` da gravação — "uma régua,
+dois consumidores"; `dry` decide só se o arquivo é gravado) e ele vai para
+**STDOUT limpo**, para `… --fix --dry-run | git apply` aplicar sem arquivo
+intermediário. A construção do diff é a **mesma** do outro fixer
+(`scripts/unified-patch.mjs`): um cabeçalho por arquivo, o **contexto** de cada
+hunk e a fusão de janelas vizinhas. Sem contexto o `git apply` **recusa** o hunk
+— e antes disso o patch do comentário aplicava só quando a cicatriz era a ÚLTIMA
+linha do arquivo. `scripts/pr-remedy-comment.mjs` publica esse patch como
+comentário no PR com `--fixer pipefail-sigpipe`, e **cada fixer tem o SEU
+marcador**: um marcador comum faria a reconciliação de um retirar o comentário do
+outro, que ainda valia.
+
 hook faz o guard ACUSAR O SÃO no hook real (`wait_all` do `pre-commit` vira
 violação). Cada mutação é cirúrgica (as outras metades seguem reprovando), o
 arquivo é restaurado por checksum e o total roda em ~6s. A regressão que
@@ -4432,6 +4460,21 @@ prontidão — o doctor roda o MESMO `proveCommitBlocks()` de
 consumidores) e publica provado/violado/indisponível. Ver a §13.
 
 ---
+
+A **seção R** mede o CANAL — a outra ponta do `--fix`, e a que vai ao PR: **R1**
+exige que o patch do preview **APLIQUE** pelo `git apply` (num repo git de
+verdade, com a cicatriz no MEIO do arquivo, e que o gate saia **0** no repo
+remendado); a mutação correspondente tira o **contexto** do hunk
+(`unified-patch.mjs`) e exige que o `git apply` **recuse** — o mutante prova que
+é o contexto que torna o remendo aplicável. **R2** exige que o preview **NÃO
+grave** (a cicatriz segue no arquivo e o checksum é o mesmo); a mutação troca o
+`dry: true` do `remedyPatch` por `dry: false` e exige que a árvore **mude**. **R3**
+roda a reconciliação contra um canal dublê com o comentário do `bash -n` (id 11) e
+o do SIGPIPE (id 22) no MESMO PR, com a cicatriz do SIGPIPE já resolvida: com
+marcadores próprios SÓ o 22 sai; a mutação iguala os marcadores e exige que o
+comentário do **outro** gate (id 11) caia junto. As três fontes mutadas
+(`check-pipefail-sigpipe.mjs`, `unified-patch.mjs` e `pr-remedy-comment.mjs`) têm
+cópia de segurança com `cksum` no `trap`, como o guard e a régua.
 
 ## Regra de ouro para guards novos
 

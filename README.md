@@ -880,6 +880,30 @@ que o comentário do PR publica —, e o `--fix` só grava depois
 de o corpo voltar a fazer parsing — medido em memória E relendo o arquivo do
 disco, com a gravação DESFEITA se o disco não passar; num ARQUIVO de shell ele
 **recusa** com motivo escrito (a cicatriz que ele conhece é uma linha ancorada no
+E o remédio do `--fix` atravessa a MESMA distância no PR:
+`scripts/pr-remedy-comment.mjs` (passo do MESMO job, `always()`) publica o
+**PATCH** do `--fix --dry-run` — o mesmo fixer, uma régua com dois consumidores —
+como **COMENTÁRIO** no PR: copiar o bloco e colar no terminal aplica o remendo
+inteiro. O patch é APLICÁVEL, e isso não é promessa: o teste roda `git apply` de
+verdade e compara o resultado **byte a byte** com o que o `--fix` gravaria em outro
+fixture idêntico. As RECUSAS (heredoc, forma dobrada `run: >`, arquivo de shell,
+shell embutido) entram no MESMO comentário com o motivo de cada uma — um comentário
+que só mostrasse o patch esconderia o que ele não cobre. O comentário é
+**RECONCILIADO**: quando a cicatriz some ele é **RETIRADO sozinho**, em vez de
+ficar aberto mentindo sobre um defeito que já não existe. Sem canal (token
+ausente, PR de fork sem escrita) o passo NÃO falha — vira `::notice::`/`::warning::`
+nomeado, porque o GATE é o veredito e o comentário é um canal a mais —, mas uma
+API que existe e recusa é `::error::` e falha o passo: um canal que existe e não
+publica é pior que a ausência dele.
+O canal é **um módulo com um REGISTRO de fixers** (`FIXERS`, `--fixer <id>`): o
+segundo é o `pipefail-sigpipe`, que publica o patch do `| grep -q` → herestring
+pelo MESMO mecanismo (`--fix --dry-run`, `git apply`, ciclo de reconciliação). Cada
+fixer tem o SEU marcador: os dois remédios convivem no mesmo PR, e a reconciliação
+de um não pode escolher — nem retirar — o comentário do outro. O patch dos dois sai
+da MESMA construção de diff (`scripts/unified-patch.mjs`), com CONTEXTO no hunk — um
+hunk sem contexto é recusado pelo `git apply`, e o comentário prometeria um remendo
+inaplicável em silêncio.
+
 `run: |`) — recusa é veredito (exit 1), não um `✓` que esconde o script.
 
 O MESMO guard roda no pre-commit como RECORTE `--staged` (declarado em

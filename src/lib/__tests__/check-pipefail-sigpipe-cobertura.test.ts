@@ -423,7 +423,11 @@ describe("as leituras que a varredura faz do TEXTO (onde ela varria pela metade)
     const { declarados, violacoesDe } = cenario()
     const p = declarados.find((d) => d.nome === "continuacao-em-bloco")!
     const [v] = violacoesDe(p.rel, p)
-    expect(v.line).toBe(p.run)
+    // `p.run` é a linha da CHAVE `run: |`; num BLOCO o corpo começa na SEGUINTE.
+    // Somar a linha da chave com a linha do corpo errava por um em todo bloco —
+    // o `arquivo:linha` que o gate publica apontava para a linha de cima (é a
+    // linha que o comentário do PR e o relatório do doctor mostram ao operador).
+    expect(v.line).toBe(p.run + 1)
     // A `\` era a tentativa do autor de continuar em shell; o YAML a transforma
     // em `\` + quebra, e mantê-la no remédio gravaria uma barra no meio do
     // conselho (`<<< "$(docker compose ps \)"`) — um `--fix` que quebra o comando.

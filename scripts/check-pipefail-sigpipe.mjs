@@ -102,12 +102,26 @@
 //      caber, e o remédio tira o pipeline;
 //   4. é uso LOCAL (como o `--update`): o PR que aposenta dívida revisa o diff.
 //
+// O MESMO REMÉDIO VAI AO PR (o CANAL)
+//
+// `--fix --dry-run` é a PREVISÃO do remédio: imprime o PATCH exato (unificado, com
+// CONTEXTO em cada hunk — a MESMA construção do outro fixer mecânico,
+// `unified-patch.mjs`) e NÃO grava nada. Ele sai em STDOUT LIMPO, para
+// `… --fix --dry-run | git apply` aplicar: quem aplica o patch do comentário do PR
+// aplica exatamente o que este comando imprimiria (é o MESMO `fixAll`; `dry` decide
+// só não escrever). Nada a remendar = patch vazio, e nada é tocado. O
+// `scripts/pr-remedy-comment.mjs` publica esse patch como comentário no PR
+// (`--fixer pipefail-sigpipe`) e o RECONCILIA: quando a cicatriz some, o comentário
+// é RETIRADO sozinho.
+//
 // Usage:
 //   node scripts/check-pipefail-sigpipe.mjs              # o gate (usa o baseline)
 //   node scripts/check-pipefail-sigpipe.mjs --json       # saída estruturada
 //   node scripts/check-pipefail-sigpipe.mjs --list       # só os arquivos varridos
 //   node scripts/check-pipefail-sigpipe.mjs --no-baseline # tudo é violação
 //   node scripts/check-pipefail-sigpipe.mjs --fix        # aposenta o caso mecânico (LOCAL)
+//   node scripts/check-pipefail-sigpipe.mjs --fix --dry-run       # o PATCH, sem gravar
+//   node scripts/check-pipefail-sigpipe.mjs --fix --dry-run --json # idem, estruturado
 //   node scripts/check-pipefail-sigpipe.mjs --review     # decisão VENCIDA vira violação (cron)
 //   node scripts/check-pipefail-sigpipe.mjs --update --reason "<por quê>"  # declara dívida (LOCAL)
 //   node scripts/check-pipefail-sigpipe.mjs --root X     # fixture (mutation test)
@@ -116,8 +130,11 @@
 //   0 — nenhuma ocorrência NOVA (o baseline pode conter dívida declarada)
 //   1 — ocorrência NOVA (com o remédio por linha), dívida SEM RAZÃO/DATA válida
 //       (fail-closed, nos dois modos), ou decisão VENCIDA em `--review`
-//   2 — infra: --root sem valor / diretório inexistente (fail-closed)
-//   3 — uso inválido (flag desconhecida, `--update` sem `--reason`)
+//   2 — infra: --root sem valor / diretório inexistente (fail-closed); e o
+//       `--fix --dry-run` com arquivo que não abre para montar o patch (não
+//       julgado NÃO vira "nada a remendar" — o arquivo sai NOMEADO)
+//   3 — uso inválido (flag desconhecida, `--update` sem `--reason`, `--dry-run`
+//       sem `--fix`)
 //
 // O exit 2 também cobre o escopo NÃO JULGÁVEL: um `.sh` do repositório ou um
 // workflow de forja que não abre (ou não é UTF-8) sai NOMEADO, e o guard não
@@ -130,6 +147,7 @@ import { dirname, join, resolve, sep } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import { DEFAULT_REVIEW_DAYS, MS_PER_DAY, parseAddedAt } from "./allowlist-review.mjs"
+import { linhasDe, patchPorArquivo } from "./unified-patch.mjs"
 import {
   DYNAMIC_EXPR_RE,
   defaultsBlocks,
@@ -576,8 +594,13 @@ export function fixCommand(command) {
  * também (nenhum arquivo do repositório é CRLF, mas um `--fix` que converte
  * terminador seria uma mudança que ninguém pediu).
  *
+ * Cada entrada de `fixadas` carrega as DUAS formas do remendo: `before`/`after`
+ * (o comando já normalizado, sem indentação — é o que o relatório e o fail-closed
+ * comparam) e `linhasAntes`/`linhaDepois` (as linhas CRUAS do arquivo, com a
+ * indentação — é o que o PATCH precisa para achar o texto e aplicar byte a byte).
+ *
  * @param {string} source
- * @returns {{content: string, fixadas: {line: number, before: string, after: string}[]}}
+ * @returns {{content: string, fixadas: {line: number, before: string, after: string, linhasAntes: string[], linhaDepois: string}[]}}
  */
 export function fixSource(source) {
   const lines = source.split("\n")
@@ -604,12 +627,183 @@ export function fixSource(source) {
     const comando = text.replace(/\r/g, "").trim()
     const novo = fixCommand(comando)
     if (novo !== null) {
-      fixadas.push({ line: i + 1, before: comando, after: novo })
+      // As LINHAS CRUAS do arquivo (com a indentação e sem o CRLF) e a linha
+      // GRAVADA: é o que o patch precisa para achar o texto e para se aplicar
+      // byte a byte — uma reescrita que COMPRIME a continuação tira N linhas e
+      // põe UMA, e um diff montado só com o comando já colapsado não aplicaria.
+      const linhasAntes = []
+      for (let j = i; j <= fim; j++) linhasAntes.push(lines[j].replace(/\r$/, ""))
+      fixadas.push({
+        line: i + 1,
+        before: comando,
+        after: novo,
+        linhasAntes,
+        linhaDepois: `${indent}${novo}`,
+      })
       lines.splice(i, fim - i + 1, `${indent}${novo}${cr}`)
     }
   }
   fixadas.sort((a, b) => a.line - b.line)
   return { content: lines.join("\n"), fixadas }
+}
+
+/**
+ * O remédio do `--fix` decidido UMA vez, para DOIS consumidores: a GRAVAÇÃO (a
+ * CLI) e o PREVIEW (o patch que vai ao PR).
+ *
+ * A decisão é a mesma — arquivo por arquivo, `fixSource`, e o FAIL-CLOSED do
+ * "a reescrita tem de REDUZIR a contagem" —, então a mesma árvore produz o mesmo
+ * veredito nos dois caminhos. Um preview com régua própria prometeria um remendo
+ * que a gravação recusaria, e o defeito seria do tipo que passa: o operador
+ * aplicaria o patch do comentário e o gate continuaria vermelho.
+ *
+ * `dry` decide só se o arquivo é GRAVADO. O que é decidido (o que entra em
+ * `fixed`, o que fica em `refused`) é idêntico nos dois modos.
+ *
+ * O QUE NÃO É REMENDADO sai NOMEADO com o conselho da própria varredura: as
+ * linhas do arquivo que nenhuma reescrita aceita cobre (o produtor vivo, a linha
+ * de continuação que o fixer não colapsa) e os arquivos cuja reescrita não
+ * reduziu. Um comentário que só mostrasse o patch mentiria pelo que omite.
+ *
+ * @param {string} root
+ * @param {{dry?: boolean}} [opts]
+ * @returns {{fixed: object[], refused: {file: string, line: number|null, reason: string}[], recusados: {file: string, motivo: string}[], unread: {path: string, motivo: string}[], indisponivel: string|null}}
+ */
+export function fixAll(root, { dry = false } = {}) {
+  let scan
+  try {
+    scan = scanRoot(root)
+  } catch (e) {
+    return {
+      fixed: [],
+      refused: [],
+      recusados: [],
+      unread: [],
+      indisponivel: e?.message ?? String(e),
+    }
+  }
+  const { violations, ilegiveis, naoLidos } = scan
+  const fixed = []
+  const refused = []
+  const recusados = []
+  for (const [file, antes] of Object.entries(countsByFile(violations))) {
+    let content
+    try {
+      content = readFileSync(join(root, file), "utf8")
+    } catch (e) {
+      // O arquivo entrou na varredura e agora não abre: não é "nada a julgar".
+      recusados.push({ file, motivo: `ilegível na hora do remendo: ${e?.message ?? e}` })
+      continue
+    }
+    const { content: novo, fixadas } = fixSource(content)
+    const depois = fixadas.length === 0 ? antes : findViolations(novo, { pipefail: true }).length
+    const aceitas = fixadas.length > 0 && depois < antes
+    if (!aceitas) {
+      recusados.push({
+        file,
+        motivo:
+          fixadas.length === 0
+            ? "o fixer não propõe reescrita para o que este arquivo tem (produtor vivo ou forma que pede captura à mão)"
+            : `a reescrita não reduziu (${antes}→${depois}) — NÃO gravado`,
+      })
+      for (const v of violations.filter((x) => x.file === file)) {
+        refused.push({ file, line: v.line, reason: v.suggestion ?? "revisão humana" })
+      }
+      continue
+    }
+    if (!dry) writeFileSync(join(root, file), novo)
+    for (const f of fixadas) fixed.push({ file, ...f })
+    // O que NENHUMA reescrita aceita cobre — com a numeração de HOJE (o arquivo
+    // ainda não foi tocado no caminho do preview, e é essa a numeração que quem
+    // lê o PR tem nos olhos).
+    for (const v of violations) {
+      if (v.file !== file) continue
+      const coberto = fixadas.some(
+        (f) => v.line >= f.line && v.line <= f.line + f.linhasAntes.length - 1,
+      )
+      if (!coberto) refused.push({ file, line: v.line, reason: v.suggestion ?? "revisão humana" })
+    }
+  }
+  return {
+    fixed,
+    refused: refused.sort((a, b) => a.file.localeCompare(b.file) || (a.line ?? 0) - (b.line ?? 0)),
+    recusados,
+    unread: [
+      // As duas fontes do NÃO LI: a declaração de `shell:` que o parser não
+      // entendeu e o arquivo que não abriu. Sem elas "nada a remendar" seria uma
+      // afirmação sobre o que a varredura não viu.
+      ...ilegiveis.map((i) => ({
+        path: i.file,
+        motivo: `declaração de \`shell:\` não parseada (linha ${i.line ?? "?"})`,
+      })),
+      ...naoLidos,
+    ],
+    indisponivel: null,
+  }
+}
+
+/**
+ * O patch das reescritas — diff unificado com o número de linhas do ARQUIVO, o
+ * formato que o `git apply` consome.
+ *
+ * `linhasAntes`/`linhaDepois` saem do `fixSource` (os MESMOS bytes que a gravação
+ * escreveria): um diff montado com o comando já colapsado, ou sem a indentação do
+ * arquivo, não acharia o texto.
+ *
+ * A construção (o CONTEXTO de cada hunk, um cabeçalho por arquivo, o
+ * deslocamento acumulado e a fusão de janelas vizinhas) é a do `unified-patch.mjs`
+ * — a MESMA do outro fixer mecânico. Uma cópia local divergiria no dia em que uma
+ * das duas aprendesse a fundir hunks, e o patch do comentário deixaria de aplicar
+ * em SILÊNCIO (era o caso quando o contexto não era emitido: o `git apply` recusa
+ * hunk sem contexto, menos no fim do arquivo).
+ *
+ * @param {object[]} fixed
+ * @param {{root?: string, read?: Function}} [opts]
+ * @returns {string}
+ */
+export function shellPatch(fixed, { root = process.cwd(), read = readFileSync } = {}) {
+  // O `root` é o do gate, NÃO o `cwd` de quem chamou: a CLI é executada da raiz
+  // do repositório e um fixture vive em `--root X` — ler o arquivo relativo ao
+  // `cwd` devolveria "nada a remendar" para um fixture cheio de defeitos.
+  // (E um arquivo que não abre NÃO some: sai em `ilegiveis`.)
+  return patchPorArquivo(fixed, {
+    ler: (file) => linhasDe(read(join(root, file), "utf8")),
+  })
+}
+
+/**
+ * O PATCH do remendo do SIGPIPE — o que o `--fix` GRAVARIA, sem gravar nada.
+ *
+ * Ele é o que o `pr-remedy-comment.mjs` publica no PR (o mesmo módulo, e o mesmo
+ * `fixAll`: um fixer, dois consumidores), e o que a CLI imprime em
+ * `--fix --dry-run`. As recusas vão junto — o patch cobre o caso MECÂNICO, e
+ * publicar só ele esconderia o que não foi remendado nem por quê.
+ *
+ * @param {string} root
+ * @returns {{patch: string, fixed: object[], refused: {file: string, line: number|null, reason: string}[], recusados: {file: string, motivo: string}[], unread: {path: string, motivo: string}[], indisponivel: string|null, shellFailures: object[], embeddedFailures: object[], payloadFailures: object[], yamlInvalido: object[]}} a forma que o publicador consome (`refused` com motivo), com `patch` a mais
+ */
+export function remedyPatch(root) {
+  const r = fixAll(root, { dry: true })
+  const { patch, ilegiveis } = shellPatch(r.fixed, { root })
+  return {
+    ...r,
+    // O publicador é compartilhado com o gate do `bash -n`: as seções que só
+    // existem para as outras fontes de lá saem VAZIAS aqui, em vez de a régua
+    // ser duplicada para caber na forma.
+    shellFailures: [],
+    embeddedFailures: [],
+    payloadFailures: [],
+    // O `yamlInvalido` do outro fixer (um YAML que não parseia) não tem análogo
+    // aqui — este gate varre `.sh` e corpos `run:` já parseados —, mas o SLOT é
+    // declarado: o publicador confere a forma do resultado antes de anunciar que
+    // mediu, e uma chave ausente seria "mediu" sobre um campo que ninguém leu.
+    yamlInvalido: [],
+    patch,
+    // Um arquivo que abriu na varredura e não abre na hora de MONTAR o patch sai
+    // aqui como NÃO LIDO: o patch sairia sem ele, e o publicador anunciaria um
+    // remendo que não cobre o que ele não conseguiu ler.
+    unread: [...r.unread, ...ilegiveis.map((i) => ({ path: i.file, motivo: i.motivo }))],
+  }
 }
 
 /**
@@ -776,6 +970,10 @@ export function workflowRunSteps(content, defaults = workflowDefaultShells(conte
       // corpo, e recomputar o fim do bloco aqui seria uma segunda regra de
       // layout.
       bodyEndLine: passo.bodyEndLine,
+      // A PRIMEIRA linha do CORPO (num bloco `run: |` é a linha seguinte ao
+      // `run:`): quem converte “linha k do corpo” em `arquivo:linha` precisa
+      // dela, e o `line` acima é a da CHAVE. Repassada do parser (uma régua).
+      bodyStartLine: passo.bodyStartLine,
       body: passo.body,
       job: passo.job,
       shell: shellEfetivo,
@@ -993,7 +1191,11 @@ export function scanRoot(root) {
       // passos de hoje é apostar na premissa; varrer os dois contextos é ser
       // dono da pergunta. O `context` separa os TRÊS casos no diagnóstico: a
       // causa e o remédio são os mesmos, a explicação não.
-      const base = step.line - 1
+      // A linha de ARQUIVO da PRIMEIRA linha do corpo: `run: |` começa na linha
+      // SEGUINTE à chave, e usar a linha da chave (como era) errava por um em
+      // todo bloco — o `arquivo:linha` que o gate publica apontava para a linha
+      // de cima (medido: comando na 11, reportado na 10). O inline segue igual.
+      const base = (step.bodyStartLine ?? step.line) - 1
       const contexto = step.pipefail
         ? "pipefail"
         : step.shellFonte === "runner"
@@ -1365,12 +1567,20 @@ function main() {
     "--update",
     "--no-baseline",
     "--fix",
+    "--dry-run",
     "--review",
     "--reason",
   ]
   const desconhecida = argv.find((a) => a.startsWith("--") && !conhecidas.includes(a))
   if (desconhecida) {
     console.error(`❌ flag desconhecida: ${desconhecida}`)
+    process.exit(EXIT.USAGE)
+  }
+  // `--dry-run` é a PREVISÃO do remédio: ele existe para mostrar o que o `--fix`
+  // faria. Sem o `--fix` ele não tem o que prever — tratar isso como uso válido
+  // devolveria o veredito do gate com uma flag que ninguém leu.
+  if (argv.includes("--dry-run") && !argv.includes("--fix")) {
+    console.error("❌ --dry-run só tem efeito com --fix (é a previsão do remédio)")
     process.exit(EXIT.USAGE)
   }
   const rootIdx = argv.indexOf("--root")
@@ -1411,22 +1621,81 @@ function main() {
   // sobre o FONTE, não sobre o veredito; reler a árvore no fim é o que reporta o
   // que sobrou para revisão humana.
   if (argv.includes("--fix")) {
-    const porArquivo = countsByFile(violations)
-    let arquivos = 0
-    let linhas = 0
-    for (const [file, antes] of Object.entries(porArquivo)) {
-      const full = join(root, file)
-      const { content: novo, fixadas } = fixSource(readFileSync(full, "utf8"))
-      if (fixadas.length === 0) continue
-      const depois = findViolations(novo, { pipefail: true }).length
-      if (depois >= antes) {
-        console.log(`ℹ️  ${file}: a reescrita não reduziu (${antes}→${depois}) — NÃO gravado`)
+    const dryRun = argv.includes("--dry-run")
+    const previa = fixAll(root, { dry: dryRun })
+    if (previa.indisponivel) {
+      console.error(`❌ --fix indisponível: ${previa.indisponivel}`)
+      process.exit(EXIT.UNAVAILABLE)
+    }
+    // ── PREVIEW: o patch que a gravação faria, e NADA é gravado ──────────
+    // É o MESMO `fixAll` do caminho de gravação (`dry: true` só decide não
+    // escrever): quem aplica o patch do comentário do PR aplica exatamente o que
+    // este comando imprimiria.
+    if (dryRun) {
+      const { patch, ilegiveis } = shellPatch(previa.fixed, { root })
+      // Um arquivo que não abre na hora de montar o patch não vira "nada a
+      // remendar": o patch sairia sem ele e quem aplicasse o comentário acharia
+      // que cobriu tudo. É exit 2 (não julguei), com o arquivo nomeado.
+      if (ilegiveis.length > 0) {
+        console.error(
+          `❌ --fix --dry-run: não consegui ler para montar o patch: ` +
+            ilegiveis.map((i) => `${i.file} (${i.motivo})`).join(", "),
+        )
+        process.exit(EXIT.UNAVAILABLE)
+      }
+      if (json) {
+        console.log(
+          JSON.stringify(
+            {
+              root,
+              dryRun: true,
+              patch,
+              fixed: previa.fixed.map(({ file, line, before, after }) => ({
+                file,
+                line,
+                before,
+                after,
+              })),
+              refused: previa.refused,
+              recusados: previa.recusados,
+              unread: previa.unread,
+            },
+            null,
+            2,
+          ),
+        )
+        process.exit(EXIT.OK)
+      }
+      if (patch === "") {
+        console.error(
+          "── preview (--fix --dry-run): nada a remendar; NADA foi gravado e nenhum arquivo foi tocado",
+        )
+        for (const r of previa.recusados) console.error(`   ⚠️  ${r.file}: ${r.motivo}`)
+        process.exit(EXIT.OK)
+      }
+      console.error(
+        `── preview (--fix --dry-run): ${previa.fixed.length} linha(s) em ` +
+          `${new Set(previa.fixed.map((f) => f.file)).size} arquivo(s); NADA foi gravado`,
+      )
+      if (previa.refused.length > 0) {
+        console.error(
+          `   ${previa.refused.length} ocorrência(s) NÃO cobertas pelo patch (pedem captura e revisão humana)`,
+        )
+      }
+      process.stdout.write(patch)
+      process.exit(EXIT.OK)
+    }
+    const arquivos = new Set(previa.fixed.map((f) => f.file)).size
+    const linhas = previa.fixed.length
+    for (const [file, n] of Object.entries(countsByFile(violations))) {
+      const recusado = previa.recusados.find((r) => r.file === file)
+      if (recusado) {
+        console.log(`ℹ️  ${file}: ${recusado.motivo}`)
         continue
       }
-      writeFileSync(full, novo)
-      arquivos++
-      linhas += fixadas.length
-      console.log(`✅ ${file}: ${antes}→${depois} ocorrência(s), ${fixadas.length} linha(s)`)
+      console.log(
+        `✅ ${file}: ${n} ocorrência(s) do caso mecânico, ${previa.fixed.filter((f) => f.file === file).length} linha(s)`,
+      )
     }
     console.log(
       `\n--fix: ${linhas} linha(s) reescrita(s) em ${arquivos} arquivo(s) — mesma asserção, sem produtor para levar SIGPIPE.`,
