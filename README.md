@@ -832,6 +832,15 @@ CLASSIFICAÇÃO do `check-forge-parity` também é um job próprio
 podem pular uma forja e com que forma de comando — e por isso diz QUAL regra
 quebrou em vez de ser mais uma linha da matriz.
 
+O `name:` do job `mutation-guards` é **count-free de propósito**: o nome de um
+job é o **CONTEXTO do required check** que o branch protection exige, então um
+número ali faria CADA bump da matriz reescrever o contrato de merge — a proteção
+da forja passaria a exigir um check inexistente e o PR travaria, sem nenhuma
+linha de gate parecer errada. O count vive onde é **diagnóstico** (aqui, no
+summary do job, no comentário e no header do master) e o `check:mutation-count`
+compara todos com o derivado; o `check:required-checks` recusa um `name:` de
+required check que carregue uma contagem.
+
 A MESMA ideia rege o gate de sintaxe do shell do repositório: o job
 `workflow-run-syntax` roda o guard REAL contra o working tree do PR e, no MESMO
 job, `scripts/test-mutation-workflow-run-syntax.sh` prova por MUTAÇÃO que cada

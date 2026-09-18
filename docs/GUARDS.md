@@ -573,6 +573,27 @@ pr-check (um mutation novo sem job = falha).
 
 **Onde roda:** CI (pr-check), local (`bash scripts/test-mutation-guards.sh`).
 
+#### O `name:` do job é o CONTEXTO do required check — o count NÃO mora nele
+
+O nome de um job é o **contexto do status check**, e é esse contexto que o
+branch protection exige (`ci/required-checks.json` →
+`apply-required-checks.mjs`). Enquanto o job `mutation-guards` se chamava
+`Mutation guards master (27 node-pure mutation tests)`, CADA bump da matriz
+reescrevia o contexto protegido: a proteção aplicada na forja passava a exigir
+um check que já não existe, e o PR travava esperando para sempre — bastava
+adicionar um sub-test, sem que nenhuma linha de gate parecesse errada.
+
+A régua agora é o INVERSO: o `name:` é **count-free** e o número é PROIBIDO ali
+(quem cobra é `check-mutation-count`, que também deriva N e confere o count onde
+ele é diagnóstico — summary do job, comentário, header do master e README). Um
+segundo caso real caiu na mesma classe quando a regra passou a existir: o job
+`mutation-coord-update` (required check) dizia
+`..., 5 cenários` — e o contrato coordenado **ganha um cenário por release**, ou
+seja, o contexto protegido mudava a cada release por desenho. Os dois nomes
+perderam o número, e a `check-required-checks` recusa qualquer `name:` de
+required check que carregue uma contagem — `TypeCheck (tsc --noEmit)` continua
+passando, porque o parêntese não é uma contagem.
+
 #### A TESTEMUNHA de uma mutação não é o exit code (09/2026)
 
 Quando a suíte é a testemunha, "o comando saiu ≠ 0" **não** é veredito: o
@@ -3237,6 +3258,25 @@ postados pela API — que é o que o job faria), a forja de produção (o contai
 efêmero e local) e o resto do branch protection (reviews obrigatórios, push
 restrito). Um `violated` é acionável: ou a forja não bloqueia, ou o applier
 regrediu — nos dois casos, não confie o merge à forja.
+
+**O CONTEXTO tem de ser ESTÁVEL, e isso é guardado antes do merge.** Um required
+check é identificado pelo `name:` do job; um nome que carrega uma **contagem**
+("(27 node-pure mutation tests)", ", 5 cenários", "(40 guards)") faz o
+**contrato de merge** mudar quando o número muda — e neste repositório esses
+números são derivados e crescem. O modo de falha é o pior desta família: a
+proteção da forja passa a exigir um check que não existe e o PR trava para
+sempre, sem nenhuma linha de workflow parecer errada (o defeito está no NOME, não
+no gate). Por isso `contagemNoContexto`/`validateManifest` do
+`check-required-checks` recusam o padrão no manifesto, e a proteção aplicada na
+forja é lida por `apply-required-checks --check` para que a divergência apareça
+como **issue** de drift em vez de esperar por alguém.
+
+Dois nomes reais carregavam contagem e foram corrigidos por essa regra:
+`mutation-guards` (`Mutation guards master (27 …)` → `Mutation guards master`) e
+`mutation-coord-update` (`… doc↔anchor↔código, 5 cenários` →
+`… doc↔anchor↔código`). O count continua onde é DIAGNÓSTICO — summary do job,
+comentário, header do master, README e o nome do STEP do contrato coordenado,
+que não é contexto de required check.
 
 **Onde roda:** manual/operador (`bun run merge-gate:prove`), no host com docker —
 antes de confiar o merge à forja e em toda mudança do applier ou do manifesto.
