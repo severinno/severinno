@@ -122,6 +122,11 @@ export const HOOK_DECLARED = [
     why: "recorte --staged: o contrato e do repo, mas a violacao tem de estar no COMMIT para bloquea-lo. O comando inteiro roda no reusable utf8-check.yml.",
   },
   {
+    match: /^node scripts\/check-required-checks\.mjs --staged$/,
+    of: "required-checks",
+    why: "recorte --staged: o veredito e o MESMO do CI (o mesmo script, sem flag), lido do INDICE (`git show :path`) e so quando o commit toca o contrato de merge — o manifesto, a declaracao da reaplicacao ou um workflow; nos outros commits ele sai 0 com um aviso, e o custo e um `git diff --cached --name-only` (~30ms). O alcance da comparacao e o repo inteiro nos dois casos (a relacao workflow <-> declaracao e global, e um contexto orfao na declaracao nao tem pedaco para recortar): o recorte e da RELEVANCIA do commit, nao do escopo da comparacao.",
+  },
+  {
     match: /^node scripts\/check-workflow-run-syntax\.mjs --staged$/,
     of: "workflow-run-syntax",
     why: "recorte --staged: julga o INDICE (com o CONTEUDO do commit, via `git show :path`), nao a arvore de trabalho — os workflows, os scripts de shell E o shell embutido (o `RUN` de um Dockerfile e o payload de um `sh -c`) que o commit carrega. O corpo quebrado nasce de uma reescrita mecanica em massa ANTES do commit e e o commit que o carrega; a arvore pode ter WIP que nao faz parte dele. O CI roda o comando inteiro sobre o conteudo mergeado (482 corpos, 124 scripts e 33 textos embutidos das duas forjas) — a diferenca e de ESCOPO, e o instrumento (o mesmo script) e o do CI.",
@@ -224,8 +229,8 @@ export const HOOK_NOT_RUN = [
     why: "mede a pipeline INTEIRA (o grafo de `needs:` + o modelo de duracao), nao o commit: um commit que nao toca a pipeline nem o modelo nao muda o veredito — e nao existe recorte dele, porque o `--check` le os dois arquivos fixos de qualquer jeito. Quem muda o veredito e exatamente o commit de CI/pipeline, e esse o hook ja cobre pelo gate de paridade de gates.",
   },
   {
-    ids: ["required-checks", "workflow-refs"],
-    why: "relacao entre WORKFLOWS e scripts/package.json (referencia pendurada, check exigido inexistente): so um commit de CI a muda — e nesse caso o hook ja roda o check de PARIDADE DE GATES, que e o gate que pega o efeito.",
+    ids: ["workflow-refs"],
+    why: "relacao entre WORKFLOWS e scripts/package.json (referencia pendurada): so um commit de CI a muda — e nesse caso o hook ja roda o check de PARIDADE DE GATES, que e o gate que pega o efeito.",
   },
   {
     ids: [

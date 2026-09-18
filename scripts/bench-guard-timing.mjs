@@ -1009,9 +1009,10 @@ export const OFERTA_INICIO = 'if [ "$SINTAXE" -ne 0 ] || [ "$FASE_B" -ne 0 ]; th
 export const OFERTA_FIM = "# ── Phase C: Sequential checks"
 
 /** As âncoras da espera do gate de sintaxe: SEPARADA (hoje) × agregada. */
-export const WAIT_SEPARADO = "wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING || FASE_A=$?"
+export const WAIT_SEPARADO =
+  "wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS || FASE_A=$?"
 export const WAIT_AGREGADO =
-  "wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_RUNSYNTAX || FASE_A=$?"
+  "wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS $PID_RUNSYNTAX || FASE_A=$?"
 export const ESPERA_SINTAXE = 'SINTAXE=0\nwait "$PID_RUNSYNTAX" || SINTAXE=$?'
 export const ESPERA_AGREGADA = "SINTAXE=$FASE_A"
 

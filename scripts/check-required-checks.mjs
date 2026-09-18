@@ -59,19 +59,46 @@
 // `src/lib/__tests__/required-checks-manifest.test.ts`, que compara o
 // resultado com o do parser real nas MESMAS duas workflows.
 //
+// O VEREDITO LOCAL (pre-commit) É O MESMO, LIDO DO ÍNDICE. O rename que este
+// guard pega no PR era invisível no hook: `required-checks` não rodava ali (e a
+// justificativa escrita em `HOOK_NOT_RUN` — "o hook já roda a paridade de gates,
+// que pega o efeito" — é FALSA para o rename: a classificação de um gate é pelo
+// job/comando, e renomear o `name:` não muda classificação nenhuma). O efeito
+// do rename é no CONTEXTO exigido pela forja, e é medido AQUI. Por isso o hook
+// roda `--staged`: um rename commitado deixava de esperar pelo CI (e, num PR
+// cuja base não é `main`, pelo cron semanal).
+//
 // Usage:
 //   node scripts/check-required-checks.mjs            # repo atual (default)
+//   node scripts/check-required-checks.mjs --staged    # só o ÍNDICE, e só se o
+//                                                      # commit toca o contrato
 //   node scripts/check-required-checks.mjs --root X   # fixture (mutation test)
 // Exit codes:
 //   0 — manifesto consistente com os workflows (pass)
 //   1 — divergência encontrada (fail)
-//   2 — uso inválido (flag desconhecida)
+//   2 — uso inválido (flag desconhecida) OU o ÍNDICE não pôde ser lido
+//       (`--staged`: um recorte que não conseguiu ler o índice NÃO é "nada a
+//       julgar" — a mesma escala da família)
 // =============================================================================
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 import process from "node:process"
 import { fileURLToPath, pathToFileURL } from "node:url"
+
+// ── O `git` DAQUI É LOCAL, E ISSO É O PRECO DECLARADO ───────────────────────
+//
+// `check-workflow-run-syntax.mjs` (e `forge-workflows.mjs`) já têm o par
+// `stagedPaths`/`readIndexFile`, e importá-lo seria a "implementação única". Não
+// dá: os dois módulos carregam `js-yaml` NO GRAFO (o parser real, ainda que
+// tardio), e este script roda em jobs que NÃO instalam `node_modules` — o
+// `workflow-refs-guard` (GitHub) e o `guards` (Gitea), os dois required checks —
+// e no cron de drift. Foi MEDIDO: o import trocou três linhas de duplicação por
+// um veredito que depende do caminho, e o `check:job-deps` reprovou os dois crons
+// (`js-yaml — import TARDIO`). A duplicação aqui é de PLUMBING (três linhas de
+// `spawnSync`), não de régua — `check-unused-deps.mjs` já faz o mesmo, pelo mesmo
+// motivo —, e o preço fica escrito.
+import { spawnSync } from "node:child_process"
 
 export const MANIFEST_PATH = "ci/required-checks.json"
 
@@ -635,6 +662,95 @@ export function defaultIo(root) {
   }
 }
 
+/**
+ * O `git` deste script — a única linha de PLUMBING que a restrição de
+ * dependências não deixa compartilhar com o `--staged` do
+ * `check-workflow-run-syntax` (ver o preâmbulo do import).
+ *
+ * @param {string} root
+ * @param {string[]} args
+ * @returns {ReturnType<typeof spawnSync>}
+ */
+export function runGit(root, args) {
+  return spawnSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 })
+}
+
+/**
+ * Os caminhos com conteúdo no ÍNDICE, em ordem — a lista crua do `--staged`.
+ *
+ * `--diff-filter=ACMR`: um arquivo DELETADO não tem corpo a julgar. LANÇA quando
+ * o git não responde (fora de repositório, git ausente, índice ilegível): o
+ * caller transforma em exit 2, porque um recorte que não conseguiu ler o índice
+ * NÃO é "nada a julgar".
+ *
+ * @param {string} root
+ * @returns {string[]}
+ */
+export function stagedPaths(root) {
+  const r = runGit(root, ["diff", "--cached", "--name-only", "--diff-filter=ACMR"])
+  if (r.error || r.status !== 0) {
+    const detalhe = String(r.stderr ?? "")
+      .split("\n")[0]
+      .trim()
+    throw new Error(
+      `git diff --cached indisponível (${r.error?.message ?? detalhe ?? `exit ${r.status}`})`,
+    )
+  }
+  return String(r.stdout ?? "")
+    .split(/\r?\n/)
+    .filter((p) => p !== "")
+    .sort()
+}
+
+/**
+ * O leitor do ÍNDICE — o mesmo contrato do `defaultIo`, mas o conteúdo vem do
+ * que o COMMIT vai gravar (`git show :path`), não da árvore de trabalho.
+ *
+ * A diferença é a razão de o recorte existir: um rename só na árvore NÃO é
+ * deste commit, e um rename já corrigido na árvore mas ainda no índice É (é ele
+ * que vai para o merge). Um caminho que o índice não tem (o arquivo foi
+ * removido neste commit) devolve `null` — "ausente", igual ao `defaultIo`.
+ *
+ * @param {string} root
+ * @returns {{readFile: (p: string) => string|null}}
+ */
+export function indexIo(root) {
+  return {
+    readFile: (relativePath) => {
+      const r = runGit(root, ["show", `:${relativePath}`])
+      if (r.error || r.status !== 0) return null
+      return String(r.stdout ?? "")
+    },
+  }
+}
+
+/**
+ * Os caminhos que fazem o veredito do contrato de merge ser RELEVANTE para este
+ * commit: o manifesto, a declaração da reaplicação e — DELIBERADAMENTE AMPLO —
+ * qualquer YAML.
+ *
+ * O RECORTE É DA RELEVÂNCIA, NÃO DO ESCOPO: a comparação continua sendo do repo
+ * inteiro nos dois casos (a relação workflow ↔ declaração é global — um contexto
+ * órfão na declaração não tem "pedaço" para recortar). O que o recorte evita é
+ * rodar a comparação num commit que não pode mudá-la: aí o pre-commit gasta um
+ * `git diff --cached --name-only` e mais nada.
+ *
+ * POR QUE QUALQUER YAML, e não o predicado de workflow da fonte única: o
+ * predicado mora em `forge-workflows.mjs`, que carrega `js-yaml` no grafo, e este
+ * script roda em jobs que não instalam `node_modules` (ver o preâmbulo do
+ * import). Cravar o diretório de forja aqui seria a violação que o
+ * `check-forge-workflow-scope` existe para reprovar. E AMPLO é o lado seguro de
+ * errar: um YAML a mais só faz o guard rodar num commit onde ele não precisava
+ * (~30ms) — nunca um commit a menos. A alternativa (estreitar por conta própria)
+ * é a que criaria uma segunda régua do que é um workflow.
+ *
+ * @param {string[]} staged caminhos do ÍNDICE (`stagedPaths`)
+ * @returns {string[]}
+ */
+export function stagedContractPaths(staged) {
+  return staged.filter((p) => p === MANIFEST_PATH || p === APPLIED_PATH || /\.ya?ml$/i.test(p))
+}
+
 export function loadManifest(root, io) {
   const raw = io.readFile(MANIFEST_PATH)
   if (raw === null) throw new Error(`${MANIFEST_PATH} não encontrado`)
@@ -645,17 +761,48 @@ function main() {
   // `--root X` existe para o mutation test: o guard julgava só a árvore real e a
   // regra do contexto (abaixo) não tinha como ser provada por EXECUÇÃO contra um
   // fixture — mesma convenção do check-mutation-count. Sem flag, o root é o repo.
+  // `--staged` é o recorte do pre-commit: mesmo veredito, lido do ÍNDICE.
   const argv = process.argv.slice(2)
   let root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
+  let staged = false
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--root") {
       root = resolve(argv[++i] ?? "")
+    } else if (argv[i] === "--staged") {
+      staged = true
     } else {
-      console.error(`flag desconhecida: ${argv[i]} (use --root X)`)
+      console.error(`flag desconhecida: ${argv[i]} (use --root X ou --staged)`)
       process.exit(2)
     }
   }
-  const io = defaultIo(root)
+
+  let io = defaultIo(root)
+  if (staged) {
+    // O ÍNDICE ILEGÍVEL NÃO É "nada a julgar": fora de um repositório, git
+    // ausente ou índice corrompido não podem passar por "o commit não toca o
+    // contrato" — o remédio de cada um é outro, e dizer o primeiro faria o
+    // commit seguir achando que foi medido.
+    let noIndice
+    try {
+      noIndice = stagedPaths(root)
+    } catch (error) {
+      console.error(`❌ --staged: ${error.message}`)
+      process.exit(2)
+    }
+    const relevantes = stagedContractPaths(noIndice)
+    if (relevantes.length === 0) {
+      console.log(
+        `✅ --staged: nada no índice que mude o contrato de merge (${noIndice.length} arquivo(s) staged) — ` +
+          `o veredito completo é do CI (este commit não pode alterar um contexto exigido pela forja).`,
+      )
+      process.exit(0)
+    }
+    io = indexIo(root)
+    console.log(
+      `ℹ️  --staged: julgando o CONTRATO DE MERGE do índice (o que o commit grava) — ` +
+        `${relevantes.length} arquivo(s) do alcance foram tocados: ${relevantes.join(", ")}`,
+    )
+  }
 
   let manifest
   try {
@@ -694,7 +841,11 @@ function main() {
     process.exit(1)
   }
 
-  console.log(`✅ Required checks consistentes com os workflows:`)
+  console.log(
+    `✅ Required checks consistentes com os workflows` +
+      (staged ? ` (recorte --staged: o CONTEÚDO DO ÍNDICE, não a árvore)` : ``) +
+      `:`,
+  )
   for (const [forge, data] of Object.entries(resolved)) {
     console.log(`   ${forge} (${data.workflow}) — branch: ${data.branches.join(", ")}`)
     for (const { context } of data.contexts) console.log(`     • ${context}`)

@@ -48,6 +48,22 @@ PID_DEPS=$!
 node scripts/check-mutation-timing-contract.mjs --staged &
 PID_TIMING=$!
 
+# O CONTRATO DE MERGE do commit — RECORTE --staged, declarado em HOOK_DECLARED do
+# check-hook-ci-parity. Ele roda SO quando o INDICE toca o manifesto, a declaracao
+# da reaplicacao ou um workflow (nos outros commits sao um `git diff --cached
+# --name-only` e um aviso, ~30ms).
+#
+# POR QUE ELE ESTA AQUI: renomear o `name:` de um required check MUDA o contexto
+# que a forja exige, e a forja continua exigindo o ANTIGO — o PR passa a esperar
+# para sempre por um check que nunca mais roda. Esse rename era invisivel no
+# hook: `required-checks` estava em HOOK_NOT_RUN com a justificativa de que a
+# paridade de gates pegaria o efeito, e ela NAO pega (a classificacao de um gate
+# e pelo job/comando; renomear o `name:` nao muda classificacao nenhuma). Sem
+# este guard o commit saia daqui e a divergencia so aparecia no CI — ou, num PR
+# cuja base nao e `main`, no cron semanal.
+node scripts/check-required-checks.mjs --staged &
+PID_REQCHECKS=$!
+
 # Sintaxe dos corpos `run:` — RECORTE --staged, declarado em HOOK_DECLARED do
 # check-hook-ci-parity: julga os workflows do INDICE, lendo o conteudo do
 # commit (`git show :path`), nao o working tree. O corpo quebrado nasce de uma
@@ -57,7 +73,7 @@ PID_TIMING=$!
 node scripts/check-workflow-run-syntax.mjs --staged &
 PID_RUNSYNTAX=$!
 
-# Aguarda os QUATRO SEM REMEDIO e agrega os status deles (wait_all — topo).
+# Aguarda os CINCO SEM REMEDIO e agrega os status deles (wait_all — topo).
 #
 # O de sintaxe fica FORA desta lista de proposito: o `wait_all` devolve o PRIMEIRO
 # status nao-zero, entao ele diz QUE a fase falhou, nao QUAL guard falhou — e o de
@@ -67,12 +83,12 @@ PID_RUNSYNTAX=$!
 # rodariam — a agregacao continuaria sendo a mesma, mas o codigo abaixo dela
 # mentiria sobre o que mede.
 FASE_A=0
-wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING || FASE_A=$?
+wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS || FASE_A=$?
 
 SINTAXE=0
 wait "$PID_RUNSYNTAX" || SINTAXE=$?
 
-# A falha dos quatro SEM REMEDIO bloqueia o commit AQUI, antes da fase B: nenhuma
+# A falha dos cinco SEM REMEDIO bloqueia o commit AQUI, antes da fase B: nenhuma
 # das classes que o remedio conhece toca esses guards, e rodar a fase B inteira
 # (~3s) para depois nao ter o que oferecer seria pagar o custo do remedio sem o
 # remedio. O veredito e o mesmo de antes, agora dito em vez de deixado para o

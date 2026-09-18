@@ -705,7 +705,35 @@ Três decisões que o desenho tomou, e por quê:
   ter): declarar sem aplicar não fecha o ciclo — quem fecha é o `--check`, com
   token, e a divergência vira issue.
 
-**A prova:** `src/lib/__tests__/required-checks-applied.test.ts` mede as três
+**E o HOOK LOCAL passou a cobrar o mesmo (`--staged`).** O rename era invisível
+no commit: `required-checks` estava em `HOOK_NOT_RUN` com a justificativa de que
+"o hook já roda a paridade de gates, que pega o efeito" — e ela é **falsa para o
+rename**. A paridade (`check:forge-parity`) julga a CLASSIFICAÇÃO de um gate
+(CORE/GITHUB_ONLY, a régua do comando), e renomear o `name:` não muda
+classificação nenhuma: o efeito é no CONTEXTO que a forja exige, e quem o mede é
+este guard. Sem o recorte, o commit saía do hook e a divergência só aparecia no
+CI — ou, num PR cuja base não é `main` (o filtro de `branches` das pipelines),
+**no cron semanal**, que é exatamente o que não podia continuar acontecendo.
+
+O modo `--staged` julga o **ÍNDICE** (`git show :path` — o que o commit vai
+gravar, não a árvore: um rename corrigido na árvore e ainda no índice É deste
+commit; um rename só na árvore NÃO é) e roda **só quando o commit toca o
+contrato**: o manifesto, a declaração ou qualquer YAML (o alcance da comparação é
+o repo inteiro nos dois casos — o recorte é da RELEVÂNCIA do commit, não do
+escopo; e "qualquer YAML" é deliberadamente amplo, porque o predicado de workflow
+da fonte única mora num módulo que carrega `js-yaml` no grafo e este script roda
+em jobs que **não instalam** `node_modules` — medido: o import reprovava os dois
+crons de drift no `check:job-deps`). Nos outros commits: um
+`git diff --cached --name-only` e um aviso, ~30ms. Índice ilegível (fora de um
+repositório) é **exit 2**, nunca "nada a julgar".
+
+**A prova:** `src/lib/__tests__/required-checks-staged-cli.test.ts` prova o
+recorte contra um git de VERDADE: rename staged sem a declaração fica vermelho
+(nomeando o job, o contexto novo e o órfão), o mesmo rename com a declaração
+reaplicada junto passa, o veredito LÊ O ÍNDICE (com o índice carregando o rename
+e a árvore revertida ele ainda reprova; com o rename só na árvore, passa) e o
+índice ilegível é exit 2. E
+`src/lib/__tests__/required-checks-applied.test.ts` mede as três
 direções do rename por EXECUÇÃO da CLI (`--root` num repositório temporário):
 em sincronia passa, sem a declaração o PR fica vermelho nomeando `job "lint"` e
 os dois contextos, e a MESMA mudança com a declaração reaplicada passa — mais o
@@ -715,12 +743,16 @@ a proteção em sincronia, para o cenário do count continuar com UMA causa de
 vermelho.
 
 **A prova por MUTAÇÃO:** `scripts/test-mutation-required-checks-applied.sh` (o
-29º sub-test do master) muta as SEIS metades que sustentam esse veredito — as
+29º sub-test do master) muta as OITO metades que sustentam esse veredito — as
 duas réguas da comparação (a do contexto derivado e a do órfão), o fio que as
 julga em `main()`, o fail-closed do carregamento, o ALVO do `--forge` e o CARIMBO
-sem churn — e exige a suíte VERMELHA **pela âncora de cada metade**, com as
-OUTRAS metades seguindo verdes: é isso que separa "esta régua morreu" de "a
-suíte explodiu inteira". Cada mutação é cirúrgica (uma ocorrência, checksum
+sem churn, mais as duas do veredito LOCAL: a FONTE dele é o ÍNDICE (mutado para
+ler a árvore, o fato do índice cai) e o fail-closed do índice (mutado para
+devolver lista vazia, "não consegui ler" vira "nada a julgar" e o fato do índice
+ilegível cai) — cada uma com a testemunha certa (as duas últimas rodam o
+`required-checks-staged-cli.test.ts`) e exigindo a suíte VERMELHA **pela âncora
+de cada metade**, com as OUTRAS metades seguindo verdes: é isso que separa "esta
+régua morreu" de "a suíte explodiu inteira". Cada mutação é cirúrgica (uma ocorrência, checksum
 conferido) e a árvore é restaurada no mesmo trap; sem `vitest` o ensaio se declara
 NÃO JULGÁVEL em vez de sair verde.
 

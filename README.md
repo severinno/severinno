@@ -810,6 +810,7 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 | Contrato mutation-coord (`check-mutation-timing-contract.mjs`)                  |     ✅     |      ✅       |
 | Contrato mutation-coord staged (`check-mutation-timing-contract.mjs --staged`)  |     ✅     |       —       |
 | Sintaxe shell staged diff (`check-workflow-run-syntax.mjs --staged`)            |     ✅     |       —       |
+| Contrato de merge staged (`check-required-checks.mjs --staged`)                 |     ✅     |       —       |
 | Remédio do commit (`pre-commit-remedy.mjs`, classes derivadas, com confirmação) |     ✅     |       —       |
 | Format + lint (lint-staged: prettier + eslint --fix)                            |     ✅     |       —       |
 | Imports diretos (check:direct-rtl-import + barrel-lint)                         |     ✅     |       —       |

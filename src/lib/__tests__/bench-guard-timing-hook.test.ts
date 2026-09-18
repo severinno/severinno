@@ -145,19 +145,28 @@ describe("bench-guard-timing — os contrafactuais do hook", () => {
     // pelo mesmo `wait_all` da fase A.
     expect(agr).not.toContain(ESPERA_SINTAXE)
     expect(agr).toContain(ESPERA_AGREGADA)
-    // O conjunto aguardado é o MESMO: os quatro da fase A mais o de sintaxe (que
+    // O conjunto aguardado é o MESMO: os cinco da fase A mais o de sintaxe (que
     // antes era aguardado na linha de baixo). É isso que faz o delta medir a
     // ESTRUTURA da espera, e não outro trabalho.
     expect(
       linhaDoWait(agr)
         .match(/\$PID_[A-Z]+/g)
         ?.sort(),
-    ).toEqual(["$PID_BUN", "$PID_DEPS", "$PID_MUT", "$PID_RUNSYNTAX", "$PID_TIMING"].sort())
+    ).toEqual(
+      [
+        "$PID_BUN",
+        "$PID_DEPS",
+        "$PID_MUT",
+        "$PID_REQCHECKS",
+        "$PID_RUNSYNTAX",
+        "$PID_TIMING",
+      ].sort(),
+    )
     expect(
       linhaDoWait(hook)
         .match(/\$PID_[A-Z]+/g)
         ?.sort(),
-    ).toEqual(["$PID_BUN", "$PID_DEPS", "$PID_MUT", "$PID_TIMING"].sort())
+    ).toEqual(["$PID_BUN", "$PID_DEPS", "$PID_MUT", "$PID_REQCHECKS", "$PID_TIMING"].sort())
     // Fora das duas âncoras, as duas formas são byte a byte o mesmo hook: uma
     // causa por delta.
     const normalizado = (texto: string) =>

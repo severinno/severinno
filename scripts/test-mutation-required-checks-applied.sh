@@ -8,7 +8,7 @@
 #   ./scripts/test-mutation-required-checks-applied.sh
 #
 # Exit codes:
-#   0 — as SEIS mutações foram DETECTADAS pela suíte (e os controles passaram) ✅
+#   0 — as OITO mutações foram DETECTADAS pela suíte (e os controles passaram) ✅
 #       — ou a testemunha se declarou NÃO JULGÁVEL (sem `vitest`), dito em voz
 #       alta
 #   1 — suíte CEGA (verde com a mutação) / vermelha pelo motivo errado / controle
@@ -48,6 +48,19 @@
 #        arquivo em todo `--apply` ⇒ um diff em cada rodada, que o operador aprende
 #        a ignorar (um arquivo ignorado não declara nada).
 #
+# E as DUAS metades do veredito LOCAL (`--staged`, o recorte do pre-commit), que
+# têm testemunha própria (`required-checks-staged-cli.test.ts` — repositório git
+# temporário + a CLI de verdade):
+#
+#   M7 — a FONTE do veredito local é o ÍNDICE (`indexIo` ⇒ `git show :path`).
+#        Mutação: ler a ÁRVORE de trabalho ⇒ o commit passa a ser julgado por um
+#        conteúdo que NÃO é o dele — o rename corrigido na árvore e ainda no
+#        índice (o que vai para o merge) deixaria de ser visto.
+#   M8 — o FAIL-CLOSED do índice: `stagedPaths` estoura quando o git não responde
+#        (fora de repositório). Mutação: devolver a lista vazia ⇒ "não consegui
+#        ler o índice" passa a ser "nada a julgar", e TODO commit sai verde do
+#        hook — inclusive o rename.
+#
 # A TESTEMUNHA é `src/lib/__tests__/required-checks-applied.test.ts`, que monta
 # repositórios temporários e roda a CLI de verdade (`--root`): quem julga é o
 # processo que o CI executa, e não uma segunda implementação do julgamento. A
@@ -78,8 +91,9 @@
 #
 # Pipeline:
 #   1. CONTROLE (a testemunha existe e mede): suíte VERDE sem mutação
-#   2. M1..M6: cada mutação ⇒ suíte VERMELHA pelas âncoras da metade mutada, com
-#      as outras metades VERDES
+#   2.  M1..M8: cada mutação ⇒ suíte VERMELHA pelas âncoras da metade mutada, com
+#      as outras metades VERDES (M1..M6 na testemunha da metade APLICADA, M7/M8
+#      na do veredito LOCAL `--staged`)
 #   3. CONTROLE FINAL: restaurados os dois arquivos (checksum conferido), a suíte
 #      volta a ser VERDE — a árvore ficou como estava
 #   4. Cleanup (trap EXIT — restaura os fontes e remove o temp, mesmo com falha)
@@ -97,6 +111,10 @@ GUARD="$SCRIPT_DIR/scripts/check-required-checks.mjs"
 APPLIER="$SCRIPT_DIR/scripts/apply-required-checks.mjs"
 # A testemunha: repositórios temporários + a CLI de verdade.
 SUITE_ARQUIVO="src/lib/__tests__/required-checks-applied.test.ts"
+# A testemunha do VEREDITO LOCAL (`--staged`): repositório git de verdade + CLI.
+SUITE_ESTAGIADO="src/lib/__tests__/required-checks-staged-cli.test.ts"
+# Qual delas esta mutação julga (trocada nos cenários M7/M8).
+WITNESS="$SUITE_ARQUIVO"
 
 # ── As âncoras (títulos dos testes, como o vitest os reporta) ─────────────
 # A metade do RENAME: é AQUI que a mudança de contexto sem reaplicação morre.
@@ -110,6 +128,19 @@ ANCORA_SEM_ARQUIVO="sem o arquivo, o guard falha com o remédio"
 # O applier: a declaração é do alvo, e o carimbo não gera churn.
 ANCORA_FORA_DO_ALVO="uma forja FORA do alvo mantém a declaração anterior"
 ANCORA_SEM_CHURN="um apply SEM mudança de contexto não reescreve o arquivo"
+
+# ── As âncoras do VEREDITO LOCAL (`--staged`) ─────────────────────────────
+# O rename STAGED sem a declaração: é AQUI que o commit morre no hook.
+ANCORA_STAGED_RENAME="o rename STAGED sem a declaração da reaplicação REPROVA o commit"
+# O rename com a declaração reaplicada junto: o fluxo que tem de passar.
+ANCORA_STAGED_PASSA="o MESMO rename com a declaração reaplicada junto PASSA"
+# A FONTE: o índice é o commit; a árvore não é.
+ANCORA_STAGED_INDICE="LÊ O ÍNDICE"
+ANCORA_STAGED_SO_ARVORE="rename só na ÁRVORE"
+# O fail-closed: índice ilegível não é "nada a julgar".
+ANCORA_STAGED_ILEGIVEL="índice ILEGÍVEL é exit 2"
+# O recorte: um commit que não toca o contrato não roda o guard.
+ANCORA_STAGED_RECORTE="nada staged"
 
 TMP_DIR="$(mktemp -d)"
 
@@ -186,7 +217,7 @@ mostrar_suite() { sed 's/^/      /' "$SUITE_SAIDA" | tail -14; }
 rodar_suite() {
   SUITE_SAIDA="$TMP_DIR/suite.txt"
   set +e
-  (cd "$SCRIPT_DIR" && NO_COLOR=1 bun x vitest run --config vitest.config.unit.ts "$SUITE_ARQUIVO") \
+  (cd "$SCRIPT_DIR" && NO_COLOR=1 bun x vitest run --config vitest.config.unit.ts "$WITNESS") \
     > "$TMP_DIR/suite.bruto" 2>&1
   SUITE_EXIT=$?
   set -e
@@ -332,7 +363,50 @@ mutar_arquivo "$GUARD" '  const mudou =
 exigir_vermelho "M6" "$ANCORA_SEM_CHURN" "$ANCORA_RENAME"
 restaurar_originais
 
+# ── M7: a FONTE do veredito local — o ÍNDICE, não a árvore ────────────────
+# O `indexIo` deixa de ler `git show :path` e passa a ler o arquivo da árvore: o
+# commit volta a ser julgado por um conteúdo que NÃO é o dele. As DUAS direções
+# caem juntas, e é isso que prova a fonte: o rename que está SÓ no índice deixa
+# de ser visto, e o que está SÓ na árvore passa a ser acusado.
+WITNESS="$SUITE_ESTAGIADO"
+header "CONTROLE (--staged): a testemunha do veredito local existe e MEDE"
+exigir_suite_verde "CONTROLE (--staged)"
+
+header "M7 (a FONTE): o veredito local passa a ler a ÁRVORE em vez do ÍNDICE"
+mutar_arquivo "$GUARD" '    readFile: (relativePath) => {
+      const r = runGit(root, ["show", `:${relativePath}`])' \
+  '    readFile: (relativePath) => {
+      return existsSync(join(root, relativePath)) ? readFileSync(join(root, relativePath), "utf8") : null // MUTACAO M7: a ARVORE
+      const r = runGit(root, ["show", `:${relativePath}`])' "$guard_sum"
+# Cai a metade do ÍNDICE (o commit julgado por um conteúdo que não é o dele). O
+# fato do rename STAGED segue verde de propósito: ele casa pela lista do índice,
+# que existe nos dois modos — quem separa as fontes é o fato do índice. E o do
+# "rename só na ÁRVORE" segue verde porque o RECORTE o descarta antes da leitura
+# (índice limpo = nada a julgar): é a outra metade da mesma lei.
+exigir_vermelho "M7" "$ANCORA_STAGED_INDICE" "$ANCORA_STAGED_RENAME|$ANCORA_STAGED_SO_ARVORE|$ANCORA_STAGED_RECORTE"
+restaurar_originais
+
+# ── M8: o FAIL-CLOSED do índice ──────────────────────────────────────────
+# `stagedPaths` estoura quando o git não responde (fora de repositório, git
+# ausente, índice ilegível) e o CLI transforma isso em exit 2. Mutado para
+# devolver a lista vazia, "não consegui ler o índice" vira "nada a julgar" — o
+# verde por acidente desta classe, e TODO commit sai verde do hook, inclusive o
+# do rename.
+header "M8 (fail-closed do índice): o git que não responde passa a ser 'nada a julgar'"
+mutar_arquivo "$GUARD" '  if (r.error || r.status !== 0) {
+    const detalhe = String(r.stderr ?? "")' \
+  '  if (false) { // MUTACAO M8: fail-open do índice
+    const detalhe = String(r.stderr ?? "")' "$guard_sum"
+# Cai SÓ o fato do índice ilegível, e isso é a medida exata desta metade: com o
+# git funcionando, `stagedPaths` devolve a mesma lista com ou sem o estouro — o
+# que a mutação muda é o caso de FALHA (sem repositório), que passa de "não
+# consegui ler" (2) para "nada a julgar" (0). As outras metades seguem verdes,
+# incluindo o rename staged: o que se mediu foi o fail-closed, não o recorte.
+exigir_vermelho "M8" "$ANCORA_STAGED_ILEGIVEL" "$ANCORA_STAGED_RENAME|$ANCORA_STAGED_INDICE|$ANCORA_STAGED_PASSA|$ANCORA_STAGED_SO_ARVORE|$ANCORA_STAGED_RECORTE"
+restaurar_originais
+
 # ── CONTROLE FINAL: a árvore ficou como estava ────────────────────────────
+WITNESS="$SUITE_ARQUIVO"
 header "CONTROLE FINAL: restauradas as fontes, a suíte volta a ser VERDE"
 exigir_suite_verde "CONTROLE FINAL"
 
@@ -340,9 +414,11 @@ header "VEREDITO"
 pass "MUTATION TEST PASSED — a metade APLICADA do contrato de required checks é"
 pass "load-bearing: renomear o \`name:\` de um required check (ou pôr/tirar um job"
 pass "da lista) sem a reaplicação DECLARADA deixa o PR VERMELHO nomeando o job e"
-pass "os dois contextos, e as quatro metades que sustentam isso — as duas réguas"
+pass "os dois contextos, e as SETE metades que sustentam isso — as duas réguas"
 pass "da comparação, o fio que as julga em main() e o fail-closed da declaração"
 pass "ausente —, mais as duas que fazem a declaração significar \"aplicado\" no"
-pass "applier (o alvo e o carimbo sem churn), caem cada uma no seu fato quando"
-pass "mutadas. A forja não volta a exigir um check inexistente em silêncio."
+pass "applier (o alvo e o carimbo sem churn) e as duas do veredito LOCAL (a FONTE"
+pass "é o ÍNDICE, e o índice ilegível é problema) —, caem cada uma no seu fato"
+pass "quando mutadas. A forja não volta a exigir um check inexistente em silêncio,"
+pass "e o commit também não sai do hook com a divergência escondida."
 exit 0
