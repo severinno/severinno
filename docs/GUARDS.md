@@ -3367,13 +3367,13 @@ vezes (`actrc-sync-issue.mjs`, `readme-reverse-issue.mjs`,
 `env-mirror-drift-issue.mjs`, `guard-timing-issue.mjs`) — mas a REGRA vivia na
 cabeça de quem escreveu cada job, então o nono caso entraria em silêncio.
 
-**A auditoria (29 jobs em 12 workflows agendados, duas forjas).** O que foi
+**A auditoria (30 jobs em 12 workflows agendados, duas forjas).** O que foi
 encontrado e o desfecho de cada um:
 
-| Canal       | Jobs                                                                                                                                                                                                                                                                                                 | Por que                                                                                                            |
-| :---------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------- |
-| **`issue`** | `benchmark` (regressão PostGIS), `readme-reverse-audit`, `actrc-sync`, `mutation-coord-timing` + `mutation-coord-trend` (via `mutation-coord-alert`), `drift` (GitHub e Gitea), `doctor` (forja), `blob-crlf-all-text-alert`, `actrc-sync` (forja), `env-mirror-drift` (forja), `guard-timing-alert` | o run fica verde de propósito (tendência/aviso não bloqueia); a issue é o canal, com dedup e fechamento automático |
-| **`fail`**  | `smoke`, `setup-bun-warm`, `act-startup-bench`, `blob-crlf-history-audit`, `secret-leaks-audit`, `seed-guards`, `default-branch-workflow-guard`, `benchmark-all`, `benchmark` (GiST), `mirror` (×3), `guard` (tier-1)                                                                                | o sinal é violação de corretude/configuração: o run vermelho é a resposta certa                                    |
+| Canal       | Jobs                                                                                                                                                                                                                                                                                                                        | Por que                                                                                                            |
+| :---------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------- |
+| **`issue`** | `benchmark` (regressão PostGIS), `readme-reverse-audit`, `actrc-sync`, `mutation-coord-timing` + `mutation-coord-trend` (via `mutation-coord-alert`), `drift` (GitHub e Gitea), `doctor` (forja), `blob-crlf-all-text-alert`, `actrc-sync` (forja), `env-mirror-drift` (forja), `guard-timing-alert`, `runner-shells-drift` | o run fica verde de propósito (tendência/aviso não bloqueia); a issue é o canal, com dedup e fechamento automático |
+| **`fail`**  | `smoke`, `setup-bun-warm`, `act-startup-bench`, `blob-crlf-history-audit`, `secret-leaks-audit`, `seed-guards`, `default-branch-workflow-guard`, `benchmark-all`, `benchmark` (GiST), `mirror` (×3), `guard` (tier-1)                                                                                                       | o sinal é violação de corretude/configuração: o run vermelho é a resposta certa                                    |
 
 **Os dois defeitos que a auditoria fechou (não eram só teóricos):**
 
@@ -4270,7 +4270,9 @@ como "INDETERMINADA" porque a media com um `rm -f` cru.
 
 **O que protege:** todo comando de `.husky/` aponta para algo que EXISTE — o
 script de um `node`/`bash`, a entrada de `bun run` (e o que ela executa), o
-binário de `bun x`, o arquivo de um `source`, a função do próprio hook.
+binário de `bun x`, o arquivo de um `source`, a função do próprio hook — **e o
+mesmo vale para dentro dos scripts de SHELL que o hook chama** (a descida: ver
+abaixo).
 
 **Por que existe (a classe):** o hook é o único lugar do repositório onde um
 comando aponta para um arquivo do PRÓPRIO repositório e nada o confere. Um
@@ -4370,3 +4372,26 @@ consumidores) e publica provado/violado/indisponível. Ver a §13.
      valida o último no CI.
 4. **Todo guard novo precisa de um job** no pr-check.yml (o `check-mutation-jobs`
    falha se um `test-mutation-*.sh` não tiver job).
+   **A DESCIDA: o que os scripts CHAMADOS executam por dentro.** O hook real não
+   lista os 17 guards de encoding — ele chama UM runner
+   (`bash scripts/run-encoding-guards.sh`) que chama os outros. Parar no ALVO do
+   `bash` era a mesma cegueira um nível abaixo: uma linha tipada DENTRO do runner
+   (`bash scripts/check-utf8-sh`, ou um `check-utf8-scope.mjs` renomeado) é o passo
+   que nunca roda, invisível, num arquivo que roda em **todo** commit. O guard desce
+   por `bash`/`sh`/`dash`/`zsh` e por `source`/`.` (transitivo, cada script julgado
+   UMA vez, com a proveniência de quem o chamou: `origem` =
+   `.husky/pre-commit:98`), e o que ele não desce é uma superfície DECLARADA: um
+   `node scripts/x.mjs` tem o caminho conferido e o que ele roda por dentro fica para
+   os guards que leem o grafo de imports — descer só no que um interpretador de
+   SHELL lê é uma régua, não uma lista de arquivos escolhidos a mão.
+
+Três propriedades da descida que são régua, não detalhe de implementação: (1) as
+**funções visíveis** dependem da FORMA da chamada — `bash script.sh` cria um
+processo NOVO (o script vê só as funções que ele mesmo define) e `source` roda no
+MESMO shell (herda as do chamador), porque herdar sempre deixaria um
+`command not found` passar como resolvido; (2) um `case` é parsing de argumento em
+TODO script da casa, e os PADRÕES (`--ci)`, `-h|--help)`) não são comandos — o
+CORPO dos ramos é julgado normalmente; (3) a cadeia tem teto
+(`MAX_SCRIPT_DEPTH = 4`) e guarda de ciclo, e quando um dos dois morde o limite é
+**NOMEADO** no relatório (`limites`, impresso na saída normal e no `--json`) —
+nunca um "não fui olhar" que se lê como "não havia o que julgar".

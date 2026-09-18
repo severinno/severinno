@@ -38,6 +38,14 @@
       },
       {
         "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "runner-shells-drift",
+        "signal": "os shells que a imagem do runner embarca divergem do que o gate declara (RUNNER_SHELLS)",
+        "channel": "issue",
+        "evidence": "scripts/runner-shells-issue.mjs",
+        "why": "a declaração dos shells é uma MEDIÇÃO com data, e ela só governa o veredito do PRÓPRIO gate de sintaxe: se a base da imagem mudar (re-sync/rebuild), nenhum outro gate fica vermelho e a declaração passa a mentir — declarar PRESENTE o que sumiu faz o gate PASSAR um passo que morre com command not found, e declarar AUSENTE o que existe faz reprovar um passo legítimo. Quem re-mede é este CRON, e o canal é o ticket (ele se fecha sozinho quando a medição volta a bater). `unavailable` (sem docker, imagem não puxável, vars.BUN_VERSION ausente) não abre issue — mas FALHA o run: um cron que não mediu não pode passar por verde"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
         "job": "blob-crlf-history-audit",
         "signal": "blob histórico de .sh/.bash com CRLF",
         "channel": "fail",

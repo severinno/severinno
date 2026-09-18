@@ -585,6 +585,100 @@ jobs:
           path: /tmp/act-startup-bench.log
           if-no-files-found: ignore
 
+  # ── Drift dos shells da imagem do runner (semanal) ───────────────
+  # O `--shells` do gate de sintaxe (`check-workflow-run-syntax.mjs`) imprime o
+  # conjunto de shells DECLARADO — `RUNNER_SHELLS`/`RUNNER_SHELLS_MISSING`, com
+  # o digest e o comando que o mediu. Só que quem RE-MEDE é uma pessoa, e
+  # ninguém lembra: se a base da imagem mudar (re-sync do mirror, rebuild,
+  # troca de base), a declaração passa a MENTIR e NENHUM gate fica vermelho —
+  # ela só governa o veredito do PRÓPRIO gate. As duas direções doem em
+  # sentidos opostos: declarar PRESENTE o que a imagem não tem faz o gate
+  # PASSAR um passo `shell:` que morre com `command not found` depois do setup;
+  # declarar AUSENTE o que a imagem tem faz o gate REPROVAR um passo legítimo.
+  #
+  # Este job RE-MEDE dentro da imagem (docker disponível, como o
+  # act-startup-bench) com o MESMO probe declarado, compara com o que o gate
+  # declara e publica o drift como ISSUE acionável (dedup por assinatura,
+  # fechamento automático quando a medição volta a bater). O run vermelho
+  # continua como lembrança.
+  #
+  # `unavailable` (sem docker, imagem não puxável, `vars.BUN_VERSION` ausente)
+  # NÃO abre issue — ele FALHA o run com o motivo nomeado: um cron que não
+  # mediu não pode passar por verde.
+  runner-shells-drift:
+    name: shells da imagem do runner (medição ↔ declaração)
+    runs-on: self-hosted
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── A imagem tem de estar local: o probe roda DENTRO dela ────────
+      # A tag segue a fonte única (`vars.BUN_VERSION`) — o pull falha cedo se
+      # o mirror ubuntu-bun não foi re-sincronizado após o bump.
+      - name: Puxar a imagem do runner
+        run: docker pull "${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/ubuntu-bun:${{ vars.BUN_VERSION }}"
+
+      # ── A medição (JSON gravado, exit code guardado) ─────────────────
+      # Node puro (sem deps: os dois scripts importam só módulos do repo).
+      #
+      # O step NÃO falha aqui: quem falha é o último. Um step que saísse 1
+      # agora mataria o step da issue, e o drift voltaria a ser cron vermelho
+      # SEM ticket — exatamente o defeito que este job existe para eliminar.
+      - name: Medir os shells da imagem e comparar com a declaração
+        id: shells
+        env:
+          BUN_VERSION: ${{ vars.BUN_VERSION }}
+        run: |
+          set +e
+          node scripts/runner-shells.mjs --json --report /tmp/runner-shells.json \
+            >/dev/null 2>/tmp/runner-shells.log
+          CODE=$?
+          set -e
+          cat /tmp/runner-shells.log
+          # O `state` do relatório é o primeiro campo do JSON: é ele que separa
+          # "mediu e divergiu" (measured) de "não consegui medir" (unavailable).
+          STATE=$(sed -n 's/.*"state": "\([a-z-]*\)".*/\1/p' /tmp/runner-shells.json | head -1)
+          echo "state=${STATE}" >> "$GITHUB_OUTPUT"
+          echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
+          # O RELATÓRIO existe? É o que modula o step da issue (o publicador roda
+          # nos DOIS sentidos: publicar dívida e fechar dívida).
+          if [ -s /tmp/runner-shells.json ]; then
+            echo "report=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "report=0" >> "$GITHUB_OUTPUT"
+          fi
+          echo "  relatório: /tmp/runner-shells.json (state=${STATE}, $(wc -c < /tmp/runner-shells.json) bytes)"
+
+      # ── A ISSUE é o alerta; o vermelho abaixo é a lembrança ──────────
+      # `always()` (e não `exit_code != 0`): com drift ele PUBLICA; em sincronia
+      # ele RECONCILIA — comenta a prova e FECHA as issues que ele mesmo abriu.
+      # `unavailable` passa por aqui sem publicar nem fechar (não é dívida), e
+      # quem o torna visível é o step final.
+      #
+      # NUNCA passe --dry-run aqui: o modo não toca no backend de propósito, e a
+      # reconciliação sumiria em silêncio dentro de um run verde.
+      - name: Publicar o drift como Issue acionável (e fechar quando voltar a bater)
+        if: always() && steps.shells.outputs.report == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/runner-shells-issue.mjs --report /tmp/runner-shells.json --backend github
+
+      # ── O desfecho: drift publicado, ou "não medi" nomeado ───────────
+      # Dois casos falham, e o texto separa os dois (o remédio é diferente):
+      #   measured   → a issue diz o que divergiu; aqui fica o ponteiro dela;
+      #   unavailable→ NÃO HAVIA MEDIÇÃO: o run fica vermelho porque um cron
+      #                que não conseguiu medir não pode passar por verde.
+      - name: Fail on drift (or on nothing measured)
+        if: steps.shells.outputs.exit_code != '0'
+        run: |
+          if [ "${{ steps.shells.outputs.state }}" = "measured" ]; then
+            echo "::error::Os shells da imagem do runner divergem do que o gate declara (RUNNER_SHELLS). Veja a issue 'runner-shells-drift'. Remédio: re-medir com 'node scripts/runner-shells.mjs --json' e mover o nome para a lista certa em scripts/runner-shells.mjs (atualizando RUNNER_IMAGE.digest/measuredAt)."
+          else
+            echo "::error::Não foi possível MEDIR os shells da imagem (state='${{ steps.shells.outputs.state }}') — sem docker, imagem não puxável ou vars.BUN_VERSION ausente. O cron NÃO mediu o drift: um cron que não mede não pode terminar verde."
+          fi
+          exit 1
+
   # ── Blob CRLF history audit (semanal) ─────────────────────────────
   # Garante o zero-CRLF NO HISTÓRICO, não só no índice atual. O guard de
   # blob (check-blob-crlf.sh) inspeciona o index/HEAD — um blob CRLF

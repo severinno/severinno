@@ -71,9 +71,11 @@ describe("o repositório REAL passa a auditoria", () => {
     const jobs = scheduledJobBlocks(io)
     // Trava o tamanho: um cron NOVO muda a contagem e este teste exige que a
     // decisão (canal + evidência) seja escrita antes de o guard passar.
-    // 29 desde `guard-timing-alert` (benchmark-weekly: a regressão de tempo do
-    // bench-guard-timing virou dívida acionável, com fechamento automático).
-    expect(jobs.map((j) => `${j.path}::${j.job}`)).toHaveLength(29)
+    // 30 desde `runner-shells-drift` (benchmark-weekly: o conjunto de shells da
+    // imagem do runner é remedido e comparado com o declarado — divergência vira
+    // dívida acionável, com fechamento automático); antes dele, 29 desde
+    // `guard-timing-alert` (a regressão de tempo do bench-guard-timing).
+    expect(jobs.map((j) => `${j.path}::${j.job}`)).toHaveLength(30)
     const covered = new Set(
       Object.values(realManifest.forges as Record<string, { workflow: string; job: string }[]>)
         .flat()

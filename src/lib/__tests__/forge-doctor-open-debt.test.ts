@@ -137,6 +137,7 @@ describe("readOpenDebt — a leitura do board", () => {
         "github:mutation-trend-drift",
         "github:readme-drift",
         "github:required-checks-drift",
+        "github:runner-shells-drift",
       ].sort(),
     )
   })

@@ -862,8 +862,21 @@ não está — uma testemunha que falha por ambiente seria lida como mutante mor
 O `check-workflow-run-syntax.mjs` julga, além do PARSING, o `shell:` declarado
 contra o que a imagem do runner MEDIU (ref, digest, data e o comando em
 `--shells`): um passo com `shell: pwsh` num runner sem `pwsh` morria com
-`command not found` DEPOIS do setup, e nenhum parser pega essa classe; `--fix`
-remenda a cicatriz mecânica (operador pendente no fim do corpo) e só grava depois
+`command not found` DEPOIS do setup, e nenhum parser pega essa classe. Essa
+declaração não fica dependendo de alguém lembrar de re-medir: o job semanal
+`runner-shells-drift` roda o MESMO probe dentro da imagem, compara com o
+declarado e publica a divergência como issue acionável (`runner-shells-issue.mjs`,
+que também a FECHA quando a medição volta a bater, com a tabela medida de prova, e
+que o doctor reporta como dívida aberta na prontidão — sem cruzamento de
+caducidade, declarado);
+as duas direções da mentira são invisíveis para os outros gates — declarar
+presente o que a imagem não tem faz o gate PASSAR o passo que morre, e declarar
+ausente o que existe faz REPROVAR um passo legítimo. Sem medição (sem docker,
+imagem não puxável, `BUN_VERSION` sem valor) o cron **falha** em vez de ficar
+verde. `--fix`
+remenda a cicatriz mecânica (operador pendente no fim do corpo), `--fix --dry-run`
+imprime o PATCH exato (STDOUT limpo, `| git apply`) **sem gravar** — é esse patch
+que o comentário do PR publica —, e o `--fix` só grava depois
 de o corpo voltar a fazer parsing — medido em memória E relendo o arquivo do
 disco, com a gravação DESFEITA se o disco não passar; num ARQUIVO de shell ele
 **recusa** com motivo escrito (a cicatriz que ele conhece é uma linha ancorada no
