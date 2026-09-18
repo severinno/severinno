@@ -1,0 +1,70 @@
+{
+  "$comment": [
+    "DECLARAÇÃO da proteção APLICADA nas forjas — escrita por",
+    "scripts/apply-required-checks.mjs --apply, nunca a mão.",
+    "",
+    "O que bloqueia o merge não é este repositório: é o branch protection da forja,",
+    "que exige o CONTEXTO de status (o `name:` do job, ou o id sem `name:`). Uma",
+    "mudança que renomeia o `name:` de um required check — ou que põe/tira um job",
+    "da lista — muda o contexto exigido, e a forja segue exigindo o ANTIGO: o PR",
+    "trava esperando um check que nunca vai rodar, sem nenhuma linha de gate",
+    "parecer errada.",
+    "",
+    "Por isso a reaplicação é DECLARADA aqui: `scripts/check-required-checks.mjs`",
+    "compara esta lista com os contextos que o manifesto e os workflows derivam",
+    "AGORA e falha o PR quando a mudança veio sem a reaplicação (nomeando o job, o",
+    "contexto que a forja exigia e o que ela passaria a exigir). Depois do merge, o",
+    "cron de drift (`required-checks-drift.yml` → `apply-required-checks --check`)",
+    "confere a forja DE VERDADE contra o manifesto, e a divergência vira issue.",
+    "",
+    "Ele entra em sincronia com: `bun run ci:required-checks -- --apply` (escreve",
+    "este arquivo e commite-o junto da mudança que mexeu no contexto)."
+  ],
+  "version": 1,
+  "appliedAt": "2026-09-18",
+  "forges": {
+    "github": {
+      "workflow": ".github/workflows/pr-check.yml",
+      "branches": ["main"],
+      "contexts": [
+        "UTF-8 Check",
+        "Secrets Guard (no .env tracked)",
+        "Workflow References Guard (no dangling refs)",
+        "Workflow run syntax (bash -n)",
+        "Bring-up Gate Proof (pré-requisito 0, por execução)",
+        "Pre-commit Proof (dentro da imagem do runner)",
+        "Actionlint (workflow syntax)",
+        "Lint Guard (prettier + eslint zero)",
+        "TypeCheck (tsc --noEmit)",
+        "check",
+        "Security Headers",
+        "PII Allowlist Guard (user payload projection)",
+        "Mutation guards master",
+        "Forge Parity Mutation (regras de classificação)",
+        "Seed E2E ${{ matrix.seed }} · ${{ matrix.variant }}",
+        "Mutation Test (seed dev E2E pega regressões?)",
+        "Mutation Test (contrato coordenado — doc↔anchor↔código)",
+        "Mutation Test (espelhos do doctor — comparação de valor)",
+        "Mutation Test (os três fios do veredito do doctor)",
+        "Mutation Test (as três regras do contrato de gates CORE)",
+        "Mutation Test (perfil --ci do doctor — as 3 metades da comparação)",
+        "Mutation Test (defesas do check-env-mirror)",
+        "Seed Prod E2E (dev-env override)",
+        "Migrate Category Rename E2E"
+      ]
+    },
+    "gitea": {
+      "workflow": ".gitea/workflows/ci.yml",
+      "branches": ["main"],
+      "contexts": [
+        "Lint",
+        "Repo Guards",
+        "Bring-up Gate Proof (pré-requisito 0, por execução)",
+        "Pre-commit Proof (dentro da imagem do runner)",
+        "TypeCheck",
+        "Tests",
+        "Build"
+      ]
+    }
+  }
+}

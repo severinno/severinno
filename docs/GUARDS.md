@@ -665,6 +665,65 @@ perderam o número, e a `check-required-checks` recusa qualquer `name:` de
 required check que carregue uma contagem — `TypeCheck (tsc --noEmit)` continua
 passando, porque o parêntese não é uma contagem.
 
+#### O OUTRO LADO da mesma lei: a reaplicação da proteção é DECLARADA
+
+A regra acima protege o contexto contra a contagem — mas ela vale para o FUTURO
+do nome, e o defeito que resta é o PASSADO dele: quem bloqueia o merge não é o
+`ci/required-checks.json`, é a proteção **APLICADA** na forja, que exige o
+contexto de status. Renomear o `name:` de um job required (ou pôr/tirar um job da
+lista) muda o contexto exigido, e a forja segue exigindo o ANTIGO: o PR trava num
+check que nunca mais roda, sem nenhuma linha de gate parecer errada. Até agora
+dois horários cobriam isso e nenhum deles era o PR — o `apply-required-checks
+--check` (no cron de drift, com token) lia a forja e o **doctor** publicava o
+drift, os dois **depois do merge**.
+
+Por isso a reaplicação passou a ser **declarada no repositório**:
+`ci/required-checks-applied.json` guarda os contextos que a forja exige (e as
+BRANCHES protegidas — uma branch nova no manifesto é a mesma classe: a proteção
+dela não foi aplicada), escritos por `apply-required-checks.mjs --apply` (quem de
+fato reaplica — o arquivo nunca é editado à mão, senão "declarado" deixaria de
+significar "aplicado"). O `check-required-checks` julga as DUAS metades no mesmo
+veredito: o manifesto contra os workflows (offline, o que o repo DECLARA) e a
+declaração contra os contextos/branches derivados AGORA. Uma mudança que renomeia sem reaplicar fica
+**vermelha** nomeando o job, o contexto novo e o contexto velho que ficaria
+órfão, com o remédio (`bun run ci:required-checks -- --apply`).
+
+Três decisões que o desenho tomou, e por quê:
+
+- **o `--apply` escreve a declaração, e só quando o CONTEXTO muda.** Um carimbo de
+  data novo a cada reaplicação sujaria a árvore com um diff de uma linha — e um
+  arquivo que se mexe sozinho ensina o operador a ignorá-lo (um arquivo ignorado
+  não declara nada). Uma forja FORA do alvo (`--forge gitea`) mantém a declaração
+  anterior: a proteção dela não foi tocada nem lida nesta rodada;
+- **a declaração ausente ou ilegível é PROBLEMA, nunca "nada a comparar".** Sem
+  ela não há como distinguir "reaplicado" de "esquecido", e um verde por ausência
+  de arquivo é exatamente o modo de falha que este gate existe para fechar. JSON
+  inválido, `version` errada, `contexts` que não é lista, contexto duplicado,
+  declaração de outra pipeline e forja sem entrada também são violações próprias;
+- **os dois horários continuam com papéis distintos.** O PR cobra a DECLARAÇÃO
+  (o que o repo tem de cumprir), o cron de drift cobra a FORJA (o que ela tem de
+  ter): declarar sem aplicar não fecha o ciclo — quem fecha é o `--check`, com
+  token, e a divergência vira issue.
+
+**A prova:** `src/lib/__tests__/required-checks-applied.test.ts` mede as três
+direções do rename por EXECUÇÃO da CLI (`--root` num repositório temporário):
+em sincronia passa, sem a declaração o PR fica vermelho nomeando `job "lint"` e
+os dois contextos, e a MESMA mudança com a declaração reaplicada passa — mais o
+fluxo inteiro (renomear → `writeAppliedRecord` → verde), a ausência de churn e
+cada caso de falha-closed. A fixture do `test-mutation-mutation-count.sh` declara
+a proteção em sincronia, para o cenário do count continuar com UMA causa de
+vermelho.
+
+**A prova por MUTAÇÃO:** `scripts/test-mutation-required-checks-applied.sh` (o
+29º sub-test do master) muta as SEIS metades que sustentam esse veredito — as
+duas réguas da comparação (a do contexto derivado e a do órfão), o fio que as
+julga em `main()`, o fail-closed do carregamento, o ALVO do `--forge` e o CARIMBO
+sem churn — e exige a suíte VERMELHA **pela âncora de cada metade**, com as
+OUTRAS metades seguindo verdes: é isso que separa "esta régua morreu" de "a
+suíte explodiu inteira". Cada mutação é cirúrgica (uma ocorrência, checksum
+conferido) e a árvore é restaurada no mesmo trap; sem `vitest` o ensaio se declara
+NÃO JULGÁVEL em vez de sair verde.
+
 #### A TESTEMUNHA de uma mutação não é o exit code (09/2026)
 
 Quando a suíte é a testemunha, "o comando saiu ≠ 0" **não** é veredito: o
@@ -2966,7 +3025,54 @@ cobra o comando do hook no contrato de merge é o `check-hook-commands` (seção
 24), e o CI **não** executa o hook — a prova é local, e é justamente por isso que
 ela entra ATÉ no perfil `--ci` (barata: ~0,3s, sem rede e sem credencial).
 `--no-pre-commit-proof` a pula e o veredito fica INDETERMINADA nomeando o fato
-que ficou fora.
+que ficou fora (no recorte do merge, BLOQUEIA: ver a regra do `--ci` abaixo).
+
+**E O OUTRO ELO LOCAL: o pre-push × a ÁRVORE vermelha.** O commit e o push medem
+promessas DIFERENTES num lugar diferente, e é por isso que são DOIS fatos e não
+uma linha do mesmo. No commit o veredito é "nenhum objeto de COMMIT foi criado",
+e ele vive no banco local. No push, o git **consulta o remoto ANTES de rodar o
+hook** e só manda o pack **DEPOIS** dele: um hook de push que passa (ou que
+falha) não deixa rastro nenhum no repositório local — o que ele promete só existe
+DO OUTRO LADO. A prova (`provePushBlocks`, de `scripts/pre-push-proof.mjs`, o
+módulo que o teste `pre-push-git-push-blocks.test.ts` importa) empurra duas vezes
+contra um remoto **bare** e mede no REMOTO:
+
+- `proven` — o push com a árvore VERMELHA é recusado (exit ≠ 0, **zero ref e
+  zero objeto** no remoto, `refsOf`/`countObjects`) **E** o mesmo push com a
+  árvore verde CHEGA (a ref `refs/heads/main`, o conteúdo conferido na ref e o
+  CONTROLE com o typecheck rodando de verdade — sem ele, "nada chegou" seria
+  indistinguível de um fixture que não sabe empurrar);
+- `violated` — o defeito CHEGOU ao remoto (o hook deixou a árvore vermelha
+  passar): BLOQUEIA o veredito, com a contagem do que chegou;
+- `unavailable` — não deu para provar: sem `.husky/pre-push`, sem `bun` no PATH
+  (a fase do typecheck morreria com `command not found` e o não-zero seria do
+  AMBIENTE, não do defeito), sem git/bash, ou CONTROLE que não chegou. Falta de
+  prova NOMEADA, nunca verde.
+
+A recusa só conta como veredito se a saída do hook CITAR a reprovação do
+typecheck (`TYPECHECK_DO_FIXTURE_REPROVOU`) **e** o processo real tiver registrado
+a invocação no fixture: um não-zero por ambiente bloquearia por outro motivo e a
+prova estaria medindo o fixture. Como no commit, a prova mede COMPORTAMENTO e não
+a linha literal — um hook reestruturado que continue bloqueando segue `proven`.
+Ela entra ATÉ no perfil `--ci` pelo mesmo motivo e ao mesmo preço (~0,2s, sem
+rede e sem credencial: o hook roda na máquina de quem empurra, e o CI não o
+executa). `--no-pre-push-proof` a pula e o veredito fica INDETERMINADA nomeando o
+fato que ficou fora — a mesma disciplina do elo do commit, e por isso os dois
+fatos são independentes: pular ou violar um não esconde o outro.
+
+**E no recorte do MERGE (`--ci`) os dois elos locais têm de sair PROVADOS.** Aqui
+a disciplina é a INVERSA da do perfil completo, e por um motivo que se mede: no
+`--ci` esses dois elos só precisam de git/bash/bun — não há rede, credencial nem
+docker que justifiquem um `unavailable`. E é exatamente este recorte que o job do
+PR roda a cada merge: se `unavailable` valesse como "falta de prova", bastaria o
+YAML do job ganhar um `--no-pre-commit-proof`/`--no-pre-push-proof` para o elo
+quebrado passar **verde no merge** (a flag vira `skipped`, e `skipped` ≠ provado).
+Com `--ci`, então, todo estado que não seja `proven` — `unavailable`, `skipped`,
+fato ausente — vai para os **bloqueios**, nomeando o elo, a flag que o tirou de
+cena e o conserto; `violated` continua bloqueando pelo motivo dele (o defeito
+chegou), sem linha duplicada. Fora do `--ci` a regra é no-op: no perfil completo
+falta de prova segue INDETERMINADA, porque lá o doctor cobre o que depende do
+HOST e "não deu para medir" é o veredito honesto.
 
 **E o mesmo contrato vale para TODO gate CORE, não só o bring-up.** O fato é
 DERIVADO dos `CORE_INVARIANTS` (uma fonte só): cada invariante que declara
@@ -3708,7 +3814,10 @@ depende de docker e da imagem local.
 arquivo responde: `bun run merge-gate:prove`. `ci/required-checks.json` declara os
 checks e `apply-required-checks.mjs` os aplica — mas declarar e aplicar **não é**
 bloquear: a exigência mora na forja, e o que a forja faz com ela só se sabe
-rodando. O comando sobe um **Gitea efêmero** (docker), aplica o manifesto com o
+rodando. (O que foi aplicado fica DECLARADO em `ci/required-checks-applied.json`,
+escrito pelo próprio applier e cobrado no PR pela `check:required-checks` — ver a
+seção 1: uma mudança de contexto que venha sem essa declaração deixa a forja
+exigindo o check antigo.) O comando sobe um **Gitea efêmero** (docker), aplica o manifesto com o
 **APLIADOR DE VERDADE** (a CLI, com `GITEA_URL`/`GITEA_TOKEN` no ambiente) e tenta
 mergear quatro PRs de verdade contra a **API de verdade**.
 

@@ -21,6 +21,15 @@
 // successful]`. Por isso o applier ENVIA o booleano e o trata como parte do
 // drift — é a diferença entre "bloqueante na intenção" e bloqueante.
 //
+// A DECLARAÇÃO DA REAPLICAÇÃO: `--apply` também escreve
+// `ci/required-checks-applied.json` com os contextos que a forja passou a exigir.
+// Sem essa declaração, a proteção (que é quem bloqueia o merge) fica FORA do
+// repositório: um `name:` renomeado muda o contexto exigido e ninguém consegue
+// distinguir "reaplicado" de "esquecido" — que é exatamente o estado em que a
+// forja exige um check que já não existe. Quem cobra a declaração no PR é o
+// `check-required-checks.mjs` (a outra metade do mesmo fato). O arquivo só é
+// reescrito quando o CONTEXTO muda (o carimbo de data sozinho não gera churn).
+//
 // SEGURANÇA: o padrão é DRY-RUN (nenhuma requisição de escrita). Só `--apply`
 // altera a forja, e mesmo então toca APENAS a lista de required status checks —
 // não sobrescreve reviews obrigatórios, restrições de push ou outros ajustes de
@@ -47,10 +56,12 @@ import { dirname, resolve } from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 import {
+  APPLIED_PATH,
   MANIFEST_PATH,
   defaultIo,
   loadManifest,
   resolveManifestContexts,
+  writeAppliedRecord,
 } from "./check-required-checks.mjs"
 
 // ---------------------------------------------------------------------------
@@ -82,7 +93,9 @@ Aplica ci/required-checks.json no branch protection de cada forja.
   --forge <all|github|gitea>   forja alvo (default: all)
   --repo <owner/name>          repositório (default: env da forja)
   --check                      lê a forja e reporta drift (exit 1 se houver)
-  --apply                      aplica as mudanças (default: dry-run)
+  --apply                      aplica as mudanças (default: dry-run) e escreve
+                               ${APPLIED_PATH} (a DECLARAÇÃO da reaplicação —
+                               commite junto da mudança)
   --json                       relatório JSON no stdout (humano vai p/ stderr)
   -h, --help                   esta ajuda
 `.trim()
@@ -408,6 +421,22 @@ async function main() {
       if (options.json) console.log(JSON.stringify(report, null, 2))
       return 1
     }
+  }
+
+  // ── A DECLARAÇÃO da reaplicação ─────────────────────────────────────────
+  // As forjas deste alvo foram LIDAS (e as que precisavam, aplicadas) contra o
+  // manifesto: os contextos derivados são, comprovadamente, o que a forja exige
+  // agora. É isso que o arquivo declara — e é o que o `check-required-checks`
+  // compara no PR. Uma forja fora do alvo (`--forge gitea`) mantém a declaração
+  // anterior: a proteção dela não foi tocada nem lida nesta rodada.
+  if (options.apply) {
+    const { escrito, path } = writeAppliedRecord(root, resolved, { forges: targets })
+    log(
+      escrito
+        ? `📌 ${path}: declaração da reaplicação ATUALIZADA — commite junto da mudança que mexeu no contexto de status.`
+        : `📌 ${path}: já declarava estes contextos (nada a commitar).`,
+    )
+    report.appliedRecord = { path, written: escrito }
   }
 
   if (options.check && report.drift) {

@@ -258,6 +258,14 @@ function driftProse(report) {
       " aplicar: exigir um contexto que não existe é pior que não exigir nada.",
   )
   lines.push("")
+  lines.push(
+    "O `--apply` é quem **declara** a reaplicação: ele reescreve" +
+      " `ci/required-checks-applied.json` (contextos e branches que a forja exige" +
+      " agora) — **commite essa declaração junto da mudança**. É ela que o" +
+      " `check-required-checks` compara no PR; sem ela, a próxima mudança de" +
+      " contexto volta a passar em silêncio até este cron achar de novo.",
+  )
+  lines.push("")
   return lines.join("\n")
 }
 

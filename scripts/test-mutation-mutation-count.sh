@@ -307,6 +307,24 @@ make_required_fixture() {
     echo '}'
   } > "$TMP_DIR/rc/ci/required-checks.json"
 
+  # A DECLARAÇÃO da reaplicação EM SINCRONIA com os nomes deste fixture: o
+  # guard compara os contextos DERIVADOS com a proteção APLICADA, e sem esta
+  # metade ele falha por falha-closed — os dois cenários desta mutação medem o
+  # COUNT, e uma segunda causa de vermelho tornaria a leitura ambígua.
+  {
+    echo '{'
+    echo '  "version": 1,'
+    echo '  "appliedAt": "2026-01-01",'
+    echo '  "forges": {'
+    echo '    "github": {'
+    echo '      "workflow": ".github/workflows/pr.yml",'
+    echo '      "branches": ["main"],'
+    echo "      \"contexts\": [\"$direct_name\", \"$reusable_name\"]"
+    echo '    }'
+    echo '  }'
+    echo '}'
+  } > "$TMP_DIR/rc/ci/required-checks-applied.json"
+
   {
     echo 'name: Fixture'
     echo 'jobs:'
