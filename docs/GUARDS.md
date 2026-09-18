@@ -703,7 +703,13 @@ rodam o **vitest REAL** e por isso vivem em jobs próprios do
   `blockers.push(...)` de uma vez (é o mesmo fio: as seções só diferem no que
   empurram). O doctor continua rodando e imprimindo tudo — passa a dizer
   **PRONTA com a forja quebrada**, e nenhum fato acusa sozinho porque quem
-  acusa é a SOMA. **(B) a honestidade do veredito** — o ternário do veredito
+  acusa é a SOMA. Entre as seções que esse fio transporta estão os **dois elos
+  locais** (`pre-commit` e `pre-push`) quando o recorte é o do merge: no `--ci`
+  um elo que não saia `proven` — `unavailable`, `skipped` por flag ou fato
+  ausente — vai para os bloqueios, e a mutação A tem de acender a âncora que
+  mede isso (sem ela, apagar o `.husky/pre-push` ou pôr um `--no-pre-push-proof`
+  no YAML do job deixava o PR verde com a promessa do push extinta).
+  **(B) a honestidade do veredito** — o ternário do veredito
   deixa de consultar `unknowns.length`: o relatório segue LISTANDO cada fato não
   provado (gate que não executou, env ausente, prova indisponível, registro
   ilegível, protection sem token, dívida aberta no board) e o veredito passa a
@@ -2011,7 +2017,9 @@ camada fina com as constantes de cada hook (`helpers/pre-commit-fixture.ts` traz
 o guard, o remédio, o fecho e as linhas de comando do `.husky/pre-commit`) — uma
 cópia por prova divergiria no dia em que uma delas fosse ajustada.
 O **`pre-push`** tem prova de EXECUÇÃO na mesma máquina
-(`src/lib/__tests__/pre-push-git-push-blocks.test.ts`): um `git push` de verdade
+(`src/lib/__tests__/pre-push-git-push-blocks.test.ts`, sobre a camada
+compartilhada `scripts/pre-push-proof.mjs` — o MESMO módulo de onde o doctor
+executa `provePushBlocks()` para publicar o fato): um `git push` de verdade
 para um remoto **bare**, com `core.hooksPath` apontando para os hooks, e a
 promessa medida do outro lado — o git consulta o remoto ANTES de rodar o hook e
 só manda o pack DEPOIS dele, então o que se mede é o que CHEGOU. Typecheck
@@ -2024,16 +2032,44 @@ REAL e o que é dublê é declarado: `bun run typecheck` roda o binário de verd
 o `package.json` do fixture aponta o script para um payload que REGISTRA cada
 invocação (é o rastro que prova que o processo rodou — o CONTROLE conta 2, a fase
 2 e o fast path), enquanto o runner dos encoding guards e o `curl` do advisory do
-Lighthouse são funções que devolvem 0 e 1. QUATRO mutações provam as metades:
-deixar de CHAMAR o typecheck (o defeito é PUSHADO, e o conteúdo vermelho é lido no
-ref do remoto), o `hooksPath` para outro diretório (o hook não é procurado), o
-hook sem o modo 0755 (git o ignora em silêncio) e o dublê **deixando de liberar**
-o processo real (a árvore vermelha passa e o payload nunca roda — é a passagem que
-torna o veredito o do comando, não o de um dublê). ⚠️ **Achado medido, não
-consertado aqui:** no fast path do smart-skip o typecheck roda como
-`bun run typecheck 2>&1 | head -5` e, sem `pipefail`, o status da pipeline é o do
-`head` — o não-zero dele é MASCARADO (medido na mutação M1: o payload reprova com
-o rastro da invocação e o push entra); quem segura o push é só a linha da fase 2. O fecho copiado são os `.mjs` — e, com eles, o **`node_modules` real do
+Lighthouse são funções que devolvem 0 e 1. SEIS mutações provam as metades: o
+**gate do typecheck** (M1 com a fase 2 removida — o fast path tem de segurar; M1b
+com a fase 2 removida E o fast path de volta à forma que engole — o defeito entra;
+e M1c sem invocação NENHUMA — o defeito entra sem veredito), o `hooksPath` para
+outro diretório (o hook não é procurado), o hook sem o modo 0755 (git o ignora em
+silêncio) e o dublê **deixando de liberar** o processo real (a árvore vermelha
+passa e o payload nunca roda — é a passagem que torna o veredito o do comando,
+não o de um dublê).
+
+**O veredito é do COMANDO, não do FILTRO (o `| head` que engolia).** No fast path
+do smart-skip o typecheck rodava como `bun run typecheck 2>&1 | head -5` e, numa
+pipeline, o status é o do ÚLTIMO comando: o `head` devolvia 0 com o tsc
+**REPROVANDO**, então aquele gate era um **no-op** — o push levava a árvore
+vermelha para a forja. Agora a saída é CAPTURADA (`if ! TYPE_OUT=$(bun run
+typecheck 2>&1)`) e o recorte do `head` sai por **HERESTRING**
+(`head -5 <<< "$TYPE_OUT"` — sem pipe, logo sem produtor vivo para levar SIGPIPE,
+a mesma régua do `check-pipefail-sigpipe`), com o `exit 1` bloqueando. A
+invocação CANÔNICA da fase 2 segue numa linha própria — é ela que o
+`check-hook-ci-parity` lê como "o hook roda o typecheck do CI".
+
+**O veredito MUDOU, e a mutação mede o NOVO:** **M1** (a fase 2 sai) deixou de
+abrir o buraco — o fast path SEGURA o defeito, e o que se assere é o push
+RECUSADO com zero objeto no remoto, citando a reprovação do payload E o fast path
+como o caminho que correu (defesa em profundidade). **M1b** isola a FORMA: o único
+delta contra M1 é voltar o fast path à pipeline que engole, e o resultado
+INVERTE — o conteúdo vermelho chega ao ref do remoto com o rastro da reprovação no
+log. **M1c** preserva o sujeito original (o gate do typecheck é load-bearing): sem
+NENHUMA invocação — fase 2 e fast path — o defeito entra sem veredito nenhum sobre
+a árvore.
+
+⚠️ **Achado medido, DECLARADO no próprio hook (não consertado neste passo):** a
+linha dos testes afetados (`bun run vitest run --reporter=verbose $AFFECTED_TESTS
+2>&1 | tail -5`) carrega o MESMO defeito de veredito — o `tail` devolve 0, então
+uma suíte afetada VERMELHA não bloqueia o push. O conserto é a mesma captura, e
+ela moveria a invocação para dentro de um `$()`: o `check-hook-ci-parity` declara
+esta linha por regex **ANCORADA** em `^bun run vitest…`, e sem a âncora o
+invariante `tests` sumiria do inventário do hook (o guard passaria a exigir uma
+declaração de "não roda" para um comando que roda). O fecho copiado são os `.mjs` — e, com eles, o **`node_modules` real do
 repositório** (link no fixture, não `NODE_PATH`): o `require` do guard resolve
 pelo diretório do próprio arquivo, e sem o parser de YAML TODO workflow passa a
 NÃO JULGÁVEL (exit 2), de modo que o veredito medido seria do fixture e não do
@@ -2049,9 +2085,14 @@ entra: é o bloco que reergue a falha do guard). Cada mutação exige, além de
 `mutado !== original`, que o hook mutado **ainda faça parsing** (`bash -n`): uma
 mutação que quebrasse a sintaxe do hook sairia vermelha por PARSING, não pelo
 veredito que ela mede. O mesmo arquivo exercita o remédio DENTRO do hook nas DUAS
-direções: com a cicatriz no índice e **sem terminal** (o stdin do hook é um pipe),
-o hook sai 1, **não pergunta** e imprime o caminho à mão; e com o remédio
-AFIRMADO como exit 0, o hook **levanta** a falha e o commit segue.
+direções: com a cicatriz no índice e a pergunta **desligada** (o simulador liga
+`PRE_COMMIT_REMEDY_NO_PROMPT` — um teste não pode depender de alguém responder um
+prompt), o hook sai 1, **não pergunta** e imprime o caminho à mão, nomeando a
+variável como o motivo; e com o remédio AFIRMADO como exit 0 (o dublê afirma o
+desfecho sem remendar nada) o hook **não acredita nele**: o gate é reexecutado
+sobre o índice que continua com a cicatriz e o commit segue BLOQUEADO. A direção
+oposta — o remédio de verdade remendando e o commit ENTRANDO — é medida sob um pty
+de verdade, porque é lá que existe terminal para responder.
 
 `src/lib/__tests__/pre-commit-remedy.test.ts` é a prova do REMÉDIO, com
 o caminho INTERATIVO exercitado pela função (deps injetadas — num subprocesso o
@@ -2059,8 +2100,32 @@ stdin nunca é um terminal): "sim" com arquivo limpo remenda, re-estagia e reval
 o ÍNDICE (exit 0); "não" e resposta vazia não tocam em nada; sem cicatriz
 remendável **não pergunta**; índice verde sai 0 sem remendar; WIP na árvore faz o
 `git add` ser RETIDO (o WIP não sobe para o commit e a árvore fica remendada);
-a árvore DESLOCADA faz o fixer recusar sozinho; e a CLI prova o contrato do exit
-code (usage 3, infra 2, o `--help` e o **SEM TERMINAL**).
+a árvore DESLOCADA faz o fixer recusar sozinho; a **fonte da resposta** tem teste
+próprio com o terminal injetado (stdin não-terminal + `/dev/tty` pergunta ali;
+`openTty` devolvendo `null` mantém o bloqueio; **SEM RESPOSTA no teto** assume NÃO;
+a variável de desligamento não abre o `/dev/tty`; e o stdin-terminal tem
+PRECEDÊNCIA, sem abrir o dispositivo); e a CLI prova o contrato do exit code
+(usage 3, infra 2, o `--help` e o **SEM TERMINAL** — medido numa sessão PRÓPRIA,
+sem terminal de controle). O mesmo arquivo pina a **premissa do hook**: a linha
+exata da chamada, a ORDEM (as duas fases medem antes da pergunta; o gate e a fase
+voltam a rodar depois dela) e a integridade da função `fase_b` (os nove comandos
+da fase B dentro dela — um guard que ficasse de fora faria a reexecução medir outra
+fase).
+
+**As classes mecânicas têm prova por EXECUÇÃO contra os guards de verdade:**
+`src/lib/__tests__/pre-commit-remedy-classes.test.ts` monta repositórios git reais
+com os guards de encoding copiados e o remédio de verdade. Ele mede o que um teste
+de leitura não vê: o PARSE da lista de ofensores é pinado contra a saída do guard
+dono (a classe `crlf` pelo `  - <path>` do `check-crlf.sh`, a `utf8` pelo `WOULD
+FIX:` do `--fix --dry-run`); o "sim" leva o conteúdo remendado ao **ÍNDICE** (o
+blob muda de fato: CRLF → LF, byte 0x97 → em dash), não só ao disco; o "não" não
+toca em nada; as classes que se SOBREPÕEM levam o arquivo ao índice UMA vez e não
+o acusam de retido; a classe que ESTAGIA POR CONTA PRÓPRIA se **retém** com WIP
+(e o fixer dela não roda); UTF-8 inválido que o fixer NÃO remenda não vira "nada
+remendável" (segue bloqueado, com o motivo, sem pergunta); uma classe
+**não aplicável** (fixture sem os guards) não roda o guard do repositório de quem
+executa — mediria OUTRA árvore; e SEM TERMINAL o caminho à mão sai com o `--fix`
+E o `git add` **de cada classe**.
 **Prova por mutação:** `scripts/test-mutation-workflow-run-syntax.sh` (roda NO
 JOB, depois do gate real, e também como sub-test da matriz do master) tem DUAS
 metades. (A) SENSIBILIDADE — o guard REAL reprova as fixtures de defeito e passa
@@ -4600,20 +4665,108 @@ declarada`), e uma violação nomeia arquivo, linha e o **vizinho mais próximo*
 (`o mais próximo é \`check-bun-mirror.mjs\``) — o erro de digitação se corrige
 sozinho com a mensagem.
 
+**A DESCIDA: o que os scripts CHAMADOS executam por dentro.** O hook real não
+lista os 17 guards de encoding — ele chama UM runner
+(`bash scripts/run-encoding-guards.sh`) que chama os outros. Parar no ALVO do
+`bash` era a mesma cegueira um nível abaixo: uma linha tipada DENTRO do runner
+(`bash scripts/check-utf8-sh`, ou um `check-utf8-scope.mjs` renomeado) é o passo
+que nunca roda, invisível, num arquivo que roda em **todo** commit. O guard desce
+por `bash`/`sh`/`dash`/`zsh` e por `source`/`.` (transitivo, cada script julgado
+UMA vez, com a proveniência de quem o chamou: `origem` =
+`.husky/pre-commit:98`), e o que ele não desce é uma superfície DECLARADA: um
+`node scripts/x.mjs` tem o caminho conferido e o que ele roda por dentro fica para
+os guards que leem o grafo de imports — descer só no que um interpretador de
+SHELL lê é uma régua, não uma lista de arquivos escolhidos a mão.
+
+Três propriedades da descida que são régua, não detalhe de implementação: (1) as
+**funções visíveis** dependem da FORMA da chamada — `bash script.sh` cria um
+processo NOVO (o script vê só as funções que ele mesmo define) e `source` roda no
+MESMO shell (herda as do chamador), porque herdar sempre deixaria um
+`command not found` passar como resolvido; (2) um `case` é parsing de argumento em
+TODO script da casa, e os PADRÕES (`--ci)`, `-h|--help)`) não são comandos — o
+CORPO dos ramos é julgado normalmente; (3) a cadeia tem teto
+(`MAX_SCRIPT_DEPTH = 4`) e guarda de ciclo, e quando um dos dois morde o limite é
+**NOMEADO** no relatório (`limites`, impresso na saída normal e no `--json`) —
+nunca um "não fui olhar" que se lê como "não havia o que julgar".
+
 **O que NÃO promete (escopo declarado):** julga o COMANDO, não os argumentos de
 ferramentas externas — um `find .next/static/chunks` cita um caminho que não
 existe por DESENHO (artefato de build, gitignored), e julgar argumentos exigiria
 uma allowlist de caminhos-que-não-existem (um guard que reclama de `.next/` é
-desligado pela equipe). Dos argumentos só o que INVOCA algo é julgado.
+desligado pela equipe). Dos argumentos só o que INVOCA algo é julgado. Ele também
+NÃO resolve VARIÁVEIS (`"$PY" "$PY_SCRIPT"`, `node "$SCRIPT_DIR/x.mjs"`): esses
+saem `indeterminado` e exigem a decisão datada — o que ele não prova, ele NOMEIA.
+
+**O REMENDO (`--fix`): a mensagem já diz o vizinho; o remendo fecha a distância.**
+O guard responde "o mais próximo é `check-bun-mirror.mjs`"; o `--fix` TROCA o token
+por ele, mostra o antes/depois e **PERGUNTA** antes de gravar. A régua dele é mais
+ESTRITA que a da mensagem, e isso é decisão, não descuido: a mensagem SUGERE com
+teto de distância 4 (um aviso errado custa uma leitura) e o remendo GRAVA — um
+remendo errado num hook muda o que roda em **todo** commit. Ele só grava com:
+
+- distância de até **2** caracteres (`FIX_MAX_DISTANCE`);
+- **UM** candidato nessa distância — empate é **RECUSA** (dois nomes plausíveis =
+  o remendo estaria sorteando; quem escolhe é o operador), e a recusa cita os dois
+  com o prefixo do diretório, para ser copiável;
+- o candidato sendo **ARQUIVO** (um diretório não é alvo de `node`/`source`);
+- o token **localizado sem ambiguidade** na linha (uma ocorrência, delimitada por
+  caracteres que não são de caminho — `check-x.mjs.bak` não é `check-x.mjs`),
+  varrendo a linha LÓGICA (a do comando mais as continuações `\`);
+- o token sendo **DESTE hook**: o alvo de um comando INTERNO (o que uma entrada de
+  `bun run` executa) tem a linha do TEXTO do script do `package.json`, e a linha do
+  relatório é a do hook — sem esse escopo o remendo procuraria o token no hook pela
+  linha do OUTRO arquivo, e no caso-limite (o mesmo texto na mesma linha, dentro de
+  um comentário) reescreveria o comentário por causa de um defeito que vive no
+  `package.json`.
+
+O que ele **NÃO** remenda sai NOMEADO no plano, com o motivo: a entrada de
+`bun run` que não existe (trocar uma entrada por outra MUDA o que o hook executa —
+`bun run <binário>` e `bun run <script>` não são a mesma coisa), a função chamada e
+não definida, o binário sem fornecedor e o payload de runtime não declarado. E a
+escrita é **cirúrgica**: só o token troca, no lugar dele — o hook é um arquivo de
+comentários que explicam decisões, e uma reescrita que passasse por um formatador
+destruiria justamente o que não se reconstrói. As trocas de um arquivo são
+aplicadas do FIM para o COMEÇO (os offsets valem no texto original) e são
+**all-or-nothing por arquivo**: se uma não localiza mais, nenhuma outra dele é
+gravada (meia correção deixa o arquivo num estado que ninguém autorizou).
+
+A confirmação é a MESMA pergunta do remédio do pre-commit
+(`scripts/confirm-prompt.mjs`, um dono só para as duas: o guard não pode importar o
+remédio — o grafo dele é o do hook inteiro —, e duas cópias da régua divergiriam
+num lugar onde o desfecho é um hook esperando resposta que ninguém sabe que foi
+pedida). Sem terminal de controle **não há pergunta e nada é gravado** (exit 1,
+com o caminho à mão); `--yes` é a confirmação DECLARADA por quem chama; e
+`PRE_COMMIT_REMEDY_NO_PROMPT=1` desliga a pergunta (o MESMO desligamento, na mesma
+variável). O veredito não é "eu escrevi": depois de gravar, o guard é
+**re-analisado e a conta tem de FECHAR** — as violações caem exatamente no número
+de trocas aplicadas; cair menos (uma troca que não resolveu) ou mais (uma troca que
+revelou outro defeito) sai com o número na tela e sem verde. O `--json` publica o
+plano (`remendos`) e o que ele recusa (`remendosRecusados`) — é dele que o remédio
+do pre-commit lê os MESMOS alvos, em vez de re-derivar um plano próprio.
+
+**O `.husky/` É O ARQUIVO QUE O HOOK EXECUTA — e o remendo o reescreve.** Medido:
+uma casca de 12.957 bytes reescrita no meio da própria execução (`sh -e`, como o
+husky usa) sai **127** com um `B39: not found` numa linha POSTERIOR — o
+interpretador lê o arquivo por DESLOCAMENTO, e mudar o tamanho desalinha o que ele
+ainda vai ler (sem a reescrita, o MESMO arquivo sai 0). Por isso a classe do
+remédio carrega `exigeRelancamento`: o remendo vai para a ÁRVORE e para o ÍNDICE, e
+o veredito do commit é o de um **`git commit` NOVO** — nunca a continuação desta
+execução.
 
 **Runtime é DECISÃO, não silêncio:** o que não se prova por leitura
-(`bash -c "$cmd"`, `node -e`, caminho em `$VAR`) tem de estar em
-`INDETERMINATE` com `addedAt` + motivo; sem a entrada, é VIOLAÇÃO. As duas
-listas (`ALLOWLIST` para o que existe fora do repositório — hoje o
-`bunx @lhci/cli` do advisory do Lighthouse — e `INDETERMINATE` para o payload
-inline — hoje o `python3 -c` do mesmo bloco) usam a data e a JANELA de revisão do
-módulo compartilhado (`allowlist-review.mjs`, 180 dias): uma isenção sem revisão
-vira violação nomeada em vez de permanente por esquecimento.
+(`bash -c "$cmd"`, `node -e`, caminho em `$VAR`, **programa em `$VAR`**) tem de
+estar em `INDETERMINATE` com `addedAt` + motivo; sem a entrada, é VIOLAÇÃO. As
+duas listas (`ALLOWLIST` para o que existe fora do repositório — hoje o
+`bunx @lhci/cli` do advisory do Lighthouse — e `INDETERMINATE`, hoje CINCO
+entradas) usam a data e a JANELA de revisão do módulo compartilhado
+(`allowlist-review.mjs`, 180 dias): uma isenção sem revisão vira violação nomeada
+em vez de permanente por esquecimento. Quatro das cinco entradas nasceram da
+DESCIDA — são comando que EXISTE e RODA nos `check-*.sh`, e o que o guard não
+consegue é PROVÁ-LOS: o `python -c "import sys"` (o probe que escolhe o
+interpretador) tem o payload no argumento; `python3 "$PYTHON_SCRIPT"` e
+`node "$SCRIPT_DIR/check_utf8.mjs"` têm o caminho numa variável (e os dois scripts
+conferem o arquivo com `[ -f ]` antes de executar); e `"$PY" "$PY_SCRIPT"` tem o
+PRÓPRIO PROGRAMA numa variável (o interpretador é escolhido por probe em runtime).
 
 **Onde roda:** o pre-commit (fase paralela, node-puro e read-only, ~0,1s) e o CI
 nas duas pontas do CORE — job `guards` da forja (dona do merge) e job
@@ -4629,37 +4782,58 @@ payload não declarado) e cada um tem o CONTROLE na direção oposta (o mesmo
 fixture sem o defeito sai verde), que é o que desmente um não-zero vindo do
 FIXTURE. A régua de extração é medida separadamente (comentário, heredoc, quebra
 de linha, `$( )`, `case`, função, continuação). E o repositório REAL é julgado com
-um **PISO de cobertura** (`comandos >= 60` e os três hooks nomeados): se a
-extração parar de funcionar, a contagem vai a zero e o guard "passa" — o piso é o
-que impede o verde por vazio. Em produção: **92 comandos** em 3 hooks, 91
-resolvidos e 1 indeterminado DECLARADO.
+um **PISO de cobertura** (`comandos >= 200`, os três hooks e os scripts descidos nomeados): se a extração
+ou a descida pararem de funcionar, a contagem cai e o guard "passa" — o piso é o
+que impede o verde por vazio. Em produção: **245 comandos** (100 nos 3 hooks +
+145 dentro dos 5 scripts chamados), 233 resolvidos e 12 indeterminados
+DECLARADOS.
 
 **Prova por mutação:** `scripts/test-mutation-hook-commands.sh` muta o próprio
-guard em QUATRO direções, cada uma com duas testemunhas (o veredito do CLI sobre
-uma fixture e a suíte unitária, que tem de ficar VERMELHA): três na direção de
-CEGAR — `arquivoExiste` devolvendo sempre `true` (o caminho tipado passa), a
-entrada de `scripts` ausente aceita (o `bun run tipecheck` que ninguém criou
-passa) e o indeterminado devolvido sem olhar a lista (o payload de runtime não
-declarado passa) — e UMA na direção OPOSTA: ignorar a regra da função do próprio
-**O mesmo remédio chega ao PR (o canal é UM só, com dois fixers).**
-`--fix --dry-run` imprime o **PATCH exato** que o `--fix` gravaria (as linhas
-`--- a/…`, `+++ b/…` e os hunks saem do MESMO `fixAll` da gravação — "uma régua,
-dois consumidores"; `dry` decide só se o arquivo é gravado) e ele vai para
-**STDOUT limpo**, para `… --fix --dry-run | git apply` aplicar sem arquivo
-intermediário. A construção do diff é a **mesma** do outro fixer
-(`scripts/unified-patch.mjs`): um cabeçalho por arquivo, o **contexto** de cada
-hunk e a fusão de janelas vizinhas. Sem contexto o `git apply` **recusa** o hunk
-— e antes disso o patch do comentário aplicava só quando a cicatriz era a ÚLTIMA
-linha do arquivo. `scripts/pr-remedy-comment.mjs` publica esse patch como
-comentário no PR com `--fixer pipefail-sigpipe`, e **cada fixer tem o SEU
-marcador**: um marcador comum faria a reconciliação de um retirar o comentário do
-outro, que ainda valia.
+guard em ONZE direções, cada uma com as testemunhas do veredito do CLI sobre uma
+fixture e a suíte unitária, que tem de ficar VERMELHA.
 
-hook faz o guard ACUSAR O SÃO no hook real (`wait_all` do `pre-commit` vira
-violação). Cada mutação é cirúrgica (as outras metades seguem reprovando), o
-arquivo é restaurado por checksum e o total roda em ~6s. A regressão que
-reintroduzir qualquer uma dessas quatro metades morre no job, não no hook de quem
-commita.
+As QUATRO primeiras são do lado que DETECTA: três na direção de CEGAR —
+`arquivoExiste` devolvendo sempre `true` (o caminho tipado passa), a entrada de
+`scripts` ausente aceita (o `bun run tipecheck` que ninguém criou passa) e o
+indeterminado devolvido sem olhar a lista (o payload de runtime não declarado
+passa) — e UMA na direção OPOSTA: ignorar a regra da função do próprio hook faz o
+guard ACUSAR O SÃO no hook real (`wait_all` do `pre-commit` vira violação).
+
+As TRÊS últimas são da DESCIDA, e cada uma mede uma das propriedades acima:
+
+As outras QUATRO são do lado que **GRAVA** (`--fix`), e cada uma mede uma regra do
+remendo — o único lugar do repositório onde uma mutação pode fazer o repositório
+ESCREVER o que não deve:
+
+| mutação | a regra que ela tira do lugar                                         | o que acontece sem ela                                                     |
+| :------ | :-------------------------------------------------------------------- | :------------------------------------------------------------------------- |
+| M5      | a UNICIDADE do vizinho (empate é recusa)                              | o remendo grava um dos empatados, SORTEADO — onde tinha de recusar         |
+| M6      | o TETO de distância (a mensagem sugere; o remendo não grava sugestão) | o remendo troca o caminho por um PARENTE distante                          |
+| M7      | a CONFIRMAÇÃO (sem terminal e sem `--yes` não grava)                  | o remendo grava sem perguntar a ninguém                                    |
+| M8      | o ESCOPO do token (o de outro arquivo não é deste hook)               | o remendo reescreve um COMENTÁRIO do hook por um defeito do `package.json` |
+| M9      | a DESCIDA (parar no alvo do `bash`)                                   | o caminho tipado DENTRO do runner passa a sair verde                       |
+| M10     | o ESCOPO das funções de um script EXECUTADO                           | o nome que o shell nunca acharia passa a resolver dentro do script         |
+| M11     | os PADRÕES de um `case` não são comandos                              | o `-h                                                                      | --help)` de um script bem escrito ACUSA o repositório REAL |
+
+A testemunha da M8 é o **CONTEÚDO do arquivo**, não o exit code — nos dois casos
+o veredito é 1 (a violação de verdade continua lá) e é o `cmp` contra os bytes
+esperados que separa "recusou" de "gravou" (e isso é declarado no script, não
+escondido). A M11 também é na direção OPOSTA (como a M4): sem a régua do `case`, o
+guard fica mais ESTRITO do que a verdade e o repositório real vira vermelho. Cada
+mutação é cirúrgica (as outras metades seguem reprovando), o arquivo é restaurado
+por checksum e o total roda em ~30s. A regressão que reintroduzir qualquer uma
+dessas onze metades morre no job, não no hook de quem commita.
+
+**E a PERGUNTA tem um dono só, fora do remédio.** `scripts/confirm-prompt.mjs` é
+onde vive a régua da confirmação — o terminal de CONTROLE, o default NÃO, o teto
+da espera, o sentinela de `TIMEOUT` e o desligamento declarado —, e ela é
+reexportada pelo remédio (a superfície que os testes e o ensaio sob `pty` já
+importavam). O dono saiu do remédio porque o `check-hook-commands --fix` faz a
+MESMA pergunta: o guard não pode importar o remédio (o grafo dele é o do hook
+inteiro, e o guard roda em fase paralela e no CI), e duas cópias da régua
+divergiriam no dia em que uma delas passasse a aceitar uma resposta diferente —
+num lugar onde o desfecho é um hook esperando uma resposta que ninguém sabe que
+foi pedida.
 
 **E o doctor EXECUTA a outra prova (a de ponta a ponta).** Este guard responde
 "todo comando do hook RESOLVE?" — que é diferente de "o hook de fato BLOQUEIA o
@@ -4699,26 +4873,3 @@ cópia de segurança com `cksum` no `trap`, como o guard e a régua.
      valida o último no CI.
 4. **Todo guard novo precisa de um job** no pr-check.yml (o `check-mutation-jobs`
    falha se um `test-mutation-*.sh` não tiver job).
-   **A DESCIDA: o que os scripts CHAMADOS executam por dentro.** O hook real não
-   lista os 17 guards de encoding — ele chama UM runner
-   (`bash scripts/run-encoding-guards.sh`) que chama os outros. Parar no ALVO do
-   `bash` era a mesma cegueira um nível abaixo: uma linha tipada DENTRO do runner
-   (`bash scripts/check-utf8-sh`, ou um `check-utf8-scope.mjs` renomeado) é o passo
-   que nunca roda, invisível, num arquivo que roda em **todo** commit. O guard desce
-   por `bash`/`sh`/`dash`/`zsh` e por `source`/`.` (transitivo, cada script julgado
-   UMA vez, com a proveniência de quem o chamou: `origem` =
-   `.husky/pre-commit:98`), e o que ele não desce é uma superfície DECLARADA: um
-   `node scripts/x.mjs` tem o caminho conferido e o que ele roda por dentro fica para
-   os guards que leem o grafo de imports — descer só no que um interpretador de
-   SHELL lê é uma régua, não uma lista de arquivos escolhidos a mão.
-
-Três propriedades da descida que são régua, não detalhe de implementação: (1) as
-**funções visíveis** dependem da FORMA da chamada — `bash script.sh` cria um
-processo NOVO (o script vê só as funções que ele mesmo define) e `source` roda no
-MESMO shell (herda as do chamador), porque herdar sempre deixaria um
-`command not found` passar como resolvido; (2) um `case` é parsing de argumento em
-TODO script da casa, e os PADRÕES (`--ci)`, `-h|--help)`) não são comandos — o
-CORPO dos ramos é julgado normalmente; (3) a cadeia tem teto
-(`MAX_SCRIPT_DEPTH = 4`) e guarda de ciclo, e quando um dos dois morde o limite é
-**NOMEADO** no relatório (`limites`, impresso na saída normal e no `--json`) —
-nunca um "não fui olhar" que se lê como "não havia o que julgar".

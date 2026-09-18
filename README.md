@@ -759,6 +759,13 @@ Os **17 fast gates compartilhados** (linhas `✅ | ✅` abaixo) rodam via
 ambos os hooks. Adicionar um guard novo = editar esse script em UM lugar,
 sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 
+> O `check-hook-commands.mjs` **DESCE** nesse runner: ele julga também os
+> comandos que os **scripts de shell chamados pelos hooks** executam por dentro
+> (transitivo, cada script uma vez, com ciclo e teto NOMEADOS no relatório).
+> Parar no alvo do `bash` deixava uma linha tipada DENTRO do
+> `run-encoding-guards.sh` como o mesmo passo-que-nunca-roda, um nível abaixo —
+> num arquivo que roda em **todo** commit. Detalhes no GUARDS.md §24.
+
 > Por que os guards CRLF escaneiam só `.sh` (e não `.ts`)? — a decisão de
 > escopo está documentada em
 > [Encoding Guards → Por que `.sh`-only?](#por-que-o-guard-de-crlf-é-sh-only-decisão-escopo-intencional).
@@ -1004,16 +1011,40 @@ usam o MESMO simulador (`helpers/hook-simulator.ts`: repo git temporário, dubl�
 com passagem declarada para o processo real, medições no banco do git), e
 `helpers/pre-commit-fixture.ts` é a camada com as constantes do `pre-commit`. O
 `pre-push` tem prova própria na mesma máquina
-(`src/lib/__tests__/pre-push-git-push-blocks.test.ts`): um `git push` de verdade
+(`src/lib/__tests__/pre-push-git-push-blocks.test.ts`, sobre a camada
+`scripts/pre-push-proof.mjs` — a MESMA de onde o doctor executa
+`provePushBlocks()` para publicar o fato): um `git push` de verdade
 para um remoto **bare**, com o typecheck reprovando pelo CONTEÚDO versionado do
 fixture e o veredito medido do outro lado — recusado ⇒ **zero ref e zero objeto**
 no remoto, verde ⇒ o ref e o conteúdo chegando; quatro mutações (sem a chamada ao
 typecheck, `hooksPath` para outro diretório, hook sem bit de execução e o dublê
 **deixando de liberar** o processo real) medem, uma a uma, que essas metades são
-load-bearing. ⚠️ Achado medido (não consertado aqui): no fast path do smart-skip o
-typecheck roda como `bun run typecheck 2>&1 | head -5` e, sem `pipefail`, o status
-da pipeline é o do `head` — o não-zero dele é MASCARADO (o payload reprova e o
-push entra); quem segura o push é só a linha da fase 2. Custa ≈**0.03s**
+load-bearing. O fast path do smart-skip tinha a MESMA classe de defeito — o
+typecheck rodava como `bun run typecheck 2>&1 | head -5` e, sem `pipefail`, o
+status da pipeline era o do `head`: o não-zero era MASCARADO (o payload reprovava
+e o push entrava). **Consertado**: a saída é CAPTURADA (`TYPE_OUT=$(bun run
+typecheck 2>&1)`), o veredito é o do comando e o recorte sai por `head` sobre
+herestring (sem produtor vivo, logo sem SIGPIPE). Três mutações medem que o
+conserto é o conserto: remover a fase 2 passa a RECUSAR o push (não mais
+entregá-lo), devolver a pipeline que engole **inverte** o desfecho (o vermelho
+chega ao ref do remoto) e remover as duas invocações deixa o defeito entrar sem
+veredito nenhum sobre a árvore. Os DOIS elos têm
+prova de execução **no veredito de prontidão** (`bun run doctor`), cada um como
+fato próprio: o do commit mede "nenhum objeto de commit criado" e o do push mede
+"nenhum objeto chegou ao REMOTO" — o git consulta o remoto antes do hook e só
+manda o pack depois dele, então a promessa do push só existe do outro lado. No
+recorte do MERGE (`--ci`) os dois elos têm de sair `proven`: ali eles só precisam
+de git/bash/bun, então um `unavailable` — ou um `--no-pre-*-proof` no YAML do job
+— **BLOQUEIA** o veredito em vez de virar INDETERMINADA. E os dois elos têm, além
+do fato, um job próprio que roda a prova **DENTRO do runtime do CI**
+(`bun run pre-commit-in-runner:prove`, job `pre-commit-in-runner-proof` nas duas
+pipelines, required check): o MESMO módulo de prova é lançado dentro da imagem
+do runner — em lugar no job da forja (o label `docker://` já põe o job no
+container da imagem, sem o socket do docker montado) ou por `docker run` no
+espelho, cujo runner self-hosted é uma máquina com docker. Ali dentro o
+`git version` da evidência é o DA IMAGEM, e o `--in-image` RECUSA (exit 2)
+quando os marcadores do runtime (`/.dockerenv` + `/opt/acttoolcache`) não estão
+lá — senão a prova mediria a máquina de quem a roda. Custa ≈**0.03s**
 no caminho comum (nada de corpo nem script staged: um `git diff --cached` e mais
 nada), o que o põe no orçamento de um hook que roda a CADA commit sem duplicar a
 varredura do CI. Custo medido neste host (Linux,

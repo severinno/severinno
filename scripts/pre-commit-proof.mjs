@@ -160,6 +160,7 @@ export const GUARD_CLOSURE = [
   "remedy-classes/crlf.mjs",
   "remedy-classes/blob-crlf.mjs",
   "remedy-classes/utf8.mjs",
+  "remedy-classes/hook-commands.mjs",
   // E OS GUARDS DONOS das três classes de ENCODING viajam com as declarações:
   // a descoberta RECUSA a rodada quando uma declaração cita um dono que não
   // existe NESTE repositório, então um fixture com as declarações e sem os donos

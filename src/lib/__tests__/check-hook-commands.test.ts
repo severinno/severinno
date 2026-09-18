@@ -23,7 +23,7 @@
  *   bunx vitest run --config vitest.config.unit.ts src/lib/__tests__/check-hook-commands.test.ts
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 import { spawnSync } from "node:child_process"
@@ -33,18 +33,26 @@ import {
   BIN_PACKAGES,
   EXIT,
   EXTERNAL_TOOLS,
+  FIX_MAX_DISTANCE,
   HOOKS_DIR,
   INDETERMINATE,
   INTERPRETERS,
   SOURCE_COMMANDS,
   analyze,
+  aplicarRemendo,
+  arquivosDoRemendo,
   definedFunctions,
   extractSubstitutions,
+  fix,
   hookFiles,
   isCasePattern,
+  localizaToken,
+  planoDeRemendo,
   programOf,
+  renderPlano,
   reviewViolations,
   shellCommands,
+  vizinhoAceito,
 } from "../../../scripts/check-hook-commands.mjs"
 
 const GUARD = join(process.cwd(), "scripts", "check-hook-commands.mjs")
@@ -102,6 +110,9 @@ function relatorio(root: string): RelatorioCompleto {
 
 const motivos = (report: RelatorioCompleto): string[] =>
   report.violacoes.map((v) => `${v.arquivo}:${v.linha} ${v.motivo}`)
+
+/** O conteúdo de um arquivo do fixture (o remendo é medido no DISCO). */
+const conteudo = (dir: string, rel: string) => readFileSync(join(dir, rel), "utf8")
 
 function rodaCli(dir: string, extra: string[] = []): { status: number | null; saida: string } {
   const r = spawnSync(process.execPath, [GUARD, "--root", dir, ...extra], { encoding: "utf8" })
@@ -428,11 +439,560 @@ describe("fail-closed e cobertura", () => {
     expect(report.infra).toBe(false)
     expect(report.violacoes).toEqual([])
     expect(report.hooks).toEqual([".husky/post-checkout", ".husky/pre-commit", ".husky/pre-push"])
-    expect(report.comandos.length).toBeGreaterThanOrEqual(60)
+    // O PISO subiu com a DESCIDA: os hooks sozinhos são ~100 comandos; o runner
+    // de encoding e os quatro `check-*.sh` que ele chama somam o resto. Sem o
+    // piso novo, uma descida que parasse de funcionar deixaria o guard verde com
+    // o número antigo — verde por ter varrido menos.
+    expect(report.comandos.length).toBeGreaterThanOrEqual(200)
+    expect(report.scripts).toContain("scripts/run-encoding-guards.sh")
+    expect(report.scripts).toContain("scripts/check-utf8.sh")
     // Os caminhos que o repositório de fato executa são julgados por NOME.
     const alvos = report.resolvidos.map((r) => r.motivo).join("\n")
     expect(alvos).toContain("scripts/check-workflow-run-syntax.mjs")
     expect(alvos).toContain("scripts/run-encoding-guards.sh")
     expect(alvos).toContain("entrada `typecheck`")
+  })
+})
+
+// ── a DESCIDA: o que os scripts que o hook CHAMA executam por dentro ───────
+//
+// O hook real não lista os 17 guards de encoding: ele chama UM runner
+// (`bash scripts/run-encoding-guards.sh`) que chama os outros. Parar no ALVO do
+// `bash` deixava uma linha tipada DENTRO do runner como o mesmo passo-que-nunca-
+// roda — invisível, num arquivo que roda em todo commit. Cada metade da descida
+// tem aqui a sua prova e o seu CONTROLE: a transitividade, o ciclo, o teto, o
+// escopo das funções (que depende da FORMA da chamada), os padrões de um `case`,
+// o `$( )` que NÃO executa (comentário e aspas simples) e o `<( ... )` que
+// executa.
+
+describe("a descida nos scripts de shell que o hook chama", () => {
+  it("PROVA: o caminho tipado DENTRO do script chamado é VIOLAÇÃO, com a proveniência", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": "set -eu\nbash scripts/run-ci.sh\n" },
+      arquivos: {
+        "scripts/run-ci.sh": "#!/usr/bin/env bash\nnode scripts/check-utf8-scopez.mjs\n",
+        "scripts/check-utf8-scope.mjs": "// o vizinho existe\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.scripts).toEqual(["scripts/run-ci.sh"])
+    expect(report.violacoes).toHaveLength(1)
+    // O relatório aponta para o ARQUIVO e a LINHA do defeito (o script), e a
+    // `origem` diz de qual hook ele veio — sem isso a mensagem mandaria o
+    // operador procurar a linha errada no arquivo errado.
+    expect(report.violacoes[0]!.arquivo).toBe("scripts/run-ci.sh")
+    expect(report.violacoes[0]!.linha).toBe(2)
+    expect(report.violacoes[0]!.origem).toBe(".husky/pre-commit:2")
+  })
+
+  it("CONTROLE: o mesmo fixture com o caminho CERTO dentro do script é verde", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": "set -eu\nbash scripts/run-ci.sh\n" },
+      arquivos: {
+        "scripts/run-ci.sh": "#!/usr/bin/env bash\nnode scripts/check-utf8-scope.mjs\n",
+        "scripts/check-utf8-scope.mjs": "// ok\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toEqual([])
+    expect(report.scripts).toEqual(["scripts/run-ci.sh"])
+  })
+
+  it("a descida é TRANSITIVA (script → script) e o teto é NOMEADO quando morde", () => {
+    // hook → s1 → s2 → s3 → s4 → s5: o teto é 4 níveis A PARTIR do hook, então o
+    // que está além dele tem de ser DITO (`limites`), nunca pulado em silêncio.
+    const arquivos: Record<string, string> = {}
+    for (let n = 1; n <= 5; n++) {
+      arquivos[`scripts/s${n}.sh`] = `#!/usr/bin/env bash\nbash scripts/s${n + 1}.sh\n`
+    }
+    arquivos["scripts/s6.sh"] = "#!/usr/bin/env bash\necho fim\n"
+    const dir = fixture({
+      hooks: { "pre-commit": "set -eu\nbash scripts/s1.sh\n" },
+      arquivos,
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toEqual([])
+    expect(report.scripts).toEqual([
+      "scripts/s1.sh",
+      "scripts/s2.sh",
+      "scripts/s3.sh",
+      "scripts/s4.sh",
+    ])
+    expect(report.limites).toHaveLength(1)
+    expect(report.limites[0]!.motivo).toContain("PROFUNDIDADE")
+    expect(report.limites[0]!.alvo).toBe("scripts/s5.sh")
+  })
+
+  it("CICLO: a descida TERMINA e o ciclo é NOMEADO (nunca um travamento nem um silêncio)", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": "set -eu\nbash scripts/a.sh\n" },
+      arquivos: {
+        "scripts/a.sh": "#!/usr/bin/env bash\nbash scripts/b.sh\n",
+        "scripts/b.sh": "#!/usr/bin/env bash\nbash scripts/a.sh\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toEqual([])
+    expect(report.scripts).toEqual(["scripts/a.sh", "scripts/b.sh"])
+    expect(report.limites.map((l) => l.motivo).join("\n")).toContain("CICLO")
+  })
+
+  it("as FUNÇÕES VISÍVEIS seguem a FORMA da chamada: `bash` não herda, `source` herda", () => {
+    // É a semântica do shell, e ela decide um veredito: `bash script.sh` cria um
+    // processo NOVO (a função do hook não existe lá dentro), `source` roda no
+    // MESMO shell (herda). Herdar sempre deixaria um `command not found` passar
+    // como resolvido dentro do script.
+    const corpo = "#!/usr/bin/env bash\nminha_funcao\n"
+    const hook = "minha_funcao() {\n  echo ok\n}\nbash scripts/x.sh\n"
+    const execDir = fixture({ hooks: { "pre-commit": hook }, arquivos: { "scripts/x.sh": corpo } })
+    const srcDir = fixture({
+      hooks: { "pre-commit": hook.replace("bash scripts/x.sh", "source scripts/x.sh") },
+      arquivos: { "scripts/x.sh": corpo },
+    })
+
+    const execReport = relatorio(execDir)
+    expect(execReport.violacoes).toHaveLength(1)
+    expect(execReport.violacoes[0]!.arquivo).toBe("scripts/x.sh")
+    expect(execReport.violacoes[0]!.motivo).toContain("minha_funcao")
+
+    // CONTROLE: com o MESMO defeito (`minha_funcao` não definida no script), o
+    // `source` resolve — o que mudou foi a forma da chamada, e nada mais.
+    expect(relatorio(srcDir).violacoes).toEqual([])
+  })
+
+  it("os PADRÕES de um `case` não são comandos — e o CORPO dele É julgado", () => {
+    const script =
+      "#!/usr/bin/env bash\n" +
+      'case "$1" in\n' +
+      "  --ci) MODE=ci ;;\n" +
+      "  -h | --help)\n" +
+      "    echo usage\n" +
+      "    exit 0\n" +
+      "    ;;\n" +
+      "  *)\n" +
+      "    node scripts/typo.mjs\n" +
+      "    ;;\n" +
+      "esac\n" +
+      "exit 0\n"
+    const dir = fixture({
+      hooks: { "pre-commit": "set -eu\nbash scripts/args.sh\n" },
+      arquivos: { "scripts/args.sh": script },
+    })
+
+    const report = relatorio(dir)
+    const programas = report.comandos.map((c) => c.programa)
+
+    // O `case` NÃO é um buraco de cobertura: o corpo do ramo é julgado.
+    expect(report.violacoes.map((v) => `${v.arquivo}:${v.linha}`)).toEqual(["scripts/args.sh:9"])
+    // E os padrões (com `)` colado e com `|` entre eles) não viram programa.
+    for (const padrao of ["--ci)", "-h", "--help)", "*)"]) expect(programas).not.toContain(padrao)
+    // O `exit 0` DEPOIS do `esac` continua julgado (o fim do `case` não engole o
+    // resto do arquivo).
+    expect(report.comandos.some((c) => c.programa === "exit" && c.linha === 12)).toBe(true)
+  })
+
+  it("o `$( )` de um COMENTÁRIO e o de ASPAS SIMPLES não são comandos; o real É", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": "set -eu\nbash scripts/x.sh\n" },
+      arquivos: {
+        "scripts/x.sh":
+          "#!/usr/bin/env bash\n" +
+          "# exemplo: out=$(node scripts/typo-do-comentario.mjs) na mesma linha\n" +
+          "echo 'literal: $(node scripts/typo-em-aspas.mjs)'\n" +
+          "VALOR=$(node scripts/ok.mjs)\n",
+        "scripts/ok.mjs": "// ok\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toEqual([])
+    // O que EXECUTA é julgado (e resolve): a substituição real não pode sumir
+    // junto com as duas que não executam nada.
+    expect(report.resolvidos.map((r) => r.motivo).join("\n")).toContain("scripts/ok.mjs")
+    expect(report.comandos.length).toBeGreaterThan(2)
+  })
+
+  it("o comando de dentro de um `<( ... )` É julgado, e o `)` colado não vira programa", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": "set -eu\nbash scripts/x.sh\n" },
+      arquivos: {
+        "scripts/x.sh":
+          "#!/usr/bin/env bash\nmapfile -t FILES < <(git ls-files 'scripts/' | grep -E 'x' || true)\n",
+      },
+    })
+
+    const report = relatorio(dir)
+    const programas = report.comandos.map((c) => c.programa)
+
+    expect(programas).toContain("git")
+    expect(programas).toContain("grep")
+    // `true)` é o tokenizador colando o `)` de fechamento: um nome terminado em
+    // `)` não é um comando (em shell isso é erro de sintaxe).
+    expect(programas).not.toContain("true)")
+    expect(report.violacoes).toEqual([])
+  })
+
+  it("PROGRAMA montado em runtime é INDETERMINADO — e exige decisão declarada", () => {
+    // Acusar `$INTERPRETE` de "não ser arquivo do repositório" seria falso duas
+    // vezes (não é um nome) e travaria um merge legítimo. O caminho é o mesmo de
+    // todo payload de runtime: `indeterminado` + declaração datada. Sem a
+    // declaração, é violação (fail-closed, medido no CONTROLE abaixo).
+    const naoDeclarado = fixture({
+      hooks: { "pre-commit": "set -eu\nbash scripts/x.sh\n" },
+      arquivos: { "scripts/x.sh": '#!/usr/bin/env bash\n"$INTERPRETE" "$ALVO"\n' },
+    })
+
+    const report = relatorio(naoDeclarado)
+
+    expect(report.violacoes).toHaveLength(1)
+    expect(report.violacoes[0]!.motivo).toContain("programa montado em runtime")
+    expect(report.violacoes[0]!.motivo).toContain("decisão nao declarada")
+
+    // CONTROLE: o caso do REPOSITÓRIO (`"$PY" "$PY_SCRIPT"` nos dois
+    // check-*.sh) está DECLARADO — a decisão datada é o que separa "não provei, e
+    // é uma decisão" de "não provei, e tanto faz".
+    const declarado = fixture({
+      hooks: { "pre-commit": "set -eu\nbash scripts/x.sh\n" },
+      arquivos: { "scripts/x.sh": '#!/usr/bin/env bash\n"$PY" "$PY_SCRIPT" --fix\n' },
+    })
+    expect(relatorio(declarado).violacoes).toEqual([])
+    expect(INDETERMINATE.some((e) => "$PY $PY_SCRIPT".startsWith(e.match))).toBe(true)
+  })
+
+  it("a SOMA fecha com a descida junto (nenhum comando descido escapa da conta)", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": "set -eu\nbash scripts/run.sh\n" },
+      arquivos: {
+        "scripts/run.sh": "#!/usr/bin/env bash\nnode scripts/ok.mjs\nnode scripts/errado.mjs\n",
+        "scripts/ok.mjs": "// ok\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.comandos.length).toBe(
+      report.resolvidos.length + report.indeterminados.length + report.violacoes.length,
+    )
+    expect(report.comandos.filter((c) => c.arquivo === "scripts/run.sh")).toHaveLength(2)
+    const json = JSON.parse(rodaCli(dir, ["--json"]).saida)
+    expect(json.scripts).toEqual(["scripts/run.sh"])
+    expect(json.limites).toEqual([])
+  })
+
+  it("o remendo NÃO escreve num script chamado — e a recusa é NOMEADA, no arquivo do script", () => {
+    const script = "#!/usr/bin/env bash\nnode scripts/check-utf8-scopez.mjs\n"
+    const dir = fixture({
+      hooks: { "pre-commit": "set -eu\nbash scripts/run-ci.sh\n" },
+      arquivos: { "scripts/run-ci.sh": script, "scripts/check-utf8-scope.mjs": "// vizinho\n" },
+    })
+
+    const { plano, recusas } = planoDeRemendo(dir)
+
+    expect(plano).toEqual([])
+    expect(recusas).toHaveLength(1)
+    expect(recusas[0]!.arquivo).toBe("scripts/run-ci.sh")
+    expect(recusas[0]!.motivo).toContain("não é um hook")
+    // O arquivo do script fica BYTE A BYTE: o remendo deste guard escreve em
+    // `.husky/`, e o defeito de um script se corrige no próprio script.
+    expect(conteudo(dir, "scripts/run-ci.sh")).toBe(script)
+  })
+})
+
+// ── o REMENDO: o caminho tipado, trocado pelo vizinho INEQUÍVOCO ────────────
+//
+// O guard já diz QUAL era o nome esperado ("o mais próximo é `X`"); o `--fix`
+// fecha a distância entre a diagnose e o conserto. O que esta suíte mede é o que
+// distingue um remendo de uma adivinhação:
+//   · o plano NÃO grava nada (ele é o que a pergunta autoriza);
+//   · a troca é CIRÚRGICA (o resto do arquivo fica byte a byte — um hook é um
+//     arquivo de comentários que explicam decisões);
+//   · o que não é caminho (a entrada de `bun run`), o que EMPATA e o que está
+//     longe demais entram como RECUSA com motivo, nunca em silêncio;
+//   · a CONTA fecha: as violações caem exatamente no número de trocas;
+//   · sem terminal, NADA é gravado (fail-closed) — e a recusa também não grava.
+
+describe("o remendo (`--fix`): o vizinho mais próximo, com a conta fechando", () => {
+  it("PROVA: troca SÓ o token — o resto do arquivo fica byte a byte", async () => {
+    const hook =
+      "set -eu\n# comentário que explica uma decisão\nnode scripts/check-bun-mirrorX.mjs --staged &\nbun run typecheck\n"
+    const dir = fixture({
+      hooks: { "pre-commit": hook },
+      scripts: { typecheck: "node scripts/typecheck.mjs" },
+      arquivos: { "scripts/check-bun-mirror.mjs": "// ok\n", "scripts/typecheck.mjs": "// ok\n" },
+    })
+
+    const { plano, recusas } = planoDeRemendo(dir)
+    expect(plano).toEqual([
+      {
+        arquivo: ".husky/pre-commit",
+        linha: 3,
+        de: "scripts/check-bun-mirrorX.mjs",
+        para: "scripts/check-bun-mirror.mjs",
+        papel: "script do node",
+        distancia: 1,
+      },
+    ])
+    expect(recusas).toEqual([])
+    // O PLANO não grava: quem grava é o "sim".
+    expect(conteudo(dir, ".husky/pre-commit")).toBe(hook)
+    expect(renderPlano(dir, { plano, recusas })).toContain(
+      "antes:  node scripts/check-bun-mirrorX.mjs --staged &",
+    )
+    expect(renderPlano(dir, { plano, recusas })).toContain(
+      "depois: node scripts/check-bun-mirror.mjs --staged &",
+    )
+
+    const r = await fix(dir, { yes: true, log: () => {} })
+
+    expect(r.code).toBe(EXIT.OK)
+    expect(r.antes).toBe(1)
+    expect(r.aplicados.length).toBe(1)
+    expect(r.depois).toBe(0)
+    expect(r.arquivos).toEqual([".husky/pre-commit"])
+    expect(conteudo(dir, ".husky/pre-commit")).toBe(hook.replace("X.mjs", ".mjs"))
+  })
+
+  it("o que NÃO é caminho entra como RECUSA com motivo (a entrada de `bun run`)", async () => {
+    // Trocar uma entrada de `scripts` por outra MUDA o que o hook executa —
+    // `bun run <binário>` e `bun run <script>` não são a mesma coisa. O remendo
+    // recusa, DIZ por quê, e o arquivo não é tocado.
+    const hook = "bun run tipecheck\n"
+    const dir = fixture({
+      hooks: { "pre-commit": hook },
+      scripts: { typecheck: "node scripts/t.mjs" },
+      arquivos: { "scripts/t.mjs": "// ok\n" },
+    })
+
+    const { plano, recusas } = planoDeRemendo(dir)
+    expect(plano).toEqual([])
+    expect(recusas.length).toBe(1)
+    expect(recusas[0].motivo).toContain("não é um caminho")
+
+    const r = await fix(dir, { yes: true, log: () => {} })
+    expect(r.code).toBe(EXIT.VIOLATIONS)
+    expect(r.aplicados).toEqual([])
+    expect(conteudo(dir, ".husky/pre-commit")).toBe(hook)
+  })
+
+  it("a violação que vive em OUTRO arquivo NÃO é remendada", () => {
+    // A linha de um comando INTERNO (o que uma entrada de `bun run` executa) é a
+    // linha 1 do TEXTO do script do package.json (o resolvedor normaliza o texto
+    // da entrada), e o `arquivo` da linha do relatório é o HOOK. Aqui o hook tem o
+    // MESMO token na linha 1, dentro de um comentário — a coincidência exata em
+    // que um remendo sem escopo reescreveria um comentário por causa de um defeito
+    // que vive em outro arquivo.
+    //
+    // Esta é a prova do DESFECHO (a recusa nomeia a origem e o arquivo fica byte a
+    // byte). A prova de que a regra é LOAD-BEARING — que sem ela o comentário cai
+    // — é a mutação M8 do `test-mutation-hook-commands.sh`, porque só ela pode
+    // tirar a regra do lugar.
+    const hook = "# node scripts/typo.mjs\nbun run x\n"
+    const dir = fixture({ hooks: { "pre-commit": hook }, scripts: { x: "node scripts/typo.mjs" } })
+
+    const { plano, recusas } = planoDeRemendo(dir)
+    expect(plano).toEqual([])
+    expect(recusas.map((r) => r.motivo).join("\n")).toContain("package.json scripts.x")
+
+    return fix(dir, { yes: true, log: () => {} }).then((r) => {
+      expect(r.code).toBe(EXIT.VIOLATIONS)
+      expect(r.aplicados).toEqual([])
+      // O comentário e o resto do hook ficam byte a byte.
+      expect(conteudo(dir, ".husky/pre-commit")).toBe(hook)
+    })
+  })
+
+  it("EMPATE de vizinhos e distância grande demais são RECUSA — o remendo não adivinha", () => {
+    const empate = fixture({
+      hooks: { "pre-commit": "node scripts/abc.mjs\n" },
+      arquivos: { "scripts/abd.mjs": "// ok\n", "scripts/abe.mjs": "// ok\n" },
+    })
+    const e = planoDeRemendo(empate)
+    expect(e.plano).toEqual([])
+    expect(e.recusas[0].motivo).toContain("EMPATE")
+    expect(e.recusas[0].motivo).toContain("`scripts/abd.mjs`")
+
+    const longe = fixture({
+      hooks: { "pre-commit": "node scripts/uma-coisa-bem-diferente.mjs\n" },
+      arquivos: { "scripts/outra.mjs": "// ok\n" },
+    })
+    const l = planoDeRemendo(longe)
+    expect(l.plano).toEqual([])
+    expect(l.recusas[0].motivo).toContain(`até ${FIX_MAX_DISTANCE} caractere(s)`)
+  })
+
+  it("SEM TERMINAL não pergunta e NÃO grava (fail-closed, com o caminho à mão)", async () => {
+    const hook = "node scripts/check-xX.mjs\n"
+    const dir = fixture({
+      hooks: { "pre-commit": hook },
+      arquivos: { "scripts/check-x.mjs": "// ok\n" },
+    })
+    const linhas: string[] = []
+    const r = await fix(dir, {
+      isTTY: false,
+      openTty: () => null,
+      log: (m: string) => linhas.push(m),
+    })
+
+    expect(r.code).toBe(EXIT.VIOLATIONS)
+    expect(r.aplicados).toEqual([])
+    expect(r.motivo).toBe("sem terminal")
+    expect(linhas.join("\n")).toContain("SEM TERMINAL")
+    expect(linhas.join("\n")).toContain("NADA foi gravado")
+    expect(conteudo(dir, ".husky/pre-commit")).toBe(hook)
+  })
+
+  it("a recusa do operador (`n` na pergunta) não toca no arquivo", async () => {
+    const hook = "node scripts/check-xX.mjs\n"
+    const dir = fixture({
+      hooks: { "pre-commit": hook },
+      arquivos: { "scripts/check-x.mjs": "// ok\n" },
+    })
+    const r = await fix(dir, { isTTY: false, askFn: async () => "n", log: () => {} })
+
+    expect(r.code).toBe(EXIT.VIOLATIONS)
+    expect(r.motivo).toContain("recusa")
+    expect(conteudo(dir, ".husky/pre-commit")).toBe(hook)
+  })
+
+  it("aplicada a remendável, a que SOBRA mantém o commit bloqueado (exit 1) e a conta fecha", async () => {
+    const dir = fixture({
+      hooks: { "pre-commit": "node scripts/check-xX.mjs\nnode scripts/sem-vizinho-nenhum.mjs\n" },
+      arquivos: { "scripts/check-x.mjs": "// ok\n" },
+    })
+
+    const r = await fix(dir, { isTTY: false, askFn: async () => "s", log: () => {} })
+
+    expect(r.code).toBe(EXIT.VIOLATIONS)
+    expect(r.antes).toBe(2)
+    expect(r.aplicados.length).toBe(1)
+    expect(r.depois).toBe(1)
+    expect(conteudo(dir, ".husky/pre-commit")).toContain("scripts/check-x.mjs")
+    expect(conteudo(dir, ".husky/pre-commit")).toContain("scripts/sem-vizinho-nenhum.mjs")
+  })
+
+  it("a árvore VERDE não ganha remendo nenhum (e diz que não havia nada)", async () => {
+    const hook = "node scripts/check-x.mjs\n"
+    const dir = fixture({
+      hooks: { "pre-commit": hook },
+      arquivos: { "scripts/check-x.mjs": "// ok\n" },
+    })
+    const linhas: string[] = []
+    const r = await fix(dir, { isTTY: false, log: (m: string) => linhas.push(m) })
+
+    expect(r.code).toBe(EXIT.OK)
+    expect(r.aplicados).toEqual([])
+    expect(linhas.join("\n")).toContain("nada a remendar")
+    expect(conteudo(dir, ".husky/pre-commit")).toBe(hook)
+  })
+
+  it("o `--json` publica o MESMO plano que o `--fix` usaria (o remédio não re-deriva)", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": "node scripts/check-xX.mjs\n" },
+      arquivos: { "scripts/check-x.mjs": "// ok\n" },
+    })
+    const r = rodaCli(dir, ["--json"])
+    const saida = JSON.parse(r.saida)
+
+    expect(saida.ok).toBe(false)
+    expect(saida.remendos).toEqual([
+      {
+        arquivo: ".husky/pre-commit",
+        linha: 1,
+        de: "scripts/check-xX.mjs",
+        para: "scripts/check-x.mjs",
+        papel: "script do node",
+        distancia: 1,
+      },
+    ])
+    expect(saida.remendosRecusados).toEqual([])
+  })
+
+  it("uso inválido sai 3 (o comando não interpreta o que ele não promete)", () => {
+    const dir = fixture({ hooks: { "pre-commit": "echo ok\n" } })
+
+    for (const args of [["--fix", "--json"], ["--fix", "--list"], ["--yes"], ["--flag-nova"]]) {
+      const r = rodaCli(dir, args)
+      expect(r.status, `${args.join(" ")} devia sair 3`).toBe(EXIT.USAGE)
+    }
+    expect(rodaCli(dir, ["--fix", "--json"]).saida).toContain("--fix")
+  })
+})
+
+describe("a LOCALIZAÇÃO do token (o que faz a escrita ser cirúrgica)", () => {
+  it("acha o token na linha lógica e recusa quando ele aparece duas vezes", () => {
+    const fonte = "a\nnode scripts/x.mjs && node scripts/x.mjs\nb\n"
+    // Duas ocorrências na mesma linha: o remendo não escolhe QUAL é.
+    expect(localizaToken(fonte, 2, "scripts/x.mjs")).toBeNull()
+
+    const uma = "a\nnode scripts/xX.mjs --staged\nb\n"
+    const span = localizaToken(uma, 2, "scripts/xX.mjs")
+    expect(span).not.toBeNull()
+    expect(uma.slice(span?.inicio ?? 0, span?.fim ?? 0)).toBe("scripts/xX.mjs")
+  })
+
+  it("a CONTINUAÇÃO de linha é a MESMA linha lógica (o token vale na linha seguinte)", () => {
+    const fonte = "set -eu\nnode \\\n  scripts/xX.mjs --staged\n"
+    const span = localizaToken(fonte, 2, "scripts/xX.mjs")
+    expect(span).not.toBeNull()
+    expect(fonte.slice(span?.inicio ?? 0, span?.fim ?? 0)).toBe("scripts/xX.mjs")
+  })
+
+  it("um token COLADO a outros caracteres de caminho não é o mesmo token", () => {
+    // `scripts/x.mjs.bak` NÃO é `scripts/x.mjs`: trocar ali deixaria `.bak`.
+    expect(localizaToken("node scripts/x.mjs.bak\n", 1, "scripts/x.mjs")).toBeNull()
+    expect(localizaToken("node scripts/x.mjs\n", 1, "scripts/x.mjs")).not.toBeNull()
+  })
+
+  it("`aplicarRemendo` é all-or-nothing por ARQUIVO: uma troca impronunciável não grava as outras", () => {
+    const fonte = "node scripts/x.mjs && node scripts/x.mjs\n"
+    const dir = fixture({
+      hooks: { "pre-commit": fonte },
+      arquivos: { "scripts/x.mjs": "// ok\n" },
+    })
+    const r = aplicarRemendo(dir, [
+      {
+        arquivo: ".husky/pre-commit",
+        linha: 1,
+        de: "scripts/x.mjs",
+        para: "scripts/y.mjs",
+        papel: "x",
+        distancia: 1,
+      },
+    ])
+    expect(r.aplicados).toEqual([])
+    expect(r.recusados[0].motivo).toContain("NÃO foi tocado")
+    expect(conteudo(dir, ".husky/pre-commit")).toBe(fonte)
+  })
+
+  it("o vizinho aceito é o ÚNICO a até FIX_MAX_DISTANCE (e o empate não é escolha)", () => {
+    expect(vizinhoAceito("abc.mjs", ["abd.mjs", "outra-bem-longe.mjs"])).toEqual({
+      aceito: { nome: "abd.mjs", distancia: 1 },
+      ambiguos: [],
+    })
+    expect(vizinhoAceito("abc.mjs", ["abd.mjs", "abe.mjs"]).aceito).toBeNull()
+    expect(vizinhoAceito("abc.mjs", ["abd.mjs", "abe.mjs"]).ambiguos).toEqual([
+      "abd.mjs",
+      "abe.mjs",
+    ])
+    expect(vizinhoAceito("abc.mjs", ["z-z-z-z-z.mjs"]).aceito).toBeNull()
+  })
+
+  it("`arquivosDoRemendo` devolve os arquivos UMA vez cada, ordenados", () => {
+    expect(
+      arquivosDoRemendo([
+        { arquivo: "b.sh", linha: 1, de: "x", para: "y", papel: "p", distancia: 1 },
+        { arquivo: "a.sh", linha: 1, de: "x", para: "y", papel: "p", distancia: 1 },
+        { arquivo: "b.sh", linha: 2, de: "x", para: "y", papel: "p", distancia: 1 },
+      ]),
+    ).toEqual(["a.sh", "b.sh"])
   })
 })

@@ -128,7 +128,13 @@ describe("a lista de classes (o que o remédio OFERECE)", () => {
     // A cobertura é o contrato: uma classe a mais aqui é um remendo que o
     // repositório passaria a oferecer; uma a menos, um defeito mecânico que volta
     // a ser corrigido à mão.
-    expect(CLASSES.map((c) => c.id)).toEqual(["run-syntax", "crlf", "blob-crlf", "utf8"])
+    expect(CLASSES.map((c) => c.id)).toEqual([
+      "run-syntax",
+      "crlf",
+      "blob-crlf",
+      "utf8",
+      "hook-commands",
+    ])
   })
 
   it("cada classe declara o fixer, o caminho à mão e a régua do veredito", () => {
@@ -327,6 +333,124 @@ describe("a classe NÃO APLICÁVEL não mede OUTRA árvore", () => {
       expect(texto).toContain("nada a remendar")
       // O arquivo continua com CRLF no índice: nenhum fixer de FORA tocou nele.
       expect(indice(dir, "scripts/quebrado.sh")).toEqual(Buffer.from(CRLF_SH))
+    })
+  })
+})
+
+// ── a classe do CAMINHO TIPADO num comando de hook ────────────────────────
+//
+// O que estes testes medem (e o que eles NÃO medem): a classe é um ADAPTADOR
+// entre o guard dono e a mecânica do remédio — detecção pelo guard, o remendo
+// levado ao ÍNDICE e o veredito. A RÉGUA do remendo (plano, vizinho, token)
+// tem a prova própria em `check-hook-commands.test.ts`, e aqui o guard é o
+// IMPORTADO: a cópia dentro do fixture existe porque o contrato da classe é não
+// medir outra árvore (sem o guard no repositório sob remendo, a classe se declara
+// inaplicável em vez de rodar o de quem executa).
+//
+// E o desfecho tem uma metade que só esta classe tem: ela REESCREVE O ARQUIVO QUE
+// O HOOK EXECUTA, então o veredito desta rodada é `relancamento` — o remendo vai
+// à ÁRVORE e ao ÍNDICE, e quem mede o commit corrigido é um `git commit` NOVO
+// (medido: continuar lendo a casca reescrita sai 127 com um "not found" numa
+// linha POSTERIOR).
+const GUARD_DO_HOOK = "check-hook-commands.mjs"
+
+/** Um fixture com as DUAS âncoras do guard (`.husky/` e `package.json`) e o hook. */
+function repoComHook(hook: string, vizinhos: string[] = ["check-bun-mirror.mjs"]) {
+  const dir = novoRepo({
+    prefix: "remedy-hookcmd-",
+    closure: [GUARD_DO_HOOK, ...vizinhos],
+    wrapper: "set -eu\n",
+  })
+  writeFileSync(
+    join(dir, "package.json"),
+    JSON.stringify({ name: "fixture-hookcmd", private: true, scripts: {} }, null, 2),
+    "utf8",
+  )
+  mkdirSync(join(dir, ".husky"), { recursive: true })
+  stage(dir, ".husky/pre-commit", hook)
+  return dir
+}
+
+describe("`hook-commands` — o caminho tipado num comando de hook", () => {
+  it("DETECTA pelo guard dono e o plano dele é o que vai à pergunta", () => {
+    const dir = repoComHook("set -eu\nnode scripts/check-bun-mirrorX.mjs --staged &\n")
+
+    const classe = CLASSES.find((c) => c.id === "hook-commands")
+    const d = classe?.detectar(dir, CTX)
+
+    expect(d?.offenders).toEqual([".husky/pre-commit"])
+    expect(d?.violacoes).toBe(1)
+    expect(d?.relatorio).toContain("scripts/check-bun-mirrorX.mjs")
+    expect(d?.relatorio).toContain("scripts/check-bun-mirror.mjs")
+  })
+
+  it('o "sim" leva o remendo ao ÍNDICE, e o veredito é o RELANÇAMENTO (não "pode seguir")', () => {
+    const dir = repoComHook("set -eu\nnode scripts/check-bun-mirrorX.mjs --staged &\n")
+    expect(indice(dir, ".husky/pre-commit").toString("utf8")).toContain("mirrorX")
+
+    const { log, linhas } = dito()
+    return remedy(dir, { ...SIM, log }).then((r) => {
+      // O remendo foi aplicado e ESTAGIADO (o commit carregaria o hook corrigido)...
+      expect(r.restaged).toContain(".husky/pre-commit")
+      expect(r.withheld).toEqual([])
+      expect(indice(dir, ".husky/pre-commit").toString("utf8")).toContain(
+        "scripts/check-bun-mirror.mjs",
+      )
+      expect(naArvore(dir, ".husky/pre-commit")).toContain("scripts/check-bun-mirror.mjs")
+      // ...e MESMO ASSIM o commit desta rodada BLOQUEIA: a casca que está rodando
+      // é o arquivo que acabou de mudar de tamanho.
+      expect(r.code).toBe(EXIT.VIOLATIONS)
+      expect(r.relancamento).toEqual(["hook-commands"])
+      const texto = linhas.join("\n")
+      expect(texto).toContain("RE-RODE o commit")
+      expect(texto).toContain("EXECUTANDO")
+      expect(texto).toContain("exit 127") // a medição que justifica o relançamento
+    })
+  })
+
+  it("o caminho à mão da classe inclui o `git commit` NOVO (a casca foi reescrita)", () => {
+    const classe = CLASSES.find((c) => c.id === "hook-commands")
+    const linhas = classe?.sugere([".husky/pre-commit"]) ?? []
+    expect(linhas.join("\n")).toContain("node scripts/check-hook-commands.mjs --fix")
+    expect(linhas.join("\n")).toContain("git add .husky/pre-commit")
+    expect(linhas.join("\n")).toContain("git commit")
+  })
+
+  it("violação que o remendo NÃO sabe consertar bloqueia SEM pergunta (nada remendável)", () => {
+    // A entrada de `bun run` que não existe: o guard acusa, o remendo RECUSA
+    // (trocar uma entrada de `scripts` por outra muda o que o hook executa) — e é
+    // o `semRemendo` da classe que mantém o commit bloqueado. Sem ele, "nada a
+    // remendar" deixaria passar um comando que nunca roda.
+    const dir = repoComHook("set -eu\nbun run tipecheck\n")
+    const { log, linhas } = dito()
+    let perguntou = false
+    return remedy(dir, {
+      askFn: async () => {
+        perguntou = true
+        return "s"
+      },
+      log,
+    }).then((r) => {
+      expect(perguntou).toBe(false)
+      expect(r.code).toBe(EXIT.VIOLATIONS)
+      expect(r.relancamento).toEqual([])
+      const texto = linhas.join("\n")
+      expect(texto).toContain("NÃO remenda")
+      expect(texto).toContain("hook-commands")
+      expect(indice(dir, ".husky/pre-commit").toString("utf8")).toContain("bun run tipecheck")
+    })
+  })
+
+  it("sem as âncoras do guard (package.json), a classe NÃO mede outra árvore", () => {
+    const dir = repoComHook("node scripts/check-bun-mirrorX.mjs\n")
+    rmSync(join(dir, "package.json"))
+
+    const { log, linhas } = dito()
+    return remedy(dir, { ...SIM, log }).then((r) => {
+      expect(r.code).toBe(EXIT.OK)
+      expect(r.restaged).toEqual([])
+      expect(linhas.join("\n")).toContain("package.json ausente")
+      expect(indice(dir, ".husky/pre-commit").toString("utf8")).toContain("mirrorX")
     })
   })
 })

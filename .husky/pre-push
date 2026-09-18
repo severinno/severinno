@@ -67,10 +67,34 @@ if [ "$SHOULD_RUN_TESTS" = true ]; then
 
   if [ -n "$AFFECTED_TESTS" ]; then
     echo "🧪 Testes afetados:$(echo $AFFECTED_TESTS | wc -w) arquivos"
+    # ACHADO MEDIDO, DECLARADO AQUI (não consertado neste passo): esta linha tem
+    # o MESMO defeito de veredito que o fast path tinha — `| tail -5` devolve o
+    # status do `tail`, então uma suíte afetada VERMELHA não bloqueia o push. O
+    # conserto exige capturar a saída como abaixo, e isso moveria a invocação
+    # para dentro de um `$( )`: o `check-hook-ci-parity` declara esta linha por
+    # regex ANCORADA em `^bun run vitest run --reporter=verbose $AFFECTED_TESTS`,
+    # e sem a âncora o invariante `tests` sumiria do inventário do hook (o guard
+    # passaria a exigir uma declaração de "não roda" para um comando que roda).
     bun run vitest run --reporter=verbose $AFFECTED_TESTS 2>&1 | tail -5
   else
     echo "⚡ Nenhum teste afetado — rodando typecheck rápido"
-    bun run typecheck 2>&1 | head -5
+    # O VEREDITO É DO COMANDO, NÃO DO FILTRO. Numa pipeline o status é o do
+    # ÚLTIMO comando: `bun run typecheck 2>&1 | head -5` devolvia 0 com o tsc
+    # REPROVANDO, então o filtro transformava este gate num no-op e o push levava
+    # a árvore vermelha para a forja (medido — a mutação M1 do
+    # pre-push-git-push-blocks pega exatamente isso). Aqui a saída é CAPTURADA
+    # (o status é o do typecheck) e o recorte do `head` sai por HERESTRING, sem
+    # pipe: nenhum produtor vivo para levar SIGPIPE — a mesma régua do
+    # check-pipefail-sigpipe. A invocação CANÔNICA da fase 2 segue visível numa
+    # linha própria, que é a que o check-hook-ci-parity lê como "o hook roda o
+    # typecheck do CI".
+    if ! TYPE_OUT=$(bun run typecheck 2>&1); then
+      head -5 <<< "$TYPE_OUT"
+      echo ""
+      echo "❌ typecheck FALHOU — o push está bloqueado (o MESMO comando do CI)"
+      exit 1
+    fi
+    head -5 <<< "$TYPE_OUT"
   fi
 
   # Fuzz tests só rodam no CI (sao lentos demais pra push)
