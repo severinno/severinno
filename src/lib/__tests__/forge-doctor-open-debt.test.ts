@@ -401,6 +401,14 @@ function baseFacts() {
       evidence: null,
       remedies: [],
     },
+    // O OUTRO elo do contrato local (o `pre-push` × a árvore VERMELHA): presente
+    // e PROVADO pelo mesmo motivo do commit acima.
+    prePushBlock: {
+      state: "proven",
+      detail: "um 'git push' com a árvore vermelha é recusado e o verde chega ao remoto",
+      evidence: null,
+      remedies: [],
+    },
     openDebt: {
       state: "clear",
       detail: "sem dívida",

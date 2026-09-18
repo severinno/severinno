@@ -35,9 +35,11 @@ import {
   MERGE_OWNER_PIPELINE,
   REQUIRED_CHECKS_MANIFEST,
   VERDICT,
+  coreGateContracts,
   readBringUpGate,
   readAllGateContracts,
   readContract,
+  scriptOfCommand,
   diagnose,
   parseArgs,
   firstRunLine,
@@ -79,12 +81,22 @@ import {
   readPreCommitBlock,
   preCommitBlockBlockers,
   preCommitBlockUnknowns,
+  readPrePushBlock,
+  prePushBlockBlockers,
+  prePushBlockUnknowns,
 } from "../../../scripts/forge-doctor.mjs"
 
 // A prova EXECUTADA pelo doctor e as constantes do hook que ela usa: o teste mede
 // a MESMA função que o relatório chama (e é por isso que a mutação do hook aqui
 // embaixo muda o veredito do fato).
 import { GUARD_COMMAND, hookSource, proveCommitBlocks } from "../../../scripts/pre-commit-proof.mjs"
+// O OUTRO ELO do contrato local: a prova do PUSH é executada pelo doctor pelo
+// mesmo módulo que o teste do hook importa.
+import {
+  TYPECHECK_COMMAND,
+  hookSource as pushHookSource,
+  provePushBlocks,
+} from "../../../scripts/pre-push-proof.mjs"
 
 import { GITEA_BRING_UP, GITEA_COMPOSE } from "../../../scripts/check-bun-mirror.mjs"
 import { GITEA_ENV_MIRROR } from "../../../scripts/check-actrc-sync.mjs"
@@ -209,6 +221,17 @@ const PRE_COMMIT_BLOCK_PROVEN = {
   remedies: [],
 }
 
+/**
+ * O OUTRO ELO do contrato local (o `pre-push`), também PROVADO — escrito à mão
+ * pelo mesmo motivo do de cima: os fatores do veredito têm de ser determinísticos.
+ */
+const PRE_PUSH_BLOCK_PROVEN = {
+  state: "proven",
+  detail: "um 'git push' com a árvore vermelha é recusado e o verde chega ao remoto",
+  evidence: null,
+  remedies: [],
+}
+
 /** Fatores do veredito, todos "verdes" — cada teste estraga um. */
 function facts(overrides: Record<string, unknown> = {}) {
   return {
@@ -249,12 +272,17 @@ function facts(overrides: Record<string, unknown> = {}) {
     // presente e limpa. Cada teste estraga o que quer medir.
     shellInheritance: SHELL_INHERITANCE_LIMPA,
     preCommitBlock: PRE_COMMIT_BLOCK_PROVEN,
+    // O OUTRO elo do contrato local (o push): presente e PROVADO pelo mesmo
+    // motivo do commit — ausente, o fato vira dúvida (cada teste estraga o que
+    // quer medir).
+    prePushBlock: PRE_PUSH_BLOCK_PROVEN,
     skippedGuards: false,
     skippedProof: false,
     skippedProtection: false,
     skippedRunnerLabels: false,
     skippedImageContract: false,
     skippedPreCommitProof: false,
+    skippedPrePushProof: false,
     ...overrides,
   }
 }
@@ -407,6 +435,34 @@ const proofViolated = {
 
 /** `run` dublê: tudo passa, sem executar processo nenhum. */
 const passRun = () => ({ status: 0, stdout: "", stderr: "", signal: null, error: undefined })
+
+/**
+ * Os DOIS elos locais PROVADOS, para os fluxos de VEREDITO cuja fixture é um
+ * repositório temporário SEM `.husky/` — ali a prova real sai INDISPONÍVEL (com
+ * razão: não há o que provar), e desde que o recorte `--ci` EXIGE os dois elos
+ * provados, um fluxo que dubla todos os outros fatos precisa dublar estes também.
+ * A prova REAL não fica sem cobertura por causa disto: ela tem a integração
+ * própria (`pre-push-git-push-blocks`, `pre-commit-git-commit-blocks`) e a
+ * sensibilidade do doctor sobre o hook do checkout.
+ */
+const localProofsProven = {
+  preCommitBlockDeps: {
+    prove: () => ({
+      state: "proven",
+      detail: "prova dublada do fluxo",
+      evidence: null,
+      remedies: [],
+    }),
+  },
+  prePushBlockDeps: {
+    prove: () => ({
+      state: "proven",
+      detail: "prova dublada do fluxo",
+      evidence: null,
+      remedies: [],
+    }),
+  },
+}
 
 /**
  * O relatório `--json` do aplicador REAL, reduzido ao que o doctor lê.
@@ -2180,6 +2236,26 @@ describe("readAllGateContracts — o job EXIGIDO roda a régua da INVARIANTE, a 
     for (const c of lint) expect(c.forges.map((f) => f.command)).toEqual(["bun run lint"])
   })
 
+  it("o `script` do contrato é DERIVADO do comando canônico (o campo já foi o do bring-up)", () => {
+    // O defeito encontrado: o `base` do contrato copiava `PROOF_SCRIPT`, então
+    // TODO gate publicava no `--json` o script do bring-up — e um consumidor do
+    // relatório lia "o script do gate de lint é prove-runner-image-gate.mjs".
+    expect(scriptOfCommand(/^node scripts\/prove-pre-commit-in-runner\.mjs$/m)).toBe(
+      "scripts/prove-pre-commit-in-runner.mjs",
+    )
+    expect(scriptOfCommand(/^bun run typecheck$/)).toBe("typecheck")
+    expect(scriptOfCommand(/^bun run test:run$/m)).toBe("test:run")
+    expect(scriptOfCommand(/^node scripts\/rotate-secrets\.mjs --check$/m)).toBe(
+      "scripts/rotate-secrets.mjs",
+    )
+    expect(scriptOfCommand(undefined)).toBeNull()
+    // No contrato REAL: nenhum gate fica sem script, e dois gates diferentes não
+    // podem publicar o MESMO (que era o sintoma do copia-e-cola).
+    const scripts = coreGateContracts().map((c) => scriptOfCommand(c.expectedCommand))
+    expect(scripts.filter((s) => s === null)).toEqual([])
+    expect(new Set(scripts).size).toBeGreaterThan(5)
+  })
+
   it("CONTROLE: uma forja com régua PRÓPRIA (só eslint, sem prettier) é VIOLAÇÃO", () => {
     // A assimetria que este fato passou a PROIBIR, reproduzida no formato que
     // ela tinha: o GitHub rodando `eslint . --max-warnings 0` inline enquanto a
@@ -3045,6 +3121,17 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
           remedies: [],
         }),
       },
+      // O OUTRO elo local (o push) pelo MESMO motivo: a fixture não tem
+      // `.husky/pre-push` e a prova real sairia INDISPONÍVEL — o fluxo do
+      // veredito entra dublado, e a prova REAL tem teste próprio.
+      prePushBlockDeps: {
+        prove: () => ({
+          state: "proven",
+          detail: "prova dublada do fluxo",
+          evidence: null,
+          remedies: [],
+        }),
+      },
     })
     // O fato do board existe SEMPRE (mesmo vazio): um `diagnose` que esquecesse
     // de montá-lo faria a dívida aberta sumir do veredito em silêncio.
@@ -3115,6 +3202,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       expectedVars: { IMAGE_REGISTRY: "ghcr.io", IMAGE_NAMESPACE: "severinno" },
       run: passRun,
       imageRefsDeps: refsProven,
+      ...localProofsProven,
     })
     const v = summarize(facts)
     expect(v.blockers, JSON.stringify(v.blockers)).toEqual([])
@@ -3359,6 +3447,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       protectionDeps: protectionInSync,
       openDebtDeps: debtClear,
       imageContractDeps: imageContractProven,
+      ...localProofsProven,
       proofDeps: {
         prove: async () => {
           called++
@@ -4621,6 +4710,217 @@ describe("a prova REAL do bloqueio local (executada, não lida)", () => {
 
   it("INDISPONÍVEL: um checkout sem o hook não é verde (diz o que faltou)", () => {
     const r = readPreCommitBlock({ cwd: makeDir(), deps: {} })
+    expect(r.state).toBe("unavailable")
+    expect(r.detail).toContain("não existe neste checkout")
+    expect(r.remedies.length).toBeGreaterThan(0)
+  })
+})
+
+// ── a prova do bloqueio do PUSH (o outro elo do contrato local) ───────────
+
+/** O fato do doctor com a prova do push INJETADA (os três estados sem rodar git). */
+const provaPush = (saida: unknown) =>
+  readPrePushBlock({
+    deps: { prove: (() => saida) as (opts: { root: string }) => object },
+  })
+
+describe("a prova do bloqueio do PUSH como FATO do relatório", () => {
+  it("o estado da prova vira o estado do FATO (proven/violated/unavailable)", () => {
+    expect(provaPush({ state: "proven", detail: "bloqueou", evidence: null }).state).toBe("proven")
+    expect(provaPush({ state: "violated", detail: "chegou", evidence: null }).state).toBe(
+      "violated",
+    )
+    const ind = provaPush({ state: "unavailable", detail: "sem bun", evidence: null })
+    expect(ind.state).toBe("unavailable")
+    expect(ind.detail).toBe("sem bun")
+  })
+
+  it("uma prova que não devolve estado é INDISPONÍVEL, nunca verde", () => {
+    for (const saida of [undefined, null, {}, { detail: "sem estado" }]) {
+      const f = provaPush(saida)
+      expect(f.state).toBe("unavailable")
+      expect(f.detail).toContain("nao devolveu estado")
+    }
+  })
+
+  it("uma prova que ESTOURA é INDISPONÍVEL nomeando o erro", () => {
+    const f = readPrePushBlock({
+      deps: {
+        prove: (): object => {
+          throw new Error("git ausente")
+        },
+      },
+    })
+    expect(f.state).toBe("unavailable")
+    expect(f.detail).toContain("git ausente")
+  })
+
+  it("VIOLADO bloqueia o veredito; INDISPONÍVEL vira falta de prova NOMEADA", () => {
+    const violado = facts({
+      prePushBlock: { state: "violated", detail: "2 objetos chegaram ao remoto", remedies: [] },
+    })
+    const v1 = summarize(violado)
+    expect(v1.verdict).toBe(VERDICT.BLOCKED)
+    expect(v1.blockers.some((b) => b.includes("PRE-PUSH nao bloqueia"))).toBe(true)
+    expect(prePushBlockBlockers(violado.prePushBlock)[0]).toContain("VERMELHA")
+
+    const indeterminado = facts({
+      prePushBlock: { state: "unavailable", detail: "sem bun no PATH", remedies: [] },
+    })
+    const v2 = summarize(indeterminado)
+    expect(v2.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v2.unknowns.some((u) => u.includes("bloqueio do PUSH nao foi provado"))).toBe(true)
+    expect(v2.unknowns.some((u) => u.includes("sem bun no PATH"))).toBe(true)
+    // Nem bloqueio nem dúvida no caminho FELIZ.
+    expect(prePushBlockBlockers(PRE_PUSH_BLOCK_PROVEN)).toEqual([])
+    expect(prePushBlockUnknowns(PRE_PUSH_BLOCK_PROVEN)).toEqual([])
+    expect(summarize(facts()).verdict).not.toBe(VERDICT.UNKNOWN)
+  })
+
+  it("o fato AUSENTE do relatório é falta de prova (mesma disciplina do resto)", () => {
+    const v = summarize(facts({ prePushBlock: undefined }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(prePushBlockUnknowns(undefined)[0]).toContain("bloqueio do PUSH")
+  })
+
+  it("pular por --no-pre-push-proof NÃO vira pendência, mas o relatório DIZ", () => {
+    const fPulado = facts({
+      prePushBlock: { state: "skipped", detail: "pulada" },
+      skippedPrePushProof: true,
+    })
+    expect(prePushBlockUnknowns({ state: "skipped", detail: "pulada" })).toEqual([])
+    const linhas: string[] = []
+    renderReport(
+      { facts: fPulado, verdict: summarize(fPulado) },
+      { emit: (s = "") => linhas.push(s) },
+    )
+    const texto = linhas.join("\n")
+    expect(texto).toContain("prova do bloqueio do PUSH pulada por --no-pre-push-proof")
+    expect(summarize(fPulado).unproven.join("\n")).toContain("prova do bloqueio do PUSH")
+  })
+
+  it("no recorte do merge (`--ci`) um elo local NÃO provado BLOQUEIA (o gate não fica verde por omissão)", () => {
+    // O portão do PR traduz 0 e 2 do doctor em 0 (verde), porque INDETERMINADA é
+    // o estado NORMAL do recorte (token, smoke e HOST ficam para o cron). Sem
+    // esta exigência, apagar o `.husky/pre-push` — ou ficar sem `bun` no PATH —
+    // levava o fato a `unavailable` → INDETERMINADA → merge verde, com a
+    // promessa do push deixando de existir. Aqui os dois elos só precisam de
+    // git/bash/bun, então "não deu para provar" é elo quebrado.
+    const semCommit = facts({
+      ciProfile: true,
+      preCommitBlock: { state: "unavailable", detail: "sem git no PATH", remedies: [] },
+    })
+    const vCommit = summarize(semCommit)
+    expect(vCommit.verdict).toBe(VERDICT.BLOCKED)
+    expect(vCommit.blockers.join("\n")).toContain("bloqueio do PRE-COMMIT")
+    expect(vCommit.blockers.join("\n")).toContain("recorte do merge")
+
+    const semPush = facts({
+      ciProfile: true,
+      prePushBlock: { state: "unavailable", detail: "sem bun no PATH", remedies: [] },
+    })
+    const vPush = summarize(semPush)
+    expect(vPush.verdict).toBe(VERDICT.BLOCKED)
+    expect(vPush.blockers.join("\n")).toContain("bloqueio do PRE-PUSH")
+
+    // A FLAG não esconde o elo no recorte do merge: pular a prova aqui seria,
+    // na prática, tirá-la de cena do contrato — e o skip continua sendo um
+    // `unproven` declarado (a decisão não desaparece do relatório).
+    const pulado = facts({
+      ciProfile: true,
+      prePushBlock: { state: "skipped", detail: "pulada" },
+      skippedPrePushProof: true,
+    })
+    expect(summarize(pulado).verdict).toBe(VERDICT.BLOCKED)
+    expect(summarize(pulado).unproven.join("\n")).toContain("prova do bloqueio do PUSH")
+
+    // E FORA do recorte NADA MUDA: no perfil completo a falta de prova segue
+    // INDETERMINADA — é o veredito honesto quando o doctor também olha o HOST.
+    const completo = facts({
+      prePushBlock: { state: "unavailable", detail: "sem bun no PATH", remedies: [] },
+    })
+    expect(summarize(completo).verdict).toBe(VERDICT.UNKNOWN)
+  })
+
+  it("a seção 4/7 imprime o estado, a evidência das DUAS metades e quem cobra", () => {
+    const linhas: string[] = []
+    const fProvado = facts({
+      prePushBlock: {
+        state: "proven",
+        detail: "recusou o vermelho e deixou chegar o verde",
+        evidence: {
+          defeito: { status: 1, refs: [], objetosNoRemoto: 0, invocacoes: 1 },
+          controle: { status: 0, refs: ["refs/heads/main"], objetosNoRemoto: 2, invocacoes: 2 },
+        },
+        remedies: [],
+      },
+    })
+    renderReport(
+      { facts: fProvado, verdict: summarize(fProvado) },
+      { emit: (s = "") => linhas.push(s) },
+    )
+    const texto = linhas.join("\n")
+    expect(texto).toContain("prova do bloqueio do PUSH (pre-push): proven")
+    expect(texto).toContain("árvore vermelha: exit 1, 0 ref(s) e 0 objeto(s) no remoto")
+    expect(texto).toContain("CONTROLE com a árvore verde: exit 0, refs/heads/main (2 objeto(s))")
+    expect(texto).toContain("quem cobra: o PRÓPRIO hook (.husky/pre-push)")
+  })
+
+  it("VIOLADO aparece na seção com o remédio (o que devolver ao hook)", () => {
+    const linhas: string[] = []
+    const fViolado = facts({
+      prePushBlock: {
+        state: "violated",
+        detail: "2 objetos e 1 ref chegaram ao remoto",
+        evidence: { defeito: { status: 0, refs: ["refs/heads/main"], objetosNoRemoto: 2 } },
+        remedies: ["o pre-push tem de rodar o typecheck da ÁRVORE"],
+      },
+    })
+    renderReport(
+      { facts: fViolado, verdict: summarize(fViolado) },
+      { emit: (s = "") => linhas.push(s) },
+    )
+    const texto = linhas.join("\n")
+    expect(texto).toContain("prova do bloqueio do PUSH (pre-push): violated")
+    expect(texto).toContain("o pre-push tem de rodar o typecheck da ÁRVORE")
+  })
+})
+
+describe("a prova REAL do bloqueio do push (executada, não lida)", () => {
+  it("no repositório, a árvore VERMELHA não chega ao remoto (e a verde chega)", () => {
+    const r = provePushBlocks()
+    expect(r.state).toBe("proven")
+    expect(r.evidence!.defeito.refs).toEqual([])
+    expect(r.evidence!.defeito.objetosNoRemoto).toBe(0)
+    expect(r.evidence!.defeito.invocacoes).toBeGreaterThan(0)
+    expect(r.evidence!.controle!.status).toBe(0)
+    expect(r.evidence!.controle!.refs).toEqual(["refs/heads/main"])
+    // E o FATO do doctor é a mesma medição: o doctor não reimplementa a prova.
+    expect(readPrePushBlock().state).toBe("proven")
+  })
+
+  it("SENSIBILIDADE: tirar o typecheck de NENHUMA invocação muda o veredito (provado → violado)", () => {
+    const src = pushHookSource() ?? ""
+    expect(src).toContain(TYPECHECK_COMMAND)
+    // O VEREDITO NOVO, medido e não suposto: tirar SÓ a linha canônica da fase 2
+    // não abre mais o buraco. O fast path do smart-skip captura a saída (o
+    // veredito é o do typecheck, não o do `head` que filtrou), então o defeito
+    // continua barrado por ele — defesa em profundidade.
+    const soFase2 = src.replace(`\n${TYPECHECK_COMMAND}\n`, "\n")
+    expect(soFase2).not.toBe(src)
+    expect(provePushBlocks({ hookSourceTexto: soFase2 }).state).toBe("proven")
+    // O buraco abre quando o hook deixa de JULGAR a árvore: nenhuma das duas
+    // invocações. `true` no lugar do comando mantém a sintaxe válida, de modo
+    // que a mutação não sai vermelha por PARSING.
+    const r = provePushBlocks({
+      hookSourceTexto: src.replaceAll(TYPECHECK_COMMAND, "true"),
+    })
+    expect(r.state).toBe("violated")
+    expect(r.evidence!.defeito.objetosNoRemoto).toBeGreaterThan(0)
+  })
+
+  it("INDISPONÍVEL: um checkout sem o hook não é verde (diz o que faltou)", () => {
+    const r = readPrePushBlock({ cwd: makeDir(), deps: {} })
     expect(r.state).toBe("unavailable")
     expect(r.detail).toContain("não existe neste checkout")
     expect(r.remedies.length).toBeGreaterThan(0)

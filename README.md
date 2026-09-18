@@ -1077,7 +1077,9 @@ SKIP — exit 0 enquanto measure-e2e-cache.mjs não existir —, custo ~0s;
 ⚠️ a medição local foi com 12 — o lint-guard (13º), o mutation-count (14º)
 e o no-leaked-imports (15º) foram adicionados DEPOIS e não re-medidos,
 custo estimado ~0.5s cada):
-mediana de 3 runs warm, **39s local** (39–40s). O **9.1s** de step no act
+mediana de 3 runs warm, **39s local** (39–40s) — valor RETIRADO para o master:
+era de 23 sub-tests e de OUTRO host (Windows), e o número vivo é o de ³. O
+**9.1s** de step no act
 com a imagem ubuntu-bun + `--pull=false` foi medido ANTES, com 10
 sub-tests, e não foi re-medido (o mesmo act mediu o actionlint em 3.6s e o
 utf8-check em 7.46s). O custo escala com o nº de sub-tests — cada um cria
@@ -1287,7 +1289,7 @@ workflows de encoding/cache) — PRs comuns NÃO o rodam; quando roda (timeout 1
 min), o custo é dominado pelo `bun run build` (4m6s local, **1 run** — não foi
 estabilizado em 3 runs como os demais) + `playwright install chromium` + testes
 de cache. Os demais gates somam ≈ **1m32s** no pior caso
-(mutation-guards 39s + coord-update 51s local) contra ≈ **3.2s** dos 16 fast
+(mutation-guards 174.9s + coord-update 51s local) contra ≈ **3.2s** dos 16 fast
 guards — por design: cada mutation test roda o guard REAL contra uma mutação
 (não é node-puro) e o coord-update roda vitest real + guard estático por cenário.
 
@@ -1301,11 +1303,11 @@ benchmark versionado). Medido em 17/09/2026:
 
 | Forja                                      | Soma dos gates |               Caminho crítico |                **Latência de merge** |        O que a concorrência economiza |
 | :----------------------------------------- | -------------: | ----------------------------: | -----------------------------------: | ------------------------------------: |
-| Gitea (dona do merge, **1** `act_runner`)  |         472.5s |       377.5s (`test → build`) |                           **472.5s** | 0s — com 1 runner a pipeline é SERIAL |
-| GitHub (espelho, **1** runner self-hosted) |     ≤ 11081.5s | 7200.0s (`seed-guards`, teto) | ≤ **11081.5s** (581.5s sem os TETOs) |             0s — SERIAL, como a forja |
+| Gitea (dona do merge, **1** `act_runner`)  |         472.7s |       377.5s (`test → build`) |                           **472.7s** | 0s — com 1 runner a pipeline é SERIAL |
+| GitHub (espelho, **1** runner self-hosted) |     ≤ 11176.7s | 7200.0s (`seed-guards`, teto) | ≤ **11176.7s** (676.7s sem os TETOs) |             0s — SERIAL, como a forja |
 
 Ou seja: o PR da forja espera **7m52s**, e o **teto** do ganho com runners
-de sobra é **95.0s** (472.5 − 377.5) — o `build` (246s) e o `test` (131.5s)
+de sobra é **95.2s** (472.7 − 377.5) — o `build` (246s) e o `test` (131.5s)
 dominam a cadeia, e todo o resto (lint, guards, typecheck, bring-up-proof) roda
 **em paralelo a eles** quando há runner livre. Com 1 runner nada disso importa: a
 latência É a soma. É essa diferença que a tabela de custos não dizia.

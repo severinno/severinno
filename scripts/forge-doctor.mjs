@@ -233,6 +233,12 @@ import {
 // que os testes dos hooks usam — a régua é UMA só, e o doctor a EXECUTA em vez de
 // confiar na existência do teste que a mede.
 import { proveCommitBlocks } from "./pre-commit-proof.mjs"
+// A PROVA do bloqueio do OUTRO ELO do contrato local (o `pre-push` recusando um
+// push com a árvore VERMELHA, sem deixar objeto nenhum no remoto): ela mora em
+// `scripts/pre-push-proof.mjs` junto com a camada do hook que o teste
+// `pre-push-git-push-blocks.test.ts` importa — a régua é UMA só, e o doctor a
+// EXECUTA em vez de confiar na existência do teste que a mede.
+import { provePushBlocks } from "./pre-push-proof.mjs"
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -1099,6 +1105,26 @@ export function summarize(facts) {
     for (const b of preCommitBlockBlockers(facts.preCommitBlock)) blockers.push(b)
     for (const u of preCommitBlockUnknowns(facts.preCommitBlock)) unknowns.push(u)
   }
+  // NO RECORTE DO MERGE a prova local é EXIGIDA (ver a função): aqui `unavailable`
+  // é elo quebrado, não falta de prova — e um `--no-pre-commit-proof` no YAML do
+  // job também não esconde o elo (a flag vira `skipped`, e `skipped` ≠ provado).
+  // Fora do `--ci` a função é no-op, então nada muda no perfil completo.
+  for (const b of ciRequiredLocalProofBlockers("pre-commit", facts)) blockers.push(b)
+  // O OUTRO ELO do contrato local (o `pre-push`): mesma disciplina, mesma
+  // separação — o fato do push não substitui o do commit nem é substituído por
+  // ele, porque as promessas e os lugares de medição são diferentes.
+  if (facts.skippedPrePushProof) {
+    unknowns.push(
+      "a prova do bloqueio do PUSH foi pulada (--no-pre-push-proof): o veredito não cobre se um push com a ÁRVORE vermelha leva o defeito para a forja",
+    )
+  } else {
+    for (const b of prePushBlockBlockers(facts.prePushBlock)) blockers.push(b)
+    for (const u of prePushBlockUnknowns(facts.prePushBlock)) unknowns.push(u)
+  }
+  // Idem para o OUTRO elo local: no recorte do merge os dois têm de sair
+  // provados (e o comentário do fato já dizia "NUNCA verde" — é isto que faz a
+  // frase valer no VEREDITO, e não só na linha do relatório).
+  for (const b of ciRequiredLocalProofBlockers("pre-push", facts)) blockers.push(b)
 
   const verdict =
     blockers.length > 0 ? VERDICT.BLOCKED : unknowns.length > 0 ? VERDICT.UNKNOWN : VERDICT.READY
@@ -1139,6 +1165,11 @@ export function summarize(facts) {
   if (facts.skippedPreCommitProof) {
     unproven.unshift(
       "a prova do bloqueio LOCAL (pre-commit) — pulada por --no-pre-commit-proof: sem ela, o veredito não garante que um corpo `run:` quebrado no índice não vire commit",
+    )
+  }
+  if (facts.skippedPrePushProof) {
+    unproven.unshift(
+      "a prova do bloqueio do PUSH (pre-push) — pulada por --no-pre-push-proof: sem ela, o veredito não garante que uma árvore VERMELHA não chegue à forja por um push local",
     )
   }
   if (facts.ciProfile) {
@@ -1465,6 +1496,33 @@ export function readBringUpGate({
  *     registered: boolean|null, detail: string}[],
  *   violations: string[], remedies: string[]}}
  */
+/**
+ * O SCRIPT que o comando canônico de uma invariante executa — o campo `script`
+ * do contrato de gate.
+ *
+ * O campo existia com o VALOR ERRADO: o `base` do contrato copiava
+ * `PROOF_SCRIPT` (o do bring-up), então TODO gate CORE publicava no `--json` o
+ * mesmo script — e quem consumisse o relatório leria "o script do gate é
+ * prove-runner-image-gate.mjs" para uma régua de lint. Derivar do COMANDO é o
+ * único jeito de o campo dizer a verdade sem uma segunda lista para manter.
+ *
+ * A fonte é um REGEX (o `command` da invariante), então as escapes saem antes:
+ * `scripts\/x\.mjs` é o mesmo caminho que `scripts/x.mjs`.
+ *
+ * @param {RegExp|undefined} expectedCommand
+ * @returns {string|null}
+ */
+export function scriptOfCommand(expectedCommand) {
+  const fonte = (expectedCommand?.source ?? "")
+    .replace(/\\(.)/g, "$1")
+    // As ÂNCORAS saem primeiro: elas são a régua do texto (`^`/`$` do regex),
+    // não parte do comando — mantê-las faria nenhuma linha casar.
+    .replace(/^\^/, "")
+    .replace(/\$$/, "")
+  const m = /^(?:node|bun|bunx)\s+(?:run\s+)?([^\s$]+)/.exec(fonte)
+  return m ? m[1] : null
+}
+
 export function readGateContract({
   jobId,
   expectedCommand,
@@ -1476,7 +1534,7 @@ export function readGateContract({
   const base = {
     jobId,
     invariantId,
-    script: PROOF_SCRIPT,
+    script: scriptOfCommand(expectedCommand),
     forges: [],
     violations: [],
     remedies: [
@@ -2535,6 +2593,19 @@ export const DEBT_SUBJECTS = [
     crossCheck: null,
   },
   {
+    label: "runner-shells-drift",
+    markerId: "runner-shells-drift",
+    subject:
+      "o conjunto de shells da imagem DECLARADA do runner divergiu do que a imagem publicada tem (o gate passaria um passo que morre com `command not found`)",
+    forges: ["github"],
+    // A medição exige PUXAR a imagem (docker + registry) e comparar o conjunto
+    // MEDIDO com o declarado; o doctor cobre a DECLARAÇÃO (o gate de sintaxe lê
+    // os shells declarados para julgar os passos), não o que a imagem publicada
+    // tem. Assunto que só o publicador vê — a mesma resposta do `crlf-scope-drift`
+    // e do `guard-timing-regression`: `null` diz isso, e nunca presume caducidade.
+    crossCheck: null,
+  },
+  {
     label: "declared-debt-review",
     markerId: "declared-debt-review",
     subject:
@@ -3496,6 +3567,144 @@ export function preCommitBlockUnknowns(fato) {
 }
 
 /**
+ * A PROVA DO BLOQUEIO DO PUSH como FATO do relatório — o OUTRO ELO do contrato
+ * local: a garantia de que o `pre-push` recusa um push cuja ÁRVORE está vermelha,
+ * sem deixar OBJETO NENHUM no remoto.
+ *
+ * POR QUE ISTO VIROU FATO (e não ficou só no teste): a garantia vivia em
+ * `src/lib/__tests__/pre-push-git-push-blocks.test.ts`, e um teste que só roda em
+ * `bun run test` é uma promessa sobre quem lembra de rodá-lo. Aqui o doctor
+ * EXECUTA a mesma prova (`provePushBlocks`, o mesmo módulo que o teste importa)
+ * e publica o desfecho no vocabulário do resto do relatório.
+ *
+ * POR QUE É UM FATO PRÓPRIO (e não uma linha do fato do pre-commit): os dois elos
+ * medem PROMESSAS DIFERENTES num lugar diferente. O commit mede "nenhum objeto de
+ * COMMIT foi criado"; o push mede "nenhum OBJETO de qualquer tipo chegou ao
+ * REMOTO" — porque o git consulta o remoto ANTES do hook e só manda o pack
+ * DEPOIS dele. Um hook de push que passa não deixa rastro nenhum no banco local;
+ * o que ele promete (ou não) só existe do outro lado.
+ *
+ *   - `proven`      — um `git push` de verdade com a árvore VERMELHA é recusado
+ *                     (zero ref e zero objeto no remoto bare) E o mesmo push com
+ *                     a árvore verde CHEGA (a segunda metade é o CONTROLE: sem
+ *                     ela, "nada chegou" seria indistinguível de um fixture que
+ *                     não sabe empurrar);
+ *   - `violated`    — o defeito CHEGOU ao remoto (o hook deixou passar): o commit
+ *                     de quem confia no hook já está na forja;
+ *   - `unavailable` — não deu para provar (sem `.husky/pre-push`, sem `bun`, sem
+ *                     git/bash) — NUNCA verde.
+ *
+ * `deps.prove` é o ponto de injeção: o teste mede os TRÊS estados sem depender do
+ * hook do checkout (e a prova REAL continua sendo a do default, exercitada pelo
+ * teste de integração e pelo próprio doctor).
+ *
+ * @param {{cwd?: string, deps?: {prove?: (opts: {root: string}) => object}}} [args]
+ * @returns {{state: string, detail: string, evidence: object|null, remedies: string[]}}
+ */
+export function readPrePushBlock({
+  cwd = REPO_ROOT,
+  deps = /** @type {{prove?: (opts: {root: string}) => any}} */ ({}),
+} = {}) {
+  const prove = deps.prove ?? ((opts) => provePushBlocks({ root: opts.root }))
+  try {
+    const r = prove({ root: cwd })
+    if (r === null || r === undefined || typeof r.state !== "string") {
+      return {
+        state: "unavailable",
+        detail: "a prova do bloqueio do push nao devolveu estado (nem 'proven', nem 'violated')",
+        evidence: null,
+        remedies: [],
+      }
+    }
+    return {
+      state: r.state,
+      detail: r.detail ?? "sem detalhe",
+      evidence: r.evidence ?? null,
+      remedies: r.remedies ?? [],
+    }
+  } catch (err) {
+    return {
+      state: "unavailable",
+      detail: `a prova do bloqueio do push nao pode rodar: ${err instanceof Error ? err.message : String(err)}`,
+      evidence: null,
+      remedies: [],
+    }
+  }
+}
+
+/**
+ * O que a prova do bloqueio do push tem de BLOQUEANTE: o hook deixou a árvore
+ * vermelha CHEGAR ao remoto (o defeito já está na forja).
+ *
+ * @param {object|undefined} fato
+ * @returns {string[]}
+ */
+export function prePushBlockBlockers(fato) {
+  if (!fato || fato.state !== "violated") return []
+  return [`o PRE-PUSH nao bloqueia um push com a arvore VERMELHA — ${fato.detail}`]
+}
+
+/**
+ * O que a prova do bloqueio do push NAO pôde provar. Ausência do FATO também é
+ * ausência de prova (mesma disciplina do elo do pre-commit): um relatório sem o
+ * fato não cobre se o push de quem confia no hook leva a árvore vermelha para a
+ * forja, e dizer "pronta" sobre o que não foi olhado é o que este doctor recusa.
+ *
+ * @param {object|undefined} fato
+ * @returns {string[]}
+ */
+export function prePushBlockUnknowns(fato) {
+  if (!fato) {
+    return [
+      "a prova do bloqueio do PUSH (o pre-push recusando uma árvore VERMELHA sem deixar objeto nenhum no remoto) não está declarada no relatório: o veredito não cobre se o push local leva o defeito para a forja",
+    ]
+  }
+  if (fato.state === "proven" || fato.state === "skipped") return []
+  return [`o bloqueio do PUSH nao foi provado (state '${fato.state}'): ${fato.detail}`]
+}
+
+/**
+ * NO PERFIL `--ci`, OS DOIS ELOS LOCAIS TÊM DE SER **PROVADOS** — não apenas
+ * relatados.
+ *
+ * POR QUE A EXIGÊNCIA MORA AQUI (e não no portão do PR): o `--ci` é o recorte do
+ * merge — o que ele desliga é o que precisa de REDE, credencial de administração
+ * ou o estado do HOST (`CI_PROFILE_SKIPS`). Os dois elos locais não precisam de
+ * nada disso: git, bash e bun existem no runner que roda o job, e a prova roda
+ * dentro de um repositório temporário próprio. Logo, DENTRO deste recorte,
+ * `unavailable` não é "falta de prova declarada": é um elo quebrado.
+ *
+ * SEM ESTA REGRA A PROMESSA SAI DE CENA EM SILÊNCIO: apagar o `.husky/pre-push`
+ * (ou tirar o `bun` do PATH) leva o fato a `unavailable` → INDETERMINADA → o
+ * portão do PR traduz 2 em 0 e o merge passa com a garantia do push deixando de
+ * existir. É a mesma classe de "verde por desenho" que este repositório recusa,
+ * e a razão de o comentário do fato já dizer "NUNCA verde" — esta função é o que
+ * faz essa frase valer no veredito, e não só no relatório.
+ *
+ * Fora do `--ci` NADA MUDA: no perfil completo a falta de prova segue como
+ * `unknown` (INDETERMINADA), porque lá o doctor cobre o que depende do HOST e
+ * "não deu para medir" é o veredito honesto. `violated` também não passa por
+ * aqui: ele já BLOQUEIA pelo motivo dele (o defeito chegou), e repetir a linha
+ * com outro texto só infla o relatório.
+ *
+ * @param {"pre-commit"|"pre-push"} elo
+ * @param {object} facts
+ * @returns {string[]}
+ */
+export function ciRequiredLocalProofBlockers(elo, facts) {
+  if (!facts?.ciProfile) return []
+  const fato = elo === "pre-commit" ? facts.preCommitBlock : facts.prePushBlock
+  const state = fato?.state ?? "ausente do relatório"
+  if (state === "proven" || state === "violated") return []
+  return [
+    `a prova do bloqueio do ${elo.toUpperCase()} nao foi PROVADA no recorte do merge (--ci): ` +
+      `state '${state}'${fato?.detail ? ` — ${fato.detail}` : ""}. ` +
+      `Neste recorte os dois elos locais só precisam de git/bash/bun, entao "nao deu para provar" ` +
+      `aqui é elo quebrado — conserte-o (ou rode o doctor SEM --ci para tratar a falta de prova como INDETERMINADA)`,
+  ]
+}
+
+/**
  * O que a herança de shell tem de BLOQUEANTE: a declaração que liga o pipefail
  * (a premissa não é herdada, é dita) e a que não pôde ser lida — as DUAS classes
  * que o guard reprova com exit 1, agora NOMEADAS no veredito de prontidão em vez
@@ -3780,12 +3989,14 @@ export function renderReport(report, { emit = console.log } = {}) {
   // As duas metades juntas é que respondem "o merge é bloqueado por isto?": a
   // prova mede o comportamento, o gate mede a OBRIGAÇÃO.
   line()
-  // A seção abriga DUAS provas de bloqueio — a do bring-up (registry de TESTE) e
-  // a do commit LOCAL (o pre-commit recusando um corpo `run:` quebrado no
-  // ÍNDICE) — mais o(s) GATE(s) que as cobram no merge. O título mantém o
-  // começo de antes para o número da seção seguir sendo a âncora de quem lê.
+  // A seção abriga os DOIS elos do contrato LOCAL (o commit e o push: o
+  // pre-commit recusando um corpo `run:` quebrado no ÍNDICE e o pre-push
+  // recusando a árvore VERMELHA sem deixar objeto nenhum no remoto) mais a prova
+  // do bring-up (registry de TESTE) e o(s) GATE(s) que as cobram no merge. O
+  // título mantém o começo de antes para o número da seção seguir sendo a âncora
+  // de quem lê.
   line(
-    "  4/7  Prova do bloqueio (registry de TESTE) + a prova do commit LOCAL (pre-commit) + o GATE que as cobra no merge",
+    "  4/7  Prova do bloqueio (registry de TESTE) + os DOIS elos locais (pre-commit e pre-push) + o GATE que as cobra no merge",
   )
   {
     const proofMark =
@@ -3852,6 +4063,48 @@ export function renderReport(report, { emit = console.log } = {}) {
       )
       if (pc.state !== "proven") {
         for (const rem of pc.remedies ?? []) line(`           ${color(C.gray, `→ ${rem}`)}`)
+      }
+    }
+  }
+
+  // A PROVA DO BLOQUEIO DO PUSH (o OUTRO ELO do contrato local): o doctor
+  // EXECUTA um `git push` de verdade contra um remoto BARE duas vezes — com a
+  // árvore VERMELHA (tem de ser RECUSADO, sem deixar ref nem objeto do outro
+  // lado) e com a árvore verde (o CONTROLE, que tem de CHEGAR). O veredito do
+  // push não mora no banco local: ele é medido no REMOTO.
+  {
+    const pp = facts.prePushBlock
+    if (facts.skippedPrePushProof) {
+      line(
+        `       ${MARK.skip()} prova do bloqueio do PUSH pulada por --no-pre-push-proof (o veredito NÃO cobre a árvore vermelha chegando à forja)`,
+      )
+    } else if (!pp) {
+      line(
+        `       ${MARK.warn()} prova do bloqueio do PUSH: NÃO declarada no relatório — o veredito não cobre o pre-push`,
+      )
+    } else {
+      const ppMark =
+        pp.state === "proven" ? MARK.ok() : pp.state === "violated" ? MARK.fail() : MARK.warn()
+      line(
+        `       ${ppMark} prova do bloqueio do PUSH (pre-push): ${pp.state} — a árvore VERMELHA não chega ao remoto`,
+      )
+      line(`           ${color(C.gray, pp.detail)}`)
+      const ev = pp.evidence
+      if (ev?.defeito) {
+        line(
+          `           ${color(C.gray, `árvore vermelha: exit ${ev.defeito.status}, ${ev.defeito.refs.length} ref(s) e ${ev.defeito.objetosNoRemoto} objeto(s) no remoto, ${ev.defeito.invocacoes ?? 0} invocação(ões) do typecheck`)}`,
+        )
+      }
+      if (ev?.controle) {
+        line(
+          `           ${color(C.gray, `CONTROLE com a árvore verde: exit ${ev.controle.status}, ${ev.controle.refs.join(", ") || "sem ref"} (${ev.controle.objetosNoRemoto} objeto(s)) — sem ele, "nada chegou" não distinguiria defeito de fixture quebrado`)}`,
+        )
+      }
+      line(
+        `           ${color(C.gray, "quem cobra: o PRÓPRIO hook (.husky/pre-push) — o CI não o executa; o contrato que o cobre é o check-hook-commands (todo comando do hook tem de resolver)")}`,
+      )
+      if (pp.state !== "proven") {
+        for (const rem of pp.remedies ?? []) line(`           ${color(C.gray, `→ ${rem}`)}`)
       }
     }
   }
@@ -4235,6 +4488,14 @@ Opções:
                          (~0,3s: git + o hook real, com o fecho do guard) e por
                          isso roda ATÉ no perfil --ci — pular deixa o veredito
                          INDETERMINADA nomeando o fato que ficou fora
+  --no-pre-push-proof    pula a PROVA DO BLOQUEIO DO PUSH (o OUTRO ELO do
+                         contrato local): o doctor deixa de executar o 'git
+                         push' de verdade contra um remoto BARE que mede se o
+                         pre-push recusa a ÁRVORE vermelha sem deixar ref nem
+                         OBJETO nenhum do outro lado (e o controle com a árvore
+                         verde). É local e barata (~0,2s: git + o hook real) e
+                         por isso roda ATÉ no perfil --ci — pular deixa o
+                         veredito INDETERMINADA nomeando o fato que ficou fora
   --expected <versão>    valor de vars.BUN_VERSION (a repository variable): com
                          ele os espelhos do Bun são comparados com o VALOR
                          declarado, pelo mesmo código do job semanal
@@ -4258,6 +4519,12 @@ Opções:
                          --no-registry-probe --no-open-debt. O que ele NÃO faz
                          é baixar a régua: com --expected/--expected-var o VALOR
                          das variáveis é comparado e uma divergência BLOQUEIA;
+                         e os DOIS ELOS LOCAIS (\`.husky/pre-commit\` e
+                         \`.husky/pre-push\`) têm de sair PROVADOS — eles só
+                         precisam de git/bash/bun, então "não deu para provar"
+                         neste recorte é elo quebrado e BLOQUEIA (sem --ci a
+                         falta de prova segue INDETERMINADA, que é o veredito
+                         honesto no perfil completo);
                          cada seção fora do perfil sai na lista de não provado
   --proof-nested         DEFESA (não é opção de uso): declara que ESTA
                          invocação roda DENTRO da prova. O doctor falha com
@@ -4327,6 +4594,7 @@ export function parseArgs(argv) {
     openDebt: true,
     declaredDebt: true,
     preCommitProof: true,
+    prePushProof: true,
     envFile: DEFAULT_ENV_FILE,
     expected: null,
     expectedVars: {},
@@ -4349,6 +4617,7 @@ export function parseArgs(argv) {
     else if (arg === "--no-open-debt") opts.openDebt = false
     else if (arg === "--no-declared-debt") opts.declaredDebt = false
     else if (arg === "--no-pre-commit-proof") opts.preCommitProof = false
+    else if (arg === "--no-pre-push-proof") opts.prePushProof = false
     else if (arg === "--json") opts.json = true
     else if (arg === "-h" || arg === "--help") opts.help = true
     else if (arg === "--expected") opts.expected = argv[++i] ?? ""
@@ -4443,6 +4712,12 @@ export function parseArgs(argv) {
  * @param {object} [options.preCommitBlockDeps] dependências do fato da prova do
  * bloqueio local (`prove` substitui a prova inteira) — o ponto de injeção do
  * teste, e o que mantém o fluxo do veredito fora do git real
+ * @param {boolean} [options.prePushProof] executar a PROVA DO BLOQUEIO DO PUSH
+ * (o `git push` de verdade que mede se o pre-push recusa a ÁRVORE vermelha, sem
+ * deixar objeto nenhum no remoto bare, default: true)
+ * @param {object} [options.prePushBlockDeps] dependências do fato da prova do
+ * bloqueio do push (`prove` substitui a prova inteira) — o ponto de injeção do
+ * teste, e o que mantém o fluxo do veredito fora do git real
  * (sem `@returns` declarado de propósito: o formato dos fatos é o que o
  * `summarize` consome, e descrevê-lo aqui de novo só criaria duas verdades)
  */
@@ -4464,6 +4739,7 @@ export async function diagnose({
   openDebt = true,
   declaredDebt = true,
   preCommitProof = true,
+  prePushProof = true,
   timeoutS = 120,
   run,
   imageDeps = {},
@@ -4483,6 +4759,8 @@ export async function diagnose({
   shellInheritanceDeps = {},
   /** Injeção do FATO da prova do bloqueio local (`prove`) — o teste mede os três estados sem rodar git. */
   preCommitBlockDeps = {},
+  /** Injeção do FATO da prova do bloqueio do push (`prove`) — o teste mede os três estados sem rodar git. */
+  prePushBlockDeps = {},
   identityProbe,
   gateContractsDeps = {},
 } = {}) {
@@ -4692,6 +4970,22 @@ export async function diagnose({
           evidence: null,
           remedies: [],
         },
+    // A PROVA DO BLOQUEIO DO PUSH — o OUTRO ELO do contrato local, EXECUTADO
+    // aqui: um `git push` de verdade contra um remoto BARE, duas vezes (a árvore
+    // VERMELHA, que tem de ser recusada sem deixar objeto nenhum do outro lado, e
+    // o controle com a árvore verde, que tem de chegar). Local de ponta a ponta
+    // (sem rede, sem credencial, sem estado do HOST) e ~0,2s — entra ATÉ no
+    // perfil `--ci`, porque o hook roda na máquina de quem empurra e o CI não o
+    // executa. O veredito é medido no REMOTO, não no banco local: é o pack que o
+    // hook barra, e é isso que o `pre-commit` não podia medir.
+    prePushBlock: prePushProof
+      ? readPrePushBlock({ cwd, deps: prePushBlockDeps })
+      : {
+          state: "skipped",
+          detail: "pulada por --no-pre-push-proof",
+          evidence: null,
+          remedies: [],
+        },
     // O GUARD DE RECURSÃO, como fato do relatório NORMAL: a prontidão declara a
     // EXISTÊNCIA da defesa (e por quais canais ela responde), não só o disparo
     // dela — que vira um relatório à parte, com o estado `fired`.
@@ -4707,6 +5001,7 @@ export async function diagnose({
     skippedGateContracts: !gateContractsCheck,
     skippedProof: !proof,
     skippedPreCommitProof: !preCommitProof,
+    skippedPrePushProof: !prePushProof,
   }
 
   return { facts }

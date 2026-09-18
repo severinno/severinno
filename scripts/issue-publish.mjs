@@ -343,8 +343,13 @@ export function giteaIssueConfig(options = {}, env = process.env) {
  * Requisição crua à API v1 do Gitea. Devolve `{ status, data }` SEM lançar em
  * 4xx: 409 (label já existe) e 404 são desfechos que o chamador trata, não
  * exceções de controle de fluxo.
+ *
+ * EXPORTADA porque o `pr-remedy-comment` publica um COMENTÁRIO DE PR pela mesma
+ * porta (o comentário de um PR é um comentário de issue na API das duas forjas):
+ * o dono de "como falar com a forja" é um só, e um segundo cliente com headers
+ * próprios divergiria na primeira mudança de API.
  */
-async function giteaApi({ token, baseUrl }, method, path, body) {
+export async function giteaApi({ token, baseUrl }, method, path, body) {
   const response = await fetch(`${baseUrl}/api/v1${path}`, {
     method,
     headers: {
@@ -542,8 +547,11 @@ export function describeGithubRead(config) {
 /**
  * Requisição crua à API REST do GitHub. Mesma forma de `giteaApi`: devolve
  * `{status, data, text}` SEM lançar em 4xx — quem trata é o chamador.
+ *
+ * Exportada pelo mesmo motivo de `giteaApi`: o `pr-remedy-comment` fala com a
+ * API por aqui, sem uma segunda implementação de headers/versão da API.
  */
-async function githubApi({ token, repo, baseUrl }, method, path, body) {
+export async function githubApi({ token, repo, baseUrl }, method, path, body) {
   const response = await fetch(`${baseUrl}/repos/${repo}${path}`, {
     method,
     headers: {

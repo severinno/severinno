@@ -1053,9 +1053,11 @@ jobs:
       # que alguém abre, atribui e cobra.
       #
       # A MEDIÇÃO é a MESMA do doctor (o fato da seção 6/7, de
-      # scripts/declared-debt.mjs): uma medição, dois consumidores. O publicador
-      # também FECHA a issue quando nenhuma decisão está vencida (reafirmada com
-      # data nova, ou aposentada) — publicar sem fechar deixa a dívida mentindo.
+      # scripts/declared-debt.mjs): uma medição, dois consumidores — e a
+      # JOB_DEPS_ALLOWLIST do `check-job-deps` entra nela como as outras quatro.
+      # O publicador também FECHA a issue quando nenhuma decisão está vencida
+      # (reafirmada com data nova, ou aposentada) — publicar sem fechar deixa a
+      # dívida mentindo.
       - name: Publicar a dívida declarada sem revisão (issue acionável)
         if: always()
         env:

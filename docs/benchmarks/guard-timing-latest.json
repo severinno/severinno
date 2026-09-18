@@ -1,10 +1,10 @@
 {
   "meta": {
     "tool": "bench-guard-timing",
-    "version": 3,
-    "commit": "c669417a",
-    "commitDate": "2026-09-15 22:13:41 -0300",
-    "timestamp": "2026-09-16T11:21:08.451Z",
+    "version": 4,
+    "commit": "4c3142e9",
+    "commitDate": "2026-09-17 14:16:19 -0300",
+    "timestamp": "2026-09-17T21:39:36.813Z",
     "nodeVersion": "v20.20.2",
     "platform": "linux",
     "arch": "x64",
@@ -12,31 +12,36 @@
     "totalMemMb": 32011,
     "reused": {
       "lint": {
-        "commit": "c669417a",
-        "timestamp": "2026-09-16T11:06:49.222Z"
+        "commit": "4c3142e9",
+        "timestamp": "2026-09-17T21:37:43.021Z"
       },
       "typecheck": {
-        "commit": "c669417a",
-        "timestamp": "2026-09-16T11:06:49.222Z"
+        "commit": "4c3142e9",
+        "timestamp": "2026-09-17T21:37:43.021Z"
       },
-      "battery": {
-        "commit": "c669417a",
-        "timestamp": "2026-09-16T11:06:49.222Z"
+      "tests": {
+        "commit": "4c3142e9",
+        "timestamp": "2026-09-17T21:37:43.021Z"
       }
     }
   },
   "summary": {
     "guardsCount": 18,
-    "guardsTotalMs": 14189,
-    "doctorMs": 2711,
+    "guardsTotalMs": 17663,
+    "doctorMs": 3623,
     "doctorExit": 2,
-    "totalMs": 16900,
+    "totalMs": 21286,
     "lintAddedPerSiteMs": 20381,
     "lintAddedPerFanOutMs": 81524,
     "typecheckMs": 24291,
     "typecheckAddedPerFanOutMs": 224,
     "testsMs": 131514,
-    "testsAddedPerFanOutMs": -301994
+    "testsAddedPerFanOutMs": -301994,
+    "hookOfferComumMs": 1,
+    "hookEsperaMs": 1,
+    "hookOfferFalhaMs": 78,
+    "hookRevalidacaoMs": 72,
+    "hookDetectionMs": 182
   },
   "guards": [
     {
@@ -49,105 +54,105 @@
     {
       "label": "check:script-headers",
       "cmd": "node scripts/check-script-headers.mjs",
-      "ms": 58,
+      "ms": 66,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:prove-docs",
       "cmd": "bun run check:prove-docs",
-      "ms": 5416,
+      "ms": 6629,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:registry-source",
       "cmd": "bun run check:registry-source",
-      "ms": 1277,
+      "ms": 2160,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:doctor-ci",
       "cmd": "bun scripts/check-doctor-ci.mjs",
-      "ms": 3075,
+      "ms": 3654,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:runner-base",
       "cmd": "bun run check:runner-base",
-      "ms": 1101,
+      "ms": 1294,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:workflow-refs",
       "cmd": "bun run check:workflow-refs:internal",
-      "ms": 60,
+      "ms": 117,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:ts-nocheck",
       "cmd": "bun run check:ts-nocheck",
-      "ms": 44,
+      "ms": 49,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:forge-workflow-scope",
       "cmd": "bun run check:forge-workflow-scope",
-      "ms": 99,
+      "ms": 114,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:forge-parity",
       "cmd": "bun run check:forge-parity",
-      "ms": 38,
+      "ms": 75,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:bun-audit",
       "cmd": "bun run check:bun-audit-baseline",
-      "ms": 333,
+      "ms": 343,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:secret-leaks",
       "cmd": "bun scripts/rotate-secrets.mjs --check",
-      "ms": 40,
+      "ms": 43,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:seed-hooks",
       "cmd": "bun run check:seed-hooks",
-      "ms": 35,
+      "ms": 73,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:sentinel-producer",
       "cmd": "bun run check:sentinel-producer",
-      "ms": 41,
+      "ms": 86,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:bun-mirror",
       "cmd": "bun run check:bun-mirror",
-      "ms": 66,
+      "ms": 226,
       "exit": 0,
       "ok": true
     },
     {
       "label": "check:no-setup-bun",
       "cmd": "bun run check:no-setup-bun",
-      "ms": 33,
+      "ms": 73,
       "exit": 0,
       "ok": true
     },
@@ -161,7 +166,7 @@
     {
       "label": "runner-image:prove",
       "cmd": "node scripts/prove-runner-image-gate.mjs",
-      "ms": 2417,
+      "ms": 2605,
       "exit": 0,
       "ok": true
     }
@@ -169,7 +174,7 @@
   "doctor": {
     "label": "doctor --ci",
     "cmd": "node scripts/forge-doctor.mjs --ci --json --expected 1.3.14 --expected-var IMAGE_REGISTRY=ghcr.io --expected-var IMAGE_NAMESPACE=severinno",
-    "ms": 2711,
+    "ms": 3623,
     "exit": 2,
     "ok": true
   },
@@ -491,5 +496,206 @@
       "violations": [],
       "whatItAdded": "-302.0s por rodada no call site que upgrade (1) — a suite `src/components/**`, que a regua anterior EXCLUIA, medida em +17.9s isolada (o delta NAO e so ela: as duas reguas diferem tambem em workers e setup)"
     }
+  },
+  "hook": {
+    "measured": true,
+    "reason": null,
+    "hookPath": "/home/severinno/severinno/.husky/pre-commit",
+    "fixture": {
+      "comum": ".github/workflows/ci.yml com corpo válido",
+      "falha": ".github/workflows/ci.yml com a cicatriz mecânica (operador pendente)"
+    },
+    "samplesPerForm": 3,
+    "forms": [
+      {
+        "role": "comum-hoje",
+        "path": "comum",
+        "fonte": "hoje",
+        "label": "hoje — índice ok (o caminho comum)",
+        "expect": "zero",
+        "ms": 81,
+        "minMs": 80,
+        "maxMs": 81,
+        "runs": [
+          {
+            "ms": 81,
+            "exit": 0
+          },
+          {
+            "ms": 81,
+            "exit": 0
+          },
+          {
+            "ms": 80,
+            "exit": 0
+          }
+        ],
+        "exit": 0,
+        "bloqueou": false,
+        "ok": true
+      },
+      {
+        "role": "comum-sem-oferta",
+        "path": "comum",
+        "fonte": "sem-oferta",
+        "label": "sem a oferta — índice ok (contrafactual)",
+        "expect": "zero",
+        "ms": 80,
+        "minMs": 80,
+        "maxMs": 81,
+        "runs": [
+          {
+            "ms": 80,
+            "exit": 0
+          },
+          {
+            "ms": 81,
+            "exit": 0
+          },
+          {
+            "ms": 80,
+            "exit": 0
+          }
+        ],
+        "exit": 0,
+        "bloqueou": false,
+        "ok": true
+      },
+      {
+        "role": "comum-agregada",
+        "path": "comum",
+        "fonte": "agregada",
+        "label": "sintaxe AGREGADA ao wait_all — índice ok (contrafactual)",
+        "expect": "zero",
+        "ms": 80,
+        "minMs": 79,
+        "maxMs": 82,
+        "runs": [
+          {
+            "ms": 82,
+            "exit": 0
+          },
+          {
+            "ms": 80,
+            "exit": 0
+          },
+          {
+            "ms": 79,
+            "exit": 0
+          }
+        ],
+        "exit": 0,
+        "bloqueou": false,
+        "ok": true
+      },
+      {
+        "role": "falha-hoje",
+        "path": "falha",
+        "fonte": "hoje",
+        "label": "hoje — defeito no índice (fail-closed, sem terminal)",
+        "expect": "non-zero",
+        "ms": 154,
+        "minMs": 153,
+        "maxMs": 155,
+        "runs": [
+          {
+            "ms": 153,
+            "exit": 1
+          },
+          {
+            "ms": 154,
+            "exit": 1
+          },
+          {
+            "ms": 155,
+            "exit": 1
+          }
+        ],
+        "exit": 1,
+        "bloqueou": true,
+        "ok": true
+      },
+      {
+        "role": "falha-sem-oferta",
+        "path": "falha",
+        "fonte": "sem-oferta",
+        "label": "sem a oferta — defeito no índice (contrafactual)",
+        "expect": "non-zero",
+        "ms": 76,
+        "minMs": 76,
+        "maxMs": 77,
+        "runs": [
+          {
+            "ms": 77,
+            "exit": 1
+          },
+          {
+            "ms": 76,
+            "exit": 1
+          },
+          {
+            "ms": 76,
+            "exit": 1
+          }
+        ],
+        "exit": 1,
+        "bloqueou": true,
+        "ok": true
+      },
+      {
+        "role": "falha-revalidacao",
+        "path": "falha",
+        "fonte": "hoje",
+        "label": "remédio VERDE — a fase rodada de novo (dublê declarado)",
+        "expect": "non-zero",
+        "env": {
+          "REMEDY_STUB": "0"
+        },
+        "ms": 148,
+        "minMs": 148,
+        "maxMs": 149,
+        "runs": [
+          {
+            "ms": 149,
+            "exit": 1
+          },
+          {
+            "ms": 148,
+            "exit": 1
+          },
+          {
+            "ms": 148,
+            "exit": 1
+          }
+        ],
+        "exit": 1,
+        "bloqueou": true,
+        "ok": true
+      }
+    ],
+    "deltas": {
+      "ofertaComumMs": 1,
+      "esperaMs": 1,
+      "ofertaFalhaMs": 78,
+      "revalidacaoMs": 72
+    },
+    "detection": {
+      "cmd": "node scripts/pre-commit-remedy.mjs",
+      "promptOff": "PRE_COMMIT_REMEDY_NO_PROMPT=1",
+      "ms": 182,
+      "exit": 0,
+      "completou": true,
+      "veredito": "nada a remendar neste commit",
+      "medido": true,
+      "escreveu": false
+    },
+    "violations": [],
+    "whatItAdded": [
+      "caminho COMUM (as duas fases passam): +1ms por commit — a oferta NÃO é alcançada quando nada reprova (o `if` não abre)",
+      "espera SEPARADA do gate de sintaxe vs agregada no `wait_all`: +1ms — as duas esperam o MESMO conjunto, então a diferença é a estrutura da espera",
+      "caminho de FALHA (defeito no índice): a oferta custa +78ms — fail-closed, sem terminal ela não pergunta nem remenda",
+      "depois de um remédio VERDE, a fase rodada de novo custa +72ms (aqui só o gate de sintaxe é re-executado: a fase B é dublada no fixture)",
+      "detecção contra a ÁRVORE REAL: 182ms (\"nada a remendar neste commit\") — e não escreveu nada"
+    ]
   }
 }

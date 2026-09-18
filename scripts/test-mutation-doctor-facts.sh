@@ -19,7 +19,8 @@
 #      bring-up no contrato, guards, imagem, prova do bloqueio, espelhos,
 #      referências não versionadas, contrato da imagem publicada, registro do
 #      runner nas duas forjas, interpolação do compose, branch protection
-#      registrada e o pré-requisito 0 do bring-up)
+#      registrada, o pré-requisito 0 do bring-up e os DOIS elos locais exigidos
+#      no recorte do merge)
 #      termina em `blockers.push(...)`, e `blockers` é o que faz o veredito ser
 #      BLOQUEADA. Cortar esse fio e a forja quebrada passa: o doctor continua
 #      rodando, continua imprimindo todas as seções e passa a dizer PRONTA —
@@ -145,6 +146,7 @@ C1_RED=(
   "branch protection REGISTRADA|a branch protection em DRIFT bloqueia mesmo com guards, imagem, prova e render verdes"
   "gate do bring-up no contrato de merge|GATE do bring-up fora do contrato → BLOQUEADA, nomeando a forja e o remédio"
   "pré-requisito 0 do bring-up (o env do host × o template comitado)|divergente → BLOQUEIA, e a linha do pré-requisito"
+  "os DOIS elos locais no recorte do merge|elo local NÃO provado BLOQUEIA (o gate não fica verde por omissão)"
 )
 # A cirurgia do caso A: o caminho SAUDÁVEL. A mutação corta o fio da violação,
 # não o veredito — uma forja sem violação nenhuma continua chegando a PRONTA.

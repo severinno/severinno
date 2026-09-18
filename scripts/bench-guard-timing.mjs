@@ -6,11 +6,13 @@
 // decidem o merge. Uma regressão de tempo nelas afeta CADA PR — mas sem
 // medição versionada, a degradação é impressão, não dado comparável entre
 // commits. Este script mede o wall time de cada guard individual, do doctor
-// (perfil --ci) e o CUSTO DAS TRES UNIFICAÇÕES DE RÉGUA — as que trocaram a
+// (perfil --ci), o CUSTO DAS TRES UNIFICAÇÕES DE RÉGUA — as que trocaram a
 // régua por UMA só e passaram a ser pagas onde antes havia (ou não havia)
 // outra: o lint (`prettier --check` + `eslint . --max-warnings 0`), o
 // typecheck (o comando inteiro, com o heap, dentro do script do package.json) e
-// a suíte de testes (`bun run test:run`, que INCLUI `src/components/**`).
+// a suíte de testes (`bun run test:run`, que INCLUI `src/components/**`) — e o
+// custo da OFERTA de remendo no pre-commit (a família `hook`), nos dois caminhos
+// do commit: o comum (nada reprova) e o de falha (defeito no índice).
 // Registra em JSON versionado (commit + timestamp + a máquina) e permite
 // comparação contra um baseline.
 //
@@ -25,12 +27,16 @@
 //   node scripts/bench-guard-timing.mjs --no-lint      # só guards + doctor + réguas
 //   node scripts/bench-guard-timing.mjs --no-typecheck # pula a família do typecheck
 //   node scripts/bench-guard-timing.mjs --no-tests     # pula a família da suíte
+//   node scripts/bench-guard-timing.mjs --no-hook      # pula a família do hook
 //   node scripts/bench-guard-timing.mjs --counterfactual  # mede a régua estreita da suíte (~7min)
 //   node scripts/bench-guard-timing.mjs --only tests   # só a família da suíte (sem a bateria)
+//   node scripts/bench-guard-timing.mjs --only hook    # só o custo da oferta no commit
 //   node scripts/bench-guard-timing.mjs --json --merge # herda do arquivo o que não mediu
 //
-// CUSTO: as duas famílias novas medem COMANDOS INTEIROS (um typecheck frio e as
-// suítes), então uma rodada completa leva minutos. Elas medem UMA amostra por
+// CUSTO: as duas famílias de régua medem COMANDOS INTEIROS (um typecheck frio e as
+// suítes), então uma rodada completa leva minutos; a família `hook` roda o hook de
+// verdade num repositório git temporário (seis formas, ~0,3s cada) e a detecção
+// contra a árvore real, então custa segundos. Elas medem UMA amostra por
 // forma, de propósito e declarado (`samplesPerForm: 1`): o `--samples` continua
 // sendo o controle da mediana das formas de lint, que rodam em segundos. O
 // `--merge` existe para medir em partes em máquina lenta (ou sob timeout de
@@ -56,6 +62,18 @@ import { requireBunVersion } from "./bun-version.mjs"
 import { requireImageSource } from "./registry-source.mjs"
 import { CORE_INVARIANTS, canonicalCommandOf, runCommands } from "./check-forge-parity.mjs"
 import { existingWorkflowDirs, workflowFileNames } from "./forge-workflows.mjs"
+import { cleanupFixtures, runSourcedHook, stage } from "./hook-simulator.mjs"
+import {
+  HOOK,
+  REMEDY,
+  REMEDY_STUB_ENV,
+  WORKFLOW,
+  WORKFLOW_CICATRIZ,
+  WORKFLOW_VALIDO,
+  hookSource,
+  novoRepo as novoRepoHook,
+} from "./pre-commit-proof.mjs"
+import { NO_PROMPT_ENV } from "./pre-commit-remedy.mjs"
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(SCRIPT_DIR, "..")
@@ -502,7 +520,13 @@ export function clearTscCache(root = REPO_ROOT) {
  * As familias de custo de unificacao que o benchmark conhece. E a lista que
  * `--only` aceita, e a mesma que `reuseFamilies` sabe herdar.
  */
-export const RULER_FAMILIES = ["lint", "typecheck", "tests"]
+/**
+ * As familias que uma rodada sabe medir. O `hook` entrou por ultimo: ele nao e uma
+ * unificacao de REGUA, e o custo que a OFERTA de remendo acrescentou ao caminho de
+ * cada commit — mas e medido com a mesma disciplina (formas, deltas, contrato) e
+ * pelo mesmo `--only`/`--merge`.
+ */
+export const RULER_FAMILIES = ["lint", "typecheck", "tests", "hook"]
 
 /**
  * Le a lista de `--only`. Família desconhecida e ERRO (nao um silencio que mede
@@ -535,6 +559,7 @@ function familiesToRun({ only = null } = {}) {
     lint: only === null || only.includes("lint"),
     typecheck: only === null || only.includes("typecheck"),
     tests: only === null || only.includes("tests"),
+    hook: only === null || only.includes("hook"),
   }
 }
 
@@ -940,6 +965,434 @@ export function measureTestCost({ samples = 1, counterfactual = false } = {}) {
   }
 }
 
+// ── Hook: quanto a OFERTA de remendo custa no caminho do commit ────────────
+//
+// POR QUE MEDIR AQUI: o pre-commit passou a OFERECER o remédio dos defeitos
+// mecânicos (as quatro classes, numa pergunta só) DEPOIS das duas fases, e o
+// veredito da fase reprovada passou a ser dado pela FASE RODADA DE NOVO, com o
+// remendo já no índice. As duas coisas vivem no caminho de CADA commit — a oferta
+// é um `if` que só abre quando algo reprova; a revalidação só acontece depois de
+// um remédio verde. Sem número, "o hook ficou mais lento" é impressão, e este
+// benchmark existe para isso ser dado comparável entre commits.
+//
+// OS DOIS CAMINHOS, medidos SEPARADOS (um delta, uma causa):
+//
+//   comum — o índice passa (as duas fases verdes). A oferta NÃO roda por
+//           construção (o `if` não abre), então o delta contra o MESMO hook sem a
+//           oferta mede o que o CONTROLE do commit paga quando nada falha. É o
+//           caminho da esmagadora maioria dos commits: um custo aqui seria pago
+//           em TODO commit, inclusive nos que não têm defeito nenhum.
+//   falha — o índice carrega um defeito mecânico: a oferta roda de verdade. Sem
+//           terminal (o caso do CI e o de sessão sem tty de controle) ela NÃO
+//           pergunta: mede-se o caminho fail-closed, que é o determinístico. Uma
+//           terceira forma afirma o REMÉDIO verde pelo dublê declarado
+//           (`REMEDY_STUB_ENV`) e mede o que só acontece DEPOIS dele: a fase
+//           rodada de novo.
+//
+// O CONTRAFACTUAL É UMA TRANSFORMAÇÃO DO PRÓPRIO HOOK, ancorada no texto dele
+// (`hookSemOferta` / `hookWaitAgregada`): se o hook perder as âncoras, a medição
+// se declara NÃO MEDIDA em vez de comparar o hook com ele mesmo (um delta 0
+// "perfeito" que não mediu nada).
+//
+// ONDE O CUSTO É PAGO DE VERDADE: no fixture a detecção acha o que o fixture tem.
+// Por isso a família mede TAMBÉM a detecção contra a ÁRVORE REAL
+// (`HOOK_DETECTION_CMD`) — o número que responde "quanto custa remeter o commit
+// quando há um defeito mecânico NESTE repositório". Ela é read-only por construção
+// (sem resposta afirmativa não há escrita) e o benchmark CONFERE que não escreveu:
+// compara a árvore antes e depois, e diz se mudou.
+
+/**
+ * As âncoras do bloco da OFERTA no `.husky/pre-commit`: do `if` que a abre até a
+ * fase sequencial (o que vem depois dela não muda na transformação).
+ */
+export const OFERTA_INICIO = 'if [ "$SINTAXE" -ne 0 ] || [ "$FASE_B" -ne 0 ]; then'
+export const OFERTA_FIM = "# ── Phase C: Sequential checks"
+
+/** As âncoras da espera do gate de sintaxe: SEPARADA (hoje) × agregada. */
+export const WAIT_SEPARADO = "wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING || FASE_A=$?"
+export const WAIT_AGREGADO =
+  "wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_RUNSYNTAX || FASE_A=$?"
+export const ESPERA_SINTAXE = 'SINTAXE=0\nwait "$PID_RUNSYNTAX" || SINTAXE=$?'
+export const ESPERA_AGREGADA = "SINTAXE=$FASE_A"
+
+/**
+ * O MESMO hook com a OFERTA REMOVIDA: o veredito fica (a fase reprovada segue
+ * bloqueando o commit, com o mesmo exit), o remédio e a revalidação saem. É o
+ * único jeito de atribuir ao bloco da oferta o delta medido — qualquer outra
+ * diferença entre as duas formas teria causa própria.
+ *
+ * @param {string} fonte  o texto do `.husky/pre-commit`
+ * @returns {string|null} null quando as âncoras não estão no texto (NÃO MEDIDO)
+ */
+export function hookSemOferta(fonte) {
+  const inicio = fonte.indexOf(OFERTA_INICIO)
+  const fim = fonte.indexOf(OFERTA_FIM)
+  if (inicio < 0 || inicio !== fonte.lastIndexOf(OFERTA_INICIO)) return null
+  if (fim < inicio) return null
+  const veredito =
+    "# SEM A OFERTA: o MESMO veredito (a fase reprovada bloqueia o commit, com o\n" +
+    "# mesmo exit), sem o remédio e sem a revalidação.\n" +
+    'if [ "$SINTAXE" -ne 0 ]; then\n' +
+    '  exit "$SINTAXE"\n' +
+    "fi\n" +
+    'if [ "$FASE_B" -ne 0 ]; then\n' +
+    '  exit "$FASE_B"\n' +
+    "fi\n\n"
+  return fonte.slice(0, inicio) + veredito + fonte.slice(fim)
+}
+
+/**
+ * O MESMO hook com o gate de sintaxe AGREGADO ao `wait_all` da fase A — a forma
+ * que a espera separada substituiu.
+ *
+ * Medido SÓ no caminho comum: ali as duas formas esperam o MESMO conjunto (o teto
+ * é o `max`), então a diferença é a ESTRUTURA da espera. No caminho de falha a
+ * agregação muda QUAL status dispara a oferta (o `wait_all` devolve o PRIMEIRO
+ * não-zero, e o valor viraria o do guard que reprovou), isto é, mudaria o
+ * COMPORTAMENTO e não só o tempo — duas causas para um delta.
+ *
+ * @param {string} fonte
+ * @returns {string|null}
+ */
+export function hookWaitAgregada(fonte) {
+  if (fonte.split(WAIT_SEPARADO).length !== 2) return null
+  if (fonte.split(ESPERA_SINTAXE).length !== 2) return null
+  return fonte.split(WAIT_SEPARADO).join(WAIT_AGREGADO).split(ESPERA_SINTAXE).join(ESPERA_AGREGADA)
+}
+
+/** As amostras por forma do hook: ele roda em ~0,3s — 3 tira o ruído por pouco. */
+export const HOOK_SAMPLES = 3
+
+/**
+ * `120ms` / `1.4s` — a unidade em que o número TEM resolução. O hook inteiro roda
+ * em centenas de milissegundos, e o delta que esta família registra é de dezenas:
+ * imprimir 0,1s arredondaria justamente o que se mede.
+ *
+ * @param {number} ms
+ * @returns {string}
+ */
+function formatMs(ms) {
+  const n = Math.round(ms ?? 0)
+  return n < 1000 ? `${n}ms` : `${(n / 1000).toFixed(1)}s`
+}
+
+/** `+120ms` / `-3ms` / `0ms` — o sinal sempre explícito. */
+function signedMillis(ms) {
+  const n = Math.round(ms ?? 0)
+  return `${n > 0 ? "+" : ""}${n}ms`
+}
+
+/**
+ * Abaixo disto o delta do caminho comum é RUÍDO de medição, não custo: a oferta
+ * que não é alcançada não pode custar mais do que o erro de uma medição de ~0,3s.
+ */
+export const HOOK_RUIDO_MS = 50
+
+/**
+ * O que cada forma é: o CAMINHO do fixture, a FONTE do hook, o que ela EXIGE do
+ * desfecho (`zero` no caminho comum; `non-zero` no caminho de falha — o hook
+ * BLOQUEAR um commit defeituoso não é defeito dele) e o env extra que a forma usa.
+ */
+export const HOOK_FORMS = [
+  {
+    role: "comum-hoje",
+    path: "comum",
+    fonte: "hoje",
+    label: "hoje — índice ok (o caminho comum)",
+    expect: "zero",
+  },
+  {
+    role: "comum-sem-oferta",
+    path: "comum",
+    fonte: "sem-oferta",
+    label: "sem a oferta — índice ok (contrafactual)",
+    expect: "zero",
+  },
+  {
+    role: "comum-agregada",
+    path: "comum",
+    fonte: "agregada",
+    label: "sintaxe AGREGADA ao wait_all — índice ok (contrafactual)",
+    expect: "zero",
+  },
+  {
+    role: "falha-hoje",
+    path: "falha",
+    fonte: "hoje",
+    label: "hoje — defeito no índice (fail-closed, sem terminal)",
+    expect: "non-zero",
+  },
+  {
+    role: "falha-sem-oferta",
+    path: "falha",
+    fonte: "sem-oferta",
+    label: "sem a oferta — defeito no índice (contrafactual)",
+    expect: "non-zero",
+  },
+  {
+    role: "falha-revalidacao",
+    path: "falha",
+    fonte: "hoje",
+    label: "remédio VERDE — a fase rodada de novo (dublê declarado)",
+    expect: "non-zero",
+    env: { [REMEDY_STUB_ENV]: "0" },
+  },
+]
+
+/** O comando da detecção contra a ÁRVORE REAL: o mesmo que o hook executa. */
+export const HOOK_DETECTION_CMD = `node scripts/${REMEDY}`
+
+/** O `git status --porcelain` da árvore real (null quando o git não respondeu). */
+function hookGitStatus() {
+  const r = spawnSync("git", ["status", "--porcelain"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    timeout: 30_000,
+  })
+  return r.status === 0 ? r.stdout : null
+}
+
+/**
+ * O desfecho LEGÍVEL da detecção, a partir da saída do remédio: são estados
+ * diferentes e o número sozinho não diz qual deles foi medido.
+ *
+ * @param {string} saida
+ * @returns {string}
+ */
+export function vereditoDaDeteccao(saida) {
+  const t = String(saida ?? "")
+  if (t.includes("SEM TERMINAL"))
+    return "fail-closed (sem terminal): não pergunta, mantém o commit bloqueado"
+  if (t.includes("carrega defeito(s) MECÂNICO(s)"))
+    return "há defeito mecânico no commit (ofereceria o remédio)"
+  if (t.includes("nada a remendar")) return "nada a remendar neste commit"
+  if (t.includes("Sem medição não há remédio")) return "INDETERMINADO (infra: sem medição)"
+  return "não classificado"
+}
+
+/**
+ * A detecção contra a ÁRVORE REAL, com a conferência de que ela NÃO ESCREVEU:
+ * o `git status --porcelain` é comparado antes e depois (um artefato novo aparece
+ * como `??`, então a conferência cobre arquivo gerado, não só arquivo rastreado).
+ *
+ * O exit NÃO é veredito aqui: `0` = nada a remendar, `1` = há defeito e o remédio
+ * não foi aplicado (fail-closed). O que se mede é o PROCESSO; o `ok` da forma só
+ * cai quando ele não terminou.
+ *
+ * @returns {object}
+ */
+export function measureDetection() {
+  const antes = hookGitStatus()
+  const start = performance.now()
+  const res = spawnSync("bash", ["-c", HOOK_DETECTION_CMD], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    timeout: 600_000,
+    env: { ...process.env, [NO_PROMPT_ENV]: "1" },
+    stdio: ["ignore", "pipe", "pipe"],
+  })
+  const ms = Math.round(performance.now() - start)
+  const depois = hookGitStatus()
+  const saida = `${res.stdout ?? ""}${res.stderr ?? ""}`
+  const medido = antes !== null && depois !== null
+  return {
+    cmd: HOOK_DETECTION_CMD,
+    promptOff: `${NO_PROMPT_ENV}=1`,
+    ms,
+    exit: res.status,
+    completou: res.status !== null,
+    veredito: vereditoDaDeteccao(saida),
+    medido,
+    // `null` (e não `false`) quando não deu para comparar: "não escreveu" é uma
+    // MEDIÇÃO, e afirmá-la sem ela seria o verde por omissão que o resto do repo
+    // recusa. Quem julga (`hookCostViolations`) só acusa com `escreveu === true`.
+    escreveu: medido ? antes !== depois : null,
+  }
+}
+
+/**
+ * O CONTRATO da família: o caminho comum passa e NÃO paga a oferta; o caminho de
+ * falha bloqueia; a medição na árvore real não escreve. É o que impede a família de
+ * registrar um número bonito sobre um hook que deixou de bloquear.
+ *
+ * @param {{forms?: object[], deltas?: object|null, detection?: object|null}} [facts]
+ * @returns {string[]}
+ */
+export function hookCostViolations({ forms = [], deltas = null, detection = null } = {}) {
+  const violations = []
+
+  for (const form of forms) {
+    if (form.ok) continue
+    violations.push(
+      `${form.label}: exit ${form.exit} — a forma esperava ${form.expect === "zero" ? "exit 0" : "exit não-zero"}`,
+    )
+  }
+
+  // A OFERTA NO CAMINHO COMUM: o delta tem de ser ~0. Um valor acima do ruído
+  // significa que o `if` da oferta passou a abrir com as duas fases verdes — o
+  // custo da oferta sendo pago em todo commit, que é exatamente o que a
+  // construção (oferta DEPOIS das fases) existe para evitar.
+  if (deltas !== null && deltas.ofertaComumMs !== null && deltas.ofertaComumMs > HOOK_RUIDO_MS) {
+    violations.push(
+      `a oferta custa ${signedMillis(deltas.ofertaComumMs)} no caminho COMUM (acima do ruído de ${HOOK_RUIDO_MS}ms): ela está sendo alcançada com as duas fases verdes`,
+    )
+  }
+
+  if (detection?.escreveu === true) {
+    violations.push(
+      `a detecção contra a árvore real ESCREVEU no repositório (${detection.cmd}) — a medição deixou de ser read-only`,
+    )
+  }
+
+  return violations
+}
+
+/**
+ * O que a família ACRESCENTOU, em frases — o mesmo estilo das outras três: o
+ * número sozinho não diz de onde ele vem, e a direção de cada delta é o dado.
+ *
+ * @param {{deltas?: object|null, detection?: object|null}} [facts]
+ * @returns {string[]}
+ */
+export function hookWhatItAdded({ deltas = null, detection = null } = {}) {
+  const semMedida = (rotulo) => `${rotulo}: NÃO MEDIDO nesta rodada`
+  if (deltas === null) return [semMedida("o custo da oferta no commit")]
+
+  const ruido = (ms) => Math.abs(ms) <= HOOK_RUIDO_MS
+  return [
+    deltas.ofertaComumMs === null
+      ? semMedida("o custo da oferta no caminho comum")
+      : `caminho COMUM (as duas fases passam): ${signedMillis(deltas.ofertaComumMs)} por commit` +
+        (ruido(deltas.ofertaComumMs)
+          ? " — a oferta NÃO é alcançada quando nada reprova (o `if` não abre)"
+          : " — ATENÇÃO: ela está sendo alcançada sem falha nenhuma"),
+    deltas.esperaMs === null
+      ? semMedida("a espera separada do gate de sintaxe")
+      : `espera SEPARADA do gate de sintaxe vs agregada no \`wait_all\`: ${signedMillis(deltas.esperaMs)}` +
+        " — as duas esperam o MESMO conjunto, então a diferença é a estrutura da espera",
+    deltas.ofertaFalhaMs === null
+      ? semMedida("o custo da oferta no caminho de falha")
+      : `caminho de FALHA (defeito no índice): a oferta custa ${signedMillis(deltas.ofertaFalhaMs)}` +
+        " — fail-closed, sem terminal ela não pergunta nem remenda",
+    deltas.revalidacaoMs === null
+      ? semMedida("a revalidação depois de um remédio verde")
+      : `depois de um remédio VERDE, a fase rodada de novo custa ${signedMillis(deltas.revalidacaoMs)}` +
+        " (aqui só o gate de sintaxe é re-executado: a fase B é dublada no fixture)",
+    detection === null || !detection.medido
+      ? semMedida("a detecção contra a árvore real")
+      : `detecção contra a ÁRVORE REAL: ${formatMs(detection.ms)} ("${detection.veredito}")` +
+        (detection.escreveu === true
+          ? " — ⚠️ E ESCREVEU no repositório"
+          : " — e não escreveu nada"),
+  ]
+}
+
+/**
+ * Mede o custo da OFERTA no caminho do commit: as seis formas (três do comum, três
+ * da falha), os deltas que dizem de onde cada custo vem e a detecção contra a
+ * árvore real.
+ *
+ * `fonte` existe como parâmetro para o TESTE poder exercitar o caminho NÃO MEDIDO
+ * (um texto sem as âncoras) sem mexer no hook versionado; na CLI ela vem do disco.
+ *
+ * @param {{samples?: number, fonte?: string|null}} [opts]
+ * @returns {object}
+ */
+export function measureHookCost({ samples = HOOK_SAMPLES, fonte = hookSource() } = {}) {
+  const fontes = {
+    hoje: fonte,
+    "sem-oferta": fonte === null ? null : hookSemOferta(fonte),
+    agregada: fonte === null ? null : hookWaitAgregada(fonte),
+  }
+  const faltando = Object.entries(fontes)
+    .filter(([, texto]) => texto === null)
+    .map(([nome]) => nome)
+
+  // SEM AS ANCORAS NAO HA CONTRAFACTUAL: medir assim seria comparar o hook com
+  // ele mesmo e registrar um delta 0 que nao mediu nada.
+  if (faltando.length > 0) {
+    const reason =
+      fonte === null
+        ? `${HOOK} não existe neste checkout`
+        : `o texto do hook não tem as âncoras da medição (${faltando.join(", ")}) — a transformação do contrafactual não se aplica`
+    return {
+      measured: false,
+      reason,
+      hookPath: HOOK,
+      samplesPerForm: samples,
+      forms: [],
+      deltas: null,
+      detection: null,
+      violations: [],
+      // A frase da familia NOMEIA o NAO MEDIDO no mesmo vocabulario da forma
+      // medida: um consumidor do arquivo nao pode ler "nada foi acrescentado"
+      // onde o que houve foi "nao deu para medir".
+      whatItAdded: [`NÃO MEDIDO: ${reason}`],
+    }
+  }
+
+  const dirs = { comum: novoRepoHook(), falha: novoRepoHook() }
+  let forms = []
+  try {
+    stage(dirs.comum, WORKFLOW, WORKFLOW_VALIDO)
+    stage(dirs.falha, WORKFLOW, WORKFLOW_CICATRIZ)
+    forms = HOOK_FORMS.map((form) => {
+      const runs = []
+      for (let i = 0; i < samples; i++) {
+        const inicio = performance.now()
+        const r = runSourcedHook(dirs[form.path], fontes[form.fonte], form.env ?? {})
+        runs.push({ ms: Math.round(performance.now() - inicio), exit: r.status })
+      }
+      const ordenadas = runs.map((r) => r.ms).sort((a, b) => a - b)
+      const exit = runs[runs.length - 1].exit
+      return {
+        ...form,
+        ms: ordenadas[Math.floor(ordenadas.length / 2)],
+        minMs: ordenadas[0],
+        maxMs: ordenadas[ordenadas.length - 1],
+        runs,
+        exit,
+        bloqueou: exit !== null && exit !== 0,
+        ok: exit === null ? false : form.expect === "zero" ? exit === 0 : exit !== 0,
+      }
+    })
+  } finally {
+    cleanupFixtures()
+  }
+
+  const por = (role) => forms.find((f) => f.role === role)
+  const delta = (a, b) =>
+    por(a) === undefined || por(b) === undefined ? null : por(a).ms - por(b).ms
+  const deltas = {
+    // A OFERTA no caminho comum: o contrafactual é o MESMO hook sem o bloco.
+    ofertaComumMs: delta("comum-hoje", "comum-sem-oferta"),
+    // A ESPERA SEPARADA do gate de sintaxe contra a agregação no `wait_all`.
+    esperaMs: delta("comum-hoje", "comum-agregada"),
+    // A OFERTA no caminho de falha (fail-closed: sem terminal, sem pergunta).
+    ofertaFalhaMs: delta("falha-hoje", "falha-sem-oferta"),
+    // A REVALIDAÇÃO: a fase rodada de novo depois de um remédio VERDE (o remédio
+    // afirmado pelo dublê declarado, que custa o retorno de uma função de shell).
+    revalidacaoMs: delta("falha-revalidacao", "falha-sem-oferta"),
+  }
+  const detection = measureDetection()
+
+  return {
+    measured: true,
+    reason: null,
+    hookPath: HOOK,
+    fixture: {
+      comum: `${WORKFLOW} com corpo válido`,
+      falha: `${WORKFLOW} com a cicatriz mecânica (operador pendente)`,
+    },
+    samplesPerForm: samples,
+    forms,
+    deltas,
+    detection,
+    violations: hookCostViolations({ forms, deltas, detection }),
+    whatItAdded: hookWhatItAdded({ deltas, detection }),
+  }
+}
+
 /** `+20.8s` / `-3.1s` / `+0.0s` — o sinal sempre explicito. */
 function signedSeconds(ms) {
   const value = (ms ?? 0) / 1000
@@ -996,13 +1449,14 @@ function measure(cmd, { timeoutMs = 120_000, env = process.env } = {}) {
 // ── Benchmark ─────────────────────────────────────────────────────────────
 
 /**
- * @param {{samples?: number, lint?: boolean, typecheck?: boolean, tests?: boolean, counterfactual?: boolean, battery?: boolean}} [opts]
+ * @param {{samples?: number, lint?: boolean, typecheck?: boolean, tests?: boolean, hook?: boolean, counterfactual?: boolean, battery?: boolean}} [opts]
  */
 function runBenchmark({
   samples = 2,
   lint = true,
   typecheck = true,
   tests = true,
+  hook = true,
   counterfactual = false,
   battery = true,
 } = {}) {
@@ -1075,6 +1529,12 @@ function runBenchmark({
   const typecheckCost = typecheck ? measureTypecheckCost({ samples: 1 }) : null
   const testsCost = tests ? measureTestCost({ samples: 1, counterfactual }) : null
 
+  // ── O hook: a oferta de remendo no caminho do commit ────────────────────
+  // Barata (segundos), mas medida com a propria mediana (HOOK_SAMPLES): o que
+  // ela registra sao DELTAS de ~0 entre formas, e uma amostra so nao distingue
+  // "nao custou nada" de ruido.
+  const hookCost = hook ? measureHookCost({ samples: HOOK_SAMPLES }) : null
+
   // ── Soma total ─────────────────────────────────────────────────────────
   // Guards + doctor: os gates que rodam em TODO PR. As familias de regua ficam
   // FORA do total de proposito — elas medem o custo de rodada (que a comparacao
@@ -1084,7 +1544,7 @@ function runBenchmark({
   const result = {
     meta: {
       tool: "bench-guard-timing",
-      version: 3,
+      version: 4,
       commit,
       commitDate,
       timestamp,
@@ -1113,6 +1573,11 @@ function runBenchmark({
       typecheckAddedPerFanOutMs: typecheckCost?.addedPerFanOutMs ?? null,
       testsMs: testsCost?.canonicalMs ?? null,
       testsAddedPerFanOutMs: testsCost?.addedPerFanOutMs ?? null,
+      hookOfferComumMs: hookCost?.deltas?.ofertaComumMs ?? null,
+      hookEsperaMs: hookCost?.deltas?.esperaMs ?? null,
+      hookOfferFalhaMs: hookCost?.deltas?.ofertaFalhaMs ?? null,
+      hookRevalidacaoMs: hookCost?.deltas?.revalidacaoMs ?? null,
+      hookDetectionMs: hookCost?.detection?.ms ?? null,
     },
     guards,
     doctor: doctorResult
@@ -1126,6 +1591,7 @@ function runBenchmark({
       : null,
     lint: lintCost,
     rulers: { typecheck: typecheckCost, tests: testsCost },
+    hook: hookCost,
   }
 
   return result
@@ -1225,6 +1691,10 @@ export function reuseFamilies(result, previous) {
     previous.rulers?.typecheck ?? null,
   )
   const tests = pick("tests", result.rulers?.tests ?? null, previous.rulers?.tests ?? null)
+  // O HOOK e a quarta familia de custo de rodada (barata, mas com o mesmo
+  // contrato): numa rodada `--no-hook`/`--only` ela e herdada com procedencia,
+  // nunca apagada — o numero de ontem junto do hoje e o que permite comparar.
+  const hook = pick("hook", result.hook ?? null, previous.hook ?? null)
 
   // A BATERIA (guards + doctor): numa rodada de uma familia so (`--only`) ela
   // nao e medida, e gravar vazio apagaria a leitura que ja existia. Herdada, ela
@@ -1247,6 +1717,7 @@ export function reuseFamilies(result, previous) {
     doctor,
     lint,
     rulers: { typecheck, tests },
+    hook,
     meta: { ...result.meta, reused },
     // O resumo tem de descrever o arquivo que esta sendo gravado, nao metade
     // dele: um `summary.testsMs: null` ao lado de uma secao `tests` cheia seria
@@ -1264,6 +1735,11 @@ export function reuseFamilies(result, previous) {
       typecheckAddedPerFanOutMs: typecheck?.addedPerFanOutMs ?? null,
       testsMs: tests?.canonicalMs ?? null,
       testsAddedPerFanOutMs: tests?.addedPerFanOutMs ?? null,
+      hookOfferComumMs: hook?.deltas?.ofertaComumMs ?? null,
+      hookEsperaMs: hook?.deltas?.esperaMs ?? null,
+      hookOfferFalhaMs: hook?.deltas?.ofertaFalhaMs ?? null,
+      hookRevalidacaoMs: hook?.deltas?.revalidacaoMs ?? null,
+      hookDetectionMs: hook?.detection?.ms ?? null,
     },
   }
 }
@@ -1278,6 +1754,36 @@ function printLintReport(lint) {
   printRulerReport("Lint — o custo da unificacao (uma regua so nas duas forjas)", lint, [
     `a metade nova isolada (prettier): ${(lint.addedHalfMs / 1000).toFixed(1)}s — atribuicao ${lint.attributionMatches ? "confere" : "NAO confere"} (${(lint.attributionPct * 100).toFixed(0)}% de diferenca)`,
   ])
+}
+
+/**
+ * A secao do hook: as formas dos DOIS caminhos, os deltas com a direcao de cada um
+ * e a deteccao contra a arvore real (com a conferencia de que nao escreveu).
+ *
+ * @param {object} hook  resultado de measureHookCost
+ */
+function printHookReport(hook) {
+  console.log("  Hook — a oferta de remendo no caminho do commit:")
+  console.log("  ─────────────────────────────────────────────────────")
+  if (!hook.measured) {
+    console.log(`    ⚠️  NÃO MEDIDO: ${hook.reason}`)
+    console.log()
+    return
+  }
+  for (const form of hook.forms) {
+    const mark = form.ok ? "✅" : "❌"
+    const amostras = form.runs.map((r) => formatMs(r.ms)).join("/")
+    console.log(
+      `    ${mark} ${form.label.padEnd(52)} ${formatMs(form.ms).padStart(7)}  (${form.runs.length}x: ${amostras}, exit ${form.exit})`,
+    )
+  }
+  console.log("  ─────────────────────────────────────────────────────")
+  for (const frase of hook.whatItAdded) console.log(`    · ${frase}`)
+  if (hook.violations.length > 0) {
+    console.log("    CONTRATO DA FAMÍLIA:")
+    for (const v of hook.violations) console.log(`    ❌ ${v}`)
+  }
+  console.log()
 }
 
 function printReport(result) {
@@ -1343,6 +1849,9 @@ function printReport(result) {
     ])
   }
 
+  // Hook (a oferta de remendo no caminho do commit)
+  if (result.hook) printHookReport(result.hook)
+
   // Familias herdadas de uma rodada anterior (`--merge`)
   const reusedFamilies = Object.entries(meta.reused ?? {})
   if (reusedFamilies.length > 0) {
@@ -1406,6 +1915,7 @@ export const REUSED_FAMILY_LABELS = {
   lint: "lint",
   typecheck: "typecheck",
   tests: "suíte",
+  hook: "hook (oferta de remendo)",
 }
 
 /**
@@ -1539,6 +2049,36 @@ export function compareTimings(
     })
   }
 
+  // O HOOK: cada forma e comparada com a MESMA FORMA da baseline (o papel, nao a
+  // posicao na lista) — a forma e o caminho do commit, e comparar `comum-hoje`
+  // com o que estiver na linha de cima seria medir outra coisa. O DELTA entre
+  // formas nao entra aqui de proposito: ele e diferenca de duas medianas, e
+  // julgar regressao sobre ele multiplicaria o ruido; o que a comparacao julga e
+  // o custo ABSOLUTO de cada forma, e o delta diz de onde ele veio.
+  const hookBaseline = (role) =>
+    (baseline?.hook?.forms ?? []).find((form) => form.role === role)?.ms
+  if (current?.hook?.measured && !isReused("hook")) {
+    for (const form of current.hook.forms ?? []) {
+      comparar({
+        kind: "hook",
+        label: form.label,
+        currentMs: form.ms,
+        baselineMs: hookBaseline(form.role),
+        ok: form.ok !== false,
+      })
+    }
+    const detection = current.hook.detection
+    if (detection?.medido) {
+      comparar({
+        kind: "hook-detection",
+        label: "hook: detecção na árvore real",
+        currentMs: detection.ms,
+        baselineMs: baseline?.hook?.detection?.ms,
+        ok: detection.completou !== false,
+      })
+    }
+  }
+
   // O TOTAL soma as formas acima: ele só é julgável quando TODAS elas foram.
   // Uma bateria com um guard que não terminou tem um total menor por um motivo
   // que não é velocidade (o guard morreu antes de fazer o trabalho), então
@@ -1577,6 +2117,7 @@ export function compareTimings(
     ["lint", baseline?.lint != null, current?.lint != null],
     ["typecheck", baseline?.rulers?.typecheck != null, current?.rulers?.typecheck != null],
     ["tests", baseline?.rulers?.tests != null, current?.rulers?.tests != null],
+    ["hook", baseline?.hook != null, current?.hook != null],
     ["battery", temBateria(baseline), temBateria(current)],
   ]
     .filter(([, naBase, agora]) => naBase && !agora)
@@ -1688,6 +2229,16 @@ function compareReport(current, baseline) {
     }
   }
 
+  // O HOOK: forma por forma (o papel dela e o que a nomeia; a baseline e casada
+  // por papel, nao por posicao).
+  for (const form of cmp.forms.filter((f) => f.kind === "hook" || f.kind === "hook-detection")) {
+    console.log(
+      form.isNew
+        ? `    ➕ ${deltaOf(form, 52).slice(2)} (novo no baseline)`
+        : `    ${deltaOf(form, 52)}`,
+    )
+  }
+
   if ((cmp.reused ?? []).length > 0) {
     console.log(`  (familias herdadas, FORA do veredito desta rodada: ${cmp.reused.join(", ")})`)
   }
@@ -1716,6 +2267,7 @@ function parseArgs(argv) {
     lint: true,
     typecheck: true,
     tests: true,
+    hook: true,
     counterfactual: false,
     merge: false,
     only: null,
@@ -1732,6 +2284,7 @@ function parseArgs(argv) {
     else if (arg === "--no-lint") opts.lint = false
     else if (arg === "--no-typecheck") opts.typecheck = false
     else if (arg === "--no-tests") opts.tests = false
+    else if (arg === "--no-hook") opts.hook = false
     else if (arg === "--counterfactual") opts.counterfactual = true
     else if (arg === "--only") {
       const parsed = parseOnly(argv[++i])
@@ -1779,13 +2332,23 @@ Usage:
   node scripts/bench-guard-timing.mjs --no-lint      # sem a família do lint
   node scripts/bench-guard-timing.mjs --no-typecheck # sem a família do typecheck
   node scripts/bench-guard-timing.mjs --no-tests     # sem a família da suíte
+  node scripts/bench-guard-timing.mjs --no-hook      # sem a família do hook
   node scripts/bench-guard-timing.mjs --counterfactual # mede também a régua ANTERIOR da suíte (~7min)
   node scripts/bench-guard-timing.mjs --only tests # só a família da suíte (sem a bateria)
+  node scripts/bench-guard-timing.mjs --only hook  # só o custo da oferta de remendo no commit
   node scripts/bench-guard-timing.mjs --json --merge # herda as famílias não medidas do arquivo
 
 As famílias typecheck e suíte medem COMANDOS INTEIROS (um typecheck FRIO e as
 suítes): uma amostra cada, de propósito. Sem as três, a rodada é a bateria de
 guards + doctor (segundos).
+
+A família \`hook\` roda o pre-commit DE VERDADE num repositório git temporário (o
+mesmo fixture da prova do hook, com os binários das fases dublados), nos DOIS
+caminhos do commit: o comum (nada reprova) e o de falha (defeito mecânico no
+índice). O contrafactual é o MESMO hook com o bloco da oferta removido e com o gate
+de sintaxe agregado ao \`wait_all\` — transformações ancoradas no texto do hook, e
+NÃO MEDIDO quando as âncoras somem. Ela mede também a detecção contra a árvore
+real, conferindo que a medição não escreveu nada.
 
 O CONTRAFACTUAL da suíte (bun run test:unit, a régua que o check do GitHub
 rodava antes, com maxWorkers 1) leva ~7min sozinho e NÃO roda em pipeline
@@ -1810,6 +2373,7 @@ Exit codes: 0 sucesso · 1 falha/regressão · 2 argumento inválido`)
     lint: opts.lint && familias.lint,
     typecheck: opts.typecheck && familias.typecheck,
     tests: opts.tests && familias.tests,
+    hook: opts.hook && familias.hook,
     counterfactual: opts.counterfactual,
     battery: runsBattery({ only: opts.only }),
   })

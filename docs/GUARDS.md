@@ -1614,7 +1614,28 @@ um passo com `shell: pwsh` num runner sem `pwsh` saía como "pulado" e morria co
 O conjunto não é presumido do documentado nem do `command -v` de quem roda o
 guard (isso publicaria como fato do repositório uma propriedade da MÁQUINA): ele
 tem **ref, digest, data e o comando que mediu**, impressos por `--shells` — o
-dia em que a base mudar, o caminho é RE-MEDIR, não ajustar o número no olho. A
+dia em que a base mudar, o caminho é RE-MEDIR, não ajustar o número no olho.
+
+**E quem re-mede é um CRON, não a memória de alguém:** o job semanal
+**`runner-shells-drift`** (`benchmark-weekly.yml`, domingo 03:00 UTC) roda o
+MESMO probe DENTRO da imagem (`scripts/runner-shells.mjs`, dono da declaração — o
+gate a importa, não a copia), compara com o que está declarado e publica a
+divergência como **issue acionável** (`scripts/runner-shells-issue.mjs`, label
+`runner-shells-drift`), com o **mesmo ciclo de reconciliação** dos outros
+publicadores: a issue se FECHA quando a medição voltar a bater com o declarado,
+com a tabela medida no comentário de prova. E a dívida aparece na **prontidão**:
+`DEBT_SUBJECTS` (o registro do doctor) lê a label e a reporta como fato próprio da
+seção de dívida aberta, com `crossCheck: null` **declarado** — o doctor não puxa a
+imagem, então ele não tem como medir a caducidade; o registro diz isso em vez de
+presumir que a issue velha já se resolveu. A dívida que ele cobre tem duas
+direções, e as duas são invisíveis para todos os outros gates (a declaração só
+governa o veredito do PRÓPRIO gate): declarar **presente** o que a imagem não tem
+faz o gate **PASSAR** um passo `shell:` que morre com `command not found` depois do
+setup; declarar **ausente** o que a imagem tem faz o gate **REPROVAR** um passo
+legítimo. `unavailable` (sem docker, imagem não puxável, `BUN_VERSION` sem valor)
+NÃO abre issue — ele **falha o run** com o motivo nomeado: um cron que não mediu
+não pode passar por verde. A
+
 forma CUSTOM (`perl {0}`) não é um quarto desfecho: o que o gate julga é o NOME
 que ela invoca (`perl {0}` passa; `pwsh {0}` reprova).
 
@@ -2314,10 +2335,11 @@ manter o hook <1s).
 toca Dockerfile/setup-bun).
 
 **`bench:guard-timing` (`scripts/bench-guard-timing.mjs`)** — benchmark de
-wall time do doctor (perfil --ci), de CADA guard individual e do **custo das TRÊS
-unificações de régua**: o lint, o typecheck (o comando inteiro, com o heap,
+wall time do doctor (perfil --ci), de CADA guard individual, do **custo das TRÊS
+unificações de régua** — o lint, o typecheck (o comando inteiro, com o heap,
 dentro do script) e a suíte de testes (`bun run test:run`, que INCLUI
-`src/components/**`). Mede o tempo real de execução de cada gate da bateria
+`src/components/**`) — e do **custo da oferta de remendo no pre-commit** (a
+família `hook`). Mede o tempo real de execução de cada gate da bateria
 (18 guards), do doctor e das formas de cada família (a régua de hoje, a régua
 anterior e a metade nova isolada), registra em JSON versionado
 (`docs/benchmarks/guard-timing-{latest,baseline}.json`) com commit hash +
@@ -2420,8 +2442,55 @@ demanda (`--counterfactual`) e o JSON registra qual foi o caso — sem ele o del
 e a atribuição saem `null` (INDETERMINADO), nunca preenchidos com um número de
 outra rodada.
 
-**Medir em partes (máquina lenta / timeout de runner).** As duas famílias novas
-medem comandos INTEIROS e uma rodada completa tem dezenas de minutos. Três
+**Custo da OFERTA de remendo no pre-commit — medido nos DOIS caminhos do
+commit.** O hook passou a OFERECER o remédio dos defeitos mecânicos (as quatro
+classes, numa pergunta só) DEPOIS das duas fases, e a dar o veredito da fase
+reprovada pela FASE RODADA DE NOVO com o remendo já no índice. As duas coisas
+vivem no caminho de CADA commit, então a família `hook` as mede onde elas são
+pagas: no hook DE VERDADE, num repositório git temporário (o mesmo fixture da
+prova do hook — binários das fases dublados, remédio REAL), com o contrafactual
+sendo uma TRANSFORMAÇÃO do próprio hook, ancorada no texto dele (`hookSemOferta`:
+o MESMO veredito sem o bloco da oferta; `hookWaitAgregada`: o gate de sintaxe de
+volta ao `wait_all` da fase A). Medido em 17/09/2026 nesta máquina:
+
+| forma medida (mediana de 3 amostras)                    | wall time |
+| ------------------------------------------------------- | --------- |
+| caminho COMUM, hoje (índice ok)                         | 81ms      |
+| caminho COMUM, sem a oferta (contrafactual)             | 80ms      |
+| caminho COMUM, sintaxe agregada ao `wait_all`           | 80ms      |
+| caminho de FALHA, hoje (defeito no índice, fail-closed) | 154ms     |
+| caminho de FALHA, sem a oferta (contrafactual)          | 76ms      |
+| remédio VERDE — a fase rodada de novo (dublê declarado) | 148ms     |
+| detecção contra a ÁRVORE REAL (read-only, conferida)    | 182ms     |
+
+**Os dois deltas que importam.** No caminho COMUM a oferta custa **+1ms (≈0)**:
+ela NÃO é alcançada quando nada reprova (o `if` só abre com fase vermelha), que é
+o que faz o custo dela ser pago por quem TEM defeito e não em todo commit. E a
+espera SEPARADA do gate de sintaxe contra a agregação no `wait_all` custa **+1ms**
+— as duas esperam o MESMO conjunto de PIDs, e o teto é o `max`: a estrutura da
+espera não muda o tempo, e agora isso é dado versionado em vez de premissa. No
+caminho de FALHA a oferta custa **+78ms** (fail-closed: sem terminal ela não
+pergunta nem remenda) e, depois de um remédio VERDE, a fase rodada de novo custa
+**+72ms** — ali só o gate de sintaxe é reexecutado; a fase B, que o fixture
+dubla, tem o custo medido nas famílias de guardas. Duas rodadas da mesma sessão
+dão ±3ms nestes números: é essa a resolução do instrumento, e por isso o que a
+família afirma é a ORDEM de grandeza (o caminho comum não paga a oferta; o de
+falha paga dezenas de milissegundos), não o milissegundo.
+
+**Quatro afirmações que o contrafactual precisa sustentar** (e que o teste
+prende): as duas transformações são ancoradas no TEXTO do hook, e sem as âncoras
+a família se declara **NÃO MEDIDA** em vez de comparar o hook com ele mesmo (um
+delta 0 "perfeito" que não mediu nada); o contrafactual `sem-oferta` MANTÉM o
+veredito, com os mesmos exits — ele mede custo, não outra política; a
+**REVALIDAÇÃO é observável na saída** (o veredito do gate dono aparece DUAS vezes
+quando o remédio sai verde e UMA no fail-closed), em vez de ser afirmada; e a
+detecção contra a árvore real é read-only por construção, com o
+`git status --porcelain` conferido antes e depois — `escreveu: true` é VIOLAÇÃO da
+família, não um detalhe do log.
+
+**Medir em partes (máquina lenta / timeout de runner).** As famílias de régua
+medem comandos INTEIROS e uma rodada completa tem dezenas de minutos (a `hook` é
+a exceção: segundos). Três
 afirmações resolvem isso sem enfraquecer a procedência: `--only FAMÍLIA` mede só
 aquelas famílias (e pula a bateria de guards+doctor); `--merge` HERDA do arquivo
 o que esta rodada não mediu; e o que foi herdado vai para `meta.reused` com o
@@ -2442,7 +2511,8 @@ nunca mediu.
 que não terminou (`ok: false`) tem o ms do pedaço que rodou; se esse pedaço for
 maior que a baseline, o número passa do limiar e _não_ é medição. A régua marca a
 forma `unmeasured` E a exclui do julgamento, e o motivo da comparação **nomeia** a
-família que faltou (`bateria (guards+doctor)`, `lint`, `typecheck`, `suíte`) —
+família que faltou (`bateria (guards+doctor)`, `lint`, `typecheck`, `suíte`,
+`hook (oferta de remendo)`) —
 "medição incompleta" sem o nome transfere a investigação para quem lê a issue.
 As famílias
 typecheck e suíte medem **uma amostra por forma** (`samplesPerForm: 1`),
@@ -2458,7 +2528,16 @@ nunca um valor herdado sem a marca de procedência.
 **A comparação das famílias novas é do COMANDO CANÔNICO**, não do delta: aqui
 "regressão de tempo" significa "o gate ficou mais lento", e o contrafactual não
 roda mais em pipeline nenhuma. (No lint a forma comparada continua sendo o custo
-por rodada, que é o que a unificação acrescentou lá.) Uma suíte VERMELHA deixa a
+por rodada, que é o que a unificação acrescentou lá.) No `hook`, a comparação é
+FORMA por FORMA, casada por PAPEL (o caminho do commit — `comum-hoje` com o
+`comum-hoje` da baseline, não com o que estiver na linha de cima), e os DELTAS
+entre formas ficam fora do veredito de propósito: delta é diferença de duas
+medianas, e julgar regressão sobre ele multiplicaria o ruído — o que a comparação
+julga é o custo ABSOLUTO de cada forma, e o delta diz de onde ele veio. Enquanto a
+baseline versionada (hoje `v1`, anterior às famílias de régua) não carregar a
+família, as formas dela aparecem como **NOVAS** no relatório (`➕`) — mover a
+baseline é ato DELIBERADO (`bun run bench:guard-timing:baseline`), como para as
+outras três. Uma suíte VERMELHA deixa a
 família `unmeasured` — e a comparação inteira fica `measured: false`, o que
 segura o fechamento automático da issue de tempo: se o gate que decide o merge
 está vermelho, o tempo dele não é a pergunta.

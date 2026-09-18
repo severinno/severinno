@@ -5,12 +5,14 @@
 //
 // A IDADE da dívida DECLARADA do repositório — num lugar só.
 //
-// POR QUE ISTO EXISTE: o repositório tem quatro decisões escritas de "não
+// POR QUE ISTO EXISTE: o repositório tem cinco decisões escritas de "não
 // consertar agora" — as duas listas do `check-registry-source`
 // (OUT_OF_SCOPE_ALLOWLIST e THIRD_PARTY_ALLOWLIST), a ALLOWLIST do
-// `check-unused-deps` e o baseline do `check-pipefail-sigpipe` — e, em cada uma,
-// a data da decisão (`addedAt` / `declaredAt`) e a JANELA de revisão (180 dias,
-// do módulo compartilhado `allowlist-review.mjs`). O canal que as revisa é o job
+// `check-unused-deps`, a JOB_DEPS_ALLOWLIST do `check-job-deps` (o job que roda
+// comando dependente de `node_modules` sem instalar) e o baseline do
+// `check-pipefail-sigpipe` — e, em cada uma, a data da decisão
+// (`addedAt` / `declaredAt`) e a JANELA de revisão (180 dias, do módulo
+// compartilhado `allowlist-review.mjs`). O canal que as revisa é o job
 // semanal `registry-allowlist-review`, rodando os guards em `--review`: passada a
 // janela, a decisão vencida vira VIOLAÇÃO naquele run.
 //
@@ -61,6 +63,7 @@ import {
   THIRD_PARTY_REVIEW_DAYS,
 } from "./check-registry-source.mjs"
 import { ALLOWLIST, UNUSED_DEPS_REVIEW_DAYS } from "./check-unused-deps.mjs"
+import { JOB_DEPS_ALLOWLIST, JOB_DEPS_REVIEW_DAYS } from "./check-job-deps.mjs"
 import { BASELINE_PATH, baselineProblems, readBaseline } from "./check-pipefail-sigpipe.mjs"
 
 /** Exit codes declarados (o resto do repositório lê estes nomes, não os números). */
@@ -75,9 +78,9 @@ export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..")
  * Cada item diz: quem é o DONO (o guard que decide sobre a lista), como a lista é
  * LIDA (`entries()`, para não duplicar o dado em disco) e qual campo IDENTIFICA a
  * entrada (`idOf` — `path` no escopo, `prefix` nas imagens de terceiros, `match`
- * nas deps). As três listas em memória têm a MESMA forma, e é isso que permite
- * uma regra só; o baseline é uma DECLARAÇÃO única (data + razão + contagem por
- * arquivo), e por isso tem leitor próprio.
+ * nas deps, `job` na de dependências). As quatro listas em memória têm a MESMA
+ * forma, e é isso que permite uma regra só; o baseline é uma DECLARAÇÃO única
+ * (data + razão + contagem por arquivo), e por isso tem leitor próprio.
  */
 export const DECLARED_DEBT_SOURCES = [
   {
@@ -109,6 +112,17 @@ export const DECLARED_DEBT_SOURCES = [
     idOf: (entry) => entry.match,
     reviewDays: UNUSED_DEPS_REVIEW_DAYS,
     remedy: "reafirme a exceção atualizando `addedAt`, ou remova a dep de uso implícito",
+  },
+  {
+    id: "job-deps",
+    listName: "JOB_DEPS_ALLOWLIST",
+    owner: "scripts/check-job-deps.mjs",
+    kind: "entries",
+    entries: () => JOB_DEPS_ALLOWLIST,
+    idOf: (entry) => entry.job,
+    reviewDays: JOB_DEPS_REVIEW_DAYS,
+    remedy:
+      "instale as dependências no job (o par canônico de `setup-bun` + `bun install --frozen-lockfile`), ou reafirme a isenção atualizando `addedAt`",
   },
   {
     id: "sigpipe",
