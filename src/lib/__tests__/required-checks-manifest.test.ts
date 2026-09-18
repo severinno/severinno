@@ -117,7 +117,10 @@ const EXPECTED_CONTEXTS: Record<string, string[]> = {
     // seed-guards: jobs resolvidos do reusable workflow seed-guards.yml
     "Seed E2E ${{ matrix.seed }} · ${{ matrix.variant }}",
     "Mutation Test (seed dev E2E pega regressões?)",
-    "Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)",
+    // o `name:` deste job também é COUNT-FREE: o "5 cenários" era uma contagem
+    // que CRESCE (o contrato coordenado ganha um cenário por release) dentro do
+    // CONTEXTO protegido — o mesmo defeito do master de mutation tests.
+    "Mutation Test (contrato coordenado — doc↔anchor↔código)",
     "Mutation Test (espelhos do doctor — comparação de valor)",
     "Mutation Test (os três fios do veredito do doctor)",
     "Mutation Test (as três regras do contrato de gates CORE)",

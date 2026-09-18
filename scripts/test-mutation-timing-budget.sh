@@ -99,7 +99,7 @@ TMP_DIR="$(mktemp -d)"
 
 # Markers REAIS do seed-guards.yml (fonte única: o próprio guard os exporta;
 # aqui duplicados como const — o vitest do workflow já trava o par script↔yml).
-JOB_NAME="Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)"
+JOB_NAME="Mutation Test (contrato coordenado — doc↔anchor↔código)"
 STEP_NAME="Run mutation test (contrato coordenado — 5 cenários, 2 elos)"
 
 # TRÊS FAIXAS do budget — espelham os --max/--warn dos jobs de CI
@@ -182,8 +182,8 @@ build_act_log_fixture() {
   local out="$1"
   local secs="$2"
   cat > "$out" <<EOF
-[Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ⭐ Run Main bun run test:mutation-coord-update
-[Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ✅  Success - Main $STEP_NAME [${secs}s]
+[Mutation Test (contrato coordenado — doc↔anchor↔código)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ⭐ Run Main bun run test:mutation-coord-update
+[Mutation Test (contrato coordenado — doc↔anchor↔código)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ✅  Success - Main $STEP_NAME [${secs}s]
 EOF
 }
 

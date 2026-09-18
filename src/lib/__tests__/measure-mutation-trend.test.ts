@@ -52,7 +52,7 @@ const SCRIPT = join(process.cwd(), "scripts", "measure-mutation-trend.mjs")
 
 // ── Fixture real — payload da jobs API com o step exato do seed-guards.yml ─
 
-const CONTRACT_JOB = "Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)"
+const CONTRACT_JOB = "Mutation Test (contrato coordenado — doc↔anchor↔código)"
 const CONTRACT_STEP = "Run mutation test (contrato coordenado — 5 cenários, 2 elos)"
 
 /** Payload da jobs API com o step de mutation na duração dada. */
