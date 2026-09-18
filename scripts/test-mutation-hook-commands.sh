@@ -7,7 +7,7 @@
 #   ./scripts/test-mutation-hook-commands.sh
 #
 # Exit codes:
-#   0 — as ONZE mutações foram DETECTADAS (pelo gate, pelo ARQUIVO e/ou pela
+#   0 — as CATORZE mutações foram DETECTADAS (pelo gate, pelo ARQUIVO e/ou pela
 #       suíte) e os controles passaram ✅
 #   1 — guard INDIFERENTE a alguma mutação (não cegou / não acusou / não gravou)
 #       OU controle falso ❌
@@ -83,6 +83,24 @@
 #         escrito vira violação e o repositório REAL fica VERMELHO — direção
 #         contrária (como o M4): o defeito da mutação é acusar o são.
 #
+# AS VARIÁVEIS DE CAMINHO TÊM AS SUAS TRÊS REGRAS, e cada uma tem mutação própria —
+# é a metade do guard que PROVA o alvo do interpretador (`python3
+# "$PYTHON_SCRIPT"`) em vez de declará-lo:
+#
+#   M12 — a RESOLUÇÃO. Sem ela, `$PYTHON_SCRIPT` / `$SCRIPT_DIR/x` / `$PY` voltam
+#         a ser indeterminados — e as entradas de INDETERMINATE que os cobriam
+#         foram REMOVIDAS quando a prova entrou. O repositório REAL fica VERMELHO
+#         (direção contrária, como o M4 e o M11): é a resolução que sustenta o
+#         verde.
+#   M13 — a EXISTÊNCIA dos valores prováveis. A resolução é uma promessa sobre o
+#         DISCO: sem a conferência, a variável que aponta para um arquivo
+#         inexistente passa como resolvida (o passo que nunca roda, com a bênção
+#         do gate).
+#   M14 — o FAIL-CLOSED da resolução. Se UMA atribuição da variável não é
+#         provável, a variável INTEIRA é irresolúvel (um valor que o guard não leu
+#         pode ser o que roda). Descartar a atribuição ilegível e ficar com as que
+#         sobraram é provar uma PARTE e chamar de todo.
+#
 # A SEGUNDA TESTEMUNHA (a suíte unitária). As mutações M1–M4 são aplicadas no
 # arquivo do repositório e, além do veredito do CLI, exigem a suíte
 # `check-hook-commands.test.ts` VERMELHA — a suíte é o que roda em todo PR e é
@@ -123,6 +141,13 @@
 #      passa a resolver dentro do script executado
 #   6h. MUTAÇÃO M11 (a régua do `case`) — o repositório REAL passa a ser acusado
 #      pelos padrões `-h|--help)` de um script bem escrito
+#   6i. MUTAÇÃO M12 (a RESOLUÇÃO das variáveis de caminho) — o repositório REAL
+#      passa a ser acusado nos `check-*.sh` (as decisões datadas já não cobrem
+#      esses comandos)
+#   6j. MUTAÇÃO M13 (a existência do alvo PROVADO) — a variável que aponta para um
+#      arquivo inexistente passa a sair verde
+#   6k. MUTAÇÃO M14 (o fail-closed da resolução) — descartar a atribuição
+#      ilegível faz o guard provar a metade que sobrou
 #   7. Restauração VERIFICADA (checksum) + CONTROLE FINAL: o guard volta a
 #      reprovar o caminho tipado, provando que a árvore ficou como estava
 #   8. Cleanup (trap EXIT — restaura o guard e remove o temp, mesmo com falha)
@@ -626,10 +651,75 @@ pass "M11 CIRÚRGICA: as fixtures de defeito seguem reprovadas — morreu só a 
 exigir_suite_vermelha "M11"
 restaurar_original
 
+# ── 6i. MUTAÇÃO M12: a RESOLUÇÃO das variáveis de caminho ────────────────
+# A direção aqui é a CONTRÁRIA (como o M4 e o M11): sem a resolução, o guard não
+# fica cego — ele passa a ACUSAR os `check-*.sh` do repositório real, porque as
+# entradas de INDETERMINATE que cobriam `$PYTHON_SCRIPT`, `$SCRIPT_DIR/x` e `$PY`
+# foram REMOVIDAS quando a prova entrou. Se a resolução não sustentasse o verde,
+# o repositório teria comandos indeterminados não declarados.
+header "MUTAÇÃO M12: desligar a resolução das variáveis de caminho"
+mutar_guard \
+  '        : caminhosProvaveis(alvo, ctx.vars)' \
+  '        : { ok: false, motivo: "MUTACAO M12: resolucao desligada" }'
+rodar_guard_real
+if [ "$GUARD_EXIT" -eq 0 ]; then
+  fail "M12: o guard seguiu VERDE no repositório real — a resolução não sustenta o verde"
+  exit 1
+fi
+pass "M12: o repositório REAL passa a ser ACUSADO (exit $GUARD_EXIT) nos \`check-*.sh\` — a resolução é load-bearing"
+mostrar
+exigir_reprovado "M12 cirúrgica (caminho NO hook)" "$FX_TYPO"
+pass "M12 CIRÚRGICA: o caminho tipado NO hook segue reprovado — morreu só a resolução"
+exigir_suite_vermelha "M12"
+restaurar_original
+
+# ── 6j. MUTAÇÃO M13: a EXISTÊNCIA dos valores prováveis ────────────────────
+# A resolução é uma promessa sobre o DISCO: os valores deduzidos das atribuições
+# têm de existir. Sem a conferência, a variável que aponta para um arquivo
+# inexistente passa como resolvida — é a mesma classe do M1, agora no caminho
+# PROVADO (o M1 muta a função; este muta a conferência do alvo resolvido).
+header "MUTAÇÃO M13: aceitar os valores prováveis sem conferir o disco"
+FX_VARIAVEL="$TMP_DIR/fx-variavel"
+HOOK_VARIAVEL=$'set -eu\nbash scripts/py.sh\n'
+PY_VARIAVEL=$'#!/usr/bin/env bash\nset -euo pipefail\nSCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\nPYTHON_SCRIPT="$SCRIPT_DIR/nao-existe.py"\npython3 "$PYTHON_SCRIPT"\n'
+mkfix "$FX_VARIAVEL" "$HOOK_VARIAVEL" "$PKG_SIMPLES" scripts/check_utf8.py
+mk_arquivo "$FX_VARIAVEL" "scripts/py.sh" "$PY_VARIAVEL"
+exigir_reprovado "M13 (antes da mutação)" "$FX_VARIAVEL"
+pass "CONTROLE: o alvo PROVADO que não existe é VIOLAÇÃO (a variável foi provada e o arquivo, conferido)"
+mutar_guard \
+  '    const faltando = provavel.valores.filter((v) => !arquivoExiste(ctx.root, v))' \
+  '    const faltando = [] /* MUTACAO M13 */'
+exigir_cego "M13" "$FX_VARIAVEL"
+pass "M13: sem a conferência, o caminho que NUNCA existe PASSA (CEGO) — a existência do alvo provado é load-bearing"
+exigir_suite_vermelha "M13"
+restaurar_original
+
+# ── 6k. MUTAÇÃO M14: o FAIL-CLOSED da resolução (provar uma PARTE) ────────
+# A regra é: se UMA atribuição da variável não é provável, a variável INTEIRA é
+# irresolúvel — um valor que o guard não leu pode ser justamente o que roda, e
+# provar o resto seria provar uma parte e chamar de todo. A mutação descarta a
+# atribuição que falhou e fica com as que sobraram.
+header "MUTAÇÃO M14: descartar a atribuição não provável"
+FX_MEIO="$TMP_DIR/fx-meio"
+HOOK_MEIO=$'set -eu\nbash scripts/py.sh\n'
+PY_MEIO=$'#!/usr/bin/env bash\nset -euo pipefail\nSCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\nPY_SCRIPT="$SCRIPT_DIR/check_utf8.py"\nif [ "$1" = x ]; then\n  PY_SCRIPT="$(date +%s).py"\nfi\npython3 "$PY_SCRIPT"\n'
+mkfix "$FX_MEIO" "$HOOK_MEIO" "$PKG_SIMPLES" scripts/check_utf8.py
+mk_arquivo "$FX_MEIO" "scripts/py.sh" "$PY_MEIO"
+exigir_reprovado "M14 (antes da mutação)" "$FX_MEIO"
+pass "CONTROLE: com uma atribuição NÃO provável, a variável inteira é irresolúvel — VIOLAÇÃO (fail-closed)"
+mutar_guard \
+  '    if (!r.ok)
+      return { ok: false, motivo: `\`${nome}\` (linha ${entrada.linhas.join(", ")}): ${r.motivo}` }' \
+  '    if (!r.ok) continue /* MUTACAO M14 */'
+exigir_cego "M14" "$FX_MEIO"
+pass "M14: descartando a atribuição ilegível, o guard PROVA a metade que sobrou e deixa passar (CEGO) — o fail-closed é load-bearing"
+exigir_suite_vermelha "M14"
+restaurar_original
+
 # ── 7. CONTROLE FINAL: a árvore ficou como estava ─────────────────────────
 header "CONTROLE FINAL: restauração verificada por checksum"
 exigir_reprovado "CONTROLE FINAL (caminho tipado)" "$FX_TYPO"
 pass "CONTROLE FINAL: o guard restaurado volta a reprovar o caminho tipado"
 
 echo
-echo -e "${GREEN}═══ MUTATION TEST PASSED — as 11 mutações foram detectadas (gate, arquivo e/ou suíte) ═══${NC}"
+echo -e "${GREEN}═══ MUTATION TEST PASSED — as 14 mutações foram detectadas (gate, arquivo e/ou suíte) ═══${NC}"

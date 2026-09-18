@@ -41,6 +41,8 @@ import {
   analyze,
   aplicarRemendo,
   arquivosDoRemendo,
+  atribuicoesDoTexto,
+  caminhosProvaveis,
   definedFunctions,
   extractSubstitutions,
   fix,
@@ -52,6 +54,7 @@ import {
   renderPlano,
   reviewViolations,
   shellCommands,
+  variaveisDoArquivo,
   vizinhoAceito,
 } from "../../../scripts/check-hook-commands.mjs"
 
@@ -309,6 +312,225 @@ describe("runtime: o indeterminado é uma decisão datada, nunca um silêncio", 
     const futuras = reviewViolations(futuro).map((v) => v.motivo)
     expect(futuras.some((m) => m.includes("ALLOWLIST"))).toBe(true)
     expect(futuras.some((m) => m.includes("INDETERMINATE"))).toBe(true)
+  })
+})
+
+// ── as VARIÁVEIS DE CAMINHO: o alvo do interpretador provado, não declarado ─
+//
+// `python3 "$PYTHON_SCRIPT"` era uma DECISÃO datada em INDETERMINATE (o guard não
+// provava o caminho). Hoje ele lê as atribuições do arquivo — e estas provas
+// medem as duas metades: o caminho que RESOLVE (verde por prova, sem nenhuma
+// entrada declarada no fixture) e o que continua reprovado (fail-closed quando o
+// valor não é estático). A ausência de INDETERMINATE no fixture é o que faz cada
+// caso valer: um guard que só declarasse de novo sairia vermelho aqui.
+
+describe("as variáveis de caminho dos scripts são RESOLVIDAS pelas atribuições", () => {
+  const SCRIPT_COM_VARIAVEL = [
+    "#!/usr/bin/env bash",
+    "set -euo pipefail",
+    'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+    'PYTHON_SCRIPT="$SCRIPT_DIR/check_utf8.py"',
+    'python3 "$PYTHON_SCRIPT" "$@"',
+    'node "$SCRIPT_DIR/check_utf8.mjs" "$@"',
+    "",
+  ].join("\n")
+
+  it("PROVA: o `$VAR` do alvo resolve, e o motivo diz de onde veio", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": "bash scripts/check-utf8.sh\n" },
+      arquivos: {
+        "scripts/check-utf8.sh": SCRIPT_COM_VARIAVEL,
+        "scripts/check_utf8.py": "# existe\n",
+        "scripts/check_utf8.mjs": "// existe\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toEqual([])
+    expect(report.indeterminados).toEqual([])
+    const doPython = report.resolvidos.find((r) => r.programa === "python3")
+    expect(doPython?.motivo).toContain("pelas atribuições de `$PYTHON_SCRIPT` neste arquivo")
+    expect(doPython?.motivo).toContain("`scripts/check_utf8.py`")
+    // O mesmo para a referência EMBUTIDA num caminho (`$SCRIPT_DIR/x`), que não é
+    // o token inteiro: o `$SCRIPT_DIR` é o idioma do diretório DESTE arquivo.
+    const doNode = report.resolvidos.find((r) => r.programa === "node")
+    expect(doNode?.motivo).toContain("pelas atribuições de `$SCRIPT_DIR` neste arquivo")
+    expect(doNode?.motivo).toContain("`scripts/check_utf8.mjs`")
+    expect(rodaCli(dir).status).toBe(EXIT.OK)
+  })
+
+  it("PROVA: o alvo provável que NÃO existe é VIOLAÇÃO, e o remendo a RECUSA", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": "bash scripts/check-utf8.sh\n" },
+      arquivos: {
+        "scripts/check-utf8.sh": SCRIPT_COM_VARIAVEL.replace("check_utf8.py", "nao-existe.py"),
+        "scripts/check_utf8.mjs": "// existe\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toHaveLength(1)
+    expect(motivos(report)[0]).toContain("`$PYTHON_SCRIPT` provável")
+    expect(motivos(report)[0]).toContain("`scripts/nao-existe.py`")
+    // Sem `remendo`: não há token de caminho a trocar (a variável pode ter vários
+    // valores), e o remendo NOMEIA a recusa em vez de adivinhar o token.
+    expect(report.violacoes[0]!.remendo).toBeUndefined()
+    const { recusas } = planoDeRemendo(dir)
+    expect(recusas.map((r) => r.motivo).join("\n")).toContain("nao-existe.py")
+    expect(rodaCli(dir, ["--fix", "--yes"]).status).not.toBe(EXIT.OK)
+  })
+
+  it("FAIL-CLOSED: valor não estático continua VIOLAÇÃO (nada foi adivinhado)", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": "bash scripts/check-utf8.sh\n" },
+      arquivos: {
+        "scripts/check-utf8.sh": [
+          "#!/usr/bin/env bash",
+          "set -euo pipefail",
+          'PYTHON_SCRIPT="$(date +%s)"',
+          'python3 "$PYTHON_SCRIPT"',
+          "",
+        ].join("\n"),
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toHaveLength(1)
+    expect(motivos(report)[0]).toContain("INDETERMINATE")
+    // O motivo nomeia a VARIÁVEL e a LINHA da atribuição que não é provável — o
+    // operador não fica procurando qual valor o guard não conseguiu ler.
+    expect(motivos(report)[0]).toContain("`$PYTHON_SCRIPT`")
+    expect(rodaCli(dir).status).toBe(EXIT.VIOLATIONS)
+  })
+
+  it("o conjunto de RAMOS: o mesmo `$PY` com três valores conhecidos resolve", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": "bash scripts/check-crlf.sh\n" },
+      arquivos: {
+        "scripts/check-crlf.sh": [
+          "#!/usr/bin/env bash",
+          "set -euo pipefail",
+          'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+          'PY_SCRIPT="$SCRIPT_DIR/check_crlf.py"',
+          "if command -v python3 >/dev/null 2>&1; then",
+          '  PY="python3"',
+          "elif command -v python >/dev/null 2>&1; then",
+          '  PY="python"',
+          "else",
+          '  PY="node"',
+          '  PY_SCRIPT="$SCRIPT_DIR/check_crlf.mjs"',
+          "fi",
+          '"$PY" "$PY_SCRIPT" --fix',
+          "",
+        ].join("\n"),
+        "scripts/check_crlf.py": "# existe\n",
+        "scripts/check_crlf.mjs": "// existe\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toEqual([])
+    expect(report.indeterminados).toEqual([])
+    const doPy = report.resolvidos.find((r) => r.programa === "$PY")
+    expect(doPy?.motivo).toContain("→ `python3`, `python`, `node`")
+    expect(doPy?.motivo).toContain("e o alvo resolve")
+    expect(rodaCli(dir).status).toBe(EXIT.OK)
+  })
+
+  it("o ramo com um programa que o guard NÃO conhece derruba o veredito", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": "bash scripts/check-crlf.sh\n" },
+      arquivos: {
+        "scripts/check-crlf.sh": [
+          "#!/usr/bin/env bash",
+          "set -euo pipefail",
+          'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+          'PY_SCRIPT="$SCRIPT_DIR/check_crlf.py"',
+          'PY="python3"',
+          'PY="interpretador-que-ninguem-tem"',
+          '"$PY" "$PY_SCRIPT"',
+          "",
+        ].join("\n"),
+        "scripts/check_crlf.py": "# existe\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toHaveLength(1)
+    expect(motivos(report)[0]).toContain("`interpretador-que-ninguem-tem`")
+    expect(rodaCli(dir).status).toBe(EXIT.VIOLATIONS)
+  })
+
+  it("o escopo é o ARQUIVO: a variável do hook não vale dentro do script executado", () => {
+    // `bash script.sh` cria um processo NOVO: a variável do hook não existe lá
+    // dentro (a menos que seja `export`-ada), e resolver por ela seria prometer um
+    // caminho que o runtime não tem.
+    const dir = fixture({
+      hooks: {
+        "pre-commit": 'PYTHON_SCRIPT="scripts/check_utf8.py"\nbash scripts/check-utf8.sh\n',
+      },
+      arquivos: {
+        "scripts/check-utf8.sh": '#!/usr/bin/env bash\npython3 "$PYTHON_SCRIPT"\n',
+        "scripts/check_utf8.py": "# existe\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toHaveLength(1)
+    expect(motivos(report)[0]).toContain("não é atribuída neste arquivo")
+  })
+})
+
+describe("a leitura das atribuições (a régua da resolução, medida em separado)", () => {
+  it("a UNIÃO dos ramos, e a linha comentada que não atribui nada", () => {
+    const mapa = atribuicoesDoTexto(
+      ["# PY=ignorado", 'PY="python3"', "# comentario", 'PY="node"', "export OUTRO=valor", ""].join(
+        "\n",
+      ),
+    )
+
+    expect(mapa.get("PY")?.valores).toEqual(['"python3"', '"node"'])
+    expect(mapa.get("PY")?.linhas).toEqual([2, 4])
+    expect(mapa.get("OUTRO")?.linhas).toEqual([5])
+  })
+
+  it("as formas que viram motivo NOMEADO (nunca um valor adivinhado)", () => {
+    const vars = variaveisDoArquivo(
+      [
+        'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+        'A="$SCRIPT_DIR/x.py"',
+        'B="$(comando qualquer)"',
+        'C="$A"',
+        'D="$E"',
+        'E="$D"',
+        "VAZIA=",
+        "",
+      ].join("\n"),
+      "scripts/qualquer.sh",
+    )
+    const razao = (token: string) => {
+      const r = caminhosProvaveis(token, vars)
+      return r.ok ? "ok" : r.motivo
+    }
+
+    // O idioma do diretório DESTE arquivo resolve — e o resto do token entra junto.
+    const a = caminhosProvaveis("$A", vars)
+    expect(a.ok && a.valores).toEqual(["scripts/x.py"])
+    expect(caminhosProvaveis("$C", vars).ok).toBe(true)
+    // Substituição de comando, variável não atribuída, ciclo, vazia e parâmetro
+    // posicional: cada uma diz POR QUE não dá para provar.
+    expect(razao("$B")).toContain("substituição de comando")
+    expect(razao("$D")).toContain("ciclo")
+    expect(razao("$NAO_EXISTE")).toContain("não é atribuída neste arquivo")
+    expect(razao("$VAZIA")).toContain("VAZIA")
+    expect(razao("$@")).toContain("parâmetro do shell")
+    expect(razao("${NAO_EXISTE[@]}")).toContain("não resolve")
   })
 })
 
@@ -641,11 +863,13 @@ describe("a descida nos scripts de shell que o hook chama", () => {
     expect(report.violacoes).toEqual([])
   })
 
-  it("PROGRAMA montado em runtime é INDETERMINADO — e exige decisão declarada", () => {
+  it("PROGRAMA montado em runtime: PROVADO quando as atribuições provam, violação quando não", () => {
     // Acusar `$INTERPRETE` de "não ser arquivo do repositório" seria falso duas
-    // vezes (não é um nome) e travaria um merge legítimo. O caminho é o mesmo de
-    // todo payload de runtime: `indeterminado` + declaração datada. Sem a
-    // declaração, é violação (fail-closed, medido no CONTROLE abaixo).
+    // vezes (não é um nome) e travaria um merge legítimo. O guard prova o que der
+    // para provar pelas ATRIBUIÇÕES do arquivo (as três são interpretadores
+    // declarados, e o alvo existe) e, quando não dá, mantém `indeterminado` +
+    // declaração datada. Sem a declaração, é violação (fail-closed, medido no
+    // primeiro CONTROLE abaixo).
     const naoDeclarado = fixture({
       hooks: { "pre-commit": "set -eu\nbash scripts/x.sh\n" },
       arquivos: { "scripts/x.sh": '#!/usr/bin/env bash\n"$INTERPRETE" "$ALVO"\n' },
@@ -656,16 +880,38 @@ describe("a descida nos scripts de shell que o hook chama", () => {
     expect(report.violacoes).toHaveLength(1)
     expect(report.violacoes[0]!.motivo).toContain("programa montado em runtime")
     expect(report.violacoes[0]!.motivo).toContain("decisão nao declarada")
+    // O motivo diz POR QUE não provou — e nomeia a variável que falta.
+    expect(report.violacoes[0]!.motivo).toContain(
+      "a variável `INTERPRETE` não é atribuída neste arquivo",
+    )
 
-    // CONTROLE: o caso do REPOSITÓRIO (`"$PY" "$PY_SCRIPT"` nos dois
-    // check-*.sh) está DECLARADO — a decisão datada é o que separa "não provei, e
-    // é uma decisão" de "não provei, e tanto faz".
-    const declarado = fixture({
+    // CONTROLE (a outra direção): com as atribuições do REPOSITÓRIO
+    // (`"$PY" "$PY_SCRIPT" --fix` nos dois check-*.sh) o mesmo comando RESOLVE —
+    // é a resolução que sustenta o verde, e nenhuma entrada de INDETERMINATE
+    // precisa cobri-lo.
+    const provado = fixture({
       hooks: { "pre-commit": "set -eu\nbash scripts/x.sh\n" },
-      arquivos: { "scripts/x.sh": '#!/usr/bin/env bash\n"$PY" "$PY_SCRIPT" --fix\n' },
+      arquivos: {
+        "scripts/x.sh": [
+          "#!/usr/bin/env bash",
+          'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+          'PY_SCRIPT="$SCRIPT_DIR/check_crlf.py"',
+          'PY="python3"',
+          '"$PY" "$PY_SCRIPT" --fix',
+          "",
+        ].join("\n"),
+        "scripts/check_crlf.py": "# existe\n",
+      },
     })
-    expect(relatorio(declarado).violacoes).toEqual([])
-    expect(INDETERMINATE.some((e) => "$PY $PY_SCRIPT".startsWith(e.match))).toBe(true)
+    const provados = relatorio(provado)
+    expect(provados.violacoes).toEqual([])
+    expect(provados.indeterminados).toEqual([])
+    expect(provados.resolvidos.find((r) => r.programa === "$PY")?.motivo).toContain(
+      "e o alvo resolve",
+    )
+    // E a lista de DECISÕES não carrega mais o texto do repositório: o que era
+    // declaração virou prova.
+    expect(INDETERMINATE.some((e) => "$PY $PY_SCRIPT".startsWith(e.match))).toBe(false)
   })
 
   it("a SOMA fecha com a descida junto (nenhum comando descido escapa da conta)", () => {

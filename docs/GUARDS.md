@@ -4957,19 +4957,48 @@ o veredito do commit é o de um **`git commit` NOVO** — nunca a continuação 
 execução.
 
 **Runtime é DECISÃO, não silêncio:** o que não se prova por leitura
-(`bash -c "$cmd"`, `node -e`, caminho em `$VAR`, **programa em `$VAR`**) tem de
-estar em `INDETERMINATE` com `addedAt` + motivo; sem a entrada, é VIOLAÇÃO. As
-duas listas (`ALLOWLIST` para o que existe fora do repositório — hoje o
-`bunx @lhci/cli` do advisory do Lighthouse — e `INDETERMINATE`, hoje CINCO
-entradas) usam a data e a JANELA de revisão do módulo compartilhado
-(`allowlist-review.mjs`, 180 dias): uma isenção sem revisão vira violação nomeada
-em vez de permanente por esquecimento. Quatro das cinco entradas nasceram da
-DESCIDA — são comando que EXISTE e RODA nos `check-*.sh`, e o que o guard não
-consegue é PROVÁ-LOS: o `python -c "import sys"` (o probe que escolhe o
-interpretador) tem o payload no argumento; `python3 "$PYTHON_SCRIPT"` e
-`node "$SCRIPT_DIR/check_utf8.mjs"` têm o caminho numa variável (e os dois scripts
-conferem o arquivo com `[ -f ]` antes de executar); e `"$PY" "$PY_SCRIPT"` tem o
-PRÓPRIO PROGRAMA numa variável (o interpretador é escolhido por probe em runtime).
+(`bash -c "$cmd"`, `node -e`, payload de `-c`) tem de estar em `INDETERMINATE` com
+`addedAt` + motivo; sem a entrada, é VIOLAÇÃO. As duas listas (`ALLOWLIST` para o
+que existe fora do repositório — hoje o `bunx @lhci/cli` do advisory do Lighthouse
+— e `INDETERMINATE`, hoje DUAS entradas) usam a data e a JANELA de revisão do
+módulo compartilhado (`allowlist-review.mjs`, 180 dias): uma isenção sem revisão
+vira violação nomeada em vez de permanente por esquecimento. As duas que sobraram
+são a MESMA classe — o probe `python3|python -c "import sys"` dos `check-*.sh` e o
+`python3 -c` do advisory do `pre-push` —, e o motivo de serem o PISO da lista é
+estrutural: um payload não é um caminho. Julgar o TEXTO dele seria julgar uma
+string, e nenhuma leitura o baixa mais.
+
+**As VARIÁVEIS DE CAMINHO são RESOLVIDAS (o alvo provado, não declarado).** Até
+agora o guard tinha QUATRO decisões datadas para comando que EXISTE e RODA nos
+`check-*.sh` — `python3 "$PYTHON_SCRIPT"`, `node "$SCRIPT_DIR/check_utf8.mjs"` e
+`"$PY" "$PY_SCRIPT"` —, e todas diziam a mesma coisa: "o arquivo existe, mas eu não
+provei". Ele agora lê as ATRIBUIÇÕES do arquivo julgado e prova: `PYTHON_SCRIPT`
+vale `$SCRIPT_DIR/check_utf8.py`, e `$SCRIPT_DIR` é o idioma DECLARADO do
+"diretório DESTE arquivo" (`$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)` — o único
+`$( )` que ele traduz, porque é um idioma, não uma heurística). As três entradas
+saíram da lista e as quatro decisões viraram fato medido em todo commit. Três
+regras seguram o veredito:
+
+1. **O valor tem de ser ESTÁTICO por leitura** (literal, referência a outra
+   variável resolvível, ou o idioma do diretório do arquivo). Qualquer outra
+   substituição de comando é irresolúvel — e o motivo NOMEIA a variável e a LINHA
+   da atribuição que falhou.
+2. **FAIL-CLOSED:** se UMA atribuição da variável não é provável, a variável
+   INTEIRA é irresolúvel (um valor que o guard não leu pode ser o que roda; provar
+   o resto seria provar uma parte e chamar de todo).
+3. **O conjunto é um CONJUNTO:** `PY` atribuído em três ramos vale os três
+   valores, e TODOS têm de resolver — `"$PY" "$PY_SCRIPT"` sai verde porque
+   `python3`, `python` e `node` são interpretadores declarados e os dois
+   `check_crlf.{py,mjs}` existem. Valor que o guard não conhece, alvo que não
+   existe no disco, conjunto acima do teto (8) e variável que pode ser VAZIA mantêm o
+   comando fora do verde, cada um com o seu motivo.
+
+E os LIMITES, declarados em vez de implícitos: (a) o escopo é o ARQUIVO — a
+variável do hook não vale dentro de um script chamado com `bash` (processo novo, e
+resolver por ela prometeria um caminho que o runtime não tem); (b) a resolução não
+estende a DESCIDA (que continua só no alvo LITERAL); e (c) `bun run $ENTRADA`
+segue indeterminado — ali a variável nomeia uma ENTRADA de `scripts`, não um
+caminho, e é outra régua.
 
 **Onde roda:** o pre-commit (fase paralela, node-puro e read-only, ~0,1s) e o CI
 nas duas pontas do CORE — job `guards` da forja (dona do merge) e job
@@ -4987,13 +5016,14 @@ FIXTURE. A régua de extração é medida separadamente (comentário, heredoc, q
 de linha, `$( )`, `case`, função, continuação). E o repositório REAL é julgado com
 um **PISO de cobertura** (`comandos >= 200`, os três hooks e os scripts descidos nomeados): se a extração
 ou a descida pararem de funcionar, a contagem cai e o guard "passa" — o piso é o
-que impede o verde por vazio. Em produção: **245 comandos** (100 nos 3 hooks +
-145 dentro dos 5 scripts chamados), 233 resolvidos e 12 indeterminados
-DECLARADOS.
+que impede o verde por vazio. Em produção: **247 comandos** (102 nos 3 hooks +
+145 dentro dos 5 scripts chamados), **241 resolvidos** e **6 indeterminados
+DECLARADOS** (as quatro decisões de caminho viraram prova; sobraram os payloads de
+`-c`).
 
 **Prova por mutação:** `scripts/test-mutation-hook-commands.sh` muta o próprio
-guard em ONZE direções, cada uma com as testemunhas do veredito do CLI sobre uma
-fixture e a suíte unitária, que tem de ficar VERMELHA.
+guard em CATORZE direções, cada uma com as testemunhas do veredito do CLI sobre
+uma fixture e a suíte unitária, que tem de ficar VERMELHA.
 
 As QUATRO primeiras são do lado que DETECTA: três na direção de CEGAR —
 `arquivoExiste` devolvendo sempre `true` (o caminho tipado passa), a entrada de
@@ -5002,21 +5032,30 @@ indeterminado devolvido sem olhar a lista (o payload de runtime não declarado
 passa) — e UMA na direção OPOSTA: ignorar a regra da função do próprio hook faz o
 guard ACUSAR O SÃO no hook real (`wait_all` do `pre-commit` vira violação).
 
-As TRÊS últimas são da DESCIDA, e cada uma mede uma das propriedades acima:
+As TRÊS seguintes são da DESCIDA (M9–M11), e cada uma mede uma das propriedades
+acima. As **TRÊS ÚLTIMAS** são das VARIÁVEIS DE CAMINHO (M12–M14) — a metade que
+PROVA o alvo do interpretador em vez de declará-lo: sem a resolução o repositório
+REAL passa a ser acusado (as decisões datadas que cobriam esses comandos não
+existem mais), sem a conferência de disco a variável que aponta para arquivo
+inexistente passa como resolvida, e sem o fail-closed descartar a atribuição
+ilegível faz o guard provar a metade que sobrou.
 
-As outras QUATRO são do lado que **GRAVA** (`--fix`), e cada uma mede uma regra do
-remendo — o único lugar do repositório onde uma mutação pode fazer o repositório
-ESCREVER o que não deve:
+As do lado que **GRAVA** (`--fix` — M5 a M8) medem uma regra do remendo, o único
+lugar do repositório onde uma mutação pode fazer o repositório ESCREVER o que não
+deve; as demais medem o lado que JULGA. A tabela, na ordem do script:
 
-| mutação | a regra que ela tira do lugar                                         | o que acontece sem ela                                                     |
-| :------ | :-------------------------------------------------------------------- | :------------------------------------------------------------------------- |
-| M5      | a UNICIDADE do vizinho (empate é recusa)                              | o remendo grava um dos empatados, SORTEADO — onde tinha de recusar         |
-| M6      | o TETO de distância (a mensagem sugere; o remendo não grava sugestão) | o remendo troca o caminho por um PARENTE distante                          |
-| M7      | a CONFIRMAÇÃO (sem terminal e sem `--yes` não grava)                  | o remendo grava sem perguntar a ninguém                                    |
-| M8      | o ESCOPO do token (o de outro arquivo não é deste hook)               | o remendo reescreve um COMENTÁRIO do hook por um defeito do `package.json` |
-| M9      | a DESCIDA (parar no alvo do `bash`)                                   | o caminho tipado DENTRO do runner passa a sair verde                       |
-| M10     | o ESCOPO das funções de um script EXECUTADO                           | o nome que o shell nunca acharia passa a resolver dentro do script         |
-| M11     | os PADRÕES de um `case` não são comandos                              | o `-h                                                                      | --help)` de um script bem escrito ACUSA o repositório REAL |
+| mutação | a regra que ela tira do lugar                                          | o que acontece sem ela                                                      |
+| :------ | :--------------------------------------------------------------------- | :-------------------------------------------------------------------------- |
+| M5      | a UNICIDADE do vizinho (empate é recusa)                               | o remendo grava um dos empatados, SORTEADO — onde tinha de recusar          |
+| M6      | o TETO de distância (a mensagem sugere; o remendo não grava sugestão)  | o remendo troca o caminho por um PARENTE distante                           |
+| M7      | a CONFIRMAÇÃO (sem terminal e sem `--yes` não grava)                   | o remendo grava sem perguntar a ninguém                                     |
+| M8      | o ESCOPO do token (o de outro arquivo não é deste hook)                | o remendo reescreve um COMENTÁRIO do hook por um defeito do `package.json`  |
+| M9      | a DESCIDA (parar no alvo do `bash`)                                    | o caminho tipado DENTRO do runner passa a sair verde                        |
+| M10     | o ESCOPO das funções de um script EXECUTADO                            | o nome que o shell nunca acharia passa a resolver dentro do script          |
+| M11     | os PADRÕES de um `case` não são comandos                               | o `-h\|--help)` de um script bem escrito ACUSA o repositório REAL           |
+| M12     | a RESOLUÇÃO das variáveis de caminho                                   | as decisões datadas já não cobrem esses comandos e o repositório REAL acusa |
+| M13     | a EXISTÊNCIA do alvo PROVADO (a resolução é promessa sobre o disco)    | a variável que aponta para arquivo inexistente passa como resolvida         |
+| M14     | o FAIL-CLOSED da resolução (uma atribuição ilegível é a variável toda) | descartar a atribuição que falhou faz o guard provar a metade que sobrou    |
 
 A testemunha da M8 é o **CONTEÚDO do arquivo**, não o exit code — nos dois casos
 o veredito é 1 (a violação de verdade continua lá) e é o `cmp` contra os bytes

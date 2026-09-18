@@ -764,7 +764,11 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 > (transitivo, cada script uma vez, com ciclo e teto NOMEADOS no relatório).
 > Parar no alvo do `bash` deixava uma linha tipada DENTRO do
 > `run-encoding-guards.sh` como o mesmo passo-que-nunca-roda, um nível abaixo —
-> num arquivo que roda em **todo** commit. Detalhes no GUARDS.md §24.
+> num arquivo que roda em **todo** commit. E o alvo do interpretador
+> (`python3 "$PYTHON_SCRIPT"`) é **PROVADO**, não declarado: o guard resolve as
+> **atribuições de caminho do próprio arquivo** (incluindo o idioma
+> `SCRIPT_DIR="$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)"`), fail-closed quando
+> algum valor não é estático. Detalhes no GUARDS.md §24.
 
 > Por que os guards CRLF escaneiam só `.sh` (e não `.ts`)? — a decisão de
 > escopo está documentada em

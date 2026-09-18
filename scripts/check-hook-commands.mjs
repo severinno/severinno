@@ -116,7 +116,7 @@
 // =============================================================================
 
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs"
-import { basename, join } from "node:path"
+import { basename, dirname, join } from "node:path"
 
 import { shellTokens } from "./check-workflow-run-syntax.mjs"
 import { resolveCommand } from "./check-hook-ci-parity.mjs"
@@ -391,9 +391,26 @@ export const ALLOWLIST = [
 ]
 
 /**
- * Os payloads de runtime ja conhecidos. O `python3 -c` do bloco advisory do
- * `pre-push` le a resposta do `/api/health`: o programa esta na linha e o
- * PROGRAMA a executar esta no argumento, que nenhuma leitura prova.
+ * Os payloads de runtime ja conhecidos: o PROGRAMA a executar vive no ARGUMENTO
+ * (`-c`), nao existe como arquivo em lugar nenhum e nenhuma leitura o prova — o
+ * `python3 -c` do bloco advisory do `pre-push` le o JSON do `/api/health`, e os
+ * quatro `python3|python -c "import sys"` dos `check-*.sh` sao o probe que
+ * escolhe o interpretador. Julgar o TEXTO de um payload seria julgar uma string,
+ * nao um comando: e o unico indeterminado que nao vira prova lendo mais.
+ *
+ * O que NAO esta mais aqui (e por que): as QUATRO decisoes que existiam para os
+ * `check-*.sh` — `python3 "$PYTHON_SCRIPT"`, `node "$SCRIPT_DIR/check_utf8.mjs"`
+ * e `"$PY" "$PY_SCRIPT"` — eram decisoes sobre CAMINHO, e caminho de variavel
+ * agora e RESOLVIDO pelas atribuicoes do proprio arquivo (ver "As VARIAVEIS DE
+ * CAMINHO"): o guard le `PYTHON_SCRIPT="$SCRIPT_DIR/check_utf8.py"`, traduz o
+ * `$SCRIPT_DIR` (o idioma `dirname(BASH_SOURCE[0])` + `cd` + `pwd`) e PROVA que
+ * `scripts/check_utf8.py` existe. Cada uma delas era uma promessa que so o
+ * operador cumpria; hoje sao fato medido em todo commit — e `$PY` (o programa em
+ * variavel) tambem, porque os tres valores dele sao interpretadores declarados.
+ *
+ * As DUAS entradas que sobraram sao as do probe com payload inline, e o motivo de
+ * continuarem aqui e estrutural: um payload nao e um caminho. Elas sao o PISO
+ * desta lista — nenhuma leitura o baixa mais.
  *
  * @type {{match: string, addedAt: string, why: string}[]}
  */
@@ -401,32 +418,12 @@ export const INDETERMINATE = [
   {
     match: "python3 -c",
     addedAt: "2026-09-17",
-    why: "o payload do `python3 -c` vive no ARGUMENTO (le o JSON do /api/health do bloco advisory do pre-push) e nao existe como arquivo: julgar o texto dele seria julgar uma string, nao um comando",
+    why: "o payload do `python3 -c` vive no ARGUMENTO (le o JSON do /api/health do bloco advisory do pre-push e faz o probe `import sys` dos check-*.sh) e nao existe como arquivo: julgar o texto dele seria julgar uma string, nao um comando",
   },
-  // As QUATRO decisoes abaixo nasceram da descida nos scripts que os hooks
-  // chamam (`bash scripts/run-encoding-guards.sh` → os quatro `check-*.sh`). Sem
-  // elas o guard reprovava o repositorio por comando que existe e RODA — o que
-  // ele nao consegue e PROVAR por leitura. Cada uma e uma decisao datada, com a
-  // revisao da janela, e nao um silencio.
   {
     match: "python -c",
     addedAt: "2026-09-17",
     why: 'o probe `python -c "import sys"` (check-crlf.sh e check-blob-crlf.sh escolhem o interpretador em runtime) tem o payload no ARGUMENTO, como o `python3 -c` acima — e o resultado dele e o proprio gate de disponibilidade do interpretador',
-  },
-  {
-    match: "python3 $PYTHON_SCRIPT",
-    addedAt: "2026-09-17",
-    why: 'o caminho vem da VARIAVEL `PYTHON_SCRIPT` (= `$SCRIPT_DIR/check_utf8.py`, um arquivo que existe): o guard nao resolve variaveis (escopo declarado), e o proprio script confere `[ ! -f "$PYTHON_SCRIPT" ]` antes de executar',
-  },
-  {
-    match: "node $SCRIPT_DIR/check_utf8.mjs",
-    addedAt: "2026-09-17",
-    why: '`$SCRIPT_DIR` e derivado da LOCALIZACAO do script em runtime; o valor real e `scripts/check_utf8.mjs` (existe) e o `elif [ -f "$SCRIPT_DIR/check_utf8.mjs" ]` do check-utf8.sh confere o arquivo antes de usa-lo',
-  },
-  {
-    match: "$PY $PY_SCRIPT",
-    addedAt: "2026-09-17",
-    why: "o PROGRAMA e uma variavel (`PY` = python3|python|node, escolhido por probe em runtime) e o script dele tambem (`PY_SCRIPT` = `$SCRIPT_DIR/check_{crlf,blob_crlf}.{py,mjs}`): nenhuma leitura prova qual executavel roda, e a escolha E o fallback declarado dos dois scripts",
   },
 ]
 
@@ -831,6 +828,287 @@ export function shellCommands(content, { startLine = 1, origem = "" } = {}) {
 }
 
 // =============================================================================
+// As VARIAVEIS DE CAMINHO do proprio arquivo: `PYTHON_SCRIPT="$SCRIPT_DIR/x.py"`
+// =============================================================================
+//
+// O guard julga o comando de um script descido (`python3 "$PYTHON_SCRIPT"`), e o
+// alvo do interpretador esta numa VARIAVEL. Sem ler as atribuicoes do arquivo, a
+// unica saida honesta era `indeterminado` + uma entrada datada em INDETERMINATE —
+// a decisao dizia "o caminho existe, mas nao provei", e a prova ficava por conta
+// de quem le. Ler as atribuicoes troca isso por PROVA, com duas regras que
+// mantem o veredito honesto:
+//
+//   1. O valor tem de ser ESTATICO por leitura: literal, referencia a outra
+//      variavel resolvivel, ou o idioma do "diretorio DESTE arquivo"
+//      (`SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"` — o unico
+//      `$( )` que o guard traduz, e o unico porque ele e um IDIOMA declarado, nao
+//      uma heuristica).
+//   2. FAIL-CLOSED: uma atribuicao fora dessas formas deixa a variavel
+//      IRRESOLUVEL e o motivo NOMEIA a variavel e a linha — nunca "provavel pela
+//      maioria": um valor que o guard nao conseguiu ler pode ser justamente o que
+//      roda, e provar o resto seria provar uma parte e chamar de todo.
+//
+// O conjunto de valores e um CONJUNTO de verdade: uma variavel atribuida em ramos
+// diferentes (`PY=python3` / `PY=python` / `PY=node`) tem os tres, e o veredito
+// exige que TODOS resolvam — a leitura nao sabe qual ramo o runtime toma, e e por
+// isso que o veredito fala em "provável", nunca em "e".
+
+/**
+ * O marcador do "diretorio DESTE arquivo" (o valor de `SCRIPT_DIR`).
+ *
+ * O caminho final e o diretorio do ARQUIVO JULGADO (relativo ao root do
+ * repositorio) + o resto do token — e por isso o marcador existe: o mesmo
+ * `$SCRIPT_DIR/x` vale `scripts/x` num script e `.husky/x` num hook, e a
+ * substituicao tem de acontecer com o arquivo na mao.
+ */
+export const MARCA_DIR = "@DIR@"
+
+/**
+ * Os idiomas que DIZEM "o diretorio deste arquivo". Sao dois porque os scripts da
+ * casa escrevem os dois; qualquer outro `$( )` numa atribuicao e irresolvivel.
+ */
+export const IDIOMAS_DIR = [
+  {
+    re: /^\$\(cd "\$\(dirname "\$\{?BASH_SOURCE\[0\]\}?"\)" && pwd\)$/,
+    nome: "`$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)`",
+  },
+  {
+    re: /^\$\(cd "\$\(dirname "\$0"\)" && pwd\)$/,
+    nome: "`$(cd $(dirname $0) && pwd)`",
+  },
+]
+
+/**
+ * O teto de valores de um token (ou de uma variavel): duas referencias de tres
+ * valores ja dariam nove combinacoes, e um conjunto grande demais nao e prova de
+ * nada — e `indeterminado` nomeado.
+ */
+export const MAX_VALORES = 8
+
+/** A profundidade maxima da cadeia `A="$B"` → `B="$C"`. */
+export const MAX_PROFUNDIDADE = 4
+
+/**
+ * A atribuicao de uma linha de shell: `VAR=...`, com os prefixos que a casa usa
+ * (`export`, `local`, `readonly`, `declare -x`).
+ */
+const ATRIBUICAO =
+  /^\s*(?:export\s+|local\s+|readonly\s+|declare\s+(?:-[A-Za-z]+\s+)?)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/
+
+/**
+ * As ATRIBUICOES de texto de um arquivo: nome → valores, na ORDEM, com a linha
+ * de cada um (a linha e o que o motivo cita quando um deles nao e provavel).
+ *
+ * Uma linha COMENTADA nao atribui nada, e um `VAR=` dentro de um heredoc que
+ * comece na coluna zero seria lido como atribuicao — este guard julga o que le, e
+ * julgar a atribuicao de um heredoc daria um valor A MAIS no conjunto (nunca um
+ * valor a menos), o que deixa o veredito mais exigente, nao mais frouxo.
+ *
+ * @param {string} content
+ * @returns {Map<string, {valores: string[], linhas: number[]}>}
+ */
+export function atribuicoesDoTexto(content) {
+  /** @type {Map<string, {valores: string[], linhas: number[]}>} */
+  const mapa = new Map()
+  content.split(/\r?\n/).forEach((linha, i) => {
+    if (/^\s*#/.test(linha)) return
+    const m = ATRIBUICAO.exec(linha)
+    if (m === null) return
+    const entrada = mapa.get(m[1]) ?? { valores: [], linhas: [] }
+    entrada.valores.push(m[2].trim())
+    entrada.linhas.push(i + 1)
+    mapa.set(m[1], entrada)
+  })
+  return mapa
+}
+
+/** Tira as aspas EXTERNAS de um valor (e o que o shell faz antes de usa-lo). */
+export function desembrulha(valor) {
+  const v = valor.trim()
+  if (v.length < 2) return v
+  const primeira = v[0]
+  if ((primeira === '"' || primeira === "'") && v.endsWith(primeira)) return v.slice(1, -1)
+  return v
+}
+
+/** O `$VAR` / `${VAR}` / parametro do shell, para varrer um texto ou um token. */
+const referencia = () =>
+  /\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)|\$([@*#?$!-]|\d+)/g
+
+/**
+ * O produto cartesiano de alternativas, com TETO (null quando ele estoura).
+ *
+ * @param {string[][]} partes
+ * @param {number} teto
+ * @returns {string[]|null}
+ */
+function produto(partes, teto) {
+  let acc = [""]
+  for (const alternativas of partes) {
+    const proximo = []
+    for (const prefixo of acc) for (const alt of alternativas) proximo.push(prefixo + alt)
+    if (proximo.length > teto) return null
+    acc = proximo
+  }
+  return acc
+}
+
+/** Um texto curto para a mensagem (o valor inteiro so poluiria). */
+function encurta(texto) {
+  return texto.length > 48 ? `${texto.slice(0, 48)}…` : texto
+}
+
+/**
+ * Os valores PROVAVEIS do lado direito de uma atribuicao (o valor de uma
+ * variavel, recursivo nas referencias).
+ *
+ * @param {string} bruto
+ * @param {Map<string, {valores: string[], linhas: number[]}>} atribuicoes
+ * @param {Set<string>} visitados
+ * @param {number} profundidade
+ * @returns {{ok: true, valores: string[]}|{ok: false, motivo: string}}
+ */
+function valoresDoTexto(bruto, atribuicoes, visitados, profundidade) {
+  const texto = desembrulha(bruto)
+  for (const idioma of IDIOMAS_DIR) {
+    if (idioma.re.test(texto)) return { ok: true, valores: [MARCA_DIR] }
+  }
+  if (texto.includes("$(") || texto.includes("`") || texto.includes("$["))
+    return {
+      ok: false,
+      motivo: `\`${encurta(texto)}\` é uma substituição de comando (o guard lê o arquivo, não o executa)`,
+    }
+  if (profundidade > MAX_PROFUNDIDADE)
+    return { ok: false, motivo: `a cadeia de variáveis passa de ${MAX_PROFUNDIDADE} elos` }
+  /** @type {string[][]} */
+  const partes = []
+  let ultimo = 0
+  const re = referencia()
+  for (let m; (m = re.exec(texto)) !== null;) {
+    if (m.index > ultimo) partes.push([texto.slice(ultimo, m.index)])
+    const nome = m[1] ?? m[2]
+    if (nome === undefined)
+      return {
+        ok: false,
+        motivo: `\`$${m[3]}\` é um parâmetro do shell (posicional ou especial), não uma variável de caminho`,
+      }
+    const r = valoresDaVariavel(nome, atribuicoes, visitados, profundidade)
+    if (!r.ok) return r
+    partes.push(r.valores)
+    ultimo = re.lastIndex
+  }
+  if (ultimo < texto.length) partes.push([texto.slice(ultimo)])
+  const valores = produto(partes, MAX_VALORES)
+  if (valores === null)
+    return { ok: false, motivo: `as combinações possíveis passam de ${MAX_VALORES}` }
+  return { ok: true, valores: [...new Set(valores)] }
+}
+
+/**
+ * Os valores provaveis de UMA variavel: TODAS as atribuicoes dela no arquivo.
+ *
+ * @param {string} nome
+ * @param {Map<string, {valores: string[], linhas: number[]}>} atribuicoes
+ * @param {Set<string>} visitados
+ * @param {number} profundidade
+ * @returns {{ok: true, valores: string[]}|{ok: false, motivo: string}}
+ */
+function valoresDaVariavel(nome, atribuicoes, visitados, profundidade) {
+  const entrada = atribuicoes.get(nome)
+  if (entrada === undefined)
+    return { ok: false, motivo: `a variável \`${nome}\` não é atribuída neste arquivo` }
+  if (visitados.has(nome))
+    return { ok: false, motivo: `a variável \`${nome}\` depende dela mesma (ciclo)` }
+  const valores = []
+  for (const valor of entrada.valores) {
+    const r = valoresDoTexto(valor, atribuicoes, new Set([...visitados, nome]), profundidade + 1)
+    if (!r.ok)
+      return { ok: false, motivo: `\`${nome}\` (linha ${entrada.linhas.join(", ")}): ${r.motivo}` }
+    valores.push(...r.valores)
+  }
+  return { ok: true, valores: [...new Set(valores)] }
+}
+
+/**
+ * Os CAMINHOS provaveis de um token que carrega `$VAR` (`$PYTHON_SCRIPT`,
+ * `$SCRIPT_DIR/check_utf8.mjs`).
+ *
+ * @param {string} token
+ * @param {{atribuicoes: Map<string, {valores: string[], linhas: number[]}>, dir: string}} vars
+ * @returns {{ok: true, valores: string[], motivo: string}|{ok: false, motivo: string}}
+ */
+export function caminhosProvaveis(token, vars) {
+  /** @type {string[][]} */
+  const partes = []
+  const nomes = []
+  let ultimo = 0
+  const re = referencia()
+  for (let m; (m = re.exec(token)) !== null;) {
+    if (m.index > ultimo) partes.push([token.slice(ultimo, m.index)])
+    const nome = m[1] ?? m[2]
+    if (nome === undefined)
+      return {
+        ok: false,
+        motivo: `\`$${m[3]}\` é um parâmetro do shell (posicional ou especial), não uma variável de caminho`,
+      }
+    const r = valoresDaVariavel(nome, vars.atribuicoes, new Set(), 0)
+    if (!r.ok) return r
+    nomes.push(nome)
+    partes.push(r.valores)
+    ultimo = re.lastIndex
+  }
+  if (ultimo < token.length) partes.push([token.slice(ultimo)])
+  const combinacoes = produto(partes, MAX_VALORES)
+  if (combinacoes === null)
+    return { ok: false, motivo: `as combinações possíveis do token passam de ${MAX_VALORES}` }
+  const valores = [...new Set(combinacoes.map((v) => v.split(MARCA_DIR).join(vars.dir)))]
+  const restos = valores.filter((v) => v.includes("$"))
+  if (restos.length > 0)
+    return {
+      ok: false,
+      motivo: `\`${encurta(restos[0])}\` ainda tem uma referência que o guard não resolve`,
+    }
+  if (valores.length === 0)
+    return { ok: false, motivo: "nenhum valor provável (as atribuições não deixaram nenhum)" }
+  if (valores.some((v) => v === ""))
+    return { ok: false, motivo: "a variável pode ser VAZIA (o valor da atribuição não é fixo)" }
+  return {
+    ok: true,
+    valores,
+    motivo: `pelas atribuições de ${nomes.map((n) => `\`$${n}\``).join(", ")} neste arquivo`,
+  }
+}
+
+/**
+ * As VARIAVEIS de um arquivo, prontas para julgar os tokens dele: as atribuicoes
+ * de texto e o DIRETORIO do proprio arquivo (o valor de `$SCRIPT_DIR`).
+ *
+ * @param {string} content
+ * @param {string} arquivo caminho relativo ao root
+ */
+export function variaveisDoArquivo(content, arquivo) {
+  const dir = dirname(arquivo)
+  return { atribuicoes: atribuicoesDoTexto(content), dir: dir === "." ? "" : dir }
+}
+
+/** Os caminhos citados numa mensagem (`x`, `y`). */
+function citados(valores) {
+  return valores.map((v) => `\`${v}\``).join(", ")
+}
+
+/** O nome JA e um programa que o guard sabe resolver sozinho? */
+function programaConhecido(ctx, nome) {
+  return (
+    INTERPRETERS.has(nome) ||
+    EXTERNAL_TOOLS.has(nome) ||
+    SHELL_BUILTINS.has(nome) ||
+    ctx.pacotes.has(nome) ||
+    BIN_PACKAGES[nome] !== undefined ||
+    ctx.funcoes.has(nome)
+  )
+}
+
+// =============================================================================
 // Resolucao: cada comando resolve, ou a violacao diz por que nao
 // =============================================================================
 
@@ -1019,16 +1297,12 @@ function classificaBruto(comando, ctx) {
   if (ctx.funcoes.has(programa)) return { desfecho: "resolvido", motivo: "função do próprio hook" }
 
   // O PROGRAMA que e uma VARIAVEL (`"$PY" "$PY_SCRIPT"`): o nome do executavel
-  // so existe em runtime, e nenhuma leitura o prova — o mesmo argumento que o
-  // guard ja aplica ao CAMINHO de um interpretador. Acusar `$PY` de "nao ser
-  // arquivo do repositorio" seria falso duas vezes (nao e um nome) e um falso
-  // positivo num gate bloqueante; o caminho honesto e `indeterminado` + a
-  // declaracao datada, como qualquer outro payload de runtime.
-  if (programa.startsWith("$"))
-    return {
-      desfecho: "indeterminado",
-      motivo: `programa montado em runtime (\`${programa}\`)`,
-    }
+  // so existe em runtime. Provar se pode pelas ATRIBUICOES do proprio arquivo
+  // (`PY=python3` / `PY=python` / `PY=node`) — e nao pode, o caminho honesto e
+  // `indeterminado` + a declaracao datada: acusar `$PY` de "nao ser arquivo do
+  // repositorio" seria falso (nao e um nome) e um falso positivo num gate
+  // bloqueante.
+  if (programa.startsWith("$")) return julgaProgramaVariavel(comando, ctx)
 
   if (INTERPRETERS.has(programa)) {
     const alvo = tokens[0]
@@ -1079,6 +1353,70 @@ function classificaBruto(comando, ctx) {
 }
 
 /**
+ * O veredito de um PROGRAMA montado em `$VAR`.
+ *
+ * Cada valor POSSIVEL tem de resolver, porque a leitura nao sabe qual ramo o
+ * runtime toma: um valor que o guard nao conhece mantem o comando indeterminado
+ * (nomeando qual), e um valor cujo ALVO nao resolve e a violacao dele.
+ *
+ * @param {{programa: string, tokens: string[], linha: number, origem: string}} comando
+ * @param {{vars?: {atribuicoes: Map<string, {valores: string[], linhas: number[]}>, dir: string}}} ctx
+ * @returns {Veredito}
+ */
+function julgaProgramaVariavel(comando, ctx) {
+  const provavel =
+    ctx.vars === undefined
+      ? { ok: false, motivo: "o texto do arquivo não está no contexto" }
+      : caminhosProvaveis(comando.programa, ctx.vars)
+  if (!provavel.ok)
+    return {
+      desfecho: "indeterminado",
+      motivo: `programa montado em runtime (\`${comando.programa}\`) — ${provavel.motivo}`,
+    }
+  const valores = provavel.valores
+  const desconhecidos = valores.filter((v) => !programaConhecido(ctx, v))
+  if (desconhecidos.length > 0)
+    return {
+      desfecho: "indeterminado",
+      motivo:
+        `programa provável (\`${comando.programa}\` → ${citados(valores)}, ${provavel.motivo}),` +
+        ` e ${citados(desconhecidos)} não é um programa que o guard resolva — nenhuma leitura prova` +
+        ` que ele existe`,
+    }
+  const interpretadores = valores.filter((v) => INTERPRETERS.has(v))
+  if (interpretadores.length > 0) {
+    const alvo = comando.tokens[0]
+    if (alvo === undefined || alvo.startsWith("-"))
+      return {
+        desfecho: "indeterminado",
+        motivo:
+          `programa provável (\`${comando.programa}\` → ${citados(valores)}) e o comando não nomeia` +
+          ` arquivo de script`,
+      }
+    const doAlvo = julgaCaminho(
+      ctx,
+      alvo,
+      `script de ${citados(interpretadores)}`,
+      comando.linha,
+      comando.origem,
+    )
+    if (doAlvo.desfecho !== "resolvido")
+      return {
+        desfecho: doAlvo.desfecho,
+        motivo: `programa provável (\`${comando.programa}\` → ${citados(valores)}, ${provavel.motivo}): ${doAlvo.motivo}`,
+      }
+    return {
+      desfecho: "resolvido",
+      motivo: `programa provável (\`${comando.programa}\` → ${citados(valores)}, ${provavel.motivo}) e o alvo resolve`,
+    }
+  }
+  return {
+    desfecho: "resolvido",
+    motivo: `programa provável (\`${comando.programa}\` → ${citados(valores)}, ${provavel.motivo})`,
+  }
+}
+
+/**
  * O caminho citado existe? (o alvo do guard)
  *
  * A violação carrega o `remendo`: o TOKEN que o `--fix` troca e a linha dele.
@@ -1091,7 +1429,14 @@ function classificaBruto(comando, ctx) {
  * comando interno de `bun run` tem a LINHA do texto do script do package.json e a
  * origem dele — é essa dupla que diz ao remendo que este token NÃO vive no hook.
  *
- * @param {{root: string}} ctx
+ * Um token que carrega `$VAR` e resolvido pelas ATRIBUICOES do proprio arquivo:
+ * quando o conjunto de valores e PROVAVEL e todos existem, o veredito e
+ * `resolvido` (o alvo foi PROVADO, nao declarado); quando algum nao existe, a
+ * violacao nomeia qual e o que a variavel vale — sem `remendo`, porque nao ha
+ * token de caminho a trocar (a variavel pode ter varios valores, e quem escolhe a
+ * atribuicao errada e o operador).
+ *
+ * @param {{root: string, vars?: {atribuicoes: Map<string, {valores: string[], linhas: number[]}>, dir: string}}} ctx
  * @param {string} alvo
  * @param {string} papel
  * @param {number} linha
@@ -1099,11 +1444,31 @@ function classificaBruto(comando, ctx) {
  * @returns {Veredito}
  */
 function julgaCaminho(ctx, alvo, papel, linha, origem) {
-  if (alvo.startsWith("$"))
+  if (alvo.startsWith("$")) {
+    const provavel =
+      ctx.vars === undefined
+        ? { ok: false, motivo: "o texto do arquivo não está no contexto" }
+        : caminhosProvaveis(alvo, ctx.vars)
+    if (!provavel.ok)
+      return {
+        desfecho: "indeterminado",
+        motivo: `${papel}: caminho montado em runtime (\`${alvo}\`) — ${provavel.motivo}`,
+      }
+    const faltando = provavel.valores.filter((v) => !arquivoExiste(ctx.root, v))
+    if (faltando.length === 0)
+      return {
+        desfecho: "resolvido",
+        motivo: `${papel} \`${alvo}\` provável (${provavel.motivo}): ${citados(provavel.valores)}`,
+      }
+    const vizinho = sugestao(basename(faltando[0]), irmaos(ctx.root, faltando[0]))
     return {
-      desfecho: "indeterminado",
-      motivo: `${papel}: caminho montado em runtime (\`${alvo}\`)`,
+      desfecho: "violacao",
+      motivo:
+        `${papel} \`${alvo}\` provável (${provavel.motivo}) aponta para ${citados(faltando)},` +
+        ` que NÃO existe no repositório` +
+        (vizinho === null ? "" : ` — o mais próximo é \`${vizinho}\``),
     }
+  }
   if (alvo.startsWith("/"))
     return { desfecho: "resolvido", motivo: `${papel}: caminho absoluto fora do repositório` }
   if (/[*?[]/.test(alvo))
@@ -1321,7 +1686,11 @@ export function analyze({
    */
   const julga = (arquivo, content, opcoes = {}) => {
     const { origem = "", funcoes = ctx.funcoes, profundidade = 0, cadeia = new Set() } = opcoes
-    const contexto = funcoes === ctx.funcoes ? ctx : { ...ctx, funcoes }
+    // As VARIAVEIS DE CAMINHO do arquivo julgado, com o DIRETORIO dele (o valor
+    // de `$SCRIPT_DIR`): sao elas que provam `$PYTHON_SCRIPT` e `$PY_SCRIPT` — o
+    // alvo do interpretador deixa de ser uma decisao datada e vira fato medido.
+    const vars = variaveisDoArquivo(content, arquivo)
+    const contexto = { ...ctx, funcoes, vars }
     for (const comando of shellCommands(content, { origem })) {
       const veredito = classify(comando, contexto)
       relatorios.push({ arquivo, ...comando, ...veredito })
@@ -2025,6 +2394,13 @@ são shims gerados). Caminho de interpretador (\`node scripts/x.mjs\`), entrada 
 \`bun run\`, binário de \`bun x\`, função do próprio hook, arquivo de \`source\` e
 ferramenta externa declarada. \`$( ... )\` executa e é julgado junto.
 
+E as VARIÁVEIS DE CAMINHO do arquivo julgado são RESOLVIDAS: o alvo
+\`python3 "$PYTHON_SCRIPT"\` é provado pelas atribuições dele (\`SCRIPT_DIR\`
+incluído, pelo idioma \`$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)\`), e TODOS os
+valores prováveis têm de existir no repositório — uma atribuição ilegível mantém
+o comando indeterminado (o payload de \`-c\`, que não é caminho, segue exigindo a
+decisão datada em \`INDETERMINATE\`).
+
 Exit code:
   0 — todo comando resolve (e as listas de decisão estão dentro da janela)
   1 — comando que não resolve, ou decisão sem \`addedAt\` / fora da janela
@@ -2037,7 +2413,9 @@ O REMENDO (\`--fix\`), em uma linha: o guard diz QUAL era o nome esperado; o
 caracteres de diferença, UM candidato só (empate é RECUSA, quem escolhe é o
 operador), arquivo de verdade e token localizável sem ambiguidade. O que ele não
 sabe remendar (a entrada de \`bun run\`, a função não definida, o binário sem
-fornecedor, o payload de runtime) sai NOMEADO no plano, com o motivo. E como
+fornecedor, o payload de runtime e o alvo PROVADO que não existe — a variável pode
+ter vários valores e quem escolhe a atribuição errada é o operador) sai NOMEADO no
+plano, com o motivo. E como
 \`.husky/\` é o arquivo que o hook EXECUTA, quem remenda por dentro do pre-commit
 leva o veredito de um \`git commit\` NOVO.
 `
