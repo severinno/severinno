@@ -1684,13 +1684,81 @@ linha — remendar a última sem ver a causa inventaria intenção. A recusa é
 `--staged` ou `--json` é uso inválido (exit 3) — ele escreve na ÁRVORE e relata em
 texto.
 
-**O pre-commit OFERECE esse remendo — quando o recorte `--staged` reprova o
-commit, com confirmação explícita.** `scripts/pre-commit-run-syntax-remedy.mjs`
+**O pre-commit OFERECE esse remendo — quando um gate do hook reprova o commit por
+um defeito MECÂNICO, com confirmação explícita.** `scripts/pre-commit-remedy.mjs`
 (o comando `LOCAL` declarado em `HOOK_DECLARED`) é o caminho pelo qual o operador
 chega ao fixer NO MOMENTO em que a cicatriz aparece: sem ele, o hook reprovava o
 commit e a correção era reescrever à mão exatamente a linha que a máquina remenda
-— com a chance de introduzir um erro NOVO na mesma linha. A sequência é dita
-ANTES da pergunta, porque é ela que o "sim" autoriza:
+— com a chance de introduzir um erro NOVO na mesma linha.
+
+Ele cobre as **cinco classes mecânicas** que o repositório já sabe consertar por
+máquina, e nenhuma régua é reimplementada: a detecção e o remendo são SEMPRE o
+guard DONO — rodado como o hook o roda, ou IMPORTADO quando o dono é um módulo
+(`fixAll` da sintaxe, `planoDeRemendo`/`aplicarRemendo` dos comandos do hook): um
+remendo que re-derivasse o alvo de um defeito divergiria da diagnose que o gate
+acusa.
+
+**A OFERTA DAS CLASSES É DERIVADA, e o dono da declaração é o guard que remenda.**
+Cada classe é um módulo em `scripts/remedy-classes/<id>.mjs` — o NOME do arquivo é o
+`id` —, declarado ao lado do `--fix` que ele usa, e o `pre-commit-remedy.mjs`
+descobre a oferta VARRENDO o diretório (`remedy-classes.mjs`). Antes disto a lista
+era escrita à mão dentro do remédio: um guard novo que já sabia se consertar ficava
+FORA da oferta até alguém editar aquele arquivo, e a regressão não acusava nada —
+um remédio que não oferece o conserto é indistinguível de um defeito sem conserto.
+O bloco de classes da **ajuda** sai da MESMA oferta (`blocoClasses()`): uma lista
+escrita à mão ali divergiria da que o remédio executa.
+
+A declaração é validada na descoberta, e o contrato é curto: nome do arquivo = `id`;
+`ordem` ÚNICA (a ordem das mensagens não pode depender do sistema de arquivos); os
+campos que o driver consome existem e têm o tipo certo; `estagio` é um dos três; o
+guard dono existe e declara `--fix`; e o comando do fixer CITA o guard dono. Uma
+declaração inválida **não sai da oferta em silêncio**: ela entra em
+`CLASSES_PROBLEMAS` e a rodada é RECUSADA (exit 2) nomeando o arquivo e o que falta
+— um commit julgado por uma oferta incompleta ofereceria MENOS do que o repositório
+sabe remendar (e "nada a remendar" passaria a significar "nenhuma classe"). Pelo
+mesmo motivo diretório ilegível ou vazio é PROBLEMA, nunca "nenhuma classe".
+
+A prova é `src/lib/__tests__/remedy-classes-discovery.test.ts`: ele escreve uma
+declaração nova — com o guard dono dela — no FIXTURE e mede a CLI do remédio
+EXECUTANDO a classe nova, sem que ninguém edite o remédio; e mede cada caso de
+declaração inválida, e a recusa (exit 2) que impede o veredito. Como o par
+"declaração + guard dono" ANDA JUNTO, o fecho dos fixtures traz as cinco
+declarações e os três guards de encoding: um fixture com as declarações e sem os
+donos é uma árvore inconsistente, e o não-zero viria da oferta, não do defeito.
+
+| classe          | o defeito                                                      | o fixer (guard dono)                  | estágio do remendo                          |
+| :-------------- | :------------------------------------------------------------- | :------------------------------------ | :------------------------------------------ |
+| `run-syntax`    | operador pendente no fim do corpo `run:` em bloco literal      | `check-workflow-run-syntax.mjs --fix` | `git add`                                   |
+| `crlf`          | CR/CRLF no working tree dos `.sh`/`.bash` rastreados           | `check-crlf.sh --fix`                 | `git add --renormalize`                     |
+| `blob-crlf`     | CRLF/mixed no BLOB do ÍNDICE dos `.sh`/`.bash`                 | `check-blob-crlf.sh --fix`            | o PRÓPRIO fixer (`git add --renormalize`)   |
+| `utf8`          | byte 0x97 (em dash do Windows-1252) nos `.ts`/`.tsx` de `src/` | `check-utf8.sh --fix src/`            | `git add`                                   |
+| `hook-commands` | caminho TIPADO num comando de hook (vizinho inequívoco)        | `check-hook-commands.mjs --fix`       | `git add` — e **RELANÇAMENTO** (ver abaixo) |
+
+As três últimas são da **fase B** do hook (`run-encoding-guards.sh`) — e é por isso
+que a extensão da oferta vale: quem abre um commit com CRLF ou com o byte corrompido
+não tinha caminho nenhum além do `--fix` à mão. As três classes se SOBREPÕEM por
+construção (o CR do working tree suja também o blob), e o remédio leva o arquivo ao
+índice **uma vez**, sem acusar de retido o que uma classe anterior já estagiou.
+
+As duas classes que **estagiam por conta própria** (`blob-crlf`, cujo fixer roda
+`git add --renormalize`) ficam **RETIDAS** quando algum ofensor tem WIP ou não é
+deste commit: não há como separar o que ela estagiaria, e um `git add` ali levaria
+junto trabalho que não é do commit. As outras são re-estagiadas só se não tinham
+modificação não estagiada ANTES do remendo.
+
+**A classe `hook-commands` tem uma consequência que as outras não têm: ela
+REESCREVE O ARQUIVO QUE A CASCA ESTÁ EXECUTANDO.** Medido: uma casca de 12.957
+bytes reescrita no meio da própria execução (`sh -e`, como o husky usa) sai **127**
+com um `B39: not found` numa linha POSTERIOR — o interpretador lê o arquivo por
+DESLOCAMENTO, e mudar o tamanho desalinha o que ele ainda vai ler (sem a
+reescrita, o MESMO arquivo sai 0). A classe declara `exigeRelancamento`, e o
+driver, depois de aplicar e re-estagiar, **NÃO deixa o commit seguir**: ele diz
+RE-RODE e bloqueia. O remendo está na ÁRVORE e no ÍNDICE, e quem mede o commit
+corrigido é um `git commit` NOVO — a revalidação de uma fase qualquer mediria
+bytes que não são os do arquivo. Sem essa metade, o veredito do remédio seria dado
+por uma casca que já não é a que está rodando.
+
+A sequência é dita ANTES da pergunta, porque é ela que o "sim" autoriza:
 
 1. **PREVIEW** com o MESMO caminho de decisão do fixer (`fixAll` com `dry`): o que
    o preview promete é o que a gravação faz — uma régua paralela prometeria um remendo
@@ -1699,25 +1767,81 @@ ANTES da pergunta, porque é ela que o "sim" autoriza:
    muda nada ensina o operador a responder sem ler): sai vermelho com o motivo da
    recusa por arquivo — inclusive para a classe que este fixer não toca (`shell:` que
    o runner não tem). Índice **verde** é o único caso em que ele sai 0 sem remendar;
-3. **pergunta** (s/n; o default é o NÃO), dizendo os TRÊS efeitos: remenda a
-   ÁRVORE, re-estagia (`git add`) os arquivos e **revalida o recorte `--staged`**;
+3. **pergunta UMA VEZ** (s/n; o default é o NÃO) para TODAS as classes de uma vez —
+   a lista de cada uma com o seu relatório já está na tela —, dizendo os TRÊS
+   efeitos: remenda a ÁRVORE, re-estagia (`git add`) os arquivos e **revalida as
+   classes tocadas**;
 4. **aplica, re-estagia SÓ o que não tinha modificação não estagiada ANTES do
    remendo** — num arquivo com WIP o `git add` levaria para dentro do commit
    trabalho que não é dele (o remendo fica na árvore e o operador é avisado para
    revisar);
-5. **REVALIDA rodando o guard DE VERDADE** (`--staged`, em subprocesso): o
-   veredito e o relatório finais são os do gate, não uma segunda implementação do
-   veredito aqui. Quando o índice e a árvore divergem de linha, quem recusa é o
-   próprio fixer (a linha do arquivo não é a do corpo) — o remédio não grava na
-   linha errada nem com o índice deslocado.
+5. **REVALIDA com o guard dono de cada classe** (a sintaxe pelo `--staged` do gate,
+   em subprocesso; as de encoding re-DETECTADAS pelo guard dono): o veredito e o
+   relatório são os dele, não uma segunda implementação aqui. Quando o índice e a
+   árvore divergem de linha, quem recusa é o próprio fixer (a linha do arquivo não
+   é a do corpo) — o remédio não grava na linha errada nem com o índice deslocado.
 
-**SEM TERMINAL não há pergunta** — o remédio **não** lê de um stdin que não é um
-terminal (num hook ele pode ser um pipe, ou o terminal de outro processo: um
-prompt ali trava o commit ou consome entrada que não é dele). Nesse caso ele
-imprime a lista e o **caminho à mão** (`--fix` + o `git add` que leva o remendo ao
-commit) e mantém o commit **bloqueado**, fail-closed. O fim do stdin (Ctrl-D)
-resolve como **NÃO**, em vez de pendurar o commit esperando uma resposta que não
-vem.
+**E quem diz se a FASE passou é a FASE, rodada de novo pelo hook.** O remédio
+só LEVANTA a falha que ele mediu — o exit 0 dele não é veredito de fase nenhuma. Por
+isso a fase B do `.husky/pre-commit` vive numa **função** (`fase_b`): ela roda duas
+vezes quando o remédio entra, uma para MEDIR e outra para REVALIDAR com o remendo
+já no índice. Sem isso, um remendo verde esconderia um gate IRMÃO da fase que
+continua vermelho — e o `run-encoding-guards.sh` para no PRIMEIRO guard que falha
+(`set -e`), então é justamente na reexecução que os seguintes são medidos. A
+pergunta, por isso, vem depois das DUAS fases: um prompt competindo com guards
+escrevendo é um prompt que ninguém lê. A falha dos **quatro guards da fase A**
+(que nenhuma classe cobre) continua encerrando o hook antes disso — não há ali o
+que oferecer.
+
+**A resposta vem do TERMINAL DE CONTROLE.** O stdin do hook **não** é um terminal
+(nem uma fonte confiável: num hook ele pode ser um pipe, ou o terminal de outro
+processo), então o remédio abre o **`/dev/tty`** e pergunta **ali** — que é o
+terminal do operador. Só quando esse `open` falha (sessão **sem** terminal de
+controle: CI, `ssh` sem tty) ele imprime a lista e o **caminho à mão** (`--fix` +
+o `git add` que leva o remendo ao commit) e mantém o commit **bloqueado**,
+fail-closed. O fim do stdin (Ctrl-D) e o **teto da espera** (2 minutos,
+`TTY_WAIT_MS`, porque o `/dev/tty` não tem fim de arquivo) resolvem como **NÃO** —
+um hook que pergunta a um terminal onde ninguém está não pode pendurar o commit.
+
+**E o terminal do operador NÃO chega ao stdin do hook (fato medido) — por isso o
+`/dev/tty`.** Um `git commit` invoca o hook com o fd 0 ligado em `/dev/null` — os
+descritores 1 e 2 são o terminal, o 0 **não** é. Consultar o STDIN, então, deixava
+a oferta interativa morta justamente no fluxo REAL do operador; quem decide agora é
+o terminal de CONTROLE, que existe nesse fluxo (a pergunta acontece num `git
+commit`). O outro lado não muda: numa sessão sem terminal de controle (`setsid`, o
+caso do CI) o `/dev/tty` não abre e não há pergunta.
+
+Há ainda um **desligamento declarado** da pergunta: `PRE_COMMIT_REMEDY_NO_PROMPT`
+(`1`/`true`/`yes`/`sim`/`on`) — para quem tem terminal mas **não tem operador**
+(um `git commit` dentro de um script, uma esteira que aloca tty). Com ela ligada o
+remédio não abre o `/dev/tty` e cai no caminho à mão, e o relatório diz que o
+motivo foi a variável (e não "não havia terminal"). O simulador de hook
+(`scripts/hook-simulator.mjs`) a liga nas provas — um teste não pode depender de
+alguém responder um prompt —, e o ensaio do pty a passa **vazia** para medir a
+pergunta acontecendo.
+
+As **direções** são medidas por
+`src/lib/__tests__/pre-commit-remedy-pty.test.ts`, que aloca um **pty de verdade**
+(`scripts/pty_answer.py`, com a porta Node em `scripts/pty-harness.mjs`) em vez de
+injetar `isTTY` num dublê — uma injeção prova a lógica, não o terminal, e foi ela
+que manteve esta distinção invisível até agora: (a) o remédio direto sob o
+terminal — o "sim" remenda a árvore, re-estagia e revalida (exit 0), e o
+"não"/ENTER não toca em nada; (b) o **`git commit`** com o fd 0 em `/dev/null` e o
+pty no 1 e no 2 — a pergunta **aparece**, o "sim" no terminal remenda e o commit
+**ENTRA** (com o corpo remendado no OBJETO), o "não" bloqueia; (c) a mesma sessão
+medida por dois filhos: um que herda o terminal de controle (abre o `/dev/tty`) e
+um em sessão própria (`setsid`, o do CI) que **não** abre — é essa diferença que
+separa "pergunta" de "SEM TERMINAL", e ela é medida, não presumida; (d) o caminho
+da **fase B**, com o runner de encoding reprovando por dublê declarado e os guards
+de encoding REAIS no fixture: a pergunta acontece, o remédio remenda e leva o
+remendo ao índice, e **quem dá o veredito é a fase reexecutada** — uma fase que
+volta a reprovar bloqueia o commit mesmo com o remédio verde, e uma que passa na
+SEGUNDA medição deixa o commit entrar. A metade que torna isso load-bearing é uma
+**mutação** no mesmo arquivo: apagada a linha da reexecução, o primeiro cenário
+passa a commitar — a reexecução é o que separa "o remédio levantou" de "a fase
+ficou verde". O harness se
+declara INDISPONÍVEL com o motivo nomeado onde não há `pty` (Windows) — nunca um
+verde por omissão.
 
 E o bloqueio é do **HOOK**, não do remédio: a variável que autoriza o commit nasce
 "não provou nada" e só é zerada pelo **exit 0** do remédio (é por isso que a linha
@@ -1736,9 +1860,10 @@ do job `guards`, o gate entra no relatório de prontidão sozinho. E o
 o corpo (ou o script) quebrado é bloqueado **antes** de virar PR — recorte
 DECLARADO, com o escopo escrito no `why` (o CI continua sendo a varredura inteira:
 as duas forjas + todos os scripts). O status do gate é capturado SEPARADO dos
-outros quatro da fase (o `wait_all` devolve o primeiro não-zero, e só o de sintaxe
-tem remédio) e a pergunta vem depois de os cinco terem terminado — um prompt
-competindo com quatro guards escrevendo é um prompt que ninguém lê.
+outros quatro da fase A (o `wait_all` devolve o primeiro não-zero, e só ele tem
+remédio) e o status da fase B em separado também (`fase_b || FASE_B=$?`): é o que
+permite oferecer UMA pergunta cobrindo as classes das duas fases e reexecutar só a
+fase que reprovou.
 
 **Por que um job PRÓPRIO no espelho:** o veredito do PR passa a ser um check com o
 NOME do defeito. Antes ele era um passo dentro do `workflow-refs-guard`, que cobre
@@ -1748,6 +1873,48 @@ ou remover deixa de ser drift silencioso no contrato de merge. Na forja o
 invariante continua sendo passo do `guards`, que é o gate único dela por desenho
 (um runner, 40 guards); o que a paridade exige é o MESMO COMANDO, não a mesma
 granularidade de job.
+
+**O remédio chega ao PR, não só ao log do job (o comentário reconciliado).** O
+`--fix` existe onde há terminal e operador (o hook), e é LOCAL: quem abre o PR via
+o check vermelho, o log do bash e nada mais — e reescrevia à mão exatamente a linha
+que o repo já sabe remendar. `--fix --dry-run` é o MESMO preview do remédio do
+pre-commit na CLI, e o que ele imprime é o **PATCH exato** (as linhas `--- a/…`,
+`+++ b/…` e o hunk de uma linha saem do MESMO `fixWorkflow` que a gravação usa —
+"uma régua, dois consumidores"): ele vai para **STDOUT limpo** (`… --fix --dry-run |
+git apply` aplica sem arquivo intermediário) e o relatório inteiro para **STDERR**,
+para o `|` valer. `scripts/pr-remedy-comment.mjs` publica esse patch como
+**COMENTÁRIO** no PR — em `.github/` **e** na forja, com o `--backend` da vez, no
+MESMO job do gate, com `if: always()`: o caso de uso é o gate VERMELHO, e com ele
+verde o passo só retira o comentário que ficou para trás. Quem decide o que
+publicar é o SCRIPT (não um `if: failure()` no workflow, que deixaria o comentário
+velho aberto no PR que já consertou o defeito).
+
+O canal é **UM módulo com um REGISTRO de fixers** (`FIXERS`, em
+`pr-remedy-comment.mjs`): cada gate mecânico entra com o seu marcador, o seu nome
+de job, o seu comando de `--fix` e a SUA medição (`--fixer <id>`, default
+`run-syntax`). Um script por remédio divergiria na primeira correção que um
+recebesse — e a reconciliação, a decisão e o tratamento de canal são justamente
+onde isso dói. O segundo fixer é o **`pipefail-sigpipe`** (seção 20): o mesmo
+mecanismo, o mesmo `--dry-run`, o mesmo ciclo.
+
+O comentário é **RECONCILIADO** pelo marcador `<!-- run-syntax-remedy -->`: cria na
+primeira vez, ATUALIZA quando o patch muda, não repete quando é idêntico (reescrever
+gastaria uma chamada e mudaria a data do rodapé sem motivo) e **RETIRA** quando a
+cicatriz some — o ciclo é fechado, não deixado aberto. Duplicata de dois runs
+concorrentes é retirada. As **RECUSAS** (heredoc, forma dobrada `run: >`, arquivo de
+shell, shell embutido) vão no MESMO comentário com o motivo de cada uma, e o
+excedente do teto é CONTADO: um comentário que só mostrasse o patch diria que o
+remendo cobre tudo o que o job achou. E o que NÃO foi medido (sem `bash`, arquivo
+ilegível, YAML inválido) NÃO retira o comentário anterior: ausência de medição nunca
+vira "não há nada aqui".
+
+**Por que PATCH e não um "Apply suggestion":** o botão do GitHub/de Gitea só existe
+em comentário de REVISÃO ancorado na linha do diff — e uma âncora errada aplicaria
+uma edição ERRADA com um clique, silenciosamente. O patch se aplica IDENTICAMENTE
+nas duas forjas. Os desfechos de canal são opostos de propósito: sem token, sem
+número de PR ou sem forja reconhecida o canal não existe (`::notice::` e exit 0 — o
+GATE é o veredito); 401/403 (token sem escrita: PR de fork) é `::warning::`; e 5xx
+é publicação QUEBRADA: `::error::` e o passo falha.
 
 **Como testar:** `src/lib/__tests__/check-workflow-run-syntax.test.ts` — leitura
 dos corpos (escalar/bloco/vazio, e o `defaults: run:` fora), as duas metades da
@@ -1767,6 +1934,29 @@ tem teste PRÓPRIO, contra um repo git REAL:
 direções do escopo (corpo quebrado no índice reprova **mesmo** com a árvore já
 corrigida; defeito só na árvore passa o recorte e o gate da árvore reprova o
 mesmo repo) e o fail-closed fora de um repositório git.
+O `--fix --dry-run` e o comentário do PR têm teste PRÓPRIO:
+`src/lib/__tests__/check-workflow-run-syntax-dry-run.test.ts` prova as três
+propriedades que fazem o patch valer como remendo — ele APLICA (`git apply` de
+verdade num repo de verdade, e o arquivo passa a fazer `bash -n`), ele é **byte a
+byte** o que o `--fix` gravaria em outro fixture idêntico, e ele **não grava nada**
+(arquivo intacto) nem polui o STDOUT (só o patch; o relatório em STDERR) —, além de
+a recusa continuar recusa no preview (exit 1) e do `--dry-run` sem `--fix` ser uso
+inválido. `src/lib/__tests__/pr-remedy-comment.test.ts` prende o corpo (marcador,
+patch, bloco de aplicação, recusas com motivo e o excedente CONTADO), a decisão pura
+nas quatro respostas e o CICLO ponta a ponta contra uma API dublê — criar, não
+repetir, atualizar e retirar —, com os desfechos de canal (5xx = erro, 403 =
+`ChannelDenied`) e a resolução de `--pr`/`PR_NUMBER`/payload/`GITHUB_REF`.
+O **fixer do SIGPIPE** tem os seus: `src/lib/__tests__/check-pipefail-sigpipe-remedy.test.ts`
+prende o preview (o patch aplica pelo `git apply` **inclusive com o defeito no
+MEIO do arquivo**, o arquivo fica byte a byte igual ao do `--fix`, NADA é gravado
+e o STDOUT carrega só o patch), a FORMA do resultado nos DOIS fixers, o arquivo
+que a varredura não conseguiu ler (sai nomeado, não vira "nada a remendar") e a
+construção do diff no `unifiedPatch` (contexto, compressão, fusão de janelas, o
+`\r` fora, o `\n` final que não cria linha vazia). E o registro de fixers é
+medido no `pr-remedy-comment.test.ts`: marcadores PRÓPRIOS, `--fixer` escolhendo o
+defeito (com o default intacto), id desconhecido sendo erro de uso, os dois
+fixers no MESMO PR sem um tocar o comentário do outro, e cada um medindo pela SUA
+régua.
 O **HOOK** tem prova por EXECUÇÃO, e não por leitura:
 `src/lib/__tests__/pre-commit-run-syntax-blocks.test.ts` soma o `.husky/pre-commit`
 REAL num repositório temporário com o defeito STAGED e exige o exit **VIOLATIONS**
@@ -1776,8 +1966,29 @@ positivo: um hook que falhasse por "script não encontrado" também sairia não-
 O guard roda com o `node` real e o fecho transitivo copiado; o que é dublê está
 DECLARADO (os irmãos de fase e o `bun` devolvem 0 — num repo temporário eles não
 existem, e não são o assunto; e o desfecho do REMÉDIO é afirmável por um dublê,
-`REMEDY_STUB`, porque no harness o stdin do hook é um pipe e o remédio real nunca
-sai 0).
+`REMEDY_STUB`, porque no harness o stdin do hook é um pipe E a pergunta está
+desligada por variável — o remédio real nunca sai 0 ali).
+O MESMO harness prova o recorte de COMPOSE que o hook roda na fase A:
+`src/lib/__tests__/pre-commit-compose-arg-removal-blocks.test.ts` monta um repo com
+um build site de compose que PASSA o `BUN_VERSION` e comita esse estado (o HEAD de
+que a remoção sai), depois tira o arg e pede o veredito ao hook REAL: exit não-zero
+nomeando arquivo, linha e serviço, e o CONTROLE com o arg no lugar saindo 0 com a
+manchete do guard no modo `--staged` (a segunda metade que desmente um não-zero por
+ambiente). Duas mutações fecham a prova: sem a chamada ao guard do Bun no hook, e
+sem a comparação ÍNDICE×HEAD no guard, o commit que APAGA o arg **passa**. O fixture
+pede esse guard pelo `passthrough` do `pre-commit-proof.mjs` — nada muda no fixture
+dos testes irmãos, e a cópia do guard é a do fixture (o repositório real nunca é
+tocado). O MESMO harness prova a outra declaração que um commit pode APAGAR:
+`src/lib/__tests__/pre-commit-toolchain-removal-blocks.test.ts` comita o
+`package.json` com o `packageManager` alinhado ao `.actrc` e depois o remove — o
+hook REAL sai não-zero nomeando o arquivo, o campo, a palavra `REMOVIDA` e o valor
+declareado no remédio; o CONTROLE com o campo no lugar sai 0 com a manchete do
+`--staged`, a árvore que re-adiciona o campo e esquece o `git add` NÃO engana o
+veredito (o commit carrega a remoção), o arquivo NOVO não é julgado pela remoção
+(não há de onde remover) e a linha TROCADA por outro valor reprova nomeando
+`package.json:3`. As mesmas duas mutações fecham: sem a chamada ao guard no hook,
+e sem o recorte registrado no guard, o commit que apaga a declaração **passa**.
+
 O elo de BAIXO — o que o GIT faz com o exit code do hook — tem prova própria:
 `src/lib/__tests__/pre-commit-git-commit-blocks.test.ts` roda um `git commit` de
 VERDADE num repo temporário com `core.hooksPath` apontando para os hooks, e mede o
@@ -1842,7 +2053,7 @@ direções: com a cicatriz no índice e **sem terminal** (o stdin do hook é um 
 o hook sai 1, **não pergunta** e imprime o caminho à mão; e com o remédio
 AFIRMADO como exit 0, o hook **levanta** a falha e o commit segue.
 
-`src/lib/__tests__/pre-commit-run-syntax-remedy.test.ts` é a prova do REMÉDIO, com
+`src/lib/__tests__/pre-commit-remedy.test.ts` é a prova do REMÉDIO, com
 o caminho INTERATIVO exercitado pela função (deps injetadas — num subprocesso o
 stdin nunca é um terminal): "sim" com arquivo limpo remenda, re-estagia e revalida
 o ÍNDICE (exit 0); "não" e resposta vazia não tocam em nada; sem cicatriz
@@ -3541,7 +3752,7 @@ cerca não vazia, e — o confronto — `exit` real entre os declarados e **cada
 linha exigida presente na saída (substring, com espaços normalizados, para o
 pretty-print não virar falso negativo). Divergir é exit 1, com o diff dito.
 
-### Os seis blocos
+### Os blocos — um por COMANDO (a família é derivada)
 
 **`doctor`** — o perfil `--ci` (o recorte que roda a cada PR). As duas linhas
 prendem o que o perfil NÃO pode perder: que ele se declara (o `ciProfile`) e que

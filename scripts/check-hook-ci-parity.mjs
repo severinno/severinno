@@ -131,10 +131,10 @@ export const HOOK_DECLARED = [
     // distinguir o remedio que provou o indice da chamada que sumiu, e o
     // extrator nao descarta o `&&` — entao a declaracao o reconhece em vez de
     // fingir que o comando e outro.
-    match: /^node scripts\/pre-commit-run-syntax-remedy\.mjs(?: && REMEDIO=0)?$/,
+    match: /^node scripts\/pre-commit-remedy\.mjs(?: && REMEDIO=0)?$/,
     of: null,
     ciMirror: null,
-    why: "LOCAL: o remedio INTERATIVO do gate acima — quando o recorte --staged reprova, ele OFERECE o remendo da cicatriz mecanica com confirmacao explicita (o fixer do gate ja o prova antes de gravar), re-estagia os arquivos e REVALIDA rodando o proprio guard. Nao existe no CI porque la nao ha operador para confirmar: sem terminal ele nao pergunta e o commit segue bloqueado (fail-closed). O CI cobra o MESMO veredito pelo gate de sintaxe; este comando nao acrescenta gate nenhum, so o caminho de quem opera.",
+    why: "LOCAL: o remedio INTERATIVO do commit — quando um gate do hook reprova por um defeito MECANICO (a cicatriz de `run:` da sintaxe, o CRLF/CR-do-blob do encoding, o byte 0x97 do utf8), ele OFERECE o remendo com confirmacao explicita (o fixer do guard dono ja o prova antes de gravar), re-estagia os arquivos e REVALIDA com o guard dono. Nao existe no CI porque la nao ha operador para confirmar: a pergunta exige um TERMINAL DE CONTROLE (o git liga o fd 0 do hook em /dev/null e o remedio abre o /dev/tty por isso) e no CI o /dev/tty nao abre — sem terminal ele nao pergunta e o commit segue bloqueado (fail-closed). O CI cobra o MESMO veredito pelo gate de sintaxe; este comando nao acrescenta gate nenhum, so o caminho de quem opera.",
   },
   {
     match: /^bash scripts\/run-encoding-guards\.sh$/,

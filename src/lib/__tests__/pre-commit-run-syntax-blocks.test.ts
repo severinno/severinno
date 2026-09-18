@@ -76,6 +76,7 @@ import {
   runHook,
 } from "@/lib/__tests__/helpers/pre-commit-fixture"
 import { EXIT } from "../../../scripts/check-workflow-run-syntax.mjs"
+import { NO_PROMPT_ENV } from "../../../scripts/pre-commit-remedy.mjs"
 
 afterAll(() => {
   cleanupFixtures()
@@ -204,24 +205,34 @@ describe("o hook real bloqueia o commit pelo recorte --staged", () => {
 //
 // O hook não só reprova: quando a cicatriz é a MECÂNICA que o fixer do gate
 // conhece, ele OFERECE o remendo. Aqui o stdin do hook é um PIPE (é o que o
-// harness dá), então o remédio toma o caminho SEM TERMINAL — que é o que precisa
-// ser provado neste nível: ele NÃO pergunta, NÃO trava e NÃO libera o commit.
+// harness dá) e o simulador DESLIGA a pergunta por variável (o teste poderia ter
+// herdado o terminal do operador que roda a suíte), então o remédio toma o
+// caminho SEM TERMINAL — que é o que precisa ser provado neste nível: ele NÃO
+// pergunta, NÃO trava e NÃO libera o commit. A direção COM terminal é medida sob
+// um pty de verdade em `pre-commit-remedy-pty.test.ts`.
 
 describe("o hook oferece o remédio, e sem terminal o commit segue bloqueado", () => {
-  it("o remédio que sai 0 LEVANTA a falha: o commit segue (a outra direção do veredito)", () => {
-    // A direção que o harness NÃO alcança sozinho (stdin é pipe, então o remédio
-    // real nunca sai 0): aqui o desfecho do remédio é AFIRMADO por dublê. O que
-    // se mede é o fluxo do HOOK — quem levanta a falha do gate é o exit 0 dele, e
-    // sem esta direção um `REMEDIO=1` que nunca virasse 0 passaria despercebido
-    // (o commit continuaria bloqueado e os testes do outro lado ficariam verdes).
+  it("o remédio que sai 0 SEM remendar NÃO levanta a falha: o veredito é do GATE, rodado de novo", () => {
+    // A direção que o harness NÃO alcança sozinho (o stdin é um pipe, então o
+    // remédio real nunca sai 0): aqui o exit 0 é AFIRMADO por dublê — e mede a
+    // garantia que interessa, que é o hook NÃO acreditar nele. O dublê afirma o
+    // desfecho sem remendar nada, então o índice continua com a cicatriz: quem
+    // levanta a falha é o GATE, reexecutado depois do remédio.
+    //
+    // (O outro lado — o remédio de verdade remendando e o commit ENTRANDO — é
+    // medido sob um pty de verdade, em `pre-commit-remedy-pty.test.ts`: é lá que
+    // existe um terminal para responder.)
     const dir = novoRepo()
     stage(dir, WORKFLOW, WORKFLOW_CICATRIZ)
 
     const res = runHook(dir, HOOK_SOURCE, { REMEDY_STUB: "0" })
 
-    expect(res.status).toBe(EXIT.OK)
-    expect(res.output).toContain(COMPLETOU)
-    expect(res.output).not.toContain("SEM TERMINAL")
+    expect(res.status).not.toBe(EXIT.OK)
+    expect(res.output).not.toContain(COMPLETOU)
+    expect(res.output).not.toContain("SEM TERMINAL") // o remédio rodou e saiu 0
+    // E o arquivo do fixture continua com a cicatriz: o 0 era do dublê, não de
+    // um remendo.
+    expect(readFileSync(join(dir, WORKFLOW), "utf8")).toBe(WORKFLOW_CICATRIZ)
   }, 60_000)
 
   it("cicatriz mecânica no índice, SEM terminal: exit 1, sem pergunta, com o caminho à mão", () => {
@@ -232,9 +243,12 @@ describe("o hook oferece o remédio, e sem terminal o commit segue bloqueado", (
 
     expect(res.status).toBe(EXIT.VIOLATIONS)
     expect(res.output).not.toContain(COMPLETOU)
-    // O remédio RODOU (o preview da cicatriz está no relatório) e NÃO perguntou.
+    // O remédio RODOU (o preview da cicatriz está no relatório) e NÃO perguntou —
+    // e o MOTIVO é nomeado: a pergunta está desligada por variável (é o que o
+    // simulador declara), não "o /dev/tty não abriu".
     expect(res.output).toContain("operador pendente")
     expect(res.output).toContain("SEM TERMINAL")
+    expect(res.output).toContain(NO_PROMPT_ENV)
     expect(res.output).toContain("git add")
     // E o arquivo do fixture continua com a cicatriz: nada foi remendado.
     expect(readFileSync(join(dir, WORKFLOW), "utf8")).toBe(WORKFLOW_CICATRIZ)
@@ -245,9 +259,12 @@ describe("o hook oferece o remédio, e sem terminal o commit segue bloqueado", (
 
 describe("mutação: o remédio só LEVANTA a falha — o bloqueio é do hook", () => {
   const REMEDY_LINHA = REMEDY_COMMAND
-  const BLOCO_DO_GATE = HOOK_SOURCE.slice(
-    HOOK_SOURCE.indexOf(`if [ "$SINTAXE" -ne 0 ]; then`),
-    HOOK_SOURCE.indexOf(`[ "$FASE_A" -eq 0 ] || exit "$FASE_A"`),
+  // O bloco do remédio é TUDO o que ele decide: a oferta, a rede do fail-closed e
+  // a REEXECUÇÃO da fase (é ela que dá o veredito). Os extremos são lidos do
+  // próprio hook: o `if` que o abre e o cabeçalho da fase C que vem depois dele.
+  const BLOCO_DO_REMEDIO = HOOK_SOURCE.slice(
+    HOOK_SOURCE.indexOf(`if [ "$SINTAXE" -ne 0 ] || [ "$FASE_B" -ne 0 ]; then`),
+    HOOK_SOURCE.indexOf(`# ── Phase C: Sequential checks`),
   )
 
   it("M3 — o hook deixa de CHAMAR o remédio: o commit continua BLOQUEADO (fail-closed)", () => {
@@ -271,10 +288,12 @@ describe("mutação: o remédio só LEVANTA a falha — o bloqueio é do hook", 
   }, 60_000)
 
   it("M4 — o hook perde o VEREDITO do gate: o commit com a cicatriz mecânica passa", () => {
-    // É a metade que importa: sem este bloco nada reergue a falha do guard, e o
-    // commit entra com um corpo `run:` que não faz parsing.
-    expect(BLOCO_DO_GATE).toContain(REMEDY_LINHA)
-    const mutado = HOOK_SOURCE.replace(BLOCO_DO_GATE, "")
+    // É a metade que importa: sem este bloco nada reergue a falha do guard (nem
+    // pela oferta, nem pela reexecução do gate que o remédio levantou), e o commit
+    // entra com um corpo `run:` que não faz parsing.
+    expect(BLOCO_DO_REMEDIO).toContain(REMEDY_LINHA)
+    expect(BLOCO_DO_REMEDIO.length).toBeGreaterThan(REMEDY_LINHA.length)
+    const mutado = HOOK_SOURCE.replace(BLOCO_DO_REMEDIO, "")
     expect(mutado).not.toBe(HOOK_SOURCE)
     expect(shellParses(mutado)).toBe(true)
 

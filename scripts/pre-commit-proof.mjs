@@ -77,7 +77,7 @@ export const GUARD = "check-workflow-run-syntax.mjs"
  */
 export const BUN_GUARD = "check-bun-mirror.mjs"
 /** O REMÉDIO que o hook oferece quando o guard acima reprova (com confirmação). */
-export const REMEDY = "pre-commit-run-syntax-remedy.mjs"
+export const REMEDY = "pre-commit-remedy.mjs"
 
 /**
  * A linha do hook que torna o guard REAL no fixture. Se ela mudar, o fixture
@@ -117,6 +117,61 @@ export const GUARD_CLOSURE = [
   // ele): é a mesma régua do teste de completude — uma referência nova aparece
   // nomeada, em vez de virar um controle verde por acidente.
   "registry-source.mjs",
+  // A DECLARAÇÃO dos shells do runner (e o probe que a mediu) passou a ser
+  // importada pelo guard: o dono dela é o módulo da medição, e o gate importa em
+  // vez de manter a cópia. Sem esta linha o fixture morreria com "module not
+  // found" e o não-zero do hook seria do FIXTURE, não do defeito — o teste de
+  // completude acusou a referência nova na hora (`closureProblems`), que é
+  // exatamente o desfecho certo: uma dependência nova aparece NOMEADA.
+  "runner-shells.mjs",
+  // O REMENDO DO CAMINHO TIPADO entrou no fecho: a classe `hook-commands` do
+  // remédio IMPORTA a régua do guard dono (`check-hook-commands`) — que importa a
+  // tokenização (`shellTokens`), o resolvedor do comando canônico do CI e a
+  // PERGUNTA compartilhada. O par que o `check-hook-commands` puxa
+  // (`check-hook-ci-parity` → `check-forge-parity`) entra junto. Sem estas
+  // linhas o fecho morre com "module not found" e o não-zero do hook seria do
+  // FIXTURE, não do defeito — que é exatamente o que o `closureProblems`
+  // existe para nomear.
+  "check-hook-commands.mjs",
+  "confirm-prompt.mjs",
+  "check-hook-ci-parity.mjs",
+  "check-forge-parity.mjs",
+  // A CONSTRUÇÃO DO PATCH do remédio virou módulo COMPARTILHADO pelo `--fix`
+  // dos DOIS fixers mecânicos (`check-workflow-run-syntax` e
+  // `check-pipefail-sigpipe` importam os dois): um hunk sem CONTEXTO é recusado
+  // pelo `git apply`, e o patch que o comentário do PR publica tem de aplicar
+  // byte a byte. O `check-pipefail-sigpipe` JÁ estava no fecho, e passou a
+  // depender deste na hora em que o preview dele ganhou o mesmo patch — o teste
+  // de completude (`closureProblems`) acusou as duas referências novas na hora,
+  // que é exatamente o desfecho certo: dependência nova aparece NOMEADA, em vez
+  // de virar um controle verde por acidente (o fixture morreria com "module not
+  // found" e o não-zero do hook seria do FIXTURE, não do defeito).
+  "unified-patch.mjs",
+  // A OFERTA DO REMÉDIO virou DESCOBERTA: o driver deixou de ter a lista à mão e
+  // passa a importar `remedy-classes.mjs`, que varre `scripts/remedy-classes/`.
+  // Os declarations são importados por CAMINHO CALCULADO (a varredura não é
+  // estática), então o `closureProblems` não os vê — é a CONTAGEM de classes
+  // deste fecho que responde por eles: sem a pasta (ou com uma declaração a
+  // menos) o fixture roda um remédio com oferta incompleta, e é o exit 2 da
+  // recusa que aparece, não um verde por acidente.
+  "remedy-classes.mjs",
+  "remedy-shell-guard.mjs",
+  "remedy-classes/run-syntax.mjs",
+  "remedy-classes/crlf.mjs",
+  "remedy-classes/blob-crlf.mjs",
+  "remedy-classes/utf8.mjs",
+  // E OS GUARDS DONOS das três classes de ENCODING viajam com as declarações:
+  // a descoberta RECUSA a rodada quando uma declaração cita um dono que não
+  // existe NESTE repositório, então um fixture com as declarações e sem os donos
+  // é uma árvore INCONSISTENTE — o remédio sairia 2 antes de julgar o commit, e
+  // um não-zero vindo da OFERTA seria lido como veredito do defeito. Declaração e
+  // guard dono são um par que anda junto (é o que o diretório significa).
+  "check-crlf.sh",
+  "check_crlf.py",
+  "check-blob-crlf.sh",
+  "check_blob_crlf.py",
+  "check-utf8.sh",
+  "check_utf8.py",
 ]
 
 export const WORKFLOW = `${GITHUB_WORKFLOW_DIR}/ci.yml`
@@ -166,6 +221,15 @@ export const WORKFLOW_VALIDO =
 export const SHELL_QUEBRADO = "#!/usr/bin/env bash\nset -eu\nif [ -f x ]; then\necho oi\n"
 
 /**
+ * O nome da variável que AFIRMA o desfecho do remédio sem rodá-lo (`REMEDY_STUB`).
+ *
+ * É o único jeito de exercitar a DIREÇÃO "o remédio saiu 0": no harness o stdin
+ * do hook é um pipe e o remédio real nunca sai 0. O nome tem UM dono (aqui),
+ * importado por quem o usa — o dublê, os testes e o benchmark da oferta.
+ */
+export const REMEDY_STUB_ENV = "REMEDY_STUB"
+
+/**
  * O corpo do dublê: soma o hook real depois de trocar os binários por funções.
  *
  * `node` só é real para o GUARD sob teste; para os irmãos de fase ele devolve 0
@@ -186,10 +250,10 @@ function specsDoWrapper(passthrough = []) {
     {
       tool: "node",
       match: REMEDY,
-      // O dublê da DIREÇÃO: `REMEDY_STUB` afirma o desfecho do remédio sem rodá-lo.
-      overrideVar: "REMEDY_STUB",
+      // O dublê da DIREÇÃO: `REMEDY_STUB_ENV` afirma o desfecho do remédio sem rodá-lo.
+      overrideVar: REMEDY_STUB_ENV,
       why:
-        "`REMEDY_STUB` afirma o desfecho do REMÉDIO sem rodá-lo (é o único jeito\n" +
+        `\`${REMEDY_STUB_ENV}\` afirma o desfecho do REMÉDIO sem rodá-lo (é o único jeito\n` +
         'de exercitar a DIREÇÃO "o remédio saiu 0": no harness o stdin do hook é\n' +
         "um pipe e o remédio real nunca sai 0). Declarado, e usado por um teste.",
     },

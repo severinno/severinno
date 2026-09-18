@@ -106,9 +106,13 @@ function extractWaitAll(source: string): string {
   return match[0]
 }
 
-/** Mutação: o defeito antigo — `wait_all $P1 $P2` volta a ser `wait $P1 $P2`. */
+/**
+ * Mutação: o defeito antigo — `wait_all $P1 $P2` volta a ser `wait $P1 $P2`. A
+ * INDENTAÇÃO é preservada porque a fase B vive dentro de uma função (o
+ * `wait_all` dela é indentado) e a mutação tem de alcançar as DUAS fases.
+ */
 function mutate(hookSource: string): string {
-  return hookSource.replace(/^wait_all /gm, "wait ")
+  return hookSource.replace(/^(\s*)wait_all /gm, "$1wait ")
 }
 
 // ── estrutura do hook ────────────────────────────────────────────────────
@@ -116,7 +120,9 @@ function mutate(hookSource: string): string {
 describe("a agregação dos guards paralelos", () => {
   it("define wait_all e o chama nas duas fases paralelas", () => {
     expect(HOOK_SOURCE).toMatch(/^wait_all\(\) \{/m)
-    const calls = HOOK_SOURCE.match(/^wait_all /gm) ?? []
+    // A indentação é permitida: a fase B é uma FUNÇÃO (o hook a reexecuta com o
+    // remendo no índice), então o `wait_all` dela é indentado.
+    const calls = HOOK_SOURCE.match(/^\s*wait_all /gm) ?? []
     expect(calls).toHaveLength(2) // fase A + fase B
   })
 
@@ -182,6 +188,18 @@ describe("mutação: o defeito antigo volta a engolir o guard não-último", () 
     // O status do último PID (0) sobrevive ao do primeiro (3) — é exatamente
     // o defeito. Como o teste acima exige 3 para o hook real, esta é a prova
     // de que a expectativa detecta a regressão.
+    expect(res.status).toBe(0)
+    expect(res.stdout).toContain("HOOK_COMPLETOU")
+  })
+
+  it("`wait $PIDS` deixa o commit passar com a fase B (dentro da função) reprovada", () => {
+    // A metade que a FUNÇÃO trouxe: o `wait_all` da fase B é o de dentro dela, e
+    // uma agregação trocada ali o commit (e a reexecução do remédio) passa a
+    // medir pelo status do ÚLTIMO PID — o mesmo defeito, uma camada mais fundo.
+    const mutated = mutate(HOOK_SOURCE)
+
+    const res = runHook({ hookSource: mutated, fail: "barrel-lint", code: 5 })
+
     expect(res.status).toBe(0)
     expect(res.stdout).toContain("HOOK_COMPLETOU")
   })

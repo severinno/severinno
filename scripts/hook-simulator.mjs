@@ -63,6 +63,8 @@ import { dirname, join } from "node:path"
 import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 
+import { NO_PROMPT_ENV } from "./pre-commit-remedy.mjs"
+
 /** A raiz do repositório (o diretório ACIMA de `scripts/`). */
 export const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -258,7 +260,14 @@ export function novoRepo(opts) {
   for (const extra of opts.dirs ?? []) mkdirSync(join(dir, extra), { recursive: true })
   linkModules(dir)
   for (const f of opts.closure ?? []) {
-    copyFileSync(join(REPO_ROOT, "scripts", f), join(dir, "scripts", f))
+    const destino = join(dir, "scripts", f)
+    // Um item da closure pode morar num SUBDIRETÓRIO (`remedy-classes/…`): o
+    // diretório do destino é criado aqui, e não na mão em cada call site — um
+    // fecho que atravessa uma pasta nova não pode depender de alguém lembrar de
+    // declarar o `dirs` (sem isso o fixture morre com ENOENT na CÓPIA, que é um
+    // não-zero do FIXTURE e não do defeito).
+    mkdirSync(dirname(destino), { recursive: true })
+    copyFileSync(join(REPO_ROOT, "scripts", f), destino)
   }
   writeFileSync(join(dir, WRAPPER_FILE), opts.wrapper, "utf8")
   git(dir, ["init", "-q"])
@@ -326,7 +335,18 @@ export function runSourcedHook(dir, hookSource, extraEnv = {}) {
     cwd: dir,
     encoding: "utf8",
     timeout: 60_000,
-    env: { ...process.env, PATH: harnessPath(), HOOK_UNDER_TEST: hookPath, ...extraEnv },
+    env: {
+      ...process.env,
+      PATH: harnessPath(),
+      HOOK_UNDER_TEST: hookPath,
+      // O ENSAIO NÃO TEM OPERADOR — e o processo do teste PODE ter um terminal
+      // de controle (o do operador que roda a suíte): sem esta declaração o
+      // remédio abriria o `/dev/tty` e a prova dependeria de alguém responder
+      // (ou penduraria no prompt). É o mesmo dono do nome da variável
+      // (`scripts/pre-commit-remedy.mjs`), importado e não copiado.
+      [NO_PROMPT_ENV]: "1",
+      ...extraEnv,
+    },
   })
   return formatResult(res)
 }
@@ -360,13 +380,17 @@ export function runGit(dir, args, extraEnv = {}) {
     cwd: dir,
     encoding: "utf8",
     timeout: 60_000,
-    // stdin VAZIO (não herdado): com um TTY o hook PERGUNTARIA, e a pergunta
-    // certa é a do outro nível (o hook sem terminal). Declarado.
+    // stdin VAZIO (não herdado) E A PERGUNTA DESLIGADA: o hook não pode ler de um
+    // terminal que o TESTE herdou do operador que rodou a suíte (o remédio abre o
+    // `/dev/tty` quando o stdin não é um terminal). A prova mede o caminho SEM
+    // operador — e quem mede o caminho COM terminal é o ensaio do pty
+    // (`scripts/pty_answer.py`), que não desliga nada. Declarado.
     input: "",
     env: {
       ...process.env,
       PATH: harnessPath(),
       HOOK_UNDER_TEST: join(dir, HOOK_UNDER_TEST),
+      [NO_PROMPT_ENV]: "1",
       ...extraEnv,
     },
   })

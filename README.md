@@ -773,39 +773,39 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 > bloco real (`bun test:snapshots`) — se o bloco sumir do hook, a linha vira
 > stale e falha igual.
 
-| Validação                                                                      | Pre-commit |   Pre-push    |
-| :----------------------------------------------------------------------------- | :--------: | :-----------: |
-| UTF-8 (`check-utf8.sh --dry-run --ci src/`)                                    |     ✅     |      ✅       |
-| Escopo UTF-8 (`check-utf8-scope.mjs`)                                          |     ✅     |      ✅       |
-| CRLF working tree (`check-crlf.sh --ci`)                                       |     ✅     |      ✅       |
-| Escopo CRLF (`check-crlf-scope.mjs`)                                           |     ✅     |      ✅       |
-| CRLF blob commitado (`check-blob-crlf.sh --ci`)                                |     ✅     |      ✅       |
-| Single-line `out=` (`check-single-line-out-assign.sh`)                         |     ✅     |      ✅       |
-| Badge encoding guards (`check-encoding-guards-badge.mjs`)                      |     ✅     |      ✅       |
-| Docs repro marker (`check-readme-repro-marker.mjs`)                            |     ✅     |      ✅       |
-| Âncoras README (`check-readme-anchors.mjs`)                                    |     ✅     |      ✅       |
-| TOC README (`check-readme-toc.mjs`)                                            |     ✅     |      ✅       |
-| Imagens README (`check-readme-images.mjs`)                                     |     ✅     |      ✅       |
-| Setup-bun externo (`check-no-setup-bun.mjs`)                                   |     ✅     |      ✅       |
-| Fonte única Bun (`check-bun-mirror.mjs`)                                       |     ✅     |      ✅       |
-| Bun staged diff (`check-bun-mirror.mjs --staged`)                              |     ✅     |       —       |
-| Ícones lucide (`scan-lucide-icons.mjs --check`)                                |     ✅     |      ✅       |
-| Hooks symmetry (`check-hooks-symmetry.mjs`)                                    |     ✅     |      ✅       |
-| Paridade hook ↔ CI (`check-hook-ci-parity.mjs`)                                |     ✅     |       —       |
-| Comandos do hook resolvem (`check-hook-commands.mjs`)                          |     ✅     |       —       |
-| Mutation jobs CI (`check-mutation-jobs.mjs`)                                   |     ✅     |      ✅       |
-| Mutation jobs staged diff (`check-mutation-jobs.mjs --staged`)                 |     ✅     |       —       |
-| Unused-deps staged diff (`check-unused-deps.mjs --staged`)                     |     ✅     |       —       |
-| Contrato mutation-coord (`check-mutation-timing-contract.mjs`)                 |     ✅     |      ✅       |
-| Contrato mutation-coord staged (`check-mutation-timing-contract.mjs --staged`) |     ✅     |       —       |
-| Sintaxe shell staged diff (`check-workflow-run-syntax.mjs --staged`)           |     ✅     |       —       |
-| Remédio do commit (`pre-commit-run-syntax-remedy.mjs`, com confirmação)        |     ✅     |       —       |
-| Format + lint (lint-staged: prettier + eslint --fix)                           |     ✅     |       —       |
-| Imports diretos (check:direct-rtl-import + barrel-lint)                        |     ✅     |       —       |
-| Barrel lint (`barrel-lint`)                                                    |     ✅     |       —       |
-| Typecheck (`bun run typecheck`)                                                |     ✅     |      ✅       |
-| Snapshots (quando `.snap`/snapshot tests alterados)                            |  ✅ cond.  |       —       |
-| Testes unitários + fuzz (`test:unit`/`fuzz:ci`/`fuzz`)                         |     —      | ✅ smart-skip |
+| Validação                                                                       | Pre-commit |   Pre-push    |
+| :------------------------------------------------------------------------------ | :--------: | :-----------: |
+| UTF-8 (`check-utf8.sh --dry-run --ci src/`)                                     |     ✅     |      ✅       |
+| Escopo UTF-8 (`check-utf8-scope.mjs`)                                           |     ✅     |      ✅       |
+| CRLF working tree (`check-crlf.sh --ci`)                                        |     ✅     |      ✅       |
+| Escopo CRLF (`check-crlf-scope.mjs`)                                            |     ✅     |      ✅       |
+| CRLF blob commitado (`check-blob-crlf.sh --ci`)                                 |     ✅     |      ✅       |
+| Single-line `out=` (`check-single-line-out-assign.sh`)                          |     ✅     |      ✅       |
+| Badge encoding guards (`check-encoding-guards-badge.mjs`)                       |     ✅     |      ✅       |
+| Docs repro marker (`check-readme-repro-marker.mjs`)                             |     ✅     |      ✅       |
+| Âncoras README (`check-readme-anchors.mjs`)                                     |     ✅     |      ✅       |
+| TOC README (`check-readme-toc.mjs`)                                             |     ✅     |      ✅       |
+| Imagens README (`check-readme-images.mjs`)                                      |     ✅     |      ✅       |
+| Setup-bun externo (`check-no-setup-bun.mjs`)                                    |     ✅     |      ✅       |
+| Fonte única Bun (`check-bun-mirror.mjs`)                                        |     ✅     |      ✅       |
+| Bun staged diff (`check-bun-mirror.mjs --staged`)                               |     ✅     |       —       |
+| Ícones lucide (`scan-lucide-icons.mjs --check`)                                 |     ✅     |      ✅       |
+| Hooks symmetry (`check-hooks-symmetry.mjs`)                                     |     ✅     |      ✅       |
+| Paridade hook ↔ CI (`check-hook-ci-parity.mjs`)                                 |     ✅     |       —       |
+| Comandos do hook resolvem (`check-hook-commands.mjs`)                           |     ✅     |       —       |
+| Mutation jobs CI (`check-mutation-jobs.mjs`)                                    |     ✅     |      ✅       |
+| Mutation jobs staged diff (`check-mutation-jobs.mjs --staged`)                  |     ✅     |       —       |
+| Unused-deps staged diff (`check-unused-deps.mjs --staged`)                      |     ✅     |       —       |
+| Contrato mutation-coord (`check-mutation-timing-contract.mjs`)                  |     ✅     |      ✅       |
+| Contrato mutation-coord staged (`check-mutation-timing-contract.mjs --staged`)  |     ✅     |       —       |
+| Sintaxe shell staged diff (`check-workflow-run-syntax.mjs --staged`)            |     ✅     |       —       |
+| Remédio do commit (`pre-commit-remedy.mjs`, classes derivadas, com confirmação) |     ✅     |       —       |
+| Format + lint (lint-staged: prettier + eslint --fix)                            |     ✅     |       —       |
+| Imports diretos (check:direct-rtl-import + barrel-lint)                         |     ✅     |       —       |
+| Barrel lint (`barrel-lint`)                                                     |     ✅     |       —       |
+| Typecheck (`bun run typecheck`)                                                 |     ✅     |      ✅       |
+| Snapshots (quando `.snap`/snapshot tests alterados)                             |  ✅ cond.  |       —       |
+| Testes unitários + fuzz (`test:unit`/`fuzz:ci`/`fuzz`)                          |     —      | ✅ smart-skip |
 
 **Overhead medido** (`bash scripts/bench-encoding-guards.sh` — 5 runs, mediana
 por guard): o TOTAL dos 17 guards ≈ **3.2s**, dominado por `check-blob-crlf`
@@ -908,15 +908,74 @@ inaplicável em silêncio.
 
 O MESMO guard roda no pre-commit como RECORTE `--staged` (declarado em
 `HOOK_DECLARED`): julga os workflows E os scripts do ÍNDICE, com o conteúdo do
-commit. Quando ele reprova, o hook **OFERECE o remendo da cicatriz mecânica**
-(`scripts/pre-commit-run-syntax-remedy.mjs`, comando `LOCAL` declarado): o preview
-usa o MESMO fixer do `--fix` (`dry`, nada gravado), a pergunta diz os três efeitos
-do "sim" (remenda a ÁRVORE, re-estagia, REVALIDA o índice) e o veredito final é o
-do gate rodado de verdade. O `git add` é RETIDO em arquivo que já tinha WIP (o
-remendo fica na árvore e o operador é avisado), e **sem terminal não há pergunta**:
-imprime o caminho à mão e o commit segue bloqueado. O bloqueio é do HOOK: a
-variável que autoriza o commit nasce "não provou nada" e só o **exit 0** do remédio
-a zera — o remédio pode LEVANTAR a falha do gate, nunca criá-la. Que o hook
+commit. Quando um gate do hook reprova por um defeito **MECÂNICO**, ele **OFERECE o
+remendo** (`scripts/pre-commit-remedy.mjs`, comando `LOCAL` declarado) — em **UMA
+pergunta** para as classes que o repositório já sabe consertar por máquina
+(**cinco** hoje: a oferta é DERIVADA de `scripts/remedy-classes/<id>.mjs`, um módulo
+por classe declarado pelo GUARD DONO, então um fixer novo entra na oferta sem
+ninguém editar o remédio — e uma declaração inválida RECUSA a rodada com exit 2 em
+vez de sumir da oferta em silêncio): a cicatriz de `run:` (o `--fix` do gate), o CR/CRLF do working tree
+(`check-crlf.sh --fix`), o CRLF do blob do índice (`check-blob-crlf.sh --fix`), o
+byte 0x97 do UTF-8 (`check-utf8.sh --fix src/`) e o **caminho tipado** num comando
+de hook (`check-hook-commands.mjs --fix`, que troca o token pelo vizinho mais
+próximo quando não há dúvida: até 2 caracteres de diferença, um candidato só, e
+recusa EMPATE — e o token tem de estar NO hook: um caminho tipado DENTRO de um
+script chamado sai como **recusa NOMEADA**, porque o remendo só escreve em
+`.husky/`). Cada classe é DETECTADA e
+REMENDADA pelo guard dono, rodado como o hook o roda (ou importado, quando o dono é
+um módulo) — nenhuma régua paralela. O
+preview usa o MESMO caminho de decisão do fixer (`dry`, nada gravado), a pergunta
+diz os três efeitos do "sim" (remenda a ÁRVORE, re-estagia, REVALIDA) e o veredito
+final é o do guard dono. O `git add` é RETIDO em arquivo que já tinha WIP (o
+remendo fica na árvore e o operador é avisado), e a classe que ESTAGIA POR CONTA
+PRÓPRIA (o blob, cujo fixer roda `git add --renormalize`) se retém quando não há
+como separar o que ela estagiaria. A resposta vem do **TERMINAL DE
+CONTROLE**: o git NÃO dá o terminal ao stdin do hook — medido, o fd 0 de dentro do
+`git commit` está em `/dev/null` (o 1 e o 2 são o terminal) —, então o remédio
+abre o **`/dev/tty`** e pergunta ali (a pergunta **acontece** no commit). Sem
+terminal de controle (CI, `ssh` sem tty) o `/dev/tty` não abre: ele imprime o
+caminho à mão e o commit segue bloqueado; a espera tem teto de 2 minutos
+(`TTY_WAIT_MS`) e há um desligamento declarado da pergunta
+(`PRE_COMMIT_REMEDY_NO_PROMPT`, para quem tem terminal e não tem operador — a
+mesma pergunta, e o mesmo desligamento, que o `check-hook-commands --fix` usa). A
+classe do caminho tipado tem uma consequência própria: ela REESCREVE O ARQUIVO QUE A
+CASCA EXECUTA, então o remédio aplica, leva ao índice e **BLOQUEIA pedindo um `git
+commit` NOVO** (o interpretador lê o arquivo por deslocamento; medido: exit 127 com
+um "not found" numa linha posterior). As
+**direções** (e a mutação que apaga a reexecução da fase) são medidas sob um pty de
+verdade (`src/lib/__tests__/pre-commit-remedy-pty.test.ts`), sem injetar `isTTY`: o remédio
+direto sob o terminal, o `git commit` (que pergunta, remenda e ENTRA com o "sim") e
+a sessão sem terminal de controle (que não pergunta e bloqueia) —, mais o caminho
+da **fase B**: com um defeito de encoding a pergunta também acontece, o remédio
+remenda e re-estagia, e quem dá o veredito é a fase, rodada de novo. O bloqueio é
+do HOOK, e em duas camadas: a variável que autoriza o commit nasce "não provou
+nada" e só o **exit 0** do remédio a zera (o remédio pode LEVANTAR a falha, nunca
+criá-la), **e** a fase que reprovou volta a rodar sobre o índice remendado — um exit
+0 que não remendou nada não levanta falha nenhuma (medido com o desfecho do remédio
+AFIRMADO por dublê). A fase B do hook é uma **função** (`fase_b`) justamente por
+isso: ela roda duas vezes quando o remédio entra — uma para medir, outra para
+revalidar com o remendo já no índice —, e é a segunda medição que cobre os guards
+que o `run-encoding-guards.sh` nem chegou a rodar (ele para no primeiro que falha).
+
+**O custo da oferta está medido nos DOIS caminhos do commit** (família `hook` do
+`bench-guard-timing`; o número vivo é o de
+`docs/benchmarks/guard-timing-latest.json`). No caminho **comum** (nada reprova) a
+oferta custa **+1ms (≈0)**: ela não é alcançada, porque o `if` só abre com fase
+vermelha — o custo é pago por quem TEM defeito, não em todo commit. A espera
+SEPARADA do gate de sintaxe contra a agregação no `wait_all` custa **+1ms** (as duas
+esperam o mesmo conjunto; o teto é o `max`). No caminho de **falha** (defeito no
+índice, sem terminal) a oferta custa **+78ms**, e a fase rodada de novo depois de um
+remédio VERDE custa **+72ms**. O contrafactual é uma transformação DO PRÓPRIO hook,
+anunciada no texto dele (`sem-oferta` mantém o veredito e tira o bloco; `wait
+agregado` devolve o gate ao `wait_all`) — sem as âncoras a família se declara **NÃO
+MEDIDA**, em vez de comparar o hook com ele mesmo. A REVALIDAÇÃO é provada por
+execução (o veredito do gate dono aparece **duas** vezes na saída quando o remédio
+sai verde e **uma** no fail-closed), e a detecção da oferta contra a árvore real
+(**182ms**) é read-only por construção, com o `git status` conferido antes e
+depois: `escreveu: true` é violação da família, não um detalhe do log.
+
+A pergunta vem depois das DUAS fases, e a falha dos quatro guards da fase A — que
+nenhuma classe cobre — continua encerrando o hook antes dela. Que o hook
 **bloqueia de verdade** não é medido por leitura do arquivo:
 `src/lib/__tests__/pre-commit-run-syntax-blocks.test.ts` EXECUTA o
 `.husky/pre-commit` real num repo temporário com o defeito staged e exige exit 1
