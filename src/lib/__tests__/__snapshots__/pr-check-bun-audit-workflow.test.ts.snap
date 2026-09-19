@@ -3,7 +3,7 @@
 exports[`pr-check.yml — job bun-audit-guard (sintaxe YAML + snapshot) > parseia como YAML válido e o job casa com o snapshot da estrutura 1`] = `
 {
   "name": "Bun Audit Guard (deps — drift baseline)",
-  "runs-on": "ubuntu-latest",
+  "runs-on": "self-hosted",
   "steps": [
     {
       "uses": "actions/checkout@v4",

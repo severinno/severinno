@@ -27,7 +27,6 @@ function getStatusLevel(provider: ProviderCard): StatusLevel {
   return "offline"
 }
 
-
 type Props = {
   provider: ProviderCard
   isSelected?: boolean
@@ -39,9 +38,10 @@ export function createAnimatedPinElement(props: Props): HTMLButtonElement {
   const status = getStatusLevel(provider)
 
   const services = provider.services?.slice(0, 2) ?? []
-  const minPrice = services.length > 0
-    ? Math.min(...services.map(s => s.basePrice ?? 0).filter(p => p > 0))
-    : null
+  const minPrice =
+    services.length > 0
+      ? Math.min(...services.map((s) => s.basePrice ?? 0).filter((p) => p > 0))
+      : null
 
   const el = document.createElement("button")
   el.type = "button"

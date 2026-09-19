@@ -59,9 +59,12 @@ vi.mock("@/lib/api-server", () => ({
   notFound: (msg: string) => new Error(`NOT_FOUND: ${msg}`),
   handleError: (e: unknown) => {
     const msg = e instanceof Error ? e.message : "Unknown error"
-    if (msg.startsWith("NOT_FOUND")) return new Response(JSON.stringify({ error: msg }), { status: 404 })
-    if (msg.startsWith("FORBIDDEN")) return new Response(JSON.stringify({ error: msg }), { status: 403 })
-    if (msg.startsWith("BAD_REQUEST")) return new Response(JSON.stringify({ error: msg }), { status: 400 })
+    if (msg.startsWith("NOT_FOUND"))
+      return new Response(JSON.stringify({ error: msg }), { status: 404 })
+    if (msg.startsWith("FORBIDDEN"))
+      return new Response(JSON.stringify({ error: msg }), { status: 403 })
+    if (msg.startsWith("BAD_REQUEST"))
+      return new Response(JSON.stringify({ error: msg }), { status: 400 })
     return new Response(JSON.stringify({ error: msg }), { status: 500 })
   },
 }))
@@ -185,9 +188,7 @@ describe("POST /api/tracking/[id]/geofence — unified endpoint", () => {
   })
 
   it("returns idempotent when geofenceAlertSentAt already set", async () => {
-    mockFindUnique.mockResolvedValue(
-      makeBooking({ geofenceAlertSentAt: new Date("2026-01-01") }),
-    )
+    mockFindUnique.mockResolvedValue(makeBooking({ geofenceAlertSentAt: new Date("2026-01-01") }))
     const req = makeRequest({ providerLat: -23.55, providerLng: -46.63 })
     const res = await POST(req, { params: Promise.resolve({ id: "booking-1" }) })
     const json = await res.json()

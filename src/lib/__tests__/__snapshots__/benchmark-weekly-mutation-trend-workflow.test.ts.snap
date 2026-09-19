@@ -9,7 +9,7 @@ exports[`benchmark-weekly.yml — job mutation-coord-trend (sintaxe YAML + snaps
     "actions": "read",
     "contents": "read",
   },
-  "runs-on": "ubuntu-latest",
+  "runs-on": "self-hosted",
   "steps": [
     {
       "uses": "actions/checkout@v4",

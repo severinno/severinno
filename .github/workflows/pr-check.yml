@@ -372,8 +372,17 @@ jobs:
   # consolidar reduz o setup por job sem perder a granularidade
   # (--scenario <id> roda um sub-test isolado para diagnóstico local).
   # Node-puro, <9s total, sem docker.
+  #
+  # ⚠️ O `name:` ABAIXO NÃO CARREGA O COUNT — DE PROPÓSITO.
+  # O nome de um job é o CONTEXTO do status check na forja, e o branch
+  # protection exige esse contexto: enquanto o nome dizia "(15 node-pure
+  # mutation tests)", CADA bump da matriz reescrevia o contrato de merge e a
+  # proteção aplicada passava a exigir um check que já não existe (o PR trava
+  # esperando para sempre). O count é DIAGNÓSTICO e vive no summary abaixo, no
+  # header do master e no README — o `check-mutation-count` compara todos com o
+  # derivado e PROÍBE um número aqui.
   mutation-guards:
-    name: Mutation guards master (15 node-pure mutation tests)
+    name: Mutation guards master
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4

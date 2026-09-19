@@ -17,11 +17,28 @@
 // então o número não fica hardcoded (mesmo princípio do badge de encoding
 // guards e do check-e2e-counts).
 //
-// Comparação por ASSINATURA (commit+file+line+id+key), não por count: uma
-// linha removida e outra adicionada mantém o count, mas a assinatura NOVA é
-// detectada. Findings REMOVIDOS (ex.: história reescrita com filter-repo)
-// NÃO falham — só os novos. Fail-closed: baseline ausente sem --update =
-// exit 2 com instrução clara.
+// COMPARAÇÃO POR CONTEÚDO, NUNCA POR ANCESTRALIDADE
+//
+// A assinatura de um achado é o CONTEÚDO dele — arquivo:linha:padrão:chave:
+// valor-mascarado — e o commit NÃO entra. Por quê: reescrever a história
+// (filter-repo, rebase, amend, squash) troca TODOS os hashes de commit sem
+// tocar em um byte dos segredos. Com o commit dentro da assinatura, uma
+// reescrita transformava o baseline inteiro em "assinaturas desconhecidas" e o
+// guard acusava os achados conhecidos como NOVOS — alarme falso em massa que só
+// se resolvia regenerando o baseline, apagando a evidência de que a história
+// tinha mudado. Comparando por conteúdo, a reescrita não inventa nada.
+//
+// O commit continua no arquivo, mas só como PROVENIÊNCIA (documenta onde o
+// vazamento vive, para a remediação com filter-repo). A proveniência é
+// conferida e REPORTADA COMO MOTIVO PRÓPRIO quando os commits do baseline não
+// são mais alcançáveis — o fato aparece nomeado, em vez de virar a acusação de
+// "todos os achados são novos". Proveniência NUNCA falha o gate: o que falha é
+// conteúdo novo, e só isso.
+//
+// Não é comparação por count: uma linha removida e outra adicionada mantém o
+// count, mas a assinatura de conteúdo nova é detectada. Achados REMOVIDOS
+// (ex.: história reescrita com filter-repo) NÃO falham — só os novos.
+// Fail-closed: baseline ausente sem --update = exit 2 com instrução clara.
 //
 // Usage:
 //   node scripts/check-secret-leaks-baseline.mjs                     # check
@@ -84,31 +101,58 @@ export function severityRank(sev) {
 const AUDIT_PATH = join(dirname(fileURLToPath(import.meta.url)), "audit-secret-leaks.mjs")
 
 /**
- * Assinatura estável de um achado — identifica um vazamento específico no
- * histórico. commit+file+line+id+key é determinístico entre runs (o line do
- * hunk é a linha ADICIONADA naquele commit, imutável).
+ * Assinatura de CONTEÚDO de um achado — a identidade que o guard compara.
+ *
+ * `arquivo:linha:padrão:chave:valor-mascarado`, e o COMMIT NÃO ENTRA. O `line`
+ * é a linha ADICIONADA no hunk daquele commit: imutável enquanto o commit
+ * existir, e igual depois de qualquer reescrita (o conteúdo não mudou).
+ *
+ * O `masked` entra porque é o único pedaço do VALOR que se pode guardar sem
+ * vazar o segredo (`maskSecret` = 4 primeiros caracteres + tamanho, estável):
+ * sem ele, um segredo DIFERENTE gravado no mesmo arquivo:linha:chave passaria
+ * como "já conhecido".
  *
  * ⚠️ ACOPLADO ao id (label PT do audit: 'atribuição de secret', 'token com
- * prefixo', 'chave privada'): renomear um label em audit-secret-leaks.mjs
- * muda TODAS as assinaturas do tipo → o guard semanal acusaria "achados
- * novos" (falso alarme). Aceitável (força re-baseline via --update), mas
- * renomeie labels e rode `--update` na MESMA mudança.
+ * prefixo', 'chave privada') e ao formato do `maskSecret`: renomear um label ou
+ * mudar o mascaramento muda TODAS as assinaturas → o guard acusaria "achados
+ * novos" (falso alarme). Aceitável (força re-baseline via --update), mas faça
+ * a renomeação e o `--update` na MESMA mudança.
  *
- * @param {{commit: string, file: string, line: number, id: string, key?: string|null}} f
+ * O `commit` é ACEITO e IGNORADO — de propósito: a assinatura lê o MESMO objeto
+ * que o audit produz (achado completo, commit incluso) e não o usa. É essa
+ * indiferença que faz a reescrita de história passar despercebida pelo gate.
+ *
+ * @param {{commit?: string, file: string, line: number, id: string, key?: string|null, masked?: string|null}} f
  * @returns {string}
  */
 export function signatureOf(f) {
-  return `${f.commit}:${f.file}:${f.line}:${f.id}:${f.key ?? ""}`
+  return `${f.file}:${f.line}:${f.id}:${f.key ?? ""}:${f.masked ?? ""}`
 }
 
 /**
  * Constrói o baseline a partir dos achados atuais (formato do arquivo).
  *
+ * O arquivo guarda o achado inteiro do audit — inclusive o `commit` — para o
+ * registro de PROVENIÊNCIA (onde o vazamento vive, para a remediação). A
+ * comparação do guard NÃO usa o commit: ela reconstrói a assinatura de conteúdo
+ * de cada entrada com `signatureOf`.
+ *
  * @param {Array<{commit: string, file: string, line: number, id: string, key?: string|null, masked: string}>} findings
- * @returns {{count: number, updatedAt: string, findings: object[]}}
+ * @returns {{version: number, count: number, updatedAt: string, findings: object[]}}
  */
 export function buildBaseline(findings) {
   return {
+    version: 2,
+    $comment: [
+      "BASELINE dos segredos JÁ CONHECIDOS no histórico (audit-secret-leaks.mjs).",
+      "",
+      "O guard compara por CONTEÚDO (arquivo:linha:padrão:chave:valor-mascarado) e",
+      "IGNORA o campo commit. Ele está aqui como PROVENIÊNCIA — onde o vazamento",
+      "vive, para a remediação com filter-repo — e some quando a história é",
+      "reescrita, sem que isso vire acusação de 'achado novo'.",
+      "",
+      "Regenerar: node scripts/check-secret-leaks-baseline.mjs --update",
+    ],
     count: findings.length,
     updatedAt: new Date().toISOString().slice(0, 10),
     findings: findings.map((f) => ({
@@ -138,15 +182,171 @@ export function parseBaseline(content) {
 }
 
 /**
- * Achados cuja assinatura NÃO existe no baseline — os NOVOS (a regra do guard).
+ * Achados cuja assinatura de CONTEÚDO não existe no baseline — os NOVOS.
  *
- * @param {Array<object>} current       achados do audit atual
+ * Deduplicados por assinatura: o mesmo segredo costuma aparecer em VÁRIOS
+ * commits (o audit varre `git log -p --all`, então o valor segue presente em
+ * todo commit posterior), e por conteúdo ele é UM achado. Cada item devolvido
+ * carrega `signature` e `commits[]` — o relatório nomeia onde o conteúdo vive
+ * sem inflar a contagem com a mesma linha repetida.
+ *
+ * @param {Array<object>} current           achados do audit atual
  * @param {Array<object>} baselineFindings  achados do baseline
- * @returns {Array<object>} achados novos (ordenados como no audit)
+ * @returns {Array<object>} achados novos, um por assinatura, na ordem do audit
  */
 export function findNewFindings(current, baselineFindings) {
   const known = new Set(baselineFindings.map(signatureOf))
-  return current.filter((f) => !known.has(signatureOf(f)))
+  const porAssinatura = new Map()
+  for (const f of current) {
+    const signature = signatureOf(f)
+    if (known.has(signature)) continue
+    const visto = porAssinatura.get(signature)
+    if (visto) visto.commits.push(f.commit)
+    else porAssinatura.set(signature, { ...f, signature, commits: [f.commit] })
+  }
+  return [...porAssinatura.values()]
+}
+
+/**
+ * O repositório é um CLONE RASSO? `true`/`false`, ou `null` quando não dá para
+ * saber (git ausente, comando falhou).
+ *
+ * Existe porque num clone raso a proveniência do baseline some SEM que ninguém
+ * tenha reescrito história: os commits estão lá no remoto, só não foram
+ * baixados. Sem separar os dois, o relatório mandaria alguém caçar uma
+ * reescrita que nunca aconteceu — diagnóstico errado é pior que diagnóstico
+ * ausente, porque é seguido.
+ *
+ * @param {string} cwd
+ * @returns {boolean | null}
+ */
+export function isShallowRepo(cwd) {
+  const res = spawnSync("git", ["rev-parse", "--is-shallow-repository"], {
+    cwd,
+    encoding: "utf8",
+  })
+  if (res.status !== 0 || typeof res.stdout !== "string") return null
+  const saida = res.stdout.trim()
+  if (saida === "true") return true
+  if (saida === "false") return false
+  return null
+}
+
+/**
+ * Os commits alcançáveis a partir de qualquer ref (`git rev-list --all`), ou
+ * `null` quando não dá para saber (git ausente, repo sem refs, comando falhou).
+ *
+ * `null` NÃO é "nada alcançável": é INDETERMINADO. Confundir os dois faria o
+ * guard relatar reescrita de história em qualquer ambiente sem git.
+ *
+ * @param {string} cwd
+ * @returns {string[] | null}
+ */
+export function reachableCommits(cwd) {
+  const res = spawnSync("git", ["rev-list", "--all"], {
+    cwd,
+    encoding: "utf8",
+    maxBuffer: 256 * 1024 * 1024,
+  })
+  if (res.status !== 0 || typeof res.stdout !== "string") return null
+  return res.stdout
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+/**
+ * A PROVENIÊNCIA do baseline ainda existe neste repositório?
+ *
+ * Compara os commits registrados no baseline com o conjunto alcançável. Commit
+ * do baseline que não está mais lá tem três causas possíveis — reescrita de
+ * história (filter-repo/rebase/amend), branch apagado, ou clone raso. O guard
+ * mede o FATO ("não é mais alcançável") e NÃO escolhe a causa por conta própria:
+ * a única separação que ele faz é a que o ambiente pode provar — `git rev-parse
+ * --is-shallow-repository`. Fora isso, o relatório nomeia as três para quem lê,
+ * em vez de afirmar uma.
+ *
+ * Estados (padrão do resto do repositório: provado/violado/indisponível):
+ *   - `intacta`       — todo commit do baseline continua alcançável
+ *   - `reescrita`     — pelo menos um não é mais alcançável (história reescrita)
+ *   - `raso`          — o mesmo, mas num CLONE RASSO: quase certamente os commits
+ *                       existem no remoto e só não foram baixados
+ *   - `indeterminado` — não foi possível listar os alcançáveis
+ *
+ * `raso` é um estado PRÓPRIO, e não `reescrita`, porque a AÇÃO do operador é
+ * outra: um manda rodar `git fetch --unshallow`, o outro manda procurar a
+ * reescrita. Colapsar os dois num só nome faria o relatório mandar caçar uma
+ * reescrita que nunca aconteceu.
+ *
+ * Independente do estado, isto NUNCA falha o gate: é diagnóstico.
+ *
+ * @param {Array<{commit?: string}>} baselineFindings
+ * @param {{reachable?: string[] | null, shallow?: boolean | null}} opts
+ * @returns {{state: "intacta"|"reescrita"|"raso"|"indeterminado", baselineCommits: number, reachable: number, unreachable: string[]}}
+ */
+export function historyProvenance(baselineFindings, { reachable = null, shallow = null } = {}) {
+  const commits = [...new Set(baselineFindings.map((f) => f.commit).filter(Boolean))]
+  if (reachable === null) {
+    return {
+      state: "indeterminado",
+      baselineCommits: commits.length,
+      reachable: 0,
+      unreachable: [],
+    }
+  }
+  const alcancaveis = new Set(reachable)
+  const unreachable = commits.filter((c) => !alcancaveis.has(c))
+  // `shallow === true` SÓ reclassifica quando HÁ proveniência faltando: num
+  // clone raso com todos os commits do baseline baixados não há fato a nomear.
+  const state = unreachable.length === 0 ? "intacta" : shallow === true ? "raso" : "reescrita"
+  return {
+    state,
+    baselineCommits: commits.length,
+    reachable: commits.length - unreachable.length,
+    unreachable,
+  }
+}
+
+/**
+ * O bloco de proveniência do relatório — o "motivo próprio" da reescrita.
+ *
+ * Existe como função pura porque a MENSAGEM é o contrato: o que o guard
+ * promete quando a história é reescrita é dizer exatamente isto (o baseline
+ * perdeu a proveniência, e por isso NENHUM achado conhecido vira "novo"), em
+ * vez de despejar a lista de achados como se fossem vazamentos recém-introduzidos.
+ *
+ * @param {ReturnType<typeof historyProvenance>} prov
+ * @returns {string[]} linhas (sem quebra) para o consumidor imprimir
+ */
+export function renderProvenance(prov) {
+  if (prov.state === "indeterminado") {
+    return [
+      "📜 PROVENIÊNCIA DO BASELINE: INDETERMINADO — não consegui listar os commits alcançáveis",
+      "   (git ausente ou repositório sem refs). Nada é afirmado sobre a história.",
+    ]
+  }
+  if (prov.state === "intacta") {
+    return [
+      `📜 PROVENIÊNCIA DO BASELINE: os ${prov.baselineCommits} commit(s) do baseline continuam alcançáveis.`,
+    ]
+  }
+  if (prov.state === "raso") {
+    return [
+      `📜 MOTIVO PRÓPRIO — CLONE RASSO: ${prov.unreachable.length} de ${prov.baselineCommits} commit(s) do`,
+      "   baseline não estão neste clone (git rev-parse --is-shallow-repository = true). Num clone",
+      "   raso os commits do baseline podem existir no remoto e simplesmente não ter sido baixados —",
+      "   o mais provável é ISTO, não uma reescrita de história. Rode com o histórico completo",
+      "   (fetch-depth: 0 / git fetch --unshallow) para o fato ser conclusivo. Nada foi acusado.",
+    ]
+  }
+  return [
+    `📜 MOTIVO PRÓPRIO — HISTÓRIA REESCRITA: ${prov.unreachable.length} de ${prov.baselineCommits} commit(s)`,
+    "   do baseline NÃO são mais alcançáveis a partir de nenhuma ref (reescrita de história,",
+    "   branch apagado ou clone raso). Isto NÃO é vazamento e NÃO é achado novo: a comparação",
+    "   é por CONTEÚDO (arquivo:linha:padrão:chave:valor-mascarado) e não usa o commit — por isso",
+    "   a reescrita não acusa nada. O `commit` do baseline é só proveniência, e pode ser",
+    "   regenerado com --update quando a remediação terminar.",
+  ]
 }
 
 /**
@@ -248,7 +448,20 @@ function main() {
     process.exit(2)
   }
 
-  // ── Comparação por assinatura — só achados NOVOS falham ──────────────
+  // ── Proveniência do baseline (diagnóstico — NUNCA gate) ───────────────
+  // Um commit do baseline que não está mais no histórico alcançável é MOTIVO
+  // PRÓPRIO (história reescrita, branch apagado ou clone raso) — e é o fato
+  // que, antes, aparecia disfarçado de "todos os achados são novos".
+  const prov = historyProvenance(baseline.findings, {
+    reachable: reachableCommits(cwd),
+    shallow: isShallowRepo(cwd),
+  })
+  const emitirProveniencia = (paraErro = false) => {
+    const out = paraErro ? console.error : console.log
+    for (const linha of renderProvenance(prov)) out(`   ${linha}`)
+  }
+
+  // ── Comparação por CONTEÚDO — só achados NOVOS falham ─────────────────
   const newFindings = findNewFindings(current.findings, baseline.findings)
   // ── Filtro de severidade: com --min-severity alta, só novos ALTA falham ──
   const { blocking, warnings } = splitBySeverity(newFindings, minSeverity)
@@ -261,6 +474,7 @@ function main() {
           baselineCount: baseline.count,
           newCount: newFindings.length,
           newFindings,
+          history: prov,
           minSeverity,
           blockingCount: blocking.length,
           blocking,
@@ -274,8 +488,10 @@ function main() {
 
   if (blocking.length === 0 && warnings.length === 0) {
     console.log(
-      `🔒 check-secret-leaks-baseline: ${current.count} achado(s) — nenhum NOVO além do baseline (${baseline.count}, ${baseline.updatedAt}).`,
+      `🔒 check-secret-leaks-baseline: ${current.count} achado(s) — nenhum NOVO por conteúdo ` +
+        `(baseline ${baseline.count}, ${baseline.updatedAt}).`,
     )
+    emitirProveniencia()
     process.exit(0)
   }
 
@@ -291,11 +507,12 @@ function main() {
           (f.key ? `  (chave: ${f.key})` : ""),
       )
     }
+    emitirProveniencia(true)
     process.exit(0)
   }
 
   console.error(
-    `🔓 check-secret-leaks-baseline: ${blocking.length} achado(s) NOVO(s) de severidade ` +
+    `🔓 check-secret-leaks-baseline: ${blocking.length} CONTEÚDO(s) NOVO(s) de severidade ` +
       `>= '${minSeverity}' no histórico (baseline ${baseline.count} → atual ${current.count}):\n`,
   )
   for (const f of blocking) {
@@ -309,6 +526,8 @@ function main() {
       `\nℹ️  + ${warnings.length} achado(s) novo(s) de severidade menor (não bloqueiam com '${minSeverity}').`,
     )
   }
+  console.error("")
+  emitirProveniencia(true)
   console.error(
     `\n⚠️  Segredo NOVO commitado — ROTACIONE o valor (node scripts/rotate-secrets.mjs).` +
       `\n   Após remediar, atualize o baseline: node scripts/check-secret-leaks-baseline.mjs --update`,

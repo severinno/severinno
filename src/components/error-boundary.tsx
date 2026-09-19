@@ -149,8 +149,6 @@ export default function AutoRetryErrorBoundary({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Only on mount
 
-
-
   const autoRetriesExhausted = retryCount >= MAX_AUTO_RETRIES
 
   return (
@@ -218,7 +216,7 @@ export default function AutoRetryErrorBoundary({
 
           {/* Action buttons */}
           <motion.div variants={item} className="mt-8 flex flex-col items-center gap-3 sm:flex-row">
-            {(!autoRetryEnabled || autoRetriesExhausted) ? (
+            {!autoRetryEnabled || autoRetriesExhausted ? (
               <button
                 onClick={doRetry}
                 disabled={isRetrying}

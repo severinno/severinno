@@ -109,6 +109,19 @@ const eslintConfig = [
     },
   },
   {
+    // Scripts CommonJS de debug (e2e/debug-*.cjs): em .cjs o `require` é a
+    // ÚNICA sintaxe de módulo (não é a importação ESM que a regra proíbe) e o
+    // console é o mecanismo de output — o script replica os passos de um teste
+    // e loga cada um. Sem este override, o lint-guard (`eslint . --max-warnings
+    // 0`) fica vermelho por ferramenta de diagnóstico, não por código de
+    // produção.
+    files: ["**/*.cjs"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+      "no-console": "off",
+    },
+  },
+  {
     ignores: [
       "node_modules/**",
       ".next/**",

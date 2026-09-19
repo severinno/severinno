@@ -9,7 +9,7 @@ exports[`pr-check.yml — job mutation-coord-timing-guard (sintaxe YAML + snapsh
     "actions": "read",
     "contents": "read",
   },
-  "runs-on": "ubuntu-latest",
+  "runs-on": "self-hosted",
   "steps": [
     {
       "uses": "actions/checkout@v4",
