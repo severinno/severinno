@@ -172,7 +172,7 @@
     "bench:guard-timing": "node scripts/bench-guard-timing.mjs",
     "bench:guard-timing:json": "node scripts/bench-guard-timing.mjs --json",
     "bench:guard-timing:save": "node scripts/bench-guard-timing.mjs --save",
-    "bench:guard-timing:baseline": "node scripts/bench-guard-timing.mjs --baseline",
+    "bench:guard-timing:baseline": "node scripts/bench-guard-timing.mjs --json --baseline",
     "bench:guard-timing:compare": "node scripts/bench-guard-timing.mjs --compare",
     "bench:guard-timing:full": "node scripts/bench-guard-timing.mjs --json --compare",
     "bench:merge-latency": "node scripts/merge-latency.mjs",

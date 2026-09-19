@@ -47,9 +47,13 @@ import {
   TYPECHECK_LEGACY_BARE_CMD,
   TYPECHECK_LEGACY_INLINE_CMD,
   TYPECHECK_UPGRADED_SITES,
+  ACT_LABELS,
+  FAMILY_MEASURED,
+  REUSED_FAMILY_LABELS,
   canonicalCallSites,
   compareTimings,
   excludedScopeDir,
+  familyProvenance,
   hookRulerFacts,
   legacyRulerFiles,
   reuseFamilies,
@@ -439,5 +443,160 @@ describe("bench-guard-timing — o custo da unificação da suíte", () => {
     })
     expect(naoConfere).toContain("NAO e so ela")
     expect(naoConfere).not.toContain("fecha com o delta")
+  })
+})
+
+// ── 4. A PROCEDÊNCIA: o ATO e o COMMIT de origem de cada família ───────────
+//
+// Mover a baseline só é um ato auditável se o ARQUIVO disser qual ato mediu cada
+// família e de qual commit veio o número: sem isso, "quanto custa" não distingue
+// a medição de agora da herdada de seis commits atrás — as duas leem igual no
+// JSON, e a baseline passaria a descrever uma árvore que ninguém mediu.
+
+describe("bench-guard-timing — a procedência de cada família", () => {
+  const hookMedido = {
+    measured: true,
+    reason: null,
+    forms: [
+      { role: "comum-hoje", label: "forma comum-hoje", ms: 100, ok: true, exit: 0, runs: [] },
+    ],
+    deltas: {},
+  }
+  const rodada = (
+    familias: {
+      lint?: unknown
+      typecheck?: unknown
+      tests?: unknown
+      hook?: unknown
+      guards?: unknown
+      doctor?: unknown
+    } = {},
+    meta: Record<string, unknown> = {},
+  ) => ({
+    meta: {
+      tool: "bench-guard-timing",
+      version: 5,
+      commit: "aaaa1111",
+      commitDate: "2026-09-18 09:00:00 -0300",
+      timestamp: "2026-09-18T12:00:00.000Z",
+      act: "bench-guard-timing --json --baseline",
+      reused: {},
+      families: {},
+      ...meta,
+    },
+    summary: { totalMs: 20_000 },
+    guards: familias.guards ?? [{ label: "check:x", ms: 100, ok: true, exit: 0 }],
+    doctor: familias.doctor ?? { ms: 3000, exit: 0, ok: true },
+    lint: familias.lint ?? null,
+    rulers: { typecheck: familias.typecheck ?? null, tests: familias.tests ?? null },
+    hook: familias.hook ?? null,
+  })
+  const completa = () =>
+    rodada({
+      lint: { addedPerFanOutMs: 80_000 },
+      typecheck: { canonicalMs: 24_000 },
+      tests: { canonicalMs: 131_000 },
+      hook: hookMedido,
+    })
+
+  it("toda família declarada tem procedência — nenhuma some da tabela", () => {
+    // A soma: as DUAS listas de famílias (a da herança e a da medição) cobrem o
+    // mesmo conjunto, e a tabela sai com todas. Uma família que existisse numa e
+    // não na outra ficaria sem ATO (herdável e não declarável, ou o contrário).
+    expect(Object.keys(FAMILY_MEASURED).sort()).toEqual(Object.keys(REUSED_FAMILY_LABELS).sort())
+    expect(Object.keys(familyProvenance({ result: completa() })).sort()).toEqual(
+      Object.keys(REUSED_FAMILY_LABELS).sort(),
+    )
+    expect(Object.keys(ACT_LABELS).sort()).toEqual(["measured", "not-measured", "reused"])
+  })
+
+  it("numa rodada completa, as cinco saem `measured` com o commit da rodada", () => {
+    const p = familyProvenance({ result: completa() })
+
+    for (const family of Object.keys(FAMILY_MEASURED)) {
+      expect(p[family].act).toBe("measured")
+      expect(p[family].commit).toBe("aaaa1111")
+      expect(p[family].timestamp).toBe("2026-09-18T12:00:00.000Z")
+      // Medida nesta rodada não tem FONTE de herança: apontar um arquivo aqui
+      // faria o leitor procurar o número onde ele não está.
+      expect(p[family].source).toBeNull()
+    }
+  })
+
+  it("a herdada sai `reused` com o commit de ORIGEM, não com o da rodada", () => {
+    const anterior = rodada(
+      { lint: { addedPerFanOutMs: 70_000 } },
+      { commit: "bbbb2222", timestamp: "2026-09-17T10:00:00.000Z" },
+    )
+    const agora = rodada() // sem o lint: só a bateria
+    const merged = reuseFamilies(agora as never, anterior as never) as unknown as {
+      meta: {
+        families: Record<string, { act: string; commit: string | null; source: string | null }>
+      }
+    }
+
+    expect(merged.meta.families.lint.act).toBe("reused")
+    expect(merged.meta.families.lint.commit).toBe("bbbb2222")
+    expect(merged.meta.families.lint.source).toBe("guard-timing-latest.json")
+    // O que esta rodada MEDIU continua sendo de agora — a herança não contamina
+    // a procedência do que foi medido.
+    expect(merged.meta.families.battery.act).toBe("measured")
+    expect(merged.meta.families.battery.commit).toBe("aaaa1111")
+  })
+
+  it("sem a rodada e sem o arquivo anterior, é `not-measured` e o commit é NULO", () => {
+    const p = familyProvenance({ result: rodada(), previous: null })
+
+    expect(p.lint.act).toBe("not-measured")
+    expect(p.lint.commit).toBeNull()
+    expect(p.lint.source).toBeNull()
+    // O não medido não pode virar "o commit de agora": um número que não existe
+    // não herda a árvore de quem não o mediu.
+    expect(p.battery.act).toBe("measured")
+  })
+
+  it("a seção do hook existir NÃO é medição: `measured: false` é não-medida", () => {
+    const semAncoras = rodada({ hook: { measured: false, reason: "ancoras sumiram", forms: [] } })
+
+    expect(familyProvenance({ result: semAncoras }).hook.act).toBe("not-measured")
+
+    // E a COBERTURA usa a MESMA régua (`FAMILY_MEASURED`): a baseline que tem o
+    // hook medido e a rodada que trouxe só a seção vazia deixam o veredito
+    // PARCIAL, nomeando o hook — em vez de um `measured: true` que fecharia a
+    // dívida de tempo com uma medição que não aconteceu.
+    const cmp = compareTimings(
+      semAncoras as never,
+      rodada({ hook: hookMedido }) as never,
+    ) as unknown as { measured: boolean; reason: string | null }
+
+    expect(cmp.measured).toBe(false)
+    expect(cmp.reason).toContain(REUSED_FAMILY_LABELS.hook)
+  })
+
+  it("a baseline VERSIONADA carrega o ato, o commit de origem e as cinco famílias", () => {
+    const baseline = JSON.parse(
+      readFileSync(join(REPO_ROOT, "docs", "benchmarks", "guard-timing-baseline.json"), "utf8"),
+    ) as {
+      meta: {
+        version: number
+        act: string | null
+        commit: string
+        families: Record<string, { act: string; commit: string | null }>
+      }
+    }
+
+    // A baseline anterior às famílias de régua (v1) não tinha nenhuma delas: as
+    // formas delas apareciam como NOVAS em toda comparação, e mover a baseline
+    // era o único jeito de sair disso. Esta asserção é o que impede a volta.
+    expect(baseline.meta.version).toBeGreaterThanOrEqual(5)
+    expect(typeof baseline.meta.act).toBe("string")
+    expect(Object.keys(baseline.meta.families).sort()).toEqual(Object.keys(FAMILY_MEASURED).sort())
+    for (const p of Object.values(baseline.meta.families)) {
+      expect(Object.keys(ACT_LABELS)).toContain(p.act)
+      // Medida ⇒ o commit é o da rodada que mediu; não medida ⇒ nenhum commit
+      // (nem "0", nem o de hoje por omissão).
+      if (p.act === "measured") expect(p.commit).toBe(baseline.meta.commit)
+      if (p.act === "not-measured") expect(p.commit).toBeNull()
+    }
   })
 })

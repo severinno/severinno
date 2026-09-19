@@ -1450,7 +1450,7 @@ function measure(cmd, { timeoutMs = 120_000, env = process.env } = {}) {
 // ── Benchmark ─────────────────────────────────────────────────────────────
 
 /**
- * @param {{samples?: number, lint?: boolean, typecheck?: boolean, tests?: boolean, hook?: boolean, counterfactual?: boolean, battery?: boolean}} [opts]
+ * @param {{samples?: number, lint?: boolean, typecheck?: boolean, tests?: boolean, hook?: boolean, counterfactual?: boolean, battery?: boolean, act?: string|null}} [opts]
  */
 function runBenchmark({
   samples = 2,
@@ -1460,6 +1460,7 @@ function runBenchmark({
   hook = true,
   counterfactual = false,
   battery = true,
+  act = null,
 } = {}) {
   const commit = getCommitHash()
   const commitDate = getCommitTimestamp()
@@ -1545,10 +1546,17 @@ function runBenchmark({
   const result = {
     meta: {
       tool: "bench-guard-timing",
-      version: 4,
+      // v5: `meta.act` (o comando que produziu o arquivo) e `meta.families`
+      // (o ato e o commit de ORIGEM de cada familia) — sem eles, mover a baseline
+      // gravaria numeros sem dizer de qual rodada nem de qual arvore eles sao.
+      version: 5,
       commit,
       commitDate,
       timestamp,
+      // O ATO que produziu este arquivo (a linha de comando, com as flags que
+      // ligam/desligam familias): um numero medido com `--no-tests` nao descreve
+      // o mesmo que um com a suite inteira, e a baseline sozinha nao diria qual.
+      act,
       nodeVersion: process.version,
       platform: process.platform,
       arch: process.arch,
@@ -1561,6 +1569,8 @@ function runBenchmark({
       // como forma, nao julgam o TOTAL e impedem o FECHAMENTO da issue - um
       // numero de outro momento nao e "a medicao de agora" (ver `compareTimings`).
       reused: {},
+      // Preenchido logo abaixo, quando o `result` inteiro ja existe.
+      families: {},
     },
     summary: {
       guardsCount: guards.length,
@@ -1594,6 +1604,11 @@ function runBenchmark({
     rulers: { typecheck: typecheckCost, tests: testsCost },
     hook: hookCost,
   }
+
+  // O ATO e a ORIGEM de cada familia (ver `familyProvenance`): nesta rodada, a
+  // procedencia e sempre "medida" ou "nao medida" — o `reused` so nasce com o
+  // `--merge`, que reescreve a tabela com o arquivo anterior.
+  result.meta.families = familyProvenance({ result })
 
   return result
 }
@@ -1712,6 +1727,11 @@ export function reuseFamilies(result, previous) {
   }
   const guardsTotalMs = (guards ?? []).reduce((acc, g) => acc + (g.ms ?? 0), 0)
 
+  // A tabela de procedencia e reescrita com a rodada ANTES do merge: quem entrou
+  // herdado sai daqui como `reused` com o commit e o carimbo de ORIGEM, ao lado
+  // do `meta.reused` que a comparacao consome.
+  const families = familyProvenance({ result, previous, source: LATEST_FILE })
+
   return {
     ...result,
     guards,
@@ -1719,7 +1739,7 @@ export function reuseFamilies(result, previous) {
     lint,
     rulers: { typecheck, tests },
     hook,
-    meta: { ...result.meta, reused },
+    meta: { ...result.meta, reused, families },
     // O resumo tem de descrever o arquivo que esta sendo gravado, nao metade
     // dele: um `summary.testsMs: null` ao lado de uma secao `tests` cheia seria
     // uma incoerencia gerada pelo proprio benchmark.
@@ -1796,7 +1816,24 @@ function printReport(result) {
   console.log()
   console.log(`  commit: ${meta.commit} (${meta.commitDate})`)
   console.log(`  node: ${meta.nodeVersion} · ${meta.platform}/${meta.arch}`)
+  if (meta.act) console.log(`  ato: ${meta.act}`)
   console.log()
+
+  // A PROCEDENCIA de cada familia: "quanto custa" sozinho nao diz de QUANDO e de
+  // QUEM e o numero. Uma familia herdada por `--merge` entra aqui com o commit de
+  // ORIGEM, ao lado do valor — e a mesma pergunta que `meta.reused` responde para
+  // a comparacao, impressa para quem le o relatorio.
+  const procedencias = meta.families ?? {}
+  if (Object.keys(procedencias).length > 0) {
+    console.log("  Procedencia das familias (ato · commit de origem):")
+    console.log("  ─────────────────────────────────────────────────────")
+    for (const [family, p] of Object.entries(procedencias)) {
+      const nome = REUSED_FAMILY_LABELS[family] ?? family
+      const origem = p.commit ? `${String(p.commit).slice(0, 12)} (${p.timestamp ?? "?"})` : "—"
+      console.log(`    ${ACT_LABELS[p.act] ?? p.act} ${nome.padEnd(26)} ${origem}`)
+    }
+    console.log()
+  }
 
   // Tabela de guards
   console.log("  Guards individuais:")
@@ -1917,6 +1954,73 @@ export const REUSED_FAMILY_LABELS = {
   typecheck: "typecheck",
   tests: "suíte",
   hook: "hook (oferta de remendo)",
+}
+
+/** O nome HUMANO do ATO de cada familia (o `meta.families[].act` do JSON). */
+export const ACT_LABELS = {
+  measured: "medida nesta rodada",
+  reused: "herdada de outra rodada",
+  "not-measured": "nao medida",
+}
+
+/**
+ * O ATO que mediu cada familia, como fato de primeira classe.
+ *
+ * Uma familia pode chegar ao relatorio por tres caminhos, e o numero so e
+ * comparavel se o caminho estiver dito: `measured` (esta rodada rodou o comando
+ * dela), `reused` (herdada de outra rodada por `--merge`, com a origem marcada) e
+ * `not-measured` (nao rodou aqui e nao havia de onde herdar — `--only`,
+ * `--no-tests`, ou um arquivo anterior que tambem nao a tinha).
+ *
+ * A REGUA DE "FOI MEDIDA?" E UMA SO: as mesmas perguntas que a comparacao usa
+ * para dizer que falta COBERTURA (`faltantes`, em `compareTimings`). Duas nocoes
+ * de "medida" divergiriam no dia em que alguem ajustasse uma delas, e a
+ * divergencia apareceria como "a baseline diz que mediu e o veredito diz que nao"
+ * — sem teste vermelho.
+ *
+ * O `hook` responde pela MEDICAO declarada (`measured: true`) e nao pela secao
+ * existir: uma secao presente com as ancoras sumidas nao mediu nada, e chama-la
+ * de medida seria a mesma mentira que o `null` existe para evitar.
+ *
+ * @type {Record<string, (report: object|null|undefined) => boolean>}
+ */
+export const FAMILY_MEASURED = {
+  battery: (report) => (report?.guards?.length ?? 0) > 0 || report?.doctor != null,
+  lint: (report) => report?.lint != null,
+  typecheck: (report) => report?.rulers?.typecheck != null,
+  tests: (report) => report?.rulers?.tests != null,
+  hook: (report) => report?.hook?.measured === true,
+}
+
+/**
+ * A PROCEDENCIA de cada familia: qual ATO mediu o numero e QUAL COMMIT ele
+ * descreve.
+ *
+ * POR QUE ISTO E DADO, e nao prosa: um numero de wall time sem a origem nao e
+ * comparavel — a mesma familia pode estar no arquivo medida AGORA ou herdada de
+ * seis commits atras, e "quanto custa" sozinho nao diz qual dos dois aconteceu.
+ * O resumo diz o valor; esta tabela diz de quando e de quem ele e.
+ *
+ * Pura: recebe o relatorio desta rodada e (quando houver) o arquivo anterior.
+ *
+ * @param {{result: object, previous?: object|null, source?: string|null}} args
+ * @returns {Record<string, {act: "measured"|"reused"|"not-measured", commit: string|null, commitDate: string|null, timestamp: string|null, source: string|null}>}
+ */
+export function familyProvenance({ result, previous = null, source = null } = {}) {
+  const out = {}
+  for (const family of Object.keys(FAMILY_MEASURED)) {
+    const medido = FAMILY_MEASURED[family]
+    const daRodada = medido(result)
+    const deOnde = daRodada ? result : medido(previous) ? previous : null
+    out[family] = {
+      act: daRodada ? "measured" : deOnde ? "reused" : "not-measured",
+      commit: deOnde?.meta?.commit ?? null,
+      commitDate: deOnde?.meta?.commitDate ?? null,
+      timestamp: deOnde?.meta?.timestamp ?? null,
+      source: daRodada || !deOnde ? null : source,
+    }
+  }
+  return out
 }
 
 /**
@@ -2113,16 +2217,11 @@ export function compareTimings(
   // por `--no-lint`/`--only`), o veredito é PARCIAL — e a dívida pode ser
   // justamente sobre ela. Herdar não cai aqui: a família herdada está presente
   // (com a procedência marcada), o que falta é a que não foi medida NEM herdada.
-  const temBateria = (report) => (report?.guards?.length ?? 0) > 0 || report?.doctor != null
-  const faltantes = [
-    ["lint", baseline?.lint != null, current?.lint != null],
-    ["typecheck", baseline?.rulers?.typecheck != null, current?.rulers?.typecheck != null],
-    ["tests", baseline?.rulers?.tests != null, current?.rulers?.tests != null],
-    ["hook", baseline?.hook != null, current?.hook != null],
-    ["battery", temBateria(baseline), temBateria(current)],
-  ]
-    .filter(([, naBase, agora]) => naBase && !agora)
-    .map(([family]) => family)
+  // A régua de "foi medida?" é a MESMA que a procedência usa (`FAMILY_MEASURED`):
+  // duas noções de "medida" divergiriam no dia em que alguém ajustasse uma delas.
+  const faltantes = Object.keys(FAMILY_MEASURED).filter(
+    (family) => FAMILY_MEASURED[family](baseline) && !FAMILY_MEASURED[family](current),
+  )
 
   const motivos = []
   if (!baseline) motivos.push("sem baseline para comparar")
@@ -2173,7 +2272,15 @@ function compareReport(current, baseline) {
   console.log("   📊 COMPARAÇÃO vs baseline")
   console.log("  ═══════════════════════════════════════════════════════════════")
   console.log()
-  console.log(`  baseline: ${baseline.meta?.commit ?? "?"} (${baseline.meta?.timestamp ?? "?"})`)
+  // O ESQUEMA da baseline, dito: uma baseline anterior as familias de regua (v1)
+  // nao tem os numeros delas, e as formas delas saem como NOVAS em vez de virar
+  // um delta contra um numero que nao existia.
+  const semFamilias = Object.keys(baseline.meta?.families ?? {}).length === 0
+  console.log(
+    `  baseline: ${baseline.meta?.commit ?? "?"} (${baseline.meta?.timestamp ?? "?"}) — esquema v${baseline.meta?.version ?? "?"}` +
+      (baseline.meta?.act ? ` · ato: ${baseline.meta.act}` : "") +
+      (semFamilias ? " · SEM as familias de regua (as formas delas saem como NOVAS)" : ""),
+  )
   console.log(`  atual:    ${current.meta.commit} (${current.meta.timestamp})`)
   console.log()
 
@@ -2327,6 +2434,7 @@ Usage:
   node scripts/bench-guard-timing.mjs --json         # salva em latest
   node scripts/bench-guard-timing.mjs --save         # salva com data
   node scripts/bench-guard-timing.mjs --baseline     # salva como baseline
+  node scripts/bench-guard-timing.mjs --json --baseline # MOVE a baseline e o latest
   node scripts/bench-guard-timing.mjs --compare      # compara vs baseline
   node scripts/bench-guard-timing.mjs --json --compare  # salva + compara
   node scripts/bench-guard-timing.mjs --samples 3    # amostras por forma de lint
@@ -2360,6 +2468,12 @@ herdado do arquivo, marcado em meta.reused e deixado FORA do veredito — a fam�
 herdada (ou pulada) NÃO julga o TOTAL e torna a comparação measured: false, o que
 recusa o fechamento da issue de tempo (herdar não é medir agora).
 
+O arquivo GRAVADO diz de onde veio cada família: \`meta.act\` é o comando que o
+produziu e \`meta.families\` traz, por família, o ATO (medida nesta rodada, herdada
+de outra, não medida) e o COMMIT de origem do número. Mover a baseline é ato
+deliberado (\`--baseline\`, de preferência com \`--json\`): é ele que decide que os
+números de agora passam a ser a régua.
+
 Exit codes: 0 sucesso · 1 falha/regressão · 2 argumento inválido`)
     return 0
   }
@@ -2377,6 +2491,9 @@ Exit codes: 0 sucesso · 1 falha/regressão · 2 argumento inválido`)
     hook: opts.hook && familias.hook,
     counterfactual: opts.counterfactual,
     battery: runsBattery({ only: opts.only }),
+    // O ATO entra no arquivo: uma baseline medida com `--counterfactual` e outra
+    // sem ele tem numeros de familias diferentes, e so o comando gravado diz qual.
+    act: ["bench-guard-timing", ...process.argv.slice(2)].join(" ").trim(),
   })
   if (opts.merge) {
     const previous = existsSync(join(BENCH_DIR, LATEST_FILE))
@@ -2395,6 +2512,15 @@ Exit codes: 0 sucesso · 1 falha/regressão · 2 argumento inválido`)
     const p = join(BENCH_DIR, BASELINE_FILE)
     writeFileSync(p, JSON.stringify(result, null, 2) + "\n")
     console.log(`  📁 Baseline salvo: ${p}`)
+    // `--baseline --json`: a rodada que MOVE a baseline também é a última
+    // medição (o publicador da issue lê o `latest`). Sem isto, mover a baseline
+    // deixaria o `latest` descrevendo OUTRA árvore — e a comparação do cron
+    // sairia de um arquivo que ninguém acabou de medir.
+    if (opts.json) {
+      const l = join(BENCH_DIR, LATEST_FILE)
+      writeFileSync(l, JSON.stringify(result, null, 2) + "\n")
+      console.log(`  📁 Resultado salvo: ${l}`)
+    }
   } else if (opts.json) {
     const p = join(BENCH_DIR, LATEST_FILE)
     writeFileSync(p, JSON.stringify(result, null, 2) + "\n")

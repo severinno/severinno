@@ -2641,7 +2641,10 @@ controle da mediana das formas de lint, que rodam em segundos.
 (`measured`/`not-measured`), `cold: true` + `cacheFile` na do typecheck, o exit
 da régua sem heap (`legacyBareExit`) e o heap default do node
 (`nodeHeapLimitMb`). Um campo `null` significa **não medido** — nunca zero, e
-nunca um valor herdado sem a marca de procedência.
+nunca um valor herdado sem a marca de procedência. Essa marca é `meta.families`
+(o **ato** e o **commit de origem** de cada família), com `meta.act` ao lado
+dizendo o **comando** que produziu o arquivo: sem os dois, um número de wall time
+não diz de que rodada nem de que árvore ele é.
 
 **A comparação das famílias novas é do COMANDO CANÔNICO**, não do delta: aqui
 "regressão de tempo" significa "o gate ficou mais lento", e o contrafactual não
@@ -2651,11 +2654,22 @@ FORMA por FORMA, casada por PAPEL (o caminho do commit — `comum-hoje` com o
 `comum-hoje` da baseline, não com o que estiver na linha de cima), e os DELTAS
 entre formas ficam fora do veredito de propósito: delta é diferença de duas
 medianas, e julgar regressão sobre ele multiplicaria o ruído — o que a comparação
-julga é o custo ABSOLUTO de cada forma, e o delta diz de onde ele veio. Enquanto a
-baseline versionada (hoje `v1`, anterior às famílias de régua) não carregar a
-família, as formas dela aparecem como **NOVAS** no relatório (`➕`) — mover a
-baseline é ato DELIBERADO (`bun run bench:guard-timing:baseline`), como para as
-outras três. Uma suíte VERMELHA deixa a
+julga é o custo ABSOLUTO de cada forma, e o delta diz de onde ele veio.
+
+**O ESTADO DA BASELINE É DADO, não impressão.** A baseline versionada está no
+**esquema v5**: ela carrega as cinco famílias e, por família, `meta.families` com
+o **ATO** que mediu o número (`measured` nesta rodada · `reused` herdada de outra
+por `--merge` · `not-measured`) e o **COMMIT de origem**, ao lado de `meta.act`
+(o comando que produziu o arquivo) e do carimbo da máquina. A régua de "esta
+família foi medida?" é **UMA SÓ** (`FAMILY_MEASURED`) — a mesma que a comparação
+usa para dizer que falta cobertura, e a mesma que a procedência grava: a
+procedência e o veredito não podem divergir sobre o que foi medido, e uma seção
+presente com `measured: false` (as âncoras do contrafactual sumiram) é
+**não-medida**, não uma medição. Mover a baseline é ato DELIBERADO
+(`bun run bench:guard-timing:baseline`, que grava o `latest` junto quando
+recebe `--json`): antes da v5 a baseline não tinha nenhuma família de régua (v1) e
+as formas delas saíam como **NOVAS** no relatório (`➕`) em toda comparação. Uma
+suíte VERMELHA deixa a
 família `unmeasured` — e a comparação inteira fica `measured: false`, o que
 segura o fechamento automático da issue de tempo: se o gate que decide o merge
 está vermelho, o tempo dele não é a pergunta.
@@ -2670,8 +2684,9 @@ aparece na prontidão sem cruzamento de caducidade, e isso está dito lá.
 elas, sem a bateria) · `--counterfactual` (mede também a régua anterior da
 suíte, ~7min) · `--merge` (herda do arquivo o que não foi medido, marcado e
 fora do veredito) · `--samples N` (amostras por forma de lint; padrão 2) ·
-`bun run bench:guard-timing:baseline` (salva baseline) ·
-`bun run bench:guard-timing:compare` (compara) ·
+`bun run bench:guard-timing:baseline` (salva a baseline **e**, com `--json`, o
+`latest` — mover a baseline é o ato que decide que os números de agora passam a
+ser a régua) · `bun run bench:guard-timing:compare` (compara) ·
 `bun run bench:guard-timing:full` (salva + compara)
 
 **Onde roda:** o job **`guard-timing-alert`** (`benchmark-weekly.yml`, semanal)

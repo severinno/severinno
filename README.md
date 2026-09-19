@@ -994,14 +994,19 @@ revalidar com o remendo já no índice —, e é a segunda medição que cobre o
 que o `run-encoding-guards.sh` nem chegou a rodar (ele para no primeiro que falha).
 
 **O custo da oferta está medido nos DOIS caminhos do commit** (família `hook` do
-`bench-guard-timing`; o número vivo é o de
-`docs/benchmarks/guard-timing-latest.json`). No caminho **comum** (nada reprova) a
+`bench-guard-timing`, com a baseline versionada MOVIDA nesta rodada para ela; o
+número vivo é o de `docs/benchmarks/guard-timing-latest.json`). No caminho **comum** (nada reprova) a
 oferta custa **+1ms (≈0)**: ela não é alcançada, porque o `if` só abre com fase
 vermelha — o custo é pago por quem TEM defeito, não em todo commit. A espera
 SEPARADA do gate de sintaxe contra a agregação no `wait_all` custa **+1ms** (as duas
 esperam o mesmo conjunto; o teto é o `max`). No caminho de **falha** (defeito no
-índice, sem terminal) a oferta custa **+78ms**, e a fase rodada de novo depois de um
-remédio VERDE custa **+72ms**. O contrafactual é uma transformação DO PRÓPRIO hook,
+índice, sem terminal) a oferta custa **+143ms**, e a fase rodada de novo depois de um
+remédio VERDE custa **+71ms**. A sexta classe é o que cresceu aí: a detecção roda
+todas as classes quando é invocada, e a do SIGPIPE varre o repositório inteiro (o
+veredito dela é o estado da árvore, o mesmo `scanRoot` do CI) — a detecção contra a
+árvore real saiu de **201ms para 305ms**. No caminho comum nada disso é pago (a
+oferta só é alcançada com fase vermelha), e a invocação do guard no hook custa
+**~0,14s**, em paralelo com as outras guardas da fase B. O contrafactual é uma transformação DO PRÓPRIO hook,
 anunciada no texto dele (`sem-oferta` mantém o veredito e tira o bloco; `wait
 agregado` devolve o gate ao `wait_all`) — sem as âncoras a família se declara **NÃO
 MEDIDA**, em vez de comparar o hook com ele mesmo. A REVALIDAÇÃO é provada por
