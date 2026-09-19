@@ -364,7 +364,27 @@ describe("readOpenDebt — o board do GitHub deixa de ser ponto cego", () => {
       delete env.GH_TOKEN
       delete env.GH_REPOSITORY
 
-      const debt = await readOpenDebt({ env, deps: { now: () => NOW } })
+      // O CANAL `gh` É INJETADO — e falhando, como no runner da FORJA (onde a CLI
+      // não está instalada). Medir o fallback com a `gh` DA MÁQUINA faria o
+      // desfecho depender de haver uma credencial logada aqui: numa máquina
+      // logada a CLI lê o board DE VERDADE e o "não lida" vira "sem dívida" — o
+      // mesmo falso verde que este teste existe para impedir, só que produzido
+      // pelo ambiente de quem roda a suíte.
+      const semCli = (opts: {
+        forge: string
+        label: string
+        env: Record<string, string | undefined>
+      }) =>
+        listIssuesByLabel({
+          ...opts,
+          deps: {
+            cliList: () => {
+              throw new Error("spawnSync gh ENOENT — a CLI não está instalada aqui")
+            },
+          },
+        })
+
+      const debt = await readOpenDebt({ env, deps: { now: () => NOW, list: semCli } })
 
       expect(debt.state).toBe("partial")
       const unread = (debt.reads as { forge: string; state: string; detail: string }[]).find(
