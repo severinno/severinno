@@ -1088,7 +1088,14 @@ container da imagem, sem o socket do docker montado) ou por `docker run` no
 espelho, cujo runner self-hosted é uma máquina com docker. Ali dentro o
 `git version` da evidência é o DA IMAGEM, e o `--in-image` RECUSA (exit 2)
 quando os marcadores do runtime (`/.dockerenv` + `/opt/acttoolcache`) não estão
-lá — senão a prova mediria a máquina de quem a roda. Custa ≈**0.03s**
+lá — senão a prova mediria a máquina de quem a roda. O job roda essa prova em
+DUAS FORMAS: a padrão (o hook somado ao dublê dos guards irmãos, declarada no
+"NÃO CUBRE" dela) e a `--sem-duble`, que é a que fecha esse limite — o hook REAL
+sobre uma CÓPIA do checkout, com os **cinco guards de fase A e o gate rodando de
+verdade**, a atribuição medida por **exit code** (os cinco saem 0 e o gate não, e
+é o gate quem recusa o commit) e o CONTROLE entrando com o corpo fechado. O texto
+do hook é evidência, não veredito (a escrita num pipe pode perder uma linha); o
+exit code não pode. Custa ≈**0.03s**
 no caminho comum (nada de corpo nem script staged: um `git diff --cached` e mais
 nada), o que o põe no orçamento de um hook que roda a CADA commit sem duplicar a
 varredura do CI. Custo medido neste host (Linux,

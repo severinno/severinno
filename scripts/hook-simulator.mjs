@@ -49,6 +49,7 @@
 import {
   chmodSync,
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -59,7 +60,7 @@ import {
   writeFileSync,
 } from "node:fs"
 import { tmpdir } from "node:os"
-import { dirname, join } from "node:path"
+import { dirname, join, relative } from "node:path"
 import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 
@@ -204,6 +205,48 @@ const dirs = []
 export function tempDir(prefix) {
   const dir = mkdtempSync(join(tmpdir(), prefix))
   dirs.push(dir)
+  return dir
+}
+
+/**
+ * Os caminhos que a CÓPIA do checkout não leva.
+ *
+ * `.git` entra porque a cópia é um repositório NOVO (o histórico do original não
+ * é o assunto, e copiá-lo faria o `git init` seguinte medir outra coisa);
+ * `node_modules` entra porque é LINKADO (copiar 400MB por prova não mediria
+ * nada a mais); os outros são saídas de build — pesadas e irrelevantes para o
+ * veredito do hook. A lista é DECLARADA (e o `--dry-run` do relatório a cita),
+ * não um `filter` que esconde o que deixou de fora.
+ */
+export const COPIA_EXCLUSAO = [".git", "node_modules", ".next", "coverage"]
+
+/**
+ * Uma CÓPIA do checkout num diretório temporário REGISTRADO (o mesmo
+ * `cleanupFixtures()` que remove os fixtures) — com o `node_modules` LINKADO.
+ *
+ * É o que permite medir o hook REAL sem o dublê dos guards irmãos: no fixture o
+ * hook roda somado a um dublê (senão a fase C morreria num repo que não tem o
+ * `package.json` do projeto); numa cópia do checkout a fase inteira roda de
+ * verdade, contra os guards de verdade, e o `git commit` é o do git de verdade.
+ *
+ * @param {{root?: string, prefix?: string, exclude?: string[]}} [opts]
+ * @returns {string}
+ */
+export function copiaDoCheckout({
+  root = REPO_ROOT,
+  prefix = "hook-copia-",
+  exclude = COPIA_EXCLUSAO,
+} = {}) {
+  const dir = tempDir(prefix)
+  cpSync(root, dir, {
+    recursive: true,
+    filter: (origem) => {
+      const rel = relative(root, origem)
+      if (rel === "") return true
+      return !exclude.some((e) => rel === e || rel.startsWith(`${e}/`))
+    },
+  })
+  linkModules(dir)
   return dir
 }
 

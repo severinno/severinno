@@ -32,6 +32,7 @@ export {
   commitObjects,
   contentAtRef,
   committedContent,
+  copiaDoCheckout,
   countObjects,
   gitConfig,
   gitConfigSet,

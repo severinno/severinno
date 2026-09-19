@@ -35,6 +35,8 @@ import {
   EXIT,
   IMAGE_BASE_MARKER,
   IMAGE_REF_ENV,
+  LIMITS,
+  REAL_LIMITS,
   dockerRunArgv,
   evidenceLines,
   exitCodeFor,
@@ -141,6 +143,45 @@ describe("modo interno (`--in-image`): a flag não dispensa a verificação", ()
     expect(r.state).toBe("proven")
     expect(r.proof).toEqual(PROVA_PROVADA)
     expect(prove).toHaveBeenCalledTimes(1)
+  })
+
+  it("sem `prove` injetado, a forma SEM DUBLÊ escolhe a prova REAL de verdade", () => {
+    // Sem `prove` (o `depsBase` o injeta): quem roda é a função de verdade. O
+    // detalhe é DELA — é o que separa "escolheu a prova real" de "escolheu a do
+    // fixture por engano" num checkout que não é um checkout.
+    const semInjecao = (exists: (p: string) => boolean) => ({
+      exists,
+      runtime: depsBase().runtime,
+    })
+    const existe = existsOf([CONTAINER_MARKERS[0], IMAGE_BASE_MARKER])
+    const root = join(process.cwd(), "nao-e-um-checkout", "prova")
+    const real = innerReport({ root, semDuble: true, deps: semInjecao(existe) })
+    expect(real.state).toBe("unavailable")
+    expect(real.detail).toContain("não dá para rodar o hook REAL sem dublê")
+    const duble = innerReport({ root, deps: semInjecao(existe) })
+    expect(duble.state).toBe("unavailable")
+    expect(duble.detail).toContain("não existe neste checkout")
+  })
+
+  it("a forma SEM DUBLÊ troca o ESCOPO DECLARADO — e o limite do dublê sai dele", () => {
+    const r = innerReport({
+      semDuble: true,
+      deps: depsBase({ exists: existsOf([CONTAINER_MARKERS[0], IMAGE_BASE_MARKER]) }),
+    })
+    expect(r.variante).toBe("sem-duble")
+    expect(r.limits).toEqual(REAL_LIMITS)
+    // É ISTO que fecha o limite: na forma sem dublê os guards irmãos rodam de
+    // verdade, então o limite "os irmãos rodam no dublê" não vale mais aqui — e
+    // ele continua dito (com o remédio nomeado) na forma padrão.
+    expect(r.limits?.some((l) => l.includes("DUBLÊ DECLARADO"))).toBe(false)
+    expect(LIMITS[0]).toContain("DUBLÊ DECLARADO")
+    expect(LIMITS[0]).toContain("--sem-duble")
+    // E a forma padrão segue com o escopo dela (não herdou o da real).
+    const duble = innerReport({
+      deps: depsBase({ exists: existsOf([CONTAINER_MARKERS[0], IMAGE_BASE_MARKER]) }),
+    })
+    expect(duble.variante).toBe("com-duble")
+    expect(duble.limits).toEqual(LIMITS)
   })
 
   it("os TRÊS estados da prova passam sem serem reinterpretados", () => {
@@ -321,6 +362,59 @@ describe("o contrato com quem invoca (as linhas de evidência)", () => {
     const cmd = innerCommand({ root: "/home/runner/work/m r/m r", self: "/repo/scripts/p.mjs" })
     expect(cmd).toContain('"/home/runner/work/m r/m r"')
     expect(cmd).toContain("--in-image")
+    // A forma atravessa o `docker run`: o container tem de rodar a MESMA prova
+    // que quem o invocou pediu — uma segunda cópia do comando divergiria aqui.
+    expect(cmd).not.toContain("--sem-duble")
+    expect(innerCommand({ root: "/r", self: "/s.mjs", semDuble: true })).toContain("--sem-duble")
+    const argv = dockerRunArgv({ ref: "img:1", root: "/r", semDuble: true })
+    expect(argv.join(" ")).toContain("--sem-duble")
+    expect(innerCommand({ root: "/r", self: "/s.mjs", semDuble: true })).toContain("--in-image")
+  })
+
+  it("a evidência da forma SEM DUBLÊ publica a ATRIBUIÇÃO (refutadores, irmãos e o HEAD)", () => {
+    const real = innerReport({
+      semDuble: true,
+      deps: depsBase({
+        exists: existsOf([CONTAINER_MARKERS[0], IMAGE_BASE_MARKER]),
+        prove: () => ({
+          state: "proven",
+          detail: "d",
+          evidence: {
+            defeito: {
+              status: 1,
+              output: "o",
+              objetosDeCommit: 1,
+              headExiste: true,
+              headAntes: "aaa",
+              headDepois: "aaa",
+              refutadores: ["❌ 1 corpo(s) NÃO passam em `bash -n` — 1 com ERRO de sintaxe,"],
+            },
+            irmaos: [
+              { guard: "a.mjs", status: 0, linha: "" },
+              { guard: "b.mjs", status: 1, linha: "" },
+            ],
+            controle: { status: 0, objetosDeCommit: 2, headAntes: "aaa", headDepois: "bbb" },
+          },
+        }),
+      }),
+    })
+    const texto = evidenceLines(real).join("\n")
+    const { facts, unparsed } = parseInImage(texto)
+    expect(unparsed).toEqual([])
+    expect(facts.VARIANTE).toBe("sem-duble")
+    expect(facts.REFUTADORES).toBe("1")
+    expect(facts.IRMAOS).toBe("1/2")
+    expect(facts.HEAD).toBe("defeito:intacto controle:avancou")
+  })
+
+  it("a forma com dublê NÃO ganha a linha de HEAD (o contrato dela segue igual)", () => {
+    const r = innerReport({
+      deps: depsBase({ exists: existsOf([CONTAINER_MARKERS[0], IMAGE_BASE_MARKER]) }),
+    })
+    const texto = evidenceLines(r).join("\n")
+    expect(texto).toContain(`${EVIDENCE_PREFIX}CONTROLE=exit:0 objetos:1`)
+    expect(texto).not.toContain(`${EVIDENCE_PREFIX}HEAD=`)
+    expect(texto).toContain(`${EVIDENCE_PREFIX}VARIANTE=com-duble`)
   })
 
   it("o argv do `docker run` monta o MESMO caminho e herda as variáveis da ref", () => {
@@ -379,18 +473,40 @@ describe("o relatório e o CLI", () => {
     expect(texto).toContain("o digest não é legível daqui")
   })
 
-  it("as opções: `--in-image` é a única que troca o LUGAR", () => {
-    expect(parseArgs([])).toMatchObject({ inImage: false, json: false, docker: "docker" })
+  it("as opções: `--in-image` troca o LUGAR e `--sem-duble` a FORMA", () => {
+    expect(parseArgs([])).toMatchObject({
+      inImage: false,
+      semDuble: false,
+      json: false,
+      docker: "docker",
+    })
     expect(parseArgs(["--in-image"]).inImage).toBe(true)
+    expect(parseArgs(["--sem-duble"]).semDuble).toBe(true)
     expect(parseArgs(["--image", "x:1"]).image).toBe("x:1")
     expect(parseArgs(["--docker", "podman"]).docker).toBe("podman")
     expect(parseArgs(["--root", "/r"]).root).toBe("/r")
     expect((parseArgs(["--nada"]) as { unknown?: string }).unknown).toBe("--nada")
   })
 
+  it("o relatório diz a FORMA (com ou sem o dublê dos irmãos)", () => {
+    const linhas: string[] = []
+    renderReport(
+      innerReport({
+        semDuble: true,
+        deps: depsBase({ exists: existsOf([CONTAINER_MARKERS[0], IMAGE_BASE_MARKER]) }),
+      }),
+      { emit: (s = "") => linhas.push(s) },
+    )
+    const texto = linhas.join("\n")
+    expect(texto).toContain("SEM o dublê dos guards irmãos")
+    expect(texto).toContain("o defeito é um workflow NOVO")
+  })
+
   it("o script usa a MESMA prova do doctor e da suíte (uma régua só, dois lugares)", () => {
     const fonte = readFileSync(SCRIPT, "utf8")
-    expect(fonte).toContain('import { proveCommitBlocks } from "./pre-commit-proof.mjs"')
+    expect(fonte).toContain(
+      'import { proveCommitBlocks, proveRealHookBlocks } from "./pre-commit-proof.mjs"',
+    )
     // O cliente do docker e o "o docker responde?" também vêm de um dono só.
     expect(fonte).toContain('from "./prove-image-contract.mjs"')
     expect(fonte).toContain('from "./runner-shells.mjs"')

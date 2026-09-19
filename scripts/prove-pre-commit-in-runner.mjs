@@ -66,15 +66,32 @@
 // ele não conseguiu medir sai como INDETERMINADO (exit 2), NOMEANDO o que
 // faltou — nunca como verde.
 //
-// O QUE ELA **NÃO** PROMETE (escopo declarado, não esquecimento):
+// DUAS FORMAS, e a diferença é o que ela MEDE:
 //
-//   - os guards IRMÃOS do hook são o DUBLÊ DECLARADO do simulador
+//   - PADRÃO — o hook do checkout somado ao dublê do simulador. Os guards irmãos
+//     do defeito devolvem 0 (declarado), e o que roda de verdade é o guard do
+//     defeito (`check-workflow-run-syntax.mjs --staged`, com o `node` REAL do
+//     runtime) e o REMÉDIO. É a forma BARATA: o fixture não tem o `package.json`
+//     do projeto, e a fase C real (`lint-staged`, `typecheck`) não caberia nele;
+//   - `--sem-duble` — o hook REAL sobre uma CÓPIA do checkout (`proveRealHookBlocks`):
+//     os CINCO guards de fase A rodam de VERDADE (sem wrapper, sem dublê), o gate
+//     é o real e a fase C roda real, porque a cópia tem o `package.json` e o
+//     `node_modules`. É o que fecha o limite que a forma padrão declara — e é a
+//     forma que responde "quem, dentro da FASE A, recusa o corpo quebrado": o
+//     refutador tem de ser ÚNICO, e tem de ser o GATE, com os cinco irmãos
+//     aprovando o MESMO índice.
+//
+// O QUE A FORMA PADRÃO **NÃO** PROMETE (escopo declarado, não esquecimento):
+//
+//   - os guards IRMÃOS do hook rodam no DUBLÊ DECLARADO do simulador
 //     (`hook-simulator.mjs`): o `bun`, o `bash` e o `node` deles devolvem 0. Quem
 //     roda de verdade é o guard do defeito (`check-workflow-run-syntax.mjs
 //     --staged`, com o `node` REAL do runtime) e o REMÉDIO. Sem o dublê a fase C
 //     do hook (`lint-staged`, `typecheck`) rodaria num fixture que não tem o
 //     `package.json` do repositório, e o CONTROLE nunca comitaria — o dublê é o
-//     que torna a medição sobre o FIO sob teste;
+//     que torna a medição sobre o FIO sob teste. QUEM RODA OS IRMÃOS DE VERDADE É
+//     O `--sem-duble` (medido: os cinco guards de fase A, com o mesmo `--staged`,
+//     saem 0 enquanto o gate recusa);
 //   - a ref é a que o repositório DECLARA (`IMAGE_REGISTRY`/`IMAGE_NAMESPACE`/
 //     `BUN_VERSION`): o digest sai como proveniência MEDIDA, mas quem diz se o
 //     runner registrado aponta para ELA é o `check-runner-labels`/o smoke;
@@ -91,7 +108,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { resolveBash } from "./hook-simulator.mjs"
-import { proveCommitBlocks } from "./pre-commit-proof.mjs"
+import { proveCommitBlocks, proveRealHookBlocks } from "./pre-commit-proof.mjs"
 // O cliente do docker e o "o docker responde?" têm UM dono cada (`dockerCall` e
 // `dockerAvailable` do `prove-image-contract`, `probeDigest`/`runnerImageRef` do
 // `runner-shells`): uma segunda implementação de "o docker respondeu" divergiria
@@ -122,7 +139,7 @@ export const EXIT = {
  *
  * @typedef {{
  *   state: string, detail: string, limits: string[],
- *   modo?: string, image?: string|null, digest?: string|null, pulled?: string|null,
+ *   modo?: string, variante?: string, image?: string|null, digest?: string|null, pulled?: string|null,
  *   markers?: {container: string|null, base: string|null, inside: boolean},
  *   runtime?: {node: string, nodeVersion: string, git: string|null, bash: string}|null,
  *   facts?: Record<string,string>|null, unparsed?: string[],
@@ -169,9 +186,24 @@ export const IMAGE_REF_ENV = "PROVA_IMAGE_REF"
 
 /** O que NÃO é negociável: o hook, o guard que ele executa e o fixture. */
 export const LIMITS = [
-  "os guards IRMÃOS do hook rodam no DUBLÊ DECLARADO do simulador (`bun`/`bash`/`node` deles devolvem 0): quem roda de verdade é o guard do defeito, com o `node` REAL do runtime",
+  "os guards IRMÃOS do hook rodam no DUBLÊ DECLARADO do simulador (`bun`/`bash`/`node` deles devolvem 0): quem roda de verdade é o guard do defeito, com o `node` REAL do runtime. Quem roda os irmãos DE VERDADE é o `--sem-duble`, que mede os cinco guards de fase A com o mesmo `--staged` — o limite desta forma, não do comando",
   "o repositório da prova é o FIXTURE do simulador (o mesmo da suíte e do doctor), não o checkout do PR",
   "a ref é a DECLARADA pelo repositório (IMAGE_REGISTRY/IMAGE_NAMESPACE/BUN_VERSION): o digest sai como proveniência medida, mas quem prova qual imagem o runner registrou é o `check-runner-labels`/o smoke",
+]
+
+/**
+ * O escopo declarado da forma `--sem-duble` — o que ela NÃO promete.
+ *
+ * A primeira entrada do `LIMITS` acima (o dublê dos irmãos) sai daqui: nesta
+ * forma os cinco guards de fase A rodam de verdade, e o refutador tem de ser o
+ * gate. O que sobra é o que ela realmente não cobre: o RECORTE do defeito, a
+ * origem da árvore e o teto de tempo por comando.
+ */
+export const REAL_LIMITS = [
+  "o defeito é um workflow NOVO (`.github/workflows/prova-fase-a-real.yml`): um defeito num workflow EXISTENTE faria outros guards reprovarem junto, e a recusa deixaria de ser atribuível a um guard só",
+  "a árvore da prova é uma CÓPIA do checkout (com o commit base sintético), não o commit do PR: quem mede o commit do PR são as pipelines do merge",
+  "o REMÉDIO fica sem operador (`NO_PROMPT_ENV` do simulador): a prova mede o caminho NÃO interativo — quem mede o interativo é o ensaio do pty",
+  "o teto de tempo por comando do simulador (`runGit`, 60s): um commit de controle mais lento que isso sai como INDETERMINADO, nunca como verde",
 ]
 
 /**
@@ -224,6 +256,17 @@ export function runtimeEvidence({
  */
 export function evidenceLines(r) {
   const linhas = [`${EVIDENCE_PREFIX}MODO=${r.modo}`, `${EVIDENCE_PREFIX}STATE=${r.state}`]
+  if (r.variante) linhas.push(`${EVIDENCE_PREFIX}VARIANTE=${r.variante}`)
+  // A ATRIBUIÇÃO da recusa sai como evidência própria na forma sem dublê: sem
+  // ela, quem lê o container não sabe se um refutador só (o gate) ou vários
+  // (a fase) — que é exatamente a pergunta desta forma.
+  const refutadores = r.proof?.evidence?.defeito?.refutadores
+  if (Array.isArray(refutadores)) linhas.push(`${EVIDENCE_PREFIX}REFUTADORES=${refutadores.length}`)
+  const irmaos = r.proof?.evidence?.irmaos
+  if (Array.isArray(irmaos)) {
+    const ok = irmaos.filter((i) => i.status === 0).length
+    linhas.push(`${EVIDENCE_PREFIX}IRMAOS=${ok}/${irmaos.length}`)
+  }
   if (r.markers?.container) linhas.push(`${EVIDENCE_PREFIX}CONTAINER=${r.markers.container}`)
   if (r.markers?.base) linhas.push(`${EVIDENCE_PREFIX}BASE=${r.markers.base}`)
   if (r.runtime) {
@@ -243,6 +286,18 @@ export function evidenceLines(r) {
   if (controle) {
     linhas.push(
       `${EVIDENCE_PREFIX}CONTROLE=exit:${controle.status} objetos:${controle.objetosDeCommit}`,
+    )
+  }
+  // Na forma SEM DUBLÊ a contagem de objetos deixa de medir "o commit entrou":
+  // a fase C roda de verdade e o `lint-staged` cria objetos por conta própria (o
+  // stash interno dele). O que mede é o HEAD — e é ele que sai como evidência a
+  // mais, em vez de deixar o número de objetos dizendo o que ele não diz.
+  const headDefeito = r.proof?.evidence?.defeito?.headDepois
+  const headControle = r.proof?.evidence?.controle?.headDepois
+  if (typeof headDefeito === "string" && typeof headControle === "string") {
+    const headBase = r.proof.evidence.defeito.headAntes
+    linhas.push(
+      `${EVIDENCE_PREFIX}HEAD=defeito:${headDefeito === headBase ? "intacto" : "avancou"} controle:${headControle === headBase ? "intacto" : "avancou"}`,
     )
   }
   return linhas
@@ -277,19 +332,27 @@ export function parseInImage(output) {
  * hospedeira é uso indevido, e devolver `proven` ali mediria outra coisa. É o
  * caso de uso que o comando existe para não permitir.
  *
- * @param {{root?: string, env?: Record<string,string|undefined>, deps?: {prove?: Function, exists?: Function, markers?: Function, runtime?: Function}}} [args]
+ * @param {{root?: string, env?: Record<string,string|undefined>, semDuble?: boolean, deps?: {prove?: Function, exists?: Function, markers?: Function, runtime?: Function}}} [args]
  * @returns {ReporteDoLugar}
  */
 export function innerReport({
   root = REPO_ROOT,
   env = process.env,
+  semDuble = false,
   deps = /** @type {any} */ ({}),
 } = {}) {
   const exists = deps.exists ?? existsSync
   const markers = (deps.markers ?? markersInImage)({ exists })
   const runtime = (deps.runtime ?? runtimeEvidence)()
   const ref = env[IMAGE_REF_ENV] ?? null
-  const base = { modo: "in-image", image: ref, limits: LIMITS, markers, runtime }
+  const base = {
+    modo: "in-image",
+    image: ref,
+    variante: semDuble ? "sem-duble" : "com-duble",
+    limits: semDuble ? REAL_LIMITS : LIMITS,
+    markers,
+    runtime,
+  }
 
   if (!markers.inside) {
     const faltando = []
@@ -307,10 +370,13 @@ export function innerReport({
     }
   }
 
-  const prove = deps.prove ?? ((opts) => proveCommitBlocks(opts))
+  const prove =
+    deps.prove ??
+    (semDuble ? (opts) => proveRealHookBlocks(opts) : (opts) => proveCommitBlocks(opts))
   const proof = prove({ root })
   const onde = ref === null ? "" : ` dentro da imagem '${ref}'`
-  return { ...base, state: proof.state, detail: `${proof.detail}${onde}`, proof }
+  const qual = semDuble ? " [sem o dublê dos guards irmãos]" : ""
+  return { ...base, state: proof.state, detail: `${proof.detail}${qual}${onde}`, proof }
 }
 
 /**
@@ -319,11 +385,14 @@ export function innerReport({
  * workspace (`/home/runner/work/<repo>/<repo>` — sem aspas, um espaço partiria o
  * comando em dois).
  *
- * @param {{root?: string, self?: string}} [args]
+ * @param {{root?: string, self?: string, semDuble?: boolean}} [args]
  * @returns {string}
  */
-export function innerCommand({ root = REPO_ROOT, self = SELF } = {}) {
-  return `node ${JSON.stringify(self)} --root ${JSON.stringify(root)} --in-image`
+export function innerCommand({ root = REPO_ROOT, self = SELF, semDuble = false } = {}) {
+  return (
+    `node ${JSON.stringify(self)} --root ${JSON.stringify(root)} --in-image` +
+    (semDuble ? " --sem-duble" : "")
+  )
 }
 
 /**
@@ -332,10 +401,10 @@ export function innerCommand({ root = REPO_ROOT, self = SELF } = {}) {
  * pelo container (para a evidência declarar a versão contra a qual a prova
  * rodou, e não só o `bun --version` do momento de quem invoca).
  *
- * @param {{ref: string, root?: string, env?: Record<string,string|undefined>}} args
+ * @param {{ref: string, root?: string, env?: Record<string,string|undefined>, semDuble?: boolean}} args
  * @returns {string[]}
  */
-export function dockerRunArgv({ ref, root = REPO_ROOT, env = {} }) {
+export function dockerRunArgv({ ref, root = REPO_ROOT, env = {}, semDuble = false }) {
   const argv = ["run", "--rm"]
   for (const nome of ["IMAGE_REGISTRY", "IMAGE_NAMESPACE", "BUN_VERSION"]) {
     const valor = env[nome]
@@ -354,7 +423,7 @@ export function dockerRunArgv({ ref, root = REPO_ROOT, env = {} }) {
     "/bin/bash",
     ref,
     "-lc",
-    innerCommand({ root }),
+    innerCommand({ root, semDuble }),
   )
   return argv
 }
@@ -372,6 +441,7 @@ function indisponivel(detail, extra = {}) {
  * @param {{
  *   root?: string, image?: string|null, docker?: string,
  *   env?: Record<string,string|undefined>, wantInImage?: boolean,
+ *   semDuble?: boolean,
  *   deps?: {prove?: Function, exists?: Function, markers?: Function, runtime?: Function,
  *           available?: Function, call?: Function, digest?: Function},
  * }} [args]
@@ -383,18 +453,20 @@ export function placeReport({
   docker = "docker",
   env = process.env,
   wantInImage = false,
+  semDuble = false,
   deps = /** @type {any} */ ({}),
 } = {}) {
   const exists = deps.exists ?? existsSync
   const markers = (deps.markers ?? markersInImage)({ exists })
   const ref = image ?? (deps.imageRef ?? runnerImageRef)(env)
+  const variante = semDuble ? "sem-duble" : "com-duble"
 
   // 1. `--in-image` explícito: é o container falando. Roda aqui (ou diz por que não pode).
-  if (wantInImage) return innerReport({ root, env, deps })
+  if (wantInImage) return innerReport({ root, env, semDuble, deps })
 
   // 2. O job JÁ roda dentro da imagem (o label `docker://` da forja): o docker
   //    não está montado no container, e não precisa estar.
-  if (markers.inside) return innerReport({ root, env, deps })
+  if (markers.inside) return innerReport({ root, env, semDuble, deps })
 
   // 3. O runner é uma máquina com docker: o MESMO comando roda no container.
   const available = (deps.available ?? dockerAvailable)({ docker })
@@ -404,13 +476,25 @@ export function placeReport({
         `(faltou ${markers.container ? IMAGE_BASE_MARKER : CONTAINER_MARKERS.join(" ou ")}) e o docker não respondeu ` +
         `(cliente '${docker}'). O remedy é rodar este comando onde há uma das duas coisas: ` +
         `no container do job da forja (label docker://) ou numa máquina com docker`,
-      { modo: "indefinido", markers, image: ref },
+      {
+        modo: "indefinido",
+        markers,
+        image: ref,
+        variante,
+        limits: semDuble ? REAL_LIMITS : LIMITS,
+      },
     )
   }
   if (typeof ref !== "string" || ref.trim() === "") {
     return indisponivel(
       "sem ref da imagem do runner: defina BUN_VERSION (IMAGE_REGISTRY/IMAGE_NAMESPACE completam a ref) ou passe --image <ref>",
-      { modo: "docker-run", markers, image: null },
+      {
+        modo: "docker-run",
+        markers,
+        image: null,
+        variante,
+        limits: semDuble ? REAL_LIMITS : LIMITS,
+      },
     )
   }
 
@@ -426,13 +510,19 @@ export function placeReport({
       return indisponivel(
         `a imagem '${ref}' não está local e o pull falhou: ${pull.output.split("\n").slice(-1)[0] || "sem saída"} — ` +
           `confira a credencial do registry (o mirror é privado) e se a tag existe (BUN_VERSION re-sincronizado)`,
-        { modo: "docker-run", markers, image: ref },
+        {
+          modo: "docker-run",
+          markers,
+          image: ref,
+          variante,
+          limits: semDuble ? REAL_LIMITS : LIMITS,
+        },
       )
     }
     pulled = "baixada"
   }
 
-  const argv = dockerRunArgv({ ref, root, env })
+  const argv = dockerRunArgv({ ref, root, env, semDuble })
   const res = call({ docker, args: argv, timeoutMs: RUN_TIMEOUT_MS })
   const digest = (deps.digest ?? probeDigest)(ref, { docker })
   const parsed = parseInImage(res.output)
@@ -440,10 +530,11 @@ export function placeReport({
   const base = {
     modo: "docker-run",
     image: ref,
+    variante,
     digest,
     pulled,
     markers,
-    limits: LIMITS,
+    limits: semDuble ? REAL_LIMITS : LIMITS,
     facts: parsed.facts,
     unparsed: parsed.unparsed,
     argv: [docker, ...argv].join(" "),
@@ -521,6 +612,9 @@ export function exitCodeFor(state) {
 export function renderReport(report, { emit = console.log } = {}) {
   const linha = (s = "") => emit(s)
   linha("== Prova do bloqueio do pre-commit — DENTRO do runtime do CI ==")
+  linha(
+    `   forma:   ${report.variante === "sem-duble" ? "SEM o dublê dos guards irmãos (o hook REAL sobre uma cópia do checkout)" : report.variante === "com-duble" ? "com o dublê dos guards irmãos (o fixture do simulador)" : "indefinida (não foi possível escolher o lugar)"}`,
+  )
   const modo =
     report.modo === "in-image"
       ? "em lugar (o job já roda no container da imagem do runner)"
@@ -572,6 +666,7 @@ export function parseArgs(argv = []) {
     help: false,
     json: false,
     inImage: false,
+    semDuble: false,
     image: null,
     docker: "docker",
     root: REPO_ROOT,
@@ -581,6 +676,7 @@ export function parseArgs(argv = []) {
     if (a === "-h" || a === "--help") opts.help = true
     else if (a === "--json") opts.json = true
     else if (a === "--in-image") opts.inImage = true
+    else if (a === "--sem-duble") opts.semDuble = true
     else if (a === "--image") opts.image = argv[++i] ?? null
     else if (a === "--docker") opts.docker = argv[++i] ?? "docker"
     else if (a === "--root") opts.root = argv[++i] ?? REPO_ROOT
@@ -603,7 +699,9 @@ export function main({ argv = process.argv.slice(2), env = process.env, deps = {
     console.log(
       "prove-pre-commit-in-runner — a prova do bloqueio do pre-commit DENTRO do runtime do CI\n\n" +
         "Usage:\n" +
-        "  node scripts/prove-pre-commit-in-runner.mjs [--in-image] [--image <ref>] [--docker <cli>] [--root <dir>] [--json]\n\n" +
+        "  node scripts/prove-pre-commit-in-runner.mjs [--sem-duble] [--in-image] [--image <ref>] [--docker <cli>] [--root <dir>] [--json]\n\n" +
+        "  (sem --sem-duble) o hook do checkout é somado ao dublê dos guards irmãos (o fixture)\n" +
+        "  (--sem-duble)     o hook REAL sobre uma cópia do checkout — os CINCO guards de fase A e o gate rodam de verdade\n\n" +
         "Exit codes: 0 provado · 1 violado · 2 indeterminado · 3 uso inválido",
     )
     return EXIT.PROVEN
@@ -614,6 +712,7 @@ export function main({ argv = process.argv.slice(2), env = process.env, deps = {
     docker: opts.docker,
     env,
     wantInImage: opts.inImage,
+    semDuble: opts.semDuble,
     deps,
   })
   if (opts.json) console.log(JSON.stringify(report, null, 2))

@@ -5292,11 +5292,49 @@ prova):
    ABSOLUTO, e montar em outro caminho faria o guard morrer de "module not
    found", com o não-zero vindo do fixture em vez do defeito.
 
+**DUAS FORMAS, e a diferença é o que cada uma MEDE.** Sem flag, o hook do
+checkout é rodado SOMADO ao dublê do simulador: os guards irmãos do defeito
+devolvem 0 (declarado), e quem roda de verdade é o guard do defeito
+(`check-workflow-run-syntax.mjs --staged`, com o `node` REAL do runtime) e o
+REMÉDIO — é a forma BARATA, e o fixture não tem o `package.json` do projeto (a
+fase C real, `lint-staged`/`typecheck`, não caberia nele).
+
+Com `--sem-duble`, o hook é o **REAL** sobre uma **CÓPIA do checkout**
+(`proveRealHookBlocks`): sem wrapper e sem dublê, os **CINCO guards de fase A**
+rodam de VERDADE, o gate é o real e a fase C (lint-staged, typecheck) roda real —
+porque a cópia tem o `package.json` e o `node_modules` (LINKADO, não copiado).
+
+**Como a recusa é ATRIBUÍDA nesta forma (por exit code, não por prosa):**
+
+1. o **defeito** — um corpo `run:` aberto num workflow **NOVO**
+   (`.github/workflows/prova-fase-a-real.yml`, para o refutador ser ÚNICO: num
+   workflow existente outros guards reprovariam junto e a recusa deixaria de ser
+   atribuível) — é RECUSADO: exit não-zero e o **HEAD intacto**. A contagem de
+   objetos de commit NÃO mede isso aqui: na cópia a fase C roda de verdade e o
+   `lint-staged` cria objetos por conta própria (o stash interno dele);
+2. os **cinco** guards de fase A e o **gate**, rodados DIRETAMENTE com o mesmo
+   `--staged` sobre o MESMO índice, têm de sair **0,0,0,0,0** e **não-zero** —
+   respectivamente. É a metade que responde "quem recusa": sem ela, um irmão que
+   também reprovasse (ou que nem rodasse) ficaria invisível;
+3. o **CONTROLE** (o mesmo arquivo com o corpo fechado) ENTRA — sem ele,
+   "recusou" seria indistinguível de um ambiente que não sabe commitar.
+
+O TEXTO do hook (os `✅`/`❌` dele) entra como **evidência** e como rigor EXTRA
+(um refutador que não seja o do gate derruba a prova), nunca como requisito: a
+escrita de um processo num PIPE é assíncrona e uma linha pode se perder (medido —
+num stub mínimo os `✅` variaram de 3 a 5 entre execuções). Um requisito de
+texto seria flaky por construção; o exit code não é.
+
 **A ponte entre os dois processos.** O processo de dentro (que roda no
 container) imprime linhas `PROVA-<CHAVE>=<valor>` — modo, estado, marcadores, o
 runtime MEDIDO (`/opt/acttoolcache/node/<versão>/x64/bin/node`, o `git` da
-imagem, o `bash` do harness), o defeito e o controle. O **exit code** continua
-sendo o veículo do veredito (o docker o propaga) e as linhas são a
+imagem, o `bash` do harness), o defeito e o controle. Na forma sem dublê saem
+também a **forma** (`PROVA-VARIANTE`), a **atribuição** (`PROVA-REFUTADORES`, o
+número de refutadores no relatório do hook; `PROVA-IRMAOS`, quantos dos cinco
+saíram 0) e o **HEAD** de cada metade (`PROVA-HEAD=defeito:intacto
+controle:avancou`) — o número de objetos fica na evidência como o que ele é
+(objetos do repositório), não como veredito de "o commit entrou". O **exit code**
+continua sendo o veículo do veredito (o docker o propaga) e as linhas são a
 proveniência: `null` de exit (timeout, sinal) e código desconhecido (125 do
 docker, 127 de binário ausente) são **INDETERMINADO**, nunca verde.
 
@@ -5310,20 +5348,48 @@ commit aconteceu. No CI o job roda nas duas forjas (é CORE: invariante
 `pre-commit-in-runner-proof`, o mesmo comando nas duas pipelines) e o doctor
 confirma o contrato: o job está no manifesto e roda a régua da invariante.
 
-**O que NÃO cobre (declarado no relatório, não escondido):** os guards IRMÃOS do
-hook rodam no dublê declarado do simulador (`bun`/`bash`/`node` deles devolvem 0) — quem roda de verdade é o guard do defeito, com o `node` REAL do runtime;
-o repositório da prova é o FIXTURE do simulador, não o checkout do PR; a ref é a
-DECLARADA (o digest sai como proveniência medida, mas quem prova qual imagem o
-runner registrou é o `check-runner-labels`/o smoke); e no modo `docker run` a
-imagem tem de estar local ou ser baixável — pull que falha é INDETERMINADO com
-a dica da credencial.
+**O que NÃO cobre (declarado no relatório, não escondido).** A forma PADRÃO
+declara que os guards IRMÃOS rodam no dublê do simulador — e o limite diz ONDE
+ele é fechado: **o `--sem-duble`, que roda os cinco de verdade**. Quem é a forma
+padrão é o fixture do simulador, não o checkout do PR; a ref é a DECLARADA (o
+digest sai como proveniência medida, mas quem prova qual imagem o runner
+registrou é o `check-runner-labels`/o smoke); e no modo `docker run` a imagem tem
+de estar local ou ser baixável — pull que falha é INDETERMINADO com a dica da
+credencial.
+
+A forma SEM DUBLÊ declara o escopo DELA (não herda os de cima): o defeito é um
+workflow NOVO (o mesmo motivo da atribuição única); a árvore é uma CÓPIA do
+checkout com commit base sintético (quem mede o commit do PR são as pipelines do
+merge); o REMÉDIO fica sem operador (`NO_PROMPT_ENV` do simulador — a prova mede
+o caminho NÃO interativo, e quem mede o interativo é o ensaio do pty); e o teto de
+tempo por comando do simulador (`runGit`, 60s) faz um controle mais lento que isso
+sair como INDETERMINADO.
+
+**O que ela já pegou.** Na primeira medição de verdade o `--sem-duble` saiu
+INDETERMINADO não por causa da prova, mas do CHECKOUT: um `: ` dentro do escalar
+plano de um `run:` do Summary quebrou o YAML das DUAS pipelines, e os três guards
+de varredura de workflow responderam `NÃO JULGÁVEL` (a classe que o `readWorkflowScan`
+existe para nomear). O bloco apareceu no relatório da prova — e foi corrigido no
+mesmo turno. É o desenho funcionando: "não conseguir julgar" nunca vira "nada a
+julgar", nem dentro de uma prova que roda no runtime do CI.
 
 **Onde roda.** Job `pre-commit-in-runner-proof` (nome `Pre-commit Proof (dentro
 da imagem do runner)`) nas duas pipelines, e é **required check**
 (`ci/required-checks.json`). No espelho, `permissions: packages: read` para o
 pull da imagem privada, e `bun install --frozen-lockfile` — a prova precisa do
 `node_modules` (o guard importa o parser), e é o `check-job-deps` quem cobra isso
-de todo job.
+de todo job. O job roda os DOIS passos: a prova (dublê) e a prova `--sem-duble`
+— nenhum contexto novo de required check entra no contrato (é o MESMO job), e é
+por isso que o rename/bump da matriz não toca a branch protection.
+
+**Custo (medido neste host, 09/2026, com a imagem já local).** A forma sem
+dublê acrescenta **31s** ao job (medido o comando inteiro: o `docker run` + a
+prova dentro dele): cópia do checkout (~95MB, com o `node_modules` LINKADO) + o
+commit do defeito (~3s — a fase A recusa antes da fase C) + os seis guards
+diretos (~2s) + o commit do CONTROLE (~25s, que é a fase C real: `lint-staged` +
+`typecheck`). Ela RODA o typecheck do repositório de verdade — o que, na primeira
+execução, reprovou o CONTROLE por um erro de tipo real introduzido no mesmo
+turno (JSDoc sem o campo novo), e o pegou antes de qualquer outra rede.
 
 <!-- prove-doc: pre-commit-in-runner:prove
      run: --json

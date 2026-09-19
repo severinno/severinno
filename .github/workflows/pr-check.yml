@@ -520,8 +520,19 @@ jobs:
           BUN_VERSION: ${{ vars.BUN_VERSION }}
         run: node scripts/prove-pre-commit-in-runner.mjs
 
+      # A MESMA prova SEM o dublê dos guards irmãos: o hook REAL sobre uma cópia
+      # do checkout, com os CINCO guards de fase A rodando de verdade. É o que
+      # fecha o limite que o passo acima declara ("os irmãos rodam no dublê") e o
+      # que atribui a recusa: um refutador só, e é o GATE.
+      - name: A prova SEM o dublê (a fase A real recusa o corpo quebrado)
+        env:
+          IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+          BUN_VERSION: ${{ vars.BUN_VERSION }}
+        run: node scripts/prove-pre-commit-in-runner.mjs --sem-duble
+
       - name: Summary
-        run: echo "✅ Um 'git commit' de verdade DENTRO do runtime do CI invocou o hook REAL do checkout — o corpo 'run:' quebrado no índice foi RECUSADO (zero objetos de commit) e o mesmo commit com o corpo fechado ENTROU (o CONTROLE)."
+        run: echo "✅ Um 'git commit' de verdade DENTRO do runtime do CI invocou o hook REAL do checkout — o corpo 'run:' quebrado no índice foi RECUSADO (zero objetos de commit) e o mesmo commit com o corpo fechado ENTROU (o CONTROLE). E a MESMA medição sem o dublê dos irmãos — a fase A REAL (os cinco guards do índice, rodados de verdade) aprova o índice e o GATE é o ÚNICO refutador do corpo quebrado."
 
   # ── Sentinel Producer Guard ────────────────────────────────────────────
   # Fast gate (node puro, <1s): GENERALIZA a consistência produtor↔job de
