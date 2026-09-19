@@ -21,6 +21,21 @@
  * nas refs dele (`refsOf`), nunca no stdout de ninguém. As duas metades precisam
  * ser medidas no mesmo lugar: é o remoto que prova (ou não) o push.
  *
+ * E a MEDIDA DO LIMITE dessa promessa — `provePushBypass()`: o `git push
+ * --no-verify` NÃO executa o hook, então a árvore vermelha CHEGA ao remoto; quem
+ * barra o defeito depois é o CI, e isso é medido no conteúdo que chegou (um clone
+ * do remoto reprovado pelo comando do gate). O hook local é uma barreira contra
+ * quem NÃO o desliga, e o repositório prefere dizer isso com números a deixar a
+ * conclusão implícita.
+ *
+ * AS DUAS METADES DE "QUEM BARRA O DEFEITO DEPOIS", e onde cada uma é medida:
+ * o SINAL (o conteúdo que chegou reprova o comando do gate) é medido AQUI, sobre
+ * os bytes que viajaram; o EFEITO na forja (um PR com o check required vermelho
+ * não mergeia) é a prova `prove-gitea-merge-gate`, contra um Gitea efêmero de
+ * verdade. Nenhuma das duas substitui a outra, e este módulo não presume a
+ * segunda: ele mede o que o CI vai julgar, e o veredito do doctor NOMEIA o job
+ * que o contrato de merge exige (`CORE_INVARIANTS`).
+ *
  * Os DOIS consumidores (o doctor e o teste `pre-push-git-push-blocks.test.ts`)
  * importam DAQUI: a régua é uma só, e a divergência entre duas cópias apareceria
  * como uma prova que mede outra coisa.
@@ -43,10 +58,11 @@
  *     ("Server not running"), que é o caminho que o hook já sabe tratar.
  *
  * Usage:
- *   import { provePushBlocks } from "./pre-push-proof.mjs"
+ *   import { provePushBlocks, provePushBypass } from "./pre-push-proof.mjs"
  *
  *   const r = provePushBlocks()   // { state, detail, evidence, remedies }
  *   r.state   // "proven" | "violated" | "unavailable"
+ *   const l = provePushBypass()   // o LIMITE: o hook é contornável e o CI barra
  *
  * Exit codes:
  *   (módulo — sem CLI próprio; o veredito é o `state` acima, e o doctor o
@@ -69,6 +85,7 @@ import {
   runGit,
   runSourcedHook,
   stage,
+  tempDir,
   wrapperSource,
   writeHook,
 } from "./hook-simulator.mjs"
@@ -347,6 +364,218 @@ function resumoPush(res) {
 function bunResolve() {
   const r = spawnSync("bun", ["--version"], { encoding: "utf8", timeout: 20_000 })
   return r.status === 0
+}
+
+/**
+ * O argumento que o GIT entende como "não rode os hooks deste push" — a razão de
+ * o gate local NÃO ser uma barreira, e o que a medida abaixo torna explícito.
+ */
+export const NO_VERIFY = "--no-verify"
+
+/**
+ * A MEDIDA DO LIMITE DO GATE LOCAL: o `git push --no-verify` contorna o hook, o
+ * defeito CHEGA ao remoto — e quem o barra é o CI.
+ *
+ * POR QUE ISTO É PARTE DA MESMA PROVA (e não uma nota de rodapé): a promessa do
+ * pre-push é "a árvore vermelha não sai DESTA máquina". Ela é verdadeira e é
+ * medível (`provePushBlocks`), mas o git entrega ao próprio autor do push o
+ * interruptor que a desliga — e um repositório que confundisse "o hook passa"
+ * com "o defeito não entra em `main`" teria a barreira mais frágil possível: ela
+ * só vale para quem NÃO a desliga. As DUAS metades do limite são medidas aqui:
+ *
+ *   1. o MESMO push que a prova anterior recusa CHEGA ao remoto com a flag
+ *      (medido: exit 0, ref e OBJETOS no banco do remoto, o conteúdo com o
+ *      marcador do defeito na ref, e o hook SEM rodar — as invocações do payload
+ *      continuam as do controle);
+ *   2. o que chegou REPROVA o comando do gate que o CI roda sobre a árvore, num
+ *      CLONE do remoto — não na árvore de trabalho de ninguém. É o que torna
+ *      "quem barra é o CI" uma medida, e não uma crença: o conteúdo que viajou é
+ *      julgado onde o merge o julgaria, e o veredito do gate é lido ali.
+ *
+ * O CONTROLE é o push SEM a flag, no MESMO fixture: sem ele, "com --no-verify
+ * chegou" seria indistinguível de um fixture cujo hook nunca bloqueou nada — e a
+ * medida estaria provando o contorno de um gate que já não funcionava.
+ *
+ * `violated` aqui NÃO é "o hook foi contornado" (isso é o DESENHO do git, e é o
+ * que esta medida declara): é o defeito passar pelos DOIS — contornado o hook, o
+ * gate do CI não reprovar o que chegou. Aí não há rede nenhuma, e o veredito
+ * bloqueia.
+ *
+ * @param {{root?: string, hookSourceTexto?: string|null}} [opts]
+ * @returns {{state: "proven"|"violated"|"unavailable", detail: string, evidence: object|null, remedies: string[]}}
+ */
+export function provePushBypass({ root = REPO_ROOT, hookSourceTexto = null } = {}) {
+  const remedies = [
+    `um 'git ${NO_VERIFY}' NÃO executa o hook: o gate local não é barreira contra quem o desliga — quem barra o defeito depois é o CI (o job do contrato de merge que roda '${TYPECHECK_COMMAND}' sobre a árvore)`,
+    "se esse job sair do contrato de merge (ou o comando deixar de julgar o conteúdo), o '--no-verify' passa pelos DOIS lados e o defeito entra em main: a cobertura do buraco é o contrato, não o hook",
+  ]
+  const fonte = hookSourceTexto ?? hookSource(root)
+  if (fonte === null) {
+    return {
+      state: "unavailable",
+      detail: `${join(root, ".husky", "pre-push")} não existe neste checkout — não há gate local para contornar (o limite não pode ser medido)`,
+      evidence: null,
+      remedies,
+    }
+  }
+  if (!bunResolve()) {
+    return {
+      state: "unavailable",
+      detail: `não dá para medir o limite do gate local: \`bun\` não resolve neste ambiente (o fixture não empurraria, e o não-zero seria do ambiente)`,
+      evidence: null,
+      remedies,
+    }
+  }
+
+  try {
+    // ── O CONTROLE: o MESMO fixture e o MESMO push, SEM a flag ────────────
+    const f = montaPushFixture({
+      arvore: "vermelha",
+      ...(hookSourceTexto === null ? {} : { hookSourceTexto }),
+    })
+    const comHook = runPush(f.dir, "origin")
+    const controle = {
+      ...resumoPush(comHook),
+      refs: refsOf(f.remoto),
+      objetosNoRemoto: countObjects(f.remoto),
+      invocacoes: invocacoesDoPayload(f.dir),
+    }
+    const evidencia = { controle }
+    if (comHook.status === 0 || controle.objetosNoRemoto > 0) {
+      return {
+        state: "unavailable",
+        detail:
+          `o push COM o hook não foi recusado (exit ${comHook.status}, ${controle.objetosNoRemoto} objeto(s) no remoto): ` +
+          "sem esse controle, medir o '--no-verify' seria medir o contorno de um gate que já não bloqueava",
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    if (!comHook.output.includes(FRASE_DA_REPROVACAO) || !controle.invocacoes) {
+      return {
+        state: "unavailable",
+        detail: `o push com o hook foi recusado, mas não pelo veredito do typecheck (saída sem '${FRASE_DA_REPROVACAO}' ou sem invocação do processo real) — o controle não está medindo o defeito`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+
+    // ── A MEDIDA: o MESMO push COM a flag ────────────────────────────────
+    const bypass = runPush(f.dir, "origin", {}, ["push", NO_VERIFY, "origin", "main"])
+    const refs = refsOf(f.remoto)
+    const objetos = countObjects(f.remoto)
+    const conteudo = contentAtRef(f.remoto, "refs/heads/main", ARVORE_ARQUIVO)
+    const invocacoes = invocacoesDoPayload(f.dir)
+    const contorno = {
+      ...resumoPush(bypass),
+      refs,
+      objetosNoRemoto: objetos,
+      conteudoNaRef: conteudo,
+      invocacoes,
+      arg: NO_VERIFY,
+    }
+    evidencia.contorno = contorno
+
+    if (bypass.status !== 0 || refs.length === 0 || objetos === 0) {
+      return {
+        state: "unavailable",
+        detail:
+          `o push com '${NO_VERIFY}' NÃO chegou ao remoto (exit ${bypass.status}, ${refs.length} ref(s), ${objetos} objeto(s)): ` +
+          "o limite declarado (o contorno leva o defeito ao remoto) não pôde ser medido — e 'não chegou' não é ele",
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    if (conteudo !== ARVORE_RUIM) {
+      return {
+        state: "unavailable",
+        detail: `chegou ao remoto um conteúdo diferente da árvore VERMELHA do fixture (${JSON.stringify(conteudo)}) — o harness não está medindo o que diz`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    if (invocacoes !== controle.invocacoes) {
+      return {
+        state: "unavailable",
+        detail: `o hook RODOU no push com '${NO_VERIFY}' (${invocacoes} invocação(ões) contra ${controle.invocacoes} do controle): a flag não foi contornada, e o fixture não mede o contorno`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+
+    // ── QUEM BARRA: o CI, sobre o conteúdo QUE CHEGOU (clone do remoto) ───
+    const clone = tempDir("pre-push-bypass-ci-")
+    const clonagem = runGit(clone, ["clone", "-q", "--branch", "main", f.remoto, "."])
+    if (clonagem.status !== 0) {
+      return {
+        state: "unavailable",
+        detail: `não deu para clonar o remoto para julgar o conteúdo que chegou: ${clonagem.output.trim()}`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    const cloneContem = contentAtRef(clone, "HEAD", ARVORE_ARQUIVO)
+    const gate = runGateNoClone(clone)
+    const ci = {
+      comando: TYPECHECK_COMMAND,
+      status: gate.status,
+      output: (gate.output ?? "").trim().split("\n").slice(-3).join(" | "),
+      conteudoNoClone: cloneContem,
+      invocacoes: invocacoesDoPayload(clone),
+    }
+    evidencia.ci = ci
+    if (cloneContem !== ARVORE_RUIM) {
+      return {
+        state: "unavailable",
+        detail: `o clone do remoto não tem a árvore VERMELHA em ${ARVORE_ARQUIVO} (${JSON.stringify(cloneContem)}) — o julgamento do CI seria sobre outro conteúdo`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    if (gate.status === 0 || !gate.output.includes(FRASE_DA_REPROVACAO)) {
+      return {
+        state: "violated",
+        detail:
+          `o defeito passa pelos DOIS lados: o '${NO_VERIFY}' leva a árvore VERMELHA ao remoto (${objetos} objeto(s), ${refs.join(", ")}) ` +
+          `E o gate do CI ('${TYPECHECK_COMMAND}') NÃO reprova o conteúdo que chegou (exit ${gate.status}) — não há rede depois do hook`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+
+    return {
+      state: "proven",
+      detail:
+        `um 'git push ${NO_VERIFY}' com a árvore VERMELHA CHEGA ao remoto (exit ${bypass.status}, ${refs.join(", ")}, ${objetos} objeto(s), ` +
+        `conteúdo com o marcador conferido na ref) e o hook NÃO roda (${invocacoes} invocação(ões) do typecheck = as do controle) — ` +
+        `e quem barra é o CI: '${TYPECHECK_COMMAND}' REPROVA o conteúdo que chegou (exit ${gate.status}) num CLONE do remoto, ` +
+        `não na árvore de trabalho de quem empurrou`,
+      evidence: evidencia,
+      remedies,
+    }
+  } catch (err) {
+    return {
+      state: "unavailable",
+      detail: `a medida do limite do gate local não pôde rodar: ${err instanceof Error ? err.message : String(err)}`,
+      evidence: null,
+      remedies,
+    }
+  } finally {
+    cleanupFixtures()
+  }
+}
+
+/**
+ * O comando do gate rodando sobre o conteúdo que CHEGOU (o clone do remoto),
+ * pelo caminho REAL: `bun run typecheck`, como o CI o invoca — sem dublê, sem
+ * contato com a árvore de trabalho.
+ *
+ * @param {string} dir
+ * @returns {{status: number|null, output: string}}
+ */
+function runGateNoClone(dir) {
+  const r = spawnSync("bun", ["run", "typecheck"], { cwd: dir, encoding: "utf8", timeout: 60_000 })
+  return { status: r.status, output: `${r.stdout ?? ""}${r.stderr ?? ""}` }
 }
 
 /**

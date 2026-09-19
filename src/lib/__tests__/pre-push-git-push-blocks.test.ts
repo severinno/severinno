@@ -58,11 +58,13 @@ import {
   wrapperSource,
 } from "@/lib/__tests__/helpers/hook-simulator"
 import {
+  ARVORE_ARQUIVO,
   ARVORE_BOA,
   ARVORE_RUIM,
   FRASE_DA_REPROVACAO,
   HOOK_SOURCE,
   HOOKS_DIR,
+  NO_VERIFY,
   TYPECHECK_COMMAND,
   WRAPPER_SOURCE,
   invocacoesDoPayload,
@@ -197,6 +199,84 @@ describe("`git push` de verdade com o typecheck vermelho: ZERO objeto no remoto"
     expect(res.status).toBe(0)
     expect(commitObjects(remoto)).toBe(2)
     expect(contentAtRef(remoto, "refs/heads/main", "src/foo.ts")).toBe(ARVORE_BOA)
+  })
+})
+
+// ── o LIMITE: o `--no-verify` contorna o hook, e quem barra é o CI ───────
+
+describe("`git push --no-verify`: o defeito CHEGA ao remoto (e o CI é quem o barra)", () => {
+  it("MEDIDO: o MESMO push que a prova recusa atravessa com a flag, e o hook NÃO roda", () => {
+    const { dir, remoto } = montaPushFixture({ arvore: "vermelha" })
+
+    // O CONTROLE, no mesmo fixture: sem a flag o push é recusado e o remoto
+    // fica vazio — sem isso, "com --no-verify chegou" mediria o contorno de um
+    // gate que já não bloqueava.
+    const comHook = runGit(dir, ["push", "origin", "main"])
+    expect(comHook.status).not.toBe(0)
+    expect(comHook.output).toContain(FRASE_DA_REPROVACAO)
+    expect(countObjects(remoto)).toBe(0)
+
+    const invocacoesDoControle = invocacoesDoPayload(dir)
+    expect(invocacoesDoControle).toBe(1)
+
+    const bypass = runGit(dir, ["push", NO_VERIFY, "origin", "main"])
+
+    // O git NÃO executou o hook: o pack saiu, o remoto ganhou a ref e os
+    // objetos, e o conteúdo que chegou é a árvore VERMELHA.
+    expect(bypass.status).toBe(0)
+    expect(refsOf(remoto)).toEqual(["refs/heads/main"])
+    expect(commitObjects(remoto)).toBe(2)
+    expect(contentAtRef(remoto, "refs/heads/main", ARVORE_ARQUIVO)).toBe(ARVORE_RUIM)
+    // A medida de que QUEM não rodou foi o hook: o payload do typecheck não
+    // ganhou invocação nenhuma (o contador é o do controle).
+    expect(invocacoesDoPayload(dir)).toBe(invocacoesDoControle)
+    // E o veredito do hook (a sentinela/frase de reprovação) não aparece: o
+    // push não passou por ele.
+    expect(bypass.output).not.toContain(FRASE_DA_REPROVACAO)
+  })
+
+  it("a PROVA do limite: o conteúdo que chegou REPROVA o comando do gate (num clone do remoto)", async () => {
+    const { provePushBypass } = await import("@/lib/__tests__/helpers/pre-push-fixture")
+    const r = provePushBypass({})
+
+    expect(r.state).toBe("proven")
+    const ev = r.evidence as {
+      controle: { status: number; objetosNoRemoto: number; invocacoes: number | null }
+      contorno: {
+        status: number
+        refs: string[]
+        objetosNoRemoto: number
+        conteudoNaRef: string
+        invocacoes: number | null
+        arg: string
+      }
+      ci: { comando: string; status: number; output: string; conteudoNoClone: string }
+    }
+    // A metade 1 — o contorno CHEGA (e o controle NÃO chega).
+    expect(ev.controle.status).not.toBe(0)
+    expect(ev.controle.objetosNoRemoto).toBe(0)
+    expect(ev.contorno.status).toBe(0)
+    expect(ev.contorno.arg).toBe(NO_VERIFY)
+    expect(ev.contorno.objetosNoRemoto).toBeGreaterThan(0)
+    expect(ev.contorno.conteudoNaRef).toBe(ARVORE_RUIM)
+    expect(ev.contorno.invocacoes).toBe(ev.controle.invocacoes)
+    // A metade 2 — quem barra é o CI, medido no CONTEÚDO que chegou (o clone),
+    // e não na árvore de trabalho de quem empurrou.
+    expect(ev.ci.comando).toBe(TYPECHECK_COMMAND)
+    expect(ev.ci.conteudoNoClone).toBe(ARVORE_RUIM)
+    expect(ev.ci.status).not.toBe(0)
+    expect(ev.ci.output).toContain(FRASE_DA_REPROVACAO)
+  })
+
+  it("a medida aponta para o contrato de merge (é a branch protection que a torna uma barreira)", async () => {
+    const { provePushBypass } = await import("@/lib/__tests__/helpers/pre-push-fixture")
+    const r = provePushBypass({})
+    // O remédio declara o que sustentam as duas metades juntas: o hook não é a
+    // barreira, e o segundo lado só barra porque o job está no contrato.
+    const texto = r.remedies.join("\n")
+    expect(texto).toContain(NO_VERIFY)
+    expect(texto).toContain("o CI")
+    expect(texto).toContain("contrato de merge")
   })
 })
 

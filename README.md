@@ -1058,13 +1058,28 @@ conserto é o conserto: remover a fase 2 passa a RECUSAR o push (não mais
 entregá-lo), devolver a pipeline que engole **inverte** o desfecho (o vermelho
 chega ao ref do remoto) e remover as duas invocações deixa o defeito entrar sem
 veredito nenhum sobre a árvore. Os DOIS elos têm
-prova de execução **no veredito de prontidão** (`bun run doctor`), cada um como
-fato próprio: o do commit mede "nenhum objeto de commit criado" e o do push mede
+prova de execução **no veredito de prontidão** (`bun run doctor`), como PARTES do
+MESMO fato — o `localContract`, que junta os dois elos EXECUTADOS e o que cada
+hook RODA (a régua dos comandos vem do `check-hook-commands`, importada, não
+recopiada): o do commit mede "nenhum objeto de commit criado" e o do push mede
 "nenhum objeto chegou ao REMOTO" — o git consulta o remoto antes do hook e só
 manda o pack depois dele, então a promessa do push só existe do outro lado. No
-recorte do MERGE (`--ci`) os dois elos têm de sair `proven`: ali eles só precisam
-de git/bash/bun, então um `unavailable` — ou um `--no-pre-*-proof` no YAML do job
-— **BLOQUEIA** o veredito em vez de virar INDETERMINADA. E os dois elos têm, além
+recorte do MERGE (`--ci`) as QUATRO partes do fato têm de sair `proven`: ali elas
+só precisam de git/bash/bun e do próprio checkout, então um `unavailable` — ou um
+`--no-pre-*-proof` no YAML do job — **BLOQUEIA** o veredito em vez de virar
+INDETERMINADA. A quarta parte é o **LIMITE** das duas anteriores, medido com o
+mesmo fixture: o `git push --no-verify` NÃO executa o hook, então a árvore
+vermelha **CHEGA** ao remoto (ref, objetos e o conteúdo com o marcador na ref, e
+o hook sem rodar — as invocações do typecheck ficam as do controle) e quem barra
+o defeito depois é o CI: o comando do gate reprova o conteúdo que chegou, julgado
+num **clone do remoto** e não na árvore de trabalho de quem empurrou. O relatório
+diz isso com números ("limite (git push --no-verify)" e "quem barra: 'bun run
+typecheck' … → exit 1") e a linha entra no "NÃO CUBRE": o hook local não é
+barreira contra quem o desliga — o que sustenta a promessa é o job no contrato de
+merge (o SINAL é medido ali, sobre os bytes que viajaram; o EFEITO na forja — o PR
+com o check required vermelho não mergeando — é a prova `prove-gitea-merge-gate`,
+contra um Gitea efêmero de verdade). `violated` nessa parte é o defeito passar pelos DOIS lados (contornar o
+hook E o CI não reprovar o que chegou), e aí não há rede depois do gate local. E os dois elos têm, além
 do fato, um job próprio que roda a prova **DENTRO do runtime do CI**
 (`bun run pre-commit-in-runner:prove`, job `pre-commit-in-runner-proof` nas duas
 pipelines, required check): o MESMO módulo de prova é lançado dentro da imagem

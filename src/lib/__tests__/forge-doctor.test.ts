@@ -79,17 +79,22 @@ import {
   shellInheritanceUnknowns,
   describeShellScope,
   readPreCommitBlock,
-  preCommitBlockBlockers,
-  preCommitBlockUnknowns,
+  aggregateLocalState,
+  localContractBlockers,
+  localContractUnknowns,
+  readHookCommands,
+  readLocalContract,
   readPrePushBlock,
-  prePushBlockBlockers,
-  prePushBlockUnknowns,
+  LOCAL_LINKS,
 } from "../../../scripts/forge-doctor.mjs"
 
 // A prova EXECUTADA pelo doctor e as constantes do hook que ela usa: o teste mede
 // a MESMA função que o relatório chama (e é por isso que a mutação do hook aqui
 // embaixo muda o veredito do fato).
 import { GUARD_COMMAND, hookSource, proveCommitBlocks } from "../../../scripts/pre-commit-proof.mjs"
+// A RÉGUA DOS COMANDOS DOS HOOKS: o teste compara o que o FATO do contrato
+// local declara com o que o GATE julga — as duas leituras têm de ser a mesma.
+import { analyze as analyzeHookCommands } from "../../../scripts/check-hook-commands.mjs"
 // O OUTRO ELO do contrato local: a prova do PUSH é executada pelo doctor pelo
 // mesmo módulo que o teste do hook importa.
 import {
@@ -232,6 +237,120 @@ const PRE_PUSH_BLOCK_PROVEN = {
   remedies: [],
 }
 
+/** Um comando dentro de um hook, no formato que o fato publica. */
+type ComandoDoHook = { arquivo: string; linha: number; comando: string; motivo?: string }
+
+/** O que cada hook RODA, como o fato publica (um estado por arquivo de hook). */
+type HookDoFato = {
+  state: string
+  detail: string
+  elo: "pre-commit" | "pre-push" | null
+  commands: ComandoDoHook[]
+  unresolved: ComandoDoHook[]
+  declared: ComandoDoHook[]
+  limits: { arquivo: string; linha: number; motivo: string }[]
+  descended: string[]
+}
+
+/** Um hook com todos os comandos RESOLVENDO (o default do fixture). */
+const hookProven = (elo: HookDoFato["elo"]): HookDoFato => ({
+  state: "proven",
+  detail: "10 comando(s) resolvem (1 script(s) por descida), 0 declarado(s) indeterminado(s)",
+  elo,
+  commands: [],
+  unresolved: [],
+  declared: [],
+  limits: [],
+  descended: [],
+})
+
+/** O que CADA hook roda, provado — a segunda metade do fato único. */
+const HOOKS_PROVEN: Record<string, HookDoFato> = {
+  ".husky/pre-commit": hookProven("pre-commit"),
+  ".husky/pre-push": hookProven("pre-push"),
+  ".husky/post-checkout": hookProven(null),
+}
+
+/**
+ * O LIMITE do gate local, MEDIDO (o default do fixture): o `--no-verify` leva a
+ * árvore vermelha ao remoto e o comando do gate reprova o conteúdo clonado.
+ */
+const BYPASS_PROVEN: ParteDoFato = {
+  state: "proven",
+  detail:
+    "um 'git push --no-verify' com a árvore VERMELHA CHEGA ao remoto (exit 0, refs/heads/main, 2 objeto(s)) " +
+    "e o hook NÃO roda — e quem barra é o CI: 'bun run typecheck' REPROVA o conteúdo que chegou (exit 1) num CLONE do remoto",
+  evidence: {
+    controle: { status: 1, refs: [], objetosNoRemoto: 0, invocacoes: 1 },
+    contorno: {
+      status: 0,
+      refs: ["refs/heads/main"],
+      objetosNoRemoto: 2,
+      conteudoNaRef: 'export const oi: number = "ERRO_DE_TIPO"\n',
+      invocacoes: 1,
+      arg: "--no-verify",
+    },
+    ci: {
+      comando: "bun run typecheck",
+      status: 1,
+      output: "src/foo.ts(1,8): error TS2322: TYPECHECK_DO_FIXTURE_REPROVOU",
+      conteudoNoClone: 'export const oi: number = "ERRO_DE_TIPO"\n',
+      invocacoes: 1,
+    },
+  },
+  remedies: [],
+}
+
+/**
+ * O CONTRATO LOCAL inteiro, com o que o teste quiser estragar em cada parte.
+ *
+ * O AGREGADO é derivado pela MESMA função do doctor (`aggregateLocalState`): se
+ * esta fixture tivesse a própria regra de "pior estado", o teste estaria medindo
+ * a régua dela, e não a do relatório.
+ */
+type ParteDoFato = { state: string; detail?: string; evidence?: unknown; remedies?: string[] }
+
+function localContractFacts(
+  over: {
+    links?: Record<string, Partial<ParteDoFato>>
+    hooks?: Record<string, HookDoFato>
+    bypass?: Partial<ParteDoFato> | null
+  } = {},
+) {
+  const links: Record<string, ParteDoFato> = {
+    "pre-commit": { ...PRE_COMMIT_BLOCK_PROVEN, ...(over.links?.["pre-commit"] ?? {}) },
+    "pre-push": { ...PRE_PUSH_BLOCK_PROVEN, ...(over.links?.["pre-push"] ?? {}) },
+  }
+  const hooks = { ...HOOKS_PROVEN, ...(over.hooks ?? {}) }
+  const commands = {
+    state: aggregateLocalState(Object.values(hooks).map((h) => h.state)),
+    detail: `${Object.keys(hooks).length} hook(s) do .husky/, 30 comando(s) julgado(s), 0 nao resolvido(s)`,
+    hooks,
+    unattributed: [],
+  }
+  // `bypass: null` é o caso "o fato sem a parte do limite" — o que o teste do
+  // fail-closed precisa medir.
+  const bypass = over.bypass === null ? undefined : { ...BYPASS_PROVEN, ...(over.bypass ?? {}) }
+  return {
+    state: aggregateLocalState([
+      links["pre-commit"].state,
+      links["pre-push"].state,
+      commands.state,
+      ...(bypass ? [bypass.state] : []),
+    ]),
+    detail:
+      "pre-commit: proven | pre-push: proven | 3 hook(s) do .husky/, 30 comando(s) julgado(s), 0 nao resolvido(s)",
+    links,
+    commands,
+    ...(bypass ? { bypass } : {}),
+    evidence: {
+      "pre-commit": links["pre-commit"].evidence ?? null,
+      "pre-push": links["pre-push"].evidence ?? null,
+    },
+    remedies: [...(links["pre-commit"].remedies ?? []), ...(links["pre-push"].remedies ?? [])],
+  } as const
+}
+
 /** Fatores do veredito, todos "verdes" — cada teste estraga um. */
 function facts(overrides: Record<string, unknown> = {}) {
   return {
@@ -271,18 +390,15 @@ function facts(overrides: Record<string, unknown> = {}) {
     // A herança de shell dos workflows (de onde vem o shell de CADA passo):
     // presente e limpa. Cada teste estraga o que quer medir.
     shellInheritance: SHELL_INHERITANCE_LIMPA,
-    preCommitBlock: PRE_COMMIT_BLOCK_PROVEN,
-    // O OUTRO elo do contrato local (o push): presente e PROVADO pelo mesmo
-    // motivo do commit — ausente, o fato vira dúvida (cada teste estraga o que
-    // quer medir).
-    prePushBlock: PRE_PUSH_BLOCK_PROVEN,
+    // O CONTRATO LOCAL — UM fato só: os DOIS elos executados e o que cada hook
+    // RODA. Presente e medido: ausente, o veredito vira dúvida (cada teste
+    // estraga o que quer medir).
+    localContract: localContractFacts(),
     skippedGuards: false,
     skippedProof: false,
     skippedProtection: false,
     skippedRunnerLabels: false,
     skippedImageContract: false,
-    skippedPreCommitProof: false,
-    skippedPrePushProof: false,
     ...overrides,
   }
 }
@@ -446,6 +562,40 @@ const passRun = () => ({ status: 0, stdout: "", stderr: "", signal: null, error:
  * sensibilidade do doctor sobre o hook do checkout.
  */
 const localProofsProven = {
+  /**
+   * O contrato dos comandos dos hooks, dublado pelo mesmo motivo dos dois elos:
+   * a fixture destes fluxos é um repositório temporário SEM `.husky/`, onde a
+   * leitura real sai INDISPONÍVEL (com razão). A leitura REAL tem teste próprio
+   * (`o contrato local é UM fato só`, sobre o checkout), e aqui o dublê declara
+   * os DOIS elos com um comando cada, resolvendo.
+   */
+  hookCommandsDeps: {
+    analyze: () => ({
+      infra: false,
+      hooks: [".husky/pre-commit", ".husky/pre-push"],
+      comandos: [
+        {
+          arquivo: ".husky/pre-commit",
+          linha: 1,
+          programa: "bash",
+          tokens: ["scripts/run-encoding-guards.sh"],
+          origem: "",
+          desfecho: "resolvido",
+          motivo: "arquivo do repositório",
+        },
+        {
+          arquivo: ".husky/pre-push",
+          linha: 1,
+          programa: "bun",
+          tokens: ["run", "typecheck"],
+          origem: "",
+          desfecho: "resolvido",
+          motivo: "script do package.json",
+        },
+      ],
+      limites: [],
+    }),
+  },
   preCommitBlockDeps: {
     prove: () => ({
       state: "proven",
@@ -458,6 +608,17 @@ const localProofsProven = {
     prove: () => ({
       state: "proven",
       detail: "prova dublada do fluxo",
+      evidence: null,
+      remedies: [],
+    }),
+  },
+  // A MEDIDA DO LIMITE tem o próprio ponto de injeção: sem ele, o fluxo do
+  // `diagnose` mediria o LIMITE no `cwd` do teste (um repo sem `.husky/`), e o
+  // veredito do fluxo falaria do fixture em vez do contrato.
+  pushBypassDeps: {
+    prove: () => ({
+      state: "proven",
+      detail: "medida dublada do fluxo (o --no-verify contorna e o CI barra)",
       evidence: null,
       remedies: [],
     }),
@@ -3109,29 +3270,12 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
       openDebtDeps: debtClear,
-      // A prova do bloqueio LOCAL: o `cwd` deste fluxo é uma fixture SEM
-      // `.husky/pre-commit`, onde a prova real sai INDISPONÍVEL (e com razão —
-      // não há o que provar). O FLUXO aqui é o do veredito, então a prova entra
-      // dublada, como todos os outros fatos; a prova REAL tem teste próprio.
-      preCommitBlockDeps: {
-        prove: () => ({
-          state: "proven",
-          detail: "prova dublada do fluxo",
-          evidence: null,
-          remedies: [],
-        }),
-      },
-      // O OUTRO elo local (o push) pelo MESMO motivo: a fixture não tem
-      // `.husky/pre-push` e a prova real sairia INDISPONÍVEL — o fluxo do
-      // veredito entra dublado, e a prova REAL tem teste próprio.
-      prePushBlockDeps: {
-        prove: () => ({
-          state: "proven",
-          detail: "prova dublada do fluxo",
-          evidence: null,
-          remedies: [],
-        }),
-      },
+      // O CONTRATO LOCAL inteiro: o `cwd` deste fluxo é uma fixture SEM `.husky/`,
+      // onde as três partes da leitura real saem INDISPONÍVEIS (e com razão — não
+      // há o que provar nem o que ler). O FLUXO aqui é o do veredito, então o
+      // contrato entra dublado, como todos os outros fatos; a leitura REAL tem
+      // teste próprio (`o contrato local é UM fato só`, sobre o checkout).
+      ...localProofsProven,
     })
     // O fato do board existe SEMPRE (mesmo vazio): um `diagnose` que esquecesse
     // de montá-lo faria a dívida aberta sumir do veredito em silêncio.
@@ -4590,50 +4734,50 @@ describe("a prova do bloqueio LOCAL como FATO do relatório", () => {
 
   it("VIOLADO bloqueia o veredito; INDISPONÍVEL vira falta de prova NOMEADA", () => {
     const violado = facts({
-      preCommitBlock: { state: "violated", detail: "o defeito entrou em HEAD", remedies: [] },
+      localContract: localContractFacts({
+        links: {
+          "pre-commit": { state: "violated", detail: "o defeito entrou em HEAD", remedies: [] },
+        },
+      }),
     })
     const v1 = summarize(violado)
     expect(v1.verdict).toBe(VERDICT.BLOCKED)
     expect(v1.blockers.some((b) => b.includes("PRE-COMMIT nao bloqueia"))).toBe(true)
-    expect(preCommitBlockBlockers(violado.preCommitBlock)[0]).toContain("indice")
+    expect(localContractBlockers(violado.localContract)[0]).toContain("indice")
 
     const indeterminado = facts({
-      preCommitBlock: { state: "unavailable", detail: "sem git no PATH", remedies: [] },
+      localContract: localContractFacts({
+        links: { "pre-commit": { state: "unavailable", detail: "sem git no PATH", remedies: [] } },
+      }),
     })
     const v2 = summarize(indeterminado)
     expect(v2.verdict).toBe(VERDICT.UNKNOWN)
     expect(v2.unknowns.some((u) => u.includes("bloqueio LOCAL do pre-commit"))).toBe(true)
     expect(v2.unknowns.some((u) => u.includes("sem git no PATH"))).toBe(true)
     // Nem bloqueio nem dúvida no caminho FELIZ: o veredito não pode ficar mais
-    // caro por causa do fato novo.
-    expect(preCommitBlockBlockers(PRE_COMMIT_BLOCK_PROVEN)).toEqual([])
-    expect(preCommitBlockUnknowns(PRE_COMMIT_BLOCK_PROVEN)).toEqual([])
+    // caro por causa do fato único.
+    expect(localContractBlockers(localContractFacts())).toEqual([])
+    expect(localContractUnknowns(localContractFacts())).toEqual([])
     expect(summarize(facts()).verdict).not.toBe(VERDICT.UNKNOWN)
   })
 
   it("o fato AUSENTE do relatório é falta de prova (mesma disciplina do resto)", () => {
-    const v = summarize(facts({ preCommitBlock: undefined }))
+    const v = summarize(facts({ localContract: undefined }))
     expect(v.verdict).toBe(VERDICT.UNKNOWN)
-    expect(preCommitBlockUnknowns(undefined)[0]).toContain("bloqueio LOCAL")
+    expect(localContractUnknowns(undefined)[0]).toContain("CONTRATO LOCAL")
   })
 
-  it("pular por --no-pre-commit-proof NÃO vira pendência, mas o relatório DIZ", () => {
-    const v = summarize(
-      facts({
-        preCommitBlock: { state: "skipped", detail: "pulada" },
-        skippedPreCommitProof: true,
-      }),
-    )
-    expect(preCommitBlockUnknowns({ state: "skipped", detail: "pulada" })).toEqual([])
-    const linhas: string[] = []
-    const fPulado = facts({
-      preCommitBlock: { state: "skipped", detail: "pulada" },
-      skippedPreCommitProof: true,
+  it("pular por --no-pre-commit-proof vira falta de prova DENTRO do fato, e o relatório DIZ", () => {
+    const pulado = localContractFacts({
+      links: { "pre-commit": { state: "skipped", detail: "pulada por --no-pre-commit-proof" } },
     })
-    renderReport(
-      { facts: fPulado, verdict: summarize(fPulado) },
-      { emit: (s = "") => linhas.push(s) },
-    )
+    const fPulado = facts({ localContract: pulado })
+    const v = summarize(fPulado)
+    // O skip é uma parte do MESMO assunto: o veredito o lê do fato (não de uma
+    // flag paralela) e o nomeia.
+    expect(localContractUnknowns(pulado).join(" ")).toContain("--no-pre-commit-proof")
+    const linhas: string[] = []
+    renderReport({ facts: fPulado, verdict: v }, { emit: (s = "") => linhas.push(s) })
     expect(linhas.join("\n")).toContain("prova do bloqueio LOCAL pulada por --no-pre-commit-proof")
     expect(v.verdict).toBe(VERDICT.UNKNOWN) // as outras seções do fixture continuam
   })
@@ -4649,7 +4793,7 @@ describe("a prova do bloqueio LOCAL como FATO do relatório", () => {
       remedies: [],
     }
     const linhas: string[] = []
-    const fProvado = facts({ preCommitBlock: f })
+    const fProvado = facts({ localContract: localContractFacts({ links: { "pre-commit": f } }) })
     renderReport(
       { facts: fProvado, verdict: summarize(fProvado) },
       {
@@ -4667,12 +4811,16 @@ describe("a prova do bloqueio LOCAL como FATO do relatório", () => {
   it("VIOLADO aparece na seção com o remédio (o que devolver ao hook)", () => {
     const linhas: string[] = []
     const fViolado = facts({
-      preCommitBlock: {
-        state: "violated",
-        detail: "o corpo quebrado foi GRAVADO em HEAD",
-        evidence: { defeito: { status: 0, objetosDeCommit: 1, headExiste: true } },
-        remedies: ["o pre-commit tem de rodar o guard do ÍNDICE"],
-      },
+      localContract: localContractFacts({
+        links: {
+          "pre-commit": {
+            state: "violated",
+            detail: "o corpo quebrado foi GRAVADO em HEAD",
+            evidence: { defeito: { status: 0, objetosDeCommit: 1, headExiste: true } },
+            remedies: ["o pre-commit tem de rodar o guard do ÍNDICE"],
+          },
+        },
+      }),
     })
     renderReport(
       { facts: fViolado, verdict: summarize(fViolado) },
@@ -4757,38 +4905,38 @@ describe("a prova do bloqueio do PUSH como FATO do relatório", () => {
 
   it("VIOLADO bloqueia o veredito; INDISPONÍVEL vira falta de prova NOMEADA", () => {
     const violado = facts({
-      prePushBlock: { state: "violated", detail: "2 objetos chegaram ao remoto", remedies: [] },
+      localContract: localContractFacts({
+        links: {
+          "pre-push": { state: "violated", detail: "2 objetos chegaram ao remoto", remedies: [] },
+        },
+      }),
     })
     const v1 = summarize(violado)
     expect(v1.verdict).toBe(VERDICT.BLOCKED)
     expect(v1.blockers.some((b) => b.includes("PRE-PUSH nao bloqueia"))).toBe(true)
-    expect(prePushBlockBlockers(violado.prePushBlock)[0]).toContain("VERMELHA")
+    expect(localContractBlockers(violado.localContract)[0]).toContain("VERMELHA")
 
     const indeterminado = facts({
-      prePushBlock: { state: "unavailable", detail: "sem bun no PATH", remedies: [] },
+      localContract: localContractFacts({
+        links: { "pre-push": { state: "unavailable", detail: "sem bun no PATH", remedies: [] } },
+      }),
     })
     const v2 = summarize(indeterminado)
     expect(v2.verdict).toBe(VERDICT.UNKNOWN)
     expect(v2.unknowns.some((u) => u.includes("bloqueio do PUSH nao foi provado"))).toBe(true)
     expect(v2.unknowns.some((u) => u.includes("sem bun no PATH"))).toBe(true)
     // Nem bloqueio nem dúvida no caminho FELIZ.
-    expect(prePushBlockBlockers(PRE_PUSH_BLOCK_PROVEN)).toEqual([])
-    expect(prePushBlockUnknowns(PRE_PUSH_BLOCK_PROVEN)).toEqual([])
+    expect(localContractBlockers(localContractFacts())).toEqual([])
+    expect(localContractUnknowns(localContractFacts())).toEqual([])
     expect(summarize(facts()).verdict).not.toBe(VERDICT.UNKNOWN)
   })
 
-  it("o fato AUSENTE do relatório é falta de prova (mesma disciplina do resto)", () => {
-    const v = summarize(facts({ prePushBlock: undefined }))
-    expect(v.verdict).toBe(VERDICT.UNKNOWN)
-    expect(prePushBlockUnknowns(undefined)[0]).toContain("bloqueio do PUSH")
-  })
-
-  it("pular por --no-pre-push-proof NÃO vira pendência, mas o relatório DIZ", () => {
+  it("pular por --no-pre-push-proof vira falta de prova DENTRO do fato, e o relatório DIZ", () => {
     const fPulado = facts({
-      prePushBlock: { state: "skipped", detail: "pulada" },
-      skippedPrePushProof: true,
+      localContract: localContractFacts({
+        links: { "pre-push": { state: "skipped", detail: "pulada por --no-pre-push-proof" } },
+      }),
     })
-    expect(prePushBlockUnknowns({ state: "skipped", detail: "pulada" })).toEqual([])
     const linhas: string[] = []
     renderReport(
       { facts: fPulado, verdict: summarize(fPulado) },
@@ -4808,7 +4956,9 @@ describe("a prova do bloqueio do PUSH como FATO do relatório", () => {
     // git/bash/bun, então "não deu para provar" é elo quebrado.
     const semCommit = facts({
       ciProfile: true,
-      preCommitBlock: { state: "unavailable", detail: "sem git no PATH", remedies: [] },
+      localContract: localContractFacts({
+        links: { "pre-commit": { state: "unavailable", detail: "sem git no PATH", remedies: [] } },
+      }),
     })
     const vCommit = summarize(semCommit)
     expect(vCommit.verdict).toBe(VERDICT.BLOCKED)
@@ -4817,7 +4967,9 @@ describe("a prova do bloqueio do PUSH como FATO do relatório", () => {
 
     const semPush = facts({
       ciProfile: true,
-      prePushBlock: { state: "unavailable", detail: "sem bun no PATH", remedies: [] },
+      localContract: localContractFacts({
+        links: { "pre-push": { state: "unavailable", detail: "sem bun no PATH", remedies: [] } },
+      }),
     })
     const vPush = summarize(semPush)
     expect(vPush.verdict).toBe(VERDICT.BLOCKED)
@@ -4828,8 +4980,9 @@ describe("a prova do bloqueio do PUSH como FATO do relatório", () => {
     // `unproven` declarado (a decisão não desaparece do relatório).
     const pulado = facts({
       ciProfile: true,
-      prePushBlock: { state: "skipped", detail: "pulada" },
-      skippedPrePushProof: true,
+      localContract: localContractFacts({
+        links: { "pre-push": { state: "skipped", detail: "pulada por --no-pre-push-proof" } },
+      }),
     })
     expect(summarize(pulado).verdict).toBe(VERDICT.BLOCKED)
     expect(summarize(pulado).unproven.join("\n")).toContain("prova do bloqueio do PUSH")
@@ -4837,7 +4990,9 @@ describe("a prova do bloqueio do PUSH como FATO do relatório", () => {
     // E FORA do recorte NADA MUDA: no perfil completo a falta de prova segue
     // INDETERMINADA — é o veredito honesto quando o doctor também olha o HOST.
     const completo = facts({
-      prePushBlock: { state: "unavailable", detail: "sem bun no PATH", remedies: [] },
+      localContract: localContractFacts({
+        links: { "pre-push": { state: "unavailable", detail: "sem bun no PATH", remedies: [] } },
+      }),
     })
     expect(summarize(completo).verdict).toBe(VERDICT.UNKNOWN)
   })
@@ -4845,15 +5000,19 @@ describe("a prova do bloqueio do PUSH como FATO do relatório", () => {
   it("a seção 4/7 imprime o estado, a evidência das DUAS metades e quem cobra", () => {
     const linhas: string[] = []
     const fProvado = facts({
-      prePushBlock: {
-        state: "proven",
-        detail: "recusou o vermelho e deixou chegar o verde",
-        evidence: {
-          defeito: { status: 1, refs: [], objetosNoRemoto: 0, invocacoes: 1 },
-          controle: { status: 0, refs: ["refs/heads/main"], objetosNoRemoto: 2, invocacoes: 2 },
+      localContract: localContractFacts({
+        links: {
+          "pre-push": {
+            state: "proven",
+            detail: "recusou o vermelho e deixou chegar o verde",
+            evidence: {
+              defeito: { status: 1, refs: [], objetosNoRemoto: 0, invocacoes: 1 },
+              controle: { status: 0, refs: ["refs/heads/main"], objetosNoRemoto: 2, invocacoes: 2 },
+            },
+            remedies: [],
+          },
         },
-        remedies: [],
-      },
+      }),
     })
     renderReport(
       { facts: fProvado, verdict: summarize(fProvado) },
@@ -4863,18 +5022,22 @@ describe("a prova do bloqueio do PUSH como FATO do relatório", () => {
     expect(texto).toContain("prova do bloqueio do PUSH (pre-push): proven")
     expect(texto).toContain("árvore vermelha: exit 1, 0 ref(s) e 0 objeto(s) no remoto")
     expect(texto).toContain("CONTROLE com a árvore verde: exit 0, refs/heads/main (2 objeto(s))")
-    expect(texto).toContain("quem cobra: o PRÓPRIO hook (.husky/pre-push)")
+    expect(texto).toContain("quem cobra: o PRÓPRIO hook (.husky/pre-commit e .husky/pre-push)")
   })
 
   it("VIOLADO aparece na seção com o remédio (o que devolver ao hook)", () => {
     const linhas: string[] = []
     const fViolado = facts({
-      prePushBlock: {
-        state: "violated",
-        detail: "2 objetos e 1 ref chegaram ao remoto",
-        evidence: { defeito: { status: 0, refs: ["refs/heads/main"], objetosNoRemoto: 2 } },
-        remedies: ["o pre-push tem de rodar o typecheck da ÁRVORE"],
-      },
+      localContract: localContractFacts({
+        links: {
+          "pre-push": {
+            state: "violated",
+            detail: "2 objetos e 1 ref chegaram ao remoto",
+            evidence: { defeito: { status: 0, refs: ["refs/heads/main"], objetosNoRemoto: 2 } },
+            remedies: ["o pre-push tem de rodar o typecheck da ÁRVORE"],
+          },
+        },
+      }),
     })
     renderReport(
       { facts: fViolado, verdict: summarize(fViolado) },
@@ -4883,6 +5046,235 @@ describe("a prova do bloqueio do PUSH como FATO do relatório", () => {
     const texto = linhas.join("\n")
     expect(texto).toContain("prova do bloqueio do PUSH (pre-push): violated")
     expect(texto).toContain("o pre-push tem de rodar o typecheck da ÁRVORE")
+  })
+
+  it("o LIMITE do gate local (o `--no-verify`) é declarado como parte do MESMO fato", () => {
+    const lc = readLocalContract({})
+    expect(lc.bypass.state).toBe("proven")
+    // As DUAS metades da medida, na evidência: o contorno CHEGOU ao remoto (com
+    // o hook sem rodar) e o gate do CI reprovou o conteúdo clonado.
+    const ev = lc.bypass.evidence as {
+      controle: { objetosNoRemoto: number; invocacoes: number | null }
+      contorno: {
+        status: number
+        refs: string[]
+        objetosNoRemoto: number
+        invocacoes: number | null
+        arg: string
+      }
+      ci: { comando: string; status: number; conteudoNoClone: string }
+    }
+    expect(ev.controle.objetosNoRemoto).toBe(0)
+    expect(ev.contorno.status).toBe(0)
+    expect(ev.contorno.arg).toBe("--no-verify")
+    expect(ev.contorno.refs.length).toBeGreaterThan(0)
+    expect(ev.contorno.objetosNoRemoto).toBeGreaterThan(0)
+    // O hook NÃO rodou no push contornado: as invocações são as do controle.
+    expect(ev.contorno.invocacoes).toBe(ev.controle.invocacoes)
+    expect(ev.ci.status).not.toBe(0)
+    expect(ev.ci.conteudoNoClone).toContain("ERRO_DE_TIPO")
+    // E o agregado do fato inclui o limite (ele é uma parte como as outras).
+    expect(lc.state).toBe("proven")
+  })
+
+  it("o limite VIOLADO bloqueia: o defeito passa pelo hook E pelo CI (não há rede depois)", () => {
+    const f = facts({
+      localContract: localContractFacts({
+        bypass: {
+          state: "violated",
+          detail: "o --no-verify leva a árvore ao remoto E o gate do CI não reprova o que chegou",
+          remedies: ["o job do gate saiu do contrato de merge"],
+        },
+      }),
+    })
+    const v = summarize(f)
+    expect(v.verdict).toBe(VERDICT.BLOCKED)
+    expect(v.blockers.join("\n")).toContain("o LIMITE do gate local foi medido como VIOLADO")
+    // A forja que barra é NOMEADA (do CORE_INVARIANTS, não de uma lista à mão).
+    expect(v.blockers.join("\n")).toContain("github: 'typecheck'")
+    expect(v.blockers.join("\n")).toContain("gitea: 'typecheck'")
+  })
+
+  it("o limite não MEDIDO: no --ci BLOQUEIA (ele só precisa do mesmo fixture dos elos)", () => {
+    const semMedida = localContractFacts({
+      bypass: { state: "unavailable", detail: "bun nao resolve no PATH", remedies: [] },
+    })
+    // Fora do recorte do merge: falta de prova NOMEADA, veredito INDETERMINADA.
+    expect(localContractUnknowns(semMedida as never).join("\n")).toContain("nao foi MEDIDO")
+    const f = facts({ localContract: semMedida })
+    expect(summarize(f).verdict).toBe(VERDICT.UNKNOWN)
+    expect(summarize(f).blockers).toEqual([])
+    // No recorte do merge: o veredito sem a parte que diz QUEM barra é bloqueio.
+    const vCi = summarize(facts({ ciProfile: true, localContract: semMedida }))
+    expect(vCi.verdict).toBe(VERDICT.BLOCKED)
+    expect(vCi.blockers.join("\n")).toContain(
+      "o LIMITE do gate local nao foi medido no recorte do merge",
+    )
+  })
+
+  it("sem a parte do limite no fato, o veredito declara o que NÃO cobre (fail-closed)", () => {
+    const semParte = localContractFacts({ bypass: null })
+    expect(localContractUnknowns(semParte as never).join("\n")).toContain(
+      "o LIMITE do gate local (o `git push --no-verify` contorna o hook) não está declarado",
+    )
+    const vCi = summarize(facts({ ciProfile: true, localContract: semParte }))
+    expect(vCi.verdict).toBe(VERDICT.BLOCKED)
+    expect(vCi.blockers.join("\n")).toContain("state 'ausente do relatório'")
+  })
+
+  it("a seção 4/7 imprime o limite e QUEM BARRA o defeito depois do hook", () => {
+    const linhas: string[] = []
+    const f = facts({ localContract: localContractFacts() })
+    renderReport({ facts: f, verdict: summarize(f) }, { emit: (s = "") => linhas.push(s) })
+    const texto = linhas.join("\n")
+    expect(texto).toContain("limite (git push --no-verify): proven")
+    expect(texto).toContain("contorno: exit 0, refs/heads/main, 2 objeto(s) no remoto")
+    expect(texto).toContain(
+      "quem barra: 'bun run typecheck' sobre o conteúdo CLONADO do remoto → exit 1",
+    )
+    // E o "NÃO CUBRE" diz, em texto, o que o gate local não é.
+    expect(summarize(f).unproven.join("\n")).toContain("o LIMITE do gate LOCAL")
+    expect(summarize(f).unproven.join("\n")).toContain("não é barreira contra quem o desliga")
+  })
+})
+
+// ── O CONTRATO LOCAL: UM fato só (os dois elos + o que cada hook roda) ──────
+
+/**
+ * O que a consolidação existe para garantir: o veredito tem UM lugar para o
+ * assunto "contrato local" — os dois elos EXECUTADOS e os comandos que cada
+ * hook RODA viajam no MESMO fato, e é dele (e só dele) que saem o bloqueio, a
+ * falta de prova e as linhas do relatório.
+ */
+describe("o contrato local é UM fato só", () => {
+  it("o fato declara os dois elos E os comandos de cada hook (no repositório real)", () => {
+    const lc = readLocalContract({})
+    expect(LOCAL_LINKS).toEqual(["pre-commit", "pre-push"])
+    for (const elo of LOCAL_LINKS) {
+      expect(lc.links[elo].state).toBe("proven")
+      const hook = lc.commands.hooks[`.husky/${elo}`]
+      expect(hook.elo).toBe(elo)
+      expect(hook.commands.length).toBeGreaterThan(0)
+      expect(hook.unresolved).toEqual([])
+    }
+    // TODOS os hooks do `.husky/` entram (o pedido é "os comandos que cada hook
+    // roda"): um hook extra com caminho quebrado é o mesmo defeito.
+    expect(Object.keys(lc.commands.hooks).length).toBeGreaterThanOrEqual(2)
+    expect(lc.state).toBe("proven")
+    expect(lc.commands.state).toBe("proven")
+  })
+
+  it("a régua dos comandos é a do `check-hook-commands` (não uma segunda leitura)", () => {
+    const doFato = readHookCommands({})
+    const doGate = analyzeHookCommands({ root: process.cwd() })
+    // O `analyze` devolve `infra: true` sem o resto quando não consegue ler: a
+    // leitura TEM de ter funcionado, senão as comparações abaixo seriam entre
+    // dois vazios (e passariam).
+    expect(doGate.infra).toBe(false)
+    const comandosDoGate = doGate.comandos ?? []
+    const hooksDoGate = doGate.hooks ?? []
+    const violacoesDoGate = doGate.violacoes ?? []
+    expect(comandosDoGate.length).toBeGreaterThan(0)
+    const total = Object.values(doFato.hooks).reduce((soma, h) => soma + h.commands.length, 0)
+    // A MESMA pergunta, a mesma resposta: o fato não inventa comandos nem perde
+    // nenhum — e o conjunto de hooks julgados é o mesmo.
+    expect(total).toBe(comandosDoGate.length)
+    expect(Object.keys(doFato.hooks).sort()).toEqual([...hooksDoGate].sort())
+    expect(doFato.state).toBe(violacoesDoGate.length === 0 ? "proven" : "violated")
+  })
+
+  it("o agregado é o PIOR estado das partes (violated > unavailable > skipped > proven)", () => {
+    expect(aggregateLocalState(["proven", "proven"])).toBe("proven")
+    expect(aggregateLocalState(["proven", "skipped"])).toBe("skipped")
+    expect(aggregateLocalState(["skipped", "unavailable"])).toBe("unavailable")
+    expect(aggregateLocalState(["unavailable", "violated"])).toBe("violated")
+    // Estado que ninguém conhece não ganha veredito mais VERDE que "não medido".
+    expect(aggregateLocalState(["inventado"])).toBe("inventado")
+    expect(
+      localContractFacts({
+        hooks: { ".husky/pre-commit": { ...HOOKS_PROVEN[".husky/pre-commit"], state: "violated" } },
+      }).state,
+    ).toBe("violated")
+  })
+
+  it("um comando do hook que NÃO resolve BLOQUEIA, e o relatório nomeia arquivo e linha", () => {
+    const quebrado: HookDoFato = {
+      ...HOOKS_PROVEN[".husky/pre-commit"],
+      state: "violated",
+      detail: "1 de 10 comando(s) NAO resolvem — um passo que nunca roda",
+      unresolved: [
+        {
+          arquivo: ".husky/pre-commit",
+          linha: 12,
+          comando: "node scripts/nao-existe.mjs --staged",
+          motivo: "caminho `scripts/nao-existe.mjs` nao existe no repositorio",
+        },
+      ],
+    }
+    const f = facts({
+      localContract: localContractFacts({ hooks: { ".husky/pre-commit": quebrado } }),
+    })
+    const v = summarize(f)
+    expect(v.verdict).toBe(VERDICT.BLOCKED)
+    expect(v.blockers.join("\n")).toContain("NUNCA roda")
+    expect(v.blockers.join("\n")).toContain("scripts/nao-existe.mjs")
+    const linhas: string[] = []
+    renderReport({ facts: f, verdict: v }, { emit: (s = "") => linhas.push(s) })
+    const texto = linhas.join("\n")
+    expect(texto).toContain("o que o .husky/pre-commit RODA")
+    expect(texto).toContain("scripts/nao-existe.mjs")
+  })
+
+  it("no recorte do merge a metade dos comandos também é EXIGIDA (não é só o elo)", () => {
+    const semComandos = facts({
+      ciProfile: true,
+      localContract: localContractFacts({
+        hooks: {
+          ".husky/pre-commit": {
+            ...HOOKS_PROVEN[".husky/pre-commit"],
+            state: "unavailable",
+            detail: "nenhum comando julgado",
+          },
+        },
+      }),
+    })
+    const v = summarize(semComandos)
+    expect(v.verdict).toBe(VERDICT.BLOCKED)
+    expect(v.blockers.join("\n")).toContain("nao foram CONFERIDOS no recorte do merge")
+    expect(v.blockers.join("\n")).toContain(".husky/pre-commit")
+  })
+
+  it("a flag do elo não sai do fato: o `skipped` viaja DENTRO dele", () => {
+    const lc = readLocalContract({
+      executed: { "pre-commit": false, "pre-push": true },
+      deps: {
+        prePush: {
+          prove: () => ({ state: "proven", detail: "dublada pelo teste", evidence: null }),
+        },
+      },
+    })
+    expect(lc.links["pre-commit"].state).toBe("skipped")
+    expect(lc.links["pre-commit"].detail).toContain("--no-pre-commit-proof")
+    expect(lc.links["pre-push"].state).toBe("proven")
+    expect(lc.state).toBe("skipped")
+    // E o veredito lê a falta de prova DAÍ (não há flag paralela para consultar).
+    const f = facts({ localContract: lc })
+    expect(summarize(f).unknowns.join("\n")).toContain("--no-pre-commit-proof")
+    expect(summarize(f).verdict).toBe(VERDICT.UNKNOWN)
+  })
+
+  it("SEM os comandos declarados, o fato não fica verde (fail-closed)", () => {
+    const semParte = localContractFacts()
+    const semComandos = {
+      ...semParte,
+      commands: { state: "unavailable", detail: "nao pode ser lido", hooks: {}, unattributed: [] },
+    }
+    const f = facts({ localContract: semComandos })
+    const v = summarize(f)
+    expect(v.unknowns.join("\n")).toContain("os comandos que os hooks RODAM")
+    // E no recorte do merge isso é elo quebrado, não dúvida.
+    const vCi = summarize(facts({ ciProfile: true, localContract: semComandos }))
+    expect(vCi.verdict).toBe(VERDICT.BLOCKED)
   })
 })
 

@@ -3087,8 +3087,9 @@ ela entra ATÉ no perfil `--ci` (barata: ~0,3s, sem rede e sem credencial).
 que ficou fora (no recorte do merge, BLOQUEIA: ver a regra do `--ci` abaixo).
 
 **E O OUTRO ELO LOCAL: o pre-push × a ÁRVORE vermelha.** O commit e o push medem
-promessas DIFERENTES num lugar diferente, e é por isso que são DOIS fatos e não
-uma linha do mesmo. No commit o veredito é "nenhum objeto de COMMIT foi criado",
+promessas DIFERENTES num lugar diferente, e é por isso que são DUAS PARTES de um
+MESMO fato, cada uma com estado e prova próprios, e não uma linha do mesmo. No
+commit o veredito é "nenhum objeto de COMMIT foi criado",
 e ele vive no banco local. No push, o git **consulta o remoto ANTES de rodar o
 hook** e só manda o pack **DEPOIS** dele: um hook de push que passa (ou que
 falha) não deixa rastro nenhum no repositório local — o que ele promete só existe
@@ -3115,23 +3116,88 @@ prova estaria medindo o fixture. Como no commit, a prova mede COMPORTAMENTO e n�
 a linha literal — um hook reestruturado que continue bloqueando segue `proven`.
 Ela entra ATÉ no perfil `--ci` pelo mesmo motivo e ao mesmo preço (~0,2s, sem
 rede e sem credencial: o hook roda na máquina de quem empurra, e o CI não o
-executa). `--no-pre-push-proof` a pula e o veredito fica INDETERMINADA nomeando o
-fato que ficou fora — a mesma disciplina do elo do commit, e por isso os dois
-fatos são independentes: pular ou violar um não esconde o outro.
+executa). `--no-pre-push-proof` a pula e o veredito fica INDETERMINADA nomeando a
+PARTE que ficou fora — a mesma disciplina do elo do commit: cada parte tem estado
+PRÓPRIO dentro do fato, e pular ou violar uma não esconde a outra (o estado do
+fato é o PIOR das partes, que é o que o veredito lê).
 
-**E no recorte do MERGE (`--ci`) os dois elos locais têm de sair PROVADOS.** Aqui
-a disciplina é a INVERSA da do perfil completo, e por um motivo que se mede: no
-`--ci` esses dois elos só precisam de git/bash/bun — não há rede, credencial nem
-docker que justifiquem um `unavailable`. E é exatamente este recorte que o job do
-PR roda a cada merge: se `unavailable` valesse como "falta de prova", bastaria o
-YAML do job ganhar um `--no-pre-commit-proof`/`--no-pre-push-proof` para o elo
-quebrado passar **verde no merge** (a flag vira `skipped`, e `skipped` ≠ provado).
-Com `--ci`, então, todo estado que não seja `proven` — `unavailable`, `skipped`,
-fato ausente — vai para os **bloqueios**, nomeando o elo, a flag que o tirou de
-cena e o conserto; `violated` continua bloqueando pelo motivo dele (o defeito
-chegou), sem linha duplicada. Fora do `--ci` a regra é no-op: no perfil completo
-falta de prova segue INDETERMINADA, porque lá o doctor cobre o que depende do
-HOST e "não deu para medir" é o veredito honesto.
+**E A TERCEIRA PARTE DO FATO É O LIMITE DESSA PROMESSA — MEDIDO.** As duas partes
+anteriores respondem "o hook bloqueia?", e a resposta é sim. O que elas NÃO
+dizem — e que um veredito não pode deixar implícito — é que o git entrega ao
+próprio autor do push o interruptor que desliga o bloqueio: **`git push
+--no-verify` não executa o hook**. Se o repositório confundisse "o pre-push está
+provado" com "a árvore vermelha não chega a `main`", a barreira seria a mais
+frágil possível — ela só valeria para quem não a desliga. Então o mesmo módulo
+mede as duas metades do limite (`provePushBypass`, o MESMO fixture):
+
+1. **o defeito CHEGA.** No fixture em que o push COM o hook é recusado (o
+   controle: exit ≠ 0, **zero objeto** no remoto), o MESMO push com a flag sai
+   **exit 0**, o remoto ganha a ref e os OBJETOS, o conteúdo com o marcador é o
+   que está na ref — e as invocações do payload do typecheck continuam as do
+   controle: o hook **não rodou** (é o que separa "contornou" de "o gate
+   deixou passar", duas coisas diferentes);
+2. **quem barra é o CI.** O conteúdo que chegou é julgado ONDE o merge o julgaria:
+   um **CLONE do remoto** (não a árvore de trabalho de quem empurrou) roda o
+   comando do gate, e o veredito dele é lido ali — reprovado. O relatório NOMEIA
+   o job (a invariante CORE `typecheck` do `CORE_INVARIANTS`, uma fonte só), em
+   vez de dizer "o CI" no vazio.
+
+As duas metades de "quem barra depois" são medidas em LUGARES DIFERENTES e
+nenhuma substitui a outra: o **sinal** (o conteúdo que chegou reprova o comando do
+gate) é medido aqui, sobre os bytes que viajaram; o **efeito na forja** (um PR com
+o check required vermelho não mergeia) é a prova `prove-gitea-merge-gate`, contra
+um Gitea efêmero de verdade. O que impede o buraco de reabrir em silêncio é o
+segundo lado continuar no **contrato de merge** — e é isso que a linha do "NÃO
+CUBRE" cobra de quem lê.
+
+O `state` dessa parte segue o vocabulário do resto: `proven` é o limite medido e
+**o CI barrando**; `violated` é o defeito passar pelos **dois** lados (o hook
+contornado E o gate do CI sem reprovar o que chegou) — aí não há rede nenhuma, e
+o veredito BLOQUEIA; `unavailable` é não ter dado para medir (e, no recorte do
+merge, também bloqueia: medir o contorno usa o mesmo fixture dos elos). Contornar
+o hook NÃO bloqueia — isso é o desenho do git, e é justamente o que a parte
+declara. No relatório ela sai como linha própria ("limite (git push --no-verify)"
+com o contorno medido e "quem barra: 'bun run typecheck' … → exit 1") e, no
+`--json`, dentro do MESMO fato `localContract`. Quando medida, ela também entra
+na lista do "NÃO CUBRE", em texto: é a conclusão que o fato, sem essa linha,
+deixaria o leitor tirar sozinho.
+
+**E as partes são UM fato só — o `localContract`.** Antes este assunto vivia em
+TRÊS lugares: os dois fatos de topo (`preCommitBlock` e `prePushBlock`, um por
+elo) e o contrato dos COMANDOS dos hooks, que só existia no gate
+(`check-hook-commands`, §24) e **nem era declarado** na prontidão — o relatório
+dizia uma coisa e a bateria outra, sem ninguém para arbitrar. Agora é um fato de
+topo com as QUATRO partes (os dois elos EXECUTADOS + o que cada hook RODA + o
+LIMITE do gate local, medido), e o
+veredito — bloqueios, faltas de prova, relatório impresso e `--json` — consulta
+esse fato, e só ele. A **régua não foi recopiada**: a parte dos comandos é o
+`analyze` do `check-hook-commands` importado (o dono da régua), com a mesma
+descida nos scripts que os hooks chamam; a parte dos elos é o mesmo
+`proveCommitBlocks`/`provePushBlocks` das suítes. Um comando que NÃO resolve — o
+"passo que nunca roda" — virou parte do fato pelo mesmo motivo: é o mesmo
+assunto, medido no mesmo lugar, e um hook quebrado bloqueia como um elo quebrado.
+O `skip` de cada elo entrou para DENTRO do fato (`links['pre-commit'].state =
+'skipped'`, nomeado com a flag que o pulou), em vez de viver numa flag paralela do
+relatório — é isso que faz o `--ci` ver `skipped` como **elo quebrado** em vez de
+"falta de prova".
+
+**E no recorte do MERGE (`--ci`) o CONTRATO LOCAL INTEIRO — os dois elos
+EXECUTADOS e o que cada hook RODA — tem de sair PROVADO.** Aqui a disciplina é a
+INVERSA da do perfil completo, e por um motivo que se mede: no `--ci` as QUATRO
+partes do fato só precisam de git/bash/bun e do próprio checkout — não há rede,
+credencial nem docker que justifiquem um `unavailable`. E é exatamente este
+recorte que o job do PR roda a cada merge: se `unavailable` valesse como "falta de
+prova", bastaria o YAML do job ganhar um
+`--no-pre-commit-proof`/`--no-pre-push-proof` para o elo quebrado passar **verde
+no merge** (a flag vira `skipped`, e `skipped` ≠ provado); bastaria a metade
+dos COMANDOS não ser lida para o "passo que nunca roda" deixar de ser cobrado no
+portão; e bastaria a parte do LIMITE não ser medida para o veredito voltar a
+calar quem barra o defeito depois do hook. Com `--ci`, então, todo estado que não seja `proven` — `unavailable`,
+`skipped`, parte ou fato ausente — vai para os **bloqueios**, nomeando o elo (ou
+o hook), a flag que o tirou de cena e o conserto; `violated` continua bloqueando
+pelo motivo dele (o defeito chegou), sem linha duplicada. Fora do `--ci` a regra é
+no-op: no perfil completo falta de prova segue INDETERMINADA, porque lá o doctor
+cobre o que depende do HOST e "não deu para medir" é o veredito honesto.
 
 **E o mesmo contrato vale para TODO gate CORE, não só o bring-up.** O fato é
 DERIVADO dos `CORE_INVARIANTS` (uma fonte só): cada invariante que declara
@@ -5149,10 +5215,13 @@ foi pedida.
 "todo comando do hook RESOLVE?" — que é diferente de "o hook de fato BLOQUEIA o
 commit defeituoso?". A segunda pergunta era respondida só pelo teste
 `pre-commit-git-commit-blocks.test.ts` (um `git commit` de verdade, com o veredito
-lido no objeto); ela agora é o fato `preCommitBlock` da seção 4/7 do relatório de
-prontidão — o doctor roda o MESMO `proveCommitBlocks()` de
+lido no objeto); ela agora é a parte dos elos do fato `localContract` da seção 4/7
+do relatório de prontidão — o doctor roda o MESMO `proveCommitBlocks()` de
 `scripts/pre-commit-proof.mjs` que o teste importa (régua única, dois
-consumidores) e publica provado/violado/indisponível. Ver a §13.
+consumidores) e publica provado/violado/indisponível. E as duas perguntas — as
+duas provas EXECUTADAS e a régua dos comandos que este guard responde — são
+publicadas no MESMO fato: o `localContract` lê este `analyze` (importado, não
+recopiado) e o veredito consulta esse fato, e só ele. Ver a §13.
 
 ---
 

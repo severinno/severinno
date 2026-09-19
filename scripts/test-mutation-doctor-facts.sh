@@ -107,10 +107,13 @@ RESULTS_CONTROL="$TMP_DIR/control.json"
 C1_ANCHOR_DOC="export function summarize(facts) {"
 C1_SED='/^export function summarize(facts) {$/,+1 s/^  const blockers = \[\]$/  const blockers = { push() {} } \/\/ MUTATION-DOCTOR-FACTS/'
 C1_MARKER="  const blockers = { push() {} } // MUTATION-DOCTOR-FACTS"
-# O coletor de `readMirrors` tem o MESMO texto e NÃO pode ser tocado (mutar
-# aquele não cortaria o fio de `summarize`, e a prova seria de outro invariante).
+# Os OUTROS coletores do MESMO texto têm de sobreviver: o de `readMirrors` e o
+# do contrato local (`localContractBlockers`) usam a mesma linha idiomática, e
+# mutar um deles não cortaria o fio de `summarize` (a prova seria de outro
+# invariante). A expectativa é RELATIVA ao arquivo íntegro — a mutação corta UMA
+# ocorrência e todas as demais ficam: um número fixo aqui envelheceria a cada
+# coletor novo sem provar nada melhor.
 C1_LEFTOVER="  const blockers = []"
-C1_LEFTOVER_EXPECTED="1"
 
 # ── Caso B — o veredito deixa de declarar o NÃO PROVADO ──────────────────
 # A mutação tira `unknowns.length` do ternário: `blockers` continua mandando
@@ -359,11 +362,13 @@ assert_mutation_detected() {
     exit 1
   fi
   if [ -n "$CASE_LEFTOVER" ]; then
-    local remaining
+    local remaining pristine expected
     remaining="$(grep -cF "$CASE_LEFTOVER" "$DOCTOR" || true)"
-    if [ "$remaining" != "$CASE_LEFTOVER_EXPECTED" ]; then
+    pristine="$(grep -cF "$CASE_LEFTOVER" "$BACKUP_DIR/doctor" || true)"
+    expected="$((pristine - 1))"
+    if [ "$remaining" != "$expected" ]; then
       fail "MUTAÇÃO NÃO-CIRÚRGICA: sobraram $remaining ocorrência(s) de '$CASE_LEFTOVER'"
-      fail "  (esperado $CASE_LEFTOVER_EXPECTED — o coletor de readMirrors tem de sobreviver)"
+      fail "  (esperado $expected das $pristine do arquivo íntegro: a mutação corta UMA, e os outros coletores — readMirrors, o do contrato local — têm de sobreviver)"
       exit 1
     fi
   fi
@@ -460,7 +465,6 @@ CASE_ANCHOR_DOC="$C1_ANCHOR_DOC"
 CASE_SED="$C1_SED"
 CASE_MARKER="$C1_MARKER"
 CASE_LEFTOVER="$C1_LEFTOVER"
-CASE_LEFTOVER_EXPECTED="$C1_LEFTOVER_EXPECTED"
 CASE_RED=("${C1_RED[@]}")
 CASE_INTACT=("${C1_INTACT[@]}")
 assert_mutation_detected "A (violação→bloqueio)"
@@ -471,7 +475,6 @@ CASE_ANCHOR_DOC="$C2_ANCHOR_DOC"
 CASE_SED="$C2_SED"
 CASE_MARKER="$C2_MARKER"
 CASE_LEFTOVER=""
-CASE_LEFTOVER_EXPECTED="0"
 CASE_RED=("${C2_RED[@]}")
 CASE_INTACT=("${C2_INTACT[@]}")
 assert_mutation_detected "B (o veredito deixa de declarar o não-provado)"
@@ -482,7 +485,6 @@ CASE_ANCHOR_DOC="$C3_ANCHOR_DOC"
 CASE_SED="$C3_SED"
 CASE_MARKER="$C3_MARKER"
 CASE_LEFTOVER=""
-CASE_LEFTOVER_EXPECTED="0"
 CASE_RED=("${C3_RED[@]}")
 CASE_INTACT=("${C3_INTACT[@]}")
 assert_mutation_detected "C (o relatório deixa de declarar o que NÃO cobre)"

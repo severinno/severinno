@@ -238,7 +238,14 @@ import { proveCommitBlocks } from "./pre-commit-proof.mjs"
 // `scripts/pre-push-proof.mjs` junto com a camada do hook que o teste
 // `pre-push-git-push-blocks.test.ts` importa — a régua é UMA só, e o doctor a
 // EXECUTA em vez de confiar na existência do teste que a mede.
-import { provePushBlocks } from "./pre-push-proof.mjs"
+import { provePushBypass, provePushBlocks } from "./pre-push-proof.mjs"
+// A RÉGUA DOS COMANDOS DOS HOOKS: o fato do contrato local declara o que cada
+// hook RODA, e a leitura é a do `check-hook-commands` (o dono da régua) —
+// importada, nunca reescrita aqui. Duas leituras do mesmo texto divergiriam no
+// dia em que uma delas mudasse, e o veredito passaria a julgar um contrato que o
+// gate não julga mais (ou o contrário). `analyze` não executa nada no import: o
+// guard só roda quando é chamado como script.
+import { analyze as analyzeHookCommands } from "./check-hook-commands.mjs"
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -1093,38 +1100,19 @@ export function summarize(facts) {
   // de cima para baixo, e quem diagnostica vai pela primeira que aparece).
   for (const b of shellInheritanceBlockers(facts.shellInheritance)) blockers.push(b)
   for (const u of shellInheritanceUnknowns(facts.shellInheritance)) unknowns.push(u)
-  // A PROVA DO BLOQUEIO LOCAL: o hook deixando passar o corpo quebrado BLOQUEIA
-  // (o defeito entra no histórico), e não ter conseguido provar vira falta de
-  // prova NOMEADA — nunca verde. Pular com a flag é falta de prova DITA (a mesma
-  // disciplina do resto: um fato que não foi medido não deixa o veredito PRONTA).
-  if (facts.skippedPreCommitProof) {
-    unknowns.push(
-      "a prova do bloqueio LOCAL foi pulada (--no-pre-commit-proof): o veredito não cobre se um corpo `run:` quebrado no ÍNDICE pode virar um commit local",
-    )
-  } else {
-    for (const b of preCommitBlockBlockers(facts.preCommitBlock)) blockers.push(b)
-    for (const u of preCommitBlockUnknowns(facts.preCommitBlock)) unknowns.push(u)
+  // O CONTRATO LOCAL — UM assunto, UM lugar: os DOIS elos EXECUTADOS (o commit
+  // que tem de recusar o corpo quebrado no índice e o push que tem de recusar a
+  // árvore vermelha) e os comandos que cada hook RODA saem do MESMO fato, e é o
+  // MESMO par de funções que o cobra no perfil completo e no recorte `--ci` (o
+  // que muda é o que ele cobra, não onde ele mora). O elo pulado por flag já
+  // entra como `skipped` DENTRO do fato: não existe uma segunda lista de flags
+  // paralela para o veredito consultar.
+  for (const b of localContractBlockers(facts.localContract, {
+    ciProfile: Boolean(facts.ciProfile),
+  })) {
+    blockers.push(b)
   }
-  // NO RECORTE DO MERGE a prova local é EXIGIDA (ver a função): aqui `unavailable`
-  // é elo quebrado, não falta de prova — e um `--no-pre-commit-proof` no YAML do
-  // job também não esconde o elo (a flag vira `skipped`, e `skipped` ≠ provado).
-  // Fora do `--ci` a função é no-op, então nada muda no perfil completo.
-  for (const b of ciRequiredLocalProofBlockers("pre-commit", facts)) blockers.push(b)
-  // O OUTRO ELO do contrato local (o `pre-push`): mesma disciplina, mesma
-  // separação — o fato do push não substitui o do commit nem é substituído por
-  // ele, porque as promessas e os lugares de medição são diferentes.
-  if (facts.skippedPrePushProof) {
-    unknowns.push(
-      "a prova do bloqueio do PUSH foi pulada (--no-pre-push-proof): o veredito não cobre se um push com a ÁRVORE vermelha leva o defeito para a forja",
-    )
-  } else {
-    for (const b of prePushBlockBlockers(facts.prePushBlock)) blockers.push(b)
-    for (const u of prePushBlockUnknowns(facts.prePushBlock)) unknowns.push(u)
-  }
-  // Idem para o OUTRO elo local: no recorte do merge os dois têm de sair
-  // provados (e o comentário do fato já dizia "NUNCA verde" — é isto que faz a
-  // frase valer no VEREDITO, e não só na linha do relatório).
-  for (const b of ciRequiredLocalProofBlockers("pre-push", facts)) blockers.push(b)
+  for (const u of localContractUnknowns(facts.localContract)) unknowns.push(u)
 
   const verdict =
     blockers.length > 0 ? VERDICT.BLOCKED : unknowns.length > 0 ? VERDICT.UNKNOWN : VERDICT.READY
@@ -1162,14 +1150,32 @@ export function summarize(facts) {
       "a PROVA do bloqueio da imagem (pulada — sem ela, o veredito não garante que o runner não sobe sem a tag)",
     )
   }
-  if (facts.skippedPreCommitProof) {
-    unproven.unshift(
+  // O que o contrato local deixou de fora POR FLAG: o estado `skipped` mora no
+  // fato (é lá que o leitor o encontra), e aqui ele só vira a linha de "não foi
+  // provado" — a ordem é a mesma de antes.
+  for (const [elo, texto] of [
+    [
+      "pre-commit",
       "a prova do bloqueio LOCAL (pre-commit) — pulada por --no-pre-commit-proof: sem ela, o veredito não garante que um corpo `run:` quebrado no índice não vire commit",
-    )
-  }
-  if (facts.skippedPrePushProof) {
-    unproven.unshift(
+    ],
+    [
+      "pre-push",
       "a prova do bloqueio do PUSH (pre-push) — pulada por --no-pre-push-proof: sem ela, o veredito não garante que uma árvore VERMELHA não chegue à forja por um push local",
+    ],
+  ]) {
+    if (facts.localContract?.links?.[elo]?.state === "skipped") unproven.unshift(texto)
+  }
+  // O LIMITE do gate local, quando MEDIDO: não é uma seção pulada nem uma prova
+  // que faltou — é o que o repositório sabe e declara sobre a própria barreira.
+  // Ele entra aqui porque esta é a lista que o leitor consulta para saber o que
+  // o veredito NÃO está prometendo, e "o hook local é uma barreira" é a
+  // conclusão que o fato, sem esta linha, deixaria implícita.
+  // (no FIM da lista, e com `push`: as seções puladas acima entram por `unshift`
+  // e são lidas pela POSIÇÃO — a declaração do limite não é uma delas, e não
+  // pode empurrar para baixo o que o leitor já procura no topo.)
+  if (facts.localContract?.bypass?.state === "proven") {
+    unproven.push(
+      `o LIMITE do gate LOCAL: um 'git push --no-verify' não executa o hook — medido, o defeito CHEGA ao remoto e quem o barra é ${ciQueBarraAArvore()} (o comando do gate reprova o conteúdo que chegou). O hook local não é barreira contra quem o desliga`,
     )
   }
   if (facts.ciProfile) {
@@ -3535,38 +3541,6 @@ export function readPreCommitBlock({
 }
 
 /**
- * O que a prova do bloqueio local tem de BLOQUEANTE: o hook deixou passar o
- * defeito (o corpo `run:` quebrado virou commit).
- *
- * @param {object|undefined} fato
- * @returns {string[]}
- */
-export function preCommitBlockBlockers(fato) {
-  if (!fato || fato.state !== "violated") return []
-  return [`o PRE-COMMIT nao bloqueia um corpo 'run:' quebrado no indice — ${fato.detail}`]
-}
-
-/**
- * O que a prova do bloqueio local NAO pôde provar. Ausência do FATO também é
- * ausência de prova (mesma disciplina do guard de recursão, da herança de shell e
- * da dívida declarada): um relatório sem o fato não cobre se o commit de quem
- * confia no hook carrega um corpo quebrado, e dizer "pronta" sobre o que não foi
- * olhado é o que este doctor recusa.
- *
- * @param {object|undefined} fato
- * @returns {string[]}
- */
-export function preCommitBlockUnknowns(fato) {
-  if (!fato) {
-    return [
-      "a prova do bloqueio LOCAL (o pre-commit recusando um corpo `run:` quebrado no ÍNDICE) não está declarada no relatório: o veredito não cobre se um commit local pode carregar um corpo que nunca rodaria",
-    ]
-  }
-  if (fato.state === "proven" || fato.state === "skipped") return []
-  return [`o bloqueio LOCAL do pre-commit nao foi provado (state '${fato.state}'): ${fato.detail}`]
-}
-
-/**
  * A PROVA DO BLOQUEIO DO PUSH como FATO do relatório — o OUTRO ELO do contrato
  * local: a garantia de que o `pre-push` recusa um push cuja ÁRVORE está vermelha,
  * sem deixar OBJETO NENHUM no remoto.
@@ -3632,76 +3606,573 @@ export function readPrePushBlock({
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// O CONTRATO LOCAL, EM UM FATO SÓ
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// O QUE ESTE FATO CARREGA — e por que ele é UM:
+//
+//   1. os DOIS elos EXECUTADOS: o `git commit` de verdade com o corpo `run:`
+//      quebrado no ÍNDICE (tem de ser RECUSADO, e o controle com o corpo fechado
+//      tem de ENTRAR) e o `git push` de verdade com a ÁRVORE vermelha (tem de ser
+//      RECUSADO sem deixar um objeto sequer no remoto bare, e o controle verde tem
+//      de CHEGAR);
+//   2. o que cada hook RODA: todo comando que o `.husky/pre-commit` e o
+//      `.husky/pre-push` executam — o do próprio arquivo e o de dentro dos scripts
+//      de shell que eles chamam (a DESCIDA) — com o desfecho de cada um
+//      (`resolvido` / `indeterminado` DECLARADO / `violacao`);
+//   3. o LIMITE do gate local, MEDIDO: o `git push --no-verify` contorna o hook
+//      (a árvore vermelha CHEGA ao remoto, com o hook sem rodar) e quem barra o
+//      defeito depois é o CI — o comando do gate reprova o conteúdo que chegou,
+//      num CLONE do remoto. É a parte que impede o veredito de sugerir que "o
+//      pre-push está provado" equivale a "a árvore vermelha não chega a main".
+//
+// O ASSUNTO É UM SÓ: "o que o contrato local promete, na máquina de quem commita
+// e de quem empurra". Antes ele vivia em TRÊS lugares — dois fatos de topo
+// (`preCommitBlock` e `prePushBlock`, um por elo) e o contrato dos comandos, que
+// só existia no gate (`check-hook-commands`) e nem era declarado na prontidão.
+// Dois lugares para o mesmo assunto é o que produz o pior veredito possível: o
+// relatório dizendo uma coisa enquanto a bateria diz outra, sem ninguém para
+// arbitrar. Agora o veredito consulta ESTE fato, e só ele.
+//
+// A RÉGUA NÃO FOI REESCRITA: o item 2 é lido pelo `analyze` do
+// `check-hook-commands` (importado) — o dono da régua. O doctor não tem uma
+// segunda lista de "comandos que os hooks rodam"; ele tem a MESMA.
+//
+// O QUE MUDA NO VEREDITO (e é a razão de o fato ser um):
+//   - `violated` em qualquer das partes (um elo que deixou passar, ou um comando
+//     do hook que NÃO resolve — um passo que nunca roda) BLOQUEIA;
+//   - `unavailable` e `skipped` são FALTA DE PROVA nomeada: `unavailable` no
+//     recorte `--ci` é elo quebrado (lá os três itens só precisam de git, bash,
+//     bun e do próprio checkout), e fora dele é INDETERMINADA;
+//   - ausente do relatório NÃO é verde (a mesma disciplina do guard de recursão,
+//     da herança de shell e da dívida declarada).
+
+/** Os elos do contrato local, na ordem em que o relatório os lê. */
+export const LOCAL_LINKS = ["pre-commit", "pre-push"]
+
+/** Como o veredito escreve o nome de cada elo (as mensagens já existiam assim). */
+const LOCAL_LINK_FACE = { "pre-commit": "PRE-COMMIT", "pre-push": "PRE-PUSH" }
+
 /**
- * O que a prova do bloqueio do push tem de BLOQUEANTE: o hook deixou a árvore
- * vermelha CHEGAR ao remoto (o defeito já está na forja).
- *
- * @param {object|undefined} fato
- * @returns {string[]}
+ * A SEVERIDADE de cada estado, para o agregado: o estado do fato é o PIOR estado
+ * presente em qualquer das partes. `violated` (o contrato quebrou) >
+ * `unavailable` (não deu para medir) > `skipped` (pulada por flag, nomeada) >
+ * `proven` (medido e de pé).
  */
-export function prePushBlockBlockers(fato) {
-  if (!fato || fato.state !== "violated") return []
-  return [`o PRE-PUSH nao bloqueia um push com a arvore VERMELHA — ${fato.detail}`]
+const LOCAL_STATE_WEIGHT = { violated: 3, unavailable: 2, skipped: 1, proven: 0 }
+
+/**
+ * O pior estado entre os das partes — a agregação do fato único.
+ *
+ * Um estado desconhecido (nem `proven`, nem `skipped`) pesa como `unavailable`:
+ * quem inventa um estado não pode ganhar um veredito mais verde do que quem não
+ * conseguiu medir.
+ *
+ * @param {string[]} estados
+ * @returns {"violated"|"unavailable"|"skipped"|"proven"}
+ */
+export function aggregateLocalState(estados) {
+  let pior = "proven"
+  for (const estado of estados) {
+    const peso = LOCAL_STATE_WEIGHT[estado] ?? LOCAL_STATE_WEIGHT.unavailable
+    if (peso > (LOCAL_STATE_WEIGHT[pior] ?? 0)) pior = estado
+  }
+  return /** @type {"violated"|"unavailable"|"skipped"|"proven"} */ (pior)
 }
 
 /**
- * O que a prova do bloqueio do push NAO pôde provar. Ausência do FATO também é
- * ausência de prova (mesma disciplina do elo do pre-commit): um relatório sem o
- * fato não cobre se o push de quem confia no hook leva a árvore vermelha para a
- * forja, e dizer "pronta" sobre o que não foi olhado é o que este doctor recusa.
+ * O resultado de UM contrato de gate (invariante × job): o estado, o comando que
+ * o job tem de rodar, o que cada forja registra e o remédio.
+ *
+ * Declarado como typedef porque o MESMO shape sai de `readGateContract` (um
+ * contrato) e de `readAllGateContracts` (a lista de todos): sem ele, o
+ * `@returns` do agregador dizia `object[]` e quem consumia o fato tinha de
+ * reconverter o tipo na mão só para ler `state`/`forges`/`detail` — a assinatura
+ * mentindo sobre o que ela entrega.
+ *
+ * @typedef {object} GateContractResult
+ * @property {"proven"|"violated"|"unavailable"} state
+ * @property {string} jobId
+ * @property {string} invariantId
+ * @property {string} script
+ * @property {string} detail
+ * @property {{forge: string, workflow: string, command: string|null,
+ *   registered: boolean|null, detail: string}[]} forges
+ * @property {string[]} violations
+ * @property {string[]} remedies
+ */
+
+/**
+ * UM comando julgado de um hook (o shape que o `analyze` do `check-hook-commands`
+ * entrega e que o relatório imprime: arquivo, linha, programa, a linha inteira e
+ * o desfecho com o motivo).
+ *
+ * @typedef {object} HookCommandLine
+ * @property {string} arquivo
+ * @property {number} linha
+ * @property {string} programa
+ * @property {string} comando
+ * @property {string} desfecho
+ * @property {string} motivo
+ */
+
+/**
+ * O QUE UM ARQUIVO DE HOOK RODA, com o desfecho agregado — a parte do fato que
+ * responde "algum passo deste hook NUNCA roda?".
+ *
+ * @typedef {object} HookCommandsPart
+ * @property {string} state
+ * @property {string} detail
+ * @property {string|null} elo
+ * @property {HookCommandLine[]} commands
+ * @property {HookCommandLine[]} unresolved
+ * @property {HookCommandLine[]} declared
+ * @property {object[]} limits
+ * @property {string[]} descended
+ */
+
+/**
+ * O QUE CADA HOOK RODA — por ARQUIVO de hook, com o desfecho de cada comando.
+ *
+ * Cobre TODOS os hooks do `.husky/` (não só os dois elos do contrato local): um
+ * hook extra que executa um caminho que não existe é o MESMO defeito — um passo
+ * que nunca roda em todo commit — e deixá-lo fora seria a cegueira que o gate
+ * fechou ao descer nos scripts.
+ *
+ * A ATRIBUIÇÃO é a regra do próprio gate: o hook é dono do que está no arquivo
+ * dele e do que DESCE dele (a cadeia `chamador:linha` em `origem`), e um script
+ * alcançado por dois hooks pertence ao primeiro que o alcançou — exatamente como
+ * o gate o julga UMA vez. Quando a cadeia de um comando não chega a hook nenhum,
+ * ele entra em `unattributed` (declarado, nunca sumido em silêncio).
+ *
+ * `unavailable` (e não `proven` vazio) quando NADA foi julgado: um hook sem
+ * comando julgado é "não consegui ler", nunca "não havia nada a julgar" —
+ * fail-closed, a mesma lei do resto do repositório.
+ *
+ * @param {{cwd?: string, deps?: {analyze?: (opts: {root: string}) => object}}} [args]
+ * @returns {{state: string, detail: string, hooks: Record<string, HookCommandsPart>, unattributed: object[]}}
+ */
+export function readHookCommands({ cwd = REPO_ROOT, deps = {} } = {}) {
+  // `typeof` e não `??`: o default do doctor para as deps é `{}`, e um objeto
+  // vazio NÃO é nullish — `deps.analyze ?? fallback` entregaria `{}` e a chamada
+  // morreria com "analyze is not a function" (foi o que aconteceu na primeira
+  // rodada). A régua real é o default, sempre.
+  const analyze =
+    typeof deps.analyze === "function"
+      ? deps.analyze
+      : (opts) => analyzeHookCommands({ root: opts.root })
+  const indisponivel = (motivo) => ({
+    state: "unavailable",
+    detail: motivo,
+    hooks: {},
+    unattributed: [],
+  })
+
+  let report
+  try {
+    report = analyze({ root: cwd })
+  } catch (err) {
+    return indisponivel(
+      `o contrato dos comandos dos hooks nao pode ser lido: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+  if (!report || report.infra) {
+    return indisponivel(
+      "o contrato dos comandos dos hooks nao pode ser lido: `.husky/` (ou os `scripts` do package.json) ausente ou ilegivel — NADA foi julgado (nao conseguir ler nunca e 'nao havia o que julgar')",
+    )
+  }
+
+  const arquivos = report.hooks ?? []
+  // De qual ARQUIVO de hook cada arquivo julgado desceu (os hooks nascem donos de si).
+  const dono = new Map(arquivos.map((rel) => [rel, rel]))
+  const porArquivo = new Map(arquivos.map((rel) => [rel, []]))
+  const unattributed = []
+  for (const comando of report.comandos ?? []) {
+    const daCadeia = dono.has(comando.arquivo)
+      ? dono.get(comando.arquivo)
+      : dono.get((comando.origem ?? "").split(":")[0])
+    if (daCadeia === undefined || daCadeia === null) {
+      unattributed.push({
+        arquivo: comando.arquivo,
+        linha: comando.linha,
+        origem: comando.origem ?? "",
+      })
+      continue
+    }
+    dono.set(comando.arquivo, daCadeia)
+    porArquivo.get(daCadeia)?.push(comando)
+  }
+
+  const hooks = Object.fromEntries(
+    arquivos.map((rel) => {
+      const comandos = (porArquivo.get(rel) ?? []).map((c) => ({
+        arquivo: c.arquivo,
+        linha: c.linha,
+        programa: c.programa,
+        comando: [c.programa, ...(c.tokens ?? [])].join(" "),
+        desfecho: c.desfecho,
+        motivo: c.motivo ?? "",
+      }))
+      const unresolved = comandos.filter((c) => c.desfecho === "violacao")
+      const declared = comandos.filter((c) => c.desfecho === "indeterminado")
+      const limits = (report.limites ?? []).filter((l) => dono.get(l.arquivo) === rel)
+      const descended = [...new Set(comandos.map((c) => c.arquivo).filter((a) => a !== rel))].sort()
+      const state =
+        unresolved.length > 0 ? "violated" : comandos.length === 0 ? "unavailable" : "proven"
+      const detail =
+        state === "violated"
+          ? `${unresolved.length} de ${comandos.length} comando(s) NAO resolvem — um passo que nunca roda`
+          : state === "unavailable"
+            ? `nenhum comando julgado — nao conseguir ler nao e "nao havia o que julgar"`
+            : `${comandos.length} comando(s) resolvem (${descended.length} script(s) por descida), ${declared.length} declarado(s) indeterminado(s)`
+      return [
+        rel,
+        {
+          state,
+          detail,
+          elo: LOCAL_LINKS.find((elo) => rel.split("/").pop() === elo) ?? null,
+          commands: comandos,
+          unresolved,
+          declared,
+          limits,
+          descended,
+        },
+      ]
+    }),
+  )
+
+  const partes = Object.values(hooks).map((h) => h.state)
+  const state = aggregateLocalState(partes.length > 0 ? partes : ["unavailable"])
+  const total = Object.values(hooks).reduce((soma, h) => soma + h.commands.length, 0)
+  const naoResolvidos = Object.values(hooks).reduce((soma, h) => soma + h.unresolved.length, 0)
+  return {
+    state,
+    detail:
+      `${arquivos.length} hook(s) do .husky/, ${total} comando(s) julgado(s), ${naoResolvidos} nao resolvido(s)` +
+      (unattributed.length > 0
+        ? `, ${unattributed.length} sem cadeia ate um hook (declarado(s))`
+        : ""),
+    hooks,
+    unattributed,
+  }
+}
+
+/**
+ * QUEM BARRA o defeito DEPOIS do gate local — a resposta de "o hook é a última
+ * linha?": é o CI, e o relatório NOMEIA o job em vez de dizer "o CI" no vazio.
+ *
+ * A fonte é o `CORE_INVARIANTS` (não uma lista à mão): a invariante que roda o
+ * comando do gate da ÁRVORE (`typecheck`) declara os `jobIds` de cada forja, e é
+ * isso que a branch protection exige para liberar o merge. Se um dia a
+ * invariante mudar de job, o nome muda aqui sozinho — o texto do limite nunca
+ * aponta para um check que não existe.
+ *
+ * @returns {string}
+ */
+export function ciQueBarraAArvore() {
+  const inv = CORE_INVARIANTS.find((i) => i.id === "typecheck")
+  const jobs = Object.entries(inv?.jobIds ?? {}).map(([forge, jid]) => `${forge}: '${jid}'`)
+  return jobs.length > 0 ? `o CI (${jobs.join(", ")})` : "o CI"
+}
+
+/**
+ * A MEDIDA DO LIMITE DO GATE LOCAL como PARTE do fato — o `git push
+ * --no-verify` contorna o hook, o defeito CHEGA ao remoto e quem o barra é o CI.
+ *
+ * POR QUE ELA MORA NO MESMO FATO (e não numa nota em prosa): é o MESMO assunto
+ * — o que o contrato local promete e o que ele NÃO cobre. O hook é quem executa
+ * a promessa na máquina de quem empurra, e o git entrega ao próprio autor do
+ * push o interruptor que a desliga; a rede é o CI. Declarar isso aqui faz o
+ * veredito dizer quem barra, em vez de deixar "o pre-push está provado"
+ * sugerindo que a árvore vermelha não tem como chegar a `main`.
+ *
+ * @param {{cwd?: string, deps?: {prove?: (opts: {root: string}) => object}}} [args]
+ * @returns {{state: string, detail: string, evidence: object|null, remedies: string[]}}
+ */
+export function readPushBypass({
+  cwd = REPO_ROOT,
+  deps = /** @type {{prove?: (opts: {root: string}) => any}} */ ({}),
+} = {}) {
+  const prove = deps.prove ?? ((opts) => provePushBypass({ root: opts.root }))
+  try {
+    const r = prove({ root: cwd })
+    if (r === null || r === undefined || typeof r.state !== "string") {
+      return {
+        state: "unavailable",
+        detail:
+          "a medida do limite do gate local nao devolveu estado (nem 'proven', nem 'violated')",
+        evidence: null,
+        remedies: [],
+      }
+    }
+    return {
+      state: r.state,
+      detail: r.detail ?? "sem detalhe",
+      evidence: r.evidence ?? null,
+      remedies: r.remedies ?? [],
+    }
+  } catch (err) {
+    return {
+      state: "unavailable",
+      detail: `a medida do limite do gate local nao pode rodar: ${err instanceof Error ? err.message : String(err)}`,
+      evidence: null,
+      remedies: [],
+    }
+  }
+}
+
+/**
+ * O CONTRATO LOCAL INTEIRO — o fato único: os dois elos EXECUTADOS, o que cada
+ * hook RODA e o LIMITE do gate local (medido).
+ *
+ * `executed` diz quais elos foram EXECUTADOS (o `--no-pre-commit-proof` e o
+ * `--no-pre-push-proof` os desligam UM A UM): o elo desligado entra como
+ * `skipped` — nomeado dentro do fato, e não numa flag paralela do relatório. A
+ * falta de prova viaja junto do resto do contrato local, porque é isso que ela
+ * é: uma parte do mesmo assunto.
+ *
+ * `deps.preCommit` / `deps.prePush` / `deps.analyzeHooks` / `deps.bypass` são os
+ * pontos de injeção do teste (as quatro leituras são medidas sem git, sem os
+ * hooks do checkout e sem o gate).
+ *
+ * O `bypass` NÃO tem flag de pulo: medir que o hook local é contornável custa o
+ * mesmo que a prova do elo (o mesmo fixture, um push a mais) e é a única coisa
+ * que impede o fato de sugerir que "o pre-push está provado" significa "a árvore
+ * vermelha não chega a `main`". Um interruptor aqui seria mais um jeito de o
+ * veredito ficar parcial sem dizer qual fato foi pulado.
+ *
+ * @param {{cwd?: string, deps?: object, executed?: Record<string, boolean>}} [args]
+ * @returns {{state: string, detail: string, links: Record<string, {state: string, detail: string, evidence: object|null, remedies: string[]}>, commands: {state: string, detail: string, hooks: Record<string, HookCommandsPart>, unattributed: object[]}, bypass: {state: string, detail: string, evidence: object|null, remedies: string[]}, evidence: Record<string, object|null>, remedies: string[]}}
+ */
+export function readLocalContract({ cwd = REPO_ROOT, deps = {}, executed = {} } = {}) {
+  const links = {}
+  for (const elo of LOCAL_LINKS) {
+    if (executed[elo] === false) {
+      links[elo] = {
+        state: "skipped",
+        detail: `pulada por --no-${elo}-proof`,
+        evidence: null,
+        remedies: [],
+      }
+      continue
+    }
+    links[elo] =
+      elo === "pre-commit"
+        ? readPreCommitBlock({ cwd, deps: deps.preCommit ?? {} })
+        : readPrePushBlock({ cwd, deps: deps.prePush ?? {} })
+  }
+
+  // `analyzeHooks` é o OBJETO de deps do leitor de comandos (`{analyze}`), não a
+  // função: embrulhá-lo de novo entregaria um objeto onde se espera a régua.
+  const commands = readHookCommands({ cwd, deps: deps.analyzeHooks ?? {} })
+  // O LIMITE do gate local: não é uma promessa sendo cumprida, é a MEDIDA do que
+  // a promessa não alcança — e por isso ele entra no agregado como qualquer
+  // parte (um limite que não pôde ser medido não pode virar silêncio).
+  const bypass = readPushBypass({ cwd, deps: deps.bypass ?? {} })
+  const state = aggregateLocalState([
+    ...LOCAL_LINKS.map((elo) => links[elo].state),
+    commands.state,
+    bypass.state,
+  ])
+  const detalheElo = (elo) =>
+    `${elo}: ${links[elo].state} · ${commands.hooks[`.husky/${elo}`]?.unresolved.length ?? 0} comando(s) do hook nao resolvido(s)`
+
+  return {
+    state,
+    detail: `${LOCAL_LINKS.map(detalheElo).join(" | ")} | ${commands.detail} | limite (--no-verify): ${bypass.state}`,
+    links,
+    commands,
+    bypass,
+    evidence: Object.fromEntries(LOCAL_LINKS.map((elo) => [elo, links[elo].evidence ?? null])),
+    remedies: LOCAL_LINKS.flatMap((elo) => links[elo].remedies ?? []),
+  }
+}
+
+/**
+ * O que o contrato local tem de BLOQUEANTE: um elo que DEIXOU PASSAR (o defeito
+ * entrou no histórico ou chegou ao remoto), um comando do hook que NÃO resolve
+ * (um passo que nunca roda — a mesma classe que o gate reprova com exit 1) ou o
+ * LIMITE medido como `violated` (o `--no-verify` leva o defeito ao remoto E o
+ * gate do CI não reprova o que chegou: aí não há rede nenhuma depois do hook).
+ *
+ * O limite contornar o hook NÃO bloqueia — isso é o desenho do git, não um
+ * defeito, e é justamente o que o fato declara. O que bloqueia é ele ser a
+ * ÚLTIMA linha.
+ *
+ * NO RECORTE `--ci`, `unavailable` e `skipped` TAMBÉM BLOQUEIAM — e não só para
+ * os elos: as TRÊS partes do contrato local (os dois elos e os comandos dos dois
+ * hooks) só precisam de git, bash, bun e do próprio checkout, então "não deu para
+ * medir" aqui é elo quebrado. SEM ESSA REGRA A PROMESSA SAI DE CENA EM SILÊNCIO:
+ * apagar o `.husky/pre-push` (ou tirar o `bun` do PATH) leva o fato a
+ * `unavailable` → INDETERMINADA → o portão do PR traduz 2 em 0 e o merge passa
+ * com a garantia do push deixando de existir. É a classe de "verde por desenho"
+ * que este repositório recusa.
+ *
+ * Fora do `--ci` NADA DISSO BLOQUEIA: lá a falta de prova é INDETERMINADA (ver
+ * `localContractUnknowns`), porque o perfil completo cobre o que depende do HOST.
+ * `violated` não é repetido aqui: ele já bloqueia pelo motivo dele.
+ *
+ * @param {object|undefined} fato
+ * @param {{ciProfile?: boolean}} [opcoes]
+ * @returns {string[]}
+ */
+export function localContractBlockers(fato, { ciProfile = false } = {}) {
+  const blockers = []
+  const elos = LOCAL_LINKS.map((elo) => [elo, fato?.links?.[elo]]).filter(([, l]) => l)
+  for (const [elo, link] of elos) {
+    if (link.state === "violated") {
+      blockers.push(
+        elo === "pre-commit"
+          ? `o PRE-COMMIT nao bloqueia um corpo 'run:' quebrado no indice — ${link.detail}`
+          : `o PRE-PUSH nao bloqueia um push com a arvore VERMELHA — ${link.detail}`,
+      )
+    }
+  }
+  for (const [rel, hook] of Object.entries(fato?.commands?.hooks ?? {})) {
+    if (hook.state !== "violated") continue
+    const lista = hook.unresolved
+      .map((c) => `${c.arquivo}:${c.linha} \`${c.comando}\``)
+      .slice(0, 5)
+      .join(" · ")
+    blockers.push(
+      `o hook ${rel} executa comando(s) que NAO resolvem — um passo que NUNCA roda: ${lista}`,
+    )
+  }
+
+  if (fato?.bypass?.state === "violated") {
+    blockers.push(
+      `o LIMITE do gate local foi medido como VIOLADO: ${fato.bypass.detail} — o hook local é contornável (\`--no-verify\`) e quem tinha de barrar depois (${ciQueBarraAArvore()}) não barrou`,
+    )
+  }
+
+  if (!ciProfile) return blockers
+
+  for (const elo of LOCAL_LINKS) {
+    const link = fato?.links?.[elo]
+    const state = link?.state ?? "ausente do relatório"
+    if (state === "proven" || state === "violated") continue
+    blockers.push(
+      `a prova do bloqueio do ${LOCAL_LINK_FACE[elo]} nao foi PROVADA no recorte do merge (--ci): ` +
+        `state '${state}'${link?.detail ? ` — ${link.detail}` : ""}. ` +
+        `Neste recorte o contrato local so precisa de git/bash/bun e do proprio checkout, entao "nao deu para provar" ` +
+        `aqui é elo quebrado — conserte-o (ou rode o doctor SEM --ci para tratar a falta de prova como INDETERMINADA)`,
+    )
+  }
+  // O LIMITE no recorte do merge: medir que o `--no-verify` contorna o hook (e
+  // que o gate do CI reprova o que chegou) usa o MESMO fixture e as mesmas
+  // dependências dos elos — não há rede, credencial nem estado do HOST que
+  // justifiquem um `unavailable` aqui. Sem esta metade, apagar o `bun` do runner
+  // ou o próprio fixture levaria o limite a `unavailable` → INDETERMINADA → o
+  // portão do PR traduz 2 em 0, e o veredito voltaria a sugerir que o hook local
+  // é a rede que ele não é.
+  const estadoDoLimite = fato?.bypass?.state ?? "ausente do relatório"
+  if (estadoDoLimite !== "proven" && estadoDoLimite !== "violated") {
+    blockers.push(
+      `o LIMITE do gate local nao foi medido no recorte do merge (--ci): state '${estadoDoLimite}'` +
+        `${fato?.bypass?.detail ? ` — ${fato.bypass.detail}` : ""}. ` +
+        `Medir o '--no-verify' usa o mesmo fixture dos elos (git, bash, bun e o proprio checkout): ` +
+        `aqui "nao deu para medir" é o veredito sem a parte que diz QUEM barra o defeito depois do hook`,
+    )
+  }
+
+  // A metade dos COMANDOS no recorte do merge: todos os hooks do `.husky/`,
+  // não só os dois elos. Ler os hooks e os scripts que eles chamam não precisa de
+  // rede, credencial nem estado do HOST — então, DENTRO deste recorte, "não deu
+  // para medir" é o contrato local sem a metade que diz O QUE cada hook roda.
+  const hooksDoFato = Object.entries(fato?.commands?.hooks ?? {})
+  if (hooksDoFato.length === 0) {
+    blockers.push(
+      `os comandos dos hooks nao foram CONFERIDOS no recorte do merge (--ci): ` +
+        `${fato?.commands?.detail ?? "o fato do contrato local nao declara a parte dos comandos"}. ` +
+        `Ler os hooks e os scripts que eles chamam nao precisa de rede, credencial nem estado do HOST: ` +
+        `aqui "nao deu para medir" é o contrato local sem a metade que diz O QUE cada hook roda`,
+    )
+    return blockers
+  }
+  for (const [rel, hook] of hooksDoFato) {
+    if (hook.state === "proven" || hook.state === "violated") continue
+    blockers.push(
+      `os comandos de '${rel}' nao foram CONFERIDOS no recorte do merge (--ci): ` +
+        `state '${hook.state}'${hook.detail ? ` — ${hook.detail}` : ""}. ` +
+        `Ler os hooks e os scripts que eles chamam nao precisa de rede, credencial nem estado do HOST: ` +
+        `aqui "nao deu para medir" é o contrato local sem a metade que diz O QUE cada hook roda`,
+    )
+  }
+  return blockers
+}
+
+/**
+ * O que o contrato local NÃO pôde provar. Ausência do FATO também é ausência de
+ * prova (mesma disciplina do guard de recursão, da herança de shell e da dívida
+ * declarada): um relatório sem ele não cobre nem o commit que carrega um corpo
+ * quebrado nem o push que leva a árvore vermelha para a forja — e "pronta" sobre
+ * o que não foi olhado é o que este doctor recusa.
+ *
+ * As três partes da falta de prova saem NOMEADAS e separadas: o leitor precisa
+ * saber QUAL elo não foi provado (e, no caso do `skipped`, qual flag o pulou),
+ * qual hook não teve os comandos conferidos e se o LIMITE do gate local chegou a
+ * ser medido — a última é a que responde "e se ninguém tivesse o hook?"
  *
  * @param {object|undefined} fato
  * @returns {string[]}
  */
-export function prePushBlockUnknowns(fato) {
+export function localContractUnknowns(fato) {
   if (!fato) {
     return [
-      "a prova do bloqueio do PUSH (o pre-push recusando uma árvore VERMELHA sem deixar objeto nenhum no remoto) não está declarada no relatório: o veredito não cobre se o push local leva o defeito para a forja",
+      "o CONTRATO LOCAL (os DOIS elos executados — o pre-commit recusando um corpo `run:` quebrado no ÍNDICE e o pre-push recusando a ÁRVORE vermelha sem deixar objeto nenhum no remoto — mais o que cada hook RODA) não está declarado no relatório: o veredito não cobre nem o commit local nem o push",
     ]
   }
-  if (fato.state === "proven" || fato.state === "skipped") return []
-  return [`o bloqueio do PUSH nao foi provado (state '${fato.state}'): ${fato.detail}`]
-}
-
-/**
- * NO PERFIL `--ci`, OS DOIS ELOS LOCAIS TÊM DE SER **PROVADOS** — não apenas
- * relatados.
- *
- * POR QUE A EXIGÊNCIA MORA AQUI (e não no portão do PR): o `--ci` é o recorte do
- * merge — o que ele desliga é o que precisa de REDE, credencial de administração
- * ou o estado do HOST (`CI_PROFILE_SKIPS`). Os dois elos locais não precisam de
- * nada disso: git, bash e bun existem no runner que roda o job, e a prova roda
- * dentro de um repositório temporário próprio. Logo, DENTRO deste recorte,
- * `unavailable` não é "falta de prova declarada": é um elo quebrado.
- *
- * SEM ESTA REGRA A PROMESSA SAI DE CENA EM SILÊNCIO: apagar o `.husky/pre-push`
- * (ou tirar o `bun` do PATH) leva o fato a `unavailable` → INDETERMINADA → o
- * portão do PR traduz 2 em 0 e o merge passa com a garantia do push deixando de
- * existir. É a mesma classe de "verde por desenho" que este repositório recusa,
- * e a razão de o comentário do fato já dizer "NUNCA verde" — esta função é o que
- * faz essa frase valer no veredito, e não só no relatório.
- *
- * Fora do `--ci` NADA MUDA: no perfil completo a falta de prova segue como
- * `unknown` (INDETERMINADA), porque lá o doctor cobre o que depende do HOST e
- * "não deu para medir" é o veredito honesto. `violated` também não passa por
- * aqui: ele já BLOQUEIA pelo motivo dele (o defeito chegou), e repetir a linha
- * com outro texto só infla o relatório.
- *
- * @param {"pre-commit"|"pre-push"} elo
- * @param {object} facts
- * @returns {string[]}
- */
-export function ciRequiredLocalProofBlockers(elo, facts) {
-  if (!facts?.ciProfile) return []
-  const fato = elo === "pre-commit" ? facts.preCommitBlock : facts.prePushBlock
-  const state = fato?.state ?? "ausente do relatório"
-  if (state === "proven" || state === "violated") return []
-  return [
-    `a prova do bloqueio do ${elo.toUpperCase()} nao foi PROVADA no recorte do merge (--ci): ` +
-      `state '${state}'${fato?.detail ? ` — ${fato.detail}` : ""}. ` +
-      `Neste recorte os dois elos locais só precisam de git/bash/bun, entao "nao deu para provar" ` +
-      `aqui é elo quebrado — conserte-o (ou rode o doctor SEM --ci para tratar a falta de prova como INDETERMINADA)`,
-  ]
+  const unknowns = []
+  // O LIMITE: a parte do mesmo assunto que responde "o hook é a última linha?".
+  // Um fato sem ela (ou com ela não medida) não sabe dizer quem barra o defeito
+  // depois do gate local — e "o pre-push está provado" sozinho sugere que a
+  // árvore vermelha não tem como chegar a `main`.
+  if (!fato.bypass) {
+    unknowns.push(
+      "o LIMITE do gate local (o `git push --no-verify` contorna o hook) não está declarado no fato: o veredito não cobre QUEM barra o defeito depois do gate local",
+    )
+  } else if (fato.bypass.state !== "proven" && fato.bypass.state !== "violated") {
+    unknowns.push(
+      `o limite do gate local (o '--no-verify' contorna o hook) nao foi MEDIDO (state '${fato.bypass.state}'): ${fato.bypass.detail} — sem ele o veredito nao diz quem barra o defeito depois do hook`,
+    )
+  }
+  for (const elo of LOCAL_LINKS) {
+    const link = fato.links?.[elo]
+    if (!link) {
+      unknowns.push(`o elo ${elo} do contrato local não está declarado no fato`)
+      continue
+    }
+    if (link.state === "proven" || link.state === "violated") continue
+    if (link.state === "skipped") {
+      unknowns.push(
+        elo === "pre-commit"
+          ? "a prova do bloqueio LOCAL foi pulada (--no-pre-commit-proof): o veredito não cobre se um corpo `run:` quebrado no ÍNDICE pode virar um commit local"
+          : "a prova do bloqueio do PUSH foi pulada (--no-pre-push-proof): o veredito não cobre se um push com a ÁRVORE vermelha leva o defeito para a forja",
+      )
+      continue
+    }
+    unknowns.push(
+      elo === "pre-commit"
+        ? `o bloqueio LOCAL do pre-commit nao foi provado (state '${link.state}'): ${link.detail}`
+        : `o bloqueio do PUSH nao foi provado (state '${link.state}'): ${link.detail}`,
+    )
+  }
+  // A metade dos COMANDOS: um hook que não teve os comandos conferidos — e o
+  // caso em que NENHUM foi declarado (o fato sem a parte dos comandos).
+  const hooksDeclarados = Object.entries(fato.commands?.hooks ?? {})
+  if (hooksDeclarados.length === 0) {
+    unknowns.push(
+      `os comandos que os hooks RODAM não estão declarados no fato do contrato local: ${fato.commands?.detail ?? "a parte dos comandos não existe"}`,
+    )
+  }
+  for (const [rel, hook] of hooksDeclarados) {
+    if (hook.state === "proven" || hook.state === "violated") continue
+    unknowns.push(
+      `os comandos de '${rel}' nao foram conferidos (state '${hook.state}'): ${hook.detail}`,
+    )
+  }
+  return unknowns
 }
 
 /**
@@ -4025,86 +4496,137 @@ export function renderReport(report, { emit = console.log } = {}) {
     }
   }
 
-  // A PROVA DO BLOQUEIO LOCAL (pre-commit): o doctor EXECUTA um `git commit` de
-  // verdade duas vezes — com o corpo `run:` quebrado no índice (tem de ser
-  // RECUSADO) e com o corpo fechado (tem de ENTRAR). A garantia deixou de viver
-  // no teste: ela é MEDIDA aqui, com o vocabulário de estados do resto do
-  // relatório, e o veredito a cobre como qualquer outro fato.
+  // O CONTRATO LOCAL — UM bloco só para UM assunto: os DOIS elos EXECUTADOS (o
+  // commit que tem de recusar o corpo `run:` quebrado no índice, com o controle
+  // que tem de entrar, e o push que tem de recusar a árvore vermelha, com o
+  // controle que tem de chegar ao remoto) MAIS o que cada hook RODA (quantos
+  // comandos resolvem, quantos não resolvem, o que a descida alcançou e onde ela
+  // parou). Antes isto eram dois blocos — e o contrato dos comandos nem aparecia.
   {
-    const pc = facts.preCommitBlock
-    if (facts.skippedPreCommitProof) {
+    const lc = facts.localContract
+    /** O estado de uma parte, na marca gráfica do resto do relatório. */
+    const marcaLocal = (estado) =>
+      estado === "proven"
+        ? MARK.ok()
+        : estado === "violated"
+          ? MARK.fail()
+          : estado === "skipped"
+            ? MARK.skip()
+            : MARK.warn()
+    if (!lc) {
       line(
-        `       ${MARK.skip()} prova do bloqueio LOCAL pulada por --no-pre-commit-proof (o veredito NÃO cobre o corpo quebrado no commit local)`,
-      )
-    } else if (!pc) {
-      line(
-        `       ${MARK.warn()} prova do bloqueio LOCAL: NÃO declarada no relatório — o veredito não cobre o pre-commit`,
+        `       ${MARK.warn()} contrato local: NÃO declarado no relatório — o veredito não cobre os dois elos locais nem o que cada hook roda`,
       )
     } else {
-      const pcMark =
-        pc.state === "proven" ? MARK.ok() : pc.state === "violated" ? MARK.fail() : MARK.warn()
-      line(
-        `       ${pcMark} prova do bloqueio LOCAL (pre-commit): ${pc.state} — o corpo \`run:\` quebrado no índice não vira commit`,
-      )
-      line(`           ${color(C.gray, pc.detail)}`)
-      const ev = pc.evidence
-      if (ev?.defeito) {
+      line(`       ${marcaLocal(lc.state)} contrato local: ${lc.state} — ${lc.detail}`)
+      for (const elo of LOCAL_LINKS) {
+        const link = lc.links?.[elo]
+        const face =
+          elo === "pre-commit"
+            ? "prova do bloqueio LOCAL (pre-commit)"
+            : "prova do bloqueio do PUSH (pre-push)"
+        if (!link) {
+          line(`           ${MARK.warn()} ${face}: NÃO declarada no relatório`)
+          continue
+        }
+        if (link.state === "skipped") {
+          line(
+            `           ${MARK.skip()} ${
+              elo === "pre-commit"
+                ? "prova do bloqueio LOCAL pulada por --no-pre-commit-proof (o veredito NÃO cobre o corpo quebrado no commit local)"
+                : "prova do bloqueio do PUSH pulada por --no-pre-push-proof (o veredito NÃO cobre a árvore vermelha chegando à forja)"
+            }`,
+          )
+          continue
+        }
+        line(`           ${marcaLocal(link.state)} ${face}: ${link.state}`)
+        line(`               ${color(C.gray, link.detail)}`)
+        const ev = link.evidence
+        if (elo === "pre-commit") {
+          if (ev?.defeito) {
+            line(
+              `               ${color(C.gray, `defeito no índice: exit ${ev.defeito.status}, ${ev.defeito.objetosDeCommit} objeto(s) de commit, HEAD ${ev.defeito.headExiste ? "existe" : "ausente"}${ev.defeito.conteudoEmHead ? `, conteúdo em HEAD: ${ev.defeito.conteudoEmHead}` : ""}`)}`,
+            )
+          }
+          if (ev?.controle) {
+            line(
+              `               ${color(C.gray, `CONTROLE com o corpo fechado: exit ${ev.controle.status}, ${ev.controle.objetosDeCommit} objeto(s) — sem ele, "não commitou" não distinguiria defeito de fixture quebrado`)}`,
+            )
+          }
+        } else if (ev?.defeito) {
+          line(
+            `               ${color(C.gray, `árvore vermelha: exit ${ev.defeito.status}, ${ev.defeito.refs.length} ref(s) e ${ev.defeito.objetosNoRemoto} objeto(s) no remoto, ${ev.defeito.invocacoes ?? 0} invocação(ões) do typecheck`)}`,
+          )
+        }
+        if (elo === "pre-push" && ev?.controle) {
+          line(
+            `               ${color(C.gray, `CONTROLE com a árvore verde: exit ${ev.controle.status}, ${ev.controle.refs.join(", ") || "sem ref"} (${ev.controle.objetosNoRemoto} objeto(s)) — sem ele, "nada chegou" não distinguiria defeito de fixture quebrado`)}`,
+          )
+        }
+      }
+      // O QUE CADA HOOK RODA — a metade que antes não era declarada na prontidão
+      // (o gate a julgava, o relatório não a dizia). Os comandos que NÃO resolvem
+      // saem um por linha, com arquivo, linha e motivo: é um passo que nunca roda.
+      const hooksDoFato = Object.entries(lc.commands?.hooks ?? {})
+      if (hooksDoFato.length === 0) {
         line(
-          `           ${color(C.gray, `defeito no índice: exit ${ev.defeito.status}, ${ev.defeito.objetosDeCommit} objeto(s) de commit, HEAD ${ev.defeito.headExiste ? "existe" : "ausente"}${ev.defeito.conteudoEmHead ? `, conteúdo em HEAD: ${ev.defeito.conteudoEmHead}` : ""}`)}`,
+          `           ${MARK.warn()} o que os hooks RODAM: NÃO declarado no relatório — ${lc.commands?.detail ?? "a parte dos comandos não existe no fato"}`,
         )
       }
-      if (ev?.controle) {
+      for (const [rel, hook] of hooksDoFato) {
+        const papel = hook.elo ? " (elo do contrato local)" : ""
+        line(`           ${marcaLocal(hook.state)} o que o ${rel} RODA${papel}: ${hook.detail}`)
+        for (const c of hook.unresolved.slice(0, 5)) {
+          line(
+            `               ${MARK.fail()} ${c.arquivo}:${c.linha} \`${c.comando}\` — ${c.motivo}`,
+          )
+        }
+        if (hook.declared.length > 0) {
+          line(
+            `               ${color(C.gray, `${hook.declared.length} declarado(s) indeterminado(s) em INDETERMINATE (com data e motivo) — medidos por leitura, não por engano`)}`,
+          )
+        }
+        for (const limite of hook.limits) {
+          line(`               ${color(C.gray, limite.motivo)}`)
+        }
+        if (hook.descended.length > 0) {
+          line(
+            `               ${color(C.gray, `a descida alcancou: ${hook.descended.join(", ")}`)}`,
+          )
+        }
+      }
+      line(
+        `           ${color(C.gray, "quem cobra: o PRÓPRIO hook (.husky/pre-commit e .husky/pre-push) — o CI não o executa; o contrato que o cobre é o check-hook-commands (todo comando do hook tem de resolver)")}`,
+      )
+      // O LIMITE do gate local — a parte que impede o leitor de concluir que
+      // "o pre-push está provado" significa "a árvore vermelha não chega a
+      // main". Medida, não presumida: o `--no-verify` CHEGA ao remoto e o gate
+      // do CI reprova o conteúdo que chegou.
+      const b = lc.bypass
+      if (!b) {
         line(
-          `           ${color(C.gray, `CONTROLE com o corpo fechado: exit ${ev.controle.status}, ${ev.controle.objetosDeCommit} objeto(s) — sem ele, "não commitou" não distinguiria defeito de fixture quebrado`)}`,
+          `           ${MARK.warn()} limite do gate local: NÃO declarado no relatório — o veredito não diz quem barra o defeito depois do hook`,
         )
+      } else {
+        line(`           ${marcaLocal(b.state)} limite (git push --no-verify): ${b.state}`)
+        line(`               ${color(C.gray, b.detail)}`)
+        const ev = b.evidence
+        if (ev?.contorno) {
+          line(
+            `               ${color(C.gray, `contorno: exit ${ev.contorno.status}, ${(ev.contorno.refs ?? []).join(", ") || "sem ref"}, ${ev.contorno.objetosNoRemoto ?? 0} objeto(s) no remoto, ` + `${ev.contorno.invocacoes ?? 0} invocação(ões) do typecheck (o controle tem ${ev.controle?.invocacoes ?? 0}) — o hook não rodou`)}`,
+          )
+        }
+        if (ev?.ci) {
+          line(
+            `               ${color(C.gray, `quem barra: '${ev.ci.comando}' sobre o conteúdo CLONADO do remoto → exit ${ev.ci.status} (${ciQueBarraAArvore()})`)}`,
+          )
+        }
+        if (b.state !== "proven") {
+          for (const rem of b.remedies ?? []) line(`               ${color(C.gray, `→ ${rem}`)}`)
+        }
       }
-      line(
-        `           ${color(C.gray, "quem cobra: o PRÓPRIO hook (.husky/pre-commit, fase paralela) — o CI não o executa; o contrato que o cobre é o check-hook-commands (todo comando do hook tem de resolver)")}`,
-      )
-      if (pc.state !== "proven") {
-        for (const rem of pc.remedies ?? []) line(`           ${color(C.gray, `→ ${rem}`)}`)
-      }
-    }
-  }
-
-  // A PROVA DO BLOQUEIO DO PUSH (o OUTRO ELO do contrato local): o doctor
-  // EXECUTA um `git push` de verdade contra um remoto BARE duas vezes — com a
-  // árvore VERMELHA (tem de ser RECUSADO, sem deixar ref nem objeto do outro
-  // lado) e com a árvore verde (o CONTROLE, que tem de CHEGAR). O veredito do
-  // push não mora no banco local: ele é medido no REMOTO.
-  {
-    const pp = facts.prePushBlock
-    if (facts.skippedPrePushProof) {
-      line(
-        `       ${MARK.skip()} prova do bloqueio do PUSH pulada por --no-pre-push-proof (o veredito NÃO cobre a árvore vermelha chegando à forja)`,
-      )
-    } else if (!pp) {
-      line(
-        `       ${MARK.warn()} prova do bloqueio do PUSH: NÃO declarada no relatório — o veredito não cobre o pre-push`,
-      )
-    } else {
-      const ppMark =
-        pp.state === "proven" ? MARK.ok() : pp.state === "violated" ? MARK.fail() : MARK.warn()
-      line(
-        `       ${ppMark} prova do bloqueio do PUSH (pre-push): ${pp.state} — a árvore VERMELHA não chega ao remoto`,
-      )
-      line(`           ${color(C.gray, pp.detail)}`)
-      const ev = pp.evidence
-      if (ev?.defeito) {
-        line(
-          `           ${color(C.gray, `árvore vermelha: exit ${ev.defeito.status}, ${ev.defeito.refs.length} ref(s) e ${ev.defeito.objetosNoRemoto} objeto(s) no remoto, ${ev.defeito.invocacoes ?? 0} invocação(ões) do typecheck`)}`,
-        )
-      }
-      if (ev?.controle) {
-        line(
-          `           ${color(C.gray, `CONTROLE com a árvore verde: exit ${ev.controle.status}, ${ev.controle.refs.join(", ") || "sem ref"} (${ev.controle.objetosNoRemoto} objeto(s)) — sem ele, "nada chegou" não distinguiria defeito de fixture quebrado`)}`,
-        )
-      }
-      line(
-        `           ${color(C.gray, "quem cobra: o PRÓPRIO hook (.husky/pre-push) — o CI não o executa; o contrato que o cobre é o check-hook-commands (todo comando do hook tem de resolver)")}`,
-      )
-      if (pp.state !== "proven") {
-        for (const rem of pp.remedies ?? []) line(`           ${color(C.gray, `→ ${rem}`)}`)
+      if (lc.state !== "proven") {
+        for (const rem of lc.remedies ?? []) line(`           ${color(C.gray, `→ ${rem}`)}`)
       }
     }
   }
@@ -4487,7 +5009,9 @@ Opções:
                          (e o controle com o corpo fechado). É local e barata
                          (~0,3s: git + o hook real, com o fecho do guard) e por
                          isso roda ATÉ no perfil --ci — pular deixa o veredito
-                         INDETERMINADA nomeando o fato que ficou fora
+                         INDETERMINADA nomeando a parte que ficou fora (dentro
+                         do fato 'localContract', que cobre os DOIS elos e os
+                         comandos de cada hook)
   --no-pre-push-proof    pula a PROVA DO BLOQUEIO DO PUSH (o OUTRO ELO do
                          contrato local): o doctor deixa de executar o 'git
                          push' de verdade contra um remoto BARE que mede se o
@@ -4495,7 +5019,9 @@ Opções:
                          OBJETO nenhum do outro lado (e o controle com a árvore
                          verde). É local e barata (~0,2s: git + o hook real) e
                          por isso roda ATÉ no perfil --ci — pular deixa o
-                         veredito INDETERMINADA nomeando o fato que ficou fora
+                         veredito INDETERMINADA nomeando a parte que ficou fora
+                         (dentro do fato 'localContract', que cobre os DOIS elos,
+                         os comandos de cada hook e o LIMITE do gate local)
   --expected <versão>    valor de vars.BUN_VERSION (a repository variable): com
                          ele os espelhos do Bun são comparados com o VALOR
                          declarado, pelo mesmo código do job semanal
@@ -4718,6 +5244,9 @@ export function parseArgs(argv) {
  * @param {object} [options.prePushBlockDeps] dependências do fato da prova do
  * bloqueio do push (`prove` substitui a prova inteira) — o ponto de injeção do
  * teste, e o que mantém o fluxo do veredito fora do git real
+ * @param {object} [options.pushBypassDeps] dependências da MEDIDA DO LIMITE do
+ * gate local (o `--no-verify` contorna o hook e quem barra é o CI;
+ * `prove` substitui a medida inteira) — o ponto de injeção do teste
  * (sem `@returns` declarado de propósito: o formato dos fatos é o que o
  * `summarize` consome, e descrevê-lo aqui de novo só criaria duas verdades)
  */
@@ -4761,6 +5290,10 @@ export async function diagnose({
   preCommitBlockDeps = {},
   /** Injeção do FATO da prova do bloqueio do push (`prove`) — o teste mede os três estados sem rodar git. */
   prePushBlockDeps = {},
+  /** Injeção da MEDIDA DO LIMITE do gate local (`prove`) — o teste mede os estados sem rodar git. */
+  pushBypassDeps = {},
+  /** Injeção do FATO dos comandos dos hooks (`analyze`) — o teste mede os estados sem um checkout de verdade. */
+  hookCommandsDeps = {},
   identityProbe,
   gateContractsDeps = {},
 } = {}) {
@@ -4957,35 +5490,36 @@ export async function diagnose({
     // este fato uma declaração de `defaults:` que ligue o pipefail viajaria em
     // silêncio até o cron semanal.
     shellInheritance: readShellInheritance({ cwd, deps: shellInheritanceDeps }),
-    // A PROVA DO BLOQUEIO LOCAL, EXECUTADA aqui: um `git commit` de verdade, duas
-    // vezes (o corpo quebrado no índice e o controle com o corpo fechado). Local
-    // de ponta a ponta (sem rede, sem credencial, sem estado do HOST) e ~0,3s —
-    // entra ATÉ no perfil `--ci`, porque é no PR que a promessa do hook importa
-    // (o hook roda na máquina de quem commita; o CI não o executa).
-    preCommitBlock: preCommitProof
-      ? readPreCommitBlock({ cwd, deps: preCommitBlockDeps })
-      : {
-          state: "skipped",
-          detail: "pulada por --no-pre-commit-proof",
-          evidence: null,
-          remedies: [],
-        },
-    // A PROVA DO BLOQUEIO DO PUSH — o OUTRO ELO do contrato local, EXECUTADO
-    // aqui: um `git push` de verdade contra um remoto BARE, duas vezes (a árvore
-    // VERMELHA, que tem de ser recusada sem deixar objeto nenhum do outro lado, e
-    // o controle com a árvore verde, que tem de chegar). Local de ponta a ponta
-    // (sem rede, sem credencial, sem estado do HOST) e ~0,2s — entra ATÉ no
-    // perfil `--ci`, porque o hook roda na máquina de quem empurra e o CI não o
-    // executa. O veredito é medido no REMOTO, não no banco local: é o pack que o
-    // hook barra, e é isso que o `pre-commit` não podia medir.
-    prePushBlock: prePushProof
-      ? readPrePushBlock({ cwd, deps: prePushBlockDeps })
-      : {
-          state: "skipped",
-          detail: "pulada por --no-pre-push-proof",
-          evidence: null,
-          remedies: [],
-        },
+    // O CONTRATO LOCAL, EM UM FATO SÓ — as TRÊS partes do mesmo assunto: os
+    // DOIS elos EXECUTADOS aqui (um `git commit` de verdade, duas vezes: o corpo
+    // quebrado no ÍNDICE tem de ser RECUSADO e o controle com o corpo fechado tem
+    // de ENTRAR; e um `git push` de verdade contra um remoto BARE, duas vezes: a
+    // árvore VERMELHA tem de ser recusada sem deixar um objeto sequer do outro
+    // lado e a verde tem de CHEGAR) MAIS os comandos que cada hook RODA, pela
+    // régua do `check-hook-commands` (importada — não há uma segunda leitura) MAIS
+    // o LIMITE do gate local (o `git push --no-verify` CHEGA ao remoto e o comando
+    // do gate do CI reprova o conteúdo clonado — a parte que impede o fato de
+    // sugerir que "o pre-push está provado" significa "a árvore vermelha não
+    // chega a main").
+    //
+    // Local de ponta a ponta (sem rede, sem credencial, sem estado do HOST) e
+    // ~0,7s no total (medido: 0,58s sem a medida do limite, 0,72s com ela): entra
+    // ATÉ no perfil `--ci`, porque é no PR que a promessa
+    // dos hooks importa (eles rodam na máquina de quem commita e de quem empurra;
+    // o CI não os executa). O `--no-pre-commit-proof` e o `--no-pre-push-proof`
+    // NÃO saem daqui para uma flag paralela do relatório: o elo desligado entra
+    // como `skipped` DENTRO do fato, e o veredito lê a falta de prova no MESMO
+    // lugar em que lê a prova.
+    localContract: readLocalContract({
+      cwd,
+      executed: { "pre-commit": preCommitProof, "pre-push": prePushProof },
+      deps: {
+        preCommit: preCommitBlockDeps,
+        prePush: prePushBlockDeps,
+        analyzeHooks: hookCommandsDeps,
+        bypass: pushBypassDeps,
+      },
+    }),
     // O GUARD DE RECURSÃO, como fato do relatório NORMAL: a prontidão declara a
     // EXISTÊNCIA da defesa (e por quais canais ela responde), não só o disparo
     // dela — que vira um relatório à parte, com o estado `fired`.
@@ -5000,8 +5534,6 @@ export async function diagnose({
     skippedDeclaredDebt: !declaredDebt,
     skippedGateContracts: !gateContractsCheck,
     skippedProof: !proof,
-    skippedPreCommitProof: !preCommitProof,
-    skippedPrePushProof: !prePushProof,
   }
 
   return { facts }

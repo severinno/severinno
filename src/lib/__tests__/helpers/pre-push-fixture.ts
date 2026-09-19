@@ -38,6 +38,7 @@ export {
   MARCADOR,
   PACKAGE_JSON,
   PAYLOAD,
+  NO_VERIFY,
   PAYLOAD_FILE,
   TYPECHECK_COMMAND,
   WRAPPER_SOURCE,
@@ -46,6 +47,7 @@ export {
   montaPushFixture,
   novoRepo,
   provePushBlocks,
+  provePushBypass,
   runHook,
   writeHooksShim,
 } from "../../../../scripts/pre-push-proof.mjs"

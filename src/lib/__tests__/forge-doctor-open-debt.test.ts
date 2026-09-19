@@ -390,23 +390,98 @@ function baseFacts() {
       detail: "0 workflow(s) de forja neste checkout",
       error: null,
     },
-    // A prova do bloqueio LOCAL (o pre-commit × o corpo `run:` quebrado):
-    // presente e PROVADA. Ausente, o fato vira dúvida — a mesma disciplina da
-    // herança de shell acima, e a razão de a fixture "o mínimo que o summarize
-    // lê" carregar tudo o que ele lê. O próprio fato tem testes em
-    // `forge-doctor.test.ts`.
-    preCommitBlock: {
+    // O CONTRATO LOCAL — UM fato só para UM assunto (os dois elos EXECUTADOS
+    // mais o que cada hook RODA): aqui presente e PROVADO nas três partes.
+    // Ausente, o fato vira dúvida — a mesma disciplina da herança de shell
+    // acima, e a razão de a fixture "o mínimo que o summarize lê" carregar tudo
+    // o que ele lê. O próprio fato tem testes em `forge-doctor.test.ts`.
+    localContract: {
       state: "proven",
-      detail: "um 'git commit' com o corpo quebrado é recusado e o controle entra",
-      evidence: null,
-      remedies: [],
-    },
-    // O OUTRO elo do contrato local (o `pre-push` × a árvore VERMELHA): presente
-    // e PROVADO pelo mesmo motivo do commit acima.
-    prePushBlock: {
-      state: "proven",
-      detail: "um 'git push' com a árvore vermelha é recusado e o verde chega ao remoto",
-      evidence: null,
+      detail:
+        "pre-commit: proven · 0 comando(s) do hook nao resolvido(s) | " +
+        "pre-push: proven · 0 comando(s) do hook nao resolvido(s) | " +
+        "2 hook(s) do .husky/, 2 comando(s) julgado(s), 0 nao resolvido(s)",
+      links: {
+        "pre-commit": {
+          state: "proven",
+          detail: "um 'git commit' com o corpo quebrado é recusado e o controle entra",
+          evidence: null,
+          remedies: [],
+        },
+        "pre-push": {
+          state: "proven",
+          detail: "um 'git push' com a árvore vermelha é recusado e o verde chega ao remoto",
+          evidence: null,
+          remedies: [],
+        },
+      },
+      commands: {
+        state: "proven",
+        detail: "2 hook(s) do .husky/, 2 comando(s) julgado(s), 0 nao resolvido(s)",
+        hooks: {
+          ".husky/pre-commit": {
+            state: "proven",
+            detail:
+              "2 comando(s) resolvem (1 script(s) por descida), 0 declarado(s) indeterminado(s)",
+            elo: "pre-commit",
+            commands: [
+              {
+                arquivo: ".husky/pre-commit",
+                linha: 2,
+                programa: "bun",
+                comando: "bun scripts/pre-commit-proof.mjs",
+                desfecho: "resolvido",
+                motivo: "",
+              },
+            ],
+            unresolved: [],
+            declared: [],
+            limits: [],
+            descended: ["scripts/pre-commit-proof.mjs"],
+          },
+          ".husky/pre-push": {
+            state: "proven",
+            detail:
+              "2 comando(s) resolvem (1 script(s) por descida), 0 declarado(s) indeterminado(s)",
+            elo: "pre-push",
+            commands: [
+              {
+                arquivo: ".husky/pre-push",
+                linha: 2,
+                programa: "bash",
+                comando: "bash scripts/pre-push-guards.sh",
+                desfecho: "resolvido",
+                motivo: "",
+              },
+            ],
+            unresolved: [],
+            declared: [],
+            limits: [],
+            descended: ["scripts/pre-push-guards.sh"],
+          },
+        },
+        unattributed: [],
+      },
+      // O LIMITE do gate local, medido — a TERCEIRA parte do mesmo fato (sem
+      // ela, o `summarize` diria que o veredito não cobre quem barra o defeito
+      // depois do hook, e a fixture deixaria de ser "o mínimo que ele lê").
+      bypass: {
+        state: "proven",
+        detail:
+          "um 'git push --no-verify' com a árvore VERMELHA CHEGA ao remoto e quem barra é o CI",
+        evidence: {
+          controle: { status: 1, invocacoes: 1, objetosNoRemoto: 0 },
+          contorno: {
+            status: 0,
+            refs: ["refs/heads/main"],
+            objetosNoRemoto: 2,
+            invocacoes: 1,
+          },
+          ci: { comando: "bun run typecheck", status: 1 },
+        },
+        remedies: [],
+      },
+      evidence: { "pre-commit": null, "pre-push": null },
       remedies: [],
     },
     openDebt: {
