@@ -15,11 +15,11 @@ export const dynamic = "force-dynamic"
  */
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { cacheGet, cacheSet } from "@/lib/redis"
+import { getClient } from "@/lib/redis"
 import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { checkGeofences } from "@/lib/geofencing"
-import { indexProviderLocation } from "@/lib/redis-geo"
+import logger from "@/lib/logger"
 
 // ── SSE connection registry ───────────────────────────────────────────────
 
@@ -33,7 +33,16 @@ type SSEClient = {
 // In-memory SSE client registry (per-instance, not shared)
 const sseClients = new Map<string, SSEClient[]>()
 
-// Position broadcast buffer (latest position per booking)
+/** Global cap on total tracked bookings to prevent unbounded memory growth. */
+const MAX_TOTAL_SSE_BOOKINGS = 2_000
+
+/** Shared DB poller per booking — one interval fans out to all SSE clients. */
+const bookingPollers = new Map<
+  string,
+  { interval: ReturnType<typeof setInterval>; refCount: number; lastStatus: string }
+>()
+
+// Position broadcast buffer (latest position per booking, with TTL)
 const positionBuffer = new Map<
   string,
   {
@@ -43,8 +52,156 @@ const positionBuffer = new Map<
     heading: number | null
     timestamp: string
     providerId: string
+    expiresAt: number
   }
 >()
+
+const POSITION_BUFFER_TTL_MS = 30 * 60 * 1000 // 30 minutes
+
+/** Evict stale entries from positionBuffer. */
+function evictStalePositions() {
+  const now = Date.now()
+  for (const [key, entry] of positionBuffer) {
+    if (entry.expiresAt <= now) {
+      positionBuffer.delete(key)
+    }
+  }
+}
+
+// Run eviction every 5 minutes
+const positionEvictionInterval = setInterval(evictStalePositions, 5 * 60 * 1000)
+if (positionEvictionInterval.unref) positionEvictionInterval.unref()
+
+// ── Redis Pub/Sub for cross-instance broadcast ──────────────────────────
+
+const CHANNEL_PREFIX = "tracking:pos:"
+let redisSubscriber: ReturnType<typeof import("@/lib/redis/client").createClient> | null = null
+let redisPublisher: ReturnType<typeof import("@/lib/redis/client").createClient> | null = null
+const subscribedChannels = new Set<string>()
+/** Track handlers per channel so we can remove the exact handler on unsubscribe. */
+const channelHandlers = new Map<string, (ch: string, raw: string) => void>()
+
+async function getRedisSubscriber() {
+  if (redisSubscriber) return redisSubscriber
+  try {
+    const { createClient } = await import("@/lib/redis/client")
+    const client = createClient("standalone")
+    client.on("error", (err: Error) => {
+      logger.warn({ err }, "[tracking-stream] redis subscriber error")
+      // Disconnect old client to prevent socket leak
+      try {
+        client.quit().catch(() => client.disconnect())
+      } catch {}
+      // Clear stale channel subscriptions so next getRedisSubscriber() re-subscribes
+      subscribedChannels.clear()
+      channelHandlers.clear()
+      redisSubscriber = null
+    })
+    client.connect().catch((err: Error) => {
+      logger.warn({ err }, "[tracking-stream] redis subscriber connect failed")
+      try {
+        client.quit().catch(() => client.disconnect())
+      } catch {}
+      redisSubscriber = null
+    })
+    redisSubscriber = client
+  } catch (err) {
+    logger.warn({ err }, "[tracking-stream] redis subscriber creation failed")
+  }
+  return redisSubscriber
+}
+
+async function getRedisPublisher() {
+  if (redisPublisher) return redisPublisher
+  try {
+    const { createClient } = await import("@/lib/redis/client")
+    const client = createClient("standalone")
+    client.on("error", (err: Error) => {
+      logger.warn({ err }, "[tracking-stream] redis publisher error")
+      try {
+        client.quit().catch(() => client.disconnect())
+      } catch {}
+      redisPublisher = null
+    })
+    client.connect().catch((err: Error) => {
+      logger.warn({ err }, "[tracking-stream] redis publisher connect failed")
+      try {
+        client.quit().catch(() => client.disconnect())
+      } catch {}
+      redisPublisher = null
+    })
+    redisPublisher = client
+  } catch (err) {
+    logger.warn({ err }, "[tracking-stream] redis publisher creation failed")
+  }
+  return redisPublisher
+}
+
+async function subscribeToBooking(bookingId: string) {
+  const channel = `${CHANNEL_PREFIX}${bookingId}`
+  if (subscribedChannels.has(channel)) return
+  const sub = await getRedisSubscriber()
+  if (!sub) return
+  try {
+    const handler = (_ch: string, raw: string) => {
+      if (_ch !== channel) return
+      try {
+        const pos = JSON.parse(raw)
+        const clients = sseClients.get(bookingId) ?? []
+        const encoder = new TextEncoder()
+        for (const client of clients) {
+          try {
+            client.controller.enqueue(
+              encoder.encode(`event: position\ndata: ${JSON.stringify(pos)}\n\n`),
+            )
+          } catch {
+            // Client disconnected
+          }
+        }
+      } catch {
+        // Malformed message
+      }
+    }
+    channelHandlers.set(channel, handler)
+    sub.subscribe(channel)
+    subscribedChannels.add(channel)
+    sub.on("message", handler)
+  } catch (err) {
+    // Clean up if subscribe failed — don't leave stale state
+    channelHandlers.delete(channel)
+    subscribedChannels.delete(channel)
+    logger.warn({ err, bookingId }, "[tracking-stream] subscribe failed")
+  }
+}
+
+async function unsubscribeFromBooking(bookingId: string) {
+  const channel = `${CHANNEL_PREFIX}${bookingId}`
+  if (!subscribedChannels.has(channel)) return
+  subscribedChannels.delete(channel)
+  const sub = await getRedisSubscriber()
+  if (!sub) return
+  try {
+    const handler = channelHandlers.get(channel)
+    if (handler) {
+      sub.removeListener("message", handler)
+      channelHandlers.delete(channel)
+    }
+    sub.unsubscribe(channel)
+  } catch (err) {
+    logger.warn({ err, bookingId }, "[tracking-stream] unsubscribe failed")
+  }
+}
+
+async function publishPosition(bookingId: string, position: unknown): Promise<void> {
+  const channel = `${CHANNEL_PREFIX}${bookingId}`
+  const pub = await getRedisPublisher()
+  if (!pub) return
+  try {
+    pub.publish(channel, JSON.stringify(position))
+  } catch {
+    // Publish failure — non-critical
+  }
+}
 
 // ── Route handler ─────────────────────────────────────────────────────────
 
@@ -102,8 +259,44 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         sendEvent("heartbeat", { ts: new Date().toISOString() })
       }, 30_000)
 
-      // Register client
-      // Client registered
+      // Register client (limit per booking to prevent abuse)
+      const MAX_SSE_PER_BOOKING = 5
+
+      // Global cap: evict oldest booking if at capacity
+      if (sseClients.size >= MAX_TOTAL_SSE_BOOKINGS && !sseClients.has(bookingId)) {
+        const oldest = [...sseClients.entries()].sort(
+          (a, b) => (a[1][0]?.connectedAt ?? 0) - (b[1][0]?.connectedAt ?? 0),
+        )[0]
+        if (oldest) {
+          for (const c of oldest[1]) {
+            try {
+              c.controller.close()
+            } catch {
+              /* already closed */
+            }
+          }
+          sseClients.delete(oldest[0])
+          // Also clean up its poller and Redis subscription
+          const oldPoller = bookingPollers.get(oldest[0])
+          if (oldPoller) {
+            clearInterval(oldPoller.interval)
+            bookingPollers.delete(oldest[0])
+          }
+          unsubscribeFromBooking(oldest[0]).catch(() => {})
+        }
+      }
+
+      const existingClients = sseClients.get(bookingId) ?? []
+      if (existingClients.length >= MAX_SSE_PER_BOOKING) {
+        sendEvent("error", { error: "Limite de conexões atingido" })
+        try {
+          controller.close()
+        } catch {
+          /* already closed */
+        }
+        return
+      }
+
       const client: SSEClient = {
         controller,
         bookingId,
@@ -122,47 +315,76 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         sendEvent("position", currentPos)
       }
 
-      // Subscribe to position updates via Redis Pub/Sub (simulated via polling)
-      // In production, use Redis SUBSCRIBE for true pub/sub
-      const pollInterval = setInterval(async () => {
-        try {
-          const pos = await cacheGet<typeof currentPos>(`tracking:position:${bookingId}`)
-          if (pos && pos.timestamp !== currentPos?.timestamp) {
-            sendEvent("position", pos)
+      // Subscribe to position updates via Redis Pub/Sub for cross-instance broadcast
+      subscribeToBooking(bookingId).catch(() => {})
 
-            // Check geofence via engine
-            const geofence = await checkGeofences(booking.providerId, pos.lat, pos.lng)
-            if (geofence) {
-              sendEvent("geofence", geofence)
+      // Shared booking status poller — one interval per booking, fans out to all SSE clients
+      let poller = bookingPollers.get(bookingId)
+      if (!poller) {
+        const interval = setInterval(async () => {
+          try {
+            // Verify poller still exists (may have been cleaned up by disconnect)
+            const currentPoller = bookingPollers.get(bookingId)
+            if (!currentPoller) return
+
+            const updatedBooking = await db.booking.findUnique({
+              where: { id: bookingId },
+              select: { status: true },
+            })
+            if (updatedBooking && updatedBooking.status !== currentPoller.lastStatus) {
+              currentPoller.lastStatus = updatedBooking.status
+              // Fan out to all connected clients
+              const clients = sseClients.get(bookingId) ?? []
+              const encoder = new TextEncoder()
+              for (const c of clients) {
+                try {
+                  c.controller.enqueue(
+                    encoder.encode(
+                      `event: status\ndata: ${JSON.stringify({ status: updatedBooking.status })}\n\n`,
+                    ),
+                  )
+                } catch {
+                  /* client disconnected */
+                }
+              }
+              if (["COMPLETED", "CANCELLED", "DISPUTED"].includes(updatedBooking.status)) {
+                const endPayload = encoder.encode(
+                  `event: end\ndata: ${JSON.stringify({ reason: updatedBooking.status })}\n\n`,
+                )
+                for (const c of clients) {
+                  try {
+                    c.controller.enqueue(endPayload)
+                  } catch {
+                    /* client disconnected */
+                  }
+                }
+                // Clean up poller when booking ends
+                clearInterval(poller!.interval)
+                bookingPollers.delete(bookingId)
+                unsubscribeFromBooking(bookingId).catch(() => {})
+                for (const c of clients) {
+                  try {
+                    c.controller.close()
+                  } catch {
+                    /* already closed */
+                  }
+                }
+                sseClients.delete(bookingId)
+              }
             }
+          } catch (err) {
+            logger.debug({ err, bookingId }, "[tracking-stream] status poll failed")
           }
-
-          // Check booking status
-          const updatedBooking = await db.booking.findUnique({
-            where: { id: bookingId },
-            select: { status: true },
-          })
-          if (updatedBooking && updatedBooking.status !== booking.status) {
-            sendEvent("status", { status: updatedBooking.status })
-            booking.status = updatedBooking.status
-
-            // Stop tracking if booking is completed/cancelled
-            if (["COMPLETED", "CANCELLED", "DISPUTED"].includes(updatedBooking.status)) {
-              sendEvent("end", { reason: updatedBooking.status })
-              clearInterval(pollInterval)
-              clearInterval(heartbeatInterval)
-              controller.close()
-            }
-          }
-        } catch {
-          // Best-effort
-        }
-      }, 2000) // Poll every 2s (vs client polling at same rate — but server-side is faster)
+        }, 5_000)
+        poller = { interval, refCount: 0, lastStatus: booking.status }
+        bookingPollers.set(bookingId, poller)
+      }
+      poller.refCount++
 
       // Cleanup on disconnect
       request.signal.addEventListener("abort", () => {
         clearInterval(heartbeatInterval)
-        clearInterval(pollInterval)
+        unsubscribeFromBooking(bookingId).catch(() => {})
         const clients = sseClients.get(bookingId) ?? []
         sseClients.set(
           bookingId,
@@ -170,6 +392,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         )
         if (sseClients.get(bookingId)?.length === 0) {
           sseClients.delete(bookingId)
+          // Last client disconnected — clean up shared poller
+          const p = bookingPollers.get(bookingId)
+          if (p) {
+            clearInterval(p.interval)
+            bookingPollers.delete(bookingId)
+          }
+        } else {
+          // Decrement refCount on shared poller
+          const p = bookingPollers.get(bookingId)
+          if (p) p.refCount--
         }
         try {
           controller.close()
@@ -182,7 +414,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       sendEvent("connected", {
         bookingId,
         message: "Conectado ao tracking em tempo real",
-        pollIntervalMs: 2000,
       })
     },
   })
@@ -211,8 +442,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const lat = Number(body?.lat)
     const lng = Number(body?.lng)
-    if (!lat || !lng || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return NextResponse.json({ error: "lat e lng são obrigatórios" }, { status: 400 })
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng) ||
+      lat < -90 ||
+      lat > 90 ||
+      lng < -180 ||
+      lng > 180
+    ) {
+      return NextResponse.json({ error: "Coordenadas inválidas ou fora do range" }, { status: 400 })
     }
 
     // Verify the caller is the assigned provider for this booking
@@ -231,53 +469,45 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const position = {
       lat,
       lng,
-      speed: typeof body.speed === "number" ? body.speed : null,
-      heading: typeof body.heading === "number" ? body.heading : null,
+      speed: typeof body.speed === "number" && Number.isFinite(body.speed) ? body.speed : null,
+      heading:
+        typeof body.heading === "number" &&
+        Number.isFinite(body.heading) &&
+        body.heading >= 0 &&
+        body.heading < 360
+          ? body.heading
+          : null,
       timestamp: new Date().toISOString(),
       providerId: session.userId,
+      expiresAt: Date.now() + POSITION_BUFFER_TTL_MS,
     }
 
     positionBuffer.set(bookingId, position)
 
-    // Cache in Redis for cross-instance broadcast
+    // Pipeline independent Redis writes: cache position + update spatial index
     try {
-      await cacheSet(`tracking:position:${bookingId}`, position, 300)
-    } catch {
-      // Redis unavailable — non-critical
-    }
-
-    // Update spatial index so nearby-provider searches stay fresh during tracking
-    indexProviderLocation(session.userId, lat, lng).catch(() => {})
-
-    // Broadcast to all SSE clients for this booking
-    const clients = sseClients.get(bookingId) ?? []
-    for (const client of clients) {
-      try {
-        const encoder = new TextEncoder()
-        client.controller.enqueue(
-          encoder.encode(`event: position\ndata: ${JSON.stringify(position)}\n\n`),
-        )
-      } catch {
-        // Client disconnected
+      const redis = getClient()
+      if (redis) {
+        const pipeline = redis.pipeline()
+        pipeline.setex(`tracking:position:${bookingId}`, 300, JSON.stringify(position))
+        pipeline.geoadd("geo:providers", lng, lat, session.userId)
+        await pipeline.exec().catch(() => {})
       }
+    } catch (err) {
+      logger.debug({ err, bookingId }, "[tracking-stream] redis pipeline failed")
     }
+
+    // PUBLISH is independent — fire and forget for cross-instance broadcast
+    publishPosition(bookingId, position).catch(() => {})
 
     // Geofence check — uses geofencing engine with distributed lock, debounce, and audit trail
-    const geofenceEvent = await checkGeofences(session.userId, lat, lng)
-    if (geofenceEvent) {
-      for (const client of clients) {
-        try {
-          const encoder = new TextEncoder()
-          client.controller.enqueue(
-            encoder.encode(`event: geofence\ndata: ${JSON.stringify(geofenceEvent)}\n\n`),
-          )
-        } catch {
-          // Client disconnected
-        }
-      }
+    const geofenceEvents = await checkGeofences(session.userId, lat, lng)
+    for (const evt of geofenceEvents) {
+      broadcastGeofenceEvent(bookingId, evt)
     }
 
-    return NextResponse.json({ ok: true, clients: clients.length })
+    const totalClients = sseClients.get(bookingId)?.length ?? 0
+    return NextResponse.json({ ok: true, clients: totalClients })
   } catch (e) {
     return handleError(e)
   }
@@ -294,14 +524,20 @@ export function broadcastGeofenceEvent(
   event: { type: string; distanceMeters: number },
 ): void {
   const clients = sseClients.get(bookingId) ?? []
+  if (clients.length === 0) return
+  const encoder = new TextEncoder()
+  const payload = encoder.encode(`event: geofence\ndata: ${JSON.stringify(event)}\n\n`)
+  const alive: SSEClient[] = []
   for (const client of clients) {
     try {
-      const encoder = new TextEncoder()
-      client.controller.enqueue(
-        encoder.encode(`event: geofence\ndata: ${JSON.stringify(event)}\n\n`),
-      )
+      client.controller.enqueue(payload)
+      alive.push(client)
     } catch {
-      // Client disconnected
+      // Client disconnected — don't add to alive list
     }
+  }
+  // Clean up disconnected clients
+  if (alive.length !== clients.length) {
+    sseClients.set(bookingId, alive)
   }
 }

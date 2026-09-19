@@ -31,7 +31,16 @@ import { findProvidersWithinRadius } from "@/lib/postgis"
 
 // ── Known provider IDs used across tests (for cleanup) ───────────────────────
 
-const KNOWN_IDS = ["prov-alpha", "prov-beta", "prov-gamma", "prov-delta", "prov-epsilon"]
+const KNOWN_IDS = [
+  "prov-alpha",
+  "prov-beta",
+  "prov-gamma",
+  "prov-delta",
+  "prov-epsilon",
+  "valid-equator",
+  "valid-greenwich",
+  "valid-origin",
+]
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -185,16 +194,16 @@ describe("redis-geo.ts — Turbo Geospatial Indexing", () => {
       expect(results).toHaveLength(3)
     })
 
-    it("skips providers with invalid (falsy) coordinates", async () => {
+    it("skips providers with invalid (null/undefined/NaN) coordinates", async () => {
       const count = seedGeoIndex([
         { id: "prov-alpha", lat: -23.5505, lng: -46.6333 },
-        { id: "bad-1", lat: 0, lng: -46.6333 },
-        { id: "bad-2", lat: -23.5505, lng: 0 },
-        { id: "bad-3", lat: 0, lng: 0 },
+        { id: "valid-equator", lat: 0, lng: -46.6333 }, // lat=0 is valid (Equator)
+        { id: "valid-greenwich", lat: -23.5505, lng: 0 }, // lng=0 is valid (Prime Meridian)
+        { id: "valid-origin", lat: 0, lng: 0 }, // (0,0) is valid (Gulf of Guinea)
       ])
 
-      // Only 1 valid provider
-      expect(count).toBe(1)
+      // All 4 providers have valid coordinates (0 is a valid coordinate)
+      expect(count).toBe(4)
     })
 
     it("returns 0 for empty array", async () => {

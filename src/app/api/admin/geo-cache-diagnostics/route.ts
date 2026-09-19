@@ -25,6 +25,7 @@ import {
 } from "@/lib/geo-query-log"
 import { handleError } from "@/lib/api-server"
 import { getWarmConfig } from "@/lib/geo-cache-warm"
+import logger from "@/lib/logger"
 
 // ---------------------------------------------------------------------------
 // Route
@@ -80,8 +81,8 @@ export async function GET() {
                 (r as PromiseFulfilledResult<{ key: string; ttlSeconds: number | null }>).value,
             )
         }
-      } catch {
-        // Redis TTL read failed — skip
+      } catch (err) {
+        logger.debug({ err }, "[geo-cache-diagnostics] redis ttl probe failed")
       }
     }
 

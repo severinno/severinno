@@ -111,6 +111,20 @@ function pushToQueue(normalized: string): void {
   // Remove existing occurrence (so we move it to the back)
   const filtered = queue.filter((q) => q !== normalized)
   filtered.push(normalized)
+
+  // Evict physical localStorage entries for the oldest queries that exceed the cap
+  if (filtered.length > GEO_MAX_ENTRIES) {
+    const toEvict = filtered.length - GEO_MAX_ENTRIES
+    const evicted = filtered.slice(0, toEvict)
+    for (const q of evicted) {
+      try {
+        localStorage.removeItem(storageKey(q))
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   writeQueue(filtered)
 }
 
@@ -218,9 +232,14 @@ export function subscribeGeoUpdates(callback: (event: GeoCacheUpdateEvent) => vo
   if (!channel) return () => {}
 
   const handler = (ev: MessageEvent) => {
-    const payload = ev.data as GeoCacheUpdateEvent
-    if (payload && payload.query && payload.results) {
-      callback(payload)
+    const raw = ev.data
+    if (
+      raw &&
+      typeof raw === "object" &&
+      typeof raw.query === "string" &&
+      Array.isArray(raw.results)
+    ) {
+      callback(raw as GeoCacheUpdateEvent)
     }
   }
 
@@ -343,7 +362,8 @@ export function removeCachedGeo(query: string): void {
 export function clearGeoCache(): void {
   try {
     const keysToRemove: string[] = []
-    for (let i = 0; i < localStorage.length; i++) {
+    const len = localStorage.length
+    for (let i = 0; i < len; i++) {
       const key = localStorage.key(i)
       if (key?.startsWith(STORAGE_PREFIX) || key === QUEUE_KEY) {
         keysToRemove.push(key)

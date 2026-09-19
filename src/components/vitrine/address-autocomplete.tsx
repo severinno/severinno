@@ -13,7 +13,6 @@
  */
 
 import * as React from "react"
-import { motion } from "framer-motion"
 import { MapPin, LocateFixed, Loader2, Mailbox, X } from "lucide-react"
 import { toast } from "sonner"
 
@@ -94,6 +93,8 @@ type Props = {
   /** Called when the user selects an address result */
   onSelect?: (lat: number, lng: number, displayName: string) => void
   className?: string
+  /** Optional id for the input element (for label htmlFor) */
+  inputId?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -117,6 +118,7 @@ export default function AddressAutocomplete({
   placeholder = "CEP, cidade ou endereço…",
   onSelect,
   className,
+  inputId,
 }: Props) {
   const [input, setInput] = React.useState("")
   const [results, setResults] = React.useState<GeoSearchResult[]>([])
@@ -403,6 +405,7 @@ export default function AddressAutocomplete({
       <MapPin className="text-muted-foreground pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2" />
       <Input
         ref={inputRef}
+        id={inputId}
         value={input}
         onChange={(e) => {
           const val = e.target.value
@@ -441,21 +444,22 @@ export default function AddressAutocomplete({
           {locating ? (
             <Loader2 className="size-3.5 animate-spin" />
           ) : (
-            <motion.span
-              animate={located ? { scale: [1, 1.35, 1] } : { scale: 1 }}
-              transition={{ duration: 0.5, ease: "easeOut" }}
+            <span
               className={cn(
                 "inline-flex transition-colors duration-300",
                 located ? "text-emerald-500" : "",
               )}
+              style={located ? { animation: "geo-ping 0.5s ease-out" } : undefined}
             >
               <LocateFixed className="size-3.5" />
-            </motion.span>
+            </span>
           )}
         </button>
         {/* Loading spinner from Nominatim search */}
         {loading ? (
-          <Loader2 className="text-muted-foreground size-4 animate-spin" />
+          <span role="status" aria-label="Buscando endereços">
+            <Loader2 className="text-muted-foreground size-4 animate-spin" aria-hidden="true" />
+          </span>
         ) : input ? (
           /* Clear button when input has text */
           <button
@@ -528,4 +532,21 @@ export default function AddressAutocomplete({
       ) : null}
     </div>
   )
+}
+
+// Inject one-shot ping keyframes once
+if (typeof document !== "undefined") {
+  const id = "geo-ping-keyframes"
+  if (!document.getElementById(id)) {
+    const style = document.createElement("style")
+    style.id = id
+    style.textContent = `
+      @keyframes geo-ping {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.35); }
+        100% { transform: scale(1); }
+      }
+    `
+    document.head.appendChild(style)
+  }
 }

@@ -20,18 +20,12 @@ import { handleError } from "@/lib/api-server"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { z } from "zod"
 import { parseBody } from "@/lib/api-middleware"
+import { isValidLatLng } from "@/lib/geo-server"
+import logger from "@/lib/logger"
 
 const geoBatchSchema = z.object({
   addresses: z.array(z.string().min(1).max(500)).min(1).max(50),
 })
-
-type BatchResult = {
-  query: string
-  lat: number | null
-  lng: number | null
-  displayName: string | null
-  source: "local-db" | "nominatim" | "not-found"
-}
 
 async function geocodeLocal(
   address: string,
@@ -54,21 +48,25 @@ async function geocodeLocal(
           { district: { contains: q, mode: "insensitive" } },
         ],
       },
-      select: { lat: true, lng: true, street: true, district: true, city: true, state: true },
+      select: { lat: true, lng: true, city: true, state: true },
       take: 1,
       orderBy: { avgRating: "desc" },
     })
 
     if (users.length > 0 && users[0]!.lat != null && users[0]!.lng != null) {
       const u = users[0]!
+      const lat = u.lat!
+      const lng = u.lng!
+      if (!isValidLatLng(lat, lng)) return null
       return {
-        lat: u.lat!,
-        lng: u.lng!,
-        displayName: [u.street, u.district, u.city, u.state].filter(Boolean).join(", "),
+        lat,
+        lng,
+        displayName: [u.city, u.state].filter(Boolean).join(", "),
       }
     }
     return null
-  } catch {
+  } catch (err) {
+    logger.warn({ err, address }, "[geo-batch] local geocode failed")
     return null
   }
 }
@@ -90,16 +88,20 @@ async function geocodeNominatim(
       return r.json()
     })
 
-    const data = result as Array<{ lat: string; lon: string; display_name?: string }>
-    if (data.length > 0) {
+    const data = (Array.isArray(result) ? result : []) as Array<Record<string, unknown>>
+    if (data.length > 0 && typeof data[0] === "object" && data[0] !== null) {
+      const lat = typeof data[0].lat === "string" ? Number.parseFloat(data[0].lat as string) : NaN
+      const lng = typeof data[0].lon === "string" ? Number.parseFloat(data[0].lon as string) : NaN
+      if (!isValidLatLng(lat, lng)) return null
       return {
-        lat: Number.parseFloat(data[0]!.lat),
-        lng: Number.parseFloat(data[0]!.lon),
-        displayName: data[0]!.display_name ?? address,
+        lat,
+        lng,
+        displayName: typeof data[0].display_name === "string" ? data[0].display_name : address,
       }
     }
     return null
-  } catch {
+  } catch (err) {
+    logger.warn({ err, address }, "[geo-batch] nominatim geocode failed")
     return null
   }
 }
@@ -110,73 +112,62 @@ export async function POST(request: Request) {
     await assertRateLimit(request, RATE_LIMITS.geoBatch)
     const { addresses } = await parseBody(request, geoBatchSchema)
 
-    // Process sequentially with 1s delay between Nominatim calls
-    // (Nominatim rate limit: 1 req/s). Local DB hits are instant.
-    const results: BatchResult[] = []
-    let lastNominatimCall = 0
-
-    for (const address of addresses) {
-      const trimmed = address.trim()
-      if (!trimmed) {
-        results.push({
-          query: address,
-          lat: null,
-          lng: null,
-          displayName: null,
-          source: "not-found",
-        })
-        continue
-      }
-
-      // Try cache first
-      const cacheKey = `geo:batch:${trimmed.toLowerCase()}`
-      const cached = await withCache<{
-        lat: number
-        lng: number
-        displayName: string
-        source: string
-      } | null>(
-        cacheKey,
-        async () => {
-          // Try local DB first (fast, no rate limit)
-          const local = await geocodeLocal(trimmed)
-          if (local) return { ...local, source: "local-db" }
-
-          // Respect Nominatim 1 req/s rate limit
-          const now = Date.now()
-          const elapsed = now - lastNominatimCall
-          if (elapsed < 1000) {
-            await new Promise((r) => setTimeout(r, 1000 - elapsed))
+    // Process in parallel — rate limiting is handled by rateLimitedNominatim.
+    // Local DB hits are instant; Nominatim calls are serialized by the rate limiter.
+    const results = await Promise.all(
+      addresses.map(async (address) => {
+        const trimmed = address.trim()
+        if (!trimmed) {
+          return {
+            query: address,
+            lat: null,
+            lng: null,
+            displayName: null,
+            source: "not-found" as const,
           }
-          lastNominatimCall = Date.now()
+        }
 
-          // Fall back to Nominatim
-          const result = await trackGeoLatency("nominatim", () =>
-            rateLimitedNominatim(() => geocodeNominatim(trimmed)),
-          )
-          return result ? { ...result, source: "nominatim" } : null
-        },
-        86400, // 24h cache
-      )
+        // Try cache first
+        const cacheKey = `geo:batch:${trimmed.toLowerCase()}`
+        const cached = await withCache<{
+          lat: number
+          lng: number
+          displayName: string
+          source: string
+        } | null>(
+          cacheKey,
+          async () => {
+            // Try local DB first (fast, no rate limit)
+            const local = await geocodeLocal(trimmed)
+            if (local) return { ...local, source: "local-db" }
 
-      if (cached) {
-        results.push({
-          query: address,
-          lat: cached.lat,
-          lng: cached.lng,
-          displayName: cached.displayName,
-          source: cached.source as "local-db" | "nominatim",
-        })
-      } else {
-        results.push({
+            // Fall back to Nominatim (rate-limited internally)
+            const result = await trackGeoLatency("nominatim", () =>
+              rateLimitedNominatim(() => geocodeNominatim(trimmed)),
+            )
+            return result ? { ...result, source: "nominatim" } : null
+          },
+          86400, // 24h cache
+        )
+
+        if (cached) {
+          return {
+            query: address,
+            lat: cached.lat,
+            lng: cached.lng,
+            displayName: cached.displayName,
+            source: cached.source as "local-db" | "nominatim",
+          }
+        }
+        return {
           query: address,
           lat: null,
           lng: null,
           displayName: null,
-          source: "not-found",
-        })
-      }
-    }
+          source: "not-found" as const,
+        }
+      }),
+    )
 
     const found = results.filter((r) => r.lat !== null).length
 

@@ -19,15 +19,22 @@ const MAX_INMEMORY_ENTRIES = 50_000
 // Redis GEO key for provider locations
 const REDIS_GEO_KEY = "geo:providers"
 
+/** Counter for throttling eviction — only runs every 100 calls. */
+let evictCounter = 0
+const EVICT_THROTTLE_INTERVAL = 100
+
 /**
  * Evict least-recently-updated entries when the in-memory index exceeds the cap.
+ * Throttled to run every 100 calls to avoid O(N log N) on every update.
  */
 function evictStaleEntries(): void {
   if (inMemoryGeoIndex.size <= MAX_INMEMORY_ENTRIES) return
+  evictCounter++
+  if (evictCounter % EVICT_THROTTLE_INTERVAL !== 0) return
   const toRemove = inMemoryGeoIndex.size - MAX_INMEMORY_ENTRIES
   const sorted = [...inMemoryGeoIndex.entries()].sort((a, b) => a[1].updatedAt - b[1].updatedAt)
   for (let i = 0; i < toRemove; i++) {
-    inMemoryGeoIndex.delete(sorted[i][0])
+    inMemoryGeoIndex.delete(sorted[i]![0])
   }
 }
 
@@ -39,7 +46,8 @@ export async function indexProviderLocation(
   lat: number,
   lng: number,
 ): Promise<void> {
-  if (!providerId || !lat || !lng) return
+  if (!providerId || lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng))
+    return
 
   // 1. Update in-memory spatial index
   inMemoryGeoIndex.set(providerId, {
@@ -158,7 +166,7 @@ export async function searchNearbyProvidersFast(
 export function seedGeoIndex(providers: Array<{ id: string; lat: number; lng: number }>): number {
   let count = 0
   for (const p of providers) {
-    if (p.lat && p.lng) {
+    if (p.lat != null && p.lng != null && Number.isFinite(p.lat) && Number.isFinite(p.lng)) {
       inMemoryGeoIndex.set(p.id, {
         lat: p.lat,
         lng: p.lng,
@@ -211,7 +219,12 @@ export async function seedGeoIndexFromDB(): Promise<number> {
           for (const p of batch) {
             pipeline.geoadd(REDIS_GEO_KEY, p.lng, p.lat, p.id)
           }
-          await pipeline.exec()
+          const results = await pipeline.exec()
+          if (results) {
+            for (const [err] of results) {
+              if (err) logger.warn({ err }, "redis-geo: pipeline geoadd failed")
+            }
+          }
         }
         logger.info(
           { count: validProviders.length },

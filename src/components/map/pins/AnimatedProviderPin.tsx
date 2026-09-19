@@ -14,19 +14,6 @@
 import { formatBRL } from "@/lib/format"
 import type { ProviderCard } from "@/lib/api"
 
-type StatusLevel = "online" | "recent" | "away" | "offline"
-
-function getStatusLevel(provider: ProviderCard): StatusLevel {
-  if (provider.memberSince) {
-    const diff = Date.now() - new Date(provider.memberSince).getTime()
-    const minutes = Math.floor(diff / 60000)
-    if (minutes < 5) return "online"
-    if (minutes < 60) return "recent"
-    if (minutes < 1440) return "away"
-  }
-  return "offline"
-}
-
 type Props = {
   provider: ProviderCard
   isSelected?: boolean
@@ -35,7 +22,6 @@ type Props = {
 
 export function createAnimatedPinElement(props: Props): HTMLButtonElement {
   const { provider, isSelected, onSelect } = props
-  const status = getStatusLevel(provider)
 
   const services = provider.services?.slice(0, 2) ?? []
   const minPrice =
@@ -47,8 +33,8 @@ export function createAnimatedPinElement(props: Props): HTMLButtonElement {
   el.type = "button"
   el.className = "animated-provider-pin"
   el.dataset.selected = isSelected ? "true" : "false"
-  el.dataset.status = status
-  el.setAttribute("aria-label", `${provider.name} - ${status === "online" ? "Online" : "Offline"}`)
+  el.setAttribute("aria-label", `${provider.name} - Prestador${isSelected ? " (selecionado)" : ""}`)
+  el.setAttribute("aria-pressed", String(isSelected))
 
   el.style.cssText = `
     display: flex; align-items: center; gap: 5px;
@@ -66,27 +52,14 @@ export function createAnimatedPinElement(props: Props): HTMLButtonElement {
     -webkit-user-select: none;
   `
 
-  // Status dot with pulse animation
+  // Status dot (always gray until presence API)
   const statusDot = document.createElement("span")
   statusDot.style.cssText = `
     width: 8px; height: 8px;
     border-radius: 50%;
-    background: ${status === "online" ? "#10b981" : status === "recent" ? "#eab308" : status === "away" ? "#f97316" : "#9ca3af"};
+    background: #9ca3af;
     flex-shrink: 0;
-    position: relative;
   `
-
-  if (status === "online") {
-    const pulse = document.createElement("span")
-    pulse.style.cssText = `
-      position: absolute; inset: -4px;
-      border-radius: 50%;
-      border: 2px solid rgba(16, 185, 129, 0.4);
-      animation: pin-pulse 2s ease-out infinite;
-    `
-    statusDot.appendChild(pulse)
-  }
-
   el.appendChild(statusDot)
 
   // Star + rating
@@ -151,20 +124,4 @@ export function createAnimatedPinElement(props: Props): HTMLButtonElement {
   }
 
   return el
-}
-
-// Inject pulse keyframes once
-if (typeof document !== "undefined") {
-  const id = "animated-pin-pulse-keyframes"
-  if (!document.getElementById(id)) {
-    const style = document.createElement("style")
-    style.id = id
-    style.textContent = `
-      @keyframes pin-pulse {
-        0% { transform: scale(0.8); opacity: 1; }
-        100% { transform: scale(2.2); opacity: 0; }
-      }
-    `
-    document.head.appendChild(style)
-  }
 }

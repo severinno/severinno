@@ -5,7 +5,9 @@ import { db } from "@/lib/db"
 import { handleError } from "@/lib/api-server"
 import { isPostGISAvailable } from "@/lib/postgis"
 import { withCache } from "@/lib/redis"
-import { latLngToH3, h3ToLatLng, h3ToGeoBoundary } from "@/lib/h3-grid"
+import { latLngToH3, h3ToLatLng, h3ToGeoBoundary, h3ResolutionForZoom } from "@/lib/h3-grid"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
+import logger from "@/lib/logger"
 
 /**
  * GET /api/geo/cluster
@@ -40,16 +42,9 @@ type ClusterCell = {
   providerIds: string[]
 }
 
-function resolveH3Resolution(zoom: number): number {
-  if (zoom < 10) return 6
-  if (zoom < 14) return 7
-  return 8
-}
-
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const { assertRateLimit, RATE_LIMITS } = await import("@/lib/rate-limit")
     await assertRateLimit(request, RATE_LIMITS.geo)
     const minLat = Number(searchParams.get("minLat"))
     const minLng = Number(searchParams.get("minLng"))
@@ -73,15 +68,29 @@ export async function GET(request: Request) {
       )
     }
 
+    // Limit bounding box size to prevent full-table scans (max ~200km per side)
+    const bboxLatSpan = Math.abs(maxLat - minLat)
+    const bboxLngSpan = Math.abs(maxLng - minLng)
+    if (bboxLatSpan > 2 || bboxLngSpan > 2) {
+      return NextResponse.json(
+        { error: "Bounding box excede o tamanho máximo permitido (2° por lado)" },
+        { status: 400 },
+      )
+    }
+
     // Check PostGIS availability
     let pgAvailable = false
     try {
       pgAvailable = await isPostGISAvailable()
-    } catch {
+    } catch (err) {
+      logger.debug(
+        { err },
+        "[geo-cluster] postgis availability check failed, falling back to prisma",
+      )
       pgAvailable = false
     }
 
-    const resolution = resolveH3Resolution(zoom)
+    const resolution = h3ResolutionForZoom(zoom)
     const cacheKey = `cluster:${minLat.toFixed(3)}:${minLng.toFixed(3)}:${maxLat.toFixed(3)}:${maxLng.toFixed(3)}:${resolution}:${categoryId ?? "all"}`
 
     const cells = await withCache<ClusterCell[]>(

@@ -62,6 +62,7 @@ const nextConfig: NextConfig = {
       "zod",
       "sonner",
       "@tanstack/react-query",
+      "maplibre-gl",
     ],
   },
 }

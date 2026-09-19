@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth"
 import { handleError } from "@/lib/api-server"
 import { haversineKm } from "@/lib/geo-server"
 import { isPostGISAvailable } from "@/lib/postgis"
+import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { subDays } from "date-fns"
 
 /**
@@ -26,7 +27,7 @@ import { subDays } from "date-fns"
  *   { total: 0, bookings: 0, quotes: 0, regionConfigured: false }
  */
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await requireUser()
     if (session.role !== "PROVIDER") {
@@ -35,6 +36,8 @@ export async function GET() {
         { status: 403 },
       )
     }
+
+    await assertRateLimit(request, RATE_LIMITS.general)
 
     const provider = await db.user.findUnique({
       where: { id: session.userId },
@@ -109,7 +112,8 @@ export async function GET() {
     }
 
     // ------------------------------------------------------------------
-    // Haversine JS fallback — fetch all + filter in-memory
+    // Haversine JS fallback — fetch recent + filter in-memory
+    // Limit to 500 rows to avoid full-table scan on large datasets
     // ------------------------------------------------------------------
     const [allBookings, allQuotes] = await Promise.all([
       db.booking.findMany({
@@ -118,6 +122,7 @@ export async function GET() {
           scheduledAt: { gte: thirtyDaysAgo },
         },
         select: { lat: true, lng: true },
+        take: 500,
       }),
       db.quoteRequest.findMany({
         where: {
@@ -125,6 +130,7 @@ export async function GET() {
           createdAt: { gte: thirtyDaysAgo },
         },
         select: { lat: true, lng: true },
+        take: 500,
       }),
     ])
 

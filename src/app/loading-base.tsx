@@ -3,18 +3,15 @@
  *
  * Base primitives for all loading skeletons across the app.
  *
- * This is the low-level module — end‑users should import from `@/app/loading-shell`
- * which re‑exports everything and adds the compound `<LoadingShell>` component.
+ * This is the low-level module — end-users should import from `@/app/loading-shell`
+ * which re-exports everything and adds the compound `<LoadingShell>` component.
  *
  * Exports:
  *   shimmerCSS          – CSS string with @keyframes shimmer / fadeSlideUp / fadeIn
  *   ShimmerStyle        – Component that renders <style>{shimmerCSS}</style>
  *   S                   – Shimmer div helper (<div className="shimmer rounded …" />)
- *   createContainer     – Factory for stagger‑container Variants
- *   createItem          – Factory for stagger‑item Variants
+ *   staggerDelay        – Returns animation-delay style for staggered children
  */
-
-import type { Variants } from "framer-motion"
 
 // ── Shimmer CSS ───────────────────────────────────────────────────────────
 export const shimmerCSS = `
@@ -42,6 +39,11 @@ export const shimmerCSS = `
     from { opacity: 0; }
     to   { opacity: 1; }
   }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 0.6; }
+    50% { transform: scale(1.3); opacity: 1; }
+  }
 `
 
 /** Render this once at the top of your loading component. */
@@ -54,22 +56,8 @@ export function S({ className }: { className?: string }) {
   return <div className={`shimmer rounded ${className ?? ""}`} />
 }
 
-// ── Animation variant factories ───────────────────────────────────────────
-// Each loading.tsx can customise stagger delay and y-offset independently.
-
-export function createContainer(staggerChildren = 0.06): Variants {
-  return {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: { staggerChildren },
-    },
-  }
-}
-
-export function createItem(y = 12, duration = 0.35): Variants {
-  return {
-    hidden: { opacity: 0, y },
-    show: { opacity: 1, y: 0, transition: { duration, ease: "easeOut" } },
-  }
+// ── Stagger animation helper ──────────────────────────────────────────────
+// Returns an inline style object with animation-delay for staggered children.
+export function staggerDelay(index: number, staggerSeconds = 0.06): React.CSSProperties {
+  return { animationDelay: `${index * staggerSeconds}s` }
 }

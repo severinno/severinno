@@ -100,6 +100,7 @@ function makeBooking(overrides: Record<string, unknown> = {}) {
     lng: -46.6333,
     clientId: "client-1",
     client: { name: "Cliente Teste" },
+    provider: { name: "Prestador" },
     service: { title: "Encanador" },
     ...overrides,
   }
@@ -173,6 +174,7 @@ describe("checkGeofences", () => {
         lng: true,
         clientId: true,
         client: { select: { name: true } },
+        provider: { select: { name: true } },
         service: { select: { title: true } },
       },
       take: 10,

@@ -41,6 +41,10 @@ const SENTRY_DEBOUNCE_MS = 15 * 60 * 1000
 
 const ADMIN_ROLE = "ADMIN"
 
+/** Cache TTL for admin user IDs (5 minutes). */
+const ADMIN_CACHE_TTL_MS = 5 * 60 * 1000
+let adminIdsCache: { ids: string[]; at: number } | null = null
+
 // ---------------------------------------------------------------------------
 // Debounce state — Redis-backed (survives restarts, shared across instances)
 // Falls back to in-memory when Redis is unavailable.
@@ -106,16 +110,21 @@ async function markSentrySent(tag: string): Promise<void> {
  * These receive push notifications for geo regressions.
  */
 async function getAdminUserIds(): Promise<string[]> {
+  if (adminIdsCache && Date.now() - adminIdsCache.at < ADMIN_CACHE_TTL_MS) {
+    return adminIdsCache.ids
+  }
   try {
     const admins = await db.user.findMany({
       where: { role: ADMIN_ROLE },
       select: { id: true },
     })
-    return admins.map((a) => a.id)
+    const ids = admins.map((a) => a.id)
+    adminIdsCache = { ids, at: Date.now() }
+    return ids
   } catch (err) {
     // DB unavailable — skip push (Sentry still fires)
     logger.debug({ err }, "geo-alert-notify: admin user query failed")
-    return []
+    return adminIdsCache?.ids ?? []
   }
 }
 
@@ -226,16 +235,22 @@ export async function notifyGeoAlert(payload: GeoAlertPayload): Promise<{
 // ---------------------------------------------------------------------------
 
 export async function resetGeoAlertDebounce(): Promise<void> {
+  // Clear admin cache
+  adminIdsCache = null
   // Clear all known Redis debounce keys
   const allTags = new Set([...lastPushByTag.keys(), ...lastSentryByTag.keys()])
-  for (const tag of allTags) {
-    try {
-      const { cacheInvalidate } = await import("@/lib/redis")
-      await cacheInvalidate(`${PUSH_DEBOUNCE_REDIS_KEY}${tag}`)
-      await cacheInvalidate(`${SENTRY_DEBOUNCE_REDIS_KEY}${tag}`)
-    } catch (err) {
-      logger.debug({ err }, "geo-alert-notify: debounce reset failed")
+  try {
+    const { cacheInvalidate } = await import("@/lib/redis")
+    for (const tag of allTags) {
+      try {
+        await cacheInvalidate(`${PUSH_DEBOUNCE_REDIS_KEY}${tag}`)
+        await cacheInvalidate(`${SENTRY_DEBOUNCE_REDIS_KEY}${tag}`)
+      } catch (err) {
+        logger.debug({ err }, "geo-alert-notify: debounce reset failed")
+      }
     }
+  } catch (err) {
+    logger.debug({ err }, "geo-alert-notify: Redis import failed")
   }
   lastPushByTag.clear()
   lastSentryByTag.clear()

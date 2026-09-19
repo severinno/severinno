@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import { NextResponse } from "next/server"
-import { readFileSync, existsSync } from "node:fs"
+import { readFile, access } from "node:fs/promises"
 import { join } from "node:path"
 import { handleError } from "@/lib/api-server"
 import { requireRole } from "@/lib/auth"
@@ -14,6 +14,7 @@ import {
   type GeoServiceName,
 } from "@/lib/geo-metrics"
 import { getGeoMetricsSnapshot } from "@/lib/geo-observability"
+import logger from "@/lib/logger"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,13 +57,15 @@ export type GeoMetricsResponse = ReturnType<typeof getGeoMetrics> & {
 // Benchmark loader
 // ---------------------------------------------------------------------------
 
-function loadBenchmarkData(): BenchmarkData | null {
+async function loadBenchmarkData(): Promise<BenchmarkData | null> {
   try {
-    // Baseline versionado em docs/benchmarks — o geo-benchmark.json da raiz
-    // foi removido (08/2026); o shape é o mesmo (meta/benchmarks/analysis).
     const p = join(process.cwd(), "docs", "benchmarks", "geo-benchmark.json")
-    if (!existsSync(p)) return null
-    const raw = readFileSync(p, "utf-8")
+    try {
+      await access(p)
+    } catch {
+      return null
+    }
+    const raw = await readFile(p, "utf-8")
     const parsed = JSON.parse(raw) as {
       meta: {
         timestamp: string
@@ -122,7 +125,8 @@ function loadBenchmarkData(): BenchmarkData | null {
         avgHaversinePerProvider: parsed.analysis.avgHaversinePerProvider,
       },
     }
-  } catch {
+  } catch (err) {
+    logger.warn({ err }, "[geo-metrics] failed to load benchmark data")
     return null
   }
 }
@@ -136,7 +140,7 @@ export async function GET(request: Request) {
     await assertRateLimit(request, RATE_LIMITS.admin)
     await requireRole("ADMIN")
     const snapshot = getGeoMetrics()
-    const benchmark = loadBenchmarkData()
+    const benchmark = await loadBenchmarkData()
     const history = getGeoMetricsHistory()
 
     return NextResponse.json({

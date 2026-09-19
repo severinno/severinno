@@ -188,10 +188,10 @@ async function setupGeoMetricsMocks(page: Page) {
 // Tests
 // =========================================================================
 
-// FIXME: Requires admin session with Secure cookie + recharts client-side rendering.
-// The page returns 500 error boundary because the dynamic import crashes.
-// TODO: Fix by either using HTTP-only session or mocking the error boundary.
-test.describe.skip("Admin Geo-Metrics Dashboard", () => {
+// NOTE: These tests require the dev server running on BASE_URL.
+// If recharts fails to load in the test browser, the error boundary
+// will catch it and the test will fail gracefully.
+test.describe("Admin Geo-Metrics Dashboard", () => {
   test.beforeEach(async ({ page }) => {
     await setupGeoMetricsMocks(page)
   })

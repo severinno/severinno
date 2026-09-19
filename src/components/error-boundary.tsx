@@ -12,32 +12,11 @@
  */
 
 import { useEffect, useState, useRef, useCallback } from "react"
-import { motion, type Variants } from "framer-motion"
 import { AlertTriangle, RefreshCw, Home, Bug } from "lucide-react"
 import Link from "next/link"
 
 const MAX_AUTO_RETRIES = 3
 const BACKOFF_BASE_MS = 1000 // 1s, 2s, 4s
-
-const container: Variants = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.1 } },
-}
-
-const item: Variants = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: "easeOut" } },
-}
-
-const iconVariants: Variants = {
-  hidden: { scale: 0.6, rotate: -10, opacity: 0 },
-  show: {
-    scale: 1,
-    rotate: 0,
-    opacity: 1,
-    transition: { duration: 0.5, ease: "easeOut" },
-  },
-}
 
 type Props = {
   error: Error & { digest?: string }
@@ -160,42 +139,40 @@ export default function AutoRetryErrorBoundary({
       </div>
 
       <div className="relative flex flex-1 items-center justify-center px-4 py-12">
-        <motion.div
-          variants={container}
-          initial="hidden"
-          animate="show"
-          className="flex w-full max-w-md flex-col items-center text-center"
-        >
+        <div className="flex w-full max-w-md flex-col items-center text-center">
           {/* Animated icon */}
-          <motion.div variants={iconVariants} animate="show" className="mb-2">
+          <div className="mb-2" style={{ animation: "errorIconIn 0.5s ease-out both" }}>
             <div className="relative">
               <div className="absolute inset-0 animate-ping rounded-full bg-red-500/15 dark:bg-red-400/10" />
               <div className="relative flex size-20 items-center justify-center rounded-full bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950/30 dark:to-red-900/20">
                 <AlertTriangle className="size-9 text-red-500 dark:text-red-400" />
               </div>
             </div>
-          </motion.div>
+          </div>
 
           {/* Status code */}
-          <motion.div variants={item}>
+          <div style={{ animation: "errorItemIn 0.45s ease-out 0.1s both" }}>
             <span className="inline-block rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
               {statusCode}
             </span>
-          </motion.div>
+          </div>
 
           {/* Title */}
-          <motion.div variants={item}>
+          <div style={{ animation: "errorItemIn 0.45s ease-out 0.2s both" }}>
             <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">{title}</h1>
-          </motion.div>
+          </div>
 
           {/* Description */}
-          <motion.div variants={item}>
+          <div style={{ animation: "errorItemIn 0.45s ease-out 0.3s both" }}>
             <p className="text-muted-foreground mt-3 max-w-sm">{description}</p>
-          </motion.div>
+          </div>
 
           {/* Auto-retry status */}
           {showProgress && autoRetryEnabled && !autoRetriesExhausted && (
-            <motion.div variants={item} className="mt-6 w-full max-w-xs">
+            <div
+              style={{ animation: "errorItemIn 0.45s ease-out 0.4s both" }}
+              className="mt-6 w-full max-w-xs"
+            >
               <div className="flex items-center justify-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
                 <RefreshCw className="size-4 animate-spin" />
                 <span>
@@ -204,18 +181,19 @@ export default function AutoRetryErrorBoundary({
               </div>
               {/* Progress bar */}
               <div className="bg-muted mt-2 h-1.5 overflow-hidden rounded-full">
-                <motion.div
-                  className="h-full rounded-full bg-emerald-500"
-                  initial={{ width: "0%" }}
-                  animate={{ width: `${(retryCount / MAX_AUTO_RETRIES) * 100}%` }}
-                  transition={{ duration: 0.3 }}
+                <div
+                  className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                  style={{ width: `${(retryCount / MAX_AUTO_RETRIES) * 100}%` }}
                 />
               </div>
-            </motion.div>
+            </div>
           )}
 
           {/* Action buttons */}
-          <motion.div variants={item} className="mt-8 flex flex-col items-center gap-3 sm:flex-row">
+          <div
+            style={{ animation: "errorItemIn 0.45s ease-out 0.5s both" }}
+            className="mt-8 flex flex-col items-center gap-3 sm:flex-row"
+          >
             {!autoRetryEnabled || autoRetriesExhausted ? (
               <button
                 onClick={doRetry}
@@ -234,17 +212,32 @@ export default function AutoRetryErrorBoundary({
               <Home className="size-4" />
               Voltar ao início
             </Link>
-          </motion.div>
+          </div>
 
           {/* Error digest (dev support) */}
           {error.digest && (
-            <motion.div variants={item} className="mt-12 flex items-center gap-1.5">
+            <div
+              style={{ animation: "errorItemIn 0.45s ease-out 0.6s both" }}
+              className="mt-12 flex items-center gap-1.5"
+            >
               <Bug className="text-muted-foreground/50 size-3" />
               <span className="text-muted-foreground/50 text-xs">Ref: {error.digest}</span>
-            </motion.div>
+            </div>
           )}
-        </motion.div>
+        </div>
       </div>
+
+      {/* CSS animations */}
+      <style>{`
+        @keyframes errorIconIn {
+          from { transform: scale(0.6) rotate(-10deg); opacity: 0; }
+          to { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+        @keyframes errorItemIn {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
     </div>
   )
 }

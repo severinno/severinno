@@ -134,12 +134,13 @@ export function sortByDistance(
   centerLat: number,
   centerLng: number,
 ): ProviderCard[] {
-  return [...providers]
+  return providers
+    .filter((p) => typeof p.lat === "number" && typeof p.lng === "number")
     .map((p) => ({
       ...p,
-      _dist: haversineKm(centerLat, centerLng, p.lat ?? 0, p.lng ?? 0),
+      _dist: haversineKm(centerLat, centerLng, p.lat!, p.lng!),
     }))
-    .sort((a, b) => (a._dist ?? Infinity) - (b._dist ?? Infinity))
+    .sort((a, b) => a._dist - b._dist)
 }
 
 /**

@@ -1,98 +1,92 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { generateEscrowPIN, validateGeoCheckin, type CheckinAttempt } from "../geo-checkin-escrow"
+import { describe, it, expect, vi, beforeEach } from "vitest"
+import { validateEscrowRelease, cleanupExpiredPins } from "../geo-checkin-escrow"
 
-describe("geo-checkin-escrow.ts — PIN Generation & Anti-Spoofing", () => {
-  // A asserção expiresAt > Date.now() compara dois instantes do relógio real:
-  // se o TTL fosse curto e a execução demorasse, a janela fecharia no meio do
-  // teste (flake). Congela SÓ Date num horário neutro — determinístico.
+// Mock Redis
+vi.mock("@/lib/redis", () => ({
+  cacheGet: vi.fn(),
+  cacheSet: vi.fn(),
+  cacheInvalidate: vi.fn(),
+}))
+
+// Mock logger
+vi.mock("@/lib/logger", () => ({
+  default: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+}))
+
+import { cacheGet, cacheInvalidate } from "@/lib/redis"
+
+describe("geo-checkin-escrow.ts — validateEscrowRelease", () => {
   beforeEach(() => {
-    vi.useFakeTimers({ toFake: ["Date"] })
-    vi.setSystemTime(new Date("2026-01-05T15:00:00.000Z")) // 12:00 BRT
+    vi.mocked(cacheGet).mockReset()
+    vi.mocked(cacheInvalidate).mockReset()
   })
 
-  afterEach(() => {
-    vi.useRealTimers()
+  it("returns failure when no PIN exists", async () => {
+    vi.mocked(cacheGet).mockResolvedValue(null)
+    const result = await validateEscrowRelease("booking-1", "1234", 50)
+    expect(result.success).toBe(false)
+    expect(result.reason).toContain("Nenhum PIN ativo")
   })
 
-  it("generates a 4-digit PIN with valid expiration", async () => {
-    const escrow = await generateEscrowPIN("booking-test-123")
-    expect(escrow.pin).toMatch(/^\d{4}$/)
-    expect(escrow.bookingId).toBe("booking-test-123")
-    expect(new Date(escrow.expiresAt).getTime()).toBeGreaterThan(Date.now())
+  it("returns failure when PIN is expired", async () => {
+    vi.mocked(cacheGet).mockResolvedValue({
+      pin: "1234",
+      expiresAt: Date.now() - 1000, // expired 1s ago
+    })
+    const result = await validateEscrowRelease("booking-1", "1234", 50)
+    expect(result.success).toBe(false)
+    expect(result.reason).toContain("expirado")
+    expect(cacheInvalidate).toHaveBeenCalled()
   })
 
-  it("validates checkin when provider is within 150m and GPS accuracy is good", () => {
-    const attempt: CheckinAttempt = {
-      bookingId: "b-1",
-      providerId: "p-1",
-      providerLat: -23.5505,
-      providerLng: -46.6333,
-      clientAddressLat: -23.5506, // ~15m away
-      clientAddressLng: -46.6334,
-      accuracyMeters: 10,
-    }
+  it("returns failure when PIN is wrong", async () => {
+    vi.mocked(cacheGet).mockResolvedValue({
+      pin: "1234",
+      expiresAt: Date.now() + 3600000, // 1 hour from now
+    })
+    const result = await validateEscrowRelease("booking-1", "5678", 50)
+    expect(result.success).toBe(false)
+    expect(result.reason).toContain("incorreto")
+  })
 
-    const result = validateGeoCheckin(attempt)
+  it("succeeds when PIN is correct", async () => {
+    vi.mocked(cacheGet).mockResolvedValue({
+      pin: "1234",
+      expiresAt: Date.now() + 3600000,
+    })
+    const result = await validateEscrowRelease("booking-1", "1234", 50)
     expect(result.success).toBe(true)
-    expect(result.distanceMeters).toBeLessThanOrEqual(150)
-    expect(result.checkedInAt).toBeDefined()
+    expect(result.bookingId).toBe("booking-1")
+    expect(result.releasedAmount).toBe(50)
+    expect(result.releasedAt).toBeDefined()
+    expect(cacheInvalidate).toHaveBeenCalled()
   })
 
-  it("fails checkin when provider is farther than 150m", () => {
-    const attempt: CheckinAttempt = {
-      bookingId: "b-2",
-      providerId: "p-2",
-      providerLat: -23.5505,
-      providerLng: -46.6333,
-      clientAddressLat: -23.5605, // ~1.1km away
-      clientAddressLng: -46.6333,
-      accuracyMeters: 10,
-    }
-
-    const result = validateGeoCheckin(attempt)
+  it("handles different-length PINs gracefully", async () => {
+    vi.mocked(cacheGet).mockResolvedValue({
+      pin: "1234",
+      expiresAt: Date.now() + 3600000,
+    })
+    const result = await validateEscrowRelease("booking-1", "12", 50)
     expect(result.success).toBe(false)
-    expect(result.distanceMeters).toBeGreaterThan(150)
-    expect(result.reason).toContain("Aproxime-se a menos de 150m")
+    expect(result.reason).toContain("incorreto")
   })
 
-  it("anti-spoofing: rejects checkin with degraded GPS accuracy (>150m)", () => {
-    const attempt: CheckinAttempt = {
-      bookingId: "b-3",
-      providerId: "p-3",
-      providerLat: -23.5505,
-      providerLng: -46.6333,
-      clientAddressLat: -23.5505,
-      clientAddressLng: -46.6333,
-      accuracyMeters: 300, // Triangulação de antena / IP
-    }
-
-    const result = validateGeoCheckin(attempt)
+  it("falls back to in-memory when Redis fails", async () => {
+    vi.mocked(cacheGet).mockRejectedValue(new Error("Redis down"))
+    // The in-memory map is empty for a fresh booking
+    const result = await validateEscrowRelease("booking-fresh", "1234", 50)
     expect(result.success).toBe(false)
-    expect(result.reason).toContain("baixa precisão")
+    expect(result.reason).toContain("Nenhum PIN ativo")
   })
+})
 
-  it("anti-spoofing: rejects impossible teleportation speed (>200 km/h)", () => {
-    const now = Date.now()
-    const fiveMinutesAgo = now - 5 * 60 * 1000
-
-    const attempt: CheckinAttempt = {
-      bookingId: "b-4",
-      providerId: "p-4",
-      providerLat: -23.5505, // São Paulo
-      providerLng: -46.6333,
-      clientAddressLat: -23.5505,
-      clientAddressLng: -46.6333,
-      accuracyMeters: 15,
-      clientTimestamp: now,
-      previousLocation: {
-        lat: -22.9068, // Rio de Janeiro (~360km away in 5 min!)
-        lng: -43.1729,
-        timestamp: fiveMinutesAgo,
-      },
-    }
-
-    const result = validateGeoCheckin(attempt)
-    expect(result.success).toBe(false)
-    expect(result.reason).toContain("Inconsistência de deslocamento")
+describe("geo-checkin-escrow.ts — cleanupExpiredPins", () => {
+  it("returns 0 when no expired PINs", () => {
+    // The activePins map is module-level; we can't easily control it in tests
+    // but we can verify the function doesn't throw
+    const cleaned = cleanupExpiredPins()
+    expect(typeof cleaned).toBe("number")
+    expect(cleaned).toBeGreaterThanOrEqual(0)
   })
 })

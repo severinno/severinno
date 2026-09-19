@@ -14,11 +14,12 @@
  * Wraps ProvidersMap functionality with enhanced UX.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
 import { createAnimatedPinElement } from "@/components/map/pins"
 import { HeatmapOverlay, RouteLine } from "@/components/map/overlays"
 import { Slider } from "@/components/ui/slider"
+import { ErrorBoundary } from "@/components/shared/error-boundary"
 import {
   Layers,
   Route,
@@ -102,7 +103,7 @@ export default function EnhancedProvidersMap({
     providersRef.current = providers
     userLatRef.current = userLat
     userLngRef.current = userLng
-  })
+  }, [onSelectProvider, providers, userLat, userLng])
 
   const hasUserLocation = typeof userLat === "number" && typeof userLng === "number"
 
@@ -147,8 +148,17 @@ export default function EnhancedProvidersMap({
     }
   }
 
-  // Get selected provider coordinates for route line
-  const selectedProvider = selectedId ? providers.find((p) => p.id === selectedId) : null
+  // Memoize selected provider to avoid O(n) scan on every render
+  const selectedProvider = useMemo(
+    () => (selectedId ? (providers.find((p) => p.id === selectedId) ?? null) : null),
+    [selectedId, providers],
+  )
+
+  // Memoize heatmap providers to avoid unnecessary re-renders of the heatmap layer
+  const heatmapProviders = useMemo(
+    () => providers.filter((p) => typeof p.lat === "number" && typeof p.lng === "number"),
+    [providers],
+  )
 
   // ---- Initialize map once -------------------------------------------------
   useEffect(() => {
@@ -326,9 +336,15 @@ export default function EnhancedProvidersMap({
     return () => clearTimeout(timer)
   }, [isFullscreen])
 
-  // Update cache size on mount
+  // Update cache size on mount (cancel if unmounted)
   useEffect(() => {
-    getCacheSizeMB().then(setCacheSizeMB)
+    let cancelled = false
+    getCacheSizeMB().then((size) => {
+      if (!cancelled) setCacheSizeMB(size)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // ---- Sync providers → animated markers -----------------------------------
@@ -409,143 +425,152 @@ export default function EnhancedProvidersMap({
   }, [userLat, userLng, mapInstance])
 
   return (
-    <div
-      ref={wrapperRef}
-      className={cn(
-        "bg-muted relative h-full min-h-[400px] w-full overflow-hidden rounded-xl border",
-        isFullscreen && "fixed inset-0 z-[9999] min-h-screen rounded-none",
-        className,
-      )}
-      aria-label="Mapa de prestadores"
-      role="application"
-      style={{ touchAction: "pan-x pan-y pinch-zoom" }}
-    >
-      <div ref={containerRef} className="absolute inset-0 h-full w-full" />
-
-      {/* Heatmap overlay */}
-      <HeatmapOverlay map={mapInstance} providers={providers} enabled={showHeatmap} />
-
-      {/* Route line */}
-      <RouteLine
-        map={mapInstance}
-        userLat={userLat}
-        userLng={userLng}
-        providerLat={selectedProvider?.lat}
-        providerLng={selectedProvider?.lng}
-        visible={showRoute && !!selectedProvider}
-      />
-
-      {/* Floating filter bar */}
-      <div className="absolute top-3 left-3 z-20 flex flex-col gap-2">
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className={cn(
-            "flex size-10 items-center justify-center rounded-xl border bg-white/90 shadow-lg backdrop-blur-sm transition-all hover:scale-105",
-            showFilters ? "border-emerald-500 bg-emerald-50" : "border-gray-200",
-          )}
-          title="Filtros do mapa"
-        >
-          <Layers className="size-5 text-gray-600" />
-        </button>
-
-        {showFilters && (
-          <div className="w-56 space-y-3 rounded-xl border border-gray-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm">
-            {/* Fullscreen toggle */}
-            <button
-              onClick={toggleFullscreen}
-              className="flex size-10 items-center justify-center rounded-xl border border-gray-200 bg-white/90 shadow-lg backdrop-blur-sm transition-all hover:scale-105"
-              title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
-            >
-              {isFullscreen ? (
-                <Minimize2 className="size-5 text-gray-600" />
-              ) : (
-                <Maximize2 className="size-5 text-gray-600" />
-              )}
-            </button>
-
-            {/* Dark mode toggle */}
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-600">Modo escuro</span>
-              <button
-                onClick={() => setIsDark(!isDark)}
-                className="flex size-7 items-center justify-center rounded-lg bg-gray-100 transition-colors hover:bg-gray-200"
-              >
-                {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
-              </button>
-            </div>
-
-            {/* Heatmap toggle */}
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-600">Heatmap</span>
-              <button
-                onClick={() => setShowHeatmap(!showHeatmap)}
-                className={cn(
-                  "flex size-7 items-center justify-center rounded-lg transition-colors",
-                  showHeatmap ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500",
-                )}
-              >
-                {showHeatmap ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
-              </button>
-            </div>
-
-            {/* Route toggle */}
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-600">Rota</span>
-              <button
-                onClick={() => setShowRoute(!showRoute)}
-                className={cn(
-                  "flex size-7 items-center justify-center rounded-lg transition-colors",
-                  showRoute ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500",
-                )}
-              >
-                <Route className="size-4" />
-              </button>
-            </div>
-
-            {/* Precache button */}
-            <button
-              onClick={handlePrecache}
-              disabled={isPrecaching}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
-            >
-              {isPrecaching ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Download className="size-3.5" />
-              )}
-              {isPrecaching ? "Baixando tiles..." : "Cache offline"}
-            </button>
-
-            {/* Cache stats */}
-            <div className="border-t border-gray-100 pt-2">
-              <p className="text-[10px] text-gray-400">
-                {providers.length} prestadores · {cacheSizeMB.toFixed(1)} MB cache
-              </p>
-            </div>
-          </div>
+    <ErrorBoundary label="Mapa de Prestadores">
+      <div
+        ref={wrapperRef}
+        className={cn(
+          "bg-muted relative h-full min-h-[400px] w-full overflow-hidden rounded-xl border",
+          isFullscreen && "fixed inset-0 z-[9999] min-h-screen rounded-none",
+          className,
         )}
-      </div>
+        aria-label="Mapa de prestadores"
+        role="application"
+        style={{ touchAction: "pan-x pan-y pinch-zoom" }}
+      >
+        <div ref={containerRef} className="absolute inset-0 h-full w-full" />
 
-      {/* Radius slider overlay */}
-      {hasUserLocation && typeof radius === "number" && onRadiusChange ? (
-        <div className="absolute bottom-3 left-1/2 z-30 w-[calc(100%-24px)] max-w-xs -translate-x-1/2">
-          <div className="bg-background/95 flex items-center gap-3 rounded-xl border px-4 py-2.5 shadow-lg backdrop-blur-sm">
-            <span className="text-muted-foreground shrink-0 text-[11px] font-semibold tabular-nums">
-              {radius} km
-            </span>
-            <Slider
-              min={1}
-              max={100}
-              step={1}
-              value={[radius]}
-              onValueChange={([v]) => onRadiusChange(v ?? 15)}
-              aria-label="Ajustar raio de busca"
-              className="flex-1 [&_[data-slot=slider-track]]:h-1.5"
-            />
-          </div>
+        {/* Heatmap overlay */}
+        <HeatmapOverlay map={mapInstance} providers={heatmapProviders} enabled={showHeatmap} />
+
+        {/* Route line */}
+        <RouteLine
+          map={mapInstance}
+          userLat={userLat}
+          userLng={userLng}
+          providerLat={selectedProvider?.lat}
+          providerLng={selectedProvider?.lng}
+          visible={showRoute && !!selectedProvider}
+        />
+
+        {/* Floating filter bar */}
+        <div className="absolute top-3 left-3 z-20 flex flex-col gap-2">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={cn(
+              "flex size-10 items-center justify-center rounded-xl border bg-white/90 shadow-lg backdrop-blur-sm transition-all hover:scale-105",
+              showFilters ? "border-emerald-500 bg-emerald-50" : "border-gray-200",
+            )}
+            aria-label={showFilters ? "Fechar filtros do mapa" : "Abrir filtros do mapa"}
+            title="Filtros do mapa"
+          >
+            <Layers className="size-5 text-gray-600" />
+          </button>
+
+          {showFilters && (
+            <div className="w-56 space-y-3 rounded-xl border border-gray-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm">
+              {/* Fullscreen toggle */}
+              <button
+                onClick={toggleFullscreen}
+                className="flex size-10 items-center justify-center rounded-xl border border-gray-200 bg-white/90 shadow-lg backdrop-blur-sm transition-all hover:scale-105"
+                aria-label={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
+                title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
+              >
+                {isFullscreen ? (
+                  <Minimize2 className="size-5 text-gray-600" />
+                ) : (
+                  <Maximize2 className="size-5 text-gray-600" />
+                )}
+              </button>
+
+              {/* Dark mode toggle */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-600">Modo escuro</span>
+                <button
+                  onClick={() => setIsDark(!isDark)}
+                  className="flex size-7 items-center justify-center rounded-lg bg-gray-100 transition-colors hover:bg-gray-200"
+                  aria-label={isDark ? "Desativar modo escuro" : "Ativar modo escuro"}
+                >
+                  {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
+                </button>
+              </div>
+
+              {/* Heatmap toggle */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-600">Heatmap</span>
+                <button
+                  onClick={() => setShowHeatmap(!showHeatmap)}
+                  className={cn(
+                    "flex size-7 items-center justify-center rounded-lg transition-colors",
+                    showHeatmap ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500",
+                  )}
+                  aria-label={showHeatmap ? "Ocultar heatmap" : "Mostrar heatmap"}
+                  aria-pressed={showHeatmap}
+                >
+                  {showHeatmap ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+                </button>
+              </div>
+
+              {/* Route toggle */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-gray-600">Rota</span>
+                <button
+                  onClick={() => setShowRoute(!showRoute)}
+                  className={cn(
+                    "flex size-7 items-center justify-center rounded-lg transition-colors",
+                    showRoute ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500",
+                  )}
+                  aria-label={showRoute ? "Ocultar rota" : "Mostrar rota"}
+                  aria-pressed={showRoute}
+                >
+                  <Route className="size-4" />
+                </button>
+              </div>
+
+              {/* Precache button */}
+              <button
+                onClick={handlePrecache}
+                disabled={isPrecaching}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+              >
+                {isPrecaching ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Download className="size-3.5" />
+                )}
+                {isPrecaching ? "Baixando tiles..." : "Cache offline"}
+              </button>
+
+              {/* Cache stats */}
+              <div className="border-t border-gray-100 pt-2">
+                <p className="text-[10px] text-gray-400">
+                  {providers.length} prestadores · {cacheSizeMB.toFixed(1)} MB cache
+                </p>
+              </div>
+            </div>
+          )}
         </div>
-      ) : null}
-    </div>
+
+        {/* Radius slider overlay */}
+        {hasUserLocation && typeof radius === "number" && onRadiusChange ? (
+          <div className="absolute bottom-3 left-1/2 z-30 w-[calc(100%-24px)] max-w-xs -translate-x-1/2">
+            <div className="bg-background/95 flex items-center gap-3 rounded-xl border px-4 py-2.5 shadow-lg backdrop-blur-sm">
+              <span className="text-muted-foreground shrink-0 text-[11px] font-semibold tabular-nums">
+                {radius} km
+              </span>
+              <Slider
+                min={1}
+                max={100}
+                step={1}
+                value={[radius]}
+                onValueChange={([v]) => onRadiusChange(v ?? 15)}
+                aria-label="Ajustar raio de busca"
+                className="flex-1 [&_[data-slot=slider-track]]:h-1.5"
+              />
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </ErrorBoundary>
   )
 }
 
@@ -640,6 +665,35 @@ function syncClusterSource(
       "circle-stroke-width": 2,
       "circle-stroke-color": "#fff",
     },
+  })
+
+  // Accessible: set cursor pointer on cluster hover
+  map.on("mouseenter", "clusters", () => {
+    map.getCanvas().style.cursor = "pointer"
+  })
+  map.on("mouseleave", "clusters", () => {
+    map.getCanvas().style.cursor = ""
+  })
+  // Zoom in on cluster click
+  map.on("click", "clusters", (e) => {
+    const features = map.queryRenderedFeatures(e.point, { layers: ["clusters"] })
+    if (!features?.length) return
+    const clusterId = features[0].properties?.cluster_id
+    if (clusterId == null) return
+    const source = map.getSource("providers") as GeoJSONSource | undefined
+    source
+      ?.getClusterExpansionZoom(clusterId)
+      .then((zoom) => {
+        map.easeTo({
+          center: (features[0].geometry as { type: string; coordinates: [number, number] })
+            .coordinates,
+          zoom,
+          duration: 500,
+        })
+      })
+      .catch(() => {
+        /* ignore zoom errors */
+      })
   })
 
   map.addLayer({

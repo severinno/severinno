@@ -1,10 +1,17 @@
 "use client"
 
 import dynamic from "next/dynamic"
-import { AuthModal } from "./auth-modal"
-import { ProviderProfileModal } from "./provider-profile-modal"
-import { QuoteModal } from "./quote-modal"
 
+const AuthModal = dynamic(() => import("./auth-modal").then((m) => ({ default: m.AuthModal })), {
+  ssr: false,
+})
+const ProviderProfileModal = dynamic(
+  () => import("./provider-profile-modal").then((m) => ({ default: m.ProviderProfileModal })),
+  { ssr: false },
+)
+const QuoteModal = dynamic(() => import("./quote-modal").then((m) => ({ default: m.QuoteModal })), {
+  ssr: false,
+})
 const BookingModal = dynamic(
   () => import("./booking-modal").then((m) => ({ default: m.BookingModal })),
   { ssr: false },
@@ -16,7 +23,7 @@ const BookingModal = dynamic(
  * Each modal reads its own open-state from `useUIStore`, so this component
  * has no props — mount it once at the app shell (next to the main view).
  *
- * BookingModal is lazy-loaded via next/dynamic to reduce initial bundle size.
+ * All modals are lazy-loaded via next/dynamic to reduce initial bundle size.
  */
 export function ModalsHost() {
   return (

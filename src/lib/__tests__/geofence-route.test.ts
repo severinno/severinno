@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const mockFindUnique = vi.hoisted(() => vi.fn())
 const mockUpdate = vi.hoisted(() => vi.fn())
+const mockUpdateMany = vi.hoisted(() => vi.fn())
 const mockRequireUser = vi.hoisted(() => vi.fn())
 const mockCheckGeofences = vi.hoisted(() => vi.fn())
 const mockIndexProviderLocation = vi.hoisted(() => vi.fn())
@@ -20,6 +21,7 @@ vi.mock("@/lib/db", () => ({
     booking: {
       findUnique: mockFindUnique,
       update: mockUpdate,
+      updateMany: mockUpdateMany,
     },
   },
 }))
@@ -126,6 +128,7 @@ describe("POST /api/tracking/[id]/geofence — unified endpoint", () => {
     mockCalculateRouteAndEta.mockResolvedValue({ distanceKm: 0.3, durationMin: 2 })
     mockSendWhatsApp.mockResolvedValue(undefined)
     mockUpdate.mockResolvedValue({})
+    mockUpdateMany.mockResolvedValue({ count: 1 })
   })
 
   it("returns 400 when providerLat/providerLng missing", async () => {
@@ -184,7 +187,7 @@ describe("POST /api/tracking/[id]/geofence — unified endpoint", () => {
     expect(json.triggered).toBe(true)
     expect(json.engineEvents).toBe(1)
     expect(mockSendWhatsApp).toHaveBeenCalled()
-    expect(mockUpdate).toHaveBeenCalled()
+    expect(mockUpdateMany).toHaveBeenCalled()
   })
 
   it("returns idempotent when geofenceAlertSentAt already set", async () => {

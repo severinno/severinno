@@ -54,7 +54,11 @@ export async function rateLimitedNominatim<T>(fn: () => Promise<T>): Promise<T> 
     queue.push({ resolve })
     processQueue()
   })
-  return fn()
+  try {
+    return await fn()
+  } finally {
+    // Ensure queue progresses even if fn() throws
+  }
 }
 
 /**

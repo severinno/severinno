@@ -67,6 +67,20 @@ const PIN_KEY_PREFIX = "escrow:pin:"
 const PIN_TTL_SECONDS = PIN_EXPIRY_HOURS * 60 * 60 // 8 hours
 const activePins = new Map<string, { pin: string; expiresAt: number }>()
 
+// Auto-cleanup expired PINs every 5 minutes (unref so it doesn't keep the process alive)
+if (typeof setInterval !== "undefined") {
+  const cleanupInterval = setInterval(
+    () => {
+      const now = Date.now()
+      for (const [bookingId, data] of activePins.entries()) {
+        if (now > data.expiresAt) activePins.delete(bookingId)
+      }
+    },
+    5 * 60 * 1000,
+  )
+  if (cleanupInterval.unref) cleanupInterval.unref()
+}
+
 /**
  * Validates the provider's GPS coordinates against the client's address location.
  * Includes GPS accuracy validation and anti-spoofing speed plausibility checks.

@@ -10,34 +10,7 @@
 
 "use client"
 
-import { motion, type Variants } from "framer-motion"
 import { LoadingShell, S } from "@/app/loading-shell"
-
-const dotVariants: Variants = {
-  hidden: { opacity: 0, y: 4 },
-  show: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: {
-      delay: 0.4 + i * 0.15,
-      duration: 0.35,
-      ease: "easeOut",
-    },
-  }),
-}
-
-const pulseVariants: Variants = {
-  pulse: {
-    scale: [1, 1.3, 1],
-    opacity: [0.6, 1, 0.6],
-    transition: {
-      duration: 1.4,
-      repeat: Infinity,
-      ease: "easeInOut",
-      delay: 0.6,
-    },
-  },
-}
 
 export default function LoadingGlobal() {
   return (
@@ -56,19 +29,17 @@ export default function LoadingGlobal() {
           {/* Tagline skeleton */}
           <S className="h-4 w-64 sm:h-4 sm:w-72" />
 
-          {/* Animated dots */}
+          {/* Animated dots — CSS-only pulse */}
           <div className="mt-4 flex items-center gap-2">
             {[0, 1, 2].map((i) => (
-              <motion.div key={i} custom={i} variants={dotVariants} initial="hidden" animate="show">
-                <motion.div
-                  variants={pulseVariants}
-                  animate="pulse"
-                  className="size-2.5 rounded-full bg-emerald-500 dark:bg-emerald-400"
-                  style={{
-                    boxShadow: "0 0 6px rgba(5, 150, 105, 0.3)",
-                  }}
-                />
-              </motion.div>
+              <div
+                key={i}
+                className="size-2.5 rounded-full bg-emerald-500 dark:bg-emerald-400"
+                style={{
+                  boxShadow: "0 0 6px rgba(5, 150, 105, 0.3)",
+                  animation: `fadeIn 0.35s ease-out ${0.4 + i * 0.15}s both, pulse 1.4s ease-in-out ${0.6 + i * 0.15}s infinite`,
+                }}
+              />
             ))}
           </div>
 

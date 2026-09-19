@@ -33,4 +33,4 @@
 
 export { computeDistanceMap } from "./distance-fallback"
 export type { ProviderGeo, CenterGeo, ComputeDistanceMapOptions } from "./distance-fallback"
-export { haversineKm, formatDistance } from "./geo-shared"
+export { haversineKm, formatDistance, isValidLatLng } from "./geo-shared"

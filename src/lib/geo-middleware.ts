@@ -124,6 +124,14 @@ function handleGeoError(err: unknown, pathname: string): NextResponse {
 
   // Known application errors → 400 with message
   if (err instanceof Error) {
+    // Errors with explicit statusCode (e.g. from route handlers)
+    if ("statusCode" in err && typeof (err as { statusCode: unknown }).statusCode === "number") {
+      return NextResponse.json(
+        { error: err.message },
+        { status: (err as { statusCode: number }).statusCode },
+      )
+    }
+
     const msg = err.message.toLowerCase()
 
     if (msg.includes("inválido") || msg.includes("invalid")) {

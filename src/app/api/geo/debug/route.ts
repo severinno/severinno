@@ -290,7 +290,7 @@ export async function GET(request: Request) {
           },
         ]),
       ),
-      latencyWindowSeconds: geoMetrics.timestamp,
+      latencyWindowSeconds: geoMetrics.windowSeconds,
     }
 
     // ── Circuit breaker status ─────────────────────────────────────

@@ -11,7 +11,7 @@ type Params = { params: Promise<{ id: string }> }
 
 export async function GET(request: Request, { params }: Params) {
   try {
-    await requireUser()
+    const session = await requireUser()
     await assertRateLimit(request, RATE_LIMITS.general)
     const { id } = await params
     const { searchParams } = new URL(request.url)
@@ -29,6 +29,8 @@ export async function GET(request: Request, { params }: Params) {
         createdAt: true,
         lat: true,
         lng: true,
+        clientId: true,
+        providerId: true,
         provider: { select: { id: true, name: true, avatarUrl: true } },
         client: { select: { id: true, name: true } },
         service: { select: { id: true, title: true, basePrice: true } },
@@ -38,6 +40,16 @@ export async function GET(request: Request, { params }: Params) {
 
     if (!booking) throw notFound("Agendamento não encontrado")
 
+    if (
+      session.userId !== booking.clientId &&
+      session.userId !== booking.providerId &&
+      session.role !== "ADMIN"
+    ) {
+      return NextResponse.json({ error: "Acesso restrito" }, { status: 403 })
+    }
+
+    const { clientId: _, providerId: __, ...bookingSafe } = booking
+
     let routeInfo: {
       distanceKm: number
       durationMin: number
@@ -46,7 +58,14 @@ export async function GET(request: Request, { params }: Params) {
     if (latStr && lngStr) {
       const pLat = parseFloat(latStr)
       const pLng = parseFloat(lngStr)
-      if (Number.isFinite(pLat) && Number.isFinite(pLng)) {
+      if (
+        Number.isFinite(pLat) &&
+        Number.isFinite(pLng) &&
+        pLat >= -90 &&
+        pLat <= 90 &&
+        pLng >= -180 &&
+        pLng <= 180
+      ) {
         const route = await getRoute([pLat, pLng], [booking.lat, booking.lng])
         routeInfo = {
           distanceKm: route.distanceKm,
@@ -56,7 +75,7 @@ export async function GET(request: Request, { params }: Params) {
       }
     }
 
-    return NextResponse.json({ booking, route: routeInfo })
+    return NextResponse.json({ booking: bookingSafe, route: routeInfo })
   } catch (e) {
     return handleError(e)
   }

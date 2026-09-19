@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest"
 import { render, cleanup } from "@/__tests__/test-utils"
-import { shimmerCSS, ShimmerStyle, S, createContainer, createItem } from "../loading-base"
+import { shimmerCSS, ShimmerStyle, S, staggerDelay } from "../loading-base"
 
 afterEach(cleanup)
 
@@ -88,77 +88,31 @@ describe("S", () => {
   })
 })
 
-// ── createContainer ───────────────────────────────────────────────────────
+// ── staggerDelay ──────────────────────────────────────────────────────────
 
-describe("createContainer", () => {
-  it("returns a Variants object with hidden and show states", () => {
-    const variants = createContainer()
-    expect(variants).toHaveProperty("hidden")
-    expect(variants).toHaveProperty("show")
+describe("staggerDelay", () => {
+  it("returns animation-delay style for index 0", () => {
+    const style = staggerDelay(0)
+    expect(style).toHaveProperty("animationDelay", "0s")
   })
 
-  it("hidden state has opacity 0", () => {
-    expect(createContainer().hidden).toEqual({ opacity: 0 })
-  })
-
-  it("show state has opacity 1 with stagger transition", () => {
-    const show = createContainer().show
-    expect(show).toHaveProperty("opacity", 1)
-    expect(show).toHaveProperty("transition")
+  it("returns animation-delay style for index 1", () => {
+    const style = staggerDelay(1)
+    expect(style).toHaveProperty("animationDelay", "0.06s")
   })
 
   it("uses default stagger of 0.06", () => {
-    const show = createContainer().show as { transition: { staggerChildren: number } }
-    expect(show.transition.staggerChildren).toBe(0.06)
+    const style = staggerDelay(2)
+    expect(style).toHaveProperty("animationDelay", "0.12s")
   })
 
   it("accepts custom stagger value", () => {
-    const show = createContainer(0.1).show as { transition: { staggerChildren: number } }
-    expect(show.transition.staggerChildren).toBe(0.1)
+    const style = staggerDelay(1, 0.1)
+    expect(style).toHaveProperty("animationDelay", "0.1s")
   })
 
   it("accepts zero stagger", () => {
-    const show = createContainer(0).show as { transition: { staggerChildren: number } }
-    expect(show.transition.staggerChildren).toBe(0)
-  })
-})
-
-// ── createItem ────────────────────────────────────────────────────────────
-
-describe("createItem", () => {
-  it("returns a Variants object with hidden and show states", () => {
-    const variants = createItem()
-    expect(variants).toHaveProperty("hidden")
-    expect(variants).toHaveProperty("show")
-  })
-
-  it("hidden state has opacity 0 and default y offset", () => {
-    expect(createItem().hidden).toEqual({ opacity: 0, y: 12 })
-  })
-
-  it("show state has opacity 1 and y 0 with transition", () => {
-    const show = createItem().show
-    expect(show).toHaveProperty("opacity", 1)
-    expect(show).toHaveProperty("y", 0)
-    expect(show).toHaveProperty("transition")
-  })
-
-  it("uses default duration of 0.35 and easeOut", () => {
-    const show = createItem().show as { transition: { duration: number; ease: string } }
-    expect(show.transition.duration).toBe(0.35)
-    expect(show.transition.ease).toBe("easeOut")
-  })
-
-  it("accepts custom y offset", () => {
-    expect(createItem(24).hidden).toEqual({ opacity: 0, y: 24 })
-  })
-
-  it("accepts custom duration", () => {
-    const show = createItem(12, 0.5).show as { transition: { duration: number } }
-    expect(show.transition.duration).toBe(0.5)
-  })
-
-  it("accepts y=0 for no slide", () => {
-    expect(createItem(0).hidden).toEqual({ opacity: 0, y: 0 })
+    const style = staggerDelay(5, 0)
+    expect(style).toHaveProperty("animationDelay", "0s")
   })
 })

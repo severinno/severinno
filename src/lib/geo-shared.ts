@@ -13,6 +13,21 @@ function toRad(deg: number): number {
 }
 
 /**
+ * Validate that lat/lng are finite numbers within valid ranges.
+ */
+export function isValidLatLng(lat: unknown, lng: unknown): boolean {
+  if (typeof lat !== "number" || typeof lng !== "number") return false
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180
+  )
+}
+
+/**
  * Haversine distance in kilometers between two lat/lng points.
  */
 export function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {

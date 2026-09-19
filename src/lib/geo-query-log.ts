@@ -124,15 +124,15 @@ loadFromDisk()
 // ── Graceful shutdown: flush pending writes on SIGINT/SIGTERM ─────────────
 // Ensures the most recent query counts are persisted before the process exits.
 
+let shutdownHandlersInstalled = false
 function setupShutdownHandlers(): void {
+  if (shutdownHandlersInstalled) return
+  shutdownHandlersInstalled = true
   const handler = () => {
     flushToDisk()
   }
   process.on("SIGINT", handler)
   process.on("SIGTERM", handler)
-  // Note: handlers are never removed because this module lives for the
-  // entire process lifetime — listeners would only be a leak concern if
-  // the module were dynamically loaded/unloaded, which it never is.
 }
 
 setupShutdownHandlers()

@@ -137,7 +137,37 @@ export const useGeoStore = create<GeoState>()(
             })
             return
           }
+
+          // Enrich with lat/lng from Nominatim structured search
+          let lat: number | null = null
+          let lng: number | null = null
+          if (data.city) {
+            try {
+              const params = new URLSearchParams({ city: data.city, limit: "1" })
+              if (data.street) params.set("street", data.street)
+              if (data.state) params.set("state", data.state)
+              params.set("postcode", clean)
+              const geoRes = await fetch(`/api/geo/search?${params.toString()}`)
+              if (geoRes.ok) {
+                const results = await geoRes.json()
+                if (
+                  Array.isArray(results) &&
+                  results.length > 0 &&
+                  results[0].lat &&
+                  results[0].lng
+                ) {
+                  lat = results[0].lat
+                  lng = results[0].lng
+                }
+              }
+            } catch {
+              // Nominatim failed — proceed without coordinates
+            }
+          }
+
           set({
+            lat,
+            lng,
             cep: data.cep,
             address: data.street ? `${data.street}` : null,
             district: data.district ?? null,

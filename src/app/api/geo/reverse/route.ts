@@ -41,11 +41,15 @@ export async function GET(request: Request) {
       60,
     )
   } catch (e) {
-    // Rate limit (429) precisa preservar status + headers — o catch genérico
-    // abaixo mapearia para 502.
+    // Rate limit (429) precisa preservar status + headers
     if (isGeoRateLimitError(e)) {
       return NextResponse.json({ error: e.message }, { status: 429, headers: e.headers })
     }
+    // Client-side errors (invalid coords that passed initial check) → 400
+    if (e instanceof Error && /invalid|finite|range/i.test(e.message)) {
+      return NextResponse.json({ error: e.message }, { status: 400 })
+    }
+    // External API failures → 502
     const msg = e instanceof Error ? e.message : "Erro ao geocodificar"
     return NextResponse.json({ error: msg }, { status: 502 })
   }

@@ -193,7 +193,8 @@ export async function GET(request: NextRequest) {
     if (daysParam) {
       const days = Number(daysParam)
       if (Number.isFinite(days) && days > 0) {
-        const cutoff = Date.now() - days * 24 * 60 * 60 * 1000
+        const cappedDays = Math.min(days, 365)
+        const cutoff = Date.now() - cappedDays * 24 * 60 * 60 * 1000
         snapshots = snapshots.filter((s) => s.timestamp >= cutoff)
       }
     }

@@ -11,7 +11,6 @@
  */
 
 import { useEffect, useRef } from "react"
-import * as maplibregl from "maplibre-gl"
 import { haversineKm } from "@/lib/geo-server"
 
 type MapLibreMap = InstanceType<typeof import("maplibre-gl").Map>
@@ -149,10 +148,17 @@ export default function RouteLine({
 
       // Fit bounds to include both points
       try {
-        const bounds = new maplibregl.LngLatBounds()
-          .extend([userLng, userLat])
-          .extend([providerLng, providerLat])
-        map.fitBounds(bounds, { padding: 80, maxZoom: 15, duration: 800 })
+        const minLng = Math.min(userLng, providerLng)
+        const maxLng = Math.max(userLng, providerLng)
+        const minLat = Math.min(userLat, providerLat)
+        const maxLat = Math.max(userLat, providerLat)
+        map.fitBounds(
+          [
+            [minLng, minLat],
+            [maxLng, maxLat],
+          ],
+          { padding: 80, maxZoom: 15, duration: 800 },
+        )
       } catch {
         /* ignore — map may have been removed */
       }

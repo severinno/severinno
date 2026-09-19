@@ -24,6 +24,18 @@ export interface H3Cluster<T = unknown> {
   boundary: Array<[number, number]> // [lng, lat] GeoJSON polygon ring
 }
 
+/**
+ * H3 resolution based on map zoom level.
+ *   zoom < 10  → res 6 (~3.2km per cell) — city overview
+ *   zoom 10-13 → res 7 (~1.2km per cell) — neighborhood
+ *   zoom 14+   → res 8 (~460m per cell)  — street level
+ */
+export function h3ResolutionForZoom(zoom: number): number {
+  if (zoom < 10) return 6
+  if (zoom < 14) return 7
+  return 8
+}
+
 // Base resolution scales (approximate hexagon side length in degrees)
 const RES_DEGREE_SCALES: Record<number, { latStep: number; lngStep: number }> = {
   6: { latStep: 0.032, lngStep: 0.038 },
