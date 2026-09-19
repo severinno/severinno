@@ -3989,16 +3989,32 @@ reportar sincronia (a aplicação é idempotente) e — com a exigência desliga
 mutação — tem de reportar **drift** acusando `enable_status_check`. Um detector que
 não vê o modo silencioso não protege nada.
 
+**O REGISTRO é CONFERIDO, não só lido.** Logo depois de aplicar, a prova compara a
+lista que a proteção **registra** (`status_check_contexts`) com a do manifesto,
+nome a nome (`registrationDelta`): contexto a **menos** (o job roda e o merge
+passa), contexto a **mais** (o PR trava para sempre esperando um check que nunca
+roda — o modo de falha do nome instável) e contexto com **CONTAGEM** no nome. Os
+dois lados entram na varredura do número: ele pode vir do manifesto (defeito de
+origem) ou de um registro velho que o applier não corrigiu.
+
+Medido contra o Gitea 1.22 real que a prova sobe, com o manifesto de hoje:
+`registro : 7/7 contextos registrados, sem contagem`. Antes desta metade a prova
+apenas **imprimia** o registro — uma aplicação que registrasse um SUBCONJUNTO
+saía verde, e o único jeito de descobrir era ler o relatório à mão.
+
 **Tri-estado, como a família:** `proven` (a matriz bate e o applier está íntegro) ·
 `violated` (o gate vermelho mergeou, o controle não mergeou, um caso não foi medido,
 ou o applier não ligou a exigência) · `unavailable` (sem docker, imagem ausente,
 API não subiu). O relatório humano e o `--json` têm o mesmo shape nos três.
 
 **A regressão mais importante é travada por teste** (`prove-gitea-merge-gate.test.ts`,
-26 casos herméticos com docker e API dublados): um applier que regride para o
-payload sem o booleano sai **VIOLADO** — e não `unavailable`, que faria a regressão
-parecer falta de medida. Os testes também fixam que `enable_status_check=false`,
-com os contextos registrados, é tratado como drift pelo `--check`.
+hospedado com docker e API dublados): um applier que regride para o payload sem o
+booleano sai **VIOLADO** — e não `unavailable`, que faria a regressão parecer
+falta de medida —, um applier que registra um SUBCONJUNTO do manifesto sai
+VIOLADO **nomeando o contexto que ficou fora**, e uma proteção cujo registro
+carrega CONTAGEM sai VIOLADA citando o contexto e o trecho. Os testes também fixam
+que `enable_status_check=false`, com os contextos registrados, é tratado como
+drift pelo `--check`.
 
 **O que NÃO cobre, e o relatório escreve:** o act_runner (aqui os status são
 postados pela API — que é o que o job faria), a forja de produção (o container é

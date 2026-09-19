@@ -10,11 +10,14 @@
  * desfecho (em que "Please try again later" NÃO é o gate), o veredito e a
  * atribuição que separa "o gate morde" de "o applier não ligou a exigência".
  *
- * Dois casos de regressão ficam travados aqui:
+ * Três casos de regressão ficam travados aqui:
  *   1. com `enable_status_check=false` o `--check` do applier TEM de acusar drift
  *      (medido: sem isso, um PR com gate vermelho mergeia);
  *   2. o applier que NÃO liga a exigência tem de sair VIOLADO — e não
- *      "indeterminado", que faria a regressão parecer falta de medida.
+ *      "indeterminado", que faria a regressão parecer falta de medida;
+ *   3. a proteção tem de REGISTRAR o manifesto: um contexto a menos, um a mais ou
+ *      um com CONTAGEM no nome sai VIOLADO e nomeado (antes, o registro era só
+ *      impresso — um subconjunto registrado passava verde).
  *
  * Usage:
  *   npx vitest run --config vitest.config.unit.ts src/lib/__tests__/prove-gitea-merge-gate.test.ts
@@ -30,11 +33,13 @@ import {
   casesPlan,
   classifyMerge,
   containerArgs,
+  countInContext,
   exitCodeFor,
   httpJson,
   parseAccessToken,
   parseArgs,
   proveGiteaMergeGate,
+  registrationDelta,
   summarizeMatrix,
   uniqueContainerName,
 } from "../../../scripts/prove-gitea-merge-gate.mjs"
@@ -138,12 +143,92 @@ describe("summarizeMatrix", () => {
 
   it("caso não medido não passa por caso aprovado", () => {
     const v = summarizeMatrix(withOutcomes({ "gate-ausente": "unavailable" }))
+
     expect(v.verdict).toBe("violated")
     expect(v.blockers.join(" ")).toContain("NAO MEDIDO")
   })
 })
 
 // ── 4. O container efêmero e a CLI ───────────────────────────────────────
+
+// ── 1b. A régua do registro ───────────────────────────────────────────────
+
+describe("countInContext", () => {
+  it("acha a contagem onde ela mora", () => {
+    expect(countInContext("Mutation guards master (24 node-pure mutation tests)")).toBe(
+      "(24 node-pure mutation tests)",
+    )
+    expect(
+      countInContext("Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)"),
+    ).toBe("(contrato coordenado — doc↔anchor↔código, 5 cenários)")
+  })
+
+  it("NÃO acusa os contextos legítimos que só têm parênteses", () => {
+    for (const context of [
+      "Bring-up Gate Proof (pré-requisito 0, por execução)",
+      "Pre-commit Proof (dentro da imagem do runner)",
+      "Mutation Test (contrato coordenado — doc↔anchor↔código)",
+      "Mutation Test (seed dev E2E pega regressões?)",
+      "Seed E2E ${{ matrix.seed }} · ${{ matrix.variant }}",
+      "Lint",
+    ]) {
+      expect(countInContext(context)).toBeNull()
+    }
+  })
+})
+
+describe("registrationDelta — a proteção registra o manifesto?", () => {
+  it("em sincronia: nem falta, nem sobra, nem contagem", () => {
+    const d = registrationDelta({ expected: CONTEXTS, registered: [...CONTEXTS] })
+    expect(d).toEqual({ ok: true, missing: [], extra: [], withCount: [] })
+  })
+
+  it("a ORDEM do registro não é defeito (o conjunto é)", () => {
+    const d = registrationDelta({ expected: CONTEXTS, registered: [...CONTEXTS].reverse() })
+    expect(d.ok).toBe(true)
+  })
+
+  it("contexto a MENOS: o job roda e o merge passa — nomeado", () => {
+    const d = registrationDelta({ expected: CONTEXTS, registered: CONTEXTS.slice(0, -1) })
+    expect(d.ok).toBe(false)
+    expect(d.missing).toEqual(["Build"])
+    expect(d.extra).toEqual([])
+  })
+
+  it("contexto a MAIS: o PR trava para sempre — nomeado", () => {
+    const d = registrationDelta({
+      expected: CONTEXTS,
+      registered: [...CONTEXTS, "Mutation guards master (24 node-pure mutation tests)"],
+    })
+    expect(d.ok).toBe(false)
+    expect(d.extra).toEqual(["Mutation guards master (24 node-pure mutation tests)"])
+    // O mesmo elemento aparece nas DUAS listas: sobrou (a régua velha) e carrega
+    // contagem (o nome que muda sozinho). São dois motivos, um só defeito.
+    expect(d.withCount).toEqual([
+      {
+        context: "Mutation guards master (24 node-pure mutation tests)",
+        count: "(24 node-pure mutation tests)",
+      },
+    ])
+  })
+
+  it("CONTAGEM no lado do MANIFESTO também reprova (o defeito é de origem)", () => {
+    const d = registrationDelta({
+      expected: [...CONTEXTS, "Mutation guards master (24 node-pure mutation tests)"],
+      registered: [...CONTEXTS, "Mutation guards master (24 node-pure mutation tests)"],
+    })
+    expect(d.ok).toBe(false)
+    expect(d.missing).toEqual([])
+    expect(d.extra).toEqual([])
+    expect(d.withCount).toHaveLength(1)
+  })
+
+  it("registro VAZIO não passa por 'nada a conferir'", () => {
+    const d = registrationDelta({ expected: CONTEXTS, registered: [] })
+    expect(d.ok).toBe(false)
+    expect(d.missing).toEqual(CONTEXTS)
+  })
+})
 
 describe("containerArgs", () => {
   const args = containerArgs({ name: "prova-x", port: 3390, image: DEFAULT_IMAGE })
@@ -344,6 +429,9 @@ function fakeDocker({
   checkDisabledStatus = 1,
   checkDisabledOutput = "! enable_status_check=false — os contextos estão registrados e NÃO bloqueiam",
   gitea = fakeGitea(),
+  // O que a proteção passa a REGISTRAR depois do `--apply`. É o knob que simula
+  // a regressão que a prova existe para pegar: um applier que registra menos.
+  appliedContexts = CONTEXTS,
 } = {}) {
   const calls: string[][] = []
   const run = (_cmd: string, args: string[]) => {
@@ -364,7 +452,7 @@ function fakeDocker({
     if (args.some((a) => a.endsWith("apply-required-checks.mjs"))) {
       if (args.includes("--apply")) {
         if (applyStatus === 0) {
-          gitea.state.contexts = CONTEXTS
+          gitea.state.contexts = appliedContexts
           gitea.state.enforced = true
         }
         return {
@@ -410,6 +498,42 @@ describe("proveGiteaMergeGate — fluxo com docker e API dublados", () => {
       checkInSync: true,
       checkSeesDisabled: true,
     })
+    // E o registro foi CONFERIDO, não só lido: 7/7, sem contagem.
+    expect(result.registration).toEqual({ ok: true, missing: [], extra: [], withCount: [] })
+    expect(result.enforcement).toEqual({ enabled: true, contexts: CONTEXTS })
+  })
+
+  it("REGRESSÃO: applier que registra um SUBCONJUNTO sai VIOLADO, nomeando o que ficou fora", async () => {
+    const { run, spawn, gitea } = fakeDocker({ appliedContexts: CONTEXTS.slice(0, -1) })
+    const result = await proveGiteaMergeGate({
+      ...fastOptions,
+      run,
+      spawn,
+      request: gitea.request,
+    })
+    expect(result.verdict).toBe("violated")
+    expect(result.blockers.join(" ")).toContain("NAO registrou 1 contexto(s) do manifesto")
+    expect(result.blockers.join(" ")).toContain("'Build'")
+    expect(result.registration).toMatchObject({ ok: false, missing: ["Build"] })
+    expect(result.detail).toContain("o registro nao bate com o manifesto")
+    expect(result.cases).toEqual([]) // a matriz nem chega a rodar
+  })
+
+  it("REGRESSÃO: proteção registrada com CONTAGEM sai VIOLADA (o nome muda sozinho)", async () => {
+    const velho = "Mutation guards master (24 node-pure mutation tests)"
+    const { run, spawn, gitea } = fakeDocker({ appliedContexts: [...CONTEXTS, velho] })
+    const result = await proveGiteaMergeGate({
+      ...fastOptions,
+      run,
+      spawn,
+      request: gitea.request,
+    })
+    expect(result.verdict).toBe("violated")
+    expect(result.blockers.join(" ")).toContain("carrega CONTAGEM")
+    expect(result.blockers.join(" ")).toContain(velho)
+    expect(result.registration?.withCount).toEqual([
+      { context: velho, count: "(24 node-pure mutation tests)" },
+    ])
   })
 
   it("REGRESSÃO: applier que não liga a exigência sai VIOLADO (não 'indeterminado')", async () => {

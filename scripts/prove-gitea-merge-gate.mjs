@@ -57,9 +57,24 @@
 // reportar sincronia, e — com a exigência desligada — tem de reportar DRIFT. Um
 // detector que não vê o modo silencioso não protege nada.
 //
+// E O REGISTRO É CONFERIDO, NÃO SÓ LIDO. Ligar `enable_status_check` não basta:
+// o que a forja de fato EXIGE é a lista de `status_check_contexts`, e é ela que
+// pode estar velha (um `name:` renomeado, ou um nome que carregava a contagem da
+// matriz). A prova compara a lista registrada com a do manifesto — nome a nome,
+// em `registrationDelta` — e reprova tanto o contexto a MENOS (o job roda e o
+// merge passa) quanto o a MAIS (o PR trava para sempre esperando um check que
+// nunca roda), bem como qualquer contexto com CONTAGEM no nome ("(24 node-pure
+// mutation tests)": a string muda quando a matriz cresce, e a proteção passa a
+// exigir um check inexistente). Antes desta metade a prova apenas IMPRIMIA o
+// registro: uma aplicação que registrasse um subconjunto passava como verde.
+//
 // O que NÃO cobre: o act_runner (não há runner aqui: os status são postados pela
 // API, que é o que o job faria), a forja de produção (o container é efêmero e
-// local), nem o resto do branch protection (reviews, push restrito).
+// local), nem o resto do branch protection (reviews, push restrito). O REGISTRO
+// conferido aqui é o da seção `gitea` do manifesto: os contextos que só existem
+// no GitHub (a matriz de mutation tests e o contrato coordenado são jobs de
+// `pr-check.yml`) não têm como ser registrados por esta prova — quem os registra
+// é a forja do GitHub, e ali o veredito é a aplicação de verdade.
 //
 // Onde roda: manual/operador (`bun run merge-gate:prove`), com docker — antes de
 // confiar o merge à forja e em toda mudança do applier/manifesto.
@@ -111,7 +126,8 @@ const ADMIN_PASSWORD = "Prova!12345x"
  * @typedef {{state: string, http: number|null, reason: string|null, detail: string}} MergeOutcome
  * @typedef {{id: string, expect: "merged"|"blocked", title: string, statuses: string, outcome: MergeOutcome|null, detail?: string}} GateCase
  * @typedef {{verdict: string, blockers: string[], detail: string}} GateVerdict
- * @typedef {{verdict: string, blockers: string[], detail: string, image: string, name: string, port: number, repo: string|null, contexts: string[], cases: GateCase[], applier: object|null, enforcement: {enabled: boolean, contexts: string[]}|null}} GateResult
+ * @typedef {{ok: boolean, missing: string[], extra: string[], withCount: {context: string, count: string}[]}} RegistrationDelta
+ * @typedef {{verdict: string, blockers: string[], detail: string, image: string, name: string, port: number, repo: string|null, contexts: string[], cases: GateCase[], applier: object|null, enforcement: {enabled: boolean, contexts: string[]}|null, registration: RegistrationDelta|null}} GateResult
  */
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -254,6 +270,63 @@ export function summarizeMatrix(cases) {
   }
 }
 
+/**
+ * A CONTAGEM dentro de um contexto de status, se houver: `(24 node-pure mutation
+ * tests)`, `(5 cenários)`, `(40 guards)`.
+ *
+ * O número é DERIVADO — cresce quando a matriz cresce — e por isso não pode
+ * morar no nome de um required check: o contexto exigido pela forja é uma
+ * STRING, e uma string que muda sozinha deixa a proteção exigindo um check que
+ * já não existe. O PR trava esperando para sempre, sem nenhuma linha de workflow
+ * parecer errada.
+ *
+ * A forma procurada é um número seguido de uma PALAVRA dentro dos parênteses —
+ * "24 node-pure mutation tests", "5 cenários", "40 guards" — e não um número
+ * qualquer: `Bring-up Gate Proof (pré-requisito 0, por execução)` tem o "0" no
+ * NOME do gate (seguido de vírgula, não de palavra) e não é contagem derivada.
+ * A fronteira é essa e é explícita: um número colado a uma palavra seria
+ * acusado mesmo que fosse editorial, e o remédio é visível no relatório (o
+ * contexto vem nomeado) — o silêncio, não.
+ *
+ * @param {string} context
+ * @returns {string|null}  o trecho com a contagem, ou null
+ */
+export function countInContext(context) {
+  return /\([^()]*\d+\s+[^()]*\)/.exec(String(context ?? ""))?.[0] ?? null
+}
+
+/**
+ * A régua do CONTEXTO REGISTRADO: a proteção da forja tem de exigir EXATAMENTE
+ * os contextos que o manifesto declara.
+ *
+ * Nem um a menos (o job deixa de ser required e o merge passa com ele vermelho),
+ * nem um a mais (a forja trava para sempre esperando um check que o workflow já
+ * não tem), e nenhum deles com CONTAGEM no nome — pelo motivo que
+ * `countInContext` explica.
+ *
+ * Os dois lados entram na varredura de contagem: o manifesto é quem MANDA o
+ * número (se ele vier daí, o defeito é de origem) e o registro é quem o EXIBE (se
+ * vier daí, a proteção está velha e o applier não a corrigiu).
+ *
+ * @param {{expected: string[], registered: string[]}} args
+ * @returns {RegistrationDelta}
+ */
+export function registrationDelta({ expected, registered }) {
+  const exp = new Set(expected ?? [])
+  const reg = new Set(registered ?? [])
+  const missing = (expected ?? []).filter((c) => !reg.has(c))
+  const extra = (registered ?? []).filter((c) => !exp.has(c))
+  const withCount = [...new Set([...(registered ?? []), ...(expected ?? [])])]
+    .map((context) => ({ context, count: countInContext(context) }))
+    .filter((e) => e.count !== null)
+  return {
+    ok: missing.length === 0 && extra.length === 0 && withCount.length === 0,
+    missing,
+    extra,
+    withCount,
+  }
+}
+
 /** O resultado com o MESMO formato em todo desfecho (o `--json` não muda de shape). */
 export function gateResult(partial = {}) {
   return {
@@ -268,6 +341,7 @@ export function gateResult(partial = {}) {
     cases: [],
     applier: null,
     enforcement: null,
+    registration: null,
     ...partial,
   }
 }
@@ -664,6 +738,46 @@ export async function proveGiteaMergeGate({
       })
     }
 
+    // ── A proteção REGISTRA o manifesto? ──────────────────────────────────
+    // Ligar a exigência não basta: o que a forja EXIGE é a LISTA de contextos, e
+    // ela pode estar anotada com nomes que já não existem (um `name:` renomeado,
+    // ou um nome que carregava a contagem da matriz). Era a metade que esta
+    // prova apenas LIA e reportava: um registro a menos ou um registro velho
+    // passava como verde. Aqui ele é comparado com o manifesto, nome a nome.
+    const registration = registrationDelta({ expected: contexts, registered: configured })
+    result.registration = registration
+    if (!registration.ok) {
+      const blockers = []
+      if (registration.missing.length > 0) {
+        blockers.push(
+          `[applier] a protecao NAO registrou ${registration.missing.length} contexto(s) do manifesto ` +
+            `(o job roda e o merge passa): ${registration.missing.map((c) => `'${c}'`).join(", ")}`,
+        )
+      }
+      if (registration.extra.length > 0) {
+        blockers.push(
+          `[applier] a protecao exige ${registration.extra.length} contexto(s) que o manifesto NAO declara ` +
+            `(o PR trava esperando um check que nunca roda): ${registration.extra.map((c) => `'${c}'`).join(", ")}`,
+        )
+      }
+      if (registration.withCount.length > 0) {
+        blockers.push(
+          "[applier] um contexto de status carrega CONTAGEM — o nome muda quando a matriz cresce e a " +
+            `protecao passa a exigir um check que ja nao existe: ${registration.withCount
+              .map((e) => `'${e.context}' (${e.count})`)
+              .join(", ")}`,
+        )
+      }
+      return gateResult({
+        ...result,
+        verdict: "violated",
+        blockers,
+        detail:
+          `o applier aplicou a exigencia (enable_status_check=true), mas o registro nao bate com o manifesto ` +
+          `(registrado: ${configured.length}, exigido: ${contexts.length})`,
+      })
+    }
+
     // Logo apos aplicar (com a exigencia LIGADA), o `--check` do mesmo applier
     // tem de reportar sincronia — senao o simples aplicar+verificar acusa drift.
     const inSync = spawn(
@@ -845,12 +959,24 @@ export async function proveGiteaMergeGate({
 /** O relatório humano — uma linha por caso, com o HTTP e o motivo. */
 export function renderReport(result, { emit = console.log } = {}) {
   const line = (s = "") => emit(s)
+  // O resumo do REGISTRO em uma linha: o que falta, o que sobra e a contagem.
+  const registrarResumo = (d) =>
+    [
+      d.missing.length > 0 ? `faltam ${d.missing.length}` : null,
+      d.extra.length > 0 ? `sobram ${d.extra.length}` : null,
+      d.withCount.length > 0 ? `com contagem ${d.withCount.length}` : null,
+    ]
+      .filter(Boolean)
+      .join(", ")
   line()
   line(`prove-gitea-merge-gate — o merge bloqueia mesmo? (${result.image})`)
   line(`  instancia: ${result.name} em 127.0.0.1:${result.port} (efemera)`)
   line(`  repo     : ${result.repo}`)
   line(`  contexto : ${result.contexts.join(", ")}`)
   line(`  exigencia: ${result.enforcement?.enabled ? "enable_status_check=true" : "<nao lida>"}`)
+  line(
+    `  registro : ${result.registration === null ? "<nao lido>" : result.registration.ok ? `${result.contexts.length}/${result.contexts.length} contextos registrados, sem contagem` : registrarResumo(result.registration)}`,
+  )
   line()
   for (const c of result.cases) {
     const expected = c.expect === "merged" ? "mergeia" : "NAO mergeia"
