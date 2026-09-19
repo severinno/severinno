@@ -33,9 +33,7 @@ export async function GET(request: Request) {
       // Send initial connected event
       const send = (event: string, data: unknown) => {
         try {
-          controller.enqueue(
-            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`),
-          )
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
         } catch {
           // Controller closed
         }

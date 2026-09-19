@@ -1,10 +1,11 @@
 /**
  * js-yaml.d.ts — declaração ambiente mínima para o módulo `js-yaml`.
  *
- * POR QUE EXISTE: `js-yaml` é dep TRANSITIVA (não declarada no package.json)
- * e NÃO possui @types. O teste tier1-fastpath-guard-workflow.test.ts importa
- * `yaml` para validar a sintaxe YAML do workflow periódico — sem esta
- * declaração, o tsc --noEmit (strict) falha com TS7016.
+ * POR QUE EXISTE: `js-yaml` é devDependency DECLARADA (passou a ser quando a
+ * validade de YAML do workflow virou porta dos guards — antes era dep
+ * transitiva), e NÃO possui @types. Os testes de workflow importam `yaml` para
+ * validar a sintaxe do YAML real — sem esta declaração, o tsc --noEmit
+ * (strict) falha com TS7016.
  *
  * POR QUE um .d.ts GLOBAL e não `declare module` inline no teste: num arquivo
  * de módulo (com imports/exports), `declare module "js-yaml"` é interpretado

@@ -105,8 +105,7 @@ if [ "$SKIP_DOCKER" = false ]; then
   # Wait for PostgreSQL to be healthy
   echo "  Waiting for PostgreSQL..."
   for i in $(seq 1 20); do
-    if docker compose -f "$COMPOSE_FILE" ps postgis --format "{{.Status}}" 2>/dev/null \
-      | grep -qi "healthy"; then
+    if grep -qi "healthy" <<< "$(docker compose -f "$COMPOSE_FILE" ps postgis --format "{{.Status}}" 2>/dev/null)"; then
       pass "PostgreSQL healthy after ${i}s"
       break
     fi
@@ -120,8 +119,7 @@ if [ "$SKIP_DOCKER" = false ]; then
   # Wait for Redis to be healthy
   echo "  Waiting for Redis..."
   for i in $(seq 1 15); do
-    if docker compose -f "$COMPOSE_FILE" ps redis --format "{{.Status}}" 2>/dev/null \
-      | grep -qi "healthy"; then
+    if grep -qi "healthy" <<< "$(docker compose -f "$COMPOSE_FILE" ps redis --format "{{.Status}}" 2>/dev/null)"; then
       pass "Redis healthy after ${i}s"
       break
     fi
@@ -173,8 +171,7 @@ DEV_PID=$!
 # Wait for server to respond
 echo "  Waiting for dev server at $BASE_URL..."
 for i in $(seq 1 60); do
-  if curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/api/health" 2>/dev/null \
-    | grep -q "200"; then
+  if grep -q "200" <<< "$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/api/health" 2>/dev/null)"; then
     pass "Dev server ready after ${i}s (PID $DEV_PID)"
     break
   fi

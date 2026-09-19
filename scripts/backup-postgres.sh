@@ -125,7 +125,7 @@ case "$BACKUP_TYPE" in
 esac
 
 # Verify backup exists in MinIO
-if docker exec severinno-minio-1 mc ls "${MINIO_ALIAS}/${MINIO_BUCKET}/${BACKUP_TYPE}/" 2>/dev/null | grep -q "$TIMESTAMP"; then
+if grep -q "$TIMESTAMP" <<< "$(docker exec severinno-minio-1 mc ls "${MINIO_ALIAS}/${MINIO_BUCKET}/${BACKUP_TYPE}/" 2>/dev/null)"; then
   log "✅ Backup verified in MinIO: ${BACKUP_TYPE}/${DB_NAME}_${BACKUP_TYPE}_${TIMESTAMP}.sql.gz ($BACKUP_SIZE)"
 else
   log "❌ Backup verification failed!"

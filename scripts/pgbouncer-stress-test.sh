@@ -92,7 +92,7 @@ auto_detect_pgbouncer() {
     local pgbouncer_status
     pgbouncer_status=$(docker compose -f "$COMPOSE_FILE" ps --status running pgbouncer 2>/dev/null || true)
 
-    if echo "$pgbouncer_status" | grep -q "Up\|running"; then
+    if grep -q "Up\|running" <<< "$pgbouncer_status"; then
       export PGHOST="localhost"
       export PGPORT="6432"
       info "PgBouncer found via Docker Compose (localhost:6432)"
@@ -119,8 +119,7 @@ auto_detect_pgbouncer() {
 
   # Try localhost directly
   if command -v psql &>/dev/null; then
-    if PGHOST=localhost PGPORT=6432 PGUSER=severinno PGPASSWORD=severinno PGDATABASE=pgbouncer \
-      psql -At -c "SHOW POOLS;" 2>/dev/null | head -1 | grep -q .; then
+    if grep -q . <<< "$(PGHOST=localhost PGPORT=6432 PGUSER=severinno PGPASSWORD=severinno PGDATABASE=pgbouncer       psql -At -c "SHOW POOLS;" 2>/dev/null | head -1)"; then
       export PGHOST="localhost"
       export PGPORT="6432"
       export PGUSER="severinno"

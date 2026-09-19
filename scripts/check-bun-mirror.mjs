@@ -8,12 +8,18 @@
 //
 // FONTE ÚNICA: a versão pinada do Bun vive na repository variable
 // vars.BUN_VERSION (Settings → Secrets and variables → Actions). Todos os
-// workflows passam `bun-version: ${{ vars.BUN_VERSION }}`, o sync-bun-mirror
-// usa a mesma variável no env, e o composite action resolve a versão DO
-// INPUT (callers passam o valor resolvido no workflow — vars NÃO resolve
-// dentro de composite action no act 0.2.89, ver header do action.yml).
-// Metadata de action NÃO avalia ${{ }}, então o default é proibido. Trocar
-// o Bun = alterar a variável em UM lugar.
+// workflows passam a versão como ARGUMENTO do script do setup
+// (`run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"`) e o
+// sync-bun-mirror usa a mesma variável no env. Trocar o Bun = alterar a
+// variável em UM lugar.
+//
+// HISTÓRICO: o setup foi um composite action local
+// (`.github/actions/setup-bun`) e a versão entrava por input. Ele saiu para
+// `scripts/setup-bun-ci.sh` — chamado por `run:`, que NÃO passa pelo
+// resolvedor de actions locais do runner — e o contrato virou "a versão é o
+// ARGUMENTO". As checagens abaixo foram retargetadas para o script junto com
+// ele (nada de validador de YAML aplicado a shell: ver
+// findBunLiteralDefaultInScript).
 //
 // Usage:
 //   node scripts/check-bun-mirror.mjs                  # invariantes globais
@@ -30,16 +36,16 @@
 //   1. O workflow do mirror EXISTE (sync-bun-mirror.yml).
 //   2. env.BUN_VERSION do mirror referencia ${{ vars.BUN_VERSION }} (não um
 //      literal — um literal criaria um segundo ponto de verdade).
-//   3. O action.yml (setup-bun) NÃO tem default literal para bun-version
-//      (metadata de action é estática — um default literal nunca poderia
-//      casar com a variável e viraria drift silencioso). A versão resolve
-//      em runtime do input bun-version (que os callers resolvem de
-//      vars.BUN_VERSION no workflow).
-//   4. O action.yml referencia ${{ inputs.bun-version }} no step de resolve
-//      (o composite NÃO lê vars internamente — act 0.2.89 não resolve vars
-//      em composite actions; o valor entra via input).
-//   5. O action.yml (tier 3, cold cache) referencia o mirror GHCR
-//      (ghcr.io/<owner>/bun:<versão>) — sem reverter para download direto.
+//   3. O SCRIPT do setup (scripts/setup-bun-ci.sh) NÃO tem default literal de
+//      versão — a versão entra SÓ pelo argumento (um default no script seria
+//      o segundo ponto de verdade, e o `bun-v<semver>` da URL de download não
+//      o pegaria).
+//   4. O SCRIPT lê a versão do PRIMEIRO ARGUMENTO posicional (é o único
+//      caminho pelo qual a versão entra na implementação).
+//   5. O SCRIPT (tier 3, cold cache) referencia o mirror OCI
+//      (<registry>/<owner>/bun:<versão>) — sem reverter para download direto.
+//      (invariantes 3-5 valiam para o action.yml do composite removido; os
+//      mesmos contratos recaem hoje sobre o script.)
 //   6. O Dockerfile.bun-mirror existe (senão o mirror quebra no cron/CI).
 //   7. Toda cache key bun-/prisma- nos workflows referencia
 //      ${{ vars.BUN_VERSION }} (ex.: key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}).
@@ -63,7 +69,7 @@
 //      toolchain errada). No modo --staged, a REMOÇÃO do path:/key: de um
 //      bloco actions/cache que SOBREVIVE no novo arquivo é violação de
 //      regressão (checkStagedRemovedCacheBlockFields) — espelha o
-//      checkStagedRemovedBunVersion: remover o path/key deixa o bloco sem o
+//      checkStagedRemovedSetupBunCall: remover o path/key deixa o bloco sem o
 //      par key↔path, quebrando o cache no restore.
 //   8. NENHUM literal de versão do Bun nos workflows (bun-version: 1.3.14,
 //      BUN_VERSION: "1.3.14", bun-1.3.14-...) — o guard caça versões
@@ -78,9 +84,9 @@
 //      site sem bun-version adicionado pelo próprio PR falha antes do merge,
 //      mesmo que o working tree global já esteja certo. Só linhas ADICIONADAS
 //      (+ no diff) são avaliadas — violações pré-existentes do base não
-//      poluem o PR (no call site, o bun-version pode estar numa linha de
-//      CONTEXTO — ex.: migração de oven-sh/setup-bun@v2 — por isso o check
-//      usa o parser rico).
+//      poluem o PR (a chamada pode estar CAPTURADA, em `$(...)`, ou com
+//      `# nota` no fim — por isso o check extrai o ARGUMENTO, não o resto da
+//      linha).
 //      REGRESSÃO INVERSA (checkStagedRemovedLiterals): um literal REMOVIDO
 //      pelo diff (linha `-` — o PR está migrando aquele literal para a fonte
 //      única) com OUTRO literal SOBREVIVENTE na mesma região (janela
@@ -88,13 +94,12 @@
 //      tocou a família de literais mas deixou um para trás. O checkStagedLiterals
 //      (só linhas +) não pega um literal de CONTEXTO; este check espelha o
 //      checkStagedRemovedCacheBlockFields para a família de literais.
-//  11. TODO call site do setup-bun passa `bun-version: ${{ vars.BUN_VERSION }}`
-//      (omitir o input ou usar literal é violação — sem ele o action falha
-//      em runtime com mensagem confusa). No modo --staged, call sites cuja
-//      linha `uses:` foi adicionada pelo diff são avaliados — E a REMOÇÃO
-//      do input bun-version de um call site que SOBREVIVEU (linha `uses:`
-//      de contexto/adicionada + `bun-version:` removido no diff) é
-//      violação de regressão (checkStagedRemovedBunVersion).
+//  11. TODO call site do setup passa a versão como argumento do SCRIPT
+//      (`bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"`; omitir o
+//      argumento ou usar literal é violação). No modo --staged, chamadas
+//      introduzidas pelo diff são avaliadas — E a REMOÇÃO da chamada de um
+//      job que SOBREVIVEU é violação de regressão
+//      (checkStagedRemovedSetupBunCall): o job ficaria sem Bun.
 //  12. Arquivos de workflow são escaneados nas DUAS extensões (.yml E .yaml)
 //      — um workflow com extensão alternativa não escapa dos checks de
 //      cache key/literal/call site/par key↔path (global E staged).
@@ -111,16 +116,133 @@
 //      pnpm-lock.yaml (raiz e mini-services/*) são proibidos (a unificação
 //      é travada: um `npm install` acidental regenera o npm lockfile e o
 //      guard falha no PR).
+//  15. NENHUM SCRIPT do repositório (`scripts/**` + os hooks do `.husky/**`)
+//      carrega espelho LITERAL da versão do Bun nem da TAG da imagem do runner
+//      — as duas formas que sobrevivem ao bump em silêncio, porque o script
+//      continua FUNCIONANDO (só roda/mede outra versão):
+//        a. a versão PREFIXADA pelo nome — `bun-1.3.14`, `bun@1.3.14`,
+//           `bun-v1.3.14`, `oven/bun:1.3.14`, `<...>/ubuntu-bun:1.3.14`;
+//        b. um semver COMPLETO (X.Y.Z) numa linha de CÓDIGO que fala do Bun
+//           (`process.env.BUN_VERSION || "1.3.14"`, `ACTRC_BUN="${ACTRC_BUN:-1.3.14}"`,
+//           `bunVersion = "1.3.14"`).
+//      Linhas de COMENTÁRIO ficam de fora (é onde o comportamento aparece como
+//      exemplo) e a SENTINELA fica de fora: um valor com sufixo não-numérico
+//      (`9.9.9-sentinel`) não é uma AFIRMAÇÃO de versão — é o escape hatch
+//      declarado para fixtures que precisam de um valor falso, a mesma
+//      convenção do COMPOSE_SENTINELS do check-registry-source. Um literal que
+//      não se pode derivar (uma fixture, por exemplo) usa sentinela; o que não
+//      pode é um número que se parece com a versão da vez.
+//      A varredura roda no modo global E no `--staged` (linhas ADICIONADAS): o
+//      literal nasce numa EDIÇÃO, e é no commit que ele precisa ser barrado.
+//  16. O MESMO para os COMPOSES (`docker-compose*.yml` da raiz e de `deploy/`),
+//      onde o `BUN_VERSION` é um build arg/env: um valor LITERAL puro
+//      (`BUN_VERSION: "1.4.0"` [divergente], sem `${...}`) é violação SEMPRE — não é
+//      espelho, é um segundo valor, e nenhum bump o alcança; um default
+//      (`${BUN_VERSION:-<x>}`) é violação quando DIVERGE do valor declarado nos
+//      espelhos. O default é o que vale onde a variável não existe, então ele
+//      não pode ser a única fonte do que roda (o mesmo raciocínio do
+//      checkComposeImageDefaults do check-registry-source, aplicado à versão).
+//      O DIAGNÓSTICO desta rodada (a auditoria que criou 15/16): três arquivos
+//      tinham derivado — `docker-compose.hostinger.yml` (1.4.0) e
+//      `docker-compose.staging.yml` (literal puro, em dois serviços) — enquanto
+//      o repositório declara 1.3.14.
+//  17. Os EXEMPLOS DE VERSÃO QUE VIVEM EM PROSA dizem a versão VIGENTE. A
+//      metade que 15/16 deixam de fora de propósito (lá o comentário é onde o
+//      comportamento aparece como exemplo): depois do bump a doc seguia
+//      ensinando `BUN_VERSION=1.3.14` / `--expected 1.3.14` e NADA ficava
+//      vermelho, porque doc não executa — quem copia o comando mede/roda a
+//      versão errada. Aqui a regra é a INVERSÃO: a menção ANCORADA (o valor
+//      preso a um token do Bun — `BUN_VERSION[=: ]…`, `bun-version:`,
+//      `--expected`/`--bun-version`, `bun[-@:/]v?X.Y.Z`, o argumento do
+//      setup, o argumento do bump e a transição `X → Y`) tem de ser o valor
+//      vigente — ou ter o PAPEL declarado, checado nos DOIS sentidos:
+//      `[divergente]` (contra-exemplo: tem de DIFERIR do vigente) e
+//      `[próxima]` (alvo do bump: tem de ser MAIOR, em semver). Semver solto
+//      que não fala do Bun (`act 0.2.89`, `lodash 4.17.21`, `release/v0.4.0`)
+//      NÃO é exemplo da versão e não é julgado — exigir a coincidência de todo
+//      semver faria o guard brigar com a prosa. Um doc que é um CENÁRIO
+//      declarado (`PROSE_SCENARIO_DOCS`, com data e motivo) aceita o vigente ou
+//      um valor MAIOR, e nada mais. Fontes: todo `*.md` do worktree (menos
+//      `PROSE_IGNORED_DIRS`) e os COMENTÁRIOS dos scripts (inclusive o de FIM
+//      DE LINHA); a sentinela continua fora, e um doc canônico que existe e
+//      parou de citar a versão derruba o piso de cobertura. Roda no global E no
+//      `--staged`.
+//  18. A CADEIA DE BUILD — o Dockerfile não declara valor e o build site não o
+//      OMITE. (a) NENHUM Dockerfile declara default da versão: nem
+//      `ARG BUN_VERSION=<v>` nem um default embutido na referência
+//      (`\${BUN_VERSION:-<v>}`). O default é o valor que todo build que NÃO
+//      passa o arg herda em SILÊNCIO, e nenhum bump da variável o alcança —
+//      ele é a forma MAIS invisível de um segundo ponto de verdade, porque não
+//      aparece em nenhum build site. (Antes desta rodada a régua ACEITAVA o
+//      default embutido como "forma válida do ARG": era o buraco.) (b) TODO
+//      build site de um Dockerfile que declara `ARG BUN_VERSION` tem de PASSAR
+//      o arg, derivado da variável; o fallback do compose é comparado por
+//      VALOR pela invariante 16. Um build site que não passa o arg não tem
+//      valor escrito NENHUM, então as invariantes 13/15/16 não tinham o que
+//      julgar: era por aí que um serviço rodava o Bun do default do Dockerfile
+//      sem que a versão aparecesse em nenhum arquivo da cadeia de deploy. No
+//      modo --staged, a REMOÇÃO do arg de um build site que SOBREVIVE no novo
+//      arquivo também é violação de regressão (checkStagedRemovedBuildArgs) —
+//      espelha o checkStagedRemovedSetupBunCall: remover o arg deixa o bloco
+//      sem valor escrito nenhum. A régua compara o BLOCO DO ÍNDICE com o BLOCO
+//      DE HEAD (`git show HEAD:<arquivo>`), porque o recorte das linhas
+//      ADICIONADAS não vê uma remoção pura: o bloco não ganha linha nenhuma.
+//      (c) A
+//      declaração de TOOLCHAIN (`packageManager` do package.json) diz o valor
+//      declarado — nada o consome em build (o bun não o impõe), então ele
+//      envelhece sem sintoma, e é o primeiro campo que alguém lê para saber
+//      qual Bun o repo usa. No --staged ela tem recorte PRÓPRIO
+//      (checkStagedPackageManagerVersion): o `package.json` não é alvo de
+//      nenhuma outra pathspec do recorte, então tanto a LINHA que o diff
+//      adiciona com outro valor quanto a REMOÇÃO do campo (índice sem ele ×
+//      HEAD com ele) ficavam só para a varredura global, que roda no PR — a
+//      REMOÇÃO é a mesma cegueira que a (b) tinha, porque o que o commit tira
+//      não aparece em linha adicionada nenhuma. A régua do valor é uma só
+//      (judgePackageManager), compartilhada com o global.
+//  19. Os USOS da versão num pipeline de CI de TERCEIRO versionado
+//      (`.woodpecker.yml`): a TAG DA IMAGEM (`image: oven/bun:<v>`, um por
+//      passo) e o BUILD ARG (`BUN_VERSION=<v>`) dizem o valor DECLARADO. É a
+//      MESMA semântica da 16 (um literal tem de ser o declarado; `${VAR}` é
+//      derivação; o fallback de `${VAR:-<x>}` é comparado por valor), com uma
+//      diferença que o formato impõe e que fica escrita: aqui o literal IGUAL
+//      ao declarado PASSA, porque num `image:` não existe a variável do
+//      operador que a 16 protege — o valor tem de estar escrito. Fora de
+//      qualquer varredura (a isenção estava no próprio cabeçalho do arquivo:
+//      "arquivado — não copie os literais daqui"), os treze usos
+//      envelheceram sete versões atrás do repositório (1.4.0 contra o 1.3.14
+//      declarado) sem nada ficar vermelho. Fail-closed na leitura: um pipeline
+//      que existe e não pode ser lido é violação, nunca "nada a julgar". Roda
+//      no global E no `--staged`, e o `bump-bun.sh` (seção 2e) é o ESCRITOR
+//      que mantém o valor alinhado — escritor + comparação por valor é o que
+//      faz de um literal uma derivação, e não um segundo ponto de verdade.
 //
 // Escopo: lê .github/workflows/sync-bun-mirror.yml + .github/actions/
-// setup-bun/action.yml + Dockerfile.bun-mirror + TODOS os .github/workflows/*.yml
+// setup-bun/action.yml + Dockerfile.bun-mirror + os workflows de TODAS as
+// forjas (scripts/forge-workflows.mjs)
 // E *.yaml (cache keys + literais) + .actrc + Dockerfiles (Dockerfile,
 // Dockerfile.worker, Dockerfile.ubuntu-bun, mini-services/realtime/Dockerfile)
-// + lockfiles estrangeiros. Node puro, sem deps, <1s.
+// + os SCRIPTS e os COMPOSES (invariantes 15/16) + a PROSA dos docs e dos
+// comentários de script (invariante 17) + os BUILD SITES dos composes e o
+// TOOLCHAIN do package.json (invariante 18) + os PIPELINES DE TERCEIRO, os
+// usos da versão neles (invariante 19) + lockfiles estrangeiros.
+// Node puro, sem deps, <1s.
 // =============================================================================
 
 import { readFileSync, existsSync, readdirSync } from "node:fs"
-import { join } from "node:path"
+
+import { BUN_MIRRORS, mirrorListText, readMirrorValues } from "./bun-version.mjs"
+import {
+  FORGE_WORKFLOW_DIRS,
+  codeLine,
+  existingWorkflowDirs,
+  exitOnUnjudgeable,
+  isCommentLine,
+  readWorkflowScan,
+  stripSlashComment,
+  stripTrailingComment,
+  workflowFileNames,
+} from "./forge-workflows.mjs"
+import { dirname, join, normalize } from "node:path"
 import { pathToFileURL } from "node:url"
 import { execFileSync } from "node:child_process"
 
@@ -128,11 +250,11 @@ import { execFileSync } from "node:child_process"
 export const BUN_VERSION_VAR = "${{ vars.BUN_VERSION }}"
 
 /**
- * Janela (em linhas) após um `uses:` para procurar o `bun-version:` —
- * compartilhada entre o scan global (checkSetupBunCallSites) e o scan de diff
- * (checkStagedSetupBunCallSites), sem drift entre as duas janelas.
+ * Script que SUBSTITUIU o composite action local como setup do Bun. É chamado
+ * por `run:` — que NÃO passa pelo resolvedor de actions locais do runner — e
+ * recebe a versão como ARGUMENTO (ver o header do próprio script).
  */
-export const CALL_SITE_WINDOW = 6
+export const SETUP_BUN_SCRIPT = "scripts/setup-bun-ci.sh"
 
 /**
  * Janela (em linhas) do bloco `with:` de um actions/cache — cobre o caso
@@ -146,7 +268,7 @@ export const CACHE_BLOCK_WINDOW = 14
  * Contexto de linhas pedido ao `git diff` (flag -U) no modo --staged/--base.
  * O default do git é 3 linhas — INSUFICIENTE para os checks de REMOÇÃO com
  * janela (checkStagedRemovedLiterals, checkStagedRemovedCacheBlockFields,
- * checkStagedRemovedBunVersion): um literal/path/input SOBREVIVENTE a poucas
+ * checkStagedRemovedSetupBunCall): um literal/path/input SOBREVIVENTE a poucas
  * linhas de distância da mudança não apareceria no diff como contexto e o
  * check não o enxergaria (falso negativo — a migração incompleta passaria
  * despercebida). -U20 garante que QUALQUER linha dentro da janela
@@ -173,6 +295,9 @@ export const CACHE_USES_RE = /^\s*(?:-\s+)?uses:\s+actions\/cache/
  * não escapa dos checks, e um fix aqui vale para todos os scans, sem drift.
  */
 export const WORKFLOW_FILE_RE = /\.ya?ml$/
+
+/** O predicado de "é um workflow" — o default do parser de diff. */
+const isWorkflowPath = (path) => WORKFLOW_FILE_RE.test(path)
 
 /**
  * Dockerfiles do repo que PINAM/instalam o Bun — todos escaneados por
@@ -217,56 +342,540 @@ export function extractEnvVersion(content, name = "BUN_VERSION") {
 }
 
 /**
- * Extrai o default de um input do action.yml (ex.: bun-version).
- * Retorna null se NÃO houver default — o estado CORRETO hoje (o guard falha
- * se houver um default literal; metadata de action não avalia ${{ }}).
- */
-export function extractActionDefault(content, input = "bun-version") {
-  const m = content.match(new RegExp(`^\\s*${input}:`, "m"))
-  if (!m) return null
-  // procura `default: "..."` no bloco do input (até o próximo input: no
-  // nível 0 ou final do arquivo)
-  const after = content.slice(m.index + m[0].length)
-  const nextInput = after.search(/^\s{2}[a-z][a-z-]*:/m)
-  const block = nextInput === -1 ? after : after.slice(0, nextInput)
-  const d = block.match(/default:\s*["']?([^"'\n]+)/)
-  return d ? d[1].trim() : null
-}
-
-/**
- * O action.yml referencia a repository variable BUN_VERSION?
- * Casa AMBAS as formas — a referência pura (`${{ vars.BUN_VERSION }}`) e a
- * resolução runtime (`${{ inputs.bun-version || vars.BUN_VERSION }}`) — o
- * ponto é validar que o action REALMENTE lê a variável em algum lugar.
+ * Versão LITERAL usada como DEFAULT no script do setup (ex.:
+ * `VERSION="${1:-1.3.14}"` ou `VERSION=1.3.14`) — ou null.
  *
- * NOTA (08/2026): o runtime do action NÃO usa mais vars (resolve do input
- * — act 0.2.89 não resolve vars em composite actions). Esta função continua
- * exportada para testes/backwards-compat: ela casa também menções em prosa
- * (header do action.yml), então NÃO é usada pelo validateMirror — o contrato
- * real é hasBunVersionInputRef + checkSetupBunCallSites.
+ * POR QUE: a versão entra pelo ARGUMENTO (a fonte única é resolvida no
+ * workflow e chega por aqui). Um default literal no script é o mesmo segundo
+ * ponto de verdade que o guard inteiro existe para impedir — só que num
+ * artefato onde o `bun-v<semver>` (URL de download, visto por
+ * findBunLiteralInScript) NÃO pega.
+ *
+ * HISTÓRICO (e o motivo desta função existir): a checagem era feita com
+ * `extractActionDefault`, que procura a chave YAML `bun-version:` do antigo
+ * composite action. Aplicada ao SCRIPT — que não tem YAML nenhum — ela
+ * retornava null SEMPRE: o guard exibia a invariante "sem default literal",
+ * com mensagem de violação e tudo, e nunca podia disparar. Checagem que não
+ * PODE falhar é pior que checagem ausente: parece prova.
  */
-export function hasVarsBunVersionRef(actionContent) {
-  return /\bvars\.BUN_VERSION\b/.test(actionContent)
+export function findBunLiteralDefaultInScript(scriptContent) {
+  // Comentários ficam de fora: é onde o comportamento aparece como exemplo. A
+  // RÉGUA é a única do repositório (`codeLine`): comentário de LINHA e de FIM DE
+  // LINHA fora — em shell, `#` precedido de espaço é comentário.
+  //
+  // O QUE MUDA NO VEREDITO: uma linha de código com `# ... 1.3.14` no fim
+  // (`echo "${BUN_VERSION:-1.3.14}" # exemplo`) deixava o 1.3.14 do FIM DA LINHA
+  // valer como default do script — prosa de fim de linha já era ignorada nos
+  // guards de workflow, e este era o último lugar que a lia como código.
+  const code = scriptContent
+    .split(/\r?\n/)
+    .map((line) => codeLine(line))
+    .filter((line) => line.trim() !== "")
+    .join("\n")
+  const substitution = code.match(/\$\{1:-\s*["']?(\d+\.\d+\.\d+)/)
+  if (substitution) return substitution[1]
+  const assignment = code.match(/^\s*(?:BUN_)?VERSION\s*=\s*["']?(\d+\.\d+\.\d+)/m)
+  return assignment ? assignment[1] : null
+}
+
+/* * O setup (o SCRIPT que substituiu o composite) referencia o mirror OCI no
+ * tier 3? (<registry>/.../bun:<ver>)
+ */
+export function hasGhcrMirrorRef(actionContent) {
+  // Tier 3 monta MIRROR="${IMAGE_REGISTRY:-ghcr.io}/${GHCR_OWNER}/bun:${BUN_VERSION}"
+  // — o guard casa a construção do nome + o pull, não uma string hardcoded.
+  //
+  // O registry é configurável (repo variable IMAGE_REGISTRY), então o prefixo
+  // aceito é 'ghcr.io' OU a expansão shell de IMAGE_REGISTRY. O que o guard
+  // protege é a INVARIANTE: o tier 3 puxa o Bun do mirror, e nunca volta a
+  // baixar o release direto (isso quebraria o objetivo do mirror).
+  return (
+    /(?:ghcr\.io|\$\{IMAGE_REGISTRY(?::-[^}]*)?\})\/\$\{GHCR_OWNER\}\/bun:\$\{BUN_VERSION\}/.test(
+      actionContent,
+    ) || /(?:ghcr\.io|\$\{IMAGE_REGISTRY(?::-[^}]*)?\})\/[^"']+\/bun:/m.test(actionContent)
+  )
 }
 
 /**
- * O action.yml referencia o input bun-version no step de resolve?
- * (novo contrato: o composite resolve a versão DO INPUT, que os callers
- * resolvem de vars.BUN_VERSION no workflow — vars não resolve dentro de
- * composite action no act 0.2.89)
+ * O script lê a versão do PRIMEIRO argumento posicional? É o único caminho
+ * pelo qual a versão entra no setup: a fonte única é resolvida no WORKFLOW e
+ * chega por aqui. Sem isso, o script usaria outra versão ou falharia.
  */
-export function hasBunVersionInputRef(actionContent) {
-  return /\binputs\.bun-version\b/.test(actionContent)
+export function hasScriptVersionArg(scriptContent) {
+  return /\$\{1:-\}|\$1\b/.test(scriptContent)
 }
 
-/** O action.yml referencia o mirror GHCR no tier 3? (ghcr.io/.../bun:<ver>) */
-export function hasGhcrMirrorRef(actionContent) {
-  // Tier 3 monta MIRROR="ghcr.io/${GHCR_OWNER}/bun:${BUN_VERSION}" — o guard
-  // casa a construção do nome + o pull, não uma string hardcoded.
-  return (
-    /ghcr\.io\/\$\{GHCR_OWNER\}\/bun:\$\{BUN_VERSION\}/.test(actionContent) ||
-    /ghcr\.io\/[^"']+\/bun:/m.test(actionContent)
+/**
+ * O script mantém o marcador do tier-1 ('Usando Bun pré-instalado: <versão>')?
+ * É o literal que o guard periódico check:tier1-fastpath casa no log do act —
+ * sem ele o guard não acha a evidência e fica CEGO para a regressão do fast
+ * path. Este contrato entre o guard e a implementação é o que a função trava.
+ */
+export function hasPreinstalledMarker(scriptContent) {
+  return scriptContent.includes("Usando Bun pré-instalado:")
+}
+
+/** Versão LITERAL do Bun dentro do script (ex.: bun-v<X.Y.Z>) — ou null. */
+export function findBunLiteralInScript(scriptContent) {
+  const m = scriptContent.match(/bun-v(\d+\.\d+\.\d+)/)
+  return m ? m[1] : null
+}
+
+/** Compose da forja — onde os labels do runner apontam a imagem dos jobs. */
+export const GITEA_COMPOSE = "deploy/docker-compose.gitea.yml"
+
+/** Espelho da variável para o runner da forja (irmão do .actrc). */
+export const GITEA_ENV_MIRROR = "deploy/env.gitea.example"
+
+// Montados por código para não precisar de escape de '$' + '{' no fonte.
+const DOLLAR = String.fromCharCode(36)
+const BUN_VERSION_TAG = DOLLAR + "{BUN_VERSION"
+
+/**
+ * A forja roda os jobs numa imagem que EMBARCA o Bun na versão da variable?
+ *
+ * POR QUE (regressão silenciosa de performance): o tier-1 do setup é um
+ * `command -v bun` + comparação de versão — ele só engaja se a IMAGEM DO
+ * RUNNER já tiver o Bun. Com `node:20-bullseye` nos labels o tier-1 NUNCA
+ * engajava e todo job pagava o tier 3 (download), sem nada acusar: o setup
+ * funciona igual, só mais lento. Este guard prende a configuração ao desenho.
+ *
+ * A igualdade de VALOR entre o BUN_VERSION do runner e a repository variable
+ * não é verificável estaticamente (a variável só existe em runtime no Gitea) —
+ * quem a prova é o smoke da forja (Prova 3) e o guard periódico
+ * check-actrc-sync.mjs. Aqui a invariante é a FORMA: a imagem é a custom, e a
+ * tag vem da variável.
+ *
+ * @param {string} composeContent  conteúdo de GITEA_COMPOSE
+ * @param {string} envContent      conteúdo de GITEA_ENV_MIRROR
+ * @returns {string[]} violações (vazia = ok)
+ */
+export function checkGiteaRunnerImage(composeContent, envContent) {
+  const violations = []
+  const labels = composeContent.match(/GITEA_RUNNER_LABELS=.*$/m)?.[0] ?? ""
+
+  if (!labels) {
+    violations.push(
+      `${GITEA_COMPOSE}: GITEA_RUNNER_LABELS ausente — sem o label, nenhum job encontra runner`,
+    )
+  } else {
+    if (!labels.includes("ubuntu-bun:")) {
+      violations.push(
+        `${GITEA_COMPOSE}: GITEA_RUNNER_LABELS não aponta para a imagem ubuntu-bun — o tier-1 (0s) do setup-bun NUNCA engaja nesta forja e todo job paga o download do tier 3, em silêncio. Aponte o label para <registry>/<owner>/ubuntu-bun:<versão>.`,
+      )
+    }
+    if (!labels.includes(BUN_VERSION_TAG)) {
+      violations.push(
+        `${GITEA_COMPOSE}: GITEA_RUNNER_LABELS sem a variável da versão — a TAG da imagem precisa vir dela (fonte única); uma tag literal não seria invalidada pela troca do Bun e criaria um segundo ponto de verdade.`,
+      )
+    }
+  }
+
+  if (!/^BUN_VERSION=/m.test(envContent)) {
+    violations.push(
+      `${GITEA_ENV_MIRROR}: BUN_VERSION não definido — é o espelho da variável para o runner da forja; sem ele o compose resolve a tag da imagem vazia e nenhum job inicia.`,
+    )
+  }
+
+  return violations
+}
+
+/** O comando que sobe a stack da forja (garante a imagem antes do runner). */
+export const GITEA_BRING_UP = "deploy/gitea-up.sh"
+
+/** O instalador da forja — deve apontar para o bring-up, não subir o runner direto. */
+export const GITEA_SETUP = "deploy/setup-gitea.sh"
+
+/** O pré-requisito 0 do bring-up: o env do host espelha o template comitado. */
+export const ENV_MIRROR_SCRIPT = "scripts/check-env-mirror.mjs"
+
+/** O veredito de prontidão da forja — o terceiro pré-requisito da subida. */
+export const FORGE_DOCTOR = "scripts/forge-doctor.mjs"
+
+/**
+ * A imagem do runner é PRÉ-REQUISITO da subida da stack?
+ *
+ * POR QUE (a falha mais cara da forja): o `depends_on` do compose ordena
+ * containers, não o mundo externo. Se a tag da imagem não existir quando o
+ * runner sobe, TODO job falha ao iniciar o container — e o erro aparece no
+ * meio do job, longe da causa. O desenho é: deploy/gitea-up.sh GARANTE a
+ * imagem (scripts/ensure-runner-image.mjs, que publica se faltar) e SÓ ENTÃO
+ * sobe o runner. Este guard prende essa ORDEM e prende o instalador ao mesmo
+ * caminho.
+ *
+ * A invariante é ESTRUTURAL (ordem das linhas que executam algo), não prosa:
+ * só contam linhas de comando (linhas de comentário são ignoradas), para que
+ * explicar a regra num comentário não a satisfaça.
+ *
+ * TRÊS PRÉ-REQUISITOS, nesta ordem (cada um foi acrescentado quando se
+ * percebeu que a regra existia mas dependia de alguém lembrar de rodá-la: o
+ * `check:registry-source` só rodava no CI, e o doctor — que responde a pergunta
+ * inteira — só rodava por vontade própria):
+ *
+ *   0. o env do host ESPELHA o template comitado, via `check-env-mirror.mjs`
+ *      com `--host` e `--template`, e com o `TEMPLATE_FILE` default apontando
+ *      para o template COMITADO. A ordem importa: o ensure resolve
+ *      BUN_VERSION do env, então conferir o espelho DEPOIS garantiria a imagem
+ *      de um env que não é o do repositório;
+ *   1. a imagem do runner existe no registry (`ensure-runner-image.mjs`);
+ *   2. a PRONTIDÃO está provada (`forge-doctor.mjs`), lendo o MESMO env
+ *      (`--gitea-env`) e com o doctor INTEIRO (sem flags --no-* que escondam
+ *      fatos). A prova do bloqueio EXECUTA o bring-up, então a recursão é
+ *      cortada pela DUBLAGEM que a prova faz do doctor — medida em cada caso
+ *      (`expectDoctorStub`) e na cadeia completa, por execução. O guard
+ *      `checkDoctorCycleCut` prende a dublagem (o que de fato sustenta o corte). O default de `DOCTOR_SCRIPT` precisa ser o do
+ *      repositório, a checagem passa `--gitea-env "$ENV_FILE"`, e a ORDEM é
+ *      contratual nos dois sentidos:
+ *      DEPOIS da garantia da imagem (o doctor trata a tag ausente como
+ *      violação, que é a condição que o passo 1 conserta — antes dele, o
+ *      remédio ficaria travado pelo estado que cura) e ANTES de qualquer `up`
+ *      (subir depois de um BLOQUEADA publicaria o estado que a checagem existe
+ *      para recusar).
+ *
+ * O que NÃO é conferido aqui (e por quê): o tratamento dos exit codes do doctor
+ * (0/1/2/>=3) é COMPORTAMENTO, provado por execução em
+ * `src/lib/__tests__/gitea-bring-up.test.ts` — onde um doctor dublê devolve cada
+ * código e o teste vê se a stack subiu ou não. Regex sobre `if/elif` provaria a
+ * forma do texto, não a decisão.
+ *
+ * @param {string} bringUpContent  conteúdo de GITEA_BRING_UP ("" se ausente)
+ * @param {string|undefined} setupContent  conteúdo de GITEA_SETUP
+ * @returns {string[]} violações (vazia = ok)
+ */
+export function checkGiteaBringUp(bringUpContent, setupContent) {
+  if (!bringUpContent) {
+    return [
+      `${GITEA_BRING_UP}: ausente — é o comando que garante a imagem do runner ANTES de subir a stack (ver deploy/GITEA.md § Runner)`,
+    ]
+  }
+
+  const violations = []
+  // Invocação REAL do mirror (não a menção num comentário) — mesmo desenho da
+  // do ensure: `node ... MIRROR_SCRIPT` ou o caminho literal do script. A
+  // regex pega a LINHA INTEIRA (`[^\n]*$`): `.*` pararia no nome da variável e
+  // as flags (--host/--template) ficariam fora do texto conferido.
+  const mirrorMatch = bringUpContent.match(
+    /^\s*node\s+[^\n]*(?:MIRROR_SCRIPT|check-env-mirror\.mjs)[^\n]*$/m,
   )
+  // Invocação REAL do ensure (não a menção num comentário): `node ... ENSURE_SCRIPT`
+  // ou o caminho literal do script. `^\s*node` (sem `#`) descarta prosa.
+  const ensureMatch = bringUpContent.match(
+    /^\s*node\s+.*(?:ENSURE_SCRIPT|ensure-runner-image\.mjs)/m,
+  )
+  // Comando de subida do runner — `[^#\n]*` impede casar uma linha de comentário.
+  const runnerMatch = bringUpContent.match(/^\s*[^#\n]*\bup\s+-d\s+runner\b/m)
+
+  if (!mirrorMatch) {
+    violations.push(
+      `${GITEA_BRING_UP}: não invoca ${ENV_MIRROR_SCRIPT} — sem a conferência o env do host pode divergir do template comitado e a stack sobe interpolando outra coisa (imagem/versão/segredo), dependendo de alguém lembrar de rodar o check:registry-source.`,
+    )
+  } else {
+    const invocation = mirrorMatch[0]
+    if (!/--host\b/.test(invocation) || !/--template\b/.test(invocation)) {
+      violations.push(
+        `${GITEA_BRING_UP}: a conferência do espelho não passa --host E --template — sem --host a descoberta pode achar um arquivo que esta subida não usa, e sem --template não há "o que o repositório declara" a comparar.`,
+      )
+    }
+  }
+  // O default do template tem de ser o COMITADO (não um arquivo qualquer):
+  // sobrescrever é teste, e um default que não é o do repositório faria a
+  // comparação medir outra coisa em silêncio.
+  if (!/^[^#\n]*TEMPLATE_FILE=.*env\.gitea\.example/m.test(bringUpContent)) {
+    violations.push(
+      `${GITEA_BRING_UP}: o default de TEMPLATE_FILE não aponta para ${GITEA_ENV_MIRROR} — a comparação mediria outro arquivo, e não "o que o repositório declara".`,
+    )
+  }
+  if (!ensureMatch) {
+    violations.push(
+      `${GITEA_BRING_UP}: não invoca scripts/ensure-runner-image.mjs — sem a garantia, subir o runner depende de a tag já existir por sorte.`,
+    )
+  }
+  // A ORDEM entre os dois pré-requisitos: o espelho PRIMEIRO. O ensure resolve
+  // a imagem do env do host — com um env divergente ele garantiria a imagem
+  // errada, e a stack subiria apontando para ela.
+  if (mirrorMatch && ensureMatch && ensureMatch.index < mirrorMatch.index) {
+    violations.push(
+      `${GITEA_BRING_UP}: a conferência do espelho aparece DEPOIS da garantia da imagem — o ensure resolve BUN_VERSION/IMAGE_REGISTRY do env do host, então com um env divergente ele garante a imagem errada. Confira o espelho primeiro (${ENV_MIRROR_SCRIPT}).`,
+    )
+  }
+  if (!runnerMatch) {
+    violations.push(
+      `${GITEA_BRING_UP}: não sobe o runner (esperado 'up -d runner' depois da garantia).`,
+    )
+  }
+  if (ensureMatch && runnerMatch && runnerMatch.index < ensureMatch.index) {
+    violations.push(
+      `${GITEA_BRING_UP}: 'up -d runner' aparece ANTES da garantia da imagem — a stack subiria e os jobs falhariam ao iniciar o container. Garanta a imagem primeiro (scripts/ensure-runner-image.mjs).`,
+    )
+  }
+
+  // ── 2. PRÉ-REQUISITO: a PRONTIDÃO (doctor) ────────────────────────────────
+  // Invocação REAL do doctor (não a menção num comentário) — mesmo desenho das
+  // outras duas: a linha inteira entra no texto conferido, para que as flags
+  // exigidas abaixo sejam medidas no mesmo lugar em que o comando roda.
+  const doctorMatch = bringUpContent.match(
+    /^\s*node\s+[^\n]*(?:DOCTOR_SCRIPT|forge-doctor\.mjs)[^\n]*$/m,
+  )
+  const doctorInvocation = doctorMatch?.[0] ?? ""
+  if (!doctorMatch) {
+    violations.push(
+      `${GITEA_BRING_UP}: não invoca ${FORGE_DOCTOR} — sem o veredito de prontidão a subida volta a depender de alguém lembrar de rodar o doctor, e a stack sobe num estado que pode não segurar o merge (branch protection furada, runner sem a imagem, espelho velho).`,
+    )
+  } else {
+    if (!/--gitea-env\b/.test(doctorInvocation) || !/\$ENV_FILE/.test(doctorInvocation)) {
+      violations.push(
+        `${GITEA_BRING_UP}: o doctor não recebe --gitea-env "$ENV_FILE" — ele leria outro arquivo, e o veredito mediria um estado que esta subida não usa.`,
+      )
+    }
+    // O doctor roda INTEIRO. O ciclo `bring-up → doctor → prova → bring-up` é
+    // cortado pela DUBLAGEM que a prova faz do doctor — medida em cada caso da
+    // prova (`expectDoctorStub`) e na cadeia completa, por execução, em
+    // `src/lib/__tests__/prove-runner-image-gate.test.ts`. A flag --no-proof
+    // foi removida: quem precisa de um recorte usa --ci (declaração explícita)
+    // ou flags individuais (--no-guards, --no-protection, etc.).
+    //
+    // A regra FICA: uma flag REMOVIDA que volta ao bring-up é o mesmo defeito
+    // por outro caminho — um texto antigo (runbook, cópia de outra máquina)
+    // faria o veredito ficar parcial por construção; e, como a flag não existe
+    // mais, o doctor a recusa em runtime e a subida morre por um comando
+    // desatualizado. O remédio aponta o corte de verdade (a dublagem na prova).
+    if (/--no-proof\b/.test(doctorInvocation)) {
+      violations.push(
+        `${GITEA_BRING_UP}: o doctor é invocado com --no-proof (flag REMOVIDA — o veredito ficaria parcial por construção, e o doctor a recusa em runtime). Rode o doctor INTEIRO: quem corta o ciclo bring-up → doctor → prova é a dublagem do doctor na prova (scripts/prove-runner-image-gate.mjs).`,
+      )
+    }
+  }
+  // O default tem de ser o doctor DO REPOSITÓRIO: sobrescrever é teste, e um
+  // default que não é o do repositório faria a subida medir outra coisa.
+  if (!/^[^#\n]*DOCTOR_SCRIPT=.*forge-doctor\.mjs/m.test(bringUpContent)) {
+    violations.push(
+      `${GITEA_BRING_UP}: o default de DOCTOR_SCRIPT não aponta para ${FORGE_DOCTOR} — a subida conferiria a prontidão com outro comando (ou com nenhum, na prática).`,
+    )
+  }
+  // A ORDEM: depois da garantia da imagem (que é pré-requisito do que ele
+  // prova) e antes de qualquer `up` — subir depois de um BLOQUEADA publicaria o
+  // estado que a checagem recusa.
+  if (doctorMatch && ensureMatch && doctorMatch.index < ensureMatch.index) {
+    violations.push(
+      `${GITEA_BRING_UP}: o doctor roda ANTES da garantia da imagem — a seção 1 (registry) ficaria por provar no momento do veredito, e o relatório diria BLOQUEADA/INDETERMINADA por um estado que esta própria subida ainda ia consertar.`,
+    )
+  }
+  const composeUpMatch = bringUpContent.match(/^\s*[^#\n]*\bup\s+-d\s+gitea\b/m)
+  if (doctorMatch && composeUpMatch && composeUpMatch.index < doctorMatch.index) {
+    violations.push(
+      `${GITEA_BRING_UP}: 'up -d gitea' aparece ANTES do veredito de prontidão — a stack subiria mesmo com o doctor dizendo BLOQUEADA.`,
+    )
+  }
+
+  if (setupContent !== undefined && !setupContent.includes("gitea-up.sh")) {
+    violations.push(
+      `${GITEA_SETUP}: não aponta para ${GITEA_BRING_UP} — o instalador precisa levar o usuário pelo caminho que GARANTE a imagem, não por um 'docker compose up -d runner' seco.`,
+    )
+  }
+  return violations
+}
+
+/** A prova do bloqueio — a que o doctor executa (seção 4) e que DUBLA o doctor. */
+export const PROOF_SCRIPT = "scripts/prove-runner-image-gate.mjs"
+
+/**
+ * A DUBLAGEM do doctor na prova do bloqueio está de pé?
+ *
+ * POR QUE ISTO É UM GUARD DE TEXTO (e não só a prova de execução): o corte do
+ * ciclo é UMA linha — `DOCTOR_SCRIPT` no env do filho que a prova monta — e,
+ * com o bring-up rodando o doctor INTEIRO (o contrato de hoje), apagá-la faz a
+ * cadeia
+ *
+ *     bring-up → doctor → prova → bring-up → doctor → prova → …
+ *
+ * não ter profundidade limite. Não é um erro que aparece num diff: é uma forca
+ * de processos, e o sintoma chega tarde demais. A prova de execução mede o corte
+ * a cada rodada; este guard existe para o caminho em que alguém apaga a linha
+ * sem rodar a prova.
+ *
+ * @param {string} proofContent  conteúdo de PROOF_SCRIPT ("" se ausente)
+ * @returns {string[]} violações (vazia = ok)
+ */
+export function checkDoctorCycleCut(proofContent) {
+  if (!proofContent) {
+    return [
+      `${PROOF_SCRIPT}: ausente — é a prova que o doctor executa; sem ela não há o que dublar, e é a dublagem que torna o ciclo finito.`,
+    ]
+  }
+  const violations = []
+  // As DUAS metades do corte: o dublê tem de ser construído pela prova E
+  // passado ao filho. Sem a primeira não há dublê; sem a segunda o bring-up
+  // dublado cai no default (o doctor do repositório) e o ciclo volta a crescer.
+  if (!/forge-doctor-stub\.mjs/.test(proofContent)) {
+    violations.push(
+      `${PROOF_SCRIPT}: não constrói o dublê do doctor ("forge-doctor-stub.mjs") — o bring-up que a prova executa chamaria o doctor REAL, que executa a própria prova, e a cadeia deixaria de ter profundidade limite.`,
+    )
+  }
+  if (!/^\s*DOCTOR_SCRIPT:\s*\S+/m.test(proofContent)) {
+    violations.push(
+      `${PROOF_SCRIPT}: o env do FILHO não define DOCTOR_SCRIPT — é essa linha que aponta o bring-up dublado para o dublê. Sem ela o default do bring-up é o doctor do repositório, e o ciclo bring-up → doctor → prova não tem corte.`,
+    )
+  }
+  // `DOCTOR_SCRIPT: ""` passaria a checagem acima sem apontar dublê NENHUM. Não
+  // é o modo catastrófico (o bring-up falharia no `[ -f ]`), mas uma linha que
+  // diz apontar e não aponta não pode passar por corte.
+  if (/^\s*DOCTOR_SCRIPT:\s*["'`]\s*["'`]/m.test(proofContent)) {
+    violations.push(
+      `${PROOF_SCRIPT}: DOCTOR_SCRIPT aponta para uma string VAZIA no env do filho — sem dublê o ciclo bring-up → doctor → prova não tem corte.`,
+    )
+  }
+  return violations
+}
+
+/** O runbook da forja — onde vive o procedimento de re-registro do runner. */
+export const GITEA_DOC = "deploy/GITEA.md"
+
+/**
+ * O re-registro do runner é um caminho GARANTIDO (não uma sequência à mão)?
+ *
+ * POR QUE: o re-registro é o momento em que se TROCA a imagem do runner (label
+ * ou `BUN_VERSION`), logo é quando a tag tem mais chance de não existir. O
+ * act_runner guarda os labels que recebeu no registro em `/data/.runner` e
+ * depois usa ESSES — então o procedimento precisa apagar container E volume, e
+ * precisa passar pela garantia da imagem. Duas invariantes:
+ *
+ *   1. no SCRIPT: `rm -sf runner` antes de `up -d runner` (só apagar o
+ *      container não basta para re-registrar; `restart` muito menos);
+ *   2. no DOC: o bloco de re-registro tem de CHAMAR o script — um runbook que
+ *      ensina a sequência crua faz o operador pular a garantia, e foi assim
+ *      que a versão antiga ficou com um `--check` cujo exit code não decidia
+ *      nada antes do `up -d runner`.
+ *
+ * A invariante 2 é textual e de propósito: o contrato une um .md e um .sh que
+ * não se importam, então tem de ser lido das duas fontes. Linhas de comentário
+ * são descartadas nas duas checagens — explicar a regra num comentário não
+ * pode satisfazê-la.
+ *
+ * @param {string} bringUpContent  conteúdo de GITEA_BRING_UP ("" se ausente)
+ * @param {string} docContent      conteúdo de GITEA_DOC ("" se ausente)
+ * @returns {string[]} violações (vazia = ok)
+ */
+export function checkReRegisterPath(bringUpContent, docContent) {
+  const violations = []
+  // A MESMA régua do resto do guard (`codeLine`): comentário fora, inclusive
+  // o de fim de linha — a prosa de um `#` no fim de uma linha de shell não é
+  // codigo.
+  const code = (s) =>
+    s
+      .split(/\r?\n/)
+      .map((line) => codeLine(line))
+      .filter((line) => line.trim() !== "")
+      .join("\n")
+
+  const bringsUp = /^\s*[^#\n]*\bup\s+-d\s+runner\b/m.test(bringUpContent)
+  if (bringsUp && !/^\s*[^#\n]*\brm\s+-sf\s+runner\b/m.test(bringUpContent)) {
+    violations.push(
+      `${GITEA_BRING_UP}: sobe o runner mas nunca o remove ('rm -sf runner') — sem isso não existe caminho de re-registro, e trocar a label exigiria o procedimento à mão que pula a garantia da imagem`,
+    )
+  }
+  // A ordem: remover ANTES de subir (subir e depois remover não re-registra).
+  const rmIdx = bringUpContent.search(/^\s*[^#\n]*\brm\s+-sf\s+runner\b/m)
+  const upIdx = bringUpContent.search(/^\s*[^#\n]*\bup\s+-d\s+runner\b/m)
+  if (rmIdx >= 0 && upIdx >= 0 && rmIdx > upIdx) {
+    violations.push(
+      `${GITEA_BRING_UP}: 'rm -sf runner' aparece DEPOIS do 'up -d runner' — o container subiria com o registro antigo e os labels novos nunca seriam enviados`,
+    )
+  }
+
+  if (!docContent) return violations // 2a. O runbook PRECISA mandar o operador pelo caminho garantido. Sem esta
+  //     metade, um runbook que simplesmente não menciona o modo de re-registro
+  //     passa calado — a instalação fica com um procedimento sem garantia.
+  if (!/gitea-up\.sh\s+--re-register/.test(docContent)) {
+    violations.push(
+      `${GITEA_DOC}: o runbook não invoca '${GITEA_BRING_UP} --re-register' — o re-registro é justamente quando a tag tem mais chance de faltar (é a troca da versão/label), então ele não pode ficar sem a garantia`,
+    )
+  }
+
+  // 2b. E não pode ENSINAR a alternativa: um cerco com `rm -sf runner` + um
+  //     `docker compose ... up -d runner` cru é a sequência à mão. Estes dois
+  //     juntos, num bloco, são o procedimento sem garantia — o operador copia o
+  //     que executa, não a prosa em volta. A prosa pode (e deve) explicar por
+  //     que a sequência antiga era errada; o que ela não pode é vir pronta para
+  //     copiar.
+  for (const fence of docContent.match(/```[a-z]*\n[\s\S]*?```/g) ?? []) {
+    const handRolled =
+      /rm\s+-sf\s+runner/.test(fence) &&
+      /^\s*[^#\n]*\bdocker\s+compose\b[^#\n]*\bup\s+-d\s+runner\b/m.test(code(fence))
+    if (handRolled) {
+      violations.push(
+        `${GITEA_DOC}: há um bloco que ensina o re-registro à mão ('rm -sf runner' + 'docker compose ... up -d runner') — isso sobe o runner sem passar pela garantia da imagem; o bloco tem de chamar ${GITEA_BRING_UP} --re-register`,
+      )
+    }
+  }
+  return violations
+}
+
+/** O script de bump — escreve a variável E os espelhos dela no working tree. */
+export const BUN_BUMP_SCRIPT = "scripts/bump-bun.sh"
+
+/** O guard SEMANAL — compara os VALORES dos espelhos com a variável remota. */
+export const ACTRC_SYNC_SCRIPT = "scripts/check-actrc-sync.mjs"
+
+/**
+ * Todo espelho que o guard semanal COMPARA é escrito pelo script de bump?
+ *
+ * POR QUE (dois donos, um conjunto só): cada espelho da variável — `.actrc`
+ * (o act local) e `deploy/env.gitea.example` (o runner da forja) — tem um
+ * ESCRITOR (`bump-bun.sh`, no bump) e um LEITOR-VERIFICADOR
+ * (`check-actrc-sync.mjs`, no job semanal). Os dois conjuntos têm de ser o
+ * MESMO, e a assimetria silenciosa é o risco real:
+ *   - leitor sem escritor → todo bump deixa um `::warning::` PERMANENTE. Um
+ *     aviso que o procedimento documentado não consegue silenciar é como um
+ *     aviso morre (o repo já tem esse diagnóstico no readme-reverse-issue);
+ *   - escritor sem leitor → o valor escrito nunca é conferido, e divergir
+ *     deixa de ter sintoma.
+ *
+ * A invariante é textual de propósito: ela liga DOIS arquivos que não se
+ * importam (um é .sh, o outro .mjs), então o contrato tem de ser lido das
+ * fontes. Cada espelho comparado precisa da DECLARAÇÃO
+ * (`X_PATH="$REPO_ROOT/<espelho>"`) e da CHAMADA (`update_mirror "$X_PATH"`) —
+ * uma declaração sem chamada seria um falso verde.
+ *
+ * @param {string} bumpContent  conteúdo de BUN_BUMP_SCRIPT ("" se ausente)
+ * @param {string} syncContent  conteúdo de ACTRC_SYNC_SCRIPT ("" se ausente)
+ * @returns {string[]} violações (vazia = ok)
+ */
+export function checkMirrorWriters(bumpContent, syncContent) {
+  if (!bumpContent)
+    return [`${BUN_BUMP_SCRIPT}: ausente — é ele que mantém os espelhos da variável no bump`]
+
+  // 1. O conjunto COMPARADO, lido do próprio guard semanal.
+  const compared = new Set()
+  if (/join\(process\.cwd\(\), "\.actrc"\)/.test(syncContent)) compared.add(".actrc")
+  const envConst = syncContent.match(/^export const GITEA_ENV_MIRROR = "([^"]+)"/m)
+  if (envConst) compared.add(envConst[1])
+
+  if (compared.size < 2) {
+    return [
+      `${ACTRC_SYNC_SCRIPT}: esperava comparar os DOIS espelhos da variável (.actrc e o env da forja), encontrei ${compared.size} — o espelho de fora divergiria sem nenhum aviso`,
+    ]
+  }
+
+  // 2. Cada espelho comparado precisa de um ESCRITOR no bump.
+  const declared = new Map() // espelho -> nome da variável no bump script
+  for (const m of bumpContent.matchAll(/^(\w+)_PATH="\$REPO_ROOT\/([^"]+)"/gm)) {
+    declared.set(m[2], `${m[1]}_PATH`)
+  }
+
+  const violations = []
+  for (const mirror of compared) {
+    const varName = declared.get(mirror)
+    if (!varName) {
+      violations.push(
+        `${BUN_BUMP_SCRIPT}: não escreve o espelho '${mirror}', que ${ACTRC_SYNC_SCRIPT} compara — todo bump deixaria um ::warning:: permanente sem remédio no procedimento`,
+      )
+    } else if (!bumpContent.includes(`update_mirror "$${varName}"`)) {
+      violations.push(
+        `${BUN_BUMP_SCRIPT}: declara ${varName}='${mirror}' mas nunca chama update_mirror "$${varName}" — o espelho é comparado pelo guard semanal e o bump não o atualizaria`,
+      )
+    }
+  }
+  return violations
 }
 
 /**
@@ -382,8 +991,13 @@ export function parseCacheBlock(blockLines) {
   let multiKind = null // "path" | "restore" — qual campo multi-linha está sendo coletado
   for (const line of blockLines) {
     const indent = line.match(/^\s*/)[0].length
-    const trimmed = line.trim()
-    if (trimmed === "" || trimmed.startsWith("#")) continue
+    // A RÉGUA ÚNICA decide o conteúdo da linha do bloco.
+    //
+    // O QUE MUDA NO VEREDITO: um `path:` (ou `restore-keys:`) com `# nota` no
+    // fim entrava INTEIRO na comparação de toolchain — o guard acusava um path
+    // que a pipeline não declara. Agora a prosa de fim de linha sai.
+    const trimmed = codeLine(line).trim()
+    if (trimmed === "") continue
     if (multiIndent >= 0) {
       // coleciona linhas MAIS indentadas que o `path: |` / `restore-keys: |`
       // — até a indentação voltar ao nível do campo (mesmo nível do path:)
@@ -546,8 +1160,10 @@ export function checkCachePaths(workflowsDir, rules) {
     const lines = readFileSync(join(workflowsDir, file), "utf8").split("\n")
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
-      if (line.trim() === "" || line.trim().startsWith("#")) continue
-      if (!line.match(CACHE_USES_RE)) continue
+      // A RÉGUA ÚNICA: comentário de linha/fim de linha não é código. A COLUNA
+      // continua vindo da linha crua (`usesIndent`), porque recuo é dado.
+      if (codeLine(line).trim() === "") continue
+      if (!codeLine(line).match(CACHE_USES_RE)) continue
       const usesIndent = line.match(/^\s*/)[0].length
       const block = []
       for (let j = i + 1; j < lines.length && block.length < CACHE_BLOCK_WINDOW; j++) {
@@ -611,13 +1227,19 @@ export function checkCacheKeys(workflowsDir, rules) {
  * @returns {string|null}
  */
 export function checkLiteralBunLine(file, lineNo, content) {
-  if (content.trim().startsWith("#")) return null // ignora comentários
+  // A RÉGUA ÚNICA decide o código da linha (comentário de linha E de fim de
+  // linha fora). O QUE MUDA NO VEREDITO: `bun-version: 1.3.14 # pinar` deixava
+  // o literal da PROSA valer como declaração do workflow (a regra local só
+  // olhava o INÍCIO da linha, e a casa já ignorava fim de linha nos outros
+  // guards).
+  const codigo = codeLine(content)
+  if (codigo.trim() === "") return null
   // Versão semântica 1.x.y — casa bun-version: <ver>, BUN_VERSION: <ver> e
   // qualquer cache key com literal (bun-1.3.14-...).
   const literalRe =
     /\b(?:bun-version|BUN_VERSION):\s*["']?(\d+\.\d+\.\d+)|(?:bun|prisma)-(\d+\.\d+\.\d+)-/g
   literalRe.lastIndex = 0
-  const m = literalRe.exec(content)
+  const m = literalRe.exec(codigo)
   if (!m) return null
   const literal = m[1] || m[2]
   const context = m[0].trim()
@@ -667,48 +1289,119 @@ export function normalizeBunVersionValue(raw) {
 }
 
 /**
- * Checa UM call site do setup-bun: a partir da linha `uses:` (file:lineNo),
- * varre as linhas SEGUINTES (janela ~6) procurando `bun-version:`. Retorna
- * a violação como string, ou null se o call site estiver correto. Função de
- * NÍVEL DE CALL SITE compartilhada entre o scan global (checkSetupBunCallSites)
- * e o scan de diff (checkStagedSetupBunCallSites) — uma única fonte da
- * lógica, sem drift.
- *
- * @param {string} file           nome do arquivo
- * @param {number} lineNo         linha do `uses:` (1-based)
- * @param {string[]} following    conteúdo das linhas seguintes (janela)
- * @returns {string|null}
+ * Palavras que podem vir ANTES do script e ainda caracterizam uma CHAMADA
+ * (interpretador explícito, `env`, `time`...). É o que separa a chamada da
+ * MENÇÃO em prosa: `run: bash scripts/setup-bun-ci.sh` é chamada;
+ * `run: echo "... use scripts/setup-bun-ci.sh (cached)."` é texto.
  */
-export function checkSetupBunCallSite(file, lineNo, following) {
-  let found = null
-  for (const l of following) {
-    const m = l.match(/^\s*bun-version\s*:\s*(.+?)\s*$/)
-    if (m) {
-      found = normalizeBunVersionValue(m[1])
-      break
-    }
-  }
-  if (found === null) {
-    return `${file}:${lineNo}: call site do setup-bun SEM input bun-version — passe 'bun-version: ${BUN_VERSION_VAR}' (o composite resolve só do input; vars não resolve em composite no act 0.2.89)`
-  }
-  if (found !== BUN_VERSION_VAR) {
-    return `${file}:${lineNo}: call site do setup-bun com bun-version='${found}' — use a fonte única ${BUN_VERSION_VAR} (literal é violação)`
+export const SHELL_INTRODUCERS = new Set([
+  "bash",
+  "sh",
+  "source",
+  "env",
+  "time",
+  "command",
+  "xargs",
+])
+
+/** Qualquer forma de citar o script — `scripts/setup-bun-ci.sh`, `./x/y.sh`, `setup-bun-ci.sh`. */
+export const SETUP_BUN_REF_RE = /(?:[\w.~/-]*\/)?setup-bun-ci\.sh/g
+
+/**
+ * Do token imediatamente anterior ao script, extrai a PALAVRA QUE O INVOCA:
+ * descarta a chave YAML do step (`run:`, `-`), os separadores de shell
+ * (`$(`, crase, `;`, `&`, `|`, `(`, `)`, `=`) e as aspas que cercam o comando
+ * (`bash -lc "bash scripts/setup-bun-ci.sh"` → `bash`).
+ *
+ * O que NÃO é descartado importa tanto quanto: uma palavra qualquer
+ * (`echo "... use scripts/setup-bun-ci.sh ..."` → `use`) sobrevive e
+ * denuncia a linha como prosa.
+ */
+function invokerWord(rawWord) {
+  return rawWord
+    .replace(/["'`]/g, "")
+    .replace(/^(?:-|run:)$/, "")
+    .replace(/^.*(?:\$\(|`|[;&|()=])/, "")
+}
+
+/**
+ * O script aparece em POSIÇÃO DE COMANDO nesta linha? Devolve o texto DEPOIS
+ * do script (o argumento) quando sim, ou null quando a linha apenas o MENCIONA.
+ *
+ * Por que a distinção existe: um `run: echo "... scripts/setup-bun-ci.sh ..."`
+ * (resumo de job, log) NÃO é um call site — exigir a variável de um texto é
+ * falso positivo, e guard que acusa prosa vira guard que se aprende a ignorar.
+ * A regra é a do shell: o token imediatamente anterior ao script precisa ser o
+ * INÍCIO do comando (`bash scripts/...`, `./scripts/...`, `bash -lc "bash
+ * scripts/..."`, `OUT="$(bash scripts/...)"`) — ou um interpretador explícito.
+ * A intenção oposta segue coberta: uma chamada REAL sem a variável
+ * (`run: bash scripts/setup-bun-ci.sh 1.3.14`) continua sendo violação, com ou
+ * sem caminho e também capturada em `$(...)`/`OUT="$(...)"`.
+ *
+ * @param {string} content  conteúdo de UMA linha
+ * @returns {string|null} argumento (possivelmente vazio) ou null se for menção
+ */
+export function setupBunInvocationArgs(content) {
+  if (!content.includes("setup-bun-ci.sh")) return null
+  SETUP_BUN_REF_RE.lastIndex = 0
+  let m
+  while ((m = SETUP_BUN_REF_RE.exec(content)) !== null) {
+    const words = content.slice(0, m.index).trim().split(/\s+/).filter(Boolean)
+    const invoker = words.length > 0 ? invokerWord(words[words.length - 1]) : ""
+    if (invoker !== "" && !SHELL_INTRODUCERS.has(invoker)) continue
+    return content.slice(m.index + m[0].length)
   }
   return null
 }
 
 /**
- * Verifica que TODO call site do composite action setup-bun passa o input
- * bun-version com a fonte única (${{ vars.BUN_VERSION }}).
+ * Checa UMA linha de invocação do setup do Bun. O setup é um SCRIPT chamado
+ * por `run:` e recebe a versão como ARGUMENTO — a fonte única é a repository
+ * variable. Retorna a violação como string, ou null se a linha estiver
+ * correta.
  *
- * Por que existe (08/2026): o composite action resolve a versão APENAS do
- * input bun-version — vars não resolve dentro de composite action no act
- * 0.2.89 (erro 'Unknown Variable Access vars'), então o valor é resolvido
- * no WORKFLOW (onde vars funciona) e entra via input. Se um call site
- * omitir o input ou usar literal, o action falha em runtime com mensagem
- * confusa (ou usa versão errada) — este scan pega no PR, antes do merge.
+ * Substitui o antigo `checkSetupBunCallSite`, que varria a janela do input
+ * `bun-version:` do composite action. O setup saiu do composite para
+ * `SETUP_BUN_SCRIPT` (chamado por `run:`, que NÃO passa pelo resolvedor de
+ * actions locais do runner) — o argumento da linha É o call site agora.
  *
- * @param {string} workflowsDir  diretório .github/workflows
+ * @param {string} file      nome do arquivo
+ * @param {number} lineNo    número da linha (1-based)
+ * @param {string} content   conteúdo da linha
+ * @returns {string|null}
+ */
+export function checkSetupBunRunLine(file, lineNo, content) {
+  const rest = setupBunInvocationArgs(content)
+  if (rest === null) return null
+  // Extrai o ARGUMENTO, não o resto da linha: a chamada pode estar CAPTURADA
+  // (`OUT="$(bash ... "${{ vars.BUN_VERSION }}" 2>&1)"`) ou ter `# nota` no
+  // fim — ler o fim da linha fazia a versão canônica parecer um literal (o
+  // próprio guard pegou esse caso no smoke). Ordem: aspas (forma canônica),
+  // depois a EXPRESSÃO inteira (que tem espaço e escaparia de \S+) e por fim
+  // um token simples.
+  const m = rest.match(/^\s+("[^"]*"|'[^']*'|\$\{\{[^}]*\}\}|\S+)/)
+  if (!m) {
+    return `${file}:${lineNo}: chamada de ${SETUP_BUN_SCRIPT} SEM a versão — passe ${BUN_VERSION_VAR} como argumento (o script lê a versão SÓ do argumento; a fonte única é a repository variable)`
+  }
+  const arg = normalizeBunVersionValue(m[1])
+  if (arg !== BUN_VERSION_VAR) {
+    return `${file}:${lineNo}: chamada de ${SETUP_BUN_SCRIPT} com versão '${arg}' — use a fonte única ${BUN_VERSION_VAR} (literal é violação)`
+  }
+  return null
+}
+
+/**
+ * Verifica que TODA invocação do setup do Bun passa a versão da fonte única
+ * (${{ vars.BUN_VERSION }}) como argumento.
+ *
+ * Por que existe: substituiu a validação do input `bun-version:` do composite.
+ * A INVARIANTE é a mesma — a versão do Bun tem UM ponto de verdade —, mas o
+ * contrato mudou de forma: o setup agora é um script chamado por `run:`, e o
+ * argumento é o único caminho por onde a versão entra. Um call site com
+ * literal (ou sem argumento) usaria outra versão, e o mesmo commit geraria
+ * artefatos diferentes conforme a pipeline que o construiu.
+ *
+ * @param {string} workflowsDir  diretório de workflows de UMA forja
  * @returns {string[]} lista de violações (vazia = ok)
  */
 export function checkSetupBunCallSites(workflowsDir) {
@@ -719,11 +1412,13 @@ export function checkSetupBunCallSites(workflowsDir) {
     const lines = readFileSync(join(workflowsDir, file), "utf8").split("\n")
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]
-      // Ignora comentários — uma prosa '# uses: ./.github/actions/setup-bun'
-      // não é um call site real (mesmo guard de check-no-setup-bun.mjs).
-      if (line.trim() === "" || line.trim().startsWith("#")) continue
-      if (!line.includes("uses: ./.github/actions/setup-bun")) continue
-      const v = checkSetupBunCallSite(file, i + 1, lines.slice(i + 1, i + 1 + CALL_SITE_WINDOW))
+      // Ignora comentários — prosa que MENCIONA o script não é uma chamada
+      // real. A régua é a MESMA do `check-no-setup-bun.mjs` (era um alinhamento
+      // mantido à mão, e é isso que o próximo ajuste quebra): `codeLine`, e a
+      // EXPRESSÃO fica inteira no conteúdo entregue ao `checkSetupBunRunLine`,
+      // que compara o argumento com `${{ vars.BUN_VERSION }}`.
+      if (codeLine(line).trim() === "") continue
+      const v = checkSetupBunRunLine(file, i + 1, line)
       if (v) violations.push(v)
     }
   }
@@ -741,7 +1436,7 @@ export function checkSetupBunCallSites(workflowsDir) {
  * ADICIONADA mas `with:`/`bun-version:` ficam como CONTEXTO no diff — um
  * parser só-de-adicionadas veria o call site SEM o bun-version e geraria
  * falso positivo. As REMOVIDAS (sem incrementar lineNo — não existem no
- * arquivo novo) são necessárias para o checkStagedRemovedBunVersion detectar
+ * arquivo novo) são necessárias para o checkStagedRemovedSetupBunCall detectar
  * a remoção do input bun-version de um call site que SOBREVIVEU. Headers
  * `--- a/<path>` do arquivo ANTIGO são ignorados (não são linhas removidas).
  * Arquivos sem extensão de workflow (.yml/.yaml) são ignorados.
@@ -749,7 +1444,7 @@ export function checkSetupBunCallSites(workflowsDir) {
  * @param {string} diffText  saída de `git diff ... -- .github/workflows`
  * @returns {Map<string, {lineNo: number, content: string, added: boolean}[]>}
  */
-export function parseDiffLines(diffText) {
+export function parseDiffLines(diffText, isTarget = isWorkflowPath) {
   const perFile = new Map()
   let currentFile = null
   let lineNo = 0
@@ -759,7 +1454,7 @@ export function parseDiffLines(diffText) {
       // "+++ b/.github/workflows/pr-check.yml" → caminho do arquivo NOVO
       // (aceita .yml E .yaml — extensão alternativa não escapa do scan)
       const path = line.slice(4).replace(/^b\//, "")
-      currentFile = WORKFLOW_FILE_RE.test(path) ? path : null
+      currentFile = isTarget(path) ? path : null
       lineNo = 0
       continue
     }
@@ -785,7 +1480,7 @@ export function parseDiffLines(diffText) {
     } else if (ch === "-") {
       // linha REMOVIDA — não existe no arquivo novo; incluída com `removed:
       // true` SEM incrementar lineNo (ela não ocupa posição no arquivo novo)
-      // para o checkStagedRemovedBunVersion detectar a remoção do input
+      // para o checkStagedRemovedSetupBunCall detectar a remoção do input
       // bun-version de um call site que SOBREVIVEU no novo arquivo.
       if (!perFile.has(currentFile)) perFile.set(currentFile, [])
       perFile.get(currentFile).push({ lineNo, content: line.slice(1), removed: true })
@@ -807,9 +1502,9 @@ export function parseDiffLines(diffText) {
  * @param {string} diffText  saída de `git diff ... -- .github/workflows`
  * @returns {Map<string, {lineNo: number, content: string}[]>}
  */
-export function parseDiffAddedLines(diffText) {
+export function parseDiffAddedLines(diffText, isTarget = isWorkflowPath) {
   const perFile = new Map()
-  for (const [file, lines] of parseDiffLines(diffText)) {
+  for (const [file, lines] of parseDiffLines(diffText, isTarget)) {
     const added = lines.filter((l) => l.added).map(({ lineNo, content }) => ({ lineNo, content }))
     if (added.length > 0) perFile.set(file, added)
   }
@@ -856,6 +1551,16 @@ export function checkStagedLiterals(diffText) {
       if (v) violations.push(v)
     }
   }
+  // Invariante 18(a): o DEFAULT de um Dockerfile também NASCE num commit —
+  // deixá-lo só na varredura global tiraria do pre-commit (o ponto onde o
+  // literal é escrito) a régua que existe justamente para ele, e o defeito só
+  // apareceria no PR. O alvo é a lista DOCKERFILES (explícita, como o resto).
+  for (const [file, lines] of parseDiffAddedLines(diffText, isDockerfilePath)) {
+    for (const { lineNo, content } of lines) {
+      const v = checkDockerfileBunLine(file, lineNo, content)
+      if (v) violations.push(v)
+    }
+  }
   return violations
 }
 
@@ -878,8 +1583,8 @@ export function checkStagedCachePaths(diffText, rules) {
     for (let i = 0; i < lines.length; i++) {
       const { lineNo, content, added } = lines[i]
       if (!added) continue // só blocos INTRODUZIDOS por este diff
-      if (content.trim() === "" || content.trim().startsWith("#")) continue
-      if (!content.match(CACHE_USES_RE)) continue
+      if (codeLine(content).trim() === "") continue
+      if (!codeLine(content).match(CACHE_USES_RE)) continue
 
       // Janela de até CACHE_BLOCK_WINDOW linhas depois do uses (mesma do
       // scan global) — varre adicionadas E contexto do mesmo arquivo. Linhas
@@ -898,13 +1603,11 @@ export function checkStagedCachePaths(diffText, rules) {
 }
 
 /**
- * Checa call sites do setup-bun nas linhas de um diff — detecta call sites
- * SEM input bun-version (ou com literal) INTRODUZIDOS pelo próprio PR antes
- * do merge. Só call sites cuja linha `uses:` foi ADICIONADA pelo diff são
- * avaliados (violações pré-existentes do base não poluem o PR). Usa o parser
- * RICO (parseDiffLines): o `bun-version:` pode estar numa linha de CONTEXTO
- * — ex.: migração de oven-sh/setup-bun@v2 → ./.github/actions/setup-bun, que
- * adiciona só a linha `uses:` e mantém `with:`/`bun-version:` como contexto.
+ * Checa as invocações do setup do Bun nas linhas de um diff — pega uma linha
+ * de `run:` com literal (ou SEM o argumento) INTRODUZIDA pelo próprio PR antes
+ * do merge. Avalia as linhas que o diff MOSTRA (adicionadas E de contexto): a
+ * chamada do script é UMA linha, então qualquer uma delas é o call site real
+ * — não existe mais a janela do `bun-version:` do composite.
  *
  * @param {string} diffText  saída de git diff
  * @returns {string[]} lista de violações (vazia = ok)
@@ -912,25 +1615,10 @@ export function checkStagedCachePaths(diffText, rules) {
 export function checkStagedSetupBunCallSites(diffText) {
   const violations = []
   for (const [file, lines] of parseDiffLines(diffText)) {
-    for (let i = 0; i < lines.length; i++) {
-      const { lineNo, content, added } = lines[i]
-      if (!added) continue // só call sites INTRODUZIDOS por este diff
-      if (content.trim() === "" || content.trim().startsWith("#")) continue
-      if (!content.includes("uses: ./.github/actions/setup-bun")) continue
-
-      // Janela de até CALL_SITE_WINDOW linhas depois do uses (mesma do
-      // checkSetupBunCallSites global) — varre adicionadas E contexto do
-      // mesmo arquivo. O limite por lineNo (não por índice) é necessário
-      // porque o parser só inclui linhas que aparecem no diff (gaps entre
-      // hunks ficam de fora). Linhas REMOVIDAS são puladas — um bun-version
-      // removido não é um input que sobrevive no novo arquivo (um call site
-      // adicionado junto com a remoção do bun-version seria falso negativo).
-      const following = []
-      for (let j = i + 1; j < lines.length && lines[j].lineNo <= lineNo + CALL_SITE_WINDOW; j++) {
-        if (lines[j].removed) continue
-        following.push(lines[j].content)
-      }
-      const v = checkSetupBunCallSite(file, lineNo, following)
+    for (const { lineNo, content, removed } of lines) {
+      if (removed) continue // linha removida não existe no arquivo novo
+      if (codeLine(content).trim() === "") continue
+      const v = checkSetupBunRunLine(file, lineNo, content)
       if (v) violations.push(v)
     }
   }
@@ -938,51 +1626,27 @@ export function checkStagedSetupBunCallSites(diffText) {
 }
 
 /**
- * Checa a REMOÇÃO do input bun-version de call sites do setup-bun nas linhas
- * de um diff — a regressão OPOSTA à do checkStagedSetupBunCallSites: um call
- * site que SOBREVIVE no arquivo novo (linha `uses:` presente como contexto OU
- * adicionada) mas que PERDEU o `bun-version:` — o input foi REMOVIDO pelo PR
- * (linha `-` no diff). Sem este check, remover o input de um call site
- * pré-existente passaria no guard: o check de adição só avalia call sites
- * cuja linha `uses:` foi ADICIONADA.
+ * Checa a REMOÇÃO da chamada do setup do Bun nas linhas de um diff — a
+ * regressão OPOSTA à do checkStagedSetupBunCallSites: um PR que APAGA o setup
+ * de um job sem pôr outro no lugar.
  *
- * NÃO reporta quando:
- *   - o call site INTEIRO foi removido (a linha `uses:` também é `-` — o
- *     step deixou de existir, não há contrato a impor);
- *   - um `bun-version:` SOBREVIVE na janela (adicionado ou contexto) — ex.:
- *     migração literal→vars (a linha antiga é `-`, a nova é `+`) — o call
- *     site TROCOU o valor, não perdeu o input.
+ * NÃO reporta quando o mesmo arquivo TAMBÉM ganha uma chamada do script: aí é
+ * a movimentação/migração legítima (a antiga sai, a nova entra).
  *
  * @param {string} diffText  saída de git diff
  * @returns {string[]} lista de violações (vazia = ok)
  */
-export function checkStagedRemovedBunVersion(diffText) {
+export function checkStagedRemovedSetupBunCall(diffText) {
   const violations = []
   for (const [file, lines] of parseDiffLines(diffText)) {
-    for (let i = 0; i < lines.length; i++) {
-      const { lineNo, content, removed } = lines[i]
-      // âncora: call site que SOBREVIVE no novo arquivo (uses presente —
-      // contexto ou adicionado). `uses:` REMOVIDO = step inteiro removido.
-      if (removed) continue
-      if (content.trim() === "" || content.trim().startsWith("#")) continue
-      if (!content.includes("uses: ./.github/actions/setup-bun")) continue
-
-      // Janela seguinte (mesma do checkStagedSetupBunCallSites) — procura um
-      // `bun-version:` REMOVIDO e, na MESMA janela, um SOBREVIVENTE.
-      const following = []
-      for (let j = i + 1; j < lines.length && lines[j].lineNo <= lineNo + CALL_SITE_WINDOW; j++) {
-        following.push(lines[j])
-      }
-
-      const removedBun = following.find((l) => l.removed && /^\s*bun-version\s*:/.test(l.content))
-      if (!removedBun) continue
-      const survivingBun = following.some(
-        (l) => !l.removed && /^\s*bun-version\s*:/.test(l.content),
-      )
-      if (survivingBun) continue // trocou o valor (literal→vars), não perdeu o input
-
+    // Só CHAMADAS contam (menção em prosa/echo não é setup removido).
+    const removed = lines.filter((l) => l.removed && setupBunInvocationArgs(l.content) !== null)
+    if (removed.length === 0) continue
+    const added = lines.filter((l) => !l.removed && setupBunInvocationArgs(l.content) !== null)
+    if (added.length > 0) continue // o setup mudou de forma, não sumiu
+    for (const l of removed) {
       violations.push(
-        `${file}:${removedBun.lineNo}: REMOÇÃO do input bun-version do call site do setup-bun (uses: linha ${lineNo}) — o call site SOBREVIVEU sem o input; adicione de volta 'bun-version: ${BUN_VERSION_VAR}'`,
+        `${file}:${l.lineNo}: REMOÇÃO da chamada do setup do Bun (${SETUP_BUN_SCRIPT}) sem substituta neste arquivo — o job ficaria sem Bun na versão da fonte única ${BUN_VERSION_VAR}`,
       )
     }
   }
@@ -1031,8 +1695,8 @@ export function checkStagedRemovedCacheBlockFields(diffText) {
       // presente — contexto ou adicionado). `uses:` REMOVIDO = bloco inteiro
       // removido (step deletado) — sem contrato a impor.
       if (removed) continue
-      if (content.trim() === "" || content.trim().startsWith("#")) continue
-      if (!content.match(CACHE_USES_RE)) continue
+      if (codeLine(content).trim() === "") continue
+      if (!codeLine(content).match(CACHE_USES_RE)) continue
 
       // Janela seguinte (mesma do checkStagedCachePaths) — procura um
       // `path:`/`key:` REMOVIDO e, na MESMA janela, um SOBREVIVENTE.
@@ -1098,7 +1762,7 @@ export function checkStagedRemovedLiterals(diffText) {
       const anchor = lines[i]
       // âncora: literal REMOVIDO pelo diff (linha `-`) — o PR está migrando
       if (!anchor.removed) continue
-      if (anchor.content.trim() === "" || anchor.content.trim().startsWith("#")) continue
+      if (codeLine(anchor.content).trim() === "") continue
       if (checkLiteralBunLine(file, anchor.lineNo, anchor.content) === null) continue
 
       // região (mesma janela do cache block) em AMBAS as direções — um
@@ -1108,8 +1772,7 @@ export function checkStagedRemovedLiterals(diffText) {
           j !== i &&
           !l.removed &&
           Math.abs((l.lineNo ?? anchor.lineNo) - anchor.lineNo) <= CACHE_BLOCK_WINDOW &&
-          l.content.trim() !== "" &&
-          !l.content.trim().startsWith("#") &&
+          codeLine(l.content).trim() !== "" &&
           checkLiteralBunLine(file, l.lineNo ?? anchor.lineNo, l.content) !== null,
       )
       if (!surviving) continue
@@ -1155,12 +1818,61 @@ export function isValidGitRef(ref) {
  * @returns {string|null} texto do diff ou null (infra failure)
  */
 export function gitDiffWorkflows(base) {
+  return gitDiffPaths(base, FORGE_WORKFLOW_DIRS)
+}
+
+/**
+ * O diff do recorte `--staged`/`--base` para um conjunto de PATHSPECS.
+ *
+ * Existe separado do `gitDiffWorkflows` porque a varredura da fonte única
+ * passou a ter dois escopos com caminhos diferentes (os workflows das forjas e
+ * os scripts/composes) — e a MESMA semântica de `-U` (DIFF_CONTEXT), de base
+ * válida e de "git indisponível ⇒ null" tem de valer nos dois. Um `git diff`
+ * por escopo, um só lugar que monta o comando.
+ *
+ * @param {string|null} base
+ * @param {string[]} pathspecs
+ * @returns {string|null}
+ */
+export function gitDiffPaths(base, pathspecs) {
   if (base !== null && !isValidGitRef(base)) return null
+  // Pathspec de TODAS as forjas: no modo --staged/--base o guard precisa ver o
+  // que o PR introduz em qualquer pipeline — limitar ao GitHub foi o que deixou
+  // a forja dona do merge sem cobertura de fonte única.
   const args = base
-    ? ["diff", `-U${DIFF_CONTEXT}`, `${base}...HEAD`, "--", ".github/workflows"]
-    : ["diff", `-U${DIFF_CONTEXT}`, "--cached", "--", ".github/workflows"]
+    ? ["diff", `-U${DIFF_CONTEXT}`, `${base}...HEAD`, "--", ...pathspecs]
+    : ["diff", `-U${DIFF_CONTEXT}`, "--cached", "--", ...pathspecs]
   try {
     return execFileSync("git", args, { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 })
+  } catch {
+    return null
+  }
+}
+
+/** O diff do recorte para os scripts/composes (invariantes 15/16). */
+export function gitDiffSingleSource(base) {
+  return gitDiffPaths(base, SINGLE_SOURCE_PATHS)
+}
+
+/**
+ * O conteúdo de um arquivo NO ÍNDICE (`git show :<arquivo>`) — a fonte que a
+ * invariante 18 precisa no modo `--staged`.
+ *
+ * POR QUE O ÍNDICE E NÃO O DISCO: o julgamento de um build site precisa do
+ * ARQUIVO inteiro (o `args:` de um serviço e o `dockerfile:` dele são linhas
+ * diferentes), mas o `--staged` julga O QUE SERÁ COMMITADO. Ler o disco aqui
+ * faria uma edição não-staged esconder uma violação do índice (ou inventar
+ * uma) — e os números de linha do diff só batem com o índice.
+ *
+ * @param {string} file  caminho relativo à raiz do repo
+ * @returns {string|null} conteúdo ou null (infra failure — o chamador decide)
+ */
+export function gitShowIndexFile(file) {
+  try {
+    return execFileSync("git", ["show", `:${file}`], {
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+    })
   } catch {
     return null
   }
@@ -1190,10 +1902,40 @@ export function checkActrc(actrcPath) {
 }
 
 /**
+ * O valor EMBUTIDO numa referência à variável — `\${BUN_VERSION:-1.4.0}` [divergente].
+ *
+ * POR QUE ISTO É VIOLAÇÃO: numa referência, o default é exatamente o valor que
+ * o build usa onde a variável não existe. Quem escreve o default no arquivo que
+ * DEVERIA consumir a variável está criando um segundo ponto de verdade dentro
+ * dele: o bump da variável não o alcança, e nada acusa — o build continua
+ * funcionando, só com outro Bun. O default PERTENCE ao build site (compose,
+ * workflow), onde o guard o compara por VALOR com o declarado.
+ *
+ * Duas formas NÃO são violação: `\${BUN_VERSION:-}` (default vazio: não afirma
+ * valor nenhum) e `\${BUN_VERSION:?msg}` (falha ALTO quando a variável não
+ * existe — é o oposto de um default silencioso).
+ *
+ * @param {string} ref
+ * @returns {{kind: "default"|"operador próprio", value: string}|null}
+ */
+export function embeddedVersionDefault(ref) {
+  const m = ref.match(/^\$\{BUN_VERSION:([-+?])([^}]*)\}/)
+  if (!m) return null
+  if (m[1] === "?") return null
+  if (m[1] === "-" && m[2].trim() === "") return null
+  return { kind: m[1] === "-" ? "default" : "operador próprio", value: m[2] }
+}
+
+/**
  * Checa UMA linha de um Dockerfile contra versões LITERAIS do Bun — casa
  * `npm install -g bun@1.2`, `FROM oven/bun:1`, `FROM oven/bun:1.3.14` etc.
  * A versão nos Dockerfiles só pode vir do build-arg BUN_VERSION
  * (\${BUN_VERSION}) — um literal cria um segundo ponto de verdade.
+ *
+ * A invariante 18 estendeu a régua ao DEFAULT: `ARG BUN_VERSION=1.4.0` [divergente]
+ * e a referência com valor embutido (`FROM oven/bun:\${BUN_VERSION:-1.4.0}` [divergente]) são o
+ * valor que o build usa onde o arg não foi passado — a forma MAIS silenciosa
+ * de um literal, porque não aparece em nenhum build site.
  * Retorna a violação ou null.
  *
  * @param {string} file     nome do Dockerfile (ex.: "Dockerfile")
@@ -1202,7 +1944,29 @@ export function checkActrc(actrcPath) {
  * @returns {string|null}
  */
 export function checkDockerfileBunLine(file, lineNo, content) {
-  if (content.trim().startsWith("#")) return null // ignora comentários
+  // A régua ÚNICA para o comentário de LINHA. Em Dockerfile o `#` só é
+  // comentário no INÍCIO da linha, então a prosa de fim de linha NÃO sai daqui
+  // (diferente do YAML/shell): `RUN echo bun-1.2 # nota` é comando inteiro, e
+  // tratá-lo como comentário cegaria o guard.
+  if (isCommentLine(content)) return null // ignora comentários
+  // ── Invariante 18: o DEFAULT do ARG ───────────────────────────────────
+  // `ARG BUN_VERSION=1.4.0` [divergente] é a versão de HOJE escrita no Dockerfile: todo
+  // build que NÃO passa o arg a herda em SILÊNCIO, e nenhum bump da variável
+  // a alcança. É o pior lugar para um literal porque ele não aparece em
+  // nenhum build site — foi assim que uma versão se espalhou por quatro
+  // arquivos (staging, hostinger, package.json, o pipeline arquivado) sem que
+  // ninguém a tivesse escolhido. Sem default, o build sem o arg FALHA alto
+  // (referência `oven/bun:-alpine`) em vez de rodar outro Bun.
+  const argDefault = content.match(/^\s*ARG\s+BUN_VERSION\s*=\s*(\S+)/)
+  if (argDefault) {
+    const value = argDefault[1]
+    const deriva =
+      value === "" || value.startsWith("${BUN_VERSION") || value.startsWith("$BUN_VERSION")
+    const embutido = embeddedVersionDefault(value)
+    if (!deriva || embutido) {
+      return `${file}:${lineNo}: 'ARG BUN_VERSION=${value}' é um DEFAULT no Dockerfile — é o valor que TODO build que não passa o arg herda, em silêncio, e que nenhum bump da fonte única alcança. Declare o ARG SEM valor (a versão entra pelo --build-arg: ${BUN_VERSION_VAR} no workflow, \`\${BUN_VERSION:-<declarado>}\` no compose, que o guard compara por valor).`
+    }
+  }
   // Casa bun@<tag>, FROM oven/bun:<tag> E o padrão curl de download
   // (bun-v<tag> — ex.: Dockerfile.ubuntu-bun baixa de
   // .../releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip) — a tag
@@ -1210,24 +1974,33 @@ export function checkDockerfileBunLine(file, lineNo, content) {
   // correto. O padrão curl só casa versão semântica/dígitos (bun-v1.2,
   // bun-v1.3.14) — nunca \${BUN_VERSION} (não é dígito) nem prosa como
   // 'bun-vendor'.
-  const m = content.match(/(?:npm install -g bun@|FROM oven\/bun:)([^\s"'\\]+)/)
+  // A referência à variável vem INTEIRA (mesmo com espaços na mensagem do
+  // `:?`): sem esta primeira alternativa, `FROM oven/bun:${BUN_VERSION:?msg
+  // com espaços}` era truncada no espaço e o operador fail-closed virava
+  // "literal" no veredito (medido).
+  const m = content.match(/(?:npm install -g bun@|FROM oven\/bun:)(\$\{[^}]*\}|[^\s"'\\]+)/)
   if (!m) {
     const curlM = content.match(/bun-v(\d+(?:\.\d+)*)/)
     if (!curlM) return null
     return `${file}:${lineNo}: versão do Bun '${curlM[1]}' em '${curlM[0].trim()}' é um LITERAL no Dockerfile — use a fonte única via ARG (ex.: 'bun-v\${BUN_VERSION}' na URL de download; o workflow passa --build-arg BUN_VERSION=${BUN_VERSION_VAR})`
   }
   const tag = m[1]
-  // Permite a fonte única em TODAS as formas válidas do ARG: \${BUN_VERSION},
-  // \${BUN_VERSION}-slim (sufixo — o prefixo exato \${BUN_VERSION} casa),
-  // \${BUN_VERSION:-x} (DEFAULT — o prefixo \${BUN_VERSION: casa) e $BUN_VERSION
-  // (sem chaves). Prefixos EXPLÍCITOS (não includes): um typo como
-  // \${BUN_VERSIONX} é flagrado como literal (includes aceitaria silencioso).
-  if (
-    tag.startsWith("${BUN_VERSION}") ||
-    tag.startsWith("${BUN_VERSION:") ||
-    tag.startsWith("$BUN_VERSION")
-  )
-    return null
+  // A fonte única nas formas que NÃO afirmam valor: \${BUN_VERSION},
+  // \${BUN_VERSION}-slim (sufixo — o prefixo exato casa) e $BUN_VERSION (sem
+  // chaves). Prefixos EXPLÍCITOS (não includes): um typo como \${BUN_VERSIONX}
+  // é flagrado como literal (includes aceitaria silencioso).
+  if (tag.startsWith("${BUN_VERSION}") || tag.startsWith("$BUN_VERSION")) return null
+  // A referência com operador é julgada pelo que ela AFIRMA: um default com
+  // valor é a MESMA coisa que o default do ARG (onde a variável não existe, é
+  // ele que roda, e nenhum bump o alcança — antes desta rodada a régua o
+  // ACEITAVA como "forma válida do ARG": era o buraco pelo qual o valor de
+  // hoje entrava no arquivo que deveria só consumir a variável); um default
+  // VAZIO ou o `:?` (que FALHA sem a variável) não afirmam valor nenhum.
+  if (/^\$\{BUN_VERSION:[-+?]/.test(tag)) {
+    const embutido = embeddedVersionDefault(tag)
+    if (!embutido) return null
+    return `${file}:${lineNo}: '${m[0].trim()}' embute ${embutido.kind === "default" ? `o DEFAULT '${embutido.value}'` : `um valor próprio ('${embutido.value}')`} — onde a variável não existe é ISSO que o build usa, e nenhum bump da fonte única o alcança. A versão entra SÓ pelo --build-arg: o default pertence ao build site (compose/workflow), que o guard compara por valor com o declarado.`
+  }
   return `${file}:${lineNo}: versão do Bun '${tag}' em '${m[0].trim()}' é um LITERAL no Dockerfile — use a fonte única via ARG (ex.: 'npm install -g bun@\${BUN_VERSION}' ou 'FROM oven/bun:\${BUN_VERSION}'; o workflow passa --build-arg BUN_VERSION=${BUN_VERSION_VAR})`
 }
 
@@ -1283,15 +2056,17 @@ export function checkNoForeignLockfiles(cwd) {
  * Valida as invariantes a partir dos caminhos reais.
  * @returns {string[]} lista de violações (vazia = ok)
  */
-export function validateMirror(workflowPath, actionPath, dockerfilePath) {
+export function validateMirror(workflowPath, implPath, dockerfilePath) {
   const violations = []
 
   if (!existsSync(workflowPath)) {
     violations.push(`workflow do mirror ausente: ${workflowPath} (crie sync-bun-mirror.yml)`)
     return violations
   }
-  if (!existsSync(actionPath)) {
-    violations.push(`action ausente: ${actionPath}`)
+  if (!existsSync(implPath)) {
+    violations.push(
+      `implementação do setup do Bun ausente: ${implPath} (esperado ${SETUP_BUN_SCRIPT})`,
+    )
     return violations
   }
   if (dockerfilePath && !existsSync(dockerfilePath)) {
@@ -1301,7 +2076,7 @@ export function validateMirror(workflowPath, actionPath, dockerfilePath) {
   }
 
   const wf = readFileSync(workflowPath, "utf8")
-  const act = readFileSync(actionPath, "utf8")
+  const impl = readFileSync(implPath, "utf8")
 
   // ── Invariante 2: mirror referencia a repository variable (não literal) ─
   const mirrorVersion = extractEnvVersion(wf)
@@ -1313,27 +2088,1459 @@ export function validateMirror(workflowPath, actionPath, dockerfilePath) {
     )
   }
 
-  // ── Invariantes 3-4: action sem default literal + referência à variável ─
-  const actionDefault = extractActionDefault(act)
-  if (actionDefault) {
+  // ── Invariantes 3-6: a IMPLEMENTAÇÃO do setup (o script que substituiu o ─
+  // composite action). Os mesmos contratos que o guard impunha ao action.yml
+  // recaem agora sobre o script — outro artefato, a mesma invariante.
+  // Checagem que PRECISA poder falhar: um default literal no script é o mesmo
+  // segundo ponto de verdade que o guard existe para impedir (a antiga versão
+  // desta checagem procurava YAML de action.yml e nunca casava — ver o doc de
+  // findBunLiteralDefaultInScript).
+  const implDefault = findBunLiteralDefaultInScript(impl)
+  if (implDefault) {
     violations.push(
-      `${actionPath}: default='${actionDefault}' é um LITERAL — metadata de action NÃO avalia \${{ }}, então nunca casaria com a variável. Remova o default; a versão resolve em runtime do input bun-version (que os callers resolvem de ${BUN_VERSION_VAR} no workflow).`,
+      `${implPath}: default='${implDefault}' é um LITERAL de versão — a versão entra SÓ pelo argumento (fonte única ${BUN_VERSION_VAR} no workflow). Use \`VERSION="${"${1:-}"}"\` e deixe o workflow passar a variável.`,
     )
   }
 
-  if (!hasBunVersionInputRef(act)) {
+  if (!hasScriptVersionArg(impl)) {
     violations.push(
-      `${actionPath}: não referencia 'inputs.bun-version' no step 'Resolve Bun version' — o composite resolve a versão DO INPUT (callers passam bun-version: ${BUN_VERSION_VAR} no workflow; vars não resolve dentro de composite action no act 0.2.89)`,
+      `${implPath}: não lê a versão do primeiro ARGUMENTO posicional — é o único caminho pelo qual a versão entra (a fonte única é resolvida no workflow e chega por aqui).`,
     )
   }
 
-  if (!hasGhcrMirrorRef(act)) {
+  if (!hasGhcrMirrorRef(impl)) {
     violations.push(
-      `${actionPath}: tier 3 (cold cache) não referencia o mirror GHCR (ghcr.io/<owner>/bun:<versão>)`,
+      `${implPath}: tier 3 (cold cache) não referencia o mirror OCI (<registry>/<owner>/bun:<versão>)`,
+    )
+  }
+
+  if (!hasPreinstalledMarker(impl)) {
+    violations.push(
+      `${implPath}: sem o marcador tier-1 'Usando Bun pré-instalado:' — é o sinal que o guard periódico check:tier1-fastpath casa no log do act; sem ele o guard fica cego para a regressão do fast path.`,
+    )
+  }
+
+  const literal = findBunLiteralInScript(impl)
+  if (literal) {
+    violations.push(
+      `${implPath}: versão literal '${literal}' — a versão só pode vir do ARGUMENTO (fonte única ${BUN_VERSION_VAR}).`,
     )
   }
 
   return violations
+}
+
+// ── Invariantes 15/16: espelhos literais FORA dos workflows ─────────────────
+
+/** Onde os espelhos literais são caçados fora dos workflows (scripts e hooks). */
+export const SCRIPT_SCAN_DIRS = ["scripts", ".husky"]
+
+/**
+ * Um arquivo de SCRIPT do repositório — o alvo da invariante 15. `.husky/_/**`
+ * fica de fora: é o runtime do próprio husky, não código nosso.
+ */
+export const SCRIPT_FILE_RE = /^(?:scripts\/[^/]+|\.husky\/[^/]+)$/
+
+/** Um compose do repositório — o alvo da invariante 16 (raiz e `deploy/`). */
+export const COMPOSE_FILE_RE = /^(?:docker-compose[^/]*\.ya?ml|deploy\/docker-compose[^/]*\.ya?ml)$/
+
+/**
+ * Um Dockerfile JULGADO pelo guard (a lista explícita DOCKERFILES) — é o alvo
+ * do recorte `--staged` da invariante 18(a), onde o default NASCE.
+ */
+export const isDockerfilePath = (rel) => DOCKERFILES.includes(rel)
+
+/**
+ * A definição de "alvo" desta varredura — UMA só, usada pela enumeração global
+ * e pelo recorte `--staged`: duas listas divergiriam, e o modo do commit veria
+ * um conjunto diferente do modo do PR.
+ */
+export function isSingleSourcePath(rel) {
+  return SCRIPT_FILE_RE.test(rel) || COMPOSE_FILE_RE.test(rel)
+}
+
+/**
+ * O pathspec (git) da varredura nova — o irmão de `FORGE_WORKFLOW_DIRS`.
+ * Globs de propósito: um compose novo na raiz cai na varredura sem editar nada.
+ */
+export const SINGLE_SOURCE_PATHS = [
+  ...SCRIPT_SCAN_DIRS,
+  "docker-compose*.yml",
+  "docker-compose*.yaml",
+  "deploy/docker-compose*.yml",
+  "deploy/docker-compose*.yaml",
+]
+
+/**
+ * Um SEMVER COMPLETO — a forma que se confunde com a versão da vez.
+ *
+ * O lookahead NEGATIVO é o coração da regra: `9.9.9-sentinel` NÃO casa (o `-`
+ * logo depois), então uma SENTINELA nunca é acusada. Sem ele o escape hatch
+ * declarado para fixtures seria impossível — o guard estaria exigindo que uma
+ * fixture cravasse justamente o número que se parece com a versão real, que é
+ * o defeito. Com ele, a distinção é estrutural: `X.Y.Z` é uma AFIRMAÇÃO de
+ * versão; `X.Y.Z-<sufixo>` é um valor falso que se declara falso.
+ */
+export const COMPLETE_SEMVER_RE = /(?<![\d.])\d+\.\d+\.\d+(?![\dA-Za-z_.-])/
+
+/**
+ * A versão PREFIXADA pelo nome do Bun — casa `bun-1.3.14` (cache key),
+ * `bun@1.3.14` (`npm install -g bun@`), `bun-v1.3.14` (release do GitHub),
+ * `oven/bun:1.3.14` (imagem oficial) e `<…>/ubuntu-bun:1.3.14` (a imagem do
+ * runner — a TAG literal que este guard existe para impedir).
+ */
+export const BUN_PREFIXED_VERSION_RE = /\bbun[-@:/]v?\d+\.\d+\.\d+/
+
+/**
+ * "Esta linha fala do Bun?"
+ *
+ * NÃO é `/\bbun/i`: o `\b` não existe entre `_` e `B`, então `ACTRC_BUN` — um
+ * dos nomes reais desta classe — ficaria de fora (medido: foi o que a primeira
+ * versão desta função deixou passar). E não é `/bun/i` solto: `bundle` (que
+ * aparece em `analyze-bundle.mjs`, `check-bundle-size.sh` e num monte de prosa)
+ * viraria falso positivo a cada dependência de front com versão própria.
+ * O negativo `(?!dle)` é o que separa "fala do Bun" de "fala de bundle".
+ */
+export const BUN_MENTION_RE = /(?:^|[^A-Za-z0-9])bun(?!dle)/i
+
+/** O default de `BUN_VERSION` num compose: `${BUN_VERSION:-<valor>}`. */
+export const COMPOSE_VERSION_DEFAULT_RE = /\$\{BUN_VERSION:-([^}]*)\}/
+
+/** A forma de VARIÁVEL do compose (com ou sem default/erro), sem literal. */
+export const COMPOSE_VERSION_VAR_RE = /\$\{BUN_VERSION(?::[-?+][^}]*)?\}/
+
+/** O valor LITERAL puro de `BUN_VERSION:` num compose (sem `${...}`). */
+export const COMPOSE_VERSION_LITERAL_RE = /BUN_VERSION\s*:\s*["']?([^"'\s#]+)/
+
+/**
+ * Comentário de script: `#`, `//`, bloco `/*` e a continuação `*` do JSDoc.
+ *
+ * A SINTAXE vem declarada na régua única (`isCommentLine(…, { slash: true })`) —
+ * esta era a quinta cópia da mesma função, e a única diferença entre as cópias
+ * era ACIDENTAL (uma sem `//`, outra sem `/#`).
+ */
+const isCommentOrDocLine = (line) => isCommentLine(line, { slash: true })
+
+/**
+ * Os arquivos da varredura nova, ordenados.
+ *
+ * A enumeração usa os MESMOS predicados que o modo `--staged`
+ * (`isSingleSourcePath`), então o modo do commit e o modo do PR não podem
+ * divergir sobre o que é um alvo.
+ *
+ * @param {string} [root]
+ * @returns {string[]}
+ */
+export function singleSourceFiles(root = process.cwd()) {
+  const out = []
+  for (const dir of ["", ...SCRIPT_SCAN_DIRS]) {
+    const abs = dir === "" ? root : join(root, dir)
+    if (!existsSync(abs)) continue
+    for (const entry of readdirSync(abs, { withFileTypes: true })) {
+      if (!entry.isFile()) continue
+      const rel = dir === "" ? entry.name : `${dir}/${entry.name}`
+      if (isSingleSourcePath(rel)) out.push(rel)
+    }
+  }
+  return out.sort()
+}
+
+/** O valor que os espelhos DECLARAM hoje (`.actrc` / o env da forja) — ou null. */
+export function declaredBunVersion(root = process.cwd()) {
+  const declared = readMirrorValues(root, BUN_MIRRORS)
+  return declared.length > 0 ? declared[0].value : null
+}
+
+/**
+ * A linha de um SCRIPT carrega um literal do Bun? (invariante 15)
+ *
+ * @param {string} line
+ * @returns {{kind: string, hit: string}|null}
+ */
+export function findBunLiteralInLine(line) {
+  if (isCommentOrDocLine(line)) return null
+  const prefixed = line.match(BUN_PREFIXED_VERSION_RE)
+  if (prefixed) return { kind: "prefixada pelo nome do Bun", hit: prefixed[0] }
+  const semver = line.match(COMPLETE_SEMVER_RE)
+  if (semver && BUN_MENTION_RE.test(line)) {
+    return { kind: "emparelhada com o nome do Bun", hit: semver[0] }
+  }
+  return null
+}
+
+/**
+ * A linha de um COMPOSE carrega um valor que não deriva? (invariante 16)
+ *
+ * @param {string} line
+ * @param {string|null} declared  valor declarado nos espelhos
+ * @returns {{kind: string, value: string}|null}
+ */
+export function findComposeVersionLiteral(line, declared) {
+  if (isCommentOrDocLine(line)) return null
+  if (!/BUN_VERSION/.test(line)) return null
+  const def = line.match(COMPOSE_VERSION_DEFAULT_RE)
+  if (def) {
+    const value = def[1].trim()
+    if (declared !== null && value === declared) return null
+    return { kind: "default", value }
+  }
+  if (COMPOSE_VERSION_VAR_RE.test(line)) return null
+  const lit = line.match(COMPOSE_VERSION_LITERAL_RE)
+  return lit ? { kind: "literal", value: lit[1] } : null
+}
+
+/**
+ * Invariante 15 — nenhum SCRIPT com espelho literal da versão/tag.
+ *
+ * @param {string} [root]
+ * @returns {string[]} violações
+ */
+export function checkScriptLiterals(root = process.cwd()) {
+  const violations = []
+  for (const rel of singleSourceFiles(root)) {
+    if (!SCRIPT_FILE_RE.test(rel)) continue
+    const content = readFileSync(join(root, rel), "utf8")
+    content.split(/\r?\n/).forEach((line, i) => {
+      const hit = findBunLiteralInLine(line)
+      if (!hit) return
+      violations.push(
+        `${rel}:${i + 1}: versão LITERAL do Bun ('${hit.hit}', ${hit.kind}) — a versão vive em ` +
+          `${BUN_VERSION_VAR} e os scripts a resolvem dos espelhos declarados (${mirrorListText(BUN_MIRRORS)}). ` +
+          `Um literal aqui ENVELHECE em silêncio: o script continua funcionando depois do bump, só ` +
+          `rodando/medindo a versão antiga. Derive com o módulo scripts/bun-version.mjs; numa FIXTURE, ` +
+          `use uma sentinela (ex.: 9.9.9-sentinel — não é uma afirmação de versão).`,
+      )
+    })
+  }
+  return violations
+}
+
+/**
+ * Invariante 16 — nenhum COMPOSE com valor de BUN_VERSION que não derive.
+ *
+ * @param {string} [root]
+ * @param {string|null} [declared]  default: o declarado nos espelhos
+ * @returns {string[]} violações
+ */
+export function checkComposeVersionLiterals(
+  root = process.cwd(),
+  declared = declaredBunVersion(root),
+) {
+  const violations = []
+  const alvo = declared ?? "<o valor declarado nos espelhos>"
+  for (const rel of singleSourceFiles(root)) {
+    if (!COMPOSE_FILE_RE.test(rel)) continue
+    const content = readFileSync(join(root, rel), "utf8")
+    content.split(/\r?\n/).forEach((line, i) => {
+      const hit = findComposeVersionLiteral(line, declared)
+      if (!hit) return
+      violations.push(
+        hit.kind === "literal"
+          ? `${rel}:${i + 1}: BUN_VERSION com valor LITERAL '${hit.value}' — não é espelho, é um ` +
+              `SEGUNDO valor: nenhum bump da variável o alcança e o build usa o Bun que ficou escrito ` +
+              `ali. Use \`\${BUN_VERSION:-${alvo}}\` (o default é o que vale onde a variável não existe).`
+          : `${rel}:${i + 1}: o default '${hit.value}' de BUN_VERSION diverge do declarado ` +
+              `(${declared ?? "nenhum espelho declara a versão"}) em ${mirrorListText(BUN_MIRRORS)} — ` +
+              `onde a variável não existe o default é o que RODA, então o build sai com outra versão ` +
+              `sem nada acusar. Alinhe com o espelho (ou remova o default).`,
+      )
+    })
+  }
+  return violations
+}
+
+// ── Invariante 19: os USOS da versão em pipelines de TERCEIRO ─────────────
+//
+// O QUE MUDA NO VEREDITO: as invariantes 15/16 julgam os scripts e os
+// composes do repositório e a 18 a cadeia de build dele. Fora dessa régua
+// ficava um arquivo versionado que NENHUMA varredura enxergava: o pipeline de
+// um CI de terceiro (`.woodpecker.yml`), onde a versão do Bun aparece como TAG
+// DE IMAGEM (`image: oven/bun:<v>`, uma vez por passo) e como BUILD ARG
+// (`BUN_VERSION=<v>`). Ele não é um espelho DECLARADO da variável (não há UMA
+// linha para o bump reescrever nem para o guard semanal comparar): é um
+// CONSUMIDOR de versão espalhado em treze usos — e é por isso que ele acabou
+// deixado de fora com uma isenção escrita no próprio cabeçalho, onde os treze
+// usos envelheceram sem que nada ficasse vermelho.
+//
+// A régua, na mesma semântica da 16 (é o que a torna comparável):
+//   - valor LITERAL tem de ser o DECLARADO — outro número é violação;
+//   - `${BUN_VERSION}` é DERIVAÇÃO: nada a comparar, passa;
+//   - `${BUN_VERSION:-<x>}` passa quando o fallback é o declarado.
+//
+// POR QUE O LITERAL IGUAL AO DECLARADO PASSA AQUI (e não na 16): num compose o
+// literal é defeito FUNCIONAL — a variável do operador existe e passa a ser
+// ignorada. Num `image:` de pipeline de terceiro essa variável não existe: o
+// valor tem de estar ESCRITO, e o que não pode é ser OUTRO número. O que faz
+// dele uma derivação é o par ESCRITOR (seção 2e do bump) + comparação por
+// VALOR — como nos espelhos declarados da variável.
+
+/** Um pipeline de CI de TERCEIRO versionado — o alvo da invariante 19. */
+export const THIRD_PARTY_PIPELINE_RE = /^(?:\.woodpecker[^/]*\.ya?ml|\.woodpecker\/[^/]+\.ya?ml)$/
+
+/**
+ * O pathspec (git) da varredura da invariante 19 — o irmão de
+ * `SINGLE_SOURCE_PATHS`. Glob de propósito: um pipeline de terceiro novo (ou
+ * uma versão dele em pasta) cai no recorte do commit sem editar o guard.
+ */
+export const THIRD_PARTY_PIPELINE_PATHS = [
+  ".woodpecker*.yml",
+  ".woodpecker*.yaml",
+  ".woodpecker/*.yml",
+  ".woodpecker/*.yaml",
+]
+
+/**
+ * Os pipelines de terceiro presentes no repositório (raiz e `.woodpecker/`).
+ *
+ * A enumeração é por DIRETÓRIO + regex (a mesma forma de `singleSourceFiles`):
+ * uma lista de caminhos à mão divergiria do pathspec do `--staged`, e o modo do
+ * commit veria outro conjunto que o global.
+ *
+ * Um SYMLINK entra na lista (`isSymbolicLink`, não só `isFile`): um pipeline
+ * apontado para fora do repositório é um arquivo que EXISTE, e se o alvo
+ * sumir ele tem de sair nomeado na leitura — não desaparecer da enumeração
+ * (que é como uma varredura fica cega sem ficar vermelha).
+ *
+ * @param {string} [root]
+ * @returns {string[]} caminhos relativos, ordenados
+ */
+export function thirdPartyPipelineFiles(root = process.cwd()) {
+  const out = []
+  for (const dir of ["", ".woodpecker"]) {
+    const abs = dir === "" ? root : join(root, dir)
+    if (!existsSync(abs)) continue
+    for (const entry of readdirSync(abs, { withFileTypes: true })) {
+      if (!entry.isFile() && !entry.isSymbolicLink()) continue
+      const rel = dir === "" ? entry.name : `${dir}/${entry.name}`
+      if (THIRD_PARTY_PIPELINE_RE.test(rel)) out.push(rel)
+    }
+  }
+  return out.sort()
+}
+
+/** `${BUN_VERSION}` (derivação) e `${BUN_VERSION:-<x>}` (fallback) — as duas
+ *  únicas formas em que um uso da versão NÃO carrega um número próprio. */
+const PIPELINE_VERSION_VAR_RE = /^\$\{BUN_VERSION(?::-(.*))?\}$/
+
+/** `image: oven/bun:<valor>` — o uso mais comum (um por passo do pipeline). */
+const PIPELINE_BUN_IMAGE_RE = /\bimage:\s*["']?oven\/bun:([^\s"']+)/
+
+/** `BUN_VERSION=<valor>` — o build arg que o passo passa ao `docker build`. */
+const PIPELINE_BUN_ARG_RE = /(?:^|[\s"'|;&-])BUN_VERSION=([^\s"']+)/
+
+/**
+ * O uso da versão do Bun numa linha de pipeline de terceiro — o extrator da
+ * invariante 19, exportado porque é o que o recorte `--staged` e os testes
+ * julgam (a régua tem de ser UMA, não uma cópia no modo do commit).
+ *
+ * Devolve `null` para tudo o que não é uso: comentário (o cabeçalho destes
+ * arquivos cita a versão em prosa — lá a régua é a invariante 17), linha sem
+ * `oven/bun:` nem `BUN_VERSION=`, e o token solto do NOME (um `ARG BUN_VERSION`
+ * sem valor não afirma versão nenhuma).
+ *
+ * @param {string} line
+ * @returns {{field: "imagem"|"build-arg", kind: "literal"|"default"|"derived", value: string|null}|null}
+ */
+/**
+ * A linha do pipeline é PROSA (comentário)? — tem NOME PRÓPRIO de propósito.
+ *
+ * Um cabeçalho de `.woodpecker.yml` cita a versão ao explicar a alternativa
+ * arquivada, e é a invariante 17 (não esta) que julga prosa: aqui a exclusão
+ * precisa ser uma decisão NOMEADA, auditável linha a linha e que a prova por
+ * mutação consiga cegar SOZINHA (sem tocar a exclusão dos irmãos 15/16).
+ */
+const pipelineLineIsProse = (line) => isCommentOrDocLine(line)
+
+export function findPipelineVersionUse(line) {
+  if (pipelineLineIsProse(line)) return null
+  const img = line.match(PIPELINE_BUN_IMAGE_RE)
+  const arg = img ? null : line.match(PIPELINE_BUN_ARG_RE)
+  const raw = (img ? img[1] : arg ? arg[1] : "").trim().replace(/^["']|["']$/g, "")
+  if (raw === "") return null
+  const field = img ? "imagem" : "build-arg"
+  const varForm = raw.match(PIPELINE_VERSION_VAR_RE)
+  if (varForm) {
+    return varForm[1] === undefined
+      ? { field, kind: "derived", value: null }
+      : { field, kind: "default", value: varForm[1].trim() }
+  }
+  return { field, kind: "literal", value: raw }
+}
+
+/**
+ * As violações de UMA linha — o julgamento por VALOR que os dois modos (global
+ * e `--staged`) compartilham, para o commit e o PR não divergirem de régua.
+ *
+ * @param {string} rel
+ * @param {number} lineNo
+ * @param {string} line
+ * @param {string|null} declared
+ * @returns {string[]} violações
+ */
+function judgePipelineVersionLine(rel, lineNo, line, declared) {
+  const hit = findPipelineVersionUse(line)
+  if (!hit) return []
+  if (hit.kind === "derived") return []
+  if (declared !== null && hit.value === declared) return []
+
+  const onde = `${rel}:${lineNo}`
+  const alvo = declared ?? "<o valor declarado nos espelhos>"
+  if (hit.kind === "default") {
+    return [
+      `${onde}: o fallback '${hit.value}' de \`\${BUN_VERSION:-${hit.value}}\` diverge do declarado ` +
+        `(${declared ?? `nenhum espelho declara a versão`}) em ${mirrorListText(BUN_MIRRORS)} — onde a ` +
+        `variável não existe é o fallback que decide, então o pipeline roda outro Bun sem nada acusar. ` +
+        `Alinhe com o espelho (ou remova o fallback: \`\${BUN_VERSION}\` bastaria).`,
+    ]
+  }
+
+  const uso =
+    hit.field === "imagem"
+      ? `a imagem \`oven/bun:${hit.value}\``
+      : `o build arg \`BUN_VERSION=${hit.value}\``
+  return [
+    declared === null
+      ? `${onde}: ${uso} afirma uma versão e nenhum espelho declara a vigente em ` +
+        `${mirrorListText(BUN_MIRRORS)} — sem versão declarada não há o que comparar, e o pipeline ` +
+        `segue com a que ficou escrita ali.`
+      : `${onde}: ${uso} diz '${hit.value}' e o repositório declara '${alvo}' em ` +
+        `${mirrorListText(BUN_MIRRORS)} — um pipeline de terceiro é CONSUMIDOR da versão, não um segundo ` +
+        `ponto de verdade: alinhe com o declarado (a seção 2e do bump-bun.sh é o escritor que o mantém ` +
+        `alinhado, como os composes).`,
+  ]
+}
+
+/**
+ * Invariante 19 — os usos da versão nos pipelines de terceiro do repositório.
+ *
+ * Um arquivo que existe e não pode ser LIDO vira violação (fail-closed):
+ * "não consegui ler" nunca é o mesmo que "está tudo certo".
+ *
+ * @param {string} [root]
+ * @param {string|null} [declared]  default: o declarado nos espelhos
+ * @returns {string[]} violações
+ */
+export function checkThirdPartyPipelineVersions(
+  root = process.cwd(),
+  declared = declaredBunVersion(root),
+) {
+  const violations = []
+  for (const rel of thirdPartyPipelineFiles(root)) {
+    let content
+    try {
+      content = readFileSync(join(root, rel), "utf8")
+    } catch (err) {
+      violations.push(
+        `${rel}: existe e não pôde ser lido (${err?.code ?? err?.message ?? "erro desconhecido"}) — ` +
+          `"não consegui ler" NÃO é "nada a julgar": os usos da versão nos pipelines de terceiro ` +
+          `ficariam inteiros de fora em silêncio.`,
+      )
+      continue
+    }
+    content
+      .split(/\r?\n/)
+      .forEach((line, i) =>
+        violations.push(...judgePipelineVersionLine(rel, i + 1, line, declared)),
+      )
+  }
+  return violations
+}
+
+/**
+ * O recorte `--staged` da invariante 19: só as linhas que o diff INTRODUZ (é na
+ * edição que o número nasce). Julga o CONTEÚDO da própria linha adicionada — a
+ * régua é a mesma do modo global.
+ *
+ * @param {string} diffText
+ * @param {string|null} [declared]
+ * @returns {string[]} violações
+ */
+export function checkStagedThirdPartyPipelineVersions(diffText, declared = declaredBunVersion()) {
+  const violations = []
+  for (const [file, lines] of parseDiffAddedLines(diffText, (rel) =>
+    THIRD_PARTY_PIPELINE_RE.test(rel),
+  )) {
+    for (const { lineNo, content } of lines) {
+      violations.push(...judgePipelineVersionLine(file, lineNo, content, declared))
+    }
+  }
+  return violations
+}
+
+// ── Invariante 18: a CADEIA DE BUILD (Dockerfile ↔ build site) ──────────
+//
+// O QUE MUDA NO VEREDITO: a invariante 13 julga o LITERAL escrito no
+// Dockerfile e as 15/16 o que está escrito em scripts/composes. Faltava a
+// metade que LIGA os dois: quem CONSOME o Dockerfile. Um build site que não
+// passa o arg não tem valor escrito NENHUM — e por isso nenhuma varredura o
+// via enquanto ele herdava, em silêncio, o default do arquivo.
+//
+// Foi este buraco que produziu a pergunta "o Bun que a staging usava era
+// intencional?": o serviço `web-staging` buildava o `Dockerfile` sem
+// `BUN_VERSION` no `args:`, e recebia o default do arquivo — um valor que não
+// estava escrito em lugar nenhum da cadeia de deploy e que a staging nunca
+// escolheu. A auditoria de 15/16 "alinhou" os dois workers da mesma stack e
+// deixou o app no default: a mesma stack passou a buildar com DOIS Buns, e
+// nada ficou vermelho (a assimetria era invisível).
+//
+// A régua, nas duas pontas:
+//   a. nenhum Dockerfile declara VALOR para a versão — nem o default do ARG
+//      (`ARG BUN_VERSION=<v>`) nem um default embutido na referência
+//      (`\${BUN_VERSION:-<v>}`). A versão entra SÓ pelo --build-arg;
+//   b. todo build site de um Dockerfile que declara `ARG BUN_VERSION` tem de
+//      PASSAR o arg, derivado da variável (o valor do fallback é comparado
+//      por VALOR pela invariante 16, como todo compose).
+//
+// Sem (a) o default volta a existir; sem (b) o build site o herda sem que
+// ninguém veja. As duas juntas são o que faz "a versão vem de um lugar só" ser
+// uma AFIRMAÇÃO VERIFICÁVEL em vez de uma convenção.
+
+/**
+ * Dockerfiles do repositório que DECLARAM `ARG BUN_VERSION` — os que exigem o
+ * arg em todo build site.
+ *
+ * A lista sai do CONTEÚDO (não de uma lista paralela de caminhos): um
+ * Dockerfile que passar a declarar o ARG entra na régua sem editar o guard, e
+ * um que o remova sai — a régua segue o arquivo, não uma cópia dele.
+ *
+ * @param {string} [root]
+ * @returns {string[]} caminhos relativos, ordenados
+ */
+export function bunDockerfilesWithArg(root = process.cwd()) {
+  const out = []
+  for (const rel of DOCKERFILES) {
+    const p = join(root, rel)
+    if (!existsSync(p)) continue
+    if (/^\s*ARG\s+BUN_VERSION\b/m.test(readFileSync(p, "utf8"))) out.push(rel)
+  }
+  return out.sort()
+}
+
+/** Tira as aspas de um valor escalar de YAML (`"."` → `.`). */
+const unquoteScalar = (raw) => raw.trim().replace(/^["']|["']$/g, "")
+
+/** O dono do bloco: a chave de serviço mais próxima ACIMA, menos indentada. */
+function serviceNameAbove(lines, buildIdx, buildIndent) {
+  for (let k = buildIdx - 1; k >= 0; k--) {
+    const raw = lines[k]
+    if (raw.trim() === "") continue
+    const indent = raw.length - raw.trimStart().length
+    if (indent >= buildIndent) continue
+    const m = raw.match(/^\s*([A-Za-z0-9_.-]+):\s*$/)
+    if (m) return m[1]
+    return "<serviço ?>"
+  }
+  return "<serviço ?>"
+}
+
+/**
+ * Os BUILD SITES de um compose — o par (serviço, Dockerfile) que a invariante
+ * 18 julga, com o intervalo de linhas do bloco (o recorte do `--staged` usa o
+ * intervalo: o diff responde pelo que ele INTRODUZ).
+ *
+ * Um `build:` em forma de MAPA INLINE (`build: {context: .}`) sai marcado com
+ * `inlineMap`: o guard não adivinha o `dockerfile:`/`args:` de um mapa numa
+ * linha, e o veredito NOMEIA o serviço em vez de deixá-lo fora da conta em
+ * silêncio.
+ *
+ * @param {string} rel
+ * @param {string} content
+ * @returns {{service: string, lineNo: number, endLineNo: number, dockerfile: string|null, passArg: boolean, inlineMap: boolean}[]}
+ */
+export function composeBuildSites(rel, content) {
+  const lines = content.split(/\r?\n/)
+  const base = dirname(rel)
+  const sites = []
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(\s*)build:\s*(.*)$/)
+    if (!m) continue
+    const buildIndent = m[1].length
+    const inline = m[2].trim()
+    let context = "."
+    let dockerfile = "Dockerfile"
+    let passArg = false
+    let endLine = i
+    for (let j = i + 1; j < lines.length; j++) {
+      const raw = lines[j]
+      if (raw.trim() === "") {
+        endLine = j
+        continue
+      }
+      const indent = raw.length - raw.trimStart().length
+      if (indent <= buildIndent) break
+      endLine = j
+      const c = raw.match(/^\s*context:\s*(\S+)/)
+      if (c) context = unquoteScalar(c[1])
+      const d = raw.match(/^\s*dockerfile:\s*(\S+)/)
+      if (d) dockerfile = unquoteScalar(d[1])
+      // A forma de BLOCO (`BUN_VERSION: …` na própria linha) e a de MAPA FLOW
+      // (`args: { BUN_VERSION: … }`, tudo numa linha) contam como passar o arg;
+      // um COMENTÁRIO que cite o nome não conta (é onde o comportamento aparece
+      // como exemplo — a mesma exclusão do resto do guard).
+      if (!isCommentOrDocLine(raw) && /BUN_VERSION\s*:/.test(raw)) passArg = true
+    }
+    const inlineMap = inline.startsWith("{")
+    if (inline !== "" && !inlineMap) context = unquoteScalar(inline)
+    sites.push({
+      service: serviceNameAbove(lines, i, buildIndent),
+      lineNo: i + 1,
+      endLineNo: endLine + 1,
+      inlineMap,
+      passArg,
+      // Resolvido a partir da RAIZ do repo: um compose da raiz usa caminhos
+      // relativos a ele mesmo (= a raiz) e um compose de `deploy/` usa
+      // `../Dockerfile` — o normalize fecha os dois casos.
+      dockerfile: inlineMap
+        ? null
+        : normalize(join(base, context, dockerfile)).replace(/^\.\//, ""),
+    })
+  }
+  return sites
+}
+
+/** O arquivo da declaração de TOOLCHAIN — o alvo da invariante 18(c). */
+export const PACKAGE_JSON = "package.json"
+
+/**
+ * O pathspec (git) do recorte da 18(c).
+ *
+ * Ele é DECLARADO em vez de herdado de `SINGLE_SOURCE_PATHS` de propósito: na
+ * varredura dos scripts e dos composes um literal é violação SEMPRE, e o
+ * `package.json` carrega o próprio `bun@<versão>` como campo legítimo — juntá-lo
+ * àquele escopo reprovaria o arquivo por existir. A régua daqui é a da 18(c): o
+ * valor tem de ser o declarado.
+ */
+export const PACKAGE_JSON_PATHS = [PACKAGE_JSON]
+
+/** O campo da declaração de TOOLCHAIN (no arquivo inteiro ou numa linha). */
+const PACKAGE_MANAGER_FIELD_RE = /"packageManager"\s*:/
+
+/**
+ * Invariante 18(b) — todo build de um Dockerfile que declara `ARG BUN_VERSION`
+ * tem de PASSAR o arg.
+ *
+ * @param {string} rel
+ * @param {string} content
+ * @param {string[]} bunDockerfiles  saída de `bunDockerfilesWithArg`
+ * @param {{addedLines?: number[]|null}} [opts]  recorte: só os blocos que o diff toca
+ * @returns {string[]} violações
+ */
+export function checkComposeBuildArgs(rel, content, bunDockerfiles, { addedLines = null } = {}) {
+  const violations = []
+  const recorte = addedLines ? new Set(addedLines) : null
+  for (const site of composeBuildSites(rel, content)) {
+    if (recorte) {
+      let tocado = false
+      for (let n = site.lineNo; n <= site.endLineNo; n++) if (recorte.has(n)) tocado = true
+      if (!tocado) continue
+    }
+    if (site.inlineMap) {
+      violations.push(
+        `${rel}:${site.lineNo}: o \`build:\` do serviço '${site.service}' está em forma de MAPA INLINE — o guard não adivinha o \`dockerfile:\` nem o \`args:\` de um mapa numa linha só. Escreva o bloco em várias linhas (context/dockerfile/args) para o build ser JULGADO.`,
+      )
+      continue
+    }
+    if (!bunDockerfiles.includes(site.dockerfile)) continue
+    if (site.passArg) continue
+    violations.push(
+      `${rel}:${site.lineNo}: o serviço '${site.service}' builda '${site.dockerfile}', que declara \`ARG BUN_VERSION\`, SEM passar o arg — o build herda o default do Dockerfile em SILÊNCIO (é assim que um serviço passa a rodar uma versão que o repositório não declara, sem estar escrita em lugar nenhum). Adicione \`args:\` com \`BUN_VERSION: \${BUN_VERSION:-<declarado>}\`.`,
+    )
+  }
+  return violations
+}
+
+/**
+ * Invariante 18(c) — a declaração do TOOLCHAIN (`packageManager`) diz o valor
+ * declarado.
+ *
+ * É a mesma classe: um literal que afirma uma versão que o repositório não
+ * declara. Nada o consome em tempo de build (o bun não o impõe), então ele
+ * envelhece sem sintoma — e é a PRIMEIRA coisa que alguém copia para saber
+ * "qual Bun este repo usa".
+ *
+ * @param {string} [root]
+ * @param {string|null} [declared]
+ * @returns {string[]} violações
+ */
+export function checkPackageManagerVersion(
+  root = process.cwd(),
+  declared = declaredBunVersion(root),
+) {
+  const p = join(root, PACKAGE_JSON)
+  if (!existsSync(p)) return []
+  return judgePackageManager(readFileSync(p, "utf8"), declared)
+}
+
+/**
+ * O julgamento da DECLARAÇÃO de TOOLCHAIN — a régua ÚNICA do modo global (o
+ * arquivo do disco) e do `--staged` (a linha que o diff introduz).
+ *
+ * Duas cópias divergiriam no dia em que uma delas passasse a aceitar um valor a
+ * mais — e o defeito seria um commit aceito por um caminho e recusado pelo outro.
+ *
+ * @param {string} trecho  o arquivo inteiro (global) ou UMA linha (staged)
+ * @param {string|null} declared
+ * @param {string} [onde]  o rótulo da mensagem (`package.json` ou `package.json:12`)
+ * @returns {string[]} violações
+ */
+export function judgePackageManager(trecho, declared, onde = PACKAGE_JSON) {
+  if (!PACKAGE_MANAGER_FIELD_RE.test(trecho)) {
+    return [
+      `${onde}: o campo \`packageManager\` sumiu — é a declaração do TOOLCHAIN com que o projeto é instalado/rodado; sem ele cada máquina escolhe o próprio Bun e a divergência com o CI fica invisível. Declare \`"packageManager": "bun@${declared ?? "<o valor dos espelhos>"}"\`.`,
+    ]
+  }
+  const m = trecho.match(/"packageManager"\s*:\s*"bun@([^"]+)"/)
+  if (!m) return []
+  if (declared !== null && m[1].trim() === declared) return []
+  return [
+    `${onde}: \`"packageManager": "bun@${m[1]}"\` diz ${declared !== null ? `uma versão diferente da declarada (${declared})` : "uma versão, e nenhum espelho declara a vigente"} em ${mirrorListText(BUN_MIRRORS)} — a máquina que seguir este campo instala/roda o Bun errado e a suíte local mede outro runtime que o do merge. Alinhe com o espelho (a mesma versão que o runner embarca).`,
+  ]
+}
+
+/**
+ * O recorte `--staged` da invariante 18(c): a declaração de TOOLCHAIN que o
+ * commit APAGA ou MUDA.
+ *
+ * O QUE MUDA NO VEREDITO: a 18(c) só existia na varredura GLOBAL, e o
+ * `package.json` não é alvo de nenhuma outra pathspec do `--staged` — então
+ * **remover o `packageManager`** (ou trocá-lo por outra versão) passava o commit
+ * e só encontrava o PR. É a mesma ponta que a 18(b) tinha: o que o commit tira
+ * não aparece em nenhuma linha adicionada.
+ *
+ * Duas metades, e cada uma responde pelo que o COMMIT introduz:
+ *   - a REMOÇÃO: o arquivo do ÍNDICE não tem o campo e o de HEAD tinha;
+ *   - a DIVERGÊNCIA: a linha que o diff adiciona/muda diz outro valor.
+ * Um `package.json` que nunca teve o campo e é editado por outro motivo não vira
+ * violação AQUI (o commit não introduz a ausência) — quem cobra a existência da
+ * declaração é a varredura global, que roda no PR. "Não consegui ler" segue sendo
+ * `unreadable` (o chamador para com 2), nunca "nada a julgar".
+ *
+ * @param {string} diffText
+ * @param {{declared?: string|null, readIndex?: (f: string) => string|null, readHead?: (f: string) => string|null, inHead?: (f: string) => boolean}} [opts]
+ * @returns {{violations: string[], unreadable: string[]}}
+ */
+export function checkStagedPackageManagerVersion(
+  diffText,
+  {
+    declared = declaredBunVersion(),
+    readIndex = gitShowIndexFile,
+    readHead = gitShowHeadFile,
+    inHead = gitPathInHead,
+  } = {},
+) {
+  const violations = []
+  const unreadable = []
+  const adicionadas = parseDiffAddedLines(diffText, (rel) => rel === PACKAGE_JSON)
+  for (const file of parseDiffLines(diffText, (rel) => rel === PACKAGE_JSON).keys()) {
+    const index = readIndex(file)
+    if (index === null) {
+      unreadable.push(file)
+      continue
+    }
+    const existeNoHead = inHead(file)
+    const head = existeNoHead ? readHead(file) : null
+    if (existeNoHead && head === null) {
+      unreadable.push(file)
+      continue
+    }
+
+    const tinha = head !== null && PACKAGE_MANAGER_FIELD_RE.test(head)
+    const tem = PACKAGE_MANAGER_FIELD_RE.test(index)
+    if (tinha && !tem) {
+      violations.push(
+        `${file}: a declaração de TOOLCHAIN (\`"packageManager"\`) foi REMOVIDA por este commit — o arquivo do` +
+          ` ÍNDICE não a tem, e o de HEAD tinha. Sem ela cada máquina escolhe o próprio Bun e a divergência` +
+          ` com o CI fica invisível (o commit apaga a única declaração de qual runtime este repo usa).` +
+          ` Declare \`"packageManager": "bun@${declared ?? "<o valor dos espelhos>"}"\`.`,
+      )
+      continue
+    }
+
+    for (const { lineNo, content } of adicionadas.get(file) ?? []) {
+      if (!PACKAGE_MANAGER_FIELD_RE.test(content)) continue
+      violations.push(...judgePackageManager(content, declared, `${file}:${lineNo}`))
+    }
+  }
+  return { violations, unreadable }
+}
+
+/**
+ * As duas invariantes sobre as linhas ADICIONADAS de um diff — é na EDIÇÃO que
+ * o literal nasce, então é aí que ele tem de ser barrado.
+ *
+ * @param {string} diffText
+ * @param {string|null} [declared]
+ * @returns {string[]} violações
+ */
+export function checkStagedSingleSourceLiterals(diffText, declared = declaredBunVersion()) {
+  const violations = []
+  for (const [file, lines] of parseDiffAddedLines(diffText, isSingleSourcePath)) {
+    const isCompose = COMPOSE_FILE_RE.test(file)
+    for (const { lineNo, content } of lines) {
+      if (isCompose) {
+        const hit = findComposeVersionLiteral(content, declared)
+        if (hit) {
+          violations.push(
+            hit.kind === "literal"
+              ? `${file}:${lineNo}: BUN_VERSION com valor LITERAL '${hit.value}' introduzido por este diff — use a variável (\`\${BUN_VERSION:-<declarado>}\`).`
+              : `${file}:${lineNo}: default '${hit.value}' de BUN_VERSION introduzido por este diff, divergindo do declarado (${declared ?? "nenhum espelho"}).`,
+          )
+        }
+      } else {
+        const hit = findBunLiteralInLine(content)
+        if (hit) {
+          violations.push(
+            `${file}:${lineNo}: versão LITERAL do Bun ('${hit.hit}') introduzida por este diff — ` +
+              `derive (scripts/bun-version.mjs) ou use uma sentinela (9.9.9-sentinel).`,
+          )
+        }
+      }
+    }
+  }
+  return violations
+}
+
+/**
+ * O conteúdo de um arquivo no commit ANTERIOR (`git show HEAD:<arquivo>`) — a
+ * outra metade que a comparação de blocos do recorte precisa.
+ *
+ * `null` é falha de LEITURA. Quem decide se a ausência é ESPERADA (arquivo novo
+ * ou repositório ainda sem commit) é `gitPathInHead`, por EXIT CODE e não por
+ * mensagem do git — mensagem de erro muda com a versão e com o idioma.
+ *
+ * @param {string} file  caminho relativo à raiz do repo
+ * @returns {string|null} conteúdo ou null
+ */
+export function gitShowHeadFile(file) {
+  try {
+    return execFileSync("git", ["show", `HEAD:${file}`], {
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+    })
+  } catch {
+    return null
+  }
+}
+
+/**
+ * O arquivo existe no commit anterior?
+ *
+ * Um arquivo NOVO não tem bloco de HEAD com que comparar, e um repositório sem
+ * nenhum commit também não — nos dois casos não há REMOÇÃO a julgar (o `git
+ * cat-file -e` responde pelos dois sem que o guard precise interpretar texto de
+ * erro).
+ *
+ * @param {string} file
+ * @returns {boolean}
+ */
+export function gitPathInHead(file) {
+  try {
+    execFileSync("git", ["cat-file", "-e", `HEAD:${file}`], { stdio: "ignore" })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * O recorte `--staged` da invariante 18(b) na direção que FALTAVA: o arg
+ * REMOVIDO.
+ *
+ * O QUE MUDA NO VEREDITO: `checkStagedComposeBuildArgs` julga os blocos que o
+ * diff TOCA, e um bloco que só PERDE uma linha não ganha linha adicionada
+ * nenhuma — então remover o `BUN_VERSION` de um build site passava pelo commit e
+ * só encontrava a varredura GLOBAL (que roda no PR, quando roda). O buraco é da
+ * mesma classe do defeito original da 18(b): o build site deixa de ter valor
+ * escrito, e passar a ter "nenhum valor" não aparece em nenhuma linha nova.
+ *
+ * A régua compara o MESMO bloco em dois estados: o ARQUIVO DO ÍNDICE (o que o
+ * commit vai gravar) contra o ARQUIVO DE HEAD (o que estava lá). Um serviço que
+ * PASSAVA o arg num Dockerfile que exige `ARG BUN_VERSION` e não passa mais é
+ * violação, NOMEANDO serviço, arquivo e linha. Não é violação: o serviço
+ * removido (outra decisão), o bloco que deixou de buildar um Dockerfile que
+ * exige o arg (a remoção é legítima) e o arquivo NOVO (não há de onde remover).
+ *
+ * "Não consegui ler" nunca é "nada a julgar": índice ou HEAD ilegível sai em
+ * `unreadable` e o chamador para com 2.
+ *
+ * @param {string} diffText
+ * @param {string[]} bunDockerfiles
+ * @param {{readIndex?: (f: string) => string|null, readHead?: (f: string) => string|null, inHead?: (f: string) => boolean}} [reader]
+ * @returns {{violations: string[], unreadable: string[]}}
+ */
+export function checkStagedRemovedBuildArgs(
+  diffText,
+  bunDockerfiles,
+  { readIndex = gitShowIndexFile, readHead = gitShowHeadFile, inHead = gitPathInHead } = {},
+) {
+  const violations = []
+  const unreadable = []
+  // A enumeração é dos ARQUIVOS que o diff toca (não das linhas adicionadas):
+  // uma remoção pura não adiciona linha nenhuma — era exatamente por aí que ela
+  // escapava.
+  const arquivos = parseDiffLines(diffText, (rel) => COMPOSE_FILE_RE.test(rel)).keys()
+  for (const file of arquivos) {
+    const index = readIndex(file)
+    if (index === null) {
+      unreadable.push(file)
+      continue
+    }
+    if (!inHead(file)) continue
+    const head = readHead(file)
+    if (head === null) {
+      unreadable.push(file)
+      continue
+    }
+    const exigeArg = (site) => site.dockerfile !== null && bunDockerfiles.includes(site.dockerfile)
+    const antes = composeBuildSites(file, head)
+    const agora = composeBuildSites(file, index)
+    for (const site of antes) {
+      if (!site.passArg || !exigeArg(site)) continue
+      const atual = agora.find((s) => s.service === site.service)
+      if (!atual) continue // serviço removido — outra decisão, outro veredito
+      if (atual.passArg || !exigeArg(atual)) continue
+      violations.push(
+        `${file}:${atual.lineNo}: o serviço '${atual.service}' buildava '${atual.dockerfile}' PASSANDO \`BUN_VERSION\`` +
+          ` e este commit REMOVE o arg do bloco (o bloco do ÍNDICE não o tem mais, e o de HEAD tinha) —` +
+          ` sem o arg o build site não tem valor escrito NENHUM: ele passa a herdar o que o Dockerfile` +
+          ` declarar, e nenhum Dockerfile declara default de propósito. Mantenha o arg derivado` +
+          ` (\`BUN_VERSION: \${BUN_VERSION:-<declarado>}\` no compose): removê-lo não é limpeza, é apagar a` +
+          ` única declaração de versão daquele build.`,
+      )
+    }
+  }
+  return { violations, unreadable }
+}
+
+/**
+ * O recorte `--staged` da invariante 18(b): os build sites que o diff TOCA.
+ *
+ * O bloco é lido do ÍNDICE (`git show :<arquivo>`) porque o julgamento precisa
+ * do ARQUIVO inteiro, e só as violações cujo bloco cruza uma linha ADICIONADA
+ * são reportadas: o diff responde pelo que ele INTRODUZ, não pelo que já
+ * estava no arquivo (a mesma semântica do recorte das invariantes 15/16).
+ *
+ * Um compose que o diff toca e não pode ser lido no índice NÃO vira "nada a
+ * julgar": sai em `unreadable` e o chamador para com 2 — "não consegui ler"
+ * nunca é o mesmo que "está tudo certo".
+ *
+ * @param {string} diffText
+ * @param {string[]} bunDockerfiles
+ * @param {(file: string) => string|null} [readIndex]
+ * @returns {{violations: string[], unreadable: string[]}}
+ */
+export function checkStagedComposeBuildArgs(
+  diffText,
+  bunDockerfiles,
+  readIndex = gitShowIndexFile,
+) {
+  const violations = []
+  const unreadable = []
+  const cache = new Map()
+  const isCompose = (rel) => COMPOSE_FILE_RE.test(rel)
+  for (const [file, lines] of parseDiffAddedLines(diffText, isCompose)) {
+    if (!cache.has(file)) cache.set(file, readIndex(file))
+    const content = cache.get(file)
+    if (content === null) {
+      unreadable.push(file)
+      continue
+    }
+    violations.push(
+      ...checkComposeBuildArgs(file, content, bunDockerfiles, {
+        addedLines: lines.map((l) => l.lineNo),
+      }),
+    )
+  }
+  return { violations, unreadable }
+}
+
+// ── Invariante 17: os EXEMPLOS de versão que vivem em PROSA ─────────────────
+//
+// O QUE MUDA NO VEREDITO: as invariantes 15/16 julgam a LINHA DE CÓDIGO (lá um
+// literal é violação SEMPRE — a versão só pode ser derivada) e a variante de
+// linha EXCLUI comentário: a prosa era o ÚNICO lugar onde um número de versão
+// podia viver sem julgamento. É a metade que faltava: o cabeçalho de um script,
+// o README e o GUARDS.md ENSINAM o operador a copiar
+// `BUN_VERSION=1.3.14` / `--expected 1.3.14` / `--var BUN_VERSION=1.3.14` — e
+// depois do bump a doc continua imprimindo a versão ANTIGA, com aparência de
+// rigor. Nada fica vermelho: o comando copiado da doc mede/roda a versão errada
+// (o mesmo sintoma das invariantes 15/16, agora para quem LÊ a doc).
+//
+// A REGRA: numa fonte de prosa, uma menção ANCORADA (o valor preso a um token
+// do Bun, nas formas de PROSE_VERSION_FORMS) tem de ser o valor VIGENTE (o que
+// os espelhos declaram) — ou ter o PAPEL DECLARADO. Um semver solto na prosa
+// (`act 0.2.89`, `lodash 4.17.21`, `release/v0.4.0`) NÃO é exemplo da versão do
+// Bun e não é julgado: exigir a coincidência de todo semver faria o guard
+// conflitar com a prosa que ele mesmo existe para proteger.
+//
+// Os papéis são declarações ESCRITAS, e cada uma é checada nas DUAS direções
+// (marcar o vigente como contra-exemplo é tão falso quanto um exemplo
+// desatualizado sem marca):
+//
+//   [divergente]  o valor é CONTRA-EXEMPLO de propósito (o defeito que a doc
+//                 ilustra, o achado de uma auditoria) — tem de DIFERIR do
+//                 vigente;
+//   [próxima]     o valor é o ALVO de um bump (o "depois") — tem de ser MAIOR
+//                 que o vigente (comparação semver), porque um alvo igual ao
+//                 vigente é um exemplo que não faz nada.
+//
+// Valor com sufixo não-numérico (`9.9.9-sentinel`) NÃO é uma AFIRMAÇÃO de
+// versão: a sentinela já declarada pelas invariantes 15/16 vale aqui também.
+//
+// O PAPEL TAMBÉM PODE SER DO ARQUIVO: um doc que é um CENÁRIO (o walkthrough do
+// bump em `docs/BUN_BUMP.md`, onde o alvo aparece ponta a ponta) declara isso em
+// PROSE_SCENARIO_DOCS — lá a menção pode ser o vigente OU um valor MAIOR, e
+// nada mais. A decisão fica no guard, datada e justificada, em vez de espalhar
+// 15 marcadores pelo texto do procedimento.
+//
+// FONTES varridas: todo Markdown do WORKTREE (`*.md` em qualquer diretório,
+// menos os diretórios declarados em PROSE_IGNORED_DIRS) e as linhas de
+// COMENTÁRIO dos scripts (o mesmo SCRIPT_FILE_RE das invariantes 15 — a linha
+// de CÓDIGO desses arquivos continua sendo das invariantes 15/16, que exigem
+// DERIVAÇÃO). Fail-closed: sem valor declarado nos espelhos não há contra o que
+// comparar, doc ilegível é violação (não "nada a julgar") e um doc canônico que
+// EXISTE e deixou de citar a versão derruba a cobertura — nenhuma dessas pode
+// terminar em verde.
+
+/** Uma fonte de prosa no nível do arquivo: todo Markdown versionado. */
+export const PROSE_DOC_RE = /\.md$/
+
+/**
+ * O pathspec (git) da prosa — o irmão de `SINGLE_SOURCE_PATHS`. Os globs de
+ * propósito: um doc novo em qualquer subdiretório cai na varredura sem editar
+ * este guard.
+ */
+export const PROSE_PATHS = ["*.md", ...SCRIPT_SCAN_DIRS]
+
+/**
+ * As duas declarações de PAPEL de uma menção, escritas na PRÓPRIA linha (na
+ * prosa ou no comentário). São tokens literais: quem escreve o exemplo escolhe
+ * entre alinhar com o espelho e declarar o porquê de o valor divergir.
+ */
+export const PROSE_MARKERS = {
+  divergente: "[divergente]",
+  proxima: "[próxima]",
+}
+
+/**
+ * Os docs que são um CENÁRIO declarado: a menção pode ser o valor VIGENTE ou um
+ * valor MAIOR que ele (o alvo), e nada mais. Cada entrada é uma decisão datada —
+ * o formato das allowlists do repositório.
+ */
+export const PROSE_SCENARIO_DOCS = [
+  {
+    file: "docs/BUN_BUMP.md",
+    addedAt: "2026-09-17",
+    why:
+      "é o WALKTHROUGH do bump: o alvo (1.3.15) aparece ponta a ponta (variável, " +
+      "espelhos, mirrors e a validação pós-bump). Marcar 15 linhas com " +
+      `\`${PROSE_MARKERS.proxima}\` deixaria o procedimento ilegível — aqui o papel é do ARQUIVO, ` +
+      "e a regra continua prendendo os dois casos que importam: valor vigente OU alvo MAIOR.",
+  },
+]
+
+/**
+ * Os docs canônicos: se um deles EXISTIR e parar de citar a versão, a cobertura
+ * sumiu — e um verde por vazio é o defeito que este repositório trata como
+ * regra. O piso vale sobre o doc que existe (um repo/fixture sem README não é
+ * violação aqui: os guards de README cuidam disso).
+ */
+export const PROSE_REQUIRED_SOURCES = ["README.md", "docs/GUARDS.md"]
+
+/**
+ * Os diretórios que a varredura de prosa NÃO entra — "arquivo estranho" aqui
+ * não é doc do repositório: são dependências, saída de build/medição e o estado
+ * local. A lista é declarada para que o que fica fora seja uma DECISÃO (e
+ * revisável), não um efeito de varredura recursiva.
+ */
+export const PROSE_IGNORED_DIRS = [
+  "node_modules",
+  ".git",
+  ".next",
+  ".cache",
+  ".turbo",
+  ".freebuff",
+  ".tmp",
+  "out",
+  "build",
+  "dist",
+  "coverage",
+  "tool-results",
+  "playwright-report",
+  "test-results",
+]
+
+/**
+ * As FORMAS ANCORADAS — o valor preso a um token do Bun.
+ *
+ * `role` é o papel que a PRÓPRIA forma declara: o argumento do bump é a próxima
+ * versão; todas as outras afirmam a vigente. A regex é `g` (a mesma linha pode
+ * carregar mais de uma menção: uma lista de formas, uma transição).
+ */
+export const PROSE_VERSION_FORMS = [
+  // `BUN_VERSION=1.3.14`, `BUN_VERSION: "1.3.14"`, `${BUN_VERSION:-1.3.14}`,
+  // `BUN_VERSION || "1.3.14"`, `gh variable set BUN_VERSION 1.3.14`
+  { form: "env", role: "vigente", re: /BUN_VERSION[^A-Za-z0-9\n]{0,6}?(\d+\.\d+\.\d+)/g },
+  // `bun-version: 1.3.14` (cache key, YAML)
+  { form: "bun-version", role: "vigente", re: /bun-version[^A-Za-z0-9\n]{0,4}?(\d+\.\d+\.\d+)/g },
+  // `--expected 1.3.14` (o atalho histórico da versão do Bun) e `--bun-version`
+  {
+    form: "flag",
+    role: "vigente",
+    re: /--(?:bun-version|expected)[^A-Za-z0-9\n]{0,3}?(\d+\.\d+\.\d+)/g,
+  },
+  // prefixado pelo nome: `bun-1.3.14`, `bun@1.3.14`, `bun-v1.3.14`,
+  // `oven/bun:1.3.14`, `<...>/ubuntu-bun:1.3.14`
+  { form: "prefixed", role: "vigente", re: /\bbun[-@:/]v?(\d+\.\d+\.\d+)/g },
+  // `bash scripts/setup-bun-ci.sh 1.3.14` (a versão entra por ARGUMENTO)
+  {
+    form: "setup-arg",
+    role: "vigente",
+    re: /setup-bun-ci\.sh[^A-Za-z0-9\n]{1,3}?(\d+\.\d+\.\d+)/g,
+  },
+  // `./scripts/bump-bun.sh 1.3.15` — o argumento é a PRÓXIMA versão. O intervalo
+  // não pode ATRAVESSAR uma crase: na prosa escrita em Markdown, `bump-bun.sh` e
+  // uma versão citados na mesma frase (a descrição da própria forma) estão
+  // separados por crases, e sem essa barreira o texto que EXPLICA a regra
+  // virava um exemplo de alvo (medido: o doc reprovava a própria explicação).
+  { form: "bump-arg", role: "proxima", re: /bump-bun\.sh\b[^`\n]{0,40}?(\d+\.\d+\.\d+)/g },
+]
+
+/**
+ * A TRANSIÇÃO — dois papéis na mesma linha, e é assim que a doc escreve o
+ * exemplo do bump. Só conta em linha que FALA do Bun: sem esse filtro, o
+ * `0.2.0 → 0.2.1` do `release.sh` (a versão do PROJETO, que sobe em
+ * `patch`/`minor`/`major`) viraria exemplo da versão do Bun.
+ */
+export const PROSE_TRANSITION_RE = /(\d+\.\d+\.\d+)\s*(?:→|->)\s*v?(\d+\.\d+\.\d+)/g
+
+/**
+ * O papel declarado JUNTO do valor: `[divergente]`/`[próxima]` logo DEPOIS da
+ * menção (no máximo aspas/crase/espaço no meio).
+ *
+ * POR QUE "JUNTO" E NÃO "EM QUALQUER LUGAR DA LINHA": a prosa que EXPLICA os
+ * marcadores (`valor + \`[próxima]\` = o alvo do bump`) cita o token e a versão
+ * na mesma linha — com o papel lido da linha inteira, essa explicação virava
+ * uma declaração de papel para o exemplo que ela descreve, e o doc que ensina a
+ * regra era reprovado por ela. Ancorar no valor é também o que torna a
+ * declaração PRECISA numa lista (`bun-1.3.14`, `bun@1.2.3` [divergente]): o
+ * papel vale para o valor ao lado, não para todos.
+ *
+ * @param {string} line
+ * @param {{value: string, index: number}} mention
+ * @returns {"divergente"|"proxima"|null}
+ */
+export function proseMarkerOf(line, mention) {
+  const tail = line.slice(mention.index + mention.value.length)
+  const found = tail.match(/^[^A-Za-z0-9]{0,4}?\[(divergente|pr[óo]xima)\]/)
+  if (!found) return null
+  return found[1] === "divergente" ? "divergente" : "proxima"
+}
+
+/**
+ * `1.3.14-sentinel`: o sufixo não-numérico tira o valor da classe "afirmação de
+ * versão" (é a mesma exclusão estrutural das invariantes 15/16).
+ *
+ * @param {string} line
+ * @param {{value: string, index: number}} mention
+ */
+export function isProseSentinel(line, mention) {
+  return /^-[A-Za-z]/.test(line.slice(mention.index + mention.value.length))
+}
+
+/**
+ * Comparação semver de três campos — usada para exigir que um ALVO de bump seja
+ * MAIOR que o vigente (um alvo igual ou menor não é próximo de nada).
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {number} 1 se a > b, -1 se a < b, 0 se iguais
+ */
+export function compareSemver(a, b) {
+  const pa = a.split(".").map(Number)
+  const pb = b.split(".").map(Number)
+  for (let i = 0; i < 3; i += 1) {
+    if (pa[i] !== pb[i]) return pa[i] > pb[i] ? 1 : -1
+  }
+  return 0
+}
+
+/**
+ * A PROSA de uma linha de script: a linha INTEIRA, quando ela é comentário, ou
+ * o comentário de FIM DE LINHA (a outra forma que a prosa toma num script —
+ * `VERSION="${BUN_VERSION:-1.3.14}" # ex.: …`).
+ *
+ * Devolve `["linha"]`/`[" # comentário"]` — ou `[]` quando a linha é código
+ * puro, que é o território das invariantes 15/16 (lá a regra é DERIVAR, não
+ * coincidir com o valor vigente).
+ *
+ * @param {string} line
+ * @param {{slash?: boolean}} [opts]
+ * @returns {string[]}
+ */
+export function proseTextsOfScriptLine(line, { slash = false } = {}) {
+  if (isCommentLine(line, { slash })) return [line]
+  const semComentario = slash ? stripSlashComment(line) : stripTrailingComment(line)
+  if (semComentario.length >= line.length) return []
+  return [line.slice(semComentario.length)]
+}
+
+/** Uma linha de JS/TS/JS-ish? (a sintaxe do comentário é a de `//`, não de `#`) */
+export function isSlashScriptPath(rel) {
+  return /\.[mc]?js$/.test(rel) || rel.endsWith(".ts") || rel.endsWith(".tsx")
+}
+
+/**
+ * As menções de versão de UMA linha de prosa, na ordem em que aparecem.
+ *
+ * @param {string} line
+ * @returns {{form: string, role: "vigente"|"proxima", value: string, index: number}[]}
+ */
+export function findProseVersionMentions(line) {
+  const out = []
+  // O `index` é o do VALOR (não o do começo do match): é dele que a sentinela
+  // (`9.9.9-sentinel`) é lida — o sufixo vem depois do valor.
+  const push = (form, role, value, index) => {
+    if (out.some((m) => m.value === value && m.index === index)) return
+    out.push({ form, role, value, index })
+  }
+  for (const { form, role, re } of PROSE_VERSION_FORMS) {
+    re.lastIndex = 0
+    let m
+    while ((m = re.exec(line)) !== null) push(form, role, m[1], m.index + m[0].lastIndexOf(m[1]))
+  }
+  if (BUN_MENTION_RE.test(line)) {
+    PROSE_TRANSITION_RE.lastIndex = 0
+    let m
+    while ((m = PROSE_TRANSITION_RE.exec(line)) !== null) {
+      push("transition", "vigente", m[1], m.index + m[0].indexOf(m[1]))
+      push("transition", "proxima", m[2], m.index + m[0].lastIndexOf(m[2]))
+    }
+  }
+  return out.sort((a, b) => a.index - b.index)
+}
+
+/**
+ * O veredito de UMA menção: vigente, sentinela, papel declarado (ou cenário) —
+ * ou violação, com a razão. Não conhece arquivo nem linha (isso é do relatório),
+ * o que o torna testável sozinho.
+ *
+ * @param {{mention: {form: string, role: string, value: string}, line: string, declared: string, scenario?: boolean}} args
+ * @returns {{verdict: "vigente"|"sentinela"|"papel"|"cenario"|"violacao", role?: string, why?: string}}
+ */
+export function judgeProseMention({ mention, line, declared, scenario = false }) {
+  if (isProseSentinel(line, mention)) return { verdict: "sentinela" }
+  const role = proseMarkerOf(line, mention) ?? mention.role
+  if (role === "divergente") {
+    if (mention.value !== declared) return { verdict: "papel", role }
+    return {
+      verdict: "violacao",
+      why:
+        `o valor marcado \`${PROSE_MARKERS.divergente}\` (${mention.value}) É o valor vigente ` +
+        `(${declared}) — um contra-exemplo igual ao vigente não ilustra divergência nenhuma: ` +
+        `ou o exemplo está desatualizado, ou a marca está no valor errado.`,
+    }
+  }
+  if (role === "proxima") {
+    if (compareSemver(mention.value, declared) > 0) return { verdict: "papel", role }
+    return {
+      verdict: "violacao",
+      why:
+        `o valor marcado \`${PROSE_MARKERS.proxima}\` (${mention.value}) não é MAIOR que o ` +
+        `vigente (${declared}) — um alvo de bump igual ou menor que a versão em vigor é um ` +
+        `exemplo que não faz nada.`,
+    }
+  }
+  if (mention.value === declared) return { verdict: "vigente" }
+  if (scenario && compareSemver(mention.value, declared) > 0) return { verdict: "cenario" }
+  return {
+    verdict: "violacao",
+    why:
+      `'${mention.value}' (forma \`${mention.form}\`) não é o valor VIGENTE dos espelhos ` +
+      `(${declared} em ${mirrorListText(BUN_MIRRORS)})${scenario ? ", nem um alvo MAIOR que ele" : ""} — ` +
+      `um exemplo desatualizado não fica vermelho: ele ENSINA o comando errado, e quem copia a ` +
+      `doc passa a rodar/medir a versão antiga. Alinhe com o espelho, ou declare o PAPEL do valor ` +
+      `na própria linha: \`${PROSE_MARKERS.divergente}\` (contra-exemplo — tem de DIFERIR do vigente) ` +
+      `ou \`${PROSE_MARKERS.proxima}\` (alvo do bump — tem de ser MAIOR).`,
+  }
+}
+
+/**
+ * Os docs da varredura: todo `*.md` do worktree, menos os diretórios declarados
+ * em `PROSE_IGNORED_DIRS`. Não depende do git: um export em tarball (ou um
+ * fixture de teste) continua tendo os docs julgados — é o CONTEÚDO da doc que
+ * envelhece, não o versionamento dela.
+ *
+ * @param {string} [root]
+ * @returns {string[]} caminhos relativos, ordenados
+ */
+export function proseDocFiles(root = process.cwd()) {
+  const out = []
+  const walk = (dir, rel) => {
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      if (PROSE_IGNORED_DIRS.includes(entry.name)) continue
+      const relPath = rel === "" ? entry.name : `${rel}/${entry.name}`
+      if (entry.isDirectory()) walk(join(dir, entry.name), relPath)
+      else if (entry.isFile() && PROSE_DOC_RE.test(entry.name)) out.push(relPath)
+    }
+  }
+  walk(root, "")
+  return out.sort()
+}
+
+/**
+ * As FONTES de prosa: os docs `*.md` do worktree + os scripts cujos
+ * COMENTÁRIOS são prosa.
+ *
+ * @param {string} [root]
+ * @returns {{docs: string[], scripts: string[]}}
+ */
+export function proseSourceFiles(root = process.cwd()) {
+  return {
+    docs: proseDocFiles(root),
+    scripts: singleSourceFiles(root).filter((rel) => SCRIPT_FILE_RE.test(rel)),
+  }
+}
+
+/**
+ * Invariante 17 — os exemplos de versão da prosa batem com o valor declarado?
+ *
+ * @param {string} [root]
+ * @param {string|null} [declared]  default: o declarado nos espelhos
+ * @returns {{violations: string[], counts: {vigentes: number, papel: number, sentinelas: number, cenario: number, mencoes: number, docs: number, comentarios: number}, unjudgeable: string|null}}
+ */
+export function checkProseVersionExamples(
+  root = process.cwd(),
+  declared = declaredBunVersion(root),
+) {
+  const violations = []
+  const counts = {
+    vigentes: 0,
+    papel: 0,
+    sentinelas: 0,
+    cenario: 0,
+    mencoes: 0,
+    docs: 0,
+    comentarios: 0,
+  }
+  const sources = proseSourceFiles(root)
+  if (declared === null) {
+    violations.push(
+      `nenhum espelho declara a versão (${mirrorListText(BUN_MIRRORS)}) — sem o valor vigente ` +
+        `a varredura dos exemplos de versão em prosa não tem contra o que comparar, e ficaria ` +
+        `verde por vazio. Declare a versão num espelho (é a varredura 19 do mesmo guard que a exige).`,
+    )
+    return { violations, counts, unjudgeable: null }
+  }
+
+  const judged = new Set()
+  const porArquivo = new Map()
+  const cenarios = new Map(PROSE_SCENARIO_DOCS.map((s) => [s.file, s]))
+
+  const julgar = (rel, lineNo, line, comentario) => {
+    const mentions = findProseVersionMentions(line)
+    if (mentions.length === 0) return
+    counts.mencoes += mentions.length
+    porArquivo.set(rel, (porArquivo.get(rel) ?? 0) + mentions.length)
+    judged.add(rel)
+    const scenario = cenarios.has(rel)
+    for (const mention of mentions) {
+      const r = judgeProseMention({ mention, line, declared, scenario })
+      if (r.verdict === "violacao") {
+        violations.push(
+          `${rel}:${lineNo}: exemplo de versão desatualizado — ${r.why}` +
+            (comentario ? " (linha de COMENTÁRIO de um script)" : ""),
+        )
+        continue
+      }
+      if (r.verdict === "vigente") counts.vigentes += 1
+      else if (r.verdict === "sentinela") counts.sentinelas += 1
+      else if (r.verdict === "cenario") counts.cenario += 1
+      else counts.papel += 1
+    }
+  }
+
+  for (const rel of sources.docs) {
+    const abs = join(root, rel)
+    let content
+    try {
+      content = readFileSync(abs, "utf8")
+    } catch {
+      violations.push(
+        `${rel}: não consegui LER o doc (ele é uma das fontes canônicas da varredura de prosa) — ` +
+          `um arquivo ilegível não é "nada a julgar": sem este read o scan ficaria verde com o doc fora.`,
+      )
+      continue
+    }
+    counts.docs += 1
+    content.split(/\r?\n/).forEach((line, i) => julgar(rel, i + 1, line, false))
+  }
+  for (const rel of sources.scripts) {
+    const content = readFileSync(join(root, rel), "utf8")
+    const slash = isSlashScriptPath(rel)
+    content.split(/\r?\n/).forEach((line, i) => {
+      const prosa = proseTextsOfScriptLine(line, { slash })
+      if (prosa.length === 0) return
+      counts.comentarios += 1
+      julgar(rel, i + 1, prosa[0], true)
+    })
+  }
+
+  for (const rel of PROSE_REQUIRED_SOURCES) {
+    if (!existsSync(join(root, rel))) continue
+    if (!judged.has(rel)) {
+      violations.push(
+        `${rel}: o doc canônico existe e não cita NENHUMA versão em forma ancorada — a ` +
+          `cobertura da varredura de prosa sumiu (o verde por vazio é o defeito, não a ` +
+          `ausência de exemplo).`,
+      )
+    }
+  }
+
+  return { violations, counts }
+}
+
+/**
+ * As menções das linhas ADICIONADAS de um diff de prosa — é na EDIÇÃO que o
+ * exemplo desatualizado nasce (o mesmo desenho das invariantes 15/16 no
+ * `--staged`): o PR que introduz `--expected 1.3.14` num cabeçalho falha antes
+ * do merge, mesmo que a varredura global ainda esteja certa.
+ *
+ * @param {string} diffText
+ * @param {string|null} [declared]
+ * @returns {string[]} violações
+ */
+export function checkStagedProseExamples(diffText, declared = declaredBunVersion()) {
+  const violations = []
+  const cenarios = new Map(PROSE_SCENARIO_DOCS.map((s) => [s.file, s]))
+  for (const [file, lines] of parseDiffAddedLines(diffText, isProsePath)) {
+    const scenario = cenarios.has(file)
+    for (const { lineNo, content } of lines) {
+      const prosa = PROSE_DOC_RE.test(file)
+        ? [content]
+        : proseTextsOfScriptLine(content, { slash: isSlashScriptPath(file) })
+      if (prosa.length === 0) continue
+      for (const mention of findProseVersionMentions(prosa[0])) {
+        const r = judgeProseMention({ mention, line: prosa[0], declared, scenario })
+        if (r.verdict !== "violacao") continue
+        violations.push(
+          `${file}:${lineNo}: exemplo de versão desatualizado introduzido por este diff — ${r.why}`,
+        )
+      }
+    }
+  }
+  return violations
+}
+
+/** Um caminho que a varredura de prosa julga (doc Markdown ou script). */
+export function isProsePath(rel) {
+  return PROSE_DOC_RE.test(rel) || SCRIPT_FILE_RE.test(rel)
 }
 
 function main() {
@@ -1356,10 +3563,42 @@ function main() {
 
   if (staged) {
     const diffText = gitDiffWorkflows(base)
-    if (diffText === null) {
+    const diffFonte = gitDiffSingleSource(base)
+    const diffProsa = gitDiffPaths(base, PROSE_PATHS)
+    const diffTerceiros = gitDiffPaths(base, THIRD_PARTY_PIPELINE_PATHS)
+    // Invariante 18(c): o `package.json` não é alvo de nenhuma outra pathspec do
+    // recorte — sem esta, o commit que APAGA a declaração de toolchain passava.
+    const diffPacote = gitDiffPaths(base, PACKAGE_JSON_PATHS)
+    if (
+      diffText === null ||
+      diffFonte === null ||
+      diffProsa === null ||
+      diffTerceiros === null ||
+      diffPacote === null
+    ) {
       console.error(
         `❌ Modo --staged: git diff indisponível` +
           (base ? ` (base ${base})` : ` (nada staged? rode 'git add' primeiro)`),
+      )
+      process.exit(2)
+    }
+    // Invariante 18(b): os build sites que o diff toca — o BLOCO inteiro lido
+    // do índice (o `args:` e o `dockerfile:` são linhas diferentes) — e a
+    // REMOÇÃO do arg, comparando esse bloco com o de HEAD.
+    const dockerfilesStaged = bunDockerfilesWithArg(process.cwd())
+    const buildSites = checkStagedComposeBuildArgs(diffFonte, dockerfilesStaged)
+    const argsRemovidos = checkStagedRemovedBuildArgs(diffFonte, dockerfilesStaged)
+    // Invariante 18(c): a declaração de TOOLCHAIN que o commit APAGA ou MUDA.
+    const toolchain = checkStagedPackageManagerVersion(diffPacote)
+    const naoLegiveis = [
+      ...new Set([...buildSites.unreadable, ...argsRemovidos.unreadable, ...toolchain.unreadable]),
+    ]
+    if (naoLegiveis.length > 0) {
+      console.error(
+        `❌ Modo --staged: não consegui ler o(s) arquivo(s) que o diff toca: ` +
+          `${naoLegiveis.join(", ")} — os vereditos do build site e da declaração de toolchain ` +
+          `(invariante 18) precisam do arquivo inteiro no ÍNDICE ('git show :<arquivo>') e no commit ` +
+          `anterior ('git show HEAD:<arquivo>', a comparação que pega a REMOÇÃO do arg e do packageManager).`,
       )
       process.exit(2)
     }
@@ -1367,28 +3606,44 @@ function main() {
       ...checkStagedCacheKeys(diffText, DEFAULT_CACHE_KEY_RULES()),
       ...checkStagedLiterals(diffText),
       ...checkStagedSetupBunCallSites(diffText),
-      ...checkStagedRemovedBunVersion(diffText),
+      ...checkStagedRemovedSetupBunCall(diffText),
       ...checkStagedCachePaths(diffText, DEFAULT_CACHE_KEY_RULES()),
       ...checkStagedRemovedCacheBlockFields(diffText),
       ...checkStagedRemovedLiterals(diffText),
+      // Invariantes 15/16: a MESMA varredura, agora sobre os scripts e os
+      // composes que o diff toca — é na EDIÇÃO que o literal nasce.
+      ...checkStagedSingleSourceLiterals(diffFonte),
+      // Invariante 18(b): os build sites que o diff toca (a ponta que herda o
+      // default sem que ninguém veja o valor) e o arg REMOVIDO de um bloco que
+      // passa a não ter valor escrito nenhum.
+      ...buildSites.violations,
+      ...argsRemovidos.violations,
+      // Invariante 18(c): a declaração de TOOLCHAIN removida ou trocada por este
+      // commit (a outra ponta que o global pegaria só no PR).
+      ...toolchain.violations,
+      // Invariante 17: e os EXEMPLOS DE VERSÃO que a prosa do diff adiciona.
+      ...checkStagedProseExamples(diffProsa),
+      // Invariante 19: os usos da versão que o diff adiciona num pipeline de
+      // terceiro (o número nasce na EDIÇÃO, como nos scripts e nos composes).
+      ...checkStagedThirdPartyPipelineVersions(diffTerceiros),
     ]
     if (violations.length > 0) {
       console.error(
-        `❌ Diff com ${violations.length} violação(ões) de cache key/literal/call site/remoção de input/remoção de path-key/par key↔path do Bun:\n`,
+        `❌ Diff com ${violations.length} violação(ões) de cache key/literal/chamada do setup/remoção da chamada/remoção do arg de build site/remoção do path-key/remoção da declaração de toolchain/par key↔path do Bun:\n`,
       )
       for (const v of violations) console.error(`   - ${v}`)
       console.error(
-        `\n   Cache keys, literais, call sites e pares key↔path introduzidos por este diff precisam usar a` +
-          `\n   fonte única ${BUN_VERSION_VAR} — um literal (bun-1.3.14-...) não seria` +
-          `\n   invalidado pela troca da variável, e um path de outra toolchain` +
-          `\n   (ex.: node_modules/.prisma com key bun-...) quebraria o cache. E` +
-          `\n   REMOVER o input bun-version de um call site que sobreviveu é` +
-          `\n   regressão — o action falharia em runtime sem a versão.`,
+        `\n   Cache keys, literais, chamadas do setup e pares key↔path introduzidos por este diff` +
+          `\n   precisam usar a fonte única ${BUN_VERSION_VAR} — um literal` +
+          `\n   (bun-X.Y.Z-...) não seria invalidado pela troca da variável, e um` +
+          `\n   path de outra toolchain (ex.: node_modules/.prisma com key bun-...)` +
+          `\n   quebraria o cache. E REMOVER a chamada do setup de um job é` +
+          `\n   regressão — o job ficaria sem Bun.`,
       )
       process.exit(1)
     }
     console.log(
-      `✅ Diff ok — nenhuma cache key/literal/call site/remoção de input/par key↔path do Bun introduzido` +
+      `✅ Diff ok — nenhuma cache key/literal/chamada do setup/remoção da chamada/remoção do arg de build site/remoção da declaração de toolchain/par key↔path do Bun introduzido` +
         (base ? ` (vs base ${base})` : ` (staged)`),
     )
     process.exit(0)
@@ -1396,37 +3651,181 @@ function main() {
 
   // ── Modo padrão: invariantes globais do repositório ─────────────────
   const cwd = process.cwd()
-  const actionPath = join(cwd, ".github", "actions", "setup-bun", "action.yml")
   const violations = validateMirror(
     join(cwd, ".github", "workflows", "sync-bun-mirror.yml"),
-    actionPath,
+    join(cwd, SETUP_BUN_SCRIPT),
     join(cwd, "Dockerfile.bun-mirror"),
   )
 
-  const workflowsDir = join(cwd, ".github", "workflows")
-  violations.push(...checkCacheKeys(workflowsDir, DEFAULT_CACHE_KEY_RULES()))
-  violations.push(...checkCachePaths(workflowsDir, DEFAULT_CACHE_KEY_RULES()))
-  violations.push(...checkNoLiteralBunVersion(workflowsDir))
-  violations.push(...checkSetupBunCallSites(workflowsDir))
+  // Os invariantes globais rodam em TODAS as forjas. As funções puras rotulam
+  // a violação com o BASENAME do workflow (contrato já testado); aqui o rótulo
+  // é prefixado com o diretório da forja para que o diagnóstico diga em qual
+  // pipeline a fonte única foi violada — foi essa ausência que deixou
+  // `BUN_VERSION: "1.4.0"` [divergente] literal viver na pipeline dona do merge.
+  // Um workflow de forja que não abre NÃO vira "nenhuma violação": a varredura
+  // aqui é a COMPARTILHADA (fonte única) e roda ANTES de qualquer veredito — o
+  // arquivo sai NOMEADO e o guard para com 2. Sem esta porta, o
+  // `readFileSync` cru dos checks abaixo estourava com stack trace (exit 1,
+  // "violação") e o autor ia caçar literal de Bun onde o problema era leitura.
+  exitOnUnjudgeable(readWorkflowScan(cwd).unjudgeable)
+  for (const dir of existingWorkflowDirs(cwd)) {
+    const workflowsDir = join(cwd, dir)
+    const names = workflowFileNames(cwd, dir)
+    const label = (v) => {
+      for (const n of names) if (v.startsWith(`${n}:`)) return `${dir}/${v}`
+      return v
+    }
+    violations.push(...checkCacheKeys(workflowsDir, DEFAULT_CACHE_KEY_RULES()).map(label))
+    violations.push(...checkCachePaths(workflowsDir, DEFAULT_CACHE_KEY_RULES()).map(label))
+    violations.push(...checkNoLiteralBunVersion(workflowsDir).map(label))
+    violations.push(...checkSetupBunCallSites(workflowsDir).map(label))
+  }
   violations.push(...checkActrc(join(cwd, ".actrc")))
+
+  // ── Forja: a imagem dos jobs embarca o Bun da variable? ──────────────
+  // A label do runner é a diferença entre o tier-1 de 0s e o download do
+  // tier 3 em TODO job — e o sintoma é invisível (o setup funciona nos dois
+  // casos). Só roda quando os dois arquivos existem (repo sem a forja não é
+  // violação).
+  const composePath = join(cwd, GITEA_COMPOSE)
+  const envMirrorPath = join(cwd, GITEA_ENV_MIRROR)
+  if (existsSync(composePath) && existsSync(envMirrorPath)) {
+    violations.push(
+      ...checkGiteaRunnerImage(
+        readFileSync(composePath, "utf8"),
+        readFileSync(envMirrorPath, "utf8"),
+      ),
+    )
+    // ── Forja: a imagem é PRÉ-REQUISITO da subida da stack? ─────────
+    // A label do runner aponta para uma imagem que pode não existir. O
+    // bring-up (gitea-up.sh) tem de garantir a tag ANTES do `up -d runner`
+    // — e o instalador tem de mandar o usuário por esse caminho.
+    const bringUpPath = join(cwd, GITEA_BRING_UP)
+    const setupPath = join(cwd, GITEA_SETUP)
+    violations.push(
+      ...checkGiteaBringUp(
+        existsSync(bringUpPath) ? readFileSync(bringUpPath, "utf8") : "",
+        existsSync(setupPath) ? readFileSync(setupPath, "utf8") : undefined,
+      ),
+    )
+    // ── Forja: o ciclo bring-up → doctor → prova tem CORTE? ──────────
+    // O bring-up roda o doctor inteiro (a regra acima); quem impede a cadeia de
+    // crescer é a dublagem que a prova faz do doctor. É o único modo de falha
+    // deste desenho sem sintoma antes de ser catastrófico.
+    const proofPath = join(cwd, PROOF_SCRIPT)
+    violations.push(
+      ...checkDoctorCycleCut(existsSync(proofPath) ? readFileSync(proofPath, "utf8") : ""),
+    )
+    // ── Forja: o RE-REGISTRO também é um caminho garantido? ──────────
+    // Trocar a label é justamente quando a tag pode faltar; o runbook não
+    // pode ensinar uma sequência crua que pule a garantia.
+    const docPath = join(cwd, GITEA_DOC)
+    violations.push(
+      ...checkReRegisterPath(
+        existsSync(bringUpPath) ? readFileSync(bringUpPath, "utf8") : "",
+        existsSync(docPath) ? readFileSync(docPath, "utf8") : "",
+      ),
+    )
+  }
+
+  // ── Espelhos da variável: quem compara e quem escreve ────────────────
+  // Os espelhos têm dois donos em DOIS arquivos (o bump .sh escreve, o guard
+  // semanal .mjs compara). Se um lado ganhar um espelho que o outro não tem, a
+  // assimetria é silenciosa: aviso permanente ou valor nunca conferido.
+  {
+    const bumpPath = join(cwd, BUN_BUMP_SCRIPT)
+    const syncPath = join(cwd, ACTRC_SYNC_SCRIPT)
+    if (existsSync(syncPath)) {
+      violations.push(
+        ...checkMirrorWriters(
+          existsSync(bumpPath) ? readFileSync(bumpPath, "utf8") : "",
+          readFileSync(syncPath, "utf8"),
+        ),
+      )
+    }
+  }
   violations.push(...checkDockerfiles(cwd))
   violations.push(...checkNoForeignLockfiles(cwd))
+
+  // ── Invariantes 15/16: os espelhos literais FORA dos workflows ────────
+  // O defeito que estas duas caçam não aparece em nenhum diff de workflow:
+  // o script/compose continua FUNCIONANDO com a versão antiga, então nada
+  // fica vermelho — só o comportamento fica velho.
+  const alvos = singleSourceFiles(cwd)
+  violations.push(...checkScriptLiterals(cwd))
+  violations.push(...checkComposeVersionLiterals(cwd))
+
+  // ── Invariante 19: os usos da versão em pipelines de TERCEIRO ──────────
+  // A classe que as 15/16/18 deixam fora por não ser script, compose nem a
+  // cadeia de build do repositório — e que por isso envelhecia sem sintoma.
+  violations.push(...checkThirdPartyPipelineVersions(cwd))
+
+  // ── Invariante 18: a CADEIA DE BUILD (Dockerfile ↔ build site) ────────
+  // As duas pontas que nenhuma outra varredura vê: o DEFAULT do Dockerfile e
+  // o build site que o herda em silêncio. Um build sem o arg não tem valor
+  // escrito nenhum para as invariantes 13/15/16 julgarem.
+  const dockerfilesComArg = bunDockerfilesWithArg(cwd)
+  const buildSites = new Map()
+  for (const rel of alvos) {
+    if (!COMPOSE_FILE_RE.test(rel)) continue
+    const content = readFileSync(join(cwd, rel), "utf8")
+    buildSites.set(rel, composeBuildSites(rel, content))
+    violations.push(...checkComposeBuildArgs(rel, content, dockerfilesComArg))
+  }
+  violations.push(...checkPackageManagerVersion(cwd))
+
+  // ── Invariante 17: os EXEMPLOS de versão que vivem em PROSA ──────────
+  // A metade que as invariantes 15/16 deixam de fora de propósito (lá o
+  // COMENTÁRIO é onde o comportamento aparece como exemplo): aqui a prosa é
+  // julgada — pelas MENÇÕES ANCORADAS, contra o valor vigente.
+  const prosa = checkProseVersionExamples(cwd)
+  violations.push(...prosa.violations)
 
   if (violations.length > 0) {
     console.error(`❌ Fonte única do Bun com ${violations.length} violação(ões):\n`)
     for (const v of violations) console.error(`   - ${v}`)
     console.error(
       `\n   A versão do Bun vive APENAS na repository variable vars.BUN_VERSION` +
-        `\n   (Settings → Secrets and variables → Actions). Workflows passam` +
-        `\n   'bun-version: ${BUN_VERSION_VAR}', o mirror usa a mesma variável e` +
-        `\n   o action resolve em runtime. Sem literais em lugar nenhum — trocar` +
-        `\n   o Bun = alterar a variável em UM lugar. E o par key↔path de cada` +
-        `\n   bloco actions/cache precisa fechar (path da toolchain correta).`,
+        `\n   (Settings → Secrets and variables → Actions). O setup é um script` +
+        `\n   chamado por 'run:' que recebe a versão como argumento` +
+        `\n   ('bash ${SETUP_BUN_SCRIPT} "${BUN_VERSION_VAR}"'), o mirror usa a` +
+        `\n   mesma variável e o cache key inclui a variável. Sem literais em` +
+        `\n   lugar nenhum — trocar o Bun = alterar a variável em UM lugar. E o` +
+        `\n   par key↔path de cada bloco actions/cache precisa fechar.`,
     )
     process.exit(1)
   }
 
   console.log(`✅ Fonte única do Bun ok (BUN_VERSION=${BUN_VERSION_VAR}).`)
+  const nScripts = alvos.filter((f) => SCRIPT_FILE_RE.test(f)).length
+  const nComposes = alvos.filter((f) => COMPOSE_FILE_RE.test(f)).length
+  console.log(
+    `   ${nScripts} script(s) e ${nComposes} compose(s) varridos — nenhum literal ` +
+      `da versão do Bun nem da tag da imagem do runner (o valor declarado é ` +
+      `${declaredBunVersion(cwd) ?? "<nenhum espelho>"}).`,
+  )
+  const nBuildSites = [...buildSites.values()]
+    .flat()
+    .filter((s) => s.dockerfile !== null && dockerfilesComArg.includes(s.dockerfile)).length
+  console.log(
+    `   Cadeia de build: ${dockerfilesComArg.length} Dockerfile(s) com ARG BUN_VERSION ` +
+      `(${dockerfilesComArg.join(", ")}), todos SEM default, e ${nBuildSites} build site(s) ` +
+      `passando o arg — o toolchain do package.json diz o mesmo valor.`,
+  )
+  const pipelines = thirdPartyPipelineFiles(cwd)
+  console.log(
+    pipelines.length === 0
+      ? `   Pipelines de terceiro: nenhum arquivo do tipo (aspecto \`.woodpecker*.yml\`) — nada a comparar por valor.`
+      : `   Pipelines de terceiro: ${pipelines.length} arquivo(s) (${pipelines.join(", ")}) — cada uso ` +
+          `da versão do Bun neles diz o valor declarado, e a seção 2e do bump os reescreve.`,
+  )
+  const p = prosa.counts
+  console.log(
+    `   Exemplos de versão em PROSA: ${p.mencoes} menção(ões) ancorada(s) em ` +
+      `${p.docs} doc(s) e ${p.comentarios} linha(s) de comentário — ` +
+      `${p.vigentes} vigente(s), ${p.papel} com papel declarado, ${p.cenario} de cenário ` +
+      `declarado, ${p.sentinelas} sentinela(s), 0 desatualizada(s).`,
+  )
   process.exit(0)
 }
 

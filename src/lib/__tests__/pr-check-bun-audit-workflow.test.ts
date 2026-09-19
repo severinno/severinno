@@ -99,9 +99,10 @@ describe("pr-check.yml — job bun-audit-guard (sintaxe YAML + snapshot)", () =>
   })
 
   it("usa o composite action local setup-bun com a versão via vars.BUN_VERSION", () => {
-    const setupBun = steps.find((s) => s.uses === "./.github/actions/setup-bun")
-    expect(setupBun).toBeDefined()
-    expect(setupBun?.with).toMatchObject({ "bun-version": "${{ vars.BUN_VERSION }}" })
+    // `run:` (scripts/setup-bun-ci.sh) — não passa pelo resolvedor de actions.
+    const setupBun = steps.find((s) => (s.run ?? "").includes("scripts/setup-bun-ci.sh"))
+    expect(setupBun, "setup do Bun por run:").toBeDefined()
+    expect(setupBun?.run).toContain('bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"')
   })
 })
 
@@ -170,10 +171,8 @@ describe("pr-check.yml — refs contra o check-workflow-refs", () => {
 
   it("nenhum composite action local quebrado (uses: ./.github/actions/ — setup-bun existe)", () => {
     const refs = extractActionUses(content)
-    expect(refs.length).toBeGreaterThan(0)
-    for (const r of refs) {
-      expect(ctx.actions.has(r.ref), `action ausente: ${r.ref} (linha ${r.line})`).toBe(true)
-    }
-    expect(ctx.actions.has("setup-bun")).toBe(true)
+    expect(refs, "nenhuma ref de action local deve restar").toEqual([])
+    // O setup do Bun é o script do repo (chamado por `run:`), não um action.
+    expect(content).toContain("bash scripts/setup-bun-ci.sh")
   })
 })

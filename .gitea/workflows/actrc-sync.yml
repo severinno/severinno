@@ -1,0 +1,139 @@
+# =============================================================================
+# .gitea/workflows/actrc-sync.yml
+#
+# Equivalente Gitea do job `actrc-sync` do `.github/workflows/benchmark-weekly.yml`:
+# compara os espelhos locais (`.actrc` + o env da forja) com o VALOR das
+# repository variables que o compose da forja consome — BUN_VERSION,
+# IMAGE_REGISTRY e IMAGE_NAMESPACE (antes, só a versão tinha comparação de
+# valor; registry e namespace só tinham a checagem de existência).
+#
+# POR QUE A FORJA PRECISA DISSO (e por que o lado GitHub não bastava):
+#   - a forja é DONA DO MERGE e é onde a stack roda. O `deploy/.env.gitea` do
+#     checkout é o arquivo que o compose lê (`--env-file`) para montar a label
+#     do runner — é ESTE host que tem o arquivo para comparar. Num runner do
+#     GitHub ele não existe (gitignored), então o job de lá só enxerga o
+#     template comitado;
+#   - o drift aqui é silencioso por construção: o setup-bun funciona igual com
+#     ou sem Bun pré-instalado, então a imagem errada não deixa nenhum gate
+#     vermelho — ela só DESLIGA o fast path de 0s do tier-1, e todo job da forja
+#     volta a pagar o download.
+#
+# ALERTA ACIONÁVEL (defeito corrigido): antes este job só FALHAVA com o diff no
+# log — e um cron vermelho é alerta MUDO (ninguém abre o log). Como esta forja é
+# a DONA DO MERGE, a dívida precisa chegar onde alguém a veja: o job publica uma
+# ISSUE (label `actrc-sync-drift`, com dedup por assinatura) pela API do
+# Gitea, com o MESMO diagnóstico/assinatura usados no lado GitHub — `--backend
+# gitea` só troca QUEM cria o ticket, não o que é drift.
+#
+# Secrets: `GITEA_TOKEN`  (leitura de issues E escrita — sem a escrita o drift
+#                          volta a ser alerta mudo)
+#          `GITEA_URL`    (ex.: https://gitea.exemplo.com)
+#          `GITEA_REPOSITORY` (owner/repo — necessário para abrir a issue)
+# O job é pulado com aviso quando os secrets não existem — não falha por falta
+# de espelho configurado, só por drift real.
+#
+# Usage:
+#   cron semanal (segunda 06:23 UTC) ou dispatch manual.
+# =============================================================================
+
+name: Actrc Sync
+
+on:
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  actrc-sync:
+    name: Espelhos ↔ repository variables (.actrc + env da forja)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Mesmo contrato da ci.yml: script + cache, sem composite local.
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+
+      # `bun <script>` direto (não `bun run <entry>`): a entry do package.json
+      # invoca `node scripts/...`, e a imagem do runner Gitea não garante `node`
+      # no PATH — bun executa o .mjs nativamente. O guard é node-puro (sem
+      # deps), então não precisa de `bun install`.
+      #
+      # O guard DESCOBRE os espelhos no workspace: o template comitado
+      # (deploy/env.gitea.example) e o arquivo do host (deploy/.env.gitea), que
+      # neste checkout existe e é o que o compose lê. Cada um é comparado e
+      # nomeado no aviso — e é isso que faz este job valer mais que o do GitHub.
+      #
+      # O step NÃO falha aqui: quem falha é o último. Se este saísse 1, o step
+      # da issue nunca rodaria e o drift voltaria a ser cron vermelho sem ticket
+      # — o alerta mudo que este workflow existe para eliminar.
+      - name: Check drift (report only)
+        id: drift
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ secrets.GITEA_URL }}
+          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+        run: |
+          set +e
+          if [ -z "${GITEA_TOKEN:-}" ]; then
+            echo "notice::GITEA_TOKEN ausente — pulando a checagem de drift do Gitea."
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+            echo "publish=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Sem token não há nem medição nem canal (a issue precisa da ESCRITA
+          # em issues) — por isso `publish` sai daqui e não do exit code.
+          echo "publish=1" >> "$GITHUB_OUTPUT"
+          bun scripts/check-actrc-sync.mjs --expected "$BUN_VERSION" --expected-var "IMAGE_REGISTRY=$IMAGE_REGISTRY" --expected-var "IMAGE_NAMESPACE=$IMAGE_NAMESPACE" --json \
+            > /tmp/actrc-sync-drift.json
+          CODE=$?
+          set -e
+          cat /tmp/actrc-sync-drift.json
+          echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
+
+      # ── A ISSUE é o alerta; o vermelho abaixo é a lembrança ────────────────
+      # Roda ANTES de falhar, de propósito. O relatório já está pronto, então
+      # não há novo acesso à forja além da escrita da issue.
+      #
+      # `always()`: com drift ele PUBLICA; sem drift ele RECONCILIA — fecha as
+      # issues que ele mesmo abriu (com a prova no comentário), para a dívida
+      # não ficar ABERTA depois de resolvida. Condicionar a step ao drift faria
+      # o fechamento sumir em silêncio no único run que pode fechá-lo.
+      - name: Publish drift issue (Gitea)
+        if: always() && steps.drift.outputs.publish == '1'
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ secrets.GITEA_URL }}
+          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+        run: |
+          bun scripts/actrc-sync-issue.mjs \
+            --report /tmp/actrc-sync-drift.json \
+            --backend gitea
+
+      - name: Fail on drift
+        if: steps.drift.outputs.exit_code != '0'
+        run: |
+          echo "::error::Espelhos do BUN_VERSION/IMAGE_REGISTRY/IMAGE_NAMESPACE divergem das repository variables. Veja a issue 'actrc-sync-drift' (correção: alinhe .actrc, deploy/env.gitea.example e deploy/.env.gitea; se o env mudou, re-registre o runner: bash deploy/gitea-up.sh --re-register)."
+          exit 1
+
+env:
+  # FONTE ÚNICA (variables do repositório) — não cravar valor nenhum aqui. As
+  # três são as que o compose da forja consome e as que a label do runner usa
+  # para montar a tag da imagem: o guard compara o VALOR de todas.
+  #
+  # As flags são passadas SEMPRE (e não sob `if [ -n ... ]` como no
+  # forge-doctor.yml, que precisa medir sem os valores): aqui a régua ausente é
+  # o defeito — uma variable não criada na forja resolve para string vazia e sai
+  # como "NÃO configurada" (drift, run vermelho no modo --fail), nunca como
+  # "conferida".
+  BUN_VERSION: ${{ vars.BUN_VERSION }}
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+  IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}

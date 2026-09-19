@@ -30,13 +30,13 @@ PENDING=$(bunx prisma migrate status 2>&1)
 STATUS_CODE=$?
 set -e
 
-if [ $STATUS_CODE -ne 0 ] && ! echo "$PENDING" | grep -q "have not yet been applied"; then
+if [ $STATUS_CODE -ne 0 ] && ! grep -q "have not yet been applied" <<< "$PENDING"; then
   echo "❌ ERRO ao verificar migrations (exit $STATUS_CODE):"
   echo "$PENDING"
   exit 1
 fi
 
-if echo "$PENDING" | grep -q "have not yet been applied"; then
+if grep -q "have not yet been applied" <<< "$PENDING"; then
   echo "❌ MIGRATIONS PENDENTES DETECTADAS!"
   echo ""
   echo "$PENDING" | grep -A5 "have not yet been applied"
@@ -49,7 +49,7 @@ fi
 echo "  → Verificando drift do schema..."
 DRIFT=$(bunx prisma format --schema=prisma/schema.prisma 2>&1 || true)
 
-if echo "$DRIFT" | grep -qi "error"; then
+if grep -qi "error" <<< "$DRIFT"; then
   echo "❌ ERRO no schema Prisma:"
   echo "$DRIFT"
   exit 1

@@ -19,11 +19,19 @@ export async function findBestProvider(
 ): Promise<DispatchResult | null> {
   const service = await prisma.service.findUnique({
     where: { id: serviceId },
-    include: {
+    // `select` explícito: um `include` aqui devolveria a linha INTEIRA do
+    // prestador (cpfCnpj, e-mail, telefone, twoFactorSecret, URLs de KYC) só
+    // para ler 7 campos. Ver `pii-guard` em response-pii-guard.test.ts.
+    select: {
       provider: {
-        include: {
-          availability: { where: { active: true } },
-          _count: { select: { bookingsAsProvider: { where: { status: "IN_PROGRESS" } } } },
+        select: {
+          id: true,
+          name: true,
+          active: true,
+          lat: true,
+          lng: true,
+          radiusKm: true,
+          avgRating: true,
         },
       },
     },
@@ -90,8 +98,16 @@ export async function findBestProviders(
     where: {
       id: { in: providerIds },
     },
-    include: {
-      _count: { select: { bookingsAsProvider: { where: { status: "IN_PROGRESS" } } } },
+    // Apenas o que o ranking consome. A linha inteira de User trazia cpfCnpj,
+    // e-mail, telefone e credenciais de 2FA para dentro da memória do processo
+    // sem nenhum uso — além do `_count`, que era carregado e nunca lido.
+    select: {
+      id: true,
+      name: true,
+      lat: true,
+      lng: true,
+      radiusKm: true,
+      avgRating: true,
     },
   })
 
@@ -139,7 +155,17 @@ export async function findBestProviders(
 export async function dispatchBooking(bookingId: string): Promise<void> {
   const booking = await prisma.booking.findUnique({
     where: { id: bookingId },
-    include: { provider: true, client: true },
+    // Só o nome de cada parte é usado na notificação. `include: { provider: true,
+    // client: true }` carregava duas linhas completas de User (CPF, e-mail, 2FA).
+    select: {
+      lat: true,
+      lng: true,
+      scheduledAt: true,
+      providerId: true,
+      clientId: true,
+      provider: { select: { name: true } },
+      client: { select: { name: true } },
+    },
   })
 
   if (!booking) return

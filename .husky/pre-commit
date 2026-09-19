@@ -1,5 +1,26 @@
 set -eu
 
+# ── Agregação dos guards paralelos ────────────────────────────────────────
+# `wait pid1 pid2 ...` devolve o status de APENAS UM dos PIDs — o ÚLTIMO da
+# lista. Medido nas duas cascas que o husky usa (dash via `sh -e` e bash via
+# Git for Windows): `(exit 3) & a=$!; (exit 0) & b=$!; wait $a $b` sai 0.
+# Ou seja: um guard que NÃO seja o último da fase podia reprovar e o commit
+# seguia — o comentário prometia "fail immediately if any exits non-zero" e o
+# código não cumpria. Aqui esperamos cada PID e devolvemos o PRIMEIRO status
+# não-zero, de modo que o exit code do hook seja o do guard que reprovou,
+# seja qual for a posição dele na fase.
+wait_all() {
+  _status=0
+  for _pid in "$@"; do
+    _code=0
+    wait "$_pid" || _code=$?
+    if [ "$_code" -ne 0 ] && [ "$_status" -eq 0 ]; then
+      _status=$_code
+    fi
+  done
+  return "$_status"
+}
+
 # ============================================================================
 # Pre-commit hook — Severinno Marketplace
 #
@@ -27,29 +48,210 @@ PID_DEPS=$!
 node scripts/check-mutation-timing-contract.mjs --staged &
 PID_TIMING=$!
 
-# Wait for all Phase A jobs — fail immediately if any exits non-zero
-wait $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING
+# O CONTRATO DE MERGE do commit — RECORTE --staged, declarado em HOOK_DECLARED do
+# check-hook-ci-parity. Ele roda SO quando o INDICE toca o manifesto, a declaracao
+# da reaplicacao ou um workflow (nos outros commits sao um `git diff --cached
+# --name-only` e um aviso, ~30ms).
+#
+# POR QUE ELE ESTA AQUI: renomear o `name:` de um required check MUDA o contexto
+# que a forja exige, e a forja continua exigindo o ANTIGO — o PR passa a esperar
+# para sempre por um check que nunca mais roda. Esse rename era invisivel no
+# hook: `required-checks` estava em HOOK_NOT_RUN com a justificativa de que a
+# paridade de gates pegaria o efeito, e ela NAO pega (a classificacao de um gate
+# e pelo job/comando; renomear o `name:` nao muda classificacao nenhuma). Sem
+# este guard o commit saia daqui e a divergencia so aparecia no CI — ou, num PR
+# cuja base nao e `main`, no cron semanal.
+node scripts/check-required-checks.mjs --staged &
+PID_REQCHECKS=$!
+
+# Sintaxe dos corpos `run:` — RECORTE --staged, declarado em HOOK_DECLARED do
+# check-hook-ci-parity: julga os workflows do INDICE, lendo o conteudo do
+# commit (`git show :path`), nao o working tree. O corpo quebrado nasce de uma
+# reescrita mecanica em massa ANTES do commit e e o COMMIT que o carrega; a
+# arvore pode ter WIP que nao faz parte dele. A varredura inteira (480 corpos
+# das duas forjas) continua sendo o veredito do CI.
+node scripts/check-workflow-run-syntax.mjs --staged &
+PID_RUNSYNTAX=$!
+
+# Aguarda os CINCO SEM REMEDIO e agrega os status deles (wait_all — topo).
+#
+# O de sintaxe fica FORA desta lista de proposito: o `wait_all` devolve o PRIMEIRO
+# status nao-zero, entao ele diz QUE a fase falhou, nao QUAL guard falhou — e o de
+# sintaxe tem o seu proprio veredito abaixo (com o remedio).
+# O `||` e obrigatorio aqui: com `set -e` um `wait_all` que devolvesse nao-zero
+# ENCERRAVA o hook neste ponto, e as linhas seguintes (o veredito da fase) nunca
+# rodariam — a agregacao continuaria sendo a mesma, mas o codigo abaixo dela
+# mentiria sobre o que mede.
+FASE_A=0
+wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS || FASE_A=$?
+
+SINTAXE=0
+wait "$PID_RUNSYNTAX" || SINTAXE=$?
+
+# A falha dos cinco SEM REMEDIO bloqueia o commit AQUI, antes da fase B: nenhuma
+# das classes que o remedio conhece toca esses guards, e rodar a fase B inteira
+# (~3s) para depois nao ter o que oferecer seria pagar o custo do remedio sem o
+# remedio. O veredito e o mesmo de antes, agora dito em vez de deixado para o
+# `set -e`.
+[ "$FASE_A" -eq 0 ] || exit "$FASE_A"
 
 # ── Phase B: Global guards (parallel) ─────────────────────────────────────
 # Encoding guards, barrel lint, and prettier check are read-only and
 # independent — safe to run in parallel.
+#
+# A fase INTEIRA vive numa FUNCAO porque ela roda DUAS vezes quando o remedio
+# entra: uma para MEDIR (e o veredito do commit) e outra para REVALIDAR, com o
+# remendo ja no INDICE. A re-execucao e o que impede o remedio de declarar verde
+# uma fase que tem outro gate vermelho: o remedio so LEVANTA a falha que ele
+# mediu; quem diz se a fase passou e a FASE, rodada de novo.
+#
+# O `wait_all` (topo) devolve o PRIMEIRO status nao-zero e fecha a funcao — o
+# retorno dela E o codigo da fase. Chamada em `fase_b || FASE_B=$?`, o `set -e`
+# fica DESLIGADO dentro da funcao (a invocacao e parte de uma lista `||`), que e
+# o que faz o status voltar em vez de encerrar o hook no meio da medicao.
+#
+fase_b() {
+  bash scripts/run-encoding-guards.sh &
+  PID_ENCODING=$!
 
-bash scripts/run-encoding-guards.sh &
-PID_ENCODING=$!
+  bun run barrel-lint &
+  PID_BARREL=$!
 
-bun run barrel-lint &
-PID_BARREL=$!
+  # Allowlist de PII em payload de usuário + fonte única do client Prisma.
+  # Espelha o job `pii-allowlist-guard` do pr-check.yml (e o check:* do CI) —
+  # falha AQUI evita abrir o PR já sabendo que o gate vai recusar. Read-only e
+  # rápido (~2s), por isso entra na fase paralela.
+  bun run check:pii-allowlist &
+  PID_PII=$!
 
-# Prettier check STAGED — feedback de formatação ANTES do lint-staged
-(
-  STAGED_FORMAT=$(git diff --cached --name-only --diff-filter=ACMR | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
-  if [ -n "$STAGED_FORMAT" ]; then
-    bun x prettier --check --ignore-unknown $STAGED_FORMAT
+  # Fonte única do registry OCI (imagens da app + mirrors). Node puro, read-only,
+  # <1s — falha aqui evita abrir um PR que reintroduz `ghcr.io` hardcoded e
+  # quebra o flip de uma variável. Espelha o step do pr-check.yml.
+  bun run check:registry-source &
+  PID_REGISTRY=$!
+
+  # Paridade de gates entre a forja (dona do merge) e o espelho do GitHub.
+  # Node puro, read-only: falha se um invariante do CORE existir em só uma das
+  # pipelines — o modo silencioso de achar que o PR foi verificado.
+  bun run check:forge-parity &
+  PID_FORGE=$!
+
+  # Escopo dos guards: nenhum script pode cravar um diretório de forja (é o que
+  # garante que a pipeline dona do merge não volte a ficar fora da cobertura).
+  bun run check:forge-workflow-scope &
+  PID_SCOPE=$!
+
+  # Paridade hook ↔ CI: cada comando DESTE arquivo tem de ser o MESMO comando do
+  # CI (ou um recorte com decisao escrita). O caso real: o pre-push rodava
+  # `bunx tsc --noEmit` SEM o heap de 4GB do script `typecheck` — o mesmo commit
+  # estourava a memoria no push e passava no merge. Node puro, ~0.05s: falha aqui
+  # evitando um commit cujo veredito local nao e o do CI.
+  node scripts/check-hook-ci-parity.mjs &
+  PID_HOOKPARITY=$!
+
+  # Os COMANDOS que os hooks executam: cada caminho citado (script de node/bash,
+  # entrada do package.json, binario de bun x, arquivo de source) tem de EXISTIR.
+  # Um caminho com erro de digitacao num hook nao e "um script que nao roda": e um
+  # PASSO que nunca roda — e o sintoma nunca diz o nome dele. A linha e a MESMA do
+  # CI (o comando canonico do CORE), entao este passo nao precisa de declaracao no
+  # check-hook-ci-parity. Node puro, read-only, <0.1s.
+  node scripts/check-hook-commands.mjs &
+  PID_HOOKCMD=$!
+
+  # A classe SIGPIPE (`PRODUTOR | grep -q PADRAO` sob `set -o pipefail`): o grep
+  # quieto fecha o stdin no PRIMEIRO casamento, o produtor leva SIGPIPE e a soma
+  # do pipeline vira 141 — de forma INTERMITENTE, porque depende do TAMANHO da
+  # saida (acima do buffer do pipe), e com a mensagem apontando para a assercao
+  # que ACHOU o texto. O caso real deste repositorio: 216 ocorrencias em 47
+  # arquivos, 95 delas nos mutation tests, que ficavam vermelhos em ~1 de cada 3
+  # execucoes.
+  #
+  # POR QUE ELE ENTROU NO HOOK (antes so rodava no CI): o guard dono TEM o
+  # remedio mecanico (`--fix` -> herestring, com `--dry-run` publicando o patch
+  # no PR), e a OFERTA do pre-commit nao o cobria — nao por falta de remendo, mas
+  # porque o hook nunca invocava o guard. Quem introduz a cicatriz (uma reescrita
+  # mecanica de scripts) corrigia a mao exatamente a linha que a maquina remenda.
+  # Custo MEDIDO desta invocacao: ~0,14s (varredura inteira: 129 scripts + 33
+  # workflows) — o mesmo comando do CI, sem recorte, entao nao ha decisao de
+  # escopo a declarar (o `--staged` nao existiria aqui: metade do escopo sao
+  # corpos `run:` de workflow, e o veredito e do ESTADO da arvore, como o das
+  # outras guardas globais desta fase).
+  node scripts/check-pipefail-sigpipe.mjs &
+  PID_PIPEFAIL=$!
+
+  # Prettier check STAGED — feedback de formatação ANTES do lint-staged
+  (
+    STAGED_FORMAT=$(git diff --cached --name-only --diff-filter=ACMR | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
+    if [ -n "$STAGED_FORMAT" ]; then
+      bun x prettier --check --ignore-unknown $STAGED_FORMAT
+    fi
+  ) &
+  PID_PRETTIER=$!
+
+  wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY $PID_HOOKCMD $PID_PIPEFAIL
+}
+
+FASE_B=0
+fase_b || FASE_B=$?
+
+# ── O REMEDIO: UMA pergunta para TODAS as classes de defeito MECANICO ─────
+#
+# Quando o gate de sintaxe reprova OU a fase B reprova, o remedio e oferecido UMA
+# VEZ: ele detecta cada classe com o guard DONO e remenda so o que ele conhece
+# (a cicatriz de `run:`, o CR/CRLF do working tree, o CRLF do blob do indice, o
+# byte 0x97 do utf8, o caminho tipado de um comando de hook e o pipe quieto sob
+# pipefail), levando o remendo ao INDICE com a guarda de WIP. Sem este
+# passo o operador consertava a mao exatamente o que a maquina remenda — com a
+# chance de introduzir um erro NOVO na mesma linha.
+#
+# A ORDEM (depois das DUAS fases) importa de verdade, e por dois motivos:
+#   - os guards ja terminaram e a saida assentou: um prompt competindo com guards
+#     escrevendo e um prompt que ninguem le;
+#   - `run-encoding-guards.sh` para no PRIMEIRO guard que falha (`set -e`), entao
+#     a fase B nao diz se o defeito que sobrou e CRLF, blob ou utf8 — o remedio
+#     mede cada classe com o guard dela, independentemente.
+#
+# O remedio pergunta no TERMINAL DE CONTROLE (o git liga o fd 0 do hook em
+# /dev/null, e ele abre o /dev/tty justamente por isso): e este o ramo do fluxo
+# real — a pergunta acontece num `git commit`, sim. SEM TERMINAL ele NAO pergunta:
+# imprime o caminho a mao e mantem o commit bloqueado (fail-closed, exit 1 do
+# remedio). E o caso de CI e de sessao sem tty de controle (o /dev/tty nao abre).
+# Por isso ele e declarado LOCAL em HOOK_DECLARED: nao existe passo equivalente no
+# CI — o CI cobra o MESMO veredito pelos gates (sintaxe e encoding), sem o caminho
+# de quem opera.
+#
+# `REMEDIO` NASCE 1 ("nao provou nada") e o `&&` o vira 0 SO com exit 0: e o
+# unico jeito de distinguir "o remedio aplicou e revalidou" de "a chamada sumiu"
+# — o `|| VAR=$?` registra o FRACASSO, nunca o sucesso. O `|| true` mantem o
+# `set -e` fora do caminho: o veredito e o de baixo, com o exit do GATE/FASE.
+if [ "$SINTAXE" -ne 0 ] || [ "$FASE_B" -ne 0 ]; then
+  REMEDIO=1
+  node scripts/pre-commit-remedy.mjs && REMEDIO=0 || true
+
+  if [ "$REMEDIO" -ne 0 ]; then
+    # O veredito da falha e o do GATE/FASE, nao o do remedio — e este ramo e a
+    # REDE do caso perigoso: com a chamada acima ausente (ou sem terminal),
+    # `REMEDIO` fica 1 e o commit com o defeito NAO passa. A sintaxe e cobrada
+    # primeiro porque ela e o veredito mais especifico dos dois.
+    if [ "$SINTAXE" -ne 0 ]; then
+      exit "$SINTAXE"
+    fi
+    exit "$FASE_B"
   fi
-) &
-PID_PRETTIER=$!
 
-wait $PID_ENCODING $PID_BARREL $PID_PRETTIER
+  # O remedio so LEVANTA a falha que ele mediu: quem declara a fase VERDE e a
+  # FASE, rodada de novo — com o remendo ja no INDICE e o mesmo instrumento do
+  # veredito original (o `--staged` do gate e o `fase_b` inteiro). Sem esta
+  # re-execucao, um remendo verde esconderia um gate IRMAO da fase B que continua
+  # vermelho (o `run-encoding-guards.sh` morre no primeiro guard que falha, entao a
+  # fase nao mediu os seguintes).
+  if [ "$SINTAXE" -ne 0 ]; then
+    node scripts/check-workflow-run-syntax.mjs --staged
+  fi
+  if [ "$FASE_B" -ne 0 ]; then
+    fase_b
+  fi
+fi
 
 # ── Phase C: Sequential checks (state-dependent) ─────────────────────────
 # These checks may modify files (lint-staged) or depend on the full project

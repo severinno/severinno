@@ -9,8 +9,6 @@
  *   - City selector for landing page
  */
 
-
-
 // ── Types ─────────────────────────────────────────────────────────────────
 
 export type CityConfig = {
@@ -46,10 +44,16 @@ const CITIES: CityConfig[] = [
     active: true,
     defaultRadiusKm: 15,
     minBookingAmount: 50,
-    feeRate: 0.10,
+    feeRate: 0.1,
     categories: [
-      "Limpeza", "Manutenção", "Reforma", "Jardim",
-      "Serviços", "Transporte", "Cuidados", "Saúde",
+      "Limpeza",
+      "Manutenção",
+      "Reforma",
+      "Jardim",
+      "Serviços",
+      "Transporte",
+      "Cuidados",
+      "Saúde",
     ],
     launchedAt: "2026-08-30",
   },

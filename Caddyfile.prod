@@ -64,7 +64,7 @@
   #   manifest-src 'self'     → Manifest PWA apenas da origem
   #   img-src restrito        → Sem wildcard https:; apenas domínios específicos
   header {
-    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.tile.osrm.org https://s3.{$DOMAIN:severinno.com.br} https://*.s3.{$DOMAIN:severinno.com.br}; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.tile.openstreetmap.org https://nominatim.openstreetmap.org ws: wss: https://api.glitchtip.com wss://{$DOMAIN:severinno.com.br} https://glitchtip.{$DOMAIN:severinno.com.br}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; worker-src 'self' blob:; manifest-src 'self'"
+    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.tile.osrm.org https://s3.{$DOMAIN:severinno.com.br} https://*.s3.{$DOMAIN:severinno.com.br}; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.tile.openstreetmap.org https://nominatim.openstreetmap.org ws: wss: https://api.glitchtip.com wss://{$DOMAIN:severinno.com.br} https://glitchtip.{$DOMAIN:severinno.com.br}; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; worker-src 'self' blob:; manifest-src 'self'"
   }
 
   # ── Healthcheck interno (Docker HEALTHCHECK) ────────────────────────

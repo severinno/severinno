@@ -21,7 +21,6 @@ import {
 import { useLocationBroadcaster } from "@/hooks/use-location-broadcaster"
 import { apiGet, apiPatch } from "@/lib/api"
 import {
-  BOOKING_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
   type BookingStatus,

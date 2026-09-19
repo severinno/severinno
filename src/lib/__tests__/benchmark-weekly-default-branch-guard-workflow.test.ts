@@ -12,8 +12,8 @@
  * Valida (padrão dos testes de guards — espelha o
  * benchmark-weekly-mutation-timing-workflow.test.ts):
  *
- *   1. Sintaxe YAML — js-yaml parse do conteúdo REAL do arquivo (lança se
- *      inválido) + snapshot da estrutura do JOB.
+ *   1. Sintaxe YAML — carregamento via helper compartilhado + snapshot
+ *      da estrutura do JOB.
  *   2. Contrato de verificação: permissions contents: read (gh api
  *      repos/X/contents), GH_TOKEN: ${{ github.token }}, invocação do
  *      script com --repo github.repository --workflow seed-guards.yml e
@@ -21,8 +21,7 @@
  *   3. Fail-closed documentado no header do script: exit 1 = workflow
  *      ausente (GATE), exit 2 = infra — o job falha (não silencia) quando
  *      a medição não está deployada.
- *   4. Refs contra o check-workflow-refs — extractScriptRefs roda no
- *      conteúdo REAL e o script existe em scripts/.
+ *   4. Refs contra o check-workflow-refs via helper expectAllRefs.
  *
  * Uso:
  *   npx vitest run --config vitest.config.unit.ts src/lib/__tests__/benchmark-weekly-default-branch-guard-workflow.test.ts
@@ -32,42 +31,27 @@
  */
 
 import { describe, it, expect } from "vitest"
-import { readFileSync, existsSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import yaml from "js-yaml"
-import { extractScriptRefs } from "../../../scripts/check-workflow-refs.mjs"
 
-const CWD = process.cwd()
+import {
+  loadWorkflow,
+  readWorkflowContent,
+  getJob,
+  getSteps,
+  buildRepoContext,
+  expectAllRefs,
+  filterExecutableSteps,
+} from "./helpers/workflow-execution"
+
 const WF_NAME = "benchmark-weekly.yml"
-const WF_PATH = join(CWD, ".github", "workflows", WF_NAME)
 const JOB_KEY = "default-branch-workflow-guard"
 
-const content = readFileSync(WF_PATH, "utf8")
-const parsed = yaml.load(content) as {
-  name?: string
-  on?: Record<string, unknown>
-  jobs?: Record<
-    string,
-    {
-      name?: string
-      needs?: string | string[]
-      if?: string
-      permissions?: Record<string, string>
-      steps?: {
-        name?: string
-        id?: string
-        if?: string
-        run?: string
-        uses?: string
-        with?: Record<string, unknown>
-        env?: Record<string, string>
-      }[]
-    }
-  >
-}
-
-const job = parsed.jobs?.[JOB_KEY]
-const steps = job?.steps ?? []
+const wf = loadWorkflow(`.github/workflows/${WF_NAME}`)
+const content = readWorkflowContent(`.github/workflows/${WF_NAME}`)
+const job = getJob(wf, JOB_KEY)
+const steps = getSteps(job)
+const ctx = buildRepoContext()
 
 // ── 1. Sintaxe YAML + snapshot da estrutura do job ─────────────────────
 
@@ -78,7 +62,7 @@ describe("benchmark-weekly.yml — job default-branch-workflow-guard (sintaxe YA
   })
 
   it("estrutura mínima: job com 4 steps (checkout, validação, artifact, summary)", () => {
-    expect(job?.name).toBe("Default-branch workflow guard (medição deployada?)")
+    expect(job.name).toBe("Default-branch workflow guard (medição deployada?)")
     expect(steps.length).toBe(4)
   })
 
@@ -91,7 +75,7 @@ describe("benchmark-weekly.yml — job default-branch-workflow-guard (sintaxe YA
 
 describe("benchmark-weekly.yml — contrato de verificação do default-branch-workflow-guard", () => {
   it("permissions: contents: read (gh api repos/X/contents — existência do workflow na branch)", () => {
-    expect(job?.permissions).toMatchObject({
+    expect(job.permissions).toMatchObject({
       contents: "read",
     })
   })
@@ -116,19 +100,26 @@ describe("benchmark-weekly.yml — contrato de verificação do default-branch-w
     expect(summary?.run ?? "").toContain("$GITHUB_STEP_SUMMARY")
     expect(summary?.run ?? "").toContain("BLOQUEIO REAL")
   })
+
+  it("os 4 steps executam independentemente do resultado anterior (if: always() no artifact/summary)", () => {
+    const executable = filterExecutableSteps(job)
+    expect(executable.length).toBeGreaterThanOrEqual(2)
+    // Sempre executa: checkout + guard (sem if = success por default)
+    expect(executable[0]?.uses).toBe("actions/checkout@v4")
+    expect(executable[1]?.id).toBe("guard")
+  })
 })
 
 // ── 3. Fail-closed documentado no script ───────────────────────────────
 
 describe("check-default-branch-workflows.mjs — contrato fail-closed no header", () => {
   it("o header documenta o exit 1 como GATE de workflow ausente (a causa raiz do falso 'pendente')", () => {
-    const script = readFileSync(join(CWD, "scripts", "check-default-branch-workflows.mjs"), "utf8")
+    const script = readFileSync(
+      join(ctx.cwd, "scripts", "check-default-branch-workflows.mjs"),
+      "utf8",
+    )
     expect(script).toContain("1 — pelo menos um workflow AUSENTE (GATE")
     expect(script).toContain("MERGE do branch")
-    // A frase do 404 quebra em DUAS linhas no header (comentário wrapado) —
-    // remove os marcadores '// ' de continuação E normaliza o whitespace
-    // antes de assertar o texto completo (o regex /\s+/ sozinho deixaria o
-    // '//' literal no meio da frase: '404: workflow // seed-guards.yml').
     const normalized = script
       .split("\n")
       .map((l) => l.replace(/^\/\/\s*/, ""))
@@ -140,11 +131,8 @@ describe("check-default-branch-workflows.mjs — contrato fail-closed no header"
 
 // ── 4. Refs de script contra o repo real ───────────────────────────────
 
-describe("benchmark-weekly.yml — refs do default-branch-workflow-guard contra o check-workflow-refs", () => {
-  it("o script invocado existe em scripts/ (check-default-branch-workflows.mjs resolve)", () => {
-    const refs = extractScriptRefs(content)
-    const ref = refs.find((r) => r.ref === "check-default-branch-workflows.mjs")
-    expect(ref).toBeDefined()
-    expect(existsSync(join(CWD, "scripts", "check-default-branch-workflows.mjs"))).toBe(true)
+describe("benchmark-weekly.yml — refs do default-branch-workflow-guard", () => {
+  it("todas as refs resolvem (scripts, workflows, actions)", () => {
+    expectAllRefs(content, ctx)
   })
 })

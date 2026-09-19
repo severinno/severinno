@@ -29,7 +29,9 @@ function StatusBadge({ value }: { value: string }) {
     "half-open": "bg-yellow-100 text-yellow-800",
   }
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${colors[value] ?? "bg-gray-100 text-gray-800"}`}>
+    <span
+      className={`rounded-full px-2 py-0.5 text-xs font-medium ${colors[value] ?? "bg-gray-100 text-gray-800"}`}
+    >
       {value}
     </span>
   )
@@ -74,9 +76,9 @@ export function GeoMetricsPanel() {
       </div>
 
       {/* Latency Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {Object.entries(metrics.latency).map(([service, data]) => (
-          <div key={service} className="bg-white rounded-lg border p-4">
+          <div key={service} className="rounded-lg border bg-white p-4">
             <div className="text-sm font-medium text-gray-600 capitalize">{service}</div>
             <div className="mt-2 space-y-1">
               <div className="flex justify-between text-xs">
@@ -102,7 +104,7 @@ export function GeoMetricsPanel() {
 
       {/* Cache & Fallbacks */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white rounded-lg border p-4">
+        <div className="rounded-lg border bg-white p-4">
           <div className="text-sm font-medium text-gray-600">Cache Hit Ratio</div>
           <div className="mt-2 text-2xl font-bold">
             {metrics.cache.hitRatio !== null
@@ -110,11 +112,12 @@ export function GeoMetricsPanel() {
               : "N/A"}
           </div>
           <div className="mt-1 text-xs text-gray-400">
-            {metrics.cache.hits.toLocaleString()} hits / {metrics.cache.misses.toLocaleString()} misses
+            {metrics.cache.hits.toLocaleString()} hits / {metrics.cache.misses.toLocaleString()}{" "}
+            misses
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border p-4">
+        <div className="rounded-lg border bg-white p-4">
           <div className="text-sm font-medium text-gray-600">Fallback Rate</div>
           <div className="mt-2 space-y-1">
             {Object.entries(metrics.fallbacks).map(([op, count]) => (
@@ -128,11 +131,11 @@ export function GeoMetricsPanel() {
       </div>
 
       {/* Circuit Breakers */}
-      <div className="bg-white rounded-lg border p-4">
-        <div className="text-sm font-medium text-gray-600 mb-3">Circuit Breakers</div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="rounded-lg border bg-white p-4">
+        <div className="mb-3 text-sm font-medium text-gray-600">Circuit Breakers</div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {Object.entries(metrics.circuitBreakers).map(([name, cb]) => (
-            <div key={name} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+            <div key={name} className="flex items-center justify-between rounded bg-gray-50 p-2">
               <span className="text-xs font-medium capitalize">{name}</span>
               <StatusBadge value={cb.state} />
             </div>

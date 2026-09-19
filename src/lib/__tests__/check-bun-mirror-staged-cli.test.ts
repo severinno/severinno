@@ -7,8 +7,8 @@
  * validando o CONTRATO DE EXIT CODES do main():
  *
  *   exit 0  — diff staged limpo (sem violações introduzidas)
- *   exit 1  — diff staged COM violação (key literal bun-1.3.14-... / literal
- *             bun-version: 1.3.14 introduzidos pelo diff)
+ *   exit 1  — diff staged COM violação (key literal bun-1.3.14-... / chamada
+ *             do setup com versão literal introduzidos pelo diff)
  *   exit 2  — infra: `--base` inválido (gitDiffWorkflows retorna null) ou
  *             fora de repositório git (git diff --cached falha)
  *
@@ -103,52 +103,48 @@ jobs:
           restore-keys: bun-1.3.14-
 `
 
-/** Call site do setup-bun com literal bun-version: 1.3.14 — violação do diff. */
+/** Chamada do setup com versão LITERAL no argumento — violação do diff. */
 const LITERAL_CALL_SITE = `name: Fake
 jobs:
   job:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Bun
-        uses: ./.github/actions/setup-bun
-        with:
-          bun-version: 1.3.14
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "1.3.14"
 `
 
-/** Call site do setup-bun OK (fonte única) — baseline para testar a REMOÇÃO. */
+/** Chamada do setup OK (fonte única) — baseline para testar a REMOÇÃO. */
 const OK_CALL_SITE = `name: Fake
 jobs:
   job:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Bun
-        uses: ./.github/actions/setup-bun
-        with:
-          bun-version: \${{ vars.BUN_VERSION }}
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "\${{ vars.BUN_VERSION }}"
 `
 
-/** Call site SEM o input bun-version — a REMOÇÃO do input (regressão). */
+/** Job cuja chamada do setup SUMIU — a REMOÇÃO (regressão). */
 const MISSING_CALL_SITE = `name: Fake
 jobs:
   job:
     runs-on: ubuntu-latest
     steps:
-      - name: Setup Bun
-        uses: ./.github/actions/setup-bun
-        with:
-          cache: '~/.bun'
+      - run: echo outro
 `
 
-/** Workflow com key LITERAL + call site com literal bun-version (base da migração). */
+/** Workflow com key LITERAL + env BUN_VERSION literal (base da migração). */
 const LITERAL_KEY_AND_CALL = `name: Fake
+env:
+  BUN_VERSION: 1.3.14
 jobs:
   job:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Bun
-        uses: ./.github/actions/setup-bun
-        with:
-          bun-version: 1.3.14
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "\${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -157,16 +153,17 @@ jobs:
           restore-keys: bun-1.3.14-
 `
 
-/** Migração INCOMPLETA: key literal migrada para vars, mas bun-version literal SOBREVIVE. */
+/** Migração INCOMPLETA: key literal migrada para vars, mas o env BUN_VERSION SOBREVIVE. */
 const PARTIAL_MIGRATION = `name: Fake
+env:
+  BUN_VERSION: 1.3.14
 jobs:
   job:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Bun
-        uses: ./.github/actions/setup-bun
-        with:
-          bun-version: 1.3.14
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "\${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -210,7 +207,7 @@ describe("check-bun-mirror.mjs --staged — integração do main() com git real"
     expect(out).toContain("bun-1.3.14")
   })
 
-  it("exit 1: call site staged com literal bun-version: 1.3.14", () => {
+  it("exit 1: chamada do setup staged com versão LITERAL no argumento", () => {
     const dir = makeRepo()
     addWorkflow(dir, "deploy.yml", LITERAL_CALL_SITE)
     stage(dir, ".github/workflows/deploy.yml")
@@ -219,15 +216,15 @@ describe("check-bun-mirror.mjs --staged — integração do main() com git real"
     expect(status).toBe(1)
     expect(out).toContain("violação(ões)")
     expect(out).toContain("deploy.yml:")
-    expect(out).toContain("bun-version='1.3.14'")
+    expect(out).toContain("1.3.14")
+    expect(out).toContain("fonte única")
   })
 
-  it("exit 1: REMOÇÃO do input bun-version de um call site PRÉ-EXISTENTE (regressão)", () => {
-    // Call site OK COMMITADO (baseline) → working tree SEM o bun-version
-    // (removido) → staged. O diff mostra a linha `- bun-version:` como
-    // REMOVIDA com o `uses:` de CONTEXTO — o check de ADIÇÃO não vê (só
-    // avalia uses adicionado), então o checkStagedRemovedBunVersion é o que
-    // pega a regressão introduzida pelo diff.
+  it("exit 1: REMOÇÃO da chamada do setup de um job PRÉ-EXISTENTE (regressão)", () => {
+    // Chamada OK COMMITADA (baseline) → working tree SEM a chamada (o job
+    // segue com outro step) → staged. O diff mostra as linhas da chamada como
+    // REMOVIDAS sem substituta — o check de ADIÇÃO não vê (não há linha nova
+    // com o script), então o checkStagedRemovedSetupBunCall pega a regressão.
     const dir = makeRepo()
     addWorkflow(dir, "deploy.yml", OK_CALL_SITE)
     commitAll(dir, "baseline") // HEAD com call site OK
@@ -239,27 +236,29 @@ describe("check-bun-mirror.mjs --staged — integração do main() com git real"
     expect(out).toContain("violação(ões)")
     expect(out).toContain("deploy.yml:")
     expect(out).toContain("REMOÇÃO")
-    expect(out).toContain("bun-version")
+    expect(out).toContain("sem substituta")
+    expect(out).toContain("setup-bun-ci.sh")
   })
 
-  it("exit 0: REMOÇÃO do STEP INTEIRO (call site removido) não é regressão", () => {
-    // Call site inteiro (uses + with + bun-version) REMOVIDO — remover o
-    // step/job é legítimo (ex.: job eliminado). Só a remoção do INPUT de um
-    // call site que SOBREVIVE é regressão.
+  it("exit 0: MIGRAÇÃO da chamada (sai a antiga, entra a nova) não é regressão", () => {
+    // A REMOÇÃO da chamada só é regressão quando o job fica SEM setup: se o
+    // mesmo arquivo TAMBÉM ganha uma chamada do script, é a migração legítima
+    // (ex.: `uses: ./.github/actions/setup-bun` → `run: bash scripts/setup-bun-ci.sh`).
     const dir = makeRepo()
-    addWorkflow(dir, "deploy.yml", OK_CALL_SITE)
-    commitAll(dir, "baseline")
     addWorkflow(
       dir,
       "deploy.yml",
       `name: Fake
 jobs:
-  other:
+  job:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
 `,
     )
+    commitAll(dir, "baseline")
+    addWorkflow(dir, "deploy.yml", OK_CALL_SITE)
     stage(dir, ".github/workflows/deploy.yml")
 
     const { status, out } = runStaged(dir)
@@ -267,11 +266,11 @@ jobs:
     expect(out).toContain("Diff ok")
   })
 
-  it("exit 1: key literal REMOVIDA + bun-version literal SOBREVIVENTE na janela (migração incompleta)", () => {
-    // Baseline com key + call site LITERAIS COMMITADO → working tree migra
-    // SÓ a key para vars (o bun-version: 1.3.14 do call site SOBREVIVE como
+  it("exit 1: key literal REMOVIDA + env BUN_VERSION literal SOBREVIVENTE na janela (migração incompleta)", () => {
+    // Baseline com key + env BUN_VERSION LITERAIS COMMITADO → working tree
+    // migra SÓ a key para vars (o `BUN_VERSION: 1.3.14` do env SOBREVIVE como
     // CONTEXTO no diff) → staged. O checkStagedLiterals (só linhas +) não vê
-    // o bun-version de contexto; o checkStagedRemovedLiterals é o que pega a
+    // o literal de contexto; o checkStagedRemovedLiterals é o que pega a
     // migração incompleta introduzida pelo diff.
     const dir = makeRepo()
     addWorkflow(dir, "deploy.yml", LITERAL_KEY_AND_CALL)
@@ -285,13 +284,15 @@ jobs:
     expect(out).toContain("deploy.yml:")
     expect(out).toContain("SOBREVIVE ao lado de literal REMOVIDO")
     expect(out).toContain("migração incompleta")
-    // TRAVA o -U${DIFF_CONTEXT}: a âncora é a key literal REMOVIDA (linha 14
-    // do fixture) — se o contexto do git diff voltar ao default de 3 linhas,
-    // o bun-version sobrevivente (linha 9) some do diff e este teste falha.
-    expect(out).toContain("linha 14")
+    // TRAVA o -U${DIFF_CONTEXT}: a âncora é a key literal REMOVIDA (linha 15
+    // do fixture) e o SOBREVIVENTE é o env da linha 3 — se o contexto do git
+    // diff voltar ao default de 3 linhas, a linha 3 some do diff e a
+    // violação deixa de ser produzida.
+    expect(out).toContain("deploy.yml:3: literal do Bun SOBREVIVE")
+    expect(out).toContain("(linha 15)")
   })
 
-  it("exit 0: MIGRAÇÃO COMPLETA (key E bun-version literais migrados) não é regressão", () => {
+  it("exit 0: MIGRAÇÃO COMPLETA (key E env literais migrados) não é regressão", () => {
     // A migração remove os DOIS literais — nenhum sobrevive na região.
     const dir = makeRepo()
     addWorkflow(dir, "deploy.yml", LITERAL_KEY_AND_CALL)
@@ -300,14 +301,15 @@ jobs:
       dir,
       "deploy.yml",
       `name: Fake
+env:
+  BUN_VERSION: \${{ vars.BUN_VERSION }}
 jobs:
   job:
     runs-on: ubuntu-latest
     steps:
       - name: Setup Bun
-        uses: ./.github/actions/setup-bun
-        with:
-          bun-version: \${{ vars.BUN_VERSION }}
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "\${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:

@@ -28,17 +28,15 @@ Quando `preview_type` não é suficiente (ex: selects customizados, campos com m
 
 ```javascript
 // 1. Setar valor via native setter
-const nativeSetter = Object.getOwnPropertyDescriptor(
-  window.HTMLInputElement.prototype, 'value'
-).set;
-nativeSetter.call(input, "novo valor");
+const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set
+nativeSetter.call(input, "novo valor")
 
 // 2. Disparar eventos que React captura
-input.dispatchEvent(new Event('input', { bubbles: true }));
-input.dispatchEvent(new Event('change', { bubbles: true }));
+input.dispatchEvent(new Event("input", { bubbles: true }))
+input.dispatchEvent(new Event("change", { bubbles: true }))
 
 // 3. Triggerar blur se necessário
-input.dispatchEvent(new Event('blur', { bubbles: true }));
+input.dispatchEvent(new Event("blur", { bubbles: true }))
 ```
 
 ### Abordagem 3: `preview_click` em opções de dropdown
@@ -62,39 +60,40 @@ O `<Select>` do Radix não aceita `type`. O fluxo correto é:
 3. `preview_click(optionUid)` — seleciona
 
 Se o dropdown não abrir com `click`, use:
+
 ```javascript
-const btn = document.querySelector('button[role="combobox"]');
-btn.focus();
-btn.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+const btn = document.querySelector('button[role="combobox"]')
+btn.focus()
+btn.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }))
 ```
 
 ## Campos do Booking Modal — Mapeamento
 
-| Campo | ID | Tipo |
-|-------|----|------|
-| Buscar endereço | `combobox "Localização"` | Radix Combobox |
-| CEP | `gaf-cep` | Input (auto-fill no blur) |
-| Rua / Avenida | `gaf-street` | Input |
-| Número | `gaf-number` | Input |
-| Complemento | `gaf-complement` | Input |
-| Bairro | `gaf-district` | Input |
-| Cidade | `gaf-city` | Input |
-| UF | `gaf-state` | Radix Select |
+| Campo           | ID                       | Tipo                      |
+| --------------- | ------------------------ | ------------------------- |
+| Buscar endereço | `combobox "Localização"` | Radix Combobox            |
+| CEP             | `gaf-cep`                | Input (auto-fill no blur) |
+| Rua / Avenida   | `gaf-street`             | Input                     |
+| Número          | `gaf-number`             | Input                     |
+| Complemento     | `gaf-complement`         | Input                     |
+| Bairro          | `gaf-district`           | Input                     |
+| Cidade          | `gaf-city`               | Input                     |
+| UF              | `gaf-state`              | Radix Select              |
 
 ## Exemplo: Preencher Endereço Completo
 
 ```javascript
 // 1. Digitar CEP
-await preview_type(cepUid, "35020-460");
+await preview_type(cepUid, "35020-460")
 
 // 2. Clicar em outro campo pra disparar blur → ViaCEP auto-fill
-await preview_click(streetUid);
+await preview_click(streetUid)
 
 // 3. Aguardar lookup (2-3s)
-await new Promise(r => setTimeout(r, 3000));
+await new Promise((r) => setTimeout(r, 3000))
 
 // 4. Digitar número
-await preview_type(numberUid, "500");
+await preview_type(numberUid, "500")
 
 // 5. Selecionar UF (se ViaCEP não preencheu)
 // Clicar no trigger, depois na opção MG

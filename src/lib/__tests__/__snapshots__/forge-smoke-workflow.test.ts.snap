@@ -1,0 +1,151 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`forge-smoke.yml — sintaxe YAML + snapshot > parseia como YAML válido e casa com o snapshot da estrutura 1`] = `
+{
+  "concurrency": {
+    "cancel-in-progress": true,
+    "group": "forge-smoke-\${{ github.ref }}",
+  },
+  "env": {
+    "BUN_VERSION": "\${{ vars.BUN_VERSION }}",
+    "IMAGE_REGISTRY": "\${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}",
+    "NODE_VERSION": 22,
+  },
+  "jobs": {
+    "smoke": {
+      "name": "Forge Smoke",
+      "runs-on": "ubuntu-latest",
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+        },
+        {
+          "name": "Prova 1 — vars.BUN_VERSION resolve",
+          "run": "set -euo pipefail
+if [ -z "\${BUN_VERSION:-}" ]; then
+  echo "::error::vars.BUN_VERSION chegou VAZIO nesta forja."
+  echo "  1) crie a variable em Settings > Actions > Variables (Gitea >= 1.22);"
+  echo "  2) confirme que o act_runner foi reiniciado depois da atualizacao;"
+  echo "  3) se o job morreu antes deste passo com 'Unknown Variable Access vars',"
+  echo "     a instancia nao suporta o contexto — a variable nao e o problema."
+  exit 1
+fi
+echo "✅ vars.BUN_VERSION = \${BUN_VERSION}"
+echo "   registry desta forja: \${IMAGE_REGISTRY}"
+",
+          "shell": "bash",
+        },
+        {
+          "name": "Restore Bun cache",
+          "uses": "actions/cache@v4",
+          "with": {
+            "key": "bun-\${{ vars.BUN_VERSION }}-\${{ runner.os }}-\${{ runner.arch }}",
+            "path": "~/.bun",
+          },
+        },
+        {
+          "name": "Prova 2 — setup por run: + tier-1 da imagem do runner",
+          "run": "set -euo pipefail
+OUT="$(bash scripts/setup-bun-ci.sh "\${{ vars.BUN_VERSION }}" 2>&1)"
+printf '%s\\n' "$OUT"
+if ! grep -q 'Usando Bun pré-instalado:' <<<"$OUT"; then
+  echo "::error::tier-1 NAO disparou: a imagem do runner nao embarca o Bun \${{ vars.BUN_VERSION }}."
+  echo "  O setup FUNCIONOU (caiu no cache/mirror/release) — mas o fast path de 0s,"
+  echo "  que e a razao de a forja rodar numa imagem custom, nao engajou."
+  echo "  Remedio: aponte GITEA_RUNNER_LABELS para <registry>/<owner>/ubuntu-bun:<versao>"
+  echo "  em deploy/docker-compose.gitea.yml E RE-REGISTRE o runner (docker compose rm"
+  echo "  -sf runner + docker volume rm gitea-runner-data + docker compose up -d runner)."
+  echo "  Passo a passo em deploy/GITEA.md, secao 'Runner: a imagem que roda os jobs'."
+  exit 1
+fi
+echo "✅ tier-1 engajou (a imagem do runner embarca o Bun da variable)"
+",
+          "shell": "bash",
+        },
+        {
+          "name": "Prova 3 — runtime == vars.BUN_VERSION",
+          "run": "set -euo pipefail
+if ! command -v bun >/dev/null 2>&1; then
+  echo "::error::bun nao esta no PATH depois do script de setup — o setup nao concluiu."
+  echo "  cache: o tier 3 depende de docker (mirror OCI) ou de curl (release); veja o log acima."
+  exit 1
+fi
+ACTUAL="$(bun --version)"
+if [ "$ACTUAL" != "$BUN_VERSION" ]; then
+  echo "::error::runtime divergente: bun \${ACTUAL} != vars.BUN_VERSION \${BUN_VERSION}"
+  echo "  Causa provavel 1: a imagem do runner embarca outro Bun e ele vem ANTES"
+  echo "    no PATH (shadowing) — o binario correto existe, mas nao e o que executa."
+  echo "  Causa provavel 2: a variable foi alterada sem invalidar o cache do Bun"
+  echo "    (key = bun-<versao>-<os>-<arch>; versao nova = key nova, sem cache-hit)."
+  exit 1
+fi
+echo "✅ bun \${ACTUAL} == vars.BUN_VERSION"
+",
+          "shell": "bash",
+        },
+        {
+          "name": "Prova 4 — install congelado + guards node-puros (render do compose EXIGIDO)",
+          "run": "bun install --frozen-lockfile
+bun run check:registry-source --require-compose
+",
+        },
+        {
+          "name": "Prova 5 — o registro do runner é o do compose",
+          "run": "set -uo pipefail
+OUT="$(bun run runner-labels:check 2>&1)"
+CODE=$?
+printf '%s\\n' "$OUT"
+case "$CODE" in
+  0)
+    echo "✅ o registro do act_runner é o que o compose declara"
+    ;;
+  1)
+    echo "::error::REGISTRO VELHO ou VAZIO: os labels gravados em /data/.runner não são os do compose."
+    echo "  O runner usa os labels do REGISTRO (não relê o compose): o job cai na imagem antiga,"
+    echo "  sem o Bun pré-instalado, e o download do Bun volta em TODO job — sem outro sintoma."
+    echo "  Um registro vazio (runner órfão) é o caso extremo: NENHUM job é atribuído a ele."
+    echo "  Remédio (em geral): bash deploy/gitea-up.sh --re-register"
+    echo "  O caso do COMPOSE sem a variável tem remédio próprio: declare os labels primeiro (linhas '→' acima)."
+    echo "  Ver deploy/GITEA.md, seção 'Runner: a imagem que roda os jobs'."
+    exit 1
+    ;;
+  3)
+    echo "::error::NÃO PROVADO: o registro não pôde ser lido — a comparação NÃO aconteceu."
+    echo "  Exige o docker disponível no job (o runner monta /var/run/docker.sock por padrão;"
+    echo "  'container.docker_host: -' desliga essa montagem) e o container do runner no ar."
+    echo "  Um smoke verde aqui seria mentira: a invariante seguiria não verificada."
+    exit 1
+    ;;
+  *)
+    echo "::error::runner-labels:check saiu $CODE (env/uso) — veja a saída acima."
+    exit 1
+    ;;
+esac
+",
+          "shell": "bash",
+        },
+        {
+          "if": "always()",
+          "name": "Report runner toolchain",
+          "run": "echo "============================== FORGE SMOKE =============================="
+echo "forja            : \${GITHUB_SERVER_URL:-?} / \${GITHUB_REPOSITORY:-?}"
+echo "BUN_VERSION      : \${BUN_VERSION:-<vazio>}   (vars.BUN_VERSION)"
+echo "bun no PATH      : $(command -v bun 2>/dev/null || echo '<ausente>')"
+echo "bun --version    : $(bun --version 2>/dev/null || echo '<ausente>')"
+echo "node             : $(node --version 2>/dev/null || echo '<ausente>')"
+echo "docker           : $(docker --version 2>/dev/null || echo '<ausente>')"
+echo "IMAGE_REGISTRY   : \${IMAGE_REGISTRY:-<vazio>} (fallback = ghcr.io)"
+echo "registro do runner: $(docker exec gitea-runner cat /data/.runner 2>/dev/null | head -c 400 || echo '<nao lido / sem docker>')"
+echo "========================================================================="
+",
+          "shell": "bash",
+        },
+      ],
+    },
+  },
+  "name": "Forge Smoke (manual)",
+  "on": {
+    "workflow_dispatch": null,
+  },
+}
+`;

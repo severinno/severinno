@@ -86,7 +86,7 @@ SEND_RESULT=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
   -d "text=✅ <b>Severinno</b> — alertas Telegram configurados com sucesso!" \
   -d "parse_mode=HTML" 2>/dev/null || echo "")
 
-if echo "$SEND_RESULT" | grep -q '"ok":true'; then
+if grep -q '"ok":true' <<< "$SEND_RESULT"; then
   echo "   ✅ Mensagem de teste enviada pro chat $CHAT_ID"
 else
   echo "   ⚠️  Não consegui enviar mensagem de teste (token inválido ou chat não iniciado)"
@@ -95,7 +95,7 @@ fi
 
 # 5. Recria o container do Alertmanager (se a stack de monitoring estiver no
 #    ar) pra ele pegar as novas ALERTMANAGER_TELEGRAM_* do .env
-if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "alertmanager"; then
+if grep -q "alertmanager" <<< "$(docker ps --format '{{.Names}}' 2>/dev/null)"; then
   docker compose -f "$PROJECT_DIR/docker-compose.monitoring.yml" up -d alertmanager 2>&1 | tail -1
 fi
 

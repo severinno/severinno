@@ -208,7 +208,7 @@ if [ "$GUARD_EXIT" -eq 0 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO pela asserção esperada (outro invariante quebrou).
-if ! echo "$GUARD_OUTPUT" | grep -Fq "$EXPECTED_FAILURE_FORWARD"; then
+if ! grep -Fq "$EXPECTED_FAILURE_FORWARD" <<<"$GUARD_OUTPUT"; then
   fail "Guard falhou (exit $GUARD_EXIT) mas NÃO pela asserção forward esperada:"
   fail "  esperava:  $EXPECTED_FAILURE_FORWARD"
   fail "Falha pode ser outro invariante do fixture — veja o output acima."
@@ -254,7 +254,7 @@ if [ "$REVERSE_EXIT" -eq 0 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO pela asserção esperada.
-if ! echo "$REVERSE_OUTPUT" | grep -Fq "$EXPECTED_FAILURE_REVERSE"; then
+if ! grep -Fq "$EXPECTED_FAILURE_REVERSE" <<<"$REVERSE_OUTPUT"; then
   fail "Guard falhou (exit $REVERSE_EXIT) mas NÃO pela asserção reverse esperada:"
   fail "  esperava:  $EXPECTED_FAILURE_REVERSE"
   fail "Falha pode ser outro invariante do fixture — veja o output acima."

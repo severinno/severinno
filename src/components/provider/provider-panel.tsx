@@ -25,18 +25,54 @@ import { DashboardShell, type NavItem } from "@/components/shared/dashboard-shel
 import dynamic from "next/dynamic"
 
 // Lazy-loaded sub-views (code-split per route for smaller bundles)
-const ProviderDashboard = dynamic(() => import("./provider-dashboard").then(m => ({ default: m.ProviderDashboard })), { ssr: false })
-const ProviderExpediente = dynamic(() => import("./provider-expediente").then(m => ({ default: m.ProviderExpediente })), { ssr: false })
-const ProviderAgenda = dynamic(() => import("./provider-agenda").then(m => ({ default: m.ProviderAgenda })), { ssr: false })
-const ProviderBookings = dynamic(() => import("./provider-bookings").then(m => ({ default: m.ProviderBookings })), { ssr: false })
-const ProviderQuotes = dynamic(() => import("./provider-quotes").then(m => ({ default: m.ProviderQuotes })), { ssr: false })
-const ProviderServices = dynamic(() => import("./provider-services").then(m => ({ default: m.ProviderServices })), { ssr: false })
-const ProviderFinance = dynamic(() => import("./provider-finance").then(m => ({ default: m.ProviderFinance })), { ssr: false })
-const ProviderMessages = dynamic(() => import("./provider-messages").then(m => ({ default: m.ProviderMessages })), { ssr: false })
-const ProviderReviews = dynamic(() => import("./provider-reviews").then(m => ({ default: m.ProviderReviews })), { ssr: false })
-const ProviderProfile = dynamic(() => import("./provider-profile").then(m => ({ default: m.ProviderProfile })), { ssr: false })
-const ProviderOnboarding = dynamic(() => import("./provider-onboarding").then(m => ({ default: m.ProviderOnboarding })), { ssr: false })
-const ClientSecurity = dynamic(() => import("@/components/client/client-security").then(m => ({ default: m.ClientSecurity })), { ssr: false })
+const ProviderDashboard = dynamic(
+  () => import("./provider-dashboard").then((m) => ({ default: m.ProviderDashboard })),
+  { ssr: false },
+)
+const ProviderExpediente = dynamic(
+  () => import("./provider-expediente").then((m) => ({ default: m.ProviderExpediente })),
+  { ssr: false },
+)
+const ProviderAgenda = dynamic(
+  () => import("./provider-agenda").then((m) => ({ default: m.ProviderAgenda })),
+  { ssr: false },
+)
+const ProviderBookings = dynamic(
+  () => import("./provider-bookings").then((m) => ({ default: m.ProviderBookings })),
+  { ssr: false },
+)
+const ProviderQuotes = dynamic(
+  () => import("./provider-quotes").then((m) => ({ default: m.ProviderQuotes })),
+  { ssr: false },
+)
+const ProviderServices = dynamic(
+  () => import("./provider-services").then((m) => ({ default: m.ProviderServices })),
+  { ssr: false },
+)
+const ProviderFinance = dynamic(
+  () => import("./provider-finance").then((m) => ({ default: m.ProviderFinance })),
+  { ssr: false },
+)
+const ProviderMessages = dynamic(
+  () => import("./provider-messages").then((m) => ({ default: m.ProviderMessages })),
+  { ssr: false },
+)
+const ProviderReviews = dynamic(
+  () => import("./provider-reviews").then((m) => ({ default: m.ProviderReviews })),
+  { ssr: false },
+)
+const ProviderProfile = dynamic(
+  () => import("./provider-profile").then((m) => ({ default: m.ProviderProfile })),
+  { ssr: false },
+)
+const ProviderOnboarding = dynamic(
+  () => import("./provider-onboarding").then((m) => ({ default: m.ProviderOnboarding })),
+  { ssr: false },
+)
+const ClientSecurity = dynamic(
+  () => import("@/components/client/client-security").then((m) => ({ default: m.ClientSecurity })),
+  { ssr: false },
+)
 
 // ---------------------------------------------------------------------------
 // View metadata

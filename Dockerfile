@@ -4,12 +4,20 @@
 # Stage 1-2: Bun for dependency install + build (fast, native lockfile)
 # Stage 3:   Node.js for the standalone server (Next.js needs Node)
 #
-# Build:
-#   docker build --build-arg BUN_VERSION=1.4.0 -t severinno .
+# Build (a versão do Bun entra SÓ pelo --build-arg, do mesmo valor declarado
+# que o runner, os composes e o CI usam — não há default aqui de propósito):
+#   docker build --build-arg BUN_VERSION="$(sed -n 's/^--var BUN_VERSION=//p' .actrc)" -t severinno .
+#   docker compose -f docker-compose.yml build     # o compose passa o arg
 # =============================================================================
 
-# ── Bun version (single source of truth — CI passes via --build-arg) ────────
-ARG BUN_VERSION=1.4.0
+# ── Bun version (single source of truth: SÓ pelo --build-arg) ──────────────
+# SEM default, de propósito: um literal aqui é o valor de HOJE que nenhum bump
+# alcança, e todo build que não passa o arg o herda em SILÊNCIO — foi assim que
+# a versão antiga se espalhou por staging/hostinger/package.json. Sem default,
+# o build que não passa o arg falha alto (referência `oven/bun:-alpine`) em vez
+# de rodar outro Bun. O guard (invariante 18) reprova a volta do default e o
+# build site que não passa o arg.
+ARG BUN_VERSION
 
 # ── Base: Bun runtime ────────────────────────────────────────────────────────
 FROM oven/bun:${BUN_VERSION}-alpine AS base

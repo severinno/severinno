@@ -71,10 +71,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -95,8 +99,7 @@ jobs:
         run: |
           POSTGIS_READY=0
           for _ in $(seq 1 30); do
-            if docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno_test -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno_test -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               POSTGIS_READY=1
               break
             fi
@@ -105,8 +108,7 @@ jobs:
           if [ "$POSTGIS_READY" != "1" ]; then
             docker exec ${{ job.services.postgres.id }} \
               psql -U severinno -d severinno_test -c "CREATE EXTENSION IF NOT EXISTS postgis" >/dev/null 2>&1 || true
-            if ! docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno_test -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if ! grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno_test -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               echo "❌ postgis não disponível após espera/fallback"
               exit 1
             fi
@@ -145,10 +147,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:

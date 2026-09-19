@@ -57,6 +57,45 @@ O Self-Hosted Runner permite rodar workflows do GitHub Actions **no seu próprio
 
 ---
 
+## Os labels do runner: a comparação (`runner-labels:check:github`)
+
+Os labels do runner auto-hospedado **não ficam em arquivo nenhum** no host: o
+`.runner` do `actions/runner` guarda `agentId`/`agentName`/`poolName`/`serverUrl`
+— e nenhum label. Eles vivem no **servidor**, mandados no `config.sh --labels`.
+É por isso que um runner re-registrado à mão (ou um host restaurado de backup, ou
+um `config.sh` sem `--labels`) continua funcionando e **ninguém percebe**: o
+workflow que pede um label que sumiu não falha — ele **espera para sempre**, e o
+que já existe continua verde.
+
+O guard compara as duas pontas e é o mesmo comando da forja, com `--forge`:
+
+```bash
+# o DECLARADO sai de deploy/setup-github-runner.sh (RUNNER_LABELS/RUNNER_NAME/REPO_URL)
+# o REGISTRADO sai da API: recomenda-se um PAT com scope `repo` (ou fine-grained com
+# 'Self-hosted runners: read' NO REPOSITÓRIO) — o GITHUB_TOKEN de um run não serve
+export GITHUB_TOKEN="<pat>"
+bun run runner-labels:check:github
+# 0 provado · 1 registro velho/vazio/runner ausente ou offline · 2 env/uso · 3 não provado
+```
+
+Estados e o que fazer:
+
+| Desfecho                    | O que significa                                                                                           | Remédio                                                                      |
+| :-------------------------- | :-------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------- |
+| **0** provado               | o registro tem os labels do script (case-insensitive)                                                     | —                                                                            |
+| **1** label faltando/a mais | um `runs-on` que pede o label que sumiu fica esperando; um label a mais é resíduo de um `config.sh` à mão | `bash deploy/setup-github-runner.sh` (registra com `--replace`)              |
+| **1** registro VAZIO        | runner órfão: existe no painel e nenhum job é atribuído a ele                                             | re-registre (mesmo comando)                                                  |
+| **1** runner ausente        | o nome declarado não está registrado (renomeado/removido)                                                 | re-registre, ou corrija `RUNNER_NAME`                                        |
+| **1** OFFLINE               | registrado mas não conectado — é a causa do "no runner available"                                         | `sudo systemctl restart actions.runner.*` e `journalctl -u actions.runner.*` |
+| **3** não provado           | sem token (escopo de self-hosted runners) ou API fora                                                     | exporte `GITHUB_TOKEN` e rode onde a API é alcançável                        |
+
+O rótulo `self-hosted` e os read-only (`Linux`, `X64`) são normalizados em caixa
+pelo próprio GitHub: o guard compara **case-insensitive**, porque um alarme falso
+é o que ensina a ignorar o guard. O `doctor` carrega este mesmo fato no veredito
+de prontidão (e `--no-runner-labels` pula os registros das duas forjas).
+
+---
+
 ## Comandos Úteis
 
 ```bash

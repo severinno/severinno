@@ -108,7 +108,7 @@ assert_control_pass() {
     fail "O fixture base não é válido — o mutation test não pode prosseguir."
     exit 1
   fi
-  if ! echo "$out" | grep -Fq "$EXPECTED_FILE"; then
+  if ! grep -Fq "$EXPECTED_FILE" <<< "$out"; then
     fail "CONTROLE FALHOU: o relatório não lista '$EXPECTED_FILE' — o scan default"
     fail "não está descobrindo docs/ (discoverDocTargets quebrado?) — o cenário"
     fail "não provaria cobertura de docs."
@@ -138,7 +138,7 @@ assert_mutation_fail() {
   fi
 
   # Caso 1 — falhou, mas NÃO pela asserção esperada (outro invariante quebrou).
-  if ! echo "$out" | grep -Fq "$EXPECTED_FAILURE"; then
+  if ! grep -Fq "$EXPECTED_FAILURE" <<< "$out"; then
     fail "Guard falhou (exit $exit_code) mas NÃO pela asserção esperada:"
     fail "  esperava:  $EXPECTED_FAILURE"
     fail "Falha pode ser outro invariante do fixture — veja o output acima."
@@ -147,7 +147,7 @@ assert_mutation_fail() {
 
   # Caso 2 — a violação não aponta para o arquivo docs (o guard acusou o
   # README em vez do docs — cobertura de docs não é o que estamos provando).
-  if ! echo "$out" | grep -Fq "$EXPECTED_FILE"; then
+  if ! grep -Fq "$EXPECTED_FILE" <<< "$out"; then
     fail "Violação não aponta para '$EXPECTED_FILE':"
     fail "  esperava:  linha contendo '$EXPECTED_FILE'"
     fail "A cobertura de docs não está ativa — veja o output acima."

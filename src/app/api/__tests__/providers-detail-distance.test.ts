@@ -37,22 +37,28 @@ vi.mock("@/lib/auth", () => ({
   getOptionalSession: (...args: any[]) => mockGetOptionalSession(...args),
 }))
 
-vi.mock("@/lib/api-server", () => ({
-  cacheControlPrivate: (res: any) => res,
-  handleError: (e: any) => {
-    const status = e.status || e.message?.includes("not found") ? 404 : 500
-    const message = e.message || "Erro interno"
-    return new Response(JSON.stringify({ error: message }), {
-      status,
-      headers: { "content-type": "application/json" },
-    })
-  },
-  notFound: (msg: string) => {
-    const err = new Error(msg) as any
-    err.status = 404
-    return err
-  },
-}))
+// Mantém as constantes reais (PUBLIC_PROVIDER_SELECT / toPublicProvider) e
+// sobrescreve só os helpers de resposta que o teste precisa controlar.
+vi.mock("@/lib/api-server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api-server")>()
+  return {
+    ...actual,
+    cacheControlPrivate: (res: any) => res,
+    handleError: (e: any) => {
+      const status = e.status || e.message?.includes("not found") ? 404 : 500
+      const message = e.message || "Erro interno"
+      return new Response(JSON.stringify({ error: message }), {
+        status,
+        headers: { "content-type": "application/json" },
+      })
+    },
+    notFound: (msg: string) => {
+      const err = new Error(msg) as any
+      err.status = 404
+      return err
+    },
+  }
+})
 
 // ---------------------------------------------------------------------------
 // Import after mocks

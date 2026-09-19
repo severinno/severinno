@@ -1,10 +1,10 @@
 # =============================================================================
 # Bench Setup-Bun (real GitHub CI)
 #
-# Mede o tempo REAL do step setup-bun (.github/actions/setup-bun) num runner
-# GitHub-hosted, usando EXATAMENTE o mesmo `uses:` + `bun-version` do job
-# `check` do pr-check.yml. Serve para comparar com a emulação local do act
-# (composite ~29-33s na imagem catthehacker default — o act EMULA o
+# Mede o tempo REAL do step de setup do Bun (scripts/setup-bun-ci.sh, chamado
+# por `run:`) num runner GitHub-hosted, usando EXATAMENTE a mesma chamada do
+# job `check` do pr-check.yml. Serve para comparar com a emulação local do act
+# (setup ~29-33s na imagem catthehacker default — o act EMULA o
 # actions/cache; o tier-1 fast path nem dispara porque a imagem não embarca
 # bun). O objetivo é validar que a emulação local é o gargalo, não a
 # migração do setup-bun: no CI real o tier-2 (cache real do GitHub) roda em
@@ -55,9 +55,13 @@ jobs:
       - uses: actions/checkout@v4
 
       # ── MESMO uso do job check do pr-check.yml ────────────────────────
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Verify bun
         run: bun --version

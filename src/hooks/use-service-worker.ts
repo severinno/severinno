@@ -63,9 +63,12 @@ export function useServiceWorker(): SWState {
         setIsRegistered(true)
 
         // Check for updates every 60 minutes
-        const checkInterval = setInterval(() => {
-          if (!cancelled) reg.update().catch(() => {})
-        }, 60 * 60 * 1000)
+        const checkInterval = setInterval(
+          () => {
+            if (!cancelled) reg.update().catch(() => {})
+          },
+          60 * 60 * 1000,
+        )
 
         // Listen for new SW taking over
         reg.addEventListener("updatefound", () => {

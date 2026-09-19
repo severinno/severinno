@@ -446,3 +446,42 @@ describe("scanWorkflows", () => {
     expect(scanWorkflows([], makeCtx())).toEqual([])
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `defaults: run:` NÃO é passo — uma ref achada na declaração de shell default
+// aponta para um script que a pipeline NUNCA executa
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("a declaração `defaults.run` não produz referência", () => {
+  const WF = [
+    "name: x",
+    "on: [push]",
+    "defaults:",
+    "  run: node scripts/check-fantasma.mjs",
+    "jobs:",
+    "  a:",
+    "    runs-on: ubuntu-latest",
+    "    steps:",
+    "      - run: node scripts/check-de-verdade.mjs",
+  ].join("\n")
+
+  it("`extractScriptRefs` só vê a ref do PASSO", () => {
+    expect(extractScriptRefs(WF).map((r) => r.ref)).toEqual(["check-de-verdade.mjs"])
+  })
+
+  it("`extractPkgScriptRefs` idem (a entry da declaração não conta)", () => {
+    const wf = [
+      "defaults:",
+      "  run: bun run check:fantasma",
+      "jobs:",
+      "  a:",
+      "    steps:",
+      "      - run: bun run check:de-verdade",
+    ].join("\n")
+    expect(extractPkgScriptRefs(wf).map((r) => r.ref)).toEqual(["check:de-verdade"])
+  })
+
+  it("a linha do passo segue na lista (o guard não ficou cego)", () => {
+    expect(extractScriptRefs(WF)).toHaveLength(1)
+  })
+})

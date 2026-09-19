@@ -11,8 +11,14 @@
 // Scope:
 //   - src/  — app source + tests
 //   - e2e/  — Playwright specs
-//   - EXCLUDES src/generated/ (Prisma client output — vendor code)
-//   - EXCLUDES node_modules/.next/.freebuff
+//   - EXCLUDES node_modules/.next/.freebuff (tool caches, never source)
+//
+// NOTA (09/2026): até então este guard pulava qualquer diretório chamado
+// `generated`, porque o repo versionava `src/generated/prisma` (client Prisma
+// gerado à mão, 25 arquivos com `@ts-nocheck`). Esse artefato foi removido — o
+// client agora vem de node_modules/.prisma via `bun run db:generate` — então a
+// exceção virou buraco: bastava um `src/quimquer/generated/x.ts` para escapar
+// do guard. Removida: a regra vale para todo o src/ e e2e/.
 //
 // Usage:
 //   node scripts/check-ts-nocheck.mjs
@@ -24,7 +30,7 @@
 
 import { execSync } from "node:child_process"
 
-const EXCLUDE_FLAGS = ["node_modules", ".next", ".freebuff", "generated"]
+const EXCLUDE_FLAGS = ["node_modules", ".next", ".freebuff"]
   .map((d) => `--exclude-dir=${d}`)
   .join(" ")
 
@@ -36,7 +42,7 @@ try {
   const lines = out.trim().split("\n").filter(Boolean)
   const files = [...new Set(lines.map((l) => l.split(":")[0]))]
   console.error(
-    `❌ @ts-nocheck found in ${files.length} non-generated file(s):\n` +
+    `❌ @ts-nocheck found in ${files.length} file(s):\n` +
       lines.map((l) => `   - ${l}`).join("\n") +
       `\n\n   @ts-nocheck disables type checking for the whole file — ` +
       `remove the directive and fix the underlying type errors instead.`,

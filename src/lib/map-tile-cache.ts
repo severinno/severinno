@@ -70,9 +70,11 @@ export async function fetchTile(url: string): Promise<Response | null> {
       const age = Date.now() - new Date(dateHeader).getTime()
       if (age > TILE_TTL_MS) {
         // Refresh in background
-        fetch(url).then(response => {
-          if (response.ok) cache.put(url, response)
-        }).catch(() => {})
+        fetch(url)
+          .then((response) => {
+            if (response.ok) cache.put(url, response)
+          })
+          .catch(() => {})
       }
     }
 

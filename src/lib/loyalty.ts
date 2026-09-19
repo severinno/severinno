@@ -81,7 +81,7 @@ export async function awardPoints(
   if (points === 0) return { points: 0, total: 0, newBadges: [] }
 
   // Get current points
-  const current = await cacheGet<number>(`loyalty:points:${userId}`) ?? 0
+  const current = (await cacheGet<number>(`loyalty:points:${userId}`)) ?? 0
   const newTotal = current + points
 
   // Store new points
@@ -89,7 +89,7 @@ export async function awardPoints(
 
   // Store transaction log
   const txKey = `loyalty:tx:${userId}`
-  const txs = await cacheGet<Array<{ action: string; points: number; at: number }>>(txKey) ?? []
+  const txs = (await cacheGet<Array<{ action: string; points: number; at: number }>>(txKey)) ?? []
   txs.push({ action, points, at: Date.now() })
   if (txs.length > 100) txs.splice(0, txs.length - 100) // keep last 100
   await cacheSet(txKey, txs, 365 * 24 * 60 * 60)
@@ -106,23 +106,29 @@ export async function awardPoints(
  * Get loyalty stats for a user.
  */
 export async function getLoyaltyStats(userId: string): Promise<LoyaltyStats> {
-  const points = await cacheGet<number>(`loyalty:points:${userId}`) ?? 0
+  const points = (await cacheGet<number>(`loyalty:points:${userId}`)) ?? 0
   const tier = getTier(points)
   const badges = await getUserBadges(userId)
   const streak = await getStreak(userId)
 
   // Get booking/review counts
   const [totalBookings, totalReviews] = await Promise.all([
-    db.booking.count({ where: { OR: [{ clientId: userId }, { providerId: userId }], status: "COMPLETED" } }),
+    db.booking.count({
+      where: { OR: [{ clientId: userId }, { providerId: userId }], status: "COMPLETED" },
+    }),
     db.review.count({ where: { OR: [{ clientId: userId }, { providerId: userId }] } }),
   ])
 
   // Next tier
   const tiers: LoyaltyTier[] = ["bronze", "prata", "ouro", "diamante"]
   const currentIdx = tiers.indexOf(tier)
-  const nextTier = currentIdx < tiers.length - 1
-    ? { name: TIER_NAMES[tiers[currentIdx + 1]!], pointsNeeded: TIER_THRESHOLDS[tiers[currentIdx + 1]!] - points }
-    : null
+  const nextTier =
+    currentIdx < tiers.length - 1
+      ? {
+          name: TIER_NAMES[tiers[currentIdx + 1]!],
+          pointsNeeded: TIER_THRESHOLDS[tiers[currentIdx + 1]!] - points,
+        }
+      : null
 
   return { points, tier, badges, streak, totalBookings, totalReviews, nextTier }
 }
@@ -157,10 +163,14 @@ export async function updateStreak(userId: string): Promise<void> {
     }
     if (streakData.lastWeek === currentWeek - 1) {
       // Consecutive week — increment streak
-      await cacheSet(`loyalty:streak:${userId}`, {
-        count: streakData.count + 1,
-        lastWeek: currentWeek,
-      }, 365 * 24 * 60 * 60)
+      await cacheSet(
+        `loyalty:streak:${userId}`,
+        {
+          count: streakData.count + 1,
+          lastWeek: currentWeek,
+        },
+        365 * 24 * 60 * 60,
+      )
 
       // Award streak bonus at 4+ weeks
       if (streakData.count >= 3) {
@@ -171,10 +181,14 @@ export async function updateStreak(userId: string): Promise<void> {
   }
 
   // Streak broken or first week
-  await cacheSet(`loyalty:streak:${userId}`, {
-    count: 1,
-    lastWeek: currentWeek,
-  }, 365 * 24 * 60 * 60)
+  await cacheSet(
+    `loyalty:streak:${userId}`,
+    {
+      count: 1,
+      lastWeek: currentWeek,
+    },
+    365 * 24 * 60 * 60,
+  )
 }
 
 // ── Badges ────────────────────────────────────────────────────────────────
@@ -189,18 +203,40 @@ const BADGE_DEFINITIONS: Array<{
   { id: "bronze", name: "Bronze", emoji: "🥉", description: "100 pontos", check: (p) => p >= 100 },
   { id: "prata", name: "Prata", emoji: "🥈", description: "500 pontos", check: (p) => p >= 500 },
   { id: "ouro", name: "Ouro", emoji: "🥇", description: "1000 pontos", check: (p) => p >= 1000 },
-  { id: "diamante", name: "Diamante", emoji: "💎", description: "5000 pontos", check: (p) => p >= 5000 },
-  { id: "pro", name: "Pro", emoji: "⭐", description: "10+ bookings completos", check: (_p, s) => s.bookings >= 10 },
-  { id: "streak", name: "Streak", emoji: "🔥", description: "4+ semanas consecutivas", check: () => false }, // checked separately
+  {
+    id: "diamante",
+    name: "Diamante",
+    emoji: "💎",
+    description: "5000 pontos",
+    check: (p) => p >= 5000,
+  },
+  {
+    id: "pro",
+    name: "Pro",
+    emoji: "⭐",
+    description: "10+ bookings completos",
+    check: (_p, s) => s.bookings >= 10,
+  },
+  {
+    id: "streak",
+    name: "Streak",
+    emoji: "🔥",
+    description: "4+ semanas consecutivas",
+    check: () => false,
+  }, // checked separately
 ]
 
 async function checkBadges(userId: string, points: number): Promise<string[]> {
   const newBadges: string[] = []
-  const existingBadges = await cacheGet<string[]>(`loyalty:badges:${userId}`) ?? []
+  const existingBadges = (await cacheGet<string[]>(`loyalty:badges:${userId}`)) ?? []
 
   const stats = {
-    bookings: await db.booking.count({ where: { OR: [{ clientId: userId }, { providerId: userId }], status: "COMPLETED" } }),
-    reviews: await db.review.count({ where: { OR: [{ clientId: userId }, { providerId: userId }] } }),
+    bookings: await db.booking.count({
+      where: { OR: [{ clientId: userId }, { providerId: userId }], status: "COMPLETED" },
+    }),
+    reviews: await db.review.count({
+      where: { OR: [{ clientId: userId }, { providerId: userId }] },
+    }),
   }
 
   for (const badge of BADGE_DEFINITIONS) {
@@ -219,7 +255,7 @@ async function checkBadges(userId: string, points: number): Promise<string[]> {
 }
 
 async function getUserBadges(userId: string): Promise<LoyaltyBadge[]> {
-  const badgeIds = await cacheGet<string[]>(`loyalty:badges:${userId}`) ?? []
+  const badgeIds = (await cacheGet<string[]>(`loyalty:badges:${userId}`)) ?? []
 
   return badgeIds.map((id) => {
     const def = BADGE_DEFINITIONS.find((b) => b.id === id)

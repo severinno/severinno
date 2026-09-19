@@ -113,7 +113,7 @@ test_hsts() {
   assert "Header Strict-Transport-Security está presente ($hsts)" "true"
 
   # max-age deve ser >= 1 ano (31536000)
-  if echo "$hsts" | grep -qi "max-age=31536000"; then
+  if grep -qi "max-age=31536000" <<< "$hsts"; then
     assert "max-age=31536000 (1 ano) ✓" "true"
   else
     local ma=$(echo "$hsts" | grep -oP 'max-age=\K\d+' || echo "0")
@@ -121,14 +121,14 @@ test_hsts() {
     warn "HSTS max-age < 1 ano ou ausente. Recomendado: 31536000"
   fi
 
-  if echo "$hsts" | grep -qi "includeSubDomains"; then
+  if grep -qi "includeSubDomains" <<< "$hsts"; then
     assert "includeSubDomains presente ✓" "true"
   else
     assert "includeSubDomains presente" "false"
     warn "includeSubDomains ausente — subdomínios não protegi dos contra SSLStrip"
   fi
 
-  if echo "$hsts" | grep -qi "preload"; then
+  if grep -qi "preload" <<< "$hsts"; then
     assert "preload presente ✓" "true"
   else
     assert "preload presente" "false"
@@ -162,7 +162,7 @@ test_csp() {
   )
 
   for directive in "${directives[@]}"; do
-    if echo "$csp" | grep -qi "$directive"; then
+    if grep -qi "$directive" <<< "$csp"; then
       assert "  $directive ✓" "true"
     else
       assert "  $directive" "false"
@@ -177,7 +177,7 @@ test_csp() {
   )
 
   for source in "${connect_sources[@]}"; do
-    if echo "$csp" | grep -qi "$source"; then
+    if grep -qi "$source" <<< "$csp"; then
       ok "  connect-src inclui $source"
     else
       warn "  connect-src NÃO inclui $source — pode quebrar funcionalidades"
@@ -191,7 +191,7 @@ test_security_headers() {
 
   # X-Content-Type-Options
   xcto=$(get_header "X-Content-Type-Options")
-  if echo "$xcto" | grep -qi "nosniff"; then
+  if grep -qi "nosniff" <<< "$xcto"; then
     assert "X-Content-Type-Options: nosniff ✓" "true"
   else
     assert "X-Content-Type-Options: nosniff" "false"
@@ -200,7 +200,7 @@ test_security_headers() {
 
   # X-Frame-Options
   xfo=$(get_header "X-Frame-Options")
-  if echo "$xfo" | grep -qi "DENY"; then
+  if grep -qi "DENY" <<< "$xfo"; then
     assert "X-Frame-Options: DENY ✓" "true"
   else
     assert "X-Frame-Options: DENY" "false"
@@ -209,7 +209,7 @@ test_security_headers() {
 
   # X-XSS-Protection
   xss=$(get_header "X-XSS-Protection")
-  if echo "$xss" | grep -qi "1; mode=block"; then
+  if grep -qi "1; mode=block" <<< "$xss"; then
     assert "X-XSS-Protection: 1; mode=block ✓" "true"
   else
     assert "X-XSS-Protection: 1; mode=block" "false"
@@ -217,7 +217,7 @@ test_security_headers() {
   fi
 
   # Referrer-Policy    rp=$(get_header "Referrer-Policy")
-  if echo "$rp" | grep -qi "strict-origin-when-cross-origin"; then
+  if grep -qi "strict-origin-when-cross-origin" <<< "$rp"; then
     assert "Referrer-Policy: strict-origin-when-cross-origin ✓" "true"
   else
     assert "Referrer-Policy: strict-origin-when-cross-origin" "false"
@@ -227,17 +227,17 @@ test_security_headers() {
   # Permissions-Policy
   local pp
   pp=$(get_header "Permissions-Policy")
-  if echo "$pp" | grep -qi "camera=()"; then
+  if grep -qi "camera=()" <<< "$pp"; then
     assert "Permissions-Policy: camera desabilitada ✓" "true"
   else
     assert "Permissions-Policy: camera desabilitada" "false"
   fi
-  if echo "$pp" | grep -qi "microphone=()"; then
+  if grep -qi "microphone=()" <<< "$pp"; then
     assert "Permissions-Policy: microfone desabilitado ✓" "true"
   else
     assert "Permissions-Policy: microfone desabilitado" "false"
   fi
-  if echo "$pp" | grep -qi "geolocation=(self)"; then
+  if grep -qi "geolocation=(self)" <<< "$pp"; then
     assert "Permissions-Policy: geolocation restrita a self ✓" "true"
   else
     assert "Permissions-Policy: geolocation restrita a self" "false"

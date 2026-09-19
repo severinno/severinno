@@ -14,22 +14,34 @@
 //   2 — infra: arquivo ausente/ilegível (fail-closed)
 //
 // POR QUE: o nº de sub-tests da matriz `scripts/test-mutation-guards.sh`
-// (array SUBTESTS) é derivável e aparece em VÁRIOS lugares — o nome do job
-// `mutation-guards` no pr-check.yml, o summary do job, o header do próprio
-// master e 4 refs no README (tabelas de overhead). Cada bump de sub-test
-// exigia atualizar TODOS manualmente — e o drift aconteceu de verdade
-// (12→13 em 08/2026, corrigido à mão). Este guard deriva N do SUBTESTS e
-// falha (exit 1) se QUALQUER ref viva divergir — o drift de counts vira
-// erro de CI, não tarefa manual.
+// (array SUBTESTS) é derivável e aparece em VÁRIOS lugares — o summary do job
+// `mutation-guards` no pr-check.yml, o header do próprio master e 4 refs no
+// README (tabelas de overhead). Cada bump de sub-test exigia atualizar TODOS
+// manualmente — e o drift aconteceu de verdade (12→13 em 08/2026, corrigido à
+// mão). Este guard deriva N do SUBTESTS e falha (exit 1) se QUALQUER ref viva
+// divergir — o drift de counts vira erro de CI, não tarefa manual.
+//
+// O `name:` DO JOB É PROIBIDO DE CARREGAR O COUNT (e isso é metade do guard).
+// O nome de um job é o CONTEXTO do status check na forja, e o branch protection
+// exige esse contexto (`ci/required-checks.json`, aplicado por
+// scripts/apply-required-checks.mjs). Enquanto o nome dizia
+// "Mutation guards master (N node-pure mutation tests)", CADA bump da matriz
+// reescrevia o contexto protegido: a proteção aplicada na forja passava a
+// exigir um check que já não existe e o PR travava — um sub-test novo virava
+// mudança de contrato de merge. O count é DIAGNÓSTICO e vive onde não é
+// contrato: summary, comentário, header do master e README. Aqui o guard
+// exige o nome EXATO e sem número.
 //
 // O QUE é derivado:
 //   N = nº de entradas do array SUBTESTS=( ... ) no test-mutation-guards.sh
 //       (cada linha "id|descrição|script" = 1 sub-test; linhas de comentário
 //       dentro do array são ignoradas).
 //
-// O QUE é validado (refs VIVAS — devem usar EXATAMENTE N):
+// O QUE é validado (refs VIVAS — devem usar EXATAMENTE N, salvo o name):
 //   1. pr-check.yml:
-//      - name do job mutation-guards: "(N node-pure mutation tests)"
+//      - name do job mutation-guards: "Mutation guards master" EXATO e SEM
+//        número (o CONTEXTO do required check não pode depender do tamanho da
+//        matriz; um count de volta = exit 1 apontando o acoplamento)
 //      - summary: "All N node-pure mutation tests passed"
 //      - comentário do job: "Roda os N mutation tests node-puro"
 //   2. test-mutation-guards.sh (header): "Roda os N mutation tests node-puro"
@@ -126,12 +138,23 @@ export function run(root) {
 
   const violations = []
 
-  // 1. pr-check.yml — name do job mutation-guards
-  const nameRe = new RegExp(`name: Mutation guards master \\(${N} node-pure mutation tests\\)`)
-  if (!nameRe.test(workflowSrc)) {
+  // 1. pr-check.yml — o NAME do job mutation-guards é o CONTEXTO do required
+  //    check: tem de ser estável e COUNT-FREE.
+  const contextName = "Mutation guards master"
+  const nameMatch = /(?:^|\n)[ \t]*name:[ \t]*Mutation guards master([^\n]*)/.exec(workflowSrc)
+  if (!nameMatch) {
     violations.push(
-      `pr-check.yml: name do job 'mutation-guards' não usa (${N} node-pure mutation tests)`,
+      `pr-check.yml: name do job 'mutation-guards' não é '${contextName}' — o CONTEXTO do required check mudou (aplique a proteção de novo: scripts/apply-required-checks.mjs) ou o job sumiu`,
     )
+  } else {
+    const sufixo = nameMatch[1].trim()
+    if (sufixo !== "") {
+      // Um número (ou qualquer sufixo) aqui re-acopla o tamanho da matriz ao
+      // contrato de merge: o contexto protegido passa a mudar a cada bump.
+      violations.push(
+        `pr-check.yml: name do job 'mutation-guards' tem sufixo '${sufixo}' além de '${contextName}' — o CONTEXTO do required check é derivado do workflow; um count aqui faz o branch protection da forja apontar para um check inexistente a cada bump de matriz. O count vai no summary/comentário/header/README.`,
+      )
+    }
   }
   // summary do job
   const summaryRe = new RegExp(`All ${N} node-pure mutation tests passed`)
@@ -174,7 +197,7 @@ export function run(root) {
     derivedCount: N,
     refs: {
       prCheck: {
-        name: `(${N} node-pure mutation tests)`,
+        context: contextName,
         summary: `All ${N} node-pure mutation tests passed`,
       },
       masterHeader: `Roda os ${N} mutation tests node-puro`,

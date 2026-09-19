@@ -79,7 +79,10 @@ function deriveTag(apiPath: string): string {
   // /api/geo/cep → Geo
   // /api/bookings/[id]/pay → Bookings
   // /api/ → System
-  const segments = apiPath.replace(/^\/api\//, "").split("/").filter(Boolean)
+  const segments = apiPath
+    .replace(/^\/api\//, "")
+    .split("/")
+    .filter(Boolean)
   if (segments.length === 0 || (segments.length === 1 && segments[0] === "")) return "System"
 
   const first = segments[0].toLowerCase()
@@ -133,10 +136,7 @@ const METHOD_SUMMARIES: Record<HttpMethod, string> = {
   delete: "Delete",
 }
 
-function buildOperation(
-  method: HttpMethod,
-  summary: string | null,
-): Record<string, unknown> {
+function buildOperation(method: HttpMethod, summary: string | null): Record<string, unknown> {
   const op: Record<string, unknown> = {
     summary: summary || METHOD_SUMMARIES[method],
     responses: {

@@ -32,7 +32,9 @@
 // referência exata (arquivo:linha) e o artefato faltante.
 //
 // Escopo:
-//   - Ignora linhas de comentário (#) e linhas em branco
+//   - Ignora comentário — a LINHA toda e o de FIM DE LINHA (`run: # ...`): os
+//     dois não executam nada, e uma ref vinda de um comentário valida código
+//     morto. Mesma leitura do `check-forge-parity` (`executableLines`).
 //   - REMOVE expressões ${{ ... }} (DINÂMICAS — não resolvíveis estaticamente)
 //     mas continua validando refs ESTÁTICAS na mesma linha (ex.:
 //     `node scripts/run-benchmark.mjs ${{ matrix.type }}` valida o script)
@@ -49,9 +51,23 @@
 // Exit codes:
 //   0 — nenhuma referência quebrada (pass)
 //   1 — pelo menos uma referência quebrada (fail)
+//   2 — infra: workflow DECLARADO e NÃO JULGÁVEL (ilegível / não-UTF-8) — não
+//       ler um arquivo não é o mesmo que ele não ter refs a validar. Um arquivo
+//       com nome de workflow que não abre sai NOMEADO e o guard NÃO cunha
+//       veredito: o verde por ausência VALIDARIA o que a pipeline nunca roda.
 // =============================================================================
 
 import { existsSync, readdirSync, readFileSync } from "node:fs"
+
+import {
+  FORGE_ACTIONS_DIRS,
+  defaultsRunLines,
+  executableLine,
+  existingWorkflowDirs,
+  exitOnUnjudgeable,
+  readWorkflowScan,
+  reportEmptyWorkflows,
+} from "./forge-workflows.mjs"
 import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 
@@ -76,30 +92,36 @@ const PKG_RUN_RE = /\b(?:bun|npm|pnpm|yarn)\b\s+run\s+([A-Za-z0-9_:.-]+)/g
 const PKG_TARGET_RE =
   /\b(?:node|bun|bash|sh|python3|python)\b\s+(?:\.\/)?scripts\/([A-Za-z0-9_./-]+)/
 
-/** Reusable workflow local: `uses: ./.github/workflows/<file>.yml`. */
-const USES_LOCAL_RE = /uses:\s*\.\/\.github\/workflows\/([A-Za-z0-9_.-]+\.yml)/g
-
-/** Composite action local: `uses: ./.github/actions/<name>`. */
-const USES_ACTION_RE = /uses:\s*\.\/\.github\/actions\/([A-Za-z0-9_.-]+)/g
-
 /**
- * Expressão DINÂMICA do GitHub Actions (`${{ ... }}`) — não resolvível
- * estaticamente. É REMOVIDA da linha antes do scan (não pula a linha toda).
+ * Reusable workflow local: `uses: ./<forge>/workflows/<file>.yml` — o `forge`
+ * é curinga de propósito (`.github`, `.gitea`, ou a próxima forja): a ref
+ * aponta para o arquivo, e o guard valida contra o conjunto de workflows de
+ * TODAS as forjas. O grupo de captura continua sendo só o nome do arquivo, para
+ * não mudar o contrato das funções puras já testadas.
  */
-const DYNAMIC_EXPR_RE = /\$\{\{[^}]*\}\}/g
+const USES_LOCAL_RE = /uses:\s*\.\/\.[A-Za-z0-9_.-]+\/workflows\/([A-Za-z0-9_.-]+\.yml)/g
+
+/** Composite action local: `uses: ./<forge>/actions/<name>`. */
+const USES_ACTION_RE = /uses:\s*\.\/\.[A-Za-z0-9_.-]+\/actions\/([A-Za-z0-9_.-]+)/g
 
 // ---------------------------------------------------------------------------
 // Funções puras (exportadas para teste unitário)
 // ---------------------------------------------------------------------------
 
 /**
- * Prepara uma linha para scan: retorna a linha com ${{ }} removidos, ou
- * `null` se for comentário (#), vazia ou só contiver expressões dinâmicas.
+ * Prepara uma linha para scan pela REGUA UNICA (`executableLine`, de
+ * `forge-workflows.mjs`): comentário de LINHA e de FIM DE LINHA fora, `${{ }}`
+ * mascarado. Devolve `null` quando não sobra nada para escanear.
+ *
+ * A régua é a MESMA do `check-forge-parity` porque a pergunta é a mesma ("esta
+ * linha executa algo?") e a resposta tem de ser a mesma nos dois guards: quando
+ * eram duas implementações, o `check-workflow-refs` continuou validando
+ * referência de comentário de fim de linha enquanto o `check-forge-parity` já a
+ * ignorava — um guard afirmando conserto sobre código morto.
  */
-function scannableLine(trimmed) {
-  if (trimmed === "" || trimmed.startsWith("#")) return null
-  const stripped = trimmed.replace(DYNAMIC_EXPR_RE, "").trim()
-  return stripped === "" ? null : stripped
+function scannableLine(line) {
+  const scan = executableLine(line).trim()
+  return scan === "" ? null : scan
 }
 
 /**
@@ -111,9 +133,14 @@ function scannableLine(trimmed) {
 export function extractScriptRefs(content) {
   const refs = []
   const lines = content.split(/\r?\n/)
+  // `defaults.run` e DECLARACAO (o shell default do escopo), nao passo: uma ref
+  // achada ali aponta para um script que a pipeline NUNCA executa — validar (ou
+  // deixar de validar) por ela e medir o que nao roda.
+  const defaults = defaultsRunLines(content)
   for (let i = 0; i < lines.length; i++) {
+    if (defaults.has(i + 1)) continue
     const trimmed = lines[i].trim()
-    const scan = scannableLine(trimmed)
+    const scan = scannableLine(lines[i])
     if (scan === null) continue
     // matchAll clona a regex /g — lastIndex do módulo nunca avança (seguro).
     for (const m of scan.matchAll(SCRIPT_INVOKE_RE)) {
@@ -132,9 +159,14 @@ export function extractScriptRefs(content) {
 export function extractPkgScriptRefs(content) {
   const refs = []
   const lines = content.split(/\r?\n/)
+  // `defaults.run` e DECLARACAO (o shell default do escopo), nao passo: uma ref
+  // achada ali aponta para um script que a pipeline NUNCA executa — validar (ou
+  // deixar de validar) por ela e medir o que nao roda.
+  const defaults = defaultsRunLines(content)
   for (let i = 0; i < lines.length; i++) {
+    if (defaults.has(i + 1)) continue
     const trimmed = lines[i].trim()
-    const scan = scannableLine(trimmed)
+    const scan = scannableLine(lines[i])
     if (scan === null) continue
     // matchAll clona a regex /g — lastIndex do módulo nunca avança (seguro).
     for (const m of scan.matchAll(PKG_RUN_RE)) {
@@ -145,7 +177,7 @@ export function extractPkgScriptRefs(content) {
 }
 
 /**
- * Extrai os reusable workflows locais (`uses: ./.github/workflows/X.yml`).
+ * Extrai os reusable workflows locais (`uses: ./<forge>/workflows/X.yml`).
  *
  * @param {string} content  conteúdo do workflow
  * @returns {{ line: number, ref: string, text: string }[]}  ref = nome do arquivo .yml
@@ -153,9 +185,14 @@ export function extractPkgScriptRefs(content) {
 export function extractWorkflowUses(content) {
   const refs = []
   const lines = content.split(/\r?\n/)
+  // `defaults.run` e DECLARACAO (o shell default do escopo), nao passo: uma ref
+  // achada ali aponta para um script que a pipeline NUNCA executa — validar (ou
+  // deixar de validar) por ela e medir o que nao roda.
+  const defaults = defaultsRunLines(content)
   for (let i = 0; i < lines.length; i++) {
+    if (defaults.has(i + 1)) continue
     const trimmed = lines[i].trim()
-    const scan = scannableLine(trimmed)
+    const scan = scannableLine(lines[i])
     if (scan === null) continue
     // matchAll clona a regex /g — lastIndex do módulo nunca avança (seguro).
     for (const m of scan.matchAll(USES_LOCAL_RE)) {
@@ -166,7 +203,7 @@ export function extractWorkflowUses(content) {
 }
 
 /**
- * Extrai os composite actions locais (`uses: ./.github/actions/<name>`).
+ * Extrai os composite actions locais (`uses: ./<forge>/actions/<name>`).
  *
  * @param {string} content  conteúdo do workflow
  * @returns {{ line: number, ref: string, text: string }[]}  ref = nome da action
@@ -174,9 +211,14 @@ export function extractWorkflowUses(content) {
 export function extractActionUses(content) {
   const refs = []
   const lines = content.split(/\r?\n/)
+  // `defaults.run` e DECLARACAO (o shell default do escopo), nao passo: uma ref
+  // achada ali aponta para um script que a pipeline NUNCA executa — validar (ou
+  // deixar de validar) por ela e medir o que nao roda.
+  const defaults = defaultsRunLines(content)
   for (let i = 0; i < lines.length; i++) {
+    if (defaults.has(i + 1)) continue
     const trimmed = lines[i].trim()
-    const scan = scannableLine(trimmed)
+    const scan = scannableLine(lines[i])
     if (scan === null) continue
     // matchAll clona a regex /g — lastIndex do módulo nunca avança (seguro).
     for (const m of scan.matchAll(USES_ACTION_RE)) {
@@ -377,37 +419,55 @@ function main() {
   const pkgInternal = args.includes("--pkg-internal")
 
   const cwd = process.cwd()
-  const wfDir = join(cwd, ".github", "workflows")
+  const dirs = existingWorkflowDirs(cwd)
 
   // ── Contexto: artefatos disponíveis ──────────────────────────────────
-  const names = listDir(wfDir).filter((f) => f.endsWith(".yml"))
+  // Leitura única de TODAS as forjas. O conjunto `workflows` é a UNIÃO dos
+  // basenames: uma ref `uses: ./<forge>/workflows/X.yml` resolve se X.yml
+  // existir em qualquer forja (o nome é o contrato; a forja é o endereço).
+  const scan = readWorkflowScan(cwd)
+  // O escopo é o que o DIRETÓRIO declara: um arquivo com nome de workflow que
+  // não abre é do escopo, e não poder julgá-lo não é o mesmo que não haver nada
+  // a julgar (o `readFileSync` cru estourava com stack trace — fail-closed por
+  // acidente, e sem dizer QUAL arquivo nem por quê).
+  exitOnUnjudgeable(scan.unjudgeable)
+  reportEmptyWorkflows(scan.vazios)
+  const read = scan.files.map((w) => ({ dir: w.dir, name: w.name, content: w.text }))
   const scripts = new Set(listDir(join(cwd, "scripts")))
   const { pkgScripts, pkgTargets, pkgEntries, rawText } = readPkgScripts(cwd)
-  const workflows = new Set(names)
+  const workflows = new Set(read.map((f) => f.name))
 
-  // Composite actions locais: .github/actions/<name>/action.yml existentes
+  // Composite actions locais: <forge>/actions/<name>/action.yml existentes
   // (diretório pode não existir — ex.: repositório sem actions locais; nesse
-  // caso qualquer `uses: ./.github/actions/X` é dangling e é reportado).
-  const actionsDir = join(cwd, ".github", "actions")
+  // caso qualquer `uses: ./<forge>/actions/X` é dangling e é reportado).
   const actions = new Set(
-    existsSync(actionsDir)
-      ? listDir(actionsDir).filter((d) => existsSync(join(actionsDir, d, "action.yml")))
-      : [],
+    FORGE_ACTIONS_DIRS.flatMap((rel) => {
+      const abs = join(cwd, rel)
+      return existsSync(abs)
+        ? listDir(abs).filter((d) => existsSync(join(abs, d, "action.yml")))
+        : []
+    }),
   )
 
-  const files = names.map((n) => ({ name: n, content: readFileSync(join(wfDir, n), "utf8") }))
   // Reusa o conteúdo já lido (não re-lê os arquivos para o check de workflow_call)
   const workflowCall = new Set(
-    files.filter((f) => /workflow_call/.test(f.content)).map((f) => f.name),
+    read.filter((f) => /workflow_call/.test(f.content)).map((f) => f.name),
   )
-  const violations = scanWorkflows(files, {
-    scripts,
-    pkgScripts,
-    pkgTargets,
-    workflows,
-    workflowCall,
-    actions,
-  })
+  // Scaneia por forja para que a violação diga em QUAL pipeline ela está.
+  const violations = []
+  for (const dir of dirs) {
+    const files = read.filter((f) => f.dir === dir).map(({ name, content }) => ({ name, content }))
+    for (const v of scanWorkflows(files, {
+      scripts,
+      pkgScripts,
+      pkgTargets,
+      workflows,
+      workflowCall,
+      actions,
+    })) {
+      violations.push({ ...v, file: `${dir}/${v.file}` })
+    }
+  }
 
   // ── Modo --pkg-internal: consistência INTERNA do package.json ────────
   // Valida TODAS as entries que invocam scripts/ (mesmo sem workflow

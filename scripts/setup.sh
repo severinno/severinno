@@ -60,11 +60,11 @@ step() { echo ""; echo "${GRAY}════════════════�
 port_in_use() {
     local port=$1
     if command -v ss >/dev/null 2>&1; then
-        ss -tlnp "sport = :$port" 2>/dev/null | grep -qE "pid=[0-9]+" && return 0
+        grep -qE "pid=[0-9]+" <<< "$(ss -tlnp "sport = :$port" 2>/dev/null)" && return 0
     elif command -v lsof >/dev/null 2>&1; then
-        lsof -iTCP:"$port" -sTCP:LISTEN 2>/dev/null | grep -qv "com.docker" && return 0
+        grep -qv "com.docker" <<< "$(lsof -iTCP:"$port" -sTCP:LISTEN 2>/dev/null)" && return 0
     elif command -v netstat >/dev/null 2>&1; then
-        netstat -ano 2>/dev/null | grep ":${port}" | grep -qi "LISTEN" && return 0
+        grep -qi "LISTEN" <<< "$(netstat -ano 2>/dev/null | grep ":${port}")" && return 0
     fi
     return 1
 }
@@ -142,7 +142,7 @@ if bad:
 else:
     print('OK')
 " 2>&1) || true
-        if echo "$result" | grep -q "OK"; then
+        if grep -q "OK" <<< "$result"; then
             pass "Encoding UTF-8: todos os source files válidos"
         else
             warn "Encoding UTF-8: arquivos corrompidos encontrados!"
@@ -322,7 +322,7 @@ if [ -f ".env" ]; then
 else
     warn ".env não existe — criando com valores padrão..."
     
-    if echo "$DETECTED_COMPOSE" | grep -q "dev"; then
+    if grep -q "dev" <<< "$DETECTED_COMPOSE"; then
         # docker-compose.dev.yml defaults
         cat > .env << 'ENVEOF'
 # Severinno — Variáveis de ambiente (gerado automaticamente pelo setup.sh)
@@ -382,7 +382,7 @@ for entry in $PORTS_TO_CHECK; do
         fi
         
         # If it's the same docker service, it's fine
-        if echo "$proc_name" | grep -qiE "docker|com\.docker"; then
+        if grep -qiE "docker|com\.docker" <<< "$proc_name"; then
             pass "Porta $port ($svc): Docker proxy"
         else
             warn "Porta $port ($svc): ocupada por $proc_name (PID $local_pid)"
@@ -402,7 +402,7 @@ step "4. Limpando containers órfãos/conflitantes"
 # Se estamos usando docker-compose.yml, pare containers do dev.yml que conflitam
 if [ "$DETECTED_COMPOSE" = "docker-compose.yml" ]; then
     for old_container in severinno-postgis-1; do
-        if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "$old_container"; then
+        if grep -q "$old_container" <<< "$(docker ps --format '{{.Names}}' 2>/dev/null)"; then
             warn "Container conflitante: $old_container"
             docker stop "$old_container" 2>/dev/null || true
             docker rm "$old_container" 2>/dev/null || true
@@ -412,9 +412,9 @@ if [ "$DETECTED_COMPOSE" = "docker-compose.yml" ]; then
 fi
 
 # Se estamos usando dev.yml, pare containers do docker-compose.yml que conflitam
-if echo "$DETECTED_COMPOSE" | grep -q "dev"; then
+if grep -q "dev" <<< "$DETECTED_COMPOSE"; then
     for old_container in severinno-postgres-1; do
-        if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "$old_container"; then
+        if grep -q "$old_container" <<< "$(docker ps --format '{{.Names}}' 2>/dev/null)"; then
             warn "Container conflitante: $old_container"
             docker stop "$old_container" 2>/dev/null || true
             docker rm "$old_container" 2>/dev/null || true
@@ -431,7 +431,7 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════
 step "5. Subindo infraestrutura Docker"
 
-if echo "$DETECTED_COMPOSE" | grep -q "dev"; then
+if grep -q "dev" <<< "$DETECTED_COMPOSE"; then
     COMPOSE_FILE="-f docker-compose.dev.yml"
     SERVICES="postgis redis minio"
     detail "Usando docker-compose.dev.yml"
@@ -462,10 +462,10 @@ for svc in $SERVICES; do
     detail "Aguardando $svc..."
     for i in $(seq 1 $MAX_RETRIES); do
         status=$(docker compose $COMPOSE_FILE ps --format '{{.Status}}' "$svc" 2>/dev/null || echo "")
-        if echo "$status" | grep -qi "healthy"; then
+        if grep -qi "healthy" <<< "$status"; then
             pass "$svc: saudável (${i}s)"
             break
-        elif echo "$status" | grep -qi "unhealthy"; then
+        elif grep -qi "unhealthy" <<< "$status"; then
             warn "$svc: unhealthy — verificando logs..."
             docker compose $COMPOSE_FILE logs --tail=5 "$svc" 2>/dev/null || true
             break
@@ -483,7 +483,7 @@ step "7. Extensão PostGIS"
 PG_CONTAINER=$(docker compose $COMPOSE_FILE ps --format '{{.Names}}' postgres postgis 2>/dev/null | head -1 || true)
 PG_IMAGE=$(docker container inspect "$PG_CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || echo "")
 
-if echo "$PG_IMAGE" | grep -qi "postgis"; then
+if grep -qi "postgis" <<< "$PG_IMAGE"; then
     # PostGIS já está rodando
     docker exec "$PG_CONTAINER" psql -U "${POSTGRES_USER:-severinno}" -d "${POSTGRES_DB:-severinno}" -c "CREATE EXTENSION IF NOT EXISTS postgis;" 2>/dev/null || true
     docker exec "$PG_CONTAINER" psql -U "${POSTGRES_USER:-severinno}" -d "${POSTGRES_DB:-severinno}" -c "CREATE EXTENSION IF NOT EXISTS postgis_topology;" 2>/dev/null || true
@@ -541,7 +541,7 @@ if [ -d "$MIGRATIONS_DIR" ]; then
         [ "$mig_name" = "manual" ] && continue
         
         # Verificar se já está aplicada
-        if bunx prisma migrate status 2>/dev/null | grep -q "$mig_name"; then
+        if grep -q "$mig_name" <<< "$(bunx prisma migrate status 2>/dev/null)"; then
             detail "$mig_name: já aplicada"
         else
             detail "Resolvendo: $mig_name"

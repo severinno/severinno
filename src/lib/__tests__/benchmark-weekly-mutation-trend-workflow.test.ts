@@ -5,28 +5,9 @@
  * .github/workflows/benchmark-weekly.yml — o guard de TENDÊNCIA do overhead
  * do mutation-coord: compara a duração do step 'Run mutation test (contrato
  * coordenado)' do run ATUAL contra a MEDIANA dos N runs anteriores e emite
- * ::warning:: quando o drift relativo passa de X% — pegando a tendência
- * ANTES do gate duro (--max 240) disparar.
+ * ::warning:: quando o drift relativo passa de X%.
  *
- * Valida (padrão dos testes de guards — espelha o
- * benchmark-weekly-mutation-timing-workflow.test.ts):
- *
- *   1. Sintaxe YAML — js-yaml parse do conteúdo REAL do arquivo (lança se
- *      inválido) + snapshot da estrutura do JOB.
- *   2. Contrato de medição: needs: seed-guards + if: always() (mede TAMBÉM
- *      quando o seed-guards falhou), permissions actions: read (só leitura —
- *      o trend NÃO publica baseline, ao contrário do timing job que tem
- *      actions: write), GH_TOKEN: ${{ github.token }}, invocação com
- *      --run github.run_id --repo github.repository --window (var com
- *      fallback 4) --max-drift (var com fallback 30) --json.
- *   3. Contrato de alerta: o drift é NÃO-bloqueante (::warning::, exit 0 do
- *      script) — mas o step ausente é fail-closed (exit 2) e o artifact +
- *      summary usam if: always() (evidência existe mesmo com exit 1/2).
- *   4. Refs contra o check-workflow-refs — measure-mutation-trend.mjs existe
- *      em scripts/ e a invocação resolve.
- *   5. Paridade com o timing job: o trend reusa a MESMA fonte de extração
- *      (measure-mutation-timing.mjs — extractMutationStep) e o MESMO contrato
- *      de markers.
+ * Migração para o helper compartilhado workflow-execution.
  *
  * Uso:
  *   npx vitest run --config vitest.config.unit.ts src/lib/__tests__/benchmark-weekly-mutation-trend-workflow.test.ts
@@ -36,55 +17,31 @@
  */
 
 import { describe, it, expect } from "vitest"
-import { readFileSync, readdirSync } from "node:fs"
+import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import yaml from "js-yaml"
-import { extractScriptRefs } from "../../../scripts/check-workflow-refs.mjs"
+
 import { JOB_NAME_MARKER, STEP_NAME_MARKER } from "../../../scripts/measure-mutation-timing.mjs"
+import {
+  loadWorkflow,
+  readWorkflowContent,
+  getJob,
+  getSteps,
+  buildRepoContext,
+  expectAllRefs,
+  filterExecutableSteps,
+  resolveCondition,
+} from "./helpers/workflow-execution"
 
-const CWD = process.cwd()
 const WF_NAME = "benchmark-weekly.yml"
-const WF_PATH = join(CWD, ".github", "workflows", WF_NAME)
 const JOB_KEY = "mutation-coord-trend"
-const SEED_GUARDS_PATH = join(CWD, ".github", "workflows", "seed-guards.yml")
+const SEED_GUARDS_PATH = join(process.cwd(), ".github", "workflows", "seed-guards.yml")
 
-const content = readFileSync(WF_PATH, "utf8")
-const parsed = yaml.load(content) as {
-  name?: string
-  on?: Record<string, unknown>
-  jobs?: Record<
-    string,
-    {
-      name?: string
-      needs?: string | string[]
-      if?: string
-      permissions?: Record<string, string>
-      steps?: {
-        name?: string
-        id?: string
-        if?: string
-        run?: string
-        uses?: string
-        with?: Record<string, unknown>
-        env?: Record<string, string>
-      }[]
-    }
-  >
-}
-
-const job = parsed.jobs?.[JOB_KEY]
-const steps = job?.steps ?? []
+const wf = loadWorkflow(`.github/workflows/${WF_NAME}`)
+const content = readWorkflowContent(`.github/workflows/${WF_NAME}`)
+const job = getJob(wf, JOB_KEY)
+const steps = getSteps(job)
+const ctx = buildRepoContext()
 const seedGuardsContent = readFileSync(SEED_GUARDS_PATH, "utf8")
-
-const ctx = (() => {
-  const wfDir = join(CWD, ".github", "workflows")
-  const names = readdirSync(wfDir).filter((f) => f.endsWith(".yml"))
-  const scripts = new Set(readdirSync(join(CWD, "scripts")))
-  const workflowCall = new Set(
-    names.filter((n) => readFileSync(join(wfDir, n), "utf8").includes("workflow_call")),
-  )
-  return { scripts, workflows: new Set(names), workflowCall }
-})()
 
 // ── 1. Sintaxe YAML + snapshot da estrutura do job ──────────────────────
 
@@ -95,7 +52,7 @@ describe("benchmark-weekly.yml — job mutation-coord-trend (sintaxe YAML + snap
   })
 
   it("estrutura mínima: job com 4 steps (checkout, medida, artifact, summary)", () => {
-    expect(job?.name).toBe("Mutation coord trend (mediana vs drift %)")
+    expect(job.name).toBe("Mutation coord trend (mediana vs drift %)")
     expect(steps.length).toBe(4)
   })
 
@@ -108,19 +65,18 @@ describe("benchmark-weekly.yml — job mutation-coord-trend (sintaxe YAML + snap
 
 describe("benchmark-weekly.yml — contrato de medição do mutation-coord-trend", () => {
   it("needs: seed-guards E if: always() — mede TAMBÉM quando o seed-guards falhou", () => {
-    expect(job?.needs).toBe("seed-guards")
-    expect(job?.if).toBe("always()")
+    expect(job.needs).toBe("seed-guards")
+    expect(job.if).toBe("always()")
+    // Prova de execução: always() é verdadeiro em qualquer contexto
+    expect(resolveCondition("always()", { previousJobFailed: true })).toBe(true)
   })
 
-  it("permissions: actions: READ (só leitura — o trend NÃO publica baseline, ao contrário do timing job com write)", () => {
-    expect(job?.permissions).toMatchObject({
+  it("permissions: actions: READ (só leitura — o trend NÃO publica baseline)", () => {
+    expect(job.permissions).toMatchObject({
       contents: "read",
       actions: "read",
     })
-    // O timing job precisa de actions: write (gh variable set do baseline);
-    // o trend só lê run list + jobs API — travar a diferença evita que
-    // alguém copie o contrato do timing job sem necessidade.
-    expect((job?.permissions as Record<string, string>).actions).not.toBe("write")
+    expect(job.permissions).not.toMatchObject({ actions: "write" })
   })
 
   it("passo de medida (id: trend) injeta GH_TOKEN, invoca o script com run atual, window e max-drift de vars com fallback, salva JSON", () => {
@@ -131,8 +87,6 @@ describe("benchmark-weekly.yml — contrato de medição do mutation-coord-trend
     expect(run).toContain("node scripts/measure-mutation-trend.mjs")
     expect(run).toContain('--run "${{ github.run_id }}"')
     expect(run).toContain('--repo "${{ github.repository }}"')
-    // window e max-drift são TUNING coordenado via vars com fallback (como o
-    // --warn do timing job consulta a baseline var)
     expect(run).toContain("--window \"${{ vars.MUTATION_TIMING_TREND_WINDOW || '4' }}\"")
     expect(run).toContain("--max-drift \"${{ vars.MUTATION_TIMING_TREND_MAX_DRIFT || '30' }}\"")
     expect(run).toContain("--json /tmp/mutation-trend.json")
@@ -146,6 +100,15 @@ describe("benchmark-weekly.yml — contrato de medição do mutation-coord-trend
     expect(summary?.if).toBe("always()")
     expect(summary?.run ?? "").toContain("$GITHUB_STEP_SUMMARY")
     expect(summary?.run ?? "").toContain("Baseline (mediana")
+  })
+
+  it("todos os steps executam independentemente do resultado (always() nos 3 últimos)", () => {
+    const executable = filterExecutableSteps(job)
+    expect(executable.length).toBe(4)
+    expect(executable[0]?.uses).toBe("actions/checkout@v4")
+    expect(executable[1]?.id).toBe("trend")
+    expect(executable[2]?.if).toBe("always()")
+    expect(executable[3]?.if).toBe("always()")
   })
 })
 
@@ -188,11 +151,8 @@ describe("measure-mutation-trend.mjs — markers casam com os nomes reais do see
 
 // ── 5. Refs de script contra o repo real ────────────────────────────────
 
-describe("benchmark-weekly.yml — refs do mutation-coord-trend contra o check-workflow-refs", () => {
-  it("measure-mutation-trend.mjs existe em scripts/ e é referenciado", () => {
-    const refs = extractScriptRefs(content)
-    const trendRef = refs.find((r) => r.ref === "measure-mutation-trend.mjs")
-    expect(trendRef).toBeDefined()
-    expect(ctx.scripts.has("measure-mutation-trend.mjs")).toBe(true)
+describe("benchmark-weekly.yml — refs do mutation-coord-trend", () => {
+  it("todas as refs resolvem (scripts, workflows, actions)", () => {
+    expectAllRefs(content, ctx)
   })
 })

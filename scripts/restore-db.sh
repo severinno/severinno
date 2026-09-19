@@ -217,7 +217,7 @@ info "Restaurando backup..."
 SIZE=$(du -h "$INPUT_FILE" | cut -f1)
 info "Tamanho do backup: $SIZE"
 
-if echo "$INPUT_FILE" | grep -q "\.gz$"; then
+if grep -q "\.gz$" <<< "$INPUT_FILE"; then
   # Compressed with gzip — pipe decompressed to pg_restore
   gunzip -c "$INPUT_FILE" | pg_restore -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" \
     --no-owner --no-privileges --verbose 2>&1 | tail -20 || \

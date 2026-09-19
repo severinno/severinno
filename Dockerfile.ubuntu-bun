@@ -17,6 +17,15 @@
 # para ubuntu-latest (README → Local Workflow Validation), com node 24 (para
 # JS actions como actions/checkout e actions/cache) + bash + curl/unzip.
 #
+# PINADA POR DIGEST (e a tag fica como documentação de ONDE o digest veio):
+# `act-latest` é uma tag FLUTUANTE — um rebuild/re-tag da base troca a imagem
+# inteira, inclusive o plugin `compose` que o contrato abaixo verifica, sem
+# nenhuma linha do repositório mudar. O digest é o que torna o artefato
+# imutável; a tag é por onde o operador atualiza.
+#   Atualizar o pin: `bun run runner-base:pin` (resolve a tag e reescreve o
+#   FROM); `bun run check:runner-base` acusa quando ele ficar velho — e o mesmo
+#   guard prova, por EXECUÇÃO, que este contrato abaixo é fail-closed.
+#
 # FONTE ÚNICA DA VERSÃO: repository variable BUN_VERSION (vars.BUN_VERSION).
 # O build recebe a versão via --build-arg BUN_VERSION (o workflow
 # sync-ubuntu-bun-mirror.yml passa ${{ vars.BUN_VERSION }}). Build local:
@@ -31,7 +40,7 @@
 #   0 — build ok (bun --version confirma a versão embarcada)
 #   1 — download/extração do binário falhou
 # =============================================================================
-FROM catthehacker/ubuntu:act-latest
+FROM catthehacker/ubuntu:act-latest@sha256:c58e2b364da03b0c804c7d660f2ecbedf2f221a382b9baa0b344b0144780ff43
 
 # Versão do Bun — FONTE ÚNICA: vars.BUN_VERSION (passada pelo workflow do
 # mirror). Sem default literal aqui para não criar segundo ponto de verdade:
@@ -54,6 +63,78 @@ RUN set -euo pipefail \
   && echo "  bun embarcado: $(bun --version)" \
   && test "$(bun --version)" = "${BUN_VERSION}" \
   && echo "  ✅ Tier-1 pronto: bun ${BUN_VERSION} no PATH (fast path do setup-bun)"
+
+# =============================================================================
+# IDENTIDADE DA IMAGEM: ela DECLARA versão e origem (não só a tag).
+# =============================================================================
+#
+# POR QUE A LABEL EXISTE: uma TAG é um apelido mutável no registry. O guard de
+# fonte única (`bun run check:registry-source`) consulta o manifesto da tag e lê
+# ESTA label para responder "o que o registry serve hoje é a build que o
+# repositório declara?" — sem ela, a única pergunta respondível é "a tag
+# existe?", e um RE-TAG (publicar outra build sob a mesma versão) muda o que
+# todos os jobs rodam sem que nenhum gate perceba.
+#
+# `version` = a versão do Bun embarcada (a mesma de `bun --version`, verificada
+# acima). `source`/`revision` dizem de onde a imagem veio — sem eles, um digest
+# resolvido no registry não é rastreável até um commit.
+LABEL org.opencontainers.image.title="ubuntu-bun (runner da forja)" \
+      org.opencontainers.image.version="${BUN_VERSION}" \
+      org.opencontainers.image.source="https://github.com/severinno/severinno"
+
+# =============================================================================
+# CONTRATO DA IMAGEM: ela precisa rodar os guards da PRÓPRIA forja.
+# =============================================================================
+#
+# POR QUE ESTA ASSERÇÃO EXISTE (e por que ela NÃO instala nada)
+#
+# O job `guards` da forja roda `check:registry-source`, cuja INVARIANTE 7
+# renderiza `deploy/docker-compose.gitea.yml` com o docker do job
+# (`docker compose config`) para provar que a interpolação resolve para a versão
+# da variável — e não para uma tag vazia ou literal. Quem faz isso funcionar é o
+# PLUGIN `compose` (o CLI `docker` sozinho não tem o subcomando).
+#
+# Medido em 09/2026: a base `catthehacker/ubuntu:act-latest` JÁ o embarca
+# (`/usr/libexec/docker/cli-plugins/docker-compose`; `docker compose version`
+# responde 5.4.0-2). Ou seja: a forja consegue provar a invariante 7 — mas isso
+# era um ACIDENTE da base até aqui, não um contrato. A base é uma tag FLUTUANTE
+# (`act-latest`), e o próprio projeto da base já fechou como "not planned" o
+# pedido de incluí-lo (catthehacker/docker_images#70). Se um rebuild da base
+# deixar de trazê-lo, a invariante 7 degrada para INDETERMINADA no runner da
+# forja — em SILÊNCIO, dentro de um job verde.
+#
+# Esta asserção transforma o acidente em contrato, no lugar certo: o BUILD
+# falha, não a forja. Falhar aqui custa um rebuild; falhar lá custa um gate que
+# deixou de verificar sem ninguém notar (e o custo é assimétrico exatamente ao
+# contrário do que parece).
+#
+# POR QUE NÃO INSTALAR O PLUGIN COMO FALLBACK: instalar exigiria uma VERSÃO
+# (baixar o binário do release da docker/compose), e uma versão literal aqui
+# seria um SEGUNDO ponto de verdade — o mesmo defeito que a fonte única do Bun
+# existe para impedir. Enquanto a base o entrega, o certo é verificar; se um dia
+# ela parar, a decisão (e a versão) tem de ser tomada explicitamente, e esta
+# mensagem diz onde começar.
+#
+# A ORDEM IMPORTA: a asserção do Bun vem DEPOIS da do compose. O risco real de
+# "embarcar mais uma coisa" na imagem é mexer no PATH e desligar o tier-1 do
+# setup (o fast path de 0s) sem sintoma — então o Bun é reconferido no MESMO
+# passo, junto do caminho de onde ele é resolvido.
+RUN set -euo pipefail; \
+    if ! command -v docker >/dev/null 2>&1; then \
+      echo "::error::o CLI 'docker' não está na imagem — o job 'guards' da forja renderiza o compose com ele." >&2; \
+      exit 1; \
+    fi; \
+    if ! docker compose version >/dev/null 2>&1; then \
+      echo "::error::o PLUGIN 'compose' não está na imagem (o CLI existe, o subcomando não)." >&2; \
+      echo "   Sem ele, a invariante 7 do check:registry-source fica INDETERMINADA dentro do runner da forja." >&2; \
+      echo "   A base catthehacker/ubuntu entregou /usr/libexec/docker/cli-plugins/docker-compose até 09/2026;" >&2; \
+      echo "   se ela parou de entregar, instale 'docker-compose-plugin' aqui — e a versão vem de uma FONTE ÚNICA" >&2; \
+      echo "   (repo variable passada por --build-arg), nunca de um literal: mesma regra do BUN_VERSION." >&2; \
+      exit 1; \
+    fi; \
+    test "$(bun --version)" = "${BUN_VERSION}"; \
+    test "$(command -v bun)" = "/usr/local/bin/bun"; \
+    echo "  ✅ Contrato da imagem ok: plugin compose ($(docker compose version)) E tier-1 intacto (bun ${BUN_VERSION} em /usr/local/bin/bun)"
 
 # CMD mantém o container vivo para o act (bash é o shell padrão dos steps).
 CMD ["/bin/bash"]

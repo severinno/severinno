@@ -107,9 +107,10 @@ describe(`pr-check.yml — job ${JOB_KEY}`, () => {
   })
 
   it("usa o setup-bun local com vars.BUN_VERSION", () => {
-    const setup = steps.find((s) => s.uses === "./.github/actions/setup-bun")
-    expect(setup).toBeDefined()
-    expect(setup?.with).toMatchObject({ "bun-version": "${{ vars.BUN_VERSION }}" })
+    // `run:` (scripts/setup-bun-ci.sh) — não passa pelo resolvedor de actions.
+    const setup = steps.find((s) => (s.run ?? "").includes("scripts/setup-bun-ci.sh"))
+    expect(setup, "setup do Bun por run:").toBeDefined()
+    expect(setup?.run).toContain('bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"')
   })
 
   it("refs do job existem no repo real (check-workflow-refs)", () => {

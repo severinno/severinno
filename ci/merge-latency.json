@@ -1,0 +1,197 @@
+{
+  "meta": {
+    "tool": "merge-latency",
+    "version": 1,
+    "date": "2026-09-17",
+    "why": "O custo dos gates em LATÊNCIA DE MERGE. A tabela de overhead do repositório lista o custo de cada gate e convida a somar — mas o PR não paga a soma: ele paga o caminho crítico e a FILA. Este arquivo é o que não dá para derivar da pipeline (grafo e comandos saem de lá); o que ele declara carrega FONTE e DATA, e o benchmark confronta o que ele cobre. O `provenance` de cada job diz QUE TIPO de número ele carrega: `declarado (MEDIDO)` (medido neste repositório, com os comandos na fonte), `declarado (PISO: passo não medido)` (soma dos passos medidos, com o passo de fora NOMEADO) e `declarado (TETO: timeout-minutes)` (o LIMITE que a própria pipeline declara no job — para custo que não se mede fora do runner)."
+  },
+  "overhead": {
+    "perJobMs": 0,
+    "source": "NÃO MEDIDO como um todo — o overhead por job (checkout + cache + setup) não tem medição própria neste repositório. O que EXISTE: o `bash scripts/setup-bun-ci.sh 1.3.14` foi medido a 17175ms SEM cache (17/09/2026) e está DENTRO dos números declarados dos jobs que o rodam; no CI com cache-hit ele é ~1-2s. O valor declarado de um job JÁ o inclui; o DERIVADO do benchmark é só a soma dos comandos conhecidos, então leia o derivado como PISO, não como igual.",
+    "date": "2026-09-16"
+  },
+  "concurrency": {
+    "gitea": {
+      "runners": 1,
+      "source": "o compose da forja sobe UM act_runner (deploy/docker-compose.gitea.yml, serviço 'runner') — com 1 runner a pipeline é SERIAL: a latência de merge é a soma, e o paralelismo do grafo não economiza nada",
+      "date": "2026-09-16"
+    },
+    "github": {
+      "runners": 1,
+      "source": "UM runner auto-hospedado no VPS (`hostinger-runner`) — deploy/GITHUB_RUNNER.md; com 1 runner a pipeline do espelho é SERIAL, como a da forja, e o MELHOR caso continua sendo o caminho crítico que o relatório também publica",
+      "date": "2026-09-17"
+    }
+  },
+  "jobs": {
+    "gitea": {
+      "guards": {
+        "ms": 19364,
+        "provenance": "declarado (PISO: passo não medido)",
+        "source": "docs/benchmarks/guard-timing-latest.json summary.totalMs (16900ms = guards + doctor --ci, medido em 16/09/2026) + o gate de sintaxe, MEDIDO em 17/09/2026 (2464ms, agora com o shell EMBUTIDO na varredura: era 2280ms antes da terceira fonte): o benchmark versionado NÃO cobre `check:workflow-run-syntax` nem `check:pipefail-sigpipe`. O que segue FORA da soma — e é por isso que este é um PISO, não um ponto medido — é o `check:pipefail-sigpipe`, o `bun install --frozen-lockfile` e o checkout.",
+        "date": "2026-09-17"
+      },
+      "pre-commit-in-runner-proof": {
+        "ms": 800,
+        "provenance": "declarado (PISO: passo não medido)",
+        "source": "medido neste host (Linux, 2026-09-18, mediana de 3 runs WARM): a prova EM LUGAR dentro da imagem (o modo que a forja paga, sem docker e sem socket) 0,67-0,69s — 0,67 · 0,67 · 0,69 — somada ao `bun install --frozen-lockfile` com o node_modules presente (≈60ms). O que fica FORA da soma, e é por isso que o número é um PISO, é o checkout, o `bash scripts/setup-bun-ci.sh` (tier-1: a imagem JÁ embarca o Bun, então o fast path responde em ~0-2s) e o cache do Bun.",
+        "date": "2026-09-18"
+      },
+      "build": {
+        "ms": 246000,
+        "provenance": "declarado",
+        "source": "README.md (build Next.js, 4m6s, 1 run, host local) — o mesmo número do bloco do job `e2e-cache`",
+        "date": "2026-09-16"
+      }
+    },
+    "github": {
+      "utf8-check": {
+        "ms": 920,
+        "provenance": "declarado",
+        "source": "README.md (utf8-check, 837 arquivos, ≈0.92s local)",
+        "date": "2026-09-16"
+      },
+      "pre-commit-in-runner-proof": {
+        "ms": 900,
+        "provenance": "declarado (PISO: passo não medido)",
+        "source": "medido neste host (Linux, 2026-09-18, mediana de 3 runs WARM, imagem do runner LOCAL): o comando INTEIRO no modo `docker run` 0,79-0,82s — 0,79 · 0,80 · 0,82 — somado ao `bun install --frozen-lockfile` com o node_modules presente (≈60ms). Ficam FORA da soma, e é por isso que ele é um PISO: o checkout, o `bash scripts/setup-bun-ci.sh`, o cache do Bun, o restore do cache de node_modules e o PULL da imagem (que num runner que ainda não a tem custa a camada baixada; nos jobs atuais ela já está local porque o act/tier-1 a puxa).",
+        "date": "2026-09-18"
+      },
+      "actionlint": {
+        "ms": 510,
+        "provenance": "declarado",
+        "source": "README.md (actionlint via docker, ≈0.51s local)",
+        "date": "2026-09-16"
+      },
+      "mutation-guards": {
+        "ms": 188600,
+        "provenance": "medido (MEDIDO)",
+        "source": "medido neste host (Linux, 16 cpus, 31 GB), 2026-09-18, mediana de 3 runs WARM da matriz COMPLETA, TODAS com 29/29 sub-tests verdes: `bash scripts/test-mutation-guards.sh` 188.6s com 29 sub-tests (188.2 · 188.6 · 188.8). A 29ª entrou nesta rodada e é o contrato dos required checks APLICADOS (renomear o `name:` de um required check sem a reaplicação declarada deixa o PR vermelho; as seis metades que sustentam isso — as duas réguas da comparação, o fio em main(), o fail-closed da declaração ausente, o alvo do --forge e o carimbo sem churn — caem cada uma no seu fato quando mutadas): mediana de 3 pelo caminho do master (`--scenario required-applied`: 9.87 · 9.88 · 9.90). A composição fecha ≈174.9 + 9.9 = ≈184.8s esperados contra os 188.6 medidos — os ≈3.8s de excesso estão na ordem da deriva de HOST que as rodadas anteriores já registravam (≈10s com a mesma carga), e o que domina o job segue sendo UMA sub-test, a prova de mutação do gate de sintaxe (≈58.5s sozinha). O `39s` (Windows, 23 sub-tests, 08/2026) segue RETIRADO como valor vivo: era de outro host, com sub-tests a menos, e ficava abaixo de UMA das sub-tests que o job contém — o valor declarado de um job não pode ser menor que o de um passo dentro dele.",
+        "date": "2026-09-18"
+      },
+      "unused-deps-guard": {
+        "ms": 500,
+        "provenance": "declarado",
+        "source": "README.md (unused-deps-guard, ≈0.5s local)",
+        "date": "2026-09-16"
+      },
+      "blob-crlf-history-audit": {
+        "ms": 160,
+        "provenance": "declarado (MEDIDO)",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/audit-blob-crlf-history.sh` 121ms + `python3 scripts/test_audit_blob_crlf_history.py -v` 39ms; o job não roda setup-bun nem install",
+        "date": "2026-09-17"
+      },
+      "all-text-alert-validation": {
+        "ms": 122,
+        "provenance": "declarado (MEDIDO)",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/validate-all-text-alert.sh` 122ms",
+        "date": "2026-09-17"
+      },
+      "workflow-run-syntax": {
+        "ms": 60950,
+        "provenance": "declarado (MEDIDO)",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17, mediana de 3 runs: `node scripts/check-workflow-run-syntax.mjs` 2496ms + `bash scripts/test-mutation-workflow-run-syntax.sh` 58457ms (era 30817ms: as metades subiram de 13 para 14, e a nova é o pulo nomeado do ARQUIVO de shebang não-bash — o espelho do M8 no outro lado da régua, com as MESMAS duas testemunhas: o gate por execução e a suíte unitária). O mutation test é o custo dominante (96% do job) e o que o move agora é o número de INVOCAÇÕES da suíte (2 por metade com testemunha unitária — 4 no total, 13,3s cada neste host), não o programa a julgar: o guard segue julgando 482 corpos, 124 arquivos de shell e 33 textos de shell embutido, e o custo dele ficou parado (2280 → 2464 → 2496ms).",
+        "date": "2026-09-17"
+      },
+      "mutation-jobs-staged-guard": {
+        "ms": 144,
+        "provenance": "declarado (MEDIDO)",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `node scripts/check-mutation-jobs.mjs --staged --base origin/main` 144ms (no CI a base é o PR)",
+        "date": "2026-09-17"
+      },
+      "forge-parity-mutation": {
+        "ms": 524,
+        "provenance": "declarado (MEDIDO)",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/test-mutation-forge-parity.sh` 524ms",
+        "date": "2026-09-17"
+      },
+      "mutation-jobs-guard": {
+        "ms": 91,
+        "provenance": "declarado (MEDIDO)",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `node scripts/check-mutation-jobs.mjs` 91ms",
+        "date": "2026-09-17"
+      },
+      "e2e-counts-guard": {
+        "ms": 17236,
+        "provenance": "declarado (MEDIDO)",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/setup-bun-ci.sh 1.3.14` 17175ms (SEM cache — no CI com cache-hit é ~1-2s) + `node scripts/check-e2e-counts.mjs` 61ms",
+        "date": "2026-09-17"
+      },
+      "seed-count-literals-guard": {
+        "ms": 17322,
+        "provenance": "declarado (MEDIDO)",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/setup-bun-ci.sh 1.3.14` 17175ms (SEM cache — no CI com cache-hit é ~1-2s) + `node scripts/check-seed-count-literals.mjs` 147ms",
+        "date": "2026-09-17"
+      },
+      "jsdom-drift-guard": {
+        "ms": 34574,
+        "provenance": "declarado (MEDIDO)",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/setup-bun-ci.sh 1.3.14` 17175ms (SEM cache — no CI com cache-hit é ~1-2s) + `bun install --frozen-lockfile` 61ms + `bash scripts/test-mutation-jsdom-baseline.sh` 117ms (fixture: NÃO roda a suíte) + `node scripts/check-jsdom-baseline.mjs` 17221ms (esse roda a suíte jsdom real — é o custo dominante)",
+        "date": "2026-09-17"
+      },
+      "mutation-count-guard": {
+        "ms": 17356,
+        "provenance": "declarado (MEDIDO)",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/setup-bun-ci.sh 1.3.14` 17175ms (SEM cache — no CI com cache-hit é ~1-2s) + `bash scripts/test-mutation-mutation-count.sh` 155ms + `node scripts/check-mutation-count.mjs` 26ms",
+        "date": "2026-09-17"
+      },
+      "fuzz": {
+        "ms": 29943,
+        "provenance": "declarado (MEDIDO)",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/setup-bun-ci.sh 1.3.14` 17175ms (SEM cache — no CI com cache-hit é ~1-2s) + `bun install --frozen-lockfile` 61ms + `bun run fuzz:ci` 12707ms",
+        "date": "2026-09-17"
+      },
+      "benchmark": {
+        "ms": 23205,
+        "provenance": "declarado (MEDIDO)",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/setup-bun-ci.sh 1.3.14` 17175ms (SEM cache — no CI com cache-hit é ~1-2s) + `bun install --frozen-lockfile` 61ms + `node scripts/run-benchmark.mjs --type geo --json` 5940ms FRIO (o cache do benchmark é por commit: com ele quente o passo custa 31ms) + `node scripts/compare-benchmarks.mjs …` 29ms (roda só quando há baseline em main)",
+        "date": "2026-09-17"
+      },
+      "pii-allowlist-guard": {
+        "ms": 23581,
+        "provenance": "declarado (MEDIDO)",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/setup-bun-ci.sh 1.3.14` 17175ms (SEM cache — no CI com cache-hit é ~1-2s) + `bun install --frozen-lockfile` 61ms + `bunx prisma generate` 1005ms + `bun run check:pii-allowlist` 1274ms + `bun run check:pii-gate` 4066ms",
+        "date": "2026-09-17"
+      },
+      "security-headers": {
+        "ms": 60,
+        "provenance": "declarado (PISO: passo não medido)",
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/test-security-headers.sh --ci` 60ms contra um servidor LOCAL (o default do script, http://localhost:3000) — o alvo do CI é `secrets.BASE_URL` (produção por default) e as requisições WAN até ele NÃO estão neste número; medir contra produção não se faz daqui",
+        "date": "2026-09-17"
+      },
+      "benchmark-gist": {
+        "ms": 23205,
+        "provenance": "declarado (PISO: passo não medido)",
+        "source": "o job roda o MESMO sweep do `benchmark` (500/2000 providers × 5 raios) contra PostGIS com índice GiST + `validate-gist-crossover.mjs`; NÃO medido aqui: `src/lib/geo-shared.mjs` não existe NESTE branch (o trabalho de geo vive em PR próprio) e o passo exige PostGIS — declarado o valor MEDIDO do job irmão `benchmark` SEM o passo de PostGIS",
+        "date": "2026-09-17"
+      },
+      "seed-guards": {
+        "ms": 7200000,
+        "provenance": "declarado (TETO: timeout-minutes)",
+        "source": "`.github/workflows/seed-guards.yml` — a matrix 2×2 (prod/dev × alpine/full) declara `timeout-minutes: 30` em cada perna, e no runner self-hospedado as 4 pernas são SERIAIS: o teto do job é a soma (4 × 30min = 2h). Não medido aqui: a suíte E2E de seed exige PostGIS + a árvore de seed inteira",
+        "date": "2026-09-17",
+        "ceiling": true
+      },
+      "mutation-coord-timing-guard": {
+        "ms": 300000,
+        "provenance": "declarado (TETO: timeout-minutes)",
+        "source": "`.github/workflows/pr-check.yml` — o job declara `timeout-minutes: 5` e depende de `seed-guards` (é uma LEITURA da API do run anterior: `node scripts/measure-mutation-timing.mjs --repo/--run`); o passo da API não é medível aqui (exige token)",
+        "date": "2026-09-17",
+        "ceiling": true
+      },
+      "tier1-fastpath-guard": {
+        "ms": 1500000,
+        "provenance": "declarado (TETO: timeout-minutes)",
+        "source": "`.github/workflows/pr-check.yml` — o job declara `timeout-minutes: 25` e roda `act -j check` (budget de 900s) nos passos condicionados ao diff (`steps.changes.outputs.changed`); não medido aqui: exige `act` + a imagem do runner + docker, e o teto é o que a própria pipeline declara",
+        "date": "2026-09-17",
+        "ceiling": true
+      },
+      "mutation-coord-timing-act-guard": {
+        "ms": 1500000,
+        "provenance": "declarado (TETO: timeout-minutes)",
+        "source": "`.github/workflows/pr-check.yml` — `timeout-minutes: 25`; roda `act -j mutation-coord-update` (o README mede ESSE payload a 4m37.6s com act + ubuntu-bun, 1 run) + `measure-mutation-timing.mjs --act-log`, nos passos condicionados ao diff. O `act` não se remede aqui, então o número é o TETO do job",
+        "date": "2026-09-17",
+        "ceiling": true
+      }
+    }
+  }
+}

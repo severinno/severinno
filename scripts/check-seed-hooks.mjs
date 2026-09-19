@@ -31,9 +31,14 @@
 //   1 — pelo menos um hook de teste encontrado em workflow de produção (fail)
 // =============================================================================
 
-import { readdirSync, readFileSync } from "node:fs"
-import { join } from "node:path"
 import { pathToFileURL } from "node:url"
+
+import {
+  existingWorkflowDirs,
+  exitOnUnjudgeable,
+  readWorkflowScan,
+  reportEmptyWorkflows,
+} from "./forge-workflows.mjs"
 
 // ---------------------------------------------------------------------------
 // Config — hooks de teste e allowlist fail-closed
@@ -47,8 +52,9 @@ const TEST_HOOK_RE = new RegExp(`\\b(?:${TEST_HOOKS.join("|")})\\b`)
 
 /**
  * Workflows onde os hooks de teste são LEGÍTIMOS — os que executam os E2Es de
- * seed contra banco efêmero, ou pipelines de CI (não produção). Qualquer
- * outro arquivo .yml em .github/workflows/ NÃO pode referenciar os hooks.
+ * seed contra banco efêmero, ou pipelines de CI (não produção). Indexado pelo
+ * BASENAME e válido para TODAS as forjas: qualquer OUTRO arquivo de workflow,
+ * em qualquer forja, não pode referenciar os hooks.
  */
 const ALLOWED_SEED_TEST_WORKFLOWS = new Set([
   "ci.yml", // pipeline de CI (lint/typecheck/test/build) — nunca toca produção
@@ -106,24 +112,35 @@ export function scanWorkflows(files) {
 }
 
 // ---------------------------------------------------------------------------
-// Main — varre .github/workflows/*.yml
+// Main — varre os workflows de TODAS as forjas (scripts/forge-workflows.mjs)
 // ---------------------------------------------------------------------------
 
 function main() {
-  const dir = join(process.cwd(), ".github", "workflows")
+  const root = process.cwd()
+  const dirs = existingWorkflowDirs(root)
 
-  let names
-  try {
-    names = readdirSync(dir)
-      .filter((f) => f.endsWith(".yml"))
-      .sort()
-  } catch (e) {
-    console.error(`❌ Não foi possível ler ${dir}: ${e.message}`)
+  if (dirs.length === 0) {
+    console.error(`❌ Nenhum diretório de forja encontrado em ${root}`)
     process.exit(1)
   }
 
-  const files = names.map((n) => ({ name: n, content: readFileSync(join(dir, n), "utf8") }))
-  const violations = scanWorkflows(files)
+  // O allowlist (ALLOWED_SEED_TEST_WORKFLOWS) é indexado pelo BASENAME — então
+  // varremos por diretório e prefixamos o rótulo só no diagnóstico. Um hook de
+  // teste vazando para o workflow de DEPLOY da forja é exatamente o que este
+  // guard existe para impedir, e ele só via o lado do GitHub.
+  // A varredura é a COMPARTILHADA: o rótulo continua `<dir>/<arquivo>` (o
+  // allowlist é indexado pelo basename) e o que não pôde ser lido sai NOMEADO.
+  // Antes, um arquivo ilegível parava o guard com exit 1 ("violação") citando o
+  // DIRETÓRIO — o autor ia procurar hook de seed onde o problema era leitura.
+  const scan = readWorkflowScan(root)
+  exitOnUnjudgeable(scan.unjudgeable)
+  reportEmptyWorkflows(scan.vazios)
+  const violations = []
+  for (const w of scan.files) {
+    // Por ARQUIVO, com o rótulo `<dir>/<arquivo>`: a checagem é pelo BASENAME
+    // (o allowlist é indexado por ele) e o diagnóstico leva a forja junto.
+    for (const v of checkWorkflowFile(w.name, w.text)) violations.push({ ...v, file: w.path })
+  }
 
   if (violations.length > 0) {
     console.error(`❌ Hook(s) de teste do seed encontrados em workflow(s) fora do allowlist:\n`)
@@ -139,7 +156,9 @@ function main() {
     process.exit(1)
   }
 
-  console.log("✅ Nenhum hook de teste do seed em workflows fora do allowlist.")
+  console.log(
+    `✅ Nenhum hook de teste do seed em workflows fora do allowlist (forjas: ${dirs.join(", ")}).`,
+  )
   process.exit(0)
 }
 

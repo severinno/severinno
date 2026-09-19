@@ -113,11 +113,11 @@ export default function FAQ() {
     activeCategory === "all" ? FAQS : FAQS.filter((f) => f.category === activeCategory)
 
   return (
-    <section className="border-border/40 border-t bg-muted/20 py-20 sm:py-24">
+    <section className="border-border/40 bg-muted/20 border-t py-20 sm:py-24">
       <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-10 text-center">
-          <p className="text-primary mb-3 text-xs font-semibold uppercase tracking-widest">FAQ</p>
+          <p className="text-primary mb-3 text-xs font-semibold tracking-widest uppercase">FAQ</p>
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">Dúvidas frequentes</h2>
         </div>
 
@@ -146,7 +146,7 @@ export default function FAQ() {
             <AccordionItem
               key={faq.id}
               value={faq.id}
-              className="overflow-hidden rounded-xl border border-border/50 bg-card px-5 data-[state=open]:border-primary/30"
+              className="border-border/50 bg-card data-[state=open]:border-primary/30 overflow-hidden rounded-xl border px-5"
             >
               <AccordionTrigger className="py-4 text-sm font-medium hover:no-underline">
                 {faq.question}
@@ -159,14 +159,14 @@ export default function FAQ() {
         </Accordion>
 
         {/* Bottom CTA */}
-        <div className="mt-12 rounded-2xl border border-border/40 bg-card p-6 text-center">
+        <div className="border-border/40 bg-card mt-12 rounded-2xl border p-6 text-center">
           <p className="text-muted-foreground mb-4 text-sm">
             Ainda tem dúvidas? Nossa equipe está pronta para ajudar.
           </p>
           <Button
             variant="outline"
             size="sm"
-            className="rounded-full border-primary/40 text-primary hover:bg-primary/5"
+            className="border-primary/40 text-primary hover:bg-primary/5 rounded-full"
             onClick={() => openAuth("register", "CLIENT")}
           >
             Falar com suporte

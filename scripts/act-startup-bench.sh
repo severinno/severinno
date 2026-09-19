@@ -43,7 +43,7 @@
 #   ./scripts/act-startup-bench.sh --assert-pct 30  # falha se ALGUMA exceder a 1ª em +30%
 #   ACT_BIN=/caminho/act ./scripts/act-startup-bench.sh  # binário alternativo (ex.: act Linux no CI)
 #   ./scripts/act-startup-bench.sh --image 'alpine|act-bench-alpine:local' \
-#                                   --image 'ubuntu-bun|ghcr.io/severinno/ubuntu-bun:1.3.14'
+#                                   --image 'ubuntu-bun|<host>/<owner>/ubuntu-bun:<versao>'
 #                                                   # lista custom (1ª imagem = baseline)
 #   ./scripts/act-startup-bench.sh -h               # ajuda
 #
@@ -58,6 +58,8 @@
 set -euo pipefail
 
 # ── Config ──────────────────────────────────────────────────────────────────
+# (a auditoria de espelhos do check-bun-mirror julga este arquivo: a versão do
+# Bun aqui só pode vir do .actrc — nenhum literal de BUN_VERSION.)
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_ROOT="$SCRIPT_DIR"
@@ -76,13 +78,28 @@ RUN_TIMEOUT=300       # s por execução (secrets-guard é ~11-33s; folga alta)
 # mesmo a default, para a medição não depender do mapeamento implícito do act.
 # A tag da custom ubuntu-bun é DERIVADA do .actrc (--var BUN_VERSION=... —
 # fonte única LOCAL da versão do Bun): a cada bump de BUN_VERSION o bench
-# compara a imagem NOVA automaticamente, sem editar este script. Fallback
-# 1.3.14 se o .actrc não tiver a linha (o pre-flight STEP 1 valida o arquivo).
+# compara a imagem NOVA automaticamente, sem editar este script.
+#
+# NÃO existe literal de reserva (era `:-1.3.14` até a auditoria de espelhos):
+# um default aqui sobrevive ao bump e o bench passa a comparar `ubuntu-bun:1.3.14`
+# — uma imagem velha, ou inexistente — como se fosse a ATUAL, sem nada acusar.
+# Sem a linha no .actrc o script PARA e diz onde declarar (fail-closed).
 ACTRC_BUN="$(sed -n 's/^--var BUN_VERSION=//p' "$REPO_ROOT/.actrc" 2>/dev/null | head -1 || true)"
-ACTRC_BUN="${ACTRC_BUN:-1.3.14}"
+if [ -z "$ACTRC_BUN" ]; then
+  echo "❌ .actrc não declara '--var BUN_VERSION=' — a tag da imagem ubuntu-bun é DERIVADA dele" >&2
+  echo "   (é o espelho local da repository variable BUN_VERSION). Sem a linha, um default" >&2
+  echo "   silencioso compararia uma imagem velha/inexistente como se fosse a atual — por isso" >&2
+  echo "   não há reserva. Declare em .actrc '--var BUN_VERSION=<X.Y.Z>' (ou rode bump-bun.sh)." >&2
+  exit 2
+fi
 IMG_LABEL=("catthehacker:act-latest" "ubuntu-bun:$ACTRC_BUN")
 IMG_ID=("default" "custom")
-IMG_TAG=("catthehacker/ubuntu:act-latest" "ghcr.io/severinno/ubuntu-bun:$ACTRC_BUN")
+# FONTE ÚNICA do host (invariante 1 do check:registry-source): o registry sai de
+# IMAGE_REGISTRY/IMAGE_NAMESPACE (repo variable; no act local, `--var` do .actrc)
+# — NUNCA de um `ghcr.io` cravado aqui. O default acompanha o do compose.
+REGISTRY="${IMAGE_REGISTRY:-ghcr.io}"
+NAMESPACE="${IMAGE_NAMESPACE:-severinno}"
+IMG_TAG=("catthehacker/ubuntu:act-latest" "$REGISTRY/$NAMESPACE/ubuntu-bun:$ACTRC_BUN")
 IMG_ARGS=()   # --image 'label|tag' repetível — substitui a lista acima (1ª = baseline)
 
 GREEN='\033[0;32m'

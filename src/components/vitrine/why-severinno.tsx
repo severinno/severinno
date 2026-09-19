@@ -61,7 +61,15 @@ const FEATURES = [
   },
 ]
 
-function StatCounter({ value, suffix = "", decimals = 0 }: { value: number; suffix?: string; decimals?: number }) {
+function StatCounter({
+  value,
+  suffix = "",
+  decimals = 0,
+}: {
+  value: number
+  suffix?: string
+  decimals?: number
+}) {
   const { ref, value: count } = useCountUp(value, { duration: 1500, decimals })
   return (
     <span ref={ref} className="text-2xl font-bold tracking-tight tabular-nums">
@@ -80,11 +88,11 @@ export default function WhySeverinno() {
   })
 
   return (
-    <section className="border-border/40 border-t bg-muted/20 py-20 sm:py-24">
+    <section className="border-border/40 bg-muted/20 border-t py-20 sm:py-24">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mx-auto mb-14 max-w-2xl text-center">
-          <p className="text-primary mb-3 text-xs font-semibold uppercase tracking-widest">
+          <p className="text-primary mb-3 text-xs font-semibold tracking-widest uppercase">
             Por que a Severinno
           </p>
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
@@ -102,9 +110,9 @@ export default function WhySeverinno() {
             return (
               <div
                 key={f.title}
-                className="group rounded-2xl border border-border/50 bg-card p-6 transition-shadow hover:shadow-sm"
+                className="group border-border/50 bg-card rounded-2xl border p-6 transition-shadow hover:shadow-sm"
               >
-                <div className="mb-4 inline-flex size-10 items-center justify-center rounded-xl bg-primary/8 text-primary ring-1 ring-primary/15">
+                <div className="bg-primary/8 text-primary ring-primary/15 mb-4 inline-flex size-10 items-center justify-center rounded-xl ring-1">
                   <Icon className="size-5" />
                 </div>
                 <h3 className="mb-2 text-sm font-semibold">{f.title}</h3>
@@ -116,10 +124,10 @@ export default function WhySeverinno() {
 
         {/* Stats Strip */}
         {(isLoading || stats) && (
-          <div className="mt-14 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border/40 bg-border/40 sm:grid-cols-4">
+          <div className="border-border/40 bg-border/40 mt-14 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border sm:grid-cols-4">
             {isLoading
               ? Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="flex flex-col items-center gap-1 bg-card p-6">
+                  <div key={i} className="bg-card flex flex-col items-center gap-1 p-6">
                     <Skeleton className="mb-1 h-7 w-20" />
                     <Skeleton className="h-3.5 w-28" />
                   </div>
@@ -151,7 +159,7 @@ function StatCell({
   decimals?: number
 }) {
   return (
-    <div className="flex flex-col items-center gap-0.5 bg-card px-4 py-6 text-center">
+    <div className="bg-card flex flex-col items-center gap-0.5 px-4 py-6 text-center">
       <StatCounter value={value} suffix={suffix} decimals={decimals} />
       <span className="text-muted-foreground text-xs">{label}</span>
     </div>

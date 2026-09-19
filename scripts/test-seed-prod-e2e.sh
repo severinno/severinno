@@ -98,8 +98,7 @@ if [ "$SKIP_DOCKER" = false ]; then
   # Wait for PostgreSQL to be healthy
   echo "  Waiting for PostgreSQL..."
   for i in $(seq 1 30); do
-    if docker compose -f "$COMPOSE_FILE" ps postgis --format "{{.Status}}" 2>/dev/null \
-      | grep -qi "healthy"; then
+    if grep -qi "healthy" <<< "$(docker compose -f "$COMPOSE_FILE" ps postgis --format "{{.Status}}" 2>/dev/null)"; then
       pass "PostgreSQL healthy after ${i}s"
       break
     fi

@@ -86,7 +86,7 @@ export default function CategoryShowcase({
 
   if (isLoading) {
     return (
-      <section className={cn("border-border/40 border-b bg-background/50 py-3", className)}>
+      <section className={cn("border-border/40 bg-background/50 border-b py-3", className)}>
         <div className="mx-auto flex max-w-7xl items-center gap-2 overflow-hidden px-4 sm:px-6 lg:px-8">
           <Skeleton className="h-9 w-24 rounded-full" />
           <Skeleton className="h-9 w-28 rounded-full" />
@@ -106,7 +106,7 @@ export default function CategoryShowcase({
   return (
     <section
       className={cn(
-        "border-border/40 sticky top-16 z-20 border-b bg-background/80 backdrop-blur-md transition-all",
+        "border-border/40 bg-background/80 sticky top-16 z-20 border-b backdrop-blur-md transition-all",
         className,
       )}
       aria-label="Filtrar por categoria"
@@ -150,7 +150,9 @@ export default function CategoryShowcase({
                     : "border-border/50 bg-card/60 text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground",
                 )}
               >
-                <Icon className={cn("size-3.5", isActive ? "text-primary" : "text-muted-foreground")} />
+                <Icon
+                  className={cn("size-3.5", isActive ? "text-primary" : "text-muted-foreground")}
+                />
                 <span>{cat.name}</span>
               </button>
             )

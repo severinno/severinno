@@ -140,7 +140,13 @@ describe("GET /api/admin/geo-metrics", () => {
     })
 
     it("retorna 403 para non-admin", async () => {
-      mockRequireUser.mockRejectedValueOnce(Object.assign(new Error("FORBIDDEN"), { status: 403, code: "FORBIDDEN", name: "AuthError" }))
+      mockRequireUser.mockRejectedValueOnce(
+        Object.assign(new Error("FORBIDDEN"), {
+          status: 403,
+          code: "FORBIDDEN",
+          name: "AuthError",
+        }),
+      )
       const res = await GET(mockRequest)
       expect(res.status).toBe(403)
     })

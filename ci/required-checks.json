@@ -1,0 +1,72 @@
+{
+  "$comment": [
+    "Fonte ÚNICA dos checks obrigatórios para merge em `main`.",
+    "",
+    "Os itens são IDs DE JOB do workflow, não os nomes exibidos: remover um job",
+    "faz o guard falhar (scripts/check-required-checks.mjs) em vez de deixar todo",
+    "PR travado esperando para sempre um check que nunca vai rodar.",
+    "",
+    "RENOMEAR o `name:` de um job MUDA o contexto exigido (é o nome do job que",
+    "aparece na forja), e por isso o contexto tem de ser ESTÁVEL: o guard recusa",
+    "qualquer `name:` de required check que carregue uma CONTAGEM — \"(27",
+    "node-pure mutation tests)\", \"(5 cenários)\", \"(40 guards)\". Esses números",
+    "são DERIVADOS e crescem (a matriz de mutation tests ganhou a 27ª sub-test",
+    "numa sessão): com o número no nome, a proteção aplicada na forja passa a",
+    "exigir um check que não existe e o PR trava — sem nenhuma linha de workflow",
+    "parecer errada. O count vai no summary do job, no comentário e no README.",
+    "",
+    "Aplicado por scripts/apply-required-checks.mjs (dry-run por padrão).",
+    "Valide com `bun run check:required-checks`.",
+    "",
+    "A entrada `pre-commit-in-runner-proof` NASCEU junto com o job: um gate novo",
+    "que entra na pipeline sem entrar no contrato de merge é um gate que ninguém",
+    "cobra — e o inverso (contrato sem job) trava o PR para sempre. As duas",
+    "metades são o MESMO fato, medido pelo doctor (`coreGateContracts`) e pelo",
+    "guarda do manifesto (`scripts/check-required-checks.mjs`).",
+    "",
+    "QUEM BLOQUEIA O MERGE NÃO É ESTE ARQUIVO: é a proteção APLICADA na forja, que",
+    "exige o CONTEXTO de status (o `name:` do job, ou o id sem `name:`). Renomear",
+    "um job da lista — ou entrar/sair desta lista — MUDA o contexto exigido, e a",
+    "forja seguiria exigindo o antigo: o PR trava num check que nunca mais roda.",
+    "Por isso a reaplicação é DECLARADA em `ci/required-checks-applied.json`,",
+    "escrito por `apply-required-checks.mjs --apply` (nunca à mão: declarado =",
+    "aplicado). O `check-required-checks` compara a declaração com os contextos",
+    "derivados AGORA e falha o PR quando a mudança veio sem a reaplicação."
+  ],
+  "version": 1,
+  "branches": ["main"],
+  "forges": {
+    "github": {
+      "workflow": ".github/workflows/pr-check.yml",
+      "jobs": [
+        "utf8-check",
+        "secrets-guard",
+        "workflow-refs-guard",
+        "workflow-run-syntax",
+        "bring-up-proof",
+        "pre-commit-in-runner-proof",
+        "actionlint",
+        "lint-guard",
+        "typecheck",
+        "check",
+        "security-headers",
+        "pii-allowlist-guard",
+        "mutation-guards",
+        "forge-parity-mutation",
+        "seed-guards"
+      ]
+    },
+    "gitea": {
+      "workflow": ".gitea/workflows/ci.yml",
+      "jobs": [
+        "lint",
+        "guards",
+        "bring-up-proof",
+        "pre-commit-in-runner-proof",
+        "typecheck",
+        "test",
+        "build"
+      ]
+    }
+  }
+}

@@ -23,9 +23,7 @@ vi.mock("../geo-server", () => ({
     const dLng = ((lng2 - lng1) * Math.PI) / 180
     const a =
       Math.sin(dLat / 2) ** 2 +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLng / 2) ** 2
+      Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
   },
 }))
@@ -40,9 +38,45 @@ import {
 const BOOKING_ID = "booking-123"
 
 const waypoints = [
-  { id: "wp-1", bookingId: BOOKING_ID, order: 1, label: "Start", lat: -23.55, lng: -46.63, arrivalEstimate: null, arrivedAt: null, geofenceRadiusMeters: 200, createdAt: new Date(), updatedAt: new Date() },
-  { id: "wp-2", bookingId: BOOKING_ID, order: 2, label: "Middle", lat: -23.56, lng: -46.64, arrivalEstimate: null, arrivedAt: null, geofenceRadiusMeters: 200, createdAt: new Date(), updatedAt: new Date() },
-  { id: "wp-3", bookingId: BOOKING_ID, order: 3, label: "End", lat: -23.57, lng: -46.65, arrivalEstimate: null, arrivedAt: null, geofenceRadiusMeters: 200, createdAt: new Date(), updatedAt: new Date() },
+  {
+    id: "wp-1",
+    bookingId: BOOKING_ID,
+    order: 1,
+    label: "Start",
+    lat: -23.55,
+    lng: -46.63,
+    arrivalEstimate: null,
+    arrivedAt: null,
+    geofenceRadiusMeters: 200,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    id: "wp-2",
+    bookingId: BOOKING_ID,
+    order: 2,
+    label: "Middle",
+    lat: -23.56,
+    lng: -46.64,
+    arrivalEstimate: null,
+    arrivedAt: null,
+    geofenceRadiusMeters: 200,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    id: "wp-3",
+    bookingId: BOOKING_ID,
+    order: 3,
+    label: "End",
+    lat: -23.57,
+    lng: -46.65,
+    arrivalEstimate: null,
+    arrivedAt: null,
+    geofenceRadiusMeters: 200,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
 ]
 
 beforeEach(() => {
@@ -122,9 +156,7 @@ describe("calculateRouteProgress", () => {
   })
 
   it("returns correct counts when none visited", async () => {
-    mockDb.waypoint.findMany.mockResolvedValue(
-      waypoints.map((w) => ({ ...w, arrivedAt: null })),
-    )
+    mockDb.waypoint.findMany.mockResolvedValue(waypoints.map((w) => ({ ...w, arrivedAt: null })))
     const result = await calculateRouteProgress(BOOKING_ID)
     expect(result).toEqual({ completed: 0, total: 3, current: 1 })
   })
@@ -132,7 +164,11 @@ describe("calculateRouteProgress", () => {
   it("returns correct counts when some visited", async () => {
     const wp1Visited = { ...waypoints[0], arrivedAt: new Date(), id: "wp-1" }
     const wp2Visited = { ...waypoints[1], arrivedAt: new Date(), id: "wp-2" }
-    mockDb.waypoint.findMany.mockResolvedValue([wp1Visited, wp2Visited, { ...waypoints[2], arrivedAt: null }])
+    mockDb.waypoint.findMany.mockResolvedValue([
+      wp1Visited,
+      wp2Visited,
+      { ...waypoints[2], arrivedAt: null },
+    ])
     const result = await calculateRouteProgress(BOOKING_ID)
     expect(result).toEqual({ completed: 2, total: 3, current: 3 })
   })

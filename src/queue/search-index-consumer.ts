@@ -17,8 +17,21 @@ import { getClient, indexDocument, deleteDocument, INDICES } from "../lib/search
 import logger from "../lib/logger"
 
 const db = new PrismaClient()
-const POLL_INTERVAL = Number(process.env.POLL_INTERVAL_MS) || 5_000
-const BATCH_SIZE = Number(process.env.BATCH_SIZE) || 50
+
+/**
+ * O batch vira literal SQL interpolado (`LIMIT <n>`): valor não-inteiro gera
+ * `LIMIT 5.5` (erro de sintaxe) e um valor absurdamente alto varre a fila inteira
+ * numa única query. Normalizar ANTES de interpolar tira do ambiente o único
+ * ponto de interpolação de string em SQL cru deste worker.
+ */
+function positiveIntEnv(raw: string | undefined, fallback: number, max: number): number {
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return Math.min(max, Math.floor(parsed))
+}
+
+const POLL_INTERVAL = positiveIntEnv(process.env.POLL_INTERVAL_MS, 5_000, 3_600_000)
+const BATCH_SIZE = positiveIntEnv(process.env.BATCH_SIZE, 50, 1_000)
 
 // ── Reindex helpers ──────────────────────────────────────────────────────────
 

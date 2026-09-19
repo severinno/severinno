@@ -85,7 +85,7 @@ check_container_logs() {
     local svc=$1 keyword=$2 tail_lines=${3:-5}
     local logs
     logs=$(docker compose logs --tail="$tail_lines" "$svc" 2>/dev/null || true)
-    if echo "$logs" | grep -q "$keyword"; then
+    if grep -q "$keyword" <<< "$logs"; then
         return 0
     fi
     echo "$logs" | tail -3
@@ -176,7 +176,7 @@ check_port() {
     for pid in $pids; do
         pid=$(echo "$pid" | tr -dc '0-9'); [ -z "$pid" ] && continue
         local proc_name; proc_name=$(ps -p "$pid" -o comm= 2>/dev/null || echo "unknown")
-        if ! echo "$proc_name" | grep -qiE 'docker|com\.docker'; then
+        if ! grep -qiE 'docker|com\.docker' <<< "$proc_name"; then
             non_docker="$non_docker${proc_name} (PID $pid), "
         fi
     done
@@ -212,15 +212,15 @@ else
     unhealthy=0; exited=0
     while IFS='||' read -r name status ports; do
         name=$(echo "$name" | xargs); status=$(echo "$status" | xargs); ports=$(echo "$ports" | xargs)
-        if echo "$status" | grep -qi 'healthy'; then
+        if grep -qi 'healthy' <<< "$status"; then
             echo "     ${GREEN}$name${RESET}  [${status}]"
             [ -n "$ports" ] && detail "Ports: $ports"
-        elif echo "$status" | grep -qi 'starting'; then
+        elif grep -qi 'starting' <<< "$status"; then
             echo "     ${YELLOW}$name${RESET}  [${status}]"
-        elif echo "$status" | grep -qi 'unhealthy'; then
+        elif grep -qi 'unhealthy' <<< "$status"; then
             echo "     ${RED}$name  [UNHEALTHY]${RESET}"; detail "$status"
             unhealthy=$((unhealthy + 1))
-        elif echo "$status" | grep -qiE 'Exit|exited'; then
+        elif grep -qiE 'Exit|exited' <<< "$status"; then
             echo "     ${RED}$name  [EXITED]${RESET}"
             exited=$((exited + 1))
         else
@@ -341,10 +341,10 @@ for worker_info in "email-worker:email:Email" "notification-worker:notification:
     logs_ok=false
     connected=false
     startup_logs=$(docker compose logs --tail=15 "$svc" 2>/dev/null || true)
-    if echo "$startup_logs" | grep -q "starting"; then
+    if grep -q "starting" <<< "$startup_logs"; then
         logs_ok=true
     fi
-    if echo "$startup_logs" | grep -q "listening on queue"; then
+    if grep -q "listening on queue" <<< "$startup_logs"; then
         connected=true
     fi
 
@@ -380,7 +380,7 @@ if [ -z "$rmq_cid" ]; then
 else
     # Check connectivity via healthcheck command
     conn_check=$(docker exec "$rmq_cid" rabbitmq-diagnostics check_port_connectivity 2>/dev/null || true)
-    if echo "$conn_check" | grep -qi "ok\|succeeded"; then
+    if grep -qi "ok\|succeeded" <<< "$conn_check"; then
         pass "RabbitMQ: conectividade OK (docker exec)"
     else
         # Alternative: just check if the process is listening
@@ -402,7 +402,7 @@ else
         done
         # Check for expected queues
         for expected_q in "emails" "notifications"; do
-            if echo "$queue_list" | grep -qw "$expected_q"; then
+            if grep -qw "$expected_q" <<< "$queue_list"; then
                 # Get consumer count via rabbitmqctl
                 consumers=$(docker exec "$rmq_cid" rabbitmqctl list_queues name consumers messages 2>/dev/null | grep -w "$expected_q" | awk '{print $2}' || echo "0")
                 if [ -n "$consumers" ] && [ "$consumers" -gt 0 ] 2>/dev/null; then
@@ -440,7 +440,7 @@ log_step "8. Database & Redis"
 pg_cid=$(docker compose ps -q postgis 2>/dev/null | head -1)
 if [ -n "$pg_cid" ]; then
     pg_check=$(docker exec "$pg_cid" pg_isready -U severinno -d severinno 2>/dev/null || true)
-    if echo "$pg_check" | grep -q "accepting connections"; then
+    if grep -q "accepting connections" <<< "$pg_check"; then
         pass "PostgreSQL: aceitando conexoes"
         # Get version
         pg_ver=$(docker exec "$pg_cid" psql -U severinno -d severinno -Atc "SELECT version()" 2>/dev/null | head -1 | sed 's/ on.*//' || true)
@@ -512,9 +512,9 @@ if command -v curl >/dev/null 2>&1; then
             fi
         else
             # Basic grep fallback
-            echo "$resp" | grep -q '"rabbitmq":{"status":"ok"' && pass "API health: RabbitMQ OK" || warn "API health: RabbitMQ pode estar offline"
-            echo "$resp" | grep -q '"database":{"status":"ok"' && pass "API health: Database OK" || true
-            echo "$resp" | grep -q '"redis":{"status":"ok"' && pass "API health: Redis OK" || true
+            grep -q '"rabbitmq":{"status":"ok"' <<< "$resp" && pass "API health: RabbitMQ OK" || warn "API health: RabbitMQ pode estar offline"
+            grep -q '"database":{"status":"ok"' <<< "$resp" && pass "API health: Database OK" || true
+            grep -q '"redis":{"status":"ok"' <<< "$resp" && pass "API health: Redis OK" || true
         fi
     else
         warn "Next.js App: nao respondeu em /api/health"
@@ -551,7 +551,7 @@ else
     pub_result=$(docker exec "$rmq_cid" rabbitmqctl publish \
         severinno.direct notification "$test_payload" 2>/dev/null || true)
 
-    if echo "$pub_result" | grep -qi "ok\|sent\|published"; then
+    if grep -qi "ok\|sent\|published" <<< "$pub_result"; then
         pass "Publicacao: mensagem publicada no RabbitMQ"
 
         # Wait briefly for consumer to process
@@ -574,7 +574,7 @@ else
 
     # Verify app can reach RabbitMQ via health API
     health_resp=$(curl -s --connect-timeout 5 "http://localhost:3000/api/health" 2>&1 || true)
-    if echo "$health_resp" | grep -qi "rabbitmq.*ok"; then
+    if grep -qi "rabbitmq.*ok" <<< "$health_resp"; then
         pass "App conectado ao RabbitMQ (confirmado por /api/health)"
     fi
 fi
@@ -587,7 +587,7 @@ log_step "11. Recursos do Docker"
 df_output=$(docker system df 2>/dev/null || true)
 if [ -n "$df_output" ]; then
     while read -r line; do
-        if echo "$line" | grep -qE '(Images|Containers|Local Volumes|Build Cache)'; then
+        if grep -qE '(Images|Containers|Local Volumes|Build Cache)' <<< "$line"; then
             detail "$(echo "$line" | xargs)"
         fi
     done < <(echo "$df_output")

@@ -302,30 +302,30 @@ Métricas centralizadas do sistema de geolocalização, com contadores em memór
 
 ### 10.1. Contadores
 
-| Contador            | Descrição                                    |
-| ------------------- | -------------------------------------------- |
-| `enterEvents`       | Eventos de entrada de geofence               |
-| `exitEvents`        | Eventos de saída de geofence                 |
-| `whatsappSent`      | Mensagens WhatsApp enviadas com sucesso      |
-| `whatsappFailed`    | Falhas no envio de mensagens WhatsApp        |
-| `lockContentions`   | Tentativas de bloqueio distribuído (Redis)   |
-| `engineErrors`      | Erros no engine de geofencing                |
-| `osrmFallbackTriggers` | Ativações do fallback OSRM para ETA       |
+| Contador               | Descrição                                  |
+| ---------------------- | ------------------------------------------ |
+| `enterEvents`          | Eventos de entrada de geofence             |
+| `exitEvents`           | Eventos de saída de geofence               |
+| `whatsappSent`         | Mensagens WhatsApp enviadas com sucesso    |
+| `whatsappFailed`       | Falhas no envio de mensagens WhatsApp      |
+| `lockContentions`      | Tentativas de bloqueio distribuído (Redis) |
+| `engineErrors`         | Erros no engine de geofencing              |
+| `osrmFallbackTriggers` | Ativações do fallback OSRM para ETA        |
 
 ### 10.2. Contadores de Timezone
 
-| Contador               | Descrição                                          |
-| ---------------------- | -------------------------------------------------- |
-| `lookups`              | Total de consultas de timezone                     |
-| `fallbackToBrasilia`   | Fallback para America/Sao_Paulo                    |
-| `byTimezone`           | Distribuição por timezone detectada                |
+| Contador             | Descrição                           |
+| -------------------- | ----------------------------------- |
+| `lookups`            | Total de consultas de timezone      |
+| `fallbackToBrasilia` | Fallback para America/Sao_Paulo     |
+| `byTimezone`         | Distribuição por timezone detectada |
 
 ### 10.3. API
 
-| Função                      | Descrição                                      |
-| --------------------------- | ---------------------------------------------- |
-| `getGeoMetricsSnapshot()`   | Retorna snapshot completo das métricas         |
-| `logGeoMetricsSummary()`    | Loga resumo das métricas no console            |
+| Função                    | Descrição                              |
+| ------------------------- | -------------------------------------- |
+| `getGeoMetricsSnapshot()` | Retorna snapshot completo das métricas |
+| `logGeoMetricsSummary()`  | Loga resumo das métricas no console    |
 
 ### 10.4. Endpoint de Snapshot
 
@@ -341,9 +341,9 @@ Retorna o resultado de `getGeoMetricsSnapshot()` — para dashboards e monitoram
 
 Índice espacial em memória via Redis GEO para operações de baixa latência.
 
-| Função                      | Descrição                                                 |
-| --------------------------- | --------------------------------------------------------- |
-| `indexProviderLocation()`   | Usa `GEOADD` para indexar a localização de um provider   |
+| Função                    | Descrição                                              |
+| ------------------------- | ------------------------------------------------------ |
+| `indexProviderLocation()` | Usa `GEOADD` para indexar a localização de um provider |
 
 Utilizado pela rota de stream e rota de geofence para manter o índice Redis atualizado em tempo real.
 
@@ -357,12 +357,12 @@ POST /api/tracking/[id]/geofence
 
 Endpoint unificado que combina engine de geofencing + fallback OSRM para ETA.
 
-| Aspecto       | Detalhe                                                              |
-| ------------- | -------------------------------------------------------------------- |
-| Método        | `POST`                                                               |
-| Parâmetro     | `[id]` — ID do tracking/booking                                     |
-| Lógica        | Verifica geofence via engine interno, com fallback OSRM para ETA     |
-| Substitui     | Endpoints separados de verificação de geofence                      |
+| Aspecto   | Detalhe                                                          |
+| --------- | ---------------------------------------------------------------- |
+| Método    | `POST`                                                           |
+| Parâmetro | `[id]` — ID do tracking/booking                                  |
+| Lógica    | Verifica geofence via engine interno, com fallback OSRM para ETA |
+| Substitui | Endpoints separados de verificação de geofence                   |
 
 ---
 
@@ -370,22 +370,22 @@ Endpoint unificado que combina engine de geofencing + fallback OSRM para ETA.
 
 Engine de geofencing com integração WhatsApp, observabilidade e bloqueio distribuído.
 
-| Funcionalidade              | Descrição                                                          |
-| --------------------------- | ------------------------------------------------------------------ |
-| **WhatsApp**                | Notificação de providers via WhatsApp ao entrar/sair da geofence   |
-| **Observabilidade hooks**   | `recordGeofenceEnter()`, `recordGeofenceExit()` — atualiza contadores |
-| **Lock distribuído**        | Bloqueio via Redis para evitar processamento duplicado             |
+| Funcionalidade            | Descrição                                                             |
+| ------------------------- | --------------------------------------------------------------------- |
+| **WhatsApp**              | Notificação de providers via WhatsApp ao entrar/sair da geofence      |
+| **Observabilidade hooks** | `recordGeofenceEnter()`, `recordGeofenceExit()` — atualiza contadores |
+| **Lock distribuído**      | Bloqueio via Redis para evitar processamento duplicado                |
 
 ### 13.1. Hooks de Observabilidade
 
-| Hook                       | Descrição                                      |
-| -------------------------- | ---------------------------------------------- |
-| `recordGeofenceEnter()`    | Incrementa `enterEvents`                       |
-| `recordGeofenceExit()`     | Incrementa `exitEvents`                        |
-| `recordWhatsAppSent()`     | Incrementa `whatsappSent`                      |
-| `recordWhatsAppFailed()`   | Incrementa `whatsappFailed`                    |
-| `recordLockContention()`   | Incrementa `lockContentions`                   |
-| `recordEngineError()`      | Incrementa `engineErrors`                      |
+| Hook                     | Descrição                    |
+| ------------------------ | ---------------------------- |
+| `recordGeofenceEnter()`  | Incrementa `enterEvents`     |
+| `recordGeofenceExit()`   | Incrementa `exitEvents`      |
+| `recordWhatsAppSent()`   | Incrementa `whatsappSent`    |
+| `recordWhatsAppFailed()` | Incrementa `whatsappFailed`  |
+| `recordLockContention()` | Incrementa `lockContentions` |
+| `recordEngineError()`    | Incrementa `engineErrors`    |
 
 ---
 
@@ -393,22 +393,22 @@ Engine de geofencing com integração WhatsApp, observabilidade e bloqueio distr
 
 Detecção dinâmica de timezone a partir de coordenadas GPS.
 
-| Funcionalidade              | Descrição                                                          |
-| --------------------------- | ------------------------------------------------------------------ |
-| **Detect timezone**         | Converte lat/lng em IANA timezone via biblioteca                   |
-| **isFallback**              | `false` para coordenadas válidas, `true` apenas para entradas NaN/inválidas |
+| Funcionalidade      | Descrição                                                                   |
+| ------------------- | --------------------------------------------------------------------------- |
+| **Detect timezone** | Converte lat/lng em IANA timezone via biblioteca                            |
+| **isFallback**      | `false` para coordenadas válidas, `true` apenas para entradas NaN/inválidas |
 
 ### 14.1. Integrações
 
 O módulo de timezone é integrado nos seguintes arquivos:
 
-| Arquivo                  | Uso                                                              |
-| ------------------------ | ---------------------------------------------------------------- |
-| `notifications.ts`      | Horário correto para envio de notificações                      |
-| `dispatch.ts`           | Horário de despacho de serviços                                 |
-| `evolution.ts`          | Timestamps de evolução de booking                               |
-| `whatsapp-flows.ts`     | Janela de envio de mensagens WhatsApp                           |
-| `calendar-sync.ts`      | Sincronização de calendário com timezone do prestador/cliente   |
+| Arquivo             | Uso                                                           |
+| ------------------- | ------------------------------------------------------------- |
+| `notifications.ts`  | Horário correto para envio de notificações                    |
+| `dispatch.ts`       | Horário de despacho de serviços                               |
+| `evolution.ts`      | Timestamps de evolução de booking                             |
+| `whatsapp-flows.ts` | Janela de envio de mensagens WhatsApp                         |
+| `calendar-sync.ts`  | Sincronização de calendário com timezone do prestador/cliente |
 
 ### 14.2. Fallback
 

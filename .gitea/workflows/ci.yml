@@ -4,7 +4,11 @@
 # Gitea Actions - compatível com GitHub Actions
 #
 # Pipeline:
-#   lint       → ESLint
+#   lint       → bun run lint (prettier --check + eslint --max-warnings 0)
+#                — o MESMO comando do job `lint-guard` do GitHub: a régua vive no
+#                script `lint` do package.json, não em cada pipeline. Antes daqui
+#                saía só `eslint .` (sem o teto de warnings, sem prettier) e o
+#                mesmo commit passava neste merge e era rejeitado no GitHub.
 #   typecheck  → tsc --noEmit
 #   test       → vitest run
 #   build      → next build
@@ -25,7 +29,12 @@ concurrency:
 
 env:
   NODE_VERSION: 22
-  BUN_VERSION: "1.4.0"
+  # FONTE ÚNICA da versão do Bun: a variable do repositório. Era o literal
+  # "1.4.0" — um SEGUNDO ponto de verdade que permitia esta pipeline construir
+  # com um runtime diferente do que o espelho do GitHub constrói para o mesmo
+  # commit. O guard `check:bun-mirror` só varria `.github/workflows` e por isso
+  # não acusava; hoje ele varre todas as forjas (scripts/forge-workflows.mjs).
+  BUN_VERSION: ${{ vars.BUN_VERSION }}
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test
   REDIS_URL: redis://localhost:6379
   SESSION_SECRET: ci-session-secret-at-least-32-characters-long
@@ -38,13 +47,421 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      # Script (não composite action): `run:` não passa pelo resolvedor de
+      # actions locais do runner — ver scripts/setup-bun-ci.sh.
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ env.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - run: bun install --frozen-lockfile
       - run: bun run lint
+
+  # ── Repo Guards (invariantes do repositório, node-puro) ───────────────────
+  # NÃO dependem do app rodar: são consistência de manifesto, de referências e
+  # de fonte única. Job próprio para que a falha aponte o INVARIANTE violado em
+  # vez de se diluir no `test` — e para que cada um possa ser exigido
+  # individualmente no branch protection desta forja.
+  guards:
+    name: Repo Guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Script (não composite action): `run:` não passa pelo resolvedor de
+      # actions locais do runner — ver scripts/setup-bun-ci.sh.
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - run: bun install --frozen-lockfile
+
+      # ── OS GATES DESTE JOB E A FORJA ESPELHO ─────────────────────────────
+      # Cada gate abaixo é invocado pela MESMA linha que o espelho do GitHub
+      # (`.github/workflows/pr-check.yml`): `node scripts/<arquivo>.mjs` com os
+      # MESMOS argumentos. A forma indireta (`bun run check:<entry>`) passava
+      # pelo `matches` frouxo de cada invariante e escondia uma SEGUNDA RÉGUA:
+      # o `--pkg-internal` de um lado e a ausência dele do outro davam o mesmo
+      # "presente". Hoje o invariante do CORE é o LITERAL do comando, e o
+      # `check-forge-parity` mede presença pelas linhas de `run:` (é o mesmo
+      # dado que o doctor usa) — a régua é uma só por construção.
+      #
+      # Três invariantes seguem pela entry do package.json, e não pelo caminho
+      # do script: `lint`, `typecheck` e `test:run` (o comando é composto ou
+      # carrega opções de runtime que NÃO existem na linha — o heap do tsc), e
+      # `check:pii-allowlist`/`check:pii-gate` (o comando é um `vitest` com a
+      # lista de arquivos). Ali a entry É a fonte única: o comando não existe
+      # fora dela.
+
+      # O manifesto dos required checks precisa apontar para jobs REAIS e
+      # incondicionais — um required check inexistente não falha, ele faz o PR
+      # ESPERAR para sempre (diagnóstico opaco, PR travado sem causa visível).
+      - name: Required checks manifest
+        run: node scripts/check-required-checks.mjs
+
+      # Cabeçalho de script: `Usage:` + `Exit code` no BLOCO DE DOCUMENTAÇÃO
+      # LÍDER do arquivo (as linhas de comentário do topo, até a primeira linha
+      # de código — a posição dentro do bloco não importa).
+      #
+      # Por que é BLOQUEANTE aqui: o contrato existia só dentro do `barrel-lint`,
+      # cujo exit 3 o CI tratava como aviso e o pre-commit diluía (o `wait` de
+      # vários PIDs devolve o status do ÚLTIMO). Resultado: sete scripts sem
+      # cabeçalho válido passando por verde em toda parte. Um gate que decide o
+      # merge precisa FALHAR, não aconselhar.
+      #
+      # node direto: guard node-puro, sem node_modules — e é a forma canônica
+      # de todo gate de um script só (o espelho do GitHub invoca o mesmo
+      # literal, sem depender de `bun` no PATH).
+      - name: Script header docs
+        run: node scripts/check-script-headers.mjs
+
+      # A classe SIGPIPE: sob `set -o pipefail`, `algo | grep -q PADRAO` pode
+      # passar a 141 MESMO com o padrão encontrado — `grep -q` fecha o stdin no
+      # primeiro casamento e o produtor leva SIGPIPE se ainda tiver o que
+      # escrever. É INTERMITENTE (depende do tamanho da saída), então o sintoma
+      # aparece na asserção que ACHOU o texto, não na causa. O remédio é
+      # herestring (`grep -q X <<< "$OUT"`): nenhum pipe, nenhum produtor para
+      # levar o sinal.
+      #
+      # Sem cota, sem allowlist: a dívida foi APOSENTADA (o `--fix` do guard
+      # reescreveu as 216 ocorrências mecânicas) e o baseline foi removido —
+      # QUALQUER ocorrência reprova o PR, em qualquer arquivo.
+      - name: Pipefail x grep quieto (SIGPIPE)
+        run: node scripts/check-pipefail-sigpipe.mjs
+
+      # O corpo de um `run:` é SHELL, e um shell que não faz parsing morre no
+      # RUNNER — no meio do job, depois de minutos de setup, longe da causa. O
+      # repositório reescreve corpo de `run:` por MÁQUINA de propósito (o
+      # `--fix` do guard acima reescreveu 216 ocorrências), e é exatamente onde
+      # entra um `<<<` desbalanceado, um `"` a mais ou um heredoc sem
+      # terminador. Os guards que LEEM o YAML não veem isso: para eles um corpo
+      # quebrado continua sendo um `run:` válido. `bash -n` faz o PARSING sem
+      # executar nada — o gate é o parsing, não a semântica; um passo com
+      # `shell:` não-bash é contado e NOMEADO (nunca pulado em silêncio).
+      # A SEGUNDA fonte é a mesma classe de defeito um passo adiante: os SCRIPTS
+      # DE SHELL versionados (`*.sh`/`*.bash` + hooks do `.husky/`, a lista do
+      # check:pipefail-sigpipe) morrem no PASSO que os executa (`bash x.sh`),
+      # depois do setup e longe da causa. Os dois escopos são o MESMO parser, o
+      # MESMO relatório e o MESMO exit code (um comando, não dois).
+      - name: Workflow run syntax (bash -n)
+        run: node scripts/check-workflow-run-syntax.mjs
+
+      # O remendo chega ao PR como COMENTÁRIO — o MESMO passo do espelho do
+      # GitHub, com o `--backend` da forja da vez. Sem ele o canal do remédio
+      # existia só no pre-commit (onde há terminal) e no espelho: quem abre o PR
+      # AQUI via o check vermelho e o log do bash, e reescrevia à mão a cicatriz
+      # que o `--fix` remenda.
+      #
+      # `always()` porque o caso de uso é o gate VERMELHO; com ele verde o passo
+      # apenas retira o comentário que ficou para trás (o ciclo é fechado, não
+      # deixado aberto). Quem decide o que publicar é o SCRIPT — o token ausente
+      # sai como `::notice::` dele, não como um `if` que esconde a ausência.
+      - name: Publicar o remendo como comentário no PR
+        if: always()
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ secrets.GITEA_URL }}
+          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+          REMEDY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node scripts/pr-remedy-comment.mjs --backend gitea
+
+      # O MESMO canal para o SEGUNDO fixer mecânico (a classe SIGPIPE): o gate
+      # roda no job de guards, e o remédio dele chega ao PR por AQUI — o passo
+      # que já tem token e já é o dono do canal. O `--fixer` escolhe o DEFEITO;
+      # cada um tem o seu marcador, então os dois comentários convivem no mesmo
+      # PR e cada um é retirado quando o SEU defeito some.
+      - name: Publicar o remendo do SIGPIPE como comentário no PR
+        if: always()
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ secrets.GITEA_URL }}
+          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+          REMEDY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node scripts/pr-remedy-comment.mjs --backend gitea --fixer pipefail-sigpipe
+
+      # Contrato de documentação das PROVAS (família `prove-*`/`doctor`): exige,
+      # para CADA comando, um bloco com o resultado esperado — e CONFRONTA esse
+      # bloco com a saída real (exit declarado + linhas exigidas). Uma doc que
+      # descreve a saída de ANTES mente com aparência de rigor, o que é pior que
+      # a ausência dela: quem confia no bloco documentado confia em nada.
+      #
+      # As provas que exigem docker/imagem (runtime, smoke-render, merge-gate) o
+      # guard executa com o `docker` AUSENTE de propósito e cobra o desfecho
+      # INDETERMINADO que elas DOCUMENTAM ter aí — a invariante verificada é
+      # "ausência de prova nunca vira sucesso", e ela roda hermeticamente (~1s).
+      - name: Probe docs contract
+        run: node scripts/check-prove-docs.mjs
+
+      # Fonte única do registry OCI (imagens da app + mirrors de toolchain).
+      # Impede o reacoplamento ao GHCR: um `ghcr.io/...` solto volta a exigir
+      # cota de storage/egress do registry proprietário e quebra o flip de uma
+      # única variável (IMAGE_REGISTRY).
+      #
+      # As `vars` entram no AMBIENTE do passo de propósito: as referências da
+      # imagem moram em configuração não versionada, e é do ambiente que o guard
+      # lê o valor. Sem elas o passo só pode dizer INDETERMINADO ("não consegui
+      # provar") — e um gate verde sobre o que não foi provado é pior que um
+      # vermelho. Com elas, a repository variable é COMPARADA com o que o
+      # repositório declara (`.actrc`, `deploy/env.gitea.example`).
+      - name: OCI registry single source
+        env:
+          IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+          BUN_VERSION: ${{ vars.BUN_VERSION }}
+        run: node scripts/check-registry-source.mjs
+
+      # ── O VALOR das variables, conferido a CADA PR (o doctor, perfil --ci) ──
+      # O job semanal `actrc-sync` faz esta pergunta, mas ele é SEMANAL: um PR que
+      # mexe no template (ou uma variable trocada na forja) espera dias pelo
+      # veredito — e o defeito é silencioso (o espelho velho não quebra nada
+      # visível). Aqui a MESMA pergunta roda no merge, pelo doctor, que chama a
+      # MESMA função do guard periódico (`mirrorDriftReport`) e por isso não pode
+      # discordar do log dele.
+      #
+      # POR QUE O PERFIL `--ci`, e não o doctor inteiro:
+      #   - a bateria de guards É este job (rodá-la aqui seria recursão);
+      #   - a prova do bloqueio executa o `deploy/gitea-up.sh`, que executa ESTE
+      #     doctor (recursão de novo);
+      #   - a branch protection registrada, o registro do runner, o contrato da
+      #     imagem publicada, o probe do registry e o board exigem credencial de
+      #     administração, rede ou o estado do HOST — quem os cobre é o cron
+      #     (`.gitea/workflows/forge-doctor.yml`).
+      # O recorte é DELIBERADO e o relatório NOMEIA cada seção que ficou fora
+      # (lista de "não provado"): nenhuma some por omissão.
+      #
+      # AS `vars` ENTRAM PELO AMBIENTE **E** PELAS FLAGS, e são duas perguntas
+      # diferentes: no AMBIENTE, a invariante 7c do check-registry-source compara
+      # o valor com o que o repositório declara; nas FLAGS
+      # (`--expected`/`--expected-var`), o doctor compara os ESPELHOS (`.actrc`, o
+      # template e o `deploy/.env.gitea` do host quando ele existe) com o MESMO
+      # código do job semanal.
+      #
+      # A LÓGICA (montar as flags, recusar régua vazia, traduzir o veredito em
+      # exit code) mora em `scripts/check-doctor-ci.mjs`, e a linha aqui é uma só
+      # de propósito: o próprio doctor executa esta bateria a partir do job — e
+      # ele exige que todo gate da pipeline dona do merge seja uma linha
+      # `run: <cmd>` que ele consiga rodar por LISTA DE ARGUMENTOS (um `run: |`
+      # com o comando lá dentro é invisível para ele e falharia o teste que prova
+      # isso). O script nomeia a variável não criada (`::warning::`), roda o doctor
+      # e faz 1 (BLOQUEADA) valer 1 e o INDETERMINADA do perfil valer 0 — um PR
+      # vermelho por seção que o cron cobre seria o "gate que sempre acende".
+      - name: Doctor Ci (o VALOR das repository variables nos espelhos)
+        # BUN_VERSION já vem do env do workflow (a MESMA variável que o
+        # setup-bun usou); as outras duas são declaradas aqui, sem fallback: um
+        # `|| 'ghcr.io'` no YAML é intenção declarada, nunca o valor.
+        env:
+          IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+        run: node scripts/check-doctor-ci.mjs
+
+      # A BASE da imagem que roda ESTES jobs: pinada por digest e com o contrato
+      # da imagem provado por EXECUÇÃO (o bloco `RUN` real do Dockerfile, contra
+      # bases dubladas: com o plugin `compose` passa, sem ele FALHA — é a prova
+      # de que trocar o digest quebra o contrato, como o mutation prova).
+      #
+      # `catthehacker/ubuntu:act-latest` é uma tag FLUTUANTE: um rebuild troca a
+      # imagem inteira — inclusive o plugin `compose` que a invariante 7 usa para
+      # renderizar o compose da forja — sem nenhuma linha do repositório mudar.
+      #
+      # O probe da tag é o único passo que depende de rede: sem ele o passo
+      # continua verde DECLARANDO que não conferiu o pin contra a tag.
+      - name: Runner base pin (digest + contrato)
+        run: node scripts/check-runner-base.mjs
+
+      # Nenhuma referência pendurada entre workflow → script/package.json.
+      - name: Workflow references
+        run: node scripts/check-workflow-refs.mjs --pkg-internal
+
+      # PARIDADE hook ↔ CI: o veredito LOCAL e o do MERGE são dois conjuntos de
+      # comandos escritos em dois lugares — e enquanto a duplicação for
+      # invisível, ela diverge em silêncio ("passou aqui e quebrou lá"). O caso
+      # REAL: `.husky/pre-push` rodava `bunx tsc --noEmit` SEM o heap de 4GB que
+      # o script `typecheck` carrega — o mesmo commit estourava a memória no
+      # push (SIGABRT, 134) e passava no merge, por uma régua que só o hook
+      # tinha. Aqui cada comando dos hooks é resolvido (a entrada do
+      # package.json) e comparado com o comando CANÔNICO do CORE; o que não é o
+      # mesmo comando exige DECISÃO ESCRITA, e o que o hook não roda exige
+      # entrada em HOOK_NOT_RUN — um gate do contrato de merge não entra em
+      # silêncio em nenhum dos dois lados.
+      - name: Hook x CI parity
+        run: node scripts/check-hook-ci-parity.mjs
+
+      # Os COMANDOS que os hooks executam: cada caminho citado (script de
+      # `node`/`bash`, entrada de `bun run`, binário de `bun x`, arquivo de
+      # `source`) tem de EXISTIR. Um caminho com erro de digitação no hook não é
+      # "um script que não roda": é um PASSO que nunca roda — e o sintoma nunca
+      # diz o nome dele. Roda também no próprio hook (mesma linha, node-puro):
+      # o defeito nasce lá, e é lá que ele custa mais caro.
+      - name: Hook commands resolve (arquivo/entrada real)
+        run: node scripts/check-hook-commands.mjs
+
+      # @ts-nocheck desliga a verificação de tipos do arquivo — é a porta dos
+      # fundos do typecheck. Sem este gate na forja, um arquivo poderia entrar
+      # aqui com os tipos desligados e a pipeline passaria verde.
+      - name: No @ts-nocheck
+        run: bun run check:ts-nocheck
+
+      # Escopo dos guards: nenhum script pode cravar um diretório de forja —
+      # é o que garante que ESTA pipeline não volte a ficar fora da cobertura.
+      - name: Forge workflow scope
+        run: node scripts/check-forge-workflow-scope.mjs
+
+      # Paridade de gates entre esta pipeline (dona do merge) e o espelho do
+      # GitHub: um gate do CORE que roda em só uma delas é buraco silencioso.
+      - name: Forge gate parity
+        run: node scripts/check-forge-parity.mjs
+
+      # DEPENDÊNCIAS DOS JOBS: um job que roda comando cujo VEREDITO exige
+      # `node_modules` tem de INSTALAR as dependências ou declarar a isenção
+      # (com data e janela de revisão). Esta pipeline instala — é o parâmetro do
+      # que o gate exige — e a varredura cobre as DUAS forjas: os jobs do GitHub
+      # que rodam os mesmos guards sem install são a assimetria que o gate torna
+      # mecânica (e a isenção de cada um é verificada contra o grafo de imports
+      # do comando, não contra a prosa do workflow).
+      - name: Job dependencies (install or declared exemption)
+        run: node scripts/check-job-deps.mjs
+
+      # ── Segurança: gates que existiam APENAS no espelho do GitHub ────────
+      # Descobertos pela classificação obrigatória do check:forge-parity. Estar
+      # "no arquivo do GitHub" foi confundido com "ser específico do GitHub":
+      # a auditoria de dependências, a baseline de segredos e o guard de hooks
+      # de seed não têm nada de GitHub — só moravam lá. A forja é dona do merge,
+      # então ela é quem precisa bloquear neles.
+      - name: Dependency audit baseline (vulnerabilidades novas)
+        run: node scripts/check-bun-audit-baseline.mjs
+
+      - name: Secrets baseline (nenhum segredo versionado)
+        run: node scripts/rotate-secrets.mjs --check
+
+      # SEED_SPEC_PATCH/PROD_SEED_ALLOW_DEV são TEST-ONLY: vazando para um
+      # caminho de deploy, o seed de produção roda com spec patchado. A forja
+      # TEM um deploy — este é o gate que mais faz sentido estar aqui.
+      - name: Seed test hooks (fora do caminho de deploy)
+        run: node scripts/check-seed-hooks.mjs
+
+      # Sentinel órfão = guarda CEGA (o grep nunca acende e 'não achou' vira
+      # falso positivo de 'limpo').
+      - name: Sentinel producer
+        run: node scripts/check-sentinel-producer.mjs
+
+      # ── Fonte única / consistência do repositório ─────────────────────────
+      - name: Bun single source (mirror + call sites)
+        run: node scripts/check-bun-mirror.mjs
+
+      - name: No oven-sh/setup-bun
+        run: node scripts/check-no-setup-bun.mjs
+
+      # README prometendo um hook que não existe = proteção fantasma.
+      - name: Hook symmetry (README ↔ hooks reais)
+        run: node scripts/check-hooks-symmetry.mjs
+
+      # A LATÊNCIA DE MERGE do DONO DO MERGE fecha a conta: todo job que roda
+      # neste PR tem duração (declarada em ci/merge-latency.json ou derivada do
+      # benchmark). A tabela de overhead do README lista o custo de cada gate e
+      # convida a SOMAR, mas o PR não paga a soma — ele paga o caminho crítico e
+      # a fila, e este gate existe para esse número não encolher em SILÊNCIO: um
+      # job novo sem medição sai aqui NOMEADO, em vez de a latência publicada
+      # passar a cobrir menos pipeline do que existe. O espelho pode ter jobs
+      # sem medição (é um fato declarado); o dono do merge, não.
+      - name: Merge latency (o dono do merge cobre o PR?)
+        run: node scripts/merge-latency.mjs --check
+
+  # ── Prova do PRÉ-REQUISITO 0 do bring-up (por EXECUÇÃO, não por texto) ─────
+  # O `guards` prova a ORDEM no TEXTO do `deploy/gitea-up.sh` (`checkGiteaBringUp`)
+  # e o ensure tem testes unitários dos seus estados. Nada disso distingue "o
+  # passo 0 RECUSA" de "o passo 0 está QUEBRADO": um bring-up que aborta por
+  # qualquer outro motivo também não sobe o runner — e passaria. Aqui o bring-up
+  # REAL roda contra um env DIVERGENTE (a imagem existe e a stack MESMO ASSIM não
+  # sobe), com um registry de teste em 127.0.0.1 e um `docker` dublê: sem rede
+  # externa, sem docker real, ~10s. Quem mexer no `gitea-up.sh` e quebrar o passo
+  # 0 derruba ESTE job — o bloqueio deixa de depender de alguém lembrar de rodar
+  # a prova.
+  #
+  # POR QUE UM JOB PRÓPRIO (e não um passo do `guards`): o doctor EXECUTA a
+  # bateria do job `guards` como fato, e o `gitea-up.sh` chama o doctor com
+  # `--no-proof` justamente para não chamar de volta a prova que executa ELE. Se
+  # a prova entrasse na bateria do `guards`, o `--no-proof` perderia o efeito e
+  # cada subida rodaria a prova de si mesma, dez vezes. Como job próprio ela é o
+  # gate de merge, e o doctor continua medindo o fato pela seção `proof` — sem
+  # circularidade. (A paridade nas duas forjas é cobrada pelo `check:forge-parity`,
+  # cuja invariante `bring-up-env-gate-proof` casa esta linha.)
+  bring-up-proof:
+    name: Bring-up Gate Proof (pré-requisito 0, por execução)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # `node` direto: o guard é node-puro (sem node_modules) e já EXIGE node — o
+      # próprio `deploy/gitea-up.sh` aborta sem ele (`command -v node`), e é ele
+      # quem executa o caminho real aqui dentro.
+      - name: Bring-up contra env divergente (a stack não sobe)
+        run: node scripts/prove-runner-image-gate.mjs
+
+  # ── Prova do bloqueio do PRE-COMMIT DENTRO da imagem do runner ────────────
+  # O doctor publica o fato do bloqueio do pre-commit e EXECUTA a prova
+  # (`proveCommitBlocks`), mas ele roda onde o doctor roda: na máquina do
+  # operador. Aqui o MESMO módulo roda no runtime que julga o merge.
+  #
+  # NA FORJA ISTO É LITERAL: o label `ubuntu-latest` do act_runner resolve para
+  # `docker://<IMAGE_REGISTRY>/<IMAGE_NAMESPACE>/ubuntu-bun:<BUN_VERSION>`
+  # (GITEA_RUNNER_LABELS, no compose da forja), então ESTE job roda DENTRO do
+  # container da imagem — e o socket do docker NÃO está montado nele. Por isso o
+  # comando prova EM LUGAR e VERIFICA os marcadores do runtime
+  # (`/.dockerenv` + `/opt/acttoolcache`) antes de valer como prova: um
+  # `--in-image` numa máquina hospedeira RECUSA (exit 2) em vez de dizer
+  # "provado" para uma medição feita no lugar errado.
+  #
+  # O que ele não conseguiu medir sai INDETERMINADO (exit 2) nomeando o que
+  # faltou — nunca verde. A paridade com o espelho é cobrada pelo
+  # `check:forge-parity` (o invariante CORE `pre-commit-in-runner-proof` casa
+  # esta linha nas duas pipelines).
+  pre-commit-in-runner-proof:
+    name: Pre-commit Proof (dentro da imagem do runner)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Script (não composite action): `run:` não passa pelo resolvedor de
+      # actions locais do runner — ver scripts/setup-bun-ci.sh.
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      # `node_modules` é o que o fixture precisa (o guard importa o parser): o
+      # job INSTALA em vez de contar com o cache do runner.
+      - run: bun install --frozen-lockfile
+
+      - name: A prova do bloqueio do pre-commit (dentro da imagem do runner)
+        env:
+          IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+          BUN_VERSION: ${{ vars.BUN_VERSION }}
+        run: node scripts/prove-pre-commit-in-runner.mjs
+
+      # A MESMA prova SEM o dublê dos guards irmãos: o hook REAL sobre uma cópia
+      # do checkout, com os CINCO guards de fase A rodando de verdade. É o que
+      # fecha o limite que o passo acima declara ("os irmãos rodam no dublê") e o
+      # que atribui a recusa: um refutador só, e é o GATE.
+      - name: A prova SEM o dublê (a fase A real recusa o corpo quebrado)
+        env:
+          IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+          BUN_VERSION: ${{ vars.BUN_VERSION }}
+        run: node scripts/prove-pre-commit-in-runner.mjs --sem-duble
+
+      - name: Summary
+        run: echo "✅ Um 'git commit' de verdade DENTRO do container do runner invocou o hook REAL do checkout — o corpo 'run:' quebrado no índice foi RECUSADO (zero objetos de commit) e o mesmo commit com o corpo fechado ENTROU (o CONTROLE). E a MESMA medição sem o dublê dos irmãos — a fase A REAL (os cinco guards do índice, rodados de verdade) aprova o índice e o GATE é o ÚNICO refutador do corpo quebrado."
 
   # ── TypeScript check ─────────────────────────────────────────────────────
   typecheck:
@@ -53,18 +470,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      # Script (não composite action): `run:` não passa pelo resolvedor de
+      # actions locais do runner — ver scripts/setup-bun-ci.sh.
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ env.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - run: bun install --frozen-lockfile
       - run: bun run db:generate
 
+      # O comando INTEIRO vive no script `typecheck` do package.json — inclusive
+      # o heap de 4GB. Passá-lo TAMBÉM como `env:` aqui criaria uma segunda
+      # régua: dois lugares para o mesmo valor, e o commit podia divergir entre
+      # as forjas sem nenhuma linha de workflow mudar. O job `typecheck` do
+      # espelho do GitHub executa este MESMO `bun run typecheck`.
       - name: Type check
-        run: bunx tsc --noEmit
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
+        run: bun run typecheck
 
   # ── Tests ─────────────────────────────────────────────────────────────────
   test:
@@ -98,13 +523,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      # Script (não composite action): `run:` não passa pelo resolvedor de
+      # actions locais do runner — ver scripts/setup-bun-ci.sh.
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ env.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - run: bun install --frozen-lockfile
       - run: bun run db:generate
+
+      # Barreira explícita de payload de usuário (allowlist de PII) + fonte
+      # única do client Prisma. Roda como step próprio para que a falha aponte
+      # direto para vazamento de campo, em vez de se perder no `test:run`.
+      - name: PII allowlist guard
+        run: bun run check:pii-allowlist
+
+      # Prova que o guard acima detecta a regressão que ele existe para impedir
+      # (sandbox isolado em `.tmp/`; o checkout não é tocado).
+      - name: PII gate self-test
+        run: bun run check:pii-gate
+
       - run: bun run test:run
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test
@@ -118,11 +560,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      # Script (não composite action): `run:` não passa pelo resolvedor de
+      # actions locais do runner — ver scripts/setup-bun-ci.sh.
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ env.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - run: bun install --frozen-lockfile
       - run: bun run db:generate
       - run: bun run build

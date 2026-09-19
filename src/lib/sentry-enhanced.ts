@@ -43,15 +43,9 @@ export interface SentryContext {
  * Capture error with enriched context (user, request, tags).
  * Falls back gracefully if Sentry is unavailable.
  */
-export async function captureErrorEnhanced(
-  error: unknown,
-  context?: SentryContext,
-) {
+export async function captureErrorEnhanced(error: unknown, context?: SentryContext) {
   const message = error instanceof Error ? error.message : String(error)
-  logger.error(
-    { err: error, userId: context?.userId, url: context?.url },
-    message,
-  )
+  logger.error({ err: error, userId: context?.userId, url: context?.url }, message)
 
   if (!isProd) return
   const Sentry = await getSentry()
@@ -114,10 +108,7 @@ export async function addBreadcrumb(
  * Create a performance span for tracking operation duration.
  * Returns a finish function that records the span.
  */
-export async function startSpan(
-  name: string,
-  op: string,
-): Promise<{ finish: () => void } | null> {
+export async function startSpan(name: string, op: string): Promise<{ finish: () => void } | null> {
   const Sentry = await getSentry()
   if (!Sentry) return null
 
@@ -135,7 +126,7 @@ export async function startSpan(
     finish: () => {
       // Best-effort: if the span has end(), call it
       if (spanResult && typeof spanResult === "object" && "end" in spanResult) {
-        (spanResult as { end: () => void }).end()
+        ;(spanResult as { end: () => void }).end()
       }
     },
   }

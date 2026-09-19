@@ -136,19 +136,24 @@ describe("ci.yml — fatos-chave", () => {
 
   it("lint: setup-bun com vars.BUN_VERSION + install + bun run lint", () => {
     const lint = parsed.jobs?.lint
-    const setupBun = lint?.steps?.find((s) => s.uses === "./.github/actions/setup-bun")
-    expect(setupBun).toBeDefined()
-    expect(setupBun?.with).toMatchObject({ "bun-version": "${{ vars.BUN_VERSION }}" })
+    // O setup do Bun é um `run:` (scripts/setup-bun-ci.sh), não um composite
+    // action local: `run:` não passa pelo resolvedor de actions do runner.
+    const setupBun = lint?.steps?.find((s) => (s.run ?? "").includes("scripts/setup-bun-ci.sh"))
+    expect(setupBun, "setup do Bun por run: (scripts/setup-bun-ci.sh)").toBeDefined()
+    expect(setupBun?.run).toContain('bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"')
     expect(lint?.steps?.some((s) => s.run === "bun install --frozen-lockfile")).toBe(true)
     expect(jobRun("lint", "bun run lint")).toContain("bun run lint")
   })
 
-  it("typecheck: tsc --noEmit com heap 4096MB (o crash de OOM documentado)", () => {
+  it("typecheck: o comando CANÔNICO `bun run typecheck` (heap no script, uma régua só)", () => {
     const steps = parsed.jobs?.typecheck?.steps ?? []
     const tc = steps.find((s) => s.name?.startsWith("Type check"))
     expect(tc).toBeDefined()
-    expect(tc?.run).toContain("bunx tsc --noEmit")
-    expect(tc?.env).toMatchObject({ NODE_OPTIONS: "--max-old-space-size=4096" })
+    // O heap de 4096MB vive no script `typecheck` do package.json, junto com o
+    // `tsc --noEmit` — o MESMO comando que o espelho do GitHub executa. O env
+    // declarado aqui seria uma SEGUNDA régua para o mesmo valor.
+    expect(tc?.run).toBe("bun run typecheck")
+    expect(tc?.env, "o heap voltou a ser declarado no step").toBeUndefined()
   })
 
   it("utf8-check e quality-gate usam os reusables locais (não steps inline)", () => {
@@ -200,13 +205,13 @@ describe("ci.yml — refs contra o check-workflow-refs", () => {
     }
   })
 
-  it("o composite action local setup-bun existe (todos os jobs usam)", () => {
+  it("não usa action local (./) e o setup do Bun é o script do repo", () => {
+    // A migração removeu o ÚNICO composite local: todo setup agora é `run:`,
+    // que não depende do resolvedor de actions locais do runner.
     const refs = extractActionUses(content)
-    expect(refs.length).toBeGreaterThan(0)
-    for (const r of refs) {
-      expect(ctx.actions.has(r.ref), `action ausente: ${r.ref} (linha ${r.line})`).toBe(true)
-    }
-    expect(ctx.actions.has("setup-bun")).toBe(true)
+    expect(refs, "nenhuma ref de action local deve restar").toEqual([])
+    expect(existsSync(join("scripts", "setup-bun-ci.sh")), "setup do Bun existe").toBe(true)
+    expect(content).toContain("bash scripts/setup-bun-ci.sh")
   })
 
   it("scripts invocados via npx tsx existem em scripts/ (coverage-badge.ts)", () => {

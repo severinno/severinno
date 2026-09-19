@@ -22,7 +22,7 @@ import { db } from "@/lib/db"
 import logger from "@/lib/logger"
 import { sendPushToMany } from "@/lib/push"
 import { handleError } from "@/lib/api-server"
-import type { UserRole } from "@/generated/prisma/enums"
+import { type Role } from "@prisma/client"
 
 /** Valid UserRole values for filtering. */
 const VALID_ROLES = new Set<string>(["CLIENT", "PROVIDER", "ADMIN"])
@@ -168,7 +168,7 @@ export async function GET(request: Request) {
         : []
       const whereClause: Record<string, unknown> = {
         active: true,
-        role: targetRoles.length > 0 ? { in: targetRoles as UserRole[] } : undefined,
+        role: targetRoles.length > 0 ? { in: targetRoles as Role[] } : undefined,
       }
       if (rule.filterCity) {
         whereClause.city = rule.filterCity
@@ -192,7 +192,7 @@ export async function GET(request: Request) {
           where: {
             id: { in: userIdsWithPush },
             active: true,
-            ...(targetRoles.length > 0 ? { role: { in: targetRoles as UserRole[] } } : {}),
+            ...(targetRoles.length > 0 ? { role: { in: targetRoles as Role[] } } : {}),
             ...(rule.filterCity ? { city: rule.filterCity } : {}),
           },
           select: { id: true },

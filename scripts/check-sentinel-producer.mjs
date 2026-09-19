@@ -37,7 +37,7 @@
 //          do workflow (produtor inline, ex.: echo "S" > file) — senão FAIL
 //          (produtor não resolvível: o grep não tem como acender)
 //
-// Escopo: .github/workflows/*.yml + .github/actions/*/action.yml (o guard é
+// Escopo: workflows de TODAS as forjas + actions locais (o guard é
 // CI-only — espelha o workflow-refs-guard, não entra nos hooks). Node puro,
 // sem deps, <1s.
 //
@@ -50,27 +50,47 @@
 // =============================================================================
 
 import { readFileSync, readdirSync, existsSync } from "node:fs"
+
+import {
+  FORGE_ACTIONS_DIRS,
+  FORGE_WORKFLOW_DIRS,
+  executableLine,
+  exitOnUnjudgeable,
+  readJudgedText,
+  workflowYamlValidity,
+} from "./forge-workflows.mjs"
 import { join, dirname, basename } from "node:path"
 import { pathToFileURL } from "node:url"
 
-const WF_DIR = ".github/workflows"
-const ACTIONS_DIR = ".github/actions"
+// Os diretórios de forja vêm de scripts/forge-workflows.mjs (FONTE ÚNICA) —
+// cravar `.github/workflows` aqui foi o que deixou a pipeline dona do merge
+// fora da cobertura deste guard.
 
 // ── Helpers puros (exportados para testes) ────────────────────────────────
 
 /**
  * Extrai sentinels `grep -Fq '<sentinel>' <file>` (e variantes -qF/-F) de um
- * conteúdo de workflow. Ignora linhas de comentário (#). Retorna
- * [{ line, sentinel, target }] — target é o arquivo grepeado (token limpo:
- * sem aspas/$ — ex.: `all-text-report.txt` ou `$REPORT_FILE` → `REPORT_FILE`).
+ * conteúdo de workflow. Comentário de LINHA e de FIM DE LINHA ficam fora, pela
+ * MESMA régua dos outros guards (`executableLine`):
+ *
+ *   `- run: echo ok # grep -Fq 'x' /tmp/r.txt`
+ *
+ * NÃO executa grep nenhum. Com a régua local que existia aqui (só a linha que
+ * COMEÇA com `#`), esse comentário virava uma DEMANDA de sentinel — e o guard
+ * acusava o producer de não produzir algo que ninguém pede. A régua de linha é
+ * uma só; o que varia entre os guards é a conclusão, não a leitura.
+ *
+ * Retorna [{ line, sentinel, target }] — target é o arquivo grepeado (token
+ * limpo: sem aspas/$ — ex.: `all-text-report.txt` ou `$REPORT_FILE` →
+ * `REPORT_FILE`).
  */
 export function extractSentinelGreps(content) {
   const greps = []
   const lines = content.split(/\r?\n/)
   const re = /grep\s+-[a-zA-Z]*F[a-zA-Z]*\s+['"]([^'"]+)['"]\s+(\S+)/g
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (line.trim() === "" || line.trim().startsWith("#")) continue
+    const line = executableLine(lines[i])
+    if (line.trim() === "") continue
     for (const m of line.matchAll(re)) {
       greps.push({
         line: i + 1,
@@ -192,27 +212,46 @@ export function resolveProducerChain(ref, root, exists = existsSync, read = read
 
 // ── Varredura principal ───────────────────────────────────────────────────
 
-/** Lista { path, content } dos arquivos de workflow/action do root. */
+/**
+ * Lista { path, content } dos arquivos de workflow/action do root, em TODAS as
+ * forjas, e NOMEIA o que não pôde ser julgado. O rótulo do path inclui o
+ * diretório da forja, então a violação diz em qual pipeline o sentinel ficou
+ * órfão — informação que faltava quando a varredura cobria só o GitHub.
+ */
 export function scanWorkflowFiles(root) {
   const files = []
-  for (const dir of [WF_DIR, ACTIONS_DIR]) {
+  // O que NÃO pode ser lido sai NOMEADO (e a CLI não cunha veredito). Era o
+  // único guard que engolia a falha de leitura — `catch { /* pula */ }` —, e o
+  // descarte era exatamente o veredito perigoso: sem ler o arquivo não há como
+  // saber se o sentinel tem produtor, e o guard anunciava "0 sentinel(s) com
+  // produtor correspondente", um verde sobre o que ele não leu.
+  const unjudgeable = []
+  for (const dir of [...FORGE_WORKFLOW_DIRS, ...FORGE_ACTIONS_DIRS]) {
     const absDir = join(root, dir)
     if (!existsSync(absDir)) continue
-    const isActions = dir === ACTIONS_DIR
+    const isActions = FORGE_ACTIONS_DIRS.includes(dir)
     for (const name of readdirSync(absDir)) {
+      const rel = isActions ? `${dir}/${name}/action.yml` : `${dir}/${name}`
       const p = isActions ? join(absDir, name, "action.yml") : join(absDir, name)
       if (!existsSync(p)) continue
       try {
-        files.push({
-          path: `${dir}/${isActions ? `${name}/action.yml` : name}`,
-          content: readFileSync(p, "utf8"),
-        })
-      } catch {
-        // arquivo ilegível — pula (não é o contrato deste guard)
+        const content = readJudgedText(root, rel)
+        // O texto LEGÍVEL não basta: um workflow (ou composite action) que não
+        // faz parsing em YAML não tem passo nenhum para julgar, e o sentinel
+        // "sem produtor correspondente" seria decidido sobre um arquivo que o
+        // runner nunca executa. Mesma classe do ilegível, mesma saída nomeada.
+        const yaml = workflowYamlValidity(content)
+        if (!yaml.ok) {
+          unjudgeable.push({ path: rel, motivo: yaml.motivo })
+          continue
+        }
+        files.push({ path: rel, content })
+      } catch (err) {
+        unjudgeable.push({ path: rel, motivo: err?.motivo ?? String(err?.message ?? err) })
       }
     }
   }
-  return files
+  return { files, unjudgeable }
 }
 
 /**
@@ -228,7 +267,7 @@ export function findSentinelViolations(root, options = {}) {
   const { pkgJson, wfFiles } = options
   const violations = []
   // wfFiles injetável (main() já escaneou; testes podem passar fixture próprio)
-  const files = wfFiles ?? scanWorkflowFiles(root)
+  const files = wfFiles ?? scanWorkflowFiles(root).files
   for (const wf of files) {
     const lines = wf.content.split(/\r?\n/)
     for (const g of extractSentinelGreps(wf.content)) {
@@ -331,8 +370,12 @@ function main() {
     }
   }
 
-  // scan único — usado pelo veredicto E pelo count (evita varredura dupla)
-  const wfFiles = scanWorkflowFiles(root)
+  // scan único — usado pelo veredicto E pelo count (evita varredura dupla).
+  // O que não pôde ser lido sai NOMEADO e o guard NÃO cunha veredito: sem o
+  // arquivo não há como saber se o grep tem produtor, e "0 sentinel(s) sem
+  // produtor" seria o verde de não ter lido.
+  const { files: wfFiles, unjudgeable } = scanWorkflowFiles(root)
+  exitOnUnjudgeable(unjudgeable)
   const violations = findSentinelViolations(root, { pkgJson, wfFiles })
 
   if (violations.length > 0) {

@@ -121,7 +121,7 @@ main() {
   
   local metrics=$(curl -s "$BASE_URL/api/metrics/prometheus" 2>/dev/null)
   
-  if echo "$metrics" | grep -q "http_request_duration_ms_bucket"; then
+  if grep -q "http_request_duration_ms_bucket" <<< "$metrics"; then
     log_success "Request duration histogram present"
     passed=$((passed + 1))
   else
@@ -129,7 +129,7 @@ main() {
     failed=$((failed + 1))
   fi
   
-  if echo "$metrics" | grep -q "http_active_connections"; then
+  if grep -q "http_active_connections" <<< "$metrics"; then
     log_success "Active connections gauge present"
     passed=$((passed + 1))
   else

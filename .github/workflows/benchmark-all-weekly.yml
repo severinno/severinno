@@ -76,10 +76,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Check all benchmark scripts exist
         run: |
           MISSING=false
@@ -132,10 +136,14 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:

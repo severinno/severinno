@@ -145,8 +145,7 @@ if [ "$SKIP_DOCKER" = false ]; then
   # Wait for PostgreSQL to be healthy
   echo "  Waiting for PostgreSQL..."
   for i in $(seq 1 30); do
-    if docker compose -f "$COMPOSE_FILE" ps postgis --format "{{.Status}}" 2>/dev/null \
-      | grep -qi "healthy"; then
+    if grep -qi "healthy" <<< "$(docker compose -f "$COMPOSE_FILE" ps postgis --format "{{.Status}}" 2>/dev/null)"; then
       pass "PostgreSQL healthy after ${i}s"
       break
     fi
@@ -254,7 +253,7 @@ fi
 # Caso 2 — falhou, mas NÃO pela asserção esperada (infra/schema/quebra
 # diferente da mutação). Não dá para confirmar que o guard pega ESTA
 # regressão → falha com diagnóstico claro.
-if ! echo "$E2E_OUTPUT" | grep -Fq "$EXPECTED_FAILURE"; then
+if ! grep -Fq "$EXPECTED_FAILURE" <<< "$E2E_OUTPUT"; then
   fail "E2E falhou (exit $E2E_EXIT) mas NÃO pela asserção esperada:"
   fail "  esperava:  $EXPECTED_FAILURE"
   fail "Falha pode ser infra/schema — veja o output acima."

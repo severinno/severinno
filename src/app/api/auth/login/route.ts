@@ -5,7 +5,7 @@ import { db } from "@/lib/db"
 import { verifyPassword } from "@/lib/crypto"
 import { createSession } from "@/lib/auth"
 import { loginSchema } from "@/lib/validators"
-import { handleError, unauthorized } from "@/lib/api-server"
+import { SESSION_USER_SELECT, handleError, toSessionUser, unauthorized } from "@/lib/api-server"
 import { parseBody } from "@/lib/api-middleware"
 import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"
 import { isDemoAccountsEnabled, isDemoAccountEmail } from "@/lib/demo-accounts"
@@ -69,14 +69,14 @@ export async function POST(request: Request) {
 
     const user = await db.user.findUnique({
       where: { email },
+      // Allowlist do PRÓPRIO usuário (a mesma identidade que /api/auth/me
+      // devolve — o client store espera `AuthUser`, incluindo `name`) mais as
+      // duas colunas que só existem para o login: `passwordHash` (verificação)
+      // e `sessionVersion` (createSession). Nenhuma delas vai na resposta.
       select: {
-        id: true,
-        role: true,
-        active: true,
-        email: true,
+        ...SESSION_USER_SELECT,
         passwordHash: true,
         sessionVersion: true,
-        twoFactorEnabled: true,
       },
     })
     if (!user) {
@@ -121,8 +121,9 @@ export async function POST(request: Request) {
     // No 2FA — create session directly
     await createSession(user.id, user.role as "CLIENT" | "PROVIDER" | "ADMIN", user.sessionVersion)
 
-    const { passwordHash: _ignored, ...safe } = user
-    return NextResponse.json({ user: safe })
+    // Projeção explícita: a resposta é um allowlist, não "a linha menos o
+    // passwordHash" (esse padrão vaza toda coluna nova do modelo).
+    return NextResponse.json({ user: toSessionUser(user) })
   } catch (e) {
     return handleError(e)
   }

@@ -346,10 +346,16 @@ vazamento.
 > `secret-leaks-audit` do `benchmark-weekly.yml`): roda a auditoria contra o
 > histórico completo (`git log -p --all`, `fetch-depth: 0`) e compara com o
 > baseline commitado [`docs/security/secret-leaks-baseline.json`](docs/security/secret-leaks-baseline.json)
-> — **141 achados conhecidos** (2026-08). Falha (exit 1) **somente se achados
-> NOVOS aparecerem**, por assinatura `commit+file+line+id+key` (não por count:
-> linha trocada com count igual ainda é detectada como novo; achado removido
-> por reescrita de história não falha). O count do baseline é **derivado**, nunca
+> (o número de achados conhecidos vive no ARQUIVO, nunca aqui: ele é derivado).
+> Falha (exit 1) **somente se CONTEÚDO novo aparecer**, por assinatura
+> `arquivo:linha:padrão:chave:valor-mascarado` — o **commit não entra** (não por
+> count: linha trocada com count igual ainda é detectada como novo; achado
+> removido não falha). A **proveniência do baseline** é reportada como **motivo
+> próprio** — `intacta`, `indeterminado`, `reescrita` (filter-repo/rebase/amend ou
+> branch apagado) e **`raso`** (clone raso: o commit existe no remoto e só não foi
+> baixado, então a ação é `git fetch --unshallow` e não caçar uma reescrita
+> inexistente) — em vez de acusar os achados conhecidos como novos. Nenhum dos
+> quatro falha o gate. O count do baseline é **derivado**, nunca
 > literal: `node scripts/check-secret-leaks-baseline.mjs --update` regenera o
 > arquivo a partir do audit real (mesmo princípio do badge de encoding guards).
 > Após remediar um vazamento novo (rotação), rode `--update` para adotar o novo
@@ -488,13 +494,14 @@ bun run e2e
 
 Quatro camadas de proteção previnem que arquivos com encoding corrompido (ex: byte `0x97` Windows-1252) cheguem ao repositório:
 
-**Índice da seção (8 sub-blocos):**
+**Índice da seção (9 sub-blocos):**
 
 - [CRLF Guard](#crlf-guard) — working tree `.sh`/`.bash`
 - [Normalizador](#normalizador) — fix de uma vez em novos checkouts
 - [Blob CRLF Guard](#blob-crlf-guard) — blobs commitados (`i/` EOL)
 - [CRLF Scope Guard](#crlf-scope-guard) — escopo travado em `.sh`/`.bash`
 - [UTF-8 Scope Guard](#utf-8-scope-guard) — escopo do check-utf8 travado em `src/`
+- [A régua única de leitura de YAML (`scripts/forge-workflows.mjs`)](#a-régua-única-de-leitura-de-yaml-scriptsforge-workflowsmjs) — linha, passo e declaração numa casa só
 - [Por que `.sh`-only? (decisão ESCOPO INTENCIONAL)](#por-que-o-guard-de-crlf-é-sh-only-decisão-escopo-intencional)
 - [Auditoria histórica de blobs CRLF](#auditoria-histórica-de-blobs-crlf) — histórico completo (`rev-list --all`)
 - [Single-line out= Guard](#single-line-out-guard) — `cmd "..." out=$(...)` em 1 linha
@@ -554,6 +561,39 @@ o argumento for removido (varredura sem diretório — potencialmente varrendo
 `node_modules/` ou `.next/`) ou trocado para outro diretório. Espelho do
 `check-crlf-scope.mjs`.
 
+### A régua única de leitura de YAML (`scripts/forge-workflows.mjs`)
+
+Os guards que leem workflow YAML (paridade de forja, refs, sintaxe dos `run:`,
+cobertura de mutation test, sentinel, SIGPIPE, escopo de CRLF/UTF-8, espelhos do
+Bun e call sites do setup do Bun) perguntam todos a MESMA coisa — _esta linha
+executa? isto é um passo? isto é declaração?_ — e cada um respondia com a própria
+cópia. Eram **quatro** leituras de passo e **oito** cópias da regra de
+comentário, e as cópias já divergiam: duas não conheciam `/*`, uma só conhecia
+`#`, e o comentário de FIM DE LINHA era ignorado em um guard e não no outro. Duas consequências medidas: o mesmo YAML dava **dois
+vereditos dentro do `check-forge-parity`** (a régua de rótulo lia o corpo do
+`run: |` e a de comando não — **11 arquivos** com gate visível sem comando
+correspondente), e a correção do comentário de fim de linha teve de ser aplicada
+duas vezes.
+
+Hoje a régua é uma: `executableLine`/`executableLines` (comentário de linha e de
+fim de linha fora, `${{ ... }}` do runner mascarado), `codeLine` (a MESMA régua
+sem o mascaramento — para quem precisa da expressão INTEIRA como valor, como o
+comparador de argumento do setup do Bun), `isCommentLine(line, { slash })` (a
+SINTAXE é declarada no call site) e `workflowRunBodies` (item de lista, `- run:`
+na mesma linha, bloco `|` **e** `>`, `shell:` antes ou depois do `run:`, fim do
+corpo medido). Os últimos a chegar foram os scanners de linha do
+`check-bun-mirror` (cinco cópias, uma delas com o alinhamento escrito no código
+na forma _"mesmo tratamento do check-no-setup-bun.mjs"_) e o `check-no-setup-bun`:
+a diferença não era de opinião, era de POSIÇÃO no arquivo — todos ignoravam só a
+linha INTEIRA de comentário, então a prosa de um `#` no fim de linha valia como
+declaração de versão, como path de cache ou como uso REAL do action. O que muda
+no veredito está tabelado em
+`docs/GUARDS.md` §22; a prova é `src/lib/__tests__/forge-workflows-ruler.test.ts`,
+que além de medir a leitura de cada guard exige que ela continue vindo de um
+lugar só (o regex do comentário de fim de linha e o padrão da expressão existem
+em UM arquivo, e a varredura é sobre `scripts/*.mjs` inteiro — um guard novo com
+a cópia derruba o teste sem ninguém registrá-lo).
+
 ### Por que o guard de CRLF é `.sh`-only (decisão ESCOPO INTENCIONAL)
 
 > O guard existe para bloquear o único cenário em que CRLF causa **falha
@@ -609,6 +649,17 @@ reintroduzirá CRLF em checkouts futuros.
 > mapeamento revelar CRLF em qualquer tipo `text eol=lf` do `.gitattributes`, o
 > job falha com aviso (incidente visível no Actions em vez de mapeamento
 > silencioso).
+>
+> **A ISSUE é o canal** (o vermelho do run é a lembrança): o step
+> `if: always()` roda `scripts/blob-crlf-scope-issue.mjs`, que lê o **mesmo**
+> relatório teed (`--report all-text-report.txt`) + o exit code do audit
+> (`--audit-exit`) — fonte única, sem re-varrer o histórico — e publica/comenta
+> **UMA issue** (label `crlf-scope-drift`) com os blobs e tipos ofensores, o
+> remédio (`git filter-repo`). O dedup é por **assinatura do conjunto de paths**:
+> o mesmo alcance não vira ruído semanal, um achado NOVO comenta na issue aberta.
+> Quando o audit volta a reportar **0 CRLF**, ele **reconcilia**: comenta a prova
+> e fecha o que ele abriu (a dívida não fica aberta depois de resolvida). Um
+> audit **quebrado** (exit != 0) NÃO publica e NÃO fecha — _não medido ≠ resolvido_.
 >
 > **Validação manual do alerta** (fixture git real + REPORT + réplica do gate,
 > sem depender do cron) — o procedimento passo a passo está em
@@ -708,6 +759,17 @@ Os **17 fast gates compartilhados** (linhas `✅ | ✅` abaixo) rodam via
 ambos os hooks. Adicionar um guard novo = editar esse script em UM lugar,
 sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 
+> O `check-hook-commands.mjs` **DESCE** nesse runner: ele julga também os
+> comandos que os **scripts de shell chamados pelos hooks** executam por dentro
+> (transitivo, cada script uma vez, com ciclo e teto NOMEADOS no relatório).
+> Parar no alvo do `bash` deixava uma linha tipada DENTRO do
+> `run-encoding-guards.sh` como o mesmo passo-que-nunca-roda, um nível abaixo —
+> num arquivo que roda em **todo** commit. E o alvo do interpretador
+> (`python3 "$PYTHON_SCRIPT"`) é **PROVADO**, não declarado: o guard resolve as
+> **atribuições de caminho do próprio arquivo** (incluindo o idioma
+> `SCRIPT_DIR="$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)"`), fail-closed quando
+> algum valor não é estático. Detalhes no GUARDS.md §24.
+
 > Por que os guards CRLF escaneiam só `.sh` (e não `.ts`)? — a decisão de
 > escopo está documentada em
 > [Encoding Guards → Por que `.sh`-only?](#por-que-o-guard-de-crlf-é-sh-only-decisão-escopo-intencional).
@@ -722,35 +784,41 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 > bloco real (`bun test:snapshots`) — se o bloco sumir do hook, a linha vira
 > stale e falha igual.
 
-| Validação                                                                      | Pre-commit |   Pre-push    |
-| :----------------------------------------------------------------------------- | :--------: | :-----------: |
-| UTF-8 (`check-utf8.sh --dry-run --ci src/`)                                    |     ✅     |      ✅       |
-| Escopo UTF-8 (`check-utf8-scope.mjs`)                                          |     ✅     |      ✅       |
-| CRLF working tree (`check-crlf.sh --ci`)                                       |     ✅     |      ✅       |
-| Escopo CRLF (`check-crlf-scope.mjs`)                                           |     ✅     |      ✅       |
-| CRLF blob commitado (`check-blob-crlf.sh --ci`)                                |     ✅     |      ✅       |
-| Single-line `out=` (`check-single-line-out-assign.sh`)                         |     ✅     |      ✅       |
-| Badge encoding guards (`check-encoding-guards-badge.mjs`)                      |     ✅     |      ✅       |
-| Docs repro marker (`check-readme-repro-marker.mjs`)                            |     ✅     |      ✅       |
-| Âncoras README (`check-readme-anchors.mjs`)                                    |     ✅     |      ✅       |
-| TOC README (`check-readme-toc.mjs`)                                            |     ✅     |      ✅       |
-| Imagens README (`check-readme-images.mjs`)                                     |     ✅     |      ✅       |
-| Setup-bun externo (`check-no-setup-bun.mjs`)                                   |     ✅     |      ✅       |
-| Fonte única Bun (`check-bun-mirror.mjs`)                                       |     ✅     |      ✅       |
-| Bun staged diff (`check-bun-mirror.mjs --staged`)                              |     ✅     |       —       |
-| Ícones lucide (`scan-lucide-icons.mjs --check`)                                |     ✅     |      ✅       |
-| Hooks symmetry (`check-hooks-symmetry.mjs`)                                    |     ✅     |      ✅       |
-| Mutation jobs CI (`check-mutation-jobs.mjs`)                                   |     ✅     |      ✅       |
-| Mutation jobs staged diff (`check-mutation-jobs.mjs --staged`)                 |     ✅     |       —       |
-| Unused-deps staged diff (`check-unused-deps.mjs --staged`)                     |     ✅     |       —       |
-| Contrato mutation-coord (`check-mutation-timing-contract.mjs`)                 |     ✅     |      ✅       |
-| Contrato mutation-coord staged (`check-mutation-timing-contract.mjs --staged`) |     ✅     |       —       |
-| Format + lint (lint-staged: prettier + eslint --fix)                           |     ✅     |       —       |
-| Imports diretos (check:direct-rtl-import + barrel-lint)                        |     ✅     |       —       |
-| Barrel lint (`barrel-lint`)                                                    |     ✅     |       —       |
-| Typecheck (`tsc --noEmit`)                                                     |     ✅     |       —       |
-| Snapshots (quando `.snap`/snapshot tests alterados)                            |  ✅ cond.  |       —       |
-| Testes unitários + fuzz (`test:unit`/`fuzz:ci`/`fuzz`)                         |     —      | ✅ smart-skip |
+| Validação                                                                       | Pre-commit |   Pre-push    |
+| :------------------------------------------------------------------------------ | :--------: | :-----------: |
+| UTF-8 (`check-utf8.sh --dry-run --ci src/`)                                     |     ✅     |      ✅       |
+| Escopo UTF-8 (`check-utf8-scope.mjs`)                                           |     ✅     |      ✅       |
+| CRLF working tree (`check-crlf.sh --ci`)                                        |     ✅     |      ✅       |
+| Escopo CRLF (`check-crlf-scope.mjs`)                                            |     ✅     |      ✅       |
+| CRLF blob commitado (`check-blob-crlf.sh --ci`)                                 |     ✅     |      ✅       |
+| Single-line `out=` (`check-single-line-out-assign.sh`)                          |     ✅     |      ✅       |
+| Badge encoding guards (`check-encoding-guards-badge.mjs`)                       |     ✅     |      ✅       |
+| Docs repro marker (`check-readme-repro-marker.mjs`)                             |     ✅     |      ✅       |
+| Âncoras README (`check-readme-anchors.mjs`)                                     |     ✅     |      ✅       |
+| TOC README (`check-readme-toc.mjs`)                                             |     ✅     |      ✅       |
+| Imagens README (`check-readme-images.mjs`)                                      |     ✅     |      ✅       |
+| Setup-bun externo (`check-no-setup-bun.mjs`)                                    |     ✅     |      ✅       |
+| Fonte única Bun (`check-bun-mirror.mjs`)                                        |     ✅     |      ✅       |
+| Bun staged diff (`check-bun-mirror.mjs --staged`)                               |     ✅     |       —       |
+| Ícones lucide (`scan-lucide-icons.mjs --check`)                                 |     ✅     |      ✅       |
+| Hooks symmetry (`check-hooks-symmetry.mjs`)                                     |     ✅     |      ✅       |
+| Paridade hook ↔ CI (`check-hook-ci-parity.mjs`)                                 |     ✅     |       —       |
+| Comandos do hook resolvem (`check-hook-commands.mjs`)                           |     ✅     |       —       |
+| Pipefail / SIGPIPE (`check-pipefail-sigpipe.mjs`)                               |     ✅     |       —       |
+| Mutation jobs CI (`check-mutation-jobs.mjs`)                                    |     ✅     |      ✅       |
+| Mutation jobs staged diff (`check-mutation-jobs.mjs --staged`)                  |     ✅     |       —       |
+| Unused-deps staged diff (`check-unused-deps.mjs --staged`)                      |     ✅     |       —       |
+| Contrato mutation-coord (`check-mutation-timing-contract.mjs`)                  |     ✅     |      ✅       |
+| Contrato mutation-coord staged (`check-mutation-timing-contract.mjs --staged`)  |     ✅     |       —       |
+| Sintaxe shell staged diff (`check-workflow-run-syntax.mjs --staged`)            |     ✅     |       —       |
+| Contrato de merge staged (`check-required-checks.mjs --staged`)                 |     ✅     |       —       |
+| Remédio do commit (`pre-commit-remedy.mjs`, classes derivadas, com confirmação) |     ✅     |       —       |
+| Format + lint (lint-staged: prettier + eslint --fix)                            |     ✅     |       —       |
+| Imports diretos (check:direct-rtl-import + barrel-lint)                         |     ✅     |       —       |
+| Barrel lint (`barrel-lint`)                                                     |     ✅     |       —       |
+| Typecheck (`bun run typecheck`)                                                 |     ✅     |      ✅       |
+| Snapshots (quando `.snap`/snapshot tests alterados)                             |  ✅ cond.  |       —       |
+| Testes unitários + fuzz (`test:unit`/`fuzz:ci`/`fuzz`)                          |     —      | ✅ smart-skip |
 
 **Overhead medido** (`bash scripts/bench-encoding-guards.sh` — 5 runs, mediana
 por guard): o TOTAL dos 17 guards ≈ **3.2s**, dominado por `check-blob-crlf`
@@ -763,38 +831,347 @@ single-grep). Os testes entram apenas quando arquivos-fonte mudaram
 
 **Overhead dos mutation tests por PR** — os mutation tests NÃO são fast gates:
 rodam no job consolidado `mutation-guards` do `pr-check.yml`, que orquestra os
-**15 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
+**29 sub-tests node-puro** via `scripts/test-mutation-guards.sh` (bun literal,
 bun remoção, hooks simetria, readme anchors/toc/images, README reverse, docs
 anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo,
-timing-budget, e2e-cache-budget, lint-guard, mutation-count e
-no-leaked-imports). ⚠️ Não
-existe um job `readme-toc-mutation-guard` ISOLADO — o cenário de TOC roda
-dentro da matriz aninhada `test-mutation-readme-guards.sh` (anchors + toc +
-images, 1 sub-test do master). Custo medido em 08/2026 (Windows host, worktree
-local, mediana de 3 runs warm):
+timing-budget, e2e-cache-budget, lint-guard, mutation-count,
+no-setup-bun, runner-base, no-leaked-imports, reconciliation, nested-guard,
+paridade hook↔CI, comandos dos hooks, pipefail-sigpipe, defaults de shell,
+defaults do registry/namespace, dependências dos jobs,
+sintaxe dos corpos
+`run:` e a resposta do remédio no TTY). O 29º mede o outro lado do mesmo
+contrato de merge: o `name:` de um required check renomeado sem a reaplicação
+DECLARADA deixa o PR vermelho (e mutar cada uma das seis metades que sustentam
+isso — as duas réguas da comparação, o fio em `main()`, o fail-closed da
+declaração ausente, o alvo do `--forge` e o carimbo sem churn — deixa a suíte
+vermelha no fato certo). A prova da
+CLASSIFICAÇÃO do `check-forge-parity` também é um job próprio
+(`forge-parity-mutation`): ela mede o contrato de merge em si — quais gates
+podem pular uma forja e com que forma de comando — e por isso diz QUAL regra
+quebrou em vez de ser mais uma linha da matriz.
+
+O `name:` do job `mutation-guards` é **count-free de propósito**: o nome de um
+job é o **CONTEXTO do required check** que o branch protection exige, então um
+número ali faria CADA bump da matriz reescrever o contrato de merge — a proteção
+da forja passaria a exigir um check inexistente e o PR travaria, sem nenhuma
+linha de gate parecer errada. O count vive onde é **diagnóstico** (aqui, no
+summary do job, no comentário e no header do master) e o `check:mutation-count`
+compara todos com o derivado; o `check:required-checks` recusa um `name:` de
+required check que carregue uma contagem.
+
+E o OUTRO LADO dessa lei é o que a mudança tem de TRAZER: quem bloqueia o merge é
+a proteção APLICADA na forja, não o arquivo, então renomear um job required (ou
+entrar/sair da lista) sem reaplicar deixaria a forja exigindo o contexto antigo —
+o PR travaria num check que nunca roda. A reaplicação é **declarada** em
+`ci/required-checks-applied.json`, escrito por `apply-required-checks.mjs --apply`
+(nunca à mão: declarado = aplicado), e o mesmo `check:required-checks` compara a
+declaração com os contextos derivados AGORA — sem a reaplicação declarada o PR
+fica vermelho nomeando o job e os dois contextos.
+
+A MESMA ideia rege o gate de sintaxe do shell do repositório: o job
+`workflow-run-syntax` roda o guard REAL contra o working tree do PR e, no MESMO
+job, `scripts/test-mutation-workflow-run-syntax.sh` prova por MUTAÇÃO que cada
+mecanismo do gate é load-bearing: matar a metade do AVISO (o heredoc truncado que
+o `bash` aprova, exit 0), tirar o corpo do STDIN do `bash`, alargar o LIMITE da
+máscara de `${{ }}`, ler a ÁRVORE onde o recorte `--staged` deve ler o ÍNDICE,
+aceitar qualquer `shell:` como presente na imagem do runner, remover a guarda do
+corpo vazio no `--fix`, tirar a SEGUNDA FONTE (a varredura dos scripts de shell
+que o passo executa com `bash scripts/x.sh`), tirar cada metade da TERCEIRA (o
+`RUN` do Dockerfile e o payload do `sh -c`), ler o YAML como texto no lugar da
+estrutura, não desfazer o `$$` do compose, ler o heredoc como código ou forçar
+`isBashShell` a julgar todo passo como bash (o passo python legítimo vira violação
+FALSA) têm de mudar o veredito do gate — e cada mutação é cirúrgica (as outras
+metades seguem mordendo).
+A última tem DUAS testemunhas: o gate por EXECUÇÃO e a **suíte unitária**, que tem
+de ficar VERMELHA (a segunda roda quando o `vitest` está instalado e DIZ quando
+não está — uma testemunha que falha por ambiente seria lida como mutante morto).
+
+E o remédio do `--fix` atravessa a MESMA distância no PR:
+`scripts/pr-remedy-comment.mjs` (passo do MESMO job, `always()`) publica o
+**PATCH** do `--fix --dry-run` — o mesmo fixer, uma régua com dois consumidores —
+como **COMENTÁRIO** no PR: copiar o bloco e colar no terminal aplica o remendo
+inteiro. O patch é APLICÁVEL, e isso não é promessa: o teste roda `git apply` de
+verdade e compara o resultado **byte a byte** com o que o `--fix` gravaria em outro
+fixture idêntico. As RECUSAS (heredoc, forma dobrada `run: >`, arquivo de shell,
+shell embutido) entram no MESMO comentário com o motivo de cada uma — um comentário
+que só mostrasse o patch esconderia o que ele não cobre. O comentário é
+**RECONCILIADO**: quando a cicatriz some ele é **RETIRADO sozinho**, em vez de
+ficar aberto mentindo sobre um defeito que já não existe. Sem canal (token
+ausente, PR de fork sem escrita) o passo NÃO falha — vira `::notice::`/`::warning::`
+nomeado, porque o GATE é o veredito e o comentário é um canal a mais —, mas uma
+API que existe e recusa é `::error::` e falha o passo: um canal que existe e não
+publica é pior que a ausência dele.
+O canal é **um módulo com um REGISTRO de fixers** (`FIXERS`, `--fixer <id>`): o
+segundo é o `pipefail-sigpipe`, que publica o patch do `| grep -q` → herestring
+pelo MESMO mecanismo (`--fix --dry-run`, `git apply`, ciclo de reconciliação). Cada
+fixer tem o SEU marcador: os dois remédios convivem no mesmo PR, e a reconciliação
+de um não pode escolher — nem retirar — o comentário do outro. O patch dos dois sai
+da MESMA construção de diff (`scripts/unified-patch.mjs`), com CONTEXTO no hunk — um
+hunk sem contexto é recusado pelo `git apply`, e o comentário prometeria um remendo
+inaplicável em silêncio.
+
+O `check-workflow-run-syntax.mjs` julga, além do PARSING, o `shell:` declarado
+contra o que a imagem do runner MEDIU (ref, digest, data e o comando em
+`--shells`): um passo com `shell: pwsh` num runner sem `pwsh` morria com
+`command not found` DEPOIS do setup, e nenhum parser pega essa classe. Essa
+declaração não fica dependendo de alguém lembrar de re-medir: o job semanal
+`runner-shells-drift` roda o MESMO probe dentro da imagem, compara com o
+declarado e publica a divergência como issue acionável (`runner-shells-issue.mjs`,
+que também a FECHA quando a medição volta a bater, com a tabela medida de prova, e
+que o doctor reporta como dívida aberta na prontidão — sem cruzamento de
+caducidade, declarado);
+as duas direções da mentira são invisíveis para os outros gates — declarar
+presente o que a imagem não tem faz o gate PASSAR o passo que morre, e declarar
+ausente o que existe faz REPROVAR um passo legítimo. Sem medição (sem docker,
+imagem não puxável, `BUN_VERSION` sem valor) o cron **falha** em vez de ficar
+verde. `--fix`
+remenda a cicatriz mecânica (operador pendente no fim do corpo), `--fix --dry-run`
+imprime o PATCH exato (STDOUT limpo, `| git apply`) **sem gravar** — é esse patch
+que o comentário do PR publica —, e o `--fix` só grava depois
+de o corpo voltar a fazer parsing — medido em memória E relendo o arquivo do
+disco, com a gravação DESFEITA se o disco não passar; num ARQUIVO de shell ele
+**recusa** com motivo escrito (a cicatriz que ele conhece é uma linha ancorada no
+`run: |`) — recusa é veredito (exit 1), não um `✓` que esconde o script.
+
+O MESMO guard roda no pre-commit como RECORTE `--staged` (declarado em
+`HOOK_DECLARED`): julga os workflows E os scripts do ÍNDICE, com o conteúdo do
+commit. Quando um gate do hook reprova por um defeito **MECÂNICO**, ele **OFERECE o
+remendo** (`scripts/pre-commit-remedy.mjs`, comando `LOCAL` declarado) — em **UMA
+pergunta** para as classes que o repositório já sabe consertar por máquina
+(**seis** hoje: a oferta é DERIVADA de `scripts/remedy-classes/<id>.mjs`, um módulo
+por classe declarado pelo GUARD DONO, então um fixer novo entra na oferta sem
+ninguém editar o remédio — e uma declaração inválida RECUSA a rodada com exit 2 em
+vez de sumir da oferta em silêncio): a cicatriz de `run:` (o `--fix` do gate), o CR/CRLF do working tree
+(`check-crlf.sh --fix`), o CRLF do blob do índice (`check-blob-crlf.sh --fix`), o
+byte 0x97 do UTF-8 (`check-utf8.sh --fix src/`), o **caminho tipado** num comando
+de hook (`check-hook-commands.mjs --fix`, que troca o token pelo vizinho mais
+próximo quando não há dúvida: até 2 caracteres de diferença, um candidato só, e
+recusa EMPATE — e o token tem de estar NO hook: um caminho tipado DENTRO de um
+script chamado sai como **recusa NOMEADA**, porque o remendo só escreve em
+`.husky/`) e o **`PRODUTOR | grep -q` sob pipefail** (`check-pipefail-sigpipe.mjs
+--fix`, o herestring que tira a intermitência do SIGPIPE). Cada classe é DETECTADA e
+REMENDADA pelo guard dono, rodado como o hook o roda (ou importado, quando o dono é
+um módulo) — nenhuma régua paralela.
+
+**O que faz uma classe ser OFERECÍVEL é o guard dono RODAR no hook** — o `--fix`
+sozinho não basta, porque o remédio só é invocado quando uma fase do commit
+reprova. É por isso que a sexta classe entrou junto com o guard dela na **fase B**
+do pre-commit: o MESMO comando do CI, medido em ~0,14s (129 scripts + 33
+workflows), em vez de mais um invariante em `HOOK_NOT_RUN` cujo remédio só
+existiria no CI.
+
+O preview usa o MESMO caminho de decisão do fixer (`dry`, nada gravado), a pergunta
+diz os três efeitos do "sim" (remenda a ÁRVORE, re-estagia, REVALIDA) e o veredito
+final é o do guard dono. O `git add` é RETIDO em arquivo que já tinha WIP (o
+remendo fica na árvore e o operador é avisado), e a classe que ESTAGIA POR CONTA
+PRÓPRIA (o blob, cujo fixer roda `git add --renormalize`) se retém quando não há
+como separar o que ela estagiaria. A resposta vem do **TERMINAL DE
+CONTROLE**: o git NÃO dá o terminal ao stdin do hook — medido, o fd 0 de dentro do
+`git commit` está em `/dev/null` (o 1 e o 2 são o terminal) —, então o remédio
+abre o **`/dev/tty`** e pergunta ali (a pergunta **acontece** no commit). Sem
+terminal de controle (CI, `ssh` sem tty) o `/dev/tty` não abre: ele imprime o
+caminho à mão e o commit segue bloqueado; a espera tem teto de 2 minutos
+(`TTY_WAIT_MS`) e há um desligamento declarado da pergunta
+(`PRE_COMMIT_REMEDY_NO_PROMPT`, para quem tem terminal e não tem operador — a
+mesma pergunta, e o mesmo desligamento, que o `check-hook-commands --fix` usa). A
+classe do caminho tipado tem uma consequência própria: ela REESCREVE O ARQUIVO QUE A
+CASCA EXECUTA, então o remédio aplica, leva ao índice e **BLOQUEIA pedindo um `git
+commit` NOVO** (o interpretador lê o arquivo por deslocamento; medido: exit 127 com
+um "not found" numa linha posterior). As
+**direções** (e a mutação que apaga a reexecução da fase) são medidas sob um pty de
+verdade (`src/lib/__tests__/pre-commit-remedy-pty.test.ts`), sem injetar `isTTY`: o remédio
+direto sob o terminal, o `git commit` (que pergunta, remenda e ENTRA com o "sim") e
+a sessão sem terminal de controle (que não pergunta e bloqueia) —, mais o caminho
+da **fase B**: com um defeito de encoding a pergunta também acontece, o remédio
+remenda e re-estagia, e quem dá o veredito é a fase, rodada de novo. O bloqueio é
+do HOOK, e em duas camadas: a variável que autoriza o commit nasce "não provou
+nada" e só o **exit 0** do remédio a zera (o remédio pode LEVANTAR a falha, nunca
+criá-la), **e** a fase que reprovou volta a rodar sobre o índice remendado — um exit
+0 que não remendou nada não levanta falha nenhuma (medido com o desfecho do remédio
+AFIRMADO por dublê). A fase B do hook é uma **função** (`fase_b`) justamente por
+isso: ela roda duas vezes quando o remédio entra — uma para medir, outra para
+revalidar com o remendo já no índice —, e é a segunda medição que cobre os guards
+que o `run-encoding-guards.sh` nem chegou a rodar (ele para no primeiro que falha).
+
+**O custo da oferta está medido nos DOIS caminhos do commit** (família `hook` do
+`bench-guard-timing`, com a baseline versionada MOVIDA nesta rodada para ela; o
+número vivo é o de `docs/benchmarks/guard-timing-latest.json`). No caminho **comum** (nada reprova) a
+oferta custa **+1ms (≈0)**: ela não é alcançada, porque o `if` só abre com fase
+vermelha — o custo é pago por quem TEM defeito, não em todo commit. A espera
+SEPARADA do gate de sintaxe contra a agregação no `wait_all` custa **+1ms** (as duas
+esperam o mesmo conjunto; o teto é o `max`). No caminho de **falha** (defeito no
+índice, sem terminal) a oferta custa **+143ms**, e a fase rodada de novo depois de um
+remédio VERDE custa **+71ms**. A sexta classe é o que cresceu aí: a detecção roda
+todas as classes quando é invocada, e a do SIGPIPE varre o repositório inteiro (o
+veredito dela é o estado da árvore, o mesmo `scanRoot` do CI) — a detecção contra a
+árvore real saiu de **201ms para 305ms**. No caminho comum nada disso é pago (a
+oferta só é alcançada com fase vermelha), e a invocação do guard no hook custa
+**~0,14s**, em paralelo com as outras guardas da fase B. O contrafactual é uma transformação DO PRÓPRIO hook,
+anunciada no texto dele (`sem-oferta` mantém o veredito e tira o bloco; `wait
+agregado` devolve o gate ao `wait_all`) — sem as âncoras a família se declara **NÃO
+MEDIDA**, em vez de comparar o hook com ele mesmo. A REVALIDAÇÃO é provada por
+execução (o veredito do gate dono aparece **duas** vezes na saída quando o remédio
+sai verde e **uma** no fail-closed), e a detecção da oferta contra a árvore real
+(**182ms**) é read-only por construção, com o `git status` conferido antes e
+depois: `escreveu: true` é violação da família, não um detalhe do log.
+
+A pergunta vem depois das DUAS fases, e a falha dos quatro guards da fase A — que
+nenhuma classe cobre — continua encerrando o hook antes dela. Que o hook
+**bloqueia de verdade** não é medido por leitura do arquivo:
+`src/lib/__tests__/pre-commit-run-syntax-blocks.test.ts` EXECUTA o
+`.husky/pre-commit` real num repo temporário com o defeito staged e exige exit 1
+apontando arquivo e linha (e 0 + a manchete do guard no corpo são, que é o que
+desmente um não-zero por motivo errado). O mesmo harness prova o recorte de
+compose (`src/lib/__tests__/pre-commit-compose-arg-removal-blocks.test.ts`): o
+commit que **REMOVE** o `BUN_VERSION` de um build site é recusado nomeando o
+serviço, contra o estado base comitado — e sem a comparação bloco-do-índice ×
+bloco-de-HEAD o commit passa. O irmão dele
+(`src/lib/__tests__/pre-commit-toolchain-removal-blocks.test.ts`) mede a outra
+declaração que um commit pode apagar: o `packageManager` do `package.json`
+sai do índice e o hook real recusa, nomeando o campo e o valor declarado — sem o
+recorte registrado no guard, o commit passa. Quatro mutações cobrem as metades que a
+leitura não vê: deixar de chamar o guard, perder o `--staged`, **deixar de chamar
+o remédio** (o commit continua bloqueado — o bloqueio é do hook, não do remédio) e
+**perder o veredito do gate** (aí o commit com a cicatriz entra); e a direção
+oposta é medida também: com o remédio afirmado como exit 0, o hook **levanta** a
+falha e o commit segue. A camada de baixo tem prova própria
+(`src/lib/__tests__/pre-commit-git-commit-blocks.test.ts`): um `git commit` de
+verdade com `core.hooksPath` apontando para os hooks, e o veredito medido no
+**objeto** — corpo quebrado no índice ⇒ falha e **zero objeto de commit**
+(`git cat-file`), corpo são ⇒ 1 objeto e a manchete do guard no modo `--staged`;
+sem a chamada ao guard ou sem o `--staged` o defeito é **commitado**, e um hook
+sem o bit de execução é ignorado por git (o commit entra) — as provas do hook
+usam o MESMO simulador (`helpers/hook-simulator.ts`: repo git temporário, dublê
+com passagem declarada para o processo real, medições no banco do git), e
+`helpers/pre-commit-fixture.ts` é a camada com as constantes do `pre-commit`. O
+`pre-push` tem prova própria na mesma máquina
+(`src/lib/__tests__/pre-push-git-push-blocks.test.ts`, sobre a camada
+`scripts/pre-push-proof.mjs` — a MESMA de onde o doctor executa
+`provePushBlocks()` para publicar o fato): um `git push` de verdade
+para um remoto **bare**, com o typecheck reprovando pelo CONTEÚDO versionado do
+fixture e o veredito medido do outro lado — recusado ⇒ **zero ref e zero objeto**
+no remoto, verde ⇒ o ref e o conteúdo chegando; quatro mutações (sem a chamada ao
+typecheck, `hooksPath` para outro diretório, hook sem bit de execução e o dublê
+**deixando de liberar** o processo real) medem, uma a uma, que essas metades são
+load-bearing. O fast path do smart-skip tinha a MESMA classe de defeito — o
+typecheck rodava como `bun run typecheck 2>&1 | head -5` e, sem `pipefail`, o
+status da pipeline era o do `head`: o não-zero era MASCARADO (o payload reprovava
+e o push entrava). **Consertado**: a saída é CAPTURADA (`TYPE_OUT=$(bun run
+typecheck 2>&1)`), o veredito é o do comando e o recorte sai por `head` sobre
+herestring (sem produtor vivo, logo sem SIGPIPE). Três mutações medem que o
+conserto é o conserto: remover a fase 2 passa a RECUSAR o push (não mais
+entregá-lo), devolver a pipeline que engole **inverte** o desfecho (o vermelho
+chega ao ref do remoto) e remover as duas invocações deixa o defeito entrar sem
+veredito nenhum sobre a árvore. Os DOIS elos têm
+prova de execução **no veredito de prontidão** (`bun run doctor`), como PARTES do
+MESMO fato — o `localContract`, que junta os dois elos EXECUTADOS e o que cada
+hook RODA (a régua dos comandos vem do `check-hook-commands`, importada, não
+recopiada): o do commit mede "nenhum objeto de commit criado" e o do push mede
+"nenhum objeto chegou ao REMOTO" — o git consulta o remoto antes do hook e só
+manda o pack depois dele, então a promessa do push só existe do outro lado. No
+recorte do MERGE (`--ci`) as QUATRO partes do fato têm de sair `proven`: ali elas
+só precisam de git/bash/bun e do próprio checkout, então um `unavailable` — ou um
+`--no-pre-*-proof` no YAML do job — **BLOQUEIA** o veredito em vez de virar
+INDETERMINADA. A quarta parte é o **LIMITE** das duas anteriores, medido com o
+mesmo fixture: o `git push --no-verify` NÃO executa o hook, então a árvore
+vermelha **CHEGA** ao remoto (ref, objetos e o conteúdo com o marcador na ref, e
+o hook sem rodar — as invocações do typecheck ficam as do controle) e quem barra
+o defeito depois é o CI: o comando do gate reprova o conteúdo que chegou, julgado
+num **clone do remoto** e não na árvore de trabalho de quem empurrou. O relatório
+diz isso com números ("limite (git push --no-verify)" e "quem barra: 'bun run
+typecheck' … → exit 1") e a linha entra no "NÃO CUBRE": o hook local não é
+barreira contra quem o desliga — o que sustenta a promessa é o job no contrato de
+merge (o SINAL é medido ali, sobre os bytes que viajaram; o EFEITO na forja — o PR
+com o check required vermelho não mergeando — é a prova `prove-gitea-merge-gate`,
+contra um Gitea efêmero de verdade). `violated` nessa parte é o defeito passar pelos DOIS lados (contornar o
+hook E o CI não reprovar o que chegou), e aí não há rede depois do gate local. E os dois elos têm, além
+do fato, um job próprio que roda a prova **DENTRO do runtime do CI**
+(`bun run pre-commit-in-runner:prove`, job `pre-commit-in-runner-proof` nas duas
+pipelines, required check): o MESMO módulo de prova é lançado dentro da imagem
+do runner — em lugar no job da forja (o label `docker://` já põe o job no
+container da imagem, sem o socket do docker montado) ou por `docker run` no
+espelho, cujo runner self-hosted é uma máquina com docker. Ali dentro o
+`git version` da evidência é o DA IMAGEM, e o `--in-image` RECUSA (exit 2)
+quando os marcadores do runtime (`/.dockerenv` + `/opt/acttoolcache`) não estão
+lá — senão a prova mediria a máquina de quem a roda. O job roda essa prova em
+DUAS FORMAS: a padrão (o hook somado ao dublê dos guards irmãos, declarada no
+"NÃO CUBRE" dela) e a `--sem-duble`, que é a que fecha esse limite — o hook REAL
+sobre uma CÓPIA do checkout, com os **cinco guards de fase A e o gate rodando de
+verdade**, a atribuição medida por **exit code** (os cinco saem 0 e o gate não, e
+é o gate quem recusa o commit) e o CONTROLE entrando com o corpo fechado. O texto
+do hook é evidência, não veredito (a escrita num pipe pode perder uma linha); o
+exit code não pode. Custa ≈**0.03s**
+no caminho comum (nada de corpo nem script staged: um `git diff --cached` e mais
+nada), o que o põe no orçamento de um hook que roda a CADA commit sem duplicar a
+varredura do CI. Custo medido neste host (Linux,
+09/2026, mediana de 3 runs warm): o guard ≈ **2.46s** (2.46–2.48) — ele julga os
+**124 arquivos de shell** (121 `*.sh` e os 3 hooks do `.husky/`) e os **33 textos
+de shell EMBUTIDO** (o `RUN` dos Dockerfiles e o payload dos `sh -c`), um
+`bash -n` por texto — e a prova de mutação ≈ **30.8s** onde o `vitest` está
+instalado (as duas rodadas da suíte unitária do M8 são ~24.9s disso, o que põe o
+gate sozinho em ≈ **5.9s**: aritmética sobre duas medições deste host, não uma
+nova medição): o caminho do gate é node-puro (um `bash -n` por cenário, sem
+docker) e a suíte só roda onde há dependências. ⚠️ Não existe um job
+`readme-toc-mutation-guard` ISOLADO — o cenário de TOC roda dentro da matriz
+aninhada `test-mutation-readme-guards.sh` (anchors + toc + images, 1 sub-test do
+master). Custo medido em 08/2026 (Windows host, worktree local, mediana de 3 runs
+warm):
 
 | Item                                      | Local (Windows, node frio) | act (proxy CI, container) |
 | :---------------------------------------- | :------------------------: | :-----------------------: |
 | cenário toc isolado (mediana 5 runs)      |   ≈ **2.2s** (1.9–2.8s)    |     — (só via master)     |
 | matriz readme-guards (anchors+toc+images) |          ≈ **7s**          |     — (só via master)     |
-| master `mutation-guards` (15 sub-tests)   |     ≈ **39s** (39–40)²     |     **step ≈ 9.1s**²      |
+| master `mutation-guards` (29 sub-tests)³  | **188.6s** (188.2–188.8)³  |     **step ≈ 9.1s**²      |
 | checkout@v4                               |             —              |   0.03s* (frio: 32.2s*)   |
 | Summary                                   |             —              |           0.34s           |
 
-O gap **9.1s (act) vs 39s (local)** no master sugere que o node no container
-roda mais rápido que o Windows local (warm cache/FS — não é causa provada, é
-observação).
-²Medido com os 15 sub-tests em 08/2026 (o e2e-cache-budget roda em
+O gap **9.1s (act) vs 188.6s (local)** no master sugere que o node no container
+roda mais rápido que o host local (warm cache/FS — não é causa provada, é
+observação). A coluna "Local (Windows)" desta tabela é de 08/2026: para o master
+o valor VIVO é o de ³ (este host, Linux) — o número do Windows fica só como
+histórico do instrumento dele, nunca como o custo declarado do job.
+²Medido em 08/2026 (era de 15 sub-tests — o e2e-cache-budget roda em
 SKIP — exit 0 enquanto measure-e2e-cache.mjs não existir —, custo ~0s;
 ⚠️ a medição local foi com 12 — o lint-guard (13º), o mutation-count (14º)
 e o no-leaked-imports (15º) foram adicionados DEPOIS e não re-medidos,
 custo estimado ~0.5s cada):
-mediana de 3 runs warm, **39s local** (39–40s). O **9.1s** de step no act
+mediana de 3 runs warm, **39s local** (39–40s) — valor RETIRADO para o master:
+era de 23 sub-tests e de OUTRO host (Windows), e o número vivo é o de ³. O
+**9.1s** de step no act
 com a imagem ubuntu-bun + `--pull=false` foi medido ANTES, com 10
 sub-tests, e não foi re-medido (o mesmo act mediu o actionlint em 3.6s e o
 utf8-check em 7.46s). O custo escala com o nº de sub-tests — cada um cria
 fixtures e roda o guard contra a mutação —, então o valor antigo (15.8s)
 era de 5 sub-tests e o timing-budget (~1s) foi adicionado após a medição de 10.
+³Medição da MUDANÇA (host Linux 16 cpus / 31 GB, 09/2026, mediana de 3 runs
+warm, TODAS com 29/29 verdes): o master com **29 sub-tests** mede ≈ **188.6s**
+(188.2 · 188.6 · 188.8) — o valor VIVO do job, o MESMO que
+`ci/merge-latency.json` declara. A 29ª (o contrato dos required checks
+APLICADOS: renomear o `name:` de um required check sem a reaplicação declarada
+deixa o PR vermelho, e as seis metades que sustentam isso caem cada uma no seu
+fato quando mutadas; mediana de 3 pelo caminho do master, `--scenario
+required-applied`: 9.87 · 9.88 · 9.90) entrou nesta rodada, então a medição
+anterior (≈174.9s com 28) mais 9.9 dava ≈ 184.8s esperados — e os 188.6 medidos
+ficam ≈3.8s acima, na mesma ordem da deriva de HOST que as rodadas anteriores já
+registravam (≈10s; o que domina o job segue sendo UMA sub-test — a prova de
+mutação do gate de sintaxe custa ≈58.5s sozinha). A 28ª (a prova da RESPOSTA do
+remédio no TTY, mediana de 3 pelo caminho do master: 27.2 · 27.1 · 27.1) segue
+dentro do total. Uma rodada de OUTRA medição foi DESCARTADA da mediana (171.1s):
+ela rodou com duas sub-tests vermelhas no CONTROLE (o recorte era outro), e um
+número medido sobre a árvore quebrada não descreve o job. O **39s**
+(Windows, 23 sub-tests, 08/2026) está **RETIRADO como valor**: era de outro
+host, com quatro sub-tests a menos, e ficava abaixo de UMA das sub-tests que o
+job contém — o valor declarado de um job não pode ser menor que o de um passo
+dentro dele. As rodadas intermediárias (≈101.1s com 26; ≈87.3s com 25; ≈81.3s
+com 24 — e o **17.2s** de 24, esse de outro host) são HISTÓRICO do crescimento
+da matriz, não o custo de hoje; a medição de 23 sub-tests (a prova de mutação do
+gate de sintaxe, ≈1.5s sozinha, que substituiu a versão de ≈0.2s) mostra que a
+diferença entre rodadas é do host/cache, não do recorte. A sub-test que saiu da
+matriz — a prova de classificação do `check-forge-parity`, agora o job próprio
+`forge-parity-mutation` — custa ≈ **0.33s** (0.32–0.39) sozinha. O job novo é
+node-puro, sem docker e sem node_modules: o PR ganha um job de ≈0.3s e a prova
+passa a ser um check com NOME no contrato de merge, em vez de uma linha da
+matriz.
 *O checkout no act é overhead de EMULAÇÃO (docker cp do worktree inteiro):
 **32.2s na 1ª run fria** (volume não cacheado) vs **~0.03s nas runs seguintes**
 (volume quente — os steps de 9.1s/7.46s/3.61s destas tabelas foram medidos com
@@ -941,9 +1318,10 @@ runs warm local — exceto `e2e-cache`, 1 run; act com a imagem ubuntu-bun,
 | 16 fast guards (`run-encoding-guards.sh`)         |         ≈ **3.2s**         |                      — (n/a)                       |         <2s         |
 | `utf8-check` (837 arquivos, `--ci src/`)          |        ≈ **0.92s**         |                     **7.46s**                      |    ~2-5s (est.)     |
 | `actionlint` (rhysd/actionlint via docker)        |        ≈ **0.51s**         |                     **3.61s**                      |    ~1-2s (est.)     |
-| `mutation-guards` (15 sub-tests node-puro)        |         ≈ **39s**          |                     **9.1s**²                      |   ~15-25s (est.)    |
+| `mutation-guards` (29 sub-tests node-puro)³       |        **188.6s**³         |                     **9.1s**²                      |   ~15-25s (est.)    |
 | `mutation-coord-update` (6 vitest + 6 guard runs) |          **51s**           |                    **4m37.6s**                     |   ~35-45s (est.)³   |
-| `unused-deps-guard` (mutation test + guard real)  |        ≈ **0.5s**⁴         |          **26.8s** cold / **20.9s** warm⁴          |   ~10-15s (est.)    |     | `lint-guard` (prettier --check + eslint zero) | ~**4min** (local)⁵ | **7m22s** 1ª run / **6m23s** 2ª run (lint total)⁴ | ~4-7 min (est.) |
+| `unused-deps-guard` (mutation test + guard real)  |        ≈ **0.5s**⁴         |          **26.8s** cold / **20.9s** warm⁴          |   ~10-15s (est.)    |
+| `lint-guard` (prettier --check + eslint zero)     |     ~**4min** (local)⁵     | **7m22s** 1ª run / **6m23s** 2ª run (lint total)⁴  |   ~4-7 min (est.)   |
 | `typecheck` (tsc --noEmit, heap 4096MB)           |     **~2min** (local)      | **3m52s** cold / **2m31s** warm (step Type check)⁴ |   ~2-3 min (est.)   |
 | `e2e-cache` (build Next.js + playwright cache)    |  **4m6s** (build, 1 run)   |                — (requer serviços)                 | **~6-9 min (est.)** |
 
@@ -979,9 +1357,73 @@ workflows de encoding/cache) — PRs comuns NÃO o rodam; quando roda (timeout 1
 min), o custo é dominado pelo `bun run build` (4m6s local, **1 run** — não foi
 estabilizado em 3 runs como os demais) + `playwright install chromium` + testes
 de cache. Os demais gates somam ≈ **1m32s** no pior caso
-(mutation-guards 39s + coord-update 51s local) contra ≈ **3.2s** dos 16 fast
+(mutation-guards 174.9s + coord-update 51s local) contra ≈ **3.2s** dos 16 fast
 guards — por design: cada mutation test roda o guard REAL contra uma mutação
 (não é node-puro) e o coord-update roda vitest real + guard estático por cenário.
+
+**LATÊNCIA DE MERGE — o que o PR espera (não a soma)** — a tabela acima é um
+catálogo de custos e convida a somar, mas o PR não paga a soma: ele paga o
+**caminho crítico** do grafo `needs:` e, com poucos runners, a **fila**.
+`bun run bench:merge-latency` mede as duas contas a partir da pipeline real
+(`.gitea/workflows/ci.yml`, `.github/workflows/pr-check.yml`) + o modelo
+`ci/merge-latency.json` (duração por job com fonte e data, confrontada contra o
+benchmark versionado). Medido em 17/09/2026:
+
+| Forja                                      | Soma dos gates |               Caminho crítico |                **Latência de merge** |        O que a concorrência economiza |
+| :----------------------------------------- | -------------: | ----------------------------: | -----------------------------------: | ------------------------------------: |
+| Gitea (dona do merge, **1** `act_runner`)  |         472.7s |       377.5s (`test → build`) |                           **472.7s** | 0s — com 1 runner a pipeline é SERIAL |
+| GitHub (espelho, **1** runner self-hosted) |     ≤ 11176.7s | 7200.0s (`seed-guards`, teto) | ≤ **11176.7s** (676.7s sem os TETOs) |             0s — SERIAL, como a forja |
+
+Ou seja: o PR da forja espera **7m52s**, e o **teto** do ganho com runners
+de sobra é **95.2s** (472.7 − 377.5) — o `build` (246s) e o `test` (131.5s)
+dominam a cadeia, e todo o resto (lint, guards, typecheck, bring-up-proof) roda
+**em paralelo a eles** quando há runner livre. Com 1 runner nada disso importa: a
+latência É a soma. É essa diferença que a tabela de custos não dizia.
+
+O espelho tem os 36 jobs do PR cobertos desde 17/09/2026 — 13 por **medição**
+neste repositório (com os comandos na fonte e a data), 2 por **PISO** (o passo
+de fora NOMEADO: `security-headers` faz requisições ao alvo do CI, que é produção;
+`benchmark-gist` depende do módulo de geo, que vive em outro branch) e 4 por
+**TETO** (`tier1-fastpath-guard`, `mutation-coord-timing-act-guard`,
+`seed-guards` e `mutation-coord-timing-guard`, cujo custo é dominado por `act`,
+PostGIS e matrix). O TETO é o `timeout-minutes` que a própria pipeline escreve no
+job: um LIMITE SUPERIOR, não uma medição — o relatório imprime os quatro
+nomeados, publica a **soma sem os tetos** ao lado e o veredito diz que a latência
+do espelho é um limite.
+
+O gate de sintaxe julga três fontes: os **482 corpos** `run:` das duas forjas, os
+**124 scripts de shell** versionados e — desde a terceira fonte — **33 textos de
+shell EMBUTIDO**: as 14 instruções `RUN` dos Dockerfiles (o shell do BUILD, com a
+continuação `\` juntada antes do parser) e os 19 payloads de `sh -c` de scripts,
+corpos e composes (que para o `bash -n` do arquivo que os contém são uma STRING).
+O escopo cresceu de novo e o custo acompanhou **apenas em parte**: o guard foi
+2280ms → 2464ms → **2496ms** (os composes e os Dockerfiles entram na leitura, e o
+`bash -n` deles é marginal), enquanto o mutation test — dominante no job, 96% —
+subiu de 8 para **14 metades** (22850ms → 30817ms → **58457ms**: o que move o
+custo dele agora é o número de INVOCAÇÕES da suíte unitária, não o programa a
+julgar — as duas metades com testemunha unitária rodam o vitest 2× cada, 13,3s
+por run neste host). No job do espelho isso é 25,1s → 33,3s → **61,0s**; no
+`guards` da forja a soma declarada segue **19.4s**, porque ele roda o GUARD e não
+o mutation test (ainda PISO: `check:pipefail-sigpipe`, `install` e checkout
+seguem fora). O caminho crítico de NENHUMA das duas forjas muda — o que muda é o
+total serial, em 0,2s na forja e 35,9s no espelho.
+
+Uma premissa por FONTE, e é ela que evita o falso positivo: o texto de um `RUN` é
+a instrução JUNTADA (a continuação `\` faz parte, o comentário dela é descartado
+como o docker faz, e as flags `--mount=` não chegam ao shell); um payload de
+workflow leva `${{ ... }}` mascarado; um de compose leva o `$$` **desescapado**
+(medido: sem isso o gate acusava `RESPONSE=$$(curl ...)` em
+`docker-compose.prod.yml` — para o bash `$$` é o PID, e o parêntese ficaria solto);
+e num script o texto vai cru. Um compose é lido por ESTRUTURA (`js-yaml`), não por
+texto: a lista de um `entrypoint:` entrega o CORPO do script, não a marca de lista
+do YAML. O que o gate NÃO julga, ele nomeia: payload que só existe em runtime
+(`bash -c "$cmd"`), forma EXEC sem shell, `-c` de `python3` e corpo de heredoc
+(dado, não programa).
+
+O gate `check:merge-latency` (mesmo comando nas duas forjas) fecha a conta do
+dono do merge: um job do PR **sem duração** (e sem `timeout-minutes` que o
+cubra) sai NOMEADO em vez de a latência publicada encolher em silêncio — ver
+`docs/GUARDS.md` §10.1 para o que o modelo NÃO prova.
 
 > **Por que o pre-push não repete typecheck/lint-staged?** O pre-commit já os
 > rodou em cada commit da branch — reexecutá-los no push seria redundante. O
@@ -1028,6 +1470,34 @@ header do guard.
 > do guard real — a política é revalidada a cada PR (o pre-commit não o roda;
 > o scan repo-wide é responsabilidade do CI). Para checagem local pontual:
 > `bun run check:unused-deps`.
+>
+> **Revisão vencida:** cada entrada da allowlist registra a data da decisão
+> (`addedAt`) e, passada a janela de 180 dias, está **SEM REVISÃO** — o scan
+> normal avisa e o job semanal `registry-allowlist-review` a escala a violação
+> (a mesma regra das allowlists do `check-registry-source`, do módulo
+> compartilhado `allowlist-review.mjs`). É o que impede uma isenção antiga de
+> virar permanente por esquecimento.
+
+#### As dependências de um JOB — `check-job-deps.mjs`
+
+O `check-unused-deps` pergunta se uma dep do `package.json` tem uso. O
+`check-job-deps` (passo `Job dependencies (install or declared exemption)` do job
+`guards`, nas DUAS forjas) pergunta a outra metade: **um job que RODA um comando
+cujo veredito exige `node_modules` INSTALA as dependências** — ou a isenção está
+DECLARADA, com data e janela de revisão — porque o verde de um job que não
+instala não tem causa no repositório.
+
+A classe foi MEDIDA, não suposta: `node scripts/check-*.mjs` PARECE "node puro"
+(a prosa dos workflows diz isso), mas oito guards leem YAML com `js-yaml` e, num
+checkout SEM `node_modules`, saem **exit 2** ("NÃO JULGÁVEL") — o mesmo comando
+tem DOIS desfechos e nenhum está escrito no workflow. O sintoma que o operador
+vê é "NÃO JULGÁVEL", nunca "faltou instalar". Quem responde "de onde vem o
+`node_modules`" é quem assina a decisão em `JOB_DEPS_ALLOWLIST`, e a isenção é
+**verificada contra o grafo de imports**: dizer "não precisa" para um `import` de
+topo ou um binário de dependência é provadamente falso. Isenção sem `addedAt`,
+mentirosa, sem objeto (o job passou a não exigir nada) ou vencida (`--review`, no
+job semanal, ao lado das outras quatro allowlists) é violação. Ver
+docs/GUARDS.md §12.1.
 
 ### Typecheck — gate de tipo do PR
 
@@ -1039,6 +1509,31 @@ bloqueia merge em qualquer erro TS (`bun run typecheck` local é o espelho do
 pre-commit, mesma semântica). O contrato do job é travado por
 `pr-check-typecheck-workflow.test.ts` (snapshot + verificação de que o job `check`
 NÃO mantém o step serial).
+
+**O comando é UM só (`bun run typecheck`), e o preço dele está medido** desde
+`f8d4ce7d`, que levou o comando INTEIRO — inclusive o heap de 4GB — para dentro
+do script do package.json: 4 workflows pagavam o heap num `env: NODE_OPTIONS`
+inline e o hook de push rodava o `tsc` **sem** heap. O benchmark
+(`bun run bench:guard-timing`, ver `docs/GUARDS.md` §10 e
+docs/benchmarks/guard-timing-latest.json) separa as duas metades e mede
+COLD (o `tsconfig.tsbuildinfo` é removido antes de cada amostra):
+
+- nas pipelines o acrescentado é **ruído** (+0.1s por call site) — o MESMO
+  comando com o MESMO heap: a unificação moveu um valor, não trabalho;
+- no hook, o acrescentado foi o HEAP — e ele só muda algo onde o default do node
+  é menor que o do script (o default vem da RAM da máquina). O relatório mede o
+  default (aqui: 4144MB) e o exit da régua sem heap, e diz **INDETERMINADO**
+  sobre o SIGABRT 134 do runner em vez de afirmá-lo.
+
+A mesma unificação (`f8d4ce7d`) fez as duas forjas rodarem a régua **mais
+ampla** da suíte (`bun run test:run`, que INCLUI `src/components/**`) — o check
+exigido do GitHub rodava a mais estreita (`test:unit`, que a EXCLUI). O custo do
+job que upgrade, medido em 16/09/2026 numa máquina Linux de 16 cpus / 32GB (o
+JSON registra cpus, RAM e o heap default do node — sem isso um wall time não é
+comparável): a suíte completa custa **131.5s** com 781 testes A MAIS, e as
+**433.5s** da régua anterior não são pagas mais — o job ficou **302s mais
+BARATO**, porque o config do app roda com 4 workers e o unit com 1 (a atribuição
+é reportada como NÃO conferida, e é para isso que a conferência existe).
 
 ## Regression Guards
 
@@ -1070,13 +1565,18 @@ gh variable set BUN_VERSION 1.3.14
 
 Como a versão flui:
 
-| Onde                                    | Como lê a versão                                                                 |
-| --------------------------------------- | -------------------------------------------------------------------------------- |
-| Workflows (`bun-version:` no setup-bun) | `${{ vars.BUN_VERSION }}`                                                        |
-| Cache keys `bun-`/`prisma-`             | `bun-${{ vars.BUN_VERSION }}-${{ hashFiles(...) }}`                              |
-| Mirror GHCR (`sync-bun-mirror.yml` env) | `BUN_VERSION: ${{ vars.BUN_VERSION }}`                                           |
-| Composite action `setup-bun`            | resolve do input `bun-version` (callers resolvem `vars.BUN_VERSION` no workflow) |
-| Act local (`.actrc`)                    | `--var BUN_VERSION=<versão>` (espelho local da variável)                         |
+| Onde                                         | Como lê a versão                                                                                                                                  |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workflows (`bun-version:` no setup-bun)      | `${{ vars.BUN_VERSION }}`                                                                                                                         |
+| Cache keys `bun-`/`prisma-`                  | `bun-${{ vars.BUN_VERSION }}-${{ hashFiles(...) }}`                                                                                               |
+| Mirror GHCR (`sync-bun-mirror.yml` env)      | `BUN_VERSION: ${{ vars.BUN_VERSION }}`                                                                                                            |
+| Composite action `setup-bun`                 | resolve do input `bun-version` (callers resolvem `vars.BUN_VERSION` no workflow)                                                                  |
+| Act local (`.actrc`)                         | `--var BUN_VERSION=<versão>` (espelho local da variável)                                                                                          |
+| Scripts (`scripts/**`, hooks do `.husky/**`) | `requireBunVersion()` (`scripts/bun-version.mjs`): env → `.actrc` → `deploy/env.gitea.example`, e ERRO se não houver — nunca um default literal   |
+| Composes (build arg/env)                     | `${BUN_VERSION:-<valor declarado>}` — o default só pode ser o valor do espelho (um literal puro é violação)                                       |
+| Build da app/worker (`--build-arg`)          | `BUN_VERSION: ${{ vars.BUN_VERSION }}` na pipeline; o Dockerfile **não** tem default e todo build site PASSA o arg (invariante 18)                |
+| Toolchain declarado (`package.json`)         | `"packageManager": "bun@1.3.14"` — o mesmo valor dos espelhos (o bump o escreve)                                                                  |
+| Pipeline de terceiro (`.woodpecker.yml`)     | a tag `oven/bun:<v>` de cada passo e os `BUN_VERSION=<v>` de `build_args` dizem o valor declarado; o bump reescreve os treze usos (invariante 19) |
 
 Por que o action não tem `default:` no input? Metadata de action (`action.yml`)
 é **estática** — `default: ${{ ... }}` NÃO é avaliado (seria o literal
@@ -1100,7 +1600,51 @@ O guard `scripts/check-bun-mirror.mjs` (PR Check + `utf8-check.yml`) falha se:
   (bun → `node_modules`/`~/.bun`; prisma → `node_modules/.prisma` +
   `node_modules/@prisma/client`) — ex.: path de outra toolchain sob a key
   errada, path desconhecido ou bloco sem path;
-- o `.actrc` não definir `BUN_VERSION` (o act local quebraria).
+- o `.actrc` não definir `BUN_VERSION` (o act local quebraria);
+- algum **SCRIPT** (`scripts/**` + hooks do `.husky/**`) carregar literal da
+  versão ou da TAG da imagem do runner (`bun-1.3.14`, `bun@1.3.14`, `bun-v1.3.14`,
+  `ubuntu-bun:1.3.14`, `process.env.BUN_VERSION || "1.3.14"`) — a classe que a
+  auditoria de 09/2026 abriu: o script continua FUNCIONANDO depois do bump, só
+  com a versão antiga, então nada fica vermelho sozinho. Fixtures usam uma
+  **sentinela** (`9.9.9-sentinel`), que não é uma afirmação de versão;
+- algum **COMPOSE** der um valor a `BUN_VERSION` que não derive: literal puro
+  (`BUN_VERSION: "1.4.0"` [divergente]) ou default divergente do declarado no espelho. O
+  default é o que RODA onde a variável não existe;
+- algum **EXEMPLO DE VERSÃO EM PROSA** (cabeçalho de script, README, docs) não
+  bater com o valor declarado — `BUN_VERSION=1.3.14`, `--expected 1.3.14`,
+  `ubuntu-bun:1.3.14`, o argumento do setup. O sintoma é o mesmo dos scripts
+  (nada fica vermelho, porque doc não executa), deslocado para quem LÊ a doc:
+  quem copia o comando roda/mede a versão antiga. Um exemplo que precisa
+  divergir declara o papel na própria linha — `[divergente]` (contra-exemplo,
+  tem de DIFERIR do vigente) ou `[próxima]` (alvo do bump, tem de ser MAIOR); a
+  **sentinela** (`9.9.9-sentinel`) segue fora, semver que não fala do Bun
+  (`act 0.2.89`, `lodash 4.17.21`) não é julgado, e `docs/BUN_BUMP.md` é um
+  cenário declarado (walkthrough do bump: vale o vigente ou um valor maior);
+- algum **DOCKERFILE** declarar VALOR para a versão (invariante 18a): o default
+  do ARG (`ARG BUN_VERSION=<v>`) ou um default embutido na referência
+  (`${BUN_VERSION:-<v>}`) — é o valor que TODO build que não passa o arg herda
+  em silêncio, e que nenhum bump alcança. Sem default, um build sem o arg falha
+  alto em vez de rodar outro Bun;
+- algum **BUILD SITE** (compose) de um Dockerfile com `ARG BUN_VERSION` não
+  passar o arg (invariante 18b), ou o **`packageManager`** do `package.json`
+  divergir do valor declarado (invariante 18c). As duas têm recorte no commit:
+  o pre-commit julga os blocos de build que o diff TOCA (lidos do ÍNDICE) e, na
+  outra direção, o que o commit **APAGA** — o arg de um build site que
+  sobrevive e a própria declaração de toolchain, comparando o bloco do ÍNDICE
+  com o de HEAD (o que o commit tira não ganha linha adicionada nenhuma, e era
+  por ali que remover tanto um quanto o outro passava o pre-commit e só
+  encontrava o PR). Era este o buraco da classe:
+  um build site que não passa o arg não tem valor escrito NENHUM, então as
+  varreduras de literal não tinham o que julgar enquanto ele herdava o default —
+  o app da staging rodava um Bun que nenhum arquivo da cadeia de deploy
+  declarava, e nada ficava vermelho;
+- algum uso da versão no **pipeline de terceiro** (`.woodpecker.yml`, a
+  alternativa arquivada) divergir do declarado (invariante 19): a tag da imagem
+  ou o build arg. Foram **treze usos** que envelheceram sete versões atrás do
+  repositório enquanto o arquivo tinha uma isenção escrita no próprio cabeçalho —
+  aqui um literal **igual** ao declarado passa (num `image:` o valor tem de estar
+  escrito), o que não pode é ser OUTRO número; o bump os reescreve (seção 2e) e
+  confere a reescrita.
 
 ### A regra real do Prisma (exemplo vivo)
 
@@ -1164,11 +1708,11 @@ auditável (comandos `gh` + re-sync dos mirrors + troubleshooting) em
 
 | #   | Passo                           | O que fazer                                                                                                                 | Edita algo?                                        |
 | --- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| 1   | **Variável**                    | `gh variable set BUN_VERSION 1.3.15`                                                                                        | ✅ única edição OBRIGATÓRIA no CI (fonte única)    |
+| 1   | **Variável**                    | `gh variable set BUN_VERSION 1.3.15` [próxima]                                                                              | ✅ única edição OBRIGATÓRIA no CI (fonte única)    |
 | 2   | **Mirrors GHCR**                | re-dispatch `sync-bun-mirror.yml` + `sync-ubuntu-bun-mirror.yml` (leem `vars.BUN_VERSION`; o cron semanal roda sozinho)     | ❌ leem a variável — só re-rodar                   |
 | 3   | **Cache keys `prisma-`/`bun-`** | nada — derivam de `${{ vars.BUN_VERSION }}`; as keys antigas viram cache miss automaticamente (toolchain nova ≠ chave nova) | ❌ automático (é exatamente o que o guard protege) |
 | 4   | **`action.yml`**                | nada — sem `default:`, resolve do input `bun-version` em runtime                                                            | ❌ metadata estática                               |
-| 5   | **`.actrc` local**              | `--var BUN_VERSION=1.3.15` (espelho local para o act)                                                                       | ✅ local apenas                                    |
+| 5   | **`.actrc` local**              | `--var BUN_VERSION=1.3.15` [próxima] (espelho local para o act)                                                             | ✅ local apenas                                    |
 | 6   | **Call sites do setup-bun**     | nada — todos passam `bun-version: ${{ vars.BUN_VERSION }}` (o guard exige)                                                  | ❌ automático                                      |
 
 A 1ª execução do CI após o bump roda com **cache miss em todas as keys
@@ -1185,15 +1729,61 @@ vivo sempre correto.
 > a repository variable do GitHub. O act não lê as variables do repositório —
 > o arquivo é o espelho local. Veja `### Act (executa os jobs localmente)`.
 >
-> **Drift de VALOR no `.actrc` (job semanal `actrc-sync`):** o guard estático
-> `check-bun-mirror.mjs` só valida que o `.actrc` DEFINE `BUN_VERSION` — o
+> **Drift de VALOR nos espelhos (job semanal `actrc-sync`):** o guard estático
+> `check-bun-mirror.mjs` só valida que cada espelho DEFINE `BUN_VERSION` — o
 > VALOR é impossível de conferir estaticamente (a variável remota só existe em
-> runtime). O job `actrc-sync` do `benchmark-weekly.yml` compara o `.actrc` do
-> working tree com `vars.BUN_VERSION` (via `scripts/check-actrc-sync.mjs
---expected "${{ vars.BUN_VERSION }}"`) e emite `::warning::` (NÃO-bloqueante)
-> se divergirem — o act local passaria a testar uma versão diferente da
-> produção sem o guard estático perceber. Variável ausente no repositório
-> também vira `::warning::` (exit 0), não falha o job.
+> runtime). O job `actrc-sync` do `benchmark-weekly.yml` compara os **dois**
+> espelhos do working tree com o valor de **cada variável que o compose da forja
+> consome** — `vars.BUN_VERSION`, `vars.IMAGE_REGISTRY` e
+> `vars.IMAGE_NAMESPACE`. O guard recebe o valor da versão por `--expected` e o
+> das outras duas por `--expected-var NOME=VALOR`, e emite `::warning::`
+> (NÃO-bloqueante) se divergirem: o `.actrc`, onde o act local passaria a testar
+> uma versão (ou um
+> registry) diferente da produção; e `deploy/env.gitea.example`, que alimenta a
+> label do runner da forja — ali o sintoma é pior, porque o setup-bun funciona
+> igual com ou sem Bun pré-instalado, então a divergência só desliga o fast path
+> de 0s do tier-1 em silêncio (todo job volta a pagar o download), e um
+> registry/namespace trocado só aparece quando um job tenta puxar a imagem.
+> Para registry e namespace, antes só existia a checagem de existência
+> (`check-registry-source`); agora o valor é comparado. Uma variável sem valor
+> passado à run sai como **NÃO COMPARADA** (nomeada no log, nunca conferida), e
+> variável ausente no repositório também vira `::warning::` (exit 0), não falha
+> o job.
+>
+> **E os scripts deixaram de cravar o literal por conta própria:** o valor que
+> eles usam vem do mesmo resolvedor (`scripts/registry-source.mjs`) — ambiente
+> primeiro, **espelho comitado** depois (`.actrc`, `deploy/env.gitea.example`,
+> `.env.production.example`), e nada se não houver nenhum dos dois (não existe
+> default de reserva de propósito: ele sobrevive à troca de registry, o script
+> continua puxando do host VELHO, e como a imagem continua existindo lá, nada
+> fica vermelho). A varredura da invariante 9 cobre quatro **famílias** de
+> arquivo — todo compose com default (inclusive uma stack nova que ninguém
+> cadastrou em par), o shell de `scripts/` e `deploy/`, o `.mjs` (que não pode
+> ter literal: use o resolvedor) e o fallback do YAML dos workflows — e cada
+> forma de default vale na SUA família: `${NOME:-x}` em compose/shell,
+> `X || "valor"` em JS, `vars.NOME || 'valor'` em YAML. O que casa a forma de
+> outra família (mensagem de erro, payload de uma prova) é contado e dito no
+> relatório, **nunca** julgado como valor — e cada metade disso tem a sua
+> mutação (`scripts/test-mutation-registry-defaults.sh`, sub-test 26 do master).
+>
+> **E o mesmo valor é conferido a cada PR, não só no cron:** o job `guards` da
+> forja e um job do `pr-check.yml` rodam `scripts/check-doctor-ci.mjs` — o
+> doctor no perfil `--ci` (a fatia local: contrato, env mirror, render do
+> compose e o VALOR dos espelhos). Ele BLOQUEIA o PR quando o valor diverge do
+> que os espelhos declaram, e **nomeia** a variável que não chegou (régua vazia
+> seria "não perguntado", e um verde que não conferiu nada é o defeito).
+>
+> Como o run fica **verde** em qualquer cenário, a anotação não é canal de
+> ninguém: o step `if: always()` publica o drift como **issue**
+> (`scripts/actrc-sync-issue.mjs`, label `actrc-sync-drift`, dedup por
+> assinatura no corpo **e nos comentários** — a issue é o estado da dívida até
+> ser fechada). E, quando os
+> espelhos **voltam a concordar**, o mesmo script comenta a prova e **fecha** a
+> issue: uma dívida resolvida que continua aberta mente no board, e o próximo
+> bump seria investigado duas vezes. Só fecha o que ele mesmo abriu (o marcador
+> da própria assinatura, não o label) e declara no comentário que o espelho do **host**
+> (`deploy/.env.gitea`, gitignored) não entra na comparação num runner do
+> GitHub. Na forja, onde não há canal de issue, o mesmo job roda com `--fail`.
 
 ## Local Workflow Validation (actionlint + act)
 

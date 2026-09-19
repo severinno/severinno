@@ -8,7 +8,12 @@ import { exportMetrics } from "@/lib/metrics"
 import { getSlowQueryMetrics } from "@/lib/db-query-monitor"
 import { getErrorBudget } from "@/lib/error-budget"
 import { getGeoMetrics } from "@/lib/geo-metrics"
-import { nominatimBreaker, viacepBreaker, osrmBreaker, osrmTableBreaker } from "@/lib/geo-circuit-breakers"
+import {
+  nominatimBreaker,
+  viacepBreaker,
+  osrmBreaker,
+  osrmTableBreaker,
+} from "@/lib/geo-circuit-breakers"
 import { evolutionBreaker, pushBreaker, emailBreaker } from "@/lib/external-circuit-breakers"
 
 export const runtime = "nodejs"
@@ -18,8 +23,13 @@ export async function GET() {
   const start = Date.now()
 
   const [dbOk, redisOk] = await Promise.allSettled([
-    (async () => { await db.$queryRaw`SELECT 1`; return true })(),
-    Promise.resolve(getClient()?.ping()).then(() => true).catch(() => false),
+    (async () => {
+      await db.$queryRaw`SELECT 1`
+      return true
+    })(),
+    Promise.resolve(getClient()?.ping())
+      .then(() => true)
+      .catch(() => false),
   ])
 
   const latencyMs = Date.now() - start
@@ -29,11 +39,8 @@ export async function GET() {
 
   type HealthStatus = "healthy" | "degraded" | "unhealthy"
 
-  const overallStatus: HealthStatus = dbStatus === "unhealthy"
-    ? "unhealthy"
-    : redisStatus === "degraded"
-      ? "degraded"
-      : "healthy"
+  const overallStatus: HealthStatus =
+    dbStatus === "unhealthy" ? "unhealthy" : redisStatus === "degraded" ? "degraded" : "healthy"
 
   const dashboard = {
     status: overallStatus,

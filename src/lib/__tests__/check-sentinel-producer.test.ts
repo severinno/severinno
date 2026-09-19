@@ -41,6 +41,7 @@ import {
   sentinelInProducer,
   resolveProducerChain,
   findSentinelViolations,
+  scanWorkflowFiles,
 } from "../../../scripts/check-sentinel-producer.mjs"
 
 // ── extractSentinelGreps ─────────────────────────────────────────────────
@@ -424,6 +425,27 @@ describe("findSentinelViolations", () => {
       expect(violations).toHaveLength(1)
       expect(violations[0].sentinel).toBe("nunca emitido")
       expect(violations[0].reason).toBe("sentinel ausente do produtor")
+    } finally {
+      cleanup()
+    }
+  })
+
+  it("arquivo que NÃO faz parsing em YAML sai NOMEADO (não julgado como workflow)", () => {
+    const root = makeRepo({
+      ".github/workflows/quebrado.yml": ["on:", "  push:", "jobs:", "\ta:", ""].join("\n"),
+      ".github/workflows/ok.yml": "on:\n  push:\njobs:\n  a:\n    steps:\n      - run: echo ok\n",
+    })
+    try {
+      const { files, unjudgeable } = scanWorkflowFiles(root) as {
+        files: { path: string }[]
+        unjudgeable: { path: string; motivo: string }[]
+      }
+      // O válido continua julgado; o quebrado sai NOMEADO com o motivo — o
+      // sentinel "sem produtor correspondente" não pode ser decidido sobre um
+      // arquivo que o runner nunca executa.
+      expect(files.map((f) => f.path)).toEqual([".github/workflows/ok.yml"])
+      expect(unjudgeable.map((u) => u.path)).toEqual([".github/workflows/quebrado.yml"])
+      expect(unjudgeable[0]!.motivo).toMatch(/YAML/)
     } finally {
       cleanup()
     }

@@ -34,7 +34,7 @@ mkdir -p "${BACKUP_DIR}"
 echo "📦 [$(date +"%Y-%m-%d %H:%M:%S")] Iniciando backup do banco '${POSTGRES_DB}'..."
 
 # Detectar se está rodando via Docker ou pg_dump local
-if command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q -E "postgres|postgis"; then
+if command -v docker >/dev/null 2>&1 && grep -q -E "postgres|postgis" <<< "$(docker ps --format '{{.Names}}')"; then
   CONTAINER_NAME="$(docker ps --format '{{.Names}}' | grep -E "postgres|postgis" | head -n 1)"
   echo "🐳 Executando pg_dump via container Docker '${CONTAINER_NAME}'..."
   docker exec -t "${CONTAINER_NAME}" pg_dump -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" --no-owner --clean --if-exists | gzip > "${BACKUP_FILE}"

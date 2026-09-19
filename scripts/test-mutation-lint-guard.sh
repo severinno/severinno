@@ -10,8 +10,14 @@
 #   0 — mutações DETECTADAS (prettier/eslint falharam pelas asserções) ✅
 #   1 — guard CEGO (algum comando passou com a mutação) OU infra ❌
 #
-# Prova que os comandos do job lint-guard do pr-check.yml REALMENTE falham
-# nas regressões que existem para bloquear:
+# O COMANDO É UM SÓ, NAS DUAS FORJAS: o par (prettier + eslint zero) mora no
+# script `lint` do package.json e os dois jobs (`lint` na Gitea, `lint-guard` no
+# GitHub) rodam `bun run lint`. O STEP 0 prende esse contrato — se alguém
+# esvaziar uma das metades (ex.: voltar para `eslint .`), os cenários abaixo
+# continuariam verdes porque exercitam os BINS, não o comando que o CI roda.
+#
+# Prova que os comandos do gate de lint REALMENTE falham nas regressões que
+# existem para bloquear:
 #   Cenário A (PRETTIER):   arquivo TS mal formatado → `prettier --check` DEVE
 #                           FALHAR (exit 1) citando o arquivo.
 #   Cenário B (ESLINT):     arquivo TS com warning → `eslint --max-warnings 0`
@@ -37,6 +43,8 @@
 # config, então a prova é robusta a essa diferença.
 #
 # Pipeline:
+#   0. CONTROLE DO COMANDO COMPARTILHADO: package.json > lint contém
+#      `prettier --check --ignore-unknown` E `eslint . --max-warnings 0` (o par)
 #   1. Cria temp dir com src/ok.ts (formatado, sem warning) + eslint.config.mjs
 #   2. CONTROLE: prettier + eslint em ok.ts → exit 0
 #   3. MUTAÇÃO A: src/bad-format.ts → prettier DEVE FALHAR
@@ -104,6 +112,27 @@ run_eslint() {
   set -e
 }
 
+# ── STEP 0: o CONTRATO do comando COMPARTILHADO ───────────────────────────
+# O gate não é mais um par de linhas no YAML de uma forja: é o script `lint` do
+# package.json, que as DUAS forjas invocam. Os cenários A/B abaixo exercitam os
+# BINS — e continuariam verdes com o script esvaziado de uma das metades (ex.:
+# de volta a `eslint .`, o estado em que o merge da Gitea passava e o do GitHub
+# rejeitava o MESMO commit). Esta asserção fecha a lacuna: os bins provados têm
+# de ser os que o comando compartilhado realmente chama.
+info "STEP 0: contrato do script compartilhado (package.json > lint)..."
+LINT_SCRIPT="$(node -e 'process.stdout.write(String(require(process.argv[1]).scripts?.lint ?? ""))' "$SCRIPT_DIR/package.json")"
+for fragmento in "prettier --check --ignore-unknown" "eslint . --max-warnings 0" "&&"; do
+  if ! grep -Fq -- "$fragmento" <<<"$LINT_SCRIPT"; then
+    fail "o script 'lint' do package.json NÃO contém '$fragmento'."
+    fail "A régua precisa do PAR (prettier + eslint zero) num comando só — uma"
+    fail "metade só é a assimetria de volta (a Gitea liberava o merge com o que o"
+    fail "GitHub rejeitava)."
+    echo "  lint = $LINT_SCRIPT"
+    exit 1
+  fi
+done
+pass "Contrato OK — package.json > lint é o par prettier + eslint zero (o MESMO comando nas duas forjas)"
+
 echo ""
 echo "  ═════════════════════════════════════════════════════════════════"
 echo "   🧪 SEVERINNO — MUTATION TEST (lint-guard deve GATEAR)"
@@ -160,7 +189,7 @@ if [ "$EXIT" -eq 0 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO citou o arquivo da mutação.
-if ! echo "$OUTPUT" | grep -Fq "bad-format.ts"; then
+if ! grep -Fq "bad-format.ts" <<<"$OUTPUT"; then
   fail "prettier --check falhou (exit $EXIT) mas NÃO citou bad-format.ts."
   fail "Falha pode ser outro invariante do fixture — veja o output acima."
   exit 1
@@ -188,7 +217,7 @@ if [ "$EXIT" -eq 0 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO citou o warning da mutação.
-if ! echo "$OUTPUT" | grep -Fq "bad-lint.ts"; then
+if ! grep -Fq "bad-lint.ts" <<<"$OUTPUT"; then
   fail "eslint --max-warnings 0 falhou (exit $EXIT) mas NÃO citou bad-lint.ts."
   fail "Falha pode ser outro invariante do fixture — veja o output acima."
   exit 1
@@ -268,7 +297,7 @@ if [ "$EXIT" -eq 0 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO citou o arquivo staged da mutação.
-if ! echo "$OUTPUT" | grep -Fq "bad-staged.ts"; then
+if ! grep -Fq "bad-staged.ts" <<<"$OUTPUT"; then
   fail "O bloco falhou (exit $EXIT) mas NÃO citou bad-staged.ts."
   fail "Falha pode ser outro invariante do fixture — veja o output acima."
   exit 1
@@ -287,14 +316,14 @@ printf '\x89PNG\r\n\x1a\n' > "$TMP_DIR/src/pic.png"
 git -C "$TMP_DIR" add src/pic.png
 
 STAGED_RAW=$(git -C "$TMP_DIR" diff --cached --name-only --diff-filter=ACMR)
-STAGED_FORMAT=$(echo "$STAGED_RAW" | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
+STAGED_FORMAT=$(grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' <<<"$STAGED_RAW" || true)
 
-if ! echo "$STAGED_RAW" | grep -Fq "pic.png"; then
+if ! grep -Fq "pic.png" <<<"$STAGED_RAW"; then
   fail "O .png NÃO está staged (git diff --cached não o lista) — o fixture"
   fail "do teste do binário não está montado."
   exit 1
 fi
-if echo "$STAGED_FORMAT" | grep -Fq "pic.png"; then
+if grep -Fq "pic.png" <<<"$STAGED_FORMAT"; then
   fail "O filtro de binários NÃO excluiu pic.png do STAGED_FORMAT — o"
   fail "grep -vE do pre-commit está quebrado (o prettier rodaria no binário)."
   exit 1

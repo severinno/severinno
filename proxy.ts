@@ -66,12 +66,22 @@ function getUpstashClient(): Redis | null {
 
 /**
  * Verify that the sessionVersion in the cookie matches the server-stored version.
- * Returns true if valid (or if Redis is unavailable — fail-open for availability).
- * Returns false only when Redis confirms the version is stale.
+ * Returns true if valid.
+ * Returns false when Redis confirms the version is stale OR when Redis is
+ * unavailable and the cookie has an explicit version (5-part cookie).
+ * Legacy 4-part cookies fail-open when Redis is unavailable.
  */
-async function verifySessionVersion(userId: string, cookieVersion: number): Promise<boolean> {
+async function verifySessionVersion(
+  userId: string,
+  cookieVersion: number,
+  hasExplicitVersion: boolean,
+): Promise<boolean> {
   const client = getUpstashClient()
-  if (!client) return true // Redis unavailable — fail-open
+  if (!client) {
+    // Redis unavailable — fail-closed for 5-part cookies (has explicit version),
+    // fail-open for legacy 4-part cookies (no version to validate).
+    return !hasExplicitVersion
+  }
 
   try {
     const key = `session:version:${userId}`
@@ -79,7 +89,8 @@ async function verifySessionVersion(userId: string, cookieVersion: number): Prom
     if (stored === null) return true // No cached version — assume valid (first login)
     return stored === cookieVersion
   } catch {
-    return true // Redis error — fail-open for availability
+    // Redis error — fail-closed for 5-part cookies, fail-open for legacy
+    return !hasExplicitVersion
   }
 }
 
@@ -257,10 +268,18 @@ function getRateLimitWhitelist(): string[] {
 const CSRF_SENSITIVE_PREFIXES = [
   "/api/auth/change-password",
   "/api/auth/2fa/",
+  "/api/auth/register",
+  "/api/auth/forgot-password",
   "/api/provider/wallet/withdraw",
+  "/api/provider/profile",
+  "/api/provider/availability",
   "/api/bookings",
   "/api/reviews",
   "/api/messages",
+  "/api/services",
+  "/api/favorites",
+  "/api/push/",
+  "/api/availability/blocks",
 ]
 
 function isCsrfSensitive(pathname: string, method: string): boolean {
@@ -350,7 +369,7 @@ export async function proxy(request: NextRequest) {
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin")
   response.headers.set(
     "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=(self), payment=()",
+    "camera=(), microphone=(), geolocation=(self), payment=(), interest-cohort=()",
   )
   response.headers.set("Vary", "Accept-Encoding")
 
@@ -557,7 +576,11 @@ export async function proxy(request: NextRequest) {
   // Only check for 5-part cookies that carry an explicit sessionVersion.
   // Legacy 4-part cookies have sessionVersion=0 and skip this check.
   if (session.sessionVersion > 0) {
-    const versionValid = await verifySessionVersion(session.userId, session.sessionVersion)
+    const versionValid = await verifySessionVersion(
+      session.userId,
+      session.sessionVersion,
+      true, // hasExplicitVersion — we're inside the sessionVersion > 0 guard
+    )
     if (!versionValid) {
       if (isProtectedPage) {
         return NextResponse.redirect(new URL("/", request.url))

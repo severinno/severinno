@@ -9,17 +9,40 @@
 // transformando o "job falhou" (alerta mudo) em ticket com o link quebrado
 // semanticamente + a sugestão do heading correto.
 //
+// UM ACHADO, UMA ISSUE: diferente dos demais publicadores (que têm UM título
+// estável e comentam nas mudanças), aqui a dívida é POR LINKS — a mesma revisão
+// de README costuma gerar vários achados independentes, e cada um tem o seu
+// remédio. O dedup é por ASSINATURA (file+slug+label) presente no corpo.
+//
+// E O OUTRO LADO DA DÍVIDA (defeito corrigido): publicar sem FECHAR deixava a
+// issue ABERTA depois de o link ser corrigido — uma dívida que mente no board e
+// é reinvestigada. Por isso, a cada run, este script RECONCILIA: um achado que
+// **deixou de ser reportado** (o link foi corrigido OU foi registrado no baseline
+// como deliberado) já não é dívida, e a issue que o representa é FECHADA com a
+// prova no comentário. Só o que é NOSSO (marcador, nunca só o label). Se o link
+// voltar a divergir, a mesma regra abre uma issue nova (o dedup é entre as
+// ABERTAS).
+//
+// POR QUE O MARCADOR AQUI NÃO É BASE64 (como nos outros publicadores): o
+// formato `<!-- readme-drift:file:slug:label -->` (texto simples) já está no
+// corpo de issues ABERTAS. Migrar para o formato codificado de
+// `issue-publish.mjs` tornaria essas issues invisíveis para o dedup (abrindo
+// duplicatas) e para o fechamento automático (que é o oposto do objetivo). O
+// que é COMPARTILHADO aqui é o CICLO (listar, separar o que é nosso, comentar a
+// prova, fechar) — o selo de cada publicador é dele.
+//
 // Fluxo:
 //   1. spawna check-readme-reverse-baseline.mjs --json (REPORT mode: JSON no
 //      stdout SEMPRE, exit 1 quando há achados novos) e parseia o report;
-//   2. lista issues abertas com o label `readme-drift` (gh issue list) e
-//      deduplica por ASSINATURA file+slug+label — a MESMA signatureOf que o
-//      baseline guard usa (importada, sem drift): um achado que JÁ tem issue
-//      aberta não cria duplicata a cada run semanal;
-//   3. cria UMA issue por achado novo (gh issue create --label readme-drift)
+//   2. RECONCILIA: fecha as issues cujo achado não é mais reportado (com a
+//      prova no comentário);
+//   3. lista as issues abertas com o label `readme-drift` e deduplica por
+//      ASSINATURA file+slug+label — a MESMA signatureOf que o baseline guard
+//      usa (importada, sem drift): um achado que JÁ tem issue aberta não cria
+//      duplicata a cada run semanal;
+//   4. cria UMA issue por achado novo (gh issue create --label readme-drift)
 //      com o link markdown, o heading atual, a sugestão e a assinatura como
-//      marcador HTML (<!-- readme-drift:... -->) para o dedup de próximas
-//      runs.
+//      marcador HTML (<!-- readme-drift:... -->) para o dedup de próximas runs.
 //
 // Usage:
 //   node scripts/readme-reverse-issue.mjs             # roda baseline + cria
@@ -28,8 +51,9 @@
 //                      report PRÉ-GERADO (teste unitário/CLI sem rede)
 //
 // Exit codes:
-//   0 — sem achados novos OU issues criadas/puladas (dry-run ok)
-//   1 — erro real (baseline falhou, gh indisponível/falhou, issue não criada)
+//   0 — sem achados novos OU issues criadas/puladas/reconciliadas (dry-run ok)
+//   1 — erro real (baseline falhou, gh indisponível/falhou, issue não criada, e
+//       uma dívida resolvida que não pôde ser fechada continua mentindo)
 //
 // Dependências: gh CLI (pré-instalado nos runners ubuntu) + GITHUB_TOKEN no
 // env (GH_TOKEN) — o job declara permissions: issues: write.
@@ -38,17 +62,117 @@
 import { spawnSync } from "node:child_process"
 import { readFileSync, existsSync } from "node:fs"
 import { dirname, join } from "node:path"
+import process from "node:process"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { signatureOf } from "./check-readme-reverse-baseline.mjs"
+import { issueBodies, makeGithubBackend, reconcileDebt } from "./issue-publish.mjs"
 
 /** Label usado nas issues de drift semântico (dedup + triagem no board). */
 export const ISSUE_LABEL = "readme-drift"
+
+/** Cor e descrição do label (formato da CLI do `gh`). */
+export const ISSUE_LABEL_COLOR = "f9d0c4"
+export const ISSUE_LABEL_DESCRIPTION =
+  "Drift semântico de link no README (guard semanal readme-reverse-audit)"
+
+/** Prefixo de QUALQUER marcador nosso (a assinatura vem depois dos `:`). */
+export const MARKER_PREFIX = "<!-- readme-drift:"
 
 /** Caminho ABSOLUTO do baseline guard — spawnado com cwd = caller. */
 const BASELINE_PATH = join(
   dirname(fileURLToPath(import.meta.url)),
   "check-readme-reverse-baseline.mjs",
 )
+
+/**
+ * Marcador HTML invisível que carrega a assinatura do achado.
+ *
+ * É TEXTO SIMPLES (não base64) de propósito: o formato já vive no corpo de
+ * issues abertas, e trocá-lo faria o dedup abrir duplicatas das dívidas que já
+ * existem. O contrato de FORMATO deste publicador é este.
+ *
+ * @param {string} signature  `file:slug:label`
+ */
+export function markerOf(signature) {
+  return `${MARKER_PREFIX}${signature} -->`
+}
+
+/** `true` se `body` foi escrito por ESTE publicador (qualquer assinatura). */
+export function hasAnyMarker(body) {
+  return typeof body === "string" && body.includes(MARKER_PREFIX)
+}
+
+/**
+ * As assinaturas que uma issue carrega (corpo + comentários).
+ *
+ * A extração é por análise do marcador — a assinatura é o que vem entre o
+ * prefixo e o `-->`, e ela própria contém `:` (file:slug:label), então não dá
+ * para cortar por `:`.
+ *
+ * @param {{body?: string, comments?: {body?: string}[]}|undefined} issue
+ * @returns {string[]}
+ */
+export function signaturesOf(issue) {
+  const found = []
+  for (const body of issueBodies(issue)) {
+    if (typeof body !== "string") continue
+    const pattern = /<!-- readme-drift:(.*?) -->/g
+    for (const match of body.matchAll(pattern)) found.push(match[1])
+  }
+  return found
+}
+
+/**
+ * `true` se a dívida desta issue CADUCOU: ela é nossa (tem ≥1 assinatura) e
+ * NENHUMA das assinaturas dela ainda está entre os achados reportados.
+ *
+ * Uma assinatura some do report quando o link é corrigido (o achado deixa de
+ * existir) ou quando ele é registrado no baseline como deliberado — nos dois
+ * casos a issue já não representa dívida nenhuma.
+ *
+ * @param {object} issue
+ * @param {Set<string>} live  assinaturas dos achados reportados agora
+ */
+export function isExpired(issue, live) {
+  const signatures = signaturesOf(issue)
+  return signatures.length > 0 && signatures.every((s) => !live.has(s))
+}
+
+/**
+ * O comentário de RESOLUÇÃO — a prova de que a dívida caducou, com o caminho
+ * para reconferir. Entra na issue ANTES do fechamento.
+ *
+ * @param {string[]} signatures  as assinaturas que a issue carregava
+ * @returns {string}
+ */
+export function resolutionComment(signatures) {
+  const lines = []
+  lines.push(
+    "✅ **Resolvido** — este achado deixou de ser reportado pelo guard semântico do README.",
+  )
+  lines.push("")
+  lines.push(
+    "Ou o link foi **corrigido** (o achado sumiu do audit) ou foi **registrado no" +
+      " baseline** como deliberado (`docs/security/readme-reverse-baseline.json`)." +
+      " Nos dois casos não há mais dívida para esta issue.",
+  )
+  lines.push("")
+  if (signatures.length > 0) {
+    lines.push("### Assinatura(s) que esta issue representava")
+    lines.push("")
+    for (const signature of signatures) lines.push(`- \`${signature}\``)
+    lines.push("")
+  }
+  lines.push("```bash")
+  lines.push("node scripts/check-readme-reverse-baseline.mjs --json   # o achado ainda aparece?")
+  lines.push("```")
+  lines.push("")
+  lines.push(
+    "> Fechada automaticamente: se o link voltar a divergir, a mesma regra abre uma" +
+      " issue nova com a assinatura do momento (o dedup é entre as ABERTAS).",
+  )
+  return lines.join("\n")
+}
 
 /**
  * Título da issue — estável entre runs (NÃO leva a linha: o README cresce e
@@ -90,7 +214,7 @@ export function buildIssueBody(f) {
     "**Correção:** atualize o slug/label do link no mesmo PR. Se o achado for deliberado (prosa),",
     "registre-o no baseline: `node scripts/check-readme-reverse-baseline.mjs --update`.",
     "",
-    `<!-- readme-drift:${signatureOf(f)} -->`,
+    markerOf(signatureOf(f)),
     "",
   ]
     .filter(Boolean)
@@ -99,7 +223,7 @@ export function buildIssueBody(f) {
 
 /**
  * Dedup por assinatura: filtra os achados novos que NÃO têm issue aberta
- * (marcador <!-- readme-drift:signature --> presente no body de alguma issue
+ * (marcador <!-- readme-drift:signature --> presente em algum corpo de issue
  * com o label). Um achado com issue aberta NÃO cria duplicata a cada run
  * semanal — a issue vira o estado da dívida até ser fechada.
  *
@@ -109,8 +233,8 @@ export function buildIssueBody(f) {
  */
 export function filterNewToCreate(newFindings, openIssueBodies) {
   return newFindings.filter((f) => {
-    const marker = `readme-drift:${signatureOf(f)}`
-    return !openIssueBodies.some((b) => b.includes(marker))
+    const marker = markerOf(signatureOf(f))
+    return !openIssueBodies.some((b) => typeof b === "string" && b.includes(marker))
   })
 }
 
@@ -137,95 +261,7 @@ export function runBaselineReport(cwd) {
   return JSON.parse(res.stdout)
 }
 
-/**
- * Lista os bodies das issues abertas com o label de drift (gh issue list).
- * Falha-closed: gh indisponível/falha → throw (o CI não pode criar issues
- * duplicadas às cegas — melhor falhar e o GATE do job já sinalizou).
- *
- * @returns {string[]}
- */
-export function listOpenDriftIssueBodies() {
-  const res = spawnSync(
-    "gh",
-    [
-      "issue",
-      "list",
-      "--state",
-      "open",
-      "--label",
-      ISSUE_LABEL,
-      "--json",
-      "body",
-      "--jq",
-      ".[].body",
-    ],
-    {
-      encoding: "utf8",
-    },
-  )
-  if (res.error) {
-    throw new Error(`gh indisponível: ${res.error.message} (GITHUB_TOKEN no env?)`)
-  }
-  if (res.status !== 0) {
-    throw new Error(
-      `gh issue list falhou (exit ${res.status}): ${(res.stderr ?? "").slice(0, 500)}`,
-    )
-  }
-  return (res.stdout ?? "").split("\n").filter((l) => l.length > 0)
-}
-
-/**
- * Garante que o label readme-drift existe (gh label create --force — idempotente:
- * atualiza se já existir, não falha se existir). Ignora erro de "já existe"
- * via --force; outros erros de rede/perm falham-closed.
- */
-export function ensureDriftLabel() {
-  const res = spawnSync(
-    "gh",
-    [
-      "label",
-      "create",
-      ISSUE_LABEL,
-      "--color",
-      "f9d0c4",
-      "--description",
-      "Drift semântico de link no README (guard semanal readme-reverse-audit)",
-      "--force",
-    ],
-    { encoding: "utf8" },
-  )
-  if (res.status !== 0 && !res.error) {
-    // --force já cobre 'já existe'; qualquer outro status é real (sem rede/
-    // sem permissão de issues) — falha-closed para o criador da issue ver.
-    throw new Error(
-      `gh label create falhou (exit ${res.status}): ${(res.stderr ?? "").slice(0, 500)}`,
-    )
-  }
-}
-
-/**
- * Cria a issue via gh issue create (args array — sem shell, sem risco de
- * quoting no título/body).
- *
- * @param {{file: string, slug: string, label: string}} f  usado no título
- * @param {string} body
- */
-export function createIssue(title, body) {
-  const res = spawnSync(
-    "gh",
-    ["issue", "create", "--title", title, "--body", body, "--label", ISSUE_LABEL],
-    { encoding: "utf8" },
-  )
-  if (res.error || res.status !== 0) {
-    throw new Error(
-      `gh issue create falhou (exit ${res.status ?? "?"}): ` +
-        (res.error ? res.error.message : (res.stderr ?? "").slice(0, 500)),
-    )
-  }
-  return (res.stdout ?? "").trim()
-}
-
-function main() {
+async function main() {
   const args = process.argv.slice(2)
   const dryRun = args.includes("--dry-run")
   const reportIdx = args.indexOf("--report")
@@ -249,62 +285,99 @@ function main() {
     }
   }
   const newFindings = report.newFindings ?? []
+  const live = new Set(newFindings.map(signatureOf))
 
-  if (newFindings.length === 0) {
+  // ── 2. `--dry-run`: NENHUMA chamada ao gh — só DIZ o que faria ────────
+  if (dryRun) {
+    if (newFindings.length === 0) {
+      console.log(
+        `✅ readme-reverse-issue: nenhum achado NOVO de drift semântico ` +
+          `(baseline ${report.baselineCount ?? "?"} → atual ${report.count ?? "?"}) — nenhuma issue.`,
+      )
+    } else {
+      console.log(
+        `🔗 readme-reverse-issue: ${newFindings.length} achado(s) novo(s) — ${newFindings.length} para criar.`,
+      )
+      for (const f of newFindings) {
+        console.log(`  [dry-run] criaria issue: ${buildIssueTitle(f)}`)
+        console.log(
+          `            body: ${f.file}:${f.line} [${f.label}](#${f.slug}) → '${f.heading}'${f.suggestion ? ` (sugestão '#${f.suggestion}')` : ""}`,
+        )
+      }
+    }
     console.log(
-      `✅ readme-reverse-issue: nenhum achado NOVO de drift semântico ` +
-        `(baseline ${report.baselineCount ?? "?"} → atual ${report.count ?? "?"}) — nenhuma issue.`,
+      "  (dry-run — nenhuma chamada gh feita; a reconciliação fecharia as issues cujo achado não é mais reportado)",
     )
     process.exit(0)
   }
 
-  // ── 2. Dedup por assinatura contra issues abertas (só quando vai criar) ──
-  let toCreate
-  if (dryRun) {
-    toCreate = newFindings
-  } else {
-    try {
-      ensureDriftLabel()
-      toCreate = filterNewToCreate(newFindings, listOpenDriftIssueBodies())
-    } catch (e) {
-      console.error(`❌ ${e.message}`)
-      process.exit(1)
-    }
-  }
-  const skipped = newFindings.length - toCreate.length
+  const backend = makeGithubBackend({
+    label: ISSUE_LABEL,
+    color: ISSUE_LABEL_COLOR,
+    description: ISSUE_LABEL_DESCRIPTION,
+  })
 
-  console.log(
-    `🔗 readme-reverse-issue: ${newFindings.length} achado(s) novo(s) — ${toCreate.length} para criar${skipped > 0 ? `, ${skipped} já com issue aberta` : ""}.`,
-  )
+  // ── 3. Reconciliação: o achado que sumiu do report não é mais dívida ──
+  let closed = []
+  try {
+    await backend.ensureLabel()
+    const existing = await backend.openIssues()
+    const reconciled = await reconcileDebt({
+      backend,
+      existing,
+      isOurs: (issue) => issueBodies(issue).some(hasAnyMarker),
+      isExpired: (issue) => isExpired(issue, live),
+      resolutionBody: (issue) => resolutionComment(signaturesOf(issue)),
+      reason: "o achado não é mais reportado (corrigido ou registrado no baseline)",
+    })
+    closed = reconciled.closed
 
-  // ── 3. Cria as issues ────────────────────────────────────────────────
-  for (const f of toCreate) {
-    const title = buildIssueTitle(f)
-    const body = buildIssueBody(f)
-    if (dryRun) {
-      console.log(`  [dry-run] criaria issue: ${title}`)
+    // ── 4. Dedup por assinatura contra as issues abertas + criação ──────
+    const openBodies = existing.flatMap(issueBodies).filter((b) => typeof b === "string")
+    const toCreate = filterNewToCreate(newFindings, openBodies)
+    if (closed.length > 0) {
       console.log(
-        `            body: ${f.file}:${f.line} [${f.label}](#${f.slug}) → '${f.heading}'${f.suggestion ? ` (sugestão '#${f.suggestion}')` : ""}`,
+        `🔒 Reconciliado: ${closed.length} issue(s) fechada(s) — a dívida não fica aberta depois de resolvida.`,
       )
-      continue
     }
-    try {
-      const url = createIssue(title, body)
-      console.log(`  ✅ issue criada: ${title} → ${url}`)
-    } catch (e) {
-      console.error(`  ❌ ${e.message}`)
-      process.exit(1)
+
+    if (newFindings.length === 0) {
+      console.log(
+        `✅ readme-reverse-issue: nenhum achado NOVO de drift semântico ` +
+          `(baseline ${report.baselineCount ?? "?"} → atual ${report.count ?? "?"}) — nenhuma issue.`,
+      )
+      process.exit(0)
     }
+
+    const skipped = newFindings.length - toCreate.length
+    console.log(
+      `🔗 readme-reverse-issue: ${newFindings.length} achado(s) novo(s) — ${toCreate.length} para criar${skipped > 0 ? `, ${skipped} já com issue aberta` : ""}.`,
+    )
+
+    for (const f of toCreate) {
+      const title = buildIssueTitle(f)
+      const body = buildIssueBody(f)
+      const ref = await backend.create(title, body)
+      console.log(`  ✅ issue criada: ${title} → ${ref}`)
+    }
+    console.log(`✅ ${toCreate.length} issue(s) criada(s) com o label ${ISSUE_LABEL}.`)
+  } catch (e) {
+    console.error(`❌ ${e.message}`)
+    process.exit(1)
   }
-  console.log(
-    dryRun
-      ? "  (dry-run — nenhuma chamada gh feita)"
-      : `✅ ${toCreate.length} issue(s) criada(s) com o label ${ISSUE_LABEL}.`,
-  )
   process.exit(0)
 }
 
 const IS_DIRECT_RUN =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
 
-if (IS_DIRECT_RUN) main()
+if (IS_DIRECT_RUN) {
+  // `main` decide o exit code (process.exit nos caminhos), então aqui só resta
+  // o erro que escapou do try interno.
+  try {
+    await main()
+  } catch (error) {
+    console.error(`❌ ${error.message}`)
+    process.exit(1)
+  }
+}

@@ -37,6 +37,9 @@ import { mkdtempSync, writeFileSync, rmSync, mkdirSync, readFileSync } from "nod
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import {
+  ALLOWLIST,
+  UNUSED_DEPS_REVIEW_DAYS,
+  allowlistReviewViolations,
   depPattern,
   depERE,
   isAllowlisted,
@@ -44,7 +47,9 @@ import {
   findOrphanDeps,
   findOrphanDepsStaged,
   isScannedPath,
+  sweepAllowlist,
 } from "../../../scripts/check-unused-deps.mjs"
+import { parseAddedAt } from "../../../scripts/allowlist-review.mjs"
 
 const SCRIPT = resolve(process.cwd(), "scripts/check-unused-deps.mjs")
 const tmpDirs: string[] = []
@@ -210,6 +215,94 @@ describe("isAllowlisted", () => {
   })
 })
 
+// ── registro da decisão (addedAt) e revisão vencida (--review) ────────────
+//
+// POR QUE ESTES TESTES EXISTEM: a ALLOWLIST é uma lista de ISENÇÕES — "esta dep
+// tem uso IMPLÍCITO, não a importe". Isenção não tem prazo por natureza, então
+// uma entrada concedida hoje continua valendo amanhã porque ninguém voltou
+// nela. Por isso cada entrada registra `addedAt` e a janela é MEDIDA contra um
+// relógio INJETADO. A regra vem do módulo compartilhado `allowlist-review.mjs`
+// (a mesma das outras duas allowlists do repositório) — o que estes testes
+// prendem é o FIO: a lista, a janela, o aviso do run normal e o exit 1 do
+// `--review` (o canal do job semanal).
+
+describe("registro da decisão (addedAt) e revisão vencida (--review)", () => {
+  const NOW = Date.parse("2026-09-13T00:00:00Z")
+  const diasAtras = (d: number) => new Date(NOW - d * 86_400_000).toISOString().slice(0, 10)
+  const listFor = (addedAt?: string) => [
+    {
+      match: "sharp",
+      type: "exact",
+      why: "uso implícito do Next.js image optimization (runtime, sem import)",
+      ...(addedAt === undefined ? {} : { addedAt }),
+    },
+  ]
+
+  it("a data é obrigatória e validada fail-closed (ausente / malformada / no futuro)", () => {
+    for (const [value, marker] of [
+      [undefined, "sem `addedAt`"],
+      ["13/09/2026", "invalido"],
+      ["2026-02-30", "invalido"],
+      ["2026-12-31", "no FUTURO"],
+    ] as const) {
+      const sweep = sweepAllowlist({ allowlist: listFor(value), now: NOW })
+      const v = allowlistReviewViolations(sweep, { failAged: false })
+      expect(v.length, `addedAt=${String(value)}`).toBe(1)
+      expect(v[0]).toContain("ALLOWLIST")
+      expect(v[0]).toContain(marker)
+      // Registro ausente/inválido é violação nos DOIS modos — o `--review` não muda isso.
+      expect(allowlistReviewViolations(sweep, { failAged: true })).toEqual(v)
+    }
+  })
+
+  it("dentro da janela → nada; PASSADA a janela → aged (aviso) e o --review FALHA", () => {
+    const naJanela = sweepAllowlist({
+      allowlist: listFor(diasAtras(UNUSED_DEPS_REVIEW_DAYS)),
+      now: NOW,
+    })
+    expect(naJanela).toEqual({ invalid: [], aged: [] })
+
+    const velha = diasAtras(UNUSED_DEPS_REVIEW_DAYS + 20)
+    const sweep = sweepAllowlist({ allowlist: listFor(velha), now: NOW })
+    expect(sweep.invalid).toEqual([])
+    expect(sweep.aged).toHaveLength(1)
+    expect(sweep.aged[0]).toMatchObject({
+      id: "sharp",
+      addedAt: velha,
+      limit: UNUSED_DEPS_REVIEW_DAYS,
+    })
+    expect(sweep.aged[0].days).toBeGreaterThan(UNUSED_DEPS_REVIEW_DAYS)
+
+    // Run normal: o CLI AVISA (`::warning::`) — a lista de violações fica vazia.
+    expect(allowlistReviewViolations(sweep, { failAged: false })).toEqual([])
+    // Modo --review (o job semanal): a MESMA decisão vira violação.
+    const v = allowlistReviewViolations(sweep, { failAged: true })
+    expect(v).toHaveLength(1)
+    expect(v[0]).toContain("ALLOWLIST")
+    expect(v[0]).toContain("SEM REVISAO")
+    expect(v[0]).toContain(velha)
+    expect(v[0]).toContain("permanente por esquecimento")
+  })
+
+  it("no REPO REAL: toda entrada tem addedAt válido, razão escrita e está DENTRO da janela", () => {
+    const sweep = sweepAllowlist()
+    expect(sweep.invalid, "entrada sem data / data inválida / no futuro").toEqual([])
+    expect(sweep.aged, "entrada sem revisão dentro da janela").toEqual([])
+    for (const entry of ALLOWLIST) {
+      expect(parseAddedAt(entry.addedAt), `addedAt inválido em ${entry.match}`).not.toBeNull()
+      expect(entry.why.length, `razão ausente/curta em ${entry.match}`).toBeGreaterThan(10)
+    }
+  })
+
+  it("o comando do job semanal (--review) roda no repo real e sai 0 hoje", () => {
+    const r = spawnSync(process.execPath, [SCRIPT, "--review"], {
+      cwd: process.cwd(),
+      encoding: "utf8",
+    })
+    expect(r.status, r.stderr).toBe(0)
+  })
+})
+
 // ── collectCodeFiles ──────────────────────────────────────────────────────
 
 describe("collectCodeFiles", () => {
@@ -343,6 +436,9 @@ describe("check-unused-deps.mjs — CLI real (fixtures)", () => {
     expect(j.total).toBe(2)
     expect(j.orphanCount).toBe(1)
     expect(j.orphans).toEqual(["is-odd"])
+    // O veredito de DATA da ALLOWLIST é FATO do relatório (não só da prosa):
+    // quem consome o JSON na forja enxerga a janela e o que não foi comparado.
+    expect(j.allowlist).toEqual({ invalid: [], aged: [], reviewDays: UNUSED_DEPS_REVIEW_DAYS })
   })
 
   it("exit 0 --json quando limpo", () => {

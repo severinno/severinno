@@ -169,7 +169,7 @@ if [ "$EXIT" -eq 0 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO pela asserção esperada (outro invariante quebrou).
-if ! echo "$OUTPUT" | grep -Fq "$EXPECTED_NEW" || ! echo "$OUTPUT" | grep -Fq "$EXPECTED_FILE_NEW"; then
+if ! grep -Fq "$EXPECTED_NEW" <<<"$OUTPUT" || ! grep -Fq "$EXPECTED_FILE_NEW" <<<"$OUTPUT"; then
   fail "Guard falhou (exit $EXIT) mas NÃO pela asserção esperada:"
   fail "  esperava (mensagem): $EXPECTED_NEW"
   fail "  esperava (arquivo):  $EXPECTED_FILE_NEW"
@@ -203,7 +203,7 @@ if [ "$EXIT" -eq 0 ]; then
   exit 1
 fi
 
-if ! echo "$OUTPUT" | grep -Fq "$EXPECTED_GROWTH" || ! echo "$OUTPUT" | grep -Fq "$EXPECTED_FILE_GROWTH"; then
+if ! grep -Fq "$EXPECTED_GROWTH" <<<"$OUTPUT" || ! grep -Fq "$EXPECTED_FILE_GROWTH" <<<"$OUTPUT"; then
   fail "Guard falhou (exit $EXIT) mas NÃO pela asserção esperada:"
   fail "  esperava (mensagem): $EXPECTED_GROWTH"
   fail "  esperava (arquivo):  $EXPECTED_FILE_GROWTH"

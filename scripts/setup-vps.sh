@@ -302,7 +302,7 @@ setup_dirs() {
     command -v pg_dump &>/dev/null && ok "pg_dump OK" || warn "pg_dump não encontrado (apt install postgresql-client)"
     command -v fail2ban-client &>/dev/null && ok "fail2ban OK" || warn "fail2ban não encontrado"
 
-    ufw status | grep -q "active" && ok "UFW ativo" || warn "UFW não está ativo"
+    grep -q "active" <<< "$(ufw status)" && ok "UFW ativo" || warn "UFW não está ativo"
 
     if [ -f "$PROJECT_DIR/docker-compose.prod.yml" ]; then
         ok "docker-compose.prod.yml encontrado"

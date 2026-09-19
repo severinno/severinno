@@ -34,7 +34,7 @@ if [ -f public/openapi.json ]; then
   DIFF=$(diff <(jq -S '.paths | keys[]' public/openapi.json 2>/dev/null || echo "") \
               <(jq -S '.paths | keys[]' /tmp/openapi-current.json 2>/dev/null || echo "") 2>/dev/null || true)
 
-  if echo "$DIFF" | grep -q "^<"; then
+  if grep -q "^<" <<< "$DIFF"; then
     echo "❌ BREAKING CHANGE: Endpoints were REMOVED:"
     echo "$DIFF" | grep "^<" | head -10
     echo ""

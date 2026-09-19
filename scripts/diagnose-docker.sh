@@ -205,7 +205,7 @@ check_port() {
         [ -z "$pid" ] && continue
         local proc_name
         proc_name=$(ps -p "$pid" -o comm= 2>/dev/null || echo "unknown")
-        if ! echo "$proc_name" | grep -qiE 'docker|com\.docker'; then
+        if ! grep -qiE 'docker|com\.docker' <<< "$proc_name"; then
             non_docker="$non_docker${proc_name} (PID $pid), "
         fi
     done
@@ -243,16 +243,16 @@ else
         name=$(echo "$name" | xargs)
         status=$(echo "$status" | xargs)
         ports=$(echo "$ports" | xargs)
-        if echo "$status" | grep -qi 'healthy'; then
+        if grep -qi 'healthy' <<< "$status"; then
             echo "     ${GREEN}$name${RESET}  [${status}]"
             [ -n "$ports" ] && detail "Ports: $ports"
-        elif echo "$status" | grep -qi 'starting'; then
+        elif grep -qi 'starting' <<< "$status"; then
             echo "     ${YELLOW}$name${RESET}  [${status}]"
-        elif echo "$status" | grep -qi 'unhealthy'; then
+        elif grep -qi 'unhealthy' <<< "$status"; then
             echo "     ${RED}$name  [UNHEALTHY]${RESET}"
             detail "$status"
             unhealthy=$((unhealthy + 1))
-        elif echo "$status" | grep -qiE 'Exit|exited'; then
+        elif grep -qiE 'Exit|exited' <<< "$status"; then
             echo "     ${RED}$name  [EXITED]${RESET}"
             exited=$((exited + 1))
         else
@@ -396,7 +396,7 @@ log_step "7. Recursos do Docker"
 df_output=$(docker system df 2>/dev/null || true)
 if [ -n "$df_output" ]; then
     while read -r line; do
-        if echo "$line" | grep -qE '(Images|Containers|Local Volumes|Build Cache)'; then
+        if grep -qE '(Images|Containers|Local Volumes|Build Cache)' <<< "$line"; then
             detail "$(echo "$line" | xargs)"
         fi
     done < <(echo "$df_output")

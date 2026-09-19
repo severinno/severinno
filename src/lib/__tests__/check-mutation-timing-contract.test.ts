@@ -53,7 +53,7 @@ const SCRIPT = join(process.cwd(), "scripts", "check-mutation-timing-contract.mj
 
 // ── Nomes REAIS do seed-guards.yml (a fonte da verdade) ──────────────────
 
-const CONTRACT_JOB = "Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)"
+const CONTRACT_JOB = "Mutation Test (contrato coordenado — doc↔anchor↔código)"
 const CONTRACT_STEP = "Run mutation test (contrato coordenado — 5 cenários, 2 elos)"
 const SEED_DEV_JOB = "Mutation Test (seed dev E2E pega regressões?)"
 const SEED_DEV_STEP = "Run mutation test (seed dev E2E deve FALHAR)"
@@ -326,7 +326,7 @@ describe("checkMutationTimingContract — drift de markers", () => {
   it("AMBIGUIDADE: 2+ jobs casam o marker do job → falha (o .find() pegaria o primeiro)", () => {
     const content = `jobs:
   a:
-    name: Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)
+    name: Mutation Test (contrato coordenado — doc↔anchor↔código)
     steps:
       - name: Run mutation test (contrato coordenado — 5 cenários, 2 elos)
   b:

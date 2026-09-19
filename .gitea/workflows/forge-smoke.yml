@@ -1,0 +1,265 @@
+# =============================================================================
+# .gitea/workflows/forge-smoke.yml — SMOKE TEST MANUAL da forja (Gitea/Forgejo)
+# =============================================================================
+#
+# POR QUE ESTE ARQUIVO EXISTE
+#
+# Esta forja e dona do merge (.gitea/workflows/ci.yml) e depende de TRES
+# pressupostos de AMBIENTE que nenhum guard estatico consegue verificar — todos
+# sao resolvidos pelo runtime do act_runner, nao pelo texto do YAML:
+#
+#   1. o contexto `vars` hidrata (repository variable BUN_VERSION). Exige
+#      Gitea >= 1.22; se o contexto nao existir, o act falha com "Unknown
+#      Variable Access vars" ANTES do primeiro passo (a mensagem aparece no
+#      log do job, nao aqui) e nenhum call site de setup passa a versao adiante.
+#   2. a CADEIA do setup funciona por `run:` E o tier-1 (fast path, 0s)
+#      ENGAJA nesta forja. O setup do Bun e o script scripts/setup-bun-ci.sh
+#      chamado por `run:` — que NAO passa pelo resolvedor de actions: so precisa
+#      do arquivo no checkout (o step de CACHE e um action REMOTO). E o tier-1
+#      so engaja se a IMAGEM DO RUNNER embarcar o Bun da variable: sem esta
+#      prova, a forja voltaria a pagar o download do tier 3 em TODO job, em
+#      silencio (o setup funciona nos dois casos — so muda a velocidade).
+#   3. o runtime instalado e EXATAMENTE o da variable. O check:bun-mirror
+#      protege isso no TEXTO (um unico ponto de verdade); aqui a invariante e
+#      provada no RESULTADO — mesmo commit, mesmo runtime, em qualquer pipeline.      #   4. a IMAGEM DO JOB roda os guards por INTEIRO — inclusive o `compose`.
+#      O `check:registry-source` (invariante 7) renderiza o compose da forja com
+#      o docker do job para provar que o label resolve para a versao da
+#      variavel. Sem o plugin `compose`, esse render vira INDETERMINADO e a
+#      invariante deixa de ser verificada — DENTRO de um job verde. A imagem
+#      embarca o plugin (e o build do Dockerfile.ubuntu-bun falha se isso
+#      mudar); aqui a Prova 4 EXIGE o render (`--require-compose`), entao "nao
+#      provei" fica vermelho em vez de passar despercebido.
+#   5. o REGISTRO do runner e o do compose. As provas 2 e 3 veem o EFEITO dos
+#      labels (tier-1 engajou, runtime certo) e so para o label que ESTE job
+#      pediu. O act_runner, porem, usa os labels gravados em /data/.runner — nao
+#      rele o compose — e um registro velho sobrevive ao `up -d runner` porque
+#      o volume do registro e do container, nao do processo. A Prova 5 compara
+#      o registro com o compose: e a unica que ve os labels que NINGUEM usa.
+#
+# Um guard que le YAML nao ve nenhuma das cinco. Um humano que nao roda o
+# pipeline tambem nao. Este workflow fecha a lacuna: roda sob demanda, prova as
+# cinco e falha dizendo QUAL quebrou e o que fazer.
+#
+# POR QUE SO NA FORJA (e nao no .github/)
+#   Ele prova o AMBIENTE DESTA forja: o act_runner, o PATH dele, a resolucao de
+#   `vars` dele. Rodar o mesmo arquivo no GitHub provaria o ambiente do GitHub,
+#   que nao e o que esta em duvida. A assimetria e intencional — nao "complete"
+#   o par.
+#
+# POR QUE SO `workflow_dispatch`
+#   Isto e diagnostico, nao gate. Um job que so roda por dispatch NUNCA reporta
+#   status num PR; exigi-lo como required check travaria todo PR para sempre
+#   (mesma invariante do workflow de drift, travada em teste: um required check
+#   que nao roda nao falha, ele ESPERA). Pelo mesmo motivo ele nao entra em
+#   ci/required-checks.json: o applier resolve contextos a partir do workflow
+#   declarado (ci.yml) e recusaria, com razao, um job que nao existe la.
+#
+# COMO LER O RESULTADO ESPERADO
+#   Verde nos 5 passos + o relatorio de toolchain = a forja esta pronta para
+#   bloquear o merge. Qualquer falha aponta o remedio correspondente em
+#   deploy/GITEA.md, secao "Smoke test da forja".
+#
+#   A Prova 5 tem um desfecho que NAO e falha de nada: sem docker (ou sem o
+#   socket dentro do job) ela nao consegue olhar o registro. Esse estado e
+#   reportado como NAO PROVADO e FALHA a etapa — de proposito. Um smoke verde
+#   que nao provou o que se propoe e exatamente o defeito que ele existe para
+#   pegar; a distincao fica escrita na mensagem, nao no status.
+# =============================================================================
+
+name: Forge Smoke (manual)
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: forge-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 22
+  # PROVA 1 (usada por todo passo abaixo): se o contexto `vars` nao hidratar,
+  # este valor chega VAZIO e o primeiro passo de verificacao falha apontando a
+  # causa — em vez de o erro aparecer como "bun-version vazia" no meio de um job
+  # de build, sem relacao visivel com a variable.
+  BUN_VERSION: ${{ vars.BUN_VERSION }}
+  # Registry de imagens (fonte unica). O fallback preserva o comportamento
+  # historico e permite reportar QUAL registry esta forja vai usar — resposta
+  # direta para "a variable IMAGE_REGISTRY foi criada ou ainda e o default?".
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
+
+jobs:
+  smoke:
+    name: Forge Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── PROVA 1: o contexto `vars` hidrata nesta forja ──────────────────
+      - name: "Prova 1 — vars.BUN_VERSION resolve"
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${BUN_VERSION:-}" ]; then
+            echo "::error::vars.BUN_VERSION chegou VAZIO nesta forja."
+            echo "  1) crie a variable em Settings > Actions > Variables (Gitea >= 1.22);"
+            echo "  2) confirme que o act_runner foi reiniciado depois da atualizacao;"
+            echo "  3) se o job morreu antes deste passo com 'Unknown Variable Access vars',"
+            echo "     a instancia nao suporta o contexto — a variable nao e o problema."
+            exit 1
+          fi
+          echo "✅ vars.BUN_VERSION = ${BUN_VERSION}"
+          echo "   registry desta forja: ${IMAGE_REGISTRY}"
+
+      # ── PROVA 2: setup por `run:` + tier-1 da imagem do runner ──────────
+      # O par canonico do repo: cache (action REMOTO) + script (run:, que NAO
+      # passa pelo resolvedor de actions LOCAIS — o setup deixou de ser
+      # composite). Se o cache falhar, o script ainda instala pelo mirror
+      # OCI/release: o setup degrada, nao quebra. O que NAO se recupera sozinho
+      # e a imagem do runner nao embarcar o Bun — nesse caso o fast path de 0s
+      # (a razao de existir a imagem custom) nunca engaja, e o step FALHA
+      # apontando o remedio.
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: "Prova 2 — setup por run: + tier-1 da imagem do runner"
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$(bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}" 2>&1)"
+          printf '%s\n' "$OUT"
+          if ! grep -q 'Usando Bun pré-instalado:' <<<"$OUT"; then
+            echo "::error::tier-1 NAO disparou: a imagem do runner nao embarca o Bun ${{ vars.BUN_VERSION }}."
+            echo "  O setup FUNCIONOU (caiu no cache/mirror/release) — mas o fast path de 0s,"
+            echo "  que e a razao de a forja rodar numa imagem custom, nao engajou."
+            echo "  Remedio: aponte GITEA_RUNNER_LABELS para <registry>/<owner>/ubuntu-bun:<versao>"
+            echo "  em deploy/docker-compose.gitea.yml E RE-REGISTRE o runner (docker compose rm"
+            echo "  -sf runner + docker volume rm gitea-runner-data + docker compose up -d runner)."
+            echo "  Passo a passo em deploy/GITEA.md, secao 'Runner: a imagem que roda os jobs'."
+            exit 1
+          fi
+          echo "✅ tier-1 engajou (a imagem do runner embarca o Bun da variable)"
+
+      # ── PROVA 3: o runtime em uso e o da variable ──────────────────────
+      # Mismatch aqui significa que o MESMO commit geraria artefatos diferentes
+      # conforme a pipeline que construiu — exatamente o que a fonte unica da
+      # versao do Bun existe para impedir.
+      - name: "Prova 3 — runtime == vars.BUN_VERSION"
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v bun >/dev/null 2>&1; then
+            echo "::error::bun nao esta no PATH depois do script de setup — o setup nao concluiu."
+            echo "  cache: o tier 3 depende de docker (mirror OCI) ou de curl (release); veja o log acima."
+            exit 1
+          fi
+          ACTUAL="$(bun --version)"
+          if [ "$ACTUAL" != "$BUN_VERSION" ]; then
+            echo "::error::runtime divergente: bun ${ACTUAL} != vars.BUN_VERSION ${BUN_VERSION}"
+            echo "  Causa provavel 1: a imagem do runner embarca outro Bun e ele vem ANTES"
+            echo "    no PATH (shadowing) — o binario correto existe, mas nao e o que executa."
+            echo "  Causa provavel 2: a variable foi alterada sem invalidar o cache do Bun"
+            echo "    (key = bun-<versao>-<os>-<arch>; versao nova = key nova, sem cache-hit)."
+            exit 1
+          fi
+          echo "✅ bun ${ACTUAL} == vars.BUN_VERSION"
+
+      # ── PROVA 4: o runner resolve deps, roda os guards e RENDERIZA o compose
+      # Todo job da forja comeca com `bun install --frozen-lockfile`; e os
+      # guards rodam sem node_modules (node puro). Se a rede/registry do runner
+      # estiver bloqueada, e aqui que aparece — e nao no meio de um job de teste.
+      #
+      # POR QUE `--require-compose`: por padrao o `check:registry-source` trata
+      # "nao consegui renderizar" como INDETERMINADO (avisa e sai 0), para o gate
+      # nao ficar vermelho numa maquina sem docker. AQUI o render NAO e opcional:
+      # o job roda numa imagem que embarca o plugin `compose` (contrato
+      # verificado no build do Dockerfile.ubuntu-bun). Uma imagem construida de
+      # outra base, ou um job sem o docker socket, e o unico jeito de o render
+      # nao sair — e e isso que este passo passa a acusar.
+      # Sem a flag, a INVARIANTE 7 (a tag do label resolve para a versao da
+      # variavel, e nao para uma tag vazia ou literal) poderia degradar para um
+      # `::warning::` dentro de um job verde — um gate que deixou de verificar sem
+      # ninguem notar. Com a flag, ou prova, ou o smoke fica vermelho.
+      - name: "Prova 4 — install congelado + guards node-puros (render do compose EXIGIDO)"
+        run: |
+          bun install --frozen-lockfile
+          bun run check:registry-source --require-compose
+
+      # ── PROVA 5: o REGISTRO do runner == os labels do compose ─────────
+      # POR QUE ESTA PROVA EXISTE (e por que as outras nao bastam): o
+      # act_runner envia os labels ao Gitea NO REGISTRO e depois usa os que
+      # ficaram gravados em /data/.runner — ele NAO rele o compose. Trocar a
+      # imagem em deploy/docker-compose.gitea.yml e subir de novo (`up -d
+      # runner`) recria o container com o env NOVO, mas o registro vive no
+      # VOLUME e sobrevive: o job roda na imagem antiga, sem o tier-1, e o
+      # setup do Bun funciona do mesmo jeito (so mais lento). Nenhum sintoma.
+      #
+      # As Provas 2 e 3 veem o efeito, e so do label que ESTE job pediu
+      # (`runs-on: ubuntu-latest`). Um segundo label registrado ao lado, ou um
+      # label que ninguem usa, nao e olhado por ninguem — e e exatamente ali
+      # que o registro velho se esconde.
+      #
+      # O guard le as DUAS pontas (o `docker compose config` do checkout e o
+      # `/data/.runner` DENTRO do container em execucao) e compara nome por
+      # nome, imagem por imagem. Exit 0 = provado; 1 = registro velho, registro
+      # VAZIO ou compose sem a variavel (com o remedio de cada caso);
+      # 3 = NAO PROVADO (sem docker/socket/container/estado).
+      #
+      # CONJUNTO VAZIO NAO E SINCRONIA: um runner ÓRFAO (no ar, registrado, sem
+      # label nenhum) nao recebe job algum, e um compose que perdeu
+      # `GITEA_RUNNER_LABELS` nao tem o que comparar — comparar vazio com vazio
+      # nao prova que a stack esta no ar. Os dois casos sao exit 1.
+      #
+      # A entrada se chama `runner-labels:check` (e nao `check:...`) DE
+      # PROPOSITO: quem le `check:` espera um gate portatil, e este so tem
+      # sentido no host da forja — a mesma familia de `runner-image:*`.
+      - name: "Prova 5 — o registro do runner é o do compose"
+        shell: bash
+        run: |
+          set -uo pipefail
+          OUT="$(bun run runner-labels:check 2>&1)"
+          CODE=$?
+          printf '%s\n' "$OUT"
+          case "$CODE" in
+            0)
+              echo "✅ o registro do act_runner é o que o compose declara"
+              ;;
+            1)
+              echo "::error::REGISTRO VELHO ou VAZIO: os labels gravados em /data/.runner não são os do compose."
+              echo "  O runner usa os labels do REGISTRO (não relê o compose): o job cai na imagem antiga,"
+              echo "  sem o Bun pré-instalado, e o download do Bun volta em TODO job — sem outro sintoma."
+              echo "  Um registro vazio (runner órfão) é o caso extremo: NENHUM job é atribuído a ele."
+              echo "  Remédio (em geral): bash deploy/gitea-up.sh --re-register"
+              echo "  O caso do COMPOSE sem a variável tem remédio próprio: declare os labels primeiro (linhas '→' acima)."
+              echo "  Ver deploy/GITEA.md, seção 'Runner: a imagem que roda os jobs'."
+              exit 1
+              ;;
+            3)
+              echo "::error::NÃO PROVADO: o registro não pôde ser lido — a comparação NÃO aconteceu."
+              echo "  Exige o docker disponível no job (o runner monta /var/run/docker.sock por padrão;"
+              echo "  'container.docker_host: -' desliga essa montagem) e o container do runner no ar."
+              echo "  Um smoke verde aqui seria mentira: a invariante seguiria não verificada."
+              exit 1
+              ;;
+            *)
+              echo "::error::runner-labels:check saiu $CODE (env/uso) — veja a saída acima."
+              exit 1
+              ;;
+          esac
+
+      # ── Relatorio (sempre roda): o ambiente que produziu o resultado ────
+      - name: Report runner toolchain
+        if: always()
+        shell: bash
+        run: |
+          echo "============================== FORGE SMOKE =============================="
+          echo "forja            : ${GITHUB_SERVER_URL:-?} / ${GITHUB_REPOSITORY:-?}"
+          echo "BUN_VERSION      : ${BUN_VERSION:-<vazio>}   (vars.BUN_VERSION)"
+          echo "bun no PATH      : $(command -v bun 2>/dev/null || echo '<ausente>')"
+          echo "bun --version    : $(bun --version 2>/dev/null || echo '<ausente>')"
+          echo "node             : $(node --version 2>/dev/null || echo '<ausente>')"
+          echo "docker           : $(docker --version 2>/dev/null || echo '<ausente>')"
+          echo "IMAGE_REGISTRY   : ${IMAGE_REGISTRY:-<vazio>} (fallback = ghcr.io)"
+          echo "registro do runner: $(docker exec gitea-runner cat /data/.runner 2>/dev/null | head -c 400 || echo '<nao lido / sem docker>')"
+          echo "========================================================================="

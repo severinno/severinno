@@ -34,9 +34,10 @@
 #
 #   4. No setup-bun: fails if any workflow uses oven-sh/setup-bun@v2 — the
 #      external action re-downloads the LATEST Bun release on every job
-#      (~25-35s/job). All workflows must use the local composite action
-#      ./.github/actions/setup-bun (pre-installed fast path + actions/cache
-#      keyed on the pinned version). See scripts/check-no-setup-bun.mjs.
+#      (~25-35s/job). All workflows must use the local setup script
+#      scripts/setup-bun-ci.sh, called by `run:` (pre-installed fast path +
+#      actions/cache keyed on the pinned version). See
+#      scripts/check-no-setup-bun.mjs.
 #
 #   5. Bun mirror: fails if the GHCR mirror workflow (sync-bun-mirror.yml)
 #      is missing, its BUN_VERSION doesn't reference the repository variable

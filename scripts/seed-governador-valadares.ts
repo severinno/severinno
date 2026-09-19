@@ -338,11 +338,7 @@ async function seed() {
   // Batch insert availability
   for (let i = 0; i < availabilityData.length; i += 500) {
     const batch = availabilityData.slice(i, i + 500)
-    await prisma.$transaction(
-      batch.map((d) =>
-        prisma.providerAvailability.create({ data: d }),
-      ),
-    )
+    await prisma.$transaction(batch.map((d) => prisma.providerAvailability.create({ data: d })))
   }
   console.log(`  ✅ ${availabilityData.length} horários criados\n`)
 

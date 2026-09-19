@@ -1,0 +1,755 @@
+{
+  "meta": {
+    "tool": "bench-guard-timing",
+    "version": 5,
+    "commit": "ede301c8",
+    "commitDate": "2026-09-18 11:46:00 -0300",
+    "timestamp": "2026-09-18T21:36:45.584Z",
+    "act": "bench-guard-timing --only hook --json --baseline --merge --samples 3",
+    "nodeVersion": "v20.20.2",
+    "platform": "linux",
+    "arch": "x64",
+    "cpus": 16,
+    "totalMemMb": 32011,
+    "reused": {
+      "lint": {
+        "commit": "ede301c8",
+        "timestamp": "2026-09-18T14:50:59.962Z"
+      },
+      "typecheck": {
+        "commit": "ede301c8",
+        "timestamp": "2026-09-18T14:50:59.962Z"
+      },
+      "tests": {
+        "commit": "ede301c8",
+        "timestamp": "2026-09-18T14:50:59.962Z"
+      },
+      "battery": {
+        "commit": "ede301c8",
+        "timestamp": "2026-09-18T14:50:59.962Z"
+      }
+    },
+    "families": {
+      "battery": {
+        "act": "reused",
+        "commit": "ede301c8",
+        "commitDate": "2026-09-18 11:46:00 -0300",
+        "timestamp": "2026-09-18T14:50:59.962Z",
+        "source": "guard-timing-latest.json"
+      },
+      "lint": {
+        "act": "reused",
+        "commit": "ede301c8",
+        "commitDate": "2026-09-18 11:46:00 -0300",
+        "timestamp": "2026-09-18T14:50:59.962Z",
+        "source": "guard-timing-latest.json"
+      },
+      "typecheck": {
+        "act": "reused",
+        "commit": "ede301c8",
+        "commitDate": "2026-09-18 11:46:00 -0300",
+        "timestamp": "2026-09-18T14:50:59.962Z",
+        "source": "guard-timing-latest.json"
+      },
+      "tests": {
+        "act": "reused",
+        "commit": "ede301c8",
+        "commitDate": "2026-09-18 11:46:00 -0300",
+        "timestamp": "2026-09-18T14:50:59.962Z",
+        "source": "guard-timing-latest.json"
+      },
+      "hook": {
+        "act": "measured",
+        "commit": "ede301c8",
+        "commitDate": "2026-09-18 11:46:00 -0300",
+        "timestamp": "2026-09-18T21:36:45.584Z",
+        "source": null
+      }
+    }
+  },
+  "summary": {
+    "guardsCount": 18,
+    "guardsTotalMs": 18015,
+    "doctorMs": 3910,
+    "doctorExit": 2,
+    "totalMs": 21925,
+    "lintAddedPerSiteMs": 21649,
+    "lintAddedPerFanOutMs": 86596,
+    "typecheckMs": 25836,
+    "typecheckAddedPerFanOutMs": 308,
+    "testsMs": 134904,
+    "testsAddedPerFanOutMs": -301106,
+    "hookOfferComumMs": 2,
+    "hookEsperaMs": 1,
+    "hookOfferFalhaMs": 143,
+    "hookRevalidacaoMs": 71,
+    "hookDetectionMs": 305
+  },
+  "guards": [
+    {
+      "label": "check:required-checks",
+      "cmd": "bun run check:required-checks",
+      "ms": 45,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "check:script-headers",
+      "cmd": "node scripts/check-script-headers.mjs",
+      "ms": 68,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "check:prove-docs",
+      "cmd": "bun run check:prove-docs",
+      "ms": 6864,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "check:registry-source",
+      "cmd": "bun run check:registry-source",
+      "ms": 2391,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "check:doctor-ci",
+      "cmd": "bun scripts/check-doctor-ci.mjs",
+      "ms": 3868,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "check:runner-base",
+      "cmd": "bun run check:runner-base",
+      "ms": 979,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "check:workflow-refs",
+      "cmd": "bun run check:workflow-refs:internal",
+      "ms": 106,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "check:ts-nocheck",
+      "cmd": "bun run check:ts-nocheck",
+      "ms": 49,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "check:forge-workflow-scope",
+      "cmd": "bun run check:forge-workflow-scope",
+      "ms": 127,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "check:forge-parity",
+      "cmd": "bun run check:forge-parity",
+      "ms": 75,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "check:bun-audit",
+      "cmd": "bun run check:bun-audit-baseline",
+      "ms": 363,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "check:secret-leaks",
+      "cmd": "bun scripts/rotate-secrets.mjs --check",
+      "ms": 42,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "check:seed-hooks",
+      "cmd": "bun run check:seed-hooks",
+      "ms": 75,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "check:sentinel-producer",
+      "cmd": "bun run check:sentinel-producer",
+      "ms": 85,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "check:bun-mirror",
+      "cmd": "bun run check:bun-mirror",
+      "ms": 229,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "check:no-setup-bun",
+      "cmd": "bun run check:no-setup-bun",
+      "ms": 76,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "check:hooks-symmetry",
+      "cmd": "bun scripts/check-hooks-symmetry.mjs",
+      "ms": 15,
+      "exit": 0,
+      "ok": true
+    },
+    {
+      "label": "runner-image:prove",
+      "cmd": "node scripts/prove-runner-image-gate.mjs",
+      "ms": 2558,
+      "exit": 0,
+      "ok": true
+    }
+  ],
+  "doctor": {
+    "label": "doctor --ci",
+    "cmd": "node scripts/forge-doctor.mjs --ci --json --expected 1.3.14 --expected-var IMAGE_REGISTRY=ghcr.io --expected-var IMAGE_NAMESPACE=severinno",
+    "ms": 3910,
+    "exit": 2,
+    "ok": true
+  },
+  "lint": {
+    "canonicalCmd": "bun run lint",
+    "legacyCmd": "bunx eslint .",
+    "prettierCmd": "bunx prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'",
+    "samplesPerForm": 2,
+    "forms": [
+      {
+        "role": "current",
+        "label": "lint (par completo — hoje)",
+        "cmd": "bun run lint",
+        "ms": 53516,
+        "minMs": 22037,
+        "maxMs": 53516,
+        "runs": [
+          {
+            "ms": 53516,
+            "exit": 0
+          },
+          {
+            "ms": 22037,
+            "exit": 1
+          }
+        ],
+        "exit": 1,
+        "ok": false
+      },
+      {
+        "role": "legacy",
+        "label": "lint (regua anterior — contrafactual)",
+        "cmd": "bunx eslint .",
+        "ms": 31867,
+        "minMs": 31622,
+        "maxMs": 31867,
+        "runs": [
+          {
+            "ms": 31622,
+            "exit": 0
+          },
+          {
+            "ms": 31867,
+            "exit": 0
+          }
+        ],
+        "exit": 0,
+        "ok": true
+      },
+      {
+        "role": "added-half",
+        "label": "prettier --check (a metade nova)",
+        "cmd": "bunx prettier --check --ignore-unknown 'src/**' 'scripts/**' 'docs/**' '*.json' '*.ts' '*.mjs' '*.md' '*.yml' '.github/**' 'prisma/**'",
+        "ms": 22174,
+        "minMs": 22159,
+        "maxMs": 22174,
+        "runs": [
+          {
+            "ms": 22159,
+            "exit": 1
+          },
+          {
+            "ms": 22174,
+            "exit": 1
+          }
+        ],
+        "exit": 1,
+        "ok": false
+      }
+    ],
+    "sites": [
+      {
+        "file": ".github/workflows/ci.yml",
+        "count": 1
+      },
+      {
+        "file": ".github/workflows/pr-check.yml",
+        "count": 2
+      },
+      {
+        "file": ".github/workflows/release-deploy.yml",
+        "count": 1
+      },
+      {
+        "file": ".gitea/workflows/ci.yml",
+        "count": 1
+      }
+    ],
+    "pipelineFiles": 4,
+    "callSites": 5,
+    "upgraded": [
+      {
+        "file": ".gitea/workflows/ci.yml",
+        "where": "job `lint` (forja dona do merge)"
+      },
+      {
+        "file": ".github/workflows/ci.yml",
+        "where": "job `lint` (espelho)"
+      },
+      {
+        "file": ".github/workflows/pr-check.yml",
+        "where": "job `check`, passo `Lint`"
+      },
+      {
+        "file": ".github/workflows/release-deploy.yml",
+        "where": "passo de lint do deploy"
+      }
+    ],
+    "upgradedSites": 4,
+    "addedPerSiteMs": 21649,
+    "addedHalfMs": 22174,
+    "attributionPct": 0.0237,
+    "attributionMatches": true,
+    "addedPerFanOutMs": 86596,
+    "violations": []
+  },
+  "rulers": {
+    "typecheck": {
+      "invariant": "typecheck",
+      "canonicalCmd": "bun run typecheck",
+      "legacyInlineCmd": "NODE_OPTIONS=--max-old-space-size=4096 bunx tsc --noEmit",
+      "legacyBareCmd": "bunx tsc --noEmit",
+      "heapMb": 4096,
+      "samplesPerForm": 1,
+      "cold": true,
+      "cacheFile": "tsconfig.tsbuildinfo",
+      "forms": [
+        {
+          "role": "current",
+          "label": "typecheck (script, hoje)",
+          "cmd": "bun run typecheck",
+          "ms": 25836,
+          "minMs": 25836,
+          "maxMs": 25836,
+          "runs": [
+            {
+              "ms": 25836,
+              "exit": 0
+            }
+          ],
+          "exit": 0,
+          "ok": true
+        },
+        {
+          "role": "legacy-inline",
+          "label": "typecheck (heap inline — contrafactual)",
+          "cmd": "NODE_OPTIONS=--max-old-space-size=4096 bunx tsc --noEmit",
+          "ms": 25759,
+          "minMs": 25759,
+          "maxMs": 25759,
+          "runs": [
+            {
+              "ms": 25759,
+              "exit": 0
+            }
+          ],
+          "exit": 0,
+          "ok": true
+        },
+        {
+          "role": "legacy-bare",
+          "label": "typecheck (SEM heap — a regua do hook)",
+          "cmd": "bunx tsc --noEmit",
+          "ms": 25841,
+          "minMs": 25841,
+          "maxMs": 25841,
+          "runs": [
+            {
+              "ms": 25841,
+              "exit": 0
+            }
+          ],
+          "exit": 0,
+          "ok": true
+        }
+      ],
+      "canonicalMs": 25836,
+      "sites": [
+        {
+          "file": ".github/workflows/ci.yml",
+          "count": 1
+        },
+        {
+          "file": ".github/workflows/pr-check.yml",
+          "count": 1
+        },
+        {
+          "file": ".github/workflows/release-deploy.yml",
+          "count": 1
+        },
+        {
+          "file": ".gitea/workflows/ci.yml",
+          "count": 1
+        }
+      ],
+      "pipelineFiles": 4,
+      "callSites": 4,
+      "upgraded": [
+        {
+          "file": ".gitea/workflows/ci.yml",
+          "where": "job `typecheck` (forja dona do merge)"
+        },
+        {
+          "file": ".github/workflows/ci.yml",
+          "where": "job `typecheck` (espelho)"
+        },
+        {
+          "file": ".github/workflows/pr-check.yml",
+          "where": "job `typecheck` (espelho do PR)"
+        },
+        {
+          "file": ".github/workflows/release-deploy.yml",
+          "where": "passo de typecheck do deploy"
+        }
+      ],
+      "upgradedSites": 4,
+      "heapAddedAt": {
+        "file": ".husky/pre-push",
+        "where": "hook de push — rodava o tsc SEM o heap (o 134 que o merge nunca via)",
+        "kind": "hook"
+      },
+      "hook": {
+        "file": ".husky/pre-push",
+        "exists": true,
+        "hasCanonical": true,
+        "hasBare": false
+      },
+      "heapDeclaredOutside": [],
+      "nodeHeapLimitMb": 4144,
+      "legacyBareExit": 0,
+      "legacyBareMs": 25841,
+      "legacyBareCompleted": true,
+      "addedPerSiteMs": 77,
+      "addedPerFanOutMs": 308,
+      "violations": [],
+      "whatItAdded": "+0.1s por call site (4 workflows) — o MESMO comando com o MESMO heap: a unificacao moveu o VALOR, nao o trabalho. No hook .husky/pre-push o acrescentado foi o HEAP: o heap default do node nesta maquina (4144MB) ja e >= os 4096MB do script, entao a regua SEM o heap completou aqui (exit 0): o 134 do runner NAO se reproduz nesta maquina — INDETERMINADO, nao \"nao existe\"."
+    },
+    "tests": {
+      "invariant": "tests",
+      "canonicalCmd": "bun run test:run",
+      "legacyCmd": "bun run test:unit",
+      "legacyConfig": "vitest.config.unit.ts",
+      "addedHalfCmd": "bunx vitest run src/components",
+      "addedHalfLabel": "src/components",
+      "samplesPerForm": 1,
+      "counterfactual": "measured",
+      "forms": [
+        {
+          "role": "current",
+          "label": "suite completa (hoje: test:run)",
+          "cmd": "bun run test:run",
+          "ms": 134904,
+          "minMs": 134904,
+          "maxMs": 134904,
+          "runs": [
+            {
+              "ms": 134904,
+              "exit": 1
+            }
+          ],
+          "exit": 1,
+          "ok": false
+        },
+        {
+          "role": "added-half",
+          "label": "suite de src/components (a metade nova)",
+          "cmd": "bunx vitest run src/components",
+          "ms": 17404,
+          "minMs": 17404,
+          "maxMs": 17404,
+          "runs": [
+            {
+              "ms": 17404,
+              "exit": 0
+            }
+          ],
+          "exit": 0,
+          "ok": true
+        },
+        {
+          "role": "legacy",
+          "label": "suite estreita (test:unit — contrafactual)",
+          "cmd": "bun run test:unit",
+          "ms": 436010,
+          "minMs": 436010,
+          "maxMs": 436010,
+          "runs": [
+            {
+              "ms": 436010,
+              "exit": 1
+            }
+          ],
+          "exit": 1,
+          "ok": false
+        }
+      ],
+      "canonicalMs": 134904,
+      "legacyMs": 436010,
+      "sites": [
+        {
+          "file": ".github/workflows/ci.yml",
+          "count": 1
+        },
+        {
+          "file": ".github/workflows/pr-check.yml",
+          "count": 1
+        },
+        {
+          "file": ".github/workflows/release-deploy.yml",
+          "count": 1
+        },
+        {
+          "file": ".gitea/workflows/ci.yml",
+          "count": 1
+        }
+      ],
+      "pipelineFiles": 4,
+      "callSites": 4,
+      "upgraded": [
+        {
+          "file": ".github/workflows/pr-check.yml",
+          "where": "job `check`, passo `Unit tests` (rodava `test:unit`, que EXCLUI src/components)"
+        }
+      ],
+      "upgradedSites": 1,
+      "addedPerSiteMs": -301106,
+      "addedHalfMs": 17404,
+      "attributionPct": 18.301,
+      "attributionMatches": false,
+      "addedPerFanOutMs": -301106,
+      "violations": [],
+      "whatItAdded": "-301.1s por rodada no call site que upgrade (1) — a suite `src/components/**`, que a regua anterior EXCLUIA, medida em +17.4s isolada (o delta NAO e so ela: as duas reguas diferem tambem em workers e setup)"
+    }
+  },
+  "hook": {
+    "measured": true,
+    "reason": null,
+    "hookPath": "/home/severinno/severinno/.husky/pre-commit",
+    "fixture": {
+      "comum": ".github/workflows/ci.yml com corpo válido",
+      "falha": ".github/workflows/ci.yml com a cicatriz mecânica (operador pendente)"
+    },
+    "samplesPerForm": 3,
+    "forms": [
+      {
+        "role": "comum-hoje",
+        "path": "comum",
+        "fonte": "hoje",
+        "label": "hoje — índice ok (o caminho comum)",
+        "expect": "zero",
+        "ms": 81,
+        "minMs": 80,
+        "maxMs": 81,
+        "runs": [
+          {
+            "ms": 81,
+            "exit": 0
+          },
+          {
+            "ms": 80,
+            "exit": 0
+          },
+          {
+            "ms": 81,
+            "exit": 0
+          }
+        ],
+        "exit": 0,
+        "bloqueou": false,
+        "ok": true
+      },
+      {
+        "role": "comum-sem-oferta",
+        "path": "comum",
+        "fonte": "sem-oferta",
+        "label": "sem a oferta — índice ok (contrafactual)",
+        "expect": "zero",
+        "ms": 79,
+        "minMs": 78,
+        "maxMs": 80,
+        "runs": [
+          {
+            "ms": 78,
+            "exit": 0
+          },
+          {
+            "ms": 79,
+            "exit": 0
+          },
+          {
+            "ms": 80,
+            "exit": 0
+          }
+        ],
+        "exit": 0,
+        "bloqueou": false,
+        "ok": true
+      },
+      {
+        "role": "comum-agregada",
+        "path": "comum",
+        "fonte": "agregada",
+        "label": "sintaxe AGREGADA ao wait_all — índice ok (contrafactual)",
+        "expect": "zero",
+        "ms": 80,
+        "minMs": 80,
+        "maxMs": 81,
+        "runs": [
+          {
+            "ms": 80,
+            "exit": 0
+          },
+          {
+            "ms": 81,
+            "exit": 0
+          },
+          {
+            "ms": 80,
+            "exit": 0
+          }
+        ],
+        "exit": 0,
+        "bloqueou": false,
+        "ok": true
+      },
+      {
+        "role": "falha-hoje",
+        "path": "falha",
+        "fonte": "hoje",
+        "label": "hoje — defeito no índice (fail-closed, sem terminal)",
+        "expect": "non-zero",
+        "ms": 220,
+        "minMs": 219,
+        "maxMs": 223,
+        "runs": [
+          {
+            "ms": 220,
+            "exit": 1
+          },
+          {
+            "ms": 219,
+            "exit": 1
+          },
+          {
+            "ms": 223,
+            "exit": 1
+          }
+        ],
+        "exit": 1,
+        "bloqueou": true,
+        "ok": true
+      },
+      {
+        "role": "falha-sem-oferta",
+        "path": "falha",
+        "fonte": "sem-oferta",
+        "label": "sem a oferta — defeito no índice (contrafactual)",
+        "expect": "non-zero",
+        "ms": 77,
+        "minMs": 77,
+        "maxMs": 80,
+        "runs": [
+          {
+            "ms": 80,
+            "exit": 1
+          },
+          {
+            "ms": 77,
+            "exit": 1
+          },
+          {
+            "ms": 77,
+            "exit": 1
+          }
+        ],
+        "exit": 1,
+        "bloqueou": true,
+        "ok": true
+      },
+      {
+        "role": "falha-revalidacao",
+        "path": "falha",
+        "fonte": "hoje",
+        "label": "remédio VERDE — a fase rodada de novo (dublê declarado)",
+        "expect": "non-zero",
+        "env": {
+          "REMEDY_STUB": "0"
+        },
+        "ms": 148,
+        "minMs": 147,
+        "maxMs": 149,
+        "runs": [
+          {
+            "ms": 148,
+            "exit": 1
+          },
+          {
+            "ms": 149,
+            "exit": 1
+          },
+          {
+            "ms": 147,
+            "exit": 1
+          }
+        ],
+        "exit": 1,
+        "bloqueou": true,
+        "ok": true
+      }
+    ],
+    "deltas": {
+      "ofertaComumMs": 2,
+      "esperaMs": 1,
+      "ofertaFalhaMs": 143,
+      "revalidacaoMs": 71
+    },
+    "detection": {
+      "cmd": "node scripts/pre-commit-remedy.mjs",
+      "promptOff": "PRE_COMMIT_REMEDY_NO_PROMPT=1",
+      "ms": 305,
+      "exit": 0,
+      "completou": true,
+      "veredito": "nada a remendar neste commit",
+      "medido": true,
+      "escreveu": false
+    },
+    "violations": [],
+    "whatItAdded": [
+      "caminho COMUM (as duas fases passam): +2ms por commit — a oferta NÃO é alcançada quando nada reprova (o `if` não abre)",
+      "espera SEPARADA do gate de sintaxe vs agregada no `wait_all`: +1ms — as duas esperam o MESMO conjunto, então a diferença é a estrutura da espera",
+      "caminho de FALHA (defeito no índice): a oferta custa +143ms — fail-closed, sem terminal ela não pergunta nem remenda",
+      "depois de um remédio VERDE, a fase rodada de novo custa +71ms (aqui só o gate de sintaxe é re-executado: a fase B é dublada no fixture)",
+      "detecção contra a ÁRVORE REAL: 305ms (\"nada a remendar neste commit\") — e não escreveu nada"
+    ]
+  }
+}

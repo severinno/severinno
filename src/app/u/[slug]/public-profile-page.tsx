@@ -38,6 +38,13 @@ type Props = {
   }
 }
 
+/**
+ * Shape do payload público de perfil — a allowlist em tempo de compilação de
+ * `/u/[slug]`. Exportada para que a página trave o payload em `exactShape`:
+ * um campo a mais no `select` (ex.: `email`) deixa de compilar.
+ */
+export type PublicProfileProvider = Props["provider"]
+
 export function PublicProfilePage({ provider }: Props) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://severinno.com.br"
 

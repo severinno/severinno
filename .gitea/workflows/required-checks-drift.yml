@@ -1,0 +1,124 @@
+# =============================================================================
+# .gitea/workflows/required-checks-drift.yml
+#
+# Equivalente Gitea do `.github/workflows/required-checks-drift.yml`: verifica
+# periodicamente que o branch protection de `main` exige exatamente os checks
+# declarados em `ci/required-checks.json`.
+#
+# Por que um cron separado: os gates rodam em CADA PR, mas quem bloqueia o
+# merge é a lista de required status checks — estado da forja, invisível em
+# review. Um rename de `name:` de job muda o CONTEXTO de status, o manifesto
+# passa a exigir um check que nunca roda e o PR trava para sempre. Nenhum teste
+# de PR enxerga isso (no PR o job novo existe e passa).
+#
+# Este workflow NÃO pode estar em `ci/required-checks.json`: roda por cron, não
+# em PR — exigi-lo travaria todo PR. (A invariante é travada por teste em
+# src/lib/__tests__/required-checks-manifest.test.ts.)
+#
+# ALERTA ACIONÁVEL (defeito corrigido): antes este job só FALHAVA com o diff no
+# log — e um cron vermelho é alerta MUDO (ninguém abre o log). Como esta forja é
+# a DONA DO MERGE, a dívida precisa chegar onde alguém a veja: o job publica uma
+# ISSUE (label `required-checks-drift`, com dedup por assinatura) pela API do
+# Gitea, com o MESMO diagnóstico/assinatura usados no lado GitHub — `--backend
+# gitea` só troca QUEM cria o ticket, não o que é drift.
+#
+# Secrets: `GITEA_TOKEN`  (leitura do branch protection E escrita em issues —
+#                          sem a escrita o drift volta a ser alerta mudo)
+#          `GITEA_URL`    (ex.: https://gitea.exemplo.com)
+#          `GITEA_REPOSITORY` (owner/repo — necessário para abrir a issue)
+# O job é pulado com aviso quando os secrets não existem — não falha por falta
+# de espelho configurado, só por drift real.
+#
+# Usage:
+#   cron semanal (segunda 06:41 UTC) ou dispatch manual.
+#
+# Exit codes (dos steps):
+#   0 — branch protection em sincronia com o manifesto
+#   1 — drift detectado (a issue é publicada ANTES de o job falhar)
+# =============================================================================
+
+name: Required Checks Drift
+
+on:
+  schedule:
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  drift:
+    name: Required checks drift (branch protection ↔ manifest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Mesmo contrato da ci.yml: script + cache, sem composite local.
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      # `bun <script>` direto (não `bun run <entry>`): a entry do package.json
+      # invoca `node scripts/...`, e a imagem do runner Gitea não garante `node`
+      # no PATH — bun executa o .mjs nativamente. Os scripts são node-puros (sem
+      # deps), então não precisam de `bun install`.
+      #
+      # O step NÃO falha aqui: quem falha é o último. Se este saísse 1, o step
+      # da issue nunca rodaria e o drift voltaria a ser cron vermelho sem ticket
+      # — o alerta mudo que este workflow existe para eliminar.
+      - name: Check drift (report only)
+        id: drift
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ secrets.GITEA_URL }}
+          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+        run: |
+          set +e
+          if [ -z "${GITEA_TOKEN:-}" ]; then
+            echo "::notice::GITEA_TOKEN ausente — pulando a checagem de drift do Gitea."
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+            echo "publish=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Sem token não há nem medição nem canal (a issue precisa da ESCRITA
+          # em issues) — por isso `publish` sai daqui e não do exit code.
+          echo "publish=1" >> "$GITHUB_OUTPUT"
+          bun scripts/apply-required-checks.mjs --check --forge gitea --json \
+            > /tmp/required-checks-drift.json
+          CODE=$?
+          set -e
+          cat /tmp/required-checks-drift.json
+          echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
+
+      # ── A ISSUE é o alerta; o vermelho abaixo é a lembrança ────────────────
+      # Roda ANTES de falhar, de propósito. O relatório já está pronto, então
+      # não há novo acesso à forja além da escrita da issue.
+      #
+      # `always()`: com drift ele PUBLICA; sem drift ele RECONCILIA — fecha as
+      # issues que ele mesmo abriu (com a prova no comentário), para a dívida
+      # não ficar ABERTA depois de resolvida. Condicionar a step ao drift faria
+      # o fechamento sumir em silêncio no único run que pode fechá-lo.
+      - name: Publish drift issue (Gitea)
+        if: always() && steps.drift.outputs.publish == '1'
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ secrets.GITEA_URL }}
+          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+        run: |
+          bun scripts/required-checks-drift-issue.mjs \
+            --report /tmp/required-checks-drift.json \
+            --backend gitea
+
+      - name: Fail on drift
+        if: steps.drift.outputs.exit_code != '0'
+        run: |
+          echo "::error::Branch protection do Gitea divergiu de ci/required-checks.json. Veja a issue 'required-checks-drift' (correção: bun run ci:required-checks -- --apply)."
+          exit 1
+
+env:
+  # FONTE ÚNICA (variable do repositório) — não cravar a versão aqui.
+  BUN_VERSION: ${{ vars.BUN_VERSION }}

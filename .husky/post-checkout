@@ -1,5 +1,11 @@
 #!/usr/bin/env sh
-set -euo pipefail
+# `sh` e SEM pipefail de proposito: o husky NAO executa este arquivo — o shim
+# `.husky/_/post-checkout` o faz `source` dentro de um `sh`. Um `set -o pipefail`
+# aqui nao vale nada e derruba o hook na linha 2 (dash: "Illegal option -o
+# pipefail"), entao o `bun install` automatico nunca rodou; e um herestring
+# (`<<<`, bashismo) quebraria do mesmo jeito. A classe SIGPIPE nao existe sem
+# pipefail, e o `printf | grep` abaixo nao a cria.
+set -eu
 
 # post-checkout hook
 # $1 = previous HEAD SHA, $2 = new HEAD SHA, $3 = 1 (branch) or 0 (file)
@@ -13,7 +19,7 @@ if [ "$3" = "1" ]; then
   # O repo unificou os lockfiles em SÓ bun.lock (removidos package-lock.json
   # e pnpm-lock.yaml em 08/2026) — os padrões antigos (pnpm-lock.yaml,
   # bun.lockb) não disparam mais o install automático quando o lockfile muda.
-  if echo "$CHANGED" | grep -qE "^package\.json$|^bun\.lock$"; then
+  if printf '%s\n' "$CHANGED" | grep -qE "^package\.json$|^bun\.lock$"; then
     echo "📦 Dependências alteradas — executando bun install..."
     bun install
     echo "✅ bun install concluído"

@@ -60,7 +60,7 @@ export function ClientSecurity() {
     <div className="space-y-6">
       {/* ── Change Password ──────────────────────────────────────── */}
       <Card>
-        <CardContent className="p-4 space-y-4">
+        <CardContent className="space-y-4 p-4">
           <div className="flex items-start gap-3">
             <Key className="text-muted-foreground mt-0.5 size-5" />
             <div>

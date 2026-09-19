@@ -9,44 +9,44 @@ import { extractDurationFromLine } from "../../../scripts/check-setup-bun-common
 // ---------------------------------------------------------------------------
 // Fixtures — logs realistas baseados na evidência empírica do act 0.2.89
 // (probe 08/2026: logs capturados em tool-results/ e /tmp/act-cat-run*.log).
-// Formato real observado:
-//   `✅  Success - Main Restore Bun release from cache [14.434715s]`
+// Formato real observado (o step de cache é o `actions/cache@v4` de PRIMEIRO
+// NÍVEL do job, nomeado 'Restore Bun cache' — o par canônico do repo):
+//   `✅  Success - Main Restore Bun cache [14.434715s]`
 //   `| Cache restored successfully`
 //   `| Cache restored from key: bun-1.3.14-linux-x64`
 //   `| Cache not found for input keys: bun-1.3.14-ed5e2ff...`
+// NOTE: com o setup em `run:`, o step de cache roda SEM `if:` — a linha
+// 'Skip - ...' só aparece se um job ganhar o gate (ou omitir o step); o
+// guard mantém a ramificação porque ela é legítima, não porque ela ocorre.
 // ---------------------------------------------------------------------------
 
 const LOG_TIER2_HIT = [
   "[PR Check/check]   ✅  Success - Main Resolve Bun version [464.4688ms]",
-  "[PR Check/check]   ✅  Success - Main Detect pre-installed Bun [625.9247ms]",
-  "[PR Check/check]   ⬇  Skip - Main Use pre-installed Bun (fast path)",
   "[PR Check/check]   | Cache restored successfully",
   "[PR Check/check]   | Cache restored from key: bun-1.3.14-linux-x64",
-  "[PR Check/check]   ✅  Success - Main Restore Bun release from cache [1.234s]",
-  "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [2.1s]",
+  "[PR Check/check]   ✅  Success - Main Restore Bun cache [1.234s]",
+  "[PR Check/check]   | ✅ Bun do cache: 1.3.14 (sem download)",
+  "[PR Check/check]   ✅  Success - Main Setup Bun [2.1s]",
   "[PR Check/check]   ✅  Success - Complete job",
 ].join("\n")
 
 const LOG_TIER2_MISS = [
-  "[PR Check/check]   ⬇  Skip - Main Use pre-installed Bun (fast path)",
   "[PR Check/check]   | Cache not found for input keys: bun-1.3.14-ed5e2ff..., bun-1.3.14-",
-  "[PR Check/check]   ✅  Success - Main Restore Bun release from cache [1.1s]",
-  "[PR Check/check]   ✅  Success - Main Download Bun release (cold cache) [7.42s]",
-  "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [8.3s]",
+  "[PR Check/check]   ✅  Success - Main Restore Bun cache [1.1s]",
+  "[PR Check/check]   |   ✅ Mirror OCI ok — bun 1.3.14",
+  "[PR Check/check]   ✅  Success - Main Setup Bun [8.3s]",
 ].join("\n")
 
 const LOG_TIER2_SLOW = [
-  "[PR Check/check]   ⬇  Skip - Main Use pre-installed Bun (fast path)",
   "[PR Check/check]   | Cache restored successfully",
-  "[PR Check/check]   ✅  Success - Main Restore Bun release from cache [14.434715s]",
-  "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [15.2s]",
+  "[PR Check/check]   ✅  Success - Main Restore Bun cache [14.434715s]",
+  "[PR Check/check]   ✅  Success - Main Setup Bun [15.2s]",
 ].join("\n")
 
 const LOG_TIER1_SKIP_CACHE = [
   "[PR Check/check]   | ✅ Usando Bun pré-instalado: 1.3.14 (0s, sem download)",
-  "[PR Check/check]   ✅  Success - Main Use pre-installed Bun (fast path) [461.9667ms]",
-  "[PR Check/check]   ⬇  Skip - Main Restore Bun release from cache",
-  "[PR Check/check]   ✅  Success - Main ./.github/actions/setup-bun [1.9s]",
+  "[PR Check/check]   ✅  Success - Main Setup Bun [461.9667ms]",
+  "[PR Check/check]   ⬇  Skip - Main Restore Bun cache",
 ].join("\n")
 
 const LOG_NO_EVIDENCE = [
@@ -61,13 +61,13 @@ const LOG_NO_EVIDENCE = [
 describe("extractDurationFromLine (check-setup-bun-common)", () => {
   it("converte ms para segundos", () => {
     expect(
-      extractDurationFromLine("✅  Success - Main Restore Bun release from cache [461.9667ms]"),
+      extractDurationFromLine("✅  Success - Main Restore Bun cache [461.9667ms]"),
     ).toBeCloseTo(0.4619667, 6)
   })
 
   it("converte s (mantém o valor)", () => {
     expect(
-      extractDurationFromLine("✅  Success - Main Restore Bun release from cache [14.434715s]"),
+      extractDurationFromLine("✅  Success - Main Restore Bun cache [14.434715s]"),
     ).toBeCloseTo(14.434715, 6)
   })
 
@@ -148,8 +148,8 @@ describe("checkTier2CacheRestore", () => {
 
   it("FAIL INCONCLUSIVO quando engajou mas a duração não foi encontrada", () => {
     const log = LOG_TIER2_HIT.replace(
-      "✅  Success - Main Restore Bun release from cache [1.234s]",
-      "✅  Success - Main Restore Bun release from cache",
+      "✅  Success - Main Restore Bun cache [1.234s]",
+      "✅  Success - Main Restore Bun cache",
     )
     const r = checkTier2CacheRestore(log)
     expect(r.pass).toBe(false)

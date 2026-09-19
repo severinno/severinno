@@ -113,10 +113,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -159,8 +163,7 @@ jobs:
           # com fallback de criação (IF NOT EXISTS + re-verificação).
           POSTGIS_READY=0
           for _ in $(seq 1 30); do
-            if docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               POSTGIS_READY=1
               break
             fi
@@ -169,8 +172,7 @@ jobs:
           if [ "$POSTGIS_READY" != "1" ]; then
             docker exec ${{ job.services.postgres.id }} \
               psql -U severinno -d severinno -c "CREATE EXTENSION IF NOT EXISTS postgis" >/dev/null 2>&1 || true
-            if ! docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if ! grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               echo "❌ postgis não disponível após espera/fallback"
               exit 1
             fi
@@ -244,10 +246,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -279,8 +285,7 @@ jobs:
           # com fallback de criação (IF NOT EXISTS + re-verificação).
           POSTGIS_READY=0
           for _ in $(seq 1 30); do
-            if docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               POSTGIS_READY=1
               break
             fi
@@ -289,8 +294,7 @@ jobs:
           if [ "$POSTGIS_READY" != "1" ]; then
             docker exec ${{ job.services.postgres.id }} \
               psql -U severinno -d severinno -c "CREATE EXTENSION IF NOT EXISTS postgis" >/dev/null 2>&1 || true
-            if ! docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if ! grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               echo "❌ postgis não disponível após espera/fallback"
               exit 1
             fi
@@ -359,18 +363,30 @@ jobs:
   # node-pura do master mutation-guards; este job com bun install é o home
   # do contrato. Sem postgis: o teste é unitário (só derivação + leitura dos
   # SCAN_FILES), não toca banco.
+  # ⚠️ O `name:` ABAIXO NÃO CARREGA O COUNT — DE PROPÓSITO.
+  # O nome de um job é o CONTEXTO do status check, e este é required check em
+  # `ci/required-checks.json`. O nome dizia "..., 5 cenários" e o contrato
+  # coordenado GANHA UM CENÁRIO POR RELEASE: cada cenário novo reescrevia o
+  # contexto protegido, a proteção da forja passava a exigir um check que não
+  # existe e o PR travava — sem nenhuma linha de gate parecer errada. A
+  # contagem continua no NOME DO STEP ("— 5 cenários, 2 elos"), onde é
+  # diagnóstico, e o `check-required-checks` recusa um número que volte para cá.
   mutation-coord-update:
-    name: Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)
+    name: Mutation Test (contrato coordenado — doc↔anchor↔código)
     runs-on: self-hosted
     timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -411,6 +427,343 @@ jobs:
             echo "| Derivação 128→127 (C) detectada pelo teste | ${{ steps.mutation.conclusion == 'success' && '✅ contrato enforced' || '❌ guard CEGO' }} |"
             echo "| Independência (D): piso do guard neutralizado, teste segue pegando a doc | ${{ steps.mutation.conclusion == 'success' && '✅ teste independente do guard' || '❌ guard CEGO' }} |"
             echo "| Doc dev 162→N (E) detectada pelo teste | ${{ steps.mutation.conclusion == 'success' && '✅ contrato enforced p/ prod E dev' || '❌ guard CEGO' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── MUTATION TEST — espelhos do doctor (comparação de VALOR) ────────
+  # Prova que o forge-doctor.test.ts PEGA a regressão exata de remover a
+  # comparação de VALOR dos espelhos (.actrc, deploy/env.gitea.example e o
+  # .env.gitea do host) contra as repository variables: sem ela, dois
+  # espelhos que concordam ENTRE SI mas estão os DOIS velhos passam por
+  # "em sincronia" e o fast path de 0s do tier-1 desliga em silêncio.
+  #
+  # O script muta scripts/forge-doctor.mjs IN-PLACE (backup + trap de
+  # restauração), roda o vitest REAL do forge-doctor.test.ts e lê o JSON do
+  # reporter (--reporter=json) para decidir com FATO: o controle fica verde;
+  # a mutação exige o teste do valor DECLARADO FAILING e o de EXISTÊNCIA
+  # PASSING (mutação cirúrgica: só a comparação morreu). Roda vitest REAL
+  # (precisa de node_modules) — por isso NÃO vai na matriz node-pura do
+  # master mutation-guards; este job com bun install é o home. Sem postgis:
+  # o teste é unitário (lê arquivos, não toca banco).
+  mutation-doctor-mirrors:
+    name: Mutation Test (espelhos do doctor — comparação de valor)
+    runs-on: self-hosted
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      # ── Mutation test ──────────────────────────────────────────────
+      # O script muta a linha da régua da comparação em scripts/forge-doctor.mjs
+      # (IN-PLACE, backup + trap), roda o vitest real no forge-doctor.test.ts e
+      # exige a suíte VERMELHA com a asserção do valor FAILING e a de existência
+      # PASSING — se a suíte passar com a mutação, o job falha (regressão
+      # silenciosa).
+      - name: Run mutation test (espelhos do doctor — comparação de valor)
+        id: mutation
+        run: |
+          bun run test:mutation-doctor-mirrors
+          echo "  ✅ Mutation test passou — a suíte pega a remoção da comparação de valor dos espelhos"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo '## 🧬 Mutation Test — espelhos do doctor (comparação de valor)'
+            echo ''
+            echo '| Check | Result |'
+            echo '|---|---|'
+            echo "| Controle: doctor íntegro → suíte verde | ${{ steps.mutation.conclusion == 'success' && '✅ teste-âncora existe e passa' || '❌ controle falhou' }} |"
+            echo "| Mutação: comparação removida → suíte vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| Cirúrgica: caminho de existência segue verde | ${{ steps.mutation.conclusion == 'success' && '✅ só a comparação morreu' || '❌ falha não isolada' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── OS TRÊS FIOS do veredito do doctor ─────────────────────────────
+  # O doctor não mede os fatos da forja: ele os TRANSPORTA para o veredito —
+  # cada seção termina no mesmo `blockers.push(...)` (o que faz o veredito ser
+  # BLOQUEADA), um fato não provado empurra para `unknowns` (o que impede o
+  # veredito de ser PRONTA) e `unproven` declara o que o doctor NÃO cobre.
+  # Cortar qualquer um dos três é silencioso: o doctor continua rodando,
+  # continua imprimindo todas as seções — e passa a dizer PRONTA com a forja
+  # quebrada (A), PRONTA sobre o que não conseguiu medir (B) ou deixa de dizer
+  # onde a pergunta ficou aberta (C).
+  #
+  # O script muta cada fio DENTRO de `summarize` (IN-PLACE, backup + trap de
+  # restauração) e exige, para CADA um, a suíte VERMELHA pelo âncora de CADA
+  # FATO (13 violações, 13 não-provados e 10 limites, respectivamente) e as
+  # âncoras CIRÚRGICAS seguindo PASSING (o caminho SAUDÁVEL segue PRONTA; o da
+  # violação segue bloqueando) — se a suíte passar, o job falha (o veredito
+  # teria perdido a autoridade).
+  mutation-doctor-facts:
+    name: Mutation Test (os três fios do veredito do doctor)
+    runs-on: self-hosted
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Run mutation test (os três fios do veredito do doctor)
+        id: mutation
+        run: |
+          bun run test:mutation-doctor-facts
+          echo "  ✅ Mutation test passou — a suíte pega o corte dos três fios do veredito"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo '## 🧬 Mutation Test — os três fios do veredito do doctor'
+            echo ''
+            echo '| Check | Result |'
+            echo '|---|---|'
+            echo "| Controle: doctor íntegro → suíte verde (41 âncoras: fatos, não-provados e limites) | ${{ steps.mutation.conclusion == 'success' && '✅ cada fato tem a sua testemunha' || '❌ controle falhou' }} |"
+            echo "| A. violação→bloqueio cortado (13 fatos) → suíte vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| B. o veredito deixa de declarar o não-provado (13 fatos) → vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| C. o relatório deixa de declarar o que NÃO cobre (10 limites) → vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| Cirúrgica: caminho saudável segue PRONTA e a violação segue bloqueando | ${{ steps.mutation.conclusion == 'success' && '✅ só o fio nomeado morreu' || '❌ falha não isolada' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── MUTATION TEST — as TRÊS REGRAS do contrato de gates CORE ──────────
+  # O doctor responde "o que o manifesto EXIGE é CORE e roda o comando
+  # certo?", e essa pergunta tem três regras — cada uma com a sua regressão
+  # silenciosa: (A) a FORJA DECLARANTE (um contrato só é conferido contra as
+  # forjas que DECLARAM aquele job; sem o recorte, um job que só o GitHub exige
+  # vira violação da Gitea — falso positivo, que ensina o operador a ignorar o
+  # veredito); (B) a RÉGUA da invariante (`expectedCommand: inv.matches`, o
+  # MESMO comando nas duas forjas; enfraquecida, o merge volta a ser liberado
+  # pelo lado laxo — a assimetria que este repositório já pagou uma vez);
+  # (C) o CONTRATO por invariante×job (a chave `${inv.id}|${jid}`; por job,
+  # as SEIS invariantes que compartilham o `guards` da Gitea saem da lista e
+  # passam a "cobertas" sem terem sido medidas).
+  #
+  # O script muta UMA regra por vez IN-PLACE (backup + trap de restauração) e
+  # exige, para cada uma, a suíte VERMELHA pela âncora da PRÓPRIA REGRA e as
+  # âncoras INTACTAS PASSING (a outra regra do mesmo fato e o veredito seguem
+  # medindo), com o total de testes do controle conferido — um arquivo que não
+  # roda inteiro é infra, não detecção. Roda vitest REAL (precisa de
+  # node_modules) — por isso NÃO vai na matriz node-pura do master.
+  mutation-gate-contracts:
+    name: Mutation Test (as três regras do contrato de gates CORE)
+    runs-on: self-hosted
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Run mutation test (as três regras do contrato de gates CORE)
+        id: mutation
+        run: |
+          bun run test:mutation-gate-contracts
+          echo "  ✅ Mutation test passou — cada regra do contrato de gates CORE tem testemunha na suíte"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo '## 🧬 Mutation Test — as três regras do contrato de gates CORE'
+            echo ''
+            echo '| Check | Result |'
+            echo '|---|---|'
+            echo "| Controle: doctor íntegro → suíte verde (20 âncoras: 1 teste cada) | ${{ steps.mutation.conclusion == 'success' && '✅ cada regra tem a sua testemunha' || '❌ controle falhou' }} |"
+            echo "| A. a FORJA DECLARANTE (recorte do job exigido por uma forja só) → vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| B. a RÉGUA da invariante (qualquer comando satisfaz) → vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| C. o CONTRATO por invariante×job (a chave volta a ser o job) → vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| Cirúrgica: a outra regra e o veredito seguem medindo | ${{ steps.mutation.conclusion == 'success' && '✅ só a regra nomeada morreu' || '❌ falha não isolada' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── MUTATION TEST — as TRÊS metades da comparação do perfil `--ci` ────
+  # O job de PR das DUAS forjas roda o `check-doctor-ci.mjs`, e a pergunta
+  # dele é UMA: o VALOR das repository variables continua o que o repositório
+  # declara? Essa comparação tem três metades, e cada uma degrada em SILÊNCIO:
+  # (1) a régua que o gate entrega (as flags `--expected`/`--expected-var`) —
+  # sem ela o doctor cai no ramo "não comparado" e segue verde; (2) o critério
+  # do "não comparado" (`unproven`, no `mirrorDriftReport` — a função
+  # COMPARTILHADA com o guard semanal e o publicador de issue) — sem ele o
+  # relatório para de dizer o que não foi comparado e "não medi" parece "está
+  # certo"; (3) a própria função compartilhada, trocada por uma versão local que
+  # devolve "sem drift" — o doctor diz que comparou e não compara.
+  #
+  # O script muta cada metade IN-PLACE (backup + trap de restauração nos TRÊS
+  # arquivos: gate, check-actrc-sync.mjs e forge-doctor.mjs) e exige, para cada
+  # uma, DUAS testemunhas: a SUÍTE (do gate para a metade 1, do doctor para as
+  # metades 2 e 3) VERMELHA com as âncoras da metade FAILING e as cirúrgicas
+  # PASSING — cada âncora casando exatamente um teste e o total de testes do
+  # controle conferido; e o JOB, pela linha `run:` que cada forja de fato roda
+  # (job `guards` da forja e job `doctor-mirrors-guard` do GitHub) executada nos
+  # três modos (declarado, ERRADO e PARCIAL). Com a metade 1 removida o job de
+  # cada forja CONTINUA VERMELHO (a segunda régua bloqueia e a remoção fica
+  # visível no relatório); com a metade 2 o veredito fica intacto e o naming do
+  # "não comparado" SOME (silêncio MEDIDO); com a metade 3 a régua CHEGA
+  # (`▸ comparados com vars.…`) e o bloqueio NÃO sai. Nenhuma metade passa em
+  # silêncio; nenhuma abre buraco no merge. Roda vitest REAL (precisa de
+  # node_modules) — por isso NÃO vai na matriz node-pura do master
+  # mutation-guards.
+  mutation-doctor-ci:
+    name: Mutation Test (perfil --ci do doctor — as 3 metades da comparação)
+    runs-on: self-hosted
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Run mutation test (perfil --ci do doctor — a régua do gate)
+        id: mutation
+        run: |
+          bun run test:mutation-doctor-ci
+          echo "  ✅ Mutation test passou — as 3 metades da comparação têm testemunha na suíte, e o job de PR de cada forja continua vermelho"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo '## 🧬 Mutation Test — perfil --ci do doctor (as 3 metades da comparação)'
+            echo ''
+            echo '| Check | Result |'
+            echo '|---|---|'
+            echo "| Controle: suítes íntegras → verdes | ${{ steps.mutation.conclusion == 'success' && '✅ âncoras vivos (1 teste cada)' || '❌ controle falhou' }} |"
+            echo "| Controle: valor certo → 0 · ERRADO → ≠ 0 · PARCIAL → 0 + naming | ${{ steps.mutation.conclusion == 'success' && '✅ cada forja bloqueia o valor' || '❌ não bloqueia o valor' }} |"
+            echo "| Mutação 1: a régua do gate removida → suíte vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| Mutação 2: o critério do 'não comparado' removido → suíte vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ silêncio medido + testemunha' || '❌ passou em silêncio' }} |"
+            echo "| Mutação 3: a função compartilhada trocada → suíte vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ a régua chega e não compara' || '❌ passou em silêncio' }} |"
+            echo "| Mutação: job de PR de cada forja AINDA vermelho | ${{ steps.mutation.conclusion == 'success' && '✅ sem buraco no merge' || '❌ buraco aberto' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── AS QUATRO DEFESAS do reconciliador de env (check-env-mirror) ──────
+  # O `check-env-mirror.mjs` reconcilia o env do host com o template comitado,
+  # e as quatro defesas que ele tem contra fazer isso ERRADO não são o mesmo
+  # fio: (A) o PORTÃO DA CONTA — reaplica o plano em memória e recusa escrever
+  # quando sobra violação que ele não explicou (escrever seria APAGAR a dúvida);
+  # (B) a DEFESA DO SEGREDO — recusa qualquer plano que inclua um nome de
+  # `SECRET_ENV_VARIABLES` (o único valor que o host receberia é o PLACEHOLDER
+  # comitado); (C) `maskSecrets` — o valor REAL de um segredo que caia no
+  # CONTEXTO do diff sai mascarado, para o patch não o levar ao terminal/PR;
+  # (D) o SEGREDO AUSENTE vira decisão HUMANA, nunca `add` com o valor do
+  # template (que, num segredo, é o placeholder).
+  #
+  # Nenhuma delas muda o exit code do caso comum — quem as mede são a suíte e o
+  # `--fix`. Por isso o script muta UMA defesa por vez (IN-PLACE, backup + trap
+  # de restauração) e exige, para CADA uma, a suíte VERMELHA pela âncora da SUA
+  # prova e as âncoras INTACTAS PASSING (as outras três defesas e o caminho
+  # saudável seguem de pé) — sem isso, o que caiu poderia ser o comando inteiro
+  # em vez da defesa nomeada. Exige também o total de testes do controle: um
+  # arquivo que não roda inteiro é infra, não detecção.
+  mutation-env-mirror:
+    name: Mutation Test (defesas do check-env-mirror)
+    runs-on: self-hosted
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
+      - name: Run mutation test (defesas do check-env-mirror)
+        id: mutation
+        run: |
+          bun run test:mutation-env-mirror
+          echo "  ✅ Mutation test passou — as quatro defesas do check-env-mirror têm testemunha na suíte"
+
+      - name: Publish summary
+        if: always()
+        run: |
+          {
+            echo '## 🧬 Mutation Test — as quatro defesas do check-env-mirror'
+            echo ''
+            echo '| Check | Result |'
+            echo '|---|---|'
+            echo "| Controle: guard íntegro → suíte verde (13 âncoras vivas) | ${{ steps.mutation.conclusion == 'success' && '✅ cada defesa tem a sua testemunha' || '❌ controle falhou' }} |"
+            echo "| A. portão da conta no-op → suíte vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| B. defesa do segredo no-op → suíte vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| C. maskSecrets no-op → suíte vermelha (unidade + ponta) | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| D. segredo ausente vira add → suíte vermelha | ${{ steps.mutation.conclusion == 'success' && '✅ regressão detectada' || '❌ suíte CEGA' }} |"
+            echo "| Cirúrgicas: as OUTRAS defesas e o caminho saudável seguem de pé | ${{ steps.mutation.conclusion == 'success' && '✅ só a defesa nomeada morreu' || '❌ falha não isolada' }} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # ── PROD E2E — variante dev-env (override PROD_SEED_ALLOW_DEV=1) ────
@@ -457,10 +810,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -492,8 +849,7 @@ jobs:
           # com fallback de criação (IF NOT EXISTS + re-verificação).
           POSTGIS_READY=0
           for _ in $(seq 1 30); do
-            if docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               POSTGIS_READY=1
               break
             fi
@@ -502,8 +858,7 @@ jobs:
           if [ "$POSTGIS_READY" != "1" ]; then
             docker exec ${{ job.services.postgres.id }} \
               psql -U severinno -d severinno -c "CREATE EXTENSION IF NOT EXISTS postgis" >/dev/null 2>&1 || true
-            if ! docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if ! grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               echo "❌ postgis não disponível após espera/fallback"
               exit 1
             fi
@@ -540,7 +895,7 @@ jobs:
         run: |
           OUT=$(bun run db:seed:prod 2>&1)
           echo "$OUT"
-          if ! echo "$OUT" | grep -q "Seed de produção concluído"; then
+          if ! grep -q "Seed de produção concluído" <<< "$OUT"; then
             echo "❌ db:seed:prod não concluiu com override — veja output acima"
             exit 1
           fi
@@ -592,10 +947,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -627,8 +986,7 @@ jobs:
           # com fallback de criação (IF NOT EXISTS + re-verificação).
           POSTGIS_READY=0
           for _ in $(seq 1 30); do
-            if docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               POSTGIS_READY=1
               break
             fi
@@ -637,8 +995,7 @@ jobs:
           if [ "$POSTGIS_READY" != "1" ]; then
             docker exec ${{ job.services.postgres.id }} \
               psql -U severinno -d severinno -c "CREATE EXTENSION IF NOT EXISTS postgis" >/dev/null 2>&1 || true
-            if ! docker exec ${{ job.services.postgres.id }} \
-              psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null | grep -qx 1; then
+            if ! grep -qx 1 <<< "$(docker exec ${{ job.services.postgres.id }} psql -U severinno -d severinno -tAc "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null)"; then
               echo "❌ postgis não disponível após espera/fallback"
               exit 1
             fi

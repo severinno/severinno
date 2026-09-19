@@ -58,7 +58,9 @@ import { dirname, join } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { extractFastPathEvidence, extractTierEngagement } from "./check-tier1-fastpath.mjs"
+import { requireImageSource } from "./registry-source.mjs"
 import { extractCacheRestoreEvidence } from "./check-tier2-cache-restore.mjs"
+import { GITHUB_WORKFLOW_DIR } from "./forge-workflows.mjs"
 
 // ---------------------------------------------------------------------------
 // Config
@@ -67,7 +69,7 @@ import { extractCacheRestoreEvidence } from "./check-tier2-cache-restore.mjs"
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(SCRIPT_DIR, "..")
 const ACT = join(REPO_ROOT, "tool-results", "act", "act.exe")
-const WORKFLOW_DIR = join(REPO_ROOT, ".github", "workflows")
+const WORKFLOW_DIR = join(REPO_ROOT, GITHUB_WORKFLOW_DIR)
 const JOB = "check" // único job do pr-check.yml que exercita o setup-bun
 const ACTRC_PATH = join(REPO_ROOT, ".actrc")
 
@@ -102,8 +104,14 @@ export function deriveGhcrOwner(remoteUrl, envOwner = "") {
 
 /**
  * Classifica o tier do setup-bun a partir do log do act. Ordem de prioridade:
- * engajamento explícito de tier-3 (download) > tier-2 (cache restore) >
- * marcador tier-1 (bun pré-instalado) > sem evidência.
+ * download do script (tier-3) > script usou o cache (tier-2) > marcador tier-1
+ * (bun pré-instalado) > step de cache rodou (tier-2, sem marcador do script) >
+ * sem evidência.
+ *
+ * O último degrau existe porque, com o setup em `run:`, o actions/cache é um
+ * step de PRIMEIRO NÍVEL que roda SEMPRE — a linha dele não prova qual camada
+ * o SCRIPT usou, mas quando não há marcador tier-1 nem sinal do script, o
+ * cache é a única camada observável (ex.: cache emulado pelo act).
  *
  * @param {import("./check-tier1-fastpath.mjs").FastPathEvidence} fast
  * @param {import("./check-tier2-cache-restore.mjs").CacheRestoreEvidence} cache
@@ -114,6 +122,7 @@ export function classifyTier(fast, cache, tiers) {
   if (tiers.tier3Engaged) return "tier-3"
   if (tiers.tier2Engaged) return "tier-2"
   if (fast.markerVersion !== null) return "tier-1"
+  if (cache.cacheRestoreEngaged) return "tier-2"
   return "sem evidência"
 }
 
@@ -270,7 +279,9 @@ const USAGE = `Uso:
   --runs N          execuções do act por imagem (default: 1; run 2+ = warm)
   --timeout S       timeout por run do act em segundos (default: 240)
   --json FILE       salva as linhas da tabela em JSON
-  --custom-tag T    override da imagem custom ubuntu-bun (ex.: ghcr.io/x/ubuntu-bun:1.3.14)
+  --custom-tag T    override da imagem custom ubuntu-bun (ex.: ghcr.io/<owner>/ubuntu-bun:<X.Y.Z>)
+                    — a tag real vem da variável BUN_VERSION; o exemplo não tem
+                    versão de propósito (um exemplo com versão envelhece sozinho)
   -h, --help        mostra esta ajuda
 
 Exit codes: 0 = PASS (tabela impressa, evidência em todas as imagens),
@@ -344,7 +355,18 @@ function main() {
     encoding: "utf8",
   }).stdout.trim()
   const owner = deriveGhcrOwner(remoteUrl, process.env.BENCH_OWNER || "")
-  const customTag = args.customTag || `ghcr.io/${owner}/ubuntu-bun:${bunVersion}`
+  // Registry da imagem custom — FONTE ÚNICA (env IMAGE_REGISTRY, mesmo
+  // contrato dos workflows e do .env.production). O valor vem do RESOLVEDOR
+  // (`registry-source.mjs`): env e, na falta dele, o espelho DECLARADO — nunca
+  // um literal de reserva, que sobreviveria à troca de registry em silêncio.
+  let registry
+  try {
+    registry = requireImageSource({ root: REPO_ROOT }).registry
+  } catch (e) {
+    console.error(`❌ bench-setup-bun: ${e.message}`)
+    process.exit(2)
+  }
+  const customTag = args.customTag || `${registry}/${owner}/ubuntu-bun:${bunVersion}`
   const imageTags = [
     { id: "default", tag: IMAGE_DEFAULT, label: `act + ${IMAGE_DEFAULT}` },
     { id: "custom", tag: customTag, label: `act + ${customTag}` },

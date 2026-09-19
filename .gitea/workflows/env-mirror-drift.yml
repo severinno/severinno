@@ -1,0 +1,163 @@
+# =============================================================================
+# .gitea/workflows/env-mirror-drift.yml
+#
+# Detecta, em CRON, quando o env do HOST da forja (`deploy/.env.gitea`) divergiu
+# do template comitado (`deploy/env.gitea.example`) — e publica uma ISSUE
+# acionável (com fechamento automático quando os dois voltam a espelhar).
+#
+# POR QUE UM CRON (o buraco que ele fecha): a comparação host × template já
+# existe em DOIS eventos — o gate de PR (`check:registry-source`, invariante 7b,
+# no job `guards`) e o PRÉ-REQUISITO 0 do `deploy/gitea-up.sh`. Os dois olham o
+# momento em que o REPOSITÓRIO muda. Só que o env do VPS também muda SOZINHO: uma
+# edição no host para "resolver rápido" um namespace, uma versão colada à mão, um
+# `RUNNER_TOKEN` rotacionado. Depois do merge não há PR nenhum para o gate olhar,
+# e a subida só recusaria no dia em que alguém a disparasse — até lá o compose
+# interpola OUTRA coisa que o repositório declara, e o sintoma aparece longe da
+# causa (o tier-1 do setup-bun desliga; a label do runner aponta para outra
+# imagem; o pull só falha quando um job tenta iniciar).
+#
+# POR QUE NA FORJA (e não um par no `.github/`): é AQUI que a stack roda, e é o
+# `deploy/.env.gitea` DESTE host que o compose lê (`--env-file`). O runner do
+# GitHub é outro ambiente — de lá o arquivo do host é invisível por desenho
+# (gitignored), então ele só enxergaria o template comitado. A assimetria é
+# intencional (mesma razão do `actrc-sync.yml`): não "complete" o par.
+#
+# POR QUE A MESMA REGRA DO BRING-UP: o diagnóstico vem do `check-env-mirror.mjs`
+# (`--json`), o MESMO comando do pré-requisito 0 e a MESMA função
+# (`compareEnvMirrorDeclarations`) do `check:registry-source`. Uma segunda
+# comparação seria uma segunda verdade — a issue e o log da subida poderiam
+# discordar sobre o que é divergência.
+#
+# A ORDEM DOS PASSOS É CONTRATO: o step que falha é o ÚLTIMO. Se ele viesse
+# antes, o step da issue nunca rodaria e o drift voltaria a ser cron vermelho sem
+# ticket — exatamente o defeito que este workflow existe para eliminar.
+#
+# O OUTRO LADO DA DÍVIDA: quando o env volta a espelhar o template, o MESMO step
+# FECHA as issues que ele abriu (com a prova no comentário). Por isso ele roda em
+# `always()`, e não só quando há drift: condicioná-lo ao drift faria o fechamento
+# sumir em silêncio no ÚNICO run capaz de fechá-lo.
+#
+# `absent` (o env do host não está visível neste checkout, ou o template não
+# está) NÃO é "em sincronia" e NÃO abre issue — ele FALHA o run, com o remédio
+# nomeado (`--host` / rodar onde o arquivo existe). Um cron que não consegue
+# medir não pode terminar verde: seria a garantia decorativa que o
+# `check:periodic-alerts` existe para não deixar passar.
+#
+# Secrets: `GITEA_TOKEN`      (escrita em issues — sem ela não há canal)
+#          `GITEA_URL`        (ex.: https://gitea.exemplo.com)
+#          `GITEA_REPOSITORY` (owner/repo — necessário para abrir a issue)
+# O job é pulado com aviso quando os secrets não existem — não falha por falta de
+# canal configurado, só por drift real (ou por `absent`).
+#
+# Usage:
+#   cron semanal (segunda 06:41 UTC) ou dispatch manual.
+#
+# Exit codes (dos steps):
+#   0 — env do HOST em SINCRONIA com o template (e a dívida aberta foi fechada)
+#   1 — DIVERGE (a issue é publicada ANTES de falhar) ou NÃO COMPARÁVEL
+# =============================================================================
+
+name: Env Mirror Drift
+
+on:
+  schedule:
+    # Segunda 06:41 UTC — na janela dos outros crons de drift da forja
+    # (06:23 do actrc-sync), e num minuto que não coincide com nenhum deles: um
+    # horário idêntico faria duas filas disputarem o mesmo runner.
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  env-mirror-drift:
+    name: env do HOST ↔ template comitado (issue)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Mesmo contrato da ci.yml: script + cache, sem composite local.
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+
+      # ── O diagnóstico (JSON gravado, exit code guardado) ─────────────────
+      # `bun <script>` direto (não `bun run env-mirror:check`): a entry do
+      # package.json invoca `node scripts/...`, e a imagem do runner Gitea não
+      # garante `node` no PATH — bun executa o .mjs nativamente.
+      #
+      # O step NÃO falha aqui: quem falha é o último. Um step que saísse 1 aqui
+      # mataria o step da issue, e o drift voltaria a ser cron vermelho sem
+      # ticket.
+      #
+      # Sem `--host`/`--template`: a DESCOBERTA do guard procura o template
+      # comitado e os espelhos do HOST (gitignored — existem onde a stack roda).
+      # Apontar um arquivo substituiria a descoberta e poderia largar um dos dois
+      # de fora; quem precisa apontar OUTRO host o faz pelo dispatch manual.
+      - name: Check host x template (report only)
+        id: drift
+        run: |
+          set +e
+          bun scripts/check-env-mirror.mjs --json > /tmp/env-mirror.json 2>/tmp/env-mirror.log
+          CODE=$?
+          set -e
+          cat /tmp/env-mirror.log
+          # O `state` do relatório (o primeiro campo do JSON): é ele que diz se o
+          # run não mediu (`absent`) ou se mediu e divergiu (`diverged`).
+          STATE=$(sed -n 's/.*"state": "\([a-z-]*\)".*/\1/p' /tmp/env-mirror.json | head -1)
+          echo "state=${STATE}" >> "$GITHUB_OUTPUT"
+          # O RELATÓRIO existe? É o que MODULA o step da issue (o publicador roda
+          # nos DOIS sentidos: publicar dívida e fechar dívida).
+          if [ -s /tmp/env-mirror.json ]; then
+            echo "report=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "report=0" >> "$GITHUB_OUTPUT"
+          fi
+          echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
+          echo "  relatório: /tmp/env-mirror.json (state=${STATE}, $(wc -c < /tmp/env-mirror.json) bytes)"
+
+      # ── A ISSUE é o alerta; o vermelho abaixo é a lembrança ───────────────
+      # Roda ANTES de falhar, de propósito. O relatório já está pronto, então não
+      # há nova comparação além da publicação.
+      #
+      # `always()` (e não `exit_code != 0`): com divergência ele PUBLICA; em
+      # sincronia ele RECONCILIA — comenta a prova e FECHA as issues que ele
+      # mesmo abriu. `absent` passa por aqui sem publicar nem fechar (não é
+      # dívida), e quem o torna visível é o step final.
+      #
+      # NUNCA passe --dry-run aqui: o modo não toca no backend de propósito, e a
+      # reconciliação sumiria em silêncio dentro de um run verde.
+      - name: Publish env-mirror drift issue (Gitea)
+        if: always() && steps.drift.outputs.report == '1'
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+          GITEA_URL: ${{ secrets.GITEA_URL }}
+          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
+        run: |
+          if [ -z "${GITEA_TOKEN:-}" ]; then
+            echo "::notice::GITEA_TOKEN ausente — o drift seria detectado, mas não publicado (sem canal)."
+            exit 0
+          fi
+          bun scripts/env-mirror-drift-issue.mjs \
+            --report /tmp/env-mirror.json \
+            --backend gitea
+
+      # ── Falha o cron também: a issue é o alerta, o vermelho é a lembrança ──
+      # Dois desfechos falham, e o texto separa os dois (o remédio é diferente):
+      #   `diverged` → a issue diz o que divergiu; aqui fica o ponteiro dela;
+      #   `absent`/erro de uso → NÃO HAVIA O QUE COMPARAR: o run fica vermelho
+      #   porque um cron que não conseguiu medir não pode passar por verde.
+      - name: Fail on drift (or on nothing to compare)
+        if: steps.drift.outputs.exit_code != '0'
+        run: |
+          if [ "${{ steps.drift.outputs.state }}" = "diverged" ]; then
+            echo "::error::O env do HOST da forja não espelha o template comitado. Veja a issue 'env-mirror-drift' (remédio: bun run env-mirror:check --patch para revisar e --fix para aplicar; se divergiu uma variável de imagem, re-registre o runner: bash deploy/gitea-up.sh --re-register)."
+          else
+            echo "::error::Não havia o que comparar (state='${{ steps.drift.outputs.state }}') — o env do HOST e/ou o template não estão neste checkout. O cron NÃO mediu o drift: rode onde o arquivo do host existe, ou dispare o workflow com --host apontando para ele (ex.: /opt/gitea/.env)."
+          fi
+          exit 1

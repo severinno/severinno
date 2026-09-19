@@ -68,14 +68,27 @@ const WORKFLOW_COMMENT_ONLY = `jobs:
         run: echo "usa scripts/test-mutation-ghost.sh? não"
 `
 
+// O comentário de FIM DE LINHA dentro do bloco `run:`: a régua única corta a
+// prosa, e é isso que impede cobertura FALSA (o script parecer coberto por
+// viver num `#`).
+const WORKFLOW_TRAILING_COMMENT = `jobs:
+  mutation-guards:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mutation tests
+        run: |
+          bash scripts/test-mutation-guards.sh
+          echo ok # bash scripts/test-mutation-ghost.sh
+`
+
 const PKG_SCRIPTS = {
   "test:mutation-seed-dev-e2e": "bash scripts/test-mutation-seed-dev-e2e.sh",
   "test:mutation-guards": "bash scripts/test-mutation-guards.sh",
 }
 
 const MASTER_MATRIX = `SUBTESTS=(
-  "bun-literal|Bun — literal bun-version em workflow|scripts/test-mutation-bun-literal.sh"
-  "bun-removal|Bun --staged — remoção do input bun-version|scripts/test-mutation-bun-removal.sh"
+  "bun-literal|Bun — versão literal na chamada do setup|scripts/test-mutation-bun-literal.sh"
+  "bun-removal|Bun --staged — remoção da chamada do setup|scripts/test-mutation-bun-removal.sh"
   "hooks-symmetry|Hooks — guard novo no pre-commit|scripts/test-mutation-hooks-symmetry.sh"
   "readme|README — anchors + toc + images (matriz aninhada)|scripts/test-mutation-readme-guards.sh"
   "utf8-scope|UTF-8 — call site sem src/|scripts/test-mutation-utf8-scope.sh"
@@ -148,6 +161,17 @@ describe("extractWorkflowRunRefs", () => {
   it("NÃO trata comentário que cita script como cobertura", () => {
     const refs = extractWorkflowRunRefs(WORKFLOW_COMMENT_ONLY, PKG_SCRIPTS)
     expect(refs).toEqual([])
+  })
+
+  it("NÃO trata comentário de FIM DE LINHA como cobertura (a régua é a única)", () => {
+    // A metade que faltava: antes só a linha INTEIRA de comentário saía, e uma
+    // invocação REAL dentro da prosa (`echo ok # bash scripts/ghost.sh`) contava
+    // como cobertura — o guard declarava um script de mutation test coberto por
+    // uma linha que a pipeline nunca roda, e o vizinho ficava descoberto em
+    // silêncio. `executableLine` corta o `#` de fim de linha.
+    const refs = extractWorkflowRunRefs(WORKFLOW_TRAILING_COMMENT, PKG_SCRIPTS)
+    expect(refs).toEqual(["test-mutation-guards.sh"])
+    expect(refs).not.toContain("test-mutation-ghost.sh")
   })
 
   it("não mapeia bun run sem entrada correspondente em package.json", () => {
@@ -623,5 +647,54 @@ describe("checkMutationJobs — regressão real do repo", () => {
 
     const violations = checkMutationJobs({ scripts, directRefs: [...directRefs], matrixRefs })
     expect(violations).toEqual([])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `defaults: run:` NÃO é passo — e a direção do erro aqui é o guard AFIRMAR
+// cobertura: `defaults:\n  run: bash scripts/test-mutation-x.sh` fazia um
+// mutation test que NENHUM job roda contar como coberto.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("extractWorkflowRunRefs — a declaração `defaults.run` não é cobertura", () => {
+  const WF = [
+    "name: x",
+    "on: [push]",
+    "jobs:",
+    "  a:",
+    "    runs-on: ubuntu-latest",
+    "    defaults:",
+    "      run: bash scripts/test-mutation-inventado.sh",
+    "    steps:",
+    "      - run: echo nada",
+  ].join("\n")
+
+  it("não conta a ref da declaração de shell default", () => {
+    expect(extractWorkflowRunRefs(WF)).toEqual([])
+  })
+
+  it("a forma em bloco (`shell:` no default) idem", () => {
+    const bloco = [
+      "jobs:",
+      "  a:",
+      "    defaults:",
+      "      run:",
+      "        shell: bash",
+      "    steps:",
+      "      - run: bash scripts/test-mutation-real.sh",
+    ].join("\n")
+    expect(extractWorkflowRunRefs(bloco)).toEqual(["test-mutation-real.sh"])
+  })
+
+  it("o comando do PASSO continua sendo lido", () => {
+    const comPasso = [
+      "jobs:",
+      "  a:",
+      "    defaults:",
+      "      run: bash scripts/test-mutation-inventado.sh",
+      "    steps:",
+      "      - run: bash scripts/test-mutation-de-verdade.sh",
+    ].join("\n")
+    expect(extractWorkflowRunRefs(comPasso)).toEqual(["test-mutation-de-verdade.sh"])
   })
 })

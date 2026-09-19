@@ -8,9 +8,15 @@ import { Loader2 } from "lucide-react"
 
 // Lazy-load role-specific panels — only the matching role's code is fetched,
 // reducing the initial dashboard bundle by ~60% (2 of 3 panels skipped).
-const ClientPanel = lazy(() => import("@/components/client/client-panel").then(m => ({ default: m.ClientPanel })))
-const ProviderPanel = lazy(() => import("@/components/provider/provider-panel").then(m => ({ default: m.ProviderPanel })))
-const AdminPanel = lazy(() => import("@/components/admin/admin-panel").then(m => ({ default: m.AdminPanel })))
+const ClientPanel = lazy(() =>
+  import("@/components/client/client-panel").then((m) => ({ default: m.ClientPanel })),
+)
+const ProviderPanel = lazy(() =>
+  import("@/components/provider/provider-panel").then((m) => ({ default: m.ProviderPanel })),
+)
+const AdminPanel = lazy(() =>
+  import("@/components/admin/admin-panel").then((m) => ({ default: m.AdminPanel })),
+)
 
 export function DashboardPageClient() {
   const status = useAuthStore((s) => s.status)
@@ -57,7 +63,7 @@ export function DashboardPageClient() {
   return (
     <Suspense
       fallback={
-        <div className="flex min-h-screen items-center justify-content-center">
+        <div className="justify-content-center flex min-h-screen items-center">
           <Loader2 className="text-muted-foreground size-6 animate-spin" />
         </div>
       }

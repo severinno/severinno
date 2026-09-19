@@ -26,7 +26,13 @@
  *
  * Header check:
  *   - Scans every file under scripts/ with an executable extension
- *   - Verifies the first 50 lines contain both "Usage:" and "Exit code:"
+ *   - Verifies the LEADING DOCUMENTATION BLOCK (the comment lines at the top,
+ *     up to the first line of code) contains both "Usage:" and "Exit code"
+ *
+ * A regra do cabecalho mora em scripts/check-script-headers.mjs (o gate
+ * bloqueante no CI) e e IMPORTADA daqui: duas copias da mesma regra divergem no
+ * dia em que uma delas for ajustada, e este agregador existe para rodar na
+ * maquina de quem commita, nao para ter a sua propria versao do contrato.
  *
  * Test files (.test.ts, .spec.ts) are excluded from barrel checks because
  * they often need to import implementation modules directly for white-box
@@ -47,6 +53,8 @@
 import { readFileSync, readdirSync, statSync } from "node:fs"
 import { join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+
+import { scanHeaders } from "./check-script-headers.mjs"
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -99,62 +107,8 @@ const EXCLUDE_PATTERNS = [
 ]
 
 // ---------------------------------------------------------------------------
-// Script header check configuration
-// ---------------------------------------------------------------------------
-
-/** Extensions to scan for header documentation. */
-const HEADER_EXTENSIONS = new Set([".mjs", ".ts", ".sh", ".py", ".ps1"])
-
-/** Files to skip in the header check (generated, vendor, or non-script). */
-let HEADER_SKIP = [
-  "barrel-lint.mjs", // itself (has header)
-  "_coverage_analysis.py", // underscore-prefixed = internal helper
-  "_update_workflows.py", // underscore-prefixed = internal helper
-]
-
-// ── Load .barrel-lint-ignore (if it exists) ────────────────────────────────
-const IGNORE_FILE = join(ROOT, ".barrel-lint-ignore")
-try {
-  const ignoreContent = readFileSync(IGNORE_FILE, "utf-8")
-  const ignoreEntries = ignoreContent
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith("#"))
-  HEADER_SKIP = [...HEADER_SKIP, ...ignoreEntries]
-} catch {
-  // .barrel-lint-ignore is optional; silently skip if absent
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Check if a filename should be scanned for header documentation. */
-function isHeaderCheckable(fileName) {
-  const ext = fileName.slice(fileName.lastIndexOf("."))
-  if (!HEADER_EXTENSIONS.has(ext)) return false
-  if (HEADER_SKIP.includes(fileName)) return false
-  return true
-}
-
-/**
- * Check whether the first `maxLines` lines of `content` contain both
- * a Usage section and an Exit code section inside comments.
- */
-function hasMinimalHeader(content, maxLines = 50) {
-  const lines = content.split("\n").slice(0, maxLines)
-  let hasUsage = false
-  let hasExitCode = false
-  for (const line of lines) {
-    const trimmed = line.trim()
-    // Matches any comment marker: //, #, *, <!--, etc.
-    // Also matches bare "Usage:" / "Exit code" lines (e.g. inside
-    // PowerShell `<# ... #>` block comments).
-    if (/^\s*(\/\/|#|\*|<!--)?\s*Usage:/.test(trimmed)) hasUsage = true
-    if (/^\s*(\/\/|#|\*|<!--)?\s*Exit code/.test(trimmed)) hasExitCode = true
-  }
-  return hasUsage && hasExitCode
-}
 
 /** Check if a file path should be excluded from linting. */
 function isExcluded(filePath) {
@@ -252,21 +206,10 @@ try {
   // Check 2 — Script header documentation
   // ═════════════════════════════════════════════════════════════════════
 
-  const scriptsDir = join(ROOT, "scripts")
-  const scriptEntries = readdirSync(scriptsDir, { withFileTypes: true })
-  const headerViolations = []
-
-  for (const entry of scriptEntries) {
-    if (!entry.isFile()) continue
-    if (!isHeaderCheckable(entry.name)) continue
-
-    const fullPath = join(scriptsDir, entry.name)
-    const content = readFileSync(fullPath, "utf-8")
-
-    if (!hasMinimalHeader(content)) {
-      headerViolations.push(entry.name)
-    }
-  }
+  // A varredura (e a regra) vêm do guard que é gate no CI — ver
+  // scripts/check-script-headers.mjs. Aqui só o resumo entra no relatório.
+  const headers = scanHeaders({ dir: "scripts", root: ROOT })
+  const headerViolations = headers.violations.map((v) => ({ name: v.name, missing: v.missing }))
 
   // ── Report header violations ────────────────────────────────────────
   if (headerViolations.length > 0) {
@@ -279,8 +222,8 @@ try {
     console.log(`  and "Exit code:" documentation:`)
     console.log("")
 
-    for (const name of headerViolations) {
-      console.log(`  ❌ scripts/${name}`)
+    for (const v of headerViolations) {
+      console.log(`  ❌ scripts/${v.name} — falta ${v.missing.join(" e ")}`)
     }
 
     console.log("")

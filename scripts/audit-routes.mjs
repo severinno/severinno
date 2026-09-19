@@ -116,10 +116,7 @@ const PUBLIC_ROUTES = new Set([
   "app/api/reviews/recent/route.ts",
 ])
 
-const _AUTH_ONLY_ROUTES = new Set([
-  "api/auth/logout/route.ts",
-  "api/auth/change-password/route.ts",
-])
+const _AUTH_ONLY_ROUTES = new Set(["api/auth/logout/route.ts", "api/auth/change-password/route.ts"])
 
 function classifyIssues(analysis) {
   const { path, hasAuth, hasRateLimit } = analysis
@@ -172,12 +169,21 @@ function main() {
   const secureRoutes = analyses.filter((a) => !a.isPublic && a.issues.length === 0)
 
   if (JSON_OUTPUT) {
-    console.log(JSON.stringify({ analyses, summary: {
-      total: analyses.length,
-      secure: secureRoutes.length,
-      public: publicRoutes.length,
-      withIssues: withIssues.length,
-    }}, null, 2))
+    console.log(
+      JSON.stringify(
+        {
+          analyses,
+          summary: {
+            total: analyses.length,
+            secure: secureRoutes.length,
+            public: publicRoutes.length,
+            withIssues: withIssues.length,
+          },
+        },
+        null,
+        2,
+      ),
+    )
   } else {
     console.log(`\n=== Route Security Audit ===`)
     console.log(`Total routes scanned: ${analyses.length}`)
@@ -198,7 +204,9 @@ function main() {
               console.log(`              const session = await requireUser()`)
             }
             if (issue.type === "MISSING-RATE-LIMIT") {
-              console.log(`        Fix: Add import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"`)
+              console.log(
+                `        Fix: Add import { assertRateLimit, RATE_LIMITS } from "@/lib/rate-limit"`,
+              )
               console.log(`              await assertRateLimit(request, RATE_LIMITS.general)`)
             }
           }

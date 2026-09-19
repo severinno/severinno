@@ -114,20 +114,24 @@ describe("check-e2e-counts.mjs — CLI real (fast gate)", () => {
     rmSync(ROOT_TMP, { recursive: true, force: true })
   })
 
-  it("count documentado divergente da derivação → exit 1 com arquivo:linha", { timeout: CLI_TIMEOUT }, () => {
-    const dir = makeFakeRepo("t1-divergent", {
-      workflows: {
-        // Linha 1 divergente (147) + piso completo de sites corretos (115/162)
-        "pr-check.yml": `# ORDEM: prod E2E PRIMEIRO (147 checks — divergente\n${siteLines(115, 162)}`,
-        "seed-guards.yml": SEED_GUARDS(115, 162),
-      },
-    })
-    const { status, out } = runGuard(dir)
-    expect(status).toBe(1)
-    expect(out).toContain("divergente")
-    expect(out).toContain("pr-check.yml:1")
-    expect(out).toContain("[prod] documentado=147 → esperado=115")
-  })
+  it(
+    "count documentado divergente da derivação → exit 1 com arquivo:linha",
+    { timeout: CLI_TIMEOUT },
+    () => {
+      const dir = makeFakeRepo("t1-divergent", {
+        workflows: {
+          // Linha 1 divergente (147) + piso completo de sites corretos (115/162)
+          "pr-check.yml": `# ORDEM: prod E2E PRIMEIRO (147 checks — divergente\n${siteLines(115, 162)}`,
+          "seed-guards.yml": SEED_GUARDS(115, 162),
+        },
+      })
+      const { status, out } = runGuard(dir)
+      expect(status).toBe(1)
+      expect(out).toContain("divergente")
+      expect(out).toContain("pr-check.yml:1")
+      expect(out).toContain("[prod] documentado=147 → esperado=115")
+    },
+  )
 
   it("counts documentados iguais à derivação → exit 0", { timeout: CLI_TIMEOUT }, () => {
     const dir = makeFakeRepo("t2-clean", {
@@ -160,9 +164,13 @@ describe("check-e2e-counts.mjs — CLI real (fast gate)", () => {
     expect(out).toContain("não é JSON válido")
   })
 
-  it("repo real do projeto → exit 0 (derivação real prod=127, dev=161)", { timeout: CLI_TIMEOUT }, () => {
-    const { status, out } = runGuard(process.cwd())
-    expect(status).toBe(0)
-    expect(out).toContain("sincronizados")
-  })
+  it(
+    "repo real do projeto → exit 0 (derivação real prod=127, dev=161)",
+    { timeout: CLI_TIMEOUT },
+    () => {
+      const { status, out } = runGuard(process.cwd())
+      expect(status).toBe(0)
+      expect(out).toContain("sincronizados")
+    },
+  )
 })

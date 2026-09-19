@@ -122,13 +122,17 @@ describe("quality-gate.yml — fatos-chave", () => {
     return s.run ?? ""
   }
 
-  it("todo job segue o padrão checkout → setup-bun → install", () => {
+  it("todo job segue o padrão checkout → setup do Bun (run:) → install", () => {
     for (const [name, job] of Object.entries(parsed.jobs ?? {})) {
       const uses = (job.steps ?? []).map((s) => s.uses).filter(Boolean)
       expect(uses[0], `${name}: primeiro use deve ser checkout`).toBe("actions/checkout@v4")
-      expect(uses[1], `${name}: segundo use deve ser setup-bun local`).toBe(
-        "./.github/actions/setup-bun",
-      )
+      // O setup do Bun é um `run:` (scripts/setup-bun-ci.sh), não um composite
+      // local — `run:` não passa pelo resolvedor de actions do runner.
+      const runs = (job.steps ?? []).map((s) => s.run ?? "")
+      expect(
+        runs.some((r) => r.includes("scripts/setup-bun-ci.sh")),
+        `${name}: deve rodar o setup do Bun por run: (scripts/setup-bun-ci.sh)`,
+      ).toBe(true)
       const install = (job.steps ?? []).find((s) => s.run === "bun install --frozen-lockfile")
       expect(install, `${name}: deve rodar bun install --frozen-lockfile`).toBeDefined()
     }
@@ -138,6 +142,18 @@ describe("quality-gate.yml — fatos-chave", () => {
     expect(jobRun("barrel-lint", "node scripts/barrel-lint.mjs")).toContain(
       "node scripts/barrel-lint.mjs",
     )
+  })
+
+  it("o step do barrel-lint é FAIL-CLOSED: um comando, cujo código de saída É o veredito", () => {
+    // O contrato morava aqui como AVISO: o `|| exit_code=$?` capturava o status
+    // e o ramo `-eq 3` o transformava em "non-blocking (fix in progress)" — um
+    // gate que NUNCA falhava. Capturar o status de novo (por qualquer motivo)
+    // reintroduz o problema, então o teste exige o comando PURO.
+    const run = jobRun("barrel-lint", "node scripts/barrel-lint.mjs")
+    expect(run.trim()).toBe("node scripts/barrel-lint.mjs")
+    expect(run).not.toContain("exit_code")
+    expect(run).not.toMatch(/-eq\s+\d/)
+    expect(run).not.toContain("non-blocking")
   })
 
   it("security-audit roda bun run security:audit", () => {
@@ -196,12 +212,10 @@ describe("quality-gate.yml — refs contra o check-workflow-refs", () => {
     }
   })
 
-  it("o composite action local setup-bun existe em todos os jobs", () => {
+  it("não usa action local (./) e o setup do Bun é o script do repo", () => {
     const refs = extractActionUses(content)
-    expect(refs.length).toBe(5)
-    for (const r of refs) {
-      expect(ctx.actions.has(r.ref), `action ausente: ${r.ref} (linha ${r.line})`).toBe(true)
-    }
+    expect(refs, "nenhuma ref de action local deve restar").toEqual([])
+    expect(content).toContain("bash scripts/setup-bun-ci.sh")
   })
 
   // NOTA: extractWorkflowUses é VACUO neste workflow (não chama outros

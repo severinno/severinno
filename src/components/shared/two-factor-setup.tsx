@@ -13,15 +13,7 @@
 import * as React from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { QRCodeSVG } from "qrcode.react"
-import {
-  Shield,
-  ShieldCheck,
-  ShieldOff,
-  Copy,
-  Check,
-  Loader2,
-  AlertTriangle,
-} from "lucide-react"
+import { Shield, ShieldCheck, ShieldOff, Copy, Check, Loader2, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 
 import { apiGet, apiPost } from "@/lib/api"

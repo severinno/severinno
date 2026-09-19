@@ -160,7 +160,7 @@ if [ "$EXIT" -eq 0 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO citou a dep órfã esperada.
-if ! echo "$OUTPUT" | grep -Fq "$EXPECTED_ORPHAN_A"; then
+if ! grep -Fq "$EXPECTED_ORPHAN_A" <<< "$OUTPUT"; then
   fail "Guard falhou (exit $EXIT) mas NÃO citou a dep órfã esperada:"
   fail "  esperava (dep): $EXPECTED_ORPHAN_A"
   fail "Falha pode ser outro invariante do fixture — veja o output acima."
@@ -185,7 +185,7 @@ if [ "$EXIT" -eq 0 ]; then
   exit 1
 fi
 
-if ! echo "$OUTPUT" | grep -Fq "$EXPECTED_ORPHAN_B"; then
+if ! grep -Fq "$EXPECTED_ORPHAN_B" <<< "$OUTPUT"; then
   fail "Guard falhou (exit $EXIT) mas NÃO citou a dep $EXPECTED_ORPHAN_B."
   fail "Falha pode ser outro invariante do fixture — veja o output acima."
   exit 1
@@ -239,7 +239,7 @@ if [ "$EXIT" -eq 0 ]; then
   fail "índice passou (exit 0). O modo --staged não pega dep órfã do commit."
   exit 1
 fi
-if ! echo "$OUTPUT" | grep -Fq "is-odd"; then
+if ! grep -Fq "is-odd" <<< "$OUTPUT"; then
   fail "--staged falhou (exit $EXIT) mas NÃO citou a dep is-odd."
   echo "$OUTPUT" | tail -6
   exit 1
@@ -270,7 +270,7 @@ if [ "$EXIT" -eq 0 ]; then
   fail "deveria ler o ÍNDICE (o que será commitado), não o working tree."
   exit 1
 fi
-if ! echo "$OUTPUT" | grep -Fq "git add"; then
+if ! grep -Fq "git add" <<< "$OUTPUT"; then
   fail "--staged falhou (exit $EXIT) mas a mensagem não orienta o git add."
   echo "$OUTPUT" | tail -6
   exit 1

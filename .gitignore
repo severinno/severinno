@@ -104,6 +104,9 @@ lhci-reports/
 
 # Runtime artifacts — process IDs and error logs regenerated on each run
 *.pid
+# Estado de runtime do forge-doctor (fechamentos silenciosos detectados pelo
+# ciclo de dívida): regenerado a cada run, nunca versionado.
+.forge-doctor/
 mini-services/realtime/service.pid
 mini-services/realtime/realtime.err
 /dev.err

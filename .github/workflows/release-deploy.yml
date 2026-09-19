@@ -37,8 +37,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  # Origem das imagens — FONTE ÚNICA (repo variable IMAGE_REGISTRY).
+  # Mesmo contrato do deploy.yml: default = ghcr.io/<owner>/<repo>.
+  REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
+  IMAGE_NAME: ${{ vars.IMAGE_NAME || github.repository }}
   NODE_VERSION: 22
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test
   REDIS_URL: redis://localhost:6379
@@ -75,9 +77,14 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - run: bun install --frozen-lockfile
       - run: bun run lint
 
@@ -86,29 +93,39 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - run: bun install --frozen-lockfile
       - run: bun run db:generate
 
-      # O heap default do Node (~1.4GB) é insuficiente para o tsc neste
-      # codebase — o processo crasha com 'JavaScript heap out of memory'
-      # (SIGABRT exit 134, não erro de tipo). Reproduzido e validado em
-      # 08/2026: com 4096MB o typecheck passa limpo em ~2min.
+      # O comando INTEIRO vive no script `typecheck` do package.json, inclusive
+      # o heap de 4GB (o crash de OOM documentado: o heap default do Node,
+      # ~1.4GB, é insuficiente para o tsc neste codebase — SIGABRT exit 134, não
+      # erro de tipo). É o MESMO `bun run typecheck` que a forja dona do merge e
+      # o espelho do GitHub executam: o typecheck do release não é uma quarta
+      # régua do mesmo gate.
       - name: Type check
-        run: bunx tsc --noEmit
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
+        run: bun run typecheck
 
   test:
     name: Tests
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - run: bun install --frozen-lockfile
       - run: bun run test:run
 

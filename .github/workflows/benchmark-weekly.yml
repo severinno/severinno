@@ -37,6 +37,11 @@ on:
         required: false
         default: ""
         type: string
+      no_lint:
+        description: "Pular a medição do custo do lint no guard-timing (a seção mais cara)"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: benchmark-weekly-${{ github.ref }}
@@ -55,6 +60,9 @@ env:
   PGHOST: ${{ secrets.STAGING_PGHOST || 'localhost' }}
   PGPORT: ${{ secrets.STAGING_PGPORT || '5432' }}
   PGDATABASE: ${{ secrets.STAGING_PGDATABASE || 'severinno' }}
+  # Origem do mirror ubuntu-bun — FONTE ÚNICA (default = ghcr.io/severinno).
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
+  IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE || 'severinno' }}
 
 jobs:
   # ── Smoke Check ─────────────────────────────────────────────────────────
@@ -66,10 +74,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Check benchmark scripts exist
         run: |
           MISSING=false
@@ -120,10 +132,14 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       - name: Cache node_modules
         uses: actions/cache@v4
         with:
@@ -308,6 +324,54 @@ jobs:
               \"diff\": $(echo "$DIFF_TRUNCATED" | jq -Rs .)
             }" || echo "  ⚠ Webhook failed (non-critical)"
 
+      # ── Close regression issue when baseline returns to stable ───────
+      # When the comparison succeeds (no regression), close any open issue
+      # with the benchmark-regression label. The dívida não fica aberta
+      # depois de resolvida.
+      - name: Close regression issue (baseline stable)
+        if: steps.compare.outcome == 'success' || steps.baseline.outputs.baseline_exists != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const repo = context.repo;
+            const runUrl = `${context.serverUrl}/${repo.owner}/${repo.repo}/actions/runs/${context.runId}`;
+            const threshold = '${{ steps.changes.outputs.threshold }}';
+
+            // Find open issues with the regression label
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: repo.owner,
+              repo: repo.repo,
+              state: 'open',
+              labels: 'benchmark-regression',
+              per_page: 10
+            });
+
+            if (issues.length === 0) {
+              console.log('  ✅ No open regression issues to close');
+              return;
+            }
+
+            for (const issue of issues) {
+              await github.rest.issues.createComment({
+                owner: repo.owner,
+                repo: repo.repo,
+                issue_number: issue.number,
+                body: `### ✅ Baseline returned to stable (${new Date().toISOString()})\n\n` +
+                  `The weekly PostGIS benchmark ran without regression (threshold: ${threshold}%).\n\n` +
+                  `**Workflow**: [Benchmark Weekly](${runUrl})\n` +
+                  `**Run**: ${context.runId}\n\n` +
+                  `Closing this issue automatically.`
+              });
+              await github.rest.issues.update({
+                owner: repo.owner,
+                repo: repo.repo,
+                issue_number: issue.number,
+                state: 'closed',
+                state_reason: 'completed'
+              });
+              console.log(`  🔒 Closed regression issue #${issue.number}`);
+            }
+
       # ── Copy latest to baseline ────────────────────────────────────────
       - name: Update baseline
         id: update
@@ -463,10 +527,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./.github/actions/setup-bun
+      - name: Restore Bun cache
+        uses: actions/cache@v4
         with:
-          bun-version: ${{ vars.BUN_VERSION }}
-
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
       # ── act Linux (v0.2.89 — mesma da validação local no Windows) ────
       # O script aceita ACT_BIN para apontar para um binário alternativo;
       # sem ele, tenta tool-results/act/act.exe (não existe no runner).
@@ -484,7 +552,7 @@ jobs:
       - name: Puxar imagens do bench
         run: |
           docker pull catthehacker/ubuntu:act-latest
-          docker pull ghcr.io/severinno/ubuntu-bun:${{ vars.BUN_VERSION }}
+          docker pull "${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/ubuntu-bun:${{ vars.BUN_VERSION }}"
 
       # ── GATE: startup da custom dentro de +30% da baseline ───────────
       # --image explicita as DUAS imagens (a 1ª = baseline = catthehacker);
@@ -503,7 +571,7 @@ jobs:
           set -eo pipefail
           bun run bench:act-startup --assert-pct 30 \
             --image "catthehacker|catthehacker/ubuntu:act-latest" \
-            --image "ubuntu-bun|ghcr.io/severinno/ubuntu-bun:${{ vars.BUN_VERSION }}" \
+            --image "ubuntu-bun|${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/ubuntu-bun:${{ vars.BUN_VERSION }}" \
             2>&1 | tee /tmp/act-startup-bench.log
 
       # ── Evidência como artifact (debug de falhas) ────────────────────
@@ -516,6 +584,100 @@ jobs:
           name: act-startup-bench
           path: /tmp/act-startup-bench.log
           if-no-files-found: ignore
+
+  # ── Drift dos shells da imagem do runner (semanal) ───────────────
+  # O `--shells` do gate de sintaxe (`check-workflow-run-syntax.mjs`) imprime o
+  # conjunto de shells DECLARADO — `RUNNER_SHELLS`/`RUNNER_SHELLS_MISSING`, com
+  # o digest e o comando que o mediu. Só que quem RE-MEDE é uma pessoa, e
+  # ninguém lembra: se a base da imagem mudar (re-sync do mirror, rebuild,
+  # troca de base), a declaração passa a MENTIR e NENHUM gate fica vermelho —
+  # ela só governa o veredito do PRÓPRIO gate. As duas direções doem em
+  # sentidos opostos: declarar PRESENTE o que a imagem não tem faz o gate
+  # PASSAR um passo `shell:` que morre com `command not found` depois do setup;
+  # declarar AUSENTE o que a imagem tem faz o gate REPROVAR um passo legítimo.
+  #
+  # Este job RE-MEDE dentro da imagem (docker disponível, como o
+  # act-startup-bench) com o MESMO probe declarado, compara com o que o gate
+  # declara e publica o drift como ISSUE acionável (dedup por assinatura,
+  # fechamento automático quando a medição volta a bater). O run vermelho
+  # continua como lembrança.
+  #
+  # `unavailable` (sem docker, imagem não puxável, `vars.BUN_VERSION` ausente)
+  # NÃO abre issue — ele FALHA o run com o motivo nomeado: um cron que não
+  # mediu não pode passar por verde.
+  runner-shells-drift:
+    name: shells da imagem do runner (medição ↔ declaração)
+    runs-on: self-hosted
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── A imagem tem de estar local: o probe roda DENTRO dela ────────
+      # A tag segue a fonte única (`vars.BUN_VERSION`) — o pull falha cedo se
+      # o mirror ubuntu-bun não foi re-sincronizado após o bump.
+      - name: Puxar a imagem do runner
+        run: docker pull "${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/ubuntu-bun:${{ vars.BUN_VERSION }}"
+
+      # ── A medição (JSON gravado, exit code guardado) ─────────────────
+      # Node puro (sem deps: os dois scripts importam só módulos do repo).
+      #
+      # O step NÃO falha aqui: quem falha é o último. Um step que saísse 1
+      # agora mataria o step da issue, e o drift voltaria a ser cron vermelho
+      # SEM ticket — exatamente o defeito que este job existe para eliminar.
+      - name: Medir os shells da imagem e comparar com a declaração
+        id: shells
+        env:
+          BUN_VERSION: ${{ vars.BUN_VERSION }}
+        run: |
+          set +e
+          node scripts/runner-shells.mjs --json --report /tmp/runner-shells.json \
+            >/dev/null 2>/tmp/runner-shells.log
+          CODE=$?
+          set -e
+          cat /tmp/runner-shells.log
+          # O `state` do relatório é o primeiro campo do JSON: é ele que separa
+          # "mediu e divergiu" (measured) de "não consegui medir" (unavailable).
+          STATE=$(sed -n 's/.*"state": "\([a-z-]*\)".*/\1/p' /tmp/runner-shells.json | head -1)
+          echo "state=${STATE}" >> "$GITHUB_OUTPUT"
+          echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
+          # O RELATÓRIO existe? É o que modula o step da issue (o publicador roda
+          # nos DOIS sentidos: publicar dívida e fechar dívida).
+          if [ -s /tmp/runner-shells.json ]; then
+            echo "report=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "report=0" >> "$GITHUB_OUTPUT"
+          fi
+          echo "  relatório: /tmp/runner-shells.json (state=${STATE}, $(wc -c < /tmp/runner-shells.json) bytes)"
+
+      # ── A ISSUE é o alerta; o vermelho abaixo é a lembrança ──────────
+      # `always()` (e não `exit_code != 0`): com drift ele PUBLICA; em sincronia
+      # ele RECONCILIA — comenta a prova e FECHA as issues que ele mesmo abriu.
+      # `unavailable` passa por aqui sem publicar nem fechar (não é dívida), e
+      # quem o torna visível é o step final.
+      #
+      # NUNCA passe --dry-run aqui: o modo não toca no backend de propósito, e a
+      # reconciliação sumiria em silêncio dentro de um run verde.
+      - name: Publicar o drift como Issue acionável (e fechar quando voltar a bater)
+        if: always() && steps.shells.outputs.report == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/runner-shells-issue.mjs --report /tmp/runner-shells.json --backend github
+
+      # ── O desfecho: drift publicado, ou "não medi" nomeado ───────────
+      # Dois casos falham, e o texto separa os dois (o remédio é diferente):
+      #   measured   → a issue diz o que divergiu; aqui fica o ponteiro dela;
+      #   unavailable→ NÃO HAVIA MEDIÇÃO: o run fica vermelho porque um cron
+      #                que não conseguiu medir não pode passar por verde.
+      - name: Fail on drift (or on nothing measured)
+        if: steps.shells.outputs.exit_code != '0'
+        run: |
+          if [ "${{ steps.shells.outputs.state }}" = "measured" ]; then
+            echo "::error::Os shells da imagem do runner divergem do que o gate declara (RUNNER_SHELLS). Veja a issue 'runner-shells-drift'. Remédio: re-medir com 'node scripts/runner-shells.mjs --json' e mover o nome para a lista certa em scripts/runner-shells.mjs (atualizando RUNNER_IMAGE.digest/measuredAt)."
+          else
+            echo "::error::Não foi possível MEDIR os shells da imagem (state='${{ steps.shells.outputs.state }}') — sem docker, imagem não puxável ou vars.BUN_VERSION ausente. O cron NÃO mediu o drift: um cron que não mede não pode terminar verde."
+          fi
+          exit 1
 
   # ── Blob CRLF history audit (semanal) ─────────────────────────────
   # Garante o zero-CRLF NO HISTÓRICO, não só no índice atual. O guard de
@@ -561,12 +723,25 @@ jobs:
   # ao escopo. Se o histórico estiver limpo, o sentinel 'com CRLF' não
   # aparece e o job passa silenciosamente.
   #
+  # A ISSUE É O CANAL, não o `::error::`: um cron que só fica vermelho é
+  # alerta MUDO (ninguém abre o log de um run que já falhou). O step
+  # `if: always()` roda `scripts/blob-crlf-scope-issue.mjs`, que REUSA o
+  # MESMO audit (lendo o relatório teed + o exit code declarado — fonte
+  # única) e publica/comenta UMA issue por alcance, com dedup por assinatura
+  # do CONJUNTO de paths ofensores; quando o audit volta a reportar 0 CRLF,
+  # ele RECONCILIA (comenta a prova e fecha o que ele abriu). O vermelho do
+  # step de alerta continua sendo a LEMBRANÇA; a issue é o que alguém lê.
+  #
   # Requer o histórico completo (fetch-depth: 0). Node/Bun não são
-  # necessários — só git + python3, como o job irmão acima.
+  # necessários para o audit — só git + python3, como o job irmão acima —,
+  # mas o publicador roda o wrapper num shell (`bash`), que o runner tem.
   blob-crlf-all-text-alert:
-    name: Blob CRLF all-text (alcance, aviso)
+    name: Blob CRLF all-text (alcance, aviso + issue)
     runs-on: self-hosted
     timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write # a issue é o canal acionável do alcance (o vermelho é a lembrança)
 
     steps:
       - uses: actions/checkout@v4
@@ -591,7 +766,27 @@ jobs:
             echo "found_crlf=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # ── ISSUE: o alcance cresceu → ticket acionável ──────────────────
+      # if: always() — roda TAMBÉM quando o REPORT achou CRLF (que é o caso
+      # em crescimento) E quando não achou (aí RECONCILIA: comenta a prova e
+      # fecha as issues que ELE abriu — publicar sem fechar deixaria a dívida
+      # MENTINDO no board depois de resolvida).
+      #
+      # O relatório é o MESMO arquivo teed acima (`--report all-text-report.txt`)
+      # e o exit code do audit é passado junto (`--audit-exit`): assim o
+      # publicador não re-varre o histórico E mantém a guarda 'não medido ≠
+      # resolvido' — um audit quebrado (exit 2, stream truncado) NÃO pode
+      # fechar a dívida como se o histórico estivesse limpo.
+      # NUNCA passe --dry-run aqui: o contrato dele é não ter efeito nenhum, e
+      # a reconciliação sumiria em silêncio.
+      - name: Publicar o alcance do CRLF como Issue acionável (e fechar quando resolver)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/blob-crlf-scope-issue.mjs --report all-text-report.txt --audit-exit "${{ steps.alltext.outputs.report_exit }}"
+
       # ── ALERTA: achados no REPORT OU falha do audit → falha com aviso.
+      # A ISSUE acima é o canal acionável; este vermelho é a LEMBRANÇA no run.
       # O report_exit está no gate: exit 2 (erro de git / stream cat-file
       # truncado) SEM o sentinel 'com CRLF' não pode passar como limpo —
       # 'não achado' não é evidência de 'limpo' (mesma classe de falso
@@ -616,9 +811,12 @@ jobs:
   # git. O histórico JÁ tem vazamentos conhecidos (baseline commitado
   # docs/security/secret-leaks-baseline.json — 141 achados em 2026-08; a
   # remediação é filter-repo + rotação, operação deliberada, não CI). Este
-  # guard falha SOMENTE se achados NOVOS aparecerem (comparação por
-  # assinatura commit+file+line+id+key) — alertando sobre vazamentos
-  # futuros antes de virarem incidente.
+  # guard falha SOMENTE se CONTEÚDO novo aparecer (assinatura
+  # arquivo:linha:padrão:chave:valor-mascarado — o COMMIT NÃO entra), alertando
+  # sobre vazamentos futuros antes de virarem incidente. A reescrita de história
+  # (filter-repo/rebase/amend) é reportada como MOTIVO PRÓPRIO, junto da
+  # proveniência do baseline — com o commit na assinatura, ela acusava o
+  # baseline inteiro de "achado novo".
   #
   # Node puro (sem bun/docker) — o audit usa git log -p --all + regex.
   # Requer o histórico completo (fetch-depth: 0), como o blob-crlf-history.
@@ -701,9 +899,13 @@ jobs:
       - name: Summary
         run: echo "✅ Nenhum drift semântico de links no README (baseline docs/security/readme-reverse-baseline.json)."
 
-  # ── .actrc ↔ vars.BUN_VERSION sync (semanal) ────────────────────────
-  # Revalida SEMANALMENTE que o espelho LOCAL do act (.actrc) está em
-  # sincronia com a repository variable BUN_VERSION do GitHub.
+  # ── espelhos ↔ repository variables (semanal) ───────────────────────
+  # Revalida SEMANALMENTE que os espelhos LOCAIS (.actrc e o env da forja) estão
+  # em sincronia com as repository variables que o compose da forja consome:
+  # BUN_VERSION, IMAGE_REGISTRY e IMAGE_NAMESPACE. As duas últimas ficavam só
+  # com a checagem de EXISTÊNCIA do guard estático — um registry/namespace
+  # trocado passava por tudo em silêncio (a label do runner puxa de outro lugar,
+  # e o pull só falha quando um job tenta iniciar).
   #
   # O guard estático scripts/check-bun-mirror.mjs só valida que o .actrc
   # DEFINE BUN_VERSION — o VALOR é impossível de conferir estaticamente (a
@@ -712,20 +914,158 @@ jobs:
   # DIFERENTE da produção sem o guard estático perceber. Este job passa o
   # valor REAL de vars.BUN_VERSION via --expected e o script emite
   # ::warning:: (NÃO-bloqueante — drift de dev experience, não bug de CI).
+  #
+  # A ISSUE É O CANAL, não a anotação: um `::warning::` dentro de um run VERDE
+  # não é lido por ninguém (o run não fica vermelho em nenhum cenário). Por isso
+  # o step `if: always()` roda `scripts/actrc-sync-issue.mjs`, que reusa o MESMO
+  # `mirrorDriftReport` do guard (fonte única das regras — a issue e o log não
+  # podem discordar) e publica/comenta uma issue com dedup por assinatura.
+  # Antes deste step, a documentação prometia "aviso + issue" e a issue não
+  # existia em lugar nenhum: alerta mudo.
   actrc-sync:
-    name: .actrc ↔ vars.BUN_VERSION (aviso)
+    name: espelhos ↔ vars.BUN_VERSION (aviso + issue)
     runs-on: self-hosted
     timeout-minutes: 2
+    permissions:
+      contents: read
+      issues: write # a issue é o canal acionável do aviso (o run fica verde de propósito)
 
     steps:
       - uses: actions/checkout@v4
 
-      # ── Compara o .actrc do working tree com vars.BUN_VERSION ────────
-      # Node puro (sem deps) — não precisa de bun para o aviso. O exit 0
-      # em divergência é INTENCIONAL: ::warning:: não quebra o CI.
-      - name: Comparar .actrc com vars.BUN_VERSION
+      # ── Compara os espelhos do working tree com as repository variables ──
+      # `.actrc` e `deploy/env.gitea.example` (o arquivo comitado de onde o
+      # deploy/.env.gitea do VPS deriva). Node puro (sem deps) — não precisa
+      # de bun para o aviso. O exit 0 em divergência é INTENCIONAL:
+      # ::warning:: não quebra o CI — nenhum dos dois espelhos governa
+      # corretude de CI (um é a dev experience do act, o outro é a velocidade
+      # do runner da forja). Vale a pena avisar mesmo assim porque os dois
+      # falham em SILÊNCIO: o env desatualizado deixa o CI igualzinho, só
+      # sem o fast path de 0s do tier-1.
+      - name: Comparar espelhos (.actrc + env da forja) com as repository variables
         run: |
-          node scripts/check-actrc-sync.mjs --expected "${{ vars.BUN_VERSION }}"
+          node scripts/check-actrc-sync.mjs --expected "${{ vars.BUN_VERSION }}" --expected-var "IMAGE_REGISTRY=${{ vars.IMAGE_REGISTRY }}" --expected-var "IMAGE_NAMESPACE=${{ vars.IMAGE_NAMESPACE }}"
+
+      # ── ISSUE: o aviso acima vira ticket acionável ────────────────────────
+      # if: always() — roda TAMBÉM quando o guard sai 0 (que é o caso em
+      # divergência, por desenho). O script decide sozinho se há drift, com a
+      # mesma função do guard, e deduplica por assinatura contra issues abertas
+      # (a issue é o estado da dívida até ser fechada, não ruído semanal).
+      #
+      # E, quando NÃO há drift, ele RECONCILIA: comenta a prova e fecha as
+      # issues que ele mesmo abriu. Publicar sem fechar deixava uma dívida
+      # MENTINDO no board depois de resolvida — o alerta perderia o valor no
+      # próximo bump, que seria investigado duas vezes. Se o drift voltar, a
+      # mesma regra abre uma issue nova (o dedup é entre as ABERTAS).
+      #
+      # NUNCA passe --dry-run aqui: o modo não toca no `gh` de propósito (o
+      # contrato dele é não ter efeito nenhum), e a reconciliação sumiria em
+      # silêncio dentro de um run verde — o defeito de novo, na forma mais barata.
+      # GH_TOKEN explícito: o `gh` do runner já usa o GITHUB_TOKEN por padrão.
+      - name: Publicar o drift como Issue acionável (e fechar quando resolver)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/actrc-sync-issue.mjs --expected "${{ vars.BUN_VERSION }}" --expected-var "IMAGE_REGISTRY=${{ vars.IMAGE_REGISTRY }}" --expected-var "IMAGE_NAMESPACE=${{ vars.IMAGE_NAMESPACE }}"
+
+  # ── Revisão das allowlists (semanal) ────────────────────────────────
+  # As ISENÇÕES do repositório envelhecem: "isento" não tem prazo por natureza,
+  # e o motivo que era verdadeiro quando a entrada nasceu pode não ser mais.
+  # São três listas com o MESMO defeito estrutural, e este job é o canal que as
+  # revisa:
+  #
+  #   · OUT_OF_SCOPE_ALLOWLIST + THIRD_PARTY_ALLOWLIST (check-registry-source):
+  #     um arquivo FORA do escopo que referencia imagem NOSSA; uma imagem de
+  #     TERCEIROS consumida do GHCR;
+  #   · ALLOWLIST (check-unused-deps): uma dep de uso IMPLÍCITO, que nunca
+  #     aparece como import (`sharp`, `@types/*`, CLIs);
+  #   · a DÍVIDA declarada do `check-pipefail-sigpipe` (classe SIGPIPE): hoje
+  #     ZERO — o baseline foi removido depois que o `--fix` aposentou as 216
+  #     ocorrências —, mas o `--update` pode reabri-la com a razão escrita, e
+  #     uma dívida que ninguém revisa volta a ser permanente. Como as outras
+  #     três, ela vence.
+  #
+  # Cada entrada registra `addedAt` (a data da decisão) e este job revalida a
+  # JANELA (180 dias, do módulo compartilhado `allowlist-review.mjs`).
+  #
+  # O job roda os guards no modo `--review`: passada a janela, a decisão
+  # vencida vira VIOLAÇÃO (exit 1). O modo normal (pre-commit/PR) apenas AVISA
+  # (`::warning::`) — uma data não pode bloquear o commit e o PR de todo mundo.
+  # Mas um aviso dentro de um run VERDE é alerta MUDO (é a razão do
+  # `check:periodic-alerts`): por isso o canal é o run VERMELHO daqui, não uma
+  # anotação que ninguém lê. O registro da data AUSENTE/inválida é violação nos
+  # dois modos (fail-closed) — uma isenção sem data não tem como envelhecer.
+  #
+  # Sem docker e sem rede DE PROPÓSITO (`--no-compose-render --no-registry-probe`)
+  # e com as vars do registry ESVAZIADAS: a pergunta deste job é só a revisão das
+  # isenções. As outras invariantes do guard têm os seus próprios gates (o job
+  # `guards` da forja, o pr-check e o `forge-smoke`), com o ambiente real.
+  registry-allowlist-review:
+    name: Revisão das allowlists (decisão vencida)
+    runs-on: self-hosted
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write # gh issue create/close para a decisão declarada VENCIDA
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── GATE: decisão de escopo/imagem de terceiros SEM REVISÃO falha o run ──
+      - name: Revisar decisões de escopo e imagens de terceiros (--review)
+        env:
+          # Esvaziadas: sem valor, a invariante 9 (o valor do AMBIENTE × os
+          # espelhos) fica fora da conta — ela é coberta onde o valor real
+          # existe (a forja/o CI). Aqui a pergunta é só a revisão da isenção.
+          IMAGE_REGISTRY: ""
+          IMAGE_NAMESPACE: ""
+        run: node scripts/check-registry-source.mjs --review --no-compose-render --no-registry-probe
+
+      # ── GATE: dep de uso IMPLÍCITO (ALLOWLIST) SEM REVISÃO falha o run ──
+      # O outro guard tem o MESMO defeito e o MESMO canal: o scan completo do
+      # `check-unused-deps` valida `addedAt` (ausente/inválido = violação nos
+      # dois modos) e a JANELA — `--review` escala a decisão vencida.
+      - name: Revisar a allowlist de deps de uso implícito (--review)
+        run: node scripts/check-unused-deps.mjs --review
+
+      # ── GATE: a DÍVIDA do SIGPIPE (baseline) SEM REVISÃO falha o run ──
+      # No run normal (PR/pre-commit) essa decisão vencida é `::warning::` —
+      # uma data não pode travar o PR de todo mundo. Aqui ela é VIOLAÇÃO, que é
+      # o que faz a janela valer: sem este passo, a janela de 180 dias seria
+      # decorativa e a dívida venceria em silêncio.
+      - name: Revisar a dívida declarada da classe SIGPIPE (--review)
+        run: node scripts/check-pipefail-sigpipe.mjs --review
+
+      # ── GATE: a ISENÇÃO de dependências de um job SEM REVISÃO falha o run ──
+      # A JOB_DEPS_ALLOWLIST declara os jobs que rodam comando dependente de
+      # `node_modules` sem instalar. No run normal essa decisão vencida é
+      # `::warning::` (uma data não trava o PR de todo mundo); aqui é VIOLAÇÃO —
+      # sem este passo a janela de 180 dias seria decorativa e o job seguiria
+      # dependendo do `node_modules` do AMBIENTE em silêncio, por anos.
+      - name: Revisar as isenções de dependências dos jobs (--review)
+        run: node scripts/check-job-deps.mjs --review
+
+      # ── CANAL: a decisão VENCIDA vira ISSUE ACIONÁVEL (e some quando revisada) ──
+      # O run vermelho acima é o GATE; ele sozinho é o alerta MUDO que este
+      # repositório já trocou por issue em quatro outros lugares
+      # (actrc-sync, required-checks-drift, readme-reverse, env-mirror-drift):
+      # ninguém abre o log de um cron que ficou vermelho, e a issue é o ticket
+      # que alguém abre, atribui e cobra.
+      #
+      # A MEDIÇÃO é a MESMA do doctor (o fato da seção 6/7, de
+      # scripts/declared-debt.mjs): uma medição, dois consumidores — e a
+      # JOB_DEPS_ALLOWLIST do `check-job-deps` entra nela como as outras quatro.
+      # O publicador também FECHA a issue quando nenhuma decisão está vencida
+      # (reafirmada com data nova, ou aposentada) — publicar sem fechar deixa a
+      # dívida mentindo.
+      - name: Publicar a dívida declarada sem revisão (issue acionável)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/declared-debt-issue.mjs
+
+      - name: Summary
+        run: echo "✅ Nenhuma isenção (escopo, imagem de terceiros, dep de uso implícito, dependências de job) nem dívida declarada (SIGPIPE) sem revisão dentro da janela."
 
   # ── Seed Guards E2E (semanal) ────────────────────────────────────────
   # Revalida SEMANALMENTE que os DOIS seeds (prod + dev) continuam
@@ -1009,5 +1349,167 @@ jobs:
               "
             else
               echo '⚠ Tendência não produziu JSON — veja o passo "Medir drift de tendência".'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Mutation coord ALERTA (semanal) — o CANAL dos ::warning:: ────────
+  # AUDITORIA DOS JOBS PERIÓDICOS: os dois jobs acima terminam VERDES de
+  # propósito quando o overhead sobe — o medidor de tendência emite
+  # `::warning::` e sai 0, e o medidor de budget faz o mesmo na faixa SOFT.
+  # Um aviso dentro de um run verde é alerta MUDO: ninguém abre o log de um
+  # cron que passou. Este job é o canal: publica o drift como ISSUE (label
+  # `mutation-trend-drift`, dedup por assinatura) e FECHA quando o overhead
+  # volta à faixa. O run continua verde — o alerta de TENDÊNCIA é
+  # deliberadamente não-bloqueante (transformar o soft no duro apagaria a
+  # distinção entre "observa o drift" e "estourou o budget").
+  #
+  # POR QUE UM JOB SEPARADO (e não um step em cada medidor): os dois medem o
+  # MESMO step com limiares diferentes (margem relativa vs drift % por var).
+  # Se cada um publicasse/reconciliasse por si, o mais frouxo fecharia a
+  # dívida que o mais estrito acabou de abrir — e o limiar é variável, então
+  # a aninhagem não pode ser presumida. Aqui os DOIS relatórios entram juntos:
+  # `warned` = algum fora da faixa; reconciliar exige TODOS medidos e NENHUM
+  # fora. `if: always()` + `needs` nos dois: mede também quando um deles
+  # falhou, porque o artifact é `if: always()` e a evidência existe.
+  mutation-coord-alert:
+    name: Mutation coord overhead (aviso → issue)
+    runs-on: self-hosted
+    needs: [mutation-coord-timing, mutation-coord-trend]
+    if: always()
+    timeout-minutes: 5
+
+    permissions:
+      contents: read
+      actions: read # download-artifact dos dois JSON de medição
+      issues: write # a issue é o canal do ::warning:: (o run fica verde)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Os dois relatórios, dos artifacts dos jobs de medição ─────────
+      - name: Baixar os relatórios de medição (artifacts)
+        if: always()
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mutation-coord-*
+          merge-multiple: true
+          path: /tmp/mutation-alert
+
+      # ── Publica (ou fecha) — e 'não medido' NUNCA passa como verde ────
+      # O `find` resolve a localização REAL dos JSON em vez de cravar um
+      # layout de artifact (o upload preserva pedaços do caminho absoluto);
+      # sem relatório nenhum o step FALHA — publicar (ou fechar) a partir de
+      # nada é a forma mais barata do alerta mudo que este job elimina.
+      - name: Publicar o overhead como Issue (fecha quando volta à faixa)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t REPORTS < <(find /tmp/mutation-alert -name 'mutation-*.json' | sort)
+          if [ "${#REPORTS[@]}" -eq 0 ]; then
+            echo "::error::Nenhum relatório de medição nos artifacts — sem medir, 'não medido' NÃO pode parecer verde."
+            exit 1
+          fi
+          ARGS=()
+          for report in "${REPORTS[@]}"; do ARGS+=(--report "$report"); done
+          node scripts/mutation-trend-issue.mjs "${ARGS[@]}"
+
+  # ── Guard timing (bench) → ISSUE (semanal) ────────────────────────────────
+  # AUDITORIA DOS JOBS PERIÓDICOS: o `bench-guard-timing` media o wall time dos
+  # guards e do doctor e comparava com a baseline, mas o número só existia quando
+  # alguém lembrava de rodar `bun run bench:guard-timing:compare` à mão — e um
+  # `--compare` vermelho num cron seria alerta MUDO (ninguém abre o log de um run
+  # que passou). Este job dá CANAL ao número: mede, publica a regressão como
+  # ISSUE (label `guard-timing-regression`, dedup por assinatura de faixa) e
+  # FECHA quando o tempo volta para dentro do limiar.
+  #
+  # POR QUE O RUN CONTINUA VERDE: tempo de execução NÃO é corretude. Transformar
+  # o `--compare` num gate vermelho apagaria a distinção entre "o overhead subiu"
+  # e "o build quebrou" — e é por isso que este job NÃO usa `--compare` para o
+  # veredito: a régua é a MESMA função (`compareTimings`), consumida pelo
+  # publicador, que decide abrir/comentar/fechar.
+  #
+  # A BASELINE NÃO É MOVIDA AQUI: `docs/benchmarks/guard-timing-baseline.json` é
+  # o número que a issue cobra, e movê-la é decisão registrada (o remédio está no
+  # corpo da própria issue: `bun run bench:guard-timing:baseline`, deliberado).
+  # O run medido sobe como artifact para o histórico; o worktree não é commitado.
+  guard-timing-alert:
+    name: Guard timing bench (regressão → issue)
+    runs-on: self-hosted
+    # 45min: o bench mede COMANDOS INTEIROS nas famílias de régua desde 09/2026 —
+    # um typecheck FRIO e a suíte `test:run` (além do lint). A régua ANTERIOR da
+    # suíte (7min, maxWorkers 1) NÃO entra no default: ela roda em pipeline
+    # nenhuma, e o `--counterfactual` a mede sob demanda.
+    timeout-minutes: 45
+
+    permissions:
+      contents: read
+      issues: write # a issue é o canal (o run fica verde)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # ── Mede (guards + doctor + custo do lint) e salva o run ───────────
+      # O `--no-lint` do dispatch pula a seção mais cara (~3-4 min); o default
+      # mede tudo, porque a unificação do lint foi COMPRADA com wall time de CI e
+      # uma regressão dela também é dívida.
+      - name: Medir o wall time dos guards, do doctor e do lint
+        env:
+          BUN_VERSION: ${{ vars.BUN_VERSION }}
+          IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY }}
+          IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE }}
+        run: |
+          if [ "${{ github.event.inputs.no_lint }}" = "true" ]; then
+            node scripts/bench-guard-timing.mjs --json --no-lint
+          else
+            node scripts/bench-guard-timing.mjs --json
+          fi
+
+      # ── Publica (ou fecha) — 'não medido' NUNCA passa como verde ───────
+      # Sem o relatório ou sem a baseline o publicador sai 1: publicar (ou
+      # fechar) a partir de nada é a forma mais barata do alerta mudo.
+      - name: Publicar a regressão de tempo como Issue (fecha quando volta à baseline)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/guard-timing-issue.mjs
+
+      # ── Evidência: o run medido (o corpo da issue cita este JSON) ──────
+      - name: Upload do run medido (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guard-timing-latest
+          path: docs/benchmarks/guard-timing-latest.json
+          if-no-files-found: ignore
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## ⏱️ Guard timing — regressão vs baseline'
+            echo ''
+            if [ -f docs/benchmarks/guard-timing-latest.json ]; then
+              echo 'O relatório completo do run está no log do passo de medição.'
+              echo 'O canal da dívida é a issue com o label `guard-timing-regression`.'
+            else
+              echo '⚠ O run não produziu relatório — veja o passo de medição.'
             fi
           } >> "$GITHUB_STEP_SUMMARY"

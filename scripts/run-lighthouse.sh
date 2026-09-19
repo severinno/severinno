@@ -56,7 +56,7 @@ for page in "${PAGES[@]}"; do
     --upload.token="${LHCI_TOKEN:-}" \
     2>&1) || true
   
-  if echo "$RESULT" | grep -q "assertion failed"; then
+  if grep -q "assertion failed" <<< "$RESULT"; then
     echo "      ❌ FAILED — see details above"
     FAILED=true
   else

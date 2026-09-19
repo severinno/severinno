@@ -197,11 +197,11 @@ if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "O gate está over-eager — payload saudável não deveria falhar."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"exceeded": false'; then
+if ! grep -q '"exceeded": false' <<<"$GUARD_OUTPUT"; then
   fail "CONTROLE FALHOU: report.exceeded não é false para 300s."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"zone": "ok"'; then
+if ! grep -q '"zone": "ok"' <<<"$GUARD_OUTPUT"; then
   fail "CONTROLE FALHOU: report.zone não é 'ok' para 300s."
   exit 1
 fi
@@ -220,11 +220,11 @@ if [ "$GUARD_EXIT" -ne 0 ]; then
   fail "Ruído de runner intermediário não deveria falhar o CI — só alertar."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q "::warning::budget de payload na faixa de WARN"; then
+if ! grep -q "::warning::budget de payload na faixa de WARN" <<<"$GUARD_OUTPUT"; then
   fail "FAIXA WARN FALHOU: ::warning:: da faixa soft ausente para 500s."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"zone": "warn"'; then
+if ! grep -q '"zone": "warn"' <<<"$GUARD_OUTPUT"; then
   fail "FAIXA WARN FALHOU: report.zone não é 'warn' para 500s."
   exit 1
 fi
@@ -250,15 +250,15 @@ if [ "$GUARD_EXIT" -ne 1 ]; then
   fi
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q "budget de payload EXCEDIDO"; then
+if ! grep -q "budget de payload EXCEDIDO" <<<"$GUARD_OUTPUT"; then
   fail "GUARD CEGA: mensagem 'budget de payload EXCEDIDO' ausente no exit 1."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"exceeded": true'; then
+if ! grep -q '"exceeded": true' <<<"$GUARD_OUTPUT"; then
   fail "GUARD CEGA: report.exceeded não é true para 900s."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"zone": "fail"'; then
+if ! grep -q '"zone": "fail"' <<<"$GUARD_OUTPUT"; then
   fail "GUARD CEGA: report.zone não é 'fail' para 900s."
   exit 1
 fi
@@ -278,11 +278,11 @@ if [ "$GUARD_EXIT" -ne 2 ]; then
   fail "medição vazia — o medidor não acusa o drift de contrato. Mutation test falha."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q "drift de contrato"; then
+if ! grep -q "drift de contrato" <<<"$GUARD_OUTPUT"; then
   fail "DRIFT CEGO: mensagem 'drift de contrato' ausente no exit 2."
   exit 1
 fi
-if ! echo "$GUARD_OUTPUT" | grep -q '"found": false'; then
+if ! grep -q '"found": false' <<<"$GUARD_OUTPUT"; then
   fail "DRIFT CEGO: report.found não é false no exit 2."
   exit 1
 fi

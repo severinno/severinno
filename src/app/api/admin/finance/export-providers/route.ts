@@ -44,8 +44,6 @@ export async function GET(request: Request) {
         break
     }
 
-    const paymentWhere = dateFilter ? { createdAt: { gte: dateFilter } } : {}
-
     const payments = await db.$queryRaw<
       Array<{
         providerId: string

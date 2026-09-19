@@ -142,7 +142,7 @@ if [ "$CONTROL_EXIT" -ne 0 ]; then
 fi
 pass "Controle OK — fixture limpo passa no guard (exit 0)"
 
-if ! echo "$CONTROL_OUTPUT" | grep -Fq "3 imagem(ns)"; then
+if ! grep -Fq "3 imagem(ns)" <<< "$CONTROL_OUTPUT"; then
   fail "COUNT-PIN no CONTROLE: guard não reportou '3 imagem(ns)' no fixture limpo:"
   echo "$CONTROL_OUTPUT" | tail -4
   exit 1
@@ -190,14 +190,14 @@ fi
 # Caso 2 — COUNT-PIN QUEBRADO: o count não acompanhou a remoção (continua
 # '3' = hardcoded ou extração cega do <img>). É o cenário que o mutation
 # test existe para BLOQUEAR.
-if echo "$GUARD_OUTPUT" | grep -Fq "3 imagem(ns)"; then
+if grep -Fq "3 imagem(ns)" <<< "$GUARD_OUTPUT"; then
   fail "COUNT-PIN QUEBRADO: guard reportou '3 imagem(ns)' APÓS a remoção do"
   fail "badge <img> (exit 0). O count é hardcoded ou o regex de <img> deixou"
   fail "de extrair — o count precisa ser DERIVADO da extração ao vivo."
   exit 1
 fi
 
-if ! echo "$GUARD_OUTPUT" | grep -Fq "2 imagem(ns)"; then
+if ! grep -Fq "2 imagem(ns)" <<< "$GUARD_OUTPUT"; then
   fail "COUNT-PIN INESPERADO: guard não reportou '2 imagem(ns)' após a remoção:"
   echo "$GUARD_OUTPUT" | tail -4
   exit 1
@@ -242,7 +242,7 @@ if [ "$EXISTENCE_EXIT" -eq 0 ]; then
 fi
 
 # Caso 2 — falhou, mas NÃO pela asserção esperada (outro invariante quebrou).
-if ! echo "$EXISTENCE_OUTPUT" | grep -Fq "$EXPECTED_FAILURE_EXISTENCE"; then
+if ! grep -Fq "$EXPECTED_FAILURE_EXISTENCE" <<< "$EXISTENCE_OUTPUT"; then
   fail "Guard falhou (exit $EXISTENCE_EXIT) mas NÃO pela asserção de existência esperada:"
   fail "  esperava:  $EXPECTED_FAILURE_EXISTENCE"
   fail "Falha pode ser outro invariante do fixture — veja o output acima."

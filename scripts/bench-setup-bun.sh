@@ -113,13 +113,13 @@ ssh_workflow_on_ref() { # $1=ref  $2=workflow.yml → 0 se confirmado no remoto
   # por engano. NOTA: o fallback usa o remote `origin` local — se o usuário
   # passar --repo de OUTRO repositório, a verificação SSH é do origin (o
   # caso típico deriva GH_REPO do próprio origin).
-  if ! git -C "$REPO_ROOT" ls-remote --heads origin "$ref" 2>/dev/null | grep -qF "refs/heads/$ref"; then
+  if ! grep -qF "refs/heads/$ref" <<< "$(git -C "$REPO_ROOT" ls-remote --heads origin "$ref" 2>/dev/null)"; then
     return 1
   fi
   # fetch do ref (sem tags — só o commit do branch) e verificação do arquivo
   # do workflow via ls-tree (efeito colateral local: grava FETCH_HEAD).
   git -C "$REPO_ROOT" fetch --quiet --no-tags origin "$ref" 2>/dev/null || return 1
-  git -C "$REPO_ROOT" ls-tree -r --name-only FETCH_HEAD 2>/dev/null | grep -qx ".github/workflows/$wf"
+  grep -qx ".github/workflows/$wf" <<< "$(git -C "$REPO_ROOT" ls-tree -r --name-only FETCH_HEAD 2>/dev/null)"
 }
 
 # ── API ok? (auth + acesso ao repo) ───────────────────────────────────────
@@ -135,8 +135,9 @@ if [ "$API_OK" = "1" ]; then
     echo "bench-setup-bun: vars.BUN_VERSION NÃO EXISTE em $GH_REPO — exit 3 (variável ausente, não erro de auth/uso)" >&2
     echo "  Crie a repository variable (FONTE ÚNICA da versão do Bun):" >&2
     echo "    URL: https://github.com/$GH_REPO/settings/variables/actions" >&2
-    echo "    Nome: BUN_VERSION   Valor: ex.: 1.3.14" >&2
-    echo "  Ou via CLI (mesmo efeito): gh variable set BUN_VERSION 1.3.14 -R $GH_REPO" >&2
+    echo "    Nome: BUN_VERSION   Valor: ex.: X.Y.Z  (o exemplo não tem versão de propósito:" >&2
+    echo "        um número aqui envelheceria e passaria a parecer a versão vigente)" >&2
+    echo "  Ou via CLI (mesmo efeito): gh variable set BUN_VERSION X.Y.Z -R $GH_REPO" >&2
     echo "  Depois re-rode. Sem a variável, TODO CI que usa o setup-bun também falha em runtime (Resolve Bun version)." >&2
     exit 3
   fi
@@ -196,11 +197,11 @@ fi
 detect_tier() { # $1=run_id → tier label
   local log_txt run_id="$1"
   log_txt="$(gh run view "$run_id" --log 2>/dev/null | tr -d '\r' || true)"
-  if echo "$log_txt" | grep -q "Usando Bun pré-instalado"; then
+  if grep -q "Usando Bun pré-instalado" <<< "$log_txt"; then
     echo "tier-1 (bun pré-instalado)"
-  elif echo "$log_txt" | grep -qi "Cache hit"; then
+  elif grep -qi "Cache hit" <<< "$log_txt"; then
     echo "tier-2 (cache hit)"
-  elif echo "$log_txt" | grep -q "Download Bun release (cold cache)"; then
+  elif grep -q "Download Bun release (cold cache)" <<< "$log_txt"; then
     echo "tier-3 (cold download)"
   else
     echo "tier desconhecido"

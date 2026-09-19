@@ -91,7 +91,7 @@ export default function Testimonials({ className }: { className?: string }) {
   if (!isLoading && !data?.items?.length) return null
 
   return (
-    <section className={cn("border-border/40 border-t bg-background py-20 sm:py-24", className)}>
+    <section className={cn("border-border/40 bg-background border-t py-20 sm:py-24", className)}>
       <div
         className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8"
         onMouseEnter={handleMouseEnter}
@@ -99,7 +99,7 @@ export default function Testimonials({ className }: { className?: string }) {
       >
         {/* Header */}
         <div className="mx-auto mb-12 max-w-xl text-center">
-          <p className="text-primary mb-3 text-xs font-semibold uppercase tracking-widest">
+          <p className="text-primary mb-3 text-xs font-semibold tracking-widest uppercase">
             Depoimentos
           </p>
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
@@ -107,7 +107,7 @@ export default function Testimonials({ className }: { className?: string }) {
           </h2>
           {!isLoading && data && (
             <p className="text-muted-foreground mt-3 text-sm">
-              <span className="font-semibold text-foreground">{data.avgRating.toFixed(1)}</span> de
+              <span className="text-foreground font-semibold">{data.avgRating.toFixed(1)}</span> de
               média em {data.total.toLocaleString("pt-BR")} avaliações verificadas
             </p>
           )}
@@ -116,7 +116,7 @@ export default function Testimonials({ className }: { className?: string }) {
         {isLoading ? (
           <div className="grid gap-4 sm:grid-cols-3">
             {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="rounded-2xl border border-border/50 bg-card p-5">
+              <div key={i} className="border-border/50 bg-card rounded-2xl border p-5">
                 <Skeleton className="mb-4 h-4 w-24" />
                 <Skeleton className="mb-2 h-3 w-full" />
                 <Skeleton className="mb-2 h-3 w-5/6" />
@@ -160,8 +160,8 @@ export default function Testimonials({ className }: { className?: string }) {
                     className={cn(
                       "rounded-full transition-all",
                       i === current
-                        ? "h-1.5 w-5 bg-primary"
-                        : "size-1.5 bg-border hover:bg-muted-foreground",
+                        ? "bg-primary h-1.5 w-5"
+                        : "bg-border hover:bg-muted-foreground size-1.5",
                     )}
                   />
                 ))}
@@ -183,7 +183,7 @@ function ReviewCard({ review }: { review: ReviewItem }) {
     .toUpperCase()
 
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-border/50 bg-card p-5 transition-shadow hover:shadow-sm">
+    <div className="border-border/50 bg-card flex h-full flex-col rounded-2xl border p-5 transition-shadow hover:shadow-sm">
       {/* Stars */}
       <div className="flex items-center gap-0.5">
         {Array.from({ length: 5 }).map((_, i) => (

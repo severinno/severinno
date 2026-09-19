@@ -142,7 +142,11 @@ export async function notifyNewBooking(
     weekday: "short",
     timeZone: timezone,
   })
-  const timeStr = scheduledAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: timezone })
+  const timeStr = scheduledAt.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: timezone,
+  })
   const title = `📅 Novo agendamento: ${serviceName}`
   const body = `${clientName} agendou para ${dateStr} às ${timeStr}`
   const pushUrl = `/dashboard?tab=bookings&booking=${bookingId}`

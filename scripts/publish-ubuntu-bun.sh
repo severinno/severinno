@@ -3,7 +3,7 @@
 # scripts/publish-ubuntu-bun.sh — Publica a imagem custom ubuntu-bun no GHCR e
 # valida o tier-1 do setup-bun com a imagem REMOTA (não só a local).
 #
-# Por que existe: o fast path (tier-1) do ./.github/actions/setup-bun só
+# Por que existe: o fast path (tier-1) do scripts/setup-bun-ci.sh só
 # dispara quando a imagem do runner embarca bun na versão pedida. A imagem
 # custom Dockerfile.ubuntu-bun ativa esse caminho (~0-2s vs ~25-35s do
 # oven-sh/setup-bun@v2). Este script fecha o ciclo completo de operação:
@@ -33,7 +33,7 @@
 #   5. docker pull ghcr.io/<owner>/ubuntu-bun:<version>
 #   6. act -j check com -P ubuntu-latest=ghcr.io/<owner>/ubuntu-bun:<version>
 #      --pull=false e valida a evidência do tier-1 no log:
-#        - 'Use pre-installed Bun (fast path)' passou
+#        - o step 'Setup Bun' passou
 #        - '✅ Usando Bun pré-instalado: <version> (0s, sem download)'
 #
 # Usage:
@@ -61,7 +61,18 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 # ── Configuração (com overrides por env) ─────────────────────────────────────
 OWNER="${OWNER:-$(git -C "$SCRIPT_DIR" remote get-url origin 2>/dev/null | sed -E 's#.*[:/]([^/:]+)/[^/]+(\.git)?$#\1#')}"
-VERSION="${BUN_VERSION:-1.3.14}"
+# A TAG da imagem publicada: da variável do ambiente (quando passada) ou do
+# ESPELHO do repositório (.actrc — a versão declarada, escrita pelo bump-bun e
+# comparada com a repository variable pelo guard semanal). NUNCA de um literal
+# de reserva: um `:-1.3.14` aqui sobrevive ao bump e este script passa a
+# publicar/conferir a tag ANTIGA em silêncio (o script funciona igual).
+VERSION="${BUN_VERSION:-$(sed -n 's/^--var BUN_VERSION=//p' "$SCRIPT_DIR/.actrc" 2>/dev/null | head -1 || true)}"
+if [ -z "$VERSION" ]; then
+  echo "publish-ubuntu-bun: nenhuma versão declarada — nem BUN_VERSION no ambiente, nem '--var BUN_VERSION=' em $SCRIPT_DIR/.actrc" >&2
+  echo "  (o literal de reserva foi removido de propósito: ele sobrevive ao bump e a tag fica velha sem sintoma)." >&2
+  echo "  Declare em .actrc ou passe BUN_VERSION=<X.Y.Z> no comando." >&2
+  exit 2
+fi
 IMAGE="ghcr.io/${OWNER}/ubuntu-bun:${VERSION}"
 ACT_BIN="${ACT_BIN:-$SCRIPT_DIR/tool-results/act/act.exe}"
 ACT_TIMEOUT="${ACT_TIMEOUT:-600}"
@@ -242,13 +253,13 @@ ACT_CODE=$?
 echo ""
 info "Extraindo evidência do tier-1 no log do act..."
 if grep -q "Unknown Variable Access vars\|expressions are not allowed here" "${LOG}"; then
-  fail "act falhou no parse do composite action (limitação act 0.2.89) — ver log."
+  fail "act falhou no parse dos workflows (expressão não resolvida) — ver log."
   tail -25 "${LOG}"
   rm -f "${LOG}"
   exit 4
 fi
 
-TIER1_STEP=$(grep -c "Success - Use pre-installed Bun" "${LOG}" || true)
+TIER1_STEP=$(grep -c "Success - Main Setup Bun" "${LOG}" || true)
 TIER1_MSG=$(grep -o "✅ Usando Bun pré-instalado: [0-9.]* (0s, sem download)" "${LOG}" | head -1 || true)
 
 if [ "${TIER1_STEP}" -ge 1 ] && [ -n "${TIER1_MSG}" ]; then

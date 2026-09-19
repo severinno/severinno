@@ -3,7 +3,7 @@
  *
  * Testes do scripts/measure-mutation-timing.mjs — o medidor do tempo REAL do
  * step 'Run mutation test (contrato coordenado — 5 cenários, 2 elos)' do job
- * 'Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)' nos
+ * 'Mutation Test (contrato coordenado — doc↔anchor↔código)' nos
  * runs do GitHub Actions (job semanal benchmark-weekly.yml).
  *
  * Cobre (padrão dos testes de guards — funções puras + CLI real):
@@ -58,7 +58,7 @@ function realJobsPayload(mutationDurationSecs = 35) {
         ],
       },
       {
-        name: "Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)",
+        name: "Mutation Test (contrato coordenado — doc↔anchor↔código)",
         steps: [
           {
             name: "Run actions/checkout@v4",
@@ -196,7 +196,7 @@ describe("extractMutationStep", () => {
     const step = extractMutationStep(realJobsPayload())
     expect(step).not.toBeNull()
     expect(step).toMatchObject({
-      jobName: "Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)",
+      jobName: "Mutation Test (contrato coordenado — doc↔anchor↔código)",
       stepName: "Run mutation test (contrato coordenado — 5 cenários, 2 elos)",
       startedAt: "2026-08-02T20:17:00Z",
       completedAt: "2026-08-02T20:17:35Z",
@@ -213,7 +213,7 @@ describe("extractMutationStep", () => {
     const payload = {
       jobs: [
         {
-          name: "Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)",
+          name: "Mutation Test (contrato coordenado — doc↔anchor↔código)",
           steps: [
             {
               name: "Run actions/checkout@v4",
@@ -232,7 +232,7 @@ describe("extractMutationStep", () => {
     const payload = {
       jobs: [
         {
-          name: "Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)",
+          name: "Mutation Test (contrato coordenado — doc↔anchor↔código)",
           steps: [
             {
               name: "Run mutation test (contrato coordenado — 5 cenários, 2 elos)",
@@ -266,8 +266,8 @@ describe("extractMutationStepFromActLog", () => {
 
   it("extrai a duração da linha 'Success - Main Run mutation test ... [X.XXs]'", () => {
     const log = actLogWith([
-      "[Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ⭐ Run Main bun run test:mutation-coord-update",
-      "[Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ✅  Success - Main Run mutation test (contrato coordenado — 5 cenários, 2 elos) [42.5s]",
+      "[Mutation Test (contrato coordenado — doc↔anchor↔código)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ⭐ Run Main bun run test:mutation-coord-update",
+      "[Mutation Test (contrato coordenado — doc↔anchor↔código)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ✅  Success - Main Run mutation test (contrato coordenado — 5 cenários, 2 elos) [42.5s]",
     ])
     const step = extractMutationStepFromActLog(log)
     expect(step).not.toBeNull()
@@ -285,8 +285,8 @@ describe("extractMutationStepFromActLog", () => {
 
   it("retorna null quando a linha 'Success - Main' do step de mutation não existe", () => {
     const log = actLogWith([
-      "[Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)/Run actions/checkout@v4] ✅  Success - Main Run actions/checkout@v4 [3.1s]",
-      "[Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ❌  Error - Main Run mutation test (contrato coordenado — 5 cenários, 2 elos)",
+      "[Mutation Test (contrato coordenado — doc↔anchor↔código)/Run actions/checkout@v4] ✅  Success - Main Run actions/checkout@v4 [3.1s]",
+      "[Mutation Test (contrato coordenado — doc↔anchor↔código)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ❌  Error - Main Run mutation test (contrato coordenado — 5 cenários, 2 elos)",
     ])
     // 'Error - Main' não é 'Success - Main' → a medição NÃO conta (o step
     // falhou; o log do act diria act exit != 0 — --act-exit pega o infra).
@@ -490,8 +490,8 @@ describe("measure-mutation-timing.mjs CLI — modo --act-log", { timeout: 120_00
   /** Log do act com a linha de sucesso do step na duração dada. */
   function actLogWithDuration(secs: number) {
     return [
-      "[Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ⭐ Run Main bun run test:mutation-coord-update",
-      `[Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ✅  Success - Main Run mutation test (contrato coordenado — 5 cenários, 2 elos) [${secs}s]`,
+      "[Mutation Test (contrato coordenado — doc↔anchor↔código)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ⭐ Run Main bun run test:mutation-coord-update",
+      `[Mutation Test (contrato coordenado — doc↔anchor↔código)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ✅  Success - Main Run mutation test (contrato coordenado — 5 cenários, 2 elos) [${secs}s]`,
     ].join("\n")
   }
 
@@ -612,7 +612,7 @@ describe(
         total_count: 1,
         jobs: [
           {
-            name: "Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)",
+            name: "Mutation Test (contrato coordenado — doc↔anchor↔código)",
             steps: [
               {
                 name: "Run mutation test (contrato coordenado — 5 cenários, 2 elos)",
@@ -770,7 +770,7 @@ describe(
         total_count: 1,
         jobs: [
           {
-            name: "Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)",
+            name: "Mutation Test (contrato coordenado — doc↔anchor↔código)",
             steps: [
               {
                 name: "Run mutation test (contrato coordenado — 5 cenários, 2 elos)",
@@ -957,7 +957,7 @@ describe(
 
     it("MODO --act-log: 120s com --alert → exit 0 + ::notice:: + zone 'notice' (paridade do gate nas duas fontes)", () => {
       const { dir, file } = writeActLog(
-        "[Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ⭐ Run Main bun run test:mutation-coord-update\n[Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ✅  Success - Main Run mutation test (contrato coordenado — 5 cenários, 2 elos) [120s]",
+        "[Mutation Test (contrato coordenado — doc↔anchor↔código)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ⭐ Run Main bun run test:mutation-coord-update\n[Mutation Test (contrato coordenado — doc↔anchor↔código)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ✅  Success - Main Run mutation test (contrato coordenado — 5 cenários, 2 elos) [120s]",
       )
       try {
         const { status, stdout } = runCli([
@@ -1081,7 +1081,7 @@ describe(
         total_count: 1,
         jobs: [
           {
-            name: "Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)",
+            name: "Mutation Test (contrato coordenado — doc↔anchor↔código)",
             steps: [
               {
                 name: "Run mutation test (contrato coordenado — 5 cenários, 2 elos)",
@@ -1407,7 +1407,7 @@ describe(
       // é infra: DEGRADA para ::notice:: + gate só no duro — o sinal primário
       // (--max 240) continua intacto e um payload saudável passa.
       const { dir, file } = writeActLog(
-        "[Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ✅  Success - Main Run mutation test (contrato coordenado — 5 cenários, 2 elos) [35s]",
+        "[Mutation Test (contrato coordenado — doc↔anchor↔código)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ✅  Success - Main Run mutation test (contrato coordenado — 5 cenários, 2 elos) [35s]",
       )
       try {
         const { status, stdout } = runCli([
@@ -1446,7 +1446,7 @@ describe(
       // degradada retornasse sem chegar ao applyBudgetGate, o 300s sairia
       // exit 0 silencioso — a regressão exata que o gate existe para matar.
       const { dir, file } = writeActLog(
-        "[Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ✅  Success - Main Run mutation test (contrato coordenado — 5 cenários, 2 elos) [300s]",
+        "[Mutation Test (contrato coordenado — doc↔anchor↔código)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ✅  Success - Main Run mutation test (contrato coordenado — 5 cenários, 2 elos) [300s]",
       )
       try {
         const { status, stdout } = runCli([
@@ -1493,7 +1493,7 @@ describe(
         total_count: 1,
         jobs: [
           {
-            name: "Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)",
+            name: "Mutation Test (contrato coordenado — doc↔anchor↔código)",
             steps: [
               {
                 name: "Run mutation test (contrato coordenado — 5 cenários, 2 elos)",
@@ -1688,7 +1688,7 @@ describe(
 
     it("gh do histórico indisponível (modo REAL): DEGRADA p/ ::notice:: + gate só no teto — 35s → exit 0 (dependência secundária não derruba o gate)", () => {
       const { dir, file } = writeActLog(
-        "[Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ✅  Success - Main Run mutation test (contrato coordenado — 5 cenários, 2 elos) [35s]",
+        "[Mutation Test (contrato coordenado — doc↔anchor↔código)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ✅  Success - Main Run mutation test (contrato coordenado — 5 cenários, 2 elos) [35s]",
       )
       try {
         const { status, stdout } = runCli([
@@ -1714,7 +1714,7 @@ describe(
 
     it("gh do histórico indisponível + 300s: o TETO ainda FALHA → exit 1 (fail-closed com a dependência secundária quebrada)", () => {
       const { dir, file } = writeActLog(
-        "[Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ✅  Success - Main Run mutation test (contrato coordenado — 5 cenários, 2 elos) [300s]",
+        "[Mutation Test (contrato coordenado — doc↔anchor↔código)/Run mutation test (contrato coordenado — 5 cenários, 2 elos)] ✅  Success - Main Run mutation test (contrato coordenado — 5 cenários, 2 elos) [300s]",
       )
       try {
         const { status, stdout } = runCli([

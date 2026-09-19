@@ -1,0 +1,1185 @@
+#!/usr/bin/env node
+
+// =============================================================================
+// check-job-deps.mjs
+//
+// GATE: um job que RODA um comando cujo veredito exige `node_modules` tem de
+// INSTALAR as dependencias — ou a isencao tem de estar DECLARADA, com data e
+// janela de revisao — porque o verde de um job que nao instala nao tem causa
+// no repositorio.
+//
+// A CLASSE (medida, nao suposta). `node scripts/check-*.mjs` PARECE "node puro"
+// — os guards leem LINHA, e a prosa dos workflows diz "node puro, sem bun
+// install; roda em <5s". Mas oito deles perguntam ao `js-yaml` se o YAML e
+// VALIDO (`readWorkflowScan` -> `workflowYamlValidity`, a porta fail-closed que
+// a classe do "nao consegui julgar" fechou), e sem o pacote eles nao cunham
+// veredito. Medido num checkout SEM `node_modules`, guard por guard:
+//
+//   check-no-setup-bun.mjs         exit 2  ("workflow(s) NAO JULGAVEL(is)")
+//   check-registry-source.mjs      exit 2
+//   check-workflow-refs.mjs        exit 2
+//   check-bun-mirror.mjs           exit 2
+//   check-mutation-jobs.mjs        exit 2
+//   check-sentinel-producer.mjs    exit 2
+//   check-seed-hooks.mjs           exit 2
+//   check-pipefail-sigpipe.mjs     exit 2
+//   check-forge-workflow-scope.mjs exit 0  (o caminho tardio nao e alcancado)
+//   check-utf8-scope.mjs           exit 0
+//   check-crlf-scope.mjs           exit 0
+//   test-mutation-*.sh (vitest)    exit !0 (binario do node_modules ausente)
+//
+// Ou seja: a mesma linha `node scripts/X.mjs` tem DOIS desfechos sem
+// dependencias, e NENHUM deles esta escrito no workflow. O que esta escrito e
+// prosa que ninguem confere. O custo aparece quando o runner esta limpo: o job
+// fica vermelho por um motivo que nao Esta no repositorio (o workspace tinha
+// `node_modules` de outro job, ou de quem roda o runner na propria maquina de
+// desenvolvimento) — e o diagnostico que sai e "NAO JULGAVEL", nao "faltou
+// instalar". Este guard transforma a prosa em CONTRATO.
+//
+// O QUE ELE DECIDE, por job:
+//   - INSTALA (`bun install`, `npm ci`, ... em qualquer passo do job) -> OK. O
+//     job declara de onde vem o `node_modules`;
+//   - NAO INSTALA e nenhum comando exige node_modules -> OK, medido (o grafo
+//     nao alcanca pacote nenhum, ou so alcanca por caminho tardio que o
+//     comando nao percorre — e nesse caso a isencao e o que DIZ isso);
+//   - NAO INSTALA e algum comando exige -> a isencao tem de estar DECLARADA em
+//     `JOB_DEPS_ALLOWLIST`, com `addedAt` e motivo escrito; sem isso e
+//     VIOLACAO;
+//   - a isencao e VERIFICADA contra o grafo: `semDeps: "passa"` (o comando
+//     termina 0 sem node_modules) e provadamente FALSA se o grafo tem um
+//     `import` de TOPO ou um BINARIO de dependencia — os dois carregam no
+//     START, sem caminho alternativo. Uma isencao que nao pode ser verdadeira
+//     nao pode ser declarada;
+//   - isencao SEM OBJETO (o job passou a nao exigir nada) tambem e violacao: a
+//     declaracao que sobrou mente sobre o presente.
+//
+// O GRAU e um FATO, nao um detalhe: `binario` (o binario do node_modules:
+// vitest, tsc), `estatico` (`import` de topo: carrega sempre, o desfecho sem deps
+// e o CRASH `ERR_MODULE_NOT_FOUND`) e `tardio` (specifier alcancado so dentro de
+// funcao: pode nunca ser percorrido, e por isso admite `passa`).
+//
+// ESCOPO: as duas forjas (`forge-workflows.mjs`), todos os jobs e todos os
+// passos — com a LEITURA fail-closed de sempre (arquivo ilegivel ou YAML
+// invalido NAO vira "nada a julgar") e a MESMA extracao de comandos dos hooks
+// (`check-hook-commands.mjs`: `shellCommands`), para nao existir uma segunda
+// regua do que e um comando. O grafo de imports usa `extractBareSpecifiers` e
+// `resolveImport` do `check-no-leaked-imports.mjs` (fonte unica do que e um
+// bare specifier e de como um relativo resolve).
+//
+// O QUE FICA FORA, declarado (e nomeado na saida, nunca escondido):
+//   - comando cujo alvo o guard nao classifica (programa desconhecido, alvo
+//     montado em `${{ }}`): sai em `foraDoEscopo` (com a CATEGORIA e o motivo),
+//     e um job que so tem comandos fora do escopo NAO ganha isencao implicita —
+//     ele e reportado como tal;
+//   - `sh -c`/`node -e` (payload inline): a mesma classe que o gate de sintaxe
+//     julga, mas nao ha TRANSITIVIDADE de dependencia a seguir num payload;
+//   - o estado REAL do runner (se a imagem embarca `node_modules`): o guard le
+//     o repositorio. E exatamente por isso a isencao precisa de motivo: quem
+//     responde "de onde vem" e quem assina a decisao.
+//
+// Usage:
+//   node scripts/check-job-deps.mjs             # repo atual (cwd)
+//   node scripts/check-job-deps.mjs --json      # saida estruturada
+//   node scripts/check-job-deps.mjs --review    # isencao vencida = violacao (job semanal)
+//   node scripts/check-job-deps.mjs --root X    # fixture (mutation test)
+//
+// Exit codes:
+//   0 — todo job que exige node_modules instala, ou declara a isencao verdadeira
+//   1 — exige e nao instala sem isencao; isencao sem data, mentirosa, sem
+//       objeto, ou (--review) vencida
+//   2 — infra: escopo NAO JULGAVEL (arquivo ilegivel, YAML invalido),
+//       `--root` sem valor ou inexistente (fail-closed)
+// =============================================================================
+
+import { existsSync, readFileSync, statSync } from "node:fs"
+import { dirname, isAbsolute, join, resolve } from "node:path"
+import { pathToFileURL } from "node:url"
+
+import {
+  agedAddedAtViolation,
+  invalidAddedAtViolation,
+  reviewAddedAtEntries,
+  DEFAULT_REVIEW_DAYS,
+} from "./allowlist-review.mjs"
+import {
+  BIN_PACKAGES,
+  EXTERNAL_TOOLS,
+  INTERPRETERS,
+  PACKAGE_MANAGERS,
+  binInstalado,
+  declaredPackages,
+  shellCommands,
+} from "./check-hook-commands.mjs"
+import { extractBareSpecifiers, isBareSpecifier, stringRanges } from "./check-no-leaked-imports.mjs"
+import { workflowRunSteps } from "./check-pipefail-sigpipe.mjs"
+import {
+  EXIT_UNJUDGEABLE,
+  exitOnUnjudgeable,
+  readWorkflowScan,
+  reportEmptyWorkflows,
+} from "./forge-workflows.mjs"
+
+export const EXIT = { OK: 0, VIOLACAO: 1, NAOJULGAVEL: EXIT_UNJUDGEABLE }
+
+/** Os subcomandos de gerenciador que FORNECEM o `node_modules` do job. */
+export const INSTALL_SUBCOMMANDS = new Set(["install", "i", "ci"])
+
+/** Os subcomandos que executam um PACOTE do registry (`bun x vitest`). */
+export const PACOTE_SUBCOMMANDS = new Set(["x", "exec", "dlx"])
+
+/** Extensoes que o guard segue como JAVASCRIPT (as outras nao pedem node_modules). */
+export const EXTENSOES_JS = [".mjs", ".js", ".cjs", ".ts", ".mts", ".cts"]
+
+/** Extensoes que o guard segue como SHELL (o corpo de dentro pode chamar node). */
+export const EXTENSOES_SHELL = [".sh", ".bash"]
+
+/**
+ * O teto de profundidade da resolucao (script -> `bun run` -> script -> ...): o
+ * grafo do repositorio tem 2 niveis; um ciclo que passe daqui e reportado como
+ * `naoJulgado` em vez de girar para sempre.
+ */
+export const MAX_PROFUNDIDADE = 4
+
+/**
+ * O REMEDIO canonico — o mesmo par que 65 dos 113 jobs ja usam, e o que a forja
+ * que decide o merge (job `guards` da Gitea) usa. Entra na mensagem para que a
+ * violacao diga o que FAZER, nao so o que esta errado.
+ */
+export const REMEDIO =
+  "adicione o par canonico ao job (cache do `node_modules` + `bun install --frozen-lockfile`) " +
+  "ou registre a isencao em JOB_DEPS_ALLOWLIST com `addedAt` e motivo"
+
+/**
+ * As ISENCOES declaradas: os jobs que rodam comandos dependentes de
+ * `node_modules` SEM instalar, com a data da decisao e o motivo escrito.
+ *
+ * A janela de revisao vem do modulo compartilhado (`allowlist-review.mjs`,
+ * `DEFAULT_REVIEW_DAYS`): passada a janela a decisao precisa ser REAFIRMADA
+ * (atualizando `addedAt`) ou removida — o run normal avisa (`::warning::`) e o
+ * `--review` escala para violacao, como nas outras allowlists do repositorio.
+ *
+ * `semDeps` e o que a isencao AFIRMA sobre o comando:
+ *   - `"passa"`         — o comando termina 0 sem `node_modules` (o grafo
+ *                         alcanca um pacote so por caminho tardio que ele nao
+ *                         percorre). FALSA se houver `import` de topo ou
+ *                         binario de dependencia no grafo;
+ *   - `"falha-fechado"` — sem o pacote o comando NAO cunha veredito (sai 2 com
+ *                         "NAO JULGAVEL", ou morre no binario ausente).
+ *
+ * TODAS as entradas abaixo sao do segundo tipo, e o motivo diz o que isso
+ * significa: o verde do job depende do `node_modules` do AMBIENTE (imagem do
+ * runner / workspace reusado), nao de um passo do repositorio. E o remedio
+ * canonico (o par de install) que aposenta cada uma.
+ *
+ * @type {{job: string, addedAt: string, reason: string, semDeps: "passa"|"falha-fechado"}[]}
+ */
+export const JOB_DEPS_ALLOWLIST = [
+  {
+    // A UNICA entrada deste tipo, e a que mostra por que `semDeps` nao e
+    // decorativo: o grafo ALCANCA `js-yaml` (o `check-bun-mirror.mjs`, importado
+    // pelo `check-env-mirror.mjs`, o carrega em caminho tardio), mas os dois
+    // comandos do job produzem o MESMO veredito com e sem `node_modules` —
+    // medido num checkout sem as dependencias: `check-env-mirror --json` devolve
+    // `state: diverged` com as duas violacoes e sai 1; o publicador `--dry-run`
+    // monta o mesmo corpo e sai 0. O caminho tardio NAO e percorrido, entao a
+    // isencao VERDADEIRA aqui e "passa" (e ela nao vale para um `import` de topo
+    // ou um binario: esses nao tem caminho alternativo).
+    job: ".gitea/workflows/env-mirror-drift.yml::env-mirror-drift",
+    addedAt: "2026-09-17",
+    semDeps: "passa",
+    reason:
+      "o cron roda `bun scripts/*.mjs` (a imagem da forja nao garante `node` no PATH) e os dois comandos foram MEDIDOS identicos com e sem node_modules — o `js-yaml` do grafo so aparece em caminho tardio que este job nunca percorre",
+  },
+  {
+    job: ".github/workflows/benchmark-weekly.yml::registry-allowlist-review",
+    addedAt: "2026-09-17",
+    semDeps: "falha-fechado",
+    reason:
+      "os tres comandos julgam YAML (`check-registry-source`, `check-pipefail-sigpipe`, `declared-debt-issue`): sem `js-yaml` eles saem 2 e nenhuma decisao de escopo e publicada — o job depende do node_modules do runner",
+  },
+  {
+    job: ".github/workflows/deploy.yml::seed-hooks-guard",
+    addedAt: "2026-09-17",
+    semDeps: "falha-fechado",
+    reason:
+      "`check-seed-hooks.mjs` valida os workflows (YAML) antes de julgar o vazamento dos hooks; sem `js-yaml` ele sai 2 e o deploy roda sem o gate",
+  },
+  {
+    job: ".github/workflows/pr-check.yml::secrets-guard",
+    addedAt: "2026-09-17",
+    semDeps: "falha-fechado",
+    reason:
+      "`rotate-secrets.mjs --check` le o `.env`/template como YAML e carrega `web-push` no caminho de rotacao; sem os pacotes ele sai 2 e o guard de `.env` rastreado nao da veredito",
+  },
+  {
+    job: ".github/workflows/pr-check.yml::seed-hooks-guard",
+    addedAt: "2026-09-17",
+    semDeps: "falha-fechado",
+    reason:
+      "`check-seed-hooks.mjs` valida os workflows (YAML) antes de julgar o vazamento dos hooks; sem `js-yaml` ele sai 2 e o gate nao cunha veredito",
+  },
+  {
+    job: ".github/workflows/pr-check.yml::workflow-refs-guard",
+    addedAt: "2026-09-17",
+    semDeps: "falha-fechado",
+    reason:
+      "quatro dos guards deste job leem YAML (`check-workflow-refs`, `check-registry-source`, `check-pipefail-sigpipe`, `check-forge-workflow-scope`): sem `js-yaml` os tres primeiros saem 2 — e e justamente o job de required-checks e de fonte unica do registry",
+  },
+  {
+    job: ".github/workflows/pr-check.yml::workflow-run-syntax",
+    addedAt: "2026-09-17",
+    semDeps: "falha-fechado",
+    reason:
+      "o gate de sintaxe e o publicador do remendo leem YAML, e o sub-test de mutacao roda `vitest` (binario do node_modules): sem as dependencias o job nao prova nem publica nada",
+  },
+  {
+    job: ".github/workflows/pr-check.yml::sentinel-producer-guard",
+    addedAt: "2026-09-17",
+    semDeps: "falha-fechado",
+    reason:
+      "`check-sentinel-producer.mjs` le os workflows (YAML) para casar produtor e job; sem `js-yaml` ele sai 2 e o par deixaria de ser verificado",
+  },
+  {
+    job: ".github/workflows/pr-check.yml::no-setup-bun-guard",
+    addedAt: "2026-09-17",
+    semDeps: "falha-fechado",
+    reason:
+      "`check-no-setup-bun.mjs` varre os workflows pela leitura compartilhada (YAML valido): sem `js-yaml` ele sai 2 em vez de julgar",
+  },
+  {
+    job: ".github/workflows/pr-check.yml::bun-mirror-guard",
+    addedAt: "2026-09-17",
+    semDeps: "falha-fechado",
+    reason:
+      "`check-bun-mirror.mjs` le workflows (YAML) para casar os espelhos do BUN_VERSION: sem `js-yaml` ele sai 2",
+  },
+  {
+    job: ".github/workflows/pr-check.yml::mutation-jobs-staged-guard",
+    addedAt: "2026-09-17",
+    semDeps: "falha-fechado",
+    reason:
+      "`check-mutation-jobs.mjs` le workflows (YAML) para provar que todo mutation test tem job: sem `js-yaml` ele sai 2 e o par script<->job fica sem veredito",
+  },
+  {
+    job: ".github/workflows/pr-check.yml::mutation-jobs-guard",
+    addedAt: "2026-09-17",
+    semDeps: "falha-fechado",
+    reason:
+      "mesmo guard do job `--staged` (a varredura global): sem `js-yaml` ele sai 2 e o mutation test orfao passa",
+  },
+  {
+    job: ".github/workflows/release-deploy.yml::seed-hooks-guard",
+    addedAt: "2026-09-17",
+    semDeps: "falha-fechado",
+    reason:
+      "`check-seed-hooks.mjs` valida os workflows (YAML) antes de julgar o vazamento; sem `js-yaml` ele sai 2 no caminho de RELEASE",
+  },
+  {
+    job: ".github/workflows/utf8-check.yml::utf8-check",
+    addedAt: "2026-09-17",
+    semDeps: "falha-fechado",
+    reason:
+      "o job mistura escopo puro (`check-utf8-scope`/`check-crlf-scope`, exit 0 sem deps) com dois guards que leem YAML (`check-no-setup-bun`, `check-bun-mirror`): os dois ultimos saem 2 sem `js-yaml`",
+  },
+]
+
+/** A janela de revisao das isencoes deste guard (o default do modulo compartilhado). */
+export const JOB_DEPS_REVIEW_DAYS = DEFAULT_REVIEW_DAYS
+
+const ROOT = process.cwd()
+
+// =============================================================================
+// O grafo de dependencias de um comando
+// =============================================================================
+
+/**
+ * Os `import`/`export ... from` ESTATICOS de um conteudo — os que carregam no
+ * START do modulo, sem caminho alternativo.
+ *
+ * A distincao importa porque o desfecho sem `node_modules` e DIFERENTE: um
+ * `import` de topo derruba o processo (`ERR_MODULE_NOT_FOUND`) antes de
+ * qualquer veredito; um specifier alcancado dentro de funcao (`require(...)`,
+ * `await import(...)`) so falha se aquele caminho for percorrido — que e o que
+ * os guards de YAML fazem, e por isso a isencao `semDeps: "passa"` existe.
+ *
+ * "De topo" e medido por SINTAXE (declaracao `import`/`export from` fora de
+ * qualquer bloco): `{`/`(`, `}`/`)` e as STRINGS sao contados para descobrir se
+ * a declaracao esta aninhada — uma declaracao dentro de uma funcao nao existe
+ * em ESM, mas o mesmo texto pode aparecer dentro de uma string, e contar string
+ * como codigo seria medir texto, nao programa.
+ *
+ * O filtro de `isBareSpecifier` (do `check-no-leaked-imports`) e o que faz isto
+ * ser DEPENDENCIA DE `node_modules` e nao "todo specifier": `node:fs`, um alias
+ * de tsconfig e um caminho relativo nao pedem pacote nenhum.
+ *
+ * @param {string} content
+ * @returns {Set<string>} os bare specifiers carregados no start
+ */
+export function importsEstaticos(content) {
+  const especs = new Set()
+  const strings = stringRanges(content)
+  const dentroDeString = (idx) => strings.some(([s, e]) => idx >= s && idx < e)
+  const re =
+    /(?:^|[\s;{}()])(?:import\s+(?:[^"'`\n]*?\s+from\s*)?|export\s+[^"'`\n]*?\s+from\s*|export\s*\*\s*from\s*)["']([^"']+)["']/g
+  for (const m of content.matchAll(re)) {
+    const idx = m.index + m[0].indexOf("import", 0)
+    const marca = m[0].includes("export") ? m.index + m[0].indexOf("export") : idx
+    if (dentroDeString(marca)) continue
+    if (profundidadeDeBloco(content, marca, strings) !== 0) continue
+    if (isBareSpecifier(m[1])) especs.add(m[1])
+  }
+  return especs
+}
+
+/**
+ * A profundidade de aninhamento (`{`, `(`, `[`) ANTES de um indice, ignorando o
+ * que esta dentro de strings e comentarios — o que separa "declaracao de topo"
+ * de "dentro de funcao".
+ *
+ * @param {string} content
+ * @param {number} idx
+ * @param {[number, number][]} strings
+ * @returns {number}
+ */
+function profundidadeDeBloco(content, idx, strings) {
+  let nivel = 0
+  const dentroDeString = (i) => strings.some(([s, e]) => i >= s && i < e)
+  for (let i = 0; i < idx; i++) {
+    if (dentroDeString(i)) continue
+    const ch = content[i]
+    if (ch === "/" && content[i + 1] === "/") {
+      while (i < idx && content[i] !== "\n") i++
+      continue
+    }
+    if (ch === "/" && content[i + 1] === "*") {
+      i += 2
+      while (i < idx && !(content[i] === "*" && content[i + 1] === "/")) i++
+      i++
+      continue
+    }
+    if (ch === "{" || ch === "(" || ch === "[") nivel++
+    else if (ch === "}" || ch === ")" || ch === "]") nivel--
+  }
+  return nivel
+}
+
+/**
+ * O grafo de um MODULO: os bare specifiers que ele carrega no start
+ * (`estatico`) e os que so aparecem em caminho tardio (`tardio`), seguindo os
+ * imports RELATIVOS (o grafo do repositorio inteiro — um guard que importa
+ * `forge-workflows.mjs`, que por sua vez alcanca `js-yaml`, depende do pacote
+ * tanto quanto se o importasse direto).
+ *
+ * @param {string} abs         caminho absoluto do modulo
+ * @param {{visto?: Set<string>, profundidade?: number}} [opts]
+ * @returns {{estatico: string[], tardio: string[], arquivos: number}}
+ */
+export function grafoDoModulo(abs, { visto = new Set(), profundidade = 0 } = {}) {
+  const estatico = new Set()
+  const tardio = new Set()
+  const fila = [[abs, profundidade]]
+  let arquivos = 0
+  while (fila.length > 0) {
+    const [atual, nivel] = fila.shift()
+    if (visto.has(atual) || !existsSync(atual) || nivel > MAX_PROFUNDIDADE) continue
+    visto.add(atual)
+    let texto
+    try {
+      texto = readFileSync(atual, "utf8")
+    } catch {
+      continue
+    }
+    arquivos++
+    const deTopo = importsEstaticos(texto)
+    for (const spec of extractBareSpecifiers(texto)) {
+      if (deTopo.has(spec)) estatico.add(spec)
+      else tardio.add(spec)
+    }
+    // Os RELATIVOS: o `./x.mjs`/`./x.js`/`./x/index.mjs` do repositorio. O que
+    // NAO resolve fica de fora (nao ha o que seguir) — a classe do import
+    // relativo quebrado e do `check-no-leaked-imports`, nao deste guard.
+    const relRe = /(?:from\s*|require\s*\(\s*|import\s*\(\s*)["'](\.[^"']+)["']/g
+    for (const m of texto.matchAll(relRe)) {
+      const alvo = resolveRelativo(m[1], atual)
+      if (alvo !== null) fila.push([alvo, nivel + 1])
+    }
+  }
+  return {
+    estatico: [...estatico].sort(),
+    tardio: [...tardio].sort(),
+    arquivos,
+  }
+}
+
+/**
+ * Resolve um import RELATIVO para um arquivo do repositorio, ou `null`.
+ *
+ * A escada e a do ESM neste repositorio (o specifier literal, as extensoes que
+ * ele usa e o `index` do diretorio). `require.resolve` do Node NAO serve aqui:
+ * ele ancora a resolucao no modulo que CHAMA, e nao no arquivo de onde o
+ * specifier veio — que e a pergunta deste guard.
+ *
+ * @param {string} spec
+ * @param {string} deAbs
+ * @returns {string|null}
+ */
+export function resolveRelativo(spec, deAbs) {
+  const base = resolve(dirname(deAbs), spec)
+  for (const suf of ["", ...EXTENSOES_JS, ...EXTENSOES_SHELL]) {
+    const p = base + suf
+    if (existsSync(p) && statSync(p).isFile()) return p
+  }
+  for (const suf of EXTENSOES_JS) {
+    const p = join(base, `index${suf}`)
+    if (existsSync(p) && statSync(p).isFile()) return p
+  }
+  return null
+}
+
+/**
+ * O veredito de UM comando: ele exige `node_modules`, e de que grau.
+ *
+ * O desfecho e um FATO do repositorio (o grafo e estatico), nunca uma suposicao
+ * sobre o runner:
+ *   - `grau: "binario"` — o comando E um binario do `node_modules` (`vitest`,
+ *     `tsc`, `prisma`), ou o executa por um gerenciador (`bunx vitest`). Sem
+ *     `node_modules` ele nem existe;
+ *   - `grau: "estatico"` — o alvo carrega um pacote no START (crash garantido);
+ *   - `grau: "tardio"`  — o alvo so alcanca o pacote dentro de funcao (o
+ *     desfecho depende do caminho: por isso a isencao pode dizer `passa`).
+ *
+ * @param {{programa: string, tokens: string[], linha?: number}} comando
+ * @param {{root: string, pacotes: Set<string>, scripts?: Record<string, string>, profundidade?: number, visto?: Set<string>}} ctx
+ * @returns {{precisa: boolean, grau: "nenhum"|"binario"|"estatico"|"tardio", pacotes: string[], ferramentas: string[], alvo?: string, internos?: {linha: number, programa: string, tokens: string[], texto: string, deps: object}[], foraDoEscopo?: {categoria: string, motivo: string}}}
+ */
+export function exigeDeps(comando, ctx) {
+  const prof = ctx.profundidade ?? 0
+  const { programa, tokens } = comando
+  const alvo = tokens?.[0]
+
+  if (PACKAGE_MANAGERS.has(programa)) {
+    if (INSTALL_SUBCOMMANDS.has(alvo)) return { precisa: false, grau: "nenhum" }
+    if (alvo === "run" || alvo === undefined) return exigeDepsDeEntrada(comando, ctx)
+    if (PACOTE_SUBCOMMANDS.has(alvo)) {
+      const pacote = tokens[1]
+      if (pacote === undefined)
+        return {
+          precisa: false,
+          grau: "nenhum",
+          foraDoEscopo: { categoria: "gerenciador", motivo: `${programa} ${alvo} sem pacote` },
+        }
+      return {
+        precisa: true,
+        grau: "binario",
+        pacotes: [pacote.replace(/@[\d^~].*$/, "")],
+        ferramentas: [`${programa} ${alvo}`],
+      }
+    }
+    const arquivo = tokens.find((t) => EXTENSOES_JS.some((e) => t.endsWith(e)))
+    if (arquivo !== undefined) return exigeDepsDeAlvo(resolve(ctx.root, arquivo), ctx, programa)
+    // `npx <pacote>`/`bunx <pacote>`: o pacote DECLARADO e um binario do
+    // node_modules; um pacote NAO declarado e resolvido pela REDE em runtime
+    // (nao e dependencia do repositorio — a mesma leitura do ALLOWLIST do
+    // `check-hook-commands` para o `bunx @lhci/cli`).
+    if (programa === "npx" || programa === "bunx" || programa === "pnpx") {
+      const pacote = tokens?.[0]
+      if (pacote === undefined || pacote.startsWith("-")) return { precisa: false, grau: "nenhum" }
+      const limpo = pacote.replace(/@[\d^~].*$/, "")
+      if (ctx.pacotes.has(limpo))
+        return { precisa: true, grau: "binario", pacotes: [limpo], ferramentas: [programa] }
+      return {
+        precisa: false,
+        grau: "nenhum",
+        ...(prof === 0
+          ? {
+              foraDoEscopo: {
+                categoria: "resolvido-pela-rede",
+                motivo: `${programa} ${pacote} nao e dependencia do repositorio`,
+              },
+            }
+          : {}),
+      }
+    }
+    // `bun --version`, `bun pm ls`: o gerenciador sem entrada de repositorio nao
+    // executa nada que o guard possa seguir — e' um fato, nao uma duvida.
+    if (alvo === undefined || alvo.startsWith("-")) return { precisa: false, grau: "nenhum" }
+    return {
+      precisa: false,
+      grau: "nenhum",
+      ...(prof === 0
+        ? {
+            foraDoEscopo: {
+              categoria: "gerenciador",
+              motivo: `${programa} ${tokens.join(" ")}`.trim(),
+            },
+          }
+        : {}),
+    }
+  }
+
+  if (INTERPRETERS.has(programa)) {
+    if (alvo === undefined || alvo.startsWith("-")) {
+      return {
+        precisa: false,
+        grau: "nenhum",
+        ...(prof === 0
+          ? {
+              foraDoEscopo: {
+                categoria: "payload-inline",
+                motivo: `payload inline (${[programa, alvo].filter(Boolean).join(" ")})`,
+              },
+            }
+          : {}),
+      }
+    }
+    // `python3 scripts/check_crlf.py`: fora do escopo DECLARADO deste guard (as
+    // dependencias dele nao vivem no `node_modules`) — fato, nao duvida.
+    if (programa.startsWith("python"))
+      return {
+        precisa: false,
+        grau: "nenhum",
+        alvo: alvo,
+        ...(prof === 0
+          ? {
+              foraDoEscopo: {
+                categoria: "fora-do-node",
+                motivo: `${programa} ${alvo} (dependencias fora do node_modules)`,
+              },
+            }
+          : {}),
+      }
+    // `bash scripts/x.sh`/`sh .husky/pre-commit`: o CORPO do script e' relido com
+    // a mesma extracao de comandos — um `bash scripts/x.sh` que chama `node
+    // scripts/y.mjs` depende do que `y.mjs` alcanca.
+    return exigeDepsDeAlvo(absoluto(ctx.root, alvo), ctx, programa)
+  }
+
+  if (programa.startsWith("./") || programa.startsWith("../") || programa.startsWith("/")) {
+    const abs = absoluto(ctx.root, programa)
+    if (existsSync(abs)) return exigeDepsDeAlvo(abs, ctx, "execucao direta")
+    if (/node_modules\/\.bin\//.test(programa))
+      return {
+        precisa: true,
+        grau: "binario",
+        pacotes: [programa.split("/").pop()],
+        ferramentas: [programa],
+      }
+    return {
+      precisa: false,
+      grau: "nenhum",
+      foraDoEscopo: {
+        categoria: "caminho-ausente",
+        motivo: `caminho direto ausente (${programa})`,
+      },
+    }
+  }
+
+  // Um `scripts/x.mjs` SEM `./` NAO e uma invocacao do shell: o que existe e o
+  // NOME dentro de uma lista (o `EXPECTED_SCRIPTS=(...)` dos benchmarks), e
+  // seguir esse texto como comando acusaria dependencia de um arquivo que o job
+  // nunca executa. E fato, nomeado — nao um achado.
+  if (programa.includes("/"))
+    return {
+      precisa: false,
+      grau: "nenhum",
+      foraDoEscopo: {
+        categoria: "nome-em-lista",
+        motivo: `nome de arquivo em lista (${programa})`,
+      },
+    }
+
+  if (EXTERNAL_TOOLS.has(programa)) return { precisa: false, grau: "nenhum" }
+
+  const pacote = BIN_PACKAGES[programa] ?? (ctx.pacotes.has(programa) ? programa : null)
+  if (pacote !== null || binInstalado(ctx.root, programa))
+    return {
+      precisa: true,
+      grau: "binario",
+      pacotes: [pacote ?? programa],
+      ferramentas: [programa],
+    }
+
+  // sem classificacao: NOMEADO (nunca escondido) — mas so na SUPERFICIE que o
+  // leitor do workflow ve (o comando do proprio passo). Dentro dos scripts a
+  // mesma pergunta tem outro dono (`check-workflow-refs`/`check-hook-commands`,
+  // que julgam comando por arquivo), e nomear cada palavra de shell do corpo
+  // deles encheria o relatorio de ruido ate esconder o achado de verdade.
+  return {
+    precisa: false,
+    grau: "nenhum",
+    ...(prof === 0
+      ? {
+          foraDoEscopo: {
+            categoria: "ferramenta-do-sistema",
+            motivo: `programa nao classificado (${programa})`,
+          },
+        }
+      : {}),
+  }
+}
+
+/**
+ * O veredito do alvo de um interpretador: arquivo JS (grafo) ou script shell
+ * (o corpo dele e relido com a MESMA extracao de comandos).
+ *
+ * @param {string} abs
+ * @param {object} ctx
+ * @param {string} papel
+ * @returns {object}
+ */
+function exigeDepsDeAlvo(abs, ctx, papel) {
+  if (!existsSync(abs))
+    return {
+      precisa: false,
+      grau: "nenhum",
+      ...((ctx.profundidade ?? 0) === 0
+        ? { foraDoEscopo: { categoria: "caminho-ausente", motivo: `${papel}: ${abs} ausente` } }
+        : {}),
+    }
+  if (EXTENSOES_JS.some((e) => abs.endsWith(e))) {
+    const grafo = grafoDoModulo(abs, {
+      visto: ctx.visto ?? new Set(),
+      profundidade: ctx.profundidade ?? 0,
+    })
+    if (grafo.estatico.length > 0)
+      return { precisa: true, grau: "estatico", pacotes: grafo.estatico, alvo: abs }
+    if (grafo.tardio.length > 0)
+      return { precisa: true, grau: "tardio", pacotes: grafo.tardio, alvo: abs }
+    return { precisa: false, grau: "nenhum", alvo: abs }
+  }
+  if (ehShell(abs)) {
+    if ((ctx.profundidade ?? 0) >= MAX_PROFUNDIDADE)
+      return {
+        precisa: false,
+        grau: "nenhum",
+        foraDoEscopo: { categoria: "profundidade", motivo: `profundidade maxima em ${abs}` },
+      }
+    let texto
+    try {
+      texto = readFileSync(abs, "utf8")
+    } catch {
+      return {
+        precisa: false,
+        grau: "nenhum",
+        foraDoEscopo: { categoria: "caminho-ausente", motivo: `${papel}: ${abs} ilegivel` },
+      }
+    }
+    const interna = comandosDeTexto(texto, {
+      root: ctx.root,
+      origem: abs,
+      profundidade: (ctx.profundidade ?? 0) + 1,
+    })
+    // O CORPO do script agrega como a entrada do package.json: um `bash x.sh`
+    // que chama `node y.mjs` (com `pg` de topo) depende de `pg` — devolver
+    // `precisa: false` aqui faria o grau do script de shell MENTIR sobre o que
+    // ele executa.
+    return { ...agregaInternos(interna), alvo: abs, internos: interna }
+  }
+  return { precisa: false, grau: "nenhum", alvo: abs }
+}
+
+/**
+ * O arquivo e' um SCRIPT DE SHELL? Pela extensao OU pelo shebang: os hooks
+ * (`.husky/pre-commit`) e alguns scripts do repositorio nao tem extensao, e sem
+ * o shebang eles sairiam do escopo — o corpo deles chama `node scripts/*.mjs`
+ * como qualquer outro.
+ *
+ * @param {string} abs
+ * @returns {boolean}
+ */
+export function ehShell(abs) {
+  if (EXTENSOES_SHELL.some((e) => abs.endsWith(e))) return true
+  try {
+    const primeira = readFileSync(abs, "utf8").split("\n", 1)[0]
+    return /^#!.*\b(?:ba)?sh\b/.test(primeira)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * O veredito de um `bun run <entrada>`: a entrada do `package.json` e o que
+ * executa — o guard segue o TEXTO dela (a mesma extracao de comandos), porque um
+ * `bun run check:x` que chama `node scripts/y.mjs` depende do que `y.mjs`
+ * alcança.
+ *
+ * @param {{programa: string, tokens: string[]}} comando
+ * @param {object} ctx
+ * @returns {object}
+ */
+function exigeDepsDeEntrada(comando, ctx) {
+  const entrada = comando.tokens?.[1]
+  const scripts = ctx.scripts ?? {}
+  const texto = entrada === undefined ? undefined : scripts[entrada]
+  if (typeof texto !== "string")
+    return {
+      precisa: false,
+      grau: "nenhum",
+      foraDoEscopo: {
+        categoria: "entrada-do-package",
+        motivo: `${comando.programa} run ${entrada ?? ""}`.trim(),
+      },
+    }
+  const internos = comandosDeTexto(texto, {
+    root: ctx.root,
+    profundidade: (ctx.profundidade ?? 0) + 1,
+  })
+  return { ...agregaInternos(internos), alvo: `package.json scripts.${entrada}`, internos }
+}
+
+/**
+ * O veredito AGREGADO de uma arvore de comandos (`bun run <entrada>` ou o corpo
+ * de um script de shell): o grau mais forte que qualquer comando interno exige.
+ *
+ * A hierarquia e do desfecho concreto: `binario` e `estatico` derrubam o
+ * processo sem alternativa (`passa` seria uma isencao falsa); `tardio` e o unico
+ * que admite "nao percorri esse caminho".
+ *
+ * @param {{deps: object}[]} internos
+ * @returns {{precisa: boolean, grau: string, pacotes: string[], ferramentas: string[]}}
+ */
+function agregaInternos(internos) {
+  const deps = internos.map((i) => i.deps).filter((d) => d.precisa)
+  const graus = new Set(deps.map((d) => d.grau))
+  return {
+    precisa: deps.length > 0,
+    grau: graus.has("binario")
+      ? "binario"
+      : graus.has("estatico")
+        ? "estatico"
+        : deps.length > 0
+          ? "tardio"
+          : "nenhum",
+    pacotes: [...new Set(deps.flatMap((d) => d.pacotes ?? []))].sort(),
+    ferramentas: [...new Set(deps.flatMap((d) => d.ferramentas ?? []))].sort(),
+  }
+}
+
+/**
+ * Os comandos de um TEXTO (corpo de passo do workflow, entrada do package.json
+ * ou script shell), com o veredito de dependencia de cada um. A extracao e a
+ * MESMA dos hooks (`shellCommands`, do `check-hook-commands.mjs`).
+ *
+ * @param {string} texto
+ * @param {{root: string, startLine?: number, origem?: string, profundidade?: number}} ctx
+ * @returns {{linha: number, programa: string, tokens: string[], texto: string, deps: object}[]}
+ */
+export function comandosDeTexto(texto, ctx) {
+  const base = {
+    root: ctx.root,
+    pacotes: ctx.pacotes ?? declaredPackages(ctx.root),
+    scripts: ctx.scripts ?? lerScripts(ctx.root),
+    profundidade: ctx.profundidade ?? 0,
+  }
+  const out = []
+  for (const comando of shellCommands(texto, {
+    startLine: ctx.startLine ?? 1,
+    origem: ctx.origem ?? "",
+  })) {
+    const deps = exigeDeps(comando, base)
+    out.push({ ...comando, texto: [comando.programa, ...comando.tokens].join(" "), deps })
+  }
+  return out
+}
+
+/** As entradas do `package.json` (a fonte de `bun run <entrada>`). */
+export function lerScripts(root) {
+  const full = join(root, "package.json")
+  if (!existsSync(full)) return {}
+  try {
+    return JSON.parse(readFileSync(full, "utf8")).scripts ?? {}
+  } catch {
+    return {}
+  }
+}
+
+/** O caminho absoluto de um alvo citado por um comando. */
+function absoluto(root, alvo) {
+  return isAbsolute(alvo) ? alvo : resolve(root, alvo)
+}
+
+// =============================================================================
+// O veredito por JOB
+// =============================================================================
+
+/**
+ * O veredito de UM job: ele INSTALA as dependencias? Quais comandos exigem
+ * `node_modules`, e de que grau?
+ *
+ * @param {{arquivo: string, job: string, passos: {line: number, body: string}[]}} entrada
+ * @param {{root: string}} ctx
+ * @returns {{id: string, arquivo: string, job: string, instala: boolean, exige: object[], foraDoEscopo: object[], graus: string[]}}
+ */
+export function auditaJob(entrada, ctx) {
+  const exige = []
+  const foraDoEscopo = []
+  let instala = false
+  for (const passo of entrada.passos) {
+    for (const comando of comandosDeTexto(passo.body, {
+      root: ctx.root,
+      startLine: passo.line,
+      origem: entrada.job,
+    })) {
+      const ehInstall = (c) =>
+        PACKAGE_MANAGERS.has(c.programa) && INSTALL_SUBCOMMANDS.has(c.tokens?.[0])
+      if (ehInstall(comando)) instala = true
+      // O INSTALL pode estar DENTRO de um script que o passo chama (um
+      // `bash scripts/ci-setup.sh` que roda `bun install`): e a arvore que
+      // responde de onde vem o `node_modules` do job.
+      for (const interno of comandosInternos(comando)) if (ehInstall(interno)) instala = true
+      // A EXIGENCIA vem da agregação: o comando do passo ja carrega o grau do que
+      // ele alcanca (o corpo do script, a entrada do `package.json`). Reportar os
+      // internos SEPARADOS duplicaria o mesmo achado — e o que o operador ve no
+      // workflow e a linha do passo.
+      if (comando.deps.precisa)
+        exige.push({ linha: comando.linha, texto: comando.texto, ...comando.deps })
+      if (comando.deps.foraDoEscopo !== undefined)
+        foraDoEscopo.push({
+          linha: comando.linha,
+          texto: comando.texto,
+          ...comando.deps.foraDoEscopo,
+        })
+    }
+  }
+  return {
+    id: `${entrada.arquivo}::${entrada.job}`,
+    arquivo: entrada.arquivo,
+    job: entrada.job,
+    instala,
+    exige,
+    foraDoEscopo,
+    graus: [...new Set(exige.map((e) => e.grau))].sort(),
+  }
+}
+
+/**
+ * A arvore de um comando: o comando e o que ele alcanca em profundidade
+ * (`bun run <entrada>` -> o texto da entrada; `bash scripts/x.sh` -> o corpo do
+ * script; e o que ESSES alcancam, ate o teto de profundidade).
+ *
+ * @param {object} comando
+ * @returns {object[]}
+ */
+export function comandosInternos(comando) {
+  const out = []
+  for (const interno of comando.deps?.internos ?? []) {
+    out.push(interno, ...comandosInternos(interno))
+  }
+  return out
+}
+
+/**
+ * O veredito de UM job — a forma que o relatorio, o `--json` e a suite leem.
+ *
+ * @typedef {{id: string, arquivo: string, job: string, instala: boolean, exige: object[], foraDoEscopo: object[], graus: string[]}} JobAuditado
+ */
+
+/**
+ * A auditoria das duas forjas: o veredito de todo job + as violacoes da regra.
+ *
+ * As formas do retorno sao DECLARADAS (nao `object[]`): quem consome o
+ * veredito — o relatorio, o `--json` e a suite unitaria em TypeScript — le
+ * `violacao.job.id`, `isencoes.aged[0].days` e `isencoes.mentirosas[0].motivos`
+ * direto, e um `object[]` transformaria cada leitura num cast.
+ *
+ * @param {string} root
+ * @param {{isencoes?: object[], now?: number}} [opts]
+ * @returns {{
+ *   jobs: JobAuditado[],
+ *   violacoes: {tipo: string, job: JobAuditado}[],
+ *   isencoes: {
+ *     invalid: {id: string, why: string}[],
+ *     aged: {id: string, addedAt: string, days: number, limit: number}[],
+ *     semObjeto: {entrada: object, motivo: string}[],
+ *     mentirosas: {entrada: object, motivos: string[]}[],
+ *   },
+ *   unjudgeable: object[],
+ *   vazios: object[],
+ * }}
+ */
+export function auditaForjas(root, { isencoes = JOB_DEPS_ALLOWLIST, now = Date.now() } = {}) {
+  const scan = readWorkflowScan(root)
+  const jobs = []
+  for (const w of scan.files) {
+    const porJob = new Map()
+    for (const passo of workflowRunSteps(w.text)) {
+      const job = passo.job ?? "(sem job)"
+      if (!porJob.has(job)) porJob.set(job, [])
+      porJob.get(job).push(passo)
+    }
+    for (const [job, passos] of porJob)
+      jobs.push(auditaJob({ arquivo: w.path, job, passos }, { root }))
+  }
+
+  const porId = new Map(jobs.map((j) => [j.id, j]))
+  const declaradas = new Map(isencoes.map((e) => [e.job, e]))
+  // O ESCOPO VARBIDO: um workflow que nao esta no conjunto lido nao sustenta
+  // veredito nenhum sobre a declaracao que aponta para ele. Sem isto, rodar o
+  // guard num FIXTURE (testes e prova por mutacao) acusaria as 14 isencoes reais
+  // do repositorio como "sem objeto" — uma violacao sobre arquivo que aquele
+  // escopo nao contem. No run real o conjunto e o repositorio inteiro, e toda
+  // entrada e julgada.
+  const varrridos = new Set(scan.files.map((f) => f.path))
+
+  const violacoes = []
+  for (const job of jobs) {
+    if (job.instala || job.exige.length === 0) continue
+    if (declaradas.has(job.id)) continue
+    violacoes.push({ tipo: "sem-install", job })
+  }
+
+  // A regra de DATA e JANELA vem do modulo compartilhado (fonte unica das
+  // allowlists): sem `addedAt` a isencao nao envelhece — fail-closed.
+  const { invalid, aged } = reviewAddedAtEntries(isencoes, {
+    idOf: (e) => e.job,
+    now,
+    reviewDays: JOB_DEPS_REVIEW_DAYS,
+  })
+
+  const semObjeto = []
+  const mentirosas = []
+  for (const entrada of isencoes) {
+    if (!varrridos.has(String(entrada.job).split("::")[0])) continue
+    const job = porId.get(entrada.job)
+    if (job === undefined) {
+      semObjeto.push({
+        entrada,
+        motivo: "o job declarado nao existe em nenhum workflow das forjas",
+      })
+      continue
+    }
+    if (job.instala)
+      semObjeto.push({
+        entrada,
+        motivo: `o job INSTALA as dependencias (${REMEDIO}) — a isencao nao tem objeto`,
+      })
+    else if (job.exige.length === 0)
+      semObjeto.push({
+        entrada,
+        motivo: "o job nao roda nenhum comando que exija node_modules (medido no grafo)",
+      })
+    if (entrada.semDeps === "passa") {
+      const impossivel = job.exige.filter((e) => e.grau === "estatico" || e.grau === "binario")
+      if (impossivel.length > 0)
+        mentirosas.push({
+          entrada,
+          motivos: impossivel
+            .slice(0, 3)
+            .map((e) => `L${e.linha} ${e.texto} -> ${e.grau}: ${e.pacotes.join(", ")}`),
+        })
+    } else if (entrada.semDeps !== "falha-fechado") {
+      mentirosas.push({
+        entrada,
+        motivos: [
+          `\`semDeps\` invalido ('${entrada.semDeps ?? ""}') — use "passa" ou "falha-fechado"`,
+        ],
+      })
+    }
+  }
+
+  return {
+    jobs,
+    violacoes,
+    isencoes: { invalid, aged, semObjeto, mentirosas },
+    unjudgeable: scan.unjudgeable,
+    vazios: scan.vazios,
+  }
+}
+
+// =============================================================================
+// CLI
+// =============================================================================
+
+/** O grau do comando, em portugues, para o relatorio. */
+function grauTexto(grau) {
+  if (grau === "binario") return "binario do node_modules (sem install ele nem existe)"
+  if (grau === "estatico")
+    return "import de TOPO (sem install o processo morre com ERR_MODULE_NOT_FOUND)"
+  return "import TARDIO (o desfecho depende do caminho: pode nao ser percorrido)"
+}
+
+function relatorio(auditoria, { review = false } = {}) {
+  const linhas = []
+  for (const v of auditoria.violacoes) {
+    linhas.push(`   - ${v.job.id}`)
+    for (const e of v.job.exige.slice(0, 6)) linhas.push(`       L${e.linha} ${e.texto}`)
+    for (const e of v.job.exige.slice(0, 3))
+      linhas.push(
+        `         -> ${e.pacotes.join(", ") || e.ferramentas.join(", ")} — ${grauTexto(e.grau)}`,
+      )
+    linhas.push(`       Remedio: ${REMEDIO}`)
+  }
+  for (const inv of auditoria.isencoes.invalid)
+    linhas.push(
+      `   - ${inv.id}: ${invalidAddedAtViolation({ label: inv.id, listName: "JOB_DEPS_ALLOWLIST", why: inv.why })}`,
+    )
+  for (const e of auditoria.isencoes.semObjeto)
+    linhas.push(`   - ${e.entrada.job}: isencao SEM OBJETO — ${e.motivo}`)
+  for (const e of auditoria.isencoes.mentirosas) {
+    linhas.push(
+      `   - ${e.entrada.job}: isencao que NAO pode ser verdadeira (afirmou semDeps: "${e.entrada.semDeps}")`,
+    )
+    for (const m of e.motivos) linhas.push(`       ${m}`)
+  }
+  if (review)
+    for (const a of auditoria.isencoes.aged)
+      linhas.push(
+        `   - ${agedAddedAtViolation({
+          label: a.id,
+          listName: "JOB_DEPS_ALLOWLIST",
+          addedAt: a.addedAt,
+          days: a.days,
+          limit: a.limit,
+          remedy: REMEDIO,
+        })}`,
+      )
+  return linhas
+}
+
+function main() {
+  const argv = process.argv.slice(2)
+  const rootIdx = argv.indexOf("--root")
+  if (rootIdx !== -1 && !argv[rootIdx + 1]) {
+    console.error("❌ --root exige um diretorio (fail-closed)")
+    process.exit(EXIT.NAOJULGAVEL)
+  }
+  const root = rootIdx !== -1 ? resolve(argv[rootIdx + 1]) : ROOT
+  if (!existsSync(root) || !statSync(root).isDirectory()) {
+    console.error(`❌ --root inexistente ou nao e um diretorio: ${root}`)
+    process.exit(EXIT.NAOJULGAVEL)
+  }
+  const review = argv.includes("--review")
+  const json = argv.includes("--json")
+
+  const auditoria = auditaForjas(root, { now: Date.now() })
+  // A ordem do contrato: NAO JULGAVEL primeiro (sem ler todo o escopo, "nenhum
+  // job exige dependencias" seria uma afirmacao sobre o que o guard nao leu).
+  if (!json) {
+    exitOnUnjudgeable(auditoria.unjudgeable)
+    reportEmptyWorkflows(auditoria.vazios)
+  } else if (auditoria.unjudgeable.length > 0) {
+    console.log(
+      JSON.stringify(
+        { version: 1, naoJulgavel: auditoria.unjudgeable, exit: EXIT.NAOJULGAVEL },
+        null,
+        2,
+      ),
+    )
+    process.exit(EXIT.NAOJULGAVEL)
+  }
+
+  const violacoes = [
+    ...auditoria.violacoes.map((v) => ({ tipo: "sem-install", job: v.job.id })),
+    ...auditoria.isencoes.invalid.map((i) => ({ tipo: "isencao-sem-data", job: i.id, why: i.why })),
+    ...auditoria.isencoes.semObjeto.map((e) => ({
+      tipo: "isencao-sem-objeto",
+      job: e.entrada.job,
+      why: e.motivo,
+    })),
+    ...auditoria.isencoes.mentirosas.map((e) => ({
+      tipo: "isencao-mentirosa",
+      job: e.entrada.job,
+      why: e.motivos.join("; "),
+    })),
+    ...(review
+      ? auditoria.isencoes.aged.map((a) => ({
+          tipo: "isencao-vencida",
+          job: a.id,
+          dias: a.days,
+          limite: a.limit,
+        }))
+      : []),
+  ]
+
+  const comExigencia = auditoria.jobs.filter((j) => j.exige.length > 0)
+  const isentos = comExigencia.filter((j) => !j.instala).length
+  const foraDoEscopo = auditoria.jobs.flatMap((j) =>
+    j.foraDoEscopo.map((n) => ({ job: j.id, ...n })),
+  )
+  const porCategoria = new Map()
+  for (const f of foraDoEscopo)
+    porCategoria.set(f.categoria, (porCategoria.get(f.categoria) ?? 0) + 1)
+
+  if (json) {
+    console.log(
+      JSON.stringify(
+        {
+          version: 1,
+          resumo: {
+            jobs: auditoria.jobs.length,
+            exigemDeps: comExigencia.length,
+            instalam: comExigencia.length - isentos,
+            isentosDeclarados: isentos,
+            isencoes: JOB_DEPS_ALLOWLIST.length,
+            foraDoEscopo: foraDoEscopo.length,
+            foraDoEscopoPorCategoria: Object.fromEntries([...porCategoria].sort()),
+            vencidas: auditoria.isencoes.aged.length,
+            violacoes: violacoes.length,
+          },
+          jobs: auditoria.jobs.map((j) => ({
+            id: j.id,
+            instala: j.instala,
+            graus: j.graus,
+            exige: j.exige.map((e) => ({
+              linha: e.linha,
+              texto: e.texto,
+              grau: e.grau,
+              pacotes: e.pacotes,
+            })),
+            isento: JOB_DEPS_ALLOWLIST.some((i) => i.job === j.id),
+          })),
+          foraDoEscopo,
+          violacoes,
+          exit: violacoes.length > 0 ? EXIT.VIOLACAO : EXIT.OK,
+        },
+        null,
+        2,
+      ),
+    )
+    process.exit(violacoes.length > 0 ? EXIT.VIOLACAO : EXIT.OK)
+  }
+
+  if (auditoria.isencoes.aged.length > 0 && !review) {
+    console.warn(
+      `::warning:: ${auditoria.isencoes.aged.length} isencao(oes) de JOB_DEPS_ALLOWLIST passaram a janela de revisao de ${JOB_DEPS_REVIEW_DAYS} dias — reafirme (atualizando \`addedAt\`) ou remova (o modo --review as escala a violacao no job semanal)`,
+    )
+  }
+
+  if (violacoes.length > 0) {
+    console.error(`❌ ${violacoes.length} violacao(oes) no contrato de dependencias dos jobs:\n`)
+    for (const linha of relatorio(auditoria, { review })) console.error(linha)
+    console.error(
+      `\n   O verde de um job que NAO instala nao tem causa no repositorio: ele depende do\n` +
+        `   \`node_modules\` do ambiente (imagem do runner, workspace reusado). Sem o pacote, os\n` +
+        `   guards de YAML saem 2 ("NAO JULGAVEL") e a mensagem que o operador ve nao diz isto.`,
+    )
+    process.exit(EXIT.VIOLACAO)
+  }
+
+  const venceram = auditoria.isencoes.aged.length
+  console.log(
+    `✅ Nenhum job roda comando dependente de node_modules sem install nem isencao declarada ` +
+      `(${auditoria.jobs.length} jobs: ${comExigencia.length} exigem dependencias — ` +
+      `${comExigencia.length - isentos} instalam, ${isentos} com isencao declarada${venceram > 0 ? `, ${venceram} com a janela vencida (aviso)` : ""}).`,
+  )
+  if (foraDoEscopo.length > 0) {
+    const detalhe = [...porCategoria]
+      .sort((a, b) => b[1] - a[1])
+      .map(([c, n]) => `${n} ${c}`)
+      .join(", ")
+    console.log(
+      `ℹ️  ${foraDoEscopo.length} comando(s) dos PASSOS fora do escopo do grafo de node_modules ` +
+        `(${detalhe}) — contados, nomeados e disponiveis por inteiro em \`--json\`; o guard nao lhes cunha isencao`,
+    )
+    for (const f of foraDoEscopo.slice(0, 3))
+      console.log(`     ex.: ${f.job} L${f.linha} ${f.texto}: ${f.motivo}`)
+  }
+  process.exit(EXIT.OK)
+}
+
+// True apenas quando executado diretamente (node ...) — as funcoes puras sao
+// importadas pelos testes e pela prova por mutacao.
+const IS_DIRECT_RUN =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href
+
+if (IS_DIRECT_RUN) main()

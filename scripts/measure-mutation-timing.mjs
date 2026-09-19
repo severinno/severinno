@@ -5,7 +5,7 @@
 //
 // Mede o tempo REAL do step 'Run mutation test (contrato coordenado — 5
 // cenários, 2 elos)' do job 'Mutation Test (contrato coordenado —
-// doc↔anchor↔código, 5 cenários)' num run do GitHub Actions — fechando a
+// doc↔anchor↔código)' num run do GitHub Actions — fechando a
 // linha '~35-45s (est.)¹' da tabela de overhead do README com medição
 // verdadeira, sem depender de auth local (o job semanal roda o gh com o
 // GITHUB_TOKEN do próprio Actions).
@@ -193,7 +193,7 @@ import { pathToFileURL } from "node:url"
 import { extractDurationFromLine } from "./check-setup-bun-common.mjs"
 
 // ── Constantes de contrato — espelham os nomes REAIS do seed-guards.yml ────
-// Job: 'Mutation Test (contrato coordenado — doc↔anchor↔código, 5 cenários)'
+// Job: 'Mutation Test (contrato coordenado — doc↔anchor↔código)'
 // Step: 'Run mutation test (contrato coordenado — 5 cenários, 2 elos)'
 // Se alguém RENOMEAR o job/step, este script falha com exit 2 — o drift de
 // contrato é exatamente o que a medição deve acusar (não passar em silêncio).

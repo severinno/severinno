@@ -4,18 +4,87 @@
 # Woodpecker CI - alternativa open source ao GitHub Actions
 #
 # Este arquivo define os pipelines de CI/CD que rodam no Woodpecker CI.
+#
+# ⚠️ STATUS: AVALIADO E ARQUIVADO (não é o caminho escolhido).
+# A forja/CI adotada é o Gitea/Forgejo Actions (.gitea/workflows/), porque
+# reaproveita a sintaxe dos workflows existentes; o Woodpecker exigiria
+# reescrever todos eles. Este arquivo fica como registro da alternativa
+# avaliada — dois pontos do rascunho original NÃO rodam como escritos:
+#   1. `plugins/docker` está DESCONTINUADO (use
+#      woodpeckerci/plugin-docker-buildx);
+#   2. `appleboy/ssh-action` é um GitHub Action, não um plugin Woodpecker
+#      (plugins do Woodpecker são imagens Docker lidas via `settings:`) — o
+#      equivalente é `appleboy/drone-ssh`.
+# O registry abaixo vem de secret (`image_registry`), não hardcoded.
+#
+# Os usos da versão do Bun neste arquivo são ESPELHOS, como os dos composes: a
+# tag `oven/bun:<v>` de cada passo e os `BUN_VERSION=<v>` de `build_args` têm de
+# dizer o valor DECLARADO em `.actrc`/`deploy/env.gitea.example`. Quem cobra isso
+# é a invariante 19 do `check-bun-mirror` (comparação por valor) e quem os
+# reescreve é a seção 2e do `bump-bun.sh` — o par escritor+comparação é o que faz
+# de um literal uma derivação, e não um segundo ponto de verdade.
+#
+# Foram treze usos que envelheceram SETE versões atrás do repositório enquanto
+# este arquivo esteve fora da varredura (a isenção que ficava escrita aqui). Um
+# pipeline de terceiro é CONSUMIDOR da versão, não uma reserva dela: se o
+# Woodpecker voltar a ser o caminho, o pipeline entra como está (a versão já
+# acompanha o repositório) e os dois pontos do rascunho acima seguem pendentes.
 # =============================================================================
 
 # ── Pipeline de CI (pull requests e push) ──────────────────────────────────
 pipeline:
   lint:
-    image: oven/bun:1.4.0
+    image: oven/bun:1.3.14
     commands:
       - bun install --frozen-lockfile
       - bun run lint
 
+  # Barreira explícita contra vazamento de campo sensível em payload de
+  # usuário (allowlist de PII) + fonte única do client Prisma. Step próprio:
+  # a falha precisa apontar para o vazamento, não se diluir no `test:run`.
+  pii-allowlist:
+    image: oven/bun:1.3.14
+    commands:
+      - bun install --frozen-lockfile
+      - bun run db:generate
+      - bun run check:pii-allowlist
+      # Prova que o guard detecta regressão (sandbox isolado em .tmp/).
+      - bun run check:pii-gate
+
+  # O manifesto dos required checks precisa apontar para jobs reais e
+  # incondicionais — um required check inexistente faz o PR esperar para sempre.
+  required-checks:
+    image: oven/bun:1.3.14
+    commands:
+      - bun run check:required-checks
+
+  # Fonte unica do registry OCI (imagens da app + mirrors). Step proprio: a
+  # falha precisa apontar o arquivo/linha que reacoplou o projeto ao GHCR.
+  registry-source:
+    image: oven/bun:1.3.14
+    commands:
+      - bun run check:registry-source
+
+  # Nenhuma referencia pendurada entre workflow -> script/package.json.
+  workflow-refs:
+    image: oven/bun:1.3.14
+    commands:
+      - bun run check:workflow-refs:internal
+
+  # Escopo dos guards: nenhum script pode cravar um diretorio de forja.
+  forge-workflow-scope:
+    image: oven/bun:1.3.14
+    commands:
+      - bun run check:forge-workflow-scope
+
+  # Paridade de gates entre a forja (dona do merge) e o espelho do GitHub.
+  forge-parity:
+    image: oven/bun:1.3.14
+    commands:
+      - bun run check:forge-parity
+
   typecheck:
-    image: oven/bun:1.4.0
+    image: oven/bun:1.3.14
     commands:
       - bun install --frozen-lockfile
       - bun run db:generate
@@ -24,7 +93,7 @@ pipeline:
       NODE_OPTIONS: --max-old-space-size=4096
 
   test:
-    image: oven/bun:1.4.0
+    image: oven/bun:1.3.14
     commands:
       - bun install --frozen-lockfile
       - bun run db:generate
@@ -44,7 +113,7 @@ pipeline:
         image: redis:7-alpine
 
   build:
-    image: oven/bun:1.4.0
+    image: oven/bun:1.3.14
     commands:
       - bun install --frozen-lockfile
       - bun run db:generate
@@ -53,23 +122,51 @@ pipeline:
       SKIP_TYPESCRIPT_CHECK: "true"
       BUILD_STANDALONE: "true"
 
+# ── Pipeline de drift dos required checks (cron) ──────────────────────────
+# NÃO roda em PR/push: é vigilância periódica do branch protection da forja.
+# Os gates rodam em cada PR, mas quem BLOQUEIA o merge é a lista de required
+# status checks — estado da forja, fora do review. Um rename de `name:` de job
+# muda o contexto de status e o PR passa a esperar para sempre por um check que
+# nunca roda; nenhum teste de PR enxerga isso.
+#
+# Agende no Woodpecker um cron (Repo Settings → Cron) — sem cron criado, este
+# pipeline nunca dispara. Secrets: gitea_token + gitea_url.
+drift:
+  required-checks-drift:
+    image: oven/bun:1.3.14
+    commands:
+      - bun scripts/apply-required-checks.mjs --check --forge gitea
+    environment:
+      GITEA_TOKEN:
+        from_secret: gitea_token
+      GITEA_URL:
+        from_secret: gitea_url
+    when:
+      - event: cron
+
 # ── Pipeline de Deploy (apenas main) ──────────────────────────────────────
 deploy:
   docker-build:
     image: plugins/docker
     settings:
-      repo: ghcr.io/severinno/severinno
+      # `repo` é o NOME da imagem SEM o host — o host vai em `registry:`.
+      # O rascunho original repetia o host aqui (produziria
+      # ghcr.io/ghcr.io/severinno/severinno).
+      repo: severinno/severinno
       tags:
         - latest
         - ${CI_COMMIT_SHA:0:7}
-      registry: ghcr.io
+      # FONTE ÚNICA do registry: secret `image_registry`
+      # (ex.: ghcr.io ou git.severinno.cloud).
+      registry:
+        from_secret: image_registry
       username:
-        from_secret: ghcr_username
+        from_secret: image_registry_user
       password:
-        from_secret: ghcr_token
+        from_secret: image_registry_token
       dockerfile: Dockerfile
       build_args:
-        - BUN_VERSION=1.4.0
+        - BUN_VERSION=1.3.14
     when:
       branch: main
       event: push
@@ -77,18 +174,19 @@ deploy:
   docker-build-worker:
     image: plugins/docker
     settings:
-      repo: ghcr.io/severinno/severinno
+      repo: severinno/severinno
       tags:
         - worker-latest
         - worker-${CI_COMMIT_SHA:0:7}
-      registry: ghcr.io
+      registry:
+        from_secret: image_registry
       username:
-        from_secret: ghcr_username
+        from_secret: image_registry_user
       password:
-        from_secret: ghcr_token
+        from_secret: image_registry_token
       dockerfile: Dockerfile.worker
       build_args:
-        - BUN_VERSION=1.4.0
+        - BUN_VERSION=1.3.14
     when:
       branch: main
       event: push
