@@ -158,6 +158,27 @@ fase_b() {
   node scripts/check-hook-commands.mjs &
   PID_HOOKCMD=$!
 
+  # A classe SIGPIPE (`PRODUTOR | grep -q PADRAO` sob `set -o pipefail`): o grep
+  # quieto fecha o stdin no PRIMEIRO casamento, o produtor leva SIGPIPE e a soma
+  # do pipeline vira 141 — de forma INTERMITENTE, porque depende do TAMANHO da
+  # saida (acima do buffer do pipe), e com a mensagem apontando para a assercao
+  # que ACHOU o texto. O caso real deste repositorio: 216 ocorrencias em 47
+  # arquivos, 95 delas nos mutation tests, que ficavam vermelhos em ~1 de cada 3
+  # execucoes.
+  #
+  # POR QUE ELE ENTROU NO HOOK (antes so rodava no CI): o guard dono TEM o
+  # remedio mecanico (`--fix` -> herestring, com `--dry-run` publicando o patch
+  # no PR), e a OFERTA do pre-commit nao o cobria — nao por falta de remendo, mas
+  # porque o hook nunca invocava o guard. Quem introduz a cicatriz (uma reescrita
+  # mecanica de scripts) corrigia a mao exatamente a linha que a maquina remenda.
+  # Custo MEDIDO desta invocacao: ~0,14s (varredura inteira: 129 scripts + 33
+  # workflows) — o mesmo comando do CI, sem recorte, entao nao ha decisao de
+  # escopo a declarar (o `--staged` nao existiria aqui: metade do escopo sao
+  # corpos `run:` de workflow, e o veredito e do ESTADO da arvore, como o das
+  # outras guardas globais desta fase).
+  node scripts/check-pipefail-sigpipe.mjs &
+  PID_PIPEFAIL=$!
+
   # Prettier check STAGED — feedback de formatação ANTES do lint-staged
   (
     STAGED_FORMAT=$(git diff --cached --name-only --diff-filter=ACMR | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
@@ -167,7 +188,7 @@ fase_b() {
   ) &
   PID_PRETTIER=$!
 
-  wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY $PID_HOOKCMD
+  wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY $PID_HOOKCMD $PID_PIPEFAIL
 }
 
 FASE_B=0
@@ -177,8 +198,9 @@ fase_b || FASE_B=$?
 #
 # Quando o gate de sintaxe reprova OU a fase B reprova, o remedio e oferecido UMA
 # VEZ: ele detecta cada classe com o guard DONO e remenda so o que ele conhece
-# (a cicatriz de `run:`, o CR/CRLF do working tree, o CRLF do blob do indice e o
-# byte 0x97 do utf8), levando o remendo ao INDICE com a guarda de WIP. Sem este
+# (a cicatriz de `run:`, o CR/CRLF do working tree, o CRLF do blob do indice, o
+# byte 0x97 do utf8, o caminho tipado de um comando de hook e o pipe quieto sob
+# pipefail), levando o remendo ao INDICE com a guarda de WIP. Sem este
 # passo o operador consertava a mao exatamente o que a maquina remenda — com a
 # chance de introduzir um erro NOVO na mesma linha.
 #

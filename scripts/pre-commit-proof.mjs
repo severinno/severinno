@@ -161,6 +161,14 @@ export const GUARD_CLOSURE = [
   "remedy-classes/blob-crlf.mjs",
   "remedy-classes/utf8.mjs",
   "remedy-classes/hook-commands.mjs",
+  // A SEXTA classe entrou com o guard dono DELA no hook (fase B): a varredura do
+  // `check-pipefail-sigpipe` e a mesma do CI, e o remendo (`--fix` -> herestring)
+  // passa a ser oferecido no momento do defeito. A declaração importa o `fixAll`
+  // do dono, e o DONO já viajava neste fecho; o que faltava era a declaração — o
+  // fixture roda um remédio com oferta incompleta sem ela, e a recusa (exit 2)
+  // apareceria como veredito do defeito, que é exatamente o que o comentário
+  // acima descreve.
+  "remedy-classes/pipefail-sigpipe.mjs",
   // E OS GUARDS DONOS das três classes de ENCODING viajam com as declarações:
   // a descoberta RECUSA a rodada quando uma declaração cita um dono que não
   // existe NESTE repositório, então um fixture com as declarações e sem os donos

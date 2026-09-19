@@ -124,16 +124,20 @@ const SIM = { askFn: async () => "s" }
 const CTX = { bash: resolveBash() }
 
 describe("a lista de classes (o que o remédio OFERECE)", () => {
-  it("são as quatro classes mecânicas do commit, sem duplicata e sem sobra", () => {
+  it("são as SEIS classes mecânicas do commit, sem duplicata e sem sobra", () => {
     // A cobertura é o contrato: uma classe a mais aqui é um remendo que o
     // repositório passaria a oferecer; uma a menos, um defeito mecânico que volta
-    // a ser corrigido à mão.
+    // a ser corrigido à mão. A lista é LITERAL de propósito — a descoberta já
+    // prova que a oferta é a dos arquivos declarados; o que se pina aqui é o
+    // CONJUNTO, para uma classe sumir (o fixer apagado, a declaração sem
+    // `--fix` do dono) sem que ninguém veja.
     expect(CLASSES.map((c) => c.id)).toEqual([
       "run-syntax",
       "crlf",
       "blob-crlf",
       "utf8",
       "hook-commands",
+      "pipefail-sigpipe",
     ])
   })
 

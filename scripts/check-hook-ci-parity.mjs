@@ -216,10 +216,18 @@ export const HOOK_NOT_RUN = [
     ids: ["doctor-ci"],
     why: "compara os espelhos com as repository variables: `vars.*` SO existem no runner do CI — localmente nao ha valor contra o que comparar (e o doctor sai INDETERMINADA, nunca verde).",
   },
-  {
-    ids: ["pipefail-sigpipe"],
-    why: "varre TODOS os scripts do repositorio (nao o commit): o defeito e intermitente e nao muda por commit de codigo; ~1s no CI, ruido no caminho de cada commit.",
-  },
+  // AQUI ESTAVA o `pipefail-sigpipe` — a entrada saiu porque o hook passou a
+  // rodar o guard, e nao porque a decisao foi esquecida. A razao antiga era de
+  // CUSTO ("~1s no CI, ruido no caminho de cada commit") e de ESCOPO ("o defeito
+  // nao muda por commit de codigo"). As duas foram medidas de novo: o guard
+  // custa **0,14s** nesta arvore (129 scripts + 33 workflows), e o defeito MUDA
+  // por commit sim — ele nasce de uma reescrita mecanica de scripts/corpos
+  // `run:`, que e um commit de codigo. O que mudou de verdade foi a OFERTA: o
+  // guard dono ja tinha o remendo (`--fix` -> herestring) e o hook nao o
+  // invocava, entao quem introduzia a cicatriz corrigia a mao exatamente a linha
+  // que a maquina remenda. Com o comando na fase B, a classe
+  // `pipefail-sigpipe` do remedio do pre-commit passa a ser ALCANCAVEL no momento
+  // do defeito. O CI continua rodando a varredura inteira (as duas forjas).
   {
     ids: ["job-deps"],
     why: "o veredito e do ESTADO do repositorio inteiro (os 33 workflows das duas forjas e o grafo de imports de cada comando que um job roda): ele muda com um commit de WORKFLOW e tambem com um commit que muda o GRAFO de um script que um job ja rodava — nao existe recorte --staged que cubra as duas metades (um recorte sobre os workflows tocados ficaria cego no import novo de um script). O hook ja roda `bun run check:forge-parity` em TODO commit, que e quem exige a CLASSIFICACAO de um gate novo — e o CI roda o gate em todo PR, nas duas forjas.",

@@ -804,6 +804,7 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 | Hooks symmetry (`check-hooks-symmetry.mjs`)                                     |     ✅     |      ✅       |
 | Paridade hook ↔ CI (`check-hook-ci-parity.mjs`)                                 |     ✅     |       —       |
 | Comandos do hook resolvem (`check-hook-commands.mjs`)                           |     ✅     |       —       |
+| Pipefail / SIGPIPE (`check-pipefail-sigpipe.mjs`)                               |     ✅     |       —       |
 | Mutation jobs CI (`check-mutation-jobs.mjs`)                                    |     ✅     |      ✅       |
 | Mutation jobs staged diff (`check-mutation-jobs.mjs --staged`)                  |     ✅     |       —       |
 | Unused-deps staged diff (`check-unused-deps.mjs --staged`)                      |     ✅     |       —       |
@@ -937,20 +938,29 @@ O MESMO guard roda no pre-commit como RECORTE `--staged` (declarado em
 commit. Quando um gate do hook reprova por um defeito **MECÂNICO**, ele **OFERECE o
 remendo** (`scripts/pre-commit-remedy.mjs`, comando `LOCAL` declarado) — em **UMA
 pergunta** para as classes que o repositório já sabe consertar por máquina
-(**cinco** hoje: a oferta é DERIVADA de `scripts/remedy-classes/<id>.mjs`, um módulo
+(**seis** hoje: a oferta é DERIVADA de `scripts/remedy-classes/<id>.mjs`, um módulo
 por classe declarado pelo GUARD DONO, então um fixer novo entra na oferta sem
 ninguém editar o remédio — e uma declaração inválida RECUSA a rodada com exit 2 em
 vez de sumir da oferta em silêncio): a cicatriz de `run:` (o `--fix` do gate), o CR/CRLF do working tree
 (`check-crlf.sh --fix`), o CRLF do blob do índice (`check-blob-crlf.sh --fix`), o
-byte 0x97 do UTF-8 (`check-utf8.sh --fix src/`) e o **caminho tipado** num comando
+byte 0x97 do UTF-8 (`check-utf8.sh --fix src/`), o **caminho tipado** num comando
 de hook (`check-hook-commands.mjs --fix`, que troca o token pelo vizinho mais
 próximo quando não há dúvida: até 2 caracteres de diferença, um candidato só, e
 recusa EMPATE — e o token tem de estar NO hook: um caminho tipado DENTRO de um
 script chamado sai como **recusa NOMEADA**, porque o remendo só escreve em
-`.husky/`). Cada classe é DETECTADA e
+`.husky/`) e o **`PRODUTOR | grep -q` sob pipefail** (`check-pipefail-sigpipe.mjs
+--fix`, o herestring que tira a intermitência do SIGPIPE). Cada classe é DETECTADA e
 REMENDADA pelo guard dono, rodado como o hook o roda (ou importado, quando o dono é
-um módulo) — nenhuma régua paralela. O
-preview usa o MESMO caminho de decisão do fixer (`dry`, nada gravado), a pergunta
+um módulo) — nenhuma régua paralela.
+
+**O que faz uma classe ser OFERECÍVEL é o guard dono RODAR no hook** — o `--fix`
+sozinho não basta, porque o remédio só é invocado quando uma fase do commit
+reprova. É por isso que a sexta classe entrou junto com o guard dela na **fase B**
+do pre-commit: o MESMO comando do CI, medido em ~0,14s (129 scripts + 33
+workflows), em vez de mais um invariante em `HOOK_NOT_RUN` cujo remédio só
+existiria no CI.
+
+O preview usa o MESMO caminho de decisão do fixer (`dry`, nada gravado), a pergunta
 diz os três efeitos do "sim" (remenda a ÁRVORE, re-estagia, REVALIDA) e o veredito
 final é o do guard dono. O `git add` é RETIDO em arquivo que já tinha WIP (o
 remendo fica na árvore e o operador é avisado), e a classe que ESTAGIA POR CONTA

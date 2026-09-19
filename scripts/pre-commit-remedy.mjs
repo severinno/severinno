@@ -306,8 +306,14 @@ const rotulo = (classe) => `\`${classe.id}\` — ${classe.label}`
  * @returns {string}
  */
 export function blocoClasses(classes = CLASSES) {
+  // A largura da coluna é a do MAIOR id da oferta, não um literal: um id mais
+  // longo que o do momento (a sexta classe trouxe `pipefail-sigpipe`) empurrava o
+  // rótulo para fora da coluna e a ajuda saía desalinhada justamente ao documentar
+  // uma classe nova — a documentação da oferta é parte da oferta.
+  const largura = Math.max(...classes.map((c) => c.id.length), 0)
+  const seta = `  ${" ".repeat(largura)} → `
   return classes
-    .map((c) => `  ${c.id.padEnd(14)}${c.label}\n                 → \`${c.fixer}\``)
+    .map((c) => `  ${c.id.padEnd(largura)}  ${c.label}\n${seta}\`${c.fixer}\``)
     .join("\n")
 }
 
@@ -430,7 +436,7 @@ export async function remedy(root, deps = {}) {
     }
     if (deteccao.recusas) recusas.push(...deteccao.recusas)
     if (deteccao.semRemendo) {
-      // O rótulo da CLASSE entra na frente do motivo: com cinco classes, "há uma
+      // O rótulo da CLASSE entra na frente do motivo: com seis classes, "há uma
       // violação que não é remendável" sem dizer QUAL mecanismo a viu obrigaria o
       // operador a procurar no código de quem fala.
       log(`${rotulo(classe)}:\n${deteccao.semRemendo}`)

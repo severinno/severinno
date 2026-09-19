@@ -333,7 +333,7 @@ restore
 # ── MUTAÇÃO E — gate do CORE fora do hook e fora de HOOK_NOT_RUN ────────
 
 header "MUTAÇÃO E: invariante do CORE removido de HOOK_NOT_RUN"
-sed -i 's|^    ids: \["pipefail-sigpipe"\],$|    ids: [],|' "$GUARD"
+sed -i 's|^    ids: \["merge-latency"\],$|    ids: [],|' "$GUARD"
 if ! grep -Fq 'ids: [],' "$GUARD"; then
   fail "mutação E não aplicou (o sed não produziu o marcador)"
   exit 1
@@ -341,7 +341,7 @@ fi
 run_guard
 assert_exit 1 "MUTAÇÃO E"
 assert_violations 1 "MUTAÇÃO E"
-if ! violated "invariante do CORE 'pipefail-sigpipe' nao roda em nenhum hook"; then
+if ! violated "invariante do CORE 'merge-latency' nao roda em nenhum hook"; then
   fail "mutação E: o gate sumido não foi nomeado"
   sed 's/^/      /' "$VIOLATIONS" | head -6
   exit 1
@@ -349,7 +349,7 @@ fi
 if [ "$(node -e '
   const j = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))
   console.log(j.missing.join(","))
-' "$JSON_OUT")" != "pipefail-sigpipe" ]; then
+' "$JSON_OUT")" != "merge-latency" ]; then
   fail "mutação E: 'missing' não isolou o invariante removido"
   exit 1
 fi

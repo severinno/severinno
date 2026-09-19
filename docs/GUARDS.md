@@ -1809,12 +1809,22 @@ chega ao fixer NO MOMENTO em que a cicatriz aparece: sem ele, o hook reprovava o
 commit e a correção era reescrever à mão exatamente a linha que a máquina remenda
 — com a chance de introduzir um erro NOVO na mesma linha.
 
-Ele cobre as **cinco classes mecânicas** que o repositório já sabe consertar por
+Ele cobre as **seis classes mecânicas** que o repositório já sabe consertar por
 máquina, e nenhuma régua é reimplementada: a detecção e o remendo são SEMPRE o
 guard DONO — rodado como o hook o roda, ou IMPORTADO quando o dono é um módulo
-(`fixAll` da sintaxe, `planoDeRemendo`/`aplicarRemendo` dos comandos do hook): um
-remendo que re-derivasse o alvo de um defeito divergiria da diagnose que o gate
-acusa.
+(`fixAll` da sintaxe, `fixAll` do SIGPIPE, `planoDeRemendo`/`aplicarRemendo` dos
+comandos do hook): um remendo que re-derivasse o alvo de um defeito divergiria da
+diagnose que o gate acusa.
+
+**O que faz uma classe ser OFERECÍVEL é o guard dono RODAR no hook.** O `--fix`
+sozinho não basta: o remédio só é invocado quando uma fase do commit reprova, então
+um fixer cujo guard não é executado ali nunca chega ao operador — o remendo existe
+só no CI, onde ninguém tem terminal para confirmar. Foi por isso que a sexta classe
+(`pipefail-sigpipe`, o `PRODUTOR | grep -q` sob pipefail) entrou junto com o guard
+dela na **fase B** do `.husky/pre-commit` (o MESMO comando do CI, medido em ~0,14s);
+e é também por isso que as classes da sintaxe e da fase B são, hoje, todas as que o
+hook consegue medir — a fase A não tem fixer nenhum (medido: nenhum dos seus seis
+guards declara `--fix`), e a falha dela continua encerrando o hook antes da oferta.
 
 **A OFERTA DAS CLASSES É DERIVADA, e o dono da declaração é o guard que remenda.**
 Cada classe é um módulo em `scripts/remedy-classes/<id>.mjs` — o NOME do arquivo é o
@@ -1840,23 +1850,26 @@ A prova é `src/lib/__tests__/remedy-classes-discovery.test.ts`: ele escreve uma
 declaração nova — com o guard dono dela — no FIXTURE e mede a CLI do remédio
 EXECUTANDO a classe nova, sem que ninguém edite o remédio; e mede cada caso de
 declaração inválida, e a recusa (exit 2) que impede o veredito. Como o par
-"declaração + guard dono" ANDA JUNTO, o fecho dos fixtures traz as cinco
-declarações e os três guards de encoding: um fixture com as declarações e sem os
-donos é uma árvore inconsistente, e o não-zero viria da oferta, não do defeito.
+"declaração + guard dono" ANDA JUNTO, o fecho dos fixtures traz as seis
+declarações e os guards donos: um fixture com as declarações e sem os donos é uma
+árvore inconsistente, e o não-zero viria da oferta, não do defeito.
 
-| classe          | o defeito                                                      | o fixer (guard dono)                  | estágio do remendo                          |
-| :-------------- | :------------------------------------------------------------- | :------------------------------------ | :------------------------------------------ |
-| `run-syntax`    | operador pendente no fim do corpo `run:` em bloco literal      | `check-workflow-run-syntax.mjs --fix` | `git add`                                   |
-| `crlf`          | CR/CRLF no working tree dos `.sh`/`.bash` rastreados           | `check-crlf.sh --fix`                 | `git add --renormalize`                     |
-| `blob-crlf`     | CRLF/mixed no BLOB do ÍNDICE dos `.sh`/`.bash`                 | `check-blob-crlf.sh --fix`            | o PRÓPRIO fixer (`git add --renormalize`)   |
-| `utf8`          | byte 0x97 (em dash do Windows-1252) nos `.ts`/`.tsx` de `src/` | `check-utf8.sh --fix src/`            | `git add`                                   |
-| `hook-commands` | caminho TIPADO num comando de hook (vizinho inequívoco)        | `check-hook-commands.mjs --fix`       | `git add` — e **RELANÇAMENTO** (ver abaixo) |
+| classe             | o defeito                                                      | o fixer (guard dono)                                | estágio do remendo                          |
+| :----------------- | :------------------------------------------------------------- | :-------------------------------------------------- | :------------------------------------------ |
+| `run-syntax`       | operador pendente no fim do corpo `run:` em bloco literal      | `check-workflow-run-syntax.mjs --fix`               | `git add`                                   |
+| `crlf`             | CR/CRLF no working tree dos `.sh`/`.bash` rastreados           | `check-crlf.sh --fix`                               | `git add --renormalize`                     |
+| `blob-crlf`        | CRLF/mixed no BLOB do ÍNDICE dos `.sh`/`.bash`                 | `check-blob-crlf.sh --fix`                          | o PRÓPRIO fixer (`git add --renormalize`)   |
+| `utf8`             | byte 0x97 (em dash do Windows-1252) nos `.ts`/`.tsx` de `src/` | `check-utf8.sh --fix src/`                          | `git add`                                   |
+| `hook-commands`    | caminho TIPADO num comando de hook (vizinho inequívoco)        | `check-hook-commands.mjs --fix`                     | `git add` — e **RELANÇAMENTO** (ver abaixo) |
+| `pipefail-sigpipe` | `PRODUTOR                                                      | grep -q`sob`set -o pipefail` (SIGPIPE intermitente) | `check-pipefail-sigpipe.mjs --fix`          | `git add` |
 
-As três últimas são da **fase B** do hook (`run-encoding-guards.sh`) — e é por isso
-que a extensão da oferta vale: quem abre um commit com CRLF ou com o byte corrompido
-não tinha caminho nenhum além do `--fix` à mão. As três classes se SOBREPÕEM por
-construção (o CR do working tree suja também o blob), e o remédio leva o arquivo ao
-índice **uma vez**, sem acusar de retido o que uma classe anterior já estagiou.
+Todas vivem na **fase B** do hook (as de encoding pelo `run-encoding-guards.sh`; as
+duas últimas por serem guardas globais daquela fase) — e é por isso que a extensão
+da oferta vale: quem abre um commit com CRLF, com o byte corrompido, com um caminho
+tipado num hook ou com a cicatriz de SIGPIPE não tinha caminho nenhum além do
+`--fix` à mão. As três classes de encoding se SOBREPÕEM por construção (o CR do
+working tree suja também o blob), e o remédio leva o arquivo ao índice **uma vez**,
+sem acusar de retido o que uma classe anterior já estagiou.
 
 As duas classes que **estagiam por conta própria** (`blob-crlf`, cujo fixer roda
 `git add --renormalize`) ficam **RETIDAS** quando algum ofensor tem WIP ou não é
@@ -2534,7 +2547,7 @@ e a atribuição saem `null` (INDETERMINADO), nunca preenchidos com um número d
 outra rodada.
 
 **Custo da OFERTA de remendo no pre-commit — medido nos DOIS caminhos do
-commit.** O hook passou a OFERECER o remédio dos defeitos mecânicos (as quatro
+commit.** O hook passou a OFERECER o remédio dos defeitos mecânicos (as seis
 classes, numa pergunta só) DEPOIS das duas fases, e a dar o veredito da fase
 reprovada pela FASE RODADA DE NOVO com o remendo já no índice. As duas coisas
 vivem no caminho de CADA commit, então a família `hook` as mede onde elas são
@@ -2542,31 +2555,45 @@ pagas: no hook DE VERDADE, num repositório git temporário (o mesmo fixture da
 prova do hook — binários das fases dublados, remédio REAL), com o contrafactual
 sendo uma TRANSFORMAÇÃO do próprio hook, ancorada no texto dele (`hookSemOferta`:
 o MESMO veredito sem o bloco da oferta; `hookWaitAgregada`: o gate de sintaxe de
-volta ao `wait_all` da fase A). Medido em 17/09/2026 nesta máquina:
+volta ao `wait_all` da fase A). Medido em 18/09/2026 nesta máquina, com o hook já
+carregando o guard do SIGPIPE na fase B e a sexta classe na oferta:
 
 | forma medida (mediana de 3 amostras)                    | wall time |
 | ------------------------------------------------------- | --------- |
 | caminho COMUM, hoje (índice ok)                         | 81ms      |
-| caminho COMUM, sem a oferta (contrafactual)             | 80ms      |
+| caminho COMUM, sem a oferta (contrafactual)             | 79ms      |
 | caminho COMUM, sintaxe agregada ao `wait_all`           | 80ms      |
-| caminho de FALHA, hoje (defeito no índice, fail-closed) | 154ms     |
-| caminho de FALHA, sem a oferta (contrafactual)          | 76ms      |
+| caminho de FALHA, hoje (defeito no índice, fail-closed) | 220ms     |
+| caminho de FALHA, sem a oferta (contrafactual)          | 77ms      |
 | remédio VERDE — a fase rodada de novo (dublê declarado) | 148ms     |
-| detecção contra a ÁRVORE REAL (read-only, conferida)    | 182ms     |
+| detecção contra a ÁRVORE REAL (read-only, conferida)    | 305ms     |
 
-**Os dois deltas que importam.** No caminho COMUM a oferta custa **+1ms (≈0)**:
+**Os dois deltas que importam.** No caminho COMUM a oferta custa **+2ms (≈0)**:
 ela NÃO é alcançada quando nada reprova (o `if` só abre com fase vermelha), que é
-o que faz o custo dela ser pago por quem TEM defeito e não em todo commit. E a
-espera SEPARADA do gate de sintaxe contra a agregação no `wait_all` custa **+1ms**
+o que faz o custo dela ser pago por quem TEM defeito e não em todo commit — e o
+guard novo da fase B, no fixture, é dublê (o custo real dele está medido abaixo). E
+a espera SEPARADA do gate de sintaxe contra a agregação no `wait_all` custa **+1ms**
 — as duas esperam o MESMO conjunto de PIDs, e o teto é o `max`: a estrutura da
 espera não muda o tempo, e agora isso é dado versionado em vez de premissa. No
-caminho de FALHA a oferta custa **+78ms** (fail-closed: sem terminal ela não
+caminho de FALHA a oferta custa **+143ms** (fail-closed: sem terminal ela não
 pergunta nem remenda) e, depois de um remédio VERDE, a fase rodada de novo custa
-**+72ms** — ali só o gate de sintaxe é reexecutado; a fase B, que o fixture
+**+71ms** — ali só o gate de sintaxe é reexecutado; a fase B, que o fixture
 dubla, tem o custo medido nas famílias de guardas. Duas rodadas da mesma sessão
 dão ±3ms nestes números: é essa a resolução do instrumento, e por isso o que a
 família afirma é a ORDEM de grandeza (o caminho comum não paga a oferta; o de
 falha paga dezenas de milissegundos), não o milissegundo.
+
+**O que a sexta classe custou, e onde.** A detecção do remédio roda TODAS as
+classes quando é invocada, e a do SIGPIPE varre o repositório inteiro (o veredito
+dela é o ESTADO da árvore, não o do commit — é o mesmo `scanRoot` que o CI roda):
+por isso a linha "detecção contra a ÁRVORE REAL" subiu de **201ms para 305ms** e o
+caminho de FALHA (que inclui a detecção) de **211ms para 220ms** — o custo é pago
+onde a oferta é alcançada, nunca no caminho comum. A invocação do guard no hook
+custa **~0,14s** medidos à parte (129 scripts + 33 workflows), em paralelo com as
+outras guardas da fase B. A baseline versionada foi MOVIDA nesta rodada para a
+família `hook` (as outras herdadas, com a procedência marcada em `meta.reused`):
+um número de referência desatualizado transformaria uma decisão medida numa
+alerta falsa.
 
 **Quatro afirmações que o contrafactual precisa sustentar** (e que o teste
 prende): as duas transformações são ancoradas no TEXTO do hook, e sem as âncoras
@@ -4308,7 +4335,16 @@ SIGPIPE. `|| true` desliga a asserção junto com o defeito. Produtor vivo
 O guard imprime a linha reescrita, não só a regra.
 
 **Onde roda:** job `guards` da forja (dona do merge) e job `workflow-refs-guard`
-do GitHub — as duas pontas do CORE, classificadas no `check:forge-parity`. A
+do GitHub — as duas pontas do CORE, classificadas no `check:forge-parity`. E,
+desde que a sexta classe do remédio entrou na oferta, **a fase B do
+`.husky/pre-commit`** — com o MESMO comando do CI (sem recorte: metade do escopo
+são corpos `run:`, e o veredito é do ESTADO da árvore, como o das outras guardas
+globais daquela fase), medido em **~0,14s** (129 scripts + 33 workflows). Foi o
+guard dono que saiu de `HOOK_NOT_RUN`: a razão antiga era de custo ("~1s no CI,
+ruído no caminho de cada commit") e de escopo ("não muda por commit de código"), e
+as duas foram medidas de novo — o custo é 7× menor, e a cicatriz NASCE num commit
+de código (uma reescrita mecânica de scripts). O que faltava era o caminho até o
+fixer: quem a introduzia corrigia à mão exatamente a linha que a máquina remenda. A
 JANELA da dívida declarada (quando existir) roda no job semanal
 `registry-allowlist-review`, com `--review` (o gate vermelho) **e** com o
 publicador `scripts/declared-debt-issue.mjs` (o canal acionável) — ao lado das

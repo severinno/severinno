@@ -968,7 +968,7 @@ export function measureTestCost({ samples = 1, counterfactual = false } = {}) {
 // ── Hook: quanto a OFERTA de remendo custa no caminho do commit ────────────
 //
 // POR QUE MEDIR AQUI: o pre-commit passou a OFERECER o remédio dos defeitos
-// mecânicos (as quatro classes, numa pergunta só) DEPOIS das duas fases, e o
+// mecânicos (as seis classes, numa pergunta só) DEPOIS das duas fases, e o
 // veredito da fase reprovada passou a ser dado pela FASE RODADA DE NOVO, com o
 // remendo já no índice. As duas coisas vivem no caminho de CADA commit — a oferta
 // é um `if` que só abre quando algo reprova; a revalidação só acontece depois de
