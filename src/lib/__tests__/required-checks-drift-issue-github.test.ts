@@ -30,9 +30,11 @@ import { join, resolve } from "node:path"
 
 import {
   ISSUE_LABEL,
+  driftBody,
   driftTitle,
   markerOf,
   signatureOf,
+  splitErrors,
 } from "../../../scripts/required-checks-drift-issue.mjs"
 
 const ROOT = process.cwd()
@@ -194,6 +196,79 @@ function run(binDir: string, reportPath: string, extra: string[] = []) {
     env: { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ""}` },
   })
 }
+
+// ── o REMÉDIO que a issue dá, separado por espécie de erro ────────────────
+//
+// Medido no repo real: com um token que é ADMIN, o GitHub responde 403
+// "Upgrade to GitHub Pro or make this repository public". O applier nomeia isso
+// (`unsupported`) e a issue tem de dizer a verdade correspondente — nenhum
+// token resolve. Antes desta separação, a issue mandava "corrija o token", que
+// é o remédio do OUTRO erro e aponta para o lugar errado.
+
+describe("a issue de drift separa o erro da FORJA (sem portão) do erro de TOKEN", () => {
+  const semPortao = {
+    mode: "CHECK",
+    drift: false,
+    forges: {},
+    errors: [
+      {
+        forge: "github",
+        unsupported: true,
+        message:
+          "GitHub GET /repos/x/y/branches/main/protection/required_status_checks → HTTP 403: " +
+          '{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature."}',
+      },
+    ],
+  }
+
+  it("splitErrors: separa pelo remédio", () => {
+    const d = splitErrors(semPortao)
+    expect(d.unsupported.map((e: any) => e.forge)).toEqual(["github"])
+    expect(d.unreadable).toEqual([])
+
+    const token = { errors: [{ forge: "gitea", message: "Gitea: defina GITEA_TOKEN no ambiente" }] }
+    expect(splitErrors(token).unreadable).toHaveLength(1)
+    expect(splitErrors(token).unsupported).toEqual([])
+  })
+
+  it("o corpo diz que NENHUM token resolve, e não manda corrigir credencial", () => {
+    const body = driftBody(semPortao)
+    expect(body).toContain("Forjas SEM portão de merge (não é o token)")
+    expect(body).toContain("Nenhum token resolve isto.")
+    expect(body).toContain("Upgrade to GitHub Pro")
+    expect(body).toContain("não tem portão de merge nenhum")
+    // O conselho do OUTRO erro não pode aparecer para este.
+    expect(body).not.toContain("Corrija o token antes de fechar esta issue")
+    // E o `--apply` é declarado inútil para este caso (ele falha com o mesmo 403).
+    expect(body).toContain("`--apply` vai falhar com o mesmo 403")
+  })
+
+  it("o erro de TOKEN mantém o conselho antigo, e os dois convivem no mesmo corpo", () => {
+    const dois = {
+      ...semPortao,
+      errors: [
+        { forge: "github", unsupported: true, message: "Upgrade to GitHub Pro" },
+        { forge: "gitea", message: "Gitea: defina GITEA_TOKEN no ambiente" },
+      ],
+    }
+    const body = driftBody(dois)
+    expect(body).toContain("Forjas SEM portão de merge")
+    expect(body).toContain("Erros de verificação")
+    expect(body).toContain("Corrija o token antes de fechar esta issue")
+    // Com erro de token presente, o aviso de "--apply inútil" NÃO sai: o
+    // comando ainda serve para a forja cuja leitura falhou.
+    expect(body).not.toContain("`--apply` vai falhar com o mesmo 403")
+  })
+
+  it("a assinatura carrega o erro: a species nova não é confundida com a antiga", () => {
+    const comPortao = {
+      ...semPortao,
+      errors: [{ forge: "github", unsupported: true, message: "X" }],
+    }
+    const outro = { ...semPortao, errors: [{ forge: "github", unsupported: true, message: "Y" }] }
+    expect(signatureOf(comPortao)).not.toBe(signatureOf(outro))
+  })
+})
 
 describe("o drift de required checks fecha sozinho no GitHub (CLI real + gh dublê)", () => {
   it("run 1 abre a dívida; run 2 (em sincronia) COMENTA a prova e FECHA", () => {

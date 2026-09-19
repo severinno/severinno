@@ -190,6 +190,34 @@ export function hasSignature(body, signature) {
 }
 
 /**
+ * Os erros do relatório separados pelo REMÉDIO — que é a única coisa que os
+ * distingue, e a que a issue precisa acertar:
+ *
+ *   `unsupported` — a forja NÃO TEM o recurso (repo privado num plano sem branch
+ *     protection). Nenhum required check pode ser aplicado nem lido, e NENHUM
+ *     token resolve: o que falta é plano (`Upgrade to GitHub Pro`) ou o
+ *     repositório ser público. Mandar "corrigir o token" aqui manda o operador
+ *     caçar uma credencial que já é de administração — o erro que aponta para o
+ *     lugar errado, que é a classe que este repositório persegue;
+ *
+ *   `unreadable` — o resto (token ausente/sem permissão, rede, API fora). Aqui o
+ *     token É o suspeito, e o conselho antigo vale.
+ *
+ * Sem a separação a issue dá o MESMO conselho para os dois, e o conselho serve
+ * para um só.
+ *
+ * @param {object} report  relatório do `apply-required-checks --check --json`
+ * @returns {{unsupported: object[], unreadable: object[]}}
+ */
+export function splitErrors(report) {
+  const errors = report?.errors ?? []
+  return {
+    unsupported: errors.filter((e) => e?.unsupported === true),
+    unreadable: errors.filter((e) => e?.unsupported !== true),
+  }
+}
+
+/**
  * Corpo da issue em markdown: o que divergiu, por forja/branch, e o comando
  * que resolve. Sem isso a issue só diz "tem drift" e transfere o trabalho de
  * investigação para quem lê.
@@ -232,10 +260,30 @@ function driftProse(report) {
     lines.push("")
   }
 
-  if ((report?.errors ?? []).length > 0) {
+  const { unsupported, unreadable } = splitErrors(report)
+
+  if (unsupported.length > 0) {
+    lines.push("### Forjas SEM portão de merge (não é o token)")
+    lines.push("")
+    for (const error of unsupported) lines.push(`- \`${error.forge}\`: ${error.message}`)
+    lines.push("")
+    lines.push(
+      "> **Nenhum token resolve isto.** A forja recusa o recurso inteiro neste" +
+        " repositório, e nenhuma permissão (nem a de administração) habilita a" +
+        " feature: o que falta é **plano** (`Upgrade to GitHub Pro`) ou o" +
+        " repositório ser **público**. Enquanto isso, aquela forja **não tem" +
+        " portão de merge nenhum**: a lista de `ci/required-checks.json` descreve" +
+        " a INTENÇÃO, e o estado real é este. Se a forja sem portão é aceita, o" +
+        " remédio é uma decisão de plano/visibilidade — não uma correção de" +
+        " código, e não é esta a issue para isso.",
+    )
+    lines.push("")
+  }
+
+  if (unreadable.length > 0) {
     lines.push("### Erros de verificação")
     lines.push("")
-    for (const error of report.errors) lines.push(`- \`${error.forge}\`: ${error.message}`)
+    for (const error of unreadable) lines.push(`- \`${error.forge}\`: ${error.message}`)
     lines.push("")
     lines.push(
       "> Um drift que **não pôde ser medido** é tão grave quanto o drift: a" +
@@ -253,6 +301,15 @@ function driftProse(report) {
   lines.push("bun run ci:required-checks -- --apply   # aplica o manifesto na forja")
   lines.push("```")
   lines.push("")
+  if (unsupported.length > 0 && unreadable.length === 0) {
+    lines.push(
+      "⚠️ Neste relatório o único erro é de forja **sem o recurso** (acima):" +
+        " `--apply` vai falhar com o mesmo 403, e nenhum token muda isso — os" +
+        " comandos acima servem para as forjas que TÊM portão (ou para quando a" +
+        " forja sem portão for resolvida por plano/visibilidade).",
+    )
+    lines.push("")
+  }
   lines.push(
     "Se a causa foi um **rename de job**, prefira atualizar o manifesto/workflow a" +
       " aplicar: exigir um contexto que não existe é pior que não exigir nada.",

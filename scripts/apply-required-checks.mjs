@@ -104,6 +104,14 @@ Aplica ci/required-checks.json no branch protection de cada forja.
 // GitHub
 // ---------------------------------------------------------------------------
 
+/**
+ * O corpo que a forja devolve quando o branch protection não está disponível
+ * NESTE plano/repositório. A mensagem é da API (não nossa): casar por ela é o
+ * que permite tratá-la como o que ela é — "a feature não existe aqui" — em vez
+ * de confundi-la com um erro de credencial, que é o 403 mais comum.
+ */
+const PLAN_LIMIT_403 = /Upgrade to GitHub Pro|make this repository public/i
+
 function githubConfig(options) {
   const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
   const repo = options.repo ?? process.env.GITHUB_REPOSITORY
@@ -126,6 +134,27 @@ async function githubRequest({ token, baseUrl }, method, path, body) {
   })
   if (method === "GET" && response.status === 404) return { status: 404, data: null }
   if (!response.ok) {
+    const body = await response.text()
+    // O 403 DO PLANO NÃO É O 403 DO TOKEN. A forja recusa a feature inteira em
+    // repositório PRIVADO num plano sem branch protection ("Upgrade to GitHub
+    // Pro or make this repository public"), e o remédio não tem nada a ver com
+    // credencial: nenhum token — nem o de administração — muda isso. MEDIDO: com
+    // um token que é admin do repo, o GET e o PATCH respondem 403 com essa
+    // mensagem. Dizer "falta permissão" aqui manda o operador caçar um token que
+    // está certo, e é a classe de defeito que este repositório persegue: um erro
+    // que aponta para o lugar errado. Por isso ele sai NOMEADO
+    // (`unsupported`), e o veredito consegue distinguir "não deu para ler" de
+    // "esta forja não TEM portão de merge".
+    if (response.status === 403 && PLAN_LIMIT_403.test(body)) {
+      const err = new Error(
+        `GitHub ${method} ${path} → HTTP 403: ${body.slice(0, 300)} — a FORJA NÃO SUPORTA branch protection ` +
+          "neste repositório (privado num plano sem a feature): nenhum required check pode ser APLICADO nem LIDO, e o " +
+          "merge desta forja não tem portão. NÃO é o token: nenhuma permissão (nem administração) habilita a feature — " +
+          "o que falta é o plano (`Upgrade to GitHub Pro`) ou o repositório ser público.",
+      )
+      err.unsupported = true
+      throw err
+    }
     const hint =
       response.status === 403
         ? " — o token precisa de permissão de ADMINISTRAÇÃO no repo para ler o" +
@@ -133,8 +162,7 @@ async function githubRequest({ token, baseUrl }, method, path, body) {
           " 'Administration: read'). O GITHUB_TOKEN padrão NÃO tem esse escopo."
         : ""
     throw new Error(
-      `GitHub ${method} ${path} → HTTP ${response.status}: ` +
-        `${(await response.text()).slice(0, 300)}${hint}`,
+      `GitHub ${method} ${path} → HTTP ${response.status}: ${body.slice(0, 300)}${hint}`,
     )
   }
   return { status: response.status, data: response.status === 204 ? null : await response.json() }
@@ -417,7 +445,14 @@ async function main() {
       report.drift = report.drift || result.drift
     } catch (error) {
       log(`❌ ${error.message}`)
-      report.errors.push({ forge, message: error.message })
+      // `unsupported` viaja no relatório: "a forja não tem o recurso" é uma
+      // AFIRMAÇÃO sobre a forja, e quem lê (o doctor, o cron de drift) precisa
+      // distingui-la de "não consegui ler" — as duas pedem ações diferentes.
+      report.errors.push({
+        forge,
+        message: error.message,
+        ...(error.unsupported === true ? { unsupported: true } : {}),
+      })
       if (options.json) console.log(JSON.stringify(report, null, 2))
       return 1
     }

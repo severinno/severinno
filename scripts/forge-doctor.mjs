@@ -999,6 +999,19 @@ export function summarize(facts) {
     )
   } else if (facts.protection?.state === "drift") {
     for (const b of protectionBlockers(facts.protection)) blockers.push(b)
+  } else if (facts.protection?.state === "unsupported") {
+    // A forja NÃO TEM o recurso: não é "não li", é "não existe portão daquele
+    // lado". Vai para o NÃO PROVADO (o veredito não pode afirmar que a forja
+    // bloqueia) e NÃO para os bloqueios: uma limitação de plano acenderia o
+    // veredito em todo run para sempre, e um veredito que sempre acende não
+    // bloqueia nada — a mesma razão pela qual a dívida do board não bloqueia.
+    // O que o operador precisa está dito: o merge daquela forja não tem portão.
+    const semPortao = (facts.protection.forges ?? [])
+      .filter((f) => f.state === "unsupported")
+      .map((f) => f.forge)
+    unknowns.push(
+      `a forja ${semPortao.join(", ")} NÃO SUPORTA branch protection: nenhum required check pode ser aplicado nem lido, e o merge dessa forja não tem portão — ${facts.protection.detail}`,
+    )
   } else if (facts.protection && facts.protection.state !== "in-sync") {
     unknowns.push(`a branch protection REGISTRADA nao foi lida: ${facts.protection.detail}`)
   }
@@ -1138,6 +1151,17 @@ export function summarize(facts) {
   }
   if (facts.skippedProtection) {
     unproven.unshift("a branch protection REGISTRADA na forja (pulada por --no-protection)")
+  }
+  // A forja que NÃO TEM o recurso: a lista do "NÃO CUBRE" existe para dizer o
+  // que o veredito não está prometendo, e "o merge desta forja é barrado" é a
+  // conclusão que ele NÃO pode tirar daqui.
+  if (facts.protection?.state === "unsupported") {
+    const semPortao = (facts.protection.forges ?? [])
+      .filter((f) => f.state === "unsupported")
+      .map((f) => f.forge)
+    unproven.unshift(
+      `o PORTÃO DE MERGE do ${semPortao.join(", ")}: a forja não suporta branch protection (repo privado num plano sem a feature) — nenhum required check pode ser aplicado nem lido, e nada bloqueia o merge daquele lado; a declaração de ci/required-checks-applied.json descreve a INTENÇÃO, e o estado da forja é este`,
+    )
   }
   if (facts.skippedOpenDebt) {
     unproven.unshift("a dívida aberta no board (pulada por --no-open-debt)")
@@ -1496,11 +1520,7 @@ export function readBringUpGate({
  *
  * @param {{jobId: string, expectedCommand: RegExp, invariantId: string,
  *   cwd?: string, contract?: object, protection?: object}} args
- * @returns {{state: "proven"|"violated"|"unavailable", jobId: string,
- *   invariantId: string, script: string, detail: string,
- *   forges: {forge: string, workflow: string, command: string|null,
- *     registered: boolean|null, detail: string}[],
- *   violations: string[], remedies: string[]}}
+ * @returns {GateContractResult}
  */
 /**
  * O SCRIPT que o comando canônico de uma invariante executa — o campo `script`
@@ -1695,7 +1715,13 @@ export function readGateContract({
   if (protection && protection.state !== "skipped" && protection.forges) {
     const missingByForge = new Map()
     for (const pf of protection.forges) {
-      missingByForge.set(pf.forge, pf.missing ?? [])
+      // `?? []` aqui DESFAZIA o `null` que significa "não li": ele virava lista
+      // vazia, a lista vazia vira "tudo registrado", e o veredito publicava os
+      // gates CORE como "provado(s) — a branch protection o registra" com as
+      // DUAS forjas sem proteção lida. MEDIDO antes do conserto: 50 contratos
+      // "provado(s)", 0 "não conferido(s)", com o aviso de "não foi lida"
+      // impresso na linha de cima. `null` passa a atravessar intacto.
+      missingByForge.set(pf.forge, pf.missing ?? null)
     }
     const protectionViolations = []
     for (const e of entries) {
@@ -1716,12 +1742,28 @@ export function readGateContract({
         }
       }
     }
-    if (entries.length > 0 && entries.every((e) => e.registered === null)) {
+    // BASTA UMA forja NÃO LIDA para o contrato NÃO PODER sair `proven`: o
+    // contrato cobre as forjas que DECLARAM o job, e o veredito dele afirma que
+    // "a branch protection o registra" em todas. Com metade lida e metade não, a
+    // afirmação seria sobre a outra metade também — e era isso que acontecia
+    // (só o caso em que TODAS eram nulas caía aqui; uma lida e a outra não dava
+    // `proven`).
+    const naoLidas = entries.filter((e) => e.registered === null).map((e) => e.forge)
+    if (naoLidas.length > 0) {
+      // DUAS razões diferentes para o mesmo `null`, e a frase tem de dizer QUAL:
+      // "não li" (falta canal — resolve com credencial) e "a forja não TEM o
+      // recurso" (não há portão para conferir — nenhum token resolve).
+      const semPortao = (protection.forges ?? [])
+        .filter((f) => f.state === "unsupported")
+        .map((f) => f.forge)
       return {
         ...base,
         state: "unavailable",
         forges: entries,
-        detail: `o gate '${jobId}' está no contrato e o job roda o comando, mas a branch protection não foi lida — o registro não pode ser confirmado`,
+        detail:
+          semPortao.length > 0
+            ? `o gate '${jobId}' está no contrato e o job roda o comando, mas a forja ${semPortao.join(", ")} NÃO SUPORTA branch protection — não há registro a conferir, e o merge daquele lado não tem portão`
+            : `o gate '${jobId}' está no contrato e o job roda o comando, mas a branch protection de ${naoLidas.join(", ")} não foi lida — o registro não pode ser confirmado`,
       }
     }
     if (protectionViolations.length > 0) {
@@ -1811,7 +1853,7 @@ export function coreGateContracts() {
  * "o que é CORE está no manifesto?" (a segunda pergunta é do check:forge-parity).
  *
  * @param {{cwd?: string, contract?: object, protection?: object}} args
- * @returns {{results: object[], allProven: boolean, violations: string[]}}
+ * @returns {{results: GateContractResult[], allProven: boolean, violations: string[]}}
  */
 export function readAllGateContracts({
   cwd = REPO_ROOT,
@@ -1886,8 +1928,15 @@ export function readAllGateContracts({
  * (`unavailable`), nunca "em sincronia". O cron semanal pula com um `::notice::`;
  * aqui não ler significa NÃO PROVADO.
  *
+ * QUANDO A FORJA NÃO TEM O RECURSO, o estado é `unsupported` — e não
+ * `unavailable`: `unavailable` é "não consegui ler" (falta canal), que se resolve
+ * com credencial; `unsupported` é a forja RECUSANDO a feature (repo privado num
+ * plano sem branch protection), que nenhum token resolve — e cujo efeito é o
+ * merge daquele lado não ter portão nenhum. As duas pedem ações diferentes, e
+ * por isso são estados diferentes.
+ *
  * @param {{cwd?: string, forges?: string[], run?: Function, nodePath?: string}} [args]
- * @returns {{state: "in-sync"|"drift"|"unavailable", detail: string, forges: object[]}}
+ * @returns {{state: "in-sync"|"drift"|"unsupported"|"unavailable", detail: string, forges: object[]}}
  */
 export function readProtection({
   cwd = REPO_ROOT,
@@ -1903,7 +1952,19 @@ export function readProtection({
 function readForgeProtection({ cwd, forge, run, nodePath }) {
   const args = [REQUIRED_CHECKS_APPLIER, "--check", "--forge", forge, "--json"]
   const res = run(nodePath, args, { cwd, encoding: "utf8", timeout: 60_000, env: process.env })
-  const empty = { forge, state: "unavailable", desired: 0, branches: [], missing: [], extra: [] }
+  // `missing: null` (e NÃO `[]`) é o que significa "não li": os consumidores
+  // deste fato traduzem `[]` como "tudo registrado" — e o defeito medido era
+  // exatamente esse, com as DUAS forjas sem proteção lida e o veredito
+  // publicando 50 gates CORE "provado(s)", incluindo "a branch protection o
+  // registra". Um `[]` aqui transformava "não consegui ler" em "está tudo lá".
+  const empty = {
+    forge,
+    state: "unavailable",
+    desired: 0,
+    branches: [],
+    missing: null,
+    extra: null,
+  }
 
   if (res.error) {
     return { ...empty, detail: `nao consegui executar o aplicador (${res.error.message})` }
@@ -1919,6 +1980,21 @@ function readForgeProtection({ cwd, forge, run, nodePath }) {
     report = null
   }
   const errors = report?.errors ?? []
+  if (errors.some((e) => e.unsupported === true)) {
+    // A FORJA NÃO SUPORTA O RECURSO — e isso é uma AFIRMAÇÃO sobre ela, não
+    // ausência de prova: não há token, permissão nem comando que faça o branch
+    // protection existir neste plano/repositório, então NADA bloqueia o merge
+    // daquele lado. Dizer "não foi lida" aqui mandaria o operador caçar uma
+    // credencial que está certa e esconderia o fato que importa (o portão não
+    // existe). MEDIDO: com token de administração, o GET e o PATCH do GitHub
+    // respondem 403 'Upgrade to GitHub Pro or make this repository public'.
+    return {
+      ...empty,
+      state: "unsupported",
+      unsupported: true,
+      detail: errors.map((e) => e.message).join("; "),
+    }
+  }
   if (errors.length > 0) {
     // Falta de credencial/rede NÃO é evidência sobre a forja: é ausência de prova.
     return { ...empty, detail: errors.map((e) => e.message).join("; ") }
@@ -1982,7 +2058,15 @@ function describeProtection({ branches, desired, missing, extra, flagged }) {
   return parts.join(" · ")
 }
 
-/** O estado AGREGADO: um drift em qualquer forja domina; depois, falta de prova. */
+/**
+ * O estado AGREGADO: um drift em qualquer forja domina; depois a forja que NÃO
+ * SUPORTA o recurso (o portão não existe ali — é mais forte que "não li");
+ * depois a falta de prova.
+ *
+ * A ordem não é decorativa: `drift` é contradição entre manifesto e forja, que
+ * alguém conserta com um comando; `unsupported` é a forja recusando a feature,
+ * que nenhum comando do repositório resolve; `unavailable` é falta de canal.
+ */
 function summarizeProtection(reads) {
   if (reads.length === 0) {
     return {
@@ -1993,6 +2077,9 @@ function summarizeProtection(reads) {
   const line = (r) => `${r.forge}: ${r.detail}`
   if (reads.some((r) => r.state === "drift")) {
     return { state: "drift", detail: reads.map(line).join(" · ") }
+  }
+  if (reads.some((r) => r.state === "unsupported")) {
+    return { state: "unsupported", detail: reads.map(line).join(" · ") }
   }
   if (reads.some((r) => r.state !== "in-sync")) {
     return { state: "unavailable", detail: reads.map(line).join(" · ") }

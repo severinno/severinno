@@ -3372,6 +3372,20 @@ a mentira otimista. O token precisa de permissão de **administração** no repo
 `--no-protection` pula a leitura e rebaixa o veredito, declarando-se no "NÃO
 cobre".
 
+**O REMÉDIO da issue é separado por espécie de erro** (`splitErrors`), porque dar o
+mesmo conselho para os dois manda o operador para o lugar errado — a classe de
+defeito que este repositório persegue. O erro de **token/permissão** ("não deu para
+ler") mantém o conselho antigo: corrija a credencial. O erro de forja **sem o
+recurso** (`unsupported`: repo privado num plano sem branch protection) sai em
+seção própria, com o remédio de verdade — **nenhum token resolve**, o que falta é
+plano (`Upgrade to GitHub Pro`) ou o repositório ser público, e enquanto isso
+aquela forja **não tem portão de merge nenhum**. Medido no GitHub deste
+repositório com um token que é administrador: `GET` e `PATCH` devolvem `403
+Upgrade to GitHub Pro or make this repository public`. Antes, a issue mandava
+"corrija o token antes de fechar esta issue" — caçar uma credencial que já estava
+certa. Quando só há erro de forja sem recurso, a issue também avisa que o
+`--apply` vai falhar com o **mesmo** 403.
+
 **AS REFERÊNCIAS NÃO VERSIONADAS, no veredito (seção 3/7):** o doctor transporta o
 fato da **invariante 9** (repository variables × espelhos, env do host da
 aplicação × template, e o que o **registry** serve para a tag declarada) para o

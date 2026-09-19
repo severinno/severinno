@@ -681,10 +681,12 @@ function applierJson({
   forge,
   drift = false,
   forges,
+  errors = [],
 }: {
   forge: string
   drift?: boolean
   forges?: object
+  errors?: { forge: string; message: string; unsupported?: boolean }[]
 }): string {
   return JSON.stringify({
     mode: "check",
@@ -692,7 +694,7 @@ function applierJson({
     branches: ["main"],
     drift,
     forges: forges ?? { [forge]: forgeInSync() },
-    errors: [],
+    errors,
   })
 }
 
@@ -2387,6 +2389,103 @@ function contractResults(dir: string): GateContractResult[] {
     .results as unknown as GateContractResult[]
 }
 
+/**
+ * A proteção de uma forja que NÃO foi lida: `missing: null` (nunca `[]` — lista
+ * vazia é "tudo registrado") e o estado dizendo POR QUÊ.
+ */
+const protecao = (forge: string, state: string) => ({
+  forge,
+  state,
+  desired: 0,
+  branches: [],
+  missing: null,
+  extra: null,
+  ...(state === "unsupported" ? { unsupported: true } : {}),
+})
+
+// ── a proteção NÃO LIDA não pode virar "registrado" ────────────────────────
+//
+// O DEFEITO MEDIDO, e por isso este bloco existe: o cruzamento dos gates CORE
+// com a proteção fazia `pf.missing ?? []`, transformando "não li" (null) em
+// lista vazia — e lista vazia é "tudo registrado". Com as DUAS forjas sem
+// proteção lida, o relatório publicava **50 gates CORE "provado(s)", 0 "não
+// conferido(s)"**, com o aviso de "não foi lida" impresso na linha de cima. É a
+// classe de defeito que este repositório persegue: "não consegui ler" virando
+// "está tudo lá".
+
+describe("a branch protection que NÃO foi lida deixa o gate NÃO CONFERIDO (jamais 'proven')", () => {
+  it("nenhum gate CORE sai 'proven' quando a proteção das duas forjas não foi lida", () => {
+    const dir = twoForgeFixture()
+    const r = readAllGateContracts({
+      cwd: dir,
+      contract: readContract(dir),
+      protection: {
+        state: "unavailable",
+        forges: [protecao("gitea", "unavailable"), protecao("github", "unavailable")],
+      },
+    })
+    expect(r.results.length).toBeGreaterThan(0)
+    // NENHUM contrato pode sair "proven": o que a proteção não confirmou não
+    // pode aparecer como registrado (os `violated` deste fixture são de outros
+    // defeitos, plantados de propósito — o que este teste mede é a ausência de
+    // "proven").
+    expect(r.results.some((x) => x.state === "proven")).toBe(false)
+    expect(r.allProven).toBe(false)
+    const naoConferidos = r.results.filter((x) => x.state === "unavailable")
+    expect(naoConferidos.length).toBeGreaterThan(0)
+    expect(naoConferidos[0].detail).toContain("branch protection de gitea, github não foi lida")
+  })
+
+  it("uma forja em sincronia e a outra não lida: só a lida conta (o `registered` é POR forja)", () => {
+    const dir = twoForgeFixture()
+    const r = readAllGateContracts({
+      cwd: dir,
+      contract: readContract(dir),
+      protection: {
+        state: "unavailable",
+        forges: [
+          { ...protecao("gitea", "unavailable"), missing: [] },
+          protecao("github", "unavailable"),
+        ],
+      },
+    })
+    // O contrato que cobre AS DUAS forjas não pode sair "proven" — era AQUI que
+    // o defeito aparecia, porque só o caso "todas nulas" era tratado e a metade
+    // lida liberava a afirmação sobre a não lida.
+    const dois = r.results.find((x) => x.forges.length === 2)!
+    const giteaEntry = dois.forges.find((f) => f.forge === "gitea") as {
+      registered: boolean | null
+    }
+    const githubEntry = dois.forges.find((f) => f.forge === "github") as {
+      registered: boolean | null
+    }
+    expect(giteaEntry.registered).toBe(true)
+    expect(githubEntry.registered).toBeNull()
+    expect(dois.state).toBe("unavailable")
+    expect(dois.detail).toContain("a branch protection de github não foi lida")
+    // E o contrato que só declara a forja LIDA segue medido: a ausência de
+    // leitura de uma forja não contamina a outra.
+    const so = r.results.find((x) => x.forges.length === 1 && x.forges[0].forge === "gitea")!
+    expect(so.state).not.toBe("unavailable")
+  })
+
+  it("a forja que NÃO SUPORTA diz ISSO — e não 'não foi lida' (as ações são diferentes)", () => {
+    const dir = twoForgeFixture()
+    const r = readAllGateContracts({
+      cwd: dir,
+      contract: readContract(dir),
+      protection: {
+        state: "unsupported",
+        forges: [protecao("gitea", "unsupported"), protecao("github", "unsupported")],
+      },
+    })
+    expect(r.results[0].state).toBe("unavailable")
+    expect(r.results[0].detail).toContain("NÃO SUPORTA branch protection")
+    expect(r.results[0].detail).toContain("o merge daquele lado não tem portão")
+    expect(r.allProven).toBe(false)
+  })
+})
+
 describe("readAllGateContracts — o job EXIGIDO roda a régua da INVARIANTE, a MESMA nas duas forjas", () => {
   it("a régua é UMA: as duas forjas rodam o MESMO `bun run lint`", () => {
     const lint = contractResults(twoForgeFixture()).filter((x) => x.invariantId === "lint")
@@ -2536,6 +2635,64 @@ describe("readProtection — o que a forja REGISTRA (e não o que o repo declara
     const r = readProtection({ forges: ["gitea"], run: stub({ status: 0 }) as never })
     expect(r.state).toBe("unavailable")
     expect(r.detail).toContain("nao reportou a forja")
+  })
+
+  it("a forja que NÃO SUPORTA o recurso → estado PRÓPRIO (não 'unavailable': não é falta de canal)", () => {
+    // MEDIDO no GitHub deste repositório: com token de ADMINISTRAÇÃO, o GET e o
+    // PATCH do branch protection respondem 403 'Upgrade to GitHub Pro or make
+    // this repository public'. O aplicador marca isso como `unsupported`, e o
+    // doctor não pode tratar como "não consegui ler": o efeito é diferente — o
+    // merge daquela forja não tem portão nenhum, e nenhum token resolve.
+    const r = readProtection({
+      forges: ["github"],
+      run: stub({
+        status: 1,
+        stdout: applierJson({
+          forge: "github",
+          errors: [
+            {
+              forge: "github",
+              message:
+                "GitHub GET /repos/o/r/branches/main/protection/required_status_checks → HTTP 403: " +
+                '{"message":"Upgrade to GitHub Pro or make this repository public to enable this feature."} ' +
+                "— a FORJA NÃO SUPORTA branch protection neste repositório",
+              unsupported: true,
+            },
+          ],
+        }),
+      }) as never,
+    })
+    expect(r.state).toBe("unsupported")
+    const github = r.forges[0] as { state: string; unsupported?: boolean; missing: unknown }
+    expect(github.state).toBe("unsupported")
+    expect(github.unsupported).toBe(true)
+    // E o `missing` continua sendo "não li" (null), NUNCA lista vazia: lista
+    // vazia é "tudo registrado", o oposto do que este estado diz.
+    expect(github.missing).toBeNull()
+  })
+
+  it("`unsupported` DOMINA `unavailable` no agregado, e não é drift (não há o que consertar com um comando)", () => {
+    const run = ((_bin: string, args: string[]) => {
+      const forge = forgeOf(args)
+      if (forge === "github") {
+        return {
+          status: 1,
+          stdout: applierJson({
+            forge,
+            errors: [{ forge, message: "403 Upgrade to GitHub Pro", unsupported: true }],
+          }),
+          stderr: "",
+          signal: null,
+        }
+      }
+      return { status: 0, stdout: applierJson({ forge }), stderr: "", signal: null }
+    }) as never
+    const r = readProtection({ forges: ["gitea", "github"], run })
+    expect(r.state).toBe("unsupported")
+    expect(r.detail).toContain("github: 403 Upgrade to GitHub Pro")
+    // Nenhum bloqueio: a limitação do plano acenderia o veredito em todo run
+    // para sempre, e um veredito que sempre acende não bloqueia nada.
+    expect(protectionBlockers(r)).toEqual([])
   })
 
   it("aplicador que NÃO reporta a forja (ex.: pulou) → 'unavailable', não 'em sincronia'", () => {
