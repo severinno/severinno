@@ -61,13 +61,28 @@ export const BUN_VERSION_VAR = "${{ vars.BUN_VERSION }}"
  *
  * Cada espelho carrega a REGEX da própria linha: elas não são iguais (o `.actrc`
  * usa a flag `--var` do act; o env da forja usa `KEY=valor`).
+ *
+ * E cada espelho carrega a DECISÃO DE RECORTE (`recorte`/`motivo`): o contrato
+ * que o `check-mirror-coverage.mjs` mede. `recorte: null` com motivo é a ausência
+ * DECLARADA — o que não pode existir é espelho sem decisão, que é o espelho novo
+ * que ninguém decidiu como o commit julga (fail-closed).
  */
 export const BUN_MIRRORS = [
-  { file: ".actrc", line: /^--var BUN_VERSION=(.+)$/m, format: (v) => `--var BUN_VERSION=${v}` },
+  {
+    file: ".actrc",
+    line: /^--var BUN_VERSION=(.+)$/m,
+    format: (v) => `--var BUN_VERSION=${v}`,
+    recorte: null,
+    motivo:
+      "o recorte não julga o `.actrc`: ele não está em nenhuma pathspec de guard `--staged` (o hook roda o `check-bun-mirror --staged`, cujos alvos são `scripts/`, compose e Dockerfiles). Quem o cobre é a varredura GLOBAL do `check-bun-mirror` — que pega a troca E a remoção da flag —, e ela roda no PR, não no commit; o VALOR da flag é do `check-actrc-sync`/doctor, que precisam da variável da forja.",
+  },
   {
     file: "deploy/env.gitea.example",
     line: /^BUN_VERSION=(.+)$/m,
     format: (v) => `BUN_VERSION=${v}`,
+    recorte: null,
+    motivo:
+      "o recorte não julga o template do env: nenhum guard `--staged` o tem nas pathspecs. A REMOÇÃO da linha é da varredura GLOBAL do `check-bun-mirror` e do `check-registry-source` (o PR), e a TROCA do valor só é comparada pelo `check-actrc-sync` (que precisa do valor da variável da forja) e pelo doctor — ambas fora do commit.",
   },
 ]
 

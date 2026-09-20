@@ -2142,6 +2142,21 @@ jobs:
       - name: "Guard: no @ts-nocheck in non-generated files"
         run: bun run check:ts-nocheck
 
+      # A COBERTURA do recorte do commit, derivada das TABELAS-FONTE dos
+      # espelhos (as quatro: bun-version, registry-source, actrc-sync e o
+      # env-mirror, que traz o segredo para a conta). Um espelho que só a
+      # varredura GLOBAL julga passa pelo pre-commit em silêncio — e o que o
+      # commit TIRA não está em linha adicionada nenhuma. Ela MEDE por execução:
+      # muta cada espelho num worktree temporário, estagia e roda os comandos do
+      # recorte, com um CONTROLE na árvore intacta (um comando que falha SEM
+      # mutação falha por ambiente — dependência não instalada — e não pode
+      # contar como detector: com o controle o veredito vira INDETERMINADO,
+      # exit 2, em vez de um verde vindo de uma suíte quebrada). Ela roda aqui, e
+      # não num job node-puro, porque SPAWNA os guards do recorte: as dependências
+      # têm de existir para a medição responder o que ela promete.
+      - name: Cobertura do recorte (espelhos × commit)
+        run: node scripts/check-mirror-coverage.mjs
+
       # ── A suíte — o MESMO comando da forja dona do merge ────────────
       #
       # `bun run test:run` (= `vitest run`, config do app: `src/**/*.test.{ts,tsx}`

@@ -627,6 +627,68 @@ uma pipeline só. O probe da tag é o único passo que depende de rede — sem e
 passo continua verde **DECLARANDO** que não conferiu o pin contra o que a tag
 serve (o pin, o contrato e as mutações são offline).
 
+**A COBERTURA DO RECORTE — `check-mirror-coverage.mjs` (a quarta tabela: o `env-mirror`).**
+
+Os guards desta família declaram, cada um, a própria tabela de "onde o valor está
+espelhado" (`BUN_MIRRORS`, `IMAGE_MIRRORS`, `MIRROR_VARIABLE_RULES`) — e um espelho
+pode existir só na varredura GLOBAL. Aí um commit que troca ou APAGA aquela linha
+passa pelo pre-commit (o hook é o recorte) e o defeito só aparece no CI, quando
+aparece: o que o commit TIRA não está em linha adicionada nenhuma. O
+`check:mirror-coverage` pergunta exatamente isso, **por execução**: num worktree
+temporário, cada espelho é mutado (a troca do valor e a REMOÇÃO da linha),
+estagiado, e os comandos do recorte (derivados da `fase_a()` do hook) decidem se
+alguém o julga. O worktree é montado no **COMMIT PENDENTE** (índice + working tree,
+via `git stash create`) e não no HEAD: as tabelas são lidas VIVAS, então um espelho
+recém-declarado aparece na medição no mesmo instante — e medir o HEAD diria que o
+arquivo "não tem a linha" quando ele tem (a mentira é do estado, não do espelho).
+O limite: `git stash create` cobre arquivo RASTREADO.
+
+O que a extensão acrescentou é a **quarta tabela**, derivada do COMPOSE
+(`composeEnvVariables`), e não de uma lista à mão: são os nomes que o compose do
+Gitea lê — `BUN_VERSION`, `IMAGE_REGISTRY`, `IMAGE_NAMESPACE`, o `RUNNER_TOKEN` e o
+`GITEA__registry__ENABLED` (o par de VALOR declarado da etapa 1 do corte: o default
+do compose tem de ser igual à linha do template, e quem os compara é o
+`check:registry-source`).
+O segredo é o motivo de a tabela existir: nenhuma das três tabelas anteriores o
+cobria, e o par (template comitado ↔ env do host) é um espelho cujo lado
+VERSIONADO um commit muda. A regra de valor das três variáveis da imagem **não é
+reescrita**: a tabela LÊ a decisão de `MIRROR_VARIABLE_RULES[name].env` (duas
+listas divergiriam no primeiro dia). E o raciocínio do segredo é OUTRO: no template
+o valor é um PLACEHOLDER por desenho, então trocá-lo não é defeito — a mutação que
+morde é a REMOÇÃO, e o pulo da outra só vale com o motivo escrito (`swap`
+ignorado sem razão é violação; as DUAS ignoradas é "verde por vazio", também
+violação).
+
+**O CONTROLE, e por que ele é metade da medição.** Antes de mutar qualquer coisa,
+os comandos do recorte rodam na árvore INTACTA. Um comando que falha ali falha por
+AMBIENTE (dependência não instalada, ferramenta fora do PATH) — e contá-lo como
+detector faria de uma suíte vermelha de ambiente uma **cobertura verde**. Medido:
+num worktree sem `node_modules`, o `check-mutation-jobs --staged` falha SEM mutação
+e seria atribuído a todas elas; com o controle ele sai da medição e o processo NÃO
+termina verde (exit 2, INDETERMINADO). Um espelho que declara o recorte por um
+desses comandos também é violação: a declaração não pode ser confirmada nem
+refutada onde o guard não roda.
+
+O veredito é **por tabela**: quantos espelhos cada tabela declara, quantos têm
+regra no recorte e QUAIS ficam sem ela (nomeados), mais os que estão fora do
+commit (o `deploy/.env.gitea` não versionado), que entram declarados em vez de
+sumir da conta. Na árvore real: **8 espelhos medíveis, 0 com regra no recorte, 1
+fora do commit** — e cada ausência tem decisão escrita (fail-closed: espelho sem
+decisão, decisão que a medição não confirma e ausência declarada que a medição
+contradiz são violação). O que a medição NÃO responde: quem cobre o espelho FORA
+do recorte (a varredura global do PR, o `check-env-mirror` no bring-up) — isso está
+declarado no motivo de cada linha, e medir esse outro degrau é o passo seguinte.
+
+**Onde roda, e por que não no hook.** É invariante **CORE** do
+`check:forge-parity` (mesmo comando nas duas pipelines), nos jobs `guards` (forja
+dona do merge) e `check` (espelho) — os dois **instalam dependências**, e essa é a
+condição da medição: ela SPAWNA os guards do recorte, e sem `node_modules` o
+CONTROLE acusa (exit 2, INDETERMINADO) em vez de dar um verde falso. No hook ela
+não entra: ~6s e ~80 invocações de guard por commit no caminho de cada
+commit — a decisão está escrita em `HOOK_NOT_RUN` (o hook roda o gate de
+paridade, que exige a classificação de um gate novo). Custo medido nesta árvore:
+**5,2–5,5s** (controle) por rodada.
+
 ---
 
 ## 3. Mutation tests — `test-mutation-*.sh` + `check-mutation-jobs`

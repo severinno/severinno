@@ -233,6 +233,14 @@ export const HOOK_NOT_RUN = [
     why: "o veredito e do ESTADO do repositorio inteiro (os 33 workflows das duas forjas e o grafo de imports de cada comando que um job roda): ele muda com um commit de WORKFLOW e tambem com um commit que muda o GRAFO de um script que um job ja rodava — nao existe recorte --staged que cubra as duas metades (um recorte sobre os workflows tocados ficaria cego no import novo de um script). O hook ja roda `bun run check:forge-parity` em TODO commit, que e quem exige a CLASSIFICACAO de um gate novo — e o CI roda o gate em todo PR, nas duas forjas.",
   },
   {
+    ids: ["mirror-coverage"],
+    why: "mede o commit MUTANDO cada espelho num worktree temporario e rodando os comandos do RECORTE (e o CONTROLE na arvore intacta): custa ~6s e SPAWNA os guards do recorte, entao ele exige as dependencias instaladas — no hook isso poria uma suite de 80 invocacoes no caminho de cada commit, e um `node_modules` faltando viraria INDETERMINADO (exit 2) em vez de veredito. A pergunta que ele responde e sobre o CONTRATO DE MERGE (o commit julga esta linha?), e quem a responde a cada PR sao as duas pipelines: o job `guards` (forja dona do merge) e o job `check` (espelho), os dois com install.",
+  },
+  {
+    ids: ["github-dependencies"],
+    why: "mede o INVENTARIO do repositorio inteiro (as 8 classes, das fontes: os 27 workflows, os crons, os `uses:`, as referencias a ghcr.io, os scripts que chamam o `gh`, o plano de configuracao do Actions e os servicos) contra a declaracao em `ci/github-dependencies.json`. O veredito e o do ESTADO da arvore, nao de um commit: um commit que nao toca em nada disso nao muda o numero, e o que muda (um workflow, um cron, uma action, um servico) e um commit de CI/configuracao. Ele e node puro e barato (<0,5s), entao a lacuna e de ESCOPO declarada, nao de custo — e quem a cobre em cada PR sao as duas pipelines (job `guards` na forja dona do merge e `workflow-refs-guard` no espelho).",
+  },
+  {
     ids: ["merge-latency"],
     why: "mede a pipeline INTEIRA (o grafo de `needs:` + o modelo de duracao), nao o commit: um commit que nao toca a pipeline nem o modelo nao muda o veredito — e nao existe recorte dele, porque o `--check` le os dois arquivos fixos de qualquer jeito. Quem muda o veredito e exatamente o commit de CI/pipeline, e esse o hook ja cobre pelo gate de paridade de gates.",
   },

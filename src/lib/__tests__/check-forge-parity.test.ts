@@ -65,6 +65,8 @@ const REAL_LINES = [
   "      - run: node scripts/check-pipefail-sigpipe.mjs",
   "      - run: node scripts/check-prove-docs.mjs",
   "      - run: node scripts/check-registry-source.mjs",
+  "      - run: node scripts/check-mirror-coverage.mjs",
+  "      - run: node scripts/check-github-dependencies.mjs",
   "      - run: node scripts/check-runner-base.mjs",
   "      - run: node scripts/check-workflow-refs.mjs --pkg-internal",
   "      - run: node scripts/check-forge-workflow-scope.mjs",

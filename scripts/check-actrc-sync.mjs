@@ -184,7 +184,17 @@ export const ENV_MIRROR_COSTS = {
  * (sem isso os avisos virariam o mesmo texto genérico).
  * `staticGuard` nomeia o guard que checa APENAS a existência daquela variável —
  * a frase que diz ao leitor de onde vem o buraco que este guard fecha.
+ *
+ * E cada entrada carrega a DECISÃO DE RECORTE (`recorte`/`motivo`): o contrato
+ * que o `check-mirror-coverage.mjs` MEDE. Aqui a ausência de regra no recorte tem o
+ * mesmo desenho dos outros espelhos: quem compara o VALOR precisa do valor
+ * declarado (a variável da forja), que não existe num commit — o que o commit
+ * pode julgar é a EXISTÊNCIA da linha, e essa é da varredura global do guard
+ * dono de cada arquivo. Estar escrito assim é o que torna a lacuna revisável.
  */
+const SLICE_MOTIVO =
+  "o recorte não compara o VALOR deste espelho: a régua do valor precisa do valor DECLARADO (a repository variable), que não existe num commit — o que o recorte poderia julgar é a EXISTÊNCIA da linha, e essa é da varredura global do guard dono do arquivo (`check-bun-mirror`/`check-registry-source`), que roda no PR."
+
 export const MIRROR_VARIABLE_RULES = {
   BUN_VERSION: {
     actrc: {
@@ -193,6 +203,8 @@ export const MIRROR_VARIABLE_RULES = {
         "atualize o .actrc (Settings → Secrets and variables → Actions é a fonte; o act local lê o espelho, não a variável)",
       staticGuard:
         "O guard estático check-bun-mirror só valida a EXISTÊNCIA da linha, não o valor.",
+      recorte: null,
+      motivo: SLICE_MOTIVO,
     },
     env: {
       linha: "BUN_VERSION=<versão>",
@@ -200,6 +212,8 @@ export const MIRROR_VARIABLE_RULES = {
         envDriftRemedy(label, deployed) + ENV_MIRROR_COSTS.BUN_VERSION,
       staticGuard:
         "O guard estático check-bun-mirror só valida a EXISTÊNCIA da linha, não o valor.",
+      recorte: null,
+      motivo: SLICE_MOTIVO,
     },
   },
   IMAGE_REGISTRY: {
@@ -209,6 +223,8 @@ export const MIRROR_VARIABLE_RULES = {
         "atualize o .actrc (o act local resolveria o default do workflow e deixaria de provar o caminho DECLARADO do registry)",
       staticGuard:
         "O guard estático check-registry-source só exige a EXISTÊNCIA da flag (--var IMAGE_REGISTRY) e a declaração do nome no template — o valor nunca foi conferido.",
+      recorte: null,
+      motivo: SLICE_MOTIVO,
     },
     env: {
       linha: "IMAGE_REGISTRY=<host>",
@@ -216,6 +232,8 @@ export const MIRROR_VARIABLE_RULES = {
         envDriftRemedy(label, deployed) + ENV_MIRROR_COSTS.IMAGE_REGISTRY,
       staticGuard:
         "O guard estático check-registry-source só exige a EXISTÊNCIA da flag (--var IMAGE_REGISTRY) e a declaração do nome no template — o valor nunca foi conferido.",
+      recorte: null,
+      motivo: SLICE_MOTIVO,
     },
   },
   IMAGE_NAMESPACE: {
@@ -225,6 +243,8 @@ export const MIRROR_VARIABLE_RULES = {
         envDriftRemedy(label, deployed) + ENV_MIRROR_COSTS.IMAGE_NAMESPACE,
       staticGuard:
         "O guard estático check-registry-source só exige a DECLARAÇÃO do nome no template (a variável não é espelhada no .actrc) — o valor nunca foi conferido.",
+      recorte: null,
+      motivo: SLICE_MOTIVO,
     },
   },
 }

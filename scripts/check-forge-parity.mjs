@@ -414,6 +414,37 @@ export const CORE_INVARIANTS = [
     jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {
+    id: "mirror-coverage",
+    // A COBERTURA do recorte do commit, derivada das tabelas-fonte dos espelhos
+    // (`BUN_MIRRORS`, `IMAGE_MIRRORS`, `MIRROR_VARIABLE_RULES` e o `envMirrors()`
+    // do `check-env-mirror`, que traz o SEGREDO para a conta). Ela é do CORE
+    // porque a pergunta é sobre o COMMIT, e o commit é o mesmo nas duas forjas:
+    // um espelho que só a varredura global julga passa pelo pre-commit e o
+    // defeito aparece (quando aparece) no CI — e o que o commit TIRA não está em
+    // linha adicionada nenhuma. E ela MEDE por execução: muta cada espelho no
+    // worktree, estagia e roda os comandos do recorte, com um CONTROLE na árvore
+    // intacta (um comando que falha sem mutação falha por ambiente e não pode
+    // contar como detector).
+    matches: /mirror[:-]coverage/,
+    command: /^node scripts\/check-mirror-coverage\.mjs$/m,
+    why: "sem a medição, a cobertura do recorte é uma afirmação: cada tabela declara onde o valor é espelhado, e ninguém mede se o COMMIT julga aquela linha — o espelho que só a varredura global cobre passa pelo pre-commit em silêncio",
+    jobIds: { gitea: "guards", github: "check" },
+  },
+  {
+    id: "github-dependencies",
+    // A CATRACA do corte: o inventario do que o GitHub sustenta (27 workflows, 9
+    // crons, 14 actions de terceiro, o GHCR, o `gh`, o plano de configuracao do
+    // Actions e 7 servicos), com a ETAPA e o SUBSTITUTO declarados por classe. E
+    // do CORE porque a pergunta e do REPOSITORIO, nao de uma forja: o inventario
+    // e o mesmo nas duas, e uma dependencia nova do GitHub custa dinheiro
+    // (registry proprietario), plano (branch protection) ou ainda mais dois
+    // lugares para manter em sincronia — em qualquer lado em que ela entre.
+    matches: /github[:-]dependencies/,
+    command: /^node scripts\/check-github-dependencies\.mjs$/m,
+    why: "sem a catraca, cada PR pode AUMENTAR a dependencia do GitHub em silencio (um workflow, um cron, uma action de marketplace, um servico novo) e o corte nao anda para tras — o inventario declarado (ci/github-dependencies.json) so vale se as duas direcoes forem cobradas",
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
+  },
+  {
     id: "doctor-ci",
     // O GATE de PR (`check-doctor-ci.mjs`), não o doctor em si: o doctor é o
     // motor, e o publicador da issue (`forge-doctor-issue.mjs`) é do cron.

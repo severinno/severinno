@@ -97,9 +97,14 @@ import { isAbsolute, join } from "node:path"
 import process from "node:process"
 import { pathToFileURL } from "node:url"
 
-import { GITEA_ENV_DEPLOYED, discoverEnvMirrors } from "./check-actrc-sync.mjs"
+import {
+  GITEA_ENV_DEPLOYED,
+  MIRROR_VARIABLE_RULES,
+  discoverEnvMirrors,
+} from "./check-actrc-sync.mjs"
 import { GITEA_COMPOSE, GITEA_ENV_MIRROR } from "./check-bun-mirror.mjs"
 import {
+  COMPOSE_VALUE_DEFAULTS,
   classifyEnvVariable,
   compareEnvMirrorDeclarations,
   composeEnvVariables,
@@ -163,6 +168,110 @@ export function compareMirrors({
   })
   return { violations, consumed }
 }
+
+/**
+ * A TABELA DE ESPELHOS desta guarda, com a DECISÃO DE COBERTURA do recorte do
+ * commit para cada um — o que o `check-mirror-coverage.mjs` mede.
+ *
+ * O defeito que ela existe para não esconder: o par (template comitado ↔ env do
+ * host) é um espelho, e o lado VERSIONADO dele é um arquivo que um commit muda.
+ * Nenhum guard `--staged` do hook julga as linhas deste template: quem o julga
+ * precisa do HOST (que não está no commit) ou roda na varredura GLOBAL do PR.
+ * Sem esta tabela, uma variável que o compose consome e o `check-actrc-sync` NÃO
+ * cobre — o segredo, por exemplo — não tinha dono nenhum na conta do recorte.
+ *
+ * A DERIVAÇÃO É DO COMPOSE (`composeEnvVariables`), e não uma lista à mão: uma
+ * variável nova que o compose passe a consumir entra na tabela no mesmo commit,
+ * e a ausência de decisão para ela é violação (fail-closed no `check-mirror-coverage`).
+ * Uma variável da lista que o TEMPLATE não declara não vira espelho medível: o
+ * defeito ali é a ausência da linha — assunto do `check-registry-source`, que já
+ * a julga — e não um recorte a medir. Ela fica declarada, com o motivo, em vez de
+ * sumir da contagem.
+ *
+ * A REGRA DE VALOR de quem já a tem NÃO é reescrita aqui: as três variáveis da
+ * imagem leem a decisão de `MIRROR_VARIABLE_RULES[name].env` (o dono da
+ * comparação de valor), porque duas listas divergiriam no primeiro dia. Só quem
+ * não tem regra ganha decisão própria — e o raciocínio dela é OUTRO: no segredo,
+ * o valor do template é um PLACEHOLDER por desenho, então trocá-lo nunca é
+ * defeito; a mutação que morde é a REMOÇÃO da linha.
+ *
+ * @param {{cwd?: string, read?: (p: string) => string, exists?: (p: string) => boolean}} [args]
+ * @returns {{tabela: string, variavel: string, arquivo: string, medivel: boolean,
+ *            motivoNaoMedivel?: string, recorte: {comando: string, regra: string}|null,
+ *            motivo: string|null, mutacoesIgnoradas?: Record<string, string>}[]}
+ */
+export function envMirrors({
+  cwd = ROOT,
+  read = (p) => readFileSync(p, "utf8"),
+  exists = existsSync,
+} = {}) {
+  const composePath = join(cwd, GITEA_COMPOSE)
+  if (!exists(composePath)) return []
+  const consumed = [...composeEnvVariables(read(composePath))].sort()
+  const declaradasNoTemplate = parseEnvAssignments(read(join(cwd, GITEA_ENV_MIRROR)))
+  return consumed.map((variavel) => {
+    const base = { tabela: ENV_MIRROR_TABELA, variavel, arquivo: GITEA_ENV_MIRROR }
+    if (!declaradasNoTemplate.has(variavel)) {
+      return {
+        ...base,
+        medivel: false,
+        motivoNaoMedivel: `o compose consome '${variavel}' e o template comitado não o declara — não há linha para mutar. Quem acusa essa ausência é o \`check-registry-source\` (o par template↔host), não o recorte do commit.`,
+        recorte: null,
+        motivo: `não é um espelho do commit: o nome que o compose lê nem aparece no template. Declarar a linha é a correção, e ela é do \`check-registry-source\`.`,
+      }
+    }
+    // OS PARES DECLARADOS que não são variáveis de imagem (a tabela
+    // `COMPOSE_VALUE_DEFAULTS`, do guard dono do par): o default do compose e o
+    // valor do template são a mesma declaração, e quem os compara POR VALOR é o
+    // `check-registry-source` na varredura GLOBAL — o recorte do commit não tem
+    // este template em pathspec nenhuma. A decisão não é reescrita aqui: ela é
+    // LIDA do mesmo lugar que declara o par (duas listas divergiriam no primeiro
+    // dia, e um par novo entraria na conta sem ninguém decidir o recorte dele).
+    const parDeclarado = COMPOSE_VALUE_DEFAULTS.find(
+      (e) => e.name === variavel && e.template === GITEA_ENV_MIRROR,
+    )
+    if (parDeclarado) {
+      return {
+        ...base,
+        medivel: true,
+        recorte: null,
+        motivo:
+          "o recorte do commit não julga este par: nenhum guard `--staged` tem o template do env nas pathspecs. Quem o cobre é o `check-registry-source` na varredura GLOBAL (a troca do default do compose e a remoção da linha declarada) — o hook roda esse guard no modo global, julgando o REPO inteiro —, e o CI no PR. O porquê da igualdade: " +
+          parDeclarado.why,
+      }
+    }
+    const regraDoValor = MIRROR_VARIABLE_RULES[variavel]?.env
+    if (regraDoValor) {
+      return {
+        ...base,
+        medivel: true,
+        recorte: regraDoValor.recorte ?? null,
+        motivo: regraDoValor.motivo ?? null,
+      }
+    }
+    if (classifyEnvVariable(variavel) === "secret") {
+      return {
+        ...base,
+        medivel: true,
+        recorte: null,
+        motivo:
+          "o recorte não julga o SEGREDO: no template o valor é um PLACEHOLDER e no host é o valor real — a comparação exige o host (o bring-up a faz, antes de garantir a imagem), e o que o commit não pode julgar é um valor que não está nele. A EXISTÊNCIA da linha é do `check-registry-source` (varredura global do PR).",
+        mutacoesIgnoradas: {
+          swap: "trocar o PLACEHOLDER do segredo por outro não é defeito nenhum (divergir do host é o comportamento correto de um segredo). A mutação que morde a linha do template é a REMOÇÃO.",
+        },
+      }
+    }
+    return {
+      ...base,
+      medivel: true,
+      recorte: null,
+      motivo: null,
+    }
+  })
+}
+
+/** O nome da tabela nos relatórios (o mesmo que o `check-mirror-coverage` publica). */
+export const ENV_MIRROR_TABELA = "env-mirror"
 
 /**
  * A mascara com que um valor de SEGREDO aparece em qualquer saida (patch, JSON,

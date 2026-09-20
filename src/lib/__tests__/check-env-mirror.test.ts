@@ -66,6 +66,9 @@ function envContent(overrides: Record<string, string> = {}): string {
     IMAGE_NAMESPACE: "severinno",
     BUN_VERSION: "1.3.14",
     RUNNER_TOKEN: "token-de-verdade",
+    // O par declarado do registry embutido (a etapa 1 do corte): o compose da
+    // forja o consome, então ele faz parte do contrato template ↔ host.
+    GITEA__registry__ENABLED: "true",
     ...overrides,
   }
   return `${Object.entries(values)
@@ -110,7 +113,13 @@ describe("compareMirrors — a regra (a mesma do check:registry-source)", () => 
   it("todo valor declarado bate e o segredo é o valor real → zero violações", () => {
     const { violations, consumed } = run(envContent())
     expect(violations).toEqual([])
-    expect(consumed).toEqual(["BUN_VERSION", "IMAGE_NAMESPACE", "IMAGE_REGISTRY", "RUNNER_TOKEN"])
+    expect(consumed).toEqual([
+      "BUN_VERSION",
+      "GITEA__registry__ENABLED",
+      "IMAGE_NAMESPACE",
+      "IMAGE_REGISTRY",
+      "RUNNER_TOKEN",
+    ])
   })
 
   it("variável comum DIVERGINDO → violação nomeando os dois lados", () => {
@@ -172,7 +181,7 @@ describe("checkEnvMirror — resolução dos dois lados", () => {
     expect(r.state).toBe("in-sync")
     expect(r.host).toBe("deploy/.env.gitea")
     expect(r.template).toBe(GITEA_ENV_MIRROR)
-    expect(r.consumed.length).toBe(4)
+    expect(r.consumed.length).toBe(5)
   })
 
   it("host divergente → diverged, com a violação", () => {

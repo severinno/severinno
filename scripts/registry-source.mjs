@@ -74,23 +74,39 @@ export const IMAGE_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE"]
  * dinâmico `|| github.repository_owner` e o act local resolve por ele — o
  * contrato está escrito no `check-registry-source` (MIRROR_VARIABLE_RULES) e
  * cobrá-la aqui seria um aviso permanente que o procedimento não silencia.
+ *
+ * Cada entrada declara também a DECISÃO DE RECORTE (`recorte`/`motivo`), o
+ * contrato que o `check-mirror-coverage.mjs` MEDE: os espelhos do registry são
+ * julgados pelo `check-registry-source`, e a medição mostrou que o julgamento é
+ * da varredura GLOBAL — o RECORTE do commit não tem regra para nenhum deles.
+ * `recorte: null` com motivo é a ausência DECLARADA (e conferida contra a
+ * medição); espelho sem decisão nenhuma é violação.
  */
+const REGISTRY_SLICE_MOTIVO =
+  "o recorte não julga este espelho: nenhum guard `--staged` tem o arquivo nas pathspecs. Quem o cobre é o `check-registry-source` na varredura GLOBAL (troca E remoção), que o hook roda no modo global — julgando o REPO inteiro, não o commit — e o CI roda no PR."
+
 export const IMAGE_MIRRORS = {
   IMAGE_REGISTRY: [
     {
       file: ".actrc",
       line: /^--var IMAGE_REGISTRY=(.+)$/m,
       format: (v) => `--var IMAGE_REGISTRY=${v}`,
+      recorte: null,
+      motivo: REGISTRY_SLICE_MOTIVO,
     },
     {
       file: "deploy/env.gitea.example",
       line: /^IMAGE_REGISTRY=(.+)$/m,
       format: (v) => `IMAGE_REGISTRY=${v}`,
+      recorte: null,
+      motivo: REGISTRY_SLICE_MOTIVO,
     },
     {
       file: ".env.production.example",
       line: /^IMAGE_REGISTRY=(.+)$/m,
       format: (v) => `IMAGE_REGISTRY=${v}`,
+      recorte: null,
+      motivo: REGISTRY_SLICE_MOTIVO,
     },
   ],
   IMAGE_NAMESPACE: [
@@ -98,11 +114,15 @@ export const IMAGE_MIRRORS = {
       file: "deploy/env.gitea.example",
       line: /^IMAGE_NAMESPACE=(.+)$/m,
       format: (v) => `IMAGE_NAMESPACE=${v}`,
+      recorte: null,
+      motivo: REGISTRY_SLICE_MOTIVO,
     },
     {
       file: ".env.production.example",
       line: /^IMAGE_NAMESPACE=(.+)$/m,
       format: (v) => `IMAGE_NAMESPACE=${v}`,
+      recorte: null,
+      motivo: REGISTRY_SLICE_MOTIVO,
     },
   ],
 }
