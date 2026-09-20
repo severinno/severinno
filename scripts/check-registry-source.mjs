@@ -72,6 +72,15 @@
 //      o guard le quando pode e diz INDETERMINADO quando nao pode (nunca
 //      "conforme" por omissao) — ver "INVARIANTE 9".
 //
+//      A COMPARACAO e por VALOR e nao julga a sintaxe do arquivo: as duas
+//      grafias de aspas (`|| 'x'` e `|| "x"`) entregam o mesmo valor (a forma
+//      entre aspas duplas era lida como token CRU e sumia como "dinamica" —
+//      default divergente passando em silencio), e os TIPOS sao da TABELA
+//      (NON_VERSIONED_IMAGE_VARIABLES), nao da regua: um tipo novo entra pela
+//      tabela e e julgado pela mesma comparacao (Controle C da prova por
+//      mutacao, que mede a soma do corpo de `defaultValueVerdict` antes e
+//      depois do remendo — igual byte a byte).
+//
 // Usage:
 //   node scripts/check-registry-source.mjs
 //   node scripts/check-registry-source.mjs --no-compose-render   # so a varredura estatica
@@ -1843,8 +1852,17 @@ export function forgeVariableRefs(root = ROOT) {
   // comparacao. Antes o dinamico nem casava — ele desaparecia da conta, e um
   // fallback que ninguem ve e exatamente o silencio que este guard existe para
   // fechar (o `IMAGE_NAMESPACE` dos workflows e desse tipo).
+  //
+  // AS DUAS GRAFIAS DE ASPAS valem o MESMO: `|| 'x'` e `|| "x"` entregam o
+  // valor `x`, porque o que se compara e o VALOR — nao a sintaxe do arquivo de
+  // CI. Uma grafia ainda nao vista no corpus (uma tag entre aspas duplas, por
+  // exemplo) nao pode virar um fallback "dinamico": era exatamente o que
+  // acontecia antes (o grupo do token cru engolia as aspas e o item saia
+  // `fallback: null`, contado como dinamico) — o default divergente passava em
+  // silencio, contado como fora da comparacao. O token CRU, sem aspas, segue
+  // sendo o caso dinamico (`|| github.repository_owner`).
   const re = new RegExp(
-    `\\$\\{\\{\\s*vars\\.(${NON_VERSIONED_IMAGE_VARIABLES.join("|")})\\s*(?:\\|\\|\\s*(?:'([^']*)'|([^}\\s]+)))?\\s*\\}\\}?`,
+    `\\$\\{\\{\\s*vars\\.(${NON_VERSIONED_IMAGE_VARIABLES.join("|")})\\s*(?:\\|\\|\\s*(?:'([^']*)'|"([^"]*)"|([^}\\s]+)))?\\s*\\}\\}?`,
     "g",
   )
   // A varredura COMPARTILHADA (fonte única): o rótulo é o mesmo `<dir>/<nome>`,
@@ -1859,7 +1877,9 @@ export function forgeVariableRefs(root = ROOT) {
           file: w.path,
           line: i + 1,
           variable: m[1],
-          fallback: m[2] ?? null,
+          // Os dois grupos de aspas sao o MESMO caso (o valor e o texto de
+          // dentro); o grupo seguinte e o token CRU — esse e o dinamico.
+          fallback: m[2] ?? m[3] ?? null,
         })
       }
     })

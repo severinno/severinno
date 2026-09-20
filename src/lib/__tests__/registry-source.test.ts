@@ -315,6 +315,24 @@ describe("defaultsInLine — a régua única de 'o que conta como default'", () 
     ])
   })
 
+  it("as DUAS grafias de aspas entregam o MESMO valor (a régua não julga a sintaxe)", () => {
+    // A grafia é do ARQUIVO DE CI, não do valor: uma tag entre aspas duplas —
+    // forma que o corpus ainda não tem — é a MESMA declaração escrita de outro
+    // jeito, e tem de sair daqui com o mesmo valor e a mesma forma. Sem isso a
+    // grafia nova virava um default INVISÍVEL (o pior desfecho: um valor que
+    // ninguém compara, porque a leitura não o enxergou).
+    const simples = defaultsInLine("IMAGE_TAG", "${{ vars.IMAGE_TAG || '1.3.14' }}")
+    const duplas = defaultsInLine("IMAGE_TAG", '${{ vars.IMAGE_TAG || "1.3.14" }}')
+    expect(duplas).toEqual(simples)
+    expect(duplas).toEqual([{ value: "1.3.14", form: "expr" }])
+    // O que NÃO é literal segue fora, nas duas grafias: o token cru (um nome de
+    // outra variável — quem o trata como dinâmico é o leitor do consumidor) e o
+    // valor vazio (não há o que comparar).
+    expect(defaultsInLine("IMAGE_TAG", "${{ vars.IMAGE_TAG || outro_nome }}")).toEqual([])
+    expect(defaultsInLine("IMAGE_TAG", '${{ vars.IMAGE_TAG || "" }}')).toEqual([])
+    expect(defaultsInLine("IMAGE_TAG", "${{ vars.IMAGE_TAG || '' }}")).toEqual([])
+  })
+
   it("VALOR VAZIO não é default (é o idioma de coalescência, não uma afirmação)", () => {
     // `${NOME:-}` e `|| ""` não têm valor para envelhecer — contá-los daria ao
     // guard a única classe de violação que ele não pode ter: a falsa.
@@ -404,13 +422,39 @@ describe("defaultValueVerdict — o veredito de três estados (nunca dois)", () 
     }
   })
 
-  it("no repositório REAL, os defaults declarados são proven (o guard não acusa o repo)", () => {
-    expect(defaultValueVerdict("IMAGE_REGISTRY", "ghcr.io", { root: REPO_ROOT }).state).toBe(
+  it("um TIPO fora da tabela não vira veredito: indeterminate nomeando o remédio", () => {
+    // O TIPO vive na TABELA (`IMAGE_VARIABLES`/`IMAGE_MIRRORS` no resolvedor e
+    // `NON_VERSIONED_IMAGE_VARIABLES` no guard), não na régua: um nome que ela
+    // não declara não é adivinhado a partir de um arquivo que o acaso menciona.
+    // A leitura fica INDETERMINADA e diz onde declarar — o que seria o defeito
+    // pior é o oposto: a régua inventando um tipo e julgando (ou aprovando) por
+    // um valor que ela não sabe de quem é.
+    const dir = treeOf({ ".env.production.example": "IMAGE_TAG=1.4.0\n" })
+    try {
+      const v = defaultValueVerdict("IMAGE_TAG", "1.3.14", { root: dir })
+      expect(v.state).toBe("indeterminate")
+      expect(v.declared).toBeNull()
+      expect(v.detail).toContain("nenhum arquivo comitado declara IMAGE_TAG")
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("no repositório REAL, o default declarado é proven — e um valor que ninguém declara NÃO é", () => {
+    // Os dois lados, para o verde não vir por vazio: o valor DECLARADO (lido do
+    // próprio repositório, não cravado — cravar envelhece na virada do registry)
+    // é `proven`, e um valor que não está em nenhum espelho é `violated`.
+    const registry = valorDeclarado("IMAGE_REGISTRY")
+    const namespace = valorDeclarado("IMAGE_NAMESPACE")
+    expect(defaultValueVerdict("IMAGE_REGISTRY", registry, { root: REPO_ROOT }).state).toBe(
       "proven",
     )
-    expect(defaultValueVerdict("IMAGE_NAMESPACE", "severinno", { root: REPO_ROOT }).state).toBe(
+    expect(defaultValueVerdict("IMAGE_NAMESPACE", namespace, { root: REPO_ROOT }).state).toBe(
       "proven",
     )
+    expect(
+      defaultValueVerdict("IMAGE_REGISTRY", "registry.example.invalid", { root: REPO_ROOT }).state,
+    ).toBe("violated")
   })
 })
 

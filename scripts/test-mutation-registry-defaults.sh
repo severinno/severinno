@@ -8,7 +8,7 @@
 #   ./scripts/test-mutation-registry-defaults.sh
 #
 # Exit codes:
-#   0 — as SEIS mutações foram DETECTADAS (pelo gate e/ou pela suíte) e os
+#   0 — as SETE mutações foram DETECTADAS (pelo gate e/ou pela suíte) e os
 #       controles passaram ✅
 #   1 — guard INDIFERENTE a alguma mutação (não cegou / não acusou) OU controle
 #       falso ❌
@@ -51,6 +51,18 @@
 #        segunda testemunha existe.
 #   M6 — O FALLBACK LITERAL DO WORKFLOW: tratá-lo como dinâmico (não comparação)
 #        deixa o literal do YAML passar — a quarta família de arquivo cai.
+#   M7 — A GRAFIA DO FALLBACK: aceitar só as aspas SIMPLES (a forma que o corpus
+#        já tem) deixa a forma INÉDITA — uma tag entre aspas duplas — sair como
+#        "dinâmica", contada fora da comparação. É o par do Controle C: a régua
+#        de valor NÃO julga a sintaxe do arquivo de CI.
+#
+# O TIPO NOVO (o Controle C). A régua é genérica; quem enumera os tipos é a
+# TABELA. O Controle C declara um tipo que o repositório NÃO tem (a tag) numa
+# forma que o corpus NÃO tem (aspas duplas, num CI fictício) e exige que o
+# julgamento aconteça — medindo, ao mesmo tempo, que a COMPARAÇÃO ficou byte a
+# byte igual (a soma do corpo de `defaultValueVerdict` antes e depois do remendo
+# da tabela). O C4 é o outro lado: sem o tipo na tabela o fixture não é julgado,
+# porque o tipo não é adivinhado — é a tabela que o carrega.
 #
 # A SEGUNDA TESTEMUNHA (a suíte). Cada mutação é aplicada NO LUGAR, no arquivo do
 # repositório, e além do veredito do CLI exige a suíte unitária VERMELHA — em
@@ -79,8 +91,12 @@
 #   7. M5 (o literal de reserva) — a suíte do resolvedor fica VERMELHA e o gate
 #      segue verde (a segunda testemunha é quem mede)
 #   8. M6 (o fallback literal do workflow) — o YAML PASSA (CEGO)
-#   9. Restauração VERIFICADA (checksum dos DOIS arquivos) + CONTROLE FINAL
-#  10. Cleanup (trap EXIT — restaura e remove o temp, mesmo com falha)
+#   9. CONTROLE C (o TIPO NOVO pela tabela, numa grafia inédita): a régua
+#      idêntica, o divergente reprovado e o conforme verde
+#  10. M7 (a grafia acoplada) — a forma INÉDITA PASSA (CEGO) e a já vista segue
+#      reprovada (cirúrgica)
+#  11. Restauração VERIFICADA (checksum dos DOIS arquivos) + CONTROLE FINAL
+#  12. Cleanup (trap EXIT — restaura e remove o temp, mesmo com falha)
 # =============================================================================
 
 set -euo pipefail
@@ -101,6 +117,9 @@ FX_SHELL="$TMP_DIR/fx-shell"
 FX_WF="$TMP_DIR/fx-workflow"
 FX_COMENTARIO="$TMP_DIR/fx-comentario"
 FX_VAZIO="$TMP_DIR/fx-vazio"
+FX_TIPO="$TMP_DIR/fx-tipo"
+FX_TIPO_OK="$TMP_DIR/fx-tipo-ok"
+FX_TIPO_SIMPLES="$TMP_DIR/fx-tipo-simples"
 
 # ── Colors ────────────────────────────────────────────────────────────────
 
@@ -171,6 +190,64 @@ PY
     fail "a mutação não alterou $arquivo (checksum idêntico) — o alvo casou mas a escrita não"
     exit 1
   fi
+}
+
+# ── soma_da_regua: o corpo da COMPARAÇÃO de valor, byte a byte ────────────
+# O corte é o `defaultValueVerdict` do resolvedor — é ESTA função que o Controle
+# C afirma não precisar de edição para um TIPO NOVO. A soma antes/depois do
+# remendo da tabela é a prova (um corte que não existe mais falha alto: o `index`
+# da fatia explode, em vez de devolver uma soma qualquer).
+soma_da_regua() {
+  python3 - "$RESOLVER" <<'PY' | cksum | cut -d' ' -f1
+import sys
+s = open(sys.argv[1]).read()
+i = s.index("export function defaultValueVerdict")
+j = s.index("\n}\n", i)
+sys.stdout.write(s[i:j+3])
+PY
+}
+
+# ── patch_tabela: o TIPO NOVO entra SÓ pela TABELA ────────────────────────
+# As três inserções são a tabela e nada mais: o nome na lista do guard
+# (`NON_VERSIONED_IMAGE_VARIABLES`), o nome na lista do resolvedor
+# (`IMAGE_VARIABLES`) e o espelho onde o valor dele é declarado
+# (`IMAGE_MIRRORS`). O marcador NÃO é `MUTACAO M` de propósito: esta não é uma
+# mutação (não cega nada) e o `mutar` da M7 usa a ausência dele para saber que a
+# própria escrita aplicou.
+patch_tabela() {
+  ARQ_GUARD="$GUARD" ARQ_RESOLVER="$RESOLVER" python3 - <<'PY'
+import os
+
+guard, resolver = os.environ["ARQ_GUARD"], os.environ["ARQ_RESOLVER"]
+adicoes = {
+    guard: [
+        (
+            'export const NON_VERSIONED_IMAGE_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE", "BUN_VERSION"]',
+            'export const NON_VERSIONED_IMAGE_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE", "BUN_VERSION", "IMAGE_TAG"] /* TIPO NOVO (tabela) */',
+        ),
+    ],
+    resolver: [
+        (
+            'export const IMAGE_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE"]',
+            'export const IMAGE_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE", "IMAGE_TAG"] /* TIPO NOVO (tabela) */',
+        ),
+        (
+            "export const IMAGE_MIRRORS = {\n",
+            'export const IMAGE_MIRRORS = {\n  IMAGE_TAG: [\n    {\n      file: ".env.production.example",\n      line: /^IMAGE_TAG=(.+)$/m,\n      format: (v) => `IMAGE_TAG=${v}`,\n    },\n  ], /* TIPO NOVO (tabela) */\n',
+        ),
+    ],
+}
+for path, pares in adicoes.items():
+    s = open(path).read()
+    for alvo, novo in pares:
+        n = s.count(alvo)
+        if n != 1:
+            raise SystemExit(
+                f"patch da tabela nao-cirurgico em {path}: {n} ocorrencia(s) do alvo {alvo[:70]!r}"
+            )
+        s = s.replace(alvo, novo)
+    open(path, "w").write(s)
+PY
 }
 
 # ── mkfixture: um mini-repo com o VALOR DECLARADO e UM defeito ────────────
@@ -321,6 +398,22 @@ printf '/**\n * a migracao removeu isto: process.env.IMAGE_REGISTRY || "registry
 mkfixture "$FX_VAZIO"
 printf 'const r = (process.env.IMAGE_REGISTRY || "").trim()\n' > "$FX_VAZIO/scripts/y.mjs"
 
+# Os três fixtures do TIPO NOVO: um tipo que a tabela do repositório NÃO tem (a
+# tag), usado num CI FICTÍCIO na grafia que o corpus ainda não tem (aspas
+# duplas) — e o par com o valor declarado, e o gêmeo na grafia já vista (o
+# controle cirúrgico da M7). O espelho que DECLARA a tag vive no fixture: sem
+# ele o caso seria o `indeterminate`, que não é o que se mede aqui.
+for fx in "$FX_TIPO" "$FX_TIPO_OK" "$FX_TIPO_SIMPLES"; do
+  mkfixture "$fx"
+  printf 'IMAGE_TAG=1.4.0\n' >> "$fx/.env.production.example"
+done
+printf 'jobs:\n  x:\n    steps:\n      - run: echo ${{ vars.IMAGE_TAG || "1.3.14" }}\n' \
+  > "$FX_TIPO/.gitea/workflows/ficticio.yml"
+printf 'jobs:\n  x:\n    steps:\n      - run: echo ${{ vars.IMAGE_TAG || "1.4.0" }}\n' \
+  > "$FX_TIPO_OK/.gitea/workflows/ficticio.yml"
+printf 'jobs:\n  x:\n    steps:\n      - run: echo ${{ vars.IMAGE_TAG || '"'"'1.3.14'"'"' }}\n' \
+  > "$FX_TIPO_SIMPLES/.gitea/workflows/ficticio.yml"
+
 echo -e "${CYAN}═══ Mutation test: defaults do registry/namespace (invariante 9) ═══${NC}"
 echo "  guard:     $GUARD"
 echo "  resolvedor: $RESOLVER"
@@ -453,7 +546,54 @@ pass "M6 CIRÚRGICA: o compose divergente segue reprovado — morreu só a régu
 exigir_suite_vermelha "M6" "$SUITE_VARREDURA" "$FILTRO_VARREDURA"
 restaurar_original
 
-# ── 9. CONTROLE FINAL: a árvore ficou como estava ─────────────────────────
+# ── 10. CONTROLE C: a RÉGUA DE VALOR é independente da SINTAXE do CI ──────
+# A propriedade medida aqui: um TIPO NOVO (a tag) declarado numa forma ainda NÃO
+# VISTA (aspas duplas, num arquivo de CI FICTÍCIO) é julgado pela MESMA régua, e
+# o único lugar que ganha o tipo é a TABELA. A prova de que a régua não foi
+# editada é a SOMA do corpo da comparação (`defaultValueVerdict`), medida antes e
+# depois do remendo: igual byte a byte. Sem essa soma, "o tipo novo é julgado"
+# não distinguiria "a régua é genérica" de "alguém ensinou a régua a conhecer a
+# tag" — que é exatamente o acoplamento que esta metade existe para prender.
+header "CONTROLE C: um tipo novo (tag entre aspas duplas) entra SÓ pela tabela"
+REGUA_ANTES="$(soma_da_regua)"
+patch_tabela
+REGUA_DEPOIS="$(soma_da_regua)"
+if [ "$REGUA_ANTES" != "$REGUA_DEPOIS" ]; then
+  fail "CONTROLE C: a régua de valor MUDOU ao declarar o tipo novo ($REGUA_ANTES -> $REGUA_DEPOIS) — a comparação não é genérica"
+  exit 1
+fi
+pass "CONTROLE C1: o tipo entrou só pela TABELA — a comparação (\`defaultValueVerdict\`) ficou byte a byte igual (soma $REGUA_ANTES)"
+exigir_reprovado "CONTROLE C2 (a tag entre aspas duplas diverge do declarado)" "$FX_TIPO"
+if ! grep -q "IMAGE_TAG" <<< "$GUARD_OUT"; then
+  fail "CONTROLE C2: a violação não nomeia o tipo novo (IMAGE_TAG) — o que foi julgado não é o que o fixture declara"
+  mostrar
+  exit 1
+fi
+pass "CONTROLE C2: a forma NÃO VISTA é julgada por VALOR — a violação nomeia IMAGE_TAG e o valor declarado"
+exigir_aprovado "CONTROLE C3 (a MESMA forma com o valor declarado)" "$FX_TIPO_OK"
+pass "CONTROLE C3: a mesma grafia com o valor certo é verde — a régua não acusa a sintaxe"
+restaurar_original
+exigir_aprovado "CONTROLE C4 (o mesmo fixture SEM o tipo na tabela)" "$FX_TIPO"
+pass "CONTROLE C4: sem o tipo na TABELA o fixture não é julgado — o tipo não é inventado, é a tabela que o carrega"
+
+# ── 11. MUTAÇÃO M7: a GRAFIA acoplada (aspas duplas viram "dinâmico") ─────
+# A direção da cegueira: a régua deixa de ler a forma INÉDITA e o divergente
+# passa. O tipo precisa estar na tabela (senão não haveria o que cegar: o ref
+# nem entraria na varredura) — por isso o remendo da tabela entra junto, e o
+# controle cirúrgico é o gêmeo do MESMO defeito na grafia já vista.
+header "MUTAÇÃO M7: só a grafia já vista (aspas simples) é julgada"
+patch_tabela
+mutar "$GUARD" \
+  '          fallback: m[2] ?? m[3] ?? null,' \
+  '          fallback: m[2] ?? null, // MUTACAO M7: a grafia inedita volta a ser tratada como dinamica'
+exigir_cego "M7" "$FX_TIPO"
+pass "M7: a tag entre aspas DUPLAS divergente PASSA (CEGO) — ler a grafia é load-bearing"
+exigir_reprovado "M7 cirúrgica (a MESMA tag entre aspas simples)" "$FX_TIPO_SIMPLES"
+pass "M7 CIRÚRGICA: a forma já vista segue reprovada — morreu só a outra grafia"
+exigir_suite_vermelha "M7" "$SUITE_VARREDURA" "$FILTRO_VARREDURA"
+restaurar_original
+
+# ── 12. CONTROLE FINAL: a árvore ficou como estava ────────────────────────
 header "CONTROLE FINAL: restauração verificada por checksum"
 exigir_reprovado "CONTROLE FINAL (compose divergente)" "$FX_COMPOSE"
 pass "CONTROLE FINAL: o gate restaurado volta a reprovar o compose divergente"
@@ -466,4 +606,4 @@ fi
 pass "CONTROLE FINAL: o repositório real volta a passar (árvore idêntica à de antes)"
 
 echo
-echo -e "${GREEN}═══ MUTATION TEST PASSED — as 6 mutações foram detectadas (gate e/ou suíte) ═══${NC}"
+echo -e "${GREEN}═══ MUTATION TEST PASSED — as 7 mutações foram detectadas (gate e/ou suíte) ═══${NC}"

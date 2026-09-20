@@ -156,6 +156,15 @@ export function declaredImageValue(root, name) {
  *              forma que EXISTIA no repositório e que a migração eliminou;
  * - `expr`   — `vars.NOME || 'valor'` (workflow).
  *
+ * A GRAFIA NÃO É JULGADA: as duas formas de aspas (`'valor'` e `"valor"`)
+ * entregam o MESMO valor — a régua de valor compara o que a variável VALE, não
+ * como o arquivo de CI a escreveu. Uma grafia ainda não vista no corpus (uma tag
+ * entre aspas duplas, por exemplo) não pode virar um default invisível: o que
+ * entra é o texto de dentro das aspas, a mesma coisa que a forma já vista entrega.
+ * O que NÃO é literal (um token cru, sem aspas — `vars.NOME || outro_nome`) não
+ * vira valor nenhum: quem o trata como dinâmico é o leitor do consumidor, que
+ * declara isso no relatório.
+ *
  * QUEM VALE EM CADA FAMÍLIA é decisão do chamador e está escrita (o guard do
  * registry declara: em `.mjs` só a forma `js` é default — o `${NOME:-x}` ali
  * vive dentro de MENSAGEM, não é JS válido fora de string).
@@ -185,7 +194,11 @@ export function defaultsInLine(name, line) {
     const value = m[1].trim()
     if (value !== "") out.push({ value, form: "js" })
   }
-  for (const m of text.matchAll(new RegExp(String.raw`vars\.${name}\s*\|\|\s*'([^']*)'`, "g"))) {
+  // As DUAS grafias de aspas, uma régua só (o valor é o texto de dentro): a
+  // forma do YAML é a mesma declaração escrita de outro jeito.
+  for (const m of text.matchAll(
+    new RegExp(String.raw`vars\.${name}\s*\|\|\s*["']([^"']*)["']`, "g"),
+  )) {
     const value = m[1].trim()
     if (value !== "") out.push({ value, form: "expr" })
   }

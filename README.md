@@ -1780,6 +1780,12 @@ vivo sempre correto.
 > outra família (mensagem de erro, payload de uma prova) é contado e dito no
 > relatório, **nunca** julgado como valor — e cada metade disso tem a sua
 > mutação (`scripts/test-mutation-registry-defaults.sh`, sub-test 26 do master).
+> A **grafia** também não é julgada: `|| 'x'` e `|| "x"` são a mesma declaração
+> (antes, a forma entre aspas duplas saía como "dinâmica", fora da comparação —
+> o divergente passava em silêncio). E o **tipo** é da tabela, não da régua: o
+> Controle C declara um tipo novo numa forma inédita, aplica o remendo só na
+> tabela e exige o julgamento — com a soma do corpo da comparação medida antes e
+> depois, byte a byte igual.
 >
 > **E o mesmo valor é conferido a cada PR, não só no cron:** o job `guards` da
 > forja e um job do `pr-check.yml` rodam `scripts/check-doctor-ci.mjs` — o

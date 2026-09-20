@@ -1188,6 +1188,29 @@ própria (`scripts/test-mutation-registry-defaults.sh`, sub-test 26 do master):
 remover a régua do comentário ACUSA o são, desligar a regra do script JS CEGA o
 gate, e as duas direções são exigidas em cada rodada.
 
+**A régua de valor não julga a sintaxe do CI, e o TIPO é da tabela.** As duas
+metades dessa frase são medidas, porque cada uma falha em silêncio:
+
+- **grafia** — `vars.NOME || 'x'` e `vars.NOME || "x"` são a MESMA declaração:
+  o que se compara é o valor, não como o arquivo o escreveu. Antes da correção, a
+  forma entre **aspas duplas** (que o corpus ainda não tinha) caía no grupo do
+  token cru e saía `fallback: null` — contada como **dinâmica**, isto é, fora da
+  comparação. O default divergente passava em silêncio, e o relatório ainda dava
+  uma razão errada para o verde. A **M7** cega exatamente isso (aceitar só as
+  aspas simples faz a forma inédita voltar a ser "dinâmica") e é cirúrgica: o
+  gêmeo na grafia já vista segue reprovado;
+- **tipo** — a régua é genérica: ela compara um NOME contra o que a **tabela**
+  declara (`IMAGE_VARIABLES`/`IMAGE_MIRRORS` no resolvedor,
+  `NON_VERSIONED_IMAGE_VARIABLES` no guard). O **Controle C** declara um tipo que
+  o repositório não tem (uma tag) numa forma que o corpus não tem (aspas duplas,
+  num CI fictício), aplica o remendo **só na tabela** e exige que o julgamento
+  aconteça — medindo de quebra que a **soma do corpo de `defaultValueVerdict`
+  ficou byte a byte igual**. Sem essa soma, "o tipo novo é julgado" não
+  distinguiria "a régua é genérica" de "alguém ensinou a régua a conhecer a
+  tag". O outro lado é o **C4**: sem o tipo na tabela o fixture NÃO é julgado —
+  o tipo não é adivinhado por um arquivo que o acaso menciona (a leitura fica
+  `indeterminate`, nomeando o remédio, nunca verde por omissão).
+
 **A metade DINÂMICA (invariante 7): `docker compose config` no compose da
 forja.** A varredura acima prova que a linha do label **referencia**
 `${BUN_VERSION}`. Ela não prova o que a interpolação **resolve** — e os dois
