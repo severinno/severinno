@@ -305,6 +305,36 @@ violação, porque a alternativa arquivada pode ser apagada. Comentário fica fo
 inclusive o passo COMENTADO e a prosa que NOMEIA as formas (`image: oven/bun:<v>`,
 `BUN_VERSION=<v>`) — que é exatamente o que o cabeçalho do arquivo real faz.
 
+**A COBERTURA da varredura (o que o RESULTADO não conta).** A invariante 19
+sabe dizer o resultado dela — nenhum uso da versão divergindo do declarado — e
+não sabia dizer o **alcance**: quantos tipos de pipeline de terceiro ela conhece,
+quais, e se algum CI presente no repositório está fora deles. A diferença não é
+cosmética: um `.gitlab-ci.yml` (ou um `Jenkinsfile`) que entra no repositório fica
+cego, e o verde da invariante 19 fica **idêntico** — a varredura responde sobre o
+que olhou, e nada perguntava o que ela não olhou. A metade nova são duas tabelas
+declaradas em `scripts/check-bun-mirror.mjs`:
+
+- `THIRD_PARTY_PIPELINE_TYPES` — os tipos que a varredura **julga**. Cada tipo
+  aponta para o **mesmo padrão** que o sweep usa (`THIRD_PARTY_PIPELINE_RE`):
+  duas regexes divergiriam no primeiro pipeline novo, e o veredito declararia uma
+  cobertura que não existe — o que é pior que não declarar nenhuma. Um tipo nesta
+  tabela é um tipo com régua de valor, e é por isso que declarar um tipo que
+  ninguém varre é impossível;
+- `THIRD_PARTY_CI_CANDIDATES` — os CI canônicos que o repositório **reconhece
+  pelo nome do arquivo** (GitLab, Jenkins, Drone, CircleCI, Travis, Azure
+  Pipelines, Buildkite, Bitbucket) e que nenhum tipo declarado cobre. O
+  reconhecimento é por nome canônico, nunca por conteúdo: um YAML que cite
+  "gitlab" em prosa não é um pipeline.
+
+A medição é `thirdPartyPipelineCoverage`: varredura recursiva do repositório (a
+mesma lista de diretórios ignorados da varredura de prosa — um `Jenkinsfile`
+aninhado é um pipeline de verdade, e `node_modules` não é CI do repositório),
+os arquivos que cada tipo cobre e a lista dos que ficam **fora**. O doctor publica
+isso como **fato próprio** (seção **8/8**): quantos tipos, quais e quantos
+arquivos cada um cobre; um CI detectado fora deles **BLOQUEIA** o veredito com o
+remédio (declarar o tipo, ou remover o pipeline); um diretório ilegível vira
+**INDETERMINADA**, porque "não consegui ler" não é "não existe".
+
 **Família relacionada:** `check-tier1-fastpath`, `check-tier2-cache-restore`
 (performance do setup-bun — ver família 10).
 
@@ -4031,7 +4061,7 @@ isso é do cron e do `deploy/gitea-up.sh`. E quando uma variável não está cri
 em uma das forjas, o valor dela não é conferido: o gate fica verde **dizendo
 qual** ficou de fora (o guard semanal acusa o mesmo, em modo `--fail` na forja).
 
-**A HERANÇA DE SHELL DOS WORKFLOWS (seção 7/7): o que a prontidão passou a cobrar
+**A HERANÇA DE SHELL DOS WORKFLOWS (seção 7/8): o que a prontidão passou a cobrar
 que antes vivia só no relatório do guard.** O `check-pipefail-sigpipe` (seção 20)
 diz, no relatório dele, de ONDE vem o shell de cada passo — do `shell:` do
 PRÓPRIO passo, do `defaults:` do JOB, do `defaults:` do ARQUIVO, ou do shell
@@ -4056,6 +4086,22 @@ pôde ser lido — nunca "o repositório não declara shell default nenhum"). O 
 entra ATÉ no perfil `--ci` (é leitura de checkout, sem rede nem credencial), e a
 AUSÊNCIA dele no relatório também vira dúvida, como a do guard de recursão: dizer
 "pronta" sobre o que não foi olhado é o que este doctor recusa.
+
+**A COBERTURA DA VARREDURA DE TERCEIRO (seção 8/8): a prontidão declara o
+ALCANCE, não só o resultado.** A invariante 19 (seção 13) publica o resultado
+dela — nenhum uso da versão do Bun divergindo num pipeline de terceiro —, e o
+resultado **não muda** quando um pipeline novo aparece fora do alcance dela: um
+`.gitlab-ci.yml` que entra no repositório fica cego, e o verde continua igual.
+O doctor publica a cobertura com a MESMA leitura do guard
+(`thirdPartyPipelineCoverage`, da mesma tabela de tipos — duas listas divergiriam
+no primeiro pipeline novo): quantos tipos são declarados, **quais**, e quantos
+arquivos cada um cobre. Três estados, com o peso de sempre: `proven` (os tipos
+nomeados, um a um, e nenhum CI detectado fora deles), `violated` (**BLOQUEIA**:
+um CI de terceiro detectado fora dos tipos declarados — o remédio diz onde
+declarar —, ou a tabela vazia, que seria "nenhum CI fora dos tipos" por vazio) e
+`unread` (**INDETERMINADA**: um diretório não pôde ser lido; pode haver pipeline
+escondido ali). Entra ATÉ no perfil `--ci`: é leitura de checkout, e é no PR que
+a lacuna precisa aparecer — ali a bateria de guards está pulada.
 
 ---
 

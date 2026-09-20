@@ -208,6 +208,7 @@ import {
   GITEA_BRING_UP,
   GITEA_COMPOSE,
   PROOF_SCRIPT,
+  thirdPartyPipelineCoverage,
 } from "./check-bun-mirror.mjs"
 import { GITEA_WORKFLOW_DIR, allWorkflowFiles, defaultsRunLines } from "./forge-workflows.mjs"
 import { workflowShellInheritance } from "./check-pipefail-sigpipe.mjs"
@@ -1113,6 +1114,13 @@ export function summarize(facts) {
   // de cima para baixo, e quem diagnostica vai pela primeira que aparece).
   for (const b of shellInheritanceBlockers(facts.shellInheritance)) blockers.push(b)
   for (const u of shellInheritanceUnknowns(facts.shellInheritance)) unknowns.push(u)
+
+  // A COBERTURA da varredura de TERCEIRO: a invariante 19 diz o resultado dela
+  // (nenhum uso divergente da versão num pipeline de terceiro); este fato diz o
+  // ALCANCE dela — os tipos declarados e os CI detectados fora deles. Um
+  // `.gitlab-ci.yml` no repositório é a lacuna que o resultado nunca mostra.
+  for (const b of thirdPartyPipelinesBlockers(facts.thirdPartyPipelines)) blockers.push(b)
+  for (const u of thirdPartyPipelinesUnknowns(facts.thirdPartyPipelines)) unknowns.push(u)
   // O CONTRATO LOCAL — UM assunto, UM lugar: os DOIS elos EXECUTADOS (o commit
   // que tem de recusar o corpo quebrado no índice e o push que tem de recusar a
   // árvore vermelha) e os comandos que cada hook RODA saem do MESMO fato, e é o
@@ -3610,6 +3618,153 @@ export function readShellInheritance({ cwd = REPO_ROOT, deps = {} } = {}) {
   return { state, workflows, totals, violations, detail, error: null }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// A COBERTURA DA VARREDURA DE TERCEIRO (invariante 19)
+//
+// A invariante 19 julga os USOS da versão do Bun num pipeline de terceiro
+// (`.woodpecker.yml`) — e o RESULTADO dela não diz COBERTURA: quantos tipos ela
+// conhece, quais, e se algum CI de terceiro presente no repositório está fora
+// deles. Um `.gitlab-ci.yml` que entra no repositório fica cego: a varredura
+// responde sobre o que OLHOU, e nada pergunta o que ela não olhou — o verde da
+// invariante 19 fica idêntico com um pipeline novo fora do alcance dela.
+//
+// A leitura é a MESMA que a varredura usa (`thirdPartyPipelineCoverage`, com a
+// tabela de tipos e os candidatos do guard: duas listas divergiriam); o que este
+// fato acrescenta é o veredito de prontidão sobre essa COBERTURA. Ele roda ATÉ
+// no perfil `--ci` — é leitura de checkout (sem rede, credencial ou estado do
+// HOST) —, e é ali que mais importa: no PR a bateria de guards está pulada.
+//
+//   - `violated` — há CI de terceiro DETECTADO fora dos tipos declarados (a
+//     varredura não o julga, e a versão pode envelhecer ali sem nada ficar
+//     vermelho) ou NENHUM tipo declarado (aí não há varredura a cobrir);
+//   - `unread`   — um diretório da varredura não pôde ser lido: pode haver
+//     pipeline escondido ali, e "não consegui ler" não é "não existe" (a mesma
+//     doutrina do resto do relatório);
+//   - `proven`   — os tipos declarados (nomeados, um a um) e nenhum CI detectado
+//     fora deles. Diz quantos tipos, QUAIS e quantos arquivos cada varredura
+//     cobre — a cobertura deixa de ser suposição.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * A COBERTURA da varredura de pipeline de terceiro, como fato do relatório.
+ *
+ * @param {{cwd?: string, deps?: {medir?: (root: string) => object}}} [options]
+ * @returns {{state: string, tipos: object[], fora: object[], cobertos: number, ilegiveis: string[], detail: string, error: string|null, remedies: string[]}}
+ */
+export function readThirdPartyPipelines({ cwd = REPO_ROOT, deps = {} } = {}) {
+  const medir = deps.medir ?? ((root) => thirdPartyPipelineCoverage({ root }))
+  let cov
+  try {
+    cov = medir(cwd)
+  } catch (err) {
+    // Um erro de PROGRAMA não pode virar "nenhum pipeline de terceiro": quem
+    // não conseguiu medir não diz que a cobertura está inteira.
+    return {
+      state: "unread",
+      tipos: [],
+      fora: [],
+      cobertos: 0,
+      ilegiveis: [],
+      detail: "a cobertura da varredura de terceiro não foi lida",
+      error: String((err && err.message) || err),
+      remedies: [],
+    }
+  }
+  const tipos = Array.isArray(cov?.tipos) ? cov.tipos : []
+  const fora = Array.isArray(cov?.fora) ? cov.fora : []
+  const ilegiveis = Array.isArray(cov?.ilegiveis) ? cov.ilegiveis : []
+  const cobertos = typeof cov?.cobertos === "number" ? cov.cobertos : 0
+  const base = { tipos, fora, cobertos, ilegiveis, error: null }
+
+  if (fora.length > 0) {
+    return {
+      ...base,
+      state: "violated",
+      detail:
+        `${fora.length} CI de terceiro DETECTADO(S) fora dos tipos declarados ` +
+        `(${fora.map((f) => `\`${f.file}\` → tipo '${f.id}'`).join(", ")}): ` +
+        `a varredura não OS julga — um uso da versão do Bun ali envelhece sem nada ficar vermelho`,
+      remedies: [
+        `declare o tipo em \`THIRD_PARTY_PIPELINE_TYPES\` (scripts/check-bun-mirror.mjs) e cubra-o com a varredura da invariante 19 — ou remova o pipeline do repositório, se ele não é usado`,
+        `o conjunto de tipos é DECLARADO de propósito: um tipo novo entra por decisão (com a sua régua de valor), não por acidente de varredura recursiva`,
+      ],
+    }
+  }
+
+  if (tipos.length === 0) {
+    return {
+      ...base,
+      state: "violated",
+      detail:
+        "NENHUM tipo de pipeline de terceiro está declarado — a varredura não tem o que cobrir, e " +
+        '"nenhum CI detectado fora dos tipos" seria um verde por vazio',
+      remedies: [
+        "declare ao menos um tipo em `THIRD_PARTY_PIPELINE_TYPES` (scripts/check-bun-mirror.mjs): a tabela é a declaração de QUEM a invariante 19 julga",
+      ],
+    }
+  }
+
+  if (ilegiveis.length > 0) {
+    return {
+      ...base,
+      state: "unread",
+      detail:
+        `${ilegiveis.length} diretório(s) da varredura NÃO foram lidos (${ilegiveis.slice(0, 5).join(", ")}` +
+        `${ilegiveis.length > 5 ? ", …" : ""}) — pode haver pipeline de terceiro escondido ali, e o que não foi lido não é coberto`,
+      remedies: [],
+    }
+  }
+
+  const arquivos = tipos.flatMap((t) => t.arquivos ?? [])
+  return {
+    ...base,
+    state: "proven",
+    detail:
+      `${tipos.length} tipo(s) VARVIDO(S) — ${tipos.map((t) => `${t.id} (${(t.arquivos ?? []).length})`).join(", ")} — ` +
+      `${cobertos} arquivo(s) coberto(s)` +
+      (arquivos.length > 0
+        ? ` (${arquivos.join(", ")})`
+        : " (nenhum pipeline de terceiro presente)") +
+      `; nenhum CI de terceiro detectado fora dos tipos declarados`,
+    remedies: [],
+  }
+}
+
+/**
+ * O que a cobertura da varredura de terceiro tem de BLOQUEANTE: o CI detectado
+ * fora dos tipos declarados (a varredura não o julga) e a tabela vazia (não há
+ * varredura a cobrir). As duas são a mesma classe — cobertura declarada que não
+ * corresponde ao que existe no repositório.
+ *
+ * @param {object|undefined} fato
+ * @returns {string[]}
+ */
+export function thirdPartyPipelinesBlockers(fato) {
+  if (!fato || fato.state !== "violated") return []
+  return [`a COBERTURA DA VARREDURA DE TERCEIRO esta violada — ${fato.detail}`]
+}
+
+/**
+ * O que a cobertura NÃO pôde provar: a leitura que falhou ou um diretório
+ * ilegível. Ausência do FATO também é ausência de prova: um relatório sem ele
+ * não cobre se existe CI de terceiro fora dos tipos declarados.
+ *
+ * @param {object|undefined} fato
+ * @returns {string[]}
+ */
+export function thirdPartyPipelinesUnknowns(fato) {
+  if (!fato) {
+    return [
+      "a cobertura da varredura de pipeline de terceiro (quantos tipos são declarados, quais, e se algum CI detectado está fora deles) não está declarada no relatório: o veredito não cobre se um pipeline novo passou a existir fora da varredura da invariante 19",
+    ]
+  }
+  if (fato.state === "proven") return []
+  if (fato.state === "unread") {
+    return [`a cobertura da varredura de terceiro NAO foi provada: ${fato.detail}`]
+  }
+  return []
+}
+
 /**
  * A PROVA DO BLOQUEIO LOCAL como FATO do relatório — a garantia de que o
  * `pre-commit` recusa um corpo `run:` quebrado no ÍNDICE.
@@ -4408,7 +4563,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // protection). Um manifesto validado com a forja em drift é o modo de falha
   // que este comando existe para não deixar passar.
   line()
-  line("  1/7  Contrato de merge (o que o repositório DECLARA × o que a forja REGISTRA)")
+  line("  1/8  Contrato de merge (o que o repositório DECLARA × o que a forja REGISTRA)")
   for (const f of facts.contract.forges) {
     const mark = f.exists && f.jobs > 0 ? MARK.ok() : MARK.fail()
     line(
@@ -4432,7 +4587,7 @@ export function renderReport(report, { emit = console.log } = {}) {
 
   // ── 2. Guards da forja ──────────────────────────────────────────────────
   line()
-  line(`  2/7  Guards da forja (derivados de ${MERGE_OWNER_PIPELINE})`)
+  line(`  2/8  Guards da forja (derivados de ${MERGE_OWNER_PIPELINE})`)
   if (facts.skippedGuards) {
     line(`       ${MARK.skip()} pulados por --no-guards (o veredito NÃO cobre os gates)`)
   } else if (facts.guards.error) {
@@ -4454,7 +4609,7 @@ export function renderReport(report, { emit = console.log } = {}) {
 
   // ── 3. Imagem do runner ─────────────────────────────────────────────────
   line()
-  line("  3/7  Imagem do runner (o que os jobs puxam para INICIAR)") // Só a AUSÊNCIA confirmada (exit 4) é falha da forja; o resto é falta de
+  line("  3/8  Imagem do runner (o que os jobs puxam para INICIAR)") // Só a AUSÊNCIA confirmada (exit 4) é falha da forja; o resto é falta de
   // prova (env ausente no checkout, registry inacessível, pacote privado).
   const imageMark =
     facts.image.code === 0
@@ -4594,7 +4749,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // título mantém o começo de antes para o número da seção seguir sendo a âncora
   // de quem lê.
   line(
-    "  4/7  Prova do bloqueio (registry de TESTE) + os DOIS elos locais (pre-commit e pre-push) + o GATE que as cobra no merge",
+    "  4/8  Prova do bloqueio (registry de TESTE) + os DOIS elos locais (pre-commit e pre-push) + o GATE que as cobra no merge",
   )
   {
     const proofMark =
@@ -4845,7 +5000,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // resto da seção só prova existência e concordância local — e o operador
   // precisa ver essa diferença sem ler o código.
   line()
-  line("  5/7  Espelhos das variáveis da imagem — o VALOR (sem rede)")
+  line("  5/8  Espelhos das variáveis da imagem — o VALOR (sem rede)")
   // O conjunto COMPARADO vem do fato (não de uma lista escrita aqui): as
   // variáveis sem valor passado aparecem em `unknowns`, com o nome.
   // `expectedVars` com fallback em `expected`: um fato montado à mão (teste,
@@ -4936,7 +5091,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // o doctor mede por conta própria vêm lado a lado com a MEDIÇÃO, para a issue
   // velha não passar por problema vivo (nem o contrário).
   line()
-  line("  6/7  Dívida conhecida (DECLARADA no repositório × ABERTA no board)")
+  line("  6/8  Dívida conhecida (DECLARADA no repositório × ABERTA no board)")
   // ── a DECLARADA: a IDADE das isenções (data + janela de revisão) ────────
   if (facts.skippedDeclaredDebt) {
     line(
@@ -5005,7 +5160,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // seção, uma declaração de `defaults:` que ligue o pipefail viajaria em
   // silêncio no veredito de quem decide se o merge pode ser confiado à forja.
   line()
-  line("  7/7  Herança de shell dos workflows (de ONDE vem o shell de CADA passo)")
+  line("  7/8  Herança de shell dos workflows (de ONDE vem o shell de CADA passo)")
   const si = facts.shellInheritance
   if (!si) {
     line(
@@ -5060,6 +5215,47 @@ export function renderReport(report, { emit = console.log } = {}) {
       line(
         `       ${MARK.warn()} ${si.totals.unread} arquivo(s) não lido(s): não ler NÃO é o mesmo que não haver shell default declarado`,
       )
+    }
+  }
+
+  // ── 8. Cobertura da varredura de TERCEIRO ───────────────────────────────
+  // A invariante 19 diz o RESULTADO dela (nenhum uso divergente da versão num
+  // pipeline de terceiro) e não dizia o ALCANCE: quantos tipos ela conhece,
+  // quais, e se algum CI de terceiro presente no checkout está fora deles. Um
+  // `.gitlab-ci.yml` que entra no repositório fica cego para sempre e o verde da
+  // invariante 19 continua idêntico — a prontidão passa a declarar a COBERTURA,
+  // não só o resultado dela. A leitura é a MESMA do guard
+  // (`thirdPartyPipelineCoverage`), e entra ATÉ no perfil `--ci`: é leitura de
+  // checkout, e no PR a bateria de guards está pulada.
+  line()
+  line("  8/8  Cobertura da varredura de terceiro (os TIPOS declarados × os CI detectados)")
+  const t3 = facts.thirdPartyPipelines
+  if (!t3) {
+    line(
+      `       ${MARK.warn()} o fato não está no relatório — a cobertura da varredura de terceiro fica fora do veredito`,
+    )
+  } else {
+    const marcas = { proven: MARK.ok(), violated: MARK.fail(), unread: MARK.warn() }
+    line(`       ${marcas[t3.state] ?? MARK.warn()} ${t3.detail}`)
+    for (const tipo of t3.tipos ?? []) {
+      const arquivos = tipo.arquivos ?? []
+      line(
+        `           ${MARK.info()} tipo '${tipo.id}' (${tipo.nome ?? "?"}): ${arquivos.length} arquivo(s)` +
+          (arquivos.length > 0 ? ` — ${arquivos.join(", ")}` : ""),
+      )
+    }
+    for (const f of t3.fora ?? []) {
+      line(
+        `           ${MARK.fail()} \`${f.file}\` (tipo '${f.id}') — DETECTADO e FORA dos tipos declarados: a varredura não o julga`,
+      )
+    }
+    for (const d of t3.ilegiveis ?? []) {
+      line(
+        `           ${MARK.warn()} \`${d}\` não foi lido: pode haver pipeline de terceiro ali, e não ler não é o mesmo que não existir`,
+      )
+    }
+    if ((t3.fora ?? []).length > 0 || t3.state === "violated") {
+      for (const r of t3.remedies ?? []) line(`           ${MARK.info()} remédio: ${r}`)
     }
   }
 
@@ -5413,6 +5609,8 @@ export async function diagnose({
   declaredDebtDeps = {},
   /** Injeção do FATO da herança de shell (`list`/`readFile`) — o teste mede os estados sem um checkout de verdade. */
   shellInheritanceDeps = {},
+  /** Injeção do FATO da cobertura de terceiro (`medir`) — o teste mede os estados sem um checkout de verdade. */
+  thirdPartyPipelinesDeps = {},
   /** Injeção do FATO da prova do bloqueio local (`prove`) — o teste mede os três estados sem rodar git. */
   preCommitBlockDeps = {},
   /** Injeção do FATO da prova do bloqueio do push (`prove`) — o teste mede os três estados sem rodar git. */
@@ -5617,6 +5815,12 @@ export async function diagnose({
     // este fato uma declaração de `defaults:` que ligue o pipefail viajaria em
     // silêncio até o cron semanal.
     shellInheritance: readShellInheritance({ cwd, deps: shellInheritanceDeps }),
+    // A COBERTURA DA VARREDURA DE TERCEIRO, como fato do relatório: quantos
+    // tipos são declarados, QUAIS, e se algum CI detectado no checkout está
+    // fora deles. Leitura de checkout (sem rede, credencial ou estado do HOST),
+    // então entra ATÉ no perfil `--ci` — é no PR que a lacuna precisa aparecer,
+    // porque ali a bateria de guards está pulada.
+    thirdPartyPipelines: readThirdPartyPipelines({ cwd, deps: thirdPartyPipelinesDeps }),
     // O CONTRATO LOCAL, EM UM FATO SÓ — as TRÊS partes do mesmo assunto: os
     // DOIS elos EXECUTADOS aqui (um `git commit` de verdade, duas vezes: o corpo
     // quebrado no ÍNDICE tem de ser RECUSADO e o controle com o corpo fechado tem

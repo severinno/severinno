@@ -1849,7 +1849,15 @@ O guard `scripts/check-bun-mirror.mjs` (PR Check + `utf8-check.yml`) falha se:
   repositório enquanto o arquivo tinha uma isenção escrita no próprio cabeçalho —
   aqui um literal **igual** ao declarado passa (num `image:` o valor tem de estar
   escrito), o que não pode é ser OUTRO número; o bump os reescreve (seção 2e) e
-  confere a reescrita.
+  confere a reescrita;
+- o **alcance** dessa varredura — o que ela **não** olha — mudar de forma
+  silenciosa: o doctor publica, como fato próprio, os TIPOS de pipeline de
+  terceiro declarados (hoje um: `woodpecker`), quantos arquivos cada um cobre e se
+  algum CI presente no repositório está fora deles (`.gitlab-ci.yml`,
+  `Jenkinsfile`, `.circleci/config.yml`, …). Um CI detectado fora dos tipos
+  declarados **BLOQUEIA** a prontidão: sem essa metade, um pipeline novo entra
+  cego e o verde da invariante 19 continua **idêntico** — a varredura responde
+  sobre o que olhou, e nada perguntava o que ela não olhou.
 
 ### A regra real do Prisma (exemplo vivo)
 

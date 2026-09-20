@@ -42,13 +42,16 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSyn
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
+  THIRD_PARTY_CI_CANDIDATES,
   THIRD_PARTY_PIPELINE_PATHS,
   THIRD_PARTY_PIPELINE_RE,
+  THIRD_PARTY_PIPELINE_TYPES,
   checkStagedThirdPartyPipelineVersions,
   checkThirdPartyPipelineVersions,
   declaredBunVersion,
   findPipelineVersionUse,
   isSingleSourcePath,
+  thirdPartyPipelineCoverage,
   thirdPartyPipelineFiles,
 } from "../../../scripts/check-bun-mirror.mjs"
 
@@ -313,6 +316,113 @@ describe("checkStagedThirdPartyPipelineVersions — o número nasce na edição"
 })
 
 // ── o PISO: o repositório real ───────────────────────────────────────────
+
+// ── thirdPartyPipelineCoverage — a COBERTURA (o ALCANCE, não o resultado) ──
+//
+// A invariante 19 diz o RESULTADO dela (nenhum uso da versão divergindo do
+// declarado) e não dizia o ALCANCE: quantos tipos ela conhece, quais, e se
+// algum CI de terceiro presente no repositório está fora deles. Sem esta
+// metade, um `.gitlab-ci.yml` que entra no repositório fica cego para sempre e o
+// verde da invariante 19 continua idêntico — a varredura responde sobre o que
+// olhou, e nada pergunta o que ela não olhou.
+
+describe("thirdPartyPipelineCoverage — a cobertura da varredura de terceiro", () => {
+  const REPO_ROOT = process.cwd()
+
+  it("declara os tipos da TABELA e os arquivos que cada um cobre", () => {
+    const dir = makeFixture("cov-tipos", {
+      ".woodpecker.yml": "steps: []\n",
+      ".woodpecker/extra.yaml": "steps: []\n",
+    })
+    const cov = thirdPartyPipelineCoverage({ root: dir })
+    expect(cov.tipos.map((t) => t.id)).toEqual(["woodpecker"])
+    expect(cov.tipos[0].arquivos).toEqual([".woodpecker.yml", ".woodpecker/extra.yaml"])
+    expect(cov.fora).toEqual([])
+    expect(cov.cobertos).toBe(2)
+  })
+
+  it("a tabela aponta para o MESMO padrão da varredura (a cobertura não pode divergir dela)", () => {
+    // Duas regexes (uma na tabela, outra no sweep) divergiriam no primeiro
+    // pipeline novo — e o veredito passaria a declarar uma cobertura que não
+    // existe, que é pior que não declarar nenhuma.
+    expect(THIRD_PARTY_PIPELINE_TYPES.map((t) => t.padrao)).toEqual([THIRD_PARTY_PIPELINE_RE])
+    // E o padrão continua sendo o mesmo que a ENUMERAÇÃO usa (a varredura): o
+    // que a tabela declara como coberto é o que o guard de fato lê.
+    const dir = makeFixture("cov-tabela", { ".woodpecker/ci.yml": "steps: []\n" })
+    expect(thirdPartyPipelineFiles(dir)).toEqual([".woodpecker/ci.yml"])
+    expect(thirdPartyPipelineCoverage({ root: dir }).cobertos).toBe(1)
+  })
+
+  it("um CI detectado FORA dos tipos declarados sai nomeado", () => {
+    const dir = makeFixture("cov-fora", {
+      ".woodpecker.yml": "steps: []\n",
+      ".gitlab-ci.yml": "stages: [x]\n",
+      ".circleci/config.yml": "version: 2\n",
+    })
+    const cov = thirdPartyPipelineCoverage({ root: dir })
+    expect(cov.fora).toEqual([
+      { id: "circleci", file: ".circleci/config.yml" },
+      { id: "gitlab", file: ".gitlab-ci.yml" },
+    ])
+    expect(cov.cobertos).toBe(1)
+    // O arquivo COBERTO não aparece como lacuna: a cobertura é a relação entre
+    // os dois conjuntos, e um arquivo que a varredura julga não é buraco dela.
+    expect(cov.fora.some((f) => f.file === ".woodpecker.yml")).toBe(false)
+  })
+
+  it("o `Jenkinsfile` ANINHADO entra (a varredura é recursiva) e o `node_modules` NÃO", () => {
+    // Um Jenkinsfile aninhado é um pipeline de verdade — procurar só na raiz
+    // deixaria a lacuna invisível justamente onde ela é mais comum. E a lista de
+    // diretórios ignorados é a DECLARADA (`PROSE_IGNORED_DIRS`): dependência
+    // instalada não é CI do repositório.
+    const dir = makeFixture("cov-aninhado", {
+      "sub/app/Jenkinsfile": "pipeline {}\n",
+      "node_modules/pacote/Jenkinsfile": "dependencia instalada\n",
+    })
+    const cov = thirdPartyPipelineCoverage({ root: dir })
+    expect(cov.fora).toEqual([{ id: "jenkins", file: "sub/app/Jenkinsfile" }])
+  })
+
+  it("detecção por NOME do arquivo: a prosa que cita um CI não é um pipeline", () => {
+    const dir = makeFixture("cov-prosa", {
+      "docs/CI.md": "o `.gitlab-ci.yml` foi descartado; o Jenkinsfile também\n",
+    })
+    expect(thirdPartyPipelineCoverage({ root: dir }).fora).toEqual([])
+  })
+
+  it("a lista de candidatos reconhece os CI canônicos (e cada id é único)", () => {
+    const ids = THIRD_PARTY_CI_CANDIDATES.map((c) => c.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    // Nenhum candidato pode ser também um tipo DECLARADO: um CI que a varredura
+    // julga e que a lista de fora acusa seria contradição.
+    for (const c of THIRD_PARTY_CI_CANDIDATES) {
+      for (const t of THIRD_PARTY_PIPELINE_TYPES) expect(t.id).not.toBe(c.id)
+    }
+    const dir = makeFixture("cov-canonicos", {
+      ".drone.yml": "kind: pipeline\n",
+      ".travis.yml": "language: node_js\n",
+      "azure-pipelines.yml": "trigger: [main]\n",
+      "bitbucket-pipelines.yml": "pipelines: {}\n",
+    })
+    // A ordem é a dos ARQUIVOS (a lista é uma varredura, não uma taxonomia):
+    // `.drone.yml`, `.travis.yml`, `azure-pipelines.yml`, `bitbucket-pipelines.yml`.
+    expect(thirdPartyPipelineCoverage({ root: dir }).fora).toEqual([
+      { id: "drone", file: ".drone.yml" },
+      { id: "travis", file: ".travis.yml" },
+      { id: "azure-pipelines", file: "azure-pipelines.yml" },
+      { id: "bitbucket", file: "bitbucket-pipelines.yml" },
+    ])
+  })
+
+  it("o repositório REAL: um tipo varrido (woodpecker) e nenhum CI fora dos tipos", () => {
+    const cov = thirdPartyPipelineCoverage({ root: REPO_ROOT })
+    expect(cov.tipos.map((t) => t.id)).toEqual(["woodpecker"])
+    expect(cov.tipos[0].arquivos).toContain(".woodpecker.yml")
+    expect(cov.fora).toEqual([])
+    expect(cov.ilegiveis).toEqual([])
+    expect(cov.cobertos).toBeGreaterThan(0)
+  })
+})
 
 describe("os usos da versão no pipeline de terceiro do REPOSITÓRIO real", () => {
   const ROOT = process.cwd()

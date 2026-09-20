@@ -78,6 +78,9 @@ import {
   shellInheritanceBlockers,
   shellInheritanceUnknowns,
   describeShellScope,
+  readThirdPartyPipelines,
+  thirdPartyPipelinesBlockers,
+  thirdPartyPipelinesUnknowns,
   readPreCommitBlock,
   aggregateLocalState,
   localContractBlockers,
@@ -218,6 +221,17 @@ function declaredDebtFacts(overrides: Record<string, unknown> = {}) {
  * usam YAML de verdade, em fixtures com `workflows()`.
  */
 const SHELL_INHERITANCE_LIMPA = readShellInheritance({ cwd: makeDir() }) as unknown as object
+
+/**
+ * A cobertura da varredura de TERCEIRO, MEDIDA num checkout vazio: os tipos da
+ * tabela (`woodpecker`) e zero arquivo coberto — o `proven` mínimo que o veredito
+ * lê.
+ *
+ * Não pode ser omitida da fixture: ausente, o fato vira dúvida (como o guard de
+ * recursão e a herança de shell) — e uma fixture que se diz "tudo verde" com
+ * menos fatos do que o relatório real carrega mede outra coisa.
+ */
+const THIRD_PARTY_PIPELINES_LIMPO = readThirdPartyPipelines({ cwd: makeDir() }) as unknown as object
 
 /**
  * A prova do bloqueio LOCAL, provada — o default do fixture. Ela é um OBJETO
@@ -395,6 +409,9 @@ function facts(overrides: Record<string, unknown> = {}) {
     // A herança de shell dos workflows (de onde vem o shell de CADA passo):
     // presente e limpa. Cada teste estraga o que quer medir.
     shellInheritance: SHELL_INHERITANCE_LIMPA,
+    // A cobertura da varredura de terceiro (os tipos declarados × os CI
+    // detectados): presente e limpa. Cada teste estraga o que quer medir.
+    thirdPartyPipelines: THIRD_PARTY_PIPELINES_LIMPO,
     // O CONTRATO LOCAL — UM fato só: os DOIS elos executados e o que cada hook
     // RODA. Presente e medido: ausente, o veredito vira dúvida (cada teste
     // estraga o que quer medir).
@@ -1187,7 +1204,7 @@ describe("summarize — a IDADE da dívida declarada", () => {
 
   it("o peso vem das funções do FATO (fonte única com o relatório)", () => {
     // As duas funções são o que o `summarize` consulta: uma segunda regra aqui
-    // divergiria da que a seção 6/7 imprime. O fato LIMPO não pesa em nada; a
+    // divergiria da que a seção 6/8 imprime. O fato LIMPO não pesa em nada; a
     // fonte VENCIDA vira dúvida, e a SEM REGISTRO vira bloqueio.
     expect(declaredDebtBlockers(declaredDebtFacts())).toEqual([])
     expect(declaredDebtUnknowns(declaredDebtFacts())).toEqual([])
@@ -1434,7 +1451,7 @@ describe("renderReport — a seção dos espelhos diz CONTRA O QUE comparou", ()
 
   it("com o valor: nomeia a variável e cobra o veredito contra ela", () => {
     const text = render(facts())
-    expect(text).toContain("5/7  Espelhos das variáveis da imagem")
+    expect(text).toContain("5/8  Espelhos das variáveis da imagem")
     expect(text).toContain("comparados com vars.BUN_VERSION='1.3.14'")
   })
 
@@ -1498,7 +1515,7 @@ describe("renderReport — a seção dos espelhos diz CONTRA O QUE comparou", ()
         },
       }),
     )
-    expect(text).toContain("4/7  Prova do bloqueio")
+    expect(text).toContain("4/8  Prova do bloqueio")
     expect(text).toContain(
       `GATE do bring-up (job '${BRING_UP_GATE_JOB}' no contrato de merge): proven`,
     )
@@ -4848,7 +4865,7 @@ describe("readShellInheritance — a herança de shell de CADA workflow", () => 
     )
   })
 
-  it("a seção 7/7 imprime a origem por workflow, a violação e o remédio", () => {
+  it("a seção 7/8 imprime a origem por workflow, a violação e o remédio", () => {
     const root = tree(
       [
         "on:",
@@ -4870,7 +4887,7 @@ describe("readShellInheritance — a herança de shell de CADA workflow", () => 
       { emit: (s = "") => linhas.push(s) },
     )
     const texto = linhas.join("\n")
-    expect(texto).toContain("7/7  Herança de shell dos workflows")
+    expect(texto).toContain("7/8  Herança de shell dos workflows")
     expect(texto).toContain(".gitea/workflows/ci.yml")
     expect(texto).toContain("origem: 0 pelo RUNNER")
     expect(texto).toContain("LIGA o pipefail para 1 passo(s) sem `shell:`")
@@ -4880,6 +4897,126 @@ describe("readShellInheritance — a herança de shell de CADA workflow", () => 
 })
 
 // ── a prova do bloqueio LOCAL (o pre-commit × o corpo `run:` quebrado) ────
+
+// ── A COBERTURA da varredura de TERCEIRO como FATO do relatório ───────────
+//
+// A invariante 19 diz o RESULTADO dela (nenhum uso da versão divergindo num
+// pipeline de terceiro) e não dizia o ALCANCE. O fato declara a COBERTURA:
+// quantos tipos, QUAIS, e se algum CI detectado no checkout está fora deles —
+// porque um `.gitlab-ci.yml` novo deixa o verde da invariante 19 idêntico.
+
+describe("readThirdPartyPipelines — a cobertura da varredura de terceiro", () => {
+  /** O módulo é .mjs (JS): o teste tipa só o que consome do fato. */
+  type FatoCobertura = {
+    state: string
+    tipos: { id: string; nome: string; arquivos: string[] }[]
+    fora: { id: string; file: string }[]
+    cobertos: number
+    ilegiveis: string[]
+    detail: string
+    error: string | null
+    remedies: string[]
+  }
+  const cobertura = (saida: unknown) =>
+    readThirdPartyPipelines({
+      deps: { medir: (() => saida) as (root: string) => object },
+    }) as unknown as FatoCobertura
+  const LIMPO = {
+    tipos: [{ id: "woodpecker", nome: "Woodpecker CI", arquivos: [".woodpecker.yml"] }],
+    fora: [],
+    cobertos: 1,
+    ilegiveis: [],
+  }
+
+  it("`proven` diz QUANTOS tipos, QUAIS e quantos arquivos cada um cobre", () => {
+    const f = cobertura(LIMPO)
+    expect(f.state).toBe("proven")
+    expect(f.detail).toContain("1 tipo(s)")
+    expect(f.detail).toContain("woodpecker")
+    expect(f.detail).toContain("1 arquivo(s) coberto(s)")
+    expect(f.detail).toContain(".woodpecker.yml")
+    expect(f.remedies).toEqual([])
+  })
+
+  it("um CI detectado FORA dos tipos BLOQUEIA, nomeando o arquivo e o tipo", () => {
+    const f = cobertura({ ...LIMPO, fora: [{ id: "gitlab", file: ".gitlab-ci.yml" }] })
+    expect(f.state).toBe("violated")
+    expect(f.detail).toContain(".gitlab-ci.yml")
+    expect(f.detail).toContain("gitlab")
+    const v = summarize(facts({ thirdPartyPipelines: f }))
+    expect(v.verdict).toBe(VERDICT.BLOCKED)
+    expect(v.blockers.join(" ")).toContain("COBERTURA DA VARREDURA DE TERCEIRO")
+    // Um bloqueio sem endereço não é acionável: o remédio diz ONDE se declara o tipo.
+    expect(f.remedies.join(" ")).toContain("THIRD_PARTY_PIPELINE_TYPES")
+  })
+
+  it('a TABELA VAZIA também bloqueia: "nenhum CI fora dos tipos" seria verde por vazio', () => {
+    const f = cobertura({ tipos: [], fora: [], cobertos: 0, ilegiveis: [] })
+    expect(f.state).toBe("violated")
+    expect(f.detail).toContain("NENHUM tipo")
+    expect(summarize(facts({ thirdPartyPipelines: f })).verdict).toBe(VERDICT.BLOCKED)
+  })
+
+  it("um diretório ILEGÍVEL é falta de prova — nunca verde", () => {
+    const f = cobertura({ ...LIMPO, ilegiveis: [".gitlab"] })
+    expect(f.state).toBe("unread")
+    expect(f.detail).toContain(".gitlab")
+    const v = summarize(facts({ thirdPartyPipelines: f }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.unknowns.join(" ")).toContain("NAO foi provada")
+  })
+
+  it("a leitura que ESTOURA não vira 'nenhum pipeline de terceiro': é `unread`", () => {
+    const f = readThirdPartyPipelines({
+      deps: {
+        medir: () => {
+          throw new Error("EACCES na leitura")
+        },
+      },
+    }) as unknown as FatoCobertura
+    expect(f.state).toBe("unread")
+    expect(f.error).toContain("EACCES")
+    expect(f.tipos).toEqual([])
+  })
+
+  it("o fato AUSENTE é dúvida (o veredito não cobre o ALCANCE da varredura)", () => {
+    const semFato = facts() as Record<string, unknown>
+    delete semFato.thirdPartyPipelines
+    const v = summarize(semFato as never)
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.unknowns.join(" ")).toContain("cobertura da varredura de pipeline de terceiro")
+    // E o helper devolve a mesma dúvida para `undefined` (o outro caminho).
+    expect(thirdPartyPipelinesUnknowns(undefined).join(" ")).toContain("não está declarada")
+    expect(thirdPartyPipelinesBlockers(undefined)).toEqual([])
+  })
+
+  it("o repositório REAL é `proven` e nomeia o tipo varrido (`.woodpecker.yml`)", () => {
+    const f = readThirdPartyPipelines() as unknown as FatoCobertura
+    expect(f.state).toBe("proven")
+    expect(f.tipos.map((t) => t.id)).toEqual(["woodpecker"])
+    expect(f.tipos[0].arquivos).toContain(".woodpecker.yml")
+    expect(f.fora).toEqual([])
+    expect(f.ilegiveis).toEqual([])
+  })
+
+  it("a seção 8/8 imprime os tipos, o CI de fora e o remédio", () => {
+    const f = cobertura({ ...LIMPO, fora: [{ id: "gitlab", file: ".gitlab-ci.yml" }] })
+    const linhas: string[] = []
+    renderReport(
+      {
+        facts: facts({ thirdPartyPipelines: f }),
+        verdict: summarize(facts({ thirdPartyPipelines: f })),
+      },
+      { emit: (s = "") => linhas.push(s) },
+    )
+    const texto = linhas.join("\n")
+    expect(texto).toContain("8/8  Cobertura da varredura de terceiro")
+    expect(texto).toContain("tipo 'woodpecker'")
+    expect(texto).toContain(".gitlab-ci.yml")
+    expect(texto).toContain("DETECTADO e FORA dos tipos declarados")
+    expect(texto).toContain("remédio:")
+  })
+})
 
 /** O fato do doctor com a prova INJETADA — é assim que os três estados são medidos
  * sem depender do hook do checkout (a prova REAL tem teste próprio, abaixo). */
@@ -4976,7 +5113,7 @@ describe("a prova do bloqueio LOCAL como FATO do relatório", () => {
     expect(v.verdict).toBe(VERDICT.UNKNOWN) // as outras seções do fixture continuam
   })
 
-  it("a seção 4/7 imprime o estado, a evidência das DUAS metades e quem cobra", () => {
+  it("a seção 4/8 imprime o estado, a evidência das DUAS metades e quem cobra", () => {
     const f = {
       state: "proven",
       detail: "recusou o quebrado e deixou entrar o controle",
@@ -4995,7 +5132,7 @@ describe("a prova do bloqueio LOCAL como FATO do relatório", () => {
       },
     )
     const texto = linhas.join("\n")
-    expect(texto).toContain("4/7  Prova do bloqueio")
+    expect(texto).toContain("4/8  Prova do bloqueio")
     expect(texto).toContain("prova do bloqueio LOCAL (pre-commit): proven")
     expect(texto).toContain("defeito no índice: exit 1, 0 objeto(s) de commit, HEAD ausente")
     expect(texto).toContain("CONTROLE com o corpo fechado: exit 0, 1 objeto(s)")
@@ -5191,7 +5328,7 @@ describe("a prova do bloqueio do PUSH como FATO do relatório", () => {
     expect(summarize(completo).verdict).toBe(VERDICT.UNKNOWN)
   })
 
-  it("a seção 4/7 imprime o estado, a evidência das DUAS metades e quem cobra", () => {
+  it("a seção 4/8 imprime o estado, a evidência das DUAS metades e quem cobra", () => {
     const linhas: string[] = []
     const fProvado = facts({
       localContract: localContractFacts({
@@ -5316,7 +5453,7 @@ describe("a prova do bloqueio do PUSH como FATO do relatório", () => {
     expect(vCi.blockers.join("\n")).toContain("state 'ausente do relatório'")
   })
 
-  it("a seção 4/7 imprime o limite e QUEM BARRA o defeito depois do hook", () => {
+  it("a seção 4/8 imprime o limite e QUEM BARRA o defeito depois do hook", () => {
     const linhas: string[] = []
     const f = facts({ localContract: localContractFacts() })
     renderReport({ facts: f, verdict: summarize(f) }, { emit: (s = "") => linhas.push(s) })

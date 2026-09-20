@@ -2436,6 +2436,139 @@ export function thirdPartyPipelineFiles(root = process.cwd()) {
   return out.sort()
 }
 
+/**
+ * Os TIPOS de pipeline de terceiro DECLARADOS — a tabela de QUEM a varredura da
+ * invariante 19 conhece.
+ *
+ * POR QUE É UMA TABELA, e não a regex sozinha: a varredura sabe dizer o
+ * RESULTADO (nenhum uso da versão divergente) e não sabia dizer a COBERTURA
+ * (quantos tipos ela conhece, quais, e se algum CI de terceiro presente no
+ * repositório está fora deles). Sem essa metade, um `.gitlab-ci.yml` que entra
+ * no repositório fica cego PARA SEMPRE e o verde da invariante 19 continua
+ * idêntico — a varredura responde sobre o que olhou, e nada pergunta o que ela
+ * não olhou.
+ *
+ * Cada tipo aponta para o MESMO padrão que a varredura usa (`padrao`): duas
+ * regexes (uma na tabela, outra no sweep) divergiriam no primeiro pipeline novo,
+ * e o veredito passaria a declarar uma cobertura que não existe. Um tipo NESTA
+ * tabela é um tipo que a varredura JULGA — declarar um tipo que ninguém varre
+ * seria declarar cobertura que não existe, e é exatamente o que a tabela existe
+ * para tornar impossível.
+ *
+ * @type {{id: string, nome: string, padrao: RegExp}[]}
+ */
+export const THIRD_PARTY_PIPELINE_TYPES = [
+  {
+    id: "woodpecker",
+    nome: "Woodpecker CI",
+    padrao: THIRD_PARTY_PIPELINE_RE,
+  },
+]
+
+/**
+ * Os CI de TERCEIRO que o repositório sabe RECONHECER pelo nome canônico do
+ * arquivo — e que NENHUM tipo declarado varre.
+ *
+ * POR QUE UMA LISTA DE FORA: reconhecer o arquivo é o que permite DIZER a
+ * lacuna. O `detectado` aqui não é um gate da invariante 19 (o valor da versão
+ * do Bun em `.gitlab-ci.yml` não é comparado por ninguém): é a COBERTURA dela —
+ * um CI que existe no repositório e que a varredura não julga. O doctor publica
+ * isso como fato próprio; sem ele, a única saída para o autor seria descobrir a
+ * lacuna relendo o guard.
+ *
+ * A detecção é por NOME CANÔNICO (o arquivo que o próprio CI procura), nunca por
+ * conteúdo: um YAML qualquer que cite `gitlab` em prosa não é um pipeline.
+ *
+ * @type {{id: string, padrao: RegExp}[]}
+ */
+export const THIRD_PARTY_CI_CANDIDATES = [
+  { id: "gitlab", padrao: /^(?:\.gitlab-ci\.ya?ml|\.gitlab\/.+\.ya?ml)$/ },
+  { id: "jenkins", padrao: /(?:^|\/)Jenkinsfile$/ },
+  { id: "drone", padrao: /^\.drone\.ya?ml$/ },
+  { id: "circleci", padrao: /^\.circleci\/config\.ya?ml$/ },
+  { id: "travis", padrao: /^\.travis\.ya?ml$/ },
+  { id: "azure-pipelines", padrao: /^azure-pipelines\.ya?ml$/ },
+  { id: "buildkite", padrao: /^(?:\.buildkite\/.+\.ya?ml|buildkite\.ya?ml)$/ },
+  { id: "bitbucket", padrao: /^bitbucket-pipelines\.ya?ml$/ },
+]
+
+/**
+ * A COBERTURA da varredura de terceiro: os TIPOS declarados, os arquivos que
+ * cada um cobre e os CI DETECTADOS que ficam fora deles.
+ *
+ * A varredura de arquivos é recursiva e usa a MESMA lista de diretórios
+ * ignorados da varredura de prosa (`PROSE_IGNORED_DIRS`): o que fica fora é uma
+ * decisão declarada e revisável, não um efeito de recursão (e um `Jenkinsfile`
+ * aninhado é um pipeline de verdade — procurar só na raiz deixaria a lacuna
+ * invisível justamente onde ela é mais comum).
+ *
+ * Não depende do git: um export em tarball (ou um fixture) tem a mesma leitura.
+ * Diretório ilegível NÃO é varrido em silêncio: entra em `ilegiveis`, e quem
+ * consome decide (o doctor transforma isso em falta de prova, nunca em verde).
+ *
+ * @param {{root?: string, tipos?: typeof THIRD_PARTY_PIPELINE_TYPES, candidatos?: typeof THIRD_PARTY_CI_CANDIDATES, ignorados?: string[]}} [options]
+ * @returns {{tipos: {id: string, nome: string, arquivos: string[]}[], detectados: {id: string, file: string, coberto: boolean}[], fora: {id: string, file: string}[], cobertos: number, ilegiveis: string[], error: string|null}}
+ */
+export function thirdPartyPipelineCoverage({
+  root = process.cwd(),
+  tipos = THIRD_PARTY_PIPELINE_TYPES,
+  candidatos = THIRD_PARTY_CI_CANDIDATES,
+  ignorados = PROSE_IGNORED_DIRS,
+} = {}) {
+  const arquivos = []
+  const ilegiveis = []
+  const walk = (dir, rel) => {
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      // O MOTIVO não importa para a cobertura (o que importa é que o diretório
+      // NÃO foi varrido): o nome dele entra na lista e o consumidor decide.
+      ilegiveis.push(rel === "" ? "." : rel)
+      return
+    }
+    for (const entry of entries) {
+      if (ignorados.includes(entry.name)) continue
+      const relPath = rel === "" ? entry.name : `${rel}/${entry.name}`
+      if (entry.isDirectory()) walk(join(dir, entry.name), relPath)
+      else if (entry.isFile() || entry.isSymbolicLink()) arquivos.push(relPath)
+    }
+  }
+  walk(root, "")
+
+  const porTipo = tipos.map((t) => ({
+    id: t.id,
+    nome: t.nome,
+    arquivos: arquivos.filter((rel) => t.padrao.test(rel)).sort(),
+  }))
+  const varridos = porTipo.flatMap((t) => t.arquivos)
+  // Os arquivos que um TIPO DECLARADO cobre entram primeiro (com o id do tipo):
+  // a cobertura é a relação entre os dois conjuntos, e um arquivo coberto não
+  // pode aparecer como lacuna.
+  const detectados = []
+  for (const t of porTipo) {
+    for (const rel of t.arquivos) detectados.push({ id: t.id, file: rel, coberto: true })
+  }
+  const fora = []
+  for (const c of candidatos) {
+    for (const rel of arquivos) {
+      if (!c.padrao.test(rel)) continue
+      if (detectados.some((d) => d.file === rel)) continue
+      detectados.push({ id: c.id, file: rel, coberto: false })
+      fora.push({ id: c.id, file: rel })
+    }
+  }
+  fora.sort((a, b) => a.file.localeCompare(b.file))
+  return {
+    tipos: porTipo,
+    detectados: detectados.sort((a, b) => a.file.localeCompare(b.file)),
+    fora,
+    cobertos: varridos.length,
+    ilegiveis,
+    error: null,
+  }
+}
+
 /** `${BUN_VERSION}` (derivação) e `${BUN_VERSION:-<x>}` (fallback) — as duas
  *  únicas formas em que um uso da versão NÃO carrega um número próprio. */
 const PIPELINE_VERSION_VAR_RE = /^\$\{BUN_VERSION(?::-(.*))?\}$/

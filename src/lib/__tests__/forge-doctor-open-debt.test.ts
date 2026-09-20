@@ -391,6 +391,19 @@ function baseFacts() {
       detail: "0 workflow(s) de forja neste checkout",
       error: null,
     },
+    // A COBERTURA da varredura de TERCEIRO: presente e limpa (ausente, o fato
+    // vira dúvida — a fixture que se diz "o mínimo que o summarize lê" carrega
+    // tudo o que ele lê; o próprio fato tem testes em `forge-doctor.test.ts`).
+    thirdPartyPipelines: {
+      state: "proven",
+      tipos: [{ id: "woodpecker", nome: "Woodpecker CI", arquivos: [".woodpecker.yml"] }],
+      fora: [],
+      cobertos: 1,
+      ilegiveis: [],
+      detail: "1 tipo(s) varrido(s) — woodpecker (1) — e nenhum CI fora dos tipos declarados",
+      error: null,
+      remedies: [],
+    },
     // O CONTRATO LOCAL — UM fato só para UM assunto (os dois elos EXECUTADOS
     // mais o que cada hook RODA): aqui presente e PROVADO nas três partes.
     // Ausente, o fato vira dúvida — a mesma disciplina da herança de shell
