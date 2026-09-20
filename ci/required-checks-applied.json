@@ -18,10 +18,20 @@
     "confere a forja DE VERDADE contra o manifesto, e a divergência vira issue.",
     "",
     "Ele entra em sincronia com: `bun run ci:required-checks -- --apply` (escreve",
-    "este arquivo e commite-o junto da mudança que mexeu no contexto)."
+    "este arquivo e commite-o junto da mudança que mexeu no contexto).",
+    "",
+    "QUANDO A FORJA RECUSA A FEATURE (repositório privado num plano sem branch",
+    "protection), nenhum required check pode ser aplicado nem LIDO — e o applier",
+    "declara esse ESTADO na entrada da forja, em `unsupported: {reason, readAt}`. Os",
+    "contextos daquela entrada passam a descrever a INTENÇÃO (o que o manifesto quer",
+    "exigir), e o veredito do `check-required-checks` publica a forja, o motivo e a",
+    "data em toda rodada: ali nada bloqueia o merge, e o remédio é decisão de",
+    "PLANO/VISIBILIDADE (GitHub Pro, ou o repositório público) — não código. Numa",
+    "rodada em que a forja responde, o marcador SAI: ele descreve o estado LIDO, não",
+    "um histórico."
   ],
   "version": 1,
-  "appliedAt": "2026-09-18",
+  "appliedAt": "2026-09-20",
   "forges": {
     "github": {
       "workflow": ".github/workflows/pr-check.yml",
@@ -33,6 +43,7 @@
         "Workflow run syntax (bash -n)",
         "Bring-up Gate Proof (pré-requisito 0, por execução)",
         "Pre-commit Proof (dentro da imagem do runner)",
+        "Bun Mirror Guard (fonte única vars.BUN_VERSION)",
         "Actionlint (workflow syntax)",
         "Lint Guard (prettier + eslint zero)",
         "TypeCheck (tsc --noEmit)",
@@ -51,7 +62,11 @@
         "Mutation Test (defesas do check-env-mirror)",
         "Seed Prod E2E (dev-env override)",
         "Migrate Category Rename E2E"
-      ]
+      ],
+      "unsupported": {
+        "reason": "GitHub GET /repos/severinno/severinno/branches/main/protection/required_status_checks → HTTP 403: {\"message\":\"Upgrade to GitHub Pro or make this repository public to enable this feature.\",\"documentation_url\":\"https://docs.github.com/rest/branches/branch-protection#get-status-checks-protection\",\"status\":\"403\"} — a FORJA NÃO SUPORTA branch protection neste repositório (privado num plano sem a feature): nenhum required check pode ser APLICADO nem LIDO, e o merge desta forja não tem portão. NÃO é o token: nenhuma permissão (nem administração) habilita a feature — o que falta é o plano (`Upgrade to GitHub Pro`) ou o repositório ser público.",
+        "readAt": "2026-09-20"
+      }
     },
     "gitea": {
       "workflow": ".gitea/workflows/ci.yml",

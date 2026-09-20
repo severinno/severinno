@@ -8,7 +8,7 @@
 #   ./scripts/test-mutation-required-checks-applied.sh
 #
 # Exit codes:
-#   0 — as OITO mutações foram DETECTADAS pela suíte (e os controles passaram) ✅
+#   0 — as DEZ mutações foram DETECTADAS pela suíte (e os controles passaram) ✅
 #       — ou a testemunha se declarou NÃO JULGÁVEL (sem `vitest`), dito em voz
 #       alta
 #   1 — suíte CEGA (verde com a mutação) / vermelha pelo motivo errado / controle
@@ -47,6 +47,13 @@
 #   M6 — o applier não gera CHURN (`buildAppliedRecord`): mutação que reescreve o
 #        arquivo em todo `--apply` ⇒ um diff em cada rodada, que o operador aprende
 #        a ignorar (um arquivo ignorado não declara nada).
+#   M9 — o applier DECLARA a forja que recusa a feature (`buildAppliedRecord`):
+#        mutação que não grava o marcador ⇒ a declaração diria que a proteção
+#        existe, e o gate novo daquela forja não poderia nem ser declarado (o
+#        verde que esconde o fato que importa).
+#   M10 — o MOTIVO do marcador (`validateApplied`): mutação que aceita
+#        `unsupported` sem razão ⇒ a forja é declarada sem portão sem dizer por
+#        quê, e o veredito publica um estado sobre o qual ninguém pode agir.
 #
 # E as DUAS metades do veredito LOCAL (`--staged`, o recorte do pre-commit), que
 # têm testemunha própria (`required-checks-staged-cli.test.ts` — repositório git
@@ -67,8 +74,8 @@
 # mutação é aplicada NO LUGAR, nos arquivos do repositório, e a árvore é
 # restaurada por checksum no mesmo trap.
 #
-# LIMITE DECLARADO (o que esta prova NÃO cobre): as seis mutações vivem no MESMO
-# arquivo — `scripts/check-required-checks.mjs`. As duas últimas atacam as funções
+# LIMITE DECLARADO (o que esta prova NÃO cobre): as OITO mutações vivem no MESMO
+# arquivo — `scripts/check-required-checks.mjs`. As duas que atacam as funções
 # que ESCREVEM a declaração (`buildAppliedRecord`/`writeAppliedRecord`), que o
 # applier importa: elas são a régua da declaração, mas o CAMINHO do applier
 # (autenticar na forja e chamar essas funções) exige token e não é exercitado
@@ -128,6 +135,10 @@ ANCORA_SEM_ARQUIVO="sem o arquivo, o guard falha com o remédio"
 # O applier: a declaração é do alvo, e o carimbo não gera churn.
 ANCORA_FORA_DO_ALVO="uma forja FORA do alvo mantém a declaração anterior"
 ANCORA_SEM_CHURN="um apply SEM mudança de contexto não reescreve o arquivo"
+# A forja que RECUSA a feature: o applier DECLARA o estado (o marcador entra), e
+# o estado não pode ficar MUDO (razão + data, publicadas no veredito).
+ANCORA_SEM_PORTAO="o applier grava o marcador quando a forja RECUSA"
+ANCORA_MARCADOR_MUDO="sem o MOTIVO o guard reprova"
 
 # ── As âncoras do VEREDITO LOCAL (`--staged`) ─────────────────────────────
 # O rename STAGED sem a declaração: é AQUI que o commit morre no hook.
@@ -363,6 +374,27 @@ mutar_arquivo "$GUARD" '  const mudou =
 exigir_vermelho "M6" "$ANCORA_SEM_CHURN" "$ANCORA_RENAME"
 restaurar_originais
 
+# ── M9: o applier deixa de DECLARAR a forja que recusa a feature ─────────
+# A forja que responde 403 de plano/visibilidade não tem portão NENHUM, e é isso
+# que a declaração registra (`unsupported: {reason, readAt}`). Sem o marcador, a
+# declaração diria que a proteção existe — e o operador nem conseguiria declarar
+# um gate novo daquela forja (o guard reprova o contexto sem a declaração).
+header "M9 (o marcador): a forja que RECUSA a feature deixa de ser declarada sem portão"
+mutar_arquivo "$GUARD" '      if (unsupported[forge]) {' \
+  '      if (false) { // MUTACAO M9' "$guard_sum"
+exigir_vermelho "M9" "$ANCORA_SEM_PORTAO" "$ANCORA_MARCADOR_MUDO|$ANCORA_RENAME|$ANCORA_SEM_CHURN"
+restaurar_originais
+
+# ── M10: o estado "sem portão" passa a ser MUDO ──────────────────────────
+# O marcador existe mas a RAZÃO não é exigida: a forja é declarada sem portão sem
+# dizer por quê, e quem lê o veredito não distingue "o plano continua sem a
+# feature" de "alguém pôs o marcador". A data já é exigida (M10 muta só a razão).
+header "M10 (o MOTIVO do marcador): 'sem portão' passa a ser aceito sem a razão"
+mutar_arquivo "$GUARD" '        if (reason.length === 0) {' \
+  '        if (false) { // MUTACAO M10' "$guard_sum"
+exigir_vermelho "M10" "$ANCORA_MARCADOR_MUDO" "$ANCORA_SEM_PORTAO|$ANCORA_RENAME|$ANCORA_SEM_CHURN"
+restaurar_originais
+
 # ── M7: a FONTE do veredito local — o ÍNDICE, não a árvore ────────────────
 # O `indexIo` deixa de ler `git show :path` e passa a ler o arquivo da árvore: o
 # commit volta a ser julgado por um conteúdo que NÃO é o dele. As DUAS direções
@@ -414,10 +446,11 @@ header "VEREDITO"
 pass "MUTATION TEST PASSED — a metade APLICADA do contrato de required checks é"
 pass "load-bearing: renomear o \`name:\` de um required check (ou pôr/tirar um job"
 pass "da lista) sem a reaplicação DECLARADA deixa o PR VERMELHO nomeando o job e"
-pass "os dois contextos, e as SETE metades que sustentam isso — as duas réguas"
+pass "os dois contextos, e as NOVE metades que sustentam isso — as duas réguas"
 pass "da comparação, o fio que as julga em main() e o fail-closed da declaração"
 pass "ausente —, mais as duas que fazem a declaração significar \"aplicado\" no"
-pass "applier (o alvo e o carimbo sem churn) e as duas do veredito LOCAL (a FONTE"
+pass "applier (o alvo e o carimbo sem churn), as duas da forja que RECUSA a feature"
+pass "(o marcador é GRAVADO, e ele não pode ser MUDO) e as duas do veredito LOCAL (a FONTE"
 pass "é o ÍNDICE, e o índice ilegível é problema) —, caem cada uma no seu fato"
 pass "quando mutadas. A forja não volta a exigir um check inexistente em silêncio,"
 pass "e o commit também não sai do hook com a divergência escondida."

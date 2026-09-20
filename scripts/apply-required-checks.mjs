@@ -30,6 +30,14 @@
 // `check-required-checks.mjs` (a outra metade do mesmo fato). O arquivo só é
 // reescrito quando o CONTEXTO muda (o carimbo de data sozinho não gera churn).
 //
+// A FORJA QUE RECUSA A FEATURE (repositório privado num plano sem branch
+// protection) NÃO ABORTA O `--apply`: nenhum required check pode ser aplicado nem
+// LIDO ali, e o que a declaração registra é isso — o ESTADO da forja
+// (`unsupported: {reason, readAt}`) junto dos contextos da INTENÇÃO. O relatório
+// separa essa forja em `unsupported` (afirmação sobre a forja) dos demais erros
+// (token/rede), que seguem abortando sem escrever: nesses a declaração mentiria.
+// O remédio do 403 de plano é decisão de plano/visibilidade, não código.
+//
 // SEGURANÇA: o padrão é DRY-RUN (nenhuma requisição de escrita). Só `--apply`
 // altera a forja, e mesmo então toca APENAS a lista de required status checks —
 // não sobrescreve reviews obrigatórios, restrições de push ou outros ajustes de
@@ -48,7 +56,8 @@
 //           repo: --repo owner/name   | GITEA_REPOSITORY
 //
 // Exit codes:
-//   0 — aplicado / sem drift / plano impresso
+//   0 — aplicado / sem drift / plano impresso (inclusive quando a forja RECUSA a
+//       feature: o estado dela fica DECLARADO em `unsupported`)
 //   1 — drift encontrado em --check, ou erro de configuração/rede
 // =============================================================================
 
@@ -95,7 +104,10 @@ Aplica ci/required-checks.json no branch protection de cada forja.
   --check                      lê a forja e reporta drift (exit 1 se houver)
   --apply                      aplica as mudanças (default: dry-run) e escreve
                                ${APPLIED_PATH} (a DECLARAÇÃO da reaplicação —
-                               commite junto da mudança)
+                               commite junto da mudança). Se a forja RECUSAR a
+                               feature (repo privado sem branch protection), a
+                               declaração grava o ESTADO (unsupported) + a
+                               INTENÇÃO; o remédio é plano/visibilidade
   --json                       relatório JSON no stdout (humano vai p/ stderr)
   -h, --help                   esta ajuda
 `.trim()
@@ -376,6 +388,10 @@ async function main() {
     drift: false,
     forges: {},
     errors: [],
+    // As forjas que RECUSARAM a feature (o 403 de plano/visibilidade): estado da
+    // forja, não erro de verificação — e o relatório o separa para o consumidor
+    // (o doctor, o cron) não confundir "não há portão" com "não consegui ler".
+    unsupported: [],
   }
 
   log(`═══ Required checks (${mode}) ═══`)
@@ -411,6 +427,11 @@ async function main() {
     if (options.json) console.log(JSON.stringify(report, null, 2))
     return 0
   }
+
+  // As forjas que recusaram a feature NESTA rodada, com o motivo e a data: é o
+  // que a declaração grava (e é o que o `check-required-checks` publica).
+  const semPortao = {}
+  const hoje = new Date().toISOString().slice(0, 10)
 
   for (const forge of targets) {
     const data = resolved[forge]
@@ -453,6 +474,25 @@ async function main() {
         message: error.message,
         ...(error.unsupported === true ? { unsupported: true } : {}),
       })
+
+      // EM `--apply`, A FORJA QUE RECUSA A FEATURE É DECLARADA — não é motivo
+      // para abortar. Não há o que aplicar nem o que ler ALI, mas há o que
+      // declarar: o ESTADO (a forja não tem portão) junto da INTENÇÃO (os
+      // contextos que o manifesto quer exigir). Sem este caminho o operador
+      // ficava TRAVADO: o manifesto não podia exigir nem um gate daquela forja
+      // (o `check-required-checks` reprova o contexto novo sem a declaração), e
+      // o remédio do plano não tem nada a ver com o repositório. Os OUTROS
+      // erros (token, rede) seguem abortando: ali a declaração mentiria.
+      if (error.unsupported === true && options.apply) {
+        semPortao[forge] = { reason: error.message, readAt: hoje }
+        report.unsupported.push({ forge, message: error.message })
+        log(
+          `   📌 ${forge}: SEM PORTÃO (a forja recusa a feature) — a declaração registra o ESTADO ` +
+            `e os contextos da INTENÇÃO; nada bloqueia o merge deste lado até o plano/visibilidade mudar.`,
+        )
+        continue
+      }
+
       if (options.json) console.log(JSON.stringify(report, null, 2))
       return 1
     }
@@ -465,7 +505,11 @@ async function main() {
   // compara no PR. Uma forja fora do alvo (`--forge gitea`) mantém a declaração
   // anterior: a proteção dela não foi tocada nem lida nesta rodada.
   if (options.apply) {
-    const { escrito, path } = writeAppliedRecord(root, resolved, { forges: targets })
+    const { escrito, path } = writeAppliedRecord(root, resolved, {
+      forges: targets,
+      unsupported: semPortao,
+      hoje,
+    })
     log(
       escrito
         ? `📌 ${path}: declaração da reaplicação ATUALIZADA — commite junto da mudança que mexeu no contexto de status.`

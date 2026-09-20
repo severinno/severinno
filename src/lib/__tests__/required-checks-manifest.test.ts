@@ -119,6 +119,12 @@ const EXPECTED_CONTEXTS: Record<string, string[]> = {
     // num job que cobre vários invariantes — e o mesmo comando roda nas duas
     // pipelines (invariante CORE homônima no check-forge-parity).
     "Pre-commit Proof (dentro da imagem do runner)",
+    // bun-mirror-guard: o gate CORE `bun-mirror` declara este job como o gate de
+    // merge do GitHub (o `CORE_INVARIANTS` do check-forge-parity) — e um gate
+    // CORE que roda FORA do manifesto fica vermelho sem bloquear nada. Na Gitea
+    // a MESMA invariante roda DENTRO de `guards` (já required), e é por isso que
+    // o id dela não aparece na lista de lá.
+    "Bun Mirror Guard (fonte única vars.BUN_VERSION)",
     "Actionlint (workflow syntax)",
     "Lint Guard (prettier + eslint zero)",
     "TypeCheck (tsc --noEmit)",

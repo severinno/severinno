@@ -775,7 +775,22 @@ Três decisões que o desenho tomou, e por quê:
 - **os dois horários continuam com papéis distintos.** O PR cobra a DECLARAÇÃO
   (o que o repo tem de cumprir), o cron de drift cobra a FORJA (o que ela tem de
   ter): declarar sem aplicar não fecha o ciclo — quem fecha é o `--check`, com
-  token, e a divergência vira issue.
+  token, e a divergência vira issue;
+- **a forja que RECUSA a feature é um ESTADO DECLARADO, não um aborto.** O GitHub
+  deste repositório é privado num plano sem branch protection: nenhum required
+  check pode ser aplicado nem LIDO (403 `Upgrade to GitHub Pro or make this
+repository public`, que **nenhum** token resolve). Antes, o `--apply` apenas
+  falhava — e a consequência era dura: o manifesto não podia exigir **nem um**
+  gate daquela forja (o guard reprova o contexto novo sem a declaração), e a
+  cobertura que roda fora do contrato de merge ficava vermelha sem bloquear nada.
+  Agora o `--apply` DECLARA o estado (`unsupported: {reason, readAt}` na entrada
+  da forja, ao lado dos contextos que passam a descrever a INTENÇÃO), e o
+  veredito o publica em toda rodada com o remédio que não é código
+  (plano/visibilidade). O estado MUDO é violação própria: sem motivo e sem data,
+  "não há portão" vira mais um verde que esconde o fato. E as duas pontas do
+  mesmo cuidado: a forja FORA do alvo **conserva** o marcador lido antes (apagá-lo
+  faria o "sem portão" sumir sem ninguém ter medido que ele acabou) e a forja que
+  **nunca foi lida** não ganha entrada nenhuma (o verde por omissão desta classe).
 
 **E o HOOK LOCAL passou a cobrar o mesmo (`--staged`).** O rename era invisível
 no commit: `required-checks` estava em `HOOK_NOT_RUN` com a justificativa de que
@@ -818,7 +833,9 @@ vermelho.
 29º sub-test do master) muta as OITO metades que sustentam esse veredito — as
 duas réguas da comparação (a do contexto derivado e a do órfão), o fio que as
 julga em `main()`, o fail-closed do carregamento, o ALVO do `--forge` e o CARIMBO
-sem churn, mais as duas do veredito LOCAL: a FONTE dele é o ÍNDICE (mutado para
+sem churn, as duas da forja que RECUSA a feature (o marcador é GRAVADO pelo
+applier, e ele não pode ser MUDO — razão e data obrigatórias), mais as duas do
+veredito LOCAL: a FONTE dele é o ÍNDICE (mutado para
 ler a árvore, o fato do índice cai) e o fail-closed do índice (mutado para
 devolver lista vazia, "não consegui ler" vira "nada a julgar" e o fato do índice
 ilegível cai) — cada uma com a testemunha certa (as duas últimas rodam o

@@ -30,6 +30,7 @@ import {
   APPLIED_PATH,
   MANIFEST_PATH,
   buildAppliedRecord,
+  declaredWithoutGate,
   defaultIo,
   loadApplied,
   loadManifest,
@@ -106,6 +107,12 @@ interface Opcoes {
   forjasDeclaradas?: string[]
   /** Contextos órfãos acrescentados à declaração (a forja exige o que não existe). */
   orfaos?: string[]
+  /**
+   * O valor CRU escrito em `unsupported` na entrada do GitHub: `undefined` = sem
+   * marcador (a forja respondeu), e qualquer outra coisa (objeto incompleto, um
+   * booleano) é o que o guard tem de recusar.
+   */
+  marcaSemPortao?: unknown
   /** Conteúdo cru da declaração (JSON inválido, versão errada, contexts não-lista). */
   recordCru?: string
 }
@@ -143,12 +150,13 @@ function montar(opcoes: Opcoes = {}): string {
     "tests",
     ...extras.map((j) => opcoes.nomesExtras?.[j] ?? j),
   ]
-  const forges: Record<string, { workflow: string; branches: string[]; contexts: string[] }> = {}
+  const forges: Record<string, Record<string, unknown>> = {}
   if ((opcoes.forjasDeclaradas ?? ["github", "gitea"]).includes("github")) {
     forges.github = {
       workflow: GITHUB_WF,
       branches: ["main"],
       contexts: [...githubContextos, ...(opcoes.orfaos ?? [])],
+      ...(opcoes.marcaSemPortao === undefined ? {} : { unsupported: opcoes.marcaSemPortao }),
     }
   }
   if ((opcoes.forjasDeclaradas ?? ["github", "gitea"]).includes("gitea")) {
@@ -416,6 +424,126 @@ describe("o applier escreve a declaração (a reaplicação declara-se sozinha)"
     const { record } = buildAppliedRecord(atual, resolved, ["github"], "2026-09-18")
     expect(record.forges.github.contexts).toEqual(resolved.github.contexts.map((c) => c.context))
     expect(record.forges.gitea.contexts).toEqual(["Repo Guards", "guards"])
+  })
+})
+
+// ── a forja que RECUSA a feature: estado DECLARADO, nunca mudo ────────────
+//
+// A forja pode recusar a feature de branch protection inteira (repo privado num
+// plano sem ela): ali nenhum required check pode ser aplicado nem LIDO. O estado
+// existe, e a declaração o carrega com MOTIVO e DATA — o manifesto segue dizendo
+// a INTENÇÃO, e o veredito publica a forja sem portão em toda rodada.
+
+describe("a forja SEM PORTÃO (recusa a feature) é um estado DECLARADO", () => {
+  it("o repositório real publica a forja sem portão com motivo, data e o remédio de plano", () => {
+    const r = guardar(ROOT)
+    expect(r.status).toBe(0)
+    const marca = applied.forges.github.unsupported
+    expect(marca.reason.length).toBeGreaterThan(0)
+    expect(marca.readAt).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(r.out).toContain("SEM PORTÃO DE MERGE")
+    expect(r.out).toContain(`lido em ${marca.readAt}`)
+    expect(r.out).toContain("PLANO/VISIBILIDADE")
+    expect(declaredWithoutGate(applied).map((d) => d.forge)).toEqual(["github"])
+  })
+
+  it("o marcador bem formado passa e o veredito o publica com o motivo da forja", () => {
+    const r = guardar(
+      montar({
+        marcaSemPortao: { reason: "HTTP 403: Upgrade to GitHub Pro", readAt: "2026-09-20" },
+      }),
+    )
+    expect(r.status).toBe(0)
+    expect(r.out).toContain("SEM PORTÃO DE MERGE (lido em 2026-09-20)")
+    expect(r.out).toContain("Upgrade to GitHub Pro")
+  })
+
+  it("sem o MOTIVO o guard reprova — 'sem portão' mudo é o verde que esconde o fato", () => {
+    const r = guardar(montar({ marcaSemPortao: { readAt: "2026-09-20" } }))
+    expect(r.status).toBe(1)
+    expect(r.out).toContain("SEM PORTÃO sem o MOTIVO")
+  })
+
+  it("sem a DATA da leitura o guard reprova (não distingue 'medi agora' de 'medi um dia')", () => {
+    const r = guardar(montar({ marcaSemPortao: { reason: "HTTP 403 de plano" } }))
+    expect(r.status).toBe(1)
+    expect(r.out).toContain("sem a DATA da leitura")
+  })
+
+  it("o marcador que não é objeto {reason, readAt} é violação (estado declarado, não booleano solto)", () => {
+    const r = guardar(montar({ marcaSemPortao: true }))
+    expect(r.status).toBe(1)
+    expect(r.out).toContain("deve ser um objeto {reason, readAt}")
+  })
+
+  it("o marcador NÃO absolve a régua do contexto: o rename continua exigindo a reaplicação", () => {
+    const dir = montar({
+      lint: "Lint Guard (v2)",
+      declarados: ["Lint guard", "tests"],
+      marcaSemPortao: { reason: "HTTP 403 de plano", readAt: "2026-09-20" },
+    })
+    const r = guardar(dir)
+    expect(r.status).toBe(1)
+    expect(r.out).toContain('job "lint"')
+    expect(r.out).toContain("-- --apply")
+  })
+
+  it("o applier grava o marcador quando a forja RECUSA — e o SAI quando ela responde", () => {
+    const dir = montar({
+      marcaSemPortao: { reason: "HTTP 403 de plano", readAt: "2026-09-01" },
+    })
+    const derivados = derivadosDoFixture(dir)
+    const atual = loadApplied(dir, defaultIo(dir))
+
+    // A forja RESPONDEU nesta rodada: o marcador sai (ele descreve o estado lido,
+    // não um histórico — manter um marcador velho declararia o contrário).
+    const respondeu = buildAppliedRecord(atual, derivados, ["github", "gitea"], "2026-09-20")
+    expect(respondeu.record.forges.github.unsupported).toBeUndefined()
+
+    // A forja RECUSOU: o marcador entra com o motivo e a data da leitura.
+    const recusou = buildAppliedRecord(null, derivados, ["github", "gitea"], "2026-09-20", {
+      github: { reason: "HTTP 403: Upgrade to GitHub Pro" },
+    })
+    expect(recusou.record.forges.github.unsupported).toEqual({
+      reason: "HTTP 403: Upgrade to GitHub Pro",
+      readAt: "2026-09-20",
+    })
+    expect(recusou.record.forges.github.contexts).toEqual(
+      derivados.github.contexts.map((c) => c.context),
+    )
+  })
+
+  it("uma forja FORA do alvo CONSERVA o marcador lido antes (esta rodada não a leu)", () => {
+    const atual = {
+      version: 1,
+      appliedAt: "2026-09-01",
+      forges: {
+        github: {
+          workflow: GITHUB_WF,
+          branches: ["main"],
+          contexts: ["Lint guard", "tests"],
+          unsupported: { reason: "HTTP 403 de plano", readAt: "2026-09-01" },
+        },
+      },
+    }
+    const { record } = buildAppliedRecord(atual, resolved, ["gitea"], "2026-09-20")
+    expect(record.forges.github.unsupported).toEqual({
+      reason: "HTTP 403 de plano",
+      readAt: "2026-09-01",
+    })
+  })
+
+  it("uma forja NUNCA LIDA não é declarada (o verde por omissão desta classe)", () => {
+    // `--forge gitea` num repo sem declaração anterior: o GitHub não foi lido, e
+    // a entrada dele não pode nascer dos contextos DERIVADOS — isso declararia
+    // como aplicado o que ninguém leu. A entrada fica de fora, e o guard reprova
+    // a ausência com o remédio certo (é o `montar` sem a entrada do GitHub).
+    const { record } = buildAppliedRecord(null, resolved, ["gitea"], "2026-09-20")
+    expect(record.forges.github).toBeUndefined()
+
+    const r = guardar(montar({ forjasDeclaradas: ["gitea"] }))
+    expect(r.status).toBe(1)
+    expect(r.out).toContain('a forja "github" do manifesto não tem entrada')
   })
 })
 

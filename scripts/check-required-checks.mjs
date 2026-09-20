@@ -41,7 +41,14 @@
 //      job novo, o job que voltou) — com o remédio nomeado;
 //   8. um contexto declarado como aplicado que o manifesto não produz mais (a
 //      forja exige um check órfão) e uma forja do manifesto sem entrada na
-//      declaração.
+//      declaração;
+//   9. uma forja declarada SEM PORTÃO (`unsupported`) sem o MOTIVO e a DATA da
+//      leitura. O estado existe porque a forja pode RECUSAR a feature inteira
+//      (repo privado num plano sem branch protection): ali nenhum required check
+//      pode ser aplicado nem lido, e a lista do manifesto descreve a INTENÇÃO.
+//      O que o guard não aceita é o estado MUDO — "sem portão" sem o porquê é a
+//      mesma classe de verde que esconde um fato pulado, e o veredito publica a
+//      linha (forja, motivo, data) em toda rodada.
 //
 // Os itens do manifesto são IDs DE JOB, mas o CONTEXTO que a forja exige é o
 // `name:` do job (ou o id, quando não há `name:`). Logo renomear um job MUDA o
@@ -117,6 +124,9 @@ export const APPLIED_PATH = "ci/required-checks-applied.json"
 
 const SUPPORTED_VERSION = 1
 
+/** A data que o marcador de "forja sem portão" carrega (`readAt`). */
+const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/
+
 /** O porquê do arquivo, escrito no próprio arquivo (ele é lido no PR, sem contexto). */
 const APPLIED_COMMENT = [
   "DECLARAÇÃO da proteção APLICADA nas forjas — escrita por",
@@ -138,6 +148,16 @@ const APPLIED_COMMENT = [
   "",
   "Ele entra em sincronia com: `bun run ci:required-checks -- --apply` (escreve",
   "este arquivo e commite-o junto da mudança que mexeu no contexto).",
+  "",
+  "QUANDO A FORJA RECUSA A FEATURE (repositório privado num plano sem branch",
+  "protection), nenhum required check pode ser aplicado nem LIDO — e o applier",
+  "declara esse ESTADO na entrada da forja, em `unsupported: {reason, readAt}`. Os",
+  "contextos daquela entrada passam a descrever a INTENÇÃO (o que o manifesto quer",
+  "exigir), e o veredito do `check-required-checks` publica a forja, o motivo e a",
+  "data em toda rodada: ali nada bloqueia o merge, e o remédio é decisão de",
+  "PLANO/VISIBILIDADE (GitHub Pro, ou o repositório público) — não código. Numa",
+  "rodada em que a forja responde, o marcador SAI: ele descreve o estado LIDO, não",
+  "um histórico.",
 ]
 
 // ---------------------------------------------------------------------------
@@ -509,6 +529,42 @@ export function validateApplied(applied, resolved) {
       )
     }
 
+    // A FORJA SEM PORTÃO: `unsupported` é o ESTADO da forja (ela recusa a
+    // feature), declarado pelo applier com o motivo e a data da leitura. Os
+    // contextos seguem sendo os da INTENÇÃO (o manifesto) — é o que o
+    // repositório pode cobrar de si mesmo —, e o veredito publica o estado em
+    // voz alta. O que NÃO se aceita é o estado MUDO: sem motivo e sem data,
+    // "não há portão" vira mais um verde que esconde o fato que importa.
+    if (declarado?.unsupported !== undefined) {
+      const marca = declarado.unsupported
+      if (marca === null || typeof marca !== "object" || Array.isArray(marca)) {
+        fail(
+          forge,
+          `${APPLIED_PATH}: "unsupported" de "${forge}" deve ser um objeto {reason, readAt} — ` +
+            `a forja que recusa a feature é um estado DECLARADO, não um booleano solto. ${reaplicar}`,
+        )
+      } else {
+        const reason = typeof marca.reason === "string" ? marca.reason.trim() : ""
+        const readAt = typeof marca.readAt === "string" ? marca.readAt.trim() : ""
+        if (reason.length === 0) {
+          fail(
+            forge,
+            `${APPLIED_PATH}: "${forge}" é declarada SEM PORTÃO sem o MOTIVO — a forja recusou a ` +
+              `feature de branch protection, e é ISSO que a declaração tem de dizer (o estado mudo ` +
+              `esconde o fato). ${reaplicar}`,
+          )
+        }
+        if (!DATA_ISO.test(readAt)) {
+          fail(
+            forge,
+            `${APPLIED_PATH}: "${forge}" é declarada SEM PORTÃO sem a DATA da leitura (` +
+              `readAt no formato YYYY-MM-DD) — sem ela não dá para distinguir "medi agora" de ` +
+              `"medi um dia". ${reaplicar}`,
+          )
+        }
+      }
+    }
+
     // As BRANCHES fazem parte do mesmo fato: uma branch nova no manifesto tem de
     // ter a proteção dela aplicada, senão o merge NAQUELA branch não exige gate
     // nenhum — o invisível da mesma família.
@@ -585,6 +641,32 @@ export function validateApplied(applied, resolved) {
 }
 
 /**
+ * As forjas que a declaração apresenta SEM PORTÃO DE MERGE (`unsupported`): a
+ * forja RECUSOU a feature de branch protection, e a lista de contextos descreve
+ * a INTENÇÃO.
+ *
+ * Quem chama é o `main()`, que publica cada uma com o motivo e a data: é o fato
+ * que o PR não pode deixar implícito — a cobertura daquela forja NÃO bloqueia o
+ * merge, e o remédio é decisão de plano/visibilidade (nenhum comando resolve).
+ *
+ * @param {any} applied  a declaração da reaplicação
+ * @returns {{forge: string, reason: string, readAt: string}[]}
+ */
+export function declaredWithoutGate(applied) {
+  const out = []
+  for (const [forge, declarado] of Object.entries(applied?.forges ?? {})) {
+    const marca = declarado?.unsupported
+    if (marca === null || typeof marca !== "object" || Array.isArray(marca)) continue
+    out.push({
+      forge,
+      reason: typeof marca.reason === "string" ? marca.reason : "",
+      readAt: typeof marca.readAt === "string" ? marca.readAt : "",
+    })
+  }
+  return out
+}
+
+/**
  * O conteúdo da declaração com os contextos que a forja passou a exigir.
  *
  * `forges` diz QUAIS forjas foram reaplicadas nesta rodada: uma forja que não foi
@@ -597,8 +679,13 @@ export function validateApplied(applied, resolved) {
  *                                      os contextos derivados agora
  * @param {string[]} forges             as forjas reaplicadas nesta rodada
  * @param {string} hoje                 a data da reaplicação (YYYY-MM-DD)
+ * @param {Record<string, {reason: string, readAt?: string}>} [unsupported]
+ *                                      as forjas desta rodada que RECUSARAM a
+ *                                      feature (HTTP 403 de plano/visibilidade):
+ *                                      a entrada delas ganha o marcador com o
+ *                                      motivo e a data da leitura
  */
-export function buildAppliedRecord(atual, resolved, forges, hoje) {
+export function buildAppliedRecord(atual, resolved, forges, hoje, unsupported = {}) {
   const record = {
     $comment: APPLIED_COMMENT,
     version: SUPPORTED_VERSION,
@@ -608,10 +695,39 @@ export function buildAppliedRecord(atual, resolved, forges, hoje) {
   for (const [forge, data] of Object.entries(resolved)) {
     const aplicadaAgora = forges.includes(forge)
     const anterior = atual?.forges?.[forge]
+
+    // Forja FORA do alvo e SEM declaração anterior: esta rodada não a leu, e
+    // inventar a entrada com os contextos derivados declararia como aplicado
+    // algo que ninguém leu — o verde por omissão desta família. A entrada fica de
+    // FORA, e o `check-required-checks` reprova a ausência com o remédio certo
+    // (rodar `--apply --forge <forja>`).
+    if (!aplicadaAgora && !anterior) continue
+
     const contextos = aplicadaAgora
       ? data.contexts.map((c) => c.context)
       : (anterior?.contexts ?? data.contexts.map((c) => c.context))
-    record.forges[forge] = { workflow: data.workflow, branches: data.branches, contexts: contextos }
+    const entrada = { workflow: data.workflow, branches: data.branches, contexts: contextos }
+
+    if (aplicadaAgora) {
+      // O ESTADO da forja que recusou a feature entra só quando a leitura DESTA
+      // rodada o observou — e SAI quando a forja responde: ele descreve o estado
+      // LIDO agora, não um histórico (a proteção voltou a existir, e um marcador
+      // velho declararia o contrário).
+      if (unsupported[forge]) {
+        entrada.unsupported = {
+          reason: unsupported[forge].reason,
+          readAt: unsupported[forge].readAt ?? hoje,
+        }
+      }
+    } else if (anterior?.unsupported) {
+      // Forja FORA do alvo: a declaração anterior é mantida INTEIRA, inclusive o
+      // estado lido então. Apagar o marcador faria o "sem portão" SUMIR do
+      // veredito sem ninguém ter medido que ele acabou — o silêncio que este
+      // repositório persegue.
+      entrada.unsupported = anterior.unsupported
+    }
+
+    record.forges[forge] = entrada
   }
   // O carimbo de data não gera churn: uma reaplicação sem mudança de CONTEXTO
   // (rodar `--apply` de novo, num repo já em sincronia) não deve sujar a árvore —
@@ -629,13 +745,13 @@ export function buildAppliedRecord(atual, resolved, forges, hoje) {
  *
  * @param {string} root
  * @param {Record<string, {workflow: string, branches: string[], contexts: {jobId: string, context: string}[]}>} resolved
- * @param {{forges: string[], hoje?: string}} opts
+ * @param {{forges: string[], hoje?: string, unsupported?: Record<string, {reason: string, readAt?: string}>}} opts
  * @returns {{ escrito: boolean, path: string }}
  */
 export function writeAppliedRecord(
   root,
   resolved,
-  { forges, hoje = new Date().toISOString().slice(0, 10) },
+  { forges, hoje = new Date().toISOString().slice(0, 10), unsupported = {} },
 ) {
   const io = defaultIo(root)
   let atual = null
@@ -644,7 +760,7 @@ export function writeAppliedRecord(
   } catch {
     atual = null
   }
-  const { record, mudou } = buildAppliedRecord(atual, resolved, forges, hoje)
+  const { record, mudou } = buildAppliedRecord(atual, resolved, forges, hoje, unsupported)
   if (mudou) writeFileSync(join(root, APPLIED_PATH), `${JSON.stringify(record, null, 2)}\n`, "utf8")
   return { escrito: mudou, path: APPLIED_PATH }
 }
@@ -850,13 +966,30 @@ function main() {
     console.log(`   ${forge} (${data.workflow}) — branch: ${data.branches.join(", ")}`)
     for (const { context } of data.contexts) console.log(`     • ${context}`)
   }
+  const semPortao = declaredWithoutGate(applied)
   console.log(
     `\n   Proteção APLICADA declarada em ${APPLIED_PATH} (aplicada em ${applied?.appliedAt ?? "data desconhecida"}): ` +
       Object.entries(applied?.forges ?? {})
         .map(([forge, d]) => `${forge}=${(d.contexts ?? []).length}`)
         .join(" ") +
-      ` — em sincronia com os contextos acima.`,
+      (semPortao.length === 0
+        ? ` — em sincronia com os contextos acima.`
+        : ` — a INTENÇÃO acima, por forja (há forja SEM PORTÃO; abaixo).`),
   )
+  // O FATO EM VOZ ALTA: uma forja que RECUSA a feature de branch protection não
+  // bloqueia nada, e é isso que o repositório não pode deixar implícito. O verde
+  // segue verde (uma limitação de plano acenderia todo PR para sempre, e um
+  // veredito que sempre acende não bloqueia nada) — o que não pode é o silêncio.
+  for (const { forge, reason, readAt } of semPortao) {
+    console.log(
+      `\n   ⚠️  ${forge}: SEM PORTÃO DE MERGE (lido em ${readAt}) — a forja RECUSA a feature de\n` +
+        `       branch protection: nenhum required check pode ser aplicado nem lido ali, e NADA\n` +
+        `       bloqueia o merge daquele lado. Os contextos acima são a INTENÇÃO.\n` +
+        `       Motivo da forja: ${reason}\n` +
+        `       Remédio: decisão de PLANO/VISIBILIDADE (GitHub Pro, ou o repositório público) —\n` +
+        `       não é correção de código; o cron de drift publica a issue dessa forja.`,
+    )
+  }
   process.exit(0)
 }
 

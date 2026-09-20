@@ -893,6 +893,46 @@ o PR travaria num check que nunca roda. A reaplicação é **declarada** em
 declaração com os contextos derivados AGORA — sem a reaplicação declarada o PR
 fica vermelho nomeando o job e os dois contextos.
 
+Dois casos que essa lei passou a tratar por nome. O **gate CORE fora do
+contrato**: o `CORE_INVARIANTS` declara `bun-mirror-guard` como o gate de merge
+do GitHub para a invariante `bun-mirror`, e um gate CORE que roda fora do
+manifesto fica vermelho sem bloquear nada (na Gitea a MESMA invariante roda
+DENTRO do job `guards`, já required — por isso o id dela não aparece na lista de
+lá). E a **forja que RECUSA a feature**: no GitHub (privado, plano sem branch
+protection) nenhum required check pode ser aplicado nem lido, e o `--apply`
+declara o estado em vez de abortar — `unsupported: {reason, readAt}` na entrada
+da forja, os contextos passando a descrever a INTENÇÃO, e o veredito publicando a
+forja sem portão em toda rodada, com o remédio de **plano/visibilidade** (nenhum
+token resolve). O marcador mudo é violação: sem motivo e data, "não há portão"
+vira mais um verde que esconde o fato.
+
+> **A pergunta seguinte — "o registro BLOQUEIA?" — tem cron, não só operador**
+> (`.github/workflows/merge-gate-proof.yml`, job `merge-gate-proof`, semanal): a
+> prova `merge-gate:prove` sobe um Gitea efêmero, aplica o manifesto com o
+> APLIADOR DE VERDADE e tenta mergear em quatro situações; ela rodava sob demanda,
+> no host de quem já desconfia. O que ela mede é CÓDIGO (o applier) cujo efeito
+> ninguém vê no PR: um registro com contexto a MENOS deixa o merge passar com o
+> gate vermelho, com contexto a MAIS trava o PR para sempre, e uma CONTAGEM no nome
+> do contexto muda o contrato sozinha quando a matriz cresce. O cron entrega o
+> veredito ao publicador `merge-gate-issue.mjs`: **violado** abre/atualiza a issue
+> (com o contexto exigido, o delta nas três direções, a matriz caso a caso e os
+> LIMITES da prova — que saem do MESMO relatório do `--json`), **provado** comenta
+> a prova e FECHA o que ele abriu, e **`unavailable`** (sem docker, imagem não
+> puxável, API fora) não publica nem fecha — FALHA o run nomeando o caso, porque um
+> cron que não mediu não pode terminar verde. Roda no runner self-hosted do GitHub
+> porque a prova exige docker, e na forja da Gitea o job vive DENTRO do container
+> da imagem, sem o socket montado — lá o veredito seria `unavailable` para sempre.
+> A prova não mede a proteção do GitHub: mede a PEÇA, contra uma forja descartável.
+>
+> **E a OUTRA PONTA — o PR.** A issue chega na segunda-feira; quem mudou o applier
+> está num PR hoje. O MESMO relatório vira um COMENTÁRIO RECONCILIADO no PR
+> (`merge-gate-comment.mjs`): **violado** publica o contexto e o delta onde o autor
+> lê, **provado** RETIRA o comentário (o delta sumiu) e **`unavailable`** não
+> publica nem retira — não medido ≠ resolvido (quem FALHA por não medir é o cron).
+> O run de PR filtra os CAMINHOS que a prova mede (o applier, o manifesto, o guard
+> do contrato, os publicadores e o compose do ensaio), então um PR que não os toca
+> não paga o custo de subir o Gitea efêmero.
+
 A MESMA ideia rege o gate de sintaxe do shell do repositório: o job
 `workflow-run-syntax` roda o guard REAL contra o working tree do PR e, no MESMO
 job, `scripts/test-mutation-workflow-run-syntax.sh` prova por MUTAÇÃO que cada
