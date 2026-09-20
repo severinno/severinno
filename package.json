@@ -39,6 +39,7 @@
     "check:prove-docs": "node scripts/check-prove-docs.mjs",
     "runner-base:pin": "node scripts/check-runner-base.mjs --write",
     "check:forge-parity": "node scripts/check-forge-parity.mjs",
+    "check:archived-pipeline": "node scripts/check-archived-pipeline.mjs",
     "check:periodic-alerts": "node scripts/check-periodic-alerts.mjs",
     "check:forge-workflow-scope": "node scripts/check-forge-workflow-scope.mjs",
     "ci:required-checks": "node scripts/apply-required-checks.mjs",

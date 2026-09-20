@@ -2269,6 +2269,17 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
     ["job-deps", "node scripts/check-job-deps.mjs"],
     ["workflow-run-syntax", "node scripts/check-workflow-run-syntax.mjs"],
     ["merge-latency", "node scripts/merge-latency.mjs --check"],
+    // As CONDIÇÕES do retrato arquivado, a COBERTURA do recorte do commit e a
+    // CATRACA do corte do GitHub: as últimas a entrar no job `guards`, todas com
+    // a MESMA linha canônica do espelho.
+    ["archived-pipeline", "node scripts/check-archived-pipeline.mjs"],
+    ["mirror-coverage", "node scripts/check-mirror-coverage.mjs"],
+    ["github-dependencies", "node scripts/check-github-dependencies.mjs"],
+    // A PROVA POR MUTAÇÃO deixou de ser isenta do dono do merge: a matriz (que
+    // mede se um guard MORDE) e a prova das três regras de classificação rodam
+    // nas DUAS pipelines, e na forja é DENTRO deste job — pelo mesmo comando.
+    ["mutation-matrix", "bash scripts/test-mutation-guards.sh"],
+    ["forge-parity-mutation", "bash scripts/test-mutation-forge-parity.sh"],
   ]
   writeFileSync(
     join(dir, MERGE_OWNER_PIPELINE),
@@ -2321,6 +2332,17 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
       // A LATÊNCIA DE MERGE do dono do merge: o MESMO comando nas duas forjas
       // (o `--check` julga a forja que mergeia, venha de onde vier).
       "      - run: node scripts/merge-latency.mjs --check",
+      // O retrato arquivado: mesmo comando do job `guards` da Gitea.
+      "      - run: node scripts/check-archived-pipeline.mjs",
+      // A prova por mutação no espelho: jobs PRÓPRIOS — é o que o
+      // `CORE_INVARIANTS` declara como o gate do GitHub das duas invariantes
+      // (o job separado existe para o vermelho DIZER qual gate quebrou).
+      "  mutation-guards:",
+      "    steps:",
+      "      - run: bash scripts/test-mutation-guards.sh",
+      "  forge-parity-mutation:",
+      "    steps:",
+      "      - run: bash scripts/test-mutation-forge-parity.sh",
       "  pii-allowlist-guard:",
       "    steps:",
       '      - run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"',

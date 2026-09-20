@@ -337,6 +337,15 @@ jobs:
       - name: Forge gate parity
         run: node scripts/check-forge-parity.mjs
 
+      # O RETRATO ARQUIVADO (`.woodpecker.yml`) declara, passo a passo, a
+      # condição em que cada um roda — e este gate PROVA que a condição
+      # declarada é a que ESTA forja aplica à contraparte do passo (gatilhos
+      # `on:` + `if:` do job), derivada do repositório, nunca de uma lista à
+      # mão. Um retrato que diz "roda no PR" sobre um job que só roda no push é
+      # um registro que mente sobre a pipeline.
+      - name: Archived pipeline conditions (retrato ↔ forja)
+        run: node scripts/check-archived-pipeline.mjs
+
       # DEPENDÊNCIAS DOS JOBS: um job que roda comando cujo VEREDITO exige
       # `node_modules` tem de INSTALAR as dependências ou declarar a isenção
       # (com data e janela de revisão). Esta pipeline instala — é o parâmetro do

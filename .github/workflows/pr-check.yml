@@ -288,6 +288,12 @@ jobs:
       - name: Forge gate parity
         run: node scripts/check-forge-parity.mjs
 
+      # O RETRATO ARQUIVADO (`.woodpecker.yml`) declara a condição de cada passo
+      # e este gate prova que ela é a que a FORJA aplica à contraparte (os
+      # gatilhos `on:` + o `if:` do job, derivados de `.gitea/workflows/`).
+      - name: Archived pipeline conditions (retrato ↔ forja)
+        run: node scripts/check-archived-pipeline.mjs
+
       # DEPENDÊNCIAS DOS JOBS: um job que roda comando cujo VEREDITO exige
       # `node_modules` tem de INSTALAR as dependências ou declarar a isenção
       # (com data e janela de revisão). A classe é medida, não suposta: oito

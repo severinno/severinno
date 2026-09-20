@@ -216,6 +216,17 @@ fase_b() {
   node scripts/check-pipefail-sigpipe.mjs &
   PID_PIPEFAIL=$!
 
+  # As CONDIÇÕES de cada passo do retrato arquivado (`.woodpecker.yml`) contra os
+  # gatilhos e os `if:` dos workflows da forja. Node puro, read-only, **0,05s**
+  # MEDIDO nesta árvore — e o defeito MUDA por commit: quem edita o `on:`/o `if:`
+  # de um workflow da forja, ou o `when:` de um passo do retrato, sai daqui com
+  # os dois lados divergindo. O comando é o MESMO do CI (as duas pipelines), sem
+  # recorte, então não há decisão de escopo a declarar — e é o mesmo argumento do
+  # `pipefail-sigpipe` acima: o gate é barato, muda por commit e já tem a classe
+  # inteira no CI.
+  node scripts/check-archived-pipeline.mjs &
+  PID_ARQUIVO=$!
+
   # Prettier check STAGED — feedback de formatação ANTES do lint-staged
   (
     STAGED_FORMAT=$(git diff --cached --name-only --diff-filter=ACMR | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
@@ -225,7 +236,7 @@ fase_b() {
   ) &
   PID_PRETTIER=$!
 
-  wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY $PID_HOOKCMD $PID_PIPEFAIL
+  wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY $PID_HOOKCMD $PID_PIPEFAIL $PID_ARQUIVO
 }
 
 FASE_B=0

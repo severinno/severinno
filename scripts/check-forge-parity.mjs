@@ -512,6 +512,21 @@ export const CORE_INVARIANTS = [
     jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
   {
+    id: "archived-pipeline",
+    // O RETRATO ARQUIVADO: a alternativa avaliada e não adotada continua no
+    // repositório como registro — e um registro que mente sobre QUANDO cada
+    // passo roda é pior que registro nenhum, porque quem o lê para entender a
+    // pipeline aprende um gatilho que a forja não usa mais. O guard DERIVA os
+    // gatilhos (`on:`) e os `if:` dos jobs de `.gitea/workflows/`, casa cada
+    // passo com o job que faz o mesmo trabalho (por comando, ou por marcador
+    // declarado) e exige IGUALDADE de condição. É do CORE porque o retrato é UM
+    // só: ele mente para qualquer leitor, nas duas pipelines.
+    matches: /check[:-]archived[:-]pipeline/,
+    command: /^node scripts\/check-archived-pipeline\.mjs$/m,
+    why: "o retrato da alternativa arquivada declara quando cada passo roda; sem o gate, ele envelhece sozinho e passa a descrever uma pipeline que nao existe",
+    jobIds: { gitea: "guards", github: "workflow-refs-guard" },
+  },
+  {
     id: "workflow-run-syntax",
     // O corpo de um `run:` é SHELL. Os guards que LEEM o YAML (este, o
     // `check-workflow-refs`, o doctor) classificam TEXTO: um corpo que não faz

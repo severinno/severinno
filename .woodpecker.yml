@@ -30,14 +30,49 @@
 # Woodpecker voltar a ser o caminho, o pipeline entra como está (a versão já
 # acompanha o repositório) e os dois pontos do rascunho acima seguem pendentes.
 # =============================================================================
+#
+# ── AS CONDIÇÕES DE CADA PASSO (quem roda QUANDO) ──────────────────────────
+#
+# Todo passo abaixo DECLARA a sua condição em `when:` — uma LISTA de cláusulas,
+# a semântica do Woodpecker (qualquer entrada que case dispara o passo). A
+# condição tem de ser a que a FORJA (Gitea/Forgejo, dona do merge) aplica ao
+# trabalho daquele passo: um retrato que diz "roda no PR" onde a forja roda só
+# no push mente sobre a pipeline, e é pior que não existir.
+#
+# Quem PROVA isso é o `check:archived-pipeline`
+# (`scripts/check-archived-pipeline.mjs`), rodando nas duas pipelines: ele
+# deriva os gatilhos (`on:`) e os `if:` dos jobs de `.gitea/workflows/`, casa
+# cada passo com o job que faz o mesmo trabalho e exige IGUALDADE de condição.
+#
+# A tradução, uma vez (retrato → forja):
+#   push → push · pull_request → pull_request · cron → schedule · manual → workflow_dispatch
+# `branch:` aqui é o `branches:` de lá (e o branch ALVO num `pull_request`); os
+# dois eventos que a forja não filtra por branch (cron/manual) são declarados
+# sem `branch:`.
+#
+# A CONTRAPARTE de cada passo é DESCOBERTA pelo comando que ele roda (o guard
+# canonicaliza `bun run check:x` para o script que a entrada executa). Quando o
+# comando não basta — dois jobs da forja rodam o mesmo script, ou o passo é
+# plugin (`settings:`) e não roda comando de repositório —, o passo DECLARA:
+#   # espelha: .gitea/workflows/<arquivo>.yml#<job>
+# e, quando não há contraparte nenhuma (o passo de notificação fala de STATUS,
+# não de evento), declara a ausência COM O MOTIVO:
+#   # fora da forja: <motivo>
+# =============================================================================
 
-# ── Pipeline de CI (pull requests e push) ──────────────────────────────────
+# ── Pipeline de CI (a condição do `on:` do ci.yml, declarada passo a passo) ──
 pipeline:
   lint:
     image: oven/bun:1.3.14
     commands:
       - bun install --frozen-lockfile
       - bun run lint
+    # O `on:` do ci.yml, cláusula por cláusula.
+    when:
+      - event: push
+        branch: [main, develop]
+      - event: pull_request
+        branch: main
 
   # Barreira explícita contra vazamento de campo sensível em payload de
   # usuário (allowlist de PII) + fonte única do client Prisma. Step próprio:
@@ -50,6 +85,11 @@ pipeline:
       - bun run check:pii-allowlist
       # Prova que o guard detecta regressão (sandbox isolado em .tmp/).
       - bun run check:pii-gate
+    when:
+      - event: push
+        branch: [main, develop]
+      - event: pull_request
+        branch: main
 
   # O manifesto dos required checks precisa apontar para jobs reais e
   # incondicionais — um required check inexistente faz o PR esperar para sempre.
@@ -57,6 +97,11 @@ pipeline:
     image: oven/bun:1.3.14
     commands:
       - bun run check:required-checks
+    when:
+      - event: push
+        branch: [main, develop]
+      - event: pull_request
+        branch: main
 
   # Fonte unica do registry OCI (imagens da app + mirrors). Step proprio: a
   # falha precisa apontar o arquivo/linha que reacoplou o projeto ao GHCR.
@@ -64,24 +109,48 @@ pipeline:
     image: oven/bun:1.3.14
     commands:
       - bun run check:registry-source
+    # A contraparte é DECLARADA porque o comando casa com dois jobs da forja
+    # (`ci.yml#guards` no PR/push e `smoke.yml#smoke`, que é só disparo manual):
+    # a métrica de sobreposição empata e o guard exige o desempate por escrito.
+    # espelha: .gitea/workflows/ci.yml#guards
+    when:
+      - event: push
+        branch: [main, develop]
+      - event: pull_request
+        branch: main
 
   # Nenhuma referencia pendurada entre workflow -> script/package.json.
   workflow-refs:
     image: oven/bun:1.3.14
     commands:
       - bun run check:workflow-refs:internal
+    when:
+      - event: push
+        branch: [main, develop]
+      - event: pull_request
+        branch: main
 
   # Escopo dos guards: nenhum script pode cravar um diretorio de forja.
   forge-workflow-scope:
     image: oven/bun:1.3.14
     commands:
       - bun run check:forge-workflow-scope
+    when:
+      - event: push
+        branch: [main, develop]
+      - event: pull_request
+        branch: main
 
   # Paridade de gates entre a forja (dona do merge) e o espelho do GitHub.
   forge-parity:
     image: oven/bun:1.3.14
     commands:
       - bun run check:forge-parity
+    when:
+      - event: push
+        branch: [main, develop]
+      - event: pull_request
+        branch: main
 
   typecheck:
     image: oven/bun:1.3.14
@@ -91,6 +160,11 @@ pipeline:
       - bunx tsc --noEmit
     environment:
       NODE_OPTIONS: --max-old-space-size=4096
+    when:
+      - event: push
+        branch: [main, develop]
+      - event: pull_request
+        branch: main
 
   test:
     image: oven/bun:1.3.14
@@ -111,6 +185,11 @@ pipeline:
           POSTGRES_DB: severinno_test
       - name: redis-test
         image: redis:7-alpine
+    when:
+      - event: push
+        branch: [main, develop]
+      - event: pull_request
+        branch: main
 
   build:
     image: oven/bun:1.3.14
@@ -121,6 +200,11 @@ pipeline:
     environment:
       SKIP_TYPESCRIPT_CHECK: "true"
       BUILD_STANDALONE: "true"
+    when:
+      - event: push
+        branch: [main, develop]
+      - event: pull_request
+        branch: main
 
 # ── Pipeline de drift dos required checks (cron) ──────────────────────────
 # NÃO roda em PR/push: é vigilância periódica do branch protection da forja.
@@ -141,11 +225,16 @@ drift:
         from_secret: gitea_token
       GITEA_URL:
         from_secret: gitea_url
+    # O `on:` do required-checks-drift.yml: `schedule` E `workflow_dispatch` —
+    # a vigilância periódica da forja também pode ser disparada à mão, e era
+    # essa a metade que o retrato não dizia.
     when:
       - event: cron
+      - event: manual
 
 # ── Pipeline de Deploy (apenas main) ──────────────────────────────────────
 deploy:
+  # espelha: .gitea/workflows/deploy.yml#build
   docker-build:
     image: plugins/docker
     settings:
@@ -167,10 +256,15 @@ deploy:
       dockerfile: Dockerfile
       build_args:
         - BUN_VERSION=1.3.14
+    # O `on:` do deploy.yml (`push` a main) mais o disparo manual que ele
+    # também aceita — o `if:` dos jobs `migrate`/`deploy` não acrescenta
+    # restrição nenhuma a isso.
     when:
-      branch: main
-      event: push
+      - event: push
+        branch: main
+      - event: manual
 
+  # espelha: .gitea/workflows/deploy.yml#build
   docker-build-worker:
     image: plugins/docker
     settings:
@@ -187,10 +281,15 @@ deploy:
       dockerfile: Dockerfile.worker
       build_args:
         - BUN_VERSION=1.3.14
+    # O `on:` do deploy.yml (`push` a main) mais o disparo manual que ele
+    # também aceita — o `if:` dos jobs `migrate`/`deploy` não acrescenta
+    # restrição nenhuma a isso.
     when:
-      branch: main
-      event: push
+      - event: push
+        branch: main
+      - event: manual
 
+  # espelha: .gitea/workflows/deploy.yml#deploy
   deploy-vps:
     image: appleboy/ssh-action
     settings:
@@ -206,12 +305,19 @@ deploy:
         - docker compose up -d --no-deps --remove-orphans app realtime
         - docker compose --profile workers up -d --no-deps email-worker notification-worker
         - docker image prune -f
+    # O `on:` do deploy.yml (`push` a main) mais o disparo manual que ele
+    # também aceita — o `if:` dos jobs `migrate`/`deploy` não acrescenta
+    # restrição nenhuma a isso.
     when:
-      branch: main
-      event: push
+      - event: push
+        branch: main
+      - event: manual
 
 # ── Notificações ──────────────────────────────────────────────────────────
 notify:
+  # fora da forja: nenhum workflow de .gitea/workflows/ publica notificação de status em passo de pipeline — a forja avisa por ISSUE (os publicadores de dívida).
+  # O `when: status:` deste passo é do Woodpecker, e a ausência de contraparte
+  # fica DITA aqui para ele não sumir do veredito por não ter com quem casar.
   telegram:
     image: plugins/telegram
     settings:

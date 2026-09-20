@@ -5843,6 +5843,138 @@ não dá para provar o bloqueio dentro do runtime do CI
 o docker não respondeu
 ```
 
+## 26. As CONDIÇÕES de cada passo do retrato arquivado — `check:archived-pipeline` (`scripts/check-archived-pipeline.mjs`)
+
+**O QUE É O RETRATO.** `.woodpecker.yml` é a alternativa ao Gitea/Forgejo
+**avaliada e ARQUIVADA**: a forja adotada reaproveita a sintaxe dos workflows, o
+Woodpecker exigiria reescrever todos. O arquivo continua versionado como
+registro — e um registro que descreve a pipeline continua sendo lido como se
+fosse verdade. Havia **duas** coisas julgando esse arquivo: a invariante 19 do
+`check-bun-mirror` (o **VALOR** da versão do Bun em cada uso — treze usos que
+envelheceram sete versões) e o `check:registry-source` (o **host** do registry).
+O terceiro campo — o `when:` de cada passo, isto é, **QUANDO** o passo roda —
+**não era julgado por ninguém**, e é exatamente o que envelhece sozinho: a
+forja muda o `on:` de um workflow (ou acrescenta um `workflow_dispatch`) e o
+retrato segue afirmando o gatilho antigo, sem nada ficar vermelho.
+
+**A RÉGUA.** Cada passo do retrato declara a sua condição em `when:` — uma
+**LISTA de cláusulas** (a semântica do Woodpecker: qualquer entrada que case
+dispara o passo) —, e essa condição tem de ser **IGUAL** à que a forja aplica ao
+trabalho daquele passo. Igual, não parecida: o veredito é sobre o conjunto de
+cláusulas normalizado (`push@[main, develop] ∪ pull_request@[main]`), e a
+mensagem mostra **os dois lados** quando diverge.
+
+**DE ONDE VEM A CONDIÇÃO DA FORJA (derivada, nunca lista à mão).** Do próprio
+`.gitea/workflows/`: **(a)** cada gatilho do `on:` vira uma cláusula, com o
+filtro de `branches:` quando existe; **(b)** o `if:` do job **estreita** essas
+cláusulas, com a gramática declarada — `github.event_name ==/!= '<e>'`,
+`github.ref`/`github.ref_name ==/!= 'refs/heads/<b>'`, `&&`, `||`, parênteses. A
+diferença entre as duas formas de erro importa: um termo sobre `github.ref`
+numa cláusula **sem** filtro de branch não é falso, é **indecidível** (o ref
+pode ser qualquer um), e é por isso que a avaliação tem TRÊS valores. O
+`if: github.ref == 'refs/heads/main' && github.event_name == 'push'` do job
+`deploy` do `ci.yml` transforma `push@[main, develop] ∪ pull_request@[main]` em
+`push@[main]` — sem o estreitamento, um retrato que declara a condição LARGA
+passaria verde sobre um job que só roda em `main`.
+
+**O QUE SAI DA GRAMÁTICA É NOMEADO, NUNCA ADIVINHADO.** Função de STATUS
+(`failure()`, `success()`), `startsWith`, contexto que o guard não conhece: se
+aquele job for a contraparte de um passo, o guard sai **2** (`NÃO JULGÁVEL`)
+nomeando o workflow, o job e a **expressão** — e o motivo é escrito. Sem isso, a
+cláusula entraria (ou sairia) no escuro e o verde seria sobre um texto que
+ninguém decidiu. Um evento da forja sem tradução (`release`, `tags`) também é
+violação nomeada, não um gatilho presumido.
+
+**A TRADUÇÃO (declarada UMA vez, no guard e no cabeçalho do retrato):**
+
+| retrato (Woodpecker) | forja (Gitea/Forgejo Actions) |
+| :------------------- | :---------------------------- |
+| `push`               | `push`                        |
+| `pull_request`       | `pull_request`                |
+| `cron`               | `schedule`                    |
+| `manual`             | `workflow_dispatch`           |
+
+O `branch:` do retrato casa com o `branches:` da forja (e é o branch ALVO num
+`pull_request`, como no Woodpecker); os dois eventos sem filtro de branch
+(`cron`/`schedule` e `manual`/`workflow_dispatch`) são declarados **sem**
+`branch:` — um branch ali seria uma restrição inventada.
+
+**COMO UM PASSO ENCONTRA A SUA CONTRAPARTE (descoberta).** **(1)** pelo COMANDO:
+o guard canonicaliza os dois lados — uma entrada do `package.json` que resolve
+para UMA invocação vale pela invocação (`bun run check:registry-source` ≡
+`node scripts/check-registry-source.mjs`, `bun run typecheck` ≡ `tsc --noEmit`),
+e uma que é uma CADEIA de shell (`lint` = prettier + eslint) vale por si mesma.
+O job da forja com a **maior** sobreposição é a contraparte; **empate** (o mesmo
+comando em dois jobs — `check:registry-source` roda no `guards` do PR e no
+`smoke`, que é só disparo manual) é AMBÍGUO e o passo precisa **declarar**.
+**(2)** por MARCADOR, em comentário (o arquivo continua YAML válido para o
+Woodpecker, que nunca lê comentário):
+`# espelha: .gitea/workflows/deploy.yml#build` — e o alvo é conferido nos dois
+sentidos: o arquivo existe, o job existe e, quando o job TEM comandos, ele roda
+algum comando do passo (um marcador que aponta para o job que faz outro trabalho
+é violação, não desempate). **(3)** SEM CONTRAPARTE, declarada com motivo:
+`# fora da forja: <motivo>` — a classe `GITHUB_ONLY` desta régua, conferida no
+lado conferível: um passo cujos comandos a forja RODA não pode se declarar fora
+dela. **(4)** nada disso → VIOLAÇÃO: um passo novo não passa por omissão.
+
+**O QUE MUDOU NO ARQUIVO (e o que ele NÃO dizia).** Das 15 condições declaradas,
+14 são provadas contra os jobs da forja e **1 é declarada sem contraparte** (o
+passo de notificação, que filtra por `status:` — a forja avisa por ISSUE, não
+por passo de pipeline). Duas metades que o retrato **não dizia** apareceram na
+medição: o cron do `required-checks-drift` também aceita **disparo manual**
+(`workflow_dispatch`), e os três passos do deploy idem — o retrato declarava só
+`cron`/`push a main`, isto é, descrevia uma pipeline mais estreita que a da
+forja. As dez condições do CI (os guards, o typecheck, o teste e o build) estão
+escritas passo a passo, cada uma com as **duas** cláusulas do `on:` do `ci.yml`.
+
+**FAIL-CLOSED NA LEITURA.** Retrato ausente, ilegível, com byte inválido ou com
+YAML que não faz parsing → **exit 2** NOMEADO (a mesma doutrina do resto do
+repositório: _não conseguir julgar não é não haver nada a julgar_). A leitura
+ESTRUTURAL usa o parser único (`parseYamlDocument`), porque a condição é
+ESTRUTURA: uma segunda leitura linha-a-linha divergiria no dia em que o formato
+mudasse.
+
+**LIMITES DECLARADOS (cada um com o dono da cobrança).** **(a)** o CONJUNTO de
+passos: a forja tem jobs que o retrato não tem (o `migrate` do `deploy.yml`, os
+`bring-up-proof`/`pre-commit-in-runner-proof` do `ci.yml`) **e isso não é
+julgado aqui** — esta régua julga as CONDIÇÕES de quem existe; a cobertura do
+conjunto é outra régua; **(b)** `needs:` não é condição (dependência não é
+gatilho); **(c)** o espelho do GitHub é do `check-forge-parity` (a régua é
+contra a forja DONA DO MERGE); **(d)** `when` nos DOIS níveis (pipeline e passo)
+é violação, não interseção implícita; **(e)** passo de plugin (`settings:`) não
+tem comando: a contraparte dele só existe por marcador, e o guard DIZ isso no
+relatório.
+
+**Como testar.** `src/lib/__tests__/check-archived-pipeline.test.ts` — a
+tradução (as cláusulas, o evento sem tradução, o `branch:` inventado, a chave
+desconhecida, o `status:` lido à parte), a condição derivada (os gatilhos, o
+`if:` que estreita, o `||` do `deploy.yml`, o `if:` fora da gramática, o branch
+sem filtro INDECIDÍVEL), o casamento por comando (a canonicalização das duas
+formas, o empate AMBÍGUO e o CONTROLE com o marcador), cada classe de mentira
+com o seu CONTROLE na direção oposta (passo sem `when:`, condição divergente,
+sem contraparte, marcador tipado, marcador para o job errado, `fora da forja`
+sem motivo e contraditada pelo disco, `status:` sem declaração, `when` nos dois
+níveis, chave de topo não classificada), o fail-closed (retrato ausente, YAML
+inválido nos dois lados, `if:` fora da gramática com o CONTROLE do `if:`
+entendido) e o **repositório real** — inclusive a MUTAÇÃO por fixture: trocar
+**só** o `on:` do `ci.yml` real derruba o retrato real.
+**Prova por mutação:** `scripts/test-mutation-archived-pipeline.sh` — seis
+mutações (a EXIGÊNCIA de declarar, o ESTREITAMENTO do `if:`, a EXISTÊNCIA do
+alvo do marcador, o MESMO trabalho do alvo, o fail-closed da leitura e o
+desempate do casamento ambíguo), cada uma CEGANDO a sua classe com as vizinhas
+seguindo vermelhas e o passo SÃO do fixture (o controle) imune em todas; o guard
+é restaurado byte a byte por checksum.
+**No CI:** job `guards` da forja e o job `workflow-refs-guard` do espelho
+(`check:forge-parity` já o cobra como invariante do CORE nas duas pipelines).
+
+**Família relacionada:** `check-bun-mirror` (invariante 19 — o VALOR da versão
+no mesmo arquivo), `check-registry-source` (o host do registry nele),
+`check-forge-parity` (a classificação obrigatória do gate novo) e
+`check-pipefail-sigpipe`/`check-workflow-run-syntax` (os outros guards que
+DERIVAM o que a pipeline executa, em vez de ler uma lista).
+
+---
+
 ## 27. O corte do GitHub — `check:github-dependencies` (`scripts/check-github-dependencies.mjs`)
 
 **O que protege:** o **inventário** do que o GitHub sustenta no repositório, como

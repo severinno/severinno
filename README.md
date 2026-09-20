@@ -502,6 +502,7 @@ Quatro camadas de proteção previnem que arquivos com encoding corrompido (ex: 
 - [CRLF Scope Guard](#crlf-scope-guard) — escopo travado em `.sh`/`.bash`
 - [UTF-8 Scope Guard](#utf-8-scope-guard) — escopo do check-utf8 travado em `src/`
 - [A régua única de leitura de YAML (`scripts/forge-workflows.mjs`)](#a-régua-única-de-leitura-de-yaml-scriptsforge-workflowsmjs) — linha, passo e declaração numa casa só
+- [O retrato arquivado declara QUANDO cada passo roda (`check:archived-pipeline`)](#o-retrato-arquivado-declara-quando-cada-passo-roda-checkarchived-pipeline) — as condições do `.woodpecker.yml` provadas contra a forja
 - [Por que `.sh`-only? (decisão ESCOPO INTENCIONAL)](#por-que-o-guard-de-crlf-é-sh-only-decisão-escopo-intencional)
 - [Auditoria histórica de blobs CRLF](#auditoria-histórica-de-blobs-crlf) — histórico completo (`rev-list --all`)
 - [Single-line out= Guard](#single-line-out-guard) — `cmd "..." out=$(...)` em 1 linha
@@ -593,6 +594,39 @@ que além de medir a leitura de cada guard exige que ela continue vindo de um
 lugar só (o regex do comentário de fim de linha e o padrão da expressão existem
 em UM arquivo, e a varredura é sobre `scripts/*.mjs` inteiro — um guard novo com
 a cópia derruba o teste sem ninguém registrá-lo).
+
+### O retrato arquivado declara QUANDO cada passo roda (`check:archived-pipeline`)
+
+`.woodpecker.yml` é a alternativa ao Gitea/Forgejo **avaliada e arquivada**: ela
+fica versionada como registro, e o registro continua sendo lido como se
+descrevesse a pipeline. Já havia dois gates sobre esse arquivo — a invariante 19
+do `check-bun-mirror` (o **valor** da versão do Bun em cada uso) e o
+`check:registry-source` (o **host** do registry) —, mas o `when:` de cada passo,
+que é **quando** ele roda, não era julgado por ninguém: a forja muda o `on:` de
+um workflow e o retrato segue afirmando o gatilho antigo, sem nada ficar
+vermelho. O `check:archived-pipeline` fecha isso: cada passo **declara** a sua
+condição em `when:` (lista de cláusulas, como no Woodpecker) e o gate **deriva**
+dos workflows da forja os gatilhos (`on:`) e o `if:` de cada job para exigir
+**igualdade**.
+
+| o que o retrato dizia                                                | o que a forja faz                                                                                             |
+| :------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------ |
+| 10 passos de CI **sem** `when:` (o silêncio prometia "roda em tudo") | `ci.yml` roda em `push@[main, develop]` e `pull_request@[main]` — o gate exige as duas cláusulas **escritas** |
+| `cron` do drift de required checks                                   | `schedule` **e** `workflow_dispatch` (a vigilância periódica também pode ser disparada à mão)                 |
+| `push a main` nos três passos do deploy                              | `push a main` **e** `workflow_dispatch`                                                                       |
+| passo de notificação (`when: status:`) sem contraparte declarada     | **declarado** `# fora da forja: <motivo>` e NOMEADO no relatório                                              |
+
+A contraparte de cada passo é descoberta pelo **comando** que ele roda (com a
+canonicalização: `bun run check:x` vale pelo script que a entrada executa);
+quando o comando é ambíguo (o mesmo script em dois jobs da forja) ou o passo é
+plugin (`settings:`, sem comando), o passo **declara** a contraparte em
+comentário (`# espelha: .gitea/workflows/deploy.yml#build`) e o gate confere o
+alvo nos dois sentidos — arquivo, job e trabalho. Um `if:` que sai da gramática
+declarada (função de STATUS, `startsWith`) **não** é adivinhado: o gate sai com
+exit 2 nomeando workflow, job e expressão. O que NÃO é julgado aqui é o
+CONJUNTO de passos (um job da forja sem passo no retrato é de outra régua) e o
+`needs:` (dependência não é gatilho). A família e os limites estão em
+`docs/GUARDS.md` §26.
 
 ### Por que o guard de CRLF é `.sh`-only (decisão ESCOPO INTENCIONAL)
 
@@ -820,6 +854,7 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 | Paridade hook ↔ CI (`check-hook-ci-parity.mjs`)                                 |     ✅     |       —       |
 | Comandos do hook resolvem (`check-hook-commands.mjs`)                           |     ✅     |       —       |
 | Pipefail / SIGPIPE (`check-pipefail-sigpipe.mjs`)                               |     ✅     |       —       |
+| Condições do retrato arquivado (`check-archived-pipeline.mjs`)                  |     ✅     |       —       |
 | Mutation jobs CI (`check-mutation-jobs.mjs`)                                    |     ✅     |      ✅       |
 | Mutation jobs staged diff (`check-mutation-jobs.mjs --staged`)                  |     ✅     |       —       |
 | Unused-deps staged diff (`check-unused-deps.mjs --staged`)                      |     ✅     |       —       |
