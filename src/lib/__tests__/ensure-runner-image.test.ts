@@ -45,6 +45,9 @@ import {
   resolveImageRef,
   verifyWithDocker,
 } from "../../../scripts/ensure-runner-image.mjs"
+// O default resolvido vem dos ARQUIVOS COMITADOS (a mesma leitura do
+// `registry-source`): o teste cobra a fonte única, não um literal de ontem.
+import { defaultImageValues } from "../../../scripts/ensure-runner-image.mjs"
 
 const ROOT = process.cwd()
 const SCRIPT = join(ROOT, "scripts", "ensure-runner-image.mjs")
@@ -293,8 +296,12 @@ function expectRefError(values: Record<string, string>): string {
 }
 
 describe("resolveImageRef", () => {
-  it("usa os MESMOS defaults do compose (ghcr.io / severinno)", () => {
-    expect(expectRef({ BUN_VERSION: "1.3.14" })).toBe("ghcr.io/severinno/ubuntu-bun:1.3.14")
+  it("usa os MESMOS defaults dos arquivos comitados (nenhum literal embutido)", () => {
+    const { IMAGE_REGISTRY, IMAGE_NAMESPACE } = defaultImageValues(ROOT)
+    expect(IMAGE_REGISTRY, "nenhum arquivo comitado declara IMAGE_REGISTRY").toBeTruthy()
+    expect(expectRef({ BUN_VERSION: "1.3.14" })).toBe(
+      `${IMAGE_REGISTRY}/${IMAGE_NAMESPACE}/ubuntu-bun:1.3.14`,
+    )
   })
 
   it("respeita IMAGE_REGISTRY/IMAGE_NAMESPACE (inclusive registry local)", () => {

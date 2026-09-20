@@ -46,6 +46,18 @@ import {
 /** A raiz do repositório real (o guard e os scripts resolvem a partir dela). */
 const REPO_ROOT = process.cwd()
 
+/**
+ * O valor DECLARADO de uma variável no repositório REAL — o próprio objeto da
+ * comparação por valor. Falha ALTO se o espelho não declarar: um `undefined`
+ * vazando para o veredito passaria como "nenhum valor" e o teste mediria outra
+ * coisa (é o defeito que este arquivo existe para pegar no guard).
+ */
+function valorDeclarado(nome: string): string {
+  const d = declaredImageValue(REPO_ROOT, nome)
+  if (!d?.value) throw new Error(`o repositório real não declara ${nome}`)
+  return d.value
+}
+
 /** Árvore sintética com os arquivos que o resolvedor lê. */
 function treeOf(files: Record<string, string>, prefix = "registry-source-"): string {
   const dir = mkdtempSync(join(tmpdir(), prefix))
@@ -208,8 +220,15 @@ describe("resolveImageSource — a ordem: ambiente, espelho declarado, nada", ()
 
   it("o repositório REAL resolve (o resolvedor não depende de env para funcionar)", () => {
     const r = resolveImageSource({ root: REPO_ROOT, env: {} })
-    expect(r.registry).toBe("ghcr.io")
-    expect(r.namespace).toBe("severinno")
+    // O VALOR não é cravado aqui de propósito: o que este teste prova é que o
+    // resolvedor ACHA a declaração no repo real sem env. Cravar o registry faz
+    // o teste envelhecer junto com a virada do registry (etapa 1 do corte do
+    // GitHub) e acusar o repositório por estar certo — a expectativa vem da
+    // mesma declaração que o resolvedor lê.
+    expect(r.registry).toBe(declaredImageValue(REPO_ROOT, "IMAGE_REGISTRY")?.value)
+    expect(r.namespace).toBe(declaredImageValue(REPO_ROOT, "IMAGE_NAMESPACE")?.value)
+    // E o resolvido É um host de registry (não um vazio que passaria no toBe acima).
+    expect(r.registry).toMatch(/^[a-z0-9][a-z0-9.-]*(:\d+)?$/)
   })
 })
 

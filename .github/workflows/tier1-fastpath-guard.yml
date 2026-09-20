@@ -55,8 +55,8 @@ permissions:
 
 env:
   BUN_VERSION: ${{ vars.BUN_VERSION }}
-  # Origem do mirror ubuntu-bun — FONTE ÚNICA (default = ghcr.io/<owner>).
-  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
+  # Origem do mirror ubuntu-bun — FONTE ÚNICA (default = git.severinno.cloud/<namespace>).
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'git.severinno.cloud' }}
   IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE || github.repository_owner }}
 
 concurrency:

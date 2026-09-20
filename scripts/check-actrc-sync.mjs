@@ -76,7 +76,7 @@
 //
 // Usage:
 //   node scripts/check-actrc-sync.mjs --expected 1.3.14 \
-//     --expected-var IMAGE_REGISTRY=ghcr.io --expected-var IMAGE_NAMESPACE=severinno
+//     --expected-var IMAGE_REGISTRY=git.severinno.cloud --expected-var IMAGE_NAMESPACE=severinno
 //   node scripts/check-actrc-sync.mjs --expected "${{ vars.BUN_VERSION }}" --fail
 //   node scripts/check-actrc-sync.mjs --expected 1.3.14 --actrc /tmp/.actrc
 //   node scripts/check-actrc-sync.mjs --expected 1.3.14 --gitea-env /tmp/env.gitea
@@ -188,7 +188,7 @@ export const MIRROR_VARIABLE_RULES = {
     actrc: {
       linha: "--var IMAGE_REGISTRY=<host>",
       consequence: () =>
-        "atualize o .actrc (o act local resolveria o default 'ghcr.io' e deixaria de provar o caminho do registry próprio)",
+        "atualize o .actrc (o act local resolveria o default do workflow e deixaria de provar o caminho DECLARADO do registry)",
       staticGuard:
         "O guard estático check-registry-source só exige a EXISTÊNCIA da flag (--var IMAGE_REGISTRY) e a declaração do nome no template — o valor nunca foi conferido.",
     },

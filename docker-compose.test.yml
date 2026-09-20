@@ -53,6 +53,8 @@ services:
         BUN_VERSION: ${BUN_VERSION:-1.3.14}
     ports:
       - "3003:3003"
+    environment:
+      REDIS_URL: redis://redis:6379
     depends_on:
       redis:
         condition: service_healthy

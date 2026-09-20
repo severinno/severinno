@@ -59,6 +59,7 @@ import {
   shellTokens,
   yamlEmbeddedPayloads,
 } from "../../../scripts/check-workflow-run-syntax.mjs"
+import { declaredImageValue } from "../../../scripts/registry-source.mjs"
 
 /** O módulo é .mjs: o teste tipa só o que consome (o resto é o runtime). */
 type Corpo = {
@@ -565,7 +566,18 @@ describe("a semântica do `shell:` — julgada contra o que o runner MEDIU", () 
     expect(
       runnerImageRef({ IMAGE_REGISTRY: "reg.io", IMAGE_NAMESPACE: "org", BUN_VERSION: "9.9.9" }),
     ).toBe("reg.io/org/ubuntu-bun:9.9.9")
-    expect(runnerImageRef({ BUN_VERSION: "1.2.3" })).toBe("ghcr.io/severinno/ubuntu-bun:1.2.3")
+    // O valor do repositório REAL, sem env, vem do espelho DECLARADO — não de um
+    // literal: cravar o registry aqui faz o teste envelhecer na virada do registry
+    // (etapa 1 do corte do GitHub) e acusar o repositório por estar certo.
+    const declarado = {
+      registry: declaredImageValue(ROOT, "IMAGE_REGISTRY")?.value,
+      namespace: declaredImageValue(ROOT, "IMAGE_NAMESPACE")?.value,
+    }
+    expect(declarado.registry).toBeTruthy()
+    expect(declarado.namespace).toBeTruthy()
+    expect(runnerImageRef({ BUN_VERSION: "1.2.3" })).toBe(
+      `${declarado.registry}/${declarado.namespace}/ubuntu-bun:1.2.3`,
+    )
     // Sem BUN_VERSION NÃO há ref: o gate não presume qual imagem foi medida.
     expect(runnerImageRef({})).toBeNull()
     expect(runnerImageRef({ IMAGE_REGISTRY: "reg.io", BUN_VERSION: "  " })).toBeNull()
@@ -574,7 +586,11 @@ describe("a semântica do `shell:` — julgada contra o que o runner MEDIU", () 
   it("CLI: `--shells` imprime a medição e o COMANDO que a produziu (exit 0)", () => {
     const r = cli(["--shells"], { BUN_VERSION: "1.3.14" })
     expect(r.code).toBe(EXIT.OK)
-    expect(r.out).toContain("ghcr.io/severinno/ubuntu-bun:1.3.14")
+    // A ref do repositório REAL: derivada do espelho declarado (a mesma fonte
+    // que o guard usa) — nunca cravada (ela envelhece na virada do registry).
+    expect(r.out).toContain(
+      `${declaredImageValue(ROOT, "IMAGE_REGISTRY")?.value}/${declaredImageValue(ROOT, "IMAGE_NAMESPACE")?.value}/ubuntu-bun:1.3.14`,
+    )
     expect(r.out).toContain(RUNNER_IMAGE.digest)
     expect(r.out).toContain(RUNNER_IMAGE.measuredAt)
     expect(r.out).toContain("command -v")

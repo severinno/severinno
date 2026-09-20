@@ -24,6 +24,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import { BUN_PATH } from "../../../scripts/check-runner-base.mjs"
+import { declaredImageValue } from "../../../scripts/registry-source.mjs"
 import { PLUGIN_DIRS } from "../../../scripts/prove-smoke-render-gate.mjs"
 import {
   CONTRACT_CASES,
@@ -423,7 +424,12 @@ describe("proveImageContract — o fluxo", () => {
     expect(calls.filter((c) => c.args[0] === "run")).toHaveLength(1)
     expect(calls.filter((c) => c.args[0] === "rm")).toHaveLength(1)
     expect(result.cases).toHaveLength(CONTRACT_CASES.length)
-    expect(result.ref).toBe("ghcr.io/severinno/ubuntu-bun:1.3.14")
+    // A ref do repositório REAL vem do espelho DECLARADO (a mesma fonte que o
+    // resolvedor lê) — cravar o registry faz o teste envelhecer na virada do
+    // registry (etapa 1 do corte) e acusar o repositório por estar certo.
+    expect(result.ref).toBe(
+      `${declaredImageValue(REPO_ROOT, "IMAGE_REGISTRY")?.value}/${declaredImageValue(REPO_ROOT, "IMAGE_NAMESPACE")?.value}/ubuntu-bun:1.3.14`,
+    )
     // O CONTROLE passou pelos TRÊS fatos medidos dentro do artefato — não narrados.
     const control = result.cases.find((c) => c.id === "controle")!
     expect(control.ok).toBe(true)

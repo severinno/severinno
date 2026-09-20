@@ -11,7 +11,7 @@
 # o delta compara todas as demais contra ela (ex.: medir uma candidata alpine).
 #
 # POR QUE: o README (seção act / BUN_VERSION, tabela de evidência) documenta a
-# decisão de usar a imagem custom ghcr.io/<owner>/ubuntu-bun:<versão> para o
+# decisão de usar a imagem custom <registry>/<namespace>/ubuntu-bun:<versão> para o
 # tier-1 fast path do setup-bun. A cada bump de versão da imagem (novo
 # BUN_VERSION → re-sync do mirror ubuntu-bun) o custo de startup precisa ser
 # REVALIDADO: se a custom ficar muito mais lenta que a default, o fast path
@@ -97,7 +97,7 @@ IMG_ID=("default" "custom")
 # FONTE ÚNICA do host (invariante 1 do check:registry-source): o registry sai de
 # IMAGE_REGISTRY/IMAGE_NAMESPACE (repo variable; no act local, `--var` do .actrc)
 # — NUNCA de um `ghcr.io` cravado aqui. O default acompanha o do compose.
-REGISTRY="${IMAGE_REGISTRY:-ghcr.io}"
+REGISTRY="${IMAGE_REGISTRY:-git.severinno.cloud}"
 NAMESPACE="${IMAGE_NAMESPACE:-severinno}"
 IMG_TAG=("catthehacker/ubuntu:act-latest" "$REGISTRY/$NAMESPACE/ubuntu-bun:$ACTRC_BUN")
 IMG_ARGS=()   # --image 'label|tag' repetível — substitui a lista acima (1ª = baseline)

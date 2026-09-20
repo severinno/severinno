@@ -59,6 +59,9 @@ import {
   runGuardsInImage,
   summarizeRehearsal,
 } from "../../../scripts/prove-forge-runtime.mjs"
+// O env de referência é o TEMPLATE COMITADO: a ref esperada sai dele (o mesmo
+// arquivo que o ensaio lê), e não de um literal que envelhece no registry velho.
+import { parseEnvFile } from "../../../scripts/ensure-runner-image.mjs"
 
 // ── fixtures ────────────────────────────────────────────────────────────────
 
@@ -1173,7 +1176,8 @@ describe("a imagem ensaiada é a que o compose pede", () => {
     try {
       const { run, calls } = forgeRun()
       const res = await rehearse({ cwd: dir, run })
-      expect(res.ref).toBe("ghcr.io/severinno/ubuntu-bun:1.3.14")
+      const env = parseEnvFile(REAL_ENV)
+      expect(res.ref).toBe(`${env.IMAGE_REGISTRY}/${env.IMAGE_NAMESPACE}/ubuntu-bun:1.3.14`)
       expect(SRC_CODE).toContain("resolveImageRef")
       // as três etapas apontam para o MESMO alvo: uma build marcada, duas runs
       const [build, contract, job] = calls

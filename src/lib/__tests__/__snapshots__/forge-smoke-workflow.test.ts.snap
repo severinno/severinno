@@ -8,7 +8,7 @@ exports[`forge-smoke.yml — sintaxe YAML + snapshot > parseia como YAML válido
   },
   "env": {
     "BUN_VERSION": "\${{ vars.BUN_VERSION }}",
-    "IMAGE_REGISTRY": "\${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}",
+    "IMAGE_REGISTRY": "\${{ vars.IMAGE_REGISTRY || 'git.severinno.cloud' }}",
     "NODE_VERSION": 22,
   },
   "jobs": {

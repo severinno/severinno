@@ -43,7 +43,7 @@
 // Usage:
 //   node scripts/check-doctor-ci.mjs                 # o gate (usa o ambiente)
 //   node scripts/check-doctor-ci.mjs --json          # o relatório, como dados
-//   BUN_VERSION=1.3.14 IMAGE_REGISTRY=ghcr.io IMAGE_NAMESPACE=severinno \
+//   BUN_VERSION=1.3.14 IMAGE_REGISTRY=git.severinno.cloud IMAGE_NAMESPACE=severinno \
 //     node scripts/check-doctor-ci.mjs               # local, com os valores
 //
 // Exit codes:

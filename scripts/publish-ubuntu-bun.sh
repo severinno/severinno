@@ -1,47 +1,59 @@
 #!/usr/bin/env bash
 # =============================================================================
-# scripts/publish-ubuntu-bun.sh — Publica a imagem custom ubuntu-bun no GHCR e
-# valida o tier-1 do setup-bun com a imagem REMOTA (não só a local).
+# scripts/publish-ubuntu-bun.sh — Publica a imagem custom ubuntu-bun no registry
+# DECLARADO (IMAGE_REGISTRY/IMAGE_NAMESPACE) e valida o tier-1 do setup-bun com a
+# imagem REMOTA (não só a local).
 #
 # Por que existe: o fast path (tier-1) do scripts/setup-bun-ci.sh só
 # dispara quando a imagem do runner embarca bun na versão pedida. A imagem
 # custom Dockerfile.ubuntu-bun ativa esse caminho (~0-2s vs ~25-35s do
 # oven-sh/setup-bun@v2). Este script fecha o ciclo completo de operação:
 # publicar, tornar o pacote público e COMPROVAR que a imagem publicada
-# (puxada de novo do GHCR, com a imagem local removida antes) mantém o
+# (puxada de novo do registry, com a imagem local removida antes) mantém o
 # tier-1 funcionando via act.
 #
-# ⚠️ REQUISITO: credenciais GHCR. Sem elas o preflight falha ANTES de
-# qualquer push, com instruções. Autentique de UMA destas formas:
-#   1. gh auth login        (recomendado — permite também a etapa de
-#                            visibilidade pública via gh api)
-#   2. export GH_TOKEN=<PAT com write:packages>  e rode:
+# O REGISTRY não é literal: sai de IMAGE_REGISTRY/IMAGE_NAMESPACE (a fonte
+# única — o mesmo par que o compose da forja e os workflows resolvem). Um
+# `ghcr.io` cravado aqui sobreviveria à virada do registry e o script passaria
+# a publicar/conferir a tag no registry VELHO, em silêncio.
+#
+# ⚠️ REQUISITO: credencial do registry declarado. Sem ela o preflight falha
+# ANTES de qualquer push, com instruções. Autentique de UMA destas formas:
+#   1. docker login <IMAGE_REGISTRY>  (o caminho direto — vale para o registry
+#                                      próprio, o OCI embutido do Gitea)
+#   2. gh auth login        (SÓ onde o registry é o GHCR: além do push,
+#                            habilita a etapa 3 de visibilidade via gh api)
+#   3. export GH_TOKEN=<PAT com write:packages>  e rode:
 #        echo "$GH_TOKEN" | gh auth login --with-token
-#   3. docker login ghcr.io  (só push — sem gh, o script AVISA que a
-#                            visibilidade pública precisa de ajuste manual)
 #   4. No CI: o workflow .github/workflows/sync-ubuntu-bun-mirror.yml já
 #      publica com secrets.GITHUB_TOKEN (packages: write) — mas pacotes
 #      criados com GITHUB_TOKEN nascem PRIVADOS e exigem marcar público nas
 #      settings da org (ver etapa 3 do fluxo).
 #
 # Fluxo:
-#   1. Preflight  — docker, gh/docker login, imagem local com a versão certa
-#   2. docker push ghcr.io/<owner>/ubuntu-bun:<version>
-#   3. gh api     — tenta tornar o pacote PÚBLICO (user level; em org o admin
-#                   precisa marcar nas settings — o script avisa se falhar)
+#   1. Preflight  — docker, credencial do registry, imagem local com a versão certa
+#   2. docker push <registry>/<namespace>/ubuntu-bun:<version>
+#   3. gh api     — (SÓ GHCR — etapa 3 do corte do GitHub) tenta tornar o
+#                   pacote PÚBLICO (user level; em org o admin marca nas
+#                   settings — o script avisa se falhar e SEGUE)
 #   4. docker rmi — remove a imagem LOCAL (força o pull REAL do remote)
-#   5. docker pull ghcr.io/<owner>/ubuntu-bun:<version>
-#   6. act -j check com -P ubuntu-latest=ghcr.io/<owner>/ubuntu-bun:<version>
+#   5. docker pull <registry>/<namespace>/ubuntu-bun:<version>
+#   6. act -j check com -P ubuntu-latest=<registry>/<namespace>/ubuntu-bun:<version>
 #      --pull=false e valida a evidência do tier-1 no log:
 #        - o step 'Setup Bun' passou
 #        - '✅ Usando Bun pré-instalado: <version> (0s, sem download)'
+#      (o act é o runner LOCAL do GitHub — etapa 5 do corte; a validação do
+#      tier-1 no runtime da FORJA é o job `pre-commit-in-runner-proof`)
 #
 # Usage:
-#   ./scripts/publish-ubuntu-bun.sh              # owner do git remote, v1.3.14
-#   OWNER=severinno BUN_VERSION=1.3.14 ./scripts/publish-ubuntu-bun.sh
+#   ./scripts/publish-ubuntu-bun.sh                 # registry declarado, v1.3.14
+#   IMAGE_REGISTRY=127.0.0.1:5000 BUN_VERSION=1.3.14 ./scripts/publish-ubuntu-bun.sh
 #
 # Environment:
-#   OWNER        Owner do GHCR (default: derivado do git remote origin)
+#   IMAGE_REGISTRY   Host do registry OCI (default: git.severinno.cloud — o
+#                    MESMO default do compose; o valor declarado é a variável)
+#   IMAGE_NAMESPACE  Namespace no registry (default: severinno — o declarado)
+#   OWNER        Owner do remote — usado SÓ nas etapas gh (visibilidade, act)
 #   BUN_VERSION  Versão do Bun (default: 1.3.14 — FONTE ÚNICA: vars.BUN_VERSION)
 #   ACT_BIN      Caminho do binário do act (default: tool-results/act/act.exe)
 #   ACT_TIMEOUT  Timeout do act em segundos (default: 600 — o job `check`
@@ -73,7 +85,12 @@ if [ -z "$VERSION" ]; then
   echo "  Declare em .actrc ou passe BUN_VERSION=<X.Y.Z> no comando." >&2
   exit 2
 fi
-IMAGE="ghcr.io/${OWNER}/ubuntu-bun:${VERSION}"
+REGISTRY="${IMAGE_REGISTRY:-git.severinno.cloud}"
+# O default ACOMPANHA o valor declarado (`deploy/env.gitea.example`): o guard da
+# invariante 9 compara default x declarado POR VALOR, e um default que ninguém
+# declara faria a imagem que roda não ser a que o repositório diz.
+NAMESPACE="${IMAGE_NAMESPACE:-severinno}"
+IMAGE="${REGISTRY}/${NAMESPACE}/ubuntu-bun:${VERSION}"
 ACT_BIN="${ACT_BIN:-$SCRIPT_DIR/tool-results/act/act.exe}"
 ACT_TIMEOUT="${ACT_TIMEOUT:-600}"
 
@@ -89,13 +106,13 @@ warn() { echo -e "  ${YELLOW}⚠️${NC} $1"; }
 info() { echo -e "  ${CYAN}▸${NC} $1"; }
 
 if [ -z "${OWNER}" ]; then
-  fail "Não foi possível derivar o owner do GHCR do git remote. Passe OWNER=... explicitamente."
+  fail "Não foi possível derivar o namespace (OWNER) do git remote. Passe OWNER=... ou IMAGE_NAMESPACE=... explicitamente."
   exit 1
 fi
 
 echo ""
 echo "  ═════════════════════════════════════════════════════════════════"
-echo "   🚀 PUBLISH UBUNTU-BUN → GHCR + VALIDAÇÃO DO TIER-1 REMOTO"
+echo "   🚀 PUBLISH UBUNTU-BUN → ${REGISTRY} + VALIDAÇÃO DO TIER-1 REMOTO"
 echo "  ═════════════════════════════════════════════════════════════════"
 echo ""
 echo "  Imagem : ${IMAGE}"
@@ -159,7 +176,7 @@ else
     fail "Push falhou (exit ${PUSH_CODE}) — provável falta de credenciais. Autentique com UMA das opções:"
     fail "  1. gh auth login"
     fail "  2. export GH_TOKEN=<PAT write:packages> && echo \"\$GH_TOKEN\" | gh auth login --with-token"
-    fail "  3. echo <PAT> | docker login ghcr.io -u <usuario> --password-stdin"
+    fail "  3. echo <token> | docker login ${REGISTRY} -u <usuario> --password-stdin"
   fi
   exit 2
 fi
@@ -168,7 +185,13 @@ fi
 # 3. Visibilidade pública (user level via gh api)
 # ═════════════════════════════════════════════════════════════════════════
 echo ""
-if [ "${GH_AUTH}" -eq 1 ]; then
+# A visibilidade via `gh api` só EXISTE no GHCR: com o registry declarado sendo
+# outro (o OCI embutido do Gitea, que é o caso depois da virada da etapa 1), a
+# etapa não tem o que fazer — e dizer "pacote público" ali seria uma afirmação
+# sobre um pacote que este script não publicou.
+if [ "${REGISTRY}" != "ghcr.io" ]; then
+  warn "visibilidade via gh api pulada: o registry declarado é ${REGISTRY} (esta etapa é do caminho GHCR — etapa 3 do corte do GitHub)."
+elif [ "${GH_AUTH}" -eq 1 ]; then
   info "Tentando tornar o pacote PÚBLICO..."
   # GHCR container packages: nome do pacote = nome da imagem (ubuntu-bun).
   # O remote é severinno/severinno → owner quase certamente ORG: tenta primeiro
@@ -215,14 +238,14 @@ else
   exit 3
 fi
 
-# Prova do REMOTE: o RepoDigest após o pull referencia o registry ghcr.io (não
+# Prova do REMOTE: o RepoDigest após o pull referencia o registry DECLARADO (não
 # um digest local de build). Se o rmi falhou e o pull foi 'up to date', o digest
 # local ainda aponta para o build — o aviso acima já cobriu; aqui validamos o
 # caso normal (imagem recém-baixada).
 DIGEST="$(docker image inspect "${IMAGE}" --format '{{range .RepoDigests}}{{.}}{{end}}' 2>/dev/null || echo '')"
 case "${DIGEST}" in
-  ghcr.io/*) pass "RepoDigest confirma origem remota: ${DIGEST}" ;;
-  *) warn "RepoDigest não referencia ghcr.io (${DIGEST:-vazio}) — provável imagem local sem pull real; re-rode com a imagem local removida." ;;
+  "${REGISTRY}"/*) pass "RepoDigest confirma origem remota: ${DIGEST}" ;;
+  *) warn "RepoDigest não referencia ${REGISTRY} (${DIGEST:-vazio}) — provável imagem local sem pull real; re-rode com a imagem local removida." ;;
 esac
 
 # Confirma que a imagem baixada mantém a versão certa.

@@ -39,9 +39,9 @@ permissions:
 
 env:
   # Registry de destino do mirror — FONTE ÚNICA (repo variable IMAGE_REGISTRY).
-  # Default = ghcr.io (comportamento histórico).
-  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
-  MIRROR_PREFIX: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}/${{ github.repository_owner }}
+  # Default = o registry OCI próprio.
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'git.severinno.cloud' }}
+  MIRROR_PREFIX: ${{ vars.IMAGE_REGISTRY || 'git.severinno.cloud' }}/${{ github.repository_owner }}
 
 jobs:
   mirror:

@@ -22,8 +22,8 @@ env:
   REDIS_URL: redis://localhost:6379
   RABBITMQ_URL: amqp://localhost:5672
   # Origem dos mirrors OCI (bun/ubuntu-bun/postgis) — FONTE ÚNICA.
-  # Default reproduz o comportamento histórico (ghcr.io/<owner>).
-  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
+  # Default = o registry OCI próprio (git.severinno.cloud/<namespace>).
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'git.severinno.cloud' }}
   IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE || github.repository_owner }}
 
 jobs:

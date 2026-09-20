@@ -27,6 +27,7 @@ import {
   COMPOSE_RENDER_PROVEN_MARK,
   REQUIRE_COMPOSE_FAIL_MARK,
 } from "../../../scripts/check-registry-source.mjs"
+import { declaredImageValue } from "../../../scripts/registry-source.mjs"
 import {
   DEFAULT_ENV_FILE,
   EXIT,
@@ -298,7 +299,12 @@ describe("proveSmokeRenderGate — fluxo com o docker dublê", () => {
 
     expect(result.verdict).toBe("proven")
     expect(exitCodeFor(result.verdict)).toBe(0)
-    expect(result.ref).toBe("ghcr.io/severinno/ubuntu-bun:1.3.14")
+    // A ref do repositório REAL vem do espelho DECLARADO (a mesma fonte que o
+    // resolvedor lê) — cravar o registry faz o teste envelhecer na virada do
+    // registry (etapa 1 do corte) e acusar o repositório por estar certo.
+    expect(result.ref).toBe(
+      `${declaredImageValue(REPO_ROOT, "IMAGE_REGISTRY")?.value}/${declaredImageValue(REPO_ROOT, "IMAGE_NAMESPACE")?.value}/ubuntu-bun:1.3.14`,
+    )
     expect(result.command).toBe("bun run check:registry-source --require-compose")
 
     const runs = calls.filter((c) => c.args[0] === "run")

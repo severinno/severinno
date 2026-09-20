@@ -38,8 +38,8 @@ concurrency:
 
 env:
   # Origem das imagens — FONTE ÚNICA (repo variable IMAGE_REGISTRY).
-  # Mesmo contrato do deploy.yml: default = ghcr.io/<owner>/<repo>.
-  REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
+  # Mesmo contrato do deploy.yml: default = o registry OCI próprio.
+  REGISTRY: ${{ vars.IMAGE_REGISTRY || 'git.severinno.cloud' }}
   IMAGE_NAME: ${{ vars.IMAGE_NAME || github.repository }}
   NODE_VERSION: 22
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/severinno_test

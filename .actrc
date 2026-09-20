@@ -17,9 +17,11 @@
 # realtime, bun, ubuntu-bun, postgis). Mesmo contrato do BUN_VERSION: a FONTE
 # ÚNICA é a repository variable IMAGE_REGISTRY (Settings → Secrets and
 # variables → Actions) e este arquivo é apenas o espelho local do act.
-# Sem o --var, o act local resolveria a variável vazia e cairia no default
-# 'ghcr.io' de cada workflow (o que ainda funciona, mas deixa de provar o
-# caminho do registry próprio). Mantenha em sincronia: o guard semanal
-# check-actrc-sync.mjs compara o VALOR desta linha com vars.IMAGE_REGISTRY (o
-# guard estático check-registry-source só exige que a flag EXISTA).
---var IMAGE_REGISTRY=ghcr.io
+# Sem o --var, o act local resolveria a variável vazia e cairia no default do
+# workflow — que, desde a virada do registry (etapa 1 do corte do GitHub), já é
+# o próprio `git.severinno.cloud`; o --var existe para o act provar o caminho
+# DECLARADO, não para corrigir um valor diferente. Mantenha em sincronia: o
+# guard semanal check-actrc-sync.mjs compara o VALOR desta linha com
+# vars.IMAGE_REGISTRY (o guard estático check-registry-source só exige que a
+# flag EXISTA).
+--var IMAGE_REGISTRY=git.severinno.cloud

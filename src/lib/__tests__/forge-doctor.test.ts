@@ -106,6 +106,10 @@ import {
 import { GITEA_BRING_UP, GITEA_COMPOSE } from "../../../scripts/check-bun-mirror.mjs"
 import { GITEA_ENV_MIRROR } from "../../../scripts/check-actrc-sync.mjs"
 import { scanRoot } from "../../../scripts/check-pipefail-sigpipe.mjs"
+// O VALOR DECLARADO dos espelhos: o CLI do doctor não tem flag de raiz (ele lê o
+// repositório), então a expectativa de `--expected-var` vem da MESMA declaração
+// que o espelho — cravar o valor aqui mediria a fixture, não o doctor.
+import { declaredImageValue } from "../../../scripts/registry-source.mjs"
 
 const ROOT = process.cwd()
 const tmpDirs: string[] = []
@@ -1634,6 +1638,12 @@ describe("perfil --ci — o recorte local, com a régua inteira", () => {
 
   it("o CLI aceita --ci e sai com o perfil declarado no relatório", () => {
     const dir = forgeFixture()
+    // O `cwd` da fixture NÃO move o doctor (o CLI não tem flag de raiz: ele mede
+    // o repositório), então o valor de `--expected-var` tem de ser o DECLARADO
+    // — é ele que o espelho compara. Cravar `ghcr.io` aqui fazia o vermelho ser
+    // da fixture (um valor de ontem) em vez do doctor.
+    const registry = declaredImageValue(ROOT, "IMAGE_REGISTRY")?.value ?? ""
+    const namespace = declaredImageValue(ROOT, "IMAGE_NAMESPACE")?.value ?? ""
     const res = spawnSync(
       process.execPath,
       [
@@ -1643,9 +1653,9 @@ describe("perfil --ci — o recorte local, com a régua inteira", () => {
         "--expected",
         "1.3.14",
         "--expected-var",
-        "IMAGE_REGISTRY=ghcr.io",
+        `IMAGE_REGISTRY=${registry}`,
         "--expected-var",
-        "IMAGE_NAMESPACE=severinno",
+        `IMAGE_NAMESPACE=${namespace}`,
       ],
       { cwd: dir, encoding: "utf8", timeout: 60_000 },
     )

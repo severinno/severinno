@@ -48,13 +48,13 @@ permissions:
 env:
   BUN_VERSION: ${{ vars.BUN_VERSION }}
   # Registry de destino dos mirrors — FONTE ÚNICA (repo variable
-  # IMAGE_REGISTRY). Default = ghcr.io (comportamento histórico, nada muda
-  # enquanto a variável não existir).
+  # IMAGE_REGISTRY). Default = o registry OCI próprio (nada muda enquanto a
+  # variável não existir).
   # Para o registry OCI do Gitea/Forgejo: defina IMAGE_REGISTRY e os secrets
   # IMAGE_REGISTRY_USER / IMAGE_REGISTRY_TOKEN (o GITHUB_TOKEN do run não
   # autentica em outra forja).
-  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}
-  MIRROR_PREFIX: ${{ vars.IMAGE_REGISTRY || 'ghcr.io' }}/${{ github.repository_owner }}
+  IMAGE_REGISTRY: ${{ vars.IMAGE_REGISTRY || 'git.severinno.cloud' }}
+  MIRROR_PREFIX: ${{ vars.IMAGE_REGISTRY || 'git.severinno.cloud' }}/${{ github.repository_owner }}
 
 jobs:
   mirror:

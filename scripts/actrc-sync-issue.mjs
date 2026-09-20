@@ -51,7 +51,7 @@
 //
 // Usage:
 //   node scripts/actrc-sync-issue.mjs --expected 1.3.14 \
-//     --expected-var IMAGE_REGISTRY=ghcr.io --expected-var IMAGE_NAMESPACE=severinno
+//     --expected-var IMAGE_REGISTRY=git.severinno.cloud --expected-var IMAGE_NAMESPACE=severinno
 //   node scripts/actrc-sync-issue.mjs --expected 1.3.14 --gitea-env /opt/gitea/.env
 //   node scripts/actrc-sync-issue.mjs --expected 1.3.14 --dry-run
 //   node scripts/actrc-sync-issue.mjs --report /tmp/actrc-sync-drift.json --backend gitea

@@ -26,9 +26,11 @@
 // distintos, com exit codes distintos e remédios distintos.
 //
 // Identidade com o compose: este script NÃO tem configuração própria. Ele lê o
-// MESMO arquivo (`deploy/.env.gitea`) e aplica os MESMOS defaults do compose
-// (IMAGE_REGISTRY=ghcr.io, IMAGE_NAMESPACE=severinno) — uma segunda fonte de
-// verdade aqui seria a próxima divergência.
+// MESMO arquivo (`deploy/.env.gitea`) e aplica os MESMOS defaults do compose —
+// que NÃO são literais daqui: saem dos arquivos comitados (o valor declarado de
+// `IMAGE_REGISTRY`/`IMAGE_NAMESPACE`), pela mesma leitura do `registry-source`.
+// Uma segunda fonte de verdade (um literal de reserva) seria a próxima
+// divergência — e sobreviveria à troca de registry em silêncio.
 //
 // Usage:
 //   node scripts/ensure-runner-image.mjs                  # garante (publica se faltar)

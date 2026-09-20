@@ -71,6 +71,11 @@ services:
       - ./mini-services/realtime:/app
       - /app/node_modules
     command: bun --hot index.ts
+    environment:
+      # Sem isto o serviço cai no default `redis://localhost:6379` (dentro do
+      # container não há nada escutando) e o adapter pub/sub fica inerte: o
+      # realtime sobe, mas deixa de escalar/entregar entre réplicas.
+      REDIS_URL: redis://redis:6379
     depends_on:
       redis:
         condition: service_healthy
@@ -191,18 +196,23 @@ services:
     command: osrm-routed --algorithm mld /data/governador-valadares.osrm
     profiles:
       - routing
+    # A imagem do OSRM é Debian SEM curl/wget: o check antigo não tinha como
+    # passar (o container ficava `unhealthy` para sempre, com o serviço de fato
+    # respondendo rota) — o request vai pelo /dev/tcp do bash, que é o que a
+    # imagem tem, e o veredito continua medindo uma ROTA real, não a porta.
+    # `start_period` maior: o osrm-routed carrega o grafo em memória no boot.
     healthcheck:
       test:
         [
           "CMD",
-          "curl",
-          "-f",
-          "http://localhost:5000/route/v1/driving/-41.9736,-19.8125;-41.9481,-18.8505?overview=false",
+          "bash",
+          "-c",
+          "exec 3<>/dev/tcp/127.0.0.1/5000 && { printf 'GET /route/v1/driving/-41.9736,-19.8125;-41.9481,-18.8505?overview=false HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3; cat <&3; } | grep -Eq 'code.*Ok'",
         ]
       interval: 15s
       timeout: 10s
       retries: 5
-      start_period: 10s
+      start_period: 60s
 
 volumes:
   pgdata_dev:

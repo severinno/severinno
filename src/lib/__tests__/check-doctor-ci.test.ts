@@ -38,6 +38,10 @@ import {
 } from "../../../scripts/check-doctor-ci.mjs"
 import { MIRROR_VARIABLES } from "../../../scripts/check-actrc-sync.mjs"
 import { MERGE_OWNER_PIPELINE, REQUIRED_CHECKS_MANIFEST } from "../../../scripts/forge-doctor.mjs"
+// O VALOR DECLARADO do repositório: o doctor que o gate roda mede o REPO (não o
+// `cwd` da fixture), então a expectativa tem de vir da mesma declaração que o
+// espelho — cravar o host aqui mediria o valor de ontem.
+import { declaredImageValue } from "../../../scripts/registry-source.mjs"
 
 const ROOT = process.cwd()
 const MODULE_PATH = join(ROOT, "scripts", "check-doctor-ci.mjs")
@@ -78,7 +82,7 @@ function makeRepo(opts: { ns?: string; registry?: string } = {}): string {
     }),
   )
 
-  const registry = opts.registry ?? "ghcr.io"
+  const registry = opts.registry ?? declaredImageValue(ROOT, "IMAGE_REGISTRY")?.value ?? ""
   const ns = opts.ns ?? "severinno"
   // Os TRÊS espelhos que o doctor compara no perfil (o do act local, o template
   // comitado e o do host — este último é gitignored no repo real e aqui existe
@@ -104,7 +108,11 @@ function runGate(
   return { status: res.status, stdout: res.stdout, stderr: res.stderr }
 }
 
-const VALUES = { BUN_VERSION: "1.3.14", IMAGE_REGISTRY: "ghcr.io", IMAGE_NAMESPACE: "severinno" }
+const VALUES = {
+  BUN_VERSION: "1.3.14",
+  IMAGE_REGISTRY: declaredImageValue(ROOT, "IMAGE_REGISTRY")?.value ?? "",
+  IMAGE_NAMESPACE: declaredImageValue(ROOT, "IMAGE_NAMESPACE")?.value ?? "",
+}
 
 // ── doctorFlags — a régua vem do registro, não de uma lista à mão ─────────
 
@@ -124,9 +132,9 @@ describe("doctorFlags — as flags saem de MIRROR_VARIABLES", () => {
       "--expected",
       "1.3.14",
       "--expected-var",
-      "IMAGE_REGISTRY=ghcr.io",
+      `IMAGE_REGISTRY=${VALUES.IMAGE_REGISTRY}`,
       "--expected-var",
-      "IMAGE_NAMESPACE=severinno",
+      `IMAGE_NAMESPACE=${VALUES.IMAGE_NAMESPACE}`,
     ])
   })
 

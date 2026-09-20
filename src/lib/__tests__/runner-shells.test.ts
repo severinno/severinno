@@ -45,6 +45,13 @@ import {
   runnerImageRef,
   shellsDriftReport,
 } from "../../../scripts/runner-shells.mjs"
+// A ref da imagem é DERIVADA do declarado: cravar o registry aqui faria este
+// teste medir o valor de ontem (e verde é o que ele não pode dar por engano).
+import { declaredImageValue } from "../../../scripts/registry-source.mjs"
+
+const ROOT = process.cwd()
+const DECLARED_REGISTRY = declaredImageValue(ROOT, "IMAGE_REGISTRY")?.value ?? ""
+const DECLARED_NAMESPACE = declaredImageValue(ROOT, "IMAGE_NAMESPACE")?.value ?? ""
 
 const SCRIPT = resolve(process.cwd(), "scripts/runner-shells.mjs")
 const DECLARED = RUNNER_SHELLS as Record<string, string>
@@ -358,7 +365,9 @@ describe("a ref da imagem é DERIVADA do env (nunca literal)", () => {
     expect(
       runnerImageRef({ IMAGE_REGISTRY: "reg.io", IMAGE_NAMESPACE: "org", BUN_VERSION: "9.9.9" }),
     ).toBe("reg.io/org/ubuntu-bun:9.9.9")
-    expect(runnerImageRef({ BUN_VERSION: "1.2.3" })).toBe("ghcr.io/severinno/ubuntu-bun:1.2.3")
+    expect(runnerImageRef({ BUN_VERSION: "1.2.3" })).toBe(
+      `${DECLARED_REGISTRY}/${DECLARED_NAMESPACE}/ubuntu-bun:1.2.3`,
+    )
     expect(runnerImageRef({})).toBeNull()
     expect(runnerImageRef({ BUN_VERSION: "  " })).toBeNull()
   })
