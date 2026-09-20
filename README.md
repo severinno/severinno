@@ -935,6 +935,18 @@ da MESMA construção de diff (`scripts/unified-patch.mjs`), com CONTEXTO no hun
 hunk sem contexto é recusado pelo `git apply`, e o comentário prometeria um remendo
 inaplicável em silêncio.
 
+**A pipeline não enumera fixers — ela invoca o REGISTRO** (`--all`, com o
+`--backend` da forja): **um passo por pipeline**, e a cobertura sai de `FIXERS`, não
+de uma lista escrita no YAML. Antes havia um passo por fixer nas DUAS pontas, o que
+fazia de um fixer novo um trabalho de lembrar de editar dois workflows — e o passo
+copiado de uma forja para a outra publicaria no canal errado, com o token errado,
+sem nenhum veredito. O `check-forge-parity` mede isso como **quinta regra** (o canal
+não é gate, então as quatro regras de classificação não o alcançavam): um passo por
+pipeline, com `--all`, com a cobertura IGUAL à do registro (o fixer que ficar de fora
+sai NOMEADO) e com o `--backend` da própria forja — e a prova por mutação G1–G3
+mostra que remover o passo, estreitar a cobertura ou trocar o backend volta a
+falhar o PR.
+
 O `check-workflow-run-syntax.mjs` julga, além do PARSING, o `shell:` declarado
 contra o que a imagem do runner MEDIU (ref, digest, data e o comando em
 `--shells`): um passo com `shell: pwsh` num runner sem `pwsh` morria com

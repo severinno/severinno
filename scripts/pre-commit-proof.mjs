@@ -197,6 +197,17 @@ export const GUARD_CLOSURE = [
   "check-mutation-jobs.mjs",
   "check-unused-deps.mjs",
   "check-mutation-timing-contract.mjs",
+  // O CANAL DO REMEDIO entrou no fecho porque o `check-forge-parity` passou a
+  // importar o REGISTRO de fixers (`FIXERS`) dele: a regra 5 da paridade mede a
+  // COBERTURA do canal nas duas forjas, e uma lista de fixers escrita no guard
+  // envelheceria no primeiro fixer novo — que e exatamente o que a regra existe
+  // para impedir. A cadeia que vem junto (a mecanica do comentario e o
+  // publicador de issue) nao tem dependencia de pacote: ela e copiada para o
+  // fixture, e o teste de completude (`closureProblems`) acusa a referencia
+  // nova na hora em vez de deixar o fixture morrer com "module not found".
+  "pr-remedy-comment.mjs",
+  "pr-comment-channel.mjs",
+  "issue-publish.mjs",
 ]
 
 export const WORKFLOW = `${GITHUB_WORKFLOW_DIR}/ci.yml`

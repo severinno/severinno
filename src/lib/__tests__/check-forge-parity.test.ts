@@ -40,7 +40,10 @@ import {
   executableLines,
   executedCommands,
   findParityViolations,
+  findRemedyChannelViolations,
   missingInvariants,
+  remedyChannelSteps,
+  remedyFixers,
   runCommands,
 } from "../../../scripts/check-forge-parity.mjs"
 
@@ -97,9 +100,33 @@ const REAL_LINES = [
 /** Pipeline sintética que executa TODOS os invariantes do CORE. */
 const REALISTIC = REAL_LINES.join("\n")
 
-/** A mesma pipeline sem as linhas que contêm qualquer dos fragmentos. */
+/**
+ * A linha do CANAL DO REMÉDIO (o passo que publica o patch no PR).
+ *
+ * Ele NÃO é um gate (não verifica nada), então não entra em `REAL_LINES` — mas a
+ * régua da paridade o mede, e é por isso que a fixture de paridade é POR FORJA:
+ * o único argumento que muda entre as duas é o `--backend`.
+ */
+const CHANNEL_LINE = (forge: string) =>
+  `      - run: node scripts/pr-remedy-comment.mjs --backend ${forge} --all`
+
+/** A pipeline COM o canal do remédio, com o backend da forja. */
+const comCanal = (forge: string, linhas: string[] = REAL_LINES) =>
+  [...linhas, CHANNEL_LINE(forge)].join("\n")
+
+const REALISTIC_FORGE = comCanal("gitea")
+const REALISTIC_MIRROR = comCanal("github")
+
+/**
+ * A mesma pipeline sem as linhas que contêm qualquer dos fragmentos — COM o canal
+ * da forja: o que estas mutações medem é o INVARIANTE, e o canal (que é régua, não
+ * gate) não pode entrar como ruído no diagnóstico.
+ */
 function without(...fragments: string[]): string {
-  return REAL_LINES.filter((line) => !fragments.some((f) => line.includes(f))).join("\n")
+  return comCanal(
+    "gitea",
+    REAL_LINES.filter((line) => !fragments.some((f) => line.includes(f))),
+  )
 }
 
 describe("executableLines", () => {
@@ -295,7 +322,9 @@ describe("findParityViolations", () => {
 
   it("aprova quando as duas pipelines executam o CORE", () => {
     expect(
-      findParityViolations(io({ [PIPELINES[0].file]: REALISTIC, [PIPELINES[1].file]: REALISTIC })),
+      findParityViolations(
+        io({ [PIPELINES[0].file]: REALISTIC_FORGE, [PIPELINES[1].file]: REALISTIC_MIRROR }),
+      ),
     ).toEqual([])
   })
 
@@ -303,7 +332,7 @@ describe("findParityViolations", () => {
     const v = findParityViolations(
       io({
         [PIPELINES[0].file]: without("registry-source"),
-        [PIPELINES[1].file]: REALISTIC,
+        [PIPELINES[1].file]: REALISTIC_MIRROR,
       }),
     )
     expect(v).toHaveLength(1)
@@ -316,8 +345,9 @@ describe("findParityViolations", () => {
   it("reprova GATE NÃO CLASSIFICADO — o buraco que a lista à mão não via", () => {
     const v = findParityViolations(
       io({
-        [PIPELINES[0].file]: REALISTIC,
-        [PIPELINES[1].file]: `${REALISTIC}\n      - run: node scripts/check-recem-criado.mjs`,
+        [PIPELINES[0].file]: REALISTIC_FORGE,
+        [PIPELINES[1].file]:
+          `${REALISTIC_MIRROR}\n      - run: node scripts/check-recem-criado.mjs`,
       }),
     )
     expect(v).toHaveLength(1)
@@ -330,8 +360,8 @@ describe("findParityViolations", () => {
   it("reprova classificação GITHUB_ONLY que na verdade RODA na forja (razão stale)", () => {
     const v = findParityViolations(
       io({
-        [PIPELINES[0].file]: `${REALISTIC}\n      - run: node scripts/check-unused-deps.mjs`,
-        [PIPELINES[1].file]: REALISTIC,
+        [PIPELINES[0].file]: `${REALISTIC_FORGE}\n      - run: node scripts/check-unused-deps.mjs`,
+        [PIPELINES[1].file]: REALISTIC_MIRROR,
       }),
     )
     expect(v).toHaveLength(1)
@@ -342,23 +372,155 @@ describe("findParityViolations", () => {
   it("NÃO exige na forja os gates isentos de GitHub", () => {
     const v = findParityViolations(
       io({
-        [PIPELINES[0].file]: REALISTIC,
-        [PIPELINES[1].file]: `${REALISTIC}\n      - run: scripts/audit-blob-crlf-history.sh`,
+        [PIPELINES[0].file]: REALISTIC_FORGE,
+        [PIPELINES[1].file]: `${REALISTIC_MIRROR}\n      - run: scripts/audit-blob-crlf-history.sh`,
       }),
     )
     expect(v).toEqual([])
   })
 
   it("reprova o espelho do GitHub quando é ele que perde o gate", () => {
-    const v = findParityViolations(io({ [PIPELINES[0].file]: REALISTIC, [PIPELINES[1].file]: "" }))
-    expect(v).toHaveLength(CORE_INVARIANTS.length)
-    expect(v.every((m) => m.includes(PIPELINES[1].file) && m.includes("espelho"))).toBe(true)
+    const v = findParityViolations(
+      io({ [PIPELINES[0].file]: REALISTIC_FORGE, [PIPELINES[1].file]: "" }),
+    )
+    // A pipeline vazia perde os invariantes do CORE **e** o canal do remédio:
+    // as duas classes de régua entram no mesmo veredito, dizendo qual é qual.
+    const doCore = v.filter((m) => m.includes("invariante do CORE"))
+    expect(doCore).toHaveLength(CORE_INVARIANTS.length)
+    expect(v.some((m) => m.includes("CANAL DO REMEDIO"))).toBe(true)
+    expect(v.every((m) => m.includes(PIPELINES[1].file))).toBe(true)
+    expect(
+      v.filter((m) => m.includes("invariante do CORE")).every((m) => m.includes("espelho")),
+    ).toBe(true)
   })
 
   it("reprova pipeline declarada que não existe (arquivo fantasma no guard)", () => {
-    const v = findParityViolations(io({ [PIPELINES[0].file]: REALISTIC }))
+    const v = findParityViolations(io({ [PIPELINES[0].file]: REALISTIC_FORGE }))
     expect(v).toHaveLength(1)
     expect(v[0]).toContain("nao existe")
+  })
+})
+
+// ── o canal do remédio: a régua DERIVADA do registro ─────────────────────
+//
+// O canal NÃO é um gate — ele publica o patch do remédio no PR —, então as regras
+// de gate/invariante não o alcançam. O que se prova aqui é a paridade DELE: as duas
+// forjas com UM passo, o backend de cada uma, e a cobertura vinda do REGISTRO (não
+// de uma lista escrita nos dois workflows, que é o que fazia um fixer novo
+// depender de alguém lembrar de editar dois arquivos).
+
+describe("o canal do remédio (paridade entre as forjas)", () => {
+  const io = (files: Record<string, string | null>) => (path: string) => files[path] ?? null
+  const par = (forge: string, mirror: string) =>
+    findRemedyChannelViolations(io({ [PIPELINES[0].file]: forge, [PIPELINES[1].file]: mirror }))
+
+  /** Uma pipeline com o CORE inteiro e UMA linha de canal, dada. */
+  const comLinha = (cmd: string) => [...REAL_LINES, `      - run: ${cmd}`].join("\n")
+  const canal = (cmd: string) => `node scripts/pr-remedy-comment.mjs ${cmd}`
+
+  it("lê o passo: backend da forja, `--all` e nenhum fixer enumerado", () => {
+    const passos = remedyChannelSteps(REALISTIC_FORGE)
+    expect(passos).toHaveLength(1)
+    expect(passos[0].backend).toBe("gitea")
+    expect(passos[0].todos).toBe(true)
+    expect(passos[0].fixers).toEqual([])
+  })
+
+  it("passo COMENTADO não conta como canal (o guard protege o que EXECUTA)", () => {
+    const comentado = `${REAL_LINES.join("\n")}\n      # - run: ${canal("--backend gitea --all")}`
+    expect(remedyChannelSteps(comentado)).toEqual([])
+  })
+
+  it("as duas forjas com `--all` e o backend de cada uma: paridade", () => {
+    expect(par(REALISTIC_FORGE, REALISTIC_MIRROR)).toEqual([])
+  })
+
+  it("canal AUSENTE numa forja é violação nomeando o passo e a pipeline", () => {
+    const v = par(REALISTIC, REALISTIC_MIRROR)
+    expect(v).toHaveLength(1)
+    expect(v[0]).toContain("CANAL DO REMEDIO")
+    expect(v[0]).toContain(PIPELINES[0].file)
+    expect(v[0]).toContain("dona do merge")
+    expect(v[0]).toContain("pr-remedy-comment.mjs")
+  })
+
+  it("DOIS passos do canal são violação (o canal é derivado, não enumerado)", () => {
+    const v = par(
+      comLinha(canal("--backend gitea --all")) +
+        "\n" +
+        `      - run: ${canal("--backend gitea --fixer run-syntax")}`,
+      REALISTIC_MIRROR,
+    )
+    expect(v.some((m) => m.includes("passos do canal do remedio"))).toBe(true)
+  })
+
+  it("sem `--backend` é violação (o publicador não sabe em qual forja comentar)", () => {
+    const v = par(comLinha(canal("--all")), REALISTIC_MIRROR)
+    expect(v.some((m) => m.includes("nao declara --backend"))).toBe(true)
+  })
+
+  it("o `--backend` da OUTRA forja é violação (o passo copiado publica no canal errado)", () => {
+    const v = par(comLinha(canal("--backend github --all")), REALISTIC_MIRROR)
+    expect(v.some((m) => m.includes("backend de OUTRA forja"))).toBe(true)
+  })
+
+  it("lista à mão deixa fixers de fora: sai NOMEADO o que o REGISTRO tem e a pipeline não publica", () => {
+    // O nome vem do REGISTRO (não é cravado aqui): a régua tem de valer para o
+    // fixer que existir, e não para os dois de hoje.
+    const fixers = remedyFixers()
+    const escolhido = fixers[0]
+    const deFora = fixers.slice(1)
+    expect(deFora.length).toBeGreaterThan(0)
+    const v = par(
+      comLinha(canal(`--backend gitea --fixer ${escolhido}`)),
+      comLinha(canal(`--backend github --fixer ${escolhido}`)),
+    )
+    for (const id of deFora) expect(v.join(" | ")).toContain(id)
+    expect(v.filter((m) => m.includes("NAO publica")).length).toBe(2)
+  })
+
+  it("um id que o REGISTRO não tem é violação (o CLI sairia 3 no PR já aberto)", () => {
+    const v = par(comLinha(canal("--backend gitea --fixer fixer-que-nao-existe")), REALISTIC_MIRROR)
+    expect(v.some((m) => m.includes("que o REGISTRO nao tem"))).toBe(true)
+  })
+
+  it("o comando canônico que DIVERGE entre as forjas é violação (o backend é o único que muda)", () => {
+    const v = par(
+      comLinha(canal("--backend gitea --all")),
+      comLinha(canal("--backend github --all --json")),
+    )
+    expect(v.some((m) => m.includes("DIVERGE entre as forjas"))).toBe(true)
+  })
+
+  it("um fixer NOVO no registro herda o passo das DUAS forjas com `--all`", () => {
+    const futuro = "fixer-de-amanha"
+    const fixers = [...remedyFixers(), futuro]
+    // Com `--all` nas duas pontas, o fixer novo já está coberto: nada a fazer —
+    // é esta propriedade que o `--all` existe para dar ("um fixer novo herda o
+    // passo do CI sem edição de workflow").
+    expect(
+      findRemedyChannelViolations(
+        io({ [PIPELINES[0].file]: REALISTIC_FORGE, [PIPELINES[1].file]: REALISTIC_MIRROR }),
+        PIPELINES,
+        fixers,
+      ),
+    ).toEqual([])
+
+    // E a MESMA régua, com as listas à mão de hoje, reprova nas DUAS forjas
+    // nomeando o fixer novo: a cobertura não pode depender de quem lembrou de
+    // editar os dois arquivos.
+    const listaAtual = remedyFixers()
+      .map((id) => `--fixer ${id}`)
+      .join(" ")
+    const v = findRemedyChannelViolations(
+      io({
+        [PIPELINES[0].file]: comLinha(canal(`--backend gitea ${listaAtual}`)),
+        [PIPELINES[1].file]: comLinha(canal(`--backend github ${listaAtual}`)),
+      }),
+      PIPELINES,
+      fixers,
+    )
+    expect(v.filter((m) => m.includes(futuro))).toHaveLength(2)
   })
 })
 
@@ -401,6 +563,52 @@ describe("repositório real", () => {
     // E o diagnóstico é ACIONÁVEL: nomeia a pipeline, o papel e o porquê.
     expect(violations.join(" | ")).toContain(PIPELINES[0].file)
     expect(violations.join(" | ")).toContain("dona do merge")
+  })
+
+  it("o canal do remédio: UM passo por forja, o MESMO comando e a cobertura do REGISTRO", () => {
+    const passos = PIPELINES.map((p) => ({
+      forge: p.forge,
+      passos: remedyChannelSteps(read(p.file) ?? ""),
+    }))
+    for (const { forge, passos: doForja } of passos) {
+      expect(doForja, `canal do remédio em ${forge}`).toHaveLength(1)
+      expect(doForja[0].backend).toBe(forge)
+      expect(doForja[0].todos, `--all em ${forge}`).toBe(true)
+    }
+    // O comando canônico é o MESMO nas duas (o backend é o único que muda) — é a
+    // paridade entre Gitea e GitHub, medida no texto real.
+    const canonicos = new Set(
+      passos.map(({ passos: doForja }) =>
+        doForja[0].comando.replace(/--backend\s+\S+/, "--backend <forja>"),
+      ),
+    )
+    expect(canonicos.size).toBe(1)
+    // E a cobertura é o REGISTRO — o conjunto derivado, não uma lista à mão.
+    expect(remedyFixers().length).toBeGreaterThan(0)
+    expect(findRemedyChannelViolations(read)).toEqual([])
+  })
+
+  // MUTAÇÃO: o passo do canal trocado por uma LISTA à mão (`--all` → `--fixer X`).
+  // Ela opera sobre o TEXTO REAL do ci.yml, então também cai nesta rede se alguém
+  // "otimizar" o passo enumerando os fixers (o fixer que ficar de fora sai
+  // NOMEADO, com o nome LIDO do registro).
+  it("MUTAÇÃO: `--all` trocado por uma lista à mão vira violação nomeando o fixer que sobrou", () => {
+    const forge = read(PIPELINES[0].file)
+    expect(forge, "o ci.yml da forja sumiu — a mutação não tem onde operar").not.toBeNull()
+    const fixers = remedyFixers()
+    const escolhido = fixers[fixers.length - 1]
+    const deFora = fixers.filter((f) => f !== escolhido)
+    expect(deFora.length).toBeGreaterThan(0)
+
+    const alvo = new RegExp(`--backend gitea --all\\s*$`, "m")
+    expect(forge, "o passo do canal mudou de forma — atualize a mutação").toMatch(alvo)
+    const mutado = forge!.replace(alvo, `--backend gitea --fixer ${escolhido}`)
+
+    const v = findRemedyChannelViolations((path: string) =>
+      path === PIPELINES[0].file ? mutado : read(path),
+    )
+    for (const id of deFora) expect(v.join(" | ")).toContain(id)
+    expect(v.join(" | ")).toContain("--all")
   })
 
   it("todo gate descoberto no repositório real está classificado", () => {

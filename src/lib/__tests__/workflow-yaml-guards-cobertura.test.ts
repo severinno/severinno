@@ -184,6 +184,11 @@ function montarParidade() {
   const linhaNaoClassificado = gitea.linhaDe("      - run: node scripts/check-inventado-xyz.mjs")
   gitea.add("      - uses: actions/checkout@v4")
   const linhaUsesExterno = gitea.linhaDe("      - uses: actions/checkout@v4")
+  // O CANAL DO REMÉDIO: régua do `check-forge-parity` que NÃO é gate (publica o
+  // patch no PR). Ele não entra em `declarados` (não é descoberto por
+  // `discoverGates`) — e por isso o fixture o traz: sem ele, a violação do canal
+  // entraria no fixture como uma terceira categoria de diagnóstico.
+  gitea.add("      - run: node scripts/pr-remedy-comment.mjs --backend gitea --all")
   void lCoreGitea
 
   const github = fixture()
@@ -197,6 +202,7 @@ function montarParidade() {
   // Reusable LOCAL: ponto de entrada de gates → É descoberto (e é GITHUB_ONLY).
   github.add("      - uses: ./.github/workflows/seed-guards.yml")
   const ghGithubOnly = github.linhaDe("      - uses: ./.github/workflows/seed-guards.yml")
+  github.add("      - run: node scripts/pr-remedy-comment.mjs --backend github --all")
 
   const declarados: GateDeclarado[] = [
     {

@@ -159,32 +159,27 @@ jobs:
       # AQUI via o check vermelho e o log do bash, e reescrevia à mão a cicatriz
       # que o `--fix` remenda.
       #
+      # UM passo, e o CONJUNTO de fixers sai do REGISTRO (`FIXERS`): `--all`
+      # publica um comentário por fixer mecânico (cada um com o SEU marcador, e a
+      # reconciliação de um não toca o comentário do outro). Um fixer NOVO herda
+      # este passo sem edição de workflow — o `check-forge-parity` exige que as
+      # DUAS forjas invoquem exatamente este comando, com o `--backend` de cada
+      # uma; antes havia um passo por fixer, e o terceiro só entraria aqui se
+      # alguém lembrasse de copiá-lo.
+      #
       # `always()` porque o caso de uso é o gate VERMELHO; com ele verde o passo
-      # apenas retira o comentário que ficou para trás (o ciclo é fechado, não
-      # deixado aberto). Quem decide o que publicar é o SCRIPT — o token ausente
-      # sai como `::notice::` dele, não como um `if` que esconde a ausência.
-      - name: Publicar o remendo como comentário no PR
+      # apenas retira os comentários que ficaram para trás (o ciclo é fechado,
+      # não deixado aberto). Quem decide o que publicar é o SCRIPT — o token
+      # ausente sai como `::notice::` dele, não como um `if` que esconde a
+      # ausência.
+      - name: Publicar o remendo como comentário no PR (todos os fixers do registro)
         if: always()
         env:
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
           GITEA_URL: ${{ secrets.GITEA_URL }}
           GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
           REMEDY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: node scripts/pr-remedy-comment.mjs --backend gitea
-
-      # O MESMO canal para o SEGUNDO fixer mecânico (a classe SIGPIPE): o gate
-      # roda no job de guards, e o remédio dele chega ao PR por AQUI — o passo
-      # que já tem token e já é o dono do canal. O `--fixer` escolhe o DEFEITO;
-      # cada um tem o seu marcador, então os dois comentários convivem no mesmo
-      # PR e cada um é retirado quando o SEU defeito some.
-      - name: Publicar o remendo do SIGPIPE como comentário no PR
-        if: always()
-        env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-          GITEA_URL: ${{ secrets.GITEA_URL }}
-          GITEA_REPOSITORY: ${{ secrets.GITEA_REPOSITORY }}
-          REMEDY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: node scripts/pr-remedy-comment.mjs --backend gitea --fixer pipefail-sigpipe
+        run: node scripts/pr-remedy-comment.mjs --backend gitea --all
 
       # Contrato de documentação das PROVAS (família `prove-*`/`doctor`): exige,
       # para CADA comando, um bloco com o resultado esperado — e CONFRONTA esse

@@ -4742,9 +4742,23 @@ intermediário. A construção do diff é a **mesma** do outro fixer
 hunk e a fusão de janelas vizinhas. Sem contexto o `git apply` **recusa** o hunk
 — e antes disso o patch do comentário aplicava só quando a cicatriz era a ÚLTIMA
 linha do arquivo. `scripts/pr-remedy-comment.mjs` publica esse patch como
-comentário no PR com `--fixer pipefail-sigpipe`, e **cada fixer tem o SEU
-marcador**: um marcador comum faria a reconciliação de um retirar o comentário do
-outro, que ainda valia.
+comentário no PR, e **cada fixer tem o SEU marcador**: um marcador comum faria a
+reconciliação de um retirar o comentário do outro, que ainda valia.
+
+**A pipeline invoca o REGISTRO, e não uma lista de fixers** (`--all`, um passo por
+pipeline, com o `--backend` da forja). A enumeração à mão tinha o custo exato que a
+descoberta das CLASSES do remédio já tinha resolvido do outro lado: um fixer novo
+só chegava ao PR se alguém lembrasse de copiar o passo nas DUAS pontas — e o passo
+copiado de uma forja para a outra publicaria no canal errado (o PR da Gitea
+comentado no espelho, com o token da outra) sem nenhum veredito, porque o canal
+não é um gate. Quem mede isso agora é a **quinta regra do `check-forge-parity`**
+(o canal não passa por `discoverGates`, então as quatro regras de classificação
+não o alcançavam): exatamente UM passo por pipeline, `--all`, a cobertura IGUAL à
+do registro (o fixer que ficar de fora sai NOMEADO, lido de `FIXERS` — nunca de
+uma lista do guard) e o `--backend` da própria forja; a régua do comando canônico
+(uma régua, e o backend é o único argumento que muda) fecha a paridade. As
+mutações **G1–G3** provam as três pontas: o passo removido da forja, a cobertura
+estreitada para `--fixer <um>` e o backend da outra forja.
 
 **A prova de que ele morde** (`scripts/test-mutation-pipefail-sigpipe.sh`, matriz
 do master): o guard roda contra fixtures, e a evidência é o EXIT CODE dele —

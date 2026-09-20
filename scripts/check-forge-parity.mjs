@@ -72,6 +72,22 @@
 //   3. Um gate classificado como GITHUB_ONLY nao roda na forja (classificacao
 //      que envelheceu e vira ruido/mentira — tem que ser corrigida).
 //   4. Comentarios sao ignorados (o guard protege o que EXECUTA).
+//   5. O CANAL DO REMEDIO roda nas DUAS forjas, UMA vez cada, com o backend DA
+//      forja, com a cobertura do REGISTRO (`--all` — nao uma lista de fixers a
+//      mao) e com o MESMO comando canonico nas duas (o backend e o unico
+//      argumento que muda).
+//
+// POR QUE A REGRA 5 EXISTE (o canal nao e gate, e era invisivel AQUI):
+// `scripts/pr-remedy-comment.mjs` nao verifica nada — ele PUBLICA o patch do
+// remendo no PR —, entao ele nao entra em `discoverGates`/`CORE_INVARIANTS` e
+// nenhuma das regras 1-4 o alcancava. A cobertura dele vinha de uma lista escrita
+// nos DOIS workflows (um passo por fixer): um fixer novo so chegava ao PR se
+// alguem lembrasse de copiar o passo nas duas pontas, e o `--backend` errado
+// (passo copiado de uma forja para a outra) publicaria no canal errado, com o
+// token errado, sem nenhum veredito. Agora o passo invoca o REGISTRO
+// (`--all`, o conjunto sai de `FIXERS`) e esta regra mede as duas pontas: e ela
+// que faz "um fixer novo herda o passo do CI" valer como FATO, e nao como
+// promessa de quem lembrar de editar dois arquivos.
 // =============================================================================
 
 import { existsSync } from "node:fs"
@@ -86,6 +102,12 @@ import {
   workflowRunBodies,
   workflowYamlValidity,
 } from "./forge-workflows.mjs"
+
+// O REGISTRO de fixers do canal do remédio — a fonte única da COBERTURA. O
+// guard o importa de propósito: a régua da paridade não pode ser uma lista à mão
+// de fixers (ela envelheceria no primeiro fixer novo, que é exatamente o que
+// esta regra existe para impedir).
+import { FIXERS } from "./pr-remedy-comment.mjs"
 
 const ROOT = process.cwd()
 
@@ -887,6 +909,169 @@ export function missingInvariants(content, invariants = CORE_INVARIANTS) {
     .map((inv) => inv.id)
 }
 
+// ── O canal do remédio: derivado do REGISTRO, um passo por pipeline ─────────
+
+/**
+ * O script do canal do remédio e as flags que descrevem uma invocação dele.
+ *
+ * O canal NÃO é um gate (não verifica nada: publica o patch do remédio no PR), e
+ * por isso ele não entra em `discoverGates`/`CORE_INVARIANTS` — mas ele é uma
+ * RÉGUA que existe nas duas forjas, e é isso que esta seção mede: a cobertura
+ * dele vinha de uma lista escrita nos DOIS workflows (um passo por fixer), e um
+ * fixer novo só chegava ao PR se alguém lembrasse de copiar o passo nas duas
+ * pontas. O que a pipeline invoca agora é o REGISTRO (`--all`), e a régua daqui
+ * é a que faz isso valer.
+ */
+export const REMEDY_CHANNEL = {
+  script: "scripts/pr-remedy-comment.mjs",
+  allFlag: "--all",
+  fixerFlag: "--fixer",
+  backendFlag: "--backend",
+}
+
+/** Os fixers que o REGISTRO declara — a fonte única da cobertura esperada. */
+export function remedyFixers() {
+  return Object.keys(FIXERS)
+}
+
+/**
+ * Os passos de uma pipeline que invocam o canal do remédio.
+ *
+ * Cada passo é UMA linha de `run:` — a mesma regua de linha das outras secoes
+ * deste guard (comentario e fim de linha fora, expressao do runner mascarada, e
+ * a declaracao `defaults.run` descartada), para um passo COMENTADO nao contar
+ * como canal existente.
+ *
+ * @param {string} content  conteudo do arquivo de workflow
+ * @returns {{comando: string, backend: string|null, todos: boolean, fixers: string[]}[]}
+ */
+export function remedyChannelSteps(content) {
+  const linhas = linhasExecutaveis(content)
+  const passos = []
+  for (const linha of linhas) {
+    if (!linha.includes(REMEDY_CHANNEL.script)) continue
+    const tokens = linha.trim().split(/\s+/)
+    const valorDe = (flag) => {
+      const i = tokens.indexOf(flag)
+      return i === -1 || tokens[i + 1] === undefined ? null : tokens[i + 1]
+    }
+    const fixers = []
+    for (let i = 0; i < tokens.length; i += 1) {
+      if (tokens[i] === REMEDY_CHANNEL.fixerFlag && tokens[i + 1] !== undefined)
+        fixers.push(tokens[i + 1])
+    }
+    passos.push({
+      comando: linha.trim(),
+      backend: valorDe(REMEDY_CHANNEL.backendFlag),
+      todos: tokens.includes(REMEDY_CHANNEL.allFlag),
+      fixers,
+    })
+  }
+  return passos
+}
+
+/**
+ * A forma do comando SEM o valor do `--backend`: e o que as duas forjas tem de
+ * ter igual (uma so regua, com o backend da vez).
+ *
+ * @param {string} comando
+ * @returns {string}
+ */
+export function canonicalRemedyCommand(comando) {
+  return String(comando).replace(/--backend\s+\S+/, `--backend <forja>`)
+}
+
+/**
+ * As violacoes do canal do remédio (vazio = ok).
+ *
+ * Cinco regras, todas DERIVADAS — nenhuma delas é uma lista de fixers escrita
+ * aqui:
+ *
+ *   1. cada pipeline tem EXATAMENTE UM passo do canal. Zero é o canal ausente
+ *      numa forja (o PR de lá não recebe o remédio); mais de um é a ENUMERAÇÃO
+ *      que esta regra aposentou (dois passos são dois lugares para um esquecer);
+ *   2. a cobertura é a do REGISTRO: com `--all` é o registro inteiro; com
+ *      `--fixer <id>` é a lista DITA na linha, e compara-se com o registro —
+ *      um fixer que o registro tem e a pipeline não publica sai NOMEADO (é o
+ *      buraco que um `--all` trocado por uma lista à mão abriria em silêncio);
+ *   3. um id que o registro NÃO tem é violação (o CLI sairia 3 no PR, depois de
+ *      o pior lugar para se descobrir isso: quem abre o PR);
+ *   4. o `--backend` tem de ser o DA FORJA: a copia do passo de uma forja para
+ *      a outra publica no canal errado (um PR da Gitea comentado no espelho, com
+ *      o token da outra) e nenhum outro guard veria isso;
+ *   5. o comando canonico (sem o valor do backend) tem de ser IGUAL nas duas —
+ *      presenca do passo nas duas nao basta: `--all` numa e `--fixer x` na outra
+ *      e a mesma classe de divergencia que a regua do `canonicalCommandOf` pega
+ *      nos gates.
+ *
+ * @param {(path: string) => string|null} readFile
+ * @param {{ forge: string, file: string, mergeOwner: boolean }[]} pipelines
+ * @param {string[]} fixers  os ids do REGISTRO
+ * @returns {string[]}
+ */
+export function findRemedyChannelViolations(
+  readFile,
+  pipelines = PIPELINES,
+  fixers = remedyFixers(),
+) {
+  const violations = []
+  const porForja = new Map()
+  for (const pipeline of pipelines) {
+    const content = readFile(pipeline.file)
+    if (content === null) continue // pipeline ausente já é violação em findParityViolations
+    const role = pipeline.mergeOwner ? "dona do merge" : "espelho"
+    const passos = remedyChannelSteps(content)
+    porForja.set(pipeline.forge, passos)
+    if (passos.length === 0) {
+      violations.push(
+        `${pipeline.file} (${pipeline.forge}, ${role}): o CANAL DO REMEDIO nao roda aqui — nenhum passo invoca '${REMEDY_CHANNEL.script}'. O remendo mecanico dos gates tem de chegar ao PR das DUAS forjas; sem este passo, quem abre o PR por aqui reescreve a mao o que o fixer remenda.`,
+      )
+      continue
+    }
+    if (passos.length > 1) {
+      violations.push(
+        `${pipeline.file} (${pipeline.forge}, ${role}): ${passos.length} passos do canal do remedio — ele e DERIVADO do registro (${REMEDY_CHANNEL.allFlag}), nao enumerado: um passo por fixer e um lugar a mais para esquecer um fixer novo. Passos: ${passos.map((p) => `\`${p.comando}\``).join(", ")}`,
+      )
+    }
+    for (const passo of passos) {
+      if (passo.backend === null) {
+        violations.push(
+          `${pipeline.file} (${pipeline.forge}, ${role}): o passo do canal do remedio nao declara ${REMEDY_CHANNEL.backendFlag} — sem ele o publicador nao sabe em qual forja comentar (esperado: \`${pipeline.forge}\`).`,
+        )
+      } else if (passo.backend !== pipeline.forge) {
+        violations.push(
+          `${pipeline.file} (${pipeline.forge}, ${role}): o passo do canal do remedio esta com ${REMEDY_CHANNEL.backendFlag} ${passo.backend} — e o backend de OUTRA forja (esperado: \`${pipeline.forge}\`). Copiar o passo de uma pipeline para a outra publica no canal errado, com o token errado.`,
+        )
+      }
+      if (!passo.todos) {
+        const faltando = fixers.filter((f) => !passo.fixers.includes(f))
+        if (faltando.length > 0) {
+          violations.push(
+            `${pipeline.file} (${pipeline.forge}, ${role}): o canal do remedio NAO publica ${faltando.length} fixer(s) do registro: ${faltando.join(", ")} — a linha lista os fixers a mao; use ${REMEDY_CHANNEL.allFlag} (o conjunto sai do REGISTRO e um fixer novo passa a herdar este passo sem edicao de workflow).`,
+          )
+        }
+      }
+      for (const id of passo.fixers) {
+        if (!fixers.includes(id)) {
+          violations.push(
+            `${pipeline.file} (${pipeline.forge}, ${role}): o canal do remedio cita o fixer '${id}', que o REGISTRO nao tem (validos: ${fixers.join(", ")}) — o CLI sairia 3 no PR, depois de o PR ja estar aberto.`,
+          )
+        }
+      }
+    }
+  }
+
+  const canonicos = [...porForja.entries()]
+    .filter(([, passos]) => passos.length > 0)
+    .map(([forge, passos]) => ({ forge, canonico: canonicalRemedyCommand(passos[0].comando) }))
+  if (canonicos.length > 1 && new Set(canonicos.map((c) => c.canonico)).size > 1) {
+    violations.push(
+      `o comando do canal do remedio DIVERGE entre as forjas: ${canonicos.map((c) => `${c.forge} \`${c.canonico}\``).join(" · ")} — a regua e uma so (o backend e o unico argumento que muda).`,
+    )
+  }
+  return violations
+}
+
 /**
  * Compara as pipelines declaradas e devolve as violacoes (vazio = ok).
  * Pura em relacao ao filesystem: recebe um leitor para poder ser testada sem
@@ -939,6 +1124,12 @@ export function findParityViolations(readFile, pipelines = PIPELINES) {
       )
     }
   }
+
+  // O canal do remédio tem a sua própria régua (e é DERIVADO do registro):
+  // sem esta linha, o passo que publica o remédio no PR poderia divergir entre
+  // as forjas sem nenhum veredito — ele não é um gate, e o `discoverGates`
+  // (por desenho) não o vê.
+  violations.push(...findRemedyChannelViolations(readFile, pipelines))
 
   return violations
 }
@@ -1031,6 +1222,9 @@ if (isMain) {
   if (violations.length === 0) {
     console.log(
       `check-forge-parity: ✅ ${CORE_INVARIANTS.length} invariantes do CORE nas ${PIPELINES.length} pipelines e todos os gates classificados (${GITHUB_ONLY.length} isencoes GitHub-only com razao).`,
+    )
+    console.log(
+      `check-forge-parity: ✅ o canal do remedio roda nas ${PIPELINES.length} forjas, uma vez cada, com a cobertura do REGISTRO (${remedyFixers().length} fixer(s): ${remedyFixers().join(", ")}) e o backend de cada forja.`,
     )
     process.exit(0)
   }

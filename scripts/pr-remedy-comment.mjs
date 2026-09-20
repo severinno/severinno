@@ -49,9 +49,24 @@
 // 422) é publicação quebrada: vira `::error::` e o passo falha — um canal que
 // existe e não publica é pior que a ausência dele, porque parece que publicou.
 //
+// O PASSO DO CI INVOCA O REGISTRO (e é isso que faz um fixer novo herdar o canal)
+//
+// As duas pipelines rodam UM passo deste script com `--all`: o conjunto de
+// fixers sai de `FIXERS`, e nao de uma lista escrita no YAML. A enumeracao à
+// mao tinha o custo de sempre — um fixer novo só chegaria ao PR se alguém
+// lembrasse de copiar o passo nas DUAS pontas, e o passo copiado de uma forja
+// para a outra publicaria no canal errado, com o token errado, sem veredito
+// nenhum (este canal nao é um gate, entao as regras de classificacao do
+// `check-forge-parity` nao o alcancavam). Quem mede isso agora é a QUINTA regra
+// daquele guard: exatamente um passo por pipeline, `--all`, cobertura igual à
+// do registro (o fixer que ficar de fora sai NOMEADO) e o `--backend` da
+// propria forja.
+//
 // Usage:
 //   node scripts/pr-remedy-comment.mjs --backend gitea               # na forja (merge)
 //   node scripts/pr-remedy-comment.mjs --backend github              # no espelho
+//   node scripts/pr-remedy-comment.mjs --backend gitea --all         # o REGISTRO inteiro (o que a pipeline roda)
+//   node scripts/pr-remedy-comment.mjs --backend gitea --fixer X     # UM fixer (inspecao local; com --all e uso inválido)
 //   node scripts/pr-remedy-comment.mjs --backend gitea --pr 123      # PR explícito
 //   node scripts/pr-remedy-comment.mjs --dry-run                     # imprime o corpo e a decisão, sem tocar a API
 //   node scripts/pr-remedy-comment.mjs --root X                      # outro repositório (fixture/testes)
@@ -74,13 +89,28 @@
 //       desconhecida)
 // =============================================================================
 
-import { readFileSync } from "node:fs"
 import process from "node:process"
 import { pathToFileURL } from "node:url"
 
 import { remedyPatch as runSyntaxPatch } from "./check-workflow-run-syntax.mjs"
 import { remedyPatch as sigpipePatch } from "./check-pipefail-sigpipe.mjs"
-import { giteaApi, giteaIssueConfig, githubApi, githubReadConfig } from "./issue-publish.mjs"
+// A MECÂNICA DO CANAL vem de um módulo sem gate nenhum (`pr-comment-channel.mjs`):
+// o ciclo do comentário no PR é o MESMO para o remendo e para o veredito do
+// merge gate, e deixá-lo aqui obrigaria quem só quer o canal a importar os
+// parsers de YAML dos gates (dependência de `node_modules` num job que não
+// instala — o `check-job-deps` trata isso como custo, e é).
+import {
+  ChannelDenied,
+  backendChannel,
+  decideComment,
+  prNumberFrom,
+  reconcileComment,
+  selectBackend,
+} from "./pr-comment-channel.mjs"
+
+// A API PÚBLICA deste módulo não mudou com a extração: os nomes seguem saindo
+// daqui (os testes e os irmãos importam DAQUI, não do módulo novo).
+export { ChannelDenied, backendChannel, decideComment, prNumberFrom, selectBackend }
 
 /** Exit codes — o contrato da CLI. */
 export const EXIT = {
@@ -186,8 +216,14 @@ export const GATE_JOB = FIXERS[DEFAULT_FIXER].gateJob
 const USAGE = `pr-remedy-comment — o patch do remendo de um gate mecânico publica-se no PR
 
 Usage:
-  node scripts/pr-remedy-comment.mjs --backend <gitea|github> [--fixer <id>] [--pr N] [--dry-run] [--json] [--root X]
+  node scripts/pr-remedy-comment.mjs --backend <gitea|github> [--all | --fixer <id>] [--pr N] [--dry-run] [--json] [--root X]
   node scripts/pr-remedy-comment.mjs -h
+
+\`--all\` publica/reconcilia UM comentário por fixer do REGISTRO — é o que as duas
+pipelines usam, e a razão é de desenho: um fixer NOVO entra lá sozinho, sem
+edição de workflow (o \`check-forge-parity\` exige que o passo das duas forjas
+seja exatamente este comando). \`--fixer\` publica UM (operador); os dois juntos
+são uso inválido.
 
 Fixers (--fixer, default \`${DEFAULT_FIXER}\`):
 ${Object.entries(FIXERS)
@@ -203,88 +239,6 @@ Exit codes:
       com o canal AUSENTE ou sem permissão de escrita, dito com \`::notice::\`
   2 — a API recusou a publicação (canal existe e não publica)
   3 — uso inválido (--backend desconhecido, --pr sem número, flag desconhecida)`
-
-/**
- * O número do PR, resolvido do que a forja der — e `null` quando nada dá.
- *
- * A ordem é a da CONFIANÇA: `--pr` (quem chamou disse), `PR_NUMBER` (o workflow
- * disse), o payload do evento (a forja disse) e, por último, `GITHUB_REF`
- * (`refs/pull/N/…`, que é o que sobra num evento que não traz o payload). Um
- * número inventado publicaria num PR que não é este — preferimos não publicar.
- *
- * @param {{env?: Record<string,string|undefined>, flag?: string|null, readFile?: Function}} [args]
- * @returns {number|null}
- */
-export function prNumberFrom({ env = process.env, flag = null, readFile = readFileSync } = {}) {
-  const fromFlag = Number.parseInt(String(flag ?? ""), 10)
-  if (Number.isInteger(fromFlag) && fromFlag > 0) return fromFlag
-  const fromEnv = Number.parseInt(String(env.PR_NUMBER ?? ""), 10)
-  if (Number.isInteger(fromEnv) && fromEnv > 0) return fromEnv
-  const eventPath = env.GITHUB_EVENT_PATH
-  if (eventPath) {
-    try {
-      const payload = JSON.parse(readFile(eventPath, "utf8"))
-      const n = Number.parseInt(String(payload?.pull_request?.number ?? ""), 10)
-      if (Number.isInteger(n) && n > 0) return n
-    } catch {
-      // Payload ausente/ilegível não é veredito: caímos no `GITHUB_REF` abaixo.
-    }
-  }
-  const ref = String(env.GITHUB_REF ?? "")
-  const m = ref.match(/refs\/pull\/(\d+)\//)
-  if (m) {
-    const n = Number.parseInt(m[1], 10)
-    if (Number.isInteger(n) && n > 0) return n
-  }
-  return null
-}
-
-/**
- * Qual forja recebe o comentário.
- *
- * `--backend` manda quando dado (é o que os workflows passam, um por pipeline);
- * sem ele, a presença do TOKEN decide — e sem nenhum dos dois o canal não
- * existe, com os nomes das variáveis na resposta (o remédio de quem lê o
- * `::notice::` é o nome que falta, não \"configuração inválida\").
- *
- * @param {{flag?: string|null, env?: Record<string,string|undefined>}} [args]
- * @returns {{backend: "gitea"|"github"|null, why: string|null}}
- */
-export function selectBackend({ flag = null, env = process.env } = {}) {
-  if (flag) return { backend: flag === "gitea" || flag === "github" ? flag : null, why: null }
-  if (env.GITEA_TOKEN) return { backend: "gitea", why: null }
-  if (env.GH_TOKEN) return { backend: "github", why: null }
-  return { backend: null, why: "sem --backend e sem GITEA_TOKEN/GH_TOKEN no ambiente" }
-}
-
-/**
- * O canal de ESCRITA resolvido do ambiente — config + a função que fala com a
- * API — ou o motivo NOMEADO de não haver canal.
- *
- * As duas forjas passam pelo mesmo `*Api` de `issue-publish.mjs`: um comentário
- * de PR é um comentário de issue nas duas, e um segundo cliente divergiria dos
- * headers/da versão da API do primeiro.
- *
- * @param {"gitea"|"github"} backend
- * @param {{env?: Record<string,string|undefined>, repo?: string|null}} [args]
- * @returns {{request: Function, config: object, kind: string}|{unavailable: string}}
- */
-export function backendChannel(backend, { env = process.env, repo = null } = {}) {
-  if (backend === "gitea") {
-    try {
-      return { request: giteaApi, config: giteaIssueConfig({ repo }, env), kind: "gitea" }
-    } catch (e) {
-      return { unavailable: e?.message ?? String(e) }
-    }
-  }
-  const read = githubReadConfig({ env, repo })
-  if (read.via !== "api") {
-    return {
-      unavailable: `GitHub: ${read.why ?? "sem canal de escrita"} (defina GH_TOKEN + GH_REPOSITORY)`,
-    }
-  }
-  return { request: githubApi, config: read, kind: "github" }
-}
 
 /**
  * O corpo do comentário — ou `null` quando não há remendo a publicar.
@@ -428,120 +382,202 @@ export function fixerOf(id) {
 }
 
 /**
- * A DECISÃO, pura: o que fazer com o comentário anterior dado o corpo novo.
+ * O ciclo do REMÉDIO: o mesmo `reconcileComment` do canal, com o marcador DO
+ * FIXER como default.
  *
- * Separada do efeito para ser julgável sem dublê de HTTP — e porque as quatro
- * respostas são as que importam: `remove` (a cicatriz sumiu: retirar é o que
- * fecha o ciclo), `create` (primeira vez), `update` (o patch mudou) e `noop`
- * (idêntico: reescrever o mesmo texto gastaria uma chamada e mudaria a data do
- * rodapé sem motivo).
+ * A casca existe para a API pública deste módulo não mudar quando a mecânica foi
+ * extraída para `pr-comment-channel.mjs`: quem chamava `reconcileRemedy` sem
+ * marcador continua reconciliando o canal do `bash -n` (e quem passa um marcador
+ * segue podendo escolher o canal).
  *
- * @param {{hasPrevious: boolean, previousBody?: (string|null), body: (string|null)}} args
- * @returns {"create"|"update"|"noop"|"remove"}
- */
-export function decideComment({ hasPrevious, previousBody = null, body = null }) {
-  if (body === null) return hasPrevious ? "remove" : "noop"
-  if (!hasPrevious) return "create"
-  return String(previousBody ?? "").trim() === body.trim() ? "noop" : "update"
-}
-
-/**
- * Erro de canal que EXISTE mas não aceita escrita (401/403): PR de fork, token
- * sem escopo. É aviso nomeado, não publicação quebrada.
- */
-export class ChannelDenied extends Error {}
-
-/**
- * Reconcilia o comentário no PR: lista os nossos (pelo marcador), retira
- * duplicatas, e então cria/atualiza/retira conforme a decisão.
+ * `body === null` é o sinal de RETIRAR: um comentário do nosso canal que fica
+ * aberto depois de o defeito sumir mente sobre o estado do PR.
  *
- * `request` é injetável (`(config, method, path, body)`) para os testes
- * exercitarem o ciclo inteiro — criar na run 1, atualizar na 2, retirar na 3 —
- * sem tocar a rede.
- *
- * `marker` é o marcador do fixer da vez (default: o do `bash -n`): é por ele que
- * a lista é FILTRADA — os dois remédios podem viver no mesmo PR, e reconciliar
- * um deles pelo marcador do outro retiraria um aviso que ainda vale.
- *
- * @param {{request: Function, config: object, kind?: string, pr: number, body: (string|null), marker?: string, log?: Function}} args
+ * @param {Omit<Parameters<typeof reconcileComment>[0], "marker"> & {marker?: string}} [args]
  * @returns {Promise<{action: string, id: (number|null), detail: string}>}
  */
-export async function reconcileRemedy({
-  request,
-  config,
-  kind = "github",
-  pr,
-  body,
-  marker = MARKER,
-  log = () => {},
-}) {
-  // A paginação tem nome diferente em cada forja: mandar os dois parâmetros
-  // seria pedir o que a outra não conhece (e um 400 aqui viraria "canal
-  // quebrado" sem ser).
-  const pagina = kind === "gitea" ? "?limit=100" : "?per_page=100"
-  const list = await request(config, "GET", `/issues/${pr}/comments${pagina}`)
-  guardStatus(list, 200, `listar comentários do PR #${pr}`)
-  const todos = Array.isArray(list.data) ? list.data : []
-  // O filtro é pelo marcador DO FIXER: os dois remédios podem viver no mesmo PR,
-  // e listar/tirar o comentário do outro seria apagar um aviso que ainda vale.
-  const nossos = todos.filter((c) => String(c?.body ?? "").includes(marker))
-
-  // Duplicata é resíduo de dois runs concorrentes: o marcador é único por PR, e
-  // deixar duas cópias faria a reconciliação seguinte escolher uma ao acaso.
-  for (const extra of nossos.slice(1)) {
-    const del = await request(config, "DELETE", `/issues/comments/${extra.id}`)
-    guardStatus(del, 204, `retirar comentário duplicado #${extra.id}`, 200)
-    log(`🧹 comentário duplicado #${extra.id} retirado`)
-  }
-
-  const anterior = nossos[0] ?? null
-  const acao = decideComment({ hasPrevious: anterior !== null, previousBody: anterior?.body, body })
-
-  if (acao === "noop") {
-    return {
-      action: "noop",
-      id: anterior?.id ?? null,
-      detail:
-        body === null
-          ? "sem cicatriz e sem comentário nosso — nada a fazer"
-          : "o comentário já estava com este patch",
-    }
-  }
-  if (acao === "remove") {
-    const del = await request(config, "DELETE", `/issues/comments/${anterior.id}`)
-    guardStatus(del, 204, `retirar comentário #${anterior.id}`, 200)
-    return {
-      action: "removed",
-      id: anterior.id,
-      detail: "a cicatriz sumiu: o comentário foi RETIRADO",
-    }
-  }
-  if (acao === "create") {
-    const created = await request(config, "POST", `/issues/${pr}/comments`, { body })
-    guardStatus(created, 201, `comentar o PR #${pr}`)
-    return {
-      action: "created",
-      id: created.data?.id ?? null,
-      detail: `comentário publicado no PR #${pr}`,
-    }
-  }
-  const updated = await request(config, "PATCH", `/issues/comments/${anterior.id}`, { body })
-  guardStatus(updated, 200, `atualizar comentário #${anterior.id}`, 201)
-  return { action: "updated", id: anterior.id, detail: `comentário #${anterior.id} atualizado` }
+export function reconcileRemedy(args = {}) {
+  return reconcileComment({ marker: MARKER, ...args })
 }
 
 /**
- * Um status fora do esperado vira erro — com 401/403 nomeados como CANAL SEM
- * ESCRITA (aviso) e o resto como publicação quebrada (falha).
+ * O CICLO DO CANAL PARA UM FIXER — medir, decidir e reconciliar, sem sair do
+ * processo.
+ *
+ * Não chama `process.exit`: quem chama decide o código. É o que permite o
+ * `--all` publicar TODOS os fixers do registro e só depois cobrar o pior
+ * desfecho — um `process.exit(2)` no meio de um fixer abortaria os seguintes, e
+ * o PR cujo primeiro remédio não publicou perderia o aviso dos outros em
+ * silêncio (exatamente o modo de falha que o canal existe para não ter).
+ *
+ * O desfecho de UM fixer é tri-estado, como no CLI de antes:
+ *   · `publicado`    — o canal foi reconciliado (criado/atualizado/retirado);
+ *   · `indeterminado`— nada a fazer: não mediu, sem canal, sem PR, ou canal sem
+ *                      permissão de escrita (`::notice::`/`::warning::`);
+ *   · `quebrado`     — o canal existe e a API recusou (`::error::`, exit 2).
+ *
+ * @param {{fixerId?: string, backendFlag?: string|null, prFlag?: string|null, root?: string,
+ *   dryRun?: boolean, json?: boolean, env?: Record<string,string>, now?: Date,
+ *   out?: (l: string) => void, err?: (l: string) => void}} [args]
  */
-function guardStatus(res, expected, what, also = null) {
-  if (res?.status === expected || (also !== null && res?.status === also)) return
-  const detail = String(res?.text ?? "").slice(0, 200)
-  const msg = `${what} → HTTP ${res?.status}: ${detail}`
-  if (res?.status === 401 || res?.status === 403) {
-    throw new ChannelDenied(`${msg} (o token não escreve neste PR — PR de fork ou sem escopo)`)
+export async function publicarFixer({
+  fixerId = DEFAULT_FIXER,
+  backendFlag = null,
+  prFlag = null,
+  root = process.cwd(),
+  dryRun = false,
+  json = false,
+  env = process.env,
+  now = new Date(),
+  out = (l) => console.log(l),
+  err = (l) => console.error(l),
+} = {}) {
+  const fixer = fixerOf(fixerId)
+
+  // ── 1. A MEDIÇÃO: o patch, pelo MESMO módulo do `--fix` DO FIXER ─────────
+  const result = fixer.medir(root)
+  const body = corpoDoFixer(fixerId, result, {
+    now,
+    runUrl: env.REMEDY_RUN_URL ?? null,
+  })
+  // A FORMA do resultado é conferida antes de ser lida: um fixer que devolvesse
+  // `unread`/`yamlInvalido` AUSENTE faria `medido` dizer "mediu" sobre campos que
+  // ninguém preencheu — a mesma falsa segurança que o `unread` existe para não
+  // ter. Um slot faltando é "NÃO MEDIU", nomeado.
+  const faltando = FORMA_DO_RESULTADO.filter((k) => !(k in result))
+  const medido =
+    faltando.length === 0 &&
+    !result.indisponivel &&
+    result.unread.length === 0 &&
+    result.yamlInvalido.length === 0
+  const resumo = {
+    fixer: fixerId,
+    gate: fixer.gateJob,
+    medido,
+    remendados: (result.fixed ?? []).length,
+    recusas: (result.refused ?? []).length,
+    indeterminado:
+      result.indisponivel ??
+      (faltando.length > 0 ? `a medição do fixer não devolveu: ${faltando.join(", ")}` : null),
   }
-  throw new Error(msg)
+
+  // ── 2. O CANAL ────────────────────────────────────────────────────────────
+  const canal = selectBackend({ flag: backendFlag, env })
+  const pr = prNumberFrom({ env, flag: prFlag })
+  const channel = canal.backend ? backendChannel(canal.backend, { env }) : null
+
+  const semCanal = (linha, extra = {}) => ({
+    resumo,
+    backend: canal.backend,
+    pr,
+    body,
+    action: null,
+    detail: null,
+    desfecho: "indeterminado",
+    exit: EXIT.OK,
+    ...extra,
+    aviso: linha,
+  })
+
+  if (dryRun) {
+    const decisaoDizivel =
+      body === null
+        ? "o comentário seria RETIRADO (sem cicatriz) ou nada havia a fazer"
+        : `o comentário seria criado/atualizado com ${resumo.remendados} remendo(s)`
+    if (json) {
+      out(
+        JSON.stringify(
+          { ...resumo, backend: canal.backend, pr, dryRun: true, decisao: decisaoDizivel, body },
+          null,
+          2,
+        ),
+      )
+    } else {
+      err(
+        `── pré-visualização (--dry-run): ${decisaoDizivel}; NADA foi gravado e a API não foi tocada`,
+      )
+      out((body ?? "(sem remendo: o comentário seria retirado)") + "\n")
+    }
+    return {
+      resumo,
+      backend: canal.backend,
+      pr,
+      body,
+      dryRun: true,
+      decisao: decisaoDizivel,
+      action: null,
+      detail: null,
+      desfecho: "indeterminado",
+      exit: EXIT.OK,
+    }
+  }
+
+  if (!medido) {
+    // Não medir não é "não há nada aqui": retirar o comentário com a varredura
+    // quebrada apagaria o último aviso de um defeito que ninguém conseguiu ler.
+    const aviso = `::warning::pr-remedy-comment: a varredura NÃO mediu (${resumo.indeterminado ?? "arquivo ilegível ou YAML inválido"}) — o comentário anterior NÃO é retirado e nada é publicado`
+    err(aviso)
+    return semCanal(aviso, { medido: false })
+  }
+  if (!canal.backend) {
+    const aviso = `::notice::pr-remedy-comment: ${canal.why ?? "canal indisponível"} — o remendo NÃO foi publicado (o GATE segue sendo o veredito; este comentário é um canal a mais)`
+    err(aviso)
+    return semCanal(aviso)
+  }
+  if (!pr) {
+    const aviso =
+      "::notice::pr-remedy-comment: sem número de PR (--pr, PR_NUMBER, payload do evento ou GITHUB_REF) — nada a publicar"
+    err(aviso)
+    return semCanal(aviso)
+  }
+  if (channel.unavailable) {
+    const aviso = `::notice::pr-remedy-comment: ${channel.unavailable} — o remendo NÃO foi publicado (o GATE segue sendo o veredito; este comentário é um canal a mais)`
+    err(aviso)
+    return semCanal(aviso)
+  }
+
+  try {
+    const saida = await reconcileRemedy({
+      request: channel.request,
+      config: channel.config,
+      kind: channel.kind,
+      pr,
+      body,
+      marker: fixer.marker,
+      log: (l) => err(l),
+    })
+    if (json) out(JSON.stringify({ ...resumo, backend: canal.backend, pr, ...saida }, null, 2))
+    else
+      out(`✅ pr-remedy-comment (${canal.backend}, PR #${pr}, fixer ${fixerId}): ${saida.detail}`)
+    return {
+      resumo,
+      backend: canal.backend,
+      pr,
+      body,
+      action: saida.action,
+      detail: saida.detail,
+      desfecho: "publicado",
+      exit: EXIT.OK,
+    }
+  } catch (e) {
+    if (e instanceof ChannelDenied) {
+      const aviso = `::warning::pr-remedy-comment: ${e.message}`
+      err(aviso)
+      return semCanal(aviso, { action: null, detail: e.message })
+    }
+    const aviso = `::error::pr-remedy-comment (fixer ${fixerId}): ${e?.message ?? e}`
+    err(aviso)
+    return {
+      resumo,
+      backend: canal.backend,
+      pr,
+      body,
+      action: null,
+      detail: e?.message ?? String(e),
+      desfecho: "quebrado",
+      exit: EXIT.UNPUBLISHED,
+    }
+  }
 }
 
 async function main() {
@@ -549,6 +585,7 @@ async function main() {
   const conhecidas = [
     "--backend",
     "--fixer",
+    "--all",
     "--pr",
     "--root",
     "--dry-run",
@@ -586,14 +623,26 @@ async function main() {
   // O FIXER: o default é o gate do `bash -n` (o canal nasceu com ele). Um id
   // desconhecido é erro de USO e para aqui — cair no default publicaria o
   // comentário de OUTRO gate, que é pior que não publicar nada.
-  const fixerFlag = valor("--fixer") ?? DEFAULT_FIXER
-  let fixer
-  try {
-    fixer = fixerOf(fixerFlag)
-  } catch (e) {
-    console.error(`❌ ${e.message}`)
+  const fixerFlag = valor("--fixer")
+  const todos = argv.includes("--all")
+  // `--fixer` E `--all` juntos se CONTRADIZEM: um escolhe UM defeito, o outro
+  // publica o registro inteiro. Escolher um dos dois em silêncio publicaria (ou
+  // deixaria de publicar) um comentário que quem escreveu a linha não pediu.
+  if (todos && fixerFlag !== null) {
+    console.error(
+      "❌ --all publica TODOS os fixers do registro; --fixer escolhe um — use um dos dois",
+    )
     console.error(USAGE)
     process.exit(EXIT.USAGE)
+  }
+  if (!todos && fixerFlag !== null) {
+    try {
+      fixerOf(fixerFlag)
+    } catch (e) {
+      console.error(`❌ ${e.message}`)
+      console.error(USAGE)
+      process.exit(EXIT.USAGE)
+    }
   }
   const prFlag = valor("--pr")
   // `--pr` com valor não-numérico é erro de USO e não "sem PR": quem escreveu
@@ -607,113 +656,33 @@ async function main() {
   const root = valor("--root") ?? process.cwd()
   const dryRun = argv.includes("--dry-run")
   const json = argv.includes("--json")
-  // (o fixer resolvido acima decide a medição, o marcador e o corpo)
 
-  // ── 1. A MEDIÇÃO: o patch, pelo MESMO módulo do `--fix` DO FIXER ─────────
-  const result = fixer.medir(root)
-  const body = corpoDoFixer(fixerFlag, result, {
-    runUrl: process.env.REMEDY_RUN_URL ?? null,
-  })
-  // A FORMA do resultado é conferida antes de ser lida: um fixer que devolvesse
-  // `unread`/`yamlInvalido` AUSENTE faria `medido` dizer "mediu" sobre campos que
-  // ninguém preencheu — a mesma falsa segurança que o `unread` existe para não
-  // ter. Um slot faltando é "NÃO MEDIU", nomeado.
-  const faltando = FORMA_DO_RESULTADO.filter((k) => !(k in result))
-  const medido =
-    faltando.length === 0 &&
-    !result.indisponivel &&
-    result.unread.length === 0 &&
-    result.yamlInvalido.length === 0
-  const resumo = {
-    fixer: fixerFlag,
-    gate: fixer.gateJob,
-    medido,
-    remendados: (result.fixed ?? []).length,
-    recusas: (result.refused ?? []).length,
-    indeterminado:
-      result.indisponivel ??
-      (faltando.length > 0 ? `a medição do fixer não devolveu: ${faltando.join(", ")}` : null),
+  // O CONJUNTO de fixers vem do REGISTRO — nunca de uma lista escrita na linha
+  // de comando: é este `--all` que faz um fixer NOVO herdar o passo do CI (e o
+  // `check-forge-parity` exige que o passo das duas forjas seja exatamente ele).
+  const ids = todos ? Object.keys(FIXERS) : [fixerFlag ?? DEFAULT_FIXER]
+
+  const saidas = []
+  for (const id of ids) {
+    if (todos && !json) console.error(`── fixer ${id} (${FIXERS[id].gateJob})`)
+    saidas.push(await publicarFixer({ fixerId: id, backendFlag, prFlag, root, dryRun, json }))
   }
 
-  // ── 2. O CANAL ────────────────────────────────────────────────────────────
-  const canal = selectBackend({ flag: backendFlag, env: process.env })
-  const pr = prNumberFrom({ env: process.env, flag: prFlag })
-  const channel = canal.backend ? backendChannel(canal.backend, { env: process.env }) : null
-
-  const semCanal = () => {
-    const why = channel?.unavailable ?? canal.why ?? "canal indisponível"
-    console.error(
-      `::notice::pr-remedy-comment: ${why} — o remendo NÃO foi publicado (o GATE segue sendo o veredito; este comentário é um canal a mais)`,
+  if (todos && json) {
+    console.log(JSON.stringify(saidas, null, 2))
+  } else if (todos) {
+    const publicados = saidas.filter((s) => s.desfecho === "publicado").length
+    const quebrados = saidas.filter((s) => s.desfecho === "quebrado")
+    const indeterminados = saidas.filter((s) => s.desfecho === "indeterminado").length
+    console.log(
+      `── --all: ${saidas.length} fixer(s) do registro · ${publicados} publicado(s) · ${indeterminados} indeterminado(s)${quebrados.length > 0 ? ` · ${quebrados.length} QUEBRADO(S): ${quebrados.map((s) => s.resumo.fixer).join(", ")}` : ""}`,
     )
   }
 
-  if (dryRun) {
-    const decisaoDizivel =
-      body === null
-        ? "o comentário seria RETIRADO (sem cicatriz) ou nada havia a fazer"
-        : `o comentário seria criado/atualizado com ${resumo.remendados} remendo(s)`
-    if (json) {
-      console.log(
-        JSON.stringify(
-          { ...resumo, backend: canal.backend, pr, dryRun: true, decisao: decisaoDizivel, body },
-          null,
-          2,
-        ),
-      )
-    } else {
-      console.error(
-        `── pré-visualização (--dry-run): ${decisaoDizivel}; NADA foi gravado e a API não foi tocada`,
-      )
-      process.stdout.write((body ?? "(sem remendo: o comentário seria retirado)\n") + "\n")
-    }
-    process.exit(EXIT.OK)
-  }
-
-  if (!medido) {
-    // Não medir não é \"não há nada aqui\": retirar o comentário com a varredura
-    // quebrada apagaria o último aviso de um defeito que ninguém conseguiu ler.
-    console.error(
-      `::warning::pr-remedy-comment: a varredura NÃO mediu (${resumo.indeterminado ?? "arquivo ilegível ou YAML inválido"}) — o comentário anterior NÃO é retirado e nada é publicado`,
-    )
-    process.exit(EXIT.OK)
-  }
-  if (!canal.backend) {
-    semCanal()
-    process.exit(EXIT.OK)
-  }
-  if (!pr) {
-    console.error(
-      "::notice::pr-remedy-comment: sem número de PR (--pr, PR_NUMBER, payload do evento ou GITHUB_REF) — nada a publicar",
-    )
-    process.exit(EXIT.OK)
-  }
-  if (channel.unavailable) {
-    semCanal()
-    process.exit(EXIT.OK)
-  }
-
-  try {
-    const out = await reconcileRemedy({
-      request: channel.request,
-      config: channel.config,
-      kind: channel.kind,
-      pr,
-      body,
-      marker: fixer.marker,
-      log: (l) => console.error(l),
-    })
-    if (json)
-      console.log(JSON.stringify({ ...resumo, backend: canal.backend, pr, ...out }, null, 2))
-    else console.log(`✅ pr-remedy-comment (${canal.backend}, PR #${pr}): ${out.detail}`)
-    process.exit(EXIT.OK)
-  } catch (e) {
-    if (e instanceof ChannelDenied) {
-      console.error(`::warning::pr-remedy-comment: ${e.message}`)
-      process.exit(EXIT.OK)
-    }
-    console.error(`::error::pr-remedy-comment: ${e?.message ?? e}`)
-    process.exit(EXIT.UNPUBLISHED)
-  }
+  // O exit é o PIOR desfecho da rodada, depois de TODOS terem sido tentados: um
+  // canal que existe e não publica falha o passo (é pior que a ausência dele,
+  // porque parece que publicou).
+  process.exit(saidas.some((s) => s.exit !== EXIT.OK) ? EXIT.UNPUBLISHED : EXIT.OK)
 }
 
 // True apenas quando executado diretamente — permite importar as funções puras

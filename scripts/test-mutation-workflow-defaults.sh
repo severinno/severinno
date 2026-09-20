@@ -226,7 +226,12 @@ gerar_fixture() {
     const job = process.env.FIX_VARIANTE === "legal"
       ? ["    defaults:", "      run:", "        shell: bash"]
       : ["    defaults:", "      run: node scripts/check-fantasma.mjs"]
-    const yaml = [
+    // O CANAL DO REMEDIO entra no fixture como entra nas pipelines reais: o
+    // passo invoca o REGISTRO (`--all`) e o backend e o DA FORJA. Sem ele o
+    // fixture nao e "verde por construcao" — a quinta regra da paridade o
+    // reprova, e o CONTROLE deste sub-test passaria a medir o fixture em vez do
+    // defeito que ele injeta.
+    const yamlDe = (forge) => [
       "name: Fixture",
       "on: [push]",
       ...arquivo,
@@ -236,10 +241,11 @@ gerar_fixture() {
       ...job,
       "    steps:",
       ...cmds.map((c) => `      - run: ${c}`),
+      `      - run: node scripts/pr-remedy-comment.mjs --backend ${forge} --all`,
       "",
     ].join("\n")
-    writeFileSync(`${process.env.FIX_ROOT}/.github/workflows/pr-check.yml`, yaml)
-    writeFileSync(`${process.env.FIX_ROOT}/.gitea/workflows/ci.yml`, yaml)
+    writeFileSync(`${process.env.FIX_ROOT}/.github/workflows/pr-check.yml`, yamlDe("github"))
+    writeFileSync(`${process.env.FIX_ROOT}/.gitea/workflows/ci.yml`, yamlDe("gitea"))
   '
 }
 

@@ -50,6 +50,7 @@ import {
   decideComment,
   fixerOf,
   prNumberFrom,
+  publicarFixer,
   reconcileRemedy,
   remedyBody,
   selectBackend,
@@ -511,5 +512,196 @@ describe("dois fixers no MESMO PR — cada comentário é reconciliado pelo seu 
     // O comentário do OUTRO fixer não é o anterior deste: ele fica onde está.
     expect(out.action).toBe("created")
     expect(api.comments).toHaveLength(2)
+  })
+})
+
+// ── o canal DERIVADO do registro: `--all` ────────────────────────────────
+//
+// O conjunto de fixers NÃO pode vir da linha de comando das pipelines: se viesse,
+// o fixer novo dependeria de alguém lembrar de editar DOIS workflows (e da
+// sincronia entre eles). O que se mede aqui é o outro lado disso — o `--all`
+// publica TODO o registro, cada fixer com o SEU marcador, e um fixer que não
+// publica não impede os outros (a rodada termina com o PIOR desfecho, depois de
+// todos terem sido tentados).
+
+describe("o canal publica o REGISTRO inteiro (--all)", () => {
+  /** Um `fetch` dublê da API do GitHub, com falha opcional por corpo postado. */
+  function fakeGithubFetch({ failPostQuando }: { failPostQuando?: string } = {}) {
+    const comments: { id: number; body: string }[] = []
+    const chamadas: string[] = []
+    let nextId = 1
+    const fetchImpl = async (url: string, init: { method?: string; body?: string } = {}) => {
+      const method = init.method ?? "GET"
+      const path = String(url).split("/repos/o/r")[1] ?? ""
+      chamadas.push(`${method} ${path.split("?")[0]}`)
+      const respond = (status: number, data: unknown) => ({
+        status,
+        text: async () => (data === null ? "" : JSON.stringify(data)),
+      })
+      if (method === "GET")
+        return respond(
+          200,
+          comments.map((c) => ({ ...c })),
+        )
+      if (method === "POST") {
+        const corpo = String(JSON.parse(init.body ?? "{}").body ?? "")
+        if (failPostQuando && corpo.includes(failPostQuando))
+          return respond(500, { message: "boom" })
+        const id = nextId++
+        comments.push({ id, body: corpo })
+        return respond(201, { id })
+      }
+      const id = Number.parseInt(path.split("/").pop() ?? "", 10)
+      if (method === "PATCH") {
+        const found = comments.find((c) => c.id === id)
+        if (!found) return respond(404, null)
+        found.body = String(JSON.parse(init.body ?? "{}").body ?? "")
+        return respond(200, { id })
+      }
+      if (method === "DELETE") {
+        const i = comments.findIndex((c) => c.id === id)
+        if (i === -1) return respond(404, null)
+        comments.splice(i, 1)
+        return respond(204, null)
+      }
+      return respond(500, null)
+    }
+    return { fetchImpl, comments, chamadas }
+  }
+
+  /** Com os DOIS defeitos no mesmo diretório: cada fixer tem o que remendar. */
+  function fixtureComOsDoisDefeitos() {
+    return writeFixture(CICATRIZ, { arquivo: "caso.sh", corpo: SCRIPT_COM_PADRAO })
+  }
+
+  const ENV_GITHUB = { GH_TOKEN: "t", GH_REPOSITORY: "o/r" }
+  const silencio = () => {}
+
+  /** O CLI de verdade, num processo próprio (o do `--fixer` também serve). */
+  function runCli(args: string[]) {
+    const r = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8" })
+    return { status: r.status, stdout: r.stdout ?? "", stderr: r.stderr ?? "" }
+  }
+
+  it("publica UM comentário por fixer do registro, cada um com o SEU marcador", async () => {
+    const api = fakeGithubFetch()
+    const real = globalThis.fetch
+    globalThis.fetch = api.fetchImpl as unknown as typeof fetch
+    try {
+      const dir = fixtureComOsDoisDefeitos()
+      const saidas = []
+      for (const id of Object.keys(FIXERS)) {
+        saidas.push(
+          await publicarFixer({
+            fixerId: id,
+            root: dir,
+            env: ENV_GITHUB,
+            prFlag: "12",
+            out: silencio,
+            err: silencio,
+          }),
+        )
+      }
+
+      // Um comentário por fixer — e o texto de cada um é o do SEU canal.
+      expect(api.comments).toHaveLength(Object.keys(FIXERS).length)
+      const corpos = api.comments.map((c) => c.body)
+      for (const [id, fixer] of Object.entries(FIXERS)) {
+        const meus = corpos.filter((b) => b.includes(fixer.marker))
+        expect(meus, `marcador do fixer ${id}`).toHaveLength(1)
+      }
+      // Nenhum comentário carrega dois marcadores (a reconciliação de um não
+      // pode alcançar o comentário do outro).
+      for (const corpo of corpos) {
+        expect(Object.values(FIXERS).filter((f) => corpo.includes(f.marker))).toHaveLength(1)
+      }
+      for (const s of saidas) expect(s.desfecho).toBe("publicado")
+    } finally {
+      globalThis.fetch = real
+    }
+  })
+
+  it("um fixer que NÃO publica não impede os outros — e a rodada cobra o pior desfecho", async () => {
+    const ids = Object.keys(FIXERS) as (keyof typeof FIXERS)[]
+    const ultimo = ids[ids.length - 1]
+    const api = fakeGithubFetch({ failPostQuando: FIXERS[ultimo].marker })
+    const real = globalThis.fetch
+    globalThis.fetch = api.fetchImpl as unknown as typeof fetch
+    try {
+      const dir = fixtureComOsDoisDefeitos()
+      const saidas = []
+      for (const id of Object.keys(FIXERS)) {
+        saidas.push(
+          await publicarFixer({
+            fixerId: id,
+            root: dir,
+            env: ENV_GITHUB,
+            prFlag: "12",
+            out: silencio,
+            err: silencio,
+          }),
+        )
+      }
+
+      const porFixer = Object.fromEntries(saidas.map((s) => [s.resumo.fixer, s]))
+      expect(porFixer[ultimo].desfecho).toBe("quebrado")
+      expect(porFixer[ultimo].exit).toBe(EXIT.UNPUBLISHED)
+      // O outro fixer PUBLICOU: o ciclo não abortou no primeiro erro.
+      const outro = saidas.find((s) => s.resumo.fixer !== ultimo)
+      expect(outro?.desfecho).toBe("publicado")
+      expect(api.comments).toHaveLength(1)
+      // E o canal quebrou DEPOIS de tentar (o POST do último foi feito).
+      expect(api.chamadas.some((c) => c.startsWith("POST"))).toBe(true)
+    } finally {
+      globalThis.fetch = real
+    }
+  })
+
+  it("`--fixer` continua publicando UM só (o default do canal não mudou)", async () => {
+    const api = fakeGithubFetch()
+    const real = globalThis.fetch
+    globalThis.fetch = api.fetchImpl as unknown as typeof fetch
+    try {
+      const dir = fixtureComOsDoisDefeitos()
+      const saida = await publicarFixer({
+        fixerId: "pipefail-sigpipe",
+        root: dir,
+        env: ENV_GITHUB,
+        prFlag: "12",
+        out: silencio,
+        err: silencio,
+      })
+      expect(saida.desfecho).toBe("publicado")
+      expect(api.comments).toHaveLength(1)
+      expect(api.comments[0].body).toContain(FIXERS["pipefail-sigpipe"].marker)
+    } finally {
+      globalThis.fetch = real
+    }
+  })
+
+  it("o `--all` do CLI percorre o REGISTRO (dry-run: um corpo por fixer, na ordem do registro)", () => {
+    const dir = fixtureComOsDoisDefeitos()
+    const out = runCli(["--all", "--dry-run", "--root", dir])
+    expect(out.status).toBe(EXIT.OK)
+    for (const fixer of Object.values(FIXERS)) expect(out.stdout).toContain(fixer.marker)
+    // A ordem do relatório é a do REGISTRO, não a de uma lista escrita à mão.
+    const posicoes = Object.values(FIXERS).map((f) => out.stdout.indexOf(f.marker))
+    expect(posicoes).toEqual([...posicoes].sort((a, b) => a - b))
+    expect(out.stdout).toContain(`${Object.keys(FIXERS).length} fixer(s) do registro`)
+  })
+
+  it("sem canal, o `--all` não falha e DIZ por fixer (o GATE é o veredito)", () => {
+    const dir = fixtureComOsDoisDefeitos()
+    const out = runCli(["--all", "--root", dir])
+    expect(out.status).toBe(EXIT.OK)
+    const notices = out.stderr.split("::notice::").length - 1
+    expect(notices).toBe(Object.keys(FIXERS).length)
+    expect(out.stdout).toContain("indeterminado(s)")
+  })
+
+  it("`--all` E `--fixer` juntos são uso inválido (um escolhe o defeito, o outro publica o registro)", () => {
+    const out = runCli(["--all", "--fixer", "run-syntax", "--dry-run"])
+    expect(out.status).toBe(EXIT.USAGE)
+    expect(out.stderr).toContain("--all publica TODOS os fixers")
   })
 })
