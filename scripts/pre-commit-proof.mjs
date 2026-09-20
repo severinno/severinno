@@ -34,8 +34,8 @@
  */
 
 import { spawnSync } from "node:child_process"
-import { existsSync, readFileSync } from "node:fs"
-import { join } from "node:path"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { dirname, join } from "node:path"
 // O diretório de workflow das forjas vem da FONTE ÚNICA (cravar o literal aqui
 // deixaria as outras forjas fora da varredura — foi assim que a pipeline dona do
 // merge ficou fora da cobertura dos guards).
@@ -46,6 +46,7 @@ import {
   commitObjects,
   committedContent,
   copiaDoCheckout,
+  harnessPath,
   headExists,
   isExecutable,
   novoRepo as novoRepoSim,
@@ -616,6 +617,381 @@ export function proveCommitBlocks({ root = REPO_ROOT, hookSourceTexto = null } =
     return {
       state: "unavailable",
       detail: `a prova do bloqueio não pôde rodar: ${err instanceof Error ? err.message : String(err)}`,
+      evidence: null,
+      remedies,
+    }
+  } finally {
+    cleanupFixtures()
+  }
+}
+
+// =============================================================================
+// A OFERTA DO REMÉDIO NO PRÓPRIO COMMIT — o hook bloqueia E remenda a classe
+// =============================================================================
+//
+// A prova de cima mede o BLOQUEIO: o corpo `run:` quebrado no índice não vira
+// commit. O remédio do pre-commit existe para o passo seguinte — a MESMA medição
+// mostrando que o hook OFERECE o remendo da classe quando o defeito que bloqueou
+// é um dos que ele sabe consertar. Até aqui essa metade só era medida no
+// SIMULADOR (a suíte e o ensaio do pty, na máquina de quem roda): no runtime do CI
+// o que se provava era o bloqueio, não a oferta.
+//
+// A CLASSE desta metade é a `bun-mirror-removal` (a sétima, o remendo da
+// declaração de espelho APAGADA) porque é ela que fecha o ciclo inteiro sobre um
+// defeito de uma fase REAL do hook: o guard DONO (`check-bun-mirror.mjs`) roda de
+// verdade no recorte `--staged`, RECUSA o commit, e o fixer dele restaura a
+// declaração a partir da HEAD.
+//
+// TRÊS METADES, e as três são necessárias (a terceira é o que impede a oferta de
+// ser uma promessa vazia):
+//
+//   1. o DEFEITO (o índice com o arg `BUN_VERSION` apagado do build site) tem de
+//      ser RECUSADO pelo guard dono — o HEAD intacto e nenhum objeto de commit
+//      novo, num fixture cujo commit BASE já existe (por isso a contagem é
+//      RELATIVA, e não "zero objetos": aqui zero seria o commit base ausente);
+//   2. a OFERTA tem de nomear a classe, os ofensores e o fixer do DONO — medida
+//      pela CLI `--oferta` do MESMO script que o hook executa (a cópia do
+//      fixture, byte a byte), com o vínculo do hook provado no lado dele: a
+//      saída do commit cita a classe. Sem a segunda, "a oferta existe" poderia
+//      ser um script que ninguém invoca;
+//   3. o CONTROLE: o fixer DO DONO, rodado de verdade no runtime, restaura a
+//      declaração, o recorte `--staged` do guard volta a 0 e o MESMO commit ENTRA
+//      (conteúdo conferido em HEAD). Sem ele, "ofereceu" conviveria com um
+//      remendo que não desbloqueia nada.
+//
+// O CAMINHO é o NÃO INTERATIVO (`NO_PROMPT` do simulador): o `git commit` do
+// fixture não tem operador, e o remédio é fail-closed nesse ramo (imprime o
+// caminho à mão e mantém o commit bloqueado). QUEM MEDE O CAMINHO INTERATIVO é o
+// ensaio do pty — declarado no limite, não escondido.
+
+// A VERSÃO do fixture é uma SENTINELA, não uma afirmação de versão: o guard da
+// fonte única (`check-bun-mirror`) lê este arquivo, e um literal aqui envelheceria
+// em silêncio depois de um bump (o próprio guard nomeia a saída para fixtures).
+export const MIRROR_ACTRC = "--var BUN_VERSION=9.9.9-sentinel\n"
+export const MIRROR_ACTRC_PATH = ".actrc"
+
+/** O Dockerfile que faz o build site do compose PRECISAR do arg (a 18(b)). */
+export const MIRROR_DOCKERFILE = "Dockerfile.worker"
+export const MIRROR_DOCKERFILE_FONTE = "ARG BUN_VERSION\nFROM oven/bun:${BUN_VERSION}\n"
+
+export const MIRROR_COMPOSE = "docker-compose.yml"
+
+/** O build site PASSANDO o arg — o estado do bloco em HEAD (a premissa). */
+export const MIRROR_COMPOSE_COM_ARG = [
+  "services:",
+  "  web:",
+  "    build:",
+  "      context: .",
+  `      dockerfile: ${MIRROR_DOCKERFILE}`,
+  "      args:",
+  "        BUN_VERSION: ${BUN_VERSION:-9.9.9-sentinel}",
+  "",
+].join("\n")
+
+/** O MESMO serviço, com o bloco sem o arg — o commit que o hook tem de recusar. */
+export const MIRROR_COMPOSE_SEM_ARG =
+  MIRROR_COMPOSE_COM_ARG.split("\n").slice(0, 5).join("\n") + "\n"
+
+/** O prefixo dos fixtures desta prova (eles convivem com os das outras). */
+export const MIRROR_PREFIX = "pre-commit-remedy-"
+
+/**
+ * A mudança BENIGNA que o CONTROLE soma ao índice.
+ *
+ * Ela não é enfeite: o remendo da classe RESTAURA o que o commit apagava, então
+ * o índice volta a ser IGUAL à HEAD naquele arquivo — e um commit que só carrega
+ * a declaração restaurada é VAZIO para o git (medido: `git commit` sai 1 com
+ * "nada adicionado ao envio"). O que o CONTROLE mede é o VEREDITO do hook com a
+ * declaração de volta, e para isso o commit precisa ter o que registrar.
+ */
+export const MIRROR_NOTAS = "nota-do-fixture.txt"
+export const MIRROR_NOTAS_TEXTO = "mudança benigna do CONTROLE — o remendo restaurou a declaração\n"
+
+/**
+ * Um fixture com o estado BASE comitado (o arg no lugar) e o hook do checkout no
+ * `hooksPath`. O commit base vai com `--no-verify` de propósito: ele é a PREMISSA
+ * da medição (o "antes" com o arg), e um base que dependesse do veredito do hook
+ * mediria outra coisa.
+ *
+ * @returns {string}
+ */
+export function mirrorFixture() {
+  const dir = novoRepo({ passthrough: [BUN_GUARD], prefix: MIRROR_PREFIX })
+  writeHooksShim(dir)
+  stage(dir, MIRROR_ACTRC_PATH, MIRROR_ACTRC)
+  stage(dir, MIRROR_DOCKERFILE, MIRROR_DOCKERFILE_FONTE)
+  stage(dir, MIRROR_COMPOSE, MIRROR_COMPOSE_COM_ARG)
+  runCommit(dir, {}, ["commit", "-q", "-m", "base do fixture", "--no-verify"])
+  return dir
+}
+
+/**
+ * A OFERTA medida pela CLI do remédio, contra o ESTADO do fixture — o mesmo
+ * script que o hook executa (a cópia do fixture), no mesmo runtime.
+ *
+ * O `json` é o payload do `--oferta` (`scripts/pre-commit-remedy.mjs`, tipado
+ * lá como `Oferta`) ou `null` quando o stdout não é JSON — `null` é "não li",
+ * nunca uma oferta vazia inventada.
+ *
+ * @param {string} dir
+ * @returns {{status: number|null, json: any, output: string}}
+ */
+export function remedyOfferOf(dir, { run = spawnSync } = {}) {
+  const res = run(process.execPath, [join(dir, "scripts", REMEDY), "--root", dir, "--oferta"], {
+    cwd: dir,
+    encoding: "utf8",
+    input: "",
+    timeout: 60_000,
+    env: { ...process.env, PATH: harnessPath() },
+  })
+  const saida = String(res.stdout ?? "")
+  let json = null
+  try {
+    json = JSON.parse(saida)
+  } catch {
+    json = null
+  }
+  return { status: res.status, json, output: `${saida}${res.stderr ?? ""}` }
+}
+
+/**
+ * Um script do FIXTURE rodado de verdade, no runtime — a CLI do guard dono (o
+ * `--fix` e o `--staged` do CONTROLE). O `node` é o mesmo do processo (o do
+ * runtime), e o `PATH` é o do harness: o fixture não soma dublê nenhum AQUI (o
+ * dublê vive dentro do hook, que o git invoca).
+ *
+ * @param {string} dir
+ * @param {string} script
+ * @param {string[]} args
+ * @param {{run?: typeof spawnSync}} [deps]
+ * @returns {{status: number|null, output: string}}
+ */
+export function rodarCli(dir, script, args, { run = spawnSync } = {}) {
+  const res = run(process.execPath, [join(dir, "scripts", script), ...args], {
+    cwd: dir,
+    encoding: "utf8",
+    input: "",
+    timeout: 60_000,
+    env: { ...process.env, PATH: harnessPath() },
+  })
+  return { status: res.status, output: `${res.stdout ?? ""}${res.stderr ?? ""}` }
+}
+
+/**
+ * A metade da OFERTA: o hook bloqueia o commit que apaga a declaração de espelho,
+ * oferece a classe que remenda esse defeito e o fixer do dono fecha o ciclo.
+ *
+ * As peças são INJETÁVEIS (`deps`) pelo mesmo motivo das outras provas do
+ * repositório: as metades de FALHA (o bloqueio que passa, a oferta sem a classe,
+ * o fixer que não restaura, o controle que não entra) só são exercitáveis se a
+ * premissa que se quer derrubar puder ser trocada — e é a suíte que as mede, não
+ * uma re-leitura do código.
+ *
+ * @param {{root?: string, deps?: {fixture?: Function, runCommit?: Function, git?: Function, offerOf?: Function, cli?: Function}}} [opts]
+ * @returns {{state: string, detail: string, evidence: object|null, remedies: string[]}}
+ */
+export function proveRemedyOffered({ root = REPO_ROOT, deps = /** @type {any} */ ({}) } = {}) {
+  const {
+    fixture = mirrorFixture,
+    runCommit: commit = runCommit,
+    git = runGit,
+    offerOf = remedyOfferOf,
+    cli = rodarCli,
+  } = deps
+  const remedies = [
+    `o hook precisa existir e ser EXECUTÁVEL: um hook sem o bit de execução é IGNORADO por git EM SILÊNCIO (o commit entra sem veredito)`,
+    `a classe 'bun-mirror-removal' precisa estar na oferta: ela é declarada por \`scripts/remedy-classes/bun-mirror-removal.mjs\`, e a descoberta RECUSA a rodada quando a declaração cita um dono que não existe`,
+  ]
+  const fonte = hookSource(root)
+  if (fonte === null) {
+    return {
+      state: "unavailable",
+      detail: `${HOOK} não existe neste checkout — não há hook para exercitar a oferta`,
+      evidence: null,
+      remedies,
+    }
+  }
+  const faltando = []
+  if (!existsSync(join(root, "node_modules")))
+    faltando.push("node_modules (a CLI do remédio importa as classes)")
+  const problems = closureProblems(root)
+  if (problems.length > 0) faltando.push(`fecho do guard incompleto: ${problems.join(", ")}`)
+  if (faltando.length > 0) {
+    return {
+      state: "unavailable",
+      detail: `não dá para exercitar o remédio no runtime: ${faltando.join("; ")}`,
+      evidence: null,
+      remedies,
+    }
+  }
+
+  try {
+    const dir = fixture()
+    const objetosAntes = commitObjects(dir)
+    const headAntes = String(git(dir, ["rev-parse", "HEAD"]).output ?? "").trim()
+
+    // ── METADE 1: o defeito no ÍNDICE tem de ser RECUSADO pelo guard DONO ──
+    stage(dir, MIRROR_COMPOSE, MIRROR_COMPOSE_SEM_ARG)
+    const bloqueio = commit(dir)
+    const objetosDepois = commitObjects(dir)
+    const headDepois = String(git(dir, ["rev-parse", "HEAD"]).output ?? "").trim()
+    const evidencia = {
+      defeito: {
+        ...resumoCommit(bloqueio),
+        objetosDeCommit: objetosDepois,
+        objetosDoBase: objetosAntes,
+        headIntacto: headDepois === headAntes && headDepois !== "",
+      },
+    }
+    if (bloqueio.status === 0 || objetosDepois > objetosAntes) {
+      return {
+        state: "violated",
+        detail:
+          `o pre-commit NÃO bloqueou o commit que APAGA o arg \`BUN_VERSION\` do build site ` +
+          `(${MIRROR_COMPOSE}): exit ${bloqueio.status}, ${objetosDepois - objetosAntes} objeto(s) novo(s) — ` +
+          `a declaração apagada viaja no commit de quem confia no guard dono`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    if (!bloqueio.output.includes(MIRROR_COMPOSE)) {
+      return {
+        state: "unavailable",
+        detail: `o commit foi recusado, mas a saída do hook não cita ${MIRROR_COMPOSE} — o não-zero veio de outro lugar (não do veredito do guard dono)`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    evidencia.defeito.bloqueadoPor = "a saída do hook cita o arquivo do defeito"
+
+    // ── METADE 2: a OFERTA nomeia a classe, os ofensores e o fixer do DONO ──
+    const oferta = offerOf(dir)
+    const classe = (oferta.json?.classes ?? []).find((c) => c.id === "bun-mirror-removal")
+    evidencia.oferta = {
+      exit: oferta.status,
+      classes: (oferta.json?.classes ?? []).map((c) => ({ id: c.id, offenders: c.offenders })),
+      unmeasured: (oferta.json?.unmeasured ?? []).map((u) => u.id),
+      fonte: `node scripts/${REMEDY} --oferta (a cópia do fixture)`,
+    }
+    if (!classe) {
+      return {
+        state: "violated",
+        detail:
+          `o commit foi BLOQUEADO (o bloqueio está de pé), mas a OFERTA não tem a classe ` +
+          `'bun-mirror-removal' para o defeito que o guard dono acabou de recusar — o operador corrige à mão ` +
+          `o que o repositório remenda por máquina (medido: ${oferta.json?.classes?.length ?? 0} classe(s) na oferta, exit ${oferta.status})`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    evidencia.oferta.classe = {
+      offenders: [...classe.offenders],
+      fixer: classe.fixer,
+      violacoes: classe.violacoes,
+    }
+    // O vínculo: quem OFERECE é o HOOK, não um script avulso. A classe entra como
+    // requisito porque o bloco é UMA escrita do remédio (as linhas ✅/❌ dos guards
+    // paralelos, essas, seguem evidência — ver o cabeçalho do módulo).
+    const citada = bloqueio.output.includes("bun-mirror-removal")
+    evidencia.oferta.citadaPeloHook = citada
+    if (!citada) {
+      return {
+        state: "violated",
+        detail:
+          `a classe 'bun-mirror-removal' existe na oferta medida FORA do hook, mas a saída do commit não a cita — ` +
+          `o hook recusou sem entregar a oferta ao operador`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+
+    // ── METADE 3 (o CONTROLE): o fixer do DONO restaura e o MESMO commit ENTRA ──
+    const fixer = cli(dir, BUN_GUARD, ["--fix"])
+    git(dir, ["add", "--", MIRROR_COMPOSE])
+    const guarda = cli(dir, BUN_GUARD, ["--staged"])
+    // O que o fixer devolveu ao ÍNDICE: a declaração do commit anterior. É o
+    // contrato da classe (restaurar o que foi APAGADO), e é medido ANTES de
+    // seguir — um remendo que gravasse outra coisa não seria o remendo dela.
+    const noIndice = String(git(dir, ["show", `:${MIRROR_COMPOSE}`]).output ?? "")
+    const restauradoNoIndice = noIndice === MIRROR_COMPOSE_COM_ARG
+    // A mudança BENIGNA: com a declaração de volta o commit sozinho seria VAZIO.
+    stage(dir, MIRROR_NOTAS, MIRROR_NOTAS_TEXTO)
+    const commitControle = commit(dir)
+    const objetosControle = commitObjects(dir)
+    let conteudo = null
+    try {
+      conteudo = committedContent(dir, MIRROR_COMPOSE)
+    } catch {
+      conteudo = null
+    }
+    evidencia.controle = {
+      fixer: fixer.status,
+      guarda: guarda.status,
+      restauradoNoIndice,
+      status: commitControle.status,
+      objetosDeCommit: objetosControle - objetosDepois,
+      conteudoEmHead:
+        conteudo === MIRROR_COMPOSE_COM_ARG ? "a declaração restaurada" : "outro conteúdo",
+    }
+    if (fixer.status !== 0) {
+      return {
+        state: "violated",
+        detail: `o fixer do guard dono ('${BUN_GUARD} --fix') não restaurou a declaração (exit ${fixer.status}) — a oferta aponta para um remendo que não fecha`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    if (guarda.status !== 0) {
+      return {
+        state: "violated",
+        detail: `o fixer rodou, mas o recorte '--staged' do guard DONO continua vermelho (exit ${guarda.status}) — o remendo não fechou o defeito que o hook recusou`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    if (!restauradoNoIndice) {
+      return {
+        state: "violated",
+        detail: `o fixer do guard dono não devolveu ao ÍNDICE a declaração do commit anterior (${MIRROR_COMPOSE} no índice difere do bloco de HEAD) — o remendo não é o da classe`,
+        evidence: evidencia,
+        remedies,
+      }
+    }
+    if (
+      commitControle.status !== 0 ||
+      objetosControle <= objetosDepois ||
+      conteudo !== MIRROR_COMPOSE_COM_ARG
+    ) {
+      const doDono = String(commitControle.output ?? "").includes(MIRROR_COMPOSE)
+      return {
+        state: doDono ? "violated" : "unavailable",
+        detail:
+          `o CONTROLE (o MESMO commit com a declaração restaurada) não entrou depois do remendo: ` +
+          `exit ${commitControle.status}, ${objetosControle - objetosDepois} objeto(s), conteúdo ${conteudo === MIRROR_COMPOSE_COM_ARG ? "o esperado" : "DIFERENTE"}` +
+          (doDono
+            ? ` — e a recusa ainda cita ${MIRROR_COMPOSE}: o guard dono continua vermelho num fixture em que a oferta foi feita`
+            : ` — e a saída não cita o guard dono: a recusa veio de outro lugar`),
+        evidence: evidencia,
+        remedies,
+      }
+    }
+
+    return {
+      state: "proven",
+      detail:
+        `o commit que APAGA o arg \`BUN_VERSION\` do build site (${MIRROR_COMPOSE}) é RECUSADO pelo guard DONO ` +
+        `(exit ${bloqueio.status}, ${objetosDepois - objetosAntes} objeto(s) novo(s), HEAD intacto), a OFERTA nomeia a ` +
+        `classe 'bun-mirror-removal' (${classe.offenders.length} ofensor(es), fixer \`${classe.fixer}\`) e a saída do ` +
+        `commit a CITA, e o fixer do dono devolve a declaração ao ÍNDICE: o \`--staged\` volta a ${guarda.status} e o ` +
+        `commit CONTROLE (o mesmo índice + uma mudança benigna, porque o remendo torna o commit vazio) ENTRA ` +
+        `(exit ${commitControle.status}, ${objetosControle - objetosDepois} objeto, conteúdo conferido em HEAD)`,
+      evidence: evidencia,
+      remedies,
+    }
+  } catch (err) {
+    return {
+      state: "unavailable",
+      detail: `a prova da oferta não pôde rodar: ${err instanceof Error ? err.message : String(err)}`,
       evidence: null,
       remedies,
     }

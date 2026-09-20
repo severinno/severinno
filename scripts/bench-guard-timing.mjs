@@ -1004,16 +1004,28 @@ export function measureTestCost({ samples = 1, counterfactual = false } = {}) {
 /**
  * As âncoras do bloco da OFERTA no `.husky/pre-commit`: do `if` que a abre até a
  * fase sequencial (o que vem depois dela não muda na transformação).
+ *
+ * O `if` carrega a FASE A desde que a oferta deixou de depender de QUEM reprovou
+ * (um gate sem fixer não pode custar ao operador a classe que a máquina remenda).
+ * A âncora é esta linha EXATA — se ela mudar, o contrafactual se declara NÃO
+ * MEDIDO em vez de comparar o hook com ele mesmo.
  */
-export const OFERTA_INICIO = 'if [ "$SINTAXE" -ne 0 ] || [ "$FASE_B" -ne 0 ]; then'
+export const OFERTA_INICIO =
+  'if [ "$FASE_A" -ne 0 ] || [ "$SINTAXE" -ne 0 ] || [ "$FASE_B" -ne 0 ]; then'
 export const OFERTA_FIM = "# ── Phase C: Sequential checks"
 
-/** As âncoras da espera do gate de sintaxe: SEPARADA (hoje) × agregada. */
-export const WAIT_SEPARADO =
-  "wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS || FASE_A=$?"
+/**
+ * As âncoras da espera do gate de sintaxe: SEPARADA (hoje) × agregada.
+ *
+ * A linha do `wait_all` vive DENTRO da função `fase_a` (a fase é função para
+ * poder ser re-executada depois de um remédio verde) — a âncora leva a indentação
+ * dela, porque a transformação é textual.
+ */
+export const WAIT_SEPARADO = "  wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS"
 export const WAIT_AGREGADO =
-  "wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS $PID_RUNSYNTAX || FASE_A=$?"
-export const ESPERA_SINTAXE = 'SINTAXE=0\nwait "$PID_RUNSYNTAX" || SINTAXE=$?'
+  "  wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS $PID_RUNSYNTAX"
+export const ESPERA_SINTAXE =
+  'SINTAXE=0\nif [ -n "$PID_RUNSYNTAX" ]; then\n  wait "$PID_RUNSYNTAX" || SINTAXE=$?\nfi'
 export const ESPERA_AGREGADA = "SINTAXE=$FASE_A"
 
 /**
@@ -1033,6 +1045,9 @@ export function hookSemOferta(fonte) {
   const veredito =
     "# SEM A OFERTA: o MESMO veredito (a fase reprovada bloqueia o commit, com o\n" +
     "# mesmo exit), sem o remédio e sem a revalidação.\n" +
+    'if [ "$FASE_A" -ne 0 ]; then\n' +
+    '  exit "$FASE_A"\n' +
+    "fi\n" +
     'if [ "$SINTAXE" -ne 0 ]; then\n' +
     '  exit "$SINTAXE"\n' +
     "fi\n" +
@@ -1277,8 +1292,8 @@ export function hookWhatItAdded({ deltas = null, detection = null } = {}) {
         " — fail-closed, sem terminal ela não pergunta nem remenda",
     deltas.revalidacaoMs === null
       ? semMedida("a revalidação depois de um remédio verde")
-      : `depois de um remédio VERDE, a fase rodada de novo custa ${signedMillis(deltas.revalidacaoMs)}` +
-        " (aqui só o gate de sintaxe é re-executado: a fase B é dublada no fixture)",
+      : `depois de um remédio VERDE, as fases que estavam VERMELHAS são rodadas de novo e custam ${signedMillis(deltas.revalidacaoMs)}` +
+        " (aqui só o gate de sintaxe estava vermelho: a fase A passa e a fase B é dublada no fixture)",
     detection === null || !detection.medido
       ? semMedida("a detecção contra a árvore real")
       : `detecção contra a ÁRVORE REAL: ${formatMs(detection.ms)} ("${detection.veredito}")` +

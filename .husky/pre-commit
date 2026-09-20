@@ -35,34 +35,50 @@ wait_all() {
 # ── Phase A: Staged guards (parallel) ─────────────────────────────────────
 # These guards inspect only git diff --cached (staged changes) and are
 # completely independent of each other — safe to run in parallel.
-
-node scripts/check-bun-mirror.mjs --staged &
-PID_BUN=$!
-
-node scripts/check-mutation-jobs.mjs --staged &
-PID_MUT=$!
-
-node scripts/check-unused-deps.mjs --staged &
-PID_DEPS=$!
-
-node scripts/check-mutation-timing-contract.mjs --staged &
-PID_TIMING=$!
-
-# O CONTRATO DE MERGE do commit — RECORTE --staged, declarado em HOOK_DECLARED do
-# check-hook-ci-parity. Ele roda SO quando o INDICE toca o manifesto, a declaracao
-# da reaplicacao ou um workflow (nos outros commits sao um `git diff --cached
-# --name-only` e um aviso, ~30ms).
 #
-# POR QUE ELE ESTA AQUI: renomear o `name:` de um required check MUDA o contexto
-# que a forja exige, e a forja continua exigindo o ANTIGO — o PR passa a esperar
-# para sempre por um check que nunca mais roda. Esse rename era invisivel no
-# hook: `required-checks` estava em HOOK_NOT_RUN com a justificativa de que a
-# paridade de gates pegaria o efeito, e ela NAO pega (a classificacao de um gate
-# e pelo job/comando; renomear o `name:` nao muda classificacao nenhuma). Sem
-# este guard o commit saia daqui e a divergencia so aparecia no CI — ou, num PR
-# cuja base nao e `main`, no cron semanal.
-node scripts/check-required-checks.mjs --staged &
-PID_REQCHECKS=$!
+# A fase INTEIRA vive numa FUNCAO pelo mesmo motivo da fase B: ela roda DUAS
+# vezes quando o remedio entra — uma para MEDIR (e o veredito do commit) e outra
+# para REVALIDAR, com o remendo ja no INDICE. E o que impede um gate SEM FIXER de
+# custar ao operador a classe que a maquina remenda: o remendo entra no indice e
+# quem diz se a fase passou e a FASE, rodada de novo (o teste de completude cobra
+# cada comando AQUI dentro — um guard que ficasse fora faria a reexecucao medir
+# outra fase).
+fase_a() {
+  node scripts/check-bun-mirror.mjs --staged &
+  PID_BUN=$!
+
+  node scripts/check-mutation-jobs.mjs --staged &
+  PID_MUT=$!
+
+  node scripts/check-unused-deps.mjs --staged &
+  PID_DEPS=$!
+
+  node scripts/check-mutation-timing-contract.mjs --staged &
+  PID_TIMING=$!
+
+  # O CONTRATO DE MERGE do commit — RECORTE --staged, declarado em HOOK_DECLARED do
+  # check-hook-ci-parity. Ele roda SO quando o INDICE toca o manifesto, a declaracao
+  # da reaplicacao ou um workflow (nos outros commits sao um `git diff --cached
+  # --name-only` e um aviso, ~30ms).
+  #
+  # POR QUE ELE ESTA AQUI: renomear o `name:` de um required check MUDA o contexto
+  # que a forja exige, e a forja continua exigindo o ANTIGO — o PR passa a esperar
+  # para sempre por um check que nunca mais roda. Esse rename era invisivel no
+  # hook: `required-checks` estava em HOOK_NOT_RUN com a justificativa de que a
+  # paridade de gates pegaria o efeito, e ela NAO pega (a classificacao de um gate
+  # e pelo job/comando; renomear o `name:` nao muda classificacao nenhuma). Sem
+  # este guard o commit saia daqui e a divergencia so aparecia no CI — ou, num PR
+  # cuja base nao e `main`, no cron semanal.
+  node scripts/check-required-checks.mjs --staged &
+  PID_REQCHECKS=$!
+
+  # Aguarda os CINCO e agrega os status deles (wait_all — topo).
+  #
+  # O `||` NAO existe mais nesta linha, e nao por descuido: dentro da funcao o
+  # status de `wait_all` e o RETORNO dela, e o `set -e` esta desligado na chamada
+  # (`fase_a || FASE_A=$?`) — quem registra o veredito e o call site.
+  wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS
+}
 
 # Sintaxe dos corpos `run:` — RECORTE --staged, declarado em HOOK_DECLARED do
 # check-hook-ci-parity: julga os workflows do INDICE, lendo o conteudo do
@@ -70,30 +86,51 @@ PID_REQCHECKS=$!
 # reescrita mecanica em massa ANTES do commit e e o COMMIT que o carrega; a
 # arvore pode ter WIP que nao faz parte dele. A varredura inteira (480 corpos
 # das duas forjas) continua sendo o veredito do CI.
-node scripts/check-workflow-run-syntax.mjs --staged &
-PID_RUNSYNTAX=$!
-
-# Aguarda os CINCO SEM REMEDIO e agrega os status deles (wait_all — topo).
 #
-# O de sintaxe fica FORA desta lista de proposito: o `wait_all` devolve o PRIMEIRO
-# status nao-zero, entao ele diz QUE a fase falhou, nao QUAL guard falhou — e o de
-# sintaxe tem o seu proprio veredito abaixo (com o remedio).
-# O `||` e obrigatorio aqui: com `set -e` um `wait_all` que devolvesse nao-zero
-# ENCERRAVA o hook neste ponto, e as linhas seguintes (o veredito da fase) nunca
-# rodariam — a agregacao continuaria sendo a mesma, mas o codigo abaixo dela
-# mentiria sobre o que mede.
+# O gate de sintaxe e o SEXTO guard da fase e fica FORA do `wait_all` de
+# proposito: o `wait_all` devolve o PRIMEIRO status nao-zero, entao ele diz QUE a
+# fase falhou, nao QUAL guard falhou — e o de sintaxe tem o seu proprio veredito
+# abaixo (com o remedio). Ele e lancado ANTES da fase A para correr em paralelo
+# com ela, como sempre correu.
+# A captura do PID e DEFENSIVA (`${!:-}`) e a espera e CONDICIONAL por causa da
+# mutacao que mede esta linha: com a chamada acima apagada nao ha job nenhum, e o
+# `$!` de um shell sob `set -u` e "variavel nao associada" — o hook morreria por
+# INFRA e recusaria o commit por um motivo que nao e o veredito do gate. A prova do
+# doctor leria isso como "a prova nao mede esta linha" (unavailable) em vez do que a
+# mutacao significa (o defeito PASSA sem o gate). Medido: `bash -uc 'x=$!'` sai 127
+# e `x="${!:-}"` sai 0 — e com o job iniciado as duas formas dao o MESMO PID, entao
+# o caminho de producao e identico ao de sempre (`wait` no PID do gate, e o status
+# DELE e o veredito). Com a chamada QUEBRADA em vez de apagada — o script renomeado,
+# por exemplo — o job existe, o `wait` ve o 127 e o hook BLOQUEIA: onde importa, o
+# fail-closed continua de pe.
+PID_RUNSYNTAX=""
+node scripts/check-workflow-run-syntax.mjs --staged &
+PID_RUNSYNTAX="${!:-}"
+
 FASE_A=0
-wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS || FASE_A=$?
+fase_a || FASE_A=$?
 
 SINTAXE=0
-wait "$PID_RUNSYNTAX" || SINTAXE=$?
+if [ -n "$PID_RUNSYNTAX" ]; then
+  wait "$PID_RUNSYNTAX" || SINTAXE=$?
+fi
 
-# A falha dos cinco SEM REMEDIO bloqueia o commit AQUI, antes da fase B: nenhuma
-# das classes que o remedio conhece toca esses guards, e rodar a fase B inteira
-# (~3s) para depois nao ter o que oferecer seria pagar o custo do remedio sem o
-# remedio. O veredito e o mesmo de antes, agora dito em vez de deixado para o
-# `set -e`.
-[ "$FASE_A" -eq 0 ] || exit "$FASE_A"
+# A falha dos cinco SEM REMEDIO NAO encerra o hook aqui.
+#
+# Ela bloqueia o commit — isso nao mudou —, mas quem diz ISSO e o veredito
+# explicito no bloco do remedio, DEPOIS da oferta. O que mudou, e por que: o MESMO
+# indice pode carregar uma classe que os guards donos sabem remendar (o corpo
+# `run:` que deixou de fazer parsing, o CR/CRLF, o blob do indice, o byte
+# invalido, o caminho tipado de um comando de hook, o pipe quieto sob pipefail) e
+# o remedio mede cada uma com o DONO dela, independentemente das fases. Encerrar
+# aqui — o que este hook fazia — fazia a oferta depender do guard que reprovou: um
+# gate SEM FIXER custava ao operador o remendo de um defeito que a maquina
+# remenda, e ele so descobria isso re-rodando o commit depois de consertar o
+# primeiro a mao.
+#
+# A fase B continua NAO rodando quando a fase A reprova: o custo dela (~3s) nao e
+# pago por um commit que ja esta bloqueado (o comentario da fase B diz por que).
+# Quem a mede, se o remedio remediar, e o fim do bloco do remedio.
 
 # ── Phase B: Global guards (parallel) ─────────────────────────────────────
 # Encoding guards, barrel lint, and prettier check are read-only and
@@ -192,19 +229,29 @@ fase_b() {
 }
 
 FASE_B=0
-fase_b || FASE_B=$?
+FASE_B_MEDIDA=0
+if [ "$FASE_A" -eq 0 ]; then
+  FASE_B_MEDIDA=1
+  fase_b || FASE_B=$?
+fi
 
 # ── O REMEDIO: UMA pergunta para TODAS as classes de defeito MECANICO ─────
 #
-# Quando o gate de sintaxe reprova OU a fase B reprova, o remedio e oferecido UMA
-# VEZ: ele detecta cada classe com o guard DONO e remenda so o que ele conhece
-# (a cicatriz de `run:`, o CR/CRLF do working tree, o CRLF do blob do indice, o
-# byte 0x97 do utf8, o caminho tipado de um comando de hook e o pipe quieto sob
-# pipefail), levando o remendo ao INDICE com a guarda de WIP. Sem este
-# passo o operador consertava a mao exatamente o que a maquina remenda — com a
-# chance de introduzir um erro NOVO na mesma linha.
+# Quando QUALQUER metade fica vermelha — a fase A, o gate de sintaxe ou a fase B
+# —, o remedio e oferecido UMA VEZ: ele detecta cada classe com o guard DONO e
+# remenda so o que ele conhece (a cicatriz de `run:`, o CR/CRLF do working tree, o
+# CRLF do blob do indice, o byte 0x97 do utf8, o caminho tipado de um comando de
+# hook e o pipe quieto sob pipefail), levando o remendo ao INDICE com a guarda de
+# WIP. Sem este passo o operador consertava a mao exatamente o que a maquina
+# remenda — com a chance de introduzir um erro NOVO na mesma linha.
 #
-# A ORDEM (depois das DUAS fases) importa de verdade, e por dois motivos:
+# POR QUE A FASE A ENTRA NO `if`: a oferta nao pode depender de QUEM reprovou. O
+# remedio nao mede o veredito das fases — ele mede as CLASSES, cada uma com o
+# guard dono dela —, entao um gate sem fixer nao tem como deixar a oferta
+# invisivel: a oferta e das classes presentes no indice, e o veredito da fase que
+# reprovou continua bloqueando o commit (abaixo, e nao antes da oferta).
+#
+# A ORDEM (depois da medicao) importa de verdade, e por dois motivos:
 #   - os guards ja terminaram e a saida assentou: um prompt competindo com guards
 #     escrevendo e um prompt que ninguem le;
 #   - `run-encoding-guards.sh` para no PRIMEIRO guard que falha (`set -e`), entao
@@ -224,15 +271,23 @@ fase_b || FASE_B=$?
 # unico jeito de distinguir "o remedio aplicou e revalidou" de "a chamada sumiu"
 # — o `|| VAR=$?` registra o FRACASSO, nunca o sucesso. O `|| true` mantem o
 # `set -e` fora do caminho: o veredito e o de baixo, com o exit do GATE/FASE.
-if [ "$SINTAXE" -ne 0 ] || [ "$FASE_B" -ne 0 ]; then
+if [ "$FASE_A" -ne 0 ] || [ "$SINTAXE" -ne 0 ] || [ "$FASE_B" -ne 0 ]; then
   REMEDIO=1
   node scripts/pre-commit-remedy.mjs && REMEDIO=0 || true
 
   if [ "$REMEDIO" -ne 0 ]; then
     # O veredito da falha e o do GATE/FASE, nao o do remedio — e este ramo e a
     # REDE do caso perigoso: com a chamada acima ausente (ou sem terminal),
-    # `REMEDIO` fica 1 e o commit com o defeito NAO passa. A sintaxe e cobrada
-    # primeiro porque ela e o veredito mais especifico dos dois.
+    # `REMEDIO` fica 1 e o commit com o defeito NAO passa.
+    #
+    # A ORDEM (fase A, sintaxe, fase B) e a mesma de antes para os dois casos que
+    # ja existiam, com a fase A na frente: ela e a unica das tres que ja encerrava
+    # o hook neste ponto, e o codigo que o operador ve tem de continuar sendo o do
+    # guard do indice. A sintaxe vem depois dela porque e o veredito mais
+    # especifico dos dois que sobraram.
+    if [ "$FASE_A" -ne 0 ]; then
+      exit "$FASE_A"
+    fi
     if [ "$SINTAXE" -ne 0 ]; then
       exit "$SINTAXE"
     fi
@@ -241,14 +296,27 @@ if [ "$SINTAXE" -ne 0 ] || [ "$FASE_B" -ne 0 ]; then
 
   # O remedio so LEVANTA a falha que ele mediu: quem declara a fase VERDE e a
   # FASE, rodada de novo — com o remendo ja no INDICE e o mesmo instrumento do
-  # veredito original (o `--staged` do gate e o `fase_b` inteiro). Sem esta
-  # re-execucao, um remendo verde esconderia um gate IRMAO da fase B que continua
-  # vermelho (o `run-encoding-guards.sh` morre no primeiro guard que falha, entao a
-  # fase nao mediu os seguintes).
+  # veredito original (o `fase_a` inteiro, o `--staged` do gate e o `fase_b`
+  # inteiro). Sem esta reexecucao, um remendo verde esconderia um gate IRMAO que
+  # continua vermelho, e o remedio passaria a dar o veredito de uma fase que ele
+  # NAO mede. A regra e uma so: reexecuta o que estava VERMELHO — nem mais (pagar
+  # o instrumento de um veredito que ja e verde), nem menos.
+  if [ "$FASE_A" -ne 0 ]; then
+    fase_a
+  fi
   if [ "$SINTAXE" -ne 0 ]; then
     node scripts/check-workflow-run-syntax.mjs --staged
   fi
   if [ "$FASE_B" -ne 0 ]; then
+    fase_b
+  fi
+
+  # A fase B que NAO chegou a ser medida (a fase A reprovou e o hook pulou o custo
+  # dela) e medida AGORA, com o remendo no indice: nenhuma fase pode ficar sem
+  # medicao. Se ela reprovar, o `set -e` encerra o hook com o codigo dela — e o
+  # remedio da classe que ela apontar e oferecido na rodada seguinte (uma pergunta
+  # por rodada continua sendo o contrato da oferta).
+  if [ "$FASE_B_MEDIDA" -eq 0 ]; then
     fase_b
   fi
 fi

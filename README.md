@@ -999,7 +999,12 @@ sozinho não basta, porque o remédio só é invocado quando uma fase do commit
 reprova. É por isso que a sexta classe entrou junto com o guard dela na **fase B**
 do pre-commit: o MESMO comando do CI, medido em ~0,14s (129 scripts + 33
 workflows), em vez de mais um invariante em `HOOK_NOT_RUN` cujo remédio só
-existiria no CI.
+existiria no CI. A sétima é o caso OPOSTO, e reforça a mesma régua: o guard dono já
+rodava — `check-bun-mirror.mjs --staged` é um dos cinco guards da **fase A** —, e o
+que faltava era ele saber se consertar; declarado o `--fix` no mesmo commit, a
+recusa e o remendo passaram a viver no MESMO lugar (medido: com o arg apagado do
+build site, a fase A recusa, o remendo volta ao índice e o `--staged` revalida
+verde).
 
 O preview usa o MESMO caminho de decisão do fixer (`dry`, nada gravado), a pergunta
 diz os três efeitos do "sim" (remenda a ÁRVORE, re-estagia, REVALIDA) e o veredito
@@ -1029,10 +1034,17 @@ do HOOK, e em duas camadas: a variável que autoriza o commit nasce "não provou
 nada" e só o **exit 0** do remédio a zera (o remédio pode LEVANTAR a falha, nunca
 criá-la), **e** a fase que reprovou volta a rodar sobre o índice remendado — um exit
 0 que não remendou nada não levanta falha nenhuma (medido com o desfecho do remédio
-AFIRMADO por dublê). A fase B do hook é uma **função** (`fase_b`) justamente por
-isso: ela roda duas vezes quando o remédio entra — uma para medir, outra para
-revalidar com o remendo já no índice —, e é a segunda medição que cobre os guards
-que o `run-encoding-guards.sh` nem chegou a rodar (ele para no primeiro que falha).
+AFIRMADO por dublê). As **duas** fases do hook são **funções** (`fase_a`, `fase_b`)
+justamente por isso: cada uma roda duas vezes quando o remédio entra — uma para
+medir, outra para revalidar com o remendo já no índice —, e a reexecução cobre
+**só as fases que estavam vermelhas** (pagar o instrumento de um veredito que já é
+verde seria trabalho por nada) e alcança os guards que o `run-encoding-guards.sh`
+nem chegou a rodar (ele para no primeiro que falha). A fase A entra nessa regra
+como qualquer outra: a falha de um guard do ÍNDICE não levanta com um remédio
+verde (medido por mutação: sem a reexecução dela, o commit com o gate do índice
+vermelho PASSA) e — a metade que o operador sente — também **não engole a oferta**,
+porque a oferta é das classes presentes no commit e não do gate que reprovou; a
+fase B que a fase A vermelha deixou sem medição é medida no fim do bloco.
 
 **O custo da oferta está medido nos DOIS caminhos do commit** (família `hook` do
 `bench-guard-timing`, com a baseline versionada MOVIDA nesta rodada para ela; o
@@ -1056,8 +1068,18 @@ sai verde e **uma** no fail-closed), e a detecção da oferta contra a árvore r
 (**182ms**) é read-only por construção, com o `git status` conferido antes e
 depois: `escreveu: true` é violação da família, não um detalhe do log.
 
-A pergunta vem depois das DUAS fases, e a falha dos quatro guards da fase A — que
-nenhuma classe cobre — continua encerrando o hook antes dela. Que o hook
+A OFERTA também é uma superfície MEDIDA, e não só o bloco que o operador lê:
+`node scripts/pre-commit-remedy.mjs --oferta` roda a MESMA detecção (com o guard
+dono de cada classe) e publica o payload em **JSON** no stdout, sem pergunta e
+sem escrever na árvore nem no índice. A semântica é a da medição, não a do
+remédio: a oferta vazia sai **exit 0** ("nada a remendar" é o fato medido, e quem
+exige a classe é quem mede) e uma classe que não pôde ser medida sai **exit 2**
+com o motivo — o mesmo fail-closed da oferta incompleta. É essa superfície que a
+prova do runtime do CI consome: medir por TEXTO exigiria prosa como requisito, e
+medir por exit code não diria QUAL classe foi oferecida.
+
+A pergunta vem depois das fases (e a fase que não chegou a rodar é medida logo
+depois do remédio — nenhuma fase fica sem veredito). Que o hook
 **bloqueia de verdade** não é medido por leitura do arquivo:
 `src/lib/__tests__/pre-commit-run-syntax-blocks.test.ts` EXECUTA o
 `.husky/pre-commit` real num repo temporário com o defeito staged e exige exit 1
@@ -1066,7 +1088,12 @@ desmente um não-zero por motivo errado). O mesmo harness prova o recorte de
 compose (`src/lib/__tests__/pre-commit-compose-arg-removal-blocks.test.ts`): o
 commit que **REMOVE** o `BUN_VERSION` de um build site é recusado nomeando o
 serviço, contra o estado base comitado — e sem a comparação bloco-do-índice ×
-bloco-de-HEAD o commit passa. O irmão dele
+bloco-de-HEAD o commit passa. É esse mesmo fixture, com a fase A reprovando de
+VERDADE, que mede a oferta sobrevivendo a um gate sem fixer: o remédio é oferecido
+(o caminho à mão da classe que estava no MESMO índice) e a mutação que devolve o
+hook ao estado do HEAD mostra a oferta sendo PERDIDA, com o mesmo veredito; a
+reexecução da fase A depois de um remédio verde é medida pelo veredito do guard
+aparecendo **duas** vezes na saída, e tirá-la faz o commit passar. O irmão dele
 (`src/lib/__tests__/pre-commit-toolchain-removal-blocks.test.ts`) mede a outra
 declaração que um commit pode apagar: o `packageManager` do `package.json`
 sai do índice e o hook real recusa, nomeando o campo e o valor declarado — sem o
@@ -1137,9 +1164,14 @@ quando os marcadores do runtime (`/.dockerenv` + `/opt/acttoolcache`) não estã
 lá — senão a prova mediria a máquina de quem a roda. O job roda essa prova em
 DUAS FORMAS: a padrão (o hook somado ao dublê dos guards irmãos, declarada no
 "NÃO CUBRE" dela) e a `--sem-duble`, que é a que fecha esse limite — o hook REAL
-sobre uma CÓPIA do checkout, com os **cinco guards de fase A e o gate rodando de
-verdade**, a atribuição medida por **exit code** (os cinco saem 0 e o gate não, e
-é o gate quem recusa o commit) e o CONTROLE entrando com o corpo fechado. O texto
+sobre uma CÓPIA do checkout, com as **duas fases rodando de verdade** (os
+**cinco guards de fase A, o gate e os dez membros da fase B**), a atribuição
+medida por **exit code** (os cinco saem 0 e o gate não, e
+é o gate quem recusa o commit) e o CONTROLE entrando com o corpo fechado. A mesma
+forma mede a **fase B pelo lado que RECUSA**: um byte `0x97` num `.ts` NOVO e um
+link interno quebrado num `.md` NOVO entram no índice, o commit é recusado, a
+**descida** do runner de encoding nomeia o guard de cada classe (`check-utf8.sh`,
+`check-readme-anchors.mjs`) e o arquivo REMENDADO entra. O texto
 do hook é evidência, não veredito (a escrita num pipe pode perder uma linha); o
 exit code não pode. Custa ≈**0.03s**
 no caminho comum (nada de corpo nem script staged: um `git diff --cached` e mais

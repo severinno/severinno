@@ -91,9 +91,20 @@
 // Todo o relatório sai em STDERR: num hook não há stdout para consumir, e o
 // canal do diagnóstico é o que o operador está olhando.
 //
+// A OFERTA TAMBÉM É MEDÍVEL: `--oferta` roda a MESMA detecção do passo 1 — com o
+// guard dono de cada classe — e imprime o resultado em JSON no STDOUT, sem
+// pergunta e sem escrever nada. É a superfície que quem MEDE a oferta de fora
+// usa (a prova do lugar, dentro do runtime do CI): ler o texto do relatório
+// exigiria prosa como requisito, e o veredito deste repositório é medido, não
+// lido. A semântica dos exit codes é a da MEDIÇÃO, e não a do remédio: `0` diz
+// que a oferta foi MEDIDA (mesmo vazia — "nada a remendar" é um fato, e quem
+// exige a classe é quem mede), `2` que alguma classe não pôde ser medida (sem
+// medição não há oferta), `3` uso inválido.
+//
 // Usage:
 //   node scripts/pre-commit-remedy.mjs            # o remédio (interativo)
 //   node scripts/pre-commit-remedy.mjs --root X   # outro repositório (testes)
+//   node scripts/pre-commit-remedy.mjs --oferta   # a OFERTA em JSON, sem perguntar e sem escrever
 //   node scripts/pre-commit-remedy.mjs -h         # esta ajuda
 //
 // Exit codes:
@@ -171,6 +182,7 @@ que reprovaram o commit e que os próprios guards sabem consertar
 Usage:
   node scripts/pre-commit-remedy.mjs            # o remédio (interativo)
   node scripts/pre-commit-remedy.mjs --root X   # outro repositório (testes)
+  node scripts/pre-commit-remedy.mjs --oferta   # a OFERTA em JSON (sem perguntar, sem escrever)
   node scripts/pre-commit-remedy.mjs -h         # esta ajuda
 
 As classes (e o fixer de cada uma — a régua é sempre o guard dono):
@@ -202,6 +214,9 @@ Exit codes:
   2 — infra: git/índice indisponível, bash não executável, arquivo ilegível, ou um
       guard que não pôde ser medido
   3 — uso inválido (\\\`--root\\\` sem valor, flag desconhecida)
+
+Com \\\`--oferta\\\` a semântica muda de propósito: ela MEDE, não remenda —
+  0 é "a oferta foi medida" (mesmo vazia) e 2 é "alguma classe não pôde ser medida".
 `
 
 // O DESLIGAMENTO da pergunta (`NO_PROMPT_ENV`) e a sua leitura (`noPromptEnv`)
@@ -766,10 +781,113 @@ export async function remedy(root, deps = {}) {
     relancamento: relancar.map((c) => c.id),
   }
 }
+/**
+ * UMA CLASSE NA OFERTA, como ela sai no `--oferta`: o id, o rótulo, o comando do
+ * fixer DO DONO, os arquivos ofensores, quantas violações o dono relatou e o
+ * relatório dele (a prosa que o operador leria antes de responder).
+ *
+ * @typedef {object} OfertaDaClasse
+ * @property {string} id
+ * @property {string} label
+ * @property {string} fixer
+ * @property {string[]} offenders
+ * @property {number} violacoes
+ * @property {string} relatorio
+ *
+ * Uma classe que NÃO entrou na oferta, com o motivo: não aplicável a este
+ * repositório, não medível (infra) ou com violação que o fixer não remenda.
+ *
+ * @typedef {{id: string, reason: string}} OfertaFora
+ *
+ * O PAYLOAD do `--oferta` — a superfície que quem mede consome.
+ *
+ * @typedef {object} Oferta
+ * @property {number} code
+ * @property {OfertaDaClasse[]} classes
+ * @property {OfertaFora[]} notApplicable
+ * @property {OfertaFora[]} unmeasured
+ * @property {OfertaFora[]} semRemendo
+ * @property {string[]} problems
+ */
+
+/**
+ * A OFERTA — a MESMA detecção do passo 1 do remédio, sem pergunta e sem escrita.
+ *
+ * POR QUE ISTO EXISTE: a oferta é um FATO medível do hook ("este commit carrega
+ * uma classe que o repositório sabe remendar"), e quem precisa medi-la faz isso
+ * de fora, no runtime do CI — a prova do lugar. Medir por TEXTO exigiria prosa
+ * como requisito (o que este repositório recusa: a escrita de vários processos
+ * num pipe não é ordenada, e um requisito de texto é flaky por construção);
+ * medir por exit code não distingue QUAL classe foi oferecida. Aqui a oferta vira
+ * uma superfície: as classes com o que remendar, os ofensores e o fixer do DONO.
+ *
+ * A RÉGUA CONTINUA SENDO A DO GUARD DONO — nenhuma detecção é reimplementada: é a
+ * exata função que o remédio interativo roda antes de perguntar. O que muda é o
+ * destino: JSON no stdout, e nenhuma escrita na árvore nem no índice (a detecção
+ * do `run-syntax` é o `--dry-run` do gate; a das classes mecânicas é a leitura da
+ * árvore e do índice).
+ *
+ * OFERTA INCOMPLETA RECUSA A MEDIÇÃO (exit 2): sem a classe, "não há remendo"
+ * seria medido sobre um defeito que o repositório SABE remendar — a mesma guarda
+ * do caminho interativo, e pelo mesmo motivo.
+ *
+ * @param {string} root
+ * @param {{bash?: string, classes?: object[], problemas?: string[]}} [deps]
+ * @returns {Oferta}
+ */
+export function oferta(root, deps = {}) {
+  const { bash = DEFAULT_BASH, classes = CLASSES, problemas = CLASSES_PROBLEMAS } = deps
+  const vazio = { classes: [], notApplicable: [], unmeasured: [], semRemendo: [] }
+  const recusa = recusaDaOferta(classes, problemas)
+  if (recusa !== null) {
+    return { code: EXIT.UNAVAILABLE, ...vazio, problems: [...problemas] }
+  }
+
+  const oferecidas = []
+  const notApplicable = []
+  const unmeasured = []
+  const semRemendo = []
+  for (const classe of classes) {
+    const motivo = classe.aplicavel(root)
+    if (motivo !== null) {
+      notApplicable.push({ id: classe.id, reason: motivo })
+      continue
+    }
+    const deteccao = classe.detectar(root, { bash })
+    if (deteccao.indisponivel) {
+      // Sem medição não há oferta: a classe sai NOMEADA (e o exit 2 diz que a
+      // oferta não foi medida por inteiro), em vez de virar "nada a remendar".
+      unmeasured.push({ id: classe.id, reason: deteccao.indisponivel })
+      continue
+    }
+    if (deteccao.semRemendo) {
+      semRemendo.push({ id: classe.id, reason: deteccao.semRemendo })
+      continue
+    }
+    if (deteccao.offenders.length === 0) continue
+    oferecidas.push({
+      id: classe.id,
+      label: classe.label,
+      fixer: classe.fixer,
+      offenders: [...deteccao.offenders],
+      violacoes: deteccao.violacoes ?? 0,
+      relatorio: deteccao.relatorio ?? "",
+    })
+  }
+
+  return {
+    code: unmeasured.length > 0 ? EXIT.UNAVAILABLE : EXIT.OK,
+    classes: oferecidas,
+    notApplicable,
+    unmeasured,
+    semRemendo,
+    problems: [],
+  }
+}
 
 async function main() {
   const argv = process.argv.slice(2)
-  const conhecidas = ["--root", "-h", "--help"]
+  const conhecidas = ["--root", "--oferta", "-h", "--help"]
   const desconhecida = argv.find((a) => a.startsWith("--") && !conhecidas.includes(a))
   if (desconhecida) {
     process.stderr.write(`❌ flag desconhecida: ${desconhecida}\n${USAGE}`)
@@ -800,6 +918,18 @@ async function main() {
   if (!existsSync(root) || !statSync(root).isDirectory()) {
     process.stderr.write(`❌ --root inexistente: ${root}\n`)
     process.exit(EXIT.UNAVAILABLE)
+  }
+  // A OFERTA MEDIDA (`--oferta`): JSON no STDOUT — é o canal que quem mede lê, e
+  // o relatório humano continua sendo o do remédio interativo (no stderr).
+  if (argv.includes("--oferta")) {
+    try {
+      const o = oferta(root)
+      process.stdout.write(`${JSON.stringify({ root, ...o }, null, 2)}\n`)
+      process.exit(o.code)
+    } catch (err) {
+      process.stderr.write(`❌ oferta indisponível: ${err?.message ?? err}\n`)
+      process.exit(EXIT.UNAVAILABLE)
+    }
   }
   try {
     const r = await remedy(root)

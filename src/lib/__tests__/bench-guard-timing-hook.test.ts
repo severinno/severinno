@@ -123,6 +123,9 @@ describe("bench-guard-timing — os contrafactuais do hook", () => {
     expect(sem).not.toContain(OFERTA_INICIO)
     // ...e o VEREDITO ficou, com os MESMOS exits: o hook continua bloqueando o
     // commit defeituoso. Um contrafactual que deixasse passar mediria outro hook.
+    // A fase A entra na corrente desde que a oferta passou a cobri-la: o hook real
+    // encerra com o veredito DELA primeiro, e o contrafactual tem de fazer o mesmo.
+    expect(sem).toContain('exit "$FASE_A"')
     expect(sem).toContain('exit "$SINTAXE"')
     expect(sem).toContain('exit "$FASE_B"')
     // O que vem DEPOIS da oferta (a fase sequencial) não foi tocado.
@@ -135,8 +138,10 @@ describe("bench-guard-timing — os contrafactuais do hook", () => {
   it("`wait agregado` muda SÓ a estrutura da espera (o mesmo conjunto de PIDs)", () => {
     const hook = fonte()
     const agr = hookWaitAgregada(hook) as string
+    // A linha do `wait_all` vive indentada DENTRO da função `fase_a` — a âncora
+    // guarda a indentação (a transformação é textual) e a leitura normaliza.
     const linhaDoWait = (texto: string) =>
-      texto.split("\n").find((l) => l.startsWith("wait_all $PID_")) as string
+      texto.split("\n").find((l) => l.trimStart().startsWith("wait_all $PID_")) as string
 
     expect(agr).not.toBeNull()
     expect(linhaDoWait(hook)).toBe(WAIT_SEPARADO)
@@ -169,11 +174,15 @@ describe("bench-guard-timing — os contrafactuais do hook", () => {
     ).toEqual(["$PID_BUN", "$PID_DEPS", "$PID_MUT", "$PID_REQCHECKS", "$PID_TIMING"].sort())
     // Fora das duas âncoras, as duas formas são byte a byte o mesmo hook: uma
     // causa por delta.
+    // A ordem importa: a linha AGREGADA CONTÉM a separada (o PID do gate entra no
+    // MESMO `wait_all`), então a âncora maior tem de sair primeiro — ao contrário,
+    // a menor substituiria o prefixo dela e sobraria o ` $PID_RUNSYNTAX` de fora,
+    // como se as duas formas diferissem em mais do que a estrutura da espera.
     const normalizado = (texto: string) =>
       texto
-        .split(WAIT_SEPARADO)
-        .join("@")
         .split(WAIT_AGREGADO)
+        .join("@")
+        .split(WAIT_SEPARADO)
         .join("@")
         .split(ESPERA_SINTAXE)
         .join("@")

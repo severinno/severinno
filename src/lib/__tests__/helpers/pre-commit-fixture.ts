@@ -42,6 +42,9 @@ export {
   HOOKS_DIR,
   REMEDY,
   REMEDY_COMMAND,
+  // O nome do dublê da DIREÇÃO do remédio ("saiu 0") tem UM dono — aqui ele
+  // atravessa para os testes que o usam sem cravar o literal.
+  REMEDY_STUB_ENV,
   SHELL_QUEBRADO,
   SHELL_SCRIPT,
   WORKFLOW,

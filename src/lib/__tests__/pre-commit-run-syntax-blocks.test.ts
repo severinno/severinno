@@ -64,6 +64,7 @@ import {
   HOOK_SOURCE,
   REMEDY,
   REMEDY_COMMAND,
+  REMEDY_STUB_ENV,
   SHELL_QUEBRADO,
   SHELL_SCRIPT,
   WORKFLOW,
@@ -76,6 +77,10 @@ import {
   runHook,
 } from "@/lib/__tests__/helpers/pre-commit-fixture"
 import { EXIT } from "../../../scripts/check-workflow-run-syntax.mjs"
+// O `if` que abre a oferta tem UM dono (`OFERTA_INICIO`, o mesmo que o benchmark
+// ancora para medir o custo dela): duas cópias do texto divergiriam no dia em que
+// uma fosse ajustada, e as duas provas passariam a medir hooks diferentes.
+import { OFERTA_INICIO } from "../../../scripts/bench-guard-timing.mjs"
 import { NO_PROMPT_ENV } from "../../../scripts/pre-commit-remedy.mjs"
 
 afterAll(() => {
@@ -96,6 +101,15 @@ describe("a premissa do harness", () => {
       HOOK_SOURCE.indexOf(`${GUARD} --staged`),
     )
     expect(existsSync(join(REPO_ROOT, "scripts", REMEDY))).toBe(true)
+  })
+
+  it("o `if` da oferta é o MESMO texto que o benchmark ancora — e aparece UMA vez", () => {
+    // Duas cópias do mesmo `if` (uma aqui, outra no benchmark) divergiriam no dia
+    // em que uma fosse ajustada: o teste mediria um hook e o benchmark transformaria
+    // outro. E o slice do bloco (`BLOCO_DO_REMEDIO`) recorta de um `indexOf` até o
+    // cabeçalho da fase C — com duas ocorrências ele recortaria o trecho errado,
+    // e a mutação "sem o bloco" apagaria só um pedaço do hook.
+    expect(HOOK_SOURCE.split(OFERTA_INICIO).length - 1).toBe(1)
   })
 
   it("o fecho copiado é COMPLETO: toda referência local (import E spawn) está nele", () => {
@@ -225,7 +239,7 @@ describe("o hook oferece o remédio, e sem terminal o commit segue bloqueado", (
     const dir = novoRepo()
     stage(dir, WORKFLOW, WORKFLOW_CICATRIZ)
 
-    const res = runHook(dir, HOOK_SOURCE, { REMEDY_STUB: "0" })
+    const res = runHook(dir, HOOK_SOURCE, { [REMEDY_STUB_ENV]: "0" })
 
     expect(res.status).not.toBe(EXIT.OK)
     expect(res.output).not.toContain(COMPLETOU)
@@ -260,10 +274,12 @@ describe("o hook oferece o remédio, e sem terminal o commit segue bloqueado", (
 describe("mutação: o remédio só LEVANTA a falha — o bloqueio é do hook", () => {
   const REMEDY_LINHA = REMEDY_COMMAND
   // O bloco do remédio é TUDO o que ele decide: a oferta, a rede do fail-closed e
-  // a REEXECUÇÃO da fase (é ela que dá o veredito). Os extremos são lidos do
-  // próprio hook: o `if` que o abre e o cabeçalho da fase C que vem depois dele.
+  // a REEXECUÇÃO das fases (é ela que dá o veredito). Os extremos são lidos do
+  // próprio hook: o `if` que o abre (o MESMO texto que o benchmark ancora, em
+  // `OFERTA_INICIO` — duas cópias divergiriam no dia em que uma fosse ajustada) e
+  // o cabeçalho da fase C que vem depois dele.
   const BLOCO_DO_REMEDIO = HOOK_SOURCE.slice(
-    HOOK_SOURCE.indexOf(`if [ "$SINTAXE" -ne 0 ] || [ "$FASE_B" -ne 0 ]; then`),
+    HOOK_SOURCE.indexOf(OFERTA_INICIO),
     HOOK_SOURCE.indexOf(`# ── Phase C: Sequential checks`),
   )
 

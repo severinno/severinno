@@ -43,6 +43,9 @@ import { Readable, Writable } from "node:stream"
 import { afterAll, describe, expect, it } from "vitest"
 
 import { EXIT } from "../../../scripts/check-workflow-run-syntax.mjs"
+// O `if` da oferta tem UM dono (o mesmo que o benchmark ancora): a premissa da
+// ORDEM abaixo não pode ser uma cópia do texto, que passaria a medir outro hook.
+import { OFERTA_INICIO } from "../../../scripts/bench-guard-timing.mjs"
 import {
   NO_PROMPT_ENV,
   OFFER_MARKER,
@@ -620,14 +623,16 @@ describe("a premissa: o hook chama o remédio, e de dentro do bloco do gate", ()
     expect(hook).toContain("node scripts/pre-commit-remedy.mjs && REMEDIO=0 || true")
   })
 
-  it("a ORDEM: as DUAS fases medem antes da pergunta, e a fase volta a rodar depois", () => {
+  it("a ORDEM: as fases medem antes da pergunta, e a fase volta a rodar depois", () => {
     const hook = readFileSync(HOOK, "utf8")
     const iGate = hook.indexOf("check-workflow-run-syntax.mjs --staged")
     const iFaseB = hook.indexOf("fase_b || FASE_B=$?")
     const iRemedio = hook.indexOf("pre-commit-remedy.mjs")
-    // A pergunta vem DEPOIS das duas fases: um prompt competindo com guards
+    // A pergunta vem DEPOIS das fases que RODAM: um prompt competindo com guards
     // escrevendo é um prompt que ninguém lê — e `run-encoding-guards.sh` morre no
     // PRIMEIRO guard que falha, então só depois dele se sabe qual classe morder.
+    // (A fase B só roda com a fase A verde; quando ela não roda, o fim do bloco do
+    // remédio a mede — nenhuma fase fica sem veredito.)
     expect(iGate).toBeGreaterThan(-1)
     expect(iFaseB).toBeGreaterThan(iGate)
     expect(iRemedio).toBeGreaterThan(iFaseB)
@@ -663,15 +668,39 @@ describe("a premissa: o hook chama o remédio, e de dentro do bloco do gate", ()
     }
   })
 
-  it("a fase A sem remédio continua bloqueando o commit (o remedio nao a cobre)", () => {
+  it("a fase A é UMA função com a fase INTEIRA dentro (é o que a reexecução mede)", () => {
     const hook = readFileSync(HOOK, "utf8")
-    // As quatro classes que o remédio conhece vivem na sintaxe e na fase B: os
-    // QUATRO guards da fase A não têm fixer, então a falha deles encerra o hook
-    // antes de a fase B (e o remédio) rodarem.
-    const iVeredito = hook.indexOf('[ "$FASE_A" -eq 0 ] || exit "$FASE_A"')
-    const iFaseB = hook.indexOf("fase_b() {")
-    expect(iVeredito).toBeGreaterThan(-1)
-    expect(iVeredito).toBeLessThan(iFaseB)
+    expect(hook).toContain("fase_a() {")
+    // O corpo entre a declaração e o disparo do gate de sintaxe: se um guard ficar
+    // FORA dele, a reexecução mediria outra fase — e o veredito de uma fase verde
+    // cobriria um guard do índice que nunca voltou a rodar. (A promessa inversa, a
+    // da fase B, é medida logo acima: as duas fases vivem em função pelo MESMO
+    // motivo, e uma reexecução que cobrisse só metade da fase é pior que nenhuma.)
+    const corpo = hook.slice(hook.indexOf("fase_a() {"), hook.indexOf("PID_RUNSYNTAX=$!"))
+    for (const cmd of [
+      "node scripts/check-bun-mirror.mjs --staged &",
+      "node scripts/check-mutation-jobs.mjs --staged &",
+      "node scripts/check-unused-deps.mjs --staged &",
+      "node scripts/check-mutation-timing-contract.mjs --staged &",
+      "node scripts/check-required-checks.mjs --staged &",
+      "wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS",
+    ]) {
+      expect(corpo, `${cmd} ficou fora da função fase_a`).toContain(cmd)
+    }
+  })
+
+  it("a fase A reprovada NÃO encerra o hook antes da oferta (o `if` do remédio a carrega)", () => {
+    const hook = readFileSync(HOOK, "utf8")
+    // O contrato, na forma que este arquivo mede (ORDEM): o veredito da fase A sai
+    // DEPOIS de o remédio ter rodado. Antes disto o hook encerrava com
+    // `[ "$FASE_A" -eq 0 ] || exit "$FASE_A"` aqui em cima — e o gate SEM FIXER
+    // custava ao operador a oferta das classes que o MESMO índice carregava.
+    expect(hook).toContain(OFERTA_INICIO) // o `if` da oferta carrega a fase A
+    const iRemedio = hook.indexOf("pre-commit-remedy.mjs")
+    const iVereditoA = hook.indexOf('exit "$FASE_A"')
+    expect(iVereditoA).toBeGreaterThan(iRemedio)
+    // E a fase vermelha é REEXECUTADA: o remédio só levanta a falha que ele mediu.
+    expect(hook).toContain('if [ "$FASE_A" -ne 0 ]; then\n    fase_a\n  fi')
   })
 
   it("o script existe e documenta Usage e Exit code no cabeçalho (o contrato da casa)", () => {

@@ -1942,9 +1942,21 @@ um fixer cujo guard não é executado ali nunca chega ao operador — o remendo 
 só no CI, onde ninguém tem terminal para confirmar. Foi por isso que a sexta classe
 (`pipefail-sigpipe`, o `PRODUTOR | grep -q` sob pipefail) entrou junto com o guard
 dela na **fase B** do `.husky/pre-commit` (o MESMO comando do CI, medido em ~0,14s);
-e é também por isso que as classes da sintaxe e da fase B são, hoje, todas as que o
-hook consegue medir — a fase A não tem fixer nenhum (medido: nenhum dos seus seis
-guards declara `--fix`), e a falha dela continua encerrando o hook antes da oferta.
+e a sétima (`bun-mirror-removal`) é o outro lado da mesma regra: o guard dono JÁ
+rodava na **fase A** (o `check-bun-mirror.mjs --staged`, um dos cinco dela) e o que
+lhe faltava era o `--fix`, declarado no mesmo commit em que a classe nasceu — a
+detecção e o remendo, portanto, no MESMO lugar onde o índice é recusado (medido:
+com o arg `BUN_VERSION` apagado de um build site, a fase A recusa, o remendo volta
+ao índice e o `--staged` do dono revalida verde). A fase A, que era o argumento de
+"fixer cujo guard não roda no hook nunca chega ao operador", passou a ter um. O gate
+**SEM FIXER**, porém, deixou de custar a oferta: a
+falha da fase A **não** encerra mais o hook antes dela. A oferta é das **classes
+presentes no commit**, não do gate que reprovou — é o que a torna independente de
+quem recusou. Medido por execução: com a fase A vermelha por um defeito real (o
+`BUN_VERSION` removido de um build site do compose) e uma classe remendável no
+MESMO índice (a cicatriz de SIGPIPE), o remédio é oferecido igual, com o caminho à
+mão dela; a mutação que devolve o hook ao estado do HEAD (`[ "$FASE_A" -eq 0 ] ||
+exit "$FASE_A"` antes da oferta) mostra o que se perdia — mesmo veredito, sem oferta.
 
 **A OFERTA DAS CLASSES É DERIVADA, e o dono da declaração é o guard que remenda.**
 Cada classe é um módulo em `scripts/remedy-classes/<id>.mjs` — o NOME do arquivo é o
@@ -1955,6 +1967,20 @@ FORA da oferta até alguém editar aquele arquivo, e a regressão não acusava n
 um remédio que não oferece o conserto é indistinguível de um defeito sem conserto.
 O bloco de classes da **ajuda** sai da MESMA oferta (`blocoClasses()`): uma lista
 escrita à mão ali divergiria da que o remédio executa.
+
+**A oferta também é uma superfície MEDIDA** (`--oferta`): a MESMA detecção do
+primeiro passo, com o guard dono de cada classe, publicada em **JSON no stdout**,
+sem pergunta e sem escrever na árvore nem no índice. Ela existe porque quem mede a
+oferta de fora — a prova do lugar, DENTRO do runtime do CI — não tem como lê-la do
+texto sem transformar prosa em requisito, nem do exit code sem saber QUAL classe
+foi oferecida; o JSON responde as duas: `classes` (id, rótulo, fixer do dono,
+ofensores, violações e o relatório do dono), `notApplicable`, `unmeasured`,
+`semRemendo` e `problems`. A semântica acompanha o modo: `0` diz que a oferta foi
+**medida** (mesmo vazia — "nada a remendar" é um fato, e quem exige a classe é
+quem mede) e `2` que alguma classe não pôde ser medida ou que a oferta está
+incompleta (o commit não é julgado por uma oferta menor). O remédio interativo
+segue com a semântica dele (`1` quando não há nada a remendar) — medir não é
+remendar.
 
 A declaração é validada na descoberta, e o contrato é curto: nome do arquivo = `id`;
 `ordem` ÚNICA (a ordem das mensagens não pode depender do sistema de arquivos); os
@@ -1974,20 +2000,22 @@ declaração inválida, e a recusa (exit 2) que impede o veredito. Como o par
 declarações e os guards donos: um fixture com as declarações e sem os donos é uma
 árvore inconsistente, e o não-zero viria da oferta, não do defeito.
 
-| classe             | o defeito                                                      | o fixer (guard dono)                                | estágio do remendo                          |
-| :----------------- | :------------------------------------------------------------- | :-------------------------------------------------- | :------------------------------------------ |
-| `run-syntax`       | operador pendente no fim do corpo `run:` em bloco literal      | `check-workflow-run-syntax.mjs --fix`               | `git add`                                   |
-| `crlf`             | CR/CRLF no working tree dos `.sh`/`.bash` rastreados           | `check-crlf.sh --fix`                               | `git add --renormalize`                     |
-| `blob-crlf`        | CRLF/mixed no BLOB do ÍNDICE dos `.sh`/`.bash`                 | `check-blob-crlf.sh --fix`                          | o PRÓPRIO fixer (`git add --renormalize`)   |
-| `utf8`             | byte 0x97 (em dash do Windows-1252) nos `.ts`/`.tsx` de `src/` | `check-utf8.sh --fix src/`                          | `git add`                                   |
-| `hook-commands`    | caminho TIPADO num comando de hook (vizinho inequívoco)        | `check-hook-commands.mjs --fix`                     | `git add` — e **RELANÇAMENTO** (ver abaixo) |
-| `pipefail-sigpipe` | `PRODUTOR                                                      | grep -q`sob`set -o pipefail` (SIGPIPE intermitente) | `check-pipefail-sigpipe.mjs --fix`          | `git add` |
+| classe               | o defeito                                                                                  | o fixer (guard dono)                                | estágio do remendo                          |
+| :------------------- | :----------------------------------------------------------------------------------------- | :-------------------------------------------------- | :------------------------------------------ |
+| `run-syntax`         | operador pendente no fim do corpo `run:` em bloco literal                                  | `check-workflow-run-syntax.mjs --fix`               | `git add`                                   |
+| `crlf`               | CR/CRLF no working tree dos `.sh`/`.bash` rastreados                                       | `check-crlf.sh --fix`                               | `git add --renormalize`                     |
+| `blob-crlf`          | CRLF/mixed no BLOB do ÍNDICE dos `.sh`/`.bash`                                             | `check-blob-crlf.sh --fix`                          | o PRÓPRIO fixer (`git add --renormalize`)   |
+| `utf8`               | byte 0x97 (em dash do Windows-1252) nos `.ts`/`.tsx` de `src/`                             | `check-utf8.sh --fix src/`                          | `git add`                                   |
+| `hook-commands`      | caminho TIPADO num comando de hook (vizinho inequívoco)                                    | `check-hook-commands.mjs --fix`                     | `git add` — e **RELANÇAMENTO** (ver abaixo) |
+| `pipefail-sigpipe`   | `PRODUTOR                                                                                  | grep -q`sob`set -o pipefail` (SIGPIPE intermitente) | `check-pipefail-sigpipe.mjs --fix`          | `git add` |
+| `bun-mirror-removal` | arg `BUN_VERSION` de um build site do compose / `"packageManager"` **APAGADO** pelo commit | `check-bun-mirror.mjs --fix`                        | `git add`                                   |
 
-Todas vivem na **fase B** do hook (as de encoding pelo `run-encoding-guards.sh`; as
-duas últimas por serem guardas globais daquela fase) — e é por isso que a extensão
-da oferta vale: quem abre um commit com CRLF, com o byte corrompido, com um caminho
-tipado num hook ou com a cicatriz de SIGPIPE não tinha caminho nenhum além do
-`--fix` à mão. As três classes de encoding se SOBREPÕEM por construção (o CR do
+Seis vivem na **fase B** do hook (as de encoding pelo `run-encoding-guards.sh`; as
+duas últimas por serem guardas globais daquela fase); a sétima vive na **fase A**,
+onde o guard dono recusa o índice — e é por isso que a extensão da oferta vale:
+quem abre um commit com CRLF, com o byte corrompido, com um caminho tipado num hook,
+com a cicatriz de SIGPIPE ou com a declaração de espelho apagada não tinha caminho
+nenhum além do `--fix` à mão. As três classes de encoding se SOBREPÕEM por construção (o CR do
 working tree suja também o blob), e o remédio leva o arquivo ao índice **uma vez**,
 sem acusar de retido o que uma classe anterior já estagiou.
 
@@ -2047,15 +2075,27 @@ A sequência é dita ANTES da pergunta, porque é ela que o "sim" autoriza:
 
 **E quem diz se a FASE passou é a FASE, rodada de novo pelo hook.** O remédio
 só LEVANTA a falha que ele mediu — o exit 0 dele não é veredito de fase nenhuma. Por
-isso a fase B do `.husky/pre-commit` vive numa **função** (`fase_b`): ela roda duas
-vezes quando o remédio entra, uma para MEDIR e outra para REVALIDAR com o remendo
-já no índice. Sem isso, um remendo verde esconderia um gate IRMÃO da fase que
-continua vermelho — e o `run-encoding-guards.sh` para no PRIMEIRO guard que falha
-(`set -e`), então é justamente na reexecução que os seguintes são medidos. A
-pergunta, por isso, vem depois das DUAS fases: um prompt competindo com guards
-escrevendo é um prompt que ninguém lê. A falha dos **quatro guards da fase A**
-(que nenhuma classe cobre) continua encerrando o hook antes disso — não há ali o
-que oferecer.
+isso as **duas** fases vivem em **função** (`fase_a`, `fase_b`): depois de um remédio
+verde o hook reexecuta **as fases que estavam vermelhas** — nem mais (pagar o
+instrumento de um veredito que já é verde), nem menos —, e é o veredito DELAS que
+decide. Sem isso, um remendo verde esconderia um gate IRMÃO da fase que continua
+vermelho — e o `run-encoding-guards.sh` para no PRIMEIRO guard que falha (`set -e`),
+então é justamente na reexecução que os seguintes são medidos. A fase A entra na
+reexecução pela mesma regra, e um remédio verde **não** a levanta: medido por
+mutação — sem a reexecução dela, o commit com o gate do índice vermelho PASSA.
+
+E a fase B que a fase A vermelha deixou **sem medição** (o custo dela não é pago por
+um commit já bloqueado) é medida no fim do bloco, com o remendo já no índice: nenhuma
+fase fica sem veredito, e se ela reprovar é ela que encerra o hook. Esse ramo só é
+alcançável quando a reexecução da fase A volta verde — estado que nenhuma classe
+produz hoje (nenhuma remenda um guard do índice), então ele é provado do jeito que a
+cultura da casa exige para código que espera um fato futuro: **por mutação**, com um
+fixer da fase A SIMULADO no hook (as duas metades — a remedição medindo a fase B real
+que reprova, e a mutação que a remove deixando o commit passar com a fase nunca lida).
+
+A pergunta, por isso, vem depois das fases — e a fase que não chegou a rodar é medida
+logo depois do remédio: um prompt competindo com guards escrevendo é um prompt que
+ninguém lê.
 
 **A resposta vem do TERMINAL DE CONTROLE.** O stdin do hook **não** é um terminal
 (nem uma fonte confiável: num hook ele pode ser um pipe, ou o terminal de outro
