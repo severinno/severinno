@@ -2458,6 +2458,31 @@ e o guard cobra as duas: o **instrumento** (`subjectOf` — outro script/binári
 **outro gate**, não um recorte) e a **razão** (um `why` de menos de 40 caracteres
 não é decisão).
 
+**4. O SUB-GUARD DE UM RUNNER.** Quando o comando que a pipeline escreve é um
+**RUNNER** (`bash scripts/x.sh`), tudo o que ele executa **por dentro** ficava sem
+dono: nem o hook, nem `HOOK_NOT_RUN` (que fala dos invariantes do CORE, uma lista
+declarada). O guard deriva das **duas pipelines** os runners que elas chamam
+(resolvendo a entrada do package.json: `bun run test:mutation-guards` →
+`bash scripts/test-mutation-guards.sh` — sem isso o runner mais pesado do
+contrato nem apareceria) e **desce** neles com a **mesma régua** do
+`check-hook-commands` (`SHELL_INTERPRETERS`, `alvosProvaveis`, `variaveisDoArquivo`,
+`MAX_SCRIPT_DEPTH` — o ciclo de imports entre os dois é de módulo, não de
+execução, e está declarado no guard). Todo arquivo alcançado exige **decisão
+local**, e as três formas são medidas: (a) o **hook o executa** — inclusive
+**pela descida**, porque o hook também chama runners (`run-encoding-guards.sh` →
+`check-utf8.sh` → `check_utf8.py`/`.mjs`); (b) o invariante do CORE dele está em
+`HOOK_NOT_RUN`; (c) a ausência está escrita em `RUNNER_SUBGUARD` com a razão (e a
+declaração **stale**, que não casa com sub-guard nenhum, é violação).
+
+**O que a descida NÃO consegue provar sai nomeado** (`limitesDaDescida`, impresso
+no relatório e no `--json`): hoje são os runners que calculam o diretório por
+`$(cd "$(dirname "$0")/.." && pwd)` e chamam `node "$GUARD"` — o valor não é
+provável pelas atribuições, e um limite que ninguém lê não é limite declarado.
+Medido no repositório: **12 runners** nas duas pipelines, **2 sub-guards**
+alcançados (`check_utf8.py` e `check_utf8.mjs`) e os **dois decididos pela
+bateria local** — o dia em que um sub-guard não for alcançado localmente, ele
+acende nomeando o arquivo, o runner e o comando do CI que o executa.
+
 **Por que existe (o caso real):** `.husky/pre-push` rodava `bunx tsc --noEmit` —
 **sem** o heap de 4GB que o script `typecheck` carrega. Os dois lados citavam "o
 typecheck" e tinham **réguas diferentes**: o mesmo commit estourava a memória no
@@ -2471,7 +2496,7 @@ declaração não iguala os vereditos; torna a **diferença visível e revisáve
 é o que uma decisão de escopo precisa ser.
 
 **Prova por mutação:** `bash scripts/test-mutation-hook-ci-parity.sh` — sub-test
-`hook-ci-parity` do master `mutation-guards`. Seis mutações, cada uma
+`hook-ci-parity` do master `mutation-guards`. Oito mutações, cada uma
 exigindo a asserção da **própria regra** e medindo as irmãs (as linhas do
 relatório não podem encolher: um guard que aborta cedo também "falha", só que
 por não ter medido):
@@ -2484,6 +2509,8 @@ por não ter medido):
 | D       | `match` de uma entrada que não casa com comando nenhum                     | 2 violações: a declaração **stale** e o comando que perdeu a decisão                 |
 | E       | id removido de `HOOK_NOT_RUN`                                              | 1 violação: gate do CORE que não roda em lugar nenhum                                |
 | F       | `HOOKS` aponta para um hook inexistente                                    | 1 violação (fail-closed: não se varre o que não se leu)                              |
+| G       | um runner da pipeline passa a executar uma sonda que existe                | 1 violação nomeando o sub-guard, o runner e o comando do CI que o executa            |
+| H       | a descida do lado **local** deixa de acontecer (o hook "para" no runner)   | 2 violações: os dois sub-guards do `check-utf8.sh` perdem a decisão local            |
 
 A árvore é restaurada por backup + `trap` (nunca `git checkout`) e conferida por
 `cksum` contra o hash de origem — um mutation test que deixa o worktree sujo é

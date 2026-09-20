@@ -7,7 +7,7 @@
 #   ./scripts/test-mutation-hook-ci-parity.sh
 #
 # Exit codes:
-#   0 — as SEIS mutações DETECTADAS: cada uma deixa o guard VERMELHO pela
+#   0 — as OITO mutações DETECTADAS: cada uma deixa o guard VERMELHO pela
 #       asserção da PRÓPRIA regra, com as regras irmãs seguindo de pé ✅
 #   1 — guard CEGO (verde com alguma mutação) / falhou por outra regra / a
 #       mutação não aplicou (não-cirúrgica) / a árvore não voltou ao estado
@@ -46,6 +46,15 @@
 #      entrar no hook: ele passa a não rodar em lugar nenhum, em silêncio.
 #   F) HOOK FANTASMA. HOOKS aponta para um arquivo que não existe: a categoria
 #      inteira deixa de ser varrida e o guard sai verde sobre o que não leu.
+#   G) SUB-GUARD DE UM RUNNER SEM DECISÃO LOCAL. Um runner que a pipeline chama
+#      passa a executar um guard (o arquivo EXISTE): ele roda no contrato de
+#      merge e o veredito local não o vê. Sem a regra 4, um gate entra por
+#      dentro de um `.sh` — invisível para a conta dos comandos das pipelines.
+#   H) A DESCIDA DO LADO LOCAL CEGA. A bateria local deixa de descer nos runners
+#      que o hook chama: os guards que o `check-utf8.sh` executa por dentro
+#      (o `check_utf8.py` e o `.mjs`) perdem a decisão local e passam a figurar
+#      como ausência não declarada. Prova que a descida é LOAD-BEARING nas duas
+#      metades — e não só que "medir o caminho do runner" é barato.
 #
 # COMO: mutações IN-PLACE nos arquivos REAIS (backup + trap de restauração —
 # NUNCA `git checkout`), no mesmo desenho dos outros `test-mutation-*.sh` deste
@@ -78,6 +87,11 @@ GUARD="scripts/check-hook-ci-parity.mjs"
 PRE_COMMIT=".husky/pre-commit"
 PRE_PUSH=".husky/pre-push"
 MARKER_FILE="scripts/check-hook-ci-parity.mjs"
+# Um runner que as DUAS pipelines chamam (a mutação G injeta um sub-guard dentro
+# dele) e o arquivo-sonda que a mutação G faz existir (o guard só julga arquivo
+# que existe: um caminho citado e ausente não é sub-guard, é typo).
+RUNNER_PIPELINE="scripts/setup-bun-ci.sh"
+SONDA="scripts/check-subguard-sonda.mjs"
 
 TMP_DIR="$(mktemp -d)"
 BACKUP="$TMP_DIR/orig"
@@ -96,7 +110,7 @@ header() { echo -e "\n${CYAN}═══ $1 ═══${NC}"; }
 
 # ── Backup + hash de origem (a restauração é PROVADA, não prometida) ──────
 
-TRACKED=("$GUARD" "$PRE_COMMIT" "$PRE_PUSH")
+TRACKED=("$GUARD" "$PRE_COMMIT" "$PRE_PUSH" "$RUNNER_PIPELINE")
 declare -a ORIG_HASH=()
 
 for f in "${TRACKED[@]}"; do
@@ -109,6 +123,7 @@ restore() {
   for f in "${TRACKED[@]}"; do
     cp -p "$BACKUP/$f" "$f"
   done
+  rm -f "$SONDA"
 }
 
 verify_restored() {
@@ -119,6 +134,11 @@ verify_restored() {
     fi
     i=$((i + 1))
   done
+  # A sonda da mutação G não pode sobreviver: um arquivo novo na árvore é
+  # exatamente o tipo de lixo que um mutation test deixa e ninguém vê.
+  if [ -e "$SONDA" ]; then
+    return 1
+  fi
   return 0
 }
 
@@ -384,6 +404,70 @@ assert_intact_rows "$BASE_ROWS" "MUTAÇÃO F"
 pass "F DETECTADA (exit 1, 1 violação): fail-closed — não se varre o que não se leu"
 restore
 
+# ── MUTAÇÃO G — sub-guard de um runner sem decisão local ────────────────
+
+header "MUTAÇÃO G: um runner da pipeline passa a executar um guard sem decisão local"
+printf '// sonda da mutação G: o guard existe para ser ALCANÇADO e ficar sem decisão\nprocess.exit(0)\n' >"$SONDA"
+printf '\nnode scripts/check-subguard-sonda.mjs\n' >>"$RUNNER_PIPELINE"
+if ! grep -Fq 'check-subguard-sonda.mjs' "$RUNNER_PIPELINE"; then
+  fail "mutação G não aplicou (o runner não passou a chamar a sonda)"
+  exit 1
+fi
+run_guard
+assert_exit 1 "MUTAÇÃO G"
+assert_violations 1 "MUTAÇÃO G"
+if ! violated "scripts/check-subguard-sonda.mjs: SUB-GUARD do runner"; then
+  fail "mutação G: o sub-guard não foi nomeado como SUB-GUARD de runner"
+  sed 's/^/      /' "$VIOLATIONS" | head -6
+  exit 1
+fi
+if ! violated "scripts/setup-bun-ci.sh" || ! violated "bash scripts/setup-bun-ci.sh"; then
+  fail "mutação G: a violação não nomeia o runner nem o comando do CI que o chama"
+  sed 's/^/      /' "$VIOLATIONS" | head -6
+  exit 1
+fi
+assert_intact_rows "$BASE_ROWS" "MUTAÇÃO G"
+pass "G DETECTADA (exit 1, 1 violação): o sub-guard do runner exige DECISÃO LOCAL"
+pass "  (e a violação diz de qual runner ele veio e qual comando do CI o executa)"
+restore
+
+# ── MUTAÇÃO H — a descida do lado LOCAL cega ───────────────────────────
+
+header "MUTAÇÃO H: a bateria local deixa de descer nos runners que o hook chama"
+sed -i 's|^  const descida = descendScripts(root, \[\.\.\.new Set(raizes)\])$|  const descida = { alcancados: new Map(), limites: [] }|' "$GUARD"
+if ! grep -Fq 'const descida = { alcancados: new Map(), limites: [] }' "$GUARD"; then
+  fail "mutação H não aplicou (o sed não produziu o marcador)"
+  exit 1
+fi
+run_guard
+assert_exit 1 "MUTAÇÃO H"
+assert_violations 2 "MUTAÇÃO H"
+if ! violated "scripts/check_utf8.py: SUB-GUARD do runner" || ! violated "scripts/check_utf8.mjs: SUB-GUARD do runner"; then
+  fail "mutação H: os dois sub-guards do check-utf8.sh não acenderam"
+  sed 's/^/      /' "$VIOLATIONS" | head -6
+  exit 1
+fi
+# A prova da metade local, pelo DADO e não pela prosa: nenhum sub-guard segue
+# decidido e a bateria local deixou de listar os dois arquivos (a descida cegou).
+if [ "$(node -e '
+  const j = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))
+  console.log(j.subguards.filter((s) => s.decision !== null).length)
+' "$JSON_OUT")" -ne "0" ]; then
+  fail "mutação H: ainda há sub-guard com decisão local — a mutação não cegou a descida"
+  exit 1
+fi
+if [ "$(node -e '
+  const j = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"))
+  console.log(j.bateriaLocal.arquivos.filter((a) => a.startsWith("scripts/check_utf8.")).length)
+' "$JSON_OUT")" -ne "0" ]; then
+  fail "mutação H: a bateria local ainda alcanca os dois — o hook nao perdeu a decisao"
+  exit 1
+fi
+assert_intact_rows "$BASE_ROWS" "MUTAÇÃO H"
+pass "H DETECTADA (exit 1, 2 violações): a descida do lado local e LOAD-BEARING"
+pass "  (sem ela o hook 'nao roda' o que ele roda de dentro — e o guard acusa os dois)"
+restore
+
 # ═════════════════════════════════════════════════════════════════════════
 # RESTAURAÇÃO — hashes idênticos aos do início (a árvore volta limpa)
 # ═════════════════════════════════════════════════════════════════════════
@@ -401,10 +485,12 @@ assert_exit 0 "PÓS-RESTAURAÇÃO"
 pass "guard verde de novo (exit 0) — a mutação foi 100% do harness, não da árvore"
 
 header "VEREDITO"
-pass "MUTATION TEST PASSED — as 6 regressões do veredito local↔CI são detectadas:"
+pass "MUTATION TEST PASSED — as 8 regressões do veredito local↔CI são detectadas:"
 pass "  A) segunda régua no hook (detecção DUPLA: comando + cobertura do CORE)"
 pass "  B) comando novo sem decisão   C) recorte sem razão escrita"
 pass "  D) declaração que envelheceu   E) gate do CORE sumido da lista"
 pass "  F) hook fantasma (fail-closed)"
+pass "  G) sub-guard de um runner sem decisão local"
+pass "  H) a descida do lado local cega (os sub-guards do check-utf8.sh acusam)"
 echo ""
 exit 0

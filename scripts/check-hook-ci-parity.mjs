@@ -51,6 +51,16 @@
 // entra no contrato de merge e o hook simplesmente nao o ve — o commit passa
 // local e o PR nasce vermelho, que e o oposto do que o hook existe para fazer.
 //
+// E O SUB-GUARD DE UM RUNNER: quando o comando que a pipeline escreve e um
+// RUNNER (`bash scripts/x.sh`), o que ele executa por DENTRO nao tinha dono
+// nenhum — nem o hook, nem HOOK_NOT_RUN (que fala dos invariantes do CORE, uma
+// lista declarada). Todo arquivo executado dentro dos runners das duas
+// pipelines exige decisao local: o hook o executa (a BATTERIA LOCAL, medida
+// tambem por descida — o hook chama runners), o invariante do CORE dele esta em
+// HOOK_NOT_RUN, ou a ausencia esta escrita em RUNNER_SUBGUARD com a razao. O
+// que a descida NAO consegue provar sai NOMEADO em `limitesDaDescida` ("nao
+// desci" nunca e o mesmo que "nao ha nada la dentro").
+//
 // O QUE ESTE GUARD NAO PROMETE: o recorte declarado CONTINUA sendo um recorte
 // (o hook mede menos que o CI — `--staged` ve o indice, nao a arvore inteira).
 // A declaracao nao torna os dois vereditos iguais; torna a DIFERENCA VISIVEL e
@@ -58,9 +68,21 @@
 // =============================================================================
 
 import { existsSync, readFileSync, readdirSync } from "node:fs"
-import { join, resolve } from "node:path"
+import { dirname, join, normalize, resolve } from "node:path"
 
 import { CORE_INVARIANTS, canonicalCommandOf, executedCommands } from "./check-forge-parity.mjs"
+// A SUPERFICIE DA DESCIDA mora no dono dela (`check-hook-commands`): a mesma
+// regua que julga o interior dos scripts que o HOOK chama julga o interior dos
+// runners que as PIPELINES chamam — uma implementacao so (ver o ciclo de
+// imports declarado no bloco "O SUB-GUARD DE UM RUNNER").
+import {
+  MAX_SCRIPT_DEPTH,
+  SHELL_INTERPRETERS,
+  alvosProvaveis,
+  caminhosProvaveis,
+  shellCommands,
+  variaveisDoArquivo,
+} from "./check-hook-commands.mjs"
 import {
   WORKFLOW_FILE_RE,
   existingWorkflowDirs,
@@ -193,6 +215,34 @@ export const HOOK_DECLARED = [
     why: "LOCAL: fuzz interativo de longa duracao (scripts/run-fuzz.sh). O CI roda a variante `fuzz:ci` (JSON, com teto) — a interativa fica para quem esta depurando.",
   },
 ]
+
+/**
+ * Os SUB-GUARDS DE RUNNER que a bateria local NAO executa — a ausencia
+ * DECLARADA, com a razao escrita.
+ *
+ * A regra 4 (`analyze`) deriva, das duas pipelines, os runners que elas chamam
+ * e DESCE neles: todo arquivo executado por dentro de um runner exige decisao
+ * local. As formas de decidir sao tres: (a) o hook executa o arquivo — direto ou
+ * por um runner dele (medido pela mesma descida); (b) o arquivo e o comando
+ * canonico de um invariante do CORE ja declarado em HOOK_NOT_RUN; (c) esta
+ * tabela. Um sub-guard sem nenhuma das tres e violacao, porque ele roda no
+ * contrato de merge e o veredito local nao o ve.
+ *
+ * POR QUE UMA TABELA (e nao um `if` no guard): a entrada nomeia UM arquivo
+ * (caminho literal, sem glob — um curinga esconderia o proximo sub-guard dentro
+ * dele) e o guard confere as DUAS direcoes: sub-guard sem decisao E declaracao
+ * que nao casa com sub-guard nenhum (stale).
+ *
+ * HOJE ESTA VAZIA, e isso e um FATO MEDIDO, nao um esquecimento: a descida das
+ * pipelines alcanca `scripts/check_utf8.py` e `scripts/check_utf8.mjs` (dentro
+ * do `check-utf8.sh`, que a pipeline chama direto) e a bateria local os executa
+ * pelos dois runners do pre-commit (`run-encoding-guards.sh` → `check-utf8.sh`).
+ * O primeiro sub-guard que NAO for alcancado localmente cai aqui (ou vira um
+ * comando do hook) — a escolha passa a ser explicitamente escrita.
+ *
+ * @type {{file: string, why: string}[]}
+ */
+export const RUNNER_SUBGUARD = []
 
 /**
  * Invariantes do CORE que os HOOKS NAO rodam, cada grupo com a razao escrita.
@@ -379,6 +429,235 @@ function readOrNull(root, path) {
   return existsSync(full) ? readFileSync(full, "utf8") : null
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 4. O SUB-GUARD DE UM RUNNER — a descida nos scripts que as pipelines chamam
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// O DEFEITO QUE ISTO MEDE: a cobertura local era derivada do comando que a
+// pipeline ESCREVE. Quando esse comando e um RUNNER (`bash scripts/x.sh`), tudo
+// o que ele executa por dentro ficava sem ninguem: o guard que roda dentro do
+// runner entra no contrato de merge e o veredito local nao o ve — nem a decisao
+// de nao roda-lo existe. A regra 3 pergunta isso para os invariantes do CORE
+// (que sao uma lista declarada, em `check-forge-parity`); aqui a pergunta e
+// feita ao que as DUAS pipelines REALMENTE executam, incluindo um nivel (ou
+// mais) abaixo do runner — entao um `node scripts/check-novo.mjs` escondido
+// dentro de um `.sh` deixa de ser um gate sem dono.
+//
+// A SUPERFICIE DA DESCIDA E A DO `check-hook-commands` (uma regua so, os mesmos
+// primitivos: `SHELL_INTERPRETERS`, `alvosProvaveis`, `variaveisDoArquivo`,
+// `MAX_SCRIPT_DEPTH`). O que este guard ACRESCENTA e a EXIGENCIA: todo arquivo
+// alcancado tem de ter DECISAO LOCAL — ou o hook o executa (a bateria local,
+// medida TAMBEM por descida: o runner `run-encoding-guards.sh` do hook roda os
+// guards de encoding, e sem descer o hook nao cobriria o que ele mesmo roda),
+// ou o invariante do CORE dele esta declarado em HOOK_NOT_RUN, ou a ausencia
+// esta escrita em RUNNER_SUBGUARD com a razao.
+//
+// O CICLO DE IMPORTS (declarado, e por que ele nao morde): o
+// `check-hook-commands.mjs` importa `resolveCommand` DAQUI. Os dois lados so
+// chamam as funcoes do outro DEPOIS do init do modulo — nenhum dos dois le o
+// outro no topo do arquivo —, entao a ordem de carga nao muda nenhum veredito.
+// Uma segunda implementacao da descida seria a divergencia garantida; o ciclo e
+// de modulo, o custo de duplica-la seria de veredito.
+
+/**
+ * Os interpretadores cujo alvo e um ARQUIVO FOLHA: o guard roda nele e a
+ * superficie acaba ali (o que um `.mjs` executa por dentro e o parser de JS, nao
+ * o desta descida — a mesma fronteira declarada pelo `check-hook-commands`).
+ */
+export const LEAF_INTERPRETERS = new Set([
+  "node",
+  "python3",
+  "python",
+  "vitest",
+  "tsc",
+  "prettier",
+  "eslint",
+])
+
+/**
+ * O ARQUIVO que um comando executa — folha (node/python) ou runner (shell) —,
+ * ou o motivo de nao dar para prova-lo.
+ *
+ * `alvosProvaveis` e a regua do SHELL (dono: `check-hook-commands`): ele resolve
+ * `bash "$SCRIPT_DIR/x.sh"` pelas atribuicoes do PROPRIO arquivo e ja devolve o
+ * caminho relativo a raiz. Para os interpretadores folha a resolucao e a mesma
+ * (`$VAR` pelas atribuicoes), com a diferenca de que nao ha descida depois.
+ *
+ * @param {{programa: string, tokens: string[], linha: number}} comando
+ * @param {{atribuicoes: Map<string, {valores: string[]}>, dir: string}} vars
+ * @returns {{ok: true, valores: string[]}|{ok: false, motivo: string}}
+ */
+export function fileTargetOf(comando, vars) {
+  if (SHELL_INTERPRETERS.has(comando.programa)) return alvosProvaveis(comando, vars)
+  if (!LEAF_INTERPRETERS.has(comando.programa))
+    return {
+      ok: false,
+      motivo: `\`${comando.programa}\` nao executa um arquivo do repositorio (funcao, payload de prova ou binario externo)`,
+    }
+  const alvo = (comando.tokens ?? []).find((t) => t !== "" && !t.startsWith("-"))
+  if (alvo === undefined)
+    return { ok: false, motivo: `\`${comando.programa}\` sem alvo: nao ha arquivo a julgar` }
+  if (!alvo.startsWith("$")) return { ok: true, valores: [alvo] }
+  const provavel = caminhosProvaveis(alvo, vars)
+  if (!provavel.ok) return { ok: false, motivo: provavel.motivo }
+  return { ok: true, valores: provavel.valores }
+}
+
+/**
+ * A DESCIDA: os arquivos que um conjunto de scripts de shell executa por dentro.
+ *
+ * `alcancados` mapeia arquivo → o runner que o executa (a procedencia sai no
+ * relatorio: "qual runner trouxe este sub-guard"). `limites` e o outro lado, e
+ * ele NAO some: quando o alvo nao da para provar (`bash "$ALVO"` sem atribuicao
+ * que o determine, teto de profundidade, runner que nao existe), o que ficou por
+ * julgar sai NOMEADO — "nao fui olhar la dentro" nunca e o mesmo que "nao ha
+ * nada la dentro".
+ *
+ * @param {string} root
+ * @param {string[]} raizes  runners de partida (relativos ao root)
+ * @param {{maxDepth?: number}} [opcoes]
+ * @returns {{alcancados: Map<string,string>, limites: {arquivo: string, linha: number,
+ *            programa: string, motivo: string}[]}}
+ */
+export function descendScripts(root, raizes, { maxDepth = MAX_SCRIPT_DEPTH } = {}) {
+  const alcancados = new Map()
+  const limites = []
+  const fila = [...raizes].map((rel) => ({ rel, d: 1 }))
+  const vistos = new Set(raizes)
+  while (fila.length > 0) {
+    const { rel, d } = fila.shift()
+    const content = readOrNull(root, rel)
+    if (content === null) {
+      limites.push({
+        arquivo: rel,
+        linha: 0,
+        programa: "",
+        motivo: "o arquivo nao existe neste checkout — nao ha o que descer nele",
+      })
+      continue
+    }
+    const vars = variaveisDoArquivo(content, rel)
+    for (const comando of shellCommands(content, { origem: rel })) {
+      // A superficie e a de um LANCADOR de arquivo: `echo`, `cd`, `cat`, `sed`
+      // e as funcoes do proprio script nao escondem guard nenhum — entrar em
+      // `limites` seria ruido onde nada se le (e um limite que ninguem le nao e
+      // um limite declarado).
+      const lancador =
+        SHELL_INTERPRETERS.has(comando.programa) || LEAF_INTERPRETERS.has(comando.programa)
+      if (!lancador) continue
+      const primeiro = (comando.tokens ?? []).find((t) => t !== "" && !t.startsWith("-")) ?? ""
+      const apontaParaArquivo =
+        primeiro.startsWith("$") ||
+        primeiro.startsWith("scripts/") ||
+        /\.(?:sh|mjs|py|js|cjs)$/.test(primeiro)
+      const r = fileTargetOf(comando, vars)
+      if (!r.ok) {
+        if (apontaParaArquivo)
+          limites.push({
+            arquivo: rel,
+            linha: comando.linha,
+            programa: comando.programa,
+            motivo: r.motivo,
+          })
+        continue
+      }
+      for (const valor of r.valores) {
+        const alvo = valor.startsWith("scripts/")
+          ? valor
+          : normalize(join(vars.dir || dirname(rel), valor))
+        if (alvo.startsWith("..") || !existsSync(join(root, alvo))) continue
+        if (!alcancados.has(alvo)) alcancados.set(alvo, rel)
+        if (SHELL_INTERPRETERS.has(comando.programa) && alvo.endsWith(".sh") && !vistos.has(alvo)) {
+          if (d >= maxDepth) {
+            limites.push({
+              arquivo: rel,
+              linha: comando.linha,
+              programa: comando.programa,
+              motivo: `teto de profundidade da descida (${maxDepth}) em \`${alvo}\` — o interior dele NAO foi julgado`,
+            })
+            continue
+          }
+          vistos.add(alvo)
+          fila.push({ rel: alvo, d: d + 1 })
+        }
+      }
+    }
+  }
+  return { alcancados, limites }
+}
+
+/**
+ * Os RUNNERS que as duas pipelines chamam — derivados, nunca uma lista a mao.
+ *
+ * A derivacao passa pela entrada do package.json (`bun run test:mutation-guards`
+ * → `bash scripts/test-mutation-guards.sh`): sem ela, o runner mais chamado do
+ * contrato de merge nem apareceria como script, e a descida comecaria do lugar
+ * errado.
+ *
+ * @param {string} root
+ * @param {Record<string,string>} scripts  scripts do package.json
+ * @returns {Map<string,string>} runner → comando da pipeline (o primeiro)
+ */
+export function pipelineRunners(root, scripts) {
+  const runners = new Map()
+  for (const file of PIPELINES) {
+    const content = readOrNull(root, file)
+    if (content === null) continue
+    for (const bruto of executedCommands(content)) {
+      const resolved = resolveCommand(bruto, scripts)
+      const tokens = resolved.split(/\s+/)
+      if (!SHELL_INTERPRETERS.has(tokens[0])) continue
+      const alvo = tokens[1]
+      if (alvo === undefined || !alvo.endsWith(".sh") || alvo.startsWith("/") || alvo.includes("$"))
+        continue
+      if (!runners.has(alvo)) runners.set(alvo, resolved)
+    }
+  }
+  return runners
+}
+
+/**
+ * A BATERIA LOCAL: o que os HOOKS executam — e a descida nos runners que eles
+ * chamam, pela MESMA regua da descida das pipelines.
+ *
+ * Sem esta metade a regra seria falsa no caso mais comum: o pre-commit nao roda
+ * os 12 guards de encoding um a um, ele chama `run-encoding-guards.sh`. Julgar o
+ * caminho do runner e parar ali faria de cada guard que ele executa um "sem
+ * decisao local" — e a correcao errada seria DECLARAR de fora o que a bateria
+ * local roda de dentro.
+ *
+ * @param {string} root
+ * @param {Record<string,string>} scripts
+ * @returns {{arquivos: Map<string,string>, runners: Map<string,string>, limites: object[]}}
+ */
+export function localBattery(root, scripts) {
+  const arquivos = new Map()
+  const runners = new Map()
+  const raizes = []
+  for (const hook of HOOKS) {
+    const content = readOrNull(root, hook)
+    if (content === null) continue
+    for (const cmd of hookCommands(content)) {
+      const resolved = resolveCommand(cmd, scripts)
+      arquivos.set(subjectOf(resolved), `executado direto por ${hook}`)
+      const tokens = resolved.split(/\s+/)
+      if (
+        SHELL_INTERPRETERS.has(tokens[0]) &&
+        tokens[1]?.endsWith(".sh") &&
+        !tokens[1].startsWith("$")
+      ) {
+        if (!runners.has(tokens[1])) runners.set(tokens[1], resolved)
+        raizes.push(tokens[1])
+      }
+    }
+  }
+  const descida = descendScripts(root, [...new Set(raizes)])
+  for (const [arquivo, via] of descida.alcancados) {
+    if (!arquivos.has(arquivo)) arquivos.set(arquivo, `pelo runner ${via} (chamado pelo hook)`)
+  }
+  return { arquivos, runners, limites: descida.limites }
+}
+
 /** Os scripts do package.json do root. */
 function readScripts(root) {
   const raw = readOrNull(root, "package.json")
@@ -420,8 +699,20 @@ export function allWorkflowCommands(root) {
  * Analisa a paridade hook ↔ CI. Pura em relacao ao filesystem (recebe o root),
  * para poder ser testada contra um fixture.
  *
+ * Os campos da regra 4 (`runners`, `subguards`, `limitesDaDescida`,
+ * `bateriaLocal`) sao MEDICAO, e nao so relatorio: e por eles que o `--json`
+ * publica quais sub-guards de runner existem, de qual runner cada um veio e qual
+ * foi a decisao local — um sub-guard decidido por engano e um limite que sumiu
+ * ficam visiveis sem ler prosa.
+ *
+ * @typedef {{file: string, via: string, decision: string|null, invariant: string|null}} Subguard
+ * @typedef {{arquivo: string, linha: number, programa: string, motivo: string}} LimiteDaDescida
  * @param {{root?: string}} [args]
- * @returns {{rows: object[], violations: string[], notRun: string[], missing: string[]}}
+ * @returns {{rows: object[], violations: string[], notRun: string[], missing: string[],
+ *            subguards: Subguard[], runners: {file: string, command: string}[],
+ *            limitesDaDescida: LimiteDaDescida[],
+ *            bateriaLocal: {arquivos: string[], runners: {file: string, command: string}[],
+ *                           limites: LimiteDaDescida[]}}}
  */
 export function analyze({ root = ROOT } = {}) {
   const violations = []
@@ -432,6 +723,10 @@ export function analyze({ root = ROOT } = {}) {
       violations: ["package.json ausente/ilegivel — sem ele nao da para resolver `bun run X`"],
       notRun: [],
       missing: [],
+      subguards: [],
+      runners: [],
+      limitesDaDescida: [],
+      bateriaLocal: { arquivos: [], runners: [], limites: [] },
     }
   }
 
@@ -599,7 +894,75 @@ export function analyze({ root = ROOT } = {}) {
     )
   }
 
-  return { rows, violations, notRun: [...notRunIds].sort(), missing }
+  // ── 4. O SUB-GUARD DE UM RUNNER ─────────────────────────────────────────
+  //
+  // A cobertura local ate aqui e dos comandos que a pipeline ESCREVE. Quando o
+  // comando e um runner, o que ele executa por dentro nao tinha dono: nem o
+  // hook, nem HOOK_NOT_RUN, nem HOOK_DECLARED falavam dele. A descida (mesma
+  // regua do `check-hook-commands`) fecha isso: todo arquivo alcancado dentro
+  // dos runners das DUAS pipelines exige decisao local.
+  const runners = pipelineRunners(root, scripts)
+  const descida = descendScripts(root, [...runners.keys()])
+  const local = localBattery(root, scripts)
+  // O nome do invariante pelo INSTRUMENTO (o mesmo subject do resto do guard):
+  // e por ele que "este arquivo e o gate X" pode ser afirmado sem uma segunda
+  // tabela de correspondencia.
+  const invarianteDoArquivo = new Map()
+  for (const inv of CORE_INVARIANTS) {
+    const canonica = canonicalOf(inv.id)
+    if (canonica !== null) invarianteDoArquivo.set(subjectOf(canonica), inv.id)
+  }
+  const declarados = new Set()
+  const subguards = []
+  for (const [arquivo, via] of [...descida.alcancados].sort()) {
+    const inv = invarianteDoArquivo.get(arquivo) ?? null
+    const localmente = local.arquivos.get(arquivo) ?? null
+    let decisao = null
+    if (localmente) decisao = `hook: ${localmente}`
+    else if (inv !== null && notRunIds.has(inv)) decisao = `HOOK_NOT_RUN: '${inv}'`
+    else if (RUNNER_SUBGUARD.some((e) => e.file === arquivo)) decisao = "RUNNER_SUBGUARD"
+    subguards.push({ file: arquivo, via, decision: decisao, invariant: inv })
+    if (decisao === null) {
+      const comando = runners.get(via) ?? via
+      violations.push(
+        `${arquivo}: SUB-GUARD do runner \`${via}\` (o CI o executa por \`${comando}\`) NAO tem decisao local — o veredito do merge o roda e o veredito local nao o ve. Decida: rode-o no hook (uma entrada em HOOK_DECLARED), ou declare a ausencia em RUNNER_SUBGUARD com a razao.`,
+      )
+    }
+    if (decisao === "RUNNER_SUBGUARD") declarados.add(arquivo)
+  }
+  // A declaracao STALE, na outra direcao: uma entrada de RUNNER_SUBGUARD que
+  // nenhum sub-guard alcancado usa e uma decisao que envelheceu (o arquivo saiu
+  // do runner, ou o runner saiu da pipeline) — e ela continuaria autorizando a
+  // ausencia de um sub-guard que ja nao existe.
+  for (const entrada of RUNNER_SUBGUARD) {
+    if (declarados.has(entrada.file)) continue
+    violations.push(
+      `RUNNER_SUBGUARD: '${entrada.file}' nao e sub-guard de nenhum runner das pipelines — ou ele saiu do runner, ou o runner saiu do contrato: remova a declaracao (ela nao mede mais nada).`,
+    )
+  }
+  // Uma declaracao sem razao escrita e uma ausencia autorizada por ninguem.
+  for (const entrada of RUNNER_SUBGUARD) {
+    if ((entrada.why ?? "").trim().length < 40) {
+      violations.push(
+        `RUNNER_SUBGUARD: '${entrada.file}' sem razao escrita (ou curta demais) — a ausencia de um sub-guard no veredito local precisa dizer POR QUE ele fica de fora.`,
+      )
+    }
+  }
+
+  return {
+    rows,
+    violations,
+    notRun: [...notRunIds].sort(),
+    missing,
+    subguards,
+    runners: [...runners.entries()].map(([file, command]) => ({ file, command })),
+    limitesDaDescida: descida.limites,
+    bateriaLocal: {
+      arquivos: [...local.arquivos.keys()].sort(),
+      runners: [...local.runners.entries()].map(([file, command]) => ({ file, command })),
+      limites: local.limites,
+    },
+  }
 }
 
 // ── modo CLI (so quando invocado diretamente, nao quando importado) ────────
@@ -641,6 +1004,22 @@ if (isMain) {
   console.log(
     `\n  ${CORE_INVARIANTS.length - report.missing.length - report.notRun.length}/${CORE_INVARIANTS.length} invariantes do CORE rodam no hook (os demais declarados em HOOK_NOT_RUN).`,
   )
+
+  // ── O SUB-GUARD DE UM RUNNER ──────────────────────────────────────────
+  console.log("\n  O SUB-GUARD DE UM RUNNER — a descida nos scripts que as pipelines chamam:\n")
+  console.log(
+    `  ${report.runners.length} runner(s) chamado(s) pelo CI · ${report.subguards.length} sub-guard(s) alcancado(s) · ${report.bateriaLocal.arquivos.length} arquivo(s) na bateria local (com descida)`,
+  )
+  for (const s of report.subguards) {
+    const marca = s.decision === null ? "❌" : "✅"
+    console.log(`  ${marca} ${s.file}   ← ${s.via}`)
+    console.log(`        decisao local: ${s.decision ?? "NENHUMA — violacao"}`)
+  }
+  for (const l of report.limitesDaDescida) {
+    console.log(
+      `  ⚠️  NAO DESCENDIDO ${l.arquivo}${l.linha ? `:${l.linha}` : ""} (${l.programa || "arquivo"}) — ${l.motivo}`,
+    )
+  }
 
   if (report.violations.length === 0) {
     console.log(
