@@ -295,6 +295,10 @@ export const HOOK_NOT_RUN = [
     why: "mede a pipeline INTEIRA (o grafo de `needs:` + o modelo de duracao), nao o commit: um commit que nao toca a pipeline nem o modelo nao muda o veredito — e nao existe recorte dele, porque o `--check` le os dois arquivos fixos de qualquer jeito. Quem muda o veredito e exatamente o commit de CI/pipeline, e esse o hook ja cobre pelo gate de paridade de gates.",
   },
   {
+    ids: ["mutation-matrix", "forge-parity-mutation"],
+    why: "sao provas por MUTACAO: a matriz reescreve um guard por vez (32 sub-tests, 248s medidos no job do espelho) e o fixture do contrato de gates COPIA as duas pipelines e muta cada uma. O hook ja roda o gate de PARIDADE DE GATES em todo commit (e ele que exige a classificacao de um gate novo), mas nao pode pagar ~4min POR COMMIT — a prova por execucao e do CI e, desde esta mudanca, do job `guards` das DUAS forjas: antes ela so rodava no espelho, e o PR da forja podia mergear com um guard CEGO.",
+  },
+  {
     ids: ["workflow-refs"],
     why: "relacao entre WORKFLOWS e scripts/package.json (referencia pendurada): so um commit de CI a muda — e nesse caso o hook ja roda o check de PARIDADE DE GATES, que e o gate que pega o efeito.",
   },

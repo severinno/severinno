@@ -160,6 +160,24 @@ const TSC_RE = /\btsc\s+--noEmit\b/
 export { executableLines }
 
 /**
+ * As linhas EXECUTAVEIS de um workflow — a leitura unica DESTE guard.
+ *
+ * `defaults.run` e DECLARACAO (o shell default do arquivo ou do job), nunca
+ * passo: sem excluir as linhas dela, `defaults: run: node scripts/check-x.mjs`
+ * entrega o rotulo de um gate que a pipeline nao roda, e `defaults:\n  run: bash`
+ * vira o COMANDO literal "bash". Um lugar so para a exclusao, porque ela era
+ * repetida em cada consumidor (tres deles hoje: a descoberta de gates, a regua
+ * de comando e o canal do remedio) e uma exclusao que depende de todos
+ * lembrarem dela e a mesma classe de defeito que este guard persegue.
+ *
+ * @param {string} content
+ * @returns {string[]}
+ */
+function linhasExecutaveis(content) {
+  return executableLines(content.split(/\r?\n/), defaultsRunLines(content))
+}
+
+/**
  * Descobre os gates executados por uma pipeline. Retorna rotulos legiveis (o
  * proprio comando normalizado), que sao o que a classificacao casa.
  *
@@ -168,10 +186,7 @@ export { executableLines }
  */
 export function discoverGates(content) {
   const gates = new Set()
-  // `defaults.run` e DECLARACAO (shell default), nunca passo: sem excluir as
-  // linhas dela, `defaults: run: node scripts/check-x.mjs` entrega o rotulo de um
-  // gate que a pipeline nao roda.
-  const linhas = executableLines(content.split(/\r?\n/), defaultsRunLines(content))
+  const linhas = linhasExecutaveis(content)
   for (const line of linhas) {
     for (const m of line.matchAll(SCRIPT_INVOCATION_RE)) {
       const path = m[1]
@@ -254,10 +269,10 @@ export function executedCommands(content) {
 
 function runKeyCommands(content) {
   const commands = []
-  // Mesma exclusao do `discoverGates`: a declaracao `defaults.run` nao produz
+  // Mesma leitura do `discoverGates`: a declaracao `defaults.run` nao produz
   // comando — `defaults:\n  run: bash` virava o comando literal "bash", e a
   // regua canonica de uma invariante podia vir de uma linha que nao roda nada.
-  const linhas = executableLines(content.split(/\r?\n/), defaultsRunLines(content))
+  const linhas = linhasExecutaveis(content)
   for (const line of linhas) {
     // A indentacao faz parte da linha (executableLines preserva a coluna), entao
     // a chave pode vir depois de espacos — e o item de lista (`- run: cmd`) e a
@@ -640,6 +655,35 @@ export const CORE_INVARIANTS = [
     why: "a familia prove-*/doctor e o que responde 'a forja pode confiar o merge a este gate?': uma doc que descreve a saida de ANTES mente com aparencia de rigor, e quem opera a forja decide sobre ela — o guard e hermetico (~1s) e roda com o docker ausente de proposito nas provas que exigem docker",
     jobIds: { gitea: "guards", github: "workflow-refs-guard" },
   },
+  {
+    id: "mutation-matrix",
+    // A MATRIZ da prova por mutacao — e o invariante que reverteu uma isencao.
+    //
+    // Ela estava em `GITHUB_ONLY` com a razao "os jobs de mutation test existem
+    // apenas no pipeline do GitHub (custo/duracao)" — que e exatamente a razao
+    // que este arquivo proibe: conveniencia. O veredito que decide o merge nao
+    // e "o espelho roda a prova", e "o PR do dono do merge pode ficar verde com
+    // um guard CEGO?" — podia, e a matriz e a unica coisa do repositorio que
+    // mede se um guard MORDE. Na forja ela roda DENTRO do job `guards` (ja
+    // required, entao bloqueia o merge sem tocar a protecao aplicada); no
+    // espelho, no job proprio `mutation-guards` (o separado existe para o
+    // vermelho DIZER qual gate quebrou). O comando e o MESMO nas duas.
+    matches: /test-mutation-guards/,
+    command: /^bash scripts\/test-mutation-guards\.sh$/m,
+    why: "prova por mutacao no dono do merge: sem ela, o PR da forja mergeia com o guard cego e o merge fica com aparencia de verificado — o espelho nao pode ser o unico lugar onde se descobre que um gate nao morde",
+    jobIds: { gitea: "guards", github: "mutation-guards" },
+  },
+  {
+    id: "forge-parity-mutation",
+    // A prova da REGUA de classificacao (quais gates podem pular uma forja, com
+    // que forma de comando) — o sujeito dela e o contrato de merge em si. Rodar
+    // so no espelho deixava o dono do merge decidir o merge com a regra que ele
+    // mesmo nunca media.
+    matches: /test-mutation-forge-parity/,
+    command: /^bash scripts\/test-mutation-forge-parity\.sh$/m,
+    why: "a regra que decide se um gate pode pular a forja e medida nas duas: a prova por mutacao das tres regras de classificacao roda onde o merge e decidido",
+    jobIds: { gitea: "guards", github: "forge-parity-mutation" },
+  },
 ]
 
 /**
@@ -679,10 +723,21 @@ export const GITHUB_ONLY = [
       "mede o tempo do mutation test SOB o act com a imagem ubuntu-bun — benchmarking do runner do GitHub, nao uma invariante de codigo",
   },
   {
+    // A classe mudou de lado: a MATRIZ e a prova do contrato de gates sao CORE
+    // (`mutation-matrix`, `forge-parity-mutation`) e rodam no dono do merge. O
+    // que sobra aqui e o que o `matches` DESCREVE — e a razao voltou a ser
+    // sobre o sujeito, nao sobre conveniencia:
+    //   (a) os ROTULOS DEDICADOS das suites que a matriz ja cobre (o job proprio
+    //       existe no espelho para o vermelho dizer QUAL gate quebrou);
+    //   (b) as tres suites que provam guards do espelho fora do contrato de
+    //       merge (jsdom drift, unused deps, bun audit: os jobs deles nao sao
+    //       required checks de forja nenhuma);
+    //   (c) os dois guards cujo SUJEITO e o pipeline do GitHub (os jobs de
+    //       mutation test e o nome/summary/comentario do job `mutation-guards`).
     id: "mutation-suite",
-    matches: /test-mutation|check[:-]mutation[:-](count|jobs)/,
+    matches: /test-mutation-(?!guards(?:\.sh)?$)|check[:-]mutation[:-](count|jobs)/,
     reason:
-      "o SUJEITO do gate sao os jobs de mutation test, que existem apenas no pipeline do GitHub (custo/duracao); a forja nao os executa, entao nao ha o que conferir lá",
+      "o sujeito e o pipeline do ESPELHO, nao a forja: os rotulos dedicados de suites que a matriz CORE ja prova nas duas forjas, as tres que provam guards sem contrato de merge (jsdom drift/unused deps/bun audit — os jobs deles nao sao required checks) e os dois guards que conferem os jobs de mutation test e o nome/summary/comentario count-free do job `mutation-guards` — jobs que existem so la",
   },
   {
     id: "e2e-counts",

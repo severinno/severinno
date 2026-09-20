@@ -77,6 +77,7 @@ const REAL_LINES = [
   "      - run: node scripts/check-bun-mirror.mjs",
   "      - run: node scripts/check-no-setup-bun.mjs",
   "      - run: node scripts/check-forge-parity.mjs",
+  "      - run: node scripts/check-archived-pipeline.mjs",
   "      - run: node scripts/check-hooks-symmetry.mjs",
   "      - run: node scripts/check-hook-ci-parity.mjs",
   "      - run: node scripts/check-hook-commands.mjs",
@@ -86,6 +87,11 @@ const REAL_LINES = [
   "      - run: node scripts/prove-runner-image-gate.mjs",
   "      - run: node scripts/prove-pre-commit-in-runner.mjs",
   "      - run: node scripts/merge-latency.mjs --check",
+  // A prova por mutação não é isenta do dono do merge: a matriz (que mede se um
+  // guard MORDE) e a prova das três regras de classificação rodam nas DUAS
+  // pipelines com o mesmo comando — na forja dentro do job `guards`.
+  "      - run: bash scripts/test-mutation-guards.sh",
+  "      - run: bash scripts/test-mutation-forge-parity.sh",
 ]
 
 /** Pipeline sintética que executa TODOS os invariantes do CORE. */

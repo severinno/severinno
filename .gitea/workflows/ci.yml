@@ -362,6 +362,51 @@ jobs:
       - name: Hook symmetry (README ↔ hooks reais)
         run: node scripts/check-hooks-symmetry.mjs
 
+      # ── A PROVA POR MUTAÇÃO, NO DONO DO MERGE ────────────────────────────
+      # A classe inteira era isenta da forja como `GITHUB_ONLY` (com a razão
+      # "os jobs de mutation test existem apenas no pipeline do GitHub — custo")
+      # e o furo era este: quem mergeia aqui podia ficar VERDE com um guard
+      # CEGO, porque a única coisa que mede se um guard MORDE (a mutação que ele
+      # tem de pegar) rodava só no espelho. O PR da forja não é onde se descobre
+      # isso depois.
+      #
+      # As duas provas passaram a ser invariantes do CORE (`mutation-matrix` e
+      # `forge-parity-mutation`) e rodam aqui com o MESMO comando do espelho:
+      # na forja dentro deste job (já required, então bloqueia o merge sem
+      # tocar a proteção aplicada), no GitHub nos jobs próprios — lá o job
+      # separado existe para o vermelho DIZER qual gate quebrou. As suítes
+      # dedicadas que a matriz já cobre seguem no espelho, e as três que provam
+      # guards fora do contrato de merge seguem declaradas (com razão escrita)
+      # no `GITHUB_ONLY` do check-forge-parity.
+      #
+      # A FORJA SABE RODAR ISTO? — a pergunta que autoriza a mudança, medida
+      # dentro da PRÓPRIA imagem (`ubuntu-bun`, a mesma que o runner mapeia
+      # para `ubuntu-latest`) em 20/09/2026:
+      #   · node v24.19.0, bun 1.3.14, python3 3.12.3, git 2.55.0, jq 1.6;
+      #   · a suíte da paridade (0.61s) e a matriz COMPLETA (32/32 sub-tests,
+      #     exit 0, 238.7s) rodaram com o MESMO comando do espelho, dentro do
+      #     container — contra 248s medidos nativos no runner do espelho.
+      # O `python3` não é detalhe: as mutações cirúrgicas dos sub-tests o usam
+      # (corte de trecho no guard, sem reescrever o arquivo todo), e a suíte
+      # falha ALTO quando ele falta em vez de pular a mutação. Ele vem da base
+      # da imagem (não é instalado por nenhum passo) — se a base parar de
+      # entregá-lo, o vermelho é deste job e nomeia a causa.
+      #
+      # Custo: a matriz é node-pura e não executa docker (medido: nenhuma das 32
+      # sub-tests invoca docker — os `docker` que aparecem são TEXTO de fixture;
+      # e o container do job não tem o socket do daemon, então depender dele
+      # seria uma falha, não uma lentidão). A medição do passo no espelho é
+      # `mutation-guards` = 248s (medido em 20/09/2026) e a soma entrou em
+      # `ci/merge-latency.json` — com a procedência DECLARADA: o valor é o do
+      # runner do espelho (o MAIOR dos dois), e o PISO do job `guards` vem dos
+      # passos fora da soma (o `check:pipefail-sigpipe`, o `bun install` e o
+      # checkout), não da falta de medição do runtime.
+      - name: Mutation matrix (32 sub-tests — o guard MORDE?)
+        run: bash scripts/test-mutation-guards.sh
+
+      - name: Forge parity mutation (as regras de classificação)
+        run: bash scripts/test-mutation-forge-parity.sh
+
       # A LATÊNCIA DE MERGE do DONO DO MERGE fecha a conta: todo job que roda
       # neste PR tem duração (declarada em ci/merge-latency.json ou derivada do
       # benchmark). A tabela de overhead do README lista o custo de cada gate e

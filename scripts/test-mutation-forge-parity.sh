@@ -2,8 +2,9 @@
 # =============================================================================
 # scripts/test-mutation-forge-parity.sh — Mutation test do check-forge-parity
 #
-# Prova que o scripts/check-forge-parity.mjs REALMENTE falha nas TRÊS regras de
-# classificação que ele existe para fazer cumprir:
+# Prova que o scripts/check-forge-parity.mjs REALMENTE falha nas regras que ele
+# existe para fazer cumprir (a classificação dos gates, a régua ANCORADA do
+# comando canônico, o CORE no dono do merge e o CANAL do remédio):
 #
 #   A) gate NOVO na forja DONA DO MERGE sem classificação  → NAO CLASSIFICADO
 #      (a regressão que motivou o guard: um gate novo pulando a forja em
@@ -19,6 +20,24 @@
 #      ANCORADA: presença não é "casou a substring", é executar o comando
 #      canônico. Sem estas duas, um gate enfraquecido (ou invocado por um
 #      atalho que roda outra coisa) passaria como paridade
+#   F) a MATRIZ de mutation tests (a prova que mede se um guard MORDE) removida
+#      do dono do merge → o invariante `mutation-matrix` sai NOMEADO, com a
+#      linha esperada e a pipeline. Esta é a regra que reverteu a isenção
+#      `GITHUB_ONLY` da classe ("os jobs de mutation test existem só no
+#      GitHub"): sem a mutação F, um passo que sumisse do ci.yml deixaria a
+#      isenção antiga valendo de novo — e o PR da forja voltaria a mergear com
+#      um guard cego, em silêncio
+#   G) o CANAL DO REMÉDIO (a régua que não é gate: ele PUBLICA o patch do remédio
+#      no PR) — três mutações, uma por regra:
+#      G1) o passo REMOVIDO do dono do merge → nenhum passo invoca o canal
+#          naquela forja, e quem abre o PR por lá reescreve à mão o que o fixer
+#          remenda;
+#      G2) o `--all` (cobertura do REGISTRO) trocado por `--fixer <um>` → o
+#          fixer que ficou de fora sai NOMEADO. O nome do fixer é LIDO DO
+#          REGISTRO pelo harness, nunca cravado aqui: a prova de que a cobertura
+#          vem do registro não pode depender de quem escreve a mutação;
+#      G3) o `--backend` trocado para o da OUTRA forja → o passo publicaria no
+#          canal errado, com o token errado, e nenhum outro guard veria isso
 #
 # COMO (e por que assim): o guard roda com `--root` contra um FIXTURE que é uma
 # CÓPIA dos dois pipelines REAIS (`.gitea/workflows/ci.yml`, o dono do merge, e
@@ -39,7 +58,15 @@
 #   7. MUTAÇÃO E: invariante PRESENTE por outra forma (indireta, e sem o
 #      argumento canônico) → DEVE FALHAR com a MESMA mensagem, e NÃO como gate
 #      não classificado (a classificação casou: o que falhou foi a RÉGUA)
-#   8. Cleanup (trap EXIT)
+#   8. MUTAÇÃO F: a matriz de mutation removida da forja → DEVE FALHAR nomeando
+#      `mutation-matrix`, a linha esperada e a pipeline
+#   9. MUTAÇÃO G1: o canal do remédio removido da forja → DEVE FALHAR nomeando o
+#      passo e a pipeline
+#  10. MUTAÇÃO G2: a cobertura do canal trocada por `--all` → `--fixer <um>` →
+#      DEVE FALHAR nomeando o fixer que ficou de FORA (lido do REGISTRO)
+#  11. MUTAÇÃO G3: o canal com o `--backend` da OUTRA forja → DEVE FALHAR
+#      nomeando o backend esperado
+#  12. Cleanup (trap EXIT)
 #
 # Usage:
 #   ./scripts/test-mutation-forge-parity.sh
@@ -309,9 +336,132 @@ if ! grep -qF 'node scripts/check-workflow-refs.mjs --pkg-internal' "$TMP_DIR/ou
 fi
 pass "mutação E2 DETECTADA: o mesmo comando com argumentos diferentes é divergência, e o diagnóstico imprime a linha canônica completa"
 
+# ── MUTAÇÃO F: a prova por MUTAÇÃO removida do DONO DO MERGE ──────────────
+#
+# A regra que esta mudança introduziu: a matriz de mutation tests (e a prova das
+# três regras de classificação) deixaram de ser isentas do dono do merge — quem
+# mergeia aqui não pode ficar verde com um guard CEGO. A mutação remove o passo
+# da forja e exige o veredito: o invariante 'mutation-matrix' sai NOMEADO, com a
+# linha esperada e a pipeline onde ele falta. Sem esta, um passo que sumisse do
+# ci.yml deixaria a isenção antiga valendo outra vez — em silêncio, que é a
+# classe que o guard inteiro persegue.
+
+header "MUTAÇÃO F: a MATRIZ de mutation removida da FORJA (dona do merge)"
+make_fixture
+remover_comando "$GITEA_WF" "bash scripts/test-mutation-guards.sh"
+run_guard
+
+if [ "$GUARD_EXIT" -eq 0 ]; then
+  fail "guard CEGO: passou com a matriz de mutation test AUSENTE na forja (exit 0) — o PR da forja voltaria a mergear com um guard cego"
+  exit 1
+fi
+if ! grep -qF "invariante do CORE 'mutation-matrix' NAO roda aqui" "$TMP_DIR/out.txt"; then
+  fail "guard falhou (exit $GUARD_EXIT) mas NÃO nomeou o invariante 'mutation-matrix'"
+  sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
+  exit 1
+fi
+if ! grep -qF "bash scripts/test-mutation-guards.sh" "$TMP_DIR/out.txt"; then
+  fail "o diagnóstico não imprimiu a LINHA ESPERADA do passo"
+  sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
+  exit 1
+fi
+if ! grep -qF "$GITEA_WF" "$TMP_DIR/out.txt"; then
+  fail "o diagnóstico não nomeou a PIPELINE onde o passo falta"
+  sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
+  exit 1
+fi
+pass "mutação F DETECTADA: a prova por mutação ausente no dono do merge falha nomeando o invariante, a pipeline e a linha esperada (exit $GUARD_EXIT)"
+
+# ── MUTAÇÃO G: o CANAL DO REMÉDIO (não é gate, e é régua) ─────────────────
+#
+# O canal não verifica nada — ele PUBLICA o patch do remédio no PR —, então as
+# regras 1-4 deste guard (gates descobertos, invariantes do CORE, isenções) não o
+# alcançam. A cobertura dele vinha de uma lista escrita nos DOIS workflows (um
+# passo por fixer); agora o passo invoca o REGISTRO (`--all`) e estas três
+# mutações provam que a regra nova MORDE nas três pontas: o canal ausente numa
+# forja, a cobertura reduzida a uma lista à mão, e o backend da outra forja.
+
+header "MUTAÇÃO G1: o canal do remédio REMOVIDO do dono do merge"
+make_fixture
+remover_comando "$GITEA_WF" "node scripts/pr-remedy-comment.mjs --backend gitea --all"
+run_guard
+
+if [ "$GUARD_EXIT" -eq 0 ]; then
+  fail "guard CEGO: passou com o CANAL DO REMÉDIO ausente na forja (exit 0)"
+  exit 1
+fi
+if ! grep -qF "o CANAL DO REMEDIO nao roda aqui" "$TMP_DIR/out.txt"; then
+  fail "guard falhou (exit $GUARD_EXIT) mas NÃO citou o canal do remédio ausente"
+  sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
+  exit 1
+fi
+if ! grep -qF "$GITEA_WF" "$TMP_DIR/out.txt"; then
+  fail "o diagnóstico não nomeou a PIPELINE sem o canal"
+  sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
+  exit 1
+fi
+pass "mutação G1 DETECTADA: canal ausente numa forja falha nomeando o passo e a pipeline (exit $GUARD_EXIT)"
+
+header "MUTAÇÃO G2: a cobertura do canal trocada por uma LISTA à mão (--all → --fixer <um>)"
+# O fixer que deve sair NOMEADO é lido do REGISTRO (não é cravado aqui): o que a
+# mutação mede é a cobertura derivada, e um nome escrito à mão no harness
+# envelheceria junto com o registro — passando a medir outra coisa.
+FORA="$(node -e 'import(process.argv[1]).then((m) => { const ids = Object.keys(m.FIXERS); console.log(ids[ids.length - 1]) })' "file://$SCRIPT_DIR/scripts/pr-remedy-comment.mjs")"
+PENDENTE="$(node -e 'import(process.argv[1]).then((m) => { const ids = Object.keys(m.FIXERS); console.log(ids[0]) })' "file://$SCRIPT_DIR/scripts/pr-remedy-comment.mjs")"
+if [ -z "$FORA" ]; then
+  fail "não consegui ler o REGISTRO de fixers (harness sem o nome derivado)"
+  exit 1
+fi
+
+make_fixture
+trocar_comando "$GITEA_WF" "node scripts/pr-remedy-comment.mjs --backend gitea --all" "node scripts/pr-remedy-comment.mjs --backend gitea --fixer $FORA"
+run_guard
+
+if [ "$GUARD_EXIT" -eq 0 ]; then
+  fail "guard CEGO: passou com a cobertura do canal reduzida a uma lista à mão (exit 0)"
+  exit 1
+fi
+if ! grep -qF "NAO publica 1 fixer(s) do registro" "$TMP_DIR/out.txt"; then
+  fail "guard falhou (exit $GUARD_EXIT) mas NÃO citou a cobertura faltante"
+  sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
+  exit 1
+fi
+if grep -qF "NAO publica 1 fixer(s) do registro: $FORA" "$TMP_DIR/out.txt"; then
+  fail "o diagnóstico nomeia '$FORA' como NÃO publicado, mas foi ELE que a mutação deixou na linha — a regra está invertida"
+  sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
+  exit 1
+fi
+if ! grep -qF "NAO publica 1 fixer(s) do registro: $PENDENTE" "$TMP_DIR/out.txt"; then
+  fail "o diagnóstico não nomeou '$PENDENTE' como o fixer que ficou FORA (a cobertura tem de vir do registro)"
+  sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
+  exit 1
+fi
+pass "mutação G2 DETECTADA: a cobertura reduzida falha nomeando o fixer que ficou de fora do canal (exit $GUARD_EXIT)"
+
+header "MUTAÇÃO G3: o canal com o --backend da OUTRA forja"
+make_fixture
+trocar_comando "$GITEA_WF" "node scripts/pr-remedy-comment.mjs --backend gitea --all" "node scripts/pr-remedy-comment.mjs --backend github --all"
+run_guard
+
+if [ "$GUARD_EXIT" -eq 0 ]; then
+  fail "guard CEGO: passou com o backend da OUTRA forja no canal (exit 0)"
+  exit 1
+fi
+if ! grep -qF "backend de OUTRA forja" "$TMP_DIR/out.txt"; then
+  fail "guard falhou (exit $GUARD_EXIT) mas NÃO citou o backend da outra forja"
+  sed 's/^/    /' "$TMP_DIR/out.txt" | head -8
+  exit 1
+fi
+pass "mutação G3 DETECTADA: o passo copiado da outra forja falha nomeando o backend esperado (exit $GUARD_EXIT)"
+
 header "VEREDITO"
 pass "MUTATION TEST PASSED — check-forge-parity pega gate novo sem classificação"
 pass "(forja E espelho), isenção stale, invariante do CORE AUSENTE de uma"
-pass "pipeline e o invariante PRESENTE por outra forma (indireta ou com outros"
-pass "argumentos) — a régua é ancorada no comando canônico, não na substring."
+pass "pipeline, o invariante PRESENTE por outra forma (indireta ou com outros"
+pass "argumentos — a régua é ancorada no comando canônico), a MATRIZ de"
+pass "mutation test ausente do dono do merge (a prova por execução que impede o"
+pass "PR da forja de mergear com um guard cego) e as TRÊS pontas do CANAL DO"
+pass "REMÉDIO: o passo ausente numa forja, a cobertura reduzida a uma lista à"
+pass "mão (o fixer que ficou de fora sai NOMEADO, lido do REGISTRO) e o"
+pass "--backend da outra forja."
 exit 0

@@ -91,6 +91,7 @@ import {
 // A prova EXECUTADA pelo doctor e as constantes do hook que ela usa: o teste mede
 // a MESMA função que o relatório chama (e é por isso que a mutação do hook aqui
 // embaixo muda o veredito do fato).
+import { CORE_INVARIANTS } from "../../../scripts/check-forge-parity.mjs"
 import { GUARD_COMMAND, hookSource, proveCommitBlocks } from "../../../scripts/pre-commit-proof.mjs"
 // A RÉGUA DOS COMANDOS DOS HOOKS: o teste compara o que o FATO do contrato
 // local declara com o que o GATE julga — as duas leituras têm de ser a mesma.
@@ -2377,6 +2378,8 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
             "typecheck",
             "lint-guard",
             "check",
+            "mutation-guards",
+            "forge-parity-mutation",
           ],
         },
       },
@@ -2576,15 +2579,17 @@ describe("readAllGateContracts — o job EXIGIDO roda a régua da INVARIANTE, a 
   it("cada invariante que compartilha o job 'guards' tem a SUA régua medida", () => {
     const dir = twoForgeFixture()
     const noMesmoJob = contractResults(dir).filter((x) => x.jobId === FORGE_GUARDS_JOB)
-    // VINTE E TRÊS invariantes CORE vivem no mesmo job `guards`: nove que sempre
-    // estiveram ali, dez que passaram a ser invocadas pela MESMA linha canônica
-    // do espelho (antes rodavam na forja por outra forma, ou não rodavam), a da
-    // SINTAXE do corpo `run:`, a da LATÊNCIA de merge, a dos COMANDOS DOS HOOKS
-    // e a das DEPENDÊNCIAS DOS JOBS (a última a entrar). Deduplicando pelo job,
-    // vinte e duas ficariam fora da lista de contratos e apareceriam como
-    // cobertas sem nunca terem sido medidas.
-    expect(noMesmoJob.length).toBe(23)
-    expect(new Set(noMesmoJob.map((x) => x.invariantId)).size).toBe(23)
+    // QUEM mora no job `guards` é a DECLARAÇÃO (`CORE_INVARIANTS`), não um
+    // número escrito aqui: o valor era 26 à mão e envelhecia a cada invariante
+    // nova — a asserção ficava vermelha por um count, e o count nunca foi o
+    // sujeito. O sujeito é este: a lista de contratos medidos é EXATAMENTE a
+    // declaração (nada cai por dedup do job — o defeito original conferia só a
+    // primeira da lista e dava as outras por cobertas) e cada uma responde pela
+    // SUA régua.
+    const declaradas = CORE_INVARIANTS.filter((i) => i.jobIds?.gitea === FORGE_GUARDS_JOB)
+      .map((i) => i.id)
+      .sort()
+    expect(noMesmoJob.map((x) => x.invariantId).sort()).toEqual(declaradas)
     expect(noMesmoJob.every((x) => x.state === "proven")).toBe(true)
     // E cada uma responde pela SUA remoção — não pela do vizinho.
     const semRequired = twoForgeFixture({ semComandoDoGate: "required-checks" })

@@ -306,7 +306,7 @@ if grep -qF 'NAO CLASSIFICADO' "$TMP_DIR/ctrl1-gates.txt"; then
   cat "$TMP_DIR/ctrl1-gates.txt"
   exit 1
 fi
-pass '25 invariantes do CORE nas 2 pipelines com a declaração LEGAL presente (exit 0)'
+pass 'os invariantes do CORE do fixture nas 2 pipelines, com a declaração LEGAL presente (exit 0)'
 
 # ── CONTROLE 2: a declaração no escopo do JOB não é passo ─────────────────
 
@@ -369,7 +369,12 @@ restore
 # ── MUTAÇÃO B: a leitura existe e o guard não a consulta ──────────────────
 
 header 'MUTAÇÃO B: o guard de paridade deixa de CONSULTAR a leitura → DEVE FALHAR'
-mutar "$PARITY" 'executableLines(content.split(/\r?\n/), defaultsRunLines(content))' 'executableLines(content.split(/\r?\n/)) // MUTACAO B' 2
+# A leitura e UM lugar `linhasExecutaveis` (o guard nao repete a exclusao em cada
+# consumidor — a descoberta de gates, a regua de comando e o canal do remedio
+# passam todos por ela). Por isso a mutacao tem UM alvo exato: mutar o corpo do
+# helper cega os tres consumidores de uma vez, que e o que "o guard deixou de
+# consultar a leitura" significa.
+mutar "$PARITY" 'executableLines(content.split(/\r?\n/), defaultsRunLines(content))' 'executableLines(content.split(/\r?\n/)) // MUTACAO B' 1
 code=0
 paridade "$RAIZ_HOSTIL" "$TMP_DIR/mut-b.txt" || code=$?
 if [ "$code" -ne 1 ]; then

@@ -1535,6 +1535,14 @@ export function readBringUpGate({
  * A fonte é um REGEX (o `command` da invariante), então as escapes saem antes:
  * `scripts\/x\.mjs` é o mesmo caminho que `scripts/x.mjs`.
  *
+ * As TRÊS formas de invocação dizem qual arquivo o gate executa, e as três são
+ * derivadas: o caminho do script (`node scripts/x.mjs`), a entry do
+ * package.json (`bun run check:x` — ali a entry É a fonte única, o comando não
+ * existe fora dela) e o INTERPRETADOR direto (`bash scripts/x.sh`, a forma das
+ * provas por mutação — `bash -n` não tem entry). Sem a terceira, os gates que
+ * rodam `bash` publicavam `script: null` e um consumidor do relatório não sabia
+ * o que auditar.
+ *
  * @param {RegExp|undefined} expectedCommand
  * @returns {string|null}
  */
@@ -1546,7 +1554,9 @@ export function scriptOfCommand(expectedCommand) {
     .replace(/^\^/, "")
     .replace(/\$$/, "")
   const m = /^(?:node|bun|bunx)\s+(?:run\s+)?([^\s$]+)/.exec(fonte)
-  return m ? m[1] : null
+  if (m) return m[1]
+  const shell = /^(?:bash|sh)\s+(?!--)([^\s$]+)/.exec(fonte)
+  return shell ? shell[1] : null
 }
 
 export function readGateContract({

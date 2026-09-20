@@ -1457,16 +1457,32 @@ sem interpretá-la, e aceitar as duas formas é reabrir a segunda régua.
 `scripts/test-mutation-forge-parity.sh` roda o guard **real** contra uma cópia
 fiel das duas pipelines (`--root`), e o **CONTROLE** (cópia sem mutação → exit 0)
 prova que o fixture é fiel: sem ele, um guard que falhasse "de qualquer jeito"
-passaria como detecção. Seis mutações, cada uma derivando uma regra:
+passaria como detecção. **Dez** mutações, cada uma derivando uma regra (as três
+primeiras da classificação, D/E1/E2 da régua do comando canônico, F do CORE no
+dono do merge e G1–G3 do CANAL do remédio — a quinta regra):
 
-| mutação | o que injeta na cópia                                             | o que o guard tem de dizer                                                 |
-| :------ | :---------------------------------------------------------------- | :------------------------------------------------------------------------- |
-| **A**   | gate novo **sem classificação** na forja (dona do merge)          | `NAO CLASSIFICADO`, nomeando o gate                                        |
-| **B**   | gate novo **sem classificação** no espelho GitHub                 | `NAO CLASSIFICADO`                                                         |
-| **C**   | gate `GITHUB_ONLY` **rodando** na forja                           | classificação **stale**                                                    |
-| **D**   | invariante do CORE com o **comando canônico removido**            | `invariante do CORE 'X' NAO roda aqui` + a **linha esperada** e a pipeline |
-| **E1**  | o mesmo invariante por invocação **indireta** (`bun run check:…`) | a **mesma** mensagem — e **não** `NAO CLASSIFICADO`                        |
-| **E2**  | o comando canônico **sem o argumento** (`--pkg-internal`)         | idem, com a linha canônica **completa** no diagnóstico                     |
+| mutação | o que injeta na cópia                                             | o que o guard tem de dizer                                                  |
+| :------ | :---------------------------------------------------------------- | :-------------------------------------------------------------------------- |
+| **A**   | gate novo **sem classificação** na forja (dona do merge)          | `NAO CLASSIFICADO`, nomeando o gate                                         |
+| **B**   | gate novo **sem classificação** no espelho GitHub                 | `NAO CLASSIFICADO`                                                          |
+| **C**   | gate `GITHUB_ONLY` **rodando** na forja                           | classificação **stale**                                                     |
+| **D**   | invariante do CORE com o **comando canônico removido**            | `invariante do CORE 'X' NAO roda aqui` + a **linha esperada** e a pipeline  |
+| **E1**  | o mesmo invariante por invocação **indireta** (`bun run check:…`) | a **mesma** mensagem — e **não** `NAO CLASSIFICADO`                         |
+| **E2**  | o comando canônico **sem o argumento** (`--pkg-internal`)         | idem, com a linha canônica **completa** no diagnóstico                      |
+| **F**   | a **matriz de mutation tests** removida da forja (dona do merge)  | `invariante do CORE 'mutation-matrix' NAO roda aqui` + a linha e a pipeline |
+| **G1**  | o **canal do remédio** removido da forja                          | `o CANAL DO REMEDIO nao roda aqui`, nomeando o passo e a pipeline           |
+| **G2**  | a cobertura do canal trocada por `--all` → `--fixer <um>`         | o fixer que ficou **FORA** sai nomeado — **lido do REGISTRO**               |
+| **G3**  | o canal com o `--backend` da **outra** forja                      | `backend de OUTRA forja`, com o esperado no diagnóstico                     |
+
+A **quinta regra** (G1–G3) existe porque o canal **não** é um gate: ele não
+verifica nada, publica o patch do remédio no PR, e por isso não entra em
+`discoverGates`/`CORE_INVARIANTS` — nenhuma das quatro regras o alcançava. A
+cobertura dele vinha de uma lista escrita nos DOIS workflows (um passo por fixer),
+e um fixer novo só chegava ao PR se alguém lembrasse de copiar o passo nas duas
+pontas. Hoje o passo invoca o REGISTRO (`--all`), e a prova lê o nome do fixer que
+deve sair nomeado **de `FIXERS`** (um literal no harness envelheceria junto com o
+registro e passaria a medir outra coisa) e ainda exige que a mensagem **não**
+esteja invertida (quem aponta o fixer deixado na linha é a mutação, não a régua).
 
 As duas últimas medem a **régua**, não a classificação: a forma divergente continua
 casando o `matches` do invariante, então o gate sai classificado e quem reprova é o
@@ -1474,7 +1490,7 @@ casando o `matches` do invariante, então o gate sai classificado e quem reprova
 — se contivesse, a prova estaria pegando o defeito pela regra errada (e passaria a
 provar a classificação enquanto diz medir a régua).
 
-**Onde roda, e por que em job PRÓPRIO (fora do master):** job
+**Onde roda, e por que em job PRÓPRIO (fora do master) no espelho:** job
 `forge-parity-mutation` do `pr-check.yml`, com entrada em `ci/required-checks.json`.
 Ela era um sub-test da matriz do master (**23 → 22** naquela medição); saiu porque é
 a única prova do repositório cujo sujeito é o **contrato de merge em si** — quais
@@ -1490,7 +1506,16 @@ não um ato de fé.
 **Gates que o guard promoveu do GitHub para a forja** (estavam só no espelho, e
 não por serem específicos da plataforma): auditoria de dependências, baseline de
 segredos, hooks de seed, sentinel producer, fonte única do Bun, proibição do
-`oven-sh/setup-bun` e simetria de hooks.
+`oven-sh/setup-bun`, simetria de hooks e — a maior delas — a **prova por mutação**:
+a matriz de 32 sub-tests e a prova das três regras de classificação, que rodavam
+só no espelho e deixavam o PR da forja mergear com um guard cego. O custo entrou
+no modelo (`ci/merge-latency.json`, job `guards`), e o **runtime** da imagem
+foi re-medido antes de a mudança valer: o MESMO comando dentro do container da
+`ubuntu-bun` (a imagem que o runner da forja mapeia para `ubuntu-latest`) rodou a
+matriz completa com **32/32** sub-tests verdes em **238.7s** contra os 248s
+medidos nativos no runner do espelho — ~4% de diferença, e o número maior é o que
+fica. O que faz do valor do dono do merge um **PISO** não é o runtime: são os
+passos fora da soma (o `check:pipefail-sigpipe`, o `bun install` e o checkout).
 
 ---
 
