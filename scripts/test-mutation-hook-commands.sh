@@ -7,7 +7,7 @@
 #   ./scripts/test-mutation-hook-commands.sh
 #
 # Exit codes:
-#   0 — as CATORZE mutações foram DETECTADAS (pelo gate, pelo ARQUIVO e/ou pela
+#   0 — as VINTE E UMA mutações foram DETECTADAS (pelo gate, pelo ARQUIVO e/ou pela
 #       suíte) e os controles passaram ✅
 #   1 — guard INDIFERENTE a alguma mutação (não cegou / não acusou / não gravou)
 #       OU controle falso ❌
@@ -101,6 +101,43 @@
 #         pode ser o que roda). Descartar a atribuição ilegível e ficar com as que
 #         sobraram é provar uma PARTE e chamar de todo.
 #
+# A ENTRADA DE `bun run` MONTADA EM VARIÁVEL TEM AS SUAS DUAS REGRAS, e cada uma
+# tem mutação própria — é a metade do guard que prova o NOME que a variável
+# carrega, em vez de declará-lo:
+#
+#   M15 — a EXISTÊNCIA da entrada provável. O valor que a variável pode tomar tem
+#         de ser uma entrada de `scripts` (ou um binário de dependência, ou o
+#         subcomando nativo na forma sem `run`): sem isso a entrada REMOVIDA no
+#         mesmo commit passa com a bênção do gate. Antes desta régua a classe
+#         inteira era uma decisão datada em INDETERMINATE, e a isenção cobria a
+#         entrada que existe e a que sumiu com o MESMO silêncio.
+#   M16 — a DESCIDA na entrada provável. Provar que o NOME existe não é provar que
+#         o que ele EXECUTA resolve: sem a descida, a entrada que aponta para um
+#         arquivo removido fica um nível adiante do verde.
+#
+# E A DESCIDA TEM UMA REGRA A MAIS, com mutação própria — a que a fez seguir o
+# alvo que a RESOLUÇÃO acabou de provar:
+#
+#   M17 — o alvo PROVADO por variável. `bash "$SCRIPT_DIR/x.sh"` saía
+#         `resolvido` (o caminho foi provado por leitura) e o interior do x.sh
+#         não era julgado por ninguém: a metade mais útil do guard desligada
+#         justamente onde o caminho é mais indireto. Sem a resolução do alvo, o
+#         defeito DENTRO do script provado passa.
+#
+# E AS DUAS RECUSAS QUE EXISTEM PARA O VERDE NÃO VIR DE UM CONJUNTO QUE O GUARD
+# NÃO LEU — o teto de combinações e o valor vazio — também têm mutação própria:
+#
+#   M18 — o valor VAZIO. `""` não é caminho nem nome, e o guard o resolveria por
+#         ACIDENTE: `binInstalado(root, "")` é o DIRETÓRIO `node_modules/.bin`
+#         (`join(root, "node_modules", ".bin", "")`), que existe em qualquer
+#         checkout instalado — e um `bun run "$ENTRADA"` cuja entrada pode ser
+#         vazia sairia VERDE. MEDIDO: sem a regra, exit 0.
+#   M19 — o TETO de combinações. Acima de `MAX_VALORES` o conjunto provável não
+#         foi enumerado, e prová-lo seria uma leitura que não aconteceu: o verde
+#         viria do tamanho, não do disco. A fixture é gerada a partir do próprio
+#         `MAX_VALORES` (TETO + 1 valores, todos existentes), para o número não
+#         virar uma segunda fonte de verdade.
+#
 # A SEGUNDA TESTEMUNHA (a suíte unitária). As mutações M1–M4 são aplicadas no
 # arquivo do repositório e, além do veredito do CLI, exigem a suíte
 # `check-hook-commands.test.ts` VERMELHA — a suíte é o que roda em todo PR e é
@@ -147,7 +184,23 @@
 #   6j. MUTAÇÃO M13 (a existência do alvo PROVADO) — a variável que aponta para um
 #      arquivo inexistente passa a sair verde
 #   6k. MUTAÇÃO M14 (o fail-closed da resolução) — descartar a atribuição
-#      ilegível faz o guard provar a metade que sobrou
+#       ilegível faz o guard provar a metade que sobrou
+#   6l. MUTAÇÃO M15 (a entrada provável de `bun run "$ENTRADA"`) — aceitar a
+#       entrada ausente faz a que foi REMOVIDA passar
+#   6m. MUTAÇÃO M16 (a descida na entrada provável) — parar no NOME faz o defeito
+#       que a entrada executa ficar um nível adiante do verde
+#   6n. MUTAÇÃO M17 (o alvo PROVADO por variável) — sem resolver o `$ALVO` da
+#       chamada, o interior do script provado deixa de ser julgado
+#   6o. MUTAÇÃO M18 (o valor VAZIO) — o vazio aceito como valor faz o comando
+#       (que o runtime executaria com `""`) sair VERDE
+#   6p. MUTAÇÃO M19 (o TETO de combinações) — enumerar mais do que o teto permite
+#       faz o guard provar um conjunto que ele não leu
+#   6q. MUTAÇÃO M20 (o CONGELAMENTO do diretório no parse) — o idioma viaja como
+#       EXPRESSÃO e o filho o re-avalia com o diretório DELE: o comando que aponta
+#       para um caminho impossível sai VERDE
+#   6r. MUTAÇÃO M21 (a resolução do marcador na HERANÇA) — o outro elo da mesma
+#       corrente: sem congelar o `@DIR@` no valor que atravessa, o filho o resolve
+#       com o diretório dele e o mesmo verde falso aparece
 #   7. Restauração VERIFICADA (checksum) + CONTROLE FINAL: o guard volta a
 #      reprovar o caminho tipado, provando que a árvore ficou como estava
 #   8. Cleanup (trap EXIT — restaura o guard e remove o temp, mesmo com falha)
@@ -598,8 +651,8 @@ mk_arquivo "$FX_DESCIDA" "scripts/check-utf8-scope.mjs" '// vizinho, a UMA edica
 exigir_reprovado "M9 (antes da mutação)" "$FX_DESCIDA"
 pass "CONTROLE: o caminho tipado DENTRO do script chamado é VIOLAÇÃO (o guard DESCE)"
 mutar_guard \
-  '      const alvo = scriptAlvo(comando)' \
-  '      const alvo = null /* MUTACAO M9 */'
+  '      const alvos = alvosProvaveis(comando, contexto.vars)' \
+  '      const alvos = { ok: false, motivo: "MUTACAO M9" }'
 exigir_cego "M9" "$FX_DESCIDA"
 pass "M9: sem a descida, o defeito DENTRO do runner PASSA (CEGO) — a descida é load-bearing"
 exigir_reprovado "M9 cirúrgica (caminho NO hook)" "$FX_TYPO"
@@ -619,10 +672,10 @@ mk_arquivo "$FX_ESCOPO" "scripts/x.sh" $'#!/usr/bin/env bash\nminha_funcao\n'
 exigir_reprovado "M10 (antes da mutação)" "$FX_ESCOPO"
 pass "CONTROLE: a função do hook NÃO existe no script executado — VIOLAÇÃO"
 mutar_guard \
-  '        funcoes: SOURCE_COMMANDS.has(comando.programa)
-          ? new Set([...funcoes, ...definedFunctions(texto)])
-          : new Set(definedFunctions(texto)),' \
-  '        funcoes: new Set([...funcoes, ...definedFunctions(texto)]), /* MUTACAO M10 */'
+  '          funcoes: SOURCE_COMMANDS.has(comando.programa)
+            ? new Set([...funcoes, ...definedFunctions(texto)])
+            : new Set(definedFunctions(texto)),' \
+  '          funcoes: new Set([...funcoes, ...definedFunctions(texto)]), /* MUTACAO M10 */'
 exigir_cego "M10" "$FX_ESCOPO"
 pass "M10: com a herança, o nome que o shell nunca acharia PASSA (CEGO) — o escopo é load-bearing"
 exigir_reprovado "M10 cirúrgica (caminho NO hook)" "$FX_TYPO"
@@ -708,12 +761,179 @@ mk_arquivo "$FX_MEIO" "scripts/py.sh" "$PY_MEIO"
 exigir_reprovado "M14 (antes da mutação)" "$FX_MEIO"
 pass "CONTROLE: com uma atribuição NÃO provável, a variável inteira é irresolúvel — VIOLAÇÃO (fail-closed)"
 mutar_guard \
-  '    if (!r.ok)
-      return { ok: false, motivo: `\`${nome}\` (linha ${entrada.linhas.join(", ")}): ${r.motivo}` }' \
+  '    if (!r.ok) return { ok: false, motivo: `\`${nome}\` (${ondeAtribuida(entrada)}): ${r.motivo}` }' \
   '    if (!r.ok) continue /* MUTACAO M14 */'
 exigir_cego "M14" "$FX_MEIO"
 pass "M14: descartando a atribuição ilegível, o guard PROVA a metade que sobrou e deixa passar (CEGO) — o fail-closed é load-bearing"
 exigir_suite_vermelha "M14"
+restaurar_original
+
+# ── 6l. MUTAÇÃO M15: a EXISTÊNCIA da entrada provável ─────────────────────
+# A entrada montada em `$ENTRADA` nomeia um NOME de `scripts` (ou um binário de
+# dependência declarada): o valor provável tem de EXISTIR. Sem a conferência, a
+# entrada REMOVIDA no mesmo commit passa — e era exatamente o que a decisão
+# datada escondia, porque a MESMA linha de INDETERMINATE cobria a entrada que
+# existe e a que sumiu.
+header "MUTAÇÃO M15: aceitar a entrada provável que não existe em \`scripts\`"
+FX_ENTRADA_VAR="$TMP_DIR/fx-entrada-var"
+HOOK_ENTRADA_VAR=$'set -eu\nENTRADA=tipecheck\nbun run "$ENTRADA"\n'
+PKG_ENTRADA_VAR='{ "name": "fx-entrada-var", "scripts": { "typecheck": "node scripts/typecheck.mjs" } }'
+mkfix "$FX_ENTRADA_VAR" "$HOOK_ENTRADA_VAR" "$PKG_ENTRADA_VAR"
+mk_arquivo "$FX_ENTRADA_VAR" "scripts/typecheck.mjs" '// existe\n'
+exigir_reprovado "M15 (antes da mutação)" "$FX_ENTRADA_VAR"
+pass "CONTROLE: a entrada provável que NÃO existe é VIOLAÇÃO (com o vizinho mais próximo)"
+mutar_guard \
+  'const faltando = provavel.valores.filter((valor) => !aceita(valor))' \
+  'const faltando = [] /* MUTACAO M15 */'
+exigir_cego "M15" "$FX_ENTRADA_VAR"
+pass "M15: aceitando a entrada provável sem conferir, a entrada REMOVIDA PASSA (CEGO) — a existência é load-bearing"
+exigir_reprovado "M15 cirúrgica (entrada LITERAL ausente)" "$FX_ENTRADA"
+pass "M15 CIRÚRGICA: a entrada LITERAL \`bun run tipecheck\` segue reprovada — morreu só a metade da variável"
+exigir_suite_vermelha "M15"
+restaurar_original
+
+# ── 6m. MUTAÇÃO M16: a DESCIDA na entrada provável ────────────────────────
+# Provar que o NOME existe não é provar que o que ele EXECUTA resolve: a entrada
+# pode existir e o comando dela apontar para um arquivo que sumiu. Sem a descida,
+# o defeito fica um nível ADIANTE do verde — a mesma classe do M9, agora no
+# caminho montado em variável.
+header "MUTAÇÃO M16: parar no NOME da entrada provável (não descer no que ela executa)"
+FX_ENTRADA_DESCE="$TMP_DIR/fx-entrada-desce"
+HOOK_ENTRADA_DESCE=$'set -eu\nENTRADA=typecheck\nbun run "$ENTRADA"\n'
+PKG_ENTRADA_DESCE='{ "name": "fx-entrada-desce", "scripts": { "typecheck": "node scripts/sumiu.mjs" } }'
+mkfix "$FX_ENTRADA_DESCE" "$HOOK_ENTRADA_DESCE" "$PKG_ENTRADA_DESCE"
+mk_arquivo "$FX_ENTRADA_DESCE" "scripts/sumiuX.mjs" '// vizinho, a UMA edicao do token\n'
+exigir_reprovado "M16 (antes da mutação)" "$FX_ENTRADA_DESCE"
+pass "CONTROLE: a entrada existe e o que ela EXECUTA não existe — VIOLAÇÃO (com a cadeia da proveniência)"
+mutar_guard \
+  'if (ctx.scripts[entrada] === undefined) continue' \
+  'if (true /* MUTACAO M16 */) continue'
+exigir_cego "M16" "$FX_ENTRADA_DESCE"
+pass "M16: sem a descida, o defeito que a entrada executa PASSA (CEGO) — a descida é load-bearing"
+exigir_reprovado "M16 cirúrgica (entrada LITERAL apontando para arquivo removido)" "$FX_ENTRADA"
+pass "M16 CIRÚRGICA: a entrada LITERAL que aponta para arquivo removido segue reprovada — morreu só a descida da variável"
+exigir_suite_vermelha "M16"
+restaurar_original
+
+# ── 6n. MUTAÇÃO M17: a DESCIDA no alvo PROVADO por variável ───────────
+# A descida seguia só o alvo LITERAL: `bash "$ALVO"` cujo valor o guard PROVOU
+# saía `resolvido` — e o interior do script ficava sem ninguém. A mutação
+# desliga a resolução do alvo e exige que o defeito DENTRO do script provado
+# passe (CEGO), com o CONTROLE na direção oposta (a árvore íntegra o reprova).
+header "MUTAÇÃO M17: parar no alvo LITERAL (não descer no alvo provado)"
+FX_DESCE_VAR="$TMP_DIR/fx-desce-var"
+HOOK_DESCE_VAR=$'set -eu\nALVO="scripts/inner.sh"\nbash "$ALVO"\n'
+PKG_DESCE_VAR='{ "name": "fx-desce-var", "scripts": {} }'
+mkfix "$FX_DESCE_VAR" "$HOOK_DESCE_VAR" "$PKG_DESCE_VAR"
+mk_arquivo "$FX_DESCE_VAR" "scripts/inner.sh" $'#!/usr/bin/env bash\nnode scripts/typo.mjs\n'
+exigir_reprovado "M17 (antes da mutação)" "$FX_DESCE_VAR"
+pass "CONTROLE: o defeito DENTRO do script cujo alvo foi PROVADO é VIOLAÇÃO (o guard desce)"
+mutar_guard \
+  'const provavel = caminhosProvaveis(alvo, vars)' \
+  'const provavel = { ok: false, motivo: "MUTACAO M17: resolucao desligada" }'
+exigir_cego "M17" "$FX_DESCE_VAR"
+pass "M17: sem a resolução do alvo, o interior do script provado PASSA (CEGO) — a descida no alvo provado é load-bearing"
+exigir_reprovado "M17 cirúrgica (alvo LITERAL com defeito dentro)" "$FX_DESCIDA"
+pass "M17 CIRÚRGICA: o alvo LITERAL que aponta para defeito interno segue reprovado — morreu só a descida do alvo provado"
+exigir_suite_vermelha "M17"
+restaurar_original
+
+# ── 6o. MUTAÇÃO M18: o valor VAZIO da resolução ───────────────────────────
+# `ENTRADA=""` é o valor que não é caminho nem nome. O `node_modules/.bin`
+# PRECISA existir na fixture: é ele que faz o vazio virar verde quando a regra
+# não está lá (`binInstalado(root, "")` é o DIRETÓRIO, e um diretório existe) —
+# a fixture reproduz o ambiente onde o hook roda, não um ambiente mais falso.
+header "MUTAÇÃO M18: aceitar o valor VAZIO como valor provável"
+FX_VAZIO="$TMP_DIR/fx-vazio"
+HOOK_VAZIO=$'set -eu\nENTRADA=""\nbun run "$ENTRADA"\n'
+PKG_VAZIO='{ "name": "fx-vazio", "scripts": { "typecheck": "node scripts/typecheck.mjs" } }'
+mkfix "$FX_VAZIO" "$HOOK_VAZIO" "$PKG_VAZIO"
+mk_arquivo "$FX_VAZIO" "scripts/typecheck.mjs" '// ok\n'
+mkdir -p "$FX_VAZIO/node_modules/.bin"
+exigir_reprovado "M18 (antes da mutação)" "$FX_VAZIO"
+pass "CONTROLE: o valor VAZIO é VIOLAÇÃO (indeterminado não declarado) — ele não vira verde"
+mutar_guard \
+  '  if (valores.some((v) => v === ""))' \
+  '  if (false /* MUTACAO M18 */)'
+exigir_cego "M18" "$FX_VAZIO"
+pass "M18: sem a regra, o vazio é aceito COMO valor e o comando sai VERDE (CEGO) — o fail-closed do vazio é load-bearing"
+exigir_reprovado "M18 cirúrgica (entrada provável que não existe)" "$FX_ENTRADA_VAR"
+pass "M18 CIRÚRGICA: a entrada provável que NÃO existe segue reprovada — morreu só a regra do vazio"
+exigir_suite_vermelha "M18"
+restaurar_original
+
+# ── 6p. MUTAÇÃO M19: o TETO de combinações da resolução ───────────────────
+# Acima do teto o guard NÃO enumerou o conjunto, e "provar" o que não foi lido é
+# a forma mais fácil de um verde falso. A fixture é GERADA do próprio
+# `MAX_VALORES` (TETO + 1 valores, todos existentes no disco): o teto é o único
+# motivo possível para o controle reprovar — e o número não vira fonte de verdade.
+header "MUTAÇÃO M19: enumerar mais combinações do que o teto permite"
+TETO="$(node --input-type=module -e "import('$GUARD').then((m) => console.log(m.MAX_VALORES))")"
+info "o teto declarado no guard agora é $TETO — a fixture usa $((TETO + 1)) valores, todos existentes"
+FX_TETO="$TMP_DIR/fx-teto"
+HOOK_TETO="$(for i in $(seq 1 $((TETO + 1))); do echo "D=scripts/d$i"; done)"
+HOOK_TETO="set -eu
+$HOOK_TETO
+node "\$D/x.mjs""
+mkfix "$FX_TETO" "$HOOK_TETO" "$PKG_SIMPLES"
+for i in $(seq 1 $((TETO + 1))); do mk_arquivo "$FX_TETO" "scripts/d$i/x.mjs" '// ok\n'; done
+exigir_reprovado "M19 (antes da mutação)" "$FX_TETO"
+pass "CONTROLE: os $((TETO + 1)) valores prováveis passam do teto — VIOLAÇÃO (o guard não prova o que não enumerou)"
+mutar_guard \
+  '  const combinacoes = produto(partes, MAX_VALORES)' \
+  '  const combinacoes = produto(partes, Infinity /* MUTACAO M19 */)'
+exigir_cego "M19" "$FX_TETO"
+pass "M19: sem o teto, o guard PROVA um conjunto de $((TETO + 1)) valores e o comando sai VERDE (CEGO) — o teto é load-bearing"
+exigir_reprovado "M19 cirúrgica (caminho NO hook)" "$FX_TYPO"
+pass "M19 CIRÚRGICA: o caminho tipado NO hook segue reprovado — morreu só o teto"
+exigir_suite_vermelha "M19"
+restaurar_original
+
+# ── 6q. MUTAÇÃO M20: o CONGELAMENTO do diretório no parse ─────────────────
+# O idioma `$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)` vale o diretório de QUEM O
+# ESCREVEU: o bash exporta o VALOR, e o filho não re-avalia a expressão. A
+# fixture é o caso que separa as duas leituras — o alvo verdadeiro
+# (`scripts/ok.mjs`, o diretório do `lib.sh` que exportou) NÃO existe e o
+# caminho que o filho veria se re-avaliasse com o diretório dele
+# (`scripts/sub/ok.mjs`) existe. Sem o congelamento o guard fica VERDE apontando
+# para um caminho que o processo novo nunca pode ver.
+header "MUTAÇÃO M20: deixar o idioma do diretório viajar como EXPRESSÃO"
+FX_IDIOMA="$TMP_DIR/fx-idioma"
+HOOK_IDIOMA=$'set -eu\nbash scripts/lib.sh\n'
+mkfix "$FX_IDIOMA" "$HOOK_IDIOMA" "$PKG_SIMPLES"
+mk_arquivo "$FX_IDIOMA" "scripts/lib.sh" \
+  $'#!/usr/bin/env bash\nSCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\nexport SCRIPT_DIR\nbash scripts/sub/child.sh\n'
+mk_arquivo "$FX_IDIOMA" "scripts/sub/child.sh" \
+  $'#!/usr/bin/env bash\nnode "$SCRIPT_DIR/ok.mjs"\n'
+mk_arquivo "$FX_IDIOMA" "scripts/sub/ok.mjs" '// o caminho que o filho RE-AVALIARIA — nao e o que o processo novo ve\n'
+exigir_reprovado "M20 (antes da mutação)" "$FX_IDIOMA"
+pass "CONTROLE: o alvo é o do EXPORTADOR (\`scripts/ok.mjs\`) e ele NÃO existe — VIOLAÇÃO"
+mutar_guard \
+  '  return eIdiomaDir(desembrulha(valor)) ? MARCA_DIR : valor' \
+  '  return valor /* MUTACAO M20 */'
+exigir_cego "M20" "$FX_IDIOMA"
+pass "M20: sem o congelamento, o filho re-avalia a EXPRESSÃO no diretório dele e o comando sai VERDE apontando para um alvo impossível (CEGO) — o congelamento é load-bearing"
+exigir_reprovado "M20 cirúrgica (entrada provável que não existe)" "$FX_ENTRADA_VAR"
+pass "M20 CIRÚRGICA: a entrada provável que NÃO existe segue reprovada — morreu só o congelamento do diretório"
+exigir_suite_vermelha "M20"
+restaurar_original
+
+# ── 6r. MUTAÇÃO M21: a resolução do marcador na HERANÇA ───────────────────
+# O outro elo da MESMA corrente: depois do congelamento o valor é `@DIR@`, e é a
+# herança que o resolve com o diretório de quem EXPORTOU. Sem essa resolução o
+# marcador chega cru ao filho, e a substituição do uso (que só é a última ponta da
+# regra) o resolve com o diretório DELE — o mesmo verde falso, por outra linha.
+header "MUTAÇÃO M21: deixar o marcador \`@DIR@\` atravessar a herança"
+exigir_reprovado "M21 (antes da mutação)" "$FX_IDIOMA"
+pass "CONTROLE: com a herança resolvendo o marcador, o veredito é VIOLAÇÃO (o alvo do exportador)"
+mutar_guard \
+  '    const resolvidos = (lista) => lista.map((v) => v.split(MARCA_DIR).join(vars.dir))' \
+  '    const resolvidos = (lista) => lista /* MUTACAO M21 */'
+exigir_cego "M21" "$FX_IDIOMA"
+pass "M21: sem a resolução na herança, o marcador atravessa e o filho o resolve no diretório dele — VERDE (CEGO) — a resolução na herança é load-bearing"
+exigir_reprovado "M21 cirúrgica (entrada provável que não existe)" "$FX_ENTRADA_VAR"
+pass "M21 CIRÚRGICA: a entrada provável que NÃO existe segue reprovada — morreu só a resolução do marcador"
+exigir_suite_vermelha "M21"
 restaurar_original
 
 # ── 7. CONTROLE FINAL: a árvore ficou como estava ─────────────────────────
@@ -722,4 +942,4 @@ exigir_reprovado "CONTROLE FINAL (caminho tipado)" "$FX_TYPO"
 pass "CONTROLE FINAL: o guard restaurado volta a reprovar o caminho tipado"
 
 echo
-echo -e "${GREEN}═══ MUTATION TEST PASSED — as 14 mutações foram detectadas (gate, arquivo e/ou suíte) ═══${NC}"
+echo -e "${GREEN}═══ MUTATION TEST PASSED — as 21 mutações foram detectadas (gate, arquivo e/ou suíte) ═══${NC}"

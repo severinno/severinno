@@ -5060,6 +5060,26 @@ UMA vez, com a proveniência de quem o chamou: `origem` =
 os guards que leem o grafo de imports — descer só no que um interpretador de
 SHELL lê é uma régua, não uma lista de arquivos escolhidos a mão.
 
+**E a descida segue o alvo que a RESOLUÇÃO acabou de PROVAR.** `bash
+"$SCRIPT_DIR/x.sh"` saía `resolvido` (o caminho foi provado por leitura!) e o
+interior do `x.sh` não era julgado por ninguém — a metade mais útil deste guard
+desligada justamente onde o caminho é mais indireto. Agora os DOIS alvos caem no
+mesmo lugar: o LITERAL e os valores que as atribuições do próprio arquivo provam
+(TODOS — o conjunto vale aqui como vale para o alvo do interpretador, cada script
+julgado uma vez, com ciclo e teto nomeados). O que NÃO desce é dito pelo veredito
+do comando, nunca por um silêncio: um valor absoluto ou um glob não é arquivo do
+repositório, e um programa que não é shell (um `node "$ALVO"`) não entra na
+descida — a régua é a do interpretador de SHELL.
+
+O que muda no veredito, medido: o veredito do comando que CHAMA continua o mesmo
+(ele já era `resolvido` — a descida não reescreve a resolução), e o que muda é o
+INTERIOR entrar na conta — um defeito dentro do script provado vira violação
+atribuída ao **arquivo e à linha do script**, com a `origem` apontando para a
+linha do chamador. `bash "$ALVO"` com dois valores prováveis desce nos dois
+(2 scripts, cada um uma vez). No repositório REAL o número não se move: **5
+scripts** descem (e nenhum deles era um alvo provado — a classe é latente aqui);
+em fixture, cada valor provado acrescenta o seu script ao julgamento.
+
 Três propriedades da descida que são régua, não detalhe de implementação: (1) as
 **funções visíveis** dependem da FORMA da chamada — `bash script.sh` cria um
 processo NOVO (o script vê só as funções que ele mesmo define) e `source` roda no
@@ -5075,9 +5095,10 @@ nunca um "não fui olhar" que se lê como "não havia o que julgar".
 ferramentas externas — um `find .next/static/chunks` cita um caminho que não
 existe por DESENHO (artefato de build, gitignored), e julgar argumentos exigiria
 uma allowlist de caminhos-que-não-existem (um guard que reclama de `.next/` é
-desligado pela equipe). Dos argumentos só o que INVOCA algo é julgado. Ele também
-NÃO resolve VARIÁVEIS (`"$PY" "$PY_SCRIPT"`, `node "$SCRIPT_DIR/x.mjs"`): esses
-saem `indeterminado` e exigem a decisão datada — o que ele não prova, ele NOMEIA.
+desligado pela equipe). Dos argumentos só o que INVOCA algo é julgado. O que ele
+não prova por LEITURA — o payload de runtime (`node -e`, `python3 -c`) e o valor
+de variável que o próprio arquivo não deixa estático — sai `indeterminado` e exige
+a decisão datada: o que ele não prova, ele NOMEIA.
 
 **O REMENDO (`--fix`): a mensagem já diz o vizinho; o remendo fecha a distância.**
 O guard responde "o mais próximo é `check-bun-mirror.mjs`"; o `--fix` TROCA o token
@@ -5169,15 +5190,70 @@ regras seguram o veredito:
    valores, e TODOS têm de resolver — `"$PY" "$PY_SCRIPT"` sai verde porque
    `python3`, `python` e `node` são interpretadores declarados e os dois
    `check_crlf.{py,mjs}` existem. Valor que o guard não conhece, alvo que não
-   existe no disco, conjunto acima do teto (8) e variável que pode ser VAZIA mantêm o
-   comando fora do verde, cada um com o seu motivo.
+   existe no disco, conjunto ACIMA DO TETO (`MAX_VALORES = 8`) e variável que pode
+   ser VAZIA mantêm o comando fora do verde, cada um com o seu motivo — e as duas
+   últimas recusas são fail-closed por um motivo **MEDIDO**, não por precaução:
+   (i) o teto existe porque provar um conjunto que não foi enumerado é uma leitura
+   que não aconteceu (o verde viria do TAMANHO, não do disco); (ii) o VAZIO é o
+   caso mais perigoso dos valores prováveis, porque `""` não é caminho nem nome e
+   o guard o resolveria por **ACIDENTE**: `binInstalado(root, "")` é o DIRETÓRIO
+   `node_modules/.bin` (`join(root, "node_modules", ".bin", "")`), que existe em
+   qualquer checkout instalado — sem a recusa, um `bun run "$ENTRADA"` cuja
+   entrada pode ser vazia sai **VERDE**. As duas têm mutação própria (M18/M19) e o
+   CONTROLE na direção oposta: dentro do teto / sem a atribuição vazia, o MESMO
+   comando resolve.
 
-E os LIMITES, declarados em vez de implícitos: (a) o escopo é o ARQUIVO — a
-variável do hook não vale dentro de um script chamado com `bash` (processo novo, e
-resolver por ela prometeria um caminho que o runtime não tem); (b) a resolução não
-estende a DESCIDA (que continua só no alvo LITERAL); e (c) `bun run $ENTRADA`
-segue indeterminado — ali a variável nomeia uma ENTRADA de `scripts`, não um
-caminho, e é outra régua.
+**A HERANÇA: o escopo do shell não é o arquivo, e o guard passou a modelá-lo.**
+Um script chamado com `bash`/`sh` roda num processo NOVO: ele vê o AMBIENTE (só o
+que o pai `export`ou), e não as variáveis do pai. Julgar `$SCRIPT_DIR` dentro dele
+sem isso era escolher entre ACUSAR um script que roda e dar VERDE a um valor que
+não atravessa — nenhum dos dois. O guard passa o que atravessa, e o motivo diz de
+ONDE veio (`pelas atribuições de \`$SCRIPT_DIR\` herdadas de \`.husky/pre-commit\``)
+para o operador não procurar a linha no arquivo errado. As três formas contam:
+`export VAR=x`na linha, o`export VAR`SOZINHO (o atributo é do NOME, então a
+ordem das linhas não importa) e o`source`/`.`— que roda no MESMO shell e por isso
+herda TUDO,`export`ado ou não. E o valor herdado não APAGA a atribuição do filho:
+a régua é a UNIÃO, porque a atribuição pode estar num ramo que não roda, e herdar
+a menos seria inventar um verde.
+
+**O DIRETÓRIO VIAJA CONGELADO — e essa era a metade perigosa de errar.** O idioma
+`$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)` vale o diretório de QUEM O ESCREVEU: o
+bash exporta o **VALOR**. Resolver o idioma no USO (o que basta quando o valor só
+existe no arquivo julgado) estava ERRADO para o valor que atravessa a herança: um
+`SCRIPT_DIR` exportado por `scripts/lib.sh` chegava ao filho em `scripts/sub/`
+ainda com a **EXPRESSÃO**, e o filho a re-avaliava no diretório DELE — "provando"
+`scripts/sub/ok.mjs`, um caminho que o processo novo NUNCA pode ver. Se o
+repositório tivesse o arquivo NAQUELE lugar, o guard saía **VERDE** para um alvo
+impossível: um falso verde que só aparece quando o arquivo existe no lugar errado
+— a pior forma de descobri-lo. O congelamento passou a acontecer no PARSE
+(`comDirCongelado`, o único ponto onde o diretório de quem escreveu está na mão) e
+a herança resolve o marcador com o diretório de quem EXPORTOU: dois elos da mesma
+corrente, cada um com a sua mutação (M20/M21), e as duas medições apontam para o
+MESMO verde falso.
+
+E os LIMITES, declarados em vez de implícitos: (a) o escopo é o que ATRAVESSA —
+sem `export` a variável do pai não vale no filho (o veredito diz isso, e não
+adivinha), e as atribuições do filho valem só nele; (b) a resolução estende a
+DESCIDA, mas só no alvo do comando: o que um script chamado EXECUTA é lido com as
+variáveis DELE (mais o que herdou), não com as do chamador; e (c) a variável de
+CAMINHO não é uma variável de ENTRADA: `bun run "$ENTRADA"` não resolve pela régua
+do caminho, e sim pela da entrada (abaixo), e vice-versa.
+
+**A ENTRADA de `bun run` montada em `$VAR` é PROVADA — a última classe que era
+"outra régua" deixou de ser uma isenção.** `bun run "$ENTRADA"` saía
+`indeterminado` porque a variável não nomeia um CAMINHO, e sim o NOME de um script
+de `scripts`. Só que a decisão datada que a cobria não distinguia a entrada que
+EXISTE da que foi REMOVIDA no mesmo commit: as duas achavam a MESMA linha de
+`INDETERMINATE`, e o passo-que-nunca-roda voltava escondido atrás de uma lista que
+ninguém tem motivo para reler. A régua nova é a MESMA da entrada literal, aplicada
+a CADA valor provável: o valor tem de ser entrada de `scripts`, binário de
+dependência declarada ou subcomando nativo do gerenciador (na forma sem `run` —
+`BIN=vitest` é variável legítima, e exigir uma entrada de `scripts` ali seria
+violação falsa), e o que ele EXECUTA é julgado recursivamente, com a proveniência
+inteira na mensagem (`entrada provável \`$ENTRADA\` → \`typecheck\` (em
+\`scripts\`) → script do node \`scripts/sumiu.mjs\` NÃO existe — o mais próximo é
+\`sumiuX.mjs\``). O que NÃO é estático (leitura de runtime) continua sendo decisão
+datada, como qualquer runtime.
 
 **Onde roda:** o pre-commit (fase paralela, node-puro e read-only, ~0,1s) e o CI
 nas duas pontas do CORE — job `guards` da forja (dona do merge) e job
@@ -5188,21 +5264,30 @@ DO DIRETÓRIO: um hook novo é julgado sem ninguém lembrar de uma lista à mão
 
 **Como é provado:** `src/lib/__tests__/check-hook-commands.test.ts` — cada classe
 de violação tem um caso (caminho, entrada de `scripts`, entrada apontando para
-arquivo removido, função ausente, `source` ausente, binário sem fornecedor,
-payload não declarado) e cada um tem o CONTROLE na direção oposta (o mesmo
+arquivo removido, entrada de `bun run` montada em variável — a que existe, a que
+não existe e a que executa um arquivo removido —, alvo de `bash` montado em
+variável — que desce e acha o defeito lá dentro, o conjunto de valores, o
+`source` que herda funções e o que não desce —, função ausente, `source` ausente,
+binário sem fornecedor, payload não declarado) e cada um tem o CONTROLE na direção oposta (o mesmo
 fixture sem o defeito sai verde), que é o que desmente um não-zero vindo do
-FIXTURE. A régua de extração é medida separadamente (comentário, heredoc, quebra
+FIXTURE. A HERANÇA tem as duas direções e o caso que separa as duas leituras do
+diretório: o `export` que o filho resolve (com a proveniência no motivo), o
+CONTROLE sem `export` (o processo novo não vê nada, e o veredito é a decisão
+datada), o diretório que viaja **do exportador** — mesma forma com o alvo
+existindo SÓ no diretório do filho: o veredito é VIOLAÇÃO nomeando
+`scripts/ok.mjs`, que é o alvo verdadeiro (era aqui que o guard saía verde), a
+UNIÃO com a atribuição do filho, o `source` sem `export` e o `export VAR` sozinho. A régua de extração é medida separadamente (comentário, heredoc, quebra
 de linha, `$( )`, `case`, função, continuação). E o repositório REAL é julgado com
 um **PISO de cobertura** (`comandos >= 200`, os três hooks e os scripts descidos nomeados): se a extração
 ou a descida pararem de funcionar, a contagem cai e o guard "passa" — o piso é o
-que impede o verde por vazio. Em produção: **247 comandos** (102 nos 3 hooks +
-145 dentro dos 5 scripts chamados), **241 resolvidos** e **6 indeterminados
+que impede o verde por vazio. Em produção: **250 comandos** (105 nos 3 hooks +
+145 dentro dos 5 scripts chamados), **244 resolvidos** e **6 indeterminados
 DECLARADOS** (as quatro decisões de caminho viraram prova; sobraram os payloads de
 `-c`).
 
 **Prova por mutação:** `scripts/test-mutation-hook-commands.sh` muta o próprio
-guard em CATORZE direções, cada uma com as testemunhas do veredito do CLI sobre
-uma fixture e a suíte unitária, que tem de ficar VERMELHA.
+guard em VINTE E UMA direções, cada uma com as testemunhas do veredito do CLI
+sobre uma fixture e a suíte unitária, que tem de ficar VERMELHA.
 
 As QUATRO primeiras são do lado que DETECTA: três na direção de CEGAR —
 `arquivoExiste` devolvendo sempre `true` (o caminho tipado passa), a entrada de
@@ -5212,12 +5297,26 @@ passa) — e UMA na direção OPOSTA: ignorar a regra da função do próprio ho
 guard ACUSAR O SÃO no hook real (`wait_all` do `pre-commit` vira violação).
 
 As TRÊS seguintes são da DESCIDA (M9–M11), e cada uma mede uma das propriedades
-acima. As **TRÊS ÚLTIMAS** são das VARIÁVEIS DE CAMINHO (M12–M14) — a metade que
+acima. As TRÊS SEGUINTES são das VARIÁVEIS DE CAMINHO (M12–M14) — a metade que
 PROVA o alvo do interpretador em vez de declará-lo: sem a resolução o repositório
 REAL passa a ser acusado (as decisões datadas que cobriam esses comandos não
 existem mais), sem a conferência de disco a variável que aponta para arquivo
 inexistente passa como resolvida, e sem o fail-closed descartar a atribuição
 ilegível faz o guard provar a metade que sobrou.
+
+As DUAS SEGUINTES (M15–M16) são da ENTRADA montada em variável: aceitar o valor
+provável sem conferir faz a entrada REMOVIDA no mesmo commit passar (a classe que
+antes vivia numa decisão datada), e parar no NOME da entrada deixa o defeito que
+ela executa um nível ADIANTE do verde. A M17 é o alvo PROVADO da descida: sem
+resolver o `$ALVO` da chamada, o interior do script provado deixa de ser julgado.
+As DUAS SEGUINTES (M18–M19) são as recusas que existem para o verde não vir de um
+conjunto que o guard NÃO LEU: sem a regra do VAZIO o `""` é aceito como valor (e
+o `binInstalado(root, "")` — o diretório `.bin` — faz o comando sair verde), e sem
+o TETO o guard "prova" 9 valores que não enumerou. E as DUAS ÚLTIMAS (M20–M21)
+são os dois elos do congelamento do diretório: a fixture tem o alvo verdadeiro
+AUSENTE e o caminho que o filho veria se re-avaliasse a expressão PRESENTE — cada
+mutação, sozinha, faz o guard sair VERDE apontando para um alvo que o processo
+novo nunca pode ver.
 
 As do lado que **GRAVA** (`--fix` — M5 a M8) medem uma regra do remendo, o único
 lugar do repositório onde uma mutação pode fazer o repositório ESCREVER o que não
@@ -5235,6 +5334,13 @@ deve; as demais medem o lado que JULGA. A tabela, na ordem do script:
 | M12     | a RESOLUÇÃO das variáveis de caminho                                   | as decisões datadas já não cobrem esses comandos e o repositório REAL acusa |
 | M13     | a EXISTÊNCIA do alvo PROVADO (a resolução é promessa sobre o disco)    | a variável que aponta para arquivo inexistente passa como resolvida         |
 | M14     | o FAIL-CLOSED da resolução (uma atribuição ilegível é a variável toda) | descartar a atribuição que falhou faz o guard provar a metade que sobrou    |
+| M15     | a EXISTÊNCIA da entrada provável (`bun run "$ENTRADA"`)                | a entrada REMOVIDA no mesmo commit passa (a decisão datada cobria as duas)  |
+| M16     | a DESCIDA na entrada provável (o que ela EXECUTA)                      | a entrada que aponta para arquivo removido fica um nível adiante do verde   |
+| M17     | o alvo PROVADO por variável na descida (`bash "$SCRIPT_DIR/x.sh"`)     | o interior do script que a resolução provou deixa de ser julgado            |
+| M18     | o valor VAZIO da resolução                                             | o `""` é aceito como valor (o `.bin` é um diretório) e o comando sai VERDE  |
+| M19     | o TETO de combinações (`MAX_VALORES`)                                  | o guard prova um conjunto que NÃO enumerou (o verde vem do tamanho)         |
+| M20     | o CONGELAMENTO do diretório no parse (`comDirCongelado`)               | o filho re-avalia a EXPRESSÃO no diretório dele: VERDE num alvo impossível  |
+| M21     | a RESOLUÇÃO do marcador na herança (`herancaPara.resolvidos`)          | o `@DIR@` atravessa cru e o filho o resolve no diretório dele: mesmo VERDE  |
 
 A testemunha da M8 é o **CONTEÚDO do arquivo**, não o exit code — nos dois casos
 o veredito é 1 (a violação de verdade continua lá) e é o `cmp` contra os bytes
@@ -5243,7 +5349,7 @@ escondido). A M11 também é na direção OPOSTA (como a M4): sem a régua do `c
 guard fica mais ESTRITO do que a verdade e o repositório real vira vermelho. Cada
 mutação é cirúrgica (as outras metades seguem reprovando), o arquivo é restaurado
 por checksum e o total roda em ~30s. A regressão que reintroduzir qualquer uma
-dessas onze metades morre no job, não no hook de quem commita.
+dessas dezenove metades morre no job, não no hook de quem commita.
 
 **E a PERGUNTA tem um dono só, fora do remédio.** `scripts/confirm-prompt.mjs` é
 onde vive a régua da confirmação — o terminal de CONTROLE, o default NÃO, o teto

@@ -37,8 +37,10 @@ import {
   HOOKS_DIR,
   INDETERMINATE,
   INTERPRETERS,
+  MAX_VALORES,
   SOURCE_COMMANDS,
   analyze,
+  alvosProvaveis,
   aplicarRemendo,
   arquivosDoRemendo,
   atribuicoesDoTexto,
@@ -227,6 +229,120 @@ describe("`bun run <entrada>` resolve a entrada e o que ela executa", () => {
   it("`bun install` é SUBCOMANDO nativo, não uma entrada faltando", () => {
     const dir = fixture({ hooks: { "post-checkout": "bun install\n" } })
     expect(motivos(relatorio(dir))).toEqual([])
+  })
+})
+
+// ── a entrada MONTADA EM VARIÁVEL (`bun run "$ENTRADA"`) ────────────────
+//
+// A entrada de `bun run` montada em `$VAR` era a única classe desta régua que
+// saía `indeterminado` — e a isenção datada que a cobria não distingue a entrada
+// que EXISTE da que foi REMOVIDA no mesmo commit: o passo-que-nunca-roda voltava
+// escondido atrás de uma linha de lista. Aqui a variável nomeia o NOME de um
+// script de `scripts` (ou um binário, ou o subcomando nativo na forma sem
+// `run`), e as DUAS metades da entrada literal valem uma a uma: o valor provável
+// tem de existir, e o que ele EXECUTA é julgado recursivamente.
+
+describe("`bun run $ENTRADA`: a entrada montada em variável é PROVADA, não declarada", () => {
+  const RESOLVE = {
+    "pre-commit": 'ENTRADA=typecheck\nbun run "$ENTRADA"\n',
+  }
+  const OBRA = { typecheck: "node scripts/typecheck.mjs" }
+  const ARQUIVOS = { "scripts/typecheck.mjs": "// existe\n" }
+
+  it("PROVA: o valor provável que existe em `scripts` resolve (com a proveniência)", () => {
+    const report = relatorio(fixture({ hooks: RESOLVE, scripts: OBRA, arquivos: ARQUIVOS }))
+
+    expect(report.violacoes).toEqual([])
+    expect(report.resolvidos.map((r) => r.motivo).join(" | ")).toContain(
+      "entrada provável (`$ENTRADA` → `typecheck`",
+    )
+  })
+
+  it("PROVA: o valor provável que NÃO existe é VIOLAÇÃO — com o vizinho", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": 'ENTRADA=tipecheck\nbun run "$ENTRADA"\n' },
+      scripts: OBRA,
+      arquivos: ARQUIVOS,
+    })
+
+    const motivo = motivos(relatorio(dir))[0]!
+    expect(motivo).toContain("entrada provável (`$ENTRADA` → `tipecheck`")
+    expect(motivo).toContain("não é entrada de `scripts`")
+    expect(motivo).toContain("o mais próximo é `typecheck`")
+    // E a decisão datada NÃO cobre esta classe: era ela que escondia a entrada
+    // removida no mesmo commit (a mesma linha de lista servia para a que existe
+    // e para a que sumiu).
+    expect(INDETERMINATE.some((e) => 'bun run "$ENTRADA"'.startsWith(e.match))).toBe(false)
+  })
+
+  it("PROVA: a entrada existe e o que ela EXECUTA é julgado (o defeito um nível adiante)", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": 'ENTRADA=fuzz\nbun run "$ENTRADA"\n' },
+      scripts: { fuzz: "bash scripts/run-fuzz.sh" },
+    })
+
+    const motivo = motivos(relatorio(dir))[0]!
+    expect(motivo).toContain("entrada provável `$ENTRADA` → `fuzz` (em `scripts`)")
+    expect(motivo).toContain("scripts/run-fuzz.sh")
+  })
+
+  it("o CONTROLE: a entrada existe e o que ela executa resolve sai verde", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": 'ENTRADA=fuzz\nbun run "$ENTRADA"\n' },
+      scripts: { fuzz: "bash scripts/run-fuzz.sh" },
+      arquivos: { "scripts/run-fuzz.sh": "#!/usr/bin/env bash\n" },
+    })
+    expect(relatorio(dir).violacoes).toEqual([])
+  })
+
+  it("a régua é a MESMA da entrada literal: binário de dependência e subcomando nativo", () => {
+    // `BIN=vitest` é uma variável legítima: exigir uma entrada de `scripts`
+    // acusaria o são. Quem decide é a mesma régua do resto do guard.
+    const bin = fixture({
+      hooks: { "pre-commit": 'ENTRADA=vitest\nbun run "$ENTRADA" run\n' },
+      deps: ["vitest"],
+    })
+    expect(relatorio(bin).violacoes).toEqual([])
+
+    // Na forma SEM `run`, o subcomando nativo vale (`bun install`), como na
+    // entrada literal — a variável não é julgada por uma régua mais estreita.
+    const sub = fixture({ hooks: { "pre-commit": 'CMD=install\nbun "$CMD"\n' } })
+    expect(relatorio(sub).violacoes).toEqual([])
+  })
+
+  it("PROVA: o CONJUNTO de valores é julgado inteiro (um ramo que falta reprova)", () => {
+    const dir = fixture({
+      hooks: {
+        "pre-commit": [
+          'if [ "$1" = x ]; then',
+          "  ENTRADA=typecheck",
+          "else",
+          "  ENTRADA=tipecheck",
+          "fi",
+          'bun run "$ENTRADA"',
+          "",
+        ].join("\n"),
+      },
+      scripts: OBRA,
+      arquivos: ARQUIVOS,
+    })
+
+    const motivo = motivos(relatorio(dir))[0]!
+    // Os DOIS valores aparecem (é o conjunto que o runtime pode tomar) e o que
+    // falta é nomeado.
+    expect(motivo).toContain("`typecheck`")
+    expect(motivo).toContain("`tipecheck`")
+  })
+
+  it("o valor NÃO ESTÁTICO segue indeterminado (fail-closed sem a decisão datada)", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": 'ENTRADA="$(date +%s)"\nbun run "$ENTRADA"\n' },
+    })
+
+    const motivo = motivos(relatorio(dir))[0]!
+    expect(motivo).toContain("bun run com entrada montada em runtime (`$ENTRADA`)")
+    expect(motivo).toContain("substituição de comando")
+    expect(motivo).toContain("decisão nao declarada")
   })
 })
 
@@ -602,6 +718,78 @@ describe("a extração: comentário, heredoc, quebra de linha e `$( )`", () => {
   })
 })
 
+// ── o TETO de valores e o valor VAZIO da resolução ─────────────────────────
+//
+// As duas recusas que existem para o verde NÃO vir de um conjunto que o guard
+// não leu: o que ele não consegue enumerar (acima do teto) e o que pode ser
+// VAZIO (um alvo que não é caminho nem nome). Cada uma tem aqui a prova e o
+// CONTROLE — sem o controle, "ficou fora do verde" poderia ser outra coisa
+// (arquivo faltando, fixture errada) em vez da regra.
+
+describe("o TETO de combinações e o valor VAZIO nunca viram verde", () => {
+  /** O hook com uma variável de N valores, e o arquivo que cada valor aponta. */
+  const comValores = (quantos: number): { hook: string; arquivos: Record<string, string> } => {
+    const valores = Array.from({ length: quantos }, (_, i) => `scripts/d${i + 1}`)
+    const arquivos: Record<string, string> = {}
+    for (const dir of valores) arquivos[`${dir}/x.mjs`] = "// ok\n"
+    return {
+      hook: ["set -eu", ...valores.map((d) => `D=${d}`), 'node "$D/x.mjs"', ""].join("\n"),
+      arquivos,
+    }
+  }
+
+  it("PROVA (teto): as combinações acima de MAX_VALORES ficam INDETERMINADAS", () => {
+    // TETO + 1 valores, TODOS existentes no disco: é o teto que morde — o
+    // CONTROLE abaixo prova isso com o mesmo desenho dentro do teto. Provar um
+    // conjunto que não foi enumerado seria uma leitura que não aconteceu.
+    const { hook, arquivos } = comValores(MAX_VALORES + 1)
+    const dir = fixture({ hooks: { "pre-commit": hook }, arquivos })
+
+    const motivo = motivos(relatorio(dir))[0]!
+
+    expect(motivo).toContain(`as combinações possíveis do token passam de ${MAX_VALORES}`)
+    expect(motivo).toContain("decisão nao declarada")
+  })
+
+  it("CONTROLE (teto): os mesmos valores DENTRO do teto resolvem", () => {
+    const { hook, arquivos } = comValores(MAX_VALORES)
+    const dir = fixture({ hooks: { "pre-commit": hook }, arquivos })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toEqual([])
+    expect(report.resolvidos.find((r) => r.programa === "node")?.motivo).toContain("provável")
+  })
+
+  it("PROVA (vazio): o valor VAZIO não vira verde NEM com `node_modules/.bin` no disco", () => {
+    // `""` é o caso mais perigoso dos valores prováveis: não é caminho nem nome,
+    // e o guard o resolveria por ACIDENTE — `binInstalado(root, "")` é o
+    // DIRETÓRIO `node_modules/.bin` (um diretório existe), e um `bun run` cuja
+    // entrada pode ser vazia sairia VERDE. A fixture tem o diretório de
+    // propósito: a prova é que o vazio continua fora do verde MESMO com ele lá.
+    const dir = fixture({
+      hooks: { "pre-commit": 'set -eu\nENTRADA=""\nbun run "$ENTRADA"\n' },
+      scripts: { typecheck: "node scripts/typecheck.mjs" },
+      arquivos: { "node_modules/.bin/.keep": "", "scripts/typecheck.mjs": "// ok\n" },
+    })
+
+    const motivo = motivos(relatorio(dir))[0]!
+
+    expect(motivo).toContain("a variável pode ser VAZIA")
+    expect(motivo).toContain("decisão nao declarada")
+  })
+
+  it("CONTROLE (vazio): sem a atribuição vazia, o MESMO comando resolve", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": 'set -eu\nENTRADA=typecheck\nbun run "$ENTRADA"\n' },
+      scripts: { typecheck: "node scripts/typecheck.mjs" },
+      arquivos: { "node_modules/.bin/.keep": "", "scripts/typecheck.mjs": "// ok\n" },
+    })
+
+    expect(relatorio(dir).violacoes).toEqual([])
+  })
+})
+
 // ── infraestrutura e cobertura ──────────────────────────────────────────
 
 describe("fail-closed e cobertura", () => {
@@ -950,6 +1138,314 @@ describe("a descida nos scripts de shell que o hook chama", () => {
     // O arquivo do script fica BYTE A BYTE: o remendo deste guard escreve em
     // `.husky/`, e o defeito de um script se corrige no próprio script.
     expect(conteudo(dir, "scripts/run-ci.sh")).toBe(script)
+  })
+})
+
+// ── a descida segue também o alvo PROVADO por variável ──────────────────────
+//
+// A descida seguia só o alvo LITERAL, e quem pagava era justamente o comando
+// que a resolução acabou de PROVAR: `bash "$SCRIPT_DIR/x.sh"` saía `resolvido`
+// (o caminho foi provado!) e o interior do `x.sh` não era julgado por ninguém —
+// a metade mais útil deste guard (a que acha o defeito um nível ADIANTE)
+// desligada onde o caminho é mais indireto. Os dois alvos caem no mesmo lugar
+// agora, e o que NÃO desce (valor absoluto, glob, programa que não é shell)
+// continua nomeado pelo veredito do comando — nunca um silêncio.
+
+describe("a descida segue o alvo PROVADO por variável", () => {
+  const HOOK = 'set -eu\nALVO="scripts/inner.sh"\nbash "$ALVO"\n'
+
+  it("PROVA: o defeito DENTRO do script provado é VIOLAÇÃO, com a proveniência", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": HOOK },
+      arquivos: {
+        "scripts/inner.sh": "#!/usr/bin/env bash\nnode scripts/typo.mjs\n",
+        "scripts/typoX.mjs": "// o vizinho existe\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.scripts).toEqual(["scripts/inner.sh"])
+    expect(report.violacoes).toHaveLength(1)
+    expect(report.violacoes[0]!.arquivo).toBe("scripts/inner.sh")
+    expect(report.violacoes[0]!.linha).toBe(2)
+    expect(report.violacoes[0]!.origem).toBe(".husky/pre-commit:3")
+  })
+
+  it("CONTROLE: sem o defeito o script provado é julgado e o veredito é verde", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": HOOK },
+      arquivos: {
+        "scripts/inner.sh": "#!/usr/bin/env bash\nnode scripts/ok.mjs\n",
+        "scripts/ok.mjs": "// ok\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toEqual([])
+    expect(report.scripts).toEqual(["scripts/inner.sh"])
+    // O comando do HOOK continua RESOLVIDO (o caminho foi provado por leitura):
+    // a descida acrescenta o INTERIOR ao julgamento, não muda o veredito de quem
+    // chama — o que muda de veredito é o que está DENTRO.
+    expect(report.resolvidos.find((r) => r.programa === "bash")?.motivo).toContain(
+      "script do bash `$ALVO` provável",
+    )
+  })
+
+  it("o CONJUNTO de valores prováveis: TODOS os scripts entram (cada um UMA vez)", () => {
+    const dir = fixture({
+      hooks: {
+        "pre-commit": [
+          "set -eu",
+          'if [ "$1" = x ]; then',
+          '  ALVO="scripts/a.sh"',
+          "else",
+          '  ALVO="scripts/b.sh"',
+          "fi",
+          'bash "$ALVO"',
+          "",
+        ].join("\n"),
+      },
+      arquivos: {
+        "scripts/a.sh": "#!/usr/bin/env bash\nnode scripts/errado.mjs\n",
+        "scripts/b.sh": "#!/usr/bin/env bash\nnode scripts/ok.mjs\n",
+        "scripts/ok.mjs": "// ok\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.scripts).toEqual(["scripts/a.sh", "scripts/b.sh"])
+    expect(report.violacoes.map((v) => v.arquivo)).toEqual(["scripts/a.sh"])
+  })
+
+  it("`source` do alvo provado desce e HERDA as funções (a forma decide o escopo)", () => {
+    const dir = fixture({
+      hooks: {
+        "pre-commit": 'minha_funcao() {\n  echo ok\n}\nALVO="scripts/lib.sh"\nsource "$ALVO"\n',
+      },
+      arquivos: { "scripts/lib.sh": "#!/usr/bin/env bash\nminha_funcao\n" },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toEqual([])
+    expect(report.scripts).toEqual(["scripts/lib.sh"])
+  })
+
+  it("o que NÃO desce: valor absoluto, glob e um programa que não é shell", () => {
+    // Um valor que não é ARQUIVO do repositório não tem o que ler; quem diz por
+    // quê é o veredito do comando (a régua do `julgaCaminho`), não esta descida.
+    const absoluto = fixture({
+      hooks: { "pre-commit": 'set -eu\nALVO="/etc/hosts"\nbash "$ALVO"\n' },
+    })
+    expect(relatorio(absoluto).scripts).toEqual([])
+
+    const glob = fixture({
+      hooks: { "pre-commit": 'set -eu\nALVO="scripts/*.sh"\nbash "$ALVO"\n' },
+      arquivos: { "scripts/a.sh": "#!/usr/bin/env bash\n" },
+    })
+    expect(relatorio(glob).scripts).toEqual([])
+
+    // CONTROLE NEGATIVO: a descida é a régua do interpretador de SHELL, não
+    // "todo caminho" — um `node "$ALVO"` não desce (como o `node scripts/x.mjs`
+    // literal também não desce).
+    const node = fixture({
+      hooks: { "pre-commit": 'set -eu\nALVO="scripts/inner.sh"\nnode "$ALVO"\n' },
+      arquivos: { "scripts/inner.sh": "#!/usr/bin/env bash\nnode scripts/typo.mjs\n" },
+    })
+    expect(relatorio(node).scripts).toEqual([])
+  })
+
+  it("`alvosProvaveis` recusa NOMEANDO o motivo (nunca um `null` mudo)", () => {
+    const vars = { atribuicoes: new Map(), dir: "" }
+
+    expect(alvosProvaveis({ programa: "node", tokens: ["$X"] }, vars)).toEqual({
+      ok: false,
+      motivo: "`node` não executa um script de shell",
+    })
+    expect(alvosProvaveis({ programa: "bash", tokens: ["$X"] }, undefined)).toEqual({
+      ok: false,
+      motivo: "o texto do arquivo não está no contexto",
+    })
+    expect(alvosProvaveis({ programa: "bash", tokens: [] }, vars)).toEqual({
+      ok: false,
+      motivo: "bash: sem alvo",
+    })
+    expect(alvosProvaveis({ programa: "bash", tokens: ["scripts/x.sh"] }, vars)).toEqual({
+      ok: true,
+      valores: ["scripts/x.sh"],
+    })
+  })
+})
+
+// ── a HERANÇA: o escopo do shell não é o arquivo ──────────────
+//
+// Um script chamado por `bash` não vê as variáveis do pai — vê o AMBIENTE, isto
+// é, o que o pai `export`ou. Julgar `$SCRIPT_DIR` num filho seria acusar um script
+// que roda; ignorar a diferença seria dizer "resolve" para um valor que não
+// atravessa. O que esta suíte mede:
+//   · o `export` do pai: o filho RESOLVE pelo valor herdado (e o motivo diz de
+//     onde ele veio, para o operador não procurar a linha no arquivo errado);
+//   · a ausência dele: o CONTROLE — sem `export` o processo novo não vê nada, e o
+//     veredito é a decisão datada que já existia;
+//   · o DIRETÓRIO que VIAJA: o idioma `$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)`
+//     é congelado ONDE FOI ESCRITO — o filho não re-avalia a expressão com o
+//     diretório dele (o bash exporta o VALOR). Sem isso o guard sai VERDE para um
+//     caminho que o processo novo nunca pode ver;
+//   · a UNIÃO: a atribuição do filho não APAGA o valor herdado (o ramo pode não
+//     rodar) — os dois são possíveis, e o veredito exige que os dois resolvam;
+//   · `source` herda TUDO (mesmo shell) e o `export VAR` sozinho vale pelo NOME.
+
+describe("a HERANÇA: o `export` do pai chega ao script chamado", () => {
+  it("PROVA: o valor exportado resolve no filho, com a proveniência no motivo", () => {
+    const dir = fixture({
+      hooks: {
+        "pre-commit": "set -eu\nexport SCRIPT_DIR=scripts\nbash scripts/x.sh\n",
+      },
+      arquivos: {
+        "scripts/x.sh": '#!/usr/bin/env bash\nnode "$SCRIPT_DIR/ok.mjs"\n',
+        "scripts/ok.mjs": "// ok\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toEqual([])
+    expect(report.scripts).toEqual(["scripts/x.sh"])
+    expect(report.resolvidos.find((r) => r.programa === "node")?.motivo).toContain(
+      "pelas atribuições de `$SCRIPT_DIR` herdadas de `.husky/pre-commit`",
+    )
+  })
+
+  it("CONTROLE: SEM o `export` o processo novo não vê nada (o limite que sobrevive)", () => {
+    const dir = fixture({
+      hooks: { "pre-commit": "set -eu\nSCRIPT_DIR=scripts\nbash scripts/x.sh\n" },
+      arquivos: {
+        "scripts/x.sh": '#!/usr/bin/env bash\nnode "$SCRIPT_DIR/ok.mjs"\n',
+        "scripts/ok.mjs": "// ok\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toHaveLength(1)
+    expect(report.violacoes[0]!.arquivo).toBe("scripts/x.sh")
+    expect(report.violacoes[0]!.motivo).toContain("não é atribuída neste arquivo")
+  })
+
+  it("PROVA: o DIRETÓRIO que VIAJA é o de quem exportou, não o do filho", () => {
+    // `lib.sh` (em `scripts/`) exporta o idioma; o filho vive em `scripts/sub/` e
+    // usa `$SCRIPT_DIR/ok.mjs`. O bash exportou o VALOR (`scripts`), então o alvo
+    // é `scripts/ok.mjs` — e é ELE que tem de existir para o verde.
+    const dir = fixture({
+      hooks: { "pre-commit": "set -eu\nbash scripts/lib.sh\n" },
+      arquivos: {
+        "scripts/lib.sh": [
+          "#!/usr/bin/env bash",
+          'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+          "export SCRIPT_DIR",
+          "bash scripts/sub/child.sh",
+          "",
+        ].join("\n"),
+        "scripts/sub/child.sh": '#!/usr/bin/env bash\nnode "$SCRIPT_DIR/ok.mjs"\n',
+        "scripts/ok.mjs": "// ok\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toEqual([])
+    expect(report.scripts).toEqual(["scripts/lib.sh", "scripts/sub/child.sh"])
+    const motivo = report.resolvidos.find((r) => r.programa === "node")?.motivo ?? ""
+    expect(motivo).toContain("`scripts/ok.mjs`")
+    expect(motivo).toContain("herdadas de `scripts/lib.sh`")
+    // O diretório do FILHO não entra: a expressão não é re-avaliada lá.
+    expect(motivo).not.toContain("scripts/sub/ok.mjs")
+  })
+
+  it("o FALSO VERDE que o congelamento fecha: o caminho do FILHO não vale", () => {
+    // Mesma forma, mas só existe `scripts/sub/ok.mjs` — o caminho que o filho
+    // veria se re-avaliasse a expressão com o diretório dele. O processo novo
+    // aponta para `scripts/ok.mjs`, que NÃO existe: o veredito é VIOLAÇÃO, e a
+    // mensagem nomeia o alvo verdadeiro (sem o congelamento, o guard saía VERDE
+    // aqui — medido na M20 da bateria de mutação).
+    const dir = fixture({
+      hooks: { "pre-commit": "set -eu\nbash scripts/lib.sh\n" },
+      arquivos: {
+        "scripts/lib.sh": [
+          "#!/usr/bin/env bash",
+          'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+          "export SCRIPT_DIR",
+          "bash scripts/sub/child.sh",
+          "",
+        ].join("\n"),
+        "scripts/sub/child.sh": '#!/usr/bin/env bash\nnode "$SCRIPT_DIR/ok.mjs"\n',
+        "scripts/sub/ok.mjs":
+          "// o caminho que o filho RE-AVALIARIA — nao e o que o processo novo ve\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toHaveLength(1)
+    expect(report.violacoes[0]!.arquivo).toBe("scripts/sub/child.sh")
+    expect(report.violacoes[0]!.motivo).toContain("`scripts/ok.mjs`, que NÃO existe")
+  })
+
+  it("a UNIÃO: a atribuição do filho não apaga o valor herdado", () => {
+    // A atribuição do filho está dentro de um ramo que pode não rodar: o valor do
+    // ambiente é possível também. Os DOIS entram no conjunto, e o veredito exige
+    // que os dois resolvam — herdar a menos seria inventar um verde.
+    const dir = fixture({
+      hooks: {
+        "pre-commit": "set -eu\nexport ALVO=scripts/ok.mjs\nbash scripts/x.sh\n",
+      },
+      arquivos: {
+        "scripts/x.sh": [
+          "#!/usr/bin/env bash",
+          'if [ "$1" = x ]; then',
+          "  ALVO=scripts/sumiu.mjs",
+          "fi",
+          'node "$ALVO"',
+          "",
+        ].join("\n"),
+        "scripts/ok.mjs": "// ok\n",
+      },
+    })
+
+    const report = relatorio(dir)
+
+    expect(report.violacoes).toHaveLength(1)
+    expect(report.violacoes[0]!.arquivo).toBe("scripts/x.sh")
+    expect(report.violacoes[0]!.motivo).toContain("`scripts/sumiu.mjs`, que NÃO existe")
+    expect(report.violacoes[0]!.motivo).toContain("herdadas de `.husky/pre-commit`")
+  })
+
+  it("`source` herda TUDO (mesmo sem `export`) — e o `export VAR` sozinho vale", () => {
+    const sourced = fixture({
+      hooks: { "pre-commit": "set -eu\nSCRIPT_DIR=scripts\nsource scripts/lib.sh\n" },
+      arquivos: {
+        "scripts/lib.sh": 'node "$SCRIPT_DIR/ok.mjs"\n',
+        "scripts/ok.mjs": "// ok\n",
+      },
+    })
+    expect(relatorio(sourced).violacoes).toEqual([])
+
+    // O atributo de exportação é do NOME, não da linha: `export ENTRADA` antes da
+    // atribuição exporta `typecheck` — e o filho resolve a entrada por ele.
+    const sozinho = fixture({
+      hooks: {
+        "pre-commit": "set -eu\nexport ENTRADA\nENTRADA=typecheck\nbash scripts/x.sh\n",
+      },
+      scripts: { typecheck: "node scripts/tc.mjs" },
+      arquivos: {
+        "scripts/x.sh": '#!/usr/bin/env bash\nbun run "$ENTRADA"\n',
+        "scripts/tc.mjs": "// ok\n",
+      },
+    })
+    expect(relatorio(sozinho).violacoes).toEqual([])
   })
 })
 

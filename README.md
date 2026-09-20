@@ -764,11 +764,26 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 > (transitivo, cada script uma vez, com ciclo e teto NOMEADOS no relatório).
 > Parar no alvo do `bash` deixava uma linha tipada DENTRO do
 > `run-encoding-guards.sh` como o mesmo passo-que-nunca-roda, um nível abaixo —
-> num arquivo que roda em **todo** commit. E o alvo do interpretador
+> num arquivo que roda em **todo** commit. A descida segue também o alvo
+> **PROVADO** por variável (`bash "$SCRIPT_DIR/x.sh"`): o interior de um script
+> cujo caminho o guard acabou de provar não fica sem julgamento. E o alvo do interpretador
 > (`python3 "$PYTHON_SCRIPT"`) é **PROVADO**, não declarado: o guard resolve as
 > **atribuições de caminho do próprio arquivo** (incluindo o idioma
 > `SCRIPT_DIR="$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)"`), fail-closed quando
-> algum valor não é estático. Detalhes no GUARDS.md §24.
+> algum valor não é estático, nem um conjunto acima do teto de combinações nem um
+> valor que pode ser **VAZIO** (o `""` resolveria pelo DIRETÓRIO `node_modules/.bin`
+> e o comando sairia verde). E o escopo **não é só o arquivo**: um script chamado
+> por `bash` recebe o AMBIENTE, então o que o pai `export`ou é **herdado** pelo
+> filho (com a proveniência no motivo), o `source` herda tudo e a atribuição do
+> filho não apaga o valor herdado — a régua é a UNIÃO. O idioma do diretório viaja
+> **congelado** (`o valor de quem EXPORTOU`, porque o bash exporta o VALOR e não a
+> expressão): sem isso o filho o re-avaliaria no diretório DELE e o guard daria
+> VERDE para um caminho que o processo novo nunca pode ver. O mesmo vale para a **entrada** de `bun run`
+> montada em variável (`bun run "$ENTRADA"`): o valor provável tem de existir em
+> `scripts` (ou ser binário de dependência declarada) e o que ele EXECUTA é
+> julgado recursivamente — a decisão datada que cobria essa classe não distinguia
+> a entrada que existe da que foi removida no mesmo commit. Detalhes no
+> GUARDS.md §24.
 
 > Por que os guards CRLF escaneiam só `.sh` (e não `.ts`)? — a decisão de
 > escopo está documentada em

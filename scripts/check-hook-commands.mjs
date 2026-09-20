@@ -64,12 +64,27 @@
 //                                     (`bash scripts/run-encoding-guards.sh`)
 //                                     que chama os outros, e sem descer uma
 //                                     linha tipada DENTRO dele seria o mesmo
-//                                     passo-que-nunca-roda, invisivel
+//                                     passo-que-nunca-roda, invisivel. A mesma
+//                                     descida segue o alvo PROVADO por variavel
+//                                     (`bash "$SCRIPT_DIR/x.sh"`): o interior de
+//                                     um script que a resolucao acabou de provar
+//                                     NAO fica sem julgamento — so desce o que E
+//                                     arquivo do repositorio (absoluto e glob nao
+//                                     tem o que ler, e o veredito do comando e
+//                                     que diz por que)
 //   bun run <entrada>                 a entrada tem de existir em `scripts` do
 //                                     package.json E o comando RESOLVIDO dela e
 //                                     julgado recursivamente (o script que
 //                                     chama `bash scripts/x.sh` responde pelo
 //                                     `.sh`)
+//   bun run "$ENTRADA"                a entrada MONTADA EM VARIAVEL e a MESMA
+//                                     pergunta, nao uma isencao: o valor
+//                                     provavel (pelas atribuicoes do arquivo)
+//                                     tem de ser entrada de `scripts`, binario
+//                                     de dependencia declarada ou subcomando
+//                                     nativo (na forma sem `run`), e o que ele
+//                                     EXECUTA e julgado recursivamente — so o
+//                                     valor NAO ESTATICO segue indeterminado
 //   bun|bunx x <pacote>               o binario tem de vir de dependencia
 //                                     declarada (ou de um `node_modules/.bin`
 //                                     real); o binario -> pacote e um mapa
@@ -94,6 +109,13 @@
 // razao da ALLOWLIST: a lista diz QUEM decidiu e QUANDO, e a janela de revisao
 // (`allowlist-review.mjs`) impede a decisao de virar permanente por
 // esquecimento.
+//
+// A ENTRADA de `bun run` montada em `$VAR` NAO entra nessa lista: a variavel
+// nomeia o NOME de um script de `scripts` (ou um binario), e o valor provavel
+// se PROVA contra o package.json. Deixar essa classe indeterminada custava mais
+// que a decisao datada: a isencao cobre a entrada que EXISTE e a que foi
+// REMOVIDA no mesmo commit com o mesmo silencio — o passo-que-nunca-roda de
+// volta, agora atras de uma linha de lista que ninguem tem motivo para reler.
 //
 // O QUE ESTE GUARD NAO PROMETE (escopo declarado, nao esquecimento):
 //
@@ -860,6 +882,12 @@ export function shellCommands(content, { startLine = 1, origem = "" } = {}) {
  * repositorio) + o resto do token — e por isso o marcador existe: o mesmo
  * `$SCRIPT_DIR/x` vale `scripts/x` num script e `.husky/x` num hook, e a
  * substituicao tem de acontecer com o arquivo na mao.
+ *
+ * "Com o arquivo na mao" e o arquivo ONDE A EXPRESSAO FOI ESCRITA, e nao o que a
+ * le: o idioma vira marcador no PARSE (`comDirCongelado`, que tem o diretorio do
+ * arquivo) e a heranca resolve o marcador com o diretorio de QUEM EXPORTOU. Um
+ * marcador que chegue ao uso veio de uma atribuicao DESTE arquivo — a substitucao
+ * no uso (`caminhosProvaveis`) e a ultima ponta da mesma regra, nao outra.
  */
 export const MARCA_DIR = "@DIR@"
 
@@ -897,7 +925,15 @@ const ATRIBUICAO =
 
 /**
  * As ATRIBUICOES de texto de um arquivo: nome → valores, na ORDEM, com a linha
- * de cada um (a linha e o que o motivo cita quando um deles nao e provavel).
+ * de cada um (a linha e o que o motivo cita quando um deles nao e provavel) e
+ * com os valores que vao para o AMBIENTE dos filhos.
+ *
+ * ESSA ULTIMA LISTA e o que separa `export VAR=x` de `VAR=x`: o processo novo
+ * (um `bash script.sh`) recebe o AMBIENTE, nao as variaveis do shell pai — so o
+ * que foi EXPORTADO atravessa. As duas formas contam: `export VAR=x` na mesma
+ * linha, e o `export VAR` SOZINHO (a atribuicao veio antes, ou veio do shell que
+ * chamou) — o atributo de exportacao fica no NOME, entao a ORDEM das linhas nao
+ * importa e um `export VAR` seguido de `VAR=x` exporta `x`.
  *
  * Uma linha COMENTADA nao atribui nada, e um `VAR=` dentro de um heredoc que
  * comece na coluna zero seria lido como atribuicao — este guard julga o que le, e
@@ -905,21 +941,37 @@ const ATRIBUICAO =
  * valor a menos), o que deixa o veredito mais exigente, nao mais frouxo.
  *
  * @param {string} content
- * @returns {Map<string, {valores: string[], linhas: number[]}>}
+ * @returns {Map<string, {valores: string[], linhas: number[], exportados: string[]}>}
  */
 export function atribuicoesDoTexto(content) {
-  /** @type {Map<string, {valores: string[], linhas: number[]}>} */
+  /** @type {Map<string, {valores: string[], linhas: number[], exportados: string[]}>} */
   const mapa = new Map()
-  content.split(/\r?\n/).forEach((linha, i) => {
+  const linhas = content.split(/\r?\n/)
+  // O `export VAR` sozinho vale para TODAS as atribuicoes do nome, em qualquer
+  // ordem (o atributo e do nome, nao da linha) — por isso a primeira passada.
+  const exportadosPorNome = new Set()
+  for (const linha of linhas) {
+    const so = /^\s*export\s+([A-Za-z_][A-Za-z0-9_]*)\s*$/.exec(linha)
+    if (so !== null) exportadosPorNome.add(so[1])
+  }
+  linhas.forEach((linha, i) => {
     if (/^\s*#/.test(linha)) return
     const m = ATRIBUICAO.exec(linha)
     if (m === null) return
-    const entrada = mapa.get(m[1]) ?? { valores: [], linhas: [] }
-    entrada.valores.push(m[2].trim())
+    const valor = m[2].trim()
+    const entrada = mapa.get(m[1]) ?? { valores: [], linhas: [], exportados: [] }
+    entrada.valores.push(valor)
     entrada.linhas.push(i + 1)
+    if (/^\s*export\s/.test(linha) || exportadosPorNome.has(m[1]))
+      entrada.exportados = [...new Set([...entrada.exportados, valor])]
     mapa.set(m[1], entrada)
   })
   return mapa
+}
+
+/** O TEXTO (ja desembrulhado) e um dos idiomas de "o diretorio deste arquivo"? */
+export function eIdiomaDir(texto) {
+  return IDIOMAS_DIR.some((idioma) => idioma.re.test(texto))
 }
 
 /** Tira as aspas EXTERNAS de um valor (e o que o shell faz antes de usa-lo). */
@@ -929,6 +981,24 @@ export function desembrulha(valor) {
   const primeira = v[0]
   if ((primeira === '"' || primeira === "'") && v.endsWith(primeira)) return v.slice(1, -1)
   return v
+}
+
+/**
+ * O valor de uma atribuicao com o DIRETORIO DO PROPRIO ARQUIVO congelado no lugar
+ * do idioma — o congelamento acontece ONDE A EXPRESSAO ESTA ESCRITA.
+ *
+ * O idioma `$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)` vale o diretorio do arquivo
+ * que o escreveu. Resolver isso no USO (como o `valoresDoTexto` fazia sozinho)
+ * estava ERRADO para o valor que atravessa a HERANCA: um
+ * `SCRIPT_DIR="$(cd ... && pwd)"` exportado por `scripts/lib.sh` chegava ao filho
+ * ainda com a EXPRESSAO, e o filho a re-avaliava com o DIRETORIO DELE
+ * (`scripts/sub`) — provando `scripts/sub/ok.mjs`, um caminho que o processo novo
+ * NUNCA pode ver (o bash exporta o VALOR, nao a expressao). Se aquele caminho
+ * existisse, o guard sairia VERDE para um alvo impossivel: exatamente o falso
+ * verde que a heranca existe para fechar. MEDIDO na M20 da bateria de mutacao.
+ */
+export function comDirCongelado(valor) {
+  return eIdiomaDir(desembrulha(valor)) ? MARCA_DIR : valor
 }
 
 /** O `$VAR` / `${VAR}` / parametro do shell, para varrer um texto ou um token. */
@@ -970,9 +1040,10 @@ function encurta(texto) {
  */
 function valoresDoTexto(bruto, atribuicoes, visitados, profundidade) {
   const texto = desembrulha(bruto)
-  for (const idioma of IDIOMAS_DIR) {
-    if (idioma.re.test(texto)) return { ok: true, valores: [MARCA_DIR] }
-  }
+  // O idioma tambem e reconhecido AQUI (e nao so no congelamento do parse) porque
+  // um `vars` montado a mao pode trazer o texto cru — a regua de reconhecimento e
+  // a mesma (`eIdiomaDir`), num lugar so.
+  if (eIdiomaDir(texto)) return { ok: true, valores: [MARCA_DIR] }
   if (texto.includes("$(") || texto.includes("`") || texto.includes("$["))
     return {
       ok: false,
@@ -1022,11 +1093,23 @@ function valoresDaVariavel(nome, atribuicoes, visitados, profundidade) {
   const valores = []
   for (const valor of entrada.valores) {
     const r = valoresDoTexto(valor, atribuicoes, new Set([...visitados, nome]), profundidade + 1)
-    if (!r.ok)
-      return { ok: false, motivo: `\`${nome}\` (linha ${entrada.linhas.join(", ")}): ${r.motivo}` }
+    if (!r.ok) return { ok: false, motivo: `\`${nome}\` (${ondeAtribuida(entrada)}): ${r.motivo}` }
     valores.push(...r.valores)
   }
   return { ok: true, valores: [...new Set(valores)] }
+}
+
+/**
+ * ONDE uma variavel foi atribuida — no arquivo julgado ou no processo que o
+ * chamou (o `export` de quem o executa) —, para o motivo citar o lugar CERTO da
+ * atribuicao.
+ *
+ * @param {{linhas: number[], herdadaDe?: string}} entrada
+ */
+function ondeAtribuida(entrada) {
+  return entrada.herdadaDe === undefined
+    ? `linha ${entrada.linhas.join(", ")}`
+    : `herdada de \`${entrada.herdadaDe}\``
 }
 
 /**
@@ -1034,7 +1117,7 @@ function valoresDaVariavel(nome, atribuicoes, visitados, profundidade) {
  * `$SCRIPT_DIR/check_utf8.mjs`).
  *
  * @param {string} token
- * @param {{atribuicoes: Map<string, {valores: string[], linhas: number[]}>, dir: string}} vars
+ * @param {{atribuicoes: Map<string, {valores: string[], linhas: number[], exportados?: string[], herdadaDe?: string}>, dir: string}} vars
  * @returns {{ok: true, valores: string[], motivo: string}|{ok: false, motivo: string}}
  */
 export function caminhosProvaveis(token, vars) {
@@ -1058,6 +1141,10 @@ export function caminhosProvaveis(token, vars) {
     ultimo = re.lastIndex
   }
   if (ultimo < token.length) partes.push([token.slice(ultimo)])
+  // O TETO e uma fronteira DECLARADA: o que o guard nao consegue enumerar ele
+  // nao prova. Sem ele, um token com duas referencias de muitos valores vira um
+  // conjunto enorme, e "provar" esse conjunto e uma leitura que nao aconteceu —
+  // o verde viria do tamanho, nao do disco. MEDIDO na M19 da bateria de mutacao.
   const combinacoes = produto(partes, MAX_VALORES)
   if (combinacoes === null)
     return { ok: false, motivo: `as combinações possíveis do token passam de ${MAX_VALORES}` }
@@ -1070,25 +1157,83 @@ export function caminhosProvaveis(token, vars) {
     }
   if (valores.length === 0)
     return { ok: false, motivo: "nenhum valor provável (as atribuições não deixaram nenhum)" }
+  // O VAZIO e um ALVO, nao um valor: `""` nao e caminho nem nome, e o guard o
+  // resolveria por ACIDENTE se esta regra nao estivesse aqui — `binInstalado(root,
+  // "")` e o DIRETORIO `node_modules/.bin` (`join(root, "node_modules", ".bin",
+  // "")`), que existe em qualquer checkout instalado, e o comando sairia VERDE.
+  // MEDIDO (M18): sem a regra, `bun run "$ENTRADA"` com `ENTRADA=""` sai 0.
   if (valores.some((v) => v === ""))
     return { ok: false, motivo: "a variável pode ser VAZIA (o valor da atribuição não é fixo)" }
+  // A PROVENIENCIA da atribuicao entra no motivo: um valor que veio do AMBIENTE
+  // (o `export` de quem chamou) nao esta "neste arquivo", e mandar o operador
+  // procurar a linha no arquivo errado e a classe de mensagem que faz perder
+  // tempo exatamente onde ela devia economizar.
+  const herdadas = [
+    ...new Set(nomes.map((n) => vars.atribuicoes.get(n)?.herdadaDe).filter((d) => d !== undefined)),
+  ]
   return {
     ok: true,
     valores,
-    motivo: `pelas atribuições de ${nomes.map((n) => `\`$${n}\``).join(", ")} neste arquivo`,
+    motivo:
+      `pelas atribuições de ${nomes.map((n) => `\`$${n}\``).join(", ")}` +
+      (herdadas.length === 0
+        ? " neste arquivo"
+        : ` herdadas de ${herdadas.map((d) => `\`${d}\``).join(", ")}`),
   }
 }
 
 /**
  * As VARIAVEIS de um arquivo, prontas para julgar os tokens dele: as atribuicoes
- * de texto e o DIRETORIO do proprio arquivo (o valor de `$SCRIPT_DIR`).
+ * de texto, o DIRETORIO do proprio arquivo (o valor de `$SCRIPT_DIR`) e o que ele
+ * HERDOU de quem o chamou.
+ *
+ * A HERANCA existe porque o escopo do shell nao e o arquivo: com `bash`/`sh` o
+ * processo novo recebe o AMBIENTE (o que foi `export`ado), e com `source`/`.` o
+ * script roda no MESMO shell e ve TUDO. O que chega aqui ja vem com o DIRETORIO
+ * DE QUEM EXPORTOU substituido — um `SCRIPT_DIR` exportado vale o diretorio do
+ * chamador, nao o do filho, que e o que o runtime faz. O congelamento do idioma
+ * no PARSE (logo abaixo) e o que faz esse valor atravessar como DADO: sem ele o
+ * filho re-avaliaria a EXPRESSAO com o diretorio dele.
+ *
+ * O valor herdado NAO some por causa de uma atribuicao do filho: a atribuicao
+ * pode estar dentro de um ramo que nao roda, e ai o valor do ambiente e o que o
+ * runtime usa. A regua e a UNIAO — herdar a menos poderia inventar um verde.
  *
  * @param {string} content
  * @param {string} arquivo caminho relativo ao root
+ * @param {Map<string, {valores: string[], linhas: number[], exportados: string[], herdadaDe?: string}>} [herdadas]
  */
-export function variaveisDoArquivo(content, arquivo) {
+export function variaveisDoArquivo(content, arquivo, herdadas = new Map()) {
   const dir = dirname(arquivo)
-  return { atribuicoes: atribuicoesDoTexto(content), dir: dir === "." ? "" : dir }
+  const atribuicoes = new Map()
+  for (const [nome, entrada] of herdadas) atribuicoes.set(nome, { ...entrada })
+  for (const [nome, propria0] of atribuicoesDoTexto(content)) {
+    // O congelamento do `@DIR@` e AQUI, no parse: e o unico ponto onde o diretorio
+    // do arquivo que ESCREVEU o idioma esta na mao. Depois daqui o valor e um
+    // dado, nao uma expressao (ver `comDirCongelado`).
+    const propria = {
+      ...propria0,
+      valores: propria0.valores.map(comDirCongelado),
+      exportados: propria0.exportados.map(comDirCongelado),
+    }
+    const base = atribuicoes.get(nome)
+    if (base === undefined) {
+      atribuicoes.set(nome, propria)
+      continue
+    }
+    const juntas = {
+      valores: [...new Set([...propria.valores, ...base.valores])],
+      linhas: [...new Set([...propria.linhas, ...base.linhas])].sort((a, b) => a - b),
+      // A exportacao e do ARQUIVO: herdar nao exporta. O que o filho poe no
+      // ambiente dos NETOS e o que ele mesmo `export`a, mais o que ja herdou.
+      exportados: [...new Set([...propria.exportados, ...base.exportados])],
+    }
+    // A proveniencia viaja para o motivo poder dizer de ONDE veio o valor: sem
+    // isso, uma violacao de um valor HERDADO citaria a linha do arquivo errado.
+    if (base.herdadaDe !== undefined) juntas.herdadaDe = base.herdadaDe
+    atribuicoes.set(nome, juntas)
+  }
+  return { atribuicoes, dir: dir === "." ? "" : dir }
 }
 
 /** Os caminhos citados numa mensagem (`x`, `y`). */
@@ -1223,10 +1368,11 @@ export const MAX_SCRIPT_DEPTH = 4
 /**
  * O arquivo de SHELL que este comando manda executar, ou null.
  *
- * Um flag no lugar do arquivo (`bash -c`, `bash -e`), um caminho montado em
- * runtime (`bash "$ALVO"`), um padrao de glob e um caminho absoluto NAO descem:
- * o primeiro nao nomeia arquivo (o guard ja o diz indeterminado), o segundo nao
- * existe como texto, o terceiro e um conjunto e o quarto vive fora do repositorio.
+ * Um flag no lugar do arquivo (`bash -c`, `bash -e`), um ALVO MONTADO EM `$VAR`
+ * (`bash "$ALVO"` — quem resolve esse e o `alvosProvaveis`, abaixo), um padrao
+ * de glob e um caminho absoluto NAO descem: o primeiro nao nomeia arquivo (o
+ * guard ja o diz indeterminado), o terceiro e um conjunto e o quarto vive fora
+ * do repositorio.
  *
  * @param {{programa: string, tokens: string[]}} comando
  * @returns {string|null}
@@ -1239,6 +1385,46 @@ export function scriptAlvo(comando) {
   if (SHELL_INTERPRETERS.has(comando.programa)) return alvo
   if (SOURCE_COMMANDS.has(comando.programa)) return alvo
   return null
+}
+
+/**
+ * Os arquivos de SHELL que este comando manda executar: o LITERAL, ou — quando o
+ * alvo e um `$VAR` — os valores que as ATRIBUICOES do arquivo PROVAM.
+ *
+ * A descida seguia so o alvo LITERAL, e o preco era exatamente o comando que a
+ * resolucao acabou de provar: `bash "$SCRIPT_DIR/x.sh"` sai `resolvido` (o
+ * caminho foi provado!) e o que o x.sh executa ficava sem ninguem — a metade
+ * mais util deste guard (a que acha o defeito um nivel ADIANTE) desligada
+ * justamente onde o caminho e mais indireto. Quem decide aqui e a MESMA regua do
+ * caminho provado (`caminhosProvaveis`, as atribuicoes do PROPRIO arquivo), e
+ * so o que E caminho do repositorio desce: um valor absoluto ou um glob nao tem
+ * arquivo a ler (e o veredito do comando ja diz por que).
+ *
+ * Vario valores provaveis = varios arquivos: TODOS descem (e a mesma regra do
+ * conjunto que vale para o alvo do interpretador), cada um julgado UMA vez.
+ *
+ * @param {{programa: string, tokens: string[]}} comando
+ * @param {{atribuicoes: Map<string, {valores: string[], linhas: number[]}>, dir: string}|undefined} vars
+ * @returns {{ok: true, valores: string[]}|{ok: false, motivo: string}}
+ */
+export function alvosProvaveis(comando, vars) {
+  const doShell = SHELL_INTERPRETERS.has(comando.programa) || SOURCE_COMMANDS.has(comando.programa)
+  if (!doShell)
+    return { ok: false, motivo: `\`${comando.programa}\` não executa um script de shell` }
+  const alvo = comando.tokens[0]
+  if (alvo === undefined || alvo === "")
+    return { ok: false, motivo: `${comando.programa}: sem alvo` }
+  if (!alvo.startsWith("$"))
+    return scriptAlvo(comando) === null
+      ? { ok: false, motivo: `o alvo de \`${comando.programa}\` não é um arquivo do repositório` }
+      : { ok: true, valores: [alvo] }
+  if (vars === undefined) return { ok: false, motivo: "o texto do arquivo não está no contexto" }
+  const provavel = caminhosProvaveis(alvo, vars)
+  if (!provavel.ok) return { ok: false, motivo: provavel.motivo }
+  const valores = provavel.valores.filter((v) => !v.startsWith("/") && !/[*?[]/.test(v))
+  if (valores.length === 0)
+    return { ok: false, motivo: `nenhum valor provável de \`${alvo}\` é um arquivo do repositório` }
+  return { ok: true, valores }
 }
 
 /** Todos os arquivos que um `source`/`.` do hook carrega (e que tem de existir). */
@@ -1261,8 +1447,8 @@ function comandosDeScript(root, entrada, scripts, profundidade = 0) {
 /**
  * O veredito de UM comando.
  *
- * O que o guard NAO consegue provar por leitura (payload de runtime, caminho
- * montado em `$VAR`) nao passa em silencio: ele tem de estar em INDETERMINATE,
+ * O que o guard NAO consegue provar por leitura (payload de runtime, valor de
+ * variavel NAO ESTATICO) nao passa em silencio: ele tem de estar em INDETERMINATE,
  * com a data e o motivo. `indeterminado` no relatorio significa "DECLARADO e
  * nao provavel", nunca "nao olhei".
  *
@@ -1417,6 +1603,93 @@ function julgaProgramaVariavel(comando, ctx) {
 }
 
 /**
+ * O veredito de uma ENTRADA de `scripts` montada em `$VAR` (`bun run "$ENTRADA"`).
+ *
+ * A entrada de `bun run` NAO e um caminho: o que a variavel vale e o NOME de um
+ * script do `package.json`, e a prova e OUTRA — que o nome EXISTE em `scripts` (e
+ * que o comando dele resolve, a mesma descida da entrada LITERAL). Sem esta
+ * regra a unica saida era `indeterminado` + uma decisao datada em INDETERMINATE,
+ * e uma isencao NAO distingue a entrada que existe da que foi REMOVIDA no mesmo
+ * commit: o passo-que-nunca-roda voltaria, agora escondido atras de uma linha de
+ * lista que ninguem tem motivo para reler.
+ *
+ * As duas metades da entrada LITERAL valem aqui, uma a uma: o valor provavel tem
+ * de ser uma entrada de `scripts`, um BINARIO de dependencia declarada (nas duas
+ * formas — `bun run vitest` e o mesmo binario) ou, so na forma SEM `run`, um
+ * subcomando nativo do gerenciador; sem essas alternativas uma variavel legitima
+ * como `BIN=vitest` viraria violacao FALSA num gate bloqueante. E o que a entrada
+ * executa e julgado recursivamente. O que NAO da para provar (valor nao estatico,
+ * cadeia longa, conjunto acima do teto) segue indeterminado — e ai a decisao
+ * datada continua sendo exigida, como antes.
+ *
+ * @param {{root: string, scripts: Record<string, unknown>, vars?: {atribuicoes: Map<string, {valores: string[], linhas: number[]}>, dir: string}}} ctx
+ * @param {{linha: number, origem: string}} comando
+ * @param {string} possivelEntrada
+ * @param {boolean} explicito a forma era `bun run <entrada>` (e nao `bun <entrada>`)?
+ * @returns {Veredito}
+ */
+function julgaEntradaVariavel(ctx, comando, possivelEntrada, explicito) {
+  const { programa } = comando
+  // O rótulo é a FORMA que o hook escreveu (`bun run $X` é uma coisa, `bun $X`
+  // outra): a mensagem diz de qual delas está falando.
+  const rotulo = `${programa}${explicito ? " run" : ""}`
+  const provavel =
+    ctx.vars === undefined
+      ? { ok: false, motivo: "o texto do arquivo não está no contexto" }
+      : caminhosProvaveis(possivelEntrada, ctx.vars)
+  if (!provavel.ok)
+    return {
+      desfecho: "indeterminado",
+      motivo: `${rotulo} com entrada montada em runtime (\`${possivelEntrada}\`) — ${provavel.motivo}`,
+    }
+  // O que o valor pode NOMEAR: a MESMA régua da entrada literal (a entrada de
+  // `scripts`, o binário de dependência que ela também aceita, e o subcomando
+  // nativo na forma sem `run`).
+  const comoPrograma = (valor) =>
+    classificaBruto(
+      { linha: comando.linha, programa: valor, tokens: [], origem: comando.origem },
+      ctx,
+    ).desfecho === "resolvido"
+  const aceita = (valor) =>
+    ctx.scripts[valor] !== undefined ||
+    (!explicito && PACKAGE_MANAGER_SUBCOMMANDS.has(valor)) ||
+    comoPrograma(valor)
+  const faltando = provavel.valores.filter((valor) => !aceita(valor))
+  if (faltando.length > 0) {
+    const vizinho = sugestao(faltando[0], Object.keys(ctx.scripts))
+    return {
+      desfecho: "violacao",
+      motivo:
+        `${rotulo}: entrada provável (\`${possivelEntrada}\` → ${citados(provavel.valores)}, ${provavel.motivo}) e ${citados(faltando)} não é entrada de \`scripts\` do package.json nem binário de dependência declarada` +
+        (vizinho === null ? "" : ` — o mais próximo é \`${vizinho}\``),
+    }
+  }
+  // O que as entradas EXECUTAM também é comando nosso: uma entrada que existe e
+  // roda um arquivo que sumiu é o passo-que-nunca-roda, um nível adiante — e o
+  // ALVO do defeito interno viaja junto, como na entrada literal.
+  let executadas = 0
+  for (const entrada of provavel.valores) {
+    if (ctx.scripts[entrada] === undefined) continue
+    executadas += 1
+    const violado = comandosDeScript(ctx.root, entrada, ctx.scripts)
+      .map((interno) => classify(interno, ctx))
+      .find((veredito) => veredito.desfecho === "violacao")
+    if (violado !== undefined)
+      return {
+        desfecho: "violacao",
+        motivo: `entrada provável \`${possivelEntrada}\` → \`${entrada}\` (em \`scripts\`) → ${violado.motivo}`,
+        remendo: violado.remendo,
+      }
+  }
+  return {
+    desfecho: "resolvido",
+    motivo:
+      `entrada provável (\`${possivelEntrada}\` → ${citados(provavel.valores)}, ${provavel.motivo})` +
+      (executadas === 0 ? "" : ", e o que ela executa resolve"),
+  }
+}
+
+/**
  * O caminho citado existe? (o alvo do guard)
  *
  * A violação carrega o `remendo`: o TOKEN que o `--fix` troca e a linha dele.
@@ -1565,10 +1838,16 @@ function julgaGerenciador(ctx, comando) {
   // `bun run <entrada>` e `bun <entrada>`, quando a entrada E um script.
   const explicito = primeiro === "run"
   const possivelEntrada = explicito ? tokens[1] : primeiro
-  if (explicito || ctx.scripts[possivelEntrada] !== undefined) {
+  // A ENTRADA montada em `$VAR` entra no mesmo julgamento: ela nomeia o NOME de
+  // um script do `package.json` (ou de um binario), nao um caminho — e sem esta
+  // regra a unica saida era a isencao datada, que cobre a entrada existente e a
+  // removida com o mesmo silencio.
+  const porVariavel = possivelEntrada !== undefined && possivelEntrada.startsWith("$")
+  if (explicito || porVariavel || ctx.scripts[possivelEntrada] !== undefined) {
     if (possivelEntrada === undefined)
       return { desfecho: "indeterminado", motivo: `${programa} run sem entrada` }
-    if (possivelEntrada.startsWith("-") || possivelEntrada.startsWith("$"))
+    if (porVariavel) return julgaEntradaVariavel(ctx, comando, possivelEntrada, explicito)
+    if (possivelEntrada.startsWith("-"))
       return {
         desfecho: "indeterminado",
         motivo: `${programa} run com entrada em runtime (\`${possivelEntrada}\`)`,
@@ -1684,12 +1963,53 @@ export function analyze({
    * @param {string} content
    * @param {{origem?: string, funcoes?: Set<string>, profundidade?: number, cadeia?: Set<string>}} [opcoes]
    */
+  /**
+   * O que um script CHAMADO daqui herda das variaveis deste arquivo.
+   *
+   * Com `bash`/`sh` o processo novo recebe o AMBIENTE — so o que este arquivo
+   * `export`ou; com `source`/`.` e o MESMO shell, e ele ve TUDO. O nome `tudo`
+   * diz qual dos dois casos e, e ele vem da FORMA da chamada (a mesma regua que
+   * ja decide o escopo das FUNCOES).
+   *
+   * Os valores saem daqui com o DIRETORIO DO CHAMADOR ja substituido: um
+   * `SCRIPT_DIR` exportado vale o diretorio de QUEM o exportou, e nao o de quem
+   * le — o marcador `@DIR@` e resolvido no momento da HERANCA, nao no da leitura
+   * do filho (que tem outro diretorio).
+   *
+   * @param {{atribuicoes: Map<string, {valores: string[], linhas: number[], exportados: string[]}>, dir: string}} vars
+   * @param {string} de o arquivo que esta passando as variaveis
+   * @param {boolean} tudo o chamador e `source`/`.` (mesmo shell)?
+   */
+  const herancaPara = (vars, de, tudo) => {
+    const resolvidos = (lista) => lista.map((v) => v.split(MARCA_DIR).join(vars.dir))
+    const saida = new Map()
+    for (const [nome, entrada] of vars.atribuicoes) {
+      const paraOProcesso = tudo ? entrada.valores : entrada.exportados
+      if (paraOProcesso.length === 0) continue
+      saida.set(nome, {
+        valores: resolvidos(paraOProcesso),
+        linhas: entrada.linhas,
+        exportados: resolvidos(entrada.exportados),
+        herdadaDe: de,
+      })
+    }
+    return saida
+  }
+
   const julga = (arquivo, content, opcoes = {}) => {
-    const { origem = "", funcoes = ctx.funcoes, profundidade = 0, cadeia = new Set() } = opcoes
+    const {
+      origem = "",
+      funcoes = ctx.funcoes,
+      herdadas = new Map(),
+      profundidade = 0,
+      cadeia = new Set(),
+    } = opcoes
     // As VARIAVEIS DE CAMINHO do arquivo julgado, com o DIRETORIO dele (o valor
     // de `$SCRIPT_DIR`): sao elas que provam `$PYTHON_SCRIPT` e `$PY_SCRIPT` — o
     // alvo do interpretador deixa de ser uma decisao datada e vira fato medido.
-    const vars = variaveisDoArquivo(content, arquivo)
+    // As HERDADAS de quem chamou entram junto (ver `herancaPara`): o escopo do
+    // shell nao e o arquivo, e ignorar o AMBIENTE acusaria um script que roda.
+    const vars = variaveisDoArquivo(content, arquivo, herdadas)
     const contexto = { ...ctx, funcoes, vars }
     for (const comando of shellCommands(content, { origem })) {
       const veredito = classify(comando, contexto)
@@ -1697,39 +2017,48 @@ export function analyze({
       // So se DESCE no que resolveu: um comando ja reprovado nao tem alvo
       // confiavel para ler (e a violacao dele e o veredito).
       if (veredito.desfecho !== "resolvido") continue
-      const alvo = scriptAlvo(comando)
-      if (alvo === null || !arquivoExiste(root, alvo)) continue
+      // O alvo LITERAL e o alvo PROVADO por variavel caem no mesmo lugar: um
+      // `bash "$SCRIPT_DIR/x.sh"` cujo valor o guard provou tem o INTERIOR tao
+      // julgavel quanto o `bash scripts/x.sh` do lado dele. O que nao desce (um
+      // valor absoluto, um glob, um alvo que o comando nem resolveu) sai nomeado
+      // pelo proprio veredito do comando, nunca em silencio.
+      const alvos = alvosProvaveis(comando, contexto.vars)
+      if (!alvos.ok) continue
       const chamador = `${arquivo}:${comando.linha}`
-      if (cadeia.has(alvo) || profundidade >= MAX_SCRIPT_DEPTH) {
-        limites.push({
-          arquivo,
-          linha: comando.linha,
-          programa: comando.programa,
-          alvo,
-          motivo: cadeia.has(alvo)
-            ? `CICLO: \`${alvo}\` ja esta na cadeia (${[...cadeia].join(" → ")} → ${alvo}) — o que ele executa NAO foi julgado`
-            : `PROFUNDIDADE: \`${alvo}\` passa do teto de ${MAX_SCRIPT_DEPTH} niveis a partir do hook — o que ele executa NAO foi julgado`,
+      for (const alvo of alvos.valores) {
+        if (!arquivoExiste(root, alvo)) continue
+        if (cadeia.has(alvo) || profundidade >= MAX_SCRIPT_DEPTH) {
+          limites.push({
+            arquivo,
+            linha: comando.linha,
+            programa: comando.programa,
+            alvo,
+            motivo: cadeia.has(alvo)
+              ? `CICLO: \`${alvo}\` ja esta na cadeia (${[...cadeia].join(" → ")} → ${alvo}) — o que ele executa NAO foi julgado`
+              : `PROFUNDIDADE: \`${alvo}\` passa do teto de ${MAX_SCRIPT_DEPTH} niveis a partir do hook — o que ele executa NAO foi julgado`,
+          })
+          continue
+        }
+        // Um script JA julgado nao e julgado de novo. O runner dos guards de
+        // encoding e chamado pelos DOIS hooks: julgar de novo daria o MESMO texto,
+        // os MESMOS comandos e a MESMA violacao duas vezes — a contagem dobraria e
+        // cada defeito apareceria duplicado por um motivo que nao e dele. O que o
+        // `descidos` descarta e a SEGUNDA leitura do mesmo arquivo, nunca uma
+        // cobertura: o `scripts` do relatorio lista cada script UMA vez.
+        if (descidos.has(alvo)) continue
+        const texto = readFileSync(join(root, alvo), "utf8")
+        if (!scriptsDescentidos.includes(alvo)) scriptsDescentidos.push(alvo)
+        descidos.add(alvo)
+        julga(alvo, texto, {
+          origem: chamador,
+          funcoes: SOURCE_COMMANDS.has(comando.programa)
+            ? new Set([...funcoes, ...definedFunctions(texto)])
+            : new Set(definedFunctions(texto)),
+          herdadas: herancaPara(vars, arquivo, SOURCE_COMMANDS.has(comando.programa)),
+          profundidade: profundidade + 1,
+          cadeia: new Set([...cadeia, alvo]),
         })
-        continue
       }
-      // Um script JA julgado nao e julgado de novo. O runner dos guards de
-      // encoding e chamado pelos DOIS hooks: julgar de novo daria o MESMO texto,
-      // os MESMOS comandos e a MESMA violacao duas vezes — a contagem dobraria e
-      // cada defeito apareceria duplicado por um motivo que nao e dele. O que o
-      // `descidos` descarta e a SEGUNDA leitura do mesmo arquivo, nunca uma
-      // cobertura: o `scripts` do relatorio lista cada script UMA vez.
-      if (descidos.has(alvo)) continue
-      const texto = readFileSync(join(root, alvo), "utf8")
-      if (!scriptsDescentidos.includes(alvo)) scriptsDescentidos.push(alvo)
-      descidos.add(alvo)
-      julga(alvo, texto, {
-        origem: chamador,
-        funcoes: SOURCE_COMMANDS.has(comando.programa)
-          ? new Set([...funcoes, ...definedFunctions(texto)])
-          : new Set(definedFunctions(texto)),
-        profundidade: profundidade + 1,
-        cadeia: new Set([...cadeia, alvo]),
-      })
     }
   }
 
