@@ -5870,6 +5870,31 @@ export async function diagnose({
   return { facts }
 }
 
+/**
+ * Espera o stdout DRENAR e só então encerra com `code`.
+ *
+ * `process.exit()` NÃO espera o write assíncrono do stdout quando ele é um
+ * PIPE: o `console.log` de um relatório maior que o buffer interno (244 KB
+ * medidos em 09/2026, com o inventário do GitHub dentro dele) fazia o processo
+ * encerrar no MEIO da escrita — e o consumidor (`--json` lido por outro script,
+ * o publicador de issue, o teste) recebia JSON TRUNCADO em vez de erro. Quem lê
+ * não tem como distinguir "cortado" de "corrompido", e o exit code continua o
+ * do veredito: a falha silenciosa mora exatamente aí.
+ *
+ * Por isso o encerramento passa por aqui: o relatório (humano ou `--json`) chega
+ * inteiro no pipe ANTES do exit. É a mesma defesa do guard de recursão, num
+ * canal diferente — o do transporte do relatório.
+ *
+ * @param {number} code
+ * @returns {Promise<never>}
+ */
+async function exitAfterFlush(code) {
+  while (process.stdout.writableLength > 0) {
+    await new Promise((resolve) => process.stdout.once("drain", resolve))
+  }
+  process.exit(code)
+}
+
 async function main() {
   // DEFESA EM PROFUNDIDADE contra recursão: a prova (seção 4) executa o
   // bring-up, que executa o doctor. O corte primário é o DOCTOR_SCRIPT
@@ -5893,7 +5918,7 @@ async function main() {
     const report = nestedGuardReport()
     if (process.argv.includes("--json")) console.log(JSON.stringify(report, null, 2))
     else renderReport(report)
-    process.exit(NESTED_GUARD_EXIT)
+    await exitAfterFlush(NESTED_GUARD_EXIT)
   }
   const opts = parseArgs(process.argv.slice(2))
   if (opts.error) {
@@ -5916,7 +5941,9 @@ async function main() {
     renderReport(report)
   }
 
-  process.exit(verdict.verdict === VERDICT.READY ? 0 : verdict.verdict === VERDICT.BLOCKED ? 1 : 2)
+  await exitAfterFlush(
+    verdict.verdict === VERDICT.READY ? 0 : verdict.verdict === VERDICT.BLOCKED ? 1 : 2,
+  )
 }
 
 const IS_DIRECT_RUN =
