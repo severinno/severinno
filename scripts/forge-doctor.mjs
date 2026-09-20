@@ -2802,7 +2802,39 @@ function debtIssue(issue, nowMs) {
  * dá para declarar caducidade daqui). `null` nunca vira `true`: dizer "caducou"
  * sobre o que não se mediu é a dívida que mente, do outro lado.
  */
-function debtStaleness(subject, forge, { protection, mirrors, declaredDebt }) {
+function debtStaleness(subject, forge, { protection, mirrors, declaredDebt, gates }) {
+  // GATE EXECUTADO: o assunto desta issue é medido pela bateria de gates do
+  // próprio doctor. `stale` só sai `true` quando a medição ACONTECEU nesta run e
+  // passou — um guard pulado (`--no-guards`, perfil `--ci`) devolve `null`, nunca
+  // "caducou".
+  if (subject.crossCheck === "gate") {
+    const results = gates?.results ?? null
+    if (!results || results.length === 0) {
+      return {
+        stale: null,
+        detail:
+          "os guards foram pulados nesta run — o doctor não mediu este assunto e não pode declarar a issue caducada",
+      }
+    }
+    const hit = results.find((r) => String(r?.gate ?? "").endsWith(subject.gate))
+    if (!hit) {
+      return {
+        stale: null,
+        detail: `o gate '${subject.gate}' não está na bateria desta run — o doctor não mediu este assunto`,
+      }
+    }
+    if (hit.code === 0 && !hit.error) {
+      return {
+        stale: true,
+        detail: `o doctor executa o MESMO gate '${subject.gate}' agora e ele passa — a issue fala de uma dependência que o inventário já declara (o publicador a fecha por assinatura quando ela sai do repositorio)`,
+      }
+    }
+    return {
+      stale: false,
+      detail: `o doctor também executa o gate '${subject.gate}' e ele NÃO passa agora (${hit.error ?? `exit ${hit.code}`}) — a issue fala de um problema VIVO`,
+    }
+  }
+
   if (subject.crossCheck === "protection") {
     const read = (protection?.forges ?? []).find((f) => f.forge === forge)
     if (!read) {
@@ -2935,7 +2967,7 @@ function describeOpenDebt({ forge, subject, ours, alien, staleness }) {
  * (`githubReadConfig`) — o relatório não pode declarar um canal que não foi o
  * usado.
  *
- * @param {{cwd?: string, env?: Record<string,string|undefined>, deps?: {list?: Function, now?: () => number, githubChannel?: Function}, protection?: object|null, mirrors?: object|null, declaredDebt?: object|null}} [args]
+ * @param {{cwd?: string, env?: Record<string,string|undefined>, deps?: {list?: Function, now?: () => number, githubChannel?: Function}, protection?: object|null, mirrors?: object|null, declaredDebt?: object|null, gates?: {results?: {gate?: string, code?: number|null, error?: string|null}[]}|null}} [args]
  * @returns {Promise<{state: string, detail: string, reads: object[], items: object[], labels: string[], excluded: object}>}
  */
 export async function readOpenDebt({
@@ -2945,6 +2977,10 @@ export async function readOpenDebt({
   protection = null,
   mirrors = null,
   declaredDebt = null,
+  // Os resultados da bateria de gates DESTA run: é por eles que um assunto
+  // cruzado por `crossCheck: "gate"` vira caducidade (`null` quando a bateria
+  // não rodou — a resposta honesta sobre o que não se mediu).
+  gates = null,
 } = {}) {
   const {
     list = listIssuesByLabel,
@@ -3011,7 +3047,7 @@ export async function readOpenDebt({
         else alien.push({ number: issue?.number ?? null, title: issue?.title ?? "" })
       }
       if (ours.length === 0 && alien.length === 0) continue
-      const staleness = debtStaleness(subject, forge, { protection, mirrors, declaredDebt })
+      const staleness = debtStaleness(subject, forge, { protection, mirrors, declaredDebt, gates })
       open += ours.length + alien.length
       foreign += alien.length
       items.push({
@@ -5710,6 +5746,9 @@ export async function diagnose({
         protection: protectionFacts,
         mirrors: mirrorsFacts,
         declaredDebt: declaredDebtFacts,
+        // A bateria de gates JÁ rodou (linha acima): ela é a segunda testemunha
+        // dos assuntos que o próprio doctor mede por gate.
+        gates: { results, error: gatesResult.error ?? null },
       })
     : {
         state: "skipped",

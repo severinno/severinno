@@ -24,7 +24,7 @@ import {
  *      uma label nova/renomeada não pode nascer invisível;
  *   2. a LEITURA (`readOpenDebt`) com a `list` dublada — estados, idade,
  *      marcador, e o cruzamento com o que o doctor mede agora (caducidade);
- *   3. o PESO no veredito e o que aparece na seção 6/7 do relatório.
+ *   3. o PESO no veredito e o que aparece na seção 6/8 do relatório.
  */
 
 const REPO_ROOT = resolve(__dirname, "..", "..", "..")
@@ -95,7 +95,13 @@ describe("o REGISTRO da dívida é o dos publicadores (fonte única)", () => {
     for (const subject of DEBT_SUBJECTS) {
       expect(subject.forges.length).toBeGreaterThan(0)
       expect(subject.subject.length).toBeGreaterThan(10)
-      expect([null, "protection", "mirrors", "declaredDebt"]).toContain(subject.crossCheck)
+      expect([null, "protection", "mirrors", "declaredDebt", "gate"]).toContain(subject.crossCheck)
+      // Um cruzamento por GATE nomeia QUAL gate: sem o nome, a caducidade seria
+      // afirmada sem dizer de onde o doctor tirou a segunda medição.
+      if (subject.crossCheck === "gate") {
+        expect(subject.gate, "crossCheck 'gate' sem o script que o doctor executa").toBeTruthy()
+        expect(subject.gate).toMatch(/^scripts\/.*\.mjs$/)
+      }
     }
   })
 })
@@ -274,6 +280,39 @@ describe("readOpenDebt — a issue velha não passa por problema vivo", () => {
       mirrors: { expected: "1.3.14", blockers: ["divergiu"], unknowns: [] },
     })
     expect((dirty.items[0] as { stale: boolean | null }).stale).toBe(false)
+  })
+
+  it("o gate do MESMO assunto: passou agora → caducada; falhou → VIVA; não rodou → não verificada", async () => {
+    const board = { "github-dependency-new": [issue(31, "<!-- github-dependency-new:QUJD -->")] }
+    const stub = listStub(board)
+
+    const limpo = await readOpenDebt({
+      deps: { list: stub.list, now: () => NOW },
+      gates: { results: [{ gate: "scripts/check-github-dependencies.mjs", code: 0, error: null }] },
+    })
+    const caduca = limpo.items[0] as { stale: boolean | null; detail: string }
+    expect(caduca.stale).toBe(true)
+    expect(caduca.detail).toContain("check-github-dependencies.mjs")
+
+    const vermelho = await readOpenDebt({
+      deps: { list: stub.list, now: () => NOW },
+      gates: { results: [{ gate: "scripts/check-github-dependencies.mjs", code: 1, error: null }] },
+    })
+    expect((vermelho.items[0] as { stale: boolean | null }).stale).toBe(false)
+
+    // A bateria PULADA (perfil `--ci`, `--no-guards`) não é medição: o assunto
+    // não foi julgado, e "caducou" seria a dívida que mente do outro lado.
+    const pulado = await readOpenDebt({ deps: { list: stub.list, now: () => NOW }, gates: null })
+    const semMedicao = pulado.items[0] as { stale: boolean | null; detail: string }
+    expect(semMedicao.stale).toBeNull()
+    expect(semMedicao.detail).toContain("Caducidade NÃO verificada")
+
+    // Um gate com o mesmo ASSUNTO mas outro nome não vale como testemunha.
+    const outro = await readOpenDebt({
+      deps: { list: stub.list, now: () => NOW },
+      gates: { results: [{ gate: "scripts/check-forge-parity.mjs", code: 0, error: null }] },
+    })
+    expect((outro.items[0] as { stale: boolean | null }).stale).toBeNull()
   })
 
   it("assunto que só o publicador vê → caducidade não pode ser declarada daqui", async () => {
@@ -604,9 +643,9 @@ describe("renderReport — a dívida tem seção própria", () => {
     return lines.join("\n")
   }
 
-  it("a seção 6/7 nomeia as labels, a exclusão, a issue e a IDADE", () => {
+  it("a seção 6/8 nomeia as labels, a exclusão, a issue e a IDADE", () => {
     const out = report({ ...baseFacts(), openDebt: OPEN_DEBT })
-    expect(out).toContain("6/7  Dívida conhecida (DECLARADA no repositório × ABERTA no board)")
+    expect(out).toContain("6/8  Dívida conhecida (DECLARADA no repositório × ABERTA no board)")
     expect(out).toContain(DEBT_SUBJECTS.map((s) => s.label).join(", "))
     expect(out).toContain(DEBT_EXCLUDED.label)
     expect(out).toContain("#12")
@@ -615,11 +654,11 @@ describe("renderReport — a dívida tem seção própria", () => {
 
   it("as OUTRAS seções continuam numeradas contra o MESMO total", () => {
     // O denominador é UM só para o relatório inteiro: uma seção nova (a herança
-    // de shell, a 7ª) que não entrasse na conta deixaria as outras seis dizendo
-    // "/6" para um relatório de sete — e o leitor contaria as seções para
-    // descobrir qual está mentindo.
+    // de shell, a 7ª; a cobertura da varredura de terceiro, a 8ª) que não
+    // entrasse na conta deixaria as outras dizendo "/7" para um relatório de
+    // oito — e o leitor contaria as seções para descobrir qual está mentindo.
     const out = report({ ...baseFacts(), openDebt: OPEN_DEBT })
-    for (const n of [1, 2, 3, 4, 5, 6, 7]) expect(out).toContain(`  ${n}/7  `)
+    for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) expect(out).toContain(`  ${n}/8  `)
   })
 
   it("--no-open-debt aparece dito, em vez de a seção sumir calada", () => {
