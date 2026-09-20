@@ -56,15 +56,18 @@
 // bloco que aponta para comando FORA da família é violação (doc descrevendo o
 // que não existe).
 //
-// POR QUE `cenario: docker-ausente` EXISTE: três provas da família (runtime,
-// smoke-render e merge-gate) exigem docker, imagem do runner ou um Gitea
+// POR QUE `cenario: docker-ausente` EXISTE: SETE provas da família (runtime,
+// smoke-render, merge-gate, image-contract, forge-smoke, pre-commit-in-runner e
+// gitea-registry) exigem docker, imagem do runner ou um Gitea
 // efêmero — não são reproduzíveis num runner de PR. O guard não finge que são:
 // ele EXECUTA essas provas com o `docker` AUSENTE de propósito (shim no PATH) e
 // exige o desfecho `indeterminado` que elas DOCUMENTAM ter nesse cenário. Isso
 // não é cerimônia: a invariante verificada é justamente a que este repositório
 // mais trata como regra — ausência de prova NUNCA vira sucesso. Um comando que
 // passe a sair 0 sem ter provado nada é pego AQUI, de forma hermética e em ~1s.
-// O caminho PROVADO dessas três exige docker e é do operador (a doc diz onde).
+// O caminho PROVADO dessas sete exige docker e é do operador (a doc diz onde).
+// O conjunto é DERIVADO dos blocos: um cenário novo num bloco muda a conta, e a
+// doc (§18 do GUARDS.md) declara o mesmo número — os dois lados dizem SETE.
 //
 // O desfecho observado é REPORTADO, nunca presumido: um bloco
 // `desfecho: indeterminado` que casa conta como "indeterminado (declarado)" e

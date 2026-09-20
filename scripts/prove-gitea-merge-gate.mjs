@@ -97,6 +97,20 @@ export const APPLIER = "scripts/apply-required-checks.mjs"
 
 /** Um Gitea da mesma série que a forja roda (deploy/docker-compose.gitea.yml). */
 export const DEFAULT_IMAGE = "gitea/gitea:1.22"
+
+/**
+ * Os LIMITES da prova, declarados como DADO — não como uma frase no relatório.
+ *
+ * São a metade que a prova NÃO cobre, e o publicador da dívida
+ * (`scripts/merge-gate-issue.mjs`) os leva para o corpo da issue: um alerta que
+ * não diz o que ficou fora do alcance faz o leitor confiar mais do que o veredito
+ * sustenta. Sendo dado, o relatório e a issue não podem discordar.
+ */
+export const PROOF_LIMITS = [
+  "o `act_runner` — aqui os status são postados pela API, não por um runner de verdade",
+  "a forja de PRODUÇÃO — a instância do ensaio é efêmera e some no fim",
+  "o resto do branch protection — a prova mede `status_check_contexts` + `enable_status_check`, não as outras regras",
+]
 /**
  * O PREFIXO do container efêmero. O nome final ganha um sufixo aleatório
  * (`uniqueContainerName`) porque duas execuções concorrentes — ou uma que morreu
@@ -127,7 +141,7 @@ const ADMIN_PASSWORD = "Prova!12345x"
  * @typedef {{id: string, expect: "merged"|"blocked", title: string, statuses: string, outcome: MergeOutcome|null, detail?: string}} GateCase
  * @typedef {{verdict: string, blockers: string[], detail: string}} GateVerdict
  * @typedef {{ok: boolean, missing: string[], extra: string[], withCount: {context: string, count: string}[]}} RegistrationDelta
- * @typedef {{verdict: string, blockers: string[], detail: string, image: string, name: string, port: number, repo: string|null, contexts: string[], cases: GateCase[], applier: object|null, enforcement: {enabled: boolean, contexts: string[]}|null, registration: RegistrationDelta|null}} GateResult
+ * @typedef {{verdict: string, blockers: string[], detail: string, image: string, name: string, port: number, repo: string|null, contexts: string[], cases: GateCase[], applier: object|null, enforcement: {enabled: boolean, contexts: string[]}|null, registration: RegistrationDelta|null, limits: string[]}} GateResult
  */
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -342,6 +356,7 @@ export function gateResult(partial = {}) {
     applier: null,
     enforcement: null,
     registration: null,
+    limits: PROOF_LIMITS,
     ...partial,
   }
 }
@@ -1000,9 +1015,11 @@ export function renderReport(result, { emit = console.log } = {}) {
   )
   for (const b of result.blockers) line(`     - ${b}`)
   line()
-  line(
-    `  NAO cobre: o act_runner (aqui os status sao postados pela API), a forja de producao e o resto do branch protection.`,
-  )
+  const limites = result.limits ?? PROOF_LIMITS
+  if (limites.length > 0) {
+    line("  NAO cobre:")
+    for (const limite of limites) line(`     - ${limite}`)
+  }
   line()
 }
 

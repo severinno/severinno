@@ -4298,6 +4298,40 @@ carrega CONTAGEM sai VIOLADA citando o contexto e o trecho. Os testes também fi
 que `enable_status_check=false`, com os contextos registrados, é tratado como
 drift pelo `--check`.
 
+**E a régua do REGISTRO tem prova por MUTAÇÃO**
+(`scripts/test-mutation-gate-registration.sh`, sub-test `gate-registration` do
+master). Ela mede as CINCO metades e cada uma cai no seu fato:
+
+| metade                                            | mutação                        | o que acontece sem ela                                                                                                      |
+| :------------------------------------------------ | :----------------------------- | :-------------------------------------------------------------------------------------------------------------------------- |
+| o contexto a **MENOS** (`missing`)                | a lista sai vazia              | o registro que perdeu um contexto do manifesto sai **PROVADO** — o job roda e o merge passa com ele vermelho                |
+| o contexto a **MAIS** (`extra`)                   | a lista sai vazia              | o PR que trava para sempre deixa de ser **NOMEADO** (o sintoma ainda aparece na matriz; o que morre é a CAUSA no relatório) |
+| a **CONTAGEM** no nome (`withCount`)              | a lista sai vazia              | `Lint (3 checks)` registrado e nenhuma palavra sobre o número que muda sozinho                                              |
+| o **FIO** do veredito (`if (!registration.ok)`)   | o delta é calculado e ignorado | é o defeito ORIGINAL: a prova lê o registro, imprime e segue verde com um subconjunto                                       |
+| a régua da contagem **GULOSA** (`countInContext`) | qualquer dígito vira contagem  | o contexto editorial legítimo (`… (pré-requisito 0, por execução)`) é **ACUSADO**: violação FALSA numa proteção correta     |
+
+O veredito é medido **por execução**, não por leitura: `scripts/merge-gate-fake-forge.mjs`
+roda o MOTOR da prova (`proveGiteaMergeGate`, o mesmo caminho de código que o cron
+executa) contra uma forja DUBLADA sobre um checkout sintético cujo manifesto
+declara os contextos — docker, CLI do Gitea e API HTTP dublados, **sem docker e
+sem `node_modules`** (roda no master mesmo num job sem install). O dublê não
+decide nada da régua: ele responde como um Gitea 1.22, inclusive a REGRA de merge
+(exige `success` de TODOS os contextos registrados e bloqueia só com
+`enable_status_check` ligado). A segunda testemunha é a suíte unitária, com
+ÂNCORAS: o vermelho tem de ser o da metade mutada e as outras metades seguem
+verdes (sem `vitest` instalado, ela se declara NÃO JULGÁVEL em voz alta e o
+veredito por execução segue medindo).
+
+Limites declarados: (a) o TRANSPORTE é dublado — o Gitea efêmero de verdade é
+medido pelo `merge-gate-proof` (cron semanal e PR que toca os caminhos da prova),
+e um caminho novo na prova cai no 404 `nao mapeado` do dublê, o que muda o
+veredito de forma VISÍVEL em vez de virar verde por acaso; (b) a mutação roda NO
+LUGAR, então ela vive no master (matriz serial dentro de UM job) e não num job ao
+lado do `merge-gate-proof` — dois jobs do mesmo workflow rodariam em paralelo e a
+prova do Gitea poderia ler o guard mutado (a árvore é restaurada por checksum); e
+(c) a régua de QUAL contexto o manifesto declara é de outro guard
+(`check-required-checks`), com prova própria.
+
 **O que NÃO cobre, e o relatório escreve:** o act_runner (aqui os status são
 postados pela API — que é o que o job faria), a forja de produção (o container é
 efêmero e local) e o resto do branch protection (reviews obrigatórios, push
@@ -4327,6 +4361,46 @@ que não é contexto de required check.
 antes de confiar o merge à forja e em toda mudança do applier ou do manifesto.
 Uso inválido sai **3**; um `--keep` deixa o container no ar para inspeção.
 
+**E num CRON, com o ciclo de reconciliação das outras dívidas.** A prova era boa e
+sem testemunha: rodava sob demanda, no host de quem já desconfia — e o que ela mede
+é CÓDIGO (o applier) cujo efeito ninguém vê no PR. O job `merge-gate-proof`
+(`.github/workflows/merge-gate-proof.yml`, semanal) roda esta prova e entrega o
+veredito ao publicador `merge-gate-issue.mjs`: **violado** abre/atualiza a issue
+(o corpo traz o contexto exigido, o delta nas três direções — o que falta, o que
+sobra e o que carrega CONTAGEM —, a matriz caso a caso e os LIMITES da prova,
+que saem do MESMO relatório que a CLI imprime em `--json`); **provado** comenta a
+prova e FECHA o que ele mesmo abriu; **`unavailable`** (sem docker, imagem não
+puxável, API fora) não publica e não fecha — ele FALHA o run nomeando o caso, e
+nada é fechado por um veredito que não mediu. Duas naturezas de falha são dois
+títulos e duas assinaturas (`registro` e `matriz`), porque os remédios são
+diferentes: uma falha de matriz não pode virar comentário na dívida do registro.
+
+**E no PR — a outra ponta do mesmo veredito.** A issue chega na segunda-feira, e
+quem mudou o applier está num PR HOJE: o MESMO relatório (sem segunda medição,
+compartilhado pelo caminho do job) vira um COMENTÁRIO RECONCILIADO no PR pelo
+`merge-gate-comment.mjs`. **violado** publica o contexto e o delta onde o autor
+lê — o corpo sai das MESMAS funções puras do relatório que a issue usa
+(`deltaOf`/`registrationOf`/`natureOf`), porque uma segunda leitura do JSON
+divergiria no dia em que o campo fosse renomeado, e os dois canais passariam a
+discordar sobre o mesmo ensaio. **provado** RETIRA o comentário (o delta sumiu).
+**`unavailable`** não publica e NÃO retira: apagar o último aviso com base numa
+medição que não aconteceu é o falso verde desta classe — no PR o caso é AVISO
+nomeado, e quem FALHA por não medir é o cron. O marcador é PRÓPRIO (o remédio do
+pre-commit pode viver no mesmo PR, e um marcador comum faria a reconciliação de um
+retirar o comentário do outro), e o corpo é ESTÁVEL (sem data nem URL do run):
+duas medições com o mesmo delta dão `noop` em vez de reescrever o comentário a
+cada run. O trigger de PR filtra os CAMINHOS que a prova mede (o applier, o
+manifesto, o guard do contrato, os publicadores e o compose do ensaio) — um PR
+que não os toca não paga o custo de subir o Gitea efêmero.
+
+**Por que a forja do GitHub, e não um par no `.gitea/`:** a prova exige docker, e
+nesta forja os jobs rodam DENTRO do container da imagem `ubuntu-bun`, sem o socket
+montado (a assimetria é a mesma que o `pre-commit-in-runner-proof` documenta) — lá
+o veredito seria `unavailable` para sempre. Aqui o runner é `self-hosted` e tem
+docker. A prova não mede a proteção do GITHUB: ela mede a PEÇA (o applier e o
+manifesto) contra uma forja descartável; quem mede a proteção real é o
+`required-checks-drift`.
+
 ---
 
 ## 17. Jobs periódicos — todo alerta tem canal (`check:periodic-alerts`)
@@ -4334,20 +4408,22 @@ Uso inválido sai **3**; um `--keep` deixa o container no ar para inspeção.
 **O que protege:** que nenhum job de workflow AGENDADO termine VERDE por
 DESENHO sem canal acionável. Um `::warning::` (ou um `continue-on-error`, ou um
 guard que "só avisa") dentro de um run que passou é alerta **MUDO** — ninguém
-abre o log de um cron verde. É o mesmo defeito que o repositório corrigiu sete
+abre o log de um cron verde. É o mesmo defeito que o repositório corrigiu dez
 vezes (`actrc-sync-issue.mjs`, `readme-reverse-issue.mjs`,
 `required-checks-drift-issue.mjs`, `forge-doctor-issue.mjs`,
 `mutation-trend-issue.mjs`, `blob-crlf-scope-issue.mjs`,
-`env-mirror-drift-issue.mjs`, `guard-timing-issue.mjs`) — mas a REGRA vivia na
-cabeça de quem escreveu cada job, então o nono caso entraria em silêncio.
+`env-mirror-drift-issue.mjs`, `guard-timing-issue.mjs`, `runner-shells-issue.mjs`,
+`merge-gate-issue.mjs`, `github-dependencies-issue.mjs`) — mas a REGRA vivia na
+cabeça de quem escreveu cada job, então o décimo primeiro caso entraria em
+silêncio.
 
-**A auditoria (30 jobs em 12 workflows agendados, duas forjas).** O que foi
+**A auditoria (32 jobs em 13 workflows agendados, duas forjas).** O que foi
 encontrado e o desfecho de cada um:
 
-| Canal       | Jobs                                                                                                                                                                                                                                                                                                                        | Por que                                                                                                            |
-| :---------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------- |
-| **`issue`** | `benchmark` (regressão PostGIS), `readme-reverse-audit`, `actrc-sync`, `mutation-coord-timing` + `mutation-coord-trend` (via `mutation-coord-alert`), `drift` (GitHub e Gitea), `doctor` (forja), `blob-crlf-all-text-alert`, `actrc-sync` (forja), `env-mirror-drift` (forja), `guard-timing-alert`, `runner-shells-drift` | o run fica verde de propósito (tendência/aviso não bloqueia); a issue é o canal, com dedup e fechamento automático |
-| **`fail`**  | `smoke`, `setup-bun-warm`, `act-startup-bench`, `blob-crlf-history-audit`, `secret-leaks-audit`, `seed-guards`, `default-branch-workflow-guard`, `benchmark-all`, `benchmark` (GiST), `mirror` (×3), `guard` (tier-1)                                                                                                       | o sinal é violação de corretude/configuração: o run vermelho é a resposta certa                                    |
+| Canal       | Jobs                                                                                                                                                                                                                                                                                                                                                                         | Por que                                                                                                            |
+| :---------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------- |
+| **`issue`** | `benchmark` (regressão PostGIS), `readme-reverse-audit`, `actrc-sync`, `mutation-coord-timing` + `mutation-coord-trend` (via `mutation-coord-alert`), `drift` (GitHub e Gitea), `doctor` (forja), `blob-crlf-all-text-alert`, `actrc-sync` (forja), `env-mirror-drift` (forja), `guard-timing-alert`, `runner-shells-drift`, `merge-gate-proof`, `github-dependencies-audit` | o run fica verde de propósito (tendência/aviso não bloqueia); a issue é o canal, com dedup e fechamento automático |
+| **`fail`**  | `smoke`, `setup-bun-warm`, `act-startup-bench`, `blob-crlf-history-audit`, `secret-leaks-audit`, `seed-guards`, `default-branch-workflow-guard`, `benchmark-all`, `benchmark` (GiST), `mirror` (×3), `guard` (tier-1)                                                                                                                                                        | o sinal é violação de corretude/configuração: o run vermelho é a resposta certa                                    |
 
 **Os dois defeitos que a auditoria fechou (não eram só teóricos):**
 
@@ -4375,7 +4451,7 @@ outro job do mesmo workflow (é o caso dos dois medidores → `mutation-coord-al
 e aí a evidência é procurada no bloco do `via`.
 
 **A COBERTURA é a parte que impede a regressão:** um job agendado sem entrada no
-manifesto **falha** o guard, e o teste trava a contagem (**29**). Um cron novo no
+manifesto **falha** o guard, e o teste trava a contagem (**31**). Um cron novo no
 `.github/` ou no `.gitea/` não entra em silêncio — ele obriga alguém a escrever
 qual é o canal dele, ou a descobrir que não tem nenhum.
 
@@ -4558,15 +4634,15 @@ verdade (e não contra um `run` dublado). Exige docker e a imagem do runner.
 sem docker
 ```
 
-### `cenario: docker-ausente` — por que quatro blocos o declaram
+### `cenario: docker-ausente` — por que sete blocos o declaram
 
-Quatro provas da família exigem docker, imagem do runner ou um Gitea efêmero —
+Sete provas da família exigem docker, imagem do runner ou um Gitea efêmero —
 não são reproduzíveis num runner de PR. O guard **não finge** que são: ele as
 EXECUTA com um `docker` de mentira (exit 127) no começo do PATH e exige o
 desfecho `indeterminado` que elas declaram ter nesse cenário. A invariante
 verificada é a que este repositório mais trata como regra: **ausência de prova
 NUNCA vira sucesso**. Um comando que passe a sair `0` sem ter provado nada é pego
-AQUI, de forma hermética e em ~1s. O caminho PROVADO dessas quatro exige docker e
+AQUI, de forma hermética e em ~1s. O caminho PROVADO dessas sete exige docker e
 é do operador (`bun run forge-runtime:prove`, `bun run smoke-render:prove`,
 `bun run image-contract:prove`, `bun run merge-gate:prove`) — a doc de cada uma diz
 o que ele exige.
@@ -5888,6 +5964,31 @@ turno (JSDoc sem o campo novo), e o pegou antes de qualquer outra rede.
 não dá para provar o bloqueio dentro do runtime do CI
 o docker não respondeu
 ```
+
+**`cut-stages:prove`** — cada etapa do corte do GitHub é shippable sozinha? Aplica as
+cinco etapas de `docs/GITHUB_CUT.md` §3, EM SEQUÊNCIA, numa cópia da árvore rastreada
+(nunca na árvore real) e mede o veredito dos contratos em cada passo com as MESMAS
+funções que as pipelines executam: os gates da forja dona do merge (derivação do
+`doctor`), a paridade (`discoverGates`/`findParityViolations`) e os contextos de required
+check (`check-required-checks`). Duas invariantes valem em TODAS as etapas — os gates da
+dona do merge e os required checks dela —, e a etapa 5 só fica verde com a declaração
+(`PIPELINES`) atualizada no mesmo ato. Não precisa de docker nem de rede: o veredito é
+dos CONTRATOS da árvore (quem executa os gates dentro da imagem é o `forge-runtime:prove`).
+
+<!-- prove-doc: cut-stages:prove
+     run: --json
+     exit: 0
+     cenario: ambiente
+     desfecho: provado
+-->
+
+```text
+"dona": "gitea"
+"estado": "declarado"
+"paridade": 0
+```
+
+---
 
 ## 26. As CONDIÇÕES de cada passo do retrato arquivado — `check:archived-pipeline` (`scripts/check-archived-pipeline.mjs`)
 

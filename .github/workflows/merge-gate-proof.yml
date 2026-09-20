@@ -1,0 +1,243 @@
+# =============================================================================
+# .github/workflows/merge-gate-proof.yml
+#
+# Roda a prova do bloqueio de merge (`merge-gate:prove`) em CRON e transforma o
+# veredito em ISSUE acionável — com fechamento automático quando a proteção
+# registrada volta a bater com o manifesto.
+#
+# POR QUE UM CRON (o buraco que ele fecha): a prova já existe e é boa — sobe um
+# Gitea efêmero, aplica `ci/required-checks.json` com o APLIADOR DE VERDADE e
+# tenta mergear em quatro situações. O problema é QUANDO ela roda: sob demanda,
+# no host de quem já desconfia. O que ela mede é o caminho que APLICA a proteção,
+# e é código: um applier que registre um SUBCONJUNTO dos contextos, que perca o
+# `enable_status_check` (o booleano que transforma a lista em bloqueio) ou que
+# aceite CONTAGEM no nome de um contexto não deixa NADA vermelho no PR — o gate
+# passa, o merge passa, e o buraco só aparece quando alguém roda a prova. O cron
+# é a testemunha periódica: transforma o silêncio em ticket.
+#
+# POR QUE NA FORJA DO GITHUB (e não um par no `.gitea/`): a prova exige DOCKER —
+# ela sobe um container. Na forja da Gitea os jobs rodam DENTRO do container da
+# imagem `ubuntu-bun` e o socket do docker NÃO está montado nele (ver
+# `.gitea/workflows/ci.yml`, job `pre-commit-in-runner-proof`), então lá a prova
+# sairia `unavailable` para sempre: um cron permanentemente vermelho que nunca
+# mede nada. Aqui o runner é `self-hosted` e TEM docker (é o mesmo runner que
+# roda `docker pull` no `act-startup-bench` e no `runner-shells-drift`) — motivo
+# já declarado no `check-prove-docs`: a família docker exige o host com docker.
+#
+# A ASSIMETRIA É INTENCIONAL — e o que este job mede NÃO é a proteção do GitHub.
+# A prova é da PEÇA (o applier + o manifesto), contra uma forja descartável: ela
+# não toca o branch protection de nenhum repositório real. Quem mede a proteção
+# REAL da forja é o `required-checks-drift` (o par dele no `.gitea/`), e quem
+# mede o runtime do CI é o `pre-commit-in-runner-proof`. Três coisas diferentes.
+#
+# POR QUE ISSUE (e não só o job vermelho): o precedente do repositório
+# (`required-checks-drift-issue.mjs`, `runner-shells-issue.mjs`,
+# `env-mirror-drift-issue.mjs`) — ninguém abre o log de um cron que rodou
+# sozinho. O CORPO carrega o CONTEXTO e o DELTA: os contextos que o manifesto
+# exige, os que o registro NÃO tem (o job roda e o merge passa com ele vermelho),
+# os que SOBRAM (o PR trava para sempre esperando um check que nunca roda) e os
+# que carregam CONTAGEM (o nome muda quando a matriz cresce e a proteção passa a
+# exigir um check inexistente).
+#
+# A ORDEM DOS PASSOS É CONTRATO: o step que falha é o ÚLTIMO. Se ele viesse
+# antes, o step da issue nunca rodaria e o defeito voltaria a ser cron vermelho
+# sem ticket — exatamente o que este workflow existe para eliminar.
+#
+# O OUTRO LADO DA DÍVIDA: com o veredito de volta em PROVADO, o MESMO publicador
+# RECONCILIA — comenta a PROVA (o registro batendo, a matriz verde, a instância
+# do ensaio) e FECHA as issues que ele abriu. Uma dívida resolvida que fica
+# aberta mente no board. Por isso o step do publicador roda em `always()`, e não
+# só quando há violação: condicioná-lo ao veredito faria o fechamento sumir em
+# silêncio no ÚNICO run capaz de fechá-lo.
+#
+# A OUTRA PONTA (o PR): a issue chega na segunda-feira, e quem mudou o applier
+# está num PR HOJE. O MESMO relatório — sem segunda medição — vira um COMENTÁRIO
+# RECONCILIADO no PR (`merge-gate-comment.mjs`, canal com marcador próprio):
+# `violado` publica o contexto e o delta onde o autor lê; `provado` RETIRA o
+# comentário (o delta sumiu); `unavailable` não publica e NÃO retira (não medido ≠
+# resolvido). O trigger de PR filtra os CAMINHOS que a prova mede (o applier, o
+# manifesto, o guard do contrato, os publicadores, o compose do ensaio): um PR que
+# não os toca não paga o custo de subir o Gitea efêmero.
+#
+# NO PR, NÃO MEDIR É AVISO; NO CRON, É FALHA. A prova exige docker e o PR não o
+# garante: ali um `unavailable` não é regressão da mudança, então ele é dito como
+# aviso e o comentário anterior fica de pé. No cron a regra vale inteira — um cron
+# que não mediu não pode terminar verde.
+#
+# `unavailable` (sem docker, imagem não puxável, API não subiu) NÃO abre issue e
+# NÃO fecha nada — ele FALHA o run com o caso nomeado. Não é defeito da peça, é
+# uma medição que não aconteceu, e "não medido" não é evidência de "normal":
+# fechar por ele apagaria a dívida com base em nada. Um cron que não mediu não
+# pode terminar verde.
+#
+# A RÉGUA DO REGISTRO TEM PROVA POR MUTAÇÃO — E ELA NÃO MORA AQUI. A suite
+# (`scripts/test-mutation-gate-registration.sh`) muta o guard NO LUGAR: um job
+# ao lado deste rodaria em PARALELO e a prova do Gitea poderia ler o arquivo
+# mutado (mediria a regressão em vez do código). Ela vive no master
+# (`mutation-guards`, matriz serial dentro de um job), que roda em TODO PR — e o
+# veredito dela é lido POR EXECUÇÃO, com o motor desta prova contra uma forja
+# dublada (`scripts/merge-gate-fake-forge.mjs`), sem docker.
+#
+# Sem secrets: o publicador usa o `GITHUB_TOKEN` do runner (a permissão que falta
+# é `issues: write`, declarada abaixo) e a prova não precisa de credencial — o
+# Gitea do ensaio é local, efêmero e descartável.
+#
+# Usage:
+#   cron semanal (segunda 07:47 UTC) ou dispatch manual.
+#
+# Exit codes (dos steps):
+#   0 — PROVADO: o registro bate com o manifesto e a matriz de merge morde (e a
+#       dívida aberta foi fechada)
+#   1 — VIOLADO (a issue é publicada ANTES de o job falhar) ou NÃO MEDIDO
+# =============================================================================
+
+name: Merge Gate Proof
+
+on:
+  schedule:
+    # Segunda 07:47 UTC — DEPOIS dos outros crons da semana (03:00 benchmark,
+    # 04:00-06:41 mirrors/mutations/drift, 07:07 o doctor da forja): o resultado
+    # não depende deles, e o minuto é único para dois runs não disputarem o
+    # mesmo runner.
+    - cron: "47 7 * * 1"
+  workflow_dispatch:
+  # A OUTRA PONTA: no PR que MUDA o applier (ou o manifesto, ou a própria prova),
+  # o veredito é entregue onde o autor está — um comentário reconciliado. O filtro
+  # é exatamente o conjunto que o ensaio mede; o cron o ignora (schedule não tem
+  # `paths`).
+  pull_request:
+    paths:
+      - "scripts/prove-gitea-merge-gate.mjs"
+      - "scripts/merge-gate-issue.mjs"
+      - "scripts/merge-gate-comment.mjs"
+      - "scripts/apply-required-checks.mjs"
+      - "scripts/check-required-checks.mjs"
+      - "ci/required-checks.json"
+      - "ci/required-checks-applied.json"
+      - "deploy/docker-compose.gitea.yml"
+      - ".github/workflows/merge-gate-proof.yml"
+
+permissions:
+  contents: read
+  issues: write # criar/comentar/fechar a issue do merge gate (no cron)
+  pull-requests: write # publicar/retirar o comentário do veredito no PR
+
+concurrency:
+  group: merge-gate-proof-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  merge-gate-proof:
+    name: merge-gate:prove (o registro da proteção ↔ o manifesto)
+    runs-on: self-hosted
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── A prova (JSON gravado, exit code guardado) ───────────────────────
+      # Node puro (sem deps: a prova e o publicador importam só módulos do
+      # repo), então o job não instala nada — o que ele precisa de verdade é
+      # `docker`, e o runner é quem o tem.
+      #
+      # O step NÃO falha aqui: quem falha é o último. Um step que saísse 1 agora
+      # mataria o step da issue, e o defeito voltaria a ser cron vermelho SEM
+      # ticket.
+      #
+      # `--json` imprime o MESMO shape em todo desfecho (proven/violated/
+      # unavailable), e é esse relatório que o publicador lê: uma medição, dois
+      # consumidores — o log e a issue não podem discordar.
+      - name: Provar o bloqueio de merge (report only)
+        id: prove
+        shell: bash
+        env:
+          # O diretório é do JOB (único por execução): o canal de PR e o cron
+          # podem rodar AO MESMO TEMPO (grupos de concorrência com `github.ref`
+          # diferentes), e um caminho fixo em `/tmp` faria um sobrescrever o
+          # relatório do outro.
+          REPORT: ${{ runner.temp }}/merge-gate.json
+        run: |
+          set -euo pipefail
+          set +e
+          node scripts/prove-gitea-merge-gate.mjs --json > "${REPORT}" 2>"${REPORT}.log"
+          CODE=$?
+          set -e
+          cat "${REPORT}.log"
+          echo "exit_code=${CODE}" >> "$GITHUB_OUTPUT"
+          # O veredito é lido do MESMO relatório que o publicador vai consumir —
+          # extraído por node, e não por `sed ... | head -1`: sob `pipefail` um
+          # consumidor que fecha cedo derruba a pipeline com SIGPIPE e mataria o
+          # step por um motivo que não é o veredito.
+          VERDICT=$(node -e 'const fs=require("node:fs");const p=process.env.REPORT;if(!fs.existsSync(p)){console.log("?");process.exit(0)}const j=JSON.parse(fs.readFileSync(p,"utf8"));console.log(typeof j.verdict==="string"?j.verdict:"?")')
+          echo "verdict=${VERDICT}" >> "$GITHUB_OUTPUT"
+          # O RELATÓRIO existe? É o que MODULA o step da issue (o publicador roda
+          # nos DOIS sentidos: publicar dívida e fechar dívida).
+          if [ -s "${REPORT}" ]; then
+            echo "report=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "report=0" >> "$GITHUB_OUTPUT"
+          fi
+          echo "  relatório: ${REPORT} (verdict=${VERDICT}, $(wc -c < "${REPORT}" || echo 0) bytes)"
+
+      # ── A ISSUE é o alerta; o vermelho abaixo é a lembrança ──────────────
+      # `always()` (e não `verdict == violated`): com violação ele PUBLICA; com
+      # PROVADO ele RECONCILIA — comenta a prova e FECHA as issues que ele mesmo
+      # abriu. `unavailable` passa por aqui sem publicar nem fechar (não é
+      # dívida), e quem o torna visível é o step final.
+      #
+      # NUNCA passe --dry-run aqui: o modo não toca no backend de propósito, e a
+      # reconciliação sumiria em silêncio dentro de um run verde.
+      - name: Publicar o veredito como issue (e fechar quando voltar a bater)
+        if: always() && github.event_name != 'pull_request' && steps.prove.outputs.report == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ runner.temp }}/merge-gate.json
+        run: node scripts/merge-gate-issue.mjs --report "${REPORT}" --backend github
+
+      # ── A OUTRA PONTA: o PR, onde o autor está ───────────────────────────
+      # O cron abre ISSUE na segunda-feira; aqui o MESMO relatório vira um
+      # COMENTÁRIO RECONCILIADO no PR que mudou o applier: `violado` publica o
+      # delta, `provado` RETIRA o comentário (o delta sumiu), `unavailable` não
+      # publica nem retira. `always()` pelo mesmo motivo do irmão: é no run de
+      # falha que o comentário mais importa.
+      #
+      # NUNCA passe `--dry-run` aqui: o modo não toca o backend de propósito, e a
+      # retirada sumiria em silêncio dentro de um run verde.
+      - name: Publicar o veredito como comentário no PR (e retirar quando voltar a PROVAR)
+        if: always() && github.event_name == 'pull_request' && steps.prove.outputs.report == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPOSITORY: ${{ github.repository }}
+          REPORT: ${{ runner.temp }}/merge-gate.json
+        run: node scripts/merge-gate-comment.mjs --report "${REPORT}" --backend github
+
+      # ── O desfecho: violação publicada, ou "não mediu" nomeado ───────────
+      # Dois casos falham, e o texto separa os dois (o remédio é diferente):
+      #   violated    → a issue diz o que divergiu (contexto e delta); aqui fica
+      #                 o ponteiro dela;
+      #   unavailable → NÃO HAVIA MEDIÇÃO: o run fica vermelho porque um cron
+      #                 que não conseguiu medir não pode passar por verde.
+      # No PR, não medir é AVISO (a prova exige docker e o PR não o garante): o
+      # comentário anterior fica de pé e quem FALHA por não medir é o cron.
+      - name: Aviso quando a prova não pôde ser MEDIDA num PR
+        if: always() && github.event_name == 'pull_request' && steps.prove.outputs.exit_code != '0' && steps.prove.outputs.verdict != 'violated'
+        shell: bash
+        run: |
+          echo "::warning::merge-gate:prove NÃO mediu neste PR (verdict='${{ steps.prove.outputs.verdict }}') — sem docker, imagem não puxável ou a API do ensaio não subiu. O comentário do PR NÃO é publicado nem retirado, e quem FALHA por não medir é o cron semanal."
+
+      - name: Fail on violation (or on nothing measured)
+        if: steps.prove.outputs.exit_code != '0' && (github.event_name != 'pull_request' || steps.prove.outputs.verdict == 'violated')
+        shell: bash
+        run: |
+          if [ "${{ steps.prove.outputs.verdict }}" = "violated" ]; then
+            # O ponteiro é do CANAL DA VEZ: num PR a issue não existe (o passo dela
+            # é do cron) — quem carrega o delta ali é o comentário.
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              echo "::error::A prova do bloqueio de merge NÃO é PROVADA: o registro da proteção divergiu do manifesto, ou a matriz de merge não morde. O comentário publicado NESTE PR traz os contextos exigidos, o delta nas três direções e a matriz. Remédio: bun run merge-gate:prove no host com docker para reproduzir; se o registro divergir, bun run ci:required-checks -- --apply reaplica o manifesto."
+            else
+              echo "::error::A prova do bloqueio de merge NÃO é PROVADA: o registro da proteção divergiu do manifesto, ou a matriz de merge não morde. Veja a issue 'merge-gate-proof' (o corpo traz os contextos exigidos, o delta e a matriz). Remédio: bun run merge-gate:prove no host com docker para reproduzir; se o registro divergir, bun run ci:required-checks -- --apply reaplica o manifesto."
+            fi
+          else
+            echo "::error::Não foi possível MEDIR o bloqueio de merge (verdict='${{ steps.prove.outputs.verdict }}') — sem docker, imagem não puxável ou a API do ensaio não subiu. O cron NÃO mediu a prova: um cron que não mede não pode terminar verde, e NADA é fechado por um veredito que não é PROVADO."
+          fi
+          exit 1

@@ -141,6 +141,7 @@ describe("readOpenDebt — a leitura do board", () => {
         "github:declared-debt-review",
         "github:github-dependency-new",
         "github:guard-timing-regression",
+        "github:merge-gate-proof",
         "github:mutation-trend-drift",
         "github:readme-drift",
         "github:required-checks-drift",

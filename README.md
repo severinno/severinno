@@ -902,7 +902,12 @@ contrato de merge: o `name:` de um required check renomeado sem a reaplicação
 DECLARADA deixa o PR vermelho (e mutar cada uma das seis metades que sustentam
 isso — as duas réguas da comparação, o fio em `main()`, o fail-closed da
 declaração ausente, o alvo do `--forge` e o carimbo sem churn — deixa a suíte
-vermelha no fato certo). A prova da
+vermelha no fato certo). O 30º mede o que a forja de fato EXIGE: o REGISTRO da
+proteção (`registrationDelta`) — o contexto a MENOS, o a MAIS e um nome com
+CONTAGEM — com o veredito medido por EXECUÇÃO (o motor da prova contra uma forja
+dublada, `scripts/merge-gate-fake-forge.mjs`, sem docker) e as âncoras da suíte
+unitária; a régua da contagem gulosa acusa o contexto editorial legítimo, a
+violação FALSA que o outro lado do teste fixa. A prova da
 CLASSIFICAÇÃO do `check-forge-parity` também é um job próprio
 (`forge-parity-mutation`): ela mede o contrato de merge em si — quais gates
 podem pular uma forja e com que forma de comando — e por isso diz QUAL regra
@@ -1265,6 +1270,24 @@ medir o REMÉDIO no runtime do CI, e não só o bloqueio: até aqui a oferta só
 medida no simulador (a suíte e o ensaio do pty). Ela custa **≈0,61s** (mediana de
 3 execuções warm neste host, 09/2026) e é paga uma vez, pelo passo padrão do job.
 
+> **A pergunta seguinte — "cada etapa do corte do GitHub é shippable sozinha?" — também
+> tem medidor** (`bun run cut-stages:prove`, `scripts/prove-cut-stages.mjs`): as cinco
+> etapas de [`docs/GITHUB_CUT.md`](./docs/GITHUB_CUT.md) §3 são APLICADAS em sequência
+> numa cópia da árvore rastreada (nunca na árvore real), e o veredito dos contratos em
+> cada passo é lido com as MESMAS funções que as pipelines executam — a derivação de gates
+> do `doctor`, o `discoverGates`/`findParityViolations` e a resolução de contextos do
+> `check-required-checks`. Duas invariantes valem em TODOS os passos (por isso não são
+> declaráveis): os gates da forja dona do merge e os required checks dela ficam
+> **idênticos**. Medido: os **9 crons** do espelho saem na etapa 2 (9 blocos, fechando com os
+> "9 crons" da entrega), o espelho não perde **nenhum** gate até a etapa 5 (nem tirando os
+> 11 passos de canal `gh` da etapa 3, nem trocando 100 `uses:` de terceiro na 4), a etapa 5
+> só fica verde levando a declaração (`PIPELINES`) junto — sem ela o guard nomeia a forja
+> fantasma —, e a medição NOMEIA o que a prosa do plano não dizia: 5 desses passos têm nome
+> de VERIFICAÇÃO e não são gates pela régua do contrato, e **2 dos 11 arquivos** que ainda
+> afirmam o host antigo o usam numa DECISÃO (um é o host do GHCR, que decide se a etapa de
+> visibilidade se aplica; o outro é a próxima decisão) — os demais são mensagem ou registro
+> (o inventário e o próprio medidor guardam o valor antigo de propósito). ≈2,4s neste host,
+> sem docker.
 > pelo `check:prove-docs`.
 
 O inventário também tem **canal acionável**, como as outras dívidas: o job semanal

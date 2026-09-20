@@ -207,6 +207,52 @@ suporte, não trabalho de repositório.
 (`declarado`), preservando a prosa — e ele **não** cria classe nova, porque classificar
 um tipo novo de dependência é decisão de gente.
 
+### O medidor das etapas (a outra metade da catraca)
+
+A catraca acima mede o ESTADO. Ela não responde a pergunta da §3 — "cada etapa é
+shippable sozinha?" —, e a resposta não pode ser prosa: `bun run cut-stages:prove`
+(`scripts/prove-cut-stages.mjs`) APLICA cada etapa numa cópia da árvore rastreada (nunca
+na árvore real), em sequência, e lê o veredito dos contratos com as MESMAS funções que as
+pipelines executam — a derivação de gates do `doctor`, o `discoverGates`/
+`findParityViolations` da paridade e a resolução de contextos do `check-required-checks`.
+Nada é reimplementado: o harness é um medidor dos guards.
+
+Duas invariantes valem em TODAS as etapas (por isso não são declaráveis): os **gates** da
+forja dona do merge e os **required checks** dela ficam idênticos. Medido neste commit
+(dona do merge: **gitea**, 26 gates; espelho: 56 gates):
+
+| passo | o que ele mexe (efeito medido)                                                   | dona do merge | espelho | paridade      |
+| :---- | :------------------------------------------------------------------------------- | :------------ | :------ | :------------ |
+| 0     | a árvore como está (linha de base)                                               | 26 gates      | 56      | 0             |     | 1   | 11 arquivos ainda afirmam o literal antigo fora de prosa/comentário/teste (2 em DECISÃO) | 26 idênticos | 56  | 0   |
+| 2     | 9 blocos `schedule:` removidos em 9 arquivos (os "9 crons" da entrega, fechando) | 26 idênticos  | 56      | 0             |
+| 3     | 11 passos de canal removidos (5 com nome de VERIFICAÇÃO que não são gates)       | 26 idênticos  | 56      | 0             |
+| 4     | 100 linhas `uses:` de terceiro substituídas                                      | 26 idênticos  | 56      | 0             |
+| 5     | 27 workflows do espelho removidos                                                | 26 idênticos  | 0       | 1 (declarada) |
+
+O que a medição diz que a prosa do plano não dizia:
+
+- **nenhuma etapa encosta na dona do merge** — nem os gates, nem os contextos de required
+  check (os dois elos que decidem o merge);
+- o **espelho não perde UM gate** até a etapa 5: nem tirando os canais `gh` (11 passos) nem
+  trocando 99 `uses:` de terceiro. Isso é uma restrição para o plano, não um elogio: um
+  gate que morasse num passo de canal **teria** de ser re-homado antes de a etapa sair;
+- a etapa 3 tira **5 passos com nome de VERIFICAÇÃO** (`Validate BUN_VERSION variable`) que
+  **não são gates** pela régua do contrato (shell inline, sem prefixo de gate): o veredito
+  ficaria verde sem a inspeção. O harness nomeia isso em vez de deixar passar;
+- a etapa 5 tem de levar a **declaração junto**: sem tirar a forja do espelho de
+  `PIPELINES` no mesmo ato, a paridade acusa 1 violação ("pipeline declarada não existe") —
+  e com a declaração atualizada, 0. É a metade da etapa, medida nos dois sentidos;
+- **onze arquivos ainda afirmam o host antigo** fora de prosa, comentário (de linha e
+  inline), teste, snapshot e registro de benchmark — e só **dois usam o literal numa
+  DECISÃO**: `publish-ubuntu-bun.sh:192` (a comparação com `ghcr.io` é o que decide se a
+  etapa de visibilidade — que só existe no GHCR — se aplica; está declarado no comentário
+  acima da linha) e `scripts/check-registry-source.mjs:326` (a varredura procura o host
+  ANTIGO, então um literal do host NOVO fora da forma da variável não é acusado por essa
+  linha). Os outros nove são mensagem ou REGISTRO — entre eles o inventário
+  (`ci/github-dependencies.json`), o guard que o conta e o PRÓPRIO medidor, que guardam o
+  valor antigo de propósito (é o que eles medem). O primeiro é um fato do caminho antigo; o
+  segundo é a próxima decisão — declarada aqui, não consertada.
+
 ## 6. Limites declarados (o que este documento NÃO promete)
 
 - **A contagem é por classe e por regra**: `docs/`, os testes e as provas por mutação
