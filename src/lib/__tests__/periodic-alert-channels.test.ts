@@ -71,11 +71,15 @@ describe("o repositório REAL passa a auditoria", () => {
     const jobs = scheduledJobBlocks(io)
     // Trava o tamanho: um cron NOVO muda a contagem e este teste exige que a
     // decisão (canal + evidência) seja escrita antes de o guard passar.
-    // 30 desde `runner-shells-drift` (benchmark-weekly: o conjunto de shells da
-    // imagem do runner é remedido e comparado com o declarado — divergência vira
-    // dívida acionável, com fechamento automático); antes dele, 29 desde
+    // 32 desde `github-dependencies-audit` (o inventário do GitHub é remedido e
+    // uma dependência NOVA vira issue acionável, com fechamento automático
+    // quando o item sai do repositório); antes dele, 31 desde `merge-gate-proof`
+    // (o veredito da prova do bloqueio de merge vira issue acionável, com
+    // fechamento automático quando o registro volta a bater); antes dele, 30
+    // desde `runner-shells-drift` (benchmark-weekly: o conjunto de shells da
+    // imagem do runner é remedido e comparado com o declarado); antes, 29 desde
     // `guard-timing-alert` (a regressão de tempo do bench-guard-timing).
-    expect(jobs.map((j) => `${j.path}::${j.job}`)).toHaveLength(30)
+    expect(jobs.map((j) => `${j.path}::${j.job}`)).toHaveLength(32)
     const covered = new Set(
       Object.values(realManifest.forges as Record<string, { workflow: string; job: string }[]>)
         .flat()

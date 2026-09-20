@@ -897,7 +897,11 @@ no-setup-bun, runner-base, no-leaked-imports, reconciliation, nested-guard,
 paridade hook↔CI, comandos dos hooks, pipefail-sigpipe, defaults de shell,
 defaults do registry/namespace, dependências dos jobs,
 sintaxe dos corpos
-`run:` e a resposta do remédio no TTY). O 29º mede o outro lado do mesmo
+`run:` e a resposta do remédio no TTY). O 32º é a CATRACA do inventário do GitHub
+(a comparação de conjuntos do item novo e do sumido, a do contador, a nomeação do
+item e do delta, e os três fail-closed do dado — o ausente, o ilegível e o
+contador que não é número), medida por execução no CLI com o defeito injetado no
+dado versionado. O 29º mede o outro lado do mesmo
 contrato de merge: o `name:` de um required check renomeado sem a reaplicação
 DECLARADA deixa o PR vermelho (e mutar cada uma das seis metades que sustentam
 isso — as duas réguas da comparação, o fio em `main()`, o fail-closed da

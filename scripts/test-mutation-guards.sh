@@ -2,7 +2,7 @@
 # =============================================================================
 # scripts/test-mutation-guards.sh — Mutation tests MASTER dos guards node-puro
 #
-# Roda os 29 mutation tests node-puro dos guards de CI num ÚNICO script com
+# Roda os 32 mutation tests node-puro dos guards de CI num ÚNICO script com
 # MATRIZ de sub-tests — o pr-check passa a rodar UM job só (mutation-guards)
 # em vez de 5 jobs separados, reduzindo o overhead de setup por job
 # (checkout + container por job) SEM perder a granularidade de diagnóstico:
@@ -78,6 +78,35 @@
 #                    o LIMITE da máscara de `${{ }}` (lazy → gulosa) tem de
 #                    CEGAR o guard — e cada mutação é cirúrgica (as outras
 #                    metades seguem mordendo)
+#   gate-registration → scripts/test-mutation-gate-registration.sh
+#                    a régua do REGISTRO da proteção da forja (`registrationDelta`
+#                    da prova do merge gate) tem de ser LOAD-BEARING nas CINCO
+#                    metades: o contexto a MENOS, o a MAIS, a CONTAGEM no nome,
+#                    o FIO do veredito (o delta calculado e ignorado) e a régua da
+#                    contagem GULOSA, que ACUSA o contexto editorial legítimo
+#                    (violação falsa). O veredito é medido POR EXECUÇÃO (o motor
+#                    da prova contra a forja dublada — sem docker, node-puro) e a
+#                    suíte unitária entra pelas âncoras da metade mutada
+#   archived-pipeline → scripts/test-mutation-archived-pipeline.sh
+#                    as CONDIÇÕES de cada passo do retrato arquivado
+#                    (`.woodpecker.yml`) contra a forja têm de ser LOAD-BEARING
+#                    nas SEIS metades: a EXIGÊNCIA de declarar (`when:` ausente),
+#                    o ESTREITAMENTO do `if:` do job, a contraparte por marcador
+#                    (existência do alvo e MESMO trabalho), o fail-closed da
+#                    leitura e o desempate do casamento ambíguo. Cada mutação
+#                    cega a SUA classe com as vizinhas seguindo vermelhas, e o
+#                    passo SÃO do fixture (o controle) segue verde em todas
+#   github-deps    → scripts/test-mutation-github-dependencies.sh
+#                    a CATRACA do inventário do GitHub tem de ser LOAD-BEARING nas
+#                    NOVE metades: a comparação de CONJUNTOS (o que é NOVO e o que
+#                    SUMIU), a do CONTADOR (medido > declarado), a NOMEAÇÃO do item
+#                    novo e do delta do contador, o ESCOPO da contagem (o auditor não
+#                    conta a própria prosa, senão o medido sobe ao DOCUMENTAR a
+#                    classe) e os TRÊS fail-closed do dado (o
+#                    AUSENTE, o ILEGÍVEL e o contador que não é número). O veredito
+#                    é medido POR EXECUÇÃO no CLI (o defeito é injetado no dado
+#                    versionado e restaurado por checksum) e a suíte unitária é a
+#                    testemunha do que a API do módulo julga em todo PR
 #
 # Cada script granular é a FONTE ÚNICA do seu cenário (sem duplicação de
 # fixtures/mutações/asserções — o harness só orquestra). TODOS os sub-tests
@@ -96,7 +125,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # Adicionar um mutation test node-puro novo = adicionar UMA linha aqui (o
 # script granular já deve existir com exit 0 = mutação detectada).
 SUBTESTS=(
-  "bun-literal|Bun — versão literal na chamada do setup|scripts/test-mutation-bun-literal.sh"
+  "bun-literal|Bun — versao literal na chamada do setup + o REMENDO (--fix) da declaracao APAGADA (a chave-pai devolvida e a ancora unica que RECUSA em vez de adivinhar)|scripts/test-mutation-bun-literal.sh"
   "bun-removal|Bun --staged — remoção da chamada do setup|scripts/test-mutation-bun-removal.sh"
   "hooks-symmetry|Hooks — guard novo no pre-commit + linha stale|scripts/test-mutation-hooks-symmetry.sh"
   "readme|README — anchors + toc + images (matriz aninhada)|scripts/test-mutation-readme-guards.sh"
@@ -116,15 +145,18 @@ SUBTESTS=(
   "reconciliation|Reconciliation — fechamento de issues de dívida (reconcileDebt close) deve ser detectado|scripts/test-mutation-reconciliation.sh"
   "nested-guard|Nested guard — NESTED_GUARD_ENV (defesa em profundidade contra recursão) deve ser detectado|scripts/test-mutation-nested-guard.sh"
   "pipefail-sigpipe|SIGPIPE — pipe para grep quieto deve ser detectado nos DOIS contextos (pipefail declarado E passo sem shell, com a marca da premissa do runner); a declaracao 'defaults: run: shell:' que LIGA o pipefail FALHA o gate; herestring/heredoc/script sem pipefail/cota do baseline nao acendem; o --fix aposenta o caso mecanico e nao corrompe expressao do runner; e o CANAL DO REMEDIO (o patch que vai ao PR) tem as tres metades medidas: o patch APLICA pelo git apply e fecha o gate, o preview NAO grava (quem grava e o --fix), e cada fixer tem marcador PROPRIO (um marcador comum faria a reconciliacao de um retirar o comentario do outro)|scripts/test-mutation-pipefail-sigpipe.sh"
-  "hook-ci-parity|Hooks x CI — a segunda regua no hook (bunx tsc sem o heap), o comando novo sem decisao, o recorte sem razao, a declaracao que envelheceu, o gate do CORE sumido e o hook fantasma devem FALHAR|scripts/test-mutation-hook-ci-parity.sh"
+  "hook-ci-parity|Hooks x CI — a segunda regua no hook (bunx tsc sem o heap), o comando novo sem decisao, o recorte sem razao, a declaracao que envelheceu, o gate do CORE sumido, o hook fantasma, o SUB-GUARD de um runner sem decisao local e a DESCIDA cega do lado local (os sub-guards do check-utf8.sh acusam) devem FALHAR|scripts/test-mutation-hook-ci-parity.sh"
   "hook-commands|Comandos dos hooks — o caminho tipado, a entrada de scripts ausente e o indeterminado nao declarado devem CEGAR o guard, e a funcao do proprio hook deve ACUSAR o sao (violacao falsa no hook real); cada mutacao cirurgica, com a suite unitaria VERMELHA|scripts/test-mutation-hook-commands.sh"
   "workflow-defaults|Defaults — a declaracao defaults:run:shell: nao pode virar passo/gate/ref/comando do job nos guards que leem YAML de workflow (leitura unica compartilhada); cada metade dessa leitura mutada FALHA o guard sendo medido|scripts/test-mutation-workflow-defaults.sh"
   "workflow-run-syntax|Sintaxe dos run: E dos scripts — as QUINZE mutacoes (o aviso, o stdin do bash, o limite da mascara, o indice do --staged, os shells medidos, a guarda do fixer, a segunda fonte, o PULO NOMEADO do passo nao-bash, o PULO NOMEADO do ARQUIVO de shebang nao-bash — a simetria do anterior pela decisao da outra fonte —, as cinco da terceira fonte e a GARANTIA DO PREVIEW do --fix --dry-run) devem CEGAR o guard ou ACUSAR o sao (violacao falsa do M8/M14) ou GRAVAR no preview; cada mutacao cirurgica|scripts/test-mutation-workflow-run-syntax.sh"
   "merge-latency|Latencia de merge — a DETECCAO da cobertura, o EXIT CODE do --check e o PAPEL do dono do merge devem CEGAR o gate (por execucao) e/ou a suite unitaria; cada mutacao cirurgica, com controlo final|scripts/test-mutation-merge-latency.sh"
-  "registry-defaults|Defaults do registry/namespace — a COMPARACAO de valor, a REGRA do script JS (o resolvedor obrigatorio), a REGUA DE COMENTARIO por linguagem, o VALOR VAZIO (que nao e default), o LITERAL DE RESERVA do resolvedor e o FALLBACK LITERAL do workflow devem CEGAR o gate ou ACUSAR o sao (violacao falsa), cada um com a suite unitaria VERMELHA no recorte que mede o mecanismo|scripts/test-mutation-registry-defaults.sh"
+  "registry-defaults|Defaults do registry/namespace — a COMPARACAO de valor, a REGRA do script JS (o resolvedor obrigatorio), a REGUA DE COMENTARIO por linguagem, o VALOR VAZIO (que nao e default), o LITERAL DE RESERVA do resolvedor, o FALLBACK LITERAL do workflow e a GRAFIA dele (as aspas nao sao julgadas: o tipo novo, declarado numa forma inedita num CI ficticio, entra SO pela TABELA com a regua byte a byte igual) devem CEGAR o gate ou ACUSAR o sao (violacao falsa), cada um com a suite unitaria VERMELHA no recorte que mede o mecanismo|scripts/test-mutation-registry-defaults.sh"
   "job-deps|Dependencias dos jobs — o job que RODA comando dependente de node_modules SEM instalar deve FALHAR (e a isencao declarada o salva); mutar a leitura do grafo (import de topo vira tardio), o install some, o addedAt some, a regra do sem-objeto e a escalada do --review devem CEGAR o guard, cada um com a suite unitaria VERMELHA; cirurgico, com o guard restaurado por checksum|scripts/test-mutation-job-deps.sh"
   "remedy-tty|Resposta do remedio (o TERMINAL DE CONTROLE) — as DUAS metades que a trazem (a funcao que abre o /dev/tty e o ponto que a CHAMA) devem deixar a suite do pty VERMELHA nas ancoras do fluxo do operador (o 'sim' no terminal faz o commit entrar, o 'nao' bloqueia, a FASE B reexecuta), com o fail-closed SEGUINDO VERDE — e o pty e o vitest declarados quando faltam, nunca um verde por omissao|scripts/test-mutation-remedy-tty.sh"
-  "required-applied|Required checks APLICADOS — o RENAME do name: de um job que e required check SEM a reaplicacao declarada (e o check novo, e o orfao, e a declaracao ausente) deve deixar o PR VERMELHO: as QUATRO metades que sustentam isso (a regua do contexto derivado, a regua do orfao, o fio que as julga em main() e o fail-closed do carregamento) e as DUAS do applier (o ALVO do --forge e o CARIMBO sem churn) caem cada uma no SEU fato, com as outras metades SEGUINDO verdes — cirurgico, com o guard restaurado por checksum|scripts/test-mutation-required-checks-applied.sh"
+  "required-applied|Required checks APLICADOS — o RENAME do name: de um job que e required check SEM a reaplicacao declarada (e o check novo, e o orfao, e a declaracao ausente) deve deixar o PR VERMELHO: as QUATRO metades que sustentam isso (a regua do contexto derivado, a regua do orfao, o fio que as julga em main() e o fail-closed do carregamento) e as DUAS do applier (o ALVO do --forge e o CARIMBO sem churn) e as DUAS da forja que RECUSA a feature (o marcador GRAVADO e o MOTIVO obrigatorio dele) caem cada uma no SEU fato, com as outras metades SEGUINDO verdes — cirurgico, com o guard restaurado por checksum|scripts/test-mutation-required-checks-applied.sh"
+  "gate-registration|Merge gate — o REGISTRO da protecao (a MENOS, a MAIS, CONTAGEM no nome e o fio do veredito) medido por EXECUCAO contra a forja dublada + anchors da suite; a regua da contagem gulosa ACUSA o contexto editorial (violacao FALSA)|scripts/test-mutation-gate-registration.sh"
+  "archived-pipeline|Retrato arquivado — as CONDIcoes de cada passo (.woodpecker.yml) contra a forja: a exigencia de declarar (when ausente), o ESTREITAMENTO do if do job, o marcador (arquivo tipado e trabalho do job) e o fail-closed da leitura devem CEGAR o guard, com as classes vizinhas SEGUINDO vermelhas e o passo SAO do fixture imune; cada mutacao cirurgica, guard restaurado por checksum|scripts/test-mutation-archived-pipeline.sh"
+  "github-deps|Inventario do GitHub — a CATRACA: a comparacao de CONJUNTOS (o item NOVO e o item SUMIDO), a do CONTADOR (medido > declarado), a NOMEACAO do item novo e do delta, o ESCOPO da contagem (o auditor nao conta a propria prosa: sem a exclusao o medido sobe ao DOCUMENTAR a classe) e os TRES fail-closed do dado (o AUSENTE, o ILEGIVEL e o contador que nao e numero) devem CEGAR o CLI ou deixar o vermelho GENERICO, com a suite unitaria VERMELHA em cada metade|scripts/test-mutation-github-dependencies.sh"
 )
 
 # ── Colors ────────────────────────────────────────────────────────────────
@@ -290,10 +322,17 @@ pass "mutation-count [drift do nº de sub-tests do master], no-leaked-imports [l
 pass "node_modules do pai + dep inexistente + install pendente],"
 pass "reconciliation [fechamento de issues de dívida via reconcileDebt]),"
 pass "nested-guard [NESTED_GUARD_ENV — defesa em profundidade contra recursão] e"
-pass "registry-defaults [valor do default, script JS, régua de comentário, valor vazio, literal do resolvedor e fallback do YAML]) e"
+pass "registry-defaults [valor do default, script JS, régua de comentário, valor vazio, literal do resolvedor, fallback do YAML e a grafia dele (o tipo novo pela tabela)]) e"
 pass "job-deps [install ou isenção declarada; grafo de imports, addedAt, regra do sem-objeto e a revisão do --review],"
 pass "required-applied [o RENAME sem a reaplicação declarada: as duas réguas da"
 pass "comparação, o fio em main(), o fail-closed da declaração ausente, o alvo do"
-pass "--forge e o carimbo sem churn]"
+pass "--forge e o carimbo sem churn] e"
+pass "gate-registration [o REGISTRO da proteção da forja: o contexto a MENOS, o a"
+pass "MAIS, a CONTAGEM no nome, o FIO do veredito e a régua da contagem gulosa que"
+pass "acusa o contexto editorial — veredito por execução + âncoras da suíte] e"
+pass "archived-pipeline [as CONDIÇÕES de cada passo do retrato arquivado contra a"
+pass "forja: a exigência de declarar, o estreitamento do \`if:\` do job, a contraparte"
+pass "por marcador (existência e trabalho), o fail-closed da leitura e o desempate do"
+pass "casamento ambíguo]"
 pass "detectam todas as mutações."
 exit 0

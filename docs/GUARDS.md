@@ -860,7 +860,7 @@ a proteção em sincronia, para o cenário do count continuar com UMA causa de
 vermelho.
 
 **A prova por MUTAÇÃO:** `scripts/test-mutation-required-checks-applied.sh` (o
-29º sub-test do master) muta as OITO metades que sustentam esse veredito — as
+29º sub-test do master) muta as DEZ metades que sustentam esse veredito — as
 duas réguas da comparação (a do contexto derivado e a do órfão), o fio que as
 julga em `main()`, o fail-closed do carregamento, o ALVO do `--forge` e o CARIMBO
 sem churn, as duas da forja que RECUSA a feature (o marcador é GRAVADO pelo
@@ -1555,6 +1555,23 @@ gates podem pular uma forja e com que forma de comando. Um vermelho dentro da ma
 diz "alguma mutação falhou"; como job próprio ela diz **qual** regra de classificação
 quebrou, e vira check **com nome** no contrato de merge. Custo medido: ≈**0.33s**
 (node-puro, sem docker, sem `node_modules`).
+
+**NAS DUAS FORJAS (a isenção que caiu).** Ela — e a matriz de 32 sub-tests — eram
+`GITHUB_ONLY` com a razão _"os jobs de mutation test existem apenas no pipeline do
+GitHub (custo/duração)"_, que é a razão de **conveniência** que a classe
+`GITHUB_ONLY` proíbe por escrito. O furo era concreto: quem mergeia na forja podia
+ficar **verde com um guard cego**, porque a única coisa do repositório que mede se um
+guard _morde_ (a mutação que ele tem de pegar) rodava só no espelho. Hoje as duas
+são invariantes do **CORE** (`mutation-matrix`, `forge-parity-mutation`): rodam no
+job `guards` da forja (já required, então bloqueiam o merge **sem tocar a proteção
+aplicada**) e nos jobs próprios do espelho, com o **mesmo comando**. O que continua
+isento tem razão sobre o **sujeito**, não sobre custo: os rótulos dedicados das
+suítes que a matriz já prova nas duas forjas, as três que provam guards **sem
+contrato de merge** (jsdom drift, unused deps, bun audit — os jobs deles não são
+required checks de forja nenhuma) e os dois guards que conferem os jobs de mutation
+test e o nome/summary/comentário count-free do job `mutation-guards`, que existem só
+lá. A mutação **F** é o que trava essa decisão: remover a matriz da forja volta a
+falhar o guard, em vez de a isenção antiga voltar em silêncio.
 
 **Inventário:** `node scripts/check-forge-parity.mjs --gates` lista o que o
 guard enxerga, com a classificação de cada gate — para a decisão ser revisável,

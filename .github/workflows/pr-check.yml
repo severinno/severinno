@@ -699,7 +699,7 @@ jobs:
         run: echo "✅ No orphan test-mutation-*.sh and no broken workflow ref introduced by this PR diff."
 
   # ── Mutation Guards MASTER (consolidado) ────────────────────────────
-  # Roda os 29 mutation tests node-puro dos guards de CI num JOB SÓ via
+  # Roda os 32 mutation tests node-puro dos guards de CI num JOB SÓ via
   # scripts/test-mutation-guards.sh — matriz de sub-tests que orquestra os
   # scripts granulares (que continuam sendo a fonte única de
   # fixtures/mutações/asserções de cada guard):
@@ -765,6 +765,23 @@ jobs:
   #                    função do próprio hook deve ACUSAR O SÃO — violação
   #                    falsa medida no hook real — e as duas testemunhas
   #                    (o CLI e a suíte unitária) têm de mudar de veredito)
+  #   gate-registration → test-mutation-gate-registration.sh
+  #                    (o REGISTRO da proteção da forja — `registrationDelta`:
+  #                    contexto a MENOS, a MAIS e CONTAGEM no nome — medido POR
+  #                    EXECUÇÃO: o motor da prova roda contra uma forja DUBLADA
+  #                    (`merge-gate-fake-forge.mjs`, sem docker) e cada metade
+  #                    mutada muda o veredito; a régua da contagem GULOSA acusa
+  #                    o contexto editorial legítimo — violação FALSA; a suíte
+  #                    unitária entra pelas âncoras da metade mutada)
+  #   github-deps    → test-mutation-github-dependencies.sh
+  #                    (a CATRACA do inventário do GitHub — a comparação de
+  #                    CONJUNTOS do item NOVO e do item SUMIDO, a do CONTADOR, a
+  #                    NOMEAÇÃO do item novo e do delta, e os TRÊS fail-closed do
+  #                    dado: o AUSENTE, o ILEGÍVEL e o contador que não é número.
+  #                    O defeito é injetado no dado versionado e o CLI mede antes
+  #                    e depois de cada mutação; a suíte unitária roda com o dado
+  #                    já RESTAURADO — senão o vermelho dela viria do defeito, e
+  #                    não da mutação)
   # Cada sub-test roda SEMPRE (fail-CONTINUE) e o harness imprime o output
   # completo do script granular + verdict por sub-test + tabela final —
   # granularidade de diagnóstico preservada. Exit final agregado: 0 se
@@ -802,7 +819,7 @@ jobs:
         run: bash scripts/test-mutation-guards.sh
 
       - name: Summary
-        run: echo "✅ All 29 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard, mutation-count, no-leaked-imports, pipefail-sigpipe, paridade hook↔CI, comandos dos hooks, defaults de shell, sintaxe dos corpos `run:`, latência de merge, defaults do registry/namespace, dependências dos jobs, resposta do remédio no TTY, contrato dos required checks APLICADOS — o rename sem a reaplicação declarada)."
+        run: echo "✅ All 32 node-pure mutation tests passed (bun literal, bun remoção, hooks simetria, README anchors/toc/images, README reverse, docs anchor, produtor sentinel, mutation-jobs, workflow-refs, UTF-8 escopo, timing-budget, e2e-cache-budget, lint-guard, mutation-count, no-leaked-imports, pipefail-sigpipe, paridade hook↔CI, comandos dos hooks, defaults de shell, sintaxe dos corpos `run:`, latência de merge, defaults do registry/namespace, dependências dos jobs, resposta do remédio no TTY, contrato dos required checks APLICADOS — o rename sem a reaplicação declarada, o REGISTRO da proteção da forja — o contexto a menos, a mais e contagem no nome, as CONDIÇÕES do retrato arquivado — cada passo contra a forja, e a CATRACA do inventário do GitHub — a comparação de conjuntos e de contador, a nomeação e os três fail-closed do dado)."
 
   # ── Forge Parity Mutation (job DEDICADO, fora do master) ────────────────
   # A prova por mutação das TRÊS regras de classificação do
