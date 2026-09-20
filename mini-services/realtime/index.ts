@@ -4,6 +4,7 @@
 // param sent by the frontend client (see src/hooks/use-realtime.ts).
 
 import { createServer } from "http"
+import { Server as EngineServer } from "engine.io"
 import { Server, Socket } from "socket.io"
 import { createAdapter } from "@socket.io/redis-adapter"
 import { Redis } from "ioredis"
@@ -35,6 +36,10 @@ const httpServer = createServer()
 // Engine created manually (no auto-attach) so /health and /emit can share
 // the same HTTP port. engine.io's prefix check (path "/") claims EVERY URL,
 // so with the default attach() our HTTP endpoints would never be reachable.
+// `EngineServer` é o `Server` do engine.io 6.x (dependência DECLARADA no
+// package.json do mini-service — antes ela vinha só por transitividade do
+// socket.io e o identificador nunca era importado: o serviço subia e morria
+// em ReferenceError no boot).
 const engine = new EngineServer({
   path: "/",
   pingTimeout: 60000,
