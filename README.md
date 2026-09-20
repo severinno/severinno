@@ -1173,7 +1173,23 @@ link interno quebrado num `.md` NOVO entram no índice, o commit é recusado, a
 **descida** do runner de encoding nomeia o guard de cada classe (`check-utf8.sh`,
 `check-readme-anchors.mjs`) e o arquivo REMENDADO entra. O texto
 do hook é evidência, não veredito (a escrita num pipe pode perder uma linha); o
-exit code não pode. Custa ≈**0.03s**
+exit code não pode.
+
+A forma padrão mede **duas metades**, e o exit code é o da pior delas. Além do
+bloqueio, ela mede a **OFERTA do remédio**: um commit que **APAGA** o arg
+`BUN_VERSION` de um build site de compose é recusado pelo **guard dono** rodando
+de verdade no recorte `--staged`, a oferta nomeia a classe `bun-mirror-removal`
+(medida pela CLI `--oferta` do MESMO script que o hook executa — a cópia do
+fixture, byte a byte — e com o vínculo provado no lado DO HOOK: a saída do commit
+cita a classe), e o `--fix` do dono devolve a declaração ao índice: o `--staged`
+volta a 0 e o commit de CONTROLE entra. O CONTROLE soma uma mudança benigna ao
+índice de propósito — o remendo RESTAURA o que o commit apagava, então o commit
+sozinho seria **VAZIO** para o git (medido: `nada adicionado ao envio`), e o que
+se mede é o veredito do hook com a declaração de volta. É a metade que faz o job
+medir o REMÉDIO no runtime do CI, e não só o bloqueio: até aqui a oferta só era
+medida no simulador (a suíte e o ensaio do pty). Ela custa **≈0,61s** (mediana de
+3 execuções warm neste host, 09/2026) e é paga uma vez, pelo passo padrão do job.
+
 no caminho comum (nada de corpo nem script staged: um `git diff --cached` e mais
 nada), o que o põe no orçamento de um hook que roda a CADA commit sem duplicar a
 varredura do CI. Custo medido neste host (Linux,

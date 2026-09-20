@@ -37,6 +37,7 @@ import {
   IMAGE_REF_ENV,
   LIMITS,
   REAL_LIMITS,
+  combineStates,
   dockerRunArgv,
   evidenceLines,
   exitCodeFor,
@@ -70,6 +71,29 @@ const PROVA_PROVADA = {
   },
 }
 
+/**
+ * A prova da OFERTA (a segunda metade da forma padrão), com os campos que o
+ * relatório lê: as classes oferecidas, o fixer do dono e o fecho do CONTROLE.
+ */
+const PROVA_REMEDEIO = {
+  state: "proven",
+  detail: "a OFERTA nomeia a classe 'bun-mirror-removal' e o fixer do dono fecha o ciclo",
+  evidence: {
+    oferta: {
+      classes: [{ id: "bun-mirror-removal", offenders: ["docker-compose.yml"] }],
+      classe: { fixer: "node scripts/check-bun-mirror.mjs --fix" },
+    },
+    controle: {
+      fixer: 0,
+      guarda: 0,
+      restauradoNoIndice: true,
+      status: 0,
+      objetosDeCommit: 1,
+      conteudoEmHead: "a declaração restaurada",
+    },
+  },
+}
+
 /** Os dublês de runtime: nada aqui toca git, node ou docker de verdade. */
 const depsBase = (over = {}) => ({
   exists: existsOf([]),
@@ -80,6 +104,10 @@ const depsBase = (over = {}) => ({
     bash: "bash",
   }),
   prove: () => PROVA_PROVADA,
+  // A metade do remédio é DUBLADA em todos os testes do relatório de propósito:
+  // sem isso cada um lançaria um `git commit` de verdade no fixture para medir a
+  // oferta. Quem a mede de verdade é `prove-remedy-offer.test.ts`.
+  proveRemedy: () => PROVA_REMEDEIO,
   ...over,
 })
 
@@ -321,6 +349,83 @@ describe("a escolha do lugar", () => {
   })
 })
 
+describe("a metade do REMÉDIO: a forma padrão a mede, a sem dublê não", () => {
+  const dentro = () => existsOf([CONTAINER_MARKERS[0], IMAGE_BASE_MARKER])
+
+  it("a forma padrão roda as DUAS metades e o estado é o da pior delas", () => {
+    const prove = vi.fn(() => PROVA_PROVADA)
+    const proveRemedy = vi.fn(() => PROVA_REMEDEIO)
+    const r = innerReport({ deps: depsBase({ exists: dentro(), prove, proveRemedy }) })
+    expect(prove).toHaveBeenCalledTimes(1)
+    expect(proveRemedy).toHaveBeenCalledTimes(1)
+    expect(r.proof).toEqual(PROVA_PROVADA)
+    expect(r.remedeio).toEqual(PROVA_REMEDEIO)
+    expect(r.state).toBe("proven")
+    // O detalhe diz as DUAS: quem lê não precisa saber qual metade falou.
+    expect(r.detail).toContain(PROVA_PROVADA.detail)
+    expect(r.detail).toContain(PROVA_REMEDEIO.detail)
+  })
+
+  it("a forma SEM DUBLÊ não a mede (o escopo dela é a fase A inteira) — e o limite diz onde ela é medida", () => {
+    const proveRemedy = vi.fn(() => PROVA_REMEDEIO)
+    const r = innerReport({
+      semDuble: true,
+      deps: depsBase({ exists: dentro(), proveRemedy }),
+    })
+    expect(proveRemedy).not.toHaveBeenCalled()
+    expect(r.remedeio).toBeNull()
+    expect(r.state).toBe("proven")
+    const duble = innerReport({ deps: depsBase({ exists: dentro() }) })
+    expect(duble.remedeio).not.toBeNull()
+    // O limite NOMEIA a forma que mede a oferta — e o da forma padrão diz o
+    // escopo da metade (o fixture, com o guard dono real).
+    expect(REAL_LIMITS.some((l) => l.includes("OFERTA do remédio NÃO é medida"))).toBe(true)
+    expect(LIMITS.some((l) => l.includes("metade do REMÉDIO"))).toBe(true)
+    expect(LIMITS.some((l) => l.includes("--oferta"))).toBe(true)
+  })
+
+  it("uma metade INDETERMINADA não vira verde pela outra (e o detalhe é o dela)", () => {
+    const r = innerReport({
+      deps: depsBase({
+        exists: dentro(),
+        proveRemedy: () => ({
+          state: "unavailable",
+          detail: "a oferta não pôde ser medida",
+          evidence: null,
+        }),
+      }),
+    })
+    expect(r.state).toBe("unavailable")
+    expect(r.detail).toContain("a oferta não pôde ser medida")
+    // A outra metade continua PUBLICADA (o que foi medido não se perde).
+    expect(r.proof).toEqual(PROVA_PROVADA)
+  })
+
+  it("uma metade VIOLADA derruba a forma — mesmo com o bloqueio provado", () => {
+    const r = innerReport({
+      deps: depsBase({
+        exists: dentro(),
+        proveRemedy: () => ({
+          state: "violated",
+          detail: "a OFERTA não tem a classe",
+          evidence: null,
+        }),
+      }),
+    })
+    expect(r.state).toBe("violated")
+    expect(exitCodeFor(r.state)).toBe(EXIT.VIOLATED)
+    expect(r.detail).toContain("a OFERTA não tem a classe")
+  })
+
+  it("o estado composto: `violated` vence `unavailable` vence `proven` (e nada vira verde por vazio)", () => {
+    expect(combineStates("proven", "proven")).toBe("proven")
+    expect(combineStates("proven", "unavailable")).toBe("unavailable")
+    expect(combineStates("unavailable", "violated")).toBe("violated")
+    expect(combineStates("proven", null)).toBe("proven")
+    expect(combineStates()).toBe("unavailable")
+  })
+})
+
 describe("o contrato com quem invoca (as linhas de evidência)", () => {
   it("o exit code é o veículo do veredito — e o que não é 0/1/2 é `null`", () => {
     expect(stateFromExit(EXIT.PROVEN)).toBe("proven")
@@ -348,6 +453,31 @@ describe("o contrato com quem invoca (as linhas de evidência)", () => {
     expect(facts.DEFEITO).toBe("exit:1 objetos:0 head:nao")
     expect(facts.CONTROLE).toBe("exit:0 objetos:1")
     expect(facts.NODE).toContain("/usr/bin/node")
+    // A metade do REMÉDIO publica o próprio estado, as classes da oferta e o
+    // fecho do CONTROLE — chaves com HÍFEN, que o parser lê de volta (é o que
+    // permite a quem lê o container ver a oferta sem depender do texto do hook).
+    expect(facts.REMEDEIO).toBe("proven")
+    expect(facts.OFERTA).toBe("bun-mirror-removal")
+    expect(facts["OFERTA-FIXER"]).toBe("node scripts/check-bun-mirror.mjs --fix")
+    expect(facts["OFERTA-CONTROLE"]).toBe("fixer:0 guarda:0 exit:0 objetos:1 head:restaurada")
+  })
+
+  it("uma oferta VAZIA sai como `vazia`, nunca como ausente da evidência", () => {
+    const r = innerReport({
+      deps: depsBase({
+        exists: existsOf([CONTAINER_MARKERS[0], IMAGE_BASE_MARKER]),
+        proveRemedy: () => ({
+          state: "violated",
+          detail: "sem oferta",
+          evidence: { oferta: { classes: [] }, controle: null },
+        }),
+      }),
+    })
+    const { facts, unparsed } = parseInImage(evidenceLines(r).join("\n"))
+    expect(unparsed).toEqual([])
+    expect(facts.REMEDEIO).toBe("violated")
+    expect(facts.OFERTA).toBe("vazia")
+    expect(facts["OFERTA-FIXER"]).toBeUndefined()
   })
 
   it("linha malformada vira `unparsed`, nunca um fato inventado", () => {
@@ -471,6 +601,9 @@ describe("o relatório e o CLI", () => {
     expect(texto).toContain("DUBLÊ DECLARADO")
     // O digest não é legível DE DENTRO: o relatório diz quem prova o mapeamento.
     expect(texto).toContain("o digest não é legível daqui")
+    // E a metade do REMÉDIO aparece no relatório humano com as CLASSES da oferta:
+    // sem esta linha, quem lê veria "PROVADO" sem saber que a oferta foi medida.
+    expect(texto).toContain("remédio: proven · oferta: bun-mirror-removal")
   })
 
   it("as opções: `--in-image` troca o LUGAR e `--sem-duble` a FORMA", () => {
@@ -499,13 +632,18 @@ describe("o relatório e o CLI", () => {
     )
     const texto = linhas.join("\n")
     expect(texto).toContain("SEM o dublê dos guards irmãos")
-    expect(texto).toContain("o defeito é um workflow NOVO")
+    // O escopo declarado nomeia as DUAS classes de defeito (fase A e fase B):
+    // uma lista que só falasse da fase A descreveria menos do que a prova mede.
+    expect(texto).toContain("os defeitos são arquivos NOVOS")
+    expect(texto).toContain("fase B, encoding/link")
   })
 
   it("o script usa a MESMA prova do doctor e da suíte (uma régua só, dois lugares)", () => {
     const fonte = readFileSync(SCRIPT, "utf8")
+    // As TRÊS entradas do módulo das provas: o bloqueio do fixture, o hook real
+    // sem dublê e a OFERTA do remédio — nenhuma delas reimplementada aqui.
     expect(fonte).toContain(
-      'import { proveCommitBlocks, proveRealHookBlocks } from "./pre-commit-proof.mjs"',
+      'import { proveCommitBlocks, proveRealHookBlocks, proveRemedyOffered } from "./pre-commit-proof.mjs"',
     )
     // O cliente do docker e o "o docker responde?" também vêm de um dono só.
     expect(fonte).toContain('from "./prove-image-contract.mjs"')

@@ -74,12 +74,27 @@
 //     runtime) e o REMÉDIO. É a forma BARATA: o fixture não tem o `package.json`
 //     do projeto, e a fase C real (`lint-staged`, `typecheck`) não caberia nele;
 //   - `--sem-duble` — o hook REAL sobre uma CÓPIA do checkout (`proveRealHookBlocks`):
-//     os CINCO guards de fase A rodam de VERDADE (sem wrapper, sem dublê), o gate
-//     é o real e a fase C roda real, porque a cópia tem o `package.json` e o
-//     `node_modules`. É o que fecha o limite que a forma padrão declara — e é a
-//     forma que responde "quem, dentro da FASE A, recusa o corpo quebrado": o
-//     refutador tem de ser ÚNICO, e tem de ser o GATE, com os cinco irmãos
-//     aprovando o MESMO índice.
+//     as DUAS fases rodam de VERDADE (sem wrapper, sem dublê) — os CINCO guards
+//     de fase A, o gate e os DEZ membros da fase B —, e a fase C roda real,
+//     porque a cópia tem o `package.json` e o `node_modules`. É o que fecha o
+//     limite que a forma padrão declara, e responde "quem recusa" nas duas
+//     fases: na fase A o refutador tem de ser ÚNICO, e tem de ser o GATE, com os
+//     cinco irmãos aprovando o MESMO índice; na fase B, os defeitos de
+//     encoding/link são recusados, a DESCIDA do runner nomeia o guard de cada
+//     classe e o arquivo REMENDADO entra.
+//
+// E A FORMA PADRÃO MEDE DUAS METADES, não uma (o exit code é o da PIOR delas):
+//
+//   1. o BLOQUEIO (`proveCommitBlocks`): o corpo `run:` quebrado no índice é
+//      recusado e o mesmo commit com o corpo fechado entra;
+//   2. a OFERTA (`proveRemedyOffered`): o commit que APAGA a declaração de espelho
+//      (o arg `BUN_VERSION` do build site) é recusado pelo guard DONO, a oferta
+//      nomeia a classe `bun-mirror-removal` — medida pela CLI `--oferta` do MESMO
+//      script que o hook executa —, o hook a publica no próprio commit, e o fixer
+//      do dono devolve a declaração ao índice: o `--staged` volta a 0 e o commit
+//      de CONTROLE entra. É a metade que faz o job medir o REMÉDIO e não só o
+//      bloqueio, e ela rodava só no simulador (a suíte e o ensaio do pty) até
+//      aqui.
 //
 // O QUE A FORMA PADRÃO **NÃO** PROMETE (escopo declarado, não esquecimento):
 //
@@ -108,7 +123,7 @@ import { dirname, join } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 import { resolveBash } from "./hook-simulator.mjs"
-import { proveCommitBlocks, proveRealHookBlocks } from "./pre-commit-proof.mjs"
+import { proveCommitBlocks, proveRealHookBlocks, proveRemedyOffered } from "./pre-commit-proof.mjs"
 // O cliente do docker e o "o docker responde?" têm UM dono cada (`dockerCall` e
 // `dockerAvailable` do `prove-image-contract`, `probeDigest`/`runnerImageRef` do
 // `runner-shells`): uma segunda implementação de "o docker respondeu" divergiria
@@ -144,6 +159,7 @@ export const EXIT = {
  *   runtime?: {node: string, nodeVersion: string, git: string|null, bash: string}|null,
  *   facts?: Record<string,string>|null, unparsed?: string[],
  *   proof?: {state: string, detail: string, evidence: object|null}|null,
+ *   remedeio?: {state: string, detail: string, evidence: object|null}|null,
  *   argv?: string, inner?: string,
  * }} ReporteDoLugar
  */
@@ -186,24 +202,27 @@ export const IMAGE_REF_ENV = "PROVA_IMAGE_REF"
 
 /** O que NÃO é negociável: o hook, o guard que ele executa e o fixture. */
 export const LIMITS = [
-  "os guards IRMÃOS do hook rodam no DUBLÊ DECLARADO do simulador (`bun`/`bash`/`node` deles devolvem 0): quem roda de verdade é o guard do defeito, com o `node` REAL do runtime. Quem roda os irmãos DE VERDADE é o `--sem-duble`, que mede os cinco guards de fase A com o mesmo `--staged` — o limite desta forma, não do comando",
+  "os guards IRMÃOS do hook rodam no DUBLÊ DECLARADO do simulador (`bun`/`bash`/`node` deles devolvem 0): quem roda de verdade é o guard do defeito, com o `node` REAL do runtime. Quem roda os irmãos DE VERDADE é o `--sem-duble`, que mede os cinco guards de fase A com o mesmo `--staged` E os dez membros da fase B sobre o índice do defeito de encoding/link — o limite desta forma, não do comando",
   "o repositório da prova é o FIXTURE do simulador (o mesmo da suíte e do doctor), não o checkout do PR",
   "a ref é a DECLARADA pelo repositório (IMAGE_REGISTRY/IMAGE_NAMESPACE/BUN_VERSION): o digest sai como proveniência medida, mas quem prova qual imagem o runner registrou é o `check-runner-labels`/o smoke",
+  "a metade do REMÉDIO (a classe `bun-mirror-removal`) roda no MESMO fixture do simulador, com o guard DONO real e os irmãos de fase no dublê: ela mede a OFERTA e o fecho daquele defeito, não o resto da fase — quem mede a fase inteira é o `--sem-duble`",
+  "a OFERTA é medida pela CLI `--oferta` do MESMO script que o hook executa (a cópia do fixture, byte a byte) e o vínculo com o hook é medido na saída do commit — o bloco da oferta é UMA escrita do remédio, e é por isso que ele pode ser requisito sem ser flaky; o caminho exercitado é o NÃO interativo (`NO_PROMPT` do simulador), e quem mede o interativo é o ensaio do pty",
 ]
 
 /**
  * O escopo declarado da forma `--sem-duble` — o que ela NÃO promete.
  *
  * A primeira entrada do `LIMITS` acima (o dublê dos irmãos) sai daqui: nesta
- * forma os cinco guards de fase A rodam de verdade, e o refutador tem de ser o
- * gate. O que sobra é o que ela realmente não cobre: o RECORTE do defeito, a
- * origem da árvore e o teto de tempo por comando.
+ * forma os cinco guards de fase A e os dez membros da fase B rodam de verdade, e
+ * o refutador da fase A tem de ser o gate. O que sobra é o que ela realmente não
+ * cobre: o RECORTE do defeito, a origem da árvore e o teto de tempo por comando.
  */
 export const REAL_LIMITS = [
-  "o defeito é um workflow NOVO (`.github/workflows/prova-fase-a-real.yml`): um defeito num workflow EXISTENTE faria outros guards reprovarem junto, e a recusa deixaria de ser atribuível a um guard só",
+  "os defeitos são arquivos NOVOS — o workflow `.github/workflows/prova-fase-a-real.yml` (fase A) e um `.ts`/um `.md` (fase B, encoding/link): um defeito num arquivo EXISTENTE faria outros guards reprovarem junto, e a recusa deixaria de ser atribuível a um guard só",
   "a árvore da prova é uma CÓPIA do checkout (com o commit base sintético), não o commit do PR: quem mede o commit do PR são as pipelines do merge",
   "o REMÉDIO fica sem operador (`NO_PROMPT_ENV` do simulador): a prova mede o caminho NÃO interativo — quem mede o interativo é o ensaio do pty",
   "o teto de tempo por comando do simulador (`runGit`, 60s): um commit de controle mais lento que isso sai como INDETERMINADO, nunca como verde",
+  "a OFERTA do remédio NÃO é medida nesta forma (`--sem-duble`): quem a mede é a forma padrão (`proveRemedyOffered`), no MESMO runtime — o job roda os dois passos, e é o primeiro que carrega esta metade",
 ]
 
 /**
@@ -276,6 +295,23 @@ export function evidenceLines(r) {
   }
   if (r.image) linhas.push(`${EVIDENCE_PREFIX}IMAGE=${r.image}`)
   if (r.digest) linhas.push(`${EVIDENCE_PREFIX}DIGEST=${r.digest}`)
+  // A metade do REMÉDIO: o estado dela, as CLASSES que a oferta mediu e o fecho
+  // do ciclo (o fixer do dono + o commit de controle). Sai por chave própria
+  // porque é uma metade própria — quem lê o container não precisa deduzir do
+  // estado composto o que cada uma publicou.
+  if (r.remedeio) {
+    linhas.push(`${EVIDENCE_PREFIX}REMEDEIO=${r.remedeio.state}`)
+    const oferecidas = r.remedeio.evidence?.oferta?.classes ?? []
+    linhas.push(`${EVIDENCE_PREFIX}OFERTA=${oferecidas.map((c) => c.id).join(",") || "vazia"}`)
+    const fixer = r.remedeio.evidence?.oferta?.classe?.fixer
+    if (fixer) linhas.push(`${EVIDENCE_PREFIX}OFERTA-FIXER=${fixer}`)
+    const c = r.remedeio.evidence?.controle
+    if (c) {
+      linhas.push(
+        `${EVIDENCE_PREFIX}OFERTA-CONTROLE=fixer:${c.fixer} guarda:${c.guarda} exit:${c.status} objetos:${c.objetosDeCommit} head:${c.conteudoEmHead === "a declaração restaurada" ? "restaurada" : "outro"}`,
+      )
+    }
+  }
   const defeito = r.proof?.evidence?.defeito
   if (defeito) {
     linhas.push(
@@ -308,6 +344,10 @@ export function evidenceLines(r) {
  * `docker run`) e pelos testes. Linha que ele não entende vira `unparsed`, nunca
  * um valor inventado.
  *
+ * A CHAVE admite hífen (`PROVA-OFERTA-FIXER`): as metades novas publicam mais de
+ * um campo por assunto, e achatar o nome em `OFERTAFIXER` esconderia a relação
+ * entre eles justamente de quem lê a evidência.
+ *
  * @param {string} output
  * @returns {{facts: Record<string,string>, unparsed: string[]}}
  */
@@ -315,7 +355,7 @@ export function parseInImage(output) {
   const facts = {}
   const unparsed = []
   for (const linha of String(output ?? "").split("\n")) {
-    const m = /^PROVA-([A-Z]+)=(.*)$/.exec(linha.trim())
+    const m = /^PROVA-([A-Z][A-Z-]*)=(.*)$/.exec(linha.trim())
     if (!m) {
       if (linha.includes(EVIDENCE_PREFIX)) unparsed.push(linha.trim())
       continue
@@ -374,9 +414,37 @@ export function innerReport({
     deps.prove ??
     (semDuble ? (opts) => proveRealHookBlocks(opts) : (opts) => proveCommitBlocks(opts))
   const proof = prove({ root })
+  // A SEGUNDA METADE da forma padrão: o MESMO runtime mostrando que o hook não
+  // só BLOQUEIA o defeito da classe — ele OFERECE o remendo dela, e o fixer do
+  // dono fecha o ciclo. Na forma `--sem-duble` ela não roda (o escopo daquela é a
+  // fase A inteira, e a oferta é medida pelo passo padrão do MESMO job).
+  const remedeio = semDuble ? null : (deps.proveRemedy ?? proveRemedyOffered)({ root })
+  const state = combineStates(proof.state, remedeio?.state)
   const onde = ref === null ? "" : ` dentro da imagem '${ref}'`
   const qual = semDuble ? " [sem o dublê dos guards irmãos]" : ""
-  return { ...base, state: proof.state, detail: `${proof.detail}${qual}${onde}`, proof }
+  const detail =
+    remedeio === null
+      ? `${proof.detail}${qual}${onde}`
+      : remedeio.state === proof.state
+        ? `${proof.detail}${qual}${onde} E, no MESMO runtime, ${remedeio.detail}`
+        : `${remedeio.detail}${onde} (a outra metade desta forma, o BLOQUEIO do defeito, está '${proof.state}': ${proof.detail})`
+  return { ...base, state, detail, proof, remedeio }
+}
+
+/**
+ * O estado COMPOSTO das metades de uma forma — a regra é a do repositório:
+ * `violated` (a promessa foi quebrada) vence `unavailable` (não deu para medir),
+ * que vence `proven`. Uma metade que não pôde ser medida NUNCA vira verde por
+ * omissão: a outra estar provada não empresta veredito a ela.
+ *
+ * @param {...(string|null|undefined)} states
+ * @returns {"proven"|"violated"|"unavailable"}
+ */
+export function combineStates(...states) {
+  const presentes = states.filter((s) => typeof s === "string")
+  if (presentes.includes("violated")) return "violated"
+  if (presentes.includes("unavailable") || presentes.length === 0) return "unavailable"
+  return "proven"
 }
 
 /**
@@ -578,10 +646,18 @@ function detailFromFacts(state, facts, output) {
   const defeito = facts.DEFEITO ?? "não publicado"
   const controle = facts.CONTROLE ?? "não publicado"
   const runtime = facts.NODE ? `${facts.NODE} (git: ${facts.GIT ?? "ausente"})` : "não publicado"
+  // A metade do remédio, quando o container a publicou: as classes da oferta e o
+  // fecho do ciclo. Ausente é ausente (`null`) — não vira "nada a remendar".
+  const remedio =
+    facts.REMEDEIO === undefined
+      ? ""
+      : `; e o REMÉDIO da classe apagada: ${facts.REMEDEIO} com a oferta '${facts.OFERTA ?? "não publicada"}'` +
+        (facts["OFERTA-FIXER"] ? ` (fixer \`${facts["OFERTA-FIXER"]}\`)` : "") +
+        (facts["OFERTA-CONTROLE"] ? `, fecho medido: ${facts["OFERTA-CONTROLE"]}` : "")
   if (state === "proven") {
     return (
       `DENTRO da imagem '${facts.IMAGE ?? "?"}', um 'git commit' de verdade com o corpo 'run:' quebrado no índice ` +
-      `foi RECUSADO (${defeito}) e o mesmo commit com o corpo fechado ENTROU (${controle}); ` +
+      `foi RECUSADO (${defeito}) e o mesmo commit com o corpo fechado ENTROU (${controle})${remedio}; ` +
       `runtime medido no container: ${runtime}`
     )
   }
@@ -644,6 +720,18 @@ export function renderReport(report, { emit = console.log } = {}) {
     linha(
       `   medido no container: defeito ${report.facts.DEFEITO ?? "?"} · controle ${report.facts.CONTROLE ?? "?"}`,
     )
+    if (report.facts.REMEDEIO !== undefined) {
+      linha(
+        `   medido no container (remédio): ${report.facts.REMEDEIO} · oferta ${report.facts.OFERTA ?? "?"}` +
+          `${report.facts["OFERTA-FIXER"] ? ` · fixer ${report.facts["OFERTA-FIXER"]}` : ""}` +
+          `${report.facts["OFERTA-CONTROLE"] ? ` · ${report.facts["OFERTA-CONTROLE"]}` : ""}`,
+      )
+    }
+  }
+  if (report.remedeio) {
+    const ids =
+      (report.remedeio.evidence?.oferta?.classes ?? []).map((c) => c.id).join(", ") || "vazia"
+    linha(`   remédio: ${report.remedeio.state} · oferta: ${ids}`)
   }
   if (report.argv) linha(`   comando: ${report.argv}`)
   if (report.inner) {
@@ -701,7 +789,7 @@ export function main({ argv = process.argv.slice(2), env = process.env, deps = {
         "Usage:\n" +
         "  node scripts/prove-pre-commit-in-runner.mjs [--sem-duble] [--in-image] [--image <ref>] [--docker <cli>] [--root <dir>] [--json]\n\n" +
         "  (sem --sem-duble) o hook do checkout é somado ao dublê dos guards irmãos (o fixture)\n" +
-        "  (--sem-duble)     o hook REAL sobre uma cópia do checkout — os CINCO guards de fase A e o gate rodam de verdade\n\n" +
+        "  (--sem-duble)     o hook REAL sobre uma cópia do checkout — as duas fases rodam de verdade (os CINCO guards de fase A, o gate e os dez membros da fase B)\n\n" +
         "Exit codes: 0 provado · 1 violado · 2 indeterminado · 3 uso inválido",
     )
     return EXIT.PROVEN

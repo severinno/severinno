@@ -500,8 +500,13 @@ jobs:
           BUN_VERSION: ${{ vars.BUN_VERSION }}
         run: node scripts/prove-pre-commit-in-runner.mjs --sem-duble
 
+      # A forma padrão mede DUAS metades (o exit code é o da pior): além do
+      # bloqueio, ela exercita o REMÉDIO — a OFERTA da classe `bun-mirror-removal`
+      # medida pela CLI `--oferta` do mesmo script que o hook executa, o vínculo
+      # provado na saída do commit, e o fixer do dono fechando o ciclo (o
+      # `--staged` volta a 0 e o commit de CONTROLE entra).
       - name: Summary
-        run: echo "✅ Um 'git commit' de verdade DENTRO do container do runner invocou o hook REAL do checkout — o corpo 'run:' quebrado no índice foi RECUSADO (zero objetos de commit) e o mesmo commit com o corpo fechado ENTROU (o CONTROLE). E a MESMA medição sem o dublê dos irmãos — a fase A REAL (os cinco guards do índice, rodados de verdade) aprova o índice e o GATE é o ÚNICO refutador do corpo quebrado."
+        run: echo "✅ Um 'git commit' de verdade DENTRO do container do runner invocou o hook REAL do checkout — o corpo 'run:' quebrado no índice foi RECUSADO (zero objetos de commit) e o mesmo commit com o corpo fechado ENTROU (o CONTROLE). A MESMA medição exercita o REMÉDIO da declaração de espelho apagada — o guard dono recusa o commit que remove o arg `BUN_VERSION`, a OFERTA nomeia a classe `bun-mirror-removal` (e o hook a publica no próprio commit), e o fixer do dono devolve a declaração ao índice — o `--staged` volta a 0 e o commit de CONTROLE entra. E a forma sem o dublê dos irmãos — a fase A REAL (os cinco guards do índice, rodados de verdade) aprova o índice e o GATE é o ÚNICO refutador do corpo quebrado."
 
   # ── TypeScript check ─────────────────────────────────────────────────────
   typecheck:

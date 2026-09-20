@@ -448,10 +448,24 @@ export function runCommit(dir, extraEnv = {}, args = ["commit", "-m", "commit do
  * }} MetadeDaProva
  * @typedef {{defeito: MetadeDaProva, controle?: MetadeDaProva}} ProofEvidence
  *
- * O veredito da prova. `proven` = o hook BLOQUEOU o corpo quebrado no índice E o
- * controle comitou (as duas metades; sem a segunda, "não commitou" seria
- * indistinguível de um fixture que não sabe commitar). `violated` = o defeito
- * ENTROU no histórico. `unavailable` = não deu para provar (e nunca vira verde).
+ * A evidência da fase B, por defeito declarado em `FASE_B_DEFEITOS`: o commit do
+ * defeito (recusado), os membros da fase B medidos no MESMO índice (com o argv de
+ * cada um), a descida do runner (os comandos e quem recusou), a fase A + o gate
+ * nesse índice, e o CONTROLE do defeito.
+ *
+ * @typedef {{
+ *   id: string, rotulo: string, arquivo: string,
+ *   recusadoresEsperados: {membros: string[], descida: string[]},
+ *   defeito: object|null, membros: object[], descida: object|null,
+ *   irmaos: object[], gate: object|null, controle: object|null,
+ * }} MetadeDaFaseB
+ * @typedef {{defeito: object, controle?: object, irmaos?: object[], gate?: object, faseB?: MetadeDaFaseB[]}} ProofEvidenceReal
+ *
+ * O veredito da prova. `proven` = o hook BLOQUEOU o corpo quebrado no índice, a
+ * fase B recusou os defeitos de encoding/link com a atribuição fechada, e os
+ * CONTROLES comitaram (sem eles, "não commitou" seria indistinguível de um
+ * fixture que não sabe commitar). `violated` = o defeito ENTROU no histórico.
+ * `unavailable` = não deu para provar (e nunca vira verde).
  *
  * @typedef {{
  *   state: "proven"|"violated"|"unavailable",
@@ -1018,7 +1032,7 @@ export function proveRemedyOffered({ root = REPO_ROOT, deps = /** @type {any} */
 // de verdade — porque a cópia tem o `package.json` e o `node_modules` que o
 // fixture não tem.
 //
-// TRÊS METADES, e a segunda é o que a primeira NÃO consegue dizer sozinha:
+// CINCO METADES, e a segunda é o que a primeira NÃO consegue dizer sozinha:
 //
 //   1. o DEFEITO (corpo `run:` aberto, num workflow NOVO) tem de ser RECUSADO:
 //      exit não-zero e o HEAD intacto (a contagem de objetos não mede isso aqui: a
@@ -1032,7 +1046,16 @@ export function proveRemedyOffered({ root = REPO_ROOT, deps = /** @type {any} */
 //      pode virar um gate vermelho por acaso (um requisito de texto é flaky por
 //      construção — e o exit code, não);
 //   3. o CONTROLE (o mesmo arquivo com o corpo fechado) ENTRA — sem ele,
-//      "recusou" seria indistinguível de um ambiente que não sabe commitar.
+//      "recusou" seria indistinguível de um ambiente que não sabe commitar;
+//   4. os DEFEITOS de FASE B (um byte 0x97 num `.ts` NOVO e um link interno
+//      quebrado num `.md` NOVO) têm de ser RECUSADOS, com o HEAD intacto — a
+//      metade 3 só media a fase B pelo lado que PASSA (o controle entrava);
+//   5. a ATRIBUIÇÃO da fase B: os DEZ membros rodados DIRETO sobre o MESMO
+//      índice (veredito por exit code) e a DESCIDA do runner nomeando o guard de
+//      cada classe (`check-utf8.sh`, `check-readme-anchors.mjs`) — com o
+//      conjunto medido igual ao DECLARADO nos dois sentidos (é o que impede a
+//      medição de virar um relatório), a fase A e o gate verdes nesse índice, e
+//      o CONTROLE de cada defeito (o arquivo REMENDADO) entrando.
 //
 // O defeito é um arquivo NOVO justamente para o refutador ser ÚNICO: um defeito
 // num workflow EXISTENTE faria outros guards (o contrato de merge do índice, a
@@ -1098,6 +1121,241 @@ export const FASE_A_RECORTE = "--staged"
  * que pode ser reescrita sem mudar o que o gate mede.
  */
 export const GATE_MARCADOR = "bash -n"
+
+// =============================================================================
+// A FASE B — os guards GLOBAIS, medidos com um defeito NO ÍNDICE
+// =============================================================================
+//
+// A metade 3 (o CONTROLE) já media a fase B pelo lado que passa: com o corpo
+// fechado o commit ENTRA. O que ela NÃO dizia é quem RECUSA um defeito da classe
+// dela — e "os guards globais rodam" (por leitura do hook) não é a mesma coisa
+// que "estes guards recusam ESTE índice".
+//
+// Aqui a fase B é medida como a fase A já era: o MESMO índice do defeito, cada
+// membro rodado direto, o veredito por EXIT CODE. O membro do encoding é um
+// RUNNER (17 guards dentro, com `set -e`: ele para no PRIMEIRO) — então além do
+// membro há a DESCIDA: os comandos que o próprio runner declara são lidos do
+// arquivo dele e rodados um a um, e são eles que NOMEIAM o guard que recusou.
+//
+// A lista de membros é a mesma do hook e NÃO é lida dele de propósito: um membro
+// a mais no hook tem de aparecer AQUI, à mão, em vez de entrar na prova por conta
+// de um `grep` que ninguém conferiu (o `check-hook-ci-parity` cobre o outro lado,
+// o de o hook rodar o mesmo comando do CI).
+
+/**
+ * Os membros da FASE B do `.husky/pre-commit`, com o comando EXATO de cada um.
+ *
+ * `estagio: true` marca o membro cujo argumento é a lista de arquivos do índice
+ * (o `prettier --check` do recorte): a prova calcula a lista do MESMO jeito que o
+ * hook — `git diff --cached --name-only --diff-filter=ACMR` MENOS os binários.
+ */
+export const FASE_B_MEMBROS = [
+  { id: "encoding-runner", cmd: "bash", args: ["scripts/run-encoding-guards.sh"] },
+  { id: "barrel-lint", cmd: "bun", args: ["run", "barrel-lint"] },
+  { id: "pii-allowlist", cmd: "bun", args: ["run", "check:pii-allowlist"] },
+  { id: "registry-source", cmd: "bun", args: ["run", "check:registry-source"] },
+  { id: "forge-parity", cmd: "bun", args: ["run", "check:forge-parity"] },
+  { id: "forge-workflow-scope", cmd: "bun", args: ["run", "check:forge-workflow-scope"] },
+  { id: "hook-ci-parity", cmd: "node", args: ["scripts/check-hook-ci-parity.mjs"] },
+  { id: "hook-commands", cmd: "node", args: ["scripts/check-hook-commands.mjs"] },
+  { id: "pipefail-sigpipe", cmd: "node", args: ["scripts/check-pipefail-sigpipe.mjs"] },
+  {
+    id: "prettier-format",
+    cmd: "bun",
+    args: ["x", "prettier", "--check", "--ignore-unknown"],
+    estagio: true,
+  },
+]
+
+/**
+ * O `grep -vE` do hook, na mesma forma: o que o `prettier --check` do recorte
+ * NÃO recebe (binário não tem parser, e listá-lo faria o membro reprovar por
+ * "parser" em vez de por formatação). O teste cobra que a linha do hook traga
+ * ESTA regex — duas cópias divergiriam no dia em que uma fosse ajustada.
+ */
+export const STAGED_FORMAT_EXCLUSAO = "\\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$"
+
+/**
+ * Os arquivos que o membro de formatação recebe: os do ÍNDICE, sem os binários —
+ * a mesma régua do hook (`git diff --cached --name-only --diff-filter=ACMR`).
+ *
+ * @param {string} dir
+ * @returns {string[]}
+ */
+export function arquivosDeFormatoDoIndice(dir) {
+  const r = runGit(dir, ["diff", "--cached", "--name-only", "--diff-filter=ACMR"])
+  if (r.status !== 0) return []
+  const binarios = new RegExp(STAGED_FORMAT_EXCLUSAO)
+  return r.output
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "" && !binarios.test(l))
+}
+
+/**
+ * O membro do encoding é um RUNNER: os guards que ele executa estão declarados no
+ * PRÓPRIO arquivo dele (`bash scripts/…`, `node scripts/…`), e é essa lista que a
+ * descida percorre. Ler a declaração (em vez de cravar 17 comandos aqui) é o que
+ * faz um guard NOVO no runner entrar na medição sozinho — e um comando que o
+ * runner declare e o checkout não tenha aparece como refutador NOMEADO (exit != 0
+ * do próprio shell), nunca como verde por omissão.
+ */
+export const RUNNER_ENCODING = "scripts/run-encoding-guards.sh"
+
+/**
+ * Os DEFEITOS da fase B medidos pela prova: um de ENCODING e um de LINK — as
+ * duas classes que os guards globais existem para pegar —, cada um num arquivo
+ * NOVO (o refutador tem de ser nomeável, e um defeito num arquivo existente
+ * mexeria em outros guards).
+ *
+ * `recusadoresEsperados` é DECLARADO e CONFERIDO nos dois sentidos: um refutador
+ * declarado que ficasse verde (o guard parou de pegar a classe) e um vermelho NÃO
+ * declarado (outro guard passou a recusar) derrubam a prova com o nome do guard.
+ * É o que impede a medição de virar um relatório.
+ *
+ * A lista é o que a EXECUÇÃO mediu no repositório (o `--sem-duble` a mede de
+ * verdade): o refutador da classe ENCODING é o `encoding-runner`, e o da classe
+ * LINK é a descida até o `check-readme-anchors.mjs`. O membro de formatação NÃO
+ * aparece nos dois — e isso é medido, não suposto: o `prettier --check` julga sob
+ * a config do repositório, e é ela que decide o veredito dele (sem o `.prettierrc`
+ * do repo o mesmo byte inválido sai 1; com ele, 0). Quem faz essa distinção é o
+ * FIXTURE, que precisa da config no checkout sintético — um membro declarado a
+ * mais por causa de um fixture sem config seria a medição do fixture, não do gate.
+ */
+export const FASE_B_DEFEITOS = [
+  {
+    id: "utf8-num-ts",
+    rotulo: "o byte 0x97 num `.ts` NOVO (a classe ENCODING)",
+    arquivo: "src/lib/prova-fase-b-utf8.ts",
+    // Em BYTES, e não em texto: é o byte inválido que o guard mede.
+    bytes: [...Buffer.from('export const prova = "'), 0x97, ...Buffer.from('"\n')],
+    remendo: 'export const prova = "ok"\n',
+    recusadoresEsperados: {
+      membros: ["encoding-runner"],
+      descida: ["bash scripts/check-utf8.sh --dry-run --ci src/"],
+    },
+  },
+  {
+    id: "link-quebrado",
+    rotulo: "um link interno quebrado num doc NOVO (a classe LINK)",
+    arquivo: "docs/prova-fase-b-link.md",
+    bytes: [
+      ...Buffer.from("# Prova de link\n\nVeja [o guard](GUARDS.md#ancora-que-nao-existe).\n"),
+    ],
+    remendo: "# Prova de link\n\nVeja [o guard](docs/GUARDS.md).\n",
+    recusadoresEsperados: {
+      membros: ["encoding-runner"],
+      descida: ["node scripts/check-readme-anchors.mjs"],
+    },
+  },
+]
+
+/**
+ * Escreve o DEFEITO da fase B no arquivo declarado e o leva ao ÍNDICE — é o
+ * commit que dá o veredito, então o defeito tem de estar no que o commit carrega
+ * (na árvore só, ele nem seria julgado pelo recorte `--staged` da fase A e a
+ * prova estaria medindo outro estado).
+ *
+ * @param {string} dir
+ * @param {{arquivo: string, bytes: number[]}} defeito
+ * @param {{runGit: Function}} deps
+ */
+function escritaDoDefeitoDaFaseB(dir, defeito, { runGit }) {
+  const caminho = join(dir, defeito.arquivo)
+  mkdirSync(dirname(caminho), { recursive: true })
+  writeFileSync(caminho, Buffer.from(defeito.bytes))
+  const r = runGit(dir, ["add", defeito.arquivo])
+  if (r.status !== 0) throw new Error(`git add ${defeito.arquivo} falhou: ${r.output}`)
+}
+
+/**
+ * O REMENDO do mesmo arquivo, também levado ao índice: é o CONTROLE do defeito de
+ * fase B (sem ele, "a fase B recusou" não se distingue de "o arquivo não entra").
+ *
+ * @param {string} dir
+ * @param {{arquivo: string, remendo: string}} defeito
+ * @param {{runGit: Function}} deps
+ */
+function escritaDoRemendoDaFaseB(dir, defeito, { runGit }) {
+  writeFileSync(join(dir, defeito.arquivo), defeito.remendo, "utf8")
+  const r = runGit(dir, ["add", defeito.arquivo])
+  if (r.status !== 0) throw new Error(`git add ${defeito.arquivo} (remendo) falhou: ${r.output}`)
+}
+
+/**
+ * Roda UM membro da fase B, no diretório dado, com o MESMO comando do hook. O
+ * `node`/`bun`/`bash` são resolvidos pelo PATH do processo que executa a prova —
+ * dentro da imagem do runner são os DO RUNTIME.
+ *
+ * @param {string} dir
+ * @param {{id: string, cmd: string, args: string[], estagio?: boolean}} membro
+ * @param {{run?: typeof spawnSync, node?: string, estagio?: string[]}} [deps]
+ * @returns {{guard: string, status: number|null, linha: string, argv: string[]}}
+ */
+export function rodaMembroDeFaseB(dir, membro, deps = {}) {
+  const run = deps.run ?? spawnSync
+  const node = deps.node ?? process.execPath
+  const cmd = membro.cmd === "node" ? node : membro.cmd
+  const argv = [...membro.args, ...(membro.estagio ? (deps.estagio ?? []) : [])]
+  if (membro.estagio && argv.length === membro.args.length) {
+    // Sem arquivo de índice não há o que formatar: o membro é NÃO MEDIDO, e não
+    // um verde por omissão (status `null` é tratado como medição que faltou).
+    return { guard: membro.id, status: null, linha: "", argv }
+  }
+  const r = run(cmd, argv, { cwd: dir, encoding: "utf8", timeout: 300_000, input: "" })
+  const saida = `${r?.stdout ?? ""}${r?.stderr ?? ""}`.trim()
+  return {
+    guard: membro.id,
+    status: r?.status ?? null,
+    linha: saida.split("\n").filter(Boolean).slice(-1)[0] ?? "",
+    argv,
+  }
+}
+
+/**
+ * A DESCIDA do runner do encoding: os comandos que ele declara, rodados um a um,
+ * para o guard que recusou ser NOMEADO (o runner sozinho devolve um exit code só).
+ *
+ * @param {string} dir
+ * @param {{run?: typeof spawnSync, node?: string}} [deps]
+ * @returns {{comandos: string[], recusadores: {comando: string, status: number|null}[]|null, indisponivel: string|null}}
+ */
+export function descidaDoEncodingRunner(dir, deps = {}) {
+  const run = deps.run ?? spawnSync
+  const node = deps.node ?? process.execPath
+  const caminho = join(dir, RUNNER_ENCODING)
+  if (!existsSync(caminho)) {
+    return {
+      comandos: [],
+      recusadores: null,
+      indisponivel: `${RUNNER_ENCODING} não existe neste checkout`,
+    }
+  }
+  const comandos = readFileSync(caminho, "utf8")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => /^(bash|node|bun) /.test(l))
+  if (comandos.length === 0) {
+    return {
+      comandos: [],
+      recusadores: null,
+      indisponivel: `${RUNNER_ENCODING} não declara comando nenhum — a descida não teria o que medir`,
+    }
+  }
+  const recusadores = []
+  for (const comando of comandos) {
+    const [cmd, ...args] = comando.split(/\s+/)
+    const r = run(cmd === "node" ? node : cmd, args, {
+      cwd: dir,
+      encoding: "utf8",
+      timeout: 300_000,
+      input: "",
+    })
+    const status = r?.status ?? null
+    if (status !== 0) recusadores.push({ comando, status })
+  }
+  return { comandos, recusadores, indisponivel: null }
+}
 
 /**
  * Os veredictos de um relatório do hook, lidos do TEXTO (as linhas que os
@@ -1190,10 +1448,23 @@ export function shaDoHead(dir) {
  * A prova do bloqueio SEM O DUBLÊ.
  *
  * Mesmo contrato de `proveCommitBlocks` (state/detail/evidence/remedies) e a
- * mesma régua tri-estado: `proven` exige as TRÊS metades medidas, `violated` é o
+ * mesma régua tri-estado: `proven` exige as CINCO metades medidas, `violated` é o
  * defeito que ENTROU, e tudo o que for condição de medição — git, bash, a cópia,
  * o bit de execução do hook, um irmão que reprovou — sai como `unavailable`
  * NOMEANDO o que faltou.
+ *
+ * AS METADES:
+ *   1. o DEFEITO da fase A (corpo `run:` aberto num workflow novo) tem de ser
+ *      RECUSADO, com o HEAD intacto;
+ *   2. a ATRIBUIÇÃO por exit code: os cinco guards de fase A aprovam o MESMO
+ *      índice e o GATE é quem recusa;
+ *   3. o CONTROLE: o corpo fechado tem de ENTRAR;
+ *   4. o DEFEITO da fase B (um de ENCODING e um de LINK, num arquivo novo cada)
+ *      tem de ser RECUSADO, com o HEAD intacto;
+ *   5. a ATRIBUIÇÃO da fase B: os membros da fase B rodados DIRETO sobre o MESMO
+ *      índice (veredito por exit code) e a DESCIDA do runner do encoding nomeando
+ *      o guard que recusou — e o CONTROLE de cada defeito (o arquivo REMENDADO)
+ *      entrando.
  *
  * @param {{root?: string, deps?: {run?: typeof spawnSync, node?: string, existe?: (p: string) => boolean}}} [opts]
  * @returns {CommitBlockProof}
@@ -1212,6 +1483,31 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
   if (hookSource(root) === null) faltando.push(`${join(root, ".husky", "pre-commit")} não existe`)
   for (const g of [...FASE_A_GUARDS, GUARD]) {
     if (!existe(join(root, "scripts", g))) faltando.push(`scripts/${g}`)
+  }
+  // As premissas da FASE B: cada defeito precisa de um arquivo NOVO (o refutador
+  // tem de ser nomeável) e o runner do encoding tem de DECLARAR os comandos que a
+  // descida espera medir — um comando que ele não declara mais seria medido por
+  // outra régua (ou não seria), e a atribuição passaria a falar de outro conjunto.
+  const linhasDoRunner = existe(join(root, RUNNER_ENCODING))
+    ? readFileSync(join(root, RUNNER_ENCODING), "utf8")
+        .split("\n")
+        .map((l) => l.trim())
+    : null
+  if (linhasDoRunner === null)
+    faltando.push(`scripts/${RUNNER_ENCODING} (a descida da fase B lê os comandos dele)`)
+  for (const d of FASE_B_DEFEITOS) {
+    if (existe(join(root, d.arquivo))) {
+      faltando.push(
+        `${d.arquivo} JÁ EXISTE no checkout (o defeito de fase B '${d.id}' precisa de um arquivo NOVO para o refutador ser nomeável)`,
+      )
+    }
+    for (const comando of d.recusadoresEsperados.descida) {
+      if (linhasDoRunner !== null && !linhasDoRunner.includes(comando)) {
+        faltando.push(
+          `o runner (${RUNNER_ENCODING}) não declara '${comando}' — a descida do defeito '${d.id}' mediria outro conjunto`,
+        )
+      }
+    }
   }
   // O defeito precisa ser um arquivo NOVO: num workflow EXISTENTE outros guards
   // reprovariam junto e a recusa deixaria de ser atribuível ao gate.
@@ -1286,6 +1582,9 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
         citouArquivo: atribuicao.citouArquivo,
       },
       irmaos: [],
+      // As metades 4 e 5 (a fase B com o defeito no índice) preenchem esta lista
+      // por defeito declarado em `FASE_B_DEFEITOS`.
+      faseB: [],
     }
     if (bloqueio.status === null) {
       return {
@@ -1399,6 +1698,207 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
       }
     }
 
+    // ── METADES 4 e 5: a FASE B real, com um DEFEITO de encoding/link ─────
+    //
+    // A metade 3 media a fase B pelo lado que passa (o controle ENTRA). Aqui a
+    // mesma fase é medida com o defeito NO ÍNDICE, como a fase A: o commit tem de
+    // ser RECUSADO, a recusa tem de ser ATRIBUÍVEL (os membros rodados direto
+    // sobre o MESMO índice, o veredito por exit code, e a DESCIDA do runner
+    // nomeando o guard) e o CONTROLE (o arquivo remendado) tem de ENTRAR.
+    for (const defeito of FASE_B_DEFEITOS) {
+      const entrada = {
+        id: defeito.id,
+        rotulo: defeito.rotulo,
+        arquivo: defeito.arquivo,
+        recusadoresEsperados: defeito.recusadoresEsperados,
+        defeito: null,
+        membros: [],
+        descida: null,
+        irmaos: [],
+        gate: null,
+        controle: null,
+      }
+      evidencia.faseB.push(entrada)
+      const ondeFaseB = `o defeito de fase B '${defeito.id}' (${defeito.rotulo})`
+
+      const headAntesB = shaDoHead(copia)
+      escritaDoDefeitoDaFaseB(copia, defeito, { runGit })
+      const recusaB = runGit(copia, ["commit", "-m", `defeito de fase B (${defeito.id})`])
+      const headDepoisB = shaDoHead(copia)
+      entrada.defeito = {
+        status: recusaB.status,
+        output: recusaB.output.trim().split("\n").slice(0, 4).join(" | "),
+        headAntes: headAntesB,
+        headDepois: headDepoisB,
+      }
+      if (recusaB.status === null) {
+        return {
+          state: "unavailable",
+          detail: `${ondeFaseB}: o \`git commit\` não terminou — o veredito da fase B não foi medido`,
+          evidence: evidencia,
+          remedies,
+        }
+      }
+      if (recusaB.status === 0 || headDepoisB !== headAntesB) {
+        return {
+          state: "violated",
+          detail:
+            `${ondeFaseB} NÃO foi bloqueado: exit ${recusaB.status} e o HEAD ` +
+            `${headDepoisB === headAntesB ? "NÃO avançou" : `avançou de ${String(headAntesB).slice(0, 12)} para ${String(headDepoisB).slice(0, 12)}`} — ` +
+            `a fase B deixou passar um defeito da classe que ela existe para pegar`,
+          evidence: evidencia,
+          remedies,
+        }
+      }
+
+      // A ATRIBUIÇÃO, no MESMO índice do defeito: os membros da fase B (cada um
+      // pelo exit code do comando do hook), a descida do runner, e — para a recusa
+      // ser da FASE B — a fase A e o gate verdes aqui.
+      const estagioDoIndice = arquivosDeFormatoDoIndice(copia)
+      entrada.membros = FASE_B_MEMBROS.map((m) =>
+        rodaMembroDeFaseB(copia, m, { run, node: deps.node, estagio: estagioDoIndice }),
+      )
+      entrada.descida = descidaDoEncodingRunner(copia, { run, node: deps.node })
+      entrada.irmaos = FASE_A_GUARDS.map((g) =>
+        rodaGuardDeFaseA(copia, g, { run, node: deps.node }),
+      )
+      entrada.gate = rodaGuardDeFaseA(copia, GUARD, { run, node: deps.node })
+
+      const membrosNaoMedidos = entrada.membros.filter((m) => m.status === null)
+      if (membrosNaoMedidos.length > 0) {
+        return {
+          state: "unavailable",
+          detail:
+            `${ondeFaseB}: ${membrosNaoMedidos.length} membro(s) da fase B NÃO terminaram ` +
+            `(${membrosNaoMedidos.map((m) => m.guard).join(", ")}) — sem exit code não há veredito`,
+          evidence: evidencia,
+          remedies,
+        }
+      }
+      const vermelhosDaFaseA = entrada.irmaos.filter((i) => i.status !== 0)
+      if (vermelhosDaFaseA.length > 0 || entrada.gate.status !== 0) {
+        return {
+          state: "unavailable",
+          detail:
+            `${ondeFaseB}: a recusa NÃO é atribuível à fase B — no MESMO índice, ` +
+            `${vermelhosDaFaseA.map((i) => `${i.guard}=${i.status}`).join(", ") || "nenhum guard de fase A vermelho"}` +
+            ` e o gate saiu ${entrada.gate.status === null ? "sem veredito" : entrada.gate.status}`,
+          evidence: evidencia,
+          remedies,
+        }
+      }
+      const membrosVermelhos = entrada.membros.filter((m) => m.status !== 0).map((m) => m.guard)
+      const esperados = [...defeito.recusadoresEsperados.membros].sort()
+      const medidos = [...membrosVermelhos].sort()
+      if (medidos.join("|") !== esperados.join("|")) {
+        const faltou = esperados.filter((e) => !medidos.includes(e))
+        const sobrou = medidos.filter((m) => !esperados.includes(m))
+        return {
+          state: "unavailable",
+          detail:
+            `${ondeFaseB}: a ATRIBUIÇÃO mudou — ` +
+            (faltou.length > 0
+              ? `o(s) guard(s) declarado(s) como refutador(es) ficou(aram) verde(s): ${faltou.join(", ")}; `
+              : "") +
+            (sobrou.length > 0
+              ? `e um refutador NÃO declarado apareceu: ${sobrou.join(", ")} `
+              : "") +
+            `(medidos: ${medidos.join(", ") || "nenhum"})`,
+          evidence: evidencia,
+          remedies,
+        }
+      }
+      if (entrada.descida.indisponivel !== null) {
+        return {
+          state: "unavailable",
+          detail: `${ondeFaseB}: a descida do runner não pôde ser medida — ${entrada.descida.indisponivel}`,
+          evidence: evidencia,
+          remedies,
+        }
+      }
+      if (entrada.descida.recusadores.some((r) => r.status === null)) {
+        return {
+          state: "unavailable",
+          detail: `${ondeFaseB}: ${entrada.descida.recusadores
+            .filter((r) => r.status === null)
+            .map((r) => r.comando)
+            .join(", ")} não terminou (o veredito do guard que recusa a classe não foi medido)`,
+          evidence: evidencia,
+          remedies,
+        }
+      }
+      const descidaEsperada = [...defeito.recusadoresEsperados.descida].sort()
+      const descidaMedida = entrada.descida.recusadores.map((r) => r.comando).sort()
+      if (descidaMedida.join("|") !== descidaEsperada.join("|")) {
+        const faltou = descidaEsperada.filter((e) => !descidaMedida.includes(e))
+        const sobrou = descidaMedida.filter((m) => !descidaEsperada.includes(m))
+        return {
+          state: "unavailable",
+          detail:
+            `${ondeFaseB}: a DESCIDA do runner não bate com o declarado — ` +
+            (faltou.length > 0 ? `não recusou: ${faltou.join(", ")}; ` : "") +
+            (sobrou.length > 0 ? `recusou SEM estar declarado: ${sobrou.join(", ")} ` : "") +
+            `(medidos: ${descidaMedida.join(", ") || "nenhum"})`,
+          evidence: evidencia,
+          remedies,
+        }
+      }
+
+      // O CONTROLE do defeito: o MESMO arquivo REMENDADO tem de ENTRAR — sem ele,
+      // "recusou" seria indistinguível de uma cópia que não sabe commitar (o
+      // mesmo raciocínio da metade 3).
+      escritaDoRemendoDaFaseB(copia, defeito, { runGit })
+      const controleB = runGit(copia, ["commit", "-m", `controle de fase B (${defeito.id})`])
+      const headControleB = shaDoHead(copia)
+      entrada.controle = {
+        status: controleB.status,
+        output: controleB.output.trim().split("\n").slice(0, 4).join(" | "),
+        headAntes: headAntesB,
+        headDepois: headControleB,
+      }
+      if (controleB.status === null) {
+        return {
+          state: "unavailable",
+          detail: `${ondeFaseB}: o \`git commit\` do CONTROLE não terminou — sem ele, a recusa medida acima não é do defeito`,
+          evidence: evidencia,
+          remedies,
+        }
+      }
+      if (controleB.status !== 0 || headControleB === headDepoisB) {
+        return {
+          state: "unavailable",
+          detail:
+            `${ondeFaseB}: o CONTROLE (${defeito.arquivo} REMENDADO) não comitou ` +
+            `(exit ${controleB.status}, HEAD ${headControleB === headDepoisB ? "NÃO avançou" : "avançou"}) — ` +
+            `sem ele, "a fase B recusou o defeito" não se distingue de "o arquivo não pôde entrar"`,
+          evidence: evidencia,
+          remedies,
+        }
+      }
+      const gravadoB = committedContent(copia, defeito.arquivo)
+      entrada.controle.conteudoEmHead =
+        gravadoB === defeito.remendo ? "igual ao arquivo remendado" : "outro conteúdo"
+      if (gravadoB !== defeito.remendo) {
+        return {
+          state: "unavailable",
+          detail: `${ondeFaseB}: o CONTROLE comitou um conteúdo diferente do remendo (${defeito.arquivo}) — a cópia não está medindo o que a prova diz`,
+          evidence: evidencia,
+          remedies,
+        }
+      }
+    }
+
+    const faseBResumo = evidencia.faseB
+      .map(
+        (f) =>
+          `'${f.id}' por ${f.membros
+            .filter((m) => m.status !== 0)
+            .map((m) => m.guard)
+            .join("+")}` +
+          ` (descido até ${f.descida.recusadores.map((r) => r.comando).join(", ")})`,
+      )
+      .join("; ")
+
     return {
       state: "proven",
       detail:
@@ -1409,7 +1909,11 @@ export function proveRealHookBlocks({ root = REPO_ROOT, deps = {} } = {}) {
           ? ` e citando ${REAL_WORKFLOW} no relatório do hook`
           : ` (o relatório do hook não citou ${REAL_WORKFLOW} — a linha pode ter se perdido no pipe; o que decide é o exit code)`) +
         `; os ${irmaos.length} guards de fase A rodaram de verdade sobre o MESMO índice e saíram 0; ` +
-        `o mesmo commit com o corpo fechado ENTROU (exit ${controle.status}, HEAD em ${String(headControle).slice(0, 12)}, conteúdo conferido em HEAD)`,
+        `o mesmo commit com o corpo fechado ENTROU (exit ${controle.status}, HEAD em ${String(headControle).slice(0, 12)}, conteúdo conferido em HEAD)` +
+        `; e a fase B REAL recusou ${evidencia.faseB.length} defeito(s) de encoding/link no índice — ${faseBResumo} —, ` +
+        `cada um com os ${FASE_B_MEMBROS.length} membros da fase B medidos DIRETO sobre o MESMO índice ` +
+        `(os esperados vermelhos e nenhum outro), a fase A e o gate verdes nesse índice, ` +
+        `e o CONTROLE de cada um (o arquivo REMENDADO) ENTRANDO`,
       evidence: evidencia,
       remedies,
     }

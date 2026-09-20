@@ -5639,13 +5639,54 @@ REMÉDIO — é a forma BARATA, e o fixture não tem o `package.json` do projeto
 fase C real, `lint-staged`/`typecheck`, não caberia nele).
 
 Com `--sem-duble`, o hook é o **REAL** sobre uma **CÓPIA do checkout**
-(`proveRealHookBlocks`): sem wrapper e sem dublê, os **CINCO guards de fase A**
-rodam de VERDADE, o gate é o real e a fase C (lint-staged, typecheck) roda real —
-porque a cópia tem o `package.json` e o `node_modules` (LINKADO, não copiado).
+(`proveRealHookBlocks`): sem wrapper e sem dublê, as **DUAS fases** rodam de
+VERDADE — os cinco guards de fase A, o gate e os **dez membros da fase B**
+(inclusive o runner de encoding, que a fase A nem toca) —, e a fase C
+(lint-staged, typecheck) roda real, porque a cópia tem o `package.json` e o
+`node_modules` (LINKADO, não copiado).
+
+**A forma padrão mede DUAS metades**, e o exit code é o da PIOR delas
+(`combineStates`: `violated` vence `unavailable`, que vence `proven` — uma metade
+que não pôde ser medida nunca vira verde pela outra). A primeira é o BLOQUEIO
+(acima). A segunda é a **OFERTA do remédio** (`proveRemedyOffered`) — a metade que
+até aqui só era medida no SIMULADOR (a suíte e o ensaio do pty), e que é o que o
+job mede agora DENTRO do runtime:
+
+1. o commit que **APAGA** o arg `BUN_VERSION` do build site de um compose é
+   RECUSADO pelo **guard dono** (`check-bun-mirror.mjs`) rodando de verdade no
+   recorte `--staged`, com o HEAD intacto (a contagem de objetos é RELATIVA: o
+   fixture tem o commit BASE com a declaração, e o defeito é a remoção dele);
+2. a **OFERTA** tem de nomear a classe `bun-mirror-removal`, com os ofensores e o
+   fixer do dono — medida pela CLI `--oferta` do `pre-commit-remedy.mjs` (a cópia
+   do FIXTURE, byte a byte, o mesmo script que o hook executa, no mesmo runtime)
+   —, e o **vínculo com o hook** é medido no lado dele: a saída do commit CITA a
+   classe. O bloco da oferta é **UMA escrita** do remédio (é por isso que ele
+   pode ser requisito sem ser flaky; as linhas `✅`/`❌` dos guards paralelos
+   seguem evidência, como no resto do arquivo);
+3. o **CONTROLE**: o `--fix` do dono, rodado de verdade no runtime, devolve a
+   declaração ao ÍNDICE, o `--staged` do dono volta a **0** e o commit de
+   controle ENTRA (conteúdo conferido em HEAD). Ele soma uma **mudança benigna**
+   ao índice de propósito: o remédio RESTAURA o que o commit apagava, então o
+   commit sozinho seria **VAZIO** para o git (medido: `nada adicionado ao envio`) —
+   o que se mede é o veredito do hook com a declaração de volta.
+
+**Custo da metade: ≈0,61s** (mediana de 3 execuções warm neste host, 09/2026 —
+um fixture com o guard dono real, dois `git commit` e uma invocação da CLI da
+oferta), pago **uma vez** pelo passo padrão do job; a forma `--sem-duble` não a
+roda.
+
+O caminho exercitado é o **NÃO interativo** (`NO_PROMPT` do simulador): o commit
+do fixture não tem operador e o remédio é fail-closed nesse ramo (imprime o
+caminho à mão e mantém o commit bloqueado). O **caminho interativo** é medido pelo
+ensaio do pty, e as metades de FALHA (bloqueio cego, oferta sem a classe, hook que
+não a publica, fixer que não restaura, `--staged` que continua vermelho, controle
+que não entra) são exercitadas por INJEÇÃO em
+`src/lib/__tests__/prove-remedy-offer.test.ts` — uma prova que só mede o caminho
+feliz não distingue "a oferta existe" de "a oferta aconteceu por acaso".
 
 **Como a recusa é ATRIBUÍDA nesta forma (por exit code, não por prosa):**
 
-1. o **defeito** — um corpo `run:` aberto num workflow **NOVO**
+1. o **defeito de fase A** — um corpo `run:` aberto num workflow **NOVO**
    (`.github/workflows/prova-fase-a-real.yml`, para o refutador ser ÚNICO: num
    workflow existente outros guards reprovariam junto e a recusa deixaria de ser
    atribuível) — é RECUSADO: exit não-zero e o **HEAD intacto**. A contagem de
@@ -5656,7 +5697,24 @@ porque a cópia tem o `package.json` e o `node_modules` (LINKADO, não copiado).
    respectivamente. É a metade que responde "quem recusa": sem ela, um irmão que
    também reprovasse (ou que nem rodasse) ficaria invisível;
 3. o **CONTROLE** (o mesmo arquivo com o corpo fechado) ENTRA — sem ele,
-   "recusou" seria indistinguível de um ambiente que não sabe commitar.
+   "recusou" seria indistinguível de um ambiente que não sabe commitar;
+4. o **defeito de fase B** — duas classes, um byte `0x97` num `.ts` NOVO
+   (`src/lib/prova-fase-b-utf8.ts`, ENCODING) e um link interno quebrado num `.md`
+   NOVO (`docs/prova-fase-b-link.md`, LINK) — também é RECUSADO, com o HEAD
+   intacto. Até aqui a fase B só era medida pelo lado que PASSA (o controle da
+   metade 3 entrava); a metade nova é a que diz **quem recusa** um defeito da
+   classe dela;
+5. a **ATRIBUIÇÃO da fase B**: os **dez membros** da fase B (o runner de encoding,
+   os oito `bun`/`node` e o `prettier --check` sobre a lista do índice) rodados
+   DIRETO sobre o MESMO índice, com o veredito por exit code, e a **DESCIDA** do
+   runner — os comandos que o PRÓPRIO `run-encoding-guards.sh` declara, rodados um
+   a um — **nomeando o guard** que recusou (`check-utf8.sh` para o encoding,
+   `check-readme-anchors.mjs` para o link). O conjunto medido tem de ser o
+   DECLARADO nos dois sentidos: um membro declarado que ficasse verde e um
+   vermelho não declarado derrubam a prova com o nome do guard (fail-closed contra
+   surpresa). A fase A e o gate têm de estar verdes nesse índice — a recusa é da
+   fase B, não de um irmão —, e o CONTROLE de cada defeito (o arquivo REMENDADO)
+   ENTRA.
 
 O TEXTO do hook (os `✅`/`❌` dele) entra como **evidência** e como rigor EXTRA
 (um refutador que não seja o do gate derruba a prova), nunca como requisito: a
@@ -5672,7 +5730,13 @@ também a **forma** (`PROVA-VARIANTE`), a **atribuição** (`PROVA-REFUTADORES`,
 número de refutadores no relatório do hook; `PROVA-IRMAOS`, quantos dos cinco
 saíram 0) e o **HEAD** de cada metade (`PROVA-HEAD=defeito:intacto
 controle:avancou`) — o número de objetos fica na evidência como o que ele é
-(objetos do repositório), não como veredito de "o commit entrou". O **exit code**
+(objetos do repositório), não como veredito de "o commit entrou". Da metade do
+remédio saem chaves PRÓPRIAS (`PROVA-REMEDEIO`, `PROVA-OFERTA` com os ids das
+classes, `PROVA-OFERTA-FIXER` e `PROVA-OFERTA-CONTROLE=fixer:… guarda:… exit:…
+objetos:… head:restaurada`): o estado composto não diz o que cada metade publicou,
+e é a evidência que permite conferir a oferta sem reexecutar o container. A chave
+admite HÍFEN (`PROVA-OFERTA-FIXER`) — achatar o nome em `OFERTAFIXER` esconderia
+a relação entre os campos justamente de quem lê a evidência. O **exit code**
 continua sendo o veículo do veredito (o docker o propaga) e as linhas são a
 proveniência: `null` de exit (timeout, sinal) e código desconhecido (125 do
 docker, 127 de binário ausente) são **INDETERMINADO**, nunca verde.
@@ -5687,6 +5751,20 @@ commit aconteceu. No CI o job roda nas duas forjas (é CORE: invariante
 `pre-commit-in-runner-proof`, o mesmo comando nas duas pipelines) e o doctor
 confirma o contrato: o job está no manifesto e roda a régua da invariante.
 
+A metade do remédio foi medida nas DUAS formas, no container da imagem:
+o relatório publica `PROVA-REMEDEIO=proven`, `PROVA-OFERTA=bun-mirror-removal`,
+`PROVA-OFERTA-FIXER=node scripts/check-bun-mirror.mjs --fix` e
+`PROVA-OFERTA-CONTROLE=fixer:0 guarda:0 exit:0 objetos:1 head:restaurada` — com o
+`git version 2.55.0` da IMAGEM na evidência do runtime, e o exit code do comando
+em **0**. O `--sem-duble` NÃO publica essas chaves (a oferta não é o escopo
+daquela forma): ela sai com `PROVA-STATE=proven` pelo bloqueio real, o que é a
+medição de que a composição de estados não misturou as metades.
+
+O fixture da metade usa uma **SENTINELA** (`9.9.9-sentinel`) como versão, e não um
+literal: o guard da fonte única lê `scripts/` — um `1.3.14` cravado numa fixture
+envelheceria em silêncio depois de um bump, e foi o PRÓPRIO guard que o apontou
+(`check:bun-mirror`, 2 violações) na primeira medição desta metade.
+
 **O que NÃO cobre (declarado no relatório, não escondido).** A forma PADRÃO
 declara que os guards IRMÃOS rodam no dublê do simulador — e o limite diz ONDE
 ele é fechado: **o `--sem-duble`, que roda os cinco de verdade**. Quem é a forma
@@ -5696,8 +5774,9 @@ registrou é o `check-runner-labels`/o smoke); e no modo `docker run` a imagem t
 de estar local ou ser baixável — pull que falha é INDETERMINADO com a dica da
 credencial.
 
-A forma SEM DUBLÊ declara o escopo DELA (não herda os de cima): o defeito é um
-workflow NOVO (o mesmo motivo da atribuição única); a árvore é uma CÓPIA do
+A forma SEM DUBLÊ declara o escopo DELA (não herda os de cima): os defeitos são
+arquivos NOVOS — o workflow da fase A e o `.ts`/o `.md` da fase B (o mesmo motivo
+da atribuição única); a árvore é uma CÓPIA do
 checkout com commit base sintético (quem mede o commit do PR são as pipelines do
 merge); o REMÉDIO fica sem operador (`NO_PROMPT_ENV` do simulador — a prova mede
 o caminho NÃO interativo, e quem mede o interativo é o ensaio do pty); e o teto de
@@ -5721,12 +5800,16 @@ de todo job. O job roda os DOIS passos: a prova (dublê) e a prova `--sem-duble`
 — nenhum contexto novo de required check entra no contrato (é o MESMO job), e é
 por isso que o rename/bump da matriz não toca a branch protection.
 
-**Custo (medido neste host, 09/2026, com a imagem já local).** A forma sem
-dublê acrescenta **31s** ao job (medido o comando inteiro: o `docker run` + a
-prova dentro dele): cópia do checkout (~95MB, com o `node_modules` LINKADO) + o
-commit do defeito (~3s — a fase A recusa antes da fase C) + os seis guards
-diretos (~2s) + o commit do CONTROLE (~25s, que é a fase C real: `lint-staged` +
-`typecheck`). Ela RODA o typecheck do repositório de verdade — o que, na primeira
+**Custo (medido neste host, 09/2026, com a imagem já local).** O comando inteiro
+da forma sem dublê (o `docker run` + a prova dentro dele) leva **66s** — o mesmo
+comando levava **31s** quando media SÓ a fase A, e as duas metades da fase B
+são o que acrescentou: cópia do checkout (~95MB, com o `node_modules` LINKADO) + o
+commit do defeito A (~3s — a fase A recusa antes da fase C) + os seis guards
+diretos (~2s) + o CONTROLE A (~25s, que é a fase C real: `lint-staged` +
+`typecheck`) + **o defeito e o controle de CADA classe da fase B** (dois defeitos
+curtos — a fase B recusa antes da fase C — e dois controles que rodam a fase C
+inteira; ~37s, medido aqui pelo delta de 36s para 73s na forma local). Ela RODA o
+typecheck do repositório de verdade — o que, na primeira
 execução, reprovou o CONTROLE por um erro de tipo real introduzido no mesmo
 turno (JSDoc sem o campo novo), e o pegou antes de qualquer outra rede.
 
