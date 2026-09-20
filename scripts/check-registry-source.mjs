@@ -987,9 +987,6 @@ export function findViolations(root = ROOT, options = {}) {
 
 export const IMAGE_ENV_VARIABLES = ["IMAGE_REGISTRY", "IMAGE_NAMESPACE", "BUN_VERSION"]
 
-/** Todas as variaveis que o compose da forja le do env (a imagem + o token). */
-export const COMPOSE_ENV_VARIABLES = [...IMAGE_ENV_VARIABLES, "RUNNER_TOKEN"]
-
 /**
  * Valores SENTINELA: nenhum deles existe no repositorio. Aparecer no render
  * significa que foi a VARIAVEL que os levou ate la — que e exatamente a prova
@@ -2069,7 +2066,124 @@ export function checkComposeImageDefaultsForRepo(root = ROOT) {
   return [
     ...checkComposeImageDefaults(root, { compose: APP_COMPOSE, template: APP_ENV_TEMPLATE }),
     ...checkComposeImageDefaults(root, { compose: GITEA_COMPOSE, template: GITEA_ENV_MIRROR }),
+    ...checkComposeValueDefaults(root),
   ]
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INVARIANTE 9 (b) — os DEMAIS defaults declarados do compose
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// A classe é a MESMA da invariante acima (o default é o que vale onde a
+// variável não existe), e o que muda é só o CONJUNTO: um ajuste de stack que é
+// pre-requisito de operação não pode depender do default da SÉRIE da imagem.
+//
+// O CASO QUE A CRIOU, medido: o registry embutido do Gitea (`registry__ENABLED`)
+// é o substituto do GHCR da etapa 1 (`docs/GITHUB_CUT.md`), e o ensaio
+// `gitea-registry:prove` tinha de LIGÁ-LO por override — porque nenhum arquivo
+// do repositório o declarava. A stack que roda no VPS era a única que dependia
+// de um default que não é promessa escrita: o sintoma disso não é um erro de
+// configuração, é o runner não conseguir puxar a imagem dos jobs.
+//
+// POR QUE UMA TABELA (e não mais um `if`): a entrada declara o PAR (compose ×
+// template) e o PORQUÊ da igualdade, e é a violação que cita o porquê. Um par
+// novo entra aqui no commit em que é declarado, com a razão escrita.
+
+/**
+ * Os defaults de compose que têm de ser IGUAIS ao valor do template.
+ *
+ * @type {{compose: string, template: string, name: string, why: string}[]}
+ */
+export const COMPOSE_VALUE_DEFAULTS = [
+  {
+    compose: GITEA_COMPOSE,
+    template: GITEA_ENV_MIRROR,
+    name: "GITEA__registry__ENABLED",
+    why: "é a etapa 1 do corte do GitHub (docs/GITHUB_CUT.md): as duas imagens (a `ubuntu-bun` dos jobs e o mirror do Bun) passam a ser servidas pelo registry EMBUTIDO da forja, e uma stack que dependa do default da série 1.22 pode subir com ele desligado — o sintoma não é erro de configuração, é o runner não conseguir puxar a imagem dos jobs",
+  },
+]
+
+/**
+ * Os NOMES dos pares de valor declarados — a TERCEIRA classe de variável que o
+ * compose consome, ao lado das comparadas (`MIRROR_VARIABLES`) e do segredo
+ * (`SECRET_MIRROR_VARIABLES`), no contrato do `check-actrc-sync`.
+ *
+ * POR QUE UMA CLASSE PRÓPRIA: esta não tem repository variable com que comparar
+ * — a régua dela é entre DOIS ARQUIVOS VERSIONADOS (o default do compose e a
+ * linha do template), e quem a aplica é o `checkComposeValueDefaults` acima.
+ * Deixá-la fora do contrato faria dela exatamente o que o contrato proíbe: um
+ * nome que entra no compose com a checagem de EXISTÊNCIA e mais nada.
+ */
+export const COMPOSE_VALUE_VARIABLES = COMPOSE_VALUE_DEFAULTS.map((e) => e.name)
+
+/**
+ * Todas as variaveis que o compose da forja le do env: a imagem, o token e os
+ * pares de valor declarados.
+ *
+ * DERIVADA da tabela `COMPOSE_VALUE_DEFAULTS` (e não mais uma linha à mão): um
+ * par novo entra aqui no commit em que é declarado, e o ambiente CONTROLADO do
+ * render (`checkNonVersionedImageRefs`, fase 1) o dropa junto — uma variável que
+ * escapasse do drop faria o render depender do shell de quem o roda.
+ */
+export const COMPOSE_ENV_VARIABLES = [
+  ...IMAGE_ENV_VARIABLES,
+  "RUNNER_TOKEN",
+  ...COMPOSE_VALUE_VARIABLES,
+]
+
+/**
+ * O default do compose x o valor declarado no template, para os pares da TABELA.
+ *
+ * Três exigências, todas derivadas do mesmo raciocínio:
+ *
+ *   1. o TEMPLATE declara o valor (é ele que o host espelha, e o
+ *      `check-env-mirror` só compara nomes que o compose consome);
+ *   2. o compose o CONSOME na forma `${NOME:-<default>}` — literal no compose
+ *      ignora o env do host: o valor declarado não chegaria ao container, e a
+ *      linha do template viraria decoração;
+ *   3. o default é IGUAL ao declarado: onde a variável não existe, é ele que
+ *      vale.
+ *
+ * @param {string} [root]
+ * @param {{compose: string, template: string, name: string, why: string}[]} [entries]
+ * @returns {string[]} violações
+ */
+export function checkComposeValueDefaults(root = ROOT, entries = COMPOSE_VALUE_DEFAULTS) {
+  const violations = []
+  for (const { compose, template, name, why } of entries) {
+    const composePath = join(root, compose)
+    const templatePath = join(root, template)
+    if (!existsSync(composePath) || !existsSync(templatePath)) continue
+    const pair = `(o par é ${compose} x ${template})`
+    // O default do compose é lido PRIMEIRO: é ele que o diagnóstico cita quando
+    // o template não declara a linha ("declare `NOME=<o default>`"), e ler nesta
+    // ordem evita dizer ao operador para declarar um valor que o compose não
+    // carrega.
+    const defaults = composeEnvDefaults(readFileSync(composePath, "utf8")).filter(
+      (d) => d.name === name,
+    )
+    const declared = parseEnvAssignments(readFileSync(templatePath, "utf8")).get(name)
+    if (declared === undefined) {
+      const sugerido = defaults[0]?.value ?? ""
+      violations.push(
+        `${template} não declara ${name} e o compose o consome ${pair} — ${why}. O valor passa a ser o default da SÉRIE da imagem, que não é promessa escrita: declare a linha no template (\`${name}=${sugerido}\` — é ela que o host espelha).`,
+      )
+      continue
+    }
+    if (defaults.length === 0) {
+      violations.push(
+        `${compose} não consome ${name} na forma \`\${${name}:-<valor>}\` ${pair} — literal no compose ignora o env do host (o valor declarado no template não chega ao container) e um default diferente do declarado vale onde a variável não existe. O valor declarado é '${declared}'.`,
+      )
+      continue
+    }
+    for (const { value } of defaults) {
+      if (value === declared) continue
+      violations.push(
+        `${compose}: o default de ${name} é '${value}' e ${template} declara '${declared}' ${pair} — onde a variável não existe o default vale, e é ele que sobe a stack: ${why}.`,
+      )
+    }
+  }
+  return violations
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2336,16 +2450,36 @@ export async function checkNonVersionedImageRefs({
   timeoutMs = 20000,
 } = {}) {
   const appDeclarations = compareAppHostImageDeclarations(root)
+  const composeDefaults = checkComposeImageDefaultsForRepo(root)
+  const composeValues = checkComposeValueDefaults(root)
   const violations = [
     ...compareImageTemplates(root),
     ...appDeclarations.violations,
-    ...checkComposeImageDefaultsForRepo(root),
+    ...composeDefaults,
     // Invariante 9 (por VALOR, todo compose/script/workflow com default): um
     // default velho depois da migração BLOQUEIA a prontidão — ele é exatamente
     // o modo de falha silencioso que este fato existe para nomear.
     ...sweepImageDefaultValues(root).violations,
   ]
   const items = []
+  // O FATO dos outros defaults declarados (a tabela `COMPOSE_VALUE_DEFAULTS`):
+  // o default do compose E o valor do template, medido por VALOR e não por
+  // prosa — a etapa 1 do corte depende do registry embutido, e este item é onde
+  // a prontidão diz que ele está DECLARADO (ou nomeia qual par divergiu).
+  if (COMPOSE_VALUE_DEFAULTS.length > 0) {
+    // O nome do fato NAO cita a variavel de proposito: os fatos desta lista sao
+    // consumidos por busca de substring em outros pontos (o item do registry
+    // consultado, por exemplo) e um nome que contivesse 'registry' roubaria a
+    // busca deles. O que a variavel e vai no `detail`.
+    items.push({
+      source: "defaults declarados do compose",
+      state: composeValues.length === 0 ? "proven" : "violated",
+      detail:
+        composeValues.length === 0
+          ? `${COMPOSE_VALUE_DEFAULTS.length} par(es) declarado(s) — ${COMPOSE_VALUE_DEFAULTS.map((e) => e.name).join(", ")}: o default embutido do compose E o valor do template (${COMPOSE_VALUE_DEFAULTS.map((e) => `${e.template} = ${e.compose}`).join(" · ")}), entao a stack nao depende do default da serie da imagem`
+          : `divergente em ${composeValues.length} par(es): ${composeValues.join(" | ")}`,
+    })
+  }
   if (appDeclarations.host) {
     const diverged = appDeclarations.violations.length > 0
     items.push({

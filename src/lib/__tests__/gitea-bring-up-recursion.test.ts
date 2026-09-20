@@ -54,6 +54,15 @@ import { delimiter, join } from "node:path"
 
 import { afterAll, describe, expect, it } from "vitest"
 
+/**
+ * A CABEÇA DA PRIMEIRA SEÇÃO do veredito, qualquer que seja o total.
+ *
+ * O total (`1/7`, `1/8`, …) cresce quando uma seção nasce, e travar o literal
+ * fazia este teste medir o TOTAL em vez do CORTE — o "não contém" ficava vácido
+ * no dia em que o número mudasse, que é o dia em que ele precisa valer.
+ */
+const PRIMEIRA_SECAO = /^ {2,}1\/\d+ {2}\S/m
+
 import {
   BRING_UP,
   RUNBOOK,
@@ -205,7 +214,7 @@ describe("o bring-up REAL, com o doctor de VERDADE e SEM dublê, é cortado pelo
       // 3. O CORTE FOI ANTES DE COLETAR: nenhuma seção do veredito saiu. É a
       //    diferença entre "recusou" e "mediu e não gostou" — e a razão de o
       //    guard existir (o ciclo é cortado ANTES de avançar um passo).
-      expect(out).not.toContain("1/7")
+      expect(out).not.toMatch(PRIMEIRA_SECAO)
       expect(out).not.toContain("4/7")
       expect(out).not.toContain("Prova do bloqueio")
 
@@ -289,7 +298,7 @@ describe("o bring-up REAL, com o doctor de VERDADE e SEM dublê, é cortado pelo
       // aconteceu.
       expect(out).not.toContain("RECURSÃO DETECTADA")
       expect(out).toContain("prontidão para bloquear o merge")
-      expect(out).toContain("1/7")
+      expect(out).toMatch(PRIMEIRA_SECAO)
       // A recusa do guard é exit 3; o veredito é 0/1/2.
       expect(code).not.toBe(NESTED_GUARD_EXIT)
     } finally {

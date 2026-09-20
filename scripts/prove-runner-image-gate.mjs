@@ -451,6 +451,11 @@ export function writeProofEnv(dir, registryUrl, mode = "sync") {
     "IMAGE_NAMESPACE=severinno",
     `${VERSION_KEY}=${PROOF_VERSION}`,
     "RUNNER_TOKEN=prova",
+    // O par declarado do registry embutido (a etapa 1 do corte): o par
+    // env-do-host x template desta prova tem de espelhar a STACK REAL — o
+    // compose a consome, e sem a linha aqui o pre-requisito 0 do bring-up
+    // acusaria o fixture em vez do defeito que a família mede.
+    "GITEA__registry__ENABLED=true",
     "",
   ].join("\n")
   const templateFile = join(dir, "env.gitea.example")

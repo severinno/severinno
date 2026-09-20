@@ -30,6 +30,7 @@ import {
   APP_ENV_HOSTS,
   APP_ENV_TEMPLATE,
   COMPOSE_SENTINELS,
+  COMPOSE_VALUE_DEFAULTS,
   DEPLOY_DIR,
   OUT_OF_SCOPE_ALLOWLIST,
   OUT_OF_SCOPE_REVIEW_DAYS,
@@ -43,6 +44,7 @@ import {
   checkActrc,
   checkComposeImageDefaults,
   checkComposeImageDefaultsForRepo,
+  checkComposeValueDefaults,
   checkComposeImageLine,
   checkComposeInterpolation,
   checkLiteralImageTag,
@@ -109,6 +111,7 @@ const COMPOSE_FIXTURE_CORRECT =
   "  runner:\n" +
   "    image: gitea/act_runner:latest\n" +
   "    environment:\n" +
+  "      - GITEA__registry__ENABLED=${GITEA__registry__ENABLED:-true}\n" +
   "      - GITEA_RUNNER_REGISTRATION_TOKEN=${RUNNER_TOKEN}\n" +
   "      - GITEA_RUNNER_LABELS=ubuntu-latest:docker://${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-severinno}/ubuntu-bun:${BUN_VERSION}\n"
 
@@ -1103,7 +1106,13 @@ describe("analyzeUnsetVersionRender — sem BUN_VERSION não pode haver tag", ()
 // registrando outra imagem.
 
 /** Nomes que o compose da forja realmente consome (derivados, não listados). */
-const CONSUMED = ["BUN_VERSION", "IMAGE_NAMESPACE", "IMAGE_REGISTRY", "RUNNER_TOKEN"]
+const CONSUMED = [
+  "BUN_VERSION",
+  "GITEA__registry__ENABLED",
+  "IMAGE_NAMESPACE",
+  "IMAGE_REGISTRY",
+  "RUNNER_TOKEN",
+]
 
 /** Template COMITADO: o token é o placeholder, como no arquivo real. */
 function templateEnv(): Map<string, string> {
@@ -1112,6 +1121,9 @@ function templateEnv(): Map<string, string> {
     ["IMAGE_REGISTRY", "ghcr.io"],
     ["IMAGE_NAMESPACE", "severinno"],
     ["BUN_VERSION", "1.3.14"],
+    // O par declarado do registry embutido (a etapa 1 do corte): o template o
+    // declara e o compose o consome com o MESMO valor como default.
+    ["GITEA__registry__ENABLED", "true"],
   ])
 }
 
@@ -1141,7 +1153,7 @@ describe("composeEnvVariables — as consumidas vêm do COMPOSE, não de uma lis
     expect(composeEnvVariables(comNova)).toContain("VARIAVEL_NOVA")
   })
 
-  it("no compose REAL do repositório: as quatro variáveis do deploy, e só elas", () => {
+  it("no compose REAL do repositório: as CINCO variáveis do deploy, e só elas", () => {
     const real = readFileSync(join(REPO_ROOT, "deploy", COMPOSE_BASENAME), "utf8")
     expect(composeEnvVariables(real)).toEqual(CONSUMED)
   })
@@ -1290,7 +1302,8 @@ describe("compareRenderedLabels — o label renderizado dos dois lados", () => {
  */
 describe("checkComposeInterpolation — host x template SEM docker", () => {
   const TEMPLATE =
-    "RUNNER_TOKEN=COLE_O_TOKEN_AQUI\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n"
+    "RUNNER_TOKEN=COLE_O_TOKEN_AQUI\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n" +
+    "GITEA__registry__ENABLED=true\n"
 
   function tree(hostContent: string | null): string {
     const dir = mkdtempSync(join(tmpdir(), "registry-source-host-"))
@@ -1407,7 +1420,8 @@ describe("checkComposeInterpolation — estados sem docker", () => {
     const dir = tree({
       [`${DEPLOY_DIR}/${COMPOSE_BASENAME}`]: COMPOSE_FIXTURE_CORRECT + "\n",
       [`${DEPLOY_DIR}/env.gitea.example`]:
-        "RUNNER_TOKEN=COLE_O_TOKEN_AQUI\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n",
+        "RUNNER_TOKEN=COLE_O_TOKEN_AQUI\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n" +
+        "GITEA__registry__ENABLED=true\n",
     })
     try {
       const r = checkComposeInterpolation({
@@ -1455,7 +1469,8 @@ describe.skipIf(!HAS_COMPOSE)("checkComposeInterpolation — docker real", () =>
   }
 
   const ENV =
-    "RUNNER_TOKEN=TOKEN_REAL\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n"
+    "RUNNER_TOKEN=TOKEN_REAL\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n" +
+    "GITEA__registry__ENABLED=true\n"
 
   it("o compose REAL do repositório é provado (3 fases)", () => {
     const r = checkComposeInterpolation({ cwd: REPO_ROOT })
@@ -1530,7 +1545,8 @@ describe.skipIf(!HAS_COMPOSE)("checkComposeInterpolation — docker real", () =>
   // ── invariante 7b, com o docker REAL: o VPS x o repositório ──────────────
 
   const TEMPLATE_ENV =
-    "RUNNER_TOKEN=COLE_O_TOKEN_AQUI\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n"
+    "RUNNER_TOKEN=COLE_O_TOKEN_AQUI\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n" +
+    "GITEA__registry__ENABLED=true\n"
 
   /** Árvore da forja com o par template + host (host `null` = só o template). */
   function forgeTree(hostContent: string | null): string {
@@ -1630,7 +1646,8 @@ describe.skipIf(!HAS_COMPOSE)("checkComposeInterpolation — docker real", () =>
 describe("--require-compose", () => {
   const SCRIPT = join(REPO_ROOT, "scripts", "check-registry-source.mjs")
   const ENV_FIXTURE =
-    "RUNNER_TOKEN=TOKEN_REAL\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n"
+    "RUNNER_TOKEN=TOKEN_REAL\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n" +
+    "GITEA__registry__ENABLED=true\n"
 
   /** Árvore com o compose da forja e o env — o mínimo para o render ter objeto. */
   function forgeTree(): string {
@@ -1737,13 +1754,15 @@ function refsTree(
   const dir = mkdtempSync(join(tmpdir(), "registry-refs-"))
   const files: Record<string, string> = {
     "deploy/env.gitea.example":
-      "RUNNER_TOKEN=COLE_O_TOKEN_AQUI\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n",
+      "RUNNER_TOKEN=COLE_O_TOKEN_AQUI\nIMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\nBUN_VERSION=1.3.14\n" +
+      "GITEA__registry__ENABLED=true\n",
     [APP_ENV_TEMPLATE]: "IMAGE_REGISTRY=ghcr.io\nIMAGE_NAMESPACE=severinno\n",
     ".gitea/workflows/ci.yml":
       "jobs:\n  guards:\n    steps:\n      - run: echo ${{ vars.IMAGE_REGISTRY }}\n" +
       "      - run: echo ${{ vars.IMAGE_NAMESPACE }}\n      - run: echo ${{ vars.BUN_VERSION }}\n",
     [`${DEPLOY_DIR}/docker-compose.gitea.yml`]:
       "services:\n  runner:\n    image: gitea/act_runner:latest\n    environment:\n" +
+      "      - GITEA__registry__ENABLED=${GITEA__registry__ENABLED:-true}\n" +
       buildRunnerLabel("${BUN_VERSION}") +
       "\n",
     [APP_COMPOSE]:
@@ -1852,6 +1871,78 @@ describe("invariante 9 — defaults do compose x o template comitado", () => {
     // O repositório de verdade: se isto quebrar, o guard está acusando o
     // próprio commit — e um guard vermelho no default é um guard desligado.
     expect(checkComposeImageDefaultsForRepo(REPO_ROOT)).toEqual([])
+  })
+})
+
+// ── invariante 9(b): os DEMAIS defaults declarados do compose ──────────────
+
+const PAIR_COMPOSE = "deploy/docker-compose.gitea.yml"
+const PAIR_TEMPLATE = "deploy/env.gitea.example"
+const linha = (valor: string) =>
+  `      - GITEA__registry__ENABLED=\${GITEA__registry__ENABLED:-${valor}}\n`
+
+function parDeclarado(template: string, compose: string): string {
+  return treeOf({ [PAIR_TEMPLATE]: template, [PAIR_COMPOSE]: compose })
+}
+
+describe("defaults declarados do compose (o par default × valor do template)", () => {
+  it("declarado nos dois lados com o MESMO valor não é violação", () => {
+    const dir = parDeclarado(
+      "GITEA__registry__ENABLED=true\n",
+      `services:\n  gitea:\n    image: gitea/gitea:1.22\n    environment:\n${linha("true")}`,
+    )
+    expect(checkComposeValueDefaults(dir)).toEqual([])
+  })
+
+  it("o template sem a linha é violação — o default da SÉRIE vira a única fonte", () => {
+    const dir = parDeclarado(
+      "IMAGE_REGISTRY=git.severinno.cloud\n",
+      `services:\n  gitea:\n    image: gitea/gitea:1.22\n    environment:\n${linha("true")}`,
+    )
+    const v = checkComposeValueDefaults(dir)
+    expect(v).toHaveLength(1)
+    expect(v[0]).toContain("não declara GITEA__registry__ENABLED")
+    expect(v[0]).toContain(PAIR_TEMPLATE)
+    // O diagnóstico traz o REMÉDIO (o valor a declarar, lido do default do
+    // compose) e o PORQUÊ declarado pela tabela.
+    expect(v[0]).toContain("`GITEA__registry__ENABLED=true`")
+    expect(v[0]).toMatch(/etapa 1 do corte do GitHub/)
+  })
+
+  it("literal no compose (sem `${NOME:-…}`) é violação — o env do host não chega ao container", () => {
+    const dir = parDeclarado(
+      "GITEA__registry__ENABLED=true\n",
+      "services:\n  gitea:\n    image: gitea/gitea:1.22\n    environment:\n      - GITEA__registry__ENABLED=true\n",
+    )
+    const v = checkComposeValueDefaults(dir)
+    expect(v).toHaveLength(1)
+    expect(v[0]).toContain("não consome GITEA__registry__ENABLED")
+    expect(v[0]).toContain("literal no compose ignora o env do host")
+  })
+
+  it("default DIVERGENTE do declarado é violação (o host sem a variável sobe outro valor)", () => {
+    const dir = parDeclarado(
+      "GITEA__registry__ENABLED=true\n",
+      `services:\n  gitea:\n    image: gitea/gitea:1.22\n    environment:\n${linha("false")}`,
+    )
+    const v = checkComposeValueDefaults(dir)
+    expect(v).toHaveLength(1)
+    expect(v[0]).toContain("o default de GITEA__registry__ENABLED é 'false'")
+    expect(v[0]).toContain("declara 'true'")
+  })
+
+  it("o par do repositório REAL fecha: o registry embutido está DECLARADO, não herdado", () => {
+    expect(COMPOSE_VALUE_DEFAULTS.length).toBeGreaterThan(0)
+    expect(COMPOSE_VALUE_DEFAULTS.some((e) => e.name === "GITEA__registry__ENABLED")).toBe(true)
+    expect(checkComposeValueDefaults(REPO_ROOT)).toEqual([])
+    // E cada par da tabela aponta para arquivos que EXISTEM: uma tabela que
+    // aponta para um caminho com erro de digitação seria uma declaração que
+    // nenhuma guarda lê (o `continue` silencioso da função).
+    for (const e of COMPOSE_VALUE_DEFAULTS) {
+      expect(readFileSync(join(REPO_ROOT, e.compose), "utf8").length).toBeGreaterThan(0)
+      expect(readFileSync(join(REPO_ROOT, e.template), "utf8").length).toBeGreaterThan(0)
+      expect(e.why.length).toBeGreaterThan(30)
+    }
   })
 })
 
@@ -2607,6 +2698,80 @@ describe("invariante 9 — a VARREDURA dos defaults embutidos", () => {
         // Não é afirmação de valor: é CONTADO como fora da comparação.
         expect(r.violations).toEqual([])
         expect(r.dynamic).toBe(1)
+      },
+    )
+  })
+
+  it("a GRAFIA do fallback não é julgada: `\"x\"` vale o MESMO que `'x'`", () => {
+    // A sintaxe do arquivo de CI não decide o veredito — o VALOR decide. Antes,
+    // a alternativa do token cru engolia as aspas duplas e o item saía
+    // `fallback: null` (contado como DINÂMICO): o default divergente passava em
+    // silêncio, e o pior é que o relatório dizia "dinâmico", não "não julguei".
+    const workflow = (grafo: string) =>
+      "jobs:\n  x:\n    steps:\n      - run: echo $" +
+      "{{ vars.IMAGE_REGISTRY || " +
+      grafo +
+      " }}\n"
+    withTree(
+      {
+        ...DECLARADO,
+        ".gitea/workflows/ci.yml": workflow('"registry.velho"'),
+      },
+      (dir) => {
+        const r = sweepImageDefaultValues(dir)
+        expect(r.violations).toHaveLength(1)
+        expect(r.violations[0]).toContain("registry.velho")
+        expect(r.violations[0]).toContain("ghcr.io")
+        // Julgado por VALOR: não sobra nenhum "dinâmico" a que atribuir o verde.
+        expect(r.compared).toBe(1)
+        expect(r.dynamic).toBe(0)
+      },
+    )
+    withTree(
+      {
+        ...DECLARADO,
+        ".gitea/workflows/ci.yml": workflow('"ghcr.io"'),
+      },
+      (dir) => {
+        // A MESMA grafia com o valor declarado é verde — a régua não acusa a
+        // forma, e é essa metade que impede a correção de virar falso positivo.
+        expect(sweepImageDefaultValues(dir).violations).toEqual([])
+      },
+    )
+    withTree(
+      {
+        ...DECLARADO,
+        ".gitea/workflows/ci.yml": workflow("'ghcr.io'"),
+      },
+      (dir) => {
+        // E a grafia já vista continua valendo o mesmo: as duas são o MESMO caso.
+        expect(sweepImageDefaultValues(dir).violations).toEqual([])
+      },
+    )
+  })
+
+  it("a varredura julga os TIPOS da TABELA — um nome fora dela não é inventado", () => {
+    // O tipo novo não entra por adivinhação: entra pela TABELA
+    // (`NON_VERSIONED_IMAGE_VARIABLES`). Um nome que ela não declara fica FORA
+    // do julgamento — nem acusado por um valor que não é dele, nem contado como
+    // dinâmico (a contagem é de fallback de variável CONHECIDA): o escopo é
+    // declarado, e quem o estende é a tabela. A metade positiva (o tipo que
+    // entra só pela tabela e passa a ser julgado) é medida por execução na
+    // prova por mutação, que é onde a tabela pode ser estendida sem mentir.
+    withTree(
+      {
+        ...DECLARADO,
+        ".gitea/workflows/ci.yml":
+          "jobs:\n  x:\n    steps:\n      - run: echo $" + '{{ vars.IMAGE_TAG || "1.3.14" }}\n',
+        // O arquivo que DECLARA a tag existe: não é a ausência de espelho que
+        // deixa o ref fora — é o tipo não estar na tabela.
+        ".env.tag.example": "IMAGE_TAG=1.4.0\n",
+      },
+      (dir) => {
+        const r = sweepImageDefaultValues(dir)
+        expect(r.violations).toEqual([])
+        expect(r.compared).toBe(0)
+        expect(r.dynamic).toBe(0)
       },
     )
   })

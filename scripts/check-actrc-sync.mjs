@@ -137,6 +137,24 @@ export const MIRROR_VARIABLES = ["BUN_VERSION", "IMAGE_REGISTRY", "IMAGE_NAMESPA
 export const SECRET_MIRROR_VARIABLES = ["RUNNER_TOKEN"]
 
 /**
+ * A TERCEIRA classe do mesmo contrato — e por que ela NÃO é lida daqui.
+ *
+ * Um nome que o compose consome pode não ter repository variable com que
+ * comparar: é o caso dos DEFAULTS DECLARADOS da stack (`COMPOSE_VALUE_DEFAULTS`,
+ * no `check-registry-source.mjs`), em que a régua é entre DOIS ARQUIVOS
+ * VERSIONADOS — o default embutido do compose (`${NOME:-<valor>}`) e a linha do
+ * template —, comparados POR VALOR pelo guard dono do par.
+ *
+ * A classe mora lá, e não aqui, porque é lá que o par e o PORQUÊ da igualdade
+ * são declarados: uma segunda lista nesta guarda divergiria no primeiro dia. O
+ * que este arquivo NÃO faz com esses nomes é compará-los com `--expected-var`:
+ * não existe variável remota para eles — comparar aqui seria comparar o arquivo
+ * com ele mesmo. Quem cobra a classificação completa é o teste de contrato, que
+ * importa a tabela do dono e exige a união das TRÊS classes = o que o compose
+ * consome (`check-actrc-sync.test.ts`, "os nomes do contrato").
+ */
+
+/**
  * O CUSTO do drift, por variável, no env da forja (o arquivo que o compose lê).
  *
  * Exportado porque o DOCTOR classifica o mesmo drift em BLOQUEIO e precisa do

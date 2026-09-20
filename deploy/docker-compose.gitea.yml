@@ -77,6 +77,21 @@ services:
       - GITEA__actions__ENABLED=true
       - GITEA__actions__DEFAULT_ACTIONS_URL=https://github.com
 
+      # ── Registry OCI embutido (etapa 1 do corte do GitHub) ─────────────
+      # O registry do PRÓPRIO Gitea é o substituto do GHCR declarado em
+      # `docs/GITHUB_CUT.md` (etapa 1): é dele que o runner puxa a imagem que
+      # roda os jobs depois do flip de `IMAGE_REGISTRY`/`IMAGE_NAMESPACE`, e o
+      # ensaio `gitea-registry:prove` publica e puxa de volta por DIGEST aqui.
+      #
+      # DECLARADO, e não default da série: o default da 1.22 muda entre versões
+      # menores, e a etapa 1 depende dele — uma stack que subisse sem esta linha
+      # serviria a forja sem registry, com o sintoma só no PULL do runner. O
+      # valor é o do template (`deploy/env.gitea.example`), e o default daqui é
+      # IGUAL a ele: é a mesma régua dos defaults de `IMAGE_REGISTRY`
+      # (`checkComposeImageDefaults`, no `check:registry-source`) — onde a
+      # variável não existe, o default vale e ele tem de ser o valor declarado.
+      - GITEA__registry__ENABLED=${GITEA__registry__ENABLED:-true}
+
       # ── Security ──────────────────────────────────────────────────────
       - GITEA__security__INSTALL_LOCK=true
 
@@ -155,7 +170,7 @@ services:
       # Ele garante a imagem, apaga o container E o registro gravado, e so
       # entao sobe — sem apagar o volume o runner voltaria com os labels ANTIGOS
       # e o tier-1 seguiria desligado, sem nenhum sintoma.
-      - GITEA_RUNNER_LABELS=ubuntu-latest:docker://${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-severinno}/ubuntu-bun:${BUN_VERSION},ubuntu-22.04:docker://${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-severinno}/ubuntu-bun:${BUN_VERSION}
+      - GITEA_RUNNER_LABELS=ubuntu-latest:docker://${IMAGE_REGISTRY:-git.severinno.cloud}/${IMAGE_NAMESPACE:-severinno}/ubuntu-bun:${BUN_VERSION},ubuntu-22.04:docker://${IMAGE_REGISTRY:-git.severinno.cloud}/${IMAGE_NAMESPACE:-severinno}/ubuntu-bun:${BUN_VERSION}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - runner-data:/data

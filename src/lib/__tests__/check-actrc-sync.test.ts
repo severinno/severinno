@@ -58,6 +58,8 @@ import {
 } from "../../../scripts/check-actrc-sync.mjs"
 import {
   COMPOSE_ENV_VARIABLES,
+  COMPOSE_VALUE_DEFAULTS,
+  COMPOSE_VALUE_VARIABLES,
   composeEnvVariables,
 } from "../../../scripts/check-registry-source.mjs"
 
@@ -574,15 +576,47 @@ describe("mirrorDriftReport", () => {
 // quando um job tenta iniciar, longe da causa.
 
 describe("o conjunto comparado vem do COMPOSE (contrato, não lista à mão)", () => {
-  it("comparadas + segredo = as variáveis que o compose consome", () => {
+  it("comparadas + segredo + pares de valor = as variáveis que o compose consome", () => {
     // O compose REAL: se alguém acrescentar uma variável lá, este teste FALHA até
-    // a variável ser classificada (comparada ou declarada como segredo) — uma
-    // variável nova não pode entrar só com a checagem de existência.
+    // a variável ser classificada — uma variável nova não pode entrar só com a
+    // checagem de existência. São TRÊS classes, e cada uma tem um dono:
+    //   - comparadas por VALOR contra a repository variable (`MIRROR_VARIABLES`,
+    //     o que este guard faz);
+    //   - o SEGREDO, que só se confere por presença (`SECRET_MIRROR_VARIABLES`);
+    //   - os DEFAULTS DECLARADOS da stack (`COMPOSE_VALUE_VARIABLES`), cuja
+    //     régua é entre dois arquivos versionados e o dono é o
+    //     `checkComposeValueDefaults` do check-registry-source.
     const consumed = composeEnvVariables(
       readFileSync(join(process.cwd(), "deploy", "docker-compose.gitea.yml"), "utf8"),
     )
-    expect([...MIRROR_VARIABLES, ...SECRET_MIRROR_VARIABLES].sort()).toEqual([...consumed].sort())
+    expect(
+      [...MIRROR_VARIABLES, ...SECRET_MIRROR_VARIABLES, ...COMPOSE_VALUE_VARIABLES].sort(),
+    ).toEqual([...consumed].sort())
     expect([...COMPOSE_ENV_VARIABLES].sort()).toEqual([...consumed].sort())
+  })
+
+  it("as três classes são disjuntas (um nome não pode estar em duas)", () => {
+    const classes: [string, string[]][] = [
+      ["comparadas", MIRROR_VARIABLES],
+      ["segredo", SECRET_MIRROR_VARIABLES],
+      ["pares de valor", COMPOSE_VALUE_VARIABLES],
+    ]
+    for (const [rotulo, lista] of classes) {
+      for (const outro of classes.filter(([r]) => r !== rotulo)) {
+        for (const name of lista) expect(outro[1]).not.toContain(name)
+      }
+    }
+  })
+
+  it("cada par de valor declara o PORQUÊ da igualdade (a violação o cita)", () => {
+    // A tabela de pares é o dono da classe: um par sem razão escrita é uma
+    // linha criada aqui sem alguém ter decidido por que o default tem de bater
+    // com o template.
+    expect(COMPOSE_VALUE_VARIABLES.length).toBeGreaterThan(0)
+    for (const entry of COMPOSE_VALUE_DEFAULTS) {
+      expect(typeof entry.why).toBe("string")
+      expect(entry.why.length).toBeGreaterThan(40)
+    }
   })
 
   it("o segredo é DECLARADO (comparar valor exigiria versioná-lo)", () => {

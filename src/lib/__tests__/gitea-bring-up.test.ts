@@ -183,6 +183,11 @@ function makeEnvFile(registryUrl: string): string {
     "IMAGE_NAMESPACE=severinno",
     "BUN_VERSION=1.3.14",
     "RUNNER_TOKEN=fake",
+    // O par declarado do registry embutido (a etapa 1): o compose da forja o
+    // consome, então o gêmeo env-do-host x template desta prova tem de
+    // espelhá-lo — sem a linha o pre-requisito 0 do bring-up acusaria o fixture
+    // em vez do defeito que cada teste mede.
+    "GITEA__registry__ENABLED=true",
     "",
   ].join("\n")
   writeFileSync(path, content)
