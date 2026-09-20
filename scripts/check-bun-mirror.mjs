@@ -25,11 +25,15 @@
 //   node scripts/check-bun-mirror.mjs                  # invariantes globais
 //   node scripts/check-bun-mirror.mjs --staged         # git diff --cached (local/pre-commit)
 //   node scripts/check-bun-mirror.mjs --staged --base origin/main   # diff do PR vs base (CI)
+//   node scripts/check-bun-mirror.mjs --fix             # REMENDO: restaura da HEAD a
+//                                                       # declaração de espelho apagada
+//                                                       # (arg do build site / packageManager)
+//   node scripts/check-bun-mirror.mjs --fix --dry-run    # pré-visualiza o remendo, não grava
 //
 // Exit codes:
-//   0 — invariantes ok (pass)
-//   1 — pelo menos uma violação (fail)
-//   2 — falha de infra (git diff indisponível)
+//   0 — invariantes ok (pass) / remendo completo (--fix)
+//   1 — pelo menos uma violação (fail) / remendo IMPOSSÍVEL sem adivinhar (--fix)
+//   2 — falha de infra (git diff indisponível, arquivo ilegível, combinação de flags)
 //
 // Este guard garante os invariantes:
 //
@@ -199,6 +203,19 @@
 //      REMOÇÃO é a mesma cegueira que a (b) tinha, porque o que o commit tira
 //      não aparece em linha adicionada nenhuma. A régua do valor é uma só
 //      (judgePackageManager), compartilhada com o global.
+//      (d) O REMÉDIO do que a (b)/(c) recusam: `--fix` restaura na ÁRVORE a
+//      declaração de espelho que o commit APAGOU, lida do commit anterior
+//      (a régua da detecção é a MESMA da recusa: os itens vêm de
+//      removedBuildArgSites/removedToolchainDeclarations, não de uma segunda
+//      opinião). O remendo devolve a declaração MAIS as chaves-pai que o commit
+//      apagou junto (o `args:` inteiro removido deixaria o arg órfão — YAML
+//      inválido), e a linha volta abaixo de uma âncora que aparece EXATAMENTE
+//      UMA VEZ na árvore: sem candidata, ou com candidata ambígua, ele RECUSA
+//      (exit 1) e o commit segue bloqueado com o motivo — inserir num lugar
+//      plausível inventaria intenção. O que ele NÃO remenda é a linha que só
+//      TROCA o valor (divergência, não apagamento): quem a nomeia é a recusa da
+//      (c). `--fix --dry-run` pré-visualiza sem gravar; o remédio do pre-commit
+//      oferece o mesmo caminho (scripts/remedy-classes/bun-mirror-removal.mjs).
 //  19. Os USOS da versão num pipeline de CI de TERCEIRO versionado
 //      (`.woodpecker.yml`): a TAG DA IMAGEM (`image: oven/bun:<v>`, um por
 //      passo) e o BUILD ARG (`BUN_VERSION=<v>`) dizem o valor DECLARADO. É a
@@ -228,7 +245,7 @@
 // Node puro, sem deps, <1s.
 // =============================================================================
 
-import { readFileSync, existsSync, readdirSync } from "node:fs"
+import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs"
 
 import { BUN_MIRRORS, mirrorListText, readMirrorValues } from "./bun-version.mjs"
 import {
@@ -1834,7 +1851,7 @@ export function gitDiffWorkflows(base) {
  * @param {string[]} pathspecs
  * @returns {string|null}
  */
-export function gitDiffPaths(base, pathspecs) {
+export function gitDiffPaths(base, pathspecs, cwd = process.cwd()) {
   if (base !== null && !isValidGitRef(base)) return null
   // Pathspec de TODAS as forjas: no modo --staged/--base o guard precisa ver o
   // que o PR introduz em qualquer pipeline — limitar ao GitHub foi o que deixou
@@ -1843,7 +1860,7 @@ export function gitDiffPaths(base, pathspecs) {
     ? ["diff", `-U${DIFF_CONTEXT}`, `${base}...HEAD`, "--", ...pathspecs]
     : ["diff", `-U${DIFF_CONTEXT}`, "--cached", "--", ...pathspecs]
   try {
-    return execFileSync("git", args, { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 })
+    return execFileSync("git", args, { encoding: "utf8", maxBuffer: 10 * 1024 * 1024, cwd })
   } catch {
     return null
   }
@@ -1867,11 +1884,12 @@ export function gitDiffSingleSource(base) {
  * @param {string} file  caminho relativo à raiz do repo
  * @returns {string|null} conteúdo ou null (infra failure — o chamador decide)
  */
-export function gitShowIndexFile(file) {
+export function gitShowIndexFile(file, cwd = process.cwd()) {
   try {
     return execFileSync("git", ["show", `:${file}`], {
       encoding: "utf8",
       maxBuffer: 10 * 1024 * 1024,
+      cwd,
     })
   } catch {
     return null
@@ -2829,8 +2847,51 @@ export function checkStagedPackageManagerVersion(
   } = {},
 ) {
   const violations = []
-  const unreadable = []
+  const { itens, unreadable } = removedToolchainDeclarations(diffText, {
+    readIndex,
+    readHead,
+    inHead,
+  })
+  const removidos = new Set()
+  for (const { file } of itens) {
+    removidos.add(file)
+    violations.push(
+      `${file}: a declaração de TOOLCHAIN (\`"packageManager"\`) foi REMOVIDA por este commit — o arquivo do` +
+        ` ÍNDICE não a tem, e o de HEAD tinha. Sem ela cada máquina escolhe o próprio Bun e a divergência` +
+        ` com o CI fica invisível (o commit apaga a única declaração de qual runtime este repo usa).` +
+        ` Declare \`"packageManager": "bun@${declared ?? "<o valor dos espelhos>"}"\`.`,
+    )
+  }
+
   const adicionadas = parseDiffAddedLines(diffText, (rel) => rel === PACKAGE_JSON)
+  for (const file of parseDiffLines(diffText, (rel) => rel === PACKAGE_JSON).keys()) {
+    if (removidos.has(file)) continue
+    for (const { lineNo, content } of adicionadas.get(file) ?? []) {
+      if (!PACKAGE_MANAGER_FIELD_RE.test(content)) continue
+      violations.push(...judgePackageManager(content, declared, `${file}:${lineNo}`))
+    }
+  }
+  return { violations, unreadable }
+}
+
+/**
+ * As declarações de TOOLCHAIN que o commit APAGOU — a forma ESTRUTURADA da
+ * comparação ÍNDICE×HEAD que o veredito da 18(c) e o `--fix` compartilham.
+ *
+ * A REMOÇÃO é o único desfecho desta função: a linha que o diff ADICIONA com
+ * outro valor é julgada por `judgePackageManager` (é divergência, não apagamento),
+ * e o remendo não a toca.
+ *
+ * @param {string} diffText
+ * @param {{readIndex?: Function, readHead?: Function, inHead?: Function}} [readers]
+ * @returns {{itens: {file: string}[], unreadable: string[]}}
+ */
+export function removedToolchainDeclarations(
+  diffText,
+  { readIndex = gitShowIndexFile, readHead = gitShowHeadFile, inHead = gitPathInHead } = {},
+) {
+  const itens = []
+  const unreadable = []
   for (const file of parseDiffLines(diffText, (rel) => rel === PACKAGE_JSON).keys()) {
     const index = readIndex(file)
     if (index === null) {
@@ -2843,25 +2904,240 @@ export function checkStagedPackageManagerVersion(
       unreadable.push(file)
       continue
     }
-
     const tinha = head !== null && PACKAGE_MANAGER_FIELD_RE.test(head)
     const tem = PACKAGE_MANAGER_FIELD_RE.test(index)
-    if (tinha && !tem) {
-      violations.push(
-        `${file}: a declaração de TOOLCHAIN (\`"packageManager"\`) foi REMOVIDA por este commit — o arquivo do` +
-          ` ÍNDICE não a tem, e o de HEAD tinha. Sem ela cada máquina escolhe o próprio Bun e a divergência` +
-          ` com o CI fica invisível (o commit apaga a única declaração de qual runtime este repo usa).` +
-          ` Declare \`"packageManager": "bun@${declared ?? "<o valor dos espelhos>"}"\`.`,
-      )
-      continue
-    }
+    if (tinha && !tem) itens.push({ file })
+  }
+  return { itens, unreadable }
+}
 
-    for (const { lineNo, content } of adicionadas.get(file) ?? []) {
-      if (!PACKAGE_MANAGER_FIELD_RE.test(content)) continue
-      violations.push(...judgePackageManager(content, declared, `${file}:${lineNo}`))
+// ── O REMENDO (`--fix`): restaurar da HEAD a declaração de espelho APAGADA ──
+//
+// POR QUE ESTE FIXER EXISTE: o recorte `--staged` já RECUSA o commit que apaga a
+// declaração de espelho — o arg `BUN_VERSION` de um build site e o
+// `"packageManager"` —, e a recusa sozinha transfere ao operador um remendo
+// MECÂNICO: a linha que sumiu está inteira no commit anterior, e restaurá-la não
+// é uma decisão, é uma restauração. O remédio do pre-commit oferece este fixer na
+// hora do defeito (`scripts/remedy-classes/bun-mirror-removal.mjs`), e o `--fix`
+// daqui é o MESMO caminho que a classe chama.
+//
+// O QUE ELE **NÃO** REMENDA (declarado, e não é omissão): a linha que TROCA o
+// valor (o `packageManager` que passou a dizer outra versão, o arg que passou a
+// apontar para outra variável). Aquilo é DIVERGÊNCIA, não apagamento — restaurar
+// o valor do HEAD ali esconderia a intenção de quem escreveu o novo, e o remédio
+// não adivinha intenção. Ela também não é oferecida como remendo: quem a nomeia é
+// o veredito `--staged` do guard (com o valor novo no relatório), e a classe do
+// remédio só entra quando há APAGAMENTO (medido em `pre-commit-remedy-classes`).
+
+/**
+ * As linhas de DECLARAÇÃO de espelho que o HEAD tinha — a única fonte do
+ * remendo. Para o build site, o bloco do serviço (não o arquivo inteiro: outro
+ * serviço pode passar o arg, e copiá-lo para cá inventaria declaração); para a
+ * toolchain, o campo.
+ *
+ * O remendo é a declaração MAIS as CHAVES-PAI que o commit apagou junto, e essa
+ * segunda metade é medida, não suposta: o commit que apaga o bloco INTEIRO
+ * (`args:` e o arg) deixa a declaração sem o pai, e restaurar só a linha do arg
+ * produziria YAML INVÁLIDO — um remendo que quebra o arquivo é pior que a recusa.
+ * A extensão para pela primeira linha que (a) não é uma chave (não termina em
+ * `:`), (b) sobrevive no ÍNDICE (o commit não a apagou) ou (c) é um comentário/
+ * doc: o que o remendo devolve é o que ESTE commit apagou do caminho, nunca a
+ * visão do fixer sobre o que o bloco deveria ter.
+ *
+ * @param {string} rel
+ * @param {string} head    conteúdo do arquivo no commit anterior
+ * @param {{servico?: string, classe: string}} item
+ * @param {string} indice  conteúdo do ÍNDICE (o que o commit vai gravar)
+ * @returns {{linhas: string[], declaracao: string|null}} o remendo (na ordem do HEAD)
+ */
+function linhasDeEspelhoNoHead(rel, head, item, indice) {
+  const linhas = head.split(/\r?\n/)
+  if (item.classe === "toolchain") {
+    const campo = linhas.filter((l) => PACKAGE_MANAGER_FIELD_RE.test(l))
+    return { linhas: campo, declaracao: campo[0] ?? null }
+  }
+  const site = composeBuildSites(rel, head).find((s) => s.service === item.servico)
+  if (!site) return { linhas: [], declaracao: null }
+  const bloco = linhas.slice(site.lineNo - 1, site.endLineNo)
+  const declaracoes = bloco.filter((l) => !isCommentOrDocLine(l) && /BUN_VERSION\s*:/.test(l))
+  if (declaracoes.length === 0) return { linhas: [], declaracao: null }
+  const declaracao = declaracoes[declaracoes.length - 1]
+  const noIndice = new Set(indice.split(/\r?\n/))
+  const linhasDoRemendo = [declaracao]
+  for (let i = bloco.lastIndexOf(declaracao) - 1; i >= 0; i--) {
+    const candidata = bloco[i]
+    if (!/:\s*$/.test(candidata)) break
+    if (isCommentOrDocLine(candidata)) break
+    if (noIndice.has(candidata)) break
+    linhasDoRemendo.unshift(candidata)
+  }
+  return { linhas: linhasDoRemendo, declaracao }
+}
+
+/**
+ * ONDE a declaração volta: logo DEPOIS da ÂNCORA — a primeira linha, subindo a
+ * partir da removida no HEAD, que apareça EXATAMENTE UMA VEZ na árvore.
+ *
+ * A âncora é o que impede o remendo de ADIVINHAR: sem ela (nenhuma candidata
+ * sobreviveu) ou com candidata AMBÍGUA (aparece mais de uma vez), o fixer
+ * recusa e o commit segue bloqueado — inserir numa posição plausível inventaria
+ * intenção, que é a classe de defeito que este repositório persegue.
+ *
+ * @param {string} arvore  conteúdo atual da árvore
+ * @param {string} head    conteúdo do commit anterior
+ * @param {string} primeira  a primeira linha a restaurar (a removida)
+ * @returns {{ok: true, ancora: string}|{ok: false, reason: string}}
+ */
+export function ancoraDoRemendo(arvore, head, primeira) {
+  const linhasHead = head.split(/\r?\n/)
+  const idx = linhasHead.indexOf(primeira)
+  if (idx === -1) {
+    return { ok: false, reason: "a linha não existe no commit anterior — não há de onde restaurar" }
+  }
+  for (let i = idx - 1; i >= 0; i--) {
+    const candidata = linhasHead[i]
+    if (candidata.trim() === "") continue
+    const ocorrencias = arvore.split(/\r?\n/).filter((l) => l === candidata).length
+    if (ocorrencias === 0) continue
+    if (ocorrencias > 1) {
+      return {
+        ok: false,
+        reason:
+          `a âncora \`${candidata.trim()}\` aparece ${ocorrencias}x na árvore — inserir aqui ` +
+          `seria adivinhar em qual delas a declaração morava`,
+      }
+    }
+    return { ok: true, ancora: candidata }
+  }
+  return {
+    ok: false,
+    reason:
+      "nenhuma linha acima da declaração (no commit anterior) sobreviveu na árvore — sem âncora",
+  }
+}
+
+/**
+ * O REMENDO: restaura na ÁRVORE a declaração de espelho que o commit apagou.
+ *
+ * A régua da detecção é a do PRÓPRIO guard (os itens vêm das mesmas comparações
+ * ÍNDICE×HEAD que o veredito do `--staged` usa) — o fixer não tem uma segunda
+ * opinion de onde está o defeito.
+ *
+ * @typedef {{file: string, classe: string, servico?: string, lineNo?: number, dockerfile?: string}} ItemEspelho
+ * @typedef {ItemEspelho & {linhas: string[], declaracao: string, ancora: string, antes: string, depois: string}} ItemRemendado
+ * @typedef {ItemEspelho & {reason: string}} ItemRecusado
+ *
+ * @param {string} root
+ * @param {{dry?: boolean, base?: string|null, write?: Function, readTree?: Function, diffFonte?: string|null, diffPacote?: string|null}} [opts]
+ * @returns {{fixed: ItemRemendado[], refused: ItemRecusado[], unreadable: string[], indisponivel?: string}}
+ */
+export function fixRemovedMirrors(
+  root,
+  {
+    dry = false,
+    base = null,
+    write = writeFileSync,
+    readTree,
+    diffFonte = null,
+    diffPacote = null,
+  } = {},
+) {
+  const arvoreDe = (rel) => {
+    const p = join(root, rel)
+    return existsSync(p) ? readFileSync(p, "utf8") : null
+  }
+  const arvore = readTree ?? arvoreDe
+  const fonte = diffFonte ?? gitDiffPaths(base, SINGLE_SOURCE_PATHS, root)
+  const pacote = diffPacote ?? gitDiffPaths(base, PACKAGE_JSON_PATHS, root)
+  if (fonte === null || pacote === null) {
+    return {
+      fixed: [],
+      refused: [],
+      unreadable: [],
+      indisponivel:
+        `git diff indisponível` +
+        (base ? ` (base ${base})` : ` (nada staged? rode 'git add' primeiro)`),
     }
   }
-  return { violations, unreadable }
+
+  const leitores = {
+    readIndex: (f) => gitShowIndexFile(f, root),
+    readHead: (f) => gitShowHeadFile(f, root),
+    inHead: (f) => gitPathInHead(f, root),
+  }
+  const dockerfiles = bunDockerfilesWithArg(root)
+  const args = removedBuildArgSites(fonte, dockerfiles, leitores)
+  const toolchain = removedToolchainDeclarations(pacote, leitores)
+  const unreadable = [...new Set([...args.unreadable, ...toolchain.unreadable])]
+  const itens = [
+    ...args.itens.map((i) => ({ ...i, classe: "build-arg" })),
+    ...toolchain.itens.map((i) => ({ ...i, classe: "toolchain" })),
+  ]
+
+  const fixed = []
+  const refused = []
+  for (const item of itens) {
+    const head = gitShowHeadFile(item.file, root)
+    if (head === null) {
+      refused.push({ ...item, reason: "não consegui ler o arquivo no commit anterior" })
+      continue
+    }
+    const indice = leitores.readIndex(item.file)
+    if (indice === null) {
+      refused.push({ ...item, reason: "não consegui ler o arquivo no ÍNDICE" })
+      continue
+    }
+    const { linhas, declaracao } = linhasDeEspelhoNoHead(item.file, head, item, indice)
+    if (linhas.length === 0) {
+      refused.push({
+        ...item,
+        reason:
+          "o commit anterior não declara o espelho neste ponto (bloco/campo) — não há o que restaurar",
+      })
+      continue
+    }
+    const atual = arvore(item.file)
+    if (atual === null) {
+      refused.push({ ...item, reason: "o arquivo não está na ÁRVORE — nada a reescrever" })
+      continue
+    }
+    // Já na árvore: o remendo não tem o que escrever, e DIZER isso é o veredito
+    // (o remédio segue vermelho até o arquivo ser estagiado — quem leva a
+    // declaração ao commit é um `git add`, que este fixer não faz sozinho).
+    if (linhas.every((l) => atual.split(/\r?\n/).includes(l))) {
+      refused.push({
+        ...item,
+        reason:
+          `a ÁRVORE já declara \`${declaracao.trim()}\` — não há remendo a escrever; o que falta é ` +
+          `estagiar o arquivo (git add ${item.file})`,
+      })
+      continue
+    }
+    // A âncora é medida do TOPO do remendo (a chave-pai quando ela entra junto),
+    // não da declaração: inserir a declaração solta seria o YAML inválido de novo.
+    const ancora = ancoraDoRemendo(atual, head, linhas[0])
+    if (!ancora.ok) {
+      refused.push({ ...item, reason: ancora.reason })
+      continue
+    }
+    const linhasArvore = atual.split(/\r?\n/)
+    const pos = linhasArvore.indexOf(ancora.ancora)
+    const depois = [
+      ...linhasArvore.slice(0, pos + 1),
+      ...linhas,
+      ...linhasArvore.slice(pos + 1),
+    ].join("\n")
+    if (!dry) write(join(root, item.file), depois, "utf8")
+    fixed.push({
+      ...item,
+      linhas,
+      declaracao,
+      ancora: ancora.ancora,
+      antes: linhasArvore[pos],
+      depois: linhas.join(" | "),
+    })
+  }
+  return { fixed, refused, unreadable }
 }
 
 /**
@@ -2911,11 +3187,12 @@ export function checkStagedSingleSourceLiterals(diffText, declared = declaredBun
  * @param {string} file  caminho relativo à raiz do repo
  * @returns {string|null} conteúdo ou null
  */
-export function gitShowHeadFile(file) {
+export function gitShowHeadFile(file, cwd = process.cwd()) {
   try {
     return execFileSync("git", ["show", `HEAD:${file}`], {
       encoding: "utf8",
       maxBuffer: 10 * 1024 * 1024,
+      cwd,
     })
   } catch {
     return null
@@ -2933,9 +3210,9 @@ export function gitShowHeadFile(file) {
  * @param {string} file
  * @returns {boolean}
  */
-export function gitPathInHead(file) {
+export function gitPathInHead(file, cwd = process.cwd()) {
   try {
-    execFileSync("git", ["cat-file", "-e", `HEAD:${file}`], { stdio: "ignore" })
+    execFileSync("git", ["cat-file", "-e", `HEAD:${file}`], { stdio: "ignore", cwd })
     return true
   } catch {
     return false
@@ -2968,16 +3245,43 @@ export function gitPathInHead(file) {
  * @param {{readIndex?: (f: string) => string|null, readHead?: (f: string) => string|null, inHead?: (f: string) => boolean}} [reader]
  * @returns {{violations: string[], unreadable: string[]}}
  */
-export function checkStagedRemovedBuildArgs(
+export function checkStagedRemovedBuildArgs(diffText, bunDockerfiles, readers = {}) {
+  const { itens, unreadable } = removedBuildArgSites(diffText, bunDockerfiles, readers)
+  // A MESMA fórmula de antes (e a única casa dela): o veredito é montado dos
+  // itens, e o remendo lê os itens — duas leituras divergiriam no primeiro dia em
+  // que a régua mudasse.
+  const violations = itens.map(
+    (i) =>
+      `${i.file}:${i.lineNo}: o serviço '${i.servico}' buildava '${i.dockerfile}' PASSANDO \`BUN_VERSION\`` +
+      ` e este commit REMOVE o arg do bloco (o bloco do ÍNDICE não o tem mais, e o de HEAD tinha) —` +
+      ` sem o arg o build site não tem valor escrito NENHUM: ele passa a herdar o que o Dockerfile` +
+      ` declarar, e nenhum Dockerfile declara default de propósito. Mantenha o arg derivado` +
+      ` (\`BUN_VERSION: \${BUN_VERSION:-<declarado>}\` no compose): removê-lo não é limpeza, é apagar a` +
+      ` única declaração de versão daquele build.`,
+  )
+  return { violations, unreadable }
+}
+
+/**
+ * Os build sites que PERDERAM o arg `BUN_VERSION` — a forma ESTRUTURADA da
+ * comparação ÍNDICE×HEAD que o `--fix` também usa.
+ *
+ * A enumeração é dos ARQUIVOS que o diff toca (não das linhas adicionadas): uma
+ * remoção pura não adiciona linha nenhuma — era exatamente por aí que ela
+ * escapava.
+ *
+ * @param {string} diffText
+ * @param {string[]} bunDockerfiles  saída de `bunDockerfilesWithArg`
+ * @param {{readIndex?: Function, readHead?: Function, inHead?: Function}} [readers]
+ * @returns {{itens: {file: string, servico: string, dockerfile: string, lineNo: number}[], unreadable: string[]}}
+ */
+export function removedBuildArgSites(
   diffText,
   bunDockerfiles,
   { readIndex = gitShowIndexFile, readHead = gitShowHeadFile, inHead = gitPathInHead } = {},
 ) {
-  const violations = []
+  const itens = []
   const unreadable = []
-  // A enumeração é dos ARQUIVOS que o diff toca (não das linhas adicionadas):
-  // uma remoção pura não adiciona linha nenhuma — era exatamente por aí que ela
-  // escapava.
   const arquivos = parseDiffLines(diffText, (rel) => COMPOSE_FILE_RE.test(rel)).keys()
   for (const file of arquivos) {
     const index = readIndex(file)
@@ -2999,17 +3303,15 @@ export function checkStagedRemovedBuildArgs(
       const atual = agora.find((s) => s.service === site.service)
       if (!atual) continue // serviço removido — outra decisão, outro veredito
       if (atual.passArg || !exigeArg(atual)) continue
-      violations.push(
-        `${file}:${atual.lineNo}: o serviço '${atual.service}' buildava '${atual.dockerfile}' PASSANDO \`BUN_VERSION\`` +
-          ` e este commit REMOVE o arg do bloco (o bloco do ÍNDICE não o tem mais, e o de HEAD tinha) —` +
-          ` sem o arg o build site não tem valor escrito NENHUM: ele passa a herdar o que o Dockerfile` +
-          ` declarar, e nenhum Dockerfile declara default de propósito. Mantenha o arg derivado` +
-          ` (\`BUN_VERSION: \${BUN_VERSION:-<declarado>}\` no compose): removê-lo não é limpeza, é apagar a` +
-          ` única declaração de versão daquele build.`,
-      )
+      itens.push({
+        file,
+        servico: atual.service,
+        dockerfile: atual.dockerfile,
+        lineNo: atual.lineNo,
+      })
     }
   }
-  return { violations, unreadable }
+  return { itens, unreadable }
 }
 
 /**
@@ -3548,6 +3850,81 @@ function main() {
   const staged = args.includes("--staged")
   const baseIdx = args.indexOf("--base")
   const base = baseIdx !== -1 ? args[baseIdx + 1] : null
+  const fix = args.includes("--fix")
+  const dryRun = args.includes("--dry-run")
+
+  // ── Modo --fix: o REMENDO da declaração de espelho apagada ────────────
+  // Combinações que o comando NÃO promete, ditas em vez de aceitas em silêncio:
+  // o remendo escreve na ÁRVORE (e o remédio estagia depois), o `--staged` julga
+  // o ÍNDICE (o commit já montado), o `--base` compara contra outro ref (e os
+  // leitores do remendo são o ÍNDICE e o HEAD, por definição), e o relato é texto
+  // (antes/depois), não JSON.
+  if (dryRun && !fix) {
+    console.error("❌ --dry-run sem --fix: o preview descreve o que o `--fix` GRAVARIA")
+    process.exit(2)
+  }
+  for (const [outra, motivo] of [
+    ["--staged", "`--fix` remenda a ÁRVORE; `--staged` julga o ÍNDICE (o commit já montado)"],
+    [
+      "--base",
+      "`--fix` restaura do ÍNDICE×HEAD; `--base` julgaria outro ref, e o remendo não teria onde ancorar",
+    ],
+    ["--json", "`--fix` relata em texto (antes/depois do remendo), não em JSON"],
+  ]) {
+    if (fix && args.includes(outra)) {
+      console.error(`❌ ${outra} com --fix: ${motivo}`)
+      process.exit(2)
+    }
+  }
+
+  if (fix) {
+    const r = fixRemovedMirrors(process.cwd(), { dry: dryRun })
+    if (r.indisponivel) {
+      console.error(`❌ ${r.indisponivel}`)
+      process.exit(2)
+    }
+    if (r.unreadable.length > 0) {
+      console.error(
+        `❌ não consegui ler o(s) arquivo(s) que o remendo precisa (ÍNDICE×HEAD): ` +
+          `${r.unreadable.join(", ")} — "não consegui ler" nunca é "nada a remendar".`,
+      )
+      process.exit(2)
+    }
+    for (const item of r.fixed) {
+      const onde = `${item.file}${item.lineNo ? `:${item.lineNo}` : ""}`
+      if (dryRun) {
+        console.log(
+          `◦ ${onde} — pré-visualizado (${item.classe}): a declaração \`${item.declaracao.trim()}\` seria ` +
+            `restaurada logo abaixo de \`${item.ancora.trim()}\`` +
+            (item.linhas.length > 1
+              ? ` (com a(s) chave(s)-pai que o commit apagou junto: ${item.linhas
+                  .slice(0, -1)
+                  .map((l) => `\`${l.trim()}\``)
+                  .join(", ")})`
+              : ""),
+        )
+        continue
+      }
+      console.log(
+        `✔ ${onde} — declaração restaurada do commit anterior (${item.classe}): ` +
+          item.linhas.map((l) => `\`${l.trim()}\``).join(", "),
+      )
+      console.log(`     âncora: ${item.ancora}`)
+    }
+    for (const item of r.refused) {
+      console.error(`⛔ ${item.file} — NÃO remendado: ${item.reason}`)
+    }
+    if (r.fixed.length === 0 && r.refused.length === 0) {
+      console.log("✅ Nada a remendar: nenhuma declaração de espelho apagada neste commit.")
+      process.exit(0)
+    }
+    if (dryRun && r.fixed.length > 0) {
+      console.log(
+        `\n   O preview NÃO gravou nada — a árvore está intacta. Rode sem --dry-run para remendar.`,
+      )
+    }
+    process.exit(r.refused.length > 0 ? 1 : 0)
+  }
 
   // ── Modo --staged: só o que o diff em questão INTRODUZ ──────────────
   // Local/pre-commit: git diff --cached (o que está staged). CI: o job

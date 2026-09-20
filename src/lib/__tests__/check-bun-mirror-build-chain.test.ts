@@ -42,8 +42,12 @@
 import { describe, it, expect, afterAll } from "vitest"
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { join, resolve } from "node:path"
+import { spawnSync } from "node:child_process"
 import {
+  PACKAGE_JSON_PATHS,
+  SINGLE_SOURCE_PATHS,
+  ancoraDoRemendo,
   bunDockerfilesWithArg,
   checkComposeBuildArgs,
   checkDockerfileBunLine,
@@ -54,6 +58,8 @@ import {
   composeBuildSites,
   declaredBunVersion,
   embeddedVersionDefault,
+  fixRemovedMirrors,
+  gitDiffPaths,
   gitPathInHead,
   judgePackageManager,
 } from "../../../scripts/check-bun-mirror.mjs"
@@ -760,5 +766,259 @@ describe("a cadeia de build no REPOSITÓRIO real", () => {
     expect(declared).not.toBeNull()
     const pkg = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"))
     expect(pkg.packageManager).toBe(`bun@${declared}`)
+  })
+})
+
+// ── o REMENDO (`--fix`): a declaração de espelho apagada volta do HEAD ────
+
+const COMPOSE = "deploy/docker-compose.yml"
+const COMPOSE_ANTES = `services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        BUN_VERSION: \${BUN_VERSION:-1.3.14}
+    command: echo oi
+`
+const COMPOSE_SEM_ARG = `services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+    command: echo oi
+`
+const PKG_ANTES = `{
+  "name": "fixture",
+  "version": "0.0.0",
+  "packageManager": "bun@1.3.14",
+  "private": true
+}
+`
+const PKG_SEM_TOOLCHAIN = `{
+  "name": "fixture",
+  "version": "0.0.0",
+  "private": true
+}
+`
+
+/** O git de um fixture (config por `-c`: nada de config GLOBAL nesta máquina). */
+function git(dir: string, ...args: string[]): string {
+  const r = spawnSync("git", args, { cwd: dir, encoding: "utf8" })
+  if (r.status !== 0) throw new Error(`git ${args.join(" ")} falhou: ${r.stderr}`)
+  return String(r.stdout ?? "")
+}
+
+/**
+ * Um repositório de VERDADE com a remoção ESTAGIADA — o remendo lê o ÍNDICE
+ * (`git show :f`) e o HEAD (`git show HEAD:f`), então um fixture de arquivos soltos
+ * não o exercita.
+ */
+function repoComRemocao(
+  name: string,
+  antes: Record<string, string>,
+  depois: Record<string, string>,
+) {
+  const dir = makeFixture(name, { Dockerfile: "FROM alpine\nARG BUN_VERSION\n", ...antes })
+  git(dir, "init", "-q")
+  git(dir, "add", "-A")
+  git(dir, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "base")
+  for (const [rel, content] of Object.entries(depois))
+    writeFileSync(join(dir, rel), content, "utf8")
+  git(dir, "add", "-A")
+  return dir
+}
+
+/** O git do repositório REAL (`scripts/check-bun-mirror.mjs`), rodado do fixture. */
+function cliFix(dir: string, ...flags: string[]) {
+  return spawnSync(
+    process.execPath,
+    [resolve(process.cwd(), "scripts/check-bun-mirror.mjs"), ...flags],
+    {
+      cwd: dir,
+      encoding: "utf8",
+    },
+  )
+}
+
+describe("o remendo (`--fix`) da declaração de espelho apagada", () => {
+  it("o preview mostra o que gravaria e NÃO grava", () => {
+    const dir = repoComRemocao(
+      "remendo-preview",
+      { [COMPOSE]: COMPOSE_ANTES, "package.json": PKG_ANTES },
+      { [COMPOSE]: COMPOSE_SEM_ARG, "package.json": PKG_SEM_TOOLCHAIN },
+    )
+    const r = fixRemovedMirrors(dir, { dry: true })
+    expect(r.fixed.map((f) => f.file).sort()).toEqual([COMPOSE, "package.json"])
+    expect(r.fixed.find((f) => f.file === COMPOSE)?.linhas[0]).toBe(
+      `        BUN_VERSION: \${BUN_VERSION:-1.3.14}`,
+    )
+    // A ÂNCORA é dita no preview (e o preview não escreveu).
+    expect(r.fixed.find((f) => f.file === COMPOSE)?.ancora).toBe("      args:")
+    expect(readFileSync(join(dir, COMPOSE), "utf8")).toBe(COMPOSE_SEM_ARG)
+    expect(readFileSync(join(dir, "package.json"), "utf8")).toBe(PKG_SEM_TOOLCHAIN)
+  })
+
+  it("o remendo restaura as duas declarações byte a byte e o recorte volta verde", () => {
+    const dir = repoComRemocao(
+      "remendo-aplica",
+      { [COMPOSE]: COMPOSE_ANTES, "package.json": PKG_ANTES },
+      { [COMPOSE]: COMPOSE_SEM_ARG, "package.json": PKG_SEM_TOOLCHAIN },
+    )
+    const r = fixRemovedMirrors(dir)
+    expect(r.refused).toEqual([])
+    expect(readFileSync(join(dir, COMPOSE), "utf8")).toBe(COMPOSE_ANTES)
+    expect(readFileSync(join(dir, "package.json"), "utf8")).toBe(PKG_ANTES)
+
+    // O remédio leva o remendo ao ÍNDICE (é o `git add` da classe) — e aí o
+    // veredito do guard dono volta a passar, que é o que fecha o ciclo.
+    git(dir, "add", "-A")
+    const leitores = {
+      readIndex: (f: string) => String(spawnSync("git", ["show", `:${f}`], { cwd: dir }).stdout),
+      readHead: (f: string) => String(spawnSync("git", ["show", `HEAD:${f}`], { cwd: dir }).stdout),
+      inHead: () => true,
+    }
+    const diffFonte = gitDiffPaths(null, SINGLE_SOURCE_PATHS, dir)
+    const diffPacote = gitDiffPaths(null, PACKAGE_JSON_PATHS, dir)
+    expect(diffFonte).not.toBeNull()
+    expect(diffPacote).not.toBeNull()
+    expect(
+      checkStagedRemovedBuildArgs(diffFonte ?? "", bunDockerfilesWithArg(dir), leitores).violations,
+    ).toEqual([])
+    expect(checkStagedPackageManagerVersion(diffPacote ?? "", leitores).violations).toEqual([])
+  })
+
+  it("âncora AMBÍGUA: o fixer RECUSA em vez de adivinhar onde a declaração morava", () => {
+    // O HEAD tem UM `      args:`; a árvore passou a ter DOIS (um serviço novo com
+    // o MESMO bloco vazio) — inserir no primeiro ou no segundo seria adivinhar.
+    const comDoisBlocos = `${COMPOSE_SEM_ARG}  extra:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+`
+    const dir = repoComRemocao(
+      "remendo-ancora-ambigua",
+      { [COMPOSE]: COMPOSE_ANTES },
+      { [COMPOSE]: comDoisBlocos },
+    )
+    const r = fixRemovedMirrors(dir)
+    expect(r.fixed).toEqual([])
+    expect(r.refused).toHaveLength(1)
+    expect(r.refused[0].reason).toContain("aparece 2x na árvore")
+    expect(readFileSync(join(dir, COMPOSE), "utf8")).toBe(comDoisBlocos)
+  })
+
+  it("a ÁRVORE já declara o espelho: RECUSA com o caminho à mão (o que falta é `git add`)", () => {
+    const dir = repoComRemocao(
+      "remendo-ja-na-arvore",
+      { [COMPOSE]: COMPOSE_ANTES },
+      { [COMPOSE]: COMPOSE_SEM_ARG },
+    )
+    // Alguém repôs a linha na ÁRVORE sem estagiar: o ÍNDICE (que o guard julga)
+    // continua sem ela, e o remendo não tem o que escrever.
+    writeFileSync(join(dir, COMPOSE), COMPOSE_ANTES, "utf8")
+    const r = fixRemovedMirrors(dir)
+    expect(r.fixed).toEqual([])
+    expect(r.refused[0].reason).toContain("já declara")
+    expect(r.refused[0].reason).toContain("git add")
+  })
+
+  it("a DIVERGÊNCIA (valor trocado) não é remendada — o remendo restaura o APAGADO", () => {
+    const pkgTrocado = PKG_ANTES.replace("bun@1.3.14", "bun@9.9.9")
+    const dir = repoComRemocao(
+      "remendo-divergencia",
+      { "package.json": PKG_ANTES },
+      { "package.json": pkgTrocado },
+    )
+    // Não há APAGAMENTO a restaurar…
+    expect(fixRemovedMirrors(dir).fixed).toEqual([])
+    expect(fixRemovedMirrors(dir).refused).toEqual([])
+    // …e a régua do guard dono segue nomeando a divergência (outro veredito, outro remédio).
+    const v = checkStagedPackageManagerVersion(gitDiffPaths(null, PACKAGE_JSON_PATHS, dir) ?? "", {
+      readIndex: (f: string) => String(spawnSync("git", ["show", `:${f}`], { cwd: dir }).stdout),
+      readHead: (f: string) => String(spawnSync("git", ["show", `HEAD:${f}`], { cwd: dir }).stdout),
+      inHead: () => true,
+    }).violations
+    expect(v.join(" ")).toContain("9.9.9")
+  })
+
+  it("a CLI: `--fix --dry-run` não grava, e as combinações que o comando não promete são exit 2", () => {
+    const dir = repoComRemocao(
+      "remendo-cli",
+      { [COMPOSE]: COMPOSE_ANTES },
+      { [COMPOSE]: COMPOSE_SEM_ARG },
+    )
+    const preview = cliFix(dir, "--fix", "--dry-run")
+    expect(preview.status).toBe(0)
+    expect(preview.stdout).toContain("pré-visualizado")
+    expect(readFileSync(join(dir, COMPOSE), "utf8")).toBe(COMPOSE_SEM_ARG)
+
+    expect(cliFix(dir, "--dry-run").status).toBe(2)
+    expect(cliFix(dir, "--fix", "--staged").status).toBe(2)
+    expect(cliFix(dir, "--fix", "--json").status).toBe(2)
+
+    const aplicado = cliFix(dir, "--fix")
+    expect(aplicado.status).toBe(0)
+    expect(aplicado.stdout).toContain("declaração restaurada do commit anterior")
+    expect(readFileSync(join(dir, COMPOSE), "utf8")).toBe(COMPOSE_ANTES)
+  })
+
+  it("o bloco INTEIRO apagado (`args:` + o arg): o remendo devolve a CHAVE-PAI, não o YAML quebrado", () => {
+    // O commit que apaga o bloco inteiro deixa a declaração sem o pai: restaurar
+    // só a linha do arg produziria YAML INVÁLIDO. O remendo devolve o trecho que
+    // ESTE commit apagou — e o veredito do dono volta a passar (o mesmo ciclo).
+    const semBloco = `services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    command: echo oi
+`
+    const dir = repoComRemocao(
+      "remendo-bloco-inteiro",
+      { [COMPOSE]: COMPOSE_ANTES },
+      { [COMPOSE]: semBloco },
+    )
+    const preview = fixRemovedMirrors(dir, { dry: true })
+    expect(preview.fixed[0]?.linhas).toEqual([
+      "      args:",
+      `        BUN_VERSION: \${BUN_VERSION:-1.3.14}`,
+    ])
+    expect(preview.fixed[0]?.declaracao).toBe(`        BUN_VERSION: \${BUN_VERSION:-1.3.14}`)
+    // A âncora é medida do TOPO do remendo (`args:`), não da declaração solta.
+    expect(preview.fixed[0]?.ancora).toBe("      dockerfile: Dockerfile")
+
+    const r = fixRemovedMirrors(dir)
+    expect(r.refused).toEqual([])
+    expect(readFileSync(join(dir, COMPOSE), "utf8")).toBe(COMPOSE_ANTES)
+  })
+
+  it("a chave-pai que SOBREVIVEU no índice não é reescrita (o remendo é do que o commit apagou)", () => {
+    const semLinha = `services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+    command: echo oi
+`
+    const dir = repoComRemocao(
+      "remendo-pai-sobrevivente",
+      { [COMPOSE]: COMPOSE_ANTES },
+      { [COMPOSE]: semLinha },
+    )
+    const r = fixRemovedMirrors(dir, { dry: true })
+    expect(r.fixed[0]?.linhas).toEqual([`        BUN_VERSION: \${BUN_VERSION:-1.3.14}`])
+    expect(r.fixed[0]?.ancora).toBe("      args:")
+  })
+
+  it("a âncora: única na árvore é a única que serve (a função pura)", () => {
+    expect(ancoraDoRemendo("a\nb\nc\n", "x\na\nb\nc\n", "b")).toEqual({ ok: true, ancora: "a" })
+    const ambigua = ancoraDoRemendo("a\na\n", "x\na\nb\n", "b")
+    expect(ambigua.ok).toBe(false)
+    const sem = ancoraDoRemendo("z\n", "x\ny\nb\n", "b")
+    expect(sem.ok).toBe(false)
   })
 })

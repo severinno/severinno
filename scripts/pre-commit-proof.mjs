@@ -177,6 +177,14 @@ export const GUARD_CLOSURE = [
   // apareceria como veredito do defeito, que é exatamente o que o comentário
   // acima descreve.
   "remedy-classes/pipefail-sigpipe.mjs",
+  // A SÉTIMA classe: o remendo da DECLARAÇÃO DE ESPELHO apagada (o arg do build
+  // site e o `packageManager`), com o fixer do guard dono (`check-bun-mirror.mjs`,
+  // que já viajava neste fecho como dependência dos guards do índice). A
+  // declaração importa o `fixRemovedMirrors` do dono, e o realmente novo aqui é
+  // que o dono passou a ter `--fix`: a descoberta RECUSA a classe quando o dono
+  // não o declara, então sem esta linha (e sem o `--fix` no guard) o fixture
+  // rodaria um remédio com oferta incompleta.
+  "remedy-classes/bun-mirror-removal.mjs",
   // E OS GUARDS DONOS das três classes de ENCODING viajam com as declarações:
   // a descoberta RECUSA a rodada quando uma declaração cita um dono que não
   // existe NESTE repositório, então um fixture com as declarações e sem os donos

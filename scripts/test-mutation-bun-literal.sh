@@ -39,7 +39,11 @@
 #      exclusão do comentário (a prosa do cabeçalho) e o recorte `--staged`.
 #      O M5 cobre as duas direções do commit na cadeia de build: o arg e a
 #      declaração de toolchain que ele APAGA (M5e/M5f, comparando o bloco do
-#      ÍNDICE com o de HEAD — o que o commit tira não ganha linha adicionada)
+#      ÍNDICE com o de HEAD — o que o commit tira não ganha linha adicionada) e o
+#      REMENDO do que foi apagado (M5g o `--fix` real + o ciclo com o estágio;
+#      M5h a CHAVE-PAI devolvida junto, com a mutação que grava a declaração
+#      órfã; M5i a ÂNCORA ÚNICA, com a mutação que põe a declaração no serviço
+#      ERRADO)
 #   9. Cleanup (trap EXIT — rm -rf do temp)
 #
 # Usage:
@@ -841,6 +845,241 @@ pass "M5f CIRÚRGICA (REMOÇÃO do toolchain): sem a linha registrada no recorte
 # O fixture do M5f morre aqui: ele é um REPO aninhado, e o `git add -A` do M6 o
 # veria como repo embutido (o git avisa e staged um gitlink). Já cumpriu o papel.
 rm -rf "$M5F_DIR"
+
+# ── M5g/M5h/M5i: o REMENDO (`--fix`) da declaração apagada é load-bearing? ──
+#
+# A recusa do `--staged` transfere ao operador um remendo MECÂNICO: a linha que
+# sumiu está inteira no commit anterior. O fixer do guard dono (`--fix`) faz
+# isso — e as TRÊS metades que ele não pode errar em silêncio:
+#   M5g o remendo REAL: o `--dry-run` pré-visualiza sem gravar, o `--fix`
+#       restaura na árvore e — estagiado — o `--staged` do dono volta VERDE (o
+#       ciclo que a recusa abriu);
+#   M5h a CHAVE-PAI (e a sua mutação): o commit que apaga o bloco INTEIRO
+#       (`args:` + o arg) exige que o remendo devolva o caminho, não só a linha
+#       do arg — senão o arquivo sai YAML INVÁLIDO (a declaração órfã abaixo do
+#       `dockerfile:`);
+#   M5i a ÂNCORA ÚNICA (e a sua mutação): com a linha de apoio aparecendo mais de
+#       uma vez na árvore, inserir no primeiro lugar "plausível" seria ADIVINHAR
+#       (põe a declaração no SERVIÇO ERRADO) — o fixer tem de RECUSAR.
+#
+# O fixture do M5g é o PRÓPRIO estado do M5e (o arg do `web` apagado e staged):
+# o `--fix` do guard REAL restaura da HEAD. Os do M5h/M5i apagam o bloco INTEIRO
+# num repo próprio (o defeito muda a FORMA do que o commit tira).
+
+# ── M5g: o `--fix` do guard real restaura, e o `--dry-run` NÃO grava ──
+M5G_ANTES="$(cat "$TMP_DIR/docker-compose.yml")"
+set +e
+M5G_DRY_OUT="$(cd "$TMP_DIR" && node "$GUARD" --fix --dry-run 2>&1)"
+M5G_DRY_EXIT=$?
+set -e
+if [ "$M5G_DRY_EXIT" -ne 0 ]; then
+  fail "o '--fix --dry-run' saiu $M5G_DRY_EXIT — o preview do remendo do M5e reprova."
+  echo "$M5G_DRY_OUT" | tail -10
+  exit 1
+fi
+if [ "$(cat "$TMP_DIR/docker-compose.yml")" != "$M5G_ANTES" ]; then
+  fail "o '--fix --dry-run' GRAVOU na árvore — um preview que escreve é um remendo"
+  fail "sem confirmação."
+  exit 1
+fi
+pass "M5g pré-visualiza o remendo e NÃO grava (--fix --dry-run)"
+
+set +e
+M5G_OUT="$(cd "$TMP_DIR" && node "$GUARD" --fix 2>&1)"
+M5G_EXIT=$?
+set -e
+if [ "$M5G_EXIT" -ne 0 ]; then
+  fail "o '--fix' do guard saiu $M5G_EXIT — o remendo da declaração apagada (M5e) falhou."
+  echo "$M5G_OUT" | tail -10
+  exit 1
+fi
+if ! grep -Fq "declaração restaurada do commit anterior" <<<"$M5G_OUT"; then
+  fail "o '--fix' passou mas SEM dizer o que restaurou:"
+  echo "$M5G_OUT" | tail -8
+  exit 1
+fi
+# O remendo devolve a CHAVE-PAI (o `args:` do M5e foi apagado junto).
+if ! grep -qE '^      args:$' "$TMP_DIR/docker-compose.yml"; then
+  fail "o '--fix' restaurou a linha do arg SEM a chave-pai 'args:' — o bloco do M5e"
+  fail "voltaria YAML INVÁLIDO (declaração órfã abaixo do 'dockerfile:')."
+  sed -n '1,14p' "$TMP_DIR/docker-compose.yml"
+  exit 1
+fi
+if ! grep -qF "BUN_VERSION: \${BUN_VERSION:-$FIXTURE_VERSION}" "$TMP_DIR/docker-compose.yml"; then
+  fail "o '--fix' não restaurou o arg apagado do build site:"
+  sed -n '1,14p' "$TMP_DIR/docker-compose.yml"
+  exit 1
+fi
+pass "M5g REMENDO: o bloco apagado (o arg + a chave-pai) voltou da HEAD na árvore"
+
+# ── Com o remendo ESTAGIADO, o recorte do commit volta a passar (o ciclo) ──
+git -C "$TMP_DIR" add docker-compose.yml
+set +e
+M5G_VERDE_OUT="$(cd "$TMP_DIR" && node "$GUARD" --staged 2>&1)"
+M5G_VERDE_EXIT=$?
+set -e
+if [ "$M5G_VERDE_EXIT" -ne 0 ]; then
+  fail "mesmo com o remendo no ÍNDICE o recorte --staged segue vermelho (exit $M5G_VERDE_EXIT)"
+  fail "— o remendo não fecha o ciclo que a recusa abriu."
+  echo "$M5G_VERDE_OUT" | tail -10
+  exit 1
+fi
+pass "M5g CICLO: remendo aplicado + estagiado ⇒ o '--staged' do dono volta verde (exit 0)"
+
+# ── M5h: a CHAVE-PAI — o bloco inteiro apagado não pode voltar YAML INVÁLIDO ──
+# Fixture próprio: UM serviço, o bloco INTEIRO apagado e a âncora ÚNICA (para a
+# única metade medida aqui ser a da chave-pai, e não a da ambiguidade do M5i).
+M5H_DIR="$TMP_DIR/chave-pai"
+mkdir -p "$M5H_DIR"
+git -C "$M5H_DIR" init -q
+cat > "$M5H_DIR/Dockerfile.worker" <<'EOF'
+ARG BUN_VERSION
+FROM oven/bun:${BUN_VERSION}
+EOF
+cat > "$M5H_DIR/docker-compose.yml" <<YML
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        BUN_VERSION: \${BUN_VERSION:-$FIXTURE_VERSION}
+YML
+git -C "$M5H_DIR" add -A
+git -C "$M5H_DIR" -c user.email=fixture@local -c user.name=fixture \
+  commit --no-verify -qm "fixture válido (build site com o arg)"
+cat > "$M5H_DIR/docker-compose.yml" <<YML
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+YML
+git -C "$M5H_DIR" add docker-compose.yml
+
+# ── A cópia mutada: sem devolver a chave-pai, o remendo grava YAML quebrado ──
+MUT_GUARD="$SCRIPT_DIR/scripts/.tmp-mutation-guard.mjs"
+sed -e 's|^    linhasDoRemendo.unshift(candidata)$|    void candidata // M5h: chave-pai nao restaurada|' \
+  "$GUARD" > "$MUT_GUARD"
+if cmp -s "$GUARD" "$MUT_GUARD"; then
+  fail "A mutação M5h NÃO se aplicou (a extensão para a chave-pai mudou de forma?)"
+  fail "— reveja o alvo do sed."
+  exit 1
+fi
+set +e
+M5H_SURG_OUT="$(cd "$M5H_DIR" && node "$MUT_GUARD" --fix 2>&1)"
+M5H_SURG_EXIT=$?
+set -e
+rm -f "$MUT_GUARD"
+if [ "$M5H_SURG_EXIT" -ne 0 ]; then
+  fail "A mutação da chave-pai NÃO cegou o fixer (exit $M5H_SURG_EXIT) — ele ainda"
+  fail "recusa: a metade medida não é a que a mutação derruba."
+  echo "$M5H_SURG_OUT" | tail -8
+  exit 1
+fi
+if grep -qE '^      args:$' "$M5H_DIR/docker-compose.yml"; then
+  fail "a cópia cega devolveu a chave-pai mesmo assim — a mutação não mediu o que diz."
+  exit 1
+fi
+if ! grep -qF "BUN_VERSION: \${BUN_VERSION:-$FIXTURE_VERSION}" "$M5H_DIR/docker-compose.yml"; then
+  fail "a cópia cega nem restaurou a linha do arg — o fixture do M5h não exercitou o remendo."
+  exit 1
+fi
+pass "M5h MUTAÇÃO: sem a chave-pai o '--fix' grava a declaração ÓRFÃ (YAML inválido) — a metade real a devolve"
+rm -rf "$M5H_DIR"
+
+# ── M5i: a ÂNCORA ÚNICA — a declaração não pode cair no serviço ERRADO ──
+# Fixture próprio: DOIS serviços com o mesmo `dockerfile:` e só o de baixo com
+# `args:` no HEAD — o de cima nunca teve o arg. Com o `args:` do de baixo apagado
+# junto, a linha de apoio (`      dockerfile: Dockerfile.worker`) aparece 2x na
+# árvore: inserir depois da PRIMEIRA poria a declaração no serviço ERRADO.
+M5I_DIR="$TMP_DIR/ancora-ambigua"
+mkdir -p "$M5I_DIR"
+git -C "$M5I_DIR" init -q
+cat > "$M5I_DIR/Dockerfile.worker" <<'EOF'
+ARG BUN_VERSION
+FROM oven/bun:${BUN_VERSION}
+EOF
+cat > "$M5I_DIR/docker-compose.yml" <<YML
+services:
+  worker-novo:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        BUN_VERSION: \${BUN_VERSION:-$FIXTURE_VERSION}
+YML
+git -C "$M5I_DIR" add -A
+git -C "$M5I_DIR" -c user.email=fixture@local -c user.name=fixture \
+  commit --no-verify -qm "fixture válido (dois build sites, um com o arg)"
+# O defeito: o bloco INTEIRO do `web` apagado (nenhuma linha `+` no diff).
+cat > "$M5I_DIR/docker-compose.yml" <<YML
+services:
+  worker-novo:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+YML
+git -C "$M5I_DIR" add docker-compose.yml
+M5I_ANTES="$(cat "$M5I_DIR/docker-compose.yml")"
+set +e
+M5I_OUT="$(cd "$M5I_DIR" && node "$GUARD" --fix 2>&1)"
+M5I_EXIT=$?
+set -e
+if [ "$M5I_EXIT" -eq 0 ]; then
+  fail "o '--fix' REMENDOU com a âncora AMBÍGUA (exit 0) — ele adivinhou onde a"
+  fail "declaração morava; o serviço ERRADO pode ter ganho um arg que nunca teve."
+  exit 1
+fi
+if ! grep -Fq "aparece 2x na árvore" <<<"$M5I_OUT"; then
+  fail "o '--fix' recusou (exit $M5I_EXIT) mas SEM nomear a âncora ambígua:"
+  echo "$M5I_OUT" | tail -8
+  exit 1
+fi
+if [ "$(cat "$M5I_DIR/docker-compose.yml")" != "$M5I_ANTES" ]; then
+  fail "o '--fix' RECUSOU e ESCREVEU mesmo assim — recusa com efeito colateral."
+  exit 1
+fi
+pass "M5i ÂNCORA AMBÍGUA: o fixer RECUSA e não toca no arquivo (exit $M5I_EXIT)"
+
+# ── A cópia mutada: sem a RECUSA da âncora, a declaração cai no serviço ERRADO ──
+MUT_GUARD="$SCRIPT_DIR/scripts/.tmp-mutation-guard.mjs"
+sed -e 's|if (ocorrencias > 1) {|if (false) { // M5i: âncora ambígua cegada|' \
+  "$GUARD" > "$MUT_GUARD"
+if cmp -s "$GUARD" "$MUT_GUARD"; then
+  fail "A mutação M5i NÃO se aplicou (a recusa da âncora mudou de forma?) —"
+  fail "reveja o alvo do sed."
+  exit 1
+fi
+set +e
+M5I_SURG_OUT="$(cd "$M5I_DIR" && node "$MUT_GUARD" --fix 2>&1)"
+M5I_SURG_EXIT=$?
+set -e
+rm -f "$MUT_GUARD"
+if [ "$M5I_SURG_EXIT" -ne 0 ]; then
+  fail "A mutação da âncora NÃO cegou o fixer (exit $M5I_SURG_EXIT) — a metade é"
+  fail "decorativa: outra régua está recusando no lugar dela."
+  echo "$M5I_SURG_OUT" | tail -8
+  exit 1
+fi
+# Cega a recusa, a declaração entra na PRIMEIRA ocorrência da linha de apoio — o
+# bloco do `worker-novo`, que NUNCA teve o arg. É isso que a recusa evita.
+if ! node -e 'const fs=require("fs");const t=fs.readFileSync(process.argv[1],"utf8");const i=t.indexOf("worker-novo");const w=t.indexOf("web:");const decl=t.indexOf("BUN_VERSION:",t.indexOf("services:"));process.exit(decl>i&&decl<w?0:1)' "$M5I_DIR/docker-compose.yml"; then
+  fail "a cópia cega NÃO pôs a declaração no bloco errado — a mutação não mediu"
+  fail "o que ela diz medir (a declaração deveria ter caído no 'worker-novo')."
+  sed -n '1,16p' "$M5I_DIR/docker-compose.yml"
+  exit 1
+fi
+pass "M5i MUTAÇÃO: sem a recusa da âncora, a declaração cai no SERVIÇO ERRADO (o fixer real recusa)"
+rm -rf "$M5I_DIR"
 
 # ── E o guard REAL segue reprovando o workflow literal (cirúrgica, inversa) ─
 cat > "$TMP_DIR/.github/workflows/fake.yml" <<EOF

@@ -124,7 +124,7 @@ const SIM = { askFn: async () => "s" }
 const CTX = { bash: resolveBash() }
 
 describe("a lista de classes (o que o remédio OFERECE)", () => {
-  it("são as SEIS classes mecânicas do commit, sem duplicata e sem sobra", () => {
+  it("são as SETE classes mecânicas do commit, sem duplicata e sem sobra", () => {
     // A cobertura é o contrato: uma classe a mais aqui é um remendo que o
     // repositório passaria a oferecer; uma a menos, um defeito mecânico que volta
     // a ser corrigido à mão. A lista é LITERAL de propósito — a descoberta já
@@ -138,6 +138,7 @@ describe("a lista de classes (o que o remédio OFERECE)", () => {
       "utf8",
       "hook-commands",
       "pipefail-sigpipe",
+      "bun-mirror-removal",
     ])
   })
 
@@ -455,6 +456,202 @@ describe("`hook-commands` — o caminho tipado num comando de hook", () => {
       expect(r.restaged).toEqual([])
       expect(linhas.join("\n")).toContain("package.json ausente")
       expect(indice(dir, ".husky/pre-commit").toString("utf8")).toContain("mirrorX")
+    })
+  })
+})
+
+// ── `bun-mirror-removal` — a declaração de espelho APAGADA ─────────────────
+//
+// A SÉTIMA classe: o commit apaga o arg `BUN_VERSION` de um build site do compose
+// (18b) ou o `"packageManager"` do `package.json` (18c). O fixer é o `--fix` do
+// guard dono, que restaura da HEAD a linha APAGADA. Duas metades têm de ser
+// provadas aqui, e a segunda é o limite declarado da classe:
+//
+//   · o APAGAMENTO é restaurável — e o remendo vai à ÁRVORE e ao ÍNDICE, com o
+//     guard dono RODADO DE VERDADE (`--staged`, o mesmo comando do hook) verde
+//     sobre o índice novo;
+//   · a DIVERGÊNCIA (o valor TROCADO, sem apagamento) NÃO entra nesta classe:
+//     restaurar o valor do commit anterior ali esconderia a intenção de quem
+//     escreveu o novo. Quem a nomeia é o veredito do guard dono, com outro remédio.
+
+/** O Dockerfile que faz um build site PRECISAR do arg (a 18b). */
+const ESPELHO_DOCKERFILE = "FROM alpine\nARG BUN_VERSION\n"
+const COMPOSE_ESPELHO_ANTES = `services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        BUN_VERSION: \${BUN_VERSION:-1.3.14}
+    command: echo oi
+`
+const COMPOSE_ESPELHO_SEM = `services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+    command: echo oi
+`
+const PKG_ESPELHO_ANTES = `{
+  "name": "fixture-espelho",
+  "version": "0.0.0",
+  "packageManager": "bun@1.3.14",
+  "private": true
+}
+`
+const PKG_ESPELHO_SEM = `{
+  "name": "fixture-espelho",
+  "version": "0.0.0",
+  "private": true
+}
+`
+
+/**
+ * Um repositório de verdade com a REMOÇÃO ESTAGIADA das duas declarações. O
+ * `pkgDepois` é parâmetro porque nem todo caso é de remoção nos DOIS arquivos: o
+ * da âncora ambígua isola o compose (um segundo item remendável faria a pergunta
+ * existir, e o caso mediria outra coisa).
+ */
+function repoComRemocaoDoEspelho(
+  composeDepois: string = COMPOSE_ESPELHO_SEM,
+  pkgDepois: string = PKG_ESPELHO_SEM,
+) {
+  const dir = novoRepo({ prefix: "remedy-espelho-", wrapper: "set -eu\n", dirs: ["deploy"] })
+  writeFileSync(join(dir, "Dockerfile"), ESPELHO_DOCKERFILE, "utf8")
+  writeFileSync(join(dir, "deploy/docker-compose.yml"), COMPOSE_ESPELHO_ANTES, "utf8")
+  writeFileSync(join(dir, "package.json"), PKG_ESPELHO_ANTES, "utf8")
+  git(dir, ["add", "-A"])
+  git(dir, ["commit", "-qm", "base"])
+  stage(dir, "deploy/docker-compose.yml", composeDepois)
+  stage(dir, "package.json", pkgDepois)
+  return dir
+}
+
+/** O guard DONO rodado DE VERDADE — o MESMO `--staged` que o hook executa. */
+function guardDonoStaged(dir: string) {
+  return spawnSync(process.execPath, [join(ROOT, "scripts/check-bun-mirror.mjs"), "--staged"], {
+    cwd: dir,
+    encoding: "utf8",
+    input: "",
+  })
+}
+
+describe("`bun-mirror-removal` — a declaração de espelho APAGADA", () => {
+  it("DETECTA pelo guard dono, nomeando a linha apagada e a âncora de onde ela volta", () => {
+    const dir = repoComRemocaoDoEspelho()
+    const classe = CLASSES.find((c) => c.id === "bun-mirror-removal")
+    const d = classe?.detectar(dir, CTX)
+
+    expect([...(d?.offenders ?? [])].sort()).toEqual(["deploy/docker-compose.yml", "package.json"])
+    expect(d?.violacoes).toBe(2)
+    expect(d?.semRemendo).toBeNull()
+    // O relatório diz O QUE volta e ONDE — o operador revisa o diff sabendo disso.
+    expect(d?.relatorio).toContain("BUN_VERSION: ${BUN_VERSION:-1.3.14}")
+    expect(d?.relatorio).toContain("abaixo de `args:`")
+    expect(d?.relatorio).toContain('"packageManager": "bun@1.3.14"')
+  })
+
+  it('o "sim" restaura da HEAD, leva ao ÍNDICE e o guard dono revalida VERDE', () => {
+    const dir = repoComRemocaoDoEspelho()
+    expect(indice(dir, "deploy/docker-compose.yml").toString("utf8")).toBe(COMPOSE_ESPELHO_SEM)
+
+    const { log, linhas } = dito()
+    return remedy(dir, { ...SIM, log }).then((r) => {
+      // O remendo foi aplicado e ESTAGIADO (o commit carregaria a declaração de volta).
+      expect(r.code).toBe(EXIT.OK)
+      expect(r.restaged.sort()).toEqual(["deploy/docker-compose.yml", "package.json"])
+      expect(r.withheld).toEqual([])
+      expect(indice(dir, "deploy/docker-compose.yml").toString("utf8")).toBe(COMPOSE_ESPELHO_ANTES)
+      expect(indice(dir, "package.json").toString("utf8")).toBe(PKG_ESPELHO_ANTES)
+      expect(naArvore(dir, "deploy/docker-compose.yml")).toBe(COMPOSE_ESPELHO_ANTES)
+
+      // O ciclo fecha no guard DONO, rodado de verdade sobre o índice novo.
+      const v = guardDonoStaged(dir)
+      expect(v.status, `--staged do dono: ${v.stdout ?? ""}${v.stderr ?? ""}`).toBe(0)
+
+      const texto = linhas.join("\n")
+      expect(texto).toContain("bun-mirror-removal")
+      expect(texto).toContain("revalidaram VERDE")
+    })
+  })
+
+  it("o bloco INTEIRO apagado (`args:` + o arg): o remendo devolve a CHAVE-PAI e o dono revalida VERDE", () => {
+    // A metade que o fixture do M5e expôs: restaurar só a linha do arg deixaria
+    // `      args:` de fora — e o arquivo voltaria YAML INVÁLIDO (a declaração
+    // órfã abaixo do `dockerfile:`). O remendo devolve o trecho que o commit
+    // apagou, e o ciclo fecha igual: índice restaurado, guard dono verde.
+    const semBloco = `services:\n  app:\n    build:\n      context: ..\n      dockerfile: Dockerfile\n    command: echo oi\n`
+    const dir = repoComRemocaoDoEspelho(semBloco, PKG_ESPELHO_ANTES)
+
+    const classe = CLASSES.find((c) => c.id === "bun-mirror-removal")
+    expect(classe?.detectar(dir, CTX)?.relatorio).toContain("chave(s)-pai")
+
+    const { log, linhas } = dito()
+    return remedy(dir, { ...SIM, log }).then((r) => {
+      expect(r.code).toBe(EXIT.OK)
+      expect(r.restaged).toEqual(["deploy/docker-compose.yml"])
+      expect(indice(dir, "deploy/docker-compose.yml").toString("utf8")).toBe(COMPOSE_ESPELHO_ANTES)
+      expect(naArvore(dir, "deploy/docker-compose.yml")).toBe(COMPOSE_ESPELHO_ANTES)
+
+      const v = guardDonoStaged(dir)
+      expect(v.status, `--staged do dono: ${v.stdout ?? ""}${v.stderr ?? ""}`).toBe(0)
+      expect(linhas.join("\n")).toContain("chave(s)-pai")
+    })
+  })
+
+  it("a âncora AMBÍGUA bloqueia SEM pergunta (nada remendável) e não toca em NADA", () => {
+    // Dois `      args:` na árvore: inserir no primeiro ou no segundo seria adivinhar
+    // em qual delas a declaração morava — o fixer RECUSA, e a recusa bloqueia o
+    // commit no lugar da pergunta (uma resposta "sim" não mudaria nada).
+    const ambíguo = `${COMPOSE_ESPELHO_SEM}  extra:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+`
+    const dir = repoComRemocaoDoEspelho(ambíguo, PKG_ESPELHO_ANTES)
+
+    const { log, linhas } = dito()
+    let perguntou = false
+    return remedy(dir, {
+      askFn: async () => {
+        perguntou = true
+        return "s"
+      },
+      log,
+    }).then((r) => {
+      expect(perguntou).toBe(false)
+      expect(r.code).toBe(EXIT.VIOLATIONS)
+      expect(r.restaged).toEqual([])
+      const texto = linhas.join("\n")
+      expect(texto).toContain("NÃO remenda")
+      expect(texto).toContain("bun-mirror-removal")
+      expect(texto).toContain("aparece 2x na árvore")
+      expect(indice(dir, "deploy/docker-compose.yml").toString("utf8")).toBe(ambíguo)
+      expect(naArvore(dir, "deploy/docker-compose.yml")).toBe(ambíguo)
+    })
+  })
+
+  it("a DIVERGÊNCIA (valor TROCADO) NÃO entra nesta classe — quem a nomeia é o guard dono", () => {
+    const trocado = PKG_ESPELHO_ANTES.replace("bun@1.3.14", "bun@9.9.9")
+    const dir = repoComRemocaoDoEspelho(COMPOSE_ESPELHO_ANTES, trocado)
+
+    // A classe não mede apagamento nenhum neste índice…
+    const classe = CLASSES.find((c) => c.id === "bun-mirror-removal")
+    expect(classe?.detectar(dir, CTX)?.violacoes).toBe(0)
+
+    const { log, linhas } = dito()
+    return remedy(dir, { ...SIM, log }).then((r) => {
+      expect(r.code).toBe(EXIT.OK)
+      expect(r.restaged).toEqual([])
+      expect(linhas.join("\n")).toContain("nada a remendar")
+      expect(indice(dir, "package.json").toString("utf8")).toBe(trocado)
+
+      // …e a troca SEGUE vermelha no guard dono, com o valor novo nomeado.
+      const v = guardDonoStaged(dir)
+      expect(v.status).not.toBe(0)
+      expect(`${v.stdout ?? ""}${v.stderr ?? ""}`).toContain("9.9.9")
     })
   })
 })

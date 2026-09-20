@@ -975,7 +975,7 @@ O MESMO guard roda no pre-commit como RECORTE `--staged` (declarado em
 commit. Quando um gate do hook reprova por um defeito **MECÂNICO**, ele **OFERECE o
 remendo** (`scripts/pre-commit-remedy.mjs`, comando `LOCAL` declarado) — em **UMA
 pergunta** para as classes que o repositório já sabe consertar por máquina
-(**seis** hoje: a oferta é DERIVADA de `scripts/remedy-classes/<id>.mjs`, um módulo
+(**sete** hoje: a oferta é DERIVADA de `scripts/remedy-classes/<id>.mjs`, um módulo
 por classe declarado pelo GUARD DONO, então um fixer novo entra na oferta sem
 ninguém editar o remédio — e uma declaração inválida RECUSA a rodada com exit 2 em
 vez de sumir da oferta em silêncio): a cicatriz de `run:` (o `--fix` do gate), o CR/CRLF do working tree
@@ -986,7 +986,11 @@ próximo quando não há dúvida: até 2 caracteres de diferença, um candidato 
 recusa EMPATE — e o token tem de estar NO hook: um caminho tipado DENTRO de um
 script chamado sai como **recusa NOMEADA**, porque o remendo só escreve em
 `.husky/`) e o **`PRODUTOR | grep -q` sob pipefail** (`check-pipefail-sigpipe.mjs
---fix`, o herestring que tira a intermitência do SIGPIPE). Cada classe é DETECTADA e
+--fix`, o herestring que tira a intermitência do SIGPIPE), mais a **declaração de
+espelho APAGADA** pelo commit (o arg `BUN_VERSION` de um build site do compose e o
+`packageManager` do `package.json`, pelo `check-bun-mirror.mjs --fix`: ele restaura
+da HEAD a linha que sumiu — a âncora única diz ONDE —, e NÃO remenda a linha que só
+TROCA o valor, porque isso é divergência, não apagamento). Cada classe é DETECTADA e
 REMENDADA pelo guard dono, rodado como o hook o roda (ou importado, quando o dono é
 um módulo) — nenhuma régua paralela.
 

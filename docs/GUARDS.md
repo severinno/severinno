@@ -356,7 +356,17 @@ no MESMO passo, em fixture PRÓPRIO (o defeito do `M5e` está staged e um segund
 defeito no mesmo índice tornaria as duas leituras indistinguíveis): o commit que
 **APAGA** a declaração de TOOLCHAIN (`"packageManager"`) é recusado no
 `--staged` nomeando o arquivo, e a cópia sem a linha registrada no recorte o
-deixa passar — a última ponta da 18 no commit deixa de ser cega —, e (F) `M6`: as três metades da invariante 19 — a comparação por
+deixa passar — a última ponta da 18 no commit deixa de ser cega —, e o **REMENDO**
+do que foi apagado no MESMO passo (`M5g/M5h/M5i`, em fixtures próprios com git de
+verdade): o `--fix` pré-visualiza sem gravar e restaura o trecho apagado na
+árvore, e com o remendo ESTAGIADO o `--staged` do dono volta verde (o ciclo
+fecha); a **chave-pai** apagada junto volta com a declaração — e a cópia com a
+extensão para a chave neutralizada grava a declaração ÓRFÃ (o YAML quebrado que o
+fixture mediu); e a **âncora ambígua** (a linha de apoio aparecendo 2x na árvore)
+faz o fixer RECUSAR sem tocar no arquivo — a cópia sem a recusa insere a
+declaração no bloco do SERVIÇO ERRADO (medido: cai no `worker-novo`, que nunca
+teve o arg). As três metades do remendo são load-bearing como as da recusa —, e
+(F) `M6`: as três metades da invariante 19 — a comparação por
 VALOR (imagem e build arg divergentes reprovam, e a cópia com a comparação
 cegada passa), a EXCLUSÃO do comentário (o fixture com o cabeçalho citando a
 versão velha passa no guard real e reprova na cópia sem a exclusão, citando a
@@ -1919,12 +1929,12 @@ chega ao fixer NO MOMENTO em que a cicatriz aparece: sem ele, o hook reprovava o
 commit e a correção era reescrever à mão exatamente a linha que a máquina remenda
 — com a chance de introduzir um erro NOVO na mesma linha.
 
-Ele cobre as **seis classes mecânicas** que o repositório já sabe consertar por
+Ele cobre as **sete classes mecânicas** que o repositório já sabe consertar por
 máquina, e nenhuma régua é reimplementada: a detecção e o remendo são SEMPRE o
 guard DONO — rodado como o hook o roda, ou IMPORTADO quando o dono é um módulo
 (`fixAll` da sintaxe, `fixAll` do SIGPIPE, `planoDeRemendo`/`aplicarRemendo` dos
-comandos do hook): um remendo que re-derivasse o alvo de um defeito divergiria da
-diagnose que o gate acusa.
+comandos do hook, `fixRemovedMirrors` da declaração de espelho): um remendo que
+re-derivasse o alvo de um defeito divergiria da diagnose que o gate acusa.
 
 **O que faz uma classe ser OFERECÍVEL é o guard dono RODAR no hook.** O `--fix`
 sozinho não basta: o remédio só é invocado quando uma fase do commit reprova, então
@@ -1980,6 +1990,19 @@ tipado num hook ou com a cicatriz de SIGPIPE não tinha caminho nenhum além do
 `--fix` à mão. As três classes de encoding se SOBREPÕEM por construção (o CR do
 working tree suja também o blob), e o remédio leva o arquivo ao índice **uma vez**,
 sem acusar de retido o que uma classe anterior já estagiou.
+
+**A classe `bun-mirror-removal` mede dois limites, e os dois são da mesma
+natureza** (um remendo que adivinha é o defeito, não o remédio): a **chave-pai** — o
+commit pode apagar o bloco INTEIRO (`args:` e o arg), e o remendo devolve o trecho
+que ESTE commit tirou (a declaração mais as chaves-pai apagadas do caminho;
+a extensão para na primeira linha que não é chave, que sobreviveu no índice ou é
+comentário); e a **âncora única** — a declaração só volta abaixo de uma linha que
+aparece **exatamente uma vez** na árvore. Sem candidata, ou com candidata ambígua
+(a linha de apoio em dois blocos), o fixer **RECUSA** e o commit segue bloqueado
+com o motivo por arquivo (o `semRemendo`), em vez de escolher um lugar plausível.
+O que ela **não** cobre está declarado: a linha que apenas TROCA o valor é
+DIVERGÊNCIA, não apagamento — não entra na classe, e quem a nomeia é o veredito
+`--staged` do próprio guard dono, com o valor novo no relatório.
 
 As duas classes que **estagiam por conta própria** (`blob-crlf`, cujo fixer roda
 `git add --renormalize`) ficam **RETIDAS** quando algum ofensor tem WIP ou não é
@@ -2357,7 +2380,11 @@ blob muda de fato: CRLF → LF, byte 0x97 → em dash), não só ao disco; o "n�
 toca em nada; as classes que se SOBREPÕEM levam o arquivo ao índice UMA vez e não
 o acusam de retido; a classe que ESTAGIA POR CONTA PRÓPRIA se **retém** com WIP
 (e o fixer dela não roda); UTF-8 inválido que o fixer NÃO remenda não vira "nada
-remendável" (segue bloqueado, com o motivo, sem pergunta); uma classe
+remendável" (segue bloqueado, com o motivo, sem pergunta); o APAGAMENTO da
+declaração de espelho é restaurado da HEAD, levado ao **ÍNDICE** e o guard dono
+rodado de verdade (`--staged`) revalida verde — com a **âncora ambígua** bloqueando
+sem pergunta e a **divergência** (valor trocado, sem apagamento) ficando FORA desta
+classe, nomeada pelo veredito do próprio guard; uma classe
 **não aplicável** (fixture sem os guards) não roda o guard do repositório de quem
 executa — mediria OUTRA árvore; e SEM TERMINAL o caminho à mão sai com o `--fix`
 E o `git add` **de cada classe**.
