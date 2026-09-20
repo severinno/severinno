@@ -1,0 +1,142 @@
+{
+  "$comment": "INVENTARIO do que o GitHub sustenta no repositorio, com a ETAPA que remove cada classe e o SUBSTITUTO de cada uma. A fonte do MEDIDO e o scripts/check-github-dependencies.mjs (que le este arquivo e confere nos dois sentidos); o 'declarado' e o congelamento do medido, atualizado pelo `--update` no MESMO commit do corte. O plano narrativo esta em docs/GITHUB_CUT.md. Sem etapa ou sem substituto, o guard reprova: uma dependencia declarada sem plano e o que este arquivo existe para impedir.",
+  "version": 1,
+  "atualizadoEm": "2026-09-20",
+  "classes": [
+    {
+      "id": "workflows",
+      "estagio": 5,
+      "substituto": "os mesmos passos nas pipelines das duas forjas da Gitea (o CORE ja roda nas duas: 32 invariantes com o MESMO comando). O que sobra do lado GitHub depois do corte e o repositorio como ESPELHO read-only do bundle de durabilidade — sem job nenhum.",
+      "porque": "27 arquivos, e nenhum deles e redundante com a Gitea: eles sao o ESPELHO (a forja que prova que o merge do outro lado nao diverge) mais os crons de auditoria. Enquanto existem, cada mudanca de gate tem de ser escrita DUAS vezes e a paridade e medida por guard em vez de por desenho.",
+      "declarado": [
+        ".github/workflows/bench-setup-bun.yml",
+        ".github/workflows/benchmark-all-weekly.yml",
+        ".github/workflows/benchmark-auto-baseline.yml",
+        ".github/workflows/benchmark-gist-weekly.yml",
+        ".github/workflows/benchmark-pr-comment.yml",
+        ".github/workflows/benchmark-weekly.yml",
+        ".github/workflows/ci.yml",
+        ".github/workflows/dependency-review.yml",
+        ".github/workflows/deploy-hostinger.yml",
+        ".github/workflows/deploy.yml",
+        ".github/workflows/e2e-cache.yml",
+        ".github/workflows/infra-guards.yml",
+        ".github/workflows/merge-gate-proof.yml",
+        ".github/workflows/pr-check.yml",
+        ".github/workflows/quality-gate.yml",
+        ".github/workflows/release-deploy.yml",
+        ".github/workflows/required-checks-drift.yml",
+        ".github/workflows/seed-guards.yml",
+        ".github/workflows/sync-bun-mirror.yml",
+        ".github/workflows/sync-postgis-mirror.yml",
+        ".github/workflows/sync-ubuntu-bun-mirror.yml",
+        ".github/workflows/test-guards.yml",
+        ".github/workflows/tier1-fastpath-guard.yml",
+        ".github/workflows/utf8-auto-fix.yml",
+        ".github/workflows/utf8-check.yml",
+        ".github/workflows/validate-cache.yml",
+        ".github/workflows/validate-coverage.yml"
+      ]
+    },
+    {
+      "id": "crons",
+      "estagio": 2,
+      "substituto": "o agendador da propria forja/do host (os mesmos comandos no cron do VPS ou na forja), com o publicador de issue que ja aceita `--backend gitea` como canal acionavel.",
+      "porque": "9 entradas de `schedule:` — benchmarks semanais, espelhos de toolchain, auditoria de required checks e o guard do fast path. Sao a metade MAIS barata de portar (sao comandos de script, nao servicos) e a mais silenciosa quando quebra: um cron que parou de rodar nao fica vermelho em lugar nenhum.",
+      "declarado": [
+        ".github/workflows/benchmark-all-weekly.yml#0 6 * * 1",
+        ".github/workflows/benchmark-gist-weekly.yml#0 4 * * 1",
+        ".github/workflows/benchmark-weekly.yml#0 3 * * 0",
+        ".github/workflows/merge-gate-proof.yml#47 7 * * 1",
+        ".github/workflows/required-checks-drift.yml#41 6 * * 1",
+        ".github/workflows/sync-bun-mirror.yml#23 4 * * 1",
+        ".github/workflows/sync-postgis-mirror.yml#17 4 * * *",
+        ".github/workflows/sync-ubuntu-bun-mirror.yml#34 5 * * 1",
+        ".github/workflows/tier1-fastpath-guard.yml#15 6 * * 1"
+      ]
+    },
+    {
+      "id": "marketplace-actions",
+      "estagio": 4,
+      "substituto": "ferramenta do repositorio ou binario ja presente na imagem do runner. Algumas caem sozinhas no corte: o `dependency-review` (o `bun-audit` CORE ja cobre advisory), o `github-script` (o canal proprio de comentario, `pr-comment-channel.mjs`, ja existe), o `actionlint` (os guards de YAML da casa julgam mais do que ele) e o `cache` (o act_runner da Gitea tem cache proprio). As de BUILD (`docker/*`, `hostinger/`, `appleboy/ssh-action`) sao do DEPLOY, nao do CI: elas migram junto com o pipeline de deploy, nao com o espelho.",
+      "porque": "14 referencias `uses:` de terceiro (13 delas unicas por action: o `actions/checkout` aparece em DUAS versoes, v4 e v5, e as duas sao dependencia). Cada uma e codigo de terceiro baixado a cada job e uma tag que envelhece sozinha (o `latest` do actionlint e o caso mais literal). O custo de trocar de forja nao e o `git push`: e o provedor de cada uma delas.",
+      "declarado": [
+        "actions/cache@v4",
+        "actions/checkout@v4",
+        "actions/checkout@v5",
+        "actions/dependency-review-action@v4",
+        "actions/download-artifact@v4",
+        "actions/github-script@v7",
+        "actions/upload-artifact@v4",
+        "appleboy/ssh-action@v1",
+        "docker/build-push-action@v6",
+        "docker/login-action@v3",
+        "docker/metadata-action@v5",
+        "docker/setup-buildx-action@v3",
+        "docker://rhysd/actionlint:latest",
+        "hostinger/deploy-on-vps@v2"
+      ]
+    },
+    {
+      "id": "reusable-local",
+      "estagio": 5,
+      "substituto": "nenhum: o workflow reusavel e uma forma de compor a pipeline do espelho, e ele sai junto com ela — as invariantes que ele roda ja vivem nos jobs da forja dona do merge.",
+      "porque": "3 referencias `uses: ./.github/workflows/*.yml`. Sao a parte da pipeline do espelho que NAO aparece na matriz de jobs do arquivo (nem no relatorio do doctor): quem edita um deles muda varios jobs de uma vez, e o efeito some de qualquer contagem que leia so o `pr-check.yml`.",
+      "declarado": [
+        "./.github/workflows/quality-gate.yml",
+        "./.github/workflows/seed-guards.yml",
+        "./.github/workflows/utf8-check.yml"
+      ]
+    },
+    {
+      "id": "ghcr-images",
+      "estagio": 1,
+      "substituto": "o registry OCI embutido da Gitea/Forgejo (open source, parte da mesma instancia): as DUAS imagens (o mirror do Bun e a `ubuntu-bun` que roda os jobs) publicadas la, e o flip de `IMAGE_REGISTRY`/`IMAGE_NAMESPACE` (uma variavel cada — o desenho ja e parametrizado e tem guard proprio, o `check:registry-source`).",
+      "porque": "Referencias a `ghcr.io/` em arquivo de codigo versionado. A etapa 1 (flip do registry) levou 12 delas: o VALOR declarado saiu de `ghcr.io` no `.actrc`, nos dois templates, nos defaults de compose/shell e nos fallbacks dos workflows — o que sobrou e majoritariamente PROSA em arquivo de codigo (o comentario que explica de onde viemos) e a imagem de terceiro consumida do GHCR de proposito. O numero medido vive no campo `declarado` desta classe (o `--update` e o ato que o congela, no mesmo commit); o escopo da contagem e o CODIGO QUE RODA: `docs/`, os testes e as provas por mutacao ficam fora (o texto do defeito e payload de teste).",
+      "declarado": 50
+    },
+    {
+      "id": "gh-cli",
+      "estagio": 3,
+      "substituto": "a API da propria forja pelo cliente que ja existe (os publicadores de issue/comentario tem `--backend gitea`; o doctor e o `ensure-runner-image` leem da forja quando ela e o alvo) e, onde o `gh` e usado para LER estado do GitHub, o proprio guard que mede o estado passa a ler a forja dona do merge.",
+      "porque": "14 scripts chamam o `gh` com credencial de administracao: o canal compartilhado de issue/comentario (`issue-publish.mjs`, usado por todos os publicadores de divida), o doctor, o `ensure-runner-image`, os medidores de benchmark e o publicador de imagem. Enquanto existem, existe um passo que so roda onde o GitHub esta autenticado — e o `gh` e o unico cliente que fala com as DUAS forjas.",
+      "declarado": [
+        "scripts/bench-setup-bun.mjs",
+        "scripts/bench-setup-bun.sh",
+        "scripts/bump-bun.sh",
+        "scripts/check-default-branch-workflows.mjs",
+        "scripts/ensure-runner-image.mjs",
+        "scripts/forge-doctor-issue.mjs",
+        "scripts/forge-doctor.mjs",
+        "scripts/issue-publish.mjs",
+        "scripts/measure-mutation-timing.mjs",
+        "scripts/measure-mutation-trend.mjs",
+        "scripts/publish-ubuntu-bun.sh",
+        "scripts/readme-reverse-issue.mjs",
+        "scripts/restore-baseline.sh"
+      ]
+    },
+    {
+      "id": "actions-plane",
+      "estagio": 2,
+      "substituto": "as MESMAS variaveis e secrets como repository variables/secrets da forja propria (a Gitea 1.22/Forgejo suportam as duas) — o valor tem de existir no lado dono do merge, e hoje quem o detem e o Actions.",
+      "porque": "Ocorrencias de `vars.`/`secrets.`/token nos workflows do GitHub — o numero medido vive no campo `declarado` desta classe (o `--update` e o ato que o congela, no mesmo commit). O valor NAO e versionado: ele vive na forja. Por isso o `check:doctor-ci` compara o valor a cada PR e o cron semanal publica issue quando ele diverge — e por isso o corte tem de replicar as variaveis ANTES de desligar os jobs. Tres quedas registradas: o flip do registry (era um `vars.IMAGE_REGISTRY` citado em COMENTARIO — a contagem le o arquivo inteiro), a publicacao das imagens no registry proprio e a UNIFICACAO do passo do canal do remedio (eram dois passos, um por fixer, cada um com a sua referencia a `github.token`; agora a pipeline invoca o REGISTRO com `--all` e o passo e um so — a cobertura do canal e derivada de `FIXERS`, nao enumerada no YAML). Uma ALTA deliberada: o job `github-dependencies-audit` do cron semanal consome a Actions-plane do jeito canonico (o par de instalacao do toolchain e o `github.token` do publicador de issue) — o proprio auditor do inventario e, ele mesmo, uma dependencia contada.",
+      "declarado": 423
+    },
+    {
+      "id": "github-services",
+      "estagio": 3,
+      "substituto": "servico por servico: Dependabot -> Renovate (open source, self-hostavel) ou a automacao de bump do proprio repositorio; github-script -> o canal de comentario proprio; dependency-review -> o `bun-audit` CORE; actionlint -> os guards de YAML da casa; transporte de artifact -> o volume/tmp do runner proprio; runner auto-hospedado do GitHub -> o act_runner da Gitea (ja roda as 7 pipelines de la); Gist -> o proprio repositorio/registry como fonte do benchmark.",
+      "porque": "7 servicos que nao portam por `git push`, cada um com substituto DIFERENTE. Estao aqui, e nao numa frase da doc, porque um servico novo (o GitHub Pages, um app instalado, um bot) entra no repositorio por uma linha de YAML e sem ninguem decidir.",
+      "declarado": [
+        "dependabot",
+        "github-script",
+        "dependency-review",
+        "actionlint",
+        "artifact-transport",
+        "self-hosted-runner",
+        "gist"
+      ]
+    }
+  ]
+}

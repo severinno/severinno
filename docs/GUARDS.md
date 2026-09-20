@@ -5843,6 +5843,105 @@ não dá para provar o bloqueio dentro do runtime do CI
 o docker não respondeu
 ```
 
+## 27. O corte do GitHub — `check:github-dependencies` (`scripts/check-github-dependencies.mjs`)
+
+**O que protege:** o **inventário** do que o GitHub sustenta no repositório, como
+**catraca**: nenhuma dependência nova entra sem a ETAPA do corte e o SUBSTITUTO
+escritos, e nenhuma declaração pode envelhecer em silêncio. O plano narrativo
+está em [`docs/GITHUB_CUT.md`](./GITHUB_CUT.md) e a tabela declarada em
+`ci/github-dependencies.json`.
+
+**Por que existe:** o projeto não usa tecnologia paga e a **forja dona do merge é
+a Gitea** — o `check:forge-parity` exige o MESMO comando das 32 invariantes do
+CORE nas duas pipelines. Mesmo assim o GitHub sustenta 27 workflows, 9 crons, 14
+actions de terceiro, o GHCR como registry, o `gh` em 14 scripts, o **runner
+auto-hospedado de todos os jobs** e 7 serviços que não portam por `git push`
+(Dependabot, github-script, dependency-review, actionlint, artifact, runner, Gist).
+O defeito que o guard fecha é o do dia seguinte: um PR que acrescenta um workflow,
+um cron ou uma action AUMENTA o custo do corte sem ninguém decidir — e um
+descarte (uma migration para o registry próprio, um cron migrado) que não
+derruba o número junto deixa o inventário mentindo sobre o que ainda existe.
+
+**O que mede (8 classes, das fontes do repositório):** `workflows`, `crons`
+(`- cron:` derivado dos arquivos, com a expressão inteira), `marketplace-actions`
+e `reusable-local` (os `uses:`, com a régua de comentário compartilhada — o
+`- uses:` da lista e o `uses:` de bloco contam igual), `ghcr-images`
+(ocorrências em CÓDIGO: `docs/`, testes e provas fora — **e a prosa do próprio
+auditor também**, `ARQUIVOS_DO_AUDITOR`: o cabeçalho deste guard e o `porque` da
+declaração _citam_ o padrão para explicar a classe, e contá-los subia o medido de
+50 para 52 no próprio commit que declarou a classe — documentar a classe é editar
+doc, não introduzir dependência), `gh-cli` (scripts +
+hooks, com o `//` do JS e o `#` do shell), `actions-plane`
+(`vars.`/`secrets.`/token) e `github-services` (presença de cada serviço por
+regra própria).
+
+**As duas direções são violação:** item medido que não está declarado é
+dependência nova; item declarado que sumiu é **declaração envelhecida** (o corte
+aconteceu e o inventário não acompanhou — `--update` no MESMO commit, como o
+`runner-base:pin`). Classe medida sem declaração, ou declarada sem `estagio` ou
+sem `substituto`, também reprova: é a porta pela qual um TIPO novo de dependência
+entraria sem plano. O `--update` reescreve **só** o campo medido: classificar um
+tipo novo de dependência é decisão humana.
+
+**Onde roda:** invariante do **CORE** (`check:forge-parity`), job `guards` na
+forja dona do merge e `workflow-refs-guard` no espelho — node-puro, sem
+node_modules, `<0,5s` (mesma classe dos outros guards que leem o repositório). No
+hook não entra: a decisão está escrita em `HOOK_NOT_RUN` (o hook já roda o
+`check:forge-parity`, que é quem obriga a CLASSIFICAR um gate novo).
+
+**Como testar:** `npx vitest run --config vitest.config.unit.ts
+src/lib/__tests__/check-github-dependencies.test.ts` — a medição (comentário,
+escopo de código, `gh` sem confundir `gist`, presença de serviço), as duas
+direções da catraca, a classe sem etapa/substituto e o inventário REAL deste
+repositório (o teste fica vermelho se a declaração divergir do medido).
+
+**Prova por mutação:** `scripts/test-mutation-github-dependencies.sh` (sub-test
+`github-deps` da matriz do master) — as **nove** metades da catraca, cada uma com
+o defeito injetado no **dado versionado** (o CLI não aceita `--root`; o dado é
+restaurado por checksum no fim de cada bloco): a comparação de **conjuntos** (o
+item NOVO e o item SUMIDO), a do **contador** (`medido > declarado`), a
+**nomeação** do item novo e a do delta (`(N a mais)`), o **escopo da contagem**
+(o auditor que volta a contar a própria prosa infla o medido — 52 contra 50, `(2 a
+mais)`) e os **três** fail-closed do dado — o AUSENTE, o ILEGÍVEL e o contador que
+não é número. Cada mutação é
+cirúrgica (1 ocorrência exata, marcador próprio e checksum mudado) e o CLI é
+medido **antes e depois** dela: sem a comparação de conjuntos o item novo passa em
+silêncio (exit 1 → 0); sem a nomeação o vermelho fica **genérico** (exit 1 dos
+dois lados — só o texto muda); sem o fail-closed o dado ausente ou corrompido
+**vira veredito** (exit 2 → 1, em vez de INDETERMINADO). A suíte unitária é a
+segunda testemunha, e ela roda com o dado **já restaurado** — senão o vermelho
+dela viria do defeito injetado, e não da mutação (a leitura falsa que uma prova
+por mutação não pode ter).
+
+**O ciclo de reconciliação (a dívida tem canal acionável):** a catraca sozinha
+só deixa um run VERMELHO — e ninguém abre o log de um cron. O job
+`github-dependencies-audit` (`.github/workflows/benchmark-weekly.yml`, semanal,
+declarado em `ci/periodic-alerts.json` com o canal `issue`) roda
+`scripts/github-dependencies-issue.mjs`, que remede o inventário pelo MESMO guard
+e publica **uma issue por item novo** (label `github-dependency-new`): o corpo
+carrega a CLASSE, a ETAPA do corte (id, título e entrega) e o DELTA (`(N a mais)`
+no contador; o item nomeado na lista). A assinatura é por ITEM na lista e por
+CLASSE+FAIXA no contador (um contador que cresce dentro da faixa é a mesma
+dívida) — é ela que dá o dedup e o FECHAMENTO: quando o item sai do repositório
+(cortado, ou absorvido pela declaração no mesmo commit), o publicador comenta a
+prova e FECHA a issue; o ticket não fica para trás. Inventário ILEGÍVEL não fecha
+nada — "não medido" não é evidência de resolvido. O doctor lê esta label como
+dívida do board (`DEBT_SUBJECTS`, `crossCheck: "gate"`): ele executa o MESMO
+guard nesta run, então a issue sai declarada CADUCADA quando o gate passa e VIVA
+quando ele falha — e `null` (guards pulados por `--no-guards`/perfil `--ci`)
+nunca vira "caducou".
+
+**Família relacionada:** `check-forge-parity` (a paridade que o corte reduz a uma
+forja), `check-registry-source` (a etapa 1 do corte) e `check-hook-ci-parity`
+(que cobra a decisão do hook para o gate novo).
+
+**Limite declarado:** o inventário mede o que um COMMIT pode criar ou remover.
+O que o GitHub sustenta fora do repositório — issues, PRs, as repository
+variables e secrets, as releases, o runner no VPS e os `refs/pull/*` do purge —
+não é arquivo versionado e não aparece aqui.
+
+---
+
 ---
 
 ## Regra de ouro para guards novos

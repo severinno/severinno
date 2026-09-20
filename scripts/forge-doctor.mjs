@@ -2721,6 +2721,36 @@ export const DEBT_SUBJECTS = [
     // alguém foi avisado, o fato diz se ainda é verdade.
     crossCheck: "declaredDebt",
   },
+  {
+    label: "github-dependency-new",
+    markerId: "github-dependency-new",
+    subject:
+      "uma dependencia NOVA do GitHub entrou no repositorio (workflow, cron, action de terceiro, imagem, servico do actions-plane) sem a etapa e o substituto declarados no inventario",
+    forges: ["github"],
+    // O doctor roda o MESMO guard desta dívida na bateria de gates
+    // (`scripts/check-github-dependencies.mjs`, invariante CORE) — e é por isso
+    // que o cruzamento aqui é por GATE EXECUTADO, não por leitura: se o gate
+    // passou NESTA run, o assunto foi medido e está limpo; se falhou, o assunto
+    // está VIVO. `gate` nomeia o script que a issue cobra (a bateria o executa
+    // com o comando canônico da invariante).
+    gate: "scripts/check-github-dependencies.mjs",
+    crossCheck: "gate",
+  },
+  {
+    label: "merge-gate-proof",
+    markerId: "merge-gate-proof",
+    subject:
+      "a prova do bloqueio de merge (`merge-gate:prove`) não é PROVADA: o registro que o APLIADOR grava divergiu do manifesto (contexto a menos, a mais ou com CONTAGEM) ou a matriz de merge não morde",
+    forges: ["github"],
+    // O doctor mede o CONTRATO (o manifesto e a declaração de aplicação, via
+    // `check:required-checks`), não o REGISTRO que o applier grava numa instância
+    // de verdade: essa medição exige docker e roda no cron da prova. E cruzar com
+    // o fato `protection` seria pior que não cruzar — aquela leitura é da forja
+    // REAL, que pode estar em sincronia justamente porque alguém a corrigiu à
+    // mão, enquanto o DEFEITO (o applier registrando um subconjunto) segue vivo e
+    // volta na próxima aplicação. `null` diz isso, e nunca presume caducidade.
+    crossCheck: null,
+  },
 ]
 
 /**

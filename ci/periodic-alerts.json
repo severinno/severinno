@@ -104,6 +104,14 @@
       },
       {
         "workflow": ".github/workflows/benchmark-weekly.yml",
+        "job": "github-dependencies-audit",
+        "signal": "dependência NOVA do GitHub no inventário medido (a catraca do `check:github-dependencies`)",
+        "channel": "issue",
+        "evidence": "scripts/github-dependencies-issue.mjs",
+        "why": "o gate julga o COMMIT proposto e roda nas duas pipelines de PR, mas o repositório tem caminhos que escrevem na branch default SEM PR — os crons de auto-baseline que comitam e empurram (benchmark-auto-baseline, benchmark-gist-weekly, benchmark-weekly, ci.yml, release-deploy, utf8-auto-fix) e o `--no-verify`, que o doctor mede: nesses o vermelho do check nunca existe, e o censo periódico é a testemunha. Além disso, o VEREDITO do gate morre com o PR: a DECISÃO (em qual das 5 etapas o item sai e o que o substitui) é do board, onde um humano a lê — a issue leva a classe, a etapa e o delta (uma por item, porque cada dependência sai numa etapa diferente), e se FECHA quando o item sai do repositório: cortado, ou absorvido pela declaração no mesmo commit. `unavailable` (o dado do inventário ilegível/ausente) NÃO abre issue e NÃO fecha nada — mas FALHA o run: um cron que não mediu não pode passar por verde, e fechar por ele apagaria a dívida com base em nada"
+      },
+      {
+        "workflow": ".github/workflows/benchmark-weekly.yml",
         "job": "mutation-coord-timing",
         "signal": "duração do step mutation-coord na faixa SOFT ou acima do teto duro",
         "channel": "issue",

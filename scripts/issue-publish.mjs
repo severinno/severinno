@@ -1156,8 +1156,11 @@ export async function reconcilePublisherDebt({
  *   - `per-item`: reconcilia SEMPRE (o achado que sumiu não é mais dívida) e
  *     abre só os itens que ainda não têm issue.
  *
- * `resolution.when(input)` é a guarda do fechamento: um medidor quebrado não é
- * evidência de "resolvido", então quem não conseguiu medir não fecha nada.
+ * `resolution.when(input)` é a guarda do fechamento, e ela vale nos DOIS escopos:
+ * um medidor quebrado não é evidência de "resolvido", então quem não conseguiu
+ * medir não fecha nada. No escopo `per-item` isso não é detalhe: a lista vazia de
+ * um medidor quebrado é INDISTINGUÍVEL de "todos os itens saíram", e sem a
+ * guarda uma leitura que falhou fecharia todas as issues abertas de uma vez.
  *
  * @param {{publisher: object, input: unknown, backend: object, dryRun?: boolean, reconcile?: boolean, log?: Function}} params
  * @returns {Promise<{status: string, ref?: string, number?: number, created?: number, closed?: number[], stale?: number[]}>}
@@ -1172,6 +1175,17 @@ export async function runDebtPublisher({
 }) {
   if (publisher.scope.kind === "per-item") {
     if (dryRun) return publishDebt({ publisher, input, backend, dryRun, log })
+    // A GUARDA DO FECHAMENTO VALE TAMBÉM AQUI, e por um motivo específico do
+    // escopo: o que caduca é o item que SUMIU da medição — e um medidor quebrado
+    // devolve lista VAZIA, indistinguível de "todos os itens saíram". Sem esta
+    // guarda, uma leitura que falhou fecharia TODAS as issues abertas do
+    // publicador de uma vez (a dívida apagada com base em nada). O que há para
+    // publicar ainda é publicado: a lista parcial é acionável, o fechamento não.
+    if (!publisher.resolution.when(input)) {
+      const published = await publishDebt({ publisher, input, backend, log })
+      log(publisher.prose.unmeasured(input))
+      return { ...published, status: "unmeasured" }
+    }
     const { closed, stale } = await reconcilePublisherDebt({ publisher, input, backend, log })
     const published = await publishDebt({ publisher, input, backend, log })
     return { ...published, closed, stale }

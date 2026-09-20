@@ -1230,6 +1230,21 @@ medir o REMÉDIO no runtime do CI, e não só o bloqueio: até aqui a oferta só
 medida no simulador (a suíte e o ensaio do pty). Ela custa **≈0,61s** (mediana de
 3 execuções warm neste host, 09/2026) e é paga uma vez, pelo passo padrão do job.
 
+> pelo `check:prove-docs`.
+
+O inventário também tem **canal acionável**, como as outras dívidas: o job semanal
+`github-dependencies-audit` (declarado em `ci/periodic-alerts.json`, canal `issue`)
+roda o publicador (`scripts/github-dependencies-issue.mjs`) e publica **uma issue
+por dependência NOVA** — label `github-dependency-new`, com a CLASSE, a ETAPA do
+corte e o DELTA no corpo —, e a **FECHA** quando o item sai do repositório
+(cortado, ou absorvido pela declaração no mesmo commit); inventário ilegível não
+fecha nada ("não medido" não é evidência de resolvido), e a assinatura é por ITEM
+na lista e por CLASSE+FAIXA no contador (um contador que cresce dentro da faixa é
+a mesma dívida). O doctor lê essa label como dívida do board e cruza com o gate
+que ele MESMO executa: passou → **caducada**, falhou → **viva**, guard pulado
+(`--no-guards`, perfil `--ci`) → **não verificada** — `null` nunca vira "caducou".
+
+O gate de sintaxe, no hook, custa ≈**0.03s**
 no caminho comum (nada de corpo nem script staged: um `git diff --cached` e mais
 nada), o que o põe no orçamento de um hook que roda a CADA commit sem duplicar a
 varredura do CI. Custo medido neste host (Linux,

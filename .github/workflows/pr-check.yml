@@ -179,6 +179,18 @@ jobs:
       - name: Check workflow → script/package.json/uses references
         run: node scripts/check-workflow-refs.mjs --pkg-internal
 
+      # A CATRACA do corte do GitHub: o inventario (27 workflows, 9 crons, 14
+      # actions de terceiro, o GHCR como registry, o `gh` em 14 scripts, o plano
+      # de configuracao do Actions e 7 servicos) e conferido contra a declaracao
+      # versionada em ci/github-dependencies.json — nos DOIS sentidos. Uma
+      # dependencia nova (um workflow, um cron, uma action, um servico) nao entra
+      # sem a etapa do corte e o substituto escritos; e um corte feito sem baixar
+      # o numero e declaracao envelhecida (o `--update` e o ato, no mesmo commit).
+      # node puro, sem node_modules, <0,5s — o plano narrativo esta em
+      # docs/GITHUB_CUT.md.
+      - name: Corte do GitHub (inventário com catraca)
+        run: node scripts/check-github-dependencies.mjs
+
       # O branch protection exige os checks declarados em ci/required-checks.json.
       # Um required check que não corresponde a nenhum job real não falha: ele
       # ESPERA — o PR trava para sempre. Aqui o manifesto é validado contra os

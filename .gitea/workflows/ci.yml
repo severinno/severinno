@@ -212,6 +212,30 @@ jobs:
           BUN_VERSION: ${{ vars.BUN_VERSION }}
         run: node scripts/check-registry-source.mjs
 
+      # A CATRACA do corte do GitHub: o inventario do que ele sustenta (27
+      # workflows, 9 crons, 14 actions de terceiro, o GHCR como registry, o `gh`
+      # em 14 scripts, o plano de configuracao do Actions e 7 servicos do GitHub)
+      # conferido contra a declaracao versionada em ci/github-dependencies.json,
+      # nos DOIS sentidos: dependencia nova exige etapa e substituto escritos, e
+      # um corte sem baixar o numero e declaracao envelhecida (o `--update` e o
+      # ato). node puro, sem node_modules — o plano esta em docs/GITHUB_CUT.md.
+      - name: Corte do GitHub (inventário com catraca)
+        run: node scripts/check-github-dependencies.mjs
+
+      # A COBERTURA do recorte do commit, derivada das TABELAS-FONTE dos
+      # espelhos (as quatro: bun-version, registry-source, actrc-sync e o
+      # env-mirror, que traz o segredo para a conta). Um espelho que só a
+      # varredura GLOBAL julga passa pelo pre-commit em silêncio — e o que o
+      # commit TIRA não está em linha adicionada nenhuma. Aqui ela MEDE, por
+      # execução: muta cada espelho num worktree temporário, estagia e roda os
+      # comandos do recorte, com um CONTROLE na árvore intacta (um comando que
+      # falha SEM mutação falha por ambiente — dependência não instalada — e não
+      # pode contar como detector; com ele o veredito vira INDETERMINADO, exit 2,
+      # em vez de um verde vindo de uma suíte quebrada). Este job instala as
+      # dependências: é aqui que os guards do recorte rodam de verdade.
+      - name: Cobertura do recorte (espelhos × commit)
+        run: node scripts/check-mirror-coverage.mjs
+
       # ── O VALOR das variables, conferido a CADA PR (o doctor, perfil --ci) ──
       # O job semanal `actrc-sync` faz esta pergunta, mas ele é SEMANAL: um PR que
       # mexe no template (ou uma variable trocada na forja) espera dias pelo

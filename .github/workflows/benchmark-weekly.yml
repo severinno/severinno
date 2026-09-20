@@ -968,6 +968,70 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/actrc-sync-issue.mjs --expected "${{ vars.BUN_VERSION }}" --expected-var "IMAGE_REGISTRY=${{ vars.IMAGE_REGISTRY }}" --expected-var "IMAGE_NAMESPACE=${{ vars.IMAGE_NAMESPACE }}"
 
+  # ── Inventário do GitHub: dependência NOVA → issue ─────────────────────
+  # A catraca (`check:github-dependencies`) roda nas DUAS pipelines de PR — mas o
+  # gate julga o COMMIT PROPOSTO. Este cron é a testemunha periódica do ESTADO, e
+  # o canal da decisão que o diff não carrega: ele mede o inventário com a MESMA
+  # função do guard (`novasDependencias`) e publica, por ITEM, a classe, a etapa
+  # do corte que o remove e o delta que entrou — e FECHA o ticket quando o item
+  # sai do repositório.
+  #
+  # Node puro (sem deps): o publicador importa só o guard e o contrato de
+  # publicação, então o job não depende de `bun install` — um cron que morre por
+  # ambiente é o alerta mudo que este manifesto existe para eliminar.
+  github-dependencies-audit:
+    name: Inventário do GitHub (dependência nova → issue)
+    runs-on: self-hosted
+    # 15min: o publicador importa o guard, que importa `forge-workflows.mjs`, e é
+    # DE LÁ que vem o `require("js-yaml")` (import tardio) — o par canônico de
+    # instalação abaixo existe porque sem o pacote a varredura de YAML sai 2
+    # ("NÃO JULGÁVEL") e o publicador decidiria sobre um inventário não medido.
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write # a issue é o canal (o run fica verde de propósito)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun
+          key: bun-${{ vars.BUN_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+      - name: Setup Bun
+        shell: bash
+        run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: bun-${{ vars.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ vars.BUN_VERSION }}-
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # NUNCA passe --dry-run aqui: o modo não toca no `gh` de propósito, e a
+      # reconciliação (o fechamento quando o item sai) sumiria em silêncio dentro
+      # de um run verde — o defeito de novo, na forma mais barata.
+      - name: Publicar a dependência NOVA como Issue acionável (e fechar quando o item sai)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/github-dependencies-issue.mjs
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '## 📋 Inventário do GitHub — dependência nova'
+            echo ''
+            echo 'O canal da dívida é a issue com o label `github-dependency-new`: uma por item,'
+            echo 'com a classe, a etapa do corte e o delta no corpo. Ela se FECHA quando o item'
+            echo 'sai do repositório (cortado, ou absorvido pela declaração no mesmo commit).'
+            echo ''
+            echo 'A medição completa está no log do passo de publicação.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # ── Revisão das allowlists (semanal) ────────────────────────────────
   # As ISENÇÕES do repositório envelhecem: "isento" não tem prazo por natureza,
   # e o motivo que era verdadeiro quando a entrada nasceu pode não ser mais.

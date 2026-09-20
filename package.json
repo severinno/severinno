@@ -30,6 +30,7 @@
     "check:required-checks": "node scripts/check-required-checks.mjs",
     "check:registry-source": "node scripts/check-registry-source.mjs",
     "check:mirror-coverage": "node scripts/check-mirror-coverage.mjs",
+    "check:github-dependencies": "node scripts/check-github-dependencies.mjs",
     "check:runner-base": "node scripts/check-runner-base.mjs",
     "check:script-headers": "node scripts/check-script-headers.mjs",
     "check:pipefail-sigpipe": "node scripts/check-pipefail-sigpipe.mjs",
