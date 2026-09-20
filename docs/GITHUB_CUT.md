@@ -127,6 +127,74 @@ declara (e a razão da porta FIXA `5177` com reuso, em vez de porta sorteada). O
 fica vivo naquela porta e quem tiver permissão o remove com
 `docker rm -f prova-publicacao-registry`; nada da prova depende dele depois do pull.
 
+#### Ato 1b-bis — as duas imagens no registry EMBUTIDO da forja (executado em 2026-09-20)
+
+O ato acima mede a MECÂNICA do OCI num `registry:2` local. A etapa 1 promete outra coisa:
+as imagens publicadas no registry embutido da **própria forja** — que é o que o runner e o
+tier-3 do `setup-bun-ci.sh` consomem —, onde o que muda não é o protocolo e sim o que a
+forja acrescenta: o **token** (o `realm` do `/v2/` sai do `ROOT_URL`), o **pacote sob um
+dono** e o **digest que ELE serve** para a tag.
+
+Agora isso é medido: o `gitea-registry:prove` sobe a stack da forja efêmera (o MESMO
+`deploy/docker-compose.gitea.yml`, com porta, volumes e `ROOT_URL` próprios), publica os dois
+artefatos no registry embutido **daquele** Gitea e os puxa de volta PELO DIGEST, com a tag
+local removida antes do pull-back. Executado aqui: **exit 0, 37,5s, 52 passos verdes**.
+
+| imagem                  | destino no registry embutido            | digest servido pela TAG             | blobs             | evidência DENTRO do que voltou              |
+| :---------------------- | :-------------------------------------- | :---------------------------------- | :---------------- | :------------------------------------------ |
+| `ubuntu-bun` (o runner) | `<efêmero>/severinno/ubuntu-bun:1.3.14` | `sha256:fd027ee77b52…` (índice OCI) | 9 (603.649.165 B) | `bun --version` → `1.3.14` · label `1.3.14` |
+| mirror do Bun           | `<efêmero>/severinno/bun:1.3.14`        | `sha256:b79e21c5b0b1…` (índice OCI) | 2 (36.607.127 B)  | `/bun` extraído → `1.3.14`                  |
+
+O `ubuntu-bun` acima é a MESMA build do Ato 1b (digest `sha256:fd027ee7…` nos dois atos — o
+que mudou foi o registry que o serve). Além do pull-back, o ensaio mede o que o `registry:2`
+não tinha: o `/v2/` respondendo **401 com Bearer** e o `realm` apontando para o endereço
+EFÊMERO (senão o `docker login` do ensaio sairia para a produção), o **token de pull** por
+basic auth do dono, o `Docker-Content-Digest` da tag igual ao digest do push, e o CONTEÚDO de
+dois blobs baixado e **hasheado** pela API (o `untag` não apaga camada: sem isso o pull-back
+poderia ser servido pelo store local). Os dois controles negativos recusaram nas duas vezes
+(digest inexistente → `not found`; tag nunca publicada → falhou), e o teardown deixou
+**zero** container e volume.
+
+**O achado deste ato — FECHADO no mesmo trabalho.** `GITEA__registry__ENABLED` não era
+declarado em lugar nenhum do repositório — nem no compose da forja de produção, nem no
+template —, e o ensaio o ligava EXPLICITAMENTE no override (o desvio saía no relatório com
+`<ausente>` como valor de origem), porque um default da série não é uma promessa escrita: a
+stack OPERADA precisa declarar que o registry que a etapa 1 exige está ligado. A stack agora
+o declara (`GITEA__registry__ENABLED=true` no template, consumido pelo compose na forma
+`${GITEA__registry__ENABLED:-true}` — MESMO valor como default), o `check:registry-source`
+cobra o par **por valor** (`checkComposeValueDefaults`: template sem a linha, compose que
+deixou de consumir e default divergente são todos violação), o `check:mirror-coverage` mede
+o espelho novo no recorte do commit, e o ensaio deixou de sobrepor o valor: ele EXIGE a
+declaração e mede o render nos DOIS caminhos (com o env do host e sem a declaração — o
+default, que é o que vale num `.env.gitea` mais velho que o template). Sem a declaração
+ele PARA antes de subir a stack: era isso que transformava "depende do default" em fato
+medido, e não em nota de rodapé.
+
+**Re-medido com a declaração (09/2026).** Rodado de novo depois de a stack passar a declarar
+o registry embutido: **exit 0, 37,6s, 52 passos verdes**, os MESMOS digests da tabela acima
+(`sha256:fd027ee7…` e `sha256:b79e21c5…`), e a linha nova do relatório — "registry embutido
+declarado: `GITEA__registry__ENABLED=true` — declarado no template e entregue pelo render nos
+DOIS caminhos". Os desvios declarados caíram para **dois** (`ROOT_URL` e `DOMAIN`, os dois do
+endereço efêmero): o valor não é mais sobreposto. Um limite LOCAL que apareceu nessa rodada e
+fica registrado: como o `IMAGE_REGISTRY` declarado virou `git.severinno.cloud`, a imagem
+construída neste host continua tagueada como `ghcr.io/severinno/ubuntu-bun:1.3.14` — rodado
+sem flag, o ensaio **para** (exit 2, INDETERMINADO) nomeando o remédio (`--ubuntu-bun <ref>`
+ou `bun run runner-image:ensure`), e foi com `--ubuntu-bun` que a rodada acima saiu. É o
+estado esperado no meio do flip: o declarado e o artefato local só voltam a coincidir quando a
+publicação de operação (i) acontecer — e o ensaio diz qual dos dois falta, em vez de presumir.
+
+**O que este ato NÃO fecha (declarado, não presumido)** — o limite do Ato 1b ("a publicação
+acima aconteceu num registry local") está FECHADO por este ato: o que o substitui é uma forja
+de verdade, efêmera. O que resta são os dois atos de OPERAÇÃO, os dois fora do repositório:
+(i) publicar os DOIS artefatos em `git.severinno.cloud` (o `sync-ubuntu-bun-mirror.yml`/
+`sync-bun-mirror.yml` já aceitam registry próprio via `IMAGE_REGISTRY` +
+`IMAGE_REGISTRY_USER`/`IMAGE_REGISTRY_TOKEN`; o `publish-ubuntu-bun.sh` deixou de cravar
+o host e passou a resolver o declarado) e (ii) definir `IMAGE_REGISTRY`/
+`IMAGE_NAMESPACE` como repository variables nas DUAS forjas. Enquanto (ii) não acontecer,
+o `check-actrc-sync` do cron semanal acusa a divergência entre o `.actrc` comitado e o
+valor da forja — que é exatamente a classe de drift de operação que ela existe para
+tornar visível.
+
 ### Etapa 2 — Os 9 crons e as vars do Actions
 
 - **Entrega**: os agendadores migrados (benchmarks, espelhos de toolchain, auditoria de

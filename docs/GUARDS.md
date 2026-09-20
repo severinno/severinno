@@ -4661,8 +4661,11 @@ verificada é a que este repositório mais trata como regra: **ausência de prov
 NUNCA vira sucesso**. Um comando que passe a sair `0` sem ter provado nada é pego
 AQUI, de forma hermética e em ~1s. O caminho PROVADO dessas sete exige docker e
 é do operador (`bun run forge-runtime:prove`, `bun run smoke-render:prove`,
-`bun run image-contract:prove`, `bun run merge-gate:prove`) — a doc de cada uma diz
-o que ele exige.
+`bun run image-contract:prove`, `bun run merge-gate:prove`,
+`bun run forge-smoke:prove`, `bun run pre-commit-in-runner:prove` e
+`bun run gitea-registry:prove`) — a doc de cada uma diz o que ele exige.
+O número não é decorativo: ele é o tamanho do conjunto que o `check:prove-docs`
+EXECUTA a cada PR, e um bloco que troque de cenário muda essa conta.
 
 **O desfecho é REPORTADO, nunca presumido:** um bloco `desfecho: indeterminado`
 que casa conta como "indeterminado (declarado)" e NÃO como "a prova passou" — o
@@ -6237,6 +6240,125 @@ variables e secrets, as releases, o runner no VPS e os `refs/pull/*` do purge �
 não é arquivo versionado e não aparece aqui.
 
 ---
+
+## 28. As duas imagens no registry EMBUTIDO da forja — `gitea-registry:prove` (`scripts/prove-gitea-registry.mjs`)
+
+**O buraco.** O Ato 1b do corte do GitHub (`docs/GITHUB_CUT.md` §3) publicou os
+dois artefatos da etapa 1 e declarou, no mesmo parágrafo, o limite: _"a publicação
+acima aconteceu num registry local"_. Um `registry:2` prova a MECÂNICA do OCI — e
+deixa de fora exatamente o que o registry embutido da forja acrescenta: o **token**
+(o `realm` do `/v2/` sai do `ROOT_URL`), o **pacote sob um dono**, e o **digest que
+ELE serve** para a tag. Enquanto isso a etapa 1 promete outra coisa: as duas
+imagens no registry OCI embutido da Gitea — que é o que o runner da forja e o
+tier-3 do `setup-bun-ci.sh` consomem. Quem puxa, no fim, não é um registry de
+teste: é o da forja.
+
+**O QUE A PROVA MEDE (não narra).** Ela sobe a stack da forja **efêmera** (o MESMO
+`deploy/docker-compose.gitea.yml` da produção, com nome de container, porta,
+volumes e três chaves de `environment` próprios), publica os DOIS artefatos no
+registry embutido daquele Gitea e os puxa de volta **pelo digest**:
+
+1. o `/v2/` responde **401 com Bearer** e o `realm` aponta para o endereço
+   EFÊMERO — o `docker login` do ensaio não sai para a produção;
+2. o **token de pull** sai por basic auth do dono do pacote (o pacote nasce
+   privado: o anônimo é recusado — medido);
+3. o **digest do push** é lido por DOIS caminhos e os dois têm de concordar: a
+   linha do push e o `RepoDigests` **filtrado pelo destino** (aquela lista é por
+   repositório, e o índice 0 costuma ser de outro registry — medido);
+4. a MESMA pergunta pela **API**: o `Docker-Content-Digest` da tag tem de ser o
+   digest do push. Sem isso, "publiquei" seria o que o _docker_ disse, não o que o
+   _registry_ serve;
+5. os **blobs** estão lá: `HEAD` em todos (com o comprimento conferido contra o
+   manifest) e o CONTEÚDO de dois baixado e **hasheado** (o config e a menor
+   camada até o teto declarado de 64MB) — é esta metade que compensa o cache do
+   daemon no pull-back, porque `untag` não apaga camada;
+6. o **pull-back por digest**: a tag local é REMOVIDA antes, e o pull é feito por
+   `<host>/<dono>/<imagem>@sha256:…`;
+7. o **artefato**: o `bun --version` DENTRO do que voltou é a versão declarada, e a
+   label `org.opencontainers.image.version` responde pelo mesmo valor. O mirror é
+   `scratch`, então a evidência dele é a **extração** do `/bun` (o caminho do
+   consumidor) — rodar a imagem inteira falha por desenho;
+8. os **CONTROLES NEGATIVOS**: um digest inexistente e uma tag nunca publicada têm
+   de FALHAR. Controle que passa é **violação**: sem ele, um pull que aceitasse
+   qualquer coisa passaria por prova.
+
+**DE ONDE VEM O QUE O ENSAIO SOBE (derivado, não uma segunda declaração).** O
+compose é o comitado + um override GERADO que muda só o que precisa ser efêmero;
+os alvos (dono, tag, registry) saem do **template** `deploy/env.gitea.example` —
+sem `IMAGE_NAMESPACE`, `BUN_VERSION` ou `IMAGE_REGISTRY` o ensaio **não inventa
+valor**: ele diz o que falta (exit 2). Cada desvio em relação à stack declarada sai
+no relatório **com o valor de origem** — o `ROOT_URL` é o que decide para onde o
+`docker login` vai, e mudá-lo em silêncio seria medir outra coisa. Os artefatos de
+origem são ENTRADA (`--ubuntu-bun`/`--bun-mirror`; o ensaio não baixa imagem por
+conta própria) e o mirror ausente é construído do `Dockerfile.bun-mirror` com o
+binário do `oven/bun:<versão>` local.
+
+**O ATO (executado, não prometido).** Aqui o ensaio rodou completo: **exit 0**, 37,5s,
+52 passos verdes, num Gitea `gitea/gitea:1.22` efêmero (projeto
+`prova-gitea-registry-…`, `/v2/` em `127.0.0.1:<porta sorteada>`, volumes
+descartados no teardown):
+
+| artefato      | destino no registry embutido    | digest servido pela TAG             | blobs               | evidência DENTRO do que voltou              |
+| :------------ | :------------------------------ | :---------------------------------- | :------------------ | :------------------------------------------ |
+| `ubuntu-bun`  | `…/severinno/ubuntu-bun:1.3.14` | `sha256:fd027ee77b52…` (índice OCI) | 9 (603649165 bytes) | `bun --version` → `1.3.14` · label `1.3.14` |
+| mirror do Bun | `…/severinno/bun:1.3.14`        | `sha256:b79e21c5b0b1…` (índice OCI) | 2 (36607127 bytes)  | `/bun` extraído → `1.3.14`                  |
+
+Os dois controles recusaram nas duas vezes (`digest-inexistente` → `not found`,
+`tag-nunca-publicada` → falhou), e o teardown deixou **zero** container e volume:
+num host cujo daemon recusa sinalizar container (o `docker rm -f` responde
+`permission denied`), o ensaio reusa o teardown que fala de dentro
+(`docker exec <c> kill 1`) e o que NÃO sai entra no relatório como resíduo — nunca
+é presumido removido.
+
+**O ACHADO QUE O ENSAIO TROUXE — e que está FECHADO.** `GITEA__registry__ENABLED`
+não era declarado em lugar nenhum do repositório (nem no compose da forja, nem no
+template), e o ensaio o ligava por OVERRIDE: o registry embutido da forja — o
+substituto do GHCR da etapa 1 — dependia do default da série, e default não é
+promessa escrita. Hoje a stack o **DECLARA** e o ensaio **não o sobrepõe mais**:
+
+- `deploy/env.gitea.example` declara `GITEA__registry__ENABLED=true`;
+- `deploy/docker-compose.gitea.yml` o CONSOME na forma
+  `${GITEA__registry__ENABLED:-true}` — o MESMO valor como default;
+- o `check:registry-source` cobra o par **por VALOR** (`checkComposeValueDefaults`,
+  a mesma régua dos defaults de `IMAGE_REGISTRY`), nos dois sentidos: template sem
+  a linha, compose que deixou de consumi-la (literal ignora o env do host) e
+  default divergente do declarado;
+- o `check:mirror-coverage` mede o espelho novo (`GITEA__registry__ENABLED` na
+  tabela do `env-mirror`, cuja decisão de recorte é DERIVADA do par: sem regra no
+  `--staged`, coberto pela varredura GLOBAL do guard dono);
+- o **ensaio** virou o dono da EXIGÊNCIA: sem a declaração (ou com o registry
+  desligado, ou com o default divergindo do declarado) ele PARA antes de subir a
+  stack — e mede o render nos DOIS caminhos, com o env do host e sem a declaração
+  (o default, que é o que vale no host cujo `.env.gitea` é mais velho que o
+  template). Sobrepor o valor no override faria a prova passar por cima da
+  declaração, que é exatamente o que ela tem de medir.
+
+**O QUE NÃO COBRE** (o relatório imprime): a **VPS** (`git.severinno.cloud`) —
+publicar lá e definir `IMAGE_REGISTRY`/`IMAGE_NAMESPACE` como repository variables
+nas duas forjas seguem sendo os dois atos de OPERAÇÃO; TLS/Caddy, DNS e firewall (a
+stack sobe só o serviço `gitea`, em HTTP no loopback); o **act_runner** (quem puxa
+a imagem do job é o DAEMON do host, com a credencial DELE — o ensaio declara isso e
+puxa com login explícito, o mesmo caminho de credencial); e a **visibilidade do
+pacote** (o anônimo é recusado — medido; torná-lo público é decisão de operação). A
+segurança de produção é fail-closed: nome de container ocupado por projeto alheio
+ou a stack da forja RODANDO neste host fazem o ensaio parar ANTES de subir nada.
+
+**Onde roda:** manual/operador (`bun run gitea-registry:prove`), em host com
+docker. Sem docker ele é INDETERMINADO — nunca verde. O caminho `docker-ausente` é
+cobrado a cada PR pelo `check:prove-docs`, que o EXECUTA com um `docker` de mentira
+e cobra o INDETERMINADO que ele documenta ter aí.
+
+<!-- prove-doc: gitea-registry:prove
+     run: --json
+     exit: 2
+     cenario: docker-ausente
+     desfecho: indeterminado
+-->
+
+```text
+"verdict": "unavailable"
+docker indisponível
+```
 
 ---
 

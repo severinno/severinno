@@ -1292,6 +1292,35 @@ medida no simulador (a suíte e o ensaio do pty). Ela custa **≈0,61s** (median
 > visibilidade se aplica; o outro é a próxima decisão) — os demais são mensagem ou registro
 > (o inventário e o próprio medidor guardam o valor antigo de propósito). ≈2,4s neste host,
 > sem docker.
+
+> **E a etapa 1 do plano, que declarava um limite — "a publicação aconteceu num registry
+> local" — também tem medidor do lado de cá do limite** (`bun run gitea-registry:prove`,
+> `scripts/prove-gitea-registry.mjs`): ele sobe a stack da forja **efêmera** (o MESMO
+> `deploy/docker-compose.gitea.yml`, com porta, volumes e `ROOT_URL` próprios), publica as
+> DUAS imagens no registry **embutido daquele Gitea** e as puxa de volta **pelo digest**, com
+> a tag local removida antes. O que um `registry:2` local não mede e ele mede: o `/v2/`
+> respondendo **401 com Bearer** com o `realm` apontando para o endereço efêmero (senão o
+> `docker login` do ensaio sairia para a produção), o **token de pull** do dono do pacote por
+> basic auth, o `Docker-Content-Digest` da tag igual ao digest do push, os blobs com `HEAD`
+> conferido contra o manifest **e** o conteúdo de dois deles baixado e **hasheado** pela API
+> (o `untag` não apaga camada: sem isso o pull-back poderia vir do store local) — e o
+> artefato: `bun --version` = a versão declarada **dentro** da imagem que voltou, com a label
+> `org.opencontainers.image.version` respondendo pelo mesmo valor (o mirror é `scratch`, então
+> a evidência dele é a extração do `/bun`, o caminho do consumidor). Os dois controles
+> negativos (digest inexistente e tag nunca publicada) têm de FALHAR — um controle que passa é
+> **violação**, senão um pull que aceitasse qualquer coisa passaria por prova. Medido neste
+> host (09/2026): **exit 0 em 37,5s**, 52 passos verdes, `ubuntu-bun` = `sha256:fd027ee77b52…`
+> (9 blobs, 603.649.165 B) e o mirror do Bun = `sha256:b79e21c5b0b1…` (2 blobs, 36.607.127 B),
+> zero container e volume deixados para trás. O achado que o ensaio trouxe está FECHADO: ele
+> descobriu que **`GITEA__registry__ENABLED` não era declarado em lugar nenhum do
+> repositório** (o ensaio o ligava por override, com `<ausente>` como valor de origem — um
+> default da série não é promessa escrita). Hoje a stack o declara (`=true` no template da
+> forja, consumido pelo compose com o MESMO valor como default), o `check:registry-source`
+> cobra o par POR VALOR (`checkComposeValueDefaults`, a régua dos defaults de imagem), o
+> `check:mirror-coverage` mede o espelho no recorte do commit e o ensaio **não sobrepõe mais**
+> o valor: ele exige a declaração e mede o render nos DOIS caminhos (com o env do host e sem
+> ela — o default, que é o que vale num `.env.gitea` mais velho que o template).
+> Sem docker ele é INDETERMINADO, nunca verde — o caminho `docker-ausente` é cobrado a cada PR
 > pelo `check:prove-docs`.
 
 O inventário também tem **canal acionável**, como as outras dívidas: o job semanal

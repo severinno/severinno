@@ -108,6 +108,7 @@ describe("discoverFamily — derivada de package.json, não listada", () => {
       "doctor",
       "forge-runtime:prove",
       "forge-smoke:prove",
+      "gitea-registry:prove",
       "image-contract:prove",
       "merge-gate:prove",
       "pre-commit-in-runner:prove",
