@@ -3174,11 +3174,32 @@ conta que não fecha (total menor que a soma dos sub-tests).
 medem comandos INTEIROS e uma rodada completa tem dezenas de minutos (a `hook` é
 a exceção: segundos). Três
 afirmações resolvem isso sem enfraquecer a procedência: `--only FAMÍLIA` mede só
-aquelas famílias (e pula a bateria de guards+doctor); `--merge` HERDA do arquivo
-o que esta rodada não mediu; e o que foi herdado vai para `meta.reused` com o
-**commit e o timestamp de origem**, aparece nomeado no relatório e é **excluído do
-veredito** — um número de outro momento não pode passar por "a medição de
-agora", e é justamente o que um veredito otimista esconderia.
+aquelas famílias (e pula a bateria de guards+doctor); **gravar nunca perde** — o
+que esta rodada não mediu entra no arquivo herdado, com procedência; e o que foi
+herdado vai para `meta.reused` com o **arquivo de origem, o commit e o timestamp**,
+aparece nomeado no relatório e é **excluído do veredito** — um número de outro
+momento não pode passar por "a medição de agora", e é justamente o que um veredito
+otimista esconderia.
+
+**A CADEIA da herança — e o defeito medido que a definiu (09/2026).** A ordem é
+`[baseline, latest]`, e ela não é arbitrária: a **baseline vem primeiro** porque é
+o **PISO e a precedência** — uma família que a régua versionada tem **nunca chega
+`null` ao arquivo gravado**, e quando as duas fontes têm o número, o que vale é o
+**dela** (uma rodada de scratch não rebaixa a régua); o `latest` entra como segunda
+fonte em toda gravação que não seja **só** da régua (ele é o predecessor do
+próprio `latest` e quem preenche o arquivo com data). Numa gravação só da
+baseline, é o `--merge` que a faz absorver o `latest` — promover para a régua o que
+foi medido em partes é ato DELIBERADO. O caso que exigiu isto, com as duas pontas
+medidas: uma rodada `--only hook --json` (ou o `--no-lint` do dispatch semanal)
+gravava as seções que **não** mediu como `null`, e a rodada seguinte (`--only
+mutations --baseline --merge`) herdava o **VAZIO** — o `rulers` da BASELINE saía
+`{typecheck: null, tests: null}` e o consumidor quebrava (`merge-latency.mjs` itera
+`Object.values(bench.rulers)`: o `null` derrubava com "Cannot read properties of
+null"), deixando a suíte vermelha por um arquivo e não por uma medição. A herança
+da **bateria** (guards+doctor) segue a mesma cadeia e a mesma régua de "foi
+medida?" (guards vazios com doctor nulo não é medição), e o `summary` gravado
+descreve o arquivo INTEIRO — um `summary` da rodada parcial ao lado de uma seção
+herdada seria uma incoerência gerada pelo próprio benchmark.
 
 A mesma regra vale nas duas **pontas** do veredito, não só na lista de formas:
 uma família herdada não julga o **TOTAL** (que é a soma de guards+doctor, e esse
@@ -3248,8 +3269,9 @@ aparece na prontidão sem cruzamento de caducidade, e isso está dito lá.
 · `--only FAMÍLIA` (mede só
 elas, sem a bateria; `--only mutations` mede a matriz de mutação inteira, ~4min) ·
 `--counterfactual` (mede também a régua anterior da
-suíte, ~7min) · `--merge` (herda do arquivo o que não foi medido, marcado e
-fora do veredito) · `--samples N` (amostras por forma de lint; padrão 2) ·
+suíte, ~7min) · `--merge` (a gravação **só** da régua absorve também o `latest`; a herança do
+predecessor e o piso da baseline valem em toda gravação, marcadas e fora do
+veredito) · `--samples N` (amostras por forma de lint; padrão 2) ·
 `bun run bench:guard-timing:baseline` (salva a baseline **e**, com `--json`, o
 `latest` — mover a baseline é o ato que decide que os números de agora passam a
 ser a régua) · `bun run bench:guard-timing:compare` (compara) ·
