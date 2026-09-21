@@ -72,12 +72,31 @@ fase_a() {
   node scripts/check-required-checks.mjs --staged &
   PID_REQCHECKS=$!
 
-  # Aguarda os CINCO e agrega os status deles (wait_all — topo).
+  # A CONTAGEM DA MATRIZ — RECORTE --staged, declarado em HOOK_DECLARED do
+  # check-hook-ci-parity: julga o CONTEUDO DO INDICE (o mesmo `run()` de sempre,
+  # sobre `git show :path` de cada arquivo do veredito), nao o working tree.
+  #
+  # POR QUE ELE ESTA AQUI: o N da matriz e as refs dele (summary e comentario do
+  # job no pr-check.yml, header do master, refs do README e a doc das metades)
+  # sao UM numero em SEIS arquivos. Commitar a MATRIZ num commit e as REFS no
+  # seguinte abre a janela: o primeiro commit sozinho esta INCONSISTENTE, e um
+  # `rebase`/`cherry-pick` dele leva um count partido para outro ramo — e o CI e
+  # quem descobria. Antes desta linha o hook nao rodava o guard de contagem por
+  # nenhum caminho; o veredito do INDEX e o recorte MINIMO que fecha a janela
+  # (o guard inteiro continua sendo o do CI, nos dois jobs de mutation).
+  #
+  # O custo e o de um `git show` por arquivo do veredito (o master, as 36 suites
+  # que ele cita, o pr-check.yml, o README e a doc): ~0,2s MEDIDO nesta arvore,
+  # em paralelo com o resto da fase.
+  node scripts/check-mutation-count.mjs --staged &
+  PID_COUNT=$!
+
+  # Aguarda os SEIS e agrega os status deles (wait_all — topo).
   #
   # O `||` NAO existe mais nesta linha, e nao por descuido: dentro da funcao o
   # status de `wait_all` e o RETORNO dela, e o `set -e` esta desligado na chamada
   # (`fase_a || FASE_A=$?`) — quem registra o veredito e o call site.
-  wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS
+  wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS $PID_COUNT
 }
 
 # Sintaxe dos corpos `run:` — RECORTE --staged, declarado em HOOK_DECLARED do

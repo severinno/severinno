@@ -32,10 +32,36 @@
 #                           pode falhar o guard (a matriz segue 13) → CONTROLE.
 #   CONTROLE:               fixture consistente (matriz 13 + refs 13) → exit 0.
 #
+# A SEGUNDA METADE DESTA SUÍTE (o recorte que roda no pre-commit):
+#
+#   Cenário K (O ESCOPO):   o veredito do `--staged` é o CONTEÚDO DO ÍNDICE, não
+#                           o working tree. A fixture é um repositório git de
+#                           verdade com a ÁRVORE coerente (matriz 2 + refs 2) e o
+#                           ÍNDICE partido (matriz 3, refs 2): o recorte DEVE
+#                           reprovar e o modo árvore DEVE passar — e com a
+#                           mutação que lê a árvore (`run(dir)` → `run(root)`)
+#                           o commit partido PASSA (o escopo é load-bearing).
+#   Cenário L (O QUE O COMMIT NÃO CARREGA): a suíte nova está na ÁRVORE e não no
+#                           ÍNDICE (o caso real: escrita e ainda não estagiada).
+#                           O veredito DEVE nomear o índice como a causa (o
+#                           remédio é o `git add`); sem o registro, sobra a
+#                           acusação ao arquivo "que não existe" — ele existe, o
+#                           commit é que não o carrega.
+#   Cenário M (O FAIL-CLOSED): o master fora do índice (e inteiro na árvore) é
+#                           exit 2 (INFRA), nunca verde; mutado para devolver
+#                           "nada a julgar", o recorte fica CEGO (exit 0).
+#
+# K/L/M mutam o GUARD (no lugar, com backup + restauração verificada por
+# checksum no trap EXIT) e exigem a suíte unitária VERMELHA — a testemunha de que
+# a regressão não passaria no PR em silêncio. Sem `git`, as três são declaradas
+# como NÃO julgadas (nunca silenciosas).
+#
 # DIFERENÇA vs os demais mutation tests: aqui o guard é executado com --root
 # contra um FIXTURE MINIMAL (não o repo real) — o guard lê só 3 arquivos
 # (scripts/test-mutation-guards.sh, .github/workflows/pr-check.yml,
-# README.md), então o fixture replica esses 3 com a matriz e as refs.
+# README.md), então o fixture replica esses 3 com a matriz e as refs. O recorte
+# `--staged` é a exceção: ele lê o ÍNDICE, então K/L/M rodam contra um
+# repositório git (o mesmo fixture + commit base).
 #
 # Pipeline:
 #   1. Cria fixture consistente (matriz 13 + refs 13 em pr-check/README)
@@ -48,7 +74,13 @@
 #   8. MUTAÇÃO F: required check com CONTAGEM no name (job direto + reusable) →
 #      DEVE FALHAR citando CONTAGEM; CONTROLE F com os mesmos jobs count-free →
 #      exit 0
-#   9. Cleanup (trap EXIT — rm -rf do temp)
+#   9. MUTAÇÕES G/H/I/J: a derivação das metades (bloco ausente, ilegível, a doc
+#      com o total errado, a entrada em aspas duplas) → DEVE FALHAR cada uma
+#  10. CONTROLE K + MUTAÇÃO K: o ESCOPO do --staged (o índice × a árvore)
+#  11. CONTROLE L + MUTAÇÃO L: o arquivo que o commit não carrega
+#  12. CONTROLE M + MUTAÇÃO M: o fail-closed do master ilegível
+#  13. CONTROLE FINAL do recorte (a restauração por checksum devolve o guard)
+#  14. Cleanup (trap EXIT — restaura o guard e rm -rf dos temps)
 #
 # Usage:
 #   ./scripts/test-mutation-mutation-count.sh
@@ -79,9 +111,14 @@ METADES=(
   'H|o bloco com uma linha fora do formato: o guard FALHA e não lê nenhuma metade'
   'I|a doc que declara um total que não bate com o bloco → o guard FALHA'
   'J|a entrada do bloco em ASPAS DUPLAS (o shell expandiria) → o guard FALHA'
+  'K|o ESCOPO do --staged: com o recorte lendo a ÁRVORE, o commit partido PASSA'
+  'L|o arquivo que o ÍNDICE não carrega perde a violação NOMEADA (a causa sai do veredito)'
+  'M|o FAIL-CLOSED do master ilegível: mutado devolve "nada a julgar" VERDE'
 )
 GUARD="node $SCRIPT_DIR/scripts/check-mutation-count.mjs --root"
 REQUIRED_GUARD="node $SCRIPT_DIR/scripts/check-required-checks.mjs --root"
+GUARD_SCRIPT="$SCRIPT_DIR/scripts/check-mutation-count.mjs"
+SUITE_ARQUIVO="src/lib/__tests__/check-mutation-count.test.ts"
 
 TMP_DIR="$(mktemp -d)"
 
@@ -94,11 +131,79 @@ pass() { echo -e "  ${GREEN}✅${NC} $1"; }
 fail() { echo -e "  ${RED}❌${NC} $1"; }
 info() { echo -e "  ${YELLOW}ℹ️${NC} $1"; }
 
-# ── Cleanup (trap EXIT) ────────────────────────────────────────────────────
+# ── Backup da FONTE do guard + restauração VERIFICADA (trap EXIT) ─────────
+# As mutações K/L/M são aplicadas NO LUGAR, no arquivo do repositório (é ele que
+# o CLI executa e que a suíte unitária importa). O backup mora em OUTRO temp: o
+# `repo_git_fixture` recria o `$TMP_DIR` a cada fixture, e um backup lá dentro
+# seria apagado no meio da suíte.
+GUARD_BKP="$(mktemp -d)"
+guard_backup="$GUARD_BKP/check-mutation-count.original.mjs"
+cp "$GUARD_SCRIPT" "$guard_backup"
+guard_sum="$(cksum "$GUARD_SCRIPT" | cut -d' ' -f1)"
+
 cleanup() {
-  rm -rf "$TMP_DIR"
+  cp -f "$guard_backup" "$GUARD_SCRIPT" 2>/dev/null || true
+  rm -rf "$TMP_DIR" "$GUARD_BKP"
 }
 trap cleanup EXIT
+
+restaurar_guard() {
+  cp -f "$guard_backup" "$GUARD_SCRIPT"
+  if [ "$(cksum "$GUARD_SCRIPT" | cut -d' ' -f1)" != "$guard_sum" ]; then
+    fail "RESTAURAÇÃO FALHOU (checksum diverge) — restaure a partir de $guard_backup"
+    exit 1
+  fi
+}
+
+# ── mutar_guard: substituição CIRÚRGICA (exatamente 1 ocorrência) ─────────
+# Uma mutação que casa 0 ou 2+ vezes não é cirúrgica: o script para em vez de
+# medir outra coisa. O marcador "MUTACAO M" no texto novo é o que prova que a
+# mutação APLICOU (o alvo pode existir e a escrita falhar).
+mutar_guard() {
+  GUARD="$GUARD_SCRIPT" ALVO="$1" NOVO="$2" python3 - <<'PY'
+import os
+p = os.environ["GUARD"]
+old, new = os.environ["ALVO"], os.environ["NOVO"]
+s = open(p).read()
+n = s.count(old)
+if n != 1:
+    raise SystemExit(f"mutacao nao-cirurgica no guard: {n} ocorrencia(s) do alvo (esperado 1)")
+open(p, "w").write(s.replace(old, new))
+PY
+  if ! grep -qF 'MUTACAO M' "$GUARD_SCRIPT"; then
+    fail "a mutação não aplicou no guard (nada a medir)"
+    exit 1
+  fi
+  if [ "$(cksum "$GUARD_SCRIPT" | cut -d' ' -f1)" = "$guard_sum" ]; then
+    fail "a mutação não alterou o guard (checksum idêntico) — o alvo casou mas a escrita não"
+    exit 1
+  fi
+}
+
+# ── A SEGUNDA TESTEMUNHA: a suíte unitária tem de notar a mutação ─────────
+# Onde a regra muda o veredito do CLI, a prova é o EXIT CODE (comportamento). A
+# suíte é a testemunha de que a regressão não passaria no PR em silêncio — e o
+# motivo é DITO quando ela não está instalada (o exit 0 de uma suíte que não
+# rodou não é veredito).
+suite_disponivel() { [ -d "$SCRIPT_DIR/node_modules/vitest" ]; }
+
+exigir_suite_vermelha() {
+  local cenario="$1"
+  if ! suite_disponivel; then
+    info "$cenario (suíte): NÃO julgada — node_modules/vitest ausente neste job (declarado, nunca silencioso)"
+    return 0
+  fi
+  set +e
+  SUITE_OUT="$(cd "$SCRIPT_DIR" && bun x vitest run --config vitest.config.unit.ts "$SUITE_ARQUIVO" 2>&1 | tail -8)"
+  SUITE_EXIT=$?
+  set -e
+  if [ "$SUITE_EXIT" -eq 0 ]; then
+    fail "$cenario: a suíte unitária ficou VERDE com o guard mutado — a regressão passaria no PR em silêncio"
+    echo "$SUITE_OUT" | sed 's/^/      /'
+    exit 1
+  fi
+  pass "$cenario: suíte unitária VERMELHA (exit $SUITE_EXIT) — a regressão não passa no PR"
+}
 
 # ── make_fixture: cria os arquivos que o guard lê ─────────────────────────
 # $1 = count da matriz | $2 = SUFIXO do name do job (default: "" — count-free)
@@ -189,6 +294,66 @@ make_fixture() {
       echo "era de $historical sub-tests e o timing-budget foi adicionado após a medição de $historical."
     fi
   } > "$TMP_DIR/README.md"
+}
+
+# ═════════════════════════════════════════════════════════════════════════
+# AS FERRAMENTAS DO RECORTE `--staged` (o ÍNDICE é o commit)
+# ═════════════════════════════════════════════════════════════════════════
+# O modo `--staged` lê o ÍNDICE do repositório em que roda (`git show :path`),
+# então medir o julgamento dele exige um REPOSITÓRIO de verdade: o fixture vira
+# um commit e as metades manipulam o índice (e só ele) para produzir cada
+# defeito. O `git` é declarado como requisito — sem ele as três metades dizem
+# que NÃO foram julgadas, em vez de sumirem em silêncio.
+git_disponivel() { command -v git >/dev/null 2>&1; }
+
+# ── repo_git_fixture: o fixture do make_fixture + commit BASE coerente ────
+repo_git_fixture() { # $1..$4 = os mesmos do make_fixture
+  rm -rf "$TMP_DIR"
+  mkdir -p "$TMP_DIR"
+  make_fixture "$@"
+  git -C "$TMP_DIR" init -q .
+  git -C "$TMP_DIR" config user.email "mutation-count@test"
+  git -C "$TMP_DIR" config user.name "mutation count"
+  git -C "$TMP_DIR" add -A
+  git -C "$TMP_DIR" commit -qm base
+}
+
+# ── suite_extra: a suíte de um sub-test NOVO (a que o commit novo cita) ────
+suite_extra() { # $1 = número do sub-test
+  {
+    echo '#!/usr/bin/env bash'
+    echo 'set -euo pipefail'
+    echo 'METADES=('
+    echo "  'M1|a metade um da suite sub-$1'"
+    echo "  'M2|a metade dois da suite sub-$1'"
+    echo ')'
+  } > "$TMP_DIR/scripts/test-mutation-sub-$1.sh"
+}
+
+# ── master_com: um master com N entradas, FORA da árvore (o blob do commit) ─
+master_com() { # $1 = arquivo de destino | $2 = N
+  {
+    echo '#!/usr/bin/env bash'
+    echo "# Roda os $2 mutation tests node-puro dos guards de CI num ÚNICO script"
+    echo 'SUBTESTS=('
+    for i in $(seq 1 "$2"); do echo "  \"sub-$i|scripts/test-mutation-sub-$i.sh\""; done
+    echo ')'
+  } > "$1"
+}
+
+# ── rodar_staged / rodar_arvore: o MESMO repositório nos DOIS escopos ─────
+rodar_staged() {
+  set +e
+  OUTPUT="$(cd "$TMP_DIR" && node "$GUARD_SCRIPT" --staged 2>&1)"
+  EXIT=$?
+  set -e
+}
+
+rodar_arvore() {
+  set +e
+  OUTPUT="$(cd "$TMP_DIR" && node "$GUARD_SCRIPT" 2>&1)"
+  EXIT=$?
+  set -e
 }
 
 echo ""
@@ -573,6 +738,168 @@ if [ "$EXIT" -ne 0 ]; then
 fi
 pass "Controle OK — bloco declarado + doc coerente passa (exit 0)"
 
+# ═════════════════════════════════════════════════════════════════════════
+# STEP 25..30 — O RECORTE `--staged`: o veredito é o CONTEÚDO DO ÍNDICE
+# ═════════════════════════════════════════════════════════════════════════
+# As três metades abaixo são as que só existem no modo `--staged` (o que roda no
+# pre-commit): o ESCOPO (o índice, não a árvore), o arquivo que o veredito lê e o
+# COMMIT não carrega, e o fail-closed do master ilegível. As três rodam contra um
+# repositório git de verdade — o fixture do `make_fixture` + commit base — e as
+# mutações vão no GUARD (arquivo do repositório), com restauração verificada por
+# checksum e a suíte unitária como segunda testemunha.
+if ! git_disponivel; then
+  info "MUTAÇÕES K/L/M: NÃO julgadas — git ausente neste host (o recorte --staged vive do índice)"
+else
+  # ── K: O ESCOPO — o recorte julga o ÍNDICE, não a árvore ─────────────────
+  info "STEP 25: MUTAÇÃO K — a matriz 3 no ÍNDICE e as refs em 2 (o commit partido)..."
+  repo_git_fixture 2 "" 2 2
+  suite_extra 3
+  git -C "$TMP_DIR" add scripts/test-mutation-sub-3.sh
+  master_com "$TMP_DIR/.master-do-commit" 3
+  BLOB="$(git -C "$TMP_DIR" hash-object -w "$TMP_DIR/.master-do-commit")"
+  git -C "$TMP_DIR" update-index --cacheinfo "100755,$BLOB,scripts/test-mutation-guards.sh"
+  info "  (a ÁRVORE segue COERENTE — matriz 2 + refs 2: é essa a diferença de escopo)"
+
+  info "STEP 26: o recorte contra o commit partido, e a árvore coerente do MESMO repo..."
+  rodar_staged
+  if [ "$EXIT" -eq 0 ]; then
+    fail "GUARD CEGO (escopo): o commit PARTIDO passou no recorte (exit 0)."
+    fail "É a janela que o pre-commit existe para fechar."
+    exit 1
+  fi
+  if ! grep -Fq "no ÍNDICE" <<<"$OUTPUT"; then
+    fail "O recorte reprovou (exit $EXIT) mas não disse que julgou o ÍNDICE."
+    exit 1
+  fi
+  K_STAGED_EXIT=$EXIT
+  rodar_arvore
+  if [ "$EXIT" -ne 0 ]; then
+    fail "CONTROLE FALHOU: a ÁRVORE coerente do MESMO repositório reprovou (exit $EXIT)."
+    fail "Sem esta metade, 'o recorte lê o índice' poderia ser só um fixture quebrado."
+    echo "$OUTPUT" | tail -4
+    exit 1
+  fi
+  pass "K (CONTROLE): o ÍNDICE partido reprova (exit $K_STAGED_EXIT) e a ÁRVORE coerente passa (exit 0)"
+
+  mutar_guard \
+    '    const result = run(dir)' \
+    '    const result = run(root) /* MUTACAO M-K: o recorte julga a ARVORE */'
+  rodar_staged
+  if [ "$EXIT" -ne 0 ]; then
+    fail "K: com o recorte lendo a ÁRVORE o commit partido AINDA reprovou (exit $EXIT)."
+    fail "Se a árvore já bastasse, o escopo não sustentava o vermelho."
+    echo "$OUTPUT" | tail -4
+    exit 1
+  fi
+  pass "K: com o recorte lendo a ÁRVORE, o commit partido PASSA (exit 0) — o escopo é load-bearing"
+  exigir_suite_vermelha "K"
+  restaurar_guard
+
+  # ── L: O ARQUIVO QUE O VEREDITO LÊ E O ÍNDICE NÃO CARREGA ────────────────
+  # O caso real: a suíte do sub-test novo escrita na árvore e ainda não
+  # estagiada. O veredito tem de NOMEAR o índice como a causa (o remédio é o
+  # `git add`), em vez de dizer que o arquivo "não existe" — ele existe, quem não
+  # o carrega é o commit.
+  info "STEP 27: MUTAÇÃO L — a suíte citada existe na ÁRVORE e NÃO no ÍNDICE..."
+  # O commit BASE sai com tudo (a árvore coerente com 3) e a suíte nova é TIRADA
+  # do índice: é o caso real — ela está escrita na árvore e ainda não estagiada —
+  # e o COMMIT passa a citar um arquivo que não carrega.
+  repo_git_fixture 3 "" 3 3
+  git -C "$TMP_DIR" rm -q --cached scripts/test-mutation-sub-3.sh
+  info "  (o ÍNDICE cita a suíte 3 e não a carrega; a ÁRVORE está inteira)"
+
+  rodar_staged
+  if [ "$EXIT" -eq 0 ]; then
+    fail "GUARD CEGO (ausente do índice): o commit que cita um arquivo que não carrega passou."
+    exit 1
+  fi
+  if ! grep -Fq "e o ÍNDICE não o tem" <<<"$OUTPUT"; then
+    fail "O recorte reprovou (exit $EXIT) mas NÃO nomeou o índice como a causa."
+    echo "$OUTPUT" | grep -E '^   - ' | head -4
+    exit 1
+  fi
+  pass "L (CONTROLE): o commit reprova NOMEANDO o índice como a causa (exit $EXIT)"
+  rodar_arvore
+  if [ "$EXIT" -ne 0 ]; then
+    fail "CONTROLE FALHOU: a ÁRVORE do MESMO repositório reprovou (exit $EXIT)."
+    echo "$OUTPUT" | tail -4
+    exit 1
+  fi
+
+  mutar_guard \
+    '        ausentes.push(`${rel}: ${r.motivo}`)' \
+    '        /* MUTACAO M-L: o ausente do indice nao e registrado */'
+  rodar_staged
+  if grep -Fq "e o ÍNDICE não o tem" <<<"$OUTPUT"; then
+    fail "L: a violação NOMEADA sobreviveu à mutação — ela não é o que o veredito diz."
+    exit 1
+  fi
+  if [ "$EXIT" -eq 0 ]; then
+    fail "L: com o registro desligado o commit PASSOU (exit 0) — o guard ficou CEGO"
+    fail "(a outra violação, a do arquivo 'que não existe', também depende do registro)."
+    exit 1
+  fi
+  pass "L: sem o registro, o veredito PERDE a causa (sobra a acusação ao arquivo que está na árvore) — exit $EXIT"
+  exigir_suite_vermelha "L"
+  restaurar_guard
+
+  # ── M: O FAIL-CLOSED DO MASTER ILEGÍVEL ──────────────────────────────────
+  info "STEP 28: MUTAÇÃO M — o master fora do ÍNDICE (e inteiro na árvore)..."
+  repo_git_fixture 2 "" 2 2
+  git -C "$TMP_DIR" rm -q --cached scripts/test-mutation-guards.sh
+
+  info "STEP 29: o recorte contra o master que ele não consegue ler..."
+  rodar_staged
+  if [ "$EXIT" -ne 2 ]; then
+    fail "INFRA: o master ausente do índice devia sair 2 (não julgável) e saiu $EXIT."
+    echo "$OUTPUT" | tail -3
+    exit 1
+  fi
+  if ! grep -Fq "não consegui ler o master" <<<"$OUTPUT"; then
+    fail "O recorte saiu 2 mas NÃO nomeou o master que não conseguiu ler."
+    exit 1
+  fi
+  pass "M (CONTROLE): 'não consegui ler' é exit 2 — nunca um verde por não saber"
+  rodar_arvore
+  if [ "$EXIT" -ne 0 ]; then
+    fail "CONTROLE FALHOU: a ÁRVORE (com o master inteiro) reprovou (exit $EXIT)."
+    echo "$OUTPUT" | tail -4
+    exit 1
+  fi
+
+  mutar_guard \
+    '    const err = new Error(`não consegui ler o master ${MASTER} do índice — ${master.motivo}`)
+    err.code = "INFRA"
+    throw err' \
+    '    /* MUTACAO M-M: "nao consegui ler" virou "nada a julgar" */
+    return { ...run(root), ok: true, violations: [], indice: root, ausentesNoIndice: [] }'
+  rodar_staged
+  if [ "$EXIT" -ne 0 ]; then
+    fail "M: com o fail-closed desligado o `--staged` ainda saiu $EXIT (esperado 0 = cego)."
+    echo "$OUTPUT" | tail -4
+    exit 1
+  fi
+  pass "M: mutado, 'não consegui ler' vira 'nada a julgar' VERDE (exit 0) — o fail-closed é load-bearing"
+  exigir_suite_vermelha "M"
+  restaurar_guard
+
+  # ── CONTROLE FINAL do recorte: a árvore restaurada volta a julgar ────────
+  info "STEP 30: CONTROLE FINAL — o recorte restaurado contra o commit partido..."
+  repo_git_fixture 2 "" 2 2
+  suite_extra 3
+  git -C "$TMP_DIR" add scripts/test-mutation-sub-3.sh
+  master_com "$TMP_DIR/.master-do-commit" 3
+  BLOB="$(git -C "$TMP_DIR" hash-object -w "$TMP_DIR/.master-do-commit")"
+  git -C "$TMP_DIR" update-index --cacheinfo "100755,$BLOB,scripts/test-mutation-guards.sh"
+  rodar_staged
+  if [ "$EXIT" -eq 0 ]; then
+    fail "CONTROLE FINAL: o recorte RESTAURADO deixou o commit partido passar"
+    fail "(a restauração por checksum não devolveu o guard)."
+    exit 1
+  fi
+  pass "CONTROLE FINAL: o recorte restaurado volta a reprovar o commit partido (exit $EXIT)"
+fi
+
 echo ""
 pass "MUTATION TEST PASSED — check-mutation-count pega o count de volta no NAME"
 pass "do job (o contexto do required check não pode depender da matriz), no"
@@ -581,5 +908,8 @@ pass "um required check (job direto E reusable); a suíte que não DECLARA as"
 pass "metades falha fail-closed, o bloco ilegível também, a entrada em ASPAS"
 pass "DUPLAS (que o shell expandiria, matando a suíte) é recusada com a razão, e a"
 pass "contagem da doc que envelheceu contra o bloco acende com o delta — sem"
-pass "falso-positivo numa fixture coerente."
+pass "falso-positivo numa fixture coerente. O RECORTE --staged tem as suas três:"
+pass "o ESCOPO é o ÍNDICE (mutado para ler a árvore, o commit partido passa), o"
+pass "arquivo que o commit não carrega perde a causa nomeada, e o master"
+pass "ilegível deixa de ser exit 2 quando o fail-closed é desligado."
 exit 0

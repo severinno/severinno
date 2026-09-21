@@ -5,13 +5,44 @@
 //
 // Usage:
 //   node scripts/check-mutation-count.mjs            # repo atual (default)
+//   node scripts/check-mutation-count.mjs --staged   # o INDICE (o pre-commit)
 //   node scripts/check-mutation-count.mjs --root X   # fixture (testes/mutation)
 //   node scripts/check-mutation-count.mjs --json     # output JSON estruturado
 //
 // Exit codes:
 //   0 — o nº derivado da matriz bate com todas as refs (pass)
 //   1 — drift: alguma ref diverge do nº derivado (fail — mensagem com o par)
-//   2 — infra: arquivo ausente/ilegível (fail-closed)
+//   2 — infra: arquivo ausente/ilegível (fail-closed); `--staged` sem git (ou
+//       sem índice legível) também é 2 — nunca um verde por não saber
+//
+// `--staged`: O CONTEÚDO DO ÍNDICE, NÃO O DA ÁRVORE.
+//
+// POR QUE ELE EXISTE (o defeito medido): o N da matriz e as refs dele (o
+// summary e o comentário do job no pr-check.yml, o header do master, as refs do
+// README e a contagem declarada na doc das metades) são UM NÚMERO em SEIS
+// arquivos. Commitar a MATRIZ num commit e as REFS no seguinte abre a janela: o
+// primeiro commit sozinho está INCONSISTENTE, e quem o aprova na forja (ou
+// rebaseia em cima dele) recebe um CI vermelho por um número que o commit
+// seguinte ia consertar — ou, pior, o `git rebase`/`cherry-pick` do primeiro
+// sozinho leva um count partido para outro ramo. O hook não rodava este guard:
+// a contagem podia ser partida em dois commits LOCAIS e o defeito só aparecia no
+// CI. Aqui ele roda no índice, e o índice é o conteúdo do commit.
+//
+// O QUE ELE JULGA: o mesmo `run()` de sempre, sobre uma ÁRVORE DO ÍNDICE
+// materializada em diretório temporário (`git show :path` de cada arquivo que o
+// veredito lê: o master, as suítes que o master cita, o pr-check.yml, o README e
+// a doc). NÃO julga o working tree — a diferença é de ESCOPO, e é o ponto.
+//
+// LIMITES DECLARADOS:
+//   - arquivo que o veredito lê e NÃO está no índice é VIOLAÇÃO nomeada (nunca
+//     "nada a julgar"): o caso real é a suíte nova do sub-test novo, escrita na
+//     árvore e ainda não estagiada — o commit da matriz apontaria para um
+//     arquivo que ele não carrega, e é exatamente isso que este recorte fecha;
+//   - a RÉGUA das metades (`scripts/metades.mjs`) é lida da ÁRVORE, não do
+//     índice: ela não é o que este recorte julga (a contagem é), e quem a julga
+//     inteira são as duas pipelines;
+//   - `git show :path` lê o índice do REPOSITÓRIO em que ele roda: fora de um
+//     repositório git o modo sai 2 (fail-closed), nunca 0.
 //
 // POR QUE: o nº de sub-tests da matriz `scripts/test-mutation-guards.sh`
 // (array SUBTESTS) é derivável e aparece em VÁRIOS lugares — o summary do job
@@ -81,8 +112,10 @@
 // guard ancora. Edite os DOIS juntos se precisar reformular.
 // =============================================================================
 
-import { existsSync, readFileSync } from "node:fs"
-import { join, resolve } from "node:path"
+import { execFileSync } from "node:child_process"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { dirname, join, resolve } from "node:path"
+import { tmpdir } from "node:os"
 import { pathToFileURL } from "node:url"
 
 import { metadesDeclaradas } from "./metades.mjs"
@@ -469,27 +502,152 @@ export function run(root) {
   }
 }
 
+// ── O MODO --staged (a ÁRVORE DO ÍNDICE) ──────────────────────────────────
+
+/** O master — a fonte das ENTRIES e do N (é dele que saem os outros caminhos). */
+const MASTER = "scripts/test-mutation-guards.sh"
+
+/**
+ * O conteúdo de UM arquivo no ÍNDICE (`git show :path`) — o que o COMMIT vai
+ * conter. Devolve `null` quando o arquivo NÃO está no índice (com o motivo),
+ * porque as duas situações são diferentes: ``ilegível'' (infra) e ``não faz
+ * parte do commit'' (o defeito que este modo existe para pegar).
+ *
+ * @param {string} root
+ * @param {string} rel
+ * @returns {{ok: true, conteudo: string} | {ok: false, motivo: string}}
+ */
+export function lerDoIndice(root, rel) {
+  try {
+    const conteudo = execFileSync("git", ["show", `:${rel}`], {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 32 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+    return { ok: true, conteudo }
+  } catch (e) {
+    const stderr = String(e?.stderr ?? "")
+      .trim()
+      .split("\n")
+      .pop()
+    return { ok: false, motivo: stderr === "" ? `git show :${rel} falhou` : stderr }
+  }
+}
+
+/**
+ * Os caminhos que o VEREDITO lê: o master, o pr-check.yml, o README, a doc das
+ * metades e CADA suíte que o master cita. Derivados (nunca uma lista à mão): a
+ * suíte nova de um sub-test novo entra na materialização no mesmo commit em que
+ * entra na matriz.
+ *
+ * A DOC (`docs/GUARDS.md`) é o ÚNICO opcional da lista, e pela mesma régua do
+ * `run()`: ele a lê com `existsSync` (o fixture mínimo não tem doc). Ausente do
+ * ÍNDICE = ausente da árvore, e o veredito segue — o resto da lista é obrigatório.
+ *
+ * @param {string} masterSrc conteúdo do master (do ÍNDICE)
+ * @returns {string[]}
+ */
+export const DOC_OPCIONAL = "docs/GUARDS.md"
+
+/**
+ * @param {string} masterSrc
+ * @returns {string[]}
+ */
+export function caminhosDoVeredito(masterSrc) {
+  const { entries } = deriveSubtestCount(masterSrc)
+  const rels = [MASTER, ".github/workflows/pr-check.yml", "README.md", DOC_OPCIONAL]
+  for (const { script } of entries) if (!rels.includes(script)) rels.push(script)
+  return rels
+}
+
+/**
+ * O JULGAMENTO DO ÍNDICE: materializa a ÁRVORE DO ÍNDICE (o master, as suítes
+ * que ele cita, o pr-check.yml, o README e a doc) num diretório temporário e roda
+ * o MESMO `run()` sobre ela. O working tree não entra: o que se julga é o que o
+ * commit vai conter.
+ *
+ * Um caminho que o veredito lê e NÃO está no índice é VIOLAÇÃO nomeada — nunca
+ * "nada a julgar": o caso real é a suíte nova escrita na árvore e ainda não
+ * estagiada, e o commit da matriz apontaria para um arquivo que ele não carrega.
+ *
+ * @param {string} root
+ * @param {{ler?: (root: string, rel: string) => {ok: true, conteudo: string} | {ok: false, motivo: string}}} [opts]
+ *   `ler` é injetável para o teste medir a orquestração sem um repositório git.
+ * @returns {ReturnType<typeof run> & {indice: string, ausentesNoIndice: string[]}}
+ */
+export function runStaged(root, { ler = lerDoIndice } = {}) {
+  const master = ler(root, MASTER)
+  if (!master.ok) {
+    const err = new Error(`não consegui ler o master ${MASTER} do índice — ${master.motivo}`)
+    err.code = "INFRA"
+    throw err
+  }
+
+  const rels = caminhosDoVeredito(master.conteudo)
+  const dir = mkdtempSync(join(tmpdir(), "mutation-count-indice-"))
+  const ausentes = []
+  try {
+    for (const rel of rels) {
+      // O master JÁ foi lido (e é ele que decide a lista): não gasta outro
+      // `git show` no mesmo blob.
+      const r = rel === MASTER ? master : ler(root, rel)
+      if (!r.ok) {
+        // A doc opcional ausente do índice é a doc ausente da árvore (o `run()`
+        // a lê com existsSync): não é violação, é não haver doc para conferir.
+        if (rel === DOC_OPCIONAL) continue
+        ausentes.push(`${rel}: ${r.motivo}`)
+        continue
+      }
+      const destino = join(dir, rel)
+      mkdirSync(dirname(destino), { recursive: true })
+      writeFileSync(destino, r.conteudo)
+    }
+    const result = run(dir)
+    const violacoes = [...result.violations]
+    for (const a of ausentes) {
+      violacoes.push(
+        `o veredito lê '${a.split(":")[0]}' e o ÍNDICE não o tem (${a.split(":").slice(1).join(":").trim()}) — o COMMIT apontaria para um arquivo que ele não carrega: estague-o junto ('git add') ou tire a referência`,
+      )
+    }
+    return {
+      ...result,
+      ok: violacoes.length === 0,
+      violations: violacoes,
+      indice: dir,
+      ausentesNoIndice: ausentes,
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
+
 // ── CLI ────────────────────────────────────────────────────────────────────
 
 function main() {
   const argv = process.argv.slice(2)
   let root = process.cwd()
   let json = false
+  let staged = false
 
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--root") {
       root = resolve(argv[++i])
     } else if (argv[i] === "--json") {
       json = true
+    } else if (argv[i] === "--staged") {
+      staged = true
     } else {
-      console.error(`flag desconhecida: ${argv[i]} (use --root X | --json)`)
+      console.error(`flag desconhecida: ${argv[i]} (use --staged | --root X | --json)`)
       process.exit(2)
     }
   }
 
+  const escopo = staged ? "no ÍNDICE" : "na árvore"
+
   let result
   try {
-    result = run(root)
+    result = staged ? runStaged(root) : run(root)
   } catch (e) {
     console.error(`❌ check-mutation-count: ${e.message}`)
     process.exit(2)
@@ -502,13 +660,13 @@ function main() {
 
   if (result.ok) {
     console.log(
-      `✅ check-mutation-count: ${result.derivedCount} sub-tests da matriz (${result.derivedMetades} metades declaradas) — pr-check.yml, master, README e a doc das metades consistentes.`,
+      `✅ check-mutation-count: ${result.derivedCount} sub-tests da matriz (${result.derivedMetades} metades declaradas) ${escopo} — pr-check.yml, master, README e a doc das metades consistentes.`,
     )
     process.exit(0)
   }
 
   console.error(
-    `❌ check-mutation-count: drift de count/metades (derivado=${result.derivedCount} sub-tests, ${result.derivedMetades} metades) — refs divergentes:`,
+    `❌ check-mutation-count: drift de count/metades ${escopo} (derivado=${result.derivedCount} sub-tests, ${result.derivedMetades} metades) — refs divergentes:`,
   )
   for (const v of result.violations) console.error(`   - ${v}`)
   process.exit(1)

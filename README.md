@@ -890,6 +890,7 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 | Pipefail / SIGPIPE (`check-pipefail-sigpipe.mjs`)                               |     ✅     |       —       |
 | Condições do retrato arquivado (`check-archived-pipeline.mjs`)                  |     ✅     |       —       |
 | Fecho de TLA do remédio (`check-tla-closure.mjs`)                               |     ✅     |       —       |
+| Contagem da matriz no índice (`check-mutation-count.mjs --staged`)              |     ✅     |       —       |
 | Mutation jobs CI (`check-mutation-jobs.mjs`)                                    |     ✅     |      ✅       |
 | Mutation jobs staged diff (`check-mutation-jobs.mjs --staged`)                  |     ✅     |       —       |
 | Unused-deps staged diff (`check-unused-deps.mjs --staged`)                      |     ✅     |       —       |

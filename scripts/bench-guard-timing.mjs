@@ -1036,9 +1036,10 @@ export const OFERTA_FIM = "# ── Phase C: Sequential checks"
  * poder ser re-executada depois de um remédio verde) — a âncora leva a indentação
  * dela, porque a transformação é textual.
  */
-export const WAIT_SEPARADO = "  wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS"
+export const WAIT_SEPARADO =
+  "  wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS $PID_COUNT"
 export const WAIT_AGREGADO =
-  "  wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS $PID_RUNSYNTAX"
+  "  wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS $PID_COUNT $PID_RUNSYNTAX"
 export const ESPERA_SINTAXE =
   'SINTAXE=0\nif [ -n "$PID_RUNSYNTAX" ]; then\n  wait "$PID_RUNSYNTAX" || SINTAXE=$?\nfi'
 export const ESPERA_AGREGADA = "SINTAXE=$FASE_A"

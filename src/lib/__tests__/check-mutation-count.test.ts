@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-import { run } from "../../../scripts/check-mutation-count.mjs"
+import { caminhosDoVeredito, run, runStaged } from "../../../scripts/check-mutation-count.mjs"
+
+const GUARD = join(process.cwd(), "scripts/check-mutation-count.mjs")
 
 /**
  * Fixture mínimo: um repo com os arquivos que o guard lê — o master, o
@@ -346,5 +349,170 @@ describe("check-mutation-count — as METADES de cada suíte (a descrição deri
     })
     const r = run(dir)
     expect(r.ok).toBe(true)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// O MODO --staged: o veredito é do ÍNDICE, não do working tree.
+//
+// O `ler` é INJETÁVEL de propósito: a orquestração (o que é julgado, o que é
+// materializado, o que é violação por ausência) é medida sem repositório git —
+// e o caminho REAL do `git show :path` é medido no último teste, com um repo de
+// verdade, para a injeção não esconder o `git` de mentira.
+// ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Um leitor de ÍNDICE a partir de um diretório de fixture (com overrides por
+ * caminho) — o mapa do que o "índice" tem, sem tocar em git.
+ */
+function indiceDe(
+  dir: string,
+  {
+    overrides = {},
+    ausentes = [],
+  }: { overrides?: Record<string, string>; ausentes?: string[] } = {},
+) {
+  return (_root: string, rel: string) => {
+    if (ausentes.includes(rel))
+      return { ok: false as const, motivo: `path '${rel}' não está no índice` }
+    const caminho = join(dir, rel)
+    if (overrides[rel] === undefined && !existsSync(caminho))
+      return { ok: false as const, motivo: `path '${rel}' não está no índice` }
+    return { ok: true as const, conteudo: overrides[rel] ?? readFileSync(caminho, "utf8") }
+  }
+}
+
+describe("check-mutation-count --staged (a árvore do índice)", () => {
+  it("julga o ÍNDICE: o WIP partido da árvore não entra no veredito", () => {
+    // O CASO REAL: a árvore tem a matriz bumpada e as refs ainda não (WIP do
+    // desenvolvedor), e o índice tem o commit consistente. O veredito da ÁRVORE
+    // falha (o WIP é inconsistente), o do ÍNDICE passa (é o que o commit carrega).
+    const arvore = makeFixture({ count: 14 })
+    const indice = makeFixture({ count: 13 })
+
+    expect(run(arvore).ok).toBe(true) // a árvore do fixture é COERENTE consigo mesma
+    const r = runStaged(arvore, { ler: indiceDe(indice) })
+    expect(r.ok).toBe(true)
+    expect(r.derivedCount).toBe(13)
+
+    // E a outra metade: a ÁRVORE partida (matriz 15, refs 13) falha, o ÍNDICE
+    // consistente segue verde — a diferença entre os dois é o ESCOPO.
+    const arvorePartida = makeFixture({ count: 15, readmeLive: 13, workflowSummary: 13 })
+    expect(run(arvorePartida).ok).toBe(false)
+    const r2 = runStaged(arvorePartida, { ler: indiceDe(indice) })
+    expect(r2.ok).toBe(true)
+  })
+
+  it("RECUSA o count partido entre dois commits (a matriz no índice, as refs não)", () => {
+    // O DEFEITO QUE ESTE RECORTE FECHA: a árvore já está consertada (matriz 14 e
+    // TODAS as refs 14 — o `run()` passa), mas só a MATRIZ foi estagiada; o
+    // índice carrega 14 na matriz e 13 nas refs. Sem este recorte, o commit sai
+    // partido e o defeito só aparece no CI (ou num rebase/cherry-pick do primeiro).
+    const arvore = makeFixture({ count: 14 })
+    expect(run(arvore).ok).toBe(true)
+
+    const refsAntigas = makeFixture({ count: 14 })
+    const overrides = {
+      "README.md": readFileSync(join(makeFixture({ count: 13 }), "README.md"), "utf8"),
+      ".github/workflows/pr-check.yml": readFileSync(
+        join(makeFixture({ count: 13 }), ".github/workflows/pr-check.yml"),
+        "utf8",
+      ),
+    }
+    const r = runStaged(refsAntigas, { ler: indiceDe(refsAntigas, { overrides }) })
+    expect(r.ok).toBe(false)
+    expect(r.derivedCount).toBe(14)
+    expect(r.violations.some((v) => v.includes("README.md") && v.includes("≠ 14"))).toBe(true)
+    expect(r.violations.some((v) => v.includes("summary") || v.includes("comentário"))).toBe(true)
+  })
+
+  it("arquivo que o master cita e o ÍNDICE não tem é VIOLAÇÃO nomeada (fail-closed)", () => {
+    // A suíte nova do sub-test novo, escrita na árvore e ainda não estagiada: o
+    // commit da matriz apontaria para um arquivo que ele não carrega.
+    const dir = makeFixture({ count: 13 })
+    const suíte = "scripts/test-mutation-sub-3.sh"
+    expect(
+      caminhosDoVeredito(readFileSync(join(dir, "scripts/test-mutation-guards.sh"), "utf8")),
+    ).toContain(suíte)
+
+    const r = runStaged(dir, { ler: indiceDe(dir, { ausentes: [suíte] }) })
+    expect(r.ok).toBe(false)
+    expect(r.ausentesNoIndice).toHaveLength(1)
+    expect(
+      r.violations.some(
+        (v) => v.includes(suíte) && v.includes("o ÍNDICE não o tem") && v.includes("git add"),
+      ),
+    ).toBe(true)
+  })
+
+  it("o master ausente do índice é INFRA (exit 2 pelo CLI), nunca 'nada a julgar'", () => {
+    const dir = makeFixture({ count: 13 })
+    expect(() =>
+      runStaged(dir, { ler: indiceDe(dir, { ausentes: ["scripts/test-mutation-guards.sh"] }) }),
+    ).toThrow(/não consegui ler o master/)
+  })
+
+  it("caminhosDoVeredito deriva o master, o pr-check, o README, a doc e CADA suíte citada", () => {
+    const dir = makeFixture({ count: 3 })
+    const rels = caminhosDoVeredito(
+      readFileSync(join(dir, "scripts/test-mutation-guards.sh"), "utf8"),
+    )
+    expect(rels).toEqual([
+      "scripts/test-mutation-guards.sh",
+      ".github/workflows/pr-check.yml",
+      "README.md",
+      "docs/GUARDS.md",
+      "scripts/test-mutation-sub-0.sh",
+      "scripts/test-mutation-sub-1.sh",
+      "scripts/test-mutation-sub-2.sh",
+    ])
+  })
+
+  it("o CLI julga o ÍNDICE de um repositório git DE VERDADE (git show :path)", () => {
+    // A fixture vira um repositório: o que está commitado é o estado COERENTE.
+    const dir = makeFixture({ count: 13 })
+    const git = (...args: string[]) =>
+      execFileSync("git", args, { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })
+    git("init", "-q")
+    git("config", "user.email", "count@test")
+    git("config", "user.name", "count test")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+
+    const roda = () => {
+      try {
+        return {
+          rc: 0,
+          saida: execFileSync(process.execPath, [GUARD, "--staged"], {
+            cwd: dir,
+            encoding: "utf8",
+          }),
+        }
+      } catch (e) {
+        const err = e as { status?: number; stderr?: string; stdout?: string }
+        return { rc: err.status ?? -1, saida: `${err.stdout ?? ""}${err.stderr ?? ""}` }
+      }
+    }
+
+    // 1. WIP na ÁRVORE (matriz 14 sem as refs) SEM estagiar: o commit não mudou,
+    //    e o índice é o que vai ser commitado — passa.
+    writeFileSync(
+      join(dir, "scripts/test-mutation-guards.sh"),
+      readFileSync(join(dir, "scripts/test-mutation-guards.sh"), "utf8").replace(
+        "SUBTESTS=(",
+        'SUBTESTS=(\n  "sub-novo|scripts/test-mutation-sub-0.sh"',
+      ),
+    )
+    const wip = roda()
+    expect(wip.rc).toBe(0)
+    expect(wip.saida).toContain("13 sub-tests da matriz")
+
+    // 2. A MATRIZ ESTAGIADA com as refs ainda em 13: é o count PARTIDO entre dois
+    //    commits — o commit que sai daqui está inconsistente, e o veredito é 1.
+    git("add", "scripts/test-mutation-guards.sh")
+    const partido = roda()
+    expect(partido.rc).toBe(1)
+    expect(partido.saida).toContain("no ÍNDICE")
+    expect(partido.saida).toContain("14 sub-tests")
   })
 })

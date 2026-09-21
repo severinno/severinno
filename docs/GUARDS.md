@@ -849,8 +849,57 @@ propósito — cobrar toda ocorrência daria falso positivo em texto correto.
 sem o bloco falha nomeando a falta; H: bloco ilegível; I: a doc declarando um
 total que não bate, com o delta na mensagem; J: a entrada em **aspas duplas** — a
 forma que o shell expandiria e que mataria a suíte — é recusada nomeando a
-expansão e o remédio) e `check-mutation-count.test.ts` (25 testes, cada regra com
+expansão e o remédio) e `check-mutation-count.test.ts` (31 testes, cada regra com
 o seu CONTROLE na direção oposta).
+
+#### O count não pode ser PARTIDO entre dois commits locais — o recorte `--staged`
+
+O N da matriz e as refs dele são **um número em seis arquivos**: o summary e o
+comentário do job no `pr-check.yml`, o header do master, as refs do README e a
+contagem declarada na doc das metades. Até aqui o guard rodava **só no CI** (o
+job `mutation-count-guard`, espelhado na forja dona do merge) — e isso deixava
+uma janela local: commitar a **matriz** num commit e as **refs** no seguinte. O
+primeiro commit sozinho está inconsistente; quem o aprova na forja recebe um
+vermelho por um número que o commit seguinte ia consertar, e um
+`rebase`/`cherry-pick` do primeiro leva o count partido para outro ramo — o CI
+é quem descobria, nunca o commit.
+
+O recorte `--staged` fecha a janela: o veredito é o **conteúdo do ÍNDICE**. O
+mesmo `run()` de sempre roda sobre uma árvore do índice materializada num
+diretório temporário (`git show :path` de cada arquivo que o veredito lê: o
+master, **as 36 suítes que o master cita**, o `pr-check.yml`, o README e a doc),
+com o working tree **fora** — a diferença entre os dois escopos é o ponto, e ela
+é medida nos dois sentidos (`check-mutation-count.test.ts`: o WIP partido da
+árvore com o índice coerente passa; a árvore já consertada com o índice partido
+— matriz estagiada, refs não — **reprova**, nomeando o delta).
+
+**LIMITES DECLARADOS.** Um arquivo que o veredito lê e o índice **não tem** é
+**violação nomeada**, nunca "nada a julgar" — o caso real é a suíte nova de um
+sub-test novo escrita na árvore e ainda não estagiada: o commit da matriz
+apontaria para um arquivo que ele não carrega (e o remédio está na mensagem: o
+`git add`). O master ausente do índice é **exit 2** (infra). A **régua das
+metades** (`scripts/metades.mjs`) é lida da árvore, não do índice: ela não é o que
+este recorte julga (a contagem é), e quem a julga inteira são as duas pipelines.
+Fora de um repositório git o modo sai 2 — nunca um verde por não saber.
+
+**A prova por MUTAÇÃO** (`test-mutation-mutation-count.sh`, metades K/L/M, contra um
+repositório git de verdade — o mesmo fixture + commit base): o **ESCOPO** (com o
+recorte lendo a ÁRVORE o commit partido **passa**: a árvore coerente e o índice
+partido do MESMO repositório dão vereditos opostos, e é isso que separa os dois
+escopos), o **arquivo que o COMMIT não carrega** (a suíte nova na árvore e fora do
+índice: o controle reprova **nomeando o índice** como a causa e o modo árvore
+passa; sem o registro, o veredito perde a causa e sobra a acusação ao arquivo “que
+não existe” — que existe, o commit é que não o carrega) e o **FAIL-CLOSED** (o
+master fora do índice é exit 2; mutado para devolver “nada a julgar”, o recorte
+fica **verde**). As três mutam o guard no lugar (backup + restauração conferida por
+checksum) e exigem a suíte `check-mutation-count.test.ts` **vermelha**, que é a
+segunda testemunha de que a regressão não passaria no PR em silêncio.
+
+Roda na **fase A do pre-commit** (`node scripts/check-mutation-count.mjs
+--staged`, recorte declarado em `HOOK_DECLARED` do `check-hook-ci-parity`), custo
+medido de **~0,2s** (um `git show` por arquivo do veredito, em paralelo com os
+outros cinco guards da fase); o comando **inteiro** continua sendo o do CI, nos
+dois jobs de mutation.
 
 #### O OUTRO LADO da mesma lei: a reaplicação da proteção é DECLARADA
 
@@ -5987,8 +6036,8 @@ UNIÃO com a atribuição do filho, o `source` sem `export` e o `export VAR` soz
 de linha, `$( )`, `case`, função, continuação). E o repositório REAL é julgado com
 um **PISO de cobertura** (`comandos >= 200`, os três hooks e os scripts descidos nomeados): se a extração
 ou a descida pararem de funcionar, a contagem cai e o guard "passa" — o piso é o
-que impede o verde por vazio. Em produção: **252 comandos** (107 nos 3 hooks +
-145 dentro dos 5 scripts chamados), **246 resolvidos** e **6 indeterminados
+que impede o verde por vazio. Em produção: **253 comandos** (108 nos 3 hooks +
+145 dentro dos 5 scripts chamados), **247 resolvidos** e **6 indeterminados
 DECLARADOS** (as quatro decisões de caminho viraram prova; sobraram os payloads de
 `-c`).
 

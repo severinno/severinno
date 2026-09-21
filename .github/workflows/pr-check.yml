@@ -1364,14 +1364,36 @@ jobs:
       - name: Setup Bun
         shell: bash
         run: bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"
+      # O `node_modules` deste job: a suíte de mutação tem DUAS testemunhas, e a
+      # segunda é a suíte unitária do guard (`bun x vitest`) — sem instalar, ela sai
+      # como "NÃO julgada" e a metade "suíte VERMELHA" fica declarada mas não
+      # medida. Medido: o `check-job-deps` acusou este job exatamente por isso (o
+      # corpo da suíte chama `vitest`, que é binário do `node_modules`).
+      #
+      # Só o INSTALL, sem o passo de cache do `node_modules`: o cache canônico
+      # carrega a variável de versão do Bun na chave, e cada referência a variável
+      # de repositório (ou a segredo) conta na classe `actions-plane` do inventário
+      # do GitHub — uma catraca que só ANDA PARA BAIXO, onde um par novo de
+      # referências exigiria declarar a alta com `--update`. O "Restore Bun cache"
+      # acima já devolve o cache global de pacotes do Bun, então o download não é
+      # repetido: o que falta é o link.
+      - name: Install deps
+        run: bun install --frozen-lockfile
+
       - name: Mutation test — count guard sensitivity (fixtures)
         run: bash scripts/test-mutation-mutation-count.sh
 
       - name: Check mutation count consistency (matrix vs pr-check vs README)
         run: node scripts/check-mutation-count.mjs
 
+      # O N do summary sai do GUARD, nunca escrito à mão: enquanto ele dizia
+      # "(21 sub-tests)" com a matriz em 36, o resumo do job mentia — e nenhum
+      # guard cobria esta linha (as refs conferidas são o summary do job
+      # `mutation-guards` e o comentário dele).
       - name: Summary
-        run: echo "✅ Mutation test count (21 sub-tests) is consistent across the matrix, pr-check.yml and README."
+        run: |
+          N=$(node scripts/check-mutation-count.mjs --json | node --input-type=module -e 'let s="";for await (const c of process.stdin) s+=c; console.log(JSON.parse(s).derivedCount)')
+          echo "✅ Mutation test count ($N sub-tests) is consistent across the matrix, pr-check.yml and README."
 
   bun-audit-guard:
     name: Bun Audit Guard (deps — drift baseline)

@@ -671,22 +671,53 @@ describe("a premissa: o hook chama o remédio, e de dentro do bloco do gate", ()
   it("a fase A é UMA função com a fase INTEIRA dentro (é o que a reexecução mede)", () => {
     const hook = readFileSync(HOOK, "utf8")
     expect(hook).toContain("fase_a() {")
-    // O corpo entre a declaração e o disparo do gate de sintaxe: se um guard ficar
+    // O corpo da fase A vai da declaração até o BLOCO DA FASE B. Se um guard ficar
     // FORA dele, a reexecução mediria outra fase — e o veredito de uma fase verde
     // cobriria um guard do índice que nunca voltou a rodar. (A promessa inversa, a
     // da fase B, é medida logo acima: as duas fases vivem em função pelo MESMO
     // motivo, e uma reexecução que cobrisse só metade da fase é pior que nenhuma.)
-    const corpo = hook.slice(hook.indexOf("fase_a() {"), hook.indexOf("PID_RUNSYNTAX=$!"))
+    //
+    // A âncora do FIM era o literal `PID_RUNSYNTAX=$!`, que NÃO existe mais no hook
+    // (a captura do PID virou defensiva, `${!:-}`) — e `indexOf` devolvendo -1 faz
+    // um `slice` ir até o FIM do arquivo: o corpo medido passava a incluir a fase B
+    // inteira e as asserções de `toContain` continuavam verdes sobre ele. Uma âncora
+    // que SOME não pode alargar o que se mede em silêncio, então ela é conferida.
+    const inicio = hook.indexOf("fase_a() {")
+    const marcadorB = "# ── Phase B: Global guards"
+    const fim = hook.indexOf(marcadorB)
+    expect(
+      fim,
+      `o marcador da fase B ('${marcadorB}') saiu do hook: a fase A ficou sem fim declarado`,
+    ).toBeGreaterThan(inicio)
+    const corpo = hook.slice(inicio, fim)
+    expect(corpo, "a fase A não pode engolir a fase B (o corpo medido é o dela)").not.toContain(
+      "fase_b() {",
+    )
     for (const cmd of [
       "node scripts/check-bun-mirror.mjs --staged &",
       "node scripts/check-mutation-jobs.mjs --staged &",
       "node scripts/check-unused-deps.mjs --staged &",
       "node scripts/check-mutation-timing-contract.mjs --staged &",
       "node scripts/check-required-checks.mjs --staged &",
-      "wait_all $PID_BUN $PID_MUT $PID_DEPS $PID_TIMING $PID_REQCHECKS",
+      "node scripts/check-mutation-count.mjs --staged &",
     ]) {
       expect(corpo, `${cmd} ficou fora da função fase_a`).toContain(cmd)
     }
+    // A espera da fase A, comparada por LISTA (não por substring): os PIDs da
+    // linha do `wait_all` têm de ser EXATAMENTE os seis guards lançados acima —
+    // nem um a mais, nem um a menos. Um guard novo na fase A que não entre na
+    // espera não decide o veredito dela (e a reexecução depois do remédio mediria
+    // um commit mais permissivo que o da primeira rodada).
+    const pids = [...corpo.matchAll(/^\s*wait_all (.+)$/gm)].map((m) => m[1].trim())
+    expect(pids, "a fase A tem de ter UMA única espera").toHaveLength(1)
+    expect(pids[0].split(/\s+/)).toEqual([
+      "$PID_BUN",
+      "$PID_MUT",
+      "$PID_DEPS",
+      "$PID_TIMING",
+      "$PID_REQCHECKS",
+      "$PID_COUNT",
+    ])
   })
 
   it("a fase A reprovada NÃO encerra o hook antes da oferta (o `if` do remédio a carrega)", () => {

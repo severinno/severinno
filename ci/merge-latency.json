@@ -129,10 +129,10 @@
         "date": "2026-09-17"
       },
       "mutation-count-guard": {
-        "ms": 17356,
+        "ms": 21198,
         "provenance": "declarado (MEDIDO)",
-        "source": "medido neste host (Linux, 16 cpus), 2026-09-17: `bash scripts/setup-bun-ci.sh 1.3.14` 17175ms (SEM cache — no CI com cache-hit é ~1-2s) + `bash scripts/test-mutation-mutation-count.sh` 155ms + `node scripts/check-mutation-count.mjs` 26ms",
-        "date": "2026-09-17"
+        "source": "medido neste host (Linux, 16 cpus), 2026-09-21: `bash scripts/setup-bun-ci.sh 1.3.14` 17175ms (SEM cache — no CI com cache-hit é ~1-2s, medido em 2026-09-17) + `bun install --frozen-lockfile` 62ms (QUENTE: o cache de pacotes em ~/.bun já vem do passo acima — o job passou a instalar porque a suíte tem a segunda testemunha, `bun x vitest`) + `bash scripts/test-mutation-mutation-count.sh` 3870ms (era 155ms em 2026-09-17: as metades K/L/M rodam a suíte unitária do guard três vezes — a testemunha de que a regressão não passa no PR) + `node scripts/check-mutation-count.mjs` 91ms (209 metades, medido hoje)",
+        "date": "2026-09-21"
       },
       "fuzz": {
         "ms": 29943,

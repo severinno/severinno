@@ -160,6 +160,7 @@ describe("bench-guard-timing — os contrafactuais do hook", () => {
     ).toEqual(
       [
         "$PID_BUN",
+        "$PID_COUNT",
         "$PID_DEPS",
         "$PID_MUT",
         "$PID_REQCHECKS",
@@ -171,7 +172,9 @@ describe("bench-guard-timing — os contrafactuais do hook", () => {
       linhaDoWait(hook)
         .match(/\$PID_[A-Z]+/g)
         ?.sort(),
-    ).toEqual(["$PID_BUN", "$PID_DEPS", "$PID_MUT", "$PID_REQCHECKS", "$PID_TIMING"].sort())
+    ).toEqual(
+      ["$PID_BUN", "$PID_COUNT", "$PID_DEPS", "$PID_MUT", "$PID_REQCHECKS", "$PID_TIMING"].sort(),
+    )
     // Fora das duas âncoras, as duas formas são byte a byte o mesmo hook: uma
     // causa por delta.
     // A ordem importa: a linha AGREGADA CONTÉM a separada (o PID do gate entra no
