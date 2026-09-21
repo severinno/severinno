@@ -98,12 +98,19 @@ import {
   novoRepo as novoRepoHook,
 } from "./pre-commit-proof.mjs"
 import { NO_PROMPT_ENV } from "./pre-commit-remedy.mjs"
+// A parte PURA da régua (a tabela de "foi medida?" e os nomes dos dois arquivos)
+// vem do módulo-FOLHA: o doctor e a idade da régua (`bench-freshness.mjs`) a
+// leem sem arrastar o trabalho que ESTE módulo faz ao carregar (resolver o
+// comando do lint a partir do `package.json`, varrer os workflows). O contrato
+// daqui não muda — os três nomes são REEXPORTADOS (o critério de cada família
+// está documentado em `bench-families.mjs`).
+import { BASELINE_FILE, FAMILY_MEASURED, LATEST_FILE } from "./bench-families.mjs"
+
+export { BASELINE_FILE, FAMILY_MEASURED, LATEST_FILE }
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = join(SCRIPT_DIR, "..")
 const BENCH_DIR = join(REPO_ROOT, "docs", "benchmarks")
-export const LATEST_FILE = "guard-timing-latest.json"
-export const BASELINE_FILE = "guard-timing-baseline.json"
 
 // ── Guards individuais (comando → label) ──────────────────────────────────
 // Lista derivada de .gitea/workflows/ci.yml: cada `run:` do job `guards`
@@ -2312,35 +2319,11 @@ export const ACT_LABELS = {
   "not-measured": "nao medida",
 }
 
-/**
- * O ATO que mediu cada familia, como fato de primeira classe.
- *
- * Uma familia pode chegar ao relatorio por tres caminhos, e o numero so e
- * comparavel se o caminho estiver dito: `measured` (esta rodada rodou o comando
- * dela), `reused` (herdada de outra rodada por `--merge`, com a origem marcada) e
- * `not-measured` (nao rodou aqui e nao havia de onde herdar — `--only`,
- * `--no-tests`, ou um arquivo anterior que tambem nao a tinha).
- *
- * A REGUA DE "FOI MEDIDA?" E UMA SO: as mesmas perguntas que a comparacao usa
- * para dizer que falta COBERTURA (`faltantes`, em `compareTimings`). Duas nocoes
- * de "medida" divergiriam no dia em que alguem ajustasse uma delas, e a
- * divergencia apareceria como "a baseline diz que mediu e o veredito diz que nao"
- * — sem teste vermelho.
- *
- * O `hook` responde pela MEDICAO declarada (`measured: true`) e nao pela secao
- * existir: uma secao presente com as ancoras sumidas nao mediu nada, e chama-la
- * de medida seria a mesma mentira que o `null` existe para evitar.
- *
- * @type {Record<string, (report: object|null|undefined) => boolean>}
- */
-export const FAMILY_MEASURED = {
-  battery: (report) => (report?.guards?.length ?? 0) > 0 || report?.doctor != null,
-  lint: (report) => report?.lint != null,
-  typecheck: (report) => report?.rulers?.typecheck != null,
-  tests: (report) => report?.rulers?.tests != null,
-  hook: (report) => report?.hook?.measured === true,
-  mutations: (report) => report?.mutations?.measured === true,
-}
+// A REGUA DE "FOI MEDIDA?" E UMA SO, e ela mora em `bench-families.mjs`
+// (importada e reexportada no topo deste arquivo): as mesmas perguntas que a
+// comparacao usa para dizer que falta COBERTURA e que a procedencia usa para
+// dizer o ATO de cada familia. O `hook` responde pela MEDICAO declarada
+// (`measured: true`) e nao pela secao existir. A doc do criterio esta lá.
 
 /**
  * A PROCEDENCIA de cada familia: qual ATO mediu o numero e QUAL COMMIT ele
