@@ -2187,6 +2187,26 @@ jobs:
       - name: Cobertura do recorte (espelhos × commit)
         run: node scripts/check-mirror-coverage.mjs
 
+      # A RÉGUA DO FECHO DE TLA, que vivia em prosa na cabeça dos loaders do
+      # remédio: nenhum módulo com TOP-LEVEL AWAIT pode ser alcançável a partir
+      # de uma declaração de classe (`remedy-classes/`) ou de canal
+      # (`remedy-canal/`). Quando o alcance fecha CICLO, o `await import()` do
+      # loader trava: o `node` sai com exit 13 e ZERO bytes nos dois fluxos, e o
+      # hook perde a oferta do remédio em silêncio. O comando é o MESMO do hook
+      # local e da forja dona do merge (o `check-hook-ci-parity` cobra isso).
+      - name: Régua do fecho de TLA (guard)
+        run: node scripts/check-tla-closure.mjs
+
+      # E a PREMISSA da régua, por EXECUÇÃO (a cópia da árvore com a aresta de
+      # volta injetada na classe e no canal, o `node` morrendo com rc=13 e 0B nos
+      # dois fluxos e a árvore intacta como CONTROLE): quem a executa nesta
+      # bateria é o contrato do `check:prove-docs` — o guard logo abaixo EXECUTA
+      # cada bloco `prove-doc` documentado, e o bloco do `tla-cycle:prove` está
+      # em `docs/GUARDS.md` §29. Um step próprio de `prove-*` seria recusado pela
+      # régua do doctor (que roda a bateria do dono do merge por lista de
+      # argumentos: `prove-*` não é comando de VERIFICAÇÃO) — o gate ficaria
+      # decorativo no job.
+
       # ── A suíte — o MESMO comando da forja dona do merge ────────────
       #
       # `bun run test:run` (= `vitest run`, config do app: `src/**/*.test.{ts,tsx}`

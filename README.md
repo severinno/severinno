@@ -503,6 +503,7 @@ Quatro camadas de proteção previnem que arquivos com encoding corrompido (ex: 
 - [UTF-8 Scope Guard](#utf-8-scope-guard) — escopo do check-utf8 travado em `src/`
 - [A régua única de leitura de YAML (`scripts/forge-workflows.mjs`)](#a-régua-única-de-leitura-de-yaml-scriptsforge-workflowsmjs) — linha, passo e declaração numa casa só
 - [O retrato arquivado declara QUANDO cada passo roda (`check:archived-pipeline`)](#o-retrato-arquivado-declara-quando-cada-passo-roda-checkarchived-pipeline) — as condições do `.woodpecker.yml` provadas contra a forja
+- [O fecho de TLA das declarações do remédio (`check:tla-closure`)](#o-fecho-de-tla-das-declarações-do-remédio-checktla-closure) — nenhum top-level await alcançável: o ciclo mata o hook em silêncio
 - [Por que `.sh`-only? (decisão ESCOPO INTENCIONAL)](#por-que-o-guard-de-crlf-é-sh-only-decisão-escopo-intencional)
 - [Auditoria histórica de blobs CRLF](#auditoria-histórica-de-blobs-crlf) — histórico completo (`rev-list --all`)
 - [Single-line out= Guard](#single-line-out-guard) — `cmd "..." out=$(...)` em 1 linha
@@ -627,6 +628,39 @@ exit 2 nomeando workflow, job e expressão. O que NÃO é julgado aqui é o
 CONJUNTO de passos (um job da forja sem passo no retrato é de outra régua) e o
 `needs:` (dependência não é gatilho). A família e os limites estão em
 `docs/GUARDS.md` §26.
+
+### O fecho de TLA das declarações do remédio (`check:tla-closure`)
+
+A regra estava só na **prosa**: o cabeçalho do loader das classes
+(`remedy-classes.mjs`) e o do canal (`pr-fixers.mjs`) avisam que a descoberta é
+assíncrona, e quem escreve a linha que quebra o hook não abre esse arquivo. A
+regra é **nenhum módulo com top-level await pode ser alcançável a partir de uma
+declaração de classe ou de canal** — e agora ela é veredito
+(`docs/GUARDS.md` §29).
+
+O que a execução mediu (`tla-cycle:prove`, que copia a árvore e injeta a aresta
+de volta NA CÓPIA): quando o alcance **fecha o ciclo**, o `node` sai com **exit
+13 e ZERO bytes** nos dois fluxos — o pre-commit perde a **oferta do remédio**
+sem imprimir causa nenhuma. Um TLA alcançável **sem** aresta de volta carrega
+normal (rc=0), e a régua o recusa mesmo assim, nomeando o caso (`CICLO · cadeia`
+vs `sem volta · cadeia`): a aresta que falta é UMA importação escrita dentro do
+módulo, e é o commit seguinte que a paga.
+
+| o grafo                                                     | `node`                      | veredito   |
+| :---------------------------------------------------------- | :-------------------------- | :--------- |
+| árvore intacta (CONTROLE)                                   | rc=0, 0B                    | ✅ verde   |
+| TLA alcançável **sem** volta                                | rc=0 — não mata             | ❌ recusa  |
+| a declaração de CLASSE importa o loader das classes (CICLO) | rc=13, stdout 0B, stderr 0B | ❌ `CICLO` |
+| a declaração de CANAL importa o loader do canal (CICLO)     | rc=13, stdout 0B, stderr 0B | ❌ `CICLO` |
+
+O guard roda no **pre-commit** (~1,1s, na fase paralela) e nos jobs `guards`
+(forja dona do merge) e `check` (espelho) com o MESMO comando. A prova é
+executada nessas mesmas baterias pelo contrato do `check:prove-docs` (o guard que
+EXECUTA cada bloco `prove-doc` documentado), sem step próprio: a régua do doctor
+recusa `prove-*` como comando de gate da bateria do dono do merge. Os dois pares que já alcançavam TLA hoje
+(`hook-commands` e `run-syntax` → `runner-shells.mjs`, cujo `await` é de ENTRADA)
+estão em `ALCANCE_DECLARADO` com motivo e data, e o guard confere os dois
+sentidos (um par que sumiu é violação: dívida paga não fica no papel).
 
 ### Por que o guard de CRLF é `.sh`-only (decisão ESCOPO INTENCIONAL)
 
@@ -855,6 +889,7 @@ sem drift entre pre-commit e pre-push (e espelha o `utf8-check.yml`).
 | Comandos do hook resolvem (`check-hook-commands.mjs`)                           |     ✅     |       —       |
 | Pipefail / SIGPIPE (`check-pipefail-sigpipe.mjs`)                               |     ✅     |       —       |
 | Condições do retrato arquivado (`check-archived-pipeline.mjs`)                  |     ✅     |       —       |
+| Fecho de TLA do remédio (`check-tla-closure.mjs`)                               |     ✅     |       —       |
 | Mutation jobs CI (`check-mutation-jobs.mjs`)                                    |     ✅     |      ✅       |
 | Mutation jobs staged diff (`check-mutation-jobs.mjs --staged`)                  |     ✅     |       —       |
 | Unused-deps staged diff (`check-unused-deps.mjs --staged`)                      |     ✅     |       —       |

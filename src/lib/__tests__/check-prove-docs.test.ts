@@ -97,7 +97,7 @@ function docBlock(
 // ── a FAMÍLIA, derivada ────────────────────────────────────────────────────
 
 describe("discoverFamily — derivada de package.json, não listada", () => {
-  it("acha os DEZ comandos da família e deixa o PUBLICADOR de fora", () => {
+  it("acha os ONZE comandos da família e deixa o PUBLICADOR de fora", () => {
     const pkg = JSON.parse(
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require("node:fs").readFileSync(join(ROOT, "package.json"), "utf8"),
@@ -114,6 +114,7 @@ describe("discoverFamily — derivada de package.json, não listada", () => {
       "pre-commit-in-runner:prove",
       "runner-image:prove",
       "smoke-render:prove",
+      "tla-cycle:prove",
     ])
     // O `doctor:issue` PUBLICA o veredito; não mede nada — não há saída de prova
     // nele, e exigir um bloco ali seria pedir uma asserção sobre... nada.
@@ -482,21 +483,24 @@ describe("CLI real — o fixture prova a cobertura E a fidelidade", () => {
 // ── o ESTADO REAL do repositório ───────────────────────────────────────────
 
 describe("audit — o repositório como ele está", () => {
-  it("nenhuma violação: os dez comandos documentam e a saída real bate", () => {
+  it("nenhuma violação: os onze comandos documentam e a saída real bate", () => {
     const report = audit({ root: ROOT })
     expect(report.violations).toEqual([])
-    expect(report.family).toHaveLength(10)
-    expect(report.results).toHaveLength(10)
+    expect(report.family).toHaveLength(11)
+    expect(report.results).toHaveLength(11)
     // O desfecho é REPORTADO, não presumido: o que não foi rodado com docker
     // aparece como indeterminado DECLARADO, nunca como "provado".
     const provados = report.results.filter(
       (r: { ok: boolean; desfecho: string }) => r.ok && r.desfecho === "provado",
     )
-    // Duas provas rodam SEM docker e saem provadas neste host: o `cut-stages:prove`
-    // (o veredito é dos CONTRATOS da árvore) e o `runner-image:prove`.
+    // TRÊS provas rodam SEM docker e saem provadas neste host: as duas do
+    // contrato da árvore (`runner-image:prove`, que confere os contratos da
+    // imagem, e o `cut-stages:prove`) e a do ciclo de TLA (`tla-cycle:prove`,
+    // medida nos dois loaders do runtime local). A ORDEM é a dos blocos na doc.
     expect(provados.map((r: { command: string }) => r.command)).toEqual([
       "runner-image:prove",
       "cut-stages:prove",
+      "tla-cycle:prove",
     ])
     expect(
       report.results

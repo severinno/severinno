@@ -482,6 +482,30 @@ export const CORE_INVARIANTS = [
     jobIds: { gitea: "guards", github: "check" },
   },
   {
+    id: "tla-closure",
+    // A RÉGUA que existia só em PROSA (o cabeçalho do loader das classes e o do
+    // canal avisavam que o módulo "usa top-level await"; um commit novo não era
+    // obrigado a ler). Ela é do CORE porque a pergunta é do GRAFO de módulos da
+    // árvore — o mesmo nas duas forjas: um alcance novo que fecha CICLO mata a
+    // carga com exit 13 e ZERO bytes, e quem perde é a OFERTA do remédio
+    // inteira (a fase A do pre-commit), sem imprimir causa nenhuma. O veredito
+    // não é do commit e sim do estado da árvore, mas é um COMMIT que o cria: a
+    // aresta que fecha o ciclo é uma linha escrita numa declaração.
+    matches: /tla[:-]closure/,
+    command: /^node scripts\/check-tla-closure\.mjs$/m,
+    why: "sem a régua, 'nenhum TLA alcançável' volta a ser uma promessa de prosa: o alcance muda num commit que NÃO é o do hook (outro arquivo do fecho), e o sintoma é a morte muda do loader — o operador vê o pre-commit falhar sem a oferta e sem causa. O comando é o MESMO do hook local e das duas pipelines (linha literal, `node scripts/...`), e ele custa ~1,1s",
+    jobIds: { gitea: "guards", github: "check" },
+  },
+  // A PROVA da premissa acima (`tla-cycle:prove`) NÃO tem invariante própria, e
+  // isso é decisão: ela é executada pela bateria das duas forjas pelo contrato
+  // do `check:prove-docs` (o guard que EXECUTA cada bloco `prove-doc`
+  // documentado — o bloco do `tla-cycle:prove` está no §29 do GUARDS), e o
+  // doctor RECUSA um `prove-*` como comando de gate da bateria do dono do merge
+  // (`isVerificationCommand`: o doctor executa a bateria por lista de
+  // argumentos, e um passo que ele recusa viraria gate decorativo no job). Uma
+  // invariante aqui exigiria um JOB próprio nas duas forjas só para hospedar o
+  // comando — o mesmo veredito por mais superfície.
+  {
     id: "github-dependencies",
     // A CATRACA do corte: o inventario do que o GitHub sustenta (27 workflows, 9
     // crons, 14 actions de terceiro, o GHCR, o `gh`, o plano de configuracao do

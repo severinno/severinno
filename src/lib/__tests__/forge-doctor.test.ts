@@ -2292,6 +2292,13 @@ function twoForgeFixture(opts: { semComandoDoGate?: string; lintDoGithub?: strin
     ["archived-pipeline", "node scripts/check-archived-pipeline.mjs"],
     ["mirror-coverage", "node scripts/check-mirror-coverage.mjs"],
     ["github-dependencies", "node scripts/check-github-dependencies.mjs"],
+    // A RÉGUA DO FECHO DE TLA entra por último: ela mede o GRAFO de módulos das
+    // declarações do remédio (o alcance que fecha ciclo mata o loader com exit
+    // 13 e zero bytes), e a PROVA da premissa dela NÃO mora aqui — ela é
+    // executada por este MESMO job pelo contrato do `prove-docs` (o guard logo
+    // acima EXECUTA o bloco documentado), porque a régua do doctor recusa
+    // `prove-*` como comando de gate.
+    ["tla-closure", "node scripts/check-tla-closure.mjs"],
     // A PROVA POR MUTAÇÃO deixou de ser isenta do dono do merge: a matriz (que
     // mede se um guard MORDE) e a prova das três regras de classificação rodam
     // nas DUAS pipelines, e na forja é DENTRO deste job — pelo mesmo comando.

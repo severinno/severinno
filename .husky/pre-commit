@@ -227,6 +227,23 @@ fase_b() {
   node scripts/check-archived-pipeline.mjs &
   PID_ARQUIVO=$!
 
+  # O FECHO DE TLA das declarações do remédio: nenhum módulo com top-level
+  # await pode ser ALCANÇÁVEL de uma declaração de classe/canal, porque o
+  # `await import()` do loader fecha CICLO — e o ciclo mata com exit 13 e ZERO
+  # bytes (medido: `node scripts/prove-tla-cycle.mjs`, casos `ciclo-classe` e
+  # `ciclo-canal`). Ou seja: o hook perde a OFERTA do remédio em silêncio.
+  #
+  # POR QUE ELE ENTRA NO HOOK, e não fica só no CI: o defeito MUDA por commit —
+  # ele nasce de UMA linha (`import x from "./runner-shells.mjs"`) escrita numa
+  # declaração, e é o mesmo argumento do `pipefail-sigpipe` acima. Custo MEDIDO
+  # neste host: ~1,1s (varredura lexical dos .mjs de `scripts/` + o fecho das 9
+  # declarações), rodado em paralelo com o resto da fase. O comando é o MESMO
+  # do CI (as duas pipelines), sem recorte: o veredito é do GRAFO de módulos da
+  # árvore, e um recorte --staged não o pegaria (a aresta pode entrar num
+  # arquivo que o commit nem menciona, do outro lado do fecho).
+  node scripts/check-tla-closure.mjs &
+  PID_TLA=$!
+
   # Prettier check STAGED — feedback de formatação ANTES do lint-staged
   (
     STAGED_FORMAT=$(git diff --cached --name-only --diff-filter=ACMR | grep -vE '\.(png|jpg|gif|svg|ico|webp|pdf|lock|snap)$' || true)
@@ -236,7 +253,7 @@ fase_b() {
   ) &
   PID_PRETTIER=$!
 
-  wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY $PID_HOOKCMD $PID_PIPEFAIL $PID_ARQUIVO
+  wait_all $PID_ENCODING $PID_BARREL $PID_PRETTIER $PID_PII $PID_REGISTRY $PID_FORGE $PID_SCOPE $PID_HOOKPARITY $PID_HOOKCMD $PID_PIPEFAIL $PID_ARQUIVO $PID_TLA
 }
 
 FASE_B=0

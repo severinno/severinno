@@ -5946,8 +5946,8 @@ UNIÃO com a atribuição do filho, o `source` sem `export` e o `export VAR` soz
 de linha, `$( )`, `case`, função, continuação). E o repositório REAL é julgado com
 um **PISO de cobertura** (`comandos >= 200`, os três hooks e os scripts descidos nomeados): se a extração
 ou a descida pararem de funcionar, a contagem cai e o guard "passa" — o piso é o
-que impede o verde por vazio. Em produção: **251 comandos** (106 nos 3 hooks +
-145 dentro dos 5 scripts chamados), **245 resolvidos** e **6 indeterminados
+que impede o verde por vazio. Em produção: **252 comandos** (107 nos 3 hooks +
+145 dentro dos 5 scripts chamados), **246 resolvidos** e **6 indeterminados
 DECLARADOS** (as quatro decisões de caminho viraram prova; sobraram os payloads de
 `-c`).
 
@@ -6751,6 +6751,105 @@ e cobra o INDETERMINADO que ele documenta ter aí.
 ```text
 "verdict": "unavailable"
 docker indisponível
+```
+
+---
+
+## 29. O fecho de TLA das declarações do remédio — `check:tla-closure` + `tla-cycle:prove`
+
+**A régua que existia só em PROSA.** O cabeçalho do loader das classes
+(`scripts/remedy-classes.mjs`) e o do canal (`scripts/pr-fixers.mjs`) avisam, cada
+um no seu parágrafo, que o módulo "usa top-level await" e que a descoberta é
+assíncrona por natureza. O aviso está certo e é inútil do jeito que está: quem
+escreve a linha que quebra o hook não é obrigado a ler o cabeçalho de um arquivo
+que ele nem abriu. A regra escrita é: **nenhum módulo com TOP-LEVEL AWAIT pode
+ser ALCANÇÁVEL a partir de uma declaração de classe (`remedy-classes/`) ou de
+canal (`remedy-canal/`)**. O `check:tla-closure` a transforma em veredito.
+
+**O fato medido, e é por isso que a régua existe.** O `await import()` do loader
+espera a declaração; se a declaração (ou o fecho dela) alcança um módulo que
+volta ao loader, o ciclo com `await` no meio trava a avaliação — e o `node` não
+reclama: ele sai com **exit 13 e ZERO bytes** nos dois fluxos. O operador vê o
+pre-commit falhar SEM a oferta do remédio e sem nenhuma causa impressa. Os dois
+casos, medidos por execução (`tla-cycle:prove`, que copia a árvore e injeta a
+aresta de volta na CÓPIA):
+
+| o grafo                                                     | `node`                          | o guard    |
+| :---------------------------------------------------------- | :------------------------------ | :--------- |
+| árvore intacta (CONTROLE)                                   | rc=0, 0B                        | ✅ verde   |
+| TLA alcançável **sem** aresta de volta                      | rc=0 — **não mata**             | ❌ recusa  |
+| a declaração de CLASSE importa o loader das classes (CICLO) | **rc=13, stdout 0B, stderr 0B** | ❌ `CICLO` |
+| a declaração de CANAL importa o loader do canal (CICLO)     | **rc=13, stdout 0B, stderr 0B** | ❌ `CICLO` |
+
+**O CONSERVADORISMO É DELIBERADO, e está medido acima.** O que MATA é o ciclo;
+mas a régua recusa os DOIS casos de TLA alcançado (com e sem volta) — é a forma
+escrita na prosa, e a diferença entre eles é UMA aresta que ninguém revisa: a
+próxima importação escrita DENTRO do módulo TLA fecha o ciclo, e quem paga é o
+hook (não este commit). Recusar o caso conservador custa uma declaração datada;
+deixar o fatal passar custa a oferta do remédio inteira, em silêncio. O veredito
+NOMEIA qual dos dois é o caso (`CICLO · cadeia` ou `sem volta · cadeia`),
+porque um vermelho que não distingue os dois ensina o operador a contornar o
+guard.
+
+**A dívida do repositório, datada e declarada.** Dois pares já alcançam TLA
+hoje — as declarações `hook-commands` e `run-syntax` chegam ao
+`scripts/runner-shells.mjs` pelo guard dono (`check-hook-commands.mjs` →
+`check-workflow-run-syntax.mjs`), cujo `await` é de ENTRADA (`if (IS_DIRECT_RUN)`)
+e **não volta** ao loader. Eles estão em `ALCANCE_DECLARADO` com motivo e data,
+e o guard confere os DOIS sentidos: um par declarado que deixou de existir é
+violação ("dívida paga não fica no papel") e uma aresta nova de OUTRA declaração
+é caso novo.
+
+**A CATRACA (a segunda metade, e a que impede a régua de cegar em silêncio).**
+Se nenhuma declaração alcançar TLA, a primeira metade tem ZERO achados — e uma
+régua sem achado não prova que ela ainda VÊ. Por isso o conjunto de módulos com
+TLA sob `scripts/` é DERIVADO a cada rodada (27 hoje: 23 `entrada-cli`, 2
+`descoberta`, 2 `carga`) e classificado contra `TLA_CLASSES` nos dois sentidos:
+um módulo TLA em forma NÃO declarada é violação, e um `declarados` que a régua
+deixou de ver (a detecção cegou) também. Um TLA nasce de um `if (IS_DIRECT_RUN)
+await main()` copiado; a forma padrão entra na classe derivada, e o que NÃO for
+padrão é obrigado a ser declarado por nome, com o motivo.
+
+**LIMITES DECLARADOS** (escritos no cabeçalho do guard, para não virar verde por
+omissão): o grafo segue imports **ESTÁTICOS** (`import`, `export … from`);
+`import()` dinâmico não é seguido (é preguiçoso por construção e o caso que
+importa — o `await import()` da própria descoberta — está do outro lado); a
+detecção de TLA é **LÉXICA**, sem parser (e é a catraca que denuncia um falso
+negativo); só caminhos **RELATIVOS** são seguidos (um bare é folha: não pode
+importar de volta um módulo do repositório); e um specifier que não resolve para
+arquivo existente é CONTADO no relatório, nunca presumido.
+
+**Onde roda.** O **guard** é o MESMO comando nos três lugares — `bun run
+check:tla-closure`: a fase paralela do pre-commit (~1,1s medidos, ao lado do
+`pipefail-sigpipe` e do `archived-pipeline`), o job `guards` da forja DONA DO
+MERGE e o job `check` do espelho. Ele é do CORE nas duas forjas (`tla-closure`
+em `check-forge-parity`), e não está em `HOOK_NOT_RUN` porque a decisão foi
+RODAR local: o defeito muda por commit (uma linha numa declaração), e o hook
+alcança o alcance antes do PR. **A prova** (`tla-cycle:prove`, ~6s: ela COPIA
+`scripts/` duas vezes) roda nas duas forjas pelo contrato do `check:prove-docs`
+— é ele que EXECUTA cada bloco `prove-doc` documentado, e o bloco do
+`tla-cycle:prove` está logo abaixo. Ela **não** tem invariante própria no CORE
+nem `HOOK_NOT_RUN`, e isso é a decisão: a régua do `doctor` recusa um `prove-*`
+como comando de gate da bateria do dono do merge (`isVerificationCommand` — a
+bateria roda por lista de argumentos, e um passo que o doctor recusa seria
+decorativo no job), então uma invariante exigiria um JOB próprio nas duas forjas
+só para hospedar o comando, com o mesmo veredito e mais superfície. O que muda
+por commit é o ALCANCE, e esse o hook julga.
+
+<!-- prove-doc: tla-cycle:prove
+     run: --json
+     exit: 0
+     cenario: ambiente
+     desfecho: provado
+-->
+
+```text
+"ok": true
+"nome": "ciclo-classe"
+"nodeRc": 13
+"stderrBytes": 0
+"nome": "ciclo-canal"
+"estado": "provado"
 ```
 
 ---
