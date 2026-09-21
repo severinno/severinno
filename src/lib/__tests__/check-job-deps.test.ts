@@ -271,6 +271,68 @@ describe("cada comando tem um grau de dependencia (fato, nao suposicao)", () => 
     }
   })
 
+  it("o ALVO de um interpretador e a CLASSE do flag (a MESMA regua do check-hook-commands)", () => {
+    // O defeito de antes era `alvo === undefined || alvo.startsWith("-")`: TODO
+    // flag na frente do programa virava "payload inline", e o resultado eram
+    // DOIS vereditos falsos no mesmo lugar — `node --version`, que nao le arquivo
+    // NENHUM, ganhava o rotulo de um payload que nao existe; e `bash -u x.sh`
+    // (cujo alvo E o arquivo) saia do escopo sem ninguem decidir. A classe do
+    // flag e POR INTERPRETADOR (`check-hook-commands`: `classeDoFlag`), e e ela
+    // que responde as duas perguntas: se ha alvo, e qual e.
+    const root = dir()
+
+    const versao = exigeDeps(comando("node --version"), ctxDe(root))
+    expect(versao.precisa).toBe(false)
+    expect(versao.foraDoEscopo?.categoria).toBe("sem-alvo")
+    expect(versao.foraDoEscopo?.motivo).toContain("nao le arquivo nenhum")
+
+    // O flag que so CONFERE: nada e executado, nada a seguir.
+    expect(
+      exigeDeps(comando("node --check scripts/topo.mjs"), ctxDe(root)).foraDoEscopo?.categoria,
+    ).toBe("conferencia-de-sintaxe")
+
+    // O flag que PODE consumir o token seguinte: nomeado, nunca chutado (e nunca
+    // "payload inline", que era o rotulo de antes).
+    expect(
+      exigeDeps(comando("bash -o pipefail scripts/corpo.sh"), ctxDe(root)).foraDoEscopo?.categoria,
+    ).toBe("flag-nao-provado")
+    expect(
+      exigeDeps(comando("node -r ./hook.mjs scripts/topo.mjs"), ctxDe(root)).foraDoEscopo
+        ?.categoria,
+    ).toBe("flag-nao-provado")
+
+    // O payload continua payload — agora PROVADO pela classe do `-e` DO NODE (o
+    // `-e` do bash e o errexit, e e o mesmo flag com duas classes).
+    expect(
+      exigeDeps(comando("node -e 'console.log(1)'"), ctxDe(root)).foraDoEscopo?.categoria,
+    ).toBe("payload-inline")
+
+    // E o que PASSA a ser julgado: o flag nao e o alvo, e o arquivo atras dele
+    // entra no grafo. O CONTROLE e o mesmo arquivo sem flag (a regressao que este
+    // teste existe para nao deixar voltar e a de cima, o rotulo unico).
+    const semFlag = exigeDeps(comando("bash scripts/corpo.sh"), ctxDe(root))
+    const comFlag = exigeDeps(comando("bash -u scripts/corpo.sh"), ctxDe(root))
+    expect(comFlag.precisa).toBe(true)
+    expect(comFlag.precisa).toBe(semFlag.precisa)
+    expect(comFlag.internos?.map((i) => i.texto)).toEqual(semFlag.internos?.map((i) => i.texto))
+    expect(comFlag.internos?.map((i) => i.texto)).toContain("node scripts/topo.mjs")
+
+    // O mesmo para os folha: o `--no-` do node e a negacao de um booleano (nao
+    // consome o token seguinte), entao o alvo e o arquivo.
+    expect(exigeDeps(comando("node --no-warnings scripts/topo.mjs"), ctxDe(root))).toMatchObject({
+      precisa: true,
+      grau: "estatico",
+      pacotes: ["pg"],
+    })
+
+    // E o `python3 -B x.py`: o alvo e o ARQUIVO (a classe 1-c), entao quem
+    // decide o veredito e o ramo declarado do python — o `fora-do-node` —, com
+    // o alvo PROVADO no relatorio em vez do flag.
+    const py = exigeDeps(comando("python3 -B scripts/check_crlf.py"), ctxDe(root))
+    expect(py.foraDoEscopo?.categoria).toBe("fora-do-node")
+    expect(py.alvo).toBe("scripts/check_crlf.py")
+  })
+
   it("PROVA (regressao): o NOME de arquivo dentro de uma lista nao vira dependencia", () => {
     // O defeito REAL: o `EXPECTED_SCRIPTS=(scripts/geo-benchmark-real.mjs ...)`
     // do job `smoke` — o guard seguia o item da lista como se o job o executasse

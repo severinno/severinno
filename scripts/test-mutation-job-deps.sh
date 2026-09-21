@@ -7,7 +7,7 @@
 #   ./scripts/test-mutation-job-deps.sh
 #
 # Exit codes:
-#   0 — as SETE mutações foram DETECTADAS (pelo gate e/ou pela suíte) e os
+#   0 — as OITO mutações foram DETECTADAS (pelo gate e/ou pela suíte) e os
 #       controles passaram ✅
 #   1 — guard INDIFERENTE a alguma mutação (não cegou / não acusou) OU controle
 #       falso ❌
@@ -40,10 +40,17 @@
 #        para sempre.
 #   M6 — O REGISTRO DA DATA (fail-closed). Sem addedAt a isenção não envelhece
 #        — e "esqueci de registrar" viraria o jeito de nunca revisar. A mutação
-#        desliga a violação e a isenção SEM data passa.
-#   M7 — A JANELA DE REVISÃO (--review). O run normal avisa; o job semanal
+#        desliga a violação e a isenção SEM data passa.# M7 — A JANELA DE REVISÃO (--review). O run normal avisa; o job semanal
 #        ESCALA. Sem a escalada, a janela de 180 dias é decorativa e a dívida
 #        vence em silêncio no único canal que a revisa.
+#   M8 — A CLASSE DO ALVO (o flag não é o alvo). Um passo que roda
+#        `bash -u scripts/corpo.sh` (o flag na frente do arquivo) tem de ser
+#        julgado pelo CORPO do script — e o corpo é `node scripts/topo.mjs`, com
+#        `pg` de topo. Enquanto a leitura era `tokens[0].startsWith("-")`, TODO
+#        flag virava "payload inline": o arquivo estava na frente do guard e o
+#        job saía do escopo sem ninguém decidir. A mutação devolve essa leitura e
+#        o defeito PASSA — a classe (a mesma régua do `check-hook-commands`,
+#        `alvoDoLancador` → `classeDoFlag`) é o que sustenta o vermelho.
 #
 # AS DUAS TESTEMUNHAS. Onde a regra muda o veredito do CLI, a prova é o EXIT CODE
 # sobre fixtures (comportamento, não leitura do código). Onde o veredito só
@@ -92,14 +99,30 @@ METADES=(
   'M5|o SEM OBJETO: isenção que sobrou sobre um job que passou a instalar'
   'M6|O REGISTRO DA DATA (fail-closed)'
   'M7|A JANELA DE REVISÃO (--review)'
+  'M8|A CLASSE DO ALVO: um flag na frente do arquivo não é o alvo'
 )
 GUARD="$SCRIPT_DIR/scripts/check-job-deps.mjs"
 SUITE_ARQUIVO="src/lib/__tests__/check-job-deps.test.ts"
+
+# ── AUTO-CHECAGEM: mensagem com CRASE entre aspas DUPLAS ──────────────────
+# A crase é substituída pelo shell: o texto da mensagem some e o comando de
+# dentro RODA. Medido nesta suíte: `pass "... o `pg` de topo ..."` imprimiu "o
+#  de topo" e o shell tentou executar `pg`; no bloco da M8, o texto da própria
+# MUTAÇÃO perdeu a mensagem do motivo e o sub-test passava medindo outro texto.
+# Uma mensagem que mente sobre o que mediu é pior que um erro: a suíte recusa
+# rodar.
+if grep -nE '^[[:space:]]*(pass|fail|info|header)[[:space:]]+"[^"]*`' "$0" >/dev/null; then
+  echo "❌ mensagem com crase entre aspas DUPLAS (o shell a executa, na linha):"
+  grep -nE '^[[:space:]]*(pass|fail|info|header)[[:space:]]+"[^"]*`' "$0" | sed 's/^/     /'
+  exit 2
+fi
 
 TMP_DIR="$(mktemp -d)"
 FX_TOPO="$TMP_DIR/fx-topo"
 FX_SEM_INSTALL="$TMP_DIR/fx-sem-install"
 FX_LIMPO="$TMP_DIR/fx-limpo"
+FX_FLAG="$TMP_DIR/fx-flag"
+FX_FLAG_LIMPO="$TMP_DIR/fx-flag-limpo"
 
 # ── Colors ────────────────────────────────────────────────────────────────
 
@@ -168,7 +191,11 @@ PY
 # defeito (job sem install), o controle (job que instala) e as duas fixtures que
 # colidem com a isenção real do repositório.
 mkfixture() {
-  local raiz="$1" workflow="$2" job="$3" install="$4" script="$5"
+  local raiz="$1" workflow="$2" job="$3" install="$4" script="$5" comando="${6:-}"
+  # O COMANDO do passo e parametrizavel: o defeito da M8 nao esta no ALVO
+  # (`node scripts/x.mjs`), esta em como o alvo e LIDO quando ha um flag na
+  # frente (`bash -u scripts/corpo.sh`) — medir isso exige escrever o comando.
+  if [ -z "$comando" ]; then comando="node scripts/$script"; fi
   mkdir -p "$raiz/.github/workflows" "$raiz/scripts"
   {
     echo "name: fixture"
@@ -181,7 +208,7 @@ mkfixture() {
     if [ "$install" = "1" ]; then
       echo "      - run: bun install --frozen-lockfile"
     fi
-    echo "      - run: node scripts/$script"
+    echo "      - run: $comando"
   } > "$raiz/.github/workflows/$workflow"
   cat > "$raiz/package.json" <<'JSON'
 { "name": "fixture-da-prova", "private": true, "scripts": {}, "dependencies": {}, "devDependencies": {} }
@@ -197,6 +224,12 @@ JS
 import pg from "pg"
 export const pool = pg
 JS
+  # O SCRIPT DE SHELL do alvo da M8: quem o executa depende do que o CORPO dele
+  # alcanca — e o corpo chama o `topo.mjs` (o `pg` de topo).
+  cat > "$raiz/scripts/corpo.sh" <<'SH'
+set -eu
+node scripts/topo.mjs
+SH
 }
 
 # ── rodar_guard / rodar_guard_real / rodar_guard_json ─────────────────────
@@ -284,6 +317,10 @@ exigir_suite_vermelha() {
 mkfixture "$FX_TOPO" "pr-topo.yml" "guard" 0 "topo.mjs"
 mkfixture "$FX_SEM_INSTALL" "pr.yml" "guard" 0 "le-yaml.mjs"
 mkfixture "$FX_LIMPO" "pr.yml" "guard" 1 "le-yaml.mjs"
+# M8: o alvo ATRAS de um flag. O que executa o `pg` de topo é o CORPO do
+# `corpo.sh` — e para ler o corpo é preciso primeiro PROVAR qual é o alvo.
+mkfixture "$FX_FLAG" "pr-flag.yml" "guard" 0 "corpo.sh" "bash -u scripts/corpo.sh"
+mkfixture "$FX_FLAG_LIMPO" "pr-flag.yml" "guard" 1 "corpo.sh" "bash -u scripts/corpo.sh"
 
 echo -e "${CYAN}═══ Mutation test: dependências dos jobs (check-job-deps) ═══${NC}"
 echo "  guard: $GUARD"
@@ -307,6 +344,12 @@ exigir_reprovado "CONTROLE B2 (job sem install, import de topo)" "$FX_TOPO"
 pass "CONTROLE B2: o grau estatico (import de TOPO) é VIOLAÇÃO"
 exigir_aprovado "CONTROLE B3 (job que instala)" "$FX_LIMPO"
 pass "CONTROLE B3: o job que INSTALA passa — o controle na direção oposta"
+# M8 nas DUAS direções: o comando com o flag na frente do arquivo é julgado pelo
+# corpo do script (VIOLAÇÃO sem install) e o mesmo job que INSTALA passa.
+exigir_reprovado 'CONTROLE B4 (flag antes do alvo: bash -u scripts/corpo.sh)' "$FX_FLAG"
+pass 'CONTROLE B4: o pg de topo do CORPO do shell é achado ATRAS do flag — a classe lê o alvo'
+exigir_aprovado "CONTROLE B5 (o mesmo comando no job que instala)" "$FX_FLAG_LIMPO"
+pass "CONTROLE B5: o mesmo comando no job que INSTALA passa — o vermelho da B4 é do install, não do comando"
 rodar_guard_json "$FX_TOPO"
 if [ "$(echo "$JSON_OUT" | grep -c '"estatico"')" -lt 1 ]; then
   fail "CONTROLE B: o relatório --json não declara o grau estatico da fixture de import de topo"
@@ -480,12 +523,40 @@ pass "M7: a decisão vencida PASSA no --review com o guard mutado (CEGO) — a j
 exigir_suite_vermelha "M7"
 restaurar_original
 
-# ── 10. CONTROLE FINAL: a árvore ficou como estava ────────────────────────
+# ── 10. MUTAÇÃO M8: a CLASSE DO ALVO (o flag volta a ser o alvo) ──────────
+# O NOVO vai entre ASPAS SIMPLES: o texto da mutação tem crase (a mensagem do
+# motivo) e, entre aspas duplas, o shell a executaria como comando — medido: a
+# linha saiu como "check-job-deps: comando não encontrado" e a mutação escreveu
+# OUTRO texto (o sub-test passava sem medir o que diz medir).
+header 'MUTAÇÃO M8: ler o flag como ALVO (a leitura antiga do check-job-deps)'
+# A mutação devolve exatamente a leitura antiga (tokens[0].startsWith("-") →
+# "payload inline"): com ela, o comando com o flag na frente do arquivo sai do
+# escopo, o corpo do script nunca é lido e o job sem install — que roda `pg` de
+# topo — volta a passar.
+mutar_guard \
+  '    const lancador = alvoDoLancador(comando)' \
+  '    const lancador = /* MUTACAO M8 */ (comando.tokens?.[0] ?? "").startsWith("-")
+      ? {
+          ok: false,
+          classe: CLASSE_DO_FLAG.SEM_ARQUIVO,
+          motivo: "payload inline (mutado)",
+        }
+      : alvoDoLancador(comando)'
+exigir_cego "M8" "$FX_FLAG"
+pass 'M8: o passo com o flag na frente do arquivo PASSA com o guard mutado (CEGO) — a classe do alvo sustenta o vermelho'
+exigir_reprovado "M8 cirúrgica (o defeito SEM flag segue reprovado)" "$FX_SEM_INSTALL"
+pass "M8 CIRÚRGICA: o job sem install e sem flag segue reprovado — morreu só a leitura do alvo"
+exigir_suite_vermelha "M8"
+restaurar_original
+
+# ── 11. CONTROLE FINAL: a árvore ficou como estava ────────────────────────
 header "CONTROLE FINAL: restauração verificada por checksum"
 exigir_reprovado "CONTROLE FINAL (job sem install)" "$FX_SEM_INSTALL"
 pass "CONTROLE FINAL: o guard restaurado volta a reprovar o job sem install"
 exigir_aprovado "CONTROLE FINAL (job que instala)" "$FX_LIMPO"
 pass "CONTROLE FINAL: o job que instala segue verde"
+exigir_reprovado "CONTROLE FINAL (flag antes do alvo)" "$FX_FLAG"
+pass "CONTROLE FINAL: o alvo atras do flag volta a ser julgado depois da restauração"
 
 echo
-echo -e "${GREEN}═══ MUTATION TEST PASSED — as 7 mutações foram detectadas (gate e/ou suíte) ═══${NC}"
+echo -e "${GREEN}═══ MUTATION TEST PASSED — as 8 mutações foram detectadas (gate e/ou suíte) ═══${NC}"

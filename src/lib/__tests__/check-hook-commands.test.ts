@@ -49,6 +49,7 @@ import {
   atribuicoesDoTexto,
   caminhosProvaveis,
   classeDoAlvo,
+  classeDoFlag,
   definedFunctions,
   ehCaminhoDoRepositorio,
   extractSubstitutions,
@@ -1381,6 +1382,50 @@ describe("o alvo de um lançador: a CLASSE do FLAG decide o que vem depois", () 
     expect(
       razao(alvoDoLancador({ programa: "bash", tokens: ["-o", "pipefail", "scripts/run-ci.sh"] })),
     ).toContain("pode consumir")
+  })
+
+  it("a classe é POR INTERPRETADOR: o MESMO flag pode ter duas classes", () => {
+    // O `-e` do `bash` é o `errexit` (com o arquivo executado); o do `node` é o
+    // eval do payload. Uma lista única de flags não pode responder pelos dois —
+    // e era a lista única que fazia o `check-job-deps` chamar de "payload inline"
+    // TUDO que tivesse um flag na frente do programa.
+    expect(classeDoFlag("bash", "-e")).toBe("executa")
+    expect(classeDoFlag("node", "-e")).toBe("sem-arquivo")
+    expect(classeDoFlag("bash", "-p")).toBe("executa") // `privileged`
+    expect(classeDoFlag("node", "-p")).toBe("sem-arquivo") // `print`
+    // As classes novas, que antes caíam em "sem arquivo de script" (ou, no
+    // `check-job-deps`, no rótulo único de payload):
+    expect(classeDoFlag("node", "--version")).toBe("sem-alvo")
+    expect(classeDoFlag("bash", "--version")).toBe("sem-alvo")
+    expect(classeDoFlag("node", "--check")).toBe("confere")
+    expect(classeDoFlag("bash", "-n")).toBe("confere")
+    // …e as que provam o alvo por FORMA (duas regras, não uma lista):
+    expect(classeDoFlag("node", "--no-warnings")).toBe("executa")
+    expect(classeDoFlag("node", "--max-old-space-size=4096")).toBe("executa")
+    expect(classeDoFlag("python3", "-B")).toBe("executa")
+    // O que CONSOME o token seguinte continua nomeado como não provado:
+    expect(classeDoFlag("node", "-r")).toBe("desconhecida")
+    expect(classeDoFlag("python3", "-m")).toBe("desconhecida")
+  })
+
+  it("o alvo que estava ATRÁS do flag passa a ser julgado (`node --no-warnings x.mjs`)", () => {
+    // O veredito de antes: `tokens[0].startsWith("-")` respondia "sem arquivo de
+    // script" de um comando cujo arquivo estava ali — `indeterminado` SEM
+    // declaração, ou seja VIOLAÇÃO (o guard pedia uma entrada em INDETERMINATE
+    // para um comando perfeitamente provável). O `set -eu` do hook é o CONTROLE
+    // contra o não-zero vindo do fixture.
+    const dir = fixture({
+      hooks: { "pre-commit": "set -eu\nnode --no-warnings scripts/run-ci.mjs\n" },
+      arquivos: { "scripts/run-ci.mjs": "export const ok = 1\n" },
+    })
+    expect(relatorio(dir).violacoes).toEqual([])
+    // E o MESMO comando com o alvo ausente é violação — o alvo não some, muda o
+    // veredito (é o que impede a leitura de ser só mais permissiva).
+    const semAlvo = fixture({
+      hooks: { "pre-commit": "set -eu\nnode --no-warnings scripts/nao-existe.mjs\n" },
+      arquivos: {},
+    })
+    expect(relatorio(semAlvo).violacoes).toHaveLength(1)
   })
 
   it("a MESMA classe no veredito do comando: `bash -e x.sh` é o ARQUIVO, não payload", () => {

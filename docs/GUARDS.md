@@ -3474,18 +3474,38 @@ cujo alvo o guard não classifica (programa desconhecido, alvo montado em
 `${{ }}`) sai em `foraDoEscopo` com a CATEGORIA e o motivo — um job que só tem
 comandos fora do escopo NÃO ganha isenção implícita; `sh -c`/`node -e`
 (payload inline) ficam fora, porque não há transitividade de dependência a
-seguir; e o estado REAL do runner (se a imagem embarca `node_modules`) fica
-fora por construção — o guard lê o REPOSITÓRIO, e é exatamente por isso que a
-isenção precisa de motivo: quem responde "de onde vem" é quem assina a
-decisão.
+seguir num payload (INDETERMINADO por construção, não por limitação do guard); e
+o estado REAL do runner (se a imagem embarca `node_modules`) fica fora por
+construção — o guard lê o REPOSITÓRIO, e é exatamente por isso que a isenção
+precisa de motivo: quem responde "de onde vem" é quem assina a decisão.
+
+**A CATEGORIA de um comando com flag na frente do programa sai da CLASSE do flag**
+— a MESMA régua do `check-hook-commands` (`alvoDoLancador` → `classeDoFlag`, por
+interpretador), no lugar de um `tokens[0].startsWith("-")`. O que muda no
+veredito desta árvore (117 jobs, 120 comandos fora do escopo, medido):
+
+| comando                                                       | antes                                              | agora                                                                                                                                  |
+| :------------------------------------------------------------ | :------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- |
+| `node -e`, `node -`, `python3 -c` (13)                        | `payload-inline`                                   | `payload-inline` — agora PROVADO pela classe (o `-e` do node é o eval DELE)                                                            |
+| `node --version` (3)                                          | `payload-inline`                                   | `sem-alvo`: o programa se apresenta e sai — o rótulo antigo dizia “o script vive no argumento” de um comando que não lê arquivo nenhum |
+| `bash -n x.sh`, `node --check x.mjs`                          | `payload-inline`                                   | `conferencia-de-sintaxe`: nada é executado, não há interior a seguir                                                                   |
+| `bash -o pipefail x.sh`, `node -r x.mjs`                      | `payload-inline`                                   | `flag-nao-provado`: o flag pode consumir o token seguinte — o alvo não é chutado                                                       |
+| `bash -u x.sh`, `node --no-warnings x.mjs`, `python3 -B x.py` | `payload-inline` (**fora do escopo, sem decisão**) | **JULGADO**: o flag não é o alvo, e o arquivo atrás dele entra no grafo (o corpo do shell conta)                                       |
+
+O TOTAL de comandos fora do escopo não muda (120) — o que muda é QUEM entra no
+julgamento (o alvo que estava atrás do flag) e COMO cada um é nomeado: nomear
+errado é pior que nomear, porque a categoria é o que o operador lê para decidir
+se declara a isenção.
 
 **Onde roda:** passo `Job dependencies (install or declared exemption)` do job
 `guards` nas DUAS forjas (`ci.yml` da Gitea e `pr-check.yml` do GitHub) — a
 Gitea instala, o GitHub espelha, e a varredura cobre os jobs das duas (a
 assimetria é justamente o que o gate torna mecânica). A revisão vencida roda no
-job semanal. Mutation test: `scripts/test-mutation-job-deps.sh` (7 mutações — o
+job semanal. Mutation test: `scripts/test-mutation-job-deps.sh` (8 mutações — o
 install que some, o `addedAt` que some, a leitura do grafo de imports, a regra
-do sem-objeto e a escalada do `--review`), na matriz do master. Leitura
+do sem-objeto, a escalada do `--review` e a CLASSE do alvo: com o flag voltando a
+ser lido como alvo, um `bash -u scripts/corpo.sh` que roda `pg` de topo sai do
+escopo e o job sem install passa), na matriz do master. Leitura
 fail-closed de sempre (arquivo ilegível ou YAML inválido NÃO vira "nada a
 julgar") e a MESMA extração de comandos
 ([`shellCommands`](#24-os-comandos-que-os-hooks-executam-têm-de-resolver--check-hook-commands-scriptscheck-hook-commandsmjs))
@@ -5709,6 +5729,27 @@ EXECUTADO (`bash -e x.sh`), e o veredito dizia “payload inline (bash -e)” de
 comando cujo alvo é um arquivo do repositório. A lista dos flags com payload é
 derivada da classe (não escrita à mão) — a mesma que o `check-hook-ci-parity` usa
 na descida das pipelines.
+
+**A classe é POR INTERPRETADOR** — o MESMO flag não significa a mesma coisa em
+dois deles: `-e` no `bash` é o `errexit` (com o arquivo EXECUTADO) e no `node` é o
+eval do payload; `-p` é `privileged` no bash e `print` no node. São cinco classes
+(`classeDoFlag`): **EXECUTA** (o arquivo seguinte roda), **CONFERE** (só a sintaxe:
+`bash -n`, `node --check`), **SEM_ARQUIVO** (o payload vem do argumento/stdin:
+`bash -c`, `node -e`, `python3 -c`, `node -`), **SEM_ALVO** (`--version`/`--help`:
+o programa não lê arquivo nenhum — e o motivo DIZ isso, em vez de “pode consumir o
+token seguinte”, que seria falso) e **DESCONHECIDA** (pode consumir o token
+seguinte: o alvo não é provado por leitura). Além das listas, duas regras de FORMA
+provam o alvo sem enumerar as flags de cada interpretador: `--flag=valor` (o valor
+vem no MESMO token) e `--no-algo` (negação de booleano) **não consomem** o token
+seguinte — é o que faz `node --no-warnings x.mjs` ser julgado em vez de sair
+“sem arquivo de script” (que, sem declaração em `INDETERMINATE`, era VIOLAÇÃO de
+um comando provável).
+
+Quem consome esta régua são DOIS guards: este (o veredito do comando e a descida)
+e o `check-job-deps` (as dependências do passo do workflow), que até 09/2026
+lia `tokens[0].startsWith("-")` e chamava de “payload inline” todo comando com um
+flag na frente do programa — o `node --version` (sem arquivo nenhum) e o
+`bash -u x.sh` (cujo alvo É o arquivo) no mesmo rótulo.
 
 **E a descida segue o alvo que a RESOLUÇÃO acabou de PROVAR.** `bash
 "$SCRIPT_DIR/x.sh"` saía `resolvido` (o caminho foi provado por leitura!) e o

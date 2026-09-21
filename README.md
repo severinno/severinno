@@ -1824,8 +1824,14 @@ vê é "NÃO JULGÁVEL", nunca "faltou instalar". Quem responde "de onde vem o
 **verificada contra o grafo de imports**: dizer "não precisa" para um `import` de
 topo ou um binário de dependência é provadamente falso. Isenção sem `addedAt`,
 mentirosa, sem objeto (o job passou a não exigir nada) ou vencida (`--review`, no
-job semanal, ao lado das outras quatro allowlists) é violação. Ver
-docs/GUARDS.md §12.1.
+job semanal, ao lado das outras quatro allowlists) é violação.
+
+O que o guard NÃO segue sai NOMEADO (categoria + motivo), e a categoria vem da
+MESMA classe de alvo do `check-hook-commands` (`alvoDoLancador` → `classeDoFlag`,
+por interpretador): o `node --version` (que não lê arquivo nenhum) e o
+`bash -u x.sh` (cujo alvo É o arquivo) deixaram de ser o mesmo rótulo — e o
+comando com um flag na frente do ARQUIVO passou a ser JULGADO, porque o flag não
+é o alvo. Ver docs/GUARDS.md §12.1.
 
 ### Typecheck — gate de tipo do PR
 

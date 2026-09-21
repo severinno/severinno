@@ -288,6 +288,121 @@ export const FLAGS_DE_SHELL_SEM_ARQUIVO = new Set(["-c", "--eval", "-", "-s", "-
  */
 export const INLINE_FLAGS = FLAGS_DE_SHELL_SEM_ARQUIVO
 
+// ── A CLASSE DO FLAG POR INTERPRETADOR ────────────────────────────────────
+//
+// O `-e` NAO e a mesma coisa em dois interpretadores: no `bash` e o `errexit`
+// com o arquivo EXECUTADO; no `node` e o eval do payload (`node -e '...'`).
+// Enquanto a classe era so de SHELL, quem precisava julgar `node -e` perguntava
+// `tokens[0].startsWith("-")` e chamava de "payload inline" TODO flag na frente
+// do programa — `node --version` (que nao le arquivo nenhum) e `bash -u x.sh`
+// (cujo alvo E o arquivo) entravam no mesmo rotulo, e o segundo escapava do
+// julgamento sem ninguem decidir. A leitura do alvo e UMA (`alvoDoLancador`),
+// consumida pelo `check-hook-commands` (o veredito do comando e a descida) e
+// pelo `check-job-deps` (as dependencias do passo do workflow).
+
+/** As CLASSES de um flag de lancador — o vocabulario unico dos dois guards. */
+export const CLASSE_DO_FLAG = {
+  /** (1) o arquivo seguinte E executado */
+  EXECUTA: "executa",
+  /** (2) o programa so CONFERE o alvo (sintaxe) — nada roda */
+  CONFERE: "confere",
+  /** (3) o payload vem de um ARGUMENTO ou do stdin: nao ha arquivo */
+  SEM_ARQUIVO: "sem-arquivo",
+  /** (4) o programa nao le arquivo nenhum (`--version`, `--help`) */
+  SEM_ALVO: "sem-alvo",
+  /** (5) o flag pode consumir o token seguinte — o alvo nao e provado */
+  DESCONHECIDA: "desconhecida",
+}
+
+/**
+ * (3-b) O payload inline de um interpretador FOLHA (`node -e`, `python -c`,
+ * `node -` do stdin).
+ *
+ * POR QUE POR INTERPRETADOR: `-e` no `bash` e o `errexit` (classe 1) e no
+ * `node` e o eval; `-p` no `bash` e o `privileged` e no `node` e o `print`. Uma
+ * lista so nao pode responder pelos dois — ela trocaria um erro pelo outro.
+ */
+export const FLAGS_SEM_ARQUIVO_POR_INTERPRETADOR = new Map([
+  ["node", new Set(["-e", "--eval", "-p", "--print", "-"])],
+  ["deno", new Set(["eval", "-"])],
+  ["python3", new Set(["-c", "-"])],
+  ["python", new Set(["-c", "-"])],
+])
+
+/**
+ * (4) O programa nao le arquivo nenhum: se apresenta (versao) ou imprime a
+ * ajuda. Nao e "flag desconhecida" (o motivo daquela diz que ele "pode consumir
+ * o token seguinte", o que seria falso): e um fato.
+ *
+ * A ordem da leitura (`classeDoFlag`) mantem `bash -v`/`bash -h` na classe 1 (sao
+ * `verbose`/`hashall` com o arquivo EXECUTADO) — estas entram so onde o shell
+ * nao as reivindica.
+ */
+export const FLAGS_SEM_ALVO = new Set(["--version", "-v", "-V", "--help", "-h"])
+
+/**
+ * (1-c) O flag de um interpretador FOLHA que NAO consome o token seguinte: o
+ * alvo continua sendo o arquivo. Os do `python` que o CI usa (`-B` nao escreve
+ * `.pyc`, `-u` sem buffer, `-I` isolado) e o `-i` (executa e deixa o REPL
+ * aberto) entram aqui — sem esta metade, `python3 -B x.py` sairia "nao provado"
+ * por leitura, que e conservador, mas falso.
+ *
+ * O `-r/--require` do node, o `-m` do python e o `-X` do python NAO entram: eles
+ * consomem o token seguinte, e a classe 5 (DESCONHECIDA) diz exatamente isso.
+ */
+export const FLAGS_EXECUTA_POR_INTERPRETADOR = new Map([
+  ["python3", new Set(["-B", "-E", "-I", "-O", "-OO", "-s", "-S", "-u", "-x", "-i"])],
+  ["python", new Set(["-B", "-E", "-I", "-O", "-OO", "-s", "-S", "-u", "-x", "-i"])],
+])
+
+/** (2-b) O flag que so CONFERE o alvo, por interpretador (`node --check`). */
+export const FLAGS_CONFERE_POR_INTERPRETADOR = new Map([["node", new Set(["--check"])]])
+
+/**
+ * (1-b) O flag que, por FORMA, nao consome o token seguinte — a regra que faz o
+ * alvo de um `node --no-warnings x.mjs` ser o ARQUIVO, provado por leitura:
+ *
+ *   - `--flag=valor`: o valor vem no MESMO token (`node --loader=./x.mjs a.mjs`),
+ *     entao o token seguinte continua sendo o alvo;
+ *   - `--no-algo`: a negacao de um booleano, que nao toma argumento
+ *     (`node --no-warnings a.mjs`).
+ *
+ * Sao regras de FORMA (duas), nao uma lista de flags de cada interpretador — uma
+ * lista nunca estaria completa, e a incompleta e o que faz um alvo EXISTENTE
+ * sair do julgamento. Vale so para os interpretadores folha: no shell as flags
+ * sao as tres classes auditadas acima (`--norc`/`--noprofile` ja estao na 1).
+ *
+ * @param {string} flag
+ * @returns {boolean}
+ */
+export function flagPorFormaNaoConsome(flag) {
+  return flag.length > 2 && (flag.includes("=") || flag.startsWith("--no-"))
+}
+
+/**
+ * A CLASSE de um flag de lancador — a regua que decide o que vem depois dele.
+ *
+ * @param {string} programa
+ * @param {string} flag
+ * @returns {string} uma das `CLASSE_DO_FLAG`
+ */
+export function classeDoFlag(programa, flag) {
+  const semArquivo = FLAGS_SEM_ARQUIVO_POR_INTERPRETADOR.get(programa)
+  if (semArquivo?.has(flag)) return CLASSE_DO_FLAG.SEM_ARQUIVO
+  if (SHELL_INTERPRETERS.has(programa)) {
+    if (FLAGS_DE_SHELL_SEM_ARQUIVO.has(flag)) return CLASSE_DO_FLAG.SEM_ARQUIVO
+    if (FLAGS_DE_SHELL_NAO_EXECUTA.has(flag)) return CLASSE_DO_FLAG.CONFERE
+    if (FLAGS_DE_SHELL_EXECUTA.has(flag)) return CLASSE_DO_FLAG.EXECUTA
+    if (FLAGS_SEM_ALVO.has(flag)) return CLASSE_DO_FLAG.SEM_ALVO
+    return CLASSE_DO_FLAG.DESCONHECIDA
+  }
+  if (FLAGS_SEM_ALVO.has(flag)) return CLASSE_DO_FLAG.SEM_ALVO
+  if (FLAGS_EXECUTA_POR_INTERPRETADOR.get(programa)?.has(flag)) return CLASSE_DO_FLAG.EXECUTA
+  if (FLAGS_CONFERE_POR_INTERPRETADOR.get(programa)?.has(flag)) return CLASSE_DO_FLAG.CONFERE
+  if (flagPorFormaNaoConsome(flag)) return CLASSE_DO_FLAG.EXECUTA
+  return CLASSE_DO_FLAG.DESCONHECIDA
+}
+
 /** Os gerenciadores de pacote e os SUBCOMANDOS nativos deles (nao sao entradas). */
 export const PACKAGE_MANAGERS = new Set(["bun", "bunx", "npm", "npx", "pnpm", "yarn"])
 export const PACKAGE_MANAGER_SUBCOMMANDS = new Set([
@@ -1643,35 +1758,54 @@ export const MAX_SCRIPT_DEPTH = 4
  * `bash -n "$TMP/x.sh"` era lido como "o alvo e `-n`" e o limite da descida saia
  * com a afirmacao FALSA de que o alvo "nao e um arquivo do repositorio" — o
  * arquivo estava ali, na frente do guard, atras de um flag. A classe do flag
- * (`FLAGS_DE_SHELL_*`) decide o que vem depois, e as tres classes em que a
+ * (`classeDoFlag`) decide o que vem depois, e as classes em que a
  * leitura NAO continua saem com o motivo DITO (payload inline, `-n` que so
- * confere a sintaxe, flag que pode consumir o token seguinte) — o alvo nao
- * provado nunca e um caminho chutado.
+ * confere a sintaxe, `--version` que nao le arquivo nenhum, flag que pode
+ * consumir o token seguinte) — o alvo nao provado nunca e um caminho chutado.
+ *
+ * A classe de cada flag vem POR INTERPRETADOR (`classeDoFlag`): a mesma funcao
+ * responde pelo `bash` (`-e` = errexit, EXECUTA) e pelo `node` (`-e` = eval,
+ * SEM_ARQUIVO), e e ela que o `check-job-deps` usa no lugar do
+ * `tokens[0].startsWith("-")` de antes.
  *
  * @param {{programa: string, tokens: string[]}} comando
- * @returns {{ok: true, alvo: string}|{ok: false, motivo: string}}
+ * @returns {{ok: true, alvo: string}|{ok: false, classe: string, motivo: string}}
  */
 export function alvoDoLancador(comando) {
   for (const token of comando.tokens ?? []) {
     if (token === "") continue
     if (!token.startsWith("-")) return { ok: true, alvo: token }
-    if (FLAGS_DE_SHELL_SEM_ARQUIVO.has(token))
+    const classe = classeDoFlag(comando.programa, token)
+    if (classe === CLASSE_DO_FLAG.SEM_ARQUIVO)
       return {
         ok: false,
+        classe,
         motivo: `payload inline de \`${comando.programa} ${token}\` — o script vive no argumento/stdin, nao como arquivo`,
       }
-    if (FLAGS_DE_SHELL_NAO_EXECUTA.has(token))
+    if (classe === CLASSE_DO_FLAG.CONFERE)
       return {
         ok: false,
+        classe,
         motivo: `\`${comando.programa} ${token}\` so CONFERE a sintaxe do alvo — o interior dele nao e executado, entao nao ha o que descer`,
       }
-    if (!FLAGS_DE_SHELL_EXECUTA.has(token))
+    if (classe === CLASSE_DO_FLAG.SEM_ALVO)
       return {
         ok: false,
+        classe,
+        motivo: `\`${comando.programa} ${token}\` nao le arquivo nenhum (o programa se apresenta e sai) — nao ha alvo a julgar`,
+      }
+    if (classe === CLASSE_DO_FLAG.DESCONHECIDA)
+      return {
+        ok: false,
+        classe,
         motivo: `o flag \`${token}\` de \`${comando.programa}\` pode consumir o token seguinte — o alvo nao e provado por leitura`,
       }
   }
-  return { ok: false, motivo: `\`${comando.programa}\` sem alvo de arquivo` }
+  return {
+    ok: false,
+    classe: CLASSE_DO_FLAG.SEM_ALVO,
+    motivo: `\`${comando.programa}\` sem alvo de arquivo`,
+  }
 }
 
 /**
@@ -1826,34 +1960,22 @@ function classificaBruto(comando, ctx) {
   if (programa.startsWith("$")) return julgaProgramaVariavel(comando, ctx)
 
   if (INTERPRETERS.has(programa)) {
-    // O SHELL le o alvo pela classe do FLAG (`alvoDoLancador`): `bash -e x.sh`
-    // EXECUTA o arquivo (o `-e` e o errexit), e quem dizia "payload inline
-    // (bash -e)" de um comando cujo alvo e um arquivo do repositorio era a
-    // lista de flags escrita a mao. Os interpretadores FOLHA (node, python)
-    // ficam com a leitura propria: o `-e` de um `node -e` e o eval DELE, e a
-    // classe dos flags nao e a mesma — unificar ali seria trocar um erro por
-    // outro.
-    if (SHELL_INTERPRETERS.has(programa)) {
-      const lancador = alvoDoLancador(comando)
-      if (!lancador.ok) return { desfecho: "indeterminado", motivo: lancador.motivo }
-      return julgaCaminho(
-        ctx,
-        lancador.alvo,
-        `script do ${programa}`,
-        comando.linha,
-        comando.origem,
-      )
-    }
-    const alvo = tokens[0]
-    if (alvo === undefined || alvo.startsWith("-")) {
-      if (alvo !== undefined && INLINE_FLAGS.has(alvo))
-        return { desfecho: "indeterminado", motivo: `payload inline (${programa} ${alvo})` }
-      return {
-        desfecho: "indeterminado",
-        motivo: `sem arquivo de script (${programa} ${alvo ?? ""})`.trim(),
-      }
-    }
-    return julgaCaminho(ctx, alvo, `script do ${programa}`, comando.linha, comando.origem)
+    // TODO interpretador le o alvo pela MESMA regua — a classe do FLAG, POR
+    // INTERPRETADOR (`alvoDoLancador` → `classeDoFlag`). Por que os dois lados
+    // usam a mesma:
+    //   - `bash -e x.sh` EXECUTA o arquivo (o `-e` e o errexit), e quem dizia
+    //     "payload inline (bash -e)" de um comando cujo alvo e um arquivo do
+    //     repositorio era a lista de flags escrita a mao;
+    //   - `node -e '...'` continua SEM alvo (o `-e` DO NODE e o eval, e a classe
+    //     responde isso), e `node -` (stdin) tambem;
+    //   - e o que a leitura de antes NAO via: `node --no-warnings x.mjs` e
+    //     `python3 -B x.py` tem ALVO (o arquivo) e nao eram julgados —
+    //     `tokens[0].startsWith("-")` respondia "sem arquivo de script" de um
+    //     comando cujo arquivo estava ali, e o veredito de um alvo EXISTENTE
+    //     ficava escondido atras de um flag.
+    const lancador = alvoDoLancador(comando)
+    if (!lancador.ok) return { desfecho: "indeterminado", motivo: lancador.motivo }
+    return julgaCaminho(ctx, lancador.alvo, `script do ${programa}`, comando.linha, comando.origem)
   }
 
   if (SOURCE_COMMANDS.has(programa)) {

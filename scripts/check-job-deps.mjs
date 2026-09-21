@@ -71,8 +71,21 @@
 //     montado em `${{ }}`): sai em `foraDoEscopo` (com a CATEGORIA e o motivo),
 //     e um job que so tem comandos fora do escopo NAO ganha isencao implicita —
 //     ele e reportado como tal;
-//   - `sh -c`/`node -e` (payload inline): a mesma classe que o gate de sintaxe
-//     julga, mas nao ha TRANSITIVIDADE de dependencia a seguir num payload;
+//   - `sh -c`/`node -e` (payload inline): a MESMA classe de alvo do
+//     `check-hook-commands` (`alvoDoLancador` → `classeDoFlag`, por
+//     interpretador) decide que nao ha alvo — e nao ha TRANSITIVIDADE de
+//     dependencia a seguir num payload. O QUE MUDA NO VEREDITO com a classe no
+//     lugar do `tokens[0].startsWith("-")` de antes:
+//       · `node -e`/`node -`/`python3 -c` continuam `payload-inline` — agora
+//         PROVADO pela classe do flag (o `-e` do node e o eval DELE; o `-e` do
+//         bash e o errexit, e por isso a classe e por interpretador);
+//       · `node --version` (3 no corpus) sai de `payload-inline` para
+//         `sem-alvo`: o rotulo dizia "o script vive no argumento" de um comando
+//         que nao le arquivo NENHUM — nomear errado e pior que nomear;
+//       · e o caso que passa a ser JULGADO: `bash -u x.sh`, `node --no-warnings
+//         x.mjs`, `python3 -B x.py` — um flag que NAO consome o token seguinte
+//         nao e o alvo, e o arquivo atras dele entra no grafo (antes eram todos
+//         "payload inline", ou seja, fora do escopo sem ninguem decidir).
 //   - o estado REAL do runner (se a imagem embarca `node_modules`): o guard le
 //     o repositorio. E exatamente por isso a isencao precisa de motivo: quem
 //     responde "de onde vem" e quem assina a decisao.
@@ -103,9 +116,11 @@ import {
 } from "./allowlist-review.mjs"
 import {
   BIN_PACKAGES,
+  CLASSE_DO_FLAG,
   EXTERNAL_TOOLS,
   INTERPRETERS,
   PACKAGE_MANAGERS,
+  alvoDoLancador,
   binInstalado,
   declaredPackages,
   shellCommands,
@@ -139,6 +154,30 @@ export const EXTENSOES_SHELL = [".sh", ".bash"]
  * `naoJulgado` em vez de girar para sempre.
  */
 export const MAX_PROFUNDIDADE = 4
+
+/**
+ * A CATEGORIA do `foraDoEscopo` a partir da CLASSE do flag (a mesma do
+ * `check-hook-commands` — `classeDoFlag`).
+ *
+ * A categoria NOMEIA por que o comando nao entra no grafo de dependencias, e
+ * uma classe tem de ter um nome: enquanto todos os flags caíam em
+ * `payload-inline`, o relatorio dizia "o script vive no argumento" de um
+ * `node --version` (que nao le arquivo nenhum) e de um `bash -u x.sh` (cujo alvo
+ * E o arquivo — julgado agora, e por isso nao ha categoria para o caso
+ * EXECUTA aqui).
+ *
+ * @type {Record<string, string>}
+ */
+export const CATEGORIA_DA_CLASSE = {
+  /** o payload vem do argumento/stdin (`bash -c`, `node -e`, `python3 -c`) */
+  [CLASSE_DO_FLAG.SEM_ARQUIVO]: "payload-inline",
+  /** o programa so CONFERE o alvo (`bash -n`, `node --check`) */
+  [CLASSE_DO_FLAG.CONFERE]: "conferencia-de-sintaxe",
+  /** o programa nao le arquivo nenhum (`node --version`) */
+  [CLASSE_DO_FLAG.SEM_ALVO]: "sem-alvo",
+  /** o flag pode consumir o token seguinte (`bash -o pipefail x.sh`) */
+  [CLASSE_DO_FLAG.DESCONHECIDA]: "flag-nao-provado",
+}
 
 /**
  * O REMEDIO canonico — o mesmo par que 65 dos 113 jobs ja usam, e o que a forja
@@ -518,32 +557,41 @@ export function exigeDeps(comando, ctx) {
   }
 
   if (INTERPRETERS.has(programa)) {
-    if (alvo === undefined || alvo.startsWith("-")) {
+    // O ALVO pela CLASSE do flag — a MESMA regua do `check-hook-commands`
+    // (`alvoDoLancador` → `classeDoFlag`, por interpretador). Enquanto a leitura
+    // era `alvo === undefined || alvo.startsWith("-")`, TODO flag na frente do
+    // programa virava "payload inline": `node --version` (que nao le arquivo
+    // nenhum) ganhava um rotulo falso, e `bash -u x.sh`/`node --no-warnings
+    // x.mjs`/`python3 -B x.py` (o alvo E o arquivo) saiam do escopo sem ninguem
+    // decidir. A classe diz qual e o caso, e o motivo vem DITO por ela.
+    const lancador = alvoDoLancador(comando)
+    if (!lancador.ok) {
       return {
         precisa: false,
         grau: "nenhum",
         ...(prof === 0
           ? {
               foraDoEscopo: {
-                categoria: "payload-inline",
-                motivo: `payload inline (${[programa, alvo].filter(Boolean).join(" ")})`,
+                categoria: CATEGORIA_DA_CLASSE[lancador.classe] ?? "flag-nao-provado",
+                motivo: lancador.motivo,
               },
             }
           : {}),
       }
     }
+    const alvoDoScript = lancador.alvo
     // `python3 scripts/check_crlf.py`: fora do escopo DECLARADO deste guard (as
     // dependencias dele nao vivem no `node_modules`) — fato, nao duvida.
     if (programa.startsWith("python"))
       return {
         precisa: false,
         grau: "nenhum",
-        alvo: alvo,
+        alvo: alvoDoScript,
         ...(prof === 0
           ? {
               foraDoEscopo: {
                 categoria: "fora-do-node",
-                motivo: `${programa} ${alvo} (dependencias fora do node_modules)`,
+                motivo: `${programa} ${alvoDoScript} (dependencias fora do node_modules)`,
               },
             }
           : {}),
@@ -551,7 +599,7 @@ export function exigeDeps(comando, ctx) {
     // `bash scripts/x.sh`/`sh .husky/pre-commit`: o CORPO do script e' relido com
     // a mesma extracao de comandos — um `bash scripts/x.sh` que chama `node
     // scripts/y.mjs` depende do que `y.mjs` alcanca.
-    return exigeDepsDeAlvo(absoluto(ctx.root, alvo), ctx, programa)
+    return exigeDepsDeAlvo(absoluto(ctx.root, alvoDoScript), ctx, programa)
   }
 
   if (programa.startsWith("./") || programa.startsWith("../") || programa.startsWith("/")) {
