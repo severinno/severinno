@@ -416,13 +416,50 @@ function facts(overrides: Record<string, unknown> = {}) {
     // RODA. Presente e medido: ausente, o veredito vira dúvida (cada teste
     // estraga o que quer medir).
     localContract: localContractFacts(),
+    // A IDADE da régua do bench (o commit de origem de cada família medida):
+    // presente e limpa. Ausente, o fato vira dúvida — a mesma disciplina do guard
+    // de recursão e da dívida declarada (cada teste estraga o que quer medir).
+    benchFreshness: BENCH_FRESHNESS_LIMPA,
     skippedGuards: false,
     skippedProof: false,
     skippedProtection: false,
     skippedRunnerLabels: false,
     skippedImageContract: false,
+    skippedBenchFreshness: false,
     ...overrides,
   }
+}
+
+/**
+ * A IDADE da régua do bench, LIMPA: as famílias medidas dentro do teto. É o
+ * default do fixture — os testes que medem a régua velha passam o fato estragado.
+ */
+const BENCH_FRESHNESS_LIMPA = {
+  state: "measured",
+  file: "docs/benchmarks/guard-timing-baseline.json",
+  head: "HEAD",
+  maxBehind: 150,
+  families: [
+    {
+      family: "mutations",
+      act: "measured",
+      origin: "family",
+      source: null,
+      commit: "abc1234",
+      commitDate: "2026-09-21 10:27:18 -0300",
+      state: "fresh",
+      behind: 3,
+      reason: "3 commit(s) de abc1234 até HEAD",
+    },
+  ],
+  aged: [],
+  diverged: [],
+  unknown: [],
+  behindMax: 3,
+  detail:
+    "1 família(s) medida(s), a mais antiga 3 commit(s) atrás de HEAD (teto 150) — nenhuma vencida",
+  reason: null,
+  remedies: [],
 }
 
 /**
@@ -1204,7 +1241,7 @@ describe("summarize — a IDADE da dívida declarada", () => {
 
   it("o peso vem das funções do FATO (fonte única com o relatório)", () => {
     // As duas funções são o que o `summarize` consulta: uma segunda regra aqui
-    // divergiria da que a seção 6/8 imprime. O fato LIMPO não pesa em nada; a
+    // divergiria da que a seção 6/9 imprime. O fato LIMPO não pesa em nada; a
     // fonte VENCIDA vira dúvida, e a SEM REGISTRO vira bloqueio.
     expect(declaredDebtBlockers(declaredDebtFacts())).toEqual([])
     expect(declaredDebtUnknowns(declaredDebtFacts())).toEqual([])
@@ -1451,7 +1488,7 @@ describe("renderReport — a seção dos espelhos diz CONTRA O QUE comparou", ()
 
   it("com o valor: nomeia a variável e cobra o veredito contra ela", () => {
     const text = render(facts())
-    expect(text).toContain("5/8  Espelhos das variáveis da imagem")
+    expect(text).toContain("5/9  Espelhos das variáveis da imagem")
     expect(text).toContain("comparados com vars.BUN_VERSION='1.3.14'")
   })
 
@@ -1515,7 +1552,7 @@ describe("renderReport — a seção dos espelhos diz CONTRA O QUE comparou", ()
         },
       }),
     )
-    expect(text).toContain("4/8  Prova do bloqueio")
+    expect(text).toContain("4/9  Prova do bloqueio")
     expect(text).toContain(
       `GATE do bring-up (job '${BRING_UP_GATE_JOB}' no contrato de merge): proven`,
     )
@@ -1609,16 +1646,18 @@ describe("CLI — o valor esperado entra por flag e é validado", () => {
 // O doctor passou a rodar TAMBÉM no job que decide o merge (o `guards`), para o
 // VALOR das repository variables ser conferido a cada PR em vez de só no cron
 // semanal. O que muda é o ESCOPO — e é isso que precisa ser provado: que o
-// perfil reduz as SETE seções que um runner de PR não prova, que ele NÃO baixa a
+// perfil reduz as OITO seções que um runner de PR não prova, que ele NÃO baixa a
 // régua do que ficou dentro, e que o relatório NOMEIA o que saiu.
 
 describe("perfil --ci — o recorte local, com a régua inteira", () => {
-  it("as sete seções do perfil são exatamente as que um PR não prova", () => {
+  it("as oito seções do perfil são exatamente as que um PR não prova", () => {
     // A lista É o contrato. `guards` é o job que chama o doctor (rodar a bateria
     // aqui seria recursão). `proof` NÃO entra aqui: a prova é a defesa em
     // profundidade contra recursão (NESTED_GUARD_ENV) e o corte do ciclo
     // (DOCTOR_SCRIPT) — sem ela o veredito diz "sem prova" sem nunca ter
-    // tentado. As outras sete precisam de rede, credencial ou o estado do HOST.
+    // tentado. As outras precisam de rede, credencial, o estado do HOST — ou a
+    // HISTÓRIA do git (`benchFreshness`: a idade da régua do bench é contada em
+    // commits, e o checkout de um PR não é garantidamente profundo).
     expect([...CI_PROFILE_SKIPS].sort()).toEqual(
       [
         "guards",
@@ -1628,11 +1667,12 @@ describe("perfil --ci — o recorte local, com a régua inteira", () => {
         "registryProbe",
         "openDebt",
         "gateContractsCheck",
+        "benchFreshness",
       ].sort(),
     )
   })
 
-  it("desliga as sete e PRESERVA o render do compose (local, barato e exigido pela imagem)", () => {
+  it("desliga as oito e PRESERVA o render do compose (local, barato e exigido pela imagem)", () => {
     const opts = parseArgs(["--ci"]) as unknown as Record<string, unknown>
     expect(opts.ciProfile).toBe(true)
     for (const name of CI_PROFILE_SKIPS) expect(opts[name], name).toBe(false)
@@ -3468,6 +3508,22 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
    */
   const debtClear = { list: async () => [] }
 
+  /**
+   * E o mesmo para a RÉGUA DO BENCH: o `cwd` deste fluxo é uma fixture (sem
+   * `docs/benchmarks/`), então o fato real sairia "não medida" — e com razão: sem
+   * arquivo não há idade. Aqui ele entra MEDIDO, como todos os outros fatos do
+   * fluxo; o fato real tem testes próprios (`a idade da régua do bench como FATO
+   * do relatório` e `bench-freshness.test.ts`).
+   */
+  const benchProven = {
+    exists: () => true,
+    // A família `hook` DECLARADA medida: é o mínimo para o fato ser `measured`
+    // (sem nenhuma família medida ele é `unavailable`, e o veredito fica
+    // INDETERMINADA — o que é o comportamento certo e tem teste próprio).
+    read: () => JSON.stringify({ meta: { commit: "abc1234" }, hook: { measured: true } }),
+    probe: () => ({ state: "ancestor", behind: 3, reason: "3 commit(s) de abc1234 até HEAD" }),
+  }
+
   it("forja completa e registry 200 → PRONTA", async () => {
     const dir = forgeFixture()
     const { facts } = await diagnose({
@@ -3488,6 +3544,7 @@ describe("diagnose — fluxo completo com dependências dubladas", () => {
       imageContractDeps: imageContractProven,
       protectionDeps: protectionInSync,
       openDebtDeps: debtClear,
+      benchFreshnessDeps: benchProven,
       // O CONTRATO LOCAL inteiro: o `cwd` deste fluxo é uma fixture SEM `.husky/`,
       // onde as três partes da leitura real saem INDISPONÍVEIS (e com razão — não
       // há o que provar nem o que ler). O FLUXO aqui é o do veredito, então o
@@ -4872,7 +4929,7 @@ describe("readShellInheritance — a herança de shell de CADA workflow", () => 
     )
   })
 
-  it("a seção 7/8 imprime a origem por workflow, a violação e o remédio", () => {
+  it("a seção 7/9 imprime a origem por workflow, a violação e o remédio", () => {
     const root = tree(
       [
         "on:",
@@ -4894,7 +4951,7 @@ describe("readShellInheritance — a herança de shell de CADA workflow", () => 
       { emit: (s = "") => linhas.push(s) },
     )
     const texto = linhas.join("\n")
-    expect(texto).toContain("7/8  Herança de shell dos workflows")
+    expect(texto).toContain("7/9  Herança de shell dos workflows")
     expect(texto).toContain(".gitea/workflows/ci.yml")
     expect(texto).toContain("origem: 0 pelo RUNNER")
     expect(texto).toContain("LIGA o pipefail para 1 passo(s) sem `shell:`")
@@ -5006,7 +5063,7 @@ describe("readThirdPartyPipelines — a cobertura da varredura de terceiro", () 
     expect(f.ilegiveis).toEqual([])
   })
 
-  it("a seção 8/8 imprime os tipos, o CI de fora e o remédio", () => {
+  it("a seção 8/9 imprime os tipos, o CI de fora e o remédio", () => {
     const f = cobertura({ ...LIMPO, fora: [{ id: "gitlab", file: ".gitlab-ci.yml" }] })
     const linhas: string[] = []
     renderReport(
@@ -5017,11 +5074,185 @@ describe("readThirdPartyPipelines — a cobertura da varredura de terceiro", () 
       { emit: (s = "") => linhas.push(s) },
     )
     const texto = linhas.join("\n")
-    expect(texto).toContain("8/8  Cobertura da varredura de terceiro")
+    expect(texto).toContain("8/9  Cobertura da varredura de terceiro")
     expect(texto).toContain("tipo 'woodpecker'")
     expect(texto).toContain(".gitlab-ci.yml")
     expect(texto).toContain("DETECTADO e FORA dos tipos declarados")
     expect(texto).toContain("remédio:")
+  })
+})
+
+// ── 9. A IDADE da régua do bench (seção 9/9) ──────────────────────────────
+
+describe("a idade da régua do bench como FATO do relatório", () => {
+  /** A régua VENCIDA — o defeito que a seção existe para nomear. */
+  const vencida = (behind = 400, fam = "mutations") => ({
+    ...BENCH_FRESHNESS_LIMPA,
+    families: [
+      {
+        ...BENCH_FRESHNESS_LIMPA.families[0],
+        family: fam,
+        commit: "velho111",
+        state: "aged",
+        behind,
+      },
+    ],
+    aged: [fam],
+    behindMax: behind,
+    detail: `1 família(s) medida(s) e 1 VENCIDA(s): ${fam} a ${behind} commit(s) atrás (teto 150 commits)`,
+    remedies: ["bun run bench:guard-timing:baseline — re-mede e move a baseline DE PROPÓSITO"],
+  })
+
+  it("LIMPA não pesa no veredito (nem bloqueio nem dúvida)", () => {
+    const v = summarize(facts())
+    expect(v.unknowns.filter((u) => u.toUpperCase().includes("RÉGUA DO BENCH"))).toEqual([])
+    expect(v.blockers).toEqual([])
+  })
+
+  it("VENCIDA não deixa PRONTA — e não BLOQUEIA: ela não prova que o merge pode ser furado", () => {
+    const v = summarize(facts({ benchFreshness: vencida() }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.blockers).toEqual([])
+    const texto = v.unknowns.join(" ")
+    expect(texto).toContain("RÉGUA DO BENCH envelheceu")
+    expect(texto).toContain("mutations (400 commit(s) atrás em velho111)")
+    expect(texto).toContain("teto de 150 commits")
+    // O remédio vai com a dúvida: uma dúvida sem endereço não é acionável.
+    expect(texto).toContain("bun run bench:guard-timing:baseline")
+  })
+
+  it("o commit FORA da história entra nomeado (a história foi reescrita)", () => {
+    const f = {
+      ...BENCH_FRESHNESS_LIMPA,
+      families: [
+        {
+          ...BENCH_FRESHNESS_LIMPA.families[0],
+          state: "diverged",
+          behind: null,
+          commit: "sumiu111",
+        },
+      ],
+      aged: [],
+      diverged: ["mutations"],
+      detail:
+        "1 família(s) medida(s) e 1 VENCIDA(s): fora da história: mutations (teto 150 commits)",
+    }
+    const v = summarize(facts({ benchFreshness: f }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.unknowns.join(" ")).toContain("fora da história de HEAD: mutations")
+  })
+
+  it('"não consegui medir" é INDETERMINADA com a causa — nunca "sem régua velha"', () => {
+    const f = { ...BENCH_FRESHNESS_LIMPA, state: "unavailable", reason: "clone raso", families: [] }
+    const v = summarize(facts({ benchFreshness: f }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.unknowns.join(" ")).toContain("a régua do bench NÃO foi medida (clone raso)")
+  })
+
+  it("uma família SEM idade também não passa por verde (a idade de TODAS é o que a régua promete)", () => {
+    const f = {
+      ...BENCH_FRESHNESS_LIMPA,
+      families: [
+        {
+          ...BENCH_FRESHNESS_LIMPA.families[0],
+          state: "unknown",
+          behind: null,
+          reason: "o commit de origem ausente não está neste checkout (clone raso)",
+        },
+      ],
+      unknown: ["lint"],
+      behindMax: null,
+    }
+    const v = summarize(facts({ benchFreshness: f }))
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.unknowns.join(" ")).toContain("SEM idade em 1 família(s) (lint)")
+    expect(v.unknowns.join(" ")).toContain("clone raso")
+  })
+
+  it("ausente do relatório e pulado por flag: os dois são dúvida NOMEADA (a seção não some calada)", () => {
+    const semFato = facts()
+    delete (semFato as { benchFreshness?: unknown }).benchFreshness
+    const v = summarize(semFato)
+    expect(v.verdict).toBe(VERDICT.UNKNOWN)
+    expect(v.unknowns.join(" ")).toContain("não está declarada no relatório")
+
+    const pulado = summarize(
+      facts({
+        skippedBenchFreshness: true,
+        benchFreshness: {
+          state: "skipped",
+          families: [],
+          aged: [],
+          diverged: [],
+          unknown: [],
+          remedies: [],
+        },
+      }),
+    )
+    expect(pulado.unknowns.join(" ")).toContain("--no-bench-freshness")
+  })
+
+  it("a seção 9/9 imprime o teto, a família e a origem — e a PULADA sai dita", () => {
+    const f = vencida()
+    const linhas: string[] = []
+    renderReport(
+      { facts: facts({ benchFreshness: f }), verdict: summarize(facts({ benchFreshness: f })) },
+      { emit: (s = "") => linhas.push(s) },
+    )
+    const texto = linhas.join("\n")
+    expect(texto).toContain("9/9  Régua do bench")
+    expect(texto).toContain("mutations: 400 commit(s) atrás")
+    expect(texto).toContain("velho111")
+    expect(texto).toContain("remédio: bun run bench:guard-timing:baseline")
+
+    const puladas: string[] = []
+    renderReport(
+      {
+        facts: facts({
+          skippedBenchFreshness: true,
+          benchFreshness: {
+            state: "skipped",
+            families: [],
+            aged: [],
+            diverged: [],
+            unknown: [],
+            remedies: [],
+          },
+        }),
+        verdict: summarize(
+          facts({
+            skippedBenchFreshness: true,
+            benchFreshness: {
+              state: "skipped",
+              families: [],
+              aged: [],
+              diverged: [],
+              unknown: [],
+              remedies: [],
+            },
+          }),
+        ),
+      },
+      { emit: (s = "") => puladas.push(s) },
+    )
+    expect(puladas.join("\n")).toContain("9/9  Régua do bench")
+    expect(puladas.join("\n")).toContain("pulada por --no-bench-freshness")
+  })
+})
+
+/**
+ * O PERFIL `--ci` não mede a idade da régua do bench — e o que ele faz com isso é
+ * DIZER, não sumir: a seção sai na lista
+ * `unproven` como as outras. O porquê está em `CI_PROFILE_SKIPS` (a idade é contada
+ * em commits e o checkout de um PR não é garantidamente profundo).
+ */
+describe("a régua do bench no perfil --ci", () => {
+  it("o perfil DESLIGA o fato e o NOMEIA na lista do não provado", () => {
+    expect(CI_PROFILE_SKIPS).toContain("benchFreshness")
+    const opts = parseArgs(["--ci"])
+    expect(opts.benchFreshness).toBe(false)
+    expect(parseArgs([]).benchFreshness).toBe(true)
+    expect(parseArgs(["--no-bench-freshness"]).benchFreshness).toBe(false)
   })
 })
 
@@ -5120,7 +5351,7 @@ describe("a prova do bloqueio LOCAL como FATO do relatório", () => {
     expect(v.verdict).toBe(VERDICT.UNKNOWN) // as outras seções do fixture continuam
   })
 
-  it("a seção 4/8 imprime o estado, a evidência das DUAS metades e quem cobra", () => {
+  it("a seção 4/9 imprime o estado, a evidência das DUAS metades e quem cobra", () => {
     const f = {
       state: "proven",
       detail: "recusou o quebrado e deixou entrar o controle",
@@ -5139,7 +5370,7 @@ describe("a prova do bloqueio LOCAL como FATO do relatório", () => {
       },
     )
     const texto = linhas.join("\n")
-    expect(texto).toContain("4/8  Prova do bloqueio")
+    expect(texto).toContain("4/9  Prova do bloqueio")
     expect(texto).toContain("prova do bloqueio LOCAL (pre-commit): proven")
     expect(texto).toContain("defeito no índice: exit 1, 0 objeto(s) de commit, HEAD ausente")
     expect(texto).toContain("CONTROLE com o corpo fechado: exit 0, 1 objeto(s)")
@@ -5335,7 +5566,7 @@ describe("a prova do bloqueio do PUSH como FATO do relatório", () => {
     expect(summarize(completo).verdict).toBe(VERDICT.UNKNOWN)
   })
 
-  it("a seção 4/8 imprime o estado, a evidência das DUAS metades e quem cobra", () => {
+  it("a seção 4/9 imprime o estado, a evidência das DUAS metades e quem cobra", () => {
     const linhas: string[] = []
     const fProvado = facts({
       localContract: localContractFacts({
@@ -5460,7 +5691,7 @@ describe("a prova do bloqueio do PUSH como FATO do relatório", () => {
     expect(vCi.blockers.join("\n")).toContain("state 'ausente do relatório'")
   })
 
-  it("a seção 4/8 imprime o limite e QUEM BARRA o defeito depois do hook", () => {
+  it("a seção 4/9 imprime o limite e QUEM BARRA o defeito depois do hook", () => {
     const linhas: string[] = []
     const f = facts({ localContract: localContractFacts() })
     renderReport({ facts: f, verdict: summarize(f) }, { emit: (s = "") => linhas.push(s) })

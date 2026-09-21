@@ -1512,7 +1512,15 @@ jobs:
       issues: write # a issue é o canal (o run fica verde)
 
     steps:
+      # fetch-depth: 0 é REQUISITO da régua de frescor, não preferência: a idade do
+      # commit de ORIGEM de cada família do bench é contada em COMMITS
+      # (`git rev-list --count <origem>..HEAD`), e um clone raso responde "o commit
+      # não está aqui" — o que a régua lê como "sem idade", nunca como "fresca".
+      # Sem a história, o canal semanal ficaria mudo exatamente sobre o que ele
+      # existe para cobrar. (O padrão do actions/checkout é depth 1.)
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Restore Bun cache
         uses: actions/cache@v4

@@ -24,7 +24,7 @@ import {
  *      uma label nova/renomeada não pode nascer invisível;
  *   2. a LEITURA (`readOpenDebt`) com a `list` dublada — estados, idade,
  *      marcador, e o cruzamento com o que o doctor mede agora (caducidade);
- *   3. o PESO no veredito e o que aparece na seção 6/8 do relatório.
+ *   3. o PESO no veredito e o que aparece na seção 6/9 do relatório.
  */
 
 const REPO_ROOT = resolve(__dirname, "..", "..", "..")
@@ -444,6 +444,38 @@ function baseFacts() {
       error: null,
       remedies: [],
     },
+    // A IDADE da régua do bench (o commit de origem das famílias medidas):
+    // presente e LIMPA. Ausente, o fato vira dúvida ("não está declarada no
+    // relatório") — a mesma disciplina da herança de shell acima, e a razão de a
+    // fixture "o mínimo que o summarize lê" carregar tudo o que ele lê. O próprio
+    // fato tem testes em `forge-doctor.test.ts` e em `bench-freshness.test.ts`.
+    benchFreshness: {
+      state: "measured",
+      file: "docs/benchmarks/guard-timing-baseline.json",
+      head: "HEAD",
+      maxBehind: 150,
+      families: [
+        {
+          family: "mutations",
+          act: "measured",
+          origin: "family",
+          source: null,
+          commit: "abc1234",
+          commitDate: "2026-09-21 10:27:18 -0300",
+          state: "fresh",
+          behind: 3,
+          reason: "3 commit(s) de abc1234 até HEAD",
+        },
+      ],
+      aged: [],
+      diverged: [],
+      unknown: [],
+      behindMax: 3,
+      detail:
+        "1 família(s) medida(s), a mais antiga 3 commit(s) atrás de HEAD (teto 150) — nenhuma vencida",
+      reason: null,
+      remedies: [],
+    },
     // O CONTRATO LOCAL — UM fato só para UM assunto (os dois elos EXECUTADOS
     // mais o que cada hook RODA): aqui presente e PROVADO nas três partes.
     // Ausente, o fato vira dúvida — a mesma disciplina da herança de shell
@@ -644,9 +676,9 @@ describe("renderReport — a dívida tem seção própria", () => {
     return lines.join("\n")
   }
 
-  it("a seção 6/8 nomeia as labels, a exclusão, a issue e a IDADE", () => {
+  it("a seção 6/9 nomeia as labels, a exclusão, a issue e a IDADE", () => {
     const out = report({ ...baseFacts(), openDebt: OPEN_DEBT })
-    expect(out).toContain("6/8  Dívida conhecida (DECLARADA no repositório × ABERTA no board)")
+    expect(out).toContain("6/9  Dívida conhecida (DECLARADA no repositório × ABERTA no board)")
     expect(out).toContain(DEBT_SUBJECTS.map((s) => s.label).join(", "))
     expect(out).toContain(DEBT_EXCLUDED.label)
     expect(out).toContain("#12")
@@ -659,7 +691,7 @@ describe("renderReport — a dívida tem seção própria", () => {
     // entrasse na conta deixaria as outras dizendo "/7" para um relatório de
     // oito — e o leitor contaria as seções para descobrir qual está mentindo.
     const out = report({ ...baseFacts(), openDebt: OPEN_DEBT })
-    for (const n of [1, 2, 3, 4, 5, 6, 7, 8]) expect(out).toContain(`  ${n}/8  `)
+    for (const n of [1, 2, 3, 4, 5, 6, 7, 8, 9]) expect(out).toContain(`  ${n}/9  `)
   })
 
   it("--no-open-debt aparece dito, em vez de a seção sumir calada", () => {

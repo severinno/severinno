@@ -17,6 +17,7 @@
 //   node scripts/forge-doctor.mjs --no-image-contract # pula o contrato da imagem PUBLICADA
 //   node scripts/forge-doctor.mjs --no-registry-probe # offline: nao consulta o registry
 //   node scripts/forge-doctor.mjs --no-open-debt  # offline: nao le o board (as issues abertas)
+//   node scripts/forge-doctor.mjs --no-bench-freshness # pula a IDADE da régua do bench
 //   node scripts/forge-doctor.mjs --expected 1.3.14   # valor de vars.BUN_VERSION
 //   node scripts/forge-doctor.mjs --expected 1.3.14 \
 //     --expected-var IMAGE_REGISTRY=... --expected-var IMAGE_NAMESPACE=...
@@ -247,6 +248,12 @@ import { provePushBypass, provePushBlocks } from "./pre-push-proof.mjs"
 // gate não julga mais (ou o contrário). `analyze` não executa nada no import: o
 // guard só roda quando é chamado como script.
 import { analyze as analyzeHookCommands } from "./check-hook-commands.mjs"
+// A IDADE DA RÉGUA DO BENCH: quantos commits de HEAD separam o commit de ORIGEM
+// de cada família medida da baseline (`docs/benchmarks/guard-timing-baseline.json`)
+// do código que está aqui. A medição é a do `bench-freshness.mjs` — a régua do
+// dono, importada, não uma segunda contagem de commits: quem mede a idade é UM
+// lugar só, e o veredito não pode discordar dele.
+import { freshnessLine, readBenchFreshness } from "./bench-freshness.mjs"
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..")
 
@@ -959,6 +966,49 @@ export function summarize(facts) {
     for (const u of declaredDebtUnknowns(facts.declaredDebt)) unknowns.push(u)
   }
 
+  // A IDADE DA RÉGUA DO BENCH: o commit de ORIGEM de cada família MEDIDA da
+  // baseline (`meta.families`), contado em commits até HEAD. O número dela é
+  // consumido FORA do bench — o modelo de latência de merge declara o custo dos
+  // jobs a partir dele —, e uma régua velha não BLOQUEIA (ela não prova que o
+  // merge pode ser furado) mas também não deixa PRONTA: o que o repositório
+  // declara sobre custo passou a descrever outro código. Foi exatamente por aí
+  // que uma divergência de 28% no `mutation-guards` (declarado 271.755ms ×
+  // medido 380.700ms) viveu sem que nenhum guard a nomeasse: a comparação por
+  // percentual é cega para a IDADE dos dois números.
+  //
+  // "NÃO CONSEGUI MEDIR" nunca vira fresco, pela mesma disciplina do guard de
+  // recursão e da dívida declarada: um clone raso (o commit de origem fora do
+  // checkout), um arquivo ilegível ou um git ausente entram como INDETERMINADA
+  // com a causa, e não como "nenhuma família velha".
+  if (facts.skippedBenchFreshness) {
+    unknowns.push(
+      "a IDADE do commit de origem das famílias do bench foi pulada (--no-bench-freshness): o veredito não cobre se a régua que o modelo de latência consome descreve o código de agora",
+    )
+  } else if (!facts.benchFreshness) {
+    unknowns.push(
+      "a IDADE do commit de origem das famílias do bench não está declarada no relatório: o veredito não cobre se a régua do bench descreve o código de agora",
+    )
+  } else if (facts.benchFreshness.state !== "measured") {
+    unknowns.push(
+      `a régua do bench NÃO foi medida (${facts.benchFreshness.reason ?? "sem motivo declarado"}): sem ela o veredito não pode afirmar nem frescor nem vencimento`,
+    )
+  } else if (facts.benchFreshness.aged.length + facts.benchFreshness.diverged.length > 0) {
+    const vencidas = facts.benchFreshness.families
+      .filter((f) => f.state === "aged")
+      .map((f) => `${f.family} (${f.behind} commit(s) atrás em ${f.commit})`)
+    unknowns.push(
+      `a RÉGUA DO BENCH envelheceu: ${vencidas.join(", ")}` +
+        (facts.benchFreshness.diverged.length > 0
+          ? `${vencidas.length > 0 ? " · " : ""}fora da história de HEAD: ${facts.benchFreshness.diverged.join(", ")} (a história foi reescrita e o número declarado não se reproduz nesta árvore)`
+          : "") +
+        ` — teto de ${facts.benchFreshness.maxBehind} commits; o número declarado descreve outro commit, e o remédio é a re-medição deliberada (${facts.benchFreshness.remedies[0] ?? "bun run bench:guard-timing:baseline"})`,
+    )
+  } else if (facts.benchFreshness.unknown.length > 0) {
+    unknowns.push(
+      `a régua do bench ficou SEM idade em ${facts.benchFreshness.unknown.length} família(s) (${facts.benchFreshness.unknown.join(", ")}): ${facts.benchFreshness.families.find((f) => f.state === "unknown")?.reason ?? "sem motivo declarado"}`,
+    )
+  }
+
   // A interpolação do compose: variável vazia / valor literal BLOQUEIA (o
   // runner roda uma imagem que não é a declarada). Não conseguir renderizar é
   // ausência de prova — nunca "pronta".
@@ -1176,6 +1226,11 @@ export function summarize(facts) {
   }
   if (facts.skippedDeclaredDebt) {
     unproven.unshift("a IDADE da dívida declarada (pulada por --no-declared-debt)")
+  }
+  if (facts.skippedBenchFreshness) {
+    unproven.unshift(
+      "a IDADE do commit de origem das famílias do bench (pulada por --no-bench-freshness)",
+    )
   }
   if (facts.skippedProof) {
     unproven.unshift(
@@ -4599,7 +4654,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // protection). Um manifesto validado com a forja em drift é o modo de falha
   // que este comando existe para não deixar passar.
   line()
-  line("  1/8  Contrato de merge (o que o repositório DECLARA × o que a forja REGISTRA)")
+  line("  1/9  Contrato de merge (o que o repositório DECLARA × o que a forja REGISTRA)")
   for (const f of facts.contract.forges) {
     const mark = f.exists && f.jobs > 0 ? MARK.ok() : MARK.fail()
     line(
@@ -4623,7 +4678,7 @@ export function renderReport(report, { emit = console.log } = {}) {
 
   // ── 2. Guards da forja ──────────────────────────────────────────────────
   line()
-  line(`  2/8  Guards da forja (derivados de ${MERGE_OWNER_PIPELINE})`)
+  line(`  2/9  Guards da forja (derivados de ${MERGE_OWNER_PIPELINE})`)
   if (facts.skippedGuards) {
     line(`       ${MARK.skip()} pulados por --no-guards (o veredito NÃO cobre os gates)`)
   } else if (facts.guards.error) {
@@ -4645,7 +4700,7 @@ export function renderReport(report, { emit = console.log } = {}) {
 
   // ── 3. Imagem do runner ─────────────────────────────────────────────────
   line()
-  line("  3/8  Imagem do runner (o que os jobs puxam para INICIAR)") // Só a AUSÊNCIA confirmada (exit 4) é falha da forja; o resto é falta de
+  line("  3/9  Imagem do runner (o que os jobs puxam para INICIAR)") // Só a AUSÊNCIA confirmada (exit 4) é falha da forja; o resto é falta de
   // prova (env ausente no checkout, registry inacessível, pacote privado).
   const imageMark =
     facts.image.code === 0
@@ -4785,7 +4840,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // título mantém o começo de antes para o número da seção seguir sendo a âncora
   // de quem lê.
   line(
-    "  4/8  Prova do bloqueio (registry de TESTE) + os DOIS elos locais (pre-commit e pre-push) + o GATE que as cobra no merge",
+    "  4/9  Prova do bloqueio (registry de TESTE) + os DOIS elos locais (pre-commit e pre-push) + o GATE que as cobra no merge",
   )
   {
     const proofMark =
@@ -5036,7 +5091,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // resto da seção só prova existência e concordância local — e o operador
   // precisa ver essa diferença sem ler o código.
   line()
-  line("  5/8  Espelhos das variáveis da imagem — o VALOR (sem rede)")
+  line("  5/9  Espelhos das variáveis da imagem — o VALOR (sem rede)")
   // O conjunto COMPARADO vem do fato (não de uma lista escrita aqui): as
   // variáveis sem valor passado aparecem em `unknowns`, com o nome.
   // `expectedVars` com fallback em `expected`: um fato montado à mão (teste,
@@ -5127,7 +5182,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // o doctor mede por conta própria vêm lado a lado com a MEDIÇÃO, para a issue
   // velha não passar por problema vivo (nem o contrário).
   line()
-  line("  6/8  Dívida conhecida (DECLARADA no repositório × ABERTA no board)")
+  line("  6/9  Dívida conhecida (DECLARADA no repositório × ABERTA no board)")
   // ── a DECLARADA: a IDADE das isenções (data + janela de revisão) ────────
   if (facts.skippedDeclaredDebt) {
     line(
@@ -5196,7 +5251,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // seção, uma declaração de `defaults:` que ligue o pipefail viajaria em
   // silêncio no veredito de quem decide se o merge pode ser confiado à forja.
   line()
-  line("  7/8  Herança de shell dos workflows (de ONDE vem o shell de CADA passo)")
+  line("  7/9  Herança de shell dos workflows (de ONDE vem o shell de CADA passo)")
   const si = facts.shellInheritance
   if (!si) {
     line(
@@ -5264,7 +5319,7 @@ export function renderReport(report, { emit = console.log } = {}) {
   // (`thirdPartyPipelineCoverage`), e entra ATÉ no perfil `--ci`: é leitura de
   // checkout, e no PR a bateria de guards está pulada.
   line()
-  line("  8/8  Cobertura da varredura de terceiro (os TIPOS declarados × os CI detectados)")
+  line("  8/9  Cobertura da varredura de terceiro (os TIPOS declarados × os CI detectados)")
   const t3 = facts.thirdPartyPipelines
   if (!t3) {
     line(
@@ -5292,6 +5347,51 @@ export function renderReport(report, { emit = console.log } = {}) {
     }
     if ((t3.fora ?? []).length > 0 || t3.state === "violated") {
       for (const r of t3.remedies ?? []) line(`           ${MARK.info()} remédio: ${r}`)
+    }
+  }
+
+  // ── 9. A idade da RÉGUA do bench ─────────────────────────────────────────
+  // O número da baseline do `bench-guard-timing` é consumido FORA do bench: o
+  // modelo de latência de merge declara o custo dos jobs a partir dele. A seção
+  // publica a IDADE do commit de origem de cada família MEDIDA — e é isso que
+  // nenhum outro fato enxergava, porque todos os outros medem a árvore de AGORA.
+  // Foi por essa fenda que uma divergência de 28% no `mutation-guards`
+  // (declarado 271.755ms × medido 380.700ms) viveu sem ser nomeada: a comparação
+  // por percentual é cega para a idade dos dois números que compara.
+  line()
+  line("  9/9  Régua do bench (a IDADE do commit de origem das famílias medidas)")
+  const bf = facts.benchFreshness
+  if (facts.skippedBenchFreshness) {
+    line(
+      `       ${MARK.skip()} régua do bench pulada por --no-bench-freshness (a idade da medição que o modelo de latência consome fica fora do veredito)`,
+    )
+  } else if (!bf) {
+    line(
+      `       ${MARK.warn()} o fato não está no relatório — a idade da régua do bench fica fora do veredito`,
+    )
+  } else if (bf.state !== "measured") {
+    line(`       ${MARK.warn()} NÃO medida: ${freshnessLine(bf)}`)
+    for (const r of bf.remedies ?? []) line(`           ${MARK.info()} → ${r}`)
+  } else {
+    const vencidas = bf.aged.length + bf.diverged.length
+    const marca = vencidas > 0 ? MARK.fail() : bf.unknown.length > 0 ? MARK.warn() : MARK.ok()
+    line(`       ${marca} ${freshnessLine(bf)}`)
+    for (const f of bf.families) {
+      const fmarca =
+        f.state === "fresh"
+          ? MARK.ok()
+          : f.state === "aged" || f.state === "diverged"
+            ? MARK.fail()
+            : MARK.warn()
+      const idade = f.behind === null ? f.state : `${f.behind} commit(s) atrás`
+      line(
+        `           ${fmarca} ${f.family}: ${idade} — origem ${f.commit ? `\`${f.commit}\`` : "(sem commit)"}` +
+          `${f.commitDate ? ` (${f.commitDate})` : ""}` +
+          `${f.act ? ` · ${f.act}${f.source ? ` de ${f.source}` : ""}` : ""}`,
+      )
+    }
+    if (vencidas > 0 || bf.unknown.length > 0) {
+      for (const r of bf.remedies ?? []) line(`           ${MARK.info} remédio: ${r}`)
     }
   }
 
@@ -5362,6 +5462,15 @@ Opções:
                          THIRD_PARTY_ALLOWLIST, ALLOWLIST e o baseline do
                          SIGPIPE). NÃO é preciso em rede/credencial: é leitura
                          do checkout, e por isso roda ATÉ no perfil --ci
+  --no-bench-freshness   pula a IDADE do commit de origem das famílias MEDIDAS da
+                         baseline do bench (scripts/bench-freshness.mjs). Não é
+                         preciso em rede/credencial: é leitura do checkout + git.
+                         NÃO entra no recorte do perfil --ci de propósito — a
+                         idade é contada em COMMITS e o checkout de um PR não é
+                         garantidamente profundo, então num clone raso o fato
+                         sairia "sem idade" em todo PR (um indeterminado
+                         permanente ensina a ignorar a lista). Quem mede é o cron
+                         semanal da régua (checkout completo) e o doctor INTEIRO
   --no-pre-commit-proof  pula a PROVA DO BLOQUEIO LOCAL: o doctor deixa de
                          executar o 'git commit' de verdade que mede se o
                          pre-commit recusa um corpo 'run:' quebrado no ÍNDICE
@@ -5437,7 +5546,7 @@ lê a lista \`unproven\` do relatório (ou o log) para saber o que NÃO foi cobe
  * O RECORTE do doctor que um runner de PR prova — e por isso o que pode rodar no
  * job `guards` a cada PR (`.gitea/workflows/ci.yml` e o espelho do GitHub).
  *
- * POR QUE ESTAS SETE, e não uma a menos: cada uma precisa de algo que um runner
+ * POR QUE ESTAS OITO, e não uma a menos: cada uma precisa de algo que um runner
  * de PR não tem (rede, credencial de administração, o estado do HOST) ou é
  * RECURSIVA ali dentro — a bateria de guards É o job que chama o doctor, e a
  * prova do bloqueio executa o `deploy/gitea-up.sh`, que por sua vez executa este
@@ -5453,6 +5562,16 @@ lê a lista \`unproven\` do relatório (ou o log) para saber o que NÃO foi cobe
  */
 export const CI_PROFILE_SKIPS = [
   "guards",
+  // "benchFreshness" É A OITAVA desta lista (e o motivo é o instrumento): a idade
+  // da régua do bench é medida em
+  // COMMITS de HEAD, e o checkout de um PR não é garantidamente profundo — num
+  // clone raso o commit de origem não está ali e o fato sairia SEM idade em todo
+  // PR, transformando o perfil num "gate que sempre acende" (o veredito do PR é
+  // INDETERMINADA por desenho, mas um indeterminado PERMANENTE por falta de
+  // checkout ensina a ignorar a lista). Quem mede a idade é o cron semanal (o
+  // job `guard-timing-alert`, com checkout completo) e o doctor INTEIRO (local e
+  // no cron da forja, que faz checkout com a história) — e a seção pulada sai
+  // NOMEADA na lista `unproven`, nunca em silêncio.
   // "proof" NÃO entra aqui: a prova do bloqueio é a defesa em
   // profundidade contra recursão (NESTED_GUARD_ENV) e o corte do ciclo
   // (DOCTOR_SCRIPT). Sem ela, o veredito diz "sem prova" sem nunca
@@ -5463,6 +5582,7 @@ export const CI_PROFILE_SKIPS = [
   "registryProbe",
   "openDebt",
   "gateContractsCheck",
+  "benchFreshness",
 ]
 
 export function parseArgs(argv) {
@@ -5478,6 +5598,7 @@ export function parseArgs(argv) {
     gateContractsCheck: true,
     openDebt: true,
     declaredDebt: true,
+    benchFreshness: true,
     preCommitProof: true,
     prePushProof: true,
     envFile: DEFAULT_ENV_FILE,
@@ -5501,6 +5622,7 @@ export function parseArgs(argv) {
     else if (arg === "--no-registry-probe") opts.registryProbe = false
     else if (arg === "--no-open-debt") opts.openDebt = false
     else if (arg === "--no-declared-debt") opts.declaredDebt = false
+    else if (arg === "--no-bench-freshness") opts.benchFreshness = false
     else if (arg === "--no-pre-commit-proof") opts.preCommitProof = false
     else if (arg === "--no-pre-push-proof") opts.prePushProof = false
     else if (arg === "--json") opts.json = true
@@ -5564,6 +5686,12 @@ export function parseArgs(argv) {
  * @param {boolean} [options.composeRender] interpolar o compose da forja (default: true)
  * @param {boolean} [options.registryProbe] consultar o registry (default: true)
  * @param {boolean} [options.openDebt] ler o BOARD: as issues de drift abertas (default: true)
+ * @param {boolean} [options.benchFreshness] medir a IDADE do commit de origem de
+ * cada família medida da baseline do bench (default: true; `--no-bench-freshness`
+ * a pula, e o perfil `--ci` também — a idade é contada em commits, e um checkout
+ * raso a responderia "sem idade" em todo PR)
+ * @param {object} [options.benchFreshnessDeps] dependências do FATO da idade da
+ * régua (`exists`/`read`/`probe`/`run`) — o ponto de injeção do teste
  * @param {number} [options.timeoutS]  limite por gate
  * @param {Function} [options.run]     `spawnSync` real ou dublê de teste
  * @param {object} [options.imageDeps] dependências repassadas ao check da imagem
@@ -5626,6 +5754,7 @@ export async function diagnose({
   gateContractsCheck = true,
   openDebt = true,
   declaredDebt = true,
+  benchFreshness = true,
   preCommitProof = true,
   prePushProof = true,
   timeoutS = 120,
@@ -5643,6 +5772,8 @@ export async function diagnose({
   openDebtDeps = {},
   /** Injeção do FATO da dívida declarada (`collect`/`now`) — o teste mede o envelhecimento sem depender do relógio. */
   declaredDebtDeps = {},
+  /** Injeção do FATO da idade da régua do bench (`exists`/`read`/`probe`/`run`) — o teste mede os estados sem tocar o disco nem rodar git. */
+  benchFreshnessDeps = {},
   /** Injeção do FATO da herança de shell (`list`/`readFile`) — o teste mede os estados sem um checkout de verdade. */
   shellInheritanceDeps = {},
   /** Injeção do FATO da cobertura de terceiro (`medir`) — o teste mede os estados sem um checkout de verdade. */
@@ -5738,6 +5869,30 @@ export async function diagnose({
         unread: [],
         total: 0,
       }
+  // A IDADE DA RÉGUA DO BENCH sai antes da leitura do board, pelo MESMO motivo do
+  // fato acima: computá-lo depois faria a leitura do board responder com um fato
+  // que ainda não existe — ou pior, com uma segunda medição do mesmo dado.
+  //
+  // NÃO entra no perfil `--ci` (`CI_PROFILE_SKIPS`): a idade é contada em commits,
+  // e um checkout raso responderia "sem idade" em TODO PR — um indeterminado
+  // permanente ensina a ignorar a lista. Quem mede é o cron semanal da régua (com
+  // checkout completo) e o doctor INTEIRO.
+  const benchFreshnessFacts = benchFreshness
+    ? readBenchFreshness({ cwd, deps: benchFreshnessDeps })
+    : {
+        state: "skipped",
+        file: null,
+        head: "HEAD",
+        maxBehind: null,
+        families: [],
+        aged: [],
+        diverged: [],
+        unknown: [],
+        behindMax: null,
+        detail: "pulada por --no-bench-freshness",
+        reason: "pulada por --no-bench-freshness",
+        remedies: [],
+      }
   const openDebtFacts = openDebt
     ? await readOpenDebt({
         cwd,
@@ -5746,6 +5901,7 @@ export async function diagnose({
         protection: protectionFacts,
         mirrors: mirrorsFacts,
         declaredDebt: declaredDebtFacts,
+        benchFreshness: benchFreshnessFacts,
         // A bateria de gates JÁ rodou (linha acima): ela é a segunda testemunha
         // dos assuntos que o próprio doctor mede por gate.
         gates: { results, error: gatesResult.error ?? null },
@@ -5848,6 +6004,15 @@ export async function diagnose({
     // isenção vencida precisa aparecer, não só no cron. MEDIDA UMA VEZ (acima):
     // o mesmo objeto serve ao veredito e à caducidade da issue do board.
     declaredDebt: declaredDebtFacts,
+    // A IDADE DA RÉGUA DO BENCH — o commit de ORIGEM de cada família MEDIDA da
+    // baseline versionada, contado em commits até HEAD. A medição é a do
+    // `bench-freshness.mjs` (a régua do dono, importada): O MESMO fato que o
+    // publicador da issue consome, para o veredito e o ticket não discordarem
+    // sobre a idade. É o buraco que deixou 28% de divergência viver em silêncio —
+    // o número da baseline alimenta o modelo de latência de merge, e nada olhava
+    // QUANDO ele foi medido.
+    //
+    benchFreshness: benchFreshnessFacts,
     // A HERANÇA DE SHELL dos workflows: leitura de checkout (sem rede, sem
     // credencial, sem estado do HOST), então ela entra ATÉ no perfil `--ci` — e
     // é ali que ela mais serve: no PR a bateria de guards está pulada, e sem
@@ -5902,6 +6067,7 @@ export async function diagnose({
     skippedImageContract: !imageContract,
     skippedOpenDebt: !openDebt,
     skippedDeclaredDebt: !declaredDebt,
+    skippedBenchFreshness: !benchFreshness,
     skippedGateContracts: !gateContractsCheck,
     skippedProof: !proof,
   }

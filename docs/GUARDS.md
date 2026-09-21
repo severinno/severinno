@@ -330,7 +330,7 @@ A medição é `thirdPartyPipelineCoverage`: varredura recursiva do repositório
 mesma lista de diretórios ignorados da varredura de prosa — um `Jenkinsfile`
 aninhado é um pipeline de verdade, e `node_modules` não é CI do repositório),
 os arquivos que cada tipo cobre e a lista dos que ficam **fora**. O doctor publica
-isso como **fato próprio** (seção **8/8**): quantos tipos, quais e quantos
+isso como **fato próprio** (seção **8/9**): quantos tipos, quais e quantos
 arquivos cada um cobre; um CI detectado fora deles **BLOQUEIA** o veredito com o
 remédio (declarar o tipo, ou remover o pipeline); um diretório ilegível vira
 **INDETERMINADA**, porque "não consegui ler" não é "não existe".
@@ -4383,7 +4383,7 @@ merge, onde a stack roda e onde a branch protection que bloqueia vive.
 pergunta "o espelho ainda diz o que a repository variable diz?" era do cron
 semanal — e um PR que mexe no template (ou uma variable trocada na forja) podia
 esperar dias pelo veredito, com o defeito silencioso esse tempo todo. O doctor
-ganhou o perfil `--ci` (`CI_PROFILE_SKIPS`): ele DESLIGA as sete seções que um
+ganhou o perfil `--ci` (`CI_PROFILE_SKIPS`): ele DESLIGA as OITO seções que um
 runner de PR não prova — a bateria de guards (é o próprio job que o chama:
 recursão), a prova do bloqueio (executa o `gitea-up.sh`, que executa o doctor:
 recursão), a branch protection registrada, o registro do runner, o contrato da
@@ -4418,7 +4418,7 @@ isso é do cron e do `deploy/gitea-up.sh`. E quando uma variável não está cri
 em uma das forjas, o valor dela não é conferido: o gate fica verde **dizendo
 qual** ficou de fora (o guard semanal acusa o mesmo, em modo `--fail` na forja).
 
-**A HERANÇA DE SHELL DOS WORKFLOWS (seção 7/8): o que a prontidão passou a cobrar
+**A HERANÇA DE SHELL DOS WORKFLOWS (seção 7/9): o que a prontidão passou a cobrar
 que antes vivia só no relatório do guard.** O `check-pipefail-sigpipe` (seção 20)
 diz, no relatório dele, de ONDE vem o shell de cada passo — do `shell:` do
 PRÓPRIO passo, do `defaults:` do JOB, do `defaults:` do ARQUIVO, ou do shell
@@ -4444,7 +4444,7 @@ entra ATÉ no perfil `--ci` (é leitura de checkout, sem rede nem credencial), e
 AUSÊNCIA dele no relatório também vira dúvida, como a do guard de recursão: dizer
 "pronta" sobre o que não foi olhado é o que este doctor recusa.
 
-**A COBERTURA DA VARREDURA DE TERCEIRO (seção 8/8): a prontidão declara o
+**A COBERTURA DA VARREDURA DE TERCEIRO (seção 8/9): a prontidão declara o
 ALCANCE, não só o resultado.** A invariante 19 (seção 13) publica o resultado
 dela — nenhum uso da versão do Bun divergindo num pipeline de terceiro —, e o
 resultado **não muda** quando um pipeline novo aparece fora do alcance dela: um
@@ -4459,6 +4459,46 @@ declarar —, ou a tabela vazia, que seria "nenhum CI fora dos tipos" por vazio)
 `unread` (**INDETERMINADA**: um diretório não pôde ser lido; pode haver pipeline
 escondido ali). Entra ATÉ no perfil `--ci`: é leitura de checkout, e é no PR que
 a lacuna precisa aparecer — ali a bateria de guards está pulada.
+
+**A IDADE DA RÉGUA DO BENCH (seção 9/9): a prontidão declara QUANDO o número
+que ela própria cita foi medido.** Esta é a fenda por onde a divergência de
+**28%** passou (o `mutation-guards` do modelo de latência declarado em
+**271.755ms** com a árvore medindo **380.700ms**): a comparação de tempo é por
+PERCENTUAL, e percentual não sabe datas — um número velho e um número de agora
+diferem na mesma proporção, seja qual for o tempo que os separa. O doctor publica
+por família MEDIDA a idade do commit de origem que a baseline grava
+(`scripts/bench-families.mjs` é a régua das famílias, e
+`scripts/bench-freshness.mjs` a da idade) e uma família além do teto declarado de
+**150 commits** — dois ciclos do cron semanal ao ritmo medido do repositório
+(~10 commits/dia) — **entra nas dúvidas**.
+
+Quatro estados, com o peso de sempre: `measured` (todas as famílias medidas têm
+idade — a mais antiga dentro do teto é fato declarado, a mais antiga FORA dele é
+dúvida com o remédio junto), `unknown` (**INDETERMINADA**: a sonda git não
+conseguiu responder — um clone raso é o caso típico —, e "não consegui medir"
+nunca é "está fresca"), `diverged` (**BLOQUEIA**: o commit de origem gravado não
+está na história de `HEAD` — a história foi reescrita e o número declarado não se
+reproduz nesta árvore) e `skipped` (o `--no-bench-freshness` paga o preço
+declarado).
+
+**E ela NÃO entra no perfil `--ci` — é a oitava declaração de `CI_PROFILE_SKIPS`,
+e o motivo é o instrumento, não o custo.** A idade se conta em COMMITS de `HEAD`
+(`git rev-list --count <origem>..HEAD`), e o checkout de um PR não é
+garantidamente profundo: num clone raso o commit de origem não está ali e o fato
+sairia **SEM idade em todo PR** — um indeterminado PERMANENTE por falta de
+checkout, que é a forma mais barata de ensinar o operador a ignorar a lista
+`unproven`. Quem mede a idade é o cron semanal (o job `guard-timing-alert`) e o
+doctor INTEIRO — o local e o da forja, cujos checkouts passam a exigir a história
+inteira (`fetch-depth: 0`) justamente para que a seção 9/9 não responda "sem
+idade" onde a resposta existe. A seção pulada no PR sai NOMEADA em `unproven`,
+nunca em silêncio.
+
+**LIMITE DECLARADO:** a régua mede **frescor**, não exatidão. Um commit a mais
+pode não mudar nada do que a família mede, e o teto é um contrato de RITMO, não
+uma prova de que o número reflete a árvore: ele impede o silêncio de um número
+que ninguém re-mediu enquanto o repositório andava, o que é precisamente o
+silêncio em que os 28% viveram. Quem acusa a divergência de tempo é o
+`--compare`; quem acusa a **idade** da régua é este fato.
 
 ---
 
