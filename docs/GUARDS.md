@@ -3120,47 +3120,45 @@ esquema v6, em `docs/benchmarks/guard-timing-baseline.json`). Uma rodada só, co
 TODOS os sub-tests — medir um a um custaria uma subida de harness POR sub-test, e o
 harness é exatamente o que a conta à mão esquece.A tabela é o ato VIVO, medido em
 21/09/2026 nesta máquina (**36/36 verdes**); o ato VERSIONADO — o que a baseline
-guarda, de 33 sub-tests, 271.8s — sai do mesmo comando e é o que o modelo de
-latência deriva:
+guarda, de 36 sub-tests com a árvore COMMITADA (o commit de origem gravado é
+`eee4f65e`), 381.0s — sai do mesmo comando e é o que o modelo de latência
+deriva:
 
 | sub-test                                                                           |  wall time | fatia | metades |
 | ---------------------------------------------------------------------------------- | ---------: | ----: | ------: |
-| `workflow-run-syntax`                                                              |      68.7s |   20% |      15 |
-| `hook-commands`                                                                    |      60.9s |   17% |      27 |
-| `pre-commit-proof` (a 36.ª — a declaração dos recusadores, a descida e o CONTROLE) |      37.9s |   11% |       3 |
-| `remedy-tty`                                                                       |      29.7s |    9% |       2 |
-| `job-deps`                                                                         |      24.3s |    7% |       7 |
-| `registry-defaults`                                                                |      20.9s |    6% |       7 |
-| `required-applied`                                                                 |      17.9s |    5% |      10 |
-| `cut-stages` (a 34.ª — as três invariantes duras do corte do GitHub)               |      17.4s |    5% |       3 |
-| `mirror-coverage` (a 35.ª — o CONTROLE, a soma por tabela e o pulo sem motivo)     |      11.0s |    3% |       3 |
+| `workflow-run-syntax`                                                              |      69.2s |   18% |      15 |
+| `hook-commands`                                                                    |      61.2s |   16% |      27 |
+| `job-deps`                                                                         |      42.1s |   11% |       8 |
+| `pre-commit-proof` (a 36.ª — a declaração dos recusadores, a descida e o CONTROLE) |      40.0s |   11% |       3 |
+| `remedy-tty`                                                                       |      30.0s |    8% |       2 |
+| `registry-defaults`                                                                |      21.0s |    6% |       7 |
+| `required-applied`                                                                 |      18.8s |    5% |      10 |
+| `cut-stages` (a 34.ª — as três invariantes duras do corte do GitHub)               |      17.9s |    5% |       3 |
+| `mirror-coverage` (a 35.ª — o CONTROLE, a soma por tabela e o pulo sem motivo)     |      11.4s |    3% |       3 |
 | … (os 36, do mais caro ao mais barato, sempre na tabela do relatório)              |            |       |         |
-| **soma dos 36 sub-tests**                                                          | **349.1s** |  100% | **205** |
-| harness (parse das metades, tabelas, subida do master)                             |       4.1s |       |         |
-| **total do master**                                                                | **353.2s** |       |         |
+| **soma dos 36 sub-tests**                                                          | **376.7s** |  100% | **209** |
+| harness (parse das metades, tabelas, subida do master)                             |       4.3s |       |         |
+| **total do master**                                                                | **380.9s** |       |         |
 
 Oito sub-tests pagam **80%** da conta e a mediana é **1.8s**: a cauda é barata, e
 o harness é a parte que a conta à mão esquecia (ele sai da DIFERENÇA, não de uma
-constante). O sub-test novo entra na rodada seguinte **MEDIDO** — a 36.ª custou
-37.9s no próprio ato que a estreou.
+constante). O sub-test novo entra na rodada seguinte **MEDIDO** — a 36.ª entrou
+medida (37.9s) e o ato seguinte já a mede em 40.0s, sem ninguém recompor a soma.
 
 **O que isso muda no veredito.** O sub-test NOVO não precisa de conta nenhuma:
 ele entra na rodada seguinte **MEDIDO**, e a comparação o publica como forma nova
 (`➕`) com o ms dele ao lado da baseline — o número do job deixa de vir de uma soma
 que alguém montou à mão. O modelo de latência passou a **DERIVAR** o passo do
 master desta medição (`benchIndex` lê o total da família), o que já confronta o
-declarado do espelho: **248.0s declarados × 271.8s medidos = 9.6%**, dentro da
-tolerância de 25% — sem divergência, e sem ninguém recontar a soma. **O ato VIVO
-(353.2s, 36/36) contra os mesmos 248.0s dá 42.4% — FORA da tolerância**, e isso é
-um fato do instrumento, não da régua: os 248.0s são a medição do job no runner do
-espelho de 20/09/2026, com **32** sub-tests, e QUATRO entraram na matriz depois
-dela (`github-deps` 12.7s + `cut-stages` 17.4s + `mirror-coverage` 11.0s +
-`pre-commit-proof` 37.9s ≈ 79s dos ~105s de delta; o resto é a deriva de host que
-as rodadas anteriores já registravam). O remédio é re-medir o declarado — o ato do
-benchmark grava o commit de ORIGEM do que mediu, então ele só recolhe as 36 formas
-quando a árvore estiver commitada, e até lá a divergência é NOMEADA pela
-comparação em vez de ficar invisível. A projeção do
-PRÓXIMO sub-test (~8.2s) é dita como **PROJEÇÃO**, não medição: ela é a média dos
+declarado do espelho: **0%** — o ato de 21/09/2026 (`--only mutations --json
+--baseline --merge`, com a árvore commitada em `eee4f65e`) re-declarou o job em
+**380950ms**, que é a própria medição; antes dele a baseline guardava a medição de
+OUTRO commit (**271.8s** com 33 sub-tests contra um derivado de 380.9s) e a
+comparação NOMEAVA os **28% de divergência** em vez de escondê-los. O mesmo ato
+re-declarou o PISO do job `guards` da forja dona do merge (**414838ms**: a bateria
+re-medida de 30.9s + o gate de sintaxe + a matriz + a paridade das regras de
+classificação). A projeção do
+PRÓXIMO sub-test (~10.6s) é dita como **PROJEÇÃO**, não medição: ela é a média dos
 scripts já medidos mais o harness por sub-test, e os dois lados saem de medição.
 A família segue a **mesma régua de cobertura** das outras: sem ela nesta rodada (ou
 com o master sem produzir o JSON) a comparação fica `measured: false` e **nomeia**

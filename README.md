@@ -1183,30 +1183,30 @@ depois: `escreveu: true` é violação da família, não um detalhe do log.
 **O custo do job mais caro do PR deixou de ser uma conta à mão** (família
 `mutations` do `bench-guard-timing`). O job `mutation-guards` roda 36 sub-tests, e
 agora o que CADA um custa é medido pelo próprio master (`--json`) e versionado
-sub-test a sub-test na baseline: o ato VERSIONADO (esquema v6, o que mediu 33/33
-verdes) mediu **268.1s** de sub-tests + **3.7s** de harness = **271.8s**, com
-`workflow-run-syntax` (67.6s, 25%), `hook-commands` (49.5s, 18%) e `remedy-tty`
-(29.6s, 11%) no topo — antes disso ninguém sabia QUAL sub-test pagava a conta. O
-ato VIVO (as ETAPAS DO CORTE entraram na matriz; medido em 21/09/2026 nesta
-máquina, 36/36 verdes) mediu **349.1s** de sub-tests + **4.1s** de harness =
-**353.2s**, com a 36ª custando **37.9s** sozinha (`pre-commit-proof`, a declaração
-dos recusadores, a descida e o CONTROLE da prova sem dublê), a 35ª os **11.0s**
-do contrato da cobertura do recorte (`mirror-coverage`) e a 34ª os **17.4s** das
-etapas do corte (`cut-stages`, as três invariantes duras do corte do GitHub):
-cada uma entrou MEDIDA, sem ninguém recontar a soma. Quem entra com um sub-test novo não compõe nada: ele entra
+sub-test a sub-test na baseline: o ato VERSIONADO — o MESMO comando, com a árvore já COMMITADA: é o que a baseline
+passou a guardar (esquema v6, commit de origem `eee4f65e`) — mediu **376.7s** de
+sub-tests + **4.3s** de harness = **381.0s**, com `workflow-run-syntax` (69.2s,
+18%), `hook-commands` (61.2s, 16%), `job-deps` (42.1s, 11%) e `pre-commit-proof`
+(40.0s, 11%) no topo — antes disso ninguém sabia QUAL sub-test pagava a conta. O
+delta contra o ato ANTERIOR (271.8s, quando a matriz era TRÊS suítes menor) são as três suítes que entraram
+(`cut-stages` 17.9s, `mirror-coverage` 11.4s e `pre-commit-proof` 40.0s) e as
+QUATRO metades novas (a CLASSE do alvo no `job-deps` e as K/L/M do recorte do
+count), cada uma entrando MEDIDA, sem ninguém recontar a soma. Quem entra com um sub-test novo não compõe nada: ele entra
 **MEDIDO** na rodada seguinte (forma nova, `➕`, com o ms dele no relatório), e o
 modelo de latência passou a **derivar** o passo do master da medição VERSIONADA — o
-confronto com o declarado do espelho dá **9.6%** (248s × 271.8s), dentro da
-tolerância. A projeção de quanto o PRÓXIMO sub-test acrescenta (~8.2s) é dita como
+confronto com o declarado do espelho dá **0%**, porque o declarado passou a ser a
+própria medição (**380950ms**). A projeção de quanto o PRÓXIMO sub-test acrescenta (~8.2s) é dita como
 **projeção**, não como medição: é a média dos scripts já medidos mais o harness por
 sub-test. **LIMITE DECLARADO:** a baseline é reescrita pelo ato do
-`bench-guard-timing`, que grava o commit de ORIGEM do que mediu — com a árvore
-desta pilha ainda não commitada ela segue a v6 (e a medição viva, **353.2s com
-36/36**, contra os **248s declarados** do espelho — que são a medição do job no
-runner do espelho, feita antes de QUATRO suítes entrarem na matriz — dá **42.4%**,
-FORA dos 25% de tolerância: as quatro suítes que entraram depois daquela medição
-explicam ≈79s do delta, e as 36 formas entram no ato seguinte, que é também o
-remédio do número declarado).
+`bench-guard-timing`, que grava o commit de ORIGEM do que mediu — as 36 formas
+entraram no ato de 21/09/2026, com a árvore COMMITADA (`eee4f65e`), e o ato é o
+que re-declara o número: o declarado do espelho passa a ser a medição (**380950ms**)
+e o PISO do job `guards` da forja dona do merge passa a **414838ms** (a bateria
+re-medida + o gate de sintaxe + a matriz + a paridade das regras de classificação).
+O ato é feito em DUAS rodadas, e isso é deliberado: `--no-mutations` mede a
+bateria, o lint, o typecheck, a suíte e o hook, e `--only mutations --baseline
+--merge` mede o master e MOVE a baseline herdando o resto, com o ato e o commit de
+origem de cada família gravados no arquivo (`meta.families`).
 
 A OFERTA também é uma superfície MEDIDA, e não só o bloco que o operador lê:
 `node scripts/pre-commit-remedy.mjs --oferta` roda a MESMA detecção (com o guard
@@ -1442,15 +1442,19 @@ valor que `ci/merge-latency.json` ainda declara; o ato da DESCOBERTA
 do registro do canal entrou na matriz — mediu
 **271.8s**, 33/33 verdes, com a 33ª custando **9.0s** sozinha (`canal-fixers`), e
 é a medição VERSIONADA na família `mutations` do `bench-guard-timing` (esquema v6:
-o ato grava o commit de ORIGEM do que mediu e a árvore desta pilha ainda não está
-commitada, então a v6 é o que o modelo de latência deriva); e o ato de AGORA — as
-ETAPAS DO CORTE, a COBERTURA DO RECORTE e a PROVA SEM DUBLÊ entraram na matriz —
-mediu **353.2s** numa rodada da matriz COMPLETA, 36/36 verdes, com a 34.ª
-custando **17.4s** sozinha (`cut-stages`), a 35.ª **11.0s** (`mirror-coverage`, o
-CONTROLE, a soma por tabela e a recusa do pulo sem motivo) e a 36.ª **37.9s**
-(`pre-commit-proof`, a declaração dos recusadores, a descida e o CONTROLE), e é
-o valor VIVO do job (a medição de 248s continua ao lado, como história do
-instrumento). A
+o ato grava o commit de ORIGEM do que mediu); o ato SEGUINTE — as ETAPAS DO
+CORTE, a COBERTURA DO RECORTE e a PROVA SEM DUBLÊ entraram na matriz — mediu
+**353.2s** numa rodada da matriz COMPLETA, 36/36 verdes, com a 34.ª custando
+**17.4s** sozinha (`cut-stages`), a 35.ª **11.0s** (`mirror-coverage`, o CONTROLE,
+a soma por tabela e a recusa do pulo sem motivo) e a 36.ª **37.9s**
+(`pre-commit-proof`, a declaração dos recusadores, a descida e o CONTROLE); e o
+ato de AGORA — as três suítes acima mais as QUATRO metades novas (a CLASSE do alvo
+no `job-deps` e as K/L/M do recorte do count), com a árvore COMMITADA — mediu
+**381.0s** (376.7s de sub-tests + 4.3s de harness) numa rodada da matriz COMPLETA,
+36/36 verdes, e é ele que a baseline passa a guardar e que `ci/merge-latency.json`
+passa a declarar para o espelho (**380950ms** medidos): os **28% de divergência**
+que a baseline ancorada em outro commit sustentava ficaram em zero, e o PISO do job
+`guards` da forja dona do merge foi re-declarado em **414838ms**. A
 32ª custa **11.0s** sozinha pelo caminho do master (`--scenario github-deps`:
 10.97 · 11.06 · 11.02); o resto do delta (≈221 + 11 = 232s esperados contra os
 248 medidos) é a deriva de host que as rodadas anteriores já registravam, somada

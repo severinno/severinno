@@ -370,9 +370,15 @@ describe("measureForge — a pipeline real, com o modelo real", () => {
     const r = giteaReport(FORCES_RUNNERS)
     expect(r.latencyMs).toBe(r.criticalPathMs)
     expect(r.latencyMs!).toBeLessThan(r.sumOfGatesMs)
-    // O caminho crítico termina no `build`, que depende de lint/typecheck/test.
-    expect(r.criticalPath?.at(-1)).toBe("build")
-    expect(r.criticalPath).toContain("test")
+    // O caminho crítico é a CADEIA MAIS LONGA do grafo, e desde 21/09/2026 quem
+    // o fecha é o `guards` — não mais o `build`: a matriz de provas por mutação
+    // medida DENTRO do job (381.0s) fez o `guards` (414.8s) passar a cadeia do
+    // build (test 134.9s + build 246.0s = 380.9s). Os DOIS lados ficam nomeados
+    // com o número, para o dia em que o custo mudar de lado o teste dizer QUEM
+    // passou na frente em vez de só acusar uma string diferente.
+    const ms = (nome: string) => r.jobs.find((j) => j.name === nome)!.ms ?? 0
+    expect(r.criticalPath).toEqual(["guards"])
+    expect(ms("guards")).toBeGreaterThan(ms("test") + ms("build"))
   })
 
   it("a latência é maior que qualquer gate sozinho — e menor que a soma com paralelismo", () => {
