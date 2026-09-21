@@ -3144,6 +3144,11 @@ Oito sub-tests pagam **80%** da conta e a mediana é **1.8s**: a cauda é barata
 o harness é a parte que a conta à mão esquecia (ele sai da DIFERENÇA, não de uma
 constante). O sub-test novo entra na rodada seguinte **MEDIDO** — a 36.ª entrou
 medida (37.9s) e o ato seguinte já a mede em 40.0s, sem ninguém recompor a soma.
+(A coluna de metades da tabela é a do ATO de `eee4f65e` — **209**; a matriz viva
+declara **210** desde a metade M5 do gate da latência, e é o próximo ato do bench
+que recolhe o número novo: a baseline guarda o count do ato que a mediu, e o
+`check:mutation-count` compara as refs vivas entre si.)
+
 **E a derivação desceu ao PASSO.** O mesmo mecanismo, um nível abaixo: o job
 `mutation-count-guard` do espelho passou a declarar os seus **PASSOS**, e o passo
 da suíte não tem número próprio — ele **LÊ** a forma `mutation-count` desta mesma
@@ -3445,7 +3450,7 @@ check:merge-latency` (o veredito do gate). Testes unitários em
 para injetar o defeito que o gate existe para pegar.
 
 **Prova por mutação** (`scripts/test-mutation-merge-latency.sh`, sub-test
-`merge-latency` do master): as QUATRO metades do gate são load-bearing, e cada
+`merge-latency` do master): as CINCO metades do gate são load-bearing, e cada
 uma tem de ser vista por uma das duas testemunhas independentes — o **gate por
 EXECUÇÃO** (`--check --root <fixture sintética>`, com um job do PR sem duração)
 e a **suíte unitária**. M1 remove a DETECÇÃO da cobertura (`missing.push`) ⇒ o
@@ -3455,7 +3460,11 @@ o gate deixa de recusar quem mergeia e passa a julgar o espelho; M4 lê o `if:` 
 QUALQUER profundidade ⇒ o `if:` de um PASSO vira o do job, o espelho passa a
 "poder ou não rodar" e o relatório dele recusa (exit 2) nomeando um `if:` que
 não existe no job — a testemunha aqui é o RELATÓRIO do espelho, porque o gate do
-dono já sai 2 por outro motivo e não distinguiria. Cada mutação é
+dono já sai 2 por outro motivo e não distinguiria; M5 dá ao passo da suíte um
+número PRÓPRIO no lugar da forma versionada (3870ms contra os 3897ms da baseline)
+⇒ o `--json` do dono passa a trazer 3870 no passo derivado e a suíte fica
+vermelha — a testemunha de execução é o próprio `--json`, que mostra se o modelo
+LEU o arquivo ou repetiu um número. Cada mutação é
 CIRÚRGICA (o injetor recusa alvo ausente/ambíguo, o arquivo mutado tem de seguir
 com sintaxe válida) e é restaurada entre as medições, com o gate mordendo de
 novo no controle final.

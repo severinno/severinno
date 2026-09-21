@@ -6,7 +6,7 @@
 #   ./scripts/test-mutation-merge-latency.sh
 #
 # Exit codes:
-#   0 — as QUATRO mutações DETECTADAS (o gate cega e/ou a suíte fica vermelha)
+#   0 — as CINCO mutações DETECTADAS (o gate cega e/ou a suíte fica vermelha)
 #   1 — gate/suíte CEGO (a mutação não foi vista) / mutação não-cirúrgica / infra
 #
 # POR QUE: o gate `--check` é o que impede a latência de merge PUBLICADA de
@@ -33,6 +33,12 @@
 #        do corpo, o `if:` de um PASSO vira o do job — um job incondicional
 #        passa a parecer condicional e o veredito fica indeterminado por causa
 #        de um passo. Witness: o RELATÓRIO do espelho (execução) + a suíte.
+#   M5 — a LIGAÇÃO do passo à FORMA versionada do benchmark (`from:`): com o
+#        passo voltando a ter número PRÓPRIO (3870ms, o valor que o declarado
+#        tinha, contra os 3897ms da forma), o mesmo passo passa a ter DOIS
+#        números que divergem sem ninguém ver — que é o defeito que a ligação
+#        elimina. Witness: o `--json` do espelho, que traz o ms do passo
+#        derivado (execução: o modelo LEU o arquivo?) + a suíte.
 #
 # CADA mutação é CIRÚRGICA: o injetor recusa alvo ausente, e o arquivo mutado
 # tem de continuar com sintaxe válida — aplicar no lugar errado mediria outra
@@ -55,6 +61,7 @@ METADES=(
   'M2|o EXIT CODE do --check: a medição continua certa e o CI passa assim'
   'M3|o PAPEL do dono do merge: com o papel trocado o veredito muda'
   'M4|a RÉGUA do if: (a chave filha DIRETA do job): lendo qualquer if'
+  'M5|a LIGAÇÃO do passo à forma versionada: com número próprio, dois números do mesmo passo'
 )
 cd "$SCRIPT_DIR"
 
@@ -93,6 +100,13 @@ make_fixture() {
   mkdir -p "$FIXTURE/.gitea/workflows" "$FIXTURE/.github/workflows" \
     "$FIXTURE/ci" "$FIXTURE/docs/benchmarks"
 
+  # O job `count` do dono do merge é o job DECLARADO POR PASSOS: o segundo passo
+  # não tem número próprio no modelo, ele se LIGA à forma `mutation-count` do
+  # benchmark da fixture. É a testemunha de execução da mutação M5 (o `--json` do
+  # dono traz o ms do passo derivado, então dá para ver se o modelo LEU o arquivo
+  # ou repetiu um número). Ele fica na forja DONA do merge (e não no espelho) para
+  # o espelho seguir com UM job e um `if:` de PASSO — que é o par exato da
+  # mutação M4.
   cat >"$FIXTURE/.gitea/workflows/ci.yml" <<'YAML'
 name: ci
 on:
@@ -101,6 +115,10 @@ jobs:
   guards:
     steps:
       - run: node scripts/check-bun-mirror.mjs
+  count:
+    steps:
+      - run: bun install --frozen-lockfile
+      - run: bash scripts/test-mutation-mutation-count.sh
   algo-novo:
     steps:
       - run: bun run algo-que-ninguem-mede
@@ -120,8 +138,23 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
 YAML
 
-  # O benchmark não conhece nenhum dos comandos: nada é derivado.
-  echo '{"guards": [], "rulers": {}}' >"$FIXTURE/docs/benchmarks/guard-timing-latest.json"
+  # O benchmark da fixture: nenhum GUARD (nada é confrontado por comando), mas a
+  # forma `mutation-count` da família `mutations` EXISTE — é ela que o passo do
+  # job `count` lê.
+  cat >"$FIXTURE/docs/benchmarks/guard-timing-latest.json" <<'JSON'
+{
+  "meta": { "commit": "fixture0", "families": { "mutations": { "commit": "fixture0" } } },
+  "guards": [],
+  "rulers": {},
+  "mutations": {
+    "measured": true,
+    "cmd": "bash scripts/test-mutation-guards.sh --json",
+    "forms": [
+      { "role": "mutation-count", "label": "mutation-count", "ms": 3897, "exit": 0, "ok": true, "runs": [{ "ms": 3897, "ok": true }] }
+    ]
+  }
+}
+JSON
 
   # O modelo cobre TODOS os jobs do espelho e SÓ UM do dono do merge: assim o
   # defeito é do dono do merge, e o espelho fica PRONTA. É isso que faz a
@@ -136,7 +169,18 @@ YAML
     "github": { "runners": 1, "source": "fixture" }
   },
   "jobs": {
-    "gitea": { "guards": { "ms": 1000, "provenance": "declarado", "source": "fixture", "date": "2026-09-16" } },
+    "gitea": {
+      "guards": { "ms": 1000, "provenance": "declarado", "source": "fixture", "date": "2026-09-16" },
+      "count": {
+        "provenance": "declarado + derivado (benchmark)",
+        "date": "2026-09-16",
+        "source": "fixture: o passo da suíte LÊ a forma mutation-count do benchmark",
+        "steps": [
+          { "run": "bun install --frozen-lockfile", "ms": 62, "date": "2026-09-16", "source": "fixture" },
+          { "run": "bash scripts/test-mutation-mutation-count.sh", "from": { "family": "mutations", "form": "mutation-count" } }
+        ]
+      }
+    },
     "github": { "espelho": { "ms": 900, "provenance": "declarado", "source": "fixture", "date": "2026-09-16" } }
   }
 }
@@ -352,6 +396,51 @@ fi
 pass "M4 DETECTADA também pela suíte unitária (exit $SUITE_EXIT)"
 
 cp "$BACKUP" "$GUARD"
+pass "Guard restaurado — base íntegra para a mutação M5"
+
+# ── MUTAÇÃO M5 — a LIGAÇÃO do passo à FORMA versionada ────────────────────
+# O passo do job `count` deixa de LER a forma `mutation-count` e volta a ter um
+# número PRÓPRIO: os 3870ms que o declarado antigo tinha, contra os 3897ms que a
+# baseline publica. É o defeito exato que a ligação elimina — dois números do
+# MESMO passo, 27ms de diferença de contexto que ninguém veria, porque nenhum dos
+# dois era derivado do outro. A testemunha de execução é o `--json` do espelho:
+# o ms do passo derivado tem de sair da BASELINE, e com o número próprio ele sai
+# do modelo.
+header "MUTAÇÃO M5 — a ligação do passo à forma versionada (from:)"
+info "Dando ao passo um número próprio (3870ms) no lugar da forma (3897ms)..."
+mutar '      const res = resolveFrom(step.from, index)' \
+  '      const res = { ms: 3870, commit: null, label: "mutation-count", source: null, error: null } // MUTACAO M5: o passo volta a ter numero proprio'
+pass "Mutação M5 aplicada (sintaxe válida)"
+
+MEDIDO="$TMP_DIR/m5.json"
+node "$GUARD" --forge gitea --root "$FIXTURE" --json >"$MEDIDO" 2>/dev/null || true
+LIDO="$(python3 - "$MEDIDO" <<'PY'
+import json, sys
+r = json.load(open(sys.argv[1], encoding="utf-8"))
+s = r["sections"][0]
+j = [x for x in s["jobs"] if x["name"] == "count"][0]
+derivados = [p["ms"] for p in (j.get("steps") or []) if p["derived"]]
+print("%s|%s" % (j["ms"], derivados[0] if derivados else "?"))
+PY
+)"
+TOTAL="${LIDO%%|*}"
+PASSO="${LIDO##*|}"
+if [ "$PASSO" = "3897" ]; then
+  fail "M5 NÃO DETECTADA: o passo ainda leu a forma (3897ms) — a ligação não alimenta o número."
+  exit 1
+fi
+pass "M5 DETECTADA pelo RELATÓRIO do dono do merge: o passo mede ${PASSO}ms (número próprio) e o job fecha em ${TOTAL}ms, não nos 3959ms da soma com a forma"
+
+SUITE_EXIT=0
+run_suite || SUITE_EXIT=$?
+if [ "$SUITE_EXIT" -eq 0 ]; then
+  fail "M5 NÃO DETECTADA pela suíte: o passo com número próprio passou em silêncio."
+  fail "Sem esta testemunha, o passo do job voltaria a divergir da baseline sem ninguém ver."
+  exit 1
+fi
+pass "M5 DETECTADA também pela suíte unitária (exit $SUITE_EXIT)"
+
+cp "$BACKUP" "$GUARD"
 pass "Guard RESTAURADO (checksum conferido abaixo)"
 
 # ── CONTROLE FINAL — a árvore voltou ao comportamento original ────────────
@@ -371,11 +460,13 @@ pass "Controle final OK — o guard restaurado recusa de novo (exit 2)"
 # ── Veredito ──────────────────────────────────────────────────────────────
 echo ""
 echo "  ═════════════════════════════════════════════════════════════════"
-echo -e "   ${GREEN}✅ MUTATION TEST PASSOU${NC} — as QUATRO metades são LOAD-BEARING:"
+echo -e "   ${GREEN}✅ MUTATION TEST PASSOU${NC} — as CINCO metades são LOAD-BEARING:"
 echo "      • a DETECÇÃO da cobertura (missing) → mutá-la cega o gate"
 echo "      • o EXIT CODE do --check → fixá-lo em 0 desliga o bloqueio do CI"
 echo "      • o PAPEL do dono do merge → trocá-lo julga a forja errada"
 echo "      • a RÉGUA do \`if:\` (filho direto) → ler o de um PASSO indetermina à toa"
+echo "      • a LIGAÇÃO do passo à forma versionada → com número próprio, o"
+echo "        mesmo passo volta a ter dois números que divergem sem ninguém ver"
 echo "      e cada mutação é CIRÚRGICA: restaurada entre as medições, com o"
 echo "      gate mordendo de novo no controle final."
 echo "  ═════════════════════════════════════════════════════════════════"
