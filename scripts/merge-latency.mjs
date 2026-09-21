@@ -17,6 +17,16 @@
 //      ms + fonte + data) e, quando o benchmark cobre o mesmo instrumento, a
 //      CONFRONTAÇÃO entre o declarado e o derivado — um número declarado que
 //      envelheceu aparece como divergência, em vez de virar verdade por decurso;
+//   2b. e, num job que declara os seus PASSOS em vez de um total (`steps`), a
+//      COMPOSIÇÃO: cada passo mede aqui (fonte + data) ou se LIGA a uma forma
+//      versionada do benchmark (`from: { family, form }`), e o total é a soma.
+//      Um passo que repete à mão o número que a baseline já publica cria DOIS
+//      números do mesmo passo — foi assim que o passo do job do count declarava
+//      3870ms contra 3897ms da forma `mutation-count` da baseline, 27ms de
+//      diferença de CONTEXTO que ninguém veria. Ligado à forma, o número do passo
+//      não vive aqui: a suíte mudar de custo move o modelo junto. E a cobertura é
+//      EXATA — todo `run:` contado, todo passo declarado existente —, porque um
+//      passo novo passaria a custar ZERO na conta do PR;
 //   3. a LATÊNCIA: com N runners, o PR espera o MAKESPAN (a fila incluída), não a
 //      cadeia mais longa. Com 1 runner o makespan degenera na SOMA; com runners
 //      suficientes, no caminho crítico. Os dois extremos são reportados, porque é
@@ -118,6 +128,8 @@ export const MERGE_OWNER_ROLE = "dona do merge"
  * @property {boolean} [derivedIsFloor]  o derivado é PISO (tem passo fora do benchmark)
  * @property {number} [derivedUnmatched]  quantos passos ficaram fora
  * @property {number} [factor]  derivado / declarado
+ * @property {{run: string, ms: number, derived: boolean, label: string|null, commit: string|null, source: string|null, date?: string|null}[]} [steps]  os passos do job composto (o derivado LÊ o benchmark)
+ * @property {string[]} [stepProblems]  por que os passos NÃO fecham (o job fica sem duração)
  */
 
 /**
@@ -340,18 +352,28 @@ export function instrumentKey(cmd) {
  * uma duração.
  *
  * @param {object|null} bench
- * @returns {{byCmd: Map<string, number>, byScript: Map<string, number>}}
+ * @returns {{byCmd: Map<string, number>, byScript: Map<string, number>, byForm: Map<string, object>, familyCommit: (family: string) => string|null, benchCommit: string|null}}
  */
 export function benchIndex(bench) {
   const byCmd = new Map()
   const byScript = new Map()
+  const byForm = new Map()
+  const familias = bench?.meta?.families ?? {}
+  // A PROCEDÊNCIA do número derivado: o commit que a FAMÍLIA descreve quando a
+  // tabela `meta.families` existe (a mesma régua de origem que o resto do
+  // repositório lê), e o commit do ARQUIVO quando ela não existe. Um passo ligado
+  // ao benchmark sem o commit ao lado seria um número sem data — e é a data que
+  // diz se ele descreve a árvore de agora.
+  const familyCommit = (family) =>
+    (typeof familias?.[family]?.commit === "string" ? familias[family].commit : null) ??
+    (typeof bench?.meta?.commit === "string" ? bench.meta.commit : null)
   const add = (cmd, ms) => {
     if (typeof cmd !== "string" || typeof ms !== "number" || !Number.isFinite(ms)) return
     byCmd.set(instrumentKey(cmd), ms)
     const script = /scripts\/([\w.-]+\.mjs)/.exec(cmd)
     if (script) byScript.set(script[1], ms)
   }
-  if (!bench) return { byCmd, byScript }
+  if (!bench) return { byCmd, byScript, byForm, familyCommit, benchCommit: null }
   for (const g of bench.guards ?? []) add(g.cmd, g.ms)
   if (bench.doctor) add(bench.doctor.cmd, bench.doctor.ms)
   for (const form of bench.lint?.forms ?? []) {
@@ -372,7 +394,33 @@ export function benchIndex(bench) {
   if (bench.mutations?.measured && Number.isFinite(bench.mutations?.deltas?.totalMs)) {
     add(bench.mutations.cmd, bench.mutations.deltas.totalMs)
   }
-  return { byCmd, byScript }
+  // As FORMAS do master, uma a uma: cada sub-test é a MEDIÇÃO de UMA suíte, e é a
+  // ela que um passo do modelo pode se LIGAR (`from: { family: "mutations",
+  // form }`) em vez de repetir o número medido à parte. Dois números do mesmo
+  // passo divergiriam sem ninguém ver — e foi assim que o passo do job do count
+  // ficou 3870ms aqui contra 3897ms na baseline: CONTEXTOS diferentes, nenhum
+  // deles derivado do outro. O `ms` da forma é o que a baseline PUBLICA (o
+  // primeiro `runs[0]` fica de reserva para um arquivo que só traga execuções).
+  for (const form of bench.mutations?.forms ?? []) {
+    const key = form?.role ?? form?.label
+    const ms = Number.isFinite(form?.ms) ? form.ms : (form?.runs?.[0]?.ms ?? null)
+    if (typeof key !== "string" || !Number.isFinite(ms)) continue
+    byForm.set(`mutations/${key}`, {
+      family: "mutations",
+      form: key,
+      ms,
+      exit: form.exit ?? null,
+      ok: form.ok ?? null,
+      runs: Array.isArray(form.runs) ? form.runs.length : 0,
+    })
+  }
+  return {
+    byCmd,
+    byScript,
+    byForm,
+    familyCommit,
+    benchCommit: typeof bench?.meta?.commit === "string" ? bench.meta.commit : null,
+  }
 }
 
 /**
@@ -404,12 +452,171 @@ export function deriveMs(job, index, { overheadMs = 0 } = {}) {
 }
 
 /**
+ * As FAMÍLIAS do benchmark que um passo do modelo pode referenciar (`from:`), e
+ * como cada uma se resolve.
+ *
+ * Uma família FORA desta tabela é recusada com o motivo — nunca tratada como
+ * "sem derivação": um nome escrito errado cairia como um passo declarado sem
+ * `ms`, e o defeito apareceria como um passo de custo desconhecido em vez de um
+ * `family` que ninguém leu.
+ */
+const FROM_FAMILIES = {
+  mutations: (spec, index) => {
+    const key = spec?.form ?? spec?.role ?? spec?.label
+    if (typeof key !== "string") {
+      return { error: "a família `mutations` exige `form` (o role da sub-test do master)" }
+    }
+    const hit = index.byForm?.get(`mutations/${key}`)
+    if (!hit) return { error: `a forma \`${key}\` não está no benchmark versionado` }
+    return {
+      ms: hit.ms,
+      commit: index.familyCommit("mutations"),
+      label: `mutations/${key}`,
+      source: `forma \`${key}\` da família \`mutations\` (a sub-test do master) em ${BENCH_PATH}`,
+    }
+  },
+  guards: (spec, index) => {
+    const key = instrumentKey(spec?.cmd ?? spec?.run ?? "")
+    const ms = index.byCmd?.get(key)
+    if (typeof ms !== "number") {
+      return { error: `o guard \`${key}\` não está na família \`guards\` do benchmark` }
+    }
+    return {
+      ms,
+      commit: index.familyCommit("guards"),
+      label: `guards/${key}`,
+      source: `guard \`${key}\` em ${BENCH_PATH}`,
+    }
+  },
+}
+
+/**
+ * Uma referência `from:` resolvida contra o índice do benchmark.
+ *
+ * A forma do retorno é ÚNICA (com `null` no que não se aplica) para o consumidor
+ * não ter de adivinhar qual dos dois lados veio.
+ *
+ * @param {{family?: string, form?: string, cmd?: string}} spec
+ * @param {object} index
+ * @returns {{ms: number|null, commit: string|null, label: string|null, source: string|null, error: string|null}}
+ */
+export function resolveFrom(spec, index) {
+  const family = spec?.family
+  const resolver = typeof family === "string" ? FROM_FAMILIES[family] : null
+  const res = resolver
+    ? resolver(spec, index)
+    : {
+        error: `a família \`${family ?? "?"}\` não é resolvível pelo benchmark (declaradas: ${Object.keys(FROM_FAMILIES).join(", ")})`,
+      }
+  return {
+    ms: res.ms ?? null,
+    commit: res.commit ?? null,
+    label: res.label ?? null,
+    source: res.source ?? null,
+    error: res.error ?? null,
+  }
+}
+
+/**
+ * O custo de um job DECLARADO POR PASSOS: um passo ou tem `ms` (medido aqui, com
+ * fonte e data) ou tem `from` (o número é LIDO do benchmark versionado).
+ *
+ * POR QUE ISTO EXISTE — o defeito medido: um passo que repete à mão o número que
+ * o benchmark já versiona cria DOIS números do mesmo passo. O do job do count
+ * declarava 3870ms enquanto a forma `mutation-count` da baseline publicava
+ * 3897ms — 27ms de diferença de CONTEXTO que ninguém veria até alguém comparar os
+ * dois arquivos. Ligado à forma, o passo deixa de ter número próprio: se a suíte
+ * mudar de custo (como as metades K/L/M a levaram de 447ms a 3897ms), o modelo
+ * move junto, e divergir passa a exigir editar o arquivo errado.
+ *
+ * E o que NÃO pode acontecer é silêncio: a cobertura é EXATA. Todo `run:` da
+ * pipeline tem de estar contado por UM passo declarado, e todo passo declarado
+ * tem de existir na pipeline — um passo novo custaria ZERO na conta do PR, que é
+ * o mesmo defeito do denominador que encolhe. Sem cobertura exata não há número:
+ * `ms` sai `null` e a causa viaja nomeada.
+ *
+ * @param {{name: string, runLines: string[]}} job
+ * @param {{steps: object[], ms?: number}} entry
+ * @param {object} index
+ * @returns {{ms: number|null, parts: object[], problems: string[]}}
+ */
+export function resolveSteps(job, entry, index) {
+  const lines = job.runLines.map((l) => l.replace(/["']?\$\{\{[^}]*\}\}["']?/g, "").trim())
+  const problems = []
+  const parts = []
+  const usados = new Set()
+  const acha = (run) =>
+    lines.findIndex(
+      (l, i) => !usados.has(i) && (l === run || instrumentKey(l) === instrumentKey(run)),
+    )
+
+  for (const step of entry.steps) {
+    const run = String(step?.run ?? "").trim()
+    const idx = acha(run)
+    if (idx === -1) {
+      problems.push(`o passo declarado \`${run}\` não existe (mais) na pipeline`)
+      continue
+    }
+    usados.add(idx)
+    if (step.from !== undefined) {
+      const res = resolveFrom(step.from, index)
+      if (res.error) {
+        problems.push(`o passo \`${run}\` deriva do benchmark e não resolveu: ${res.error}`)
+        continue
+      }
+      parts.push({
+        run,
+        ms: res.ms,
+        derived: true,
+        label: res.label,
+        commit: res.commit,
+        source: res.source,
+      })
+      continue
+    }
+    if (Number.isFinite(step.ms)) {
+      parts.push({
+        run,
+        ms: step.ms,
+        derived: false,
+        label: null,
+        commit: null,
+        source: step.source ?? null,
+        date: step.date ?? null,
+      })
+      continue
+    }
+    problems.push(`o passo \`${run}\` não declara \`ms\` nem \`from\``)
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!usados.has(i)) {
+      problems.push(
+        `o passo \`${lines[i]}\` da pipeline NÃO está declarado no modelo — ele custaria zero na conta do PR`,
+      )
+    }
+  }
+
+  return {
+    ms: problems.length === 0 ? parts.reduce((acc, p) => acc + p.ms, 0) : null,
+    parts,
+    problems,
+  }
+}
+
+/**
  * Resolve a duração e a PROCEDÊNCIA de cada job de uma forja.
  *
  * Precedência: o declarado manda (é ele que carrega a fonte e a data), e o
  * derivado serve de CONFRONTAÇÃO. Quando os dois existem e discordam além da
  * tolerância, a divergência é NOMEADA — um número declarado que envelheceu vira
  * um fato visível, não uma verdade por decurso.
+ *
+ * A TERCEIRA forma é o job declarado por PASSOS (`steps`): aí o número não é
+ * confrontado com o benchmark, ele é COMPOSTO dele — cada passo mede aqui (com
+ * fonte e data) ou se liga a uma forma versionada. É o caminho para o passo cujo
+ * número já vive na baseline: repeti-lo à mão seria a segunda fonte do mesmo
+ * passo, e duas fontes do mesmo número divergem sem ninguém ver.
  *
  * @param {{name: string, runLines: string[]}[]} jobs
  * @param {object} model
@@ -426,6 +633,47 @@ export function resolveDurations(jobs, model, forge, index) {
   for (const job of jobs) {
     const entry = declared[job.name] ?? null
     const derived = deriveMs(job, index, { overheadMs })
+
+    // O job DECLARADO POR PASSOS: o total é a soma dos passos, e o passo que já
+    // tem número no benchmark versionado LÊ de lá (nunca o repete aqui). O `ms`
+    // do entry é recusado junto: dois totais do mesmo job teriam de concordar, e
+    // o que não se pode escolher não se declara.
+    if (entry && Array.isArray(entry.steps)) {
+      const res = resolveSteps(job, entry, index)
+      const problemas = [
+        ...res.problems,
+        ...(typeof entry.ms === "number"
+          ? [
+              `o job declara \`ms\` E \`steps\`: o total deixaria de ser a soma dos passos (o \`ms\` viraria a segunda fonte do mesmo número)`,
+            ]
+          : []),
+      ]
+      const derivados = res.parts.filter((p) => p.derived)
+      const commits = [...new Set(derivados.map((p) => p.commit).filter(Boolean))]
+      const derivadoMs = derivados.reduce((acc, p) => acc + p.ms, 0)
+      byJob.set(job.name, {
+        ms: problemas.length === 0 ? res.ms : null,
+        provenance: "declarado + derivado (benchmark)",
+        source:
+          [
+            entry.source ?? null,
+            derivados.length
+              ? `${derivados.length} passo(s) LIGADO(s) ao benchmark versionado (${derivados.map((p) => p.label).join(", ")})${commits.length ? ` @ ${commits.join(", ")}` : ""} — o número do passo é LIDO do arquivo, não repetido aqui`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || null,
+        date: entry.date ?? null,
+        derivedMs: derivados.length ? derivadoMs : null,
+        derivedUnmatched: problemas.length,
+        diverges: false,
+        steps: res.parts,
+        stepProblems: problemas,
+      })
+      if (problemas.length > 0) missing.push(job.name)
+      continue
+    }
+
     if (entry && typeof entry.ms === "number") {
       const diverges =
         typeof derived.ms === "number" &&
@@ -669,8 +917,14 @@ export function measureForge({ forge, content, model, bench, runners = null }) {
     )
   }
   for (const name of missing) {
+    // O job declarado por PASSOS que não fecha tem a CAUSA nomeada: "sem duração"
+    // sozinho mandaria procurar no lugar errado (o número existe — o que não
+    // existe é a ligação dele, ou a cobertura de um passo).
+    const p = byJob.get(name)?.stepProblems ?? []
     unknowns.push(
-      `job '${name}' roda no PR e NÃO tem duração (nem declarada em ${MODEL_PATH}, nem derivada do benchmark)`,
+      p.length
+        ? `job '${name}' roda no PR e o modelo declara os passos dele, mas ${p.length} não fecham: ${p.join("; ")}`
+        : `job '${name}' roda no PR e NÃO tem duração (nem declarada em ${MODEL_PATH}, nem derivada do benchmark)`,
     )
   }
   for (const u of unclassified) {
@@ -796,6 +1050,15 @@ export function renderReport(report, { emit = console.log } = {}) {
       const flag = job.diverges ? `  ⚠ divergência: derivado ${secs(job.derivedMs)}` : ""
       const needs = job.needs.length ? ` ← ${job.needs.join(", ")}` : ""
       line(`      ${dur.padStart(9)}  ${job.name}${prov}${needs}${flag}`)
+      // O passo que LEU o benchmark: o número dele não vive no modelo, e quem lê
+      // a tabela precisa ver de ONDE ele veio e de QUAL commit — sem isso o
+      // total declarado pareceria medido por inteiro aqui.
+      const ligados = (job.steps ?? []).filter((p) => p.derived)
+      if (ligados.length) {
+        line(
+          `                 ↳ do benchmark: ${ligados.map((p) => `${p.label} ${secs(p.ms)}${p.commit ? ` @ ${p.commit}` : ""}`).join(" · ")}`,
+        )
+      }
     }
     line()
     line(`    soma dos gates (o PR NÃO paga isso)   ${s.sumComplete ? secs(s.sumOfGatesMs) : "?"}`)

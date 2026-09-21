@@ -20,7 +20,12 @@
  *      e o veredito ficava indeterminado por causa de um passo;
  *   6. o TETO (`timeout-minutes` do próprio job) é a última porta antes de "não
  *      sei" — o número entra como LIMITE SUPERIOR, NOMEADO, e é CONFRONTADO com
- *      o `timeout-minutes` da pipeline para a cópia não envelhecer em silêncio.
+ *      o `timeout-minutes` da pipeline para a cópia não envelhecer em silêncio;
+ *   7. um job declarado por PASSOS (`steps`) tem o total composto: o passo com
+ *      `from:` LÊ o número da forma versionada do benchmark (não o repete), a
+ *      cobertura é EXATA nos dois sentidos (um `run:` novo custaria zero; um passo
+ *      declarado que sumiu mediria outra coisa) e um `ms` junto de `steps` é
+ *      recusado — dois totais do mesmo job teriam de concordar.
  */
 
 import { describe, expect, it } from "vitest"
@@ -38,6 +43,8 @@ import {
   classifyOnPr,
   criticalPath,
   deriveMs,
+  resolveFrom,
+  resolveSteps,
   instrumentKey,
   makespan,
   measure,
@@ -570,5 +577,195 @@ describe("`--check` — o gate do PR (o dono do merge)", () => {
     expect(parseArgs(["--check"]).forges.length).toBe(FORGES.length)
     // `--runners` NÃO é escopo: ele muda a FILA, não quem é julgado.
     expect(parseArgs(["--check", "--runners", "8"]).check).toBe(true)
+  })
+})
+
+// ── o job declarado por PASSOS: o número do passo vem do benchmark ───────────
+
+/**
+ * A forma `mutation-count` da família `mutations` — o sub-test que MEDE a suíte
+ * do count dentro do master, com o commit de origem ao lado.
+ *
+ * O defeito que estes testes prendem: o passo do job declarava 3870ms enquanto
+ * esta forma publicava 3897ms, e nenhum dos dois era derivado do outro — dois
+ * números do MESMO passo, 27ms de diferença de contexto que ninguém via.
+ */
+function benchComForma({ ms = 3897, commit = "eee4f65e" } = {}): Record<string, unknown> {
+  return {
+    meta: {
+      tool: "bench-guard-timing",
+      version: 1,
+      commit,
+      commitDate: "2026-09-21T10:27:18-03:00",
+      families: { mutations: { act: "measured", commit, commitDate: null, source: null } },
+    },
+    guards: [],
+    mutations: {
+      measured: true,
+      cmd: "bash scripts/test-mutation-guards.sh --json",
+      forms: [
+        {
+          role: "mutation-count",
+          label: "mutation-count",
+          ms,
+          exit: 0,
+          ok: true,
+          runs: [{ ms, ok: true }],
+        },
+      ],
+    },
+  }
+}
+
+/** Os `run:` do job — inclusive o bloco (`|`), que o parser devolve como veio. */
+const RUNS_DO_COUNT = [
+  'bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"',
+  "bun install --frozen-lockfile",
+  "bash scripts/test-mutation-mutation-count.sh",
+  "node scripts/check-mutation-count.mjs",
+  "|",
+]
+
+const JOB = { name: "count", runLines: RUNS_DO_COUNT }
+
+const ENTRY = {
+  provenance: "declarado + derivado (benchmark)",
+  date: "2026-09-21",
+  source: "fixture",
+  steps: [
+    {
+      run: 'bash scripts/setup-bun-ci.sh "${{ vars.BUN_VERSION }}"',
+      ms: 17_175,
+      date: "2026-09-17",
+      source: "fixture",
+    },
+    { run: "bun install --frozen-lockfile", ms: 62, date: "2026-09-21", source: "fixture" },
+    {
+      run: "bash scripts/test-mutation-mutation-count.sh",
+      from: { family: "mutations", form: "mutation-count" },
+    },
+    { run: "node scripts/check-mutation-count.mjs", ms: 93, date: "2026-09-21", source: "fixture" },
+    { run: "|", ms: 98, date: "2026-09-21", source: "fixture" },
+  ],
+}
+
+function comPassos(
+  entry: Record<string, unknown>,
+  bench: Record<string, unknown> = benchComForma(),
+) {
+  const model = {
+    meta: { tool: "merge-latency", version: 1, date: "2026-09-21" },
+    overhead: { perJobMs: 0 },
+    jobs: { github: { count: entry } },
+  }
+  return resolveDurations([JOB], model, "github", benchIndex(bench))
+}
+
+describe("o job declarado por PASSOS — o passo LIGADO ao benchmark", () => {
+  it("o número do passo sai da FORMA versionada e o total é a soma dos passos", () => {
+    const { byJob, missing } = comPassos(ENTRY)
+    const d = byJob.get("count")!
+    expect(missing).toEqual([])
+    expect(d.ms).toBe(17_175 + 62 + 3897 + 93 + 98)
+    expect(d.provenance).toBe("declarado + derivado (benchmark)")
+    // O derivado é SÓ o passo ligado (é ele que o benchmark conhece).
+    expect(d.derivedMs).toBe(3897)
+    const ligado = d.steps!.find((p) => p.derived)!
+    expect(ligado.label).toBe("mutations/mutation-count")
+    // A PROCEDÊNCIA do derivado: o commit que a FAMÍLIA descreve.
+    expect(ligado.commit).toBe("eee4f65e")
+  })
+
+  it("a forma MUDA na baseline e o job move junto (o número não está no modelo)", () => {
+    // O witness da derivação: nenhum campo do modelo muda entre as duas medidas.
+    const base = comPassos(ENTRY).byJob.get("count")!.ms
+    const outra = comPassos(ENTRY, benchComForma({ ms: 12_000 })).byJob.get("count")!.ms
+    expect(base).toBe(17_175 + 62 + 3897 + 93 + 98)
+    expect(outra).toBe(17_175 + 62 + 12_000 + 93 + 98)
+    expect(outra! - base!).toBe(12_000 - 3897)
+  })
+
+  it("a forma AUSENTE do benchmark indetermina o job — e a causa nomeia a forma", () => {
+    const semForma: Record<string, unknown> = {
+      meta: { commit: "eee4f65e", families: {} },
+      guards: [],
+      mutations: { measured: false, forms: [] },
+    }
+    const { byJob, missing } = comPassos(ENTRY, semForma)
+    expect(missing).toEqual(["count"])
+    expect(byJob.get("count")!.ms).toBeNull()
+    expect(byJob.get("count")!.stepProblems!.join(" ")).toContain("mutation-count")
+  })
+
+  it("uma família desconhecida em `from:` é RECUSADA (não cai como sem derivação)", () => {
+    const index = benchIndex(benchComForma())
+    expect(resolveFrom({ family: "mutations", form: "nao-existe" }, index).error).toContain(
+      "não está",
+    )
+    expect(resolveFrom({ family: "guardas" }, index).error).toContain(
+      "declaradas: mutations, guards",
+    )
+    expect(
+      resolveFrom({ family: "guards", cmd: "node scripts/check-bun-mirror.mjs" }, index).error,
+    ).toContain("guards")
+  })
+
+  it("um `run:` NOVO na pipeline indetermina: ele custaria ZERO na conta do PR", () => {
+    const job = {
+      name: "count",
+      runLines: [...RUNS_DO_COUNT, "node scripts/check-periodic-alerts.mjs"],
+    }
+    const model = { overhead: { perJobMs: 0 }, jobs: { github: { count: ENTRY } } }
+    const { byJob, missing } = resolveDurations([job], model, "github", benchIndex(benchComForma()))
+    expect(missing).toEqual(["count"])
+    expect(byJob.get("count")!.ms).toBeNull()
+    expect(byJob.get("count")!.stepProblems!.join(" ")).toContain("custaria zero")
+  })
+
+  it("um passo DECLARADO que sumiu da pipeline também indetermina (a cobertura é exata)", () => {
+    const job = {
+      name: "count",
+      runLines: RUNS_DO_COUNT.filter((l) => !l.startsWith("bun install")),
+    }
+    const model = { overhead: { perJobMs: 0 }, jobs: { github: { count: ENTRY } } }
+    const { byJob } = resolveDurations([job], model, "github", benchIndex(benchComForma()))
+    expect(byJob.get("count")!.stepProblems!.join(" ")).toContain("não existe (mais) na pipeline")
+  })
+
+  it("`ms` E `steps` no mesmo job indetermina: dois totais do mesmo número", () => {
+    const { byJob, missing } = comPassos({ ...ENTRY, ms: 21_198 })
+    expect(missing).toEqual(["count"])
+    expect(byJob.get("count")!.stepProblems!.join(" ")).toContain("a segunda fonte do mesmo número")
+  })
+})
+
+describe("no REPO REAL: o job do count é composto, não um número medido à parte", () => {
+  it("o total é a soma dos passos e o derivado aponta a forma e o commit da família", () => {
+    const bench = benchReal()
+    const forma = (bench.mutations.forms as { role: string; ms: number }[]).find(
+      (f) => f.role === "mutation-count",
+    )!
+    const r = measureForge({
+      forge: FORGES.find((f) => f.id === "github")!,
+      content: readFileSync(join(ROOT, ".github/workflows/pr-check.yml"), "utf8"),
+      model: model(),
+      bench,
+    })
+    const job = r.jobs.find((j) => j.name === "mutation-count-guard")!
+    const passos = job.steps as { ms: number; derived: boolean; commit: string | null }[]
+    expect(job.stepProblems).toEqual([])
+    expect(job.ms).toBe(passos.reduce((acc, p) => acc + p.ms, 0))
+    expect(job.derivedMs).toBe(forma.ms)
+    const ligado = passos.find((p) => p.derived)!
+    expect(ligado.ms).toBe(forma.ms)
+    expect(ligado.commit).toBe(bench.meta.families.mutations.commit)
+  })
+
+  it("nenhum job do PR declara passos que não fecham (a cobertura é exata na árvore real)", () => {
+    const r = measure(model(), { root: ROOT })
+    const comProblemas = r.sections.flatMap((s) =>
+      s.jobs.filter((j) => (j.stepProblems ?? []).length > 0),
+    )
+    expect(comProblemas.map((j) => j.name)).toEqual([])
   })
 })
