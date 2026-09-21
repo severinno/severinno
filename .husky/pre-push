@@ -83,18 +83,30 @@ if [ "$SHOULD_RUN_TESTS" = true ]; then
     # REPROVANDO, então o filtro transformava este gate num no-op e o push levava
     # a árvore vermelha para a forja (medido — a mutação M1 do
     # pre-push-git-push-blocks pega exatamente isso). Aqui a saída é CAPTURADA
-    # (o status é o do typecheck) e o recorte do `head` sai por HERESTRING, sem
+    # (o status é o do typecheck) e o recorte do `head` sai por HEREDOC, sem
     # pipe: nenhum produtor vivo para levar SIGPIPE — a mesma régua do
     # check-pipefail-sigpipe. A invocação CANÔNICA da fase 2 segue visível numa
     # linha própria, que é a que o check-hook-ci-parity lê como "o hook roda o
     # typecheck do CI".
+    #
+    # HEREDOC e NÃO HERESTRING (`<<<`): o shebang deste arquivo não é lido — quem
+    # o executa é o shim `.husky/_/h`, com `sh -e`, e `sh` neste host é dash. O
+    # herestring é bashismo e derrubava o hook no PARSING ("Syntax error:
+    # redirection unexpected", medido com `sh -n .husky/pre-push`), ANTES de rodar
+    # o primeiro guard: nenhum push passava pela fase 2, e o defeito era invisível
+    # para a suíte porque o simulador executa o hook com bash. O heredoc é POSIX,
+    # entrega o mesmo recorte de 5 linhas e não cria pipe.
     if ! TYPE_OUT=$(bun run typecheck 2>&1); then
-      head -5 <<< "$TYPE_OUT"
+      head -5 <<EOF
+$TYPE_OUT
+EOF
       echo ""
       echo "❌ typecheck FALHOU — o push está bloqueado (o MESMO comando do CI)"
       exit 1
     fi
-    head -5 <<< "$TYPE_OUT"
+    head -5 <<EOF
+$TYPE_OUT
+EOF
   fi
 
   # Fuzz tests só rodam no CI (sao lentos demais pra push)

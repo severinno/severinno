@@ -35,6 +35,7 @@
  *   bunx vitest run --config vitest.config.unit.ts src/lib/__tests__/pre-push-git-push-blocks.test.ts
  */
 
+import { spawnSync } from "node:child_process"
 import { chmodSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { afterAll, describe, expect, it } from "vitest"
@@ -52,6 +53,7 @@ import {
   gitConfigSet,
   isExecutable,
   refsOf,
+  resolveBash,
   runGit,
   shellParses,
   stage,
@@ -88,12 +90,16 @@ const TYPECHECK_LINE = `\n${TYPECHECK_COMMAND}\n`
  * Presente uma única vez no hook real.
  */
 const FASTPATH_GUARD = `    if ! TYPE_OUT=$(bun run typecheck 2>&1); then
-      head -5 <<< "$TYPE_OUT"
+      head -5 <<EOF
+$TYPE_OUT
+EOF
       echo ""
       echo "❌ typecheck FALHOU — o push está bloqueado (o MESMO comando do CI)"
       exit 1
     fi
-    head -5 <<< "$TYPE_OUT"
+    head -5 <<EOF
+$TYPE_OUT
+EOF
 `
 
 /**
@@ -109,6 +115,14 @@ afterAll(() => {
 /** Quantas vezes um trecho aparece (a checagem de que a mutação é cirúrgica). */
 function ocorrencias(texto: string, alvo: string): number {
   return texto.split(alvo).length - 1
+}
+
+/**
+ * O arquivo é aceito por um shell? O git NÃO lê o shebang: quem escolhe o
+ * interpretador dos hooks é o shim do husky (`.husky/_/h`, com `sh -e`).
+ */
+function parsesIn(shell: string, source: string): boolean {
+  return spawnSync(shell, ["-n"], { encoding: "utf8", input: source }).status === 0
 }
 
 // ── premissa: o git PROCURA, HONRA e executa o hook do repositório ────────
@@ -133,6 +147,19 @@ describe("a premissa do git: o `pre-push` é encontrado, é executável e é o a
     expect(HOOK_SOURCE).toContain(TYPECHECK_COMMAND)
     expect(WRAPPER_SOURCE).toContain("*typecheck*")
     expect(shellParses(HOOK_SOURCE)).toBe(true)
+  })
+
+  it("o INTERPRETADOR: o hook é POSIX como os outros dois — um bashismo o derruba ANTES de qualquer guard", () => {
+    // `.husky/_/h` chama `sh -e "$s" "$@"`, e `sh` neste host é dash. Esta suíte
+    // não vê essa casca: ela executa o hook com bash (o dublê e o `shellParses`
+    // usam `resolveBash()`), então um bashismo no hook passa em TODAS as provas
+    // de execução daqui e derruba o push de verdade. Foi o que aconteceu com o
+    // recorte do fast path por HERESTRING (`<<<`, bashismo): medido com
+    // `sh -n .husky/pre-push`, o parsing falhava na linha do recorte — nenhum
+    // push chegava a rodar o primeiro guard. As duas cascas do husky (dash via
+    // `sh -e` e bash via Git for Windows) julgam o MESMO arquivo.
+    expect(parsesIn("sh", HOOK_SOURCE)).toBe(true)
+    expect(parsesIn(resolveBash(), HOOK_SOURCE)).toBe(true)
   })
 })
 
